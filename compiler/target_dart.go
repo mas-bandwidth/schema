@@ -114,6 +114,7 @@ func dartTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]darttable.
 				Record:  e.Record,
 				Retired: e.Retired,
 				Reason:  e.Reason,
+				Ranges:  ir.TableFixedWriterRanges(e.Writer),
 			})
 		}
 	}

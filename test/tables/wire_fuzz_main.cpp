@@ -89,6 +89,12 @@
 #include "G1Table.h"
 #include "WidesTable.h"
 #include "FeaturesTable.h"
+#include "FixedEvoTable.h"
+#include "VarEvo1Table.h"
+#include "VarEvo2Table.h"
+#include "VarEvo3Table.h"
+#include "CookTortureTable.h"
+#include "CookTortureWideTable.h"
 
 struct Reply
 {
@@ -393,6 +399,10 @@ static const Codec codecs[] = {
     FIXED( "tbla2", tbla2, Root ),
     FIXED( "scalars", scalardemo, SimState ),
     FIXED( "tblscalars2", scalardemo2, SimState ),
+    FIXED( "tblfixedevo", tblfixedevo, EvoRoot ),
+    FIXED( "tblvarevo1", tblvarevo1, EvoMsg ),
+    FIXED( "tblvarevo2", tblvarevo2, EvoMsg ),
+    FIXED( "tblvarevo3", tblvarevo3, EvoMsg ),
     FIXED( "tblr1", tblr1, Cfg ),
     FIXED( "tblr2", tblr2, Cfg ),
     // the MESSAGE FORM's units in the VARIABLE form (docs/SPEC-TABLES.md §3.3):
@@ -442,6 +452,11 @@ static const Codec codecs[] = {
     VARIABLE( "messagedemo", messagedemo, ToolEnvelope ),
     VARIABLE( "featurewitnesses", featurewitnesses, Root ),
     VARIABLE( "featurewitnesses", featurewitnesses, ArrayRoot ),
+    VARIABLE( "tblvarevo1", tblvarevo1, EvoDoc ),
+    VARIABLE( "tblvarevo2", tblvarevo2, EvoDoc ),
+    VARIABLE( "tblvarevo3", tblvarevo3, EvoDoc ),
+    VARIABLE( "cooktorture", cooktorture, TortureCook ),
+    VARIABLE( "cooktorturewide", cooktorturewide, TortureWideCook ),
     // and the same roots under the MESSAGE form (docs/SPEC-TABLES.md §3.3),
     // one entry per message the corpus pins
     MESSAGE( "backenddemo", backenddemo, LoginRequest ),
@@ -451,6 +466,8 @@ static const Codec codecs[] = {
     MESSAGE( "vocabdemo", vocabdemo, Wide09 ),
     MESSAGE( "vocab9demo", vocab9demo, Wide00 ),
     MESSAGE( "vocab9demo", vocab9demo, Wide19 ),
+    MESSAGE( "tblvarevo1", tblvarevo1, EvoMsg ),
+    MESSAGE( "tblvarevo3", tblvarevo3, EvoMsg ),
     // AND THE SAME VARIABLE-CLASS FILE ROOTS THROUGH THE RETAIN FAMILY
     // (docs/SPEC-TABLES.md §6.6). RETENTION IS THE VARIABLE CLASS'S: a
     // fixed-class root's LoadRetain is refused by name, so it is not an entry
@@ -484,6 +501,11 @@ static const Codec codecs[] = {
     RETAIN( "messagedemo", messagedemo, ToolEnvelope ),
     RETAIN( "featurewitnesses", featurewitnesses, Root ),
     RETAIN( "featurewitnesses", featurewitnesses, ArrayRoot ),
+    RETAIN( "tblvarevo1", tblvarevo1, EvoDoc ),
+    RETAIN( "tblvarevo2", tblvarevo2, EvoDoc ),
+    RETAIN( "tblvarevo3", tblvarevo3, EvoDoc ),
+    RETAIN( "cooktorture", cooktorture, TortureCook ),
+    RETAIN( "cooktorturewide", cooktorturewide, TortureWideCook ),
 };
 
 // The file-form dispatch and refusal transport are exercised independently of

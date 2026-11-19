@@ -2821,6 +2821,27 @@ namespace Tabledemo
         public static readonly TableFixedLineagePlan[] GlobalSettingsFixedLineagePlans =
             TableFixedWire.LineagePlans(GlobalSettingsFixedKnown, GlobalSettingsFixedLayout, GlobalSettingsFixedDst, GlobalSettingsFixedHash);
 
+        // LINEAGE ENTRY 0's writer bounds (§4.6, bill §12.5): the endpoint's own
+        // ranged leaves, raw scale, at this reader's value — what the compiled
+        // lane's bounds pass holds this endpoint to. The reader's range is the wider
+        // one, so clamping to it would land a value the old writer could not have
+        // written.
+        public static bool GlobalSettingsFixedClampKnown0(GlobalSettings value, TableReport report)
+        {
+            int clamped = 0;
+            if (value.TickRate < 1 || value.TickRate > 240) { clamped++; }
+            if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+            return clamped == 0;
+        }
+
+        // THE WRITER'S OWN BOUNDS per lineage entry, as one delegate array the
+        // load indexes by pick: null for the identity entry and for entries that
+        // bound nothing.
+        public static readonly System.Func<GlobalSettings, TableReport, bool>[] GlobalSettingsFixedClampKnown = new System.Func<GlobalSettings, TableReport, bool>[] {
+            GlobalSettingsFixedClampKnown0,
+            null,
+        };
+
         public static long GlobalSettingsFixedMeasure(long count)
         {
             return TableFixedWire.HeaderBytes + 4 + GlobalSettingsFixedLayoutBytes + count * GlobalSettingsFixedRecordBytes + 0;
@@ -2933,6 +2954,11 @@ namespace Tabledemo
             int fillCount = 0;
             int census_unknown = 0;
             int census_kind = 0;
+            // THE WRITER'S OWN BOUNDS for the endpoint this file selected (ALGORITHM
+            // §4.6, bill §12.5): held after the plan run, before this reader's own
+            // pass, so a value forged past what the writer could have written lands
+            // the writer's bound and counts, never this reader's wider own.
+            System.Func<GlobalSettings, TableReport, bool> writerClamp = null;
             if (pick != 1)
             {
                 TableFixedLineagePlan lane = GlobalSettingsFixedLineagePlans[pick];
@@ -2963,6 +2989,7 @@ namespace Tabledemo
                 // it lands only on a read that RETURNS: REFUSE moves no counter.
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
+                writerClamp = GlobalSettingsFixedClampKnown[pick];
             }
             if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
@@ -3020,6 +3047,7 @@ namespace Tabledemo
                     if (report != null) { report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
+                if (writerClamp != null && !writerClamp.Invoke(values[k], report)) { refused = true; }
                 if (!GlobalSettingsFixedClamp(values[k], report)) { refused = true; }
                 if (forgedOrdinal != 0)
                 {

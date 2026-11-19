@@ -89,6 +89,7 @@ func rustTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]rusttable.
 				Record:  e.Record,
 				Retired: e.Retired,
 				Reason:  e.Reason,
+				Ranges:  ir.TableFixedWriterRanges(e.Writer),
 			})
 		}
 	}

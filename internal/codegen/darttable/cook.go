@@ -414,7 +414,7 @@ func (g *cookGen) assemble() []byte {
 func (g *cookGen) emitRuntime() {
 	// the BUILD VERSION rides in the BLOCK runtime home; a unit whose tables
 	// have no block form still needs it, so it is emitted here only then
-	g.pf("%s", cookRuntimeSource(ir.BuildVersion(g.unit), len(g.blocks.Tables) == 0))
+	g.pf("%s\n", cookRuntimeSource(ir.BuildVersion(g.unit), len(g.blocks.Tables) == 0))
 }
 
 // emitRecordCursor writes a cooked record's view: a ByteData, an offset, and

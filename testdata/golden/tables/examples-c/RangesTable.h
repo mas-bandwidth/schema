@@ -10497,6 +10497,23 @@ static SCHEMA_UNUSED const int32_t tabledemo_ranged_signed_fixed_known_count = 2
    layout_newer (ship the reader). A retired entry stays forever (§5.2). */
 static SCHEMA_UNUSED const int32_t tabledemo_ranged_signed_fixed_floor = 0;
 
+/* lineage entry 0's WRITER ranges (§4.5): every clamp counts. */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ranged_signed_fixed_clamp_known_0_( tabledemo_ranged_signed_t * value, int32_t * out_of_range )
+{
+    (*out_of_range) += ( value->i8_low > 126 );
+    (*out_of_range) += ( value->i8_high < -127 );
+    (*out_of_range) += (int) ( value->i8_inside < -127 ) | (int) ( value->i8_inside > 126 );
+    (*out_of_range) += ( value->i16_low > 32766 );
+    (*out_of_range) += ( value->i16_high < -32767 );
+    (*out_of_range) += (int) ( value->i16_inside < -32767 ) | (int) ( value->i16_inside > 32766 );
+    (*out_of_range) += ( value->i32_low > 2147483646 );
+    (*out_of_range) += ( value->i32_high < -2147483647 );
+    (*out_of_range) += (int) ( value->i32_inside < -2147483647 ) | (int) ( value->i32_inside > 2147483646 );
+    (*out_of_range) += ( value->i64_low > 9223372036854775806ll );
+    (*out_of_range) += ( value->i64_high < -9223372036854775807ll );
+    (*out_of_range) += (int) ( value->i64_inside < -9223372036854775807ll ) | (int) ( value->i64_inside > 9223372036854775806ll );
+}
+
 /* ONE PLAN PER OLDER LINEAGE ENTRY, BUILT FROM THE LOCK'S OWN BYTES and
    never from a file's (§5.9 #3). The storage is STATIC — this codec
    allocates nothing — and the walk runs ONCE PER PROCESS, off the record
@@ -10860,6 +10877,17 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_signed_fixed_load( tabledemo_range
         }
         tabledemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { tabledemo_ranged_signed_reset( values + j ); } return -1; }
+        /* THE WRITER'S RANGES FIRST, for the entry this file selected (§4.5),
+           then this reader's own below. */
+        {
+            int32_t known_out_of_range = 0;
+            switch ( pick )
+            {
+            case 0: schema_tabledemo_ranged_signed_fixed_clamp_known_0_( values + k, &known_out_of_range ); break;
+            default: break;
+            }
+            if ( known_out_of_range != 0 ) { int64_t j; for ( j = 0; j <= k; ++j ) { tabledemo_ranged_signed_reset( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; return -1; }
+        }
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
            storage it just wrote: the same pass for either plan (§3.4). A
            content rule that refuses ends the read here, nothing decoded,
@@ -11067,6 +11095,20 @@ static SCHEMA_UNUSED const int32_t tabledemo_ranged_unsigned_fixed_known_count =
    layout_unsupported (upgrade the client), outside the lineage is
    layout_newer (ship the reader). A retired entry stays forever (§5.2). */
 static SCHEMA_UNUSED const int32_t tabledemo_ranged_unsigned_fixed_floor = 0;
+
+/* lineage entry 0's WRITER ranges (§4.5): every clamp counts. */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ranged_unsigned_fixed_clamp_known_0_( tabledemo_ranged_unsigned_t * value, int32_t * out_of_range )
+{
+    (*out_of_range) += ( value->u8_low > 254 );
+    (*out_of_range) += ( value->u8_high < 1 );
+    (*out_of_range) += (int) ( value->u8_inside < 1 ) | (int) ( value->u8_inside > 254 );
+    (*out_of_range) += ( value->u16_low > 65534 );
+    (*out_of_range) += ( value->u16_high < 1 );
+    (*out_of_range) += (int) ( value->u16_inside < 1 ) | (int) ( value->u16_inside > 65534 );
+    (*out_of_range) += ( value->u32_low > 4294967294 );
+    (*out_of_range) += ( value->u32_high < 1 );
+    (*out_of_range) += (int) ( value->u32_inside < 1 ) | (int) ( value->u32_inside > 4294967294 );
+}
 
 /* ONE PLAN PER OLDER LINEAGE ENTRY, BUILT FROM THE LOCK'S OWN BYTES and
    never from a file's (§5.9 #3). The storage is STATIC — this codec
@@ -11431,6 +11473,17 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_unsigned_fixed_load( tabledemo_ran
         }
         tabledemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { tabledemo_ranged_unsigned_reset( values + j ); } return -1; }
+        /* THE WRITER'S RANGES FIRST, for the entry this file selected (§4.5),
+           then this reader's own below. */
+        {
+            int32_t known_out_of_range = 0;
+            switch ( pick )
+            {
+            case 0: schema_tabledemo_ranged_unsigned_fixed_clamp_known_0_( values + k, &known_out_of_range ); break;
+            default: break;
+            }
+            if ( known_out_of_range != 0 ) { int64_t j; for ( j = 0; j <= k; ++j ) { tabledemo_ranged_unsigned_reset( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; return -1; }
+        }
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
            storage it just wrote: the same pass for either plan (§3.4). A
            content rule that refuses ends the read here, nothing decoded,
@@ -11586,6 +11639,15 @@ static SCHEMA_UNUSED const int32_t tabledemo_ranged_widths_fixed_known_count = 2
    layout_unsupported (upgrade the client), outside the lineage is
    layout_newer (ship the reader). A retired entry stays forever (§5.2). */
 static SCHEMA_UNUSED const int32_t tabledemo_ranged_widths_fixed_floor = 0;
+
+/* lineage entry 0's WRITER ranges (§4.5): every clamp counts. */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ranged_widths_fixed_clamp_known_0_( tabledemo_ranged_widths_t * value, int32_t * out_of_range )
+{
+    (*out_of_range) += ( value->b8 > 255 );
+    (*out_of_range) += ( value->b16 > 65535 );
+    (*out_of_range) += ( value->b12 > 4095 );
+    (*out_of_range) += ( value->b48 > 281474976710655ull );
+}
 
 /* ONE PLAN PER OLDER LINEAGE ENTRY, BUILT FROM THE LOCK'S OWN BYTES and
    never from a file's (§5.9 #3). The storage is STATIC — this codec
@@ -11950,6 +12012,17 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_widths_fixed_load( tabledemo_range
         }
         tabledemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { tabledemo_ranged_widths_reset( values + j ); } return -1; }
+        /* THE WRITER'S RANGES FIRST, for the entry this file selected (§4.5),
+           then this reader's own below. */
+        {
+            int32_t known_out_of_range = 0;
+            switch ( pick )
+            {
+            case 0: schema_tabledemo_ranged_widths_fixed_clamp_known_0_( values + k, &known_out_of_range ); break;
+            default: break;
+            }
+            if ( known_out_of_range != 0 ) { int64_t j; for ( j = 0; j <= k; ++j ) { tabledemo_ranged_widths_reset( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; return -1; }
+        }
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
            storage it just wrote: the same pass for either plan (§3.4). A
            content rule that refuses ends the read here, nothing decoded,

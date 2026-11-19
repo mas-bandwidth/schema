@@ -80,6 +80,7 @@ func lobsterTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]lobster
 				Record:  e.Record,
 				Retired: e.Retired,
 				Reason:  e.Reason,
+				Writer:  e.Writer,
 			})
 		}
 	}

@@ -120,6 +120,7 @@ func elixirTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]elixirta
 				Record:  e.Record,
 				Retired: e.Retired,
 				Reason:  e.Reason,
+				Ranges:  ir.TableFixedWriterRanges(e.Writer),
 			})
 		}
 	}

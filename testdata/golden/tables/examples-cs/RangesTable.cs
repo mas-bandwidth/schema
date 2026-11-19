@@ -1543,6 +1543,38 @@ namespace Tabledemo
         public static readonly TableFixedLineagePlan[] RangedSignedFixedLineagePlans =
             TableFixedWire.LineagePlans(RangedSignedFixedKnown, RangedSignedFixedLayout, RangedSignedFixedDst, RangedSignedFixedHash);
 
+        // LINEAGE ENTRY 0's writer bounds (§4.6, bill §12.5): the endpoint's own
+        // ranged leaves, raw scale, at this reader's value — what the compiled
+        // lane's bounds pass holds this endpoint to. The reader's range is the wider
+        // one, so clamping to it would land a value the old writer could not have
+        // written.
+        public static bool RangedSignedFixedClampKnown0(RangedSigned value, TableReport report)
+        {
+            int clamped = 0;
+            if (value.I8Low > 126) { clamped++; }
+            if (value.I8High < -127) { clamped++; }
+            if (value.I8Inside < -127 || value.I8Inside > 126) { clamped++; }
+            if (value.I16Low > 32766) { clamped++; }
+            if (value.I16High < -32767) { clamped++; }
+            if (value.I16Inside < -32767 || value.I16Inside > 32766) { clamped++; }
+            if (value.I32Low > 2147483646) { clamped++; }
+            if (value.I32High < -2147483647) { clamped++; }
+            if (value.I32Inside < -2147483647 || value.I32Inside > 2147483646) { clamped++; }
+            if (value.I64Low > 9223372036854775806L) { clamped++; }
+            if (value.I64High < -9223372036854775807L) { clamped++; }
+            if (value.I64Inside < -9223372036854775807L || value.I64Inside > 9223372036854775806L) { clamped++; }
+            if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+            return clamped == 0;
+        }
+
+        // THE WRITER'S OWN BOUNDS per lineage entry, as one delegate array the
+        // load indexes by pick: null for the identity entry and for entries that
+        // bound nothing.
+        public static readonly System.Func<RangedSigned, TableReport, bool>[] RangedSignedFixedClampKnown = new System.Func<RangedSigned, TableReport, bool>[] {
+            RangedSignedFixedClampKnown0,
+            null,
+        };
+
         public static long RangedSignedFixedMeasure(long count)
         {
             return TableFixedWire.HeaderBytes + 4 + RangedSignedFixedLayoutBytes + count * RangedSignedFixedRecordBytes + 0;
@@ -1654,6 +1686,11 @@ namespace Tabledemo
             int fillCount = 0;
             int census_unknown = 0;
             int census_kind = 0;
+            // THE WRITER'S OWN BOUNDS for the endpoint this file selected (ALGORITHM
+            // §4.6, bill §12.5): held after the plan run, before this reader's own
+            // pass, so a value forged past what the writer could have written lands
+            // the writer's bound and counts, never this reader's wider own.
+            System.Func<RangedSigned, TableReport, bool> writerClamp = null;
             if (pick != 1)
             {
                 TableFixedLineagePlan lane = RangedSignedFixedLineagePlans[pick];
@@ -1684,6 +1721,7 @@ namespace Tabledemo
                 // it lands only on a read that RETURNS: REFUSE moves no counter.
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
+                writerClamp = RangedSignedFixedClampKnown[pick];
             }
             if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
@@ -1734,6 +1772,7 @@ namespace Tabledemo
                     if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
+                if (writerClamp != null && !writerClamp.Invoke(values[k], report)) { refused = true; }
                 if (!RangedSignedFixedClamp(values[k], report)) { refused = true; }
                 if (forgedOrdinal != 0)
                 {
@@ -2275,6 +2314,35 @@ namespace Tabledemo
         public static readonly TableFixedLineagePlan[] RangedUnsignedFixedLineagePlans =
             TableFixedWire.LineagePlans(RangedUnsignedFixedKnown, RangedUnsignedFixedLayout, RangedUnsignedFixedDst, RangedUnsignedFixedHash);
 
+        // LINEAGE ENTRY 0's writer bounds (§4.6, bill §12.5): the endpoint's own
+        // ranged leaves, raw scale, at this reader's value — what the compiled
+        // lane's bounds pass holds this endpoint to. The reader's range is the wider
+        // one, so clamping to it would land a value the old writer could not have
+        // written.
+        public static bool RangedUnsignedFixedClampKnown0(RangedUnsigned value, TableReport report)
+        {
+            int clamped = 0;
+            if (value.U8Low > 254) { clamped++; }
+            if (value.U8High < 1) { clamped++; }
+            if (value.U8Inside < 1 || value.U8Inside > 254) { clamped++; }
+            if (value.U16Low > 65534) { clamped++; }
+            if (value.U16High < 1) { clamped++; }
+            if (value.U16Inside < 1 || value.U16Inside > 65534) { clamped++; }
+            if (value.U32Low > 4294967294) { clamped++; }
+            if (value.U32High < 1) { clamped++; }
+            if (value.U32Inside < 1 || value.U32Inside > 4294967294) { clamped++; }
+            if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+            return clamped == 0;
+        }
+
+        // THE WRITER'S OWN BOUNDS per lineage entry, as one delegate array the
+        // load indexes by pick: null for the identity entry and for entries that
+        // bound nothing.
+        public static readonly System.Func<RangedUnsigned, TableReport, bool>[] RangedUnsignedFixedClampKnown = new System.Func<RangedUnsigned, TableReport, bool>[] {
+            RangedUnsignedFixedClampKnown0,
+            null,
+        };
+
         public static long RangedUnsignedFixedMeasure(long count)
         {
             return TableFixedWire.HeaderBytes + 4 + RangedUnsignedFixedLayoutBytes + count * RangedUnsignedFixedRecordBytes + 0;
@@ -2386,6 +2454,11 @@ namespace Tabledemo
             int fillCount = 0;
             int census_unknown = 0;
             int census_kind = 0;
+            // THE WRITER'S OWN BOUNDS for the endpoint this file selected (ALGORITHM
+            // §4.6, bill §12.5): held after the plan run, before this reader's own
+            // pass, so a value forged past what the writer could have written lands
+            // the writer's bound and counts, never this reader's wider own.
+            System.Func<RangedUnsigned, TableReport, bool> writerClamp = null;
             if (pick != 1)
             {
                 TableFixedLineagePlan lane = RangedUnsignedFixedLineagePlans[pick];
@@ -2416,6 +2489,7 @@ namespace Tabledemo
                 // it lands only on a read that RETURNS: REFUSE moves no counter.
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
+                writerClamp = RangedUnsignedFixedClampKnown[pick];
             }
             if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
@@ -2466,6 +2540,7 @@ namespace Tabledemo
                     if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
+                if (writerClamp != null && !writerClamp.Invoke(values[k], report)) { refused = true; }
                 if (!RangedUnsignedFixedClamp(values[k], report)) { refused = true; }
                 if (forgedOrdinal != 0)
                 {
@@ -2908,6 +2983,30 @@ namespace Tabledemo
         public static readonly TableFixedLineagePlan[] RangedWidthsFixedLineagePlans =
             TableFixedWire.LineagePlans(RangedWidthsFixedKnown, RangedWidthsFixedLayout, RangedWidthsFixedDst, RangedWidthsFixedHash);
 
+        // LINEAGE ENTRY 0's writer bounds (§4.6, bill §12.5): the endpoint's own
+        // ranged leaves, raw scale, at this reader's value — what the compiled
+        // lane's bounds pass holds this endpoint to. The reader's range is the wider
+        // one, so clamping to it would land a value the old writer could not have
+        // written.
+        public static bool RangedWidthsFixedClampKnown0(RangedWidths value, TableReport report)
+        {
+            int clamped = 0;
+            if (value.B8 > 255) { clamped++; }
+            if (value.B16 > 65535) { clamped++; }
+            if (value.B12 > 4095) { clamped++; }
+            if (value.B48 > 281474976710655ul) { clamped++; }
+            if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+            return clamped == 0;
+        }
+
+        // THE WRITER'S OWN BOUNDS per lineage entry, as one delegate array the
+        // load indexes by pick: null for the identity entry and for entries that
+        // bound nothing.
+        public static readonly System.Func<RangedWidths, TableReport, bool>[] RangedWidthsFixedClampKnown = new System.Func<RangedWidths, TableReport, bool>[] {
+            RangedWidthsFixedClampKnown0,
+            null,
+        };
+
         public static long RangedWidthsFixedMeasure(long count)
         {
             return TableFixedWire.HeaderBytes + 4 + RangedWidthsFixedLayoutBytes + count * RangedWidthsFixedRecordBytes + 0;
@@ -3019,6 +3118,11 @@ namespace Tabledemo
             int fillCount = 0;
             int census_unknown = 0;
             int census_kind = 0;
+            // THE WRITER'S OWN BOUNDS for the endpoint this file selected (ALGORITHM
+            // §4.6, bill §12.5): held after the plan run, before this reader's own
+            // pass, so a value forged past what the writer could have written lands
+            // the writer's bound and counts, never this reader's wider own.
+            System.Func<RangedWidths, TableReport, bool> writerClamp = null;
             if (pick != 1)
             {
                 TableFixedLineagePlan lane = RangedWidthsFixedLineagePlans[pick];
@@ -3049,6 +3153,7 @@ namespace Tabledemo
                 // it lands only on a read that RETURNS: REFUSE moves no counter.
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
+                writerClamp = RangedWidthsFixedClampKnown[pick];
             }
             if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
@@ -3099,6 +3204,7 @@ namespace Tabledemo
                     if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
+                if (writerClamp != null && !writerClamp.Invoke(values[k], report)) { refused = true; }
                 if (!RangedWidthsFixedClamp(values[k], report)) { refused = true; }
                 if (forgedOrdinal != 0)
                 {

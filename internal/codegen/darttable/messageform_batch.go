@@ -402,10 +402,16 @@ func (g *fixedModule) messageRides(f *ir.Field, expr, ind string) string {
 		return expr + " != 0"
 	}
 	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
-		if len(f.DefBytes) == 0 {
+		n := fixedDefaultTextLength(f)
+		if n == 0 {
 			return expr + "Length > 0"
 		}
-		return fmt.Sprintf("%sLength != %d", expr, len(f.DefBytes))
+		parts := make([]string, 0, n+1)
+		parts = append(parts, fmt.Sprintf("%sLength != %d", expr, n))
+		for i := range n {
+			parts = append(parts, fmt.Sprintf("%s[%d] != 0x%02x", expr, i, f.DefBytes[i]))
+		}
+		return strings.Join(parts, " || ")
 	}
 	if f.Array == ir.ArrayCounted {
 		return expr + "Count > 0"

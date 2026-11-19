@@ -664,7 +664,7 @@ decode_old_value = function(T, d, node, buf, pos, rep)
   if s == "int" then
     local w = d.timestamp and 8 or (d.bits and (d.bits <= 32 and 4 or 8) or d.width)
     if rep and node.size < w then rep.widened = rep.widened + 1 end
-    local signed = (node.kind >= 2 and node.kind <= 5) or d.timestamp
+    local signed = (node.kind >= 2 and node.kind <= 5) or (node.kind >= 20 and node.kind <= 23) or d.timestamp
     return unpack_int(buf, pos, node.size, signed)
   elseif s == "wide" then
     if node.size == 16 then return { lo = unpack_int(buf, pos, 8, false), hi = unpack_int(buf, pos + 8, 8, false) } end
@@ -791,14 +791,19 @@ local function strict_value(T, d, v, ranges, wr)
   elseif s == "wide" then
     -- a 128-bit range is held on its raw halves, compared as the identity
     -- walk compares them
-    if d.lo ~= nil and d.hi ~= nil then
-      local function lt128(a, b)
-        if a.hi ~= b.hi then
-          if d.signed then return a.hi < b.hi end
-          return math.ult(a.hi, b.hi)
-        end
-        return math.ult(a.lo, b.lo)
+    local function lt128(a, b)
+      if a.hi ~= b.hi then
+        if d.signed then return a.hi < b.hi end
+        return math.ult(a.hi, b.hi)
       end
+      return math.ult(a.lo, b.lo)
+    end
+    if wr ~= nil then
+      local wlo = type(wr.lo) == "table" and wr.lo or { lo = wr.lo, hi = (d.signed and wr.lo < 0) and -1 or 0 }
+      local whi = type(wr.hi) == "table" and wr.hi or { lo = wr.hi, hi = (d.signed and wr.hi < 0) and -1 or 0 }
+      if lt128(v, wlo) or lt128(whi, v) then error("out_of_range", 0) end
+    end
+    if d.lo ~= nil and d.hi ~= nil then
       if lt128(v, d.lo) or lt128(d.hi, v) then error("out_of_range", 0) end
     end
   elseif s == "float" then

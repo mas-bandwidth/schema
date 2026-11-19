@@ -55,6 +55,7 @@ func luauTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]luautable.
 		for _, e := range lineage.Entries(st.Name) {
 			out[st.Name] = append(out[st.Name], luautable.FixedLineageEntry{
 				Wire: e.Wire, Layout: e.Layout, Record: e.Record, Retired: e.Retired, Reason: e.Reason,
+				Ranges: ir.TableFixedWriterRanges(e.Writer),
 			})
 		}
 	}

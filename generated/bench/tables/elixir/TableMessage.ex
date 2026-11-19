@@ -1282,19 +1282,21 @@ defmodule Benchtable.TableMessage do
       with {:ok, kpe} <- entry_at(from_vocab, key_peer_ref),
            true <- allowed_keys == nil or MapSet.member?(allowed_keys, kpe.id),
            {to_key_ref, _} <- Map.get(to_by_id, kpe.id) do
-        [{to_key_ref,
-          rebind_val(
-            from_vocab,
-            to_vocab,
-            to_by_id,
-            rules,
-            fid,
-            elem.kind,
-            Map.get(elem, :element),
-            kv,
-            :never,
-            sub
-          )}]
+        [
+          {to_key_ref,
+           rebind_val(
+             from_vocab,
+             to_vocab,
+             to_by_id,
+             rules,
+             fid,
+             elem.kind,
+             Map.get(elem, :element),
+             kv,
+             :never,
+             sub
+           )}
+        ]
       else
         _ -> []
       end
@@ -1326,8 +1328,19 @@ defmodule Benchtable.TableMessage do
     end
   end
 
-  defp rebind_val(_from_vocab, _to_vocab, _to_by_id, _rules, _fid, _kind, _elem, val, _rule, _sub),
-    do: val
+  defp rebind_val(
+         _from_vocab,
+         _to_vocab,
+         _to_by_id,
+         _rules,
+         _fid,
+         _kind,
+         _elem,
+         val,
+         _rule,
+         _sub
+       ),
+       do: val
 
   @doc """
   Read one batch into at most `capacity` bodies (docs/SPEC-TABLES.md §3.3), against
@@ -1797,10 +1810,12 @@ defmodule Benchtable.TableMessage do
                        false <- stored_at_default?(vocab, decl, value) do
                     seen = MapSet.put(seen, entry.id)
                     last = next_last(decl, last)
+
                     acc2 =
                       if entry.kind == 15 and value == :unknown_arm,
                         do: acc,
                         else: [{ref, value} | acc]
+
                     read_body(vocab, rest2, acc2, seen, depth, rec, last)
                   else
                     _ -> :malformed
@@ -1957,7 +1972,9 @@ defmodule Benchtable.TableMessage do
   defp arm_sub({:union, name}, id), do: @message_unions |> Map.get(name, %{}) |> Map.get(id)
   defp arm_sub(_sub, _id), do: nil
 
-  defp arm_known?({:union, name}, id), do: @message_unions |> Map.get(name, %{}) |> Map.has_key?(id)
+  defp arm_known?({:union, name}, id),
+    do: @message_unions |> Map.get(name, %{}) |> Map.has_key?(id)
+
   defp arm_known?(_sub, id), do: id >= 0
 
   # An undeclared field under another build version is stepped over by its

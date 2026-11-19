@@ -104,6 +104,7 @@ func jsTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]jstable.Fixe
 				Record:  e.Record,
 				Retired: e.Retired,
 				Reason:  e.Reason,
+				Ranges:  ir.TableFixedWriterRanges(e.Writer),
 			})
 		}
 	}

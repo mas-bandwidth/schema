@@ -259,7 +259,7 @@ func (g *tableGen) lineageEntries(st *ir.Struct) []fixedKnown {
 			if e.Wire == idHash {
 				note = "identity"
 			}
-			add(e.Wire, e.Layout, 8+e.Record, note, nil)
+			add(e.Wire, e.Layout, 8+e.Record, note, collectKnownRanges(g.unit, st, e.Writer))
 		}
 	}
 	addFromUnit := func(u *ir.Unit, src *ir.Struct, note string) {

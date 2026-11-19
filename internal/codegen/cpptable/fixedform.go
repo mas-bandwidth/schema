@@ -1082,8 +1082,14 @@ func (g *tableGen) emitFixedLineage(st *ir.Struct, known []fixedKnown, floor int
 			continue
 		}
 		g.pf("constexpr TableFixedKnownRange %sFixedKnown%dRanges[] = {\n", st.Name, i)
+		fmtBound := func(v int64) string {
+			if v == -1<<63 {
+				return "( -9223372036854775807ll - 1 )"
+			}
+			return strconv.FormatInt(v, 10)
+		}
 		for _, r := range k.ranges {
-			g.pf("    { %du, %du, %du, %d, %d },\n", r.dst, r.width, r.signed, r.lo, r.hi)
+			g.pf("    { %du, %du, %du, %s, %s },\n", r.dst, r.width, r.signed, fmtBound(r.lo), fmtBound(r.hi))
 		}
 		g.pf("};\n")
 	}

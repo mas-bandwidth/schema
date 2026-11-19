@@ -10036,6 +10036,12 @@ static SCHEMA_UNUSED const int32_t tabledemo_global_settings_fixed_known_count =
    layout_newer (ship the reader). A retired entry stays forever (§5.2). */
 static SCHEMA_UNUSED const int32_t tabledemo_global_settings_fixed_floor = 0;
 
+/* lineage entry 0's WRITER ranges (§4.5): every clamp counts. */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_global_settings_fixed_clamp_known_0_( tabledemo_global_settings_t * value, int32_t * out_of_range )
+{
+    (*out_of_range) += (int) ( value->tick_rate < 1 ) | (int) ( value->tick_rate > 240 );
+}
+
 /* ONE PLAN PER OLDER LINEAGE ENTRY, BUILT FROM THE LOCK'S OWN BYTES and
    never from a file's (§5.9 #3). The storage is STATIC — this codec
    allocates nothing — and the walk runs ONCE PER PROCESS, off the record
@@ -10415,6 +10421,17 @@ static SCHEMA_UNUSED int64_t tabledemo_global_settings_fixed_load( tabledemo_glo
             report->widened = read_widened;
             tabledemo_table_non_finite_float( report );
             return -1;
+        }
+        /* THE WRITER'S RANGES FIRST, for the entry this file selected (§4.5),
+           then this reader's own below. */
+        {
+            int32_t known_out_of_range = 0;
+            switch ( pick )
+            {
+            case 0: schema_tabledemo_global_settings_fixed_clamp_known_0_( values + k, &known_out_of_range ); break;
+            default: break;
+            }
+            if ( known_out_of_range != 0 ) { int64_t j; for ( j = 0; j <= k; ++j ) { tabledemo_global_settings_reset( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; return -1; }
         }
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
            storage it just wrote: the same pass for either plan (§3.4). A

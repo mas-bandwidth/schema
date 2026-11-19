@@ -102,6 +102,7 @@ func gooseTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]goosetabl
 				Record:  e.Record,
 				Retired: e.Retired,
 				Reason:  e.Reason,
+				Ranges:  ir.TableFixedWriterRanges(e.Writer),
 			})
 		}
 	}
