@@ -3,6 +3,7 @@ package ci
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -128,8 +129,8 @@ func TestOptVerifyCoversEveryPort(t *testing.T) {
 }
 
 // TestOptVerifyFastWorkflowSelector checks that .github/workflows/ci-fast.yml
-// maps every language in its `add_leg <lang>` path selector once all 18 legs
-// are wired into ci-fast.yml.
+// maps every language in its `add_leg <lang>` path selector and executes the
+// bounded verify-leg matrix across all 18 ports.
 func TestOptVerifyFastWorkflowSelector(t *testing.T) {
 	t.Parallel()
 
@@ -139,8 +140,11 @@ func TestOptVerifyFastWorkflowSelector(t *testing.T) {
 		t.Fatalf("read ci-fast.yml: %v", err)
 	}
 	wf := string(wfBytes)
-	if !strings.Contains(wf, "verify-") {
-		t.Skip("ci-fast.yml does not reference verify-<lang> yet; enforcing selector once wired")
+	if !strings.Contains(wf, "  verify-leg:\n") {
+		t.Fatal("ci-fast.yml missing verify-leg job")
+	}
+	if !strings.Contains(wf, "gate: [conformance, bench, fuzz]") {
+		t.Fatal("ci-fast.yml verify-leg missing gate: [conformance, bench, fuzz] matrix")
 	}
 
 	addLegRe := regexp.MustCompile(`\badd_leg\s+([a-z0-9]+)\b`)
@@ -152,6 +156,65 @@ func TestOptVerifyFastWorkflowSelector(t *testing.T) {
 		if !seen[lang] {
 			t.Errorf(".github/workflows/ci-fast.yml has no `add_leg %s` selector rule", lang)
 		}
+	}
+
+	_, tail, ok := strings.Cut(wf, "          # THE BROAD RULE.")
+	if !ok {
+		t.Fatal("fast workflow broad selector not found")
+	}
+	selector, _, ok := strings.Cut(tail, "          echo \"broad=$broad\"")
+	if !ok {
+		t.Fatal("fast workflow output boundary not found")
+	}
+	_, selector, _ = strings.Cut(selector, "\n")
+	var script strings.Builder
+	for line := range strings.SplitSeq(selector, "\n") {
+		script.WriteString(strings.TrimPrefix(line, "          "))
+		script.WriteByte('\n')
+	}
+	script.WriteString(`printf '%s' "$verify_legs_json"`)
+
+	cases := []struct {
+		name  string
+		files string
+		want  string
+	}{
+		{"c", "internal/codegen/ctable/emit.go", `["c"]`},
+		{"cpp", "internal/codegen/cpptable/emit.go", `["cpp"]`},
+		{"ccommon", "internal/codegen/ccommon/emit.go", `["c","cpp"]`},
+		{"cs", "internal/codegen/cstable/emit.go", `["cs"]`},
+		{"unity", "internal/codegen/unitytable/emit.go", `["unity"]`},
+		{"go", "internal/codegen/gotable/wire.go", `["go"]`},
+		{"rust", "internal/codegen/rusttable/emit.go", `["rust"]`},
+		{"java", "internal/codegen/javatable/retain.go", `["java"]`},
+		{"js", "internal/codegen/jstable/variableform.go", `["js"]`},
+		{"dart", "internal/codegen/darttable/darttable.go", `["dart"]`},
+		{"elixir", "internal/codegen/elixirtable/variableform.go", `["elixir"]`},
+		{"goose", "internal/codegen/goosetable/fixedform.go", `["goose"]`},
+		{"luau", "internal/codegen/luautable/fixedlineage.go", `["luau"]`},
+		{"lua", "internal/codegen/luatable/runtime/wire.lua", `["lua"]`},
+		{"squirrel", "internal/codegen/squirreltable/runtime/cook.nut", `["squirrel"]`},
+		{"moo", "internal/codegen/mootable/runtime/json.moo", `["moo"]`},
+		{"lobster", "internal/codegen/lobstertable/load.go", `["lobster"]`},
+		{"python", "internal/codegen/pythontable/emit.go", `["python"]`},
+		{"ruby", "internal/codegen/rubytable/emit.go", `["ruby"]`},
+		{"shared compiler", "compiler/compiler.go", `[]`},
+		{"shared Makefile", "Makefile", `[]`},
+		{"wide sweep capped", "generated/c/x\ngenerated/cs/x\ngenerated/go/x\ngenerated/js/x\ngenerated/lua/x", `[]`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := exec.Command("bash", "-euo", "pipefail", "-c", script.String())
+			cmd.Env = append(scriptEnv(os.Environ()), "files="+tc.files)
+			cmd.Dir = root
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("plan script: %v: %s", err, out)
+			}
+			if got := selectorOutput(out); got != tc.want {
+				t.Fatalf("files=%q selected verify_legs=%q; want %q", tc.files, got, tc.want)
+			}
+		})
 	}
 }
 
