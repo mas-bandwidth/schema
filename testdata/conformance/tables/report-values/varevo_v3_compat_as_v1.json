@@ -1,0 +1,45 @@
+{
+  "label": "v3-compat-🚀",
+  "perms": [
+    "Read",
+    "Write"
+  ],
+  "tier": "None",
+  "action": {},
+  "boost": {
+    "mult": 1,
+    "power": 10
+  },
+  "sub": {
+    "count": 55
+  },
+  "wide_num": 0,
+  "scores": [
+    0,
+    0
+  ],
+  "items": [
+    {
+      "count": 0
+    },
+    {
+      "count": 0
+    }
+  ],
+  "tally": {
+    "Bronze": 10,
+    "Silver": 20
+  },
+  "by_name": {
+    "m1": {
+      "weight": 7
+    }
+  },
+  "head": {
+    "val": 0,
+    "next": {
+      "val": 0,
+      "next": null
+    }
+  }
+}

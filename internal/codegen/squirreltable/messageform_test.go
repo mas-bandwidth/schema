@@ -501,8 +501,8 @@ func TestSquirrelMessageFormMatchesTheGoldens(t *testing.T) {
 			fixed++
 		}
 	}
-	if fixed != 12 {
-		t.Fatalf("manifest has %d message rows over a fixed root, want 12", fixed)
+	if fixed != 14 {
+		t.Fatalf("manifest has %d message rows over a fixed root, want 14", fixed)
 	}
 	out := string(runSquirrelMessages(t, root, units, connections, rows, false))
 	for _, row := range rows {

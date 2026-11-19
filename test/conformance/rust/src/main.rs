@@ -199,82 +199,66 @@ unsafe fn dump_scalar_block(at: *const u8, kind: u8, width: u32) -> String {
 
 // One record's leaves, at two spaces, in descriptor order. Out-of-line arrays
 // are the caller's business: they are a section of their own, not a leaf.
-unsafe fn dump_block_record(out: &mut String, storage: *const u8, info: &'static TableBlockInfo, path: &str) {
-    unsafe {
-        for f in info.fields.iter() {
-            if f.out_of_line {
-                continue;
-            }
-            let name = join(path, f.name);
-            if f.counted {
-                // a string or a `bytes`: the used length lives at count_offset
-                let used = read_i32(storage.add(f.count_offset as usize));
-                if used < 0 || used > f.array_bound {
-                    fail(&format!(
-                        "{}.{} carries a used length of {used}, outside [ 0, {} ]",
-                        info.name, f.name, f.array_bound
-                    ));
-                }
-                out.push_str(&format!("  {name} = {}\n", dump_text(storage.add(f.offset as usize), used)));
-            } else {
-                let slots = if f.is_array { f.array_bound as i64 } else { 1 };
-                for slot in 0..slots {
-                    let at = if f.is_array {
-                        format!("{name}[{slot}]")
+macro_rules! def_dump_block {
+    ($fn_rec:ident, $fn_blk:ident, $info_ty:ty) => {
+        unsafe fn $fn_rec(out: &mut String, storage: *const u8, info: &'static $info_ty, path: &str) {
+            unsafe {
+                for f in info.fields.iter() {
+                    if f.out_of_line { continue; }
+                    let name = join(path, f.name);
+                    if f.counted {
+                        let used = read_i32(storage.add(f.count_offset as usize));
+                        if used < 0 || used > f.array_bound {
+                            fail(&format!("{}.{} carries a used length of {used}, outside [ 0, {} ]", info.name, f.name, f.array_bound));
+                        }
+                        out.push_str(&format!("  {name} = {}\n", dump_text(storage.add(f.offset as usize), used)));
                     } else {
-                        name.clone()
-                    };
-                    let value = storage.add(f.offset as usize + (slot * f.elem_size as i64) as usize);
-                    match f.element {
-                        Some(element) => dump_block_record(out, value, element(), &at),
-                        None => out.push_str(&format!(
-                            "  {at} = {}\n",
-                            dump_scalar_block(value, f.kind, f.elem_size)
-                        )),
+                        let slots = if f.is_array { f.array_bound as i64 } else { 1 };
+                        for slot in 0..slots {
+                            let at = if f.is_array { format!("{name}[{slot}]") } else { name.clone() };
+                            let value = storage.add(f.offset as usize + (slot * f.elem_size as i64) as usize);
+                            match f.element {
+                                Some(element) => $fn_rec(out, value, element(), &at),
+                                None => out.push_str(&format!("  {at} = {}\n", dump_scalar_block(value, f.kind, f.elem_size))),
+                            }
+                        }
+                    }
+                    if f.optional {
+                        let present = *storage.add(f.present_offset as usize) != 0;
+                        out.push_str(&format!("  {name}#present = {}\n", if present { "true" } else { "false" }));
                     }
                 }
             }
-            if f.optional {
-                let present = *storage.add(f.present_offset as usize) != 0;
-                out.push_str(&format!(
-                    "  {name}#present = {}\n",
-                    if present { "true" } else { "false" }
-                ));
+        }
+
+        unsafe fn $fn_blk(base: *const u8, info: &'static $info_ty) -> String {
+            unsafe {
+                let mut out = format!("projection {} @0\n", info.name);
+                $fn_rec(&mut out, base, info, "");
+                for f in info.fields.iter() {
+                    if !f.out_of_line { continue; }
+                    let offset_of = read_u64(base.add(f.offset_of_offset as usize));
+                    let count = read_u32(base.add(f.count_offset as usize));
+                    let stride = read_u32(base.add(f.stride_offset as usize));
+                    let row = match f.element {
+                        Some(element) => element(),
+                        None => fail(&format!("{} names no element", f.name)),
+                    };
+                    out.push_str(&format!("array {} {} @{offset_of} count={count} stride={stride}\n", f.name, row.name));
+                    for r in 0..count {
+                        let at = offset_of + r as u64 * stride as u64;
+                        out.push_str(&format!("row {r} @{at}\n"));
+                        $fn_rec(&mut out, base.add(at as usize), row, "");
+                    }
+                }
+                out
             }
         }
-    }
+    };
 }
 
-// the whole dump of one opened block: the projection's own fields, then every
-// out-of-line array in declaration order, row by row
-unsafe fn dump_block(base: *const u8, info: &'static TableBlockInfo) -> String {
-    unsafe {
-        let mut out = format!("projection {} @0\n", info.name);
-        dump_block_record(&mut out, base, info, "");
-        for f in info.fields.iter() {
-            if !f.out_of_line {
-                continue;
-            }
-            let offset_of = read_u64(base.add(f.offset_of_offset as usize));
-            let count = read_u32(base.add(f.count_offset as usize));
-            let stride = read_u32(base.add(f.stride_offset as usize));
-            let row = match f.element {
-                Some(element) => element(),
-                None => fail(&format!("{} names no element", f.name)),
-            };
-            out.push_str(&format!(
-                "array {} {} @{offset_of} count={count} stride={stride}\n",
-                f.name, row.name
-            ));
-            for r in 0..count {
-                let at = offset_of + r as u64 * stride as u64;
-                out.push_str(&format!("row {r} @{at}\n"));
-                dump_block_record(&mut out, base.add(at as usize), row, "");
-            }
-        }
-        out
-    }
-}
+def_dump_block!(dump_block_record, dump_block, TableBlockInfo);
+def_dump_block!(dump_block_record_torture, dump_block_torture, cooktorture::TableBlockInfo);
 
 fn block_dump(name: &str, data: &[u8]) -> String {
     let storage = Aligned::new(data, -1);
@@ -287,6 +271,11 @@ fn block_dump(name: &str, data: &[u8]) -> String {
         } else if name.starts_with("block_padded") {
             match blockdemo::PaddedFrameBlock::open(storage.base, storage.bytes) {
                 Some(block) => dump_block(block.base(), blockdemo::PaddedFrameBlock::type_info()),
+                None => fail(&format!("{name} did not open")),
+            }
+        } else if name.starts_with("block_torture") {
+            match cooktorture::TortureFrameBlock::open(storage.base, storage.bytes) {
+                Some(block) => dump_block_torture(block.base(), cooktorture::TortureFrameBlock::type_info()),
                 None => fail(&format!("{name} did not open")),
             }
         } else {
@@ -316,6 +305,8 @@ fn open_block(name: &str, data: &[u8], extent: i64, lead: usize) -> bool {
             blockdemo::RenderFrameBlock::open(base, storage.bytes).is_some()
         } else if name.starts_with("block_padded") {
             blockdemo::PaddedFrameBlock::open(base, storage.bytes).is_some()
+        } else if name.starts_with("block_torture") {
+            cooktorture::TortureFrameBlock::open(base, storage.bytes).is_some()
         } else {
             fail(&format!("no block named {name}"))
         }
@@ -455,6 +446,8 @@ fn surface_reason(manifest: &Manifest, out: &str, kind: &str) {
                     blockdemo::RenderFrameBlock::open_reason(base, claim)
                 } else if f[3].starts_with("block_padded") {
                     blockdemo::PaddedFrameBlock::open_reason(base, claim)
+                } else if f[3].starts_with("block_torture") {
+                    cooktorture::TortureFrameBlock::open_reason(base, claim)
                 } else { fail(&format!("no block named {}", f[3])) }
             } else {
                 let (size, align) = match f[3].as_str() {
@@ -865,6 +858,52 @@ macro_rules! with_root {
                 use tblfixedevo::{evo_root_from_json_bytes as $from_json, evo_root_load as $load, evo_root_to_json_checked as $to_json};
                 #[allow(unused_variables)]
                 let $save = fixed_save_from_variable!(tblfixedevo, EvoRoot, EvoRootRow, evo_root_cook_write, evo_root_fixed_save, evo_root_fixed_measure);
+                Some($body)
+            }
+            ("tblvarevo1", "EvoDoc") => {
+                #[allow(unused_imports)]
+                use tblvarevo1::{evo_doc_from_json_bytes as $from_json, evo_doc_load as $load, evo_doc_save_checked as $save, evo_doc_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tblvarevo1", "EvoMsg") => {
+                #[allow(unused_imports, unused_variables)]
+                use tblvarevo1::{evo_msg_from_json_bytes as $from_json, evo_msg_load as $load, evo_msg_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(tblvarevo1, EvoMsg, EvoMsgRow, evo_msg_cook_write, evo_msg_fixed_save, evo_msg_fixed_measure);
+                Some($body)
+            }
+            ("tblvarevo2", "EvoDoc") => {
+                #[allow(unused_imports)]
+                use tblvarevo2::{evo_doc_from_json_bytes as $from_json, evo_doc_load as $load, evo_doc_save_checked as $save, evo_doc_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tblvarevo2", "EvoMsg") => {
+                #[allow(unused_imports, unused_variables)]
+                use tblvarevo2::{evo_msg_from_json_bytes as $from_json, evo_msg_load as $load, evo_msg_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(tblvarevo2, EvoMsg, EvoMsgRow, evo_msg_cook_write, evo_msg_fixed_save, evo_msg_fixed_measure);
+                Some($body)
+            }
+            ("tblvarevo3", "EvoDoc") => {
+                #[allow(unused_imports)]
+                use tblvarevo3::{evo_doc_from_json_bytes as $from_json, evo_doc_load as $load, evo_doc_save_checked as $save, evo_doc_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tblvarevo3", "EvoMsg") => {
+                #[allow(unused_imports, unused_variables)]
+                use tblvarevo3::{evo_msg_from_json_bytes as $from_json, evo_msg_load as $load, evo_msg_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(tblvarevo3, EvoMsg, EvoMsgRow, evo_msg_cook_write, evo_msg_fixed_save, evo_msg_fixed_measure);
+                Some($body)
+            }
+            ("cooktorture", "TortureCook") => {
+                #[allow(unused_imports)]
+                use cooktorture::{torture_cook_from_json_bytes as $from_json, torture_cook_load as $load, torture_cook_save_checked as $save, torture_cook_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("cooktorturewide", "TortureWideCook") => {
+                #[allow(unused_imports)]
+                use cooktorturewide::{torture_wide_cook_from_json_bytes as $from_json, torture_wide_cook_load as $load, torture_wide_cook_save_checked as $save, torture_wide_cook_to_json_checked as $to_json};
                 Some($body)
             }
             ("graphdemo", "Scene") => {
@@ -1287,6 +1326,9 @@ fn fixed_read(unit: &str, root: &str, data: &[u8]) -> Option<FixedRead> {
         ("scalars", "SimState") => fixed_read!(scalars, sim_state_fixed_load, sim_state_fixed_save, sim_state_fixed_measure, SimStateRow, data),
         ("tblscalars2", "SimState") => fixed_read!(tblscalars2, sim_state_fixed_load, sim_state_fixed_save, sim_state_fixed_measure, SimStateRow, data),
         ("tblfixedevo", "EvoRoot") => fixed_read!(tblfixedevo, evo_root_fixed_load, evo_root_fixed_save, evo_root_fixed_measure, EvoRootRow, data),
+        ("tblvarevo1", "EvoMsg") => fixed_read!(tblvarevo1, evo_msg_fixed_load, evo_msg_fixed_save, evo_msg_fixed_measure, EvoMsgRow, data),
+        ("tblvarevo2", "EvoMsg") => fixed_read!(tblvarevo2, evo_msg_fixed_load, evo_msg_fixed_save, evo_msg_fixed_measure, EvoMsgRow, data),
+        ("tblvarevo3", "EvoMsg") => fixed_read!(tblvarevo3, evo_msg_fixed_load, evo_msg_fixed_save, evo_msg_fixed_measure, EvoMsgRow, data),
         ("tabledemo", "ArchiveConfig") => fixed_read!(tabledemo, archive_config_fixed_load, archive_config_fixed_save, archive_config_fixed_measure, ArchiveConfigRow, data),
         ("tabledemo", "KeyedConfig") => fixed_read!(tabledemo, keyed_config_fixed_load, keyed_config_fixed_save, keyed_config_fixed_measure, KeyedConfigRow, data),
         ("tabledemo", "LoadoutConfig") => fixed_read!(tabledemo, loadout_config_fixed_load, loadout_config_fixed_save, loadout_config_fixed_measure, LoadoutConfigRow, data),
@@ -1365,6 +1407,24 @@ macro_rules! with_fixed_value_root {
                 use tblfixedevo as $k;
                 #[allow(unused_imports)]
                 use $k::{EvoRootRow as $row, EvoRoot as $value, evo_root_fixed_load as $load, evo_root_fixed_save as $save, evo_root_fixed_measure as $measure, evo_root_to_json_checked as $to, evo_root_from_json_bytes as $from, evo_root_cook_write as $cook};
+                Some($body)
+            }
+            ("tblvarevo1", "EvoMsg") => {
+                use tblvarevo1 as $k;
+                #[allow(unused_imports)]
+                use $k::{EvoMsgRow as $row, EvoMsg as $value, evo_msg_fixed_load as $load, evo_msg_fixed_save as $save, evo_msg_fixed_measure as $measure, evo_msg_to_json_checked as $to, evo_msg_from_json_bytes as $from, evo_msg_cook_write as $cook};
+                Some($body)
+            }
+            ("tblvarevo2", "EvoMsg") => {
+                use tblvarevo2 as $k;
+                #[allow(unused_imports)]
+                use $k::{EvoMsgRow as $row, EvoMsg as $value, evo_msg_fixed_load as $load, evo_msg_fixed_save as $save, evo_msg_fixed_measure as $measure, evo_msg_to_json_checked as $to, evo_msg_from_json_bytes as $from, evo_msg_cook_write as $cook};
+                Some($body)
+            }
+            ("tblvarevo3", "EvoMsg") => {
+                use tblvarevo3 as $k;
+                #[allow(unused_imports)]
+                use $k::{EvoMsgRow as $row, EvoMsg as $value, evo_msg_fixed_load as $load, evo_msg_fixed_save as $save, evo_msg_fixed_measure as $measure, evo_msg_to_json_checked as $to, evo_msg_from_json_bytes as $from, evo_msg_cook_write as $cook};
                 Some($body)
             }
             ("tabledemo", "ArchiveConfig") => {
@@ -1692,54 +1752,56 @@ fn surface_framing(manifest: &Manifest, out: &str) {
 // A short store is measured from the full retaining read, then reduced by one
 // byte so the loss is caused by capacity rather than a different input wire.
 fn surface_retain(manifest: &Manifest, out: &str, saves: bool) {
+    macro_rules! retain_case {
+        ($krate:ident, $load_retain:ident, $save_retain:ident, $to_json:ident, $f:expr) => {{
+            use $krate::{TableRetain, TableReport, $load_retain, $save_retain, $to_json};
+            let wire = slurp(&$f[4]);
+            let id_capacity = if $f[6] == "full" { 1 << 17 } else {
+                $f[6].parse::<usize>().unwrap_or_else(|_| fail(&format!("{}: invalid id capacity", $f[1])))
+            };
+            let mut capacity = 1 << 20;
+            if $f[5] == "short" {
+                let mut probe = TableRetain { bytes: Vec::with_capacity(capacity), ids: Vec::with_capacity(id_capacity), nodes: Default::default() };
+                let mut report = TableReport::default();
+                let _ = $load_retain(&wire, &mut probe, &mut report)
+                    .unwrap_or_else(|| fail(&format!("{}: capacity probe refused", $f[1])));
+                capacity = probe.bytes.len().saturating_sub(1);
+            }
+            let mut store = TableRetain { bytes: Vec::with_capacity(capacity), ids: Vec::with_capacity(id_capacity), nodes: Default::default() };
+            let mut report = TableReport::default();
+            let value = $load_retain(&wire, &mut store, &mut report)
+                .unwrap_or_else(|| fail(&format!("{}: retaining load refused", $f[1])));
+            if report.damaged { fail(&format!("{}: retaining load malformed", $f[1])); }
+            let lost = report.retain_lost;
+            let unknown = report.unknown;
+            let widened = report.widened;
+            let saved = $save_retain(&value, &mut store, &mut report);
+            let save_lost = report.retain_lost - lost;
+            let mut second = TableReport::default();
+            let again = $save_retain(&value, &mut store, &mut second);
+            if again != saved || second.retain_lost != save_lost {
+                fail(&format!("{}: retaining save is not repeatable", $f[1]));
+            }
+            if saves {
+                spill(out, &$f[1], &saved);
+            } else {
+                let mut answer = format!("{unknown},0,{widened},0,0,false,read\n");
+                match $to_json(&value) {
+                    Some(body) => answer.push_str(&body),
+                    None => fail(&format!("{}: ToJson refused the value", $f[1])),
+                }
+                spill(out, &$f[1], answer.as_bytes());
+            }
+        }};
+    }
     for f in manifest.of_kind("retain") {
         if saves && f.last().is_some_and(|v| v == "-") {
             continue;
         }
-        if f[2] != "tblrt1" || f[3] != "Node" {
-            spill_absent(out, &f[1]);
-            continue;
-        }
-        use tblrt1::{TableRetain, TableReport, node_load_retain, node_save_retain};
-        let wire = slurp(&f[4]);
-        let id_capacity = if f[6] == "full" { 1 << 17 } else {
-            f[6].parse::<usize>().unwrap_or_else(|_| fail(&format!("{}: invalid id capacity", f[1])))
-        };
-        let mut capacity = 1 << 20;
-        if f[5] == "short" {
-            let mut probe = TableRetain { bytes: Vec::with_capacity(capacity), ids: Vec::with_capacity(id_capacity), nodes: Default::default() };
-            let mut report = TableReport::default();
-            let _ = node_load_retain(&wire, &mut probe, &mut report)
-                .unwrap_or_else(|| fail(&format!("{}: capacity probe refused", f[1])));
-            capacity = probe.bytes.len().saturating_sub(1);
-        }
-        let mut store = TableRetain { bytes: Vec::with_capacity(capacity), ids: Vec::with_capacity(id_capacity), nodes: Default::default() };
-        let mut report = TableReport::default();
-        let value = node_load_retain(&wire, &mut store, &mut report)
-            .unwrap_or_else(|| fail(&format!("{}: retaining load refused", f[1])));
-        if report.damaged { fail(&format!("{}: retaining load malformed", f[1])); }
-        let lost = report.retain_lost;
-        let unknown = report.unknown;
-        let widened = report.widened;
-        let saved = node_save_retain(&value, &mut store, &mut report);
-        let save_lost = report.retain_lost - lost;
-        let mut second = TableReport::default();
-        let again = node_save_retain(&value, &mut store, &mut second);
-        if again != saved || second.retain_lost != save_lost {
-            fail(&format!("{}: retaining save is not repeatable", f[1]));
-        }
-        if saves {
-            spill(out, &f[1], &saved);
-        } else {
-            // STRICT-ONLY (test/conformance/README.md, `retain`): the read
-            // line, then the complete known value; how much unknown data the
-            // caller's store kept is not compared, the saved bytes are
-            let mut answer = format!("{unknown},0,{widened},0,0,false,read\n");
-            match tblrt1::node_to_json_checked(&value) {
-                Some(body) => answer.push_str(&body),
-                None => fail(&format!("{}: ToJson refused the value", f[1])),
-            }
-            spill(out, &f[1], answer.as_bytes());
+        match (f[2].as_str(), f[3].as_str()) {
+            ("tblrt1", "Node") => retain_case!(tblrt1, node_load_retain, node_save_retain, node_to_json_checked, f),
+            ("tblvarevo1", "EvoDoc") => retain_case!(tblvarevo1, evo_doc_load_retain, evo_doc_save_retain, evo_doc_to_json_checked, f),
+            _ => spill_absent(out, &f[1]),
         }
     }
 }
@@ -1962,6 +2024,11 @@ macro_rules! with_cook_root {
             ("listdemo", "Army") => { use listdemo::{army_load as $load, army_cook_write as $cook, army_from_json_bytes as $from}; Some($body) }
             ("listdemo", "Unbounded") => { use listdemo::{unbounded_load as $load, unbounded_cook_write as $cook, unbounded_from_json_bytes as $from}; Some($body) }
             ("widelist", "Wide") => { use widelistdemo::{wide_load as $load, wide_cook_write as $cook, wide_from_json_bytes as $from}; Some($body) }
+            ("tblvarevo1", "EvoDoc") => { use tblvarevo1::{evo_doc_load as $load, evo_doc_cook_write as $cook, evo_doc_from_json_bytes as $from}; Some($body) }
+            ("tblvarevo2", "EvoDoc") => { use tblvarevo2::{evo_doc_load as $load, evo_doc_cook_write as $cook, evo_doc_from_json_bytes as $from}; Some($body) }
+            ("tblvarevo3", "EvoDoc") => { use tblvarevo3::{evo_doc_load as $load, evo_doc_cook_write as $cook, evo_doc_from_json_bytes as $from}; Some($body) }
+            ("cooktorture", "TortureCook") => { use cooktorture::{torture_cook_load as $load, torture_cook_cook_write as $cook, torture_cook_from_json_bytes as $from}; Some($body) }
+            ("cooktorturewide", "TortureWideCook") => { use cooktorturewide::{torture_wide_cook_load as $load, torture_wide_cook_cook_write as $cook, torture_wide_cook_from_json_bytes as $from}; Some($body) }
             ("featurewitnesses", "Root") => { use featurewitnesses::{root_load as $load, root_cook_write as $cook, root_from_json_bytes as $from}; Some($body) }
             ("featurewitnesses", "ArrayRoot") => { use featurewitnesses::{array_root_load as $load, array_root_cook_write as $cook, array_root_from_json_bytes as $from}; Some($body) }
             _ => None,
@@ -2096,6 +2163,8 @@ fn message_codec(unit: &str, root: &str, ann: &[u8], wire: &[u8]) -> Option<Opti
         ("vocabdemo", "Wide09") => message_round_trip!(vocabdemo, Wide09Row, wide09_load_messages, wide09_measure_messages, wide09_save_messages, ann, wire),
         ("vocab9demo", "Wide00") => message_round_trip!(vocab9demo, Wide00Row, wide00_load_messages, wide00_measure_messages, wide00_save_messages, ann, wire),
         ("vocab9demo", "Wide19") => message_round_trip!(vocab9demo, Wide19Row, wide19_load_messages, wide19_measure_messages, wide19_save_messages, ann, wire),
+        ("tblvarevo1", "EvoMsg") => message_round_trip!(tblvarevo1, EvoMsgRow, evo_msg_load_messages, evo_msg_measure_messages, evo_msg_save_messages, ann, wire),
+        ("tblvarevo3", "EvoMsg") => message_round_trip!(tblvarevo3, EvoMsgRow, evo_msg_load_messages, evo_msg_measure_messages, evo_msg_save_messages, ann, wire),
         _ => return None,
     })
 }

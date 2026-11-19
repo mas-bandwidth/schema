@@ -117,6 +117,12 @@ def bq(s:string) -> string:
 def bx(v:int, digits:int) -> string:
     return lowercase(number_to_string(v, 16, digits))
 
+def bu64(v:int) -> string:
+    if v >= 0:
+        return "{v}"
+    let half = (v >> 1) & 0x7fffffffffffffff
+    return "{half / 5}{(half % 5) * 2 + (v & 1)}"
+
 def bscalar(sl:Slot, bf:BlockField) -> string:
     let s = sl.fd.s
     if s == "bool":
@@ -127,6 +133,8 @@ def bscalar(sl:Slot, bf:BlockField) -> string:
         return "0x" + bx(f64bits(sl.cell.f), 16)
     if s == "int" and bf.elem_size == 16:
         return "{sl.cell.w.hi}:{sl.cell.w.lo}"
+    if bf.elem_size == 8 and not sl.fd.signed:
+        return bu64(sl.cell.i)
     return "{sl.cell.i}"
 
 def bread_int(s:string, at:int, size:int, signed:bool) -> int:
@@ -191,7 +199,7 @@ def block_read_field(bl:BlockLayout, bf:BlockField, sl:Slot, data:string, at:int
         if bf.elem_size == 16:
             sl.cell.w = Int128 { lo: read_int64_le(data, base), hi: read_int64_le(data, base + 8) }
         else:
-            sl.cell.i = bread_int(data, base, bf.elem_size, not f.signed or f.s == "enum")
+            sl.cell.i = bread_int(data, base, bf.elem_size, f.signed)
     elif s == "enum":
         sl.cell.i = bread_int(data, base, bf.elem_size, false)
     if bf.optional:
@@ -211,7 +219,7 @@ def block_read_elem(bl:BlockLayout, bf:BlockField, v:Value, fd:FieldDescriptor, 
         elif s == "int" and bf.elem_size == 16:
             v.w = Int128 { lo: read_int64_le(data, at), hi: read_int64_le(data, at + 8) }
         else:
-            v.i = bread_int(data, at, bf.elem_size, false)
+            v.i = bread_int(data, at, bf.elem_size, fd.signed)
 
 // block_read is the block's whole read: nil for a block this build does not
 // open, nil for one holding a NaN or an infinity in any float, named in
@@ -374,6 +382,8 @@ def bscalar_elem(v:Value, fd:FieldDescriptor?, bf:BlockField) -> string:
         if bf.elem_size == 4:
             return "0x" + bx(f32bits(v.f), 8)
         return "0x" + bx(f64bits(v.f), 16)
+    if bf.elem_size == 8 and not fd.signed:
+        return bu64(v.i)
     return "{v.i}"
 
 def balign(at:int, a:int) -> int:

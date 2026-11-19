@@ -8,6 +8,136 @@ static partial class Program
     static unsafe void RegisterRegions()
     {
         {
+            Codec c=Find("tblvarevo1","EvoDoc");
+            c.Region = true; c.PartialLoad=(bytes,report)=>
+            {
+                long need=Tblvarevo1.Schema.EvoDocLoadMeasure(bytes);
+                if(need<0)
+                {
+                    var inner=new Tblvarevo1.TableReport();
+                    regionLoaded=Tblvarevo1.Schema.EvoDocLoad(IntPtr.Zero,0,bytes,inner)!=null;
+                    Fill(report,Copy(inner));
+                    return new Tblvarevo1.EvoDoc();
+                }
+                byte* data=(byte*)NativeMemory.AlignedAlloc(checked((nuint)(need+64)),64);
+                try
+                {
+                    new Span<byte>(data+need,64).Fill(0xa5);
+                    var inner=new Tblvarevo1.TableReport();
+                    var root=Tblvarevo1.Schema.EvoDocLoad((IntPtr)data,need,bytes,inner);
+                    regionLoaded=root!=null;
+                    for(int i=0;i<64;i++) { if(data[need+i]!=0xa5) { throw new InvalidOperationException("native load overran its measured region"); } }
+                    Fill(report,Copy(inner));
+                    return root==null?new Tblvarevo1.EvoDoc():Tblvarevo1.Schema.EvoDocLoadBuilder((IntPtr)data);
+                }
+                finally { NativeMemory.AlignedFree(data); }
+            };
+        }
+        {
+            Codec c=Find("tblvarevo2","EvoDoc");
+            c.Region = true; c.PartialLoad=(bytes,report)=>
+            {
+                long need=Tblvarevo2.Schema.EvoDocLoadMeasure(bytes);
+                if(need<0)
+                {
+                    var inner=new Tblvarevo2.TableReport();
+                    regionLoaded=Tblvarevo2.Schema.EvoDocLoad(IntPtr.Zero,0,bytes,inner)!=null;
+                    Fill(report,Copy(inner));
+                    return new Tblvarevo2.EvoDoc();
+                }
+                byte* data=(byte*)NativeMemory.AlignedAlloc(checked((nuint)(need+64)),64);
+                try
+                {
+                    new Span<byte>(data+need,64).Fill(0xa5);
+                    var inner=new Tblvarevo2.TableReport();
+                    var root=Tblvarevo2.Schema.EvoDocLoad((IntPtr)data,need,bytes,inner);
+                    regionLoaded=root!=null;
+                    for(int i=0;i<64;i++) { if(data[need+i]!=0xa5) { throw new InvalidOperationException("native load overran its measured region"); } }
+                    Fill(report,Copy(inner));
+                    return root==null?new Tblvarevo2.EvoDoc():Tblvarevo2.Schema.EvoDocLoadBuilder((IntPtr)data);
+                }
+                finally { NativeMemory.AlignedFree(data); }
+            };
+        }
+        {
+            Codec c=Find("tblvarevo3","EvoDoc");
+            c.Region = true; c.PartialLoad=(bytes,report)=>
+            {
+                long need=Tblvarevo3.Schema.EvoDocLoadMeasure(bytes);
+                if(need<0)
+                {
+                    var inner=new Tblvarevo3.TableReport();
+                    regionLoaded=Tblvarevo3.Schema.EvoDocLoad(IntPtr.Zero,0,bytes,inner)!=null;
+                    Fill(report,Copy(inner));
+                    return new Tblvarevo3.EvoDoc();
+                }
+                byte* data=(byte*)NativeMemory.AlignedAlloc(checked((nuint)(need+64)),64);
+                try
+                {
+                    new Span<byte>(data+need,64).Fill(0xa5);
+                    var inner=new Tblvarevo3.TableReport();
+                    var root=Tblvarevo3.Schema.EvoDocLoad((IntPtr)data,need,bytes,inner);
+                    regionLoaded=root!=null;
+                    for(int i=0;i<64;i++) { if(data[need+i]!=0xa5) { throw new InvalidOperationException("native load overran its measured region"); } }
+                    Fill(report,Copy(inner));
+                    return root==null?new Tblvarevo3.EvoDoc():Tblvarevo3.Schema.EvoDocLoadBuilder((IntPtr)data);
+                }
+                finally { NativeMemory.AlignedFree(data); }
+            };
+        }
+        {
+            Codec c=Find("cooktorture","TortureCook");
+            c.Region = true; c.PartialLoad=(bytes,report)=>
+            {
+                long need=Cooktorture.Schema.TortureCookLoadMeasure(bytes);
+                if(need<0)
+                {
+                    var inner=new Cooktorture.TableReport();
+                    regionLoaded=Cooktorture.Schema.TortureCookLoad(IntPtr.Zero,0,bytes,inner)!=null;
+                    Fill(report,Copy(inner));
+                    return new Cooktorture.TortureCook();
+                }
+                byte* data=(byte*)NativeMemory.AlignedAlloc(checked((nuint)(need+64)),64);
+                try
+                {
+                    new Span<byte>(data+need,64).Fill(0xa5);
+                    var inner=new Cooktorture.TableReport();
+                    var root=Cooktorture.Schema.TortureCookLoad((IntPtr)data,need,bytes,inner);
+                    regionLoaded=root!=null;
+                    for(int i=0;i<64;i++) { if(data[need+i]!=0xa5) { throw new InvalidOperationException("native load overran its measured region"); } }
+                    Fill(report,Copy(inner));
+                    return root==null?new Cooktorture.TortureCook():Cooktorture.Schema.TortureCookLoadBuilder((IntPtr)data);
+                }
+                finally { NativeMemory.AlignedFree(data); }
+            };
+        }
+        {
+            Codec c=Find("cooktorturewide","TortureWideCook");
+            c.Region = true; c.PartialLoad=(bytes,report)=>
+            {
+                long need=Cooktorturewide.Schema.TortureWideCookLoadMeasure(bytes);
+                if(need<0)
+                {
+                    var inner=new Cooktorturewide.TableReport();
+                    regionLoaded=Cooktorturewide.Schema.TortureWideCookLoad(IntPtr.Zero,0,bytes,inner)!=null;
+                    Fill(report,Copy(inner));
+                    return new Cooktorturewide.TortureWideCook();
+                }
+                byte* data=(byte*)NativeMemory.AlignedAlloc(checked((nuint)(need+64)),64);
+                try
+                {
+                    new Span<byte>(data+need,64).Fill(0xa5);
+                    var inner=new Cooktorturewide.TableReport();
+                    var root=Cooktorturewide.Schema.TortureWideCookLoad((IntPtr)data,need,bytes,inner);
+                    regionLoaded=root!=null;
+                    for(int i=0;i<64;i++) { if(data[need+i]!=0xa5) { throw new InvalidOperationException("native load overran its measured region"); } }
+                    Fill(report,Copy(inner));
+                    return root==null?new Cooktorturewide.TortureWideCook():Cooktorturewide.Schema.TortureWideCookLoadBuilder((IntPtr)data);
+                }
+                finally { NativeMemory.AlignedFree(data); }
+            };
+        }
+        {
             Codec c=Find("widelist","Wide");
             c.Region = true; c.PartialLoad=(bytes,report)=>
             {
@@ -1046,6 +1176,136 @@ static partial class Program
                         byte[] built=new byte[builder.CookMeasure()];
                         if(!builder.Cook(built,big?Graphdemo.TableByteOrder.Big:Graphdemo.TableByteOrder.Little) || !built.AsSpan().SequenceEqual(result)) { throw new InvalidOperationException("mutable builder cook: Graphdemo.Scene"); }
                         if(!builder.Lock() || !builder.Cook(built,big?Graphdemo.TableByteOrder.Big:Graphdemo.TableByteOrder.Little) || !built.AsSpan().SequenceEqual(result)) { throw new InvalidOperationException("locked builder cook: Graphdemo.Scene"); }
+                    }
+                    return result;
+                }
+                finally { NativeMemory.AlignedFree(region); }
+            };
+        }
+        {
+            Codec c=Find("tblvarevo1","EvoDoc");
+            c.NativeCook=(bytes,big)=>
+            {
+                long need=Tblvarevo1.Schema.EvoDocLoadMeasure(bytes);
+                if(need<0) { return null; }
+                byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)(need+64),64);
+                try
+                {
+                    if(Tblvarevo1.Schema.EvoDocLoad((IntPtr)region,need,bytes,new Tblvarevo1.TableReport())==null) { return null; }
+                    long size=Tblvarevo1.Schema.EvoDocCookMeasure((IntPtr)region);
+                    if(size<0) { return null; }
+                    byte[] result=new byte[checked((int)size)];
+                    if(!Tblvarevo1.Schema.EvoDocCook((IntPtr)region,result,big?Tblvarevo1.TableByteOrder.Big:Tblvarevo1.TableByteOrder.Little)) { return null; }
+                    using(var builder=new Tblvarevo1.EvoDocBuilder())
+                    {
+                        if(!Tblvarevo1.Schema.EvoDocLoadBuilder(builder,bytes,new Tblvarevo1.TableReport())) { throw new InvalidOperationException("builder load: Tblvarevo1.EvoDoc"); }
+                        byte[] built=new byte[builder.CookMeasure()];
+                        if(!builder.Cook(built,big?Tblvarevo1.TableByteOrder.Big:Tblvarevo1.TableByteOrder.Little) || !built.AsSpan().SequenceEqual(result)) { throw new InvalidOperationException("mutable builder cook: Tblvarevo1.EvoDoc"); }
+                        if(!builder.Lock() || !builder.Cook(built,big?Tblvarevo1.TableByteOrder.Big:Tblvarevo1.TableByteOrder.Little) || !built.AsSpan().SequenceEqual(result)) { throw new InvalidOperationException("locked builder cook: Tblvarevo1.EvoDoc"); }
+                    }
+                    return result;
+                }
+                finally { NativeMemory.AlignedFree(region); }
+            };
+        }
+        {
+            Codec c=Find("tblvarevo2","EvoDoc");
+            c.NativeCook=(bytes,big)=>
+            {
+                long need=Tblvarevo2.Schema.EvoDocLoadMeasure(bytes);
+                if(need<0) { return null; }
+                byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)(need+64),64);
+                try
+                {
+                    if(Tblvarevo2.Schema.EvoDocLoad((IntPtr)region,need,bytes,new Tblvarevo2.TableReport())==null) { return null; }
+                    long size=Tblvarevo2.Schema.EvoDocCookMeasure((IntPtr)region);
+                    if(size<0) { return null; }
+                    byte[] result=new byte[checked((int)size)];
+                    if(!Tblvarevo2.Schema.EvoDocCook((IntPtr)region,result,big?Tblvarevo2.TableByteOrder.Big:Tblvarevo2.TableByteOrder.Little)) { return null; }
+                    using(var builder=new Tblvarevo2.EvoDocBuilder())
+                    {
+                        if(!Tblvarevo2.Schema.EvoDocLoadBuilder(builder,bytes,new Tblvarevo2.TableReport())) { throw new InvalidOperationException("builder load: Tblvarevo2.EvoDoc"); }
+                        byte[] built=new byte[builder.CookMeasure()];
+                        if(!builder.Cook(built,big?Tblvarevo2.TableByteOrder.Big:Tblvarevo2.TableByteOrder.Little) || !built.AsSpan().SequenceEqual(result)) { throw new InvalidOperationException("mutable builder cook: Tblvarevo2.EvoDoc"); }
+                        if(!builder.Lock() || !builder.Cook(built,big?Tblvarevo2.TableByteOrder.Big:Tblvarevo2.TableByteOrder.Little) || !built.AsSpan().SequenceEqual(result)) { throw new InvalidOperationException("locked builder cook: Tblvarevo2.EvoDoc"); }
+                    }
+                    return result;
+                }
+                finally { NativeMemory.AlignedFree(region); }
+            };
+        }
+        {
+            Codec c=Find("tblvarevo3","EvoDoc");
+            c.NativeCook=(bytes,big)=>
+            {
+                long need=Tblvarevo3.Schema.EvoDocLoadMeasure(bytes);
+                if(need<0) { return null; }
+                byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)(need+64),64);
+                try
+                {
+                    if(Tblvarevo3.Schema.EvoDocLoad((IntPtr)region,need,bytes,new Tblvarevo3.TableReport())==null) { return null; }
+                    long size=Tblvarevo3.Schema.EvoDocCookMeasure((IntPtr)region);
+                    if(size<0) { return null; }
+                    byte[] result=new byte[checked((int)size)];
+                    if(!Tblvarevo3.Schema.EvoDocCook((IntPtr)region,result,big?Tblvarevo3.TableByteOrder.Big:Tblvarevo3.TableByteOrder.Little)) { return null; }
+                    using(var builder=new Tblvarevo3.EvoDocBuilder())
+                    {
+                        if(!Tblvarevo3.Schema.EvoDocLoadBuilder(builder,bytes,new Tblvarevo3.TableReport())) { throw new InvalidOperationException("builder load: Tblvarevo3.EvoDoc"); }
+                        byte[] built=new byte[builder.CookMeasure()];
+                        if(!builder.Cook(built,big?Tblvarevo3.TableByteOrder.Big:Tblvarevo3.TableByteOrder.Little) || !built.AsSpan().SequenceEqual(result)) { throw new InvalidOperationException("mutable builder cook: Tblvarevo3.EvoDoc"); }
+                        if(!builder.Lock() || !builder.Cook(built,big?Tblvarevo3.TableByteOrder.Big:Tblvarevo3.TableByteOrder.Little) || !built.AsSpan().SequenceEqual(result)) { throw new InvalidOperationException("locked builder cook: Tblvarevo3.EvoDoc"); }
+                    }
+                    return result;
+                }
+                finally { NativeMemory.AlignedFree(region); }
+            };
+        }
+        {
+            Codec c=Find("cooktorture","TortureCook");
+            c.NativeCook=(bytes,big)=>
+            {
+                long need=Cooktorture.Schema.TortureCookLoadMeasure(bytes);
+                if(need<0) { return null; }
+                byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)(need+64),64);
+                try
+                {
+                    if(Cooktorture.Schema.TortureCookLoad((IntPtr)region,need,bytes,new Cooktorture.TableReport())==null) { return null; }
+                    long size=Cooktorture.Schema.TortureCookCookMeasure((IntPtr)region);
+                    if(size<0) { return null; }
+                    byte[] result=new byte[checked((int)size)];
+                    if(!Cooktorture.Schema.TortureCookCook((IntPtr)region,result,big?Cooktorture.TableByteOrder.Big:Cooktorture.TableByteOrder.Little)) { return null; }
+                    using(var builder=new Cooktorture.TortureCookBuilder())
+                    {
+                        if(!Cooktorture.Schema.TortureCookLoadBuilder(builder,bytes,new Cooktorture.TableReport())) { throw new InvalidOperationException("builder load: Cooktorture.TortureCook"); }
+                        byte[] built=new byte[builder.CookMeasure()];
+                        if(!builder.Cook(built,big?Cooktorture.TableByteOrder.Big:Cooktorture.TableByteOrder.Little) || !built.AsSpan().SequenceEqual(result)) { throw new InvalidOperationException("mutable builder cook: Cooktorture.TortureCook"); }
+                        if(!builder.Lock() || !builder.Cook(built,big?Cooktorture.TableByteOrder.Big:Cooktorture.TableByteOrder.Little) || !built.AsSpan().SequenceEqual(result)) { throw new InvalidOperationException("locked builder cook: Cooktorture.TortureCook"); }
+                    }
+                    return result;
+                }
+                finally { NativeMemory.AlignedFree(region); }
+            };
+        }
+        {
+            Codec c=Find("cooktorturewide","TortureWideCook");
+            c.NativeCook=(bytes,big)=>
+            {
+                long need=Cooktorturewide.Schema.TortureWideCookLoadMeasure(bytes);
+                if(need<0) { return null; }
+                byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)(need+64),64);
+                try
+                {
+                    if(Cooktorturewide.Schema.TortureWideCookLoad((IntPtr)region,need,bytes,new Cooktorturewide.TableReport())==null) { return null; }
+                    long size=Cooktorturewide.Schema.TortureWideCookCookMeasure((IntPtr)region);
+                    if(size<0) { return null; }
+                    byte[] result=new byte[checked((int)size)];
+                    if(!Cooktorturewide.Schema.TortureWideCookCook((IntPtr)region,result,big?Cooktorturewide.TableByteOrder.Big:Cooktorturewide.TableByteOrder.Little)) { return null; }
+                    using(var builder=new Cooktorturewide.TortureWideCookBuilder())
+                    {
+                        if(!Cooktorturewide.Schema.TortureWideCookLoadBuilder(builder,bytes,new Cooktorturewide.TableReport())) { throw new InvalidOperationException("builder load: Cooktorturewide.TortureWideCook"); }
+                        byte[] built=new byte[builder.CookMeasure()];
+                        if(!builder.Cook(built,big?Cooktorturewide.TableByteOrder.Big:Cooktorturewide.TableByteOrder.Little) || !built.AsSpan().SequenceEqual(result)) { throw new InvalidOperationException("mutable builder cook: Cooktorturewide.TortureWideCook"); }
+                        if(!builder.Lock() || !builder.Cook(built,big?Cooktorturewide.TableByteOrder.Big:Cooktorturewide.TableByteOrder.Little) || !built.AsSpan().SequenceEqual(result)) { throw new InvalidOperationException("locked builder cook: Cooktorturewide.TortureWideCook"); }
                     }
                     return result;
                 }

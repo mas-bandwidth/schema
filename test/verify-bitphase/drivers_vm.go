@@ -114,7 +114,7 @@ console.log("BITPHASE_OK js " + count);
 	}
 	node := resolveTool(repoRoot, "NODE", "dist/node-v25.4.0/bin/node", "node")
 	if out, err := runChecked(workDir, nil, node, probe, corpusDir); err != nil {
-		return fmt.Errorf("js checked: %v\n%s", err, out)
+		return fmt.Errorf("js checked: %w\n%s", err, out)
 	}
 	out, err := runChecked(workDir, []string{"NODE_ENV=production"}, node, probe, corpusDir)
 	return requireToken(out, err, "js")
@@ -586,7 +586,7 @@ fn main() {
 	}
 	gooseBin := resolveGlobTool(repoRoot, "GOOSE", "dist/goose-*/goose", resolveGlobTool(repoRoot, "GOOSE", "dist/goose-*/bin/goose", "goose"))
 	if out, err := runChecked(genDir, nil, gooseBin, "build", "-O2", "-o", exeFile, srcFile); err != nil {
-		return fmt.Errorf("goose build: %v\n%s", err, out)
+		return fmt.Errorf("goose build: %w\n%s", err, out)
 	}
 	out, err := runChecked(genDir, nil, exeFile)
 	return requireToken(out, err, "goose")

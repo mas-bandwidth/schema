@@ -160,8 +160,10 @@ def surface_framing(text:string):
 def block_root(name:string) -> string:
     if find_string(name, "block_render") == 0:
         return "RenderFrame"
-    assert find_string(name, "block_padded") == 0
-    return "PaddedFrame"
+    if find_string(name, "block_padded") == 0:
+        return "PaddedFrame"
+    assert find_string(name, "block_torture") == 0
+    return "TortureFrame"
 
 // foreign is the image with its MAGIC word, the eight bytes at offset 0,
 // reversed: what that word looks like to a reader of the other byte order
@@ -214,7 +216,7 @@ def surface_message(text:string):
                 if not schema_rt.is_message_root(f[3]):
                     print(f[1] + " absent variable table: the message form is fixed tables only (SPEC-TABLES §3.3)")
                 else:
-                    let v = schema_rt.new_vocabulary(schema_rt.message_entries_here())
+                    let v = schema_rt.new_vocabulary(max(schema_rt.message_entries_here(), 4096))
                     let rep = schema_rt.LoadReport {}
                     assert schema_rt.announce_read(v, fixture(announcement), rep)
                     let recs, count, ok = schema_rt.load_messages(f[3], v, fixture(f[5]), rep, schema_rt.message_batch_max)

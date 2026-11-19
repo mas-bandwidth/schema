@@ -38,10 +38,11 @@ import { surfaceWriteRefusal } from "./writerefusal.mjs";
 const generated = process.env.SCHEMA_JS_GENERATED ?? "build/tables-generated-js";
 const load = (path) => import(pathToFileURL(resolve(generated, path)).href);
 
-let renderBlock, paddedBlock, graphCook;
+let renderBlock, paddedBlock, tortureBlock, graphCook;
 if (process.argv[2] !== "wire-fuzz") {
   renderBlock = await load("block/RenderBlock.js");
   paddedBlock = await load("block/PaddedBlock.js");
+  tortureBlock = existsSync(resolve(generated, "cooktorture/CookTortureBlock.js")) ? await load("cooktorture/CookTortureBlock.js") : null;
   graphCook = await load("pointers/GraphCook.js");
 }
 
@@ -96,6 +97,7 @@ function place(source, claim, lead) {
 const blocks = process.argv[2] === "wire-fuzz" ? {} : {
   block_render: renderBlock.RenderFrameBlock,
   block_padded: paddedBlock.PaddedFrameBlock,
+  ...(tortureBlock ? { block_torture: tortureBlock.TortureFrameBlock } : {}),
 };
 
 function blockNamed(name) {
@@ -575,6 +577,8 @@ const messageRows = [
   ["vocabdemo", "Wide00", "vocab/VocabdemoTable.js", "vocab/VocabTable.js"],
   ["vocab9demo", "Wide19", "vocab9/Vocab9demoTable.js", "vocab9/Vocab9Table.js"],
   ["vocab9demo", "Wide00", "vocab9/Vocab9demoTable.js", "vocab9/Vocab9Table.js"],
+  ["tblvarevo1", "EvoMsg", "varevo1/Tblvarevo1Table.js", "varevo1/VarEvo1Table.js"],
+  ["tblvarevo3", "EvoMsg", "varevo3/Tblvarevo3Table.js", "varevo3/VarEvo3Table.js"],
 ];
 
 function messageRow(unit, root) {
@@ -621,7 +625,7 @@ async function surfaceMessage(lines, outDir) {
     // vocabulary, LoadMessages the batch against it, MeasureMessages the
     // bodies it filled, SaveMessages them back into one buffer, the bytes.
     const vocabulary = new runtime.TableVocabulary();
-    vocabulary.Init(new Array(runtime.TableMessageEntriesHere));
+    vocabulary.Init(new Array(Math.max(runtime.TableMessageEntriesHere, 4096)));
     const report = {};
     if (!runtime.AnnounceRead(vocabulary, new Uint8Array(readFileSync(conn[4])), report)) {
       fail(f[1] + ": the announcement was refused: " + conn[4]);
@@ -704,6 +708,13 @@ const wireRows = [
   ["scalars", "SimState", "scalars/ScalardemoVariable.js"],
   ["tblscalars2", "SimState", "scalars2/Scalardemo2Variable.js"],
   ["tblfixedevo", "EvoRoot", "fixedevo/TblfixedevoVariable.js"],
+  ["tblvarevo1", "EvoDoc", "varevo1/Tblvarevo1Variable.js"],
+  ["tblvarevo1", "EvoMsg", "varevo1/Tblvarevo1Variable.js"],
+  ["tblvarevo2", "EvoDoc", "varevo2/Tblvarevo2Variable.js"],
+  ["tblvarevo3", "EvoDoc", "varevo3/Tblvarevo3Variable.js"],
+  ["tblvarevo3", "EvoMsg", "varevo3/Tblvarevo3Variable.js"],
+  ["cooktorture", "TortureCook", "cooktorture/CookTortureVariable.js"],
+  ["cooktorturewide", "TortureWideCook", "cooktorturewide/CookTortureWideVariable.js"],
   // the message corpus's root on the variable wire: union arms of every
   // carried field type, wide text among them (§2.6, §3)
   ["messagedemo", "ToolMessage", "messages/MessagedemoVariable.js"],
@@ -763,6 +774,7 @@ const retainUnits = {
   tblrt1: "rt1/Tblrt1Variable.js",
   tblrt2: "rt2/Tblrt2Variable.js",
   tblrt3: "rt3/Tblrt3Variable.js",
+  tblvarevo1: "varevo1/Tblvarevo1Variable.js",
 };
 
 // retainCodec binds one retain row's unit and root: the retaining pair beside
@@ -901,6 +913,11 @@ const textUnits = {
   streamdemo: "stream/StreamdemoVariable.js",
   scalars: "scalars/ScalardemoVariable.js",
   tblfixedevo: "fixedevo/TblfixedevoVariable.js",
+  tblvarevo1: "varevo1/Tblvarevo1Variable.js",
+  tblvarevo2: "varevo2/Tblvarevo2Variable.js",
+  tblvarevo3: "varevo3/Tblvarevo3Variable.js",
+  cooktorture: "cooktorture/CookTortureVariable.js",
+  cooktorturewide: "cooktorturewide/CookTortureWideVariable.js",
   backenddemo: "backend/BackenddemoVariable.js",
   vocabdemo: "vocab/VocabdemoVariable.js",
   vocab9demo: "vocab9/Vocab9demoVariable.js",
@@ -1087,6 +1104,13 @@ const cookWriteRows = [
   ["blobdemo", "Catalog", "blobs/BlobdemoVariable.js"],
   ["scalars", "SimState", "scalars/ScalardemoVariable.js"],
   ["tblfixedevo", "EvoRoot", "fixedevo/TblfixedevoVariable.js"],
+  ["tblvarevo1", "EvoDoc", "varevo1/Tblvarevo1Variable.js"],
+  ["tblvarevo1", "EvoMsg", "varevo1/Tblvarevo1Variable.js"],
+  ["tblvarevo2", "EvoDoc", "varevo2/Tblvarevo2Variable.js"],
+  ["tblvarevo3", "EvoDoc", "varevo3/Tblvarevo3Variable.js"],
+  ["tblvarevo3", "EvoMsg", "varevo3/Tblvarevo3Variable.js"],
+  ["cooktorture", "TortureCook", "cooktorture/CookTortureVariable.js"],
+  ["cooktorturewide", "TortureWideCook", "cooktorturewide/CookTortureWideVariable.js"],
   // maps and lists (docs/PORTING.md M19): the holder's sixteen bytes, the
   // entries and elements in its node extent, pre-order
   ["mapdemo", "Cells", "maps/MapdemoVariable.js"],

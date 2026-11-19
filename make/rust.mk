@@ -320,7 +320,7 @@ generated/bench/rust/.stamp: bin/schema $(SCHEMAS_BENCH)
 RUST_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	blobdemo:tables/blobs mapdemo:tables/maps listdemo:tables/lists widelistdemo:tables/widelist \
 	messagedemo:tables/messages streamdemo:tables/stream \
-	scalars:tables/scalars tblscalars2:test/tables/Scalars2.schema tblfixedevo:test/tables/fixedevo blockdemo:tables/block blockhome:tables/blockhome \
+	scalars:tables/scalars tblscalars2:test/tables/Scalars2.schema tblfixedevo:test/tables/fixedevo tblvarevo1:test/tables/varevo/VarEvo1.schema tblvarevo2:test/tables/varevo/VarEvo2.schema tblvarevo3:test/tables/varevo/VarEvo3.schema cooktorture:test/tables/cooktorture/CookTorture.schema cooktorturewide:test/tables/cooktorturewide/CookTortureWide.schema blockdemo:tables/block blockhome:tables/blockhome \
 	tblv1:test/tables/V1.schema tblv2:test/tables/V2.schema \
 	tblp1:test/tables/P1.schema tblp2:test/tables/P2.schema \
 	tblp3:test/tables/P3.schema jsonkeys:test/tables/JsonKeys.schema \

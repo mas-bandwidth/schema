@@ -1,0 +1,14 @@
+{
+  "caption": "v3-msg-🚀",
+  "mid_flag": true,
+  "payload": {
+    "telemetry": {
+      "count": 99,
+      "sub_tag": "tele",
+      "sub_future": "5000"
+    }
+  },
+  "seq": 202,
+  "tier": "Sterling",
+  "v3_extra": -55
+}

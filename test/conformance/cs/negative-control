@@ -17,7 +17,7 @@ for mode in wire json; do
     fi
     printf '{"Replace":{"%s/%s":"%s/%s/source.gotext"}}\n' "$PWD" "$source" "$PWD" "$dir" > "$dir/overlay.json"
     go build -overlay="$dir/overlay.json" -o "$dir/schema" ./cmd/schema
-    for unit in examples block v1 v2 p1 p3 k1 k2 messages m1 m2 a1 a2 scalars scalars2 fixedevo caption pointers blobs p2 w1 w2 lists widelist maps stream g1 backend vocab vocab9 r1 r2 rt1 featurewitnesses; do
+    for unit in examples block v1 v2 p1 p3 k1 k2 messages m1 m2 a1 a2 scalars scalars2 fixedevo varevo1 varevo2 varevo3 cooktorture cooktorturewide caption pointers blobs p2 w1 w2 lists widelist maps stream g1 backend vocab vocab9 r1 r2 rt1 featurewitnesses; do
         case "$unit" in
             examples|block|messages) input=tables/$unit ;;
             v1) input=test/tables/V1.schema ;; v2) input=test/tables/V2.schema ;;
@@ -28,6 +28,11 @@ for mode in wire json; do
             scalars) input=tables/scalars ;;
             scalars2) input=test/tables/Scalars2.schema ;;
             fixedevo) input=test/tables/fixedevo ;;
+            varevo1) input=test/tables/varevo/VarEvo1.schema ;;
+            varevo2) input=test/tables/varevo/VarEvo2.schema ;;
+            varevo3) input=test/tables/varevo/VarEvo3.schema ;;
+            cooktorture) input=test/tables/cooktorture/CookTorture.schema ;;
+            cooktorturewide) input=test/tables/cooktorturewide/CookTortureWide.schema ;;
             pointers) input=tables/pointers ;;
             blobs) input=tables/blobs ;;
             p2) input=test/tables/P2.schema ;;

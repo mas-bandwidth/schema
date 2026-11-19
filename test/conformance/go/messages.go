@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"tblvarevo1"
+	"tblvarevo3"
 	"vocab9demo"
 	"vocabdemo"
 )
@@ -199,6 +201,20 @@ var messageCodecs = []messageCodec{
 		v.Init(make([]vocab9demo.TableMessageEntry, vocab9demo.TableMessageEntriesHere))
 		return v
 	}, vocab9demo.AnnounceMeasure, vocab9demo.Announce, vocab9demo.AnnounceRead, vocab9demo.Wide19LoadMessages, vocab9demo.Wide19MeasureMessages, vocab9demo.Wide19SaveMessages, func(r *vocab9demo.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}),
+	messageRow("tblvarevo1", "EvoMsg", tblvarevo1.EvoMsgReset, func() *tblvarevo1.TableVocabulary {
+		v := new(tblvarevo1.TableVocabulary)
+		v.Init(make([]tblvarevo1.TableMessageEntry, max(4096, tblvarevo1.TableMessageEntriesHere)))
+		return v
+	}, tblvarevo1.AnnounceMeasure, tblvarevo1.Announce, tblvarevo1.AnnounceRead, tblvarevo1.EvoMsgLoadMessages, tblvarevo1.EvoMsgMeasureMessages, tblvarevo1.EvoMsgSaveMessages, func(r *tblvarevo1.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}),
+	messageRow("tblvarevo3", "EvoMsg", tblvarevo3.EvoMsgReset, func() *tblvarevo3.TableVocabulary {
+		v := new(tblvarevo3.TableVocabulary)
+		v.Init(make([]tblvarevo3.TableMessageEntry, max(4096, tblvarevo3.TableMessageEntriesHere)))
+		return v
+	}, tblvarevo3.AnnounceMeasure, tblvarevo3.Announce, tblvarevo3.AnnounceRead, tblvarevo3.EvoMsgLoadMessages, tblvarevo3.EvoMsgMeasureMessages, tblvarevo3.EvoMsgSaveMessages, func(r *tblvarevo3.TableReport) report {
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),
 }

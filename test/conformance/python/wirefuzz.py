@@ -95,7 +95,7 @@ def main():
                 module.announce_read(vocab, module.ANNOUNCEMENT)
                 value = module.load_messages(cls, vocab, data, report=report)
             elif hasattr(cls, "fixed_load"):
-                value = cls.fixed_load(data, capacity=len(data) // 9, report=report)
+                value = cls.fixed_load(data, capacity=1, report=report)
             else:
                 value = cls.load(data, report=report)
             loaded = True

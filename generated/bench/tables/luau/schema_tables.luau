@@ -172,15 +172,26 @@ end
 -- of its tables, so a message read knows when the sender announced this
 -- reader's own build (docs/SPEC-TABLES.md §3.3 (a), (b)).
 local builds: { [string]: integer } = {}
+local announcements: { [integer]: buffer } = {}
 function S.buildVersion(version: integer, names: { string })
 	for _, name in names do
 		builds[name] = version
 	end
 end
 
+function S.messageAnnouncement(version: integer, ann: buffer)
+	announcements[version] = ann
+end
+
 -- buildOf is the build version registered for the table, or nil.
 function S.buildOf(name: string): integer?
 	return builds[name]
+end
+
+function S.messageAnnouncementOf(name: string): buffer?
+	local bv = builds[name]
+	if bv == nil then return nil end
+	return announcements[bv]
 end
 
 -- lookup is the descriptor a field's t names: every module a descriptor

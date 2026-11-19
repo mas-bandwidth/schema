@@ -17,8 +17,9 @@ import (
 // blockRoot maps each block case name in testdata/conformance/tables/MANIFEST.txt
 // to the root table in its unit, matching test/conformance/go/blockdump.go.
 var blockRoot = map[string]string{
-	"block_render": "RenderFrame",
-	"block_padded": "PaddedFrame",
+	"block_render":  "RenderFrame",
+	"block_padded":  "PaddedFrame",
+	"block_torture": "TortureFrame",
 }
 
 type blockRow struct {
@@ -209,7 +210,12 @@ local scalar = function(b, at, storage, size) {
     return format("0x%08x%08x", u(b, at + 4, 4), u(b, at, 4));
   }
   if (storage == "Signed") return format("%d", s(b, at, size));
-  return format("%d", u(b, at, size));
+  local uv = u(b, at, size);
+  if (size == 8 && uv < 0) {
+    local half = (uv >>> 1);
+    return format("%d%d", half / 5, (half % 5) * 2 + (uv & 1));
+  }
+  return format("%d", uv);
 };
 local walkRecord;
 walkRecord = function(T, info, b, storage, path) {

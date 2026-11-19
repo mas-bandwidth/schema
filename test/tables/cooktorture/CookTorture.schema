@@ -1,0 +1,110 @@
+// CookTorture.schema — Pillar #3 Cook & Block structural, alignment, padding,
+// map binary-search, union-array, empty-slice, shared-blob, and endianness torture.
+package cooktorture
+
+const MaxTortureRows = 16
+const MaxEmptyRows   = 8
+
+enum Channel { Alpha, Beta, Gamma }
+
+type Vec3
+{
+    x float32 = 0.0
+    y float32 = 0.0
+    z float32 = 0.0
+}
+
+fixed table Entry
+{
+    flag_a bool
+    pad3   [3]uint8
+    stamp  int64
+    metric float64
+}
+
+union StepAction
+{
+    idle
+    shift  Vec3
+    weight int64
+    label  string(12)
+}
+
+table Child
+{
+    odd_b  bool
+    odd_u8 uint8
+    val64  int64
+    next   *Child
+}
+
+// Variable-class root for `cook-write` (LE & BE), `wire`, `json-read`, `json-write`:
+// - Odd-width scalars (`bool`, `uint8`, `[3]uint8`) immediately before 8-byte
+//   (`int64`, `float64`, `*Child`) aligned fields
+// - Cooked `map[string(16)]Entry` & `map[int32]Vec3` binary-search lookups
+// - Bounded & unbounded arrays of tagged unions (`[..4]StepAction`, `[]StepAction`)
+// - Optional companions (`?int64`, `?Entry`)
+// - 0-element empty cooked slices (`empty_ints`, `empty_entries`) alongside populated slices
+// - `*string` (8 & 16 bytes) and `*bytes` blobs alongside shared `*Child` graph pointers
+table TortureCook
+{
+    lead_bool     bool
+    align_i64     int64
+    mid_u8        uint8
+    align_f64     float64
+    tri_bytes     [3]uint8
+    child_ptr     *Child
+    opt_present   ?int64
+    opt_absent    ?int64
+    opt_entry     ?Entry
+    by_key        map[string(16)]Entry
+    by_coord      map[int32]Vec3
+    bounded_steps [..4]StepAction
+    list_steps    []StepAction
+    empty_ints    []int32
+    live_ints     []int64
+    empty_entries []Entry
+    entries_list  []Entry
+    banner        *string
+    banner_two    *string
+    payload       *bytes
+    payload_empty *bytes
+    alias_ptr     *Child
+}
+
+// Fixed-class row & projection for `block`, `block-foreign`, `block-dump`, and `forgery`:
+// Union-free and pointer-free per §19.3, exercising maximum alignment holes:
+// `bool` -> `int64`, `uint8` -> `float64`, `[3]uint8` -> `uint64`, optional companions,
+// enum-keyed `[Channel]uint16`, and a 0-element out-of-line array
+// (`[..MaxEmptyRows]TortureEmptyRow`) beside populated `TortureRow`s.
+fixed table TortureRow
+{
+    r_bool    bool
+    r_i64     int64
+    r_u8      uint8
+    r_f64     float64
+    r_tri     [3]uint8
+    r_u64     uint64
+    r_opt     ?int64
+    r_opt_vec ?Vec3
+    r_chan    [Channel]uint16
+    r_name    string(13)
+}
+
+fixed table TortureEmptyRow
+{
+    tag   uint8
+    value int64
+}
+
+fixed table TortureFrame
+{
+    p_bool     bool
+    p_u64      uint64
+    p_tri      [3]uint8
+    p_f64      float64
+    rows       [..MaxTortureRows]TortureRow
+    empty_rows [..MaxEmptyRows]TortureEmptyRow
+    p_tail     uint8
+    p_opt      ?int64
+}

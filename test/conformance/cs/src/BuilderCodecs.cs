@@ -5,6 +5,41 @@ static partial class Program
     static bool? builderLoaded;
     static unsafe void RegisterBuilders()
     {
+        Find("tblvarevo1","EvoDoc").PartialLoad=(bytes,report)=>
+        {
+            using var builder=new Tblvarevo1.EvoDocBuilder();
+            var inner=new Tblvarevo1.TableReport(); builderLoaded=builder.Load(bytes,inner); Fill(report,Copy(inner));
+            if(inner.Refused || inner.Damaged) { return new Tblvarevo1.EvoDoc(); }
+            return Tblvarevo1.Schema.TableWire.CopyRegion(Tblvarevo1.Schema.EvoDocTableType(),(IntPtr)builder.GetRoot(),true);
+        };
+        Find("tblvarevo2","EvoDoc").PartialLoad=(bytes,report)=>
+        {
+            using var builder=new Tblvarevo2.EvoDocBuilder();
+            var inner=new Tblvarevo2.TableReport(); builderLoaded=builder.Load(bytes,inner); Fill(report,Copy(inner));
+            if(inner.Refused || inner.Damaged) { return new Tblvarevo2.EvoDoc(); }
+            return Tblvarevo2.Schema.TableWire.CopyRegion(Tblvarevo2.Schema.EvoDocTableType(),(IntPtr)builder.GetRoot(),true);
+        };
+        Find("tblvarevo3","EvoDoc").PartialLoad=(bytes,report)=>
+        {
+            using var builder=new Tblvarevo3.EvoDocBuilder();
+            var inner=new Tblvarevo3.TableReport(); builderLoaded=builder.Load(bytes,inner); Fill(report,Copy(inner));
+            if(inner.Refused || inner.Damaged) { return new Tblvarevo3.EvoDoc(); }
+            return Tblvarevo3.Schema.TableWire.CopyRegion(Tblvarevo3.Schema.EvoDocTableType(),(IntPtr)builder.GetRoot(),true);
+        };
+        Find("cooktorture","TortureCook").PartialLoad=(bytes,report)=>
+        {
+            using var builder=new Cooktorture.TortureCookBuilder();
+            var inner=new Cooktorture.TableReport(); builderLoaded=builder.Load(bytes,inner); Fill(report,Copy(inner));
+            if(inner.Refused || inner.Damaged) { return new Cooktorture.TortureCook(); }
+            return Cooktorture.Schema.TableWire.CopyRegion(Cooktorture.Schema.TortureCookTableType(),(IntPtr)builder.GetRoot(),true);
+        };
+        Find("cooktorturewide","TortureWideCook").PartialLoad=(bytes,report)=>
+        {
+            using var builder=new Cooktorturewide.TortureWideCookBuilder();
+            var inner=new Cooktorturewide.TableReport(); builderLoaded=builder.Load(bytes,inner); Fill(report,Copy(inner));
+            if(inner.Refused || inner.Damaged) { return new Cooktorturewide.TortureWideCook(); }
+            return Cooktorturewide.Schema.TableWire.CopyRegion(Cooktorturewide.Schema.TortureWideCookTableType(),(IntPtr)builder.GetRoot(),true);
+        };
         Find("widelist","Wide").PartialLoad=(bytes,report)=>
         {
             using var builder=new Widelistdemo.WideBuilder();

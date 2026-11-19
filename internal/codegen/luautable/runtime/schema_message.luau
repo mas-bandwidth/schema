@@ -270,14 +270,36 @@ local function shapeRead(r: any, k: number): any
 			local n = rLeb(r)
 			if r.bad or n > kindBits(k) then r.bad = true; return s end
 			s.bits = n
+			local b16 = buffer.create(16)
 			if k >= 18 then
 				if r.at + 16 > r.e then r.bad = true; return s end
+				buffer.copy(b16, 0, r.b, r.at, 16)
 				s.baseLo = buffer.readinteger(r.b, r.at)
 				s.baseHi = buffer.readinteger(r.b, r.at + 8)
 				r.at = r.at + 16
 			else
-				s.base = rLeb(r)
+				local raw = rLeb(r)
+				s.base = raw
+				if k >= 2 and k <= 5 then
+					local neg = (raw % 2) == 1
+					local mag = math.floor(raw / 2)
+					if neg then
+						-- -(mag + 1) == ~mag in two's complement!
+						local lo = bit32.bnot(mag % 2 ^ 32)
+						local hi = bit32.bnot(math.floor(mag / 2 ^ 32) % 2 ^ 32)
+						buffer.writeu32(b16, 0, lo)
+						buffer.writeu32(b16, 4, hi)
+						buffer.fill(b16, 8, 0xFF, 8)
+					else
+						buffer.writeu32(b16, 0, mag % 2 ^ 32)
+						buffer.writeu32(b16, 4, math.floor(mag / 2 ^ 32) % 2 ^ 32)
+					end
+				else
+					buffer.writeu32(b16, 0, raw % 2 ^ 32)
+					buffer.writeu32(b16, 4, math.floor(raw / 2 ^ 32) % 2 ^ 32)
+				end
 			end
+			s.base16 = b16
 			return s
 		elseif packing == 2 and k == 10 then
 			if r.at + 12 > r.e then r.bad = true; return s end
@@ -893,6 +915,526 @@ local function refuseNonFinite(report: any, field: string, read: boolean)
 	report.field = field
 end
 
+
+-- ---------------------------------------------------------------------------
+-- Cross-build message transcoding (SPEC-TABLES §3.3, §4): when a batch arrives
+-- under another build's vocabulary (v.buildVersion ~= own), LoadMessages decodes
+-- its bodies into this unit's declared model (widening scalars, dropping unknown
+-- fields and unknown union arms, substituting defaults for unknown/deprecated
+-- enum variants, checking narrowing bounds) and MeasureMessages / SaveMessages
+-- write them in this unit's own vocabulary in continuous batch bit order.
+-- ---------------------------------------------------------------------------
+
+local ownVocabCache: { [integer]: any } = {}
+local function getOwnVocab(tableName: string): any?
+	local bv = S.buildOf(tableName)
+	if bv == nil then return nil end
+	local cached = ownVocabCache[bv]
+	if cached ~= nil then return cached end
+	local ann = S.messageAnnouncementOf(tableName)
+	if ann == nil then return nil end
+	local ov = M.NewVocabulary()
+	if not M.AnnounceRead(ov, ann, {}) then return nil end
+	ownVocabCache[bv] = ov
+	return ov
+end
+
+local function isSignedKind(k: number): boolean
+	return (k >= 2 and k <= 5) or k == 18 or (k >= 20 and k <= 24) or k == 36
+end
+
+local function add16(a: buffer, b: buffer): buffer
+	local out = buffer.create(16)
+	local carry = 0
+	for i = 0, 15 do
+		local s = buffer.readu8(a, i) + buffer.readu8(b, i) + carry
+		buffer.writeu8(out, i, s % 256)
+		carry = math.floor(s / 256)
+	end
+	return out
+end
+
+local function sub16(a: buffer, b: buffer): buffer
+	local out = buffer.create(16)
+	local borrow = 0
+	for i = 0, 15 do
+		local d = buffer.readu8(a, i) - buffer.readu8(b, i) - borrow
+		if d < 0 then
+			d = d + 256
+			borrow = 1
+		else
+			borrow = 0
+		end
+		buffer.writeu8(out, i, d)
+	end
+	return out
+end
+
+local function bit16(b: buffer, idx: number): number
+	local byte = buffer.readu8(b, math.floor(idx / 8))
+	return bit32.band(bit32.rshift(byte, idx % 8), 1)
+end
+
+local function setBit16(b: buffer, idx: number, val: number)
+	local bi = math.floor(idx / 8)
+	local mask = bit32.lshift(1, idx % 8)
+	local cur = buffer.readu8(b, bi)
+	if val ~= 0 then
+		buffer.writeu8(b, bi, bit32.bor(cur, mask))
+	else
+		buffer.writeu8(b, bi, bit32.band(cur, bit32.bnot(mask)))
+	end
+end
+
+local function defTo16(def: any): buffer
+	local b = buffer.create(16)
+	if typeof(def) == "table" then
+		buffer.writeinteger(b, 0, def.lo)
+		buffer.writeinteger(b, 8, def.hi)
+	elseif typeof(def) == "integer" then
+		buffer.writeinteger(b, 0, def)
+		if integer.lt(def, 0i) then buffer.fill(b, 8, 0xFF, 8) end
+	elseif typeof(def) == "number" then
+		local m = math.floor(def)
+		buffer.writeu32(b, 0, m % 2 ^ 32)
+		buffer.writeu32(b, 4, math.floor(m / 2 ^ 32) % 2 ^ 32)
+		if m < 0 then buffer.fill(b, 8, 0xFF, 8) end
+	end
+	return b
+end
+
+local function eq16(a: buffer, b: buffer): boolean
+	for i = 0, 15 do
+		if buffer.readu8(a, i) ~= buffer.readu8(b, i) then return false end
+	end
+	return true
+end
+
+local function readInt16FromPeer(r: any, shape: any): (buffer, boolean)
+	local raw = buffer.create(16)
+	local bits = shape.bits or 0
+	for i = 0, bits - 1 do
+		local bit, ok = get(r, 1)
+		if not ok then return raw, false end
+		if bit ~= 0 then setBit16(raw, i, 1) end
+	end
+	if (shape.packing or 0) == 1 then
+		return add16(raw, shape.base16), true
+	end
+	if isSignedKind(shape.kind) and bits > 0 and bit16(raw, bits - 1) == 1 then
+		for i = bits, 127 do
+			setBit16(raw, i, 1)
+		end
+	end
+	return raw, true
+end
+
+local function checkAndPackInt16ForOwn(val16: buffer, shape: any): (buffer?, boolean)
+	local bits = shape.bits or 0
+	if (shape.packing or 0) == 1 then
+		local diff = sub16(val16, shape.base16)
+		for i = bits, 127 do
+			if bit16(diff, i) ~= 0 then return nil, false end
+		end
+		return diff, true
+	end
+	if isSignedKind(shape.kind) then
+		local sign = if bits > 0 then bit16(val16, bits - 1) else 0
+		for i = bits, 127 do
+			if bit16(val16, i) ~= sign then return nil, false end
+		end
+	else
+		for i = bits, 127 do
+			if bit16(val16, i) ~= 0 then return nil, false end
+		end
+	end
+	return val16, true
+end
+
+local function quantizeF32(shape: any, v: number): (number, boolean)
+	local v32 = asF32(v)
+	if v32 < shape.qmin or v32 > shape.qmax then return 0, false end
+	local delta = asF32(shape.qmax - shape.qmin)
+	local count32 = asF32(shape.count)
+	local norm = asF32(asF32(v32 - shape.qmin) / delta)
+	if norm < 0 then norm = 0 end
+	if norm > 1 then norm = 1 end
+	local idx = math.floor(asF32(asF32(norm * count32) + 0.5))
+	if idx > shape.count then idx = shape.count end
+	return idx, true
+end
+
+local function dequantizeF32(shape: any, idx: number): number
+	local delta = asF32(shape.qmax - shape.qmin)
+	local t = asF32(idx / asF32(shape.count))
+	return asF32(shape.qmin + asF32(t * delta))
+end
+
+local function ownEntryById(ov: any, id: integer): (number, any)
+	for i = 1, ov.count do
+		local e = ov.entries[i]
+		if e ~= nil and e.id == id then
+			return i, e
+		end
+	end
+	return 0, nil
+end
+
+local transcodeBody: (r: any, pv: any, ov: any, desc: any, rep: any) -> ({ any }?, boolean)
+local transcodeValue: (r: any, pv: any, ov: any, pe: any, oe: any, fd: any, rep: any) -> (any, boolean)
+
+transcodeValue = function(r: any, pv: any, ov: any, pe: any, oe: any, fd: any, rep: any): (any, boolean)
+	local pk = pe.shape.kind
+	local okind = oe.shape.kind
+	if okind == 0 or okind == 32 then
+		return { kind = okind }, true
+	end
+	if okind == 1 then
+		if pk ~= 1 then rep.kindMismatch = (rep.kindMismatch or 0) + 1; return nil, false end
+		local bit, ok = get(r, 1)
+		if not ok then return nil, false end
+		return { kind = 1, bit = bit }, true
+	end
+	if okind == 10 or okind == 11 then
+		if pk ~= 10 and pk ~= 11 then rep.kindMismatch = (rep.kindMismatch or 0) + 1; return nil, false end
+		if pk == 11 and okind == 10 then rep.kindMismatch = (rep.kindMismatch or 0) + 1; return nil, false end
+		local fval = 0
+		local raw32 = 0
+		local rawLo, rawHi = 0, 0
+		local tmp8 = buffer.create(8)
+		if pk == 10 then
+			if pe.shape.packing == 2 then
+				local idx, ok = get(r, pe.shape.bits)
+				if not ok or idx > pe.shape.count then return nil, false end
+				fval = dequantizeF32(pe.shape, idx)
+				buffer.writef32(tmp8, 0, fval)
+				raw32 = buffer.readu32(tmp8, 0)
+			else
+				local bits, ok = get(r, 32)
+				if not ok then return nil, false end
+				raw32 = bits
+				buffer.writeu32(tmp8, 0, bits)
+				fval = buffer.readf32(tmp8, 0)
+			end
+			buffer.writef64(tmp8, 0, fval)
+			rawLo = buffer.readu32(tmp8, 0)
+			rawHi = buffer.readu32(tmp8, 4)
+		else
+			local lo, lok = get(r, 32)
+			local hi, hok = get(r, 32)
+			if not lok or not hok then return nil, false end
+			rawLo, rawHi = lo, hi
+			buffer.writeu32(tmp8, 0, lo)
+			buffer.writeu32(tmp8, 4, hi)
+			fval = buffer.readf64(tmp8, 0)
+		end
+		if pk == 10 and okind == 11 then rep.widened = (rep.widened or 0) + 1 end
+		if okind == 10 then
+			if oe.shape.packing == 2 then
+				local qidx, qok = quantizeF32(oe.shape, fval)
+				if not qok then rep.clamped = (rep.clamped or 0) + 1; return nil, false end
+				return { kind = 10, packing = 2, bits = oe.shape.bits, idx = qidx }, true
+			end
+			return { kind = 10, packing = 0, raw32 = raw32 }, true
+		end
+		return { kind = 11, lo = rawLo, hi = rawHi }, true
+	end
+	if okind == 12 then
+		if pk ~= 12 then rep.kindMismatch = (rep.kindMismatch or 0) + 1; return nil, false end
+		local n, ok = countOf(r, pe.shape)
+		if not ok or not align(r) or r.off + n * 8 > r.n then return nil, false end
+		local str = buffer.readstring(r.b, math.floor(r.off / 8), n)
+		r.off = r.off + n * 8
+		if n > oe.shape.max then rep.clamped = (rep.clamped or 0) + 1; return nil, false end
+		return { kind = 12, max = oe.shape.max, str = str }, true
+	end
+	if okind == 13 then
+		if pk ~= 13 then rep.kindMismatch = (rep.kindMismatch or 0) + 1; return nil, false end
+		local subDesc = if fd ~= nil and fd.t ~= nil then S.lookup(fd.t) else nil
+		if subDesc == nil then return nil, false end
+		local subFields, ok = transcodeBody(r, pv, ov, subDesc, rep)
+		if not ok or subFields == nil then return nil, false end
+		return { kind = 13, fields = subFields }, true
+	end
+	if okind == 15 then
+		if pk ~= 15 then rep.kindMismatch = (rep.kindMismatch or 0) + 1; return nil, false end
+		local pref, ok = get(r, pv.refBits)
+		if not ok then return nil, false end
+		if pref == 0 then
+			return { kind = 15, armRef = 0, payload = nil }, true
+		end
+		local pa = entryOf(pv, pref)
+		if pa == nil then return nil, false end
+		local udesc = if fd ~= nil and fd.t ~= nil then S.lookup(fd.t) else nil
+		local armFd = nil
+		if udesc ~= nil and udesc.arms ~= nil then
+			for _, a in udesc.arms do
+				if a.id == pa.id then armFd = a; break end
+			end
+		end
+		local oaref, oa = ownEntryById(ov, pa.id)
+		if armFd == nil or oaref == 0 or oa == nil then
+			-- Unknown union arm in peer: skip payload and fold to None (§4).
+			local st: any = { v = pv, refBits = pv.refBits, owner = nil, nonFinite = nil }
+			if not skipShape(r, st, pa, nil, nil) then return nil, false end
+			rep.unknown = (rep.unknown or 0) + 1
+			return { kind = 15, armRef = 0, payload = nil, unknownArm = true }, true
+		end
+		local armVal, aok = transcodeValue(r, pv, ov, pa, oa, armFd, rep)
+		if not aok then return nil, false end
+		return { kind = 15, armRef = oaref, payload = armVal }, true
+	end
+	if okind == 30 then
+		if pk ~= 30 then rep.kindMismatch = (rep.kindMismatch or 0) + 1; return nil, false end
+		local pref, ok = get(r, pv.refBits)
+		if not ok then return nil, false end
+		local oref = 0
+		if pref ~= 0 then
+			local pen = entryOf(pv, pref)
+			if pen == nil then return nil, false end
+			local ord = if fd ~= nil and fd.vs ~= nil then variantIndex(fd.vs, pen.id) else 0
+			if ord > 0 and not fd.vs[ord][3] then
+				oref = select(1, ownEntryById(ov, pen.id))
+			else
+				if ord == 0 then rep.unknown = (rep.unknown or 0) + 1 end
+				local def = if fd ~= nil then (fd.def or 0) else 0
+				if typeof(def) == "integer" then def = integer.tonumber(def) end
+				if def ~= 0 and fd ~= nil and fd.vs ~= nil and fd.vs[def] ~= nil then
+					oref = select(1, ownEntryById(ov, fd.vs[def][2]))
+				end
+			end
+		end
+		return { kind = 30, ref = oref }, true
+	end
+	if okind == 14 or okind == 16 then
+		if pk ~= okind then rep.kindMismatch = (rep.kindMismatch or 0) + 1; return nil, false end
+		local n, ok = countOf(r, pe.shape)
+		if not ok then return nil, false end
+		local ef = if fd ~= nil and fd.e ~= nil then named(fd.e, fd.name) else fd
+		local peElem = { shape = pe.element or newShape(), element = if pe.element ~= nil then pe.element.element else nil }
+		local oeElem = { shape = oe.element or newShape(), element = if oe.element ~= nil then oe.element.element else nil }
+		if okind == 16 then
+			local pairs = {}
+			for _ = 1, n do
+				local kref, kok = get(r, pv.refBits)
+				if not kok then return nil, false end
+				local ken = entryOf(pv, kref)
+				if ken == nil then return nil, false end
+				local ord = if fd ~= nil and fd.vs ~= nil then variantIndex(fd.vs, ken.id) else 1
+				local okref = select(1, ownEntryById(ov, ken.id))
+				if ord == 0 or okref == 0 then
+					local st: any = { v = pv, refBits = pv.refBits, owner = nil, nonFinite = nil }
+					if not skipShape(r, st, peElem, nil, nil) then return nil, false end
+					rep.unknown = (rep.unknown or 0) + 1
+				else
+					local ev, eok = transcodeValue(r, pv, ov, peElem, oeElem, ef, rep)
+					if not eok then return nil, false end
+					pairs[#pairs + 1] = { keyRef = okref, val = ev }
+				end
+			end
+			if #pairs > oe.shape.max then rep.clamped = (rep.clamped or 0) + 1; return nil, false end
+			return { kind = 16, max = oe.shape.max, pairs = pairs }, true
+		end
+		if n < oe.shape.min or n > oe.shape.max then rep.clamped = (rep.clamped or 0) + 1; return nil, false end
+		if pe.shape.elem == 6 and not align(r) then return nil, false end
+		local elems = {}
+		for i = 1, n do
+			local ev, eok = transcodeValue(r, pv, ov, peElem, oeElem, ef, rep)
+			if not eok then return nil, false end
+			elems[i] = ev
+		end
+		return { kind = 14, min = oe.shape.min, max = oe.shape.max, elemKind = oe.shape.elem, elems = elems }, true
+	end
+	-- Integer / flags / fixed-point scalar kinds
+	local pSigned = isSignedKind(pk)
+	local oSigned = isSignedKind(okind)
+	if not ((pk >= 2 and pk <= 9) or (pk >= 18 and pk <= 29) or pk == 36) then
+		rep.kindMismatch = (rep.kindMismatch or 0) + 1
+		return nil, false
+	end
+	if pSigned and not oSigned then
+		rep.kindMismatch = (rep.kindMismatch or 0) + 1
+		return nil, false
+	end
+	local val16, ok = readInt16FromPeer(r, pe.shape)
+	if not ok then return nil, false end
+	if kindBits(pk) < kindBits(okind) then rep.widened = (rep.widened or 0) + 1 end
+	local packed16, pok = checkAndPackInt16ForOwn(val16, oe.shape)
+	if not pok or packed16 == nil then
+		rep.clamped = (rep.clamped or 0) + 1
+		return nil, false
+	end
+	return { kind = okind, packing = oe.shape.packing or 0, bits = oe.shape.bits or kindBits(okind), raw16 = packed16, val16 = val16 }, true
+end
+
+local function ownFieldElides(ov: any, fd: any, oe: any, node: any): boolean
+	if fd == nil or fd.required == true or fd.present ~= nil then return false end
+	local k = node.kind
+	if k == 15 then return node.armRef == 0 end
+	if k == 12 then return node.str == (fd.def or "") end
+	if k == 13 then return #node.fields == 0 end
+	if k == 14 then
+		if oe.shape.min == oe.shape.max then return false end
+		return #node.elems == 0
+	end
+	if k == 16 then return #node.pairs == 0 end
+	if k == 30 then
+		local def = fd.def or 0
+		if typeof(def) == "integer" then def = integer.tonumber(def) end
+		if def == 0 or fd.vs == nil or fd.vs[def] == nil then return node.ref == 0 end
+		return node.ref == select(1, ownEntryById(ov, fd.vs[def][2]))
+	end
+	if (oe.shape.packing or 0) ~= 0 then return false end
+	if k == 1 then return (node.bit ~= 0) == (fd.def == true) end
+	if k == 10 then
+		local def = fd.def or 0
+		if typeof(def) == "integer" then def = integer.tonumber(def) end
+		buffer.writef32(f32scratch, 0, def)
+		return node.raw32 == buffer.readu32(f32scratch, 0)
+	end
+	if k == 11 then
+		local def = fd.def or 0
+		if typeof(def) == "integer" then def = integer.tonumber(def) end
+		buffer.writef64(defScratch, 0, def)
+		return node.lo == buffer.readu32(defScratch, 0) and node.hi == buffer.readu32(defScratch, 4)
+	end
+	if (oe.shape.bits or 0) ~= kindBits(k) then return false end
+	return eq16(node.val16, defTo16(fd.def or 0))
+end
+
+transcodeBody = function(r: any, pv: any, ov: any, desc: any, rep: any): ({ any }?, boolean)
+	local items = {}
+	while true do
+		local pref, ok = get(r, pv.refBits)
+		if not ok then return nil, false end
+		if pref == 0 then break end
+		local pe = entryOf(pv, pref)
+		if pe == nil then return nil, false end
+		local fd = fieldById(desc, pe.id)
+		local oref, oe = ownEntryById(ov, pe.id)
+		if fd == nil or oref == 0 or oe == nil then
+			local st: any = { v = pv, refBits = pv.refBits, owner = nil, nonFinite = nil }
+			if not skipShape(r, st, pe, nil, nil, true) then return nil, false end
+			rep.unknown = (rep.unknown or 0) + 1
+		else
+			local node, vok = transcodeValue(r, pv, ov, pe, oe, fd, rep)
+			if not vok or node == nil then return nil, false end
+			if not ownFieldElides(ov, fd, oe, node) then
+				items[#items + 1] = { ord = fd.o or 0, ref = oref, node = node }
+			end
+		end
+	end
+	table.sort(items, function(a, b) return a.ord < b.ord end)
+	return items, true
+end
+
+local function bwPut(w: any, val: number, bits: number)
+	for i = 0, bits - 1 do
+		local b = math.floor(val / 2 ^ i) % 2
+		local bi = math.floor(w.off / 8) + 1
+		if w.bytes[bi] == nil then w.bytes[bi] = 0 end
+		if b ~= 0 then
+			w.bytes[bi] = bit32.bor(w.bytes[bi], bit32.lshift(1, w.off % 8))
+		end
+		w.off = w.off + 1
+	end
+end
+
+local function bwPut16(w: any, raw16: buffer, bits: number)
+	for i = 0, bits - 1 do
+		bwPut(w, bit16(raw16, i), 1)
+	end
+end
+
+local function bwAlign(w: any)
+	local rem = w.off % 8
+	if rem ~= 0 then
+		w.off = w.off + (8 - rem)
+		local bi = math.floor((w.off - 1) / 8) + 1
+		if w.bytes[bi] == nil then w.bytes[bi] = 0 end
+	end
+end
+
+local encodeOwnValue: (w: any, ov: any, node: any) -> ()
+local function encodeOwnBody(w: any, ov: any, fields: { any })
+	for _, it in fields do
+		bwPut(w, it.ref, ov.refBits)
+		encodeOwnValue(w, ov, it.node)
+	end
+	bwPut(w, 0, ov.refBits)
+end
+
+encodeOwnValue = function(w: any, ov: any, node: any)
+	local k = node.kind
+	if k == 0 or k == 32 then
+		return
+	elseif k == 1 then
+		bwPut(w, node.bit, 1)
+	elseif k == 10 then
+		if node.packing == 2 then
+			bwPut(w, node.idx, node.bits)
+		else
+			bwPut(w, node.raw32, 32)
+		end
+	elseif k == 11 then
+		bwPut(w, node.lo, 32)
+		bwPut(w, node.hi, 32)
+	elseif k == 12 then
+		bwPut(w, #node.str, bitsReq(0, node.max))
+		bwAlign(w)
+		for i = 1, #node.str do
+			local bi = math.floor(w.off / 8) + 1
+			w.bytes[bi] = string.byte(node.str, i)
+			w.off = w.off + 8
+		end
+	elseif k == 13 then
+		encodeOwnBody(w, ov, node.fields)
+	elseif k == 14 then
+		bwPut(w, #node.elems - node.min, bitsReq(node.min, node.max))
+		if node.elemKind == 6 then bwAlign(w) end
+		for _, el in node.elems do
+			encodeOwnValue(w, ov, el)
+		end
+	elseif k == 15 then
+		bwPut(w, node.armRef, ov.refBits)
+		if node.armRef ~= 0 and node.payload ~= nil then
+			encodeOwnValue(w, ov, node.payload)
+		end
+	elseif k == 16 then
+		bwPut(w, #node.pairs, bitsReq(0, node.max))
+		for _, p in node.pairs do
+			bwPut(w, p.keyRef, ov.refBits)
+			encodeOwnValue(w, ov, p.val)
+		end
+	elseif k == 30 then
+		bwPut(w, node.ref, ov.refBits)
+	else
+		bwPut16(w, node.raw16, node.bits)
+	end
+end
+
+local function packOwnBatch(bodies: { any }, sealed: boolean): (buffer, number)
+	local w = { bytes = {} :: { number }, off = 0 }
+	local ov = bodies[1].ownVocab
+	for _, b in bodies do
+		encodeOwnBody(w, ov, b.ownTree)
+	end
+	local payloadBytes = math.ceil(w.off / 8)
+	local batchBytes = 2 + payloadBytes
+	local size = batchBytes + (if sealed then 4 else 0)
+	local out = buffer.create(size)
+	buffer.fill(out, 0, 0, size)
+	buffer.writeu8(out, 0, 2)
+	buffer.writeu8(out, 1, #bodies - 1)
+	for i = 1, payloadBytes do
+		buffer.writeu8(out, 1 + i, w.bytes[i] or 0)
+	end
+	if sealed then
+		buffer.writeu32(out, batchBytes, crc32c(out, batchBytes))
+	end
+	return out, size
+end
+
 -- loadMessagesWalk is the walk batch read (docs/SPEC-TABLES.md §6.5,
 -- §3.3): evolution may recover a value, but damage discards the whole batch.
 function M.loadMessagesWalk(v: any, root: string, data: buffer, capacity: number, report: any?): (number, any)
@@ -933,6 +1475,24 @@ function M.loadMessagesWalk(v: any, root: string, data: buffer, capacity: number
 	if malformed then
 		report.malformed = true
 		return 0, {}
+	end
+	local ownBv = S.buildOf(desc.name)
+	if ownBv ~= nil and v.buildVersion ~= ownBv then
+		local ov = getOwnVocab(desc.name)
+		if ov ~= nil then
+			local transcoded = {}
+			for i = 1, got do
+				local b = bodies[i]
+				local br = newReader(b.buffer, b.from)
+				br.n = b.to
+				local tree, tok = transcodeBody(br, v, ov, desc, report)
+				if not tok or tree == nil then
+					return got, {}
+				end
+				transcoded[i] = { ownTree = tree, ownVocab = ov }
+			end
+			return got, transcoded
+		end
 	end
 	if dep.found then
 		local copy = buffer.create(len)
@@ -1519,7 +2079,7 @@ local function mWriteRecordBatch(v: any, desc: any, bodies: any, measuring: bool
 end
 
 local function mIsBitSliceBatch(bodies: any): boolean
-	return #bodies >= 1 and typeof(bodies[1]) == "table" and typeof(bodies[1].buffer) == "buffer"
+	return #bodies >= 1 and typeof(bodies[1]) == "table" and (typeof(bodies[1].buffer) == "buffer" or bodies[1].ownTree ~= nil)
 end
 
 function M.MeasureMessages(v: any, root: string, bodies: any, report: any?): number
@@ -1530,13 +2090,16 @@ function M.MeasureMessages(v: any, root: string, bodies: any, report: any?): num
 		local _, sz = mWriteRecordBatch(v, desc, bodies, true, report)
 		return sz
 	end
-	local desc = messageRoot(root)
-	if report == nil then report = {} end
 	reset(report)
 	local n = #bodies
 	if n < 1 or n > BATCH_MAX then
 		refuse(report, "batch_too_large")
 		return -1
+	end
+	if bodies[1] ~= nil and bodies[1].ownTree ~= nil then
+		local sealed = desc.integrity ~= nil and desc.integrity ~= ""
+		local _, sz = packOwnBatch(bodies, sealed)
+		return sz
 	end
 	local bad, nonFinite = deprecatedField(v, root, bodies)
 	if nonFinite ~= nil then
@@ -1582,6 +2145,10 @@ function M.SaveMessages(v: any, root: string, bodies: any, report: any?): (buffe
 	if n < 1 or n > BATCH_MAX then
 		refuse(report, "batch_too_large")
 		return nil, -1
+	end
+	if bodies[1] ~= nil and bodies[1].ownTree ~= nil then
+		local sealed = desc.integrity ~= nil and desc.integrity ~= ""
+		return packOwnBatch(bodies, sealed)
 	end
 	local bad, nonFinite = deprecatedField(v, root, bodies)
 	if nonFinite ~= nil then

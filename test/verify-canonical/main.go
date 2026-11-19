@@ -113,7 +113,7 @@ func runChecked(dir string, extraEnv []string, name string, args ...string) (str
 func requireToken(out string, err error, lang string) error {
 	want := fmt.Sprintf("CANONICAL_OK %s 6", lang)
 	if err != nil {
-		return fmt.Errorf("%s failed (%v):\n%s", lang, err, out)
+		return fmt.Errorf("%s failed (%w):\n%s", lang, err, out)
 	}
 	if strings.Contains(out, "FAILED:") || !strings.Contains(out, want) {
 		return fmt.Errorf("%s did not print %q:\n%s", lang, want, out)
@@ -173,12 +173,12 @@ func ensureCorpus(repoRoot, corpusDir string) ([]byte, []byte, [3][]byte, error)
 	comp.FormatInPlace = false
 	u, err := comp.Load([]string{schemaFile})
 	if err != nil || u == nil {
-		return nil, nil, [3][]byte{}, fmt.Errorf("Load Canonical.schema: %v", err)
+		return nil, nil, [3][]byte{}, fmt.Errorf("load Canonical.schema: %w", err)
 	}
 	m := tabletext.NewModel(u)
 	def := m.Lookup("Bundle")
 	if def == nil {
-		return nil, nil, [3][]byte{}, fmt.Errorf("Bundle table missing")
+		return nil, nil, [3][]byte{}, fmt.Errorf("bundle table missing")
 	}
 
 	s0, s1, s2 := buildJSONPermutations()
@@ -194,11 +194,11 @@ func ensureCorpus(repoRoot, corpusDir string) ([]byte, []byte, [3][]byte, error)
 		}
 		wire, err := tablewire.Encode(m, inst)
 		if err != nil {
-			return nil, nil, [3][]byte{}, fmt.Errorf("oracle Encode %s: %v", names[i], err)
+			return nil, nil, [3][]byte{}, fmt.Errorf("oracle Encode %s: %w", names[i], err)
 		}
 		js, err := m.Write(inst)
 		if err != nil {
-			return nil, nil, [3][]byte{}, fmt.Errorf("oracle Write %s: %v", names[i], err)
+			return nil, nil, [3][]byte{}, fmt.Errorf("oracle Write %s: %w", names[i], err)
 		}
 		if len(js) == 0 || js[len(js)-1] != '\n' {
 			js = append(js, '\n')
@@ -242,7 +242,7 @@ func generateCanonical(repoRoot, schemaBin, schemaMooBin, lang, outDir string) e
 	args = append(args, "--out", outDir, filepath.Join(repoRoot, "test", "verify-canonical", "Canonical.schema"))
 	out, err := runChecked(repoRoot, nil, gen, args...)
 	if err != nil {
-		return fmt.Errorf("generate %s: %v\n%s", lang, err, out)
+		return fmt.Errorf("generate %s: %w\n%s", lang, err, out)
 	}
 	return nil
 }
@@ -356,11 +356,12 @@ func main() {
 	}
 
 	var targets []string
-	if *langFlag == "all" {
+	switch {
+	case *langFlag == "all":
 		targets = allLangs
-	} else if *langFlag != "" {
+	case *langFlag != "":
 		targets = strings.Split(*langFlag, ",")
-	} else {
+	default:
 		fmt.Fprintln(os.Stderr, "--lang is required")
 		os.Exit(2)
 	}

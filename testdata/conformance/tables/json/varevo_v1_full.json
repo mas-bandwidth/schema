@@ -1,0 +1,53 @@
+{
+  "label": "v1-alpha-🚀",
+  "perms": [
+    "Read",
+    "Write"
+  ],
+  "tier": "Silver",
+  "action": {
+    "boost": {
+      "mult": 2.5,
+      "power": -300
+    }
+  },
+  "boost": {
+    "mult": -1.25,
+    "power": 32767
+  },
+  "sub": {
+    "count": 42
+  },
+  "wide_num": -32768,
+  "scores": [
+    -32768,
+    32767
+  ],
+  "items": [
+    {
+      "count": 10
+    },
+    {
+      "count": 20
+    }
+  ],
+  "tally": {
+    "Bronze": 100,
+    "Silver": 200
+  },
+  "by_name": {
+    "alpha": {
+      "weight": 11
+    },
+    "beta": {
+      "weight": 22
+    }
+  },
+  "head": {
+    "val": -1234,
+    "next": {
+      "val": 5678,
+      "next": null
+    }
+  }
+}

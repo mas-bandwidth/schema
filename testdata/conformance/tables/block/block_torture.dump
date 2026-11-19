@@ -1,0 +1,107 @@
+projection TortureFrame @0
+  p_bool = true
+  p_u64 = 18369614221190020847
+  p_tri[0] = 17
+  p_tri[1] = 34
+  p_tri[2] = 51
+  p_f64 = 0xc0c81cd000000000
+  p_tail = 127
+  p_opt = -9876543210
+  p_opt#present = true
+array rows TortureRow @128 count=5 stride=104
+row 0 @128
+  r_bool = true
+  r_i64 = -20000000000
+  r_u8 = 200
+  r_f64 = 0x3fc0000000000000
+  r_tri[0] = 1
+  r_tri[1] = 2
+  r_tri[2] = 3
+  r_u64 = 9223372036854775808
+  r_opt = 0
+  r_opt#present = false
+  r_opt_vec.x = 0x3f000000
+  r_opt_vec.y = 0xbe800000
+  r_opt_vec.z = 0x00000000
+  r_opt_vec#present = true
+  r_chan[0] = 1
+  r_chan[1] = 2
+  r_chan[2] = 3
+  r_name = "t-row-0" len=7
+row 1 @232
+  r_bool = false
+  r_i64 = -10000000000
+  r_u8 = 201
+  r_f64 = 0x3ff6000000000000
+  r_tri[0] = 2
+  r_tri[1] = 3
+  r_tri[2] = 4
+  r_u64 = 9223372036854775809
+  r_opt = 77
+  r_opt#present = true
+  r_opt_vec.x = 0x3fc00000
+  r_opt_vec.y = 0xbfa00000
+  r_opt_vec.z = 0x40000000
+  r_opt_vec#present = false
+  r_chan[0] = 11
+  r_chan[1] = 12
+  r_chan[2] = 13
+  r_name = "t-row-1" len=7
+row 2 @336
+  r_bool = true
+  r_i64 = 0
+  r_u8 = 202
+  r_f64 = 0x4005000000000000
+  r_tri[0] = 3
+  r_tri[1] = 4
+  r_tri[2] = 5
+  r_u64 = 9223372036854775810
+  r_opt = 154
+  r_opt#present = false
+  r_opt_vec.x = 0x40200000
+  r_opt_vec.y = 0xc0100000
+  r_opt_vec.z = 0x40800000
+  r_opt_vec#present = false
+  r_chan[0] = 21
+  r_chan[1] = 22
+  r_chan[2] = 23
+  r_name = "t-row-2" len=7
+row 3 @440
+  r_bool = false
+  r_i64 = 10000000000
+  r_u8 = 203
+  r_f64 = 0x400f000000000000
+  r_tri[0] = 4
+  r_tri[1] = 5
+  r_tri[2] = 6
+  r_u64 = 9223372036854775811
+  r_opt = 231
+  r_opt#present = true
+  r_opt_vec.x = 0x40600000
+  r_opt_vec.y = 0xc0500000
+  r_opt_vec.z = 0x40c00000
+  r_opt_vec#present = true
+  r_chan[0] = 31
+  r_chan[1] = 32
+  r_chan[2] = 33
+  r_name = "t-row-3" len=7
+row 4 @544
+  r_bool = true
+  r_i64 = 20000000000
+  r_u8 = 204
+  r_f64 = 0x4014800000000000
+  r_tri[0] = 5
+  r_tri[1] = 6
+  r_tri[2] = 7
+  r_u64 = 9223372036854775812
+  r_opt = 308
+  r_opt#present = false
+  r_opt_vec.x = 0x40900000
+  r_opt_vec.y = 0xc0880000
+  r_opt_vec.z = 0x41000000
+  r_opt_vec#present = false
+  r_chan[0] = 41
+  r_chan[1] = 42
+  r_chan[2] = 43
+  r_name = "t-row-4" len=7
+array empty_rows TortureEmptyRow @704 count=0 stride=16

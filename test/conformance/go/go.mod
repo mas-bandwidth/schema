@@ -147,3 +147,23 @@ replace widelistdemo => ../../../build/tables-generated-go/widelist
 require featurewitnesses v0.0.0
 
 replace featurewitnesses => ../../../build/tables-generated-go/featurewitnesses
+
+require tblvarevo1 v0.0.0
+
+replace tblvarevo1 => ../../../build/tables-generated-go/varevo1
+
+require tblvarevo2 v0.0.0
+
+replace tblvarevo2 => ../../../build/tables-generated-go/varevo2
+
+require tblvarevo3 v0.0.0
+
+replace tblvarevo3 => ../../../build/tables-generated-go/varevo3
+
+require cooktorture v0.0.0
+
+replace cooktorture => ../../../build/tables-generated-go/cooktorture
+
+require cooktorturewide v0.0.0
+
+replace cooktorturewide => ../../../build/tables-generated-go/cooktorturewide

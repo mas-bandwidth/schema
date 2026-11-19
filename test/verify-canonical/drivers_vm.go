@@ -1006,7 +1006,7 @@ fn main() {
 	}
 	gooseBin := resolveGooseTool(repoRoot)
 	if out, err := runChecked(genDir, nil, gooseBin, "build", "-O2", "-o", exeFile, srcFile); err != nil {
-		return fmt.Errorf("goose build: %v\n%s", err, out)
+		return fmt.Errorf("goose build: %w\n%s", err, out)
 	}
 	out, err := runChecked(genDir, nil, exeFile)
 	return requireToken(out, err, "goose")

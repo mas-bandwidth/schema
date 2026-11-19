@@ -1535,3 +1535,74 @@ write-refusal-message mref_text_zero       backend_conn StorePurchase testdata/c
 # writer writes nothing. The driver answers `wrote` when the text holds
 # `\u0000` at that field, and `refused` when the writer refused.
 write-refusal-json jref_zero_byte tabledemo RootConfig testdata/conformance/tables/wire/root_full.bin  version_note bytes 610062       refused
+# ---- ROUND 2: PILLAR #2 BIDIRECTIONAL v1 <-> v2 <-> v3 VARIABLE/MESSAGE/RETAIN/KIND-31 EVOLUTION ----
+unit tblvarevo1 test/tables/varevo/VarEvo1.schema
+unit tblvarevo2 test/tables/varevo/VarEvo2.schema
+unit tblvarevo3 test/tables/varevo/VarEvo3.schema
+
+instance varevo_v1_full     tblvarevo1 EvoDoc testdata/conformance/tables/wire/varevo_v1_full.bin
+instance varevo_v1_ping     tblvarevo1 EvoDoc testdata/conformance/tables/wire/varevo_v1_ping.bin
+instance varevo_v2_full     tblvarevo2 EvoDoc testdata/conformance/tables/wire/varevo_v2_full.bin
+instance varevo_v3_full     tblvarevo3 EvoDoc testdata/conformance/tables/wire/varevo_v3_full.bin
+instance varevo_v3_compat   tblvarevo3 EvoDoc testdata/conformance/tables/wire/varevo_v3_compat.bin
+instance varevo_v3_rollback tblvarevo3 EvoDoc testdata/conformance/tables/wire/varevo_v3_rollback.bin
+instance varevo1_msg        tblvarevo1 EvoMsg testdata/conformance/tables/wire/varevo1_msg.bin
+instance varevo3_msg        tblvarevo3 EvoMsg testdata/conformance/tables/wire/varevo3_msg.bin
+
+cook-write varevo_v1_full testdata/conformance/tables/cook-write/varevo_v1_full.cook testdata/conformance/tables/cook-write/varevo_v1_full-be.cook
+cook-write varevo_v3_full testdata/conformance/tables/cook-write/varevo_v3_full.cook testdata/conformance/tables/cook-write/varevo_v3_full-be.cook
+
+report varevo_v1_as_v2        tblvarevo2 EvoDoc testdata/conformance/tables/wire/varevo_v1_full.bin
+report varevo_v1_as_v3        tblvarevo3 EvoDoc testdata/conformance/tables/wire/varevo_v1_full.bin
+report varevo_v1_ping_as_v3   tblvarevo3 EvoDoc testdata/conformance/tables/wire/varevo_v1_ping.bin
+report varevo_v2_as_v3        tblvarevo3 EvoDoc testdata/conformance/tables/wire/varevo_v2_full.bin
+report varevo_v3_compat_as_v1 tblvarevo1 EvoDoc testdata/conformance/tables/wire/varevo_v3_compat.bin
+report varevo_v3_full_as_v1   tblvarevo1 EvoDoc testdata/conformance/tables/wire/varevo_v3_full.bin
+
+# v3 -> v1 (LoadRetain + SaveRetain) -> v3 lossless rollback across root, nested fixed, array, map-entry, and pointered nodes:
+retain varevo_retain_v3_via_v1 tblvarevo1 EvoDoc testdata/conformance/tables/wire/varevo_v3_rollback.bin full full testdata/wire/tables/varevo_retain_v1_save.bin
+report varevo_rollback_as_v3   tblvarevo3 EvoDoc testdata/wire/tables/varevo_retain_v1_save.bin
+
+# Kind 31 future-major escape payloads (VERSIONING.md Rule #6): skip on framing/report, byte-exact preserve on retain, refuse truncated:
+framing varevo_kind31_escape    tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_escape.bin    read    testdata/conformance/tables/framing/varevo_kind31_escape.json
+framing varevo_kind31_truncated tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_truncated.bin refused -
+report  varevo_kind31_report    tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_escape.bin
+retain  varevo_kind31_retain    tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_escape.bin    full full testdata/wire/tables/varevo_kind31_retain_save.bin
+
+# Form-2 Message Connection Vocabulary Drift (v1 -> v3 and v3 -> v1 multi-message batch skipping unknown alert mid-batch):
+connection varevo1_conn tblvarevo1 0x0309bc5535a97f7d testdata/wire/tables/varevo1_conn.bin
+connection varevo3_conn tblvarevo3 0x3864e98d7c46eb26 testdata/wire/tables/varevo3_conn.bin
+message varevo1_msg varevo1_conn EvoMsg testdata/conformance/tables/wire/varevo1_msg.bin testdata/wire/tables/varevo1_msg_message.bin
+message varevo3_msg varevo3_conn EvoMsg testdata/conformance/tables/wire/varevo3_msg.bin testdata/wire/tables/varevo3_msg_message.bin
+message-drift varevo_msg_v1_to_v3       tblvarevo3 varevo1_conn EvoMsg testdata/conformance/tables/wire/varevo3_msg.bin testdata/wire/tables/varevo_msg_batch_v1.bin            testdata/wire/tables/varevo_msg_batch_v1_as_v3.bin
+message-drift varevo_msg_v3_to_v1_batch tblvarevo1 varevo3_conn EvoMsg testdata/conformance/tables/wire/varevo1_msg.bin testdata/wire/tables/fuzz-vectors/varevo_msg_batch_v3.bin testdata/wire/tables/varevo_msg_batch_v3_as_v1.bin
+
+rewrite varevo_v1_as_v2        tblvarevo2 EvoDoc testdata/conformance/tables/wire/varevo_v1_full.bin
+rewrite varevo_v1_as_v3        tblvarevo3 EvoDoc testdata/conformance/tables/wire/varevo_v1_full.bin
+rewrite varevo_v1_ping_as_v3   tblvarevo3 EvoDoc testdata/conformance/tables/wire/varevo_v1_ping.bin
+rewrite varevo_v2_as_v3        tblvarevo3 EvoDoc testdata/conformance/tables/wire/varevo_v2_full.bin
+rewrite varevo_v3_compat_as_v1 tblvarevo1 EvoDoc testdata/conformance/tables/wire/varevo_v3_compat.bin
+rewrite varevo_rollback_as_v3  tblvarevo3 EvoDoc testdata/wire/tables/varevo_retain_v1_save.bin
+rewrite varevo_kind31_escape   tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_escape.bin
+rewrite varevo_kind31_report   tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_escape.bin
+
+# ---- ROUND 2: PILLAR #3 COOK & BLOCK STRUCTURAL, ALIGNMENT, PADDING & ENDIANNESS TORTURE ----
+unit cooktorture     test/tables/cooktorture/CookTorture.schema
+unit cooktorturewide test/tables/cooktorturewide/CookTortureWide.schema
+
+instance torture_cook_full  cooktorture     TortureCook     testdata/conformance/tables/wire/torture_cook_full.bin
+instance torture_cook_empty cooktorture     TortureCook     testdata/conformance/tables/wire/torture_cook_empty.bin
+instance torture_wide_cook  cooktorturewide TortureWideCook testdata/conformance/tables/wire/torture_wide_cook.bin
+
+cook-write torture_cook_full  testdata/conformance/tables/cook-write/torture_cook_full.cook  testdata/conformance/tables/cook-write/torture_cook_full-be.cook
+cook-write torture_cook_empty testdata/conformance/tables/cook-write/torture_cook_empty.cook testdata/conformance/tables/cook-write/torture_cook_empty-be.cook
+cook-write torture_wide_cook  testdata/conformance/tables/cook-write/torture_wide_cook.cook  testdata/conformance/tables/cook-write/torture_wide_cook-be.cook
+
+block block_torture cooktorture testdata/wire/tables/block_torture.bin testdata/conformance/tables/block/block_torture.dump
+forgery block_torture_magic_swapped      block block_torture block_torture 0 0x0000 8 0x5343484d41424c4b -1   refuse a padded torture block of the other byte order
+forgery block_torture_byte_order         block block_torture block_torture 0 0x0010 8 0x2                -1   refuse the other byte order in the torture prologue
+forgery block_torture_array_unaligned    block block_torture block_torture 0 0x0038 8 0x81               -1   refuse an unaligned TortureRow array start
+forgery block_torture_pitch              block block_torture block_torture 0 0x0044 4 0x60               -1   refuse a wrong TortureRow pitch
+forgery block_torture_count_past_maximum block block_torture block_torture 0 0x0040 4 0x11               4096 refuse a TortureRow count past MaxTortureRows
+forgery block_torture_extent_padding     block block_torture block_torture 0 -1     0 0                  703  refuse bytes stopping inside block_torture's 64-byte rounding padding
+forgery block_torture_base_unaligned     block block_torture block_torture 1 -1     0 0                  -1   refuse an unaligned base pointer on block_torture

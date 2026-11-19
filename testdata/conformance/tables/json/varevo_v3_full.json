@@ -1,0 +1,115 @@
+{
+  "caption": "v3-wide-caption-over-16-bytes!",
+  "perms": [
+    "Read",
+    "Write",
+    "Exec",
+    "Admin"
+  ],
+  "tier": "Platinum",
+  "action": {
+    "tag": "v3-only-arm-payload-wide"
+  },
+  "boost": {
+    "scale": 8.25,
+    "power": "900000000000"
+  },
+  "sub": {
+    "count": 999,
+    "sub_tag": "v3-wide-subtag",
+    "sub_future": "-42000000000"
+  },
+  "wide_num": "-999999999999999999999",
+  "scores": [
+    "-999999999999999999999",
+    "0",
+    "999999999999999999999"
+  ],
+  "items": [
+    {
+      "count": 11,
+      "sub_tag": "i1",
+      "sub_future": "101"
+    },
+    {
+      "count": 22,
+      "sub_tag": "i2",
+      "sub_future": "202"
+    },
+    {
+      "count": 33,
+      "sub_tag": "i3",
+      "sub_future": "303"
+    }
+  ],
+  "tally": {
+    "Bronze": 10,
+    "Sterling": 20,
+    "Gold": 30,
+    "Platinum": 40
+  },
+  "by_name": {
+    "alpha": {
+      "weight": 1,
+      "rank": 2,
+      "secret": "top-secret"
+    },
+    "omega": {
+      "weight": 3,
+      "rank": 4,
+      "secret": "end-secret"
+    }
+  },
+  "head": {
+    "val": "-800000000000",
+    "next": {
+      "val": "800000000000",
+      "next": null,
+      "note": "v3-tail",
+      "extra_leaf": -888
+    },
+    "note": "v3-head-wide",
+    "extra_leaf": 777
+  },
+  "v2_epoch": "1800000000",
+  "v3_stamp": "-900000000000",
+  "v3_parcel": {
+    "grade": "High",
+    "pick": {
+      "sub_arm": {
+        "count": 5,
+        "sub_tag": "arm",
+        "sub_future": "99"
+      }
+    },
+    "bins": {
+      "Low": {
+        "count": 1,
+        "sub_tag": "low",
+        "sub_future": "10"
+      },
+      "Mid": {
+        "count": 0,
+        "sub_tag": "s2",
+        "sub_future": "0"
+      },
+      "High": {
+        "count": 2,
+        "sub_tag": "hi",
+        "sub_future": "20"
+      }
+    },
+    "core": {
+      "count": 8,
+      "sub_tag": "core",
+      "sub_future": "80"
+    },
+    "stack": [
+      {
+        "count": 9,
+        "sub_tag": "stk",
+        "sub_future": "90"
+      }
+    ]
+  }
+}

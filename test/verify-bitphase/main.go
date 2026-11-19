@@ -78,7 +78,7 @@ func runChecked(dir string, extraEnv []string, name string, args ...string) (str
 func requireToken(out string, err error, lang string) error {
 	want := fmt.Sprintf("BITPHASE_OK %s 66", lang)
 	if err != nil {
-		return fmt.Errorf("%s failed (%v):\n%s", lang, err, out)
+		return fmt.Errorf("%s failed (%w):\n%s", lang, err, out)
 	}
 	if strings.Contains(out, "FAILED:") || !strings.Contains(out, want) {
 		return fmt.Errorf("%s did not print %q:\n%s", lang, want, out)
@@ -96,17 +96,17 @@ func ensureCorpus(repoRoot, schemaBin, corpusDir, oracleBin string) ([]manifestC
 	}
 	schemaFile := filepath.Join(repoRoot, "test", "verify-bitphase", "BitPhase.schema")
 	if out, err := runChecked(repoRoot, nil, schemaBin, "generate", "--lang", "cpp", "--out", cppGen, schemaFile); err != nil {
-		return nil, nil, fmt.Errorf("generate cpp BitPhase: %v\n%s", err, out)
+		return nil, nil, fmt.Errorf("generate cpp BitPhase: %w\n%s", err, out)
 	}
 	serDir := resolveExistingDir(repoRoot, "SERIALIZE", "../serialize", "build/serialize")
 	cxx := envOr("CXX", "c++")
 	oracleSrc := filepath.Join(repoRoot, "test", "verify-bitphase", "cpp", "oracle.cpp")
 	if out, err := runChecked(repoRoot, nil, cxx, "-std=c++17", "-O2", "-Wall", "-Wextra", "-Werror", "-ffp-contract=off",
 		"-I"+serDir, "-I"+cppGen, oracleSrc, "-o", oracleBin); err != nil {
-		return nil, nil, fmt.Errorf("compile oracle.cpp: %v\n%s", err, out)
+		return nil, nil, fmt.Errorf("compile oracle.cpp: %w\n%s", err, out)
 	}
 	if out, err := runChecked(repoRoot, nil, oracleBin, "--generate", corpusDir); err != nil {
-		return nil, nil, fmt.Errorf("oracle --generate: %v\n%s", err, out)
+		return nil, nil, fmt.Errorf("oracle --generate: %w\n%s", err, out)
 	}
 	return loadManifest(corpusDir)
 }
@@ -148,7 +148,7 @@ func generateBitPhase(repoRoot, schemaBin, schemaMooBin, lang, outDir string) er
 	schemaFile := filepath.Join(repoRoot, "test", "verify-bitphase", "BitPhase.schema")
 	out, err := runChecked(repoRoot, nil, gen, "generate", "--lang", lang, "--out", outDir, schemaFile)
 	if err != nil {
-		return fmt.Errorf("generate %s: %v\n%s", lang, err, out)
+		return fmt.Errorf("generate %s: %w\n%s", lang, err, out)
 	}
 	return nil
 }
@@ -265,11 +265,12 @@ func main() {
 	}
 
 	var targets []string
-	if *langFlag == "all" {
+	switch {
+	case *langFlag == "all":
 		targets = allLangs
-	} else if *langFlag != "" {
+	case *langFlag != "":
 		targets = strings.Split(*langFlag, ",")
-	} else {
+	default:
 		fmt.Fprintln(os.Stderr, "--lang is required")
 		os.Exit(2)
 	}

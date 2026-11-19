@@ -133,12 +133,13 @@ for pair in \
     g1:test/tables/G1.schema m1:test/tables/M1.schema m2:test/tables/M2.schema \
     k1:test/tables/K1.schema k2:test/tables/K2.schema a2:test/tables/A2.schema \
     features:testdata/conformance/feature-witnesses/full/Features.schema \
+    varevo1:test/tables/varevo/VarEvo1.schema varevo2:test/tables/varevo/VarEvo2.schema cooktorture:test/tables/cooktorture/CookTorture.schema \
     rt1:test/tables/RT1.schema; do
     unit=${pair%%:*}
     input=${pair#*:}
     "$out/schema" generate --lang dart --out "$out/build/tables-generated-dart/$unit" "$input" >/dev/null &
 done
-for pair in scalars:tables/scalars scalars2:test/tables/Scalars2.schema fixedevo:test/tables/fixedevo; do
+for pair in scalars:tables/scalars scalars2:test/tables/Scalars2.schema fixedevo:test/tables/fixedevo varevo3:test/tables/varevo/VarEvo3.schema cooktorturewide:test/tables/cooktorturewide/CookTortureWide.schema; do
     unit=${pair%%:*}
     input=${pair#*:}
     "$out/schema" generate --lang dart --out "$out/build/tables-generated-dart-scalars/$unit" "$input" >/dev/null &

@@ -1,0 +1,25 @@
+{
+  "lead_bool": false,
+  "align_i64": "42",
+  "mid_u8": 1,
+  "align_f64": 2.5,
+  "tri_bytes": [
+    0,
+    1,
+    0
+  ],
+  "child_ptr": null,
+  "by_key": {},
+  "by_coord": {},
+  "bounded_steps": [],
+  "list_steps": [],
+  "empty_ints": [],
+  "live_ints": [],
+  "empty_entries": [],
+  "entries_list": [],
+  "banner": null,
+  "banner_two": null,
+  "payload": null,
+  "payload_empty": null,
+  "alias_ptr": null
+}

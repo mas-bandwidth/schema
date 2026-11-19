@@ -117,7 +117,7 @@ module RubyWireFuzz
           mod.announce_read(vocab, mod::ANNOUNCEMENT)
           value = mod.load_messages(cls, vocab, data, [data.bytesize, 256].max, report)
         elsif cls.respond_to?(:fixed_load)
-          value = cls.fixed_load(data, capacity: data.bytesize / 9, report: report)
+          value = cls.fixed_load(data, capacity: 1, report: report)
         else
           value = cls.load(data, report)
         end

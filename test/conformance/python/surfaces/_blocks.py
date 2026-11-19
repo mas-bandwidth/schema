@@ -1,6 +1,6 @@
 """Shared block helpers for the Python conformance surfaces."""
 
-BLOCK_ROOTS = {"block_render": "RenderFrame", "block_padded": "PaddedFrame"}
+BLOCK_ROOTS = {"block_render": "RenderFrame", "block_padded": "PaddedFrame", "block_torture": "TortureFrame"}
 
 
 def block_root(name):

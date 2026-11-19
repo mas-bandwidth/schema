@@ -122,7 +122,11 @@ func fixedTableBase(u *ir.Unit, name string) string {
 // every *.schema in it is loaded.
 func batchUnit(t *testing.T, path string) *ir.Unit {
 	t.Helper()
-	schemas, err := filepath.Glob(filepath.Join("../../..", path, "*.schema"))
+	joined := filepath.Join("../../..", path)
+	if strings.HasSuffix(path, ".schema") {
+		return loadUnit(t, joined)
+	}
+	schemas, err := filepath.Glob(filepath.Join(joined, "*.schema"))
 	if err != nil || len(schemas) == 0 {
 		t.Fatalf("no schema files under %s: %v", path, err)
 	}

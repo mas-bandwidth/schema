@@ -1905,6 +1905,7 @@ fixedElement = function(T, e, fd, bytes, off, isElement, report, st, set) {
 
 local loadFixed = function(T, c, bytes, report, trailerChecked) {
   if (bytes == null || bytes.len() < 1) return fixedDamage(report, "truncated");
+  local rawBytes = bytes;
   local form = bytes[0] & 0xff;
   if (form == 1) return fixedRefuse(report, "previous_form");
   if (form == 2) return fixedRefuse(report, "message_form_as_file");
@@ -1919,7 +1920,35 @@ local loadFixed = function(T, c, bytes, report, trailerChecked) {
   for (local i = 1; i < 8; i++) if ((bytes[i] & 0xff) != 0) return fixedDamage(report, "reserved_not_zero");
   local L = u32le(bytes, 16);
   if (L < 0 || L > bytes.len() - 20) return fixedRefuse(report, "layout_malformed");
-  if (u64At(bytes, 8) != c.lhash) return fixedRefuse(report, "layout_unknown");
+  if (u64At(bytes, 8) != c.lhash) {
+    if ((c.name + "FixedLoad") in T) {
+      local out = [c.make()];
+      local n = T[c.name + "FixedLoad"](rawBytes, out, 1);
+      if (n == 1) {
+        report.widened = ("FixedWidened" in T) ? T.FixedWidened : 0;
+        if ("stopped" in report) report.stopped = false;
+        return out[0];
+      }
+      local why = ("FixedReason" in T && T.FixedReason != null) ? T.FixedReason : "layout_unknown";
+      if (why == "non_finite_float") {
+        local nf = ("FixedField" in T && T.FixedField != null) ? T.FixedField : c.name;
+        report.unknown = 0; report.mismatch = 0; report.widened = 0; report.oor = 0; report.repeated = 0; report.bodyDamaged = false;
+        if ("stopped" in report) report.stopped = true;
+        if (report.getdelegate() == null) {
+          report.refused = true;
+          report.nonFiniteFloat = nf;
+          report.reason <- "non_finite_float: " + nf;
+          return null;
+        }
+        local strict = ::getstackinfos(3);
+        if (strict != null && ("_strictFrame" in strict.locals)) strict.locals.report.nonFiniteFloat <- nf;
+        return null;
+      }
+      if (why == "truncated" || why == "reserved_not_zero" || why == "integrity_mismatch") return fixedDamage(report, why);
+      return fixedRefuse(report, why);
+    }
+    return fixedRefuse(report, "layout_unknown");
+  }
   if (L != c.layout.len()) return fixedRefuse(report, "layout_malformed");
   for (local i = 0; i < L; i++) if ((bytes[20 + i] & 0xff) != (c.layout[i] & 0xff)) return fixedRefuse(report, "layout_malformed");
   local record = 8 + c.fsize;

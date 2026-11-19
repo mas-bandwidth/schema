@@ -202,6 +202,18 @@ var cookWriteCarried = []cookWriteUnit{
 	{"../../../tables/scalars", "scalars", "scalardemo", []cookWriteRoot{
 		{"SimState", []string{"scalars_full", "scalars_default", "scalars_edges"}},
 	}},
+	{"../../../test/tables/varevo/VarEvo1.schema", "tblvarevo1", "tblvarevo1", []cookWriteRoot{
+		{"EvoDoc", []string{"varevo_v1_full"}},
+	}},
+	{"../../../test/tables/varevo/VarEvo3.schema", "tblvarevo3", "tblvarevo3", []cookWriteRoot{
+		{"EvoDoc", []string{"varevo_v3_full"}},
+	}},
+	{"../../../test/tables/cooktorture/CookTorture.schema", "cooktorture", "cooktorture", []cookWriteRoot{
+		{"TortureCook", []string{"torture_cook_full", "torture_cook_empty"}},
+	}},
+	{"../../../test/tables/cooktorturewide/CookTortureWide.schema", "cooktorturewide", "cooktorturewide", []cookWriteRoot{
+		{"TortureWideCook", []string{"torture_wide_cook"}},
+	}},
 }
 
 // cookWriteStub: a root whose closure holds a construct the Java cook form

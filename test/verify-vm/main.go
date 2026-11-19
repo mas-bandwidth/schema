@@ -43,7 +43,7 @@ func runChecked(dir string, extraEnv []string, name string, args ...string) (str
 
 func requireOK(out string, err error, ctx string) error {
 	if err != nil {
-		return fmt.Errorf("%s failed (%v):\n%s", ctx, err, out)
+		return fmt.Errorf("%s failed (%w):\n%s", ctx, err, out)
 	}
 	if strings.Contains(out, "FAILED:") || !strings.Contains(out, "VERIFY_VM_OK") {
 		return fmt.Errorf("%s did not print VERIFY_VM_OK:\n%s", ctx, out)
@@ -88,7 +88,7 @@ func generateUnits(repoRoot, schemaBin, lang, workDir, mode string) error {
 			args = append(args, j.src)
 			out, err := runChecked(repoRoot, nil, schemaBin, args...)
 			if err != nil {
-				errs <- fmt.Errorf("schema generate %s/%s: %v\n%s", lang, j.sub, err, out)
+				errs <- fmt.Errorf("schema generate %s/%s: %w\n%s", lang, j.sub, err, out)
 			}
 		}(j)
 	}
@@ -261,7 +261,7 @@ func verifyLang(repoRoot, schemaBin, lang, workDir, mode string) error {
 					}
 					if luauAnalyze != "" {
 						if out, err := runChecked(dir, nil, luauAnalyze, "probe.luau"); err != nil {
-							return fmt.Errorf("luau-analyze %s: %v\n%s", u.sub, err, out)
+							return fmt.Errorf("luau-analyze %s: %w\n%s", u.sub, err, out)
 						}
 					}
 					out, err := runChecked(dir, nil, luauBin, "probe.luau")
@@ -278,7 +278,7 @@ func verifyLang(repoRoot, schemaBin, lang, workDir, mode string) error {
 				}
 				if luauAnalyze != "" {
 					if out, err := runChecked(dir, nil, luauAnalyze, "probe.luau"); err != nil {
-						return fmt.Errorf("luau-analyze ptr: %v\n%s", err, out)
+						return fmt.Errorf("luau-analyze ptr: %w\n%s", err, out)
 					}
 				}
 				out, err := runChecked(dir, nil, luauBin, "probe.luau")
@@ -311,7 +311,7 @@ func verifyLang(repoRoot, schemaBin, lang, workDir, mode string) error {
 					}
 					if mooAnalyze != "" {
 						if out, err := runChecked(dir, nil, mooAnalyze, "probe.moo"); err != nil {
-							return fmt.Errorf("moo-analyze %s: %v\n%s", u.sub, err, out)
+							return fmt.Errorf("moo-analyze %s: %w\n%s", u.sub, err, out)
 						}
 					}
 					out, err := runChecked(dir, nil, mooBin, "probe.moo")
@@ -328,7 +328,7 @@ func verifyLang(repoRoot, schemaBin, lang, workDir, mode string) error {
 				}
 				if mooAnalyze != "" {
 					if out, err := runChecked(dir, nil, mooAnalyze, "probe.moo"); err != nil {
-						return fmt.Errorf("moo-analyze ptr: %v\n%s", err, out)
+						return fmt.Errorf("moo-analyze ptr: %w\n%s", err, out)
 					}
 				}
 				out, err := runChecked(dir, nil, mooBin, "probe.moo")
@@ -350,7 +350,7 @@ func verifyLang(repoRoot, schemaBin, lang, workDir, mode string) error {
 					return err
 				}
 				if out, err := runChecked(dir, nil, gooseBin, "build", "-O2", "-o", exeFile, srcFile); err != nil {
-					return fmt.Errorf("goose build %s: %v\n%s", sub, err, out)
+					return fmt.Errorf("goose build %s: %w\n%s", sub, err, out)
 				}
 				out, err := runChecked(dir, nil, exeFile)
 				return requireOK(out, err, "goose "+sub)

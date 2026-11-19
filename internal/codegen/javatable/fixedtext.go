@@ -68,7 +68,7 @@ func writeFixedUnionToVariable(b *strings.Builder, u *ir.Unit, un *ir.Union) {
 		if arm.Void() {
 			continue
 		}
-		writeFixedField(b, u, arm.F, mem[i], javaName(arm.F.Name))
+		writeFixedField(b, u, arm.F, javaName(mem[i]), javaName(arm.F.Name))
 	}
 	b.WriteString("        return v;\n    }\n\n")
 }

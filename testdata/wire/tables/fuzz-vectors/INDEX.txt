@@ -360,3 +360,5 @@ region_empty_wire_refused featurewitnesses Root testdata/wire/tables/fuzz-vector
 
 # Multi-message Form-2 batch (M = 3 StorePurchase records) round-tripped in one stream frame (§3.3).
 store_batch3_message backenddemo StorePurchase testdata/wire/tables/fuzz-vectors/store_batch3_message.bin message
+# 3-body Form-2 message batch on tblvarevo3 EvoMsg ([beat, alert, telemetry])
+varevo_msg_batch_v3 tblvarevo3 EvoMsg testdata/wire/tables/fuzz-vectors/varevo_msg_batch_v3.bin message

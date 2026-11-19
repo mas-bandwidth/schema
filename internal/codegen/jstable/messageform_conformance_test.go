@@ -100,9 +100,9 @@ func TestMessageFormConformanceJavaScript(t *testing.T) {
 		carried := 0
 		for _, dir := range driverMessageDirs(t) {
 			carried++
-			want := "--out build/tables-generated-js/" + dir + " tables/" + dir
+			want := "--out build/tables-generated-js/" + dir + " "
 			if !strings.Contains(recipe, want) {
-				t.Errorf("the JavaScript conformance target does not generate the `%s` unit its message driver reads: want `./bin/schema generate --lang js %s` in the build/tables-generated-js/.stamp recipe (make/js.mk)", dir, want)
+				t.Errorf("the JavaScript conformance target does not generate the `%s` unit its message driver reads: want `./bin/schema generate --lang js %s<src>` in the build/tables-generated-js/.stamp recipe (make/js.mk)", dir, want)
 			}
 		}
 		if carried == 0 {
@@ -275,6 +275,8 @@ func assertDriverAnswersMessages(t *testing.T) {
 		{"vocab", "tables/vocab"},
 		{"vocab9", "tables/vocab9"},
 		{"backend", "tables/backend"},
+		{"varevo1", "test/tables/varevo/VarEvo1.schema"},
+		{"varevo3", "test/tables/varevo/VarEvo3.schema"},
 	})
 	out := t.TempDir()
 	absRepo, err := filepath.Abs(repo)

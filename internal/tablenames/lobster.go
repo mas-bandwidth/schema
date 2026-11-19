@@ -32,7 +32,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"block_magic_swapped", "block_non_finite", "block_open", "block_open_reason", "block_read",
 		"block_read_all", "block_read_elem", "block_read_field", "block_read_record", "block_record", "block_used_length",
 		"block_registry", "block_write_elem", "block_write_field", "block_write_record", "bq", "bread_int",
-		"bscalar", "bscalar_elem", "bwrite_int", "bx", "lookup_block", "register_block",
+		"bscalar", "bscalar_elem", "bu64", "bwrite_int", "bx", "lookup_block", "register_block",
 	},
 	"collections.lobster": {
 		"_collections_arr", "_collections_map", "_collections_ptr", "collection_construct",
@@ -185,7 +185,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"cur_u8", "em_body", "em_content", "em_framed", "em_framed_in", "em_known", "em_payload", "em_record",
 		"em_ref", "em_resolved", "known_ids", "load_retain", "map_value_id", "note_known", "res_body",
 		"res_content", "res_framed", "res_id", "res_keyed_slot", "res_mark", "res_patch", "res_payload", "res_raw",
-		"res_skip_payload", "res_u64", "res_u8", "retain_depth_cap", "save_retain",
+		"res_skip_payload", "res_u64", "res_u8", "retain_depth_cap", "retained_no_id", "save_retain",
 	},
 	"schema_save.lobster": {
 		"RetainTail", "SaveEdge", "SaveEncoder", "SaveGraph", "SaveIds", "SaveNode", "SaveOut", "active_retain_tail",

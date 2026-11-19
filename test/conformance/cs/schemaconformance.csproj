@@ -59,6 +59,11 @@
     <Compile Include="$(TablesGeneratedDir)/pointers/*.cs" />
     <Compile Include="$(TablesGeneratedDir)/scalars2/*.cs" />
     <Compile Include="$(TablesGeneratedDir)/fixedevo/*.cs" />
+    <Compile Include="$(TablesGeneratedDir)/varevo1/*.cs" />
+    <Compile Include="$(TablesGeneratedDir)/varevo2/*.cs" />
+    <Compile Include="$(TablesGeneratedDir)/varevo3/*.cs" />
+    <Compile Include="$(TablesGeneratedDir)/cooktorture/*.cs" />
+    <Compile Include="$(TablesGeneratedDir)/cooktorturewide/*.cs" />
     <Compile Include="$(TablesGeneratedDir)/scalars/*.cs" />
     <Compile Include="$(TablesGeneratedDir)/messages/*.cs" />
     <Compile Include="$(TablesGeneratedDir)/m1/*.cs" />

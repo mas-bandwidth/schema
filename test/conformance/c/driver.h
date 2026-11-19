@@ -132,6 +132,8 @@ int conformance_write_refusal_case( int surface, const ConformanceCodec * codec,
                                     const char * root, const char * path, const char * kind, const char * text );
 
 int conformance_retain(const uint8_t * wire,int64_t bytes,int short_buffer,int64_t id_capacity,int * counters,uint8_t ** output,int64_t * output_bytes,char ** text,int64_t * text_bytes);
+int conformance_retain_varevo1(const uint8_t * wire,int64_t bytes,int short_buffer,int64_t id_capacity,int * counters,uint8_t ** output,int64_t * output_bytes,char ** text,int64_t * text_bytes);
+int conformance_torture_block_open_ex(void * data,int64_t bytes,int * reason,const uint8_t ** out_base,const void ** out_type);
 
 /* the per-unit entry points, each defined in that unit's own translation unit */
 const ConformanceCodec * conformance_codecs_armdemo(int * count);
@@ -166,6 +168,11 @@ const ConformanceCodec * conformance_codecs_tblscalars2( int * count );
 const ConformanceCodec * conformance_codecs_tblfixedevo( int * count );
 const ConformanceCodec * conformance_codecs_widelist( int * count );
 const ConformanceCodec * conformance_codecs_featurewitnesses( int * count );
+const ConformanceCodec * conformance_codecs_tblvarevo1( int * count );
+const ConformanceCodec * conformance_codecs_tblvarevo2( int * count );
+const ConformanceCodec * conformance_codecs_tblvarevo3( int * count );
+const ConformanceCodec * conformance_codecs_cooktorture( int * count );
+const ConformanceCodec * conformance_codecs_cooktorturewide( int * count );
 
 /* the BLOCK unit (blockdemo): open one image at the extent and pointer the
  * caller claims, and read every row out of the descriptors */

@@ -162,7 +162,7 @@ int main( int argc, char ** argv ) {
 	cxx := envOr("CXX", "c++")
 	if out, err := runChecked(workDir, nil, cxx, "-std=c++17", "-O2", "-ffp-contract=off",
 		"-I"+serDir, "-I"+genDir, mainCPP, filepath.Join(genDir, "CanonicalTable.cpp"), "-o", binPath); err != nil {
-		return fmt.Errorf("compile cpp canonical: %v\n%s", err, out)
+		return fmt.Errorf("compile cpp canonical: %w\n%s", err, out)
 	}
 	out, err := runChecked(workDir, nil, binPath, corpusDir)
 	return requireToken(out, err, "cpp")
@@ -316,7 +316,7 @@ int main( int argc, char ** argv ) {
 	cc := envOr("CC", "cc")
 	if out, err := runChecked(workDir, nil, cc, "-std=c99", "-O2", "-ffp-contract=off",
 		"-I"+genDir, "-I"+serC, mainC, filepath.Join(genDir, "CanonicalTable.c"), filepath.Join(serC, "serialize.c"), "-o", binPath, "-lm"); err != nil {
-		return fmt.Errorf("compile c canonical: %v\n%s", err, out)
+		return fmt.Errorf("compile c canonical: %w\n%s", err, out)
 	}
 	out, err := runChecked(workDir, nil, binPath, corpusDir)
 	return requireToken(out, err, "c")
@@ -1044,7 +1044,7 @@ public final class Main {
 	genEntries, _ := filepath.Glob(filepath.Join(genDir, "*.java"))
 	args := append([]string{"--release", "17", "-d", classesDir, mainJava}, genEntries...)
 	if out, err := runChecked(workDir, nil, javac, args...); err != nil {
-		return fmt.Errorf("javac: %v\n%s", err, out)
+		return fmt.Errorf("javac: %w\n%s", err, out)
 	}
 	out, err := runChecked(workDir, nil, javaBin, "-ea", "-cp", classesDir, "Main", corpusDir)
 	return requireToken(out, err, "java")
@@ -1176,7 +1176,7 @@ func verifyElixir(repoRoot, schemaBin, corpusDir, workDir string) error {
 	}
 	cArgs := append([]string{"-o", ebinDir}, exFiles...)
 	if out, err := runChecked(workDir, extraEnv, elixircBin, cArgs...); err != nil {
-		return fmt.Errorf("elixirc: %v\n%s", err, out)
+		return fmt.Errorf("elixirc: %w\n%s", err, out)
 	}
 
 	exSrc := `defmodule CanonicalRunner do

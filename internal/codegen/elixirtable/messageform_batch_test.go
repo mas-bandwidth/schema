@@ -361,6 +361,45 @@ func expectedFieldValue(t *testing.T, u *ir.Unit, slots map[string]uint64, f *ir
 			}
 			return expectedStructBody(t, u, slots, st, obj), true
 		}
+		if un, ok := f.Type.Ref.(*ir.Union); ok {
+			if raw == nil {
+				return "", false
+			}
+			obj, ok := raw.(map[string]any)
+			if !ok || len(obj) != 1 {
+				t.Fatalf("union field %s holds %T, want a 1-key arm object", f.Name, raw)
+			}
+			for armName, armRaw := range obj {
+				for _, v := range un.Variants {
+					if v.Name == armName {
+						slot, ok := slots[ir.TableArmEntry(v).Key()]
+						if !ok {
+							t.Fatalf("union %s arm %s has no announced slot", un.Name, armName)
+						}
+						if v.Void() {
+							return fmt.Sprintf("{%d, :none}", slot), true
+						}
+						lit, present := expectedFieldValue(t, u, slots, v.F, armRaw)
+						if !present {
+							switch v.F.Type.Kind {
+							case ir.TBool:
+								lit = "0"
+							case ir.TInt:
+								lit = "0"
+							case ir.TString:
+								lit = `""`
+							case ir.TNamed:
+								if _, isEnum := v.F.Type.Ref.(*ir.Enum); isEnum {
+									lit = "0"
+								}
+							}
+						}
+						return fmt.Sprintf("{%d, %s}", slot, lit), true
+					}
+				}
+			}
+			t.Fatalf("union field %s arm not found in %s", f.Name, un.Name)
+		}
 		t.Fatalf("named field %s refers to %T, which this card's fixed roots do not carry", f.Name, f.Type.Ref)
 	case f.Type.Kind == ir.TBytes:
 		s, ok := raw.(string)
@@ -379,6 +418,19 @@ func expectedFieldValue(t *testing.T, u *ir.Unit, slots map[string]uint64, f *ir
 			bytes = append(bytes, strconv.Itoa(int(b)))
 		}
 		return "[" + strings.Join(bytes, ", ") + "]", true
+	case f.Type.Kind == ir.TBool:
+		bval, ok := raw.(bool)
+		if !ok {
+			t.Fatalf("bool field %s holds %T, want a bool", f.Name, raw)
+		}
+		def := f.HasDefault && f.DefBool
+		if bval == def {
+			return "", false
+		}
+		if bval {
+			return "1", true
+		}
+		return "0", true
 	case f.Type.Kind == ir.TString:
 		s, ok := raw.(string)
 		if !ok {

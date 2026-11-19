@@ -615,22 +615,43 @@ func TestRubyBlockManifestAndRealUnitsAnalyze(t *testing.T) {
 	}
 
 	// Verify every block image in MANIFEST.txt matches Go's canonical dump byte-for-byte!
-	blockUnit := loadUnitDir(t, filepath.Join(repo, "tables", "block"))
-	blockFiles, err := Generate(blockUnit)
-	if err != nil {
-		t.Fatal(err)
-	}
 	manifestRaw, err := os.ReadFile(filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt"))
 	if err != nil {
 		t.Fatal(err)
 	}
+	manifestUnits := map[string]string{}
+	for line := range strings.SplitSeq(string(manifestRaw), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) >= 3 && fields[0] == "unit" {
+			p := fields[2]
+			if strings.HasSuffix(p, ".schema") {
+				p = filepath.Dir(p)
+			}
+			manifestUnits[fields[1]] = p
+		}
+	}
+	blockFilesByUnit := map[string]map[string][]byte{}
+	blockPkgByUnit := map[string]string{}
 	checkedBlocks := 0
 	for line := range strings.SplitSeq(string(manifestRaw), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) < 5 || fields[0] != "block" {
 			continue
 		}
-		name, wireRel, dumpRel := fields[1], fields[3], fields[4]
+		name, unitKey, wireRel, dumpRel := fields[1], fields[2], fields[3], fields[4]
+		blockFiles, ok := blockFilesByUnit[unitKey]
+		if !ok {
+			bu := loadUnitDir(t, filepath.Join(repo, manifestUnits[unitKey]))
+			var err error
+			blockFiles, err = Generate(bu)
+			if err != nil {
+				t.Fatal(err)
+			}
+			blockFilesByUnit[unitKey] = blockFiles
+			blockPkgByUnit[unitKey] = bu.Package
+		}
+		pkg := blockPkgByUnit[unitKey]
+		modName := strings.ToUpper(pkg[:1]) + pkg[1:]
 		image, err := os.ReadFile(filepath.Join(repo, wireRel))
 		if err != nil {
 			t.Fatal(err)
@@ -645,7 +666,7 @@ func TestRubyBlockManifestAndRealUnitsAnalyze(t *testing.T) {
 
 		dir := t.TempDir()
 		writeTree(t, dir, blockFiles)
-		probe := fmt.Sprintf("# frozen_string_literal: true\nrequire_relative 'blockdemo'\nh = Blockdemo::%s.block_open(File.binread('img.bin'))\n$stdout.write(Blockdemo::SchemaTable.block_dump(h))\n", rootName)
+		probe := fmt.Sprintf("# frozen_string_literal: true\nrequire_relative '%s'\nh = %s::%s.block_open(File.binread('img.bin'))\n$stdout.write(%s::SchemaTable.block_dump(h))\n", pkg, modName, rootName, modName)
 		got := runBothRubyPins(t, dir, "bprobe.rb", map[string][]byte{
 			"bprobe.rb": []byte(probe),
 			"img.bin":   image,

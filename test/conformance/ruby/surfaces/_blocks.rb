@@ -3,7 +3,8 @@
 module RubyConformanceBlocks
   BLOCK_ROOTS = {
     'block_render' => 'RenderFrame',
-    'block_padded' => 'PaddedFrame'
+    'block_padded' => 'PaddedFrame',
+    'block_torture' => 'TortureFrame'
   }.freeze
 
   def self.block_root(name)

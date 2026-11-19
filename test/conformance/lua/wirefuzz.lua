@@ -149,12 +149,11 @@ local function answer(entry, wire)
     -- out-of-range clamped); the refusal is the report's, and the saved bytes
     -- are the fixed writer's.
     local F = entry.unit.fixed
-    local ok, rows, _, _, widened, clamped, unknown = pcall(F.load, T, entry.root, wire, false)
+    local ok, rows, _, _, widened, unknown = pcall(F.load, T, entry.root, wire, true, 1)
     if ok and rows ~= nil and rows[1] ~= nil then
       loaded = true
       report.unknown = unknown or 0
       report.widened = widened or 0
-      report.outOfRange = clamped or 0
       local sok, b = pcall(T.FixedSave, entry.root, rows)
       if sok and b ~= nil then saved = b end
     else

@@ -1,0 +1,70 @@
+// VarEvo1.schema — Pillar #2 generation v1 (oldest build):
+// Bidirectional Form-1 variable-table & Form-2 message evolution,
+// v3 -> v1 (LoadRetain + SaveRetain) -> v3 rollback, and Kind 31 escape.
+package tblvarevo1
+
+enum Tier { Bronze, Silver }
+
+flags Perms { Read, Write }
+
+type Boost
+{
+    mult  float32 = 1.0
+    power int16 = 10
+}
+
+union Action
+{
+    ping
+    boost Boost
+    score int16
+}
+
+table Leaf1
+{
+    val  int16 = 0
+    next *Leaf1
+}
+
+fixed table SubCfg
+{
+    count int32 = 0
+}
+
+fixed table EntryVal
+{
+    weight int32 = 0
+}
+
+// Variable-class root exercising v1 <-> v2 <-> v3 Form-1 reads and Retain rollback.
+table EvoDoc
+{
+    label    string(16) = "init"
+    perms    Perms = { Read }
+    tier     Tier
+    action   Action
+    boost    Boost
+    sub      SubCfg
+    wide_num int16 = 0
+    scores   [2]int16
+    items    [2]SubCfg
+    tally    [Tier]int32
+    by_name  map[string(12)]EntryVal
+    head     *Leaf1
+}
+
+// Fixed-class message envelope exercising Form-2 connection vocabulary drift.
+union EvoPayload
+{
+    heartbeat
+    status SubCfg
+}
+
+fixed table EvoMsg
+{
+    seq         int32 = 0
+    tier        Tier
+    label       string(16)
+    payload     EvoPayload
+    legacy_code int32 = 0
+}

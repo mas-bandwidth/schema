@@ -721,6 +721,7 @@ end
 local BLOCK_TABLES: { [string]: string } = {
 	block_render = "RenderFrame",
 	block_padded = "PaddedFrame",
+	block_torture = "TortureFrame",
 }
 
 local blockRows: { [string]: { string } } = {}

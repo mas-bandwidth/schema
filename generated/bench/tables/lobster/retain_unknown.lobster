@@ -32,6 +32,7 @@ class Retain:
 let retain_depth_cap = binary_max_depth
 
 let map_value_id = 0x7ce4fd9430e80cea // FNV-1a 64 of "value"
+let retained_no_id = node_table_id
 
 // A Cursor is the resolving walk's reader over one payload's bytes. It reads
 // kind bytes, lengths and references and nothing else.
@@ -79,14 +80,14 @@ def res_patch(rs:Resolver, at:int):
     rs.out.b = write_int64_le(rs.out.b, at, rs.out.n - at - 8)
 
 // res_id resolves one reference against the FILE's id table (docs/SPEC-TABLES.md
-// §6.6, THE WALK IS AN INTERPRETATION): a reference above the entry count, at
-// an entry of ZERO, or at a reserved id DROPS the record.
+// §6.6, THE WALK IS AN INTERPRETATION): a reference above the entry count or at
+// a reserved id DROPS the record; hash 0 is an ordinary ID.
 def res_id(rs:Resolver, ref:int) -> int:
     if ref == 0 or ult(length(rs.ids), ref):
         rs.bad = true
         return 0
     let id = rs.ids[ref - 1]
-    if id == 0 or id == node_table_id or id == build_version_id or id == message_vocabulary_id:
+    if id == node_table_id or id == build_version_id or id == message_vocabulary_id:
         rs.bad = true
         return 0
     return id
@@ -145,7 +146,7 @@ def res_body(rs:Resolver, c:Cursor, depth:int) -> void:
             rs.bad = true
             return
         if ref == 0:
-            res_u64(rs, 0)
+            res_u64(rs, retained_no_id)
             return
         if not cur_has(c, 1):
             rs.bad = true
@@ -215,7 +216,7 @@ def res_payload(rs:Resolver, c:Cursor, kind:int, depth:int) -> void:
             rs.bad = true
             return
         if ref == 0:
-            res_u64(rs, 0)
+            res_u64(rs, retained_no_id)
             return
         res_u64(rs, res_id(rs, ref))
     elif kind == 15:
@@ -224,7 +225,7 @@ def res_payload(rs:Resolver, c:Cursor, kind:int, depth:int) -> void:
             rs.bad = true
             return
         if ref == 0:
-            res_u64(rs, 0)
+            res_u64(rs, retained_no_id)
             return
         res_u64(rs, res_id(rs, ref))
         if not cur_has(c, 1):
@@ -400,7 +401,7 @@ def em_body(em:Emitter, w:SaveOut, c:Cursor) -> void:
         let id = em_resolved(em, c)
         if em.bad:
             return
-        if id == 0:
+        if id == retained_no_id:
             so_u8(w, 0)
             return
         if not cur_has(c, 1):
@@ -459,13 +460,13 @@ def em_payload(em:Emitter, w:SaveOut, c:Cursor, kind:int) -> void:
         return
     if kind == 30:
         let id = em_resolved(em, c)
-        if id == 0:
+        if id == retained_no_id:
             so_leb(w, 0)
             return
         em_ref(em, w, id)
     elif kind == 15:
         let arm = em_resolved(em, c)
-        if arm == 0:
+        if arm == retained_no_id:
             so_leb(w, 0)
             return
         em_ref(em, w, arm)

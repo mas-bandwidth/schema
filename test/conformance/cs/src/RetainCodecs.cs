@@ -172,6 +172,131 @@ static partial class Program
             }
             finally { NativeMemory.AlignedFree(region); }
         };
+        Find("tblvarevo1","EvoDoc").Retain=wire=>
+        {
+            long need=Tblvarevo1.Schema.EvoDocLoadMeasure(wire);
+            byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)(Math.Max(0,need)+64),64);
+            try
+            {
+                new Span<byte>(region+Math.Max(0,need),64).Fill(0xa5);
+                var retain=new Tblvarevo1.TableRetain { Bytes=scratch.Bytes,Capacity=1<<20,Ids=(Tblvarevo1.TableRetain.Id*)scratch.Ids,IdCapacity=1<<17 };
+                var report=new Tblvarevo1.TableReport();
+                var root=Tblvarevo1.Schema.EvoDocLoadRetain((IntPtr)region,need,wire,ref retain,report);
+                var answer=new RetainAnswer { Need=need,Loaded=root!=null };
+                if(root!=null)
+                {
+                    long size=Tblvarevo1.Schema.EvoDocMeasureRetain((IntPtr)root,ref retain);
+                    if(size>=0)
+                    {
+                        answer.Saved=new byte[checked((int)size)];
+                        answer.Written=Tblvarevo1.Schema.EvoDocSaveRetain((IntPtr)root,ref retain,answer.Saved,report);
+                    }
+                }
+                for(int i=0;i<64;i++) { if(region[Math.Max(0,need)+i]!=0xa5) { throw new InvalidOperationException("Retaining load overran its measured region"); } }
+                answer.Report=Copy(report); answer.Kept=report.Retained; answer.Lost=report.RetainLost; return answer;
+            }
+            finally { NativeMemory.AlignedFree(region); }
+        };
+        Find("tblvarevo2","EvoDoc").Retain=wire=>
+        {
+            long need=Tblvarevo2.Schema.EvoDocLoadMeasure(wire);
+            byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)(Math.Max(0,need)+64),64);
+            try
+            {
+                new Span<byte>(region+Math.Max(0,need),64).Fill(0xa5);
+                var retain=new Tblvarevo2.TableRetain { Bytes=scratch.Bytes,Capacity=1<<20,Ids=(Tblvarevo2.TableRetain.Id*)scratch.Ids,IdCapacity=1<<17 };
+                var report=new Tblvarevo2.TableReport();
+                var root=Tblvarevo2.Schema.EvoDocLoadRetain((IntPtr)region,need,wire,ref retain,report);
+                var answer=new RetainAnswer { Need=need,Loaded=root!=null };
+                if(root!=null)
+                {
+                    long size=Tblvarevo2.Schema.EvoDocMeasureRetain((IntPtr)root,ref retain);
+                    if(size>=0)
+                    {
+                        answer.Saved=new byte[checked((int)size)];
+                        answer.Written=Tblvarevo2.Schema.EvoDocSaveRetain((IntPtr)root,ref retain,answer.Saved,report);
+                    }
+                }
+                for(int i=0;i<64;i++) { if(region[Math.Max(0,need)+i]!=0xa5) { throw new InvalidOperationException("Retaining load overran its measured region"); } }
+                answer.Report=Copy(report); answer.Kept=report.Retained; answer.Lost=report.RetainLost; return answer;
+            }
+            finally { NativeMemory.AlignedFree(region); }
+        };
+        Find("tblvarevo3","EvoDoc").Retain=wire=>
+        {
+            long need=Tblvarevo3.Schema.EvoDocLoadMeasure(wire);
+            byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)(Math.Max(0,need)+64),64);
+            try
+            {
+                new Span<byte>(region+Math.Max(0,need),64).Fill(0xa5);
+                var retain=new Tblvarevo3.TableRetain { Bytes=scratch.Bytes,Capacity=1<<20,Ids=(Tblvarevo3.TableRetain.Id*)scratch.Ids,IdCapacity=1<<17 };
+                var report=new Tblvarevo3.TableReport();
+                var root=Tblvarevo3.Schema.EvoDocLoadRetain((IntPtr)region,need,wire,ref retain,report);
+                var answer=new RetainAnswer { Need=need,Loaded=root!=null };
+                if(root!=null)
+                {
+                    long size=Tblvarevo3.Schema.EvoDocMeasureRetain((IntPtr)root,ref retain);
+                    if(size>=0)
+                    {
+                        answer.Saved=new byte[checked((int)size)];
+                        answer.Written=Tblvarevo3.Schema.EvoDocSaveRetain((IntPtr)root,ref retain,answer.Saved,report);
+                    }
+                }
+                for(int i=0;i<64;i++) { if(region[Math.Max(0,need)+i]!=0xa5) { throw new InvalidOperationException("Retaining load overran its measured region"); } }
+                answer.Report=Copy(report); answer.Kept=report.Retained; answer.Lost=report.RetainLost; return answer;
+            }
+            finally { NativeMemory.AlignedFree(region); }
+        };
+        Find("cooktorture","TortureCook").Retain=wire=>
+        {
+            long need=Cooktorture.Schema.TortureCookLoadMeasure(wire);
+            byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)(Math.Max(0,need)+64),64);
+            try
+            {
+                new Span<byte>(region+Math.Max(0,need),64).Fill(0xa5);
+                var retain=new Cooktorture.TableRetain { Bytes=scratch.Bytes,Capacity=1<<20,Ids=(Cooktorture.TableRetain.Id*)scratch.Ids,IdCapacity=1<<17 };
+                var report=new Cooktorture.TableReport();
+                var root=Cooktorture.Schema.TortureCookLoadRetain((IntPtr)region,need,wire,ref retain,report);
+                var answer=new RetainAnswer { Need=need,Loaded=root!=null };
+                if(root!=null)
+                {
+                    long size=Cooktorture.Schema.TortureCookMeasureRetain((IntPtr)root,ref retain);
+                    if(size>=0)
+                    {
+                        answer.Saved=new byte[checked((int)size)];
+                        answer.Written=Cooktorture.Schema.TortureCookSaveRetain((IntPtr)root,ref retain,answer.Saved,report);
+                    }
+                }
+                for(int i=0;i<64;i++) { if(region[Math.Max(0,need)+i]!=0xa5) { throw new InvalidOperationException("Retaining load overran its measured region"); } }
+                answer.Report=Copy(report); answer.Kept=report.Retained; answer.Lost=report.RetainLost; return answer;
+            }
+            finally { NativeMemory.AlignedFree(region); }
+        };
+        Find("cooktorturewide","TortureWideCook").Retain=wire=>
+        {
+            long need=Cooktorturewide.Schema.TortureWideCookLoadMeasure(wire);
+            byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)(Math.Max(0,need)+64),64);
+            try
+            {
+                new Span<byte>(region+Math.Max(0,need),64).Fill(0xa5);
+                var retain=new Cooktorturewide.TableRetain { Bytes=scratch.Bytes,Capacity=1<<20,Ids=(Cooktorturewide.TableRetain.Id*)scratch.Ids,IdCapacity=1<<17 };
+                var report=new Cooktorturewide.TableReport();
+                var root=Cooktorturewide.Schema.TortureWideCookLoadRetain((IntPtr)region,need,wire,ref retain,report);
+                var answer=new RetainAnswer { Need=need,Loaded=root!=null };
+                if(root!=null)
+                {
+                    long size=Cooktorturewide.Schema.TortureWideCookMeasureRetain((IntPtr)root,ref retain);
+                    if(size>=0)
+                    {
+                        answer.Saved=new byte[checked((int)size)];
+                        answer.Written=Cooktorturewide.Schema.TortureWideCookSaveRetain((IntPtr)root,ref retain,answer.Saved,report);
+                    }
+                }
+                for(int i=0;i<64;i++) { if(region[Math.Max(0,need)+i]!=0xa5) { throw new InvalidOperationException("Retaining load overran its measured region"); } }
+                answer.Report=Copy(report); answer.Kept=report.Retained; answer.Lost=report.RetainLost; return answer;
+            }
+            finally { NativeMemory.AlignedFree(region); }
+        };
         Find("widelist","Wide").Retain=wire=>
         {
             long need=Widelistdemo.Schema.WideLoadMeasure(wire);
@@ -985,6 +1110,11 @@ static partial class Program
         foreach(string[] f in lines)
         {
             if(f[0]!="retain") { continue; }
+            if(f[2]=="tblvarevo1" && f[3]=="EvoDoc")
+            {
+                if(SurfaceRetainVarEvo1(f,outDir,saved)!=0) { return 1; }
+                continue;
+            }
             if(f[2]!="tblrt1" || f[3]!="Node") { SpillAbsent(outDir,f[1]); continue; }
             byte[] wire=File.ReadAllBytes(f[4]);
             var report=new RT.TableReport();
@@ -1038,5 +1168,67 @@ static partial class Program
             }
         }
         return 0;
+    }
+
+    static unsafe int SurfaceRetainVarEvo1(string[] f, string outDir, bool saved)
+    {
+        byte[] wire = File.ReadAllBytes(f[4]);
+        var report = new Tblvarevo1.TableReport();
+        long need = Tblvarevo1.Schema.EvoDocLoadMeasure(wire);
+        if (need < 0) { if (!saved) { File.WriteAllText(Path.Combine(outDir, f[1]), "refused\n"); } return 0; }
+        nuint allocBytes = (nuint)(need > 0 ? need : 1);
+        byte* region = (byte*)NativeMemory.AlignedAlloc(allocBytes, 64);
+        var store = new Tblvarevo1.TableRetain
+        {
+            Bytes = (byte*)NativeMemory.Alloc(1 << 20),
+            Capacity = 1 << 20,
+            Ids = (Tblvarevo1.TableRetain.Id*)NativeMemory.Alloc(1 << 21),
+            IdCapacity = f[6] == "full" ? 1 << 17 : int.Parse(f[6])
+        };
+        try
+        {
+            if (f[5] == "short")
+            {
+                Tblvarevo1.Schema.EvoDocLoadRetain((IntPtr)region, need, wire, ref store, new Tblvarevo1.TableReport());
+                store.Capacity = store.Used - 1;
+            }
+            IntPtr root = (IntPtr)Tblvarevo1.Schema.EvoDocLoadRetain((IntPtr)region, need, wire, ref store, report);
+            if (root == IntPtr.Zero || report.Damaged || report.Refused)
+            {
+                if (!saved) { File.WriteAllText(Path.Combine(outDir, f[1]), "refused\n"); }
+                return 0;
+            }
+            long size = Tblvarevo1.Schema.EvoDocMeasureRetain(root, ref store);
+            if (size < 0) { return 1; }
+            byte[] output = new byte[size];
+            var save = new Tblvarevo1.TableReport();
+            if (Tblvarevo1.Schema.EvoDocSaveRetain(root, ref store, output, save) != size) { return 1; }
+            if (saved)
+            {
+                File.WriteAllBytes(Path.Combine(outDir, f[1]), output);
+            }
+            else
+            {
+                var known = Tblvarevo1.Schema.EvoDocLoadBuilder((IntPtr)region);
+                if (known == null) { return 1; }
+                long jsize = Tblvarevo1.Schema.EvoDocToJsonMeasure(known);
+                if (jsize < 0) { return 1; }
+                byte[] jtext = new byte[jsize];
+                if (Tblvarevo1.Schema.EvoDocToJson(known, jtext) != jsize) { return 1; }
+                byte[] head = Encoding.ASCII.GetBytes("read\n");
+                byte[] both = new byte[head.Length + jtext.Length];
+                head.CopyTo(both, 0);
+                jtext.CopyTo(both, head.Length);
+                File.WriteAllBytes(Path.Combine(outDir, f[1]), both);
+                File.WriteAllBytes(Path.Combine(outDir, f[1] + ".wire"), output);
+            }
+            return 0;
+        }
+        finally
+        {
+            NativeMemory.AlignedFree(region);
+            NativeMemory.Free(store.Bytes);
+            NativeMemory.Free(store.Ids);
+        }
     }
 }

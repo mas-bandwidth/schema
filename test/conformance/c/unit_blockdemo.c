@@ -227,6 +227,10 @@ int conformance_block_open_reason( const char * name, const uint8_t * data, size
         blockdemo_padded_frame_block_t block;
         opened = blockdemo_padded_frame_block_open_ex( &block, buffer.base, buffer.bytes,reason );
     }
+    else if ( strncmp( name, "block_torture", 13 ) == 0 )
+    {
+        opened = conformance_torture_block_open_ex( buffer.base, buffer.bytes, reason, NULL, NULL );
+    }
     else
     {
         fprintf( stderr, "driver: no block named %s\n", name );
@@ -253,6 +257,13 @@ int conformance_block_dump( const char * name, const uint8_t * data, size_t byte
         blockdemo_padded_frame_block_t block;
         ok = blockdemo_padded_frame_block_open( &block, buffer.base, buffer.bytes ) &&
              dump_block( out, block.base, blockdemo_padded_frame_block_type() );
+    }
+    else if ( strncmp( name, "block_torture", 13 ) == 0 )
+    {
+        const uint8_t * base = NULL;
+        const void * info = NULL;
+        ok = conformance_torture_block_open_ex( buffer.base, buffer.bytes, NULL, &base, &info ) &&
+             dump_block( out, base, (const blockdemo_table_block_info_t *) info );
     }
     else
     {

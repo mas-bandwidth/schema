@@ -60,6 +60,7 @@ func emitMessageForm(g *luau.Gen) error {
 	}
 	slices.Sort(names)
 	st := g.Require(RuntimeModule)
+	g.Pf("%s.messageAnnouncement(%s.TableMessageBuildVersion, %s.TableMessageAnnouncement)\n", st, g.Self, g.Self)
 	g.Pf("%s.buildVersion(%s.TableMessageBuildVersion, {", st, g.Self)
 	for i, name := range names {
 		if i > 0 {

@@ -1164,6 +1164,174 @@ defmodule Bench.TableMessage do
 
   def save_messages(_vocab, _values), do: {:error, :no_vocabulary}
 
+  @doc false
+  def rebind_messages(from_vocab, %__MODULE__{announced: true, root: root} = to_vocab, bodies)
+      when is_binary(root) and is_list(bodies) do
+    to_by_id =
+      to_vocab.entries
+      |> Enum.with_index(1)
+      |> Map.new(fn {e, idx} -> {e.id, {idx, e}} end)
+
+    rules = write_rules()
+    rec = own_record(to_vocab)
+    {:ok, Enum.map(bodies, &rebind_body(from_vocab, to_vocab, to_by_id, rules, &1, rec))}
+  end
+
+  defp rebind_body(_from_vocab, _to_vocab, _to_by_id, _rules, fields, nil), do: fields
+
+  defp rebind_body(from_vocab, to_vocab, to_by_id, rules, fields, rec) do
+    fields
+    |> Enum.flat_map(fn {peer_ref, val} ->
+      with {:ok, pe} <- entry_at(from_vocab, peer_ref),
+           {decl_idx, _raw, rule, sub} <- Map.get(rec, pe.id),
+           {to_ref, te} <- Map.get(to_by_id, pe.id) do
+        val2 =
+          rebind_val(
+            from_vocab,
+            to_vocab,
+            to_by_id,
+            rules,
+            te.id,
+            te.kind,
+            Map.get(te, :element),
+            val,
+            rule,
+            sub
+          )
+
+        if (te.kind == 15 and val2 == :none) or
+             written_at_default?(to_vocab, {decl_idx, true, rule, sub}, te, val2) do
+          []
+        else
+          [{decl_idx, {to_ref, val2}}]
+        end
+      else
+        _ -> []
+      end
+    end)
+    |> Enum.sort_by(&elem(&1, 0))
+    |> Enum.map(&elem(&1, 1))
+  end
+
+  defp rebind_val(from_vocab, to_vocab, to_by_id, rules, _fid, 13, _elem, val, _rule, sub),
+    do: rebind_body(from_vocab, to_vocab, to_by_id, rules, val, record(sub))
+
+  defp rebind_val(from_vocab, to_vocab, to_by_id, rules, fid, 14, elem, val, rule, sub) do
+    elem_rule =
+      case rule do
+        {:counted, _born, er} -> er
+        {:fixed, er} -> er
+        _ -> :never
+      end
+
+    Enum.map(val, fn item ->
+      rebind_val(
+        from_vocab,
+        to_vocab,
+        to_by_id,
+        rules,
+        fid,
+        elem.kind,
+        Map.get(elem, :element),
+        item,
+        elem_rule,
+        sub
+      )
+    end)
+  end
+
+  defp rebind_val(_from_vocab, _to_vocab, _to_by_id, _rules, _fid, 15, _elem, :none, _rule, _sub),
+    do: :none
+
+  defp rebind_val(
+         from_vocab,
+         to_vocab,
+         to_by_id,
+         rules,
+         _fid,
+         15,
+         _elem,
+         {arm_peer_ref, arm_val},
+         _rule,
+         sub
+       ) do
+    with {:ok, ape} <- entry_at(from_vocab, arm_peer_ref),
+         true <- arm_known?(sub, ape.id),
+         {to_arm_ref, ate} <- Map.get(to_by_id, ape.id) do
+      asub = arm_sub(sub, ape.id)
+
+      {to_arm_ref,
+       rebind_val(
+         from_vocab,
+         to_vocab,
+         to_by_id,
+         rules,
+         ate.id,
+         ate.kind,
+         Map.get(ate, :element),
+         arm_val,
+         :never,
+         asub
+       )}
+    else
+      _ -> :none
+    end
+  end
+
+  defp rebind_val(from_vocab, to_vocab, to_by_id, rules, fid, 16, elem, val, _rule, sub) do
+    allowed_keys = rules |> Map.get({fid, 16}, %{}) |> Map.get(:member)
+
+    Enum.flat_map(val, fn {key_peer_ref, kv} ->
+      with {:ok, kpe} <- entry_at(from_vocab, key_peer_ref),
+           true <- allowed_keys == nil or MapSet.member?(allowed_keys, kpe.id),
+           {to_key_ref, _} <- Map.get(to_by_id, kpe.id) do
+        [{to_key_ref,
+          rebind_val(
+            from_vocab,
+            to_vocab,
+            to_by_id,
+            rules,
+            fid,
+            elem.kind,
+            Map.get(elem, :element),
+            kv,
+            :never,
+            sub
+          )}]
+      else
+        _ -> []
+      end
+    end)
+  end
+
+  defp rebind_val(_from_vocab, _to_vocab, _to_by_id, _rules, _fid, 30, _elem, 0, _rule, _sub),
+    do: 0
+
+  defp rebind_val(from_vocab, _to_vocab, to_by_id, rules, fid, 30, _elem, peer_vref, rule, _sub) do
+    allowed = rules |> Map.get({fid, 30}, %{}) |> Map.get(:member)
+
+    with {:ok, vpe} <- entry_at(from_vocab, peer_vref),
+         true <- allowed == nil or MapSet.member?(allowed, vpe.id),
+         {to_vref, _} <- Map.get(to_by_id, vpe.id) do
+      to_vref
+    else
+      _ ->
+        case rule do
+          {:enum, def_id} when is_integer(def_id) ->
+            case Map.get(to_by_id, def_id) do
+              {def_ref, _} -> def_ref
+              _ -> 0
+            end
+
+          _ ->
+            0
+        end
+    end
+  end
+
+  defp rebind_val(_from_vocab, _to_vocab, _to_by_id, _rules, _fid, _kind, _elem, val, _rule, _sub),
+    do: val
+
   @doc """
   Read one batch into at most `capacity` bodies (docs/SPEC-TABLES.md §3.3), against
   the root record `for_root/2` bound: a vocabulary with no bound root is
@@ -1632,7 +1800,11 @@ defmodule Bench.TableMessage do
                        false <- stored_at_default?(vocab, decl, value) do
                     seen = MapSet.put(seen, entry.id)
                     last = next_last(decl, last)
-                    read_body(vocab, rest2, [{ref, value} | acc], seen, depth, rec, last)
+                    acc2 =
+                      if entry.kind == 15 and value == :unknown_arm,
+                        do: acc,
+                        else: [{ref, value} | acc]
+                    read_body(vocab, rest2, acc2, seen, depth, rec, last)
                   else
                     _ -> :malformed
                   end
@@ -1788,6 +1960,9 @@ defmodule Bench.TableMessage do
   defp arm_sub({:union, name}, id), do: @message_unions |> Map.get(name, %{}) |> Map.get(id)
   defp arm_sub(_sub, _id), do: nil
 
+  defp arm_known?({:union, name}, id), do: @message_unions |> Map.get(name, %{}) |> Map.has_key?(id)
+  defp arm_known?(_sub, id), do: id >= 0
+
   # An undeclared field under another build version is stepped over by its
   # announced shape and omitted (docs/SPEC-TABLES.md §3.3, §4). Its payload is
   # read exactly as a kept value would be, so damage stays damage, but nothing
@@ -1927,9 +2102,10 @@ defmodule Bench.TableMessage do
     with {:ok, offset, rest} <- get_bits(r, bit_length(shape.max - shape.min)),
          n = shape.min + offset,
          true <- n <= shape.max,
-         {:ok, rest2} <- maybe_align(elem, rest) do
-      next_depth = elem_depth(elem, depth)
-      read_elements(vocab, shape, elem, n, rest2, [], next_depth, sub)
+         {:ok, rest2} <- maybe_align(elem, rest),
+         next_depth = elem_depth(elem, depth),
+         {:ok, list, rest3} <- read_elements(vocab, shape, elem, n, rest2, [], next_depth, sub) do
+      {:ok, Enum.map(list, &if(&1 == :unknown_arm, do: :none, else: &1)), rest3}
     else
       _ -> :malformed
     end
@@ -1963,7 +2139,8 @@ defmodule Bench.TableMessage do
 
       case read_value(vocab, elem.kind, elem.shape, inner, rest, depth, sub) do
         {:ok, value, rest2} ->
-          read_keyed_pairs(vocab, elem, n - 1, rest2, [{ref, value} | acc], seen, depth, sub)
+          v2 = if value == :unknown_arm, do: :none, else: value
+          read_keyed_pairs(vocab, elem, n - 1, rest2, [{ref, v2} | acc], seen, depth, sub)
 
         :malformed ->
           :malformed
@@ -2057,11 +2234,17 @@ defmodule Bench.TableMessage do
         case entry_at(vocab, ref) do
           {:ok, entry} when entry.kind != 0 and entry.id < 0xFFFFFFFFFFFFFFFD ->
             elem = Map.get(entry, :element)
-            arm = arm_sub(sub, entry.id)
+            known = arm_known?(sub, entry.id)
+            arm = if known, do: arm_sub(sub, entry.id), else: nil
 
             case read_value(vocab, entry.kind, entry.shape, elem, rest, depth + 1, arm) do
-              {:ok, value, rest2} -> {:ok, {ref, value}, rest2}
-              :malformed -> :malformed
+              {:ok, value, rest2} ->
+                if not own_build?(vocab) and not known,
+                  do: {:ok, :unknown_arm, rest2},
+                  else: {:ok, {ref, value}, rest2}
+
+              :malformed ->
+                :malformed
             end
 
           _ ->

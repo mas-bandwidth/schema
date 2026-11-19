@@ -42,6 +42,11 @@ for unit in featurewitnesses:testdata/conformance/feature-witnesses/full/Feature
 	tblr2:test/tables/R2.schema \
 	tblscalars2:test/tables/Scalars2.schema \
 	tblfixedevo:test/tables/fixedevo \
+	tblvarevo1:test/tables/varevo/VarEvo1.schema \
+	tblvarevo2:test/tables/varevo/VarEvo2.schema \
+	tblvarevo3:test/tables/varevo/VarEvo3.schema \
+	cooktorture:test/tables/cooktorture/CookTorture.schema \
+	cooktorturewide:test/tables/cooktorturewide/CookTortureWide.schema \
 	tblv1:test/tables/V1.schema \
 	tblv2:test/tables/V2.schema \
 	tblw1:test/tables/W1.schema \

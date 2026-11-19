@@ -253,6 +253,14 @@ func deriveManifest(m *Manifest, path string) error {
 		fmt.Fprintf(&b, "connection %s %s 0x%016x %s\n", g.Name, c.Unit, c.BuildVersion, g.File)
 		fmt.Fprintf(&b, "message %s %s %s %s %s\n", g.Name, g.Name, msg.Root, msg.FileWire, msg.MessageWire)
 	}
+	for _, md := range m.MessageDrifts {
+		pc, err := m.LookupConnection(md.PeerConn)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(&b, "connection %s %s 0x%016x %s\n", md.Name, md.Unit, pc.BuildVersion, pc.Wire)
+		fmt.Fprintf(&b, "message %s %s %s %s %s\n", md.Name, md.Name, md.Root, md.FileWire, md.PeerWire)
+	}
 	for _, rc := range m.Retains {
 		// THE ANSWER IS WITHHELD, as it is everywhere else: a driver is handed
 		// the wire and the two capacities and nothing about the counters or the
@@ -444,6 +452,13 @@ func expectations(m *Manifest, surface string, reports map[string]string, jsonDi
 				return nil, err
 			}
 			out = append(out, expectation{name: g.Name, want: want})
+		}
+		for _, md := range m.MessageDrifts {
+			want, err := os.ReadFile(md.SaveWire)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, expectation{name: md.Name, want: want})
 		}
 	case "retain":
 		// Retention preserves the complete known value independently of how

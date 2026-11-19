@@ -1,0 +1,11 @@
+{
+  "seq": 101,
+  "tier": "Silver",
+  "label": "v1-msg-🚀",
+  "payload": {
+    "status": {
+      "count": 42
+    }
+  },
+  "legacy_code": 77
+}

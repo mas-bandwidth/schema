@@ -126,6 +126,7 @@ fn buffer(out: u8[>..]&, data: const u8[:], extent: i64, lead: i64) {
 fn block_table(name: const u8[:]) -> const u8[:] {
     if starts_with(name, "block_render") { return "RenderFrame"; }
     if starts_with(name, "block_padded") { return "PaddedFrame"; }
+    if starts_with(name, "block_torture") { return "TortureFrame"; }
     write_stderr(str("driver: no block named ", name, "\n"));
     exit(1);
 }

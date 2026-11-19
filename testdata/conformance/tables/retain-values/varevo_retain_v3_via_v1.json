@@ -1,0 +1,50 @@
+{
+  "label": "v3-rollback-🚀",
+  "perms": [
+    "Read",
+    "Write"
+  ],
+  "tier": "Silver",
+  "action": {
+    "ping": null
+  },
+  "boost": {
+    "mult": 1,
+    "power": 10
+  },
+  "sub": {
+    "count": 88
+  },
+  "wide_num": 0,
+  "scores": [
+    0,
+    0
+  ],
+  "items": [
+    {
+      "count": 21
+    },
+    {
+      "count": 22
+    }
+  ],
+  "tally": {
+    "Bronze": 12,
+    "Silver": 34
+  },
+  "by_name": {
+    "alpha": {
+      "weight": 101
+    },
+    "beta": {
+      "weight": 303
+    }
+  },
+  "head": {
+    "val": 0,
+    "next": {
+      "val": 0,
+      "next": null
+    }
+  }
+}
