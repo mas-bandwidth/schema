@@ -366,6 +366,13 @@ extent_record = function(S: any, st: any, ids: { integer }, r: any): boolean
 		local f = field_with_id(st, id)
 		if f == nil then
 			if not r_skip(r, kind) then return true end
+		elseif kind == KIND_STRING and f.s == "text" and f.array == nil then
+			local payload = extent_body(r)
+			if payload == nil then return true end
+			local tn = payload.e - payload.at
+			if tn > 0 then
+				current_scan.at = align_up(current_scan.at, 8) + align_up(9 + tn, current_scan.align or 8)
+			end
 		elseif kind == KIND_UNION and f.array == nil and f.s == "union" then
 			if not extent_union(S, ids, r, S.lookup(f.t)) then return false end
 		elseif kind ~= KIND_TABLE and kind ~= KIND_ARRAY and kind ~= KIND_KEYED then
@@ -407,6 +414,18 @@ extent_field = function(S: any, ids: { integer }, f: any, r: any): boolean
 			if count > math.floor((r.e - r.at) / floor) then return false end
 			scan.at = align_up(scan.at, align)
 			scan.at = scan.at + count * size
+		end
+		if kind == KIND_STRING and f.e ~= nil and (f.e.s == "text" or (f.e.s == "str" and (f.e.bound or 0) == 0)) then
+			for _ = 1, count do
+				if not r_has(r, 1) then break end
+				local payload = extent_body(r)
+				if payload == nil then return true end
+				local tn = payload.e - payload.at
+				if tn > 0 then
+					scan.at = align_up(scan.at, 8) + align_up(9 + tn, scan.align or 8)
+				end
+			end
+			return true
 		end
 		if kind ~= KIND_TABLE and kind ~= KIND_UNION then return true end
 		local keyed = f.keyvs ~= nil
@@ -481,13 +500,38 @@ local function scan_records(payload: any, ids: { integer }): (any?, boolean)
 	return out, true
 end
 
+local function crc32c_check(b: buffer, n: number): number
+	local crc = 0xFFFFFFFF
+	for i = 0, n - 1 do
+		crc = bit32.bxor(crc, buffer.readu8(b, i))
+		for _ = 1, 8 do
+			if bit32.band(crc, 1) ~= 0 then
+				crc = bit32.bxor(bit32.rshift(crc, 1), 0x82F63B78)
+			else
+				crc = bit32.rshift(crc, 1)
+			end
+		end
+	end
+	return bit32.bxor(crc, 0xFFFFFFFF)
+end
+
 -- region_measure answers the canonical region bytes for a whole form-1 wire,
 -- or nil when the framing cannot be read whole (a LoadMeasure refusal).
 local function region_measure(S: any, desc: any, data: buffer, align: number): number?
 	lookup_S = S
 	if desc.variable ~= true then return -1 end
+	if buffer.len(data) < 1 or buffer.readu8(data, 0) ~= 1 then return nil end
+	if desc.integrity ~= nil and desc.integrity ~= "" then
+		local full = buffer.len(data)
+		if full < 5 or buffer.readu32(data, full - 4) ~= crc32c_check(data, full - 4) then
+			return nil
+		end
+		local stripped = buffer.create(full - 4)
+		buffer.copy(stripped, 0, data, 0, full - 4)
+		data = stripped
+	end
 	local len = buffer.len(data)
-	if len < 9 or buffer.readu8(data, 0) ~= 1 then return nil end
+	if len < 9 then return nil end
 	local n = integer.tonumber(buffer.readinteger(data, len - 8))
 	if n < 0 or n > math.floor(len / 8) then return nil end
 	local span = n * 8 + 8
@@ -504,7 +548,7 @@ local function region_measure(S: any, desc: any, data: buffer, align: number): n
 	local body = new_reader(data, 1, first)
 	local round = function(x: number): number return math.ceil(x / align) * align end
 	local function size_of(st: any, at: number, e: number): (number?, boolean)
-		current_scan = { at = 0 }
+		current_scan = { at = 0, align = align }
 		if not extent_record(S, st, ids, new_reader(data, at, e)) then return nil, false end
 		return round(round(layout.record_layout(st).size) + current_scan.at), true
 	end

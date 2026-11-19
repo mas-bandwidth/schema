@@ -1,0 +1,27 @@
+#!/bin/sh
+# THE SQUIRREL LEG of the packet type bench (bench/README.md).
+set -eu
+
+ROOT=$(pwd -P)
+SQ=${SQ:-$ROOT/dist/squirrel-3.2-double/bin/sq}
+GEN=${SQUIRREL_PACKET_BENCH_GEN:-build/packet-bench-squirrel}
+
+if [ ! -x "$SQ" ] && ! command -v "$SQ" >/dev/null 2>&1; then
+    echo "missing pinned Squirrel at $SQ: run make dist-squirrel" >&2
+    exit 2
+fi
+if [ ! -f "$GEN/Bench.nut" ]; then
+    SCHEMA_BIN="./bin/schema"
+    if [ ! -x "$SCHEMA_BIN" ]; then
+        if [ -x "./build/schema-squirrel" ]; then
+            SCHEMA_BIN="./build/schema-squirrel"
+        else
+            echo "missing bin/schema: run make bin/schema" >&2
+            exit 2
+        fi
+    fi
+    rm -rf "$GEN"
+    mkdir -p "$GEN"
+    "$SCHEMA_BIN" generate --lang squirrel --out "$GEN" bench/corpus/Bench.schema
+fi
+exec "$SQ" bench/squirrel/main.nut "$GEN" "$@"

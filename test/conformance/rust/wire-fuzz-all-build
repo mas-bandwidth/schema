@@ -70,4 +70,4 @@ for unit in featurewitnesses:testdata/conformance/feature-witnesses/full/Feature
 	done
 done
 cp test/conformance/rust/src/wire_fuzz_all.rs "$dir/src/main.rs"
-rustc --edition 2024 -O -A warnings -o "$out" "$dir/src/main.rs"
+rustc --edition 2024 -C opt-level=1 -C codegen-units=16 -A warnings -o "$out" "$dir/src/main.rs"

@@ -188,6 +188,7 @@ jobs:
     outputs:
       packages: ${{ steps.pick.outputs.packages }}
       legs: ${{ steps.pick.outputs.legs }}
+      verify_legs: ${{ steps.pick.outputs.verify_legs }}
       broad: ${{ steps.pick.outputs.broad }}
       lints: ${{ steps.pick.outputs.lints }}
       rows: ${{ steps.rows.outputs.rows }}
@@ -281,6 +282,29 @@ jobs:
               # facade, its driver and the runtime the generated unit carries
               internal/codegen/squirreltable/*|internal/codegen/squirrel/*|tables/cards/squirrel/*|make/squirrel.mk|make/squirrel-cards.mk) add_leg squirrel ;;
             esac
+            # Per-language optimization paths across all 18 ports (keeping the
+            # cs row above intact for TestCIFullPRSelectMatchesTheFastPlan).
+            case "$f" in
+              internal/codegen/ccommon/*) add_leg cpp; add_leg c ;;
+              generated/cpp-*/*|bench/cpp/*|bench/tables/cpp/*|tables/cards/cpp/*|test/cpp/*|test/conformance/cpp/*|test/packet-*/cpp/*) add_leg cpp ;;
+              generated/c-*/*|generated/bench/c/*|generated/bench/tables/c/*|generated/bench/paired/c/*|bench/c/*|bench/tables/c/*|tables/cards/c/*|test/c/*|test/c-*/*|test/conformance/c/*|test/packet-*/c/*) add_leg c ;;
+              generated/cs-*/*|generated/bench/cs/*|generated/bench/tables/cs/*|generated/bench/paired/cs/*|bench/cs/*|bench/tables/cs/*|tables/cards/cs/*|test/cs/*|test/cs-*/*|test/conformance/cs/*|test/packet-*/cs/*) add_leg cs ;;
+              internal/codegen/unitytable/*|internal/codegen/unity/*|generated/unity/*|generated/unity-*/*|generated/bench/unity/*|generated/bench/tables/unity/*|bench/unity/*|bench/tables/unity/*|tables/cards/unity/*|test/unity/*|test/unity-*/*|test/conformance/unity/*|test/packet-*/unity/*|make/unity.mk|make/unity-*.mk) add_leg unity ;;
+              generated/go-*/*|generated/bench/go/*|generated/bench/tables/go/*|generated/bench/paired/go/*|bench/go/*|bench/tables/go/*|tables/cards/go/*|test/go/*|test/go-*/*|test/packet-*/go/*) add_leg go ;;
+              generated/rust-*/*|generated/bench/rust/*|generated/bench/rust-*/*|generated/bench/paired/rust/*|bench/rust/*|bench/tables/rust/*|tables/cards/rust/*|test/rust/*|test/rust-*/*|test/conformance/rust/*|test/packet-*/rust/*) add_leg rust ;;
+              generated/java-*/*|generated/bench/java/*|generated/bench/tables/java/*|generated/bench/paired/java/*|bench/java/*|bench/tables/java/*|tables/cards/java/*|test/java/*|test/java-*/*|test/conformance/java/*|test/packet-*/java/*) add_leg java ;;
+              generated/js-*/*|generated/bench/js/*|generated/bench/tables/js/*|generated/bench/paired/js/*|bench/js/*|bench/tables/js/*|tables/cards/js/*|test/js/*|test/js-*/*|test/conformance/js/*|test/packet-*/js/*) add_leg js ;;
+              generated/dart-*/*|generated/bench/dart/*|generated/bench/tables/dart/*|generated/bench/paired/dart/*|bench/dart/*|bench/tables/dart/*|tables/cards/dart/*|test/dart/*|test/dart-*/*|test/conformance/dart/*|test/packet-*/dart/*) add_leg dart ;;
+              generated/elixir-*/*|generated/bench/elixir/*|generated/bench/tables/elixir/*|generated/bench/paired/elixir/*|bench/elixir/*|bench/tables/elixir/*|tables/cards/elixir/*|test/elixir/*|test/elixir-*/*|test/conformance/elixir/*|test/packet-*/elixir/*) add_leg elixir ;;
+              generated/goose/*|generated/goose-*/*|generated/bench/goose/*|generated/bench/tables/goose/*|bench/goose/*|bench/tables/goose/*|tables/cards/goose/*) add_leg goose ;;
+              generated/luau/*|generated/luau-*/*|generated/bench/luau/*|generated/bench/tables/luau/*|tables/cards/luau/*|test/luau/*|test/luau-*/*|test/packet-*/luau/*) add_leg luau ;;
+              internal/codegen/luatable/*|internal/codegen/lua/*|generated/lua/*|generated/lua-*/*|generated/bench/lua/*|generated/bench/tables/lua/*|bench/lua/*|bench/tables/lua/*|tables/cards/lua/*|test/lua/*|test/lua-*/*|test/conformance/lua/*|test/packet-*/lua/*|make/lua.mk|make/lua-*.mk) add_leg lua ;;
+              generated/squirrel/*|generated/squirrel-*/*|generated/bench/squirrel/*|generated/bench/tables/squirrel/*|bench/squirrel/*|bench/tables/squirrel/*|test/squirrel/*|test/squirrel-*/*|test/conformance/squirrel/*|test/packet-*/squirrel/*|make/squirrel-*.mk) add_leg squirrel ;;
+              internal/codegen/mootable/*|internal/codegen/moo/*|generated/moo/*|generated/moo-*/*|generated/bench/moo/*|generated/bench/tables/moo/*|bench/moo/*|bench/tables/moo/*|tables/cards/moo/*|test/moo/*|test/moo-*/*|test/conformance/moo/*|test/packet-*/moo/*|make/moo.mk|make/moo-*.mk) add_leg moo ;;
+              generated/lobster/*|generated/lobster-*/*|generated/bench/lobster/*|generated/bench/tables/lobster/*|tables/cards/lobster/*|test/lobster/*|test/lobster-*/*|test/packet-*/lobster/*) add_leg lobster ;;
+              internal/codegen/pythontable/*|internal/codegen/python/*|third_party/serialize.py/*|generated/python/*|generated/python-*/*|generated/bench/python/*|generated/bench/tables/python/*|bench/python/*|bench/tables/python/*|tables/cards/python/*|test/python/*|test/python-*/*|test/conformance/python/*|test/packet-*/python/*|make/python.mk|make/python-*.mk) add_leg python ;;
+              internal/codegen/rubytable/*|internal/codegen/ruby/*|third_party/serialize.rb/*|generated/ruby/*|generated/ruby-*/*|generated/bench/ruby/*|generated/bench/tables/ruby/*|bench/ruby/*|bench/tables/ruby/*|tables/cards/ruby/*|test/ruby/*|test/ruby-*/*|test/conformance/ruby/*|test/packet-*/ruby/*|make/ruby.mk|make/ruby-*.mk) add_leg ruby ;;
+            esac
           done <<EOF
           $files
           EOF
@@ -345,14 +369,13 @@ jobs:
             done
             for leg in $touched_legs; do
               case "$leg" in
-                cpp)     ps=./internal/codegen/cpptable ;;
-                # the Lobster leg is two packages: the type surface and the
-                # table surface, both run under the pinned toolchain
-                lobster) ps="./internal/codegen/lobster ./internal/codegen/lobstertable" ;;
-                # the Squirrel row runs make targets only: its packages ride
-                # the broad selection and ci-full.yml, which install the pin
-                squirrel) ps="" ;;
-                *)       ps=./internal/codegen/${leg}table ;;
+                cpp)               ps=./internal/codegen/cpptable ;;
+                # the Lobster, Unity, Python and Ruby legs each have two unit
+                # packages: the type surface and the table surface
+                lobster|unity|python|ruby) ps="./internal/codegen/$leg ./internal/codegen/${leg}table" ;;
+                # Lua, MOO and Squirrel add their two unit packages in order below
+                lua|moo|squirrel)  ps="" ;;
+                *)                 ps=./internal/codegen/${leg}table ;;
               esac
               for p in $ps; do
                 [ -d "${p#./}" ] || continue
@@ -422,16 +445,36 @@ jobs:
           json=$(printf '%s' "$legs" | xargs -n1 2>/dev/null | sort -u | awk 'BEGIN{printf "["} NF{printf "%s\"%s\"", (n++?",":""), $1} END{printf "]"}')
           [ -n "$json" ] || json='[]'
 
-          echo "broad=$broad"        >> "$GITHUB_OUTPUT"
-          echo "packages=$packages"  >> "$GITHUB_OUTPUT"
-          echo "legs=$json"          >> "$GITHUB_OUTPUT"
-          echo "lints=$lints_json"   >> "$GITHUB_OUTPUT"
+          # THE PER-LANGUAGE OPTIMIZATION VERIFICATION MATRIX (verify-leg).
+          # Runs conformance, bench, and fuzz (< 2m each) for the languages the
+          # diff touches (including C++ and ccommon optimizations, which set
+          # broad=yes for leg-gate's oracle rule), while keeping shared root
+          # edits (ir/, compiler/, Makefile, ci-fast.yml) and > 4 language
+          # sweeps bounded so a single push never dispatches 18 * 3 = 54 jobs.
+          shared_broad=no
+          if echo "$files" | grep -qE '^(ir/|compiler/|tables/|Makefile$|go\.mod$|docs/FIXED-FORM-|test/tables/.*\.schema$|\.github/workflows/ci-fast\.yml$)'; then
+            shared_broad=yes
+          fi
+          verify_count=$(printf '%s' "$touched_legs" | xargs -n1 2>/dev/null | sort -u | wc -l | tr -d ' ')
+          if [ "$shared_broad" = yes ] || [ "$verify_count" -gt 4 ]; then
+            verify_legs_json='[]'
+          else
+            verify_legs_json=$(printf '%s' "$touched_legs" | xargs -n1 2>/dev/null | sort -u | awk 'BEGIN{printf "["} NF{printf "%s\"%s\"", (n++?",":""), $1} END{printf "]"}')
+            [ -n "$verify_legs_json" ] || verify_legs_json='[]'
+          fi
+
+          echo "broad=$broad"               >> "$GITHUB_OUTPUT"
+          echo "packages=$packages"         >> "$GITHUB_OUTPUT"
+          echo "legs=$json"                 >> "$GITHUB_OUTPUT"
+          echo "verify_legs=$verify_legs_json" >> "$GITHUB_OUTPUT"
+          echo "lints=$lints_json"          >> "$GITHUB_OUTPUT"
           {
             echo "### what this push runs on the fast lane"
             echo
             echo "* broad selection: **$broad**"
             echo "* packages: \`${packages:-(none)}\`"
             echo "* legs: \`$json\`"
+            echo "* verify-legs: \`$verify_legs_json\`"
             echo "* language lints: \`$lints_json\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -700,6 +743,109 @@ jobs:
           make tables-lua-luacheck-negative-control
           make tables-lua-format
           make tables-lua-format-negative-control
+
+  # PER-LANGUAGE OPTIMIZATION VERIFICATION GATE (make verify-<lang>-<gate>).
+  # Three parallel < 2m jobs per touched language across all 18 ports:
+  #   conformance — all 21 table surfaces (--claims) + packet wire + defaults/UTF-8
+  #   bench       — packet wire 64-variant byte-checked hot loop + table wire gate
+  #   fuzz        — deterministic wire-fuzz smoke (plain + --retain, stateful reuse)
+  verify-leg:
+    needs: plan
+    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.verify_legs != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    name: verify-leg (${{ matrix.leg }}, ${{ matrix.gate }})
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 2
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        leg: ${{ fromJSON(needs.plan.outputs.verify_legs) }}
+        gate: [conformance, bench, fuzz]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check out the sibling runtimes this leg needs (pinned releases)
+        run: |
+          set -euo pipefail
+          cd ..
+          rm -rf serialize serialize.go serialize.c serialize.rs serialize.cs serialize.js
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
+          case "${{ matrix.leg }}" in
+            go)       git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go ;;
+            c)        git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG"  https://github.com/mas-bandwidth/serialize.c.git  serialize.c ;;
+            rust)     git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs ;;
+            cs|unity) git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs ;;
+            js)       git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js ;;
+          esac
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+
+      - name: read the .NET SDK pin
+        if: matrix.leg == 'cs' || matrix.leg == 'unity'
+        run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        if: (matrix.leg == 'cs' || matrix.leg == 'unity') && runner.environment == 'github-hosted'
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_PIN }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: matrix.leg == 'js' && runner.environment == 'github-hosted'
+        with:
+          node-version: '26'
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
+        with:
+          components: clippy, rustfmt
+        if: matrix.leg == 'rust' && runner.environment == 'github-hosted'
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        if: matrix.leg == 'dart' && runner.environment == 'github-hosted'
+        with:
+          sdk: 3.13.2
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        if: matrix.leg == 'java' && runner.environment == 'github-hosted'
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        if: matrix.leg == 'elixir' && runner.environment == 'github-hosted'
+        with:
+          otp-version: '27'
+          elixir-version: '1.18'
+
+      - name: hosted GL dependencies for Lobster
+        if: matrix.leg == 'lobster' && runner.environment == 'github-hosted'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+      - uses: ./.github/actions/dist-pins
+        if: matrix.leg == 'lua' || matrix.leg == 'luau' || matrix.leg == 'goose' || matrix.leg == 'lobster'
+        with:
+          pins: ${{ matrix.leg }}
+      - uses: ./.github/actions/python
+        if: matrix.leg == 'python'
+      - uses: ./.github/actions/ruby
+        if: matrix.leg == 'ruby'
+      - uses: ./.github/actions/moo
+        if: matrix.leg == 'moo'
+
+      - name: make verify-${{ matrix.leg }}-${{ matrix.gate }}
+        run: |
+          set -euo pipefail
+          if [ -f /opt/nova/sdk/env.sh ]; then
+            . /opt/nova/sdk/env.sh
+          fi
+          case "${{ matrix.leg }}" in
+            rust)   make "verify-${{ matrix.leg }}-${{ matrix.gate }}" RUSTUP_BIN="$(dirname "$(command -v cargo)")" ;;
+            dart)   make "verify-${{ matrix.leg }}-${{ matrix.gate }}" DART=dart ;;
+            java)   make "verify-${{ matrix.leg }}-${{ matrix.gate }}" JAVA=java JAVAC=javac ;;
+            js)     make "verify-${{ matrix.leg }}-${{ matrix.gate }}" NODE=node ;;
+            elixir) make "verify-${{ matrix.leg }}-${{ matrix.gate }}" BEAM_PATH="$(dirname "$(command -v erl)"):$(dirname "$(command -v elixir)")" ;;
+            *)      make "verify-${{ matrix.leg }}-${{ matrix.gate }}" ;;
+          esac
 
   # THE BLOCK ZERO-COST GATE, byte-identity half (the `generated` job's third
   # step in ci-full.yml). The committed tables goldens must equal a fresh

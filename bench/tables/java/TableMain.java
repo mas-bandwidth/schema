@@ -162,8 +162,8 @@ public final class TableMain {
     }
 
     static boolean fixedClean() {
-        return !fixedReport.refused && !fixedReport.malformed && fixedReport.unknown == 0
-                && fixedReport.kindMismatch == 0 && fixedReport.widened == 0 && fixedReport.clamped == 0;
+        return !fixedReport.refused && !fixedReport.damaged && fixedReport.unknown == 0
+                && fixedReport.widened == 0;
     }
 
     static void gateFixed(String name) {

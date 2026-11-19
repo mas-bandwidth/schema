@@ -104,10 +104,13 @@ var runnerDirs = []string{
 	"bench/java/",
 	"bench/js/",
 	"bench/lobster/",
+	"bench/lua/",
 	"bench/luau/",
+	"bench/moo/",
 	"bench/python/",
 	"bench/ruby/",
 	"bench/rust/",
+	"bench/squirrel/",
 	"bench/tools/",
 	"bench/run.sh",
 	// the TABLES leg (bench/tables/README.md): its own runners, its own
@@ -141,7 +144,7 @@ var sourceExts = map[string]bool{
 	".c": true, ".h": true, ".inc": true, ".cpp": true, ".hpp": true, ".cc": true,
 	".cs": true, ".go": true, ".rs": true, ".java": true, ".js": true, ".mjs": true,
 	".dart": true, ".goose": true, ".ex": true, ".exs": true, ".sh": true, ".py": true, ".rb": true,
-	".kt": true, ".swift": true, ".zig": true, ".lobster": true, ".lua": true, ".luau": true,
+	".kt": true, ".swift": true, ".zig": true, ".lobster": true, ".lua": true, ".luau": true, ".moo": true, ".nut": true,
 }
 
 // skipDirs — machine-written, vendored or downloaded trees. Generated code

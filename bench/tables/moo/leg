@@ -1,0 +1,28 @@
+#!/bin/sh
+# THE MOO FORM-1 LEG of the tables bench gate (bench/tables/README.md).
+set -e
+
+ROOT="$(pwd -P)"
+: "${MOO_BENCH_GEN:=build/tables-bench-moo}"
+GEN="$MOO_BENCH_GEN"
+: "${MOO:=$ROOT/dist/moo/moo}"
+
+case "$1" in
+build)
+    [ -x "$MOO" ] || command -v "$MOO" >/dev/null 2>&1 || { echo "no moo interpreter at $MOO -- run make dist-moo" >&2; exit 2; }
+    [ -x ./build/schema-moo ] || go build -tags schema_leg_moo -o build/schema-moo ./cmd/schema
+    rm -rf "$GEN" "$GEN.src"
+    mkdir -p "$GEN" "$GEN.src"
+    sed 's/^fixed table /table /' bench/corpus/BenchTable.schema > "$GEN.src/BenchTable.schema"
+    ./build/schema-moo generate --lang moo --out "$GEN" "$GEN.src/BenchTable.schema"
+    rm -rf "$GEN.src"
+    ;;
+run)
+    shift
+    exec bench/moo/route.sh tables bench/tables/moo/table_main.moo "$GEN" bench_table -- "$@"
+    ;;
+*)
+    echo "usage: $0 build | run [args...]" >&2
+    exit 1
+    ;;
+esac

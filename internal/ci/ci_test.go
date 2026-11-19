@@ -1174,6 +1174,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 	}
 	for _, wantKey := range []string{
 		"ci-fast.yml:lang-lint",
+		"ci-fast.yml:verify-leg",
 	} {
 		wfName, jobName, _ := strings.Cut(wantKey, ":")
 		ok, err := jobSelectsSelfHosted(wfs[wfName], jobName, sameRepoMainUnlabeled)
@@ -1259,6 +1260,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 	}
 	for _, wantKey := range []string{
 		"ci-fast.yml:lang-lint",
+		"ci-fast.yml:verify-leg",
 	} {
 		wfName, jobName, _ := strings.Cut(wantKey, ":")
 		if ok, err := jobSelectsSelfHosted(wfs[wfName], jobName, streamToDevPR); err != nil || !ok {
@@ -1420,6 +1422,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-fast.yml:leg-gate-squirrel",
 		"ci-fast.yml:lint-fast",
 		"ci-fast.yml:plan",
+		"ci-fast.yml:verify-leg",
 		"ci-fast.yml:vet",
 		"ci-full.yml:conformance",
 		"ci-full.yml:conformance-matrix",

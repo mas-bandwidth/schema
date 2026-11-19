@@ -318,8 +318,7 @@ public final class TableRetain {
                 return 0;
             }
             long v = ids[(int) ref - 1];
-            if (v == 0
-                    || v == TableVariable.NODE_ID
+            if (v == TableVariable.NODE_ID
                     || v == TableVariable.BUILD_ID
                     || v == TableVariable.VOCAB_ID) {
                 bad = true;
@@ -361,7 +360,7 @@ public final class TableRetain {
                         return false;
                     }
                     if (ref == 0) {
-                        out64(out, o, 0L);
+                        out64(out, o, TableVariable.NODE_ID);
                         return true;
                     }
                     long id = r.id(ref);
@@ -378,7 +377,7 @@ public final class TableRetain {
                         return false;
                     }
                     if (arm == 0) {
-                        out64(out, o, 0L);
+                        out64(out, o, TableVariable.NODE_ID);
                         return true;
                     }
                     long id = r.id(arm);
@@ -523,7 +522,7 @@ public final class TableRetain {
                 return false;
             }
             if (ref == 0) {
-                out64(out, o, 0L);
+                out64(out, o, TableVariable.NODE_ID);
                 return true;
             }
             long id = c.id(ref);
@@ -655,7 +654,7 @@ public final class TableRetain {
             case 30:
                 {
                     long id = get64(b, at);
-                    if (id == 0) {
+                    if (id == TableVariable.NODE_ID) {
                         w.putLeb(0);
                         return true;
                     }
@@ -669,7 +668,7 @@ public final class TableRetain {
             case 15:
                 {
                     long arm = get64(b, at);
-                    if (arm == 0) {
+                    if (arm == TableVariable.NODE_ID) {
                         w.putLeb(0);
                         return true;
                     }
@@ -774,7 +773,7 @@ public final class TableRetain {
             int end) {
         while (true) {
             long id = get64(b, at);
-            if (id == 0) {
+            if (id == TableVariable.NODE_ID) {
                 w.put8(0);
                 return true;
             }

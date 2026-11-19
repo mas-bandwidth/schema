@@ -3,3 +3,4 @@
 # Paths are repository-relative.
 
 names bench/tables/moo/fixed_hotpath_bench_test.go 1 the paired fixed-form schema's filename, passed to the compiler as a source path; the root descriptor is discovered from the generated module and no field, pinned value or wire size is written down
+names bench/tables/moo/table_main.moo 1 shape-blind leg: `TableMixed` named once as rootName for ReadStrict/save; no field, no pinned value, no wire size (callsite)

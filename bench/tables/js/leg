@@ -1,0 +1,28 @@
+#!/bin/sh
+# THE JAVASCRIPT FORM-1 LEG of the tables bench (bench/tables/README.md).
+set -e
+
+ROOT="$(pwd -P)"
+: "${JS_BENCH_GEN:=build/tables-bench-js}"
+GEN="$JS_BENCH_GEN"
+: "${NODE:=node}"
+
+case "$1" in
+build)
+    command -v "$NODE" >/dev/null 2>&1 || [ -x "$NODE" ] || { echo "no node at $NODE" >&2; exit 2; }
+    [ -x bin/schema ] || { echo "missing bin/schema -- run make bin/schema" >&2; exit 2; }
+    rm -rf "$GEN" "$GEN.src"
+    mkdir -p "$GEN" "$GEN.src"
+    sed 's/^fixed table /table /' bench/corpus/BenchTable.schema > "$GEN.src/BenchTable.schema"
+    ./bin/schema generate --lang js --out "$GEN" "$GEN.src/BenchTable.schema"
+    rm -rf "$GEN.src"
+    ;;
+run)
+    shift
+    exec "$NODE" bench/tables/js/form1_main.mjs "$GEN" "$@"
+    ;;
+*)
+    echo "usage: $0 build | run [args...]" >&2
+    exit 1
+    ;;
+esac

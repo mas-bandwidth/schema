@@ -8158,7 +8158,7 @@ const variableRetainSource = `
     else
       id = :binary.decode_unsigned(binary_part(ids, (r - 1) * 8, 8), :little)
 
-      if id == 0 or id == @node_id or id == @build_version_id or id == @message_vocab_id do
+      if id == @node_id or id == @build_version_id or id == @message_vocab_id do
         :error
       else
         {:ok, id}
@@ -8200,7 +8200,7 @@ const variableRetainSource = `
   defp retain_resolve(ids, 30, payload, _depth) do
     case leb(payload) do
       {0, rest} ->
-        {:ok, <<0::little-64>>, rest}
+        {:ok, <<@node_id::little-64>>, rest}
 
       {r, rest} ->
         case retain_id(ids, r) do
@@ -8216,7 +8216,7 @@ const variableRetainSource = `
   defp retain_resolve(ids, 15, payload, depth) do
     case leb(payload) do
       {0, rest} ->
-        {:ok, <<0::little-64>>, rest}
+        {:ok, <<@node_id::little-64>>, rest}
 
       {r, rest} ->
         with {:ok, id} <- retain_id(ids, r),
@@ -8300,7 +8300,7 @@ const variableRetainSource = `
   defp retain_body_fields(ids, sub, depth, acc) do
     case leb(sub) do
       {0, <<>>} ->
-        {:ok, acc <> <<0::little-64>>}
+        {:ok, acc <> <<@node_id::little-64>>}
 
       {0, _} ->
         :error
@@ -8381,7 +8381,7 @@ const variableRetainSource = `
 
   defp retain_emit(ids, order, retain, 30, resolved) do
     case resolved do
-      <<0::little-64, rest::binary>> ->
+      <<@node_id::little-64, rest::binary>> ->
         {:ok, <<0>>, rest, ids, order, retain}
 
       <<id::little-64, rest::binary>> ->
@@ -8395,7 +8395,7 @@ const variableRetainSource = `
 
   defp retain_emit(ids, order, retain, 15, resolved) do
     case resolved do
-      <<0::little-64, rest::binary>> ->
+      <<@node_id::little-64, rest::binary>> ->
         {:ok, <<0>>, rest, ids, order, retain}
 
       <<id::little-64, arm_kind, rest::binary>> ->
@@ -8488,7 +8488,7 @@ const variableRetainSource = `
 
   defp retain_emit_content(ids, order, retain, _kind, sub), do: {:ok, sub, ids, order, retain}
 
-  defp retain_emit_body(ids, order, retain, <<0::little-64>>),
+  defp retain_emit_body(ids, order, retain, <<@node_id::little-64>>),
     do: {:ok, <<0>>, ids, order, retain}
 
   defp retain_emit_body(ids, order, retain, <<id::little-64, kind, rest::binary>>) do

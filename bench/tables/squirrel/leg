@@ -1,14 +1,36 @@
 #!/bin/sh
 # THE SQUIRREL LEG of the tables bench (bench/tables/README.md).
-# Scaffolded by `schema new-leg squirrel`. There is no table codec to
-# build or measure yet, so both actions report ABSENT without producing rows.
 set -e
+
+ROOT="$(pwd -P)"
+: "${SQUIRREL_BENCH_GEN:=build/tables-bench-squirrel}"
+GEN="$SQUIRREL_BENCH_GEN"
+: "${SQ:=$ROOT/dist/squirrel-3.2-double/bin/sq}"
+
 case "$1" in
-build|run)
-	exit 2
-	;;
+build)
+    [ -x "$SQ" ] || command -v "$SQ" >/dev/null 2>&1 || { echo "no sq interpreter at $SQ -- run make dist-squirrel" >&2; exit 2; }
+    SCHEMA_BIN="./bin/schema"
+    if [ ! -x "$SCHEMA_BIN" ]; then
+        if [ -x "./build/schema-squirrel" ]; then
+            SCHEMA_BIN="./build/schema-squirrel"
+        else
+            echo "missing bin/schema -- run make bin/schema" >&2
+            exit 2
+        fi
+    fi
+    rm -rf "$GEN" "$GEN.src"
+    mkdir -p "$GEN" "$GEN.src"
+    sed 's/^fixed table /table /' bench/corpus/BenchTable.schema > "$GEN.src/BenchTable.schema"
+    "$SCHEMA_BIN" generate --lang squirrel --out "$GEN" "$GEN.src/BenchTable.schema"
+    rm -rf "$GEN.src"
+    ;;
+run)
+    shift
+    exec "$SQ" bench/tables/squirrel/table_main.nut "$GEN" "$@"
+    ;;
 *)
-	echo "usage: $0 build | run [args...]" >&2
-	exit 1
-	;;
+    echo "usage: $0 build | run [args...]" >&2
+    exit 1
+    ;;
 esac

@@ -149,6 +149,7 @@ func main() {
 	driver := fs.String("driver", "", "the leg to fuzz, as a command (wire-fuzz only)")
 	seed := fs.Uint64("seed", 24845619678, "the random pass's seed (wire-fuzz only)")
 	n := fs.Int("n", 100000, "the random pass's mutant count (wire-fuzz only)")
+	maxMutants := fs.Int("max-mutants", 0, "cap total mutants while covering every seed, pinned vector, stateful valid->refused->valid reuse triad per root, and an even stride over enumerated/random passes (wire-fuzz only)")
 	shard := fs.Int("shard", 0, "zero-based wire-fuzz shard index")
 	shards := fs.Int("shards", 1, "number of wire-fuzz shards")
 	replay := fs.String("replay", "", "one mutant file to run alone (wire-fuzz only)")
@@ -266,7 +267,7 @@ func main() {
 		if *shards < 1 || *shard < 0 || *shard >= *shards {
 			fatalf("wire-fuzz: shard must be in [0, shards), and shards must be positive")
 		}
-		if err := wireFuzz(m, wireFuzzOptions{shard: *shard, shards: *shards, driver: *driver, seed: *seed, n: *n, replay: *replay, unit: *unit, root: *root, message: *message, failed: *failed, vectors: *vectors, retain: *retain, builder: *builder, mixedBuilder: *mixedBuilder, finiteOwed: *finiteOwed, relaxDeadBytes: *relaxDeadBytes, relaxVectors: *relaxVectors}); err != nil {
+		if err := wireFuzz(m, wireFuzzOptions{shard: *shard, shards: *shards, maxMutants: *maxMutants, driver: *driver, seed: *seed, n: *n, replay: *replay, unit: *unit, root: *root, message: *message, failed: *failed, vectors: *vectors, retain: *retain, builder: *builder, mixedBuilder: *mixedBuilder, finiteOwed: *finiteOwed, relaxDeadBytes: *relaxDeadBytes, relaxVectors: *relaxVectors}); err != nil {
 			fatalf("%v", err)
 		}
 	case "cook-differential":

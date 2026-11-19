@@ -1609,8 +1609,9 @@ tables-c-format-negative-control: bin/schema tools/sabotage/c_clean.go make/chec
 
 # The file-wire differential: the compiler's independent engine owns every
 # expected byte and report. Unsupported roster entries are named absent.
-build/wire-fuzz-c: build/tables-generated-c/.stamp test/c-tables/wire_fuzz_main.c $(wildcard test/conformance/c/*.h) $(wildcard test/conformance/c/*.c)
-	$(CC) $(TABLES_CFLAGS) $(C_CONFORMANCE_INCLUDES) test/c-tables/wire_fuzz_main.c $(filter-out test/conformance/c/main.c,$(C_CONFORMANCE_SOURCES)) -o $@ -lm
+build/wire-fuzz-c: $(filter-out $(C_CONFORMANCE_OBJDIR)/test/conformance/c/main.o,$(C_CONFORMANCE_OBJECTS)) $(C_CONFORMANCE_OBJDIR)/test/c-tables/wire_fuzz_main.o build/tables-generated-c/.stamp $(wildcard test/conformance/c/*.h)
+	@mkdir -p build
+	$(CC) $(TABLES_CFLAGS) $(filter-out $(C_CONFORMANCE_OBJDIR)/test/conformance/c/main.o,$(C_CONFORMANCE_OBJECTS)) $(C_CONFORMANCE_OBJDIR)/test/c-tables/wire_fuzz_main.o -o $@ -lm
 
 build/wire-fuzz-c-asan: build/tables-generated-c/.stamp test/c-tables/wire_fuzz_main.c $(wildcard test/conformance/c/*.h) $(wildcard test/conformance/c/*.c)
 	$(CC) $(TABLES_CFLAGS_CONTROL) $(C_SANITIZE) $(C_CONFORMANCE_INCLUDES) test/c-tables/wire_fuzz_main.c $(filter-out test/conformance/c/main.c,$(C_CONFORMANCE_SOURCES)) -o $@ -lm

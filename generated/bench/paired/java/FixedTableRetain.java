@@ -318,7 +318,7 @@ public final class FixedTableRetain {
             TableVariable.Report report) {
         assert FixedTableVariable.checkWrite(v);
         int[] path = new int[128];
-        TableVariable.Ids ids = new TableVariable.Ids(64);
+        TableVariable.Ids ids = new TableVariable.Ids(4096);
         TableVariable.Writer w = new TableVariable.Writer(buf, ids);
         TableVariable.NodeGraph nodes = new TableVariable.NodeGraph();
         nodes.setOpen(v, true);
