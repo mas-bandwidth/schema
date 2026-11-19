@@ -299,7 +299,7 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	// asserted before the graph walk exactly as the variable save asserts it
 	fmt.Fprintf(&b, "        assert %sVariable.checkWrite(v);\n", st.Name)
 	b.WriteString("        int[] path = new int[128];\n")
-	b.WriteString("        TableVariable.Ids ids = new TableVariable.Ids(64);\n")
+	b.WriteString("        TableVariable.Ids ids = new TableVariable.Ids(4096);\n")
 	b.WriteString("        TableVariable.Writer w = new TableVariable.Writer(buf, ids);\n")
 	b.WriteString("        TableVariable.NodeGraph nodes = new TableVariable.NodeGraph();\n")
 	b.WriteString("        nodes.setOpen(v, true);\n")
@@ -790,8 +790,7 @@ public final class TableRetain {
                 return 0;
             }
             long v = ids[(int) ref - 1];
-            if (v == 0
-                    || v == TableVariable.NODE_ID
+            if (v == TableVariable.NODE_ID
                     || v == TableVariable.BUILD_ID
                     || v == TableVariable.VOCAB_ID) {
                 bad = true;
@@ -833,7 +832,7 @@ public final class TableRetain {
                         return false;
                     }
                     if (ref == 0) {
-                        out64(out, o, 0L);
+                        out64(out, o, TableVariable.NODE_ID);
                         return true;
                     }
                     long id = r.id(ref);
@@ -850,7 +849,7 @@ public final class TableRetain {
                         return false;
                     }
                     if (arm == 0) {
-                        out64(out, o, 0L);
+                        out64(out, o, TableVariable.NODE_ID);
                         return true;
                     }
                     long id = r.id(arm);
@@ -995,7 +994,7 @@ public final class TableRetain {
                 return false;
             }
             if (ref == 0) {
-                out64(out, o, 0L);
+                out64(out, o, TableVariable.NODE_ID);
                 return true;
             }
             long id = c.id(ref);
@@ -1127,7 +1126,7 @@ public final class TableRetain {
             case 30:
                 {
                     long id = get64(b, at);
-                    if (id == 0) {
+                    if (id == TableVariable.NODE_ID) {
                         w.putLeb(0);
                         return true;
                     }
@@ -1141,7 +1140,7 @@ public final class TableRetain {
             case 15:
                 {
                     long arm = get64(b, at);
-                    if (arm == 0) {
+                    if (arm == TableVariable.NODE_ID) {
                         w.putLeb(0);
                         return true;
                     }
@@ -1246,7 +1245,7 @@ public final class TableRetain {
             int end) {
         while (true) {
             long id = get64(b, at);
-            if (id == 0) {
+            if (id == TableVariable.NODE_ID) {
                 w.put8(0);
                 return true;
             }

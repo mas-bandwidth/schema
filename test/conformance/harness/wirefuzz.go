@@ -505,6 +505,9 @@ func (l *wireLeg) receive() (legReply, error) {
 		rep.blobShared = n == -2
 		return rep, nil
 	}
+	if n > 64<<20 {
+		return rep, fmt.Errorf("protocol error: driver reply claims %d saved bytes", n)
+	}
 	rep.saved = make([]byte, n)
 	if _, err := io.ReadFull(l.stdout, rep.saved); err != nil {
 		return rep, err
