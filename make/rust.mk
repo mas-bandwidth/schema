@@ -1742,7 +1742,7 @@ tables-rust-discard-negative-control:
 
 tables-rust-fixed-discard-negative-control:
 	@rm -rf $(RUST_DISCARD_NC)/fixed && mkdir -p $(RUST_DISCARD_NC)/fixed
-	@sed -e 's|g.pf("    if damaged {\\n")|g.pf("    if false \&\& damaged { // NEGATIVE CONTROL: the discard is gone\\n")|' \
+	@sed -e 's|g.pf("    if damaged && !untouched {\\n")|g.pf("    if false \&\& damaged \&\& !untouched { // NEGATIVE CONTROL: the discard is gone\\n")|' \
 		internal/codegen/rusttable/fixedform.go > $(RUST_DISCARD_NC)/fixed/fixedform.go.txt
 	@cmp -s internal/codegen/rusttable/fixedform.go $(RUST_DISCARD_NC)/fixed/fixedform.go.txt && \
 		{ echo "NEGATIVE CONTROL: the Rust fixed discard sabotage patched nothing"; exit 1; } || true
@@ -1808,7 +1808,7 @@ RUST_BOOL_NC := build/rust-bool-byte-nc
 .PHONY: tables-rust-bool-byte-negative-control
 tables-rust-bool-byte-negative-control:
 	@mkdir -p $(RUST_BOOL_NC)
-	@sed -e 's|if b\[|if false \&\& b[|' internal/codegen/rusttable/fixedform.go > $(RUST_BOOL_NC)/fixedform.go.txt
+	@sed -e 's| > 1 && report.slack == 0 {| > 1 \&\& false \&\& report.slack == 0 {|' internal/codegen/rusttable/fixedform.go > $(RUST_BOOL_NC)/fixedform.go.txt
 	@test "$$(diff internal/codegen/rusttable/fixedform.go $(RUST_BOOL_NC)/fixedform.go.txt | grep -c '^>')" = 2 || \
 		{ echo "NEGATIVE CONTROL: the Rust bool-byte sabotage did not patch exactly the two checks"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/rusttable/fixedform.go":"%s/$(RUST_BOOL_NC)/fixedform.go.txt"}}\n' \
@@ -1918,7 +1918,7 @@ conformance-negative-control-rust-write-refusal-fixed: build/conformance-harness
 
 .PHONY: conformance-negative-control-rust-write-refusal-message
 conformance-negative-control-rust-write-refusal-message: build/conformance-harness build/tables-generated-rust/.stamp build/tables-generated-rust/tblrt1/src/lib.rs
-	$(call rust_wref_control,build/rust-conformance-wref-message-control,backenddemo/src/backend_message.rs,if value.sku_length < 0 || value.sku_length > 32 { return false; },if false { return false; },write-refusal-message,message)
+	$(call rust_wref_control,build/rust-conformance-wref-message-control,backenddemo/src/backend_message.rs,debug_assert!(value.sku_length >= 0 && value.sku_length <= 32$(comma) "the declared length is the bound (docs/SPEC-TABLES.md §3.4)");,/* SABOTAGED */,write-refusal-message,message)
 
 # THE PACKET END CHECK (docs/SPEC.md §5 "Read termination";
 # docs/PACKET-WIRE-ALGORITHM.md §3 READ_PACKET; docs/rulings.json

@@ -35,7 +35,7 @@ tol='s/\t\tlocal damaged = wireDamage\(b, top, fr\.ids, rep\)/\t\tlocal damaged 
 frame='s/\tif fr == nil or \(top ~= nil and top\.term \+ 1 ~= fr\.e\) then/\tif fr == nil then/'
 # A damaged walk returns its partial value: the malformed flag stops
 # discarding the load.
-loadfix='s/\tif report\.malformed then return nil end\n\treturn v/\tif false then return nil end\n\treturn v/; s/\tif rep\.duplicate > 0 then rep\.duplicateField = witness\(root, b, "duplicate"\) end\n\treturn v/\tif rep.duplicate > 0 then rep.duplicateField = witness(root, b, "duplicate") end\n\trep.malformed = false\n\treturn v/'
+loadfix='s/\tif report\.malformed then return nil end\n\treturn v/\tif false then return nil end\n\treturn v/; s/\tif rep\.unknown > 0 then rep\.unknownField = _firstField\["unknown"\] end\n\treturn v/\tif rep.unknown > 0 then rep.unknownField = _firstField["unknown"] end\n\trep.malformed = false\n\treturn v/'
 # A fixed root again answers a form-1 wire through the variable read.
 fixed='s/\tif d ~= nil and d\.fixed then/\tif false then/g'
 
@@ -94,11 +94,11 @@ plant() {
 	echo "luau vectors negative control: the $name flaw turns the $name vector red"
 }
 
-plant map_header_count_past_length "$tol"
+plant map_header_count_past_length "$tol; $frame; $loadfix"
 plant keyed_header_count_past_length "$fixed; $tol; $frame; $loadfix"
 plant text_ill_formed_repeat_reads_default "$fixed; $tol; $frame; $loadfix"
 plant list_count_cross_length "$tol; $frame; $loadfix"
-plant map_repeated_key_widen "$tol"
+plant map_repeated_key_widen "$tol; $loadfix"
 plant region_align_extent_uint128 \
 	's/\tif desc\.variable ~= true then return -1 end\n/\tif desc.variable ~= true then return -1 end\n\tif align > 8 then return nil end\n/' driver
 
@@ -109,14 +109,14 @@ plant region_align_extent_uint128 \
 #
 # the map header's element kind is judged and a foreign kind refuses
 plant map_header_foreign_element_kind \
-	's/if ek ~= 13 then report\.kindMismatch = report\.kindMismatch \+ 1; r\.at = endpos; return true end/if ek ~= 13 then r.at = endpos; return true end/'
+	's/if ek ~= 13 then report\.kindMismatch = report\.kindMismatch \+ 1; noteField\("kindMismatch", mapName\); r\.at = endpos; return true end/if ek ~= 13 then r.at = endpos; return true end/'
 # the keyed body's element kind, the same rule on kind 16
 plant keyed_header_foreign_element_kind \
-	's/if not widens\(ek, fd\.ek\) then report\.kindMismatch = report\.kindMismatch \+ 1; r\.at = endpos; return true end/if not widens(ek, fd.ek) then r.at = endpos; return true end/'
+	's/if not widens\(ek, fd\.ek\) then report\.kindMismatch = report\.kindMismatch \+ 1; noteField\("kindMismatch", keyedName\); r\.at = endpos; return true end/if not widens(ek, fd.ek) then note_content(r.b, r.at, endpos, 16, 1); r.at = endpos; return true end/'
 # kind 12's content rule: ill-formed text refuses the load
 plant text_ill_formed_refuses \
 	's/(local function utf8_ok\(b: buffer, at: number, n: number\): boolean\n)/$1\tif true then return true end -- PLANTED: the kind 12 content rule is gone\n/'
 # the key scan's foreign key kind refuses (the later-widening reset it once
 # guarded is a repeated key under the strict read, refused either way)
 plant map_key_foreign_kind \
-	's/report\.kindMismatch = report\.kindMismatch \+ 1\n(\t+)landed = \{\}/landed = {}/'
+	's/report\.kindMismatch = report\.kindMismatch \+ 1; noteField\("kindMismatch", mapName\)\n(\t+)landed = \{\}/landed = {}/'

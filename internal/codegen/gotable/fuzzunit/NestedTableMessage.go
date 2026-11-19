@@ -123,7 +123,7 @@ func tableMessageBodyArchiveConfig(r *TableMessageReader, value *ArchiveConfig, 
 		switch entry.ID {
 		case 0xa354fd1ff0c467c5:
 			{
-				exact := ownBuild && entry.ownSlot == 1
+				exact := ownBuild && entry.OwnSlot == 1
 				if exact {
 					if order >= 0 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -156,7 +156,7 @@ func tableMessageBodyArchiveConfig(r *TableMessageReader, value *ArchiveConfig, 
 			}
 		case 0xb1e5e28e4479a274:
 			{
-				exact := ownBuild && entry.ownSlot == 2
+				exact := ownBuild && entry.OwnSlot == 2
 				if exact {
 					if order >= 1 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")

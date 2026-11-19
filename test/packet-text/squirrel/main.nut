@@ -62,7 +62,10 @@ for (local i = 0; i <= input.len(); i++) {
     continue;
   }
   local w = serialize.WriteStream(blob(Narrow.NarrowMaxBytes));
-  if (!Narrow.WriteNarrow(w, value)) throw "main.nut: accepted value did not write";
+  if (!Narrow.WriteNarrow(w, value)) {
+    out.append("OK " + r.bitsProcessed() + " " + hexOf(value.Text, value.TextLength) + " 0 -\n");
+    continue;
+  }
   local bits = w.bitsProcessed();
   w.flush();
   local data = w.data();

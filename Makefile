@@ -2367,8 +2367,8 @@ tables-flat-wire: build/tables-generated/.stamp bin/schema test/tables/flatwire_
 .PHONY: tables-flat-wire-negative-control
 tables-flat-wire-negative-control: bin/schema test/tables/flatwire_main.cpp
 	@mkdir -p build/flatwire
-	@sed -e 's|if ( !TableNumberingAppend( numbering, node ) ) { return false; }\\n")|if ( !%sNumber( ctx, numbering, *pointee ) ) { return false; } // SABOTAGED\\n", t)|' \
-	     -e 's|if ( !%sNumber( ctx, numbering, \*pointee ) ) { return false; }\\n", t)|if ( !TableNumberingAppend( numbering, node ) ) { return false; }\\n")|' \
+	@sed -e 's|for ( int64_t i = before, j = numbering.work_count - 1; i < j; i++, j-- )|for ( int64_t i = before, j = numbering.work_count - 1; false \&\& i < j; i++, j-- ) // SABOTAGED|' \
+	     -e 's|for ( int64_t i = first, j = numbering.work_count - 1; i < j; i++, j-- )|for ( int64_t i = first, j = numbering.work_count - 1; false \&\& i < j; i++, j-- ) // SABOTAGED|' \
 		internal/codegen/cpptable/pointers.go > build/pointers-postorder.gotext
 	@cmp -s build/pointers-postorder.gotext internal/codegen/cpptable/pointers.go && \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
@@ -3293,7 +3293,9 @@ tables-hostile-values: build/schema_test_hostile build/schema_test_hostile_asan 
 .PHONY: tables-hostile-negative-control
 tables-hostile-negative-control: tables-hostile-values
 	@mkdir -p build
-	@sed "s/in.text\[in.pos\] == '-' {/in.text[in.pos] == '-' || in.text[in.pos] == '+' { \/\/ SABOTAGED/" \
+	@sed -e "s/in.text\[in.pos\] == '-' {/in.text[in.pos] == '-' || in.text[in.pos] == '+' { \/\/ SABOTAGED/" \
+	     -e "s/text\[i\] == '-' {/text[i] == '-' || text[i] == '+' {/" \
+	     -e "s/if i < len(token) && token\[i\] == '-' {/if i < len(token) \&\& token[i] == '+' { i++ } else if i < len(token) \&\& token[i] == '-' {/" \
 		internal/tabletext/read.go > build/read-sabotaged.gotext
 	@cmp -s build/read-sabotaged.gotext internal/tabletext/read.go && \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
@@ -3829,7 +3831,16 @@ endef
 
 .PHONY: tables-maps-builder-cap-negative-control
 tables-maps-builder-cap-negative-control: bin/schema build/tables-generated/.stamp
-	$(call map_negative_control,builder-cap,'s@fill.refused = nodes.carve->worker != NULL;@fill.refused = false;@',internal/codegen/cpptable/maps.go,a builder count refusal became damage without turning the map gate red)
+	@mkdir -p build && sed 's@if ( count > 0x7FFFFFFFull ) { s.refusal = count_over_extent_cap; return false; }@if ( count > 0x7FFFFFFFull ) { return true; } // SABOTAGED@' internal/codegen/cpptable/strictwalk.go > build/map-builder-cap-strictwalk.gotext
+	@sed 's@fill.refused = nodes.carve->worker != NULL;@fill.refused = false;@' internal/codegen/cpptable/maps.go > build/map-builder-cap.gotext
+	@cmp -s build/map-builder-cap.gotext internal/codegen/cpptable/maps.go && { echo "NEGATIVE CONTROL FAILED: the builder-cap sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/maps.go":"%s/build/map-builder-cap.gotext","%s/internal/codegen/cpptable/strictwalk.go":"%s/build/map-builder-cap-strictwalk.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > build/map-builder-cap-overlay.json
+	@go build -overlay=build/map-builder-cap-overlay.json -o build/schema-map-builder-cap ./cmd/schema
+	@rm -rf build/tables-map-builder-cap && mkdir -p build/tables-map-builder-cap
+	@./build/schema-map-builder-cap generate --lang cpp --out build/tables-map-builder-cap/maps tables/maps
+	@$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-map-builder-cap/maps -Itest/tables test/tables/maps_main.cpp build/tables-map-builder-cap/maps/*Table.cpp -o build/schema_test_maps_builder-cap
+	@if ./build/schema_test_maps_builder-cap > build/map-builder-cap.log 2>&1; then echo "NEGATIVE CONTROL FAILED: a builder count refusal became damage without turning the map gate red"; exit 1; fi
+	@grep -q "^FAIL test/tables/maps_main.cpp" build/map-builder-cap.log || { echo "NEGATIVE CONTROL FAILED: the gate went red, but not on a CHECK"; cat build/map-builder-cap.log; exit 1; }
 	@grep -Fq '!report.damaged' build/map-builder-cap.log
 	go run ./tools/sabotage -name map-builder-count-oracle -out build/map-builder-oracle.gotext internal/tablewire/decode.go
 	@printf '{"Replace":{"%s/internal/tablewire/decode.go":"%s/build/map-builder-oracle.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/map-builder-oracle.json
@@ -3924,7 +3935,16 @@ tables-maps-fit-negative-control: bin/schema build/tables-generated/.stamp
 # the L check.
 .PHONY: tables-maps-cap-negative-control
 tables-maps-cap-negative-control: bin/schema build/tables-generated/.stamp
-	$(call map_negative_control,cap,'/reason = count_over_extent_cap;/$(comma)/return false;/ s@return false;@(void) 0; // SABOTAGED@',internal/codegen/cpptable/maps.go,an N past the int32 cap left the map gate GREEN)
+	@mkdir -p build && sed 's@if ( count > 0x7FFFFFFFull ) { s.refusal = count_over_extent_cap; return false; }@if ( count > 0x7FFFFFFFull ) { return true; } // SABOTAGED@' internal/codegen/cpptable/strictwalk.go > build/map-cap-strictwalk.gotext
+	@sed '/reason = count_over_extent_cap;/,/return false;/ s@return false;@(void) 0; // SABOTAGED@' internal/codegen/cpptable/maps.go > build/map-cap.gotext
+	@cmp -s build/map-cap.gotext internal/codegen/cpptable/maps.go && { echo "NEGATIVE CONTROL FAILED: the cap sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/maps.go":"%s/build/map-cap.gotext","%s/internal/codegen/cpptable/strictwalk.go":"%s/build/map-cap-strictwalk.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > build/map-cap-overlay.json
+	@go build -overlay=build/map-cap-overlay.json -o build/schema-map-cap ./cmd/schema
+	@rm -rf build/tables-map-cap && mkdir -p build/tables-map-cap
+	@./build/schema-map-cap generate --lang cpp --out build/tables-map-cap/maps tables/maps
+	@$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-map-cap/maps -Itest/tables test/tables/maps_main.cpp build/tables-map-cap/maps/*Table.cpp -o build/schema_test_maps_cap
+	@if ./build/schema_test_maps_cap > build/map-cap.log 2>&1; then echo "NEGATIVE CONTROL FAILED: an N past the int32 cap left the map gate GREEN"; exit 1; fi
+	@grep -q "^FAIL test/tables/maps_main.cpp" build/map-cap.log || { echo "NEGATIVE CONTROL FAILED: the gate went red, but not on a CHECK"; cat build/map-cap.log; exit 1; }
 
 # LOADMEASURE OVER A MAP OF MAPS, summed at ONE DEPTH only. The instance whose
 # value is itself a map meets it, and the measure goes red against the region
@@ -4393,7 +4413,17 @@ tables-lists-walk-order-negative-control: bin/schema build/tables-generated/.sta
 # resolution go red. The sabotage reaches a fresh map entry per visit.
 .PHONY: tables-lists-shared-negative-control
 tables-lists-shared-negative-control: bin/schema build/tables-generated/.stamp
-	$(call list_negative_control,shared,'s@const TablePackEntry \* entry = TablePackMapReach( seen, (const void \*) pointee, 0, taken, slot );@const TablePackEntry * entry = TablePackMapReach( seen, (const void *) pointee, 0, taken, slot ); taken = true; // SABOTAGED@',internal/codegen/cpptable/pointers.go,writing a shared node twice left the list gate GREEN)
+	@mkdir -p build
+	@sed 's@(int64_t) ( numbering.count + 2 ), taken, slot ); // its index, at its first visit@(int64_t) ( numbering.count + 2 ), taken, slot ); taken = true; // SABOTAGED@' internal/codegen/cpptable/pointers.go > build/list-shared.gotext
+	@cmp -s build/list-shared.gotext internal/codegen/cpptable/pointers.go && { echo "NEGATIVE CONTROL FAILED: the shared sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/pointers.go":"%s/build/list-shared.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/list-shared-overlay.json
+	@go build -overlay=build/list-shared-overlay.json -o build/schema-list-shared ./cmd/schema
+	@rm -rf build/tables-list-shared && mkdir -p build/tables-list-shared
+	@./build/schema-list-shared generate --lang cpp --out build/tables-list-shared/lists tables/lists
+	@$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-list-shared/lists -Itest/tables test/tables/lists_main.cpp build/tables-list-shared/lists/*Table.cpp -o build/schema_test_lists_shared
+	@if ./build/schema_test_lists_shared > build/list-shared.log 2>&1; then echo "NEGATIVE CONTROL FAILED: writing a shared node twice left the list gate GREEN"; exit 1; fi
+	@grep -q "^FAIL" build/list-shared.log || { echo "NEGATIVE CONTROL FAILED: the gate went red, but not on a CHECK"; cat build/list-shared.log; exit 1; }
+	@echo "negative control: shared turns the LIST GATE red: $$(grep -c '^FAIL' build/list-shared.log) failures"
 
 # THE READER CLAMPS THE COUNT against something: the 100,000-element row
 # meets it, and the decoded count goes red. The sabotage clamps at 2^16.
@@ -4419,7 +4449,16 @@ tables-lists-depth-negative-control: bin/schema build/tables-generated/.stamp
 # refusals battery goes red on the reason.
 .PHONY: tables-lists-fit-negative-control
 tables-lists-fit-negative-control: bin/schema build/tables-generated/.stamp
-	$(call list_negative_control,fit,'s@^    if ( n > (uint64_t) ( rest / elem_floor ) )$$@    if ( n > (uint64_t) ( rest / elem_floor ) \&\& false ) // SABOTAGED@',internal/codegen/cpptable/lists.go,an N the list L cannot carry left the list gate GREEN)
+	@mkdir -p build && sed -e 's@for ( uint64_t i = 0; i < count; i++ )@for ( uint64_t i = 0; false \&\& i < count; i++ )@' -e 's@return r.offset == r.size;@return true; // SABOTAGED@' internal/codegen/cpptable/strictwalk.go > build/list-fit-strictwalk.gotext
+	@sed 's@^    if ( n > (uint64_t) ( rest / elem_floor ) )$$@    if ( n > (uint64_t) ( rest / elem_floor ) \&\& false ) // SABOTAGED@' internal/codegen/cpptable/lists.go > build/list-fit.gotext
+	@cmp -s build/list-fit.gotext internal/codegen/cpptable/lists.go && { echo "NEGATIVE CONTROL FAILED: the fit sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/lists.go":"%s/build/list-fit.gotext","%s/internal/codegen/cpptable/strictwalk.go":"%s/build/list-fit-strictwalk.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > build/list-fit-overlay.json
+	@go build -overlay=build/list-fit-overlay.json -o build/schema-list-fit ./cmd/schema
+	@rm -rf build/tables-list-fit && mkdir -p build/tables-list-fit
+	@./build/schema-list-fit generate --lang cpp --out build/tables-list-fit/lists tables/lists
+	@$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-list-fit/lists -Itest/tables test/tables/lists_main.cpp build/tables-list-fit/lists/*Table.cpp -o build/schema_test_lists_fit
+	@if ./build/schema_test_lists_fit > build/list-fit.log 2>&1; then echo "NEGATIVE CONTROL FAILED: an N the list L cannot carry left the list gate GREEN"; exit 1; fi
+	@grep -q "^FAIL test/tables/lists_main.cpp" build/list-fit.log || { echo "NEGATIVE CONTROL FAILED: the gate went red, but not on a CHECK"; cat build/list-fit.log; exit 1; }
 
 # AN UNREACHED NON-EMPTY LIST SLOT IS REFUSED by Cook and by Lock: the `Deck`
 # instance whose counted array holds a list PAST ITS LIVE COUNT meets it.
@@ -5556,7 +5595,8 @@ CPP_DISCARD_NC := build/cpp-discard-nc
 .PHONY: tables-cpp-discard-negative-control
 tables-cpp-discard-negative-control:
 	@rm -rf $(CPP_DISCARD_NC) && mkdir -p $(CPP_DISCARD_NC)
-	@sed -e 's|if ( to->damaged )\\n    {\\n        %\[1\]sReset( value );\\n        return TableOpenDamaged;|if ( false )\\n    {\\n        %[1]sReset( value );\\n        return TableOpenDamaged; // NEGATIVE CONTROL: the discard is gone|' \
+	@sed -e 's|if ( !TableStrictWalk( buffer + 1, body_bytes, table, to ) )|if ( false \&\& !TableStrictWalk( buffer + 1, body_bytes, table, to ) )|' \
+	     -e 's|if ( to->damaged )\\n    {\\n        %\[1\]sReset( value );\\n        return TableOpenDamaged;|if ( to->damaged )\\n    {\\n        to->damaged = false;\\n        return TableOpenBodyStopped; // %[1]s NEGATIVE CONTROL: the discard is gone|' \
 		internal/codegen/cpptable/codecs.go > $(CPP_DISCARD_NC)/codecs.go.txt
 	@cmp -s internal/codegen/cpptable/codecs.go $(CPP_DISCARD_NC)/codecs.go.txt && \
 		{ echo "NEGATIVE CONTROL: the C++ discard sabotage patched nothing"; exit 1; } || true
@@ -5581,7 +5621,9 @@ CPP_REGION_DISCARD_NC := build/cpp-region-discard-nc
 .PHONY: tables-cpp-region-discard-negative-control
 tables-cpp-region-discard-negative-control:
 	@rm -rf $(CPP_REGION_DISCARD_NC) && mkdir -p $(CPP_REGION_DISCARD_NC)
-	@sed -e '/damage discards the whole load/ { /TableRetainReset/! s|if ( out->damaged )|if ( false )|; }' \
+	@sed -e 's|if ( !TableStrictWalk( wire_file + 1, body_bytes, ids_table, &ignored ) )|if ( false \&\& !TableStrictWalk( wire_file + 1, body_bytes, ids_table, \&ignored ) )|' \
+	     -e 's|if ( !TableStrictWalk( wire_file + 1, body_bytes, ids_table, out ) ) { return NULL; }|if ( false ) { return NULL; }|' \
+	     -e '/damage discards the whole load/ { /TableRetainReset/! s|if ( out->damaged )|if ( out->damaged ) { out->damaged = false; return NULL; } else if ( false )|; }' \
 		internal/codegen/cpptable/pointers.go > $(CPP_REGION_DISCARD_NC)/pointers.go.txt
 	@cmp -s internal/codegen/cpptable/pointers.go $(CPP_REGION_DISCARD_NC)/pointers.go.txt && \
 		{ echo "NEGATIVE CONTROL: the C++ region discard sabotage patched nothing"; exit 1; } || true
@@ -5704,7 +5746,8 @@ TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR := build/tables-cpp-builder-disc
 .PHONY: tables-cpp-builder-discard-negative-control
 tables-cpp-builder-discard-negative-control:
 	@rm -rf $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR) && mkdir -p $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)
-	@sed -e 's#if ( out->damaged || !ok ) { %sReset( \*root ); }#if ( false ) { %sReset( *root ); } // NEGATIVE CONTROL: the reset is gone#' \
+	@sed -e 's#if ( !TableStrictWalk( wire_file + 1, body_bytes, ids_table, out ) ) { return false; }#if ( false ) { return false; }#' \
+		-e 's#if ( out->damaged || !ok ) { %sReset( \*root ); }#if ( false ) { %sReset( *root ); } // NEGATIVE CONTROL: the reset is gone#' \
 		-e 's#if ( refused_root != NULL ) { %sReset( \*refused_root ); }#if ( false ) { %sReset( *refused_root ); } // NEGATIVE CONTROL: the reset is gone#' \
 		internal/codegen/cpptable/pointers.go > $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/copy.go.txt
 	@cmp -s internal/codegen/cpptable/pointers.go $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/copy.go.txt && \
@@ -5729,7 +5772,8 @@ TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR := build/tables-cpp-retain-refusa
 .PHONY: tables-cpp-retain-refusal-negative-control
 tables-cpp-retain-refusal-negative-control:
 	@rm -rf $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR) && mkdir -p $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)
-	@sed -e '/if ( TableNonFiniteRefused/ s|        TableRetainReset( retain, nodes, region );\\n||' \
+	@sed -e 's|if ( !TableStrictWalk( wire_file + 1, body_bytes, ids_table, out ) ) { return NULL; }|if ( false ) { return NULL; }|' \
+		-e '/if ( TableNonFiniteRefused/ s|        TableRetainReset( retain, nodes, region );\\n||' \
 		internal/codegen/cpptable/pointers.go > $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/copy.go.txt
 	@cmp -s internal/codegen/cpptable/pointers.go $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/copy.go.txt && \
 		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; } || true
@@ -7981,7 +8025,7 @@ build/tables-main-be-smoke.cpp: test/tables/main.cpp
 
 build/tables-main-be-control.cpp: test/tables/main.cpp
 	@mkdir -p build
-	@awk '/^#include / && !/^#include (<|"TablesTable\.h"|"wirebuilder\.h")/ { next } /^static const (jsonkeys|tblv1)::TableFieldInfo/,/^}/ { next } NR < 150 || (NR >= 3115 && NR <= 3211) || (NR >= 3279 && NR <= 3321) { print }' test/tables/main.cpp > $@
+	@awk 'BEGIN { pre = 1 } /^static void test_round_trip\(/ { pre = 0 } pre { if (/^#include / && !/^#include (<|"TablesTable\.h"|"wirebuilder\.h")/) next; if (/^static const (jsonkeys|tblv1)::TableFieldInfo/) { skip = 1 } if (skip) { if (/^}/) skip = 0; next } print; next } /^static void pin_table_golden\(/,/^}/ { print; next } /^static uint8_t golden_(pinned|again)/ { print; next } /^static int64_t read_table_golden\(/,/^}/ { print; next } /^template <typename T, typename Report>/,/^}/ { print; next } /^static void build_golden_root\(/,/^}/ { print; next }' test/tables/main.cpp > $@
 	@printf 'int main() { static uint8_t b[65536]; static tabledemo::RootConfig r; build_golden_root( r ); int64_t w = tabledemo::RootConfigSave( r, b, sizeof( b ) ); CHECK( w > 0 && w == tabledemo::RootConfigMeasure( r ) ); pin_table_golden( "root_full", b, w ); reload_table_golden( "root_full", tabledemo::RootConfigLoad, tabledemo::RootConfigSave ); return failures > 0 ? 1 : 0; }\n' >> $@
 
 build/schema_test_tables_be_full: build/tables-generated/.stamp test/tables/main.cpp test/tables/message_form.h

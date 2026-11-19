@@ -17,7 +17,7 @@ mkdir -p "$control"
 # keep every type declaration and every table helper the table files name.
 table_types() {
     awk '
-        /^        public static bool (Write|Read)[A-Za-z0-9_]+\(/ { skip = 1 }
+        /^        (public|private) static bool (Write|Read)[A-Za-z0-9_]+\(/ { skip = 1 }
         skip && /^        }$/ { skip = 0; next }
         skip { next }
         /^using Serialize;$/ { next }

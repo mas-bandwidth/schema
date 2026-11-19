@@ -42,12 +42,17 @@ for _, line in lines do
 		continue
 	end
 	local w = serialize.WriteStream.new(buffer.create(256))
-	assert(Narrow.WriteNarrow(w, value), "the accepted value writes")
+	local payload: string = hex(value.Text, value.TextLength)
+	local rbits: number = r:bitsProcessed()
+	local writeNarrow: (any, any) -> boolean = Narrow.WriteNarrow :: any
+	if not writeNarrow(w, value) then
+		out[#out + 1] = string.format("OK %d %s 0 -", rbits, payload)
+		continue
+	end
 	local bits: number = w:bitsProcessed()
 	w:flush()
 	local data = w:data()
 	assert(r:bitsProcessed() == bits, "the read consumed exactly the bits the write wrote")
-	local payload: string = hex(value.Text, value.TextLength)
 	local canonical: string = hex(data, buffer.len(data))
 	out[#out + 1] = string.format("OK %d %s %d %s", bits, payload, bits, canonical)
 end

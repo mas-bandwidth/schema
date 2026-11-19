@@ -656,6 +656,33 @@ type TableMessageShape struct {
 	QCount        uint32
 }
 
+// An entry keeps its matching own encoded-entry slot, if any, and in the
+// caller's storage the first slot for its id and the body-read duplicate marks.
+type TableMessageEntry struct {
+	ID                             uint64
+	Shape, Element                 TableMessageShape
+	OwnSlot, bodyFirst, bodySeenAt uint64
+	bodySeenBelow                  [2]uint64
+}
+
+// Storage belongs to the caller and is resolved once for one connection direction.
+type TableVocabulary struct {
+	Entries            []TableMessageEntry
+	Count, RefBits     int64
+	BuildVersion       uint64
+	Announced, Refused bool
+	MaxBytes           int64
+	Strict             bool
+	bodyClock          uint64
+}
+
+type TableMessageReader struct {
+	Bits       TableBitReader
+	Vocabulary *TableVocabulary
+	Report     TableReport
+	IndexBits  int64
+}
+
 const TableFixedForm uint8 = 3
 
 const TableFixedHeaderBytes = 16
@@ -1855,6 +1882,89 @@ func TableMessageBits(n uint64) int64 {
 	return count
 }
 
+func (v *TableVocabulary) Init(storage []TableMessageEntry) {
+	*v = TableVocabulary{Entries: storage, MaxBytes: 64 * 1024}
+}
+
+// A FIELD ID TWICE IN ONE BODY IS DAMAGE (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3), and the
+// check is one test of the entry, in the caller's storage, whatever the
+// vocabulary's size. Each body read takes the next tick of the vocabulary's
+// clock and keeps it in starts[depth], an array the generated read declares
+// at the unit's deepest nesting. An entry keeps the tick of its last naming
+// (above eight bits holding that body's level, so the binary bound's deepest
+// body fits) and a bit for each shallower level whose body had named it, in
+// two words so every level below the binary bound has one: a level's mark
+// still stands when that level's open body began at or before the last naming,
+// and the levels whose bodies were opened since are dropped as the entry is
+// named again. Two slots announcing one id are one entry, the first.
+func TableMessageSeenOpen(v *TableVocabulary, starts []uint64, depth int) {
+	v.bodyClock++
+	starts[depth] = v.bodyClock
+}
+
+func TableMessageSeenFirst(v *TableVocabulary) {
+	for i := range v.Count {
+		for j := range i {
+			if v.Entries[j].ID == v.Entries[i].ID {
+				v.Entries[i].bodyFirst = uint64(j + 1)
+				break
+			}
+		}
+	}
+}
+
+func TableMessageSeenRepeat(v *TableVocabulary, starts []uint64, depth int, ref uint64) bool {
+	e := &v.Entries[ref-1]
+	if e.bodyFirst != 0 {
+		e = &v.Entries[e.bodyFirst-1]
+	}
+	at, last := e.bodySeenAt>>8, int(e.bodySeenAt&255)
+	if starts[depth] <= at {
+		if last == depth || depth < 128 && e.bodySeenBelow[depth>>6]>>uint(depth&63)&1 != 0 {
+			return true
+		}
+		if depth < 64 {
+			e.bodySeenBelow[0] &= 1<<uint(depth) - 1
+			e.bodySeenBelow[1] = 0
+		} else if depth < 128 {
+			e.bodySeenBelow[1] &= 1<<uint(depth-64) - 1
+		}
+	} else {
+		kept, hi := 0, depth
+		for kept < hi {
+			mid := (kept + hi) / 2
+			if starts[mid] <= at {
+				kept = mid + 1
+			} else {
+				hi = mid
+			}
+		}
+		if last < kept {
+			e.bodySeenBelow[last>>6] |= 1 << uint(last&63)
+		}
+		if kept < 64 {
+			e.bodySeenBelow[0] &= 1<<uint(kept) - 1
+			e.bodySeenBelow[1] = 0
+		} else if kept < 128 {
+			e.bodySeenBelow[1] &= 1<<uint(kept-64) - 1
+		}
+	}
+	e.bodySeenAt = v.bodyClock<<8 | uint64(depth)
+	return false
+}
+
+func (v *TableVocabulary) Entry(ref uint64) (TableMessageEntry, bool) {
+	if ref == 0 || ref > uint64(v.Count) {
+		return TableMessageEntry{}, false
+	}
+	return v.Entries[ref-1], true
+}
+
+func (v *TableVocabulary) Name(ref uint64) (uint64, bool) {
+	e, ok := v.Entry(ref)
+	return e.ID, ok && e.Shape.Kind == 0 && e.ID < 0xfffffffffffffffd
+}
+
 func TableMessageRefuse(r *TableReport, reason string) bool {
 	r.Verdict = TableOpenRefused
 	r.FixedRaised = false
@@ -1906,6 +2016,140 @@ func TableMessageKindBits(k uint8) int64 {
 func TableMessageCount(r *TableBitReader, s TableMessageShape) (uint64, bool) {
 	raw, ok := r.Get(TableMessageBits(uint64(s.Max - s.Min)))
 	return raw + uint64(s.Min), ok
+}
+
+func TableMessageSkip(r *TableBitReader, v *TableVocabulary, indexBits int64, e TableMessageEntry, depth int) bool {
+	if depth > 128 {
+		return false
+	}
+	s := e.Shape
+	switch s.Kind {
+	case 0, 32:
+		return true
+	case 30:
+		ref, ok := r.Get(v.RefBits)
+		if !ok || ref == 0 {
+			return ok
+		}
+		_, ok = v.Name(ref)
+		return ok
+	case 13:
+		return TableMessageSkipBody(r, v, indexBits, depth+1)
+	case 17:
+		return indexBits > 0 && r.Skip(indexBits)
+	case 15:
+		ref, ok := r.Get(v.RefBits)
+		if !ok || ref == 0 {
+			return ok
+		}
+		arm, ok := v.Entry(ref)
+		return ok && arm.ID < 0xfffffffffffffffd && arm.Shape.Kind != 0 && TableMessageSkip(r, v, indexBits, arm, depth+1)
+	case 12:
+		n, ok := TableMessageCount(r, s)
+		if !ok || n > uint64(s.Max) || !r.Align() {
+			return false
+		}
+		start := r.Offset / 8
+		if !r.Skip(int64(n) * 8) {
+			return false
+		}
+		return TableUTF8Valid(r.Buffer[start : start+int64(n)])
+	case 31:
+		if !r.Align() {
+			return false
+		}
+		n, ok := r.Get(32)
+		return ok && r.Skip(int64(n)*8)
+	case 14, 16:
+		n, ok := TableMessageCount(r, s)
+		if !ok || n > uint64(s.Max) {
+			return false
+		}
+		if s.Kind == 14 && e.Element.Kind == 6 && !r.Align() {
+			return false
+		}
+		if s.Kind == 14 && (e.Element.Bits >= 0 && e.Element.Kind != 10 && e.Element.Kind != 11 || e.Element.Kind == 0 || e.Element.Kind == 32) {
+			width := max(e.Element.Bits, int64(0))
+			return r.Skip(int64(n) * width)
+		}
+		if s.Kind == 16 {
+			var seen [64]uint64
+			keys := seen[:0]
+			for range n {
+				ref, ok := r.Get(v.RefBits)
+				if !ok {
+					return false
+				}
+				id, ok := v.Name(ref)
+				if !ok {
+					return false
+				}
+				if slices.Contains(keys, id) {
+					return false
+				}
+				keys = append(keys, id)
+				if !TableMessageSkip(r, v, indexBits, TableMessageEntry{Shape: e.Element}, depth+1) {
+					return false
+				}
+			}
+			return true
+		}
+		for range n {
+			before := r.Offset
+			if !TableMessageSkip(r, v, indexBits, TableMessageEntry{Shape: e.Element}, depth+1) || r.Offset == before {
+				return false
+			}
+		}
+		return true
+	case 10:
+		if s.Packing == 2 {
+			index, ok := r.Get(s.Bits)
+			return ok && index <= uint64(s.QCount)
+		}
+		raw, ok := r.Get(32)
+		if !ok {
+			return false
+		}
+		f := math.Float32frombits(uint32(raw))
+		return f == f && !math.IsInf(float64(f), 0)
+	case 11:
+		raw, ok := r.Get(64)
+		if !ok {
+			return false
+		}
+		f := math.Float64frombits(raw)
+		return !math.IsNaN(f) && !math.IsInf(f, 0)
+	}
+	return s.Bits >= 0 && r.Skip(s.Bits)
+}
+
+// Framing scans follow announced shapes; typed body reads diagnose reserved ids.
+func TableMessageSkipBody(r *TableBitReader, v *TableVocabulary, indexBits int64, depth int) bool {
+	if depth > 128 {
+		return false
+	}
+	var seen [64]uint64
+	ids := seen[:0]
+	for {
+		ref, ok := r.Get(v.RefBits)
+		if !ok {
+			return false
+		}
+		if ref == 0 {
+			return true
+		}
+		e, ok := v.Entry(ref)
+		if !ok || e.ID >= 0xfffffffffffffffd {
+			return false
+		}
+		if slices.Contains(ids, e.ID) {
+			return false
+		}
+		ids = append(ids, e.ID)
+		if !TableMessageSkip(r, v, indexBits, e, depth) {
+			return false
+		}
+	}
 }
 
 // Numeric values are reconstructed at the announced storage width. Typed
@@ -2039,5 +2283,36 @@ func TableMessageWriteScalar(w *TableBitWriter, over *int32, s TableMessageShape
 	}
 }
 
+func TableMessageBatchOpen(v *TableVocabulary, data []byte, report *TableReport) (TableMessageReader, int64) {
+	r := TableMessageReader{Vocabulary: v, Report: *report}
+	defer func() { *report = r.Report }()
+	if len(data) == 0 {
+		r.Report.Refuse(TableRefuseWireDamaged, "")
+		return r, -1
+	}
+	if data[0] != 2 {
+		TableMessageRefuse(&r.Report, "newer_form")
+		return r, -1
+	}
+	if v == nil || !v.Announced {
+		TableMessageRefuse(&r.Report, "no_vocabulary")
+		return r, -1
+	}
+	if len(data) < 2 {
+		r.Report.Refuse(TableRefuseWireDamaged, "")
+		return r, -1
+	}
+	r.Bits.Buffer = data[2:]
+	return r, int64(data[1]) + 1
+}
+
+func TableMessageBatchClose(r *TableMessageReader) bool {
+	if !r.Bits.Align() || r.Bits.Offset != int64(len(r.Bits.Buffer))*8 {
+		r.Report.Refuse(TableRefuseWireDamaged, "")
+		return false
+	}
+	return true
+}
+
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0xb70483de78b8ab22
+const Version uint64 = 0x451b2a6ebea850ac

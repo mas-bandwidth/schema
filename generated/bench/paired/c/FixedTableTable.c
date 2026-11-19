@@ -1711,7 +1711,7 @@ static SCHEMA_UNUSED int bench_table_json_skipped_ampersand( bench_table_json_in
    the object's own keys and never limited by the table's width. Two keys are
    the same key when their DECODED bytes are, so an escape spells the same key
    as the character it names. */
-#define BENCH_K_TABLE_JSON_KEYS_LOCAL 16
+#define BENCH_K_TABLE_JSON_KEYS_LOCAL 64
 
 #ifndef schema_allocate
 #define schema_allocate(bytes) calloc(1,(size_t)(bytes))

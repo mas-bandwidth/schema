@@ -100,7 +100,7 @@ report) want="framing retain retain-save " ; green="wire json-read cook-write" ;
 walk)   want="cook-write json-hostile json-read " ; green="wire json-write" ;;
 framing) want="framing " ; green="wire report" ;;
 cycle)  want="framing " ; green="wire report" ;;
-write)  want="write-refusal write-refusal-fixed write-refusal-message " ; green="wire report write-refusal-json" ;;
+write)  want="write-refusal write-refusal-fixed write-refusal-json write-refusal-message " ; green="wire report" ;;
 esac
 if [ "$red" != "$want" ]; then
     echo "NEGATIVE CONTROL FAILED: the lua $mode sabotage turned [${red}] red; it must turn exactly [${want}] red" >&2

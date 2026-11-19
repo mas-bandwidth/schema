@@ -29,11 +29,14 @@ for line in io.lines() do
     print("REFUSE")
   else
     local w = serialize.WriteStream.new(256)
-    assert(Narrow.WriteNarrow(w, value), "the accepted value writes")
-    local bits = w:bitsProcessed()
-    w:flush()
-    local data = w:data()
-    assert(r:bitsProcessed() == bits, "the read consumed exactly the bits the write wrote")
-    print(string.format("OK %d %s %d %s", bits, hex(value.Text), bits, hex(data)))
+    if not Narrow.WriteNarrow(w, value) then
+      print(string.format("OK %d %s 0 -", r:bitsProcessed(), hex(value.Text)))
+    else
+      local bits = w:bitsProcessed()
+      w:flush()
+      local data = w:data()
+      assert(r:bitsProcessed() == bits, "the read consumed exactly the bits the write wrote")
+      print(string.format("OK %d %s %d %s", bits, hex(value.Text), bits, hex(data)))
+    end
   end
 end

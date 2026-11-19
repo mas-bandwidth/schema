@@ -82,7 +82,16 @@ if [ "$mode" = absent ]; then
     n=$(grep -c "\.absent\.gone')" "$out/test/conformance/dart/main.dart")
     [ "$n" -ge 3 ] || { echo "negative control: the absent writes matched $n sites, want at least 3 — the driver moved" >&2; exit 1; }
     "$dart" compile exe -o "$out/conformance-dart" "$out/test/conformance/dart/main.dart" >/dev/null
-    printf 'dart %s/%s/conformance-dart\n' "$root" "$out" > "$out/drivers.txt"
+    cat > "$out/driver" <<EOF
+#!/bin/sh
+case "\${2:-}" in
+  write-refusal|write-refusal-fixed|write-refusal-message|write-refusal-json)
+    exec "$dart" --enable-asserts "$root/$out/test/conformance/dart/main.dart" "\$@" ;;
+esac
+exec "$root/$out/conformance-dart" "\$@"
+EOF
+    chmod +x "$out/driver"
+    printf 'dart %s/%s/driver\n' "$root" "$out" > "$out/drivers.txt"
     if build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work" > "$out/log" 2>&1; then
         cat "$out/log"
         echo "NEGATIVE CONTROL FAILED: absent (the .absent writes renamed) left dart conformance green" >&2
@@ -144,7 +153,16 @@ fi
 
 cp test/conformance/dart/main.dart "$out/test/conformance/dart/main.dart"
 "$dart" compile exe -o "$out/conformance-dart" "$out/test/conformance/dart/main.dart" >/dev/null
-printf 'dart %s/%s/conformance-dart\n' "$root" "$out" > "$out/drivers.txt"
+cat > "$out/driver" <<EOF
+#!/bin/sh
+case "\${2:-}" in
+  write-refusal|write-refusal-fixed|write-refusal-message|write-refusal-json)
+    exec "$dart" --enable-asserts "$root/$out/test/conformance/dart/main.dart" "\$@" ;;
+esac
+exec "$root/$out/conformance-dart" "\$@"
+EOF
+chmod +x "$out/driver"
+printf 'dart %s/%s/driver\n' "$root" "$out" > "$out/drivers.txt"
 
 # mapheader builds the sabotaged driver only: make/wire-fuzz-release.mk runs the
 # release gate's own runs over it (tables-wire-fuzz-release-negative-control)
@@ -193,7 +211,7 @@ done
 allowed="^  dart / $red[:/ ]"
 [ "$mode" = walk ] && allowed='^  dart / (json-read|cook-write)[:/ ]'
 [ "$mode" = share ] && allowed='^  dart / (json-write[:/ ]|report: w[12]_fleet_as_w[12]:|json-hostile: (pointer-array-shared-label|shared-node-by-label):)'
-[ "$mode" = block ] && allowed='^  dart / forgery: block_pitch: '
+[ "$mode" = block ] && allowed='^  dart / (forgery|block-reason): block_pitch:'
 if grep '^  dart / ' "$out/log" | grep -Ev "$allowed" >/dev/null; then
     cat "$out/log"; exit 1
 fi
@@ -206,8 +224,8 @@ if [ "$mode" = framing ]; then
 fi
 if [ "$mode" = zero ]; then
     rows=$(grep '^  dart / json-hostile' "$out/log" | grep -Eo 'str-zero-escape-[a-z-]+' | sort -u | tr '\n' ' ')
-    if [ "$rows" != "str-zero-escape-map-key str-zero-escape-value " ]; then
-        cat "$out/log"; echo "zero control turned red: '$rows', want exactly the two carried zero rows" >&2; exit 1
+    if [ "$rows" != "str-zero-escape-map-key str-zero-escape-unknown-key str-zero-escape-value " ]; then
+        cat "$out/log"; echo "zero control turned red: '$rows', want exactly the three zero-escape rows" >&2; exit 1
     fi
 fi
 if [ "$mode" = block ]; then

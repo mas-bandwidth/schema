@@ -110,7 +110,7 @@ func tableMessageBodyFixedTable(r *TableMessageReader, value *FixedTable, starts
 		switch entry.ID {
 		case 0x7ce4fd9430e80cea:
 			{
-				exact := ownBuild && entry.ownSlot == 28
+				exact := ownBuild && entry.OwnSlot == 28
 				if exact {
 					if order >= 0 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")

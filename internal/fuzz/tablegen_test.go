@@ -626,7 +626,11 @@ func (u *genUnit) randomValue(b *strings.Builder, r *rand.Rand, f *genField) {
 		default:
 			v = randIntInRange(r, min, max)
 		}
-		fmt.Fprintf(b, "%d", v)
+		if f.Bits > 53 {
+			fmt.Fprintf(b, "\"%d\"", v)
+		} else {
+			fmt.Fprintf(b, "%d", v)
+		}
 	case gUint:
 		min, max, _, _ := uintBounds(f.Bits, f.IMode)
 		var v uint64
@@ -638,7 +642,11 @@ func (u *genUnit) randomValue(b *strings.Builder, r *rand.Rand, f *genField) {
 		default:
 			v = randUintInRange(r, min, max)
 		}
-		fmt.Fprintf(b, "%d", v)
+		if f.Bits > 53 {
+			fmt.Fprintf(b, "\"%d\"", v)
+		} else {
+			fmt.Fprintf(b, "%d", v)
+		}
 	case gFixed, gUFixed:
 		k := drawFixed(r, f.FixedF)
 		if f.FixedF > 0 && k%(uint64(1)<<uint(f.FixedF)) != 0 {
@@ -647,7 +655,11 @@ func (u *genUnit) randomValue(b *strings.Builder, r *rand.Rand, f *genField) {
 			}
 			u.fixedFraction[fixedKey(f)] = true
 		}
-		b.WriteString(fixedText(k, f.FixedF))
+		if f.FixedI+f.FixedF > 53 {
+			fmt.Fprintf(b, "%q", fixedText(k, f.FixedF))
+		} else {
+			b.WriteString(fixedText(k, f.FixedF))
+		}
 	// docs/SPEC.md §4.3 defines the float widths; include both signs at their edges.
 	case gFloat32:
 		switch r.Intn(8) {

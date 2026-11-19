@@ -418,7 +418,8 @@ func (d *bitDecoder) body(inst *tabletext.Instance) bool {
 		// read; a field whose read substituted a value (a deprecated variant)
 		// is not judged. The default refusal needs the sender's default, which
 		// the reader knows only at its own build version and complete entry shape.
-		if exact && !fv.Def.Required && !fv.Def.Type.Optional && substitutedCount(d.fail) == substituted && messageElides(d.m, fv, empty) {
+		quantized := entry.Shape.Packing == ir.TableMessageQuantized || (entry.Shape.Inner != nil && entry.Shape.Inner.Packing == ir.TableMessageQuantized && (fv.Def.Array == ir.ArrayFixed || fv.Count > 0))
+		if exact && !quantized && !fv.Def.Required && !fv.Def.Type.Optional && substitutedCount(d.fail) == substituted && messageElides(d.m, fv, empty) {
 			d.set(&Refusal{Reason: ReasonWireDamaged, Detail: "a field stored at its declared default"})
 			return false
 		}

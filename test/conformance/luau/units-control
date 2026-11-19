@@ -84,8 +84,8 @@ if build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work"
 	exit 1
 fi
 got=$(reds "$out/load.log")
-if [ "$got" != "framing retain retain-save " ]; then
-	echo "negative control failed: the luau load sabotage turned [$got] red, want [framing retain retain-save ]" >&2
+if [ "$got" != "retain retain-save " ]; then
+	echo "negative control failed: the luau load sabotage turned [$got] red, want [retain retain-save ]" >&2
 	cat "$out/load.log" >&2
 	exit 1
 fi

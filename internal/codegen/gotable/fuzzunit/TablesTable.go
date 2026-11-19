@@ -988,7 +988,16 @@ func WeaponConfigReset(value *WeaponConfig) {
 	value.Penetration = 1
 	value.Channel = 0
 	value.Homing = false
-	value.Effect.Type = EffectTypeNone
+	clear((value.Effect).Payload[:])
+	{
+		value := (value.Effect).Buff()
+		BuffReset(&value.Value)
+	}
+	{
+		value := (value.Effect).Debuff()
+		DebuffReset(&value.Value)
+	}
+	(value.Effect).Type = 0
 }
 
 func WeaponConfigMeasureBody(value *WeaponConfig, ids *TableIds) int64 {

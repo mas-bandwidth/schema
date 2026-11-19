@@ -1903,7 +1903,7 @@ type TableMessageShape struct {
 type TableMessageEntry struct {
 	ID                             uint64
 	Shape, Element                 TableMessageShape
-	ownSlot, bodyFirst, bodySeenAt uint64
+	OwnSlot, bodyFirst, bodySeenAt uint64
 	bodySeenBelow                  [2]uint64
 }
 

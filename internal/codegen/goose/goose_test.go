@@ -115,7 +115,7 @@ func TestGooseTypesConstructAtTheirDefaults(t *testing.T) {
     let bulk = NS::NewDefaultBulkChoice();
     check(bulk.First.Data.len == 2 && bulk.First.DataLength == 0, "bytes(2) is a 2-byte array, used length zero");
     check(NS::WeaponMax == 15, "enum Max is the widened extent");
-    check(NS::EnumNameWeapon(NS::WeaponRailgun) == "Railgun" && NS::EnumNameWeapon(14) == "???", "EnumName names a variant, ??? past them");
+    check(NS::EnumNameWeapon(NS::WeaponRailgun) == "Railgun" && NS::EnumNameWeapon(14) == "Quake" && NS::EnumNameWeapon(16) == "???", "EnumName names a variant, ??? past them");
     print("constructed ", n, " bad ", bad);
 }
 `, "NS::", ns+"::"))
