@@ -56,7 +56,13 @@ func rubyReadinessFindings(files map[string]string) []string {
 		add("leg-pins")
 	}
 	certify := files[".github/workflows/certify.yml"]
-	if strings.Count(certify, "      - uses: ./.github/actions/ruby\n") < 4 {
+	// certify.yml runs Ruby in three jobs: the sharded `test` leg (`matrix.shard == 'ruby'`),
+	// `release-gates` (`tables-ruby-release` + `go test -race`), and
+	// `negative-controls-nightly` (`matrix.ruby != ''`). (`inline-gate` runs only
+	// the five compiled inline-budget legs.)
+	if strings.Count(certify, "      - uses: ./.github/actions/ruby\n") < 3 ||
+		!strings.Contains(certify, "      - uses: ./.github/actions/ruby\n        if: matrix.shard == 'ruby'\n") ||
+		!strings.Contains(certify, "      - uses: ./.github/actions/ruby\n        if: matrix.ruby != ''\n") {
 		add("certify-pins")
 	}
 	if !strings.Contains(files["test/conformance/ruby/ci.json"], `"ruby": "pin"`) {
@@ -156,6 +162,9 @@ func TestRubyReadinessNegativeControl(t *testing.T) {
 	}{
 		{"ci-full-pins", ".github/workflows/ci-full.yml", "      - uses: ./.github/actions/ruby\n        if: matrix.ruby != ''\n", ""},
 		{"leg-pins", ".github/workflows/leg.yml", "      - uses: ./.github/actions/ruby\n        if: matrix.ruby != ''\n", ""},
+		{"certify-pins", ".github/workflows/certify.yml", "      - uses: ./.github/actions/ruby\n        if: matrix.shard == 'ruby'\n", ""},
+		{"certify-pins", ".github/workflows/certify.yml", "      - uses: ./.github/actions/ruby\n      # The moo pin", "      # The moo pin"},
+		{"certify-pins", ".github/workflows/certify.yml", "      - uses: ./.github/actions/ruby\n        if: matrix.ruby != ''\n", ""},
 		{"ci-json-pin", "test/conformance/ruby/ci.json", `"ruby": "pin"`, `"ruby": ""`},
 		{"readiness-entry", "test/conformance/nightly-readiness", `"goose", "ruby", "moo"`, `"goose", "moo"`},
 		{"readiness-entry", "test/conformance/nightly-readiness", `harness = "./build/conformance-harness-ruby"`, `harness = "./build/conformance-harness"`},

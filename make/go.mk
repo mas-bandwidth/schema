@@ -580,7 +580,7 @@ FUZZTIME ?= 10m
 FUZZPARALLEL ?= 4
 .PHONY: fuzz-tables-go
 fuzz-tables-go:
-	go test ./internal/fuzz/ -run '^$$' -fuzz '^FuzzTableFrontEnd$$' -fuzztime $(FUZZTIME) -parallel $(FUZZPARALLEL) -timeout 600s
+	go test ./internal/fuzz/ -run '^$$' -fuzz '^FuzzTableFrontEnd$$' -fuzztime $(FUZZTIME) -parallel $(FUZZPARALLEL) -timeout 15m
 
 # FUZZ-GENERATED-READERS-GO: a functional smoke over every generated Go table
 # reader (internal/codegen/gotable/fuzzunit). The targets are listed from the

@@ -79,6 +79,9 @@ func checkCertifyParallelPolicy(certifyYAML, makefile string, registeredLegs []s
 	if strings.Contains(certifyYAML, "macos-latest") {
 		errs = append(errs, "certify.yml still schedules on hosted macos-latest instead of [self-hosted, macOS, ARM64, fleet, schema]")
 	}
+	if !strings.Contains(certifyYAML, "\n  MAKEFLAGS: ''\n") || !strings.Contains(certifyYAML, "unset MAKEFLAGS\n          make toolchain SCHEMA_SKIP_LEGS=\"$OTHER_LEGS\"") {
+		errs = append(errs, "certify.yml must clear MAKEFLAGS (workflow env MAKEFLAGS: '' and unset MAKEFLAGS before leg gates) so runner MAKEFLAGS=-j* cannot race in-place sabotage controls")
+	}
 
 	jobs := yamlJobs(certifyYAML)
 	testJob, ok := jobs["test"]
@@ -281,6 +284,11 @@ func TestCertifyParallelShardsCoverFullMakeTest(t *testing.T) {
 		{
 			name: "hosted macos-latest reintroduced",
 			cf:   strings.Replace(certifyYAML, "[self-hosted, macOS, ARM64, fleet, schema]", "macos-latest", 1),
+			mk:   makefile,
+		},
+		{
+			name: "MAKEFLAGS clear dropped from certify.yml",
+			cf:   strings.Replace(certifyYAML, "\n  MAKEFLAGS: ''\n", "\n", 1),
 			mk:   makefile,
 		},
 	} {
