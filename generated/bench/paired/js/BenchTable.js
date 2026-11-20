@@ -4889,7 +4889,6 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
         lastOrdinal = 9;
         let widened = false;
         if (entry.Shape.Kind !== 14 || entry.Element.Kind !== 13) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
-        const subBefore = r.Report.Unknown + (r.Substituted ?? 0);
         { const [n, ok] = tableMessageCount(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; }
           if (entry.Element.Kind === 6 && !r.Bits.Align()) { r.Report.Damaged = true; return false; }
           let keep = Number(n);
@@ -4918,7 +4917,6 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
         lastOrdinal = 10;
         let widened = false;
         if (entry.Shape.Kind !== 14 || entry.Element.Kind !== 13) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
-        const subBefore = r.Report.Unknown + (r.Substituted ?? 0);
         { const [n, ok] = tableMessageCount(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; }
           if (entry.Element.Kind === 6 && !r.Bits.Align()) { r.Report.Damaged = true; return false; }
           let keep = Number(n);
@@ -4947,7 +4945,6 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
         lastOrdinal = 11;
         let widened = false;
         if (entry.Shape.Kind !== 15 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
-        const subBefore = r.Report.Unknown + (r.Substituted ?? 0);
         { const [ref, ok] = r.Bits.Get(r.RefBits); if (!ok) { r.Report.Damaged = true; return false; }
           if (ref === 0n) { r.Report.Damaged = true; return false; }
           else {
@@ -5297,7 +5294,6 @@ export function FixedTableLoadMessageBody(r, value, elideEmpty) {
         lastOrdinal = 0;
         let widened = false;
         if (entry.Shape.Kind !== 13 || entry.Element.Kind !== 0) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
-        const subBefore = r.Report.Unknown + (r.Substituted ?? 0);
         if (!BenchMixedLoadMessageBody(r, value.value, true)) { return false; }
         if (widened) { r.Report.Widened++; }
         break;

@@ -29,6 +29,7 @@ case ${1:-} in
     tar -cf "$archive" -C "$stage" .
     ;;
   restore)
+    test -r "$archive" || { echo "corpus: Cannot open $archive: missing archive" >&2; exit 1; }
     tar -xf "$archive" -C "$stage"
     test "$(cat "$stage/source")" = "$source_head" || { echo 'corpus: source SHA mismatch' >&2; exit 1; }
     test "$(cat "$stage/runtime")" = "$runtime_pin" || { echo 'corpus: C++ runtime pin mismatch' >&2; exit 1; }

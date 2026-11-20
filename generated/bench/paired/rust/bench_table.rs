@@ -919,7 +919,7 @@ fn variable_record_save(type_id: u64, node: &Rc<dyn Any>, out: &mut Vec<u8>, ids
 
 #[doc(hidden)]
 impl MixedChatEvent {
-    #[allow(dead_code, unused_variables)]
+    #[allow(dead_code, unused_variables, clippy::ptr_arg)]
     pub fn __table_edges(&self, nodes: &TableNodeReader, out: &mut Vec<usize>) {
     }
 
@@ -930,7 +930,7 @@ impl MixedChatEvent {
 
 #[doc(hidden)]
 impl MixedEntity {
-    #[allow(dead_code, unused_variables)]
+    #[allow(dead_code, unused_variables, clippy::ptr_arg)]
     pub fn __table_edges(&self, nodes: &TableNodeReader, out: &mut Vec<usize>) {
     }
 
@@ -941,7 +941,7 @@ impl MixedEntity {
 
 #[doc(hidden)]
 impl MixedHitEvent {
-    #[allow(dead_code, unused_variables)]
+    #[allow(dead_code, unused_variables, clippy::ptr_arg)]
     pub fn __table_edges(&self, nodes: &TableNodeReader, out: &mut Vec<usize>) {
     }
 
@@ -952,7 +952,7 @@ impl MixedHitEvent {
 
 #[doc(hidden)]
 impl MixedPickupEvent {
-    #[allow(dead_code, unused_variables)]
+    #[allow(dead_code, unused_variables, clippy::ptr_arg)]
     pub fn __table_edges(&self, nodes: &TableNodeReader, out: &mut Vec<usize>) {
     }
 
@@ -963,7 +963,7 @@ impl MixedPickupEvent {
 
 #[doc(hidden)]
 impl MixedStat {
-    #[allow(dead_code, unused_variables)]
+    #[allow(dead_code, unused_variables, clippy::ptr_arg)]
     pub fn __table_edges(&self, nodes: &TableNodeReader, out: &mut Vec<usize>) {
     }
 
@@ -993,7 +993,7 @@ fn variable_node_decode(wire: &[u8], ids: &[u64], nodes: &mut TableNodeReader, k
     nodes.retained.extend_from_slice(&sink.bytes);
 }
 
-#[allow(dead_code, unused_variables, clippy::match_single_binding, clippy::single_match)]
+#[allow(dead_code, unused_variables, clippy::match_single_binding, clippy::ptr_arg, clippy::single_match)]
 fn variable_node_edges(type_id: u64, node: &Rc<dyn Any>, nodes: &TableNodeReader, out: &mut Vec<usize>) {
     match type_id {
         _ => {}
@@ -1063,14 +1063,14 @@ pub fn mixed_chat_event_json_write(v: &MixedChatEvent, w: &mut Jw, depth: usize,
     json_newline(&mut w.out, depth + 1);
     json_escape("channel", &mut w.out);
     w.out.push_str(": ");
-    if (v.channel) < 0i32 || (v.channel) > 3i32 { w.refused = true; }
+    if v.channel < 0i32 || v.channel > 3i32 { w.refused = true; }
     w.out.push_str(&v.channel.to_string());
     if sep { w.out.push(','); }
     sep = true;
     json_newline(&mut w.out, depth + 1);
     json_escape("speaker", &mut w.out);
     w.out.push_str(": ");
-    if (v.speaker) > 4095u16 { w.refused = true; }
+    if v.speaker > 4095u16 { w.refused = true; }
     w.out.push_str(&v.speaker.to_string());
     if sep {
         json_newline(&mut w.out, depth);
@@ -1094,70 +1094,70 @@ pub fn mixed_entity_json_write(v: &MixedEntity, w: &mut Jw, depth: usize, label:
     json_newline(&mut w.out, depth + 1);
     json_escape("entity_id", &mut w.out);
     w.out.push_str(": ");
-    if (v.entity_id) > 4095u16 { w.refused = true; }
+    if v.entity_id > 4095u16 { w.refused = true; }
     w.out.push_str(&v.entity_id.to_string());
     if sep { w.out.push(','); }
     sep = true;
     json_newline(&mut w.out, depth + 1);
     json_escape("pos_x", &mut w.out);
     w.out.push_str(": ");
-    if (v.pos_x) < -16383i32 || (v.pos_x) > 16383i32 { w.refused = true; }
+    if v.pos_x < -16383i32 || v.pos_x > 16383i32 { w.refused = true; }
     w.out.push_str(&v.pos_x.to_string());
     if sep { w.out.push(','); }
     sep = true;
     json_newline(&mut w.out, depth + 1);
     json_escape("pos_y", &mut w.out);
     w.out.push_str(": ");
-    if (v.pos_y) < -16383i32 || (v.pos_y) > 16383i32 { w.refused = true; }
+    if v.pos_y < -16383i32 || v.pos_y > 16383i32 { w.refused = true; }
     w.out.push_str(&v.pos_y.to_string());
     if sep { w.out.push(','); }
     sep = true;
     json_newline(&mut w.out, depth + 1);
     json_escape("pos_z", &mut w.out);
     w.out.push_str(": ");
-    if (v.pos_z) < -16383i32 || (v.pos_z) > 16383i32 { w.refused = true; }
+    if v.pos_z < -16383i32 || v.pos_z > 16383i32 { w.refused = true; }
     w.out.push_str(&v.pos_z.to_string());
     if sep { w.out.push(','); }
     sep = true;
     json_newline(&mut w.out, depth + 1);
     json_escape("yaw", &mut w.out);
     w.out.push_str(": ");
-    if (v.yaw) > 511u16 { w.refused = true; }
+    if v.yaw > 511u16 { w.refused = true; }
     w.out.push_str(&v.yaw.to_string());
     if sep { w.out.push(','); }
     sep = true;
     json_newline(&mut w.out, depth + 1);
     json_escape("pitch", &mut w.out);
     w.out.push_str(": ");
-    if (v.pitch) > 511u16 { w.refused = true; }
+    if v.pitch > 511u16 { w.refused = true; }
     w.out.push_str(&v.pitch.to_string());
     if sep { w.out.push(','); }
     sep = true;
     json_newline(&mut w.out, depth + 1);
     json_escape("vel_x", &mut w.out);
     w.out.push_str(": ");
-    if (v.vel_x) < -2048i32 || (v.vel_x) > 2047i32 { w.refused = true; }
+    if v.vel_x < -2048i32 || v.vel_x > 2047i32 { w.refused = true; }
     w.out.push_str(&v.vel_x.to_string());
     if sep { w.out.push(','); }
     sep = true;
     json_newline(&mut w.out, depth + 1);
     json_escape("vel_y", &mut w.out);
     w.out.push_str(": ");
-    if (v.vel_y) < -2048i32 || (v.vel_y) > 2047i32 { w.refused = true; }
+    if v.vel_y < -2048i32 || v.vel_y > 2047i32 { w.refused = true; }
     w.out.push_str(&v.vel_y.to_string());
     if sep { w.out.push(','); }
     sep = true;
     json_newline(&mut w.out, depth + 1);
     json_escape("vel_z", &mut w.out);
     w.out.push_str(": ");
-    if (v.vel_z) < -2048i32 || (v.vel_z) > 2047i32 { w.refused = true; }
+    if v.vel_z < -2048i32 || v.vel_z > 2047i32 { w.refused = true; }
     w.out.push_str(&v.vel_z.to_string());
     if sep { w.out.push(','); }
     sep = true;
     json_newline(&mut w.out, depth + 1);
     json_escape("health", &mut w.out);
     w.out.push_str(": ");
-    if (v.health) < 0i32 || (v.health) > 1000i32 { w.refused = true; }
+    if v.health < 0i32 || v.health > 1000i32 { w.refused = true; }
     w.out.push_str(&v.health.to_string());
     if sep { w.out.push(','); }
     sep = true;
@@ -1222,21 +1222,21 @@ pub fn mixed_hit_event_json_write(v: &MixedHitEvent, w: &mut Jw, depth: usize, l
     json_newline(&mut w.out, depth + 1);
     json_escape("target_id", &mut w.out);
     w.out.push_str(": ");
-    if (v.target_id) > 4095u16 { w.refused = true; }
+    if v.target_id > 4095u16 { w.refused = true; }
     w.out.push_str(&v.target_id.to_string());
     if sep { w.out.push(','); }
     sep = true;
     json_newline(&mut w.out, depth + 1);
     json_escape("damage", &mut w.out);
     w.out.push_str(": ");
-    if (v.damage) < 0i32 || (v.damage) > 4095i32 { w.refused = true; }
+    if v.damage < 0i32 || v.damage > 4095i32 { w.refused = true; }
     w.out.push_str(&v.damage.to_string());
     if sep { w.out.push(','); }
     sep = true;
     json_newline(&mut w.out, depth + 1);
     json_escape("hit_kind", &mut w.out);
     w.out.push_str(": ");
-    if (v.hit_kind) < 0i32 || (v.hit_kind) > 7i32 { w.refused = true; }
+    if v.hit_kind < 0i32 || v.hit_kind > 7i32 { w.refused = true; }
     w.out.push_str(&v.hit_kind.to_string());
     if sep { w.out.push(','); }
     sep = true;
@@ -1266,14 +1266,14 @@ pub fn mixed_pickup_event_json_write(v: &MixedPickupEvent, w: &mut Jw, depth: us
     json_newline(&mut w.out, depth + 1);
     json_escape("item_id", &mut w.out);
     w.out.push_str(": ");
-    if (v.item_id) > 1023u16 { w.refused = true; }
+    if v.item_id > 1023u16 { w.refused = true; }
     w.out.push_str(&v.item_id.to_string());
     if sep { w.out.push(','); }
     sep = true;
     json_newline(&mut w.out, depth + 1);
     json_escape("amount", &mut w.out);
     w.out.push_str(": ");
-    if (v.amount) < 0i32 || (v.amount) > 255i32 { w.refused = true; }
+    if v.amount < 0i32 || v.amount > 255i32 { w.refused = true; }
     w.out.push_str(&v.amount.to_string());
     if sep {
         json_newline(&mut w.out, depth);
@@ -1303,7 +1303,7 @@ pub fn mixed_stat_json_write(v: &MixedStat, w: &mut Jw, depth: usize, label: u64
     json_newline(&mut w.out, depth + 1);
     json_escape("delta", &mut w.out);
     w.out.push_str(": ");
-    if (v.delta) < -512i32 || (v.delta) > 511i32 { w.refused = true; }
+    if v.delta < -512i32 || v.delta > 511i32 { w.refused = true; }
     w.out.push_str(&v.delta.to_string());
     if sep {
         json_newline(&mut w.out, depth);

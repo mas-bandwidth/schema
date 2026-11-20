@@ -593,7 +593,7 @@ static SCHEMA_UNUSED int graphdemo_table_skip_value( graphdemo_table_reader_t * 
 static SCHEMA_UNUSED int64_t graphdemo_table_skip_body( graphdemo_table_reader_t r, int64_t nodes, int depth, int root );
 static SCHEMA_UNUSED int graphdemo_table_skip_array( graphdemo_table_reader_t * sub, int keyed, int64_t nodes, int depth );
 /* A successfully read payload must claim its whole frame. During the
-   wire-only ID prepass, preserve this framing failure for LoadMeasure too;
+   wire-only ID prepass, preserve this framing failure for the measure pass too;
    semantic failures that stopped the walk earlier still take their own path. */
 static SCHEMA_UNUSED int graphdemo_table_skip_whole( graphdemo_table_reader_t sub, const graphdemo_table_reader_t * read )
 {

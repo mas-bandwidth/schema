@@ -1275,7 +1275,11 @@ func (g *gen) emitTextWriteValue(b *strings.Builder, f *ir.Field, x, d, ind stri
 // emitTextWriteOne emits the writer of ONE value of the field.
 func (g *gen) emitTextWriteOne(b *strings.Builder, f *ir.Field, x, d, ind string) {
 	if f.IsTextList() {
-		g.emitTextWriteValue(b, ir.TextListValue(f), x+".value", d, ind)
+		base := x
+		if strings.HasPrefix(base, "(*") && strings.HasSuffix(base, ")") {
+			base = base[2 : len(base)-1]
+		}
+		g.emitTextWriteValue(b, ir.TextListValue(f), base+".value", d, ind)
 		return
 	}
 	if f.Type.Timestamp {
@@ -1447,14 +1451,18 @@ func emitTextScalarRangeRefuse(f *ir.Field, x, ind string) string {
 		localMin = new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), uint(bits-1)))
 		localMax = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits-1)), big.NewInt(1))
 	}
+	ux := unparen(x)
 	canLow, canHigh := rlo.Cmp(localMin) > 0, rhi.Cmp(localMax) < 0
 	switch {
 	case canLow && canHigh:
-		return fmt.Sprintf("%sif (%s) < %s%s || (%s) > %s%s { w.refused = true; }\n", ind, x, rlo.String(), t, x, rhi.String(), t)
+		if !strings.ContainsAny(ux, ".[*") {
+			return fmt.Sprintf("%sif !(%s%s..=%s%s).contains(&%s) { w.refused = true; }\n", ind, rlo.String(), t, rhi.String(), t, ux)
+		}
+		return fmt.Sprintf("%sif %s < %s%s || %s > %s%s { w.refused = true; }\n", ind, ux, rlo.String(), t, ux, rhi.String(), t)
 	case canLow:
-		return fmt.Sprintf("%sif (%s) < %s%s { w.refused = true; }\n", ind, x, rlo.String(), t)
+		return fmt.Sprintf("%sif %s < %s%s { w.refused = true; }\n", ind, ux, rlo.String(), t)
 	case canHigh:
-		return fmt.Sprintf("%sif (%s) > %s%s { w.refused = true; }\n", ind, x, rhi.String(), t)
+		return fmt.Sprintf("%sif %s > %s%s { w.refused = true; }\n", ind, ux, rhi.String(), t)
 	}
 	return ""
 }

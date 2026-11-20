@@ -684,11 +684,15 @@ func (g *gen) scalarSaveRefusal(f *ir.Field, x, ind string) string {
 		minBits, maxBits, _ := storageLimits(f)
 		var conds []string
 		low, high := lo.Cmp(minBits) > 0, hi.Cmp(maxBits) < 0
-		if low {
-			conds = append(conds, fmt.Sprintf("%s >= %s", x, lo.String()))
-		}
-		if high {
-			conds = append(conds, fmt.Sprintf("%s <= %s", x, hi.String()))
+		if low && high && !strings.ContainsAny(x, ".[*") {
+			conds = append(conds, fmt.Sprintf("(%s..=%s).contains(&%s)", lo.String(), hi.String(), x))
+		} else {
+			if low {
+				conds = append(conds, fmt.Sprintf("%s >= %s", x, lo.String()))
+			}
+			if high {
+				conds = append(conds, fmt.Sprintf("%s <= %s", x, hi.String()))
+			}
 		}
 		if len(conds) == 0 {
 			return ""
@@ -1587,7 +1591,7 @@ func (g *gen) emitVariableDispatch(b *strings.Builder, names []string) {
 	fmt.Fprintf(b, "    nodes.retained.extend_from_slice(&sink.bytes);\n")
 	fmt.Fprintf(b, "}\n\n")
 
-	fmt.Fprintf(b, "#[allow(dead_code, unused_variables, clippy::match_single_binding, clippy::single_match)]\n")
+	fmt.Fprintf(b, "#[allow(dead_code, unused_variables, clippy::match_single_binding, clippy::ptr_arg, clippy::single_match)]\n")
 	fmt.Fprintf(b, "fn variable_node_edges(type_id: u64, node: &Rc<dyn Any>, nodes: &TableNodeReader, out: &mut Vec<usize>) {\n")
 	fmt.Fprintf(b, "    match type_id {\n")
 	for _, st := range targets {
@@ -1640,7 +1644,7 @@ func (g *gen) emitVariableDispatch(b *strings.Builder, names []string) {
 func (g *gen) emitVariableEdgesAndLink(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "#[doc(hidden)]\n")
 	fmt.Fprintf(b, "impl %s {\n", st.Name)
-	fmt.Fprintf(b, "    #[allow(dead_code, unused_variables)]\n")
+	fmt.Fprintf(b, "    #[allow(dead_code, unused_variables, clippy::ptr_arg)]\n")
 	fmt.Fprintf(b, "    pub fn __table_edges(&self, nodes: &TableNodeReader, out: &mut Vec<usize>) {\n")
 	for _, f := range st.Fields {
 		g.emitFieldEdges(b, f)
@@ -1736,7 +1740,7 @@ func (g *gen) emitFieldLink(b *strings.Builder, f *ir.Field) {
 func (g *gen) emitUnionEdgesAndLink(b *strings.Builder, un *ir.Union) {
 	fmt.Fprintf(b, "#[doc(hidden)]\n")
 	fmt.Fprintf(b, "impl %s {\n", un.Name)
-	fmt.Fprintf(b, "    #[allow(dead_code, unused_variables, clippy::match_single_binding, clippy::single_match)]\n")
+	fmt.Fprintf(b, "    #[allow(dead_code, unused_variables, clippy::match_single_binding, clippy::ptr_arg, clippy::single_match)]\n")
 	fmt.Fprintf(b, "    pub fn __table_edges(&self, nodes: &TableNodeReader, out: &mut Vec<usize>) {\n")
 	fmt.Fprintf(b, "        match self {\n")
 	for _, v := range un.Variants {
@@ -1755,7 +1759,7 @@ func (g *gen) emitUnionEdgesAndLink(b *strings.Builder, un *ir.Union) {
 		}
 		switch classOf(v.F) {
 		case vPointer:
-			fmt.Fprintf(b, "            %s::%s(n) => { if let Some(n) = n { nodes.push_edge(Rc::as_ptr(n) as *const () as usize, out); } }\n", un.Name, arm)
+			fmt.Fprintf(b, "            %s::%s(Some(n)) => { nodes.push_edge(Rc::as_ptr(n) as *const () as usize, out); }\n", un.Name, arm)
 		case vTable, vUnion:
 			fmt.Fprintf(b, "            %s::%s(e) => { e.__table_edges(nodes, out); }\n", un.Name, arm)
 		case vMap:
@@ -2300,18 +2304,28 @@ func (g *gen) emitVariableMeasure(b *strings.Builder, st *ir.Struct) {
 	// below the root targets is a node the reader cannot name and commands none,
 	// exactly as tablewire.FileRegionMeasure sizes it.
 	if reached := ir.PointerReachable(st); len(reached) > 0 {
-		fmt.Fprintf(b, "                match ids[tref as usize - 1] {\n")
 		seen := map[uint64]bool{}
+		var uniq []*ir.Struct
 		for _, n := range reached {
 			id := ir.TableWireId(n.WireName())
 			if seen[id] {
 				continue
 			}
 			seen[id] = true
-			fmt.Fprintf(b, "                    0x%016x => { let extra = nested_measure(0x%016x, &wire[off..off + bl as usize], ids, 0); if extra < 0 { return -1; } cur_blob += round(round(%d) + extra); }\n", id, id, ir.RecordLayout(g.unit, n).Size)
+			uniq = append(uniq, n)
 		}
-		fmt.Fprintf(b, "                    _ => {}\n")
-		fmt.Fprintf(b, "                }\n")
+		if len(uniq) == 1 {
+			id := ir.TableWireId(uniq[0].WireName())
+			fmt.Fprintf(b, "                if ids[tref as usize - 1] == 0x%016x { let extra = nested_measure(0x%016x, &wire[off..off + bl as usize], ids, 0); if extra < 0 { return -1; } cur_blob += round(round(%d) + extra); }\n", id, id, ir.RecordLayout(g.unit, uniq[0]).Size)
+		} else {
+			fmt.Fprintf(b, "                match ids[tref as usize - 1] {\n")
+			for _, n := range uniq {
+				id := ir.TableWireId(n.WireName())
+				fmt.Fprintf(b, "                    0x%016x => { let extra = nested_measure(0x%016x, &wire[off..off + bl as usize], ids, 0); if extra < 0 { return -1; } cur_blob += round(round(%d) + extra); }\n", id, id, ir.RecordLayout(g.unit, n).Size)
+			}
+			fmt.Fprintf(b, "                    _ => {}\n")
+			fmt.Fprintf(b, "                }\n")
+		}
 	}
 	fmt.Fprintf(b, "                off += bl as usize;\n")
 	fmt.Fprintf(b, "                recs += 1;\n")

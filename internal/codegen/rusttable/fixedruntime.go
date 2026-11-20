@@ -945,10 +945,7 @@ fn table_fixed_dead_span(
     let w = table_fixed_dead_width(tag_w) as u64;
     let arm = u64::from(tag_at) + w;
     let g = tag_at as usize;
-    let tag = match body.get(g..g + w as usize) {
-        Some(bytes) => table_fixed_tag(bytes),
-        None => return None,
-    };
+    let tag = table_fixed_tag(body.get(g..g + w as usize)?);
     let mut widest = arm;
     let mut taken = arm;
     let mut matched = false;
@@ -1906,17 +1903,16 @@ fn compile_entry(
                 guard_off: goff as u32,
                 guard_count: gcount as u8,
                 op: TableFixedOp::Const,
-                dstsize: if te.children >= 1 && te.children <= 255 {
+                dstsize: if (1..=255).contains(&te.children) {
                     te.children as u8
                 } else {
                     0
                 },
-                sign: if their_tag >= 1 && their_tag <= 8 {
+                sign: if (1..=8).contains(&their_tag) {
                     their_tag as u8
                 } else {
                     1
                 },
-                ..TableFixedEntry::default()
             });
             let mut my_arm = mi + 1;
             for k in 0..me.children as usize {

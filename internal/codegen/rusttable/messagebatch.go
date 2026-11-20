@@ -306,11 +306,16 @@ func (m *msgGen) scalarWriteCheck(f *ir.Field, expr, ind string) {
 		if f.Type.Kind == ir.TFixed {
 			what = f.Name + " raw value out of range"
 		}
-		if lo.Cmp(minBits) > 0 {
-			conds = append(conds, fmt.Sprintf("%s >= %s", x, lo.String()))
-		}
-		if hi.Cmp(maxBits) < 0 {
-			conds = append(conds, fmt.Sprintf("%s <= %s", x, hi.String()))
+		low, high := lo.Cmp(minBits) > 0, hi.Cmp(maxBits) < 0
+		if low && high && !strings.ContainsAny(x, ".[*") {
+			conds = append(conds, fmt.Sprintf("(%s..=%s).contains(&%s)", lo.String(), hi.String(), x))
+		} else {
+			if low {
+				conds = append(conds, fmt.Sprintf("%s >= %s", x, lo.String()))
+			}
+			if high {
+				conds = append(conds, fmt.Sprintf("%s <= %s", x, hi.String()))
+			}
 		}
 		if len(conds) > 0 {
 			m.pf("%sdebug_assert!(%s, \"%s [%s, %s]\");\n", ind, strings.Join(conds, " && "), what, lo.String(), hi.String())
@@ -1309,7 +1314,7 @@ pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &Table
             Some(0) => true,
             Some(reference) => match v.entry(reference).copied() {
                 Some(arm) => arm.id < 0xffff_ffff_ffff_fffd && arm.kind != 0 &&
-                    table_message_skip(r, v, &arm, depth + u32::from(matches!(arm.kind, 13 | 14 | 15 | 16))),
+                    table_message_skip(r, v, &arm, depth + u32::from(matches!(arm.kind, 13..=16))),
                 None => false,
             },
         },

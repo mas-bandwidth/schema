@@ -14,6 +14,10 @@ func init() {
 			new: `g.refuse(ind, fmt.Sprintf("not isInt(%s, 0, 0xFFFFFFFF) --[[ SABOTAGED: bit32.band(%s, 0x7F800000) == 0x7F800000 ]]", val, val),`,
 		},
 		{
+			old: `g.refuse(ind, fmt.Sprintf("%s < 0x%08X or %s > 0x%08X", ordered, key(float32Bits(f.FMin)), ordered, key(float32Bits(f.FMax))), "compressed float range")`,
+			new: `g.refuse(ind, fmt.Sprintf("bit32.band(%s, 0x7F800000) ~= 0x7F800000 and (%s < 0x%08X or %s > 0x%08X)", val, ordered, key(float32Bits(f.FMin)), ordered, key(float32Bits(f.FMax))), "SABOTAGED: non-finite compressed float reaches runtime")`,
+		},
+		{
 			old: `g.refuse(ind, fmt.Sprintf("not serialize.Uint64.is(%s) or bit32.band(%s[2], 0x7FF00000) == 0x7FF00000", val, val),`,
 			new: `g.refuse(ind, fmt.Sprintf("not serialize.Uint64.is(%s) --[[ SABOTAGED: bit32.band(%s[2], 0x7FF00000) == 0x7FF00000 ]]", val, val),`,
 		},

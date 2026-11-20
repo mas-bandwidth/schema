@@ -1430,7 +1430,7 @@ pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &Table
             Some(0) => true,
             Some(reference) => match v.entry(reference).copied() {
                 Some(arm) => arm.id < 0xffff_ffff_ffff_fffd && arm.kind != 0 &&
-                    table_message_skip(r, v, &arm, depth + u32::from(matches!(arm.kind, 13 | 14 | 15 | 16))),
+                    table_message_skip(r, v, &arm, depth + u32::from(matches!(arm.kind, 13..=16))),
                 None => false,
             },
         },

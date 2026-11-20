@@ -54,6 +54,10 @@ build/tables-generated-c/blockhome/FrameBlock.c
 build/tables-generated-c/blockhome/FrameBlock.h
 build/tables-generated-c/blockhome/FrameTable.c
 build/tables-generated-c/blockhome/FrameTable.h
+build/tables-generated-c/cards/CardTable.c
+build/tables-generated-c/cards/CardTable.h
+build/tables-generated-c/cards/CardsView.c
+build/tables-generated-c/cards/CardsView.h
 build/tables-generated-c/cooktorture/CookTortureBlock.c
 build/tables-generated-c/cooktorture/CookTortureBlock.h
 build/tables-generated-c/cooktorture/CookTortureTable.c
