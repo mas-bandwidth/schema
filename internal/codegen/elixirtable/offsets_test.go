@@ -305,10 +305,9 @@ const ordinaryMeter = `defmodule Probe do
 end
 defmodule Meter do
   @calls 2000
-  # the MEDIAN of three fresh-process measurements: one in a few comes in
-  # short by a young generation's worth when a collection boundary falls
-  # badly (measured on OTP 29: 236.3 against a steady 238.055 words per open),
-  # and a single short control reading must not red a reader that matches it
+  # the MEDIAN of three fresh-process measurements, with :erlang.trace_delivered
+  # synchronizing the asynchronous BEAM :garbage_collection stream before the
+  # tracer process answers {:reclaimed, words}
   def report(label, fun) do
     [_, w, _] = Enum.sort([words(fun), words(fun), words(fun)])
     IO.puts("WORDS #{label} #{:erlang.float_to_binary(w, decimals: 3)}")
@@ -320,8 +319,7 @@ defmodule Meter do
         fun.()
         :erlang.garbage_collect()
         live0 = used()
-        reclaimed = traced(fn -> loop(fun, @calls) end)
-        live1 = used()
+        {reclaimed, live1} = traced(fn -> loop(fun, @calls) end)
         send(parent, {:words, self(), reclaimed + (live1 - live0)})
       end)
     receive do
@@ -351,9 +349,14 @@ defmodule Meter do
     after
       :erlang.trace(me, false, [:garbage_collection])
     end
+    live1 = used()
+    ref = :erlang.trace_delivered(me)
+    receive do
+      {:trace_delivered, ^me, ^ref} -> :ok
+    end
     send(tracer, {:reclaimed, me})
     receive do
-      {:reclaimed, words} -> words
+      {:reclaimed, words} -> {words, live1}
     end
   end
   defp collect(sum, before) do

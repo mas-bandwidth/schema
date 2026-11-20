@@ -487,7 +487,7 @@ jobs:
 
           # THE TOUCHED-LANGUAGE EMITTED-CODE CLEAN GATES (lang-clean):
           #   c      — tables-c-zero-cost + tables-c-clean
-          #   elixir — tables-elixir-accessor-descriptor-agreement
+          #   elixir — tables-elixir-accessor-descriptor-agreement + tables-elixir-offsets
           #   js     — tables-js-clean
           #   rust   — tables-rust-clippy
           schema_corpus=no
@@ -792,7 +792,7 @@ jobs:
   # Covers the fast emitted-code checks that previously ran only in Certify or
   # dispatch-only leg-gate:
   #   c      — tables-c-zero-cost + tables-c-clean
-  #   elixir — tables-elixir-accessor-descriptor-agreement
+  #   elixir — tables-elixir-accessor-descriptor-agreement + tables-elixir-offsets
   #   js     — tables-js-clean
   #   rust   — tables-rust-clippy
   lang-clean:
@@ -883,8 +883,9 @@ jobs:
               ;;
             elixir)
               MIX_HOME="$RUNNER_TEMP/.mix" HEX_HOME="$RUNNER_TEMP/.hex" \
-                make -j"$(nproc)" tables-elixir-accessor-descriptor-agreement \
+                make -j"$(nproc)" tables-elixir-accessor-descriptor-agreement tables-elixir-offsets \
                 BEAM_PATH="$(dirname "$(command -v erl)"):$(dirname "$(command -v elixir)")" \
+                ELIXIR_BIN="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" \
                 ELIXIR=elixir ELIXIRC=elixirc MIX=mix \
                 ELIXIRC_STRICT="sh $(pwd)/make/elixir-strict.sh elixirc"
               ;;

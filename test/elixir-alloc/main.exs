@@ -239,9 +239,8 @@ defmodule AllocAudit do
         :erlang.garbage_collect()
         live0 = used()
         {:reductions, r0} = :erlang.process_info(self(), :reductions)
-        reclaimed = traced(fn -> spin(c, ref, @iterations) end)
+        {reclaimed, live1} = traced(fn -> spin(c, ref, @iterations) end)
         {:reductions, r1} = :erlang.process_info(self(), :reductions)
-        live1 = used()
         binary1 = binary_calls()
 
         send(
@@ -286,10 +285,17 @@ defmodule AllocAudit do
       :erlang.trace(me, false, [:garbage_collection])
     end
 
+    live1 = used()
+    ref = :erlang.trace_delivered(me)
+
+    receive do
+      {:trace_delivered, ^me, ^ref} -> :ok
+    end
+
     send(tracer, {:reclaimed, me})
 
     receive do
-      {:reclaimed, words} -> words
+      {:reclaimed, words} -> {words, live1}
     end
   end
 
