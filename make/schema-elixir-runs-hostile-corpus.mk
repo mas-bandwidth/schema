@@ -73,7 +73,7 @@ test-elixir: schema-elixir-runs-hostile-corpus
 schema-elixir-runs-hostile-corpus-negative-control: $(ELIXIR_HOSTILE_BUILD)/ebin/.stamp $(ELIXIR_HOSTILE_BUILD)/packet/.stamp
 	@rm -rf $(ELIXIR_HOSTILE_BUILD)/plant && mkdir -p $(ELIXIR_HOSTILE_BUILD)/plant/generated $(ELIXIR_HOSTILE_BUILD)/plant/ebin
 	@cp -R $(ELIXIR_HOSTILE_BUILD)/generated/* $(ELIXIR_HOSTILE_BUILD)/plant/generated/
-	@sed -i.orig 's|{:ok, Map.merge(defaults(desc), value), report}|{:error, :malformed, report}|' \
+	@sed -i.orig 's|else: {:ok, root, report}|else: {:error, :malformed, report}|' \
 		$(ELIXIR_HOSTILE_BUILD)/plant/generated/*/Table.ex && rm -f $(ELIXIR_HOSTILE_BUILD)/plant/generated/*/Table.ex.orig
 	@if cmp -s $(ELIXIR_HOSTILE_BUILD)/generated/tabledemo/Table.ex $(ELIXIR_HOSTILE_BUILD)/plant/generated/tabledemo/Table.ex; then \
 		echo 'NEGATIVE CONTROL FAILED: the planted reader bug did not apply'; exit 1; fi

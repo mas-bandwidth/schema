@@ -84,7 +84,7 @@ def main():
     for line in Path("test/tables/wire_fuzz_main.cpp").read_text().splitlines():
         if line.startswith('#include "') and '"FeaturesTable.h"' not in line:
             continue
-        if re.match(r"^    (FIXED|NOFILE|VARIABLE|MESSAGE|RETAIN)\(", line) and '"featurewitnesses"' not in line:
+        if re.match(r"^    (FIXED|NOFILE|VARIABLE|MESSAGE5?|RETAIN)\(", line) and '"featurewitnesses"' not in line:
             continue
         lines.append(line)
     driver_source = scratch / "main.cpp"

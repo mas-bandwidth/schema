@@ -35,7 +35,7 @@ conformance-go-cook-write-negative-control: build/conformance-harness build/conf
 	@rm -rf $(COOK_WRITE_NEG) && mkdir -p $(COOK_WRITE_NEG)
 	@src=$$(grep -l 'func (w \*tableCookWriter) value' build/tables-generated-go/examples/*.go | head -n 1); \
 	[ -n "$$src" ] || { echo "NEGATIVE CONTROL FAILED: the generated Go cook runtime was not found"; exit 1; }; \
-	sed 's/if !live {/if false {/' "$$src" > $(COOK_WRITE_NEG)/runtime.go; \
+	sed '/^func (w \*tableCookWriter) field(/,/^}/ s/count = used/_ = used/' "$$src" > $(COOK_WRITE_NEG)/runtime.go; \
 	cmp -s "$$src" $(COOK_WRITE_NEG)/runtime.go && { echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }; \
 	printf '{"Replace":{"%s/%s":"%s/%s"}}\n' "$(CURDIR)" "$$src" "$(CURDIR)" "$(COOK_WRITE_NEG)/runtime.go" > $(COOK_WRITE_NEG)/overlay.json
 	cd test/conformance/go && go build -overlay $(CURDIR)/$(COOK_WRITE_NEG)/overlay.json -o $(CURDIR)/$(COOK_WRITE_NEG)/driver .

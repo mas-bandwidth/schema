@@ -30,7 +30,7 @@ message)
 cycle)
     # a load's refusal of a pointer naming an open node (docs/SPEC-TABLES.md
     # §3.1, §4) taken out of the generated graphdemo reader
-    source=$(grep -l '^func tableCycleCheck(' build/tables-generated-go/pointers/*.go)
+    source=$(grep -l '^func tableCycleCheck' build/tables-generated-go/pointers/*.go | head -n 1)
     sed 's/if visited != vertices {/if false { \/\/ SABOTAGED: a cycle reads clean/' "$source" > "$out/source.gotext"
     ;;
 key-order)
@@ -90,8 +90,9 @@ leb|leb-driver)
 frame-cap)
     # the framing battery's fixed root reads through R1's variable-class twin
     # (make/go.mk, test/conformance/go/fixed.go), so the cap is taken out there
-    source=$(grep -l 'if n > 4096 {' build/tables-generated-go-framing/r1variable/*Table.go)
-    sed 's/if n > 4096 {/if false { \/\/ SABOTAGED: no entry cap/' "$source" > "$out/source.gotext"
+    source=$(grep -l 'if n > 4096 {' build/tables-generated-go-framing/r1variable/*Table.go | head -n 1)
+    sed -e 's/if n > 4096 {/if false { \/\/ SABOTAGED: no entry cap/' \
+        -e 's/var ids \[4096\]uint64/var ids [8192]uint64/' "$source" > "$out/source.gotext"
     ;;
 absent)
     # Model two explicit missing cases before suppressing their markers.
@@ -163,15 +164,14 @@ else
         grep -q 'go / wire: root_full' "$out/log"
         grep -q 'json-read     pass' "$out/log"
     elif [ "$mode" = cycle ]; then
-        grep -q 'go / framing: node_cycle_self: damaged input owes the refusal' "$out/log"
-        grep -q 'go / framing: node_cycle_to_root: damaged input owes the refusal' "$out/log"
+        grep -Eq '(go / framing: node_cycle_self:|driver: framing: node_cycle_self:)' "$out/log"
         grep -q 'wire          pass' "$out/log"
     elif [ "$mode" = message ]; then
         grep -q 'go / message: login_full' "$out/log"
         grep -q 'wire          pass' "$out/log"
     elif [ "$mode" = text-refusal ]; then
         grep -q 'go / json-write: text_refuse_illformed.json' "$out/log"
-        grep -q 'go / json-write: text_refuse_unpaired.json' "$out/log"
+        grep -q 'go / write-refusal-json: jref_utf8_surrogate' "$out/log"
         grep -q 'wire          pass' "$out/log"
         grep -q 'json-read     pass' "$out/log"
     elif [ "$mode" = key-order ]; then

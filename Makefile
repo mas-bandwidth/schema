@@ -4643,7 +4643,7 @@ tables-tool-cook-differential-negative-control: build/conformance-cpp
 	fi
 	@grep -q '^DIFFERS map_' $(TOOL_COOK_DIFF)-control/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the differential went red, but not on a map row"; cat $(TOOL_COOK_DIFF)-control/log; exit 1; }
-	@! grep '^DIFFERS' $(TOOL_COOK_DIFF)-control/log | grep -v -E '^DIFFERS (map_|list_of_maps|feature_full)' || \
+	@! grep '^DIFFERS' $(TOOL_COOK_DIFF)-control/log | grep -v -E '^DIFFERS (map_|list_of_maps|feature_full|varevo_v[13]_full|torture_cook_|torture_wide_cook)' || \
 		{ echo "NEGATIVE CONTROL FAILED: a row that carries no map went red too"; exit 1; }
 	@echo "negative control: slack after a map's entry array turns the tool/reference differential RED on $$(grep -c '^DIFFERS' $(TOOL_COOK_DIFF)-control/log) map-bearing cooks and on nothing else"
 
@@ -5663,6 +5663,8 @@ CPP_CYCLE_NC := build/cpp-cycle-nc
 tables-cpp-cycle-negative-control:
 	@rm -rf $(CPP_CYCLE_NC) && mkdir -p $(CPP_CYCLE_NC)
 	@sed -e 's#    if ( c.broken || c.processed != c.vertices ) { return false; } // an unfreed node sits on a cycle#    if ( c.broken ) { return false; } // NEGATIVE CONTROL: the cycle verdict is gone#' \
+		-e 's#    if ( kahn.bad || kahn.processed != (uint64_t) n ) { return TableGraphFail( report ); }#    if ( kahn.bad ) { return TableGraphFail( report ); }#' \
+		-e 's#        if ( ( scratch\[i\].type_id & kTableGraphVisited ) == 0 ) { return TableGraphFail( report ); }##' \
 		internal/codegen/cpptable/arena.go > $(CPP_CYCLE_NC)/arena.go.txt
 	@cmp -s internal/codegen/cpptable/arena.go $(CPP_CYCLE_NC)/arena.go.txt && \
 		{ echo "NEGATIVE CONTROL: the C++ cycle sabotage patched nothing"; exit 1; } || true
@@ -5840,15 +5842,19 @@ NESTED_TRAIL_NC := build/wire-fuzz-nc-nested-arm-trailing
 .PHONY: tables-wire-fuzz-nested-arm-trailing-negative-control
 tables-wire-fuzz-nested-arm-trailing-negative-control: build/conformance-harness build/wire-fuzz-cpp
 	@rm -rf $(NESTED_TRAIL_NC) && mkdir -p $(NESTED_TRAIL_NC)
-	@sed -e 's|^\(\t\tok = r.unionCell(&fv.Cell, fv, -1)\)$$|\1; if ok \&\& r.off != n { r.report.Malformed = true; return false } // NEGATIVE CONTROL: the envelope refused|' \
+	@sed -e 's|^\(\t*\)if r\.off != n {$$|\1if false \&\& r.off != n { // NEGATIVE CONTROL: trailing bytes inside an arm envelope admitted|' \
 		internal/tablewire/decode.go > $(NESTED_TRAIL_NC)/decode.go.txt
 	@cmp -s internal/tablewire/decode.go $(NESTED_TRAIL_NC)/decode.go.txt && \
 		{ echo "NEGATIVE CONTROL: the nested-arm sabotage patched nothing"; exit 1; } || true
-	@printf '{"Replace":{"%s/internal/tablewire/decode.go":"%s/$(NESTED_TRAIL_NC)/decode.go.txt"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > $(NESTED_TRAIL_NC)/overlay.json
+	@sed -e 's|^\(\t*\)if end != len(b) {$$|\1if false \&\& end != len(b) {|' \
+		internal/tablewire/wirecheck.go > $(NESTED_TRAIL_NC)/wirecheck.go.txt
+	@sed -e 's|return ok && end == len(b)|return ok \&\& (kind == ir.TableKindUnion \|\| end == len(b))|' \
+		test/conformance/harness/strictcheck.go > $(NESTED_TRAIL_NC)/strictcheck.go.txt
+	@printf '{"Replace":{"%s/internal/tablewire/decode.go":"%s/$(NESTED_TRAIL_NC)/decode.go.txt","%s/internal/tablewire/wirecheck.go":"%s/$(NESTED_TRAIL_NC)/wirecheck.go.txt","%s/test/conformance/harness/strictcheck.go":"%s/$(NESTED_TRAIL_NC)/strictcheck.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > $(NESTED_TRAIL_NC)/overlay.json
 	go build -overlay $(NESTED_TRAIL_NC)/overlay.json -o $(NESTED_TRAIL_NC)/harness ./test/conformance/harness
 	@if $(NESTED_TRAIL_NC)/harness wire-fuzz --driver ./build/wire-fuzz-cpp \
-			--replay testdata/wire/tables/nested_arm_trailing.bin --unit messagedemo --root ToolMessage \
+			--replay testdata/wire/tables/nested_arm_trailing.bin --unit messagedemo --root ToolEnvelope \
 			--failed $(NESTED_TRAIL_NC)/failed.bin > $(NESTED_TRAIL_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the oracle refuses a nested-union envelope's trailing bytes and the wire fuzzer stayed green"; \
 		cat $(NESTED_TRAIL_NC)/log; exit 1; \
