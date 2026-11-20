@@ -535,7 +535,7 @@ func (g *gen) cookFieldRow(fl ir.FieldLayout) string {
 		}
 		countOffset = fl.Offset + 8
 	case f.Type.TextUnbounded():
-		storage, elemSize = ":reference", 8
+		storage, elemSize = ":string", 8
 	case f.Type.Pointer:
 		storage, elemSize = ":reference", 8
 		record = g.cookRecordRef(f.Type.Name)
@@ -563,7 +563,7 @@ func (g *gen) cookFieldRow(fl ir.FieldLayout) string {
 	fmt.Fprintf(&b, "        is_array: %v,\n", isArray)
 	fmt.Fprintf(&b, "        array_bound: %s,\n", exInt(arrayBound))
 	// a holder is a span, never a reference, whatever its elements are
-	fmt.Fprintf(&b, "        is_pointer: %v,\n", (f.Type.Pointer || f.Type.TextUnbounded()) && !f.IsList() && !f.IsMap())
+	fmt.Fprintf(&b, "        is_pointer: %v,\n", f.Type.Pointer && !f.IsList() && !f.IsMap())
 	fmt.Fprintf(&b, "        count_offset: %s,\n", exInt(countOffset))
 	fmt.Fprintf(&b, "        present_offset: %s,\n", exInt(presentOffset))
 	fmt.Fprintf(&b, "        storage: %s,\n", storage)

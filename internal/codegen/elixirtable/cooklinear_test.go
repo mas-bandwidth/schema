@@ -29,7 +29,9 @@ table Root
 // step in leaves (8,000, 32,000, 128,000) costs at most 4.6 times the
 // reductions.
 func TestElixirCookWriteCostIsLinearInCookedSize(t *testing.T) {
-	t.Parallel()
+	// Intentionally serial (no t.Parallel): ERTS charges monotonic GC wall time
+	// into :reductions (erl_gc.c), so running before the row's ~88 parallel BEAM
+	// VMs keeps OS scheduler preemption out of the reduction counter.
 	slowtest.Gate(t, "the Elixir toolchain")
 	elixirBin := elixirBinary(t)
 	dir := t.TempDir()
@@ -64,6 +66,11 @@ cost = fn n ->
 
   {pid, ref} =
     spawn_monitor(fn ->
+      :erlang.garbage_collect()
+      {:total_heap_size, th} = :erlang.process_info(self(), :total_heap_size)
+      :erlang.process_flag(:min_heap_size, th + max(div(th, 2), 65_536))
+      :erlang.process_flag(:min_bin_vheap_size, max(th, 1_048_576))
+      :erlang.garbage_collect()
       {:reductions, before} = :erlang.process_info(self(), :reductions)
       result = t.cook_from("Root", v, buffer, :little)
       {:reductions, later} = :erlang.process_info(self(), :reductions)

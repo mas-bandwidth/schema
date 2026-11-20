@@ -1220,18 +1220,21 @@ tables-go-graph-label-negative-control:
 	sh test/go-tables/negative-control graph-label
 test-go: tables-go-graph-label-negative-control
 
-# PER-CASE ABSENT (docs/PORTING.md I4): the Go leg alone, under a substituted
-# registry, answers the cases it cannot carry ABSENT one by one and passes,
-# and the matrix shows it did (`+Na`). Its negative control makes the driver
-# write nothing for such a case, and the harness must go red on the missing
-# answer.
+# PER-CASE ABSENT (docs/PORTING.md I4): the Go leg alone through the harness:
+# every surface is green with zero pending per-case absences (`+Ka` with K > 0).
+# Its negative control models two explicit missing cases (`root_full` on wire,
+# `frame_empty_table` on framing), first proves those `.absent` markers are
+# accepted (`+1a`), and then makes the driver write nothing for them so the
+# harness goes red on the missing answer.
 .PHONY: conformance-go-absent conformance-negative-control-go-absent
 conformance-go-absent: build/conformance-harness build/conformance-go
 	@mkdir -p build/conformance-go-absent
 	@printf 'go test/conformance/go/driver\n' > build/conformance-go-absent/drivers.txt
-	./build/conformance-harness run --drivers build/conformance-go-absent/drivers.txt --work build/conformance-go-absent/work | tee build/conformance-go-absent/log
-	@for s in wire framing; do grep -Eq "^$$s +pass [0-9]+/[0-9]+ \+[1-9][0-9]*a" build/conformance-go-absent/log || \
-		{ echo "PER-CASE ABSENT GATE FAILED: the Go leg's $$s surface answered no case absent, so the grain is not exercised"; exit 1; }; done
+	./build/conformance-harness run --drivers build/conformance-go-absent/drivers.txt --work build/conformance-go-absent/work > build/conformance-go-absent/log 2>&1 || \
+		{ cat build/conformance-go-absent/log; echo "conformance-go-absent: the Go leg is not green"; exit 1; }
+	@! grep -Eq ' pass [0-9]+/[0-9]+ \+[1-9][0-9]*a' build/conformance-go-absent/log || \
+		{ cat build/conformance-go-absent/log; echo "conformance-go-absent: unexpected per-case absence"; exit 1; }
+	@echo "conformance-go-absent: the Go leg is green with no pending per-case absences"
 conformance-negative-control-go-absent: build/conformance-harness build/conformance-go
 	sh test/conformance/go/negative-control absent
 test-go: conformance-go-absent conformance-negative-control-go-absent

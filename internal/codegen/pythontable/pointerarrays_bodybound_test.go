@@ -25,7 +25,11 @@ func TestPythonVtPointerArrayBodyBound(t *testing.T) {
 	if id == 0 {
 		t.Fatal("list_nodes absent")
 	}
-	payload := appendUleb([]byte{17}, 0x7fffffff)
+	// 32M slots (~256 MiB of PyObject* slots): fits int32, trips the 192 MiB
+	// RLIMIT_AS ceiling on Linux before touching memory, and stays bounded on
+	// macOS (where XNU rejects RLIMIT_AS with EINVAL) while tracemalloc catches
+	// the list allocation as MemoryError.
+	payload := appendUleb([]byte{17}, 32<<20)
 	body := appendUleb([]byte{1, 14}, uint64(len(payload)))
 	body = append(body, payload...)
 	body = append(body, 0)
@@ -35,15 +39,26 @@ func TestPythonVtPointerArrayBodyBound(t *testing.T) {
 		t.Fatal(err)
 	}
 	probe := pyrun.ImportPrelude + `import resource
+import sys
+import tracemalloc
 from ptrarr import Root, Refused
-resource.setrlimit(resource.RLIMIT_AS, (192 * 1024 * 1024, 192 * 1024 * 1024))
+if sys.platform != "darwin":
+    resource.setrlimit(resource.RLIMIT_AS, (192 * 1024 * 1024, 192 * 1024 * 1024))
 with open("wire", "rb") as handle:
     data = handle.read()
+tracemalloc.start()
+tracemalloc.reset_peak()
+base = tracemalloc.get_traced_memory()[0]
 try:
     Root.load(data)
 except Refused as err:
+    _, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+    if peak - base > 1024 * 1024:
+        raise MemoryError(f"allocated {peak - base} bytes before refusing")
     assert err.reason == "wire_damaged", err.reason
 else:
+    tracemalloc.stop()
     raise AssertionError("accepted body with too few element bytes")
 print("bounded")
 `

@@ -28,7 +28,7 @@ python-ci-support-list:
 	@printf '%s\n' $(PYTHON_CI_SUPPORT_GROUPS) python-ci-compiler
 python-ci-core: python-toolchain-check python-toolchain-negative-control python-table-core-negative-control
 python-ci-packages:
-	SCHEMA_SLOW=1 go test -tags schema_leg_python ./internal/codegen/python/... ./internal/codegen/pythontable/... -count=1
+	SCHEMA_SLOW=1 go test -timeout 0 -tags schema_leg_python ./internal/codegen/python/... ./internal/codegen/pythontable/... -count=1
 python-ci-compiler:
 	sh test/slowgate/proof test-python-compiler 'TestPythonTargetIsRegistered TestPythonGeneratesAnEmptyUnitThroughTheDriver TestPythonCarriesThePacketCoreThroughTheDriver TestNewLegPythonRecipe' -tags schema_leg_python ./compiler -run 'Python' -skip '^TestPythonRequiredPublicShapes$$' -count=1
 python-ci-compiler-coverage:

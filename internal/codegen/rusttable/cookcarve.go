@@ -133,8 +133,8 @@ func (g *gen) emitCarveField(b *strings.Builder, f *ir.Field, x, base string, of
 	switch {
 	case f.IsMap():
 		if f.Type.Optional {
-			fmt.Fprintf(b, "%sif let Some(xs) = %s {\n", ind, cookRef(x))
-			g.emitCarveMap(b, f, "(*xs)", slot, ind+"    ")
+			fmt.Fprintf(b, "%sif let Some(o) = %s {\n", ind, cookRef(x))
+			g.emitCarveMap(b, f, "(*o)", slot, ind+"    ")
 			fmt.Fprintf(b, "%s} else {\n", ind)
 			layout := ir.RecordLayout(g.unit, f.MapEntry)
 			fmt.Fprintf(b, "%s    let _ = c.place(0, %d, %d); // an absent map still aligns its empty array\n", ind, layout.Size, layout.Align)
@@ -145,8 +145,8 @@ func (g *gen) emitCarveField(b *strings.Builder, f *ir.Field, x, base string, of
 		return
 	case f.IsList():
 		if f.Type.Optional {
-			fmt.Fprintf(b, "%sif let Some(xs) = %s {\n", ind, cookRef(x))
-			g.emitCarveList(b, f, "(*xs)", slot, ind+"    ")
+			fmt.Fprintf(b, "%sif let Some(o) = %s {\n", ind, cookRef(x))
+			g.emitCarveList(b, f, "(*o)", slot, ind+"    ")
 			fmt.Fprintf(b, "%s} else {\n", ind)
 			size, align := ir.ListElementLayout(g.unit, f)
 			fmt.Fprintf(b, "%s    let _ = c.place(0, %d, %d); // an absent list is empty, and its array is still aligned\n", ind, size, align)

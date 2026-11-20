@@ -118,7 +118,11 @@ func (g *gen) emitUnionNumber(b *strings.Builder, f *ir.Field, x string) {
 
 func (g *gen) emitUnionNumberInd(b *strings.Builder, f *ir.Field, x, ind string) {
 	un := unionOf(f)
-	fmt.Fprintf(b, "%smatch %s {\n", ind, borrowOf(x))
+	type armOut struct {
+		pat  string
+		body string
+	}
+	var arms []armOut
 	in := ind + "    "
 	for _, v := range un.Variants {
 		if v.Void() || v.F == nil {
@@ -132,17 +136,19 @@ func (g *gen) emitUnionNumberInd(b *strings.Builder, f *ir.Field, x, ind string)
 				if v.F.Type.Kind == ir.TBytes {
 					bytes = "&b[..]"
 				}
-				fmt.Fprintf(b, "%s%s::%s(es) => { for b in es.iter().flatten() { g.visit_blob(%s, Rc::as_ptr(b) as *const u8 as usize, %s); } }\n", in, un.Name, arm, blobTypeConst(v.F), bytes)
+				arms = append(arms, armOut{fmt.Sprintf("%s::%s(es)", un.Name, arm), fmt.Sprintf("{ for b in es.iter().flatten() { g.visit_blob(%s, Rc::as_ptr(b) as *const u8 as usize, %s); } }", blobTypeConst(v.F), bytes)})
 			case vPointer:
-				fmt.Fprintf(b, "%s%s::%s(es) => { for n in es.iter().flatten() { if g.visit_table(0x%016x, n.clone()) { %s(n, g); } } }\n", in, un.Name, arm, ir.TableWireId(v.F.Type.Ref.(*ir.Struct).WireName()), fn(v.F.Type.Name, "number"))
+				arms = append(arms, armOut{fmt.Sprintf("%s::%s(es)", un.Name, arm), fmt.Sprintf("{ for n in es.iter().flatten() { if g.visit_table(0x%016x, n.clone()) { %s(n, g); } } }", ir.TableWireId(v.F.Type.Ref.(*ir.Struct).WireName()), fn(v.F.Type.Name, "number"))})
 			case vTable:
-				fmt.Fprintf(b, "%s%s::%s(es) => { for e in es.iter() { %s(e, g); } }\n", in, un.Name, arm, fn(v.F.Type.Name, "number"))
+				arms = append(arms, armOut{fmt.Sprintf("%s::%s(es)", un.Name, arm), fmt.Sprintf("{ for e in es.iter() { %s(e, g); } }", fn(v.F.Type.Name, "number"))})
 			case vUnion:
-				fmt.Fprintf(b, "%s%s::%s(es) => { for e in es.iter() {\n", in, un.Name, arm)
-				g.emitUnionNumberInd(b, v.F, "(*e)", in+"    ")
-				fmt.Fprintf(b, "%s} }\n", in)
+				var sub strings.Builder
+				fmt.Fprintf(&sub, "{ for e in es.iter() {\n")
+				g.emitUnionNumberInd(&sub, v.F, "(*e)", in+"    ")
+				fmt.Fprintf(&sub, "%s} }", in)
+				arms = append(arms, armOut{fmt.Sprintf("%s::%s(es)", un.Name, arm), sub.String()})
 			default:
-				fmt.Fprintf(b, "%s%s::%s(_) => {}\n", in, un.Name, arm)
+				arms = append(arms, armOut{fmt.Sprintf("%s::%s(_)", un.Name, arm), "{}"})
 			}
 			continue
 		}
@@ -152,22 +158,34 @@ func (g *gen) emitUnionNumberInd(b *strings.Builder, f *ir.Field, x, ind string)
 			if v.F.Type.Kind == ir.TBytes {
 				bytes = "&b[..]"
 			}
-			fmt.Fprintf(b, "%s%s::%s(b) => { if let Some(b) = b { g.visit_blob(%s, Rc::as_ptr(b) as *const u8 as usize, %s); } }\n", in, un.Name, arm, blobTypeConst(v.F), bytes)
+			arms = append(arms, armOut{fmt.Sprintf("%s::%s(b)", un.Name, arm), fmt.Sprintf("{ if let Some(b) = b { g.visit_blob(%s, Rc::as_ptr(b) as *const u8 as usize, %s); } }", blobTypeConst(v.F), bytes)})
 		case vPointer:
-			fmt.Fprintf(b, "%s%s::%s(n) => { if let Some(n) = n && g.visit_table(0x%016x, n.clone()) { %s(n, g); } }\n", in, un.Name, arm, ir.TableWireId(v.F.Type.Ref.(*ir.Struct).WireName()), fn(v.F.Type.Name, "number"))
+			arms = append(arms, armOut{fmt.Sprintf("%s::%s(n)", un.Name, arm), fmt.Sprintf("{ if let Some(n) = n && g.visit_table(0x%016x, n.clone()) { %s(n, g); } }", ir.TableWireId(v.F.Type.Ref.(*ir.Struct).WireName()), fn(v.F.Type.Name, "number"))})
 		case vTable:
-			fmt.Fprintf(b, "%s%s::%s(e) => { %s(e, g); }\n", in, un.Name, arm, fn(v.F.Type.Name, "number"))
+			arms = append(arms, armOut{fmt.Sprintf("%s::%s(e)", un.Name, arm), fmt.Sprintf("{ %s(e, g); }", fn(v.F.Type.Name, "number"))})
 		case vMap:
-			fmt.Fprintf(b, "%s%s::%s(e) => {\n", in, un.Name, arm)
-			g.emitMapNumberInd(b, v.F, "e", in+"    ")
-			fmt.Fprintf(b, "%s}\n", in)
+			var sub strings.Builder
+			fmt.Fprintf(&sub, "{\n")
+			g.emitMapNumberInd(&sub, v.F, "e", in+"    ")
+			fmt.Fprintf(&sub, "%s}", in)
+			arms = append(arms, armOut{fmt.Sprintf("%s::%s(e)", un.Name, arm), sub.String()})
 		case vUnion:
-			fmt.Fprintf(b, "%s%s::%s(e) => {\n", in, un.Name, arm)
-			g.emitUnionNumberInd(b, v.F, "(*e)", in+"    ")
-			fmt.Fprintf(b, "%s}\n", in)
+			var sub strings.Builder
+			fmt.Fprintf(&sub, "{\n")
+			g.emitUnionNumberInd(&sub, v.F, "(*e)", in+"    ")
+			fmt.Fprintf(&sub, "%s}", in)
+			arms = append(arms, armOut{fmt.Sprintf("%s::%s(e)", un.Name, arm), sub.String()})
 		default:
-			fmt.Fprintf(b, "%s%s::%s(_) => {}\n", in, un.Name, arm)
+			arms = append(arms, armOut{fmt.Sprintf("%s::%s(_)", un.Name, arm), "{}"})
 		}
+	}
+	if len(arms) == 1 && arms[0].body != "{}" {
+		fmt.Fprintf(b, "%sif let %s = %s %s\n", ind, arms[0].pat, borrowOf(x), arms[0].body)
+		return
+	}
+	fmt.Fprintf(b, "%smatch %s {\n", ind, borrowOf(x))
+	for _, a := range arms {
+		fmt.Fprintf(b, "%s%s => %s\n", in, a.pat, a.body)
 	}
 	fmt.Fprintf(b, "%s_ => {}\n", in)
 	fmt.Fprintf(b, "%s}\n", ind)
@@ -864,6 +882,8 @@ func (g *gen) emitMapLoad(b *strings.Builder, f *ir.Field, ordinal int, field, i
 		if keyField.Type.Signed {
 			if keyField.Type.Width == 128 {
 				castExpr = "raw as i128"
+			} else if keyField.Type.Width == 64 {
+				castExpr = "raw as i64"
 			} else {
 				castExpr = fmt.Sprintf("(raw as i64) as %s", scalarRust(keyField))
 			}
@@ -966,8 +986,7 @@ func (g *gen) emitArmDecode(b *strings.Builder, un *ir.Union, v ir.UnionVariant,
 	want := armWireKind(v)
 	if !v.Void() && !v.Body() && v.F.Array == ir.ArrayNone && classOf(v.F) == vScalar {
 		f := v.F
-		fmt.Fprintf(b, "%sif %s != %d && !table_kind_widens(%s, %d) { report.damaged = true; %s = %s::None; }\n", ind, akind, want, akind, want, field, un.Name)
-		fmt.Fprintf(b, "%selse if (%s - *off) != table_kind_width(%s) { report.damaged = true; %s = %s::None; }\n", ind, aend, akind, field, un.Name)
+		fmt.Fprintf(b, "%sif (%s != %d && !table_kind_widens(%s, %d)) || (%s - *off) != table_kind_width(%s) { report.damaged = true; %s = %s::None; }\n", ind, akind, want, akind, want, aend, akind, field, un.Name)
 		fmt.Fprintf(b, "%selse {\n", ind)
 		in := ind + "    "
 		fmt.Fprintf(b, "%sif %s != %d { report.widened += 1; }\n", in, akind, want)
@@ -977,12 +996,12 @@ func (g *gen) emitArmDecode(b *strings.Builder, un *ir.Union, v ir.UnionVariant,
 		fmt.Fprintf(b, "%s}\n", ind)
 		return
 	}
-	fmt.Fprintf(b, "%sif %s != %d { report.damaged = true; %s = %s::None; }\n", ind, akind, want, field, un.Name)
 	if v.Void() {
-		fmt.Fprintf(b, "%selse if *off != %s { report.damaged = true; %s = %s::None; }\n", ind, aend, field, un.Name)
+		fmt.Fprintf(b, "%sif %s != %d || *off != %s { report.damaged = true; %s = %s::None; }\n", ind, akind, want, aend, field, un.Name)
 		fmt.Fprintf(b, "%selse { %s = %s::%s; }\n", ind, field, un.Name, rustVariant(v.Name))
 		return
 	}
+	fmt.Fprintf(b, "%sif %s != %d { report.damaged = true; %s = %s::None; }\n", ind, akind, want, field, un.Name)
 	fmt.Fprintf(b, "%selse {\n", ind)
 	in := ind + "    "
 	f := v.F
@@ -1335,7 +1354,7 @@ func (g *gen) emitMapTextWrite(b *strings.Builder, f *ir.Field, x, d, ind string
 	fmt.Fprintf(b, "%sif %s.is_empty() {\n", ind, x)
 	fmt.Fprintf(b, "%s    w.out.push_str(\"{}\");\n", ind)
 	fmt.Fprintf(b, "%s} else {\n", ind)
-	fmt.Fprintf(b, "%s    let map_val = &%s;\n", ind, x)
+	fmt.Fprintf(b, "%s    let map_val = %s;\n", ind, borrowOf(x))
 	fmt.Fprintf(b, "%s    let mut order: Vec<usize> = (0..map_val.len()).collect();\n", ind)
 	fmt.Fprintf(b, "%s    order.sort_by(|&a, &b| %s);\n", ind, mapKeyOrd(f, "map_val[a]."+key, "map_val[b]."+key))
 	fmt.Fprintf(b, "%s    w.out.push('{');\n", ind)
@@ -1391,7 +1410,7 @@ func (g *gen) emitMapTextRead(b *strings.Builder, f *ir.Field, field, ind string
 		fmt.Fprintf(b, "%s    let key_ok = match json_integer_literal(ks.as_bytes(), %v) {\n", in, key.Type.Signed)
 		fmt.Fprintf(b, "%s        Some(raw) => {\n", in)
 		fmt.Fprintf(b, "%s            let x = raw as i128;\n", in)
-		fmt.Fprintf(b, "%s            if x < %si128 || x > %si128 { jr.damaged = true; false } else { %s.%s = x as %s; true }\n", in, lo, hi, ent, keyName, scalarRust(key))
+		fmt.Fprintf(b, "%s            if !(%si128..=%si128).contains(&x) { jr.damaged = true; false } else { %s.%s = x as %s; true }\n", in, lo, hi, ent, keyName, scalarRust(key))
 		fmt.Fprintf(b, "%s        }\n", in)
 		fmt.Fprintf(b, "%s        None => { jr.damaged = true; false }\n", in)
 		fmt.Fprintf(b, "%s    };\n", in)

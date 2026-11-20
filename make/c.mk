@@ -1588,7 +1588,7 @@ CLANG_FORMAT_PIN   ?= 23.1.3
 CLANG_FORMAT_MAJOR := $(firstword $(subst ., ,$(CLANG_FORMAT_PIN)))
 C_FORMAT_TREES     := build/tables-generated-c generated/c generated/c-ludicrous generated/bench/c generated/bench/tables/c generated/bench/paired/c
 .PHONY: tables-c-clean
-tables-c-clean: build/tables-generated-c/.stamp generated/c/.stamp generated/c-ludicrous/.stamp generated/bench/c/.stamp generated/bench/tables/c/.stamp generated/bench/paired/c/.stamp
+tables-c-clean: build/tables-generated-c/.stamp cards-c-generate generated/c/.stamp generated/c-ludicrous/.stamp generated/bench/c/.stamp generated/bench/tables/c/.stamp generated/bench/paired/c/.stamp
 	@if ! command -v $(CLANG_FORMAT) >/dev/null 2>&1; then \
 		if [ "$(SCHEMA_REQUIRE_CLANG_FORMAT)" = 1 ]; then echo "tables-c-clean: $(CLANG_FORMAT) is not installed and SCHEMA_REQUIRE_CLANG_FORMAT=1"; exit 1; fi; \
 		echo "SKIP tables-c-clean: $(CLANG_FORMAT) is not installed"; exit 0; \

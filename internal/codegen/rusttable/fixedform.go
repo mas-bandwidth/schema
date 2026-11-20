@@ -589,11 +589,15 @@ func (g *gen) fixedScalarWriteCheck(f *ir.Field, expr string, width int64, ind s
 		minBits, maxBits := fixedStorageLimits(width, f.Type.Signed)
 		var conds []string
 		low, high := lo.Cmp(minBits) > 0, hi.Cmp(maxBits) < 0
-		if low {
-			conds = append(conds, fmt.Sprintf("%s >= %s", at, lo.String()))
-		}
-		if high {
-			conds = append(conds, fmt.Sprintf("%s <= %s", at, hi.String()))
+		if low && high && !strings.ContainsAny(at, ".[*") {
+			conds = append(conds, fmt.Sprintf("(%s..=%s).contains(&%s)", lo.String(), hi.String(), at))
+		} else {
+			if low {
+				conds = append(conds, fmt.Sprintf("%s >= %s", at, lo.String()))
+			}
+			if high {
+				conds = append(conds, fmt.Sprintf("%s <= %s", at, hi.String()))
+			}
 		}
 		if len(conds) > 0 {
 			what := f.Name + " out of range"
@@ -983,8 +987,12 @@ func (g *gen) emitFixedDeadPayload(f *ir.Field, base int64, indent int) {
 		g.pf("%s    let count = i32::from_le_bytes(b[%d..%d].try_into().expect(\"four bytes\")).clamp(0, %d) as usize;\n",
 			ind, base, base+4, f.ArrayBound)
 		if f.ArrayBound > 0 {
-			g.pf("%s    if b[%d + count * %d..%d].iter().any(|&x| x != 0) {\n",
-				ind, base+ir.TableFixedCountBytes, elem, base+ir.TableFixedCountBytes+f.ArrayBound*elem)
+			mul := fmt.Sprintf("count * %d", elem)
+			if elem == 1 {
+				mul = "count"
+			}
+			g.pf("%s    if b[%d + %s..%d].iter().any(|&x| x != 0) {\n",
+				ind, base+ir.TableFixedCountBytes, mul, base+ir.TableFixedCountBytes+f.ArrayBound*elem)
 			g.pf("%s        return true;\n%s    }\n", ind, ind)
 			g.pf("%s    for i in 0..count {\n", ind)
 			if _, _, nested := fixedNestedBody(f); nested {
@@ -1132,6 +1140,31 @@ func (g *gen) emitFixedWriteUnion(un *ir.Union) {
 		g.pf("}\n\n")
 		return
 	}
+	payloadArms := 0
+	for _, v := range un.Variants {
+		if v.F != nil {
+			payloadArms++
+		}
+	}
+	if payloadArms == 1 {
+		for i, v := range un.Variants {
+			if v.F == nil {
+				continue
+			}
+			g.pf("    if value.tag == %d {\n", i+1)
+			g.pf("        // SAFETY: THE TAG NAMES THE LIVE ARM — the twin's whole contract,\n")
+			g.pf("        // and the same one the C reference's storage struct carries. The\n")
+			g.pf("        // tag was just matched against `%s`, and the overlay's zero form\n", v.Name)
+			g.pf("        // is a value of every arm — zero is valid for every scalar and\n")
+			g.pf("        // every bool, and a zero self-relative delta is the null\n")
+			g.pf("        // reference — so a Row whose tag was set without its arm reads a\n")
+			g.pf("        // zero payload rather than an invalid one.\n")
+			g.pf("        let arm = unsafe { value.arms.%s };\n", v.Name)
+			g.emitFixedWriteArm(v.F, tagw, "arm", 8)
+			g.pf("    } // None, a payload-free arm, and any tag no arm of this build names: the tag is all of it\n}\n\n")
+		}
+		return
+	}
 	g.pf("    match value.tag {\n")
 	for i, v := range un.Variants {
 		if v.F == nil {
@@ -1235,6 +1268,24 @@ func (g *gen) emitFixedScatterUnion(un *ir.Union) {
 	}
 	if !unionHasPayload(un) {
 		g.pf("}\n\n")
+		return
+	}
+	payloadArms := 0
+	for _, v := range un.Variants {
+		if v.F != nil {
+			payloadArms++
+		}
+	}
+	if payloadArms == 1 {
+		for i, v := range un.Variants {
+			if v.F == nil {
+				continue
+			}
+			g.pf("    if value.tag == %d {\n", i+1)
+			g.emitFixedScatterArm(un, v, tagw, 8)
+			g.pf("        value.arms.%s = arm; // a WRITE of a union field, which is safe\n", v.Name)
+			g.pf("    } // None and payload-free arms: the overlay stays the zeros the default laid down\n}\n\n")
+		}
 		return
 	}
 	g.pf("    match value.tag {\n")
@@ -2399,6 +2450,10 @@ func (g *gen) emitFixedFiniteField(f *ir.Field, expr string, indent int) {
 	ind := strings.Repeat(" ", indent)
 	if f.Type.Optional {
 		// an absent optional's payload is the template's zeros, never read (§3.4)
+		if f.KeyEnum == "" && f.Array == ir.ArrayNone && (f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64) {
+			g.pf("%sif value.%s_present && !%s.is_finite() {\n%s    return %q;\n%s}\n", ind, f.Name, expr, ind, g.floatOwner(f), ind)
+			return
+		}
 		g.pf("%sif value.%s_present {\n", ind, f.Name)
 		g.emitFixedFinitePayload(f, expr, indent+4)
 		g.pf("%s}\n", ind)

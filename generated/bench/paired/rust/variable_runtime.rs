@@ -2017,7 +2017,7 @@ impl TableIdUse<'_> {
                 if reference != 0 {
                     self.reference(reference)?;
                     let arm_kind = *bytes.get(*at)?; *at += 1;
-                    let structural = matches!(arm_kind, 13 | 14 | 15 | 16);
+                    let structural = matches!(arm_kind, 13..=16);
                     if structural && depth >= BINARY_MAX_DEPTH { return None; }
                     self.content(Self::frame(bytes, at)?, arm_kind, depth + usize::from(structural))?;
                 }

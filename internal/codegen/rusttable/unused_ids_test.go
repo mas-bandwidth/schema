@@ -174,7 +174,7 @@ func runUnusedUnionDepth(t *testing.T, plant bool) (string, error) {
 		fmt.Fprintf(&body, "assert_eq!(table_ids_all_used(&[%s], &[0x10,0x20]), %s, \"union-depth-%d\");\n", rustBytes(data), want, depth)
 	}
 	if plant {
-		const from = "matches!(arm_kind, 13 | 14 | 15 | 16)"
+		const from = "matches!(arm_kind, 13..=16)"
 		name := VariableRuntimeModule + ".rs"
 		if strings.Count(string(files[name]), from) != 1 {
 			t.Fatal("missing union structural-depth gate")

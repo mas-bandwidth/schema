@@ -971,17 +971,20 @@ func (g *fixedModule) emitMessageReadField(f *ir.Field, mine ir.TableVocabularyE
 		g.pf("%sif (entry.Shape.Kind !== %d || entry.Element.Kind !== %d) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }\n", ind, mine.Kind, mine.Shape.Elem)
 	}
 	atField := !f.Type.Optional && !f.Required
-	g.pf("%sconst subBefore = r.Report.Unknown + (r.Substituted ?? 0);\n", ind)
-	g.emitMessageReadValue(f, mem, ind, "entry.Shape", !f.Type.Optional)
 	cond := ""
 	if !f.Required {
 		cond = messageStoredDefaultCond(f, mem)
 	}
+	checkFixedRides := cond == "" && atField && f.KeyEnum == "" && f.Array == ir.ArrayFixed && (!isStructRef(f.Type) || f.Type.Pointer)
+	if cond != "" || checkFixedRides {
+		g.pf("%sconst subBefore = r.Report.Unknown + (r.Substituted ?? 0);\n", ind)
+	}
+	g.emitMessageReadValue(f, mem, ind, "entry.Shape", !f.Type.Optional)
 	switch {
 	case cond != "":
 		mineBits := ir.TableMessageValueBits(mine.Kind, mine.Shape)
 		g.pf("%sif (!widened && r.Vocabulary.BuildVersion === %s && entry.Shape.Packing === %d && entry.Shape.Bits === %d && r.Report.Unknown + (r.Substituted ?? 0) === subBefore && (%s)) { r.Report.Damaged = true; return false; }\n", ind, jsId(ir.BuildVersion(g.unit)), mine.Shape.Packing, mineBits, cond)
-	case atField && f.KeyEnum == "" && f.Array == ir.ArrayFixed && (!isStructRef(f.Type) || f.Type.Pointer):
+	case checkFixedRides:
 		rides := g.messageRides(f, mem, ind)
 		g.pf("%sif (!widened && r.Vocabulary.BuildVersion === %s && Number(entry.Shape.Min) === %d && Number(entry.Shape.Max) === %d && entry.Element.Packing !== 2 && r.Report.Unknown + (r.Substituted ?? 0) === subBefore && !(%s)) { r.Report.Damaged = true; return false; }\n", ind, jsId(ir.BuildVersion(g.unit)), mine.Shape.Min, mine.Shape.Max, rides)
 	}
@@ -1103,7 +1106,9 @@ func (g *fixedModule) emitMessageReadArray(f *ir.Field, mem, ind, shape string, 
 		g.pf("%s    if (key === 0) { if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, { Shape: %s }, 0)) { %s; } }\n", ind, elemExpr, bad)
 		g.pf("%s    else {\n", ind)
 		g.pf("%s      const _subSlot = r.Report.Unknown + (r.Substituted ?? 0);\n", ind)
-		g.pf("%s      const _bitsSlot = r.Bits.Offset;\n", ind)
+		if isStructRef(e.Type) {
+			g.pf("%s      const _bitsSlot = r.Bits.Offset;\n", ind)
+		}
 		g.emitMessageReadElement(e, mem+"[key - 1]", ind+"      ", elemExpr)
 		if isStructRef(e.Type) {
 			g.pf("%s      if (_exactKeyed && r.Report.Unknown + (r.Substituted ?? 0) === _subSlot && r.Bits.Offset - _bitsSlot === r.RefBits) { %s; }\n", ind, bad)

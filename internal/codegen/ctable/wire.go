@@ -406,7 +406,7 @@ static SCHEMA_UNUSED int table_skip_value( TableReader * r, uint8_t kind, int64_
 static SCHEMA_UNUSED int64_t table_skip_body( TableReader r, int64_t nodes, int depth, int root );
 static SCHEMA_UNUSED int table_skip_array( TableReader * sub, int keyed, int64_t nodes, int depth );
 /* A successfully read payload must claim its whole frame. During the
-   wire-only ID prepass, preserve this framing failure for LoadMeasure too;
+   wire-only ID prepass, preserve this framing failure for the measure pass too;
    semantic failures that stopped the walk earlier still take their own path. */
 static SCHEMA_UNUSED int table_skip_whole( TableReader sub, const TableReader * read )
 {
