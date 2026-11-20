@@ -189,6 +189,8 @@ jobs:
       packages: ${{ steps.pick.outputs.packages }}
       legs: ${{ steps.pick.outputs.legs }}
       verify_legs: ${{ steps.pick.outputs.verify_legs }}
+      clean_legs: ${{ steps.pick.outputs.clean_legs }}
+      codegen_touched: ${{ steps.pick.outputs.codegen_touched }}
       broad: ${{ steps.pick.outputs.broad }}
       lints: ${{ steps.pick.outputs.lints }}
       rows: ${{ steps.rows.outputs.rows }}
@@ -463,10 +465,45 @@ jobs:
             [ -n "$verify_legs_json" ] || verify_legs_json='[]'
           fi
 
+          # THE GENERATED-TREE DRIFT GATE (generated-current). Runs when the
+          # diff touches codegen, IR, compiler, tables, any .schema file, or
+          # generated/ itself.
+          codegen_touched=no
+          if echo "$files" | grep -qE '^(internal/codegen/|ir/|compiler/|tables/|generated/|test/generated-tree/)|\.schema$'; then
+            codegen_touched=yes
+          fi
+
+          # THE TOUCHED-LANGUAGE EMITTED-CODE CLEAN GATES (lang-clean):
+          #   c      — tables-c-zero-cost + tables-c-clean
+          #   elixir — tables-elixir-accessor-descriptor-agreement
+          #   js     — tables-js-clean
+          #   rust   — tables-rust-clippy
+          schema_corpus=no
+          if [ "$corpus" = yes ] || echo "$files" | grep -qE '^(ir/$|tables/|test/tables/|testdata/conformance/feature-witnesses/)'; then
+            schema_corpus=yes
+          fi
+          clean_legs=""
+          if [ "$schema_corpus" = yes ] || case " $touched_legs " in *" c "*) true ;; *) false ;; esac || echo "$files" | grep -qE '^(make/c-format-allow\.txt$|\.clang-format$)'; then
+            clean_legs="$clean_legs c"
+          fi
+          if [ "$schema_corpus" = yes ] || case " $touched_legs " in *" elixir "*) true ;; *) false ;; esac || echo "$files" | grep -qE '^test/elixir-tables/'; then
+            clean_legs="$clean_legs elixir"
+          fi
+          if [ "$schema_corpus" = yes ] || case " $touched_legs " in *" js "*) true ;; *) false ;; esac || echo "$files" | grep -qE '^eslint\.config\.mjs$'; then
+            clean_legs="$clean_legs js"
+          fi
+          if [ "$schema_corpus" = yes ] || case " $touched_legs " in *" rust "*) true ;; *) false ;; esac; then
+            clean_legs="$clean_legs rust"
+          fi
+          clean_legs_json=$(printf '%s' "$clean_legs" | xargs -n1 2>/dev/null | sort -u | awk 'BEGIN{printf "["} NF{printf "%s\"%s\"", (n++?",":""), $1} END{printf "]"}')
+          [ -n "$clean_legs_json" ] || clean_legs_json='[]'
+
           echo "broad=$broad"               >> "$GITHUB_OUTPUT"
           echo "packages=$packages"         >> "$GITHUB_OUTPUT"
           echo "legs=$json"                 >> "$GITHUB_OUTPUT"
           echo "verify_legs=$verify_legs_json" >> "$GITHUB_OUTPUT"
+          echo "clean_legs=$clean_legs_json"   >> "$GITHUB_OUTPUT"
+          echo "codegen_touched=$codegen_touched" >> "$GITHUB_OUTPUT"
           echo "lints=$lints_json"          >> "$GITHUB_OUTPUT"
           {
             echo "### what this push runs on the fast lane"
@@ -475,6 +512,8 @@ jobs:
             echo "* packages: \`${packages:-(none)}\`"
             echo "* legs: \`$json\`"
             echo "* verify-legs: \`$verify_legs_json\`"
+            echo "* clean-legs: \`$clean_legs_json\`"
+            echo "* codegen-touched: **$codegen_touched**"
             echo "* language lints: \`$lints_json\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -667,6 +706,181 @@ jobs:
           cache: false
       - name: go vet
         run: go vet ./...
+
+  # FAST GOLANGCI-LINT OVER TOUCHED GO PACKAGES (~4-10 s on fleet runners).
+  # Catches gocritic / staticcheck / errcheck / unused issues in touched Go
+  # packages right on the PR instead of waiting for ci-full.yml's lint job.
+  golangci-lint-fast:
+    needs: plan
+    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.packages != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 2
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: golangci-lint (hosted fallback)
+        if: runner.environment == 'github-hosted'
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        env:
+          GOLANGCI_LINT_CACHE: ${{ runner.temp }}/golangci-lint-cache
+        with:
+          version: v2.12.2
+          skip-cache: true
+          args: ${{ needs.plan.outputs.packages }}
+      - name: golangci-lint on touched Go packages
+        if: runner.environment != 'github-hosted'
+        env:
+          PACKAGES: ${{ needs.plan.outputs.packages }}
+        run: |
+          set -euo pipefail
+          if [ -f /opt/nova/sdk/env.sh ]; then
+            . /opt/nova/sdk/env.sh
+          fi
+          export PATH="$HOME/sdk/bin:$PATH"
+          command -v golangci-lint >/dev/null 2>&1 || {
+            echo "TOOL-MISSING: golangci-lint 2.12.2 (not on PATH; the fleet install is ~/sdk/bin/golangci-lint)"
+            exit 1
+          }
+          golangci-lint version 2>/dev/null | grep '2.12.2' >/dev/null || {
+            echo "TOOL-MISSING: golangci-lint 2.12.2 (found: $(golangci-lint version 2>&1 | head -1))"
+            exit 1
+          }
+          # shellcheck disable=SC2086
+          GOLANGCI_LINT_CACHE="$RUNNER_TEMP/golangci-lint-cache" golangci-lint run $PACKAGES
+
+  # FAST GENERATED-TREE DRIFT GATE (~5-12 s, pure Go compiler + diff).
+  # Runs whenever codegen, IR, compiler, tables, .schema, or generated/ paths
+  # change so stale committed generated/ files never reach main.
+  generated-current:
+    needs: plan
+    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.codegen_touched == 'yes' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 2
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: committed generated/ tree matches fresh emission
+        run: make -j"$(nproc)" generated-current
+
+  # TOUCHED-LANGUAGE EMITTED-CODE CLEAN / CLIPPY / ZERO-COST / ACCESSOR GATES.
+  # Covers the fast emitted-code checks that previously ran only in Certify or
+  # dispatch-only leg-gate:
+  #   c      — tables-c-zero-cost + tables-c-clean
+  #   elixir — tables-elixir-accessor-descriptor-agreement
+  #   js     — tables-js-clean
+  #   rust   — tables-rust-clippy
+  lang-clean:
+    needs: plan
+    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.clean_legs != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    name: lang-clean (${{ matrix.lang }})
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 2
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        lang: ${{ fromJSON(needs.plan.outputs.clean_legs) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out the Rust runtime sibling (rust clippy)
+        if: matrix.lang == 'rust'
+        run: |
+          set -euo pipefail
+          cd ..
+          rm -rf serialize.rs
+          git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: matrix.lang == 'js' && runner.environment == 'github-hosted'
+        with:
+          node-version: '26'
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
+        with:
+          components: clippy, rustfmt
+        if: matrix.lang == 'rust' && runner.environment == 'github-hosted'
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        if: matrix.lang == 'elixir' && runner.environment == 'github-hosted'
+        with:
+          otp-version: '29'
+          elixir-version: '1.20'
+      - uses: ./.github/actions/eslint
+        if: matrix.lang == 'js' && runner.environment == 'github-hosted'
+      - name: emitted-code gate (${{ matrix.lang }})
+        env:
+          LANG_ROW: ${{ matrix.lang }}
+        run: |
+          set -euo pipefail
+          if [ -f /opt/nova/sdk/env.sh ]; then
+            . /opt/nova/sdk/env.sh
+          fi
+          if [ -f "$HOME/sdk/env.sh" ]; then
+            . "$HOME/sdk/env.sh"
+          fi
+          export PATH="$HOME/sdk/bin:$PATH"
+          case "$LANG_ROW" in
+            c)
+              pin="$(sed -n 's/^CLANG_FORMAT_PIN *?= *//p' make/c.mk)"
+              major="$(sed -n 's/^CLANG_FORMAT_MAJOR *?= *//p' make/c.mk)"
+              cf=""
+              if command -v clang-format >/dev/null 2>&1 && [ "$(clang-format --version | sed -n 's/.*version \([0-9][0-9]*\)\..*/\1/p')" = "$major" ]; then
+                cf="$(command -v clang-format)"
+              else
+                if python3 -m venv "$RUNNER_TEMP/clang-format" >/dev/null 2>&1; then
+                  "$RUNNER_TEMP/clang-format/bin/pip" install --quiet "clang-format==$pin"
+                else
+                  rm -rf "$RUNNER_TEMP/clang-format"
+                  python3 -m venv --without-pip "$RUNNER_TEMP/clang-format"
+                  python3 -m pip --python "$RUNNER_TEMP/clang-format/bin/python3" install --quiet "clang-format==$pin"
+                fi
+                cf="$RUNNER_TEMP/clang-format/bin/clang-format"
+              fi
+              "$cf" --version
+              make -j"$(nproc)" tables-c-zero-cost tables-c-clean SCHEMA_REQUIRE_CLANG_FORMAT=1 CLANG_FORMAT="$cf"
+              ;;
+            js)
+              if ! command -v eslint >/dev/null 2>&1 || ! eslint --version | grep -qx "v9.39.5"; then
+                prefix="$RUNNER_TEMP/eslint-9.39.5"
+                npm install --no-audit --no-fund --silent --prefix "$prefix" "eslint@9.39.5"
+                export PATH="$prefix/node_modules/.bin:$PATH"
+              fi
+              eslint --version
+              make -j"$(nproc)" tables-js-clean NODE=node ESLINT=eslint
+              ;;
+            rust)
+              make -j"$(nproc)" tables-rust-clippy RUSTUP_BIN="$(dirname "$(command -v cargo)")"
+              ;;
+            elixir)
+              MIX_HOME="$RUNNER_TEMP/.mix" HEX_HOME="$RUNNER_TEMP/.hex" \
+                make -j"$(nproc)" tables-elixir-accessor-descriptor-agreement \
+                BEAM_PATH="$(dirname "$(command -v erl)"):$(dirname "$(command -v elixir)")" \
+                ELIXIR=elixir ELIXIRC=elixirc MIX=mix \
+                ELIXIRC_STRICT="sh $(pwd)/make/elixir-strict.sh elixirc"
+              ;;
+            *)
+              echo "::error::unknown lang-clean row '$LANG_ROW'"
+              exit 1
+              ;;
+          esac
 
   # THE TOUCHED LANGUAGE'S GENERATED-CODE LINT, one row per language `plan`
   # selected (its `lints` output). These are the fast halves of three lens

@@ -86,7 +86,7 @@ const maxJSONFuzzBatch = 1000
 func jsonFuzz(w io.Writer, m *Manifest, opts jsonFuzzOptions) error {
 	n := opts.n
 	if n <= 0 {
-		n = 300
+		n = 360
 	}
 	drivers, err := resolveJSONFuzzDrivers(opts)
 	if err != nil {
@@ -515,7 +515,7 @@ func generateJSONFuzzRawCases(m *Manifest, jsonDir string, seed uint64, n int) (
 		shuffledTargeted[i] = targeted[idx]
 	}
 
-	if n <= len(shuffledTargeted) {
+	if n < len(shuffledTargeted) {
 		// Keep 75% targeted + 25% corpus mutations when n is small.
 		tCount := max(1, (n*3)/4)
 		out := make([]jsonFuzzRawCase, 0, n)
@@ -908,12 +908,32 @@ func buildTargetedJSONCases() []jsonFuzzRawCase {
 		add(fmt.Sprintf("nest-unknown-obj-d%d", depth), "featurewitnesses", "Root", fw(`"u":`+objNest))
 	}
 
+	// ---- 9. Reserved `&`-Prefix Keys & `&node` Graph Label Traps (SPEC-TABLES §16.7, #4408 jf00584) ----
+	add("amp-feed-unknown-amp-key", "streamdemo", "Feed", `{"id":1,"&node_extra":1}`)
+	add("amp-feed-unknown-amp-first", "streamdemo", "Feed", `{"&node2":1,"id":1}`)
+	add("amp-feed-bare-ampersand", "streamdemo", "Feed", `{"&":1,"id":1}`)
+	add("amp-feed-escaped-amp-key", "streamdemo", "Feed", `{"id":1,"\u0026node_extra":1}`)
+	add("amp-feed-node-second-key", "streamdemo", "Feed", `{"id":1,"&node":1}`)
+	add("amp-feed-child-node-second-key", "streamdemo", "Feed",
+		`{"id":1,"frame":{"chunk":{"data":"AQ==","&node":1,"next":null,"links":[]}},"parts":[],"pair":[null,null]}`)
+	add("amp-feed-node-zero", "streamdemo", "Feed", `{"&node":0,"id":1}`)
+	add("amp-feed-node-neg", "streamdemo", "Feed", `{"&node":-1,"id":1}`)
+	add("amp-feed-node-string", "streamdemo", "Feed", `{"&node":"1","id":1}`)
+	add("amp-feed-node-float", "streamdemo", "Feed", `{"&node":1.0,"id":1}`)
+	add("amp-feed-dangling-ref", "streamdemo", "Feed", `{"id":1,"parts":[{"&node":99}],"pair":[null,null]}`)
+	add("amp-feed-dup-label", "streamdemo", "Feed",
+		`{"id":1,"parts":[{"&node":1,"data":"AQ==","next":null,"links":[]},{"&node":1,"data":"Ag==","next":null,"links":[]}],"pair":[null,null]}`)
+	add("amp-scene-unknown-amp-key", "graphdemo", "Scene", `{"&other":1}`)
+	add("amp-fw-unknown-amp-key", "featurewitnesses", "Root", `{"revision":7,"&reserved":1}`)
+	add("amp-fixed-root-amp-node", "tabledemo", "RootConfig", `{"&node":1,"version_note":"v1"}`)
+	add("amp-fixed-root-unknown-amp", "tabledemo", "RootConfig", `{"version_note":"v1","&bad":1}`)
+
 	return out
 }
 
 func mutateJSONSeedDoc(rng *rand.Rand, seeds []jsonFuzzSeedDoc) jsonFuzzRawCase {
 	base := seeds[rng.IntN(len(seeds))]
-	op := rng.IntN(14)
+	op := rng.IntN(15)
 	switch op {
 	case 0:
 		return jsonFuzzRawCase{
@@ -1005,6 +1025,13 @@ func mutateJSONSeedDoc(rng *rand.Rand, seeds []jsonFuzzSeedDoc) jsonFuzzRawCase 
 			unit:     base.unit,
 			root:     base.root,
 			raw:      corruptJSONDelimiter(rng, base.raw),
+		}
+	case 13:
+		return jsonFuzzRawCase{
+			category: "mut-reserved-ampersand-key",
+			unit:     base.unit,
+			root:     base.root,
+			raw:      injectReservedAmpersandKey(rng, base.raw),
 		}
 	default:
 		// Combine valid key-shuffling + unicode escapes + BOM/comments in one pass!
@@ -1392,4 +1419,27 @@ func corruptJSONDelimiter(rng *rand.Rand, raw []byte) []byte {
 	out := append([]byte{}, raw...)
 	out[pos] = rep
 	return out
+}
+
+func injectReservedAmpersandKey(rng *rand.Rand, raw []byte) []byte {
+	idx := bytes.IndexByte(raw, '{')
+	if idx < 0 {
+		return raw
+	}
+	variants := []string{
+		`"__pre":1,"&node":1,`,
+		`"&node_extra":1,`,
+		`"\u0026reserved":1,`,
+	}
+	ins := variants[rng.IntN(len(variants))]
+	var out bytes.Buffer
+	out.Write(raw[:idx+1])
+	out.WriteString(ins)
+	if idx+1 < len(raw) && raw[idx+1] == '}' {
+		// trim trailing comma for empty `{}`
+		b := out.Bytes()
+		out.Truncate(len(b) - 1)
+	}
+	out.Write(raw[idx+1:])
+	return out.Bytes()
 }

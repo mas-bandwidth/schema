@@ -6538,6 +6538,7 @@ conformance-shared: bin/schema build/conformance-harness build/tables-generated/
 
 conformance: build/conformance-harness build/conformance-cpp build/schema_test_cook $(CONFORMANCE_LEGS)
 	$(CONFORMANCE_ENV) ./build/conformance-harness run \
+		--work build/conformance \
 		--results build/conformance/results.json \
 		$(if $(SKIPPED_LEGS),--skip $(subst $(skip_space),$(skip_comma),$(strip $(SKIPPED_LEGS))))
 

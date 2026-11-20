@@ -126,10 +126,21 @@ tables-rust-features: build/tables-generated-rust/.stamp
 RUST_CLIPPY_ROOT ?= build/tables-generated-rust
 .PHONY: tables-rust-clippy
 tables-rust-clippy: build/tables-generated-rust/.stamp
-	@for unit in $(RUST_CLIPPY_ROOT)/*/; do \
-		[ -f $$unit/Cargo.toml ] || continue; \
-		( cd $$unit && PATH="$(RUSTUP_BIN):$$PATH" cargo clippy --quiet -- -D warnings ) || exit 1; \
-	done
+	@set -e; \
+	root="$(RUST_CLIPPY_ROOT)"; \
+	rm -f "$$root/Cargo.toml" "$$root/Cargo.lock"; \
+	members=""; \
+	for unit in "$$root"/*/; do \
+		[ -f "$$unit/Cargo.toml" ] || continue; \
+		name=$$(basename "$$unit"); \
+		members="$${members:+$${members}, }\"$$name\""; \
+	done; \
+	[ -n "$$members" ] || { echo "tables-rust-clippy: no Cargo.toml units under $$root" >&2; exit 1; }; \
+	printf "[workspace]\nresolver = \"2\"\nmembers = [%s]\n" "$$members" > "$$root/Cargo.toml"; \
+	status=0; \
+	( cd "$$root" && CARGO_TARGET_DIR="$(CURDIR)/build/rust-clippy-target" PATH="$(RUSTUP_BIN):$$PATH" cargo clippy --workspace --quiet -- -D warnings ) || status=$$?; \
+	rm -f "$$root/Cargo.toml" "$$root/Cargo.lock"; \
+	exit $$status
 	@echo "rust clippy gate: every generated unit is clean under clippy -D warnings"
 
 # THE CLIPPY GATE'S NEGATIVE CONTROL (docs/PORTING.md J4): one generated unit

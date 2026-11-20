@@ -58,13 +58,13 @@ GOOSE_ACCEL_FUZZ_N    ?= 20000
 # rule writes them before either starts, never two at once.
 .PHONY: goose-accel-fixtures
 goose-accel-fixtures: build/conformance-harness
-	./build/conformance-harness run --drivers /dev/null --work build/conformance > /dev/null 2>&1 || true
+	./build/conformance-harness run --drivers /dev/null --work build/goose-accel-work > /dev/null 2>&1 || true
 
 .PHONY: tables-goose-fuzz
 tables-goose-fuzz: build/conformance-harness build/conformance-goose goose-accel-fixtures
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	./test/conformance/goose/driver $(GOOSE_MANIFEST) block-fuzz $(GOOSE_ACCEL_FUZZ_SEED) $(GOOSE_ACCEL_FUZZ_N)
-	./test/conformance/goose/driver $(GOOSE_MANIFEST) cook-fuzz $(GOOSE_ACCEL_FUZZ_SEED) $(GOOSE_ACCEL_FUZZ_N) build/conformance/fixtures
+	./test/conformance/goose/driver $(GOOSE_MANIFEST) cook-fuzz $(GOOSE_ACCEL_FUZZ_SEED) $(GOOSE_ACCEL_FUZZ_N) build/goose-accel-work/fixtures
 
 # ITS NEGATIVE CONTROLS (group goose-blockcook): BOTH halves of one
 # accelerator's extent bound removed from a copy of the generated units — the

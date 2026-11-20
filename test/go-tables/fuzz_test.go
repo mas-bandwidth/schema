@@ -334,7 +334,11 @@ func TestCookForgeryFuzz(t *testing.T) {
 	if s := os.Getenv("N"); s != "" {
 		n = int(parseUint(t, s))
 	}
-	image := wire(t, "../../build/conformance/fixtures/Scene.cook")
+	fixturesDir := os.Getenv("GO_TABLES_FIXTURES")
+	if fixturesDir == "" {
+		fixturesDir = "../../build/conformance/fixtures"
+	}
+	image := wire(t, fixturesDir+"/Scene.cook")
 	rootSize := func() int64 {
 		var c graphdemo.SceneCook
 		return c.RootSize()

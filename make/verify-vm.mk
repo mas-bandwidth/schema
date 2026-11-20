@@ -18,7 +18,7 @@ VERIFY_JOBS          ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/nu
 VERIFY_JFLAG          = $(if $(findstring j,$(MAKEFLAGS)),,-j$(VERIFY_JOBS))
 VERIFY_FUZZ_SEED     ?= 1
 VERIFY_FUZZ_RANDOM_N ?= 2500
-VERIFY_JSON_FUZZ_N   ?= 300
+VERIFY_JSON_FUZZ_N   ?= 360
 VERIFY_RESULTS_DIR   ?= build/verify/legs
 
 # Per-VM mutant caps tuned so each verify-<lang>-fuzz finishes in ~8-25s cold/warm

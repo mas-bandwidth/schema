@@ -288,3 +288,58 @@ func TestFastPlanSelectsLanguageLints(t *testing.T) {
 		})
 	}
 }
+
+func TestFastPlanSelectsCodegenAndLanguageCleanGates(t *testing.T) {
+	t.Parallel()
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/ci-fast.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wf := string(data)
+	_, tail, ok := strings.Cut(wf, "          # THE BROAD RULE.")
+	if !ok {
+		t.Fatal("fast workflow broad selector not found")
+	}
+	selector, _, ok := strings.Cut(tail, "          echo \"broad=$broad\"")
+	if !ok {
+		t.Fatal("fast workflow output boundary not found")
+	}
+	_, selector, _ = strings.Cut(selector, "\n")
+	var script strings.Builder
+	for line := range strings.SplitSeq(selector, "\n") {
+		script.WriteString(strings.TrimPrefix(line, "          "))
+		script.WriteByte('\n')
+	}
+	script.WriteString(`printf '%s|%s' "$codegen_touched" "$clean_legs_json"`)
+
+	for _, tc := range []struct {
+		name, files, want string
+	}{
+		{"c codegen", "internal/codegen/ctable/wire.go", `yes|["c"]`},
+		{"js codegen", "internal/codegen/jstable/variableform.go", `yes|["js"]`},
+		{"rust codegen", "internal/codegen/rusttable/mapsarms.go", `yes|["rust"]`},
+		{"elixir codegen", "internal/codegen/elixirtable/block.go", `yes|["elixir"]`},
+		{"dart codegen", "internal/codegen/darttable/textform.go", `yes|[]`},
+		{"generated tree file", "generated/cpp/Types.h", `yes|[]`},
+		{"tables schema", "tables/stream/Stream.schema", `yes|["c","elixir","js","rust"]`},
+		{"packet schema", "examples/Types.schema", `yes|["c","elixir","js","rust"]`},
+		{"compiler go", "compiler/compiler.go", `yes|[]`},
+		{"ci policy only", "internal/ci/ci_test.go", `no|[]`},
+		{"docs only", "README.md", `no|[]`},
+		{"c format allowlist", "make/c-format-allow.txt", `no|["c"]`},
+		{"eslint config", "eslint.config.mjs", `no|["js"]`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := exec.Command("bash", "-euo", "pipefail", "-c", script.String())
+			cmd.Env = append(scriptEnv(os.Environ()), "files="+tc.files)
+			cmd.Dir = repoRoot(t)
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("plan script: %v: %s", err, out)
+			}
+			if got := selectorOutput(out); got != tc.want {
+				t.Fatalf("files=%q produced %q; want %q", tc.files, got, tc.want)
+			}
+		})
+	}
+}

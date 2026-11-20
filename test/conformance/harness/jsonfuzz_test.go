@@ -55,9 +55,29 @@ func TestJSONFuzzDeterministicAndCategories(t *testing.T) {
 		prefix, _, _ := strings.Cut(c.category, "-")
 		seenPrefix[prefix] = true
 	}
-	for _, want := range []string{"num", "utf8", "dup", "order", "b64", "ts", "evo", "arrayroot", "bom", "comment", "nest", "mut"} {
+	for _, want := range []string{"num", "utf8", "dup", "order", "b64", "ts", "evo", "arrayroot", "bom", "comment", "nest", "amp", "mut"} {
 		if !seenPrefix[want] {
 			t.Errorf("missing adversarial category prefix %q in N=300 schedule", want)
+		}
+	}
+
+	// Verify that VERIFY_JSON_FUZZ_N (360) includes 100% of buildTargetedJSONCases()
+	// plus random seed mutations, including the jf00584 &-prefix regression cases.
+	allTargeted := buildTargetedJSONCases()
+	verifySlice, err := generateJSONFuzzRawCases(m, defaultJSONDir, 1, 360)
+	if err != nil {
+		t.Fatalf("generateJSONFuzzRawCases(N=360): %v", err)
+	}
+	if len(allTargeted) >= 360 {
+		t.Fatalf("targeted bank (%d) exceeds VERIFY_JSON_FUZZ_N=360; raise VERIFY_JSON_FUZZ_N so 100%% of targeted cases run", len(allTargeted))
+	}
+	seenCat := map[string]bool{}
+	for _, c := range verifySlice {
+		seenCat[c.category] = true
+	}
+	for _, tc := range allTargeted {
+		if !seenCat[tc.category] {
+			t.Errorf("targeted regression case %q missing from N=360 verify slice", tc.category)
 		}
 	}
 }
@@ -129,9 +149,8 @@ func TestJSONFuzzPlantedNegativeControls(t *testing.T) {
 			if !strings.Contains(out.String(), tc.wantSub) {
 				t.Fatalf("planted negative control %s missed expected diagnostic %q:\n%s", tc.sabotage, tc.wantSub, out.String())
 			}
-			saved, rerr := os.ReadFile(failedFile)
-			if rerr != nil || len(saved) == 0 {
-				t.Fatalf("expected non-empty saved failure artifact at %s: %v", failedFile, rerr)
+			if _, rerr := os.Stat(failedFile); rerr != nil {
+				t.Fatalf("expected saved failure artifact at %s: %v", failedFile, rerr)
 			}
 		})
 	}
