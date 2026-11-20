@@ -668,6 +668,7 @@ pub struct InputPacket {
 pub const INPUT_PACKET_MAX_BITS: u64 = 2837;
 pub const INPUT_PACKET_MAX_BYTES: usize = 360;
 
+#[allow(clippy::needless_range_loop)]
 #[inline(always)]
 pub fn write_input_packet(stream: &mut WriteStream<'_>, value: &InputPacket) -> Result {
     let f0: u64 = u64::from(value.synchronize_sequence);
@@ -701,6 +702,7 @@ pub fn read_input_packet(stream: &mut ReadStream<'_>, value: &mut InputPacket) -
     Ok(())
 }
 
+#[allow(clippy::needless_range_loop)]
 #[inline]
 pub(crate) fn read_input_packet_body(stream: &mut ReadStream<'_>, value: &mut InputPacket) -> Result {
     let mut c: u32 = 0;

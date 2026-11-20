@@ -320,6 +320,7 @@ impl ProbeSample {
 pub const PROBE_SAMPLE_MAX_BITS: u64 = 276;
 pub const PROBE_SAMPLE_MAX_BYTES: usize = 40;
 
+#[allow(clippy::needless_range_loop)]
 #[inline(always)]
 pub fn write_probe_sample(stream: &mut WriteStream<'_>, value: &ProbeSample) -> Result {
     {
@@ -378,6 +379,7 @@ pub fn read_probe_sample(stream: &mut ReadStream<'_>, value: &mut ProbeSample) -
     Ok(())
 }
 
+#[allow(clippy::needless_range_loop)]
 #[inline]
 pub(crate) fn read_probe_sample_body(stream: &mut ReadStream<'_>, value: &mut ProbeSample) -> Result {
     stream.serialize_bool(&mut value.active)?;
@@ -631,6 +633,7 @@ pub struct ProbeCollider {
 pub const PROBE_COLLIDER_MAX_BITS: u64 = 82;
 pub const PROBE_COLLIDER_MAX_BYTES: usize = 16;
 
+#[allow(clippy::needless_range_loop)]
 #[inline(always)]
 pub fn write_probe_collider(stream: &mut WriteStream<'_>, value: &ProbeCollider) -> Result {
     {
@@ -657,6 +660,7 @@ pub fn read_probe_collider(stream: &mut ReadStream<'_>, value: &mut ProbeCollide
     Ok(())
 }
 
+#[allow(clippy::needless_range_loop)]
 #[inline]
 pub(crate) fn read_probe_collider_body(stream: &mut ReadStream<'_>, value: &mut ProbeCollider) -> Result {
     {
@@ -760,6 +764,7 @@ impl ProbeArray {
 pub const PROBE_ARRAY_MAX_BITS: u64 = 588;
 pub const PROBE_ARRAY_MAX_BYTES: usize = 80;
 
+#[allow(clippy::needless_range_loop)]
 #[inline(always)]
 pub fn write_probe_array(stream: &mut WriteStream<'_>, value: &ProbeArray) -> Result {
     for i in 0..2 {
@@ -776,6 +781,7 @@ pub fn read_probe_array(stream: &mut ReadStream<'_>, value: &mut ProbeArray) -> 
     Ok(())
 }
 
+#[allow(clippy::needless_range_loop)]
 #[inline]
 pub(crate) fn read_probe_array_body(stream: &mut ReadStream<'_>, value: &mut ProbeArray) -> Result {
     for i in 0..2 {
@@ -974,6 +980,7 @@ pub fn read_chat(stream: &mut ReadStream<'_>, value: &mut Chat) -> Result {
     Ok(())
 }
 
+#[allow(clippy::needless_range_loop)]
 #[inline]
 pub(crate) fn read_chat_body(stream: &mut ReadStream<'_>, value: &mut Chat) -> Result {
     stream.serialize_int(&mut value.text_length, 0, MAX_CHAT_LENGTH as i32)?; // the length guards the slice (§6.3)
@@ -1100,6 +1107,7 @@ impl Default for TestData {
 pub const TEST_DATA_MAX_BITS: u64 = 2735;
 pub const TEST_DATA_MAX_BYTES: usize = 344;
 
+#[allow(clippy::needless_range_loop)]
 #[inline(always)]
 pub fn write_test_data(stream: &mut WriteStream<'_>, value: &TestData) -> Result {
     debug_assert!(value.a >= -100 && value.a <= 100, "a out of range [-100, 100]");
@@ -1193,6 +1201,7 @@ pub fn read_test_data(stream: &mut ReadStream<'_>, value: &mut TestData) -> Resu
     Ok(())
 }
 
+#[allow(clippy::needless_range_loop)]
 #[inline]
 pub(crate) fn read_test_data_body(stream: &mut ReadStream<'_>, value: &mut TestData) -> Result {
     let mut c: u32 = 0;

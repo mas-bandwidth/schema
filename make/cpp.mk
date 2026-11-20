@@ -5,11 +5,15 @@
 
 CARDS_CPP_GENERATED := build/tables-generated-cpp/cards
 
+CARDS_CPP_STAMP := $(CARDS_CPP_GENERATED)/.stamp
 .PHONY: cards-cpp-generate
-cards-cpp-generate: bin/schema
+cards-cpp-generate: $(CARDS_CPP_STAMP)
+
+$(CARDS_CPP_STAMP): bin/schema $(wildcard tables/cards/*.schema) tables/cards/schema.lock
 	@rm -rf $(CARDS_CPP_GENERATED)
 	@mkdir -p $(CARDS_CPP_GENERATED)
 	./bin/schema generate --lang cpp --out $(CARDS_CPP_GENERATED) tables/cards
+	@touch $@
 
 CARDS_CPP_SRCS := tables/cards/cpp/cards.cpp tables/cards/cpp/sha256.cpp \
 	$(CARDS_CPP_GENERATED)/CardTable.cpp $(CARDS_CPP_GENERATED)/CardsView.cpp

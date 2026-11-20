@@ -142,7 +142,14 @@ func testFunctionsByFile(t *testing.T) (map[string]map[string]bool, map[string]b
 		if err != nil {
 			return err
 		}
-		if d.IsDir() || !strings.HasSuffix(path, ".go") {
+		if d.IsDir() {
+			switch d.Name() {
+			case ".git", "build", "dist", "generated":
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if !d.Type().IsRegular() || !strings.HasSuffix(path, "_test.go") {
 			return nil
 		}
 		rel, err := filepath.Rel(root, path)

@@ -115,6 +115,7 @@ impl Default for RenderBlock {
 pub const RENDER_BLOCK_MAX_BITS: u64 = 8903;
 pub const RENDER_BLOCK_MAX_BYTES: usize = 1120;
 
+#[allow(clippy::needless_range_loop)]
 #[inline(always)]
 pub fn write_render_block(stream: &mut WriteStream<'_>, value: &RenderBlock) -> Result {
     let f0: u64 = u64::from(value.worker_index);
@@ -141,6 +142,7 @@ pub fn read_render_block(stream: &mut ReadStream<'_>, value: &mut RenderBlock) -
     Ok(())
 }
 
+#[allow(clippy::needless_range_loop)]
 #[inline]
 pub(crate) fn read_render_block_body(stream: &mut ReadStream<'_>, value: &mut RenderBlock) -> Result {
     let mut c: u32 = 0;

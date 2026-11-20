@@ -1968,11 +1968,15 @@ tables-c-fixedform: tables-c-runcopy
 # cards-c-generate produces ONLY build/tables-generated-c/cards, cleaning
 # that owned output first so a deleted symbol cannot survive a regeneration.
 # It depends on bin/schema only, never on a generated stamp.
+CARDS_C_STAMP := build/tables-generated-c/cards/.stamp
 .PHONY: cards-c-generate
-cards-c-generate: bin/schema
+cards-c-generate: $(CARDS_C_STAMP)
+
+$(CARDS_C_STAMP): bin/schema $(wildcard tables/cards/*.schema) tables/cards/schema.lock
 	@rm -rf build/tables-generated-c/cards
 	@mkdir -p build/tables-generated-c/cards
 	./bin/schema generate --lang c --out build/tables-generated-c/cards tables/cards
+	@touch $@
 
 build/cards-test-c: cards-c-generate tables/cards/c/cards.h tables/cards/c/cards.c tables/cards/c/cards_test.c tables/cards/c/retain_bridge.c tables/cards/c/sha256.c
 	@mkdir -p build

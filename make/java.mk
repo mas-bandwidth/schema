@@ -2208,10 +2208,14 @@ test-java:
 
 # cards-java-generate writes the cards unit's Java into build/ (test-only, never
 # part of the committed generated/ tree).
-cards-java-generate: bin/schema
+CARDS_JAVA_STAMP := build/tables-generated-java/cards/.stamp
+cards-java-generate: $(CARDS_JAVA_STAMP)
+
+$(CARDS_JAVA_STAMP): bin/schema $(wildcard tables/cards/*.schema) tables/cards/schema.lock
 	@rm -rf build/tables-generated-java/cards
 	@mkdir -p build/tables-generated-java/cards
 	./bin/schema generate --lang java --out build/tables-generated-java/cards tables/cards
+	@touch $@
 
 # The wire-fuzz driver: the generated cards unit beside test/conformance/java/
 # src/WireFuzz.java, one class on one classpath, answering the harness's pipe

@@ -472,29 +472,8 @@ func (m *msgGen) writeValue(f *ir.Field, entry ir.TableVocabularyEntry, expr, de
 
 func (m *msgGen) emitLoadBody(st *ir.Struct) {
 	snake := ir.RustSnake(st.Name)
-	m.pf("/// One %s body against the ENDPOINT's vocabulary (§3.3): a field this build\n/// cannot name is skipped by the endpoint's shape and counted unknown, a kind the\n/// declaration widened is decoded exactly and counted widened, and any other\n/// kind is a kind mismatch, skipped.\n", st.Name)
-	m.pf("pub fn %s_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut %sRow) -> bool {\n", snake, st.Name)
-	m.pf("    *value = %s_message_default();\n", snake)
-	// A FIELD ID TWICE IN ONE BODY IS DAMAGE (docs/SPEC-TABLES.md §3.3), known
-	// or unknown: the ids this body has carried are held in a fixed stack set,
-	// and the vector only owns ids past its capacity, so every id is covered
-	// without an allocation for an ordinary body.
-	m.pf("    let mut seen_ids = [0u64; 64];\n")
-	m.pf("    let mut seen_count = 0usize;\n")
-	m.pf("    let mut seen_more: Vec<u64> = Vec::new();\n")
-	// THE SENDER'S OWN BUILD IS THIS READER'S (docs/SPEC-TABLES.md §3.3 (a),
-	// (b); docs/rulings.json reads-refuse-non-canonical): every field's
-	// default and every record's field order are digested into the build
-	// version (§20.1, §20.2), so there, and only there, this reader's
-	// declaration is the sender's. A field the record does not declare, a
-	// field out of the declaration order and a field stored at its declared
-	// default are spellings no conforming writer produces. Under another build
-	// version none of the three is judged. next_field is one past the ordinal
-	// of the last declared field this body carried.
-	m.pf("    let same_build = v.build_version == BUILD_VERSION;\n")
-	m.pf("    let mut next_field = 0usize;\n")
-	// The arms are generated aside, so the default image is bound only when a
-	// default test reads it.
+	// The arms are generated aside, so the default image and loop allows are
+	// emitted only when the generated arms need them.
 	body := &msgGen{u: m.u, slots: m.slots, orig: m.orig, n: m.n}
 	for i, f := range st.Fields {
 		mine := ir.TableFieldEntry(f)
@@ -543,6 +522,30 @@ func (m *msgGen) emitLoadBody(st *ir.Struct) {
 	}
 	m.n = body.n
 	arms := body.b.String()
+	m.pf("/// One %s body against the ENDPOINT's vocabulary (§3.3): a field this build\n/// cannot name is skipped by the endpoint's shape and counted unknown, a kind the\n/// declaration widened is decoded exactly and counted widened, and any other\n/// kind is a kind mismatch, skipped.\n", st.Name)
+	if strings.Contains(arms, "for i in 0..") {
+		m.pf("#[allow(clippy::needless_range_loop)]\n")
+	}
+	m.pf("pub fn %s_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut %sRow) -> bool {\n", snake, st.Name)
+	m.pf("    *value = %s_message_default();\n", snake)
+	// A FIELD ID TWICE IN ONE BODY IS DAMAGE (docs/SPEC-TABLES.md §3.3), known
+	// or unknown: the ids this body has carried are held in a fixed stack set,
+	// and the vector only owns ids past its capacity, so every id is covered
+	// without an allocation for an ordinary body.
+	m.pf("    let mut seen_ids = [0u64; 64];\n")
+	m.pf("    let mut seen_count = 0usize;\n")
+	m.pf("    let mut seen_more: Vec<u64> = Vec::new();\n")
+	// THE SENDER'S OWN BUILD IS THIS READER'S (docs/SPEC-TABLES.md §3.3 (a),
+	// (b); docs/rulings.json reads-refuse-non-canonical): every field's
+	// default and every record's field order are digested into the build
+	// version (§20.1, §20.2), so there, and only there, this reader's
+	// declaration is the sender's. A field the record does not declare, a
+	// field out of the declaration order and a field stored at its declared
+	// default are spellings no conforming writer produces. Under another build
+	// version none of the three is judged. next_field is one past the ordinal
+	// of the last declared field this body carried.
+	m.pf("    let same_build = v.build_version == BUILD_VERSION;\n")
+	m.pf("    let mut next_field = 0usize;\n")
 	if strings.Contains(arms, "dflt.") {
 		m.pf("    let dflt = %s_message_default();\n", snake)
 	}

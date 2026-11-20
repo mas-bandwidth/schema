@@ -275,7 +275,10 @@ build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema t
 # declarations whose package is cards are never compiled in one package.
 .PHONY: cards-generate cards-test cards-example cards-fuzz-fixture cards-wire-fuzz cards-wire-fuzz-run cards-fuzz cards-corpus-create cards-corpus-check
 CARDS_FUZZ_TIME ?= 30s
-cards-generate: bin/schema
+CARDS_GO_STAMP := build/tables-generated-go/cards/.stamp
+cards-generate: $(CARDS_GO_STAMP)
+
+$(CARDS_GO_STAMP): bin/schema $(wildcard tables/cards/*.schema tables/cards/*.go tables/cards/cmd/cards-driver/*.go) tables/cards/schema.lock tables/cards/corpus/initial/DECLARATION.schema tables/cards/testdata/upgrade/future/DECLARATION.schema
 	@rm -rf build/tables-generated-go/cards build/tables-generated-go/cards-initial build/tables-generated-go/cards-future
 	@mkdir -p build/tables-generated-go/cards build/tables-generated-go/cards-initial build/tables-generated-go/cards-future
 	./bin/schema generate --lang go --out build/tables-generated-go/cards tables/cards
@@ -314,6 +317,9 @@ cards-generate: bin/schema
 		done; \
 		true; \
 	done
+	@mkdir -p build/tables-generated-go/cards/cmd/cards-driver
+	cp tables/cards/cmd/cards-driver/main.go build/tables-generated-go/cards/cmd/cards-driver/main.go
+	@touch $@
 
 # THE CUSTOMER EXAMPLE (schema-cards-c05): a SEPARATE module, cardsexample,
 # that imports only the generated `cards` package and the standard library,
@@ -381,7 +387,9 @@ CARDS_REQUIRE ?= load,save,render,parse,bounds,upgrade,edit,taskhash,view
 # generated cards module (so it imports `cards` in process) and builds
 # build/cards-driver-go.
 .PHONY: cards-driver-go
-cards-driver-go: cards-generate
+cards-driver-go: build/cards-driver-go
+
+build/cards-driver-go: $(CARDS_GO_STAMP) tables/cards/cmd/cards-driver/main.go
 	@mkdir -p build/tables-generated-go/cards/cmd/cards-driver
 	cp tables/cards/cmd/cards-driver/main.go build/tables-generated-go/cards/cmd/cards-driver/main.go
 	cd build/tables-generated-go/cards/cmd/cards-driver && go build -o "$(CURDIR)/build/cards-driver-go" .
@@ -1244,7 +1252,7 @@ test-go: conformance-go-absent conformance-negative-control-go-absent
 # copy the driver builds from, and the check must go red on render and stay
 # green on load.
 .PHONY: cards-conformance-go-negative-control
-cards-conformance-go-negative-control: build/conformance-harness cards-driver-go
+cards-conformance-go-negative-control: build/conformance-harness $(CARDS_GO_STAMP) build/cards-driver-go
 	CARDS_REQUIRE=$(CARDS_REQUIRE) sh test/go-tables/negative-control cards
 test-go: cards-conformance-go-negative-control
 

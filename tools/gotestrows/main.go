@@ -86,7 +86,7 @@ func main() {
 	if *extras {
 		// the two conformance halves are rows of their own: whole, the target ran
 		// 156 s on a loaded bench, past the two-minute cap
-		rows = append(rows, Row{Make: "tables-go-fixedform"}, Row{Make: "conformance-go-rows-a"}, Row{Make: "conformance-go-rows-b"})
+		rows = append(rows, Row{Make: "tables-go-fixedform"}, Row{Make: "conformance-go-rows-a"}, Row{Make: "conformance-go-rows-b"}, Row{Make: "cards-conformance-go-negative-control"})
 	}
 	for i := range rows {
 		rows[i].Row = fmt.Sprintf("%d/%d", i+1, len(rows))

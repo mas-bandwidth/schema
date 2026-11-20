@@ -81,6 +81,7 @@ pub struct FixedProbe {
 pub const FIXED_PROBE_MAX_BITS: u64 = 156;
 pub const FIXED_PROBE_MAX_BYTES: usize = 24;
 
+#[allow(clippy::needless_range_loop)]
 #[inline(always)]
 pub fn write_fixed_probe(stream: &mut WriteStream<'_>, value: &FixedProbe) -> Result {
     debug_assert!(value.angle >= -11796480 && value.angle <= 11796480, "angle raw value out of range [-11796480, 11796480]");
@@ -120,6 +121,7 @@ pub fn read_fixed_probe(stream: &mut ReadStream<'_>, value: &mut FixedProbe) -> 
     Ok(())
 }
 
+#[allow(clippy::needless_range_loop)]
 #[inline]
 pub(crate) fn read_fixed_probe_body(stream: &mut ReadStream<'_>, value: &mut FixedProbe) -> Result {
     stream.serialize_fixed(&mut value.angle, 16, 16, -180, 180)?;
@@ -163,6 +165,7 @@ impl UnsignedProbe {
 pub const UNSIGNED_PROBE_MAX_BITS: u64 = 196;
 pub const UNSIGNED_PROBE_MAX_BYTES: usize = 32;
 
+#[allow(clippy::needless_range_loop)]
 #[inline(always)]
 pub fn write_unsigned_probe(stream: &mut WriteStream<'_>, value: &UnsignedProbe) -> Result {
     debug_assert!(value.angle <= 23592960, "angle raw value out of range [0, 23592960]");
@@ -207,6 +210,7 @@ pub fn read_unsigned_probe(stream: &mut ReadStream<'_>, value: &mut UnsignedProb
     Ok(())
 }
 
+#[allow(clippy::needless_range_loop)]
 #[inline]
 pub(crate) fn read_unsigned_probe_body(stream: &mut ReadStream<'_>, value: &mut UnsignedProbe) -> Result {
     stream.serialize_fixed(&mut value.angle, 16, 16, 0, 360)?;
@@ -334,6 +338,7 @@ impl LudicrousState {
 pub const LUDICROUS_STATE_MAX_BITS: u64 = 1205;
 pub const LUDICROUS_STATE_MAX_BYTES: usize = 152;
 
+#[allow(clippy::needless_range_loop)]
 #[inline(always)]
 pub fn write_ludicrous_state(stream: &mut WriteStream<'_>, value: &LudicrousState) -> Result {
     debug_assert!(value.mode.0 <= 3, "mode above the DriveMode wire range [0, 3]");
@@ -374,6 +379,7 @@ pub fn read_ludicrous_state(stream: &mut ReadStream<'_>, value: &mut LudicrousSt
     Ok(())
 }
 
+#[allow(clippy::needless_range_loop)]
 #[inline]
 pub(crate) fn read_ludicrous_state_body(stream: &mut ReadStream<'_>, value: &mut LudicrousState) -> Result {
     {

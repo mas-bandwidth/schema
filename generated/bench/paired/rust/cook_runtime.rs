@@ -282,8 +282,7 @@ unsafe fn table_cook_raw(p: *const u8, at: i64, width: u32) -> u64 {
 /// out is null or points at that record's writable extent. Neither buffer is
 /// written through any other pointer for the duration of the call.
 pub unsafe fn table_cook_write_record(p: *const u8, t: &TableCookInfo, out: *mut u8, at: i64, order: u64) -> bool {
-    for i in 0..t.num_fields as usize {
-        let f = &t.fields[i];
+    for f in &t.fields[..t.num_fields as usize] {
         let dest = at + f.offset as i64;
         if f.present_offset >= 0 {
             let present = unsafe { table_cook_raw(p, f.present_offset as i64, 1) };

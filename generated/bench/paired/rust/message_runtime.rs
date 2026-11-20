@@ -480,13 +480,13 @@ fn announce_read_once(
     }
     // the second pass: resolve every entry in place over bytes already accepted
     let mut at = 0usize;
-    for slot in 0..count {
+    for slot in &mut vocabulary.entries[..count] {
         let (entry, ok) = read_entry(vocabulary_bytes, &mut at);
         if !ok {
             report.damaged = true;
             return false;
         }
-        vocabulary.entries[slot] = entry;
+        *slot = entry;
     }
     vocabulary.count = count;
     vocabulary.ref_bits = bits_required(count);

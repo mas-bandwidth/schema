@@ -407,6 +407,7 @@ pub fn read_arm_align(stream: &mut ReadStream<'_>, value: &mut ArmAlign) -> Resu
     Ok(())
 }
 
+#[allow(clippy::needless_range_loop)]
 #[inline]
 pub(crate) fn read_arm_align_body(stream: &mut ReadStream<'_>, value: &mut ArmAlign) -> Result {
     let mut c: u32 = 0;
@@ -463,6 +464,7 @@ pub struct ArmArray {
 pub const ARM_ARRAY_MAX_BITS: u64 = 54;
 pub const ARM_ARRAY_MAX_BYTES: usize = 8;
 
+#[allow(clippy::needless_range_loop)]
 #[inline(always)]
 pub fn write_arm_array(stream: &mut WriteStream<'_>, value: &ArmArray) -> Result {
     debug_assert!(value.lead < 1 << 5, "lead above the bits(5) wire width");
@@ -505,6 +507,7 @@ pub fn read_arm_array(stream: &mut ReadStream<'_>, value: &mut ArmArray) -> Resu
     Ok(())
 }
 
+#[allow(clippy::needless_range_loop)]
 #[inline]
 pub(crate) fn read_arm_array_body(stream: &mut ReadStream<'_>, value: &mut ArmArray) -> Result {
     let mut c: u32 = 0;
@@ -764,6 +767,7 @@ pub struct ArrUneven {
 pub const ARR_UNEVEN_MAX_BITS: u64 = 127;
 pub const ARR_UNEVEN_MAX_BYTES: usize = 16;
 
+#[allow(clippy::needless_range_loop)]
 #[inline(always)]
 pub fn write_arr_uneven(stream: &mut WriteStream<'_>, value: &ArrUneven) -> Result {
     debug_assert!(value.lead < 1 << 5, "lead above the bits(5) wire width");
@@ -794,6 +798,7 @@ pub fn read_arr_uneven(stream: &mut ReadStream<'_>, value: &mut ArrUneven) -> Re
     Ok(())
 }
 
+#[allow(clippy::needless_range_loop)]
 #[inline]
 pub(crate) fn read_arr_uneven_body(stream: &mut ReadStream<'_>, value: &mut ArrUneven) -> Result {
     stream.serialize_bits(&mut value.lead, 5)?;
@@ -826,6 +831,7 @@ pub struct RegainAfterAlign {
 pub const REGAIN_AFTER_ALIGN_MAX_BITS: u64 = 172;
 pub const REGAIN_AFTER_ALIGN_MAX_BYTES: usize = 24;
 
+#[allow(clippy::needless_range_loop)]
 #[inline(always)]
 pub fn write_regain_after_align(stream: &mut WriteStream<'_>, value: &RegainAfterAlign) -> Result {
     debug_assert!(value.lead < 1 << 5, "lead above the bits(5) wire width");
@@ -876,6 +882,7 @@ pub fn read_regain_after_align(stream: &mut ReadStream<'_>, value: &mut RegainAf
     Ok(())
 }
 
+#[allow(clippy::needless_range_loop)]
 #[inline]
 pub(crate) fn read_regain_after_align_body(stream: &mut ReadStream<'_>, value: &mut RegainAfterAlign) -> Result {
     stream.serialize_bits(&mut value.lead, 5)?;

@@ -1064,6 +1064,7 @@ impl BenchMixed {
 pub const BENCH_MIXED_MAX_BITS: u64 = 3630;
 pub const BENCH_MIXED_MAX_BYTES: usize = 456;
 
+#[allow(clippy::needless_range_loop)]
 #[inline(always)]
 pub fn write_bench_mixed(stream: &mut WriteStream<'_>, value: &BenchMixed) -> Result {
     debug_assert!(value.sequence < 1 << 16, "sequence above the bits(16) wire width");
@@ -1208,6 +1209,7 @@ pub fn read_bench_mixed(stream: &mut ReadStream<'_>, value: &mut BenchMixed) -> 
     Ok(())
 }
 
+#[allow(clippy::needless_range_loop)]
 #[inline]
 pub(crate) fn read_bench_mixed_body(stream: &mut ReadStream<'_>, value: &mut BenchMixed) -> Result {
     let mut c: u32 = 0;
