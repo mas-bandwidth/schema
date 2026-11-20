@@ -500,6 +500,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		// payload width, a union tag's widest arm and width, and an arm's own
 		// width from the writer's layout (docs/FIXED-FORM-ALGORITHM.md §3.1,
 		// §4.5, §5.3 step 11). The check pass holds every dead byte to zero.
+		aux := e.Aux
 		deadBytes, armBytes, armCount, tagWidth := int64(0), int64(0), int64(0), int64(0)
 		switch e.Op {
 		case ir.TableFixedOpCount:
@@ -509,6 +510,9 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		case ir.TableFixedOpCopy:
 			if un, ok := dead.unionAt(e.Src, e.GuardLinks); ok && e.Size == un.tagWidth {
 				deadBytes, tagWidth, armCount = un.widest, un.tagWidth, int64(len(un.arms)-1)
+				if deadBytes > 0 && armCount > 0 {
+					aux = armCount
+				}
 				split.Elems[i] = un.tagWidth // a tag keeps its declared host-order width after splitting
 			}
 		}
@@ -530,7 +534,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 			present = at + 1
 		}
 		g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, 0, 0, %d, %s, %d, %d, %d, %s, %d, %du, %du, %du, %d, %du }, /* %s */\n",
-			e.Src, e.Dst, e.Size, e.Aux, guard, fixedOpName(e.Op), e.Arg, e.Meta, argw, guard2, e.Arg2, argw2,
+			e.Src, e.Dst, e.Size, aux, guard, fixedOpName(e.Op), e.Arg, e.Meta, argw, guard2, e.Arg2, argw2,
 			e.GuardCount, guardIndex, split.Elems[i], deadBytes, armBytes, armCount, tagWidth, present, e.Note)
 	}
 	g.pf("};\n")

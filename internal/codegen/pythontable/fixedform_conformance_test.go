@@ -3,13 +3,44 @@ package pythontable_test
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
+
+var (
+	pythonConformanceOnce sync.Once
+	pythonConformanceErr  error
+)
+
+func ensurePythonConformanceUnits(t *testing.T, repo string) string {
+	t.Helper()
+	generated := filepath.Join(repo, "build", "conformance-python")
+	sentinel := filepath.Join(generated, "tblr1", "_framing", "tblr1")
+	pythonConformanceOnce.Do(func() {
+		if _, err := os.Stat(sentinel); err == nil {
+			return
+		}
+		cmd := exec.Command("make", "build/conformance-python")
+		cmd.Dir = repo
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			pythonConformanceErr = fmt.Errorf("make build/conformance-python: %w\n%s", err, out)
+		}
+	})
+	if pythonConformanceErr != nil {
+		t.Fatal(pythonConformanceErr)
+	}
+	if _, err := os.Stat(generated); err != nil {
+		t.Fatalf("fixed conformance units are absent; run make build/conformance-python: %v", err)
+	}
+	return generated
+}
 
 // Functional: make builds the exact generated manifest units first. Every
 // fixed-write recipe must answer, including each lawful boundary witness.
@@ -20,10 +51,7 @@ func TestPythonFixedFormWriteRefusal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	generated := filepath.Join(repo, "build", "conformance-python")
-	if _, err := os.Stat(generated); err != nil {
-		t.Fatalf("fixed conformance units are absent; run make build/conformance-python: %v", err)
-	}
+	generated := ensurePythonConformanceUnits(t, repo)
 	manifest := filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt")
 	data, err := os.ReadFile(manifest)
 	if err != nil {
@@ -79,6 +107,7 @@ func TestPythonFixedFormWriteRefusalNegativeControl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	generated := ensurePythonConformanceUnits(t, repo)
 	files := map[string][]byte{}
 	for _, name := range []string{"main.py", "surfaces/_common.py", "surfaces/write-refusal-fixed.py"} {
 		data, err := os.ReadFile(filepath.Join(repo, "test", "conformance", "python", name))
@@ -106,7 +135,7 @@ spec.loader.exec_module(module)
 module.main(['driver',%q,'write-refusal-fixed',%q])
 with open(%q,'rb') as f: answer=f.read()
 if answer!=b'refused\n': raise SystemExit('fixed_driver_control')
-`, filepath.Join(repo, "build", "conformance-python"), filepath.Join(dir, "driver", "main.py"), repo, filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt"), filepath.Join(dir, "answers"), filepath.Join(dir, "answers", "fref_range_high"))
+`, generated, filepath.Join(dir, "driver", "main.py"), repo, filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt"), filepath.Join(dir, "answers"), filepath.Join(dir, "answers", "fref_range_high"))
 		for name, data := range files {
 			p := filepath.Join(dir, name)
 			if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {

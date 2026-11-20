@@ -4681,7 +4681,7 @@ static SCHEMA_UNUSED const bench_table_fixed_entry_t bench_fixed_table_fixed_pla
     { 1096u, 1208u, 4u, 0u, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, BENCH_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 1100u, 1212u, 4u, 0u, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, BENCH_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
     { 1104u, 1216u, 4u, 0u, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, BENCH_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4, 0u, 0u, 0u, 0, 0u }, /* stats, whole */
-    { 1108u, 1224u, 1u, 0u, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, BENCH_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 13u, 0u, 3u, 1, 0u }, /* game_event tag */
+    { 1108u, 1224u, 1u, 3u, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, BENCH_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 13u, 0u, 3u, 1, 0u }, /* game_event tag */
     { 1122u, 1244u, 1u, 0u, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, BENCH_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* loadout, whole */
     { 1123u, 1245u, 1u, 0u, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, BENCH_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* loadout, whole */
     { 1124u, 1246u, 1u, 0u, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, BENCH_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCH_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1, 0u, 0u, 0u, 0, 0u }, /* loadout, whole */
