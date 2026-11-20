@@ -218,14 +218,17 @@ func (g *cookGen) emitCookForm1Field(f *ir.Field, offset int64, expr, ind string
 		g.pf("%s}\n", ind)
 		return
 	}
-	if f.KeyEnum != "" || f.Array == ir.ArrayFixed {
+	if !f.Type.Pointer && (f.KeyEnum != "" || f.Array == ir.ArrayFixed) {
 		// every stored slot exists: a fixed array's bound, or an enum-keyed
 		// array's E.Max with the key k at index k-1 (§2.4)
 		bound := f.ArrayBound
 		if f.KeyEnum != "" {
 			bound = f.KeyEnumRef.Max
 		}
-		stride := pieces[0].Size / bound
+		stride := int64(0)
+		if bound > 0 {
+			stride = pieces[0].Size / bound
+		}
 		g.pf("%sif (%s.length != %d) return false;\n", ind, expr, bound)
 		g.pf("%sfor (var i = 0; i < %d; i++) {\n", ind, bound)
 		if un := unionRef(f); un != nil {
@@ -252,7 +255,10 @@ func (g *cookGen) emitCookForm1Field(f *ir.Field, offset int64, expr, ind string
 		// a COUNTED ARRAY OF UNIONS (§2.6, §3): the count, then each live
 		// slot; a dead slot is the union's value-initialized storage, tag 0
 		// and nothing else, which the zero-filled region already holds
-		stride := pieces[0].Size / f.ArrayBound
+		stride := int64(0)
+		if f.ArrayBound > 0 {
+			stride = pieces[0].Size / f.ArrayBound
+		}
 		// THE STORAGE CHECKS ARE DEBUG ASSERTS (docs/SPEC.md §5.1)
 		g.cookAssert(ind, fmt.Sprintf("%s.length <= %d", expr, f.ArrayBound))
 		g.pf("%sout?.setInt32(at + %d, %s.length, order);\n", ind, pieces[1].Offset, expr)
@@ -271,7 +277,7 @@ func (g *cookGen) emitCookForm1Field(f *ir.Field, offset int64, expr, ind string
 			return
 		}
 	}
-	if f.Array == ir.ArrayNone && f.Type.Kind == ir.TBytes {
+	if !f.Type.Pointer && f.Array == ir.ArrayNone && f.Type.Kind == ir.TBytes {
 		// bytes(N) is held as a Latin-1 String by the wire library, one char
 		// per byte, so its bytes are latin1's, never UTF-8's (§2.5)
 		g.needConvert = true

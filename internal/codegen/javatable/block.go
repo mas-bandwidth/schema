@@ -513,7 +513,10 @@ func (g *blockGen) emitProjectionAccessors() {
 			g.f("    }\n\n")
 		case f.KeyEnum != "" || f.Array != ir.ArrayNone:
 			elem := javaRecordType(f.Type)
-			elemSize := pieces[0].Size / f.ArrayBound
+			elemSize := int64(0)
+			if f.ArrayBound > 0 {
+				elemSize = pieces[0].Size / f.ArrayBound
+			}
 			if isClassRef(f.Type) {
 				g.f("    public static int %sAt(int at, int i) { return at + %d + i * %d; }\n\n", name, pieces[0].Offset, elemSize)
 			} else {

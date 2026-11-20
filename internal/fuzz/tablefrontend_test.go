@@ -23,6 +23,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/check"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/mootable"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -80,6 +82,8 @@ var tableHandSeeds = []string{
 	"package t\ntable T { lines []string(16) }\n",
 	"package t\nfixed table Sub { v int32 }\nfixed table T { s ?Sub }\n",
 	"package t\ntable T | json = \"array\"\n{\n    xs []int32\n}\n",
+	"package pkg\nenum E {}\ntable T {\n    vals [E]int32\n}\n",
+	"package probe\ntable Leaf { values []int32 }\nunion Choice {\n    Empty\n    pointer *Leaf\n    ptrs [4]*Leaf\n    blob *bytes\n}\ntable UnionListRoot { values []Choice\n    bounded [..3]Choice }\n",
 }
 
 // FuzzTableFrontEnd: any bytes the front end accepts into a unit must give the
@@ -122,4 +126,94 @@ func FuzzTableFrontEnd(f *testing.F) {
 			}
 		}
 	})
+}
+
+// TestZeroStrideAndEdgeShapesAllTargets exercises empty-enum keyed refusals,
+// synthetic zero-bound IR defense-in-depth, zero-byte struct/table elements,
+// and union list pointer/blob arms across every registered compiler target
+// (all 17 default targets plus moo/mootable = all 18 languages).
+func TestZeroStrideAndEdgeShapesAllTargets(t *testing.T) {
+	for _, src := range []string{
+		"package pkg\nenum E {}\ntable T {\n    vals [E]int32\n}\n",
+		"package pkg\nenum E {}\nfixed table T { vals [E]int32 }\n",
+		"package pkg\nenum E {}\ntype S { vals [E]int32 }\ntable T { s S }\n",
+	} {
+		u, errs := loadUnit("A.schema", src)
+		if len(errs) == 0 || u != nil {
+			t.Fatalf("expected loadUnit refusal on empty-enum keyed array %q, got unit=%v errs=%v", src, u, errs)
+		}
+		for _, e := range errs {
+			if e.Error() == "" {
+				t.Fatalf("empty refusal message on %q", src)
+			}
+		}
+	}
+
+	// Defense-in-depth: even if a synthetic *ir.Unit reaches codegen with
+	// ArrayBound == 0 on a keyed/fixed array field, no target may panic.
+	syntheticUnit, errs := loadUnit("A.schema", "package pkg\nenum E { A }\ntable T { vals [E]int32 }\n")
+	if len(errs) > 0 || syntheticUnit == nil {
+		t.Fatalf("control unit failed: %v", errs)
+	}
+	syntheticUnit.Enums["E"].Variants = nil
+	syntheticUnit.Enums["E"].Max = 0
+	syntheticUnit.Tables["T"].Fields[0].ArrayBound = 0
+	driveUnitAll18Targets(t, "synthetic-zero-bound", syntheticUnit, false)
+
+	// Valid edge shapes (zero-byte structs/tables, empty enum scalars/arrays/lists,
+	// and union lists/counted-arrays carrying *bytes and [N]*Leaf pointer arms)
+	// must generate without panic across all 18 targets and emit valid Go syntax.
+	validEdgeSchemas := []string{
+		"package pkg\ntype Empty {}\ntable T { e Empty\n es [4]Empty\n ec [..4]Empty\n el []Empty }\n",
+		"package pkg\ntype Empty {}\nfixed table T { es [4]Empty }\n",
+		"package pkg\nfixed table Empty {}\ntable T { es [4]Empty\n el []Empty }\n",
+		"package pkg\ntable Empty {}\ntable T { es []*Empty }\n",
+		"package pkg\nenum E {}\ntable T { e E\n es [4]E\n el []E }\n",
+		"package probe\ntable Leaf { values []int32 }\nunion Choice {\n    Empty\n    pointer *Leaf\n    ptrs [4]*Leaf\n    blob *bytes\n    str *string\n}\ntable UnionListRoot { values []Choice\n    bounded [..3]Choice }\n",
+	}
+	for _, src := range validEdgeSchemas {
+		u, errs := loadUnit("A.schema", src)
+		if len(errs) > 0 || u == nil {
+			t.Fatalf("valid edge schema failed loadUnit: %v\n%s", errs, src)
+		}
+		driveUnitAll18Targets(t, src, u, true)
+	}
+}
+
+func driveUnitAll18Targets(t *testing.T, label string, u *ir.Unit, parseGo bool) {
+	t.Helper()
+	c := compiler.New()
+	for _, target := range c.Targets() {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Errorf("%s: target %s panicked: %v", label, target, r)
+				}
+			}()
+			out, err := c.Generate(u, target, nil)
+			if err != nil {
+				if err.Error() == "" {
+					t.Errorf("%s: target %s returned empty error", label, target)
+				}
+				return
+			}
+			if parseGo && target == "go" {
+				fset := token.NewFileSet()
+				for fn, data := range out {
+					if _, perr := goparser.ParseFile(fset, fn, data, goparser.AllErrors); perr != nil {
+						t.Errorf("%s: generated Go %s does not parse: %v", label, fn, perr)
+					}
+				}
+			}
+		}()
+	}
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Errorf("%s: target moo panicked: %v", label, r)
+			}
+		}()
+		_, _ = moo.Generate(u)
+		_, _ = mootable.Generate(u)
+	}()
 }

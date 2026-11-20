@@ -661,7 +661,7 @@ func (g *cookGen) emitRecordDescriptor(record string) {
 		isArray := f.KeyEnum != "" || f.Array != ir.ArrayNone && !f.IsList()
 		bound := int64(1)
 		elemSize := fl.Size
-		if isArray {
+		if isArray && f.ArrayBound > 0 {
 			bound = f.ArrayBound
 			elemSize = ir.FieldPieces(g.unit, f, fl.Offset)[0].Size / bound
 		}

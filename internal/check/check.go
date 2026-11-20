@@ -3414,6 +3414,10 @@ func (c *checker) resolveKeyBound(f *ast.Field, out *ir.Field) bool {
 	if en == nil {
 		return true // the enum failed its own checks; it was already diagnosed
 	}
+	if len(en.Variants) == 0 {
+		c.errf(pos, "field %s: [%s] keys an array by an empty enum — %s declares no variants (%s.Max is 0), and an array bound below 1 has no slot to key (SPEC §4.6, docs/SPEC-TABLES.md §2.4)", f.Name, name, name, name)
+		return false
+	}
 	for i, v := range en.Variants {
 		if i < len(en.VariantDeprecated) && en.VariantDeprecated[i] {
 			c.errf(pos, "field %s: the key bound [%s] names variant %s, which is marked `| deprecated` — a deprecated variant is retired in place and a keyed array is a NEW USE that numbers a slot by it; key by a live enum, or size the array with a constant (docs/SPEC-TABLES.md §2.15)", f.Name, name, v)
