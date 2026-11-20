@@ -204,7 +204,7 @@ const cookCarveDef = "  defp cook_carve(desc, value, node_off, index, order, buf
 
 var extentWalkFamilies = []string{
 	"cook_walk_record", "cook_walk_field", "cook_walk_union", "cook_walk_elem",
-	"cook_walk_holder", "cook_put_holder", "cook_put_member", "cook_walk_member", "cook_list",
+	"cook_walk_holder", "cook_put_holder", "cook_pointer_array", "cook_put_member", "cook_walk_member", "cook_list",
 }
 
 // withoutExtentWalks is the cook writer for a unit with no extent anywhere.
@@ -297,17 +297,11 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
   end
 
   def cook_measure_reason(table, value) do
-    case cook_plan(table, value) do
-      {:ok, plan} ->
-        # the measure walks the value (docs/SPEC-TABLES.md §7.6): an invalid
-        # value is invalid_value, not a size.
-        case cook_render(plan, :little) do
-          {:ok, bytes} -> {byte_size(bytes), :ok}
-          _ -> {-1, :invalid_value}
-        end
-
-      {:error, reason} ->
-        {-1, reason}
+    # the measure walks the value (docs/SPEC-TABLES.md §7.6): an invalid
+    # value is invalid_value, not a size.
+    case cook_build(table, value, nil, :little) do
+      {:ok, bytes, _total} -> {byte_size(bytes), :ok}
+      {:error, reason} -> {-1, reason}
     end
   end
 
@@ -317,28 +311,18 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
   # the caller's buffer is kept.
   def cook_from(table, value, buffer, order)
       when is_binary(buffer) and order in [:little, :big] do
-    case cook_plan(table, value) do
-      {:error, _} ->
+    case cook_build(table, value, byte_size(buffer), order) do
+      {:ok, bytes, total} ->
+        {true, bytes <> binary_part(buffer, total, byte_size(buffer) - total)}
+
+      _ ->
         false
-
-      {:ok, plan} ->
-        if byte_size(buffer) < plan.total do
-          false
-        else
-          case cook_render(plan, order) do
-            {:ok, bytes} ->
-              {true, bytes <> binary_part(buffer, plan.total, byte_size(buffer) - plan.total)}
-
-            _ ->
-              false
-          end
-        end
     end
   end
 
   def cook_from(_table, _value, _buffer, _order), do: false
 
-  defp cook_plan(table, value) do
+  defp cook_build(table, value, limit, order) do
     try do
       {value, directory} =
         case value do
@@ -355,12 +339,6 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
       try do
         {body, count} = cook_collect(desc, value, 0)
 
-        children =
-          for i <- 0..(count - 1)//1 do
-            [{_, node}] = :ets.lookup(tab, {:node, i})
-            node
-          end
-
         root = %{
           id: desc.type_id,
           key: {desc.type_id, 1},
@@ -371,9 +349,16 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
           desc: desc
         }
 
-        {data, align, laid} = cook_lay([root | children])
-        total = 64 + data + length(laid) * 16
-        {:ok, %{total: total, data: data, align: align, nodes: laid, desc: desc}}
+        :ets.insert(tab, {{:node, -1}, root})
+        {data, align} = cook_lay_ets(tab, -1, count, 0, 8)
+        total = 64 + data + (count + 1) * 16
+
+        if limit != nil and limit < total do
+          {:error, :short}
+        else
+          out = {[], [], [], [], 0}
+          {:ok, cook_render_ets(tab, -1, count, data, align, order, out, 0), total}
+        end
       after
         :ets.delete(tab)
         Process.delete(:elixir_cook_directory)
@@ -402,9 +387,9 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
     Enum.reduce(desc.fields, {value, acc}, fn f, {value, acc} ->
       if field_active?(f, desc, value) do
         case Map.fetch(value, f.name) do
-          {:ok, v} ->
-            {v, acc} = cook_collect_field(f, v, acc)
-            {Map.put(value, f.name, v), acc}
+          {:ok, raw} ->
+            {v, acc} = cook_collect_field(f, raw, acc)
+            if v === raw, do: {value, acc}, else: {Map.put(value, f.name, v), acc}
 
           :error ->
             {v, acc} = cook_collect_field(f, f.default, acc)
@@ -456,8 +441,14 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
   defp cook_collect_field(%{t: :table, elem: elem}, v, acc) when is_map(v),
     do: cook_collect(Map.fetch!(@tables, elem), v, acc)
 
-  defp cook_collect_field(%{t: :list} = f, v, acc) when is_list(v),
-    do: Enum.map_reduce(v, acc, fn e, acc -> cook_collect_elem(f, e, acc) end)
+  defp cook_collect_field(%{t: :list, elem_kind: 17} = f, v, acc) when is_list(v),
+    do: {v, Enum.reduce(v, acc, fn e, acc -> elem(cook_collect_elem(f, e, acc), 1) end)}
+
+  defp cook_collect_field(%{t: :list, elem_kind: k} = f, v, acc)
+       when is_list(v) and k in [13, 15],
+       do: Enum.map_reduce(v, acc, fn e, acc -> cook_collect_elem(f, e, acc) end)
+
+  defp cook_collect_field(%{t: :list}, v, acc) when is_list(v), do: {v, acc}
 
   defp cook_collect_field(%{t: :list}, v, _acc) when not is_nil(v), do: throw(:invalid)
 
@@ -575,30 +566,34 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
     end
   end
 
-  defp cook_lay(nodes) do
-    {offset, align, acc} =
-      Enum.reduce(nodes, {0, 8, []}, fn n, {offset, align, acc} ->
-        case n.kind do
-          :blob ->
-            start = cook_align(offset, 8)
-            size = 8 + byte_size(n.value) + if(n.string, do: 1, else: 0)
-            {start + size, align, [Map.merge(n, %{offset: start, size: size, extent: 0}) | acc]}
+  defp cook_lay_ets(_tab, i, count, offset, align) when i == count,
+    do: {cook_align(offset, align), align}
 
-          :table ->
-            # a node aligns to its record's alignment and every array its
-            # extent can hold (ir.CookNodeAlign, docs/SPEC-TABLES.md §2.8)
-            d = Map.get(n, :desc) || Map.fetch!(@tables, n.elem)
-            align = max(align, d.node_align)
-            start = cook_align(offset, d.node_align)
-            ext = if(d.has_extent, do: cook_extent(d, n.value), else: 0)
-            size = d.record + ext
+  defp cook_lay_ets(tab, i, count, offset, align) do
+    [{_, n}] = :ets.lookup(tab, {:node, i})
 
-            {start + size, align,
-             [Map.merge(n, %{offset: start, size: size, extent: ext, desc: d}) | acc]}
-        end
-      end)
+    case n.kind do
+      :blob ->
+        start = cook_align(offset, 8)
+        size = 8 + byte_size(n.value) + if(n.string, do: 1, else: 0)
+        :ets.insert(tab, {{:index, n.key}, start})
+        :ets.insert(tab, {{:laid, i}, :blob, n.id, start, size, 0, nil, n.value})
+        :ets.delete(tab, {:node, i})
+        cook_lay_ets(tab, i + 1, count, start + size, align)
 
-    {cook_align(offset, align), align, Enum.reverse(acc)}
+      :table ->
+        # a node aligns to its record's alignment and every array its
+        # extent can hold (ir.CookNodeAlign, docs/SPEC-TABLES.md §2.8)
+        d = Map.get(n, :desc) || Map.fetch!(@tables, n.elem)
+        align = max(align, d.node_align)
+        start = cook_align(offset, d.node_align)
+        ext = if(d.has_extent, do: cook_extent(d, n.value), else: 0)
+        size = d.record + ext
+        :ets.insert(tab, {{:index, n.key}, start})
+        :ets.insert(tab, {{:laid, i}, :table, n.id, start, size, ext, d, n.value})
+        :ets.delete(tab, {:node, i})
+        cook_lay_ets(tab, i + 1, count, start + size, align)
+    end
   end
 
   # THE NODE EXTENT (docs/SPEC-TABLES.md §2.8, §2.9, §7.2, §7.6; the layout
@@ -676,7 +671,7 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
     do: cook_walk_record(Map.fetch!(@tables, elem), Map.get(value, f.name), rec + f.cook_off, ctx)
 
   defp cook_walk_field(%{t: :list, elem_t: t} = f, value, rec, ctx) when t in [:record, :union] do
-    Enum.reduce(Enum.with_index(cook_list(value, f)), ctx, fn {e, i}, ctx ->
+    cook_reduce_idx(cook_list(value, f), 0, ctx, fn e, i, ctx ->
       cook_walk_elem(f, e, rec + f.cook_off + i * f.elem_size, ctx)
     end)
   end
@@ -723,21 +718,78 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
     buf = cook_put_holder(f, elems, size, slot, array, ctx)
     ctx = %{ctx | at: start + length(elems) * size, buf: buf}
 
-    Enum.reduce(Enum.with_index(elems), ctx, fn {e, i}, ctx ->
-      cook_walk_member(f, e, array + i * size, ctx)
-    end)
+    if f.t == :map or Map.get(f, :elem_t) in [:record, :union] do
+      cook_reduce_idx(elems, 0, ctx, fn e, i, ctx ->
+        cook_walk_member(f, e, array + i * size, ctx)
+      end)
+    else
+      ctx
+    end
   end
 
   defp cook_put_holder(_f, _elems, _size, _slot, _array, %{buf: nil}), do: nil
+
+  defp cook_put_holder(
+         %{t: :list, elem_t: :pointer, elem_cook_id: id},
+         elems,
+         8,
+         slot,
+         array,
+         ctx
+       ) do
+    %{buf: buf, index: index, order: order} = ctx
+
+    if elems == [] do
+      put_i32(buf, slot + 8, 0, order)
+    else
+      buf = put_i64(buf, slot, array - slot, order)
+      buf = put_i32(buf, slot + 8, length(elems), order)
+      put_raw(buf, array, cook_pointer_array(elems, array, id, index, order, [], [], 0))
+    end
+  end
 
   defp cook_put_holder(f, elems, size, slot, array, ctx) do
     %{buf: buf, index: index, order: order} = ctx
     buf = if elems == [], do: buf, else: put_i64(buf, slot, array - slot, order)
     buf = put_i32(buf, slot + 8, length(elems), order)
 
-    Enum.reduce(Enum.with_index(elems), buf, fn {e, i}, buf ->
+    cook_reduce_idx(elems, 0, buf, fn e, i, buf ->
       cook_put_member(f, e, array + i * size, index, order, buf)
     end)
+  end
+
+  defp cook_pointer_array([], _at, _id, _index, _order, cur, chunks, _n) do
+    tail = if cur == [], do: [], else: [IO.iodata_to_binary(Enum.reverse(cur))]
+    IO.iodata_to_binary(Enum.reverse(chunks, tail))
+  end
+
+  defp cook_pointer_array([nil | rest], at, id, index, order, cur, chunks, n) do
+    cur = [<<0::64>> | cur]
+
+    if n + 1 == 512 do
+      chunk = IO.iodata_to_binary(Enum.reverse(cur))
+      cook_pointer_array(rest, at + 8, id, index, order, [], [chunk | chunks], 0)
+    else
+      cook_pointer_array(rest, at + 8, id, index, order, cur, chunks, n + 1)
+    end
+  end
+
+  defp cook_pointer_array([v | rest], at, id, index, order, cur, chunks, n) do
+    delta =
+      case :ets.lookup(index, {:index, {id, v}}) do
+        [{_, to}] when to != at -> to - at
+        _ -> throw(:invalid)
+      end
+
+    word = if order == :little, do: <<delta::little-signed-64>>, else: <<delta::big-signed-64>>
+    cur = [word | cur]
+
+    if n + 1 == 512 do
+      chunk = IO.iodata_to_binary(Enum.reverse(cur))
+      cook_pointer_array(rest, at + 8, id, index, order, [], [chunk | chunks], 0)
+    else
+      cook_pointer_array(rest, at + 8, id, index, order, cur, chunks, n + 1)
+    end
   end
 
   # a map's member is its generated { key, value } ENTRY record (§2.8)
@@ -766,64 +818,104 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
   # gaps between writes zero, and the windows are joined in layout order the
   # same way, with the alignment gaps between them zero: no write copies a
   # node or the region, so the writer's work is linear in the cooked size.
-  defp cook_render(plan, order) do
-    index = :ets.new(:elixir_cook_index, [:private, :set])
+  defp cook_render_ets(
+         _tab,
+         i,
+         count,
+         data,
+         align,
+         order,
+         {parts, pchunks, dir_rev, dchunks, _k},
+         at
+       )
+       when i == count do
+    ptail =
+      case {parts == [], data == at} do
+        {true, true} ->
+          []
 
-    try do
-      Enum.each(plan.nodes, fn n -> :ets.insert(index, {n.key, n.offset}) end)
+        {true, false} ->
+          [:binary.copy(<<0>>, data - at)]
 
-      {parts, at} =
-        Enum.reduce(plan.nodes, {[], 0}, fn n, {parts, at} ->
-          window = {n.offset, []}
+        {false, true} ->
+          [IO.iodata_to_binary(Enum.reverse(parts))]
 
-          window =
-            case n.kind do
-              :blob ->
-                window = put_u32(window, n.offset, byte_size(n.value), order)
-                put_raw(window, n.offset + 8, n.value)
+        {false, false} ->
+          [IO.iodata_to_binary(Enum.reverse(parts)), :binary.copy(<<0>>, data - at)]
+      end
 
-              :table ->
-                window = cook_record(n.desc, n.value, n.offset, index, order, window)
-
-                if n.extent == 0 and not n.desc.has_extent do
-                  window
-                else
-                  cook_carve(n.desc, n.value, n.offset, index, order, window)
-                end
-            end
-
-          bytes = cook_window(window, n.size)
-          {[bytes, :binary.copy(<<0>>, n.offset - at) | parts], n.offset + n.size}
-        end)
-
-      data = [Enum.reverse(parts), :binary.copy(<<0>>, plan.data - at)]
-      header = cook_header(plan, order)
-      dir = cook_directory(plan.nodes, order)
-      {:ok, IO.iodata_to_binary([header, data, dir])}
-    catch
-      :invalid -> :error
-    after
-      :ets.delete(index)
-    end
+    dtail = if dir_rev == [], do: [], else: [IO.iodata_to_binary(Enum.reverse(dir_rev))]
+    header = cook_header(data, count + 1, align, order)
+    IO.iodata_to_binary([header, Enum.reverse(pchunks, ptail), Enum.reverse(dchunks, dtail)])
   end
 
-  defp cook_header(plan, order) do
+  defp cook_render_ets(
+         tab,
+         i,
+         count,
+         data,
+         align,
+         order,
+         {parts, pchunks, dir_rev, dchunks, k},
+         at
+       ) do
+    [{_, kind, id, start, size, ext, desc, val}] = :ets.lookup(tab, {:laid, i})
+    :ets.delete(tab, {:laid, i})
+    window = {start, []}
+
+    window =
+      case kind do
+        :blob ->
+          window = put_u32(window, start, byte_size(val), order)
+          put_raw(window, start + 8, val)
+
+        :table ->
+          window = cook_record(desc, val, start, tab, order, window)
+
+          if ext == 0 and not desc.has_extent do
+            window
+          else
+            cook_carve(desc, val, start, tab, order, window)
+          end
+      end
+
+    bytes = cook_window(window, size)
+
+    parts =
+      if start == at do
+        [bytes | parts]
+      else
+        [bytes, :binary.copy(<<0>>, start - at) | parts]
+      end
+
+    dir_entry = <<cook_u64(start, order)::binary, cook_u64(id, order)::binary>>
+    dir_rev = [dir_entry | dir_rev]
+
+    out =
+      if k + 1 == 512 do
+        pchunk = IO.iodata_to_binary(Enum.reverse(parts))
+        dchunk = IO.iodata_to_binary(Enum.reverse(dir_rev))
+        {[], [pchunk | pchunks], [], [dchunk | dchunks], 0}
+      else
+        {parts, pchunks, dir_rev, dchunks, k + 1}
+      end
+
+    cook_render_ets(tab, i + 1, count, data, align, order, out, start + size)
+  end
+
+  defp cook_header(data, node_count, align, order) do
     words = [
       @cook_magic,
       @cook_build_version,
       if(order == :big, do: 2, else: 1),
-      plan.data,
-      length(plan.nodes) * 16,
-      plan.align,
+      data,
+      node_count * 16,
+      align,
       0,
       0
     ]
 
     for w <- words, into: <<>>, do: cook_u64(w, order)
-  end
-
-  defp cook_directory(nodes, order) do
-    for n <- nodes, into: <<>>, do: cook_u64(n.offset, order) <> cook_u64(n.id, order)
   end
 
   defp cook_record(desc, value, base, index, order, buf) do
@@ -979,10 +1071,15 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
         do: elems ++ List.duplicate(%{}, ceiling - length(elems)),
         else: elems
 
-    Enum.reduce(Enum.with_index(elems), buf, fn {e, i}, buf ->
+    cook_reduce_idx(elems, 0, buf, fn e, i, buf ->
       cook_elem(f, e, base + f.cook_off + i * f.elem_size, index, order, buf)
     end)
   end
+
+  defp cook_reduce_idx([], _i, acc, _fun), do: acc
+
+  defp cook_reduce_idx([h | t], i, acc, fun),
+    do: cook_reduce_idx(t, i + 1, fun.(h, i, acc), fun)
 
   # The wire descriptor's bound key is overwritten by cardBound. The array
   # maximum rides on the list clause as the first :bound, which cardBound then
@@ -1061,7 +1158,7 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
   defp cook_ref(buf, _at, _id, nil, _index, _order), do: buf
 
   defp cook_ref(buf, at, id, v, index, order) do
-    case :ets.lookup(index, {id, v}) do
+    case :ets.lookup(index, {:index, {id, v}}) do
       [{_, to}] when to != at -> put_i64(buf, at, to - at, order)
       _ -> throw(:invalid)
     end
@@ -1125,6 +1222,9 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
   # sort, so equal offsets keep their order), each write past the one before
   # it and the gaps zero. Writes that overlap or leave the node are applied
   # one by one in the order made, the later write winning.
+  defp cook_window({_origin, []}, 0), do: <<>>
+  defp cook_window({_origin, [{0, bytes}]}, size) when byte_size(bytes) == size, do: bytes
+
   defp cook_window({_origin, writes}, size) do
     made = Enum.reverse(writes)
 
@@ -1137,11 +1237,19 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
     end
   end
 
-  defp cook_lay_writes([], at, size, parts) when at <= size,
+  defp cook_lay_writes([], size, size, [only]), do: only
+  defp cook_lay_writes([], size, size, parts), do: Enum.reverse(parts)
+
+  defp cook_lay_writes([], at, size, parts) when at < size,
     do: Enum.reverse(parts, [:binary.copy(<<0>>, size - at)])
 
   defp cook_lay_writes([{w, bytes} | rest], at, size, parts)
-       when w >= at and w + byte_size(bytes) <= size do
+       when w == at and w + byte_size(bytes) <= size do
+    cook_lay_writes(rest, w + byte_size(bytes), size, [bytes | parts])
+  end
+
+  defp cook_lay_writes([{w, bytes} | rest], at, size, parts)
+       when w > at and w + byte_size(bytes) <= size do
     gap = :binary.copy(<<0>>, w - at)
     cook_lay_writes(rest, w + byte_size(bytes), size, [bytes, gap | parts])
   end
