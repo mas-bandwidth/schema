@@ -1486,7 +1486,7 @@ conformance-negative-control-cs-write-refusal-fixed: build-conformance-cs build/
 .PHONY: conformance-negative-control-cs-write-refusal-message
 conformance-negative-control-cs-write-refusal-message: build-conformance-cs build/conformance-harness
 	@sh test/conformance/cs/write-refusal-control "$(DOTNET)" build/conformance-cs-write-refusal-message-control \
-		's/System\.Diagnostics\.Debug\.Assert\(StorePurchaseFixedWriteAdmits\(v\)\);/\/* SABOTAGED: no message value write check *\//g' \
+		's/System\.Diagnostics\.Debug\.Assert\(StorePurchaseFixedWriteAdmits\(v\)\);/\/* SABOTAGED: no message value write check *\//g; s/, RequiredValidRaw = delegate \(ulong raw\) \{[^}]*\}//g' \
 		'Debug\.Assert\(StorePurchaseFixedWriteAdmits\(v\)\);' write-refusal-message message
 	@echo 'C# write-refusal-message negative control: the message writer without its value write check is detected by cs / write-refusal-message; message stays green'
 

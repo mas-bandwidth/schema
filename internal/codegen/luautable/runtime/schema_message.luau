@@ -1724,7 +1724,7 @@ function M.loadMessagesWalk(v: any, root: string, data: buffer, capacity: number
 				if not tok or tree == nil then
 					return got, {}
 				end
-				transcoded[i] = { ownTree = tree, ownVocab = ov }
+				transcoded[i] = { ownTree = tree, ownVocab = ov, from = b.from, to = b.to }
 			end
 			return got, transcoded
 		end

@@ -2382,7 +2382,7 @@ edge_union = function(T: any, u: any, val: any, out: { any }, cache: any)
 end
 
 local function guard_holds(fd: any, v: any): boolean
-  local g = fd.guard
+  local g: { { any } }? = fd.guard
   if g == nil then return true end
   for _, pair in ipairs(g) do
     if (v[pair[1]] == true) ~= pair[2] then return false end

@@ -44,7 +44,10 @@ tables-goose-message-form-negative-control:
 		cat $(GOOSE_MESSAGE_NC)/log; exit 1; \
 	fi
 	@grep -E -- '--- FAIL: TestGooseMessageForm' $(GOOSE_MESSAGE_NC)/log | awk '{print $$3}' | sort > $(GOOSE_MESSAGE_NC)/failed
-	@printf '%s\n' TestGooseMessageFormCarriesEveryShape TestGooseMessageFormTextAligns \
+	@printf '%s\n' TestGooseMessageFormCarriesEveryShape \
+		TestGooseMessageFormMatchesTheGoldens TestGooseMessageFormMatchesTheGoldens/varevo1_msg \
+		TestGooseMessageFormMatchesTheGoldens/varevo3_msg TestGooseMessageFormMatchesTheGoldens/varevo3_msg_notice \
+		TestGooseMessageFormTextAligns \
 		TestGooseMessageFormTextAligns/login_full TestGooseMessageFormTextAligns/peer_a \
 		TestGooseMessageFormTextAligns/store_full | sort > $(GOOSE_MESSAGE_NC)/expected
 	@cmp -s $(GOOSE_MESSAGE_NC)/failed $(GOOSE_MESSAGE_NC)/expected || \
