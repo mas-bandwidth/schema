@@ -1403,7 +1403,7 @@ test-rust: tables-rust-wire-fuzz-all tables-rust-retain-negative-control tables-
 # localizes it. No tracked file is written to.
 RUST_CONFORMANCE_WALK := build/rust-conformance-walk-control
 .PHONY: conformance-negative-control-rust-walk
-conformance-negative-control-rust-walk: build/conformance-harness
+conformance-negative-control-rust-walk: build/conformance-harness $(RUST_FEATURE_WITNESSES_CRATES)/.stamp
 	@rm -rf $(RUST_CONFORMANCE_WALK) && mkdir -p $(RUST_CONFORMANCE_WALK)/driver
 	@go run ./tools/sabotage -name rust-text-walk-field-match \
 		-out $(RUST_CONFORMANCE_WALK)/variabletext.go.txt internal/codegen/rusttable/variabletext.go
