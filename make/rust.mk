@@ -653,7 +653,7 @@ test-rust: generated/rust/.stamp generated/rust-ludicrous/.stamp generated/bench
 	cd test/rust-ludicrous && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release
 
 TEST_LEGS         += test-rust
-CONFORMANCE_LEGS  += build/conformance-rust
+CONFORMANCE_LEGS  += $(call unless_skipped,rust,build/conformance-rust)
 
 # Packet defaults share the C++ oracle. Both build modes consume its byte and
 # bit pins, and the control removes only constructor byte copies.

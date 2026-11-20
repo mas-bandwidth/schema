@@ -833,7 +833,7 @@ test-go: generated/bench/tables/go/.stamp generated/bench/paired/go/.stamp gener
 	cd test/go-ludicrous && go run .
 
 TEST_LEGS         += test-go
-CONFORMANCE_LEGS  += build/conformance-go
+CONFORMANCE_LEGS  += $(call unless_skipped,go,build/conformance-go)
 BENCH_TABLES_LEGS += generated/bench/tables/go/.stamp
 
 .PHONY: tables-go-wire-fuzz tables-go-wire-fuzz-negative-control

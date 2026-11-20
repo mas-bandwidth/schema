@@ -6,6 +6,7 @@ protocol deadlines and the existing negative controls' intended oracles stay int
 Only this fixed, single-language plan is accepted: no seed, count, skip or phase flags.
 """
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 import os
@@ -451,6 +452,59 @@ class Runner:
             print("INCOMPLETE: " + name + ": " + error, flush=True)
         return text, status
 
+    def _run_buffered(self, name, argv, cwd=None, validate=None, expected=0):
+        cwd = Path(cwd or self.root).resolve()
+        env = dict(self.env, PWD=str(cwd))
+        stem = self.out / name
+        (stem.with_suffix(".command.json")).write_text(
+            json.dumps({"argv": argv, "cwd": str(cwd), "PWD": env["PWD"],
+                        "SCHEMA_SLOW": "1", "SCHEMA_REQUIRE_CORPUS": "1",
+                        "GOFLAGS": "-p=2", "GOMAXPROCS": "2"}, indent=2) + "\n")
+        start = time.monotonic()
+        try:
+            with stem.with_suffix(".log").open("w") as log:
+                proc = subprocess.Popen(argv, cwd=cwd, env=env, stdout=log,
+                                        stderr=subprocess.STDOUT, text=True, errors="replace")
+                status = proc.wait()  # Deliberately no elapsed-time cutoff.
+            text = stem.with_suffix(".log").read_text(errors="replace")
+        except OSError as error:
+            text, status = str(error), 127
+            stem.with_suffix(".log").write_text(text + "\n")
+        elapsed = time.monotonic() - start
+        errors = []
+        if status != expected:
+            errors.append("exit " + str(status) + ", expected " + str(expected))
+        if validate:
+            errors.extend(validate(text))
+        return name, argv, text, status, elapsed, errors
+
+    def run_parallel(self, specs):
+        if not specs:
+            return []
+        if type(self).run is not _REAL_RUNNER_RUN:
+            return [self.run(s["name"], s["argv"], cwd=s.get("cwd"),
+                             validate=s.get("validate"), expected=s.get("expected", 0))
+                    for s in specs]
+        workers = min(4, os.cpu_count() or 4, len(specs))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = [
+                pool.submit(self._run_buffered, s["name"], s["argv"],
+                            s.get("cwd"), s.get("validate"), s.get("expected", 0))
+                for s in specs
+            ]
+            completed = [f.result() for f in futures]
+        out = []
+        for name, argv, text, status, elapsed, errors in completed:
+            print("\n=== " + name + " ===\n" + shlex.join(argv), flush=True)
+            if text:
+                print(text, end="" if text.endswith("\n") else "\n", flush=True)
+            self.results.append({"phase": name, "exit": status, "seconds": elapsed,
+                                 "errors": errors})
+            for error in errors:
+                print("INCOMPLETE: " + name + ": " + error, flush=True)
+            out.append((text, status))
+        return out
+
     def missing(self, name, reason):
         print("INCOMPLETE: " + name + ": " + reason, flush=True)
         self.results.append({"phase": name, "errors": [reason]})
@@ -478,6 +532,8 @@ class Runner:
         if not failed:
             print("NIGHTLY_READINESS_PASS language=" + lang + " phases=" + str(len(self.results)), flush=True)
         return 1 if failed else 0
+
+_REAL_RUNNER_RUN = Runner.run
 
 
 def run_native(runner, lang):
@@ -890,6 +946,7 @@ def driver_command(root, lang, builder=False):
 
 def run_fuzz(runner, lang):
     runner.make("wire-driver-build", DRIVER_BUILD[lang])
+    specs = []
     for arm in ("plain", "retain"):
         for seed in SEEDS:
             name = "wire-" + arm + "-" + str(seed)
@@ -907,8 +964,11 @@ def run_fuzz(runner, lang):
             # roster. Today this deliberately exposes real uncarried roots and
             # also the known default-roster variable-root/message mismatch;
             # this script does not silently delete either kind of input.
-            runner.run(name, args, validate=lambda text, a=arm, s=seed: fuzz_result(text, a, s, lang))
-
+            specs.append({
+                "name": name,
+                "argv": args,
+                "validate": lambda text, a=arm, s=seed: fuzz_result(text, a, s, lang),
+            })
 
     if lang == "cs":
         # C# also exposes a mutable builder. Its plain reader follows Decode's
@@ -919,8 +979,13 @@ def run_fuzz(runner, lang):
                     "--driver", driver_command(runner.root, lang, builder=True),
                     "--seed", str(seed), "--n", str(RANDOM_MUTANTS),
                     "--failed", str(runner.out / (name + ".bin"))]
-            runner.run(name, args,
-                       validate=lambda text, s=seed: fuzz_result(text, "plain", s, lang, builder=True))
+            specs.append({
+                "name": name,
+                "argv": args,
+                "validate": lambda text, s=seed: fuzz_result(text, "plain", s, lang, builder=True),
+            })
+
+    runner.run_parallel(specs)
 
 
 def overlay_control(runner, name, source, test, package, expected, sabotage=None,
