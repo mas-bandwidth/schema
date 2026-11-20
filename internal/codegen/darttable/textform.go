@@ -153,6 +153,7 @@ final class TableTextReport {
   bool refused = false;
   String refusal = '';
   String missingFields = '';
+  bool variableRoot = false;
   final Set<int> textLabels = <int>{};
 
   // refuse records the read's whole-load refusal by name (a per-language
@@ -1101,7 +1102,7 @@ func (g *wireGen) emitTextFromJsonFields(st *ir.Struct) {
 	// an unknown key is skipped and counted, and its repeat is damage like a
 	// known key's (§2.8). Its VALUE is held to the grammar and text rules a
 	// placed value is held to (§16.3, §4), so damage inside it refuses.
-	g.pf("\t\t\tdefault:\n\t\t\t\tif (!seen.add(key)) r.refuse('text_damaged');\n\t\t\t\t_jsonSkipValue(val, r);\n\t\t\t\tr.unknown++;\n")
+	g.pf("\t\t\tdefault:\n\t\t\t\tif (key.startsWith('&')) {\n\t\t\t\t\tthrow const FormatException('reserved ampersand prefix');\n\t\t\t\t}\n\t\t\t\tif (!seen.add(key)) r.refuse('text_damaged');\n\t\t\t\t_jsonSkipValue(val, r);\n\t\t\t\tr.unknown++;\n")
 	g.pf("\t\t}\n")
 	g.pf("\t}\n")
 	g.emitRequiredCheck(st, false, "\t")
@@ -1300,7 +1301,7 @@ func (g *wireGen) emitTextToJson(st *ir.Struct) {
 func (g *wireGen) emitTextFromJson(st *ir.Struct) {
 	fn := dartName(st.Name) + "FromJson"
 	g.pf("%s %s(String text, [TableTextReport? report]) {\n", st.Name, fn)
-	g.pf("\tfinal r = report ?? TableTextReport();\n\tr.missingFields = '';\n")
+	g.pf("\tfinal r = report ?? TableTextReport();\n\tr.missingFields = '';\n\tr.variableRoot = %t;\n", ir.VariableTables(g.unit)[st.Name])
 	g.pf("\tfinal v = %s();\n", st.Name)
 	// Keep source numeric tokens so float32's exact overflow boundary and
 	// wide integer values are decided before dart:convert rounds them.

@@ -84,7 +84,7 @@ defmodule Cards.CardsTest do
     consumers_json = fn entries ->
       elems =
         Enum.map_join(1..entries, ",", fn _ ->
-          ~s({"kind":"k","who":"w","route":"r","model":"m","started":0,"ended":0,"outcome":"o","line":"l","cost_micro_usd":0})
+          ~s({"kind":"k","who":"w","route":"r","model":"m","started":"0","ended":"0","outcome":"o","line":"l","cost_micro_usd":"0"})
         end)
 
       ~s({"id":"x","consumers":[#{elems}]})

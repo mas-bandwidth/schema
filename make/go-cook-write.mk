@@ -12,7 +12,8 @@ COOK_WRITE_PASS_AWK := /^cook-write[ \t]/ { found=1; if ($$0 ~ /\+[0-9]+a/) { ab
 .PHONY: conformance-go-cook-write
 conformance-go-cook-write: build/conformance-harness build/conformance-go
 	@mkdir -p $(COOK_WRITE_DIR)
-	@./build/conformance-harness run --only go > $(COOK_WRITE_DIR)/log 2>&1 || true
+	@rm -rf $(COOK_WRITE_DIR)/work
+	@./build/conformance-harness run --only go --work $(COOK_WRITE_DIR)/work > $(COOK_WRITE_DIR)/log 2>&1 || true
 	@if ! awk '$(COOK_WRITE_PASS_AWK)' $(COOK_WRITE_DIR)/log; then \
 		echo "conformance-go-cook-write FAILED: the log's cook-write cell is not a full pass"; \
 		grep -E '^cook-write[ \t]|^  go / cook-write:' $(COOK_WRITE_DIR)/log || true; \
@@ -42,7 +43,7 @@ conformance-go-cook-write-negative-control: build/conformance-harness build/conf
 	@printf '#!/bin/sh\nexec %s/%s/driver "$$@"\n' "$(CURDIR)" "$(COOK_WRITE_NEG)" > $(COOK_WRITE_NEG)/driver.sh
 	@chmod +x $(COOK_WRITE_NEG)/driver.sh
 	@printf 'go %s/%s/driver.sh\n' "$(CURDIR)" "$(COOK_WRITE_NEG)" > $(COOK_WRITE_NEG)/drivers.txt
-	@./build/conformance-harness run --drivers $(COOK_WRITE_NEG)/drivers.txt --only go > $(COOK_WRITE_NEG)/log 2>&1 || true
+	@./build/conformance-harness run --drivers $(COOK_WRITE_NEG)/drivers.txt --only go --work $(COOK_WRITE_NEG)/work > $(COOK_WRITE_NEG)/log 2>&1 || true
 	@if awk '$(COOK_WRITE_PASS_AWK)' $(COOK_WRITE_NEG)/log; then \
 		echo "NEGATIVE CONTROL FAILED: the target's cook-write verdict stayed green on the sabotage"; \
 		grep -E '^cook-write[ \t]' $(COOK_WRITE_NEG)/log || true; \

@@ -2238,8 +2238,8 @@ cards-java-wire-fuzz: build/conformance-harness build/cards-java-wire-fuzz/.stam
 	@set -- $(CARDS_JAVA_FUZZ_SEEDS); \
 		while [ "$$#" -ge 2 ]; do \
 			seed=$$1; n=$$2; shift 2; \
-			timeout $(CARDS_JAVA_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
-				--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
+			./build/conformance-harness wire-fuzz \
+				--timeout $(CARDS_JAVA_FUZZ_TIME) --manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 				--driver "$(CURDIR)/build/cards-java-wire-fuzz/driver" --seed $$seed --n $$n \
 				>> build/cards-java-wire-fuzz.log 2>&1; \
 			status=$$?; \
@@ -2262,8 +2262,8 @@ cards-java-retain-fuzz: build/conformance-harness build/cards-java-wire-fuzz/.st
 	@set -- $(CARDS_JAVA_FUZZ_SEEDS); \
 		while [ "$$#" -ge 2 ]; do \
 			seed=$$1; n=$$2; shift 2; \
-			timeout $(CARDS_JAVA_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
-				--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
+			./build/conformance-harness wire-fuzz \
+				--timeout $(CARDS_JAVA_FUZZ_TIME) --manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 				--driver "$(CURDIR)/build/cards-java-wire-fuzz/driver" --seed $$seed --n $$n --retain \
 				>> build/cards-java-retain-fuzz.log 2>&1; \
 			status=$$?; \

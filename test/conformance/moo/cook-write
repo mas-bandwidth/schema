@@ -56,7 +56,7 @@ run)
     out=build/conformance-moo-cook-write
     rm -rf "$out"
     mkdir -p "$out"
-    build/conformance-harness run --only moo > "$out/log" 2>&1 || true
+    build/conformance-harness run --only moo --work "$out/work" > "$out/log" 2>&1 || true
     check "$out/log"
     ;;
 control)

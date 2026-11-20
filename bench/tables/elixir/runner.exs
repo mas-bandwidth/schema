@@ -138,8 +138,8 @@ defmodule SchemaTablesBenchElixir do
           gate_fail("the corpus holds #{length(values)} records, not #{@num_records}")
         end
 
-        if {report.unknown, report.kind_mismatch, report.clamped, report.widened,
-            report.malformed} != {0, 0, 0, 0, false} do
+        if {report.unknown, report.widened, report.retained, report.retain_lost,
+            report.layout_hash} != {0, 0, 0, 0, 0} do
           gate_fail("a same-schema read moved a counter: #{inspect(report)}")
         end
 
@@ -316,8 +316,7 @@ defmodule SchemaTablesBenchElixir do
     expected = plan_expected(identity_values, defaults)
 
     counters =
-      {report.malformed, report.unknown, report.kind_mismatch, report.clamped, report.duplicate,
-       report.widened}
+      {report.unknown, report.retained, report.retain_lost, report.layout_hash, report.widened}
 
     cond do
       length(identity_values) != @num_records ->
@@ -327,7 +326,7 @@ defmodule SchemaTablesBenchElixir do
       length(plan_values) != @num_records ->
         {:error, "the plan read returned #{length(plan_values)} records, not #{@num_records}"}
 
-      counters != {false, 0, 0, 0, 0, want_widened} ->
+      counters != {0, 0, 0, 0, want_widened} ->
         {:error,
          "the counters are not §5.4's for these six classes: #{inspect(report)} " <>
            "(want widened #{want_widened} = #{@num_records} x #{@plan_widened_per_record}, every other counter zero)"}
@@ -431,7 +430,7 @@ defmodule SchemaTablesBenchElixir do
                 :stderr,
                 "#{String.pad_trailing("bench_plan_read", 18)} plan read of #{@num_records} records: " <>
                   "widened #{report.widened} (expected #{@num_records} x #{@plan_widened_per_record}), " <>
-                  "clamped #{report.clamped}; every OLD value, the appended default and the " <>
+                  "unknown #{report.unknown}; every OLD value, the appended default and the " <>
                   "bound's #{@old_stats_bound} elements landed exactly\n"
               )
 

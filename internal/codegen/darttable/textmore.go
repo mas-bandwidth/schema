@@ -123,16 +123,44 @@ bool _jsonName(String name, TableTextReport r) {
 // it goes through the same text check a placed string does, so one that
 // decodes to U+0000 refuses the read as a placed one would. Every object key
 // also carries the 255-byte schema-name cap (§16.2), however deep it sits.
+int? _jsonSkippedLabel(dynamic raw) {
+  if (raw is int && raw >= 1) return raw;
+  if (raw is _JNum &&
+      raw.integral &&
+      raw.token.isNotEmpty &&
+      raw.token.codeUnitAt(0) >= 0x31 &&
+      raw.token.codeUnitAt(0) <= 0x39) {
+    final big = BigInt.tryParse(raw.token);
+    if (big != null && big <= _jsonU64Max) {
+      return big.toSigned(64).toInt();
+    }
+  }
+  return null;
+}
+
+void _jsonSkipEntry(int idx, String key, dynamic val, TableTextReport r) {
+  _jsonText(key);
+  _jsonName(key, r);
+  if (r.variableRoot && key.startsWith('&')) {
+    final label = idx == 0 && key == '&node' ? _jsonSkippedLabel(val) : null;
+    if (label == null) {
+      throw const FormatException('reserved ampersand prefix');
+    }
+    r.textLabels.add(label);
+  } else {
+    _jsonSkipValue(val, r);
+  }
+}
+
 void _jsonSkipValue(dynamic val, TableTextReport r) {
   if (val is String) {
     _jsonText(val);
     return;
   }
   if (val is _JObj) {
-    for (final entry in val.entries) {
-      _jsonText(entry.key);
-      _jsonName(entry.key, r);
-      _jsonSkipValue(entry.value, r);
+    for (var idx = 0; idx < val.entries.length; idx++) {
+      final entry = val.entries[idx];
+      _jsonSkipEntry(idx, entry.key, entry.value, r);
     }
     return;
   }
@@ -143,12 +171,12 @@ void _jsonSkipValue(dynamic val, TableTextReport r) {
     return;
   }
   if (val is Map) {
+    var idx = 0;
     for (final entry in val.entries) {
       final key = entry.key;
       if (key is! String) throw const FormatException('kind_mismatch');
-      _jsonText(key);
-      _jsonName(key, r);
-      _jsonSkipValue(entry.value, r);
+      _jsonSkipEntry(idx, key, entry.value, r);
+      idx++;
     }
   }
 }

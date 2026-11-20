@@ -1531,8 +1531,8 @@ build/conformance-rust-card: cards-rust-generate test/conformance/rust/src/wire_
 # vectors out of this Card-only manifest. The greps hold the nonzero
 # seed/mutant claim and the zero-divergence claim explicitly.
 cards-rust-wire-fuzz: build/conformance-harness build/conformance-rust-card
-	@timeout $(CARDS_RUST_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
-		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
+	@./build/conformance-harness wire-fuzz \
+		--timeout $(CARDS_RUST_FUZZ_TIME) --manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver 'build/conformance-rust-card wire-fuzz' --seed 24845619678 --n 100 \
 		> build/cards-rust-wire-fuzz.log 2>&1; \
 		status=$$?; cat build/cards-rust-wire-fuzz.log; \
@@ -1552,8 +1552,8 @@ cards-rust-wire-fuzz: build/conformance-harness build/conformance-rust-card
 # port.
 .PHONY: cards-rust-retain-fuzz
 cards-rust-retain-fuzz: build/conformance-harness build/conformance-rust-card
-	@timeout $(CARDS_RUST_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
-		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
+	@./build/conformance-harness wire-fuzz \
+		--timeout $(CARDS_RUST_FUZZ_TIME) --manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver 'build/conformance-rust-card wire-fuzz' --retain --seed 24845619678 --n 100 \
 		> build/cards-rust-retain-fuzz.log 2>&1; \
 		status=$$?; cat build/cards-rust-retain-fuzz.log; \

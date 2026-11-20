@@ -2267,7 +2267,8 @@ conformance-negative-control-absent: build/conformance-harness build/tables-gene
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
 	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) build/conformance-cpp-absent.cpp \
 		$(CONFORMANCE_SOURCES) -o build/conformance-cpp
-	@if ./build/conformance-harness run --only cpp > build/conformance-absent.log 2>&1; then \
+	@rm -rf build/conformance-absent-work
+	@if ./build/conformance-harness run --only cpp --work build/conformance-absent-work > build/conformance-absent.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the REFERENCE leg answered ABSENT and the harness stayed green"; \
 		$(MAKE) build/conformance-cpp; exit 1; \
 	fi

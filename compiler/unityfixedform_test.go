@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -192,7 +193,7 @@ func TestUnityFixedFormMatchesCpp(t *testing.T) {
     value[1].b = -50;
 `}
 	var lineageOracle []byte
-	slots := make(chan struct{}, 4)
+	slots := make(chan struct{}, min(max(4, runtime.GOMAXPROCS(0)/2), 8))
 	t.Run("oracles", func(t *testing.T) {
 		for _, r := range rows {
 			t.Run(r.tc.ID, func(t *testing.T) {
@@ -358,8 +359,18 @@ func TestUnityFixedFormMatchesCpp(t *testing.T) {
 	// and the reference has already loaded its own save clean and re-saved it
 	// to the same bytes (fixedproof.CppOracle refuses to answer otherwise).
 
+	plantedRuns := make([][]string, len(sabotages))
+	var runWG sync.WaitGroup
+	for i := range sabotages {
+		runWG.Go(func() {
+			slots <- struct{}{}
+			defer func() { <-slots }()
+			plantedRuns[i] = p.run(t, h, host, units[i+1], fmt.Sprintf("planted%d", i+1))
+		})
+	}
+	runWG.Wait()
 	for i, s := range sabotages {
-		planted := p.run(t, h, host, units[i+1], fmt.Sprintf("planted%d", i+1))
+		planted := plantedRuns[i]
 		red := ""
 		for j, want := range p.want {
 			if s.red(p.names[j], want, planted[j]) {

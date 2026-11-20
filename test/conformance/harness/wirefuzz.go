@@ -31,6 +31,7 @@ import (
 	"runtime/debug"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
@@ -44,6 +45,7 @@ type wireFuzzOptions struct {
 	seed       uint64
 	n          int
 	maxMutants int
+	timeout    time.Duration
 	shard      int
 	shards     int
 	replay     string
@@ -934,6 +936,9 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 	if opts.maxMutants < 0 {
 		return fmt.Errorf("--max-mutants must not be negative")
 	}
+	if opts.timeout < 0 {
+		return fmt.Errorf("--timeout must not be negative")
+	}
 	if opts.maxMutants > 0 && (opts.replay != "" || opts.shards > 1) {
 		return fmt.Errorf("--max-mutants cannot be combined with --replay or sharding")
 	}
@@ -957,6 +962,14 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 	leg, err := startWireLeg(opts.driver, roots)
 	if err != nil {
 		return err
+	}
+	var timedOut atomic.Bool
+	if opts.timeout > 0 {
+		timer := time.AfterFunc(opts.timeout, func() {
+			timedOut.Store(true)
+			leg.kill()
+		})
+		defer timer.Stop()
 	}
 	absent := 0
 	var live []*wireSeed
@@ -1035,6 +1048,9 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 		reply, err := leg.receiveWithDeadline(realClock{})
 		if err != nil {
 			leg.kill()
+			if timedOut.Load() {
+				return fmt.Errorf("wire-fuzz timed out after %v", opts.timeout)
+			}
 			return wireFailure(opts, mut, total, fmt.Sprintf("the leg died on the mutant (%v)", err), leg.stderr.String())
 		}
 		ans, err := root.oracle(mut.data)
@@ -1076,7 +1092,14 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 	if err := <-writeErr; err != nil {
 		stderr := leg.stderr.String()
 		leg.kill()
+		if timedOut.Load() {
+			return fmt.Errorf("wire-fuzz timed out after %v", opts.timeout)
+		}
 		return fmt.Errorf("FAILED: the leg closed its input mid-stream: %w\n%s", err, stderr)
+	}
+	if timedOut.Load() {
+		leg.kill()
+		return fmt.Errorf("wire-fuzz timed out after %v", opts.timeout)
 	}
 	if err := leg.close(); err != nil {
 		return fmt.Errorf("FAILED: the leg exited with an error after the last mutant: %w\n%s", err, leg.stderr.String())

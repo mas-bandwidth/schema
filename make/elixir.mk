@@ -144,9 +144,11 @@ build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk testdata/conform
 	# the stamp formats nothing: tables-elixir-clean checks the raw output.
 	@touch $@
 
+ELIXIR_TABLE_UNIT_SOURCES = $(foreach u,$(sort $(ELIXIR_TABLE_UNITS)),build/tables-generated-elixir/$(firstword $(subst :, ,$(u)))/*.ex)
+
 build/elixir-tables-ebin/.stamp: build/tables-generated-elixir/.stamp test/conformance/elixir/driver_impl.ex
 	@rm -rf build/elixir-tables-ebin && mkdir -p build/elixir-tables-ebin
-	$(ELIXIRC_STRICT) -o build/elixir-tables-ebin build/tables-generated-elixir/*/*.ex \
+	$(ELIXIRC_STRICT) -o build/elixir-tables-ebin $(ELIXIR_TABLE_UNIT_SOURCES) \
 		test/conformance/elixir/driver_impl.ex
 	@touch $@
 
@@ -159,12 +161,12 @@ build/elixir-tables-ebin/.stamp: build/tables-generated-elixir/.stamp test/confo
 # here.
 .PHONY: tables-elixir-standalone
 tables-elixir-standalone: build/tables-generated-elixir/.stamp
-	@n=$$(ls build/tables-generated-elixir/*/*.ex 2>/dev/null | wc -l | tr -d ' '); \
+	@n=$$(ls $(ELIXIR_TABLE_UNIT_SOURCES) 2>/dev/null | wc -l | tr -d ' '); \
 		if [ "$$n" -lt 8 ]; then \
 			echo "STANDALONE GATE FAILED: found $$n generated table modules, expected at least 8 — the glob, not the property, is what broke"; exit 1; \
 		fi
 	@rm -rf build/elixir-standalone-ebin && mkdir -p build/elixir-standalone-ebin
-	$(ELIXIRC) -o build/elixir-standalone-ebin build/tables-generated-elixir/*/*.ex
+	$(ELIXIRC) -o build/elixir-standalone-ebin $(ELIXIR_TABLE_UNIT_SOURCES)
 	@echo "tables Elixir standalone gate: every generated module compiles on the BEAM toolchain alone"
 test-elixir: tables-elixir-standalone
 
@@ -280,7 +282,7 @@ ELIXIR_HOSTILE_F32_ROWS := num-float32-midpoint num-float32-overflow
 # $(call ELIXIR_HOSTILE_CONTROL,dir,sedvar,rows,what)
 define ELIXIR_HOSTILE_CONTROL
 	$(call ELIXIR_SABOTAGED_BUILD,$(1),internal/codegen/elixirtable/variableform.go,$(2))
-	@if ELIXIR_TABLES_EBIN=$(CURDIR)/$(1)/ebin ./build/conformance-harness run --only elixir > $(1)/log 2>&1; then \
+	@if ELIXIR_TABLES_EBIN=$(CURDIR)/$(1)/ebin ./build/conformance-harness run --only elixir --work $(1)/work > $(1)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: $(4) left the json-hostile surface green"; exit 1; \
 	fi
 	@got=$$(sed -n 's|^  elixir / json-hostile: \([^:]*\):.*|\1|p' $(1)/log | sort | tr '\n' ' '); \
@@ -1090,7 +1092,8 @@ test-elixir:
 .PHONY: tables-elixir-variable-class
 tables-elixir-variable-class: build/conformance/manifest.txt
 	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestVariableClassBeyondCardConstructsElixir|TestListdemoNamesUncarriedRoots|TestOptionalVariableClosureElixir|TestScalarListUnderATableHeaderElixir|TestCountPastTheBoundRefusesElixir|TestNestedBodyEndingEarlyIsDamageElixir|TestReservedNodeIdInANestedBodyIsDamageElixir'
-	./build/conformance-harness run --only elixir
+	@rm -rf build/conformance-elixir-variable-class
+	./build/conformance-harness run --only elixir --work build/conformance-elixir-variable-class
 
 test-elixir: tables-elixir-variable-class
 
@@ -1110,7 +1113,8 @@ test-elixir: tables-elixir-variable-class
 .PHONY: tables-elixir-variable-fixed-class
 tables-elixir-variable-fixed-class: build/conformance/manifest.txt
 	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestFixedClassOnTableWireElixir|TestDefaultsAndTableRenameElixir'
-	./build/conformance-harness run --only elixir
+	@rm -rf build/conformance-elixir-variable-fixed-class
+	./build/conformance-harness run --only elixir --work build/conformance-elixir-variable-fixed-class
 
 test-elixir: tables-elixir-variable-fixed-class
 
@@ -1222,7 +1226,8 @@ test-elixir: tables-elixir-finite-float tables-elixir-finite-float-negative-cont
 .PHONY: tables-elixir-variable-arms
 tables-elixir-variable-arms: build/conformance/manifest.txt
 	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run TestMapsAndUnionArmsOnTheTableWireElixir
-	./build/conformance-harness run --only elixir
+	@rm -rf build/conformance-elixir-variable-arms
+	./build/conformance-harness run --only elixir --work build/conformance-elixir-variable-arms
 
 test-elixir: tables-elixir-variable-arms
 
@@ -1235,7 +1240,8 @@ test-elixir: tables-elixir-variable-arms
 .PHONY: tables-elixir-block-build
 tables-elixir-block-build: build/conformance/manifest.txt
 	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run TestBlockBuildAndCookWriteElixir
-	./build/conformance-harness run --only elixir
+	@rm -rf build/conformance-elixir-block-build
+	./build/conformance-harness run --only elixir --work build/conformance-elixir-block-build
 
 test-elixir: tables-elixir-block-build
 
@@ -1677,10 +1683,14 @@ test-elixir: tables-elixir-keyed tables-elixir-keyed-none-negative-control table
 # colliding with the module it writes for schema file Card.schema
 # (docs/SPEC-TABLES.md §11): a table lowers to a module in the TABLE backend,
 # so the packet emitter skips it and the command reaches elixirtable.
-cards-elixir-generate: bin/schema
+CARDS_ELIXIR_STAMP := build/tables-generated-elixir/cards/.stamp
+cards-elixir-generate: $(CARDS_ELIXIR_STAMP)
+
+$(CARDS_ELIXIR_STAMP): bin/schema $(wildcard tables/cards/*.schema)
 	@rm -rf build/tables-generated-elixir/cards
 	@mkdir -p build/tables-generated-elixir/cards
 	./bin/schema generate --lang elixir --out build/tables-generated-elixir/cards tables/cards
+	@touch $@
 
 # the cards corpus and the driver compiled into one ebin, so the wire-fuzz
 # driver's one BEAM can name the Cards.Table codec it drives.
