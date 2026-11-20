@@ -34,7 +34,7 @@ func TestCNegativeControlGrepDialects(t *testing.T) {
 	}{
 		{"literal-open-paren", "memcpy( dst, w->vocabulary->ids", []string{"memcpy( dst, w->vocabulary->ids, bytes );"}},
 		{"macro-open-paren", "define SCHEMA_TABLEDEMO_TABLE_KEYED_SLOT(", []string{"#define SCHEMA_TABLEDEMO_TABLE_KEYED_SLOT(type)"}},
-		{"basic-alternation", `schema_table_assert_.* is negative\|static assertion failed`, []string{"schema_table_assert_size is negative", "static assertion failed: layout"}},
+		{"basic-alternation", `schema_table_assert_.*negative\|static assertion failed`, []string{"schema_table_assert_size is negative", "static assertion failed: layout"}},
 		{"fixed-expression", "$(C_JSON_LABEL_RED)", []string{"root_save(NULL,(const Root *)(const void *)copy.region,saved,sizeof(saved))==(int64_t)sizeof(expected)"}},
 		{"literal-expression", "memcmp(output,expected,sizeof(expected))", []string{"CHECK(memcmp(output,expected,sizeof(expected)) == 0)"}},
 		{"extended-alternation", "cards (load|save|parse|bounds|upgrade|edit|taskhash|view) pass", []string{"cards load pass", "cards save pass"}},

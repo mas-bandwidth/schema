@@ -1891,8 +1891,9 @@ tables-java-map-count-negative-control: tables-java-wire-fuzz
 	@rm -rf $(JAVA_MAP_COUNT_SABOTAGE) && mkdir -p $(JAVA_MAP_COUNT_SABOTAGE)/generated $(JAVA_MAP_COUNT_SABOTAGE)/classes
 	@for u in $(JAVA_WIRE_FUZZ_UNITS); do cp -R build/tables-generated-java/$$u $(JAVA_MAP_COUNT_SABOTAGE)/generated/$$u || exit 1; done
 	@for f in $(JAVA_MAP_COUNT_SABOTAGE)/generated/lists/*Variable.java $(JAVA_MAP_COUNT_SABOTAGE)/generated/maps/*Variable.java; do \
-		sed -e 's/long n = ek != 13 ? ar\.count(r\.limit) : ar\.leb();/& if (ar.fail) { ar.fail = false; report.damaged = false; n = 0; } \/\/ SABOTAGED map count/' \
+		sed -e 's/long n = ek != 13 ? ar\.count(r\.limit) : ar\.leb();/& if (ar.fail) { ar.fail = false; report.damaged = false; ar.off = ar.limit; n = 0; } \/\/ SABOTAGED map count/' \
 			-e 's/long count = leb(off + 1, end);/& if (at < 0) { at = end; count = 0; } \/\/ SABOTAGED map count header/' \
+			-e 's/if (firstUseBad || nextRef - 1 != ids\.length) return DAMAGED;/\/\/ SABOTAGED map count complete/' \
 			"$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
 	done
 	@grep -q 'SABOTAGED map count' $(JAVA_MAP_COUNT_SABOTAGE)/generated/maps/SlotsVariable.java || \
@@ -1931,6 +1932,7 @@ tables-java-keyed-count-negative-control: tables-java-wire-fuzz
 	@for f in $(JAVA_KEYED_COUNT_SABOTAGE)/generated/*/*Variable.java; do \
 		sed -e 's/long count = ar\.count(r\.limit);/long count = ar.leb(); if (ar.fail) { ar.fail = false; report.damaged = false; ar.off = ar.limit; count = 0; } \/\/ SABOTAGED keyed count/' \
 			-e 's/long count = leb(off + 1, end);/& if (at < 0) { at = end; count = 0; } \/\/ SABOTAGED keyed count header/' \
+			-e 's/if (firstUseBad || nextRef - 1 != ids\.length) return DAMAGED;/\/\/ SABOTAGED keyed count complete/' \
 			"$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
 	done
 	@grep -q 'SABOTAGED keyed count' $(JAVA_KEYED_COUNT_SABOTAGE)/generated/maps/DepthVariable.java || \

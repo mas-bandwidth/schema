@@ -190,6 +190,7 @@ var gccFortifyFlags = []string{
 	"-Wno-array-bounds",
 	"-Wno-maybe-uninitialized",
 	"-Wno-stringop-overread",
+	"-Wno-stringop-overflow",
 }
 
 // gccFortifySilence returns gccFortifyFlags for a GNU cc, and nil for clang.

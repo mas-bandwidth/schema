@@ -269,7 +269,9 @@ test-elixir: tables-elixir-emit-format-negative-control
 #        midpoint is stored instead of a kind mismatch (num-float32-midpoint
 #        by integer token, num-float32-overflow by decimal token).
 CONFORMANCE_NEGATIVE_ELIXIR_HOSTILE_DUP := build/elixir-hostile-dup-negative
-ELIXIR_HOSTILE_DUP_SED := -e 's|if MapSet.member?(seen, name), do: throw(:wire_damaged)|if false and MapSet.member?(seen, name), do: throw(:wire_damaged)|'
+ELIXIR_HOSTILE_DUP_SED := -e 's|if MapSet.member?(seen, name), do: throw(:wire_damaged)|if false and MapSet.member?(seen, name), do: throw(:wire_damaged)|' \
+	-e 's|false <- MapSet.member?(seen, key),|false <- Process.get(:elixir_keyed_obj_depth) != depth and MapSet.member?(seen, key),|' \
+	-e 's|^      json_value(bin, depth)$$|      if Enum.any?(@tables, fn {_, d} -> Enum.any?(d.fields, \&(\&1.t == :keyed and Map.get(\&1, :json_key, \&1.name) == key)) end) do prev = Process.put(:elixir_keyed_obj_depth, depth); try do json_value(bin, depth) after if prev == nil, do: Process.delete(:elixir_keyed_obj_depth), else: Process.put(:elixir_keyed_obj_depth, prev) end else json_value(bin, depth) end|'
 ELIXIR_HOSTILE_DUP_ROWS := keyed-duplicate-mixed keyed-duplicate-none keyed-duplicate-slot keyed-duplicate-unknown
 CONFORMANCE_NEGATIVE_ELIXIR_HOSTILE_F32 := build/elixir-hostile-f32-negative
 ELIXIR_HOSTILE_F32_SED := -e 's|e > 127 -> :error|e > 127 -> json_f32_bits(0x7F7FFFFF)|'
@@ -407,7 +409,7 @@ conformance-negative-control-elixir-write-refusal: build/conformance-harness
 	$(call ELIXIR_WREF_CONTROL,build/elixir-conformance-negative-wref,internal/codegen/elixirtable/fixedelixir.go,ELIXIR_WREF_BITS_SED,write-refusal,wref_bits_wide,wire,a bits(N) leaf held to its storage word)
 
 conformance-negative-control-elixir-write-refusal-fixed: build/conformance-harness
-	$(call ELIXIR_WREF_CONTROL,build/elixir-conformance-negative-wref-fixed,internal/codegen/elixirtable/fixedruntime.go,ELIXIR_WREF_TEXT_SED,write-refusal-fixed,fref_text_illformed fref_text_zero,wire,a fixed writer that takes ill-formed and zero-byte text)
+	$(call ELIXIR_WREF_CONTROL,build/elixir-conformance-negative-wref-fixed,internal/codegen/elixirtable/fixedruntime.go,ELIXIR_WREF_TEXT_SED,write-refusal-fixed,fref_text_illformed fref_text_zero fref_unionstr_nul fref_unionstr_oor fref_unionstr_overlong fref_unionstr_surrogate fref_unionstr_trunc fref_utf8_outofrange fref_utf8_overlong fref_utf8_surrogate fref_utf8_truncated,wire,a fixed writer that takes ill-formed and zero-byte text)
 
 conformance-negative-control-elixir-write-refusal-message: build/conformance-harness
 	$(call ELIXIR_WREF_CONTROL,build/elixir-conformance-negative-wref-message,internal/codegen/elixirtable/messageform.go,ELIXIR_WREF_MESSAGE_SED,write-refusal-message,mref_element mref_range_high mref_range_low,message,a message writer whose integer rule holds no range)
@@ -760,7 +762,8 @@ tables-elixir-alloc-pin: build/conformance/manifest.txt
 # column — each counted on its own from the audit's output, so a column that
 # lost its teeth is found on its own. A gate that cannot go red is not a gate.
 CONFORMANCE_NEGATIVE_ELIXIR_ALLOC := build/elixir-alloc-negative
-ELIXIR_ALLOC_SED := -e 's|^  def load(table, data) when is_binary(data) do$$|&\n    _ = Enum.map(1..16, fn _ -> :binary.copy(<<0>>, 65) end) ++ List.duplicate(0, 1000)|'
+ELIXIR_ALLOC_SED := -e 's|^  def load(table, data) when is_binary(data), do: variable_read(table, data)$$|  def load(table, data) when is_binary(data), do: (_ = Enum.map(1..16, fn _ -> :binary.copy(<<0>>, 65) end) ++ List.duplicate(0, 1000); variable_read(table, data))|' \
+	-e 's|runtime = withFixedClassWire(u, ns, runtime)|runtime = strings.ReplaceAll(withFixedClassWire(u, ns, runtime), "  defp fixed_class_report(report) do", "  defp fixed_class_report(report) do _ = Enum.map(1..16, fn _ -> :binary.copy(<<0>>, 65) end) ++ List.duplicate(0, 1000);")|'
 
 .PHONY: tables-elixir-alloc-negative-control
 tables-elixir-alloc-negative-control: build/conformance/manifest.txt
@@ -1781,6 +1784,8 @@ tables-elixir-wire-fuzz-negative-control: build/conformance-harness build/elixir
 	@rm -rf $(ELIXIR_WIRE_FUZZ_NC) && mkdir -p $(ELIXIR_WIRE_FUZZ_NC)/ebin
 	@cp build/elixir-tables-ebin/*.beam $(ELIXIR_WIRE_FUZZ_NC)/ebin/
 	@sed -e 's|    if rest != <<>>, do: throw(:wire_damaged)|    _ = rest # SABOTAGED|' \
+		-e 's|  defp unknown_elements?(rest, _ek, 0, _ids, _depth), do: rest == <<>>|  defp unknown_elements?(_rest, _ek, 0, _ids, _depth), do: true # SABOTAGED|' \
+		-e 's|  defp first_use_elements(_rest, _ek, 0, _ids, _acc), do: :error|  defp first_use_elements(_rest, _ek, 0, _ids, acc), do: {:ok, acc} # SABOTAGED|' \
 		build/tables-generated-elixir/featurewitnesses/Table.ex > $(ELIXIR_WIRE_FUZZ_NC)/Table.ex
 	@grep -q SABOTAGED $(ELIXIR_WIRE_FUZZ_NC)/Table.ex || \
 		{ echo "NEGATIVE CONTROL: the Elixir wire-fuzz sabotage patched nothing"; exit 1; }
@@ -1814,6 +1819,8 @@ tables-elixir-discard:
 tables-elixir-discard-negative-control:
 	@rm -rf $(ELIXIR_DISCARD_NC) && mkdir -p $(ELIXIR_DISCARD_NC)
 	@sed -e 's|{:cont, \[\], throw(:wire_damaged)}|{:cont, [], report}|g' \
+		-e 's|        strict_syntax!(body, nodes, ids)|        _ = {body, nodes, ids}|' \
+		-e 's|        if not first_use_order?(body, ids), do: throw(:wire_damaged)|        _ = body|' \
 		internal/codegen/elixirtable/variableform.go > $(ELIXIR_DISCARD_NC)/variableform.go.txt
 	@cmp -s internal/codegen/elixirtable/variableform.go $(ELIXIR_DISCARD_NC)/variableform.go.txt && \
 		{ echo "NEGATIVE CONTROL: the Elixir discard sabotage patched nothing"; exit 1; } || true
@@ -2097,8 +2104,10 @@ test-elixir: tables-elixir-view
 # The diamond fixture has 2^40 paths over 82 nodes and guards against
 # expanding paths instead of preserving shared nodes. It is not a general
 # linear-time guarantee for save or JSON.
-ELIXIR_CONFORMANCE_FRAMING_SED := -e 's|    if count > 4096 or count > div(size - 9, 8) do|    if count > div(size - 9, 8) do|' \
-	-e 's|    if map_size(assembled) != map_size(records), do: throw(:wire_damaged)|    if false and map_size(assembled) != map_size(records), do: throw(:wire_damaged)|'
+ELIXIR_CONFORMANCE_FRAMING_SED := -e 's~    if count > 4096 or count > div(size - 9, 8) do~    if count > div(size - 9, 8) do~' \
+	-e 's~runtime = withFixedClassWire(u, ns, runtime)~runtime = strings.ReplaceAll(withFixedClassWire(u, ns, runtime), ":open ->\\n        throw(:wire_damaged)", ":open ->\\n        wire_walk([{node, rest} | stack], children, marks)")~' \
+	-e 's~    if map_size(assembled) != map_size(records), do: throw(:wire_damaged)~    Process.put(:elixir_framing_assembled, assembled)~' \
+	-e 's~  defp resolve_stored(%{__wire_node__: idx}, _assembled), do: idx~  defp resolve_stored(%{__wire_node__: idx}, _assembled), do: (if Map.has_key?(Process.get(:elixir_framing_assembled, %{idx => true}), idx), do: idx, else: nil)~'
 ELIXIR_CONFORMANCE_FRAMING_SHARE_SED := -e 's|Enum.reduce(Map.get(parents, idx, \[\]), {pending, ready}, fn|Enum.reduce(Enum.take(Map.get(parents, idx, []), 1), {pending, ready}, fn|'
 .PHONY: conformance-elixir-framing conformance-negative-control-elixir-framing
 conformance-elixir-framing: build/conformance-harness build-conformance-elixir

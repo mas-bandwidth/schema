@@ -11,43 +11,64 @@ VERIFY_ALL_18_LEGS := cpp c cs unity go rust java dart elixir js python ruby lua
 
 build/verify-bitphase-bin: $(wildcard test/verify-bitphase/*.go) test/verify-bitphase/cpp/oracle.cpp test/verify-bitphase/BitPhase.schema $(GO_SOURCES)
 	@mkdir -p build
-	go build -o $@ ./test/verify-bitphase
+	go build -o $@.$$$$ ./test/verify-bitphase && mv $@.$$$$ $@
 
 build/verify-bitphase/corpus/.stamp: build/verify-bitphase-bin bin/schema
-	@mkdir -p build/verify-bitphase/corpus
-	CXX="$(CXX)" ./build/verify-bitphase-bin --generate-only \
-		--schema ./bin/schema \
-		--work build/verify-bitphase \
-		--corpus build/verify-bitphase/corpus
-	@touch $@
+	@mkdir -p build/verify-bitphase
+	@lockdir="build/verify-bitphase/.corpus.lock"; \
+	while ! mkdir "$$lockdir" 2>/dev/null; do sleep 1; done; \
+	trap 'rmdir "$$lockdir" 2>/dev/null || true' EXIT INT TERM HUP; \
+	if ! test -f "$@"; then \
+		mkdir -p build/verify-bitphase/corpus; \
+		SERIALIZE="$(abspath $(SERIALIZE_RUNTIME))" CXX="$(CXX)" ./build/verify-bitphase-bin --generate-only \
+			--schema ./bin/schema \
+			--work build/verify-bitphase/corpus-gen \
+			--corpus build/verify-bitphase/corpus && touch "$@"; \
+	fi; \
+	rmdir "$$lockdir" 2>/dev/null || true; \
+	trap - EXIT INT TERM HUP
 
 build/verify-canonical-bin: $(wildcard test/verify-canonical/*.go) test/verify-canonical/Canonical.schema $(GO_SOURCES)
 	@mkdir -p build
-	go build -o $@ ./test/verify-canonical
+	go build -o $@.$$$$ ./test/verify-canonical && mv $@.$$$$ $@
 
 build/verify-canonical/corpus/.stamp: build/verify-canonical-bin
-	@mkdir -p build/verify-canonical/corpus
-	./build/verify-canonical-bin --generate-only \
-		--work build/verify-canonical \
-		--corpus build/verify-canonical/corpus
-	@touch $@
+	@mkdir -p build/verify-canonical
+	@lockdir="build/verify-canonical/.corpus.lock"; \
+	while ! mkdir "$$lockdir" 2>/dev/null; do sleep 1; done; \
+	trap 'rmdir "$$lockdir" 2>/dev/null || true' EXIT INT TERM HUP; \
+	if ! test -f "$@"; then \
+		mkdir -p build/verify-canonical/corpus; \
+		./build/verify-canonical-bin --generate-only \
+			--work build/verify-canonical/corpus-gen \
+			--corpus build/verify-canonical/corpus && touch "$@"; \
+	fi; \
+	rmdir "$$lockdir" 2>/dev/null || true; \
+	trap - EXIT INT TERM HUP
 
 VERIFY_TABLEGEN_SEED    ?= 1
 VERIFY_TABLEGEN_SCHEMAS ?= 6
 
 build/verify-tablegen-bin: $(wildcard test/verify-tablegen/*.go) $(GO_SOURCES)
 	@mkdir -p build
-	go build -o $@ ./test/verify-tablegen
+	go build -o $@.$$$$ ./test/verify-tablegen && mv $@.$$$$ $@
 
 build/verify-tablegen/corpus/.stamp: build/verify-tablegen-bin bin/schema
-	@rm -rf build/verify-tablegen/corpus && mkdir -p build/verify-tablegen/corpus
-	./build/verify-tablegen-bin --generate-only \
-		--seed $(VERIFY_TABLEGEN_SEED) \
-		--schemas $(VERIFY_TABLEGEN_SCHEMAS) \
-		--schema ./bin/schema \
-		--work build/verify-tablegen \
-		--corpus build/verify-tablegen/corpus
-	@touch $@
+	@mkdir -p build/verify-tablegen
+	@lockdir="build/verify-tablegen/.corpus.lock"; \
+	while ! mkdir "$$lockdir" 2>/dev/null; do sleep 1; done; \
+	trap 'rmdir "$$lockdir" 2>/dev/null || true' EXIT INT TERM HUP; \
+	if ! test -f "$@"; then \
+		rm -rf build/verify-tablegen/corpus && mkdir -p build/verify-tablegen/corpus; \
+		./build/verify-tablegen-bin --generate-only \
+			--seed $(VERIFY_TABLEGEN_SEED) \
+			--schemas $(VERIFY_TABLEGEN_SCHEMAS) \
+			--schema ./bin/schema \
+			--work build/verify-tablegen/corpus-gen \
+			--corpus build/verify-tablegen/corpus && touch "$@"; \
+	fi; \
+	rmdir "$$lockdir" 2>/dev/null || true; \
+	trap - EXIT INT TERM HUP
 
 VERIFY_WIDEN_DEPS_cpp      := bin/schema
 VERIFY_WIDEN_DEPS_c        := bin/schema
@@ -69,6 +90,7 @@ VERIFY_WIDEN_DEPS_goose    := verify-toolchain-goose bin/schema
 VERIFY_WIDEN_DEPS_lobster  := verify-toolchain-lobster bin/schema
 
 VERIFY_WIDEN_ENV = \
+	SERIALIZE="$(abspath $(SERIALIZE_RUNTIME))" SERIALIZE_GO="$(abspath $(SERIALIZE_GO_RUNTIME))" \
 	CC="$(CC)" CXX="$(CXX)" DOTNET="$(DOTNET)" RUSTUP_BIN="$(RUSTUP_BIN)" \
 	JAVA="$(JAVA)" JAVAC="$(JAVAC)" DART="$(DART)" BEAM_PATH="$(BEAM_PATH)" \
 	NODE="$(NODE)" PYTHON3="$(PYTHON)" RUBY="$(RUBY)" LUA="$(LUA)" \

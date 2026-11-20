@@ -588,6 +588,16 @@ func (m *fixedImage) elem(f *ir.Field) {
 		m.put(m.next()&(uint64(1)<<uint(t.Width)-1), w)
 		return
 	}
+	if t.Kind == ir.TFloat32 {
+		v := float32(int64(m.next()%2001)-1000) * 0.25
+		m.put(uint64(math.Float32bits(v)), 4)
+		return
+	}
+	if t.Kind == ir.TFloat64 {
+		v := float64(int64(m.next()%2001)-1000) * 0.25
+		m.put(math.Float64bits(v), 8)
+		return
+	}
 	for range w {
 		m.b = append(m.b, byte(m.next()))
 	}

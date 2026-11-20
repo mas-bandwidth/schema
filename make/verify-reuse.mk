@@ -27,6 +27,7 @@ VERIFY_REUSE_DEPS_goose    := verify-toolchain-goose bin/schema
 VERIFY_REUSE_DEPS_lobster  := verify-toolchain-lobster bin/schema
 
 VERIFY_REUSE_ENV = \
+	SERIALIZE="$(abspath $(SERIALIZE_RUNTIME))" SERIALIZE_GO="$(abspath $(SERIALIZE_GO_RUNTIME))" \
 	CC="$(CC)" CXX="$(CXX)" DOTNET="$(DOTNET)" RUSTUP_BIN="$(RUSTUP_BIN)" \
 	JAVA="$(JAVA)" JAVAC="$(JAVAC)" DART="$(DART)" BEAM_PATH="$(BEAM_PATH)" \
 	NODE="$(NODE)" PYTHON3="$(PYTHON)" RUBY="$(RUBY)" LUA="$(LUA)" \
@@ -34,15 +35,22 @@ VERIFY_REUSE_ENV = \
 
 build/verify-reuse-bin: $(wildcard test/verify-reuse/*.go) test/verify-reuse/Reuse.schema test/verify-reuse/ReuseV2.schema $(GO_SOURCES)
 	@mkdir -p build
-	go build -o $@ ./test/verify-reuse
+	go build -o $@.$$$$ ./test/verify-reuse && mv $@.$$$$ $@
 
 build/verify-reuse/corpus/.stamp: build/verify-reuse-bin bin/schema
-	@mkdir -p build/verify-reuse/corpus
-	./build/verify-reuse-bin --generate-only \
-		--schema ./bin/schema \
-		--work build/verify-reuse \
-		--corpus build/verify-reuse/corpus
-	@touch $@
+	@mkdir -p build/verify-reuse
+	@lockdir="build/verify-reuse/.corpus.lock"; \
+	while ! mkdir "$$lockdir" 2>/dev/null; do sleep 1; done; \
+	trap 'rmdir "$$lockdir" 2>/dev/null || true' EXIT INT TERM HUP; \
+	if ! test -f "$@"; then \
+		mkdir -p build/verify-reuse/corpus; \
+		SERIALIZE_GO="$(abspath $(SERIALIZE_GO_RUNTIME))" ./build/verify-reuse-bin --generate-only \
+			--schema ./bin/schema \
+			--work build/verify-reuse/corpus-gen \
+			--corpus build/verify-reuse/corpus && touch "$@"; \
+	fi; \
+	rmdir "$$lockdir" 2>/dev/null || true; \
+	trap - EXIT INT TERM HUP
 
 define verify_reuse_18_rules
 .PHONY: verify-reuse-$(1)

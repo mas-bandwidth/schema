@@ -84,6 +84,7 @@ void operator delete( void * p, size_t ) noexcept { free( p ); }
         if ( !( condition ) )                                                 \
         {                                                                     \
             printf( "FAIL %s:%d: %s\n", __FILE__, __LINE__, #condition );     \
+            fflush( stdout );                                                 \
             failures++;                                                       \
         }                                                                     \
     } while ( 0 )
@@ -3624,7 +3625,7 @@ static void check_json_round_trip( const T & value,
                                    const char * what )
 {
     int64_t size = measure( value );
-    if ( size < 0 ) { printf( "FAIL %s: ToJsonMeasure refused\n", what ); failures++; return; }
+    if ( size < 0 || size > ( 1LL << 30 ) ) { printf( "FAIL %s: ToJsonMeasure refused\n", what ); failures++; return; }
 
     // measure == write at EXACT capacity, the wire's invariant carried across
     std::vector<char> text( (size_t) size );
@@ -3656,7 +3657,7 @@ static void check_json_round_trip( const T & value,
 
     int64_t wire_a = wire_measure( value );
     int64_t wire_b = wire_measure( back );
-    if ( wire_a < 0 || wire_a != wire_b ) { printf( "FAIL %s: wire sizes differ\n", what ); failures++; return; }
+    if ( wire_a < 0 || wire_a > ( 1LL << 30 ) || wire_a != wire_b ) { printf( "FAIL %s: wire sizes differ\n", what ); failures++; return; }
     std::vector<uint8_t> a( (size_t) wire_a ), b( (size_t) wire_b );
     CHECK( wire_save( value, a.data(), wire_a ) == wire_a );
     CHECK( wire_save( back, b.data(), wire_b ) == wire_b );
@@ -6757,6 +6758,8 @@ static void test_message_variable_arm()
     CHECK( memcmp( wire, after_lock, (size_t) wrote ) == 0 );
 
     int64_t region_need = streamdemo::FeedLoadMeasure( wire, wrote );
+    CHECK( region_need > 0 );
+    if ( region_need <= 0 ) return;
     std::vector<uint8_t> region( (size_t) region_need );
     streamdemo::TableReport report;
     const streamdemo::Feed * loaded = streamdemo::FeedLoad( region.data(), region_need, wire, wrote, &report );

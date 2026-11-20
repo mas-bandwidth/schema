@@ -126,6 +126,8 @@ func tableGet(width int) string { return fmt.Sprintf("table_reader_get%d", width
 type tableGen struct {
 	retain bool // emit the opt-in parallel body family
 
+	usedAssertTags map[string]int
+
 	messageSlots     map[string]uint64
 	descriptorUnions map[string]bool
 	outside          bool // descriptors outside the checked table closure carry no wire ids
@@ -1163,8 +1165,27 @@ func tableSource(u *ir.Unit, f *ir.File, g *tableGen, cg *tableGen, members []*i
 // _Static_assert is used where the compiler has it — the message reaches the
 // build log verbatim — and the negative-array-size form stands in everywhere
 // else, which is what keeps this header compilable under -std=c99.
+func (g *tableGen) uniqueAssertTag(base string) string {
+	if g.usedAssertTags == nil {
+		g.usedAssertTags = map[string]int{}
+	}
+	if g.usedAssertTags[base] == 0 {
+		g.usedAssertTags[base] = 1
+		return base
+	}
+	for n := g.usedAssertTags[base]; ; n++ {
+		cand := fmt.Sprintf("%s_%d", base, n)
+		if g.usedAssertTags[cand] == 0 {
+			g.usedAssertTags[base] = n + 1
+			g.usedAssertTags[cand] = 1
+			return cand
+		}
+	}
+}
+
 func (g *tableGen) emitStaticAssert(tag, cond, message string) {
-	g.pf("SCHEMA_TABLE_STATIC_ASSERT( %s_%s, %s, \"%s\" );\n", g.unit.Package, tag, cond, message)
+	full := g.uniqueAssertTag(fmt.Sprintf("%s_%s", g.unit.Package, tag))
+	g.pf("SCHEMA_TABLE_STATIC_ASSERT( %s, %s, \"%s\" );\n", full, cond, message)
 }
 
 // orderTables returns a file's tables with every same-file table preceding

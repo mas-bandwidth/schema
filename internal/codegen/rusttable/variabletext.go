@@ -1422,8 +1422,8 @@ func emitTextScalarRangeRefuse(f *ir.Field, x, ind string) string {
 	if f.Type.Kind == ir.TBits {
 		rlo = big.NewInt(0)
 		rhi = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
-	} else if lo, hi, ok := ir.TableRawRange(f); ok {
-		rlo, rhi = lo, hi
+	} else if wlo, whi, ok := ir.TableRawRange(f); ok {
+		rlo, rhi = wlo, whi
 	} else {
 		return ""
 	}
