@@ -73,7 +73,7 @@ walk)
 write-refusal)
     # the emitter's fixed SaveChecked stops calling its write check (a copy
     # of fixedevolve.go, overlaid as the runtime files are)
-    source=internal/codegen/lobstertable/fixedevolve.go
+    source=internal/codegen/lobstertable/fixedform.go
     sed 's/if not %sFixedCheckBody(v):/if false and not %sFixedCheckBody(v):/' "$source" > "$out/runtime.lobster"
     ;;
 write-refusal-message)
