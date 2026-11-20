@@ -356,7 +356,10 @@ func (g *rowGen) emitRowField(fl ir.FieldLayout) {
 		g.f("    }\n\n")
 	case f.KeyEnum != "" || f.Array != ir.ArrayNone:
 		elem := javaRecordType(f.Type)
-		elemSize := pieces[0].Size / f.ArrayBound
+		elemSize := int64(0)
+		if f.ArrayBound > 0 {
+			elemSize = pieces[0].Size / f.ArrayBound
+		}
 		switch {
 		case isClassRef(f.Type):
 			g.f("    /** [%d]%s: the element's own offset — read it with %sRow's accessors. */\n",
@@ -550,7 +553,7 @@ func (g *rowGen) cookFieldInfo(fl ir.FieldLayout) string {
 	// its own piece after it (§7.2), and a store at the field's whole size
 	// would overwrite it
 	elemSize := pieces[0].Size
-	if isArray {
+	if isArray && f.ArrayBound > 0 {
 		bound = f.ArrayBound
 		elemSize = pieces[0].Size / bound
 	}

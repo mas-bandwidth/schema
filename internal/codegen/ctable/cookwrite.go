@@ -226,8 +226,12 @@ func (g *tableGen) cookFieldPayload(f *ir.Field, src, at string, offset int64, i
 		if f.Array == ir.ArrayCounted {
 			count = fmt.Sprintf("%s_count && %s<%d", src, i, f.ArrayBound)
 		}
+		stride := int64(0)
+		if f.ArrayBound > 0 {
+			stride = pieces[0].Size / f.ArrayBound
+		}
 		g.pf("%s{ int32_t %s; for(%s=0;%s<%s;%s++) {\n", ind, i, i, i, count, i)
-		g.cookField(elem, src+"["+i+"]", fmt.Sprintf("%s+%s*%d", at, i, pieces[0].Size/f.ArrayBound), 0, ind+"    ", step)
+		g.cookField(elem, src+"["+i+"]", fmt.Sprintf("%s+%s*%d", at, i, stride), 0, ind+"    ", step)
 		g.pf("%s} }\n", ind)
 		if f.Array == ir.ArrayCounted {
 			g.pf("%stable_cook_put(%s+%d,(uint32_t)%s_count,4,order);\n", ind, at, pieces[1].Offset-offset, src)
@@ -335,7 +339,10 @@ func (g *tableGen) cookExtentField(f *ir.Field, guard, src, dst, ind string, ste
 		}
 		elem := sequenceElement(f)
 		pieces := ir.FieldPieces(g.unit, f, 0)
-		stride := pieces[0].Size / f.ArrayBound
+		stride := int64(0)
+		if f.ArrayBound > 0 {
+			stride = pieces[0].Size / f.ArrayBound
+		}
 		g.pf("%s{ int32_t %s; for(%s=0;%s<%s && %s<%d;%s++) {\n", ind, label, label, label, count, label, f.ArrayBound, label)
 		g.cookExtentField(elem, "", src+"["+label+"]", fmt.Sprintf("(%s!=NULL ? %s+%s*%d : NULL)", dst, dst, label, stride), ind+"    ", step)
 		g.pf("%s}\n", ind)

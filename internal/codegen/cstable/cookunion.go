@@ -32,7 +32,10 @@ func (g *cookGen) emitUnionRow(un *ir.Union) {
 			if csFixedBufferPrimitive(typ) {
 				g.sf("    [FieldOffset(%d)] public fixed %s %s[%d];\n", at, typ, name, f.ArrayBound)
 			} else {
-				step := pieces[0].Size / f.ArrayBound
+				step := int64(0)
+				if f.ArrayBound > 0 {
+					step = pieces[0].Size / f.ArrayBound
+				}
 				if f.ArrayBound > 128 {
 					g.sf("    [FieldOffset(%d)] public %s %s0;\n", at, typ, name)
 					g.sf("    [FieldOffset(%d)] private fixed byte %sStorage[%d];\n", at+step, name, (f.ArrayBound-1)*step)

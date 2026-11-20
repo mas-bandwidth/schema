@@ -409,6 +409,14 @@ jobs:
             if echo "$files" | grep -qE '^(internal/codegen/|testdata/golden/|examples/|examples128/|docs/USAGE\.md$)'; then
               case " $packages " in *" ./internal/goldens "*) ;; *) packages="$packages ./internal/goldens" ;; esac
             fi
+            # THE FUZZ SEED CORPORA & FRONT-END INVARIANTS. ./internal/fuzz
+            # replays every checked-in fuzz seed corpus (FuzzPipeline,
+            # FuzzPipelineTwoFiles, FuzzFormatIdempotent, FuzzGeneratedCompiles,
+            # FuzzTableFrontEnd) plus all-target front-end/codegen regression
+            # tests, split by tools/gotestrows into parallel < 45 s rows.
+            if echo "$files" | grep -qE '^(compiler/|ir/|internal/check/|internal/parser/|internal/codegen/)'; then
+              case " $packages " in *" ./internal/fuzz "*) ;; *) packages="$packages ./internal/fuzz" ;; esac
+            fi
             # THE WORKFLOW & READINESS AUDITORS. Packages outside ./internal/ci
             # (which ci-policy always runs) whose fast unit tests assert
             # invariants on .github/workflows/*.yml, .github/actions/*, or

@@ -1690,3 +1690,53 @@ func TestEnumBoundProvenanceCorpus(t *testing.T) {
 		t.Errorf("%s is in the corpus and no row holds it, so nothing says what its answer is", name)
 	}
 }
+
+func TestEmptyEnumKeyedArrayRefused(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "variable table keyed by empty enum",
+			src:  "package p\nenum E {}\ntable T { x [E]int32 }\n",
+			want: "field x: [E] keys an array by an empty enum",
+		},
+		{
+			name: "fixed table keyed by empty enum",
+			src:  "package p\nenum E {}\nfixed table T { x [E]int32 }\n",
+			want: "field x: [E] keys an array by an empty enum",
+		},
+		{
+			name: "type body keyed by empty enum",
+			src:  "package p\nenum E {}\ntype S { x [E]int32 }\n",
+			want: "field x: [E] keys an array by an empty enum",
+		},
+		{
+			name: "scalar and positional array of empty enum stay valid",
+			src:  "package p\nenum E {}\ntable T { e E\n es [4]E\n el []E }\n",
+			want: "",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			errs := runUnit(t, map[string]string{"A.schema": tc.src})
+			if tc.want == "" {
+				if len(errs) > 0 {
+					t.Fatalf("control failed to compile: %v", errs)
+				}
+				return
+			}
+			if len(errs) == 0 {
+				t.Fatalf("expected refusal containing %q, got nil", tc.want)
+			}
+			var joined strings.Builder
+			for _, e := range errs {
+				joined.WriteString(e.Error())
+				joined.WriteByte('\n')
+			}
+			if !strings.Contains(joined.String(), tc.want) {
+				t.Fatalf("expected %q in:\n%s", tc.want, joined.String())
+			}
+		})
+	}
+}

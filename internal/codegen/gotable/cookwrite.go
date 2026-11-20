@@ -39,7 +39,9 @@ func (g *tableGen) emitCookFieldColumns(st *ir.Struct, f *ir.Field) {
 		count = pieces[1].Offset
 		element = 1
 	case f.Array != ir.ArrayNone || f.KeyEnum != "":
-		element /= f.ArrayBound
+		if f.ArrayBound > 0 {
+			element /= f.ArrayBound
+		}
 		if f.Array == ir.ArrayCounted {
 			count = pieces[1].Offset
 		}

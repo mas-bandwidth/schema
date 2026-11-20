@@ -124,17 +124,17 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 		{
 			name:  "elixir leg only",
 			files: "internal/codegen/elixirtable/wire.go",
-			want:  `no|./internal/codegen/elixirtable ./internal/goldens|["elixir"]`,
+			want:  `no|./internal/codegen/elixirtable ./internal/goldens ./internal/fuzz|["elixir"]`,
 		},
 		{
 			name:  "luau leg only",
 			files: "internal/codegen/luautable/fixedlineage.go",
-			want:  `no|./internal/codegen/luautable ./internal/goldens|["luau"]`,
+			want:  `no|./internal/codegen/luautable ./internal/goldens ./internal/fuzz|["luau"]`,
 		},
 		{
 			name:  "goose leg only",
 			files: "internal/codegen/goosetable/fixedform.go",
-			want:  `no|./internal/codegen/goosetable ./test/conformance/goose/wirefuzzdispatch ./internal/goldens|["goose"]`,
+			want:  `no|./internal/codegen/goosetable ./test/conformance/goose/wirefuzzdispatch ./internal/goldens ./internal/fuzz|["goose"]`,
 		},
 		{
 			name:  "goose conformance driver selects wirefuzzdispatch",
@@ -150,12 +150,27 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 		{
 			name:  "dart leg only",
 			files: "internal/codegen/darttable/darttable.go",
-			want:  `no|./internal/codegen/darttable ./internal/goldens|["dart"]`,
+			want:  `no|./internal/codegen/darttable ./internal/goldens ./internal/fuzz|["dart"]`,
 		},
 		{
 			name:  "ci package only",
 			files: "internal/ci/ci_test.go",
 			want:  `no|./internal/ci|[]`,
+		},
+		{
+			name:  "check package selects fuzz seeds",
+			files: "internal/check/check.go",
+			want:  `no|./internal/check ./internal/fuzz|[]`,
+		},
+		{
+			name:  "parser package selects fuzz seeds",
+			files: "internal/parser/parser.go",
+			want:  `no|./internal/parser ./internal/fuzz|[]`,
+		},
+		{
+			name:  "ir package selects fuzz seeds",
+			files: "ir/ir.go",
+			want:  `yes|./ir ./internal/fuzz|["c","cpp","cs","dart","elixir","go","goose","java","js","lobster","luau","rust","squirrel"]`,
 		},
 		{
 			name:  "certify workflow edit runs readiness and workflow auditors",
@@ -175,12 +190,12 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 		{
 			name:  "broad compiler change",
 			files: "compiler/compiler.go",
-			want:  `yes|./compiler|["c","cpp","cs","dart","elixir","go","goose","java","js","lobster","luau","rust","squirrel"]`,
+			want:  `yes|./compiler ./internal/fuzz|["c","cpp","cs","dart","elixir","go","goose","java","js","lobster","luau","rust","squirrel"]`,
 		},
 		{
 			name:  "lobster leg only",
 			files: "internal/codegen/lobstertable/load.go",
-			want:  `no|./internal/codegen/lobstertable ./internal/codegen/lobster ./internal/goldens|["lobster"]`,
+			want:  `no|./internal/codegen/lobstertable ./internal/codegen/lobster ./internal/goldens ./internal/fuzz|["lobster"]`,
 		},
 		{
 			// a golden alone selects no leg, and still re-checks the goldens
@@ -192,7 +207,7 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 			// an emitter alone re-checks the goldens it writes
 			name:  "java emitter only",
 			files: "internal/codegen/java/canonical_test.go",
-			want:  `no|./internal/codegen/java ./internal/codegen/javatable ./internal/goldens|["java"]`,
+			want:  `no|./internal/codegen/java ./internal/codegen/javatable ./internal/goldens ./internal/fuzz|["java"]`,
 		},
 		{
 			name:  "usage page",
@@ -255,14 +270,14 @@ func TestFastPlanSelectsLanguageLints(t *testing.T) {
 	}
 	script.WriteString(`printf '%s|%s' "$lints_json" "$packages"`)
 	for _, tc := range []struct{ name, files, want string }{
-		{"luau only", "internal/codegen/luautable/fixedlineage.go", `[]|./internal/codegen/luautable ./internal/goldens`},
-		{"dart leg", "internal/codegen/darttable/darttable.go", `["dart"]|./internal/codegen/darttable ./internal/goldens`},
-		{"go leg", "internal/codegen/gotable/wire.go", `["go"]|./internal/codegen/gotable ./internal/goldens`},
-		{"lua runtime, no .go file", "internal/codegen/luatable/runtime/wire.lua", `["lua"]|./internal/codegen/lua ./internal/codegen/luatable ./internal/goldens`},
+		{"luau only", "internal/codegen/luautable/fixedlineage.go", `[]|./internal/codegen/luautable ./internal/goldens ./internal/fuzz`},
+		{"dart leg", "internal/codegen/darttable/darttable.go", `["dart"]|./internal/codegen/darttable ./internal/goldens ./internal/fuzz`},
+		{"go leg", "internal/codegen/gotable/wire.go", `["go"]|./internal/codegen/gotable ./internal/goldens ./internal/fuzz`},
+		{"lua runtime, no .go file", "internal/codegen/luatable/runtime/wire.lua", `["lua"]|./internal/codegen/lua ./internal/codegen/luatable ./internal/goldens ./internal/fuzz`},
 		{"lua make file", "make/lua.mk", `["lua"]|./internal/codegen/lua ./internal/codegen/luatable`},
 		{"dart lens make file", "make/schema-dart-generated-strict-analyze-gate.mk", `["dart"]|`},
 		{"docs only", "docs/CONTRIBUTING.md", `[]|`},
-		{"broad", "compiler/compiler.go", `["dart","go","lua"]|./compiler`},
+		{"broad", "compiler/compiler.go", `["dart","go","lua"]|./compiler ./internal/fuzz`},
 		// the shared packet corpora are every lens's input
 		{"packet examples", "examples/Types.schema", `["dart","go","lua"]|./internal/goldens`},
 		{"128-bit examples", "examples128/Ludicrous.schema", `["dart","go","lua"]|./internal/goldens`},
@@ -270,22 +285,22 @@ func TestFastPlanSelectsLanguageLints(t *testing.T) {
 		{"guard unit", "test/guard/second.schema", `["dart","go","lua"]|`},
 		{"guard non-schema", "test/guard/README.md", `[]|`},
 		// a runtime-only (non-Go) diff runs its language's two unit packages
-		{"c runtime", "internal/codegen/ctable/testdata/runtime.h", `[]|./internal/codegen/c ./internal/codegen/ctable ./internal/goldens`},
-		{"cs runtime", "internal/codegen/cstable/testdata/Runtime.cs", `[]|./internal/codegen/csharp ./internal/codegen/cstable ./internal/goldens`},
-		{"go runtime", "internal/codegen/gotable/testdata/runtime.go.txt", `["go"]|./internal/codegen/golang ./internal/codegen/gotable ./internal/goldens`},
-		{"rust runtime", "internal/codegen/rusttable/testdata/runtime.rs", `[]|./internal/codegen/rust ./internal/codegen/rusttable ./internal/goldens`},
-		{"js runtime", "internal/codegen/js/testdata/runtime.js", `[]|./internal/codegen/js ./internal/codegen/jstable ./internal/goldens`},
-		{"java runtime", "internal/codegen/javatable/testdata/Runtime.java", `[]|./internal/codegen/java ./internal/codegen/javatable ./internal/goldens`},
-		{"dart runtime", "internal/codegen/darttable/testdata/runtime.dart", `["dart"]|./internal/codegen/dart ./internal/codegen/darttable ./internal/goldens`},
-		{"elixir runtime", "internal/codegen/elixirtable/testdata/runtime.ex", `[]|./internal/codegen/elixir ./internal/codegen/elixirtable ./internal/goldens`},
-		{"luau runtime", "internal/codegen/luau/runtime/serialize_bytes.luau", `[]|./internal/codegen/luau ./internal/codegen/luautable ./internal/goldens`},
-		{"lobster runtime", "internal/codegen/lobster/runtime/serialize_compressed_float.lobster", `[]|./internal/codegen/lobster ./internal/codegen/lobstertable ./internal/goldens`},
-		{"goose runtime", "internal/codegen/goosetable/runtime/schema_json.goose", `[]|./internal/codegen/goose ./internal/codegen/goosetable ./test/conformance/goose/wirefuzzdispatch ./internal/goldens`},
-		{"squirrel runtime", "internal/codegen/squirrel/runtime/module.nut", `[]|./internal/codegen/squirrel ./internal/codegen/squirreltable ./internal/goldens`},
-		{"squirrel table runtime", "internal/codegen/squirreltable/runtime/cook.nut", `[]|./internal/codegen/squirrel ./internal/codegen/squirreltable ./internal/goldens`},
-		{"lua type runtime", "internal/codegen/lua/runtime/serialize_int_relative.lua", `["lua"]|./internal/codegen/lua ./internal/codegen/luatable ./internal/goldens`},
-		{"moo runtime", "internal/codegen/moo/runtime/serialize_float.moo", `[]|./internal/codegen/moo ./internal/codegen/mootable ./internal/goldens`},
-		{"moo table runtime", "internal/codegen/mootable/runtime/json.moo", `[]|./internal/codegen/moo ./internal/codegen/mootable ./internal/goldens`},
+		{"c runtime", "internal/codegen/ctable/testdata/runtime.h", `[]|./internal/codegen/c ./internal/codegen/ctable ./internal/goldens ./internal/fuzz`},
+		{"cs runtime", "internal/codegen/cstable/testdata/Runtime.cs", `[]|./internal/codegen/csharp ./internal/codegen/cstable ./internal/goldens ./internal/fuzz`},
+		{"go runtime", "internal/codegen/gotable/testdata/runtime.go.txt", `["go"]|./internal/codegen/golang ./internal/codegen/gotable ./internal/goldens ./internal/fuzz`},
+		{"rust runtime", "internal/codegen/rusttable/testdata/runtime.rs", `[]|./internal/codegen/rust ./internal/codegen/rusttable ./internal/goldens ./internal/fuzz`},
+		{"js runtime", "internal/codegen/js/testdata/runtime.js", `[]|./internal/codegen/js ./internal/codegen/jstable ./internal/goldens ./internal/fuzz`},
+		{"java runtime", "internal/codegen/javatable/testdata/Runtime.java", `[]|./internal/codegen/java ./internal/codegen/javatable ./internal/goldens ./internal/fuzz`},
+		{"dart runtime", "internal/codegen/darttable/testdata/runtime.dart", `["dart"]|./internal/codegen/dart ./internal/codegen/darttable ./internal/goldens ./internal/fuzz`},
+		{"elixir runtime", "internal/codegen/elixirtable/testdata/runtime.ex", `[]|./internal/codegen/elixir ./internal/codegen/elixirtable ./internal/goldens ./internal/fuzz`},
+		{"luau runtime", "internal/codegen/luau/runtime/serialize_bytes.luau", `[]|./internal/codegen/luau ./internal/codegen/luautable ./internal/goldens ./internal/fuzz`},
+		{"lobster runtime", "internal/codegen/lobster/runtime/serialize_compressed_float.lobster", `[]|./internal/codegen/lobster ./internal/codegen/lobstertable ./internal/goldens ./internal/fuzz`},
+		{"goose runtime", "internal/codegen/goosetable/runtime/schema_json.goose", `[]|./internal/codegen/goose ./internal/codegen/goosetable ./test/conformance/goose/wirefuzzdispatch ./internal/goldens ./internal/fuzz`},
+		{"squirrel runtime", "internal/codegen/squirrel/runtime/module.nut", `[]|./internal/codegen/squirrel ./internal/codegen/squirreltable ./internal/goldens ./internal/fuzz`},
+		{"squirrel table runtime", "internal/codegen/squirreltable/runtime/cook.nut", `[]|./internal/codegen/squirrel ./internal/codegen/squirreltable ./internal/goldens ./internal/fuzz`},
+		{"lua type runtime", "internal/codegen/lua/runtime/serialize_int_relative.lua", `["lua"]|./internal/codegen/lua ./internal/codegen/luatable ./internal/goldens ./internal/fuzz`},
+		{"moo runtime", "internal/codegen/moo/runtime/serialize_float.moo", `[]|./internal/codegen/moo ./internal/codegen/mootable ./internal/goldens ./internal/fuzz`},
+		{"moo table runtime", "internal/codegen/mootable/runtime/json.moo", `[]|./internal/codegen/moo ./internal/codegen/mootable ./internal/goldens ./internal/fuzz`},
 		{"moo make file", "make/moo.mk", `[]|./internal/codegen/moo ./internal/codegen/mootable`},
 		{"squirrel make file", "make/squirrel.mk", `[]|./internal/codegen/squirrel ./internal/codegen/squirreltable`},
 	} {

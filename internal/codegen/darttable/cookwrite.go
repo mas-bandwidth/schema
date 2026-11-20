@@ -1131,7 +1131,10 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		break
 	case f.Array == ir.ArrayCounted:
 		bound := f.ArrayBound
-		stride := pieces[0].Size / bound
+		stride := int64(0)
+		if bound > 0 {
+			stride = pieces[0].Size / bound
+		}
 		ref := tableRef(f)
 		// THE STORAGE CHECKS ARE DEBUG ASSERTS (docs/SPEC.md §5.1)
 		g.cookAssert(ind, fmt.Sprintf("%s.length <= %d", expr, bound))
@@ -1178,7 +1181,10 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		// a fixed array, or an ENUM-KEYED one (§2.4), whose E.Max slots are
 		// all storage, the key k at index k-1
 		bound := f.ArrayBound
-		stride := pieces[0].Size / bound
+		stride := int64(0)
+		if bound > 0 {
+			stride = pieces[0].Size / bound
+		}
 		ref := tableRef(f)
 		g.pf("%sif (%s.length != %d) return false;\n", ind, expr, bound)
 		g.pf("%sfor (var i = 0; i < %d; i++) {\n", ind, bound)

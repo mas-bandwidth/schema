@@ -1,0 +1,2 @@
+go test fuzz v1
+string("package probe\ntable Leaf { values []int32 }\nunion Choice {\n    Empty\n    pointer *Leaf\n    ptrs [4]*Leaf\n    blob *bytes\n}\ntable UnionListRoot { values []Choice\n    bounded [..3]Choice }\n")

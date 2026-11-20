@@ -1,0 +1,2 @@
+go test fuzz v1
+string("package pkg\nenum E {}\ntable T {\n    vals [E]int32\n}\n")
