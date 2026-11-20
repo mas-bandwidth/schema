@@ -252,3 +252,22 @@ PATH="$RUSTUP_BIN:$PATH" cargo check
 		t.Fatalf("installed libstd in active rustc sysroot did not run cargo: got %q", got)
 	}
 }
+
+// TestGolangciLintCacheIsolatedPerWorkspace ensures multi-runner fleet hosts
+// never share ~/.cache/golangci-lint's process lock ("Error: parallel
+// golangci-lint is running") when golangci-lint-fast and lang-lint (go) or
+// concurrent PRs run simultaneously on one machine.
+func TestGolangciLintCacheIsolatedPerWorkspace(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+	mkBytes, err := os.ReadFile(filepath.Join(root, "make", "schema-go-generated-golangci-lint-gate.mk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mk := string(mkBytes)
+	for lineNo, line := range strings.Split(mk, "\n") {
+		if strings.Contains(line, "$(GOLANGCI_LINT) run") && !strings.Contains(line, "GOLANGCI_LINT_CACHE=") {
+			t.Errorf("make/schema-go-generated-golangci-lint-gate.mk:%d runs $(GOLANGCI_LINT) without workspace-isolated GOLANGCI_LINT_CACHE: %s", lineNo+1, strings.TrimSpace(line))
+		}
+	}
+}

@@ -952,7 +952,7 @@ jobs:
             exit 1
           }
           (cd .. && rm -rf serialize.go && git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go)
-          make schema-go-generated-golangci-lint-gate
+          GOLANGCI_LINT_CACHE="$RUNNER_TEMP/golangci-lint-gate-cache" make schema-go-generated-golangci-lint-gate
 
       # luacheck is fleet software pinned by the make file at 1.2.0; StyLua is
       # the make file's sha256-pinned dist-stylua
