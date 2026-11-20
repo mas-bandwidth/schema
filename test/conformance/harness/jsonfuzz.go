@@ -928,6 +928,27 @@ func buildTargetedJSONCases() []jsonFuzzRawCase {
 	add("amp-fixed-root-amp-node", "tabledemo", "RootConfig", `{"&node":1,"version_note":"v1"}`)
 	add("amp-fixed-root-unknown-amp", "tabledemo", "RootConfig", `{"version_note":"v1","&bad":1}`)
 
+	// ---- 10. Embedded U+0000 & Unpaired Surrogates in Keys and Values (SPEC-TABLES §16.3, jf00461) ----
+	add("nul-scene-pointer-first-key", "graphdemo", "Scene",
+		`{"name":"tree","version":2,"head":{"value":1,"name":"a","next":{"value\u0000":2,"name":"","next":null}}}`)
+	add("nul-scene-pointer-amp-node-key", "graphdemo", "Scene",
+		`{"name":"tree","head":{"&node\u0000":1,"value":1,"name":"a","next":null}}`)
+	add("nul-scene-pointer-unknown-first-key", "graphdemo", "Scene",
+		`{"name":"tree","head":{"nope\u0000":1,"value":1,"name":"a","next":null}}`)
+	add("nul-scene-root-known-prefix-key", "graphdemo", "Scene", `{"version\u0000":2,"name":"tree"}`)
+	add("nul-scene-skipped-nested-key", "graphdemo", "Scene", `{"name":"tree","unk":{"k\u0000":1}}`)
+	add("nul-scene-skipped-nested-val", "graphdemo", "Scene", `{"name":"tree","unk":{"k":"a\u0000b"}}`)
+	add("nul-scene-string-val", "graphdemo", "Scene", `{"name":"tr\u0000ee","version":2}`)
+	add("nul-fixed-type-field-key", "tabledemo", "RootConfig", prof(`"loadout":{"grade\u0000":"Gold"}`))
+	add("nul-fw-map-key", "featurewitnesses", "Root", fw(`"names":{"k\u0000":1}`))
+	add("surrogate-scene-pointer-first-key", "graphdemo", "Scene",
+		`{"name":"tree","head":{"value\ud800":1,"name":"a","next":null}}`)
+	add("surrogate-trail-scene-pointer-first-key", "graphdemo", "Scene",
+		`{"name":"tree","head":{"value\udfff":1,"name":"a","next":null}}`)
+	add("surrogate-scene-root-key", "graphdemo", "Scene", `{"name\ud800":"tree","version":2}`)
+	add("surrogate-scene-string-val", "graphdemo", "Scene", `{"name":"a\ud800b","version":2}`)
+	add("surrogate-fixed-type-field-key", "tabledemo", "RootConfig", prof(`"loadout":{"grade\ud800":"Gold"}`))
+
 	return out
 }
 

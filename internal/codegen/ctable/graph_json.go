@@ -138,7 +138,7 @@ static SCHEMA_UNUSED int table_json_read_pointer( TableJsonIn * in, void * slot,
         return table_json_read_table_keys(in,node,f->table,depth+1,NULL,0,-1);
     }
     quote = in->pos;
-    if ( !table_json_scan_string(in,key,kTableJsonMaxKey-1,&length) ) { return 0; }
+    if ( !table_json_scan_text(in,key,kTableJsonMaxKey-1,&length) ) { return 0; }
     key[length] = 0;
     if ( table_json_peek(in) != ':' ) { in->bad = 1; return 0; }
     in->pos++;

@@ -9,8 +9,10 @@ func TestCJsonHostileTextRefusals(t *testing.T) {
 
 table Probe
 {
+    val   int32
     name  string(8)
     blob  *string
+    next  *Probe
     rules [..4]string(8)
     names map[string(8)]int32
     by_id map[uint16]int32
@@ -48,6 +50,11 @@ int main(void)
            placed value (§16.3), so each refuses the read */
         {"zero-unknown-value", "{\"nope\": \"a\\u0000b\"}", 0, 0, 0, SCHEMA_TABLE_REFUSE_WIRE_DAMAGED},
         {"zero-object-key", "{\"a\\u0000b\": 1}", 0, 0, 0, SCHEMA_TABLE_REFUSE_WIRE_DAMAGED},
+        {"zero-pointer-first-field-key", "{\"next\": {\"val\\u0000\": 2}}", 0, 0, 0, SCHEMA_TABLE_REFUSE_WIRE_DAMAGED},
+        {"zero-pointer-amp-node-key", "{\"next\": {\"&node\\u0000\": 1, \"val\": 2}}", 0, 0, 0, SCHEMA_TABLE_REFUSE_WIRE_DAMAGED},
+        {"zero-pointer-unknown-first-key", "{\"next\": {\"nope\\u0000\": 2}}", 0, 0, 0, SCHEMA_TABLE_REFUSE_WIRE_DAMAGED},
+        {"surrogate-pointer-first-key", "{\"next\": {\"val\\ud800\": 2}}", 0, 0, 0, SCHEMA_TABLE_REFUSE_WIRE_DAMAGED},
+        {"surrogate-trail-pointer-first-key", "{\"next\": {\"val\\udc00\": 2}}", 0, 0, 0, SCHEMA_TABLE_REFUSE_WIRE_DAMAGED},
         {"one-escape-stored", "{\"name\": \"a\\u0001b\"}", 1, 0, 0, SCHEMA_TABLE_REFUSE_OK},
         /* string_not_utf8 (§16.3): ill-formed UTF-8 bytes refuse at every string site before any clamp */
         {"illformed-at-bound", "{\"name\": \"aaaaaaaa\xff\"}", 0, 0, 0, SCHEMA_TABLE_REFUSE_WIRE_DAMAGED},

@@ -1526,8 +1526,9 @@ static SCHEMA_UNUSED int graphdemo_table_json_scan_string_as( graphdemo_table_js
     return 1;
 }
 
-/* A string the read only names or skips: an object key, an enum or flags
-   name, an arm key, a skipped value. A zero in one stores nothing. */
+/* A string the read only compares by byte slice (never via NUL-terminated
+   strcmp): an enum or flags variant name. Every object key and skipped string
+   uses table_json_scan_text (§16.3). */
 static SCHEMA_UNUSED int graphdemo_table_json_scan_string( graphdemo_table_json_in_t * in, char * out, int32_t capacity, int32_t * length )
 {
     return graphdemo_table_json_scan_string_as( in, out, capacity, length, 0 );
@@ -3226,7 +3227,7 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_pointer( graphdemo_table_json
         return graphdemo_table_json_read_table_keys(in,node,f->table,depth+1,NULL,0,-1);
     }
     quote = in->pos;
-    if ( !graphdemo_table_json_scan_string(in,key,GRAPHDEMO_K_TABLE_JSON_MAX_KEY-1,&length) ) { return 0; }
+    if ( !graphdemo_table_json_scan_text(in,key,GRAPHDEMO_K_TABLE_JSON_MAX_KEY-1,&length) ) { return 0; }
     key[length] = 0;
     if ( graphdemo_table_json_peek(in) != ':' ) { in->bad = 1; return 0; }
     in->pos++;

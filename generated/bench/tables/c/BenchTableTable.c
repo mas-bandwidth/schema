@@ -1526,8 +1526,9 @@ static SCHEMA_UNUSED int benchtable_table_json_scan_string_as( benchtable_table_
     return 1;
 }
 
-/* A string the read only names or skips: an object key, an enum or flags
-   name, an arm key, a skipped value. A zero in one stores nothing. */
+/* A string the read only compares by byte slice (never via NUL-terminated
+   strcmp): an enum or flags variant name. Every object key and skipped string
+   uses table_json_scan_text (§16.3). */
 static SCHEMA_UNUSED int benchtable_table_json_scan_string( benchtable_table_json_in_t * in, char * out, int32_t capacity, int32_t * length )
 {
     return benchtable_table_json_scan_string_as( in, out, capacity, length, 0 );
