@@ -170,7 +170,7 @@ func TestHostileAnnouncementBounded(t *testing.T) {
 		t.Fatalf("AnnounceRead 2 accepted nested array element: %+v", rep2)
 	}
 	if !(rep2.Refusal.Error() == "wire_damaged" || rep2.Refusal.Error() == "malformed") {
-		t.Fatalf("expected nested zero-width element to be refused as malformed: n=%d ok=%v rep=%+v", n2, ok2, loadRep2)
+		t.Fatalf("expected nested zero-width element to be refused as malformed: rep=%+v", rep2)
 	}
 }
 `

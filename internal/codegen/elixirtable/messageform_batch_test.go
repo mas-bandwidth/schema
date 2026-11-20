@@ -973,25 +973,18 @@ const boundsValueFns = boundsElixirHelpers + `
     wide =
       entry(0x1000, <<14>> <> leb(0xFFFFFFFF) <> leb(0xFFFFFFFF) <> <<14>> <> leb(0) <> leb(0) <> <<0>>)
 
-    vocab = read!(wide)
-    ceiling(vocab)
-    refuse_wide(vocab)
+    case M.announce_read(announce(wide)) do
+      {:error, :malformed, _} -> :ok
+      other -> check(false, "nested wide announcement #{inspect_small(other)}")
+    end
 
     small =
       entry(0x1000, <<14>> <> leb(2) <> leb(2) <> <<14>> <> leb(2) <> leb(2) <> <<0>>) <>
         entry(0x1001, <<6, 0>>)
 
-    vocab = read!(small)
-
-    case M.save_messages(vocab, [[{1, [[:name, :name], [:name, :name]]}, {2, 9}]]) do
-      {:ok, batch} ->
-        case M.load_messages(vocab, batch) do
-          {:malformed, 0, []} -> :ok
-          other -> check(false, "nested zero-width walk #{inspect_small(other)}")
-        end
-
-      other ->
-        check(false, "save nested #{inspect(other)}")
+    case M.announce_read(announce(small)) do
+      {:error, :malformed, _} -> :ok
+      other -> check(false, "nested small announcement #{inspect_small(other)}")
     end
   end
 

@@ -119,15 +119,11 @@ func runSceneWireAt(t *testing.T, g *generatedUnit, interpreter string, wire []b
 // checkedMoo resolves the checked interpreter named by MOO_CHECKED.
 func checkedMoo(t *testing.T) string {
 	t.Helper()
-	p := os.Getenv("MOO_CHECKED")
-	if p == "" {
-		t.Fatal("MOO_CHECKED is not set: this gate needs a checked moo build")
+	checked, why := moorun.CheckedInterpreter()
+	if checked == "" {
+		t.Fatalf("MOO_CHECKED does not resolve: %s", why)
 	}
-	resolved, err := exec.LookPath(p)
-	if err != nil {
-		t.Fatalf("MOO_CHECKED=%s does not resolve: %v", p, err)
-	}
-	return resolved
+	return checked
 }
 
 // TestMooLengthsStayInRangeUnderACheckedBuild holds every length claim at the

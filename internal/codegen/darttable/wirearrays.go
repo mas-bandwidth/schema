@@ -200,11 +200,16 @@ func (g *wireGen) emitWidenedElems(f *ir.Field, ek int, out, p, ind string) {
 	g.pf("%sfinal w = _kindWidth(elemKind);\n", ind)
 	g.pf("%sfor (var i = 0; i < keep; i++) {\n", ind)
 	g.pf("%s\tif (!%s.has(w)) { %s.report.refuse('wire_damaged'); break; }\n", ind, p, p)
-	if ek == wireKindF64 {
+	switch {
+	case ek == wireKindF64:
 		// a widened float32 element is refused on its raw bits as any float
 		// read is (docs/SPEC-TABLES.md §3.3)
 		g.pf("%s\t%s.add(%s.readF32(%s.pos, '%s')); %s.pos += 4;\n", ind, out, p, p, g.floatOwner(f), p)
-	} else {
+	case ir.TableKindWide(ek):
+		g.pf("%s\tvar x = _getWide(%s, w, %v);\n", ind, p, ir.TableKindSigned(ek))
+		g.emitWideClamp(f, "x", p, ind+"\t")
+		g.pf("%s\t%s.add(x);\n", ind, out)
+	default:
 		g.pf("%s\tvar raw = 0;\n", ind)
 		g.pf("%s\tfor (var b = 0; b < w; b++) { raw |= %s.readByte() << (8 * b); }\n", ind, p)
 		g.emitElemInt(f, "_signExtend(raw, w)", ek >= wireKindI8 && ek <= wireKindI64, out, p, ind+"\t")
@@ -256,8 +261,12 @@ func widenCond(ek int) string {
 	switch {
 	case ek > wireKindI8 && ek <= wireKindI64:
 		return fmt.Sprintf("elemKind >= %d && elemKind < %d", wireKindI8, ek)
+	case ek == ir.TableKindI128:
+		return fmt.Sprintf("elemKind >= %d && elemKind <= %d", wireKindI8, wireKindI64)
 	case ek > wireKindU8 && ek <= wireKindU64:
 		return fmt.Sprintf("elemKind >= %d && elemKind < %d", wireKindU8, ek)
+	case ek == ir.TableKindU128:
+		return fmt.Sprintf("elemKind >= %d && elemKind <= %d", wireKindU8, wireKindU64)
 	case ek == wireKindF64:
 		return fmt.Sprintf("elemKind == %d", wireKindF32)
 	}

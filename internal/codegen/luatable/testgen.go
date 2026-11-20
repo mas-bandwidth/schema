@@ -20,6 +20,10 @@ import (
 func Testgen(u *ir.Unit) (map[string][]byte, error) {
 	module := ModuleName(u)
 	variable := ir.VariableTables(u)
+	fixedSet := map[string]bool{}
+	for _, fr := range fixedRoots(u) {
+		fixedSet[fr.Name] = true
+	}
 	out := map[string][]byte{}
 	for _, f := range u.Files {
 		var roots []*ir.Struct
@@ -56,8 +60,8 @@ func Testgen(u *ir.Unit) (map[string][]byte, error) {
 			if err != nil {
 				return nil, err
 			}
-			ltgRoundTrip(&body, st, variable[st.Name], samples)
-			ltgDamage(&body, st, variable[st.Name], samples)
+			ltgRoundTrip(&body, st, variable[st.Name], fixedSet[st.Name], samples)
+			ltgDamage(&body, st, variable[st.Name], fixedSet[st.Name], samples)
 			cases = append(cases, `{"Test`+st.Name+`GenRoundTrip", Test`+st.Name+`GenRoundTrip}`)
 			cases = append(cases, `{"Test`+st.Name+`GenDamage", Test`+st.Name+`GenDamage}`)
 		}
@@ -160,11 +164,16 @@ local function b64(s)
   return table.concat(out)
 end
 
+local function save_root(name, v)
+  if T.Fixed and T.Fixed[name] then return T.WriteFixed(name, v) end
+  return save.Save(T, name, v)
+end
+
 -- same_equal: the value read saves to exactly the wire and writes exactly the
 -- JSON text the sample did (§16.11).
 local function same_equal(name, leg, wantWire, wantJson, got)
   check(got ~= nil, name .. ": " .. leg .. ": nothing read")
-  local wire = save.Save(T, name, got)
+  local wire = save_root(name, got)
   check(wire == wantWire, name .. ": " .. leg .. ": the value read saves to a different wire")
   local wrote = json.ToJson(T, name, got)
   check(wrote ~= nil and wrote == wantJson, name .. ": " .. leg .. ": the value read writes different JSON")
@@ -445,11 +454,21 @@ func (g *ltgGen) value(j *ltgJSON, f *ir.Field, whole bool) error {
 			return nil
 		}
 		lo, hi := ltgIntRange(f)
-		j.raw(g.pick(lo, hi).String())
+		s := g.pick(lo, hi).String()
+		if t.Width > 32 {
+			j.raw(ltgQuote(s))
+		} else {
+			j.raw(s)
+		}
 	case ir.TFixed:
 		lo, hi := ltgIntRange(f)
 		raw := g.pick(lo, hi)
-		j.raw(ltgFixedDecimal(raw, t.FracBits))
+		dec := ltgFixedDecimal(raw, t.FracBits)
+		if t.Width > 32 {
+			j.raw(ltgQuote(dec))
+		} else {
+			j.raw(dec)
+		}
 	case ir.TFloat32, ir.TFloat64:
 		j.raw(g.float(f))
 	case ir.TString:
@@ -771,7 +790,7 @@ func ltgFixedDecimal(raw *big.Int, frac int) string {
 
 // ltgRoundTrip writes Test<Name>GenRoundTrip: every sample read equal through
 // the binary wire, base64 text and JSON text (§16.11).
-func ltgRoundTrip(b *strings.Builder, st *ir.Struct, variable bool, samples []ltgSample) {
+func ltgRoundTrip(b *strings.Builder, st *ir.Struct, variable, fixedForm bool, samples []ltgSample) {
 	n := st.Name
 	fmt.Fprintf(b, "\n-- Test%sGenRoundTrip reads every sample of %s back through the binary wire,\n-- base64 text and JSON text, each equal to what was written (§16.11).\n", n, n)
 	fmt.Fprintf(b, "local samples_%s = {\n", n)
@@ -784,7 +803,21 @@ func ltgRoundTrip(b *strings.Builder, st *ir.Struct, variable bool, samples []lt
 	fmt.Fprintf(b, "\t\t\tlocal r = report()\n\t\t\tlocal v = json.FromJson(T, %q, s.text, r)\n", n)
 	fmt.Fprintf(b, "\t\t\tcheck(v ~= nil, %q .. s.name .. %q)\n", n+": ", ": FromJson of the sample returned nothing")
 	b.WriteString("\t\t\tcheck(silent(r), " + strconv.Quote(n+": ") + " .. s.name .. \": FromJson of the sample is not silent\")\n")
-	fmt.Fprintf(b, "\t\t\tlocal wire = save.Save(T, %q, v)\n\t\t\tcheck(wire ~= nil, %q .. s.name .. %q)\n", n, n+": ", ": Save refused the sample")
+	if !variable && !fixedForm {
+		for _, form := range []int{1, 3} {
+			fmt.Fprintf(b, "\t\t\tlocal fok, ferr = pcall(refusal.ReadStrict, T, %q, string.char(%d))\n", n, form)
+			b.WriteString("\t\t\tcheck(refused(fok, ferr, { \"unknown_form\" }), " + strconv.Quote(n+": ") + " .. s.name .. \": no-file-form ReadStrict accepted\")\n")
+		}
+		fmt.Fprintf(b, "\t\t\tlocal jsonText = json.ToJson(T, %q, v)\n\t\t\tcheck(jsonText ~= nil, %q .. s.name .. %q)\n", n, n+": ", ": ToJson refused the sample")
+		b.WriteString("\t\t\tlocal jr = report()\n")
+		fmt.Fprintf(b, "\t\t\tlocal jgot = json.FromJson(T, %q, jsonText, jr)\n", n)
+		fmt.Fprintf(b, "\t\t\tcheck(jgot ~= nil and silent(jr), %q .. s.name .. %q)\n", n+": ", ": json: FromJson of ToJson's text is not silent")
+		fmt.Fprintf(b, "\t\t\tcheck(json.ToJson(T, %q, jgot) == jsonText, %q .. s.name .. %q)\n", n, n+": ", ": json: ToJson round-trip changed")
+		b.WriteString("\t\tend)\n\t\tif not ok then error(s.name .. \": \" .. tostring(err), 0) end\n")
+		b.WriteString("\tend\nend\n")
+		return
+	}
+	fmt.Fprintf(b, "\t\t\tlocal wire = save_root(%q, v)\n\t\t\tcheck(wire ~= nil, %q .. s.name .. %q)\n", n, n+": ", ": Save refused the sample")
 	fmt.Fprintf(b, "\t\t\tlocal jsonText = json.ToJson(T, %q, v)\n\t\t\tcheck(jsonText ~= nil, %q .. s.name .. %q)\n", n, n+": ", ": ToJson refused the sample")
 	b.WriteString("\t\t\t-- 1. the binary wire, through the strict read (§6.5)\n")
 	fmt.Fprintf(b, "\t\t\tlocal rok, got = pcall(refusal.ReadStrict, T, %q, wire)\n", n)
@@ -808,7 +841,7 @@ func ltgRoundTrip(b *strings.Builder, st *ir.Struct, variable bool, samples []lt
 
 // ltgDamage writes Test<Name>GenDamage: the high sample's wire and texts,
 // damaged, each refused by its named reason (§16.11).
-func ltgDamage(b *strings.Builder, st *ir.Struct, variable bool, samples []ltgSample) {
+func ltgDamage(b *strings.Builder, st *ir.Struct, variable, fixedForm bool, samples []ltgSample) {
 	n := st.Name
 	high := samples[0].expr
 	for _, s := range samples {
@@ -820,7 +853,23 @@ func ltgDamage(b *strings.Builder, st *ir.Struct, variable bool, samples []ltgSa
 	fmt.Fprintf(b, "local function Test%sGenDamage()\n", n)
 	fmt.Fprintf(b, "\tlocal r = report()\n\tlocal v = json.FromJson(T, %q, %s, r)\n", n, high)
 	fmt.Fprintf(b, "\tcheck(v ~= nil and silent(r), %q)\n", n+": the high sample is not silent")
-	fmt.Fprintf(b, "\tlocal wire = save.Save(T, %q, v)\n\tcheck(wire ~= nil and #wire >= 2, %q)\n", n, n+": save of the high sample")
+	if !variable && !fixedForm {
+		b.WriteString("\tfor _, form in ipairs({ 1, 2, 3, 9, 255 }) do\n")
+		fmt.Fprintf(b, "\t\tlocal ok, err = pcall(refusal.ReadStrict, T, %q, string.char(form))\n", n)
+		b.WriteString("\t\tcheck(refused(ok, err, { \"unknown_form\", \"message_form_as_file\" }), " + strconv.Quote(n+": form byte ") + " .. form .. " + strconv.Quote(": ") + " .. errname(err))\n")
+		b.WriteString("\tend\n")
+		b.WriteString("\tfor _, damaged in ipairs({ \"!Q==\", \"AQ=\" }) do\n")
+		fmt.Fprintf(b, "\t\tlocal ok, err = pcall(text.LoadText, T, %q, damaged, report())\n", n)
+		b.WriteString("\t\tcheck(refused(ok, err, { \"base64_damaged\" }), " + strconv.Quote(n+": base64 damage: ") + " .. errname(err))\n")
+		b.WriteString("\tend\n")
+		fmt.Fprintf(b, "\tlocal jsonText = json.ToJson(T, %q, v)\n", n)
+		b.WriteString("\tlocal jr = report()\n")
+		fmt.Fprintf(b, "\tlocal jgot = json.FromJson(T, %q, jsonText:sub(1, #jsonText - 2), jr)\n", n)
+		fmt.Fprintf(b, "\tcheck(jgot == nil and jr.damaged, %q)\n", n+": a JSON document cut off inside its value is not damaged")
+		b.WriteString("end\n")
+		return
+	}
+	fmt.Fprintf(b, "\tlocal wire = save_root(%q, v)\n\tcheck(wire ~= nil and #wire >= 2, %q)\n", n, n+": save of the high sample")
 	b.WriteString("\t-- a TRUNCATED wire: the framing check refuses it by name (§3)\n")
 	fmt.Fprintf(b, "\tfor _, cut in ipairs({ wire:sub(1, 1), wire:sub(1, #wire - 1) }) do\n")
 	fmt.Fprintf(b, "\t\tlocal ok, err = pcall(refusal.ReadStrict, T, %q, cut)\n", n)

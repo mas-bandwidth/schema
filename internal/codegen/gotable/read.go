@@ -299,21 +299,18 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 		} else {
 			g.pf("if !tableWireSkipFramed(&elem,elemKind,false){return false};")
 		}
-		g.pf("continue }\n%s", keyedSlotOpen(kind == tkTable, j, stop))
+		g.pf("continue }\n")
 		g.retainReadPath("elem", "r", "int(slot)-1")
 		switch kind {
 		case tkTable:
 			g.emitReadDepth("elem", 1, j)
-			g.pf("%sif len(elem.Buffer) == 1 { %s }\n", j, stop)
 			g.pf("%sif !%sLoadBody(&elem, &%s[int(slot)-1]) { return false }\n", j, f.Type.Name, expr)
 			g.emitCarveReturn("sub", "elem", j)
 		case tkUnion:
-			g.sink = "slotDefault"
 			g.emitReadUnion(f.Type.Ref.(*ir.Union), expr+"[int(slot)-1]", "elem", j)
 			g.emitCarveReturn("sub", "elem", j)
-			g.pf("%sif slotDefault { %s }\n", j, stop)
 		default:
-			g.emitKeyedScalarSlot(f, expr+"[int(slot)-1]", j, stop)
+			g.emitReadScalar(f, expr+"[int(slot)-1]", "elem", "elemKind", j, stop)
 		}
 		g.pf("%sif elem.Offset != int64(len(elem.Buffer)) { %s }\n", j, stop)
 		g.pf("%s}\n", i)

@@ -185,10 +185,10 @@ func vtShapeRun(t *testing.T, schema, probeBody string, inputs map[string][]byte
 
 func vtShapeSuite(t *testing.T, patchLoad func(string) string) string {
 	t.Helper()
-	v1 := vtShapeOracle(t, vtShapeSchema, `{"cell":{"power":5,"label":"a"},"ship":{"name":"s","hull":7},"flag":{"name":"f","hull":3},"opt":3,"optCell":{"power":2},"keyed":{"Red":1,"Blue":3},"keyedCells":{"Green":{"power":9}},"fp":1.5,"ufp":2.5,"bigfp":-12.25,"i128v":-12345,"u128v":12345,"wideText":"héllo","title":"hello","grade":"Argent","effect":{"shield":{"charge":1.5}},"buff":{"mult":2.0},"clamped":5}`)
+	v1 := vtShapeOracle(t, vtShapeSchema, `{"cell":{"power":5,"label":"a"},"ship":{"name":"s","hull":7},"flag":{"name":"f","hull":3},"opt":3,"optCell":{"power":2},"keyed":{"Red":1,"Blue":3},"keyedCells":{"Green":{"power":9}},"fp":1.5,"ufp":2.5,"bigfp":"-12.25","i128v":"-12345","u128v":"12345","wideText":"héllo","title":"hello","grade":"Argent","effect":{"shield":{"charge":1.5}},"buff":{"mult":2.0},"clamped":5}`)
 	v2 := vtShapeOracle(t, vtShapeSchema, `{}`)
 	loose := strings.NewReplacer("max = 1000", "max = 100000", "max = 10", "max = 10000", "max = 8", "max = 8000", "max = 100", "max = 10000", "max = 5000000000", "max = 500000000000").Replace(vtShapeSchema)
-	clampedWire := vtShapeOracle(t, loose, `{"cell":{"power":5000},"opt":500,"keyed":{"Red":5000},"fp":100.0,"bigfp":5000.0,"i128v":99999999999,"clamped":500}`)
+	clampedWire := vtShapeOracle(t, loose, `{"cell":{"power":5000},"opt":500,"keyed":{"Red":5000},"fp":100.0,"bigfp":"5000","i128v":"99999999999","clamped":500}`)
 	main := `local schema = dofile("probe/schema_module.nut", true);
 local T = schema.require("__MOD__");
 local R = schema.require("schema_table_refusal");
@@ -226,7 +226,7 @@ one("clean"); one("dup"); one("trailing"); one("elemExtra");
 
 func vtShapeWant(t *testing.T) string {
 	t.Helper()
-	v1 := vtShapeOracle(t, vtShapeSchema, `{"cell":{"power":5,"label":"a"},"ship":{"name":"s","hull":7},"flag":{"name":"f","hull":3},"opt":3,"optCell":{"power":2},"keyed":{"Red":1,"Blue":3},"keyedCells":{"Green":{"power":9}},"fp":1.5,"ufp":2.5,"bigfp":-12.25,"i128v":-12345,"u128v":12345,"wideText":"héllo","title":"hello","grade":"Argent","effect":{"shield":{"charge":1.5}},"buff":{"mult":2.0},"clamped":5}`)
+	v1 := vtShapeOracle(t, vtShapeSchema, `{"cell":{"power":5,"label":"a"},"ship":{"name":"s","hull":7},"flag":{"name":"f","hull":3},"opt":3,"optCell":{"power":2},"keyed":{"Red":1,"Blue":3},"keyedCells":{"Green":{"power":9}},"fp":1.5,"ufp":2.5,"bigfp":"-12.25","i128v":"-12345","u128v":"12345","wideText":"héllo","title":"hello","grade":"Argent","effect":{"shield":{"charge":1.5}},"buff":{"mult":2.0},"clamped":5}`)
 	v2 := vtShapeOracle(t, vtShapeSchema, `{}`)
 	return fmt.Sprintf("v1=read|%x\nv2=read|%x\nclampedWire=refused\nclean=read|11,33\ndup=refused\ntrailing=refused\nelemExtra=refused", v1, v2)
 }

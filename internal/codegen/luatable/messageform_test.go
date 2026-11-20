@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -257,7 +258,11 @@ func TestLuaAnnouncementReadsTheEngineBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 	announce := readFile(t, filepath.Join(repo, "internal", "ci", "hostilecorpus", "corpus", "inputs", "announcement.bin"))
-	vocab := tablewire.MessageVocabulary(unit)
+	var annVocab tablewire.Vocabulary
+	if err := annVocab.AnnounceRead(announce, &tabletext.Report{}); err != nil {
+		t.Fatalf("AnnounceRead of corpus announcement: %v", err)
+	}
+	vocab := annVocab.Entries()
 	vocabBytes := len(ir.TableVocabularyBytes(vocab))
 	entries := len(vocab)
 	if vocabBytes == 0 || entries == 0 {

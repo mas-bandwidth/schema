@@ -25,7 +25,7 @@ var luaVTFramingCells = []struct {
 	{"id-table-wire", []string{"frame_repeat_last_wins", "frame_unknown_id_length", "frame_unknown_id_reference", "frame_unreferenced_entry"}},
 	{"maps", []string{"map_L1_inert"}},
 	{"unbounded-arrays", []string{"array_L0_inert", "array_L1_inert"}},
-	{"variable-class", []string{"node_table_twice", "node_record_bytes_after_terminator"}},
+	{"variable-class", []string{"node_table_twice", "node_record_bytes_after_terminator", "varevo_cycle_known_via_unknown", "varevo_cycle_root_via_unknown", "varevo_cycle_two_unknowns", "varevo_cycle_unknown_self"}},
 }
 
 // luaVTFramingPins answers the manifest verdict of every vector the five

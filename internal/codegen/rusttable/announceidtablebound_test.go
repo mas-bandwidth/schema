@@ -46,6 +46,10 @@ func announceWireWithIds(ids []uint64) []byte {
 	wire = binary.LittleEndian.AppendUint64(wire, 0x1234)
 	wire = appendLeb(wire, 2) // the vocabulary: reference 2, kind 14
 	wire = append(wire, 14, 2, 6, 0)
+	for i := 2; i < len(ids); i++ {
+		wire = appendLeb(wire, uint64(i+1))
+		wire = append(wire, 1, 1)
+	}
 	wire = append(wire, 0) // the root terminator
 	for _, id := range ids {
 		wire = binary.LittleEndian.AppendUint64(wire, id)

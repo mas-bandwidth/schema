@@ -849,7 +849,7 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 					if efd == nil then
 						report.unknown = report.unknown + 1; noteField("unknown", mapName)
 						if not skip(body, kind) then report.malformed = true; noteField("malformed", mapName); break end
-						note_payload(body.b, payloadAt, body.at, kind, 1)
+						note_payload(body.b, payloadAt, body.at, kind, 0)
 					elseif id == MapKeyId and keyfd ~= nil then
 						if kind ~= keyfd.k then
 							if widens(kind, keyfd.k) then
@@ -859,7 +859,7 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 							else
 								report.kindMismatch = report.kindMismatch + 1; noteField("kindMismatch", mapName)
 								if not skip(body, kind) then report.malformed = true; noteField("malformed", mapName); break end
-								note_payload(body.b, payloadAt, body.at, kind, 1)
+								note_payload(body.b, payloadAt, body.at, kind, 0)
 							end
 						else
 							if not read_field(keyfd, body, vals) then break end
@@ -873,7 +873,7 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 						else
 							report.kindMismatch = report.kindMismatch + 1; noteField("kindMismatch", mapName)
 							if not skip(body, kind) then report.malformed = true; noteField("malformed", mapName); break end
-							note_payload(body.b, payloadAt, body.at, kind, 1)
+							note_payload(body.b, payloadAt, body.at, kind, 0)
 						end
 					else
 						if not read_field(efd, body, vals) then break end
@@ -1756,7 +1756,7 @@ read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 			if id == NodeTableId then
 				note_node_table(r.b, payloadAt, r.at)
 			else
-				note_payload(r.b, payloadAt, r.at, kind, 1)
+				note_payload(r.b, payloadAt, r.at, kind, 0)
 			end
 		elseif kind ~= fd.k then
 			if widens(kind, fd.k) then
@@ -1769,7 +1769,7 @@ read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 			else
 				_report.kindMismatch = _report.kindMismatch + 1; noteField("kindMismatch", fd.name)
 				if not skip(r, kind) then _report.malformed = true; noteField("malformed", fd.name); return false end
-				note_payload(r.b, payloadAt, r.at, kind, 1)
+				note_payload(r.b, payloadAt, r.at, kind, 0)
 			end
 		else
 			local ok, selected = read_field(fd, r, v)
@@ -2123,7 +2123,7 @@ note_content = function(b: buffer, s: number, stop: number, kind: number, depth:
 			local k = buffer.readu8(b, q)
 			local nxt = stepOver(b, q + 1, stop, k)
 			if nxt == nil then return end
-			note_payload(b, q + 1, nxt, k, depth + 1)
+			note_payload(b, q + 1, nxt, k, depth)
 			p = nxt
 		end
 		return
@@ -2151,7 +2151,7 @@ note_content = function(b: buffer, s: number, stop: number, kind: number, depth:
 		for _ = 1, count do
 			local nxt = stepOver(b, p, stop, ek)
 			if nxt == nil then return end
-			note_payload(b, p, nxt, ek, depth + 1)
+			note_payload(b, p, nxt, ek, depth)
 			p = nxt
 		end
 		return
@@ -2182,7 +2182,7 @@ note_payload = function(b: buffer, s: number, stop: number, kind: number, depth:
 		if n == nil or p + n > stop then return end
 		note_content(b, p, p + n, kind, depth + 1)
 	elseif kind == 15 or kind == 30 then
-		note_content(b, s, stop, kind, depth + 1)
+		note_content(b, s, stop, kind, depth)
 	end
 end
 
@@ -2193,7 +2193,7 @@ note_elements = function(b: buffer, p: number, stop: number, ek: number)
 	while p < stop do
 		local nxt = stepOver(b, p, stop, ek)
 		if nxt == nil then return end
-		note_payload(b, p, nxt, ek, 1)
+		note_payload(b, p, nxt, ek, 0)
 		p = nxt
 	end
 end

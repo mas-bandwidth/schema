@@ -55,31 +55,6 @@ func enumVariantDefault(f *ir.Field, expr string, elide bool, sink, onBad string
 	return ""
 }
 
-// keyedSlotOpen opens a known non-table keyed slot's default sink (§3.2).
-// A file cannot establish the writer's enum order; duplicate keys and
-// first-use ids are checked independently. Slot elision is unconditional,
-// including under a Required field, unlike whole-field elision.
-func keyedSlotOpen(table bool, ind, stop string) string {
-	open := ""
-	if !table {
-		open += ind + "slotDefault := true\n"
-	}
-	return open
-}
-
-// emitKeyedScalarSlot reads a keyed slot's scalar, enum or pointer element and
-// refuses it at its default.
-func (g *tableGen) emitKeyedScalarSlot(f *ir.Field, expr, ind, stop string) {
-	if f.Type.Pointer || enumRef(f) != nil {
-		g.sink = "slotDefault"
-	}
-	g.emitReadScalar(f, expr, "elem", "elemKind", ind, stop)
-	if !f.Type.Pointer && enumRef(f) == nil {
-		g.pf("%sif %s { slotDefault = false }\n", ind, g.elideDiffers(f, expr, fieldDefaultExpr(f)))
-	}
-	g.pf("%sif slotDefault { %s }\n", ind, stop)
-}
-
 // emitFixedArraySinkOpen opens an [N] array's sink (fixedArraySink) before its
 // element loop and names it, "" for none; emitFixedArraySinkClose refuses the
 // array whose every element rode as its default.

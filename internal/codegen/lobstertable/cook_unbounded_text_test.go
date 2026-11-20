@@ -179,7 +179,7 @@ else:
 				want string
 			}{
 				{"canonical", valid, "identical"},
-				{"pad_is_ignored", padded, "identical"},
+				{"pad_nonzero_refused", padded, "refused"},
 				{"backward_references", backward, "identical"},
 				{"aliased_blobs", alias, "refused"},
 			} {

@@ -454,16 +454,12 @@ func dartListElemType(f *ir.Field) string {
 // from (§4): every kind below it on its own signed (2..5) or unsigned (6..9)
 // ladder, each with its payload width. The declaration's own kind is not here.
 func widenKinds(declKind int, signed bool) []struct{ k, w int } {
-	if declKind == ir.TableKindTimestamp {
-		return nil
-	} // timestamp has no widening ladder
-	lo := wireKindI8
-	if !signed {
-		lo = wireKindU8
-	}
+	_ = signed
 	var out []struct{ k, w int }
-	for k := lo; k < declKind; k++ {
-		out = append(out, struct{ k, w int }{k, ir.TableKindWidth(k)})
+	for k := 1; k < 34; k++ {
+		if ir.TableKindWidens(k, declKind) && k != wireKindF32 {
+			out = append(out, struct{ k, w int }{k, ir.TableKindWidth(k)})
+		}
 	}
 	return out
 }

@@ -248,7 +248,7 @@ func messageStrictRows() []messageStrictRow {
 			return b.done()
 		},
 		want:    "-1 out_of_range 0 222 333",
-		control: [2]string{"} else if (x < fd.lo || x > fd.hi) { refuseRead(r, \"out_of_range\"); return 0; }", "}"},
+		control: [2]string{"    } else if (!fd.signed) {\n      local MIN = 0x8000000000000000;\n      if ((x ^ MIN) < (fd.lo ^ MIN) || (x ^ MIN) > (fd.hi ^ MIN)) { refuseRead(r, \"out_of_range\"); return 0; }\n    } else if (x < fd.lo || x > fd.hi) { refuseRead(r, \"out_of_range\"); return 0; }", "    }"},
 	}, {
 		name: "out_of_range_float",
 		peer: func(v *messageStrictVocab) {
@@ -347,7 +347,7 @@ func messageStrictRows() []messageStrictRow {
 			return b.done()
 		},
 		want:    "0 wire_damaged 0 222 333",
-		control: [2]string{"||keys.find(ke.Id)!=null){r.bad=true;return;}\n      keys.append(ke.Id);", "){r.bad=true;return;}\n      keys.append(ke.Id);"},
+		control: [2]string{"||keys.find(ke.Id)!=null){r.bad=true;return;}\n      keys.append(ke.Id);\n      local index=-1;for(local j=0;j<fd.keyvariants.len();j++)if(fd.keyvariants[j][1]==ke.Id){index=j;break;}\n      local depSlot=r.depCount,unkSlot=r.unknown,bitsSlot=r.bits;\n      r.enumAtDefault=false;\n      readPayload(T,v,r,fd.elem,holder,\"value\",depth+1,element);if(r.bad)return;\n      if(index<0)r.unknown++;\n      else{\n        if(exactKeyed&&index<=lastSlot){r.bad=true;return;}", "){r.bad=true;return;}\n      keys.append(ke.Id);\n      local index=-1;for(local j=0;j<fd.keyvariants.len();j++)if(fd.keyvariants[j][1]==ke.Id){index=j;break;}\n      local depSlot=r.depCount,unkSlot=r.unknown,bitsSlot=r.bits;\n      r.enumAtDefault=false;\n      readPayload(T,v,r,fd.elem,holder,\"value\",depth+1,element);if(r.bad)return;\n      if(index<0)r.unknown++;\n      else{"},
 	}, {
 		name: "ill_formed_text",
 		batch: func(v *messageStrictVocab) []byte {

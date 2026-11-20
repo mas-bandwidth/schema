@@ -463,7 +463,7 @@ function M.announceRead(v: any, data: buffer, report: any): boolean
 	local r = { b = data, at = 1, e = start, bad = false }
 	local versions = 0
 	local vocabs = 0
-	local words: buffer? = nil
+	local words: buffer = buffer.create(0)
 	local seenBody: { [integer]: boolean } = {}
 	local nextRef = 1
 	while true do
@@ -491,8 +491,9 @@ function M.announceRead(v: any, data: buffer, report: any): boolean
 			local m = rLeb(sub)
 			if sub.bad or m ~= sub.e - sub.at then report.malformed = true; return false end
 			if m > v.maxBytes then return refuse(report, "vocabulary_too_large") end
-			words = buffer.create(m)
-			buffer.copy(words :: buffer, 0, data, sub.at, m)
+			local wb = buffer.create(m)
+			buffer.copy(wb, 0, data, sub.at, m)
+			words = wb
 			vocabs = vocabs + 1
 		else
 			report.unknown = (report.unknown or 0) + 1
@@ -501,7 +502,7 @@ function M.announceRead(v: any, data: buffer, report: any): boolean
 	end
 	if r.at ~= start or ((report.unknown or 0) == 0 and nextRef - 1 ~= #ids) then report.malformed = true; return false end
 	if versions ~= 1 or vocabs ~= 1 then report.malformed = true; return false end
-	local w = { b = words :: buffer, at = 0, e = buffer.len(words :: buffer), bad = false }
+	local w = { b = words, at = 0, e = buffer.len(words), bad = false }
 	local entries = {}
 	local seenRaw = {}
 	local nodeCount = 0
@@ -610,8 +611,8 @@ local function fieldIndex(desc: any, id: integer): number?
 end
 
 local messageFieldDefault: any
-local getOwnVocab: (tableName: string) -> any?
-local ownSlotEntry: (ov: any, rootName: string, ownerName: string, idx1: number, fallbackId: integer) -> (number, any)
+local getOwnVocab: any
+local ownSlotEntry: any
 
 local function isSignedKind(k: number): boolean
 	return (k >= 2 and k <= 5) or k == 18 or (k >= 20 and k <= 24) or k == 36
@@ -742,32 +743,7 @@ skipBody = function(r: any, st: any, desc: any, dep: any): boolean
 	end
 end
 
--- the declared default as the little-endian two's-complement 32-bit words of
--- an unpacked integer payload `w` bits wide (the low word alone, reduced, when
--- w is under 32), or nil when the default is not an integer
 local defScratch = buffer.create(16)
-local function defaultWords(def: any, w: number): { number }?
-	buffer.fill(defScratch, 0, 0)
-	if typeof(def) == "table" then
-		if typeof(def.lo) ~= "integer" or typeof(def.hi) ~= "integer" then return nil end
-		buffer.writeinteger(defScratch, 0, def.lo)
-		buffer.writeinteger(defScratch, 8, def.hi)
-	elseif typeof(def) == "integer" then
-		buffer.writeinteger(defScratch, 0, def)
-		if integer.lt(def, 0i) then buffer.fill(defScratch, 8, 0xFF, 8) end
-	elseif typeof(def) == "number" then
-		if def ~= math.floor(def) then return nil end
-		buffer.writeu32(defScratch, 0, def % 2 ^ 32)
-		buffer.writeu32(defScratch, 4, math.floor(def / 2 ^ 32) % 2 ^ 32)
-		if def < 0 then buffer.fill(defScratch, 8, 0xFF, 8) end
-	else
-		return nil
-	end
-	if w < 32 then return { buffer.readu32(defScratch, 0) % 2 ^ w } end
-	local words = {}
-	for i = 1, w // 32 do words[i] = buffer.readu32(defScratch, (i - 1) * 4) end
-	return words
-end
 
 -- messageFieldDefault is the message writer's elision rule read off the bits
 -- (docs/SPEC-TABLES.md §3.3 (a), tablewire's messageElides): whether a field,
@@ -1183,9 +1159,9 @@ ownSlotEntry = function(ov: any, rootName: string, ownerName: string, idx1: numb
 	return 0, nil
 end
 
-local transcodeBody: (r: any, pv: any, ov: any, rootName: string, desc: any, rep: any) -> ({ any }?, boolean)
+local transcodeBody: any
 local ownFieldElides: any
-local transcodeValue: (r: any, pv: any, ov: any, rootName: string, pe: any, oe: any, fd: any, rep: any) -> (any, boolean)
+local transcodeValue: any
 
 transcodeValue = function(r: any, pv: any, ov: any, rootName: string, pe: any, oe: any, fd: any, rep: any): (any, boolean)
 	local pk = pe.shape.kind
@@ -1484,10 +1460,10 @@ ownFieldElides = function(ov: any, fd: any, oe: any, node: any): boolean
 	return eq16(node.val16, defTo16(fd.def or 0))
 end
 
-local emptyOwnBody: (ov: any, rootName: string, desc: any) -> { any }
+local emptyOwnBody: any
 emptyOwnBody = function(ov: any, rootName: string, desc: any): { any }
 	if desc == nil or desc.fields == nil then return {} end
-	local items = {}
+	local items: { any } = {}
 	for idx1, fd in desc.fields do
 		if fd.present ~= nil then continue end
 		local oref, oe = ownSlotEntry(ov, rootName, desc.name, idx1, fd.id)
@@ -1590,7 +1566,7 @@ local function bwAlign(w: any)
 	end
 end
 
-local encodeOwnValue: (w: any, ov: any, node: any) -> ()
+local encodeOwnValue: any
 local function encodeOwnBody(w: any, ov: any, fields: { any })
 	for _, it in fields do
 		bwPut(w, it.ref, ov.refBits)

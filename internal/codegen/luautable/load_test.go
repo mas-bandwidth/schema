@@ -16,6 +16,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
+	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -107,8 +108,26 @@ func generateUnit(t *testing.T, units map[string][]string, key string) *generate
 	files, err := luau.Generate(u)
 	g := &generatedUnit{err: err}
 	if err == nil {
+		var lineage map[string][]luautable.FixedLineageEntry
+		if lock, lok, lerr := lockfile.Open(paths); lerr != nil {
+			t.Fatal(lerr)
+		} else if lok && lock != nil {
+			lineage = map[string][]luautable.FixedLineageEntry{}
+			for _, st := range ir.TableFixedRoots(u) {
+				for _, e := range lockfile.Lineage(lock, st.WireName()) {
+					lineage[st.Name] = append(lineage[st.Name], luautable.FixedLineageEntry{
+						Wire:    e.Wire,
+						Layout:  e.Layout,
+						Record:  e.Record + 8,
+						Retired: e.Retired,
+						Reason:  e.Reason,
+						Ranges:  ir.TableFixedWriterRanges(e.Writer),
+					})
+				}
+			}
+		}
 		var tables map[string][]byte
-		tables, err = luautable.Generate(u)
+		tables, err = luautable.GenerateLineage(u, lineage)
 		g.err = err
 		maps.Copy(files, tables)
 	}

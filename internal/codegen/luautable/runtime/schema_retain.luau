@@ -164,7 +164,7 @@ local patch_len: any
 
 -- one body's fields, each with its reference widened to an id (§6.6)
 resolve_body = function(r: any, ids: { any }, out: any, depth: number, e: number): boolean
-	if depth > 64 then return false end
+	if depth > 128 then return false end
 	while true do
 		if r.at > e then return false end
 		local id, ok = resolve_ref(r, ids, true)
@@ -189,7 +189,7 @@ end
 -- header, 30 a variant reference, 16 every keyed slot's key, and everything
 -- self-framed is copied with its length recomputed (§6.6).
 resolve_payload = function(r: any, ids: { any }, kind: number, out: any, depth: number): boolean
-	if depth > 64 then return false end
+	if depth > 128 then return false end
 	local w = width_of(kind)
 	if w > 0 then
 		if r.at + w > r.e then return false end
@@ -281,7 +281,7 @@ end
 -- bytes with no length of its own, bytes and an array are an array body, and
 -- a table is a body's fields.
 resolve_arm = function(r: any, ids: { any }, kind: number, out: any, depth: number): boolean
-	if depth > 64 then return false end
+	if depth > 128 then return false end
 	local w = width_of(kind)
 	if w > 0 then
 		if r.at + w > r.e then return false end

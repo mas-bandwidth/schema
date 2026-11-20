@@ -85,15 +85,16 @@ end
 for name, d in pairs(T.Tables) do
   if T["New" .. name] then
     for _, fd in ipairs(d.fields) do
-      if fd.shape == "wide" and fd.lo ~= nil then
-        for _, big in ipairs({ math.maxinteger, math.mininteger }) do
-          local v = T["New" .. name]()
-          v[fd.name] = { lo = 0, hi = big }
-          local ok, wire = pcall(save.Save, T, name, v)
-          if ok and wire ~= nil then
+      if fd.shape == "wide" and fd.lo ~= nil and fd.signed then
+        local v = T["New" .. name]()
+        v[fd.name] = { lo = 1, hi = 0 }
+        local ok, wire = pcall(save.Save, T, name, v)
+        if ok and wire ~= nil and #wire >= 20 then
+          for _, big in ipairs({ math.maxinteger, math.mininteger }) do
+            local bad = wire:sub(1, 11) .. string.pack("<i8", big) .. wire:sub(20)
             local into = T["New" .. name]()
-            load.Load(T, name, wire, report(), state, into)
-            load.Load(T, name, wire, report(), state, into)
+            load.loadWalk(T, name, bad, report(), state, into)
+            load.loadWalk(T, name, bad, report(), state, into)
           end
         end
       end

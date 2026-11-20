@@ -70,8 +70,8 @@ func TestMessageReadClampsDeclaredRangeDart(t *testing.T) {
 	// oracle's array does (`fv.Count = int(kept)`).
 	t.Run("CountedArray", func(t *testing.T) {
 		t.Parallel()
-		u, mutant := countedArrayClampMutant(t)
-		checkMessageReadClamp(t, "ClampBox", u, mutant, "count_over_bound")
+		u, announce, mutant := countedArrayClampMutant(t)
+		checkMessageReadClampWithAnnounce(t, "ClampBox", u, announce, mutant, "count_over_bound")
 	})
 }
 
@@ -95,13 +95,14 @@ fixed table ClampBox
 // countedArrayClampMutant builds a batch whose items count is three, one above
 // the bound, from the Go encoder. The encoder writes what the instance holds;
 // the reader's own bound is what clamps, exactly as the oracle's array does.
-func countedArrayClampMutant(t *testing.T) (*ir.Unit, []byte) {
+func countedArrayClampMutant(t *testing.T) (*ir.Unit, []byte, []byte) {
 	t.Helper()
 	u := unitFrom(t, countedArrayClampSchema)
 	// STRICT WRITER: the encoder refuses a count past the declared bound,
 	// so the mutant is encoded by a bound-3 twin at the same count width;
 	// the bound-2 reader must refuse it whole (count_over_bound).
-	m := tabletext.NewModel(unitFrom(t, strings.Replace(countedArrayClampSchema, "[..2]", "[..3]", 1)))
+	twin := unitFrom(t, strings.Replace(countedArrayClampSchema, "[..2]", "[..3]", 1))
+	m := tabletext.NewModel(twin)
 	inst := m.New(m.Lookup("ClampBox"))
 	var items *tabletext.Field
 	for i := range inst.Fields {
@@ -135,7 +136,7 @@ func countedArrayClampMutant(t *testing.T) (*ir.Unit, []byte) {
 	if err != nil {
 		t.Fatalf("the Go encoder refused the counted-array mutant: %v", err)
 	}
-	return u, out
+	return u, tablewire.Announce(twin), out
 }
 
 // findMessageRow returns the manifest row named `name`.
@@ -209,10 +210,14 @@ func storePurchaseClampMutant(t *testing.T, m *tabletext.Model) []byte {
 // saved bytes equal.
 func checkMessageReadClamp(t *testing.T, root string, u *ir.Unit, mutant []byte, reason string) {
 	t.Helper()
+	checkMessageReadClampWithAnnounce(t, root, u, tablewire.Announce(u), mutant, reason)
+}
+
+func checkMessageReadClampWithAnnounce(t *testing.T, root string, u *ir.Unit, announce, mutant []byte, reason string) {
+	t.Helper()
 	m := tabletext.NewModel(u)
 	vocabulary := &tablewire.Vocabulary{}
 	var oracle tabletext.Report
-	announce := tablewire.Announce(m.Unit)
 	if err := vocabulary.AnnounceRead(announce, &oracle); err != nil {
 		t.Fatalf("the Go oracle refused the announcement: %v", err)
 	}

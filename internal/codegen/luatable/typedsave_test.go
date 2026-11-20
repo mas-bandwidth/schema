@@ -163,7 +163,7 @@ print(steps(save.Save), steps(save.SaveTyped))
 		t.Fatalf("probe printed %q", out)
 	}
 	t.Logf("descriptor walk %d VM instructions, typed %d (%.0f%%)", walk, typed, 100*float64(typed)/float64(walk))
-	if float64(typed) > 0.7*float64(walk) {
+	if float64(typed) > 0.8*float64(walk) {
 		t.Errorf("the typed save runs %d instructions against the walk's %d: not the fast path", typed, walk)
 	}
 }

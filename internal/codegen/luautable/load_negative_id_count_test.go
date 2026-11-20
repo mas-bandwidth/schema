@@ -55,8 +55,8 @@ func TestNegativeCountOracle(t *testing.T) {
 		wire := append([]byte(nil), valid...)
 		binary.LittleEndian.PutUint64(wire[len(wire)-8:], c.count)
 		var report TableReport
-		root := BoxLoadTolerant(region, wire, &report)
-		fmt.Printf("@%s|malformed=%v|value=%v\n", c.name, report.Malformed, root != nil)
+		root := BoxLoad(region, wire, &report)
+		fmt.Printf("@%s|malformed=%v|value=%v\n", c.name, report.Refused(), root != nil)
 	}
 }
 `

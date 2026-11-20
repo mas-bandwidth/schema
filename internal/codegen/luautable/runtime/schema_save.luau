@@ -1007,9 +1007,27 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 		return true
 	end
 	if s == "arr" then
-		if fd.array == "list" or fd.array == "counted" then
+		if fd.array == "list" then
 			local n = live_count(fd, v, val)
 			if n == 0 and not required then return true end
+			return write_array(c, fd, w, v, val, n)
+		end
+		if fd.array == "counted" then
+			local n = live_count(fd, v, val)
+			local born = fd.min or 0
+			if not required then
+				if n == 0 then return true end
+				if n == born and fd.e.s ~= "tab" then
+					local lens = v[fd.slot .. "Length"]
+					local all = true
+					for i = 1, n do
+						local len: number? = nil
+						if typeof(lens) == "table" then len = lens[i] end
+						if not elem_is_default(fd.e, elem_at(val, i), len) then all = false; break end
+					end
+					if all then return true end
+				end
+			end
 			return write_array(c, fd, w, v, val, n)
 		end
 		if fd.e.s == "tab" then

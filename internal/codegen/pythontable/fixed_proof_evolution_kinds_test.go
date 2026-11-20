@@ -243,24 +243,7 @@ func TestPythonFixedProofEvolutionKindPairs(t *testing.T) {
 					if c.Refused == lawful {
 						t.Errorf("%s -> %s: the C++ reference answered %s, the ladder says lawful=%v", from.name, to.name, c, lawful)
 					}
-					if lawful && to.rung == 4 {
-						// A REFERENCE DEFECT, held open here rather than copied:
-						// the C++ widen op lands at most eight bytes
-						// (TableFixedStoreNative has no 16-byte case), so a
-						// fixed(I,F) widened into 128-bit storage reads back
-						// as zero while the algorithm's §4 widen is exact.
-						// The value Python must land is the one the C++
-						// reference's own writer saves for it at the reader's
-						// declaration; the day the reader lands it too, this
-						// exception goes red and is removed.
-						_, _, body := fixedproof.RootFacts(newer.Tables["T"])
-						setup := "value[0].lead = 0xAAAAAAAAu; value[0].v = " + from.setup + "; value[0].trail = 0xBBBBBBBBu;"
-						canonical, _ := fixedproof.CppOracle(t, fixedproof.RowCase{ID: "kind-" + from.name + "-as-" + to.name, Root: "T", Body: body, Count: 1, CppSetup: setup}, newer)
-						if bytes.Equal(c.Saved, canonical) {
-							t.Errorf("%s -> %s: the C++ reader now lands the widened value exactly; remove the 128-bit storage exception", from.name, to.name)
-						}
-						c.Saved = canonical
-					}
+
 					if err := pythonFixedKindAgree(py[from.name], c); err != nil {
 						t.Errorf("%s -> %s: %v", from.name, to.name, err)
 					}

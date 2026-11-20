@@ -149,8 +149,9 @@ func retainRunLuau(t *testing.T, g *generatedUnit, wire []byte, capacity int) *r
 	b.WriteString("local function tohex(bytes) local parts = {} for i = 0, #bytes - 1 do parts[i + 1] = string.format(\"%02x\", string.byte(bytes, i + 1)) end return table.concat(parts) end\n")
 	b.WriteString("local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0, retained = 0, retainLost = 0 }\n")
 	b.WriteString("local v, store = retain.LoadRetain(\"Root\", inputs.wire, report, " + strconv.Itoa(capacity) + ")\n")
-	b.WriteString("print(string.format(\"report %d %d %d %s %d %d\", report.retained, report.retainLost, report.unknown, tostring(report.malformed), store.used, store.count))\n")
-	b.WriteString("local at = 0\nwhile at < store.used do\n")
+	b.WriteString("local sused = if store ~= nil then store.used else 0\nlocal scount = if store ~= nil then store.count else 0\n")
+	b.WriteString("print(string.format(\"report %d %d %d %s %d %d\", report.retained, report.retainLost, report.unknown, tostring(report.malformed or v == nil), sused, scount))\n")
+	b.WriteString("local at = 0\nwhile store ~= nil and at < store.used do\n")
 	b.WriteString("\tlocal total = buffer.readu32(store.bytes, at)\n")
 	b.WriteString("\tlocal node = buffer.readu32(store.bytes, at + 4)\n")
 	b.WriteString("\tlocal depth = buffer.readu32(store.bytes, at + 8)\n")
@@ -257,7 +258,7 @@ func TestRetainOracle(t *testing.T) {
 	store := TableRetain{Bytes: make([]byte, 1<<20), Ids: make([]TableRetainID, %d)}
 	var report TableReport
 	if RootLoadRetain(region, wire, &store, &report) == nil { t.Fatal("load") }
-	fmt.Printf("report %%d %%d %%d %%v %%d %%d\n", report.Retained, report.RetainLost, report.Unknown, report.Malformed, store.Used, store.Count)
+	fmt.Printf("report %%d %%d %%d %%v %%d %%d\n", report.Retained, report.RetainLost, report.Unknown, report.Refused(), store.Used, store.Count)
 	for at := 0; at < int(store.Used); {
 		b := store.Bytes[at:]
 		total := int(binary.LittleEndian.Uint32(b))
@@ -340,26 +341,7 @@ func parseRetainLines(t *testing.T, out string) *retainResult {
 	return r
 }
 
-// retainDeepSchema spells a by-value chain long enough to drive the resolving
-// walk's stated nesting cap of 64 bodies (docs/SPEC-TABLES.md §6.6). Every table
-// but the last carries a leaf `n` and the next `f`, so one JSON value can stop
-// at any body. The pointer anchor keeps the root in the VARIABLE class, which
-// is the only class retention is a region round trip through (§6.6).
-func retainDeepSchema(depth int) string {
-	var b strings.Builder
-	b.WriteString("package deep\n")
-	// a table must be declared before it is named, so the chain is spelled
-	// from the leaf back to the outermost body
-	fmt.Fprintf(&b, "table T%d { n int32 }\n", depth)
-	for i := depth - 1; i >= 0; i-- {
-		fmt.Fprintf(&b, "table T%d { n int32\n f T%d }\n", i, i+1)
-	}
-	b.WriteString("table Anchor { n int32 }\n")
-	b.WriteString("table Root { seed int32\n ptr Anchor\n deep T0 }\n")
-	return b.String()
-}
-
-// retainDeepOldSchema is the same unit BEFORE the deep field is known: the
+// retainDeepOldSchema is the unit BEFORE the deep field is known: the
 // reader sees `deep` as an unknown field and the resolving walk captures its
 // whole nested payload (docs/SPEC-TABLES.md §6.6).
 const retainDeepOldSchema = `package deep
@@ -367,15 +349,6 @@ table Anchor { n int32 }
 table Root { seed int32
  ptr Anchor }
 `
-
-// retainDeepJSON wraps `depth` T bodies under Root's unknown field.
-func retainDeepJSON(bodies int) string {
-	s := `{"n":1}`
-	for i := 1; i < bodies; i++ {
-		s = `{"f":` + s + `}`
-	}
-	return `{"deep":` + s + `}`
-}
 
 func TestLuauLoadRetainKeepsUnknown(t *testing.T) {
 	slowtest.Gate(t, "the pinned Luau interpreter and the schema-go oracle")
@@ -538,29 +511,73 @@ func TestLuauLoadRetainKeepsUnknown(t *testing.T) {
 		t.Fatalf("id capacity %d: Luau kept %d records, Go kept %d", idShort, len(big.records), len(idGo.records))
 	}
 
-	// THE WALK'S NESTING CAP (docs/SPEC-TABLES.md §6.6): 64 nested bodies are
+	// THE WALK'S NESTING CAP (docs/SPEC-TABLES.md §6.6): 128 nested bodies are
 	// the last depth admitted, and one past is dropped on the same rule as any
 	// other shape the walk cannot take, counting one retain_lost and never
 	// malformed. The record the cap admits is compared with schema-go's own
 	// reader, in order.
+	buildDeepWire := func(bodies int) []byte {
+		leb := func(x uint64) []byte {
+			var out []byte
+			for {
+				b := byte(x & 0x7f)
+				x >>= 7
+				if x != 0 {
+					b |= 0x80
+				}
+				out = append(out, b)
+				if x == 0 {
+					return out
+				}
+			}
+		}
+		inner := []byte{3, byte(ir.TableKindI32), 1, 0, 0, 0, 0}
+		for d := bodies - 2; d >= 0; d-- {
+			var next []byte
+			next = append(next, 2, byte(ir.TableKindTable))
+			next = append(next, leb(uint64(len(inner)))...)
+			next = append(next, inner...)
+			next = append(next, 0)
+			inner = next
+		}
+		out := []byte{1, 1, byte(ir.TableKindTable)}
+		out = append(out, leb(uint64(len(inner)))...)
+		out = append(out, inner...)
+		out = append(out, 0)
+		for _, id := range []uint64{ir.TableWireId("deep"), ir.TableWireId("f"), ir.TableWireId("n"), 3} {
+			out = binary.LittleEndian.AppendUint64(out, id)
+		}
+		return out
+	}
 	for _, row := range []struct {
 		bodies   int
 		retained int
 		lost     int
+		refused  bool
 		what     string
 	}{
-		{bodies: 64, retained: 1, lost: 0, what: "the last depth the cap admits"},
-		{bodies: 65, retained: 0, lost: 1, what: "one past the cap"},
+		{bodies: 128, retained: 1, lost: 0, what: "the last depth the cap admits"},
+		{bodies: 129, refused: true, what: "one past the cap"},
 	} {
 		t.Run("depth cap "+row.what, func(t *testing.T) {
 			deepOld, _ := retainCompile(t, retainDeepOldSchema)
-			deepNew, _ := retainCompile(t, retainDeepSchema(row.bodies))
-			deepWire := retainWire(t, deepNew, retainDeepJSON(row.bodies))
+			deepWire := buildDeepWire(row.bodies)
 			deepModel := tabletext.NewModel(deepOld)
 			deepValue := deepModel.New(deepModel.Lookup("Root"))
 			var deepReport tabletext.Report
 			deepKeep := &tablewire.Retain{Capacity: 1 << 16, IdCapacity: 1024}
 			deepOK, deepErr := tablewire.DecodeRetain(deepModel, deepValue, deepWire, deepKeep, &deepReport)
+			if row.refused {
+				if deepOK || deepErr == nil || !deepReport.Refused {
+					t.Fatalf("%d nested bodies: oracle accepted past cap: ok=%v err=%v %+v", row.bodies, deepOK, deepErr, deepReport)
+				}
+				deepGenerated := generateFiles(t, map[string]string{"Deep.schema": retainDeepOldSchema})
+				deepLuau := retainRunLuau(t, deepGenerated, deepWire, 1<<16)
+				if !deepLuau.malformed {
+					t.Fatalf("%d nested bodies: Luau LoadRetain accepted past cap: %+v", row.bodies, deepLuau)
+				}
+				return
+			}
 			if !deepOK || deepErr != nil || deepReport.Refused {
 				t.Fatalf("%d nested bodies: the oracle read failed on a sound wire: %v %v %+v",
 					row.bodies, deepOK, deepErr, deepReport)
@@ -605,7 +622,7 @@ func TestLuauLoadRetainKeepsUnknown(t *testing.T) {
 	}
 
 	// a wire written by THIS build (nothing unknown) retains nothing.
-	clean := retainWire(t, oldUnit, `{"child":{"n":1},"choice":{"empty":{}},"ptr":{"n":1}}`)
+	clean := retainWire(t, oldUnit, `{"child":{"n":1},"choice":{"empty":null},"ptr":{"n":1}}`)
 	cleanValue := oldModel.New(oldModel.Lookup("Root"))
 	var cr tabletext.Report
 	ok, err = tablewire.DecodeRetain(oldModel, cleanValue, clean, &tablewire.Retain{Capacity: 1 << 20, IdCapacity: 1024}, &cr)

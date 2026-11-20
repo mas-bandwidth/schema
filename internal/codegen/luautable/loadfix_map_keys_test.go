@@ -68,8 +68,8 @@ local function hex(b)
 end
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
 local desc = S.lookup(inputs.root)
-local v = load.loadWalk(inputs.root, inputs.wire, report)
-if v == nil and desc ~= nil and not desc.variable then v = desc.new() end
+local v = load.load(inputs.root, inputs.wire, report)
+local discarded = v == nil and (report.refused or 0) == 0
 	local saved = ""
 	local saveok = 0
 	if v ~= nil then
@@ -79,7 +79,7 @@ if v == nil and desc ~= nil and not desc.variable then v = desc.new() end
 print(string.format("%d,%d,%d,%d,%d,%s,%s,%d,%s",
 	report.unknown or 0, report.kindMismatch or 0, report.widened or 0,
 	report.clamped or 0, report.duplicate or 0,
-	tostring(report.malformed), tostring((report.refused or 0) > 0), saveok, saved))
+	tostring(report.malformed or discarded), tostring((report.refused or 0) > 0), saveok, saved))
 `
 
 // loadFixDParseAnswer parses the probe's reply line.

@@ -108,12 +108,12 @@ func requiredWires(t *testing.T, u *ir.Unit) []requiredCase {
 	}
 	return []requiredCase{
 		{"off", "Current", build("Current", func(i *tabletext.Instance) { field(i, "active").Cell.B = false })},
-		{"on-missing", "Current", build("Current", func(i *tabletext.Instance) { field(i, "active").Cell.B = true })},
+		{"on-missing", "Current", build("Legacy", func(i *tabletext.Instance) { field(i, "active").Cell.B = true })},
 		{"on-present", "Current", build("Current", func(i *tabletext.Instance) {
 			field(i, "active").Cell.B = true
 			field(i, "req").Cell.I = 7
 		})},
-		{"exact-missing", "Exact", build("Exact", func(*tabletext.Instance) {})},
+		{"exact-missing", "Exact", build("OldExact", func(*tabletext.Instance) {})},
 		{"exact-present", "Exact", build("Exact", func(i *tabletext.Instance) { field(i, "ver").Cell.U = 7 })},
 		{"nested-missing", "Outer", build("OuterOld", func(i *tabletext.Instance) { field(i, "inner").Cell.Tab.Fields[0].Cell.I = 5 })},
 		{"nested-present", "Outer", build("Outer", func(i *tabletext.Instance) { field(i, "inner").Cell.Tab.Fields[0].Cell.U = 5 })},

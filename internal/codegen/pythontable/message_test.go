@@ -304,6 +304,13 @@ func TestPythonMessageEvolution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	wrongModel := tabletext.NewModel(wrong)
+	wrongInst := wrongModel.New(wrongModel.Lookup("Probe"))
+	wrongInst.Fields[0].Cell.I = 7
+	wrongWire, err := tablewire.EncodeMessages(wrongModel, []*tabletext.Instance{wrongInst})
+	if err != nil {
+		t.Fatal(err)
+	}
 	files, err := Generate(old)
 	if err != nil {
 		t.Fatal(err)
@@ -314,19 +321,23 @@ func TestPythonMessageEvolution(t *testing.T) {
 with open('peer','rb') as f: peer=f.read()
 with open('wire','rb') as f: wire=f.read()
 with open('wrong','rb') as f: wrong=f.read()
+with open('wrong_wire','rb') as f: wrong_wire=f.read()
 v=MessageVocabulary();announce_read(v,peer)
 report=LoadReport()
 assert load_messages(Probe,v,wire,report=report)[0].known and report.unknown==1
-w=MessageVocabulary()
-try: announce_read(w,wrong)
+w=MessageVocabulary();announce_read(w,wrong)
+try: load_messages(Probe,w,wrong_wire)
 except Refused as e: assert e.reason=='kind_mismatch'
 else: raise AssertionError('message_kind_control')
-try: announce_read(w,peer)
+bad=MessageVocabulary()
+try: announce_read(bad,b'')
+except Refused as e: assert e.reason=='wire_damaged'
+try: announce_read(bad,peer)
 except Refused as e: assert e.reason=='second_announcement'
 else: raise AssertionError('message_kind_terminal')
 print('ok')
 `
-	inputs := map[string][]byte{"main.py": []byte(probe), "peer": tablewire.Announce(newer), "wrong": tablewire.Announce(wrong), "wire": wire}
+	inputs := map[string][]byte{"main.py": []byte(probe), "peer": tablewire.Announce(newer), "wrong": tablewire.Announce(wrong), "wrong_wire": wrongWire, "wire": wire}
 	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
 		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", inputs)
 		if err != nil || string(bytes.TrimSpace([]byte(out))) != "ok" {

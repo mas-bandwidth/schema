@@ -168,7 +168,7 @@ const (
 func vtSuite(t *testing.T, from, to string) string {
 	t.Helper()
 	v1 := vtOracleWire(t, vtCellsSchema, `{"note": "hi", "note2": "hi", "data": "YWJj", "tags": {"alpha": 1, "beta": 2}, "nums": [7, -2, 0, 4], "color": "Green", "wide": "ab"}`)
-	v2 := vtOracleWire(t, vtCellsSchema, `{"note": "", "note2": "x", "data": "w6k", "tags": {"k": 9}, "nums": [], "color": "Red", "wide": "\ud83d\ude00"}`)
+	v2 := vtOracleWire(t, vtCellsSchema, `{"note": "", "note2": "x", "data": "w6k=", "tags": {"k": 9}, "nums": [], "color": "Red", "wide": "\ud83d\ude00"}`)
 	clean, repeated := repeatedKeyWires(t)
 	var b strings.Builder
 	b.WriteString(vtRun(t, "Probe.schema", vtCellsSchema, vtCellsProbe(), map[string][]byte{"v1": v1, "v2": v2}, from, to))
@@ -182,7 +182,7 @@ func vtSuite(t *testing.T, from, to string) string {
 func vtWant(t *testing.T) string {
 	t.Helper()
 	v1 := vtOracleWire(t, vtCellsSchema, `{"note": "hi", "note2": "hi", "data": "YWJj", "tags": {"alpha": 1, "beta": 2}, "nums": [7, -2, 0, 4], "color": "Green", "wide": "ab"}`)
-	v2 := vtOracleWire(t, vtCellsSchema, `{"note": "", "note2": "x", "data": "w6k", "tags": {"k": 9}, "nums": [], "color": "Red", "wide": "\ud83d\ude00"}`)
+	v2 := vtOracleWire(t, vtCellsSchema, `{"note": "", "note2": "x", "data": "w6k=", "tags": {"k": 9}, "nums": [], "color": "Red", "wide": "\ud83d\ude00"}`)
 	return fmt.Sprintf("v1.read=read|v1.savehex=%x\nv2.read=read|v2.savehex=%x\nblob.strict=blob_shared|note2|true\nclean.strict=read\nrepeated.strict=refused", v1, v2)
 }
 

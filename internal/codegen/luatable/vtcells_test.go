@@ -93,7 +93,7 @@ var luaVTConstructs = []luaVTConstruct{
 	{"optional_map", "package probe\ntable M\n{\n    id int32\n    tags ?map[string(8)]int32\n}\n",
 		"M", `{"id":1,"tags":{}}`},
 	{"wide_ints", "package probe\ntable W\n{\n    a int64\n    b uint64\n    c int128 | min = -170141183460469231731687303715884105728, max = 170141183460469231731687303715884105727\n    d uint128\n    e fixed(48, 16) | min = -100000, max = 100000\n    f ufixed(8, 8) | min = 0, max = 200\n    g fixed(60, 4) | min = -1000000000000, max = 1000000000000\n    h bits(40)\n}\n",
-		"W", `{"a":-9007199254740993,"b":18446744073709551615,"c":-170141183460469231731687303715884105728,"d":340282366920938463463374607431768211455,"e":-12345.5,"f":3.25,"g":-1.5,"h":1099511627775}`},
+		"W", `{"a":"-9007199254740993","b":"18446744073709551615","c":"-170141183460469231731687303715884105728","d":"340282366920938463463374607431768211455","e":"-12345.5","f":3.25,"g":"-1.5","h":"1099511627775"}`},
 	{"wide_text", "package probe\ntable T\n{\n    w string(16)\n    v string(4)\n}\n",
 		"T", `{"w":"wïde😀","v":"ab"}`},
 	{"blobs_pointers", "package probe\ntable Node\n{\n    name *string\n    data *bytes\n    next *Node\n    kids []*Node\n}\n",
@@ -168,7 +168,7 @@ func luaVTManifest(t *testing.T, repo string) (map[string][]string, map[string]l
 // round-trip probe over wire at root and answers its line.
 func luaVTRun(t *testing.T, u *ir.Unit, root string, wire []byte, mutate func(*testing.T, map[string][]byte)) (string, error) {
 	t.Helper()
-	files, err := Generate(u)
+	files, err := GenerateLineage(u, luaUnitLineage(t, u))
 	if err != nil {
 		return "", err
 	}

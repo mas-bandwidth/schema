@@ -116,10 +116,24 @@ func TestRustAnnouncementSkipFieldIsBounded(t *testing.T) {
 	}
 	wellformed := map[string][]byte{}
 	for i, c := range framedCases {
-		payload := append(leb128(3), 0xaa, 0xbb, 0xcc)
+		var payload []byte
+		switch c.kind {
+		case 12:
+			payload = append(leb128(3), 0x61, 0x62, 0x63)
+		case 13:
+			payload = append(leb128(1), 0x00)
+		case 14:
+			payload = append(leb128(3), 6, 1, 0xaa)
+		case 16:
+			payload = append(leb128(5), 6, 1, 1, 1, 0xaa)
+		case 31:
+			payload = append(leb128(3), 0xaa, 0xbb, 0xcc)
+		case 32:
+			payload = leb128(0)
+		}
 		wellformed[c.id] = announcementWithUnknown(c.kind, payload, 0x3000000000000000+uint64(i))
 	}
-	wellformed["wellformed_union_15"] = announcementWithUnknown(15, append(append(leb128(1), 6), append(leb128(2), 0xaa, 0xbb)...), 0x4444444444444444)
+	wellformed["wellformed_union_15"] = announcementWithUnknown(15, append(append(leb128(1), 6), append(leb128(1), 0xaa)...), 0x4444444444444444)
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "const HOSTILE_FRAMED: [u8; %d] = [%s];\n", len(hostileFramed), rustBytes(hostileFramed))

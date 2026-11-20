@@ -589,10 +589,17 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		g.pf("%sfor (var i = 0; i < out.length && i < %d; i++) { fresh[i] = out[i]; }\n", ind, f.ArrayBound)
 		g.pf("%s%s = fresh;\n", ind, dest)
 		g.pf("%sreturn true;\n", ind)
-	case isWide(f): // kinds 18-29: exactly the width, clamped raw (§3, §4, §15)
-		w := ir.TableKindWidth(wideKind(f))
-		g.pf("%sif (%s.limit - %s.pos %s %d) %s\n", ind, p, p, g.widthCmp(), w, bad)
-		g.pf("%svar x = _getWide(%s, %d, %v);\n", ind, p, w, ir.TableKindSigned(wideKind(f)))
+	case isWide(f): // kinds 18-29: at the wire kind's width (128-bit widens narrower ladder kinds), clamped raw (§3, §4, §15)
+		decl := wideKind(f)
+		w := ir.TableKindWidth(decl)
+		if decl == ir.TableKindI128 || decl == ir.TableKindU128 {
+			g.pf("%sfinal w = kind == %d ? %d : _kindWidth(kind);\n", ind, decl, w)
+			g.pf("%sif (%s.limit - %s.pos %s w) %s\n", ind, p, p, g.widthCmp(), bad)
+			g.pf("%svar x = _getWide(%s, w, %v);\n", ind, p, ir.TableKindSigned(decl))
+		} else {
+			g.pf("%sif (%s.limit - %s.pos %s %d) %s\n", ind, p, p, g.widthCmp(), w, bad)
+			g.pf("%svar x = _getWide(%s, %d, %v);\n", ind, p, w, ir.TableKindSigned(decl))
+		}
 		g.emitWideClamp(f, "x", p, ind)
 		g.pf("%s%s = x;\n", ind, dest)
 		g.pf("%sreturn true;\n", ind)

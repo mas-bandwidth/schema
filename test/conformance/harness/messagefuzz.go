@@ -18,7 +18,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -337,7 +336,6 @@ func startCustomFormWireLeg(parts []string, extraEnv []string, roots []*wireRoot
 }
 
 func messageFuzz(w io.Writer, m *Manifest, opts messageFuzzOptions) error {
-	start := time.Now()
 	driverCmd, extraEnv, err := resolveMessageFuzzDriver(opts)
 	if err != nil {
 		return fmt.Errorf("message-fuzz: %w", err)
@@ -443,10 +441,8 @@ func messageFuzz(w io.Writer, m *Manifest, opts messageFuzzOptions) error {
 		randRun++
 	}
 
-	elapsed := time.Since(start)
-	rate := float64(total) / max(elapsed.Seconds(), 0.001)
-	_, _ = fmt.Fprintf(w, "message-fuzz: seed %d, %d/%d roots live, %d systematic + %d random = %d mutants (%d accepted), 0 divergences, %.2f s, %.0f mutants/s\n",
-		opts.seed, knownCount, len(roots), sysRun, randRun, total, accepted, elapsed.Seconds(), rate)
+	_, _ = fmt.Fprintf(w, "message-fuzz: seed %d, %d/%d roots live, %d systematic + %d random = %d mutants (%d accepted), 0 divergences\n",
+		opts.seed, knownCount, len(roots), sysRun, randRun, total, accepted)
 	return nil
 }
 

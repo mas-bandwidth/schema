@@ -208,7 +208,7 @@ func TestLuaFixedEvolutionNumericWidening(t *testing.T) {
 		t.Errorf("the negative control: an integer widening not counted still reads the same")
 	}
 	g = luaEvoGen(t, newer, lineage)
-	g.plant(t, "    local signed = (node.kind >= 2 and node.kind <= 5) or d.timestamp\n", "    local signed = false\n")
+	g.plant(t, "    local signed = (node.kind >= 2 and node.kind <= 5) or (node.kind >= 20 and node.kind <= 23) or d.timestamp\n", "    local signed = false\n")
 	if g.load(t, "N", file).dump["r0.v"] == "-7" {
 		t.Errorf("the negative control: a zero-extended int16 still lands -7")
 	}

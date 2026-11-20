@@ -69,6 +69,10 @@ var vtWidenCells = []string{
 	"field_scalar_widen",
 	"scalars_full_as_2",
 	"scalars_edges_as_2",
+	"varevo_v1_as_v2",
+	"varevo_v1_as_v3",
+	"varevo_v1_ping_as_v3",
+	"varevo_v2_as_v3",
 	// the enum-against-integer retypes
 	"k1_as_k2",
 	"k2_as_k1",

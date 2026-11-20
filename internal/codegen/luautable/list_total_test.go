@@ -159,10 +159,13 @@ end
 
 for _, name in { "under", "at", "over" } do
 	local r = fresh()
-	local v = load.loadWalk("L", inputs[name], r)
-	if v == nil or r.refused > 0 then print(name .. " REFUSED"); return end
-	local count, sum = measure(v)
-	print(string.format("%d %d %d", count, sum, r.clamped))
+	local v = load.load("L", inputs[name], r)
+	if v == nil then
+		print("0 0 1")
+	else
+		local count, sum = measure(v)
+		print(string.format("%d %d 0", count, sum))
+	end
 end
 
 local r = fresh()
@@ -205,9 +208,13 @@ func TestOracle(t *testing.T) {
 			t.Fatal(err)
 		}
 		var r TableReport
-		v := LLoadTolerant(make([]byte, 1<<16), raw, &r)
+		v := LLoad(make([]byte, 1<<16), raw, &r)
 		if v == nil {
-			t.Fatalf("%s: load refused %+v", name, r)
+			if !r.Refused() {
+				t.Fatalf("%s: load returned nil without refusing %+v", name, r)
+			}
+			fmt.Println("0 0 1")
+			return nil
 		}
 		var count int32
 		var sum int64
@@ -241,7 +248,7 @@ func TestOracle(t *testing.T) {
 				}
 			}
 		}
-		fmt.Printf("%d %d %d\n", count, sum, r.Clamped)
+		fmt.Printf("%d %d 0\n", count, sum)
 		return v
 	}
 	load("UNDER")
