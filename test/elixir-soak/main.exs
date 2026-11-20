@@ -204,8 +204,7 @@ defmodule Soak do
         binary0 = binary_calls()
         :erlang.garbage_collect()
         live0 = used()
-        reclaimed = traced(fn -> repeat(c, ref, @window) end)
-        live1 = used()
+        {reclaimed, live1} = traced(fn -> repeat(c, ref, @window) end)
         binary1 = binary_calls()
 
         send(
@@ -331,10 +330,17 @@ defmodule Soak do
       :erlang.trace(me, false, [:garbage_collection])
     end
 
+    live1 = used()
+    ref = :erlang.trace_delivered(me)
+
+    receive do
+      {:trace_delivered, ^me, ^ref} -> :ok
+    end
+
     send(tracer, {:reclaimed, me})
 
     receive do
-      {:reclaimed, words} -> words
+      {:reclaimed, words} -> {words, live1}
     end
   end
 
