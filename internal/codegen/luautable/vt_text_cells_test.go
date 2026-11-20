@@ -110,8 +110,8 @@ var vtTextCleanCases = []vtTextCleanCase{
   "title": "hello",
   "wide": "ab",
   "raw": "YWJjZA==",
-  "low": -42,
-  "high": 42,
+  "low": "-42",
+  "high": "42",
   "fraction": 1.5,
   "real32": 0.10000000149011612,
   "real64": 2.5,
@@ -129,7 +129,7 @@ var vtTextCleanCases = []vtTextCleanCase{
 	{
 		name:  "fixed_comments_and_unknown",
 		root:  "FixedDoc",
-		input: "\xEF\xBB\xBF// leading line comment\n/* block comment */ {\n  \"schema\": 1,\n  \"unknown_extra\": [1, 2, 3],\n  \"count\": -3,\n  \"enabled\": false,\n  \"title\": \"\",\n  \"wide\": \"\",\n  \"raw\": \"\",\n  \"low\": 0,\n  \"high\": 0,\n  \"fraction\": 0,\n  \"real32\": 1.25,\n  \"real64\": -0.5,\n  \"time\": \"1970-01-01T00:00:00Z\",\n  \"color\": \"Red\",\n  \"feat\": [],\n  \"fixed2\": [0, 0],\n  \"nums\": [],\n  \"keyed\": {\"Red\": 0, \"Green\": 0, \"Blue\": 0},\n  \"pair\": {\"a\": 0, \"b\": \"\"},\n  \"choice\": {\"ping\": null}\n}\n",
+		input: "\xEF\xBB\xBF// leading line comment\n/* block comment */ {\n  \"schema\": 1,\n  \"unknown_extra\": [1, 2, 3],\n  \"count\": -3,\n  \"enabled\": false,\n  \"title\": \"\",\n  \"wide\": \"\",\n  \"raw\": \"\",\n  \"low\": \"0\",\n  \"high\": \"0\",\n  \"fraction\": 0,\n  \"real32\": 1.25,\n  \"real64\": -0.5,\n  \"time\": \"1970-01-01T00:00:00Z\",\n  \"color\": \"Red\",\n  \"feat\": [],\n  \"fixed2\": [0, 0],\n  \"nums\": [],\n  \"keyed\": {\"Red\": 0, \"Green\": 0, \"Blue\": 0},\n  \"pair\": {\"a\": 0, \"b\": \"\"},\n  \"choice\": {\"ping\": null}\n}\n",
 	},
 	{
 		name: "var_clean_shared_graph",

@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // manifestRow is one report or instance row of MANIFEST.txt: the case, the
@@ -111,13 +113,51 @@ func manifestUnits(t *testing.T, path string) map[string][]string {
 	return units
 }
 
+// luaUnitLineage reads the unit's sibling .schema.lock when one exists.
+func luaUnitLineage(t *testing.T, u *ir.Unit) map[string][]FixedLineageEntry {
+	t.Helper()
+	if u == nil {
+		return nil
+	}
+	var paths []string
+	for _, f := range u.Files {
+		if f != nil && f.Path != "" {
+			paths = append(paths, f.Path)
+		}
+	}
+	if len(paths) == 0 {
+		return nil
+	}
+	lock, ok, err := lockfile.Open(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || lock == nil {
+		return nil
+	}
+	out := map[string][]FixedLineageEntry{}
+	for _, st := range ir.TableFixedRoots(u) {
+		for _, e := range lockfile.Lineage(lock, st.WireName()) {
+			out[st.Name] = append(out[st.Name], FixedLineageEntry{
+				Wire:    e.Wire,
+				Layout:  e.Layout,
+				Record:  e.Record + 8,
+				Retired: e.Retired,
+				Reason:  e.Reason,
+				Ranges:  ir.TableFixedWriterRanges(e.Writer),
+			})
+		}
+	}
+	return out
+}
+
 // loadRow generates a manifest row's unit (with the emitted runtimes
 // optionally patched by file name), loads its wire and returns the report
 // line.
 func loadRow(t *testing.T, repo string, paths []string, row manifestRow, patch func(string, []byte) []byte) string {
 	t.Helper()
 	u := luarun.LoadUnit(t, paths...)
-	files, err := Generate(u)
+	files, err := GenerateLineage(u, luaUnitLineage(t, u))
 	if err != nil {
 		t.Fatalf("unit %s: %v", row.unit, err)
 	}
@@ -193,7 +233,7 @@ func compareReports(t *testing.T, patch func(string, []byte) []byte) reportCompa
 			continue
 		}
 		u := luarun.LoadUnit(t, paths...)
-		if _, err := Generate(u); err != nil {
+		if _, err := GenerateLineage(u, luaUnitLineage(t, u)); err != nil {
 			res.refused[row.unit] = err.Error()
 			res.refusedRows++
 			continue
@@ -221,7 +261,7 @@ func compareReports(t *testing.T, patch func(string, []byte) []byte) reportCompa
 			continue
 		}
 		u := luarun.LoadUnit(t, paths...)
-		if _, err := Generate(u); err != nil {
+		if _, err := GenerateLineage(u, luaUnitLineage(t, u)); err != nil {
 			res.refused[row.unit] = err.Error()
 			continue
 		}

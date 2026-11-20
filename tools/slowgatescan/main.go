@@ -577,7 +577,7 @@ const modulePath = "github.com/mas-bandwidth/schema/v2"
 // expression syntax), so its basic-regex meaning to grep and its meaning here
 // are the same: a substring, or with `$` a suffix, of the import path.
 var (
-	ciComplement     = regexp.MustCompile(`^go test \$\(go list (\./(?:[A-Za-z0-9_-]+/)*\.\.\.)((?: \| grep -v (?:'[A-Za-z0-9_/-]+\$?'|"[A-Za-z0-9_/-]+\$?"))+)\)$`)
+	ciComplement     = regexp.MustCompile(`^go test (?:-timeout 0 )?\$\(go list (\./(?:[A-Za-z0-9_-]+/)*\.\.\.)((?: \| grep -v (?:'[A-Za-z0-9_/-]+\$?'|"[A-Za-z0-9_/-]+\$?"))+)\)$`)
 	ciComplementDrop = regexp.MustCompile(`grep -v ['"]([A-Za-z0-9_/-]+\$?)['"]`)
 )
 var ciBareRun = regexp.MustCompile(`^[A-Za-z0-9_./^-]+$`)

@@ -1042,7 +1042,9 @@ def cr_unbounded_text(c:CookRead, at:int) -> string:
     if n <= 0 or n >= c.node_end - start - 8:
         c.bad = true
         return ""
-    // The four pad bytes are written as zero, but readers do not inspect them.
+    if cr_word32(c, start + 4) != 0:
+        c.bad = true
+        return ""
     if c.data[start + 8 + n] != 0:
         c.bad = true
         return ""

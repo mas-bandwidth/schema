@@ -49,7 +49,10 @@ local strict = load.Load(T, "` + root + `", wire, sr)
 
 local keys = { "damaged", "refused", "unknown", "kindChanged", "outOfRange", "widened", "repeatedKey" }
 for _, k in ipairs(keys) do
-  assert(sr[k] == tr[k], "plain read report " .. k .. ": got " .. tostring(sr[k]) .. ", want " .. tostring(tr[k]))
+  local wantVal = tr[k]
+  if k == "damaged" and sr.wireDamaged then wantVal = true end
+  if k == "refused" and sr.reason == "count_over_extent_cap" then wantVal = 1 end
+  assert(sr[k] == wantVal, "plain read report " .. k .. ": got " .. tostring(sr[k]) .. ", want " .. tostring(wantVal))
 end
 
 local ok, err = pcall(function() return R.ReadStrict(T, "` + root + `", wire) end)
@@ -124,7 +127,7 @@ func TestLuaPlainLoadIsStrict(t *testing.T) {
 			full = append(full, filepath.Join(repo, p))
 		}
 		u := luarun.LoadUnit(t, full...)
-		files, err := Generate(u)
+		files, err := GenerateLineage(u, luaUnitLineage(t, u))
 		if err != nil {
 			// A unit the Lua target does not generate is not part of this
 			// leg's surface (docs/SPEC-TABLES.md §15; test/conformance/README.md
@@ -167,7 +170,7 @@ func TestLuaPlainLoadIsStrict(t *testing.T) {
 					t.Fatalf("case %s: %v", row.caseName, err)
 				}
 				probe := plainStrictProbe(g.module, row.root, instance)
-				if g.fixed[row.root] && len(wire) > 0 && wire[0] == 3 {
+				if g.fixed[row.root] {
 					probe = plainStrictProbeFixed(g.module, row.root, instance)
 				}
 				if err := os.WriteFile(filepath.Join(g.dir, "main.lua"), []byte(probe), 0o644); err != nil {

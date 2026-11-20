@@ -206,20 +206,29 @@ func runGoGoldensEdited(t *testing.T, u *ir.Unit, testSource string, edit func(m
 		t.Fatal(err)
 	}
 	maps.Copy(files, tables)
+	needsSerializeGo := false
 	for name, data := range files {
-		// A file that names the sibling runtime is dropped rather than built:
-		// the unit test answers without it. The reflection view (§8) is dropped
-		// with it, because a closure's view names every packet type including
-		// the cpp_native ones the sibling runtime carries — while the wire the
-		// message surface owes names none of them.
-		if bytes.Contains(data, []byte("github.com/mas-bandwidth/serialize.go/v2")) || strings.HasSuffix(name, "View.go") {
+		if strings.HasSuffix(name, "View.go") {
 			delete(files, name)
+			continue
+		}
+		if bytes.Contains(data, []byte("github.com/mas-bandwidth/serialize.go/v2")) {
+			needsSerializeGo = true
 		}
 	}
 	if edit != nil {
 		edit(files)
 	}
-	files["go.mod"] = []byte("module probe\n\ngo 1.26\n")
+	mod := "module probe\n\ngo 1.26\n"
+	if needsSerializeGo {
+		root, rerr := filepath.Abs("../../..")
+		if rerr != nil {
+			t.Fatal(rerr)
+		}
+		runtime := slowtest.SerializeGo(t, root)
+		mod += fmt.Sprintf("\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\n", runtime)
+	}
+	files["go.mod"] = []byte(mod)
 	files["goldens_test.go"] = []byte(testSource)
 	dir := t.TempDir()
 	for name, data := range files {

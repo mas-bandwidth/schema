@@ -106,8 +106,8 @@ func TestCookWriteAnswersEveryCookWriteRowDart(t *testing.T) {
 		}
 		fmt.Fprintf(&driverManifest, "cook-write %s %s %s %s\n", fields[1], input, source, alias)
 	}
-	if len(rows) != 71 {
-		t.Fatalf("cook-write manifest has %d rows, want 71", len(rows))
+	if len(rows) != 83 {
+		t.Fatalf("cook-write manifest has %d rows, want 83", len(rows))
 	}
 	outDir := t.TempDir()
 	driverPath := filepath.Join(outDir, "manifest.txt")

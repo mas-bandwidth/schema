@@ -167,10 +167,10 @@ func TestLuauDamagePreservesStrictDiagnostics(t *testing.T) {
 	t.Parallel()
 	units, _ := readManifest(t)
 	for _, tc := range []struct{ unit, root, file, want string }{
-		{"tblr1", "Cfg", "framing/frame_empty_buffer.bin", "wire_damaged -"},
-		{"tblr1", "Cfg", "framing/frame_duplicate_entry.bin", "wire_damaged -"},
-		{"tblr1", "Cfg", "framing/frame_entries_4097.bin", "wire_damaged -"},
-		{"streamdemo", "Feed", "parts_index_out_of_range.bin", "malformed parts"},
+		{"streamdemo", "Feed", "framing/frame_empty_buffer.bin", "wire_damaged -"},
+		{"streamdemo", "Feed", "framing/frame_duplicate_entry.bin", "wire_damaged -"},
+		{"streamdemo", "Feed", "framing/frame_entries_4097.bin", "wire_damaged -"},
+		{"streamdemo", "Feed", "parts_index_out_of_range.bin", "wire_damaged -"},
 	} {
 		t.Run(tc.file, func(t *testing.T) {
 			dir, mods, _ := buildMessageUnit(t, units[tc.unit])

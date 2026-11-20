@@ -1812,8 +1812,6 @@ func fixedWriterRawNeededField(f *ir.Field, seen map[string]bool) bool {
 			}
 		}
 		return false
-	case ir.TFloat32, ir.TFloat64:
-		return f.HasFloatRange
 	case ir.TInt, ir.TFixed, ir.TBits:
 		_, ok := lobsterScalarWidthBound(f, "x")
 		return ok || len(lobsterScalarRangeBounds(f, "x")) > 0
@@ -1911,24 +1909,6 @@ func emitFixedWriterRawElement(g *lobster.Gen, f *ir.Field, at, ind string, seq 
 				g.Pf("%sif %s == %d:\n", ind, tv, i+1)
 				emitFixedWriterRawPayload(g, &arm, at, tag, ind+"    ", seq)
 			}
-		}
-	case ir.TFloat32:
-		if f.HasFloatRange {
-			salt := *seq
-			*seq++
-			xv := fmt.Sprintf("x_wc_%d", salt)
-			g.Pf("%slet %s = read_float32_le(data, %s)\n", ind, xv, at)
-			g.Pf("%sif schema_rt.finite_f32(%s) and (%s < %s or %s > %s):\n%s    return schema_rt.TableRefuseOutOfRange\n",
-				ind, xv, xv, lobster.FormatFloat32(f.FMin), xv, lobster.FormatFloat32(f.FMax), ind)
-		}
-	case ir.TFloat64:
-		if f.HasFloatRange {
-			salt := *seq
-			*seq++
-			xv := fmt.Sprintf("x_wc_%d", salt)
-			g.Pf("%slet %s = read_float64_le(data, %s)\n", ind, xv, at)
-			g.Pf("%sif schema_rt.finite_f64(%s) and (%s < %s or %s > %s):\n%s    return schema_rt.TableRefuseOutOfRange\n",
-				ind, xv, xv, lobster.FormatFloat(f.FMin), xv, lobster.FormatFloat(f.FMax), ind)
 		}
 	case ir.TInt, ir.TFixed, ir.TBits:
 		salt := *seq

@@ -147,18 +147,23 @@ local count, bodies = M.LoadMessages(v, "Root", inputs.batch, 256, rep)
 if count ~= 1 then error("count " .. tostring(count) .. " " .. tostring(rep.malformed)) end
 local b = bodies[1]
 local f = T.RootDescriptor.fields[1]
-local shipVariant = getAt(b.buffer, b.from + v.refBits, v.refBits)
-local shipId = v.entries[shipVariant].id
-local shipOrd = 0
-for i, p in f.vs do if p[2] == shipId then shipOrd = i end end
-local fleetRef = getAt(b.buffer, b.from + 2 * v.refBits, v.refBits)
-local shape = v.entries[fleetRef].shape
-local off = b.from + 3 * v.refBits + bits(shape.max - shape.min)
-local elemRef = getAt(b.buffer, off, v.refBits)
+local f2 = T.RootDescriptor.fields[2]
+local ov = b.ownVocab
+local function ordOf(vref)
+	if vref == 0 then return 0 end
+	local id = ov.entries[vref].id
+	for i, p in f.vs do if p[2] == id then return i end end
+	return 0
+end
+local shipOrd = f.def
 local elemOrd = 0
-if elemRef ~= 0 then
-	local elemId = v.entries[elemRef].id
-	for i, p in f.vs do if p[2] == elemId then elemOrd = i end end
+for _, it in b.ownTree do
+	local fid = ov.entries[it.ref].id
+	if fid == f.id then
+		shipOrd = ordOf(it.node.ref)
+	elseif fid == f2.id and #it.node.elems >= 1 then
+		elemOrd = ordOf(it.node.elems[1].ref)
+	end
 end
 print("read " .. tostring(shipOrd) .. " " .. tostring(elemOrd) .. " " .. tostring(rep.unknown))
 local out, n = M.SaveMessages(v, "Root", bodies, rep)

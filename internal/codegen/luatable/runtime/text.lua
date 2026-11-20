@@ -139,7 +139,12 @@ end
 -- wire Save writes (docs/SPEC-TABLES.md §16.8): LoadText(SaveText(v)) equals
 -- Save(v) byte for byte.
 function Text.SaveText(T, name, v)
-  local wire, why = save.Save(T, name, v)
+  local wire, why
+  if T.Fixed and T.Fixed[name] then
+    wire, why = T.WriteFixed(name, v)
+  else
+    wire, why = save.Save(T, name, v)
+  end
   if wire == nil then error(why or "invalid_value", 0) end
   return encode(wire)
 end
@@ -165,7 +170,7 @@ function Text.LoadText(T, name, text, report, integrity)
   local wire, why = decode(text)
   if wire == nil then error(why, 0) end
   local root = refusal.ReadStrict(T, name, wire, integrity)
-  if report ~= nil and integrity == nil then load.Load(T, name, wire, report) end
+  if report ~= nil and integrity == nil and not (T.Fixed and T.Fixed[name]) then load.Load(T, name, wire, report) end
   return root
 end
 

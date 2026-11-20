@@ -278,8 +278,8 @@ func TestLuaRetainConformanceSurface(t *testing.T) {
 	manifest := filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt")
 	units := manifestUnits(t, manifest)
 	rows := loadRetainConformanceRows(t, manifest)
-	if len(rows) != 10 {
-		t.Fatalf("got %d retain rows, want 10", len(rows))
+	if len(rows) != 13 {
+		t.Fatalf("got %d retain rows, want 13", len(rows))
 	}
 	// Also verify parsing the 7-field derived manifest lines (where the save
 	// column is withheld by the conformance harness).

@@ -402,9 +402,11 @@ func t12FixedFormRun(t *testing.T, corpus string) string {
 			t12FixedFormErr = err
 			return
 		}
+		rustMakeMu.Lock()
 		cmd := exec.Command("make", "-C", repo, "tables-rust-fixedform")
 		cmd.Env = os.Environ()
 		out, err := cmd.CombinedOutput()
+		rustMakeMu.Unlock()
 		t12FixedFormOut = string(out)
 		t12FixedFormErr = err
 	})

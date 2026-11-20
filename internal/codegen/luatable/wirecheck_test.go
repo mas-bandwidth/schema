@@ -45,6 +45,8 @@ var luaWireCheckOnly = []string{
 	"frame_unknown_id_length", "frame_unknown_id_reference", "keyed_L1_inert",
 	"map_L1_inert", "node_table_twice", "frame_unreferenced_entry",
 	"node_record_bytes_after_terminator",
+	"varevo_cycle_known_via_unknown", "varevo_cycle_root_via_unknown",
+	"varevo_cycle_two_unknowns", "varevo_cycle_unknown_self",
 }
 
 type luaFramingRow struct {

@@ -23,6 +23,7 @@ import (
 var cookShape = map[string][]string{
 	"Scene":       {"--ref", "head", "--chain", "ListNode", "--next", "next"},
 	"SceneValued": {"--ref", "head", "--chain", "ListNode", "--next", "next", "--values"},
+	"AlbumValued": {"--ref", "head", "--chain", "ListNode", "--next", "next", "--values", "--extremes"},
 	"Depot":       {"--ref", "head", "--chain", "ListNode", "--next", "next"},
 	"Album":       {"--ref", "head", "--chain", "ListNode", "--next", "next"},
 	"TreeNode":    {"--ref", "left", "--chain", "TreeNode", "--next", "left"},

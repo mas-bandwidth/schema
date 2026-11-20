@@ -436,10 +436,10 @@ jobs:
       # runs the tutorial fragments under both pinned CPython interpreters
       # (internal/codegen/python/pyrun) and fails, never skips, without them.
       - uses: ./.github/actions/python
-        if: matrix.group == 'unit-rest-ci' || matrix.group == 'unit-rest-cmd-2' || matrix.group == 'unit-compiler-18'
+        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-rest-ci' || matrix.group == 'unit-rest-cmd-2' || matrix.group == 'unit-compiler-18'
 
       - uses: ./.github/actions/ruby
-        if: matrix.group == 'unit-rest-ci' || matrix.group == 'unit-compiler-18'
+        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-rest-ci' || matrix.group == 'unit-compiler-18'
 
       # THE Goose PIN for the test steps below: internal/codegen/goose and
       # internal/codegen/goosetable run generated Goose under the pinned compiler
@@ -499,11 +499,16 @@ jobs:
           fi
           make dist-lobster
 
+      - name: build the C++ fixed-form byte oracle for the emitter packages
+        if: matrix.group == 'unit-codegen'
+        run: make -j"$(getconf _NPROCESSORS_ONLN)" tables-fixedform-corpus
+
       - name: go test the emitter packages
         if: matrix.group == 'unit-codegen'
         env:
           SCHEMA_SLOW: '1'
-        run: go test $(go list ./internal/codegen/... | grep -v '/elixirtable$' | grep -v '/cpptable$')
+          MOO_CHECKED: ${{ github.workspace }}/dist/moo-checked/moo
+        run: go test -timeout 0 $(go list ./internal/codegen/... | grep -v '/elixirtable$' | grep -v '/cpptable$')
 
       # internal/codegen/cpptable has rows of its own (2026-11-14). It is the
       # heaviest emitter package (about 220 s of CPU on the Studio: some sixty

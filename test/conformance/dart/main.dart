@@ -4862,13 +4862,16 @@ MessageCodec _messageRow<T, V, R>({
       count = load(values, wire, vocab, rep as R);
     }
     final ok = count >= 0;
+    final ref = (rep.refused as bool) || !ok;
     List<int>? saved;
-    final bodies = count >= 1 && count <= 256 ? storage.sublist(0, count) : first;
-    final n = measure(bodies, report());
-    if (n >= 0) {
-      final out = Uint8List(n);
-      if (save(bodies, out, report()) == n) {
-        saved = out;
+    if (!ref) {
+      final bodies = count >= 1 && count <= 256 ? storage.sublist(0, count) : first;
+      final n = measure(bodies, report());
+      if (n >= 0) {
+        final out = Uint8List(n);
+        if (save(bodies, out, report()) == n) {
+          saved = out;
+        }
       }
     }
     return _fuzzReply(
@@ -4876,7 +4879,7 @@ MessageCodec _messageRow<T, V, R>({
       unknown: rep.unknown as int,
       clamped: 0 as int,
       malformed: false,
-      refused: (rep.refused as bool) || !ok,
+      refused: ref,
       measure: -1,
       saved: saved,
     );

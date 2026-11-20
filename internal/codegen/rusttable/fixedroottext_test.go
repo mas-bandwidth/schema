@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
@@ -13,6 +14,8 @@ import (
 
 // A fixed read's value has the same text and cooked images as every other
 // reader of that value (docs/SPEC-TABLES.md §3.4, §7.6, §16).
+var rustMakeMu sync.Mutex
+
 func TestRustFixedRootTextAndCook(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Rust conformance driver")
@@ -20,9 +23,12 @@ func TestRustFixedRootTextAndCook(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	rustMakeMu.Lock()
 	build := exec.Command("make", "build/conformance-rust")
 	build.Dir = root
-	if out, err := build.CombinedOutput(); err != nil {
+	out, err := build.CombinedOutput()
+	rustMakeMu.Unlock()
+	if err != nil {
 		t.Fatalf("build Rust driver: %v\n%s", err, out)
 	}
 	cases := []struct{ name, table string }{

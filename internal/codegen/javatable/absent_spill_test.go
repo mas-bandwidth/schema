@@ -79,6 +79,9 @@ func TestJavaBlobSharedConformanceDriverAnswersTheWireRefusal(t *testing.T) {
 		{"block", filepath.Join(repo, "tables", "block")},
 		{"pointers", filepath.Join(repo, "tables", "pointers")},
 		{"rt1", filepath.Join(repo, "test", "tables", "RT1.schema")},
+		{"tblvarevo1", filepath.Join(repo, "test", "tables", "varevo", "VarEvo1.schema")},
+		{"tblvarevo2", filepath.Join(repo, "test", "tables", "varevo", "VarEvo2.schema")},
+		{"cooktorture", filepath.Join(repo, "test", "tables", "cooktorture", "CookTorture.schema")},
 	}
 	for _, unit := range units {
 		u := unitFromDir(t, unit.path)

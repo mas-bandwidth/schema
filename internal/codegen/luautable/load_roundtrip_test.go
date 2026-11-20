@@ -271,24 +271,26 @@ encode_obj = function(desc, v)
 end
 
 local function encode_array(fd, arr, owner)
-	arr = arr or {}
+	local isBuf = typeof(arr) == "buffer"
+	if not isBuf then arr = arr or {} end
 	if fd.array == "keyed" and fd.keyvs ~= nil then
 		local parts = {}
 		for i, kv in fd.keyvs do
-			if arr[i] ~= nil then
+			local v = if isBuf then buffer.readu8(arr, i - 1) else arr[i]
+			if v ~= nil then
 				local inner
-				if flagsOf[fd] ~= nil then inner = flags_text(flagsOf[fd], arr[i]) else inner = encode_value(fd.e, arr[i], owner) end
+				if flagsOf[fd] ~= nil then inner = flags_text(flagsOf[fd], v) else inner = encode_value(fd.e, v, owner) end
 				parts[#parts + 1] = q(kv[1]) .. ":" .. inner
 			end
 		end
 		return "{" .. table.concat(parts, ",") .. "}"
 	end
-	local n = #arr
+	local n = if isBuf then buffer.len(arr) else #arr
 	if fd.array == "fixed" then n = fd.bound
 	elseif fd.array == "counted" and owner ~= nil then n = owner[fd.slot .. "Count"] or 0 end
 	local parts = {}
 	for i = 1, n do
-		local x = arr[i]
+		local x = if isBuf then buffer.readu8(arr, i - 1) else arr[i]
 		-- a hole in a pointer list is a loader defect: a null is false (§2.1)
 		if x == nil and fd.e ~= nil and fd.e.s == "ptr" and fd.array == "list" then return q("hole in a pointer list") end
 		if x == nil then x = default_value(fd.e) end
@@ -400,9 +402,11 @@ count_walk = function(fd, val)
 			end
 		end
 	elseif s == "arr" then
-		local n = #val
-		if fd.array == "fixed" then n = fd.bound end
-		for i = 1, n do count_walk(fd.e, val[i]) end
+		if typeof(val) ~= "buffer" then
+			local n = #val
+			if fd.array == "fixed" then n = fd.bound end
+			for i = 1, n do count_walk(fd.e, val[i]) end
+		end
 	elseif s == "map" then
 		local entry = S.lookup(fd.t)
 		local valfd = entry.fields[2]

@@ -123,7 +123,8 @@ fixed table Root
 	if err != nil {
 		t.Fatalf("a reader without the float printed %q: %v", rout, err)
 	}
-	if string(rgot) != string(batch) {
-		t.Fatalf("a reader without the float re-saved different bytes: got %x, want %x", rgot, batch)
+	wantReceiver := mqaGoBatch(t, mqaUnit(t, receiverRel), `{"tokens":{"Alpha":101,"Gamma":303}}`)
+	if string(rgot) != string(wantReceiver) {
+		t.Fatalf("a reader without the float re-saved different bytes: got %x, want %x", rgot, wantReceiver)
 	}
 }

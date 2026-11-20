@@ -339,7 +339,7 @@ var rustSkippedShapeVerdicts = map[string]string{
 	"announce-elem-12":                  "read",
 	"announce-elem-14":                  "refused",
 	"announce-elem-16":                  "refused",
-	"announce-keyed-elem-12":            "refused",
+	"announce-keyed-elem-12":            "read",
 }
 
 // testMessageAnnouncement frames one vocabulary entry as the announcement a

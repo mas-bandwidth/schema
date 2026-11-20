@@ -30,10 +30,9 @@ type jsonNumberLengthRow struct {
 func jsonNumberLengthRows() []jsonNumberLengthRow {
 	zeros := func(n int) string { return strings.Repeat("0", n) }
 	return []jsonNumberLengthRow{
-		{"experience_511_bytes", `{"experience":1.` + zeros(509) + `}`, true, 1, 0, 0},
-		{"experience_512_bytes", `{"experience":1.` + zeros(510) + `}`, true, 1, 0, 0},
-		{"experience_513_bytes", `{"experience":1.` + zeros(511) + `}`, true, 1, 0, 0},
-		{"experience_602_bytes", `{"experience":1.` + zeros(600) + `}`, true, 1, 0, 0},
+		{"precision_511_bytes", `{"precision":1.25` + zeros(507) + `}`, true, 0, 1.25, 0},
+		{"precision_512_bytes", `{"precision":1.25` + zeros(508) + `}`, true, 0, 1.25, 0},
+		{"precision_513_bytes", `{"precision":1.25` + zeros(509) + `}`, true, 0, 1.25, 0},
 		{"precision_602_bytes", `{"precision":1.` + zeros(600) + `}`, true, 0, 1.0, 0},
 		{"unknown_5000_digits", `{"not_a_field":1` + zeros(4999) + `}`, true, 0, 0, 1},
 		{"experience_601_digits", `{"experience":1` + zeros(600) + `}`, false, 0, 0, 0},
