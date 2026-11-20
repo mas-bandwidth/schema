@@ -60,6 +60,7 @@ concurrency:
 env:
   # the nightly rule in the header: no go test -timeout under tools/pgroup
   PGROUP_GO_TEST_TIMEOUT: '0'
+  MAKEFLAGS: ''
   SERIALIZE_TAG: v2.1.3
   SERIALIZE_C_TAG: v2.1.1
   SERIALIZE_GO_TAG: v2.1.1
@@ -285,6 +286,7 @@ jobs:
             esac
           done
           make -j"$JOBS" bin/schema build/tables-generated/.stamp build/fixedform-corpus/.stamp "${BUILD_TARGETS[@]}" "${MAKE_VARS[@]}"
+          unset MAKEFLAGS
           for g in "${GATE_TARGETS[@]}"; do
             echo "=== make $g ==="
             make "$g" "${MAKE_VARS[@]}"
@@ -305,6 +307,7 @@ jobs:
             "NODE=node"
           )
           make -j"$JOBS" bin/schema build/tables-generated/.stamp build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_tables_asan build/conformance-harness "${MAKE_VARS[@]}"
+          unset MAKEFLAGS
           make test-core-tables-1 "${MAKE_VARS[@]}"
 
       - name: core-tables-2 — core list, arm, retain, json, view and C++ conformance gates
@@ -323,6 +326,7 @@ jobs:
           )
           ALL_LEGS=$(make -s registry "${MAKE_VARS[@]}" | awk '/^test:/{sep=""; for(i=2;i<=NF;i++){sub(/^test-/,"",$i); printf "%s%s",sep,$i; sep=","}}')
           make -j"$JOBS" bin/schema build/tables-generated/.stamp build/conformance-harness build/conformance-cpp build/schema_test_cook "${MAKE_VARS[@]}"
+          unset MAKEFLAGS
           make test-core-tables-2 SCHEMA_SKIP_LEGS="$ALL_LEGS" "${MAKE_VARS[@]}"
 
       - name: core-tables-3 — core block, cook, runtime-home, soak, pack and hostile gates
@@ -340,6 +344,7 @@ jobs:
             "NODE=node"
           )
           make -j"$JOBS" bin/schema build/tables-generated/.stamp build/schema_test_block build/schema_test_block_asan build/schema_test_block_fuzz build/schema_test_block_fuzz_asan build/pack-text/.stamp build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp build/schema_test_pack build/schema_test_pack_asan build/tables-pack.bin build/tables-pack-root.bin build/schema_test_random build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table "${MAKE_VARS[@]}"
+          unset MAKEFLAGS
           make test-core-tables-3 "${MAKE_VARS[@]}"
 
       - name: core-go — go vet, go test ./... and fuzz seeds
@@ -387,6 +392,7 @@ jobs:
           )
           OTHER_LEGS=$(make -s registry "${MAKE_VARS[@]}" | awk -v keep="${{ matrix.shard }}" '/^test:/{sep=""; for(i=2;i<=NF;i++){sub(/^test-/,"",$i); if($i!=keep){printf "%s%s",sep,$i; sep=","}}}')
           make -j"$JOBS" bin/schema build/tables-generated/.stamp build/conformance-harness build/conformance-cpp build/schema_test_cook "${MAKE_VARS[@]}"
+          unset MAKEFLAGS
           make toolchain SCHEMA_SKIP_LEGS="$OTHER_LEGS" "${MAKE_VARS[@]}"
           make conformance SCHEMA_SKIP_LEGS="$OTHER_LEGS" "${MAKE_VARS[@]}"
           make "test-${{ matrix.shard }}" "${MAKE_VARS[@]}"
@@ -576,7 +582,9 @@ jobs:
 
       - name: ${{ matrix.target }}
         if: '!startsWith(matrix.target, ''tables-wire-fuzz-release-'')'
-        run: make "${{ matrix.target }}" RUSTUP_BIN="$(dirname "$(command -v cargo)")" DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node
+        run: |
+          unset MAKEFLAGS
+          make "${{ matrix.target }}" RUSTUP_BIN="$(dirname "$(command -v cargo)")" DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node
 
       # THE RELEASE WIRE-FUZZ GATE (make/wire-fuzz-release.mk): one leg's six
       # independent runs (both arms, seeds 1-3, at WIRE_FUZZ_RELEASE_N), side
@@ -957,6 +965,7 @@ jobs:
           cause="$refusal"'|\*\*\* \[|^FAIL|--- FAIL'
           status=0
           : >controls.log
+          unset MAKEFLAGS
           # shellcheck disable=SC2086
           make -k $targets \
             RUSTUP_BIN="$(dirname "$(command -v cargo)")" DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node \

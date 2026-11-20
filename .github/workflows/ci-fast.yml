@@ -408,6 +408,17 @@ jobs:
             if echo "$files" | grep -qE '^(internal/codegen/|testdata/golden/|examples/|examples128/|docs/USAGE\.md$)'; then
               case " $packages " in *" ./internal/goldens "*) ;; *) packages="$packages ./internal/goldens" ;; esac
             fi
+            # THE WORKFLOW & READINESS AUDITORS. Packages outside ./internal/ci
+            # (which ci-policy always runs) whose fast unit tests assert
+            # invariants on .github/workflows/*.yml, .github/actions/*, or
+            # test/conformance/nightly-readiness: pythontable and rubytable
+            # readiness checks, negativecontrols matrix checks, and
+            # slowgatescan shard coverage (~8 s total in one go-test-touched row).
+            if echo "$files" | grep -qE '^(\.github/(workflows|actions)/|test/conformance/nightly-readiness$)'; then
+              for p in ./internal/codegen/pythontable ./internal/codegen/rubytable ./tools/negativecontrols ./tools/slowgatescan; do
+                case " $packages " in *" $p "*) ;; *) packages="$packages $p" ;; esac
+              done
+            fi
             packages=$(echo "$packages" | xargs || true)
           }
 
