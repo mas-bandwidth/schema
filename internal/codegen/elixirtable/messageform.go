@@ -241,7 +241,16 @@ const messageBatchRuntimeBody = `  @batch_max 256
     |> Enum.map(&elem(&1, 1))
   end
 
-  defp pad_rebound_array(items, from_vocab, to_vocab, to_lookup, rules, %{kind: 14, shape: shape, element: elem}, rule, sub)
+  defp pad_rebound_array(
+         items,
+         from_vocab,
+         to_vocab,
+         to_lookup,
+         rules,
+         %{kind: 14, shape: shape, element: elem},
+         rule,
+         sub
+       )
        when is_list(items) do
     if length(items) < shape.min do
       elem_rule =
@@ -259,7 +268,8 @@ const messageBatchRuntimeBody = `  @batch_max 256
     end
   end
 
-  defp pad_rebound_array(val, _from_vocab, _to_vocab, _to_lookup, _rules, _te, _rule, _sub), do: val
+  defp pad_rebound_array(val, _from_vocab, _to_vocab, _to_lookup, _rules, _te, _rule, _sub),
+    do: val
 
   defp default_elem_val(from_vocab, to_vocab, to_lookup, rules, %{kind: 13}, _er, sub),
     do: rebind_body(from_vocab, to_vocab, to_lookup, rules, [], record(sub))
@@ -268,7 +278,9 @@ const messageBatchRuntimeBody = `  @batch_max 256
     do: :none
 
   defp default_elem_val(_from_vocab, _to_vocab, _to_lookup, _rules, _elem, :zero_ref, _sub), do: 0
-  defp default_elem_val(_from_vocab, _to_vocab, _to_lookup, _rules, _elem, {:enum, :none}, _sub), do: 0
+
+  defp default_elem_val(_from_vocab, _to_vocab, _to_lookup, _rules, _elem, {:enum, :none}, _sub),
+    do: 0
 
   defp default_elem_val(_from_vocab, _to_vocab, to_lookup, _rules, _elem, {:enum, def_id}, _sub) do
     case Map.get(to_lookup.name_by_id, def_id) do
@@ -277,7 +289,9 @@ const messageBatchRuntimeBody = `  @batch_max 256
     end
   end
 
-  defp default_elem_val(_from_vocab, _to_vocab, _to_lookup, _rules, _elem, {:same, d}, _sub), do: d
+  defp default_elem_val(_from_vocab, _to_vocab, _to_lookup, _rules, _elem, {:same, d}, _sub),
+    do: d
+
   defp default_elem_val(_from_vocab, _to_vocab, _to_lookup, _rules, _elem, {ftag, bits}, _sub)
        when ftag in [:f32, :f32eq],
        do: f32(bits)
@@ -295,12 +309,28 @@ const messageBatchRuntimeBody = `  @batch_max 256
     end
   end
 
-  defp default_omitted_field(from_vocab, to_vocab, to_lookup, rules, %{kind: 14, shape: shape}, :fixed_table, sub) do
+  defp default_omitted_field(
+         from_vocab,
+         to_vocab,
+         to_lookup,
+         rules,
+         %{kind: 14, shape: shape},
+         :fixed_table,
+         sub
+       ) do
     elem_body = rebind_body(from_vocab, to_vocab, to_lookup, rules, [], record(sub))
     {:ride, List.duplicate(elem_body, shape.max)}
   end
 
-  defp default_omitted_field(from_vocab, to_vocab, to_lookup, rules, %{kind: 14}, {:counted, born, :empty}, sub)
+  defp default_omitted_field(
+         from_vocab,
+         to_vocab,
+         to_lookup,
+         rules,
+         %{kind: 14},
+         {:counted, born, :empty},
+         sub
+       )
        when born > 0 do
     case rebind_body(from_vocab, to_vocab, to_lookup, rules, [], record(sub)) do
       [] -> :elide
@@ -308,7 +338,15 @@ const messageBatchRuntimeBody = `  @batch_max 256
     end
   end
 
-  defp default_omitted_field(from_vocab, to_vocab, to_lookup, rules, %{kind: 16}, {:keyed, keys, :empty}, sub) do
+  defp default_omitted_field(
+         from_vocab,
+         to_vocab,
+         to_lookup,
+         rules,
+         %{kind: 16},
+         {:keyed, keys, :empty},
+         sub
+       ) do
     case rebind_body(from_vocab, to_vocab, to_lookup, rules, [], record(sub)) do
       [] ->
         :elide
@@ -357,8 +395,9 @@ const messageBatchRuntimeBody = `  @batch_max 256
     end)
   end
 
-  defp rebind_val(_from_vocab, _to_vocab, _to_lookup, _rules, _fid, 15, _elem, x, _rule, _sub) when x in [:none, :unknown_arm],
-    do: :none
+  defp rebind_val(_from_vocab, _to_vocab, _to_lookup, _rules, _fid, 15, _elem, x, _rule, _sub)
+       when x in [:none, :unknown_arm],
+       do: :none
 
   defp rebind_val(
          from_vocab,
@@ -409,9 +448,10 @@ const messageBatchRuntimeBody = `  @batch_max 256
     |> Enum.flat_map(fn {key_src_ref, kv} ->
       with {:ok, kpe} <- entry_at(from_vocab, key_src_ref),
            true <-
-             (if key_list != nil,
-                do: kpe.id in key_list,
-                else: allowed_keys == nil or MapSet.member?(allowed_keys, kpe.id)),
+             if(key_list != nil,
+               do: kpe.id in key_list,
+               else: allowed_keys == nil or MapSet.member?(allowed_keys, kpe.id)
+             ),
            {to_key_ref, _} <- Map.get(to_lookup.name_by_id, kpe.id) do
         v2 =
           rebind_val(
@@ -454,10 +494,14 @@ const messageBatchRuntimeBody = `  @batch_max 256
   defp rebind_val(from_vocab, _to_vocab, to_lookup, rules, fid, 30, _elem, src_vref, rule, _sub) do
     {allowed, retired} =
       case Map.get(rules, {fid, 30}) do
-        %{member: m} = rmap -> {m, Map.get(rmap, :retired)}
+        %{member: m} = rmap ->
+          {m, Map.get(rmap, :retired)}
+
         _ ->
           case Map.get(rules, {fid, 14}) do
-            %{each_member: m} = rmap -> {m, Map.get(rmap, :each_retired)}
+            %{each_member: m} = rmap ->
+              {m, Map.get(rmap, :each_retired)}
+
             _ ->
               case Map.get(rules, {fid, 16}) do
                 %{keyed_member: m} = rmap -> {m, Map.get(rmap, :keyed_retired)}
@@ -902,7 +946,15 @@ const messageBatchRuntimeBody = `  @batch_max 256
   end
 
   defp add_rule(rule, what, v)
-       when what in [:member, :retired, :each_member, :each_retired, :keyed_member, :keyed_retired, :arm],
+       when what in [
+              :member,
+              :retired,
+              :each_member,
+              :each_retired,
+              :keyed_member,
+              :keyed_retired,
+              :arm
+            ],
        do: Map.update(rule, what, MapSet.new([v]), &MapSet.put(&1, v))
 
   defp add_rule(rule, what, v), do: Map.put(rule, what, v)
@@ -1181,6 +1233,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
       _ -> nil
     end
   end
+
   defp arm_sub(_sub, _id), do: nil
 
   defp arm_raw({:union, name}, id) do
@@ -1189,6 +1242,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
       _ -> nil
     end
   end
+
   defp arm_raw(_sub, id), do: if(id < 0, do: 0, else: nil)
 
   defp arm_known?({:union, name}, id),
@@ -1474,7 +1528,11 @@ const messageBatchRuntimeBody = `  @batch_max 256
               {:ok, value, rest2} ->
                 if not known,
                   do: {:ok, :unknown_arm, rest2},
-                  else: {:ok, {ref, if(entry.kind == 15 and value == :unknown_arm, do: :none, else: value)}, rest2}
+                  else:
+                    {:ok,
+                     {ref,
+                      if(entry.kind == 15 and value == :unknown_arm, do: :none, else: value)},
+                     rest2}
 
               :malformed ->
                 :malformed
@@ -1837,6 +1895,7 @@ const messageRuntimeBody = `  defstruct announced: false,
               {:malformed, build_version}
             else
               seen = MapSet.put(seen, id)
+
               case rest do
                 <<kind, rest2::binary>> ->
                   cond do
@@ -1877,7 +1936,16 @@ const messageRuntimeBody = `  defstruct announced: false,
                     true ->
                       case skip(kind, rest2) do
                         {:ok, rest3} ->
-                          walk(rest3, ids, versions, words_count, build_version, words, max_bytes, seen)
+                          walk(
+                            rest3,
+                            ids,
+                            versions,
+                            words_count,
+                            build_version,
+                            words,
+                            max_bytes,
+                            seen
+                          )
 
                         :error ->
                           {:malformed, build_version}
@@ -2105,6 +2173,7 @@ const messageRuntimeBody = `  defstruct announced: false,
 
   defp base_inside_kind?(kind, base) do
     dom = kind_bits(kind)
+
     if kind in [2, 3, 4, 5, 18, 20, 21, 22, 23, 24] do
       mn = -(1 <<< (dom - 1))
       mx = (1 <<< (dom - 1)) - 1
@@ -2183,6 +2252,7 @@ const messageRuntimeBody = `  defstruct announced: false,
                     case leb(rest2) do
                       {:ok, raw, rest3} ->
                         base = if kind >= 2 and kind <= 5, do: zigzag(raw), else: raw
+
                         if base_inside_kind?(kind, base) do
                           {:ok, %{kind: kind, packing: 1, bits: n, base: base}, rest3}
                         else
@@ -2478,8 +2548,8 @@ func messageRecords(u *ir.Unit) (string, bool) {
 
 // messageArmSubUnion is arm_sub/2's union clause in messageBatchRuntimeBody,
 // dropped from a unit no union reaches (messageRecords).
-const messageArmSubUnion = "  defp arm_sub({:union, name}, id) do\n    case @message_unions |> Map.get(name, %{}) |> Map.get(id) do\n      {_raw, sub} -> sub\n      _ -> nil\n    end\n  end\n"
-const messageArmRawUnion = "  defp arm_raw({:union, name}, id) do\n    case @message_unions |> Map.get(name, %{}) |> Map.get(id) do\n      {raw, _sub} -> raw\n      _ -> nil\n    end\n  end\n"
+const messageArmSubUnion = "  defp arm_sub({:union, name}, id) do\n    case @message_unions |> Map.get(name, %{}) |> Map.get(id) do\n      {_raw, sub} -> sub\n      _ -> nil\n    end\n  end\n\n"
+const messageArmRawUnion = "  defp arm_raw({:union, name}, id) do\n    case @message_unions |> Map.get(name, %{}) |> Map.get(id) do\n      {raw, _sub} -> raw\n      _ -> nil\n    end\n  end\n\n"
 const messageArmKnownUnion = "  defp arm_known?({:union, name}, id),\n    do: @message_unions |> Map.get(name, %{}) |> Map.has_key?(id)\n\n"
 
 // messageSub is what a body under field f is read against: a record's name, a

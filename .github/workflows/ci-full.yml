@@ -439,7 +439,7 @@ jobs:
         if: matrix.group == 'unit-rest-ci' || matrix.group == 'unit-rest-cmd-2' || matrix.group == 'unit-compiler-18'
 
       - uses: ./.github/actions/ruby
-        if: matrix.group == 'unit-rest-ci'
+        if: matrix.group == 'unit-rest-ci' || matrix.group == 'unit-compiler-18'
 
       # THE Goose PIN for the test steps below: internal/codegen/goose and
       # internal/codegen/goosetable run generated Goose under the pinned compiler

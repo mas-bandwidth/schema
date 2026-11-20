@@ -126,6 +126,13 @@ defmodule Probe do
     end
   end
 
+  def refuse_announcement(label, announcement) do
+    case M.announce_read(Base.decode16!(announcement, case: :lower)) do
+      {:error, :malformed, _} -> :ok
+      other -> check(false, label <> " announce_read accepted " <> inspect(other))
+    end
+  end
+
   def control(label, announcement, batch) do
     vocab =
       case M.announce_read(Base.decode16!(announcement, case: :lower)) do
@@ -145,7 +152,7 @@ defmodule Probe do
   def run do
     refuse("flat zero-width run", "%[3]s", <<2, 0, 1>>)
     refuse("ranged zero-width run", "%[4]s", <<2, 0, 1>>)
-    refuse("nested zero-width run", "%[5]s", <<2, 0, 1>>)
+    refuse_announcement("nested zero-width run", "%[5]s")
     control("backed zero-width run", "%[6]s", <<2, 0, 1>>)
 
     if Process.get(:failed), do: System.halt(1), else: IO.puts("ok")

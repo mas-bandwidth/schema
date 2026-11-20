@@ -539,19 +539,29 @@ func (t *exTerm) render(at, ind, tail int) string {
 		if t.open == "{" {
 			cont = at + 1
 		}
+		endCol := func(start int, s string) int {
+			if nl := strings.LastIndexByte(s, '\n'); nl >= 0 {
+				return exWidth(s[nl+1:])
+			}
+			return start + exWidth(s)
+		}
+		afterOf := func(i int) int {
+			if i == len(t.items)-1 {
+				return len(t.close)
+			}
+			return 1
+		}
 		var b strings.Builder
-		first := t.items[0].key + t.items[0].val.flat()
+		first := t.items[0].render(at+len(t.open), afterOf(0))
 		b.WriteString(t.open + first)
-		line := at + len(t.open) + exWidth(first)
+		line := endCol(at+len(t.open), first)
 		for i := 1; i < len(t.items); i++ {
 			s := t.items[i].key + t.items[i].val.flat()
-			after := 1
-			if i == len(t.items)-1 {
-				after = len(t.close) + tail
-			}
+			after := afterOf(i)
 			if line+2+exWidth(s)+after > exLineLimit {
-				b.WriteString(",\n" + strings.Repeat(" ", cont) + s)
-				line = cont + exWidth(s)
+				ri := t.items[i].render(cont, after)
+				b.WriteString(",\n" + strings.Repeat(" ", cont) + ri)
+				line = endCol(cont, ri)
 				continue
 			}
 			b.WriteString(", " + s)
