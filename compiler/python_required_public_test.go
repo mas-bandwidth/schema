@@ -3,9 +3,12 @@ package compiler
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
@@ -76,47 +79,120 @@ func TestPythonRequiredPublicShapes(t *testing.T) {
 			t.Fatalf("invalid required shape shard %q", setting)
 		}
 	}
+	type preparedShape struct {
+		name, decl, shape, pkg string
+		unit, old              *ir.Unit
+		files                  map[string][]byte
+	}
+	seenPkg := map[string]bool{}
+	var prepared []preparedShape
 	for index, c := range cases {
 		if shard >= 0 && index%16 != shard {
 			continue
 		}
-		t.Run(c.name, func(t *testing.T) {
-			src := func(required bool) string {
-				marker := ""
-				if required {
-					marker = " | required"
-					if strings.Contains(c.shape, " | ") {
-						marker = ", required"
+		pkg := "reqpublic" + strings.ReplaceAll(c.name, "_", "")
+		if seenPkg[pkg] {
+			t.Fatalf("duplicate shape package %q for %q", pkg, c.name)
+		}
+		seenPkg[pkg] = true
+		src := func(required bool) string {
+			marker := ""
+			if required {
+				marker = " | required"
+				if strings.Contains(c.shape, " | ") {
+					marker = ", required"
+				}
+			}
+			return fmt.Sprintf("package %s\n%s\ntable Root { x %s%s }\n", pkg, c.decl, c.shape, marker)
+		}
+		unit := unitFromSource(t, src(true))
+		old := unitFromSource(t, src(false))
+		files, err := New().Generate(unit, "python", nil)
+		if err != nil {
+			t.Fatalf("%s: public generation: %v", c.name, err)
+		}
+		prepared = append(prepared, preparedShape{
+			name: c.name, decl: c.decl, shape: c.shape, pkg: pkg,
+			unit: unit, old: old, files: files,
+		})
+	}
+	mypyFailed := make([]bool, len(prepared))
+	if len(prepared) > 0 {
+		mypyBin := pyrun.Mypy(t)
+		workers := min(max(runtime.GOMAXPROCS(0), 1), 8, len(prepared))
+		chunkDirs := make([]string, workers)
+		for w := range workers {
+			chunkDirs[w] = t.TempDir()
+		}
+		var wg sync.WaitGroup
+		for w := range workers {
+			wg.Add(1)
+			go func(w int) {
+				defer wg.Done()
+				cdir := chunkDirs[w]
+				var pkgs []string
+				var idxs []int
+				for i := w; i < len(prepared); i += workers {
+					p := prepared[i]
+					wroteOK := true
+					for name, data := range p.files {
+						filePath := filepath.Join(cdir, name)
+						if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
+							wroteOK = false
+							break
+						}
+						if err := os.WriteFile(filePath, data, 0644); err != nil {
+							wroteOK = false
+							break
+						}
+					}
+					if !wroteOK {
+						mypyFailed[i] = true
+						continue
+					}
+					pkgs = append(pkgs, p.pkg)
+					idxs = append(idxs, i)
+				}
+				if len(pkgs) > 0 {
+					args := append([]string{"--strict", "--python-version", "3.11", "--no-color-output", "--cache-dir", filepath.Join(cdir, ".mypy_cache")}, pkgs...)
+					cmd := exec.Command(mypyBin, args...)
+					cmd.Dir = cdir
+					if _, err := cmd.CombinedOutput(); err != nil {
+						for _, idx := range idxs {
+							mypyFailed[idx] = true
+						}
 					}
 				}
-				return fmt.Sprintf("package reqpublic\n%s\ntable Root { x %s%s }\n", c.decl, c.shape, marker)
-			}
-			unit := unitFromSource(t, src(true))
-			old := unitFromSource(t, src(false))
-			files, err := New().Generate(unit, "python", nil)
-			if err != nil {
-				t.Fatalf("public generation: %v", err)
-			}
+			}(w)
+		}
+		wg.Wait()
+	}
+	for idx, p := range prepared {
+		needMypy := mypyFailed[idx]
+		t.Run(p.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
-			for name, data := range files {
-				path := filepath.Join(dir, name)
-				if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			for name, data := range p.files {
+				filePath := filepath.Join(dir, name)
+				if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
 					t.Fatal(err)
 				}
-				if err := os.WriteFile(path, data, 0644); err != nil {
+				if err := os.WriteFile(filePath, data, 0644); err != nil {
 					t.Fatal(err)
 				}
 			}
-			if out, err := pyrun.Analyze(t, dir, "reqpublic"); err != nil {
-				t.Fatalf("mypy: %v %s", err, out)
+			if needMypy {
+				if out, err := pyrun.Analyze(t, dir, p.pkg); err != nil {
+					t.Fatalf("mypy: %v %s", err, out)
+				}
 			}
-			model := tabletext.NewModel(unit)
+			model := tabletext.NewModel(p.unit)
 			wire, err := tablewire.EncodeVariable(model, model.New(model.Lookup("Root")))
 			if err != nil {
 				t.Fatalf("required writer: %v", err)
 			}
-			prior := tabletext.NewModel(old)
-			beforeField := tabletext.NewModel(unitFromSource(t, "package reqpublic\ntable Root {}\n"))
+			prior := tabletext.NewModel(p.old)
+			beforeField := tabletext.NewModel(unitFromSource(t, fmt.Sprintf("package %s\ntable Root {}\n", p.pkg)))
 			missing, err := tablewire.EncodeVariable(beforeField, beforeField.New(beforeField.Lookup("Root")))
 			if err != nil {
 				t.Fatal(err)
@@ -129,7 +205,7 @@ func TestPythonRequiredPublicShapes(t *testing.T) {
 			if ok, err := tablewire.DecodeVariable(prior, prior.New(prior.Lookup("Root")), wire, &report); !ok {
 				t.Fatalf("Go required removal: %v %+v", err, report)
 			}
-			script := pyrun.ImportPrelude + `from reqpublic import Root, Refused, LoadReport
+			script := pyrun.ImportPrelude + fmt.Sprintf(`from %s import Root, Refused, LoadReport
 with open("wire", "rb") as f: wire=f.read()
 with open("missing", "rb") as f: missing=f.read()
 value=Root()
@@ -141,7 +217,7 @@ except Refused as e: assert e.reason=="missing_required" and "x" in str(e), e
 else: raise AssertionError("missing accepted")
 assert report.unknown==73, "report changed"
 print("required-public")
-`
+`, p.pkg)
 			for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
 				out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(script), "wire": wire, "missing": missing})
 				if err != nil || strings.TrimSpace(out) != "required-public" {
@@ -186,6 +262,7 @@ func TestPythonRequiredPublicNondefault(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			src := fmt.Sprintf("package reqvalues\n%s\ntable Root { x %s | required }\n", c.decl, c.shape)
 			unit := unitFromSource(t, src)
 			files, err := New().Generate(unit, "python", nil)
