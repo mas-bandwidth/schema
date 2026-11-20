@@ -76,7 +76,7 @@ schema-java-runs-hostile-corpus-negative-control: $(JAVA_HOSTILE_BUILD)/classes/
 	@rm -rf $(JAVA_HOSTILE_BUILD)/plant && mkdir -p $(JAVA_HOSTILE_BUILD)/plant/generated $(JAVA_HOSTILE_BUILD)/plant/classes
 	@cp -R $(JAVA_HOSTILE_BUILD)/generated/* $(JAVA_HOSTILE_BUILD)/plant/generated/
 	@for f in $(JAVA_HOSTILE_BUILD)/plant/generated/*/*Variable.java; do \
-		sed 's|^        if (in.bad) {$$|        if (!in.bad) {|' "$$f" > "$$f.planted" && mv "$$f.planted" "$$f" || exit 1; \
+		sed 's/^        if (in\.bad || in\.p != text\.length) {$$/        if (!in.bad || in.p != text.length) {/' "$$f" > "$$f.planted" && mv "$$f.planted" "$$f" || exit 1; \
 	done
 	@if cmp -s $(JAVA_HOSTILE_BUILD)/generated/tabledemo/RootConfigVariable.java $(JAVA_HOSTILE_BUILD)/plant/generated/tabledemo/RootConfigVariable.java; then \
 		echo 'NEGATIVE CONTROL FAILED: the planted reader bug did not apply'; exit 1; fi
