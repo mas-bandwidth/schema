@@ -716,12 +716,28 @@ func (b *cMessageUnitBuild) compile(u *ir.Unit) error {
 			return err
 		}
 	}
+	// Wide 128-bit table headers include serialize.h for serialize_int128_t /
+	// serialize_uint128_t; stage the shim into b.dir if serialize.c is absent.
+	serDir := os.Getenv("SERIALIZE_C")
+	if serDir == "" {
+		serDir, _ = filepath.Abs("../../../../serialize.c")
+	}
+	if _, err := os.Stat(filepath.Join(serDir, "serialize.h")); err != nil {
+		serDir = ""
+		if err := os.WriteFile(filepath.Join(b.dir, "serialize.h"), []byte(cJsonWideSerializeShim), 0600); err != nil {
+			return err
+		}
+	}
 	for name := range files {
 		if !strings.HasSuffix(name, ".c") {
 			continue
 		}
 		obj := filepath.Join(b.dir, strings.TrimSuffix(name, ".c")+".o")
-		args := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-O2", "-I", b.dir, "-c", filepath.Join(b.dir, name), "-o", obj}
+		args := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-O2", "-I", b.dir}
+		if serDir != "" {
+			args = append(args, "-I", serDir)
+		}
+		args = append(args, "-c", filepath.Join(b.dir, name), "-o", obj)
 		if out, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
 			return fmt.Errorf("compile %s: %w\n%s", name, err, out)
 		}
@@ -746,7 +762,15 @@ func runCMessageUnit(t *testing.T, build *cMessageUnitBuild, source string) {
 		t.Fatal(err)
 	}
 	binary := filepath.Join(dir, "probe")
-	args := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-O2", "-I", build.dir, main}
+	args := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-O2", "-I", build.dir}
+	serDir := os.Getenv("SERIALIZE_C")
+	if serDir == "" {
+		serDir, _ = filepath.Abs("../../../../serialize.c")
+	}
+	if _, err := os.Stat(filepath.Join(serDir, "serialize.h")); err == nil {
+		args = append(args, "-I", serDir)
+	}
+	args = append(args, main)
 	args = append(args, build.objs...)
 	args = append(args, "-lm", "-o", binary)
 	if out, err := exec.Command(cc, args...).CombinedOutput(); err != nil {

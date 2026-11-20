@@ -4491,11 +4491,41 @@ inline bool TableFixedDeadSpan( const TableFixedEntry * plan, int32_t count, con
     int64_t widest = arm;
     int64_t taken = arm;
     bool matched = false;
+    bool lineage_union = false;
+    uint64_t arm_count = 0;
     for ( int32_t i = 0; i < count; ++i )
     {
         const TableFixedEntry & e = plan[i];
+        if ( e.op == kTableFixedConst && e.src == tag_at && e.aux == 0 &&
+             TableFixedGuardHolds( e, src, guard_pool ) )
+        {
+            lineage_union = true;
+            if ( e.dstsize != 0 ) { arm_count = e.dstsize; }
+        }
+        else if ( e.op == kTableFixedCopy && e.aux != 0 &&
+                  e.src <= tag_at && (int64_t) e.src + (int64_t) e.size == arm &&
+                  TableFixedGuardHolds( e, src, guard_pool ) )
+        {
+            arm_count = e.aux;
+        }
         int64_t arg = 0;
         if ( !TableFixedEntryTagArg( e, tag_at, guard_pool, arg ) ) { continue; }
+        if ( e.guard_count > 0 )
+        {
+            bool outer_ok = true;
+            for ( int32_t j = 0; j < (int32_t) e.guard_count; ++j )
+            {
+                const TableFixedGuardLink & l = *(const TableFixedGuardLink *) (const void *) ( (const uint8_t *) guard_pool + e.guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );
+                if ( l.guard == tag_at ) { break; }
+                if ( TableFixedTagAt( src, l.guard, l.argw ) != l.arg ) { outer_ok = false; break; }
+            }
+            if ( !outer_ok ) { continue; }
+        }
+        else if ( e.guard == tag_at && e.guard2 != kTableFixedNoGuard &&
+                  TableFixedTagAt( src, e.guard2, e.argw2 ) != e.arg2 )
+        {
+            continue;
+        }
         const int64_t end = TableFixedEntryEnd( e );
         if ( end > widest ) { widest = end; }
         if ( arg >= 0 && (uint64_t) arg == tag )
@@ -4504,7 +4534,8 @@ inline bool TableFixedDeadSpan( const TableFixedEntry * plan, int32_t count, con
             if ( end > taken ) { taken = end; }
         }
     }
-    if ( tag != 0 && !matched ) { return true; }
+    if ( arm_count != 0 && tag > arm_count ) { return true; }
+    if ( lineage_union && tag != 0 && !matched ) { return true; }
     const int64_t dead = ( tag == 0 ) ? arm : taken;
     return TableFixedDeadZero( src, dead < arm ? arm : dead, widest );
 }
@@ -11855,12 +11886,6 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBody( TableReader & r, SlotsSeatsEn
                                     continue;
                                 }
                                 int32_t decoded_v = (int32_t) widened_v;
-                                if ( decoded_v == 0 )
-                                {
-                                    r.report->damaged = true;
-                                    sub.offset += (int64_t) elem_len;
-                                    continue;
-                                }
                                 value.value.slots[int32_t( slot ) - 1] = decoded_v;
                             }
                             sub.offset += (int64_t) elem_len;
@@ -11914,12 +11939,6 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBody( TableReader & r, SlotsSeatsEn
                                     continue;
                                 }
                                 int32_t decoded_v = int32_t( elem.get32() );
-                                if ( decoded_v == 0 )
-                                {
-                                    r.report->damaged = true;
-                                    sub.offset += (int64_t) elem_len;
-                                    continue;
-                                }
                                 value.value.slots[int32_t( slot ) - 1] = decoded_v;
                             }
                             sub.offset += (int64_t) elem_len;
@@ -13912,12 +13931,6 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBodyRetain( TableReader & r, SlotsS
                                     continue;
                                 }
                                 int32_t decoded_v = (int32_t) widened_v;
-                                if ( decoded_v == 0 )
-                                {
-                                    r.report->damaged = true;
-                                    sub.offset += (int64_t) elem_len;
-                                    continue;
-                                }
                                 value.value.slots[int32_t( slot ) - 1] = decoded_v;
                             }
                             sub.offset += (int64_t) elem_len;
@@ -13971,12 +13984,6 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBodyRetain( TableReader & r, SlotsS
                                     continue;
                                 }
                                 int32_t decoded_v = int32_t( elem.get32() );
-                                if ( decoded_v == 0 )
-                                {
-                                    r.report->damaged = true;
-                                    sub.offset += (int64_t) elem_len;
-                                    continue;
-                                }
                                 value.value.slots[int32_t( slot ) - 1] = decoded_v;
                             }
                             sub.offset += (int64_t) elem_len;

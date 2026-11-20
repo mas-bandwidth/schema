@@ -57,7 +57,7 @@ func skipProgressMessage(t *testing.T, bodies ...[]uint8) []byte {
 func skipProgressFixtures(t *testing.T) (*ir.Unit, []byte, int) {
 	t.Helper()
 	u := unitFrom(t, skipProgressSchema)
-	zeroBit := ir.TableMessageShape{Min: 0, Max: 0, Elem: ir.TableKindBool, Inner: &ir.TableMessageShape{}}
+	zeroString := ir.TableMessageShape{Max: 0}
 	boolElement := ir.TableMessageShape{}
 	entries := []ir.TableVocabularyEntry{
 		{
@@ -65,7 +65,7 @@ func skipProgressFixtures(t *testing.T) (*ir.Unit, []byte, int) {
 			Kind: ir.TableKindArray,
 			Shape: ir.TableMessageShape{
 				Min: 0, Max: ir.TableMessageListMax,
-				Elem: ir.TableKindArray, Inner: &zeroBit,
+				Elem: ir.TableKindString, Inner: &zeroString,
 			},
 		},
 		{
@@ -73,7 +73,7 @@ func skipProgressFixtures(t *testing.T) (*ir.Unit, []byte, int) {
 			Kind: ir.TableKindArray,
 			Shape: ir.TableMessageShape{
 				Min: 4, Max: 4,
-				Elem: ir.TableKindArray, Inner: &zeroBit,
+				Elem: ir.TableKindString, Inner: &zeroString,
 			},
 		},
 		{
@@ -89,10 +89,15 @@ func skipProgressFixtures(t *testing.T) (*ir.Unit, []byte, int) {
 			Id:   0x9995,
 			Kind: ir.TableKindKeyed,
 			Shape: ir.TableMessageShape{
-				Max:  1,
-				Elem: ir.TableKindArray, Inner: &zeroBit,
+				Max:  255,
+				Elem: ir.TableKindString, Inner: &zeroString,
 			},
 		},
+	}
+	// Pad to 128 entries so refBits == 8 and every walked string(0) element
+	// starts on a byte boundary, consuming 0 alignment bits and 0 length bits.
+	for len(entries) < 128 {
+		entries = append(entries, ir.TableVocabularyEntry{Id: uint64(0x9a00 + len(entries))})
 	}
 	ann := depthBoundaryEncodeAnnouncement(0x0102030405060708, ir.TableVocabularyBytes(entries))
 	return u, ann, ir.TableMessageRefBits(len(entries))
@@ -130,7 +135,7 @@ func skipProgressCases(t *testing.T, refBits int) []skipProgressCase {
 	})
 	var keyed []uint8
 	ref(&keyed, 5)
-	skipProgressPut(&keyed, 1, 1)
+	skipProgressPut(&keyed, 1, 8)
 	ref(&keyed, 4)
 	ref(&keyed, 0)
 	cases = append(cases, skipProgressCase{
@@ -224,8 +229,8 @@ int main(void)
 {
 `)
 	fmt.Fprintf(&src, "    static const uint8_t ann[] = { %s };\n", depthBoundaryHexList(ann, ""))
-	src.WriteString(`    TableMessageEntry entries[64];
-    TableVocabulary vocab = table_vocabulary(entries, 64);
+	src.WriteString(`    TableMessageEntry entries[256];
+    TableVocabulary vocab = table_vocabulary(entries, 256);
     TableReport arep;
     memset(&arep, 0, sizeof(arep));
     if (!announce_read(&vocab, ann, (int64_t)sizeof(ann), &arep) || !vocab.announced) {

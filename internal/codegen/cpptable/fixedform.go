@@ -519,9 +519,10 @@ type fixedWireSpanKey struct {
 	arg        int
 }
 
-func fixedPlanWireSpans(entries []ir.TableFixedLayoutEntry) (elems, payloads map[fixedWireSpanKey]int64) {
+func fixedPlanWireSpans(entries []ir.TableFixedLayoutEntry) (elems, payloads, unionArms map[fixedWireSpanKey]int64) {
 	elems = map[fixedWireSpanKey]int64{}
 	payloads = map[fixedWireSpanKey]int64{}
+	unionArms = map[fixedWireSpanKey]int64{}
 	var next func(i int) int
 	next = func(i int) int {
 		n := i + 1
@@ -586,6 +587,9 @@ func fixedPlanWireSpans(entries []ir.TableFixedLayoutEntry) (elems, payloads map
 				n = next(n)
 			}
 			tag := e.Size - widest
+			if widest > 0 && e.Children > 0 {
+				unionArms[fixedWireSpanKey{src: src + tag, guard: guard, arg: arg}] = int64(e.Children)
+			}
 			n = i + 1
 			for c := 0; c < e.Children; c++ {
 				walk(n, src+tag, src, c+1)
@@ -596,7 +600,7 @@ func fixedPlanWireSpans(entries []ir.TableFixedLayoutEntry) (elems, payloads map
 	if len(entries) > 0 {
 		walk(0, 0, ir.TableFixedNoGuard, 0)
 	}
-	return elems, payloads
+	return elems, payloads, unionArms
 }
 
 // ---- the root's surface ----------------------------------------------------
@@ -654,7 +658,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// SPANS LEAVES OF DIFFERENT WIDTHS, so a big-endian copy knows its element
 	// width (ir.TableFixedSplitByWidth, the same split the C leg lays down).
 	split := ir.TableFixedSplitByWidth(entries, plan, guarded)
-	elemBytes, optionalPayload := fixedPlanWireSpans(entries)
+	elemBytes, optionalPayload, unionArms := fixedPlanWireSpans(entries)
 	g.pf("constexpr TableFixedEntry %sFixedPlan[] = {\n", st.Name)
 	for i, e := range split.Plan {
 		guard := "kTableFixedNoGuard"
@@ -693,6 +697,12 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		span := fixedWireSpanKey{src: e.Src, guard: e.Guard, arg: e.Arg}
 		if e.Guard == ir.TableFixedNoGuard {
 			span.arg = 0
+		}
+		if e.Op == ir.TableFixedOpCopy {
+			endSpan := fixedWireSpanKey{src: e.Src + e.Size, guard: span.guard, arg: span.arg}
+			if arms, ok := unionArms[endSpan]; ok {
+				aux = arms
+			}
 		}
 		if e.Op == ir.TableFixedOpCount {
 			width, ok := elemBytes[span]

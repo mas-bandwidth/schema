@@ -452,18 +452,16 @@ func (g *tableGen) emitKeyedTriples(f *ir.Field, kind int, ind string, widened b
 	g.pf("%s        if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )\n%s        {\n", ind, ind)
 	g.pf("%[1]s            r.report->unknown++;\n%[1]s            %[2]s // a slot this reader cannot name\n", ind, g.retainLostInline())
 	g.pf("%s            sub.offset += (int64_t) elem_len;\n%s            continue;\n%s        }\n", ind, ind, ind)
-	// The writer's enum order is not on form 1; the strict wire walk
-	// already rejects a repeated key reference without guessing its order.
-	if kind == tkTable {
-		g.pf("%[1]s        if ( elem_len == 1 && sub.buffer[sub.offset] == 0 )\n%[1]s        {\n%[1]s            r.report->damaged = true;\n%[1]s            break;\n%[1]s        }\n", ind)
-	}
+	// The writer's enum order and slot elision policy are not on form 1;
+	// the strict wire walk already rejects repeated key references without
+	// rejecting lawful older or widened default-valued slots (SPEC-TABLES §3.2, §4).
 	g.pf("%s        {\n%s            TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );\n", ind, ind)
 	// the key k lives at STORAGE INDEX k-1 (docs/SPEC-TABLES.md §2.4)
 	slot := g.keyedSlots("value.", f) + "[int32_t( slot ) - 1]"
 	onTrunc := []string{"r.report->damaged = true;", "sub.offset += (int64_t) elem_len;", "continue;"}
 	switch {
 	case widened:
-		g.emitWidenedScalarChecked(f, kind, "elem_kind", slot, ind+"            ", "elem", true, onTrunc...)
+		g.emitWidenedScalarChecked(f, kind, "elem_kind", slot, ind+"            ", "elem", false, onTrunc...)
 	case kind == tkTable:
 		g.inStep("int32_t( slot ) - 1", func() {
 			g.pf("%s            %s;\n", ind, g.loadCall(f, f.Type.Name, "elem", slot))
@@ -471,9 +469,9 @@ func (g *tableGen) emitKeyedTriples(f *ir.Field, kind int, ind string, widened b
 			g.pf("%[1]s            if ( elem.offset != elem.size )\n%[1]s            {\n%[1]s                r.report->damaged = true;\n%[1]s                %[2]sReset( %[3]s );\n%[1]s            }\n", ind, f.Type.Name, slot)
 		})
 	case kind == tkEnum:
-		g.emitEnumRefLoadChecked(f, slot, ind+"            ", "elem", strings.Join(onTrunc, " "), true)
+		g.emitEnumRefLoadChecked(f, slot, ind+"            ", "elem", strings.Join(onTrunc, " "), false)
 	default:
-		g.emitTableReadScalarFromChecked(f, kind, slot, ind+"            ", "elem", true, onTrunc...)
+		g.emitTableReadScalarFromChecked(f, kind, slot, ind+"            ", "elem", false, onTrunc...)
 	}
 	g.pf("%s        }\n", ind)
 	g.pf("%s        sub.offset += (int64_t) elem_len;\n", ind)

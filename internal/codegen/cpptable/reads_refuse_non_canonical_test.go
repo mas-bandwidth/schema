@@ -837,13 +837,15 @@ table EvolReader {
             return 1;
         }
 
-        // 5b. The fixed array's default and the writer's reordered keyed
-        // slots read; a keyed slot itself at its default still refuses.
+        // 5b. On form 1, all-default fixed arrays, reordered keyed slots, and
+        // default-valued keyed slots read and rewrite canonically on save,
+        // matching the Go engine oracle (SPEC-TABLES §3.2, §4).
         static const uint8_t bad_fixed_ints[] = { %s };
         static const uint8_t bad_keyed_order[] = { %s };
         static const uint8_t bad_keyed_def[] = { %s };
         for ( auto pair : { std::pair<const uint8_t *, size_t>{ bad_fixed_ints, sizeof( bad_fixed_ints ) },
-                            std::pair<const uint8_t *, size_t>{ bad_keyed_order, sizeof( bad_keyed_order ) } } )
+                            std::pair<const uint8_t *, size_t>{ bad_keyed_order, sizeof( bad_keyed_order ) },
+                            std::pair<const uint8_t *, size_t>{ bad_keyed_def, sizeof( bad_keyed_def ) } } )
         {
             OptMsg tmp; OptMsgReset( tmp );
             TableReport tr;
@@ -854,6 +856,7 @@ table EvolReader {
             }
             if ( pair.first == bad_fixed_ints && (tmp.fixed_ints[0] != 0 || tmp.fixed_ints[1] != 0) ) { printf( "FAIL fixed values moved\n" ); return 1; }
             if ( pair.first == bad_keyed_order && (tmp.keyed[Slot::A] != 3 || tmp.keyed[Slot::B] != 4) ) { printf( "FAIL keyed values moved\n" ); return 1; }
+            if ( pair.first == bad_keyed_def && tmp.keyed[Slot::A] != 0 ) { printf( "FAIL default keyed slot value moved\n" ); return 1; }
             uint8_t canonical[512]; const int64_t canonical_n = OptMsgSave( tmp, canonical, sizeof( canonical ) );
             OptMsg again; OptMsgReset( again ); TableReport again_report;
             if ( canonical_n <= 0 || !OptMsgLoad( again, canonical, canonical_n, &again_report ) || again_report.damaged || again_report.refused ) { printf( "FAIL canonical rewrite refused\n" ); return 1; }
@@ -872,17 +875,6 @@ table EvolReader {
                 return 1;
             }
         }
-        OptMsg invalid; OptMsgReset( invalid ); TableReport invalid_report;
-        if ( OptMsgLoad( invalid, bad_keyed_def, sizeof( bad_keyed_def ), &invalid_report ) ) { printf( "FAIL default keyed slot accepted\n" ); return 1; }
-        auto invalid_builder = []( const uint8_t * b, int64_t len ) {
-            VarContainersBuilder lb; TableReport r;
-            return VarContainersLoadBuilder( lb, b, len, &r ) && !r.damaged && !r.refused && !r.missing_required;
-        };
-        if ( !check_var( "default keyed slot", bad_keyed_def, sizeof( bad_keyed_def ),
-            []( const uint8_t * b, int64_t l, int64_t * a ) { return VarContainersLoadMeasure( b, l, a, NULL ); },
-            VarContainersLoad, invalid_builder,
-            []( const uint8_t * b, int64_t l ) { return VarContainersReadStrict( b, l, NULL ); },
-            VarContainersLoadRetain, []( const VarContainers * r, uint8_t * b, int64_t l ) { return VarContainersSave( r, b, l ); }, VarContainersSaveRetain, false, false ) ) { return 1; }
     }
 
     // 6. Form 2 below this reader's build version: a widened field at the
