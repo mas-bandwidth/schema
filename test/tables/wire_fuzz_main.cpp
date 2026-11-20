@@ -466,6 +466,7 @@ static const Codec codecs[] = {
     FIXED( "tblvarevo1", tblvarevo1, EvoMsg ),
     FIXED( "tblvarevo2", tblvarevo2, EvoMsg ),
     FIXED( "tblvarevo3", tblvarevo3, EvoMsg ),
+    FIXED( "cooktorture", cooktorture, TortureFixedWref ),
     FIXED( "tblr1", tblr1, Cfg ),
     FIXED( "tblr2", tblr2, Cfg ),
     // the MESSAGE FORM's units in the VARIABLE form (docs/SPEC-TABLES.md §3.3):

@@ -941,14 +941,39 @@ func TestGooseMessageFormCarriesWideKinds(t *testing.T) {
 	r := gooseMsgProbe(t, gooseMsgCase{unit: u, root: "SimState", values: back, data: batch})
 	r.agrees(t, want, len(values))
 
-	// A 128-bit or fixed-point offset past the declared max is refused as out_of_range by both readers.
+	// A 128-bit or fixed-point offset past the declared max is refused on write
+	// by Goose and refused as out_of_range on read by both readers.
 	oorSaved := gooseMsgProbe(t, gooseMsgCase{unit: u, root: "SimState", values: [][]string{
 		{
 			".Energy.lo = 6000000000", ".Energy.hi = 0",
 			".Reach.lo = 65536065536", ".Reach.hi = 0",
 		},
 	}})
-	oorBatch, err := hex.DecodeString(oorSaved.saved)
+	if oorSaved.saveReason == "ok" {
+		t.Fatalf("Goose save accepted out-of-range wide batch: %s", oorSaved.raw)
+	}
+	wideSrcBytes, err := os.ReadFile(filepath.Join(fixedRoot, "test", "tables", "Scalars2.schema"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wideSrc := strings.Replace(string(wideSrcBytes),
+		"energy int128 = -250 | min = -5000000000, max = 5000000000",
+		"energy int128 = -250 | min = -5000000000, max = 7000000000", 1)
+	widePath := filepath.Join(t.TempDir(), "Scalars2.schema")
+	if err := os.WriteFile(widePath, []byte(wideSrc), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	uWide, err := loadSchemaPaths([]string{widePath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mWide := tabletext.NewModel(uWide)
+	instWide := mWide.New(fixedRootStruct(t, uWide, "SimState"))
+	var wrep tabletext.Report
+	if !mWide.Read(instWide, []byte(`{"energy":"6000000000"}`), &wrep) {
+		t.Fatalf("wide sender read: %+v", wrep)
+	}
+	oorBatch, err := gooseEncodeMessages(mWide, []*tabletext.Instance{instWide})
 	if err != nil {
 		t.Fatal(err)
 	}

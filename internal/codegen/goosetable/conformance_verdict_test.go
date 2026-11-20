@@ -116,6 +116,7 @@ func verdictGlue(ns string, mods []string) string {
 	b.WriteString("        out.push(10);\n")
 	b.WriteString("    }\n")
 	b.WriteString("}\n")
+	b.WriteString("fn conformance_wref(surface: const u8[:], root: const u8[:], announce: const u8[:], data: const u8[:], path: const u8[:], kind: const u8[:], text: const u8[:]) -> const u8[:] { return \"!absent\"; }\n")
 	return b.String()
 }
 
