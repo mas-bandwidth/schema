@@ -599,9 +599,9 @@ fuzz-generated-readers-go:
 
 .PHONY: tables-go-fuzz
 tables-go-fuzz: build/tables-generated-go/.stamp build/conformance-harness
-	./build/conformance-harness run --drivers /dev/null --work build/conformance > /dev/null 2>&1 || true
-	cd test/go-tables && SEED=$(SEED) N=$(N) go test -run Fuzz -count 1 .
-	cd test/go-tables && SEED=$(SEED) N=$(N) go test -race -run Fuzz -count 1 .
+	./build/conformance-harness run --drivers /dev/null --work build/conformance-go-fuzz-work > /dev/null 2>&1 || true
+	cd test/go-tables && GO_TABLES_FIXTURES="$(CURDIR)/build/conformance-go-fuzz-work/fixtures" SEED=$(SEED) N=$(N) go test -run Fuzz -count 1 .
+	cd test/go-tables && GO_TABLES_FIXTURES="$(CURDIR)/build/conformance-go-fuzz-work/fixtures" SEED=$(SEED) N=$(N) go test -race -run Fuzz -count 1 .
 
 # The sed programs that remove one check from the GO emitter, and the sabotage
 # that proves the fuzzer finds it. Same shape as the C++/C# pair above, through
@@ -833,7 +833,7 @@ test-go: generated/bench/tables/go/.stamp generated/bench/paired/go/.stamp gener
 	cd test/go-ludicrous && go run .
 
 TEST_LEGS         += test-go
-CONFORMANCE_LEGS  += build/conformance-go
+CONFORMANCE_LEGS  += $(call unless_skipped,go,build/conformance-go)
 BENCH_TABLES_LEGS += generated/bench/tables/go/.stamp
 
 .PHONY: tables-go-wire-fuzz tables-go-wire-fuzz-negative-control

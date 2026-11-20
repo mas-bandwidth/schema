@@ -987,6 +987,13 @@ func resolveCIToken(tok string, ev ciEvent) (string, error) {
 		return ev.PlanPkgs, nil
 	case "needs.plan.outputs.legs":
 		return ev.PlanLegs, nil
+	case "needs.plan.outputs.codegen_touched":
+		for pkg := range strings.FieldsSeq(ev.PlanPkgs) {
+			if strings.HasPrefix(pkg, "./internal/codegen") || pkg == "./ir" || pkg == "./compiler" || pkg == "./..." {
+				return "yes", nil
+			}
+		}
+		return "no", nil
 	case "needs.pr-select.outputs.pins":
 		return ev.PRPins, nil
 	case "needs.pr-select.outputs.cs":
@@ -1173,6 +1180,9 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		}
 	}
 	for _, wantKey := range []string{
+		"ci-fast.yml:golangci-lint-fast",
+		"ci-fast.yml:generated-current",
+		"ci-fast.yml:lang-clean",
 		"ci-fast.yml:lang-lint",
 		"ci-fast.yml:verify-leg",
 	} {
@@ -1259,6 +1269,9 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		errs = append(errs, "ci-fast.yml:leg-gate-squirrel ran with no Squirrel leg in the plan")
 	}
 	for _, wantKey := range []string{
+		"ci-fast.yml:golangci-lint-fast",
+		"ci-fast.yml:generated-current",
+		"ci-fast.yml:lang-clean",
 		"ci-fast.yml:lang-lint",
 		"ci-fast.yml:verify-leg",
 	} {
@@ -1412,8 +1425,11 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"certify.yml:vuln",
 		"ci-fast.yml:block-gate",
 		"ci-fast.yml:ci-policy",
+		"ci-fast.yml:generated-current",
 		"ci-fast.yml:go-fixed-corpus",
 		"ci-fast.yml:go-test-touched",
+		"ci-fast.yml:golangci-lint-fast",
+		"ci-fast.yml:lang-clean",
 		"ci-fast.yml:lang-lint",
 		"ci-fast.yml:leg-gate",
 		"ci-fast.yml:leg-gate-cpp",

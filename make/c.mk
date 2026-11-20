@@ -404,7 +404,7 @@ tables-c-release:
 # the sanitizers over every surface it answers.
 .PHONY: tables-c
 tables-c: tables-c-wire-fuzz build/conformance-c build/conformance-c-asan tables-c-zero-cost tables-c-json-walk tables-c-fuzz tables-c-fuzz-negative-control tables-c-variable
-	./build/conformance-harness run --drivers test/conformance/c/drivers-asan.txt --work build/conformance-c-asan-work
+	./build/conformance-harness run --drivers test/conformance/c/drivers-asan.txt --work build/conformance-tables-c-asan-work
 	$(MAKE) tables-js-leg
 	$(MAKE) tables-js-accessor-negative-control
 	$(MAKE) tables-js-fuzz

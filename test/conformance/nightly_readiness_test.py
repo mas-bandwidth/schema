@@ -834,6 +834,30 @@ class Contracts(unittest.TestCase):
         self.assertTrue(runner.results[-1]["errors"])
         self.assertEqual(runner.results[-1]["exit"],7)
 
+    def test_real_runner_parallel_preserves_order_logs_and_errors(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runner = m.Runner(Path(tmp), "go")
+            specs = [
+                {
+                    "name": f"par-{i}",
+                    "argv": [m.sys.executable, "-c", f"import sys; print('line-{i}'); sys.exit({1 if i == 2 else 0})"],
+                    "validate": lambda text, idx=i: [] if f"line-{idx}" in text else ["missing line"],
+                }
+                for i in range(4)
+            ]
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                out = runner.run_parallel(specs)
+            self.assertEqual([row["phase"] for row in runner.results], ["par-0", "par-1", "par-2", "par-3"])
+            self.assertEqual([status for _, status in out], [0, 0, 1, 0])
+            self.assertEqual(runner.results[0]["errors"], [])
+            self.assertEqual(runner.results[1]["errors"], [])
+            self.assertTrue(runner.results[2]["errors"])
+            self.assertEqual(runner.results[3]["errors"], [])
+            for i in range(4):
+                self.assertTrue((runner.out / f"par-{i}.command.json").exists())
+                self.assertIn(f"line-{i}", (runner.out / f"par-{i}.log").read_text())
+
 
 if __name__=="__main__":
     unittest.main(verbosity=2)

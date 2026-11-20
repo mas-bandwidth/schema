@@ -56,7 +56,7 @@ for f in "$nc"/units/*/"$file"; do
 done
 [ "$changed" -gt 0 ] || { echo "NEGATIVE CONTROL FAILED: no unit holds $file"; exit 1; }
 if SCHEMA_GOOSE_GENERATED=$nc/units test/conformance/goose/driver testdata/conformance/tables/MANIFEST.txt \
-	"$kind-fuzz" "$seed" "$n" build/conformance/fixtures >"$nc/log" 2>&1; then
+	"$kind-fuzz" "$seed" "$n" build/goose-accel-work/fixtures >"$nc/log" 2>&1; then
 	echo "NEGATIVE CONTROL FAILED ($mode): the fuzzer stayed green with both extent bounds removed"
 	cat "$nc/log"
 	exit 1

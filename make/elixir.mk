@@ -134,11 +134,8 @@ ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 
 build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk testdata/conformance/feature-witnesses/full/Features.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema $(wildcard tables/stream/*.schema) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/G1.schema $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_BACKEND) $(wildcard tables/widelist/*.schema)
 	@mkdir -p build/tables-generated-elixir
-	@for unit in $(ELIXIR_TABLE_UNITS); do \
-		name=$${unit%%:*}; path=$${unit#*:}; \
-		rm -rf build/tables-generated-elixir/$$name; \
-		./bin/schema generate --lang elixir --out build/tables-generated-elixir/$$name $$path || exit 1; \
-	done
+	@jobs=$$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4); \
+	printf '%s\n' $(ELIXIR_TABLE_UNITS) | xargs -P "$$jobs" -n 4 sh -c 'for unit in "$$@"; do name=$${unit%%:*}; path=$${unit#*:}; rm -rf "build/tables-generated-elixir/$$name"; ./bin/schema generate --lang elixir --out "build/tables-generated-elixir/$$name" $$path || exit 255; done' _
 	# Elixir 1.20.4 is the formatting authority (issue #424), and every table
 	# emitter writes its shape (issue #547, tables-elixir-emit-format-clean), so
 	# the stamp formats nothing: tables-elixir-clean checks the raw output.
@@ -435,8 +432,8 @@ build-conformance-elixir: build/elixir-tables-ebin/.stamp
 # verdicts — and rebuilding those to read one file is a minute nobody gets back
 # every time this chain runs. `make conformance` writes the same file, so
 # whichever ran last serves.
-build/conformance/manifest.txt: build/conformance-harness build-conformance-elixir
-	./build/conformance-harness run --only elixir > /dev/null
+build/conformance-elixir-manifest/manifest.txt: build/conformance-harness build-conformance-elixir
+	./build/conformance-harness run --only elixir --work build/conformance-elixir-manifest > /dev/null
 
 # A SABOTAGED BUILD OF THE CORPUS, which every Elixir negative control below
 # runs its gate against: the emitter source $(2) with the sed program held in
@@ -470,9 +467,9 @@ endef
 ELIXIR_FUZZ_N ?= 20000
 
 .PHONY: tables-elixir-fuzz
-tables-elixir-fuzz: build/conformance/manifest.txt
+tables-elixir-fuzz: build/conformance-elixir-manifest/manifest.txt
 	SEED=$(SEED) BEAM_PATH="$(BEAM_PATH)" ./test/conformance/elixir/driver \
-		build/conformance/manifest.txt fuzz $(ELIXIR_FUZZ_N)
+		build/conformance-elixir-manifest/manifest.txt fuzz $(ELIXIR_FUZZ_N)
 
 # THE FUZZ ORACLE'S NEGATIVE CONTROL, and it sabotages the EMITTER rather than
 # the driver, which is what the Rust and Java controls do and what makes a
@@ -492,11 +489,11 @@ ELIXIR_FUZZ_SED := -e 's|rows > bytes - offset_of -> {:halt, :bad_layout}|true -
 	-e 's|padding > bytes - used -> {:error, :truncated}|false -> {:error, :truncated}|'
 
 .PHONY: tables-elixir-fuzz-negative-control
-tables-elixir-fuzz-negative-control: build/conformance/manifest.txt
+tables-elixir-fuzz-negative-control: build/conformance-elixir-manifest/manifest.txt
 	$(call ELIXIR_SABOTAGED_BUILD,$(CONFORMANCE_NEGATIVE_ELIXIR_FUZZ),internal/codegen/elixirtable/block.go,ELIXIR_FUZZ_SED)
 	@if SEED=$(SEED) ELIXIR_TABLES_EBIN=$(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_FUZZ)/ebin \
 			BEAM_PATH="$(BEAM_PATH)" ./test/conformance/elixir/driver \
-			build/conformance/manifest.txt fuzz $(ELIXIR_FUZZ_N) > /dev/null 2>&1; then \
+			build/conformance-elixir-manifest/manifest.txt fuzz $(ELIXIR_FUZZ_N) > /dev/null 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a reader with no extent bound left the fuzz oracle green"; \
 		exit 1; \
 	else \
@@ -547,20 +544,20 @@ tables-elixir-retain-negative-control: build/conformance-harness
 # as the caller's stated `lead`, so a stated fact nothing checks would be a
 # comment rather than a check.
 .PHONY: tables-elixir-block-lead
-tables-elixir-block-lead: build/conformance/manifest.txt
+tables-elixir-block-lead: build/conformance-elixir-manifest/manifest.txt
 	BEAM_PATH="$(BEAM_PATH)" ./test/conformance/elixir/driver \
-		build/conformance/manifest.txt block-lead
+		build/conformance-elixir-manifest/manifest.txt block-lead
 
 # and its control, on the EMITTER for the fuzz control's reason
 CONFORMANCE_NEGATIVE_ELIXIR_LEAD := build/elixir-lead-negative
 ELIXIR_LEAD_SED := -e 's|rem(lead, B.align()) != 0 -> {:error, :unaligned_base}|lead < 0 -> {:error, :unaligned_base}|'
 
 .PHONY: tables-elixir-block-lead-negative-control
-tables-elixir-block-lead-negative-control: build/conformance/manifest.txt
+tables-elixir-block-lead-negative-control: build/conformance-elixir-manifest/manifest.txt
 	$(call ELIXIR_SABOTAGED_BUILD,$(CONFORMANCE_NEGATIVE_ELIXIR_LEAD),internal/codegen/elixirtable/block.go,ELIXIR_LEAD_SED)
 	@if ELIXIR_TABLES_EBIN=$(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_LEAD)/ebin \
 			BEAM_PATH="$(BEAM_PATH)" ./test/conformance/elixir/driver \
-			build/conformance/manifest.txt block-lead > /dev/null 2>&1; then \
+			build/conformance-elixir-manifest/manifest.txt block-lead > /dev/null 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a reader that does not check the base left the gate green"; \
 		exit 1; \
 	else \
@@ -746,15 +743,15 @@ tables-elixir-runtime-pin-negative-control:
 ELIXIR_ALLOC_BUDGET := test/conformance/elixir/alloc-budget.txt
 
 .PHONY: tables-elixir-alloc-audit
-tables-elixir-alloc-audit: build/conformance/manifest.txt
+tables-elixir-alloc-audit: build/conformance-elixir-manifest/manifest.txt
 	$(MIX) format --check-formatted test/elixir-alloc/main.exs
 	ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-tables-ebin $(ELIXIR) test/elixir-alloc/main.exs \
-		build/conformance/manifest.txt $(ELIXIR_PIN_OTP) $(ELIXIR_PIN_ELIXIR) audit $(ELIXIR_ALLOC_BUDGET)
+		build/conformance-elixir-manifest/manifest.txt $(ELIXIR_PIN_OTP) $(ELIXIR_PIN_ELIXIR) audit $(ELIXIR_ALLOC_BUDGET)
 
 .PHONY: tables-elixir-alloc-pin
-tables-elixir-alloc-pin: build/conformance/manifest.txt
+tables-elixir-alloc-pin: build/conformance-elixir-manifest/manifest.txt
 	ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-tables-ebin $(ELIXIR) test/elixir-alloc/main.exs \
-		build/conformance/manifest.txt $(ELIXIR_PIN_OTP) $(ELIXIR_PIN_ELIXIR) pin $(ELIXIR_ALLOC_BUDGET)
+		build/conformance-elixir-manifest/manifest.txt $(ELIXIR_PIN_OTP) $(ELIXIR_PIN_ELIXIR) pin $(ELIXIR_ALLOC_BUDGET)
 
 # THE AUDIT'S NEGATIVE CONTROL, and it is what makes the audit an instrument
 # rather than a number: the EMITTER is sabotaged (variableform.go, through
@@ -768,10 +765,10 @@ ELIXIR_ALLOC_SED := -e 's|^  def load(table, data) when is_binary(data), do: var
 	-e 's|runtime = withFixedClassWire(u, ns, runtime)|runtime = strings.ReplaceAll(withFixedClassWire(u, ns, runtime), "  defp fixed_class_report(report) do", "  defp fixed_class_report(report) do _ = Enum.map(1..16, fn _ -> :binary.copy(<<0>>, 65) end) ++ List.duplicate(0, 1000);")|'
 
 .PHONY: tables-elixir-alloc-negative-control
-tables-elixir-alloc-negative-control: build/conformance/manifest.txt
+tables-elixir-alloc-negative-control: build/conformance-elixir-manifest/manifest.txt
 	$(call ELIXIR_SABOTAGED_BUILD,$(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC),internal/codegen/elixirtable/variableform.go,ELIXIR_ALLOC_SED)
 	@if ELIXIR_TABLES_EBIN=$(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC)/ebin $(ELIXIR) test/elixir-alloc/main.exs \
-			build/conformance/manifest.txt $(ELIXIR_PIN_OTP) $(ELIXIR_PIN_ELIXIR) audit $(ELIXIR_ALLOC_BUDGET) \
+			build/conformance-elixir-manifest/manifest.txt $(ELIXIR_PIN_OTP) $(ELIXIR_PIN_ELIXIR) audit $(ELIXIR_ALLOC_BUDGET) \
 			> $(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the audit passed with sixteen refc binaries and a thousand-cell list added to every generated load"; \
 		cat $(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC)/log; exit 1; fi
@@ -792,7 +789,7 @@ tables-elixir-alloc-negative-control: build/conformance/manifest.txt
 tables-elixir-alloc-runtime-negative-control:
 	@mkdir -p build/elixir-alloc-runtime
 	@if ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-tables-ebin $(ELIXIR) test/elixir-alloc/main.exs \
-			build/conformance/manifest.txt 0.0.0 0.0.0 audit $(ELIXIR_ALLOC_BUDGET) \
+			build/conformance-elixir-manifest/manifest.txt 0.0.0 0.0.0 audit $(ELIXIR_ALLOC_BUDGET) \
 			> build/elixir-alloc-runtime/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the audit certified on a pin nothing can be running"; \
 		cat build/elixir-alloc-runtime/log; exit 1; fi
@@ -823,11 +820,11 @@ ELIXIR_SOAK_SHORT := 400
 ELIXIR_SOAK_LOG := build/elixir-soak/log
 
 .PHONY: tables-elixir-soak tables-elixir-soak-short tables-elixir-soak-negative-control
-tables-elixir-soak: build/conformance/manifest.txt
+tables-elixir-soak: build/conformance-elixir-manifest/manifest.txt
 	$(MIX) format --check-formatted test/elixir-soak/main.exs
 	@mkdir -p $(dir $(ELIXIR_SOAK_LOG))
 	@ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-tables-ebin $(ELIXIR) test/elixir-soak/main.exs \
-		build/conformance/manifest.txt $(ELIXIR_PIN_OTP) $(ELIXIR_PIN_ELIXIR) \
+		build/conformance-elixir-manifest/manifest.txt $(ELIXIR_PIN_OTP) $(ELIXIR_PIN_ELIXIR) \
 		$(TABLES_ELIXIR_SOAK_ITERATIONS) $(ELIXIR_ALLOC_BUDGET) > $(ELIXIR_SOAK_LOG) 2>&1; \
 		status=$$?; cat $(ELIXIR_SOAK_LOG); exit $$status
 	@grep -q "soak: worker ran $(TABLES_ELIXIR_SOAK_ITERATIONS) passes, driver took $$(( $(TABLES_ELIXIR_SOAK_ITERATIONS) / 200 )) samples" $(ELIXIR_SOAK_LOG) || \
@@ -847,11 +844,11 @@ tables-elixir-soak-short:
 CONFORMANCE_NEGATIVE_ELIXIR_SOAK := build/elixir-soak-negative
 ELIXIR_SOAK_CONTROL_CASES := root_full,archive,keyed_config,profile_elide
 
-tables-elixir-soak-negative-control: build/conformance/manifest.txt
+tables-elixir-soak-negative-control: build/conformance-elixir-manifest/manifest.txt
 	$(call ELIXIR_SABOTAGED_BUILD,$(CONFORMANCE_NEGATIVE_ELIXIR_SOAK),internal/codegen/elixirtable/variableform.go,ELIXIR_ALLOC_SED)
 	@if ELIXIR_SOAK_CASES=$(ELIXIR_SOAK_CONTROL_CASES) \
 			ELIXIR_TABLES_EBIN=$(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/ebin $(ELIXIR) test/elixir-soak/main.exs \
-			build/conformance/manifest.txt $(ELIXIR_PIN_OTP) $(ELIXIR_PIN_ELIXIR) 400 $(ELIXIR_ALLOC_BUDGET) \
+			build/conformance-elixir-manifest/manifest.txt $(ELIXIR_PIN_OTP) $(ELIXIR_PIN_ELIXIR) 400 $(ELIXIR_ALLOC_BUDGET) \
 			> $(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a matched allocate-and-free per generated load left the soak green"; \
 		cat $(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/log; exit 1; fi
@@ -1090,7 +1087,7 @@ test-elixir:
 # tables-elixir-variable-arms below, which carries every construct it named. The conformance run answers the wire, json-read,
 # json-write and report surfaces for the variable-class instances.
 .PHONY: tables-elixir-variable-class
-tables-elixir-variable-class: build/conformance/manifest.txt
+tables-elixir-variable-class: build/conformance-elixir-manifest/manifest.txt
 	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestVariableClassBeyondCardConstructsElixir|TestListdemoNamesUncarriedRoots|TestOptionalVariableClosureElixir|TestScalarListUnderATableHeaderElixir|TestCountPastTheBoundRefusesElixir|TestNestedBodyEndingEarlyIsDamageElixir|TestReservedNodeIdInANestedBodyIsDamageElixir'
 	@rm -rf build/conformance-elixir-variable-class
 	./build/conformance-harness run --only elixir --work build/conformance-elixir-variable-class
@@ -1111,7 +1108,7 @@ test-elixir: tables-elixir-variable-class
 # (§4.2) and every table, variant, arm and type-field rename reading an older
 # writer's bytes as the engine reads them (§5).
 .PHONY: tables-elixir-variable-fixed-class
-tables-elixir-variable-fixed-class: build/conformance/manifest.txt
+tables-elixir-variable-fixed-class: build/conformance-elixir-manifest/manifest.txt
 	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestFixedClassOnTableWireElixir|TestDefaultsAndTableRenameElixir'
 	@rm -rf build/conformance-elixir-variable-fixed-class
 	./build/conformance-harness run --only elixir --work build/conformance-elixir-variable-fixed-class
@@ -1224,7 +1221,7 @@ test-elixir: tables-elixir-finite-float tables-elixir-finite-float-negative-cont
 # json-read and json-write for the mapdemo, messagedemo and scalars
 # instances.
 .PHONY: tables-elixir-variable-arms
-tables-elixir-variable-arms: build/conformance/manifest.txt
+tables-elixir-variable-arms: build/conformance-elixir-manifest/manifest.txt
 	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run TestMapsAndUnionArmsOnTheTableWireElixir
 	@rm -rf build/conformance-elixir-variable-arms
 	./build/conformance-harness run --only elixir --work build/conformance-elixir-variable-arms
@@ -1238,7 +1235,7 @@ test-elixir: tables-elixir-variable-arms
 # failure. The conformance run answers cook-write for the instances this leg
 # carries and writes <case>.absent for the rest.
 .PHONY: tables-elixir-block-build
-tables-elixir-block-build: build/conformance/manifest.txt
+tables-elixir-block-build: build/conformance-elixir-manifest/manifest.txt
 	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run TestBlockBuildAndCookWriteElixir
 	@rm -rf build/conformance-elixir-block-build
 	./build/conformance-harness run --only elixir --work build/conformance-elixir-block-build

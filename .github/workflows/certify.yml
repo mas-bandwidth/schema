@@ -68,39 +68,16 @@ env:
   SERIALIZE_JS_TAG: v2.1.2
 
 jobs:
-  # THE FULL CHAIN. `make test` builds the corpus in every language and
-  # compares their wire against the C++-pinned goldens, then runs every
-  # negative control, every bounded fuzz battery, every block and cook gate and
-  # every port's own instruments. That cross-language bit identity is the
-  # property this project exists to provide, and this is where it gets proven
-  # on hardware we do not own.
-  #
-  # BOTH OSes, always. The macOS pool is 5 runners wide and a certification
-  # run's fan-out saturates it — which is precisely the argument for keeping it
-  # off the pull-request path (a PR macOS job pushed during those minutes
-  # queued 1:34 before starting, measured, run 32830268855) and no argument at
-  # all against running it here.
-  #
-  # NOTE, 2026-09-18: EVERY NIGHTLY SINCE 2026-09-07 READS `cancelled`, AND
-  # NOBODY CANCELLED THEM. `make test` no longer fits the hour on a hosted
-  # runner, and GitHub records a job killed by `timeout-minutes` as CANCELLED
-  # rather than failed — one timed-out leg then colours the whole run, which is
-  # why the verdict looks like an interruption and not the timeout it is. The
-  # concurrency group above is not involved: it carries
-  # cancel-in-progress: false. MEASURED — the last green certification, run
-  # 34117629952 on 2026-09-07, spent 51:55 in this job on ubuntu, already inside
-  # the cap by eight minutes; run 35329874611 on 2026-09-18 was cut at 60:00
-  # with `make test` still running, and so were four inline-gate legs and
-  # release-gates (tables-go-release). The suite grew into the cap, which is the
-  # same growth issue #1025 measures in `go test ./...` (0:37 -> 5:34..9:10).
-  #
-  # NOW, 2026-11-16: the cap is gone (the nightly rule in the header). The run
-  # finishes and reports every test; the growth that cap used to show is still
-  # read, after the fact: each go test package past the -timeout its command
-  # names is OVER BUDGET in tools/gotestreport, and the verdict job below reads
-  # this job red if it fails or is cut by GitHub's 360-minute backstop.
+  # THE FULL CHAIN, SHARDED IN PARALLEL ACROSS THE LINUX AND MACOS FLEET.
+  # Every prerequisite of `make test`, its three C++ core slices, its Go suite,
+  # the empty-directory `generated/` verification, the table front-end and
+  # differential/property fuzz batteries, and every registered language leg
+  # (`make -s registry`) run concurrently on their own fleet runners on both
+  # Linux X64 and Apple Silicon macOS ARM64 (`goose` and `luau` pins are
+  # Linux-only archives and run on Linux). internal/ci/certify_parallel_test.go
+  # holds the union of these shards to 100% of `make test`.
   test:
-    name: test (${{ matrix.os }})
+    name: test (${{ matrix.os }}, ${{ matrix.shard }})
     runs-on: ${{ matrix.runner }}
     defaults:
       run:
@@ -109,35 +86,86 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: fleet, runner: [self-hosted, Linux, X64, fleet, schema] }
-          - { os: macos-latest, runner: macos-latest }
+          - { os: fleet, shard: core-prereqs, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: core-tables-1, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: core-tables-2, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: core-tables-3, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: core-go, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: generated, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: fuzz-tables-go, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: fuzz-tables-diff, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: fuzz-tables-props, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: c, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: cs, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: dart, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: elixir, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: go, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: goose, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: java, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: js, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: lobster, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: lua, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: luau, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: moo, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: python, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: ruby, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: rust, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: squirrel, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: unity, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: macos-fleet, shard: core-prereqs, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: core-tables-1, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: core-tables-2, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: core-tables-3, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: core-go, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: generated, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: fuzz-tables-go, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: fuzz-tables-diff, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: fuzz-tables-props, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: c, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: cs, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: dart, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: elixir, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: go, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: java, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: js, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: lobster, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: lua, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: moo, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: python, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: ruby, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: rust, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: squirrel, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: unity, runner: [self-hosted, macOS, ARM64, fleet, schema] }
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # Go first: every later step runs under tools/pgroup (go run).
+      # Go first on hosted runners: every later step runs under tools/pgroup.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
           cache: false
 
-      # every go test this job runs records its package results here (the
-      # report at the end of the job). A step sets it because a job's env may
-      # not name the runner context; RUNNER_TEMP is the job's own.
       - name: where this job records its go test package results
         run: echo "PGROUP_GO_TEST_SUMMARY=$RUNNER_TEMP/go-test-summary" >> "$GITHUB_ENV"
 
-      - name: isolate Mix and Hex in the job temp directory
+      - name: isolate per-job SDK and build caches
         run: |
           echo "MIX_HOME=$RUNNER_TEMP/.mix" >> "$GITHUB_ENV"
           echo "HEX_HOME=$RUNNER_TEMP/.hex" >> "$GITHUB_ENV"
+          echo "DOTNET_CLI_HOME=$RUNNER_TEMP/.dotnet-home" >> "$GITHUB_ENV"
+          echo "DOTNET_CLI_TELEMETRY_OPTOUT=1" >> "$GITHUB_ENV"
+          echo "DOTNET_NOLOGO=1" >> "$GITHUB_ENV"
+          echo "DOTNET_CLI_DO_NOT_USE_MSBUILD_SERVER=1" >> "$GITHUB_ENV"
+          echo "DOTNET_CLI_USE_MSBUILD_SERVER=0" >> "$GITHUB_ENV"
+          echo "MSBUILDDISABLENODEREUSE=1" >> "$GITHUB_ENV"
+          echo "UseSharedCompilation=false" >> "$GITHUB_ENV"
+          if [ -d "$HOME/sdk" ]; then
+            echo "NOVA_SDK=$HOME/sdk" >> "$GITHUB_ENV"
+          fi
 
-      # Siblings cloned exactly where README.md tells a newcomer to put them —
-      # CI exercises the documented path rather than a special one. The
-      # Makefile's SERIALIZE* defaults already point here, and the generated
-      # go.mod / Cargo.toml and the test/js* module-relative imports embed
-      # relative paths that only resolve under this layout.
       - name: Check out the serialize runtimes (pinned releases)
+        if: matrix.shard != 'generated'
         run: |
           cd ..
           rm -rf serialize serialize.c serialize.go serialize.rs serialize.cs serialize.js
@@ -148,105 +176,74 @@ jobs:
           git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
           git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js
 
-      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head
+        if: matrix.shard == 'rust' && runner.environment == 'github-hosted'
         with:
           components: clippy, rustfmt
 
-      # the .NET SDK, from the pin every C# project's TargetFramework
-      # names — .github/dotnet-version, read by ci-full.yml too (issue #470).
       - name: read the .NET SDK pin
+        if: matrix.shard == 'cs' || matrix.shard == 'unity'
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
-        if: runner.environment == 'github-hosted'
+        if: (matrix.shard == 'cs' || matrix.shard == 'unity') && runner.environment == 'github-hosted'
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
 
-      # One node version, the pin make/js.mk names (the allocation gate holds
-      # its floor on this major and no other): the runtime's own CI carries
-      # the version matrix, and serialize.js's engines floor of >= 20 is
-      # satisfied by it; this repo proves wire identity, which does not vary
-      # by node version.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: matrix.shard == 'js' && runner.environment == 'github-hosted'
         with:
           node-version: '26'
-      # The pinned eslint the JS leg's tables-js-clean gate requires (make/js.mk).
-      - uses: ./.github/actions/eslint
 
-      # The Dart SDK, pinned to the same version the Makefile documents for
-      # the repo-local dist/ (generated Dart is self-contained — the SDK is
-      # the only Dart dependency, so there is no serialize.dart clone above).
+      - uses: ./.github/actions/eslint
+        if: matrix.shard == 'js'
+
       - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        if: matrix.shard == 'dart' && runner.environment == 'github-hosted'
         with:
           sdk: '3.13.2'
 
-      # The JDK, same major as the Makefile's dist/ pin (generated Java is
-      # self-contained — the JDK is the only Java dependency, so there is no
-      # serialize.java clone above).
       - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        if: matrix.shard == 'java' && runner.environment == 'github-hosted'
         with:
           distribution: 'temurin'
           java-version: '21'
 
-      # The pinned formatter `make test-java` and the java negative controls require (make/java.mk).
       - uses: ./.github/actions/google-java-format
-      # The Ruby pins `make test-ruby` requires (make/ruby-toolchain.mk:
-      # two CRuby interpreters, RuboCop, Steep and RBS), cached under the pins.
+        if: matrix.shard == 'java'
+
       - uses: ./.github/actions/ruby
-      # The moo pin `make test-moo` requires (make/moo.mk), built once per
-      # runner image and cached under the pin.
+        if: matrix.shard == 'ruby'
+
       - uses: ./.github/actions/moo
-      # The Python pins `make test-python` requires (make/python-toolchain.mk:
-      # two CPython interpreters and mypy), built once per runner image and
-      # cached under the pins.
+        if: matrix.shard == 'moo'
+
       - uses: ./.github/actions/python
-      # The BEAM toolchain, same versions as the Makefile's dist/ pins
-      # (generated Elixir is self-contained — Erlang/OTP + Elixir are the
-      # only dependencies, so there is no serialize.elixir clone above).
+        if: matrix.shard == 'python'
+
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
-        if: runner.environment == 'github-hosted'
+        if: matrix.shard == 'elixir' && runner.environment == 'github-hosted'
         with:
           otp-version: '29.0.5'
           elixir-version: '1.20.4'
 
-      # THE LOBSTER PIN: make test runs test-lobster and the toolchain gate
-      # probes it. make/lobster.mk's dist-lobster takes the host's release
-      # archive (linux, or the macOS arm/x64 one), refuses any sha256 but the
-      # pin's, and unpacks it into dist/lobster-<version>/. The linux release
-      # links libOpenGL and libGLX, which the hosted ubuntu image does not carry.
-      - name: install the Lobster pin
+      - name: install the Lobster GL libraries (hosted Linux)
+        if: matrix.shard == 'lobster' && runner.environment == 'github-hosted' && runner.os == 'Linux'
         run: |
-          set -euo pipefail
-          if [ "$RUNNER_ENVIRONMENT" = github-hosted ] && [ "$RUNNER_OS" = Linux ]; then
-            sudo apt-get update
-            sudo apt-get install -y --no-install-recommends libopengl0 libglx0
-          fi
-          make dist-lobster
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libopengl0 libglx0
 
-      # vet rides here on both OSes: an emitter codebase built almost entirely
-      # out of format strings is exactly where printf-verb mismatches live
-      # (issue #31), and macOS is the OS the pull-request gate does not carry.
-      - name: go vet
-        run: go vet ./...
+      - uses: ./.github/actions/dist-pins
+        if: matrix.shard == 'lobster' || matrix.shard == 'lua' || matrix.shard == 'goose' || matrix.shard == 'luau'
+        with:
+          pins: ${{ matrix.shard }}
 
-      # No SERIALIZE* overrides: the Makefile defaults already point at the
-      # sibling layout cloned above. RUSTUP_BIN defaults to a homebrew keg on
-      # the author's machine; on CI cargo is on PATH, so point it somewhere
-      # harmless. DART, JAVA/JAVAC, ELIXIR/MIX and NODE likewise default to the
-      # repo-local dist/ toolchains; on CI setup-dart, setup-java, setup-node and
-      # setup-beam put the pinned versions on PATH.
-      # The LUA leg's pinned PUC-Rio interpreter (make/lua.mk): `make test`'s
-      # toolchain gate refuses test-lua by name without it, and dist-lua builds
-      # it from source at the sha256 make/lua.mk names into the LUA default.
-      - name: install the Lua pin
-        run: make dist-lua
+      - name: install the Squirrel pin
+        if: matrix.shard == 'squirrel'
+        run: make dist-squirrel
 
-      # THE C AND C++ FORMAT GATES' formatter, pinned, as ci-fast.yml installs
-      # it: clang-format from PyPI at the version make/c.mk's CLANG_FORMAT_PIN
-      # names, in a venv under the runner's temp, exported as CLANG_FORMAT.
-      # `make test` runs tables-c-clean and tables-cpp-format, which refuse any
-      # other major by name; the hosted ubuntu image's own clang-format is 18.
       - name: the pinned clang-format (C and C++ format gates)
+        if: matrix.shard == 'core-prereqs' || matrix.shard == 'c'
         run: |
           set -euo pipefail
           pin="$(sed -n 's/^CLANG_FORMAT_PIN *?= *//p' make/c.mk)"
@@ -260,79 +257,141 @@ jobs:
           echo "CLANG_FORMAT=$RUNNER_TEMP/clang-format/bin/clang-format" >> "$GITHUB_ENV"
           "$RUNNER_TEMP/clang-format/bin/clang-format" --version
 
-      # THE GOOSE, LUAU AND SQUIRREL PINS: `make test`'s toolchain gate refuses
-      # each of these legs by name without its pin (make/goose.mk, make/luau.mk,
-      # make/squirrel.mk), and each leg's own dist-<lang> target installs it at
-      # the sha256 it names, as ci-full.yml's pins job does. dist-squirrel builds
-      # sq from source, so it runs on both OSes. The goose pin is the
-      # goose-<version>-linux-x64 release and the luau pin is luau-ubuntu.zip:
-      # neither has a macOS build, so on macOS those two legs are not installed
-      # and are named in SCHEMA_SKIP_LEGS on the make test step below.
-      - name: install the Goose pin
-        if: runner.os == 'Linux'
-        run: make dist-goose
+      - name: core-prereqs — every prerequisite of make test
+        if: matrix.shard == 'core-prereqs'
+        run: |
+          set -euo pipefail
+          JOBS="$(getconf _NPROCESSORS_ONLN)"
+          MAKE_VARS=(
+            "RUSTUP_BIN=$(dirname "$(command -v cargo)")"
+            "DART=dart"
+            "JAVA=java"
+            "JAVAC=javac"
+            "ELIXIR=elixir"
+            "MIX=mix"
+            "NODE=node"
+          )
+          PREREQS=$({ make -qp "${MAKE_VARS[@]}" 2>/dev/null || true; } | awk '/^test:/{for(i=2;i<=NF;i++) if($i != "toolchain") print $i; exit}')
+          if [ -z "$PREREQS" ]; then
+            echo "::error::make -qp printed no prerequisites for test:"
+            exit 1
+          fi
+          BUILD_TARGETS=()
+          GATE_TARGETS=()
+          for p in $PREREQS; do
+            case "$p" in
+              build/*) BUILD_TARGETS+=("$p") ;;
+              *)       GATE_TARGETS+=("$p") ;;
+            esac
+          done
+          make -j"$JOBS" bin/schema build/tables-generated/.stamp build/fixedform-corpus/.stamp "${BUILD_TARGETS[@]}" "${MAKE_VARS[@]}"
+          for g in "${GATE_TARGETS[@]}"; do
+            echo "=== make $g ==="
+            make "$g" "${MAKE_VARS[@]}"
+          done
 
-      - name: install the Luau pin
-        if: runner.os == 'Linux'
-        run: make dist-luau
+      - name: core-tables-1 — core packet, distinctness, wire-fuzz, message and map gates
+        if: matrix.shard == 'core-tables-1'
+        run: |
+          set -euo pipefail
+          JOBS="$(getconf _NPROCESSORS_ONLN)"
+          MAKE_VARS=(
+            "RUSTUP_BIN=$(dirname "$(command -v cargo)")"
+            "DART=dart"
+            "JAVA=java"
+            "JAVAC=javac"
+            "ELIXIR=elixir"
+            "MIX=mix"
+            "NODE=node"
+          )
+          make -j"$JOBS" bin/schema build/tables-generated/.stamp build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_tables_asan build/conformance-harness "${MAKE_VARS[@]}"
+          make test-core-tables-1 "${MAKE_VARS[@]}"
 
-      - name: install the Squirrel pin
-        run: make dist-squirrel
+      - name: core-tables-2 — core list, arm, retain, json, view and C++ conformance gates
+        if: matrix.shard == 'core-tables-2'
+        run: |
+          set -euo pipefail
+          JOBS="$(getconf _NPROCESSORS_ONLN)"
+          MAKE_VARS=(
+            "RUSTUP_BIN=$(dirname "$(command -v cargo)")"
+            "DART=dart"
+            "JAVA=java"
+            "JAVAC=javac"
+            "ELIXIR=elixir"
+            "MIX=mix"
+            "NODE=node"
+          )
+          ALL_LEGS=$(make -s registry "${MAKE_VARS[@]}" | awk '/^test:/{sep=""; for(i=2;i<=NF;i++){sub(/^test-/,"",$i); printf "%s%s",sep,$i; sep=","}}')
+          make -j"$JOBS" bin/schema build/tables-generated/.stamp build/conformance-harness build/conformance-cpp build/schema_test_cook "${MAKE_VARS[@]}"
+          make test-core-tables-2 SCHEMA_SKIP_LEGS="$ALL_LEGS" "${MAKE_VARS[@]}"
 
-      # SCHEMA_SKIP_LEGS on macOS only: goose and luau, whose pins are
-      # linux-x64 builds with no macOS archive (the block above). Every other
-      # leg's toolchain exists on both OSes and is never skipped.
-      - name: make test
-        env:
-          SCHEMA_SKIP_LEGS: ${{ runner.os == 'macOS' && 'goose,luau' || '' }}
-        run: make test RUSTUP_BIN="$(dirname "$(command -v cargo)")" DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node
+      - name: core-tables-3 — core block, cook, runtime-home, soak, pack and hostile gates
+        if: matrix.shard == 'core-tables-3'
+        run: |
+          set -euo pipefail
+          JOBS="$(getconf _NPROCESSORS_ONLN)"
+          MAKE_VARS=(
+            "RUSTUP_BIN=$(dirname "$(command -v cargo)")"
+            "DART=dart"
+            "JAVA=java"
+            "JAVAC=javac"
+            "ELIXIR=elixir"
+            "MIX=mix"
+            "NODE=node"
+          )
+          make -j"$JOBS" bin/schema build/tables-generated/.stamp build/schema_test_block build/schema_test_block_asan build/schema_test_block_fuzz build/schema_test_block_fuzz_asan build/pack-text/.stamp build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp build/schema_test_pack build/schema_test_pack_asan build/tables-pack.bin build/tables-pack-root.bin build/schema_test_random build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table "${MAKE_VARS[@]}"
+          make test-core-tables-3 "${MAKE_VARS[@]}"
 
-      # The committed generated/ tree is what this repo treats as ground
-      # truth — findings are receipted against its line numbers. `make test`
-      # above regenerated every tracked file IN PLACE, and in place a rule only
-      # writes: a file the emitter STOPPED writing stays on disk byte-identical
-      # to the index, and a rule that never ran leaves its whole directory
-      # standing, and a diff calls both green. So the verdict here is the same
-      # script the `generated` job in ci-full.yml and `make generated-current`
-      # run — test/generated-tree/verify, which moves the tree aside and emits
-      # into NOTHING (#898's gate G3), then compares the full listing and the
-      # bytes both ways. It checks this chain's in-place output against the
-      # committed tree on its way past.
+      - name: core-go — go vet, go test ./... and fuzz seeds
+        if: matrix.shard == 'core-go'
+        run: |
+          set -euo pipefail
+          go vet ./...
+          make deps
+          go test ./...
+          go test ./internal/fuzz/
+
       - name: the committed generated/ tree is what this compiler emits, from an empty directory
+        if: matrix.shard == 'generated'
         run: |
           test/generated-tree/verify || {
             echo "::error::the committed generated/ tree is not what the compiler at this sha emits. The lists above name every file: regenerate with 'make test' (or ./bin/schema generate --lang <lang> --out generated/<dir> <corpus>) and commit them, 'git rm' the ones it no longer emits, or name tracked build wiring in test/generated-tree/not-emitted."
             exit 1
           }
 
-      # Seeded corpus only — a short, bounded run that re-executes every
-      # crasher ever found and checks the compiler still refuses bad input
-      # cleanly. The long fuzzing campaigns run by hand, not on every push.
-      - name: fuzz seeds
-        run: go test ./internal/fuzz/
-
-      # The nightly long run of the table-front-end fuzz target. Bounded to
-      # ten minutes of fuzzing; it never runs in ci-fast or ci-full.
       - name: fuzz tables front end
+        if: matrix.shard == 'fuzz-tables-go'
         run: make fuzz-tables-go FUZZTIME=10m
 
-      # The random-schema table differential: seeds 0..200 of generated VALID
-      # table units through the Go leg under -race and the compiler's engine,
-      # with every owed divergence class printed with its open card id.
       - name: random-schema table differential (200 seeds)
+        if: matrix.shard == 'fuzz-tables-diff'
         run: make fuzz-tables-diff
 
-      # The property-based random-schema tests: rapid drives the same
-      # generator and shrinks a failure to a small schema. Bounded checks; the
-      # default `go test ./internal/fuzz/` skips them.
       - name: random-schema property tests (shrinking)
+        if: matrix.shard == 'fuzz-tables-props'
         run: make fuzz-tables-props
 
-      # every go test package this job ran, its verdict and wall time, held to
-      # the -timeout its command named, after it reported (the nightly rule in
-      # the header): a package past it is OVER BUDGET and this step is red.
-      # Its text is go test's own, byte for byte (summary mode), so no recipe
-      # that greps it sees anything new.
+      - name: leg — conformance and test-${{ matrix.shard }}
+        if: '!startsWith(matrix.shard, ''core-'') && matrix.shard != ''generated'' && !startsWith(matrix.shard, ''fuzz-tables-'')'
+        run: |
+          set -euo pipefail
+          JOBS="$(getconf _NPROCESSORS_ONLN)"
+          MAKE_VARS=(
+            "RUSTUP_BIN=$(dirname "$(command -v cargo)")"
+            "DART=dart"
+            "JAVA=java"
+            "JAVAC=javac"
+            "ELIXIR=elixir"
+            "MIX=mix"
+            "NODE=node"
+          )
+          OTHER_LEGS=$(make -s registry "${MAKE_VARS[@]}" | awk -v keep="${{ matrix.shard }}" '/^test:/{sep=""; for(i=2;i<=NF;i++){sub(/^test-/,"",$i); if($i!=keep){printf "%s%s",sep,$i; sep=","}}}')
+          make -j"$JOBS" bin/schema build/tables-generated/.stamp build/conformance-harness build/conformance-cpp build/schema_test_cook "${MAKE_VARS[@]}"
+          make toolchain SCHEMA_SKIP_LEGS="$OTHER_LEGS" "${MAKE_VARS[@]}"
+          make conformance SCHEMA_SKIP_LEGS="$OTHER_LEGS" "${MAKE_VARS[@]}"
+          make "test-${{ matrix.shard }}" "${MAKE_VARS[@]}"
+          git diff --exit-code -- generated/
+
       - name: report each go test package against its named budget
         if: always()
         run: go run ./tools/gotestreport -budget 10m "$PGROUP_GO_TEST_SUMMARY"
@@ -536,39 +595,14 @@ jobs:
         run: go run ./tools/gotestreport -budget 10m "$PGROUP_GO_TEST_SUMMARY"
 
   # The per-port inline-budget gate (issue #25; BENCH-STANDARD.md §4.3),
-  # fanned out one leg per job so the legs run concurrently instead of
-  # serially (they were ~9 minutes end to end in one job; the longest single
-  # leg is ~4). These are certification instruments by definition — the gate
-  # fires on compiler-version changes by design (issue #25) — which is why
-  # this file, and not the pull-request gate, is their home.
-  #
-  # Every runtime's throughput depends on the serialize chain inlining end
-  # to end, and until this gate nothing warned when it stopped. The
-  # adversarial selftest runs FIRST and in EVERY leg job: the verdict
-  # machinery must prove it CAN fail (out-of-line -> partial, cold never
-  # counted hot, the 4dc9b62 namespace-join false-full caught) before that
-  # leg's green is trusted. Each leg builds its own artifacts (one untimed
-  # bench round), re-derives the §4.2 verdict from the current tree, and
-  # fails the job if any hot-path partial:N exceeds bench/inline-budget.txt.
-  # The go leg's remark scan runs under `go build -a` and REFUSES if it
-  # prints nothing — without -a the build cache reads as a false clean bill
-  # of health (§4.1).
-  #
-  # The go leg gates on BOTH OSes; the c/cpp/rust verdict passes are
-  # otool/arm64-shaped (§4.1), so on linux inline-verdict.sh refuses
-  # honestly rather than faking a full — those legs, and the JitDisasm-shaped
-  # cs leg, gate on the macOS runner only. There is no js leg on purpose:
-  # every verdict pass is ahead-of-time disassembly, and a JIT has no
-  # build-time artifact to gate — faking one would be a green light that
-  # proves nothing.
-  #
-  # Each leg runs the full `make test` precondition, the adversarial selftest
-  # and the inline leg. In run 34080317818 the Ubuntu Go job was cut by its old
-  # 40-minute cap during `make test`, before reaching either inline check; no
-  # job carries a cap now (the nightly rule in the header), so every leg
-  # reaches its inline check, and the verdict job reads a leg cut by GitHub's
-  # backstop as red.
+  # fanned out one leg per job across the Linux X64 and macOS ARM64 fleet.
+  # Each leg runs ONLY its own bench preconditions (the committed generated/bench
+  # trees + pinned serialize* sibling checkouts), the adversarial selftest, and
+  # `bench/tools/inline-gate.sh leg <leg>`, plus Gate 2's block smoke on the
+  # Linux Go row — finishing in ~1 minute per row rather than repeating the
+  # full 18-language `make test` suite inside every inline-gate leg.
   inline-gate:
+    name: inline-gate (${{ matrix.os }}, ${{ matrix.leg }})
     runs-on: ${{ matrix.runner }}
     defaults:
       run:
@@ -577,32 +611,34 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: fleet,         leg: go,   runner: [self-hosted, Linux, X64, fleet, schema] }
-          - { os: macos-latest,  leg: go,   runner: macos-latest }
-          - { os: macos-latest,  leg: cpp,  runner: macos-latest }
-          - { os: macos-latest,  leg: c,    runner: macos-latest }
-          - { os: macos-latest,  leg: rust, runner: macos-latest }
-          - { os: macos-latest,  leg: cs,   runner: macos-latest }
+          - { os: fleet,       leg: go,   runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: macos-fleet, leg: go,   runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, leg: cpp,  runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, leg: c,    runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, leg: rust, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, leg: cs,   runner: [self-hosted, macOS, ARM64, fleet, schema] }
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # Go first: every later step runs under tools/pgroup (go run).
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
           cache: false
 
-      # every go test this job runs records its package results here (the
-      # report at the end of the job). A step sets it because a job's env may
-      # not name the runner context; RUNNER_TEMP is the job's own.
       - name: where this job records its go test package results
         run: echo "PGROUP_GO_TEST_SUMMARY=$RUNNER_TEMP/go-test-summary" >> "$GITHUB_ENV"
 
-      - name: isolate Mix and Hex in the job temp directory
+      - name: isolate per-job .NET build state
+        if: matrix.leg == 'cs' || (matrix.os == 'fleet' && matrix.leg == 'go')
         run: |
-          echo "MIX_HOME=$RUNNER_TEMP/.mix" >> "$GITHUB_ENV"
-          echo "HEX_HOME=$RUNNER_TEMP/.hex" >> "$GITHUB_ENV"
+          echo "DOTNET_CLI_HOME=$RUNNER_TEMP/.dotnet-home" >> "$GITHUB_ENV"
+          echo "DOTNET_CLI_TELEMETRY_OPTOUT=1" >> "$GITHUB_ENV"
+          echo "DOTNET_NOLOGO=1" >> "$GITHUB_ENV"
+          echo "DOTNET_CLI_DO_NOT_USE_MSBUILD_SERVER=1" >> "$GITHUB_ENV"
+          echo "DOTNET_CLI_USE_MSBUILD_SERVER=0" >> "$GITHUB_ENV"
+          echo "MSBUILDDISABLENODEREUSE=1" >> "$GITHUB_ENV"
+          echo "UseSharedCompilation=false" >> "$GITHUB_ENV"
 
       - name: Check out the serialize runtimes (pinned releases)
         run: |
@@ -615,127 +651,19 @@ jobs:
           git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
           git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js
 
-      # All the toolchains regardless of leg: the `make test` precondition
-      # step below builds the whole tree, exactly as the single-job flow did
-      # before the fan-out — the gate legs verdict the same artifacts they
-      # always have.
-
-      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head
+        if: matrix.leg == 'rust' && runner.environment == 'github-hosted'
         with:
           components: clippy, rustfmt
 
-      # the .NET SDK, from the pin every C# project's TargetFramework
-      # names — .github/dotnet-version, read by ci-full.yml too (issue #470).
       - name: read the .NET SDK pin
+        if: matrix.leg == 'cs' || (matrix.os == 'fleet' && matrix.leg == 'go')
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
-        if: runner.environment == 'github-hosted'
+        if: (matrix.leg == 'cs' || (matrix.os == 'fleet' && matrix.leg == 'go')) && runner.environment == 'github-hosted'
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
-
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: '26'
-      # The pinned eslint the JS leg's tables-js-clean gate requires (make/js.mk).
-      - uses: ./.github/actions/eslint
-
-      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
-        with:
-          sdk: '3.13.2'
-
-      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
-        with:
-          distribution: 'temurin'
-          java-version: '21'
-
-      # The pinned formatter `make test-java` and the java negative controls require (make/java.mk).
-      - uses: ./.github/actions/google-java-format
-      # The Ruby pins `make test-ruby` requires (make/ruby-toolchain.mk:
-      # two CRuby interpreters, RuboCop, Steep and RBS), cached under the pins.
-      - uses: ./.github/actions/ruby
-      # The moo pin `make test-moo` requires (make/moo.mk), built once per
-      # runner image and cached under the pin.
-      - uses: ./.github/actions/moo
-      # The Python pins `make test-python` requires (make/python-toolchain.mk:
-      # two CPython interpreters and mypy), built once per runner image and
-      # cached under the pins.
-      - uses: ./.github/actions/python
-      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
-        if: runner.environment == 'github-hosted'
-        with:
-          otp-version: '29.0.5'
-          elixir-version: '1.20.4'
-
-      # THE LOBSTER PIN: make test runs test-lobster and the toolchain gate
-      # probes it. make/lobster.mk's dist-lobster takes the host's release
-      # archive (linux, or the macOS arm/x64 one), refuses any sha256 but the
-      # pin's, and unpacks it into dist/lobster-<version>/. The linux release
-      # links libOpenGL and libGLX, which the hosted ubuntu image does not carry.
-      - name: install the Lobster pin
-        run: |
-          set -euo pipefail
-          if [ "$RUNNER_ENVIRONMENT" = github-hosted ] && [ "$RUNNER_OS" = Linux ]; then
-            sudo apt-get update
-            sudo apt-get install -y --no-install-recommends libopengl0 libglx0
-          fi
-          make dist-lobster
-
-      # The same preconditions the gates had when they ran after `make test`
-      # in one job: bin/schema, the generated trees, and the bench units all
-      # built — cheap enough to repeat per leg rather than invent a narrower
-      # target with different semantics.
-      # The LUA leg's pinned PUC-Rio interpreter (make/lua.mk): `make test`'s
-      # toolchain gate refuses test-lua by name without it, and dist-lua builds
-      # it from source at the sha256 make/lua.mk names into the LUA default.
-      - name: install the Lua pin
-        run: make dist-lua
-
-      # THE C AND C++ FORMAT GATES' formatter, pinned, as ci-fast.yml installs
-      # it: clang-format from PyPI at the version make/c.mk's CLANG_FORMAT_PIN
-      # names, in a venv under the runner's temp, exported as CLANG_FORMAT.
-      # `make test` runs tables-c-clean and tables-cpp-format, which refuse any
-      # other major by name; the hosted ubuntu image's own clang-format is 18.
-      - name: the pinned clang-format (C and C++ format gates)
-        run: |
-          set -euo pipefail
-          pin="$(sed -n 's/^CLANG_FORMAT_PIN *?= *//p' make/c.mk)"
-          if python3 -m venv "$RUNNER_TEMP/clang-format" >/dev/null 2>&1; then
-            "$RUNNER_TEMP/clang-format/bin/pip" install --quiet "clang-format==$pin"
-          else
-            rm -rf "$RUNNER_TEMP/clang-format"
-            python3 -m venv --without-pip "$RUNNER_TEMP/clang-format"
-            python3 -m pip --python "$RUNNER_TEMP/clang-format/bin/python3" install --quiet "clang-format==$pin"
-          fi
-          echo "CLANG_FORMAT=$RUNNER_TEMP/clang-format/bin/clang-format" >> "$GITHUB_ENV"
-          "$RUNNER_TEMP/clang-format/bin/clang-format" --version
-
-      # THE GOOSE, LUAU AND SQUIRREL PINS: `make test`'s toolchain gate refuses
-      # each of these legs by name without its pin (make/goose.mk, make/luau.mk,
-      # make/squirrel.mk), and each leg's own dist-<lang> target installs it at
-      # the sha256 it names, as ci-full.yml's pins job does. dist-squirrel builds
-      # sq from source, so it runs on both OSes. The goose pin is the
-      # goose-<version>-linux-x64 release and the luau pin is luau-ubuntu.zip:
-      # neither has a macOS build, so on macOS those two legs are not installed
-      # and are named in SCHEMA_SKIP_LEGS on the make test step below.
-      - name: install the Goose pin
-        if: runner.os == 'Linux'
-        run: make dist-goose
-
-      - name: install the Luau pin
-        if: runner.os == 'Linux'
-        run: make dist-luau
-
-      - name: install the Squirrel pin
-        run: make dist-squirrel
-
-      # SCHEMA_SKIP_LEGS on macOS only: goose and luau, whose pins are
-      # linux-x64 builds with no macOS archive (the block above). Every other
-      # leg's toolchain exists on both OSes and is never skipped.
-      - name: make test
-        env:
-          SCHEMA_SKIP_LEGS: ${{ runner.os == 'macOS' && 'goose,luau' || '' }}
-        run: make test RUSTUP_BIN="$(dirname "$(command -v cargo)")" DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node
 
       - name: inline gate — adversarial selftest
         run: bench/tools/inline-gate.sh selftest
@@ -743,25 +671,10 @@ jobs:
       - name: inline gate — ${{ matrix.leg }} leg
         run: bench/tools/inline-gate.sh leg ${{ matrix.leg }}
 
-      # GATE 2's SMOKE (docs/SPEC-TABLES.md §12.1). The gate itself is a paired
-      # measurement and its verdict belongs on a quiet box, so its 5% band is
-      # not enforced here. What runs is the CORRECTNESS half at a small N — the
-      # generated block form and the hand-written mirror agreeing byte for byte
-      # across all nine sections, and the C# side reading the frame the C++ side
-      # wrote. Before this the gate ran nowhere at all, which is how a gate rots.
-      #
-      # ONE matrix combination, not six: this job's `make test` has already
-      # built the tree on every leg, and the smoke needs one extra C++ compile
-      # and one dotnet run.
       - name: gate 2 smoke — the block form still writes what the hand mirror does
         if: matrix.os == 'fleet' && matrix.leg == 'go'
-        run: make tables-block-gate2-smoke
+        run: make -j"$(getconf _NPROCESSORS_ONLN)" tables-block-gate2-smoke
 
-      # every go test package this job ran, its verdict and wall time, held to
-      # the -timeout its command named, after it reported (the nightly rule in
-      # the header): a package past it is OVER BUDGET and this step is red.
-      # Its text is go test's own, byte for byte (summary mode), so no recipe
-      # that greps it sees anything new.
       - name: report each go test package against its named budget
         if: always()
         run: go run ./tools/gotestreport -budget 10m "$PGROUP_GO_TEST_SUMMARY"
