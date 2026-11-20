@@ -3353,6 +3353,22 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
         return false;
     }
     {
+        TableReport probe_rep;
+        TableReader vr( buffer + 1, body_bytes, &probe_rep, &table );
+        uint64_t vref = 0;
+        while ( vr.getleb( vref ) && vref != 0 && vref <= (uint64_t) table.count && vr.has( 1 ) )
+        {
+            const uint64_t vid = table.at( vref );
+            const uint8_t vkind = vr.get8();
+            if ( vid == kTableBuildVersionFieldId )
+            {
+                if ( vkind == 9 && vr.has( 8 ) ) { vocabulary.build_version = vr.get64(); }
+                break;
+            }
+            if ( !vr.skip( vkind ) ) { break; }
+        }
+    }
+    {
         TableStrict strict_ann;
         strict_ann.ids = &table;
         strict_ann.node_table = NULL;
