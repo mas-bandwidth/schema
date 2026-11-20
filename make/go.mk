@@ -135,27 +135,9 @@ conformance-go-rows-negative-control: build/tables-generated-go/.stamp build/fix
 
 .PHONY: tables-go-json-walk
 tables-go-json-walk: build/tables-generated-go/.stamp
-	@rm -rf build/json-walk-go && mkdir -p build/json-walk-go
-	@for d in build/tables-generated-go/*/; do \
-		unit=$$(basename $$d); n=0; \
-		for f in $$d*TableJson.go; do \
-			[ -e "$$f" ] || continue; \
-			out=build/json-walk-go/$$unit.$$(basename $$f).txt; \
-			awk '/---- json walk: begin ----/,/---- json walk: end ----/' $$f > $$out; \
-			if [ -s $$out ]; then n=$$((n+1)); else rm -f $$out; fi; \
-		done; \
-		if [ -n "$$(ls $$d*TableJson.go 2>/dev/null)" ] && [ $$n -ne 1 ]; then \
-			echo "GENERIC-WALK GATE FAILED: unit $$unit carries $$n walkers, not one"; exit 1; \
-		fi; \
-	done
-	@if [ -z "$$(ls build/json-walk-go 2>/dev/null)" ]; then \
-		echo "GENERIC-WALK GATE FAILED: no walker in any generated .go"; exit 1; fi
-	@first=""; for f in build/json-walk-go/*; do \
-		if [ -z "$$first" ]; then first=$$f; else \
-			cmp -s $$first $$f || { echo "GENERIC-WALK GATE FAILED: the walker in $$f is not the walker in $$first"; exit 1; }; \
-		fi; \
-	done
-	@echo "tables Go generic-walk gate: one walker per unit, byte-identical across $$(ls build/json-walk-go | wc -l | tr -d ' ') units"
+	SCHEMA_SLOW=1 SCHEMA_GO_JSON_WALK_DIR="$(CURDIR)/build/tables-generated-go" \
+		SCHEMA_GO_JSON_WALK_OUT="$(CURDIR)/build/json-walk-go" \
+		go test -count=1 -v ./internal/codegen/gotable -run '^TestGoJsonWalk(IsOneGenericRuntime|NegativeControl)$$'
 
 # THE GO TABLE LEG's generated packages. Each unit is its own MODULE, because
 # a generated package names its schema's `package` and Go resolves an import by

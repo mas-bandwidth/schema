@@ -42,6 +42,7 @@ import (
 // appends to Body.
 type Module struct {
 	Unit    *ir.Unit
+	Lineage map[string][]FixedLineageEntry
 	Closure []*ir.Struct // every table and map entry the unit's tables reach, by name
 	Unions  []*ir.Union  // every table-side union, by name
 	Body    strings.Builder
@@ -86,16 +87,20 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	return generate(u)
 }
 
-// generate is Generate's body. It carries every table-wire kind, including the
-// fixed-point and 128-bit families (docs/SPEC-TABLES.md §3, §15).
 func generate(u *ir.Unit) (map[string][]byte, error) {
+	return generateWithLineage(u, nil)
+}
+
+// generateWithLineage is Generate's body. It carries every table-wire kind, including the
+// fixed-point and 128-bit families (docs/SPEC-TABLES.md §3, §15).
+func generateWithLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	name := ModuleName(u)
 	for _, f := range u.Files {
 		if f.Base == name {
 			return nil, fmt.Errorf("schema file %s.schema collides with the Lua table module %s.lua the unit's tables are emitted into; rename the file (docs/PORT-LUA.md)", f.Base, name)
 		}
 	}
-	m := &Module{Unit: u}
+	m := &Module{Unit: u, Lineage: lineage}
 	m.Closure, m.Unions = closure(u)
 	emit(m)
 	for _, p := range passes {

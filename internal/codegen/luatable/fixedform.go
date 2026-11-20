@@ -12,7 +12,6 @@ import (
 	"math/big"
 	"sort"
 	"strings"
-	"sync"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -97,21 +96,16 @@ func fixedLineageFor(handed []FixedLineageEntry, own FixedLineageEntry) ([]Fixed
 	return entries, floor
 }
 
-// pendingLineage carries the caller's lineage to the registered fixed-form
-// pass without widening [Module]. The pass runs inside Generate, which has no
-// lineage argument; GenerateLineage stores it for the duration of one call.
-var pendingLineage sync.Map // *ir.Unit -> map[string][]FixedLineageEntry
-
 // GenerateLineage is [Generate] with the LINEAGE the build holds for each fixed
 // table (docs/FIXED-FORM-ALGORITHM.md §5.2, §5.9 #1). [Generate] is the same
 // call with no lineage, so a unit with no lock keeps exactly today's behaviour
-// for its own hash.
+// for its own hash. Each call carries its lineage on its own [Module], so
+// parallel callers sharing one *ir.Unit never race.
 func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
-	if len(lineage) > 0 {
-		pendingLineage.Store(u, lineage)
-		defer pendingLineage.Delete(u)
+	if len(u.Tables) == 0 {
+		return map[string][]byte{}, nil
 	}
-	return Generate(u)
+	return generateWithLineage(u, lineage)
 }
 
 const (
@@ -374,8 +368,7 @@ func emitFixedForm(m *Module) error {
 		size := fixedTypeBytes(st)
 		m.Printf("_M.Fixed[%q] = { size = %d, table = %q }\n", st.Name, size, st.Name)
 	}
-	lineage, _ := pendingLineage.Load(m.Unit)
-	handed, _ := lineage.(map[string][]FixedLineageEntry)
+	handed := m.Lineage
 	// THE LAYOUT AND ITS HASH ride in the header (docs/FIXED-FORM-ALGORITHM.md
 	// §1, §2): the same walk the C++ reference takes, so the bytes this leg
 	// writes and the header it names are the oracle's own.

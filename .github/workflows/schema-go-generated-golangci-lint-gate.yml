@@ -60,9 +60,9 @@ jobs:
       - name: the generated-Go golangci-lint gate (packet corpus, ratchet)
         run: |
           export PATH="$HOME/sdk/bin:$PATH"
-          make schema-go-generated-golangci-lint-gate
+          GOLANGCI_LINT_CACHE="$RUNNER_TEMP/golangci-lint-gate-cache" make schema-go-generated-golangci-lint-gate
       - name: the generated-Go golangci-lint gate (table corpus, nightly)
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: |
           export PATH="$HOME/sdk/bin:$PATH"
-          make schema-go-generated-golangci-lint-gate-nightly
+          GOLANGCI_LINT_CACHE="$RUNNER_TEMP/golangci-lint-gate-cache" make schema-go-generated-golangci-lint-gate-nightly

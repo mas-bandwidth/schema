@@ -31,6 +31,7 @@ GOLANGCI_GATE_STAMP := $(GOLANGCI_GATE_DIR)/.stamp
 GOLANGCI_GATE_RUNTIME := $(abspath $(SERIALIZE_GO_RUNTIME))
 GOLANGCI_GATE_RATCHET := make/checks/schema-go-generated-golangci-lint-gate.ratchet.tsv
 GOLANGCI_GATE_ACTUAL ?= $(GOLANGCI_GATE_DIR)/actual.tsv
+GOLANGCI_GATE_CACHE := $(CURDIR)/$(GOLANGCI_GATE_DIR)/cache
 
 # The narrow config: exactly the three named checkers plus go vet's analyzer
 # set. golangci-lint v2 defaults linters.exclusions.generated to lax, which
@@ -81,7 +82,7 @@ schema-go-generated-golangci-lint-gate-probe:
 # is "findings exist" and is expected under a ratchet; any other status (tool,
 # config or load failure) is a hard error, never folded into a count.
 define golangci_gate_count
-	@cd $(1) && $(GOLANGCI_LINT) run --config "$(CURDIR)/$(GOLANGCI_GATE_CONFIG)" \
+	@cd $(1) && GOLANGCI_LINT_CACHE="$(GOLANGCI_GATE_CACHE)" $(GOLANGCI_LINT) run --config "$(CURDIR)/$(GOLANGCI_GATE_CONFIG)" \
 		--output.text.colors=false --output.text.print-issued-lines=false ./... \
 		> "$(CURDIR)/$(GOLANGCI_GATE_DIR)/$(2).lint.log" 2>&1; \
 		rc=$$?; if [ $$rc -gt 1 ]; then cat "$(CURDIR)/$(GOLANGCI_GATE_DIR)/$(2).lint.log"; exit $$rc; fi
@@ -151,7 +152,7 @@ schema-go-generated-golangci-lint-gate-nightly-measure: schema-go-generated-gola
 	@: > $(GOLANGCI_GATE_DIR)/tables.lint.log
 	@for d in build/tables-generated-go/*/; do \
 		[ -f "$$d/go.mod" ] || continue; \
-		( cd "$$d" && $(GOLANGCI_LINT) run --config "$(CURDIR)/$(GOLANGCI_GATE_CONFIG)" \
+		( cd "$$d" && GOLANGCI_LINT_CACHE="$(GOLANGCI_GATE_CACHE)" $(GOLANGCI_LINT) run --config "$(CURDIR)/$(GOLANGCI_GATE_CONFIG)" \
 			--output.text.colors=false --output.text.print-issued-lines=false ./... ) \
 			>> "$(CURDIR)/$(GOLANGCI_GATE_DIR)/tables.lint.log" 2>&1; \
 		rc=$$?; if [ $$rc -gt 1 ]; then cat "$(CURDIR)/$(GOLANGCI_GATE_DIR)/tables.lint.log"; exit $$rc; fi; \
@@ -212,7 +213,7 @@ schema-go-generated-golangci-lint-gate-negative-control: schema-go-generated-gol
 		'func plantedUncheckedError(path string) {' \
 		'	os.Chdir(path)' \
 		'}' > $(GOLANGCI_GATE_DIR)/plant/planted_bad.go
-	@cd $(GOLANGCI_GATE_DIR)/plant && $(GOLANGCI_LINT) run --config "$(CURDIR)/$(GOLANGCI_GATE_CONFIG)" \
+	@cd $(GOLANGCI_GATE_DIR)/plant && GOLANGCI_LINT_CACHE="$(GOLANGCI_GATE_CACHE)" $(GOLANGCI_LINT) run --config "$(CURDIR)/$(GOLANGCI_GATE_CONFIG)" \
 		--output.text.colors=false --output.text.print-issued-lines=false ./... \
 		> "$(CURDIR)/$(GOLANGCI_GATE_DIR)/plant.log" 2>&1; \
 		rc=$$?; if [ $$rc -ne 1 ]; then echo "NEGATIVE CONTROL FAILED: the planted unchecked error did not red the checker (status $$rc)"; cat "$(CURDIR)/$(GOLANGCI_GATE_DIR)/plant.log"; exit 1; fi
@@ -242,7 +243,7 @@ schema-go-generated-golangci-lint-gate-negative-control: schema-go-generated-gol
 	@grep -q 'count 403 > pinned 402' $(GOLANGCI_GATE_DIR)/plant.ratchet.log || { \
 		echo "NEGATIVE CONTROL FAILED: the ratchet did not name both counts"; cat $(GOLANGCI_GATE_DIR)/plant.ratchet.log; exit 1; }
 	@rm -f $(GOLANGCI_GATE_DIR)/plant/planted_bad.go
-	@cd $(GOLANGCI_GATE_DIR)/plant && $(GOLANGCI_LINT) run --config "$(CURDIR)/$(GOLANGCI_GATE_CONFIG)" \
+	@cd $(GOLANGCI_GATE_DIR)/plant && GOLANGCI_LINT_CACHE="$(GOLANGCI_GATE_CACHE)" $(GOLANGCI_LINT) run --config "$(CURDIR)/$(GOLANGCI_GATE_CONFIG)" \
 		--output.text.colors=false --output.text.print-issued-lines=false ./... \
 		> "$(CURDIR)/$(GOLANGCI_GATE_DIR)/plant-clean.log" 2>&1 || :; \
 		awk -v corpus="example" '\

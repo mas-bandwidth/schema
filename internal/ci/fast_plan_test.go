@@ -134,7 +134,12 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 		{
 			name:  "goose leg only",
 			files: "internal/codegen/goosetable/fixedform.go",
-			want:  `no|./internal/codegen/goosetable ./internal/goldens|["goose"]`,
+			want:  `no|./internal/codegen/goosetable ./test/conformance/goose/wirefuzzdispatch ./internal/goldens|["goose"]`,
+		},
+		{
+			name:  "goose conformance driver selects wirefuzzdispatch",
+			files: "test/conformance/goose/wirefuzz.goose",
+			want:  `no|./internal/codegen/goosetable ./test/conformance/goose/wirefuzzdispatch|["goose"]`,
 		},
 		{
 			// the Squirrel leg row runs make targets; its two unit packages ride the make-file rule
@@ -275,7 +280,7 @@ func TestFastPlanSelectsLanguageLints(t *testing.T) {
 		{"elixir runtime", "internal/codegen/elixirtable/testdata/runtime.ex", `[]|./internal/codegen/elixir ./internal/codegen/elixirtable ./internal/goldens`},
 		{"luau runtime", "internal/codegen/luau/runtime/serialize_bytes.luau", `[]|./internal/codegen/luau ./internal/codegen/luautable ./internal/goldens`},
 		{"lobster runtime", "internal/codegen/lobster/runtime/serialize_compressed_float.lobster", `[]|./internal/codegen/lobster ./internal/codegen/lobstertable ./internal/goldens`},
-		{"goose runtime", "internal/codegen/goosetable/runtime/schema_json.goose", `[]|./internal/codegen/goose ./internal/codegen/goosetable ./internal/goldens`},
+		{"goose runtime", "internal/codegen/goosetable/runtime/schema_json.goose", `[]|./internal/codegen/goose ./internal/codegen/goosetable ./test/conformance/goose/wirefuzzdispatch ./internal/goldens`},
 		{"squirrel runtime", "internal/codegen/squirrel/runtime/module.nut", `[]|./internal/codegen/squirrel ./internal/codegen/squirreltable ./internal/goldens`},
 		{"squirrel table runtime", "internal/codegen/squirreltable/runtime/cook.nut", `[]|./internal/codegen/squirrel ./internal/codegen/squirreltable ./internal/goldens`},
 		{"lua type runtime", "internal/codegen/lua/runtime/serialize_int_relative.lua", `["lua"]|./internal/codegen/lua ./internal/codegen/luatable ./internal/goldens`},
