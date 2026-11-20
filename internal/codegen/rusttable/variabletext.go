@@ -1328,12 +1328,12 @@ func (g *gen) emitTextWriteOne(b *strings.Builder, f *ir.Field, x, d, ind string
 		fmt.Fprintf(b, "%s%s(%s, w, %s);\n", ind, fn(un.Name, "json_write"), borrowOf(x), d)
 	case vString:
 		if !f.Type.TextUnbounded() && f.Type.Size > 0 {
-			fmt.Fprintf(b, "%sif (%s).len() > %d { w.refused = true; }\n", ind, borrowOf(x), f.Type.Size)
+			fmt.Fprintf(b, "%sif %s.len() > %d { w.refused = true; }\n", ind, x, f.Type.Size)
 		}
 		fmt.Fprintf(b, "%sjson_escape(%s, &mut w.out);\n", ind, borrowOf(x))
 	case vBytes:
 		if f.Type.Size > 0 {
-			fmt.Fprintf(b, "%sif (%s).len() > %d { w.refused = true; }\n", ind, borrowOf(x), f.Type.Size)
+			fmt.Fprintf(b, "%sif %s.len() > %d { w.refused = true; }\n", ind, x, f.Type.Size)
 		}
 		fmt.Fprintf(b, "%sjson_b64(%s, &mut w.out);\n", ind, borrowOf(x))
 	case vEnum:
@@ -1385,7 +1385,7 @@ func (g *gen) emitTextWriteOne(b *strings.Builder, f *ir.Field, x, d, ind string
 			if f.HasFloatRange {
 				fmt.Fprintf(b, "%sif !(%s >= %s && %s <= %s) { w.refused = true; }\n", ind, x, fixedFloatLit(f.FMin), x, fixedFloatLit(f.FMax))
 			}
-			fmt.Fprintf(b, "%sjson_float(%s, false, w);\n", ind, x)
+			fmt.Fprintf(b, "%sjson_float(%s, false, w);\n", ind, unparen(x))
 		case ir.TFixed:
 			fmt.Fprint(b, emitTextScalarRangeRefuse(f, x, ind))
 			// WHOLE UNITS, exact, from the raw integer (§16.2); a storage

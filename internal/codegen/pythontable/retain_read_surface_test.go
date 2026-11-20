@@ -27,31 +27,47 @@ func runRetainReadSurface(t *testing.T, plant func(files map[string][]byte) int)
 	if err != nil {
 		t.Fatal(err)
 	}
-	files, err := Generate(loadUnitPaths(t, filepath.Join(root, "test/tables/RT1.schema")))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if plant != nil && plant(files) == 0 {
-		t.Fatal("retain read surface control anchor absent")
-	}
-	generated := t.TempDir()
-	unitdir := filepath.Join(generated, "tblrt1")
-	if err := os.MkdirAll(unitdir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	writeTree(t, unitdir, files)
 	manifestBytes, err := os.ReadFile(filepath.Join(root, "testdata/conformance/tables/MANIFEST.txt"))
 	if err != nil {
 		t.Fatal(err)
 	}
+	unitPaths := map[string]string{"tblrt1": "test/tables/RT1.schema"}
+	neededUnits := []string{"tblrt1"}
+	seenUnit := map[string]bool{"tblrt1": true}
 	var stripped strings.Builder
 	var cases []string
 	for line := range strings.SplitSeq(string(manifestBytes), "\n") {
 		fields := strings.Fields(line)
+		if len(fields) >= 3 && fields[0] == "unit" {
+			unitPaths[fields[1]] = fields[2]
+		}
 		if len(fields) >= 7 && fields[0] == "retain" {
 			stripped.WriteString(strings.Join(fields[:7], " ") + "\n")
 			cases = append(cases, fields[1])
+			if !seenUnit[fields[2]] {
+				seenUnit[fields[2]] = true
+				neededUnits = append(neededUnits, fields[2])
+			}
 		}
+	}
+	generated := t.TempDir()
+	for _, uname := range neededUnits {
+		rel, ok := unitPaths[uname]
+		if !ok {
+			t.Fatalf("retain row names unknown unit %s", uname)
+		}
+		files, err := Generate(loadUnitPaths(t, filepath.Join(root, rel)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if uname == "tblrt1" && plant != nil && plant(files) == 0 {
+			t.Fatal("retain read surface control anchor absent")
+		}
+		unitdir := filepath.Join(generated, uname)
+		if err := os.MkdirAll(unitdir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		writeTree(t, unitdir, files)
 	}
 	if len(cases) == 0 {
 		t.Fatal("the manifest has no retain rows")

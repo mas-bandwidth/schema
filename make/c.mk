@@ -1108,10 +1108,13 @@ tables-c-fuzz-negative-control: build/tables-generated-c/.stamp build/cook-open/
 	@grep -q SABOTAGED build/c-fuzz-sabotage/block/RenderBlock.c || \
 		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; }
 	$(CC) -std=c99 -Wall -Wextra -Wno-error -O1 -ffp-contract=off $(C_SANITIZE) \
-		-Itest/conformance/c -Ibuild/c-fuzz-sabotage/block -Ibuild/tables-generated-c/pointers \
-		test/c-tables/fuzz_main.c test/conformance/c/unit_blockdemo.c test/conformance/c/unit_graphdemo.c \
+		-Itest/conformance/c -Ibuild/c-fuzz-sabotage/block -Ibuild/tables-generated-c/cooktorture -Ibuild/tables-generated-c/cooktorturewide -Ibuild/tables-generated-c/pointers $(C_CONFORMANCE_INCLUDES) \
+		-DCONFORMANCE_NO_WREF_CASE \
+		test/c-tables/fuzz_main.c test/conformance/c/wref.c test/conformance/c/unit_blockdemo.c test/conformance/c/unit_cooktorture.c test/conformance/c/unit_graphdemo.c \
 		build/c-fuzz-sabotage/block/RenderBlock.c build/c-fuzz-sabotage/block/RenderTable.c \
 		build/c-fuzz-sabotage/block/PaddedBlock.c build/c-fuzz-sabotage/block/PaddedTable.c \
+		build/tables-generated-c/cooktorture/CookTortureBlock.c build/tables-generated-c/cooktorture/CookTortureTable.c \
+		build/tables-generated-c/cooktorturewide/CookTortureWideTable.c \
 		build/tables-generated-c/pointers/GraphTable.c build/tables-generated-c/pointers/MarksTable.c \
 		build/tables-generated-c/pointers/PartsTable.c -o build/c-fuzz-sabotage/fuzz -lm
 	@if SEED=1 N=50000 ./build/c-fuzz-sabotage/fuzz > build/c-fuzz-sabotage/log 2>&1; then \

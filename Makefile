@@ -6224,7 +6224,7 @@ tables-wire-fuzz-message-text-leg-negative-control: build/conformance-harness bu
 		"$(CURDIR)" "$(CURDIR)" > $(MESSAGE_TEXT_LEG_NC)/overlay.json
 	go build -overlay $(MESSAGE_TEXT_LEG_NC)/overlay.json -o $(MESSAGE_TEXT_LEG_NC)/schema ./cmd/schema
 	./$(MESSAGE_TEXT_LEG_NC)/schema generate --lang cpp --out $(MESSAGE_TEXT_LEG_NC)/backend tables/backend
-	awk '/^#include "/ && !/BackendTable\.h/ { next } /^    (FIXED|NOFILE|VARIABLE|MESSAGE|RETAIN)\(/ && !/"backenddemo"/ { next } { print }' test/tables/wire_fuzz_main.cpp > $(MESSAGE_TEXT_LEG_NC)/main.cpp
+	awk '/^#include "/ && !/BackendTable\.h/ { next } /^    (FIXED|NOFILE|VARIABLE|MESSAGE5?|RETAIN)\(/ && !/"backenddemo"/ { next } { print }' test/tables/wire_fuzz_main.cpp > $(MESSAGE_TEXT_LEG_NC)/main.cpp
 	$(CXX) $(TABLES_CXXFLAGS) -O1 -DNDEBUG -DSCHEMA_WIRE_FUZZ_CONTROL -I$(MESSAGE_TEXT_LEG_NC)/backend -Itest/tables -I$(SERIALIZE) \
 		$(MESSAGE_TEXT_LEG_NC)/main.cpp \
 		$(MESSAGE_TEXT_LEG_NC)/backend/BackendTable.cpp \
