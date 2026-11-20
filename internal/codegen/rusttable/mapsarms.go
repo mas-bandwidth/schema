@@ -880,11 +880,12 @@ func (g *gen) emitMapLoad(b *strings.Builder, f *ir.Field, ordinal int, field, i
 	} else {
 		castExpr := rustCastStmt("raw", "u64", scalarRust(keyField))
 		if keyField.Type.Signed {
-			if keyField.Type.Width == 128 {
+			switch keyField.Type.Width {
+			case 128:
 				castExpr = "raw as i128"
-			} else if keyField.Type.Width == 64 {
+			case 64:
 				castExpr = "raw as i64"
-			} else {
+			default:
 				castExpr = fmt.Sprintf("(raw as i64) as %s", scalarRust(keyField))
 			}
 		}
