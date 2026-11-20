@@ -501,7 +501,7 @@ jobs:
 
       - name: build the C++ fixed-form byte oracle for the emitter packages
         if: matrix.group == 'unit-codegen'
-        run: make -j"$(getconf _NPROCESSORS_ONLN)" tables-fixedform-corpus
+        run: make -j"$(getconf _NPROCESSORS_ONLN)" tables-fixedform-corpus build/conformance-python
 
       - name: go test the emitter packages
         if: matrix.group == 'unit-codegen'
