@@ -202,12 +202,14 @@ func (g *tableGen) emitFixedLayoutAsserts(order, all []*ir.Struct, here map[stri
 	for _, st := range order {
 		for _, m := range ir.TableFixedMembers(g.unit, st) {
 			if m.Member == "" {
-				g.pf("SCHEMA_TABLE_STATIC_ASSERT( %s_fixed_%s_size, sizeof( %s ) == %d, \"%s: the fixed form's plan is laid out for this size\" );\n",
-					g.unit.Package, ir.RustSnake(m.Owner), m.Owner, m.Value, m.Owner)
+				tag := g.uniqueAssertTag(fmt.Sprintf("%s_fixed_%s_size", g.unit.Package, ir.RustSnake(m.Owner)))
+				g.pf("SCHEMA_TABLE_STATIC_ASSERT( %s, sizeof( %s ) == %d, \"%s: the fixed form's plan is laid out for this size\" );\n",
+					tag, m.Owner, m.Value, m.Owner)
 				continue
 			}
-			g.pf("SCHEMA_TABLE_STATIC_ASSERT( %s_fixed_%s_%s, offsetof( %s, %s ) == %d, \"%s.%s: the fixed form's plan lands here\" );\n",
-				g.unit.Package, ir.RustSnake(m.Owner), ir.RustSnake(m.Member), m.Owner, m.Member, m.Value, m.Owner, m.Member)
+			tag := g.uniqueAssertTag(fmt.Sprintf("%s_fixed_%s_%s", g.unit.Package, ir.RustSnake(m.Owner), ir.RustSnake(m.Member)))
+			g.pf("SCHEMA_TABLE_STATIC_ASSERT( %s, offsetof( %s, %s ) == %d, \"%s.%s: the fixed form's plan lands here\" );\n",
+				tag, m.Owner, m.Member, m.Value, m.Owner, m.Member)
 		}
 	}
 	unions := map[string]bool{}

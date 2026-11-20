@@ -7064,11 +7064,21 @@ $(SERIALIZE_GO_RUNTIME)/go.mod:
 		echo "tables Go versioning: the required sibling runtime '$(SERIALIZE_GO)' (the serialize.go checkout) is absent; name it as a bench prerequisite" >&2; \
 		exit 1; \
 	else \
-		echo "tables Go versioning: no sibling runtime at '$(SERIALIZE_GO)'; fetching $(SERIALIZE_GO_PIN) into $(SERIALIZE_GO_RUNTIME)"; \
-		rm -rf "$(SERIALIZE_GO_RUNTIME)"; \
 		mkdir -p "$(dir $(SERIALIZE_GO_RUNTIME))"; \
-		$(call fetch-runtime,$(SERIALIZE_GO_PIN),mas-bandwidth/serialize.go.git,$(SERIALIZE_GO_REPO),$(SERIALIZE_GO_RUNTIME),Go) \
-			|| { echo "tables Go versioning: the required sibling runtime '$(SERIALIZE_GO)' (the serialize.go checkout) is absent, and the fetch of $(SERIALIZE_GO_REPO) @ $(SERIALIZE_GO_PIN) failed; name it as a bench prerequisite" >&2; exit 1; }; \
+		lockdir="$(SERIALIZE_GO_RUNTIME).lock"; \
+		while ! mkdir "$$lockdir" 2>/dev/null; do sleep 1; done; \
+		trap 'rmdir "$$lockdir" 2>/dev/null || true' EXIT INT TERM HUP; \
+		if ! test -f "$@"; then \
+			echo "tables Go versioning: no sibling runtime at '$(SERIALIZE_GO)'; fetching $(SERIALIZE_GO_PIN) into $(SERIALIZE_GO_RUNTIME)"; \
+			stage=$$(mktemp -d "$(dir $(SERIALIZE_GO_RUNTIME)).serialize.go.XXXXXX") || { rmdir "$$lockdir" 2>/dev/null || true; exit 1; }; \
+			$(call fetch-runtime,$(SERIALIZE_GO_PIN),mas-bandwidth/serialize.go.git,$(SERIALIZE_GO_REPO),$$stage/runtime,Go) \
+				|| { echo "tables Go versioning: the required sibling runtime '$(SERIALIZE_GO)' (the serialize.go checkout) is absent, and the fetch of $(SERIALIZE_GO_REPO) @ $(SERIALIZE_GO_PIN) failed; name it as a bench prerequisite" >&2; rm -rf "$$stage"; rmdir "$$lockdir" 2>/dev/null || true; exit 1; }; \
+			rm -rf "$(SERIALIZE_GO_RUNTIME)"; \
+			mv "$$stage/runtime" "$(SERIALIZE_GO_RUNTIME)"; \
+			rm -rf "$$stage"; \
+		fi; \
+		rmdir "$$lockdir" 2>/dev/null || true; \
+		trap - EXIT INT TERM HUP; \
 	fi
 	@test -f "$@" || { echo "tables Go versioning: the required sibling runtime '$(SERIALIZE_GO)' (the serialize.go checkout) is absent, and the fetch produced no $(SERIALIZE_GO_RUNTIME)/go.mod; name it as a bench prerequisite" >&2; exit 1; }
 
@@ -7078,13 +7088,32 @@ $(SERIALIZE_RUNTIME)/serialize.h:
 		echo "tables C versioning: the required sibling runtime '$(SERIALIZE)' (the C++ serialize checkout) is absent; name it as a bench prerequisite" >&2; \
 		exit 1; \
 	else \
-		echo "tables C versioning: no sibling runtime at '$(SERIALIZE)'; fetching $(SERIALIZE_PIN) into $(SERIALIZE_RUNTIME)"; \
-		rm -rf "$(SERIALIZE_RUNTIME)"; \
 		mkdir -p "$(dir $(SERIALIZE_RUNTIME))"; \
-		$(call fetch-runtime,$(SERIALIZE_PIN),mas-bandwidth/serialize.git,$(SERIALIZE_REPO),$(SERIALIZE_RUNTIME),C) \
-			|| { echo "tables C versioning: the required sibling runtime '$(SERIALIZE)' (the C++ serialize checkout) is absent, and the fetch of $(SERIALIZE_REPO) @ $(SERIALIZE_PIN) failed; name it as a bench prerequisite" >&2; exit 1; }; \
+		lockdir="$(SERIALIZE_RUNTIME).lock"; \
+		while ! mkdir "$$lockdir" 2>/dev/null; do sleep 1; done; \
+		trap 'rmdir "$$lockdir" 2>/dev/null || true' EXIT INT TERM HUP; \
+		if ! test -f "$@"; then \
+			echo "tables C versioning: no sibling runtime at '$(SERIALIZE)'; fetching $(SERIALIZE_PIN) into $(SERIALIZE_RUNTIME)"; \
+			stage=$$(mktemp -d "$(dir $(SERIALIZE_RUNTIME)).serialize.XXXXXX") || { rmdir "$$lockdir" 2>/dev/null || true; exit 1; }; \
+			$(call fetch-runtime,$(SERIALIZE_PIN),mas-bandwidth/serialize.git,$(SERIALIZE_REPO),$$stage/runtime,C) \
+				|| { echo "tables C versioning: the required sibling runtime '$(SERIALIZE)' (the C++ serialize checkout) is absent, and the fetch of $(SERIALIZE_REPO) @ $(SERIALIZE_PIN) failed; name it as a bench prerequisite" >&2; rm -rf "$$stage"; rmdir "$$lockdir" 2>/dev/null || true; exit 1; }; \
+			rm -rf "$(SERIALIZE_RUNTIME)"; \
+			mv "$$stage/runtime" "$(SERIALIZE_RUNTIME)"; \
+			rm -rf "$$stage"; \
+		fi; \
+		rmdir "$$lockdir" 2>/dev/null || true; \
+		trap - EXIT INT TERM HUP; \
 	fi
 	@test -f "$@" || { echo "tables C versioning: the required sibling runtime '$(SERIALIZE)' (the C++ serialize checkout) is absent, and the fetch produced no $(SERIALIZE_RUNTIME)/serialize.h; name it as a bench prerequisite" >&2; exit 1; }
+
+# Cross-18-port verification corpus and Go/C++ leg probes resolve ../serialize.go
+# (falling back to build/serialize.go) and ../serialize (falling back to
+# build/serialize). Declare those runtime prerequisites here after both
+# SERIALIZE_GO_RUNTIME and SERIALIZE_RUNTIME are defined so cold `make -j`
+# verify-*-bench runs stage them deterministically independent of make/*.mk
+# wildcard directory order.
+build/verify-reuse/corpus/.stamp verify-reuse-go verify-bitphase-go verify-tablegen-go: $(SERIALIZE_GO_RUNTIME)/go.mod
+build/verify-bitphase/corpus/.stamp verify-reuse-cpp verify-bitphase-cpp verify-canonical-cpp verify-tablegen-cpp: $(SERIALIZE_RUNTIME)/serialize.h
 
 .PHONY: tables-fixedform-corpus-check
 tables-fixedform-corpus-check: $(SERIALIZE_RUNTIME)/serialize.h $(SERIALIZE_GO_RUNTIME)/go.mod
