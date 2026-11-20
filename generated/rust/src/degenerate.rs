@@ -88,6 +88,7 @@ pub struct SpanF64 {
 pub const SPAN_F64_MAX_BITS: u64 = 128;
 pub const SPAN_F64_MAX_BYTES: usize = 16;
 
+#[allow(clippy::needless_range_loop)]
 #[inline(always)]
 pub fn write_span_f64(stream: &mut WriteStream<'_>, value: &SpanF64) -> Result {
     for i in 0..2 {
@@ -106,6 +107,7 @@ pub fn read_span_f64(stream: &mut ReadStream<'_>, value: &mut SpanF64) -> Result
     Ok(())
 }
 
+#[allow(clippy::needless_range_loop)]
 #[inline]
 pub(crate) fn read_span_f64_body(stream: &mut ReadStream<'_>, value: &mut SpanF64) -> Result {
     for i in 0..2 {
@@ -127,6 +129,7 @@ pub struct SpanU64 {
 pub const SPAN_U64_MAX_BITS: u64 = 128;
 pub const SPAN_U64_MAX_BYTES: usize = 16;
 
+#[allow(clippy::needless_range_loop)]
 #[inline(always)]
 pub fn write_span_u64(stream: &mut WriteStream<'_>, value: &SpanU64) -> Result {
     for i in 0..2 {
@@ -145,6 +148,7 @@ pub fn read_span_u64(stream: &mut ReadStream<'_>, value: &mut SpanU64) -> Result
     Ok(())
 }
 
+#[allow(clippy::needless_range_loop)]
 #[inline]
 pub(crate) fn read_span_u64_body(stream: &mut ReadStream<'_>, value: &mut SpanU64) -> Result {
     for i in 0..2 {
@@ -166,6 +170,7 @@ pub struct SpanI64 {
 pub const SPAN_I64_MAX_BITS: u64 = 128;
 pub const SPAN_I64_MAX_BYTES: usize = 16;
 
+#[allow(clippy::needless_range_loop)]
 #[inline(always)]
 pub fn write_span_i64(stream: &mut WriteStream<'_>, value: &SpanI64) -> Result {
     for i in 0..2 {
@@ -184,6 +189,7 @@ pub fn read_span_i64(stream: &mut ReadStream<'_>, value: &mut SpanI64) -> Result
     Ok(())
 }
 
+#[allow(clippy::needless_range_loop)]
 #[inline]
 pub(crate) fn read_span_i64_body(stream: &mut ReadStream<'_>, value: &mut SpanI64) -> Result {
     for i in 0..2 {
@@ -209,6 +215,7 @@ pub struct SpanOne {
 pub const SPAN_ONE_MAX_BITS: u64 = 64;
 pub const SPAN_ONE_MAX_BYTES: usize = 8;
 
+#[allow(clippy::needless_range_loop)]
 #[inline(always)]
 pub fn write_span_one(stream: &mut WriteStream<'_>, value: &SpanOne) -> Result {
     for i in 0..1 {
@@ -227,6 +234,7 @@ pub fn read_span_one(stream: &mut ReadStream<'_>, value: &mut SpanOne) -> Result
     Ok(())
 }
 
+#[allow(clippy::needless_range_loop)]
 #[inline]
 pub(crate) fn read_span_one_body(stream: &mut ReadStream<'_>, value: &mut SpanOne) -> Result {
     for i in 0..1 {
@@ -248,6 +256,7 @@ pub struct SpanChunk {
 pub const SPAN_CHUNK_MAX_BITS: u64 = 64;
 pub const SPAN_CHUNK_MAX_BYTES: usize = 8;
 
+#[allow(clippy::needless_range_loop)]
 #[inline(always)]
 pub fn write_span_chunk(stream: &mut WriteStream<'_>, value: &SpanChunk) -> Result {
     for i in 0..4 {
@@ -266,6 +275,7 @@ pub fn read_span_chunk(stream: &mut ReadStream<'_>, value: &mut SpanChunk) -> Re
     Ok(())
 }
 
+#[allow(clippy::needless_range_loop)]
 #[inline]
 pub(crate) fn read_span_chunk_body(stream: &mut ReadStream<'_>, value: &mut SpanChunk) -> Result {
     for i in 0..4 {
@@ -292,6 +302,7 @@ pub struct SpanTail {
 pub const SPAN_TAIL_MAX_BITS: u64 = 160;
 pub const SPAN_TAIL_MAX_BYTES: usize = 24;
 
+#[allow(clippy::needless_range_loop)]
 #[inline(always)]
 pub fn write_span_tail(stream: &mut WriteStream<'_>, value: &SpanTail) -> Result {
     for i in 0..2 {
@@ -314,6 +325,7 @@ pub fn read_span_tail(stream: &mut ReadStream<'_>, value: &mut SpanTail) -> Resu
     Ok(())
 }
 
+#[allow(clippy::needless_range_loop)]
 #[inline]
 pub(crate) fn read_span_tail_body(stream: &mut ReadStream<'_>, value: &mut SpanTail) -> Result {
     for i in 0..2 {
@@ -337,6 +349,7 @@ pub struct SpanTwice {
 pub const SPAN_TWICE_MAX_BITS: u64 = 256;
 pub const SPAN_TWICE_MAX_BYTES: usize = 32;
 
+#[allow(clippy::needless_range_loop)]
 #[inline(always)]
 pub fn write_span_twice(stream: &mut WriteStream<'_>, value: &SpanTwice) -> Result {
     for i in 0..2 {
@@ -361,6 +374,7 @@ pub fn read_span_twice(stream: &mut ReadStream<'_>, value: &mut SpanTwice) -> Re
     Ok(())
 }
 
+#[allow(clippy::needless_range_loop)]
 #[inline]
 pub(crate) fn read_span_twice_body(stream: &mut ReadStream<'_>, value: &mut SpanTwice) -> Result {
     for i in 0..2 {

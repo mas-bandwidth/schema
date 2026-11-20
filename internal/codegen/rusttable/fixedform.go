@@ -1056,16 +1056,26 @@ func (g *gen) emitFixedDeadUnion(un *ir.Union) {
 	g.pf("    match tag {\n")
 	for i, v := range un.Variants {
 		arm := int64(0)
+		var payloadSrc string
 		if v.F != nil {
 			arm = ir.TableFixedFieldBytes(v.F)
+			sub := &gen{unit: g.unit, file: g.file, closure: g.closure, lineage: g.lineage, vc: g.vc}
+			sub.emitFixedDeadPayload(v.F, tagw, 12)
+			payloadSrc = sub.body.String()
+		}
+		if payloadSrc == "" {
+			if span > tagw+arm {
+				g.pf("        %d => b[%d..%d].iter().any(|&x| x != 0),\n", i+1, tagw+arm, span)
+			} else {
+				g.pf("        %d => false,\n", i+1)
+			}
+			continue
 		}
 		g.pf("        %d => {\n", i+1)
 		if span > tagw+arm {
 			g.pf("            if b[%d..%d].iter().any(|&x| x != 0) {\n                return true;\n            }\n", tagw+arm, span)
 		}
-		if v.F != nil {
-			g.emitFixedDeadPayload(v.F, tagw, 12)
-		}
+		g.body.WriteString(payloadSrc)
 		g.pf("            false\n        }\n")
 	}
 	g.pf("        _ => false,\n    }\n}\n\n")

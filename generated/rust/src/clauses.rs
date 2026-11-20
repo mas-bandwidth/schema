@@ -21,6 +21,7 @@ pub struct W13 {
 pub const W13_MAX_BITS: u64 = 160;
 pub const W13_MAX_BYTES: usize = 24;
 
+#[allow(clippy::needless_range_loop)]
 #[inline(always)]
 pub fn write_w13(stream: &mut WriteStream<'_>, value: &W13) -> Result {
     debug_assert!(value.items_count >= 0 && value.items_count <= 12, "items_count out of range [0, 12]");
@@ -45,6 +46,7 @@ pub fn read_w13(stream: &mut ReadStream<'_>, value: &mut W13) -> Result {
     Ok(())
 }
 
+#[allow(clippy::needless_range_loop)]
 #[inline]
 pub(crate) fn read_w13_body(stream: &mut ReadStream<'_>, value: &mut W13) -> Result {
     stream.serialize_int(&mut value.items_count, 0, 12)?; // the count guards the loop (§6.3)
@@ -72,6 +74,7 @@ pub struct W17 {
 pub const W17_MAX_BITS: u64 = 157;
 pub const W17_MAX_BYTES: usize = 24;
 
+#[allow(clippy::needless_range_loop)]
 #[inline(always)]
 pub fn write_w17(stream: &mut WriteStream<'_>, value: &W17) -> Result {
     debug_assert!(value.items_count >= 0 && value.items_count <= 9, "items_count out of range [0, 9]");
@@ -96,6 +99,7 @@ pub fn read_w17(stream: &mut ReadStream<'_>, value: &mut W17) -> Result {
     Ok(())
 }
 
+#[allow(clippy::needless_range_loop)]
 #[inline]
 pub(crate) fn read_w17_body(stream: &mut ReadStream<'_>, value: &mut W17) -> Result {
     stream.serialize_int(&mut value.items_count, 0, 9)?; // the count guards the loop (§6.3)
@@ -123,6 +127,7 @@ pub struct W26 {
 pub const W26_MAX_BITS: u64 = 159;
 pub const W26_MAX_BYTES: usize = 24;
 
+#[allow(clippy::needless_range_loop)]
 #[inline(always)]
 pub fn write_w26(stream: &mut WriteStream<'_>, value: &W26) -> Result {
     debug_assert!(value.items_count >= 0 && value.items_count <= 6, "items_count out of range [0, 6]");
@@ -147,6 +152,7 @@ pub fn read_w26(stream: &mut ReadStream<'_>, value: &mut W26) -> Result {
     Ok(())
 }
 
+#[allow(clippy::needless_range_loop)]
 #[inline]
 pub(crate) fn read_w26_body(stream: &mut ReadStream<'_>, value: &mut W26) -> Result {
     stream.serialize_int(&mut value.items_count, 0, 6)?; // the count guards the loop (§6.3)
@@ -174,6 +180,7 @@ pub struct W1 {
 pub const W1_MAX_BITS: u64 = 25;
 pub const W1_MAX_BYTES: usize = 8;
 
+#[allow(clippy::needless_range_loop)]
 #[inline(always)]
 pub fn write_w1(stream: &mut WriteStream<'_>, value: &W1) -> Result {
     debug_assert!(value.items_count >= 0 && value.items_count <= 20, "items_count out of range [0, 20]");
@@ -198,6 +205,7 @@ pub fn read_w1(stream: &mut ReadStream<'_>, value: &mut W1) -> Result {
     Ok(())
 }
 
+#[allow(clippy::needless_range_loop)]
 #[inline]
 pub(crate) fn read_w1_body(stream: &mut ReadStream<'_>, value: &mut W1) -> Result {
     stream.serialize_int(&mut value.items_count, 0, 20)?; // the count guards the loop (§6.3)
@@ -225,6 +233,7 @@ pub struct W52 {
 pub const W52_MAX_BITS: u64 = 158;
 pub const W52_MAX_BYTES: usize = 24;
 
+#[allow(clippy::needless_range_loop)]
 #[inline(always)]
 pub fn write_w52(stream: &mut WriteStream<'_>, value: &W52) -> Result {
     debug_assert!(value.items_count >= 0 && value.items_count <= 3, "items_count out of range [0, 3]");
@@ -249,6 +258,7 @@ pub fn read_w52(stream: &mut ReadStream<'_>, value: &mut W52) -> Result {
     Ok(())
 }
 
+#[allow(clippy::needless_range_loop)]
 #[inline]
 pub(crate) fn read_w52_body(stream: &mut ReadStream<'_>, value: &mut W52) -> Result {
     stream.serialize_int(&mut value.items_count, 0, 3)?; // the count guards the loop (§6.3)
@@ -276,6 +286,7 @@ pub struct W50 {
 pub const W50_MAX_BITS: u64 = 152;
 pub const W50_MAX_BYTES: usize = 24;
 
+#[allow(clippy::needless_range_loop)]
 #[inline(always)]
 pub fn write_w50(stream: &mut WriteStream<'_>, value: &W50) -> Result {
     debug_assert!(value.items_count >= 0 && value.items_count <= 3, "items_count out of range [0, 3]");
@@ -300,6 +311,7 @@ pub fn read_w50(stream: &mut ReadStream<'_>, value: &mut W50) -> Result {
     Ok(())
 }
 
+#[allow(clippy::needless_range_loop)]
 #[inline]
 pub(crate) fn read_w50_body(stream: &mut ReadStream<'_>, value: &mut W50) -> Result {
     stream.serialize_int(&mut value.items_count, 0, 3)?; // the count guards the loop (§6.3)
@@ -326,6 +338,7 @@ pub struct F13 {
 pub const F13_MAX_BITS: u64 = 91;
 pub const F13_MAX_BYTES: usize = 16;
 
+#[allow(clippy::needless_range_loop)]
 #[inline(always)]
 pub fn write_f13(stream: &mut WriteStream<'_>, value: &F13) -> Result {
     for i in 0..7 {
@@ -345,6 +358,7 @@ pub fn read_f13(stream: &mut ReadStream<'_>, value: &mut F13) -> Result {
     Ok(())
 }
 
+#[allow(clippy::needless_range_loop)]
 #[inline]
 pub(crate) fn read_f13_body(stream: &mut ReadStream<'_>, value: &mut F13) -> Result {
     for i in 0..7 {
@@ -416,6 +430,7 @@ pub struct ArrTri3 {
 pub const ARR_TRI3_MAX_BITS: u64 = 34;
 pub const ARR_TRI3_MAX_BYTES: usize = 8;
 
+#[allow(clippy::needless_range_loop)]
 #[inline(always)]
 pub fn write_arr_tri3(stream: &mut WriteStream<'_>, value: &ArrTri3) -> Result {
     debug_assert!(value.items_count >= 0 && value.items_count <= 10, "items_count out of range [0, 10]");
@@ -436,6 +451,7 @@ pub fn read_arr_tri3(stream: &mut ReadStream<'_>, value: &mut ArrTri3) -> Result
     Ok(())
 }
 
+#[allow(clippy::needless_range_loop)]
 #[inline]
 pub(crate) fn read_arr_tri3_body(stream: &mut ReadStream<'_>, value: &mut ArrTri3) -> Result {
     stream.serialize_int(&mut value.items_count, 0, 10)?; // the count guards the loop (§6.3)
@@ -503,6 +519,7 @@ pub struct ArrEleven {
 pub const ARR_ELEVEN_MAX_BITS: u64 = 99;
 pub const ARR_ELEVEN_MAX_BYTES: usize = 16;
 
+#[allow(clippy::needless_range_loop)]
 #[inline(always)]
 pub fn write_arr_eleven(stream: &mut WriteStream<'_>, value: &ArrEleven) -> Result {
     for i in 0..9 {
@@ -518,6 +535,7 @@ pub fn read_arr_eleven(stream: &mut ReadStream<'_>, value: &mut ArrEleven) -> Re
     Ok(())
 }
 
+#[allow(clippy::needless_range_loop)]
 #[inline]
 pub(crate) fn read_arr_eleven_body(stream: &mut ReadStream<'_>, value: &mut ArrEleven) -> Result {
     for i in 0..9 {
@@ -782,6 +800,7 @@ pub fn read_strs(stream: &mut ReadStream<'_>, value: &mut Strs) -> Result {
     Ok(())
 }
 
+#[allow(clippy::needless_range_loop)]
 #[inline]
 pub(crate) fn read_strs_body(stream: &mut ReadStream<'_>, value: &mut Strs) -> Result {
     stream.serialize_bits(&mut value.lead, 5)?;
@@ -817,6 +836,7 @@ pub struct ArrNested {
 pub const ARR_NESTED_MAX_BITS: u64 = 55;
 pub const ARR_NESTED_MAX_BYTES: usize = 8;
 
+#[allow(clippy::needless_range_loop)]
 #[inline(always)]
 pub fn write_arr_nested(stream: &mut WriteStream<'_>, value: &ArrNested) -> Result {
     debug_assert!(value.lead < 1 << 5, "lead above the bits(5) wire width");
@@ -847,6 +867,7 @@ pub fn read_arr_nested(stream: &mut ReadStream<'_>, value: &mut ArrNested) -> Re
     Ok(())
 }
 
+#[allow(clippy::needless_range_loop)]
 #[inline]
 pub(crate) fn read_arr_nested_body(stream: &mut ReadStream<'_>, value: &mut ArrNested) -> Result {
     stream.serialize_bits(&mut value.lead, 5)?;

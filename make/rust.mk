@@ -1519,11 +1519,15 @@ CARDS_RUST_FUZZ_TIME ?= 60s
 
 # cards-rust-generate produces ONLY build/tables-generated-rust/cards, cleaning
 # that owned output first so a deleted symbol cannot survive a regeneration.
+CARDS_RUST_STAMP := build/tables-generated-rust/cards/.stamp
 .PHONY: cards-rust-generate
-cards-rust-generate: bin/schema
+cards-rust-generate: $(CARDS_RUST_STAMP)
+
+$(CARDS_RUST_STAMP): bin/schema $(wildcard tables/cards/*.schema) tables/cards/schema.lock
 	@rm -rf build/tables-generated-rust/cards
 	@mkdir -p build/tables-generated-rust/cards/src
 	./bin/schema generate --lang rust --out build/tables-generated-rust/cards/src tables/cards
+	@touch $@
 
 # build/conformance-rust-card is the wire-fuzz driver: the hand-written main in
 # test/conformance/rust/src/wire_fuzz.rs compiled beside the card's generated

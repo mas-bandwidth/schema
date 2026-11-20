@@ -34,6 +34,7 @@ impl DefaultArm {
 pub const DEFAULT_ARM_MAX_BITS: u64 = 77;
 pub const DEFAULT_ARM_MAX_BYTES: usize = 16;
 
+#[allow(clippy::needless_range_loop)]
 #[inline(always)]
 pub fn write_default_arm(stream: &mut WriteStream<'_>, value: &DefaultArm) -> Result {
     debug_assert!(value.entries_count >= 0 && value.entries_count <= 2, "entries_count out of range [0, 2]");
@@ -59,6 +60,7 @@ pub fn read_default_arm(stream: &mut ReadStream<'_>, value: &mut DefaultArm) -> 
     Ok(())
 }
 
+#[allow(clippy::needless_range_loop)]
 #[inline]
 pub(crate) fn read_default_arm_body(stream: &mut ReadStream<'_>, value: &mut DefaultArm) -> Result {
     stream.serialize_int(&mut value.entries_count, 0, 2)?; // the count guards the loop (§6.3)

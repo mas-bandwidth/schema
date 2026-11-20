@@ -489,6 +489,7 @@ jobs:
           cache: false
 
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
+        if: runner.environment == 'github-hosted'
         with:
           components: clippy, rustfmt
 
@@ -861,7 +862,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head; the SHA freezes the action, not the compiler, and rustup resolves stable at run time
         with:
           components: clippy, rustfmt
-        if: matrix.rust != ''
+        if: matrix.rust != '' && runner.environment == 'github-hosted'
 
       - name: read the .NET SDK pin
         if: matrix.dotnet != ''

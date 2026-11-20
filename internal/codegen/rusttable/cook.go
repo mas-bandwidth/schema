@@ -907,14 +907,14 @@ func (g *gen) emitCookNamedTextDefaults(st *ir.Struct, ind string) {
 		}
 		switch {
 		case f.KeyEnum != "":
-			g.pf("%sfor i in 0..%d {\n", ind, f.KeyEnumRef.Max)
-			g.pf("%s    value.%s[i] = %sRow::default();\n", ind, f.Name, nested.Name)
+			g.pf("%sfor slot in &mut value.%s {\n", ind, f.Name)
+			g.pf("%s    *slot = %sRow::default();\n", ind, nested.Name)
 			g.pf("%s}\n", ind)
 		case f.IsList() || f.IsMap():
 			// out-of-line TableCookSpan: zeroed span has 0 inline elements
 		case f.Array != ir.ArrayNone:
-			g.pf("%sfor i in 0..%d {\n", ind, f.ArrayBound)
-			g.pf("%s    value.%s[i] = %sRow::default();\n", ind, f.Name, nested.Name)
+			g.pf("%sfor slot in &mut value.%s {\n", ind, f.Name)
+			g.pf("%s    *slot = %sRow::default();\n", ind, nested.Name)
 			g.pf("%s}\n", ind)
 		default:
 			g.pf("%svalue.%s = %sRow::default();\n", ind, f.Name, nested.Name)
@@ -1353,8 +1353,7 @@ unsafe fn table_cook_raw(p: *const u8, at: i64, width: u32) -> u64 {
 /// out is null or points at that record's writable extent. Neither buffer is
 /// written through any other pointer for the duration of the call.
 pub unsafe fn table_cook_write_record(p: *const u8, t: &TableCookInfo, out: *mut u8, at: i64, order: u64) -> bool {
-    for i in 0..t.num_fields as usize {
-        let f = &t.fields[i];
+    for f in &t.fields[..t.num_fields as usize] {
         let dest = at + f.offset as i64;
         if f.present_offset >= 0 {
             let present = unsafe { table_cook_raw(p, f.present_offset as i64, 1) };

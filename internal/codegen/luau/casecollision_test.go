@@ -1,31 +1,47 @@
 package luau
 
 import (
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/check"
+	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// unitFromSchemas writes one schema file per entry into a fresh directory and
-// loads the unit, so a test names only the source it means.
+// unitFromSchemas parses each entry directly in memory (with distinct synthetic
+// directory prefixes) so case-colliding schema names like Foo.schema and
+// foo.schema never overwrite each other on macOS APFS or Windows NTFS.
 func unitFromSchemas(t *testing.T, schemas map[string]string) *ir.Unit {
 	t.Helper()
-	dir := t.TempDir()
 	var names []string
 	for name := range schemas {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	for _, name := range names {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(schemas[name]), 0o644); err != nil {
-			t.Fatalf("write %s: %v", name, err)
+	files := make([]check.SourceFile, 0, len(names))
+	for i, rel := range names {
+		name := filepath.Base(rel)
+		src := []byte(schemas[rel])
+		tree, errs := parser.Parse(name, src)
+		if len(errs) != 0 {
+			t.Fatalf("parse %s: %v", name, errs)
 		}
+		files = append(files, check.SourceFile{
+			Path:  filepath.Join("mem", string(rune('a'+i)), name),
+			Name:  name,
+			Base:  strings.TrimSuffix(name, ".schema"),
+			Bytes: src,
+			AST:   tree,
+		})
 	}
-	return unitFromDir(t, dir)
+	u, errs := check.Unit(files)
+	if len(errs) != 0 {
+		t.Fatalf("check: %v", errs)
+	}
+	return u
 }
 
 // TestLuauGeneratedNamesAreCaseInsensitiveUnique pins docs/SPEC-TABLES.md §11's

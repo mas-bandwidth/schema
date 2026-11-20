@@ -39,9 +39,17 @@ func (g *gen) emitReadSpine(name, typ string, body func()) {
 	g.pf("    read_%s_body(stream, value)?;\n", snake)
 	g.emitReadEnd()
 	g.pf("    Ok(())\n}\n\n")
+	saved := g.body
+	g.body = strings.Builder{}
+	body()
+	inner := g.body.String()
+	g.body = saved
+	if strings.Contains(inner, "for i in 0..") {
+		g.pf("#[allow(clippy::needless_range_loop)]\n")
+	}
 	g.pf(readSpineInline)
 	g.pf("pub(crate) fn read_%s_body(stream: &mut ReadStream<'_>, value: &mut %s) -> Result {\n", snake, typ)
-	body()
+	g.body.WriteString(inner)
 	g.pf("    Ok(())\n}\n\n")
 }
 
@@ -148,13 +156,21 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 	// anyway. The READ spine keeps the hint: the C++ backend's
 	// blanket read demand was ported here, measured, and refused — it
 	// collapsed probearray read to 0.53x and shipcreate read to 0.71x.
-	g.pf(writeSpineInline)
-	g.pf("pub fn write_%s(stream: &mut WriteStream<'_>, value: &%s) -> Result {\n", snake, st.Name)
+	saved := g.body
+	g.body = strings.Builder{}
 	if len(st.Items) == 0 {
 		g.pf("    let _ = (stream, value); // empty body — presence is the payload (SPEC §4.6)\n")
 	} else {
 		g.emitWriteItems(st.Items, "    ")
 	}
+	writeInner := g.body.String()
+	g.body = saved
+	if strings.Contains(writeInner, "for i in 0..") {
+		g.pf("#[allow(clippy::needless_range_loop)]\n")
+	}
+	g.pf(writeSpineInline)
+	g.pf("pub fn write_%s(stream: &mut WriteStream<'_>, value: &%s) -> Result {\n", snake, st.Name)
+	g.body.WriteString(writeInner)
 	g.pf("    Ok(())\n}\n\n")
 
 	g.emitReadSpine(st.Name, st.Name, func() {
