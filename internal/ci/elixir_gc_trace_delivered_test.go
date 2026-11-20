@@ -22,24 +22,23 @@ func checkElixirGCTraceMeter(rel, src string) error {
 		if i+1 < len(locs) {
 			tail = src[loc[1]:locs[i+1][0]]
 		}
-		stopIdx := strings.Index(tail, ":erlang.trace(me, false, [:garbage_collection])")
-		if stopIdx < 0 {
-			return fmt.Errorf("%s: :garbage_collection trace #%d has no matching :erlang.trace(me, false, [:garbage_collection])", rel, i+1)
+		const stopCall = ":erlang.trace(me, false, [:garbage_collection])"
+		_, afterStopTail, ok := strings.Cut(tail, stopCall)
+		if !ok {
+			return fmt.Errorf("%s: :garbage_collection trace #%d has no matching %s", rel, i+1, stopCall)
 		}
-		afterStop := tail[stopIdx:]
-		reclaimedIdx := strings.Index(afterStop, "send(tracer, {:reclaimed,")
-		if reclaimedIdx < 0 {
+		between, _, ok := strings.Cut(afterStopTail, "send(tracer, {:reclaimed,")
+		if !ok {
 			return fmt.Errorf("%s: :garbage_collection trace #%d has no send(tracer, {:reclaimed, ...})", rel, i+1)
 		}
-		between := afterStop[:reclaimedIdx]
-		deliverIdx := strings.Index(between, ":erlang.trace_delivered(")
-		if deliverIdx < 0 {
+		beforeDeliver, afterDeliver, ok := strings.Cut(between, ":erlang.trace_delivered(")
+		if !ok {
 			return fmt.Errorf("%s: :garbage_collection trace #%d sends {:reclaimed, ...} without flushing :erlang.trace_delivered(me) first", rel, i+1)
 		}
-		if !strings.Contains(between[deliverIdx:], "{:trace_delivered,") {
+		if !strings.Contains(afterDeliver, "{:trace_delivered,") {
 			return fmt.Errorf("%s: :garbage_collection trace #%d calls :erlang.trace_delivered without awaiting {:trace_delivered, ...} before send(tracer, {:reclaimed, ...})", rel, i+1)
 		}
-		if usedIdx := strings.Index(between, "used()"); usedIdx < 0 || usedIdx > deliverIdx {
+		if !strings.Contains(beforeDeliver, "used()") {
 			return fmt.Errorf("%s: :garbage_collection trace #%d must snapshot live1 = used() after stopping trace and before :erlang.trace_delivered allocates its ref", rel, i+1)
 		}
 	}
