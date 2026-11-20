@@ -5523,6 +5523,7 @@ final class TableTextReport {
   bool refused = false;
   String refusal = '';
   String missingFields = '';
+  bool variableRoot = false;
   final Set<int> textLabels = <int>{};
 
   // refuse records the read's whole-load refusal by name (a per-language
@@ -6280,16 +6281,44 @@ bool _jsonName(String name, TableTextReport r) {
 // it goes through the same text check a placed string does, so one that
 // decodes to U+0000 refuses the read as a placed one would. Every object key
 // also carries the 255-byte schema-name cap (§16.2), however deep it sits.
+int? _jsonSkippedLabel(dynamic raw) {
+  if (raw is int && raw >= 1) return raw;
+  if (raw is _JNum &&
+      raw.integral &&
+      raw.token.isNotEmpty &&
+      raw.token.codeUnitAt(0) >= 0x31 &&
+      raw.token.codeUnitAt(0) <= 0x39) {
+    final big = BigInt.tryParse(raw.token);
+    if (big != null && big <= _jsonU64Max) {
+      return big.toSigned(64).toInt();
+    }
+  }
+  return null;
+}
+
+void _jsonSkipEntry(int idx, String key, dynamic val, TableTextReport r) {
+  _jsonText(key);
+  _jsonName(key, r);
+  if (r.variableRoot && key.startsWith('&')) {
+    final label = idx == 0 && key == '&node' ? _jsonSkippedLabel(val) : null;
+    if (label == null) {
+      throw const FormatException('reserved ampersand prefix');
+    }
+    r.textLabels.add(label);
+  } else {
+    _jsonSkipValue(val, r);
+  }
+}
+
 void _jsonSkipValue(dynamic val, TableTextReport r) {
   if (val is String) {
     _jsonText(val);
     return;
   }
   if (val is _JObj) {
-    for (final entry in val.entries) {
-      _jsonText(entry.key);
-      _jsonName(entry.key, r);
-      _jsonSkipValue(entry.value, r);
+    for (var idx = 0; idx < val.entries.length; idx++) {
+      final entry = val.entries[idx];
+      _jsonSkipEntry(idx, entry.key, entry.value, r);
     }
     return;
   }
@@ -6300,12 +6329,12 @@ void _jsonSkipValue(dynamic val, TableTextReport r) {
     return;
   }
   if (val is Map) {
+    var idx = 0;
     for (final entry in val.entries) {
       final key = entry.key;
       if (key is! String) throw const FormatException('kind_mismatch');
-      _jsonText(key);
-      _jsonName(key, r);
-      _jsonSkipValue(entry.value, r);
+      _jsonSkipEntry(idx, key, entry.value, r);
+      idx++;
     }
   }
 }
@@ -7227,6 +7256,9 @@ void tableEntityFromJsonFields(TableEntity v, dynamic obj, TableTextReport r, _S
         if (val is bool) { v.firing = val; } else { r.refuse('kind_mismatch'); }
         break;
       default:
+        if (key.startsWith('&')) {
+          throw const FormatException('reserved ampersand prefix');
+        }
         if (!seen.add(key)) r.refuse('text_damaged');
         _jsonSkipValue(val, r);
         r.unknown++;
@@ -7287,6 +7319,9 @@ void tableStatFromJsonFields(TableStat v, dynamic obj, TableTextReport r, _Share
         v.delta = _jsonIntField(val, r, -512, 511, false, v.delta);
         break;
       default:
+        if (key.startsWith('&')) {
+          throw const FormatException('reserved ampersand prefix');
+        }
         if (!seen.add(key)) r.refuse('text_damaged');
         _jsonSkipValue(val, r);
         r.unknown++;
@@ -7368,6 +7403,9 @@ void tableHitEventFromJsonFields(TableHitEvent v, dynamic obj, TableTextReport r
         if (val is bool) { v.crit = val; } else { r.refuse('kind_mismatch'); }
         break;
       default:
+        if (key.startsWith('&')) {
+          throw const FormatException('reserved ampersand prefix');
+        }
         if (!seen.add(key)) r.refuse('text_damaged');
         _jsonSkipValue(val, r);
         r.unknown++;
@@ -7428,6 +7466,9 @@ void tableChatEventFromJsonFields(TableChatEvent v, dynamic obj, TableTextReport
         v.speaker = _jsonIntField(val, r, null, 4095, true, v.speaker);
         break;
       default:
+        if (key.startsWith('&')) {
+          throw const FormatException('reserved ampersand prefix');
+        }
         if (!seen.add(key)) r.refuse('text_damaged');
         _jsonSkipValue(val, r);
         r.unknown++;
@@ -7488,6 +7529,9 @@ void tablePickupEventFromJsonFields(TablePickupEvent v, dynamic obj, TableTextRe
         v.amount = _jsonIntField(val, r, 0, 255, false, v.amount);
         break;
       default:
+        if (key.startsWith('&')) {
+          throw const FormatException('reserved ampersand prefix');
+        }
         if (!seen.add(key)) r.refuse('text_damaged');
         _jsonSkipValue(val, r);
         r.unknown++;
@@ -7891,6 +7935,9 @@ void tableMixedFromJsonFields(TableMixed v, dynamic obj, TableTextReport r, _Sha
         v.idleTicks = _jsonIntField(val, r, 0, 15, false, v.idleTicks);
         break;
       default:
+        if (key.startsWith('&')) {
+          throw const FormatException('reserved ampersand prefix');
+        }
         if (!seen.add(key)) r.refuse('text_damaged');
         _jsonSkipValue(val, r);
         r.unknown++;
@@ -7912,6 +7959,7 @@ String tableEntityToJson(TableEntity v) {
 TableEntity tableEntityFromJson(String text, [TableTextReport? report]) {
   final r = report ?? TableTextReport();
   r.missingFields = '';
+  r.variableRoot = false;
   final v = TableEntity();
   final root = _jsonDecodeExact(_jsonPrepare(text, r));
   if (_jsonEntries(root) == null) throw const FormatException('json_root_not_object: TableEntity');
@@ -7939,6 +7987,7 @@ String tableStatToJson(TableStat v) {
 TableStat tableStatFromJson(String text, [TableTextReport? report]) {
   final r = report ?? TableTextReport();
   r.missingFields = '';
+  r.variableRoot = false;
   final v = TableStat();
   final root = _jsonDecodeExact(_jsonPrepare(text, r));
   if (_jsonEntries(root) == null) throw const FormatException('json_root_not_object: TableStat');
@@ -7966,6 +8015,7 @@ String tableMixedToJson(TableMixed v) {
 TableMixed tableMixedFromJson(String text, [TableTextReport? report]) {
   final r = report ?? TableTextReport();
   r.missingFields = '';
+  r.variableRoot = false;
   final v = TableMixed();
   final root = _jsonDecodeExact(_jsonPrepare(text, r));
   if (_jsonEntries(root) == null) throw const FormatException('json_root_not_object: TableMixed');

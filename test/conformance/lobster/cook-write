@@ -33,7 +33,7 @@ case "$mode" in
 check)
     out=build/conformance-lobster-cook-write
     rm -rf "$out" && mkdir -p "$out"
-    build/conformance-harness run --only lobster > "$out/log" 2>&1 || true
+    build/conformance-harness run --only lobster --work "$out/work" > "$out/log" 2>&1 || true
     if ! holds "$out/log"; then
         grep -E '^cook-write |lobster / cook-write' "$out/log" >&2 || cat "$out/log" >&2
         echo "conformance-lobster-cook-write FAILED: lobster / cook-write is not pass N/N, unrelaxed" >&2

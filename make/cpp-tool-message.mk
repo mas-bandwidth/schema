@@ -30,8 +30,12 @@ conformance-cpp-tool-message-negative-control: build/conformance-harness build/c
 	@rm -rf $(CPP_TOOL_MESSAGE_NEGATIVE) && mkdir -p $(CPP_TOOL_MESSAGE_NEGATIVE)
 	cp -R build/tables-generated/messages $(CPP_TOOL_MESSAGE_NEGATIVE)/messages
 	@test "$$(grep -c 'outer.guard, outer.argw ) != outer.arg ) { break; }' $(CPP_TOOL_MESSAGE_NEGATIVE)/messages/MessagesTable.h)" = 1 || \
-		{ echo "NEGATIVE CONTROL FAILED: the nested-union gate is not in the generated header once"; exit 1; }
-	sed -e 's/outer.guard, outer.argw ) != outer.arg ) { break; }/outer.guard, outer.argw ) != outer.arg ) { (void) outer.arg; }/' build/tables-generated/messages/MessagesTable.h \
+		{ echo "NEGATIVE CONTROL FAILED: the nested-union scan gate is not in the generated header once"; exit 1; }
+	@test "$$(grep -c 'l.guard, l.argw ) != l.arg ) { outer_ok = false; break; }' $(CPP_TOOL_MESSAGE_NEGATIVE)/messages/MessagesTable.h)" = 1 || \
+		{ echo "NEGATIVE CONTROL FAILED: the nested-union span gate is not in the generated header once"; exit 1; }
+	sed -e 's/outer.guard, outer.argw ) != outer.arg ) { break; }/outer.guard, outer.argw ) != outer.arg ) { (void) outer.arg; }/' \
+	    -e 's/l.guard, l.argw ) != l.arg ) { outer_ok = false; break; }/l.guard, l.argw ) != l.arg ) { (void) outer_ok; }/' \
+	    build/tables-generated/messages/MessagesTable.h \
 		> $(CPP_TOOL_MESSAGE_NEGATIVE)/messages/MessagesTable.h
 	@if cmp -s build/tables-generated/messages/MessagesTable.h $(CPP_TOOL_MESSAGE_NEGATIVE)/messages/MessagesTable.h; then \
 		echo "NEGATIVE CONTROL FAILED: the fault was not planted"; exit 1; \

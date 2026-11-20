@@ -512,8 +512,8 @@ cards-wire-fuzz:
 	fi
 
 cards-wire-fuzz-run: build/conformance-harness build/conformance-go
-	@timeout $(CARDS_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
-		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
+	@./build/conformance-harness wire-fuzz \
+		--timeout $(CARDS_FUZZ_TIME) --manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver 'build/conformance-go wire-fuzz' --seed 24845619678 --n 100 \
 		> build/cards-wire-fuzz.log 2>&1; \
 		status=$$?; cat build/cards-wire-fuzz.log; \

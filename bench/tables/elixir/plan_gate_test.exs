@@ -36,8 +36,8 @@ defmodule SchemaTablesBenchElixir.PlanGateTest do
 
   # The gate this one replaced, verbatim in its conditions.
   defp old_gate_accepts?(plan, report) do
-    length(plan) == 64 and report.malformed == false and report.unknown == 0 and
-      report.kind_mismatch == 0 and report.clamped == 0 and report.duplicate == 0 and
+    length(plan) == 64 and report.unknown == 0 and report.retained == 0 and
+      report.retain_lost == 0 and report.layout_hash == 0 and
       report.widened > 0
   end
 
@@ -100,7 +100,7 @@ defmodule SchemaTablesBenchElixir.PlanGateTest do
       refused(ctx, ctx.plan, report, "the counters are not §5.4's")
     end
 
-    refused(ctx, ctx.plan, %{ctx.report | clamped: 1}, "the counters are not §5.4's", false)
+    refused(ctx, ctx.plan, %{ctx.report | unknown: 1}, "the counters are not §5.4's", false)
   end
 
   test "a lineage file with one OLD value flipped reads past the replaced gate and is refused",

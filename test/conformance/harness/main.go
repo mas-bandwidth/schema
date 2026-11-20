@@ -170,6 +170,7 @@ func main() {
 	// RELAXED 2026-11-14 (maintainer: get main green): --relax-vector names the pinned vectors a leg diverges on; re-enable: relax/unknown-arm-text-<lang>
 	relaxVectors := fs.String("relax-vector", "", "RELAXED 2026-11-14 (docs/relaxed.md): comma-separated pinned vector names whose divergence is counted and not failed; a named vector that agrees with the oracle, or that the run does not carry, fails the run (wire-fuzz only)")
 	vectors := fs.String("vectors", defaultVectors, "the pinned-vector index (wire-fuzz only)")
+	timeout := fs.Duration("timeout", 0, "whole-run wall-clock timeout (wire-fuzz only)")
 	corpus := fs.String("corpus", "tables/cards/conformance", "the card conformance corpus directory (cards only)")
 	expected := fs.String("expected", "", "where the card expected answers live, default <corpus>/expected (cards only)")
 	require := fs.String("require", "", "comma-separated required card surfaces, default all nine (cards only)")
@@ -279,7 +280,7 @@ func main() {
 		if *shards < 1 || *shard < 0 || *shard >= *shards {
 			fatalf("wire-fuzz: shard must be in [0, shards), and shards must be positive")
 		}
-		if err := wireFuzz(m, wireFuzzOptions{shard: *shard, shards: *shards, maxMutants: *maxMutants, driver: *driver, seed: *seed, n: *n, replay: *replay, unit: *unit, root: *root, message: *message, failed: *failed, vectors: *vectors, retain: *retain, builder: *builder, mixedBuilder: *mixedBuilder, finiteOwed: *finiteOwed, relaxDeadBytes: *relaxDeadBytes, relaxVectors: *relaxVectors}); err != nil {
+		if err := wireFuzz(m, wireFuzzOptions{shard: *shard, shards: *shards, maxMutants: *maxMutants, timeout: *timeout, driver: *driver, seed: *seed, n: *n, replay: *replay, unit: *unit, root: *root, message: *message, failed: *failed, vectors: *vectors, retain: *retain, builder: *builder, mixedBuilder: *mixedBuilder, finiteOwed: *finiteOwed, relaxDeadBytes: *relaxDeadBytes, relaxVectors: *relaxVectors}); err != nil {
 			fatalf("%v", err)
 		}
 	case "cook-differential":

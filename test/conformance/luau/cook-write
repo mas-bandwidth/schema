@@ -51,7 +51,7 @@ gate)
 	out=build/conformance-luau-cook-write
 	rm -rf "$out"
 	mkdir -p "$out"
-	build/conformance-harness run --only luau > "$out/log" 2>&1 || true
+	build/conformance-harness run --only luau --work "$out/work" > "$out/log" 2>&1 || true
 	if ! check "$out/log"; then
 		cat "$out/log" >&2
 		exit 1
