@@ -199,7 +199,8 @@ RUST_BE_TARGET ?= s390x-unknown-linux-gnu
 
 .PHONY: tables-rust-big-endian
 tables-rust-big-endian: build/tables-generated-rust/.stamp
-	@if ! PATH="$(RUSTUP_BIN):$$PATH" rustup target list --installed 2>/dev/null | grep -qx "$(RUST_BE_TARGET)"; then \
+	@libdir="$$(PATH="$(RUSTUP_BIN):$$PATH" rustc --print target-libdir --target $(RUST_BE_TARGET) 2>/dev/null || true)"; \
+	if [ -z "$$libdir" ] || ! ls "$$libdir"/libstd* >/dev/null 2>&1; then \
 		echo "SKIP tables-rust-big-endian: $(RUST_BE_TARGET) is not installed"; \
 		echo "  rustup target add $(RUST_BE_TARGET)"; \
 		exit 0; \

@@ -372,6 +372,7 @@ jobs:
             for leg in $touched_legs; do
               case "$leg" in
                 cpp)               ps=./internal/codegen/cpptable ;;
+                goose)             ps="./internal/codegen/goosetable ./test/conformance/goose/wirefuzzdispatch" ;;
                 # the Lobster, Unity, Python and Ruby legs each have two unit
                 # packages: the type surface and the table surface
                 lobster|unity|python|ruby) ps="./internal/codegen/$leg ./internal/codegen/${leg}table" ;;
@@ -1312,6 +1313,11 @@ jobs:
           # an empty -run selects every test and an empty -skip skips none
           # shellcheck disable=SC2086
           go test $short -timeout 25m $PACKAGES -run "$RUN" -skip "$SKIP"
+          case " $PACKAGES " in
+            *" ./test/conformance/goose/wirefuzzdispatch "*)
+              go test -race -count=1 ./test/conformance/goose/wirefuzzdispatch
+              ;;
+          esac
 
       # schema#1376: TestFixedForm* skip without SCHEMA_SLOW, and the go
       # leg-gate is skipped on PRs below main. tables-go-fixedform is the

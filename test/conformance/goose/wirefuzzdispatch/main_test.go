@@ -207,10 +207,12 @@ func TestDispatchRefusesATruncatedRoster(t *testing.T) {
 }
 
 // stallingLeg claims its unit's entries and never replies to a mutant: a
-// leg spinning on its input. release ends it as a kill would.
-func stallingLeg(t *testing.T, unit string) (*child, func()) {
+// leg spinning on its input. stalled closes once the leg has read the first
+// mutant routed to it; release ends it as a kill would.
+func stallingLeg(t *testing.T, unit string) (*child, <-chan struct{}, func()) {
 	inR, inW := io.Pipe()
 	outR, outW := io.Pipe()
+	stalled := make(chan struct{})
 	done := make(chan error, 1)
 	go func() {
 		entries := decodeRoster(t, inR)
@@ -221,56 +223,97 @@ func stallingLeg(t *testing.T, unit string) (*child, func()) {
 			}
 		}
 		_, _ = outW.Write(answer)
+		var head [8]byte
+		if _, err := io.ReadFull(inR, head[:]); err == nil {
+			size := binary.LittleEndian.Uint32(head[4:])
+			if _, err := io.CopyN(io.Discard, inR, int64(size)); err == nil {
+				close(stalled)
+			}
+		}
 		_, _ = io.Copy(io.Discard, inR)
 		done <- nil
 	}()
 	release := func() { _ = outW.Close(); _ = inR.Close() }
 	return &child{name: unit + " stalled", in: inW, out: bufio.NewReader(outR),
-		wait: func() error { return <-done }, kill: release}, release
+		wait: func() error { return <-done }, kill: release}, stalled, release
 }
 
 // A stalled leg leaves every earlier reply delivered: the harness then names
 // the mutant that stalled, never one the dispatcher still held buffered.
+// Both writer schedules are exercised: pipelining all mutants immediately and
+// holding "stalls" until the caller has read "first"'s reply (the schedule
+// where closing inW before the writer goroutine reached "stalls" ended clean).
 func TestDispatchDeliversEveryReplyBeforeAStall(t *testing.T) {
-	inR, inW := io.Pipe()
-	outR, outW := io.Pipe()
-	stalled, release := stallingLeg(t, "s")
-	start := func(unit, arm string) (*child, error) {
-		if arm != "builder" {
-			return nil, nil
-		}
-		if unit == "s" {
-			return stalled, nil
-		}
-		return fakeLeg(t, unit, arm, variable), nil
-	}
-	finished := make(chan error, 1)
-	go func() { finished <- dispatch(inR, outW, start); _ = outW.Close() }()
-	go func() {
-		_, _ = inW.Write(encodeRoster([]rosterEntry{{"a", "VList", 1, 0}, {"s", "VList", 1, 0}}))
-		_, _ = inW.Write(mutant(0, "first"))
-		_, _ = inW.Write(mutant(1, "stalls"))
-		_, _ = inW.Write(mutant(0, "queued"))
-	}()
-	answer := make([]byte, 2)
-	if _, err := io.ReadFull(outR, answer); err != nil {
-		t.Fatal(err)
-	}
-	head := make([]byte, replyHead)
-	if _, err := io.ReadFull(outR, head); err != nil {
-		t.Fatal(err)
-	}
-	saved := make([]byte, binary.LittleEndian.Uint64(head[replyHead-8:]))
-	if _, err := io.ReadFull(outR, saved); err != nil {
-		t.Fatal(err)
-	}
-	if string(saved) != "a/builder:first" {
-		t.Errorf("first reply %q", saved)
-	}
-	release()
-	_ = inW.Close()
-	go func() { _, _ = io.Copy(io.Discard, outR) }()
-	if err := <-finished; err == nil {
-		t.Error("a leg that never replied ended the run clean")
+	for _, tc := range []struct {
+		name            string
+		waitFirstBefore bool
+	}{
+		{name: "pipelined", waitFirstBefore: false},
+		{name: "afterFirstReply", waitFirstBefore: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			inR, inW := io.Pipe()
+			outR, outW := io.Pipe()
+			stalled, stalledAtMutant, release := stallingLeg(t, "s")
+			start := func(unit, arm string) (*child, error) {
+				if arm != "builder" {
+					return nil, nil
+				}
+				if unit == "s" {
+					return stalled, nil
+				}
+				return fakeLeg(t, unit, arm, variable), nil
+			}
+			finished := make(chan error, 1)
+			go func() {
+				err := dispatch(inR, outW, start)
+				_ = outW.Close()
+				finished <- err
+			}()
+			firstRead := make(chan struct{})
+			written := make(chan struct{})
+			go func() {
+				defer close(written)
+				_, _ = inW.Write(encodeRoster([]rosterEntry{{"a", "VList", 1, 0}, {"s", "VList", 1, 0}}))
+				_, _ = inW.Write(mutant(0, "first"))
+				if tc.waitFirstBefore {
+					<-firstRead
+				}
+				_, _ = inW.Write(mutant(1, "stalls"))
+				_, _ = inW.Write(mutant(0, "queued"))
+				_ = inW.Close()
+			}()
+			answer := make([]byte, 2)
+			if _, err := io.ReadFull(outR, answer); err != nil {
+				t.Fatal(err)
+			}
+			head := make([]byte, replyHead)
+			if _, err := io.ReadFull(outR, head); err != nil {
+				t.Fatal(err)
+			}
+			saved := make([]byte, binary.LittleEndian.Uint64(head[replyHead-8:]))
+			if _, err := io.ReadFull(outR, saved); err != nil {
+				t.Fatal(err)
+			}
+			close(firstRead)
+			if string(saved) != "a/builder:first" {
+				t.Errorf("first reply %q", saved)
+			}
+			<-stalledAtMutant
+			<-written
+			drained := make(chan struct{})
+			go func() {
+				defer close(drained)
+				_, _ = io.Copy(io.Discard, outR)
+			}()
+			release()
+			err := <-finished
+			<-drained
+			if err == nil {
+				t.Error("a leg that never replied ended the run clean")
+			} else if !strings.Contains(err.Error(), "s stalled did not reply") {
+				t.Errorf("unexpected error %v", err)
+			}
+		})
 	}
 }

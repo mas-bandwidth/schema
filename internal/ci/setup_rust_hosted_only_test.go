@@ -3,6 +3,7 @@ package ci
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -168,5 +169,86 @@ func TestEverySetupRustIsHostedOnlyNegativeControls(t *testing.T) {
 				t.Fatalf("planted %q did not fail as expected; got: %v", tc.name, errs)
 			}
 		})
+	}
+}
+
+// TestRustBigEndianTargetChecksActiveRustcSysroot guards against a standalone
+// fleet Rust SDK in RUSTUP_BIN (no rustup binary, no s390x libstd) falling
+// through to an unrelated rustup binary later in PATH that reports
+// s390x-unknown-linux-gnu installed for a different sysroot (macbook E0463).
+func TestRustBigEndianTargetChecksActiveRustcSysroot(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+	rustMkBytes, err := os.ReadFile(filepath.Join(root, "make", "rust.mk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rustMk := string(rustMkBytes)
+	_, after, ok := strings.Cut(rustMk, "tables-rust-big-endian: build/tables-generated-rust/.stamp\n")
+	if !ok {
+		t.Fatal("tables-rust-big-endian recipe not found in make/rust.mk")
+	}
+	recipe, _, ok := strings.Cut(after, "\n\n")
+	if !ok {
+		t.Fatal("end of tables-rust-big-endian recipe not found")
+	}
+	if strings.Contains(recipe, "rustup target list") {
+		t.Fatalf("tables-rust-big-endian still consults `rustup target list` instead of the active rustc target-libdir:\n%s", recipe)
+	}
+	if !strings.Contains(recipe, "rustc --print target-libdir") {
+		t.Fatalf("tables-rust-big-endian does not query `rustc --print target-libdir`:\n%s", recipe)
+	}
+
+	// Execute the guard logic directly against a mock standalone RUSTUP_BIN/rustc
+	// (no s390x libstd) with a decoy rustup on PATH that claims s390x is installed.
+	tmp := t.TempDir()
+	sdkBin := filepath.Join(tmp, "sdk-bin")
+	decoyBin := filepath.Join(tmp, "decoy-bin")
+	sysrootEmpty := filepath.Join(tmp, "sysroot-empty")
+	sysrootWithStd := filepath.Join(tmp, "sysroot-with-std")
+	for _, d := range []string{sdkBin, decoyBin, sysrootEmpty, sysrootWithStd} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(sysrootWithStd, "libstd-deadbeef.rlib"), []byte("stub"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeExec := func(path, body string) {
+		if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeExec(filepath.Join(decoyBin, "rustup"), "#!/bin/sh\necho s390x-unknown-linux-gnu\n")
+	writeExec(filepath.Join(sdkBin, "rustc"), "#!/bin/sh\necho \"$MOCK_TARGET_LIBDIR\"\n")
+	writeExec(filepath.Join(sdkBin, "cargo"), "#!/bin/sh\necho CARGO_RAN\n")
+
+	script := `
+libdir="$(PATH="$RUSTUP_BIN:$PATH" rustc --print target-libdir --target s390x-unknown-linux-gnu 2>/dev/null || true)"
+if [ -z "$libdir" ] || ! ls "$libdir"/libstd* >/dev/null 2>&1; then
+  echo "SKIP tables-rust-big-endian: s390x-unknown-linux-gnu is not installed"
+  exit 0
+fi
+PATH="$RUSTUP_BIN:$PATH" cargo check
+`
+	runProbe := func(targetLibdir string) string {
+		cmd := exec.Command("sh", "-eu", "-c", script)
+		cmd.Env = append(os.Environ(),
+			"RUSTUP_BIN="+sdkBin,
+			"PATH="+decoyBin+":/usr/bin:/bin",
+			"MOCK_TARGET_LIBDIR="+targetLibdir,
+		)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("probe failed (%s): %v: %s", targetLibdir, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+
+	if got := runProbe(sysrootEmpty); !strings.HasPrefix(got, "SKIP tables-rust-big-endian:") {
+		t.Fatalf("missing libstd in active rustc sysroot did not skip: got %q", got)
+	}
+	if got := runProbe(sysrootWithStd); got != "CARGO_RAN" {
+		t.Fatalf("installed libstd in active rustc sysroot did not run cargo: got %q", got)
 	}
 }

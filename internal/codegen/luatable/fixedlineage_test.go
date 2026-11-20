@@ -13,6 +13,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
@@ -131,5 +133,59 @@ print("lineage-ok")
 				t.Errorf("%s: got %q", r.row, got)
 			}
 		})
+	}
+}
+
+// TestGenerateLineageConcurrentSameUnit guards against sharing mutable
+// *ir.Unit-keyed global state across parallel GenerateLineage calls (for
+// example, parallel subtests reusing one parsed *ir.Unit, which previously
+// raced Store/defer Delete on pendingLineage and dropped the older layout hash
+// as layout_unknown).
+func TestGenerateLineageConcurrentSameUnit(t *testing.T) {
+	t.Parallel()
+	repo := filepath.Join("..", "..", "..")
+	older := luarun.LoadUnit(t, filepath.Join(repo, "test", "tables", "VOLD_range_widen.schema"))
+	newer := luarun.LoadUnit(t, filepath.Join(repo, "test", "tables", "VNEW_range_widen.schema"))
+	oldEntry, ok := FixedLineageOf(older, "RangeWiden")
+	if !ok {
+		t.Fatal("no fixed root RangeWiden in VOLD_range_widen")
+	}
+	lineage := map[string][]FixedLineageEntry{"RangeWiden": {oldEntry}}
+	wantHash := "hash = " + idLit(oldEntry.Wire)
+	modFile := ModuleName(newer) + ".lua"
+
+	for round := range 25 {
+		var wg sync.WaitGroup
+		errs := make(chan string, 16)
+		for g := range 16 {
+			wg.Add(1)
+			go func(g int) {
+				defer wg.Done()
+				var files map[string][]byte
+				var err error
+				if g%2 == 0 {
+					files, err = GenerateLineage(newer, lineage)
+				} else {
+					files, err = Generate(newer)
+				}
+				if err != nil {
+					errs <- fmt.Sprintf("round %d worker %d: %v", round, g, err)
+					return
+				}
+				body := string(files[modFile])
+				hasOld := strings.Contains(body, wantHash)
+				if g%2 == 0 && !hasOld {
+					errs <- fmt.Sprintf("round %d worker %d: GenerateLineage dropped older hash %s (layout_unknown race)", round, g, wantHash)
+				}
+				if g%2 == 1 && hasOld {
+					errs <- fmt.Sprintf("round %d worker %d: plain Generate leaked older hash %s from concurrent GenerateLineage", round, g, wantHash)
+				}
+			}(g)
+		}
+		wg.Wait()
+		close(errs)
+		for msg := range errs {
+			t.Fatal(msg)
+		}
 	}
 }

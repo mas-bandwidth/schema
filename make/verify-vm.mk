@@ -480,6 +480,7 @@ build/goose-messagefuzz-legs/.verify-stamp: $(GO_SOURCES) $(CONFORMANCE_UNIT_SCH
 	@touch $@
 
 _verify-goose-fuzz: verify-toolchain-goose build/conformance-harness-vm build/conformance-goose build/goose-wirefuzz-legs/.verify-stamp build/goose-messagefuzz-legs/.verify-stamp
+	go test -race -count=1 ./test/conformance/goose/wirefuzzdispatch
 	@mkdir -p build/verify
 	./build/conformance-harness-vm wire-fuzz --mixed-builder \
 		--driver "$(GOOSE_DISPATCH) $(GOOSE_LEGS_DIR)/legs" \
