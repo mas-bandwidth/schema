@@ -1552,7 +1552,15 @@ namespace Tabledemo
                         o.Text(f.GetRaw(owner, index) != 0 ? "true" : "false");
                         return true;
                     case 10:
-                        return WriteFloat(ref o, TableBitsToFloat(unchecked((uint)f.GetRaw(owner, index))), true);
+                        // THE WRITER STORES +0 FOR A COMPRESSED FLOAT'S -0
+                        // (docs/SPEC-TABLES.md §3.3, ruled 2026-11-10
+                        // fixed-compressed-negzero): it writes 0, never -0. A plain
+                        // float's -0 is a value and is written as one.
+                        {
+                            uint bits = unchecked((uint)f.GetRaw(owner, index));
+                            if (f.HasRange && bits == 0x80000000u) { bits = 0; }
+                            return WriteFloat(ref o, TableBitsToFloat(bits), true);
+                        }
                     case 11:
                         return WriteFloat(ref o, TableBitsToDouble(f.GetRaw(owner, index)), false);
                     case 2:
@@ -5407,7 +5415,8 @@ namespace Tabledemo
                     TableFieldInfo arm = f.Arms.Arms[(int)tag].Field;
                     return arm == null || NativeField(ref w, at + f.Arms.NativeArmOffset, union, arm, extentAt, ref extent);
                 }
-                UInt128 raw = f.GetWide != null ? f.GetWide(value, index) : f.GetRaw(value, index);
+                // a compressed float's -0 is cooked as +0 (docs/SPEC-TABLES.md §3.3, fixed-compressed-negzero)
+                UInt128 raw = f.GetWide != null ? f.GetWide(value, index) : StoredRaw(f.GetRaw(value, index), f);
                 w.Put(at, raw, f.NativeElementSize); return true;
             }
             static long NativeRecordBytes(TableTypeInfo type)
