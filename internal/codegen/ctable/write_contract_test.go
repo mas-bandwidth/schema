@@ -3,13 +3,13 @@ package ctable
 import (
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // THE VARIABLE SAVE HOLDS THE WRITE CONTRACT IN A DEBUG BUILD (docs/SPEC.md
@@ -109,7 +109,7 @@ func buildCWriteContract(t *testing.T, dir string, release bool) string {
 	}
 	args = append(args, cfiles...)
 	args = append(args, "-lm", "-o", bin)
-	if out, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile C failed: %v\n%s", err, out)
 	}
 	return bin
@@ -140,7 +140,7 @@ func TestCWriteContractDebug(t *testing.T) {
 	debug := buildCWriteContract(t, dir, false)
 	release := buildCWriteContract(t, dir, true)
 	run := func(bin, row string) (string, error) {
-		out, err := exec.Command(bin, row).CombinedOutput()
+		out, err := testproc.Command(t, bin, row).CombinedOutput()
 		return string(out), err
 	}
 	// rows the debug build asserts
