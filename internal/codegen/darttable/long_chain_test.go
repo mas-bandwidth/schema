@@ -3,7 +3,6 @@ package darttable
 import (
 	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -12,6 +11,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestFunctionalDartLongPointerChain(t *testing.T) {
@@ -68,7 +69,7 @@ func TestFunctionalDartLongPointerChain(t *testing.T) {
 	// the probe's own bound; the job's wall clock bounds the preparation
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, dartBinary(t), "--enable-asserts", "long_chain_probe.dart", framing, dir)
+	cmd := testproc.CommandContext(t, ctx, dartBinary(t), "--enable-asserts", "long_chain_probe.dart", framing, dir)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if ctx.Err() != nil {

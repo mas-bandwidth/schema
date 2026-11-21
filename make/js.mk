@@ -1299,6 +1299,9 @@ TEST_LEGS         += test-js
 TOOLCHAIN_LEGS    += js
 TOOLCHAIN_PINS_js  := NODE ESLINT
 CONFORMANCE_LEGS  += $(call unless_skipped,js,build/tables-generated-js/.stamp)
+REGISTRY_NA       += bench-tables:js goldens:js
+REGISTRY_NA_WHY.bench-tables.js := bench/tables/js/leg build generates its own unit, so the aggregate has no prerequisite to add
+REGISTRY_NA_WHY.goldens.js      := no committed table goldens; its packet goldens (testdata/golden/js) are rewritten by internal/goldens at the top of update-goldens
 
 # THE JAVASCRIPT TABLE SOURCES ARE LINT-CLEAN AND FORMAT-CANONICAL (issue #424,
 # issue #547). `eslint` is the language's authority over the generated table

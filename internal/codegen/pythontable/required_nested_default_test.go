@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,6 +15,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const requiredNestedSchema = `package reqnested
@@ -111,11 +112,11 @@ int main(int argc,char **argv) { if(argc!=2)return 4;
 	bin := filepath.Join(dir, "probe")
 	args := append([]string{"-std=c++17", "-O1", "-I" + dir, "-I" + ser, source}, sources...)
 	args = append(args, "-o", bin)
-	if out, err := exec.Command("c++", args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, "c++", args...).CombinedOutput(); err != nil {
 		t.Fatalf("C++ compile: %v\n%s", err, out)
 	}
 	for _, name := range []string{"plain", "keyed", "guard_off", "guard_on", "optional_off", "optional_on"} {
-		got, err := exec.Command(bin, name).Output()
+		got, err := testproc.Command(t, bin, name).Output()
 		if err != nil || !bytes.Equal(got, expected[name]) {
 			t.Errorf("C++/%s: %v got %x want %x", name, err, got, expected[name])
 		}

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,6 +12,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // SPEC-TABLES §3 carries every FINITE IEEE-754 pattern bit for bit — -0 and
@@ -84,7 +85,7 @@ func TestDartFloat32CellsAreBitTransparent(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "float_cells_probe.dart"), []byte(source), 0600); err != nil {
 			t.Fatal(err)
 		}
-		cmd := exec.Command(dartBinary(t), "--enable-asserts", "float_cells_probe.dart")
+		cmd := testproc.Command(t, dartBinary(t), "--enable-asserts", "float_cells_probe.dart")
 		cmd.Dir = dir
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("float32 bit transparency: %v\n%s", err, out)

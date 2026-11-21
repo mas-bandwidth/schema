@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -18,6 +17,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // The OLD reader's scene: a chain of node records whose last one carries a
@@ -171,7 +172,7 @@ func TestLuauLoadUnknownFieldOneWalk(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "oracle_test.go"), []byte(oneWalkGoOracle), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("nice", "-n", "19", "go", "test", "-count=1", "-timeout", "600s", "-run", "^TestOneWalkOracle$", "-v", ".")
+	cmd := testproc.Command(t, "nice", "-n", "19", "go", "test", "-count=1", "-timeout", "600s", "-run", "^TestOneWalkOracle$", "-v", ".")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GOFLAGS=-mod=readonly")
 	out, err := cmd.CombinedOutput()

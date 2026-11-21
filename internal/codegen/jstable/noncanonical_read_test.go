@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJsReadsRefuseNonCanonical is the JavaScript read of the non-canonical
@@ -235,7 +236,7 @@ console.log("ok");
 	if err := os.WriteFile(filepath.Join(dirOut, "probe.mjs"), []byte(probe), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, "probe.mjs")
+	cmd := testproc.Command(t, node, "probe.mjs")
 	cmd.Dir = dirOut
 	out, err := cmd.CombinedOutput()
 	if err != nil {

@@ -22,7 +22,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -31,6 +30,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestWireFeedChainRegionBytesDart(t *testing.T) {
@@ -134,7 +135,7 @@ void main(List<String> args) {
 	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dartBinary(t), "probe.dart", base64OfHex(mutantHex))
+	cmd := testproc.Command(t, dartBinary(t), "probe.dart", base64OfHex(mutantHex))
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -259,7 +260,7 @@ void main(List<String> args) {
 	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dartBinary(t), "probe.dart", base64OfHex(mutantHex))
+	cmd := testproc.Command(t, dartBinary(t), "probe.dart", base64OfHex(mutantHex))
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

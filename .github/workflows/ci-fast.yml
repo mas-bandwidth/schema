@@ -29,11 +29,14 @@ name: CI fast
 # treats a queue as a budget.
 #
 # SO THE SPLIT IS BY WHEN, NOT BY WHETHER. Nothing is checked less than before.
-#   * THIS FILE runs on every pull-request push. Five jobs, selected BY PATH,
-#     targeting two minutes wall: the cheap lints, the block zero-cost gate,
-#     `go test` of the packages the diff touches, the generated-code lints of
-#     the languages it touches (lang-lint), and the fixed-form and versioning
-#     gates of the LEGS the diff touches.
+#   * THIS FILE runs on every pull-request push. Its jobs, selected BY PATH,
+#     target two minutes wall: the cheap lints, the block zero-cost gate,
+#     `go test` of the packages the diff touches, and the generated-code lints
+#     of the languages it touches (lang-lint). The fixed-form and versioning
+#     gates of the LEGS the diff touches (leg-gate and its lobster, rust,
+#     squirrel and cpp rows) run here only on `gh workflow run ci-fast.yml
+#     --ref <branch>`: they do not fit two minutes, so a push or a pull request
+#     skips them, and every leg's two gates run in ci-full.yml nightly.
 #   * THE PER-LANGUAGE HEAVY WORKFLOWS (the hostile corpora, the fuzz replays,
 #     the resource bounds, the Squirrel and Lua differentials) do not start on
 #     a pull request at all (Glenn 2026-11-15: "Let us be efficient first, then
@@ -41,10 +44,11 @@ name: CI fast
 #     dev and fixed-table-form, on its schedule and on `gh workflow run <file>
 #     --ref <branch>`. Their PR rows were 40 of a tiny card's ~80 checks.
 #   * ci-full.yml runs everything — the whole go-test, pins, the nine
-#     conformance legs, the 47 negative controls, windows, msvc, big-endian,
-#     vuln — on merge to main, dev or fixed-table-form, nightly, on
-#     `gh workflow run ci-full.yml --ref <branch>`, and on any pull request
-#     carrying the `full-ci` label.
+#     conformance legs, the negative controls, windows, msvc, big-endian,
+#     vuln — nightly and on `gh workflow run ci-full.yml --ref <branch>`, and
+#     on nothing else (the owner, 2026-11-15: "I want everything that is not
+#     light moved to nightly test now."). Its `full-ci` label conditions are
+#     inert: no pull request starts it.
 #
 # THE SELECTION IS BY PATH AND NEVER BY DROPPING A GATE. A diff that touches
 # ir/, compiler/, docs/FIXED-FORM-*, the C++ reference's emitters, tables/, the
@@ -122,17 +126,20 @@ name: CI fast
 #
 # ONLY THE TABLE PUSHES TO THIS REPOSITORY. A self-hosted runner executes a pull
 # request's own code on our hardware, so a pull request from a FORK MUST NEVER
-# reach these machines: every job below carries
+# reach these machines: every fleet job below carries
 #   if: github.event.pull_request.head.repo.full_name == github.repository
-# and a fork's pull request is covered by ci-full.yml.
+# AND NOTHING ELSE COVERS A FORK: ci-full.yml is nightly and dispatch only. So
+# a fork's pull request gets one job, `fork-pull-request`, on a GitHub-hosted
+# runner with no permissions, no checkout and no secrets, which runs none of
+# the fork's code and FAILS, saying so: a page of skipped checks reads as
+# passing, and a fork's pull request has passed nothing. A maintainer who has
+# read the diff pushes its head to a branch here and opens the pull request
+# from that branch, where this lane runs.
 #
-# THE LEG MATRIX RUNS ONLY FOR PULL REQUESTS INTO main, per the owner's ruling
-# of 2026-09-11: "Only run tests when merging into main, local runners
-# elsewhere." Below main it skips; the four gate jobs run on every pull request
-# into main, dev and fixed-table-form alike. block-gate is the reason those
-# never skip: it is what caught the C goldens on #1126 and #1127, and a branch
-# with no protection and no merge queue is exactly where that gate must not go
-# quiet.
+# THE GATE JOBS RUN ON EVERY PULL REQUEST, whatever its base: block-gate is
+# the reason they never skip: it is what caught the C goldens on #1126 and
+# #1127, and a branch with no protection and no merge queue is exactly where
+# that gate must not go quiet. The leg gates run on dispatch only (above).
 #
 # SPACE IS NOT IN THE POOL: it is the game server only (owner, 2026-10-15), and
 # its old `space-x64` registration is gone with it. No job here names it.
@@ -174,6 +181,23 @@ env:
   SERIALIZE_JS_TAG: v2.1.2
 
 jobs:
+  # A FORK'S PULL REQUEST: the one job it starts, and it is red (the fork
+  # paragraph in the header). Hosted, with no permissions and no checkout, so
+  # none of the fork's code runs anywhere. Its skip is the fork-aware one: a
+  # fork controls its branch name, so a fork branch named sprint/... must not
+  # skip it (internal/ci TestCardBranchPullRequestsSkipCI).
+  fork-pull-request:
+    if: (startsWith(github.head_ref, 'sprint/') == false || github.event.pull_request.head.repo.full_name != github.repository) && (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions: {}
+    steps:
+      - name: a fork's pull request runs no CI here
+        shell: bash
+        run: |
+          echo "::error title=No CI ran::This pull request comes from a fork. Fork code never runs on this repository's own runners, so no gate has run on it, and ci-full.yml runs only nightly on main. A maintainer who has read the diff pushes its head to a branch in mas-bandwidth/schema and opens the pull request from that branch, where the fast lane runs."
+          exit 1
+
   # WHAT THE DIFF TOUCHES. One cheap job, no toolchain at all, whose outputs
   # are the two selections the jobs below run: the Go packages, and the legs.
   # It is deliberately the only `needs:` in this file — every gate that can
@@ -706,8 +730,22 @@ jobs:
 
   # Keep policy checks in a separate two-minute job: on loaded runners the
   # whole-tree modernizer and these checks exceed the combined budget.
+  #
+  # THREE ROWS, BY TEST NAME (2026-11-21). One `go test ./internal/ci/` ran
+  # 57-63 s of tests at GOMAXPROCS 2 (run 44928202537, 1m17s job) and went
+  # past the two-minute cap under load (run 44928096491, cancelled at 2m5s).
+  # Measured serially on amd-2 the package is ~74 s of test time, a third of
+  # it the fast-plan and opt-verify selector tests (one bash per case) and
+  # another seventh the Python plan. So the package runs as three rows side
+  # by side, each on its own runner with the cap to itself. The rows are
+  # COMPLETE BY CONSTRUCTION: every row but `rest` selects with `-run`, and
+  # `rest` is `-skip` of exactly the union of those patterns, so a new test
+  # lands in `rest` unless it is named into a row.
+  # TestCIPolicyShardsCoverEveryTest holds that union and checks every Test
+  # function in the package is selected by exactly one row.
   ci-policy:
     if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    name: ci-policy (${{ matrix.shard }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
     # Bound Go's nested policy-test fan-out to the validated bench setting.
@@ -716,6 +754,16 @@ jobs:
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: selectors
+            select: -run '^(TestFastPlan|TestOptVerify)'
+          - shard: python-legs
+            select: -run '^(TestPython|TestConformance|TestCertify|TestNo)'
+          - shard: rest
+            select: -skip '^(TestFastPlan|TestOptVerify|TestPython|TestConformance|TestCertify|TestNo)'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # the gate runs hosted, so setup-go always runs here; the guard keeps the
@@ -750,18 +798,23 @@ jobs:
       # package goes GREEN HAVING RUN NOTHING. Fourteen did. This scan fails any
       # such recipe line BY NAME, costs milliseconds, and is on the FAST lane
       # because the regression it catches is somebody adding the fifteenth.
+      # The scan, the slowtest gate and the bench parse cost seconds; they run
+      # once, in the `rest` row.
       - name: the positive gate targets still set SCHEMA_SLOW (schema#988)
+        if: matrix.shard == 'rest'
         run: make slow-gate-scan
 
       - name: every toolchain test source calls slowtest.Gate (issue #1025)
+        if: matrix.shard == 'rest'
         run: go test ./internal/slowtest/...
       # CI LINTS ITSELF (issues #470, #472), over every workflow file in the
       # tree — this one included: every `uses:` names a full commit SHA with the
       # tag in a trailing comment, nothing runs @latest, and every csproj
       # agrees with the one .NET SDK pin.
       - name: CI lints itself — action pins and the .NET SDK pin
-        run: go test ./internal/ci/
+        run: go test ${{ matrix.select }} ./internal/ci/
       - name: bench scripts parse
+        if: matrix.shard == 'rest'
         run: bash -n bench/run.sh
 
   # GO VET, a job of its own beside lint-fast: in one job with modernize the
@@ -1423,10 +1476,17 @@ jobs:
   # than nine serial minutes. A leg gate is 5-30 s of work once its toolchain
   # is up; the rest is the floor named at the top of this file.
   #
-  # BOTH GATES, ALWAYS, per §5.9 #11 — a leg that proved its bytes and not its
+  # BOTH GATES, per §5.9 #11 — a leg that proved its bytes and not its
   # versioning rows has proved half of what it owes. The Java leg has no
   # versioning target yet and the C++ reference IS the oracle, so those two
   # rows run what exists; ci-full.yml is unchanged for both.
+  #
+  # ON DISPATCH ONLY. These rows do not fit the two-minute cap (lobster 547 s
+  # and goose 387 s at worst, measured below), so a push or a pull request
+  # skips them (`github.event_name == 'workflow_dispatch'`), and a pull request
+  # has not proved its leg's two gates when this lane is green. They run here on
+  # `gh workflow run ci-fast.yml --ref <branch>`, and for every leg in
+  # ci-full.yml's nightly.
   #
   # SCHEMA_REQUIRE_CORPUS=1 is inside every one of these make targets: a corpus
   # that failed to build is a failure here, never a quiet skip.

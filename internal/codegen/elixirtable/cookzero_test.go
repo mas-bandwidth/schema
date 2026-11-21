@@ -3,12 +3,13 @@ package elixirtable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // cookZeroProbe cooks through the generated Elixir writer, in both byte
@@ -92,7 +93,7 @@ func TestElixirCookWriteZeroesDeadAndAbsentBytes(t *testing.T) {
 		names = append(names, name)
 	}
 	env := append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
-	compile := exec.Command(elixirc, append([]string{"--ignore-module-conflict", "-o", ebin}, sortedRuntimeFirst(names)...)...)
+	compile := testproc.Command(t, elixirc, append([]string{"--ignore-module-conflict", "-o", ebin}, sortedRuntimeFirst(names)...)...)
 	compile.Dir, compile.Env = src, env
 	if out, err := compile.CombinedOutput(); err != nil {
 		t.Fatalf("elixirc: %v\n%s", err, out)
@@ -112,7 +113,7 @@ func TestElixirCookWriteZeroesDeadAndAbsentBytes(t *testing.T) {
 	if err := os.WriteFile(probe, []byte(strings.Replace(cookZeroProbe, "[ROWS]", "["+strings.Join(rows, ", ")+"]", 1)), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	run := exec.Command(elixirBin, "-pa", ebin, probe)
+	run := testproc.Command(t, elixirBin, "-pa", ebin, probe)
 	run.Env = env
 	out, err := run.CombinedOutput()
 	if err != nil || !strings.Contains(string(out), "ok: zero dead and absent bytes") {

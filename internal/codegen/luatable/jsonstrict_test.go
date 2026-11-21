@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -20,6 +19,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 type strictJSONRow struct {
@@ -203,7 +204,7 @@ func TestLuaFromJsonIsStrict(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		cmd := exec.Command("nice", "-n", "19", "go", "test", "-count=1", "-timeout", "600s", "-run", "^TestStrictJSONOracle$", ".")
+		cmd := testproc.Command(t, "nice", "-n", "19", "go", "test", "-count=1", "-timeout", "600s", "-run", "^TestStrictJSONOracle$", ".")
 		cmd.Dir = goDir
 		if output, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("the generated Go oracle for unit %s: %v\n%s", unit, err, output)

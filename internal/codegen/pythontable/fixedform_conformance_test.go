@@ -3,7 +3,6 @@ package pythontable_test
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -11,6 +10,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 var (
@@ -26,7 +27,7 @@ func ensurePythonConformanceUnits(t *testing.T, repo string) string {
 		if _, err := os.Stat(sentinel); err == nil {
 			return
 		}
-		cmd := exec.Command("make", "build/conformance-python")
+		cmd := testproc.Command(t, "make", "build/conformance-python")
 		cmd.Dir = repo
 		out, err := cmd.CombinedOutput()
 		if err != nil {
