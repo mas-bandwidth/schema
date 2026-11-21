@@ -145,6 +145,11 @@ func emitFixedEvolve(g *lobster.Gen) error {
 	}
 
 	explicitMap, hasExplicit := lookupUnitLineage(g.Unit)
+	// The unit's lock is read at most once per module and lives only as
+	// long as this call: a long-lived process that generates again, from
+	// the same unit after its lock changed or from a fresh unit, reads the
+	// lock it has now and retains nothing.
+	locks := &lobsterUnitLock{unit: g.Unit}
 	var sibMap map[string][]FixedLineageEntry
 	if !hasExplicit {
 		sibMap = discoverSiblingLineage(g.Unit)
@@ -163,7 +168,7 @@ func emitFixedEvolve(g *lobster.Gen) error {
 		} else if sibMap != nil {
 			older = sibMap[st.Name]
 		}
-		emitFixedEvolveRoot(g, st, older)
+		emitFixedEvolveRoot(g, st, older, locks)
 	}
 	return nil
 }
@@ -1373,7 +1378,7 @@ func fixedPutIntLE(out []byte, at, width int64, v *big.Int) {
 
 // ---- Root Evolution Surface (<Name>FixedLoad) ------
 
-func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntry) {
+func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntry, locks *lobsterUnitLock) {
 	name := fixedName(st)
 	entries := ir.TableFixedWalkRoot(st)
 	layout := ir.TableFixedLayoutBytes(entries)
@@ -1396,7 +1401,7 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 			floor = i + 1
 		}
 		if known[i].Writer == nil && known[i].Wire != own.Wire {
-			known[i].Writer = resolveLobsterEntryWriter(g.Unit, st, known[i].Wire)
+			known[i].Writer = locks.entryWriter(st, known[i].Wire)
 		}
 	}
 
@@ -1740,29 +1745,43 @@ func emitFixedFiniteElement(g *lobster.Gen, f *ir.Field, owner, expr, ind string
 	}
 }
 
-var lobsterUnitLocks sync.Map // *ir.Unit -> *lockfile.Unit
+// lobsterUnitLock reads one unit's lock on first use and holds it for one
+// module's generation only; it is never stored past the call that made it.
+type lobsterUnitLock struct {
+	unit   *ir.Unit
+	read   bool
+	locked *lockfile.Unit
+}
 
-func resolveLobsterEntryWriter(u *ir.Unit, root *ir.Struct, wire uint64) *ir.Struct {
-	if u == nil || root == nil {
+func (l *lobsterUnitLock) lock() *lockfile.Unit {
+	if l.read {
+		return l.locked
+	}
+	l.read = true
+	if l.unit == nil {
 		return nil
 	}
-	var lock *lockfile.Unit
-	if v, ok := lobsterUnitLocks.Load(u); ok {
-		lock, _ = v.(*lockfile.Unit)
-	} else {
-		var paths []string
-		for _, f := range u.Files {
-			if f != nil && f.Path != "" {
-				paths = append(paths, f.Path)
-			}
+	var paths []string
+	for _, f := range l.unit.Files {
+		if f != nil && f.Path != "" {
+			paths = append(paths, f.Path)
 		}
-		if len(paths) > 0 {
-			if lk, ok, err := lockfile.Open(paths); err == nil && ok {
-				lock = lk
-			}
-		}
-		lobsterUnitLocks.Store(u, lock)
 	}
+	if len(paths) > 0 {
+		if lk, ok, err := lockfile.Open(paths); err == nil && ok {
+			l.locked = lk
+		}
+	}
+	return l.locked
+}
+
+// entryWriter is the writer the unit's lock records for root's lineage
+// entry with this wire hash, or nil when the lock has none.
+func (l *lobsterUnitLock) entryWriter(root *ir.Struct, wire uint64) *ir.Struct {
+	if l == nil || root == nil {
+		return nil
+	}
+	lock := l.lock()
 	if lock == nil {
 		return nil
 	}
