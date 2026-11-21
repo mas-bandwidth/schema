@@ -432,12 +432,10 @@ func packetBlockerItems(items []ir.Item) (field, kind string, ok bool) {
 			if f, k, found := packetBlockerItems(item.Else); found {
 				return f, k, true
 			}
-		case *ir.ConstItem:
-			return "", "const", true
-		case *ir.ReservedItem:
-			return "", "reserved", true
-		case *ir.AlignItem:
-			return "", "align", true
+		case *ir.ConstItem, *ir.ReservedItem, *ir.AlignItem:
+			// carried: the hosted class is the packet core's own, whose
+			// item emitters write and check them (SPEC §4.3), and they have
+			// no storage, so the type's table descriptor never names them
 		}
 	}
 	return "", "", false

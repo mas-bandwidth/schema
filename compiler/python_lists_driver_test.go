@@ -158,10 +158,52 @@ print("ok")
 	}
 }
 
-func TestPythonDriverRefusesPacketValueDefault(t *testing.T) {
-	u := unitFromSource(t, "package packetdefault\ntype Packet {\n name string(8) = \"hi\"\n}\n")
-	_, err := New().Generate(u, "python", nil)
-	if err == nil || !strings.Contains(err.Error(), "packet-wire defaults") {
-		t.Fatalf("packet value default was not refused by name: %v", err)
+// TestPythonDriverCarriesPacketValueDefault holds the driver to SPEC §4.2's
+// string, bytes and flags defaults on the packet wire. The driver used to
+// refuse them ("packet-wire defaults are ... only today") while the packet core
+// emitted them and the roadmap ticked the row; that refusal was the defect.
+// The shared fixture test/packet-defaults/Defaults.schema goes through the
+// public driver twice: alone (the packet core) and beside an unrelated table
+// (the table frame hosting the packet classes). Each time the constructor
+// holds the literal's bytes, the flags mask's bits including the unsigned
+// 64-bit masks, and the explicit empty defaults, and the §5 zero form stays
+// all-zero. Generation and text only: the interpreter run is
+// TestPythonPacketDefaults (make packet-defaults-python).
+func TestPythonDriverCarriesPacketValueDefault(t *testing.T) {
+	src, err := os.ReadFile("../test/packet-defaults/Defaults.schema")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, unit := range []struct{ name, src string }{
+		{"packet core", string(src)},
+		{"hosted beside a table", string(src) + "\ntable Unrelated { number int32 }\n"},
+	} {
+		t.Run(unit.name, func(t *testing.T) {
+			files, err := New().Generate(unitFromSource(t, unit.src), "python", nil)
+			if err != nil {
+				t.Fatalf("python refuses packet value defaults: %v", err)
+			}
+			code := string(files["packetdefaults/Probe.py"])
+			if code == "" {
+				t.Fatalf("no packetdefaults/Probe.py among %d files", len(files))
+			}
+			for _, want := range []string{
+				// Sample: a multi-byte string, a bytes literal with no
+				// escapes (four bytes 5c 6e 5c 74), a mask, and empties
+				"        self.name = \"é𐀀\"\n        self.token = b\"\\\\n\\\\t\"\n        self.caps = 5\n        self.empty_name = \"\"\n        self.empty_token = b\"\"\n        self.empty_caps = 0\n",
+				// its §5 zero form ignores the defaults
+				"    def _s_zero(self) -> None:\n        self.name = \"\"\n        self.token = b\"\"\n        self.caps = 0\n",
+				// Prefix: a short literal
+				"        self.name = \"é\"\n        self.token = b\"\\\\n\"\n",
+				// WideMask: bit 63 and the full mask, unsigned
+				"        self.high = 9223372036854775808\n        self.all = 18446744073709551615\n",
+				// Conditional: a bool default ahead of a branch
+				"        self.enabled = True\n",
+			} {
+				if !strings.Contains(code, want) {
+					t.Errorf("generated Probe.py lacks\n%s", want)
+				}
+			}
+		})
 	}
 }
