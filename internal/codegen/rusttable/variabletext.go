@@ -365,13 +365,17 @@ pub struct Jr<'a> {
     pub missing_required: u64,
     pub missing_required_fields: String,
     pub labels: HashMap<u64, JsonLabel>,
+    /// The root is a VARIABLE table, so its text carries the label grammar
+    /// everywhere, a skipped object included (§16.7); a fixed root skips an
+    /// unplaced value whole.
+    pub graph: bool,
 }
 
 #[allow(dead_code)]
 impl<'a> Jr<'a> {
     pub fn new(b: &'a [u8]) -> Jr<'a> {
         let p = if b.starts_with(b"\xef\xbb\xbf") { 3 } else { 0 };
-        Jr { b, p, depth: 0, unknown: 0, oor_field: "", damaged: false, zero: false, reason: TableReason::None, text_error: "", missing_required: 0, missing_required_fields: String::new(), labels: HashMap::new() }
+        Jr { b, p, depth: 0, unknown: 0, oor_field: "", damaged: false, zero: false, reason: TableReason::None, text_error: "", missing_required: 0, missing_required_fields: String::new(), labels: HashMap::new(), graph: true }
     }
     pub fn space(&mut self) {
         while self.p < self.b.len() {
@@ -948,6 +952,10 @@ impl<'a> Jr<'a> {
                  self.p += 1;
                  self.depth += 1;
                  let mut seen = std::collections::HashSet::new();
+                 // a definition this skipped object opened: its label stays
+                 // OPEN until the object closes, then reads as Dropped (§16.7)
+                 let mut opened: u64 = 0;
+                 let mut first = true;
                  loop {
                      self.space();
                      if self.p >= self.b.len() {
@@ -957,6 +965,9 @@ impl<'a> Jr<'a> {
                      }
                      if self.b[self.p] == b'}' {
                          self.p += 1;
+                         if opened != 0 {
+                             self.labels.insert(opened, JsonLabel::Dropped);
+                         }
                          self.depth -= 1;
                          return;
                      }
@@ -981,23 +992,59 @@ impl<'a> Jr<'a> {
                         return;
                     }
                     self.p += 1;
-                    // A DEFINITION INSIDE A SKIPPED VALUE (§16.7): an &node
-                    // label followed by a field keeps its label as Dropped, so a
-                    // reference to it reads null; an &node alone is a reference
-                    // and defines nothing.
-                    let mut labelled = false;
-                    if key.as_deref() == Some("&node")
-                        && let Some(label) = self.read_label()
-                    {
-                        labelled = true;
-                        self.space();
-                        if self.p < self.b.len() && self.b[self.p] == b',' {
-                            self.labels.entry(label).or_insert(JsonLabel::Dropped);
+                    // THE LABEL RULES APPLY IN A SKIPPED OBJECT AS EVERYWHERE
+                    // (docs/SPEC-TABLES.md §16.7; internal/tabletext
+                    // skippedAmpersand): "&node" only, and only as the first
+                    // key; a label alone (a trailing comma allowed) REFERS and
+                    // needs a closed definition; a label with fields after it
+                    // DEFINES and needs a label the text has not defined.
+                    if self.graph && key.as_deref().is_some_and(|k| k.starts_with('&')) {
+                        if !first || key.as_deref() != Some("&node") {
+                            self.damaged = true;
+                            self.depth -= 1;
+                            return;
                         }
+                        let Some(label) = self.read_label() else {
+                            self.damaged = true;
+                            self.depth -= 1;
+                            return;
+                        };
+                        let state = match self.labels.get(&label) {
+                            None => 0u8,
+                            Some(JsonLabel::Open) => 1,
+                            Some(_) => 2,
+                        };
+                        let mut c = self.peek();
+                        if c == b',' {
+                            self.p += 1;
+                            c = self.peek();
+                        } else if c != b'}' {
+                            self.damaged = true;
+                            self.depth -= 1;
+                            return;
+                        }
+                        if c == b'}' {
+                            // A REFERENCE: defined, and its definition closed
+                            self.p += 1;
+                            if state != 2 {
+                                self.damaged = true;
+                            }
+                            self.depth -= 1;
+                            return;
+                        }
+                        // A DEFINITION
+                        if state != 0 {
+                            self.damaged = true;
+                            self.depth -= 1;
+                            return;
+                        }
+                        self.labels.insert(label, JsonLabel::Open);
+                        opened = label;
+                        first = false;
+                        continue;
                     }
-                    if !labelled {
-                        self.skip_value();
-                    }
+                    first = false;
+                    self.skip_value();
                     if self.damaged {
                         self.depth -= 1;
                         return;
@@ -1613,6 +1660,8 @@ func (g *gen) emitTextReadPointer(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "                b'}' => { jr.p += 1; jr.refer::<%s>(label) }\n", st.Name)
 	fmt.Fprintf(b, "                b',' => {\n")
 	fmt.Fprintf(b, "                    jr.p += 1;\n")
+	fmt.Fprintf(b, "                    // a trailing comma after a reference's label is accepted (§16.2, §16.7)\n")
+	fmt.Fprintf(b, "                    if jr.peek() == b'}' { jr.p += 1; return jr.refer::<%s>(label); }\n", st.Name)
 	fmt.Fprintf(b, "                    // a label already defined, or still open, takes no second definition\n")
 	fmt.Fprintf(b, "                    if jr.labels.contains_key(&label) { jr.damaged = true; return None; }\n")
 	fmt.Fprintf(b, "                    jr.labels.insert(label, JsonLabel::Open);\n")
@@ -1678,6 +1727,9 @@ func (g *gen) emitTextReadValue(b *strings.Builder, f *ir.Field, field, in strin
 		fmt.Fprintf(b, "%sif jr.peek() == b'[' {\n", in)
 		fmt.Fprintf(b, "%s    jr.p += 1;\n", in)
 		fmt.Fprintf(b, "%s    %s.clear();\n", in, field)
+		// an element nests one level below its array (§16.2; internal/tabletext
+		// readArray reads it at depth+1)
+		fmt.Fprintf(b, "%s    jr.depth += 1;\n", in)
 		if f.IsTextList() && f.TextTotal > 0 {
 			fmt.Fprintf(b, "%s    let mut text_spent = 0u64; let mut text_total_hit = false;\n", in)
 			if f.Array != ir.ArrayList {
@@ -1720,6 +1772,7 @@ func (g *gen) emitTextReadValue(b *strings.Builder, f *ir.Field, field, in strin
 		fmt.Fprintf(b, "%s        if c == b']' { jr.p += 1; break; }\n", in)
 		fmt.Fprintf(b, "%s        jr.damaged = true; break;\n", in)
 		fmt.Fprintf(b, "%s    }\n", in)
+		fmt.Fprintf(b, "%s    jr.depth -= 1;\n", in)
 		if f.Array == ir.ArrayFixed {
 			fmt.Fprintf(b, "%s    while %s.len() < %d { %s.push(%s); }\n", in, field, f.ArrayBound, field, fieldDefault(scalarOnly(f)))
 		}
@@ -1932,6 +1985,9 @@ func (g *gen) emitTextRoots(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "pub fn %s(text: &[u8], report: &mut TableReport) -> Option<%s> {\n", readBytes, st.Name)
 	fmt.Fprintf(b, "    if report.reason == TableReason::MissingRequired { report.refused = false; report.reason = TableReason::None; } report.missing_required_fields.clear();\n")
 	fmt.Fprintf(b, "    let mut jr = Jr::new(text);\n")
+	if st.FixedDeclared {
+		fmt.Fprintf(b, "    jr.graph = false; // a fixed root: no label grammar (§16.7)\n")
+	}
 	fmt.Fprintf(b, "    let mut v = %s::default();\n", st.Name)
 	fmt.Fprintf(b, "    %s(&mut jr, &mut v);\n", fn(st.Name, "json_read"))
 	fmt.Fprintf(b, "    if jr.missing_required == 0 {\n")

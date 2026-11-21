@@ -1230,6 +1230,9 @@ func (g *gen) emitKeyedTextRead(b *strings.Builder, f *ir.Field, field, ind stri
 	// a key this build cannot name is skipped and counted unknown, but the same
 	// key twice is a repeated key, which refuses the read like a named one does
 	fmt.Fprintf(b, "%slet mut seen_unknown: Vec<String> = Vec::new();\n", in)
+	// a slot, and a skipped key, nest one level below the keyed object
+	// (§16.2; internal/tabletext readKeyed reads both at depth+1)
+	fmt.Fprintf(b, "%sjr.depth += 1;\n", in)
 	fmt.Fprintf(b, "%sloop {\n", in)
 	fmt.Fprintf(b, "%s    if jr.peek() == b'}' { jr.p += 1; break; }\n", in)
 	fmt.Fprintf(b, "%s    let Some(ks) = jr.read_name() else { jr.damaged = true; break; };\n", in)
@@ -1258,6 +1261,7 @@ func (g *gen) emitKeyedTextRead(b *strings.Builder, f *ir.Field, field, ind stri
 	fmt.Fprintf(b, "%s    if c == b'}' { jr.p += 1; break; }\n", in)
 	fmt.Fprintf(b, "%s    jr.damaged = true; break;\n", in)
 	fmt.Fprintf(b, "%s}\n", in)
+	fmt.Fprintf(b, "%sjr.depth -= 1;\n", in)
 	fmt.Fprintf(b, "%s}\n", ind)
 }
 
@@ -1306,8 +1310,17 @@ func (g *gen) emitUnionText(b *strings.Builder, names []string) {
 		}
 		fmt.Fprintf(b, "    }\n}\n\n")
 
-		fmt.Fprintf(b, "#[allow(unused_variables, unused_mut, unused_assignments, dead_code)]\n")
+		// THE UNION OBJECT IS A LEVEL (§16.2): its holder's field is at depth,
+		// the object at depth+1 and the arm's value at depth+2, where it is
+		// read or skipped (internal/tabletext readUnion)
+		fmt.Fprintf(b, "#[allow(dead_code)]\n")
 		fmt.Fprintf(b, "pub fn %s(jr: &mut Jr, v: &mut %s) {\n", fn(un.Name, "json_read"), un.Name)
+		fmt.Fprintf(b, "    jr.depth += 1;\n")
+		fmt.Fprintf(b, "    %s(jr, v);\n", fn(un.Name, "json_read_object"))
+		fmt.Fprintf(b, "    jr.depth -= 1;\n")
+		fmt.Fprintf(b, "}\n\n")
+		fmt.Fprintf(b, "#[allow(unused_variables, unused_mut, unused_assignments, dead_code)]\n")
+		fmt.Fprintf(b, "fn %s(jr: &mut Jr, v: &mut %s) {\n", fn(un.Name, "json_read_object"), un.Name)
 		fmt.Fprintf(b, "    if jr.peek() != b'{' { jr.damaged = true; jr.skip_value(); return; }\n")
 		fmt.Fprintf(b, "    jr.p += 1;\n")
 		fmt.Fprintf(b, "    *v = %s::None;\n", un.Name)
@@ -1406,6 +1419,9 @@ func (g *gen) emitMapTextRead(b *strings.Builder, f *ir.Field, field, ind string
 	in := ind + "    "
 	fmt.Fprintf(b, "%sjr.p += 1;\n", in)
 	fmt.Fprintf(b, "%s%s.clear();\n", in, field)
+	// a map value nests one level below the map object (§16.2;
+	// internal/tabletext readMap reads it at depth+1)
+	fmt.Fprintf(b, "%sjr.depth += 1;\n", in)
 	fmt.Fprintf(b, "%sloop {\n", in)
 	fmt.Fprintf(b, "%s    if jr.peek() == b'}' { jr.p += 1; break; }\n", in)
 	// a map key is bound for storage whatever its kind, so a U+0000 in it
@@ -1443,6 +1459,7 @@ func (g *gen) emitMapTextRead(b *strings.Builder, f *ir.Field, field, ind string
 	fmt.Fprintf(b, "%s    if c == b'}' { jr.p += 1; break; }\n", in)
 	fmt.Fprintf(b, "%s    jr.damaged = true; break;\n", in)
 	fmt.Fprintf(b, "%s}\n", in)
+	fmt.Fprintf(b, "%sjr.depth -= 1;\n", in)
 	if c := classOf(ir.MapKeyField(f)); c == vScalar || c == vEnum {
 		// a Copy key sorts by the key itself (clippy's unnecessary_sort_by)
 		fmt.Fprintf(b, "%s%s.sort_by_key(|e| e.%s);\n", in, field, keyName)
