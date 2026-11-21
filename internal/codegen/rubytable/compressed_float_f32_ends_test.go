@@ -114,7 +114,7 @@ func TestRubyCompressedFloatFloat32Ends(t *testing.T) {
 		writeTree(t, dir, files)
 		out := runBothRubyPins(t, dir, "probe.rb", map[string][]byte{"probe.rb": []byte(probe.String())})
 		got := map[string]string{}
-		for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
 			id, answer, _ := strings.Cut(line, " ")
 			got[id] = answer
 		}
