@@ -26,6 +26,7 @@ func TestPacketRowsAndEmptyGuard(t *testing.T) {
 		"packet-reserved-nonzero",
 		"packet-scalar-out-of-range",
 		"packet-truncated",
+		"packet-union-one-arm-truncated",
 		"packet-union-tag-invalid",
 	}
 	have := map[string]Case{}

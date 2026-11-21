@@ -181,6 +181,7 @@ packet-enum-invalid	packet	internal/ci/hostilecorpus/corpus/packet/hostile.schem
 packet-reserved-nonzero	packet	internal/ci/hostilecorpus/corpus/packet/hostile.schema	BadReserved	inputs/packet-reserved-nonzero.bin	packet: reserved bits that are not zero	refuse	packet_refused	-
 packet-scalar-out-of-range	packet	internal/ci/hostilecorpus/corpus/packet/hostile.schema	ScalarRange	inputs/packet-scalar-out-of-range.bin	packet: a ranged scalar whose offset is above its span	refuse	packet_refused	-
 packet-truncated	packet	internal/ci/hostilecorpus/corpus/packet/hostile.schema	Truncated	inputs/packet-truncated.bin	packet: a uint16 cut short of its width	refuse	packet_refused	-
+packet-union-one-arm-truncated	packet	internal/ci/hostilecorpus/corpus/packet/hostile.schema	OneArm	inputs/packet-union-one-arm-truncated.bin	packet: a one-arm union selects its arm with a one-bit tag, and the arm and the uint8 after it do not fit the seven bits left	refuse	packet_refused	-
 packet-union-tag-invalid	packet	internal/ci/hostilecorpus/corpus/packet/hostile.schema	BadUnion	inputs/packet-union-tag-invalid.bin	packet: a union tag above its variant count	refuse	packet_refused	-
 text-valid	text	tables/examples	ShipEntry	inputs/text-valid.json	hand-built text accept case	accept	-	644e47689a50819987e8efad23f7e361052f2d05d83642293634e4e28bb1f712
 wire-count-refusal	wire	schemas/probe.schema	Root	inputs/wire-count-refusal.bin	bound: a collection count past the int32 storage cap (internal/tablewire/decodenodes.go CountRefusal)	refuse	count_refusal	-

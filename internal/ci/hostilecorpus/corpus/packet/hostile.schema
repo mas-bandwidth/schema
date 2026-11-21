@@ -67,3 +67,18 @@ type Truncated
 {
     n uint16
 }
+
+// Solo has one arm, so its tag range is [0, 1]: one bit. A reader that
+// treats a one-arm union as an empty one reads no tag and takes the next
+// eight bits as n; the byte holds the tag and seven bits, too few for the
+// arm or for n.
+union Solo
+{
+    ring Ring
+}
+
+type OneArm
+{
+    shape Solo
+    n uint8
+}
