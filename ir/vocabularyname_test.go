@@ -89,7 +89,7 @@ func TestTableVocabularyNameIsDeterministic(t *testing.T) {
 	t.Parallel()
 	u := unitFrom(t, vocabularyNameSource)
 	id := ir.TableWireId("y")
-	for i := 0; i < 64; i++ {
+	for i := range 64 {
 		if got := ir.TableVocabularyName(u, id); got != "x" {
 			t.Fatalf("run %d: TableVocabularyName(hash(\"y\")) = %q, want \"x\" (Alpha sorts before Beta)", i, got)
 		}

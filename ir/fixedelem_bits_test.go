@@ -80,7 +80,7 @@ func TestTableFixedSplitByWidthMixedBitsLeavesSplitAtStorageWidth(t *testing.T) 
 			at[b] = split.Elems[i]
 		}
 	}
-	for b := int64(0); b < 12; b++ {
+	for b := range int64(12) {
 		if at[b] != 4 {
 			t.Errorf("byte %d: elem %d, want 4", b, at[b])
 		}
