@@ -33,7 +33,9 @@ for control in answer-matches answer-refuse answer-other-digest no-answer; do
 	log=$work/$control.log
 	sh -c "$cmd" > "$log" 2>&1
 	status=$?
-	carried=$(grep -c 'FIX-CARD' "$log")
+	# the FIX-CARD lines themselves; a summary saying "0 carried as FIX-CARD"
+	# is not one
+	carried=$(grep -c '^FIX-CARD' "$log")
 	case $control in
 	answer-matches)
 		if [ "$status" -ne 0 ] || [ "$carried" -eq 0 ] || grep -q '^FAIL wire-valid' "$log"; then
