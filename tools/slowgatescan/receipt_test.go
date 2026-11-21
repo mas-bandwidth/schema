@@ -4,6 +4,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -135,5 +136,38 @@ func TestGatedPackagesAreBuiltPackagesThatCallTheGate(t *testing.T) {
 	})
 	if gated, err := gatedPackages(only); err == nil {
 		t.Errorf("a tree with no built call: gatedPackages = %v, want an error", gated)
+	}
+}
+
+// F-233, the wiring: every make target that runs the accounting records the
+// exit status of the go test that wrote its transcript, beside it, and hands
+// it to -go-exit. The targets ran `go test … > log 2>&1 || true`, so a run
+// that failed or was cut handed over its transcript as if it were whole.
+func TestCoverageTargetsHandGoTestsStatusToTheAccounting(t *testing.T) {
+	t.Parallel()
+	mk, err := os.ReadFile(filepath.Join("..", "..", "Makefile"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(string(mk), "\n")
+	coverage := regexp.MustCompile(`go run \./tools/slowgatescan -coverage (\S+)(.*)$`)
+	n := 0
+	for i, l := range lines {
+		m := coverage.FindStringSubmatch(l)
+		if m == nil {
+			continue
+		}
+		n++
+		log := m[1]
+		status := strings.TrimSuffix(log, ".log") + ".status"
+		if i == 0 || !strings.Contains(lines[i-1], "> "+log+" 2>&1; echo $$? > "+status) {
+			t.Errorf("Makefile:%d: the go test that writes %s does not record its exit status in %s on the line before", i+1, log, status)
+		}
+		if !strings.Contains(m[2], `-go-exit "$$(cat `+status+`)"`) {
+			t.Errorf("Makefile:%d: the accounting over %s is not handed %s as -go-exit", i+1, log, status)
+		}
+	}
+	if n < 3 {
+		t.Errorf("the Makefile runs the accounting %d time(s), want the three slow-gate-coverage targets", n)
 	}
 }
