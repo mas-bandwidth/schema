@@ -1201,6 +1201,18 @@ local function wrefWalk(u: any, root: string, v: any, path: string): (any, any, 
 	error("empty path")
 end
 
+	-- THE ONE CHECKED CONVERSION for an ordinal, a tag, a count and a length:
+	-- every number here is a double, which holds an integer exactly only to
+	-- 2^53. tonumber rounds a token past that (18446744073709551616 to 2^64),
+	-- and the writer then narrowed the rounded tag into a lawful one and the
+	-- row answered `wrote`. A token the double does not hold exactly is
+	-- unrepresentable: wrefSet answers true and sets nothing.
+	local function wrefWhole(text: string): number?
+		local n = tonumber(text)
+		if n == nil or n ~= math.floor(n) or math.abs(n) > 2 ^ 53 then return nil end
+		return n
+	end
+
 local function wrefSet(u: any, root: string, v: any, path: string, what: string, text: string)
 	local owner, fd, idx = wrefWalk(u, root, v, path)
 	local holder: any = owner
@@ -1210,12 +1222,17 @@ local function wrefSet(u: any, root: string, v: any, path: string, what: string,
 		key = idx
 	end
 	local d: any = if idx ~= nil and fd.s == "arr" then fd.e else fd
-	if what == "int" or what == "ordinal" then
+	if what == "ordinal" then
+		local n = wrefWhole(text)
+		if n == nil then return true end
+		holder[key] = n
+	elseif what == "int" then
 		holder[key] = tonumber(text) :: number
 	elseif what == "float" or what == "real" then
 		holder[key] = wrefFloat(text)
 	elseif what == "count" then
-		local n = tonumber(text) :: number
+		local n = wrefWhole(text)
+		if n == nil then return true end
 		local arr = holder[key]
 		if owner[fd.slot .. "Count"] ~= nil then
 			owner[fd.slot .. "Count"] = n
@@ -1231,7 +1248,9 @@ local function wrefSet(u: any, root: string, v: any, path: string, what: string,
 			end
 		end
 	elseif what == "length" or what == "bytes" then
-		local raw = if what == "length" then string.rep("a", tonumber(text) :: number) else wrefHexBytes(text)
+		local len = if what == "length" then wrefWhole(text) else 0
+		if len == nil then return true end
+		local raw = if what == "length" then string.rep("a", len) else wrefHexBytes(text)
 		if idx == nil and owner[fd.slot .. "Length"] ~= nil then
 			local cap = math.max(d.bound or 0, #raw)
 			local buf = buffer.create(cap)
@@ -1246,7 +1265,8 @@ local function wrefSet(u: any, root: string, v: any, path: string, what: string,
 			holder[key] = raw
 		end
 	elseif what == "tag" then
-		local n = tonumber(text) :: number
+		local n = wrefWhole(text)
+		if n == nil then return true end
 		local ud = u.S.lookup(d.t)
 		local x = ud.new()
 		x.Type = n
@@ -1279,7 +1299,10 @@ local function surfaceWriteRefusal(lines: { { string } }, kindName: string)
 			if v == nil then
 				error(name .. ": load refused " .. wire .. " (" .. tostring(r.reason) .. ")")
 			end
-			wrefSet(u, root, v, path, what, text)
+			if wrefSet(u, root, v, path, what, text) then
+				sayText(name, "unrepresentable\n")
+				continue
+			end
 			local answer = "refused\n"
 			if kindName == "write-refusal" or kindName == "write-refusal-fixed" then
 				if kindName == "write-refusal-fixed" and not d.fixed then
