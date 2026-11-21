@@ -342,6 +342,9 @@ func expectedFieldValue(t *testing.T, u *ir.Unit, slots map[string]uint64, f *ir
 		if !ok {
 			t.Fatalf("field %s holds %T, want an array", f.Name, raw)
 		}
+		if _, isUnion := f.Type.Ref.(*ir.Union); isUnion && unionArrayElided(f, arr) {
+			return "", false
+		}
 		return expectedArrayValue(t, u, slots, f, arr), true
 	case f.Type.Kind == ir.TNamed:
 		if e, ok := f.Type.Ref.(*ir.Enum); ok {
@@ -522,6 +525,22 @@ func expectedUnionArm(t *testing.T, u *ir.Unit, slots map[string]uint64, f *ir.F
 	}
 	t.Fatalf("union field %s arm not found in %s", f.Name, un.Name)
 	return ""
+}
+
+// unionArrayElided is the Go oracle's elision rule for an array of unions
+// (internal/tablewire messageElides, docs/SPEC-TABLES.md §3.3): a counted array
+// with no element is left out, and so is a fixed array whose every element is
+// None. A None element is `{}` or `null` in the text.
+func unionArrayElided(f *ir.Field, arr []any) bool {
+	if f.CountedOnWire() {
+		return len(arr) == 0
+	}
+	for _, e := range arr {
+		if obj, _ := e.(map[string]any); len(obj) != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // expectedArrayValue renders one fixed array's decoded elements: the element is
