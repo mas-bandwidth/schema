@@ -82,7 +82,7 @@ func (r realTLC) check(tlaDir, config, module string) (int, string, error) {
 	if err != nil {
 		return 0, "", err
 	}
-	defer os.RemoveAll(work)
+	defer func() { _ = os.RemoveAll(work) }()
 	cmd := exec.Command(r.java, "-Djava.io.tmpdir="+work, "-Xmx4g", "-cp", r.jar, "tlc2.TLC",
 		"-workers", "4", "-config", config, "-metadir", filepath.Join(work, "meta"), module)
 	cmd.Dir = tlaDir
@@ -103,7 +103,7 @@ func runAll(tlaDir string, tlc checker, out io.Writer) error {
 	rows, problems := Plan(tlaDir)
 	if len(problems) > 0 {
 		for _, p := range problems {
-			fmt.Fprintln(out, "TLC FAIL", p)
+			say(out, "TLC FAIL %s\n", p)
 		}
 		return fmt.Errorf("%d problem(s) pairing tla/RUNS.tsv with the configs; nothing was run", len(problems))
 	}
@@ -111,18 +111,18 @@ func runAll(tlaDir string, tlc checker, out io.Writer) error {
 	counts := map[string]int{}
 	for _, row := range rows {
 		if err := runOne(tlaDir, row, tlc); err != nil {
-			fmt.Fprintf(out, "TLC FAIL config=%s module=%s: %v\n", row.Config, row.Module, err)
+			say(out, "TLC FAIL config=%s module=%s: %v\n", row.Config, row.Module, err)
 			failed++
 			continue
 		}
 		counts[row.Outcome]++
-		fmt.Fprintf(out, "TLC OK config=%s module=%s result=%s invariant=%s\n", row.Config, row.Module, row.Outcome, row.Invariant)
+		say(out, "TLC OK config=%s module=%s result=%s invariant=%s\n", row.Config, row.Module, row.Outcome, row.Invariant)
 	}
 	configs, err := filepath.Glob(filepath.Join(tlaDir, "*.cfg"))
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "TLC ran %d of %d configs: %d exhaustive, %d counterexample, %d failed\n",
+	say(out, "TLC ran %d of %d configs: %d exhaustive, %d counterexample, %d failed\n",
 		len(rows), len(configs), counts[outcomeExhaustive], counts[outcomeCounterexample], failed)
 	if len(rows) == 0 || len(rows) != len(configs) {
 		return fmt.Errorf("ran %d configs and tla/ holds %d", len(rows), len(configs))
@@ -140,7 +140,7 @@ func runOne(tlaDir string, row Row, tlc checker) error {
 	}
 	exit, log, err := tlc.check(tlaDir, row.Config, RunModule(tlaDir, row.Module))
 	if err != nil {
-		return fmt.Errorf("TLC did not run: %v", err)
+		return fmt.Errorf("TLC did not run: %w", err)
 	}
 	return Judge(row, string(cfgSrc), exit, log)
 }
@@ -176,7 +176,7 @@ func runControls(tlaDir string, tlc checker, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 	donor, err := os.ReadFile(filepath.Join(dir, controlWitnessDonor))
 	if err != nil {
 		return err
@@ -192,9 +192,9 @@ func runControls(tlaDir string, tlc checker, out io.Writer) error {
 		return err
 	}
 	if err := wantRefusal(runOne(dir, row, tlc), controlWitnessWants); err != nil {
-		return fmt.Errorf("control 1 (%s given the faults of %s): %v", controlWitness, controlWitnessDonor, err)
+		return fmt.Errorf("control 1 (%s given the faults of %s): %w", controlWitness, controlWitnessDonor, err)
 	}
-	fmt.Fprintf(out, "TLC CONTROL OK %s with another model's violation is refused: %s\n", controlWitness, controlWitnessWants)
+	say(out, "TLC CONTROL OK %s with another model's violation is refused: %s\n", controlWitness, controlWitnessWants)
 
 	// 2. a config error in place of the violation.
 	row, err = find(controlConfigError)
@@ -210,9 +210,9 @@ func runControls(tlaDir string, tlc checker, out io.Writer) error {
 		return err
 	}
 	if err := wantRefusal(runOne(dir, row, tlc), controlConfigWants); err != nil {
-		return fmt.Errorf("control 2 (%s naming an invariant its module lacks): %v", controlConfigError, err)
+		return fmt.Errorf("control 2 (%s naming an invariant its module lacks): %w", controlConfigError, err)
 	}
-	fmt.Fprintf(out, "TLC CONTROL OK %s with a config error is refused: %s\n", controlConfigError, controlConfigWants)
+	say(out, "TLC CONTROL OK %s with a config error is refused: %s\n", controlConfigError, controlConfigWants)
 
 	// 3. a config with no row.
 	ledger := filepath.Join(dir, "RUNS.tsv")
@@ -240,8 +240,8 @@ func runControls(tlaDir string, tlc checker, out io.Writer) error {
 	if err == nil || !strings.Contains(sink.String(), controlUnrecorded+" "+controlUnrecordedMsg) {
 		return fmt.Errorf("control 3: a config with no row was not refused: err=%v output=%q", err, sink.String())
 	}
-	fmt.Fprintf(out, "TLC CONTROL OK %s without a row is refused before anything runs\n", controlUnrecorded)
-	fmt.Fprintln(out, "TLC CONTROLS 3 of 3 refused")
+	say(out, "TLC CONTROL OK %s without a row is refused before anything runs\n", controlUnrecorded)
+	say(out, "TLC CONTROLS 3 of 3 refused\n")
 	return nil
 }
 
@@ -285,4 +285,10 @@ func copyDir(src string) (string, error) {
 		}
 	}
 	return dst, nil
+}
+
+// say writes one line of the report. The report goes to the step's log; a
+// write that fails there has nowhere better to be reported.
+func say(out io.Writer, format string, args ...any) {
+	_, _ = fmt.Fprintf(out, format, args...)
 }

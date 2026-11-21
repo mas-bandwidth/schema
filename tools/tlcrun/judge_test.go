@@ -1,6 +1,7 @@
 package main
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -127,10 +128,7 @@ func TestPlanPairsTheLedgerWithTheConfigsBothWays(t *testing.T) {
 			rowLine("MCMBroken.cfg", "M", "counterexample", "ImplementationsAgree", "2", "12"),
 	}
 	with := func(change func(map[string]string)) map[string]string {
-		files := map[string]string{}
-		for k, v := range good {
-			files[k] = v
-		}
+		files := maps.Clone(good)
 		change(files)
 		return files
 	}

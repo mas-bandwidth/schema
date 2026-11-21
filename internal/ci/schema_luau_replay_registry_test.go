@@ -21,6 +21,10 @@ func luauReplayRegistryProblems(dir string) []string {
 	}
 	registered := map[string]bool{}
 	var problems []string
+	// a last line with no newline is the line a shell `read` loop drops
+	if len(data) > 0 && data[len(data)-1] != '\n' {
+		problems = append(problems, "INPUTS does not end in a newline, so its last line would not be read")
+	}
 	for name := range strings.SplitSeq(strings.TrimRight(string(data), "\n"), "\n") {
 		if name == "" {
 			problems = append(problems, "INPUTS holds an empty line")
@@ -81,7 +85,9 @@ func TestLuauReplayCorpusIsRegistered(t *testing.T) {
 		`is not registered in INPUTS"`,
 		`luau-nightly-fuzz-replay: luau-nightly-fuzz-replay-controls `,
 		`grep -q "^REPLAY-DONE|inputs=$$n|"`,
-		`[ $$refused -eq 7 ]`,
+		`fail "INPUTS does not end in a newline, so its last line would not be read"`,
+		`[ $$refused -eq 8 ]`,
+		`the healthy fixture is accepted with 3 inputs`,
 	} {
 		if !strings.Contains(string(mk), want) {
 			t.Errorf("make/schema-luau-nightly-fuzz.mk no longer holds %q: the replay set is not held to its list", want)
@@ -145,6 +151,16 @@ func TestLuauReplayCorpusIsRegistered(t *testing.T) {
 				t.Fatal(err)
 			}
 		}, "INPUTS registers no input"},
+		{"a list with no final newline", func(t *testing.T, dir string) {
+			path := filepath.Join(dir, "INPUTS")
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(strings.TrimRight(string(data), "\n")), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}, "INPUTS does not end in a newline"},
 		{"no list", func(t *testing.T, dir string) { remove(t, dir, "INPUTS", 0) }, "no INPUTS list"},
 		{"no directory", func(t *testing.T, dir string) {
 			if err := os.RemoveAll(dir); err != nil {

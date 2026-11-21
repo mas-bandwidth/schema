@@ -499,9 +499,30 @@ func tableUnits(goldenTables string) ([]tableUnit, error) {
 // emitter change that moves a pinned file is red on the PR that made it,
 // whichever unit it landed in.
 func TestGoldenTableSource(t *testing.T) {
-	units, err := tableUnits(tableGoldenDir)
+	listed, err := tableUnits(tableGoldenDir)
 	if err != nil {
 		t.Fatal(err)
+	}
+	required := requiredTableUnits(t, "../../Makefile")
+	if !*update {
+		// The set of directories is held to the writers' own lists, both
+		// ways. The units compared below come from the listing, so without
+		// this a whole directory of pins could leave the tree and take its
+		// comparison with it.
+		for _, problem := range tableDirProblems(required, listed) {
+			t.Error(problem)
+		}
+	}
+	// under -update a required directory that is gone is written again
+	units := listed
+	have := map[string]bool{}
+	for _, unit := range listed {
+		have[unit.name] = true
+	}
+	for _, unit := range required {
+		if !have[unit.name] {
+			units = append(units, unit)
+		}
 	}
 	for _, unit := range units {
 		t.Run(unit.name, func(t *testing.T) {
@@ -509,7 +530,7 @@ func TestGoldenTableSource(t *testing.T) {
 			files := generate(t, u, unit.target, nil)
 			dir := filepath.Join(tableGoldenDir, unit.name)
 			entries, err := os.ReadDir(dir)
-			if err != nil {
+			if err != nil && (!*update || !os.IsNotExist(err)) {
 				t.Fatal(err)
 			}
 			pinned := map[string][]byte{}
@@ -526,14 +547,139 @@ func TestGoldenTableSource(t *testing.T) {
 			}
 			// The other way: every emitted file the writer rule pins is on
 			// disk. Without this a deleted pin leaves the listing shorter
-			// and the gate green.
+			// and the gate green. -update writes the missing pin, so the
+			// documented repair (make update-goldens) repairs it.
 			for name := range files {
-				if _, ok := pinned[name]; !ok && tablePinRule(unit.target, name) {
-					t.Errorf("%s: the %s target emits %s for %s and no golden pins it (run: make update-goldens)", dir, unit.target, name, unit.dir)
+				if _, ok := pinned[name]; ok || !tablePinRule(unit.target, name) {
+					continue
 				}
+				if *update {
+					pinned[name] = files[name]
+					continue
+				}
+				t.Errorf("%s: the %s target emits %s for %s and no golden pins it (run: make update-goldens)", dir, unit.target, name, unit.dir)
 			}
 			pinDir(t, dir, pinned)
 		})
+	}
+}
+
+// requiredTableUnits is the set of table golden directories the writers are
+// told to write: the Makefile's PINS_SOURCE_CPP_DIRS, PINS_SOURCE_C_DIRS and
+// PINS_SOURCE_CS_DIRS, as `<unit>`, `<unit>-c` and `<unit>-cs`. A list that is
+// missing or empty fails the test: the required set is never nothing.
+func requiredTableUnits(t *testing.T, makefile string) []tableUnit {
+	t.Helper()
+	data, err := os.ReadFile(makefile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	units, err := tableUnitsFromMakefile(string(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return units
+}
+
+func tableUnitsFromMakefile(makefile string) ([]tableUnit, error) {
+	var units []tableUnit
+	for _, list := range []struct{ variable, suffix, target string }{
+		{"PINS_SOURCE_CPP_DIRS", "", "cpp"},
+		{"PINS_SOURCE_C_DIRS", "-c", "c"},
+		{"PINS_SOURCE_CS_DIRS", "-cs", "cs"},
+	} {
+		var names []string
+		found := 0
+		for line := range strings.SplitSeq(makefile, "\n") {
+			name, value, ok := strings.Cut(line, ":=")
+			if ok && strings.TrimSpace(name) == list.variable {
+				found++
+				names = strings.Fields(value)
+			}
+		}
+		if found != 1 || len(names) == 0 {
+			return nil, fmt.Errorf("the Makefile assigns %s %d time(s) with %d unit(s); want one assignment naming at least one unit", list.variable, found, len(names))
+		}
+		for _, name := range names {
+			units = append(units, tableUnit{name: name + list.suffix, dir: "../../tables/" + name, target: list.target})
+		}
+	}
+	return units, nil
+}
+
+// tableDirProblems compares the required table golden directories with the
+// ones on disk, both ways.
+func tableDirProblems(required, listed []tableUnit) []string {
+	want := map[string]tableUnit{}
+	for _, unit := range required {
+		want[unit.name] = unit
+	}
+	var problems []string
+	seen := map[string]bool{}
+	for _, unit := range listed {
+		seen[unit.name] = true
+		req, ok := want[unit.name]
+		switch {
+		case !ok:
+			problems = append(problems, fmt.Sprintf("%s/%s is a directory of table goldens no writer list names (Makefile PINS_SOURCE_*_DIRS): nothing rewrites it", tableGoldenDir, unit.name))
+		case req != unit:
+			problems = append(problems, fmt.Sprintf("%s/%s is read as %s emitted by %s, and the writer lists make it %s emitted by %s", tableGoldenDir, unit.name, unit.dir, unit.target, req.dir, req.target))
+		}
+	}
+	for _, unit := range required {
+		if !seen[unit.name] {
+			problems = append(problems, fmt.Sprintf("%s/%s is missing: the writer lists require the %s target's pins for %s (run: make update-goldens)", tableGoldenDir, unit.name, unit.target, unit.dir))
+		}
+	}
+	sort.Strings(problems)
+	return problems
+}
+
+// TestTableGoldenDirectoriesAreTheWritersLists is the control on the set: a
+// whole directory of pins removed is named (the full golden set used to pass
+// with testdata/golden/tables/examples-cs moved away), and so is one no list
+// names. The real tree must have neither.
+func TestTableGoldenDirectoriesAreTheWritersLists(t *testing.T) {
+	required := requiredTableUnits(t, "../../Makefile")
+	listed, err := tableUnits(tableGoldenDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if problems := tableDirProblems(required, listed); len(problems) != 0 {
+		t.Fatalf("the tree: %q", problems)
+	}
+	var without []tableUnit
+	for _, unit := range listed {
+		if unit.name != "examples-cs" {
+			without = append(without, unit)
+		}
+	}
+	if len(without) != len(listed)-1 {
+		t.Fatal("testdata/golden/tables/examples-cs is not in the listing; this control names a directory that has moved")
+	}
+	problems := strings.Join(tableDirProblems(required, without), "\n")
+	if !strings.Contains(problems, "examples-cs is missing") {
+		t.Errorf("a listing without examples-cs reports %q", problems)
+	}
+	extra := append(append([]tableUnit(nil), listed...), tableUnit{name: "planted", dir: "../../tables/planted", target: "cpp"})
+	problems = strings.Join(tableDirProblems(required, extra), "\n")
+	if !strings.Contains(problems, "planted is a directory of table goldens no writer list names") {
+		t.Errorf("a listing with a planted directory reports %q", problems)
+	}
+
+	for _, c := range []struct{ name, makefile, want string }{
+		{"a list removed", "PINS_SOURCE_CPP_DIRS := a\nPINS_SOURCE_C_DIRS := a\n", "PINS_SOURCE_CS_DIRS 0 time(s)"},
+		{"an empty list", "PINS_SOURCE_CPP_DIRS := a\nPINS_SOURCE_C_DIRS :=\nPINS_SOURCE_CS_DIRS := a\n", "PINS_SOURCE_C_DIRS 1 time(s) with 0 unit(s)"},
+		{"a list assigned twice", "PINS_SOURCE_CPP_DIRS := a\nPINS_SOURCE_CPP_DIRS := b\nPINS_SOURCE_C_DIRS := a\nPINS_SOURCE_CS_DIRS := a\n", "PINS_SOURCE_CPP_DIRS 2 time(s)"},
+	} {
+		if _, err := tableUnitsFromMakefile(c.makefile); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: error %v, want one holding %q", c.name, err, c.want)
+		}
+	}
+	units, err := tableUnitsFromMakefile("PINS_SOURCE_CPP_DIRS := a b\nPINS_SOURCE_C_DIRS   := a\nPINS_SOURCE_CS_DIRS  := b\n")
+	want := []tableUnit{{"a", "../../tables/a", "cpp"}, {"b", "../../tables/b", "cpp"}, {"a-c", "../../tables/a", "c"}, {"b-cs", "../../tables/b", "cs"}}
+	if err != nil || fmt.Sprint(units) != fmt.Sprint(want) {
+		t.Errorf("units %v (err %v), want %v", units, err, want)
 	}
 }
 

@@ -558,6 +558,9 @@ out=$$2
 fail() { echo "luau replay corpus $$dir: $$1" >&2; exit 1; }
 [ -d "$$dir" ] || fail "the directory does not exist"
 [ -f "$$dir/INPUTS" ] || fail "no INPUTS file registers its saved inputs"
+# a last line with no newline is a line `read` returns false on: the loops
+# below would drop it, and the replay would count one input fewer and agree
+[ -z "$$(tail -c 1 "$$dir/INPUTS")" ] || fail "INPUTS does not end in a newline, so its last line would not be read"
 n=0
 while IFS= read -r name; do
 	[ -n "$$name" ] || fail "INPUTS holds an empty line"
@@ -716,31 +719,46 @@ luau-nightly-fuzz-replay: luau-nightly-fuzz-replay-controls luau-nightly-fuzz-to
 	echo "luau replay: all $$n registered input(s) replayed"
 
 # THE REPLAY SET'S CONTROLS, run before every replay (no toolchain, a few
-# milliseconds): seven broken copies of the saved corpus, each of which the
-# generator must refuse. one-sidecar and no-sidecars are the two that replayed
-# 1 and 0 inputs green before INPUTS; missing-directory is the third.
+# milliseconds). They are built from their own three-input fixture, never from
+# the saved corpus, so they mean the same whatever the corpus holds (a corpus
+# of one input used to fail the one-sidecar control, which kept its only
+# sidecar). The fixture itself must be accepted with count 3; then eight
+# broken copies of it must each be refused. one-sidecar and no-sidecars are
+# the two that replayed 1 and 0 inputs green before INPUTS, missing-directory
+# the third, and no-final-newline is the list whose last line a shell read
+# drops.
 .PHONY: luau-nightly-fuzz-replay-controls
 luau-nightly-fuzz-replay-controls: $(LUAU_NF)/gen-replay.sh
-	@c=$(LUAU_NF)/replay-controls; rm -rf $$c; mkdir -p $$c; \
-	for case in one-sidecar no-sidecars no-binary unregistered empty-registry no-registry; do \
-		cp -r $(LUAU_NF_CORPUS) $$c/$$case || exit 1; done; \
-	first=$$(ls $$c/one-sidecar/*.bin.meta | head -1); \
-	for m in $$c/one-sidecar/*.bin.meta; do [ "$$m" = "$$first" ] || rm "$$m"; done; \
-	rm $$c/no-sidecars/*.bin.meta; \
-	rm "$$(ls $$c/no-binary/*.bin | head -1)"; \
-	cp "$$(ls $$c/unregistered/*.bin | head -1)" $$c/unregistered/zz-unregistered.bin; \
+	@c=$(LUAU_NF)/replay-controls; rm -rf $(LUAU_NF)/replay-controls; mkdir -p $$c/good; \
+	for n in a b c; do \
+		printf '\001' > $$c/good/$$n.bin; \
+		printf 'seed=1\niteration=1\nkind=load\nunit=u\nroot=r\nreason=fixture\n' > $$c/good/$$n.bin.meta; \
+	done; \
+	printf 'a.bin\nb.bin\nc.bin\n' > $$c/good/INPUTS; \
+	if ! sh $(LUAU_NF)/gen-replay.sh $$c/good $$c/good.luau > $$c/good.log 2>&1; then \
+		echo "luau replay control failed: the healthy fixture was refused ($$(cat $$c/good.log))" >&2; exit 1; fi; \
+	[ "$$(cat $$c/good.luau.count)" = 3 ] && [ "$$(grep -c 'name = ' $$c/good.luau)" = 3 ] || \
+		{ echo "luau replay control failed: the healthy fixture of 3 inputs emitted $$(cat $$c/good.luau.count)" >&2; exit 1; }; \
+	echo "luau replay control: the healthy fixture is accepted with 3 inputs"; \
+	for case in one-sidecar no-sidecars no-binary unregistered empty-registry no-registry no-final-newline; do \
+		cp -r $$c/good $$c/$$case || exit 1; done; \
+	rm $$c/one-sidecar/b.bin.meta $$c/one-sidecar/c.bin.meta; \
+	rm $$c/no-sidecars/a.bin.meta $$c/no-sidecars/b.bin.meta $$c/no-sidecars/c.bin.meta; \
+	rm $$c/no-binary/a.bin; \
+	cp $$c/good/a.bin $$c/unregistered/zz-unregistered.bin; \
 	: > $$c/empty-registry/INPUTS; \
 	rm $$c/no-registry/INPUTS; \
+	printf 'a.bin\nb.bin\nc.bin' > $$c/no-final-newline/INPUTS; \
 	refused=0; \
-	for case in one-sidecar no-sidecars no-binary unregistered empty-registry no-registry missing-directory; do \
+	for case in one-sidecar no-sidecars no-binary unregistered empty-registry no-registry no-final-newline missing-directory; do \
 		if sh $(LUAU_NF)/gen-replay.sh $$c/$$case $$c/$$case.luau > $$c/$$case.log 2>&1; then \
 			echo "luau replay control failed: a corpus with $$case was accepted" >&2; exit 1; fi; \
 		[ -s $$c/$$case.log ] || { echo "luau replay control failed: $$case was refused without a reason" >&2; exit 1; }; \
 		echo "luau replay control: $$case is refused ($$(cat $$c/$$case.log))"; \
 		refused=$$((refused + 1)); \
 	done; \
-	[ $$refused -eq 7 ] || { echo "luau replay controls: $$refused of 7 ran" >&2; exit 1; }; \
-	echo "luau replay controls: 7 of 7 broken corpora refused"
+	[ $$refused -eq 8 ] || { echo "luau replay controls: $$refused of 8 ran" >&2; exit 1; }; \
+	echo "luau replay controls: 8 of 8 broken corpora refused"
 
 # THE NEGATIVE CONTROL (make/negative-controls.json, tools/negativecontrols):
 # a scratch copy of the generated readers has the id-table count's sign check
