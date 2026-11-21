@@ -349,20 +349,60 @@ func emitFileModule(u *ir.Unit, mod string, plan *filePlan, blocks *ir.BlockUnit
 // (runtime/_table/descriptor.rb) holds nothing but the wrappers, so no
 // declaration of the unit module can spell a wrapper's name. Under it each
 // table owns the module of its own name, which no other table can, and each
-// keyed field of that table owns the class Field_<field>: a field's name is
-// unique in its table and the prefix makes it a constant whatever its case.
-// The pair (table, field) maps to one name and two pairs never to the same
+// keyed field of that table owns the class keyedFieldConstant(field): a
+// field's name is unique in its table and the spelling is one-to-one, so
+// the pair (table, field) maps to one name and two pairs never to the same
 // one, where the old <Table><Field>KeyedArray, spelled in the unit module,
 // was reopened by a declared table QuestRankKeyedArray and was the one class
 // of both Quest.rank_value and QuestRank.value. Every reference spells the
 // whole path from the unit module, and the classes are opened by that path
-// (`class SchemaTable::Keyed::Quest::Field_rank`), never nested in Keyed or
+// (`class SchemaTable::Keyed::Quest::Rank`), never nested in Keyed or
 // SchemaTable, so the element default inside resolves its names in the unit
 // module as before.
 const keyedRoot = "SchemaTable::Keyed"
 
-// keyedPrefix starts a keyed field's class name under its table's namespace.
-const keyedPrefix = "Field_"
+// keyedFieldConstant spells a field name as a CamelCase Ruby constant
+// (RuboCop's Naming/ClassAndModuleCamelCase refuses an underscore), one to one,
+// so two fields of a table never share a class. Read the name as if it began
+// with an underscore; then an underscore before a lowercase letter a..y is
+// that letter in uppercase (rank_value is RankValue), every other underscore
+// is Zu, a letter the name itself spells in uppercase is Z and the letter, an
+// underscore before z is Zz, and a lowercase letter or a digit stands. Every
+// uppercase letter of the result other than Z begins a word, and Z always
+// begins an escape, so the field name reads back from it.
+func keyedFieldConstant(name string) string {
+	var b strings.Builder
+	under := true
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		if c == '_' {
+			if under {
+				b.WriteString("Zu")
+			}
+			under = true
+			continue
+		}
+		switch {
+		case under && c >= 'a' && c <= 'y':
+			b.WriteByte(c - 'a' + 'A')
+		case under && c == 'z':
+			b.WriteString("Zz")
+		default:
+			if under {
+				b.WriteString("Zu")
+			}
+			if c >= 'A' && c <= 'Z' {
+				b.WriteByte('Z')
+			}
+			b.WriteByte(c)
+		}
+		under = false
+	}
+	if under {
+		b.WriteString("Zu")
+	}
+	return b.String()
+}
 
 func hasKeyedField(st *ir.Struct) bool {
 	for _, f := range st.Fields {
@@ -378,7 +418,7 @@ func keyedNamespace(tableName string) string {
 }
 
 func keyedClassName(tableName string, f *ir.Field) string {
-	return keyedNamespace(tableName) + "::" + keyedPrefix + f.Name
+	return keyedNamespace(tableName) + "::" + keyedFieldConstant(f.Name)
 }
 
 func emitKeyedClass(b *strings.Builder, tableName string, f *ir.Field, surfaces Surfaces) {

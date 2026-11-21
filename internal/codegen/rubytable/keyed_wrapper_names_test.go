@@ -271,3 +271,86 @@ func loadUnitPaths(t *testing.T, paths []string) *ir.Unit {
 	}
 	return u
 }
+
+// decodeKeyedFieldConstant reads a field name back from keyedFieldConstant,
+// so the test can hold the spelling one to one.
+func decodeKeyedFieldConstant(s string) (string, bool) {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c == 'Z':
+			if i+1 == len(s) {
+				return "", false
+			}
+			i++
+			switch n := s[i]; {
+			case n == 'u':
+				b.WriteByte('_')
+			case n == 'z':
+				b.WriteString("_z")
+			case n >= 'A' && n <= 'Z':
+				b.WriteByte(n)
+			default:
+				return "", false
+			}
+		case c >= 'A' && c <= 'Y':
+			b.WriteByte('_')
+			b.WriteByte(c - 'A' + 'a')
+		case c >= 'a' && c <= 'z', c >= '0' && c <= '9':
+			b.WriteByte(c)
+		default:
+			return "", false
+		}
+	}
+	out := b.String()
+	if !strings.HasPrefix(out, "_") {
+		return "", false
+	}
+	return out[1:], true
+}
+
+// TestRubyKeyedFieldConstantIsOneToOne holds keyedFieldConstant to the two
+// properties the wrapper names rest on: every spelling is a CamelCase Ruby
+// constant (an uppercase first letter, then letters and digits only, which
+// RuboCop's Naming/ClassAndModuleCamelCase accepts), and the field name reads
+// back from it, so two fields never share a class. It walks every name of up
+// to four characters over an alphabet that holds each case the spelling
+// treats apart, and the names GoExportName folds together. A pure Go test.
+func TestRubyKeyedFieldConstantIsOneToOne(t *testing.T) {
+	t.Parallel()
+	const alphabet = "_azAZ09by"
+	names := []string{"rank_value", "rankValue", "rank__value", "Rank_value", "rank_value_", "_rank", "z", "_z", "Z", "x_2", "next", "object_id"}
+	var walk func(prefix string)
+	walk = func(prefix string) {
+		if prefix != "" {
+			names = append(names, prefix)
+		}
+		if len(prefix) == 4 {
+			return
+		}
+		for i := 0; i < len(alphabet); i++ {
+			walk(prefix + alphabet[i:i+1])
+		}
+	}
+	walk("")
+	constant := regexp.MustCompile(`^[A-Z][A-Za-z0-9]*$`)
+	seen := map[string]string{}
+	for _, name := range names {
+		got := keyedFieldConstant(name)
+		if !constant.MatchString(got) {
+			t.Errorf("%q spells %q, not a CamelCase constant", name, got)
+		}
+		back, ok := decodeKeyedFieldConstant(got)
+		if !ok || back != name {
+			t.Errorf("%q spells %q, which reads back as %q", name, got, back)
+		}
+		if prev, dup := seen[got]; dup && prev != name {
+			t.Errorf("%q and %q both spell %q", prev, name, got)
+		}
+		seen[got] = name
+	}
+	if keyedFieldConstant("rank_value") != "RankValue" {
+		t.Errorf("rank_value spells %q, want RankValue", keyedFieldConstant("rank_value"))
+	}
+}

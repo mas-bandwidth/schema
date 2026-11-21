@@ -80,7 +80,7 @@ module SchemaRuntimeUnit
     end
 
     # The namespace of the generated keyed-array classes: one module per table,
-    # one class per keyed field, SchemaTable::Keyed::<Table>::Field_<field>
+    # one class per keyed field, SchemaTable::Keyed::<Table>::<Field>
     # (internal/codegen/rubytable, keyedRoot). It holds nothing else, so no
     # declaration can spell a wrapper's name.
     module Keyed
