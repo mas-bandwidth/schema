@@ -27,9 +27,9 @@ func priorRows(t *testing.T, m *Manifest) map[string]MessageDrift {
 }
 
 // TestMessagePriorWriterIsRangesApart holds what the rows claim about their
-// writer: it is today's schema with every ranged declaration twice as wide and
-// `mask` two bits wider, so nothing but the tightened ranges separates the
-// writer from the reader.
+// writer: it is today's schema with every ranged declaration twice as wide,
+// `mask` two bits wider and the three kind fields int32, so nothing but those
+// declarations separates the writer from the reader.
 func TestMessagePriorWriterIsRangesApart(t *testing.T) {
 	t.Chdir(conformanceRoot(t))
 	body := func(path string) string {
@@ -47,9 +47,12 @@ func TestMessagePriorWriterIsRangesApart(t *testing.T) {
 	if n := strings.Count(narrow, "max = 50"); n != 11 {
 		t.Fatalf("PriorNarrow declares %d ranges of max = 50, want 11: move the rows with it", n)
 	}
-	want := strings.ReplaceAll(strings.ReplaceAll(narrow, "max = 50", "max = 100"), "bits(5)", "bits(7)")
+	want := strings.NewReplacer(
+		"max = 50", "max = 100", "bits(5)", "bits(7)",
+		"narrowed int16", "narrowed int32", "retyped  string(16)", "retyped  int32", "widened  int64", "widened  int32",
+	).Replace(narrow)
 	if wide != want {
-		t.Errorf("PriorWide is not PriorNarrow with each range widened to max = 100 and mask to bits(7)")
+		t.Errorf("PriorWide is not PriorNarrow with each range widened to max = 100, mask to bits(7) and the three kind fields int32")
 	}
 }
 
@@ -57,9 +60,9 @@ func TestMessagePriorWriterIsRangesApart(t *testing.T) {
 // the independent engine (docs/SPEC-TABLES.md §3.3, §4): the committed
 // announcement and batch ARE what the prior writer writes for the row's value;
 // today's reader reads a value inside its range and re-saves the pinned batch;
-// and it REFUSES a value past its range with out_of_range, neither clamping it
-// nor delivering the message. The rows come in pairs, one read and one refusal
-// per shape; the driver manifest hands a leg the same two lines for both, and
+// and it REFUSES a value past its range with out_of_range and a kind that
+// moved with kind_mismatch, neither clamping or defaulting the value nor
+// delivering the message. A ranged shape owes one read and one refusal; the driver manifest hands a leg the same two lines for both, and
 // the matrix owes a refusal for the second.
 func TestMessagePriorWriterRows(t *testing.T) {
 	m, _, u := corpus(t)
@@ -86,16 +89,18 @@ func TestMessagePriorWriterRows(t *testing.T) {
 	writers := map[string]*ir.Unit{}
 	for name, row := range rows {
 		shape, verdict, ok := cutLast(name, "_")
-		if !ok || (verdict != "inside" && verdict != "past") || (verdict == "past") != row.Refused() {
-			t.Errorf("%s: a row is <shape>_inside and read, or <shape>_past and refused", name)
-			continue
-		}
-		other := shape + "_inside"
-		if verdict == "inside" {
-			other = shape + "_past"
-		}
-		if _, ok := rows[other]; !ok {
-			t.Errorf("%s has no twin %s: a shape owes one read and one refusal", name, other)
+		switch {
+		case !ok:
+			t.Errorf("%s: a row is <shape>_inside, <shape>_past or <shape>_kind", name)
+		case verdict == "inside" && !row.Refused():
+		case verdict == "past" && row.Reason == tablewire.ReasonOutOfRange:
+			// a range owes both halves: the value the reader holds, and the one it does not
+			if _, ok := rows[shape+"_inside"]; !ok {
+				t.Errorf("%s has no twin %s_inside: a ranged shape owes one read and one refusal", name, shape)
+			}
+		case verdict == "kind" && row.Reason == tablewire.ReasonKindMismatch:
+		default:
+			t.Errorf("%s: _inside reads, _past refuses out_of_range and _kind refuses kind_mismatch; the row says %q", name, row.Reason)
 		}
 
 		reader, err := u.get(row.Unit)
@@ -156,8 +161,8 @@ func TestMessagePriorWriterRows(t *testing.T) {
 		var rep tabletext.Report
 		n, ok, derr := tablewire.DecodeMessages(model, vals, pinned, &vocab, &rep)
 		if row.Refused() {
-			if reason := tablewire.RefusalReason(derr); ok || reason != tablewire.ReasonOutOfRange {
-				t.Errorf("%s: the reader owes an out_of_range refusal: ok=%t reason=%q (%v)", name, ok, reason, derr)
+			if reason := tablewire.RefusalReason(derr); ok || reason != row.Reason {
+				t.Errorf("%s: the reader owes a %s refusal: ok=%t reason=%q (%v)", name, row.Reason, ok, reason, derr)
 			}
 			if w, ok := owed[name]; !ok || w.want != nil {
 				t.Errorf("the matrix owes %s a refusal and no bytes", name)

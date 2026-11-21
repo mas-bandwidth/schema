@@ -4,8 +4,11 @@
 // today's: every ranged value of Prior is declared twice as wide by the writer
 // as by the reader, one field per shape a ranged value takes in a message.
 // A value the writer may lawfully send and the reader's declaration does not
-// hold refuses the read `out_of_range`; no reader clamps it. The two files
-// differ in these declarations and nothing else, which
+// hold refuses the read `out_of_range`; no reader clamps it. Three fields
+// change KIND instead: the writer's int32 is the reader's int16 (`narrowed`)
+// and string(16) (`retyped`), which refuse `kind_mismatch`, and its int64
+// (`widened`), the lawful widening, which reads. The two files differ in
+// these declarations and nothing else, which
 // TestMessagePriorWriterIsRangesApart holds.
 package tblprior
 
@@ -43,4 +46,7 @@ fixed table Prior
     cells  [2]Cell
     quant  float32    | min = 0, max = 50, resolution = 0.5
     fx     ufixed(16, 16) | min = 0, max = 50
+    narrowed int16
+    retyped  string(16)
+    widened  int64
 }

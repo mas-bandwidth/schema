@@ -16,8 +16,8 @@ import (
 // (testdata/conformance/tables/FORMAT.md): a prior writer's batch of one body
 // and whether today's reader reads it.
 type priorShapeRow struct {
-	name    string
-	refused bool
+	name   string
+	reason string // "" reads
 }
 
 func priorShapeRows(t *testing.T, repo string) []priorShapeRow {
@@ -32,7 +32,11 @@ func priorShapeRows(t *testing.T, repo string) []priorShapeRow {
 	for sc.Scan() {
 		fields := strings.Fields(sc.Text())
 		if len(fields) == 8 && fields[0] == "message-prior" && fields[2] == "tblprior" {
-			rows = append(rows, priorShapeRow{name: fields[1], refused: fields[7] == "refused"})
+			row := priorShapeRow{name: fields[1]}
+			if fields[7] != "read" {
+				row.reason = fields[7]
+			}
+			rows = append(rows, row)
 		}
 	}
 	if err := sc.Err(); err != nil {
@@ -47,8 +51,8 @@ func priorShapeRows(t *testing.T, repo string) []priorShapeRow {
 // TestJsMessageReadNeverClampsOrCounts is the fast half, over the unit that
 // carries one field per shape a ranged value takes in a message
 // (test/tables/prior/PriorNarrow.schema): the generated message read holds no
-// clamp-and-count statement at all, and each ranged shape refuses
-// out_of_range in its place (docs/SPEC-TABLES.md §3.3, §4).
+// clamp-and-count or default-and-count statement at all: each ranged shape
+// refuses out_of_range and a moved kind refuses kind_mismatch in its place (docs/SPEC-TABLES.md §3.3, §4).
 func TestJsMessageReadNeverClampsOrCounts(t *testing.T) {
 	t.Parallel()
 	files, err := Generate(loadUnit(t, "../../../test/tables/prior/PriorNarrow.schema"))
@@ -65,9 +69,9 @@ func TestJsMessageReadNeverClampsOrCounts(t *testing.T) {
 	if !strings.Contains(src, "function PriorLoadMessageBody(") {
 		t.Fatal("the generated unit has no PriorLoadMessageBody")
 	}
-	for _, never := range []string{"Oor++", "Oor +=", "x = 50", "= 50n;"} {
+	for _, never := range []string{"Oor++", "Oor +=", "Mismatch++", "Mismatch +=", "x = 50", "= 50n;"} {
 		if strings.Contains(src, never) {
-			t.Errorf("the generated unit still clamps or counts a value (%q)", never)
+			t.Errorf("the generated unit still clamps, defaults or counts a value (%q)", never)
 		}
 	}
 	refuse := `{ TableMessageRefuse(r.Report, "out_of_range"); return false; }`
@@ -78,6 +82,8 @@ func TestJsMessageReadNeverClampsOrCounts(t *testing.T) {
 		"if (x < 0n || x > 50n) " + refuse,
 		// bits(5), tested on the value as sent, before any narrowing
 		"if (!holds || x < 0n || x > 31n) " + refuse,
+		// a kind that is not this reader's and does not widen into it
+		`{ TableMessageRefuse(r.Report, "kind_mismatch"); return false; }`,
 	} {
 		if !strings.Contains(src, want) {
 			t.Errorf("the generated message read lacks %q", want)
@@ -89,8 +95,9 @@ func TestJsMessageReadNeverClampsOrCounts(t *testing.T) {
 // rows through the generated JavaScript message reader: the committed
 // announcement and batches of the earlier release PriorWide, read as today's
 // PriorNarrow. Every shape's value inside the reader's range reads with no
-// counter moved, and every shape's value past it refuses out_of_range, which
-// is the independent engine's answer (TestMessagePriorWriterRows in
+// counter moved, every shape's value past it refuses out_of_range, and a kind
+// that moved refuses kind_mismatch unless it is the lawful widening, which
+// reads: each the independent engine's answer (TestMessagePriorWriterRows in
 // test/conformance/harness holds the engine to the same rows).
 func TestJsMessagePriorWriterShapes(t *testing.T) {
 	node := jsNode(t)
@@ -138,7 +145,7 @@ func TestJsMessagePriorWriterShapes(t *testing.T) {
   if (!m.AnnounceRead(voc, announce, {})) { throw new Error("announce refused"); }
   const rep = {};
   const n = m.PriorLoadMessages([new m.Prior()], voc, new Uint8Array(readFileSync(%q)), rep);
-  console.log("ROW %s loaded=" + (n === 1 && !rep.Damaged) + "|reason=" + (rep.Reason ?? "") + "|oor=" + (rep.Oor ?? 0));
+  console.log("ROW %s loaded=" + (n === 1 && !rep.Damaged) + "|reason=" + (rep.Reason ?? "") + "|oor=" + (rep.Oor ?? 0) + "|mismatch=" + (rep.Mismatch ?? 0));
 }
 `, filepath.Join(wires, row.name+"_message.bin"), row.name)
 	}
@@ -160,9 +167,9 @@ func TestJsMessagePriorWriterShapes(t *testing.T) {
 		}
 	}
 	for _, row := range rows {
-		want := "loaded=true|reason=|oor=0"
-		if row.refused {
-			want = "loaded=false|reason=out_of_range|oor=0"
+		want := "loaded=true|reason=|oor=0|mismatch=0"
+		if row.reason != "" {
+			want = "loaded=false|reason=" + row.reason + "|oor=0|mismatch=0"
 		}
 		if got[row.name] != want {
 			t.Errorf("%s: JS=%q, want %q", row.name, got[row.name], want)

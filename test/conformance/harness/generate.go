@@ -486,10 +486,11 @@ func generateMessageDrifts(u *units, m *Manifest, drifts []MessageDrift) error {
 		gotCnt, ok, err := tablewire.DecodeMessages(model, vals, batch, &vocab, &drep)
 		if md.Refused() {
 			// THE ROW EVERY READER REFUSES: the engine must refuse it too,
-			// and for the one reason the row exists to hold, so a row that
-			// went red for damage cannot stand in for the range rule.
-			if reason := tablewire.RefusalReason(err); ok || reason != tablewire.ReasonOutOfRange {
-				return fmt.Errorf("message-drift %s: the row owes an out_of_range refusal and the engine answered ok=%v reason=%q err=%v", md.Name, ok, reason, err)
+			// and a prior-writer row for the one reason it exists to hold,
+			// so a row that went red for damage cannot stand in for the rule.
+			reason := tablewire.RefusalReason(err)
+			if ok || reason == "" || (md.Reason != "" && reason != md.Reason) {
+				return fmt.Errorf("message-drift %s: the row owes a %s refusal and the engine answered ok=%v reason=%q err=%v", md.Name, md.Reason, ok, reason, err)
 			}
 			continue
 		}
