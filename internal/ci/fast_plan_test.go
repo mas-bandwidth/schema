@@ -160,7 +160,7 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 		{
 			name:  "check package selects fuzz seeds",
 			files: "internal/check/check.go",
-			want:  `no|./internal/check ./internal/fuzz|[]`,
+			want:  `no|./internal/check ./internal/languages ./internal/fuzz|[]`,
 		},
 		{
 			name:  "parser package selects fuzz seeds",
@@ -184,8 +184,13 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 		},
 		{
 			name:  "docs only",
-			files: "docs/CONTRIBUTING.md",
+			files: "docs/TUTORIAL.md",
 			want:  `no||[]`,
+		},
+		{
+			name:  "language list page",
+			files: "docs/CONTRIBUTING.md",
+			want:  `no|./internal/languages|[]`,
 		},
 		{
 			name:  "broad compiler change",
@@ -212,7 +217,7 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 		{
 			name:  "usage page",
 			files: "docs/USAGE.md",
-			want:  `no|./internal/goldens|[]`,
+			want:  `no|./internal/goldens ./internal/languages|[]`,
 		},
 		{
 			// a card's targets live in their own make/<lang>-<topic>.mk,
@@ -276,7 +281,11 @@ func TestFastPlanSelectsLanguageLints(t *testing.T) {
 		{"lua runtime, no .go file", "internal/codegen/luatable/runtime/wire.lua", `["lua"]|./internal/codegen/lua ./internal/codegen/luatable ./internal/goldens ./internal/fuzz`},
 		{"lua make file", "make/lua.mk", `["lua"]|./internal/codegen/lua ./internal/codegen/luatable`},
 		{"dart lens make file", "make/schema-dart-generated-strict-analyze-gate.mk", `["dart"]|`},
-		{"docs only", "docs/CONTRIBUTING.md", `[]|`},
+		{"docs only", "docs/TUTORIAL.md", `[]|`},
+		// a page that states the language list re-checks it against the registry
+		{"language list page", "docs/CONTRIBUTING.md", `[]|./internal/languages`},
+		{"readme", "README.md", `[]|./internal/languages`},
+		{"target file", "compiler/target_moo.go", `["dart","go","lua"]|./compiler ./internal/languages ./internal/fuzz`},
 		{"broad", "compiler/compiler.go", `["dart","go","lua"]|./compiler ./internal/fuzz`},
 		// the shared packet corpora are every lens's input
 		{"packet examples", "examples/Types.schema", `["dart","go","lua"]|./internal/goldens`},
