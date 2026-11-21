@@ -3,12 +3,13 @@ package jstable
 import (
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // jsNameCapSchema is the unit testdata/wire/json-read-closed reads: a flags
@@ -146,7 +147,7 @@ for (const row of rows) {
 	if err := os.WriteFile(filepath.Join(work, "probe.mjs"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, "probe.mjs")
+	cmd := testproc.Command(t, node, "probe.mjs")
 	cmd.Dir = work
 	out, err := cmd.CombinedOutput()
 	if err != nil {

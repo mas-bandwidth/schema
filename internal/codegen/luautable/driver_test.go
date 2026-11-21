@@ -2,13 +2,14 @@ package luautable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestLuauDriverListsItsSurfaces runs the Luau conformance driver's list
@@ -46,7 +47,7 @@ func TestLuauDriverListsItsSurfaces(t *testing.T) {
 	if err := os.WriteFile(manifest, []byte("# derived manifest\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(filepath.Join(leg, "driver"), manifest, "list")
+	cmd := testproc.Command(t, filepath.Join(leg, "driver"), manifest, "list")
 	cmd.Dir = tree
 	cmd.Env = append(os.Environ(), "LUAU="+luau)
 	out, err := cmd.Output()

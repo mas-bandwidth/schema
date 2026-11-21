@@ -72,7 +72,9 @@ func TestSpawnPathsGateBeforeTheySpawn(t *testing.T) {
 
 // TestSpawnPathsNegativeControl plants the verdicts gatesBeforeSpawn must
 // tell apart: gated first passes; no gate, a gate after the spawn, a missing
-// spawn and a missing function each fail.
+// spawn and a missing function each fail. The testproc cases hold the bounded
+// test-child helper to the same verdicts: gated first passes, gated after the
+// spawn or not gated fails.
 func TestSpawnPathsNegativeControl(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -86,6 +88,9 @@ func TestSpawnPathsNegativeControl(t *testing.T) {
 		{"package x\nfunc F(t T) {\n\tslowtest.Gate(t, \"cc\")\n}\n", spawnPath{fn: "F", spawn: "helper("}, false},
 		{"package x\nfunc G(t T) {\n\tslowtest.Gate(t, \"cc\")\n\texec.Command(\"cc\")\n}\n", spawnPath{fn: "F"}, false},
 		{"package x\nfunc F(t T) {\n\tgate(t)\n\texec.Command(\"cc\")\n}\n", spawnPath{fn: "F", gate: "gate(t)"}, true},
+		{"package x\nfunc F(t T) {\n\tslowtest.Gate(t, \"lua\")\n\ttestproc.Command(t, \"lua\")\n}\n", spawnPath{fn: "F"}, true},
+		{"package x\nfunc F(t T) {\n\ttestproc.Command(t, \"lua\")\n\tslowtest.Gate(t, \"lua\")\n}\n", spawnPath{fn: "F"}, false},
+		{"package x\nfunc F(t T) {\n\ttestproc.CommandContext(t, ctx, \"lua\")\n}\n", spawnPath{fn: "F"}, false},
 	}
 	for i, c := range cases {
 		c.p.file = "x.go"

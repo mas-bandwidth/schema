@@ -26,7 +26,10 @@ make/checks/schema-shared-hostile-corpus.mk
     the gate and generator targets (included explicitly with the other
     make/checks gates).
 .github/workflows/schema-shared-hostile-corpus.yml
-    push/pull request fast gate; schedule/workflow_dispatch negative control.
+    the nightly (schedule) and workflow_dispatch run of the drift gate and of
+    its negative controls; no pull request starts this workflow. The same
+    tests are Go tests of internal/ci, and ci-fast.yml's ci-policy job runs
+    `go test ./internal/ci/` on every pull request and every push to main.
 ```
 
 `internal/ci/hostilecorpus/wide/` is a second corpus directory in the same format: its own `manifest.tsv`, `inputs/` and schema, built and checked by the same `Generate` and `Verify`.
@@ -69,6 +72,15 @@ which is the same JSON shape every generated backend writes.
 | `announce_second` | read the announcement twice on one vocabulary |
 | `announce_bytes` | announce with `MaxBytes = 8` |
 | `announce_entries` | announce with `MaxEntries = 1` |
+| `packet` | none: the port's packet reader, pinned by hand (below) |
+
+A `packet` row is the one kind whose verdict the generator cannot rebuild: no
+Go engine reads the packet wire (the C++ reference is its oracle). Its verdict
+is pinned by hand, and the only one a packet row may carry is `refuse
+packet_refused -`. `Generate` keeps the row after checking what it can (the
+input is there and not empty, the schema loads, the named type is declared in
+it), and refuses one that carries any other verdict; every port's runner holds
+its packet reader to the row.
 
 The `schemas/probe.schema` case is the one schema not in the checkout: a
 variable root whose collection count can pass the int32 storage cap, so the
@@ -77,7 +89,7 @@ engine names `count_refusal`.
 ## Running it
 
 ```
-make schema-shared-hostile-corpus                 # fast gate (push/PR)
+make schema-shared-hostile-corpus                 # the drift gate
 make schema-shared-hostile-corpus-negative-control # planted controls (nightly)
 make schema-shared-hostile-corpus-generate        # regenerate after an engine change
 go run ./tools/hostilecorpus run                  # the Go engine replay: every verdict
@@ -120,7 +132,8 @@ binary per port under AddressSanitizer and UndefinedBehaviorSanitizer and
 driven by `tools/hostilecorpusexec`, which runs each case in its own process
 with a 512 KiB case-thread stack and the per-case budget, so a crash, a
 sanitizer report or a hang fails only that case; a retaining load of a
-fixed-storage root, which neither port has, answers `SKIP`). Each carries the disagreements
+fixed-storage root, which neither port has, answers `SKIP`, and a skip passes only
+when the port's `known-skips.tsv` names its case; none is named today). Each carries the disagreements
 its port still owes in a `known-findings.tsv` beside the runner and prints them
 as FIX-CARDs. A disagreement no FIX-CARD names fails the run, and so does a
 FIX-CARD whose case has gone green.
@@ -145,12 +158,14 @@ committed manifest. After a deliberate engine change, regenerate with
 
 `TestSchemaSharedHostileCorpusNegativeControl` plants a changed verdict in the
 committed manifest and requires the same drift gate to go red; without the
-plant it requires green. `TestSchemaSharedHostileCorpusSourcesNegativeControl`
+plant it requires green, and an accept planted on a packet row must be refused
+as well. `TestSchemaSharedHostileCorpusSourcesNegativeControl`
 plants an uncited conformance vector and requires the source walk to see it.
 Both controls run in `make schema-shared-hostile-corpus-negative-control`, which
-the nightly workflow invokes; the fast gate also runs the source test and the
-excluded-source accounting test, so an uncited new vector or a moved compiler
-seed fails on every push and pull request.
+the nightly workflow invokes. On a pull request they run as Go tests of
+internal/ci: ci-fast.yml's ci-policy job runs `go test ./internal/ci/` on every
+pull request and every push to main, and with it the drift, source and
+excluded-source tests.
 
 `TestSchemaSharedHostileCorpusSources` holds the source claim two ways: every
 cited source must still exist in the checkout as a regular file, and every leaf

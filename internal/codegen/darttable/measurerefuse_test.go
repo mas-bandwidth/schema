@@ -14,7 +14,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -25,6 +24,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // wireMeasureRoot is one (unit, root) and one mutant of this cause: the wire
@@ -114,7 +115,7 @@ void main(List<String> args) {
 			if err := os.WriteFile(mutantPath, data, 0o600); err != nil {
 				t.Fatal(err)
 			}
-			cmd := exec.Command(dart, "--enable-asserts", "probe.dart", mutantPath)
+			cmd := testproc.Command(t, dart, "--enable-asserts", "probe.dart", mutantPath)
 			cmd.Dir = dir
 			out, err := cmd.CombinedOutput()
 			if err != nil {

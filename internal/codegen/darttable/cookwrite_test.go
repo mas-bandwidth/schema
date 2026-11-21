@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,6 +13,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // SPEC-TABLES §7.6: measure before write, and compare both byte orders with
@@ -53,7 +54,7 @@ fixed table Root { stamp uint64 = 5
 		if err := os.WriteFile(filepath.Join(dir, "cook_fixed_probe.dart"), []byte(cookFixedProbe), 0600); err != nil {
 			t.Fatal(err)
 		}
-		cmd := exec.Command(dartBinary(t), "--enable-asserts", "cook_fixed_probe.dart")
+		cmd := testproc.Command(t, dartBinary(t), "--enable-asserts", "cook_fixed_probe.dart")
 		cmd.Dir = dir
 		out, err := cmd.CombinedOutput()
 		if err != nil {
@@ -179,7 +180,7 @@ func TestCookWriteGuardedAndTextArrayRootsDart(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "cook_guarded_text_probe.dart"), []byte(cookGuardedTextArrayProbe), 0600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dartBinary(t), "--enable-asserts", "cook_guarded_text_probe.dart")
+	cmd := testproc.Command(t, dartBinary(t), "--enable-asserts", "cook_guarded_text_probe.dart")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -357,7 +358,7 @@ void main(){
 	if err := os.WriteFile(filepath.Join(dir, "cook_float_names_probe.dart"), []byte(probe), 0600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dartBinary(t), "--enable-asserts", "cook_float_names_probe.dart")
+	cmd := testproc.Command(t, dartBinary(t), "--enable-asserts", "cook_float_names_probe.dart")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("cook float names: %v\n%s", err, out)

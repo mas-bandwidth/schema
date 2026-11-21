@@ -7,9 +7,11 @@
 //   - REFUSE — the meaning changed and nothing on the wire says so. A
 //     specified default, a flags variant's bit position, a field's kind, a
 //     field pointed at a declaration that cannot stand in for the old one.
-//   - WARN — the data survives but something is lost, and the read report
-//     says so at runtime (clamped, unknown). A shrunk bound, a removed enum
-//     variant or union arm, a closure member that is no longer covered.
+//   - WARN — the data survives in the file, and the read answers what it
+//     cannot take: it refuses (`out_of_range`, `count_over_bound`,
+//     `length_over_bound`) or counts `unknown`. A shrunk bound, a tightened
+//     range, a removed enum variant or union arm, a closure member that is no
+//     longer covered.
 //   - PASS — the wire absorbs it. Fields added, removed, reordered or
 //     renamed under `was`; variants appended; bounds grown.
 //
@@ -53,7 +55,7 @@ type Verdict int
 const (
 	// Pass — the wire absorbs the edit; no reader is affected.
 	Pass Verdict = iota
-	// Warn — data survives, something is lost, and the read report counts it.
+	// Warn — data survives in the file, and the read refuses or counts what it cannot take.
 	Warn
 	// Refuse — an old file's meaning changed, silently.
 	Refuse
@@ -80,7 +82,7 @@ const (
 	// RuleFixed — any change, addition or removal is a refusal.
 	RuleFixed
 	// RuleShrink — a smaller value warns; a larger one passes. The extent
-	// the token names got tighter, and a stored value past it clamps.
+	// the token names got tighter, and a reader refuses a stored value past it.
 	RuleShrink
 	// RuleRaise — a larger value warns; a smaller one passes. RuleShrink's
 	// mirror, for the bottom end of a range: raising a minimum tightens it.
@@ -108,11 +110,11 @@ var DefaultTokenPolicy = map[string]TokenRule{
 	"elem":    RuleFixed,  // an array's element kind is that same fact, one level in
 	"default": RuleFixed,  // an elided field MEANS the reader's default (docs/SPEC-TABLES.md §4)
 	"frac":    RuleFixed,  // a fixed field's raw value under a moved F is a different number, and no counter can fire
-	"bound":   RuleShrink, // a count past the reader's bound keeps the prefix and counts clamped
+	"bound":   RuleShrink, // a count past the reader's bound refuses the load `count_over_bound`
 	"size":    RuleShrink, // a string/bytes capacity is a bound like any other
-	// THE DECLARED RANGE, judged from both ends: a reader clamps a stored
-	// value to its own bounds and counts `clamped` (docs/SPEC-TABLES.md §4), so
-	// a tightened range is an extent shrinking like any other — a maximum
+	// THE DECLARED RANGE, judged from both ends: a reader refuses a stored
+	// value past its own bounds `out_of_range` (docs/SPEC-TABLES.md §4), so a
+	// tightened range is an extent shrinking like any other — a maximum
 	// lowered or a minimum raised. Loosening passes: nothing already written
 	// falls outside a wider range.
 	"max": RuleShrink,
@@ -123,14 +125,14 @@ var DefaultTokenPolicy = map[string]TokenRule{
 	// RuleShape rather than RulePass: see mapShapeFinding.
 	"array": RuleShape,
 	// A MAP'S KEY, which is the map's own pair of facts (docs/SPEC-TABLES.md
-	// §2.8). A key kind the reader does not declare resets the map to EMPTY
-	// and counts one kind_mismatch, so it is fixed exactly as `kind` is; a
-	// tightened key bound skips whole entries and counts them, so it is an
-	// extent exactly as `bound` is.
+	// §2.8). A key kind the reader does not declare refuses the load
+	// `kind_mismatch`, so it is fixed exactly as `kind` is; a stored key past
+	// a tightened key bound refuses it `length_over_bound`, so it is an extent
+	// exactly as `bound` is.
 	"keykind":  RuleFixed,
 	"keybound": RuleShrink,
-	// A TEXT LIST'S TOTAL (docs/SPEC-TABLES.md §2.13, §18.2): a reader keeps the
-	// prefix within its own total and counts clamped, so a lowered or newly
+	// A TEXT LIST'S TOTAL (docs/SPEC-TABLES.md §2.13, §18.2): a reader refuses
+	// a list past its own total `length_over_bound`, so a lowered or newly
 	// declared total warns and a raised or removed one passes
 	"total": RuleShrink,
 	"was":   RulePass, // `was` is the rename that PRESERVES identity — that is its whole job
@@ -740,12 +742,14 @@ func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 				continue
 			}
 			// A KEYED ARRAY'S BOUND IS ITS KEY ENUM'S SIZE, and its slots ride
-			// under variant name ids (docs/SPEC-TABLES.md §3.2): an unknown key is
-			// skipped and counted `unknown`, so there is no bounded prefix and
-			// nothing is clamped. The enum walk already reports each variant
-			// that went, correctly and by name — this row would say the wrong
-			// thing and say it a second time.
-			if shape, _ := bf.Get("array"); shape == "keyed" {
+			// under variant name ids (docs/SPEC-TABLES.md §3.2), so there is no
+			// bounded prefix. The enum walk already reports each variant that
+			// went, correctly and by name — the bound row would say the wrong
+			// thing and say it a second time. ONLY the bound is exempt: the
+			// ELEMENT's range and capacity are an ordinary value's, and a
+			// reader refuses a stored element past them (§4), so they are
+			// judged below as on any other field.
+			if shape, _ := bf.Get("array"); shape == "keyed" && bt.Key == "bound" {
 				continue
 			}
 			if !tightened(d.policy[bt.Key], bt.Key, bt.Value, lv) {
@@ -1157,24 +1161,27 @@ func retirements(base, live *Unit, date string) []Retired {
 	return out
 }
 
-// tightenNote says what a reader loses when one of the extents tightens — the
-// runtime event is the same (clamped), the loss is not.
+// tightenNote says what the STRICT reader does with a file written before one
+// of the extents tightened: it refuses the whole load, naming the reason
+// (docs/SPEC-TABLES.md §4). It recovers nothing — no clamp, no kept prefix, no
+// truncation, no skipped entry — and TestTighteningWarningsDescribeTheStrictRead
+// pins each sentence against a real read of a saved file.
 func tightenNote(key string) string {
 	switch key {
 	case "bound":
-		return "a stored count past the new bound keeps the bounded prefix and counts clamped"
+		return "a file holding a count past the new bound no longer reads: the load refuses count_over_bound"
 	case "size":
-		return "a stored value longer than the new capacity is truncated and counts clamped"
+		return "a file holding a value longer than the new capacity no longer reads: the load refuses length_over_bound"
 	case "keybound":
-		return "an entry whose KEY does not fit the new capacity is skipped WHOLE and counted, because a clamped key is a merged entry (docs/SPEC-TABLES.md §2.8)"
+		return "a file holding a map KEY longer than the new capacity no longer reads: the load refuses length_over_bound (docs/SPEC-TABLES.md §2.8)"
 	case "total":
-		return "a stored text list whose elements sum past the new total keeps the prefix within it, drops the rest and counts clamped (docs/SPEC-TABLES.md §2.13)"
+		return "a file holding a text list whose elements sum past the new total no longer reads: the load refuses length_over_bound (docs/SPEC-TABLES.md §2.13)"
 	case "min":
-		return "a stored value below the new minimum reads back AS the minimum and counts clamped"
+		return "a file holding a value below the new minimum no longer reads: the load refuses out_of_range"
 	case "max":
-		return "a stored value above the new maximum reads back AS the maximum and counts clamped"
+		return "a file holding a value above the new maximum no longer reads: the load refuses out_of_range"
 	}
-	return "stored values past the new limit are clamped"
+	return "a file holding a value past the new limit no longer reads: the load refuses it"
 }
 
 // tokenNoun names a token in a diagnostic the way a person would say it.

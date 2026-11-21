@@ -27,6 +27,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // announceConnection is one `connection` row of the manifest: the announcement
@@ -435,7 +437,7 @@ void main() {
 	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(announceDartBinary(t), "probe.dart")
+	cmd := testproc.Command(t, announceDartBinary(t), "probe.dart")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	return string(out), err

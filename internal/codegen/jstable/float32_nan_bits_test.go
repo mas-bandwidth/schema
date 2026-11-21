@@ -3,13 +3,14 @@ package jstable
 import (
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJsFloat32CellsAreBitTransparent holds the JavaScript leg to the FINITE
@@ -116,7 +117,7 @@ func jsFloatProbe(t *testing.T, sabotage func(files map[string][]byte)) ([]strin
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command(node, filepath.Join(dir, "probe.mjs"))
+	cmd := testproc.Command(t, node, filepath.Join(dir, "probe.mjs"))
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	var fails []string

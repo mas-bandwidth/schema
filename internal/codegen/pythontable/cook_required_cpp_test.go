@@ -3,7 +3,6 @@ package pythontable
 import (
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -12,6 +11,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestPythonCookRequiredCppIdentity(t *testing.T) {
@@ -67,10 +68,10 @@ int main() {
 		}
 	}
 	args = append(args, "-o", bin)
-	if out, err := exec.Command("c++", args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, "c++", args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile C++: %v\n%s", err, out)
 	}
-	want, err := exec.Command(bin).Output()
+	want, err := testproc.Command(t, bin).Output()
 	if err != nil {
 		t.Fatal(err)
 	}

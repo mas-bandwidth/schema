@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,6 +13,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestOptionalVariableClosureJavaScript holds docs/SPEC-TABLES.md §2.3's `?T`
@@ -143,7 +144,7 @@ func TestOptionalVariableClosureJavaScript(t *testing.T) {
 		if err := os.WriteFile(script, []byte(optionalVariableDriver), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		cmd := exec.Command(node, script, specPath, filepath.Join(dir, home))
+		cmd := testproc.Command(t, node, script, specPath, filepath.Join(dir, home))
 		cmd.Dir = dir
 		out, _ := cmd.CombinedOutput()
 		return string(out)

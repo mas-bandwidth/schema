@@ -1235,10 +1235,568 @@ def cr_union(c:CookRead, at:int, v:Value, fd:FieldDescriptor) -> void:
     cr_field(c, at + un.arm, sl, un.arms[v.i - 1])
     v.arm = sl
 
+// ---- THE COOK CHECK (docs/SPEC-TABLES.md §7, §7.4; internal/tablecook's
+// Check, which the reference's Uncook asks first) ----
+//
+// ONE VERDICT ON BOTH READS OF A COOK: ReadCook refuses every file the check
+// refuses, so it runs the check before it reads a byte of the region. The
+// check is a SCAN OF THE ATTRIBUTION, never a traversal of the graph: pass one
+// walks the directory linearly; pass two walks every node in directory order,
+// reading no payload but a union's tag, a bool's byte, a float's bits and a
+// map's keys, and following no reference, so no forged aliasing or cycle
+// costs a second visit. The cycle test runs last, over the edges the scan
+// resolved. Offsets below are REGION offsets; ck_* reads add the data offset.
+
+class CookCheck:
+    data:string
+    big:bool = false
+    d0:int = 0
+    dlen:int = 0
+    dir:[int] = []
+    tids:[int] = []
+    // the node under the scan: where it begins, where its record ends, where
+    // its extent ends, and the arrays and blobs already placed in it
+    base:int = 0
+    record_end:int = 0
+    extent:int = 0
+    arrays:[CookRange] = []
+    cur:int = 0
+    edges:[[int]] = []
+    bad:bool = false
+    non_finite:bool = false
+
+def ck_u8(c:CookCheck, at:int) -> int:
+    return c.data[c.d0 + at]
+
+def ck_u32(c:CookCheck, at:int) -> int:
+    return cook_word32(c.data, c.d0 + at, c.big)
+
+// ck_i32 is a count companion, read as the int32 it is stored as
+def ck_i32(c:CookCheck, at:int) -> int:
+    let v = ck_u32(c, at)
+    if (v & 0x80000000) != 0:
+        return v - 0x100000000
+    return v
+
+def ck_u64(c:CookCheck, at:int) -> int:
+    return cook_word(c.data, c.d0 + at, c.big)
+
+// ck_uint is an unsigned field of width bytes (a union's tag, an integer key)
+def ck_uint(c:CookCheck, at:int, width:int) -> int:
+    if width <= 1:
+        return ck_u8(c, at)
+    if width == 2:
+        let v = read_uint16_le(c.data, c.d0 + at)
+        if c.big:
+            return cook_bswap16(v)
+        return v
+    if width == 4:
+        return ck_u32(c, at)
+    return ck_u64(c, at)
+
+// ck_sint is an integer key at its width, sign-extended when it is signed
+def ck_sint(c:CookCheck, at:int, width:int, signed:bool) -> int:
+    var v = ck_uint(c, at, width)
+    if signed and width > 0 and width < 8 and (v & shl(1, width * 8 - 1)) != 0:
+        v -= shl(1, width * 8)
+    return v
+
+def ck_fail(c:CookCheck) -> bool:
+    c.bad = true
+    return false
+
+// ck_zero is whether every byte of [lo, hi) is zero: padding, slack and
+// the storage an absent value or an unset arm leaves are zero (§7.4)
+def ck_zero(c:CookCheck, lo:int, hi:int) -> bool:
+    var i = lo
+    while i < hi:
+        if c.data[c.d0 + i] != 0:
+            return ck_fail(c)
+        i++
+    return true
+
+// ck_extent is an array of count × size at the slot's self-relative delta,
+// held inside the node's extent with no arithmetic a forged word can wrap:
+// it answers the start, or -1
+def ck_extent(c:CookCheck, at:int, delta:int, count:int, size:int) -> int:
+    if at < c.base or at > c.extent or count < 0 or size <= 0:
+        return -1
+    if delta < c.base - at or delta > c.extent - at:
+        return -1
+    let start = at + delta
+    if count > (c.extent - start) / size:
+        return -1
+    return start
+
+// ck_place adds one array or blob to the node's population, refusing one
+// that overlaps any placed before it (lists, maps and text blobs are one
+// population in a node's extent, §7.4)
+def ck_place(c:CookCheck, start:int, end:int) -> bool:
+    for(c.arrays) other:
+        if start < other.end and other.start < end:
+            return ck_fail(c)
+    push(c.arrays, CookRange { start: start, end: end })
+    return true
+
+// ck_placed is §7.4's four clauses a list slot and a map slot share:
+// containment, alignment, fit and no overlap. It answers the start and the
+// count; a count of zero is an empty container.
+def ck_placed(c:CookCheck, at:int, size:int, align:int) -> int, int:
+    let delta = ck_u64(c, at)
+    let count = ck_i32(c, at + 8)
+    if count < 0:
+        ck_fail(c)
+        return 0, 0
+    if delta == 0:
+        if count != 0:
+            ck_fail(c)
+        return 0, 0
+    if count == 0:
+        ck_fail(c)
+        return 0, 0
+    let start = ck_extent(c, at, delta, count, size)
+    if start < 0 or start < c.record_end or align <= 0 or start % align != 0:
+        ck_fail(c)
+        return 0, 0
+    if not ck_place(c, start, start + count * size):
+        return 0, 0
+    return start, count
+
+// ck_text_slot is §7.4's UNBOUNDED-TEXT clause (§2.13.1): null, or a delta
+// to a non-empty, terminated blob inside the holder's extent at eight, its
+// header padding zero, overlapping nothing placed in the node
+def ck_text_slot(c:CookCheck, at:int) -> bool:
+    let delta = ck_u64(c, at)
+    if delta == 0:
+        return true
+    let start = ck_extent(c, at, delta, 1, 8)
+    if start < 0 or start < c.record_end or start % 8 != 0:
+        return ck_fail(c)
+    if not ck_zero(c, start + 4, start + 8):
+        return false
+    let n = ck_u32(c, start)
+    if n <= 0:
+        return ck_fail(c)
+    if ck_extent(c, at, delta, 1, 8 + n + 1) < 0:
+        return ck_fail(c)
+    if ck_u8(c, start + 8 + n) != 0:
+        return ck_fail(c)
+    return ck_place(c, start, start + 8 + n + 1)
+
+// ck_companion is one count companion against its declared bound
+def ck_companion(c:CookCheck, at:int, bound:int) -> bool:
+    let n = ck_i32(c, at)
+    if n < 0 or n > bound:
+        return ck_fail(c)
+    return true
+
+// ck_entry is the directory position of a region offset, or -1 (the
+// directory ascends, which pass one proved)
+def ck_entry(c:CookCheck, off:int) -> int:
+    var lo = 0
+    var hi = length(c.dir) - 1
+    while lo <= hi:
+        let mid = (lo + hi) / 2
+        if c.dir[mid] == off:
+            return mid
+        elif c.dir[mid] < off:
+            lo = mid + 1
+        else:
+            hi = mid - 1
+    return -1
+
+// ck_ref is one reference slot: null, or an offset the directory NAMES with
+// the type the declaration requires (being named makes it aligned and inside
+// the region, which pass one proved of every entry)
+def ck_ref(c:CookCheck, at:int, fd:FieldDescriptor) -> bool:
+    let delta = ck_u64(c, at)
+    if delta == 0:
+        return true
+    if delta < -at or delta >= c.dlen - at:
+        return ck_fail(c)
+    let slot = ck_entry(c, at + delta)
+    if slot < 0:
+        return ck_fail(c)
+    var want = 0
+    if fd.s == "sblob":
+        want = string_blob_id
+    elif fd.s == "bblob":
+        want = bytes_blob_id
+    else:
+        let td = lookup_table(fd.t)
+        if not td:
+            return ck_fail(c)
+        want = td.id
+    if c.tids[slot] != want:
+        return ck_fail(c)
+    if fd.s == "ptr":
+        push(c.edges[c.cur], slot)
+    return true
+
+// ck_record walks one record's declaration, descending every by-value edge,
+// its interior and trailing padding zero
+def ck_record(c:CookCheck, base:int, name:string) -> bool:
+    let td = lookup_table(name)
+    let ct = cook_table_of(name)
+    if not td or not ct:
+        return ck_fail(c)
+    var cursor = base
+    var i = 0
+    while i < length(td.fields) and i < length(ct.fields):
+        let at = base + ct.fields[i].off
+        if not ck_zero(c, cursor, at):
+            return false
+        cursor = ck_field(c, at, td.fields[i], ct.fields[i])
+        if c.bad:
+            return false
+        i++
+    return ck_zero(c, cursor, base + ct.size)
+
+// ck_field walks one field's pieces (the value, a count companion, a presence
+// byte) and answers where its storage ends
+def ck_field(c:CookCheck, at:int, fd:FieldDescriptor, cf:CookField) -> int:
+    if cf.size <= 0:
+        return at
+    var end = at + cf.size
+    if cf.count >= 0:
+        if not ck_zero(c, end, at + cf.count):
+            return 0
+        end = at + cf.count + 4
+    if cf.present >= 0:
+        if not ck_zero(c, end, at + cf.present):
+            return 0
+        end = at + cf.present + 1
+        let p = ck_u8(c, at + cf.present)
+        if p > 1:
+            ck_fail(c)
+            return 0
+        if p == 0:
+            ck_zero(c, at, at + cf.present)
+            return end
+    let s = fd.s
+    if s == "map":
+        if not ck_zero(c, at + 12, at + 16):
+            return 0
+        ck_map(c, at, fd)
+    elif s == "ptr" or s == "sblob" or s == "bblob":
+        ck_ref(c, at, fd)
+    elif s == "text":
+        ck_text_slot(c, at)
+    elif s == "str" or s == "bytes":
+        if not ck_companion(c, at + cf.count, fd.bound):
+            return 0
+        ck_zero(c, at + ck_i32(c, at + cf.count), at + cf.size)
+    elif s == "arr" and (fd.array == "fixed" or fd.array == "keyed"):
+        ck_slots(c, at, elem_of(fd), cf.elem, fd.bound)
+    elif s == "arr" and fd.array == "counted":
+        if not ck_companion(c, at + cf.count, fd.bound):
+            return 0
+        let used = ck_i32(c, at + cf.count)
+        if not ck_slots(c, at, elem_of(fd), cf.elem, used):
+            return 0
+        // a counted array's slots past its count are zero
+        ck_zero(c, at + used * cf.elem, at + fd.bound * cf.elem)
+    elif s == "arr":
+        if not ck_zero(c, at + 12, at + 16):
+            return 0
+        let start, count = ck_placed(c, at, cf.lsize, cf.lalign)
+        if not c.bad and count > 0:
+            ck_slots(c, start, elem_of(fd), cf.lsize, count)
+    else:
+        ck_element(c, at, fd)
+    return end
+
+def ck_slots(c:CookCheck, at:int, e:FieldDescriptor, step:int, n:int) -> bool:
+    var i = 0
+    while i < n:
+        if not ck_element(c, at + i * step, e):
+            return false
+        i++
+    return true
+
+// ck_element is one value: a reference, a bool byte (0 or 1), a finite float
+// (§3.3; a NaN or an infinity is non_finite_float), a record or a union. Any
+// other scalar steers nothing.
+def ck_element(c:CookCheck, at:int, e:FieldDescriptor) -> bool:
+    let s = e.s
+    if s == "ptr" or s == "sblob" or s == "bblob":
+        return ck_ref(c, at, e)
+    if s == "bool":
+        if ck_u8(c, at) > 1:
+            return ck_fail(c)
+        return true
+    if s == "float":
+        let finite = if e.f32: (ck_u32(c, at) & 0x7f800000) != 0x7f800000 else: (ck_u64(c, at) & 0x7ff0000000000000) != 0x7ff0000000000000
+        if not finite:
+            c.non_finite = true
+            return ck_fail(c)
+        return true
+    if s == "tab":
+        return ck_record(c, at, e.t)
+    if s == "union":
+        return ck_union(c, at, e)
+    return true
+
+// ck_union reads the one field VALUE the scan interprets, the tag: it says
+// which arm's storage is live, so a tag past the last arm refuses and every
+// byte no arm describes is zero
+def ck_union(c:CookCheck, at:int, fd:FieldDescriptor) -> bool:
+    let un = cook_union_named(fd.t)
+    let ud = lookup_union(fd.t)
+    if not un or not ud:
+        return ck_fail(c)
+    let tag = ck_uint(c, at, un.tag)
+    if tag == 0:
+        return ck_zero(c, at + un.tag, at + un.size)
+    if tag < 0 or tag > length(un.arms) or tag > length(ud.arms):
+        return ck_fail(c)
+    let arm = ud.arms[tag - 1]
+    if arm.s == "void":
+        return ck_zero(c, at + un.tag, at + un.size)
+    if not ck_zero(c, at + un.tag, at + un.arm):
+        return false
+    if arm.s == "tab":
+        let ct = cook_table_of(arm.t)
+        if not ct:
+            return ck_fail(c)
+        if not ck_record(c, at + un.arm, arm.t):
+            return false
+        return ck_zero(c, at + un.arm + ct.size, at + un.size)
+    let end = ck_field(c, at + un.arm, arm, un.arms[tag - 1])
+    if c.bad:
+        return false
+    return ck_zero(c, end, at + un.size)
+
+// ck_map is §7.4's MAP-SLOT clause: the four clauses, each entry walked as a
+// record, then the KEYS strictly ascending with no repeat, because a cook's
+// Find is a binary search over them
+def ck_map(c:CookCheck, at:int, fd:FieldDescriptor) -> bool:
+    let start, count = ck_placed(c, at, fd.lsize, fd.lalign)
+    if c.bad or count == 0:
+        return not c.bad
+    let td = lookup_table(fd.t)
+    let ct = cook_table_of(fd.t)
+    if not td or not ct or length(td.fields) == 0 or length(ct.fields) == 0:
+        return ck_fail(c)
+    var i = 0
+    while i < count:
+        if not ck_record(c, start + i * fd.lsize, fd.t):
+            return false
+        i++
+    let key = td.fields[0]
+    let kf = ct.fields[0]
+    i = 1
+    while i < count:
+        let a = start + (i - 1) * fd.lsize + kf.off
+        let b = a + fd.lsize
+        if ck_key_order(c, key, kf, a, b) >= 0:
+            return ck_fail(c)
+        i++
+    return true
+
+// ck_key_bytes is a text key's stored bytes: a bounded key's used bytes cut
+// to its buffer, an unbounded key's blob (both already bounded by the walk)
+def ck_key_bytes(c:CookCheck, key:FieldDescriptor, kf:CookField, at:int) -> string:
+    if key.s == "text":
+        let delta = ck_u64(c, at)
+        if delta == 0:
+            return ""
+        let start = ck_extent(c, at, delta, 1, 8)
+        if start < 0:
+            return ""
+        let n = ck_u32(c, start)
+        if n <= 0 or ck_extent(c, at, delta, 1, 8 + n + 1) < 0:
+            return ""
+        return substring(c.data, c.d0 + start + 8, n)
+    var n = ck_i32(c, at + kf.count)
+    if n < 0:
+        n = 0
+    if n > kf.size:
+        n = kf.size
+    return substring(c.data, c.d0 + at, n)
+
+// ck_key_order compares two stored keys: text bytewise, the shorter prefix
+// first; an integer at its own signedness
+def ck_key_order(c:CookCheck, key:FieldDescriptor, kf:CookField, a:int, b:int) -> int:
+    if key.s == "str" or key.s == "text":
+        let x = ck_key_bytes(c, key, kf, a)
+        let y = ck_key_bytes(c, key, kf, b)
+        let n = min(length(x), length(y))
+        var i = 0
+        while i < n:
+            if x[i] != y[i]:
+                return if x[i] < y[i]: -1 else: 1
+            i++
+        if length(x) < length(y):
+            return -1
+        if length(x) > length(y):
+            return 1
+        return 0
+    let x = ck_sint(c, a, kf.size, key.signed)
+    let y = ck_sint(c, b, kf.size, key.signed)
+    if x == y:
+        return 0
+    if key.signed:
+        return if x < y: -1 else: 1
+    return if ult(x, y): -1 else: 1
+
+// ck_node walks one directory entry. A BYTE BUFFER's node carries its length,
+// which with the header and a string's terminator fits the node's extent; a
+// record's node is its record and then its extent, every byte no placed
+// array covers zero.
+def ck_node(c:CookCheck, base:int, extent:int, tid:int) -> bool:
+    if tid == string_blob_id or tid == bytes_blob_id:
+        let n = ck_u32(c, base)
+        var need = 8 + n
+        if tid == string_blob_id:
+            need++
+        if need > extent:
+            return ck_fail(c)
+        if not ck_zero(c, base + 4, base + 8):
+            return false
+        if tid == string_blob_id and ck_u8(c, base + 8 + n) != 0:
+            return ck_fail(c)
+        return ck_zero(c, base + need, base + extent)
+    var name = ""
+    for(registered_tables()) td:
+        if td.id == tid:
+            name = td.name
+            break
+    let ct = cook_table_of(name)
+    if not ct:
+        return ck_fail(c)
+    c.base = base
+    c.record_end = base + ct.size
+    c.extent = base + extent
+    c.arrays = []
+    if not ck_record(c, base, name):
+        return false
+    // the extent's padding and slack: every byte past the record that no
+    // placed array covers (a selection sort; a node places few arrays)
+    let order = copy(c.arrays)
+    var cursor = c.record_end
+    while length(order) > 0:
+        var lo = 0
+        for(order) r, k:
+            if r.start < order[lo].start:
+                lo = k
+        let r = order[lo]
+        remove(order, lo)
+        if not ck_zero(c, cursor, min(r.start, c.extent)):
+            return false
+        if r.end > cursor:
+            cursor = r.end
+    if cursor < c.extent:
+        return ck_zero(c, cursor, c.extent)
+    return true
+
+// ck_cyclic is the three-mark walk over the edges the scan resolved: a
+// reference to an OPEN node is a cycle, a reference to a CLOSED node a share
+def ck_cyclic(c:CookCheck) -> bool:
+    let n = length(c.edges)
+    let mark:[int] = []
+    while length(mark) < n:
+        push(mark, 0)
+    let stack_node:[int] = []
+    let stack_next:[int] = []
+    var start = 0
+    while start < n:
+        if mark[start] == 0:
+            mark[start] = 1
+            push(stack_node, start)
+            push(stack_next, 0)
+            while length(stack_node) > 0:
+                let top = length(stack_node) - 1
+                let node = stack_node[top]
+                let next = stack_next[top]
+                if next == length(c.edges[node]):
+                    mark[node] = 2
+                    pop(stack_node)
+                    pop(stack_next)
+                else:
+                    stack_next[top] = next + 1
+                    let to = c.edges[node][next]
+                    if mark[to] == 1:
+                        return true
+                    if mark[to] == 0:
+                        mark[to] = 1
+                        push(stack_node, to)
+                        push(stack_next, 0)
+        start++
+    return false
+
+// cook_check runs both passes over a cook whose header cook_open matched, in
+// either order, and answers "ok", "bad_layout" or "non_finite_float".
+def cook_check(data:string, big:bool) -> string:
+    let alignment = cook_word(data, 40, big)
+    let c = CookCheck { data: data, big: big, d0: cook_align_up(cook_header_bytes, alignment), dlen: cook_word(data, 24, big) }
+    let alen = cook_word(data, 32, big)
+    // the tool's header clauses Open does not ask: the data part is a whole
+    // number of the alignment, and the header's alignment padding is zero
+    if c.dlen % alignment != 0:
+        return "bad_layout"
+    var i = cook_header_bytes
+    while i < c.d0:
+        if data[i] != 0:
+            return "bad_layout"
+        i++
+    // PASS ONE: the directory, linearly. No sentinel; every type id a table
+    // this unit has or a byte buffer's; the root first, a table at zero; the
+    // offsets ascending, each aligned for its type, each node's storage
+    // before the next entry and inside the region.
+    if alen <= 0 or alen % cook_directory_entry != 0:
+        return "bad_layout"
+    let count = alen / cook_directory_entry
+    var prev_end = 0
+    i = 0
+    while i < count:
+        let e = c.d0 + c.dlen + i * cook_directory_entry
+        let off = cook_word(data, e, big)
+        let tid = cook_word(data, e + 8, big)
+        var size = 0
+        var align = 0
+        var table = false
+        if tid == string_blob_id or tid == bytes_blob_id:
+            size = 8
+            align = 8
+        else:
+            for(registered_tables()) td:
+                if td.id == tid:
+                    let ct = cook_table_of(td.name)
+                    if ct:
+                        size = ct.size
+                        align = ct.align
+                        table = true
+                    break
+            if not table:
+                return "bad_layout"
+        if i == 0 and (off != 0 or not table):
+            return "bad_layout"
+        if off < prev_end or align <= 0 or off % align != 0 or off >= c.dlen or size > c.dlen - off:
+            return "bad_layout"
+        prev_end = off + size
+        push(c.dir, off)
+        push(c.tids, tid)
+        push(c.edges, []::int)
+        i++
+    // PASS TWO: every node, in directory order
+    i = 0
+    while i < count:
+        c.cur = i
+        let extent = (if i + 1 < count: c.dir[i + 1] else: c.dlen) - c.dir[i]
+        if not ck_node(c, c.dir[i], extent, c.tids[i]):
+            return if c.non_finite: "non_finite_float" else: "bad_layout"
+        i++
+    if ck_cyclic(c):
+        return "bad_layout"
+    return "ok"
+
 def cook_read(data:string, build:int, desc:TableDescriptor, t:CookTable) -> Record?:
     if not desc.cook_form:
         return nil
     if not cook_open(data, build, t.align, t.size):
+        return nil
+    if cook_check(data, read_uint64_le(data, 0) != cook_magic) != "ok":
         return nil
     let magic = read_uint64_le(data, 0)
     let big = magic != cook_magic
