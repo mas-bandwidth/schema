@@ -2943,6 +2943,7 @@ places at once.
 
 `Scene.schema`, a new file in the `starlight` unit:
 
+<!-- example: schema unit=internal/docgate/testdata/units/tutorial/scene file=Scene.schema -->
 ```
 package starlight
 
@@ -3038,7 +3039,7 @@ rust     ok
 
 `route.cpp`, entire:
 
-<!-- example: owed -->
+<!-- example: compile unit=internal/docgate/testdata/units/tutorial/scene -->
 ```cpp
 #include "SceneTable.h"
 #include <cstdio>
@@ -3099,8 +3100,8 @@ int main()
     printf( "after the round trip: shared=%s null=%s, head is %.*s\n",
         s0 == s1 ? "YES" : "no", s2 == NULL ? "yes" : "no",
         WaypointAt( loaded->head )->name_length, WaypointAt( loaded->head )->name );
-    printf( "report: unknown=%d malformed=%d refused=%d\n",
-        report.unknown, (int) report.malformed, (int) report.refused );
+    printf( "report: unknown=%d damaged=%d refused=%d\n",
+        report.unknown, (int) report.damaged, (int) report.refused );
     printf( "sizeof( RouteBuilder ) = %lld\n", (long long) sizeof( RouteBuilder ) );
     return 0;
 }
@@ -3114,7 +3115,7 @@ $ ./route
   Station (300, -75)
 wire 163 bytes, region 256 bytes
 after the round trip: shared=YES null=yes, head is Gate
-report: unknown=0 malformed=0 refused=0
+report: unknown=0 damaged=0 refused=0
 sizeof( RouteBuilder ) = 8264
 ```
 
@@ -3138,15 +3139,16 @@ is still null. Nodes the root cannot reach do not ride.
 
 ### What the loader does and does not promise
 
-Nothing you **build** can express a cycle: you cannot assign a slot you have
-not allocated. Bytes that arrive from somewhere else are another matter, and it
-is worth knowing exactly where the line is before you walk a graph you did not
-write.
+A cycle you **build** never leaves the builder: point a waypoint's `next` at
+itself and `Lock`, `Measure` and `Save` all refuse it, naming the cycle
+(`data_cycle`). Bytes that arrive from somewhere else are another matter, and
+it is worth knowing exactly where the line is before you walk a graph you did
+not write.
 
 Take the two-node route, flip one bit, and try every bit in the file.
 `damage.cpp`, entire:
 
-<!-- example: owed -->
+<!-- example: compile unit=internal/docgate/testdata/units/tutorial/scene -->
 ```cpp
 #include "SceneTable.h"
 #include <cstdio>
@@ -3185,7 +3187,7 @@ int main()
             std::vector<uint8_t> region( need );
             TableReport report;
             const Route * loaded = RouteLoad( region.data(), need, wire.data(), size, &report );
-            if ( loaded == NULL || report.malformed || report.refused ) { stopped++; continue; }
+            if ( loaded == NULL || report.damaged || report.refused ) { stopped++; continue; }
 
             opened++;
             int64_t hops = 0;
@@ -3211,26 +3213,27 @@ int main()
 $ c++ -std=c++17 -Wall -Wextra -Werror -I gen -I . -o damage damage.cpp gen/SceneTable.cpp
 $ ./damage
 640 single-bit edits to an 80-byte wire
-  295 stopped at the door
-  345 opened as a clean read
-  of those, 1 produced a chain that never ends
+  327 stopped at the door
+  313 opened as a clean read
+  of those, 0 produced a chain that never ends
   longest finite chain: 2 hops (the clean wire's is 2)
 ```
 
 Read all four numbers.
 
-**295 stopped at the door.** Framing damage is caught, and `Load` says so.
+**327 stopped at the door.** Framing damage is caught, and `Load` refuses the
+whole load and says so (`wire_damaged`).
 
-**345 opened as a clean read**, which is right: most bits in a save file are
+**313 opened as a clean read**, which is right: most bits in a save file are
 payload, and a wrong `x` is a wrong number and not damage. No read went out of
 bounds and nothing crashed across all 640.
 
-**One of them cycles.** A single flipped bit produced a `next` pointing at its
-own node, with an all-zero report: `malformed=0`, `refused=0`, `unknown=0`. So
-the guarantee to rely on is memory safety, not acyclicity. When you walk a
-graph whose bytes you did not write, **bound the walk** the way `damage.cpp`
-does, or count nodes against `LoadMeasure`'s answer. This is filed as
-schema#521 G-19.
+**None of them cycles.** A flipped bit that points a `next` back at its own
+node makes a cyclic wire, and a cyclic wire is damage: the load checks the
+graph it stored and refuses the whole load, `wire_damaged`, on every read
+(SPEC-TABLES §3.1). A region a load hands you is acyclic because the load
+refused otherwise, so a walk from the root ends. `damage.cpp` still bounds its
+walk, because it is a test that counts what it would have found.
 
 ### Building goes wide
 
@@ -3238,7 +3241,7 @@ Lock-free parallel construction is designed in rather than bolted on. One
 worker per thread, each allocating on its own front, with no lock and no
 per-node atomic. `wide.cpp`, entire:
 
-<!-- example: owed -->
+<!-- example: compile unit=internal/docgate/testdata/units/tutorial/scene -->
 ```cpp
 #include "SceneTable.h"
 #include <cstdio>
@@ -3428,7 +3431,7 @@ customization surface.
 
 **You now have** patrol routes as real linked structure in the `starlight` unit
 and fleets keyed by name in the tools unit: built in parallel, locked into one
-relocatable region, saved on the same tolerant wire as everything else, with
+relocatable region, saved on the same variable wire as everything else, with
 sharing preserved and a clear line around what the loader promises.
 
 ---
@@ -3485,7 +3488,6 @@ int main()
         "  \"display_name\": \"Kestrel II\",\n"
         "  \"max_helth\": 300,\n"
         "  \"armor\": 4,\n"
-        "  \"armor\": 6,\n"
         "  \"ship_type\": \"Corvette\"\n"
         "}\n";
     TableReport report;
@@ -3493,8 +3495,8 @@ int main()
     bool ok = ShipConfigFromJson( loaded, edited, (int64_t) strlen( edited ), &report );
     printf( "from json: %s  name=%s health=%g armor=%d\n", ok ? "ok" : "stopped",
         loaded.display_name, loaded.max_health, loaded.armor );
-    printf( "report: unknown=%d duplicate=%d clamped=%d\n",
-        report.unknown, report.duplicate, report.clamped );
+    printf( "report: unknown=%d refused=%d\n",
+        report.unknown, (int) report.refused );
 
     ShipConfig bad;
     bad.ship_type = (ShipType) 99;
@@ -3541,8 +3543,8 @@ $ ./json
   "armor": 8,
   "ship_type": "Corvette"
 }
-from json: ok  name=Kestrel II health=100 armor=6
-report: unknown=1 duplicate=1 clamped=0
+from json: ok  name=Kestrel II health=100 armor=4
+report: unknown=1 refused=0
 ToJsonMeasure on an unnamed enum value: -1
 {
   "head": null,
@@ -3575,9 +3577,11 @@ and it ends in one newline.
 
 **Reading text uses the same report as the wire.** `max_helth` is `unknown`,
 and `max_health` stayed at its declared 100, so the typo did not vanish
-silently. The doubled `armor` reads last wins and counts `duplicate`, which is
-the counter Part 6 said belongs to the text form. Mentioned-fields-only
-semantics match the wire: what the text omits takes its declared default.
+silently. A text read is one read, the same as the wire's: write `armor` twice
+and the whole read refuses (`malformed`), and write `"armor": 11` and it
+refuses `out_of_range`. Nothing reads last-wins and nothing is clamped.
+Mentioned-fields-only semantics match the wire: what the text omits takes its
+declared default.
 
 **The writer refuses to lie.** Hand `ToJson` an enum value no variant names and
 it returns -1 rather than inventing JSON.
@@ -3769,16 +3773,15 @@ $ cat tree/ships/Freighter.json
   "max_health": "very strong"
 }
 $ schema pack --root GameConfig --out packed2.bin tree .
-report: unknown 0, kind_mismatch 1, clamped 0, duplicate 0, malformed false
+schema: tree/ships/Freighter.json: kind_mismatch: max_health (docs/SPEC-TABLES.md §17.3)
 $ echo $?
 1
 ```
 
-A string where a float belongs is a kind mismatch, and your CI stops until
-someone fixes the text. JSON has one number type, so
-`2` and `2.0` both read into an integer field, a genuinely fractional value
-into an integer field is a mismatch, and `1.2.3` is malformed. Numbers never
-get quietly mangled.
+A string where a float belongs is a kind mismatch, the whole pack refuses, and
+your CI stops until someone fixes the text. An integer field reads an integer
+spelling only: `2` reads, and `2.0`, `2.5` and `1.2.3` all refuse. Numbers
+never get quietly mangled.
 
 Put the Freighter back before you go on, because Part 11 cooks this tree:
 
@@ -4095,10 +4098,10 @@ default of `100.0` after Part 10's default-change experiment.
 ### The problem
 
 `GameConfigLoad` walks the wire, matches ids, and applies defaults. It is
-tolerant, and priced accordingly. Starlight's shipped build loads the **same**
+evolution-tolerant, and priced accordingly. Starlight's shipped build loads the **same**
 config off its **own** disk ten thousand times a day, and the data never
 surprises it, because the build that reads the file is the build whose pipeline
-wrote it. Paying the tolerant parse there buys nothing. You want the load to be:
+wrote it. Paying the evolving parse there buys nothing. You want the load to be:
 check it is yours, then point at it.
 
 ### Cook it
@@ -4246,7 +4249,7 @@ $ ./cook GameBig.cook
 not this build's cook
 ```
 
-The tolerant wire remains the format of record, and the cook is the fast lane
+The variable wire remains the format of record, and the cook is the fast lane
 your build key can always regenerate.
 
 ### Checking one you did not write
@@ -4319,7 +4322,7 @@ invalidate what.
 
 **You now have** an asset pipeline: designer tree, then wire, then cook, opened
 by pointer in constant time, keyed so staleness is impossible, with the
-tolerant wire as the fallback that never breaks.
+variable wire as the fallback that never breaks.
 
 ---
 

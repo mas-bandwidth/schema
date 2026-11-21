@@ -350,7 +350,7 @@ var ParseOnly = map[string]bool{"go": true, "js": true, "python": true, "ruby": 
 // comes down: an owed program fixed and marked compile lowers it, and a new
 // owed example is red. The tutorial's parts after Part 6 hold them (the
 // table API they were written against predates the declared table classes).
-const OwedCeiling = 21
+const OwedCeiling = 18
 
 // Count is how many examples of one page, one language and one class there are.
 type Count struct {
