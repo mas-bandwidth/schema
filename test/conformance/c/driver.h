@@ -133,6 +133,17 @@ int conformance_write_refusal_set_tblvarevo3( const char * root, void * value, c
                                               const char * kind, const char * text );
 int conformance_write_refusal_write_tblvarevo3( int surface, const char * root, const void * value, const uint8_t * announcement,
                                                 int64_t announcement_bytes, uint8_t * buffer, int64_t capacity, int64_t * wrote );
+/* THE ONE CHECKED CONVERSION: every integer a row names goes into typed
+   storage through conformance_write_refusal_integer, keyed on the storage's
+   own signedness and width, and a value that storage cannot hold ends the
+   case's child as UNREPRESENTABLE. A cast would keep the low bits: 256 in a
+   one-byte ordinal lands as 0, a lawful member, and the row would answer
+   `wrote` for a value that was never written. Always 1 when it returns. */
+int conformance_write_refusal_integer( const char * text, int is_signed, size_t bytes, void * storage );
+#define CONFORMANCE_WREF_SIGNED( field, text ) conformance_write_refusal_integer( ( text ), 1, sizeof( field ), &( field ) )
+#define CONFORMANCE_WREF_UNSIGNED( field, text ) conformance_write_refusal_integer( ( text ), 0, sizeof( field ), &( field ) )
+/* a count or a length: int32 storage in every generated value */
+int32_t conformance_write_refusal_count( const char * text );
 int conformance_write_refusal_text( char * storage, int32_t capacity, int32_t * length, const char * kind, const char * text );
 int conformance_write_refusal_bytes( uint8_t * storage, int32_t capacity, int32_t * length, const char * kind, const char * text );
 int conformance_write_refusal_units( uint16_t * storage, int32_t capacity, int32_t * length, const char * kind, const char * text );
@@ -140,6 +151,7 @@ int conformance_write_refusal_units( uint16_t * storage, int32_t capacity, int32
 #define CONFORMANCE_REFUSED 2
 #define CONFORMANCE_NO_SETTER 3
 #define CONFORMANCE_BROKEN 4
+#define CONFORMANCE_UNREPRESENTABLE 5
 int conformance_write_refusal_case( int surface, const ConformanceCodec * codec, const char * unit, const uint8_t * wire, int64_t bytes,
                                     const uint8_t * announcement, int64_t announcement_bytes,
                                     const char * root, const char * path, const char * kind, const char * text );
