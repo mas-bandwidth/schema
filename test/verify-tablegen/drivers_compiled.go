@@ -1400,7 +1400,8 @@ func verifyRust(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec,
                 check_bytes(&c.id, jout.as_bytes(), &c.w1);
                 if c.op == 7 {
                     let mut srep = %s::TableReport::default();
-                    let one = std::slice::from_ref(&r);
+                    let row = %s::%sRow::from(&r);
+                    let one = std::slice::from_ref(&row);
                     let msz = %s::%s_measure_messages(one, &mut srep);
                     if msz < 0 { die(&c.id, "measure_messages after from_json"); }
                     let mut mout = vec![0u8; msz as usize];
@@ -1415,7 +1416,7 @@ func verifyRust(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec,
 				u.Pkg, fr, u.Pkg, u.Pkg, u.Pkg, fSn, u.Pkg, fSn, u.Pkg, fSn,
 				u.Pkg, u.Pkg, u.Pkg, u.Pkg, u.Pkg, u.Pkg, u.Pkg, u.Pkg, fr, u.Pkg, u.Pkg, fSn, u.Pkg, u.Pkg, fSn, u.Pkg, fSn,
 				u.Pkg, u.Pkg, fSn, u.Pkg, fSn,
-				u.Pkg, u.Pkg, fSn, u.Pkg, fSn,
+				u.Pkg, u.Pkg, fr, u.Pkg, fSn, u.Pkg, fSn,
 			)
 		}
 		disp.WriteString("    }\n")
