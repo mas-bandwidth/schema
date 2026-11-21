@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/goosetable"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/goosetable"
 )
 
 // hostileString carries every character a Go quote spells with an escape

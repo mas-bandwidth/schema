@@ -22,9 +22,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/genheader"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/genheader"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lua"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 func init() {

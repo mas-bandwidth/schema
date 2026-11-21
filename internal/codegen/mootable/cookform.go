@@ -5,7 +5,7 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // THE COOKED FORM'S READ (docs/SPEC-TABLES.md §7, §7.1, §7.2), in moo: every

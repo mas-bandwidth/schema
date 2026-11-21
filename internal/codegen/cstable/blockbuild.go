@@ -1,6 +1,6 @@
 package cstable
 
-import "github.com/mas-bandwidth/schema/v2/ir"
+import "github.com/mas-bandwidth/schema/v3/ir"
 
 func (g *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
 	n := bl.Table.Name

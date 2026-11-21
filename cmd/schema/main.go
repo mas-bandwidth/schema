@@ -20,7 +20,7 @@
 //	schema help       [ai]                           the command list, or the guidance block for AI assistants
 //
 // Every command here is a few lines over the public API in
-// github.com/mas-bandwidth/schema/v2/compiler: this binary holds the CLI's
+// github.com/mas-bandwidth/schema/v3/compiler: this binary holds the CLI's
 // policy — which flags exist, what gets printed, what the exit code is, where
 // the bytes land — and none of the compiler. Anything it can do, an embedder
 // can do.
@@ -39,8 +39,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 func main() {

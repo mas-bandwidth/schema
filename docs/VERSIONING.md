@@ -938,14 +938,19 @@ id and the build version instead, which are the things that govern
 compatibility.
 
 **The Go API under `compiler/` and `ir/` is covered; `internal/` is not.**
-`github.com/mas-bandwidth/schema/v2/compiler` loads and checks units and
-generates through registered generators; `github.com/mas-bandwidth/schema/v2/ir`
+`github.com/mas-bandwidth/schema/v3/compiler` loads and checks units and
+generates through registered generators; `github.com/mas-bandwidth/schema/v3/ir`
 is the checked unit those generators read. Breaking their exported surface is
 a major, adding to it is a minor. Everything under `internal/`, the scanner,
 parser, checker and the per-language emitters, carries no promise and may
 change in any release. In `ir`, the table-wire kind vocabulary (the
 `TableKind*` constants and `TableScalarKind` / `TableFieldKind` /
-`TableElemKind`) is wire law and therefore frozen within a major.
+`TableElemKind`) is wire law and therefore frozen within a major. The
+module path is `github.com/mas-bandwidth/schema/v3` from the first release
+after 3.0.1. The tags v3.0.0 and v3.0.1 carry a go.mod that says `/v2`, so
+Go cannot resolve them under either path. A pin made on a promotion tag
+before the move resolves as a `v2.5.1-0.<date>-<hash>` pseudo-version
+under the old path, `github.com/mas-bandwidth/schema/v2`.
 
 **The SPEC is versioned with the compiler.** [SPEC.md](SPEC.md) and
 [SPEC-TABLES.md](SPEC-TABLES.md) are normative; where the compiler and a spec

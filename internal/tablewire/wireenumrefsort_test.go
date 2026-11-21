@@ -5,9 +5,9 @@ import (
 	"encoding/binary"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
 )
 
 const lowLoadoutWireSortJSON = `{"grade":"Bronze","grades":[],"podium":["Bronze","Bronze","Bronze"],"perks":[],"primary":{"damage":-1.5,"speed":-1.5,"penetration":0,"channel":0,"homing":false,"effect":{"buff":{"multiplier":-1.5}}},"backups":[{"damage":-1.5,"speed":-1.5,"penetration":0,"channel":0,"homing":false,"effect":{"buff":{"multiplier":-1.5}}},{"damage":-1.5,"speed":-1.5,"penetration":0,"channel":0,"homing":false,"effect":{"buff":{"multiplier":-1.5}}}],"attachments":[]}`

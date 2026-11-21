@@ -28,9 +28,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
-	"github.com/mas-bandwidth/schema/v2/internal/goname"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/golang"
+	"github.com/mas-bandwidth/schema/v3/internal/goname"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 func goWireFuzzVerdictMakefileCheck(mk string) error {
@@ -492,7 +492,7 @@ func goWireFuzzEnsureEnv(t *testing.T, root string) {
 				return
 			}
 			gomod := fmt.Sprintf(
-				"module %s\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\nreplace github.com/mas-bandwidth/schema/v2 => %q\n",
+				"module %s\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v3 v3.0.0-00010101000000-000000000000\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\nreplace github.com/mas-bandwidth/schema/v3 => %q\n",
 				spec.module, serialize, root,
 			)
 			if err := os.WriteFile(filepath.Join(unitDir, "go.mod"), []byte(gomod), 0o600); err != nil {
@@ -518,7 +518,7 @@ func goWireFuzzEnsureEnv(t *testing.T, root string) {
 			return
 		}
 		var mod strings.Builder
-		mod.WriteString("module wirefuzzdriver\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n")
+		mod.WriteString("module wirefuzzdriver\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v3 v3.0.0-00010101000000-000000000000\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n")
 		for _, spec := range goWireFuzzUnits {
 			fmt.Fprintf(&mod, "\t%s v0.0.0\n", spec.module)
 		}
@@ -527,7 +527,7 @@ func goWireFuzzEnsureEnv(t *testing.T, root string) {
 			fmt.Fprintf(&mod, "replace %s => %q\n", spec.module, filepath.Join(goWireFuzzTempDir, "units", spec.dir))
 		}
 		fmt.Fprintf(&mod, "replace github.com/mas-bandwidth/serialize.go/v2 => %q\n", serialize)
-		fmt.Fprintf(&mod, "replace github.com/mas-bandwidth/schema/v2 => %q\n", root)
+		fmt.Fprintf(&mod, "replace github.com/mas-bandwidth/schema/v3 => %q\n", root)
 		if err := os.WriteFile(filepath.Join(goWireFuzzDriverDir, "go.mod"), []byte(mod.String()), 0o600); err != nil {
 			goWireFuzzSetupErr = err
 			return

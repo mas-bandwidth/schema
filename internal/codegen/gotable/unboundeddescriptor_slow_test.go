@@ -3,7 +3,7 @@ package gotable
 import (
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // TestGoUnboundedContainersRoundTrip keeps the §8.1 containers' round trip in

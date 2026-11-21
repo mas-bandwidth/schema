@@ -164,8 +164,8 @@ const newLegTargetSrc = `//go:build {{TAG}}
 package compiler
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/{{LANG}}"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/{{LANG}}"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 type {{TARGET}} struct{}
@@ -212,8 +212,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/genheader"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/genheader"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 const ext = "{{EXT}}"
@@ -242,7 +242,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // TestSkeletonFixture is the one passing fixture ` + "`schema new-leg {{LANG}}`" + ` lays

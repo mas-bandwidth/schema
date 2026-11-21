@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
 )
 
 // TestJsPointerTargetTypeChecked holds every JavaScript read of the variable

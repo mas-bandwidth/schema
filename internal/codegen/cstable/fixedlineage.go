@@ -16,7 +16,7 @@ package cstable
 // behaviour for its own hash and refuses every other one BY NAME.
 
 import (
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // FixedLineageEntry is ONE locked layout of one fixed table: the four facts

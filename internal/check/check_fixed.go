@@ -3,8 +3,8 @@ package check
 import (
 	"sort"
 
-	"github.com/mas-bandwidth/schema/v2/internal/ast"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/ast"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // checkFixedTableClosures is the `fixed table` refusal (docs/SPEC-TABLES.md

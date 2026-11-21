@@ -43,7 +43,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // A LineageEntry is ONE LOCKED LAYOUT of a fixed table: a version of the

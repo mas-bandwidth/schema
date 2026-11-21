@@ -3,8 +3,8 @@ package rubytable_test
 import (
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/fixedproof"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 var rubyFixedCoreRows = []string{"record-measurement", "fixed-file-roundtrip", "file-envelope", "batch-capacity", "plan-selection", "compiled-plans", "definition-hash", "fixed-closure", "live-extents", "writing"}

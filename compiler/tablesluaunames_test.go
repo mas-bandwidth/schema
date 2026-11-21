@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
-	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/luautable"
+	"github.com/mas-bandwidth/schema/v3/internal/tablenames"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // THE LUAU RUNTIME NAMES, SCANNED BOTH WAYS WITH A CONTROL (docs/PORTING.md I6;

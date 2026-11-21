@@ -3,7 +3,7 @@ package lobstertable
 import (
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 func TestLobsterRuntimePackageBindingScan(t *testing.T) {

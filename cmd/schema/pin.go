@@ -13,7 +13,7 @@ import (
 
 // The pin directive an adopter writes in each package's generate.go; the Go
 // adoption notes in docs/USAGE.md bless this one spelling.
-const pinPrefix = "//go:generate go run github.com/mas-bandwidth/schema/v2/cmd/schema@"
+const pinPrefix = "//go:generate go run github.com/mas-bandwidth/schema/v3/cmd/schema@"
 
 // A Go pseudo-version (the `v...-yyyymmddhhmmss-<12 hex>` form) is also a
 // semver tag, so one grammar covers both; refusing anything else by name keeps

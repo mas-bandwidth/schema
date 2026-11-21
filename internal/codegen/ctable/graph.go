@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // The VARIABLE class on form 1 uses one numbering shared by the root and every

@@ -25,7 +25,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // The pins make/ruby-toolchain.mk builds (docs/PORT-RUBY.md, THE PIN).

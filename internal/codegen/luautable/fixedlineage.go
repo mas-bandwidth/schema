@@ -18,8 +18,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/luau"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // FixedLineageEntry is ONE locked layout of one fixed table: the facts §5.2's

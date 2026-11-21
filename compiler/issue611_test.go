@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // Issue #611: a json-hostile verdict is COUNTERS AND A VERDICT ONLY, so a port
@@ -50,7 +50,7 @@ fixed table Ship
 		if err != nil {
 			t.Fatal(err)
 		}
-		gomod := fmt.Sprintf("module testpkg\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/schema/v2 v2.0.0\nreplace github.com/mas-bandwidth/schema/v2 => %q\n", root)
+		gomod := fmt.Sprintf("module testpkg\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/schema/v3 v3.0.0-00010101000000-000000000000\nreplace github.com/mas-bandwidth/schema/v3 => %q\n", root)
 		if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(gomod), 0644); err != nil {
 			t.Fatal(err)
 		}

@@ -52,7 +52,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // cRefOrdinalWideFields is the nested table's field count. It is above 127 on

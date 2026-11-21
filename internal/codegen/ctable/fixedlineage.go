@@ -16,7 +16,7 @@ package ctable
 // for its own hash and refuses every other one by name.
 
 import (
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // FixedLineageEntry is ONE locked layout of one fixed table: the five facts

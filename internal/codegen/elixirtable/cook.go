@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // CookRuntimeModule is the cooked form's shared runtime, emitted once per unit

@@ -13,9 +13,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/scanner"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/parser"
+	"github.com/mas-bandwidth/schema/v3/internal/scanner"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // isSchemaKeyword reports whether the schema grammar itself reserves w, so a

@@ -33,7 +33,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/mas-bandwidth/schema/v2/internal/modpath"
+	"github.com/mas-bandwidth/schema/v3/internal/modpath"
 )
 
 func main() {

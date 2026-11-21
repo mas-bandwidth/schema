@@ -44,7 +44,7 @@ import (
 
 const (
 	tablePath     = ".github/go-test-rows.txt"
-	modulePath    = "github.com/mas-bandwidth/schema/v2"
+	modulePath    = "github.com/mas-bandwidth/schema/v3"
 	defaultWeight = 10.0
 )
 

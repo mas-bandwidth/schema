@@ -53,7 +53,7 @@ command installs it as `schema` in `$(go env GOPATH)/bin`, which should be on
 your path, because every command on this page is spelled `schema`:
 
 ```
-$ go install github.com/mas-bandwidth/schema/v2/cmd/schema@main
+$ go install github.com/mas-bandwidth/schema/v3/cmd/schema@main
 $ schema version
 schema v3.0.2-0.20261121143246-5d412ca41943 (go1.26.10)
 ```
@@ -4789,9 +4789,9 @@ module docsgen
 
 go 1.26
 
-require github.com/mas-bandwidth/schema/v2 v2.4.0
+require github.com/mas-bandwidth/schema/v3 v3.0.0-00010101000000-000000000000
 
-replace github.com/mas-bandwidth/schema/v2 => ../schema
+replace github.com/mas-bandwidth/schema/v3 => ../schema
 ```
 
 The `replace` points the module at your checkout, and Go does not use a
@@ -4805,8 +4805,8 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // docs is a generator of our own, selected by --lang docs.

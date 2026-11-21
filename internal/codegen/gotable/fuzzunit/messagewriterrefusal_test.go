@@ -3,7 +3,7 @@ package tabledemo_test
 import (
 	"testing"
 
-	tabledemo "github.com/mas-bandwidth/schema/v2/internal/codegen/gotable/fuzzunit"
+	tabledemo "github.com/mas-bandwidth/schema/v3/internal/codegen/gotable/fuzzunit"
 )
 
 // TestGeneratedMessageWriterNeverTruncates holds docs/SPEC-TABLES.md §5 and

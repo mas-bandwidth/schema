@@ -7,7 +7,7 @@ import (
 	"math/big"
 	"unicode/utf8"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // InvalidValue is a writer's refusal of a value outside its declaration

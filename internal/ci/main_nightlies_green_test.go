@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/ci/hostilecorpus"
+	"github.com/mas-bandwidth/schema/v3/internal/ci/hostilecorpus"
 )
 
 // TestMainNightliesGateInputsAgree records the concrete inputs whose drift

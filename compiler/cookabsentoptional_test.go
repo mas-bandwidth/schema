@@ -15,11 +15,11 @@ import (
 	"strings"
 	"testing"
 
-	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	ctable "github.com/mas-bandwidth/schema/v2/internal/codegen/ctable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	cgen "github.com/mas-bandwidth/schema/v3/internal/codegen/c"
+	ctable "github.com/mas-bandwidth/schema/v3/internal/codegen/ctable"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/tablecook"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
 )
 
 const absentOptionalPayloadSchema = `package probe

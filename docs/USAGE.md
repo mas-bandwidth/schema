@@ -97,7 +97,7 @@ language — writing the
 
 **Go: on a shared runtime by default, or standalone (your choice).** By
 default the Go target imports one package of this module,
-`github.com/mas-bandwidth/schema/v2/tables/goruntime`, which carries the
+`github.com/mas-bandwidth/schema/v3/tables/goruntime`, which carries the
 table-independent machinery (the refusal reasons, the report, the bit and
 byte codecs, the fixed-form runtime). Its exported names (`TableReport`,
 `TableRefuseReason`, ...) are type aliases of that package's: the same names,
@@ -3910,7 +3910,7 @@ the generated files runs as printed.
 that owns the schema:
 
 ```
-//go:generate go run github.com/mas-bandwidth/schema/v2/cmd/schema@v2.5.0 generate --lang go --out .
+//go:generate go run github.com/mas-bandwidth/schema/v3/cmd/schema@vX.Y.Z generate --lang go --out .
 ```
 
 `go run` with an `@version` suffix resolves the package from the module
@@ -3918,7 +3918,7 @@ cache, outside your module's build list: the directive adds no line to
 `go.mod`, needs no `require` and no `replace`, and runs unchanged under
 `-mod=readonly`. The tag IS the pin — every machine that runs `go generate`
 compiles with the same compiler, and moving the pin is editing the one line.
-`v2.5.0` is the newest tag at this writing.
+`vX.Y.Z` stands for the release you pin.
 
 **Move the pin across a whole tree in one command.** `schema pin` rewrites
 the version in every `go:generate` line under the given directories and prints
@@ -4259,16 +4259,16 @@ Pin a release tag, or between releases a promotion tag: every commit promoted
 to `main` is tagged `main-<shorthash>` (docs/VERSIONING.md), so
 
 ```
-go get github.com/mas-bandwidth/schema/v2@v2.5.0             # a release
-go get github.com/mas-bandwidth/schema/v2@main-0123456789ab  # a promotion
+go get github.com/mas-bandwidth/schema/v3@vX.Y.Z             # a release
+go get github.com/mas-bandwidth/schema/v3@main-0123456789ab  # a promotion
 ```
 
 names one commit either way; never pin a bare branch.
 
 ```go
 import (
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 c := compiler.New() // the nine built-in targets, registered
@@ -4348,7 +4348,7 @@ fmt.Println(c.Targets()) // [c cpp cs dart docs elixir go java js rust]
 files, err := c.Generate(unit, "docs", nil)
 ```
 
-The unit your generator receives is the same fully-resolved [`ir`](https://pkg.go.dev/github.com/mas-bandwidth/schema/v2/ir)
+The unit your generator receives is the same fully-resolved [`ir`](https://pkg.go.dev/github.com/mas-bandwidth/schema/v3/ir)
 the built-in backends read: types resolved, constants folded, ranges and bit
 widths derived, wire order fixed. The derived parameters the nine emitters
 share are functions there rather than per-backend arithmetic — `ir.BitsRequired`,

@@ -9,7 +9,7 @@ import (
 	"encoding/binary"
 	"sort"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // MessageClosure is the set of structs the MESSAGE FORM can reach: every

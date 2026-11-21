@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // The VARIABLE FORM (docs/SPEC-TABLES.md §3), form byte 1, is the table wire

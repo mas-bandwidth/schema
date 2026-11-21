@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/baseline"
+	"github.com/mas-bandwidth/schema/v3/internal/baseline"
 )
 
 // mapFixtureSrc is the map fixture: one map by name and one by number, so the key's

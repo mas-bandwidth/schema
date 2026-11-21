@@ -4,7 +4,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // The two exact conversions of docs/SPEC-TABLES.md §16.2 at the wide kinds,

@@ -13,7 +13,7 @@ package javatable
 // endpoint owes the same number again, which is the second half of the row.
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"

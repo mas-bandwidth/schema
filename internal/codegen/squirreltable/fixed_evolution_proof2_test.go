@@ -14,8 +14,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/squirrel/sqrun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/squirreltable"
 )
 
 const sqEvoArrayOld = "package probe\nfixed table A\n{\n    lead uint32 = 1\n    vals [..4]int32\n    trail uint32 = 2\n}\n"

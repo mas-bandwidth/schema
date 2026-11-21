@@ -1,6 +1,6 @@
 package gotable
 
-import "github.com/mas-bandwidth/schema/v2/ir"
+import "github.com/mas-bandwidth/schema/v3/ir"
 
 // tableIntegritySource is the integrity trailer's runtime (docs/SPEC-TABLES.md
 // §2.14), emitted into the home file only when a table of the unit declares

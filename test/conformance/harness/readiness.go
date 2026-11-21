@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/docgate"
+	"github.com/mas-bandwidth/schema/v3/internal/docgate"
 )
 
 // Acceptance receipts belong to the current run's artifact directory. They

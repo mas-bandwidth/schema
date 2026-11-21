@@ -27,8 +27,8 @@ import (
 	"encoding/binary"
 	"math"
 
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // wireCheck is the declaration-free walk over one file.

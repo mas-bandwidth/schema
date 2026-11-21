@@ -3,7 +3,7 @@ package python
 import (
 	"fmt"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // The bool kind: one wire bit, a reusable Ref[bool], and a write that refuses

@@ -38,8 +38,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/ci/hostilecorpus"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/ci/hostilecorpus"
 )
 
 const program = "test/conformance/lobster/hostile.lobster"

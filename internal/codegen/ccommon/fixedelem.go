@@ -1,6 +1,6 @@
 package ccommon
 
-import "github.com/mas-bandwidth/schema/v2/ir"
+import "github.com/mas-bandwidth/schema/v3/ir"
 
 // ---- the identity plan's element widths, shared by the C and C++ emitters ----
 //

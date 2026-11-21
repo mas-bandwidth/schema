@@ -3,7 +3,7 @@ package gotable
 import (
 	"fmt"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // optionalMapJson is the JSON walk's one change for an OPTIONAL MAP

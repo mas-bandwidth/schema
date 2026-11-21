@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/languages"
+	"github.com/mas-bandwidth/schema/v3/internal/languages"
 )
 
 // aiHelp is the block `schema help ai` prints: what a project's own AI

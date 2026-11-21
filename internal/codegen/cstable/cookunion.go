@@ -1,6 +1,6 @@
 package cstable
 
-import "github.com/mas-bandwidth/schema/v2/ir"
+import "github.com/mas-bandwidth/schema/v3/ir"
 
 // The containing row remains sequential; the union alone owns an explicit
 // unmanaged overlay. Every arm offset is the compiler's canonical C layout.

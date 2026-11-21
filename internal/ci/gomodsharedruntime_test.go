@@ -10,9 +10,9 @@ import (
 // TestGoModulesResolveTheSharedRuntime holds the module wiring that makes every
 // main module compiling a default-generated (shared-runtime) Go table unit
 // resolve tables/goruntime from this checkout. The Go target's home file
-// imports `github.com/mas-bandwidth/schema/v2/tables/goruntime` because shared
+// imports `github.com/mas-bandwidth/schema/v3/tables/goruntime` because shared
 // is the default (docs/SPEC-TABLES.md §8.4); a module that compiles such a unit
-// must therefore require schema/v2 and replace it with the repository root.
+// must therefore require schema/v3 and replace it with the repository root.
 // Text only: no go command, no build, no network.
 func TestGoModulesResolveTheSharedRuntime(t *testing.T) {
 	t.Parallel()
@@ -22,17 +22,17 @@ func TestGoModulesResolveTheSharedRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read repo root go.mod: %v", err)
 	}
-	if !strings.Contains(string(rootMod), "module github.com/mas-bandwidth/schema/v2") {
-		t.Fatal("repo root go.mod does not name github.com/mas-bandwidth/schema/v2")
+	if !strings.Contains(string(rootMod), "module github.com/mas-bandwidth/schema/v3") {
+		t.Fatal("repo root go.mod does not name github.com/mas-bandwidth/schema/v3")
 	}
 
 	checkModule := func(name, dir, mod string) {
-		if !strings.Contains(mod, "github.com/mas-bandwidth/schema/v2 v2.0.0") {
-			t.Errorf("%s: no require github.com/mas-bandwidth/schema/v2 v2.0.0 (docs/SPEC-TABLES.md §8.4)", name)
+		if !strings.Contains(mod, "github.com/mas-bandwidth/schema/v3 v3.0.0-00010101000000-000000000000") {
+			t.Errorf("%s: no require github.com/mas-bandwidth/schema/v3 v3.0.0-00010101000000-000000000000 (docs/SPEC-TABLES.md §8.4)", name)
 		}
 		foundReplace := false
 		for line := range strings.SplitSeq(mod, "\n") {
-			rest, cut := strings.CutPrefix(strings.TrimSpace(line), "replace github.com/mas-bandwidth/schema/v2 => ")
+			rest, cut := strings.CutPrefix(strings.TrimSpace(line), "replace github.com/mas-bandwidth/schema/v3 => ")
 			if !cut {
 				continue
 			}
@@ -44,7 +44,7 @@ func TestGoModulesResolveTheSharedRuntime(t *testing.T) {
 			foundReplace = true
 		}
 		if !foundReplace {
-			t.Errorf("%s: no replace for github.com/mas-bandwidth/schema/v2 (docs/SPEC-TABLES.md §8.4)", name)
+			t.Errorf("%s: no replace for github.com/mas-bandwidth/schema/v3 (docs/SPEC-TABLES.md §8.4)", name)
 		}
 	}
 

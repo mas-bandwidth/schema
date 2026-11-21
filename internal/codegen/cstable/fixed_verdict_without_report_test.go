@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // THE VERDICT DOES NOT DEPEND ON THE REPORT (docs/SPEC-TABLES.md, the FIXED

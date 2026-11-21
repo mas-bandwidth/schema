@@ -3,8 +3,8 @@
 package tablewire
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // MessageSpots is every REFERENCE a batch carries, at its bit position and

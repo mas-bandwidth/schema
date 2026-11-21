@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // Derive names from the same value, reader and writer vectors as the complete
@@ -181,7 +181,7 @@ func TestPythonVtEvolutionCICoverage(t *testing.T) {
 	parent, coverage := 0, 0
 	for _, row := range rows {
 		targets[row.Target]++
-		if row.Package != "github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable" || row.Target != "" {
+		if row.Package != "github.com/mas-bandwidth/schema/v3/internal/codegen/pythontable" || row.Target != "" {
 			continue
 		}
 		re, err := regexp.Compile("^" + row.Test + "$")
