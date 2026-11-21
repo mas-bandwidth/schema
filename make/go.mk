@@ -825,6 +825,12 @@ test-go: build/mustrun generated/bench/tables/go/.stamp generated/bench/paired/g
 	bench/tables/go/leg build
 	cd generated/bench/go && go build ./...
 	cd generated/bench/paired/go && go build ./...
+	$(MAKE) test-go-packet
+
+# The primary packet harnesses on their own, so they can be run (and broken on
+# purpose) without the rest of the leg; test-go and _verify-go-conformance run it.
+.PHONY: test-go-packet
+test-go-packet: build/mustrun generated/go/.stamp generated/go-ludicrous/.stamp generated/bench/go/.stamp
 	cd test/go && "$(CURDIR)/$(MUSTRUN)" -name test-go-main -count $(GO_MAIN_CHECKS) -- go run .
 	cd test/go-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name test-go-ludicrous -count $(GO_LUDICROUS_CHECKS) -- go run .
 

@@ -1304,6 +1304,12 @@ test-js: build/mustrun toolchain-js generated/js/.stamp generated/js-ludicrous/.
 	$(MAKE) tables-js-versioning-negative-control
 	$(MAKE) tables-js-fixed-roadmap-negative-control
 	$(MAKE) tables-js-message-form-negative-control
+	$(MAKE) test-js-packet
+
+# The primary packet harnesses on their own, in both node modes, so they can be
+# run (and broken on purpose) without the rest of the leg.
+.PHONY: test-js-packet
+test-js-packet: build/mustrun toolchain-js generated/js/.stamp generated/js-ludicrous/.stamp generated/bench/js/.stamp
 	cd test/js && "$(CURDIR)/$(MUSTRUN)" -name test-js-main -count $(JS_MAIN_CHECKS) -- $(NODE) main.mjs
 	cd test/js && NODE_ENV=production "$(CURDIR)/$(MUSTRUN)" -name test-js-main-production -count $(JS_MAIN_CHECKS_PRODUCTION) -- $(NODE) main.mjs
 	cd test/js-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name test-js-ludicrous -count $(JS_LUDICROUS_CHECKS) -- $(NODE) main.mjs

@@ -1013,6 +1013,12 @@ test-elixir-recipe: build/mustrun toolchain-elixir generated/elixir/.stamp gener
 	$(MAKE) tables-elixir-fuzz
 	$(MAKE) tables-elixir-block-lead
 	$(MIX) format --check-formatted generated/elixir/*.ex generated/elixir-ludicrous/*.ex generated/bench/elixir/*.ex generated/bench/elixir/realworld/*.ex
+	$(MAKE) test-elixir-packet
+
+# The primary packet harnesses on their own, so they can be run (and broken on
+# purpose) without the rest of the leg.
+.PHONY: test-elixir-packet
+test-elixir-packet: build/mustrun toolchain-elixir generated/elixir/.stamp generated/elixir-ludicrous/.stamp generated/bench/elixir/.stamp
 	cd test/elixir && "$(CURDIR)/$(MUSTRUN)" -name test-elixir-main -count $(ELIXIR_MAIN_CHECKS) -- $(ELIXIR) main.exs
 	cd test/elixir-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name test-elixir-ludicrous -count $(ELIXIR_LUDICROUS_CHECKS) -- $(ELIXIR) main.exs
 

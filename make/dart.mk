@@ -1398,6 +1398,14 @@ test-dart: toolchain-dart build/mustrun generated/dart/.stamp generated/dart-lud
 	$(MAKE) tables-dart-versioning-negative-control
 	$(DART) analyze generated/dart generated/dart-ludicrous generated/bench/dart test/dart test/dart-ludicrous bench/dart
 	$(DART) format --set-exit-if-changed --output=none generated/dart generated/dart-ludicrous generated/bench/dart
+	$(MAKE) test-dart-packet
+
+# The primary packet harnesses on their own, checked (JIT, asserts on) and
+# compiled (AOT), so they can be run (and broken on purpose) without the rest
+# of the leg. The AOT binaries are removed first: a failed compile must never
+# leave an older binary to run.
+.PHONY: test-dart-packet
+test-dart-packet: toolchain-dart build/mustrun generated/dart/.stamp generated/dart-ludicrous/.stamp generated/bench/dart/.stamp
 	cd test/dart && "$(CURDIR)/$(MUSTRUN)" -name test-dart-main -count $(DART_MAIN_CHECKS) -- $(DART) --enable-asserts main.dart
 	@mkdir -p build
 	@rm -f build/schema_test_dart build/schema_test_dart_ludicrous
