@@ -13,13 +13,14 @@ package cstable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestFixedRoadmapCSharpT12PlansVersions(t *testing.T) {
@@ -388,7 +389,7 @@ static class ProbeMain
 	}
 	args = append(args, topFiles...)
 	args = append(args, genFiles...)
-	cmd := exec.Command(t10dotnet, append([]string{"exec"}, args...)...)
+	cmd := testproc.Command(t, t10dotnet, append([]string{"exec"}, args...)...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "DOTNET_NOLOGO=1", "DOTNET_CLI_TELEMETRY_OPTOUT=1")
 	out, err := cmd.CombinedOutput()
@@ -409,7 +410,7 @@ static class ProbeMain
 	if err := os.WriteFile(filepath.Join(dir, "app.runtimeconfig.json"), []byte(rtc), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	run := exec.Command(t10dotnet, "exec", filepath.Join(dir, "app.dll"))
+	run := testproc.Command(t, t10dotnet, "exec", filepath.Join(dir, "app.dll"))
 	run.Dir = dir
 	run.Env = append(os.Environ(), "DOTNET_NOLOGO=1", "DOTNET_CLI_TELEMETRY_OPTOUT=1")
 	runOut, runErr := run.CombinedOutput()
@@ -607,7 +608,7 @@ static class ProbeMain
 	}
 	args = append(args, topFiles...)
 	args = append(args, genFiles...)
-	cmd := exec.Command(t10dotnet, append([]string{"exec"}, args...)...)
+	cmd := testproc.Command(t, t10dotnet, append([]string{"exec"}, args...)...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "DOTNET_NOLOGO=1", "DOTNET_CLI_TELEMETRY_OPTOUT=1")
 	out, err := cmd.CombinedOutput()
@@ -625,7 +626,7 @@ static class ProbeMain
 	if err := os.WriteFile(filepath.Join(dir, "app.runtimeconfig.json"), []byte(rtc), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	run := exec.Command(t10dotnet, "exec", filepath.Join(dir, "app.dll"))
+	run := testproc.Command(t, t10dotnet, "exec", filepath.Join(dir, "app.dll"))
 	run.Dir = dir
 	run.Env = append(os.Environ(), "DOTNET_NOLOGO=1", "DOTNET_CLI_TELEMETRY_OPTOUT=1")
 	runOut, runErr := run.CombinedOutput()
@@ -846,7 +847,7 @@ static class ProbeMain
 	}
 	args = append(args, topFiles...)
 	args = append(args, genFiles...)
-	cmd := exec.Command(t10dotnet, append([]string{"exec"}, args...)...)
+	cmd := testproc.Command(t, t10dotnet, append([]string{"exec"}, args...)...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "DOTNET_NOLOGO=1", "DOTNET_CLI_TELEMETRY_OPTOUT=1")
 	out, err := cmd.CombinedOutput()
@@ -867,7 +868,7 @@ static class ProbeMain
 	if err := os.WriteFile(filepath.Join(dir, "app.runtimeconfig.json"), []byte(rtc), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	run := exec.Command(t10dotnet, "exec", filepath.Join(dir, "app.dll"))
+	run := testproc.Command(t, t10dotnet, "exec", filepath.Join(dir, "app.dll"))
 	run.Dir = dir
 	run.Env = append(os.Environ(), "DOTNET_NOLOGO=1", "DOTNET_CLI_TELEMETRY_OPTOUT=1")
 	runOut, runErr := run.CombinedOutput()

@@ -20,6 +20,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // cppStringArraysSchema is the bounded half of the Go oracle's stringArraysSchema
@@ -342,10 +344,10 @@ func TestCPPTableStringArrays(t *testing.T) {
 		"-ffp-contract=off", "-I", dir, main,
 	}, sources...)
 	args = append(args, "-o", bin)
-	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, out)
 	}
-	if out, err := exec.Command(bin).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, bin).CombinedOutput(); err != nil {
 		t.Fatalf("run: %v\n%s", err, out)
 	}
 }

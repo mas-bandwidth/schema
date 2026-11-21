@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestUsageRust is docs/PORTING.md I12 for Rust: docs/USAGE.md's Rust table
@@ -64,7 +66,7 @@ func TestUsageRust(t *testing.T) {
 		t.Fatal(err)
 	}
 	bin := rustcBuild(t, dir)
-	if out, err := exec.Command(bin).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, bin).CombinedOutput(); err != nil {
 		t.Fatalf("docs/USAGE.md's Rust example did not run: %v\n%s", err, out)
 	}
 }

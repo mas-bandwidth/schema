@@ -1,0 +1,23 @@
+# A counted array [Min..Max]T below its minimum is refused on every read
+# (F-203; docs/SPEC.md 5.1 row 3; docs/SPEC-TABLES.md 3.3, 3.4), as one past
+# the bound is. The reader is reader.schema ([2..4]); the bytes are the Go
+# engine's encoding of value under writer.schema ([..4]), except on the fixed
+# form, where they are the reader's own layout and forge rewrites the count
+# word in place. Each refused row sits beside its lawful twin at the minimum.
+#
+# form: variable (the variable wire), json (value is the JSON text read),
+#       fixed (the fixed form of Msg), message (one message batch of Msg after
+#       writer.schema's announcement)
+# want: refused or read
+#
+# id	form	table	value	forge	want
+variable-items-1	variable	Probe	{"items":[77]}	-	refused
+variable-items-2	variable	Probe	{"items":[77,78],"inner":[{},{}]}	-	read
+variable-inner-1	variable	Probe	{"items":[77,78],"inner":[{"x":1}]}	-	refused
+json-items-1	json	Probe	{"items":[77],"inner":[{},{}]}	-	refused
+json-items-2	json	Probe	{"items":[77,78],"inner":[{},{}]}	-	read
+json-inner-1	json	Probe	{"items":[77,78],"inner":[{}]}	-	refused
+fixed-1	fixed	Msg	{"items":[287454020,1432778632]}	count=1	refused
+fixed-2	fixed	Msg	{"items":[287454020,1432778632]}	-	read
+message-1	message	Msg	{"items":[77]}	-	refused
+message-2	message	Msg	{"items":[77,78]}	-	read

@@ -1,0 +1,8 @@
+package celldefault
+
+table Root
+{
+    names [..4]string
+    title string(8) = "ab"
+    blob bytes(4)
+}

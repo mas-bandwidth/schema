@@ -3933,15 +3933,22 @@ schema pin v2.6.0 .
 
 The module path in the line moves with the version's major, as Go requires
 (`schema` for v0 and v1, `schema/vN` from v2 on), so one command moves a tree
-across a major. It refuses, by name, a version that is not a Go
-pseudo-version or semver tag, the tags v3.0.0, v3.0.1 and v3.0.2 (their `go.mod`
-names the `/v2` path, so Go resolves them under neither, `+incompatible` included), any
+across a major. It refuses, by name, a version that is not
+a Go pseudo-version or a semver tag; every v3 tag cut before the module
+path moved to `/v3` (today that is every v3 tag, v3.0.0 on: their `go.mod`
+names the `/v2` path, so Go resolves them under neither, `+incompatible`
+included; use a prebuilt binary from the releases page, or `go install` main, instead); any
 version with build metadata (Go takes none but `+incompatible`, and schema has
 a `go.mod` at every major), a directory that does not exist or holds no pin line (an empty directory is
 the same refusal, never a silent success), and a tree whose pins already
 differ from each other (`--mixed-ok` accepts the tree and moves them
 together; the flag may sit before or after the directories). Nothing else in
-the files moves, and no other file is touched.
+the files moves, and no other file is touched. The move is all or nothing:
+every file's new content is staged before any file is replaced, and a write
+that fails (a read-only directory, say) exits 1 with every file as it was:
+the original directory entry is put back, not a copy of its bytes. A
+`generate.go` that is a symbolic link is followed: the file it names is
+rewritten and the link is left as it is.
 
 **A unit that declares only tables needs no dependency.** The generated Go
 imports the standard library alone, so the files drop into any Go module

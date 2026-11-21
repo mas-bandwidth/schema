@@ -2,12 +2,13 @@ package javatable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // This is deliberately a backend staging hook, not public compiler admission.
@@ -72,7 +73,7 @@ func TestStageJavaVariableConformance(t *testing.T) {
 				t.Fatal(err)
 			}
 			args := append([]string{"--release", "17", "-Xlint:all", "-Werror", "-d", classes}, javaFiles...)
-			if outBytes, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+			if outBytes, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 				t.Fatalf("%s: javac staged conformance files: %v\n%s", row.name, err, outBytes)
 			}
 		}

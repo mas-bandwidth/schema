@@ -3,12 +3,13 @@ package cstable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestCSharpTablesCheckedBuild holds the rule that the generated C# table
@@ -255,7 +256,7 @@ func runCSharpCheckedBuild(t *testing.T, files map[string][]byte, checked bool) 
 		args = append(args, "-r:"+ref)
 	}
 	args = append(args, sources...)
-	compile := exec.Command(dotnet, args...)
+	compile := testproc.Command(t, dotnet, args...)
 	compile.Env, compile.Dir = csDotnetEnv(dir, dir), dir
 	compileOut, compileErr := compile.CombinedOutput()
 	if compileErr != nil {
@@ -265,7 +266,7 @@ func runCSharpCheckedBuild(t *testing.T, files map[string][]byte, checked bool) 
 	if err := os.WriteFile(filepath.Join(dir, "checkedbuild.runtimeconfig.json"), []byte(cfg), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	run := exec.Command(dotnet, "exec", app)
+	run := testproc.Command(t, dotnet, "exec", app)
 	run.Env, run.Dir = csDotnetEnv(dir, dir), dir
 	runOut, runErr := run.CombinedOutput()
 	code := 0

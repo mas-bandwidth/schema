@@ -25,7 +25,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -36,6 +35,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // javaBlobKindCase is one wire read at one root, with the engine's answer.
@@ -247,12 +248,12 @@ func runJavaBlobKind(t *testing.T, unitDir string, u *ir.Unit, cases []javaBlobK
 		}
 	}
 	compile := append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)
-	if out, err := exec.Command(javac, compile...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, compile...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, javaBin, "-ea", "-cp", classes, u.Package+".BlobKindProbe")
+	cmd := testproc.CommandContext(t, ctx, javaBin, "-ea", "-cp", classes, u.Package+".BlobKindProbe")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	return dir, string(out), err
