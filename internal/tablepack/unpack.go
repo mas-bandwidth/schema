@@ -416,7 +416,7 @@ func foldedIn(name string, written map[string]bool) bool {
 // of the right kind: "" and nil. An entry the filesystem takes for name but
 // spells differently — a case-insensitive filesystem keeps the old spelling
 // when a write lands on it — that names, under the folding that filesystem
-// applies, a value this level owns: its name, for claimEntry to remove. Any
+// applies, a value this level owns: its name, for claimEntry to rename (a directory, children and all) or remove (a value file). Any
 // other entry in the way names no field (§17.3) and is never deleted: the
 // unpack is refused by naming it, where it lies.
 func obstruction(out *os.Root, where, name string, dir bool, owned map[string]bool) (string, error) {
@@ -461,14 +461,35 @@ func obstruction(out *os.Root, where, name string, dir bool, owned map[string]bo
 
 // claimEntry makes name the one entry that answers to it before it is
 // written: an owned entry the filesystem takes for it under another spelling
-// is removed, so the name lands spelled as written (pack matches names
+// is renamed to it (a directory, keeping every child) or removed (a value
+// file), so the name lands spelled as written (pack matches names
 // exactly); anything else in the way refuses the unpack and stays.
 func claimEntry(out *os.Root, where, name string, dir bool, owned map[string]bool) error {
 	alias, err := obstruction(out, where, name, dir, owned)
 	if err != nil || alias == "" {
 		return err
 	}
-	return out.RemoveAll(alias)
+	if !dir {
+		// one owned value file, about to be written again
+		return out.Remove(alias)
+	}
+	// a directory may hold entries no schema owns (§17.3): it is renamed to
+	// the written spelling with every child in it, never removed. Through a
+	// temporary name, because a case-insensitive filesystem may take a
+	// rename between two spellings of one name as a rename onto itself.
+	tmp := ""
+	for i := 0; ; i++ {
+		tmp = fmt.Sprintf(".%s.unpack-rename-%d", name, i)
+		if _, err := out.Lstat(tmp); errors.Is(err, fs.ErrNotExist) {
+			break
+		} else if err != nil {
+			return err
+		}
+	}
+	if err := out.Rename(alias, tmp); err != nil {
+		return err
+	}
+	return out.Rename(tmp, name)
 }
 
 // preflight refuses, before anything is written, an entry that stands where
