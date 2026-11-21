@@ -45,15 +45,15 @@ func TestPinWritesAPathGoCanResolve(t *testing.T) {
 
 	// v2 to v3: the path moves to /v3 with the version, tails kept
 	p := writePinPkg(t, root, "major", pinPkg1)
-	run(t, bin, "pin", "v3.0.2", p)
-	want := strings.ReplaceAll(pinPkg1, pinDirective+"v2.5.0", pinDirectiveV3+"v3.0.2")
+	run(t, bin, "pin", "v3.0.3", p)
+	want := strings.ReplaceAll(pinPkg1, pinDirective+"v2.5.0", pinDirectiveV3+"v3.0.3")
 	if got := gen(p); got != want {
 		t.Errorf("v2 to v3 pin:\n%q\nwant\n%q", got, want)
 	}
 
 	// a pseudo-version takes its major's path the same way
-	run(t, bin, "pin", "v3.0.3-0.20261121000000-abcdef123456", p)
-	if got := gen(p); !strings.Contains(got, pinDirectiveV3+"v3.0.3-0.20261121000000-abcdef123456 generate --lang go --out .") {
+	run(t, bin, "pin", "v3.0.4-0.20261121000000-abcdef123456", p)
+	if got := gen(p); !strings.Contains(got, pinDirectiveV3+"v3.0.4-0.20261121000000-abcdef123456 generate --lang go --out .") {
 		t.Errorf("v3 pseudo-version pin: %q", got)
 	}
 
@@ -69,8 +69,8 @@ func TestPinWritesAPathGoCanResolve(t *testing.T) {
 		t.Errorf("v1 to v2 pin did not restore the original:\n%q", got)
 	}
 
-	// v3.0.0 and v3.0.1 carry a go.mod naming /v2: no path resolves them
-	for _, v := range []string{"v3.0.0", "v3.0.1"} {
+	// v3.0.0, v3.0.1 and v3.0.2 carry a go.mod naming /v2: no path resolves them
+	for _, v := range []string{"v3.0.0", "v3.0.1", "v3.0.2"} {
 		msg, status := runFail(t, bin, "pin", v, p)
 		if status != 1 {
 			t.Fatalf("pin %s exit %d, want 1\n%s", v, status, msg)

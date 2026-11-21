@@ -9,7 +9,7 @@ file changed; the line's module path moves to the one the version's major
 requires (`schema/vN` from v2 on). `--mixed-ok` may sit before or after the
 directories; it accepts a tree whose pins already differ and moves them
 together. The command refuses by name a version that is not a Go pseudo-version
-or semver tag, the tags v3.0.0 and v3.0.1 (which Go cannot resolve), a directory that
+or semver tag, the tags v3.0.0, v3.0.1 and v3.0.2 (which Go cannot resolve), a directory that
 does not exist or holds no pin line, and a mixed tree without `--mixed-ok`,
 exiting 1 without changing any file. See USAGE.md's Go adoption notes for the
 bump recipe.

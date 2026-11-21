@@ -3931,7 +3931,7 @@ schema pin v2.6.0 .
 The module path in the line moves with the version's major, as Go requires
 (`schema` for v0 and v1, `schema/vN` from v2 on), so one command moves a tree
 across a major. It refuses, by name, a version that is not a Go
-pseudo-version or semver tag, the tags v3.0.0 and v3.0.1 (their `go.mod`
+pseudo-version or semver tag, the tags v3.0.0, v3.0.1 and v3.0.2 (their `go.mod`
 names the `/v2` path, so Go resolves them under neither), a directory that does not exist or holds no pin line (an empty directory is
 the same refusal, never a silent success), and a tree whose pins already
 differ from each other (`--mixed-ok` accepts the tree and moves them

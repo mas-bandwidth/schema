@@ -34,6 +34,7 @@ var pinLine = regexp.MustCompile(`^` + regexp.QuoteMeta(pinDirectiveHead+pinModu
 var pinUnresolvable = map[string]bool{
 	"v3.0.0": true,
 	"v3.0.1": true,
+	"v3.0.2": true,
 }
 
 // pinModulePath is the module path Go requires for version: the base path for
