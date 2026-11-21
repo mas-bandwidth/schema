@@ -505,8 +505,9 @@ surface it does not run, remain informational in `run --claims`. The final
 every-target completion gate is stricter: those gaps fail completion, for
 every target, even when no individual feature was claimed. The per-port table
 shows the answered, failed, claimed-absent and not-carried cases per surface
-and class. The harness is built with every `schema_leg_<lang>` tag there, because
-a target behind a tag registers only under it, and a leg with no
+and class. Every shipped target is in the default build, so the harness admits all
+eighteen with no build tag; a new leg still behind its own
+`schema_leg_<name>` tag registers only under it, and a leg with no
 registration is refused rather than read as claiming nothing.
 
 ## The wire-fuzz driver

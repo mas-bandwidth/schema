@@ -76,13 +76,12 @@ func TestSpecGoUsageFirstHalfStaleStatus(t *testing.T) {
 	notHas("table kind `33`")
 
 	// defaults: every target carries string, bytes and flags defaults on the
-	// table wire, and every target but Python on the packet wire, where
-	// --lang python refuses a packet type that declares one
-	// (compiler/valuedefaults.go).
+	// table wire and on the packet wire, Python included
+	// (2026-11-21, docs/rulings.json every-target-default-build).
 	has("Every target carries all three\non the table wire")
-	hasFlat("every target but Python on the packet wire")
-	hasFlat("refuses a packet `type` that declares one")
-	hasFlat("the python form is a named follow-on")
+	hasFlat("Every target carries all three on the table wire and on the packet wire")
+	notHasFlat("every target but Python on the packet wire")
+	notHasFlat("the python form is a named follow-on")
 	notHas("C and Go carry them on the packet wire")
 	notHas("C++ and Go carry all three on")
 	notHasFlat("the other six targets refuse a unit declaring these defaults")

@@ -834,9 +834,7 @@ caps Caps = { Jump, Crouch }
 On the table wire a field holding its declared default is not written and
 an absent field reads as it, so with the lines above an EMPTY name rides,
 because absence would read back as "untitled". Every target carries all three
-on the table wire, and every target but Python on the packet wire:
-`--lang python` refuses a packet `type` that declares one ("packet-wire
-defaults are ... only today, and the python form is a named follow-on").
+on the table wire and on the packet wire.
 Packet defaults initialize storage and do not omit fields from the wire.
 In C, call the generated `new_<type>()` constructor to apply declared defaults;
 in Go, call `New<Type>()`. Zero-filled storage alone does not apply them.
@@ -4350,7 +4348,7 @@ c := compiler.New()
 if err := c.Register(docs{}); err != nil { // refuses a name a target already holds
 	return err
 }
-fmt.Println(c.Targets()) // [c cpp cs dart docs elixir go goose java js lobster lua luau python ruby rust squirrel unity]
+fmt.Println(c.Targets()) // [c cpp cs dart docs elixir go goose java js lobster lua luau moo python ruby rust squirrel unity]
 files, err := c.Generate(unit, "docs", nil)
 ```
 

@@ -569,7 +569,7 @@ A runner is a standalone program in `bench/<lang>/` that:
 - **elixir**: `bench/elixir/main.exs` — run from `bench/elixir` under the
   pinned BEAM toolchain PATH as `elixir main.exs --csv`
 - **goose**: `bench/goose/main.goose` — `run.sh` builds `build/schema-goose`
-  (the `schema_leg_goose` tag), generates `bench/corpus/Bench.schema` for
+  (a plain build: goose is a built-in target), generates `bench/corpus/Bench.schema` for
   Goose into `build/bench/goose-src` beside a copy of the runner, and builds
   it with the pinned compiler (`make dist-goose`, or `GOOSE`) as
   `goose build -O2` with the host C compiler; run from `bench/goose` as

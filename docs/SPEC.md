@@ -9,9 +9,8 @@ document disagree, one of them is a bug (see VERSIONING.md).
 **schema** is a small language for describing bitpacked network data, and a
 compiler — written in Go — that translates `*.schema` files into generated
 source code in C, C++, C# (modern), C# (unity), Dart, Elixir, Go, Goose, Java,
-JavaScript, Lobster, Lua, Luau, Moo, Python, Ruby, Rust and Squirrel. The
-default build leaves Moo out: `--lang moo` needs a compiler built with
-`-tags schema_leg_moo`. Fifteen of the eighteen targets read and write
+JavaScript, Lobster, Lua, Luau, Moo, Python, Ruby, Rust and Squirrel. Every
+target is in the default build. Fifteen of the eighteen targets read and write
 through a serialize-family runtime library; the other three, Dart, Elixir and
 Java, carry the bit reader and writer in the generated code itself and need
 nothing but their own toolchain:
@@ -765,9 +764,7 @@ FloatExpr   = float expression over float literals, int literals and const names
   absent field reads as it, whatever the kind (SPEC-TABLES.md §4), so the
   string, bytes and flags defaults are part of that wire's contract exactly
   as a scalar's is. Every built-in backend carries all three on the table
-  wire, and every one but Python carries them on the packet wire too. Python
-  refuses by name a unit whose string, bytes or flags default is reachable
-  only from packets: on the packet wire the python form is a named follow-on.
+  wire and on the packet wire.
   **On the packet wire, defaults initialize storage without eliding fields.**
   A selected union payload starts at these construction values before its
   fields are decoded (§4.8). The ordinary field encodings still apply,
@@ -3142,9 +3139,8 @@ table wire and are specified in SPEC-TABLES.md, because one binary reads one
 set of declarations and both wires are declared in it.
 
 `--lang cs` and `--lang unity` are the two C# generators, C# (modern) and
-C# (unity). The `moo` target is compiled into the binary only by a build with
-`-tags schema_leg_moo` (PORT-MOO.md); a binary built without the tag refuses
-`--lang moo` by name.
+C# (unity). Every target, `moo` included (PORT-MOO.md), is compiled into the
+default build.
 
 Success is silent. Commands whose printed output is their answer (`id`,
 `projection`, `build-version`, `version`) print it; everything else prints

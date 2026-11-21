@@ -59,10 +59,9 @@ flipped byte in variant 3 and requires each red by its own message.
 `test/conformance/nightly-readiness python` runs the leg's acceptance in the
 shape Goose and Moo run theirs (`test/conformance/nightly-readiness.md`,
 "Python"): `implementation --lang python` through
-`build/conformance-harness-python`, the harness built with
-`schema_leg_python` (`make/python-ci-release.mk`; the untagged harness refuses
-the name); the `python`, `pythontable` and `lockfile` packages whole under
-`SCHEMA_SLOW` and the tag; the packet probes under both pins; the defaults,
+`build/conformance-harness-python`, a plain build of the harness
+(`make/python-ci-release.mk`; python is a built-in target); the `python`,
+`pythontable` and `lockfile` packages whole under `SCHEMA_SLOW`; the packet probes under both pins; the defaults,
 UTF-8 and finite packet gates; the fixed writer's lineage, the message form
 against the C++ reference and the bench leg's gate, each with its control; the
 wire fuzz over `build/conformance-python` under the current pin, plain and

@@ -300,9 +300,8 @@ cost with no buyer. See
 **That is the promise, and [ROADMAP.md](../ROADMAP.md) tracks it feature by
 feature.** Schema generates C, C++, C# (modern), C# (unity), Dart, Elixir, Go,
 Goose, Java, JavaScript, Lobster, Lua, Luau, Moo, Python, Ruby, Rust and
-Squirrel, all from one IR: eighteen targets, seventeen languages. The default
-build leaves Moo out: `--lang moo` needs a compiler built with
-`-tags schema_leg_moo`. The roadmap
+Squirrel, all from one IR: eighteen targets, seventeen languages, every one
+in the default build. The roadmap
 has one column per language for the packet wire, fixed tables and variable
 tables, and a feature is ticked only when that language carries it.
 

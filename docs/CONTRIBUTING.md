@@ -39,8 +39,7 @@ bit-packed serialization code in C, C++, C# (modern), C# (unity), Dart,
 Elixir, Go, Goose, Java, JavaScript, Lobster, Lua, Luau, Moo, Python, Ruby,
 Rust and Squirrel: eighteen targets, seventeen languages, since the two C#
 generators are one language (internal/languages derives that list; its test
-holds this page to it). The default build leaves Moo out: `--lang moo` needs
-a compiler built with `-tags schema_leg_moo`. The
+holds this page to it). Every target is in the default build. The
 compiler is Go (`cmd/` + `internal/`, public
 API `compiler/` and `ir/`). The compiler is AGPL-3.0; **the code it generates is
 yours**, by an explicit permanent grant in [LICENSE](../LICENSE).

@@ -215,9 +215,7 @@ Your constants are there as real `constexpr` values, so the bound you declared
 is the bound your C++ compares against with no second copy to drift. Run the
 same command with `--lang go`, `--lang cs`, `--lang rust`, or `c`, `unity`,
 `dart`, `elixir`, `goose`, `java`, `js`, `lobster`, `lua`, `luau`, `moo`,
-`python`, `ruby`, `squirrel`, and the same constants land in that language
-(`moo` needs a compiler built with `-tags schema_leg_moo`; the default build
-refuses it by name).
+`python`, `ruby`, `squirrel`, and the same constants land in that language.
 
 Note that `TickInterval` arrives as `0.016666666666666666` and not as
 `1.0 / TickRate`. A constant's own expression is folded at generation, so a
@@ -2807,11 +2805,8 @@ wrote gengo/ToolsCook.go
 wrote gengo/ToolsTable.go
 ```
 
-The `starlight` unit itself generates for sixteen of the eighteen targets in a
-default build. The two lines that are not `ok` are the tool's own refusals:
-`moo` is not in a default build (it needs a compiler built with
-`-tags schema_leg_moo`), and Python does not carry `PacketHeader`'s `const`
-in a unit that declares tables yet:
+The `starlight` unit itself generates for all eighteen targets in a default
+build:
 
 ```
 $ cd .. && for l in c cpp cs dart elixir go goose java js lobster lua luau moo python ruby rust squirrel unity; do printf "%-8s " $l; schema generate --lang $l --out /tmp/g-$l . && echo ok; done
@@ -2827,8 +2822,8 @@ js       ok
 lobster  ok
 lua      ok
 luau     ok
-moo      schema: target "moo" is not implemented — c, cpp, cs, dart, elixir, go, goose, java, js, lobster, lua, luau, python, ruby, rust, squirrel and unity are the live targets
-python   schema: python: PacketHeader uses the packet kind const, which the Python packet wire does not carry yet (docs/PORT-PYTHON.md, THE CARD MAP: P4 the packet wire)
+moo      ok
+python   ok
 ruby     ok
 rust     ok
 squirrel ok
@@ -2931,8 +2926,8 @@ Resist reaching for `*T` to mean "optional". That is `?T`, with no allocation
 and still fixed size. A pointer is for structure: recursion, sharing, a subtree
 you would rather not carry by value.
 
-Pointers cost the `starlight` unit none of its backends. The same two lines
-refuse as in Part 7, for the same reasons, and every other target generates:
+Pointers cost the `starlight` unit none of its backends. Every target still
+generates, as in Part 7:
 
 ```
 $ for l in c cpp cs dart elixir go goose java js lobster lua luau moo python ruby rust squirrel unity; do printf "%-8s " $l; schema generate --lang $l --out /tmp/g-$l . && echo ok; done
@@ -2948,8 +2943,8 @@ js       ok
 lobster  ok
 lua      ok
 luau     ok
-moo      schema: target "moo" is not implemented — c, cpp, cs, dart, elixir, go, goose, java, js, lobster, lua, luau, python, ruby, rust, squirrel and unity are the live targets
-python   schema: python: PacketHeader uses the packet kind const, which the Python packet wire does not carry yet (docs/PORT-PYTHON.md, THE CARD MAP: P4 the packet wire)
+moo      ok
+python   ok
 ruby     ok
 rust     ok
 squirrel ok
@@ -4279,8 +4274,8 @@ table RenderFrame
 
 Nothing there is new: ordinary bounded arrays of ordinary fixed tables, and
 `RenderFrame` still has `Measure`, `Save`, `Load` and a cook like any table.
-Adding three tables passes the baseline, and the unit generates as it did in
-Part 7, the same two refusals included:
+Adding three tables passes the baseline, and the unit generates for every
+target as it did in Part 7:
 
 ```
 $ schema check .
@@ -4299,8 +4294,8 @@ js       ok
 lobster  ok
 lua      ok
 luau     ok
-moo      schema: target "moo" is not implemented — c, cpp, cs, dart, elixir, go, goose, java, js, lobster, lua, luau, python, ruby, rust, squirrel and unity are the live targets
-python   schema: python: PacketHeader uses the packet kind const, which the Python packet wire does not carry yet (docs/PORT-PYTHON.md, THE CARD MAP: P4 the packet wire)
+moo      ok
+python   ok
 ruby     ok
 rust     ok
 squirrel ok

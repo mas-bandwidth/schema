@@ -85,10 +85,10 @@ rejected; only the retaining arm may report seeds outside its retention domain.
 
 ## Goose
 
-Goose is behind the `schema_leg_goose` build tag. Its prerequisites fetch and
-probe the pinned compiler (`goose-toolchain-ready`) and build
-`build/conformance-harness-goose`, the harness with the tag, which runs the
-implementation phase; every other harness phase uses the ordinary harness.
+Goose is a built-in target. Its prerequisites fetch and probe the pinned
+compiler (`goose-toolchain-ready`) and build
+`build/conformance-harness-goose`, a plain build of the harness, which runs
+the implementation phase; every other harness phase uses the ordinary harness.
 The packet programs are `test/goose/main.goose` and
 `test/goose-ludicrous/main.goose` beside their generated modules and the wire
 goldens (`build/goose-packet/.stamp`); each prints `OK` under both modes.
@@ -112,10 +112,10 @@ uncapped and require them to pass. Goose has no §5.6 retirement; any
 
 ## Moo
 
-Moo is behind the `schema_leg_moo` build tag. Its prerequisites build and
-probe the pinned interpreter and analyzer (`moo-toolchain-ready`, which runs
-`dist-moo` when either is missing) and build `build/conformance-harness-moo`,
-the harness with the tag, which runs the implementation phase; every other
+Moo is a built-in target. Its prerequisites build and probe the pinned
+interpreter and analyzer (`moo-toolchain-ready`, which runs `dist-moo` when
+either is missing) and build `build/conformance-harness-moo`, a plain build
+of the harness, which runs the implementation phase; every other
 harness phase uses the ordinary harness.
 
 The moo CLI has no io, so Moo has no packet program on disk. Its packet
@@ -144,13 +144,12 @@ has no §5.6 retirement; any `RETIRED` or `SKIP` marker is incomplete.
 
 ## Python
 
-Python's gates run under the `schema_leg_python` build tag (`make
-test-python`'s `python-ci-packages` among them), so every Go test phase of
-this run (the native packages, the packet probes and the retention controls)
-passes `-tags schema_leg_python`. Its prerequisites build and probe the pinned
-interpreters and analyzer (`dist-python`, `python-toolchain-check`) and build
-`build/conformance-harness-python`, the harness with the tag, the only build
-that admits `implementation --lang python`; every other harness phase uses the
+Python is a built-in target, so every Go test phase of this run (the native
+packages, the packet probes and the retention controls) runs with no build
+tag. Its prerequisites build and probe the pinned interpreters and analyzer
+(`dist-python`, `python-toolchain-check`) and build
+`build/conformance-harness-python`, a plain build of the harness, which runs
+the implementation phase; every other harness phase uses the
 ordinary harness.
 
 Python's packet programs are internal/codegen/python's probes, each running
