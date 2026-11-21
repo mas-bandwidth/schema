@@ -1478,6 +1478,10 @@ jobs:
         if: matrix.group == 'versioning-conformance-b'
         run: make conformance-go-rows-b
 
+      - name: the Go conformance driver's own unit tests (F-100, F-101)
+        if: matrix.group == 'versioning-conformance-b'
+        run: make conformance-go-driver-unit
+
       # THE FIXED FORM'S VERSIONING SUITE (§5 of docs/FIXED-FORM-ALGORITHM.md),
       # which the step above does NOT run. Its harness reads the C++
       # reference's byte oracle out of build/fixedform-corpus and SKIPS itself

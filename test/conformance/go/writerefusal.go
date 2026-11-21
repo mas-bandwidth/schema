@@ -11,6 +11,7 @@ package main
 
 import (
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -61,7 +62,7 @@ func surfaceWriteRefusal(surface string, lines []line, out string) error {
 			return fmt.Errorf("%s: load refused %s", name, wirePath)
 		}
 		if err := mutateWriteRefusalGo(value, path, kind, text); err != nil {
-			if err == errWriteRefusalUnrepresentable {
+			if errors.Is(err, errWriteRefusalUnrepresentable) {
 				if err := spill(out, name, []byte("unrepresentable\n")); err != nil {
 					return err
 				}
