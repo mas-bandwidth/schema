@@ -186,7 +186,12 @@ jobs:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
     outputs:
-      packages: ${{ steps.pick.outputs.packages }}
+      # the finalized selection the go test rows test (gotestrows -packages-out):
+      # go-test-touched is gated on it, never on the pick step's own list, which
+      # an embed-only diff leaves empty while its owner is selected
+      packages: ${{ steps.rows.outputs.packages }}
+      # the diff's own Go packages, what golangci-lint-fast lints
+      lint_packages: ${{ steps.pick.outputs.packages }}
       legs: ${{ steps.pick.outputs.legs }}
       verify_legs: ${{ steps.pick.outputs.verify_legs }}
       clean_legs: ${{ steps.pick.outputs.clean_legs }}
@@ -591,7 +596,6 @@ jobs:
       # a row with no edit. gotable adds the two make rows below.
       - name: the go test rows
         id: rows
-        if: steps.pick.outputs.packages != ''
         env:
           PACKAGES: ${{ steps.pick.outputs.packages }}
           SRC_PACKAGES: ${{ steps.pick.outputs.src_packages }}
@@ -607,9 +611,11 @@ jobs:
           # own packages (THE DEPENDENTS in `pick`), and so do the dependents of a
           # package that embeds a changed non-.go file (a runtime-only diff)
           # shellcheck disable=SC2086
-          rows=$(go run ./tools/gotestrows $flags -dependents-of "$SRC_PACKAGES" -changed-files "$RUNNER_TEMP/diff-files.txt" $PACKAGES)
+          rows=$(go run ./tools/gotestrows $flags -dependents-of "$SRC_PACKAGES" -changed-files "$RUNNER_TEMP/diff-files.txt" -packages-out "$RUNNER_TEMP/selected-packages.txt" $PACKAGES)
           echo "$rows"
           echo "rows=$rows" >> "$GITHUB_OUTPUT"
+          echo "packages=$(cat "$RUNNER_TEMP/selected-packages.txt")" >> "$GITHUB_OUTPUT"
+          echo "* go test selection (packages, embed owners, dependents): \`$(cat "$RUNNER_TEMP/selected-packages.txt")\`" >> "$GITHUB_STEP_SUMMARY"
 
   # THE CHEAP LINTS, the ones that answer in seconds and catch the mistake a
   # human would otherwise find by reading. modernize runs here too (issue
@@ -784,7 +790,7 @@ jobs:
   # packages right on the PR instead of waiting for ci-full.yml's lint job.
   golangci-lint-fast:
     needs: plan
-    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.packages != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.lint_packages != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
     defaults:
@@ -805,11 +811,11 @@ jobs:
         with:
           version: v2.12.2
           skip-cache: true
-          args: --allow-parallel-runners ${{ needs.plan.outputs.packages }}
+          args: --allow-parallel-runners ${{ needs.plan.outputs.lint_packages }}
       - name: golangci-lint on touched Go packages
         if: runner.environment != 'github-hosted'
         env:
-          PACKAGES: ${{ needs.plan.outputs.packages }}
+          PACKAGES: ${{ needs.plan.outputs.lint_packages }}
         run: |
           set -euo pipefail
           if [ -f /opt/nova/sdk/env.sh ]; then
