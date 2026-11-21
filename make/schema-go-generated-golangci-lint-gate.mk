@@ -134,9 +134,91 @@ schema-go-generated-golangci-lint-gate: schema-go-generated-golangci-lint-gate-p
 	$(call golangci_gate_count,$(GOLANGCI_GATE_DIR)/example,example)
 	$(call golangci_gate_count,$(GOLANGCI_GATE_DIR)/ludicrous,ludicrous)
 	@$(MAKE) --no-print-directory schema-go-generated-golangci-lint-gate-ratchet
+	@$(MAKE) --no-print-directory schema-go-generated-golangci-lint-gate-classes
 	$(call golangci_gate_module_tests,$(GOLANGCI_GATE_DIR)/example)
 	$(call golangci_gate_module_tests,$(GOLANGCI_GATE_DIR)/ludicrous)
 	@echo "schema Go generated golangci-lint gate: errcheck, gosec, ineffassign, go vet and -race within the ratchet on the packet corpus"
+
+# THE CLASSES CORPUS (testdata/golangci-lint-classes, PR #4515, F-210): one
+# packet schema and one table schema that reach every class of finding the
+# ratchet was lowered for (errcheck in flat packet runs, G115 same-width signed
+# lanes and narrowing reads, G103 region and overlay access). It is generated
+# with bin/schema, linted per module with the gate's config, counted per
+# generated FILE and held to lint.ratchet.tsv beside it, so each corrected class
+# is tied to an input the gate exercises; a few seconds, inside the fast gate.
+# internal/goldens TestGolangciLintClassesShapes holds the emitted shape of the
+# same files without the linter.
+GOLANGCI_GATE_CLASSES := testdata/golangci-lint-classes
+GOLANGCI_GATE_CLASSES_DIR := $(GOLANGCI_GATE_DIR)/classes
+GOLANGCI_GATE_CLASSES_STAMP := $(GOLANGCI_GATE_CLASSES_DIR)/.stamp
+
+$(GOLANGCI_GATE_CLASSES_STAMP): bin/schema $(wildcard $(GOLANGCI_GATE_CLASSES)/*/*.schema) $(SERIALIZE_GO_RUNTIME)/go.mod make/schema-go-generated-golangci-lint-gate.mk
+	@rm -rf $(GOLANGCI_GATE_CLASSES_DIR)
+	@mkdir -p $(GOLANGCI_GATE_CLASSES_DIR)/packet $(GOLANGCI_GATE_CLASSES_DIR)/tables
+	./bin/schema generate --lang go --out $(GOLANGCI_GATE_CLASSES_DIR)/packet $(GOLANGCI_GATE_CLASSES)/packet
+	./bin/schema generate --lang go --out $(GOLANGCI_GATE_CLASSES_DIR)/tables $(GOLANGCI_GATE_CLASSES)/tables
+	@printf 'module lintflat\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => %s\n' "$(GOLANGCI_GATE_RUNTIME)" > $(GOLANGCI_GATE_CLASSES_DIR)/packet/go.mod
+	@printf 'module lintlanes\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace github.com/mas-bandwidth/schema/v2 => %s\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => %s\n' "$(CURDIR)" "$(GOLANGCI_GATE_RUNTIME)" > $(GOLANGCI_GATE_CLASSES_DIR)/tables/go.mod
+	@touch $@
+
+# golangci_gate_count_files DIR CORPUS LOG ACTUAL: lint one generated module
+# into LOG and append its findings to ACTUAL, one row per generated file and
+# linter (gosec per G-rule), keyed CORPUS/<file>. Exit 1 is "findings exist";
+# any other status is a hard error, never folded into a count.
+define golangci_gate_count_files
+	@cd $(1) && GOLANGCI_LINT_CACHE="$(GOLANGCI_GATE_CACHE)" $(GOLANGCI_LINT) run --allow-parallel-runners --config "$(CURDIR)/$(GOLANGCI_GATE_CONFIG)" \
+		--output.text.colors=false --output.text.print-issued-lines=false ./... \
+		> "$(CURDIR)/$(3)" 2>&1; \
+		rc=$$?; if [ $$rc -gt 1 ]; then cat "$(CURDIR)/$(3)"; exit $$rc; fi
+	@awk -v corpus="$(2)" '\
+		/\([a-z]+\)$$/ { \
+			f=$$0; sub(/:.*/,"",f); sub(/.*\//,"",f); \
+			n=$$0; sub(/.*\(/,"",n); sub(/\)$$/,"",n); \
+			r="-"; if (n=="gosec" && match($$0,/G[0-9][0-9][0-9]/)) r=substr($$0,RSTART,RLENGTH); \
+			c[corpus "/" f "\t" n "\t" r]++ \
+		} \
+		END { for(k in c) print k "\t" c[k] }' \
+		"$(CURDIR)/$(3)" >> "$(CURDIR)/$(4)"
+endef
+
+.PHONY: schema-go-generated-golangci-lint-gate-classes
+schema-go-generated-golangci-lint-gate-classes: schema-go-generated-golangci-lint-gate-probe $(GOLANGCI_GATE_CONFIG) $(GOLANGCI_GATE_CLASSES_STAMP)
+	@: > $(GOLANGCI_GATE_DIR)/classes.actual.tsv
+	$(call golangci_gate_count_files,$(GOLANGCI_GATE_CLASSES_DIR)/packet,packet,$(GOLANGCI_GATE_DIR)/classes-packet.lint.log,$(GOLANGCI_GATE_DIR)/classes.actual.tsv)
+	$(call golangci_gate_count_files,$(GOLANGCI_GATE_CLASSES_DIR)/tables,tables,$(GOLANGCI_GATE_DIR)/classes-tables.lint.log,$(GOLANGCI_GATE_DIR)/classes.actual.tsv)
+	@$(MAKE) --no-print-directory schema-go-generated-golangci-lint-gate-ratchet \
+		GOLANGCI_GATE_RATCHET=$(GOLANGCI_GATE_CLASSES)/lint.ratchet.tsv \
+		GOLANGCI_GATE_ACTUAL=$(GOLANGCI_GATE_DIR)/classes.actual.tsv
+	@echo "schema Go generated golangci-lint gate: the classes corpus (errcheck flat runs, G115 lanes and narrowing, G103 region and overlay) within its per-file pins"
+
+# THE CLASSES NEGATIVE CONTROL. A copy of the generated classes corpus gets the
+# shape each class had before #4515 put back, one plant per class: the flat
+# run's 32-bit chunk calls stream.SerializeBits bare (errcheck), the 32-bit
+# signed read goes back to int32(r.Get32()) (G115), and the fixed form's reset
+# image overlays through unsafe.Pointer again (G103). The per-file ratchet must
+# go red naming each planted file, linter and rule; the unplanted corpus is the
+# green the classes target above already holds.
+.PHONY: schema-go-generated-golangci-lint-gate-classes-negative-control
+schema-go-generated-golangci-lint-gate-classes-negative-control: schema-go-generated-golangci-lint-gate-classes
+	@rm -rf $(GOLANGCI_GATE_DIR)/classes-plant && cp -R $(GOLANGCI_GATE_CLASSES_DIR) $(GOLANGCI_GATE_DIR)/classes-plant
+	@sed -i.orig -E 's/^([[:space:]]*)_ = stream\.SerializeBits\(&/\1stream.SerializeBits(\&/' $(GOLANGCI_GATE_DIR)/classes-plant/packet/Flat.go
+	@sed -i.orig -E 's/v := r\.getI32\(\)/v := int32(r.Get32())/; s/return tableFixedOverlayOf\(&def\)/return tableFixedOverlay(unsafe.Pointer(\&def), unsafe.Sizeof(def))/' $(GOLANGCI_GATE_DIR)/classes-plant/tables/LanesTable.go
+	@rm -f $(GOLANGCI_GATE_DIR)/classes-plant/packet/Flat.go.orig $(GOLANGCI_GATE_DIR)/classes-plant/tables/LanesTable.go.orig
+	@for p in 'stream.SerializeBits(&' 'int32(r.Get32())' 'tableFixedOverlay(unsafe.Pointer(&def)'; do \
+		grep -rqF "$$p" $(GOLANGCI_GATE_DIR)/classes-plant || { echo "NEGATIVE CONTROL FAILED: the plant $$p did not land"; exit 1; }; done
+	@: > $(GOLANGCI_GATE_DIR)/classes-plant.actual.tsv
+	$(call golangci_gate_count_files,$(GOLANGCI_GATE_DIR)/classes-plant/packet,packet,$(GOLANGCI_GATE_DIR)/classes-plant-packet.lint.log,$(GOLANGCI_GATE_DIR)/classes-plant.actual.tsv)
+	$(call golangci_gate_count_files,$(GOLANGCI_GATE_DIR)/classes-plant/tables,tables,$(GOLANGCI_GATE_DIR)/classes-plant-tables.lint.log,$(GOLANGCI_GATE_DIR)/classes-plant.actual.tsv)
+	@if $(MAKE) --no-print-directory schema-go-generated-golangci-lint-gate-ratchet \
+		GOLANGCI_GATE_RATCHET=$(GOLANGCI_GATE_CLASSES)/lint.ratchet.tsv \
+		GOLANGCI_GATE_ACTUAL=$(GOLANGCI_GATE_DIR)/classes-plant.actual.tsv > $(GOLANGCI_GATE_DIR)/classes-plant.ratchet.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the classes ratchet stayed green on the planted shapes"; \
+		cat $(GOLANGCI_GATE_DIR)/classes-plant.ratchet.log; exit 1; fi
+	@cat $(GOLANGCI_GATE_DIR)/classes-plant.ratchet.log
+	@for k in 'packet/Flat.go: errcheck rule -' 'tables/LanesTable.go: gosec rule G115' 'tables/LanesTable.go: gosec rule G103'; do \
+		grep -qF "$$k" $(GOLANGCI_GATE_DIR)/classes-plant.ratchet.log || { \
+			echo "NEGATIVE CONTROL FAILED: the classes ratchet did not name $$k"; exit 1; }; done
+	@echo "schema Go generated golangci-lint classes negative control: each planted class is red and named, the unplanted corpus is green"
 
 # Nightly measurement: the table corpus. Its units are separate modules and the
 # shared runtime is imported from this checkout, so each module is wired to the
