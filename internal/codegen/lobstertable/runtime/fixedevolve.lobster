@@ -605,8 +605,9 @@ class tableFixedCompiler:
 // and the lane refuses the whole load kind_mismatch (strict-only-read; no
 // counter moves).
 def fixed_census_kind_mismatch(c:tableFixedCompiler):
-    if c.report and c.report.reason == "":
-        c.report.reason = TableRefuseKindMismatch
+    if c.report:
+        if c.report.reason == "":
+            c.report.reason = TableRefuseKindMismatch
 
 def fixed_lay_guards(c:tableFixedCompiler, links:[TableFixedGuardLink]) -> int:
     let bytes = 16 * length(links)
