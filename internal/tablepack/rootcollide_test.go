@@ -196,6 +196,46 @@ func TestUnpackNeverDeletesAnEntryNamingNoField(t *testing.T) {
 	}
 }
 
+// An existing keyed directory spelled in another case (`Scores/` where the
+// field writes `scores/`) may hold an entry no schema owns beside the variant
+// files. Where the filesystem folds case, that directory IS the field's: it is
+// renamed to the written spelling with every child in it, and the variants are
+// written into it. Where it does not, it is another entry and stays as it is.
+// The unrelated child survives either way.
+func TestUnpackKeepsTheChildrenOfAKeyedDirectorySpelledOtherwise(t *testing.T) {
+	folds := foldsCase(t)
+	const schema = "package probe\nenum Team { Red, Blue }\ntable Player { level int32\n scores [Team]int32 }\n"
+	out := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(out, "Scores"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range map[string]string{"Scores/notes.txt": "mine\n", "Scores/Red.json": "9\n"} {
+		if err := os.WriteFile(filepath.Join(out, name), []byte(data), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c, u, save := packText(t, schema, `{"level": 7, "scores": {"Red": 1, "Blue": 2}}`)
+	if _, err := c.Unpack(u, "Player", save, out); err != nil {
+		t.Fatalf("expanded unpack: %v", err)
+	}
+	keeper, want, wantKeyed := "Scores", "Scores level.json scores", "Blue.json Red.json"
+	if folds {
+		keeper, want, wantKeyed = "scores", "level.json scores", "Blue.json Red.json notes.txt"
+	}
+	if got := entries(t, out); got != want {
+		t.Fatalf("the destination holds %q, want %q", got, want)
+	}
+	if got := entries(t, filepath.Join(out, "scores")); got != wantKeyed {
+		t.Fatalf("scores/ holds %q, want %q", got, wantKeyed)
+	}
+	if got, err := os.ReadFile(filepath.Join(out, keeper, "notes.txt")); err != nil || string(got) != "mine\n" {
+		t.Fatalf("the unrelated child did not survive: %q %v", got, err)
+	}
+	if got, err := os.ReadFile(filepath.Join(out, "scores", "Red.json")); err != nil || strings.TrimSpace(string(got)) != "1" {
+		t.Fatalf("scores/Red.json holds %q (%v), want the save's 1", got, err)
+	}
+}
+
 // foldsCase reports whether the test's temporary filesystem folds case, as
 // APFS does by default and ext4 does not.
 func foldsCase(t *testing.T) bool {
