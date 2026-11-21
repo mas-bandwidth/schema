@@ -2,7 +2,6 @@ package darttable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -10,6 +9,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestWireMeasureCountsNodeRecordsDart pins the Dart <root>WireMeasure against
@@ -122,7 +123,7 @@ void main(List<String> args) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dartBinary(t), "probe.dart", oracleAbs)
+	cmd := testproc.Command(t, dartBinary(t), "probe.dart", oracleAbs)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

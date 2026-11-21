@@ -8,10 +8,11 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestJavaScriptTextTotalTailConstruct(t *testing.T) {
@@ -46,7 +47,7 @@ func TestJavaScriptTextTotalTailConstruct(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("go", "test", "-count=1", "-timeout=0", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", "-timeout=0", ".")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("Go tail oracle: %v\n%s", err, out)

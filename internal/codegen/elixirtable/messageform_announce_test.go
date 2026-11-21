@@ -31,7 +31,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -42,6 +41,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestMessageFormAnnounceElixir(t *testing.T) {
@@ -390,7 +391,7 @@ Probe.run()
 	if err := os.WriteFile(filepath.Join(dir, "probe.exs"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(elixirBin, "-r", TableMessageModule+".ex", "probe.exs")
+	cmd := testproc.Command(t, elixirBin, "-r", TableMessageModule+".ex", "probe.exs")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	out, err := cmd.CombinedOutput()

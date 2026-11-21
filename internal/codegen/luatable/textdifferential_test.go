@@ -24,7 +24,6 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -34,6 +33,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablepack"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const luaTextDifferentialSchema = `package textdiff
@@ -275,10 +276,10 @@ func compareLuaTextDifferential(m *tabletext.Model, dir string, n int) ([]string
 
 // luaFuzzCommand is the pinned interpreter running main.lua in dir with its
 // arguments, with the whole of package.path luarun.Run gives a probe.
-func luaFuzzCommand(t *testing.T, dir string, args ...string) *exec.Cmd {
+func luaFuzzCommand(t *testing.T, dir string, args ...string) *testproc.Cmd {
 	t.Helper()
 	slowtest.Gate(t, luaTextDifferentialCost)
-	cmd := exec.Command(luarun.Interpreter(t), append([]string{"main.lua"}, args...)...)
+	cmd := testproc.Command(t, luarun.Interpreter(t), append([]string{"main.lua"}, args...)...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "LUA_PATH="+filepath.Join(dir, "?.lua")+";;", "LUA_INIT=")
 	return cmd

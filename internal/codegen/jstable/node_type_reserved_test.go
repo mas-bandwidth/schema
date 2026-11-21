@@ -3,7 +3,6 @@ package jstable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -11,6 +10,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestNodeRecordReservedTypeRefusedJavaScript holds the JavaScript leg's
@@ -94,7 +95,7 @@ console.log("JS retain loaded=" + (rv !== null) + "|malformed=" + rrep.damaged);
 			if err := os.WriteFile(script, []byte(src), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			cmd := exec.Command(node, script)
+			cmd := testproc.Command(t, node, script)
 			cmd.Dir = work
 			out, err := cmd.CombinedOutput()
 			if err != nil {

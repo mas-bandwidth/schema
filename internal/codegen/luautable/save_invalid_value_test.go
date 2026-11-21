@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -17,6 +16,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const variableSaveChecksSchema = `package probe
@@ -143,7 +144,7 @@ func TestVariableSaveOracle(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("go", "test", "-count=1", "-run", "^TestVariableSaveOracle$", "-v", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", "-run", "^TestVariableSaveOracle$", "-v", ".")
 	cmd.Dir = goDir
 	goOut, err := cmd.CombinedOutput()
 	if err != nil {

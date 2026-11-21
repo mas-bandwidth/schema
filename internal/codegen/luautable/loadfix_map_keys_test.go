@@ -13,7 +13,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -25,6 +24,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // loadFixDCounts is the report's six counters, a comparable tuple.
@@ -219,7 +220,7 @@ func loadFixDRunWireFuzz(t *testing.T, g *generatedUnit, rootName string, wire [
 	if luau == "" {
 		t.Fatalf("luaurun: the Luau interpreter does not resolve: %s", why)
 	}
-	cmd := exec.Command(luau, "main.luau")
+	cmd := testproc.Command(t, luau, "main.luau")
 	cmd.Dir = g.dir
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr

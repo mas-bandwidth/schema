@@ -2,12 +2,13 @@ package jstable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJsFixedSaveRefusesOffContract holds the fixed-form writer to docs/SPEC.md
@@ -38,7 +39,7 @@ func TestJsFixedSaveRefusesOffContract(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "probe.mjs"), []byte(jsFixedSaveOffContractProbe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, filepath.Join(dir, "probe.mjs"))
+	cmd := testproc.Command(t, node, filepath.Join(dir, "probe.mjs"))
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	var fails []string

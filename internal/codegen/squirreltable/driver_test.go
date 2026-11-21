@@ -3,13 +3,14 @@ package squirreltable_test
 import (
 	"bytes"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // knownSurfaces is every surface test/conformance/README.md names. A driver
@@ -41,7 +42,7 @@ func TestSquirrelDriverListsItsSurfaces(t *testing.T) {
 	sq := sqrun.Require(t)
 	manifest := filepath.Join(root, "testdata", "conformance", "tables", "MANIFEST.txt")
 	driver := filepath.Join(root, "test", "conformance", "squirrel", "driver")
-	cmd := exec.Command(driver, manifest, "list")
+	cmd := testproc.Command(t, driver, manifest, "list")
 	cmd.Dir = root
 	cmd.Env = append(os.Environ(), "SQ="+sq)
 	var stdout, stderr bytes.Buffer

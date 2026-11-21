@@ -17,7 +17,6 @@ import (
 	"maps"
 	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -26,6 +25,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // mooFixedValueCase is one value row: the schema, the root and its body size,
@@ -1231,11 +1232,11 @@ int main( int argc, char ** argv )
 	if cxx == "" {
 		cxx = "c++"
 	}
-	if out, err := exec.Command(cxx, "-std=c++17", "-O1", "-I"+dir, "-I"+serDir, probeCpp, "-o", probeBin).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, "-std=c++17", "-O1", "-I"+dir, "-I"+serDir, probeCpp, "-o", probeBin).CombinedOutput(); err != nil {
 		t.Fatalf("%s: the C++ reference does not compile: %v\n%s", id, err, out)
 	}
 	cppBin := filepath.Join(dir, "cpp.bin")
-	if out, err := exec.Command(probeBin, "save", cppBin).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, probeBin, "save", cppBin).CombinedOutput(); err != nil {
 		t.Fatalf("%s: the C++ reference's save failed: %v\n%s", id, err, out)
 	}
 	cppBytes, err := os.ReadFile(cppBin)
@@ -1247,7 +1248,7 @@ int main( int argc, char ** argv )
 		if err := os.WriteFile(candPath, cand, 0o600); err != nil {
 			return err
 		}
-		out, err := exec.Command(probeBin, "verify", candPath).CombinedOutput()
+		out, err := testproc.Command(t, probeBin, "verify", candPath).CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
 		}

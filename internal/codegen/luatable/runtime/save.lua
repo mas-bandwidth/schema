@@ -193,7 +193,7 @@ local function at_default(fd, v)
       else
         if e1 == nil then e1 = def end
         if es == "float" then
-          if not same_float(e.f32, e1, def) then return false end
+          if not same_float(e.f32, D.cf(e, e1), def) then return false end
         elseif es == "wide" then
           if type(e1) == "table" and (e1.lo ~= 0 or e1.hi ~= 0) then return false end
         elseif e1 ~= def then
@@ -218,7 +218,7 @@ local function at_default(fd, v)
   end
   -- A PLAIN FLOAT COMPARES BY ITS BIT PATTERN (§3.3, "-0 IS A VALUE, AND IT
   -- RIDES"), at its own width: -0 under a +0 default rides.
-  if s == "float" then return same_float(fd.f32, x, fd.default) end
+  if s == "float" then return same_float(fd.f32, D.cf(fd, x), D.cf(fd, fd.default)) end
   return x == fd.default
 end
 
@@ -260,6 +260,7 @@ local function write_keyed_one(T, ids, nodes, e, val, w)
   elseif s == "float" then
     if val == nil then val = 0.0 end
     -- A KEYED SLOT ELIDES BY THE SAME BIT COMPARE (§3.3): a -0 slot rides.
+    val = D.cf(e, val)
     if same_float(e.f32, val, 0.0) then return true, false end
     if not w_float(w, e.f32, val) then return false end
   elseif s == "string" then
@@ -334,7 +335,7 @@ write_field = function(T, ids, nodes, fd, v, w)
     if (fd.optional or fd.required) or not at_default(fd, v) then
       w_leb(w, id_ref(ids, fd.id))
       w_u8(w, fd.kind)
-      if not w_float(w, fd.f32, x) then return false end
+      if not w_float(w, fd.f32, D.cf(fd, x)) then return false end
     end
   elseif s == "string" then
     if (fd.optional or fd.required) or not at_default(fd, v) then
@@ -534,7 +535,7 @@ write_element = function(T, ids, nodes, e, val, body)
     w_raw(body, string.pack("<i8", q.lo))
     w_raw(body, string.pack("<i8", q.hi))
   elseif s == "float" then
-    if not w_float(body, e.f32, val or 0.0) then return false end
+    if not w_float(body, e.f32, D.cf(e, val or 0.0)) then return false end
   elseif s == "enum" then
     local vref = 0
     if val ~= nil and val ~= false then
@@ -632,7 +633,7 @@ write_union_at = function(T, ids, nodes, f, val, body)
     w_raw(body, string.pack("<i8", q.lo))
     w_raw(body, string.pack("<i8", q.hi))
   elseif s == "float" then
-    if not w_float(body, f.f32, val) then return false end
+    if not w_float(body, f.f32, D.cf(f, val)) then return false end
   elseif s == "string" then
     w_raw(body, val)
   elseif s == "bytes" then
