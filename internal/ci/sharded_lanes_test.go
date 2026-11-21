@@ -616,7 +616,7 @@ func TestLangCleanRowsKeepNoStore(t *testing.T) {
 	if !ok {
 		t.Fatal("ci-fast.yml has no lang-clean job")
 	}
-	for name, job := range map[string]string{"lang-clean": body, "verify-leg": jobs["verify-leg"], "verify-leg-elixir": jobs["verify-leg-elixir"]} {
+	for name, job := range map[string]string{"lang-clean": body, "verify-leg": jobs["verify-leg"], "verify-leg-handoff": jobs["verify-leg-handoff"]} {
 		for _, s := range []string{"C_FORMAT_CACHE", "ELIXIR_EBIN_CACHE", ".cache/schema-ci", "actions/cache"} {
 			if strings.Contains(job, s) {
 				t.Errorf("ci-fast.yml %s names %s: its rows keep nothing between runs", name, s)
@@ -640,49 +640,102 @@ func TestLangCleanRowsKeepNoStore(t *testing.T) {
 	}
 }
 
-// TestVerifyLegElixirTakesTheShards: the per-commit verify rows that run the
-// whole Elixir table corpus ebin (conformance, fuzz) never compile it, which
-// is past one runner's two minutes cold (F-218): they are verify-leg-elixir,
-// which needs lang-clean, downloads the shards the lang-clean (elixir K/N) rows
-// uploaded, and builds the ebin from them through make/elixir-ebin-handoff.sh
-// (ELIXIR_EBIN_FROM) under the compiler options the shards were compiled
-// with. verify-leg runs neither gate for elixir.
-func TestVerifyLegElixirTakesTheShards(t *testing.T) {
+// TestVerifyLegHandoffTakesTheShards: the per-commit verify rows that link a
+// build past one runner's two minutes cold (F-218) never compile it: C's
+// conformance driver objects (verify-leg (c, conformance|fuzz)) and the
+// Elixir table corpus ebin (verify-leg (elixir, conformance|fuzz)). They are
+// verify-leg-handoff, which needs lang-clean, downloads the shards that leg's
+// lang-clean K/N rows uploaded, and builds from them through
+// make/build-handoff.sh (C_CONFORMANCE_FROM, ELIXIR_EBIN_FROM; Elixir under
+// the compiler options the shards were compiled with). verify-leg runs none
+// of these four, and the lang-clean rows give and upload their shard exactly
+// when the plan's handoff legs name their language.
+func TestVerifyLegHandoffTakesTheShards(t *testing.T) {
 	t.Parallel()
-	jobs := yamlJobs(workflows(t, repoRoot(t))["ci-fast.yml"])
-	leg, clean, take := jobs["verify-leg"], jobs["lang-clean"], jobs["verify-leg-elixir"]
-	if leg == "" || clean == "" || take == "" {
-		t.Fatal("ci-fast.yml lacks verify-leg, lang-clean or verify-leg-elixir")
+	wfs := workflows(t, repoRoot(t))
+	for _, s := range []string{"C_CONFORMANCE_FROM", "C_CONFORMANCE_SHARD", "ELIXIR_EBIN_FROM", "handoff-"} {
+		if strings.Contains(wfs["ci-full.yml"], s) {
+			t.Errorf("ci-full.yml carries %s: the nightly compiles every build whole, in the job that runs it", s)
+		}
 	}
-	for _, g := range []string{"conformance", "fuzz"} {
-		if !strings.Contains(leg, "          - leg: elixir\n            gate: "+g+"\n") {
-			t.Errorf("verify-leg does not exclude (elixir, %s): it would compile the whole corpus ebin past the cap", g)
+	jobs := yamlJobs(wfs["ci-fast.yml"])
+	leg, clean, take := jobs["verify-leg"], jobs["lang-clean"], jobs["verify-leg-handoff"]
+	if leg == "" || clean == "" || take == "" {
+		t.Fatal("ci-fast.yml lacks verify-leg, lang-clean or verify-leg-handoff")
+	}
+	for _, l := range []string{"c", "elixir"} {
+		for _, g := range []string{"conformance", "fuzz"} {
+			if !strings.Contains(leg, "          - leg: "+l+"\n            gate: "+g+"\n") {
+				t.Errorf("verify-leg does not exclude (%s, %s): it would compile the handed-over build past the cap", l, g)
+			}
 		}
 	}
 	for _, s := range []string{
 		"needs: [plan, lang-clean]",
 		"!cancelled()",
-		`contains(needs.plan.outputs.verify_legs, '"elixir"')`,
+		"needs.plan.outputs.handoff_legs != '[]'",
+		"leg: ${{ fromJSON(needs.plan.outputs.handoff_legs) }}",
 		"gate: [conformance, fuzz]",
 		"timeout-minutes: 2",
-		"pattern: elixir-tables-ebin-*",
+		"pattern: handoff-${{ matrix.leg }}-*",
+		`make "verify-c-${{ matrix.gate }}" C_CONFORMANCE_FROM="$SHARDS"`,
 		`ELIXIR_EBIN_FROM="$SHARDS"`,
 		`ERL_COMPILER_OPTIONS='[no_ssa_opt]' make "verify-elixir-${{ matrix.gate }}"`,
+		"https://github.com/mas-bandwidth/serialize.c.git",
 	} {
 		if !strings.Contains(take, s) {
-			t.Errorf("verify-leg-elixir does not carry %q", s)
+			t.Errorf("verify-leg-handoff does not carry %q", s)
 		}
 	}
 	for _, s := range []string{
 		"elixir-tables-ebin-handoff tables-elixir-accessor-descriptor-agreement",
 		`ELIXIR_TABLE_SHARD="$SHARD" ELIXIR_EBIN_ERL_COMPILER_OPTIONS='[no_ssa_opt]'`,
-		"name: elixir-tables-ebin-${{ strategy.job-index }}",
-		"path: build/elixir-ebin-handoff",
+		"HANDOFF_LEGS: ${{ needs.plan.outputs.handoff_legs }}",
+		`*'"c"'*) c_targets="$c_targets c-conformance-objs-handoff" ;;`,
+		`C_CONFORMANCE_SHARD="$SHARD"`,
+		"https://github.com/mas-bandwidth/serialize.c.git",
+		`if: contains(matrix.shard, '/') && contains(needs.plan.outputs.handoff_legs, format('"{0}"', matrix.lang))`,
+		"name: handoff-${{ matrix.lang }}-${{ strategy.job-index }}",
+		"path: ${{ matrix.lang == 'c' && 'build/c-conformance-handoff' || 'build/elixir-ebin-handoff' }}",
 		"include-hidden-files: true",
 		"if-no-files-found: error",
 	} {
 		if !strings.Contains(clean, s) {
-			t.Errorf("lang-clean does not carry %q: the Elixir shards are not handed over", s)
+			t.Errorf("lang-clean does not carry %q: the shards are not handed over", s)
+		}
+	}
+}
+
+// TestPlanHandoffLegs: the plan's handoff legs are its verify legs that have
+// a handed-over build, C and Elixir, and nothing else; a verify leg of
+// either is always a lang-clean leg, so its shards run in the same push.
+func TestPlanHandoffLegs(t *testing.T) {
+	t.Parallel()
+	needTools(t, "bash", "awk", "sed", "tr")
+	wf := workflows(t, repoRoot(t))["ci-fast.yml"]
+	i := strings.Index(wf, "          handoff_legs_json=")
+	if i < 0 {
+		t.Fatal("ci-fast.yml plan does not compute handoff_legs_json")
+	}
+	line := strings.TrimSpace(wf[i : i+strings.Index(wf[i:], "\n")])
+	for verify, want := range map[string]string{
+		`[]`:                          `[]`,
+		`["go"]`:                      `[]`,
+		`["c"]`:                       `["c"]`,
+		`["c","cpp","elixir","rust"]`: `["c","elixir"]`,
+		`["cs","elixir"]`:             `["elixir"]`,
+	} {
+		cmd := testproc.Command(t, "bash", "-c", "verify_legs_json='"+verify+"'\n"+line+"\nprintf '%s' \"$handoff_legs_json\"")
+		cmd.Dir = t.TempDir()
+		out, err := cmd.CombinedOutput()
+		if err != nil || string(out) != want {
+			t.Errorf("verify legs %s gave handoff legs %q (%v), want %s", verify, out, err, want)
+		}
+	}
+	plan := yamlJobs(wf)["plan"]
+	for _, s := range []string{"handoff_legs: ${{ steps.pick.outputs.handoff_legs }}", `echo "handoff_legs=$handoff_legs_json" >> "$GITHUB_OUTPUT"`} {
+		if !strings.Contains(plan, s) {
+			t.Errorf("ci-fast.yml plan does not carry %q", s)
 		}
 	}
 }

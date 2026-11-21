@@ -1,0 +1,37 @@
+# THE DAMAGE SHAPES a handed-over build is held against (F-217, F-218;
+# make/build-handoff.sh, internal/ci TestBuildHandoffDamageCorpus). The rig
+# compiles nothing: two shards are given from stand-in builds (s1: unit u1,
+# A.beam "alpha-beam"; s2: unit u2, B.beam "beta-beam"; each also holds the
+# driver's D.beam, whose bytes differ by shard as a real driver's do by
+# checkout path, and a make stamp that is not handed over), one row's damage
+# is applied, and the shards are taken into one build. A row with expect "ok"
+# must give exactly A.beam, B.beam and s1's D.beam; every other row must be
+# refused with its expect text in the message, leave nothing built, and
+# compile nothing.
+#
+# file is relative to the rig: from/<shard>/... is a handed-over shard,
+# tree/... is the job's own checkout, "-" is none.
+# damage: none | truncate | remove | flip-last-byte | write:<text> (\n is a
+# newline) | copy-to:<path> | take-options:<options> | take-toolchain:<banner>
+#
+# case	file	damage	expect
+valid-control	-	none	ok
+toolchain-other-core-count	-	take-toolchain:Erlang/OTP 29 [erts-17.0] [source] [64-bit] [smp:4:4] [ds:4:4:10] [async-threads:1] [jit:ns]\n\nElixir 1.20.4 (compiled with Erlang/OTP 29)	ok
+stamp-in-shard-not-taken	from/s2/built/.stamp	write:	ok
+truncated-file	from/s2/built/B.beam	truncate	./B.beam has other bytes
+same-size-byte	from/s1/built/A.beam	flip-last-byte	./A.beam has other bytes
+replaced-file	from/s1/built/A.beam	write:beta-beam	./A.beam has other bytes
+missing-file	from/s2/built/B.beam	remove	./B.beam is missing
+extra-file	from/s2/built/C.beam	write:gamma-beam	./C.beam is not in it
+extra-file-in-a-subdirectory	from/s2/built/sub/C.beam	write:gamma-beam	./sub/C.beam is not in it
+manifest-removed	from/s1/.manifest	remove	has no manifest
+manifest-empty	from/s1/.manifest	truncate	has no manifest
+manifest-forged	from/s2/.manifest	write:0000000000000000000000000000000000000000000000000000000000000000  ./B.beam\n	./D.beam is not in it
+changed-source	tree/u2/b.ex	write:beta changed\n	compiled from other sources than this tree's
+source-no-shard-compiled	tree/u2/c.ex	write:gamma\n	no shard compiled u2/c.ex
+missing-shard	from/s2	remove	no shard compiled u2/b.ex
+no-shards	from	remove	no lang-clean shard was handed over
+unit-in-two-shards	from/s1	copy-to:from/s3	in more than one shard but not in all: ./A.beam
+other-options	-	take-options:	was compiled under options '[no_ssa_opt]', this job asks for ''
+other-toolchain	-	take-toolchain:Erlang/OTP 28 [erts-16.0] [source]\n\nElixir 1.19.0 (compiled with Erlang/OTP 28)	was compiled by 'Erlang/OTP 29 [erts-17.0] Elixir 1.20.4
+options-file-removed	from/s2/options.txt	remove	was compiled under options ''

@@ -183,7 +183,7 @@ elixir-table-shard-units:
 ELIXIR_EBIN_ERL_COMPILER_OPTIONS ?=
 
 # ELIXIR_EBIN_FROM, empty by default, is a directory of shards handed over by
-# `make elixir-tables-ebin-handoff` (make/elixir-ebin-handoff.sh carries the
+# `make elixir-tables-ebin-handoff` (make/build-handoff.sh carries the
 # checks): build/elixir-tables-ebin is then assembled from them instead of
 # compiled, and only if every shard is byte for byte the ebin it was given as,
 # was compiled from this tree's sources under these options, and the shards are
@@ -222,7 +222,7 @@ build/elixir-tables-ebin.config: elixir-tables-ebin-config-check
 build/elixir-tables-ebin/.stamp: build/tables-generated-elixir/.stamp test/conformance/elixir/driver_impl.ex build/elixir-tables-ebin.config
 	@rm -rf build/elixir-tables-ebin && mkdir -p build/elixir-tables-ebin
 ifneq ($(ELIXIR_EBIN_FROM),)
-	ELIXIR_EBIN_TOOLCHAIN="$$($(ELIXIR) --version 2>&1)" sh make/elixir-ebin-handoff.sh take '$(ELIXIR_EBIN_FROM)' build/elixir-tables-ebin '$(ELIXIR_EBIN_EFFECTIVE_ERL_OPTIONS)' $(ELIXIR_TABLE_UNIT_NAMES) -- $(ELIXIR_TABLE_UNIT_SOURCES) test/conformance/elixir/driver_impl.ex make/elixir-strict.sh
+	BUILD_HANDOFF_TOOLCHAIN="$$($(ELIXIR) --version 2>&1)" sh make/build-handoff.sh take '$(ELIXIR_EBIN_FROM)' build/elixir-tables-ebin '$(ELIXIR_EBIN_EFFECTIVE_ERL_OPTIONS)' $(ELIXIR_TABLE_UNIT_NAMES) -- $(ELIXIR_TABLE_UNIT_SOURCES) test/conformance/elixir/driver_impl.ex make/elixir-strict.sh
 else
 	$(if $(ELIXIR_EBIN_ERL_COMPILER_OPTIONS),ERL_COMPILER_OPTIONS='$(ELIXIR_EBIN_ERL_COMPILER_OPTIONS)') $(ELIXIRC_STRICT) -o build/elixir-tables-ebin $(ELIXIR_EBIN_UNIT_SOURCES) \
 		test/conformance/elixir/driver_impl.ex
@@ -234,7 +234,7 @@ endif
 # options it ran under, and a manifest of every file's bytes.
 .PHONY: elixir-tables-ebin-handoff
 elixir-tables-ebin-handoff: build/elixir-tables-ebin/.stamp
-	ELIXIR_EBIN_TOOLCHAIN="$$($(ELIXIR) --version 2>&1)" sh make/elixir-ebin-handoff.sh give build/elixir-tables-ebin build/elixir-ebin-handoff '$(ELIXIR_EBIN_EFFECTIVE_ERL_OPTIONS)' $(ELIXIR_EBIN_UNIT_NAMES) -- $(ELIXIR_EBIN_UNIT_SOURCES) test/conformance/elixir/driver_impl.ex make/elixir-strict.sh
+	BUILD_HANDOFF_TOOLCHAIN="$$($(ELIXIR) --version 2>&1)" sh make/build-handoff.sh give build/elixir-tables-ebin build/elixir-ebin-handoff '$(ELIXIR_EBIN_EFFECTIVE_ERL_OPTIONS)' $(ELIXIR_EBIN_UNIT_NAMES) -- $(ELIXIR_EBIN_UNIT_SOURCES) test/conformance/elixir/driver_impl.ex make/elixir-strict.sh
 
 # THE STANDALONE GATE, Elixir — the M4b twin of the gates above
 # (docs/PORTING.md). A generated table module INLINES its bitstring segments

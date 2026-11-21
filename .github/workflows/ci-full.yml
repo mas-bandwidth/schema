@@ -2821,11 +2821,11 @@ jobs:
         run: make ${{ matrix.target }} DART=dart
 
   # THE ELIXIR VERIFY GATES ON THE OPTIMIZED BEAM, NIGHTLY. The per-commit
-  # lane (ci-fast.yml, verify-leg and verify-leg-elixir) runs make
+  # lane (ci-fast.yml, verify-leg and verify-leg-handoff) runs make
   # verify-elixir-<gate> with every BEAM fixture compiled under
   # ERL_COMPILER_OPTIONS=[no_ssa_opt] and the table corpus ebin taken from the
   # shards the lang-clean (elixir K/4) rows of the same run compiled
-  # (make/elixir-ebin-handoff.sh): the optimized strict compile of the corpus
+  # (make/build-handoff.sh): the optimized strict compile of the corpus
   # alone is past the two-minute rule on a loaded runner (477 s of CPU; 168 s
   # on a four-thread slot of amd-1, 2026-11-21). This job is the other half:
   # the same three gates, one per row, with no compiler option and no
