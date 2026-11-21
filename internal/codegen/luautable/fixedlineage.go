@@ -33,7 +33,8 @@ import (
 // `schema lock --retire T@0x<hash> --reason "…"`'s, which keep the entry and
 // move the floor.
 //
-// Ranges are the WRITER's own ranged integer leaves (§4.6, bill §12.5): the
+// Ranges are the WRITER's own ranged leaves, integers and compressed floats
+// (§4.6, bill §12.5, docs/rulings.json strict-only-read): the
 // bounds a fixed read of a record written under this entry holds, never the
 // reader's. They ride beside the layout because a layout has no ranges in it.
 type FixedLineageEntry struct {
@@ -100,6 +101,19 @@ func fixedWriterRanges(reader *ir.Struct, e FixedLineageEntry, own uint64) strin
 		for _, f := range reader.Fields {
 			if _, ok := ir.TableFixedWriterField(f, r); !ok {
 				continue
+			}
+			if r.Float {
+				// a COMPRESSED FLOAT's writer range (docs/rulings.json
+				// strict-only-read, §4.6), in the reader field's own type: a
+				// float32's bounds are rounded to float32, as its value is
+				lo, hi := r.FLo, r.FHi
+				if f.Type.Kind == ir.TFloat32 {
+					lo, hi = float64(float32(lo)), float64(float32(hi))
+				}
+				parts = append(parts, fmt.Sprintf("[%s] = { flo = %s, fhi = %s }",
+					luau.IntegerLit(new(big.Int).SetUint64(ir.TableFieldWireId(f))),
+					luau.FormatFloat(lo), luau.FormatFloat(hi)))
+				break
 			}
 			dom := fixedRangeDom(f)
 			parts = append(parts, fmt.Sprintf("[%s] = { lo = %s, hi = %s }",

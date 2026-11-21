@@ -11,8 +11,9 @@ import (
 // each ranged field to the WRITER's range for that entry, never the reader's,
 // whose range is the wider one. The shared vectors forge a value past the OLD
 // writer's range and inside the NEW reader's — a scalar, one element of a
-// ranged fixed array, and a uint64 above 2^63 compared unsigned — and each
-// refuses the whole load. A clean older file still reads.
+// ranged fixed array, a uint64 above 2^63 compared unsigned, and a compressed
+// float (docs/rulings.json strict-only-read) — and each refuses the whole
+// load. Each row's clean older file still reads.
 func TestLuauFixedLineageHoldsWriterRanges(t *testing.T) {
 	t.Parallel()
 	corpus := luauFixedCorpus(t)
@@ -30,15 +31,24 @@ check(report.widened == 0 and report.unknown == 0 and report.kindMismatch == 0,
 				map[string][]byte{"file": luauCorpusFile(t, corpus, vec.File)}, body)
 		})
 	}
-	t.Run("in_range", func(t *testing.T) {
-		t.Parallel()
-		reader := luauVersionUnit(t, "VNEW_range_widen")
-		root := luauVersionRoot(t, reader)
-		body := `local report: any = {}
+	// every row's clean older file reads exactly: a writer range carried
+	// wrong (a compressed float's spelled as an integer 0..0, say) refuses it
+	seen := map[string]bool{}
+	for _, vec := range fixedvector.WriterRange {
+		if seen[vec.Row] {
+			continue
+		}
+		seen[vec.Row] = true
+		t.Run("in_range_"+vec.Row, func(t *testing.T) {
+			t.Parallel()
+			reader := luauVersionUnit(t, "VNEW_"+vec.Row)
+			root := luauVersionRoot(t, reader)
+			body := `local report: any = {}
 local values = LOAD("file", report)
 check(values ~= nil and #values == 1, "the writer's own file reads: " .. why(report))
-` + luauManifestChecks(t, corpus, "old_range_widen.bin", root)
-		luauVersionProbe(t, "VNEW_range_widen", []string{"VOLD_range_widen"}, 0,
-			map[string][]byte{"file": luauCorpusFile(t, corpus, "old_range_widen.bin")}, body)
-	})
+` + luauManifestChecks(t, corpus, "old_"+vec.Row+".bin", root)
+			luauVersionProbe(t, "VNEW_"+vec.Row, []string{"VOLD_" + vec.Row}, 0,
+				map[string][]byte{"file": luauCorpusFile(t, corpus, "old_"+vec.Row+".bin")}, body)
+		})
+	}
 }

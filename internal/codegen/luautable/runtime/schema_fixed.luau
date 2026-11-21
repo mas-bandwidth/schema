@@ -12,7 +12,7 @@ local S = require("./schema_tables")
 local F = {}
 
 export type LayoutEntry = { id: integer, kind: number, size: number, children: number }
-export type KnownRange = { lo: any, hi: any }
+export type KnownRange = { lo: any?, hi: any?, flo: number?, fhi: number? }
 export type Known = { hash: integer, layout: { LayoutEntry }, layoutBytes: number, recordBytes: number, ranges: { [integer]: KnownRange }? }
 -- a root's fixed facts: its own hash, record BODY size and layout, and the
 -- lineage the build laid down with its floor (nil: the one entry, its own)
@@ -460,8 +460,16 @@ end
 local function bounds(f: any, v: any, cx: Cx, wr: any): any
 	-- THE WRITER'S OWN BOUND FOR THIS LINEAGE ENTRY (docs/FIXED-FORM-ALGORITHM.md
 	-- §4.6, bill §12.5): held on the raw scale, because a fixed-point's storage
-	-- is raw; the reader's bound below is in value units.
-	if wr ~= nil then
+	-- is raw; the reader's bound below is in value units. A COMPRESSED FLOAT's
+	-- writer range rides as flo/fhi (docs/rulings.json strict-only-read): the
+	-- emitter rounded them to the reader field's own type, and v is that type's
+	-- value already, so the comparison is float32 against float32 for a float32.
+	-- A NaN is outside every range.
+	if wr ~= nil and wr.flo ~= nil then
+		if not (v >= wr.flo and v <= wr.fhi) then
+			error(outOfRange(f), 0)
+		end
+	elseif wr ~= nil then
 		local wlo, whi = wr.lo, wr.hi
 		local isSigned = f.signed ~= false
 		if typeof(v) == "table" then

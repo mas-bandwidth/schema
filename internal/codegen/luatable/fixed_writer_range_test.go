@@ -7,12 +7,14 @@ package luatable
 // range is wider. Under the one strict read the reader REFUSES the whole load
 // (and ReadFixed refuses the single record) as out_of_range — a scalar, one
 // element of a ranged fixed array, and an unsigned 64-bit integer at or above
-// 2^63 compared unsigned — matching the C++ reference's corpus manifest.
+// 2^63 compared unsigned, and a compressed float (docs/rulings.json
+// strict-only-read) — matching the C++ reference's corpus manifest.
 //
 // TestLuaFixedWriterRangeVectorsNegativeControl plants faults in the real
 // emitted runtime artifact (fixed.lua) so strict_value falls back to the
-// reader's range alone or drops the unsigned comparison, and requires the
-// forged writer-range vectors to stop refusing.
+// reader's range alone, drops the unsigned comparison, or drops the
+// compressed float's writer check, and requires the forged writer-range
+// vectors to stop refusing.
 
 import (
 	"fmt"
@@ -68,22 +70,36 @@ end
 			if got := g.run(t, readMain, map[string][]byte{"file": wire}); got != "refused out_of_range" {
 				t.Fatalf("%s ReadFixed: got %q, want refused out_of_range", vec.File, got)
 			}
+			ctl, ok := luaWriterRangeControls[vec.Row]
+			if !ok {
+				t.Fatalf("no clean-file control for row %s", vec.Row)
+			}
 			oldClean, err := os.ReadFile(filepath.Join(corpus, "old_"+vec.Row+".bin"))
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got := g.load(t, vec.Root, oldClean); got.head != "ok 1 w0 u0" || got.dump["r0.v"] != "100" {
-				t.Fatalf("old_%s.bin: got %s %v, want ok 1 w0 u0 with r0.v=100", vec.Row, got.head, got.dump)
+			if got := g.load(t, vec.Root, oldClean); got.head != "ok 1 w0 u0" || got.dump[ctl.field] != ctl.old {
+				t.Fatalf("old_%s.bin: got %s %v, want ok 1 w0 u0 with %s=%s", vec.Row, got.head, got.dump, ctl.field, ctl.old)
 			}
 			newClean, err := os.ReadFile(filepath.Join(corpus, "new_"+vec.Row+".bin"))
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got := g.load(t, vec.Root, newClean); got.head != "ok 1 w0 u0" || got.dump["r0.v"] != "150" {
-				t.Fatalf("new_%s.bin: got %s %v, want ok 1 w0 u0 with r0.v=150", vec.Row, got.head, got.dump)
+			if got := g.load(t, vec.Root, newClean); got.head != "ok 1 w0 u0" || got.dump[ctl.field] != ctl.new {
+				t.Fatalf("new_%s.bin: got %s %v, want ok 1 w0 u0 with %s=%s", vec.Row, got.head, got.dump, ctl.field, ctl.new)
 			}
 		})
 	}
+}
+
+// luaWriterRangeControls is each writer-range row's clean-file control: the
+// field and the value old_<row>.bin (read through the OLD entry, whose range
+// is narrower than the reader's) and new_<row>.bin (the reader's own layout)
+// each land. A float dumps as its float64 bits: 0.5 and 1.5 for the
+// compressed float row, whose old_ value lies inside the writer's [-1, 1].
+var luaWriterRangeControls = map[string]struct{ field, old, new string }{
+	"range_widen":        {field: "r0.v", old: "100", new: "150"},
+	"cfloat_range_widen": {field: "r0.aim", old: "0x3FE0000000000000", new: "0x3FF8000000000000"},
 }
 
 func TestLuaFixedWriterRangeVectorsNegativeControl(t *testing.T) {
@@ -91,18 +107,13 @@ func TestLuaFixedWriterRangeVectorsNegativeControl(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
 	corpus := luaFixedCorpus(t, repo)
-	older := luarun.LoadUnit(t, filepath.Join(repo, "test", "tables", "VOLD_range_widen.schema"))
-	newer := luarun.LoadUnit(t, filepath.Join(repo, "test", "tables", "VNEW_range_widen.schema"))
-	oldEntry, ok := FixedLineageOf(older, "RangeWiden")
-	if !ok {
-		t.Fatal("no fixed root RangeWiden in VOLD_range_widen")
-	}
-	lineage := map[string][]FixedLineageEntry{"RangeWiden": {oldEntry}}
 	for _, tc := range []struct {
-		name, file, anchor, repl, field, val string
+		name, row, root, file, anchor, repl, field, val string
 	}{
 		{
 			name:   "range_widen",
+			row:    "range_widen",
+			root:   "RangeWiden",
 			file:   fixedvector.RangeWidenHostile,
 			anchor: "    if wr ~= nil then\n      lo, hi = wr.lo, wr.hi\n    end\n",
 			repl:   "",
@@ -111,6 +122,8 @@ func TestLuaFixedWriterRangeVectorsNegativeControl(t *testing.T) {
 		},
 		{
 			name:   "range_widen_array",
+			row:    "range_widen",
+			root:   "RangeWiden",
 			file:   fixedvector.RangeWidenArrayHostile,
 			anchor: "    if wr ~= nil then\n      lo, hi = wr.lo, wr.hi\n    end\n",
 			repl:   "",
@@ -119,11 +132,25 @@ func TestLuaFixedWriterRangeVectorsNegativeControl(t *testing.T) {
 		},
 		{
 			name:   "range_widen_u64",
+			row:    "range_widen",
+			root:   "RangeWiden",
 			file:   fixedvector.RangeWidenU64Hostile,
 			anchor: "        if math.ult(v, lo) or math.ult(hi, v) then error(\"out_of_range\", 0) end\n",
 			repl:   "",
 			field:  "r0.u",
 			val:    "-9223372036854775801",
+		},
+		{
+			// the compressed float's writer check deleted: the reader's own
+			// [-2, 2] alone lands the forged 1.5
+			name:   "cfloat_range_widen",
+			row:    "cfloat_range_widen",
+			root:   "CfloatRangeWiden",
+			file:   fixedvector.CfloatRangeWidenHostile,
+			anchor: "      if not (x >= wr.flo and x <= wr.fhi) then error(\"out_of_range\", 0) end\n",
+			repl:   "",
+			field:  "r0.aim",
+			val:    "0x3FF8000000000000",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -132,9 +159,15 @@ func TestLuaFixedWriterRangeVectorsNegativeControl(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			g := luaEvoGen(t, newer, lineage)
+			older := luarun.LoadUnit(t, filepath.Join(repo, "test", "tables", "VOLD_"+tc.row+".schema"))
+			newer := luarun.LoadUnit(t, filepath.Join(repo, "test", "tables", "VNEW_"+tc.row+".schema"))
+			oldEntry, ok := FixedLineageOf(older, tc.root)
+			if !ok {
+				t.Fatalf("no fixed root %s in VOLD_%s", tc.root, tc.row)
+			}
+			g := luaEvoGen(t, newer, map[string][]FixedLineageEntry{tc.root: {oldEntry}})
 			g.plant(t, tc.anchor, tc.repl)
-			got := g.load(t, "RangeWiden", wire)
+			got := g.load(t, tc.root, wire)
 			if !strings.HasPrefix(got.head, "ok 1 ") || got.dump[tc.field] != tc.val {
 				t.Fatalf("negative control (%s): planted runtime still refused or missed %s=%s: head=%q dump=%v",
 					tc.file, tc.field, tc.val, got.head, got.dump)

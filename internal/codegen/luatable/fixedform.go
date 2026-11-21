@@ -53,7 +53,10 @@ func FixedLineageOf(u *ir.Unit, name string) (FixedLineageEntry, bool) {
 // (docs/FIXED-FORM-ALGORITHM.md §4.5, §4.6): for each ranged integer leaf of
 // the reader's root that the older writer bounded at the same scalar kind
 // (ir.TableFixedWriterRanges, ir.TableFixedWriterField), the writer's raw
-// bounds keyed by the field's wire id.
+// bounds keyed by the field's wire id. A COMPRESSED FLOAT's writer range rides
+// as { flo, fhi } (docs/rulings.json strict-only-read): the writer's min and
+// max in the reader field's own type, rounded to float32 for a float32 so the
+// runtime compares float32 against float32.
 func fixedWriterRangesParts(st *ir.Struct, e FixedLineageEntry, own uint64) (string, []string) {
 	if e.Wire == own || len(e.Ranges) == 0 {
 		return "", nil
@@ -63,6 +66,15 @@ func fixedWriterRangesParts(st *ir.Struct, e FixedLineageEntry, own uint64) (str
 		for _, f := range st.Fields {
 			if _, ok := ir.TableFixedWriterField(f, r); !ok {
 				continue
+			}
+			if r.Float {
+				lo, hi := r.FLo, r.FHi
+				if f.Type.Kind == ir.TFloat32 {
+					lo, hi = float64(float32(lo)), float64(float32(hi))
+				}
+				parts = append(parts, fmt.Sprintf("[%s] = { flo = %s, fhi = %s }",
+					idLit(ir.TableFieldWireId(f)), lua.FloatLiteral(lo), lua.FloatLiteral(hi)))
+				break
 			}
 			parts = append(parts, fmt.Sprintf("[%s] = { lo = %s, hi = %s }",
 				idLit(ir.TableFieldWireId(f)),

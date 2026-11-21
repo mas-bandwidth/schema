@@ -770,8 +770,11 @@ end
 -- writer's declared bound (or this reader's when the entry carries no writer
 -- range) is the `out_of_range` refusal. A bits(N) past its mask, a ranged
 -- 128-bit value and a compressed float past this reader's declared bound
--- refuse by the same name (the entry carries writer ranges for integers
--- only). The plain name walks what it decoded once.
+-- refuse by the same name. A compressed float is held to the WRITER's range
+-- too when the entry carries one (wr.flo, wr.fhi; docs/rulings.json
+-- strict-only-read, §4.6), compared in the field's own type: a float32
+-- against the float32-rounded bounds the emitter wrote, and a NaN is outside
+-- every range. The plain name walks what it decoded once.
 local function strict_value(T, d, v, ranges, wr)
   if v == nil then return end
   local s = d.shape
@@ -812,6 +815,11 @@ local function strict_value(T, d, v, ranges, wr)
   elseif s == "float" then
     -- a compressed float is a ranged scalar here, held at float32 (§4.6)
     if D.float_off_range(d, v) then error("out_of_range", 0) end
+    if wr ~= nil and wr.flo ~= nil then
+      local x = v
+      if d.f32 then x = string.unpack("<f", string.pack("<f", v)) end
+      if not (x >= wr.flo and x <= wr.fhi) then error("out_of_range", 0) end
+    end
   elseif s == "table" then
     local desc = T.Tables[d.target]
     if desc == nil then return end
