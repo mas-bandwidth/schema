@@ -179,6 +179,11 @@ type bitDecoder struct {
 	// and stops the walk at its limit. It is a test's instrument and nil on
 	// every real read: the skip's work is pinned by a count, never a clock.
 	steps *skipSteps
+	// dupOps, when set, counts the probes the duplicate tests make, a field
+	// id's in a body and a key's in a keyed array, on the read and the skip
+	// path alike. It is a test's instrument and nil on every real read: the
+	// tests' work is pinned by a count, never a clock.
+	dupOps *int
 	// build is the READER's build version, digested once (buildKnown) and
 	// compared with the announced one by sameBuild
 	build      uint64
@@ -309,6 +314,9 @@ func (d *bitDecoder) bodyEntry(ref uint64, seen map[uint64]bool) (ir.TableVocabu
 	// A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), whether this reader can
 	// name it or not, exactly as on the variable form (§3).
 	{
+		if d.dupOps != nil {
+			*d.dupOps++
+		}
 		if seen[entry.Id] {
 			d.damage()
 			return ir.TableVocabularyEntry{}, false
@@ -462,13 +470,31 @@ func (d *bitDecoder) field(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 // because its payload is bytes.
 func (d *bitDecoder) text(cell *tabletext.Cell, count *int, f *ir.Field, entry ir.TableVocabularyEntry) bool {
 	shape := entry.Shape
-	width := ir.TableMessageBitsRequired(0, shape.Max)
+	var raw []byte
 	if f.Type.Kind == ir.TBytes {
-		width = ir.TableMessageCountBits(shape)
-	}
-	raw, ok := d.textPayload(width)
-	if !ok {
-		return false
+		// A `bytes(N)` IS AN ARRAY OF ELEMENT KIND `6` (§3.3, "`bytes(N)` AND
+		// `[..N]uint8` ARE THE SAME KIND"): its count rides as `count - min`
+		// at `bits_required(min, max)`, so the announced `min` is added back,
+		// and a count above the announced `max` refuses as an array's does.
+		// A `[4]uint8` writer rides no count at all.
+		low, ok := d.r.get(ir.TableMessageCountBits(shape))
+		if !ok || !d.r.align() {
+			d.damage()
+			return false
+		}
+		n := low + uint64(shape.Min)
+		if n > uint64(shape.Max) {
+			d.refuse(ReasonCountOverBound)
+			return false
+		}
+		if raw, ok = d.textBytes(n); !ok {
+			return false
+		}
+	} else {
+		var ok bool
+		if raw, ok = d.textPayload(ir.TableMessageBitsRequired(0, shape.Max)); !ok {
+			return false
+		}
 	}
 	if f.Type.Kind == ir.TString && !textValid(raw) {
 		// ILL-FORMED TEXT IS DAMAGE HERE TOO, AND IT IS TERMINAL (§3.3): a bit
@@ -582,6 +608,15 @@ func (d *bitDecoder) array(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 		}
 		n = raw + uint64(shape.Min)
 	}
+	// THE COUNT'S BITS CAN SPELL MORE THAN max - min, and a count above the
+	// announced maximum is one no conforming writer emits: it refuses here
+	// exactly as it does on the skip path (§3.3; docs/rulings.json
+	// skipped-value-is-validated, uncertain-read-refused), before this
+	// reader's own bound is consulted.
+	if n > uint64(shape.Max) {
+		d.refuse(ReasonCountOverBound)
+		return false
+	}
 	if ir.TableMessageAligns(entry.Kind, shape) && !d.r.align() {
 		d.damage()
 		return false
@@ -679,6 +714,12 @@ func (d *bitDecoder) keyed(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 		d.damage()
 		return false
 	}
+	// a count above the announced maximum refuses here as on the skip path
+	// (§3.3), whatever this reader's own enum could hold
+	if n > uint64(shape.Max) {
+		d.refuse(ReasonCountOverBound)
+		return false
+	}
 	// A KEYED SLOT TWICE IN ONE ARRAY IS DAMAGE (§3.2, §3.3), a key this
 	// reader cannot name included.
 	seen := map[uint64]bool{}
@@ -747,6 +788,9 @@ func (d *bitDecoder) keyedReference(seen map[uint64]bool) (ir.TableVocabularyEnt
 	// A KEYED SLOT TWICE IN ONE ARRAY IS DAMAGE (§3.2, §3.3), a key this
 	// reader cannot name included.
 	{
+		if d.dupOps != nil {
+			*d.dupOps++
+		}
 		if seen[key.Id] {
 			d.damage()
 			return ir.TableVocabularyEntry{}, false
@@ -910,19 +954,17 @@ func (d *bitDecoder) scalar(cell *tabletext.Cell, f *ir.Field, kind uint8, shape
 	if width < 0 {
 		return true
 	}
-	base := shape.Base
-	if base == nil {
-		base = big.NewInt(0)
-	}
 	if ir.TableKindWide(int(kind)) {
 		var value *big.Int
 		if shape.Packing == ir.TableMessageRanged {
-			offset, ok := d.r.getBig(width)
+			// THE ANNOUNCED KIND FIRST (§3.3): base plus offset, exactly, held
+			// to the domain the sender's kind can store, before this reader's
+			// own range; a bare 128-bit field declares no range to catch it
+			held, ok := d.rangedValue(kind, shape, width)
 			if !ok {
-				d.damage()
 				return false
 			}
-			value = new(big.Int).Add(offset, base)
+			value = held
 		} else {
 			// RAW is the kind's storage width, two's complement when the kind
 			// is signed (docs/SPEC-TABLES.md §3.3). WideFromBytes sign-extends
@@ -941,23 +983,36 @@ func (d *bitDecoder) scalar(cell *tabletext.Cell, f *ir.Field, kind uint8, shape
 		}
 		return true
 	}
-	raw, ok := d.r.get(width)
-	if !ok {
-		d.damage()
-		return false
-	}
 	signed := f.Type.Kind == ir.TInt && f.Type.Signed
 	var value int64
-	switch {
-	case shape.Packing == ir.TableMessageRanged && signed:
-		value = int64(raw) + base.Int64()
-	case shape.Packing == ir.TableMessageRanged:
-		value = int64(raw + base.Uint64()) // the unsigned domain, whole: the sum wraps into the bits below
-	case signed && width < 64 && width > 0:
-		shift := uint(64 - width)
-		value = int64(raw<<shift) >> shift
-	default:
-		value = int64(raw)
+	if shape.Packing == ir.TableMessageRanged {
+		// A RANGED VALUE IS RECONSTRUCTED EXACTLY AND HELD TO THE ANNOUNCED
+		// KIND (§3.3) by the one helper the skip path uses, so the same body
+		// gets one verdict whether this reader names the field or not. The
+		// sum is never wrapped: inside the announced kind it fits that
+		// kind's own 64 bits, and the reader's own checks below take it on.
+		held, ok := d.rangedValue(kind, shape, width)
+		if !ok {
+			return false
+		}
+		if ir.TableKindSigned(int(kind)) {
+			value = held.Int64()
+		} else {
+			value = int64(held.Uint64())
+		}
+	} else {
+		raw, ok := d.r.get(width)
+		if !ok {
+			d.damage()
+			return false
+		}
+		switch {
+		case signed && width < 64 && width > 0:
+			shift := uint(64 - width)
+			value = int64(raw<<shift) >> shift
+		default:
+			value = int64(raw)
+		}
 	}
 	if ir.TableKindWide(ir.TableScalarKind(f)) {
 		// an integer kind WIDENED into a 128-bit declaration (§4): sixteen
@@ -1324,17 +1379,23 @@ func (d *bitDecoder) skipAt(entry ir.TableVocabularyEntry, depth int, field bool
 		return false
 	}
 	if shape.Packing == ir.TableMessageRanged {
-		return d.skipRanged(entry.Kind, shape, width)
+		_, ok := d.rangedValue(entry.Kind, shape, width)
+		return ok
 	}
 	return d.r.skip(width)
 }
 
-// skipRanged reads a ranged integer's offset and reconstructs its value from
-// the sender's base, then holds it to the range its own kind can carry: the
-// offset's bits can spell a value past the sender's maximum whenever the range
-// is not one less than a power of two, and no conforming writer emits one
-// (§3.3).
-func (d *bitDecoder) skipRanged(kind uint8, shape ir.TableMessageShape, width int) bool {
+// rangedValue reads a ranged integer's offset, reconstructs its value from the
+// sender's base EXACTLY, and holds it to the domain the ANNOUNCED kind can
+// store, refusing out_of_range (docs/SPEC-TABLES.md §3.3, "A RANGED OFFSET IS
+// HELD TO THE DOMAIN THE READER CAN KNOW"): the offset's bits can spell a value
+// past the sender's maximum whenever the range is not one less than a power of
+// two, and a base near the kind's edge plus such an offset names a value the
+// kind cannot hold, which no conforming writer emits. It is the ONE
+// reconstruction the named read and the skip path share, so a body gets one
+// verdict whether or not this reader names the field. ok is false where the
+// read refused or found damage.
+func (d *bitDecoder) rangedValue(kind uint8, shape ir.TableMessageShape, width int) (*big.Int, bool) {
 	base := shape.Base
 	if base == nil {
 		base = big.NewInt(0)
@@ -1344,22 +1405,22 @@ func (d *bitDecoder) skipRanged(kind uint8, shape ir.TableMessageShape, width in
 		offset, ok := d.r.getBig(width)
 		if !ok {
 			d.damage()
-			return false
+			return nil, false
 		}
 		value = new(big.Int).Add(offset, base)
 	} else {
 		offset, ok := d.r.get(width)
 		if !ok {
 			d.damage()
-			return false
+			return nil, false
 		}
 		value = new(big.Int).Add(new(big.Int).SetUint64(offset), base)
 	}
 	if !kindHolds(kind, value) {
 		d.refuse(ReasonOutOfRange)
-		return false
+		return nil, false
 	}
-	return true
+	return value, true
 }
 
 // kindHolds reports whether a reconstructed ranged value is in its kind's own
