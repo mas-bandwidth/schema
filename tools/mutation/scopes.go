@@ -115,7 +115,10 @@ func scopes(root string) ([]Scope, error) {
 		if gated {
 			s.Stages = append(s.Stages, Stage{Name: "slow", Sh: "SCHEMA_SLOW=1 go test -count=1 -p ${MUTATION_JOBS:-4} -timeout 60m " + pkg, Proof: goTestProof, Deep: true})
 		}
-		s.Stages = append(s.Stages, Stage{Name: "repo", Sh: "go test -count=1 -p ${MUTATION_JOBS:-4} ./...", Proof: goTestProof, Deep: true})
+		// the product's own packages: a core package is also held by the tests of
+		// what imports it. The CI policy tests and the maintainer tools read the
+		// workflows and the tree, not the product, so they are left out.
+		s.Stages = append(s.Stages, Stage{Name: "repo", Sh: "go test -count=1 -p ${MUTATION_JOBS:-4} ./compiler/... ./cmd/... ./ir/... $(go list ./internal/... | grep -v /internal/ci)", Proof: goTestProof, Deep: true})
 		out = append(out, s)
 	}
 	for _, t := range targetScopes {
