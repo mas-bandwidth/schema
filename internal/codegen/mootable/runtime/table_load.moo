@@ -983,6 +983,11 @@ local function array_body(fd: any, sub: any, report: any, v: any): boolean
 			refuse_count(report)
 			return false
 		end
+	elseif fd.array == "counted" and count < (fd.min or 0) then
+		-- a [Min..Max] count below its Min refuses the load as one past its
+		-- Max does (count_over_bound; SPEC.md §5.1 row 3)
+		over(report)
+		return false
 	elseif fd.bound ~= nil and count > fd.bound then
 		-- a count past the reader's bound refuses the load (count_over_bound)
 		over(report)

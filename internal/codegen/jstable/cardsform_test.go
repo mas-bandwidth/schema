@@ -2,13 +2,14 @@ package jstable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // cardsform_test.go tests the VARIABLE FORM (form byte 1) support for
@@ -231,7 +232,7 @@ console.log("round-trip", wire.length, "bytes, byte for byte");
 	if err := os.WriteFile(script, []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, script, wire)
+	cmd := testproc.Command(t, node, script, wire)
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("the generated JavaScript did not round-trip the card wire: %v\n%s", err, out)
@@ -284,7 +285,7 @@ console.log("text round-trip", text.length, "chars, wire", wire.length, "bytes, 
 	if err := os.WriteFile(script, []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, script, wire, json)
+	cmd := testproc.Command(t, node, script, wire, json)
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("the generated JavaScript text form did not match the Go leg's JSON: %v\n%s", err, out)

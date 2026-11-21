@@ -6,7 +6,6 @@ import (
 	"maps"
 	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,6 +14,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // The Dart variable-shape cells under the STRICT read (one read: the whole
@@ -342,7 +343,7 @@ func runDartVariableCellsProbe(t *testing.T, edit func(name string, data []byte)
 	if err := os.WriteFile(filepath.Join(dir, "vtcells_main.dart"), []byte(probe), 0600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dartBinary(t), "--enable-asserts", "vtcells_main.dart")
+	cmd := testproc.Command(t, dartBinary(t), "--enable-asserts", "vtcells_main.dart")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	return string(out), err

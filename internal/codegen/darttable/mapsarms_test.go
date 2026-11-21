@@ -3,7 +3,6 @@ package darttable
 import (
 	"bufio"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -12,6 +11,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestMapsAndUnionArmsOnTheTableWireDart is the maps-and-arms card's red-first
@@ -170,7 +171,7 @@ func resaveOracleRows(t *testing.T, wireName string, files map[string][]byte, re
 		}
 		args = append(args, r.name, r.root, abs, refusal)
 	}
-	cmd := exec.Command(dartBinary(t), args...)
+	cmd := testproc.Command(t, dartBinary(t), args...)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

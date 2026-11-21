@@ -3,10 +3,11 @@ package luatable
 import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestLuaDriverListsItsSurfaces runs the Lua conformance driver's list from
@@ -21,7 +22,7 @@ func TestLuaDriverListsItsSurfaces(t *testing.T) {
 	if err := os.WriteFile(manifest, []byte("# derived manifest\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(filepath.Join(root, "test", "conformance", "lua", "driver"), manifest, "list")
+	cmd := testproc.Command(t, filepath.Join(root, "test", "conformance", "lua", "driver"), manifest, "list")
 	cmd.Dir = root
 	out, err := cmd.Output()
 	if err != nil {

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -17,6 +16,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestLuauCardsConformanceStrict pins the Luau cards facade and driver
@@ -208,7 +209,7 @@ func runLuauCardsSurface(t *testing.T, generated map[string][]byte, facade map[s
 	if luauBin == "" {
 		t.Fatalf("luaurun: %s", why)
 	}
-	cmd := exec.Command(luauBin, "driver.luau")
+	cmd := testproc.Command(t, luauBin, "driver.luau")
 	cmd.Dir = stage
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr

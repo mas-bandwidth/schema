@@ -2,7 +2,6 @@ package js
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -10,6 +9,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const wideRangeProbeSchema = `package wideprobe
@@ -179,7 +180,7 @@ func runWideRangeHarness(t *testing.T, node, dir, name, source, index string, pr
 	if err := os.WriteFile(filepath.Join(dir, file), []byte(source), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, file)
+	cmd := testproc.Command(t, node, file)
 	cmd.Dir = dir
 	var env []string
 	for _, kv := range os.Environ() {

@@ -20,12 +20,13 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // The pins make/ruby-toolchain.mk builds (docs/PORT-RUBY.md, THE PIN).
@@ -176,7 +177,7 @@ func TryArgs(t testing.TB, interp, dir, main string, args []string, inputs map[s
 		}
 	}
 	cmdArgs := append([]string{"--disable-gems", "-w", main}, args...)
-	cmd := exec.Command(interp, cmdArgs...)
+	cmd := testproc.Command(t, interp, cmdArgs...)
 	cmd.Dir = dir
 	cmd.Env = cleanEnv()
 	if stdin != nil {
@@ -222,23 +223,23 @@ func TryAnalyze(t testing.TB, dir string, pkgs ...string) (step, output string, 
 	}
 	steepBody.WriteString("  configure_code_diagnostics(D::Ruby.strict)\nend\n")
 
-	if out, cerr := runTool(dir, rubocop, rcArgs...); cerr != nil {
+	if out, cerr := runTool(t, dir, rubocop, rcArgs...); cerr != nil {
 		return "rubocop", out, cerr
 	}
-	if out, cerr := runTool(dir, rbs, "-I", ".", "validate"); cerr != nil {
+	if out, cerr := runTool(t, dir, rbs, "-I", ".", "validate"); cerr != nil {
 		return "rbs", out, cerr
 	}
 	if werr := os.WriteFile(filepath.Join(dir, "Steepfile"), []byte(steepBody.String()), 0o644); werr != nil {
 		t.Fatal(werr)
 	}
-	if out, cerr := runTool(dir, steep, "check", "--jobs=1"); cerr != nil {
+	if out, cerr := runTool(t, dir, steep, "check", "--jobs=1"); cerr != nil {
 		return "steep", out, cerr
 	}
 	return "", "", nil
 }
 
-func runTool(dir, bin string, args ...string) (string, error) {
-	cmd := exec.Command(bin, args...)
+func runTool(t testing.TB, dir, bin string, args ...string) (string, error) {
+	cmd := testproc.Command(t, bin, args...)
 	cmd.Dir = dir
 	cmd.Env = cleanEnv()
 	out, err := cmd.CombinedOutput()

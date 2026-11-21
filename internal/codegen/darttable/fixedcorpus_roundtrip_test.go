@@ -25,7 +25,6 @@ import (
 	"math"
 	"math/big"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -37,6 +36,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // fixedCorpusContract is one file whose rewrite the standard does not make
@@ -528,7 +529,7 @@ func TestFixedFloat32ArrayWordViewsPreserveBits(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(fixedFloat32ArrayWordViewProbe), 0600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dartBinary(t), "--enable-asserts", "probe.dart")
+	cmd := testproc.Command(t, dartBinary(t), "--enable-asserts", "probe.dart")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("float32 array raw-bit roundtrip: %v\n%s", err, out)

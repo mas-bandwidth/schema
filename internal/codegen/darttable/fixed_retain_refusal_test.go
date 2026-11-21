@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // SPEC §6.6: explicit fixed-class roots have named refusals, including in
@@ -53,7 +54,7 @@ void main(){
 			runFormsProbe(t, files, source)
 			dir := t.TempDir()
 			writeFiles(t, dir, files)
-			clean := exec.Command(dartBinary(t), "analyze", ".")
+			clean := testproc.Command(t, dartBinary(t), "analyze", ".")
 			clean.Dir = dir
 			if out, err := clean.CombinedOutput(); err != nil {
 				t.Fatalf("generated fixed refusal libraries must analyze cleanly: %v\n%s", err, out)
@@ -69,7 +70,7 @@ void main(){
 				if err := os.WriteFile(filepath.Join(dir, "refusal.dart"), []byte(probe), 0600); err != nil {
 					t.Fatal(err)
 				}
-				cmd := exec.Command(dartBinary(t), "analyze", "refusal.dart")
+				cmd := testproc.Command(t, dartBinary(t), "analyze", "refusal.dart")
 				cmd.Dir = dir
 				out, err := cmd.CombinedOutput()
 				if err == nil || !strings.Contains(string(out), "invocation_of_non_function") {

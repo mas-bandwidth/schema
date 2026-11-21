@@ -14,7 +14,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -23,6 +22,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const oneDecodeSchema = `package onepass
@@ -113,7 +114,7 @@ func runMooDeadline(t *testing.T, g *generatedUnit, main string, inputs map[stri
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), limit)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, moo, "main.moo")
+	cmd := testproc.CommandContext(t, ctx, moo, "main.moo")
 	cmd.Dir = g.dir
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr

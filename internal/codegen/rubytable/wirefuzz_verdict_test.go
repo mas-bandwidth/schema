@@ -4,13 +4,14 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/ruby/rubyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func generateWireFuzzUnit(t *testing.T, root, relDir string) map[string][]byte {
@@ -54,7 +55,7 @@ func TestRubyWireFuzzVerdictPipeNegativeControl(t *testing.T) {
 		t.Fatal(err)
 	}
 	harness := filepath.Join(dir, "harness")
-	build := exec.Command("go", "build", "-o", harness, "./test/conformance/harness")
+	build := testproc.Command(t, "go", "build", "-o", harness, "./test/conformance/harness")
 	build.Dir = root
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build harness: %v: %s", err, out)
@@ -62,7 +63,7 @@ func TestRubyWireFuzzVerdictPipeNegativeControl(t *testing.T) {
 	for _, rubyBin := range []string{rubyrun.Interpreter(t), rubyrun.Floor(t)} {
 		for _, script := range []string{good, bad} {
 			driver := fmt.Sprintf("%s --disable-gems -w %s %s", rubyBin, script, filepath.Join(dir, "generated"))
-			cmd := exec.Command(harness, "wire-fuzz", "--driver", driver, "--replay", mutant, "--unit", "graphdemo", "--root", "Scene")
+			cmd := testproc.Command(t, harness, "wire-fuzz", "--driver", driver, "--replay", mutant, "--unit", "graphdemo", "--root", "Scene")
 			cmd.Dir = root
 			out, err := cmd.CombinedOutput()
 			if script == good && err != nil {
@@ -101,7 +102,7 @@ func TestRubyWireFuzzRetainNegativeControl(t *testing.T) {
 		t.Fatal(err)
 	}
 	harness := filepath.Join(dir, "harness")
-	build := exec.Command("go", "build", "-o", harness, "./test/conformance/harness")
+	build := testproc.Command(t, "go", "build", "-o", harness, "./test/conformance/harness")
 	build.Dir = root
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build harness: %v: %s", err, out)
@@ -110,7 +111,7 @@ func TestRubyWireFuzzRetainNegativeControl(t *testing.T) {
 	for _, rubyBin := range []string{rubyrun.Interpreter(t), rubyrun.Floor(t)} {
 		for _, script := range []string{good, bad} {
 			driver := fmt.Sprintf("%s --disable-gems -w %s %s", rubyBin, script, filepath.Join(dir, "generated"))
-			cmd := exec.Command(harness, "wire-fuzz", "--retain", "--driver", driver, "--replay", vector, "--unit", "graphdemo", "--root", "Scene", "--failed", filepath.Join(dir, "failed.bin"))
+			cmd := testproc.Command(t, harness, "wire-fuzz", "--retain", "--driver", driver, "--replay", vector, "--unit", "graphdemo", "--root", "Scene", "--failed", filepath.Join(dir, "failed.bin"))
 			cmd.Dir = root
 			out, err := cmd.CombinedOutput()
 			if script == good && err != nil {
@@ -159,7 +160,7 @@ func TestRubyWireFuzzRetainLoss(t *testing.T) {
 		t.Fatal(err)
 	}
 	harness := filepath.Join(dir, "harness")
-	build := exec.Command("go", "build", "-o", harness, "./test/conformance/harness")
+	build := testproc.Command(t, "go", "build", "-o", harness, "./test/conformance/harness")
 	build.Dir = root
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build harness: %v: %s", err, out)
@@ -167,7 +168,7 @@ func TestRubyWireFuzzRetainLoss(t *testing.T) {
 	for _, rubyBin := range []string{rubyrun.Interpreter(t), rubyrun.Floor(t)} {
 		for _, script := range []string{good, bad} {
 			driver := fmt.Sprintf("%s --disable-gems -w %s %s", rubyBin, script, filepath.Join(dir, "generated"))
-			cmd := exec.Command(harness, "wire-fuzz", "--retain", "--driver", driver, "--replay", vector, "--unit", "graphdemo", "--root", "Scene", "--failed", filepath.Join(dir, "failed.bin"))
+			cmd := testproc.Command(t, harness, "wire-fuzz", "--retain", "--driver", driver, "--replay", vector, "--unit", "graphdemo", "--root", "Scene", "--failed", filepath.Join(dir, "failed.bin"))
 			cmd.Dir = root
 			out, err := cmd.CombinedOutput()
 			if script == good && (err != nil || !strings.Contains(string(out), "0 divergences")) {

@@ -2,13 +2,14 @@ package darttable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestCardDescriptorsNameEveryField pins docs/SPEC-TABLES.md §8.1, §8.3: the
@@ -131,7 +132,7 @@ void main() {
 	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dartBinary(t), "--enable-asserts", "probe.dart")
+	cmd := testproc.Command(t, dartBinary(t), "--enable-asserts", "probe.dart")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -177,7 +178,7 @@ func retainProbe(t *testing.T, schema string, probe string, args ...string) stri
 	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dartBinary(t), "--enable-asserts", "probe.dart")
+	cmd := testproc.Command(t, dartBinary(t), "--enable-asserts", "probe.dart")
 	cmd.Args = append(cmd.Args, args...)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
@@ -227,7 +228,7 @@ void main(List<String> args) {
 		t.Fatal(err)
 	}
 	input := filepath.Join(dir, "input.wire")
-	cmd := exec.Command(dartBinary(t), "--enable-asserts", "producer.dart", input)
+	cmd := testproc.Command(t, dartBinary(t), "--enable-asserts", "producer.dart", input)
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("the newer declaration's save failed: %v\n%s", err, out)
@@ -395,7 +396,7 @@ void main(List<String> args) {
 		t.Fatal(err)
 	}
 	input := filepath.Join(dir, "enum.wire")
-	cmd := exec.Command(dartBinary(t), "--enable-asserts", "producer.dart", input)
+	cmd := testproc.Command(t, dartBinary(t), "--enable-asserts", "producer.dart", input)
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("the newer enum save failed: %v\n%s", err, out)
@@ -413,7 +414,7 @@ void main(List<String> args) {
 	if err := os.WriteFile(filepath.Join(dir2, "probe.dart"), []byte(roundTripEnum), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd = exec.Command(dartBinary(t), "--enable-asserts", "probe.dart", input)
+	cmd = testproc.Command(t, dartBinary(t), "--enable-asserts", "probe.dart", input)
 	cmd.Dir = dir2
 	out, err := cmd.CombinedOutput()
 	if err != nil {

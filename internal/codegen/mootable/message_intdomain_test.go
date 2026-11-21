@@ -299,6 +299,11 @@ func TestMooMessageIntegerHoldsTheReadersKind(t *testing.T) {
 const (
 	intDomainAnchor = "\t\tif n == nil or n < klo or n > khi then\n\t\t\treturn nil, refuseRead(t, \"out_of_range\")\n\t\tend\n\t\traw = n\n"
 	intDomainPlant  = "\t\tif false then\n\t\t\treturn nil, refuseRead(t, \"out_of_range\")\n\t\tend\n\t\traw = n or 0\n"
+	// the announced-kind hold (message_announced_kind_test.go) refuses the
+	// same rows first when the announced kind is the reader's; the control
+	// lifts it too, so the reader's own kind is what it measures.
+	announcedKindAnchor = "\tif not inAnnouncedKind(kind, shape, x) then\n"
+	announcedKindPlant  = "\tif false then\n"
 )
 
 // TestMooMessageIntegerHoldsTheReadersKindNegativeControl restores the
@@ -313,6 +318,10 @@ func TestMooMessageIntegerHoldsTheReadersKindNegativeControl(t *testing.T) {
 	if strings.Count(src, intDomainAnchor) != 1 {
 		t.Fatal("the kind-domain anchor is not in table_message.moo exactly once")
 	}
+	if strings.Count(src, announcedKindAnchor) != 1 {
+		t.Fatal("the announced-kind anchor is not in table_message.moo exactly once")
+	}
+	src = strings.Replace(src, announcedKindAnchor, announcedKindPlant, 1)
 	planted := []byte(strings.Replace(src, intDomainAnchor, intDomainPlant, 1))
 	if bytes.Contains(planted, []byte("if n == nil or n < klo or n > khi then")) {
 		t.Fatal("the plant left the product substitution in place")
