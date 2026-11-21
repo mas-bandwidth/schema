@@ -5,9 +5,9 @@ package pythontable
 // with arms that are tables, scalars, a pointer, a nested union and no
 // payload at all. Every verdict is the Go engine's (internal/tablewire),
 // asked in the test itself: each wire below is read by tablewire.Decode and by
-// the pinned interpreters, and the two must agree on the refusal's reason or
-// on the value, judged by writing it back and comparing the bytes with
-// tablewire.Encode's.
+// the pinned interpreters, and the two must agree on the verdict: refused (the
+// reason is each side's own diagnostic, never compared) or the value, judged
+// by writing it back and comparing the bytes with tablewire.Encode's.
 
 import (
 	"encoding/binary"
@@ -115,9 +115,9 @@ func unionEngineWire(t *testing.T, u *ir.Unit, text string) []byte {
 	return wire
 }
 
-// unionEngineVerdict is the line the probe must print for wire: the engine's
-// refusal reason, or the unknown count and the bytes the engine writes back
-// for the value it read ("invalid" where its writer refuses that value).
+// unionEngineVerdict is the line the probe must print for wire: refused, or
+// the unknown count and the bytes the engine writes back for the value it read
+// ("invalid" where its writer refuses that value).
 func unionEngineVerdict(t *testing.T, u *ir.Unit, wire []byte) string {
 	t.Helper()
 	m := tabletext.NewModel(u)
@@ -125,11 +125,10 @@ func unionEngineVerdict(t *testing.T, u *ir.Unit, wire []byte) string {
 	var report tabletext.Report
 	ok, err := tablewire.Decode(m, inst, wire, &report)
 	if !ok {
-		reason := tablewire.RefusalReason(err)
-		if reason == "" {
-			t.Fatalf("the engine's refusal names no reason: %v", err)
+		if !tablewire.ReadRefusal(err) {
+			t.Fatalf("the engine fails with %v, which is not a read's refusal", err)
 		}
-		return "refused " + reason
+		return "refused"
 	}
 	back, err := tablewire.Encode(m, inst)
 	if err != nil {
@@ -226,10 +225,11 @@ func (w *unionWire) file(fields ...[]byte) []byte {
 
 type unionCase struct {
 	name string
-	// engine is the verdict the Go engine was measured to give, as "read" or
-	// "refused <reason>": the test holds it so a case that drifts from what it
-	// was written to show is caught, and the probe is held to the engine's
-	// own answer beside it.
+	// engine is the verdict the Go engine was measured to give, "read" or
+	// "refused": the test holds it so a case that drifts from what it was
+	// written to show is caught, and the probe is held to the engine's own
+	// verdict beside it. Why a read refused is never compared
+	// (docs/rulings.json, refusal-verdict-only).
 	engine string
 	build  func(w *unionWire) []byte
 }
@@ -251,7 +251,7 @@ var unionCases = []unionCase{
 		// A nested union arm holding None: L = 1 and one zero byte.
 		return w.file(w.union("inner", w.arm("pick", 15, []byte{0})), w.least())
 	}},
-	{"nested-trailing", "refused wire_damaged", func(w *unionWire) []byte {
+	{"nested-trailing", "refused", func(w *unionWire) []byte {
 		return w.file(w.union("inner", w.arm("pick", 15, []byte{0, 0})), w.least())
 	}},
 	{"unknown-arm", "read", func(w *unionWire) []byte {
@@ -263,83 +263,81 @@ var unionCases = []unionCase{
 	{"unknown-arm-nested-table", "read", func(w *unionWire) []byte {
 		return w.file(w.table("holder", w.union("pick", w.arm("ghost", 1, []byte{1}))), w.least())
 	}},
-	{"unknown-arm-kind32-nonzero-l", "refused wire_damaged", func(w *unionWire) []byte {
+	{"unknown-arm-kind32-nonzero-l", "refused", func(w *unionWire) []byte {
 		return w.file(w.union("pick", w.arm("ghost", 32, []byte{0})), w.least())
 	}},
-	{"unknown-arm-kind99", "refused wire_damaged", func(w *unionWire) []byte {
+	{"unknown-arm-kind99", "refused", func(w *unionWire) []byte {
 		return w.file(w.union("pick", w.arm("ghost", 99, nil)), w.least())
 	}},
-	{"unknown-arm-bad-bool", "refused wire_damaged", func(w *unionWire) []byte {
+	{"unknown-arm-bad-bool", "refused", func(w *unionWire) []byte {
 		return w.file(w.union("pick", w.arm("ghost", 1, []byte{2})), w.least())
 	}},
-	{"unknown-arm-bad-body", "refused wire_damaged", func(w *unionWire) []byte {
+	{"unknown-arm-bad-body", "refused", func(w *unionWire) []byte {
 		return w.file(w.union("pick", w.arm("ghost", 13, []byte{0, 0})), w.least())
 	}},
-	{"unknown-field-kind32-nonzero-l", "refused wire_damaged", func(w *unionWire) []byte {
+	{"unknown-field-kind32-nonzero-l", "refused", func(w *unionWire) []byte {
 		return w.file(unionCat(w.ref("ghost_field"), []byte{32}, unionLeb(1), []byte{0}), w.least())
 	}},
-	{"unknown-field-bad-union", "refused wire_damaged", func(w *unionWire) []byte {
+	{"unknown-field-bad-union", "refused", func(w *unionWire) []byte {
 		return w.file(w.union("ghost_field", w.arm("ghost", 99, nil)), w.least())
 	}},
-	{"arm-kind-mismatch", "refused kind_mismatch", func(w *unionWire) []byte {
+	{"arm-kind-mismatch", "refused", func(w *unionWire) []byte {
 		return w.file(w.union("pick", w.arm("number", 12, []byte("ab"))), w.least())
 	}},
-	{"arm-kind-mismatch-then-damage", "refused wire_damaged", func(w *unionWire) []byte {
-		// The engine judges the whole file's framing before its decode
-		// compares a kind: damage in a later field outranks the mismatch.
+	{"arm-kind-mismatch-then-damage", "refused", func(w *unionWire) []byte {
+		// A kind mismatch and damage in a later field: either refuses, and
+		// which one a reader meets first is its own diagnostic.
 		return w.file(w.union("pick", w.arm("number", 12, []byte("ab"))), w.least(),
 			unionCat(w.ref("ghost_field"), []byte{99}))
 	}},
-	{"arm-nonfinite-then-damage", "refused wire_damaged", func(w *unionWire) []byte {
-		// A skipped arm carrying a NaN is only a non-finite float when the
-		// rest of the file is sound: the file walk records it, finishes the
-		// body, and names the damage it finds later.
+	{"arm-nonfinite-then-damage", "refused", func(w *unionWire) []byte {
+		// A skipped arm carrying a NaN and damage later in the file: the
+		// load refuses whichever a reader meets first.
 		nan := binary.LittleEndian.AppendUint32(nil, 0x7FC00000)
 		return w.file(w.union("pick", w.arm("ghost", 10, nan)), w.least(),
 			unionCat(w.ref("ghost_field"), []byte{99}))
 	}},
-	{"arm-kind-mismatch-then-reserved-node-type", "refused wire_damaged", func(w *unionWire) []byte {
-		// A node record's type position is never a reserved id, even where
-		// the decode met a kind mismatch before the node table: the file walk
-		// refuses the record as damage, which outranks the mismatch.
+	{"arm-kind-mismatch-then-reserved-node-type", "refused", func(w *unionWire) []byte {
+		// A kind mismatch before a node record whose type position is a
+		// reserved id: either refuses the load.
 		record := nodeRecord(w.refID(ir.TableBuildVersionWireId), []byte{0})
 		return w.file(w.union("pick", w.arm("number", 12, []byte("ab"))), w.least(), w.node(record))
 	}},
-	{"arm-short-width", "refused wire_damaged", func(w *unionWire) []byte {
+	{"arm-short-width", "refused", func(w *unionWire) []byte {
 		return w.file(w.union("pick", w.arm("number", 4, []byte{1, 2, 3})), w.least())
 	}},
-	{"arm-long-width", "refused wire_damaged", func(w *unionWire) []byte {
+	{"arm-long-width", "refused", func(w *unionWire) []byte {
 		return w.file(w.union("pick", w.arm("number", 4, []byte{1, 2, 3, 4, 5})), w.least())
 	}},
-	{"arm-past-body", "refused wire_damaged", func(w *unionWire) []byte {
+	{"arm-past-body", "refused", func(w *unionWire) []byte {
 		return w.file(w.union("pick", unionCat(w.ref("number"), []byte{4}, unionLeb(40), unionI32(1))), w.least())
 	}},
-	{"void-arm-nonzero-l", "refused wire_damaged", func(w *unionWire) []byte {
+	{"void-arm-nonzero-l", "refused", func(w *unionWire) []byte {
 		return w.file(w.union("pick", w.arm("ping", 32, []byte{0})), w.least())
 	}},
-	{"bool-arm-two", "refused wire_damaged", func(w *unionWire) []byte {
+	{"bool-arm-two", "refused", func(w *unionWire) []byte {
 		return w.file(w.union("pick", w.arm("toggle", 1, []byte{2})), w.least())
 	}},
-	{"table-arm-trailing", "refused wire_damaged", func(w *unionWire) []byte {
+	{"table-arm-trailing", "refused", func(w *unionWire) []byte {
 		return w.file(w.union("pick", w.arm("other", 13, []byte{0, 0})), w.least())
 	}},
-	{"count-over-bound", "refused count_over_bound", func(w *unionWire) []byte {
+	{"count-over-bound", "refused", func(w *unionWire) []byte {
 		zero := unionLeb(0)
 		return w.file(w.array("many", 15, 4, zero, zero, zero, zero), w.least())
 	}},
-	{"count-over-extent-cap", "refused count_over_extent_cap", func(w *unionWire) []byte {
+	{"count-over-extent-cap", "refused", func(w *unionWire) []byte {
 		return w.file(w.array("many", 15, 1<<31), w.least())
 	}},
-	{"element-kind-mismatch", "refused kind_mismatch", func(w *unionWire) []byte {
+	{"element-kind-mismatch", "refused", func(w *unionWire) []byte {
 		return w.file(w.array("many", 4, 0), w.least())
 	}},
-	{"element-kind-closed", "refused wire_damaged", func(w *unionWire) []byte {
+	{"element-kind-closed", "refused", func(w *unionWire) []byte {
 		return w.file(w.array("many", 99, 0), w.least())
 	}},
-	{"element-truncated", "refused wire_damaged", func(w *unionWire) []byte {
+	{"element-truncated", "refused", func(w *unionWire) []byte {
 		return w.file(w.array("many", 15, 2, unionLeb(0)), w.least())
 	}},
-	{"below-minimum", "refused count_over_bound", func(w *unionWire) []byte {
+	{"below-minimum", "refused", func(w *unionWire) []byte {
 		// A present counted array must meet the reader minimum.
 		return w.file(w.array("least", 15, 0))
 	}},
@@ -500,7 +498,8 @@ def case(name):
     try:
         value = Root.load(wire, report)
     except Refused as err:
-        return ["refused", err.reason]
+        print("diagnostic", name, err.reason)
+        return ["refused"]
     try:
         out = value.save().hex()
     except InvalidValue:
@@ -711,8 +710,30 @@ func TestPythonVtUnions(t *testing.T) {
 	}
 }
 
+// TestPythonVtUnionsReasonIsDiagnostic renames every refusal reason in a copy
+// of the generated runtime and requires the whole probe to stay green: the
+// cross-language contract is the verdict, and why a read refused is Python's
+// own diagnostic (docs/rulings.json, refusal-verdict-only).
+//
+// Functional (python pins): run with SCHEMA_SLOW=1.
+func TestPythonVtUnionsReasonIsDiagnostic(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the pinned Python interpreters (it runs the emitted table runtime)")
+	u := loadUnit(t, unionsSchema)
+	mutate := func(files map[string][]byte) error {
+		plantReasonRename(t, files)
+		return nil
+	}
+	for _, f := range unionFailures(t, u, mutate) {
+		t.Error(f)
+	}
+}
+
 // unionControls plants one fault per union check in a COPY of the generated
-// runtime; each must turn the probe red on the line named.
+// runtime; each must turn the probe red on the line named. A fault that only
+// changes which reason a refusal names, or which check meets the damage first,
+// leaves the verdict as it was and so has no control here
+// (docs/rulings.json, refusal-verdict-only).
 var unionControls = []struct {
 	name string
 	path string
@@ -725,14 +746,10 @@ var unionControls = []struct {
 	{"arm-zero-read", "kind_union.py", "    if reference == 0:\n", "    if reference == 0:\n        raise Refused(\"wire_damaged\", \"arm 0\")\n", "case arm-zero-field "},
 	{"unknown-arm-check", "kind_union.py", "        _load._skip_content(payload, kind, ctx, depth)\n", "", "case unknown-arm-kind99 "},
 	{"unknown-field-check", "load.py", "        _skip_content(reader.take(length), kind, ctx, depth)\n", "        reader.take(length)\n", "case unknown-field-kind32-nonzero-l "},
-	{"file-walk-stops-at-nonfinite", "load.py", "    ctx.nonfinite.append(True)", "    raise Refused(\"non_finite_float\", \"a float the wire carries\")", "case arm-nonfinite-then-damage "},
-	{"node-record-reserved-type", "load.py", "        if (\n            type_id == NODE_WIRE_ID\n", "        if False and (\n            type_id == NODE_WIRE_ID\n", "case arm-kind-mismatch-then-reserved-node-type "},
-	{"damage-outranks-mismatch", "load.py", "            _check_file(view, ids)\n", "            pass\n", "case arm-kind-mismatch-then-damage "},
 	{"arm-kind-check", "kind_union.py", "    if kind != arm.kind:\n", "    if False:\n", "case arm-kind-mismatch "},
 	{"void-arm-length", "kind_union.py", "        if length != 0:\n", "        if False:\n", "case void-arm-nonzero-l "},
 	{"arm-trailing", "kind_union.py", "    if sub.pos != sub.end:\n        raise Refused(\"wire_damaged\", \"bytes left inside an arm's L after its payload\")", "    if False:\n        raise Refused(\"wire_damaged\", \"bytes left inside an arm's L after its payload\")", "case arm-long-width "},
 	{"count-minimum", "kind_union.py", "elif count > fd.bound or (fd.array_kind == 2 and count < fd.array_min):", "elif count > fd.bound:", "case below-minimum "},
-	{"count-bound-reason", "kind_union.py", "raise Refused(\"count_over_bound\"", "raise Refused(\"out_of_range\"", "case count-over-bound "},
 	{"count-extent-cap", "load.py", "    if count > _COUNT_CAP:\n        raise Refused(\"count_over_extent_cap\", \"a collection count", "    if False:\n        raise Refused(\"count_over_extent_cap\", \"a collection count", "case count-over-extent-cap "},
 	{"counted-elision", "descriptor.py", "            return len(value) == self.array_min and all(element.type == 0 for element in value)\n", "            return len(value) == 0\n", "case counted-one-none "},
 	{"fixed-elision", "descriptor.py", "            return all(element.type == 0 for element in value)\n", "            return bool(value == self.default)\n", "union_elide_inactive True"},

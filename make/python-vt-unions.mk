@@ -5,15 +5,18 @@
 # python-vt-unions: TestPythonVtUnions holds a union in a field, an array
 # element, a nested by-value table and a pointer target to the Go engine's
 # verdict under both pinned interpreters: each case wire is read by
-# internal/tablewire and by the probe, which must agree on the refusal's
-# reason or on the bytes the value writes back; beside them the write
-# refusals' paths and rules, a declared non-zero default, and elision.
+# internal/tablewire and by the probe, which must agree on the verdict
+# (refused, or the bytes the value writes back; the reason is each side's own
+# diagnostic, never compared); beside them the write refusals' paths and
+# rules, a declared non-zero default, and elision.
+# TestPythonVtUnionsReasonIsDiagnostic renames every refusal reason in a copy
+# of the runtime and requires the probe to stay green.
 #
 # python-vt-unions-negative-control: TestPythonVtUnionsNegativeControl plants
 # one fault per union check in a copy of the generated runtime (the canonical
 # arm length, the arm-0 read, the unknown arm's and the unknown field's skip
-# checks, damage outranking a mismatch, the arm kind, the payload-free arm's
-# L, an arm's trailing bytes, the count bound's reason, the extent cap, the
+# checks, the arm kind, the payload-free arm's L, an arm's trailing bytes,
+# the count minimum, the extent cap, the
 # counted, fixed and by-value table elision, the write path, the write
 # minimum and the write tag) and requires the probe, still running to its
 # end, to lose the line that names that check.
@@ -22,7 +25,7 @@ PYTHON_CI_SUPPORT_GROUPS += python-ci-vt-unions
 python-ci-vt-unions: python-vt-unions python-vt-unions-negative-control
 
 python-vt-unions: python-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run 'TestPythonVtUnions$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run 'TestPythonVtUnions(ReasonIsDiagnostic)?$$' ./internal/codegen/pythontable/
 
 python-vt-unions-negative-control: python-toolchain-check
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run 'TestPython(VtUnionsNegativeControl|UnionCountedBirthNegativeControl)'  ./internal/codegen/pythontable/
