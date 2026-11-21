@@ -3725,6 +3725,19 @@ func ReservedLanguages() []string {
 	return out
 }
 
+// ReservedTargetsOf returns the --lang spellings that generate lang (a display
+// name), as a copy, or nil when the table has no row for it. The language
+// list the docs print (internal/languages) reads the table's rows here, so a
+// language whose generator a build leaves out is still a language.
+func ReservedTargetsOf(lang string) []string {
+	for _, row := range reservedLanguages {
+		if row.lang == lang {
+			return append([]string(nil), row.targets...)
+		}
+	}
+	return nil
+}
+
 // ReservedIn returns lang's reserved words (lang is a display name: "Java",
 // "Dart", ...) as a fresh set, read from the one table. An emitter that tests
 // the spelling it maps a name to reads its words here; an unknown language
