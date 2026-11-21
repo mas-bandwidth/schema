@@ -40,6 +40,7 @@ type event struct {
 	Test    string
 	Elapsed float64
 	Budget  string
+	Output  string
 }
 
 // key names a package (test "") or a test within ONE record: the same
@@ -57,6 +58,7 @@ type result struct {
 	finished bool          // its latest start/run reported
 	failed   bool          // some run of it failed, even when a later run passed
 	budget   time.Duration // 0: none
+	out      []byte        // a test's own output since its latest run, kept until it passes or fails (skips.go)
 }
 
 type report struct {
@@ -110,12 +112,19 @@ func (r *report) add(rd io.Reader, budget time.Duration) error {
 }
 
 func (r *report) event(ev event, budget time.Duration) {
+	k := key{r.records, ev.Package, ev.Test}
 	switch ev.Action {
 	case "start", "run", "pass", "fail", "skip":
+	case "output":
+		// a test's own lines are where a skip says why (skips.go); a line is
+		// kept only for a test that is running, and only up to maxSkipOutput
+		if res := r.tests[k]; ev.Test != "" && res != nil && !res.finished && len(res.out) < maxSkipOutput {
+			res.out = append(res.out, ev.Output...)
+		}
+		return
 	default:
-		return // output, pause, cont, bench: no verdict in them
+		return // pause, cont, bench: no verdict in them
 	}
-	k := key{r.records, ev.Package, ev.Test}
 	m := r.tests
 	if ev.Test == "" {
 		m = r.packages
@@ -133,13 +142,16 @@ func (r *report) event(ev event, budget time.Duration) {
 		// A new run (-count>1, or a package started again in this record)
 		// owes its own verdict: what an earlier run reported does not stand
 		// for it.
-		res.verdict, res.finished, res.elapsed = "", false, 0
+		res.verdict, res.finished, res.elapsed, res.out = "", false, 0, nil
 	case "pass", "fail", "skip":
 		res.verdict = ev.Action
 		res.finished = true
 		res.elapsed = time.Duration(ev.Elapsed * float64(time.Second))
 		if ev.Action == "fail" {
 			res.failed = true
+		}
+		if ev.Action != "skip" {
+			res.out = nil // only a skip's reason is read
 		}
 	}
 }
@@ -267,9 +279,29 @@ func (r *report) findings(slowest int) findings {
 func main() {
 	budget := flag.Duration("budget", 10*time.Minute, "the package budget for a record that names none (0: no budget)")
 	slowest := flag.Int("slowest", 15, "how many of the slowest tests to list")
+	skips := flag.String("skips", "", "the skip ledger (.github/skip-ledger.txt): every skip is read against it, and a skip with no reason, a reason no line names, or a reason this lane satisfies is red")
+	provides := flag.String("provides", "", "with -skips: the ledger classes this lane satisfies, space-separated (a lane with elixir installed provides tool:elixir)")
+	requireRecord := flag.Bool("require-record", false, "a row with no go test record is red (a lane whose step always runs go test)")
 	flag.Parse()
 	if flag.NArg() == 0 {
-		fmt.Fprintln(os.Stderr, "usage: gotestreport [-budget 10m] [-slowest 15] <dir>...")
+		fmt.Fprintln(os.Stderr, "usage: gotestreport [-budget 10m] [-slowest 15] [-skips <ledger> [-provides \"<class>...\"]] [-require-record] <dir>...")
+		os.Exit(2)
+	}
+	var led *ledger
+	if *skips != "" {
+		f, err := os.Open(*skips)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "gotestreport: %v\n", err)
+			os.Exit(2)
+		}
+		led, err = readLedger(f, *skips, strings.Fields(*provides))
+		_ = f.Close()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "gotestreport: %v\n", err)
+			os.Exit(2)
+		}
+	} else if *provides != "" {
+		fmt.Fprintln(os.Stderr, "gotestreport: -provides needs -skips")
 		os.Exit(2)
 	}
 	r := newReport()
@@ -300,9 +332,20 @@ func main() {
 	}
 	if files == 0 {
 		fmt.Printf("go test report: no go test ran on this row (%s holds no record)\n", strings.Join(flag.Args(), " "))
+		if *requireRecord {
+			// the step this report follows always runs go test: no record is
+			// a recorder that did not record, and nothing was read
+			fmt.Println("  NO RECORD       this lane's go test left no record, so no test and no skip was read")
+			os.Exit(1)
+		}
 		return
 	}
 	f := r.findings(*slowest)
+	if led != nil {
+		sf := r.skipFindings(led)
+		f.text += sf.text
+		f.red = f.red || sf.red
+	}
 	fmt.Print(f.text)
 	if s := os.Getenv("GITHUB_STEP_SUMMARY"); s != "" {
 		if out, err := os.OpenFile(s, os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
