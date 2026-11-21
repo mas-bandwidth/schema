@@ -1471,7 +1471,7 @@ public static partial class TableWire
             if (!Compatible(elementKind, f.Kind, report)) { return false; }
             if (f.Dynamic && count > int.MaxValue) { return CollectionCap(report); }
             int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
-            if (!f.Dynamic && count > (ulong)f.ArrayBound) { return Fail(report, "count_over_bound: " + f.Name); }
+            if (!f.Dynamic && (count < (ulong)f.ArrayMin || count > (ulong)f.ArrayBound)) { return Fail(report, "count_over_bound: " + f.Name); }
             int decoded = 0;
             for (int i = 0; i < keep; i++)
             {
@@ -1555,7 +1555,7 @@ public static partial class TableWire
             else
             {
                 int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
-                if (!f.Dynamic && count > (ulong)f.ArrayBound) { return Fail(report, "count_over_bound: " + f.Name); }
+                if (!f.Dynamic && (count < (ulong)f.ArrayMin || count > (ulong)f.ArrayBound)) { return Fail(report, "count_over_bound: " + f.Name); }
                 int previous = f.Counted && f.GetCount != null ? f.GetCount(value) : 0;
                 int decoded = 0; long textSpent = 0;
                 for (int i = 0; i < keep; i++)

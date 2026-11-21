@@ -46,7 +46,7 @@ func csOrdinalFillsStorage(max int64, storageBits int) bool {
 // nested type is a call and not an inlining, so a type that appears twice in a
 // closure is spelled once.
 func (g *tableGen) emitFixedClampBodyFn(st *ir.Struct) {
-	if !ir.TableFixedClampNeeded(st) {
+	if !ir.TableFixedBoundsNeeded(st) {
 		return
 	}
 	if g.fixedWriteCheck {
@@ -93,7 +93,7 @@ func (g *tableGen) emitFixedWriteCheckBodyFn(st *ir.Struct) {
 // fixedWriteAdmits names a table's write check, or "" when it has none: the
 // table has no fixed form to borrow the walk from, or bounds nothing.
 func (g *tableGen) fixedWriteAdmits(st *ir.Struct) string {
-	if !ir.TableFixedEmitted(g.unit, st) || !ir.TableFixedClampNeeded(st) {
+	if !ir.TableFixedEmitted(g.unit, st) || !ir.TableFixedBoundsNeeded(st) {
 		return ""
 	}
 	return st.Name + "FixedWriteAdmits"
@@ -127,7 +127,7 @@ func (g *tableGen) emitFixedWriteAssert(st *ir.Struct, value, ind string) {
 // emitFixedClamp is the ROOT's entry point: the one call a read makes, and the
 // one place the count reaches the report.
 func (g *tableGen) emitFixedClamp(st *ir.Struct) {
-	if !ir.TableFixedClampNeeded(st) {
+	if !ir.TableFixedBoundsNeeded(st) {
 		return
 	}
 	g.pf("// THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,\n")
@@ -144,7 +144,7 @@ func (g *tableGen) emitFixedClamp(st *ir.Struct) {
 }
 
 func (g *tableGen) emitFixedClampField(owner *ir.Struct, f *ir.Field, val string, indent int) {
-	if !ir.TableFixedClampNeededField(f) {
+	if !ir.TableFixedBoundsNeededField(f) {
 		return
 	}
 	ind := strings.Repeat(" ", indent)
@@ -185,6 +185,18 @@ func (g *tableGen) emitFixedClampPayload(owner *ir.Struct, f *ir.Field, val stri
 		g.pf("%s    }\n%s}\n", ind, ind)
 		g.leaveLoop()
 	case f.Array == ir.ArrayCounted:
+		// THE COUNT MINIMUM IS A BOUND OF THE RECORD THAT HOLDS IT (docs/SPEC.md
+		// §5.1 row 3): the stored count is held to [Min, N] over storage, as
+		// the wire's is, at whatever depth the record sits. The plan already
+		// holds N; the minimum is held here, before the walk, and the walk is
+		// taken only when an element has a bound of its own, a child's
+		// minimum included (ir.TableFixedElementBoundsNeeded).
+		if f.ArrayMin > 0 {
+			g.pf("%sif (%s.%sCount < %d) { clamped++; }\n", ind, val, prop, f.ArrayMin)
+			if !ir.TableFixedElementBoundsNeeded(f) {
+				return
+			}
+		}
 		// THE LIVE COUNT AND NOT THE BOUND: the slack is the template's zeros
 		// and a zero nobody wrote is not a value to hold to a range.
 		i := g.enterLoop()
@@ -214,7 +226,7 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
-			if ir.TableFixedClampNeeded(r) {
+			if ir.TableFixedBoundsNeeded(r) {
 				g.pf("%s%s(%s, ref clamped);\n", ind, g.fixedBoundsName(r), expr)
 			}
 			return
@@ -229,10 +241,10 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 			if !csOrdinalFillsStorage(r.Max, ir.StorageBitsFor(r.Max)) {
 				g.pf("%s    if ((ulong)%s.Type > %d) { clamped++; }\n", ind, expr, r.Max)
 			}
-			if ir.TableFixedClampNeededUnionArm(r) {
+			if ir.TableFixedBoundsNeededUnionArm(r) {
 				g.pf("%s    switch (%s.Type)\n%s    {\n", ind, expr, ind)
 				for _, v := range r.Variants {
-					if v.F == nil || !ir.TableFixedClampNeededField(v.F) {
+					if v.F == nil || !ir.TableFixedBoundsNeededField(v.F) {
 						continue
 					}
 					g.pf("%s        case %s.%s:\n%s            {\n", ind, tagType, ir.GoExportName(v.Name), ind)

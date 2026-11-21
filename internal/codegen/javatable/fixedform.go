@@ -1598,6 +1598,13 @@ func (g *fixedGen) emitScatterPayload(f *ir.Field, base int64, buf, at, val, rep
 		g.emitScatterLoop(f, base, fmt.Sprintf("%d", f.ArrayBound), buf, at, val+"."+name, rep, walked, indent)
 	case f.Array == ir.ArrayCounted:
 		g.emitScatterCount(fmt.Sprintf("%s.%sCount", val, name), buf, at, base, f.ArrayBound, rep, walked, "countOverBound", indent)
+		// THE COUNT MINIMUM IS A BOUND OF THE RECORD THAT HOLDS IT (docs/SPEC.md
+		// §5.1 row 3): the stored count is held to [Min, N] over live data, as
+		// the wire's is, at whatever depth the record sits. The identity and
+		// compiled plans meet the same scatter, so one line holds both.
+		if f.ArrayMin > 0 {
+			g.pf("%sif (%s.%sCount < %d) { %s }\n", ind, val, name, f.ArrayMin, scatterRefuse(rep, walked, "countOverBound"))
+		}
 		// LIVE ELEMENTS ONLY: clamp and ordinal counters count the writer's
 		// live count, never the slack behind it. Identity and compiled share
 		// this scatter; write still stores MAX (Dart #834). The slots past
