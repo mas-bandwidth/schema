@@ -12,7 +12,7 @@ func TestCfTopProbe(t *testing.T) {
 	if err := voc.AnnounceRead(Announce(m.Unit), &tabletext.Report{}); err != nil {
 		t.Fatal(err)
 	}
-	msg, err := EncodeMessage(m, covPlace(t, m, "Root", `{"cf":0.1}`))
+	msg, err := EncodeMessage(m, covPlace(t, m, "Root", `{"cf":0.0999}`))
 	t.Logf("encode 0.1: err=%v", err)
 	back := m.New(m.Lookup("Root"))
 	v := voc
