@@ -155,7 +155,7 @@ add.
 | `*bytes`, `*string` | an ASCII-8BIT `String` or a UTF-8 `String`, or `nil` | `nil` |
 | `?T` | the value, or `nil` for absent | `nil` |
 | `[]T`, text lists | `Array` | `[]` |
-| `[E]T` (§2.4) | the generated keyed-array class over an `Array` of exactly `E::Max`, the element for variant k at index k − 1; every accessor, including `[]` and `[]=`, first requires an `Integer` key in `1..E::Max`, otherwise raises `IndexError`, and only then subtracts one; this refuses `None = 0`, negative keys, `nil` and keys above `Max`, as §2.4 requires | each element at its default |
+| `[E]T` (§2.4) | the generated keyed-array class (`SchemaTable::Keyed::<Table>::Field_<field>`, a subclass of `SchemaTable::KeyedArray`; IDENTIFIERS) over an `Array` of exactly `E::Max`, the element for variant k at index k − 1; every accessor, including `[]` and `[]=`, first requires an `Integer` key in `1..E::Max`, otherwise raises `IndexError`, and only then subtracts one; this refuses `None = 0`, negative keys, `nil` and keys above `Max`, as §2.4 requires | each element at its default |
 | `map[K]V` | `Hash`; the save writes it sorted by key | `{}` |
 | a union with table arms | as a packet union | `type = 0` |
 
@@ -418,6 +418,23 @@ and `TestRubySkeleton` turns each off in turn and requires its case to pass):
 - **Generated helpers** are named with the `_s_` prefix, and the Ruby target
   refuses a schema name that starts with it, so no schema name collides with a
   helper.
+- **Generated classes live where no declaration can.** The one class the
+  table emitter invents beside the declarations, the keyed-array class of a
+  `[E]T` table field, is `SchemaTable::Keyed::<Table>::Field_<field>`, opened
+  by that path from the unit module: `SchemaTable` is the runtime's claimed
+  module and its `Keyed` module holds only these classes, each table owns the
+  module of its own name, and a field's name is unique in its table, so no
+  declaration and no other field spells one, and nothing is refused for it.
+  The old spelling, `<Table><Field>KeyedArray` in the unit module, was
+  reopened by a declared table `QuestRankKeyedArray` (F-083) and was one
+  class for both `Quest.rank_value` and `QuestRank.value` (F-084).
+  `TestRubyKeyedWrapperNames` runs the committed corpus
+  (`internal/codegen/rubytable/testdata/keyed-wrapper-names`) on both pins,
+  and `TestRubyGeneratedConstantsAreBoundOnce` scans the generated
+  declaration files of that corpus and every table conformance unit: an
+  invented class outside `SchemaTable::Keyed`, one spelling a declaration or
+  a runtime name, or one opened twice fails it. A union's tag module
+  (`<Union>Type`) is the checker's claim (SPEC §4.6) and is refused there.
 - **The package's module constant** must not be an existing top-level
   constant of a pinned interpreter. A package whose Ruby spelling is
   `Object`, `String`, `File`, `Dir`, `Math` or another defined constant would
