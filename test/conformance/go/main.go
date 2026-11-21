@@ -701,6 +701,8 @@ func main() {
 		run = surfaceRetainSave
 	case "message":
 		run = surfaceMessage
+	case "message-prior":
+		run = surfaceMessagePrior
 	case "wire":
 		run = surfaceWire
 	case "report":
