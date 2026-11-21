@@ -87,10 +87,10 @@ fixed table Shot
 	}
 	// the non-finite latch (docs/SPEC-TABLES.md §3.3) is built once, at module
 	// scope, and a finite read builds nothing
-	if n := strings.Count(home, "new WeakMap()"); n != 1 {
+	if n := strings.Count(home, "new globalThis.WeakMap()"); n != 1 {
 		t.Errorf("the non-finite latch is built %d times in ProbeBlock.js, want once at module scope", n)
 	}
-	if strings.Contains(home, "new ArrayBuffer(8)") {
+	if strings.Contains(home, "new globalThis.ArrayBuffer(8)") || strings.Contains(home, "new ArrayBuffer(8)") {
 		t.Errorf("ProbeBlock.js still builds the retired NaN scratch")
 	}
 }
