@@ -68,7 +68,7 @@ func readLedgerCorpus(dir string) ([]ledgerCase, error) {
 func runLedgerCase(dir string, c ledgerCase, scratch string) error {
 	runs, rows, skips, carriers, crlf := 1, "", "", "", false
 	if c.flags != "-" {
-		for _, flag := range strings.Fields(c.flags) {
+		for flag := range strings.FieldsSeq(c.flags) {
 			key, value, _ := strings.Cut(flag, "=")
 			switch key {
 			case "runs":
@@ -106,7 +106,7 @@ func runLedgerCase(dir string, c ledgerCase, scratch string) error {
 	out, err := check("corpus", filepath.Join(dir, "corpus"), logPath, runs, skips, carriers, rows)
 	if c.verdict == "pass" {
 		if err != nil {
-			return fmt.Errorf("the case owes a pass and the ledger is red: %v", err)
+			return fmt.Errorf("the case owes a pass and the ledger is red: %w", err)
 		}
 		if !strings.Contains(out, "negative controls: ") {
 			return fmt.Errorf("the case passed without the tool's negative controls: %s", out)
@@ -114,8 +114,11 @@ func runLedgerCase(dir string, c ledgerCase, scratch string) error {
 		return nil
 	}
 	want := strings.TrimPrefix(c.verdict, "red:")
-	if err == nil || !strings.Contains(err.Error(), want) {
-		return fmt.Errorf("the case owes a refusal saying %q and got: %v", want, err)
+	if err == nil {
+		return fmt.Errorf("the case owes a refusal saying %q and passed", want)
+	}
+	if !strings.Contains(err.Error(), want) {
+		return fmt.Errorf("the case owes a refusal saying %q and got: %w", want, err)
 	}
 	return nil
 }

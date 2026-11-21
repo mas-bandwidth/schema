@@ -38,7 +38,7 @@ func readCases(dir string, columns int, owns func(id string) []string) ([]caseRo
 		}
 		f := strings.Split(line, "\t")
 		if len(f) != columns || f[0] == "" || (f[1] != "pass" && (!strings.HasPrefix(f[1], "red:") || len(f[1]) == len("red:"))) {
-			return nil, fmt.Errorf("%s/CASES.tsv:%d: a case is %d tab-separated columns: id, verdict (pass, or red:<what the refusal says>), ...", dir, n+1, columns)
+			return nil, fmt.Errorf("%s/CASES.tsv:%d: a case is %d tab-separated columns: id, verdict (pass, or red:<what the refusal says>) and the rest", dir, n+1, columns)
 		}
 		if seen[f[0]] {
 			return nil, fmt.Errorf("%s/CASES.tsv:%d: the case %s is named twice", dir, n+1, f[0])
@@ -68,13 +68,16 @@ func readCases(dir string, columns int, owns func(id string) []string) ([]caseRo
 func holdVerdict(c caseRow, err error) error {
 	if c.verdict == "pass" {
 		if err != nil {
-			return fmt.Errorf("the case owes a pass and is red: %v", err)
+			return fmt.Errorf("the case owes a pass and is red: %w", err)
 		}
 		return nil
 	}
 	want := strings.TrimPrefix(c.verdict, "red:")
-	if err == nil || !strings.Contains(err.Error(), want) {
-		return fmt.Errorf("the case owes a refusal saying %q and got: %v", want, err)
+	if err == nil {
+		return fmt.Errorf("the case owes a refusal saying %q and passed", want)
+	}
+	if !strings.Contains(err.Error(), want) {
+		return fmt.Errorf("the case owes a refusal saying %q and got: %w", want, err)
 	}
 	return nil
 }

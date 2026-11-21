@@ -73,7 +73,7 @@ func main() {
 
 func check(port, corpus, logPath string, runs int, skipsPath, carriersPath, rowsSpec string) (string, error) {
 	rows := map[string][]string{}
-	for _, spec := range strings.Fields(rowsSpec) {
+	for spec := range strings.FieldsSeq(rowsSpec) {
 		carrier, list, ok := strings.Cut(spec, "=")
 		names := strings.Split(list, ",")
 		if !ok || carrier == "" || slices.Contains(names, "") || len(names) != len(slices.Compact(slices.Sorted(slices.Values(names)))) {
@@ -125,12 +125,16 @@ func check(port, corpus, logPath string, runs int, skipsPath, carriersPath, rows
 	if dropped == text {
 		return out, fmt.Errorf("NEGATIVE CONTROL FAILED: the control found no line of %q to take out", victim)
 	}
-	if _, err := hostilecorpus.CheckLog(cases, dropped, runs, heldCases, heldCarriers, rows); err == nil || !strings.Contains(err.Error(), strings.SplitN(victim, "@", 2)[0]) {
-		return out, fmt.Errorf("NEGATIVE CONTROL FAILED: the log without %s passed the ledger, or went red without naming it: %v", victim, err)
+	if _, err := hostilecorpus.CheckLog(cases, dropped, runs, heldCases, heldCarriers, rows); err == nil {
+		return out, fmt.Errorf("NEGATIVE CONTROL FAILED: the log without %s passed the ledger", victim)
+	} else if !strings.Contains(err.Error(), strings.SplitN(victim, "@", 2)[0]) {
+		return out, fmt.Errorf("NEGATIVE CONTROL FAILED: the log without %s went red without naming it: %w", victim, err)
 	}
 	renamed := strings.ReplaceAll(text, line, "hostile-ledger ran "+victim+"-not-registered\n")
-	if _, err := hostilecorpus.CheckLog(cases, renamed, runs, heldCases, heldCarriers, rows); err == nil || !strings.Contains(err.Error(), victim+"-not-registered ran and the corpus does not register it") {
-		return out, fmt.Errorf("NEGATIVE CONTROL FAILED: the log with %s run under another name passed the ledger: %v", victim, err)
+	if _, err := hostilecorpus.CheckLog(cases, renamed, runs, heldCases, heldCarriers, rows); err == nil {
+		return out, fmt.Errorf("NEGATIVE CONTROL FAILED: the log with %s run under another name passed the ledger", victim)
+	} else if !strings.Contains(err.Error(), victim+"-not-registered ran and the corpus does not register it") {
+		return out, fmt.Errorf("NEGATIVE CONTROL FAILED: the log with %s run under another name went red without naming it: %w", victim, err)
 	}
 	out += fmt.Sprintf("%s hostile-corpus ledger negative controls: %s dropped is red by name; %s run under an unregistered name (the same count) is red by name\n", port, victim, victim)
 	return out, nil
