@@ -82,7 +82,7 @@ build/schema-python: $(shell find compiler internal cmd ir -name '*.go' 2>/dev/n
 # python, one directory per unit key. A unit the target refuses leaves its
 # refusal, by name, in <unit>.refused instead of a directory — listed, never
 # dropped. Every surface reads PYTHON_CONFORMANCE_GENERATED, default this tree.
-build/conformance-python: build/schema-python testdata/conformance/tables/MANIFEST.txt make/python.mk $(CONFORMANCE_UNIT_SCHEMAS)
+build/conformance-python: build/schema-python testdata/conformance/tables/MANIFEST.txt make/python.mk internal/codegen/python/runtime/SERIALIZE_PIN $(CONFORMANCE_UNIT_SCHEMAS)
 	@rm -rf $@ && mkdir -p $@
 	@awk '$$1 == "unit" { key = $$2; $$1 = ""; $$2 = ""; print key $$0 }' testdata/conformance/tables/MANIFEST.txt | \
 	while read -r key paths; do \

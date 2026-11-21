@@ -24,7 +24,7 @@ ruby-skeleton-negative-control: ruby-toolchain-check
 
 # build/conformance-ruby generates every MANIFEST.txt tables unit for Ruby,
 # plus the variable-class framing sibling for tblr1 (test/tables/R1.schema).
-build/conformance-ruby: build/schema-ruby testdata/conformance/tables/MANIFEST.txt make/ruby.mk $(CONFORMANCE_UNIT_SCHEMAS)
+build/conformance-ruby: build/schema-ruby testdata/conformance/tables/MANIFEST.txt make/ruby.mk internal/codegen/ruby/runtime/SERIALIZE_PIN $(CONFORMANCE_UNIT_SCHEMAS)
 	@rm -rf $@ && mkdir -p $@
 	@awk '$$1 == "unit" { key = $$2; $$1 = ""; $$2 = ""; print key $$0 }' testdata/conformance/tables/MANIFEST.txt | \
 	while read -r key paths; do \

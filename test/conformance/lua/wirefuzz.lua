@@ -97,10 +97,40 @@ local function load_unit(key)
   return u
 end
 
+-- THE MESSAGE VOCABULARY: the connection's announced table, derived from the
+-- unit's OWN announcement (the vocabulary is a pure function of the build, so
+-- both sides derive the same one), read once per unit, as messagefuzz.lua does.
+local function make_vocab(n)
+  local v = {}
+  local cap = math.max(n or 0, 4096)
+  for i = 1, cap do
+    v[i] = {}
+  end
+  return v
+end
+
+local function message_vocab(u)
+  if u.own_vocab ~= nil then return u.own_vocab end
+  local T = u.T
+  if T.AnnounceRead == nil or T.LoadMessages == nil or T.SaveMessages == nil or T.Announcement == nil then
+    u.own_vocab = false
+    return false
+  end
+  local vocab = make_vocab(T.MessageEntries)
+  local report = { unknown = 0, widened = 0, duplicate = 0, damaged = false, refused = 0 }
+  if not T.AnnounceRead(vocab, T.Announcement, report) then
+    u.own_vocab = false
+    return false
+  end
+  u.own_vocab = vocab
+  return vocab
+end
+
 -- THE ROSTER. A FORM-1 entry (a file, docs/SPEC-TABLES.md §3) whose unit this
--- target generated and whose table it carries answers 1. Every other entry
--- answers 0: a form-2 BATCH (this leg drives no LoadMessages here), and the
--- RETAIN arm (§6.6), which the Lua leg does not carry.
+-- target generated and whose table it carries answers 1, and so does a FORM-2
+-- entry (a message batch, §3.3) whose root the unit's MessageRoots names: its
+-- mutants load through LoadMessages against the unit's own announced
+-- vocabulary. The RETAIN arm (§6.6) is the variable form's only.
 local count = read_u32()
 if count == nil then os.exit(0) end
 local roster = {}
@@ -120,6 +150,11 @@ for i = 1, count do
     if u and u.T.Tables and u.T.Tables[root] ~= nil then
       local desc = u.T.Tables[root]
       if retain == 0 or desc.variable then entry = { unit = u, root = root, desc = desc, retain = (retain == 1) } end
+    end
+  elseif form == 2 and retain == 0 then
+    local u = load_unit(unit)
+    if u and u.T.MessageRoots and u.T.MessageRoots[root] and message_vocab(u) then
+      entry = { unit = u, root = root, message = true }
     end
   end
   roster[i] = entry
@@ -152,6 +187,27 @@ local function answer(entry, wire)
   }
   local loaded, measure, saved = false, -1, nil
   local T, L, S = entry.unit.T, entry.unit.load, entry.unit.save
+  if entry.message then
+    -- THE MESSAGE READ (docs/SPEC-TABLES.md §3.3): the whole wire is one
+    -- batch under the unit's own vocabulary; it loads every message or
+    -- refuses, and the saved bytes are SaveMessages' over what it loaded.
+    report.duplicate = 0
+    local vocab = entry.unit.own_vocab
+    local values = T.LoadMessages(entry.root, vocab, wire, report)
+    local ok = values ~= nil and #values >= 1 and not report.damaged and (report.refused or 0) == 0
+      and report.nonFiniteFloat == nil and (report.reason == nil or report.reason == "")
+    if ok then
+      saved = T.SaveMessages(entry.root, vocab, values)
+      if saved ~= nil then
+        loaded = true
+      else
+        report.refused = 1
+      end
+    elseif (report.refused or 0) == 0 then
+      report.refused = 1
+    end
+    return loaded, report, measure, saved
+  end
   if not entry.desc.variable then
     -- THE FIXED READ (docs/SPEC-TABLES.md §3.4): one read, the whole value or
     -- a refusal, exactly the variable load's contract. The fixed reader

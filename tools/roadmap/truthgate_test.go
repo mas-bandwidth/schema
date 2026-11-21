@@ -230,10 +230,13 @@ var truthRows = map[string]truthCheck{
 	"variable-tables/unit-registry":             {probes: probe("v_basic")},
 	"variable-tables/widening":                  {probes: probe("v_basic")},
 	"variable-tables/cards":                     {probes: []string{cardsUnit}},
+	// a property of the generated reader: each ticked cell's evidence names
+	// its leg's allocation gate; the probe proves the column generates a reader
+	"variable-tables/no-allocation-on-read": {probes: probe("v_basic")},
 }
 
 // readmeLangRx is README.md's documented generate line.
-var readmeLangRx = regexp.MustCompile(`(?m)^bin/schema generate --lang ([a-z|]+) `)
+var readmeLangRx = regexp.MustCompile(`(?m)^(?:bin/)?schema generate --lang ([a-z|]+) `)
 
 // documentedLanguages parses README.md's `--lang` list.
 func documentedLanguages(t *testing.T) []string {

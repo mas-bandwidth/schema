@@ -57,6 +57,13 @@ class FakeRunner(m.Runner):
             text = fuzz(arm,int(seed),self.lang)
         elif name.startswith("wire-builder-"):
             text = fuzz("plain", int(name.rsplit("-", 1)[1]), self.lang, builder=True)
+        elif (name.startswith("packet-") or name.startswith("retain-")) and "-run" in argv and \
+                self.lang in m.LEG_PACKETS:
+            # the five legs' probe phases: every named probe passes in its package
+            package = argv[-1].split("/")[-1]
+            tests = argv[argv.index("-run")+1][2:-2].split("|")
+            text = "\n".join("\n".join(native(package,t).splitlines()[:-1]) for t in tests)
+            text += "\n" + native(package).splitlines()[-1]
         elif self.lang in ("moo", "python", "ruby") and name in ("packet-normal-0", "packet-ludicrous-0"):
             tests = argv[argv.index("-run")+1][2:-2].split("|")
             text = "\n".join("\n".join(native(self.lang,t).splitlines()[:-1]) for t in tests)
@@ -102,7 +109,7 @@ class FakeRunner(m.Runner):
 
 class Contracts(unittest.TestCase):
     def test_exact_cli(self):
-        for args in ([],["go","--skip"],["lua"],["cpp","c"]):
+        for args in ([],["go","--skip"],["luajit"],["unity","lua"],["cpp","c"]):
             with contextlib.redirect_stderr(io.StringIO()):
                 self.assertEqual(m.main(args),2)
 
@@ -451,6 +458,19 @@ class Contracts(unittest.TestCase):
                 self.assertIn("packet-defaults-cpp",features)
                 self.assertNotIn("build/schema_test_wide",calls["packet-build"])
                 self.assertNotIn("packet-schema_test_wide",m.required_phases(lang))
+            elif lang=="lobster":
+                # its packet package's probes: defaults, UTF-8 and finite, each with its control
+                self.assertEqual(features[features.index("-run")+1],"^("+"|".join(m.LOBSTER_PACKET_FEATURES)+")$")
+                for feature in ("Defaults","Text","FiniteFloats"):
+                    self.assertTrue(any(t.startswith("TestLobsterPacket"+feature+"NegativeControl")
+                                        for t in m.LOBSTER_PACKET_FEATURES),feature)
+            elif lang in m.LEG_PACKETS:
+                targets=features[features.index("-j2")+1:]
+                self.assertEqual(targets[:2],["-f",str(runner.out/f"Makefile.{lang}-uncapped-packet-features")])
+                targets=targets[2:]
+                for feature in ("defaults","utf8")+(("finite",) if lang!="unity" else ()):
+                    for tail in ("","-negative-control"):
+                        self.assertIn("packet-"+feature+"-"+lang+tail,targets)
             else:
                 expected=["packet-"+feature+"-"+lang+tail
                           for feature in ("defaults","utf8")
@@ -470,6 +490,12 @@ class Contracts(unittest.TestCase):
     def test_existing_target_catalog_and_outer_go_mappings(self):
         files=[ROOT/"Makefile"]+list((ROOT/"make").rglob("*.mk"))
         blocks={}
+        # a rule spelled through a simple variable (LUAU_NF_HOST := build/...)
+        # is catalogued under the value it names
+        simple={}
+        for file in files:
+            for name,value in m.re.findall(r"^([A-Z][A-Z0-9_]*)\s*:?=\s*([^\s$#]+)\s*$",file.read_text(),m.re.MULTILINE):
+                simple.setdefault(name,value)
         for file in files:
             current=[]
             for line in file.read_text().splitlines():
@@ -477,6 +503,7 @@ class Contracts(unittest.TestCase):
                     for name in current:blocks[name].append(line)
                 elif line and not line.startswith(("#"," ")):
                     current=[]
+                    line=m.re.sub(r"^\$\(([A-Z][A-Z0-9_]*)\)",lambda v:simple.get(v[1],v[0]),line)
                     match=m.re.match(r"^([^:=]+):(?!=)(.*)$",line)
                     if match:
                         for name in match[1].split():
@@ -494,8 +521,13 @@ class Contracts(unittest.TestCase):
                         "packet-finite-python","packet-finite-python-negative-control",
                         "dist-ruby","ruby-toolchain-check","build/conformance-harness-ruby","build/schema-ruby",
                         "packet-finite-ruby","packet-finite-ruby-negative-control"))
+        for lang in m.LEG_PACKETS:
+            targets.update(m.LEG_PACKET_BUILD[lang].split())
+            targets.update(m.LEG_PREREQUISITES[lang].split())
+            if lang!="lobster":
+                targets.update(m.LEG_PACKET_FEATURES[lang].split())
         for lang in m.LANGUAGES:
-            if lang!="cpp":
+            if lang not in ("cpp","lobster"):
                 for feature in ("defaults","utf8"):
                     for tail in ("","-negative-control"):
                         targets.add("packet-"+feature+"-"+lang+tail)
@@ -514,7 +546,22 @@ class Contracts(unittest.TestCase):
         # verdict-pipe controls.
         python_outer={name for name in outer if "python" in name}
         ruby_outer={name for name in outer if "ruby" in name}
-        self.assertEqual(outer-goose_outer-moo_outer-python_outer-ruby_outer,{"tables-view","tables-fixed-twin"})
+        # The five legs' likewise, through leg_uncapped_makefile, in every
+        # phase that makes them.
+        leg_outer=set()
+        for lang in m.UNCAPPED_LEGS:
+            runner=FakeRunner(ROOT,lang)
+            phases=[("external-table-gates",m.FIXED_GATES[lang]),("wire-retain-controls",m.WIRE_CONTROLS[lang]),
+                    ("wire-driver-build",m.DRIVER_BUILD[lang]),("packet-build",m.LEG_PACKET_BUILD[lang])]
+            if lang!="lobster":
+                phases.append(("packet-features",m.LEG_PACKET_FEATURES[lang]))
+            for phase,names in phases:
+                self.assertIsNotNone(m.leg_uncapped_makefile(runner,lang,names,phase),(lang,phase))
+                receipt=json.loads((runner.out/("Makefile."+lang+"-uncapped-"+phase+".json")).read_text())
+                leg_outer|=set(receipt)
+                self.assertEqual(set(receipt),{n for n in names.split() if n in outer},(lang,phase))
+            runner.temporary.cleanup()
+        self.assertEqual(outer-goose_outer-moo_outer-python_outer-ruby_outer-leg_outer,{"tables-view","tables-fixed-twin"})
         self.assertEqual(moo_outer,set(m.FIXED_GATES["moo"].split()))
         self.assertEqual(goose_outer,set(m.FIXED_GATES["goose"].split()))
         runner=FakeRunner(ROOT,"python")
@@ -779,7 +826,7 @@ class Contracts(unittest.TestCase):
                         self.assertRegex(line,r"-timeout=0(\s|$)")
         runner.temporary.cleanup()
         for before,after in (("go test -count=1 -timeout 600s","go test -count=1 -timeout 900s"),
-                             ("-count=1 -timeout 600s -tags","-count=1 -timeout=10m -tags")):
+                             ("-count=1 -timeout 600s -run","-count=1 -timeout=10m -run")):
             with tempfile.TemporaryDirectory() as tmp:
                 root=Path(tmp);(root/"make").mkdir()
                 for f in (ROOT/"make").glob("python*.mk"):
@@ -797,6 +844,95 @@ class Contracts(unittest.TestCase):
             runner=FakeRunner(root,"python")
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertIsNone(m.python_uncapped_makefile(runner,m.PYTHON_PACKET_FEATURES,"packet-features"))
+            self.assertTrue(runner.results[-1]["errors"])
+            runner.temporary.cleanup()
+
+    def test_every_target_has_a_plan(self):
+        # the coverage gate's own list of the 18 targets: none may be refused here
+        source=(ROOT/"test/conformance/harness/coverage_complete.go").read_text()
+        block=m.re.search(r"var everyTarget = \[\]string\{([^}]*)\}",source)
+        self.assertIsNotNone(block)
+        every=set(m.re.findall(r'"([a-z]+)"',block[1]))
+        self.assertEqual(len(every),18)
+        self.assertEqual(set(m.LANGUAGES),every)
+        for lang in m.LANGUAGES:
+            self.assertIn(lang,m.PACKAGES)
+            self.assertIn(lang,m.DRIVER_BUILD)
+            self.assertIn(lang,m.WIRE_CONTROLS)
+            self.assertIn(lang,m.FIXED_GATES)
+
+    def test_five_leg_plans_are_the_expanded_shape(self):
+        for lang in m.LEG_PACKETS:
+            required=m.required_phases(lang)
+            for phase in ("prerequisites","implementation","native-lockfile",
+                          *("native-"+p for p in m.PACKAGES[lang]),*("native-list-"+p for p in m.PACKAGES[lang]),
+                          "packet-build","packet-normal-0","packet-ludicrous-0",
+                          "packet-features","external-table-gates","wire-driver-build","wire-retain-controls",
+                          *("retain-"+lang+"-"+name for name in m.LEG_RETENTION_CONTROLS[lang]),
+                          *("wire-"+arm+"-"+str(seed) for arm in ("plain","retain") for seed in (1,2,3))):
+                self.assertIn(phase,required,(lang,phase))
+            self.assertNotIn(lang,m.RETIRED_NATIVE)
+            self.assertTrue(m.native_retirement_errors("RETIRED (docs/FIXED-FORM-ALGORITHM.md §5.6): anything",lang,set()))
+        self.assertIn("packet-normal-1",m.required_phases("unity"))
+        self.assertIn("packet-ludicrous-1",m.required_phases("unity"))
+        self.assertIn("squirrel",m.MIXED_BUILDER)
+        self.assertTrue(m.driver_command(ROOT,"squirrel").endswith(" test/conformance/squirrel/wirefuzz.nut mixed"))
+
+    def test_five_leg_main_runs_every_phase_through_the_uncapped_copy(self):
+        real=m.Runner
+        m.Runner=FakeRunner
+        try:
+            for lang in m.LEG_PACKETS:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(m.main([lang]),0,lang)
+                runner=FakeRunner.instances[-1]
+                calls={name:(argv,cwd) for name,argv,cwd in runner.calls}
+                self.assertEqual(calls["implementation"][0],["./build/conformance-harness","implementation","--lang",lang])
+                for phase in ("packet-build","external-table-gates","wire-driver-build","wire-retain-controls"):
+                    argv=calls[phase][0]
+                    self.assertEqual(argv[argv.index("-f")+1],str(runner.out/("Makefile."+lang+"-uncapped-"+phase)),(lang,phase))
+                for shape,runs in m.LEG_PACKETS[lang].items():
+                    for index,run in enumerate(runs):
+                        argv,cwd=calls["packet-"+shape+"-"+str(index)]
+                        if run[0]=="probes":
+                            self.assertEqual(argv[-1],"./internal/codegen/"+lang)
+                            self.assertIn("-timeout=0",argv)
+                        else:
+                            self.assertEqual(cwd,ROOT/run[2])
+                            self.assertNotIn("$TOOL",argv)
+                for name in m.LEG_RETENTION_CONTROLS[lang]:
+                    argv=calls["retain-"+lang+"-"+name][0]
+                    self.assertEqual(argv[-1],"./internal/codegen/"+m.PACKAGES[lang][1])
+                for arm in ("plain","retain"):
+                    for seed in m.SEEDS:
+                        argv=calls["wire-"+arm+"-"+str(seed)][0]
+                        self.assertEqual(argv[argv.index("--driver")+1],m.driver_command(ROOT,lang))
+                runner.temporary.cleanup()
+        finally:
+            m.Runner=real
+
+    def test_leg_uncapped_makefile_lifts_only_the_reviewed_cap(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);(root/"make").mkdir()
+            (root/"Makefile").write_text("")
+            (root/"make"/"lua.mk").write_text(
+                "gate-a: dep \\\n\tother\n\tsh test/slowgate/proof gate-a 'TestA' \\\n\t\t./pkg -run '^TestA$$' -count=1 -timeout 600s\n"
+                "gate-b:\n\tgo test -count=1 ./pkg\n"
+                "gate-c:\n\techo no go here\n"
+                "gate-d:\n\tsh test/slowgate/proof gate-d 'TestD' ./pkg -count=1\n"
+                "gate-e:\n\tgo test -count=1 -timeout 40m ./pkg\n")
+            runner=FakeRunner(root,"lua")
+            path=m.leg_uncapped_makefile(runner,"lua","gate-a gate-b gate-c gate-d N=0","phase")
+            text=path.read_text()
+            self.assertTrue(text.startswith("include Makefile\n"))
+            self.assertIn("-count=1 -timeout=0\n",text)
+            self.assertIn("go test -timeout=0 -count=1 ./pkg",text)
+            self.assertIn("'TestD' -timeout=0 ./pkg",text)
+            self.assertNotIn("gate-c:",text)
+            self.assertNotIn("600s",text)
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertIsNone(m.leg_uncapped_makefile(runner,"lua","gate-e","phase"))
+                self.assertIsNone(m.leg_uncapped_makefile(runner,"lua","gate-undefined","phase"))
             self.assertTrue(runner.results[-1]["errors"])
             runner.temporary.cleanup()
 

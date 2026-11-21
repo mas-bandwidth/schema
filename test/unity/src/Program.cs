@@ -735,7 +735,38 @@ static class Program
         Check(!ReadDefaultChoice(new ReadStream(new byte[] { 0x51, 0x00 }), ref choice), "end: DefaultChoice with a trailing zero byte is refused");
     }
 
-    static int Main()
+    // usage: unitytest [normal|ludicrous]. With no argument the program runs both
+    // suites (make unity-wire); the nightly readiness run
+    // (test/conformance/nightly-readiness unity) runs each shape as its own
+    // phase, in Debug and in Release.
+    static int Main(string[] args)
+    {
+        string shape = args.Length == 0 ? "both" : args[0];
+        if (args.Length > 1 || (shape != "both" && shape != "normal" && shape != "ludicrous"))
+        {
+            Console.WriteLine("usage: unitytest [normal|ludicrous]");
+            return 2;
+        }
+        if (shape != "ludicrous")
+        {
+            NormalSuite();
+        }
+        if (shape != "normal" && !LudicrousSuite.Run())
+        {
+            failed = true;
+        }
+        if (failed)
+        {
+            return 1;
+        }
+        Console.WriteLine("OK");
+        return 0;
+    }
+
+    // NormalSuite is the examples/ corpus: every pinned instance written and
+    // byte-compared against the C++-pinned goldens, round-tripped,
+    // branch-zeroed and refused where hostile.
+    static void NormalSuite()
     {
         wireDir = FindTestDataDir("wire");
         TestBufferLayout();
@@ -1800,16 +1831,5 @@ static class Program
             }
             Check(off == stream.Count, "the joins reads consume the whole golden");
         }
-
-        if (!LudicrousSuite.Run())
-        {
-            failed = true;
-        }
-        if (failed)
-        {
-            return 1;
-        }
-        Console.WriteLine("OK");
-        return 0;
     }
 }

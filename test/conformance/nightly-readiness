@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Execute a target's runtime acceptance gates (every target owes them; the ones without gates here are refused by name); a report or carried finding is not a pass.
+"""Execute a target's runtime acceptance gates (every one of the 18 targets has its plan here); a report or carried finding is not a pass.
 
 This entrypoint adds no wall-clock timeout. Native test execution uses -timeout=0;
 protocol deadlines and the existing negative controls' intended oracles stay intact.
@@ -17,8 +17,12 @@ import subprocess
 import sys
 import time
 
-LANGUAGES = ("cpp", "c", "cs", "go", "rust", "java", "js", "dart", "elixir", "goose", "ruby", "moo", "python")
+LANGUAGES = ("cpp", "c", "cs", "go", "rust", "java", "js", "dart", "elixir", "goose", "ruby", "moo", "python",
+             "lua", "luau", "squirrel", "lobster", "unity")
 PACKAGES = {
+    "lua": ("lua", "luatable"), "luau": ("luau", "luautable"),
+    "squirrel": ("squirrel", "squirreltable"), "lobster": ("lobster", "lobstertable"),
+    "unity": ("unity", "unitytable"),
     "cpp": ("cpp", "cpptable"), "c": ("c", "ctable"),
     "cs": ("csharp", "cstable"), "go": ("golang", "gotable"),
     "rust": ("rust", "rusttable"), "java": ("java", "javatable"),
@@ -36,12 +40,33 @@ GOOSE_DIST = "dist/goose-v2026.2-linux-x64"
 PYTHON_DIST = "dist/python-3.15.2/bin/python3.15"
 RUBY_DIST = "dist/ruby-4.0.9/bin/ruby"
 # Build tags a leg's Go test phases run under: none, every shipped target is
-# built in (Glenn, 2026-11-21: "all languages, by default, all the time.").
+# built in (2026-11-21, docs/rulings.json every-target-default-build).
 GO_TAGS = {}
+# What the five legs' native Go packages read before their phases run.
+LEG_PREREQUISITES = {
+    "lua": "toolchain-lua build/conformance-lua",
+    "luau": "toolchain-luau build/conformance-luau build/luau-driver/inputs.luau build/luau-driver/units.luau "
+            "build/luaufuzzhost/luaufuzzhost",
+    # TestSquirrelNightlyFuzz reads the campaign corpus SCHEMA_SQUIRREL_FUZZ_CORPUS names
+    "squirrel": "toolchain-squirrel build/schema-squirrel build/conformance-squirrel "
+                "build/squirrel-nightly-fuzz/corpus.txt",
+    "lobster": "lobster-dist-present toolchain-lobster build/conformance-lobster build/lobster-wirefuzzhost",
+    "unity": "toolchain-unity",
+}
+# Each leg's interpreter or SDK, by the variable its make fragment exports and
+# its Go tests read, and the pin's dist path when the environment names none.
+LEG_TOOLS = {
+    "lua": ("LUA", "dist/lua-5.4.8/src/lua"),
+    "luau": ("LUAU", "dist/luau-0.741/luau"),
+    "squirrel": ("SQ", "dist/squirrel-3.2/bin/sq"),
+    "lobster": ("LOBSTER", "dist/lobster-v2026.8/bin/lobster"),
+    "unity": ("DOTNET", "dotnet"),
+}
 # Mutable variable-file loads, with the full fixed/message roster still
 # exercising each root's form-specific reader. Goose's load grows its own
-# value table, so it has no caller region and no LoadMeasure.
-MIXED_BUILDER = ("dart", "js", "goose")
+# value table, so it has no caller region and no LoadMeasure; Squirrel's
+# builds class instances, likewise with no region (docs/PORT-SQUIRREL.md).
+MIXED_BUILDER = ("dart", "js", "goose", "squirrel")
 # These three old algorithms were explicitly retired by the fixed-form lock.
 # This is NOT an allowance for the live Elixir §5.2/§3.4 ruling, UNPORTED rows,
 # missing corpora/toolchains, unsupported roots, or newly introduced skips.
@@ -158,6 +183,12 @@ DRIVER_BUILD = {
     # (make/wire-fuzz-release.mk, WFR_DEPS_python) also builds
     "python": "build/conformance-python python-toolchain-check python-wirefuzz-release-check",
     "ruby": "build/conformance-ruby ruby-toolchain-check ruby-wirefuzz-release-check",
+    # each the release fuzz's own prerequisites (make/wire-fuzz-release.mk)
+    "lua": "toolchain-lua build/conformance-lua",
+    "luau": "toolchain-luau build/conformance-luau build/luau-driver/units.luau build/luaufuzzhost/luaufuzzhost",
+    "squirrel": "toolchain-squirrel build/conformance-squirrel",
+    "lobster": "lobster-dist-present build/conformance-lobster build/lobster-wirefuzzhost",
+    "unity": "toolchain-unity build/conformance-unity/.stamp",
 }
 WIRE_CONTROLS = {
     "cpp": "tables-wire-fuzz-negative-control tables-wire-fuzz-retain-negative-control",
@@ -173,6 +204,14 @@ WIRE_CONTROLS = {
     "moo": "tables-moo-wire-fuzz-negative-control",
     "python": "tables-python-wire-fuzz-negative-control tables-python-wire-fuzz-retain-negative-control",
     "ruby": "tables-ruby-wire-fuzz-negative-control tables-ruby-wire-fuzz-retain-negative-control",
+    # a load that refuses every unknown field as damage, fuzzed at the release
+    # tier's own count and seed (its N is fixed; N=0 does not reach it)
+    "lua": "tables-lua-release-negative-control",
+    "luau": "tables-luau-wire-fuzz-negative-control tables-luau-wire-fuzz-vectors-negative-control "
+            "conformance-negative-control-luau",
+    "squirrel": "tables-squirrel-release-negative-control schema-squirrel-nightly-fuzz-negative-control",
+    "lobster": "tables-lobster-wire-fuzz-negative-control",
+    "unity": "tables-unity-wire-fuzz-negative-control",
 }
 # The external fixed-form/packet executables complement the full native Go
 # packages. The workflow supplies the once-written C++ corpora before this step.
@@ -199,7 +238,35 @@ FIXED_GATES = {
               "tables-python-bench-gate tables-python-bench-gate-negative-control",
     "ruby": "ruby-fixed-writer-lineage ruby-fixed-writer-lineage-negative-control "
             "tables-ruby-bench-gate tables-ruby-bench-gate-negative-control",
+    # The five legs below run their Go packages whole as well (the fixed and
+    # message forms are package tests there); these are their gates outside
+    # them: the bench leg, the documented surface, the text differential and
+    # each leg's strict gate over the generated code, each with its control.
+    "lua": "tables-lua-bench-gate tables-lua-bench-gate-negative-control "
+           "tables-lua-json-differential tables-lua-json-differential-negative-control "
+           "tables-lua-usage tables-lua-usage-negative-control "
+           "tables-lua-luacheck tables-lua-luacheck-negative-control",
+    "luau": "tables-luau-fixed-form tables-luau-fixed-form-negative-control "
+            "tables-luau-versioning tables-luau-versioning-negative-control "
+            "bench-luau-gate bench-luau-gate-negative-control "
+            "tables-luau-text-differential tables-luau-text-differential-negative-control "
+            "tables-luau-usage tables-luau-usage-negative-control "
+            "schema-luau-generated-analyze-strict-gate schema-luau-generated-analyze-strict-gate-negative-control",
+    "squirrel": "tables-squirrel-fixed-form-negative-control tables-squirrel-message-form-negative-control "
+                "tables-squirrel-text-differential tables-squirrel-text-differential-negative-control "
+                "tables-squirrel-usage tables-squirrel-usage-negative-control "
+                "schema-squirrel-generated-lint-gate schema-squirrel-generated-lint-gate-negative-control",
+    "lobster": "bench-lobster-gate bench-lobster-gate-negative-control "
+               "tables-lobster-json-differential tables-lobster-json-differential-negative-control "
+               "tables-lobster-usage tables-lobster-usage-negative-control "
+               "schema-lobster-generated-strict-gate schema-lobster-generated-strict-gate-negative-control",
+    # the compiler package's table and fixed-form tests against the C++
+    # reference, the strict dialect build of a table unit, and the bench leg
+    "unity": "unity-tables unity-fixed tables-unity-standalone "
+             "tables-unity-bench-gate tables-unity-bench-gate-negative-control",
 }
+# The five legs whose gate recipes are copied through leg_uncapped_makefile.
+UNCAPPED_LEGS = ("lua", "luau", "squirrel", "lobster", "unity")
 
 
 def tool(name, fallback):
@@ -229,6 +296,10 @@ def required_phases(lang):
     elif lang == "ruby":
         required |= {"packet-normal-0", "packet-ludicrous-0"}
         required |= {"retain-ruby-" + name for name in RUBY_RETENTION_CONTROLS}
+    elif lang in LEG_PACKETS:
+        required |= {"packet-" + shape + "-" + str(mode)
+                     for shape, runs in LEG_PACKETS[lang].items() for mode in range(len(runs))}
+        required |= {"retain-" + lang + "-" + name for name in LEG_RETENTION_CONTROLS[lang]}
     elif lang == "cpp":
         required.add("readiness-contracts")
         required |= {"packet-" + name for name in
@@ -408,6 +479,11 @@ class Runner:
         self.env["ELIXIR_TABLES_EBIN"] = str(root / "build/elixir-tables-ebin")
         self.env["SCHEMA_C_COLLECTIONS_DRIVER"] = str(root / "build/c-collections-fuzz")
         self.env["SCHEMA_CPP_COLLECTIONS_DRIVER"] = str(root / "build/cpp-collections-fuzz")
+        if lang in LEG_TOOLS and "/" in LEG_TOOLS[lang][1]:
+            # the leg's Go tests and make fragment read the pin from here
+            self.env.setdefault(LEG_TOOLS[lang][0], str(root / LEG_TOOLS[lang][1]))
+        if lang == "squirrel":
+            self.env["SCHEMA_SQUIRREL_FUZZ_CORPUS"] = str(root / "build/squirrel-nightly-fuzz/corpus.txt")
         if lang == "cpp":
             # The shared harness includes the native Dart roster probes, and
             # the compiler package includes the explicit 2 GiB certification.
@@ -574,6 +650,9 @@ def run_packets(runner, lang):
         return
     if lang == "ruby":
         run_ruby_packets(runner)
+        return
+    if lang in LEG_PACKETS:
+        run_leg_packets(runner, lang)
         return
     if lang == "cpp":
         binaries = ("schema_test", "schema_test_guard",
@@ -748,6 +827,197 @@ RUBY_PACKET_FEATURES = " ".join("packet-" + feature + "-ruby" + tail
                                 for tail in ("", "-negative-control"))
 
 
+# The packet programs of lua, luau, squirrel, lobster and unity. A run is
+# ("probes", tests): internal/codegen/<lang>'s Go probes, which generate the
+# corpus, run the generated code under the pinned interpreter and compare it
+# with the C++-pinned goldens, every named probe required to pass; or
+# ("program", argv, cwd): a program in the leg's own language, "$TOOL" the
+# leg's interpreter or SDK (LEG_TOOLS), which must print its unique OK.
+LEG_PACKETS = {
+    "lua": {
+        "normal": [("probes", ("TestLuaTypeWireWritesTheGoldens", "TestLuaTypeWireReadsTheGoldens",
+                               "TestLuaTypeWireRefusesNonIntegerArrayCount",
+                               "TestLuaTypeWireWriteNegativeControl", "TestLuaTypeWireReadNegativeControl"))],
+        "ludicrous": [("program", ["$TOOL", "test/lua-ludicrous/main.lua", "build/lua-ludicrous", "testdata/wire"], ".")],
+    },
+    "luau": {
+        "normal": [("probes", ("TestLuauTypeWireWritesTheGoldens", "TestLuauTypeWireReadsTheGoldens",
+                               "TestLuauTypeWireWriteNegativeControl", "TestLuauTypeWireReadNegativeControl"))],
+        "ludicrous": [("program", ["$TOOL", "main.luau"], "build/luau-ludicrous")],
+    },
+    "squirrel": {
+        "normal": [("probes", ("TestSquirrelTypeWireWritesTheGoldens", "TestSquirrelTypeWireReadsTheGoldens",
+                               "TestSquirrelTypeWireWriteNegativeControl", "TestSquirrelTypeWireReadNegativeControl"))],
+        "ludicrous": [("program", ["$TOOL", "test/squirrel-ludicrous/main.nut", "build/squirrel-ludicrous",
+                                   "testdata/wire"], ".")],
+    },
+    "lobster": {
+        "normal": [("probes", ("TestLobsterTypeWireWritesTheGoldens", "TestLobsterTypeWireWriteNegativeControl",
+                               "TestLobsterTypeWireReadsTheGoldens", "TestLobsterTypeWireReadNegativeControls",
+                               "TestLobsterPacketConstants", "TestLobsterPacketConstantsNegativeControl",
+                               "TestLobsterPacketProtocolID", "TestLobsterPacketProtocolIDNegativeControl",
+                               "TestLobsterPacketVoidArms", "TestLobsterPacketVoidArmsNegativeControls",
+                               "TestLobsterPacketUnionBeforeByteArray",
+                               "TestLobsterPacketUnionBeforeByteArrayNegativeControl",
+                               "TestLobsterPacketArmDefaults", "TestLobsterPacketArmDefaultsNegativeControl",
+                               "TestLobsterPacketWriteCFloatRange", "TestLobsterPacketEnd"))],
+        "ludicrous": [("probes", ("TestLobsterPacketWideGoldens", "TestLobsterPacketWideGoldensNegativeControl",
+                                  "TestLobsterUnsignedFixedGoldens",
+                                  "TestLobsterUnsignedFixedGoldensNegativeControl"))],
+    },
+    # one program, test/unity, each shape by its argument, Debug (the write
+    # contracts live) and Release (gone), as C# (modern) runs test/cs
+    "unity": {
+        shape: [("program", ["$TOOL", "run", "-c", config, "--", shape], "test/unity")
+                for config in ("Debug", "Release")]
+        for shape in ("normal", "ludicrous")
+    },
+}
+LEG_PACKET_BUILD = {
+    "lua": "toolchain-lua build/lua-ludicrous/.stamp",
+    "luau": "toolchain-luau build/luau-ludicrous/.stamp",
+    "squirrel": "toolchain-squirrel build/squirrel-ludicrous/.stamp",
+    "lobster": "lobster-dist-present toolchain-lobster",
+    "unity": "toolchain-unity generated/unity/.stamp generated/unity-ludicrous/.stamp",
+}
+# The packet feature gates: defaults, UTF-8 and finite floats with their
+# controls, and the ludicrous program's control. Lobster's are its packet
+# package's probes (it has no make target for them); C# (unity) has no finite
+# gate, as C# (modern) has none.
+LEG_PACKET_FEATURES = {
+    lang: " ".join("packet-" + feature + "-" + lang + tail
+                   for feature in ("defaults", "utf8", "finite") for tail in ("", "-negative-control"))
+    + " " + lang + "-ludicrous-negative-control"
+    for lang in ("lua", "luau", "squirrel")
+}
+LEG_PACKET_FEATURES["unity"] = ("packet-defaults-unity packet-defaults-unity-negative-control "
+                                "packet-utf8-unity packet-utf8-unity-negative-control unity-wire-negative-control")
+LOBSTER_PACKET_FEATURES = ("TestLobsterPacketDefaults", "TestLobsterPacketDefaultsNegativeControl",
+                           "TestLobsterPacketText", "TestLobsterPacketTextNegativeControls",
+                           "TestLobsterPacketFiniteFloats", "TestLobsterPacketFiniteFloatsNegativeControls")
+
+
+def leg_tool(runner, lang):
+    """The leg's interpreter or SDK: the environment's, else the pin's dist path."""
+    name, fallback = LEG_TOOLS[lang]
+    if "/" in fallback:
+        fallback = str(runner.root / fallback)
+    return tool(name, fallback)
+
+
+def probe_phase(runner, name, package, tests):
+    runner.run(name, ["go", "test", "-json", "-timeout=0", "-count=1", "-parallel=2",
+                      "-run", "^(" + "|".join(tests) + ")$", "./" + package_path(package)],
+               validate=lambda text, t=tests, p=package: native_result(text, list(t), p))
+
+
+def run_leg_packets(runner, lang):
+    leg_make(runner, lang, "packet-build", LEG_PACKET_BUILD[lang])
+    for shape, runs in LEG_PACKETS[lang].items():
+        for index, run in enumerate(runs):
+            name = "packet-" + shape + "-" + str(index)
+            if run[0] == "probes":
+                probe_phase(runner, name, lang, run[1])
+                continue
+            _, argv, cwd = run
+            command = [word for token in argv
+                       for word in (leg_tool(runner, lang) if token == "$TOOL" else [token])]
+            runner.run(name, command, cwd=runner.root / cwd, validate=packet_result)
+    if lang == "lobster":
+        probe_phase(runner, "packet-features", "lobster", LOBSTER_PACKET_FEATURES)
+    else:
+        leg_make(runner, lang, "packet-features", LEG_PACKET_FEATURES[lang])
+
+
+def leg_uncapped_makefile(runner, lang, targets, phase):
+    """The leg's gate recipes, with only their Go suite cap lifted.
+
+    Each named target's recipe that runs go test, directly or through
+    test/slowgate/proof, is copied from the leg's own make fragments
+    (make/<lang>.mk, make/<lang>-*.mk, make/schema-<lang>-*.mk) with its
+    `-timeout 600s` replaced by -timeout=0; a command naming no cap gains
+    -timeout=0. The copy overrides the recipe in a private makefile that
+    includes the real one, so prerequisites, plants and assertions stay the
+    reviewed source's. A target with no recipe of its own here is left to the
+    real one (the shared Makefile's rules, or a rule with prerequisites only);
+    a target defined nowhere, a recipe that is not unique, or a command naming
+    any other cap, fails the phase closed.
+    """
+    paths = sorted({*(runner.root / "make").glob(lang + ".mk"), *(runner.root / "make").glob(lang + "-*.mk"),
+                    *(runner.root / "make").glob("schema-" + lang + "-*.mk")})
+    sources = {path: path.read_text() for path in paths}
+    # rules spelled through a simple variable (LUAU_NF_HOST := build/...) are
+    # matched under the value they name
+    simple = {}
+    for source in sources.values():
+        for name, value in re.findall(r"^([A-Z][A-Z0-9_]*)\s*:?=\s*([^\s$#]+)\s*$", source, re.MULTILINE):
+            simple.setdefault(name, value)
+    for path, source in sources.items():
+        sources[path] = re.sub(r"^\$\(([A-Z][A-Z0-9_]*)\)",
+                               lambda match: simple.get(match[1], match[0]), source, flags=re.MULTILINE)
+    text, replaced = "include Makefile\n", {}
+    for target in targets.split():
+        if "=" in target:
+            continue  # a make variable on the command line, not a target
+        # the rule line may continue its prerequisites over backslashed lines
+        found = [(path, match) for path, source in sources.items()
+                 for match in re.finditer(r"^" + re.escape(target) + r":(?:[^\n]*\\\n)*[^\n]*(?<!\\)\n((?:\t[^\n]*\n)+)",
+                                          source, re.MULTILINE)]
+        if not found and (any(re.search(r"^" + re.escape(target) + r":", source, re.MULTILINE)
+                              for source in sources.values()) or
+                          any(re.search(r"^" + re.escape(target) + r":", path.read_text(), re.MULTILINE)
+                              for path in [runner.root / "Makefile", *sorted((runner.root / "make").rglob("*.mk"))])):
+            continue  # a rule whose recipe is the shared Makefile's, or none
+        if len(found) != 1:
+            runner.missing(phase, "the reviewed " + lang + " recipe is not unique: " + target)
+            return None
+        recipe = found[0][1][1]
+        commands, current = [], []
+        for line in recipe.splitlines(keepends=True):
+            current.append(line)
+            if not line.rstrip("\n").endswith("\\"):
+                commands.append(current)
+                current = []
+        if current:
+            commands.append(current)
+        amended_commands, changed = [], False
+        for command in commands:
+            joined = "".join(command)
+            if "go test " not in joined and "test/slowgate/proof " not in joined:
+                amended_commands.append(joined)
+                continue
+            changed = True
+            joined = joined.replace(" -timeout 600s", " -timeout=0")
+            if "-timeout" not in joined:
+                if "go test " in joined:
+                    joined = joined.replace("go test ", "go test -timeout=0 ")
+                else:
+                    joined = re.sub(r"(test/slowgate/proof \S+ '[^']*' )", r"\1-timeout=0 ", joined, count=1)
+            caps = re.findall(r"-timeout[= ]\S+", joined)
+            if not caps or any(cap != "-timeout=0" for cap in caps):
+                runner.missing(phase, "the reviewed " + lang + " recipe carries another suite cap: " + target)
+                return None
+            amended_commands.append(joined)
+        if not changed:
+            continue
+        amended = "".join(amended_commands)
+        text += target + ":\n" + amended
+        replaced[target] = {"source": str(found[0][0].relative_to(runner.root)),
+                            "source_sha256": hashlib.sha256(recipe.encode()).hexdigest(),
+                            "execution_sha256": hashlib.sha256(amended.encode()).hexdigest()}
+    makefile = runner.out / ("Makefile." + lang + "-uncapped-" + phase)
+    makefile.write_text(text)
+    runner.out.joinpath("Makefile." + lang + "-uncapped-" + phase + ".json").write_text(
+        json.dumps(replaced, indent=2) + "\n")
+    return makefile
+
+
+def leg_make(runner, lang, phase, targets, extra=""):
+    makefile = leg_uncapped_makefile(runner, lang, targets, phase)
+    if makefile is not None:
+        runner.make(phase, (targets + " " + extra).strip(), makefile=makefile)
+
+
 def run_ruby_packets(runner):
     runner.make("packet-build", "dist-ruby ruby-toolchain-check build/schema-ruby")
     for label, tests in RUBY_PACKET_PROBES.items():
@@ -885,6 +1155,9 @@ def run_external(runner, lang):
         if makefile is not None:
             runner.make("external-table-gates", FIXED_GATES[lang], makefile=makefile)
         return
+    if lang in UNCAPPED_LEGS:
+        leg_make(runner, lang, "external-table-gates", FIXED_GATES[lang])
+        return
     if lang != "cpp":
         runner.make("external-table-gates", FIXED_GATES[lang])
         return
@@ -941,11 +1214,29 @@ def driver_command(root, lang, builder=False):
         return PYTHON_DIST + " -W error -I -B test/conformance/python/wirefuzz.py build/conformance-python"
     if lang == "ruby":
         return RUBY_DIST + " --disable-gems -w test/conformance/ruby/wirefuzz.rb build/conformance-ruby"
+    # each the release fuzz's own driver (make/wire-fuzz-release.mk)
+    if lang == "lua":
+        return shlex.join(tool("LUA", str(root / LEG_TOOLS["lua"][1]))) + \
+            " test/conformance/lua/wirefuzz.lua build/conformance-lua"
+    if lang == "luau":
+        return "env LUAUFUZZ_NOTE=/dev/null test/conformance/luau/wirefuzz-driver"
+    if lang == "squirrel":
+        # one process over the whole roster: fixed roots as the plain arm
+        # answers them, variable roots as the builder arm does
+        return shlex.join(tool("SQ", str(root / LEG_TOOLS["squirrel"][1]))) + \
+            " test/conformance/squirrel/wirefuzz.nut mixed"
+    if lang == "lobster":
+        return "build/lobster-wirefuzzhost --known-leaks test/conformance/lobster/wirefuzz-known-leaks.txt"
+    if lang == "unity":
+        return "test/conformance/unity/driver wire-fuzz"
     return "test/conformance/" + lang + "/driver wire-fuzz"
 
 
 def run_fuzz(runner, lang):
-    runner.make("wire-driver-build", DRIVER_BUILD[lang])
+    if lang in UNCAPPED_LEGS:
+        leg_make(runner, lang, "wire-driver-build", DRIVER_BUILD[lang])
+    else:
+        runner.make("wire-driver-build", DRIVER_BUILD[lang])
     specs = []
     for arm in ("plain", "retain"):
         for seed in SEEDS:
@@ -1063,6 +1354,18 @@ RUBY_RETENTION_CONTROLS = {
     "loss": ("TestRubyWireFuzzRetainLoss",),
 }
 
+# The five legs' retention controls plant their fault in the emitted runtime
+# in-test (internal/codegen/<lang>table) and must pass.
+LEG_RETENTION_CONTROLS = {
+    "lua": {"save": ("TestLuaRetainConformanceSurfaceNegativeControl", "TestLuaRetainIdCapacityNegativeControl"),
+            "message": ("TestLuaRetainMessageNegativeControl",)},
+    "luau": {"message": ("TestLuauVtMessageRetainCellsNegativeControl",)},
+    "squirrel": {"message": ("TestSquirrelRetainOnMessageFormNegativeControl",)},
+    "lobster": {"unknown": ("TestLobsterRetainUnknownNegativeControl",),
+                "verdict": ("TestLobsterWireFuzzVerdictPipeNegativeControl",)},
+    "unity": {"save": ("TestUnityVTMessageAndRetainUnknown",)},
+}
+
 
 def run_controls(runner, lang):
     if lang == "python":
@@ -1071,8 +1374,13 @@ def run_controls(runner, lang):
         if makefile is not None:
             runner.make("wire-retain-controls", WIRE_CONTROLS[lang] + " N=0 SEED=1 JAVA_WIRE_FUZZ_N=0",
                         makefile=makefile)
+    elif lang in UNCAPPED_LEGS:
+        leg_make(runner, lang, "wire-retain-controls", WIRE_CONTROLS[lang], "N=0 SEED=1")
     else:
         runner.make("wire-retain-controls", WIRE_CONTROLS[lang] + " N=0 SEED=1 JAVA_WIRE_FUZZ_N=0")
+    if lang in LEG_RETENTION_CONTROLS:
+        for name, tests in LEG_RETENTION_CONTROLS[lang].items():
+            probe_phase(runner, "retain-" + lang + "-" + name, PACKAGES[lang][1], tests)
     if lang == "c":
         overlay_control(runner, "retain-c", "internal/codegen/ctable/retain.go",
                         "TestCTableRetainFile", "./compiler", "report.retained==13",
@@ -1119,8 +1427,7 @@ def run_controls(runner, lang):
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if len(argv) != 1 or argv[0] not in LANGUAGES:
-        print("usage: test/conformance/nightly-readiness <cpp|c|cs|go|rust|java|js|dart|elixir|goose|ruby|moo|python>",
-              file=sys.stderr)
+        print("usage: test/conformance/nightly-readiness <" + "|".join(LANGUAGES) + ">", file=sys.stderr)
         return 2
     lang = argv[0]
     root = Path(__file__).resolve().parents[2]
@@ -1162,6 +1469,10 @@ def main(argv=None):
     if lang == "ruby":
         prerequisites += " dist-ruby ruby-toolchain-check build/conformance-harness-ruby"
         harness = "./build/conformance-harness-ruby"
+    if lang in LEG_PREREQUISITES:
+        # the pinned toolchain's probe and what the leg's Go packages read:
+        # the generated conformance units, and each leg's own drivers
+        prerequisites += " " + LEG_PREREQUISITES[lang]
     runner.make("prerequisites", prerequisites)
     runner.run("implementation", [harness, "implementation", "--lang", lang],
                validate=lambda text: implementation_result(text, lang))
