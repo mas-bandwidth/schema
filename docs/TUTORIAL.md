@@ -48,27 +48,31 @@ the project read the same declaration.
 
 ### Get the tools
 
-The compiler is one Go program. You need a Go toolchain, and nothing else:
+The compiler is one Go program. With a Go toolchain (1.26 or later), one
+command installs it as `schema` in `$(go env GOPATH)/bin`, which should be on
+your path, because every command on this page is spelled `schema`:
 
 ```
-$ go version
-go version go1.27.0 darwin/arm64
+$ go install github.com/mas-bandwidth/schema/v2/cmd/schema@main
+$ schema version
+schema v2.5.1-0.20261121091243-8c356aa9b51e (go1.26.10)
 ```
 
-Clone the repository and build:
+That builds the head of `main`, where every release is tagged, and needs no
+`make`, no language toolchains, no runtime checkouts and no generation. The
+version is Go's module version, ending in the commit it was built from. Do
+not use `@latest`: the module path still ends in `/v2`, so Go resolves it to
+v2.5.0 rather than the newest release. The README's "Install and build"
+section also lists the prebuilt binaries each release carries, from the first
+release after v3.0.1 on.
+
+Or clone the repository and build, for a binary stamped with `git describe`:
 
 ```
 $ git clone https://github.com/mas-bandwidth/schema.git
 $ cd schema
 $ make
 go build -ldflags "-X github.com/mas-bandwidth/schema/v2/internal/version.version=v2.4.0-148-gbafdb69" -o bin/schema ./cmd/schema
-```
-
-That is the whole install. `make` builds `bin/schema` and nothing else: no
-language toolchains, no runtime checkouts, no generation. Put `bin` on your
-path, because every command on this page is spelled `schema`:
-
-```
 $ export PATH="$PWD/bin:$PATH"
 $ schema version
 schema v2.4.0-148-gbafdb69 (go1.27.0)
@@ -83,7 +87,8 @@ carry it yet. When this page and your binary disagree, that line (or
 
 **Two more checkouts, before Part 3.** The generated C++ and C read and write
 bits through the serialize runtimes, which are header-only siblings of this
-repository. Clone them beside it, at the tags this build is pinned to:
+repository. Clone them beside the directory you work in, at the tags this
+build is pinned to:
 
 ```
 $ cd ..

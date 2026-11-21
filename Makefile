@@ -7361,6 +7361,20 @@ release:
 	$(MAKE) --no-print-directory release-differential
 	go run ./tools/releasetag release -version '$(RELEASE_VERSION)' -commit $(RELEASE_COMMIT) -main $(RELEASE_MAIN) $(if $(PUSH),-push)
 
+# THE RELEASE BINARIES (tools/releasebin): cmd/schema cross-compiled with cgo
+# off and -trimpath for linux, darwin and windows on amd64 and arm64, each
+# stamped VERSION as bin/schema is, packed with LICENSE and README.md as
+# build/release-binaries/schema_<VERSION>_<os>_<arch>.tar.gz (.zip for
+# windows), plus build/release-binaries/SHA256SUMS. Every archive entry
+# carries RELEASE_BINARIES_MTIME (default: the commit's time), so a rerun on
+# one commit writes the same bytes. release.yml's assets job runs it on the
+# tag the release job pushed and attaches the result to the GitHub release;
+# it tags nothing.
+RELEASE_BINARIES_MTIME ?= $(shell git log -1 --format=%ct HEAD 2>/dev/null || echo 0)
+.PHONY: release-binaries
+release-binaries:
+	go run ./tools/releasebin -version '$(VERSION)' -mtime '$(RELEASE_BINARIES_MTIME)' -out build/release-binaries
+
 # THE PREVIOUS-RELEASE DIFFERENTIAL (docs/VERSIONING.md, #463): the WIRE bytes
 # the newest v tag's compiler and RELEASE_COMMIT's encode for the same
 # instances, compared under an equal protocol id. The packet wire through the
