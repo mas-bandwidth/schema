@@ -7,7 +7,7 @@ deserve very different weight.
 packet paths and consume bytes from the network. A bug in the emitted read path
 — one that lets a hostile buffer read out of bounds, or lets a declared bound
 be exceeded without the read failing — is a serious vulnerability in every
-program built from that schema, in nine languages at once. Report these.
+program built from that schema, in all 18 targets at once. Report these.
 
 **The compiler itself is a build-time tool** that consumes schema files, which
 are normally written by you and live in your repository. A crash on a malformed
@@ -78,7 +78,7 @@ the buffer. Specifically:
   maximum region-over-wire ratio and a mutant above it is a divergence.
 - Any read that continues past the end of the stream instead of failing.
 - Integer overflow in a bit or byte count computed from wire data.
-- **Any divergence between the nine languages on the above** — if C++ refuses
+- **Any divergence between the 18 targets on the above** — if C++ refuses
   an input and Go accepts it, that is a security bug even if neither is
   memory-unsafe, because deployments mix languages across client and server.
 
