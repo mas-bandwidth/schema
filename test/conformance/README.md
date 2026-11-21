@@ -169,6 +169,7 @@ One process per surface, so a runtime starts once rather than once per case.
 |---|---|---|---|
 | `wire` | `instance` | Load the wire file, Save, the bytes | the wire golden |
 | `message` | `message` | AnnounceRead the connection, LoadMessages the entire batch, then SaveMessages of every accepted body; an explicit refusal for a row whose message wire is `-` | the complete message golden, or refusal |
+| `message-prior` | `message-prior` | AnnounceRead the prior writer's `prior-connection`, LoadMessages its `prior-message` batch, then SaveMessages; a read the public API refuses is answered `<case>.refused`, its contents never compared | the re-saved batch, or refusal |
 | `report` | `report` | `read\n` and the complete ToJson value in `<case>`, plus the canonical write-back wire in `<case>.wire`, or `refused\n` alone | `reports.txt`, then `report-values/<case>.json` and `save-wire/<case>.bin` for accepted reads |
 | `framing` | `framing` | the same verdict and value in `<case>`, and the wire in `<case>.wire` | the hand-authored verdict and value file, and `save-wire/<case>.bin` |
 | `retain` | `retain` | LoadRetain at the row's capacities, then `read\n` and the complete known ToJson value, or `refused\n` | `retain-values/<case>.json` after acceptance |
