@@ -10,6 +10,7 @@ releases.
 
 The current declaration, verbatim from `tables/cards/Card.schema`:
 
+<!-- example: fragment -->
 ```go
 // Card.schema — the CARDS corpus (docs/SPEC-TABLES.md §2): a typed work card
 // plus one opaque body. Every bounded scalar and string field is declared at
@@ -104,6 +105,7 @@ The generated package is a local module named `cards`, produced by
 `make cards-generate` into `build/tables-generated-go/cards`. A customer
 imports it as:
 
+<!-- example: fragment -->
 ```go
 import "cards"
 ```
@@ -125,6 +127,7 @@ returns another copy, so a caller can never mutate stored bytes and no raw
 generated `*Card` or shallow relative-pointer root escapes (docs/SPEC-TABLES.md
 §6.2).
 
+<!-- example: fragment -->
 ```go
 rec, report, err := cards.Load(wire)   // tolerant read, original wire preserved
 strict, err := cards.ReadStrict(wire)  // refuses unknown/lossy data
@@ -156,6 +159,7 @@ Six setters edit a record. Each validates its input, allocates a complete
 replacement, serializes it, and only then swaps the owned wire; a refusal leaves
 the original bytes unchanged.
 
+<!-- example: fragment -->
 ```go
 err = cards.SetNeeds(rec, []string{"dep-alpha"})       // 64-byte elements
 err = cards.SetPaths(rec, []string{"tables/cards"})    // 192-byte elements
@@ -176,6 +180,7 @@ element's declared string bound. An invalid write refuses rather than truncates.
 and done, framed so boundaries cannot collide and excluding needs, tier,
 priority and machine fields.
 
+<!-- example: fragment -->
 ```go
 sum, err := cards.TaskHash(rec) // [32]byte; refused for a lossy record
 ```
@@ -191,6 +196,7 @@ of generated code, not a `github.com/.../tables/cards` distribution promise.
 The checkout-relative replaces are materialized from absolute paths because Go
 does not inherit replace directives from module `cards`:
 
+<!-- example: fragment -->
 ```go
 replace cards => <checkout>/build/tables-generated-go/cards
 replace github.com/mas-bandwidth/serialize.go/v2 => <checkout>/../serialize.go
@@ -202,6 +208,7 @@ lossy-probe assertions. This is the recipe a later sprint integration follows:
 parse briefly at admission, keep machine fields server-owned, index the
 authoritative record, preserve the wire, and hash the task-bearing fields.
 
+<!-- example: fragment -->
 ```go
 // BEGIN CARDS-CUSTOMER-EXAMPLE
 	rec, err := cards.Parse([]byte(
