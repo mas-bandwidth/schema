@@ -396,15 +396,21 @@ func entryPutBack(t *testing.T, sideFlag, payloadFlag, kind string, failing func
 // names both the output and where its original is kept.
 func TestPublishThatCannotPutAnEntryBackNamesBothPaths(t *testing.T) {
 	errDisk := errors.New("permission denied (injected)")
-	dir, payload, side := pairFixture(t)
+	dir, _, _ := pairFixture(t)
+	dir, rerr := filepath.EvalSymlinks(dir)
+	if rerr != nil {
+		t.Fatal(rerr)
+	}
+	payload, side := filepath.Join(dir, "out.bin"), filepath.Join(dir, "side.bin")
 	onto := 0
 	f := atomicfile.OS()
 	rename := f.Rename
 	f.Rename = func(oldpath, newpath string) error {
-		switch newpath {
-		case payload:
-			return errDisk // publishing the payload, and putting it back
-		case side:
+		// by name: the publisher renames onto the resolved path
+		switch filepath.Base(newpath) {
+		case filepath.Base(payload):
+			return errDisk // publishing the payload
+		case filepath.Base(side):
 			if onto++; onto > 1 {
 				return errDisk // putting the side file back
 			}
@@ -429,19 +435,16 @@ func TestPublishThatCannotPutAnEntryBackNamesBothPaths(t *testing.T) {
 			kept[string(data)] = p
 		}
 	}
-	// both originals are still on disk, at the names the error gives
-	for _, want := range []struct{ out, bytes string }{{side, oldSide}, {payload, oldPayload}} {
-		p, ok := kept[want.bytes]
-		if !ok {
-			t.Errorf("the original of %s is gone: %s holds %v", want.out, dir, entries)
-			continue
-		}
-		if !strings.Contains(err.Error(), want.out) || !strings.Contains(err.Error(), p) {
-			t.Errorf("the error does not name %s and where its original is kept (%s): %v", want.out, p, err)
-		}
+	// the payload's original never left its name; the side file's original is
+	// on disk at the name the error gives
+	wantFile(t, payload, oldPayload)
+	if p, ok := kept[oldSide]; !ok {
+		t.Errorf("the original of %s is gone: %s holds %v", side, dir, entries)
+	} else if !strings.Contains(err.Error(), side) || !strings.Contains(err.Error(), p) {
+		t.Errorf("the error does not name %s and where its original is kept (%s): %v", side, p, err)
 	}
 	if len(entries) != 3 {
-		t.Errorf("%s holds %v; want the new side file and the two kept originals, nothing staged", dir, entries)
+		t.Errorf("%s holds %v; want the new side file, its kept original and the payload's original, nothing staged", dir, entries)
 	}
 }
 

@@ -186,6 +186,67 @@ func TestARealSizeLimitDamagesNoFile(t *testing.T) {
 	}
 }
 
+// TestARealSizeLimitFormatsADirectoryAllOrNothing is F-220's short write: fmt
+// and fmt --migrate over a directory of two sources, under a limit A's
+// canonical form fits and B's does not. A directory is one request
+// (docs/CLI.md), so the run is refused with A as it was too; it used to
+// publish A and then fail on B. The sources are the committed corpus in
+// testdata/fmt_directory.
+func TestARealSizeLimitFormatsADirectoryAllOrNothing(t *testing.T) {
+	t.Parallel()
+	bin := buildCLI(t)
+	const limit = 70
+	corpus := filepath.Join("testdata", "fmt_directory")
+	for _, tc := range []struct {
+		args []string
+		a, b string
+	}{
+		{[]string{"fmt"}, "A.in", "B.long"},
+		{[]string{"fmt", "--migrate"}, "A.retired", "B.retired"},
+	} {
+		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
+			t.Parallel()
+			setup := func(t *testing.T) (dir, a, b string) {
+				dir = realTempDir(t)
+				a, b = filepath.Join(dir, "A.schema"), filepath.Join(dir, "B.schema")
+				mustWrite(t, a, mustRead(t, filepath.Join(corpus, tc.a)))
+				mustWrite(t, b, mustRead(t, filepath.Join(corpus, tc.b)))
+				return dir, a, b
+			}
+			// the control: unrestricted, both change; A's canonical form
+			// fits under the limit and B's does not, the shape of the finding
+			control, ca, cb := setup(t)
+			wasA, wasB := mustRead(t, ca), mustRead(t, cb)
+			run(t, bin, append(tc.args, control)...)
+			canonA, canonB := mustRead(t, ca), mustRead(t, cb)
+			if canonA == wasA || canonB == wasB {
+				t.Fatalf("the corpus is not two sources schema %s rewrites", strings.Join(tc.args, " "))
+			}
+			if len(canonA) > limit || len(canonB) <= limit {
+				t.Fatalf("canonical A is %d bytes and B %d: the case needs A within the %d-byte limit and B beyond it", len(canonA), len(canonB), limit)
+			}
+
+			dir, a, b := setup(t)
+			ageTree(t, dir)
+			before := snapshotTree(t, dir)
+			ok, out := runLimited(t, limit, bin, append(tc.args, dir)...)
+			if ok {
+				t.Errorf("schema %s succeeded under a %d-byte limit: %s", strings.Join(tc.args, " "), limit, out)
+			}
+			if !strings.Contains(out, "file too large") {
+				t.Errorf("the refusal does not say the file was too large: %q", out)
+			}
+			assertSameTree(t, "after a directory run under a 70-byte limit", before, snapshotTree(t, dir))
+
+			// the retry without the limit lands both
+			run(t, bin, append(tc.args, dir)...)
+			if mustRead(t, a) != canonA || mustRead(t, b) != canonB {
+				t.Errorf("the retry is not the unrestricted run's output")
+			}
+		})
+	}
+}
+
 // TestGenerateOverAReadOnlyFileThroughTheCLI is the reviewer's second run: one
 // file of an earlier generation is read-only, the unit has changed, and
 // `schema generate` exits 1 with permission denied. Every generated file must

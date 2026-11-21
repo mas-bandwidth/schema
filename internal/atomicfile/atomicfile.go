@@ -8,10 +8,13 @@
 // temporary file beside the file it replaces, written whole and synced, and
 // only then publishes by rename, so the failures a write meets in practice
 // happen before anything has changed. A command that changes several entries
-// gets all of them or none: when a publishing rename fails, every original
-// entry already moved aside is renamed back, the entry itself (the same
-// inode, with its hard links, its mode and the time it was last written),
-// not a copy of its bytes.
+// gets all of them or none. A file being replaced never goes missing: its
+// original stays at its name, kept also under a second name (a hard link), and
+// one rename puts the new file over it; when a publishing rename fails, every
+// original already replaced is renamed back over the new file, the entry
+// itself (the same inode, with its hard links, its mode and the time it was
+// last written), not a copy of its bytes. Only a file system that makes no
+// hard link gets a copy, of the bytes and the mode.
 //
 // A path that is a symbolic link is followed: the file it names is the one
 // replaced, and the link stays. An existing file keeps its mode. A file its
@@ -24,6 +27,7 @@ package atomicfile
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"math/rand/v2"
 	"os"
@@ -48,6 +52,10 @@ type Files struct {
 	Remove func(name string) error
 	// RemoveAll removes an entry and, for a directory, everything under it.
 	RemoveAll func(name string) error
+	// Link makes newname a second name of the file oldname.
+	Link func(oldname, newname string) error
+	// Open opens a file for reading.
+	Open func(name string) (*os.File, error)
 	// Lstat describes an entry without following a symbolic link.
 	Lstat func(name string) (fs.FileInfo, error)
 	// Readlink reads a symbolic link.
@@ -74,6 +82,8 @@ func OS() Files {
 		Rename:    os.Rename,
 		Remove:    os.Remove,
 		RemoveAll: os.RemoveAll,
+		Link:      os.Link,
+		Open:      os.Open,
 		Lstat:     os.Lstat,
 		Readlink:  os.Readlink,
 		Mkdir:     os.Mkdir,
@@ -99,6 +109,8 @@ func InRoot(r *os.Root) Files {
 		Rename:    r.Rename,
 		Remove:    r.Remove,
 		RemoveAll: r.RemoveAll,
+		Link:      r.Link,
+		Open:      r.Open,
 		Lstat:     r.Lstat,
 		Readlink:  r.Readlink,
 		Mkdir:     r.Mkdir,
@@ -112,6 +124,18 @@ func InRoot(r *os.Root) Files {
 		base:   r.Name(),
 		rooted: true,
 	}
+}
+
+// InExistingDirectories is f that makes no directory: a write whose directory
+// is not there is refused with nothing changed, as creating the file there
+// would be. A command writing to a path a person named (pack --out, cook
+// --attribution) uses it; a command that owns an output tree does not.
+func (f Files) InExistingDirectories() Files {
+	shown := f.shown
+	f.Mkdir = func(name string, _ fs.FileMode) error {
+		return &fs.PathError{Op: "write into", Path: shown(name), Err: fs.ErrNotExist}
+	}
+	return f
 }
 
 func writeAll(f *os.File, _ string, data []byte) error {
@@ -130,14 +154,6 @@ func (f Files) shown(name string) string {
 
 // errEscapes is a name that leaves a root.
 var errEscapes = errors.New("path escapes the output directory")
-
-// ErrAppeared is a write whose file was not there when the commit staged it
-// and is there when the commit publishes it. Inside one commit that is
-// another write of the same commit under a spelling the volume takes for the
-// same name (a volume that folds case, or Unicode spellings): two names that
-// did not exist are one entry, and publishing both would leave only the
-// second. The commit refuses and puts back what it moved.
-var ErrAppeared = errors.New("an entry appeared under this name while the commit published: two names of this commit are one entry on this volume")
 
 // resolve follows every symbolic link on path and answers the name of the
 // file itself. A component that does not exist ends the walk: what is below
@@ -234,22 +250,61 @@ type change struct {
 	file string // write: path with every symbolic link followed
 	next string // write: the staged new content, beside file
 	kept string // where the original entry is kept while the commit publishes; respell: the name it passes through
-	// aside: the original entry is at kept, not at its own name
+	// aside: the original entry is at kept. A remove or a respell moved it
+	// there; a write made kept a second name of it (or, where the file
+	// system has no hard links, a copy) and left it at its own name.
 	aside bool
 	// placed: the new entry is at its own name
 	placed bool
 	// dropped: an earlier write to the same file, superseded by a later one
 	dropped bool
-	// existed: write: the file was there when its content was staged
-	existed bool
 }
 
 // Txn is the changes of one command, published together by Commit.
 type Txn struct {
-	changes []*change
-	roots   []*os.Root
-	made    []made // directories staging created, outermost first
-	done    bool
+	changes  []*change
+	roots    []*os.Root
+	made     []made // directories staging created, outermost first
+	done     bool
+	distinct bool
+}
+
+// Distinct makes every write of t a file of its own: two writes that reach
+// one file refuse the commit with nothing changed, where otherwise the later
+// would win. The paths are compared after every symbolic link is followed,
+// and again by the file system's own answer as each file is published, since
+// two names a case-folding or normalizing file system takes as one entry are
+// one only once the first is there. A command whose outputs are one artifact
+// in several files (a message and its announcement) needs each one.
+func (t *Txn) Distinct() { t.distinct = true }
+
+// AliasError is two writes of a [Txn.Distinct] transaction that reach one
+// file, by the paths the caller named.
+type AliasError struct {
+	First, Second string
+}
+
+func (e *AliasError) Error() string {
+	return fmt.Sprintf("%s and %s name the same file", e.First, e.Second)
+}
+
+// aliased answers the AliasError of steps[i] against a write published before
+// it, if the entry it is about to replace is the one that write placed.
+func aliased(steps []*change, i int) error {
+	c := steps[i]
+	now, err := c.f.Lstat(c.file)
+	if err != nil {
+		return nil // nothing there yet: it is no file already published
+	}
+	for _, d := range steps[:i] {
+		if d.kind != write || !d.placed {
+			continue
+		}
+		if was, err := d.f.Lstat(d.file); err == nil && os.SameFile(now, was) {
+			return &AliasError{First: d.f.shown(d.path), Second: c.f.shown(c.path)}
+		}
+	}
+	return nil
 }
 
 type made struct {
@@ -395,7 +450,6 @@ func (t *Txn) stage(c *change) error {
 			return err
 		}
 		mode, exists = info.Mode().Perm(), true
-		c.existed = true
 	case !errors.Is(err, fs.ErrNotExist):
 		return err
 	}
@@ -448,19 +502,19 @@ func (c *change) publish() error {
 	switch c.kind {
 	case write:
 		switch info, err := f.Lstat(c.file); {
-		case err == nil && !c.existed:
-			return &fs.PathError{Op: "write", Path: f.shown(c.file), Err: ErrAppeared}
 		case err == nil:
 			if info.IsDir() {
 				return &fs.PathError{Op: "write", Path: f.shown(c.file), Err: syscall.EISDIR}
 			}
-			if err := f.Rename(c.file, c.kept); err != nil {
+			// the original stays at its name, so a reader never finds the
+			// file missing; the backup is what a failure puts back
+			if err := c.backUp(info); err != nil {
 				return err
 			}
-			c.aside = true
 		case !errors.Is(err, fs.ErrNotExist):
 			return err
 		}
+		// one rename replaces the original with the new file
 		if err := f.Rename(c.next, c.file); err != nil {
 			return err
 		}
@@ -490,22 +544,61 @@ func (c *change) publish() error {
 	return nil
 }
 
+// backUp keeps the original of a write at kept while it stays at its own
+// name: a hard link, so what a failure renames back is the entry itself (the
+// same inode, with its other links, its mode and the time it was last
+// written); where the file system makes no hard link, a copy of its bytes
+// and mode.
+func (c *change) backUp(info fs.FileInfo) error {
+	f := c.f
+	if err := f.Link(c.file, c.kept); err == nil {
+		c.aside = true
+		return nil
+	}
+	src, err := f.Open(c.file)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = src.Close() }()
+	dst, err := f.Create(c.kept, info.Mode().Perm())
+	if err != nil {
+		return err
+	}
+	c.aside = true // made: a failure from here removes it
+	_, err = io.Copy(dst, src)
+	if err == nil {
+		err = dst.Chmod(info.Mode().Perm())
+	}
+	if err == nil {
+		err = syncFile(dst)
+	}
+	if cerr := dst.Close(); err == nil {
+		err = cerr
+	}
+	return err
+}
+
 // putBack undoes publish, as far as it got.
 func (c *change) putBack() error {
 	f := c.f
 	switch c.kind {
 	case write:
-		if c.aside {
-			// over the new file, if it is there
+		switch {
+		case c.placed && c.aside:
+			// the original entry, renamed back over the new file
 			if err := f.Rename(c.kept, c.file); err != nil {
 				return err
 			}
 			c.aside, c.placed = false, false
-		} else if c.placed {
+		case c.placed:
 			if err := f.Remove(c.file); err != nil {
 				return err
 			}
 			c.placed = false
+		case c.aside:
+			// the original never left its name: only its backup goes
+			_ = f.Remove(c.kept)
+			c.aside = false
 		}
 	case remove:
 		if c.aside {
@@ -552,11 +645,18 @@ func plain(c *change, err error) error {
 // staged is removed and the tree is as it was.
 //
 // Only then is each change published, in the order it was made. One file
-// alone is replaced by a single rename. With more, each original entry is
-// renamed aside to a kept name and the staged file renamed into its place;
-// if a rename fails, every entry already moved is put back, last first, and
-// the error says nothing was changed. When every change is published the
+// alone is replaced by a single rename. With more, each original file is
+// first linked to a kept name, staying at its own, and the staged file is
+// renamed over it, so an existing file is never missing, not even between
+// two renames (an entry to remove or respell is renamed aside); if a rename
+// fails, every entry already moved is put back, last first, and the error
+// says nothing was changed. When every change is published the
 // kept originals are removed.
+//
+// In a [Txn.Distinct] transaction two writes that reach one file are an
+// [AliasError]: found from the paths before anything is staged, or, for two
+// names the file system alone takes as one, before the second is published,
+// which then puts back the first like any other failure.
 //
 // An original that will not go back is the one case that ends neither all
 // old nor all new: it is left at its kept name, never removed, and the error
@@ -596,6 +696,10 @@ func (t *Txn) Commit() error {
 			c.file = file
 			key := filepath.Join(c.f.base, file)
 			if prev := last[key]; prev != nil {
+				if t.distinct {
+					clean()
+					return fmt.Errorf("%w; nothing was changed", &AliasError{First: prev.f.shown(prev.path), Second: c.f.shown(c.path)})
+				}
 				prev.dropped = true
 			}
 			last[key] = c
@@ -640,7 +744,13 @@ func (t *Txn) Commit() error {
 	}
 
 	for i, c := range steps {
-		err := c.publish()
+		var err error
+		if t.distinct && c.kind == write {
+			err = aliased(steps, i)
+		}
+		if err == nil {
+			err = c.publish()
+		}
 		if err == nil {
 			continue
 		}

@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/mas-bandwidth/schema/v2/internal/atomicfile"
 )
@@ -75,10 +74,6 @@ func failOnce(path string, err error) func(oldpath, newpath string) error {
 	}
 }
 
-// pinOld is the time the fixtures' files were last written, long before any
-// test runs, so a file that was rewritten shows.
-var pinOld = time.Date(2020, 2, 3, 4, 5, 6, 0, time.UTC)
-
 // TestPinPublishAllOrNothing fails a two-file pin at each point it can fail,
 // through publishPins' seam, and holds the tree to all old or all new: a
 // failure staging the second file (the reviewer's read-only directory) and a
@@ -141,20 +136,24 @@ func TestPinPublishAllOrNothing(t *testing.T) {
 		assertPinTree(t, "after a publish failure", dirs, changes, orig)
 	})
 
-	t.Run("moving the second original aside fails", func(t *testing.T) {
+	t.Run("backing up the second original fails", func(t *testing.T) {
 		t.Parallel()
 		dirs, changes := pinPublishTree(t)
-		f := pinSeam(func(oldpath, newpath string) error {
-			if oldpath == changes[1].path {
-				return errDisk
+		f := atomicfile.OS()
+		// neither a hard link nor the copy a file system without links gets
+		f.Link = func(oldname, newname string) error { return errDisk }
+		create := f.Create
+		f.Create = func(name string, mode fs.FileMode) (*os.File, error) {
+			if filepath.Dir(name) == dirs[1] && strings.Contains(filepath.Base(name), ".orig.") {
+				return nil, errDisk
 			}
-			return os.Rename(oldpath, newpath)
-		})
+			return create(name, mode)
+		}
 		err := publishPins(f, changes)
 		if !errors.Is(err, errDisk) || !strings.Contains(err.Error(), "nothing was changed") {
 			t.Errorf("publishPins = %v; want the failure, saying nothing was changed", err)
 		}
-		assertPinTree(t, "after a failure moving an original aside", dirs, changes, orig)
+		assertPinTree(t, "after a failure backing up an original", dirs, changes, orig)
 	})
 
 	// "Nothing was changed" has to be true of the directory ENTRY, not only
@@ -296,32 +295,33 @@ func TestPinPublishAllOrNothing(t *testing.T) {
 		if strings.Contains(err.Error(), "nothing was changed") {
 			t.Errorf("a half-moved pin claims nothing was changed: %v", err)
 		}
-		for i, ch := range changes {
-			if !strings.Contains(err.Error(), ch.path) {
-				t.Errorf("the error does not name %s: %v", ch.path, err)
+		// the second file was never replaced (its publish failed, and its
+		// original never left its name): it holds the original, alone
+		assertAlone(t, "the second, never replaced", dirs[1])
+		if got := mustRead(t, changes[1].path); got != string(changes[1].orig) {
+			t.Errorf("%s holds %q; want its original", changes[1].path, got)
+		}
+		// the first holds the new file and the kept original, both named
+		if !strings.Contains(err.Error(), changes[0].path) {
+			t.Errorf("the error does not name %s: %v", changes[0].path, err)
+		}
+		entries, rerr := os.ReadDir(dirs[0])
+		if rerr != nil {
+			t.Fatal(rerr)
+		}
+		if len(entries) != 2 {
+			t.Errorf("%s holds %v; want the new file and the kept original", dirs[0], entries)
+		}
+		kept := ""
+		for _, e := range entries {
+			if e.Name() != "generate.go" {
+				kept = filepath.Join(dirs[0], e.Name())
 			}
-			entries, rerr := os.ReadDir(dirs[i])
-			if rerr != nil {
-				t.Fatal(rerr)
-			}
-			// the first directory holds the new file and the kept original,
-			// the second the kept original alone; nothing staged is left
-			if want := 2 - i; len(entries) != want {
-				t.Errorf("%s holds %v; want %d entries", dirs[i], entries, want)
-			}
-			kept := ""
-			for _, e := range entries {
-				if e.Name() != "generate.go" {
-					kept = filepath.Join(dirs[i], e.Name())
-				}
-			}
-			if kept == "" || !strings.Contains(err.Error(), kept) {
-				t.Errorf("the error does not name where the original of %s is kept (%q): %v", ch.path, kept, err)
-				continue
-			}
-			if got := mustRead(t, kept); got != string(ch.orig) {
-				t.Errorf("the kept original %s holds %q", kept, got)
-			}
+		}
+		if kept == "" || !strings.Contains(err.Error(), kept) {
+			t.Errorf("the error does not name where the original of %s is kept (%q): %v", changes[0].path, kept, err)
+		} else if got := mustRead(t, kept); got != string(changes[0].orig) {
+			t.Errorf("the kept original %s holds %q", kept, got)
 		}
 	})
 }

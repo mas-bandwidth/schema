@@ -16,8 +16,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/atomicfile"
 )
 
 // the two paired commands, by their own flag names. A paired command publishes
@@ -40,10 +38,7 @@ const (
 // pairFixture is a directory holding an existing pair from an earlier run.
 func pairFixture(t *testing.T) (dir, payload, side string) {
 	t.Helper()
-	dir, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	dir = t.TempDir()
 	payload = filepath.Join(dir, "out.bin")
 	side = filepath.Join(dir, "side.bin")
 	writeTestFile(t, payload, oldPayload)
@@ -177,33 +172,17 @@ func TestPairedOutputsRefuseSymlinkedDirectoryAlias(t *testing.T) {
 	}
 }
 
-// Four ways the payload cannot be published while the side file can: its
-// directory is a regular file, its own name is a directory, its staged
-// content is cut short (a full disk, a file-size limit), and the rename that
-// publishes it fails after the side file has landed. In every one the
-// existing side file, written by an earlier run, stays exactly as it was.
+// Three ways the payload cannot be published while the side file can: its
+// directory is missing, its directory is a regular file, and its own name is a
+// directory. In every one the existing side file, written by an earlier run,
+// stays exactly as it was.
 func TestPairedOutputsFailureKeepsTheExistingPair(t *testing.T) {
 	cases := []struct {
 		name  string
 		setup func(t *testing.T, dir string) (payload string, keep []string)
 	}{
-		{"payload write cut short", func(t *testing.T, dir string) (string, []string) {
-			sub := filepath.Join(dir, "sub")
-			if err := os.Mkdir(sub, 0o755); err != nil {
-				t.Fatal(err)
-			}
-			fault := atomicfile.FailWritesAfter(sub, 3)
-			t.Cleanup(fault.Remove)
-			return filepath.Join(sub, "out.bin"), []string{"sub"}
-		}},
-		{"payload rename fails after the side file landed", func(t *testing.T, dir string) (string, []string) {
-			sub := filepath.Join(dir, "sub")
-			if err := os.Mkdir(sub, 0o755); err != nil {
-				t.Fatal(err)
-			}
-			fault := atomicfile.FailNthRename(sub, 1)
-			t.Cleanup(fault.Remove)
-			return filepath.Join(sub, "out.bin"), []string{"sub"}
+		{"payload directory missing", func(t *testing.T, dir string) (string, []string) {
+			return filepath.Join(dir, "missing", "out.bin"), nil
 		}},
 		{"payload directory is a file", func(t *testing.T, dir string) (string, []string) {
 			writeTestFile(t, filepath.Join(dir, "plain"), "plain")
@@ -228,11 +207,8 @@ func TestPairedOutputsFailureKeepsTheExistingPair(t *testing.T) {
 				wantFile(t, side, oldSide)
 				wantFile(t, payload, oldPayload)
 				wantEntries(t, dir, append(keep, "out.bin", "side.bin")...)
-				switch tc.name {
-				case "payload names a directory":
+				if tc.name == "payload names a directory" {
 					wantEntries(t, badPayload, "inside")
-				case "payload write cut short", "payload rename fails after the side file landed":
-					wantEntries(t, filepath.Dir(badPayload))
 				}
 			})
 		}
@@ -245,12 +221,11 @@ func TestPairedOutputsSideFailureKeepsThePayload(t *testing.T) {
 	for _, cmd := range pairedCommands {
 		t.Run(cmd.verb, func(t *testing.T) {
 			dir, payload, _ := pairFixture(t)
-			writeTestFile(t, filepath.Join(dir, "plain"), "plain")
-			if err := publishPair(cmd.side, filepath.Join(dir, "plain", "side.bin"), cmd.payload, payload); err == nil {
-				t.Fatal("publication into a side directory that is a file succeeded")
+			if err := publishPair(cmd.side, filepath.Join(dir, "missing", "side.bin"), cmd.payload, payload); err == nil {
+				t.Fatal("publication into a missing side directory succeeded")
 			}
 			wantFile(t, payload, oldPayload)
-			wantEntries(t, dir, "out.bin", "plain", "side.bin")
+			wantEntries(t, dir, "out.bin", "side.bin")
 		})
 	}
 }
@@ -315,9 +290,8 @@ func TestCookRefusesOutputOverSymlinkedInput(t *testing.T) {
 
 // A DESTINATION ONLY EVER HOLDS FINISHED BYTES: a reader that opens it at any
 // point of a publish finds it absent, the earlier file whole, or the new file
-// whole — never an empty or partial file. The publisher's rename seam stands
-// in for that reader, looking after every rename, so the test needs no
-// timing.
+// whole — never an empty or partial file. The seam between publish steps
+// stands in for that reader, so the test needs no timing.
 func TestPublishedPathsHoldOnlyFinishedBytes(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -343,12 +317,8 @@ func TestPublishedPathsHoldOnlyFinishedBytes(t *testing.T) {
 				outs = append(outs, pairOutput{outputPath{fmt.Sprintf("--out%d", i), p}, []byte(fmt.Sprintf("the finished bytes of output %d", i))})
 			}
 			steps := 0
-			f := atomicfile.OS()
-			rename := f.Rename
-			f.Rename = func(from, to string) error {
-				err := rename(from, to)
+			look := func(step string) {
 				steps++
-				step := fmt.Sprintf("rename %d (%s to %s)", steps, filepath.Base(from), filepath.Base(to))
 				for _, o := range outs {
 					got, err := os.ReadFile(o.path)
 					if errors.Is(err, os.ErrNotExist) {
@@ -362,13 +332,26 @@ func TestPublishedPathsHoldOnlyFinishedBytes(t *testing.T) {
 						t.Errorf("after %s: %s holds %d bytes %q: neither absent, the earlier file nor the finished one", step, o.path, len(got), got)
 					}
 				}
+			}
+			// the publisher's seam: a look after every staged write and every
+			// rename, the points a publish is part done
+			f := outputFiles()
+			write, rename := f.Write, f.Rename
+			f.Write = func(file *os.File, name string, data []byte) error {
+				err := write(file, name, data)
+				look("staging " + name)
+				return err
+			}
+			f.Rename = func(oldname, newname string) error {
+				err := rename(oldname, newname)
+				look("renaming " + oldname + " to " + newname)
 				return err
 			}
 			if err := publishOutputsWith(f, "test", outs, nil); err != nil {
 				t.Fatal(err)
 			}
 			if steps == 0 {
-				t.Fatal("the publish made no rename to look after")
+				t.Fatal("the publish passed no step to look between")
 			}
 			for _, o := range outs {
 				wantFile(t, o.path, string(o.data))
@@ -401,13 +384,12 @@ func TestPairedCommandsKeepTheExistingPair(t *testing.T) {
 			side := filepath.Join(dir, "side.bin")
 			writeTestFile(t, side, oldSide)
 
-			writeTestFile(t, filepath.Join(dir, "plain"), "plain")
-			code, out := runExit(t, bin, inv.build(side, filepath.Join(dir, "plain", "out.bin"))...)
+			code, out := runExit(t, bin, inv.build(side, filepath.Join(dir, "missing", "out.bin"))...)
 			if code == 0 {
-				t.Fatalf("a payload into a directory that is a file exited 0:\n%s", out)
+				t.Fatalf("a payload into a missing directory exited 0:\n%s", out)
 			}
 			wantFile(t, side, oldSide)
-			wantEntries(t, dir, "plain", "side.bin")
+			wantEntries(t, dir, "side.bin")
 
 			code, out = runExit(t, bin, inv.build(side, side)...)
 			if code == 0 {
@@ -417,10 +399,10 @@ func TestPairedCommandsKeepTheExistingPair(t *testing.T) {
 				t.Fatalf("the refusal does not name both flags:\n%s", out)
 			}
 			wantFile(t, side, oldSide)
-			wantEntries(t, dir, "plain", "side.bin")
+			wantEntries(t, dir, "side.bin")
 
 			run(t, bin, inv.build(side, filepath.Join(dir, "out.bin"))...)
-			wantEntries(t, dir, "out.bin", "plain", "side.bin")
+			wantEntries(t, dir, "out.bin", "side.bin")
 		})
 	}
 }

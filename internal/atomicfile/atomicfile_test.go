@@ -322,8 +322,10 @@ func TestCommitIsAllOrNothing(t *testing.T) {
 	}
 	watch.Remove()
 	renames := watch.Renames()
-	if renames < 8 {
-		t.Fatalf("the commit made %d renames; the fixture should need at least 8", renames)
+	// one per write (the original is linked, not renamed aside), two per
+	// respell, one per removal
+	if renames < 7 {
+		t.Fatalf("the commit made %d renames; the fixture should need at least 7", renames)
 	}
 	check := func(what string, plant func(dir string) *Fault) {
 		t.Helper()
@@ -458,5 +460,298 @@ func TestADirectoryInTheWayIsRefused(t *testing.T) {
 	}
 	if got := names(t, dir); got != "a.txt/" {
 		t.Errorf("the directory holds %q", got)
+	}
+}
+
+// folding is OS() on a file system that takes two spellings of a name as one
+// entry (APFS and NTFS fold case): every name's last element is looked up in
+// lower case. It lets a Linux run reach the alias a folding volume makes.
+func folding() Files {
+	f := OS()
+	fold := func(name string) string {
+		return filepath.Join(filepath.Dir(name), strings.ToLower(filepath.Base(name)))
+	}
+	create, rename, remove, removeAll, lstat, mkdir, probe := f.Create, f.Rename, f.Remove, f.RemoveAll, f.Lstat, f.Mkdir, f.Probe
+	f.Create = func(name string, mode fs.FileMode) (*os.File, error) { return create(fold(name), mode) }
+	f.Rename = func(oldname, newname string) error { return rename(fold(oldname), fold(newname)) }
+	f.Remove = func(name string) error { return remove(fold(name)) }
+	f.RemoveAll = func(name string) error { return removeAll(fold(name)) }
+	f.Lstat = func(name string) (fs.FileInfo, error) { return lstat(fold(name)) }
+	f.Mkdir = func(name string, mode fs.FileMode) error { return mkdir(fold(name), mode) }
+	f.Probe = func(name string) error { return probe(fold(name)) }
+	link, open := f.Link, f.Open
+	f.Link = func(oldname, newname string) error { return link(fold(oldname), fold(newname)) }
+	f.Open = func(name string) (*os.File, error) { return open(fold(name)) }
+	return f
+}
+
+// A distinct transaction is one artifact in several files: two writes that
+// reach one file are refused with nothing changed, never the later one
+// winning. Through a symbolic link the paths say so before anything is
+// staged; for two spellings a folding file system takes as one, only the
+// entry the first write placed says so, before the second is published.
+func TestADistinctCommitRefusesTwoNamesForOneFile(t *testing.T) {
+	t.Parallel()
+	refused := func(t *testing.T, err error, first, second string) {
+		t.Helper()
+		alias, ok := errors.AsType[*AliasError](err)
+		if !ok || alias.First != first || alias.Second != second {
+			t.Fatalf("commit = %v; want %s and %s refused as one file", err, first, second)
+		}
+		if !strings.Contains(err.Error(), "nothing was changed") {
+			t.Errorf("the refusal does not say nothing was changed: %v", err)
+		}
+	}
+
+	t.Run("through a symbolic link, the file not there yet", func(t *testing.T) {
+		t.Parallel()
+		dir := tempDir(t)
+		target := filepath.Join(dir, "real")
+		if err := os.Mkdir(target, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink("real", filepath.Join(dir, "alias")); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+		first, second := filepath.Join(dir, "alias", "out.bin"), filepath.Join(target, "out.bin")
+		txn := New()
+		txn.Distinct()
+		txn.Write(first, []byte("side"), 0o644)
+		txn.Write(second, []byte("payload"), 0o644)
+		refused(t, txn.Commit(), first, second)
+		if got := names(t, dir); got != "alias real/" {
+			t.Errorf("the directory holds %q; want it as it was", got)
+		}
+	})
+
+	for _, existing := range []bool{false, true} {
+		name := "two spellings the file system folds, the file not there yet"
+		if existing {
+			name = "two spellings the file system folds, over an earlier file"
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			dir := tempDir(t)
+			var before fs.FileInfo
+			if existing {
+				put(t, filepath.Join(dir, "out.bin"), "earlier", 0o640)
+				before = lstat(t, filepath.Join(dir, "out.bin"))
+			}
+			first, second := filepath.Join(dir, "out.bin"), filepath.Join(dir, "OUT.bin")
+			txn := New()
+			txn.Distinct()
+			v := txn.With(folding())
+			v.Write(first, []byte("side"), 0o644)
+			v.Write(second, []byte("payload"), 0o644)
+			refused(t, txn.Commit(), first, second)
+			if !existing {
+				if got := names(t, dir); got != "" {
+					t.Errorf("the directory holds %q; want it empty, as it was", got)
+				}
+				return
+			}
+			if got := names(t, dir); got != "out.bin" {
+				t.Errorf("the directory holds %q; want the earlier file alone", got)
+			}
+			if got := read(t, first); got != "earlier" {
+				t.Errorf("the earlier file holds %q", got)
+			}
+			same(t, "after the refusal", first, before)
+		})
+	}
+
+	// the control: two files are two files, and without Distinct the folded
+	// pair is the later write, as before
+	t.Run("two files publish", func(t *testing.T) {
+		t.Parallel()
+		dir := tempDir(t)
+		txn := New()
+		txn.Distinct()
+		v := txn.With(folding())
+		v.Write(filepath.Join(dir, "side.bin"), []byte("side"), 0o644)
+		v.Write(filepath.Join(dir, "out.bin"), []byte("payload"), 0o644)
+		if err := txn.Commit(); err != nil {
+			t.Fatal(err)
+		}
+		if got := read(t, filepath.Join(dir, "side.bin")) + read(t, filepath.Join(dir, "out.bin")); got != "sidepayload" {
+			t.Errorf("the pair holds %q", got)
+		}
+	})
+	t.Run("without Distinct the later write wins", func(t *testing.T) {
+		t.Parallel()
+		dir := tempDir(t)
+		txn := New()
+		v := txn.With(folding())
+		v.Write(filepath.Join(dir, "out.bin"), []byte("side"), 0o644)
+		v.Write(filepath.Join(dir, "OUT.bin"), []byte("payload"), 0o644)
+		if err := txn.Commit(); err != nil {
+			t.Fatal(err)
+		}
+		if got := read(t, filepath.Join(dir, "out.bin")); got != "payload" {
+			t.Errorf("the file holds %q; want the later write", got)
+		}
+	})
+}
+
+// InExistingDirectories makes no directory: a write into one that is not
+// there is refused, nothing made, while the plain files make it.
+func TestInExistingDirectoriesMakesNone(t *testing.T) {
+	t.Parallel()
+	dir := tempDir(t)
+	side := filepath.Join(dir, "side.bin")
+	put(t, side, "earlier", 0o644)
+	before := lstat(t, side)
+	txn := New()
+	v := txn.With(OS().InExistingDirectories())
+	v.Write(side, []byte("side"), 0o644)
+	v.Write(filepath.Join(dir, "missing", "deeper", "out.bin"), []byte("payload"), 0o644)
+	err := txn.Commit()
+	if !errors.Is(err, fs.ErrNotExist) || !strings.Contains(err.Error(), "nothing was changed") || !strings.Contains(err.Error(), filepath.Join(dir, "missing")) {
+		t.Fatalf("commit = %v; want the missing directory named, nothing changed", err)
+	}
+	if got := names(t, dir); got != "side.bin" {
+		t.Errorf("the directory holds %q; want the side file alone", got)
+	}
+	same(t, "after the refusal", side, before)
+
+	// the control: the same commit through OS() makes the directories
+	txn = New()
+	txn.Write(side, []byte("side"), 0o644)
+	txn.Write(filepath.Join(dir, "missing", "deeper", "out.bin"), []byte("payload"), 0o644)
+	if err := txn.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, filepath.Join(dir, "missing", "deeper", "out.bin")); got != "payload" {
+		t.Errorf("the new file holds %q", got)
+	}
+}
+
+// Where the file system makes no hard link the original is backed up by a
+// copy of its bytes and mode, still staying at its name: a failed publish
+// puts those back, and a successful one leaves no copy behind.
+func TestABackupIsACopyWhereLinksFail(t *testing.T) {
+	t.Parallel()
+	errNoLink := errors.New("hard links unsupported (injected)")
+	for _, fail := range []bool{false, true} {
+		t.Run(map[bool]string{false: "the publish lands", true: "the second rename fails"}[fail], func(t *testing.T) {
+			t.Parallel()
+			dir := tempDir(t)
+			a, b := filepath.Join(dir, "a.txt"), filepath.Join(dir, "b.txt")
+			put(t, a, "old a", 0o640)
+			put(t, b, "old b", 0o600)
+			f := OS()
+			links := 0
+			f.Link = func(oldname, newname string) error { links++; return errNoLink }
+			rename := f.Rename
+			f.Rename = func(oldname, newname string) error {
+				if fail && newname == b && strings.Contains(oldname, ".new.") {
+					return errNoLink
+				}
+				// neither original is ever missing
+				for _, p := range []string{a, b} {
+					if _, err := os.Lstat(p); err != nil {
+						t.Errorf("before renaming %s: %s is missing: %v", oldname, p, err)
+					}
+				}
+				return rename(oldname, newname)
+			}
+			txn := New()
+			v := txn.With(f)
+			v.Write(a, []byte("new a"), 0o644)
+			v.Write(b, []byte("new b"), 0o644)
+			err := txn.Commit()
+			if links == 0 {
+				t.Fatal("no hard link was tried")
+			}
+			want := map[string]string{a: "new a", b: "new b"}
+			if fail {
+				if !errors.Is(err, errNoLink) || !strings.Contains(err.Error(), "nothing was changed") {
+					t.Fatalf("commit = %v; want the failure, saying nothing was changed", err)
+				}
+				want = map[string]string{a: "old a", b: "old b"}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+			for p, w := range want {
+				if got := read(t, p); got != w {
+					t.Errorf("%s holds %q; want %q", p, got, w)
+				}
+			}
+			if fail {
+				if m := lstat(t, a).Mode().Perm(); m != 0o640 {
+					t.Errorf("the copied-back original has mode %v; want 0640", m)
+				}
+			}
+			if got := names(t, dir); got != "a.txt b.txt" {
+				t.Errorf("the directory holds %q; want the two files alone", got)
+			}
+		})
+	}
+}
+
+// A pair publish over two existing files never leaves either missing: with
+// hard links the original stays at its name until the new file is renamed
+// over it, and a failure renames the original entry back over the new one.
+func TestAnExistingFileIsNeverMissing(t *testing.T) {
+	t.Parallel()
+	for _, failAt := range []string{"", "a.txt", "b.txt"} {
+		t.Run("fail at "+failAt, func(t *testing.T) {
+			t.Parallel()
+			dir := tempDir(t)
+			a, b := filepath.Join(dir, "a.txt"), filepath.Join(dir, "b.txt")
+			put(t, a, "old a", 0o644)
+			put(t, b, "old b", 0o644)
+			beforeA, beforeB := lstat(t, a), lstat(t, b)
+			look := func(step string) {
+				for _, p := range []string{a, b} {
+					if _, err := os.Lstat(p); err != nil {
+						t.Errorf("after %s: %s is missing: %v", step, p, err)
+					}
+				}
+			}
+			errInjected := errors.New("rename refused (injected)")
+			f := OS()
+			rename, link, remove := f.Rename, f.Link, f.Remove
+			failed := false
+			f.Rename = func(oldname, newname string) error {
+				if failAt != "" && filepath.Base(newname) == failAt && !failed {
+					failed = true
+					look("a refused rename")
+					return errInjected
+				}
+				err := rename(oldname, newname)
+				look("rename " + oldname)
+				return err
+			}
+			f.Link = func(oldname, newname string) error {
+				err := link(oldname, newname)
+				look("link " + oldname)
+				return err
+			}
+			f.Remove = func(name string) error {
+				err := remove(name)
+				look("remove " + name)
+				return err
+			}
+			txn := New()
+			v := txn.With(f)
+			v.Write(a, []byte("new a"), 0o644)
+			v.Write(b, []byte("new b"), 0o644)
+			err := txn.Commit()
+			if failAt == "" {
+				if err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			if !errors.Is(err, errInjected) {
+				t.Fatalf("commit = %v; want the injected failure", err)
+			}
+			same(t, "after the failure", a, beforeA)
+			same(t, "after the failure", b, beforeB)
+			if got := names(t, dir); got != "a.txt b.txt" {
+				t.Errorf("the directory holds %q", got)
+			}
+		})
 	}
 }

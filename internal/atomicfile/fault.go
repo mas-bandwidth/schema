@@ -122,7 +122,7 @@ func (f Files) faulted() Files {
 	}
 	g.Rename = func(oldname, newname string) error {
 		for _, ft := range planted() {
-			if ft.nth <= 0 || !ft.covers(f.base, oldname) && !ft.covers(f.base, newname) {
+			if ft.nth <= 0 || (!ft.covers(f.base, oldname) && !ft.covers(f.base, newname)) {
 				continue
 			}
 			ft.mu.Lock()
