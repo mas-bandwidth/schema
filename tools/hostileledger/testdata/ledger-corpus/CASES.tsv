@@ -10,3 +10,6 @@ tier-twice	red:the row w-one@flat-dev ran 0 time(s) and owes 1	rows=wire=runtime
 one-tier-only	red:the row w-one@flat-dev ran 0 time(s) and owes 1	rows=wire=runtime-dev,flat-dev	control for F-071: one tier alone was already red
 crlf	pass	skips crlf	F-073: a healthy log with CRLF line endings passes, the negative controls included
 nothing	red:no case ran	-	control: a run of nothing
+name-collision	red:carries @, which spells a row id	registry rows=packet=runtime-development,runtime-production,flat-development,flat-production	F-076: a wire case named like the packet case's first row; the wire case never dispatched, the four packet rows credited it
+name-distinct	pass	registry rows=packet=runtime-development,runtime-production,flat-development,flat-production	control for F-076: the same rows under distinct names, every one ran
+name-distinct-wire-missing	red:audit-wire (wire) is registered and was not run	registry rows=packet=runtime-development,runtime-production,flat-development,flat-production	control for F-076: under distinct names the undispatched wire case is red by name

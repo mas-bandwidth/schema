@@ -222,7 +222,7 @@ func TestLedgerCorpus(t *testing.T) {
 			}
 		})
 	}
-	for _, id := range []string{"whole", "held-case", "displaced-case", "missing-answer", "rows-whole", "zero-rows", "tier-twice", "one-tier-only", "crlf", "nothing"} {
+	for _, id := range []string{"whole", "held-case", "displaced-case", "missing-answer", "rows-whole", "zero-rows", "tier-twice", "one-tier-only", "crlf", "nothing", "name-collision", "name-distinct", "name-distinct-wire-missing"} {
 		if !ids[id] {
 			t.Errorf("the corpus has lost the case %s", id)
 		}

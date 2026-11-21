@@ -345,9 +345,16 @@ func CheckLog(cases []Case, log string, runs int, heldCases, heldCarriers Held, 
 			bad = append(bad, fmt.Sprintf("rows are owed for the carrier %s, which has no case in the corpus", c))
 		}
 	}
+	// every row id is owed by one case: two cases owing one id would let
+	// either's run be counted for the other (F-076)
 	owed := map[string]bool{}
+	ownedBy := map[string]string{}
 	for _, c := range cases {
 		for _, id := range RowIDs(c, rows) {
+			if other, ok := ownedBy[id]; ok {
+				bad = append(bad, fmt.Sprintf("the cases %s and %s both owe the row id %s: rename one", other, c.Name, id))
+			}
+			ownedBy[id] = c.Name
 			owed[id] = true
 		}
 	}

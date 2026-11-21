@@ -14,6 +14,7 @@
 //	            flags, space separated or `-`: runs=N  rows=<carrier>=<row>,<row>
 //	            skips (read <id>/skips.tsv)  carriers (read <id>/carriers.tsv)
 //	            crlf (check the log with CRLF line endings)
+//	            registry (hold the log to <id>/registry/ in place of corpus/)
 package main
 
 import (
@@ -67,6 +68,7 @@ func readLedgerCorpus(dir string) ([]ledgerCase, error) {
 // runLedgerCase checks one case's log and holds the outcome to its verdict.
 func runLedgerCase(dir string, c ledgerCase, scratch string) error {
 	runs, rows, skips, carriers, crlf := 1, "", "", "", false
+	registry := filepath.Join(dir, "corpus")
 	if c.flags != "-" {
 		for flag := range strings.FieldsSeq(c.flags) {
 			key, value, _ := strings.Cut(flag, "=")
@@ -83,6 +85,8 @@ func runLedgerCase(dir string, c ledgerCase, scratch string) error {
 				skips = filepath.Join(dir, c.id, "skips.tsv")
 			case "carriers":
 				carriers = filepath.Join(dir, c.id, "carriers.tsv")
+			case "registry":
+				registry = filepath.Join(dir, c.id, "registry")
 			case "crlf":
 				crlf = true
 			default:
@@ -103,7 +107,7 @@ func runLedgerCase(dir string, c ledgerCase, scratch string) error {
 	} else if _, err := os.Stat(logPath); err != nil {
 		return err
 	}
-	out, err := check("corpus", filepath.Join(dir, "corpus"), logPath, runs, skips, carriers, rows)
+	out, err := check("corpus", registry, logPath, runs, skips, carriers, rows)
 	if c.verdict == "pass" {
 		if err != nil {
 			return fmt.Errorf("the case owes a pass and the ledger is red: %w", err)
