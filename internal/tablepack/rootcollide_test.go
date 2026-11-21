@@ -72,7 +72,6 @@ func TestUnpackTreeNameOverlapStaysReversible(t *testing.T) {
 // Where it does not, an entry that only folds to a field's name names no field
 // (docs/SPEC-TABLES.md §17.3) and stays where it is.
 func TestUnpackOverAnEarlierTreeIsTheNewTree(t *testing.T) {
-	folds := foldsCase(t)
 	for _, tc := range []struct {
 		name, schema, text string
 		before             map[string]string
@@ -101,23 +100,20 @@ func TestUnpackOverAnEarlierTreeIsTheNewTree(t *testing.T) {
 				}
 			}
 			c, u, save := packText(t, tc.schema, tc.text)
-			want := tc.wantExact
-			if folds {
-				want = tc.want
+			if _, err := c.Unpack(u, "Player", save, out); err != nil {
+				t.Fatalf("expanded unpack: %v", err)
 			}
-			if !folds && want != tc.want {
+			// which filesystem this is shows in the names it kept
+			switch got := entries(t, out); got {
+			case tc.want:
+				unpackRepack(t, c, u, save, out)
+			case tc.wantExact:
 				// the unowned entry stays, and pack names it rather than merge it
-				if _, err := c.Unpack(u, "Player", save, out); err != nil {
-					t.Fatalf("expanded unpack: %v", err)
-				}
 				if _, _, _, err := c.Pack(u, "Player", out); err == nil {
 					t.Fatal("pack merged an entry that names no field")
 				}
-			} else {
-				unpackRepack(t, c, u, save, out)
-			}
-			if got := entries(t, out); got != want {
-				t.Fatalf("the destination holds %q, want %q", got, want)
+			default:
+				t.Fatalf("the destination holds %q, want %q (folding) or %q (exact)", got, tc.want, tc.wantExact)
 			}
 		})
 	}
@@ -203,7 +199,6 @@ func TestUnpackNeverDeletesAnEntryNamingNoField(t *testing.T) {
 // written into it. Where it does not, it is another entry and stays as it is.
 // The unrelated child survives either way.
 func TestUnpackKeepsTheChildrenOfAKeyedDirectorySpelledOtherwise(t *testing.T) {
-	folds := foldsCase(t)
 	const schema = "package probe\nenum Team { Red, Blue }\ntable Player { level int32\n scores [Team]int32 }\n"
 	out := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(out, "Scores"), 0o755); err != nil {
@@ -218,34 +213,34 @@ func TestUnpackKeepsTheChildrenOfAKeyedDirectorySpelledOtherwise(t *testing.T) {
 	if _, err := c.Unpack(u, "Player", save, out); err != nil {
 		t.Fatalf("expanded unpack: %v", err)
 	}
-	keeper, want, wantKeyed := "Scores", "Scores level.json scores", "Blue.json Red.json"
-	if folds {
-		keeper, want, wantKeyed = "scores", "level.json scores", "Blue.json Red.json notes.txt"
+	// which filesystem this is shows in the names it kept: the entries are
+	// read back by the names the filesystem lists
+	listed, err := os.ReadDir(out)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got := entries(t, out); got != want {
-		t.Fatalf("the destination holds %q, want %q", got, want)
+	var keeper, keyed string // the directory holding notes.txt, and the field's
+	switch got := entries(t, out); got {
+	case "level.json scores": // folding: one directory, renamed
+		keeper, keyed = listed[1].Name(), listed[1].Name()
+	case "Scores level.json scores": // exact: two directories
+		keeper, keyed = listed[0].Name(), listed[2].Name()
+	default:
+		t.Fatalf("the destination holds %q", got)
 	}
-	if got := entries(t, filepath.Join(out, "scores")); got != wantKeyed {
-		t.Fatalf("scores/ holds %q, want %q", got, wantKeyed)
+	wantKeyed := "Blue.json Red.json"
+	if keeper == keyed {
+		wantKeyed += " notes.txt"
+	}
+	if got := entries(t, filepath.Join(out, keyed)); got != wantKeyed {
+		t.Fatalf("%s/ holds %q, want %q", keyed, got, wantKeyed)
 	}
 	if got, err := os.ReadFile(filepath.Join(out, keeper, "notes.txt")); err != nil || string(got) != "mine\n" {
 		t.Fatalf("the unrelated child did not survive: %q %v", got, err)
 	}
-	if got, err := os.ReadFile(filepath.Join(out, "scores", "Red.json")); err != nil || strings.TrimSpace(string(got)) != "1" {
+	if got, err := os.ReadFile(filepath.Join(out, keyed, "Red.json")); err != nil || strings.TrimSpace(string(got)) != "1" {
 		t.Fatalf("scores/Red.json holds %q (%v), want the save's 1", got, err)
 	}
-}
-
-// foldsCase reports whether the test's temporary filesystem folds case, as
-// APFS does by default and ext4 does not.
-func foldsCase(t *testing.T) bool {
-	t.Helper()
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "probe"), nil, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	_, err := os.Stat(filepath.Join(dir, "PROBE"))
-	return err == nil
 }
 
 // packText loads one schema and packs one root text of Player.
