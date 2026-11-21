@@ -600,8 +600,10 @@ jobs:
           # the 580 generated C files (about 250 s of CPU) and the strict
           # compile of the 42-unit Elixir table corpus (about 200 s of CPU
           # without the SSA optimizer). Each runs as shards side by side, a
-          # row per shard K/N; make/shard.sh deals the files or the units from
-          # the sorted list, and internal/ci TestShardSplitIsAPartition holds
+          # row per shard K/N; make/shard.sh deals the units from the sorted
+          # list, and the C files as distinct (content, name) files largest
+          # first (make/checks/c-clean-format.sh), and internal/ci
+          # TestShardSplitIsAPartition holds
           # that shards 1/N .. N/N are the whole gate, each part once. No row
           # keeps a verdict or an ebin from another run, so a row's time is
           # its cold time (#4530, F-218, F-221). The Elixir offsets gate

@@ -277,8 +277,10 @@ The same split is in [SECURITY.md](SECURITY.md).
   never waits on the fleet; the per-leg `leg-gate` matrix runs on the fleet.
 - Two of its gates are past one runner's two minutes when nothing is warm, so
   each runs as shards side by side, a `lang-clean` row per shard K/N that
-  [`make/shard.sh`](../make/shard.sh) deals from the sorted list: the C format
-  gate (`lang-clean (c K/3)`, its share of the 580 generated files) and the
+  [`make/shard.sh`](../make/shard.sh) deals from a sorted list: the C format
+  gate (`lang-clean (c K/3)`, its share of the 580 generated files, dealt as
+  distinct content-and-name files largest first so the rows carry equal
+  bytes, each formatted once and its verdict given to every copy) and the
   strict compile of the Elixir table corpus with the agreement gate over it
   (`lang-clean (elixir K/4)`, its share of the 42 units); the Elixir offsets
   gate has a row of its own, `lang-clean (elixir offsets)`. Nothing is kept
