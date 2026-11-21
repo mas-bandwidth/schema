@@ -1175,6 +1175,35 @@ jobs:
           SCHEMA_SLOW: '1'
         run: go test ./bench/tools ./test/conformance/harness ./test/conformance/packet
 
+      # THE PAGES' COMPILE GATE (internal/docgate TestExamplesCompile, review
+      # finding F-173) holds every parse-only example to node, python3, ruby
+      # and luac, and fails by name, never skips, when one does not resolve. A
+      # fleet runner's PATH carries node, luac and python3 but no bare `ruby`:
+      # the fleet SDK's env.sh exports RUBY, the pinned interpreter
+      # (make/ruby-toolchain.mk's current version), and this step hands it to
+      # the test step. A tool that resolves nowhere stops the row here, by
+      # name, before a single example runs.
+      - name: the doc gate's toolchains (node, python3, ruby, luac)
+        if: matrix.group == 'unit-rest-check'
+        run: |
+          set -euo pipefail
+          if [ -f /opt/nova/sdk/env.sh ]; then
+            . /opt/nova/sdk/env.sh
+          fi
+          missing=""
+          for tool in "${NODE:-node}" "${PYTHON:-python3}" "${RUBY:-ruby}" "${LUAC:-luac}"; do
+            command -v "$tool" >/dev/null 2>&1 || missing="$missing $tool"
+          done
+          if [ -n "$missing" ]; then
+            echo "TOOL-MISSING:$missing (internal/docgate TestExamplesCompile needs node, python3, ruby and luac; NODE, PYTHON, RUBY and LUAC name them)"
+            exit 1
+          fi
+          for name in NODE PYTHON RUBY LUAC; do
+            if [ -n "${!name:-}" ]; then
+              echo "$name=${!name}" >> "$GITHUB_ENV"
+            fi
+          done
+
       - name: go test the checker, the doc gate, the lockfile, the text form and the baseline
         if: matrix.group == 'unit-rest-check'
         env:
