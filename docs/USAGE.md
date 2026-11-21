@@ -144,7 +144,8 @@ and that this run did not write. With `--surface` nothing is removed; only
 
 A declaration's name and its fields' names are checked against the reserved
 words of EVERY supported language (SPEC §4.6) — C, C++, C#, Go, Rust, Java,
-JavaScript, Dart, Elixir, Lua, Luau, Squirrel, Goose, Lobster and Python — whatever
+JavaScript, Dart, Elixir, Lua, Luau, Moo, Squirrel, Goose, Lobster, Python and
+Ruby — whatever
 target is generated, one diagnostic per name listing every language it
 collides with: a schema compiled only for C++ today must still compile for
 Elixir tomorrow. Go is the exception (SPEC §4.6, the Go
@@ -197,8 +198,8 @@ newer reader reads the older width.
 
 The `Max` member is the enum's **extent** — the same number `E.Max` names in
 schema expressions: the highest wire-legal value, and the
-count of real variants under the sentinel-zero convention. All nine targets
-spell it their own way — `ShipType::Max` (C++), `ShipType.Max` (C#),
+count of real variants under the sentinel-zero convention. Every target
+spells it its own way — `ShipType::Max` (C++), `ShipType.Max` (C#),
 `ShipTypeMax` (Go), `ShipType::MAX` (Rust), `ShipType.Max` (JS),
 `SHIP_TYPE_MAX` (C), `ShipType.max` (Dart and Java), `ShipType.max/0`
 (Elixir) — and a union's generated `<Union>Type` tag enum
@@ -417,7 +418,7 @@ that name nothing. A union with an arm whose payload is anything else — a
 `table`, a pointer, a scalar, a string, an array — belongs to a table
 closure (SPEC-TABLES.md §2.6). Unions ride `type` bodies, arrays included.
 
-All nine targets carry payload-free arms in a `type` body. Select one by
+Every target carries payload-free arms in a `type` body. Select one by
 setting its tag alone: it has no payload to initialize. In C++ its setter,
 `Select<Variant>()` returning `void`, is that assignment. C and C++ emit no
 member for a payload-free arm, and omit the storage union entirely when no
@@ -905,8 +906,8 @@ One precision worth having: an enum read is bounded by the enum's variant
 count, not by the field's width. For `enum E { A, B, C, D }` the wire range
 is `[0, 4]`, `None` included, in 3 bits; 5, 6 and 7 fit the width and are
 refused. A value you have not named cannot
-survive a read, so a `switch` over an enum needs no default arm for one. The same VALIDATION rules hold in all nine languages, because
-the same compiler wrote all nine — the buffer-slack contract above is the one
+survive a read, so a `switch` over an enum needs no default arm for one. The same VALIDATION rules hold in every language, because
+the same compiler wrote them all — the buffer-slack contract above is the one
 thing that differs per language.
 
 ---
@@ -2480,7 +2481,7 @@ union are each refused too.
 **A value is anything a table field can hold**, a map included, so a map of
 maps is one declaration and nothing special.
 
-**The order is total and it is the same in nine languages.** Integers compare
+**The order is total and it is the same in every language.** Integers compare
 by value, signed for the signed kinds and unsigned for the unsigned. Strings
 compare by BYTES, unsigned, a shorter string that is a prefix of a longer one
 first. Never a locale, never a code point, never a case fold.
@@ -5060,13 +5061,13 @@ end
 ```
 <!-- /luau-table-usage -->
 
-**moo** — moo v1.3.0 (the deterministic Luau fork whose one number is
+**Moo** — Moo v1.3.0 (the deterministic Luau fork whose one number is
 Q48.16), no dependencies. Generated code is self-contained: a
 `<Base>Table.moo` of descriptors per schema file, with the runtime modules
 (`schema_tables`, `table_load`, `table_save`, `table_cookread`, ...) beside
 them, each reached as `require("./<module>")`. A value is a plain table built
 by its descriptor's constructor, its fields in UpperCamelCase slots
-(`hull.Turrets`, `turret.Damage`), and the bytes are a `buffer`. moo has no
+(`hull.Turrets`, `turret.Damage`), and the bytes are a `buffer`. Moo has no
 float: a `float32` field holds its binary32 PATTERN as a number (25.0 is
 `0x41C80000`). An enum-keyed array is a plain array with key k at index k;
 `S.keyed(table, field)` is the accessor that refuses None and any key past the
