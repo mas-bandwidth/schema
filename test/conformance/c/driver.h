@@ -133,6 +133,14 @@ int conformance_write_refusal_set_tblvarevo3( const char * root, void * value, c
                                               const char * kind, const char * text );
 int conformance_write_refusal_write_tblvarevo3( int surface, const char * root, const void * value, const uint8_t * announcement,
                                                 int64_t announcement_bytes, uint8_t * buffer, int64_t capacity, int64_t * wrote );
+int conformance_write_refusal_set_graphdemo( const char * root, void * value, const char * path,
+                                             const char * kind, const char * text );
+int conformance_write_refusal_write_graphdemo( int surface, const char * root, const void * value, const uint8_t * announcement,
+                                               int64_t announcement_bytes, uint8_t * buffer, int64_t capacity, int64_t * wrote );
+int conformance_write_refusal_set_listdemo( const char * root, void * value, const char * path,
+                                            const char * kind, const char * text );
+int conformance_write_refusal_write_listdemo( int surface, const char * root, const void * value, const uint8_t * announcement,
+                                              int64_t announcement_bytes, uint8_t * buffer, int64_t capacity, int64_t * wrote );
 /* THE ONE CHECKED CONVERSION: every integer a row names goes into typed
    storage through conformance_write_refusal_integer, keyed on the storage's
    own signedness and width, and a value that storage cannot hold ends the

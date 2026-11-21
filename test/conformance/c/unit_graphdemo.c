@@ -407,3 +407,46 @@ const ConformanceCodec * conformance_codecs_graphdemo(int * count)
 
 int conformance_cook_open(const char * root,const uint8_t * data,size_t bytes,int64_t extent,int pointer)
 { return conformance_cook_open_reason(root,data,bytes,extent,pointer,NULL); }
+
+/* THE WRITE CONTRACT on a PLAIN VARIABLE root (MANIFEST.txt, review-1121 R1):
+   the Scene the load left, set in place through the holder's root. Every row
+   on this unit is a variable Save or a ToJson, so the unit has no writer of its
+   own: the case runner calls the codec's. */
+int conformance_write_refusal_set_graphdemo( const char * root, void * value, const char * path,
+                                             const char * kind, const char * text )
+{
+    if ( strcmp( root, "Scene" ) == 0 )
+    {
+        schema_conformance_holder_Scene * holder = (schema_conformance_holder_Scene *) value;
+        graphdemo_scene_t * v = (graphdemo_scene_t *) (uintptr_t) holder->root;
+        if ( v == NULL ) { return 0; }
+        if ( strcmp( path, "version" ) == 0 && strcmp( kind, "int" ) == 0 ) { return CONFORMANCE_WREF_SIGNED( v->version, text ); }
+        if ( strcmp( path, "ground.depth" ) == 0 && strcmp( kind, "int" ) == 0 ) { return CONFORMANCE_WREF_SIGNED( v->ground.depth, text ); }
+        if ( strcmp( path, "name" ) == 0 ) { return conformance_write_refusal_text( v->name, 24, &v->name_length, kind, text ); }
+        if ( strcmp( path, "layers" ) == 0 && strcmp( kind, "count" ) == 0 )
+        {
+            /* new elements take the ground layer's depth and a null head (a
+               reference is self-relative, so it is never copied to another
+               slot); past storage only the count moves, and the writer must
+               refuse before it reads past it */
+            const int32_t storage = (int32_t) ( sizeof( v->layers ) / sizeof( v->layers[0] ) );
+            const int32_t count = conformance_write_refusal_count( text );
+            int32_t i;
+            for ( i = v->layers_count; i < count && i < storage; i++ )
+            {
+                memset( &v->layers[i], 0, sizeof( v->layers[i] ) );
+                v->layers[i].depth = v->ground.depth;
+            }
+            v->layers_count = count;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int conformance_write_refusal_write_graphdemo( int surface, const char * root, const void * value, const uint8_t * announcement,
+                                               int64_t announcement_bytes, uint8_t * buffer, int64_t capacity, int64_t * wrote )
+{
+    (void) surface; (void) root; (void) value; (void) announcement; (void) announcement_bytes; (void) buffer; (void) capacity; (void) wrote;
+    return 0;
+}

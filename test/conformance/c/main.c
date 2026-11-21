@@ -782,10 +782,17 @@ static int surface_retain(const char * out,int saved)
 /* THE WRITE CONTRACT's batteries (docs/SPEC.md §5.1): one forked case per row,
    run by wref.c, which says why a child. The message surface's <unit> is a
    CONNECTION: its unit and its announcement come from the connection line, as
-   the `message` surface's do. */
+   the `message` surface's do.
+
+   EVERY CASE IS ANSWERED OR NAMED (test/conformance/README.md, exit codes): a
+   unit with no codec is an empty <case>.absent; a case this driver cannot run
+   (no setter for its path, a wire that will not read) is a DRIVER ERROR that
+   names its case on stderr as `<surface> <case>: driver error: ...`, leaves no
+   answer, lets the cases after it run, and turns the surface's exit non-zero.
+   One such case never silences the rest of the surface. */
 static int surface_write_refusal( const char * out, const char * surface, int writer )
 {
-    int i, j;
+    int i, j, errors = 0;
     for ( i = 0; i < num_lines; i++ )
     {
         const Line * f = &lines[i];
@@ -797,7 +804,7 @@ static int surface_write_refusal( const char * out, const char * surface, int wr
         const char * answer;
         if ( strcmp( f->field[0], surface ) != 0 ) { continue; }
         /* <surface> <case> <unit> <root> <wire> <path> <kind> <value> */
-        if ( f->count < 8 ) { fprintf( stderr, "driver: short %s line\n", surface ); return 1; }
+        if ( f->count < 8 ) { fprintf( stderr, "%s %s: driver error: a short line\n", surface, f->count > 1 ? f->field[1] : "?" ); errors++; continue; }
         unit = f->field[2];
         if ( writer == CONFORMANCE_WRITE_MESSAGE )
         {
@@ -806,34 +813,41 @@ static int surface_write_refusal( const char * out, const char * surface, int wr
             {
                 if ( !strcmp( lines[j].field[0], "connection" ) && !strcmp( lines[j].field[1], f->field[2] ) ) { connection = lines + j; break; }
             }
-            if ( connection == NULL ) { fprintf( stderr, "driver: no connection %s\n", f->field[2] ); return 1; }
+            if ( connection == NULL ) { fprintf( stderr, "%s %s: driver error: no connection %s\n", surface, f->field[1], f->field[2] ); errors++; continue; }
             unit = connection->field[2];
             announcement = slurp( connection->field[4], &announcement_bytes );
-            if ( announcement == NULL ) { fprintf( stderr, "driver: cannot read %s\n", connection->field[4] ); return 1; }
+            if ( announcement == NULL ) { fprintf( stderr, "%s %s: driver error: cannot read %s\n", surface, f->field[1], connection->field[4] ); errors++; continue; }
         }
         codec = find_codec( unit, f->field[3] );
-        if ( codec == NULL ) { fprintf( stderr, "driver: no codec for %s.%s\n", unit, f->field[3] ); free( announcement ); return 1; }
+        if ( codec == NULL )
+        {
+            free( announcement );
+            if ( !spill_absent( out, f->field[1] ) ) { return 1; }
+            continue;
+        }
         wire = slurp( f->field[4], &bytes );
-        if ( wire == NULL ) { fprintf( stderr, "driver: cannot read %s\n", f->field[4] ); free( announcement ); return 1; }
+        if ( wire == NULL ) { fprintf( stderr, "%s %s: driver error: cannot read %s\n", surface, f->field[1], f->field[4] ); free( announcement ); errors++; continue; }
         verdict = conformance_write_refusal_case( writer, codec, unit, wire, (int64_t) bytes, announcement, (int64_t) announcement_bytes,
                                                   f->field[3], f->field[5], f->field[6], f->field[7] );
         free( wire );
         free( announcement );
         if ( verdict == CONFORMANCE_NO_SETTER )
         {
-            fprintf( stderr, "driver: %s %s: no setter for %s %s %s\n", surface, f->field[1], f->field[3], f->field[5], f->field[6] );
-            return 1;
+            fprintf( stderr, "%s %s: driver error: no setter for %s %s %s\n", surface, f->field[1], f->field[3], f->field[5], f->field[6] );
+            errors++;
+            continue;
         }
         if ( verdict != CONFORMANCE_WROTE && verdict != CONFORMANCE_REFUSED && verdict != CONFORMANCE_UNREPRESENTABLE )
         {
-            fprintf( stderr, "driver: %s %s: the case did not run\n", surface, f->field[1] );
-            return 1;
+            fprintf( stderr, "%s %s: driver error: the case did not run\n", surface, f->field[1] );
+            errors++;
+            continue;
         }
         /* a value the leg's storage cannot hold is said so, never narrowed */
         answer = verdict == CONFORMANCE_WROTE ? "wrote\n" : verdict == CONFORMANCE_REFUSED ? "refused\n" : "unrepresentable\n";
         if ( !spill( out, f->field[1], answer, strlen( answer ) ) ) { return 1; }
     }
-    return 0;
+    return errors == 0 ? 0 : 1;
 }
 
 int main( int argc, char ** argv )

@@ -85,6 +85,41 @@ int conformance_write_refusal_set_cooktorture( const char * root, void * value, 
         {
             return v->str_arr_count >= 1 && conformance_write_refusal_text( v->str_arr[0].value, 16, &v->str_arr[0].value_length, kind, text );
         }
+        /* the review-1121 R1 rows on this plain variable root: a bits(N) past
+           its width, a bare int past its storage (unrepresentable), a counted
+           array past Max, a union arm's text past N and a tag past the arms */
+        if ( strcmp( kind, "int" ) == 0 )
+        {
+            if ( strcmp( path, "b_bits13" ) == 0 ) { return CONFORMANCE_WREF_UNSIGNED( v->b_bits13, text ); }
+            if ( strcmp( path, "b_bits37" ) == 0 ) { return CONFORMANCE_WREF_UNSIGNED( v->b_bits37, text ); }
+            if ( strcmp( path, "b_i32" ) == 0 ) { return CONFORMANCE_WREF_SIGNED( v->b_i32, text ); }
+            if ( strcmp( path, "b_u8" ) == 0 ) { return CONFORMANCE_WREF_UNSIGNED( v->b_u8, text ); }
+            if ( strcmp( path, "b_u64" ) == 0 ) { return CONFORMANCE_WREF_UNSIGNED( v->b_u64, text ); }
+            return 0;
+        }
+        if ( strcmp( path, "bounded_steps" ) == 0 && strcmp( kind, "count" ) == 0 )
+        {
+            const int32_t cap = (int32_t) ( sizeof( v->bounded_steps ) / sizeof( v->bounded_steps[0] ) );
+            const int32_t count = conformance_write_refusal_count( text );
+            int32_t i;
+            if ( v->bounded_steps_count < 1 ) { return 0; }
+            for ( i = v->bounded_steps_count; i < count && i < cap; i++ ) { v->bounded_steps[i] = v->bounded_steps[0]; }
+            v->bounded_steps_count = count;
+            return 1;
+        }
+        if ( strcmp( path, "bounded_steps[3].label" ) == 0 )
+        {
+            if ( v->bounded_steps_count < 4 || v->bounded_steps[3].type != COOKTORTURE_STEP_ACTION_TYPE_LABEL ) { return 0; }
+            return conformance_write_refusal_text( v->bounded_steps[3].as.label.value, 12, &v->bounded_steps[3].as.label.value_length, kind, text );
+        }
+        if ( strcmp( path, "bounded_steps[0]" ) == 0 && strcmp( kind, "tag" ) == 0 )
+        {
+            if ( v->bounded_steps_count < 1 ) { return 0; }
+            CONFORMANCE_WREF_UNSIGNED( v->bounded_steps[0].type, text );
+            /* a lawful tag takes its arm at the arm's declared defaults */
+            if ( v->bounded_steps[0].type <= COOKTORTURE_STEP_ACTION_TYPE_MAX ) { memset( &v->bounded_steps[0].as, 0, sizeof( v->bounded_steps[0].as ) ); }
+            return 1;
+        }
         return 0;
     }
     return 0;

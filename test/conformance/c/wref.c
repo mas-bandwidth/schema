@@ -75,6 +75,8 @@ static const struct
     { "scalars", conformance_write_refusal_set_scalars, conformance_write_refusal_write_scalars },
     { "cooktorture", conformance_write_refusal_set_cooktorture, conformance_write_refusal_write_cooktorture },
     { "tblvarevo3", conformance_write_refusal_set_tblvarevo3, conformance_write_refusal_write_tblvarevo3 },
+    { "graphdemo", conformance_write_refusal_set_graphdemo, conformance_write_refusal_write_graphdemo },
+    { "listdemo", conformance_write_refusal_set_listdemo, conformance_write_refusal_write_listdemo },
 };
 #endif
 
