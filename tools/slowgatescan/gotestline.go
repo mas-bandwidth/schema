@@ -89,13 +89,21 @@ func parseGoTestLine(cmd string) goTestLine {
 	// holds the test invocation, from the separator before it; the text in
 	// front is read too only when it names a variable this scan models, since
 	// an `export` or an `unset` there reaches the command.
-	invocations := goTestCommand.FindAllStringIndex(cmd, -1)
+	var invocations []int // where each test command's own word starts
+	for _, loc := range goTestCommand.FindAllStringIndex(cmd, -1) {
+		at := loc[0] + strings.Index(cmd[loc[0]:], "go test")
+		// `go test` is a command only as the command word of its simple
+		// command; after `echo` it is text
+		if commandWordAt(cmd, at) {
+			invocations = append(invocations, at)
+		}
+	}
 	for at := 0; ; {
 		i := strings.Index(cmd[at:], "test/slowgate/proof")
 		if i < 0 {
 			break
 		}
-		invocations = append(invocations, []int{at + i, at + i})
+		invocations = append(invocations, at+i)
 		at += i + 1
 	}
 	switch len(invocations) {
@@ -107,25 +115,7 @@ func parseGoTestLine(cmd string) goTestLine {
 		l.undecided = "it runs more than one test command on one line"
 		return l
 	}
-	start := 0
-	before := cmd[:invocations[0][0]]
-	for _, sep := range []string{";", "&&", "||", "|", "`", " then ", " do ", " else "} {
-		if i := strings.LastIndex(before, sep); i >= 0 && i+len(sep) > start {
-			start = i + len(sep)
-		}
-	}
-	// a `(` or `{` opens a subshell, a group or a `$$(` substitution; the one
-	// in a make reference `$(NAME)` or `${NAME}` opens nothing
-	for i := len(before) - 1; i >= start; i-- {
-		if before[i] != '(' && before[i] != '{' {
-			continue
-		}
-		if i > 0 && before[i-1] == '$' && !(i > 1 && before[i-2] == '$' && before[i] == '(') {
-			continue // `$(NAME)`, `${NAME}` and the shell's `$${name}`
-		}
-		start = i + 1
-		break
-	}
+	start := commandStart(cmd, invocations[0])
 	words := shellWords(cmd[start:])
 	for _, name := range []string{"SCHEMA_SLOW", "SCHEMA_REQUIRE_CORPUS", "GOOS", "GOARCH", "GOFLAGS"} {
 		if strings.Contains(cmd[:start], name) {

@@ -409,6 +409,13 @@ func TestArmingIsTheEnvironmentTheTestSees(t *testing.T) {
 		"@if ( cd pkg && SCHEMA_SLOW=1 go test . ); then echo red; fi":       true,
 		"sh test/slowgate/proof label 'TestGated' ./pkg -count=1":            true,
 		"go test ./a && SCHEMA_SLOW=1 go test ./pkg":                         false,
+		// a whole shell script on one line: the command is read where it stands
+		`rc=0; SCHEMA_REQUIRE_CORPUS=1 NODE=node go test ./pkg > log 2>&1 || rc=$$?; if [ $$rc -ne 0 ]; then echo "check: go test exited $$rc"; exit $$rc; fi`: true,
+		"out=$$(SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) go test ./pkg -v 2>&1); status=$$?":                                                               true,
+		`for end in a b; do to='"%s < 1", key) // x'; if SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) go test ./pkg > $$d/log 2>&1; then exit 1; fi; done`:           true,
+		`echo "run SCHEMA_SLOW=1 go test ./pkg yourself"`: false,
+		"xvfb-run SCHEMA_SLOW=1 go test ./pkg":            false,
+		"UNRELATED_SCHEMA_SLOW=1 go test ./pkg":           false,
 	} {
 		if got := parseGoTestLine(cmd).armed(); got != want {
 			t.Errorf("armed(%q) = %v, want %v", cmd, got, want)
