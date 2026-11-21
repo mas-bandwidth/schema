@@ -58,6 +58,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `js-view/` | JS view listing program | `make tables-js-view` | `make tables-js-view` |
 | `lobster-runtime-home/` | Lobster runtime-home check | `make tables-lobster-runtime-home` | `make tables-lobster-runtime-home` |
 | `lua/` | Lua interpreter harness | `make test-lua` | `make test-lua` |
+| `lua-ludicrous/` | Lua int128 tests | `make lua-ludicrous` | `make lua-ludicrous` |
 | `luau-ludicrous/` | Luau int128 tests | `make test-luau` | `make test-luau` |
 | `luau-runtime-home/` | Luau runtime-home check | `make tables-luau-runtime-home` | `make tables-luau-runtime-home` |
 | `message-one-encoding/` | message form one-encoding fixture | `make test-go` | `go test -run TestSpecMessageFormHasOneEncoding ./compiler/` |
@@ -85,6 +86,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `rust-view/` | Rust unit-view listing driver | `make tables-rust-view` | `make tables-rust-view` |
 | `skipped-value/` | skipped-value validation fixtures | `go test -run TestSpecSkippedValueIsValidated ./compiler/` | `go test -run TestSpecSkippedValueIsValidated ./compiler/` |
 | `slowgate/` | SCHEMA_SLOW proof wrapper | `make slow-gate-scan` | `make slow-gate-scan` |
+| `squirrel-ludicrous/` | Squirrel int128 tests | `make squirrel-ludicrous` | `make squirrel-ludicrous` |
 | `table-base64/` | table base64 gates | `make test` | `make test` |
 | `tables/` | C++ table tests | `make test` | `./build/schema_test_tables` |
 | `unity/` | C# (unity) packet wire tests | `make test-unity` | `make unity-wire` |

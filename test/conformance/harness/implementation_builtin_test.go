@@ -14,13 +14,16 @@ import (
 func TestImplementationAdmitsEveryShippedTarget(t *testing.T) {
 	t.Parallel()
 	targets := slices.Sorted(slices.Values(compiler.New().Targets()))
+	if !slices.Equal(slices.Sorted(slices.Values(builtinImplementationLanguages)), targets) {
+		t.Errorf("the harness admits %v, the compiler's default build registers %v", builtinImplementationLanguages, targets)
+	}
 	if !slices.Equal(slices.Sorted(slices.Values(everyTarget)), targets) {
-		t.Errorf("the harness admits %v, the compiler's default build registers %v", everyTarget, targets)
+		t.Errorf("everyTarget is %v, the compiler's default build registers %v", everyTarget, targets)
 	}
-	if len(everyTarget) != 18 {
-		t.Errorf("the harness admits %d shipped languages, want 18", len(everyTarget))
+	if len(builtinImplementationLanguages) != 18 {
+		t.Errorf("the harness admits %d shipped languages, want 18", len(builtinImplementationLanguages))
 	}
-	for _, lang := range everyTarget {
+	for _, lang := range builtinImplementationLanguages {
 		if !admittedImplementationLanguage(lang) {
 			t.Errorf("%s is not admitted in the default build of the harness", lang)
 		}

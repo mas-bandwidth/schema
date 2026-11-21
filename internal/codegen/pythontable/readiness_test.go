@@ -114,7 +114,7 @@ func pythonReadinessFindings(files map[string]string) []string {
 
 	readiness := files["test/conformance/nightly-readiness"]
 	for _, rule := range []string{
-		`"moo", "python")`,
+		`"moo", "python",`,
 		`"python": ("python", "pythontable"),`,
 		"GO_TAGS = {}",
 		`tags = ["-tags", GO_TAGS[lang]] if lang in GO_TAGS else []`,
@@ -293,7 +293,7 @@ func TestPythonReadinessNegativeControl(t *testing.T) {
 		{"leg-pins", ".github/workflows/leg.yml", "      - uses: ./.github/actions/python\n        if: matrix.python != ''\n", ""},
 		{"leg-pins", ".github/workflows/leg.yml", "        if: matrix.python != ''\n", "        if: matrix.moo != ''\n"},
 		{"ci-json-pin", "test/conformance/python/ci.json", `"python": "pin"`, `"python": ""`},
-		{"readiness-entry", "test/conformance/nightly-readiness", `"moo", "python")`, `"moo")`},
+		{"readiness-entry", "test/conformance/nightly-readiness", `"moo", "python",`, `"moo",`},
 		{"readiness-entry", "test/conformance/nightly-readiness", "GO_TAGS = {}", `GO_TAGS = {"python": "` + pythonLegTag + `"}`},
 		{"readiness-entry", "test/conformance/nightly-readiness", `harness = "./build/conformance-harness-python"`, `harness = "./build/conformance-harness"`},
 		{"readiness-entry", "test/conformance/nightly-readiness", "def run_python_packets(runner):\n", "def run_python_packets(runner):\n    runner.run(\"probe\", [\"python3.15\", \"-V\"])\n"},
