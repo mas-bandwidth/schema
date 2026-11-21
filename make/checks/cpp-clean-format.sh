@@ -12,7 +12,10 @@
 #   - every directory in EXPECT_DIRS (the units the caller's generation
 #     registry writes) must have put a file into the scan;
 #   - the formatter must exit 0 on every file, whatever bytes it wrote;
-#   - every file listed must come back with a verdict.
+#   - every file listed must come back with a verdict;
+#   - the ratchet must be a readable file (an empty one is the empty list),
+#     and every path on it must be a drifting file of this scan;
+#   - a path is one line, spaces and all, from the scan to the verdict.
 #
 # usage: cpp-clean-format.sh <ratchet-file> <census|check> <tree>...
 # env:   CLANG_FORMAT, JOBS, OUT (scratch dir),
@@ -22,6 +25,7 @@ ratchet=$1
 mode=$2
 shift 2
 : "${EXPECT_DIRS?tables-cpp-clean: EXPECT_DIRS is not set: the gate must be told the unit directories it has to find}"
+[ -f "$ratchet" ] && [ -r "$ratchet" ] || { echo "tables-cpp-clean: the ratchet $ratchet is missing or unreadable, so no file's standing on it can be judged"; exit 1; }
 CLANG_FORMAT=${CLANG_FORMAT:-clang-format}
 OUT=${OUT:-build/cpp-clean}
 JOBS=${JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)}
@@ -48,7 +52,8 @@ done
 rm -rf "$OUT/format/work" && mkdir -p "$OUT/format/work"
 work="$OUT/format/work"
 export work
-xargs -P "$JOBS" -n 1 sh -c '
+# one path per line in, one NUL-ended argument out: xargs splits nothing else
+tr '\n' '\000' < "$OUT/format/files.txt" | xargs -0 -P "$JOBS" -n 1 sh -c '
 	tmp="$work/fmt.$$"
 	if "$CLANG_FORMAT" --style="$style" "$1" > "$tmp"; then
 		if cmp -s "$1" "$tmp"; then v=CLEAN; else v=DRIFT; fi
@@ -57,13 +62,13 @@ xargs -P "$JOBS" -n 1 sh -c '
 	fi
 	rm -f "$tmp"
 	printf "%s\t%s\n" "$v" "$1"
-' sh < "$OUT/format/files.txt" > "$OUT/format/results.txt" || { echo "tables-cpp-clean: a format worker failed, so the check is incomplete"; exit 1; }
+' sh > "$OUT/format/results.txt" || { echo "tables-cpp-clean: a format worker failed, so the check is incomplete"; exit 1; }
 rm -rf "$work"
 if [ "$(wc -l < "$OUT/format/results.txt" | tr -d ' ')" != "$(wc -l < "$OUT/format/files.txt" | tr -d ' ')" ]; then
 	echo "tables-cpp-clean: $(wc -l < "$OUT/format/files.txt" | tr -d ' ') files were listed and $(wc -l < "$OUT/format/results.txt" | tr -d ' ') came back with a verdict"; exit 1
 fi
 if grep -q '^ERROR' "$OUT/format/results.txt"; then
-	grep '^ERROR' "$OUT/format/results.txt" | cut -f2 | sort | head -40 | while read -r f; do
+	grep '^ERROR' "$OUT/format/results.txt" | cut -f2 | sort | head -40 | while IFS= read -r f; do
 		echo "tables-cpp-clean: $CLANG_FORMAT exited non-zero on $f, so its output is no verdict"
 	done
 	exit 1
@@ -74,14 +79,16 @@ if [ "$mode" = census ]; then cat "$OUT/format/drift.txt"; exit 0; fi
 
 grep -v '^#' "$ratchet" | grep . | sort > "$OUT/format/allowed.txt" || true
 bad=0
-comm -13 "$OUT/format/allowed.txt" "$OUT/format/drift.txt" | while read -r f; do
+comm -13 "$OUT/format/allowed.txt" "$OUT/format/drift.txt" | while IFS= read -r f; do
 	echo "tables-cpp-clean: clang-format drift in $f, which $ratchet does not list (the list only shrinks)"
 done > "$OUT/format/new.txt"
 if [ -s "$OUT/format/new.txt" ]; then head -40 "$OUT/format/new.txt"; bad=1; fi
-# listed, but clean now or no longer generated
-comm -23 "$OUT/format/allowed.txt" "$OUT/format/drift.txt" | while read -r f; do
-	if [ -f "$f" ]; then
+# listed, but clean now, outside this scan, or no longer generated
+comm -23 "$OUT/format/allowed.txt" "$OUT/format/drift.txt" | while IFS= read -r f; do
+	if grep -Fxq -- "$f" "$OUT/format/files.txt"; then
 		echo "tables-cpp-clean: $f is clean now — remove its line from $ratchet"
+	elif [ -f "$f" ]; then
+		echo "tables-cpp-clean: $f is listed in $ratchet but lies outside the trees scanned ($*) — remove its line"
 	else
 		echo "tables-cpp-clean: $f is listed in $ratchet but no longer generated — remove its line"
 	fi

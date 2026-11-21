@@ -11,7 +11,10 @@
 #   - every directory in EXPECT_DIRS (the units the caller's generation
 #     registry writes) must have put a file into the scan;
 #   - the formatter must exit 0 on every file, whatever bytes it wrote;
-#   - every file listed must come back with a verdict.
+#   - every file listed must come back with a verdict;
+#   - the ratchet must be a readable file (an empty one is the empty list),
+#     and every path on it must be a drifting file of this scan;
+#   - a path is one line, spaces and all, from the scan to the verdict.
 #
 # usage: c-clean-format.sh <ratchet-file> <tree>...
 # env:   CLANG_FORMAT, OUT (scratch dir),
@@ -22,6 +25,8 @@ shift
 CLANG_FORMAT=${CLANG_FORMAT:-clang-format}
 OUT=${OUT:-build}
 : "${EXPECT_DIRS?tables-c-clean: EXPECT_DIRS is not set: the gate must be told the unit directories it has to find}"
+[ -f "$allow" ] && [ -r "$allow" ] || { echo "tables-c-clean: the ratchet $allow is missing or unreadable, so no file's standing on it can be judged"; exit 1; }
+tab=$(printf '\t')
 mkdir -p "$OUT"
 seen=$OUT/c-format-seen.txt
 : > "$seen"
@@ -44,7 +49,8 @@ for dir in $EXPECT_DIRS; do
 		{ echo "tables-c-clean: the unit directory $dir put no generated C into the check (missing, empty, or outside the trees named)"; exit 1; }
 done
 
-xargs -P "$jobs" -n 16 sh -c '
+# one path per line in, one NUL-ended argument out: xargs splits nothing else
+tr '\n' '\000' < "$OUT/c-format-files.txt" | xargs -0 -P "$jobs" -n 16 sh -c '
 	cf=$1; st=$2; wk=$3; shift 3
 	out="$wk/res.$$"
 	tmp="$wk/fmt.$$"
@@ -60,15 +66,15 @@ xargs -P "$jobs" -n 16 sh -c '
 		fi
 	done
 	rm -f "$tmp"
-' _ "$CLANG_FORMAT" "$style" "$work" < "$OUT/c-format-files.txt" || \
+' _ "$CLANG_FORMAT" "$style" "$work" || \
 	{ echo "tables-c-clean: a format worker failed, so the check is incomplete"; exit 1; }
 
 bad=0
-cat "$work"/res.* | sort -k2,2 > "$OUT/c-format-results.txt"
+cat "$work"/res.* | sort -t "$tab" -k2,2 > "$OUT/c-format-results.txt"
 if [ "$(wc -l < "$OUT/c-format-results.txt" | tr -d ' ')" != "$(wc -l < "$OUT/c-format-files.txt" | tr -d ' ')" ]; then
 	echo "tables-c-clean: $(wc -l < "$OUT/c-format-files.txt" | tr -d ' ') files were listed and $(wc -l < "$OUT/c-format-results.txt" | tr -d ' ') came back with a verdict"; bad=1
 fi
-while IFS="$(printf '\t')" read -r verdict f; do
+while IFS="$tab" read -r verdict f; do
 	case "$verdict" in
 	CLEAN)
 		if grep -Fxq "$f" "$allow"; then echo "tables-c-clean: $f is clean now — remove its line from $allow"; bad=1; fi ;;
@@ -79,10 +85,18 @@ while IFS="$(printf '\t')" read -r verdict f; do
 		echo "tables-c-clean: $CLANG_FORMAT exited non-zero on $f, so its output is no verdict"; bad=1 ;;
 	esac
 done < "$OUT/c-format-results.txt"
-rm -rf "$work" "$OUT/c-format-files.txt" "$OUT/c-format-tree.txt" "$OUT/c-format-results.txt"
 
-for f in $(grep -v '^#' "$allow" | grep . || true); do
-	[ -f "$f" ] || { echo "tables-c-clean: $f is listed in $allow but no longer generated — remove its line"; bad=1; }
-done
+# every ratchet line against this scan: a scanned path was judged above; one
+# the scan never reached stands for nothing, whether or not it exists
+grep -v '^#' "$allow" | grep . | while IFS= read -r f; do
+	grep -Fxq -- "$f" "$OUT/c-format-files.txt" && continue
+	if [ -f "$f" ]; then
+		echo "tables-c-clean: $f is listed in $allow but lies outside the trees scanned ($*) — remove its line"
+	else
+		echo "tables-c-clean: $f is listed in $allow but no longer generated — remove its line"
+	fi
+done > "$OUT/c-format-unscanned.txt"
+if [ -s "$OUT/c-format-unscanned.txt" ]; then cat "$OUT/c-format-unscanned.txt"; bad=1; fi
+rm -rf "$work" "$OUT/c-format-files.txt" "$OUT/c-format-tree.txt" "$OUT/c-format-results.txt" "$OUT/c-format-unscanned.txt"
 [ $bad -eq 0 ] || exit 1
 echo "C: clang-format clean over $*, $(wc -l < "$seen" | tr -d ' ') table-emitter files still on the ratchet"
