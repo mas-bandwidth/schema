@@ -486,9 +486,18 @@ func (g *tableGen) emitBlockSurface(bl *ir.BlockLayout) {
 	g.pf("        uint64_t magic = 0;         // generated: identifies a schema block\n")
 	g.pf("        uint64_t build_version = 0; // generated: the unit's build version (docs/SPEC-TABLES.md §20)\n")
 	g.pf("        uint64_t byte_order = 0;    // generated: 1 little, 2 big — the producer stamps its own\n")
+	// the projection's own members, and the enclosing block's, which a name
+	// inside the projection also finds before the namespace's
+	g.members = storageMembers(bl.Table.Fields, "magic", "build_version", "byte_order",
+		"Projection", "base", "projection", "bytes", "Const", "Type")
+	for _, a := range bl.Arrays {
+		field := ir.GoExportName(a.Field.Name)
+		g.members[field+"Stride"], g.members[field+"Max"], g.members[field+"ProjectionOffset"] = true, true, true
+	}
 	for _, f := range bl.Table.Fields {
 		g.emitBlockProjectionField(f)
 	}
+	g.members = nil
 	g.pf("    };\n\n")
 	g.pf("    uint8_t * base = NULL;          // the extent's base, 64-byte aligned\n")
 	g.pf("    Projection * projection = NULL; // the projection, at offset 0\n")

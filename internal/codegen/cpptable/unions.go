@@ -139,7 +139,14 @@ func (g *tableGen) emitTableUnion(un *ir.Union) {
 	g.pf("// before it decodes, or by assigning it: value.%s = %s.\n", arm, typ)
 	g.pf("// Bytes of unselected arms are indeterminate.\n")
 	g.pf("struct %s\n{\n", un.Name)
-	g.pf("    %sType type;\n", un.Name)
+	g.members = map[string]bool{"type": true}
+	for _, v := range un.Variants {
+		if !v.Void() {
+			g.members[v.Name] = true
+		}
+	}
+	tag := g.scoped(un.Name+"Type", un.DeclaredName()+"Type")
+	g.pf("    %s type;\n", tag)
 	if len(un.Variants) > 0 {
 		g.pf("\n    union\n    {\n")
 		for _, v := range un.Variants {
@@ -147,6 +154,7 @@ func (g *tableGen) emitTableUnion(un *ir.Union) {
 		}
 		g.pf("    };\n")
 	}
-	g.pf("\n    %s() : type( %sType::None ) {} // the tag only — arms are established at selection\n", un.Name, un.Name)
+	g.pf("\n    %s() : type( %s::None ) {} // the tag only — arms are established at selection\n", un.Name, tag)
+	g.members = nil
 	g.pf("};\n\n")
 }

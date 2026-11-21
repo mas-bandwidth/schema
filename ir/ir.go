@@ -649,6 +649,10 @@ func keyEnumDeclared(f *Field) string {
 	return f.KeyEnum
 }
 
+// KeyEnumDeclared is keyEnumDeclared for a backend: the schema's spelling of
+// the key enum, which is what a member name can equal.
+func (f *Field) KeyEnumDeclared() string { return keyEnumDeclared(f) }
+
 // TextUnbounded reports an unbounded text value: a bare `string` element or key
 // (docs/SPEC-TABLES.md §2.13.1).
 func (t FieldType) TextUnbounded() bool { return t.Kind == TString && t.Unbounded && !t.Pointer }

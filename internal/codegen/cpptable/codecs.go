@@ -48,7 +48,7 @@ func (g *tableGen) cppFieldType(t ir.FieldType) (string, bool) {
 	case ir.TNamed:
 		g.noteRef(t.Name)
 		if _, isUnion := t.Ref.(*ir.Union); isUnion {
-			return t.Name, true
+			return g.scoped(t.Name, t.DeclaredName()), true
 		}
 		st, isStruct := t.Ref.(*ir.Struct)
 		if isStruct && st.CppNative != "" && g.unit.DeclFile[t.Name] != g.file.Base {
@@ -58,9 +58,41 @@ func (g *tableGen) cppFieldType(t ir.FieldType) (string, bool) {
 			g.nativeIncludes[st.CppInclude] = true
 			return "::" + st.CppNative, true
 		}
-		return t.Name, isStruct
+		return g.scoped(t.Name, t.DeclaredName()), isStruct
 	}
 	return "/* ? */", false
+}
+
+// scoped spells a namespace-scope name for use inside the storage class body
+// being emitted (a table's struct, a table union's, a block's projection). A
+// member is in scope across its whole class, so a field named like a type it
+// or a sibling uses (`Kind Kind`, SPEC §4.6) hides that type there, and a use
+// before the member is declared changes the name's meaning in the class, which
+// C++ refuses: such a name is written qualified from the global namespace,
+// which no member can hide. spelled is the emitter's spelling (a marked one
+// under the type escape) and declared is the schema's, which is what a member
+// name can equal. Outside a class body, and for a name no member shares, the
+// spelling is unchanged.
+func (g *tableGen) scoped(spelled, declared string) string {
+	if g.members[declared] {
+		return "::" + g.unit.Package + "::" + spelled
+	}
+	return spelled
+}
+
+// storageMembers is the member names the storage lines of fields declare: each
+// field's own, and the companions beside it.
+func storageMembers(fields []*ir.Field, fixed ...string) map[string]bool {
+	m := map[string]bool{}
+	for _, name := range fixed {
+		m[name] = true
+	}
+	for _, f := range fields {
+		for _, suffix := range []string{"", "_count", "_length", "_present"} {
+			m[f.Name+suffix] = true
+		}
+	}
+	return m
 }
 
 // tableIntLit renders an integer literal safely at 64-bit width: unsigned
@@ -212,12 +244,13 @@ func (g *tableGen) fieldDefaultExpr(f *ir.Field) string {
 	case ir.TNamed:
 		switch f.Type.Ref.(type) {
 		case *ir.Enum:
+			enum := g.scoped(f.Type.Name, f.Type.DeclaredName())
 			if f.HasDefault && f.DefVariant != "" {
-				return f.Type.Name + "::" + f.DefVariant
+				return enum + "::" + f.DefVariant
 			}
-			return f.Type.Name + "::None"
+			return enum + "::None"
 		case *ir.Flags:
-			return flagsDefaultExpr(f)
+			return g.flagsDefaultExpr(f)
 		}
 	}
 	return "0"
@@ -230,6 +263,8 @@ func (g *tableGen) emitTableStruct(st *ir.Struct) {
 	g.pf("// table %s — TABLE-wire storage: relocatable, bounded, defaults in the\n", st.Name)
 	g.pf("// member initializers (docs/SPEC-TABLES.md)\n")
 	g.pf("struct %s\n{\n", st.Name)
+	g.members = storageMembers(st.Fields)
+	defer func() { g.members = nil }()
 	prevGuard := ""
 	for _, f := range st.Fields {
 		if f.Guard != prevGuard {
@@ -255,7 +290,7 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 		// two pieces would account for twelve bytes where sixteen are written.
 		// The ENTRIES are not here: they are by-value records inside the
 		// holder's node extent, laid after the record's own storage.
-		g.pf("    TableMap<%s> %s; // %s — the sorted entry array, empty until an insert\n", f.MapEntry.Name, f.Name, ir.TableTypeSpelling(f))
+		g.pf("    TableMap<%s> %s; // %s — the sorted entry array, empty until an insert\n", g.scoped(f.MapEntry.Name, f.MapEntry.DeclaredName()), f.Name, ir.TableTypeSpelling(f))
 		if f.Type.Optional {
 			// `?map[K]V` — the map beside its presence bool (docs/SPEC-TABLES.md
 			// §2.8, §2.3): ABSENT, PRESENT-EMPTY and PRESENT-WITH-ENTRIES are
@@ -338,7 +373,7 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 		// (docs/SPEC-TABLES.md §8.1).
 		g.noteRef(f.KeyEnum)
 		g.pf("    %sTableKeyed<%s, %s> %s%s; // [%s]: one slot per named variant, keyed by the value\n",
-			align16, typ, f.KeyEnum, f.Name, tableArrayInit(selfInit), f.KeyEnum)
+			align16, typ, g.scoped(f.KeyEnum, f.KeyEnumDeclared()), f.Name, tableArrayInit(selfInit), f.KeyEnum)
 	case f.Array == ir.ArrayFixed:
 		g.pf("    %s%s %s[%d]%s;\n", align16, typ, f.Name, f.ArrayBound, tableArrayInit(selfInit))
 	case f.Array == ir.ArrayCounted:
@@ -3545,7 +3580,7 @@ func byteListLit(b []byte) string {
 // flagsDefaultExpr renders a flags default as the declaration's own masks
 // ored together, `( Perks_Shielded | Perks_Turbo )`, and `0` for the empty
 // set.
-func flagsDefaultExpr(f *ir.Field) string {
+func (g *tableGen) flagsDefaultExpr(f *ir.Field) string {
 	fl, ok := f.Type.Ref.(*ir.Flags)
 	if !ok || !f.HasDefault || f.DefInt == nil || f.DefInt.Sign() == 0 {
 		return "0"
@@ -3553,7 +3588,7 @@ func flagsDefaultExpr(f *ir.Field) string {
 	var names []string
 	for i, v := range fl.Variants {
 		if f.DefInt.Bit(i) == 1 {
-			names = append(names, fl.Name+"_"+v)
+			names = append(names, g.scoped(fl.Name+"_"+v, fl.DeclaredName()+"_"+v))
 		}
 	}
 	return "( " + strings.Join(names, " | ") + " )"

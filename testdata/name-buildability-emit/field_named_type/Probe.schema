@@ -16,8 +16,26 @@ union Shape
     Point Point
 }
 
+fixed table Part
+{
+    x int32
+}
+
+union Pick
+{
+    Part Part
+}
+
 table Item
 {
-    Kind  Kind
+    Kind  Kind = Gamma
     Count [..Count]uint16
+    Part  Part
+    Pick  Pick
+}
+
+fixed table Grid | forms="wire,block"
+{
+    Kind  Kind
+    Part  Part
 }

@@ -63,7 +63,7 @@ func listElementIsPointer(f *ir.Field) bool { return f.Type.Pointer }
 // `[]T`, and `T *` for a `[]*T`, which selects the pointer specialization.
 func (g *tableGen) listTypeArg(f *ir.Field) string {
 	if listElementIsPointer(f) {
-		return f.Type.Name + " *"
+		return g.scoped(f.Type.Name, f.Type.DeclaredName()) + " *"
 	}
 	typ, _ := g.cppFieldType(f.Type)
 	return typ

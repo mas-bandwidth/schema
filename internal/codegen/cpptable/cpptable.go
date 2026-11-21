@@ -124,6 +124,7 @@ type tableGen struct {
 	body           strings.Builder
 	includes       map[string]bool // referenced files -> #include "<base>Table.h"
 	nativeIncludes map[string]bool // cpp_include headers of mapped types
+	members        map[string]bool // inside a storage class body: the member names it declares (see scoped)
 	indent         string          // extra per-line indent while emitting inside a branch guard
 	// slots is the unit's MESSAGE-FORM vocabulary, id -> slot
 	// (docs/SPEC-TABLES.md §3.3). Every id a generated field header can name
