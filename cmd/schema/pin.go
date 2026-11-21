@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/mas-bandwidth/schema/v2/internal/modulemove"
 )
 
 // The pin directive an adopter writes in each package's generate.go; the Go
@@ -25,41 +27,55 @@ const (
 	pinCommandTail   = "/cmd/schema@"
 )
 
+// pinMainModule is this build's own module path: the path its go.mod names,
+// and so the path main resolves under. The refusal of a tag below the module
+// move points at it (`go install <it>/cmd/schema@main`). It is written whole,
+// unlike the spellings above, so the module-path move program DOES move it:
+// #4445 turns it to /v3 with go.mod.
+const pinMainModule = "github.com/mas-bandwidth/schema/v2"
+
+// pinReleases is where the prebuilt binaries of every release are.
+const pinReleases = "https://github.com/mas-bandwidth/schema/releases"
+
 var pinLine = regexp.MustCompile(`^` + regexp.QuoteMeta(pinDirectiveHead+pinModuleBase) + `(/v[0-9]+)?` + regexp.QuoteMeta(pinCommandTail))
-
-// pinUnresolvable names the tags Go cannot resolve under any module path: they
-// were tagged v3 while go.mod still said /v2 (docs/VERSIONING.md). A pin to
-// one of them would be written without complaint and fail at the next
-// `go generate`, so it is refused by name.
-var pinUnresolvable = map[string]bool{
-	"v3.0.0": true,
-	"v3.0.1": true,
-	"v3.0.2": true,
-}
-
-// pinModulePath is the module path Go requires for version: the base path for
-// v0 and v1, the base path plus /vN for major N from 2 on.
-func pinModulePath(version string) string {
-	major := version[1:]
-	if i := strings.IndexByte(major, '.'); i >= 0 {
-		major = major[:i]
-	}
-	if major == "0" || major == "1" {
-		return pinModuleBase
-	}
-	return pinModuleBase + "/v" + major
-}
 
 // A Go pseudo-version (the `v...-yyyymmddhhmmss-<12 hex>` form) is also a
 // semver tag, so one grammar covers both; refusing anything else by name keeps
 // a typo from silently rewriting every pin to a version that cannot resolve.
-var (
-	pinSemver = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)((-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)|(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?$`)
-	pinPseudo = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+-(0\.)?[0-9]{14}-[0-9a-f]{12}$`)
-)
+var pinSemver = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)((-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)|(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?$`)
 
 func validPinVersion(v string) bool {
-	return pinSemver.MatchString(v) || pinPseudo.MatchString(v)
+	return pinSemver.MatchString(v) || modulemove.IsPseudoVersion(v)
+}
+
+// pinTarget decides a pin: the module path the pin line takes for version,
+// or the refusal. boundary is the first v3 tag whose go.mod names /v3 (""
+// while there is none) and ownModule the module path main resolves under,
+// which the refusal names; cmdPin passes modulemove.FirstV3ModuleTag and
+// pinMainModule, and the tests pass their own, so the rule is checked on both
+// sides of the module move.
+//
+// A pseudo-version never counts as below the boundary: it is a commit, whose
+// go.mod pin cannot see offline. A v3 TAG below the boundary is refused: it
+// was cut while go.mod still named /v2, so neither path resolves it (with no
+// boundary, that is every v3 tag).
+func pinTarget(version, boundary, ownModule string) (string, error) {
+	if !validPinVersion(version) {
+		return "", fmt.Errorf("schema pin: %s is not a Go pseudo-version or semver tag", version)
+	}
+	// The boundary is held against the CANONICAL release, the version with
+	// any build metadata cut, because Go resolves v3.0.2+incompatible to the
+	// v3.0.2 tag. Build metadata is refused outright as well: Go accepts none
+	// but +incompatible, which names a module with no go.mod at its major,
+	// and every schema tag has one, so no spelling with a + resolves.
+	canonical, meta, _ := strings.Cut(version, "+")
+	if modulemove.PreModuleMove(canonical, boundary) {
+		return "", fmt.Errorf("schema pin: Go cannot resolve %s: the %s tag was cut before the module path moved to /v3, so its go.mod names /v2 and neither path finds it; use a prebuilt binary from %s, or `go install %s/cmd/schema@main`", version, canonical, pinReleases, ownModule)
+	}
+	if meta != "" {
+		return "", fmt.Errorf("schema pin: Go cannot resolve %s: a module version takes no build metadata but +incompatible, and schema has a go.mod at every major; pin %s", version, canonical)
+	}
+	return modulemove.PathFor(version), nil
 }
 
 // splitPinArgs takes the flag out of the argument list wherever it sits:
@@ -89,11 +105,15 @@ func splitPinArgs(args []string) (pos []string, mixedOk bool) {
 // cmdPin is `schema pin <version> <dir>...`: under each dir, for every
 // generate.go file, it rewrites each line that pinLine matches to run the
 // compiler at <version> under the module path that version's major requires,
-// and changes nothing else. It refuses by name a version that is not a Go
-// pseudo-version or semver tag, a tag Go cannot resolve, a directory that
+// and changes nothing else. It
+// refuses by name a version that is not a Go pseudo-version or a
+// semver tag, a tag Go cannot resolve (every v3 tag cut before the /v3 module
+// move, internal/modulemove; any build metadata), a directory that
 // does not exist or holds no pin line, and a tree whose pins already differ
 // from each other unless --mixed-ok is given. It prints one line per file
-// changed and exits 0, or exits 1 having changed nothing on a refusal. No
+// changed and exits 0, or exits 1 having changed nothing: on a refusal no
+// file is written at all, and a write that fails part way puts back every
+// file already moved (publishPins), so the tree ends all old or all new. No
 // other file is touched.
 func cmdPin(args []string) {
 	pos, mixedOk := splitPinArgs(args)
@@ -101,33 +121,17 @@ func cmdPin(args []string) {
 		fatalf("schema pin needs a version: schema pin <version> <dir>...")
 	}
 	version := pos[0]
-	if !validPinVersion(version) {
-		fatalf("schema pin: %s is not a Go pseudo-version or semver tag", version)
+	modulePath, err := pinTarget(version, modulemove.FirstV3ModuleTag, pinMainModule)
+	if err != nil {
+		fatalf("%v", err)
 	}
-	// The denylist is held against the CANONICAL release, the version with any
-	// build metadata cut, because Go resolves v3.0.2+incompatible to the
-	// v3.0.2 tag. Build metadata is refused outright as well: Go accepts none
-	// but +incompatible, which names a module with no go.mod at its major,
-	// and every schema tag has one, so no spelling with a + resolves.
-	canonical, meta, _ := strings.Cut(version, "+")
-	if pinUnresolvable[canonical] {
-		fatalf("schema pin: Go cannot resolve %s: the %s tag's go.mod names the /v2 module path, so neither path finds it; pin a later v3 release", version, canonical)
-	}
-	if meta != "" {
-		fatalf("schema pin: Go cannot resolve %s: a module version takes no build metadata but +incompatible, and schema has a go.mod at every major; pin %s", version, canonical)
-	}
-	newPrefix := pinDirectiveHead + pinModulePath(version) + pinCommandTail
+	newPrefix := pinDirectiveHead + modulePath + pinCommandTail
 	dirs := pos[1:]
 	if len(dirs) == 0 {
 		dirs = []string{"."}
 	}
 
-	type change struct {
-		path string
-		orig []byte
-		next []byte
-	}
-	var changes []change
+	var changes []pinChange
 	var noPin []string
 	versions := map[string]bool{}
 	for _, dir := range dirs {
@@ -147,6 +151,10 @@ func cmdPin(args []string) {
 				return nil
 			}
 			data, rerr := os.ReadFile(path)
+			if rerr != nil {
+				return rerr
+			}
+			info, rerr := os.Stat(path)
 			if rerr != nil {
 				return rerr
 			}
@@ -173,7 +181,7 @@ func cmdPin(args []string) {
 			}
 			next := []byte(strings.Join(out, "\n"))
 			if !bytes.Equal(next, data) {
-				changes = append(changes, change{path: path, orig: data, next: next})
+				changes = append(changes, pinChange{path: path, orig: data, next: next, mode: info.Mode().Perm()})
 			}
 			return nil
 		})
@@ -197,10 +205,106 @@ func cmdPin(args []string) {
 		fatalf("schema pin: the tree's pins already differ from each other (%s); pass --mixed-ok to move them together", strings.Join(names, ", "))
 	}
 
+	if err := publishPins(osPinFiles, changes); err != nil {
+		fatalf("schema pin: %v", err)
+	}
 	for _, ch := range changes {
-		if err := writeAtomic(ch.path, ch.next); err != nil {
-			fatalf("schema pin: %v", err)
-		}
 		fmt.Println(ch.path)
 	}
+}
+
+// pinChange is one generate.go to move: the bytes it held, the bytes it
+// takes, and the mode it keeps.
+type pinChange struct {
+	path string
+	orig []byte
+	next []byte
+	mode os.FileMode
+}
+
+// pinFiles is the two file operations a pin can fail in, a seam so the tests
+// fail each one at a chosen file without a real read-only or full disk.
+type pinFiles struct {
+	createTemp func(dir, pattern string) (*os.File, error)
+	rename     func(oldpath, newpath string) error
+}
+
+var osPinFiles = pinFiles{createTemp: os.CreateTemp, rename: os.Rename}
+
+// stage writes data to a temporary beside path, with path's mode, and
+// returns its name; on a failure the temporary is gone.
+func (f pinFiles) stage(path string, data []byte, mode os.FileMode) (string, error) {
+	tmp, err := f.createTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
+	if err != nil {
+		return "", err
+	}
+	name := tmp.Name()
+	_, err = tmp.Write(data)
+	if cerr := tmp.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Chmod(name, mode)
+	}
+	if err != nil {
+		_ = os.Remove(name)
+		return "", err
+	}
+	return name, nil
+}
+
+// restore puts a published file's original bytes back: staged and renamed
+// like any write, and written in place if that cannot be done.
+func (f pinFiles) restore(ch pinChange) error {
+	name, err := f.stage(ch.path, ch.orig, ch.mode)
+	if err == nil {
+		if err = f.rename(name, ch.path); err == nil {
+			return nil
+		}
+		_ = os.Remove(name)
+	}
+	return os.WriteFile(ch.path, ch.orig, ch.mode)
+}
+
+// publishPins moves every file or none. Every file's new content is staged
+// first, beside the file it replaces, so the failures a pin meets in practice
+// (a read-only directory, a full disk) happen before any file has changed:
+// the temporaries are removed and the tree is as it was. Only then is each
+// staged file renamed over its original; if a rename fails, the files already
+// renamed are put back from the original bytes and the rest are never
+// touched. A put-back that itself fails is named in the error, with the files
+// left at the new pin, because nothing more can be done about it here.
+func publishPins(f pinFiles, changes []pinChange) error {
+	staged := make([]string, 0, len(changes))
+	drop := func(names []string) {
+		for _, name := range names {
+			_ = os.Remove(name)
+		}
+	}
+	for _, ch := range changes {
+		name, err := f.stage(ch.path, ch.next, ch.mode)
+		if err != nil {
+			drop(staged)
+			return fmt.Errorf("nothing was changed: %w", err)
+		}
+		staged = append(staged, name)
+	}
+	for i, ch := range changes {
+		err := f.rename(staged[i], ch.path)
+		if err == nil {
+			continue
+		}
+		drop(staged[i:])
+		var stuck []string
+		for _, done := range changes[:i] {
+			if rerr := f.restore(done); rerr != nil {
+				stuck = append(stuck, fmt.Sprintf("%s (%v)", done.path, rerr))
+			}
+		}
+		if len(stuck) > 0 {
+			return fmt.Errorf("%w; the pin is HALF MOVED: these files hold the new pin and could not be put back: %s", err, strings.Join(stuck, ", "))
+		}
+		return fmt.Errorf("nothing was changed (every file already moved was put back): %w", err)
+	}
+	return nil
 }

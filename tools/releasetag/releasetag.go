@@ -11,8 +11,10 @@
 //	releasetag release -version vX.Y.Z [-commit REV] [-main REF] [-push]
 //	    tags one commit vX.Y.Z (annotated). Refuses, by name, a version that
 //	    does not parse, one not greater than the newest v tag, a commit not
-//	    on main (not in `git rev-list REF`, default origin/main), and a PATCH
-//	    release whose commit moves the build version's form
+//	    on main (not in `git rev-list REF`, default origin/main), a commit
+//	    whose go.mod module path does not carry the version's major unless
+//	    `schema pin` refuses that tag (internal/modulemove.ReleaseGate), and a
+//	    PATCH release whose commit moves the build version's form
 //	    (ir.BuildVersionForm) from the newest v tag's.
 //	    .github/workflows/release.yml runs it, through
 //	    `make release VERSION=vX.Y.Z PUSH=1`, when dispatched.
@@ -39,6 +41,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/mas-bandwidth/schema/v2/internal/modulemove"
 )
 
 // The refusals, each matched with errors.Is.
@@ -256,6 +260,16 @@ func Release(g Git, version, rev, mainRef string, push bool, out io.Writer) erro
 	}
 	tag, err := ReleaseTag(version, sha, fields(tags), fields(ancestry))
 	if err != nil {
+		return err
+	}
+	// go.mod at the commit must carry the tag's major, unless `schema pin`
+	// refuses the tag (internal/modulemove): a tag Go cannot resolve goes out
+	// only when no adopter can be handed it.
+	goMod, err := g.Run("show", sha+":go.mod")
+	if err != nil {
+		return err
+	}
+	if err := modulemove.ReleaseGate(tag, goMod, modulemove.FirstV3ModuleTag); err != nil {
 		return err
 	}
 	if newest, ok := NewestRelease(fields(tags)); ok {
