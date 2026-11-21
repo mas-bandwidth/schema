@@ -333,7 +333,7 @@ committed rule and say what the repository does today.
 | a range tightened | refuses `out_of_range` where a stored value is past it | warns | moves |
 | a field's kind changed (`T`→`*T`, `string`→`bytes`, `int64`→`int32`) | refuses `kind_mismatch` | **refuses** | moves |
 | a field's kind WIDENED (`int32`→`int64`, `uint8`→`uint32`, `bits(8)`→`bits(9)`, `float32`→`float64`) | `widened`, and the value decodes exactly (SPEC-TABLES.md §4) | **refuses**: the tolerance runs one way, and the OLD build reading the new file still kind-mismatches | moves |
-| `T`→`?T` | nothing at the bytes; a newer writer's present field at its defaults is a field stored at its declared default, refused by the old build (SPEC-TABLES.md §4) | **refuses**: the tolerance runs one way, and the OLD build reading the new file refuses a now-optional field stored at its default | moves (the presence flag is storage) |
+| `T`→`?T` | nothing: non-default content shares bytes, and a present field at its defaults reads (SPEC-TABLES.md §4.1) | passes: both presence spellings share variable framing (SPEC-TABLES.md §18.2) | moves (the presence flag is storage) |
 | `?T`→`T` | nothing: one framing. An old file's elided default reads as *absent* under `?T` | passes | moves (the presence flag is storage) |
 | an enum variant added or removed | `unknown` where a stored name is gone | passes; warns on a removal | moves, and the protocol id with it where a `type` reaches the enum |
 | an enum variant reordered | nothing | passes | moves, and the protocol id with it where a `type` reaches the enum |
