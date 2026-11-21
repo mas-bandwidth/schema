@@ -483,6 +483,9 @@ func (g *tableGen) wireColumns(f *ir.Field) string {
 			lit = formatFloat32
 		}
 		fmt.Fprintf(&c, "if (v < %s || v > %s) { if (!r.Refused) { r.Refused = true; r.Reason = \"out_of_range\"; } } ", lit(f.FMin), lit(f.FMax))
+		// A COMPRESSED FLOAT'S -0 LANDS AS +0 (docs/SPEC-TABLES.md §3.3): -0
+		// + +0 is +0, and every other value is itself
+		c.WriteString("v = v + 0; ")
 	}
 	fmt.Fprintf(&c, "return %s;", csRawGet("v", f.Type))
 	fmt.Fprintf(&b, ", RangeRaw = delegate (ulong raw, TableReport r) { %s }", c.String())
@@ -833,6 +836,14 @@ public static partial class TableWire
         {
             int n = f.GetCount(value);
             if (f.DefaultBytes != null) { return n != f.DefaultBytes.Length || !f.GetBuffer(value).AsSpan(0, n).SequenceEqual(f.DefaultBytes); }
+            // BORN AT ITS MIN (docs/SPEC.md §4.2): a [A..B] array's birth value
+            // is A default elements, and that is what the writer elides
+            if (f.ArrayMin > 0)
+            {
+                if (n != f.ArrayMin || f.Kind == 13 && f.KeyId == null) { return true; }
+                for (int i = 0; i < n; i++) { if (!DefaultElement(value, f, i)) { return true; } }
+                return false;
+            }
             return n != 0;
         }
         if (!f.IsArray) { return !DefaultElement(value, f, 0); }
@@ -1471,7 +1482,7 @@ public static partial class TableWire
             if (!Compatible(elementKind, f.Kind, report)) { return false; }
             if (f.Dynamic && count > int.MaxValue) { return CollectionCap(report); }
             int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
-            if (!f.Dynamic && count > (ulong)f.ArrayBound) { return Fail(report, "count_over_bound: " + f.Name); }
+            if (!f.Dynamic && (count < (ulong)f.ArrayMin || count > (ulong)f.ArrayBound)) { return Fail(report, "count_over_bound: " + f.Name); }
             int decoded = 0;
             for (int i = 0; i < keep; i++)
             {
@@ -1555,7 +1566,7 @@ public static partial class TableWire
             else
             {
                 int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
-                if (!f.Dynamic && count > (ulong)f.ArrayBound) { return Fail(report, "count_over_bound: " + f.Name); }
+                if (!f.Dynamic && (count < (ulong)f.ArrayMin || count > (ulong)f.ArrayBound)) { return Fail(report, "count_over_bound: " + f.Name); }
                 int previous = f.Counted && f.GetCount != null ? f.GetCount(value) : 0;
                 int decoded = 0; long textSpent = 0;
                 for (int i = 0; i < keep; i++)

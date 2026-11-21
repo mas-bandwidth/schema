@@ -564,8 +564,10 @@ func presentReset(fieldExpr string) string {
 	return fmt.Sprintf("(t) => { %sPresent = false; }", fieldExpr)
 }
 
-func countReset(fieldExpr string) string {
-	return fmt.Sprintf("(t) => { %sCount = 0; }", fieldExpr)
+// countReset puts a counted array back at its birth count: A for [A..B]
+// (docs/SPEC.md §4.2), 0 for one born empty.
+func countReset(fieldExpr string, born int64) string {
+	return fmt.Sprintf("(t) => { %sCount = %d; }", fieldExpr, born)
 }
 
 func flatReset(fieldExpr string) string {
@@ -862,7 +864,7 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 		countSlot := len(b.slots)
 		b.slots = append(b.slots, fixedSlot{
 			setRaw: fmt.Sprintf("(t, v) => %sCount = (int)v", fieldExpr),
-			reset:  countReset(fieldExpr),
+			reset:  countReset(fieldExpr, f.BornCount()),
 		})
 		b.addPlan(fixedPlanEntry{
 			src:   fieldWireBase,
@@ -1367,7 +1369,7 @@ func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field,
 		countSlot := len(b.slots)
 		b.slots = append(b.slots, fixedSlot{
 			setRaw: fmt.Sprintf("(t, v) => %sCount = (int)v", fieldExpr),
-			reset:  countReset(fieldExpr),
+			reset:  countReset(fieldExpr, f.BornCount()),
 		})
 		b.addPlan(fixedPlanEntry{
 			src:   fieldWireBase,
@@ -1626,7 +1628,7 @@ func (g *tableGen) emitFixedWriteKeyedLoop(owner *ir.Struct, f *ir.Field, base, 
 	if owner != nil && owner.IsTable {
 		slotsExpr = expr + ".Slots"
 	}
-	if g.fixedFlatElem(f) {
+	if g.fixedFlatElem(f) && !f.HasFloatRange { // a compressed float stores +0 for -0, element by element
 		elemType := csFieldType(f.Type)
 		slice := fmt.Sprintf("%s.Slice(%d)", buf, base)
 		if base == 0 {
@@ -1654,7 +1656,7 @@ func (g *tableGen) emitFixedWriteLoop(f *ir.Field, base, bound int64, live, buf,
 	if live != "" {
 		nExpr = live
 	}
-	if g.fixedFlatElem(f) {
+	if g.fixedFlatElem(f) && !f.HasFloatRange { // a compressed float stores +0 for -0, element by element
 		elemType := csFieldType(f.Type)
 		slice := fmt.Sprintf("%s.Slice(%d)", buf, base)
 		if base == 0 {
@@ -1736,9 +1738,20 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 	case ir.TBool:
 		g.pf("%s%s[0] = (byte)(%s ? 1 : 0);\n", ind, slice, expr)
 	case ir.TFloat32:
-		g.pf("%sBinaryPrimitives.WriteSingleLittleEndian(%s, %s);\n", ind, slice, expr)
+		if f.HasFloatRange {
+			// THE WRITER STORES +0 FOR A COMPRESSED FLOAT'S -0
+			// (docs/SPEC-TABLES.md §3.3; ruling fixed-compressed-negzero):
+			// -0 + +0 is +0, and every other value is itself
+			g.pf("%sBinaryPrimitives.WriteSingleLittleEndian(%s, %s + 0.0f);\n", ind, slice, expr)
+		} else {
+			g.pf("%sBinaryPrimitives.WriteSingleLittleEndian(%s, %s);\n", ind, slice, expr)
+		}
 	case ir.TFloat64:
-		g.pf("%sBinaryPrimitives.WriteDoubleLittleEndian(%s, %s);\n", ind, slice, expr)
+		if f.HasFloatRange {
+			g.pf("%sBinaryPrimitives.WriteDoubleLittleEndian(%s, %s + 0.0);\n", ind, slice, expr)
+		} else {
+			g.pf("%sBinaryPrimitives.WriteDoubleLittleEndian(%s, %s);\n", ind, slice, expr)
+		}
 	case ir.TInt:
 		switch w {
 		case 1:
@@ -2251,7 +2264,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	if hasWriterBounds {
 		g.pf("        if (writerClamp != null && !writerClamp.Invoke(values[k], report)) { refused = true; }\n")
 	}
-	if ir.TableFixedClampNeeded(st) {
+	if csFixedClampNeeded(st) {
 		g.pf("        if (!%sFixedClamp(values[k], report)) { refused = true; }\n", name)
 	}
 	// THE FORGED ORDINAL'S CLAMP IS THE BOUNDS STEP'S TOO (§5.4): the ordinal

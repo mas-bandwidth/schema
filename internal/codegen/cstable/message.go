@@ -315,7 +315,8 @@ const tableMessageSource = `
     {
         if (f.WireGuard != null && !f.WireGuard(value)) { return false; }
         // text or bytes with a declared default elide at it, as Rides says
-        if (!f.Optional && f.Counted && f.DefaultBytes == null) { return f.GetCount(value) != 0; }
+        // and a [A..B] array born at A elides at its birth value, as Rides says
+        if (!f.Optional && f.Counted && f.DefaultBytes == null && f.ArrayMin == 0) { return f.GetCount(value) != 0; }
         return Rides(value, f);
     }
     static void MessageBody(ref BitWriter w, object value, TableTypeInfo type)
