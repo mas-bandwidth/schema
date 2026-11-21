@@ -16,7 +16,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/publish"
+	"github.com/mas-bandwidth/schema/v2/internal/atomicfile"
 )
 
 // inputTree is a pack tree as the reviewer's reproduction has it: a field
@@ -265,83 +265,130 @@ func TestOutputsRefusedOverASchemaSource(t *testing.T) {
 	})
 }
 
-// F-140: one publisher, no injected failure. The side output is an existing
-// entry and the payload names an existing directory, so the publish fails
-// after the side file has landed and must take it back. What returns is the
-// ENTRY: for a symbolic link, the same link (its own inode, the time it was
-// made, the hard link that shares it), never a new link to the same target.
-// The regular file is the reviewer's control and holds the same way.
+// F-140: one publisher. The side output is an existing entry. In the
+// reviewer's case (no injected failure) the payload names an existing
+// directory; in the second the payload's publishing rename fails after the
+// side file has landed, and the publish must take it back. What is there
+// afterwards is the ENTRY: for a symbolic link, the same link (its own inode,
+// the time it was made, the hard link that shares it), never a new link to
+// the same target, and the file it names is the file it was. The regular file
+// is the reviewer's control and holds the same way.
 func TestFailedPublishPutsTheOriginalEntryBack(t *testing.T) {
-	for _, kind := range []string{"regular file", "symbolic link"} {
-		for _, cmd := range pairedCommands {
-			t.Run(kind+"/"+cmd.verb, func(t *testing.T) {
-				dir := t.TempDir()
-				target := filepath.Join(dir, "target.bin")
-				writeTestFile(t, target, oldSide)
-				side := filepath.Join(dir, "side.bin")
-				if kind == "symbolic link" {
-					if err := os.Symlink("target.bin", side); err != nil {
-						t.Skipf("symlinks unavailable: %v", err)
-					}
-				} else {
-					writeTestFile(t, side, oldSide)
-				}
-				// a hard link to the entry itself, where the platform makes
-				// one to a symbolic link; it also keeps the inode from being
-				// handed to a re-created entry
-				peer := filepath.Join(dir, "peer.bin")
-				shares := false
-				if err := os.Link(side, peer); err == nil {
-					a, aerr := os.Lstat(side)
-					b, berr := os.Lstat(peer)
-					shares = aerr == nil && berr == nil && os.SameFile(a, b)
-				}
-				before, err := os.Lstat(side)
-				if err != nil {
-					t.Fatal(err)
-				}
-				taken := filepath.Join(dir, "taken")
-				writeTestFile(t, filepath.Join(taken, "inside"), "inside")
-
-				err = publishPair(cmd.side, side, cmd.payload, taken)
-				if err == nil {
-					t.Fatal("a payload naming a directory was published")
-				}
-				after, err := os.Lstat(side)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if after.Mode() != before.Mode() {
-					t.Errorf("the %s came back with mode %v; want %v", kind, after.Mode(), before.Mode())
-				}
-				if !os.SameFile(before, after) {
-					t.Errorf("the %s that came back is a different entry: it was re-created, not put back", kind)
-				}
-				if !after.ModTime().Equal(before.ModTime()) {
-					t.Errorf("the %s came back last written %v; want %v, the time it had", kind, after.ModTime(), before.ModTime())
-				}
-				if shares {
-					p, err := os.Lstat(peer)
-					if err != nil || !os.SameFile(after, p) {
-						t.Errorf("the %s no longer shares its inode with its hard link (%v)", kind, err)
-					}
-				}
-				if kind == "symbolic link" {
-					if got, err := os.Readlink(side); err != nil || got != "target.bin" {
-						t.Errorf("the link names %q (%v); want target.bin", got, err)
-					}
-				}
-				wantFile(t, side, oldSide)
-				wantFile(t, target, oldSide)
-				want := []string{"side.bin", "taken", "target.bin"}
-				if _, err := os.Lstat(peer); err == nil {
-					want = append(want, "peer.bin")
-				}
-				wantEntries(t, dir, want...)
-				wantEntries(t, taken, "inside")
-			})
+	type failure struct {
+		name string
+		// payload answers the payload path of a publish that will fail
+		payload func(t *testing.T, dir string) string
+	}
+	failures := []failure{
+		{"payload names a directory", func(t *testing.T, dir string) string {
+			taken := filepath.Join(dir, "taken")
+			writeTestFile(t, filepath.Join(taken, "inside"), "inside")
+			return taken
+		}},
+		{"payload rename fails after the side landed", func(t *testing.T, dir string) string {
+			sub := filepath.Join(dir, "taken")
+			if err := os.Mkdir(sub, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			fault := atomicfile.FailNthRename(sub, 1)
+			t.Cleanup(fault.Remove)
+			return filepath.Join(sub, "out.bin")
+		}},
+	}
+	for _, fail := range failures {
+		for _, kind := range []string{"regular file", "symbolic link"} {
+			for _, cmd := range pairedCommands {
+				t.Run(fail.name+"/"+kind+"/"+cmd.verb, func(t *testing.T) {
+					entryPutBack(t, cmd.side, cmd.payload, kind, fail.payload)
+				})
+			}
 		}
 	}
+}
+
+// entryPutBack is one case of TestFailedPublishPutsTheOriginalEntryBack.
+func entryPutBack(t *testing.T, sideFlag, payloadFlag, kind string, failing func(t *testing.T, dir string) string) {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(dir, "target.bin")
+	writeTestFile(t, target, oldSide)
+	side := filepath.Join(dir, "side.bin")
+	if kind == "symbolic link" {
+		if err := os.Symlink("target.bin", side); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+	} else {
+		writeTestFile(t, side, oldSide)
+	}
+	// a hard link to the entry itself, where the platform makes one to a
+	// symbolic link; it also keeps the inode from being handed to a
+	// re-created entry
+	peer := filepath.Join(dir, "peer.bin")
+	shares := false
+	if err := os.Link(side, peer); err == nil {
+		a, aerr := os.Lstat(side)
+		b, berr := os.Lstat(peer)
+		shares = aerr == nil && berr == nil && os.SameFile(a, b)
+	}
+	before, err := os.Lstat(side)
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetBefore, err := os.Lstat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := failing(t, dir)
+	payloadDir := filepath.Dir(payload)
+	var payloadHeld []string
+	if entries, err := os.ReadDir(payload); err == nil {
+		for _, e := range entries {
+			payloadHeld = append(payloadHeld, e.Name())
+		}
+		payloadDir = payload
+	}
+
+	if err := publishPair(sideFlag, side, payloadFlag, payload); err == nil {
+		t.Fatal("a publish that had to fail succeeded")
+	}
+	after, err := os.Lstat(side)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Mode() != before.Mode() {
+		t.Errorf("the %s came back with mode %v; want %v", kind, after.Mode(), before.Mode())
+	}
+	if !os.SameFile(before, after) {
+		t.Errorf("the %s that came back is a different entry: it was re-created, not put back", kind)
+	}
+	if !after.ModTime().Equal(before.ModTime()) {
+		t.Errorf("the %s came back last written %v; want %v, the time it had", kind, after.ModTime(), before.ModTime())
+	}
+	if shares {
+		p, err := os.Lstat(peer)
+		if err != nil || !os.SameFile(after, p) {
+			t.Errorf("the %s no longer shares its inode with its hard link (%v)", kind, err)
+		}
+	}
+	if kind == "symbolic link" {
+		if got, err := os.Readlink(side); err != nil || got != "target.bin" {
+			t.Errorf("the link names %q (%v); want target.bin", got, err)
+		}
+	}
+	if now, err := os.Lstat(target); err != nil || !os.SameFile(targetBefore, now) || !now.ModTime().Equal(targetBefore.ModTime()) {
+		t.Errorf("target.bin is not the file it was (%v)", err)
+	}
+	wantFile(t, side, oldSide)
+	wantFile(t, target, oldSide)
+	want := []string{"side.bin", "taken", "target.bin"}
+	if _, err := os.Lstat(peer); err == nil {
+		want = append(want, "peer.bin")
+	}
+	wantEntries(t, dir, want...)
+	wantEntries(t, payloadDir, payloadHeld...)
 }
 
 // An original that will not go back is the one case that ends neither all old
@@ -351,26 +398,25 @@ func TestPublishThatCannotPutAnEntryBackNamesBothPaths(t *testing.T) {
 	errDisk := errors.New("permission denied (injected)")
 	dir, payload, side := pairFixture(t)
 	onto := 0
-	f := publish.Files{
-		CreateTemp: os.CreateTemp,
-		Rename: func(oldpath, newpath string) error {
-			switch newpath {
-			case payload:
-				return errDisk // publishing the payload
-			case side:
-				if onto++; onto > 1 {
-					return errDisk // putting the side file back
-				}
+	f := atomicfile.OS()
+	rename := f.Rename
+	f.Rename = func(oldpath, newpath string) error {
+		switch newpath {
+		case payload:
+			return errDisk // publishing the payload, and putting it back
+		case side:
+			if onto++; onto > 1 {
+				return errDisk // putting the side file back
 			}
-			return os.Rename(oldpath, newpath)
-		},
+		}
+		return rename(oldpath, newpath)
 	}
 	err := publishOutputsWith(f, "cook", []pairOutput{
 		{outputPath{"--attribution", side}, []byte("new side bytes")},
 		{outputPath{"--out", payload}, []byte("new payload bytes")},
 	}, nil)
-	if !errors.Is(err, errDisk) || !strings.Contains(err.Error(), "HALF PUBLISHED") {
-		t.Fatalf("publish = %v; want the failure, saying the pair is half published", err)
+	if !errors.Is(err, errDisk) || !strings.Contains(err.Error(), "HALF MOVED") {
+		t.Fatalf("publish = %v; want the failure, saying the pair is half moved", err)
 	}
 	entries, rerr := os.ReadDir(dir)
 	if rerr != nil {

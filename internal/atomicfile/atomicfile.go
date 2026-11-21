@@ -130,6 +130,14 @@ func (f Files) shown(name string) string {
 // errEscapes is a name that leaves a root.
 var errEscapes = errors.New("path escapes the output directory")
 
+// ErrAppeared is a write whose file was not there when the commit staged it
+// and is there when the commit publishes it. Inside one commit that is
+// another write of the same commit under a spelling the volume takes for the
+// same name (a volume that folds case, or Unicode spellings): two names that
+// did not exist are one entry, and publishing both would leave only the
+// second. The commit refuses and puts back what it moved.
+var ErrAppeared = errors.New("an entry appeared under this name while the commit published: two names of this commit are one entry on this volume")
+
 // resolve follows every symbolic link on path and answers the name of the
 // file itself. A component that does not exist ends the walk: what is below
 // it is new, and is taken as written. In a root, a link to an absolute path
@@ -231,6 +239,8 @@ type change struct {
 	placed bool
 	// dropped: an earlier write to the same file, superseded by a later one
 	dropped bool
+	// existed: write: the file was there when its content was staged
+	existed bool
 }
 
 // Txn is the changes of one command, published together by Commit.
@@ -384,6 +394,7 @@ func (t *Txn) stage(c *change) error {
 			return err
 		}
 		mode, exists = info.Mode().Perm(), true
+		c.existed = true
 	case !errors.Is(err, fs.ErrNotExist):
 		return err
 	}
@@ -436,6 +447,8 @@ func (c *change) publish() error {
 	switch c.kind {
 	case write:
 		switch info, err := f.Lstat(c.file); {
+		case err == nil && !c.existed:
+			return &fs.PathError{Op: "write", Path: f.shown(c.file), Err: ErrAppeared}
 		case err == nil:
 			if info.IsDir() {
 				return &fs.PathError{Op: "write", Path: f.shown(c.file), Err: syscall.EISDIR}

@@ -1,17 +1,21 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
-	"strings"
+	"path/filepath"
 
-	"github.com/mas-bandwidth/schema/v2/internal/publish"
+	"github.com/mas-bandwidth/schema/v2/internal/atomicfile"
+	"github.com/mas-bandwidth/schema/v2/internal/pathid"
 )
 
 // PAIRED OUTPUTS (pack --message --announce, cook --attribution): one artifact
 // in two files, read only together. A run publishes both or neither, so a
 // failure anywhere leaves the earlier pair exactly as it was — never a new
 // announcement beside an old message, or a new attribution beside an old cook.
+// The publishing is the one publisher's (internal/atomicfile): every command
+// that writes a file writes it there, and a pair is one transaction of it.
 //
 // ONE PUBLISHER PER DESTINATION IS THE CONTRACT, as with any compiler: the
 // promise holds when one run writes to an output at a time. Nothing here takes
@@ -23,7 +27,9 @@ import (
 // WHETHER TWO PATHS ARE ONE FILE IS THE FILE SYSTEM'S ANSWER, never a string
 // comparison: a symlinked directory, a case-folding volume and APFS's
 // normalization-insensitive names all make two spellings one entry. Every
-// identity below is os.SameFile over what Lstat and Stat return.
+// identity below is os.SameFile over what Lstat and Stat return, and two
+// names that do not exist yet and only the volume could call one entry are
+// refused by the commit itself (atomicfile.ErrAppeared).
 
 // outputPath is a file a command names by one of its flags.
 type outputPath struct {
@@ -39,27 +45,30 @@ type pairOutput struct {
 
 // refuseOutputsIntoInputs is the one check every command that writes a file a
 // caller named runs before any work. It refuses two outputs that are one
-// existing file, and an output that resolves to the command's input file, into
-// a directory tree it reads, or to a schema source the unit was loaded from
+// file, and an output that resolves to the command's input file, into a
+// directory tree it reads, or to a schema source the unit was loaded from
 // (SPEC.md §7: fmt is the only command that writes a schema file). ins holds
 // all three, each under the name the refusal gives it. A destination that does
-// not exist yet has no identity to compare and cannot be an input file (it can
-// still sit inside an input tree, and is refused there); publishOutputs checks
-// again, and finds two fresh spellings of one entry before the second rename.
+// not exist yet cannot be an input file (it can still sit inside an input
+// tree, and is refused there); publishOutputs checks again.
 func refuseOutputsIntoInputs(verb string, outs []outputPath, ins []outputPath) error {
 	return aliasError(verb, outs, ins)
 }
 
-// entryInfo is a path's directory entry (Lstat) and the file it resolves to
-// (Stat); either is nil where the path does not reach one.
+// entryInfo is a path's directory entry (Lstat), the file it resolves to
+// (Stat), and the directory the entry sits in (Stat of the parent); each is
+// nil where the path does not reach one.
 type entryInfo struct {
-	entry, target os.FileInfo
+	entry, target, parent os.FileInfo
+	base                  string
 }
 
 func infoOf(path string) entryInfo {
 	var e entryInfo
 	e.entry, _ = os.Lstat(path)
 	e.target, _ = os.Stat(path)
+	e.parent, _ = os.Stat(filepath.Dir(path))
+	e.base = filepath.Base(path)
 	return e
 }
 
@@ -74,6 +83,17 @@ func (e entryInfo) one(o entryInfo) bool {
 		sameFile(e.target, o.entry) || sameFile(e.target, o.target)
 }
 
+// slot reports whether two paths that do not exist yet name one entry in one
+// directory, however the directory is reached: the same name in the same
+// directory, by identity.
+func (e entryInfo) slot(o entryInfo) bool {
+	return e.entry == nil && o.entry == nil && e.base == o.base && sameFile(e.parent, o.parent)
+}
+
+func aliasMessage(verb string, a, b outputPath) error {
+	return fmt.Errorf("%s: %s %s and %s %s name the same file: the pair needs two files, and writing both to one would leave only the second", verb, a.flag, a.path, b.flag, b.path)
+}
+
 func aliasError(verb string, outs []outputPath, ins []outputPath) error {
 	infos := make([]entryInfo, len(outs))
 	for i, o := range outs {
@@ -81,8 +101,8 @@ func aliasError(verb string, outs []outputPath, ins []outputPath) error {
 	}
 	for i := range outs {
 		for j := i + 1; j < len(outs); j++ {
-			if infos[i].one(infos[j]) {
-				return fmt.Errorf("%s: %s %s and %s %s name the same file: the pair needs two files, and writing both to one would leave only the second", verb, outs[i].flag, outs[i].path, outs[j].flag, outs[j].path)
+			if infos[i].one(infos[j]) || infos[i].slot(infos[j]) {
+				return aliasMessage(verb, outs[i], outs[j])
 			}
 		}
 	}
@@ -118,7 +138,7 @@ func inputsError(verb string, outs []outputPath, infos []entryInfo, ins []output
 			// AN INPUT TREE: every file in it is input, and a file added to it
 			// is input to the next run, so no output may land in it
 			for _, o := range outs {
-				if publish.Inside(o.path, read.target) {
+				if pathid.Inside(o.path, read.target) {
 					return fmt.Errorf("%s: %s %s is inside the directory %s names (%s): writing it would change the input the command reads", verb, o.flag, o.path, in.flag, in.path)
 				}
 			}
@@ -137,29 +157,29 @@ func inputsError(verb string, outs []outputPath, infos []entryInfo, ins []output
 	return nil
 }
 
-// publishOutputs writes every output to a temporary beside its destination and
-// publishes them through the shared publisher (internal/publish), in
-// order, only once every temporary is written: a destination only ever holds
-// the earlier file whole or the new file whole, never an empty or partial one.
-// Existing destinations are checked against each other, the inputs and the
-// input trees before anything is written. Two fresh destinations can still be
-// one entry under two spellings, which only exists once the first is
-// published, so before each one the destination is looked up and compared
-// with every output already published; a match refuses and undoes them. A
-// failure puts every destination back as it found it: a destination that
-// existed gets its own directory entry back (the entry itself, renamed aside
-// and renamed home, never a copy or a re-created link), one that did not is
-// removed. No temporary outlives the call. An original that will not go back
-// stays at its kept name and the error names both paths.
+// publishOutputs publishes every output through the one publisher, as one
+// transaction: each new content is staged whole beside its destination
+// before anything is moved, and then every destination is replaced, or none
+// is. A destination only ever holds the earlier file whole or the new file
+// whole, never an empty or partial one. The outputs are checked against each
+// other, the inputs and the input trees again first, so nothing is staged for
+// a refused run. A failure puts every destination back as the directory entry
+// it was (the entry itself, renamed aside and renamed home: the same inode,
+// its hard links, its mode and its time; a symbolic link stays the link it
+// was, and the file it names is the one replaced), and one that did not exist
+// is removed. No temporary outlives the call. An original that will not go
+// back stays at its kept name, and the error names both paths.
 //
 // All of that is for the one run writing to these destinations (the contract
 // at the top of this file): another process renaming into them meanwhile is
-// outside it, and undo would then restore over that process's file.
+// outside it.
 func publishOutputs(verb string, outs []pairOutput, ins []outputPath) error {
-	return publishOutputsWith(publish.OS, verb, outs, ins)
+	return publishOutputsWith(atomicfile.OS(), verb, outs, ins)
 }
 
-func publishOutputsWith(f publish.Files, verb string, outs []pairOutput, ins []outputPath) error {
+// publishOutputsWith is publishOutputs through the file operations f, the
+// publisher's seam for a test that fails a chosen step.
+func publishOutputsWith(f atomicfile.Files, verb string, outs []pairOutput, ins []outputPath) error {
 	paths := make([]outputPath, len(outs))
 	for i, o := range outs {
 		paths[i] = o.outputPath
@@ -167,50 +187,19 @@ func publishOutputsWith(f publish.Files, verb string, outs []pairOutput, ins []o
 	if err := aliasError(verb, paths, ins); err != nil {
 		return err
 	}
-	entries := make([]*publish.Entry, 0, len(outs))
+	txn := atomicfile.New()
+	defer txn.Close()
+	v := txn.With(f)
 	for _, o := range outs {
-		mode := os.FileMode(0o644)
-		if info, err := os.Stat(o.path); err == nil && info.Mode().IsRegular() {
-			mode = info.Mode().Perm()
-		}
-		e := &publish.Entry{Name: o.flag + " " + o.path, Dest: o.path}
-		entries = append(entries, e)
-		var err error
-		if e.Next, err = f.Stage(o.path, "new", o.data, mode); err == nil {
-			e.Kept, err = f.Stage(o.path, "keep", nil, mode)
-		}
-		if err != nil {
-			publish.Clean(entries)
-			return err
-		}
+		v.Write(o.path, o.data, 0o644)
 	}
-	publishStep("staged")
-	// two fresh spellings of one entry: the destination exists now only
-	// because an earlier output of this run was published there
-	before := func(i int) error {
-		now, err := os.Lstat(outs[i].path)
-		if err != nil {
-			return nil
-		}
-		for j := range i {
-			if done, derr := os.Lstat(outs[j].path); derr == nil && os.SameFile(now, done) {
-				return fmt.Errorf("%s: %s %s and %s %s name the same file: the pair needs two files, and writing both to one would leave only the second", verb, outs[j].flag, outs[j].path, outs[i].flag, outs[i].path)
-			}
-		}
-		return nil
+	err := txn.Commit()
+	if errors.Is(err, atomicfile.ErrAppeared) && len(outs) == 2 {
+		// two names that did not exist, which this volume takes for one
+		return fmt.Errorf("%w (%v)", aliasMessage(verb, outs[0].outputPath, outs[1].outputPath), err)
 	}
-	if fail := f.Publish(entries, before, func() { publishStep("renamed") }); fail != nil {
-		if len(fail.Stuck) > 0 {
-			return fmt.Errorf("%w; %s is HALF PUBLISHED: these outputs could not be put back as they were: %s", fail.Cause, verb, strings.Join(fail.Stuck, ", "))
-		}
-		return fail.Cause
-	}
-	if left := publish.RemoveKept(entries); len(left) > 0 {
-		return fmt.Errorf("%s: every output was published, but these kept originals could not be removed: %s", verb, strings.Join(left, ", "))
+	if err != nil {
+		return fmt.Errorf("%s: %w", verb, err)
 	}
 	return nil
 }
-
-// publishStep is a seam between the steps of publishOutputs; tests set it to
-// look at the destinations while a publish is part done.
-var publishStep = func(step string) {}
