@@ -255,6 +255,13 @@ func (g *tableGen) cookFieldPayload(f *ir.Field, src, at string, offset int64, i
 			width = 64
 		}
 		// A NaN OR AN INFINITY IS REFUSED, NEVER COOKED (docs/SPEC-TABLES.md §3.3)
+		if f.HasFloatRange {
+			// and A COMPRESSED FLOAT'S -0 IS COOKED AS +0 (§3.3;
+			// docs/rulings.json fixed-compressed-negzero); a plain float's
+			// -0 rides bit-exact below
+			g.pf("%sif(!table_bits_finite%d(%s(%s))) { return 0; } table_cook_put(%s,%s(%s),%d,order);\n", ind, width, storedFloatBits(f, width == 64), src, at, storedFloatBits(f, width == 64), src, width/8)
+			return
+		}
 		g.pf("%s{ uint%d_t bits; memcpy(&bits,&%s,%d); if(!table_bits_finite%d(bits)) { return 0; } table_cook_put(%s,bits,%d,order); }\n", ind, width, src, width/8, width, at, width/8)
 	case ir.TInt, ir.TFixed:
 		if t.Width == 128 {
