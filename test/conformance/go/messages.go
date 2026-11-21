@@ -121,13 +121,31 @@ func spillAbsentReason(dir, name, reason string) error {
 	return os.WriteFile(filepath.Join(dir, name+".absent"), []byte(reason), 0o644)
 }
 func surfaceMessage(lines []line, out string) error {
+	return messageSurface(lines, out, false)
+}
+
+// surfaceMessagePrior answers the `message-prior` surface
+// (testdata/conformance/tables/FORMAT.md): a prior writer's lawful batch read
+// at today's reader, handed on its own keywords. A row may owe a refusal, so
+// the answer is what the public read returned: the re-saved batch, or
+// `<case>.refused` holding this leg's own reason, a diagnostic the harness
+// never compares (docs/rulings.json `refusal-verdict-only`).
+func surfaceMessagePrior(lines []line, out string) error {
+	return messageSurface(lines, out, true)
+}
+
+func messageSurface(lines []line, out string, prior bool) error {
+	connectionKind, messageKind := "connection", "message"
+	if prior {
+		connectionKind, messageKind = "prior-connection", "prior-message"
+	}
 	for _, f := range lines {
-		if f[0] != "message" {
+		if f[0] != messageKind {
 			continue
 		}
 		var unit, path string
 		for _, c := range lines {
-			if c[0] == "connection" && c[1] == f[2] {
+			if c[0] == connectionKind && c[1] == f[2] {
 				unit, path = c[2], c[4]
 				break
 			}
@@ -152,11 +170,14 @@ func surfaceMessage(lines []line, out string) error {
 		}
 		answer, report, ok := codec.run(announcement, wire, false)
 		if !ok {
+			if !prior {
+				return fmt.Errorf("%s: message load/save %+v", f[1], report)
+			}
 			// THE ANSWER IS WHAT THE PUBLIC READ RETURNED: a batch the read
 			// refuses delivers no body, so the row is answered refused and
 			// nothing is saved. Whether the row owed a refusal is the
-			// harness's to say; a row that owed bytes is failed by it.
-			if err := spillAbsentReason(out, f[1], fmt.Sprintf("refused: %+v", report)); err != nil {
+			// harness's to say.
+			if err := os.WriteFile(filepath.Join(out, f[1]+".refused"), fmt.Appendf(nil, "%+v", report), 0o644); err != nil {
 				return err
 			}
 			continue

@@ -626,9 +626,16 @@ function messageAbsent(outDir, name, reason) {
   writeFileSync(join(outDir, name + ".absent"), reason);
 }
 
-async function surfaceMessage(lines, outDir) {
-  const connections = kind(lines, "connection");
-  for (const f of kind(lines, "message")) {
+// surfaceMessage answers the `message` surface, and with prior set the
+// `message-prior` surface (testdata/conformance/tables/FORMAT.md): the same
+// read of a batch against a peer's announcement, handed on its own keywords.
+// A prior-writer row may owe a refusal, so there the answer is what the public
+// read returned: the re-saved batch, or `<case>.refused` beside where it would
+// go, holding this leg's own reason (a diagnostic the harness never compares:
+// docs/rulings.json `refusal-verdict-only`).
+async function surfaceMessage(lines, outDir, prior) {
+  const connections = kind(lines, prior ? "prior-connection" : "connection");
+  for (const f of kind(lines, prior ? "prior-message" : "message")) {
     // message <name> <connection> <root> <file-form wire> <message-form wire>
     const conn = connections.find((c) => c[1] === f[2]);
     if (conn === undefined) { fail("message " + f[1] + " names no connection " + f[2]); }
@@ -660,13 +667,13 @@ async function surfaceMessage(lines, outDir) {
     }
     const values = Array.from({ length: runtime.TableMessageBatchMax }, () => new runtime[f[3]]());
     const count = loadMessages(values, vocabulary, new Uint8Array(readFileSync(f[5])), report);
-    // THE ANSWER IS WHAT THE PUBLIC READ RETURNED. A batch the read refuses,
-    // by a named verdict or as damage, delivers no body: the row is answered
-    // refused, with the read's own reason, and nothing is saved. Whether the
-    // row owed a refusal is the harness's to say (README, "Every read has one
-    // outcome").
+    // THE ANSWER IS WHAT THE PUBLIC READ RETURNED. A prior-writer batch the
+    // read refuses delivers no body: the row is answered refused, with the
+    // read's own reason, and nothing is saved. Whether the row owed a refusal
+    // is the harness's to say. Every `message` row owes bytes.
     if (count < 1) {
-      messageAbsent(outDir, f[1], "refused: " + (report.Reason || (report.Damaged ? "malformed" : "no body")));
+      if (!prior) { fail(f[1] + ": message load " + JSON.stringify(report)); }
+      writeFileSync(join(outDir, f[1] + ".refused"), report.Reason || (report.Damaged ? "malformed" : "no body"));
       continue;
     }
     const body = values.slice(0, count);
@@ -1637,7 +1644,7 @@ if (surface === "list") {
   // counts rather than reading as a feature the leg lacks. The retain surfaces
   // answer every row whose unit this leg generates, and name the reason beside
   // a row it cannot reach.
-  process.stdout.write("wire\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\nmessage\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n");
+  process.stdout.write("wire\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\nmessage\nmessage-prior\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n");
   process.exit(0);
 }
 if (surface === "block-lead") {
@@ -1658,7 +1665,8 @@ switch (surface) {
   case "json-read": await surfaceJsonRead(lines, outDir); break;
   case "json-write": await surfaceJsonWrite(lines, outDir); break;
   case "json-hostile": await surfaceJsonHostile(lines, outDir); break;
-  case "message": await surfaceMessage(lines, outDir); break;
+  case "message": await surfaceMessage(lines, outDir, false); break;
+  case "message-prior": await surfaceMessage(lines, outDir, true); break;
   case "cook": surfaceCook(lines, outDir); break;
   case "cook-write": await surfaceCookWrite(lines, outDir); break;
   case "cook-foreign": surfaceCookForeign(lines, outDir); break;

@@ -1082,18 +1082,27 @@ static int surface_wire( const std::string & out )
 // THE MESSAGE SURFACE (docs/SPEC-TABLES.md §3.3): read the message against the
 // connection's announced table, and write it back. The expectation is the
 // message golden itself, exactly as the wire surface's is the wire golden.
-static int surface_message( const std::string & out )
+//
+// With prior set it answers the `message-prior` surface
+// (testdata/conformance/tables/FORMAT.md): a prior writer's lawful batch read
+// at today's reader, handed on its own keywords. Such a row may owe a refusal,
+// so the answer is what the public read returned: the re-saved batch, or
+// `<case>.refused`, whose contents the harness never compares
+// (docs/rulings.json `refusal-verdict-only`).
+static int surface_message( const std::string & out, bool prior )
 {
+    const char * connection_kind = prior ? "prior-connection" : "connection";
+    const char * message_kind = prior ? "prior-message" : "message";
     for ( size_t i = 0; i < manifest_lines.size(); i++ )
     {
         const std::vector<std::string> & f = manifest_lines[i].field;
-        if ( f[0] != "message" ) continue;
+        if ( f[0] != message_kind ) continue;
         // message <name> <connection> <root> <file-form wire> <message-form wire>
         std::string unit, announcement_path;
         for ( size_t j = 0; j < manifest_lines.size(); j++ )
         {
             const std::vector<std::string> & c = manifest_lines[j].field;
-            if ( c[0] == "connection" && c[1] == f[2] ) { unit = c[2]; announcement_path = c[4]; break; }
+            if ( c[0] == connection_kind && c[1] == f[2] ) { unit = c[2]; announcement_path = c[4]; break; }
         }
         if ( unit.empty() ) { fprintf( stderr, "driver: no connection %s\n", f[2].c_str() ); return 1; }
         const MsgCodec * codec = find_msg_codec( unit, f[3] );
@@ -1115,12 +1124,13 @@ static int surface_message( const std::string & out )
         if ( !codec->round_trip( announcement.data(), (int64_t) announcement.size(),
                                  message.data(), (int64_t) message.size(), answer, &report ) )
         {
+            if ( !prior ) return 1;
             // THE ANSWER IS WHAT THE PUBLIC READ RETURNED: a batch the read
             // refuses delivers no body, so the row is answered refused and
             // nothing is saved. Whether the row owed a refusal is the
-            // harness's to say; a row that owed bytes is failed by it.
+            // harness's to say.
             static const char refused[] = "refused";
-            if ( !spill( out, f[1] + ".absent", (const uint8_t *) refused, sizeof( refused ) - 1 ) ) return 1;
+            if ( !spill( out, f[1] + ".refused", (const uint8_t *) refused, sizeof( refused ) - 1 ) ) return 1;
             continue;
         }
         if ( !spill( out, f[1], answer.data(), answer.size() ) ) return 1;
@@ -2360,7 +2370,7 @@ int main( int argc, char ** argv )
     const std::string surface = argv[2];
     if ( surface == "list" )
     {
-        printf( "wire\nmessage\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook-write\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n" );
+        printf( "wire\nmessage\nmessage-prior\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook-write\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n" );
         return 0;
     }
     if ( argc < 4 )
@@ -2371,7 +2381,8 @@ int main( int argc, char ** argv )
     const std::string out = argv[3];
 
     if ( surface == "wire" ) return surface_wire( out );
-    if ( surface == "message" ) return surface_message( out );
+    if ( surface == "message" ) return surface_message( out, false );
+    if ( surface == "message-prior" ) return surface_message( out, true );
     if ( surface == "report" ) return surface_report( out );
     if ( surface == "framing" ) return surface_framing( out );
     if ( surface == "retain" ) return surface_retain( out );
