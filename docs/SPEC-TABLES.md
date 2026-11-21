@@ -841,7 +841,7 @@ refuses a table today is a gap, named in §15, not a design.
 ```
 fixed table Physics
 {
-    mass float32 | min = 0.1, max = 100000.0
+    mass float32 = 1.0 | min = 0.1, max = 100000.0, resolution = 0.01
     drag float32
 }
 
