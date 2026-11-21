@@ -19,7 +19,10 @@ import (
 // countedBirthSchema holds one counted array with a positive minimum per
 // element kind (a scalar, a declared type whose field carries a default, and
 // a 128-bit integer), on a fixed root (the message form) and on a variable
-// root (the variable form).
+// root (the variable form). Each kind's field has its own name: the Luau
+// message writer keys its vocabulary by field id alone, so two roots holding
+// a same-named field of different types collide there (a defect outside this
+// test's subject, reported apart).
 const countedBirthSchema = `package birth
 
 type Rec
@@ -28,19 +31,28 @@ type Rec
     on bool
 }
 
-fixed table FixI32 { few [2..4]int32 }
-fixed table FixRec { few [2..4]Rec }
-fixed table FixU128 { few [2..4]uint128 }
-table VarI32 { few [2..4]int32 }
-table VarRec { few [2..4]Rec }
-table VarU128 { few [2..4]uint128 }
+fixed table FixI32 { fi [2..4]int32 }
+fixed table FixRec { fr [2..4]Rec }
+fixed table FixU128 { fu [2..4]uint128 }
+table VarI32 { fi [2..4]int32 }
+table VarRec { fr [2..4]Rec }
+table VarU128 { fu [2..4]uint128 }
 `
 
 // countedBirthCase is one value of the field: the engine places it from its
 // JSON text (fresh when empty) and the probe from Luau statements on a fresh
-// value v.
+// value v. Both spell the field `few` / `Few`; field() renames it per kind.
 type countedBirthCase struct {
 	name, kind, text, place string
+}
+
+// field is the case with the field spelled as its kind's root declares it.
+func (c countedBirthCase) field() countedBirthCase {
+	name := map[string]string{"I32": "fi", "Rec": "fr", "U128": "fu"}[c.kind]
+	slot := strings.ToUpper(name[:1]) + name[1:]
+	c.text = strings.ReplaceAll(c.text, `"few"`, `"`+name+`"`)
+	c.place = strings.ReplaceAll(c.place, "v.Few", "v."+slot)
+	return c
 }
 
 func countedBirthCases() []countedBirthCase {
@@ -137,11 +149,13 @@ local function text(x)
 	if type(x) == "string" then return buffer.fromstring(x) end
 	return x
 end
-for _, r in { "FixI32", "VarI32", "FixU128", "VarU128", "FixRec", "VarRec" } do
-	assert(T["New" .. r]().FewCount == 2, r .. " born count")
+for _, r in { { "I32", "Fi" }, { "U128", "Fu" }, { "Rec", "Fr" } } do
+	for _, side in { "Fix", "Var" } do
+		assert(T["New" .. side .. r[1]]()[r[2] .. "Count"] == 2, side .. r[1] .. " born count")
+	end
 end
 for _, r in { "FixRec", "VarRec" } do
-	local few = T["New" .. r]().Few
+	local few = T["New" .. r]().Fr
 	assert(few[1].N == 55 and few[2].N == 55 and few[1] ~= few[2], r .. " born elements")
 end
 
@@ -165,6 +179,9 @@ end
 local v, var
 `)
 	cases := countedBirthCases()
+	for i := range cases {
+		cases[i] = cases[i].field()
+	}
 	for _, c := range cases {
 		fmt.Fprintf(&probe, "v = T.NewVar%s()\n%s\nvar = v\nv = T.NewFix%s()\n%s\nemit(%q, %q, var, v)\n", c.kind, c.place, c.kind, c.place, c.name, c.kind)
 	}
