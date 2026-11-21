@@ -2174,6 +2174,7 @@ You can see `kind_mismatch` by copying the unit again to `starlight-3.0` and
 making `armor` a `float32 = 1.0`. `load3.cpp` there is `load.cpp` with one
 printf, because `armor` is a different C++ type now:
 
+<!-- example: compile unit=generated/bench/tables/cpp harness=cpp-table-report -->
 ```cpp
     printf( "load: %s  armor=%g (a float now)\n", ok ? "ok" : "stopped", loaded.armor );
     printf( "  report: unknown=%d kind_mismatch=%d clamped=%d\n",
