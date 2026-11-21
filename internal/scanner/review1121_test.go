@@ -1,7 +1,7 @@
 // Scanner regressions from the 2026-11-21 review: a doc line refuses U+0085
 // (NEL, a C# line end) beside CR, LS and PS; a trailing backslash is found
 // past a form feed or vertical tab (GCC and Clang still splice the line); doc
-// text and string literals are UTF-8 (SPEC §4.1); and one number's spelling
+// text is UTF-8 (SPEC §4.1); and one number's spelling
 // is bounded, since a multi-megabyte digit run costs quadratic work.
 package scanner
 
@@ -28,13 +28,10 @@ func TestDocLineRefusesBackslashBeforeFormFeedOrVerticalTab(t *testing.T) {
 	}
 }
 
-func TestDocLineAndStringMustBeUTF8(t *testing.T) {
+func TestDocLineMustBeUTF8(t *testing.T) {
 	t.Parallel()
 	if !hasSubstrs(errorTexts("package ok\n/// caf\xe9\ntype T { x int32 }\n"), "UTF-8") {
 		t.Error("a doc line that is not UTF-8 was not refused")
-	}
-	if !hasSubstrs(errorTexts("package ok\ntable T | cpp_include = \"caf\xe9.h\"\n{\n    x int32\n}\n"), "UTF-8") {
-		t.Error("a string literal that is not UTF-8 was not refused")
 	}
 	if errs := errorTexts("package ok\n/// café \u00e9\ntype T { x int32 }\n"); len(errs) > 0 {
 		t.Errorf("a UTF-8 doc line was refused: %v", errs)

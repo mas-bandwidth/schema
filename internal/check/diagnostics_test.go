@@ -59,10 +59,8 @@ func TestDiagnostics(t *testing.T) {
 		// ---- a file's basename becomes generated names (SPEC §4.6) ----
 		{name: "basename not an identifier", want: "must be one",
 			srcs: map[string]string{"my-ships.schema": "package t\ntype A { a int32 }\n"}},
-		{name: "basename a Rust keyword", want: "reserved word",
-			srcs: map[string]string{"type.schema": "package t\ntype A { a int32 }\n"}},
-		{name: "basename a Rust keyword once lowercased", want: "Rust",
-			srcs: map[string]string{"Match.schema": "package t\ntype A { a int32 }\n"}},
+		{name: "basename with a dot", want: "must be one",
+			srcs: map[string]string{"ships.v2.schema": "package t\ntype A { a int32 }\n"}},
 		// ---- cycles: infinite size, infinite folding ----
 		{name: "type cycle, mutual", want: "type composition cycle",
 			src: "package t\ntype A { b B }\ntype B { a A }\n"},

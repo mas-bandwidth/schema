@@ -239,21 +239,14 @@ func (c *checker) checkCHeaderFileName() {
 
 // checkFileBaseName refuses a schema file whose basename no target can carry
 // as a name (SPEC §4.6, ruling target-name-safety): the basename becomes
-// generated identifiers — Rust's `mod <base lowercased>;`, the C include
-// guard, a module or class name — so it is an identifier, and neither it nor
-// (for Rust's module) its lowercased form is a reserved word of a target.
+// generated identifiers in every target — Rust's `mod <base lowercased>;`,
+// the C include guard, module and class names — so it is an identifier. A
+// basename that lowers to a Rust keyword is the Rust target's own refusal
+// (compiler/target_rust.go), since no other target emits the basename bare.
 func (c *checker) checkFileBaseName() {
 	for _, f := range c.files {
 		if !isIdentifier(f.Base) {
 			c.errf(f.AST.PkgPos, "schema file %s: the basename %q becomes generated identifiers and must be one, [A-Za-z_][A-Za-z0-9_]*; rename the file (SPEC §4.6)", f.Name, f.Base)
-			continue
-		}
-		langs := slices.Clone(targetReserved[f.Base])
-		if lower := strings.ToLower(f.Base); lower != f.Base && slices.Contains(targetReserved[lower], "Rust") && !slices.Contains(langs, "Rust") {
-			langs = append(langs, "Rust")
-		}
-		if len(langs) > 0 {
-			c.errf(f.AST.PkgPos, "schema file %s: the basename %s is a reserved word in %s, where it becomes a generated name (Rust's module is the basename lowercased); rename the file (SPEC §4.6)", f.Name, f.Base, strings.Join(langs, ", "))
 		}
 	}
 }

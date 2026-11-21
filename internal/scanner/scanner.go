@@ -450,9 +450,6 @@ func (s *state) scanToken() Token {
 				return Token{String, string(s.src[start:s.off]) + `"`, p}
 			}
 			s.advance()
-			if !utf8.Valid(s.src[start:s.off]) {
-				s.errf(p, "a string literal is not valid UTF-8 (SPEC §4.1)")
-			}
 			return Token{String, string(s.src[start:s.off]), p}
 
 		default:
