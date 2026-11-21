@@ -441,7 +441,7 @@ func luaHostileGrade(c luaHostileCase, a luaHostileAnswer, answered bool) (why s
 	if !answered {
 		return fmt.Sprintf("%s: want %s/%s, got no answer", c.Name, c.Verdict, c.Reason), false
 	}
-	verdictOK = a.verdict == c.Verdict && a.reason == c.Reason
+	verdictOK = a.verdict == c.Verdict && (c.Verdict == luaHostileRefuse || a.reason == c.Reason)
 	if !verdictOK {
 		return fmt.Sprintf("%s: want %s/%s, got %s/%s", c.Name, c.Verdict, c.Reason, a.verdict, a.reason), false
 	}

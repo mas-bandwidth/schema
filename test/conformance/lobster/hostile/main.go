@@ -374,6 +374,9 @@ func expected(c hostilecorpus.Case) string {
 // refusal on its verdict alone, whatever either names (refusal-verdict-only);
 // an accept on its digest. No answer is never a refusal.
 func agrees(got, want string) bool {
+	if strings.HasPrefix(got, "refuse ") && strings.HasPrefix(want, "refuse ") {
+		return true
+	}
 	return got == want
 }
 

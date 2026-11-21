@@ -154,6 +154,9 @@ public final class Runner {
     // verdict alone (refusal-verdict-only), an accept on its digest. A throw,
     // a stack overflow or a budget overrun is never a refusal.
     private static boolean agrees(String got, String want) {
+        if (refused(got) && refused(want)) {
+            return true;
+        }
         return got.equals(want);
     }
 

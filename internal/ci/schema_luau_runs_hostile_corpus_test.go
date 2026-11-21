@@ -573,7 +573,7 @@ func luauHostileGrade(c hostileCase, g [4]string) (kind, digest string) {
 			digest = hex.EncodeToString(sum[:])
 		}
 	}
-	if g[1] != c.verdict || g[2] != c.reason {
+	if g[1] != c.verdict || (c.verdict != "refuse" && g[2] != c.reason) {
 		return "verdict", digest
 	}
 	if c.verdict == "accept" && digest != c.digest {

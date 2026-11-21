@@ -383,7 +383,7 @@ func rubyHostileGrade(c rubyHostileCase, a rubyHostileAnswer, answered bool) str
 	if !answered {
 		return fmt.Sprintf("%s: want %s/%s, got no answer", c.Name, c.Verdict, c.Reason)
 	}
-	if a.verdict != c.Verdict || a.reason != c.Reason {
+	if a.verdict != c.Verdict || (c.Verdict != rubyHostileRefuse && a.reason != c.Reason) {
 		return fmt.Sprintf("%s: want %s/%s, got %s/%s", c.Name, c.Verdict, c.Reason, a.verdict, a.reason)
 	}
 	if c.Verdict == rubyHostileAccept {

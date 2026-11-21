@@ -121,6 +121,9 @@ fn expected(verdict: &str, carrier: &str, reason: &str, digest: &str) -> String 
 // alone (refusal-verdict-only), an accept on its digest. A panic, a crash or a
 // timeout is never a refusal.
 fn agrees(got: &str, want: &str) -> bool {
+    if refused(got) && refused(want) {
+        return true;
+    }
     got == want
 }
 

@@ -95,6 +95,7 @@ Answer wantAnswer(String verdict, String reason, String digest) =>
 // alone (docs/rulings.json refusal-verdict-only), an accept on its digest. An
 // error, a crash or a budget overrun is never a refusal.
 bool agrees(Answer got, Answer want) {
+  if (got.verdict == 'refuse' && want.verdict == 'refuse') return true;
   return got.verdict == want.verdict && got.detail == want.detail;
 }
 

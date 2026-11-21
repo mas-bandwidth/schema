@@ -57,6 +57,7 @@ expected_answer = fn verdict, want_reason, want_digest ->
 end
 
 agrees = fn
+  {:refuse, _}, {:refuse, _} -> true
   got, expected -> got == expected
 end
 

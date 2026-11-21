@@ -133,6 +133,7 @@ static class H
     // a crash or a hang is never a refusal.
     internal static bool Agrees(string got, string want)
     {
+        if (Refused(got) && Refused(want)) { return true; }
         return got == want;
     }
 }

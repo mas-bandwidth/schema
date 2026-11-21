@@ -655,6 +655,9 @@ function show(a) {
 // reason either side names is diagnostic detail. An accept conforms on the
 // digest of its decoded value; an error, a hang or a crash is never a refusal.
 function agrees(got, w) {
+  if (got.verdict === "refuse" && w.verdict === "refuse") {
+    return true;
+  }
   return got.verdict === w.verdict && got.detail === w.detail;
 }
 

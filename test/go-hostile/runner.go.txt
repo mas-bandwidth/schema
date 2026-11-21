@@ -106,6 +106,9 @@ func refused(answer string) bool {
 // refusal on its verdict alone (refusal-verdict-only), an accept on its digest.
 // An error or a panic is never a refusal.
 func agrees(got, want string) bool {
+	if refused(got) && refused(want) {
+		return true
+	}
 	return got == want
 }
 

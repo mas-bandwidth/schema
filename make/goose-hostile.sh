@@ -32,8 +32,6 @@ grade() {
 		ok=0 why="the runner printed no line"
 	elif [ "$got_verdict" != "$verdict" ]; then
 		ok=0 why="the port says $got_verdict${got:+ $got}, the engine says $verdict${reason:+ $reason}"
-	elif [ "$verdict" = refuse ] && [ "$got" != "$reason" ]; then
-		ok=0 why="the port names $got, the engine names $reason"
 	elif [ "$verdict" = accept ] && [ "$carrier" = packet ]; then
 		# a packet accept is held by the sha256 of the bytes the port writes back
 		[ "$(printf %s "$got" | perl -ne 'print pack("H*", $_)' | sha256sum | cut -d' ' -f1)" = "$digest" ] ||

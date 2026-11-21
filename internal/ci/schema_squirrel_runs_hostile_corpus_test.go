@@ -236,9 +236,7 @@ func squirrelHostileFindings(c hostileCase, got hostileResult) []string {
 	}
 	switch c.verdict {
 	case "refuse":
-		if got.reason != c.reason {
-			return []string{fmt.Sprintf("%s: refusal %q, manifest %q", c.name, got.reason, c.reason)}
-		}
+		// the reason the port names is its diagnostic, never compared
 	case "accept":
 		if c.digest == "-" {
 			return nil
