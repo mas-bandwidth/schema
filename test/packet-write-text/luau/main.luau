@@ -27,9 +27,11 @@ local function trim(s: string): string
 end
 
 local failed = false
+local failures = 0
 local function check(ok: boolean, what: string)
 	if not ok then
 		failed = true
+		failures += 1
 		print("FAILED: " .. what)
 	end
 end
@@ -75,7 +77,10 @@ for line in string.gmatch(casesText, "[^\n]+") do
 end
 check(refused > 0 and written > 0, "packet-write-text cases: both verdicts present")
 
-if failed then
+-- The last stdout line is the count tools/mustrun reads: the cases run and
+-- the failed checks among them.
+print(string.format("packet-write-text Luau: %d ill-formed cases refused; %d well-formed cases written and read back byte exact", refused, written))
+print(string.format("packet-write-text Luau: ran %d, failed %d", refused + written, failures))
+if failed or refused + written == 0 then
 	error("packet-write-text Luau: FAILED")
 end
-print(string.format("packet-write-text Luau: %d ill-formed cases refused; %d well-formed cases written and read back byte exact", refused, written))

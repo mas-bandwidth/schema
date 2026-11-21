@@ -7,9 +7,9 @@ define luau-cfloat-tree
 endef
 
 .PHONY: packet-write-cfloat-luau packet-write-cfloat-luau-negative-control
-packet-write-cfloat-luau: toolchain-luau build/packet-luau/schema-luau
+packet-write-cfloat-luau: toolchain-luau build/packet-luau/schema-luau build/mustrun
 	$(call luau-cfloat-tree,build/packet-write-cfloat/luau)
-	cd build/packet-write-cfloat/luau && $(LUAU) main.luau
+	cd build/packet-write-cfloat/luau && $(CURDIR)/$(MUSTRUN) -name packet-write-cfloat-luau -count 1 -- $(LUAU) main.luau
 	cd build/packet-write-cfloat/luau && $(LUAU_ANALYZE) *.luau
 
 packet-write-cfloat-luau-negative-control: packet-write-cfloat-luau

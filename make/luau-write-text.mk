@@ -16,8 +16,8 @@ build/packet-write-text/luau/.stamp: $(LUAU_PACKET_SCHEMA) test/packet-write-tex
 	@touch $@
 
 .PHONY: packet-write-text-luau packet-write-text-luau-negative-control
-packet-write-text-luau: toolchain-luau build/packet-write-text/luau/.stamp
-	cd build/packet-write-text/luau && $(LUAU) main.luau
+packet-write-text-luau: toolchain-luau build/packet-write-text/luau/.stamp build/mustrun
+	cd build/packet-write-text/luau && $(CURDIR)/$(MUSTRUN) -name packet-write-text-luau -count 1 -- $(LUAU) main.luau
 	cd build/packet-write-text/luau && $(LUAU_ANALYZE) *.luau
 
 packet-write-text-luau-negative-control: packet-write-text-luau

@@ -210,4 +210,7 @@ test("Codec conversion preserves shared-blob refusal", function()
   eq(codec.Save(root), nil, "shared blob must not be cloned into two permitted blobs")
 end)
 
-return string.format("cards (luau): %d passed, %d failed\n", passed, failed)
+-- The returned line is the count tools/mustrun reads from unit.txt; a failed
+-- test raises above, and a run of no test is a failure.
+if passed == 0 then error("FAIL cards (luau): no test ran", 0) end
+return string.format("cards (luau): %d passed, %d failed\ncards (luau): ran %d, failed %d\n", passed, failed, passed + failed, failed)
