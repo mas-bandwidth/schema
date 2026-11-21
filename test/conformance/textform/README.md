@@ -38,8 +38,13 @@ footer” belong to the root. Blank lines are separate trivia. In layout the
 heading and EOF comment belong to the root, and “field” belongs to title.
 The variable heading belongs to Graph.
 
-Every `refusals/*.sexp` has its exact stable name in the same-stem `.reason`.
-Use Document except `duplicate-map` and `forward-reference`, which use Graph.
+Every `refusals/*.sexp` MUST be refused, with nothing landed: no partial
+value, no document. That verdict is the whole conformance contract
+(docs/rulings.json `refusal-verdict-only`). The same-stem `.reason` holds the
+recommended name from §16.9.4's vocabulary; it is non-normative, per-language
+diagnostic detail, and no harness compares it. A port may name the refusal
+differently or check in another order. A crash or any error other than the
+port's own refusal is a failure, never a refusal. Use Document except `duplicate-map` and `forward-reference`, which use Graph.
 Inputs deliberately omit a final newline. All use contract limits. The names
 of the files identify the specific rule: unknown/duplicate keys (including
 quoted aliases), numeric/string/UTF-16/byte/array bounds, short fixed array,
