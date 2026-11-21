@@ -44,6 +44,7 @@ var (
 	runPath  = regexp.MustCompile(`^repos/` + nightlyRedRepo + `/actions/runs/(\d+)$`)
 	jobsPath = regexp.MustCompile(`^repos/` + nightlyRedRepo + `/actions/runs/(\d+)/jobs\?filter=latest&per_page=100$`)
 	logPath  = regexp.MustCompile(`^repos/` + nightlyRedRepo + `/actions/jobs/(\d+)/logs$`)
+	notePath = regexp.MustCompile(`^repos/` + nightlyRedRepo + `/check-runs/(\d+)/annotations$`)
 )
 
 func (f *fakeGH) API(path string, paginate bool) ([]byte, error) {
@@ -65,6 +66,13 @@ func (f *fakeGH) API(path string, paginate bool) ([]byte, error) {
 			f.t.Errorf("jobs listing read without --paginate: a run has hundreds of jobs")
 		}
 		return os.ReadFile(filepath.Join(f.dir, "jobs", m[1]+".json"))
+	}
+	if m := notePath.FindStringSubmatch(path); m != nil {
+		b, err := os.ReadFile(filepath.Join(f.dir, "annotations", m[1]+".json"))
+		if err != nil {
+			return nil, fmt.Errorf("HTTP 404: Not Found (https://api.github.com/%s)", path)
+		}
+		return b, nil
 	}
 	if m := logPath.FindStringSubmatch(path); m != nil {
 		b, err := os.ReadFile(filepath.Join(f.dir, "logs", m[1]+".log"))
@@ -157,7 +165,7 @@ func TestNightlyRedAnnouncesACancelledRunHidingAFailedJob(t *testing.T) {
 	}
 	body := f.body(t, "issue comment 4601")
 	for _, s := range []string{
-		"<!-- nightly-red run=44923872707 attempt=1 -->",
+		"<!-- nightly-red run=44923872707 attempt=1 verdict=red -->",
 		"[run 44923872707](https://github.com/mas-bandwidth/schema/actions/runs/44923872707)",
 		"`a7f8403fef`",
 		"The nightly was cancelled with 1 failed job(s) inside.",
@@ -194,7 +202,7 @@ func TestNightlyRedOpensAndPinsTheIssueOnAFailedNight(t *testing.T) {
 	}
 	want := []string{
 		listCall,
-		"label create nightly-red --repo " + nightlyRedRepo + " --color B60205 --description the ci-full nightly is red --force",
+		"label create nightly-red --repo " + nightlyRedRepo + " --color B60205 --description the ci-full nightly is red or did not complete --force",
 		"issue create --repo " + nightlyRedRepo + " --title CI full nightly is red --label nightly-red --body-file -",
 		"issue pin 4600 --repo " + nightlyRedRepo,
 	}
@@ -283,27 +291,72 @@ func TestNightlyRedClosesOnGreen(t *testing.T) {
 	}
 }
 
-// TestNightlyRedLeavesQuietRunsAlone: a scheduled run somebody cancelled with
-// nothing failed (2026-11-21, two minutes in), and a dispatched run however it
-// ended, touch no issue. Run 44923872707 as recorded (dispatched) is the
-// control for the red test above: the same jobs, quiet only for its event.
+// TestNightlyRedAnnouncesANightlyThatDidNotComplete: 2026-11-21's nightly was
+// cancelled two minutes in with nothing failed, so there was no nightly
+// result. That is announced on the same issue, as "did not complete", with
+// who cancelled it (GitHub's annotation, not the run's actor, which names the
+// cron's last editor) and when, and it never closes the issue.
+func TestNightlyRedAnnouncesANightlyThatDidNotComplete(t *testing.T) {
+	t.Parallel()
+	f := &fakeGH{issues: openIssue}
+	log := announce(t, f, 44879403180)
+	if !strings.Contains(log, "did not complete (the nightly was cancelled with no failed job inside, so it gave no result)") {
+		t.Errorf("log:\n%s", log)
+	}
+	want := []string{listCall, "issue comment 4601 --repo " + nightlyRedRepo + " --body-file -"}
+	if got := f.issueCalls(); !slices.Equal(got, want) {
+		t.Fatalf("issue calls on an open issue:\n got %q\nwant %q (never a close)", got, want)
+	}
+	body := f.body(t, "issue comment 4601")
+	for _, s := range []string{
+		"<!-- nightly-red run=44879403180 attempt=1 verdict=did-not-complete -->",
+		"**CI full nightly did not complete**: [run 44879403180](https://github.com/mas-bandwidth/schema/actions/runs/44879403180), attempt 1, on `1bb7bc7411` (main), started 2026-11-21T07:15:32Z, ended cancelled at 2026-11-21T07:17:44Z.",
+		"The run was canceled by @gafferongames (GitHub's annotation on job JavaScript fuzz (retain)).",
+		"There is no nightly result for this commit. Its 441 job(s): 412 cancelled, 1 skipped, 28 success.",
+	} {
+		if !strings.Contains(body, s) {
+			t.Errorf("summary lacks %q:\n%s", s, body)
+		}
+	}
+	if strings.Contains(body, "rowan-claude") {
+		t.Errorf("summary names the run's actor, the cron's last editor, as if it cancelled the run:\n%s", body)
+	}
+	var notes []string
+	for _, c := range f.calls {
+		if strings.HasSuffix(c, "/annotations") {
+			notes = append(notes, c)
+		}
+	}
+	if want := []string{"api repos/" + nightlyRedRepo + "/check-runs/136771153542/annotations"}; !slices.Equal(notes, want) {
+		t.Errorf("annotations read %q, want only the first cancelled job's %q", notes, want)
+	}
+
+	// a closed issue is reopened and pinned for it, like a red night
+	f = &fakeGH{issues: closedIssue}
+	announce(t, f, 44879403180)
+	want = []string{
+		listCall,
+		"issue reopen 4601 --repo " + nightlyRedRepo,
+		"issue pin 4601 --repo " + nightlyRedRepo,
+		"issue comment 4601 --repo " + nightlyRedRepo + " --body-file -",
+	}
+	if got := f.issueCalls(); !slices.Equal(got, want) {
+		t.Fatalf("issue calls on a closed issue:\n got %q\nwant %q", got, want)
+	}
+}
+
+// TestNightlyRedLeavesQuietRunsAlone: a dispatched run, however it ended,
+// touches no issue. Run 44923872707 as recorded (dispatched) is the control
+// for the red test above: the same jobs, quiet only for its event.
 func TestNightlyRedLeavesQuietRunsAlone(t *testing.T) {
 	t.Parallel()
-	for _, c := range []struct {
-		run int64
-		why string
-	}{
-		{44879403180, "quiet (the nightly was cancelled with no failed job inside)"},
-		{44923872707, "quiet (run 44923872707 is a workflow_dispatch run, not the scheduled nightly)"},
-	} {
-		f := &fakeGH{issues: openIssue}
-		log := announce(t, f, c.run)
-		if !strings.Contains(log, c.why) {
-			t.Errorf("run %d: log %q lacks %q", c.run, log, c.why)
-		}
-		if got := f.issueCalls(); len(got) != 0 {
-			t.Errorf("run %d is quiet but Announce called %q", c.run, got)
-		}
+	f := &fakeGH{issues: openIssue}
+	log := announce(t, f, 44923872707)
+	if want := "quiet (run 44923872707 is a workflow_dispatch run, not the scheduled nightly)"; !strings.Contains(log, want) {
+		t.Errorf("log %q lacks %q", log, want)
+	}
+	if got := f.issueCalls(); len(got) != 0 {
+		t.Errorf("a dispatched run is quiet but Announce called %q", got)
 	}
 }
 
@@ -322,10 +375,11 @@ func TestNightlyRedClassify(t *testing.T) {
 		{"failure", []nightlyred.Job{ok, {Conclusion: "failure"}}, nightlyred.Red},
 		{"timed_out", nil, nightlyred.Red},
 		{"startup_failure", nil, nightlyred.Red},
-		{"cancelled", []nightlyred.Job{ok, cancelled}, nightlyred.Quiet},
+		{"cancelled", []nightlyred.Job{ok, cancelled}, nightlyred.Incomplete},
 		{"cancelled", []nightlyred.Job{ok, cancelled, {Conclusion: "failure"}}, nightlyred.Red},
 		{"cancelled", []nightlyred.Job{ok, cancelled, {Conclusion: "timed_out"}}, nightlyred.Red},
-		{"neutral", nil, nightlyred.Quiet},
+		{"neutral", nil, nightlyred.Incomplete},
+		{"skipped", nil, nightlyred.Incomplete},
 	} {
 		run := sched
 		run.Conclusion = c.conclusion
@@ -408,7 +462,7 @@ func TestNightlyRedWorkflowWiring(t *testing.T) {
 	}
 	for _, s := range []string{
 		"\non:\n  workflow_run:\n    workflows: [ '" + strings.TrimSpace(m[1]) + "' ]\n    types: [ completed ]\n",
-		"\npermissions:\n  actions: read\n  contents: read\n  issues: write\n",
+		"\npermissions:\n  actions: read\n  checks: read\n  contents: read\n  issues: write\n",
 		"    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.event == 'schedule'\n",
 		"          GH_TOKEN: ${{ github.token }}\n",
 		"          RUN_ID: ${{ github.event.workflow_run.id || inputs.run }}\n",
@@ -424,5 +478,58 @@ func TestNightlyRedWorkflowWiring(t *testing.T) {
 	}
 	if want := strings.TrimPrefix(nightlyred.Workflow, ".github/workflows/"); want != "ci-full.yml" {
 		t.Errorf("nightlyred.Workflow names %s, not ci-full.yml", nightlyred.Workflow)
+	}
+}
+
+// nightlyConcurrencyErrors says how ci-full.yml's concurrency could let
+// another run cancel the scheduled nightly: a group that does not carry the
+// event name (a push, a dispatch or a pull request on main would share the
+// nightly's group, and the newer pending run displaces the older), or
+// cancel-in-progress true for anything but a pull request.
+func nightlyConcurrencyErrors(wf string) []string {
+	const (
+		wantGroup  = "  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}\n"
+		wantCancel = "  cancel-in-progress: ${{ github.event_name == 'pull_request' }}\n"
+	)
+	_, block, ok := strings.Cut(wf, "\nconcurrency:\n")
+	if !ok {
+		return []string{"ci-full.yml has no top-level concurrency block"}
+	}
+	if end := strings.Index(block, "\n\n"); end >= 0 {
+		block = block[:end+1]
+	}
+	var errs []string
+	if !strings.Contains(block, wantGroup) {
+		errs = append(errs, "ci-full.yml's concurrency group is not per event and ref, so another run could share the scheduled nightly's group")
+	}
+	if !strings.Contains(block, wantCancel) {
+		errs = append(errs, "ci-full.yml cancels in progress for more than pull requests, so another run could cancel the scheduled nightly")
+	}
+	return errs
+}
+
+// TestNoRunCancelsTheScheduledNightly: the scheduled ci-full run's
+// concurrency group is its own (event and ref in the key) and only pull
+// requests cancel in progress, so no push, dispatch or pull request run can
+// cancel or displace it. The 2026-11-20 and 11-21 nightlies were not
+// cancelled this way (a person cancelled them; nightly-red.yml now says who),
+// and this holds that no workflow change can start doing it.
+func TestNoRunCancelsTheScheduledNightly(t *testing.T) {
+	t.Parallel()
+	wf := workflows(t, repoRoot(t))["ci-full.yml"]
+	for _, e := range nightlyConcurrencyErrors(wf) {
+		t.Error(e)
+	}
+	for _, c := range []struct{ name, from, to string }{
+		{"a group shared by every event", "format('{0}-{1}', github.event_name, github.ref)", "github.ref"},
+		{"cancel-in-progress for every run", "cancel-in-progress: ${{ github.event_name == 'pull_request' }}", "cancel-in-progress: true"},
+		{"cancel-in-progress for dispatch too", "github.event_name == 'pull_request' }}\n", "github.event_name != 'schedule' }}\n"},
+	} {
+		if !strings.Contains(wf, c.from) {
+			t.Fatalf("control %q cannot plant: ci-full.yml lacks %q", c.name, c.from)
+		}
+		if len(nightlyConcurrencyErrors(strings.Replace(wf, c.from, c.to, 1))) == 0 {
+			t.Errorf("PLANTED PATTERN %q left the gate green", c.name)
+		}
 	}
 }

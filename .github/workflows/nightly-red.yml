@@ -13,8 +13,14 @@ name: nightly red
 #     labelled nightly-red, listing each failed job, its first error line and
 #     the run link. The issue is created and pinned the first time, and
 #     reopened and pinned when it was closed.
+#   - did not complete (cancelled with no failed job inside, or any other
+#     conclusion but success): no nightly result, which is as silent as a
+#     red one. The same issue gets a "did not complete" comment naming who
+#     cancelled the run (GitHub's job annotation) and when; it never closes
+#     the issue. On 2026-11-20 and 11-21 @gafferongames cancelled the nightly
+#     minutes in, and the run's actor read rowan-claude (the cron's last
+#     editor), so the actor is never the answer.
 #   - green: the open issue gets the green run's link and is closed.
-#   - cancelled with no failed job inside (somebody stopped it): left alone.
 # The decision is internal/ci/nightlyred.Announce, tested from recorded runs by
 # internal/ci/nightly_red_test.go, which also holds this file's wiring.
 #
@@ -34,6 +40,7 @@ on:
 
 permissions:
   actions: read
+  checks: read
   contents: read
   issues: write
 

@@ -1,14 +1,16 @@
-// Package nightlyred is the NIGHTLY-RED ANNOUNCER: a red ci-full nightly must
-// never go unseen. When ci-full.yml's scheduled run ends not green, one
-// summary (each failed job, its first error line, the run link) goes to the
-// single issue labelled nightly-red, which is pinned and reopened; the next
-// green nightly closes it.
+// Package nightlyred is the NIGHTLY-RED ANNOUNCER: a ci-full nightly that is
+// not green must never go unseen. When ci-full.yml's scheduled run ends red,
+// or ends with no result, one summary goes to the single issue labelled
+// nightly-red, which is pinned and reopened; the next green nightly closes it.
 //
 // Nothing in the repository recorded a failed nightly before this (PR #4539's
 // audit: "Nobody hears about a red nightly"). The nights of 2026-11-07 to
 // 11-19 all ended failure, and the go-test row that hid nine red tests in
 // internal/codegen/gotable for days was cancelled, not failed, so a run can
-// read cancelled while a job inside it failed. Both are red here.
+// read cancelled while a job inside it failed: that is red. A nightly
+// cancelled with nothing failed gave no result at all (2026-11-20 and 11-21,
+// each cancelled minutes in): that is "did not complete", announced on the
+// same issue, with who cancelled it and when, and never a reason to close it.
 //
 // .github/workflows/nightly-red.yml runs `go run ./tools/nightlyred` on every
 // completed ci-full run. All the logic is Announce, which reaches GitHub only
@@ -23,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"regexp"
 	"slices"
 	"strconv"
@@ -33,7 +36,7 @@ import (
 const (
 	Label    = "nightly-red"
 	Workflow = ".github/workflows/ci-full.yml"
-	Title    = "CI full nightly is red"
+	Title    = "CI full nightly is not green"
 )
 
 // maxRows bounds the jobs listed in one comment (a nightly with 90 failed
@@ -57,6 +60,7 @@ type Run struct {
 	HeadBranch string `json:"head_branch"`
 	RunAttempt int    `json:"run_attempt"`
 	StartedAt  string `json:"run_started_at"`
+	UpdatedAt  string `json:"updated_at"` // when it ended, for a completed run
 }
 
 // Job is one entry of the run's jobs listing.
@@ -79,18 +83,20 @@ type Issue struct {
 type Verdict int
 
 const (
-	// Quiet: not a scheduled ci-full run, or cancelled with no failed job
-	// inside (a run somebody stopped); the issue is left as it is.
+	// Quiet: not a scheduled ci-full run; the issue is left as it is.
 	Quiet Verdict = iota
 	// Red: failure, timed_out or startup_failure, or cancelled with a failed
 	// job inside.
 	Red
 	// Green: success; an open issue is closed.
 	Green
+	// Incomplete: no result. Cancelled with no failed job inside, or any
+	// other conclusion but success; announced like red, never closes.
+	Incomplete
 )
 
 func (v Verdict) String() string {
-	return [...]string{"quiet", "red", "green"}[v]
+	return [...]string{"quiet", "red", "green", "did not complete"}[v]
 }
 
 // failedJob reports whether a job's conclusion is a failure the summary lists.
@@ -126,9 +132,9 @@ func Classify(run Run, jobs []Job) (Verdict, string, error) {
 		if n > 0 {
 			return Red, fmt.Sprintf("the nightly was cancelled with %d failed job(s) inside", n), nil
 		}
-		return Quiet, "the nightly was cancelled with no failed job inside", nil
+		return Incomplete, "the nightly was cancelled with no failed job inside, so it gave no result", nil
 	}
-	return Quiet, fmt.Sprintf("the nightly ended %q, neither green nor red", run.Conclusion), nil
+	return Incomplete, fmt.Sprintf("the nightly ended %q, not success, so it gave no result", run.Conclusion), nil
 }
 
 // DecodeJobs reads the jobs listing as `gh api --paginate` prints it: one
@@ -296,10 +302,14 @@ func Announce(gh GH, repo string, runID int64, log io.Writer) error {
 		}
 		firstErrors[j.ID] = FirstError(string(text))
 	}
-	summary := Summary(run, jobs, why, firstErrors, extra)
+	cancelNote := ""
+	if verdict == Incomplete {
+		cancelNote = whoCancelled(gh, repo, jobs)
+	}
+	summary := Summary(run, jobs, verdict, why, firstErrors, cancelNote, extra)
 
 	if issue == nil {
-		if _, err := gh.Run([]string{"label", "create", Label, "--repo", repo, "--color", "B60205", "--description", "the ci-full nightly is red", "--force"}, nil); err != nil {
+		if _, err := gh.Run([]string{"label", "create", Label, "--repo", repo, "--color", "B60205", "--description", "the ci-full nightly is red or did not complete", "--force"}, nil); err != nil {
 			return fmt.Errorf("create label %s: %w", Label, err)
 		}
 		out, err := gh.Run([]string{"issue", "create", "--repo", repo, "--title", Title, "--label", Label, "--body-file", "-"}, []byte(summary))
@@ -333,6 +343,62 @@ func Announce(gh GH, repo string, runID int64, log io.Writer) error {
 	return nil
 }
 
+// canceledBy is GitHub's annotation on each job of a cancelled run. The run's
+// own actor and triggering_actor say nothing about it: on a scheduled run they
+// name whoever last edited the cron line (rowan-claude on 2026-11-20 and
+// 11-21, when @gafferongames cancelled both nightlies).
+var canceledBy = regexp.MustCompile(`^The run was canceled by @([A-Za-z0-9-]+)\.$`)
+
+// maxAnnotationReads bounds the jobs asked why they were cancelled.
+const maxAnnotationReads = 3
+
+// whoCancelled reads the check-run annotations of the run's first cancelled
+// jobs (a job id is its check-run id) and says who cancelled the run, or,
+// when GitHub names nobody (its 360-minute backstop), what it said instead.
+func whoCancelled(gh GH, repo string, jobs []Job) string {
+	var other []string
+	asked := 0
+	for _, j := range jobs {
+		if j.Conclusion != "cancelled" {
+			continue
+		}
+		if asked == maxAnnotationReads {
+			break
+		}
+		asked++
+		body, err := gh.API(fmt.Sprintf("repos/%s/check-runs/%d/annotations", repo, j.ID), false)
+		if err != nil {
+			other = append(other, fmt.Sprintf("%s: annotations unreadable (%s)", j.Name, oneLine(err.Error())))
+			continue
+		}
+		var notes []struct {
+			Message string `json:"message"`
+		}
+		if err := json.Unmarshal(body, &notes); err != nil {
+			other = append(other, fmt.Sprintf("%s: annotations undecodable (%v)", j.Name, err))
+			continue
+		}
+		var msgs []string
+		for _, n := range notes {
+			msg := strings.TrimSpace(n.Message)
+			if m := canceledBy.FindStringSubmatch(msg); m != nil {
+				return fmt.Sprintf("The run was canceled by @%s (GitHub's annotation on job %s).", m[1], j.Name)
+			}
+			msgs = append(msgs, oneLine(msg))
+		}
+		if len(msgs) > 0 {
+			other = append(other, fmt.Sprintf("%s: %s", j.Name, strings.Join(msgs, " ")))
+		}
+	}
+	if asked == 0 {
+		return "No job inside the run was cancelled; GitHub names no canceller."
+	}
+	if len(other) == 0 {
+		return "GitHub names no canceller on the cancelled jobs it was asked about."
+	}
+	return "GitHub names no canceller. Its annotations: " + strings.Join(other, "; ") + "."
+}
+
 func failedJobs(jobs []Job) []Job {
 	var out []Job
 	for _, j := range jobs {
@@ -343,16 +409,38 @@ func failedJobs(jobs []Job) []Job {
 	return out
 }
 
-// Summary is the markdown posted for a red run: the run link and why it is
-// red, then one row per failed job (at most maxRows; the rest by name), and
-// the count of jobs cancelled inside it.
-func Summary(run Run, jobs []Job, why string, firstErrors map[int64]string, extra []string) string {
+// Summary is the markdown posted for a run that is not green: the run link
+// and why, then one row per failed job (at most maxRows; the rest by name),
+// and the count of jobs cancelled inside it. A run that did not complete says
+// so, when it ended and who cancelled it (cancelNote), and how far it got.
+func Summary(run Run, jobs []Job, verdict Verdict, why string, firstErrors map[int64]string, cancelNote string, extra []string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "<!-- nightly-red run=%d attempt=%d -->\n", run.ID, run.RunAttempt)
-	fmt.Fprintf(&b, "**CI full nightly is red**: [run %d](%s), attempt %d, on `%s` (%s), started %s. %s.\n\n",
-		run.ID, run.HTMLURL, run.RunAttempt, short(run.HeadSHA), run.HeadBranch, run.StartedAt, upperFirst(why))
+	fmt.Fprintf(&b, "<!-- nightly-red run=%d attempt=%d verdict=%s -->\n", run.ID, run.RunAttempt, strings.ReplaceAll(verdict.String(), " ", "-"))
+	heading := "CI full nightly is red"
+	if verdict == Incomplete {
+		heading = "CI full nightly did not complete"
+	}
+	fmt.Fprintf(&b, "**%s**: [run %d](%s), attempt %d, on `%s` (%s), started %s, ended %s at %s. %s.\n\n",
+		heading, run.ID, run.HTMLURL, run.RunAttempt, short(run.HeadSHA), run.HeadBranch, run.StartedAt, run.Conclusion, run.UpdatedAt, upperFirst(why))
+	if cancelNote != "" {
+		b.WriteString(cancelNote + "\n\n")
+	}
 	failed := failedJobs(jobs)
-	if len(failed) == 0 {
+	if verdict == Incomplete {
+		counts := map[string]int{}
+		for _, j := range jobs {
+			c := j.Conclusion
+			if c == "" {
+				c = j.Status
+			}
+			counts[c]++
+		}
+		var parts []string
+		for _, k := range slices.Sorted(maps.Keys(counts)) {
+			parts = append(parts, fmt.Sprintf("%d %s", counts[k], k))
+		}
+		fmt.Fprintf(&b, "There is no nightly result for this commit. Its %d job(s): %s.\n", len(jobs), strings.Join(parts, ", "))
+	} else if len(failed) == 0 {
 		b.WriteString("No job inside the run failed: the run itself ended " + run.Conclusion + " (open it for the reason).\n")
 	} else {
 		fmt.Fprintf(&b, "%d failed job(s):\n\n| job | first error line |\n| --- | --- |\n", len(failed))
@@ -380,7 +468,7 @@ func Summary(run Run, jobs []Job, why string, firstErrors map[int64]string, extr
 			cancelled++
 		}
 	}
-	if cancelled > 0 {
+	if cancelled > 0 && verdict != Incomplete {
 		fmt.Fprintf(&b, "\n%d job(s) inside the run were cancelled.\n", cancelled)
 	}
 	if len(extra) > 0 {

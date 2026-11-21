@@ -1,0 +1,12 @@
+[
+  {
+    "annotation_level": "failure",
+    "message": "The run was canceled by @gafferongames.",
+    "start_line": 1
+  },
+  {
+    "annotation_level": "failure",
+    "message": "The operation was canceled.",
+    "start_line": 17
+  }
+]
