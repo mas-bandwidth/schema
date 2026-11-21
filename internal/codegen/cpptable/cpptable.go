@@ -2522,6 +2522,13 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 			c.WriteString("#include <string.h> // the hand-editable text form (§16.9)\n\n")
 			c.WriteString(tableJsonWalk(u.Package, anyVariable, anyMap, anyList, jsonFieldWords, jsonSlotWords))
 			c.WriteString(tableTextFormWalk(u.Package))
+			// THE GUARDS' CONTRACT, checked: whichever same-package .cpp of a
+			// unity build came first, both walks are defined in this unit by
+			// now. It is also the guards' one reader in a unit built alone,
+			// where a guard nothing tests is an unused macro.
+			jsonGuard := strings.ToUpper(u.Package) + "_SCHEMA_TABLE_JSON"
+			textGuard := strings.ToUpper(u.Package) + "_SCHEMA_TABLE_TEXTFORM"
+			fmt.Fprintf(&c, "\n#if !defined( %s ) || !defined( %s )\n#error \"the %s JSON and text-form walks are not defined in this translation unit\"\n#endif\n", jsonGuard, textGuard, u.Package)
 			fmt.Fprintf(&c, "\nnamespace %s {\n\n", u.Package)
 			cg := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyMap: anyMap, anyList: anyList, anyExtent: anyExtent, blocks: blocks, variable: variable, targets: targets,
 
