@@ -173,21 +173,24 @@ func unpackWith(m *tabletext.Model, root string, wire []byte, dir string, oneFil
 // message writes is the tree a file writes.
 func writeTree(m *tabletext.Model, inst *tabletext.Instance, root, dir string, oneFile bool) error {
 	st := inst.Def
-	if !oneFile && treeNamesOverlap(st, root) {
-		// two entries of the expanded tree would share one name, or one would
-		// take `<Root>.json`, which pack reads as the whole root (§17.2):
-		// that tree could not be written whole or would not pack back. The
-		// whole root is the same instance, so it is written instead, decided
-		// before anything touches the disk.
-		oneFile = true
-	}
 	if !oneFile {
+		// a key that is no safe path component at all is refused by name, as
+		// before: the caller asked for a tree and is told how to keep the key
 		for _, f := range st.Fields {
 			key := ir.TableFieldJsonKey(f)
 			if !treeComponent(key) {
 				return fmt.Errorf("field %s: JSON key %q is not one safe local path component; use --one-file to preserve this key in JSON", f.Name, key)
 			}
 		}
+	}
+	if !oneFile && treeNamesOverlap(st, root) {
+		// two entries of the expanded tree would share one name, or one would
+		// take `<Root>.json`, which pack reads as the whole root (§17.2), or a
+		// name is one a filesystem may store as another: that tree could not
+		// be written whole or would not pack back. The whole root is the same
+		// instance, so it is written instead, decided before anything touches
+		// the disk.
+		oneFile = true
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
