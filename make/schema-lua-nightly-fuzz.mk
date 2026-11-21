@@ -160,6 +160,36 @@ schema-lua-fuzz-negative-control: schema-lua-fuzz-toolchain $(LUA_FUZZ_GENERATED
 # findings would be committed to a regression corpus (PATHS-PROPOSED); this
 # card may not add files to the port's test tree.
 .PHONY: schema-lua-fuzz-replay
-schema-lua-fuzz-replay: schema-lua-fuzz-toolchain schema-lua-fuzz-negative-control
+schema-lua-fuzz-replay: schema-lua-fuzz-toolchain schema-lua-fuzz-negative-control schema-lua-fuzz-replay-controls
 	$(LUA_FUZZ_LUA) $(LUA_FUZZ_SCRIPT) --generated $(LUA_FUZZ_GENERATED) \
 		--corpus $(LUA_FUZZ_CORPUS) --replay $(LUA_FUZZ_REGRESS)
+
+# THE REPLAY'S OWN CONTROLS, run before every replay: the committed saved cases
+# under testdata/lua-nightly-fuzz/replay-controls. The healthy one must replay
+# as one case; each broken one must be refused. A case for a unit, kind or
+# table no reader takes, a saved file that does not decode, an empty directory
+# and a missing one each used to report "0 failed" and exit 0 (F-077, F-078).
+LUA_FUZZ_REPLAY_CONTROLS := testdata/lua-nightly-fuzz/replay-controls
+LUA_FUZZ_REPLAY_REFUSED  := unbound-unit unsupported-kind unregistered-table unreadable-beside-good
+.PHONY: schema-lua-fuzz-replay-controls
+schema-lua-fuzz-replay-controls: schema-lua-fuzz-toolchain $(LUA_FUZZ_GENERATED)/.stamp
+	@c=$(LUA_FUZZ_REPLAY_CONTROLS); w=build/lua-fuzz-replay-controls; \
+	rm -rf $$w && mkdir -p $$w/empty || exit 1; \
+	replay() { $(LUA_FUZZ_LUA) $(LUA_FUZZ_SCRIPT) --generated $(LUA_FUZZ_GENERATED) --corpus $(LUA_FUZZ_CORPUS) --replay "$$1"; }; \
+	if ! replay $$c/good > $$w/good.log 2>&1; then \
+		echo "lua replay control failed: the healthy saved case was refused"; cat $$w/good.log; exit 1; fi; \
+	grep -qx 'lua fuzz replay: 1 cases, 0 failed' $$w/good.log || \
+		{ echo "lua replay control failed: the healthy saved case did not replay as one case"; cat $$w/good.log; exit 1; }; \
+	echo "lua replay control: the healthy saved case replays (1 cases, 0 failed)"; \
+	dirs=0; for d in $$c/*/; do dirs=$$((dirs + 1)); done; \
+	[ $$dirs -eq 5 ] || { echo "lua replay controls: $$c holds $$dirs directories, the recipe runs good and 4 refused"; exit 1; }; \
+	refused=0; \
+	for case in $(addprefix $$c/,$(LUA_FUZZ_REPLAY_REFUSED)) $$w/empty $$w/missing; do \
+		name=$$(basename $$case); \
+		if replay $$case > $$w/$$name.log 2>&1; then \
+			echo "lua replay control failed: $$name replayed green"; cat $$w/$$name.log; exit 1; fi; \
+		echo "lua replay control: $$name is refused ($$(grep -v '^lua fuzz replay:' $$w/$$name.log | head -1))"; \
+		refused=$$((refused + 1)); \
+	done; \
+	[ $$refused -eq 6 ] || { echo "lua replay controls: $$refused of 6 ran"; exit 1; }; \
+	echo "lua replay controls: 6 of 6 broken replays refused"
