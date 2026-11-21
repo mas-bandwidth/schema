@@ -275,35 +275,52 @@ func TestTreeScanCounts(t *testing.T) {
 		len(gated), len(recipes), len(refs), seen["squirrel_nc"], seen["rows"])
 }
 
-// TestUnarmedLineVerdictFollowsGoSelection holds the four cases of an unarmed
-// `go test -run <pattern>` on a package with a gated TestGated (which runs a
-// roundtrip subtest) and a fast TestFast. Only a pattern that selects a test,
-// and selects no gated one, is green.
-//
-//	-run TestGated            red: it runs the gated test, which skips
-//	-run TestGated/roundtrip  red: Go runs the parent when the first element
-//	                          matches, and the parent skips at the gate
-//	-run TestMissing          red: it selects no test, so it runs nothing
-//	-run TestFast             green
+// TestUnarmedLineVerdictFollowsGoSelection holds the verdict on an unarmed
+// `go test -run <pattern>` to what the real run does, on a package with a gated
+// TestGated (which runs a roundtrip subtest), a fast TestFast, a TestFeature
+// behind `//go:build include_optional_feature` and a TestWindowsOnly in a
+// _windows_test.go file. Only a line that selects a test in the build context
+// it runs in, and selects no gated one, is green (0).
 func TestUnarmedLineVerdictFollowsGoSelection(t *testing.T) {
 	t.Parallel()
-	for pattern, want := range map[string]int{
-		"TestGated":             1,
-		"TestGated/roundtrip":   1,
-		"^TestGated$$/^round":   1,
-		"TestMissing":           1,
-		"TestMissing/roundtrip": 1,
-		"TestFast":              0,
-		"^TestFast$$":           0,
-		"TestFast/anything":     0,
-		"Test":                  1,
-		"(":                     1,
+	for _, tc := range []struct {
+		recipe string
+		want   int
+		why    string
+	}{
+		{"go test -run 'TestGated' ./pkg", 1, "it runs the gated test, which skips"},
+		{"go test -run 'TestGated/roundtrip' ./pkg", 1, "Go runs the parent when the first element matches, and the parent skips at the gate"},
+		{"go test -run '^TestGated$$/^round' ./pkg", 1, "the same, anchored"},
+		{"go test -run 'TestMissing' ./pkg", 1, "it selects no test, so it runs nothing"},
+		{"go test -run 'TestMissing/roundtrip' ./pkg", 1, "it selects no test, so it runs nothing"},
+		{"go test -run 'TestFast' ./pkg", 0, "it runs TestFast alone"},
+		{"go test -run '^TestFast$$' ./pkg", 0, "it runs TestFast alone"},
+		{"go test -run 'TestFast/anything' ./pkg", 0, "it runs TestFast alone"},
+		{"go test -run 'Test' ./pkg", 1, "it runs every test, the gated one among them"},
+		{"go test -run '(' ./pkg", 1, "the pattern does not compile"},
+		// testing/match.go splits at each top-level `|` before each `/`
+		{"go test -run 'TestFast/unused|TestGated/roundtrip' ./pkg", 1, "the second alternative runs TestGated"},
+		{"go test -run 'TestGated/roundtrip|TestFast/unused' ./pkg", 1, "the first alternative runs TestGated"},
+		{"go test -run 'TestFast/a|TestMissing/b' ./pkg", 0, "the alternatives select TestFast alone"},
+		{"go test -run 'TestFast/(a|TestGated)' ./pkg", 0, "a `|` inside parentheses separates nothing: the top level is TestFast"},
+		{"go test -run 'Test(Fast|Gated)/x' ./pkg", 1, "the group selects TestGated"},
+		{"go test -run 'TestFa[s/|]t' ./pkg", 0, "a `/` or `|` inside brackets separates nothing"},
+		{"go test -run 'TestFast' -skip 'TestFast' ./pkg", 1, "-skip is not modelled, so nothing is proven"},
+		// declarations are read under the build context the line runs in
+		{"GOOS=linux go test -run 'TestFeature' ./pkg", 1, "TestFeature is behind a build tag the line does not set: no tests to run"},
+		{"GOOS=linux go test -tags include_optional_feature -run 'TestFeature' ./pkg", 0, "with the tag it runs TestFeature"},
+		{"GOOS=linux go test -tags=other,include_optional_feature -run 'TestFeature' ./pkg", 0, "with the tag it runs TestFeature"},
+		{"GOOS=linux go test -tags $(FEATURE_TAGS) -run 'TestFeature' ./pkg", 1, "the tags cannot be read, so nothing is proven"},
+		{"GOOS=linux go test -run 'TestWindowsOnly' ./pkg", 1, "the test exists only in a _windows_test.go file: no tests to run on linux"},
+		{"GOOS=windows go test -run 'TestWindowsOnly' ./pkg", 0, "on windows it runs TestWindowsOnly"},
 	} {
 		root := t.TempDir()
 		writeTree(t, root, map[string]string{
-			"go.mod":        "module example.com/root\n",
-			"pkg/a_test.go": "package pkg\n\nimport \"testing\"\n\nfunc TestGated(t *testing.T) {\n\tslowtest.Gate(t, \"x\")\n\tt.Run(\"roundtrip\", func(t *testing.T) {})\n}\n\nfunc TestFast(t *testing.T) {}\n",
-			"Makefile":      "check:\n\tgo test -count=1 -run '" + pattern + "' ./pkg\n",
+			"go.mod":                   "module example.com/root\n",
+			"pkg/a_test.go":            "package pkg\n\nimport \"testing\"\n\nfunc TestGated(t *testing.T) {\n\tslowtest.Gate(t, \"x\")\n\tt.Run(\"roundtrip\", func(t *testing.T) {})\n}\n\nfunc TestFast(t *testing.T) {}\n",
+			"pkg/feature_test.go":      "//go:build include_optional_feature\n\npackage pkg\n\nimport \"testing\"\n\nfunc TestFeature(t *testing.T) {}\n",
+			"pkg/only_windows_test.go": "package pkg\n\nimport \"testing\"\n\nfunc TestWindowsOnly(t *testing.T) {}\n",
+			"Makefile":                 "check:\n\t" + tc.recipe + "\n",
 		})
 		gatedTests, err := gatedTestPackages(root)
 		if err != nil {
@@ -318,10 +335,33 @@ func TestUnarmedLineVerdictFollowsGoSelection(t *testing.T) {
 			t.Fatal(err)
 		}
 		if len(recipes) != 1 || recipes[0].armed {
-			t.Fatalf("-run %s: want one unarmed recipe, got %+v", pattern, recipes)
+			t.Fatalf("%s: want one unarmed recipe, got %+v", tc.recipe, recipes)
 		}
-		if got := runStatic(root, recipes, nil, gated, gatedTests); got != want {
-			t.Errorf("unarmed `go test -run '%s' ./pkg`: the static scan exited %d, want %d", pattern, got, want)
+		if got := runStatic(root, recipes, nil, gated, gatedTests); got != tc.want {
+			t.Errorf("unarmed `%s`: the static scan exited %d, want %d (%s)", tc.recipe, got, tc.want, tc.why)
+		}
+	}
+}
+
+// TestRunSelectorsIsGosSplit pins the port of testing/match.go's splitRegexp.
+func TestRunSelectorsIsGosSplit(t *testing.T) {
+	t.Parallel()
+	for pattern, want := range map[string][]string{
+		"TestA":           {"TestA"},
+		"TestA/b":         {"TestA"},
+		"TestA/b|TestC/d": {"TestA", "TestC"},
+		"TestA|TestB":     {"TestA", "TestB"},
+		"TestA/(b|TestC)": {"TestA"},
+		"Test(A|B)/x":     {"Test(A|B)"},
+		"Test[/|]A/x":     {"Test[/|]A"},
+		`Test\/A/x`:       {`Test\/A`},
+		"TestA/b/c|TestD": {"TestA", "TestD"},
+		"":                {""},
+		"/sub":            {""},
+		"TestA|":          {"TestA", ""},
+	} {
+		if got := runSelectors(pattern); !slices.Equal(got, want) {
+			t.Errorf("runSelectors(%q) = %q, want %q", pattern, got, want)
 		}
 	}
 }

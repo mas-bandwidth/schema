@@ -24,6 +24,7 @@ import (
 	"bufio"
 	"fmt"
 	"go/ast"
+	"go/build"
 	"go/parser"
 	"go/token"
 	"os"
@@ -187,8 +188,16 @@ func proofRefsFromOwnership(path string) ([]proofRef, error) {
 }
 
 // declaredTests collects the top-level Test declarations of a package's
-// *_test.go files.
+// *_test.go files, under every build context.
 func declaredTests(dir string) (map[string]bool, error) {
+	return declaredTestsIn(dir, nil)
+}
+
+// declaredTestsIn collects the top-level Test declarations of the *_test.go
+// files ctx builds: a file its name (_windows_test.go) or its //go:build line
+// leaves out of that context declares no test a `go test` there can run. A nil
+// ctx reads every file.
+func declaredTestsIn(dir string, ctx *build.Context) (map[string]bool, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
@@ -198,6 +207,15 @@ func declaredTests(dir string) (map[string]bool, error) {
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), "_test.go") {
 			continue
+		}
+		if ctx != nil {
+			built, err := ctx.MatchFile(dir, e.Name())
+			if err != nil {
+				return nil, err
+			}
+			if !built {
+				continue
+			}
 		}
 		f, err := parser.ParseFile(fset, filepath.Join(dir, e.Name()), nil, 0)
 		if err != nil {

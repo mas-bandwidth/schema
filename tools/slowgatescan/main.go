@@ -41,6 +41,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"go/build"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -165,27 +166,43 @@ func main() {
 // selectsNoGatedTest reports whether an unarmed recipe line is PROVEN to run
 // no test the gate can skip. The proof has two halves, and both are required:
 //
-//   - the -run pattern SELECTS A TEST in every package the line names. A
-//     pattern that matches no declared test runs nothing (`go test` prints "no
-//     tests to run" and exits 0), and a line that runs nothing proves nothing;
-//   - none of the tests it selects reaches the gate (gatedTests, by directory).
+//   - the -run pattern SELECTS A TEST in every package the line names, among
+//     the tests declared under the build context the line runs in (its -tags,
+//     its GOOS and GOARCH, else the lane's). A pattern that matches no such
+//     test runs nothing (`go test` prints "no tests to run" and exits 0), and
+//     a line that runs nothing proves nothing;
+//   - no test that reaches the gate (gatedTests, by directory, under any build
+//     context) is selected.
 //
-// Selection is Go's: the pattern is split at `/`, and a top-level test runs
-// when the FIRST element matches its name, whatever the later elements say.
+// Selection is Go's, ported from testing/match.go (runSelectors): the pattern
+// is an alternation at each top-level `|`, each alternative is split at its
+// top-level `/`, and a top-level test runs when the FIRST element of any
+// alternative matches its name, whatever the later elements say.
 // `-run TestGated/roundtrip` runs TestGated, which skips at the gate before
-// any subtest is reached, so it selects the gated test exactly as
-// `-run TestGated` does.
+// any subtest is reached; `-run 'TestFast/unused|TestGated/roundtrip'` runs
+// both parents.
 //
-// Anything short of the proof is bare: no -run pattern, a pattern that does
-// not compile, a `./...`, a package whose declarations cannot be read, or a
-// package gated by the marker alone (another module's, whose reach this scan
-// does not compute).
+// Anything short of the proof is bare: no -run pattern, an element that does
+// not compile, a -skip (which this scan does not model), a `./...`, a package
+// whose declarations cannot be read, or a package gated by the marker alone
+// (another module's, whose reach this scan does not compute).
 func selectsNoGatedTest(root string, r recipe, gatedTests map[string][]string) bool {
-	if r.runPat == "" || len(r.packages) == 0 {
+	if r.runPat == "" || len(r.packages) == 0 || skipFlag.MatchString(r.cmd) {
 		return false
 	}
-	first, err := regexp.Compile(strings.Split(r.runPat, "/")[0])
-	if err != nil {
+	var selectors []*regexp.Regexp
+	for _, first := range runSelectors(r.runPat) {
+		re, err := regexp.Compile(first)
+		if err != nil {
+			return false
+		}
+		selectors = append(selectors, re)
+	}
+	selects := func(name string) bool {
+		return slices.ContainsFunc(selectors, func(re *regexp.Regexp) bool { return re.MatchString(name) })
+	}
+	ctx, ok := recipeBuildContext(r.cmd)
+	if !ok {
 		return false
 	}
 	for _, pkg := range r.packages {
@@ -194,21 +211,17 @@ func selectsNoGatedTest(root string, r recipe, gatedTests map[string][]string) b
 		}
 		dir := strings.TrimPrefix(pkg, "./")
 		gatedHere, ok := gatedTests[dir]
-		if !ok {
+		if !ok || slices.ContainsFunc(gatedHere, selects) {
 			return false
 		}
-		declared, err := declaredTests(filepath.Join(root, filepath.FromSlash(dir)))
+		declared, err := declaredTestsIn(filepath.Join(root, filepath.FromSlash(dir)), &ctx)
 		if err != nil {
 			return false
 		}
 		selected := 0
 		for name := range declared {
-			if !first.MatchString(name) {
-				continue
-			}
-			selected++
-			if slices.Contains(gatedHere, name) {
-				return false
+			if selects(name) {
+				selected++
 			}
 		}
 		if selected == 0 {
@@ -216,6 +229,94 @@ func selectsNoGatedTest(root string, r recipe, gatedTests map[string][]string) b
 		}
 	}
 	return true
+}
+
+var skipFlag = regexp.MustCompile(`(?:^|\s)-skip(?:[=\s]|$)`)
+
+// runSelectors is the top-level half of testing/match.go's splitRegexp: the
+// first `/`-separated element of each `|`-separated alternative of a -run
+// pattern, where a `/` or a `|` inside brackets or parentheses separates
+// nothing. A top-level test runs when any of them matches its name.
+func runSelectors(s string) []string {
+	var firsts []string
+	element := 0 // index of the current element within its alternative
+	cs, cp := 0, 0
+	for i := 0; i < len(s); {
+		switch s[i] {
+		case '[':
+			cs++
+		case ']':
+			if cs--; cs < 0 { // an unmatched ']' is legal
+				cs = 0
+			}
+		case '(':
+			if cs == 0 {
+				cp++
+			}
+		case ')':
+			if cs == 0 {
+				cp--
+			}
+		case '\\':
+			i++
+		case '/', '|':
+			if cs == 0 && cp == 0 {
+				if element == 0 {
+					firsts = append(firsts, s[:i])
+				}
+				element++
+				if s[i] == '|' {
+					element = 0
+				}
+				s = s[i+1:]
+				i = 0
+				continue
+			}
+		}
+		i++
+	}
+	if element == 0 {
+		firsts = append(firsts, s)
+	}
+	return firsts
+}
+
+var (
+	goosAssign   = regexp.MustCompile(`(?:^|[\s;&(])GOOS=(\S+)`)
+	goarchAssign = regexp.MustCompile(`(?:^|[\s;&(])GOARCH=(\S+)`)
+)
+
+// recipeBuildContext is the build context a recipe line's `go test` compiles
+// under: the lane's (go/build's default, which reads GOOS, GOARCH and
+// CGO_ENABLED), with the line's own GOOS=, GOARCH= and -tags over it. A test
+// declared in a file that context leaves out is not a test the line can run.
+// ok is false when the line sets one of them to something this scan cannot
+// read (a variable), and then nothing is proven about it.
+func recipeBuildContext(cmd string) (ctx build.Context, ok bool) {
+	ctx = build.Default
+	ctx.BuildTags = nil
+	if m := goosAssign.FindStringSubmatch(cmd); m != nil {
+		ctx.GOOS = strings.Trim(m[1], `"'`)
+	}
+	if m := goarchAssign.FindStringSubmatch(cmd); m != nil {
+		ctx.GOARCH = strings.Trim(m[1], `"'`)
+	}
+	words := shellWords(cmd)
+	for i, w := range words {
+		tags, found := strings.CutPrefix(w, "-tags=")
+		if !found && w == "-tags" && i+1 < len(words) {
+			tags, found = words[i+1], true
+		}
+		if found {
+			ctx.BuildTags = append(ctx.BuildTags, strings.FieldsFunc(tags, func(r rune) bool { return r == ',' || r == ' ' || r == '\t' })...)
+		}
+	}
+	for _, v := range append([]string{ctx.GOOS, ctx.GOARCH}, ctx.BuildTags...) {
+		if strings.Contains(v, "$") {
+			return ctx, false
+		}
+	}
+	return ctx, true
 }
 
 func runStatic(root string, recipes []recipe, exceptions []exception, gated map[string]bool, gatedTests map[string][]string) int {
