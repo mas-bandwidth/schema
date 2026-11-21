@@ -1,6 +1,6 @@
 # tables/cards/cs
 
-The C# leg of the schema stream work-card record: `Cards.cs` is the handwritten
+The C# (modern) leg of the schema stream work-card record: `Cards.cs` is the handwritten
 facade over the generated `Card` table. It owns the wire, enforces the customer
 bounds before anything is published, and turns one buffer into a record a
 customer can read, edit and hash. `Tests/` holds the facade tests and `Driver/`
@@ -12,7 +12,7 @@ bounds, upgrade, edit, taskhash, view.
 
 Make targets (make/cs.mk, all part of `test-cs`):
 
-- `make cards-cs-generate` generates the C# unit from `Card.schema`.
+- `make cards-cs-generate` generates the C# (modern) unit from `Card.schema`.
 - `make cards-cs-test` runs the facade tests, Debug and Release.
 - `make cards-cs-driver` builds the conformance driver.
 - `make cards-cs-conformance` runs all nine surfaces against the corpus.

@@ -135,8 +135,8 @@ efficient serialize and schema is per-language."*
 `BenchBits` — the three stress shapes the retired bespoke harnesses measured,
 transcribed from `serialize/bench.cpp`. **They are no longer measured by any
 runner.** They were the last hand-written pin / vary / field-check / sink code
-in the Bench-corpus leg, and that code is deleted in every one of the nine
-runners; the only measurement left there is the data-driven BenchMixed driver
+in the Bench-corpus leg, and none of it remains in any of the fourteen
+`bench/run.sh` runners; the only measurement left there is the data-driven BenchMixed driver
 reading the committed variant corpus through the generated codecs.
 
 The three declarations and their `testdata/wire/bench_{packet,ints,bits}.bin`
@@ -959,10 +959,11 @@ names:
 - **A leg with no runner is NAMED with its reason**, in §1.9's and
   `nine.sh`'s own vocabulary — "no runner on this tree", "no leg in this driver
   yet", "runner present, but its rows do not belong to this sitting" are
-  different facts about the merge, and none is ever estimated. Nine table
-  runners exist under `bench/tables/` today, Dart's (`bench/tables/dart`, a
-  table-only leg whose packet number is the type board's) the last to land, so
-  no line of the nine is a named refusal on this tree.
+  different facts about the merge, and none is ever estimated. `bench/tables/`
+  carries a runner directory for all eighteen targets today, and each of the
+  nine legs this board carries has its own, Dart's (`bench/tables/dart`, a
+  table-only leg whose packet number is the type board's) the last of the nine
+  to land, so no line of the nine is a named refusal on this tree.
 - **The first ratio is C++'s alone and the board says so.** Arm B is
   hand-written, and nine hand-maintained layouts would be nine chances for the
   comparand to be wrong in a leg-specific way. The form's rule is one reference
@@ -1314,8 +1315,8 @@ separation beyond the combined spread is a finding to investigate, not a
 number to publish or a band to widen.
 
 `run.sh --quick` is the ITERATION instrument, never the certification
-instrument, and every leg's stderr says so. It exists so a nine-language
-comparison costs minutes, not an evening; nothing it prints publishes.
+instrument, and every leg's stderr says so. It exists so a comparison across
+all fourteen of its legs costs minutes, not an evening; nothing it prints publishes.
 
 - Every runner's `--quick` runs `bench_mixed` ONLY: 1 discarded warmup run,
   then **3** measured runs. The §1.5 golden gate stays unconditional.
@@ -1452,7 +1453,7 @@ its own: it is a **codec self-consistency** check, not a **data-integrity**
 check. A flipped bit in a plain VALUE field of variant k>0 decodes to a
 different in-range value and re-encodes to the same bytes — **the gate stays
 green**. Only `corpus_id` catches it, which is why the variant file is
-registered as corpus (§1.6) and hashes into `corpus_id` in all nine legs. Data
+registered as corpus (§1.6) and hashes into `corpus_id` in every `bench/run.sh` leg. Data
 integrity independent of `corpus_id` would need a committed digest or a
 regeneration check in CI; that is named here, not built.
 

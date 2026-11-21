@@ -134,13 +134,13 @@ they become part of the count as schema#349 and the per-construct follow-ons
 land them, one language at a time, with nothing in this data or this contract
 moving as they do.
 
-**Wire-form coverage is separate from storage coverage.** C++, C, C# and the
+**Wire-form coverage is separate from storage coverage.** C++, C, C# (modern) and the
 independent compiler engine carry the id-table wire (form 1, the variable form) and bitpacked message
-form. C and C# also carry variable regions, builders, retained unknowns and
+form. C and C# (modern) also carry variable regions, builders, retained unknowns and
 canonical cooks. Their pipe drivers compare values, re-saved bytes, measured
 sizes and reports with the independent engine. `make tables-c-wire-fuzz` and
 `make tables-c-retain` run C natively and under ASan/UBSan; the corresponding
-C# managed, native, builder and retention targets are in make/cs.mk.
+C# (modern) managed, native, builder and retention targets are in make/cs.mk.
 
 Unsupported roots are printed as `N seeds absent (roots the leg has no codec
 for)`. Absence is explicit and never counted as a passing fixture.
@@ -396,7 +396,7 @@ stdout rather than editing the manifest: a manifest that rewrites itself is a
 manifest nobody reviews.
 
 **A leg may be assembled from more than one binary, and it may be one.** The
-C++ and C# drivers dispatch the cook's dump to a binary each backend already
+C++ and C# (modern) drivers dispatch the cook's dump to a binary each backend already
 had; the Go driver is a single binary that answers every surface in process,
 which is why its `cook` surface costs one exec rather than five, and the Java
 driver is one class on one classpath for the same reason — its generated units,
@@ -412,7 +412,7 @@ every night at 05:41 UTC, on the fleet's runners and never on the host named
 space, and on `gh workflow run nightly-conformance.yml --ref <branch>`.
 Every registered port joins through `harness matrix --ports`.
 
-The current completion target is the original nine: C++, C, C#, Go, Rust,
+The current completion target is the original nine: C++, C, C# (modern), Go, Rust,
 Java, JavaScript, Dart and Elixir. Required gaps in any of these remain open;
 results for other registered ports do not substitute for them.
 
@@ -432,7 +432,7 @@ bytes and every reader accepts those bytes, every writer's output is
 interoperable with every reader on the covered corpus. The reference need
 not read a separate identical copy from each writer. The `coverage` job
 records the reference and port results together. Its
-`coverage --require-original-nine` gate requires C++, C, C#, Go, Rust, Java,
+`coverage --require-original-nine` gate requires C++, C, C# (modern), Go, Rust, Java,
 JavaScript, Dart and Elixir to cover every manifest-defined surface/class and
 case count. The reference rows are checked independently against that shape,
 so a missing reference row cannot shrink the denominator. Accepted and refused observations both count as answered cases. Missing
@@ -468,8 +468,9 @@ claim:
   absence of either fails closed.
 
 Full implementation is the prerequisite for success. Neither a smaller
-passing corpus nor a green roadmap can substitute for it. The six expansion
-languages remain visible but are not part of this completion obligation. The
+passing corpus nor a green roadmap can substitute for it. The nine registered
+ports beyond the original nine (Goose, Lobster, Lua, Luau, Moo, Python, Ruby,
+Squirrel and C# (unity)) remain visible but are not part of this completion obligation. The
 table and all failure diagnostics are printed and uploaded even when the gate
 fails; ordinary `coverage` remains an informational report.
 Every confirmed defect found by these gates must leave a permanent regression.
