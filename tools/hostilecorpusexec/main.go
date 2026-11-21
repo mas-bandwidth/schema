@@ -332,7 +332,7 @@ func runCase(binary, corpus string, c hostilecorpus.Case, budget time.Duration) 
 	cmd.WaitDelay = time.Second
 	err := cmd.Run()
 	raw := stdout.String()
-	if context.Cause(ctx) == errOverBudget {
+	if errors.Is(context.Cause(ctx), errOverBudget) {
 		return answer{"fail", fmt.Sprintf("hang: over the %v budget", budget)}, raw
 	}
 	for _, mark := range sanitizerMarks {
