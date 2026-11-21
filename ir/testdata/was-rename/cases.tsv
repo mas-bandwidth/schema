@@ -1,0 +1,16 @@
+# The `was` rename corpus: ir/wasrename_corpus_test.go reads every row.
+# group	file	relation	protocol_id	retired_id
+#
+# relation: base   the schema before the rename
+#           same   a rename under `was`: must hold the base's id
+#           moves  a control: a bare rename, or a default moved to another
+#                  variant; must not hold the base's id
+# retired_id: the id a compiler without the fix (PR #4474) emits for this file ("-" for none).
+guard	before.schema	base	0xed4c171f669f4848	-
+guard	after.schema	same	0xed4c171f669f4848	0xfb00c9a0bce67a01
+guard	bare.schema	moves	0xf220af3057b22ecc	-
+variant	before.schema	base	0x4e6f7c47f9afb4f5	-
+variant	after.schema	same	0x4e6f7c47f9afb4f5	0x3b5b3e5644c2c497
+variant	again.schema	same	0x4e6f7c47f9afb4f5	0xcfd769f22cc55539
+variant	bare.schema	moves	0x369250a56fd769bf	-
+variant	moved.schema	moves	0x703513578f237023	-
