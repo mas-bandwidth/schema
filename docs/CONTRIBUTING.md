@@ -280,17 +280,23 @@ The same split is in [SECURITY.md](SECURITY.md).
   [`make/shard.sh`](../make/shard.sh) deals from the sorted list: the C format
   gate (`lang-clean (c K/3)`, its share of the 580 generated files) and the
   strict compile of the Elixir table corpus with the agreement gate over it
-  (`lang-clean (elixir K/4)`, its share of the 42 units). Neither keeps a
-  verdict or an ebin between runs. The Elixir rows of `lang-clean` and
-  `verify-leg` compile their BEAM fixtures without the Erlang SSA optimizer
-  (`[no_ssa_opt]`, which reports no warning, so a strict compile's verdict is
-  the same), and the `verify-leg` rows may take the corpus ebin from the
-  runner host's store ([`make/elixir-ebin-cache.sh`](../make/elixir-ebin-cache.sh),
-  each file checked against the entry's manifest on every hit). The BEAM a
+  (`lang-clean (elixir K/4)`, its share of the 42 units); the Elixir offsets
+  gate has a row of its own, `lang-clean (elixir offsets)`. Nothing is kept
+  between runs. The `verify-leg (elixir, conformance)` and `(elixir, fuzz)`
+  rows (job `verify-leg-elixir`) run the whole corpus ebin and do not compile
+  it: they wait for `lang-clean` and take the four shards its Elixir rows
+  handed over in the same run
+  ([`make/elixir-ebin-handoff.sh`](../make/elixir-ebin-handoff.sh)), and only
+  if every file is the bytes of its shard's manifest, the shards were
+  compiled from this tree's sources under the same options and toolchain, and
+  they are the corpus, each unit once; anything else is red, never a
+  compile. The Elixir rows of `lang-clean` and `verify-leg` compile their
+  BEAM fixtures without the Erlang SSA optimizer (`[no_ssa_opt]`, which
+  reports no warning, so a strict compile's verdict is the same). The BEAM a
   user's `elixirc` writes is covered by `ci-full.yml`'s nightly
-  `elixir-verify`, the same three verify gates with no compiler option and no
-  store; `internal/ci` holds that job in place, so the per-commit trade is
-  never the only coverage.
+  `elixir-verify`, the same three verify gates whole, with no compiler option
+  and no handoff; `internal/ci` holds that job in place, so the per-commit
+  trade is never the only coverage.
 - Every self-hosted job runs its steps through
   [`tools/pgroup`](../tools/pgroup/main.go), which kills each step's whole process
   group when the step ends, so a child a test left running cannot hold a

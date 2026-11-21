@@ -178,13 +178,14 @@ func planCleanRows(t *testing.T, files string) []struct{ Lang, Shard string } {
 	return rows
 }
 
-// shardsOf returns the shard specs the plan writes for one language, and
-// checks they are 1/N .. N/N of one N.
+// shardsOf returns the shard specs K/N the plan writes for one language, and
+// checks they are 1/N .. N/N of one N. A row named otherwise (elixir
+// "offsets") is a gate of its own, not a shard.
 func shardsOf(t *testing.T, rows []struct{ Lang, Shard string }, lang string) []string {
 	t.Helper()
 	var specs []string
 	for _, r := range rows {
-		if r.Lang == lang {
+		if r.Lang == lang && strings.Contains(r.Shard, "/") {
 			specs = append(specs, r.Shard)
 		}
 	}
@@ -208,6 +209,16 @@ func TestLangCleanPlanWritesTheShardRows(t *testing.T) {
 	rows := planCleanRows(t, "tables/stream/Stream.schema")
 	shardsOf(t, rows, "c")
 	shardsOf(t, rows, "elixir")
+	// beside the Elixir shards, one offsets row and nothing else; C has none
+	others := map[string][]string{}
+	for _, r := range rows {
+		if (r.Lang == "c" || r.Lang == "elixir") && !strings.Contains(r.Shard, "/") {
+			others[r.Lang] = append(others[r.Lang], r.Shard)
+		}
+	}
+	if !slices.Equal(others["elixir"], []string{"offsets"}) || len(others["c"]) != 0 {
+		t.Errorf("rows beside the shards: %v, want only elixir [offsets]", others)
+	}
 	for _, lang := range []string{"js", "rust"} {
 		n := 0
 		for _, r := range rows {
@@ -382,7 +393,7 @@ func TestElixirEbinRebuildsWhenItsBuildChanges(t *testing.T) {
 		if vars != "-" {
 			args = append(args, strings.Fields(vars)...)
 		}
-		env := []string{"ERL_COMPILER_OPTIONS=", "ELIXIR_EBIN_ERL_COMPILER_OPTIONS=", "ELIXIR_TABLE_SHARD=", "ELIXIR_EBIN_CACHE="}
+		env := []string{"ERL_COMPILER_OPTIONS=", "ELIXIR_EBIN_ERL_COMPILER_OPTIONS=", "ELIXIR_TABLE_SHARD=", "ELIXIR_EBIN_FROM="}
 		if envOpts != "-" {
 			env = append(env, "ERL_COMPILER_OPTIONS="+envOpts)
 		}
@@ -605,10 +616,15 @@ func TestLangCleanRowsKeepNoStore(t *testing.T) {
 	if !ok {
 		t.Fatal("ci-fast.yml has no lang-clean job")
 	}
-	for _, s := range []string{"C_FORMAT_CACHE", "ELIXIR_EBIN_CACHE", ".cache/schema-ci"} {
-		if strings.Contains(body, s) {
-			t.Errorf("ci-fast.yml lang-clean names %s: its rows keep nothing between runs", s)
+	for name, job := range map[string]string{"lang-clean": body, "verify-leg": jobs["verify-leg"], "verify-leg-elixir": jobs["verify-leg-elixir"]} {
+		for _, s := range []string{"C_FORMAT_CACHE", "ELIXIR_EBIN_CACHE", ".cache/schema-ci", "actions/cache"} {
+			if strings.Contains(job, s) {
+				t.Errorf("ci-fast.yml %s names %s: its rows keep nothing between runs", name, s)
+			}
 		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "make", "elixir-ebin-cache.sh")); err == nil {
+		t.Error("make/elixir-ebin-cache.sh is back: no row keeps an ebin between runs")
 	}
 	for _, s := range []string{"include: ${{ fromJSON(needs.plan.outputs.clean_rows) }}", `C_FORMAT_SHARD="$SHARD"`, `ELIXIR_TABLE_SHARD="$SHARD"`} {
 		if !strings.Contains(body, s) {
@@ -624,9 +640,71 @@ func TestLangCleanRowsKeepNoStore(t *testing.T) {
 	}
 }
 
+// TestVerifyLegElixirTakesTheShards: the per-commit verify rows that run the
+// whole Elixir table corpus ebin (conformance, fuzz) never compile it, which
+// is past one runner's two minutes cold (F-218): they are verify-leg-elixir,
+// which needs lang-clean, downloads the shards the lang-clean (elixir K/N) rows
+// uploaded, and builds the ebin from them through make/elixir-ebin-handoff.sh
+// (ELIXIR_EBIN_FROM) under the compiler options the shards were compiled
+// with. verify-leg runs neither gate for elixir.
+func TestVerifyLegElixirTakesTheShards(t *testing.T) {
+	t.Parallel()
+	jobs := yamlJobs(workflows(t, repoRoot(t))["ci-fast.yml"])
+	leg, clean, take := jobs["verify-leg"], jobs["lang-clean"], jobs["verify-leg-elixir"]
+	if leg == "" || clean == "" || take == "" {
+		t.Fatal("ci-fast.yml lacks verify-leg, lang-clean or verify-leg-elixir")
+	}
+	for _, g := range []string{"conformance", "fuzz"} {
+		if !strings.Contains(leg, "          - leg: elixir\n            gate: "+g+"\n") {
+			t.Errorf("verify-leg does not exclude (elixir, %s): it would compile the whole corpus ebin past the cap", g)
+		}
+	}
+	for _, s := range []string{
+		"needs: [plan, lang-clean]",
+		"!cancelled()",
+		`contains(needs.plan.outputs.verify_legs, '"elixir"')`,
+		"gate: [conformance, fuzz]",
+		"timeout-minutes: 2",
+		"pattern: elixir-tables-ebin-*",
+		`ELIXIR_EBIN_FROM="$SHARDS"`,
+		`ERL_COMPILER_OPTIONS='[no_ssa_opt]' make "verify-elixir-${{ matrix.gate }}"`,
+	} {
+		if !strings.Contains(take, s) {
+			t.Errorf("verify-leg-elixir does not carry %q", s)
+		}
+	}
+	for _, s := range []string{
+		"elixir-tables-ebin-handoff tables-elixir-accessor-descriptor-agreement",
+		`ELIXIR_TABLE_SHARD="$SHARD" ELIXIR_EBIN_ERL_COMPILER_OPTIONS='[no_ssa_opt]'`,
+		"name: elixir-tables-ebin-${{ strategy.job-index }}",
+		"path: build/elixir-ebin-handoff",
+		"include-hidden-files: true",
+		"if-no-files-found: error",
+	} {
+		if !strings.Contains(clean, s) {
+			t.Errorf("lang-clean does not carry %q: the Elixir shards are not handed over", s)
+		}
+	}
+}
+
+// TestElixirEbinFromIsTheWholeCorpus: a job that takes the shards takes the
+// whole corpus; asking for a shard of it as well is a make error.
+func TestElixirEbinFromIsTheWholeCorpus(t *testing.T) {
+	t.Parallel()
+	needTools(t, "make", "sh", "awk")
+	dir := elixirMakeDir(t)
+	out, err := makeElixir(t, dir, nil, "elixir-table-shard-units", "ELIXIR_EBIN_FROM=shards", "ELIXIR_TABLE_SHARD=1/4")
+	if err == nil || !strings.Contains(out, "ELIXIR_EBIN_FROM takes the whole corpus") {
+		t.Fatalf("ELIXIR_EBIN_FROM with ELIXIR_TABLE_SHARD was not a make error: %v\n%s", err, out)
+	}
+	if out, err := makeElixir(t, dir, nil, "elixir-table-shard-units", "ELIXIR_EBIN_FROM=shards"); err != nil {
+		t.Fatalf("the control, ELIXIR_EBIN_FROM alone, is a make error: %v\n%s", err, out)
+	}
+}
+
 // TestElixirVerifyNightlyRunsTheOptimizedBEAM: the per-commit Elixir rows
-// compile their BEAM without the SSA optimizer and may take the corpus ebin
-// from a store. That trade is accepted only because ci-full.yml's nightly
+// compile their BEAM without the SSA optimizer and take the corpus ebin from
+// the lang-clean shards. That trade is accepted only because ci-full.yml's nightly
 // elixir-verify runs the same three gates on the BEAM a user's elixirc writes:
 // it must exist, run on the schedule, run every gate, set no compiler option
 // and no store, and be read by the nightly verdict.
@@ -641,7 +719,7 @@ func TestElixirVerifyNightlyRunsTheOptimizedBEAM(t *testing.T) {
 	jobs := yamlJobs(full)
 	body, ok := jobs["elixir-verify"]
 	if !ok {
-		t.Fatal("ci-full.yml has no elixir-verify job: the per-commit [no_ssa_opt] compile and the ebin store would be the Elixir verify gates' only coverage")
+		t.Fatal("ci-full.yml has no elixir-verify job: the per-commit [no_ssa_opt] compile and the handed-over shards would be the Elixir verify gates' only coverage")
 	}
 	ev := ciEvent{Name: "schedule", Branch: "main", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"}
 	if runs, err := jobRunsInWorkflow(full, "elixir-verify", ev); err != nil || !runs {
@@ -663,7 +741,7 @@ func TestElixirVerifyNightlyRunsTheOptimizedBEAM(t *testing.T) {
 	if !strings.Contains(body, `make "verify-elixir-${{ matrix.gate }}"`) {
 		t.Error("ci-full.yml elixir-verify does not run make verify-elixir-<gate>")
 	}
-	for _, s := range []string{"no_ssa_opt", "ELIXIR_EBIN_CACHE", "ELIXIR_EBIN_ERL_COMPILER_OPTIONS", "ELIXIR_TABLE_SHARD", "ERL_COMPILER_OPTIONS="} {
+	for _, s := range []string{"no_ssa_opt", "ELIXIR_EBIN_CACHE", "ELIXIR_EBIN_FROM", "ELIXIR_EBIN_ERL_COMPILER_OPTIONS", "ELIXIR_TABLE_SHARD", "ERL_COMPILER_OPTIONS="} {
 		if strings.Contains(body, s) {
 			t.Errorf("ci-full.yml elixir-verify carries %s: it must compile the BEAM as shipped, whole, with no store", s)
 		}

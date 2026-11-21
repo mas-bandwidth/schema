@@ -110,7 +110,17 @@ func TestCIFastLangCleanElixirRunsOffsetsGate(t *testing.T) {
 		t.Fatal(err)
 	}
 	wf := string(raw)
-	if !strings.Contains(wf, "tables-elixir-accessor-descriptor-agreement tables-elixir-offsets") {
-		t.Fatal("ci-fast.yml lang-clean (elixir) must run tables-elixir-offsets alongside tables-elixir-accessor-descriptor-agreement")
+	// The offsets gate is the lang-clean (elixir offsets) row, beside the
+	// agreement gate's shard rows (#4530: on shard 1 it took that row past
+	// the two-minute cap). The plan must write the row whenever it writes the
+	// Elixir shards, and the row must run the gate.
+	if !strings.Contains(wf, `if ($1 == "elixir") printf ",{\"lang\":\"elixir\",\"shard\":\"offsets\"}"`) {
+		t.Error("ci-fast.yml plan no longer writes the lang-clean (elixir offsets) row")
+	}
+	if !strings.Contains(wf, "                offsets)\n                  make tables-elixir-offsets ") {
+		t.Error("ci-fast.yml lang-clean (elixir offsets) does not run tables-elixir-offsets")
+	}
+	if !strings.Contains(wf, "elixir-tables-ebin-handoff tables-elixir-accessor-descriptor-agreement") {
+		t.Error("ci-fast.yml lang-clean (elixir K/N) does not run tables-elixir-accessor-descriptor-agreement")
 	}
 }

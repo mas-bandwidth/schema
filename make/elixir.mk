@@ -182,18 +182,24 @@ elixir-table-shard-units:
 # and the nightly Certify run leave it empty and get the optimized BEAM.
 ELIXIR_EBIN_ERL_COMPILER_OPTIONS ?=
 
-# ELIXIR_EBIN_CACHE, empty by default, is a directory that holds this ebin by
-# the hash of what it is compiled from (make/elixir-ebin-cache.sh carries the
-# key and the reasoning). The per-commit lane sets it on a fleet runner, to a
-# directory every runner of the host shares: this compile is the longest step
-# of three Elixir jobs (lang-clean and the verify-leg fuzz and conformance rows
-# start it at the same moment, on the same cores), and with the store one of
-# them compiles and the rest copy; a later commit that leaves the generated Elixir alone compiles
-# nothing. A hit is the same bytes, the same toolchain and the same compiler
-# options having passed the strict wrapper before, never a name or an age. The
-# nightly lanes leave it empty and compile.
-ELIXIR_EBIN_CACHE ?=
-ELIXIR_EBIN_CACHED = $(if $(ELIXIR_EBIN_CACHE),ELIXIR_EBIN_TOOLCHAIN="$$($(ELIXIR) --version 2>&1)" sh $(CURDIR)/make/elixir-ebin-cache.sh '$(ELIXIR_EBIN_CACHE)' build/elixir-tables-ebin $(ELIXIR_EBIN_UNIT_SOURCES) test/conformance/elixir/driver_impl.ex make/elixir-strict.sh make/elixir-ebin-cache.sh -- env)
+# ELIXIR_EBIN_FROM, empty by default, is a directory of shards handed over by
+# `make elixir-tables-ebin-handoff` (make/elixir-ebin-handoff.sh carries the
+# checks): build/elixir-tables-ebin is then assembled from them instead of
+# compiled, and only if every shard is byte for byte the ebin it was given as,
+# was compiled from this tree's sources under these options, and the shards are
+# the corpus, each unit once; anything else is an error, never a compile. The
+# per-commit lane's verify-leg Elixir conformance and fuzz rows take the shards
+# the lang-clean (elixir K/N) rows of the same run compiled: the whole corpus
+# is about 200 s of compile CPU, past one runner's two minutes, and those rows
+# would otherwise each compile it again. Nothing else sets it.
+ELIXIR_EBIN_FROM ?=
+ifneq ($(ELIXIR_EBIN_FROM),)
+ifneq ($(ELIXIR_TABLE_SHARD),)
+$(error ELIXIR_EBIN_FROM takes the whole corpus; it does not go with ELIXIR_TABLE_SHARD=$(ELIXIR_TABLE_SHARD))
+endif
+endif
+ELIXIR_TABLE_UNIT_NAMES = $(foreach u,$(sort $(ELIXIR_TABLE_UNITS)),$(firstword $(subst :, ,$(u))))
+ELIXIR_EBIN_UNIT_NAMES = $(foreach u,$(ELIXIR_EBIN_UNITS),$(firstword $(subst :, ,$(u))))
 
 # THE EBIN'S BUILD RECORD. What the compile was asked for besides its sources
 # (the shard, and the Erlang compiler options it ran under: this compile's own
@@ -206,7 +212,7 @@ ELIXIR_EBIN_CACHED = $(if $(ELIXIR_EBIN_CACHE),ELIXIR_EBIN_TOOLCHAIN="$$($(ELIXI
 # soak (which measure this ebin) the unoptimized BEAM (F-225), and a shard's
 # ebin would stand for the whole corpus.
 ELIXIR_EBIN_EFFECTIVE_ERL_OPTIONS = $(if $(ELIXIR_EBIN_ERL_COMPILER_OPTIONS),$(ELIXIR_EBIN_ERL_COMPILER_OPTIONS),$(ERL_COMPILER_OPTIONS))
-ELIXIR_EBIN_CONFIG = shard=$(ELIXIR_TABLE_SHARD) units=$(words $(ELIXIR_EBIN_UNITS)) erl_compiler_options=$(ELIXIR_EBIN_EFFECTIVE_ERL_OPTIONS)
+ELIXIR_EBIN_CONFIG = shard=$(ELIXIR_TABLE_SHARD) units=$(words $(ELIXIR_EBIN_UNITS)) erl_compiler_options=$(ELIXIR_EBIN_EFFECTIVE_ERL_OPTIONS) from=$(if $(ELIXIR_EBIN_FROM),handoff,compile)
 .PHONY: elixir-tables-ebin-config-check
 build/elixir-tables-ebin.config: elixir-tables-ebin-config-check
 	@mkdir -p build
@@ -215,9 +221,20 @@ build/elixir-tables-ebin.config: elixir-tables-ebin-config-check
 
 build/elixir-tables-ebin/.stamp: build/tables-generated-elixir/.stamp test/conformance/elixir/driver_impl.ex build/elixir-tables-ebin.config
 	@rm -rf build/elixir-tables-ebin && mkdir -p build/elixir-tables-ebin
-	$(if $(ELIXIR_EBIN_ERL_COMPILER_OPTIONS),ERL_COMPILER_OPTIONS='$(ELIXIR_EBIN_ERL_COMPILER_OPTIONS)') $(ELIXIR_EBIN_CACHED) $(ELIXIRC_STRICT) -o build/elixir-tables-ebin $(ELIXIR_EBIN_UNIT_SOURCES) \
+ifneq ($(ELIXIR_EBIN_FROM),)
+	ELIXIR_EBIN_TOOLCHAIN="$$($(ELIXIR) --version 2>&1)" sh make/elixir-ebin-handoff.sh take '$(ELIXIR_EBIN_FROM)' build/elixir-tables-ebin '$(ELIXIR_EBIN_EFFECTIVE_ERL_OPTIONS)' $(ELIXIR_TABLE_UNIT_NAMES) -- $(ELIXIR_TABLE_UNIT_SOURCES) test/conformance/elixir/driver_impl.ex make/elixir-strict.sh
+else
+	$(if $(ELIXIR_EBIN_ERL_COMPILER_OPTIONS),ERL_COMPILER_OPTIONS='$(ELIXIR_EBIN_ERL_COMPILER_OPTIONS)') $(ELIXIRC_STRICT) -o build/elixir-tables-ebin $(ELIXIR_EBIN_UNIT_SOURCES) \
 		test/conformance/elixir/driver_impl.ex
+endif
 	@touch $@
+
+# The shard this row compiled, for the rows that take it (ELIXIR_EBIN_FROM):
+# its ebin, its units, the SHA-256 of every source it compiled from, the
+# options it ran under, and a manifest of every file's bytes.
+.PHONY: elixir-tables-ebin-handoff
+elixir-tables-ebin-handoff: build/elixir-tables-ebin/.stamp
+	ELIXIR_EBIN_TOOLCHAIN="$$($(ELIXIR) --version 2>&1)" sh make/elixir-ebin-handoff.sh give build/elixir-tables-ebin build/elixir-ebin-handoff '$(ELIXIR_EBIN_EFFECTIVE_ERL_OPTIONS)' $(ELIXIR_EBIN_UNIT_NAMES) -- $(ELIXIR_EBIN_UNIT_SOURCES) test/conformance/elixir/driver_impl.ex make/elixir-strict.sh
 
 # THE STANDALONE GATE, Elixir — the M4b twin of the gates above
 # (docs/PORTING.md). A generated table module INLINES its bitstring segments

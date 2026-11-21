@@ -236,9 +236,9 @@ func TestOptVerifyFastWorkflowSelector(t *testing.T) {
 		// a leg's own files beside a shared one still select that leg: a
 		// change to the verify rows' make files and their step here is a
 		// change to those jobs (#4530, F-218: the shared rule dropped them)
-		{"leg files beside the fast workflow", "make/elixir.mk\nmake/elixir-ebin-cache.sh\n.github/workflows/ci-fast.yml\nmake/verify-compiled.mk", `["elixir"]`},
+		{"leg files beside the fast workflow", "make/elixir.mk\nmake/elixir-ebin-handoff.sh\n.github/workflows/ci-fast.yml\nmake/verify-compiled.mk", `["elixir"]`},
 		{"leg files beside the compiler", "internal/codegen/ctable/emit.go\ncompiler/compiler.go", `["c"]`},
-		{"elixir ebin store script", "make/elixir-ebin-cache.sh", `["elixir"]`},
+		{"elixir ebin handoff script", "make/elixir-ebin-handoff.sh", `["elixir"]`},
 		{"wide sweep capped", "generated/c/x\ngenerated/cs/x\ngenerated/go/x\ngenerated/js/x\ngenerated/lua/x", `[]`},
 	}
 	for _, tc := range cases {

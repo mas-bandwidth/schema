@@ -604,7 +604,9 @@ jobs:
           # the sorted list, and internal/ci TestShardSplitIsAPartition holds
           # that shards 1/N .. N/N are the whole gate, each part once. No row
           # keeps a verdict or an ebin from another run, so a row's time is
-          # its cold time (#4530, F-218, F-221).
+          # its cold time (#4530, F-218, F-221). The Elixir offsets gate
+          # compiles and measures its own units (about 100 s of CPU) and has
+          # a row of its own, elixir "offsets", beside the four shards.
           c_clean_shards=3
           elixir_clean_shards=4
           clean_rows_json=$(printf '%s' "$clean_legs" | xargs -n1 2>/dev/null | sort -u | awk -v c="$c_clean_shards" -v e="$elixir_clean_shards" '
@@ -612,6 +614,7 @@ jobs:
               n = ($1 == "c") ? c : ($1 == "elixir") ? e : 0
               if (n == 0) { printf "%s{\"lang\":\"%s\",\"shard\":\"\"}", (k++ ? "," : ""), $1; next }
               for (i = 1; i <= n; i++) printf "%s{\"lang\":\"%s\",\"shard\":\"%d/%d\"}", (k++ ? "," : ""), $1, i, n
+              if ($1 == "elixir") printf ",{\"lang\":\"elixir\",\"shard\":\"offsets\"}"
             }
             BEGIN { printf "[" } END { printf "]" }')
           [ -n "$clean_rows_json" ] || clean_rows_json='[]'
@@ -1042,34 +1045,52 @@ jobs:
               make -j"$(nproc)" tables-rust-clippy RUSTUP_BIN="$(dirname "$(command -v cargo)")"
               ;;
             elixir)
-              # This row strictly compiles its shard of the table corpus
-              # (make/elixir.mk ELIXIR_TABLE_SHARD) and runs the agreement gate
-              # over it; the first row also runs the offsets gate. The ebin
-              # compiles without the Erlang SSA optimizer
+              # A K/N row strictly compiles its shard of the table corpus
+              # (make/elixir.mk ELIXIR_TABLE_SHARD), hands it over for the
+              # verify-leg-elixir rows (elixir-tables-ebin-handoff, uploaded
+              # below) and runs the agreement gate over it. The ebin compiles
+              # without the Erlang SSA optimizer
               # (ELIXIR_EBIN_ERL_COMPILER_OPTIONS: no warning comes from those
               # passes, so the strict verdict is the same; 477 s of CPU becomes
               # 197 s for the whole corpus); the nightly ci-full.yml
-              # elixir-verify runs the optimized compile. The offsets gate
+              # elixir-verify runs the optimized compile. The offsets row
               # measures heap words, so it compiles its own units as shipped.
               # No store: every row compiles its shard.
               case "$SHARD" in
-                1/*) elixir_targets="tables-elixir-accessor-descriptor-agreement tables-elixir-offsets" ;;
-                *)   elixir_targets="tables-elixir-accessor-descriptor-agreement" ;;
+                offsets)
+                  make tables-elixir-offsets \
+                    ELIXIR_BIN="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")"
+                  ;;
+                */*)
+                  MIX_HOME="$RUNNER_TEMP/.mix" HEX_HOME="$RUNNER_TEMP/.hex" \
+                    make -j"$(nproc)" elixir-tables-ebin-handoff tables-elixir-accessor-descriptor-agreement \
+                    ELIXIR_TABLE_SHARD="$SHARD" ELIXIR_EBIN_ERL_COMPILER_OPTIONS='[no_ssa_opt]' \
+                    BEAM_PATH="$(dirname "$(command -v erl)"):$(dirname "$(command -v elixir)")" \
+                    ELIXIR_BIN="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" \
+                    ELIXIR=elixir ELIXIRC=elixirc MIX=mix \
+                    ELIXIRC_STRICT="sh $(pwd)/make/elixir-strict.sh elixirc"
+                  ;;
+                *)
+                  echo "::error::unknown lang-clean (elixir) row '$SHARD'"
+                  exit 1
+                  ;;
               esac
-              # shellcheck disable=SC2086
-              MIX_HOME="$RUNNER_TEMP/.mix" HEX_HOME="$RUNNER_TEMP/.hex" \
-                make -j"$(nproc)" $elixir_targets \
-                ELIXIR_TABLE_SHARD="$SHARD" ELIXIR_EBIN_ERL_COMPILER_OPTIONS='[no_ssa_opt]' \
-                BEAM_PATH="$(dirname "$(command -v erl)"):$(dirname "$(command -v elixir)")" \
-                ELIXIR_BIN="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" \
-                ELIXIR=elixir ELIXIRC=elixirc MIX=mix \
-                ELIXIRC_STRICT="sh $(pwd)/make/elixir-strict.sh elixirc"
               ;;
             *)
               echo "::error::unknown lang-clean row '$LANG_ROW'"
               exit 1
               ;;
           esac
+      # the shard this row compiled, for verify-leg-elixir (make/elixir-ebin-handoff.sh);
+      # .manifest is a dot file, so hidden files are included
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: matrix.lang == 'elixir' && contains(matrix.shard, '/')
+        with:
+          name: elixir-tables-ebin-${{ strategy.job-index }}
+          path: build/elixir-ebin-handoff
+          retention-days: 1
+          if-no-files-found: error
+          include-hidden-files: true
 
   # THE TOUCHED LANGUAGE'S GENERATED-CODE LINT, one row per language `plan`
   # selected (its `lints` output). These are the fast halves of three lens
@@ -1166,6 +1187,13 @@ jobs:
       matrix:
         leg: ${{ fromJSON(needs.plan.outputs.verify_legs) }}
         gate: [conformance, bench, fuzz]
+        # these two run the whole Elixir table corpus ebin, which the
+        # lang-clean (elixir K/N) rows compile: verify-leg-elixir below
+        exclude:
+          - leg: elixir
+            gate: conformance
+          - leg: elixir
+            gate: fuzz
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -1255,20 +1283,70 @@ jobs:
             # that the quick run wrote its CSV). The optimized BEAM runs these
             # same three gates every night (ci-full.yml, elixir-verify), and
             # Certify fuzzes it (tables-wire-fuzz-release-elixir, test-elixir).
-            # On a fleet runner the table corpus ebin comes from the host's
-            # store when these exact sources already passed the strict compile
-            # under these options (make/elixir-ebin-cache.sh); every file of a
-            # hit is checked against the entry's manifest, and an entry that
-            # does not match is discarded, said, and compiled again (F-217).
+            # Only the bench row runs here; conformance and fuzz are
+            # verify-leg-elixir below.
             elixir)
-              ebin_cache=
-              if [ "${RUNNER_ENVIRONMENT:-}" = self-hosted ]; then
-                ebin_cache="$HOME/.cache/schema-ci/elixir-tables-ebin"
-              fi
-              ERL_COMPILER_OPTIONS='[no_ssa_opt]' make "verify-${{ matrix.leg }}-${{ matrix.gate }}" ELIXIR_EBIN_CACHE="$ebin_cache" BEAM_PATH="$(dirname "$(command -v erl)"):$(dirname "$(command -v elixir)")"
+              ERL_COMPILER_OPTIONS='[no_ssa_opt]' make "verify-${{ matrix.leg }}-${{ matrix.gate }}" BEAM_PATH="$(dirname "$(command -v erl)"):$(dirname "$(command -v elixir)")"
               ;;
             *)      make "verify-${{ matrix.leg }}-${{ matrix.gate }}" ;;
           esac
+
+  # verify-leg (elixir, conformance) and (elixir, fuzz). Both run the whole
+  # Elixir table corpus ebin, whose strict compile is about 200 s of CPU, past
+  # what one runner gives a job in two minutes; the lang-clean (elixir K/N)
+  # rows of this same run compile it as four shards side by side and hand each
+  # one over, and these rows take them (make/elixir.mk ELIXIR_EBIN_FROM,
+  # make/elixir-ebin-handoff.sh) instead of compiling it again. A shard is
+  # used only if every file is the bytes of its manifest, it was compiled from
+  # this tree's sources under these options, and the shards are the corpus,
+  # each unit once; anything else is red, never a compile (#4530, F-217,
+  # F-218). Nothing is kept between runs.
+  verify-leg-elixir:
+    needs: [plan, lang-clean]
+    if: startsWith(github.head_ref, 'sprint/') == false && (always() && !cancelled() && needs.plan.result == 'success' && contains(needs.plan.outputs.verify_legs, '"elixir"') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    name: verify-leg (elixir, ${{ matrix.gate }})
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 2
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        gate: [conformance, fuzz]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out the sibling runtime (pinned release)
+        run: |
+          set -euo pipefail
+          cd ..
+          rm -rf serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      # the toolchain lang-clean (elixir) compiles the shards with
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        if: runner.environment == 'github-hosted'
+        with:
+          otp-version: '29'
+          elixir-version: '1.20'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: elixir-tables-ebin-*
+          path: ${{ runner.temp }}/elixir-ebin-shards
+      - name: make verify-elixir-${{ matrix.gate }}
+        env:
+          SHARDS: ${{ runner.temp }}/elixir-ebin-shards
+        run: |
+          set -euo pipefail
+          if [ -f /opt/nova/sdk/env.sh ]; then
+            . /opt/nova/sdk/env.sh
+          fi
+          # the options must be the ones the shards were compiled under
+          ERL_COMPILER_OPTIONS='[no_ssa_opt]' make "verify-elixir-${{ matrix.gate }}" ELIXIR_EBIN_FROM="$SHARDS" BEAM_PATH="$(dirname "$(command -v erl)"):$(dirname "$(command -v elixir)")"
 
   # THE BLOCK ZERO-COST GATE, byte-identity half (the `generated` job's third
   # step in ci-full.yml). The committed tables goldens must equal a fresh

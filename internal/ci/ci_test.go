@@ -821,6 +821,13 @@ func evalCIExpr(expr string, ev ciEvent) (bool, error) {
 			// when its quoted name is
 			return strings.Contains(ev.PlanLegs, `"`+want+`"`), nil
 		}
+		if lhs == "needs.plan.outputs.verify_legs" {
+			// this model does not carry the verify legs; as for the
+			// placeholder verify-leg's `!= '[]'` reads (resolveCIToken), the
+			// job is admitted exactly when its event and the rest of its if:
+			// admit it
+			return true, nil
+		}
 		if lhs != "github.event.pull_request.labels.*.name" {
 			return false, fmt.Errorf("unsupported contains() collection %q", lhs)
 		}
@@ -1439,6 +1446,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-fast.yml:lint-fast",
 		"ci-fast.yml:plan",
 		"ci-fast.yml:verify-leg",
+		"ci-fast.yml:verify-leg-elixir",
 		"ci-fast.yml:vet",
 		"ci-full.yml:conformance",
 		"ci-full.yml:conformance-matrix",
