@@ -5,6 +5,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | dir | purpose | guard | command |
 | --- | --- | --- | --- |
 | `ast/` | parsed *.schema form | `go test ./internal/parser` | `go test ./internal/parser` |
+| `atomicfile/` | the one publisher every CLI write goes through | `go test ./internal/atomicfile` | `go test ./internal/atomicfile` |
 | `baseline/` | tables baseline pins | `go test ./internal/baseline` | `go test ./internal/baseline` |
 | `check/` | resolve, check, lower to IR | `go test ./internal/check` | `go test ./internal/check` |
 | `ci/` | workflow pin and SDK gates | `go test ./internal/ci` | `go test ./internal/ci` |

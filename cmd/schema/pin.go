@@ -10,8 +10,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/atomicfile"
 	"github.com/mas-bandwidth/schema/v2/internal/modulemove"
-	"github.com/mas-bandwidth/schema/v2/internal/publish"
 )
 
 // The pin directive an adopter writes in each package's generate.go; the Go
@@ -209,7 +209,7 @@ func cmdPin(args []string) {
 		fatalf("schema pin: the tree's pins already differ from each other (%s); pass --mixed-ok to move them together", strings.Join(names, ", "))
 	}
 
-	if err := publishPins(osPinFiles, changes); err != nil {
+	if err := publishPins(atomicfile.OS(), changes); err != nil {
 		fatalf("schema pin: %v", err)
 	}
 	for _, ch := range changes {
@@ -226,71 +226,30 @@ type pinChange struct {
 	mode os.FileMode
 }
 
-// pinFiles is the two file operations a pin can fail in, a seam so the tests
-// fail each one at a chosen file without a real read-only or full disk. It is
-// the seam of the shared publisher (internal/publish), which does the work.
-type pinFiles struct {
-	createTemp func(dir, pattern string) (*os.File, error)
-	rename     func(oldpath, newpath string) error
-}
-
-var osPinFiles = pinFiles{createTemp: os.CreateTemp, rename: os.Rename}
-
-// publishPins moves every file or none.
+// publishPins moves every file or none, through the one publisher every
+// command writes with (internal/atomicfile; f is its seam, so the tests fail
+// a chosen file operation without a real read-only or full disk).
 //
 // A generate.go that is a symbolic link is followed: the file it names is
 // the one moved, and the link is never replaced. Two paths that reach one
 // file move it once.
 //
-// Every file's new content is staged first, beside the file it replaces,
-// with a name reserved for keeping the original, so the failures a pin meets
-// in practice (a read-only directory, a full disk) happen before anything has
-// changed: what was staged is removed and the tree is as it was.
-//
-// Only then is each file published: the original ENTRY is renamed aside to
-// its kept name and the staged file renamed into its place. If either rename
-// fails, every original already moved aside is renamed back over its path, so
-// what returns is the entry itself (the same inode, with its hard links, its
-// mode and the time it was last written), not a copy of its bytes, and
-// "nothing was changed" is true. When every file is published the kept
-// originals are removed.
+// Every file's new content is staged first, beside the file it replaces, so
+// the failures a pin meets in practice (a read-only directory, a full disk)
+// happen before anything has changed. Only then is each file published; if
+// a rename fails, every original already moved aside is renamed back over
+// its path, so what returns is the entry itself (the same inode, with its
+// hard links, its mode and the time it was last written), not a copy of its
+// bytes, and "nothing was changed" is true.
 //
 // An original that will not go back is the one case that ends neither all
 // old nor all new: it is left at its kept name, never removed, and the error
 // names it.
-func publishPins(pf pinFiles, changes []pinChange) error {
-	f := publish.Files{CreateTemp: pf.createTemp, Rename: pf.rename}
-	entries := make([]*publish.Entry, 0, len(changes))
-	seen := map[string]bool{}
+func publishPins(f atomicfile.Files, changes []pinChange) error {
+	txn := atomicfile.New()
+	view := txn.With(f)
 	for _, ch := range changes {
-		file, err := filepath.EvalSymlinks(ch.path)
-		if err != nil {
-			publish.Clean(entries)
-			return fmt.Errorf("nothing was changed: %w", err)
-		}
-		if seen[file] {
-			continue
-		}
-		seen[file] = true
-		e := &publish.Entry{Name: ch.path, Dest: file}
-		entries = append(entries, e)
-		if e.Next, err = f.Stage(file, "new", ch.next, ch.mode); err == nil {
-			e.Kept, err = f.Stage(file, "orig", nil, ch.mode)
-		}
-		if err != nil {
-			publish.Clean(entries)
-			return fmt.Errorf("nothing was changed: %w", err)
-		}
+		view.Write(ch.path, ch.next, ch.mode)
 	}
-	// the publisher shared with pack, cook, uncook and unpack (internal/publish)
-	if fail := f.Publish(entries, nil, nil); fail != nil {
-		if len(fail.Stuck) > 0 {
-			return fmt.Errorf("%w; the pin is HALF MOVED: these files could not be put back as they were: %s", fail.Cause, strings.Join(fail.Stuck, ", "))
-		}
-		return fmt.Errorf("nothing was changed (every file already moved was put back as it was): %w", fail.Cause)
-	}
-	if left := publish.RemoveKept(entries); len(left) > 0 {
-		return fmt.Errorf("every pin moved, but these kept originals could not be removed: %s", strings.Join(left, ", "))
-	}
-	return nil
+	return txn.Commit()
 }
