@@ -24,7 +24,7 @@ import (
 // The report runs on each exactly as ci-fast.yml's ledger step runs it, read
 // against .github/skip-ledger.txt. A defect case is beside its control: the
 // one that is red on the defect and the one that was always right.
-const recordCases = 12
+const recordCases = 14
 
 type recordCase struct {
 	args []string

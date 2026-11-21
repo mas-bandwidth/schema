@@ -109,7 +109,8 @@ var (
 // is a skip with no reason (t.SkipNow, t.Skip with no argument).
 //
 // The reason is not always the last entry: a t.Cleanup registered before the
-// skip logs after it. A reader therefore classifies every entry.
+// skip logs after it, and the output does not say which entry t.Skip printed.
+// A reader therefore looks at every entry (tools/gotestreport, skipFindings).
 func Entries(out []byte) []string {
 	var entries []string
 	var entry []string

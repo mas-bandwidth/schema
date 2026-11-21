@@ -28,8 +28,20 @@ func TestCleanup(t *testing.T) {
 	case is("cleanup-after-required-skip"):
 		t.Cleanup(func() { t.Log("SCHEMA_SLOW: auxiliary log") })
 		t.Skip("no cargo on PATH")
-	case is("cleanup-after-slow-skip"):
-		t.Cleanup(func() { t.Log("removed the scratch directory") })
+	}
+}
+
+// F-176: a line logged before the skip.
+func TestEarlierLog(t *testing.T) {
+	switch {
+	case is("probe-then-slow-skip"):
+		t.Log("probing for cargo")
+		t.Skip("SCHEMA_SLOW: this test shells out to cargo; set SCHEMA_SLOW=1 to run it")
+	case is("slow-log-then-unknown-skip"):
+		t.Log("SCHEMA_SLOW: noted")
+		t.Skip("unrecorded setup failure")
+	case is("required-log-then-slow-skip"):
+		t.Log("no cargo on PATH: diagnostic from an earlier optional probe")
 		t.Skip("SCHEMA_SLOW: this test shells out to cargo; set SCHEMA_SLOW=1 to run it")
 	}
 }

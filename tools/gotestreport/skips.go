@@ -4,19 +4,19 @@ package main
 //
 // With -skips the report reads every skip in the records against the ledger
 // (.github/skip-ledger.txt). Every skip counts, the first run's of a test run
-// twice (-count=2) as much as the second's. A skip's reason is what t.Skip or
-// t.Skipf printed, which is not always the last thing the test logged (a
-// t.Cleanup registered before the skip logs after it), so every entry the
-// test logged is read: the first ledger line whose regexp matches an entry
-// gives it its class. -provides
+// twice (-count=2) as much as the second's. A skip's reason is the last
+// entry the test logged (what t.Skip and t.Skipf print, unless a t.Cleanup
+// logged after it), and the first ledger line whose regexp matches it gives
+// the skip its class. -provides
 // names the classes the lane satisfies: a lane that sets SCHEMA_SLOW=1
 // provides `slow`, the Elixir lane provides `tool:elixir`. The row is red when
 //
 //   - a test skipped and logged no reason (t.SkipNow, t.Skip() with nothing);
 //   - a reason matches no ledger line: unknown is red, never ignored, so a
 //     new kind of skip is classified the day it is written;
-//   - an entry's class is one the lane provides: "elixir not found" in the
-//     lane that installs elixir, whatever else the test logged around it.
+//   - any entry the skipped test logged is of a class the lane provides:
+//     "elixir not found" in the lane that installs elixir, whether it is
+//     the last entry or a cleanup logged after it (skipFindings says why).
 //
 // A -provides class the ledger does not name is a usage error (exit 2), so a
 // typo in a workflow cannot stand for "provides nothing". The report costs a
@@ -101,31 +101,38 @@ func (r *report) skipFindings(l *ledger) findings {
 	for _, sk := range all {
 		total++
 		name := r.name(sk.k, multi)
-		// EVERY entry the test logged is read, not the last one: a cleanup
-		// registered before the skip logs after it, and the line t.Skip
-		// printed is then not the last. One entry of a class this lane
-		// provides is red whatever was logged around it; otherwise the skip
-		// is counted under the last entry the ledger names.
+		// The record does not say which entry t.Skip printed: what the test
+		// logged before the skip comes ahead of it, and what a t.Cleanup
+		// registered before the skip logs comes after it. So ["no cargo on
+		// PATH", "SCHEMA_SLOW: ..."] is a cargo skip a cleanup logged after,
+		// or a slow skip a probe logged before, and nothing in go test's
+		// output tells the two apart. Neither reading may turn a skip
+		// green that the other turns red:
+		//
+		//   - the last entry is the reason, and an unknown one is red;
+		//   - an entry of a class this lane provides is red wherever it
+		//     stands: a cleanup's line cannot launder it, and a test that
+		//     logs "no cargo" in the lane that has cargo says something
+		//     wrong either way.
 		entries := skipledger.Entries(sk.out)
 		if len(entries) == 0 {
 			reds = append(reds, red{"SKIP WITH NO REASON", name, "the test skipped and logged nothing: say why in t.Skip"})
 			continue
 		}
-		var rule *skipledger.Rule
-		reason := ""
-		provided := false
+		reason := entries[len(entries)-1]
+		rule := l.Classify(reason)
 		for _, e := range entries {
-			if hit := l.Classify(e); hit != nil && !provided {
+			if hit := l.Classify(e); hit != nil && l.provides[hit.Class] {
 				rule, reason = hit, e
-				provided = l.provides[hit.Class]
+				break
 			}
 		}
 		if rule == nil {
-			reds = append(reds, red{"UNKNOWN SKIP", name, fmt.Sprintf("%q matches no line of %s", entries[len(entries)-1], l.Path)})
+			reds = append(reds, red{"UNKNOWN SKIP", name, fmt.Sprintf("%q matches no line of %s", reason, l.Path)})
 			continue
 		}
 		byRule[rule.Line]++
-		if provided {
+		if l.provides[rule.Class] {
 			reds = append(reds, red{"UNEXPECTED SKIP", name, fmt.Sprintf("%q is class %s, which this lane provides", reason, rule.Class)})
 		}
 	}

@@ -231,6 +231,43 @@ func TestACleanupLogDoesNotReclassifyASkip(t *testing.T) {
 	}
 }
 
+// F-176, the reviewer's controls on 45ab4bc842: an ordinary entry the ledger
+// names, logged before the skip, never stands for an unknown reason (red),
+// and an ordinary log line before a lawful slow skip leaves it accepted. A
+// line of a class the lane provides is red wherever it stands: the record
+// cannot tell it from TestACleanupLogDoesNotReclassifyASkip's cleanup.
+func TestTheReasonIsTheLastEntryAndAProvidedEntryIsRedAnywhere(t *testing.T) {
+	t.Parallel()
+	const stream = `{"Action":"start","Package":"o"}
+{"Action":"run","Package":"o","Test":"TestSlowThenUnknown"}
+{"Action":"output","Package":"o","Test":"TestSlowThenUnknown","Output":"    o_test.go:5: SCHEMA_SLOW: noted\n"}
+{"Action":"output","Package":"o","Test":"TestSlowThenUnknown","Output":"    o_test.go:6: unrecorded setup failure\n"}
+{"Action":"skip","Package":"o","Test":"TestSlowThenUnknown","Elapsed":0}
+{"Action":"run","Package":"o","Test":"TestProbeThenSlow"}
+{"Action":"output","Package":"o","Test":"TestProbeThenSlow","Output":"    o_test.go:9: probing the toolchain\n"}
+{"Action":"output","Package":"o","Test":"TestProbeThenSlow","Output":"    o_test.go:10: SCHEMA_SLOW: gated\n"}
+{"Action":"skip","Package":"o","Test":"TestProbeThenSlow","Elapsed":0}
+{"Action":"run","Package":"o","Test":"TestElixirThenSlow"}
+{"Action":"output","Package":"o","Test":"TestElixirThenSlow","Output":"    o_test.go:13: no Elixir on PATH\n"}
+{"Action":"output","Package":"o","Test":"TestElixirThenSlow","Output":"    o_test.go:14: SCHEMA_SLOW: gated\n"}
+{"Action":"skip","Package":"o","Test":"TestElixirThenSlow","Elapsed":0}
+{"Action":"pass","Package":"o","Elapsed":0.1}
+`
+	f := reportOf(t, 10*time.Minute, stream).skipFindings(ledgerOf(t, "tool:elixir"))
+	for _, want := range []string{
+		`UNKNOWN SKIP         o TestSlowThenUnknown: "unrecorded setup failure" matches no line`,
+		`UNEXPECTED SKIP      o TestElixirThenSlow: "no Elixir on PATH" is class tool:elixir`,
+		"RED, 2 skip(s)",
+	} {
+		if !strings.Contains(f.text, want) {
+			t.Errorf("report lacks %q:\n%s", want, f.text)
+		}
+	}
+	if strings.Contains(f.text, "TestProbeThenSlow:") {
+		t.Errorf("a log line before a lawful slow skip made it red:\n%s", f.text)
+	}
+}
+
 // F-176: t.Skip prints its reason at the end of what the test logged. A test
 // that logs more than the kept output before it skips (one 70 KB line, or a
 // thousand short ones) keeps the reason: an ordinary slow skip is accepted,
