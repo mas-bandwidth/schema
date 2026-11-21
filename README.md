@@ -104,6 +104,7 @@ sandboxed build and an editor integration all work.
 | **[USAGE.md](docs/USAGE.md)** | Every language feature, with the code it generates. |
 | **[SPEC.md](docs/SPEC.md)** | The normative reference for the type wire: grammar, wire law, every edge case. |
 | **[SPEC-TABLES.md](docs/SPEC-TABLES.md)** | The normative reference for tables: the wire, the cook, the block form, reflection, the build version. |
+| **[AI.md](docs/AI.md)** | For AI assistants: the whole language on one page, the commands, calling the generated code, and the mistakes to avoid. `schema help ai` prints a block to paste into your project's AGENTS.md. |
 
 Beside them: [PORTING.md](docs/PORTING.md) (the techniques register: every
 method and instrument a table backend carries, with a cell per language and a
