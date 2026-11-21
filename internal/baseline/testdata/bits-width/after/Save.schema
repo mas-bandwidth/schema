@@ -1,0 +1,6 @@
+package migration
+
+table Save
+{
+    flags bits(5)
+}
