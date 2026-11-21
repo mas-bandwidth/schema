@@ -4080,11 +4080,33 @@ func rustConstantClaim(gen string) string {
 		ir.RustConstName(gen), gen)
 }
 
-// JavaScriptUnbindableNames is every name a schema declaration cannot take
-// because the generated JavaScript module or its TypeScript declaration file
-// cannot bind it (SPEC §4.6, §6.1), and that no other rule already refuses.
+// JavaScriptUnbindableNames is every name no schema declaration, and no name
+// derived from one, can take because the generated JavaScript module cannot
+// bind it (SPEC §4.6, §6.1), and that no other rule already refuses.
 func JavaScriptUnbindableNames() []string {
-	return []string{"eval", "arguments", "undefined", "unknown", "never", "symbol", "number", "bigint"}
+	return []string{"eval", "arguments", "undefined"}
+}
+
+// TypeScriptPredefinedTypeNames is every TypeScript predefined type name no
+// other rule already refuses. A declaration the generated JavaScript makes a
+// class or a type cannot take one (jsDeclBindsAType); a const is a value
+// only, flags bind no name of their own, and TypeScript keeps values and
+// types apart, so both can (SPEC §4.6, §6.1).
+func TypeScriptPredefinedTypeNames() []string {
+	return []string{"unknown", "never", "symbol", "number", "bigint"}
+}
+
+// jsDeclBindsAType reports whether the generated JavaScript binds a
+// declaration's own name as a class or a type: a type, table or union is a
+// class, and an enum is a type alias beside its frozen object. A const is a
+// value, and flags bind no name of their own (their masks are
+// <Name><Variant>), so TypeScript's type names stay open to both.
+func jsDeclBindsAType(d ast.Decl) bool {
+	switch d.(type) {
+	case *ast.ConstDecl, *ast.FlagsDecl:
+		return false
+	}
+	return true
 }
 
 // checkClaimedNames builds the FULL top-level symbol table generation will
@@ -4134,19 +4156,18 @@ func (c *checker) checkClaimedNames() {
 	for _, gen := range []string{"NUMBER_SCRATCH", "BIGINT_SCRATCH", "BOOL_SCRATCH", "SC", "PRODUCTION", "FlatReadSlack", "validText", "globalThis"} {
 		add(gen, "a binding every generated JavaScript packet module declares (SPEC §6.1)", unitPos)
 	}
-	// THE NAMES NO JAVASCRIPT MODULE OR DECLARATION FILE CAN BIND. A
-	// declaration becomes a module-scope binding of its own name (a class, a
-	// const) and a declaration of it in the .d.ts. An ES module is strict
-	// code: it refuses eval and arguments as a binding. undefined is the
-	// value the modules compare against. TypeScript refuses a class or enum
-	// named after one of its own predefined types (unknown, never, symbol,
-	// number, bigint, undefined; the rest are refused already, as another
-	// target's reserved word or the schema's own). A FIELD of any of these is
-	// a property and binds nothing, so the refusal is here, at the
-	// declaration, and not among the reserved words, which refuse every kind
-	// of name.
+	// THE NAMES NO JAVASCRIPT MODULE CAN BIND. A declaration becomes a
+	// module-scope binding of its own name (a class, a const) and a
+	// declaration of it in the .d.ts. An ES module is strict code: it refuses
+	// eval and arguments as a binding. undefined is the value the modules
+	// compare against. Claimed for the whole unit, so a derived module-scope
+	// name (a flags mask) is refused as well. A FIELD of any of these is a
+	// property and binds nothing, so the refusal is here, at the declaration,
+	// and not among the reserved words, which refuse every kind of name.
+	// TypeScript's predefined type names are refused below, per declaration,
+	// because only a declaration that becomes a class or type collides.
 	for _, gen := range JavaScriptUnbindableNames() {
-		add(gen, "a name no generated JavaScript module or TypeScript declaration can bind (an ES module refuses eval and arguments as bindings, undefined is the value its code compares against, and TypeScript refuses a declaration named after a predefined type)", unitPos)
+		add(gen, "a name no generated JavaScript module can bind (an ES module refuses eval and arguments as bindings, and undefined is the value its code compares against)", unitPos)
 	}
 	// THE VIEW'S OWN UNIT-SCOPE SPELLINGS (docs/SPEC-TABLES.md §8.3, §11),
 	// refused as declaration names in EVERY unit, always. They belong to the
@@ -4265,6 +4286,14 @@ func (c *checker) checkClaimedNames() {
 		d := c.astDecls[name]
 		c.reserveCPrefix(name, d.DeclPos())
 		add(name, fmt.Sprintf("declaration %s", name), d.DeclPos())
+		// a declaration the generated JavaScript makes a class or a type (a
+		// type, table or union is a class; an enum is a type alias beside its
+		// object) cannot take a TypeScript predefined type's name. A const is
+		// a value, and flags emit only their masks, count and name functions,
+		// so neither binds the name as a type and both keep it.
+		if jsDeclBindsAType(d) && slices.Contains(TypeScriptPredefinedTypeNames(), name) {
+			c.errf(d.DeclPos(), "declaration %s becomes a class or type in the generated JavaScript and its TypeScript declarations, and TypeScript refuses a class or type named after its predefined type %s; rename at the source (SPEC §4.6)", name, name)
+		}
 		switch d := d.(type) {
 		case *ast.ConstDecl:
 			// the Rust target spells constants SCREAMING_SNAKE in the flat
