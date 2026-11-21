@@ -4,7 +4,6 @@ import (
 	"encoding/hex"
 	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -12,6 +11,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -134,7 +134,7 @@ func TestJsCompressedFloatNegZeroAndFloat32Ends(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "probe.mjs"), []byte(jsCompressedFixedProbe), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		cmd := exec.Command(node, "probe.mjs", "cases.txt")
+		cmd := testproc.Command(t, node, "probe.mjs", "cases.txt")
 		cmd.Dir = dir
 		out, err := cmd.CombinedOutput()
 		if err != nil || strings.TrimSpace(string(out)) != "OK" {
