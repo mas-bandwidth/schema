@@ -54,7 +54,9 @@ void main(List<String> args) {
     final name = fields[0];
     final x = parseValue(fields[1]);
     if (fields[2] != 'written' && fields[2] != 'refused') {
-      throw StateError('cases: $name: verdict "${fields[2]}" is neither written nor refused');
+      throw StateError(
+        'cases: $name: verdict "${fields[2]}" is neither written nor refused',
+      );
     }
     final refused = fields[2] == 'refused';
     final readsBack = fields.length > 4 ? parseValue(fields[4]) : x;

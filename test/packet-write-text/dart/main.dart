@@ -47,7 +47,9 @@ void main(List<String> args) {
     final raw = parseHex(parts[1].trim());
     final verdict = parts[2].trim();
     if (verdict != 'written' && verdict != 'refused') {
-      throw StateError('cases: $name: verdict "$verdict" is neither written nor refused');
+      throw StateError(
+        'cases: $name: verdict "$verdict" is neither written nor refused',
+      );
     }
     final sent = value(raw);
     if (verdict == 'refused') {

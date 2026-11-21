@@ -585,9 +585,13 @@ build/js-fixed-optional/.stamp: bin/schema test/js-tables/fixedoptional_corpus.c
 # which is the only instrument here that can see §3.4's "the slack is zero",
 # because the reference's records are set from CONSTRUCTED storage and one of
 # them uses NOTHING of a string whose declared default is not empty.
+# The registered count: fixedform.mjs prints "ran N, failed M" (one unit per
+# check) and tools/mustrun holds N to this number, measured on amd-3; a commit
+# that adds or removes a check changes it.
+JS_FIXED_FORM_CHECKS := 191
 .PHONY: tables-js-fixed-form
 tables-js-fixed-form: build/mustrun build/js-fixed/.stamp build/js-fixed-corpus/.stamp build/js-fixed-optional/.stamp build/fixedform-corpus/.stamp
-	cd $(CURDIR) && $(MUSTRUN) -name tables-js-fixed-form -count 1 -- $(NODE) test/js-tables/fixedform.mjs build/js-fixed build/js-fixed-corpus build/js-fixed-optional build/fixedform-corpus
+	cd $(CURDIR) && $(MUSTRUN) -name tables-js-fixed-form -count $(JS_FIXED_FORM_CHECKS) -- $(NODE) test/js-tables/fixedform.mjs build/js-fixed build/js-fixed-corpus build/js-fixed-optional build/fixedform-corpus
 
 # THE VERSIONING HALF OF THE FIXED FORM ON THE JAVASCRIPT LEG (§5 of
 # docs/FIXED-FORM-ALGORITHM.md, the rows of docs/FIXED-FORM-VERSIONING-TESTS.md).
