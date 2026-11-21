@@ -850,6 +850,23 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 	return report(w, langs, results), nil
 }
 
+// scoreRefusalAbsent scores the `<case>.absent` a leg wrote on a row whose
+// expected answer is a refusal (message wire `-`, `wire-refused`), and says
+// whether it scored it. A file naming a reason is the historical spelling of
+// the refusal, and the caller scores it PASS (the reason's text is not
+// compared). An EMPTY file is the driver contract's per-case absence, a leg
+// with no codec for the root (README.md, "A CASE may be absent too"): that is
+// a missing feature, never the refusal the row owes, so it counts absent and
+// a leg with no codec cannot pass a must-refuse row.
+func scoreRefusalAbsent(name string, reason []byte, r *result) bool {
+	if len(bytes.TrimSpace(reason)) > 0 {
+		return false
+	}
+	r.missing++
+	r.mark(name, outcomeAbsent)
+	return true
+}
+
 // scoreAnswer scores one case written by a leg. The blob-shared marker
 // changes that one wire expectation from bytes to a named writer refusal, for
 // Go and for every port refused-by= names (inst.WireRefusal); inst is the zero
@@ -862,9 +879,13 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 			r.mark(e.name, outcomeFail)
 			return
 		}
-		if _, err := os.ReadFile(answer + ".absent"); err != nil {
+		reason, err := os.ReadFile(answer + ".absent")
+		if err != nil {
 			r.failures = append(r.failures, fmt.Sprintf("%s: expected refusal, driver wrote nothing", e.name))
 			r.mark(e.name, outcomeFail)
+			return
+		}
+		if scoreRefusalAbsent(e.name, reason, r) {
 			return
 		}
 		r.pass++
@@ -881,9 +902,13 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 			r.mark(e.name, outcomeFail)
 			return
 		}
-		if _, err := os.ReadFile(answer + ".absent"); err != nil {
+		reason, err := os.ReadFile(answer + ".absent")
+		if err != nil {
 			r.failures = append(r.failures, fmt.Sprintf("%s: expected wire refusal, driver wrote nothing", e.name))
 			r.mark(e.name, outcomeFail)
+			return
+		}
+		if scoreRefusalAbsent(e.name, reason, r) {
 			return
 		}
 		r.pass++

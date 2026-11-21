@@ -122,9 +122,10 @@ json-write-refusal <case> <unit> <root> <wire file> <damage>
   No duplicate JSON instance is needed.
 
   A `<message-form wire>` of `-` requires refusal for every port. The driver
-  emits `refused` or the historical `<name>.absent` file. Diagnostic text is
-  ignored; this is an answered PASS case, not a missing feature. Emitted value
-  bytes or a missing answer fail. Accepted message write-back covers every body.
+  emits `refused` or the historical `<name>.absent` file naming a reason.
+  Diagnostic text is not compared; this is an answered PASS case, not a missing
+  feature. An empty `<name>.absent` is a missing codec and counts absent, never
+  PASS. Emitted value bytes or a missing answer fail. Accepted message write-back covers every body.
 - **`retain`** reads through the retaining path under the row's two caller
   capacities. `<capacity>` is `full`, or `short`: one byte below the storage this
   implementation used in a roomy load. `<ids>` is `full` or an explicit entry
