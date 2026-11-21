@@ -104,12 +104,9 @@ test-go: tables-go-shared-runtime
 # umbrella target below keeps `make test-go` and the local run whole. Each
 # half runs ONLY its own rows (-run, anchored): before, both halves ran the
 # whole package and the names were only checked, so the split saved nothing.
-# TestRowR19 still runs under -run but is not a required PASS: it is gated by
-# name in R19_test.go (it read nothing until 2026-11-21; made honest, its wire
-# is the retired form 1), and its SKIP line with that reason lands in the log.
 conformance-go-rows-a: build/tables-generated-go/.stamp tables-go-sibling-runtime
 	cd test/conformance/go && SLOWGATE_LOG_DIR="$(CURDIR)/build/slowgate" sh $(CURDIR)/test/slowgate/proof conformance-go-rows-a \
-		'TestRowC12 TestRowC13 TestRowC14 TestRowC14WriterRefusesOutOfRange TestRowC7 TestRowC8 TestRowC8WriterRefusesOutOfRange TestRowCountedArraysValidData TestRowE5 TestRowF12 TestRowF8 TestRowF8NegativeControl TestRowF8RaggedTailByName TestRowFloat32ValuesNonFiniteRefused TestRowFloat32ValuesValidData TestRowP2 TestRowP3 TestRowR10 TestRowR14 TestRowR14LayoutRecordTooLargeByName TestRowR15 TestRowR17 TestRowR20' \
+		'TestRowC12 TestRowC13 TestRowC14 TestRowC14WriterRefusesOutOfRange TestRowC7 TestRowC8 TestRowC8WriterRefusesOutOfRange TestRowCountedArraysValidData TestRowE5 TestRowF12 TestRowF8 TestRowF8NegativeControl TestRowF8RaggedTailByName TestRowFloat32ValuesNonFiniteRefused TestRowFloat32ValuesValidData TestRowP2 TestRowP3 TestRowR10 TestRowR14 TestRowR14LayoutRecordTooLargeByName TestRowR15 TestRowR17 TestRowR19 TestRowR20' \
 		./rows/ -count=1 -timeout 600s -run '^(TestRowC12|TestRowC13|TestRowC14|TestRowC14WriterRefusesOutOfRange|TestRowC7|TestRowC8|TestRowC8WriterRefusesOutOfRange|TestRowCountedArraysValidData|TestRowE5|TestRowF12|TestRowF8|TestRowF8NegativeControl|TestRowF8RaggedTailByName|TestRowFloat32ValuesNonFiniteRefused|TestRowFloat32ValuesValidData|TestRowP2|TestRowP3|TestRowR10|TestRowR14|TestRowR14LayoutRecordTooLargeByName|TestRowR15|TestRowR17|TestRowR19|TestRowR20)$$'
 conformance-go-rows-b: build/tables-generated-go/.stamp tables-go-sibling-runtime
 	cd test/conformance/go && SLOWGATE_LOG_DIR="$(CURDIR)/build/slowgate" sh $(CURDIR)/test/slowgate/proof conformance-go-rows-b \
@@ -146,7 +143,7 @@ tables-go-json-walk: build/tables-generated-go/.stamp
 # a generated package names its schema's `package` and Go resolves an import by
 # module path — so the conformance leg's go.mod replaces one path per unit,
 # exactly as test/go/go.mod already does for the packet corpus.
-build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema $(wildcard test/tables/[MAKR][12].schema) tables/scalars/Scalars.schema test/tables/Scalars2.schema tables/messages/Messages.schema tables/backend/Backend.schema tables/vocab/Vocab.schema tables/vocab9/Vocab9.schema $(wildcard tables/stream/*.schema tables/blobs/*.schema tables/lists/*.schema tables/maps/*.schema tables/widelist/*.schema) test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema testdata/conformance/feature-witnesses/full/Features.schema
+build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema $(wildcard test/tables/[MAKR][12].schema) tables/scalars/Scalars.schema test/tables/Scalars2.schema tables/messages/Messages.schema tables/backend/Backend.schema tables/vocab/Vocab.schema tables/vocab9/Vocab9.schema $(wildcard tables/stream/*.schema tables/blobs/*.schema tables/lists/*.schema tables/maps/*.schema tables/widelist/*.schema) test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema testdata/conformance/feature-witnesses/full/Features.schema testdata/conformance/r19/old/R19.schema testdata/conformance/r19/new/R19.schema testdata/conformance/r19/new/schema.lock
 	@mkdir -p build/tables-generated-go
 	# EVERY UNIT GENERATES AT ONCE (one xargs, 8 wide): the generations are
 	# independent, and run one after another they alone passed the 110 s
@@ -248,6 +245,17 @@ build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema t
 	@grep -q '^table Cfg$$' build/tables-r1-variable/R1.schema || { echo "R1 variable twin: the sed did not turn Cfg variable"; exit 1; }
 	./bin/schema generate --lang go --out build/tables-generated-go-framing/r1variable build/tables-r1-variable/R1.schema
 	$(call go_table_module_in,build/tables-generated-go-framing/r1variable,tblr1variable)
+	# THE R19 ROW'S COMMITTED PAIR (test/conformance/go/rows/R19_test.go): one
+	# lineage, two generations. The old side is generated from its schema alone
+	# (it wrote testdata/conformance/r19/old.bin); the new side from its unit
+	# directory, whose schema.lock carries the old layout, so it reads that file.
+	# Both declare package tblr19, so each is its own module, imported under an
+	# alias; like r1variable they sit beside build/tables-generated-go, not in
+	# it, so the per-unit gates over that tree do not count one unit twice.
+	./bin/schema generate --lang go --out build/tables-generated-go-r19/old testdata/conformance/r19/old/R19.schema
+	./bin/schema generate --lang go --out build/tables-generated-go-r19/new testdata/conformance/r19/new
+	$(call go_table_module_in,build/tables-generated-go-r19/old,tblr19old)
+	$(call go_table_module_in,build/tables-generated-go-r19/new,tblr19new)
 	@touch $@
 
 # THE CARDS UNIT (schema-cards-c01): its own generated Go module plus the two
