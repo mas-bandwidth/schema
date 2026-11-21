@@ -144,11 +144,13 @@ print(v.save().hex())
 
 func TestPythonScalarWidenRefusals(t *testing.T) {
 	slowtest.Gate(t, "scalar widening refusals and report atomicity")
-	for _, tc := range []struct{ name, old, new, value, reason string }{
-		{"narrow", "int32", "int16", "100", "kind_mismatch"},
-		{"signedness", "int8", "uint16", "100", "kind_mismatch"},
-		{"range", "int16", "int32 | min = -10, max = 10", "11", "out_of_range"},
-		{"float_narrow", "float64", "float32", "1.5", "kind_mismatch"},
+	// The verdict is the contract (docs/rulings.json, refusal-verdict-only):
+	// the engine and Python each refuse, for whatever reason is their own.
+	for _, tc := range []struct{ name, old, new, value string }{
+		{"narrow", "int32", "int16", "100"},
+		{"signedness", "int8", "uint16", "100"},
+		{"range", "int16", "int32 | min = -10, max = 10", "11"},
+		{"float_narrow", "float64", "float32", "1.5"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			writer := loadUnit(t, fmt.Sprintf("package scalarwiden\ntable Root { value %s }\n", tc.old))
@@ -158,8 +160,8 @@ func TestPythonScalarWidenRefusals(t *testing.T) {
 			value := model.New(model.Lookup("Root"))
 			var rep tabletext.Report
 			ok, err := tablewire.Decode(model, value, wire, &rep)
-			if ok || err == nil || !strings.Contains(err.Error(), tc.reason) {
-				t.Fatalf("Go expected %s: %v %v %+v", tc.reason, ok, err, rep)
+			if ok || !tablewire.ReadRefusal(err) {
+				t.Fatalf("Go expected a read's refusal: %v %v %+v", ok, err, rep)
 			}
 			files, err := Generate(reader)
 			if err != nil {
@@ -167,16 +169,15 @@ func TestPythonScalarWidenRefusals(t *testing.T) {
 			}
 			dir := t.TempDir()
 			writeTree(t, dir, files)
-			probe := pyrun.ImportPrelude + fmt.Sprintf(`from scalarwiden import Root, LoadReport, Refused
+			probe := pyrun.ImportPrelude + `from scalarwiden import Root, LoadReport, Refused
 with open("wire", "rb") as f: data = f.read()
 r=LoadReport(); r.widened=77; r.unknown=66
 try: Root.load(data,r)
-except Refused as e:
- assert e.reason == %q, e.reason
+except Refused:
  assert r.widened == 77 and r.unknown == 66
  print("refused")
 else: raise AssertionError("accepted")
-`, tc.reason)
+`
 			inputs := map[string][]byte{"main.py": []byte(probe), "wire": wire}
 			for _, python := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
 				out, stderr, err := pyrun.Try(t, python, dir, "main.py", inputs)
@@ -199,7 +200,7 @@ func TestPythonScalarWidenDamageAndControl(t *testing.T) {
 	v := model.New(model.Lookup("Root"))
 	var report tabletext.Report
 	ok, err := tablewire.Decode(model, v, damaged, &report)
-	if ok || tablewire.RefusalReason(err) != "wire_damaged" {
+	if ok || !tablewire.ReadRefusal(err) {
 		t.Fatalf("oracle damage %v %v", ok, err)
 	}
 	files, err := Generate(reader)
@@ -212,8 +213,7 @@ func TestPythonScalarWidenDamageAndControl(t *testing.T) {
 with open("wire", "rb") as f: data=f.read()
 r=LoadReport(); r.widened=77; r.unknown=66
 try: Root.load(data,r)
-except Refused as e:
- assert e.reason == "wire_damaged", e.reason
+except Refused:
  assert r.widened == 77 and r.unknown == 66
  print("damaged")
 else: raise AssertionError("accepted truncated scalar")
@@ -252,7 +252,7 @@ func TestPythonScalarWidenMapInteraction(t *testing.T) {
 	text := `{"values":{"-3":4,"2":5}}`
 	wire := pythonVTMapEngineWire(t, writer, "Root", text)
 	canonical := pythonVTMapEngineWire(t, reader, "Root", text)
-	mapKeyWireProbe(t, reader, "Root", wire, canonical, 3, "")
+	mapKeyWireProbe(t, reader, "Root", wire, canonical, 3, false)
 }
 
 func TestPythonScalarWidenNonFinite(t *testing.T) {
@@ -268,7 +268,7 @@ func TestPythonScalarWidenNonFinite(t *testing.T) {
 	value := model.New(model.Lookup("Root"))
 	var report tabletext.Report
 	ok, err := tablewire.Decode(model, value, wire, &report)
-	if ok || tablewire.RefusalReason(err) != "non_finite_float" {
+	if ok || !tablewire.ReadRefusal(err) {
 		t.Fatalf("Go non-finite: %v %v", ok, err)
 	}
 	files, err := Generate(reader)
@@ -281,8 +281,8 @@ func TestPythonScalarWidenNonFinite(t *testing.T) {
 with open("wire", "rb") as f: data=f.read()
 r=LoadReport();r.widened=77;r.unknown=66
 try: Root.load(data,r)
-except Refused as e:
- assert e.reason=="non_finite_float" and r.widened==77 and r.unknown==66
+except Refused:
+ assert r.widened==77 and r.unknown==66
  print("refused")
 else: raise AssertionError("accepted non-finite float")
 `

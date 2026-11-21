@@ -13,15 +13,19 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-func mapKeyWireProbe(t *testing.T, u *ir.Unit, root string, wire, canonical []byte, widened int, why string) {
+// mapKeyWireProbe holds the generated package to the Go engine's verdict on
+// wire: refused, or the widened count and the canonical bytes. Why a read
+// refused is each side's own diagnostic, never compared (docs/rulings.json,
+// refusal-verdict-only).
+func mapKeyWireProbe(t *testing.T, u *ir.Unit, root string, wire, canonical []byte, widened int, refused bool) {
 	t.Helper()
 	m := tabletext.NewModel(u)
 	value := m.New(m.Lookup(root))
 	var report tabletext.Report
 	ok, err := tablewire.Decode(m, value, wire, &report)
-	if why != "" {
-		if ok || tablewire.RefusalReason(err) != why {
-			t.Fatalf("Go refusal: %v %+v, want %s", err, report, why)
+	if refused {
+		if ok || !tablewire.ReadRefusal(err) {
+			t.Fatalf("Go refusal: %v %+v, want a read's refusal", err, report)
 		}
 	} else {
 		if !ok || err != nil || report.Widened != widened || report.Unknown != 0 {
@@ -40,13 +44,13 @@ func mapKeyWireProbe(t *testing.T, u *ir.Unit, root string, wire, canonical []by
 from pathlib import Path
 r=LoadReport()
 `, u.Package, root)
-	if why != "" {
+	if refused {
 		probe += fmt.Sprintf(`r.unknown=12;r.widened=13
 try: %s.load(Path("wire").read_bytes(),r)
-except Refused as e: assert e.reason==%q,(e.reason,%q)
+except Refused: pass
 else: raise AssertionError("map key refusal was lost")
 assert (r.unknown,r.widened)==(12,13)
-`, root, why, why)
+`, root)
 	} else {
 		probe += fmt.Sprintf(`v=%s.load(Path("wire").read_bytes(),r)
 assert (r.unknown,r.widened,r.retained,r.retain_lost)==(0,%d,0,0),r.widened
@@ -72,25 +76,26 @@ func TestPythonMapKeyWidenManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Actual C++ report/save artifacts; the first key is int8, the second int32.
-	mapKeyWireProbe(t, u, "Chunks", wire, canonical, 1, "")
+	mapKeyWireProbe(t, u, "Chunks", wire, canonical, 1, false)
 }
 
 func TestPythonMapKeyWidenKinds(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "both pinned Python interpreters")
 	for _, c := range []struct {
-		name, source, target, text, why string
-		widened                         int
+		name, source, target, text string
+		widened                    int
+		refused                    bool
 	}{
-		{"signed-many", "int8", "int32", `{"values":{"-3":4,"2":5}}`, "", 1},
-		{"unsigned-many", "uint8", "uint64", `{"values":{"1":4,"200":5}}`, "", 1},
-		{"signed-32-64", "int32", "int64", `{"values":{"-2147483648":4,"2147483647":5}}`, "", 1},
-		{"unsigned-32-64", "uint32", "uint64", `{"values":{"4294967295":5}}`, "", 1},
-		{"omitted-zero-key", "int8", "int32", `{"values":{"0":5}}`, "", 0},
-		{"exact", "int32", "int32", `{"values":{"-3":4,"2":5}}`, "", 0},
-		{"signedness", "int8", "uint32", `{"values":{"2":5}}`, "kind_mismatch", 0},
-		{"reverse-signedness", "uint8", "int32", `{"values":{"2":5}}`, "kind_mismatch", 0},
-		{"narrowing", "int64", "int32", `{"values":{"2":5}}`, "kind_mismatch", 0},
+		{"signed-many", "int8", "int32", `{"values":{"-3":4,"2":5}}`, 1, false},
+		{"unsigned-many", "uint8", "uint64", `{"values":{"1":4,"200":5}}`, 1, false},
+		{"signed-32-64", "int32", "int64", `{"values":{"-2147483648":4,"2147483647":5}}`, 1, false},
+		{"unsigned-32-64", "uint32", "uint64", `{"values":{"4294967295":5}}`, 1, false},
+		{"omitted-zero-key", "int8", "int32", `{"values":{"0":5}}`, 0, false},
+		{"exact", "int32", "int32", `{"values":{"-3":4,"2":5}}`, 0, false},
+		{"signedness", "int8", "uint32", `{"values":{"2":5}}`, 0, true},
+		{"reverse-signedness", "uint8", "int32", `{"values":{"2":5}}`, 0, true},
+		{"narrowing", "int64", "int32", `{"values":{"2":5}}`, 0, true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			schema := func(kind string) string {
@@ -99,16 +104,16 @@ func TestPythonMapKeyWidenKinds(t *testing.T) {
 			source, target := loadUnit(t, schema(c.source)), loadUnit(t, schema(c.target))
 			wire := pythonVTMapEngineWire(t, source, "Root", c.text)
 			var canonical []byte
-			if c.why == "" {
+			if !c.refused {
 				canonical = pythonVTMapEngineWire(t, target, "Root", c.text)
 			}
-			mapKeyWireProbe(t, target, "Root", wire, canonical, c.widened, c.why)
+			mapKeyWireProbe(t, target, "Root", wire, canonical, c.widened, c.refused)
 		})
 	}
 	// Valid framing with duplicate widened keys must still refuse structurally.
 	source := loadUnit(t, "package probe\ntable Root { values map[int8]int32 }\n")
 	target := loadUnit(t, "package probe\ntable Root { values map[int32]int32 }\n")
-	mapKeyWireProbe(t, target, "Root", pythonVTMapKeyedWire(t, source, "Root", []int64{2, 2}), nil, 0, "wire_damaged")
+	mapKeyWireProbe(t, target, "Root", pythonVTMapKeyedWire(t, source, "Root", []int64{2, 2}), nil, 0, true)
 }
 
 func TestPythonMapKeyWidenCountNegativeControl(t *testing.T) {
