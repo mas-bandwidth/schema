@@ -268,7 +268,7 @@ func (m *msgGen) rides(f *ir.Field, expr, dexpr, ind string) string {
 		}
 		return fmt.Sprintf("%s_length != %d || %s[..%d] != %s", expr, len(f.DefBytes), expr, len(f.DefBytes), rustByteArray(f.DefBytes))
 	case f.Array == ir.ArrayCounted:
-		return expr + "_count > 0"
+		return m.countedRides(f, expr, dexpr, ind)
 	case f.Array == ir.ArrayFixed:
 		if isStructRef(f.Type) {
 			return "true"
@@ -282,6 +282,38 @@ func (m *msgGen) rides(f *ir.Field, expr, dexpr, ind string) string {
 	}
 	// a plain float compares bits, so a -0 under a +0 default rides (§3.3)
 	return scalarDiffers(f, expr, dexpr)
+}
+
+// countedRides is a counted array's ride test, the Go reference's
+// messageElides: it elides at count 0, and a [Min..N] array with Min > 0 also
+// elides at its birth, count Min with every element at its default
+// (docs/SPEC-TABLES.md §3.3, §22.2; SPEC.md §4.2). An element's default is the
+// writer's own: a struct whose body measures its terminator alone, a union at
+// None (tag 0, an arm with a zero payload rides), and a scalar or enum at the
+// element's declared default.
+func (m *msgGen) countedRides(f *ir.Field, expr, dexpr, ind string) string {
+	born := f.BornCount()
+	if born <= 0 {
+		return expr + "_count > 0"
+	}
+	var live string
+	switch {
+	case isStructRef(f.Type):
+		live = m.tmp("live")
+		probe := m.tmp("probe")
+		m.pf("%slet mut %s = false;\n", ind, live)
+		m.pf("%sif %s_count == %d {\n", ind, expr, born)
+		m.pf("%s    for e in %s.iter().take(%d) {\n", ind, expr, born)
+		m.pf("%s        let mut %s = TableBitWriter::measure();\n", ind, probe)
+		m.pf("%s        if !%s_save_message_body(&mut %s, e) { return false; }\n", ind, ir.RustSnake(f.Type.Name), probe)
+		m.pf("%s        if %s.bits > TABLE_MESSAGE_REF_BITS as u64 { %s = true; break; }\n", ind, probe, live)
+		m.pf("%s    }\n%s}\n", ind, ind)
+	case isUnionRef(f.Type):
+		live = fmt.Sprintf("%s.iter().take(%d).any(|e| e.tag() != 0)", expr, born)
+	default:
+		live = fmt.Sprintf("%s.iter().zip(%s.iter()).take(%d).any(|(x, d)| %s)", expr, dexpr, born, scalarDiffers(f, "(*x)", "(*d)"))
+	}
+	return fmt.Sprintf("%s_count > 0 && (%s_count != %d || %s)", expr, expr, born, live)
 }
 
 // scalarWriteCheck is the debug-only half of the message write contract
@@ -775,11 +807,17 @@ func (m *msgGen) convertScalar(f *ir.Field, expr, entry, ind string) {
 				lo = fmt.Sprintf("f64::from_bits(0x%x)", math.Float64bits(f.FMin))
 				hi = fmt.Sprintf("f64::from_bits(0x%x)", math.Float64bits(f.FMax))
 			}
-			m.pf("%sif x < %s { x = %s; report.damaged = true; } else if x > %s { x = %s; report.damaged = true; }\n", ind, lo, lo, hi, hi)
+			// ONE PAST AN END REFUSES out_of_range BY NAME (§3.3), as the Go
+			// reference's message read does.
+			m.pf("%sif x < %s { x = %s; report.out_of_range(%q); } else if x > %s { x = %s; report.out_of_range(%q); }\n", ind, lo, lo, owner, hi, hi, owner)
 		}
 		m.pf("%s%s = x;\n", ind, expr)
 		return
 	}
+	// A VALUE OFF ITS DECLARED RANGE, OR A bits(N) VALUE PAST ITS WIDTH, IS
+	// REFUSED BY NAME as out_of_range (§3.3), as the Go reference's message
+	// read does; it is not wire damage.
+	owner := floatOwnerIn(m.u, m.origOf(f))
 	signed := (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) && f.Type.Signed
 	rlo, rhi, hasRange := ir.TableRawRange(f)
 	hasRange = hasRange && f.HasIntRange
@@ -797,15 +835,15 @@ func (m *msgGen) convertScalar(f *ir.Field, expr, entry, ind string) {
 		h := rustBig(rhi, signed)
 		if !signed && rlo.Sign() == 0 {
 			// An unsigned value is never below zero, so only the upper bound can fire.
-			m.pf("%sif x > %s { x = %s; report.damaged = true; }\n", ind, h, h)
+			m.pf("%sif x > %s { x = %s; report.out_of_range(%q); }\n", ind, h, h, owner)
 		} else {
 			l := rustBig(rlo, signed)
-			m.pf("%sif x < %s { x = %s; report.damaged = true; } else if x > %s { x = %s; report.damaged = true; }\n", ind, l, l, h, h)
+			m.pf("%sif x < %s { x = %s; report.out_of_range(%q); } else if x > %s { x = %s; report.out_of_range(%q); }\n", ind, l, l, owner, h, h, owner)
 		}
 	}
 	if bitsClamp {
 		max := uint64(1)<<f.Type.Width - 1
-		m.pf("%sif x > %d { x = %d; report.damaged = true; }\n", ind, max, max)
+		m.pf("%sif x > %d { x = %d; report.out_of_range(%q); }\n", ind, max, max, owner)
 	}
 	typ := cookElemType(f)
 	switch typ {
@@ -942,9 +980,12 @@ pub fn %[1]s_save_messages(values: &[%[2]s], buffer: &mut [u8], report: &mut Tab
 /// A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md §3.3):
 /// no body of it is delivered, so the count is zero, every body read so far
 /// goes back to its declared defaults, and the reason is non_finite_float.
+/// A VALUE OUTSIDE ITS DECLARED RANGE, met before any damage, refuses the
+/// batch the same way BY NAME as out_of_range (§3.3), the field in oor_field.
 pub fn %[1]s_load_messages(values: &mut [%[2]s], vocabulary: &TableVocabulary, data: &[u8], report: &mut TableReport) -> (usize, bool) {
     report.non_finite_float = "";
     report.non_finite_float_id = None;
+    report.oor_field = "";
     report.damaged = false;
 %[6]s    let Some(count) = table_message_batch_open(vocabulary, data, report) else {
         return (0, false);
@@ -963,6 +1004,9 @@ pub fn %[1]s_load_messages(values: &mut [%[2]s], vocabulary: &TableVocabulary, d
             }
             for value in values.iter_mut().take(count) {
                 *value = %[1]s_message_default();
+            }
+            if !report.oor_field.is_empty() {
+                return (0, report.refuse(TableReason::OutOfRange));
             }
             return (0, false);
         }
