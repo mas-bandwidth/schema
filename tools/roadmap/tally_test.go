@@ -149,11 +149,10 @@ func TestThePageCarriesTheThreeTables(t *testing.T) {
 	}
 }
 
-// TestEveryTableHasEveryLanguage holds every table header to the nine supported
-// packet-wire languages (#1861), then the ports on main below parity (goose,
-// docs/PORT-GOOSE.md), then the queued ports (luau, lua, squirrel, moo), then
-// lobster, then python (docs/PORT-PYTHON.md), then unity (docs/UNITY.md), in
-// the same order.
+// TestEveryTableHasEveryLanguage holds every table header to all 18 targets,
+// every one of which owes parity, in the page's column order (the order the
+// columns were added: #1861, then goose, luau, lua, squirrel, moo, lobster,
+// python, unity and ruby).
 func TestEveryTableHasEveryLanguage(t *testing.T) {
 	want := "| feature | cpp | c | cs | go | rust | java | js | dart | elixir | goose | luau | lua | squirrel | moo | lobster | python | unity | ruby |"
 	headers := 0

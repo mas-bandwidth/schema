@@ -416,15 +416,19 @@ func TestImplementationDecodesEachInputOnceAcrossLanguages(t *testing.T) {
 	}
 }
 
-func TestOriginalImplementationUsesAllRequiredConstructs(t *testing.T) {
+func TestEveryTargetImplementationUsesAllRequiredConstructs(t *testing.T) {
 	t.Chdir("../../..")
 	m, err := ReadManifest(defaultManifest, defaultJSONDir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	problems := strings.Join(originalImplementationProblems(m), "\n")
-	for _, lang := range originalNine {
-		have, _ := compiler.Carried(lang)
+	problems := strings.Join(everyTargetImplementationProblems(m), "\n")
+	for _, lang := range everyTarget {
+		have, registered := compiler.Carried(lang)
+		// a target this build has no registration for is a finding, never a skip
+		if !registered && !strings.Contains(problems, lang+": implementation registration is missing") {
+			t.Fatalf("unregistered %s disappeared from acceptance", lang)
+		}
 		for _, feature := range compiler.CarryConstructs() {
 			if !slices.Contains(have, feature) && !strings.Contains(problems, lang+": required Schema construct "+feature+" is not implemented") {
 				t.Fatalf("unclaimed %s/%s disappeared from acceptance", lang, feature)

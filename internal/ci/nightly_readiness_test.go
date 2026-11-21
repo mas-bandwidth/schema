@@ -9,6 +9,41 @@ import (
 	"testing"
 )
 
+// Every target owes parity: the BOM entry and runtime readiness steps run for
+// every port leg, never for a listed subset, and the coverage gate requires all
+// 18 targets from a harness built with every leg tag.
+func TestNightlyAcceptanceCoversEveryTarget(t *testing.T) {
+	t.Parallel()
+	raw, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/nightly-conformance.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wf := string(raw)
+	for _, stale := range []string{"original-nine", "original nine", "require-original-nine"} {
+		if strings.Contains(strings.ToLower(wf), stale) {
+			t.Errorf("workflow still scopes acceptance by %q", stale)
+		}
+	}
+	port := yamlJobs(wf)["port"]
+	for _, name := range []string{
+		"the ${{ matrix.lang }} leg checks the four BOM entry cases",
+		"the ${{ matrix.lang }} runtime readiness gate",
+	} {
+		_, rest, ok := strings.Cut(port, "      - name: "+name+"\n")
+		if !ok {
+			t.Fatalf("missing step %q", name)
+		}
+		body, _, _ := strings.Cut(rest, "\n      - ")
+		if strings.Contains(body, "fromJSON(") || strings.Contains(body, "matrix.lang ==") {
+			t.Errorf("step %q is limited to a subset of the legs:\n%s", name, body)
+		}
+	}
+	coverage := yamlJobs(wf)["coverage"]
+	if !strings.Contains(coverage, `go run -tags "$HARNESS_TAGS" ./test/conformance/harness coverage --in build/nightly/rows --require-every-target`) {
+		t.Errorf("coverage step does not require every target from a fully tagged harness:\n%s", coverage)
+	}
+}
+
 // Execute the actual workflow shell, including its logging pipeline: a failed
 // acceptance program or an empty successful command cannot leave a pass receipt.
 func TestNightlyReadinessCannotPublishPassAfterFailure(t *testing.T) {
@@ -18,8 +53,8 @@ func TestNightlyReadinessCannotPublishPassAfterFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct{ name, lang, dir string }{
-		{"the C++ original-nine readiness gate", "cpp", "reference-report"},
-		{"the original-nine runtime readiness gate", "dart", "report"},
+		{"the C++ runtime readiness gate", "cpp", "reference-report"},
+		{"the ${{ matrix.lang }} runtime readiness gate", "dart", "report"},
 	} {
 		t.Run(tc.lang, func(t *testing.T) {
 			text := string(raw)
