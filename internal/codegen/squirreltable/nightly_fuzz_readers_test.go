@@ -14,18 +14,16 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"reflect"
-	"runtime"
 	"strings"
-	"syscall"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // THE MODULES ARE LOADED ONCE PER UNIT. A dofile per mutant compiles the
@@ -147,53 +145,27 @@ func fuzzReaderSeeds(t *testing.T) (string, map[string]string, []fuzzReaderSeed)
 
 // runNightlyReader runs dir/main under the pinned interpreter and returns its
 // stdout, with inputs written beside it as the module sqrun.Run writes. The
-// child is killed when the test returns, and on Linux the kernel kills it if
-// the test binary itself dies (go test's -timeout or a stopped runner), so no
-// interpreter outlives the campaign holding its allocations.
+// child is a testproc child: killed with its group when the test returns, and
+// on Linux by the kernel if the test binary itself dies, so no interpreter
+// outlives the campaign holding its allocations.
 func runNightlyReader(t *testing.T, dir, main string, inputs map[string][]byte) []byte {
 	t.Helper()
 	sq := sqrun.Require(t)
 	if err := os.WriteFile(filepath.Join(dir, "inputs.nut"), sqrun.InputsModule(inputs), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(sq, main)
+	cmd := testproc.Command(t, sq, main)
 	cmd.Dir = dir
-	dieWithParent(cmd)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
-	finished := false
-	t.Cleanup(func() {
-		if finished {
-			return
-		}
-		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
-	})
 	err := cmd.Wait()
-	finished = true
 	if err != nil || stderr.Len() > 0 {
 		t.Fatalf("sq %s in %s: %v\nstderr:\n%s\nstdout:\n%s", main, dir, err, stderr.String(), stdout.String())
 	}
 	return stdout.Bytes()
-}
-
-// dieWithParent arms the kernel's parent-death signal where the platform has
-// one, so the interpreter does not survive the test binary. The field is set by
-// name because this file is compiled on hosts whose SysProcAttr has no
-// Pdeathsig.
-func dieWithParent(cmd *exec.Cmd) {
-	if runtime.GOOS != "linux" {
-		return
-	}
-	attr := &syscall.SysProcAttr{}
-	field := reflect.ValueOf(attr).Elem().FieldByName("Pdeathsig")
-	if field.IsValid() && field.CanSet() {
-		field.Set(reflect.ValueOf(syscall.SIGKILL))
-	}
-	cmd.SysProcAttr = attr
 }
 
 func TestSquirrelNightlyFuzzStrict(t *testing.T) {

@@ -99,7 +99,10 @@ permissions:
 
 jobs:
   caa:
-    if: startsWith(github.head_ref, 'sprint/') == false
+    # Only a SAME-REPOSITORY sprint branch skips (CI-TOOLS-2): a fork controls
+    # its branch name and reaches this job through pull_request_target, so a
+    # fork branch named sprint/... must still be checked.
+    if: (startsWith(github.head_ref, 'sprint/') == false || github.event.pull_request.head.repo.full_name != github.repository)
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
     defaults:

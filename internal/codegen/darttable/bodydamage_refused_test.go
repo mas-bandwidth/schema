@@ -15,7 +15,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -23,6 +22,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 type bodyDamageCase struct {
@@ -154,7 +155,7 @@ void main(List<String> args) {
 			if err := os.WriteFile(mutantPath, data, 0o600); err != nil {
 				t.Fatal(err)
 			}
-			cmd := exec.Command(dart, "--enable-asserts", "probe.dart", mutantPath)
+			cmd := testproc.Command(t, dart, "--enable-asserts", "probe.dart", mutantPath)
 			cmd.Dir = dir
 			out, err := cmd.CombinedOutput()
 			if err != nil {

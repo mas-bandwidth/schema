@@ -26,13 +26,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestJsRetainAndWideningStrict(t *testing.T) {
@@ -123,7 +124,7 @@ func jsStrictCells(t *testing.T, repo string, plant jsStrictPlant) []string {
 		t.Fatal(err)
 	}
 	outPath := filepath.Join(work, "answer.json")
-	cmd := exec.Command(node, probe,
+	cmd := testproc.Command(t, node, probe,
 		filepath.Join(repo, "testdata/wire/tables/wide_blob.bin"),
 		filepath.Join(repo, "testdata/wire/tables/retain_excluded_2.bin"),
 		outPath,

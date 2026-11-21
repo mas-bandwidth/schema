@@ -2,11 +2,12 @@ package jstable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // jsRefusedFormProbeSchema has one fixed-class root and one variable-class
@@ -90,7 +91,7 @@ console.log("ok");
 	if err := os.WriteFile(script, []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, script, modulePath)
+	cmd := testproc.Command(t, node, script, modulePath)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

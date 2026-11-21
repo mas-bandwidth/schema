@@ -143,7 +143,8 @@ const tableRegionSource = `
                 else if (f.GetWide != null) { value.SetWide(f, i, defaults ? f.DefaultWide : 0); }
                 else { value.SetRaw(f, i, defaults ? f.DefaultRaw : 0); }
             }
-            if (f.Counted) { value.SetCount(f, 0); }
+            // a [A..B] array is born at A (docs/SPEC.md §4.2)
+            if (f.Counted) { value.SetCount(f, defaults ? f.ArrayMin : 0); }
         }
         if (f.Optional) { value.SetPresent(f, false); }
     }
@@ -436,7 +437,7 @@ const tableRegionSource = `
             if (!r.Var(out ulong count)) { return Damage(report); }
             if (!Compatible(elementKind, f.Kind, report)) { return false; }
             int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
-            if (!f.Dynamic && count > (ulong)f.ArrayBound) { return Fail(report, "count_over_bound: " + f.Name); }
+            if (!f.Dynamic && (count < (ulong)f.ArrayMin || count > (ulong)f.ArrayBound)) { return Fail(report, "count_over_bound: " + f.Name); }
             if (f.Dynamic && !NativeReserve(ref state, value, f, count, report)) { return false; }
             int decoded = 0;
             for (int i = 0; i < keep; i++)
@@ -508,7 +509,7 @@ const tableRegionSource = `
             else
             {
                 int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
-                if (!f.Dynamic && count > (ulong)f.ArrayBound) { return Fail(report, "count_over_bound: " + f.Name); }
+                if (!f.Dynamic && (count < (ulong)f.ArrayMin || count > (ulong)f.ArrayBound)) { return Fail(report, "count_over_bound: " + f.Name); }
                 // the same rule for a list: damage, then the parent resumes
                 // after the array's L (the Go oracle's collectionCap)
                 if (f.Dynamic && !NativeReserve(ref state, value, f, count, report)) { return !state.Refused; }

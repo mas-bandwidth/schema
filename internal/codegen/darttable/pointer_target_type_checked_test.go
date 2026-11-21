@@ -16,7 +16,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -24,6 +23,8 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestDartPointerTargetTypeChecked(t *testing.T) {
@@ -91,7 +92,7 @@ func TestDartPointerTargetTypeChecked(t *testing.T) {
 	writeFiles(t, dir, set)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, dartBinary(t), "--enable-asserts", "pointer_target_probe.dart", vectors)
+	cmd := testproc.CommandContext(t, ctx, dartBinary(t), "--enable-asserts", "pointer_target_probe.dart", vectors)
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("the pointer-target probe failed: %v\n%s", err, out)

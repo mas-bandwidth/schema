@@ -2,12 +2,13 @@ package luautable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // PER-CASE ABSENT (docs/PORTING.md I4; test/conformance/README.md): a case the
@@ -50,7 +51,7 @@ func driverAbsentRun(t *testing.T, patch func(string) string) (absent string, ab
 		t.Fatal(err)
 	}
 	out := filepath.Join(dir, "out")
-	cmd := exec.Command("sh", filepath.Join(leg, "driver"), manifest, "wire", out)
+	cmd := testproc.Command(t, "sh", filepath.Join(leg, "driver"), manifest, "wire", out)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "LUAU="+stand)
 	if b, err := cmd.CombinedOutput(); err != nil {
