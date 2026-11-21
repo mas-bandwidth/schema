@@ -223,6 +223,40 @@ local function rLeb(r: any): number
 	return 0
 end
 
+-- lebBits16 is the exact value of the LEB128 bytes b[from, to) as a 16-byte
+-- little-endian buffer, with a zigzag decode when zigzag is set. rLeb answers
+-- a double, which cannot hold a 64-bit base exactly (9223372036854775802
+-- rounds to 2^63), so the base a ranged sum adds is built from the bytes.
+local function lebBits16(b: buffer, from: number, to: number, zigzag: boolean): buffer
+	local out = buffer.create(16)
+	local bit = 0
+	for i = from, to - 1 do
+		local x = buffer.readu8(b, i) % 0x80
+		for j = 0, 6 do
+			if bit < 64 and bit32.band(x, bit32.lshift(1, j)) ~= 0 then
+				local bi = bit // 8
+				buffer.writeu8(out, bi, bit32.bor(buffer.readu8(out, bi), bit32.lshift(1, bit % 8)))
+			end
+			bit = bit + 1
+		end
+	end
+	if zigzag then
+		local neg = bit32.band(buffer.readu8(out, 0), 1) == 1
+		-- the magnitude: the 64 bits shifted right by one
+		for bi = 0, 7 do
+			local cur = buffer.readu8(out, bi)
+			local nxt = if bi < 7 then buffer.readu8(out, bi + 1) else 0
+			buffer.writeu8(out, bi, bit32.bor(bit32.rshift(cur, 1), bit32.band(bit32.lshift(nxt, 7), 0xFF)))
+		end
+		if neg then
+			-- -(mag + 1) == ~mag in two's complement
+			for bi = 0, 7 do buffer.writeu8(out, bi, bit32.band(bit32.bnot(buffer.readu8(out, bi)), 0xFF)) end
+			buffer.fill(out, 8, 0xFF, 8)
+		end
+	end
+	return out
+end
+
 
 local function kindBits(k: number): number
 	if k == 1 then return 1 end
@@ -298,35 +332,24 @@ local function shapeRead(r: any, k: number): any
 					end
 				end
 			else
+				local at0 = r.at
 				local raw = rLeb(r)
 				s.base = raw
-				if (k >= 2 and k <= 5) or k == 36 then
-					local neg = (raw % 2) == 1
+				if r.bad then return s end
+				local zigzag = (k >= 2 and k <= 5) or k == 36
+				if zigzag then
 					local mag = math.floor(raw / 2)
 					if k < 5 then
 						local dom = kindBits(k)
 						local lim = 2 ^ (dom - 1)
-						if (neg and mag >= lim) or (not neg and mag >= lim) then r.bad = true; return s end
+						if mag >= lim then r.bad = true; return s end
 					end
-					if neg then
-						-- -(mag + 1) == ~mag in two's complement!
-						local lo = bit32.bnot(mag % 2 ^ 32)
-						local hi = bit32.bnot(math.floor(mag / 2 ^ 32) % 2 ^ 32)
-						buffer.writeu32(b16, 0, lo)
-						buffer.writeu32(b16, 4, hi)
-						buffer.fill(b16, 8, 0xFF, 8)
-					else
-						buffer.writeu32(b16, 0, mag % 2 ^ 32)
-						buffer.writeu32(b16, 4, math.floor(mag / 2 ^ 32) % 2 ^ 32)
-					end
-				else
-					if k < 9 then
-						local dom = kindBits(k)
-						if raw > (2 ^ dom) - 1 then r.bad = true; return s end
-					end
-					buffer.writeu32(b16, 0, raw % 2 ^ 32)
-					buffer.writeu32(b16, 4, math.floor(raw / 2 ^ 32) % 2 ^ 32)
+				elseif k < 9 then
+					local dom = kindBits(k)
+					if raw > (2 ^ dom) - 1 then r.bad = true; return s end
 				end
+				-- the base exact at every width, from the LEB bytes themselves
+				b16 = lebBits16(r.b, at0, r.at, zigzag)
 			end
 			s.base16 = b16
 			return s
@@ -1848,9 +1871,12 @@ local function mPutIntBits(w: any, val: any, signed: boolean, shape: any, width:
 			buffer.writeinteger(bs, 0, shape.baseLo)
 			buffer.writeinteger(bs, 8, shape.baseHi)
 			for i = 1, 4 do baseWords[i] = buffer.readu32(bs, (i - 1) * 4) end
-		elseif shape.base ~= nil then
-			baseWords[1] = shape.base % 2 ^ 32
-			baseWords[2] = math.floor(shape.base / 2 ^ 32) % 2 ^ 32
+		elseif shape.base16 ~= nil then
+			-- the base as shapeRead decoded it, exact at 64 bits and
+			-- sign-extended for a signed kind; shape.base is the raw LEB
+			-- word as a double, zigzagged for a signed kind and rounded
+			-- past 2^53, so it is never the base itself
+			for i = 1, 4 do baseWords[i] = buffer.readu32(shape.base16, (i - 1) * 4) end
 		end
 		local borrow = 0
 		for i = 0, 3 do
