@@ -337,7 +337,7 @@ type RetainCase struct {
 const RetainShortSlack = 16
 
 type Manifest struct {
-	Units         []Unit
+	Units []Unit
 	// OptIn names the units whose rows a leg answers only once its `list`
 	// names `unit <key>` (optin.go).
 	OptIn         map[string]bool
