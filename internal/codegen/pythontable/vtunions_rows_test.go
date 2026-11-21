@@ -368,17 +368,17 @@ var vtUnionControls = []struct {
 	// the variable save writes every arm's L one byte long: no saved arm is
 	// the canonical wire's
 	{"variable-arm-length", vtUnionPlant("_schema/kind_union.py", "w.varint(len(payload))", "w.varint(len(payload) + 1)"), map[string][]string{
-		"union-table-arms":    {"unions_maps_keyed"},
-		"union-arrays":        {"unions_maps_keyed"},
-		"union-arms-any":      {"stream_arm_pointer", "stream_arm_tag", "unions_maps_keyed"},
-		"packet-union-arrays": {"packetunions_doc_full", "packetunions_doc_unknown_arm"},
-	}},
-	// the variable save frames a length-kind arm (a table, text) a second
-	// time instead of writing its field line in place as the arm header
-	{"variable-length-arm-in-place", vtUnionPlant("_schema/kind_union.py", "    if f.kind in _LENGTH_KINDS:\n", "    if False:\n"), map[string][]string{
 		"union-table-arms": {"unions_maps_keyed"},
 		"union-arrays":     {"unions_maps_keyed"},
-		"union-arms-any":   {"stream_arm_first", "unions_maps_keyed"},
+		"union-arms-any":   {"stream_arm_pointer", "stream_arm_tag", "unions_maps_keyed"},
+	}},
+	// the variable save frames a length-kind arm (a table, text, a packet type) a second
+	// time instead of writing its field line in place as the arm header
+	{"variable-length-arm-in-place", vtUnionPlant("_schema/kind_union.py", "    if f.kind in _LENGTH_KINDS:\n", "    if False:\n"), map[string][]string{
+		"union-table-arms":    {"unions_maps_keyed"},
+		"union-arrays":        {"unions_maps_keyed"},
+		"union-arms-any":      {"stream_arm_first", "unions_maps_keyed"},
+		"packet-union-arrays": {"packetunions_doc_full", "packetunions_doc_unknown_arm"},
 	}},
 	// the variable read stops checking that an arm's payload fills its L: the
 	// nested arm with trailing bytes reads
