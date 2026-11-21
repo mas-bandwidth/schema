@@ -744,6 +744,14 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 		if err != nil {
 			return false, fmt.Errorf("%s: %w", d.lang, err)
 		}
+		// rows on an opt-in unit the leg does not name are not asked (optin.go)
+		legDerived, notAsked, notOptedIn, err := legManifest(m, derived, d.lang, listed)
+		if err != nil {
+			return false, fmt.Errorf("%s: %w", d.lang, err)
+		}
+		if len(notOptedIn) > 0 {
+			_, _ = io.WriteString(w, "conformance OPT-IN "+d.lang+": `list` names no unit "+strings.Join(notOptedIn, ", ")+", so its rows count absent\n")
+		}
 		for _, s := range surfaces {
 			legWant := want[s]
 			var exemptions []string
@@ -772,7 +780,7 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			if err := os.MkdirAll(out, 0o755); err != nil {
 				return false, err
 			}
-			code, stderr, err := runDriver(d, derived, s, out)
+			code, stderr, err := runDriver(d, legDerived, s, out)
 			if err != nil {
 				return false, err
 			}
@@ -800,6 +808,12 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 				_, _ = io.WriteString(w, "conformance EXEMPTS "+line+"\n")
 			}
 			for _, e := range legWant {
+				if notAsked[e.name] {
+					r.missing++
+					r.mark(e.name, outcomeAbsent)
+					r.verdict(e.name, "absent")
+					continue
+				}
 				pass, named, missing, failed := r.pass, r.named, r.missing, len(r.failures)
 				scoreAnswer(d.lang, s, out, e, wireRefusals[e.name], r)
 				slug, isRelaxed := relaxed[relaxedKey(d.lang, s, e.name)]

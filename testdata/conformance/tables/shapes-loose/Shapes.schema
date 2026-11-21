@@ -1,0 +1,59 @@
+package shapes
+
+// SHAPES the conformance corpus needs and no other unit declares: float32
+// bounds that float32 cannot spell exactly, -0 under a zero and a non-zero
+// default, counted arrays whose Min is above 0, a ranged float32, a
+// degenerate 128-bit fixed point, a union of scalar arms, and an enum and a
+// flags set as list elements. Each shape is declared twice where the form
+// allows: on a plain variable table and on a fixed table.
+
+enum Tone { Low, Mid, High }
+
+flags Mark { Red, Green, Blue }
+
+fixed table Rec
+{
+    a int32
+    b uint8
+}
+
+union Pick
+{
+    small int16
+    ratio float32
+    on    bool
+}
+
+table Bounds
+{
+    tenth   float32 = 0   | min = 0, max = 0.1, resolution = 0.01
+    seventh float32 = 0.7 | min = 0.7, max = 1, resolution = 0.01
+    ranged  float32 = 0   | min = -1.5, max = 2.5, resolution = 0.5
+    zero    float32 = 0
+    nonzero float32 = 1.5
+    pinned  fixed(64, 64) = 3 | min = 3, max = 3
+    octets  [..8]uint8
+    shorts  [..5]int16
+    recs    [..4]Rec
+    pick    Pick
+    tones   []Tone
+    marks   []Mark
+}
+
+fixed table FixedBounds
+{
+    tenth   float32 = 0   | min = 0, max = 0.1, resolution = 0.01
+    seventh float32 = 0.7 | min = 0.7, max = 1, resolution = 0.01
+    ranged  float32 = 0   | min = -1.5, max = 2.5, resolution = 0.5
+    zero    float32 = 0
+    nonzero float32 = 1.5
+    plain   float32
+    wide    float64
+    pinned  fixed(64, 64) = 3 | min = 3, max = 3
+    octets  [..8]uint8
+    shorts  [..5]int16
+    recs    [..4]Rec
+    pick    Pick
+    tones   [..4]Tone
+    marks   [..4]Mark
+}
