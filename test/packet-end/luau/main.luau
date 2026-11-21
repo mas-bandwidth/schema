@@ -6,6 +6,10 @@
 local serialize = require("./serialize")
 local End = require("./End")
 local pins: { [string]: string } = require("./pins") :: any
+-- used holds the pins this driver read, missing the ones it asked for that
+-- the make recipe did not carry in from testdata/wire/packet-end.
+local used: { [string]: boolean } = {}
+local missing: { string } = {}
 
 local function unhex(s: string): buffer
 	local n = #s // 2
@@ -20,7 +24,7 @@ local function read(name: string): (boolean, number)
 	local value = End.NewEnd()
 	used[name] = true
 	if pins[name] == nil then
-		check(false, "packet-end pin " .. name .. " is carried in")
+		table.insert(missing, name)
 		return false, -1
 	end
 	local stream = serialize.ReadStream.new(unhex(pins[name]))
@@ -29,11 +33,9 @@ local function read(name: string): (boolean, number)
 end
 
 -- ran and failures count the checks; the last stdout line is
--- "packet-end Luau: ran N, failed M" (tools/mustrun reads it). used holds the
--- pins this driver read: every pin the make recipe carried in from
--- testdata/wire/packet-end must be one of them, and there must be some.
+-- "packet-end Luau: ran N, failed M" (tools/mustrun reads it). Every pin the
+-- make recipe carried in must be one this driver read, and there must be some.
 local ran, failures = 0, 0
-local used: { [string]: boolean } = {}
 local function check(ok: boolean, what: string)
 	ran += 1
 	if not ok then
@@ -68,6 +70,7 @@ do
 		check(used[name] == true, "packet-end pin " .. name .. " is in the directory and this driver does not read it")
 	end
 	check(carried > 0, "packet-end pins directory is not empty")
+	check(#missing == 0, "packet-end pins are carried in (missing: " .. table.concat(missing, " ") .. ")")
 end
 print(string.format("packet-end Luau: ran %d, failed %d", ran, failures))
 if failures > 0 or ran == 0 then

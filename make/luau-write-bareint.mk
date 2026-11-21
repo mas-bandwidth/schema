@@ -20,7 +20,7 @@ build/packet-write-bareint/luau/.stamp: $(LUAU_PACKET_SCHEMA) test/packet-write-
 
 .PHONY: packet-write-bareint-luau packet-write-bareint-luau-negative-control
 packet-write-bareint-luau: toolchain-luau build/packet-write-bareint/luau/.stamp build/mustrun
-	cd build/packet-write-bareint/luau && $(CURDIR)/$(MUSTRUN) -name packet-write-bareint-luau -count 1 -- $(LUAU) main.luau
+	cd build/packet-write-bareint/luau && $(CURDIR)/$(MUSTRUN) -name packet-write-bareint-luau -count 59 -- $(LUAU) main.luau
 	cd build/packet-write-bareint/luau && $(LUAU_ANALYZE) *.luau
 
 # The control removes the width test of a bare signed field of 32 bits or

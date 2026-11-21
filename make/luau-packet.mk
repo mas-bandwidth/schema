@@ -79,7 +79,7 @@ build/packet-defaults/luau/.stamp: $(LUAU_PACKET_SCHEMA) test/packet-defaults/De
 
 .PHONY: packet-defaults-luau packet-defaults-luau-negative-control
 packet-defaults-luau: toolchain-luau build/packet-defaults/luau/.stamp build/mustrun
-	cd build/packet-defaults/luau && $(CURDIR)/$(MUSTRUN) -name packet-defaults-luau -count 1 -- $(LUAU) main.luau
+	cd build/packet-defaults/luau && $(CURDIR)/$(MUSTRUN) -name packet-defaults-luau -count 113 -- $(LUAU) main.luau
 	cd build/packet-defaults/luau && $(LUAU_ANALYZE) *.luau plain/*.luau
 
 packet-defaults-luau-negative-control: packet-defaults-luau
@@ -120,7 +120,7 @@ build/luau-ludicrous/.stamp: $(LUAU_PACKET_SCHEMA) $(SCHEMAS128) test/luau-ludic
 
 .PHONY: luau-ludicrous luau-ludicrous-negative-control
 luau-ludicrous: toolchain-luau build/luau-ludicrous/.stamp build/mustrun
-	cd build/luau-ludicrous && $(CURDIR)/$(MUSTRUN) -name luau-ludicrous -count 1 -- $(LUAU) main.luau
+	cd build/luau-ludicrous && $(CURDIR)/$(MUSTRUN) -name luau-ludicrous -count 44 -- $(LUAU) main.luau
 	cd build/luau-ludicrous && $(LUAU_ANALYZE) *.luau
 
 # The control removes the writer contract of a fixed(I, F) of 32 bits or
