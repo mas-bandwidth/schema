@@ -222,11 +222,12 @@ func TestOracle(t *testing.T) {
 		_ = doc
 		if err != nil {
 			var e *TableTextFormError
-			if ok := asTextFormError(err, &e); ok {
-				fmt.Printf("%%s\tERR\t%%s\t%%d\t%%s\n", c.name, e.Name, e.Offset, e.Path)
-			} else {
-				fmt.Printf("%%s\tERR\t%%s\t0\t\n", c.name, err.Error())
+			if ok := asTextFormError(err, &e); !ok {
+				// the oracle's verdict is a refusal or a value; any other
+				// error is a failure of the oracle, never a refusal
+				t.Fatalf("%%s: the Go oracle failed, not refused: %%v (%%T)", c.name, err, err)
 			}
+			fmt.Printf("%%s\tERR\t%%s\t%%d\t%%s\n", c.name, e.Name, e.Offset, e.Path)
 			continue
 		}
 		var b []byte
@@ -261,9 +262,11 @@ func tfJSONDocument(v *Document) []byte {
 
 // TestLuauLoadTextFormAgreesWithGo runs the same documents through the
 // generated Luau reader and through schema-go's generated Go reader, in a
-// t.TempDir() under the pinned interpreter, and holds every accept to the same
-// value and every refusal to the same name, offset and path
-// (docs/SPEC-TABLES.md §16.9, §16.9.4).
+// t.TempDir() under the pinned interpreter, and holds every document to the
+// same verdict: accepted by both or refused by both (docs/SPEC-TABLES.md
+// §16.9, §16.9.4). A refusal's name, offset and path are per-language
+// diagnostic detail and are never compared (docs/rulings.json
+// refusal-verdict-only); a Luau crash or a Go oracle error is a failure.
 func TestLuauLoadTextFormAgreesWithGo(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the pinned Luau interpreter")
@@ -419,16 +422,16 @@ end
 				if wf[1] == "ERR" {
 					if len(wf) < 5 || len(gf) < 5 {
 						t.Errorf("%s: malformed refusal rows %q %q", c.name, w, gk)
-						continue
 					}
-					if wf[2] != gf[2] || wf[3] != gf[3] || wf[4] != gf[4] {
-						t.Errorf("%s: refusal %s@%s+%q, want %s@%s+%q", c.name, gf[2], gf[3], gf[4], wf[2], wf[3], wf[4])
-					}
+					// Both refused: the verdict is the whole cross-target
+					// contract (docs/rulings.json refusal-verdict-only). The
+					// name, offset and path are per-language diagnostic
+					// detail, never compared.
 					continue
 				}
 				// The value oracle is the Go unit's own ToJson. Luau's ToJson
 				// refuses some absent string slots, so the acceptance row pins the
-				// verdict; the refused rows pin name, offset and path.
+				// verdict, as the refused rows do.
 			}
 		})
 	}
