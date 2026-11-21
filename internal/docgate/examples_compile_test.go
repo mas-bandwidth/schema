@@ -149,7 +149,8 @@ func TestExamplesCompile(t *testing.T) {
 			}
 			if e.Lang == "go" {
 				// a Go example is a whole file, held to the parser here; the
-				// Go leg's own usage gates build and run the marked ones
+				// Go leg's own usage gates build and run the marked ones, and
+				// TestTutorialGoCrossing builds and runs the tutorial's
 				if _, err := parser.ParseFile(token.NewFileSet(), "example.go", source, parser.AllErrors); err != nil {
 					t.Fatalf("%s:%d does not parse as Go: %v", e.Page, e.Line, err)
 				}

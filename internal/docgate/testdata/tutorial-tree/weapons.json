@@ -1,0 +1,10 @@
+[
+  {
+    "damage": 35,
+    "homing": false
+  },
+  {
+    "damage": 21,
+    "homing": true
+  }
+]
