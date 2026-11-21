@@ -4541,8 +4541,8 @@ MEANS, never where it is.
 refused. And undeprecating — taking `| deprecated` off again — is refused by
 the lock and by §21.1's monotone check, naming the enum and the variant. A
 deprecated field keeps this same one-way rule today; the field's own refusal is
-stated once, in `internal/lockfile/monotone.go:465` and pinned by
-TestLockFieldUndeprecateRefuses and TestUnDepRecateRefused. The variant is the
+stated once, in `monotoneAt` (`internal/lockfile/monotone.go`) and pinned by
+TestLockFieldUndeprecateRefuses and TestUnDeprecateRefused. The variant is the
 same rule one level in, not a second one.
 
 **READ.** A reader that meets a deprecated variant's id — on any form — yields
@@ -18545,8 +18545,8 @@ A field REPOINTED at another union carries a pair too (§18.3): a
 replacement whose shared arm holds a twin payload refuses on `default=`, one
 whose shared arm holds a scalar refuses on `payload=`, and a union carrying
 every arm of the old one under the same facts stands in.
-`TestBaselineRefusesTToOptional` holds the one-way optional edit and a new
-optional field. The projection over the corpus regenerates byte-identical. The warn class
+`TestBaselineAllowsOptionalEvolution` holds the optional edit in both
+directions and a new optional field. The projection over the corpus regenerates byte-identical. The warn class
 warns and does not refuse. A tightened range
 warns from either end and a loosened one is silent, over a ranged integer, a
 fixed field's whole-unit bounds and a compressed float's. The `was` chain
