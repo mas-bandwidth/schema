@@ -217,7 +217,7 @@ The plain reading: use it in a closed-source game freely; modify the compiler
 itself and run it as a service, and the AGPL applies to those modifications.
 
 **That carve-out is not a README paragraph — it is an ADDITIONAL PERMISSION at
-the top of [LICENSE](../LICENSE) itself**, which is where it has legal force. Point
+the end of [LICENSE](../LICENSE) itself**, which is where it has legal force. Point
 your legal team at the file rather than at this answer. It is modelled on the
 long-standing practice for compiler-like tools whose output is not covered by
 the tool's own licence: the Bison parser exception and the GCC Runtime Library
