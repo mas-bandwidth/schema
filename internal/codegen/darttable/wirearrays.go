@@ -77,6 +77,47 @@ func (g *wireGen) elemDefault(f *ir.Field) string {
 	return "0"
 }
 
+// wireBornCount is the element count a fresh value of a counted array holds:
+// its declared minimum (ir.Field.BornCount), 0 for any other array.
+func wireBornCount(f *ir.Field) int64 {
+	if f.Array != ir.ArrayCounted || f.KeyEnum != "" {
+		return 0
+	}
+	return f.BornCount()
+}
+
+// wireBornElides answers whether f's birth value elides on the variable form:
+// a counted array with a positive minimum, neither optional nor required.
+func wireBornElides(f *ir.Field) bool {
+	return wireBornCount(f) > 0 && !f.Required && !f.Type.Optional
+}
+
+// countedRides is the condition under which a counted or unbounded array of
+// scalars, strings, enums, unions or pointers rides. THE BIRTH VALUE ELIDES
+// (docs/SPEC-TABLES.md §22.2; the engine's encodeArray `allBirth`): a
+// `[M..N]T` holding exactly M elements, every one at its default (a float by
+// its bits, an enum or a union by the zero reference, a pointer by null),
+// rides nothing, as an empty array does. An array of tables decides by its
+// element bodies instead (emitSaveTableList).
+func (g *wireGen) countedRides(f *ir.Field, expr string) string {
+	rides := expr + ".isNotEmpty"
+	if !wireBornElides(f) {
+		return rides
+	}
+	var atDefault string
+	switch s := singleOf(f); {
+	case listElementKind(f) == wireKindUnion:
+		atDefault = "e.armTag == 0"
+	case listElementKind(f) == wireKindPtr:
+		atDefault = "e == null"
+	case s.Type.Kind == ir.TFloat32 || s.Type.Kind == ir.TFloat64:
+		atDefault = "!(" + wireFloatRides(s, "e", g.elemDefault(f)) + ")"
+	default:
+		atDefault = "e == " + g.elemDefault(f)
+	}
+	return fmt.Sprintf("%s && !(%s.length == %d && %s.every((e) => %s))", rides, expr, wireBornCount(f), expr, atDefault)
+}
+
 // fixedStorageDecl is the member of a `[N]T` or `[E]T`: a list of exactly the
 // declared slot count, every slot at the element's default (§2.4, §5).
 func (g *wireGen) fixedStorageDecl(f *ir.Field, name string) string {

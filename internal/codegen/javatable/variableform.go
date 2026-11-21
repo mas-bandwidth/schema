@@ -4362,6 +4362,16 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct, fixed fixedClosure) (strin
 	}
 	b.WriteString("\n        public Value() {\n")
 	for _, f := range st.Fields {
+		if variableBornCount(f) > 0 {
+			// A `[M..N]T` IS BORN HOLDING M DEFAULT ELEMENTS (docs/SPEC-TABLES.md
+			// §22.2, ir.Field.BornCount), never zero: a fresh value is a value
+			// its own writer may write, and the one it elides.
+			fmt.Fprintf(&b, "            for (int i = 0; i < %d; i++) {\n                %s.add(%s);\n", variableBornCount(f), varMember(f), variableDefault(variableElement(f)))
+			if isPointerArray(f) {
+				fmt.Fprintf(&b, "                %sIdx.add(0L);\n", varMember(f))
+			}
+			b.WriteString("            }\n")
+		}
 		if f.KeyEnum != "" {
 			fmt.Fprintf(&b, "            for (int i = 0; i < %d; i++) {\n                %s.add(%s);\n", f.ArrayBound, varMember(f), variableDefault(variableElement(f)))
 			if f.Type.Pointer {
@@ -6542,10 +6552,54 @@ func writeArrayFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	writeArrayFieldSaveRef(b, f, "F_"+varMember(f))
 }
 
+// variableBornCount is the element count a fresh value of f holds: a counted
+// array's minimum (ir.Field.BornCount), else 0. An optional array is absent
+// at birth, and a keyed array has its own pre-filled slots.
+func variableBornCount(f *ir.Field) int64 {
+	if f.Array != ir.ArrayCounted || f.KeyEnum != "" || f.Type.Optional {
+		return 0
+	}
+	return f.BornCount()
+}
+
+// variableBornElemDefault is the test that one element of a counted array,
+// read from expr, is at its default: a scalar by its value (a float by its
+// bits), an enum or a union by the zero reference, a pointer by null, a
+// table by a body that is its terminator alone.
+func variableBornElemDefault(f *ir.Field, expr string) string {
+	one := variableElement(f)
+	switch {
+	case isPointerArray(f):
+		return expr + "==null"
+	case ir.TextListPlain(f):
+		return "(" + expr + "==null||" + expr + ".value==null||" + expr + ".value.isEmpty())"
+	}
+	return variableDefaultTest(one, expr)
+}
+
+// variableRidesGuard emits, at the method body's level, the birth test of
+// the array field f held in owner, and returns the condition under which the
+// field rides. THE BIRTH VALUE ELIDES (docs/SPEC-TABLES.md §22.2; the
+// engine's encodeArray `allBirth`): a `[M..N]T`, not optional and not
+// required, holding exactly M elements every one at its default rides
+// nothing, as an empty array does; M+1 default elements, or M with one live,
+// ride.
+func variableRidesGuard(b *strings.Builder, f *ir.Field, owner string) string {
+	m := varMember(f)
+	list := owner + "." + m
+	if variableBornCount(f) == 0 || f.Required {
+		return "!" + list + ".isEmpty()"
+	}
+	born := "born_" + m
+	fmt.Fprintf(b, "        boolean %s = %s.size() == %d;\n", born, list, f.BornCount())
+	fmt.Fprintf(b, "        for (int i = 0; %s && i < %d; i++) { if (!(%s)) { %s = false; } }\n", born, f.BornCount(), variableBornElemDefault(f, list+".get(i)"), born)
+	return "!" + list + ".isEmpty() && !" + born
+}
+
 func writeArrayFieldSaveRef(b *strings.Builder, f *ir.Field, fieldRef string) {
 	m := varMember(f)
 	ek := variableElemWireKind(f)
-	fmt.Fprintf(b, "        if (!v.%s.isEmpty()) {\n", m)
+	fmt.Fprintf(b, "        if (%s) {\n", variableRidesGuard(b, f, "v"))
 	fmt.Fprintf(b, "            w.putLeb(w.ref(%s)); w.put8(14);\n", fieldRef)
 	fmt.Fprintf(b, "            int list = w.off;\n")
 	fmt.Fprintf(b, "            w.put8(%d); w.putLeb(v.%s.size());\n", ek, m)
@@ -6659,7 +6713,7 @@ func writeFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) 
 	switch {
 	case isPointerArray(f):
 		target := f.Type.Ref.(*ir.Struct)
-		fmt.Fprintf(b, "        if (!v.%s.isEmpty()) {\n", m)
+		fmt.Fprintf(b, "        if (%s) {\n", variableRidesGuard(b, f, "v"))
 		fmt.Fprintf(b, "            w.putLeb(w.ref(F_%s)); w.put8(14);\n", m)
 		fmt.Fprintf(b, "            int list = w.off;\n")
 		fmt.Fprintf(b, "            w.put8(17); w.putLeb(v.%s.size());\n", m)
@@ -6671,7 +6725,7 @@ func writeFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) 
 		fmt.Fprintf(b, "        }\n")
 	case isStructArray(f):
 		target := f.Type.Ref.(*ir.Struct)
-		fmt.Fprintf(b, "        if (!v.%s.isEmpty()) {\n", m)
+		fmt.Fprintf(b, "        if (%s) {\n", variableRidesGuard(b, f, "v"))
 		fmt.Fprintf(b, "            w.putLeb(w.ref(F_%s)); w.put8(14);\n", m)
 		fmt.Fprintf(b, "            int list = w.off;\n")
 		if ir.TextListPlain(f) {

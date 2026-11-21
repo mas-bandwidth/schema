@@ -462,7 +462,7 @@ func writeFieldSaveRetain(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.F
 	if variableUnion(f) != nil {
 		condition := "v." + varMember(f) + ".tag!=0"
 		if f.Array != ir.ArrayNone {
-			condition = "!v." + varMember(f) + ".isEmpty()"
+			condition = variableRidesGuard(b, f, "v")
 		}
 		fmt.Fprintf(b, "if(%s){w.putLeb(w.ref(%sVariable.F_%s));w.put8(%d);path[2*depth]=%d;path[2*depth+1]=0;\n", condition, st.Name, varMember(f), variableWireKind(f), ordinal)
 		writeVariableRetainedPayload(b, u, st.Name, f, "v."+varMember(f), "w", 0, "depth+1")
@@ -513,6 +513,7 @@ func writeFieldSaveRetain(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.F
 		fmt.Fprintf(b, "        if (v.%s != null) { w.putLeb(w.ref(%s)); w.put8(17); w.putLeb(v.%sIdx); }\n", m, fieldRef, m)
 	case f.Type.Kind == ir.TNamed:
 		if elem, ok := f.Type.Ref.(*ir.Struct); ok && f.Array != ir.ArrayNone {
+			born := f.Array == ir.ArrayCounted && variableBornCount(f) > 0 && !f.Required
 			// EVERY ARRAY OF TABLES — unbounded, counted or fixed — is kind 14
 			// over element bodies, and each element body carries its own
 			// retained tail (§6.6). A fixed array is written whole, as the
@@ -526,6 +527,12 @@ func writeFieldSaveRetain(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.F
 				fmt.Fprintf(b, "                %sVariable.Value e = i < v.%s.size() ? v.%s.get(i) : new %sVariable.Value();\n", elem.Name, m, m, elem.Name)
 			} else {
 				fmt.Fprintf(b, "        if (!v.%s.isEmpty()) {\n", m)
+				if born {
+					// THE BIRTH VALUE ELIDES (docs/SPEC-TABLES.md §22.2): written,
+					// then taken back when it held exactly M elements whose bodies
+					// are each their terminator alone (a retained tail is not)
+					fmt.Fprintf(b, "            int bornAt = w.off; int bornMark = w.ids.count; boolean born = v.%s.size() == %d;\n", m, f.BornCount())
+				}
 				fmt.Fprintf(b, "            w.putLeb(w.ref(%s)); w.put8(14);\n", fieldRef)
 				// written IN PLACE and framed after, as the variable codec writes it
 				// (no scratch per array, none per element: a 1 MiB scratch per element
@@ -538,9 +545,15 @@ func writeFieldSaveRetain(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.F
 			b.WriteString("                int body = w.off;\n")
 			fmt.Fprintf(b, "                path[2 * depth] = %d; path[2 * depth + 1] = i;\n", ordinal)
 			fmt.Fprintf(b, "                %sRetain.writeBodyRetain(w, nodes, e, retain, report, path, depth + 1);\n", elem.Name)
+			if born {
+				b.WriteString("                if (w.off - body != 1) { born = false; }\n")
+			}
 			b.WriteString("                w.frame(body);\n")
 			b.WriteString("            }\n")
 			b.WriteString("            w.frame(list);\n")
+			if born {
+				b.WriteString("            if (born) { w.off = bornAt; w.ids.count = bornMark; }\n")
+			}
 			b.WriteString("        }\n")
 		}
 	}

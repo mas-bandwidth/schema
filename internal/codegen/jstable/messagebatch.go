@@ -698,6 +698,23 @@ func (g *fixedModule) messageRides(f *ir.Field, mem, ind string) string {
 		return "(" + strings.Join(parts, " || ") + ")"
 	}
 	if f.Array == ir.ArrayCounted {
+		if f.BornCount() > 0 && !f.Required {
+			// THE BIRTH VALUE ELIDES (docs/SPEC-TABLES.md §22.2, the message
+			// form's "Elision, defaults"; internal/tablewire messageElides): a
+			// `[M..N]T` is born holding M default elements, so exactly that
+			// value rides nothing. Each element is judged as a field of its
+			// own: a float by its bits, an enum or a union by the zero
+			// reference, a table by a body that is its terminator alone.
+			iv := g.nextIdxVar()
+			g.probeSeq++
+			v := fmt.Sprintf("_%sBorn%d", ir.GoExportName(f.Name), g.probeSeq)
+			g.pf("%slet %s = %sCount === %d;\n", ind, v, mem, f.BornCount())
+			g.pf("%sfor (let %s = 0; %s && %s < %d; %s++) {\n", ind, iv, v, iv, f.BornCount(), iv)
+			cond := g.messageRides(messageElementField(f), mem+"["+iv+"]", ind+"  ")
+			g.pf("%s  if (%s) { %s = false; }\n", ind, cond, v)
+			g.pf("%s}\n", ind)
+			return "(" + mem + "Count > 0 && !" + v + ")"
+		}
 		return mem + "Count > 0"
 	}
 	if f.Array == ir.ArrayFixed {

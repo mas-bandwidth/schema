@@ -2083,6 +2083,31 @@ func (g *messageGen) emitMessageRides(f *ir.Field, owner string, indent int) str
 		return fmt.Sprintf("!TableMessage.bytesEqual(%s, %sLength, %s)", expr, expr, javaByteArrayLiteral(f.DefBytes))
 	}
 	if f.Array == ir.ArrayCounted {
+		if f.BornCount() > 0 && !f.Required {
+			// THE BIRTH VALUE ELIDES (docs/SPEC-TABLES.md §22.2, the message
+			// form's "Elision, defaults"; internal/tablewire messageElides): a
+			// `[M..N]T` is born holding M default elements, so exactly that
+			// value rides nothing. An element is at its default by its bits
+			// (a float by its pattern, an enum or a union by the zero
+			// reference), a table element by a body that is its terminator
+			// alone.
+			born := g.nextTemp("born")
+			idx := g.nextTemp("i")
+			g.pf("%sboolean %s = %sCount == %d;\n", ind, born, expr, f.BornCount())
+			g.pf("%sfor (int %s = 0; %s && %s < %d; %s++) {\n", ind, idx, born, idx, f.BornCount(), idx)
+			elem := fmt.Sprintf("%s[%s]", expr, idx)
+			if isStructType(f.Type) {
+				st := f.Type.Ref.(*ir.Struct)
+				probe := g.nextTemp("probe")
+				g.pf("%s    TableMessage.Writer %s = new TableMessage.Writer(null, 0, true);\n", ind, probe)
+				g.pf("%s    if (!%s.saveMessageBody(%s, %s)) { return false; }\n", ind, messageClass(st.Name), probe, elem)
+				g.pf("%s    if (%s.bits != %dL) { %s = false; }\n", ind, probe, g.refBits, born)
+			} else {
+				g.pf("%s    if (%s) { %s = false; }\n", ind, g.scalarOrUnionRidesExpr(f, elem), born)
+			}
+			g.pf("%s}\n", ind)
+			return fmt.Sprintf("%sCount > 0 && !%s", expr, born)
+		}
 		return expr + "Count > 0"
 	}
 	if f.Array == ir.ArrayFixed {
