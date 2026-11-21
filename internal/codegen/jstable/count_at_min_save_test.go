@@ -76,6 +76,15 @@ for (const row of JSON.parse(readFileSync("rows.json", "utf8"))) {
   const saved = m.BoundsSave(v);
   if (saved === null) { fail(row.name + ": Save refused"); continue; }
   if (hex(saved) !== row.wire) { fail(row.name + ": saved " + hex(saved) + ", the engine wrote " + row.wire); }
+  // the engine's bytes load back to the same value: an elided array is born
+  // at Min, and saving it elides it again
+  const bytes = Uint8Array.from(row.wire.match(/../g).map((x) => parseInt(x, 16)));
+  const lr = new m.TableVariableReport();
+  const loaded = m.BoundsLoad(bytes, lr);
+  if (loaded === null || lr.err() !== null) { fail(row.name + ": Load refused the engine's bytes " + JSON.stringify(lr)); continue; }
+  if (m.BoundsToJson(loaded) !== m.BoundsToJson(v)) { fail(row.name + ": loaded " + m.BoundsToJson(loaded) + ", read " + m.BoundsToJson(v)); }
+  const again = m.BoundsSave(loaded);
+  if (again === null || hex(again) !== row.wire) { fail(row.name + ": the loaded value saved " + (again === null ? "null" : hex(again))); }
 }
 `)
 }
