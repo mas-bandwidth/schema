@@ -1583,17 +1583,17 @@ func (g *tableGen) emitFixedWritePayloadAs(owner *ir.Struct, f *ir.Field, base i
 		// (docs/SPEC-TABLES.md §3.4). Writing all Max elements put the unused
 		// slots' STORAGE on the wire.
 		g.pf("%sint count_%s = %s.%sCount;\n", ind, stem, val, prop)
-		g.pf("%sSystem.Diagnostics.Debug.Assert(count_%s >= 0 && count_%s <= %d); // the declared count is the bound (§3.4)\n", ind, stem, stem, f.ArrayBound)
+		g.pf("%sglobal::System.Diagnostics.Debug.Assert(count_%s >= 0 && count_%s <= %d); // the declared count is the bound (§3.4)\n", ind, stem, stem, f.ArrayBound)
 		g.pf("%sglobal::System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(%s.Slice(%d), count_%s);\n", ind, buf, base, stem)
 		g.emitFixedWriteLoop(f, base+fixedCountBytes, f.ArrayBound, "count_"+stem, buf, val+"."+prop, indent)
 	case f.Type.Kind == ir.TString:
 		g.pf("%sint len_%s = %s.%s != null ? %s.%sLength : 0;\n", ind, stem, val, prop, val, prop)
-		g.pf("%sSystem.Diagnostics.Debug.Assert(len_%s <= %d);\n", ind, stem, f.Type.Size)
+		g.pf("%sglobal::System.Diagnostics.Debug.Assert(len_%s <= %d);\n", ind, stem, f.Type.Size)
 		g.pf("%sglobal::System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(%s.Slice(%d), len_%s);\n", ind, buf, base, stem)
 		g.pf("%sif (len_%s > 0) { %s.%s.AsSpan(0, len_%s).CopyTo(%s.Slice(%d)); }\n", ind, stem, val, prop, stem, buf, base+4)
 	case f.Type.Kind == ir.TBytes:
 		g.pf("%sint len_%s = %s.%s != null ? %s.%sLength : 0;\n", ind, stem, val, prop, val, prop)
-		g.pf("%sSystem.Diagnostics.Debug.Assert(len_%s <= %d);\n", ind, stem, f.Type.Size)
+		g.pf("%sglobal::System.Diagnostics.Debug.Assert(len_%s <= %d);\n", ind, stem, f.Type.Size)
 		g.pf("%sglobal::System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(%s.Slice(%d), len_%s);\n", ind, buf, base, stem)
 		g.pf("%sif (len_%s > 0) { %s.%s.AsSpan(0, len_%s).CopyTo(%s.Slice(%d)); }\n", ind, stem, val, prop, stem, buf, base+4)
 	default:
@@ -2023,7 +2023,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("// THE WRITER'S OWN BOUNDS per lineage entry, as one delegate array the\n")
 		g.pf("// load indexes by pick: null for the identity entry and for entries that\n")
 		g.pf("// bound nothing.\n")
-		g.pf("public static readonly System.Func<%s, TableReport, bool>[] %sFixedClampKnown = new System.Func<%s, TableReport, bool>[] {\n", name, name, name)
+		g.pf("public static readonly global::System.Func<%s, TableReport, bool>[] %sFixedClampKnown = new global::System.Func<%s, TableReport, bool>[] {\n", name, name, name)
 		for i, rows := range entryBounds {
 			if len(rows) == 0 {
 				g.pf("    null,\n")
@@ -2041,14 +2041,14 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §22.6):
 	// the writer refuses an empty batch, a debug-only assert as every write
 	// contract on this leg is (docs/SPEC.md §5.1).
-	g.pf("    System.Diagnostics.Debug.Assert(values.Length > 0, \"a fixed-form file holds at least one record\");\n")
+	g.pf("    global::System.Diagnostics.Debug.Assert(values.Length > 0, \"a fixed-form file holds at least one record\");\n")
 	g.pf("    long need = %sFixedMeasure(values.Length);\n", name)
 	g.pf("    if (values.Length < 0 || buffer.Length < need) { return -1; }\n")
 	if fixedFiniteNeededStruct(st, map[string]bool{}) {
 		// a NaN or an infinity is a write check (docs/SPEC-TABLES.md §3.3):
 		// a debug assert, as every write contract on this leg is (docs/SPEC.md
 		// §5.1). The fixed READ's finite pass over the same body stays.
-		g.pf("    for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(%sFixedFiniteBody(values[k]) == null); }\n", name)
+		g.pf("    for (int k = 0; k < values.Length; ++k) { global::System.Diagnostics.Debug.Assert(%sFixedFiniteBody(values[k]) == null); }\n", name)
 	}
 	if g.fixedWriteAdmits(st) != "" {
 		g.pf("    for (int k = 0; k < values.Length; ++k)\n    {\n")
@@ -2154,7 +2154,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("    // §4.6, bill §12.5): held after the plan run, before this reader's own\n")
 		g.pf("    // pass, so a value forged past what the writer could have written lands\n")
 		g.pf("    // the writer's bound and counts, never this reader's wider own.\n")
-		g.pf("    System.Func<%s, TableReport, bool> writerClamp = null;\n", name)
+		g.pf("    global::System.Func<%s, TableReport, bool> writerClamp = null;\n", name)
 	}
 	// THE IDENTITY LANE IS AN INDEX COMPARISON (§5.3): the reader's own entry is
 	// the LAST lineage entry (§5.2 appends the current layout last), so the lane

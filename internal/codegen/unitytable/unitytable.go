@@ -349,7 +349,7 @@ const unityCoreRuntimeTypesSource = `public sealed class Ref<T> where T : struct
     public Ref(T value) { Value = value; }
 }
 
-internal sealed class RefEq : System.Collections.Generic.IEqualityComparer<object>
+internal sealed class RefEq : global::System.Collections.Generic.IEqualityComparer<object>
 {
     internal static readonly RefEq Instance = new RefEq();
     public new bool Equals(object x, object y) { return ReferenceEquals(x, y); }
@@ -358,7 +358,7 @@ internal sealed class RefEq : System.Collections.Generic.IEqualityComparer<objec
 
 internal static readonly object _StructRootOwner = new object();
 
-internal static void _RecordOldOwner(object userObj, object carrierObj, System.Collections.Generic.Dictionary<object, uint> oldMap, object[] oldOwners)
+internal static void _RecordOldOwner(object userObj, object carrierObj, global::System.Collections.Generic.Dictionary<object, uint> oldMap, object[] oldOwners)
 {
     if (oldMap == null || oldOwners == null || userObj == null || carrierObj == null) { return; }
     for (int i = 1; i < oldOwners.Length; i++)
@@ -573,7 +573,7 @@ internal static void _FinishReport(_R box, ref TableReport report, bool ok)
     report.LayoutHash = box.LayoutHash;
 }
 
-public sealed class TableKeyed<T, E> where E : struct, Enum
+public sealed class TableKeyed<T, E> where E : struct, global::System.Enum
 {
     public static readonly int SlotCount = MaxDeclared();
 

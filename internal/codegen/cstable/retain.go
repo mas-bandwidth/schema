@@ -274,7 +274,7 @@ const tableRetainSource = `
         // A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (docs/SPEC-TABLES.md
         // §3.3, §6.6): a NaN or an infinity refuses the read.
         if ((kind == 10 || kind == 11) && r.Offset - mark == Width(kind) &&
-            NonFiniteBits(kind, kind == 10 ? System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(r.Buffer.Slice(mark)) : System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(r.Buffer.Slice(mark))))
+            NonFiniteBits(kind, kind == 10 ? global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(r.Buffer.Slice(mark)) : global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(r.Buffer.Slice(mark))))
         { NonFiniteRetained(id, report); return true; }
         if (retain == null) { return true; }
         Reader payload = new Reader(r.Buffer.Slice(mark, r.Offset - mark), r.Vocabulary);

@@ -114,7 +114,7 @@ const tableBuilderCollectionWireSource = `
     public static void ResetNativeElement(global::System.IntPtr pointer, TableFieldInfo field)
     {
         if (field.Kind == 13) { ResetNative(pointer, field.Table); }
-        else if (field.Kind == 15) { System.Runtime.InteropServices.NativeMemory.Clear((void*)pointer, (nuint)field.NativeElementSize); }
+        else if (field.Kind == 15) { global::System.Runtime.InteropServices.NativeMemory.Clear((void*)pointer, (nuint)field.NativeElementSize); }
         else { NativePut((byte*)pointer, field.GetWide != null ? field.DefaultWide : field.DefaultRaw, field.NativeElementSize); }
     }
     public static bool BuilderKeyValid(TableFieldInfo key, ReadOnlySpan<byte> text, ulong raw, bool textual)
@@ -139,7 +139,7 @@ const tableBuilderCollectionWireSource = `
         if (text.Length == 0) { NativePut(value.Slot(field), 0, 8); return true; }
         if (worker == null || worker.Arena.Closed) { return false; }
         byte* blob = worker.Raw(9L + text.Length); if (blob == null) { return false; }
-        System.Runtime.InteropServices.NativeMemory.Clear(blob, (nuint)(9L + text.Length));
+        global::System.Runtime.InteropServices.NativeMemory.Clear(blob, (nuint)(9L + text.Length));
         NativePut(blob, (uint)text.Length, 4); text.CopyTo(new Span<byte>(blob + 8, text.Length));
         NativePut(value.Slot(field), unchecked((ulong)(blob - value.Slot(field))), 8); return true;
     }

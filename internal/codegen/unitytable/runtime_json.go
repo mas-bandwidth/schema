@@ -549,7 +549,7 @@ internal static class TableJson
     // assert (docs/SPEC.md §5.1 row 8) and a release build carries no check.
     static void WriteString(ref Out o, ReadOnlySpan<byte> s)
     {
-        System.Diagnostics.Debug.Assert(s.IndexOf((byte)0) < 0, "a zero byte is not text (docs/SPEC.md §5.1 row 8)");
+        global::System.Diagnostics.Debug.Assert(s.IndexOf((byte)0) < 0, "a zero byte is not text (docs/SPEC.md §5.1 row 8)");
         o.Put((byte)'"');
         for (int i = 0; i < s.Length; i++)
         {
@@ -644,7 +644,7 @@ internal static class TableJson
         Span<char> sci = stackalloc char[MaxNumber];
         int specLength = Spec(spec, 'E', prec - 1);
         int sciLength;
-        if (!value.TryFormat(sci, out sciLength, spec.Slice(0, specLength), System.Globalization.CultureInfo.InvariantCulture))
+        if (!value.TryFormat(sci, out sciLength, spec.Slice(0, specLength), global::System.Globalization.CultureInfo.InvariantCulture))
         {
             return -1;
         }
@@ -681,7 +681,7 @@ internal static class TableJson
         }
         specLength = Spec(spec, 'F', prec - 1 - exp);
         int plainLength;
-        if (!value.TryFormat(text, out plainLength, spec.Slice(0, specLength), System.Globalization.CultureInfo.InvariantCulture))
+        if (!value.TryFormat(text, out plainLength, spec.Slice(0, specLength), global::System.Globalization.CultureInfo.InvariantCulture))
         {
             return -1;
         }
@@ -736,14 +736,14 @@ internal static class TableJson
             if (single)
             {
                 float back32;
-                if (float.TryParse(text.Slice(0, length), System.Globalization.NumberStyles.Float,
-                        System.Globalization.CultureInfo.InvariantCulture, out back32)
+                if (float.TryParse(text.Slice(0, length), global::System.Globalization.NumberStyles.Float,
+                        global::System.Globalization.CultureInfo.InvariantCulture, out back32)
                     && (double)back32 == value) { break; }
                 continue;
             }
             double back;
-            if (double.TryParse(text.Slice(0, length), System.Globalization.NumberStyles.Float,
-                    System.Globalization.CultureInfo.InvariantCulture, out back)
+            if (double.TryParse(text.Slice(0, length), global::System.Globalization.NumberStyles.Float,
+                    global::System.Globalization.CultureInfo.InvariantCulture, out back)
                 && back == value) { break; }
         }
         for (int i = 0; i < length; i++) { o.Put((byte)text[i]); }
@@ -1331,7 +1331,7 @@ internal static class TableJson
         if (fraction < 0) { fraction += 1000000000; seconds--; }
         global::System.DateTime date = new global::System.DateTime(621355968000000000L, global::System.DateTimeKind.Utc).AddTicks(seconds * global::System.TimeSpan.TicksPerSecond);
         Span<char> text = stackalloc char[19];
-        if (!date.TryFormat(text, out int written, "yyyy-MM-dd'T'HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture) || written != 19) { return false; }
+        if (!date.TryFormat(text, out int written, "yyyy-MM-dd'T'HH:mm:ss", global::System.Globalization.CultureInfo.InvariantCulture) || written != 19) { return false; }
         output.Put((byte)'"');
         foreach (char c in text) { output.Put((byte)c); }
         if (fraction != 0)
@@ -1349,7 +1349,7 @@ internal static class TableJson
 
     public struct In
     {
-        public System.Collections.Generic.Dictionary<ulong, Label> Labels;
+        public global::System.Collections.Generic.Dictionary<ulong, Label> Labels;
         public int Pos;
         public _R Report;
         public bool Bad; // the text is not JSON: the whole read is discarded
@@ -1814,16 +1814,16 @@ internal static class TableJson
         if (single)
         {
             float narrow;
-            if (!float.TryParse(bounded, System.Globalization.NumberStyles.Float,
-                    System.Globalization.CultureInfo.InvariantCulture, out narrow))
+            if (!float.TryParse(bounded, global::System.Globalization.NumberStyles.Float,
+                    global::System.Globalization.CultureInfo.InvariantCulture, out narrow))
             {
                 return double.NaN;
             }
             return narrow;
         }
         double value;
-        if (!double.TryParse(bounded, System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture, out value))
+        if (!double.TryParse(bounded, global::System.Globalization.NumberStyles.Float,
+                global::System.Globalization.CultureInfo.InvariantCulture, out value))
         {
             return double.NaN;
         }
@@ -1880,7 +1880,7 @@ internal static class TableJson
         // a skipped object's keys are held to the layer's rule too: a repeated
         // key refuses in every object of the text (docs/SPEC-TABLES.md §16.2,
         // §16.12), the objects this walk skips included
-        System.Collections.Generic.HashSet<string> keys = null;
+        global::System.Collections.Generic.HashSet<string> keys = null;
         for (; ; )
         {
             byte c = Peek(text, ref input);
@@ -1891,8 +1891,8 @@ internal static class TableJson
                 if (!ScanString(text, ref input, key, true, out int used, stored: true)) { return false; }
                 if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
                 input.Pos++;
-                keys ??= new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
-                if (!keys.Add(System.Text.Encoding.UTF8.GetString(key.Slice(0, used)))) { return RefuseText(ref input, "duplicate"); }
+                keys ??= new global::System.Collections.Generic.HashSet<string>(global::System.StringComparer.Ordinal);
+                if (!keys.Add(global::System.Text.Encoding.UTF8.GetString(key.Slice(0, used)))) { return RefuseText(ref input, "duplicate"); }
                 if (used > 0 && key[0] == '&' && input.Labels != null)
                 {
                     if (!first || !Same(key.Slice(0, used), "&node") || !ScanLabel(text, ref input, out ulong label)) { input.Bad = true; return false; }
@@ -1961,9 +1961,9 @@ internal static class TableJson
     static bool SameEncoded(ReadOnlySpan<byte> text, string name)
     {
         Span<byte> encoded = stackalloc byte[MaxKey];
-        int n = System.Text.Encoding.UTF8.GetByteCount(name);
+        int n = global::System.Text.Encoding.UTF8.GetByteCount(name);
         if (n > encoded.Length) { return false; }
-        System.Text.Encoding.UTF8.GetBytes(name.AsSpan(), encoded);
+        global::System.Text.Encoding.UTF8.GetBytes(name.AsSpan(), encoded);
         return text.SequenceEqual(encoded.Slice(0, n));
     }
 
@@ -2125,7 +2125,7 @@ internal static class TableJson
                 for (int i = 0; i < body.Length; i++) { wideToken[i] = (char)body[i]; }
                 return ReadNumber(wideToken.Slice(0, body.Length), true, ref input, owner, f, index);
             }
-            return ReadNumber(System.Text.Encoding.ASCII.GetString(body), true, ref input, owner, f, index);
+            return ReadNumber(global::System.Text.Encoding.ASCII.GetString(body), true, ref input, owner, f, index);
         }
         Span<char> scratch = stackalloc char[MaxNumber];
         int length;
@@ -2139,7 +2139,7 @@ internal static class TableJson
         {
             return ReadNumber(scratch.Slice(0, length), tokenIntegral, ref input, owner, f, index);
         }
-        return ReadNumber(System.Text.Encoding.ASCII.GetString(text.Slice(input.Pos - length, length)), tokenIntegral, ref input, owner, f, index);
+        return ReadNumber(global::System.Text.Encoding.ASCII.GetString(text.Slice(input.Pos - length, length)), tokenIntegral, ref input, owner, f, index);
     }
 
     // one number token at one field: the token's VALUE decides what lands, not
@@ -2418,7 +2418,7 @@ internal static class TableJson
             Span<ulong> seen = words <= 8 ? stackalloc ulong[words] : new ulong[words];
             seen.Clear();
             Span<byte> key = stackalloc byte[MaxName];
-            System.Collections.Generic.HashSet<string> unplaced = null;
+            global::System.Collections.Generic.HashSet<string> unplaced = null;
             for (; ; )
             {
                 byte c = Peek(text, ref input);
@@ -2450,8 +2450,8 @@ internal static class TableJson
                     // a repeated key, damage like a placed one.
                     // Compared on the decoded bytes, so an
                     // escaped spelling of the same name is the same key.
-                    unplaced ??= new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
-                    if (!unplaced.Add(System.Text.Encoding.UTF8.GetString(key.Slice(0, keyLength)))) { return RefuseText(ref input, "duplicate"); }
+                    unplaced ??= new global::System.Collections.Generic.HashSet<string>(global::System.StringComparer.Ordinal);
+                    if (!unplaced.Add(global::System.Text.Encoding.UTF8.GetString(key.Slice(0, keyLength)))) { return RefuseText(ref input, "duplicate"); }
                     input.Report.Unknown++;
                     if (!SkipValue(text, ref input, depth + 1)) { return false; }
                 }
@@ -2548,7 +2548,7 @@ internal static class TableJson
         Span<ulong> seen = words <= 8 ? stackalloc ulong[words] : new ulong[words];
         seen.Clear();
         Span<byte> key = stackalloc byte[MaxName];
-        System.Collections.Generic.HashSet<string> unknown = null;
+        global::System.Collections.Generic.HashSet<string> unknown = null;
         for (; ; )
         {
             byte c = Peek(text, ref input);
@@ -2576,8 +2576,8 @@ internal static class TableJson
             {
                 // an unknown key is still a key: spelling it twice is a
                 // repeated JSON key, damage
-                unknown ??= new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
-                if (!unknown.Add(System.Text.Encoding.UTF8.GetString(key.Slice(0, keyLength)))) { return RefuseText(ref input, "duplicate"); }
+                unknown ??= new global::System.Collections.Generic.HashSet<string>(global::System.StringComparer.Ordinal);
+                if (!unknown.Add(global::System.Text.Encoding.UTF8.GetString(key.Slice(0, keyLength)))) { return RefuseText(ref input, "duplicate"); }
                 input.Report.Unknown++;
                 if (!SkipValue(text, ref input, depth + 1)) { return false; }
             }
@@ -2643,7 +2643,7 @@ internal static class TableJson
         input.Report = report != null ? report : new _R();
         input.Report.Reason = null; input.Report.Refused = false;
         input.Bad = false;
-        if (info.Variable) { input.Labels = new System.Collections.Generic.Dictionary<ulong, Label>(); }
+        if (info.Variable) { input.Labels = new global::System.Collections.Generic.Dictionary<ulong, Label>(); }
         info.Reset(value);
         // C++ refuses a null pointer and a negative length here before it walks.
         // A span is neither: an empty one is a text with no object in it, which

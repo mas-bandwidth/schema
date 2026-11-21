@@ -648,7 +648,7 @@ func (g *cookGen) emitOpen(st *ir.Struct, ml *ir.MemberLayout, align int64) {
 	g.hf("        // the byte order every other header word is written in. A cook of the\n")
 	g.hf("        // other order reads back this constant byte-reversed and refuses HERE,\n")
 	g.hf("        // rather than reaching a fix-up pass this design does not have.\n")
-	g.hf("        if (Schema.TableCookRead64(at + %d) != Schema.TableCookMagic) { reason = Schema.TableCookRead64(at) == System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(Schema.TableCookMagic) ? TableRefuseReason.foreign_order : TableRefuseReason.not_a_cook; return false; }\n", 0)
+	g.hf("        if (Schema.TableCookRead64(at + %d) != Schema.TableCookMagic) { reason = Schema.TableCookRead64(at) == global::System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(Schema.TableCookMagic) ? TableRefuseReason.foreign_order : TableRefuseReason.not_a_cook; return false; }\n", 0)
 	g.hf("        // and the ORDER WORD does the other job: it RECORDS which order wrote the\n")
 	g.hf("        // file, so a refusal names the order rather than inferring it. A file\n")
 	g.hf("        // whose magic matched and whose order word did not is corrupt, and there\n")
@@ -1056,7 +1056,7 @@ public static partial class Schema
     // the 64 every unit this language can declare produces.
     public const long TableCookMaxAlign = ` + fmt.Sprintf("%d", cookMaxAlign) + `;
 
-    public static unsafe ulong TableCookRead64(byte* p) { return System.Runtime.CompilerServices.Unsafe.ReadUnaligned<ulong>(p); }
+    public static unsafe ulong TableCookRead64(byte* p) { return global::System.Runtime.CompilerServices.Unsafe.ReadUnaligned<ulong>(p); }
 }
 
 `)

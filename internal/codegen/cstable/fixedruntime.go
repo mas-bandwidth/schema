@@ -16,7 +16,7 @@ const tableFixedRuntimeTypes = `
 // is one, two, four or eight, and comparing only the FIRST of them fires
 // arm 1 on a foreign tag of 0x0101. Zero is read as one. Flavour stays in
 // Meta; they are two lanes because they are two facts.
-[System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+[global::System.Runtime.InteropServices.StructLayout(global::System.Runtime.InteropServices.LayoutKind.Sequential)]
 public struct TableFixedEntry
 {
     public uint Src;
@@ -82,7 +82,7 @@ public struct TableFixedGuardLink
 // TableFixedDst is MY side of the layout walk: one row per entry of my own layout,
 // carrying the storage facts a layout entry cannot: destination slot index, array
 // stride in slots, auxiliary slot index, counted flag, and text flavour.
-[System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+[global::System.Runtime.InteropServices.StructLayout(global::System.Runtime.InteropServices.LayoutKind.Sequential)]
 public struct TableFixedDst
 {
     public uint Dst;
@@ -103,7 +103,7 @@ public struct TableFixedDst
 
 // TableFixedLayoutEntry is one seventeen-byte entry: an id, a constant size,
 // a child count, and a kind, in the writer's declared order.
-[System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+[global::System.Runtime.InteropServices.StructLayout(global::System.Runtime.InteropServices.LayoutKind.Sequential)]
 public struct TableFixedLayoutEntry
 {
     public ulong Id;
@@ -138,7 +138,7 @@ public delegate void TableFixedSetBytes<T>(T target, ReadOnlySpan<byte> span, in
 // ONE SLOT RANGE THE PLAN DOES NOT LAND. Dst is a slot index, Size is how
 // many consecutive slots. The identity plan's list is empty: its destinations
 // ARE the value slots, so there is nothing left to subtract.
-[System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+[global::System.Runtime.InteropServices.StructLayout(global::System.Runtime.InteropServices.LayoutKind.Sequential)]
 public struct TableFixedFill
 {
     public uint Dst;
@@ -244,14 +244,14 @@ public static class TableFixedWire
     // the fixed form, and each is followed by that swap.
     public static void ReadLittle<T>(ReadOnlySpan<byte> src, Span<T> dst) where T : unmanaged
     {
-        int width = System.Runtime.CompilerServices.Unsafe.SizeOf<T>();
+        int width = global::System.Runtime.CompilerServices.Unsafe.SizeOf<T>();
         int n = global::System.Math.Min(src.Length / width, dst.Length);
         global::System.Runtime.InteropServices.MemoryMarshal.Cast<byte, T>(src.Slice(0, n * width)).CopyTo(dst); /* byte order: swapped below on a big-endian host */
         if (!global::System.BitConverter.IsLittleEndian) { ReverseEach(global::System.Runtime.InteropServices.MemoryMarshal.AsBytes(dst.Slice(0, n)), width); }
     }
     public static void WriteLittle<T>(ReadOnlySpan<T> src, Span<byte> dst) where T : unmanaged
     {
-        int width = System.Runtime.CompilerServices.Unsafe.SizeOf<T>();
+        int width = global::System.Runtime.CompilerServices.Unsafe.SizeOf<T>();
         global::System.Runtime.InteropServices.MemoryMarshal.AsBytes(src).CopyTo(dst); /* byte order: swapped below on a big-endian host */
         if (!global::System.BitConverter.IsLittleEndian) { ReverseEach(dst.Slice(0, src.Length * width), width); }
     }
@@ -780,7 +780,7 @@ public static class TableFixedWire
                     stamped.GuardCount = (uint)ChainLen;
                 }
             }
-            int entrySize = System.Runtime.CompilerServices.Unsafe.SizeOf<TableFixedEntry>();
+            int entrySize = global::System.Runtime.CompilerServices.Unsafe.SizeOf<TableFixedEntry>();
             int room = Capacity - (Pool + entrySize - 1) / entrySize;
             if (Count >= room) { Overflow = true; return; }
             Plan[Count++] = stamped;
@@ -792,7 +792,7 @@ public static class TableFixedWire
         public uint LayGuards()
         {
             int bytes = ChainLen * GuardLinkBytes;
-            int entrySize = System.Runtime.CompilerServices.Unsafe.SizeOf<TableFixedEntry>();
+            int entrySize = global::System.Runtime.CompilerServices.Unsafe.SizeOf<TableFixedEntry>();
             int total = entrySize * Capacity;
             Pool += bytes;
             if (total - Pool < Count * entrySize) { Overflow = true; return 0; }
@@ -816,7 +816,7 @@ public static class TableFixedWire
             // count past 65535 is a plan that does not fit.
             if (n < 0 || n > 65535) { Overflow = true; return 0; }
             int bytes = (n + 1) * 2;
-            int entrySize = System.Runtime.CompilerServices.Unsafe.SizeOf<TableFixedEntry>();
+            int entrySize = global::System.Runtime.CompilerServices.Unsafe.SizeOf<TableFixedEntry>();
             int total = entrySize * Capacity;
             Pool += bytes;
             if (total - Pool < Count * entrySize) { Overflow = true; return 0; }
@@ -1609,7 +1609,7 @@ public static class TableFixedWire
                         {
                             widenScratch = new byte[need];
                         }
-                        System.Span<byte> wide = widenScratch.AsSpan(0, need);
+                        global::System.Span<byte> wide = widenScratch.AsSpan(0, need);
                         for (int e = 0; e < runs; ++e)
                         {
                             int at = (int)p.Src + e * sw;
@@ -1630,7 +1630,7 @@ public static class TableFixedWire
                                 ulong top = 1UL << (bits - 1);
                                 if ((raw & top) != 0) { raw |= unchecked(~((top << 1) - 1UL)); }
                             }
-                            System.Span<byte> cell = wide.Slice(e * dw, dw);
+                            global::System.Span<byte> cell = wide.Slice(e * dw, dw);
                             if (dw == 1) cell[0] = unchecked((byte)raw);
                             else if (dw == 2) global::System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(cell, unchecked((ushort)raw));
                             else if (dw == 4) global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(cell, unchecked((uint)raw));

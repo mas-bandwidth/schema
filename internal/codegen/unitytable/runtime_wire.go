@@ -195,9 +195,9 @@ internal static partial class TableWire
             switch (n)
             {
                 case 1: Byte(unchecked((byte)v)); return;
-                case 2: System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(Buffer.Slice(Offset), unchecked((ushort)v)); break;
-                case 4: System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(Buffer.Slice(Offset), unchecked((uint)v)); break;
-                case 8: System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(Buffer.Slice(Offset), v); break;
+                case 2: global::System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(Buffer.Slice(Offset), unchecked((ushort)v)); break;
+                case 4: global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(Buffer.Slice(Offset), unchecked((uint)v)); break;
+                case 8: global::System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(Buffer.Slice(Offset), v); break;
                 default:
                     for (int i = 0; i < n; i++) { Byte(unchecked((byte)v)); v >>= 8; }
                     return;
@@ -209,7 +209,7 @@ internal static partial class TableWire
         {
             if (reference < 128)
             {
-                System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(Buffer.Slice(Offset), (ushort)(reference | ((ulong)kind << 8)));
+                global::System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(Buffer.Slice(Offset), (ushort)(reference | ((ulong)kind << 8)));
                 Offset += 2;
                 return;
             }
@@ -249,9 +249,9 @@ internal static partial class TableWire
             switch (n)
             {
                 case 1: return Byte();
-                case 2: v = System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(Buffer.Slice(Offset)); break;
-                case 4: v = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(Buffer.Slice(Offset)); break;
-                case 8: v = System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(Buffer.Slice(Offset)); break;
+                case 2: v = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(Buffer.Slice(Offset)); break;
+                case 4: v = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(Buffer.Slice(Offset)); break;
+                case 8: v = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(Buffer.Slice(Offset)); break;
                 default:
                     v = 0;
                     for (int i = 0; i < n; i++) { v |= (ulong)Byte() << (8 * i); }
@@ -375,8 +375,8 @@ internal static partial class TableWire
         public int[] Starts;
         public void Release()
         {
-            if (Edges != null) { System.Buffers.ArrayPool<ulong>.Shared.Return(Edges); Edges = null; }
-            if (Starts != null) { System.Buffers.ArrayPool<int>.Shared.Return(Starts); Starts = null; }
+            if (Edges != null) { global::System.Buffers.ArrayPool<ulong>.Shared.Return(Edges); Edges = null; }
+            if (Starts != null) { global::System.Buffers.ArrayPool<int>.Shared.Return(Starts); Starts = null; }
         }
         bool Damage() { if (Fail == WireWhole) { Fail = WireDamaged; } return false; }
         static bool Leb(ReadOnlySpan<byte> b, ref int off, out ulong v)
@@ -395,12 +395,12 @@ internal static partial class TableWire
         void Edge(ulong index)
         {
             if (index == 0) { return; }
-            if (Edges == null) { Edges = System.Buffers.ArrayPool<ulong>.Shared.Rent(16); }
+            if (Edges == null) { Edges = global::System.Buffers.ArrayPool<ulong>.Shared.Rent(16); }
             else if (EdgeCount == Edges.Length)
             {
-                ulong[] grown = System.Buffers.ArrayPool<ulong>.Shared.Rent(Edges.Length * 2);
+                ulong[] grown = global::System.Buffers.ArrayPool<ulong>.Shared.Rent(Edges.Length * 2);
                 global::System.Array.Copy(Edges, grown, EdgeCount);
-                System.Buffers.ArrayPool<ulong>.Shared.Return(Edges); Edges = grown;
+                global::System.Buffers.ArrayPool<ulong>.Shared.Return(Edges); Edges = grown;
             }
             Edges[EdgeCount++] = index;
         }
@@ -431,7 +431,7 @@ internal static partial class TableWire
                 // A ROOT THAT REACHES NO NODE WRITES NO NODE-TABLE FIELD AT ALL
                 // (§3.1): a table of no records is refused, not read.
                 if (records == 0) { Damage(); return; }
-                Starts = System.Buffers.ArrayPool<int>.Shared.Rent(records + 2);
+                Starts = global::System.Buffers.ArrayPool<int>.Shared.Rent(records + 2);
                 Starts[0] = 0; Starts[1] = rootEdges;
                 off = first;
                 for (int k = 0; k < records; k++)
@@ -458,7 +458,7 @@ internal static partial class TableWire
         void Graph()
         {
             int n = Nodes;
-            int[] names = System.Buffers.ArrayPool<int>.Shared.Rent(n * 3);
+            int[] names = global::System.Buffers.ArrayPool<int>.Shared.Rent(n * 3);
             try
             {
                 Span<int> name = names.AsSpan(0, n), mark = names.AsSpan(n, n), next = names.AsSpan(2 * n, n);
@@ -482,7 +482,7 @@ internal static partial class TableWire
                 // mark: 0 unvisited, 1 open, 2 closed; next[k] counts the edges
                 // of node k already followed; path is the stack of open nodes,
                 // each entered once, so it never holds more than n.
-                int[] rented = System.Buffers.ArrayPool<int>.Shared.Rent(n);
+                int[] rented = global::System.Buffers.ArrayPool<int>.Shared.Rent(n);
                 try
                 {
                     Span<int> path = rented.AsSpan(0, n);
@@ -499,10 +499,10 @@ internal static partial class TableWire
                         mark[target] = 1; path[++top] = target;
                     }
                 }
-                finally { System.Buffers.ArrayPool<int>.Shared.Return(rented); }
+                finally { global::System.Buffers.ArrayPool<int>.Shared.Return(rented); }
                 for (int k = 1; k < n; k++) { if (mark[k] == 0) { Damage(); return; } }
             }
-            finally { System.Buffers.ArrayPool<int>.Shared.Return(names); }
+            finally { global::System.Buffers.ArrayPool<int>.Shared.Return(names); }
         }
         // Body walks one table body that must end with its terminator as its
         // LAST byte. The root admits the node table's reserved id, whose kind 12
@@ -615,7 +615,7 @@ internal static partial class TableWire
             ulong boolRaw = b[0]; if (kind == 1 && boolRaw > 1) { return Damage(); }
             if (kind == 10 || kind == 11)
             {
-                ulong raw = kind == 10 ? System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(b) : System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(b);
+                ulong raw = kind == 10 ? global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(b) : global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(b);
                 if (NonFiniteBits(kind, raw)) { NonFinite = true; }
             }
             return true;
@@ -695,8 +695,8 @@ internal static partial class TableWire
     }
     internal sealed class Graph
     {
-        public System.Collections.Generic.Dictionary<object, int> Uses = new System.Collections.Generic.Dictionary<object, int>(RefEq.Instance);
-        public System.Collections.Generic.Dictionary<object, ulong> Labels = new System.Collections.Generic.Dictionary<object, ulong>(RefEq.Instance);
+        public global::System.Collections.Generic.Dictionary<object, int> Uses = new global::System.Collections.Generic.Dictionary<object, int>(RefEq.Instance);
+        public global::System.Collections.Generic.Dictionary<object, ulong> Labels = new global::System.Collections.Generic.Dictionary<object, ulong>(RefEq.Instance);
         public object Root;
         public TableTypeInfo RootType;
         public bool Good = true;
@@ -705,10 +705,10 @@ internal static partial class TableWire
         // it unless the caller packs the graph as it finds it (Lock, Cook).
         public bool BlobSharedPacks;
         public int PayloadOffset, PayloadLength;
-        public System.Collections.Generic.List<Node> Nodes = new System.Collections.Generic.List<Node>();
-        public System.Collections.Generic.Dictionary<object, ulong> Indices = new System.Collections.Generic.Dictionary<object, ulong>(RefEq.Instance);
-        public System.Collections.Generic.HashSet<object> Open = new System.Collections.Generic.HashSet<object>(RefEq.Instance);
-        System.Collections.Generic.HashSet<ulong> blobsNamed;
+        public global::System.Collections.Generic.List<Node> Nodes = new global::System.Collections.Generic.List<Node>();
+        public global::System.Collections.Generic.Dictionary<object, ulong> Indices = new global::System.Collections.Generic.Dictionary<object, ulong>(RefEq.Instance);
+        public global::System.Collections.Generic.HashSet<object> Open = new global::System.Collections.Generic.HashSet<object>(RefEq.Instance);
+        global::System.Collections.Generic.HashSet<ulong> blobsNamed;
         public ulong Index(object o) { return o == null ? 0 : Indices[o]; }
         public object Resolve(ulong index, TableFieldInfo f, _R report)
         {
@@ -732,7 +732,7 @@ internal static partial class TableWire
             if (node.TypeId != f.PointerTypeId) { Fail(report, "kind_mismatch"); return null; }
             if (f.BlobKind != 0)
             {
-                blobsNamed ??= new System.Collections.Generic.HashSet<ulong>();
+                blobsNamed ??= new global::System.Collections.Generic.HashSet<ulong>();
                 if (!blobsNamed.Add(index)) { Fail(report, "blob_shared"); }
             }
             return node.Value;
@@ -747,7 +747,7 @@ internal static partial class TableWire
         {
             if (f == null) { return true; }
             int n = f.IsArray ? Count(value, f) : 1;
-            if (f.Counted) { System.Diagnostics.Debug.Assert(Count(value, f) >= f.ArrayMin && Count(value, f) <= f.ArrayBound); }
+            if (f.Counted) { global::System.Diagnostics.Debug.Assert(Count(value, f) >= f.ArrayMin && Count(value, f) <= f.ArrayBound); }
             if (f.Map && !MapOrdered(value, f)) { return false; }
             for (int i = 0; i < n; i++)
             {
@@ -756,7 +756,7 @@ internal static partial class TableWire
                 {
                     object union = f.GetChild(value, i); ulong tag = f.Arms.GetTag(union);
                     // a tag naming no arm is the programmer's error: a debug assert (docs/SPEC.md §5.1)
-                    System.Diagnostics.Debug.Assert(tag <= (ulong)f.EnumMax);
+                    global::System.Diagnostics.Debug.Assert(tag <= (ulong)f.EnumMax);
                     if (tag != 0 && !VisitField(union, f.Arms.Arms[(int)tag].Field)) { return false; }
                 }
                 else if (f.Kind == 17)
@@ -803,7 +803,7 @@ internal static partial class TableWire
     internal static bool Cyclic(Graph graph, object root, TableTypeInfo rootType)
     {
         int n = graph.Nodes.Count;
-        var index = new System.Collections.Generic.Dictionary<object, int>(n + 1, RefEq.Instance);
+        var index = new global::System.Collections.Generic.Dictionary<object, int>(n + 1, RefEq.Instance);
         index[root] = 0;
         for (int i = 0; i < n; i++)
         {
@@ -811,8 +811,8 @@ internal static partial class TableWire
             if (node.BlobKind == 0 && node.Type != null && node.Value != null) { index.TryAdd(node.Value, i + 1); }
         }
         byte rootMark = 0;
-        var targets = new System.Collections.Generic.List<int>();
-        var stack = new System.Collections.Generic.List<(int Vertex, int[] Targets, int Next)>();
+        var targets = new global::System.Collections.Generic.List<int>();
+        var stack = new global::System.Collections.Generic.List<(int Vertex, int[] Targets, int Next)>();
         for (int start = 0; start <= n; start++)
         {
             if (start > 0 && (graph.Nodes[start - 1].BlobKind != 0 || graph.Nodes[start - 1].Type == null || graph.Nodes[start - 1].Value == null)) { continue; }
@@ -844,11 +844,11 @@ internal static partial class TableWire
             stack.Add((v, targets.ToArray(), 0));
         }
     }
-    static void CycleSlots(object value, TableTypeInfo type, System.Collections.Generic.Dictionary<object, int> index, System.Collections.Generic.List<int> targets)
+    static void CycleSlots(object value, TableTypeInfo type, global::System.Collections.Generic.Dictionary<object, int> index, global::System.Collections.Generic.List<int> targets)
     {
         foreach (TableFieldInfo f in type.Fields) { CycleField(value, f, index, targets); }
     }
-    static void CycleField(object value, TableFieldInfo f, System.Collections.Generic.Dictionary<object, int> index, System.Collections.Generic.List<int> targets)
+    static void CycleField(object value, TableFieldInfo f, global::System.Collections.Generic.Dictionary<object, int> index, global::System.Collections.Generic.List<int> targets)
     {
         if (f == null) { return; }
         int n = f.IsArray ? global::System.Math.Max(0, Count(value, f)) : 1;
@@ -1183,7 +1183,7 @@ internal static partial class TableWire
             ExtentTargets targetIds = default;
             if (framed)
             {
-                targets = System.Buffers.ArrayPool<ulong>.Shared.Rent(nodes + 2);
+                targets = global::System.Buffers.ArrayPool<ulong>.Shared.Rent(nodes + 2);
                 targets[0] = 0; targets[1] = type.Id;
                 Reader map = payload;
                 for (int i = 0; i < nodes; i++)
@@ -1210,7 +1210,7 @@ internal static partial class TableWire
             }
             return size + (nodes + 1L) * 16;
         }
-        finally { if (targets != null) { System.Buffers.ArrayPool<ulong>.Shared.Return(targets); } }
+        finally { if (targets != null) { global::System.Buffers.ArrayPool<ulong>.Shared.Return(targets); } }
     }
 
     struct MapKey
@@ -1410,8 +1410,8 @@ internal static partial class TableWire
             else { report.Unknown++; if (!r.Skip(kind)) { break; } }
         }
         if (!terminated || versions != 1 || vocabularies != 1) { Damage(report); return Finish(report, Verdict.Damaged); }
-        var entries = new System.Collections.Generic.List<TableMessageEntry>();
-        var keys = new System.Collections.Generic.HashSet<string>(); bool node = false;
+        var entries = new global::System.Collections.Generic.List<TableMessageEntry>();
+        var keys = new global::System.Collections.Generic.HashSet<string>(); bool node = false;
         while (payload.Has(1))
         {
             int start = payload.Offset;
@@ -1576,7 +1576,7 @@ internal static partial class TableWire
     {
         if (depth > 128) { return false; }
         Span<ulong> few = stackalloc ulong[16];
-        int count = 0; System.Collections.Generic.HashSet<ulong> more = null;
+        int count = 0; global::System.Collections.Generic.HashSet<ulong> more = null;
         for (; ; )
         {
             if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry e)) { return false; }
@@ -1598,11 +1598,11 @@ internal static partial class TableWire
     // answers false on a repeat: an id twice in one body, or a key twice in
     // one array, is damage whether this reader can name it or not (§3.2, §3.3).
     // The first ids sit in the caller's stack; a long body spills to a set.
-    static bool SeenOnce(Span<ulong> few, ref int count, ref System.Collections.Generic.HashSet<ulong> more, ulong id)
+    static bool SeenOnce(Span<ulong> few, ref int count, ref global::System.Collections.Generic.HashSet<ulong> more, ulong id)
     {
         for (int i = 0; i < count && i < few.Length; i++) { if (few[i] == id) { return false; } }
         if (count < few.Length) { few[count++] = id; return true; }
-        more ??= new System.Collections.Generic.HashSet<ulong>();
+        more ??= new global::System.Collections.Generic.HashSet<ulong>();
         count++; return more.Add(id);
     }
     // RangedHolds reconstructs a ranged offset from the sender's base and holds
@@ -1673,7 +1673,7 @@ internal static partial class TableWire
                 if (run >= 0) { return run == 0 || n <= (ulong)(long.MaxValue / run) && r.Skip((long)n * run); }
                 bool nested = shape.Elem == 13 || shape.Elem == 14 || shape.Elem == 15 || shape.Elem == 16 || shape.Elem == 17 || shape.Elem == 30;
                 Span<ulong> few = stackalloc ulong[16];
-                int count = 0; System.Collections.Generic.HashSet<ulong> more = null;
+                int count = 0; global::System.Collections.Generic.HashSet<ulong> more = null;
                 // a walked element of no fixed width that consumes no bits
                 // refuses the read (docs/SPEC-TABLES.md §3.3), as the
                 // reference's walk does: a count alone never buys the walk
@@ -1739,7 +1739,7 @@ internal static partial class TableWire
         if (depth > 128) { return false; }
         if (value != null) { type.Reset(value); }
         Span<ulong> few = stackalloc ulong[16];
-        int count = 0; System.Collections.Generic.HashSet<ulong> more = null;
+        int count = 0; global::System.Collections.Generic.HashSet<ulong> more = null;
         // THE SENDER'S OWN BUILD VERSION IS THIS READER'S (§3.3 (a), (b)):
         // there every field's default and every record's field order are this
         // reader's, so a field it does not declare, a field out of declaration
@@ -1834,7 +1834,7 @@ internal static partial class TableWire
             if (f.KeyId != null)
             {
                 Span<ulong> few = stackalloc ulong[16];
-                int count = 0; System.Collections.Generic.HashSet<ulong> more = null;
+                int count = 0; global::System.Collections.Generic.HashSet<ulong> more = null;
                 int lastSlot = 0;
                 for (ulong i = 0; i < n; i++)
                 {
@@ -2087,7 +2087,7 @@ internal static partial class TableWire
         if (f.Optional) { w.Put(record + f.NativePresentOffset, f.GetPresent(value) ? 1u : 0u, 1); }
         if (f.Optional && !f.GetPresent(value)) { return true; }
         int live = f.Counted ? f.GetCount(value) : f.IsArray ? f.ArrayBound : 1;
-        System.Diagnostics.Debug.Assert(live >= 0 && (!f.Counted || live <= f.ArrayBound));
+        global::System.Diagnostics.Debug.Assert(live >= 0 && (!f.Counted || live <= f.ArrayBound));
         if (f.NativeCountOffset >= 0) { w.Put(record + f.NativeCountOffset, (uint)live, 4); }
         if (f.Unbounded)
         {
@@ -2111,7 +2111,7 @@ internal static partial class TableWire
         {
             // a cooked float is finite (docs/SPEC-TABLES.md §3.3): a debug
             // assert, as every write check on this leg is (docs/SPEC.md §5.1)
-            System.Diagnostics.Debug.Assert(!((f.Kind == 10 || f.Kind == 11) && i < live && NonFiniteBits(f.Kind, f.GetRaw(value, i))));
+            global::System.Diagnostics.Debug.Assert(!((f.Kind == 10 || f.Kind == 11) && i < live && NonFiniteBits(f.Kind, f.GetRaw(value, i))));
             long element = at + (long)i * f.NativeElementSize, before = extent;
             if (!NativeElement(ref w, element, value, f, i, extentAt, ref extent)) { return false; }
             if (!f.Dynamic && f.Counted && i >= live && extent != before) { return false; }
@@ -2134,7 +2134,7 @@ internal static partial class TableWire
         if (f.Kind == 15)
         {
             object union = f.GetChild(value, index); ulong tag = f.Arms.GetTag(union);
-            System.Diagnostics.Debug.Assert(tag <= (ulong)f.EnumMax);
+            global::System.Diagnostics.Debug.Assert(tag <= (ulong)f.EnumMax);
             w.Put(at, tag, f.Arms.NativeTagSize);
             TableFieldInfo arm = f.Arms.Arms[(int)tag].Field;
             return arm == null || NativeField(ref w, at + f.Arms.NativeArmOffset, union, arm, extentAt, ref extent);
@@ -2188,21 +2188,21 @@ internal static partial class TableWire
     static bool NativeExtentSize(object value, TableFieldInfo f, ref long at)
     {
         if (f.Optional && !f.GetPresent(value)) { return true; }
-        if (f.Unbounded) { int length = f.GetCount(value); System.Diagnostics.Debug.Assert(length >= 0 && length <= f.GetBuffer(value).Length); if (length > 0) { at = Align(at, 8) + Align(9L + length, 8); } return true; }
+        if (f.Unbounded) { int length = f.GetCount(value); global::System.Diagnostics.Debug.Assert(length >= 0 && length <= f.GetBuffer(value).Length); if (length > 0) { at = Align(at, 8) + Align(9L + length, 8); } return true; }
         if (f.Dynamic)
         {
-            int count = f.GetCount(value); System.Diagnostics.Debug.Assert(count >= 0);
+            int count = f.GetCount(value); global::System.Diagnostics.Debug.Assert(count >= 0);
             at = Align(at, f.StorageAlign) + (long)count * f.StorageSize;
         }
         int n = f.IsArray ? Count(value, f) : 1;
-        System.Diagnostics.Debug.Assert(n >= 0 && (!f.IsArray || n <= f.ArrayBound));
+        global::System.Diagnostics.Debug.Assert(n >= 0 && (!f.IsArray || n <= f.ArrayBound));
         for (int i = 0; i < n; i++)
         {
             if (f.Kind == 13 || f.TextList) { if (!NativeExtentSize(f.GetChild(value, i), f.Table, ref at)) { return false; } }
             else if (f.Kind == 15)
             {
                 object union = f.GetChild(value, i); ulong tag = f.Arms.GetTag(union);
-                System.Diagnostics.Debug.Assert(tag <= (ulong)f.EnumMax);
+                global::System.Diagnostics.Debug.Assert(tag <= (ulong)f.EnumMax);
                 TableFieldInfo arm = f.Arms.Arms[(int)tag].Field;
                 if (arm != null && !NativeExtentSize(union, arm, ref at)) { return false; }
             }
@@ -2244,7 +2244,7 @@ internal static partial class TableWire
 
     static ulong Read64(ReadOnlySpan<byte> bytes, int offset)
     {
-        return System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(bytes.Slice(offset));
+        return global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(bytes.Slice(offset));
     }
     static int Width(byte k)
     {
@@ -2320,15 +2320,15 @@ internal static partial class TableWire
         {
             object child = f.GetChild(value, i); TableFieldInfo text = f.Table.Fields[0];
             int count = Count(child, text);
-            System.Diagnostics.Debug.Assert(count >= 0 && count <= text.ArrayBound);
-            System.Diagnostics.Debug.Assert(TextValid(text.GetBuffer(child).AsSpan(0, count)));
+            global::System.Diagnostics.Debug.Assert(count >= 0 && count <= text.ArrayBound);
+            global::System.Diagnostics.Debug.Assert(TextValid(text.GetBuffer(child).AsSpan(0, count)));
             return true;
         }
         if (!f.IsArray && f.Kind == 12)
         {
             int count = Count(value, f);
-            System.Diagnostics.Debug.Assert(count >= 0 && count <= f.ArrayBound);
-            System.Diagnostics.Debug.Assert(TextValid(f.GetBuffer(value).AsSpan(0, count)));
+            global::System.Diagnostics.Debug.Assert(count >= 0 && count <= f.ArrayBound);
+            global::System.Diagnostics.Debug.Assert(TextValid(f.GetBuffer(value).AsSpan(0, count)));
             return true;
         }
         // EVERY WRITE CHECK IS A DEBUG ASSERT (docs/SPEC.md §5.1, C# is an
@@ -2336,25 +2336,25 @@ internal static partial class TableWire
         // (docs/SPEC-TABLES.md §3.3), an enum or union tag no variant names.
         // A Release build carries none of them; correct writes are the
         // programmer's job.
-        if (f.RequiredValidRaw != null) { System.Diagnostics.Debug.Assert(f.RequiredValidRaw(f.GetRaw(value, i))); }
-        if (f.WriteValidRaw != null) { System.Diagnostics.Debug.Assert(f.WriteValidRaw(f.GetRaw(value, i))); }
-        if (f.RequiredValidWide != null) { System.Diagnostics.Debug.Assert(f.RequiredValidWide(f.GetWide(value, i))); }
-        if (f.WriteValidWide != null) { System.Diagnostics.Debug.Assert(f.WriteValidWide(f.GetWide(value, i))); }
-        if (f.Kind == 10 || f.Kind == 11) { System.Diagnostics.Debug.Assert(!NonFiniteBits(f.Kind, f.GetRaw(value, i))); return true; }
+        if (f.RequiredValidRaw != null) { global::System.Diagnostics.Debug.Assert(f.RequiredValidRaw(f.GetRaw(value, i))); }
+        if (f.WriteValidRaw != null) { global::System.Diagnostics.Debug.Assert(f.WriteValidRaw(f.GetRaw(value, i))); }
+        if (f.RequiredValidWide != null) { global::System.Diagnostics.Debug.Assert(f.RequiredValidWide(f.GetWide(value, i))); }
+        if (f.WriteValidWide != null) { global::System.Diagnostics.Debug.Assert(f.WriteValidWide(f.GetWide(value, i))); }
+        if (f.Kind == 10 || f.Kind == 11) { global::System.Diagnostics.Debug.Assert(!NonFiniteBits(f.Kind, f.GetRaw(value, i))); return true; }
         if (f.Kind == 13) { return Collect(f.GetChild(value, i), f.Table, ref ids); }
         if (f.Kind == 15)
         {
             object union = f.GetChild(value, i);
             ulong tag = f.Arms.GetTag(union);
             if (tag == 0) { return true; }
-            System.Diagnostics.Debug.Assert(tag <= (ulong)f.EnumMax && Named(f.EnumName(tag)));
+            global::System.Diagnostics.Debug.Assert(tag <= (ulong)f.EnumMax && Named(f.EnumName(tag)));
             return ids.Add(f.VariantId(tag)) && CollectPayload(union, f.Arms.Arms[(int)tag].Field, ref ids);
         }
         if (f.Kind == 30)
         {
             ulong v = f.GetRaw(value, i);
             if (v == 0) { return true; }
-            System.Diagnostics.Debug.Assert(v <= (ulong)f.EnumMax && Named(f.EnumName(v)));
+            global::System.Diagnostics.Debug.Assert(v <= (ulong)f.EnumMax && Named(f.EnumName(v)));
             return ids.Add(f.VariantId(v));
         }
         return true;
@@ -2363,15 +2363,15 @@ internal static partial class TableWire
     {
         if (f == null) { return true; } // selected, payload-free arm
         int count = Count(value, f);
-        if (f.Counted) { System.Diagnostics.Debug.Assert(count >= f.ArrayMin && count <= f.ArrayBound); }
-        if (f.TextTotal > 0) { System.Diagnostics.Debug.Assert(TextFits(value, f)); }
+        if (f.Counted) { global::System.Diagnostics.Debug.Assert(count >= f.ArrayMin && count <= f.ArrayBound); }
+        if (f.TextTotal > 0) { global::System.Diagnostics.Debug.Assert(TextFits(value, f)); }
         if (!f.IsArray) { return CollectElement(value, f, 0, ref ids); }
         for (int i = 0; i < count; i++)
         {
             if (f.KeyId != null)
             {
                 if (DefaultElement(value, f, i)) { continue; }
-                System.Diagnostics.Debug.Assert(Named(f.KeyName((ulong)i + 1)));
+                global::System.Diagnostics.Debug.Assert(Named(f.KeyName((ulong)i + 1)));
                 if (!ids.Add(f.KeyId((ulong)i + 1))) { return false; }
             }
             if (!CollectElement(value, f, i, ref ids)) { return false; }
@@ -2384,7 +2384,7 @@ internal static partial class TableWire
         {
             if (f.WireGuard != null && !f.WireGuard(value)) { continue; }
             if (f.Optional && !f.GetPresent(value)) { continue; }
-            if (f.Counted) { System.Diagnostics.Debug.Assert(Count(value, f) >= f.ArrayMin && Count(value, f) <= f.ArrayBound); }
+            if (f.Counted) { global::System.Diagnostics.Debug.Assert(Count(value, f) >= f.ArrayMin && Count(value, f) <= f.ArrayBound); }
             if (Rides(value, f) && (!ids.Add(f.Id) || !CollectPayload(value, f, ref ids))) { return false; }
         }
         return true;
@@ -2573,7 +2573,7 @@ internal static partial class TableWire
     {
         if (f.WireGuard != null && !f.WireGuard(value)) { return true; }
         if (f.Optional && !f.GetPresent(value)) { return true; }
-        if (f.Counted) { System.Diagnostics.Debug.Assert(Count(value, f) >= f.ArrayMin && Count(value, f) <= f.ArrayBound); }
+        if (f.Counted) { global::System.Diagnostics.Debug.Assert(Count(value, f) >= f.ArrayMin && Count(value, f) <= f.ArrayBound); }
         return !Rides(value, f) || (ids.Add(f.Id) && CollectPayload(value, f, ref ids));
     }
     public static long BodySizeField(object value, TableFieldInfo f, ref Ids ids, Span<long> elemCache, out long payload)
@@ -2667,9 +2667,9 @@ internal static partial class TableWire
         // path, so no recursive cache or shared state lives across calls, and all
         // validation still precedes the first output byte.
         int cachedFields = !measure && !type.Variable && type.Fields.Length <= 256 ? type.Fields.Length : 0;
-        long[] rentedPayloads = cachedFields > 0 ? System.Buffers.ArrayPool<long>.Shared.Rent(cachedFields) : null;
+        long[] rentedPayloads = cachedFields > 0 ? global::System.Buffers.ArrayPool<long>.Shared.Rent(cachedFields) : null;
         int cachedElemSlots = !measure && !type.Variable ? type.RootElemSlots : 0;
-        long[] rentedElems = cachedElemSlots > 0 ? System.Buffers.ArrayPool<long>.Shared.Rent(cachedElemSlots) : null;
+        long[] rentedElems = cachedElemSlots > 0 ? global::System.Buffers.ArrayPool<long>.Shared.Rent(cachedElemSlots) : null;
         try
         {
         Span<long> rootPayloadSizes = cachedFields > 0 ? rentedPayloads.AsSpan(0, cachedFields) : Span<long>.Empty;
@@ -2689,8 +2689,8 @@ internal static partial class TableWire
         }
         finally
         {
-            if (rentedPayloads != null) { System.Buffers.ArrayPool<long>.Shared.Return(rentedPayloads); }
-            if (rentedElems != null) { System.Buffers.ArrayPool<long>.Shared.Return(rentedElems); }
+            if (rentedPayloads != null) { global::System.Buffers.ArrayPool<long>.Shared.Return(rentedPayloads); }
+            if (rentedElems != null) { global::System.Buffers.ArrayPool<long>.Shared.Return(rentedElems); }
         }
     }
 
@@ -3126,11 +3126,11 @@ internal static partial class TableWire
     internal static bool RequireSeen(object value, TableTypeInfo type, ReadOnlySpan<ulong> seen, _R report)
     {
         if (!type.HasRequired) { return !report.Refused; }
-        System.Text.StringBuilder missing = null;
+        global::System.Text.StringBuilder missing = null;
         foreach (TableFieldInfo f in type.Fields)
         {
             if (!f.Required || f.WireGuard != null && !f.WireGuard(value) || (seen[f.Ordinal >> 6] & (1ul << (f.Ordinal & 63))) != 0) { continue; }
-            if (missing == null) { missing = new System.Text.StringBuilder(); } else { missing.Append(", "); }
+            if (missing == null) { missing = new global::System.Text.StringBuilder(); } else { missing.Append(", "); }
             missing.Append(f.Name);
         }
         return RequiredMissing(report, missing?.ToString());
@@ -3182,7 +3182,7 @@ internal static partial class TableWire
         int count = vocabulary.Length / 8;
         if (count >= 16)
         {
-            ulong[] ids = System.Buffers.ArrayPool<ulong>.Shared.Rent(count);
+            ulong[] ids = global::System.Buffers.ArrayPool<ulong>.Shared.Rent(count);
             try
             {
                 for (int i = 0; i < count; i++) { ids[i] = Read64(vocabulary, i * 8); }
@@ -3190,7 +3190,7 @@ internal static partial class TableWire
                 for (int i = 1; i < count; i++) { if (ids[i] == ids[i - 1]) { return false; } }
                 return true;
             }
-            finally { System.Buffers.ArrayPool<ulong>.Shared.Return(ids); }
+            finally { global::System.Buffers.ArrayPool<ulong>.Shared.Return(ids); }
         }
         for (int i = 0; i < vocabulary.Length; i += 8)
         {
@@ -3271,7 +3271,7 @@ internal static partial class TableWire
         if (field.TextTotal == 0) { return true; }
         long spent = extra;
         TableFieldInfo text = field.Table.Fields[0]; int count = Count(value, field);
-        for (int i = 0; i < count; i++) { object child = field.GetChild(value, i); if (!text.Optional || text.GetPresent(child)) { int length = Count(child, text); System.Diagnostics.Debug.Assert(length >= 0); spent += length; if (spent > field.TextTotal) { return false; } } }
+        for (int i = 0; i < count; i++) { object child = field.GetChild(value, i); if (!text.Optional || text.GetPresent(child)) { int length = Count(child, text); global::System.Diagnostics.Debug.Assert(length >= 0); spent += length; if (spent > field.TextTotal) { return false; } } }
         return spent <= field.TextTotal;
     }
     internal static bool TextTotalKeep(TableFieldInfo field, int length, ref long spent, _R report)

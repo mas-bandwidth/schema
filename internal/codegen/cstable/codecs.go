@@ -27,9 +27,9 @@ func csFieldType(t ir.FieldType) string {
 	case ir.TInt, ir.TFixed:
 		if t.Width == 128 {
 			if t.Signed {
-				return "System.Int128"
+				return "global::System.Int128"
 			}
-			return "System.UInt128"
+			return "global::System.UInt128"
 		}
 		if t.Signed {
 			return csInt(t.Width)

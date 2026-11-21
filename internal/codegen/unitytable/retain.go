@@ -422,11 +422,11 @@ const unityRetainWireSource = `    internal const int RetainMaxDepth = @DEPTH@;
         public int KnownCount, Count;
         public TableRetain Store;
         public Graph Graph;
-        public System.Collections.Generic.Dictionary<object, uint> OldNodes;
+        public global::System.Collections.Generic.Dictionary<object, uint> OldNodes;
         public TableTypeInfo RootType;
         public bool Overflow, Lost;
 
-        public RetainIds(Span<ulong> values, Span<int> slots, TableRetain store, Graph graph, System.Collections.Generic.Dictionary<object, uint> oldNodes, TableTypeInfo type)
+        public RetainIds(Span<ulong> values, Span<int> slots, TableRetain store, Graph graph, global::System.Collections.Generic.Dictionary<object, uint> oldNodes, TableTypeInfo type)
         {
             Values = values;
             Slots = slots;
@@ -1061,7 +1061,7 @@ const unityRetainWireSource = `    internal const int RetainMaxDepth = @DEPTH@;
         w.Var(0);
     }
 
-    internal static long SaveRetainCarrier(object carrierRoot, TableTypeInfo type, Span<byte> buffer, Span<ulong> vocabulary, Span<int> slots, TableRetain store, System.Collections.Generic.Dictionary<object, uint> oldNodes, _R report, bool measure)
+    internal static long SaveRetainCarrier(object carrierRoot, TableTypeInfo type, Span<byte> buffer, Span<ulong> vocabulary, Span<int> slots, TableRetain store, global::System.Collections.Generic.Dictionary<object, uint> oldNodes, _R report, bool measure)
     {
         if (carrierRoot == null || (!measure && report == null)) { return -1; }
         Graph graph = null;

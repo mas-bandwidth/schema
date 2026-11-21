@@ -57,8 +57,8 @@ const tableWireCheckSource = `
         public int[] Starts;
         public void Release()
         {
-            if (Edges != null) { System.Buffers.ArrayPool<ulong>.Shared.Return(Edges); Edges = null; }
-            if (Starts != null) { System.Buffers.ArrayPool<int>.Shared.Return(Starts); Starts = null; }
+            if (Edges != null) { global::System.Buffers.ArrayPool<ulong>.Shared.Return(Edges); Edges = null; }
+            if (Starts != null) { global::System.Buffers.ArrayPool<int>.Shared.Return(Starts); Starts = null; }
         }
         bool Damage() { if (Fail == WireWhole) { Fail = WireDamaged; } return false; }
         static bool Leb(ReadOnlySpan<byte> b, ref int off, out ulong v)
@@ -77,12 +77,12 @@ const tableWireCheckSource = `
         void Edge(ulong index)
         {
             if (index == 0) { return; }
-            if (Edges == null) { Edges = System.Buffers.ArrayPool<ulong>.Shared.Rent(16); }
+            if (Edges == null) { Edges = global::System.Buffers.ArrayPool<ulong>.Shared.Rent(16); }
             else if (EdgeCount == Edges.Length)
             {
-                ulong[] grown = System.Buffers.ArrayPool<ulong>.Shared.Rent(Edges.Length * 2);
+                ulong[] grown = global::System.Buffers.ArrayPool<ulong>.Shared.Rent(Edges.Length * 2);
                 global::System.Array.Copy(Edges, grown, EdgeCount);
-                System.Buffers.ArrayPool<ulong>.Shared.Return(Edges); Edges = grown;
+                global::System.Buffers.ArrayPool<ulong>.Shared.Return(Edges); Edges = grown;
             }
             Edges[EdgeCount++] = index;
         }
@@ -113,7 +113,7 @@ const tableWireCheckSource = `
                 // A ROOT THAT REACHES NO NODE WRITES NO NODE-TABLE FIELD AT ALL
                 // (§3.1): a table of no records is refused, not read.
                 if (records == 0) { Damage(); return; }
-                Starts = System.Buffers.ArrayPool<int>.Shared.Rent(records + 2);
+                Starts = global::System.Buffers.ArrayPool<int>.Shared.Rent(records + 2);
                 Starts[0] = 0; Starts[1] = rootEdges;
                 off = first;
                 for (int k = 0; k < records; k++)
@@ -140,7 +140,7 @@ const tableWireCheckSource = `
         void Graph()
         {
             int n = Nodes;
-            int[] names = System.Buffers.ArrayPool<int>.Shared.Rent(n * 3);
+            int[] names = global::System.Buffers.ArrayPool<int>.Shared.Rent(n * 3);
             try
             {
                 Span<int> name = names.AsSpan(0, n), mark = names.AsSpan(n, n), next = names.AsSpan(2 * n, n);
@@ -164,7 +164,7 @@ const tableWireCheckSource = `
                 // mark: 0 unvisited, 1 open, 2 closed; next[k] counts the edges
                 // of node k already followed; path is the stack of open nodes,
                 // each entered once, so it never holds more than n.
-                int[] rented = System.Buffers.ArrayPool<int>.Shared.Rent(n);
+                int[] rented = global::System.Buffers.ArrayPool<int>.Shared.Rent(n);
                 try
                 {
                     Span<int> path = rented.AsSpan(0, n);
@@ -181,10 +181,10 @@ const tableWireCheckSource = `
                         mark[target] = 1; path[++top] = target;
                     }
                 }
-                finally { System.Buffers.ArrayPool<int>.Shared.Return(rented); }
+                finally { global::System.Buffers.ArrayPool<int>.Shared.Return(rented); }
                 for (int k = 1; k < n; k++) { if (mark[k] == 0) { Damage(); return; } }
             }
-            finally { System.Buffers.ArrayPool<int>.Shared.Return(names); }
+            finally { global::System.Buffers.ArrayPool<int>.Shared.Return(names); }
         }
         // Body walks one table body that must end with its terminator as its
         // LAST byte. The root admits the node table's reserved id, whose kind 12
@@ -297,7 +297,7 @@ const tableWireCheckSource = `
             if (kind == 1 && b[0] > 1) { return Damage(); }
             if (kind == 10 || kind == 11)
             {
-                ulong raw = kind == 10 ? System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(b) : System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(b);
+                ulong raw = kind == 10 ? global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(b) : global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(b);
                 if (NonFiniteBits(kind, raw)) { NonFinite = true; }
             }
             return true;

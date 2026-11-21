@@ -76,7 +76,7 @@ const tableTimestampJsonSource = `
         if (fraction < 0) { fraction += 1000000000; seconds--; }
         global::System.DateTime date = global::System.DateTime.UnixEpoch.AddTicks(seconds * global::System.TimeSpan.TicksPerSecond);
         Span<char> text = stackalloc char[19];
-        if (!date.TryFormat(text, out int written, "yyyy-MM-dd'T'HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture) || written != 19) { return false; }
+        if (!date.TryFormat(text, out int written, "yyyy-MM-dd'T'HH:mm:ss", global::System.Globalization.CultureInfo.InvariantCulture) || written != 19) { return false; }
         output.Put((byte)'"');
         foreach (char c in text) { output.Put((byte)c); }
         if (fraction != 0)

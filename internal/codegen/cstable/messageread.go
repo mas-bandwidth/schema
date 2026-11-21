@@ -27,7 +27,7 @@ const tableMessageReadSource = `
     {
         if (depth > 128) { return false; }
         Span<ulong> few = stackalloc ulong[16];
-        int count = 0; System.Collections.Generic.HashSet<ulong> more = null;
+        int count = 0; global::System.Collections.Generic.HashSet<ulong> more = null;
         for (; ; )
         {
             if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry e)) { return false; }
@@ -49,11 +49,11 @@ const tableMessageReadSource = `
     // answers false on a repeat: an id twice in one body, or a key twice in
     // one array, is damage whether this reader can name it or not (§3.2, §3.3).
     // The first ids sit in the caller's stack; a long body spills to a set.
-    static bool SeenOnce(Span<ulong> few, ref int count, ref System.Collections.Generic.HashSet<ulong> more, ulong id)
+    static bool SeenOnce(Span<ulong> few, ref int count, ref global::System.Collections.Generic.HashSet<ulong> more, ulong id)
     {
         for (int i = 0; i < count && i < few.Length; i++) { if (few[i] == id) { return false; } }
         if (count < few.Length) { few[count++] = id; return true; }
-        more ??= new System.Collections.Generic.HashSet<ulong>();
+        more ??= new global::System.Collections.Generic.HashSet<ulong>();
         count++; return more.Add(id);
     }
     // RangedHolds reconstructs a ranged offset from the sender's base and holds
@@ -124,7 +124,7 @@ const tableMessageReadSource = `
                 if (run >= 0) { return run == 0 || n <= (ulong)(long.MaxValue / run) && r.Skip((long)n * run); }
                 bool nested = shape.Elem == 13 || shape.Elem == 14 || shape.Elem == 15 || shape.Elem == 16 || shape.Elem == 17 || shape.Elem == 30;
                 Span<ulong> few = stackalloc ulong[16];
-                int count = 0; System.Collections.Generic.HashSet<ulong> more = null;
+                int count = 0; global::System.Collections.Generic.HashSet<ulong> more = null;
                 // a walked element of no fixed width that consumes no bits
                 // refuses the read (docs/SPEC-TABLES.md §3.3), as the
                 // reference's walk does: a count alone never buys the walk
@@ -173,7 +173,7 @@ const tableMessageReadSource = `
         if (depth > 128) { return false; }
         if (value != null) { type.Reset(value); }
         Span<ulong> few = stackalloc ulong[16];
-        int count = 0; System.Collections.Generic.HashSet<ulong> more = null;
+        int count = 0; global::System.Collections.Generic.HashSet<ulong> more = null;
         // THE SENDER'S OWN BUILD VERSION IS THIS READER'S (§3.3 (a), (b)):
         // there every field's default and every record's field order are this
         // reader's, so a field it does not declare, a field out of declaration
@@ -272,7 +272,7 @@ const tableMessageReadSource = `
             if (f.KeyId != null)
             {
                 Span<ulong> few = stackalloc ulong[16];
-                int count = 0; System.Collections.Generic.HashSet<ulong> more = null;
+                int count = 0; global::System.Collections.Generic.HashSet<ulong> more = null;
                 int lastSlot = 0;
                 for (ulong i = 0; i < n; i++)
                 {

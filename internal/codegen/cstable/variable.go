@@ -16,8 +16,8 @@ const tableVariableWireSource = `
     }
     internal sealed class Graph
     {
-        public System.Collections.Generic.Dictionary<object, int> Uses = new System.Collections.Generic.Dictionary<object, int>(System.Collections.Generic.ReferenceEqualityComparer.Instance);
-        public System.Collections.Generic.Dictionary<object, ulong> Labels = new System.Collections.Generic.Dictionary<object, ulong>(System.Collections.Generic.ReferenceEqualityComparer.Instance);
+        public global::System.Collections.Generic.Dictionary<object, int> Uses = new global::System.Collections.Generic.Dictionary<object, int>(global::System.Collections.Generic.ReferenceEqualityComparer.Instance);
+        public global::System.Collections.Generic.Dictionary<object, ulong> Labels = new global::System.Collections.Generic.Dictionary<object, ulong>(global::System.Collections.Generic.ReferenceEqualityComparer.Instance);
         public object Root;
         public TableTypeInfo RootType;
         public bool Good = true;
@@ -26,10 +26,10 @@ const tableVariableWireSource = `
         // it unless the caller packs the graph as it finds it (Lock, Cook).
         public bool BlobSharedPacks;
         public int PayloadOffset, PayloadLength;
-        public System.Collections.Generic.List<Node> Nodes = new System.Collections.Generic.List<Node>();
-        public System.Collections.Generic.Dictionary<object, ulong> Indices = new System.Collections.Generic.Dictionary<object, ulong>(System.Collections.Generic.ReferenceEqualityComparer.Instance);
-        public System.Collections.Generic.HashSet<object> Open = new System.Collections.Generic.HashSet<object>(System.Collections.Generic.ReferenceEqualityComparer.Instance);
-        System.Collections.Generic.HashSet<ulong> blobsNamed;
+        public global::System.Collections.Generic.List<Node> Nodes = new global::System.Collections.Generic.List<Node>();
+        public global::System.Collections.Generic.Dictionary<object, ulong> Indices = new global::System.Collections.Generic.Dictionary<object, ulong>(global::System.Collections.Generic.ReferenceEqualityComparer.Instance);
+        public global::System.Collections.Generic.HashSet<object> Open = new global::System.Collections.Generic.HashSet<object>(global::System.Collections.Generic.ReferenceEqualityComparer.Instance);
+        global::System.Collections.Generic.HashSet<ulong> blobsNamed;
         public ulong Index(object o) { return o == null ? 0 : Indices[o]; }
         public object Resolve(ulong index, TableFieldInfo f, TableReport report)
         {
@@ -53,7 +53,7 @@ const tableVariableWireSource = `
             if (node.TypeId != f.PointerTypeId) { Fail(report, "kind_mismatch"); return null; }
             if (f.BlobKind != 0)
             {
-                blobsNamed ??= new System.Collections.Generic.HashSet<ulong>();
+                blobsNamed ??= new global::System.Collections.Generic.HashSet<ulong>();
                 if (!blobsNamed.Add(index)) { Fail(report, "blob_shared"); }
             }
             return node.Value;
@@ -68,7 +68,7 @@ const tableVariableWireSource = `
         {
             if (f == null) { return true; }
             int n = f.IsArray ? Count(value, f) : 1;
-            if (f.Counted) { System.Diagnostics.Debug.Assert(Count(value, f) >= 0 && Count(value, f) <= f.ArrayBound); }
+            if (f.Counted) { global::System.Diagnostics.Debug.Assert(Count(value, f) >= 0 && Count(value, f) <= f.ArrayBound); }
             if (f.Map && !MapOrdered(value, f)) { return false; }
             for (int i = 0; i < n; i++)
             {
@@ -77,7 +77,7 @@ const tableVariableWireSource = `
                 {
                     object union = f.GetChild(value, i); ulong tag = f.Arms.GetTag(union);
                     // a tag naming no arm is the programmer's error: a debug assert (docs/SPEC.md §5.1)
-                    System.Diagnostics.Debug.Assert(tag <= (ulong)f.EnumMax);
+                    global::System.Diagnostics.Debug.Assert(tag <= (ulong)f.EnumMax);
                     if (tag != 0 && !VisitField(union, f.Arms.Arms[(int)tag].Field)) { return false; }
                 }
                 else if (f.Kind == 17)
@@ -124,7 +124,7 @@ const tableVariableWireSource = `
     internal static bool Cyclic(Graph graph, object root, TableTypeInfo rootType)
     {
         int n = graph.Nodes.Count;
-        var index = new System.Collections.Generic.Dictionary<object, int>(n + 1, System.Collections.Generic.ReferenceEqualityComparer.Instance);
+        var index = new global::System.Collections.Generic.Dictionary<object, int>(n + 1, global::System.Collections.Generic.ReferenceEqualityComparer.Instance);
         index[root] = 0;
         for (int i = 0; i < n; i++)
         {
@@ -132,8 +132,8 @@ const tableVariableWireSource = `
             if (node.BlobKind == 0 && node.Type != null && node.Value != null) { index.TryAdd(node.Value, i + 1); }
         }
         byte rootMark = 0;
-        var targets = new System.Collections.Generic.List<int>();
-        var stack = new System.Collections.Generic.List<(int Vertex, int[] Targets, int Next)>();
+        var targets = new global::System.Collections.Generic.List<int>();
+        var stack = new global::System.Collections.Generic.List<(int Vertex, int[] Targets, int Next)>();
         for (int start = 0; start <= n; start++)
         {
             if (start > 0 && (graph.Nodes[start - 1].BlobKind != 0 || graph.Nodes[start - 1].Type == null || graph.Nodes[start - 1].Value == null)) { continue; }
@@ -165,11 +165,11 @@ const tableVariableWireSource = `
             stack.Add((v, targets.ToArray(), 0));
         }
     }
-    static void CycleSlots(object value, TableTypeInfo type, System.Collections.Generic.Dictionary<object, int> index, System.Collections.Generic.List<int> targets)
+    static void CycleSlots(object value, TableTypeInfo type, global::System.Collections.Generic.Dictionary<object, int> index, global::System.Collections.Generic.List<int> targets)
     {
         foreach (TableFieldInfo f in type.Fields) { CycleField(value, f, index, targets); }
     }
-    static void CycleField(object value, TableFieldInfo f, System.Collections.Generic.Dictionary<object, int> index, System.Collections.Generic.List<int> targets)
+    static void CycleField(object value, TableFieldInfo f, global::System.Collections.Generic.Dictionary<object, int> index, global::System.Collections.Generic.List<int> targets)
     {
         if (f == null) { return; }
         int n = f.IsArray ? global::System.Math.Max(0, Count(value, f)) : 1;

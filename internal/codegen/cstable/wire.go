@@ -118,7 +118,7 @@ func (g *tableGen) emitCollectTyped(st *ir.Struct) {
 		id := ir.TableFieldWireId(f)
 		if isCleanScalarLeaf(f) {
 			if finite := leafFiniteCondition(f); finite != "" {
-				g.pf("    System.Diagnostics.Debug.Assert(%s);\n", finite)
+				g.pf("    global::System.Diagnostics.Debug.Assert(%s);\n", finite)
 			}
 			cond := leafRideCondition(f)
 			g.pf("    if (%s && !ids.Add(0x%016xul)) return false;\n", cond, id)
@@ -127,7 +127,7 @@ func (g *tableGen) emitCollectTyped(st *ir.Struct) {
 			childName := childSt.Name
 			if f.CountedOnWire() {
 				g.pf("    int count_%d = v.%sCount;\n", i, prop)
-				g.pf("    System.Diagnostics.Debug.Assert(count_%d >= 0 && count_%d <= %d);\n", i, i, f.ArrayBound)
+				g.pf("    global::System.Diagnostics.Debug.Assert(count_%d >= 0 && count_%d <= %d);\n", i, i, f.ArrayBound)
 				g.pf("    if (count_%d > 0)\n    {\n", i)
 				g.pf("        if (!ids.Add(0x%016xul)) return false;\n", id)
 				g.pf("        for (int i_%d = 0; i_%d < count_%d; i_%d++)\n        {\n", i, i, i, i)
@@ -655,9 +655,9 @@ public static partial class TableWire
             switch (n)
             {
                 case 1: Byte(unchecked((byte)v)); return;
-                case 2: System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(Buffer.Slice(Offset), unchecked((ushort)v)); break;
-                case 4: System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(Buffer.Slice(Offset), unchecked((uint)v)); break;
-                case 8: System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(Buffer.Slice(Offset), v); break;
+                case 2: global::System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(Buffer.Slice(Offset), unchecked((ushort)v)); break;
+                case 4: global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(Buffer.Slice(Offset), unchecked((uint)v)); break;
+                case 8: global::System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(Buffer.Slice(Offset), v); break;
                 default:
                     for (int i = 0; i < n; i++) { Byte(unchecked((byte)v)); v >>= 8; }
                     return;
@@ -669,7 +669,7 @@ public static partial class TableWire
         {
             if (reference < 128)
             {
-                System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(Buffer.Slice(Offset), (ushort)(reference | ((ulong)kind << 8)));
+                global::System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(Buffer.Slice(Offset), (ushort)(reference | ((ulong)kind << 8)));
                 Offset += 2;
                 return;
             }
@@ -707,9 +707,9 @@ public static partial class TableWire
             switch (n)
             {
                 case 1: return Byte();
-                case 2: v = System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(Buffer.Slice(Offset)); break;
-                case 4: v = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(Buffer.Slice(Offset)); break;
-                case 8: v = System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(Buffer.Slice(Offset)); break;
+                case 2: v = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(Buffer.Slice(Offset)); break;
+                case 4: v = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(Buffer.Slice(Offset)); break;
+                case 8: v = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(Buffer.Slice(Offset)); break;
                 default:
                     v = 0;
                     for (int i = 0; i < n; i++) { v |= (ulong)Byte() << (8 * i); }
@@ -789,7 +789,7 @@ public static partial class TableWire
 ` + tableWireCheckSource + tableVariableWireSource + tableLoadMeasureSource + tableMapWireSource + tableMessageSource + tableMessageReadSource + tableNativeSource + `
     static ulong Read64(ReadOnlySpan<byte> bytes, int offset)
     {
-        return System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(bytes.Slice(offset));
+        return global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(bytes.Slice(offset));
     }
     static int Width(byte k)
     {
@@ -858,15 +858,15 @@ public static partial class TableWire
         {
             object child = f.GetChild(value, i); TableFieldInfo text = f.Table.Fields[0];
             int count = Count(child, text);
-            System.Diagnostics.Debug.Assert(count >= 0 && count <= text.ArrayBound);
-            System.Diagnostics.Debug.Assert(TextValid(text.GetBuffer(child).AsSpan(0, count)));
+            global::System.Diagnostics.Debug.Assert(count >= 0 && count <= text.ArrayBound);
+            global::System.Diagnostics.Debug.Assert(TextValid(text.GetBuffer(child).AsSpan(0, count)));
             return true;
         }
         if (!f.IsArray && f.Kind == 12)
         {
             int count = Count(value, f);
-            System.Diagnostics.Debug.Assert(count >= 0 && count <= f.ArrayBound);
-            System.Diagnostics.Debug.Assert(TextValid(f.GetBuffer(value).AsSpan(0, count)));
+            global::System.Diagnostics.Debug.Assert(count >= 0 && count <= f.ArrayBound);
+            global::System.Diagnostics.Debug.Assert(TextValid(f.GetBuffer(value).AsSpan(0, count)));
             return true;
         }
         // EVERY WRITE CHECK IS A DEBUG ASSERT (docs/SPEC.md §5.1, C# is an
@@ -874,23 +874,23 @@ public static partial class TableWire
         // (docs/SPEC-TABLES.md §3.3), an enum or union tag no variant names.
         // A Release build carries none of them; correct writes are the
         // programmer's job.
-        if (f.RequiredValidRaw != null) { System.Diagnostics.Debug.Assert(f.RequiredValidRaw(f.GetRaw(value, i))); }
-        if (f.RequiredValidWide != null) { System.Diagnostics.Debug.Assert(f.RequiredValidWide(f.GetWide(value, i))); }
-        if (f.Kind == 10 || f.Kind == 11) { System.Diagnostics.Debug.Assert(!NonFiniteBits(f.Kind, f.GetRaw(value, i))); return true; }
+        if (f.RequiredValidRaw != null) { global::System.Diagnostics.Debug.Assert(f.RequiredValidRaw(f.GetRaw(value, i))); }
+        if (f.RequiredValidWide != null) { global::System.Diagnostics.Debug.Assert(f.RequiredValidWide(f.GetWide(value, i))); }
+        if (f.Kind == 10 || f.Kind == 11) { global::System.Diagnostics.Debug.Assert(!NonFiniteBits(f.Kind, f.GetRaw(value, i))); return true; }
         if (f.Kind == 13) { return Collect(f.GetChild(value, i), f.Table, ref ids); }
         if (f.Kind == 15)
         {
             object union = f.GetChild(value, i);
             ulong tag = f.Arms.GetTag(union);
             if (tag == 0) { return true; }
-            System.Diagnostics.Debug.Assert(tag <= (ulong)f.EnumMax && Named(f.EnumName(tag)));
+            global::System.Diagnostics.Debug.Assert(tag <= (ulong)f.EnumMax && Named(f.EnumName(tag)));
             return ids.Add(f.VariantId(tag)) && CollectPayload(union, f.Arms.Arms[(int)tag].Field, ref ids);
         }
         if (f.Kind == 30)
         {
             ulong v = f.GetRaw(value, i);
             if (v == 0) { return true; }
-            System.Diagnostics.Debug.Assert(v <= (ulong)f.EnumMax && Named(f.EnumName(v)));
+            global::System.Diagnostics.Debug.Assert(v <= (ulong)f.EnumMax && Named(f.EnumName(v)));
             return ids.Add(f.VariantId(v));
         }
         return true;
@@ -899,15 +899,15 @@ public static partial class TableWire
     {
         if (f == null) { return true; } // selected, payload-free arm
         int count = Count(value, f);
-        if (f.Counted) { System.Diagnostics.Debug.Assert(count >= f.ArrayMin && count <= f.ArrayBound); }
-        if (f.TextTotal > 0) { System.Diagnostics.Debug.Assert(TextFits(value, f)); }
+        if (f.Counted) { global::System.Diagnostics.Debug.Assert(count >= f.ArrayMin && count <= f.ArrayBound); }
+        if (f.TextTotal > 0) { global::System.Diagnostics.Debug.Assert(TextFits(value, f)); }
         if (!f.IsArray) { return CollectElement(value, f, 0, ref ids); }
         for (int i = 0; i < count; i++)
         {
             if (f.KeyId != null)
             {
                 if (DefaultElement(value, f, i)) { continue; }
-                System.Diagnostics.Debug.Assert(Named(f.KeyName((ulong)i + 1)));
+                global::System.Diagnostics.Debug.Assert(Named(f.KeyName((ulong)i + 1)));
                 if (!ids.Add(f.KeyId((ulong)i + 1))) { return false; }
             }
             if (!CollectElement(value, f, i, ref ids)) { return false; }
@@ -920,7 +920,7 @@ public static partial class TableWire
         {
             if (f.WireGuard != null && !f.WireGuard(value)) { continue; }
             if (f.Optional && !f.GetPresent(value)) { continue; }
-            if (f.Counted) { System.Diagnostics.Debug.Assert(Count(value, f) >= f.ArrayMin && Count(value, f) <= f.ArrayBound); }
+            if (f.Counted) { global::System.Diagnostics.Debug.Assert(Count(value, f) >= f.ArrayMin && Count(value, f) <= f.ArrayBound); }
             if (Rides(value, f) && (!ids.Add(f.Id) || !CollectPayload(value, f, ref ids))) { return false; }
         }
         return true;
@@ -1109,7 +1109,7 @@ public static partial class TableWire
     {
         if (f.WireGuard != null && !f.WireGuard(value)) { return true; }
         if (f.Optional && !f.GetPresent(value)) { return true; }
-        if (f.Counted) { System.Diagnostics.Debug.Assert(Count(value, f) >= 0 && Count(value, f) <= f.ArrayBound); }
+        if (f.Counted) { global::System.Diagnostics.Debug.Assert(Count(value, f) >= 0 && Count(value, f) <= f.ArrayBound); }
         return !Rides(value, f) || (ids.Add(f.Id) && CollectPayload(value, f, ref ids));
     }
     public static long BodySizeField(object value, TableFieldInfo f, ref Ids ids, scoped Span<long> elemCache, out long payload)
@@ -1645,11 +1645,11 @@ public static partial class TableWire
     internal static bool RequireSeen(object value, TableTypeInfo type, ReadOnlySpan<ulong> seen, TableReport report)
     {
         if (!type.HasRequired) { return !report.Refused; }
-        System.Text.StringBuilder missing = null;
+        global::System.Text.StringBuilder missing = null;
         foreach (TableFieldInfo f in type.Fields)
         {
             if (!f.Required || f.WireGuard != null && !f.WireGuard(value) || (seen[f.Ordinal >> 6] & (1ul << (f.Ordinal & 63))) != 0) { continue; }
-            if (missing == null) { missing = new System.Text.StringBuilder(); } else { missing.Append(", "); }
+            if (missing == null) { missing = new global::System.Text.StringBuilder(); } else { missing.Append(", "); }
             missing.Append(f.Name);
         }
         return RequiredMissing(report, missing?.ToString());

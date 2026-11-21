@@ -44,37 +44,37 @@ const tableRegionWriteSource = `
         if (f.TextList && f.Kind == 12)
         {
             NativeValue child = value.Child(f, i); TableFieldInfo text = f.Table.Fields[0]; int count = child.Count(text);
-            System.Diagnostics.Debug.Assert(count >= 0 && count <= text.ArrayBound);
-            System.Diagnostics.Debug.Assert(TextValid(child.Buffer(text).Slice(0, count)));
+            global::System.Diagnostics.Debug.Assert(count >= 0 && count <= text.ArrayBound);
+            global::System.Diagnostics.Debug.Assert(TextValid(child.Buffer(text).Slice(0, count)));
             return true;
         }
         if (!f.IsArray && f.Kind == 12)
         {
             int count = value.Count(f);
-            System.Diagnostics.Debug.Assert(count >= 0 && count <= f.ArrayBound);
-            System.Diagnostics.Debug.Assert(TextValid(value.Buffer(f).Slice(0, count)));
+            global::System.Diagnostics.Debug.Assert(count >= 0 && count <= f.ArrayBound);
+            global::System.Diagnostics.Debug.Assert(TextValid(value.Buffer(f).Slice(0, count)));
             return true;
         }
         // every write check is a debug assert (docs/SPEC.md §5.1), as on the
         // managed writer: a required value off its range, a NaN or an infinity
         // (docs/SPEC-TABLES.md §3.3), an enum or union tag no variant names
-        if (f.RequiredValidRaw != null) { System.Diagnostics.Debug.Assert(f.RequiredValidRaw(value.Raw(f, i))); }
-        if (f.RequiredValidWide != null) { System.Diagnostics.Debug.Assert(f.RequiredValidWide(value.Wide(f, i))); }
-        if (f.Kind == 10 || f.Kind == 11) { System.Diagnostics.Debug.Assert(!NonFiniteBits(f.Kind, value.Raw(f, i))); return true; }
+        if (f.RequiredValidRaw != null) { global::System.Diagnostics.Debug.Assert(f.RequiredValidRaw(value.Raw(f, i))); }
+        if (f.RequiredValidWide != null) { global::System.Diagnostics.Debug.Assert(f.RequiredValidWide(value.Wide(f, i))); }
+        if (f.Kind == 10 || f.Kind == 11) { global::System.Diagnostics.Debug.Assert(!NonFiniteBits(f.Kind, value.Raw(f, i))); return true; }
         if (f.Kind == 13) { return RegionCollect(value.Child(f, i), f.Table, ref ids); }
         if (f.Kind == 15)
         {
             NativeValue union = value.Child(f, i);
             ulong tag = union.Tag(f);
             if (tag == 0) { return true; }
-            System.Diagnostics.Debug.Assert(tag <= (ulong)f.EnumMax && Named(f.EnumName(tag)));
+            global::System.Diagnostics.Debug.Assert(tag <= (ulong)f.EnumMax && Named(f.EnumName(tag)));
             return ids.Add(f.VariantId(tag)) && RegionCollectPayload(union.Arm(f), f.Arms.Arms[(int)tag].Field, ref ids);
         }
         if (f.Kind == 30)
         {
             ulong v = value.Raw(f, i);
             if (v == 0) { return true; }
-            System.Diagnostics.Debug.Assert(v <= (ulong)f.EnumMax && Named(f.EnumName(v)));
+            global::System.Diagnostics.Debug.Assert(v <= (ulong)f.EnumMax && Named(f.EnumName(v)));
             return ids.Add(f.VariantId(v));
         }
         return true;
@@ -82,15 +82,15 @@ const tableRegionWriteSource = `
     static bool RegionCollectPayload(NativeValue value, TableFieldInfo f, ref RegionIds ids)
     {
         if (f == null) { return true; } // selected, payload-free arm
-        if (f.Counted) { System.Diagnostics.Debug.Assert(RegionCount(value, f) >= 0 && RegionCount(value, f) <= f.ArrayBound); }
-        if (f.TextTotal > 0) { System.Diagnostics.Debug.Assert(TextFitsRegion(value, f)); }
+        if (f.Counted) { global::System.Diagnostics.Debug.Assert(RegionCount(value, f) >= 0 && RegionCount(value, f) <= f.ArrayBound); }
+        if (f.TextTotal > 0) { global::System.Diagnostics.Debug.Assert(TextFitsRegion(value, f)); }
         if (!f.IsArray) { return RegionCollectElement(value, f, 0, ref ids); }
         for (int i = 0; i < RegionCount(value, f); i++)
         {
             if (f.KeyId != null)
             {
                 if (RegionDefaultElement(value, f, i)) { continue; }
-                System.Diagnostics.Debug.Assert(Named(f.KeyName((ulong)i + 1)));
+                global::System.Diagnostics.Debug.Assert(Named(f.KeyName((ulong)i + 1)));
                 if (!ids.Add(f.KeyId((ulong)i + 1))) { return false; }
             }
             if (!RegionCollectElement(value, f, i, ref ids)) { return false; }
@@ -103,7 +103,7 @@ const tableRegionWriteSource = `
         {
             if (!value.Guard(f)) { continue; }
             if (f.Optional && !value.Present(f)) { continue; }
-            if (f.Counted) { System.Diagnostics.Debug.Assert(RegionCount(value, f) >= 0 && RegionCount(value, f) <= f.ArrayBound); }
+            if (f.Counted) { global::System.Diagnostics.Debug.Assert(RegionCount(value, f) >= 0 && RegionCount(value, f) <= f.ArrayBound); }
             if (RegionRides(value, f) && (!ids.Add(f.Id) || !RegionCollectPayload(value, f, ref ids))) { return false; }
         }
         return true;

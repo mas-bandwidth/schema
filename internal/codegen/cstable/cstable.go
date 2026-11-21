@@ -519,7 +519,7 @@ const tableKeyedStorage = `// An ENUM-KEYED array's storage: E.Max slots, ONE PE
 // Slots is public and is what the generated codecs walk, by STORAGE INDEX; the
 // indexer is for callers and takes the KEY, and it is the one place None and
 // past Max are caught in C#.
-public sealed class TableKeyed<T, E> where E : struct, System.Enum
+public sealed class TableKeyed<T, E> where E : struct, global::System.Enum
 {
     // the extent is the enum's, derived here and named nowhere else. C# has no
     // compile-time enum arithmetic, so this reads the largest declared member
@@ -530,9 +530,9 @@ public sealed class TableKeyed<T, E> where E : struct, System.Enum
     static int MaxDeclared()
     {
         long max = 0;
-        foreach (object v in System.Enum.GetValuesAsUnderlyingType(typeof(E)))
+        foreach (object v in global::System.Enum.GetValuesAsUnderlyingType(typeof(E)))
         {
-            max = global::System.Math.Max(max, System.Convert.ToInt64(v, System.Globalization.CultureInfo.InvariantCulture));
+            max = global::System.Math.Max(max, global::System.Convert.ToInt64(v, global::System.Globalization.CultureInfo.InvariantCulture));
         }
         return (int)max;
     }

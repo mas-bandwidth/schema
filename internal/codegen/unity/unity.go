@@ -560,7 +560,7 @@ func (g *gen) emitFlags(d *ir.Flags) {
 	}
 	if len(d.Variants) < 64 {
 		g.sf("    ulong unknown = (ulong)value >> %d;\n", len(d.Variants))
-		g.sf("    if (unknown != 0)\n    {\n        names += \"|0x\" + (unknown << %d).ToString(\"x\", System.Globalization.CultureInfo.InvariantCulture);\n    }\n", len(d.Variants))
+		g.sf("    if (unknown != 0)\n    {\n        names += \"|0x\" + (unknown << %d).ToString(\"x\", global::System.Globalization.CultureInfo.InvariantCulture);\n    }\n", len(d.Variants))
 	}
 	g.sf("    return names.Length == 0 ? \"0\" : names.Substring(1);\n}\n\n")
 }

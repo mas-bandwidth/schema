@@ -385,9 +385,9 @@ func csBlittableType(u *ir.Unit, t ir.FieldType) string {
 	case ir.TInt, ir.TFixed:
 		if t.Width == 128 {
 			if t.Signed {
-				return "System.Int128"
+				return "global::System.Int128"
 			}
-			return "System.UInt128"
+			return "global::System.UInt128"
 		}
 		if t.Signed {
 			switch t.Width {
@@ -629,7 +629,7 @@ func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	g.hf("        TableBlockLayout.Verify();\n")
 	g.hf("        if (pointer == global::System.IntPtr.Zero) { reason = TableRefuseReason.unaligned_base; return false; }\n        if (bytes < %d) { reason = TableRefuseReason.truncated; return false; }\n", bl.Projection.Size)
 	g.hf("        byte* at = (byte*)pointer;\n")
-	g.hf("        if (Schema.TableBlockRead64(at) != Schema.TableBlockMagic) { reason = Schema.TableBlockRead64(at) == System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(Schema.TableBlockMagic) ? TableRefuseReason.foreign_order : TableRefuseReason.not_a_cook; return false; }\n")
+	g.hf("        if (Schema.TableBlockRead64(at) != Schema.TableBlockMagic) { reason = Schema.TableBlockRead64(at) == global::System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(Schema.TableBlockMagic) ? TableRefuseReason.foreign_order : TableRefuseReason.not_a_cook; return false; }\n")
 	g.hf("        if (Schema.TableBlockRead64(at + 16) != Schema.TableBlockByteOrder) { reason = TableRefuseReason.not_a_cook; return false; }\n")
 	g.hf("        if (Schema.TableBlockRead64(at + 8) != Schema.BuildVersion) { reason = TableRefuseReason.wrong_build_version; return false; }\n")
 
@@ -946,7 +946,7 @@ public static partial class Schema
         get { return global::System.BitConverter.IsLittleEndian ? 1UL : 2UL; }
     }
 
-    public static unsafe ulong TableBlockRead64(byte* p) { return System.Runtime.CompilerServices.Unsafe.ReadUnaligned<ulong>(p); }
+    public static unsafe ulong TableBlockRead64(byte* p) { return global::System.Runtime.CompilerServices.Unsafe.ReadUnaligned<ulong>(p); }
 }
 
 `

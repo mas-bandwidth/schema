@@ -87,8 +87,8 @@ func (g *tableGen) emitMessageSurface(st *ir.Struct) {
 		// refuses in every build (an enum ordinal, a union tag, a count or
 		// length past storage) still answers -1, and the assert holds the
 		// rows it would otherwise write (a range, a bits width).
-		g.pf("public static long %sMeasureMessages(%s[] values) { long wrote = TableWire.MessageSave(values, %sTableType(), Span<byte>.Empty, true); if (wrote >= 0 && values != null) { foreach (%s v in values) { System.Diagnostics.Debug.Assert(%s(v)); } } return wrote; }\n", n, n, n, n, admits)
-		g.pf("public static long %sSaveMessages(%s[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = \"batch_too_large\"; report.Verdict = TableWire.Verdict.Refused; } long wrote = TableWire.MessageSave(values, %sTableType(), bytes, false); if (wrote >= 0) { foreach (%s v in values) { System.Diagnostics.Debug.Assert(%s(v)); } } return wrote; }\n", n, n, n, n, admits)
+		g.pf("public static long %sMeasureMessages(%s[] values) { long wrote = TableWire.MessageSave(values, %sTableType(), Span<byte>.Empty, true); if (wrote >= 0 && values != null) { foreach (%s v in values) { global::System.Diagnostics.Debug.Assert(%s(v)); } } return wrote; }\n", n, n, n, n, admits)
+		g.pf("public static long %sSaveMessages(%s[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = \"batch_too_large\"; report.Verdict = TableWire.Verdict.Refused; } long wrote = TableWire.MessageSave(values, %sTableType(), bytes, false); if (wrote >= 0) { foreach (%s v in values) { global::System.Diagnostics.Debug.Assert(%s(v)); } } return wrote; }\n", n, n, n, n, admits)
 		g.pf("public static TableWire.Verdict %sLoadMessages(%s[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, %sTableType(), bytes, vocabulary, report, out count); }\n\n", n, n, n)
 		return
 	}
@@ -123,7 +123,7 @@ public sealed class TableVocabulary
     internal bool Attempted;
     internal TableMessageEntry[] Entries = global::System.Array.Empty<TableMessageEntry>();
     public int Count { get { return Entries.Length; } }
-    public int RefBits { get { return global::System.Math.Max(1, System.Numerics.BitOperations.Log2((uint)global::System.Math.Max(1, Count)) + 1); } }
+    public int RefBits { get { return global::System.Math.Max(1, global::System.Numerics.BitOperations.Log2((uint)global::System.Math.Max(1, Count)) + 1); } }
 }
 internal sealed class TableMessageShape
 {
@@ -144,7 +144,7 @@ internal sealed class TableMessageEntry
 `
 
 const tableMessageSource = `
-    static int BitCount(ulong n) { return n == 0 ? 0 : System.Numerics.BitOperations.Log2(n) + 1; }
+    static int BitCount(ulong n) { return n == 0 ? 0 : global::System.Numerics.BitOperations.Log2(n) + 1; }
     static bool Reserved(ulong id) { return id >= ulong.MaxValue - 2; }
     static bool MessageKind(byte kind) { return kind <= 32 || kind == 36; }
     static bool MessageNumber(byte kind) { return kind >= 2 && kind <= 9 || kind >= 18 && kind <= 29; }
@@ -261,8 +261,8 @@ const tableMessageSource = `
             else { report.Unknown++; if (!r.Skip(kind)) { break; } }
         }
         if (!terminated || versions != 1 || vocabularies != 1) { Damage(report); return Finish(report, Verdict.Damaged); }
-        var entries = new System.Collections.Generic.List<TableMessageEntry>();
-        var keys = new System.Collections.Generic.HashSet<string>(); bool node = false;
+        var entries = new global::System.Collections.Generic.List<TableMessageEntry>();
+        var keys = new global::System.Collections.Generic.HashSet<string>(); bool node = false;
         while (payload.Has(1))
         {
             int start = payload.Offset;

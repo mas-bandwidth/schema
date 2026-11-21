@@ -67,7 +67,7 @@ const tableRegionGraphSource = `
                 int* hash = (int*)Allocator.Get((long)capacity * 2 * sizeof(int));
                 if (entries == null || hash == null)
                 { Allocator.Release(entries); Allocator.Release(hash); return false; }
-                System.Runtime.InteropServices.NativeMemory.Clear(hash, (nuint)((long)capacity * 2 * sizeof(int)));
+                global::System.Runtime.InteropServices.NativeMemory.Clear(hash, (nuint)((long)capacity * 2 * sizeof(int)));
                 Nodes.CopyTo(new Span<RegionNode>(entries, Count));
                 Allocator.Release(Entries); Allocator.Release(Hash);
                 Entries = entries; Hash = hash; Capacity = capacity;
@@ -220,7 +220,7 @@ const tableRegionGraphSource = `
         int n = f.IsArray ? RegionCount(value, f) : 1;
         if (f.Counted)
         {
-            if (graph.Saving) { System.Diagnostics.Debug.Assert(RegionCount(value, f) >= 0 && RegionCount(value, f) <= f.ArrayBound); }
+            if (graph.Saving) { global::System.Diagnostics.Debug.Assert(RegionCount(value, f) >= 0 && RegionCount(value, f) <= f.ArrayBound); }
             else if (RegionCount(value, f) < 0 || RegionCount(value, f) > f.ArrayBound) { return false; }
         }
         if (f.Map) { for (int i = 1; i < n; i++) { if (RegionKeyOrder(value.Child(f, i - 1), value.Child(f, i), f.Table.Fields[0]) >= 0) { return false; } } }
@@ -230,7 +230,7 @@ const tableRegionGraphSource = `
             else if (f.Kind == 15)
             {
                 NativeValue union = value.Child(f, i); ulong tag = union.Tag(f);
-                if (graph.Saving) { System.Diagnostics.Debug.Assert(tag <= (ulong)f.EnumMax); }
+                if (graph.Saving) { global::System.Diagnostics.Debug.Assert(tag <= (ulong)f.EnumMax); }
                 else if (tag > (ulong)f.EnumMax) { return false; }
                 if (!RegionVisitField(union.Arm(f), f.Arms.Arms[(int)tag].Field, ref graph)) { return false; }
             }

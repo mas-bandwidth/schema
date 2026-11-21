@@ -17,8 +17,8 @@ public unsafe struct TableAllocator
         try
         {
             nuint size = (nuint)((bytes + 15) & ~15L);
-            void* p = System.Runtime.InteropServices.NativeMemory.AlignedAlloc(size, 16);
-            if (p != null) { System.Runtime.InteropServices.NativeMemory.Clear(p, size); }
+            void* p = global::System.Runtime.InteropServices.NativeMemory.AlignedAlloc(size, 16);
+            if (p != null) { global::System.Runtime.InteropServices.NativeMemory.Clear(p, size); }
             return p;
         }
         catch (global::System.OutOfMemoryException) { return null; }
@@ -27,7 +27,7 @@ public unsafe struct TableAllocator
     {
         if (pointer == null) { return; }
         if (Free != null) { Free(Context, (global::System.IntPtr)pointer); }
-        else { System.Runtime.InteropServices.NativeMemory.AlignedFree(pointer); }
+        else { global::System.Runtime.InteropServices.NativeMemory.AlignedFree(pointer); }
     }
 }
 `

@@ -171,7 +171,7 @@ const tableLoadMeasureSource = `
             ExtentTargets targetIds = default;
             if (framed)
             {
-                targets = System.Buffers.ArrayPool<ulong>.Shared.Rent(nodes + 2);
+                targets = global::System.Buffers.ArrayPool<ulong>.Shared.Rent(nodes + 2);
                 targets[0] = 0; targets[1] = type.Id;
                 Reader map = payload;
                 for (int i = 0; i < nodes; i++)
@@ -198,6 +198,6 @@ const tableLoadMeasureSource = `
             }
             return size + (nodes + 1L) * 16;
         }
-        finally { if (targets != null) { System.Buffers.ArrayPool<ulong>.Shared.Return(targets); } }
+        finally { if (targets != null) { global::System.Buffers.ArrayPool<ulong>.Shared.Return(targets); } }
     }
 `

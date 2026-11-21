@@ -382,14 +382,14 @@ func emitStructPullPush(b *strings.Builder, u *ir.Unit, pkg string, st *ir.Struc
 	cname := "__Carrier_" + st.Name
 	fixed := isFixedStruct(u, st)
 	if fixed {
-		fmt.Fprintf(b, "internal static void _PullInto_%s(ref %s src, %s dst, System.Collections.Generic.Dictionary<object, object> map, System.Collections.Generic.Dictionary<object, uint> oldMap, object[] oldOwners)\n{\n", st.Name, qual, cname)
+		fmt.Fprintf(b, "internal static void _PullInto_%s(ref %s src, %s dst, global::System.Collections.Generic.Dictionary<object, object> map, global::System.Collections.Generic.Dictionary<object, uint> oldMap, object[] oldOwners)\n{\n", st.Name, qual, cname)
 		for _, f := range st.Fields {
 			emitPullFieldBody(b, u, pkg, f, member(f), true, st.IsTable)
 		}
 		b.WriteString("}\n\n")
-		fmt.Fprintf(b, "internal static %s _Pull_%s(ref %s src, System.Collections.Generic.Dictionary<object, object> map = null, System.Collections.Generic.Dictionary<object, uint> oldMap = null, object[] oldOwners = null)\n{\n    map ??= new System.Collections.Generic.Dictionary<object, object>(RefEq.Instance);\n    var dst = new %s();\n    _PullInto_%s(ref src, dst, map, oldMap, oldOwners);\n    return dst;\n}\n\n", cname, st.Name, qual, cname, st.Name)
+		fmt.Fprintf(b, "internal static %s _Pull_%s(ref %s src, global::System.Collections.Generic.Dictionary<object, object> map = null, global::System.Collections.Generic.Dictionary<object, uint> oldMap = null, object[] oldOwners = null)\n{\n    map ??= new global::System.Collections.Generic.Dictionary<object, object>(RefEq.Instance);\n    var dst = new %s();\n    _PullInto_%s(ref src, dst, map, oldMap, oldOwners);\n    return dst;\n}\n\n", cname, st.Name, qual, cname, st.Name)
 
-		fmt.Fprintf(b, "internal static void _Push_%s(%s src, ref %s dst, System.Collections.Generic.Dictionary<object, object> map = null, System.Collections.Generic.Dictionary<object, object> nodeOut = null)\n{\n    map ??= new System.Collections.Generic.Dictionary<object, object>(RefEq.Instance);\n    dst = default;\n", st.Name, cname, qual)
+		fmt.Fprintf(b, "internal static void _Push_%s(%s src, ref %s dst, global::System.Collections.Generic.Dictionary<object, object> map = null, global::System.Collections.Generic.Dictionary<object, object> nodeOut = null)\n{\n    map ??= new global::System.Collections.Generic.Dictionary<object, object>(RefEq.Instance);\n    dst = default;\n", st.Name, cname, qual)
 		for _, f := range st.Fields {
 			emitPushFieldBody(b, u, pkg, f, member(f), true, st.IsTable)
 		}
@@ -397,19 +397,19 @@ func emitStructPullPush(b *strings.Builder, u *ir.Unit, pkg string, st *ir.Struc
 		return
 	}
 
-	fmt.Fprintf(b, "internal static void _PullInto_%s(%s src, %s dst, System.Collections.Generic.Dictionary<object, object> map, System.Collections.Generic.Dictionary<object, uint> oldMap, object[] oldOwners)\n{\n    if (src == null) { TableReset(dst); return; }\n", st.Name, qual, cname)
+	fmt.Fprintf(b, "internal static void _PullInto_%s(%s src, %s dst, global::System.Collections.Generic.Dictionary<object, object> map, global::System.Collections.Generic.Dictionary<object, uint> oldMap, object[] oldOwners)\n{\n    if (src == null) { TableReset(dst); return; }\n", st.Name, qual, cname)
 	for _, f := range st.Fields {
 		emitPullFieldBody(b, u, pkg, f, member(f), false, st.IsTable)
 	}
 	b.WriteString("}\n\n")
-	fmt.Fprintf(b, "internal static %s _Pull_%s(%s src, System.Collections.Generic.Dictionary<object, object> map = null, System.Collections.Generic.Dictionary<object, uint> oldMap = null, object[] oldOwners = null)\n{\n    if (src == null) { return null; }\n    map ??= new System.Collections.Generic.Dictionary<object, object>(RefEq.Instance);\n    if (map.TryGetValue(src, out object existing)) { return (%s)existing; }\n    var dst = new %s();\n    map[src] = dst;\n    _RecordOldOwner(src, dst, oldMap, oldOwners);\n    _PullInto_%s(src, dst, map, oldMap, oldOwners);\n    return dst;\n}\n\n", cname, st.Name, qual, cname, cname, st.Name)
+	fmt.Fprintf(b, "internal static %s _Pull_%s(%s src, global::System.Collections.Generic.Dictionary<object, object> map = null, global::System.Collections.Generic.Dictionary<object, uint> oldMap = null, object[] oldOwners = null)\n{\n    if (src == null) { return null; }\n    map ??= new global::System.Collections.Generic.Dictionary<object, object>(RefEq.Instance);\n    if (map.TryGetValue(src, out object existing)) { return (%s)existing; }\n    var dst = new %s();\n    map[src] = dst;\n    _RecordOldOwner(src, dst, oldMap, oldOwners);\n    _PullInto_%s(src, dst, map, oldMap, oldOwners);\n    return dst;\n}\n\n", cname, st.Name, qual, cname, cname, st.Name)
 
-	fmt.Fprintf(b, "internal static void _PushInto_%s(%s src, %s dst, System.Collections.Generic.Dictionary<object, object> map, System.Collections.Generic.Dictionary<object, object> nodeOut)\n{\n", st.Name, cname, qual)
+	fmt.Fprintf(b, "internal static void _PushInto_%s(%s src, %s dst, global::System.Collections.Generic.Dictionary<object, object> map, global::System.Collections.Generic.Dictionary<object, object> nodeOut)\n{\n", st.Name, cname, qual)
 	for _, f := range st.Fields {
 		emitPushFieldBody(b, u, pkg, f, member(f), false, st.IsTable)
 	}
 	b.WriteString("}\n\n")
-	fmt.Fprintf(b, "internal static void _Push_%s(%s src, ref %s dst, System.Collections.Generic.Dictionary<object, object> map = null, System.Collections.Generic.Dictionary<object, object> nodeOut = null)\n{\n    map ??= new System.Collections.Generic.Dictionary<object, object>(RefEq.Instance);\n    if (dst == null) { dst = new %s(); }\n    map[src] = dst;\n    if (nodeOut != null) { nodeOut[src] = dst; }\n    _PushInto_%s(src, dst, map, nodeOut);\n}\n\n", st.Name, cname, qual, qual, st.Name)
+	fmt.Fprintf(b, "internal static void _Push_%s(%s src, ref %s dst, global::System.Collections.Generic.Dictionary<object, object> map = null, global::System.Collections.Generic.Dictionary<object, object> nodeOut = null)\n{\n    map ??= new global::System.Collections.Generic.Dictionary<object, object>(RefEq.Instance);\n    if (dst == null) { dst = new %s(); }\n    map[src] = dst;\n    if (nodeOut != null) { nodeOut[src] = dst; }\n    _PushInto_%s(src, dst, map, nodeOut);\n}\n\n", st.Name, cname, qual, qual, st.Name)
 }
 
 func emitUnionPullPush(b *strings.Builder, u *ir.Unit, pkg string, un *ir.Union, fields []*ir.Field, names []string) {
@@ -417,13 +417,13 @@ func emitUnionPullPush(b *strings.Builder, u *ir.Unit, pkg string, un *ir.Union,
 	cname := "__Carrier_" + un.Name
 	fixed := isFixedUnion(u, un)
 	if fixed {
-		fmt.Fprintf(b, "internal static void _PullInto_%s(ref %s src, %s dst, System.Collections.Generic.Dictionary<object, object> map, System.Collections.Generic.Dictionary<object, uint> oldMap, object[] oldOwners)\n{\n    TableReset(dst);\n    dst.Type = src.Type;\n", un.Name, qual, cname)
+		fmt.Fprintf(b, "internal static void _PullInto_%s(ref %s src, %s dst, global::System.Collections.Generic.Dictionary<object, object> map, global::System.Collections.Generic.Dictionary<object, uint> oldMap, object[] oldOwners)\n{\n    TableReset(dst);\n    dst.Type = src.Type;\n", un.Name, qual, cname)
 		for i, f := range fields {
 			emitPullFieldBody(b, u, pkg, f, names[i], true, false)
 		}
 		b.WriteString("}\n\n")
 
-		fmt.Fprintf(b, "internal static void _Push_%s(%s src, ref %s dst, System.Collections.Generic.Dictionary<object, object> map = null, System.Collections.Generic.Dictionary<object, object> nodeOut = null)\n{\n    map ??= new System.Collections.Generic.Dictionary<object, object>(RefEq.Instance);\n    dst = default;\n    dst.Type = src.Type;\n", un.Name, cname, qual)
+		fmt.Fprintf(b, "internal static void _Push_%s(%s src, ref %s dst, global::System.Collections.Generic.Dictionary<object, object> map = null, global::System.Collections.Generic.Dictionary<object, object> nodeOut = null)\n{\n    map ??= new global::System.Collections.Generic.Dictionary<object, object>(RefEq.Instance);\n    dst = default;\n    dst.Type = src.Type;\n", un.Name, cname, qual)
 		for i, f := range fields {
 			emitPushFieldBody(b, u, pkg, f, names[i], true, false)
 		}
@@ -431,13 +431,13 @@ func emitUnionPullPush(b *strings.Builder, u *ir.Unit, pkg string, un *ir.Union,
 		return
 	}
 
-	fmt.Fprintf(b, "internal static void _PullInto_%s(%s src, %s dst, System.Collections.Generic.Dictionary<object, object> map, System.Collections.Generic.Dictionary<object, uint> oldMap, object[] oldOwners)\n{\n    TableReset(dst);\n    if (src == null) { return; }\n    dst.Type = src.Type;\n", un.Name, qual, cname)
+	fmt.Fprintf(b, "internal static void _PullInto_%s(%s src, %s dst, global::System.Collections.Generic.Dictionary<object, object> map, global::System.Collections.Generic.Dictionary<object, uint> oldMap, object[] oldOwners)\n{\n    TableReset(dst);\n    if (src == null) { return; }\n    dst.Type = src.Type;\n", un.Name, qual, cname)
 	for i, f := range fields {
 		emitPullFieldBody(b, u, pkg, f, names[i], false, false)
 	}
 	b.WriteString("}\n\n")
 
-	fmt.Fprintf(b, "internal static void _PushInto_%s(%s src, %s dst, System.Collections.Generic.Dictionary<object, object> map, System.Collections.Generic.Dictionary<object, object> nodeOut)\n{\n    dst.Type = src.Type;\n", un.Name, cname, qual)
+	fmt.Fprintf(b, "internal static void _PushInto_%s(%s src, %s dst, global::System.Collections.Generic.Dictionary<object, object> map, global::System.Collections.Generic.Dictionary<object, object> nodeOut)\n{\n    dst.Type = src.Type;\n", un.Name, cname, qual)
 	for i, f := range fields {
 		emitPushFieldBody(b, u, pkg, f, names[i], false, false)
 	}

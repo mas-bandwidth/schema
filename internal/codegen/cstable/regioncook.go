@@ -168,7 +168,7 @@ const tableRegionCookSource = `
             long directory = ((long)graph.Count + 1) * 16, size = checked(64 + data + directory);
             if (measure) { return size; }
             if (bytes == global::System.IntPtr.Zero || capacity < size || (ulong)size > (ulong)nuint.MaxValue) { return -1; }
-            System.Runtime.InteropServices.NativeMemory.Clear((void*)bytes, (nuint)size);
+            global::System.Runtime.InteropServices.NativeMemory.Clear((void*)bytes, (nuint)size);
             RegionPackWriter w = new RegionPackWriter { Bytes = (byte*)bytes, Big = order == TableByteOrder.Big, Graph = graph };
             w.Put(0, 0x4b4f4f434d484353ul, 8); w.Put(8, tableOwnVocabulary.BuildVersion, 8); w.Put(16, (uint)order, 8);
             w.Put(24, (ulong)data, 8); w.Put(32, (ulong)directory, 8); w.Put(40, (uint)alignment, 8);

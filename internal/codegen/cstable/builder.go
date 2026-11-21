@@ -247,7 +247,7 @@ func tableBuilderWireSource(u *ir.Unit) string {
             data = RegionPlace(root, type, ref graph, out _); if (data < 0) { return false; }
             attribution = ((long)graph.Count + 1) * 16; long size = checked(data + attribution);
             if (size > capacity || (ulong)size > (ulong)nuint.MaxValue) { return false; }
-            System.Runtime.InteropServices.NativeMemory.Clear((void*)target, (nuint)size);
+            global::System.Runtime.InteropServices.NativeMemory.Clear((void*)target, (nuint)size);
             RegionPackWriter writer = new RegionPackWriter { Bytes = (byte*)target, Big = !global::System.BitConverter.IsLittleEndian, Graph = graph };
             RegionPack(ref writer, root, type, data, true); return true;
         }

@@ -175,7 +175,7 @@ func (g *tableGen) emitFixedWriteAssert(st *ir.Struct, value, ind string) {
 	if admits == "" {
 		return
 	}
-	g.pf("%sSystem.Diagnostics.Debug.Assert(%s(%s)); // the write contract, debug only (docs/SPEC.md §5.1)\n", ind, admits, value)
+	g.pf("%sglobal::System.Diagnostics.Debug.Assert(%s(%s)); // the write contract, debug only (docs/SPEC.md §5.1)\n", ind, admits, value)
 }
 
 // emitFixedClamp is the ROOT's entry point: the one call a read makes, and the
