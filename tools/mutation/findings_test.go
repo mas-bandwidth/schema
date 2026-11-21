@@ -32,7 +32,7 @@ const (
 // What the native stage prints: cc, then the program it built.
 const (
 	nativePassed      = "CORPUS_SUM_PASSED\n"
-	nativeFailed      = "2 + 3 = -1, want 5\n"
+	nativeFailed      = "the sum is -1, want 5\n"
 	nativeUnbuildable = "native/sum.c: In function 'main':\nnative/sum.c:7:20: error: 'missing_value' undeclared (first use in this function)\n    7 |         int got = 2 + missing_value;\n      |                       ^~~~~~~~~~~~~\n"
 	// the same refusal from a make recipe, as a target's conformance stage
 	// builds its driver

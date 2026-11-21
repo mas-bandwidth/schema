@@ -6,7 +6,7 @@
 int main(void) {
 	int got = 2 + 3;
 	if (got != 5) {
-		printf("2 + 3 = %d, want 5\n", got);
+		printf("the sum is %d, want 5\n", got);
 		return 1;
 	}
 	puts("CORPUS_SUM_PASSED");
