@@ -1681,7 +1681,7 @@ BLOCKLESS_SCHEMA := $(BLOCKLESS_ROOT)/schema
 BLOCKFUL_ROOT    := build/zero-cost-block
 BLOCKLESS_SABOTAGE := blocks := (*ir.BlockUnit)(nil) // SABOTAGED: the block form removed (schema$(skip_hash)331)
 
-$(BLOCKLESS_SCHEMA): $(GO_SOURCES) Makefile
+$(BLOCKLESS_SCHEMA): $(GO_SOURCES) $(EMBED_SOURCES) Makefile
 	@mkdir -p $(BLOCKLESS_ROOT)
 	@sed 's|^\tblocks := ir.Blocks(u)|	$(BLOCKLESS_SABOTAGE)|' \
 		internal/codegen/cpptable/cpptable.go > $(BLOCKLESS_ROOT)/cpptable.gotext

@@ -8,7 +8,7 @@
 # (R5 fixed tables and R6 variable tables) satisfy the cross-leg table gates,
 # so R4 builds build/schema-ruby with -tags schema_leg_ruby.
 
-build/schema-ruby: $(shell find compiler internal cmd ir -name '*.go' -o -name '*.rb' -o -name '*.rbs' 2>/dev/null)
+build/schema-ruby: $(shell find compiler internal cmd ir -name '*.go' -o -name '*.rb' -o -name '*.rbs' 2>/dev/null) $(EMBED_SOURCES)
 	@mkdir -p build
 	go build -tags schema_leg_ruby -o $@ ./cmd/schema
 

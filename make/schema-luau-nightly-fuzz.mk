@@ -643,7 +643,7 @@ $(LUAU_NF)/manifest.luau: $(LUAU_NF_GEN)/.stamp
 		printf '\t{ unit = "%s", modules = { %s } },\n' "$$k" "$$mods"; \
 	done; echo "}"; } > $@
 
-build/schema-luau-nightly: $(GO_SOURCES) cmd/schema/*.go
+build/schema-luau-nightly: $(GO_SOURCES) $(EMBED_SOURCES) cmd/schema/*.go
 	nice -n 19 go build -o $@ ./cmd/schema
 
 luau-nightly-fuzz: luau-nightly-fuzz-toolchain $(LUAU_NF_HOST) build/schema-luau-nightly $(LUAU_NF_GEN)/.stamp $(LUAU_NF)/manifest.luau $(LUAU_NF)/seeds.luau $(LUAU_NF)/fuzz.luau

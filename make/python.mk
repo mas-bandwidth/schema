@@ -75,7 +75,7 @@ packet-finite-python-negative-control: python-toolchain-check
 
 # build/schema-python is the compiler the conformance tree is generated with.
 # The tag remains accepted by existing leg gates; the target is built in.
-build/schema-python: $(shell find compiler internal cmd ir -name '*.go' 2>/dev/null)
+build/schema-python: $(shell find compiler internal cmd ir -name '*.go' 2>/dev/null) $(EMBED_SOURCES)
 	go build -tags schema_leg_python -o $@ ./cmd/schema
 
 # build/conformance-python is the tables manifest's units generated for
