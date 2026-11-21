@@ -18,6 +18,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // Version is the pinned Lobster release (make/lobster.mk).
@@ -146,7 +148,7 @@ func runFlags(t testing.TB, dir, main string, flags []string, inputs map[string]
 		argv = append(argv, "--")
 		argv = append(argv, args...)
 	}
-	cmd := exec.Command(lobster, argv...)
+	cmd := testproc.Command(t, lobster, argv...)
 	cmd.Dir = dir
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr

@@ -28,6 +28,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // PinnedVersion is the interpreter make/lua.mk pins (docs/PORT-LUA.md).
@@ -96,7 +98,7 @@ func Try(t testing.TB, dir, main string, inputs map[string][]byte) (stdout, stde
 	if werr := os.WriteFile(filepath.Join(dir, "inputs.lua"), InputsModule(inputs), 0o644); werr != nil {
 		t.Fatal(werr)
 	}
-	cmd := exec.Command(lua, main)
+	cmd := testproc.Command(t, lua, main)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "LUA_PATH="+filepath.Join(dir, "?.lua")+";;", "LUA_INIT=")
 	var out, errb bytes.Buffer

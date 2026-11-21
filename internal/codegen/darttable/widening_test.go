@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -17,6 +16,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestWideningReasonsDart pins the Dart leg's half of "widening on read, and
@@ -498,7 +499,7 @@ func runProbe(t *testing.T, dart, dir string, args ...string) []string {
 	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
-	cmd := exec.Command(dart, append([]string{"--enable-asserts", "probe.dart"}, args...)...)
+	cmd := testproc.Command(t, dart, append([]string{"--enable-asserts", "probe.dart"}, args...)...)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

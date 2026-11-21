@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -18,6 +17,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestPythonWireFuzzRetainLoss preserves the oracle's reported loss rather
@@ -65,7 +66,7 @@ func TestPythonWireFuzzRetainLoss(t *testing.T) {
 		t.Fatal(err)
 	}
 	harness := filepath.Join(dir, "harness")
-	build := exec.Command("go", "build", "-o", harness, "./test/conformance/harness")
+	build := testproc.Command(t, "go", "build", "-o", harness, "./test/conformance/harness")
 	build.Dir = root
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build harness: %v: %s", err, out)
@@ -73,7 +74,7 @@ func TestPythonWireFuzzRetainLoss(t *testing.T) {
 	for _, python := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
 		for _, script := range []string{good, bad} {
 			driver := fmt.Sprintf("%s -W error -I -B %s %s", python, script, filepath.Join(dir, "generated"))
-			cmd := exec.Command(harness, "wire-fuzz", "--retain", "--driver", driver, "--replay", vector, "--unit", "graphdemo", "--root", "Scene", "--failed", filepath.Join(dir, "failed.bin"))
+			cmd := testproc.Command(t, harness, "wire-fuzz", "--retain", "--driver", driver, "--replay", vector, "--unit", "graphdemo", "--root", "Scene", "--failed", filepath.Join(dir, "failed.bin"))
 			cmd.Dir = root
 			out, err := cmd.CombinedOutput()
 			if script == good && (err != nil || !strings.Contains(string(out), "0 divergences")) {
@@ -97,7 +98,7 @@ func TestPythonWireFuzzCIPartition(t *testing.T) {
 	}
 	run := func(target string) []string {
 		t.Helper()
-		cmd := exec.Command("make", "-s", target)
+		cmd := testproc.Command(t, "make", "-s", target)
 		cmd.Dir = root
 		out, err := cmd.CombinedOutput()
 		if err != nil {
@@ -168,7 +169,7 @@ func TestPythonWireFuzzCIPartitionNegativeControl(t *testing.T) {
 	}
 	run := func(target string) []string {
 		t.Helper()
-		cmd := exec.Command("make", "-s", "-f", file, target)
+		cmd := testproc.Command(t, "make", "-s", "-f", file, target)
 		cmd.Dir = root
 		out, err := cmd.CombinedOutput()
 		if err != nil {
@@ -347,14 +348,14 @@ func runPythonWireFuzzVerdictArm(t *testing.T, root, dir string, script []byte, 
 	var buildWG sync.WaitGroup
 	var compilerErr, harnessErr string
 	buildWG.Go(func() {
-		cmd := exec.Command("go", "build", "-tags", "schema_leg_python", "-o", compiler, "./cmd/schema")
+		cmd := testproc.Command(t, "go", "build", "-tags", "schema_leg_python", "-o", compiler, "./cmd/schema")
 		cmd.Dir = root
 		if out, err := cmd.CombinedOutput(); err != nil {
 			compilerErr = fmt.Sprintf("build Python compiler: %v: %s", err, out)
 		}
 	})
 	buildWG.Go(func() {
-		cmd := exec.Command("go", "build", "-o", harness, "./test/conformance/harness")
+		cmd := testproc.Command(t, "go", "build", "-o", harness, "./test/conformance/harness")
 		cmd.Dir = root
 		if out, err := cmd.CombinedOutput(); err != nil {
 			harnessErr = fmt.Sprintf("build harness: %v: %s", err, out)
@@ -381,7 +382,7 @@ func runPythonWireFuzzVerdictArm(t *testing.T, root, dir string, script []byte, 
 			for _, path := range entry.paths {
 				args = append(args, filepath.Join(root, path))
 			}
-			cmd := exec.Command(compiler, args...)
+			cmd := testproc.Command(t, compiler, args...)
 			cmd.Dir = root
 			if out, err := cmd.CombinedOutput(); err != nil {
 				genMu.Lock()
@@ -401,7 +402,7 @@ func runPythonWireFuzzVerdictArm(t *testing.T, root, dir string, script []byte, 
 	// Precompile .pyc bytecode once per interpreter inside isolated dir (t.TempDir())
 	// so the 8 shard subprocesses do not re-parse all 31 generated Python packages 8x.
 	for _, python := range pythons {
-		c := exec.Command(python, "-W", "error", "-I", "-m", "compileall", "-q", "-j", strconv.Itoa(workers), generated, driverScript)
+		c := testproc.Command(t, python, "-W", "error", "-I", "-m", "compileall", "-q", "-j", strconv.Itoa(workers), generated, driverScript)
 		c.Dir = dir
 		if out, err := c.CombinedOutput(); err != nil {
 			t.Fatalf("compileall (%s): %v\n%s", filepath.Base(python), err, out)
@@ -430,7 +431,7 @@ func runPythonWireFuzzVerdictArm(t *testing.T, root, dir string, script []byte, 
 				case "retain":
 					args = append(args, "--retain")
 				}
-				cmd := exec.Command(harness, args...)
+				cmd := testproc.Command(t, harness, args...)
 				cmd.Dir = root
 				out, err := cmd.CombinedOutput()
 				if err != nil || !strings.Contains(string(out), "0 divergences") || strings.Contains(string(out), "seeds absent") {
@@ -487,7 +488,7 @@ func TestPythonWireFuzzVerdictPipeNegativeControl(t *testing.T) {
 		t.Fatal(err)
 	}
 	harness := filepath.Join(dir, "harness")
-	build := exec.Command("go", "build", "-o", harness, "./test/conformance/harness")
+	build := testproc.Command(t, "go", "build", "-o", harness, "./test/conformance/harness")
 	build.Dir = root
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build harness: %v: %s", err, out)
@@ -495,7 +496,7 @@ func TestPythonWireFuzzVerdictPipeNegativeControl(t *testing.T) {
 	for _, python := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
 		for _, script := range []string{good, bad} {
 			driver := fmt.Sprintf("%s -W error -I -B %s %s", python, script, filepath.Join(dir, "generated"))
-			cmd := exec.Command(harness, "wire-fuzz", "--driver", driver, "--replay", mutant, "--unit", "tabledemo", "--root", "RootConfig")
+			cmd := testproc.Command(t, harness, "wire-fuzz", "--driver", driver, "--replay", mutant, "--unit", "tabledemo", "--root", "RootConfig")
 			cmd.Dir = root
 			out, err := cmd.CombinedOutput()
 			if script == good && err != nil {
@@ -543,7 +544,7 @@ func TestPythonWireFuzzRetainNegativeControl(t *testing.T) {
 		t.Fatal(err)
 	}
 	harness := filepath.Join(dir, "harness")
-	build := exec.Command("go", "build", "-o", harness, "./test/conformance/harness")
+	build := testproc.Command(t, "go", "build", "-o", harness, "./test/conformance/harness")
 	build.Dir = root
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build harness: %v: %s", err, out)
@@ -552,7 +553,7 @@ func TestPythonWireFuzzRetainNegativeControl(t *testing.T) {
 	for _, python := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
 		for _, script := range []string{good, bad} {
 			driver := fmt.Sprintf("%s -W error -I -B %s %s", python, script, filepath.Join(dir, "generated"))
-			cmd := exec.Command(harness, "wire-fuzz", "--retain", "--driver", driver, "--replay", vector, "--unit", "graphdemo", "--root", "Scene", "--failed", filepath.Join(dir, "failed.bin"))
+			cmd := testproc.Command(t, harness, "wire-fuzz", "--retain", "--driver", driver, "--replay", vector, "--unit", "graphdemo", "--root", "Scene", "--failed", filepath.Join(dir, "failed.bin"))
 			cmd.Dir = root
 			out, err := cmd.CombinedOutput()
 			if script == good && err != nil {

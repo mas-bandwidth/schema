@@ -29,6 +29,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // mooFuzzPipeUnits is the subset of the corpus the verdict-pipe tests stage:
@@ -113,7 +115,7 @@ func mooFuzzStagePipeUnits(t *testing.T, keys []string, edit func(string, []byte
 func mooFuzzHarness(t *testing.T) string {
 	t.Helper()
 	harness := filepath.Join(t.TempDir(), "conformance-harness")
-	build := exec.Command("go", "build", "-o", harness, "./test/conformance/harness")
+	build := testproc.Command(t, "go", "build", "-o", harness, "./test/conformance/harness")
 	build.Dir = root
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build conformance-harness: %v\n%s", err, out)
@@ -147,7 +149,7 @@ func mooFuzzHost(t *testing.T) string {
 			mooHostPath = host
 			return
 		}
-		cmd := exec.Command("make", "build/moofuzzhost/moofuzzhost")
+		cmd := testproc.Command(t, "make", "build/moofuzzhost/moofuzzhost")
 		cmd.Dir = root
 		if out, err := cmd.CombinedOutput(); err != nil {
 			mooHostErr = fmt.Errorf("build moofuzzhost: %w\n%s", err, out)
@@ -213,7 +215,7 @@ func runMooWireFuzzVerdictPipe(t *testing.T, generatedRel, manifest string, reta
 		"--seed", "1",
 		"--n", fmt.Sprintf("%d", n),
 		"--failed", failed)
-	cmd := exec.Command(harness, args...)
+	cmd := testproc.Command(t, harness, args...)
 	cmd.Dir = root
 	cmd.Env = append(os.Environ(),
 		"SCHEMA_MOO_GENERATED="+generatedRel,

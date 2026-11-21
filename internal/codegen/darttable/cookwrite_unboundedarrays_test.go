@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,6 +13,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestCookWriteUnboundedArray(t *testing.T) {
@@ -62,7 +63,7 @@ void main(){
 	if err := os.WriteFile(filepath.Join(dir, "cook_scratch.dart"), []byte(probe), 0600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dartBinary(t), "--enable-asserts", "cook_scratch.dart")
+	cmd := testproc.Command(t, dartBinary(t), "--enable-asserts", "cook_scratch.dart")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -160,7 +161,7 @@ void main(){
 	if err := os.WriteFile(filepath.Join(dir, "cook_scratch2.dart"), []byte(probe), 0600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dartBinary(t), "--enable-asserts", "cook_scratch2.dart")
+	cmd := testproc.Command(t, dartBinary(t), "--enable-asserts", "cook_scratch2.dart")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

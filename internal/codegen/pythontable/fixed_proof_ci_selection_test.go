@@ -1,19 +1,20 @@
 package pythontable_test
 
 import (
-	"os/exec"
 	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestPythonFixedProofCISelection(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "make (fixed proof CI row selection)")
-	cmd := exec.Command("make", "-s", "python-fixed-proof-ci-patterns")
+	cmd := testproc.Command(t, "make", "-s", "python-fixed-proof-ci-patterns")
 	cmd.Dir = "../../.."
 	out, err := cmd.CombinedOutput()
 	if err != nil {

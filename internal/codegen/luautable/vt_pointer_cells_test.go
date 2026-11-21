@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -36,6 +35,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 type luauVTCell struct {
@@ -109,7 +110,7 @@ func vtExec(t *testing.T, dir, main string, inputs map[string][]byte) (string, e
 	if err := os.WriteFile(filepath.Join(dir, "inputs.luau"), luaurun.InputsModule(inputs), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(bin, main)
+	cmd := testproc.Command(t, bin, main)
 	cmd.Dir = dir
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr

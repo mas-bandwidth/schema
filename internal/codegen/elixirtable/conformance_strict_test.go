@@ -3,12 +3,13 @@ package elixirtable_test
 import (
 	"bytes"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // The Elixir conformance driver reads strict and writes back: a fixed root is
@@ -31,7 +32,7 @@ func elixirConformanceBuild(t *testing.T, root string) {
 	t.Helper()
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "make", "build/conformance-harness", "build-conformance-elixir")
+	cmd := testproc.CommandContext(t, ctx, "make", "build/conformance-harness", "build-conformance-elixir")
 	cmd.Dir = root
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -52,7 +53,7 @@ func elixirDriverSurface(t *testing.T, root, surface, manifest string) string {
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, filepath.Join(root, "test", "conformance", "elixir", "driver"), manifestPath, surface, outDir)
+	cmd := testproc.CommandContext(t, ctx, filepath.Join(root, "test", "conformance", "elixir", "driver"), manifestPath, surface, outDir)
 	cmd.Dir = root
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -78,7 +79,7 @@ func TestElixirDriverReadsStrictAndWritesBack(t *testing.T) {
 func elixirDriverMatrix(t *testing.T, root string) {
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, filepath.Join(root, "build", "conformance-harness"), "run", "--only", "elixir", "--work", t.TempDir())
+	cmd := testproc.CommandContext(t, ctx, filepath.Join(root, "build", "conformance-harness"), "run", "--only", "elixir", "--work", t.TempDir())
 	cmd.Dir = root
 	out, err := cmd.CombinedOutput()
 	if err != nil {

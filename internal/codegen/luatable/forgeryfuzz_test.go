@@ -378,7 +378,7 @@ local U = require("uncook")`,
 		wg.Go(func() {
 			slots <- struct{}{}
 			defer func() { <-slots }()
-			j.out, j.err = luaFuzzRun(lua, j.dir, "mutants.bin")
+			j.out, j.err = luaFuzzRun(t, lua, j.dir, "mutants.bin")
 		})
 	}
 	wg.Wait()
