@@ -89,6 +89,7 @@ tables = %{
   "tables/stream" => Streamdemo.Table,
   "tables/maps" => Mapdemo.Table,
   "tables/lists" => Listdemo.Table,
+  "test/tables/shapes" => Shapes.Table,
   "schemas/probe.schema" => Probe.Table,
   "testdata/conformance/feature-witnesses/full/Features.schema" => Featurewitnesses.Table
 }

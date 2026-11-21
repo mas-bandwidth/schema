@@ -769,6 +769,11 @@ func (g *fixedModule) messageRides(f *ir.Field, mem, ind string) string {
 // Object.is is the bit compare for two finite values, so a -0 under a +0
 // default rides, and a NaN never elides and reaches the writer's refusal.
 func messageDiffers(f *ir.Field, lhs, def string) string {
+	if f.Type.Kind == ir.TFloat32 {
+		// a float32 compares at float32, as its default is spelled and as the
+		// reference compares it (tablewire cellIsDefault)
+		lhs = "Math.fround(" + lhs + ")"
+	}
 	if fixedIsFloat(f.Type) && f.HasFloatRange {
 		// a COMPRESSED float's -0 IS +0 (§3.3, ruling fixed-compressed-negzero):
 		// it compares by value, so a -0 under a +0 default elides

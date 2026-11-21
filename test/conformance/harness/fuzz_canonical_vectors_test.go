@@ -1018,7 +1018,17 @@ func TestMessageTruncatedBytesPin(t *testing.T) {
 		data   []byte
 		read   bool
 		reason string
-	}{{"complete at bound", build(32, make([]byte, 32), true), true, ""}, {"complete over bound", build(33, make([]byte, 33), true), false, "count_over_bound"}, {"truncated over bound", wire, false, "count_over_bound"}, {"truncated at bound", build(32, []byte{1, 2, 3}, false), false, "wire_damaged"}} {
+	}{
+		{"complete at bound", build(32, make([]byte, 32), true), true, ""},
+		// a bytes(N) count above the announced max refuses as an array's
+		// does, before one payload byte is read (internal/tablewire
+		// messagedecode.go text, TABLEWIRE-4): the count is judged before
+		// the truncation is reached
+		{"complete over bound", build(33, make([]byte, 33), true), false, "count_over_bound"},
+		{"truncated over bound", wire, false, "count_over_bound"},
+		// a count the bound admits reaches the truncation, which is damage
+		{"truncated at bound", build(32, []byte{1, 2, 3}, false), false, "wire_damaged"},
+	} {
 		var report tabletext.Report
 		_, ok, err := tablewire.DecodeMessages(wr.model, []*tabletext.Instance{wr.model.New(wr.def)}, tc.data, wr.vocabulary, &report)
 		if ok != tc.read || (tc.read && err != nil) || (!tc.read && (err == nil || !strings.Contains(err.Error(), tc.reason))) {

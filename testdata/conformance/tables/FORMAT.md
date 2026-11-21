@@ -122,9 +122,10 @@ json-write-refusal <case> <unit> <root> <wire file> <damage>
   No duplicate JSON instance is needed.
 
   A `<message-form wire>` of `-` requires refusal for every port. The driver
-  emits `refused` or the historical `<name>.absent` file. Diagnostic text is
-  ignored; this is an answered PASS case, not a missing feature. Emitted value
-  bytes or a missing answer fail. Accepted message write-back covers every body.
+  emits `refused` or the historical `<name>.absent` file naming a reason.
+  Diagnostic text is not compared; this is an answered PASS case, not a missing
+  feature. An empty `<name>.absent` is a missing codec and counts absent, never
+  PASS. Emitted value bytes or a missing answer fail. Accepted message write-back covers every body.
 - **`retain`** reads through the retaining path under the row's two caller
   capacities. `<capacity>` is `full`, or `short`: one byte below the storage this
   implementation used in a roomy load. `<ids>` is `full` or an explicit entry
@@ -228,6 +229,12 @@ value. `cook-write` has five: `-`
 input selects the `no-text` instance's wire; otherwise the input is JSON.
 Source and alias are both `-` unless the cook recipe requests shared blob
 identity. Expected cook output files never travel to the driver.
+
+An `instance` line keeps its `no-text` and `wire-refused` markers, in that
+order and nothing else: a text surface skips a `no-text` instance, and the
+wire surface answers a `wire-refused` instance's refused load as
+`<case>.absent` holding the read's reason. Any other refused load of an
+instance stays a failure.
 
 ## reports.txt
 

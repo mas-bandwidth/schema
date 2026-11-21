@@ -78,6 +78,9 @@ static SCHEMA_UNUSED int table_json_scan_label( TableJsonIn * in, uint64_t * lab
         if ( value > (UINT64_MAX-digit)/10 ) { in->bad = 1; return 0; }
         value = value*10+digit; in->pos++;
     }
+    /* the label is followed by its object's , or } and nothing else:
+       {"&node": 1 "x": 2} is not JSON (§16.7, RFC 8259's value-separator) */
+    { char c = table_json_peek(in); if ( c != ',' && c != '}' ) { in->bad = 1; return 0; } }
     *label = value; return 1;
 }
 
@@ -118,7 +121,7 @@ static SCHEMA_UNUSED int table_json_read_blob( TableJsonIn * in, void * slot, co
     return 1;
 }
 
-static SCHEMA_UNUSED int table_json_read_pointer( TableJsonIn * in, void * slot, const TableFieldInfo * f, int32_t depth )
+static SCHEMA_UNUSED SCHEMA_JSON_NOINLINE int table_json_read_pointer( TableJsonIn * in, void * slot, const TableFieldInfo * f, int32_t depth )
 {
     TableJsonGraphIn * graph = (TableJsonGraphIn *)in->graph;
     TableJsonGraphEntry * entry;
@@ -173,15 +176,43 @@ static SCHEMA_UNUSED int table_json_read_pointer( TableJsonIn * in, void * slot,
     entry->node = (uint32_t)((TableRef *)slot)->value; entry->type = f->table; entry->open = 0; return 1;
 }
 
-static SCHEMA_UNUSED int table_json_skipped_ampersand( TableJsonIn * in, const char * key )
+/* An &node key opening an object the walk is SKIPPING (docs/SPEC-TABLES.md
+   §16.7). A label alone (a trailing comma allowed) REFERS: the text must have
+   defined it and closed that definition, and the object is consumed whole
+   (*reference). A label with fields DEFINES: the text must not have defined it,
+   and it is registered with no node, open until the skipped object closes
+   (*opened), so a later reference reads null and a second definition refuses. */
+static SCHEMA_UNUSED int table_json_skipped_ampersand( TableJsonIn * in, const char * key, int * reference, uint64_t * opened )
 {
     TableJsonGraphIn * graph = (TableJsonGraphIn *)in->graph;
+    TableJsonGraphEntry * entry;
     uint64_t label = 0;
     int taken = 0;
+    *reference = 0;
     if ( graph == NULL || strcmp(key,"&node") != 0 ) { in->bad = 1; return 0; }
     if ( !table_json_scan_label(in,&label) ) { return 0; }
-    if ( table_json_graph_reach(&graph->labels,label,&taken) == NULL ) { in->bad = 1; return 0; }
-    return 1;
+    entry = table_json_graph_find(&graph->labels,label);
+    if ( table_json_peek(in) == ',' ) { in->pos++; }
+    if ( table_json_peek(in) == '}' )
+    {
+        in->pos++;
+        if ( entry == NULL || entry->open ) { in->bad = 1; return 0; }
+        *reference = 1; return 1;
+    }
+    if ( entry != NULL ) { in->bad = 1; return 0; }
+    entry = table_json_graph_reach(&graph->labels,label,&taken);
+    if ( entry == NULL ) { in->bad = 1; return 0; }
+    entry->open = 1; entry->type = NULL; entry->node = 0;
+    *opened = label; return 1;
+}
+
+static SCHEMA_UNUSED void table_json_skipped_close( TableJsonIn * in, uint64_t opened )
+{
+    TableJsonGraphIn * graph = (TableJsonGraphIn *)in->graph;
+    TableJsonGraphEntry * entry;
+    if ( graph == NULL || opened == 0 ) { return; }
+    entry = table_json_graph_find(&graph->labels,opened);
+    if ( entry != NULL ) { entry->open = 0; }
 }
 
 typedef struct TableJsonGraphOut
@@ -424,14 +455,61 @@ static SCHEMA_UNUSED int table_json_map_key_value(const char * token,int32_t len
     number=table_json_interpret_exact(token,length); if(number.fractional || number.saturated) { return 1; }
     *value=table_json_integer_in_domain(number,key->kind>=2 && key->kind<=5,(int32_t)key->elem_size,&moved); *fits=!moved; return 1;
 }
+/* THE MAP READ'S KEY SET: the hash of every key the read placed, so a key new
+   to the map is appended without the builder's linear find, and a map of n
+   keys reads in O(n) in any key order. A hash already held hands the key to
+   the find, which settles a true repeat (refused) from a collision. 1: new;
+   0: held; -1: the set could not grow (in->bad). */
+static SCHEMA_UNUSED int table_json_map_hash_add(TableJsonIn * in,TableJsonKeys * keys,const char * key,int32_t length)
+{
+    uint64_t hash=1469598103934665603ULL; int64_t mask,i; int32_t k;
+    for(k=0;k<length;k++) { hash=(hash^(uint64_t)(unsigned char)key[k])*1099511628211ULL; }
+    if((keys->count+1)*2>keys->capacity) {
+        const int64_t capacity=keys->capacity*2; TableJsonKey * grown; int64_t j;
+        if((uint64_t)capacity>SIZE_MAX/sizeof(TableJsonKey)) { in->bad=1; return -1; }
+        grown=(TableJsonKey *)schema_allocate(capacity*(int64_t)sizeof(TableJsonKey));
+        if(grown==NULL) { in->bad=1; return -1; }
+        memset(grown,0,(size_t)capacity*sizeof(TableJsonKey));
+        for(j=0;j<keys->capacity;j++) {
+            if(keys->slots[j].at==0) { continue; }
+            i=(int64_t)(keys->slots[j].hash&(uint64_t)(capacity-1));
+            while(grown[i].at!=0) { i=(i+1)&(capacity-1); }
+            grown[i]=keys->slots[j];
+        }
+        table_json_keys_free(keys); keys->slots=grown; keys->capacity=capacity;
+    }
+    mask=keys->capacity-1;
+    for(i=(int64_t)(hash&(uint64_t)mask);keys->slots[i].at!=0;i=(i+1)&mask) { if(keys->slots[i].hash==hash) { return 0; } }
+    keys->slots[i].at=1; keys->slots[i].hash=hash; keys->count++; return 1;
+}
+static SCHEMA_UNUSED int table_json_read_map_entries(TableJsonIn * in,TableSequence * map,const TableFieldInfo * f,int32_t depth,TableJsonKeys * held,char * wide);
 static SCHEMA_UNUSED int table_json_read_map(TableJsonIn * in,void * storage,const TableFieldInfo * f,int32_t depth)
 {
-    TableJsonGraphIn * graph=(TableJsonGraphIn *)in->graph; TableSequence * map=(TableSequence *)storage;
-    const TableFieldInfo * key=&f->table->fields[0]; const TableFieldInfo * value=&f->table->fields[1];
+    /* a counted text key's buffer is its declared bound, which may be wider
+       than kTableJsonMaxKey: a string(300) key of 280 bytes is a key, not an
+       overflow */
+    TableJsonGraphIn * graph=(TableJsonGraphIn *)in->graph;
+    const TableFieldInfo * key=&f->table->fields[0];
+    TableJsonKeys held; char * wide=NULL; int ok;
     if(graph==NULL || table_json_peek(in)!='{' || depth+1>kTableJsonMaxDepth) { in->bad=1; return 0; }
+    if(key->kind==12 && key->counted && key->array_bound>=kTableJsonMaxKey) {
+        wide=(char *)table_allocate(graph->labels.allocator,(int64_t)key->array_bound+1);
+        if(wide==NULL) { in->bad=1; return 0; }
+    }
+    table_json_keys_init(&held);
+    ok=table_json_read_map_entries(in,(TableSequence *)storage,f,depth,&held,wide);
+    table_json_keys_free(&held);
+    table_release(graph->labels.allocator,wide);
+    return ok;
+}
+static SCHEMA_UNUSED int table_json_read_map_entries(TableJsonIn * in,TableSequence * map,const TableFieldInfo * f,int32_t depth,TableJsonKeys * held,char * wide)
+{
+    TableJsonGraphIn * graph=(TableJsonGraphIn *)in->graph;
+    const TableFieldInfo * key=&f->table->fields[0]; const TableFieldInfo * value=&f->table->fields[1];
     memset(map,0,sizeof(*map)); in->pos++;
     for(;;) {
-        char c=table_json_peek(in),token[kTableJsonMaxKey]; int32_t length=0,before; int64_t number=0; int place=1; void * entry;
+        char c=table_json_peek(in),local[kTableJsonMaxKey]; char * token=wide!=NULL ? wide : local; int32_t capacity=wide!=NULL ? key->array_bound : kTableJsonMaxKey-1;
+        int32_t length=0,before; int64_t number=0; int place=1,fresh; void * entry;
         TableReport scratch={0}; TableJsonIn scan=*in; scan.report=&scratch;
         if(c=='}') { in->pos++; return 1; } if(c==0) { in->bad=1; return 0; }
 #ifdef SCHEMA_TABLE_UNBOUNDED_TEXT_RUNTIME
@@ -448,13 +526,15 @@ static SCHEMA_UNUSED int table_json_read_map(TableJsonIn * in,void * storage,con
             ((char *)kptr)[length]=0; in->pos=scan.pos;
             if(table_json_peek(in)!=':') { table_release(graph->labels.allocator,dyn); in->bad=1; return 0; }
             in->pos++;
-            before=map->count; entry=f->place(graph->worker,map,kptr,length,0);
+            fresh=table_json_map_hash_add(in,held,kptr,length);
+            if(fresh<0) { table_release(graph->labels.allocator,dyn); return 0; }
+            before=map->count; entry=f->place(graph->worker,map,kptr,length,0,fresh);
             table_release(graph->labels.allocator,dyn);
             if(entry==NULL) { in->bad=1; return 0; }
         } else
 #endif
         {
-            if(!table_json_scan_text(&scan,token,kTableJsonMaxKey-1,&length)) { in->pos=scan.pos; in->bad=1; return 0; }
+            if(!table_json_scan_text(&scan,token,capacity,&length)) { in->pos=scan.pos; in->bad=1; return 0; }
             in->pos=scan.pos; token[length]=0;
             if(table_json_peek(in)!=':') { in->bad=1; return 0; } in->pos++;
             if(key->kind==12) {
@@ -465,7 +545,9 @@ static SCHEMA_UNUSED int table_json_read_map(TableJsonIn * in,void * storage,con
                 else if(!table_json_map_key_value(token,length,key,&number,&fits)) { in->bad=1; return 0; }
                 else if(!fits) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH; place=0; }
             }
-            before=map->count; entry=place ? f->place(graph->worker,map,token,length,number) : NULL;
+            fresh=0;
+            if(place) { fresh=table_json_map_hash_add(in,held,token,length); if(fresh<0) { return 0; } }
+            before=map->count; entry=place ? f->place(graph->worker,map,token,length,number,fresh) : NULL;
             if(place && entry==NULL) { in->bad=1; return 0; }
         }
         if(entry!=NULL && map->count==before) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; }

@@ -686,6 +686,8 @@ func main() {
 		for _, s := range surfaces() {
 			fmt.Println(s)
 		}
+		// the opt-in units this leg answers (MANIFEST.txt `opt-in`)
+		fmt.Println("unit shapes")
 		return
 	}
 	if len(os.Args) < 4 {

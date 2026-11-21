@@ -249,7 +249,7 @@ typedef struct bench_table_field_info_t
     int sequence; /* 0 inline field, 1 unbounded list, 2 map */
     uint8_t text_list; /* 0 none, 1 string(M) elements, 2 ?string(M) elements (SPEC-TABLES 2.13) */
     int64_t text_total; /* | total = N byte cap across text-list elements, or 0 (SPEC-TABLES 2.13) */
-    void * (*place)(void * worker,void * slot,const char * key,int32_t length,int64_t number);
+    void * (*place)(void * worker,void * slot,const char * key,int32_t length,int64_t number,int fresh);
     int32_t array_min; /* a [A..B]T count's declared minimum A (docs/SPEC.md §4.2), else 0 */
 } bench_table_field_info_t;
 
@@ -4303,6 +4303,7 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_body( bench_table_writer_t * w,
     { /* entity_id */
         if ( !( value->entity_id == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             bench_table_writer_header_at( w, 11, 0x23fcfd6678e36712ull, 7 );
             schema_assert( (uint64_t)( value->entity_id ) <= 0xfffull ); /* bits(12) no wider than 12 bits (§5.1 row 2) */
             bench_table_writer_put16( w, (uint16_t) ( value->entity_id ) );
@@ -4311,6 +4312,7 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_body( bench_table_writer_t * w,
     { /* pos_x */
         if ( !( value->pos_x == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             bench_table_writer_header_at( w, 65, 0xcb4b37357667310eull, 4 );
             schema_assert( value->pos_x >= -16383 ); /* a ranged value inside its declaration (§5.1 row 1) */
             schema_assert( value->pos_x <= 16383 ); /* a ranged value inside its declaration (§5.1 row 1) */
@@ -4320,6 +4322,7 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_body( bench_table_writer_t * w,
     { /* pos_y */
         if ( !( value->pos_y == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             bench_table_writer_header_at( w, 66, 0xcb4b3835766732c1ull, 4 );
             schema_assert( value->pos_y >= -16383 ); /* a ranged value inside its declaration (§5.1 row 1) */
             schema_assert( value->pos_y <= 16383 ); /* a ranged value inside its declaration (§5.1 row 1) */
@@ -4329,6 +4332,7 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_body( bench_table_writer_t * w,
     { /* pos_z */
         if ( !( value->pos_z == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             bench_table_writer_header_at( w, 64, 0xcb4b353576672da8ull, 4 );
             schema_assert( value->pos_z >= -16383 ); /* a ranged value inside its declaration (§5.1 row 1) */
             schema_assert( value->pos_z <= 16383 ); /* a ranged value inside its declaration (§5.1 row 1) */
@@ -4338,6 +4342,7 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_body( bench_table_writer_t * w,
     { /* yaw */
         if ( !( value->yaw == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             bench_table_writer_header_at( w, 58, 0xb54d8e19798e16e8ull, 7 );
             schema_assert( (uint64_t)( value->yaw ) <= 0x1ffull ); /* bits(9) no wider than 9 bits (§5.1 row 2) */
             bench_table_writer_put16( w, (uint16_t) ( value->yaw ) );
@@ -4346,6 +4351,7 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_body( bench_table_writer_t * w,
     { /* pitch */
         if ( !( value->pitch == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             bench_table_writer_header_at( w, 22, 0x53a9f665a90cc1b1ull, 7 );
             schema_assert( (uint64_t)( value->pitch ) <= 0x1ffull ); /* bits(9) no wider than 9 bits (§5.1 row 2) */
             bench_table_writer_put16( w, (uint16_t) ( value->pitch ) );
@@ -4354,6 +4360,7 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_body( bench_table_writer_t * w,
     { /* vel_x */
         if ( !( value->vel_x == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             bench_table_writer_header_at( w, 27, 0x6cede6b6eb60ee67ull, 4 );
             schema_assert( value->vel_x >= -2048 ); /* a ranged value inside its declaration (§5.1 row 1) */
             schema_assert( value->vel_x <= 2047 ); /* a ranged value inside its declaration (§5.1 row 1) */
@@ -4363,6 +4370,7 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_body( bench_table_writer_t * w,
     { /* vel_y */
         if ( !( value->vel_y == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             bench_table_writer_header_at( w, 26, 0x6cede5b6eb60ecb4ull, 4 );
             schema_assert( value->vel_y >= -2048 ); /* a ranged value inside its declaration (§5.1 row 1) */
             schema_assert( value->vel_y <= 2047 ); /* a ranged value inside its declaration (§5.1 row 1) */
@@ -4372,6 +4380,7 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_body( bench_table_writer_t * w,
     { /* vel_z */
         if ( !( value->vel_z == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             bench_table_writer_header_at( w, 28, 0x6cede8b6eb60f1cdull, 4 );
             schema_assert( value->vel_z >= -2048 ); /* a ranged value inside its declaration (§5.1 row 1) */
             schema_assert( value->vel_z <= 2047 ); /* a ranged value inside its declaration (§5.1 row 1) */
@@ -4381,6 +4390,7 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_body( bench_table_writer_t * w,
     { /* health */
         if ( !( value->health == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             bench_table_writer_header_at( w, 37, 0x7f69d4b5288ba9cfull, 4 );
             schema_assert( value->health >= 0 ); /* a ranged value inside its declaration (§5.1 row 1) */
             schema_assert( value->health <= 1000 ); /* a ranged value inside its declaration (§5.1 row 1) */
@@ -4390,6 +4400,7 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_body( bench_table_writer_t * w,
     { /* weapon */
         if ( !( value->weapon == BENCH_MIXED_WEAPON_NONE ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             bench_table_writer_header_at( w, 52, 0xa0b610205f2c6e01ull, 30 );
             switch ( value->weapon )
             {
@@ -4416,6 +4427,7 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_body( bench_table_writer_t * w,
     { /* damage */
         if ( !( value->damage == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             bench_table_writer_header_at( w, 36, 0x7f6308be8ab37fc0ull, 9 );
             bench_table_writer_put64( w, (uint64_t) ( value->damage ) );
         }
@@ -4423,6 +4435,7 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_body( bench_table_writer_t * w,
     { /* moving */
         if ( !( value->moving == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             bench_table_writer_header_at( w, 5, 0x11a44fc1d1243da7ull, 1 );
             bench_table_writer_put8( w, value->moving ? 1 : 0 );
         }
@@ -4430,6 +4443,7 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_body( bench_table_writer_t * w,
     { /* firing */
         if ( !( value->firing == 0 ) )
         {
+            if ( w->check_default ) { w->offset = 2; return 1; }
             bench_table_writer_header_at( w, 32, 0x7674cfd19b9031caull, 1 );
             bench_table_writer_put8( w, value->firing ? 1 : 0 );
         }
@@ -5141,66 +5155,99 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_message_body(bench_table_bit_wr
  (void)value;
  { /* entity_id */
  if(!(value->entity_id == 0)) {
+  if(w->check_default) {w->bits=BENCH_K_TABLE_MESSAGE_REF_BITS_HERE+1;
+  return 1;
+  }
   bench_table_bit_put(w,31,BENCH_K_TABLE_MESSAGE_REF_BITS_HERE);
   bench_table_bit_put(w,(uint64_t)(value->entity_id)-UINT64_C(0),12);
  }
  }
  { /* pos_x */
  if(!(value->pos_x == 0)) {
+  if(w->check_default) {w->bits=BENCH_K_TABLE_MESSAGE_REF_BITS_HERE+1;
+  return 1;
+  }
   bench_table_bit_put(w,32,BENCH_K_TABLE_MESSAGE_REF_BITS_HERE);
   bench_table_bit_put(w,(uint64_t)(value->pos_x)-UINT64_C(18446744073709535233),15);
  }
  }
  { /* pos_y */
  if(!(value->pos_y == 0)) {
+  if(w->check_default) {w->bits=BENCH_K_TABLE_MESSAGE_REF_BITS_HERE+1;
+  return 1;
+  }
   bench_table_bit_put(w,33,BENCH_K_TABLE_MESSAGE_REF_BITS_HERE);
   bench_table_bit_put(w,(uint64_t)(value->pos_y)-UINT64_C(18446744073709535233),15);
  }
  }
  { /* pos_z */
  if(!(value->pos_z == 0)) {
+  if(w->check_default) {w->bits=BENCH_K_TABLE_MESSAGE_REF_BITS_HERE+1;
+  return 1;
+  }
   bench_table_bit_put(w,34,BENCH_K_TABLE_MESSAGE_REF_BITS_HERE);
   bench_table_bit_put(w,(uint64_t)(value->pos_z)-UINT64_C(18446744073709535233),15);
  }
  }
  { /* yaw */
  if(!(value->yaw == 0)) {
+  if(w->check_default) {w->bits=BENCH_K_TABLE_MESSAGE_REF_BITS_HERE+1;
+  return 1;
+  }
   bench_table_bit_put(w,35,BENCH_K_TABLE_MESSAGE_REF_BITS_HERE);
   bench_table_bit_put(w,(uint64_t)(value->yaw)-UINT64_C(0),9);
  }
  }
  { /* pitch */
  if(!(value->pitch == 0)) {
+  if(w->check_default) {w->bits=BENCH_K_TABLE_MESSAGE_REF_BITS_HERE+1;
+  return 1;
+  }
   bench_table_bit_put(w,36,BENCH_K_TABLE_MESSAGE_REF_BITS_HERE);
   bench_table_bit_put(w,(uint64_t)(value->pitch)-UINT64_C(0),9);
  }
  }
  { /* vel_x */
  if(!(value->vel_x == 0)) {
+  if(w->check_default) {w->bits=BENCH_K_TABLE_MESSAGE_REF_BITS_HERE+1;
+  return 1;
+  }
   bench_table_bit_put(w,37,BENCH_K_TABLE_MESSAGE_REF_BITS_HERE);
   bench_table_bit_put(w,(uint64_t)(value->vel_x)-UINT64_C(18446744073709549568),12);
  }
  }
  { /* vel_y */
  if(!(value->vel_y == 0)) {
+  if(w->check_default) {w->bits=BENCH_K_TABLE_MESSAGE_REF_BITS_HERE+1;
+  return 1;
+  }
   bench_table_bit_put(w,38,BENCH_K_TABLE_MESSAGE_REF_BITS_HERE);
   bench_table_bit_put(w,(uint64_t)(value->vel_y)-UINT64_C(18446744073709549568),12);
  }
  }
  { /* vel_z */
  if(!(value->vel_z == 0)) {
+  if(w->check_default) {w->bits=BENCH_K_TABLE_MESSAGE_REF_BITS_HERE+1;
+  return 1;
+  }
   bench_table_bit_put(w,39,BENCH_K_TABLE_MESSAGE_REF_BITS_HERE);
   bench_table_bit_put(w,(uint64_t)(value->vel_z)-UINT64_C(18446744073709549568),12);
  }
  }
  { /* health */
  if(!(value->health == 0)) {
+  if(w->check_default) {w->bits=BENCH_K_TABLE_MESSAGE_REF_BITS_HERE+1;
+  return 1;
+  }
   bench_table_bit_put(w,40,BENCH_K_TABLE_MESSAGE_REF_BITS_HERE);
   bench_table_bit_put(w,(uint64_t)(value->health)-UINT64_C(0),10);
  }
  }
  { /* weapon */
  if(!(value->weapon == BENCH_MIXED_WEAPON_NONE)) {
+  if(w->check_default) {w->bits=BENCH_K_TABLE_MESSAGE_REF_BITS_HERE+1;
+  return 1;
+  }
   bench_table_bit_put(w,41,BENCH_K_TABLE_MESSAGE_REF_BITS_HERE);
   switch(value->weapon) {
    case BENCH_MIXED_WEAPON_NONE: bench_table_bit_put(w,0,BENCH_K_TABLE_MESSAGE_REF_BITS_HERE);
@@ -5241,6 +5288,9 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_message_body(bench_table_bit_wr
  }
  { /* damage */
  if(!(value->damage == 0)) {
+  if(w->check_default) {w->bits=BENCH_K_TABLE_MESSAGE_REF_BITS_HERE+1;
+  return 1;
+  }
   bench_table_bit_put(w,42,BENCH_K_TABLE_MESSAGE_REF_BITS_HERE);
   schema_assert(((uint64_t)(value->damage) >> 8) == 0);
   /* message flags domain, debug only (§5.1) */
@@ -5249,12 +5299,18 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_message_body(bench_table_bit_wr
  }
  { /* moving */
  if(!(value->moving == 0)) {
+  if(w->check_default) {w->bits=BENCH_K_TABLE_MESSAGE_REF_BITS_HERE+1;
+  return 1;
+  }
   bench_table_bit_put(w,43,BENCH_K_TABLE_MESSAGE_REF_BITS_HERE);
   bench_table_bit_put(w,value->moving ? 1 : 0,1);
  }
  }
  { /* firing */
  if(!(value->firing == 0)) {
+  if(w->check_default) {w->bits=BENCH_K_TABLE_MESSAGE_REF_BITS_HERE+1;
+  return 1;
+  }
   bench_table_bit_put(w,44,BENCH_K_TABLE_MESSAGE_REF_BITS_HERE);
   bench_table_bit_put(w,value->firing ? 1 : 0,1);
  }

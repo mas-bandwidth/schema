@@ -141,6 +141,10 @@ build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk testdata/conform
 	# the stamp formats nothing: tables-elixir-clean checks the raw output.
 	@touch $@
 
+# the leg's generated units move with every unit schema the conformance
+# manifest names, not only with the ones listed above
+build/tables-generated-elixir/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)
+
 ELIXIR_TABLE_UNIT_SOURCES = $(foreach u,$(sort $(ELIXIR_TABLE_UNITS)),build/tables-generated-elixir/$(firstword $(subst :, ,$(u)))/*.ex)
 
 build/elixir-tables-ebin/.stamp: build/tables-generated-elixir/.stamp test/conformance/elixir/driver_impl.ex

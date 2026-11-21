@@ -24,6 +24,7 @@ const Map<String, String> tableUnits = <String, String>{
   'tables/stream': 'streamdemo',
   'tables/maps': 'mapdemo',
   'tables/lists': 'listdemo',
+  'test/tables/shapes': 'shapes',
   'schemas/probe.schema': 'probe',
   'testdata/conformance/feature-witnesses/full/Features.schema': 'featurewitnesses',
 };
