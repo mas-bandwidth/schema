@@ -61,15 +61,23 @@ return function(ctx: any): { [string]: Surface }
 				return owner, fd, idx
 			end
 			local child = owner[fd.slot]
-			if fd.s == "union" and idx == nil and i == #segments - 1 then
-				local ud = St.lookup(fd.t)
+			-- a union's arm, held by the field itself or by one element of an
+			-- array of unions (bounded_steps[3].label): the element IS the union
+			-- value, never a table to look up by the union's name
+			local unionType: string? = nil
+			if fd.s == "union" and idx == nil then unionType = fd.t end
+			if fd.s == "arr" and idx ~= nil and fd.e ~= nil and fd.e.s == "union" then unionType = fd.e.t end
+			if unionType ~= nil and i == #segments - 1 then
+				if idx ~= nil then child = child[idx] end
+				if child == nil then error("driver: " .. path .. ": " .. seg .. " holds no union", 0) end
+				local ud = St.lookup(unionType)
 				local armName = segments[#segments]
 				for _, arm in ud.arms do
 					if arm.name == armName then
 						return child, arm, nil
 					end
 				end
-				error("driver: no arm " .. armName .. " in union " .. fd.t, 0)
+				error("driver: no arm " .. armName .. " in union " .. unionType, 0)
 			end
 			if idx ~= nil then
 				child = child[idx]

@@ -1,0 +1,19 @@
+# <surface> <case> <answer>, for manifest.txt beside this file
+# (test/conformance/case-outcomes/check.sh names the answers). A verdict is
+# pinned (=wrote, =refused) only where every leg that runs this fixture answers
+# the MANIFEST's verdict; `bytes` asks only that the case was ANSWERED, where a
+# leg's codec still owes the verdict (the past-cap tree every one of these
+# readers accepts; the u64 pair the Moo and Squirrel drivers still narrow).
+# The full matrix judges those verdicts; this fixture holds that the driver
+# reached them and went on.
+json-hostile depth-arm-pointer-past-cap bytes
+json-hostile depth-arm-pointer-at-cap bytes
+write-refusal wref_var_layers_count_ok =wrote
+write-refusal wref_var_layers_count =refused
+write-refusal wref_var_arm_length_ok =wrote
+write-refusal wref_var_arm_length =refused
+write-refusal wref_var_u64_wide bytes
+write-refusal wref_var_u64_ok bytes
+write-refusal wref_var_count_ok =wrote
+write-refusal-json jref_var_arm_length_ok =wrote
+write-refusal-json jref_var_arm_length =refused
