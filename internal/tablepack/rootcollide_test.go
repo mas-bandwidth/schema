@@ -63,39 +63,34 @@ func TestUnpackTreeNameOverlapStaysReversible(t *testing.T) {
 	}
 }
 
-// An unpack into a destination that already holds an earlier tree — an
-// earlier tool's or an earlier schema's — is an upgrade, and the names there
-// may differ from the new names only in case: an old expanded `player.json`
-// where the new whole root is `Player.json`, or an old `Score.json` where the
-// new field file is `score.json`. Whatever the filesystem folds, the
-// destination ends holding exactly the new tree, spelled as written, and it
-// packs back to the new save's bytes.
+// An unpack into a destination that already holds an earlier tree is an
+// upgrade, and an old name may differ from a new one only in case: an old
+// expanded `player.json` where the new whole root is `Player.json`, an old
+// `Score.json` where the new field file is `score.json`. Where the filesystem
+// folds case the old entry IS the new name: the destination ends holding the
+// new tree, spelled as written, and it packs back to the new save's bytes.
+// Where it does not, an entry that only folds to a field's name names no field
+// (docs/SPEC-TABLES.md §17.3) and stays where it is.
 func TestUnpackOverAnEarlierTreeIsTheNewTree(t *testing.T) {
+	folds := foldsCase(t)
 	for _, tc := range []struct {
 		name, schema, text string
 		before             map[string]string
-		want               string
+		want, wantExact    string // the tree on a folding / an exact filesystem
 	}{
 		{
 			"expanded player.json, then the whole root Player.json",
 			"package probe\ntable Player { a int32 | json = \"player\"\n score int32 }\n",
 			`{"player": 7, "score": 3}`,
 			map[string]string{"player.json": "7\n", "score.json": "3\n"},
-			"Player.json",
-		},
-		{
-			"the whole root PLAYER.JSON, then expanded field files",
-			"package probe\ntable Player { level int32\n score int32 }\n",
-			`{"level": 7, "score": 3}`,
-			map[string]string{"PLAYER.JSON": "{\"level\": 1, \"score\": 1}\n"},
-			"level.json score.json",
+			"Player.json", "Player.json",
 		},
 		{
 			"Score.json, then score.json",
 			"package probe\ntable Player { level int32\n score int32 }\n",
 			`{"level": 7, "score": 3}`,
 			map[string]string{"Score.json": "9\n", "level.json": "1\n"},
-			"level.json score.json",
+			"level.json score.json", "Score.json level.json score.json",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -106,12 +101,111 @@ func TestUnpackOverAnEarlierTreeIsTheNewTree(t *testing.T) {
 				}
 			}
 			c, u, save := packText(t, tc.schema, tc.text)
-			unpackRepack(t, c, u, save, out)
-			if got := entries(t, out); got != tc.want {
-				t.Fatalf("the destination holds %q, want %q", got, tc.want)
+			want := tc.wantExact
+			if folds {
+				want = tc.want
+			}
+			if !folds && want != tc.want {
+				// the unowned entry stays, and pack names it rather than merge it
+				if _, err := c.Unpack(u, "Player", save, out); err != nil {
+					t.Fatalf("expanded unpack: %v", err)
+				}
+				if _, _, _, err := c.Pack(u, "Player", out); err == nil {
+					t.Fatal("pack merged an entry that names no field")
+				}
+			} else {
+				unpackRepack(t, c, u, save, out)
+			}
+			if got := entries(t, out); got != want {
+				t.Fatalf("the destination holds %q, want %q", got, want)
 			}
 		})
 	}
+}
+
+// An entry that stands where the unpack writes and names no field the schema
+// owns at that level is never deleted (docs/SPEC-TABLES.md §17.3): the unpack
+// is refused by naming it, before anything is written, at each of the four
+// levels — the whole root's file, a field's file, an enum-keyed array's
+// directory, and a variant's file inside it.
+func TestUnpackNeverDeletesAnEntryNamingNoField(t *testing.T) {
+	const keyed = "package probe\nenum Team { Red, Blue }\ntable Player { level int32\n scores [Team]int32 }\n"
+	for _, tc := range []struct {
+		name, schema, text string
+		dirs               []string // directories made first
+		files              map[string]string
+		blocker            string
+	}{
+		{
+			"the whole root's file",
+			"package probe\ntable Player { level int32 | json = \"Player\"\n score int32 }\n",
+			`{"Player": 7, "score": 3}`,
+			[]string{"Player.json"}, map[string]string{"Player.json/notes.txt": "mine\n"},
+			"Player.json",
+		},
+		{
+			"a field's file",
+			"package probe\ntable Player { level int32\n score int32 }\n",
+			`{"level": 7, "score": 3}`,
+			[]string{"level.json"}, map[string]string{"level.json/notes.txt": "mine\n"},
+			"level.json",
+		},
+		{
+			"an enum-keyed array's directory",
+			keyed,
+			`{"level": 7, "scores": {"Red": 1, "Blue": 2}}`,
+			nil, map[string]string{"scores": "mine\n"},
+			"scores",
+		},
+		{
+			"a variant's file",
+			keyed,
+			`{"level": 7, "scores": {"Red": 1, "Blue": 2}}`,
+			[]string{"scores", "scores/Red.json"}, map[string]string{"scores/Red.json/notes.txt": "mine\n"},
+			"Red.json",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out := t.TempDir()
+			for _, d := range tc.dirs {
+				if err := os.MkdirAll(filepath.Join(out, d), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for name, data := range tc.files {
+				if err := os.WriteFile(filepath.Join(out, name), []byte(data), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			before := entries(t, out)
+			c, u, save := packText(t, tc.schema, tc.text)
+			_, err := c.Unpack(u, "Player", save, out)
+			if err == nil || !strings.Contains(err.Error(), tc.blocker+" is in the way") {
+				t.Fatalf("unpack must refuse by naming %s: %v", tc.blocker, err)
+			}
+			for name, data := range tc.files {
+				got, err := os.ReadFile(filepath.Join(out, name))
+				if err != nil || string(got) != data {
+					t.Fatalf("%s did not survive the refused unpack: %q %v", name, got, err)
+				}
+			}
+			if after := entries(t, out); after != before {
+				t.Fatalf("a refused unpack wrote: %q then %q", before, after)
+			}
+		})
+	}
+}
+
+// foldsCase reports whether the test's temporary filesystem folds case, as
+// APFS does by default and ext4 does not.
+func foldsCase(t *testing.T) bool {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "probe"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := os.Stat(filepath.Join(dir, "PROBE"))
+	return err == nil
 }
 
 // packText loads one schema and packs one root text of Player.
