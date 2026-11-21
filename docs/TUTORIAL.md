@@ -61,11 +61,10 @@ schema v3.0.2-0.20261121143246-5d412ca41943 (go1.26.10)
 That builds the head of `main`, where every release is tagged, and needs no
 `make`, no language toolchains, no runtime checkouts and no generation. The
 version is Go's module version, ending in the commit it was built from. Use
-`@main` until the first release after v3.0.1 is tagged, and `@latest` from
-then on: the tags v3.0.0 and v3.0.1 were made while the module path still
-ended in `/v2`, so Go cannot resolve them. The README's "Install and build"
-section also lists the prebuilt binaries each release carries, from the first
-release after v3.0.1 on.
+`@latest`, which resolves v3.0.3 or later, or `@main`: the tags v3.0.0,
+v3.0.1 and v3.0.2 were made while the module path still ended in `/v2`, so
+Go cannot resolve them. The README's "Install and build" section also lists
+the prebuilt binaries each release carries, from v3.0.2 on.
 
 Or clone the repository and build, for a binary stamped with `git describe`:
 

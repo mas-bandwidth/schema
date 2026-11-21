@@ -186,12 +186,12 @@ var Fixups = []Fixup{
 		File: "docs/VERSIONING.md",
 		Old:  "`TableElemKind`) is wire law and therefore frozen within a major.\n",
 		New: "`TableElemKind`) is wire law and therefore frozen within a major. The\n" +
-			"module path is `github.com/mas-bandwidth/schema/v3` from the first release\n" +
-			"after 3.0.1. The tags v3.0.0 and v3.0.1 carry a go.mod that says `/v2`, so\n" +
+			"module path is `github.com/mas-bandwidth/schema/v3` from v3.0.3. The tags\n" +
+			"v3.0.0, v3.0.1 and v3.0.2 carry a go.mod that says `/v2`, so\n" +
 			"Go cannot resolve them under either path. A pin made on a promotion tag\n" +
 			"before the move resolves as a `v2.5.1-0.<date>-<hash>` pseudo-version\n" +
 			"under the old path, `" + DefaultFrom + "`.\n",
-		Marker: "The module path is `github.com/mas-bandwidth/schema/v3` from the first release after 3.0.1.",
+		Marker: "The module path is `github.com/mas-bandwidth/schema/v3` from v3.0.3.",
 	},
 	{
 		File:   "docs/USAGE.md",

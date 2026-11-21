@@ -946,8 +946,8 @@ parser, checker and the per-language emitters, carries no promise and may
 change in any release. In `ir`, the table-wire kind vocabulary (the
 `TableKind*` constants and `TableScalarKind` / `TableFieldKind` /
 `TableElemKind`) is wire law and therefore frozen within a major. The
-module path is `github.com/mas-bandwidth/schema/v3` from the first release
-after 3.0.1. The tags v3.0.0 and v3.0.1 carry a go.mod that says `/v2`, so
+module path is `github.com/mas-bandwidth/schema/v3` from v3.0.3. The tags
+v3.0.0, v3.0.1 and v3.0.2 carry a go.mod that says `/v2`, so
 Go cannot resolve them under either path. A pin made on a promotion tag
 before the move resolves as a `v2.5.1-0.<date>-<hash>` pseudo-version
 under the old path, `github.com/mas-bandwidth/schema/v2`.
