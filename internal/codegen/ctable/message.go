@@ -58,7 +58,7 @@ func tableMessageForm(u *ir.Unit, hasProbes bool) string {
 	var b strings.Builder
 	b.WriteString("#ifndef SCHEMA_" + strings.ToUpper(u.Package) + "_TABLE_MESSAGE\n#define SCHEMA_" + strings.ToUpper(u.Package) + "_TABLE_MESSAGE\n")
 	entries, announcement := tablewire.MessageVocabulary(u), tablewire.Announce(u)
-	fmt.Fprintf(&b, "enum { kTableMessageRefBitsHere=%d, kTableMessageEntriesHere=%d, kTableAnnounceBytes=%d, kTableMessageBatchMax=256 };\n", ir.TableMessageRefBits(len(entries)), len(entries), len(announcement))
+	fmt.Fprintf(&b, "enum { kTableMessageRefBitsHere=%d, kTableMessageEntriesHere=%d, kTableAnnounceBytes=%d, kTableMessageBatchMax=256, kTableMessageSeenRefs=8192 };\n", ir.TableMessageRefBits(len(entries)), len(entries), len(announcement))
 	b.WriteString("static const uint8_t kTableAnnounce[kTableAnnounceBytes]={")
 	for _, v := range announcement {
 		fmt.Fprintf(&b, "0x%02x,", v)
@@ -296,7 +296,12 @@ static SCHEMA_UNUSED int table_announce_once(TableVocabulary * v,const uint8_t *
  while(at<words_bytes){
   TableMessageEntry * entry;int64_t i,began=at;
   if(v->entries==NULL){report->refused=1;report->reason=SCHEMA_TABLE_NO_VOCABULARY;goto refused;}
-  if(count>=v->max_entries){report->refused=1;report->reason=SCHEMA_TABLE_VOCABULARY_TOO_LARGE;goto refused;}
+  /* THE ENTRY BOUND IS THE CALLER'S CAPACITY (§3.3), and a body's seen set
+     covers every reference up to kTableMessageSeenRefs. An entry is at least
+     nine bytes, so the 64 KiB byte bound holds at most 7281 and the second
+     test never binds a conforming announcement; it keeps every resolved
+     reference tracked even where a caller raised max_bytes. */
+  if(count>=v->max_entries||count>=kTableMessageSeenRefs){report->refused=1;report->reason=SCHEMA_TABLE_VOCABULARY_TOO_LARGE;goto refused;}
   entry=&v->entries[count];touched=count+1;
   if(!table_message_entry_read(words,words_bytes,&at,entry))goto damaged;
   if(entry->id==UINT64_C(0xfffffffffffffffe)||entry->id==UINT64_C(0xfffffffffffffffd))goto damaged;

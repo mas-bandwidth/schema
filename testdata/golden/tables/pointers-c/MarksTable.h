@@ -4423,7 +4423,7 @@ static SCHEMA_UNUSED void graphdemo_table_cook_header(uint8_t * raw,uint64_t ver
 #endif
 #ifndef SCHEMA_GRAPHDEMO_TABLE_MESSAGE
 #define SCHEMA_GRAPHDEMO_TABLE_MESSAGE
-enum { GRAPHDEMO_K_TABLE_MESSAGE_REF_BITS_HERE=3, GRAPHDEMO_K_TABLE_MESSAGE_ENTRIES_HERE=6, GRAPHDEMO_K_TABLE_ANNOUNCE_BYTES=109, GRAPHDEMO_K_TABLE_MESSAGE_BATCH_MAX=256 };
+enum { GRAPHDEMO_K_TABLE_MESSAGE_REF_BITS_HERE=3, GRAPHDEMO_K_TABLE_MESSAGE_ENTRIES_HERE=6, GRAPHDEMO_K_TABLE_ANNOUNCE_BYTES=109, GRAPHDEMO_K_TABLE_MESSAGE_BATCH_MAX=256, GRAPHDEMO_K_TABLE_MESSAGE_SEEN_REFS=8192 };
 static const uint8_t GRAPHDEMO_K_TABLE_ANNOUNCE[GRAPHDEMO_K_TABLE_ANNOUNCE_BYTES]={0x01,0x01,0x09,0xae,0xf1,0xbf,0xc2,0xd1,0xc8,0x0d,0x2e,0x02,0x0e,0x46,0x06,0x44,0x03,0x0b,0xc7,0x98,0xe2,0x17,0x25,0x80,0x04,0x01,0x0a,0x00,0xf3,0xa4,0x48,0x44,0x19,0xab,0xd7,0x56,0x0c,0x08,0x66,0xfe,0x00,0x64,0x91,0x60,0x80,0x7a,0x04,0x01,0x03,0x00,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0x10,0x3c,0x13,0xe2,0x5c,0x19,0x8a,0x3b,0x82,0x04,0x01,0x0a,0x00,0xbb,0xf0,0x0c,0x9b,0xcc,0xfb,0x2d,0x73,0x04,0x01,0x0e,0x00,0x00,0xfe,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfd,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,};
 static const uint8_t GRAPHDEMO_K_TABLE_MESSAGE_ENTRY_KEY_BYTES[]={0x03,0x0b,0xc7,0x98,0xe2,0x17,0x25,0x80,0x04,0x01,0x0a,0x00,0xf3,0xa4,0x48,0x44,0x19,0xab,0xd7,0x56,0x0c,0x08,0x66,0xfe,0x00,0x64,0x91,0x60,0x80,0x7a,0x04,0x01,0x03,0x00,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0x10,0x3c,0x13,0xe2,0x5c,0x19,0x8a,0x3b,0x82,0x04,0x01,0x0a,0x00,0xbb,0xf0,0x0c,0x9b,0xcc,0xfb,0x2d,0x73,0x04,0x01,0x0e,0x00,};
 static const int32_t GRAPHDEMO_K_TABLE_MESSAGE_ENTRY_KEY_OFFSETS[]={0,12,22,34,44,56,68,};
@@ -4796,7 +4796,12 @@ static SCHEMA_UNUSED int graphdemo_table_announce_once(graphdemo_table_vocabular
   report->reason=SCHEMA_GRAPHDEMO_TABLE_NO_VOCABULARY;
   goto refused;
   }
-  if(count>=v->max_entries){report->refused=1;
+  /* THE ENTRY BOUND IS THE CALLER'S CAPACITY (§3.3), and a body's seen set
+     covers every reference up to kTableMessageSeenRefs. An entry is at least
+     nine bytes, so the 64 KiB byte bound holds at most 7281 and the second
+     test never binds a conforming announcement; it keeps every resolved
+     reference tracked even where a caller raised max_bytes. */
+  if(count>=v->max_entries||count>=GRAPHDEMO_K_TABLE_MESSAGE_SEEN_REFS){report->refused=1;
   report->reason=SCHEMA_GRAPHDEMO_TABLE_VOCABULARY_TOO_LARGE;
   goto refused;
   }
@@ -4865,6 +4870,17 @@ static SCHEMA_UNUSED int graphdemo_table_message_ref(graphdemo_table_message_rea
  if(name) return (*entry)->id<UINT64_C(0xfffffffffffffffd) && (*entry)->kind==0;
  return 1;
 }
+/* THE BODY'S SEEN SET (§3.3): one bit a vocabulary reference, sized for every
+   reference an accepted announcement can resolve, so the caller's declared
+   capacity is the bound and 4096 (the default, and the form-1 id table's own
+   cap) is not. A reference outside it, or one named twice, answers 0. */
+static SCHEMA_UNUSED int graphdemo_table_message_seen_once(uint8_t * seen,int64_t ref)
+{
+ if(ref<1||ref>GRAPHDEMO_K_TABLE_MESSAGE_SEEN_REFS)return 0;
+ if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))return 0;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
+ return 1;
+}
 static SCHEMA_UNUSED graphdemo_table_message_entry_t graphdemo_table_message_element(const graphdemo_table_message_entry_t * e)
 {
  graphdemo_table_message_entry_t v;
@@ -4902,8 +4918,8 @@ static SCHEMA_UNUSED int graphdemo_table_message_skip(graphdemo_table_message_re
    path. Past 128 is damaged, and 128 itself still skips. */
 static SCHEMA_UNUSED int graphdemo_table_message_skip_body(graphdemo_table_message_reader_t * r)
 {
- uint8_t seen[512];
- /* one bit a reference, as the file form's body skip keeps */
+ uint8_t seen[GRAPHDEMO_K_TABLE_MESSAGE_SEEN_REFS/8];
+ /* one bit a vocabulary reference */
  if(r->skip_depth>128)return 0;
  memset(seen,0,sizeof(seen));
  for(;;) {const graphdemo_table_message_entry_t * entry;
@@ -4911,12 +4927,9 @@ static SCHEMA_UNUSED int graphdemo_table_message_skip_body(graphdemo_table_messa
   if(!graphdemo_table_message_ref(r,&entry,0))return 0;
   if(entry==NULL)return 1;
   if(entry->id>=UINT64_C(0xfffffffffffffffd))return 0;
-  /* A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or skipped. The
-     reference is bounded where the file form bounds it, so the bitset fits. */
+  /* A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or skipped. */
   ref=entry-r->vocabulary->entries+1;
-  if(ref<1||ref>4096)return 0;
-  if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))return 0;
-  seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
+  if(!graphdemo_table_message_seen_once(seen,ref))return 0;
   if(!graphdemo_table_message_skip(r,entry))return 0;
  }
 }
@@ -4984,7 +4997,7 @@ static SCHEMA_UNUSED int graphdemo_table_message_skip(graphdemo_table_message_re
     return graphdemo_table_message_skip_run(r,n,(int64_t)elem.value_bits);
   }
   {
-   uint8_t seen[512];
+   uint8_t seen[GRAPHDEMO_K_TABLE_MESSAGE_SEEN_REFS/8];
    int64_t before;
    /* A KEYED ARRAY'S KEY NAMES A DECLARED NO-PAYLOAD ENTRY AND NO KEY
       REPEATS (§3.2, §3.3): the name reference and the bitset hold it. */
@@ -4994,9 +5007,7 @@ static SCHEMA_UNUSED int graphdemo_table_message_skip(graphdemo_table_message_re
      int64_t key;
      if(!graphdemo_table_message_ref(r,&entry,1)||entry==NULL)return 0;
      key=entry-r->vocabulary->entries+1;
-     if(key<1||key>4096)return 0;
-     if(seen[(key-1)>>3]&(uint8_t)(1u<<((key-1)&7)))return 0;
-     seen[(key-1)>>3]|=(uint8_t)(1u<<((key-1)&7));
+     if(!graphdemo_table_message_seen_once(seen,key))return 0;
     }
     before=r->bits.offset;
     /* A SCALAR ELEMENT IS NOT A STRUCTURAL PAYLOAD (§3.3), so it is held to
@@ -6144,7 +6155,7 @@ static SCHEMA_UNUSED int64_t graphdemo_tally_save_messages(const graphdemo_tally
 }
 static SCHEMA_UNUSED int graphdemo_tally_load_message_body(graphdemo_table_message_reader_t * r,graphdemo_tally_t * value)
 {
- uint8_t seen[512];
+ uint8_t seen[GRAPHDEMO_K_TABLE_MESSAGE_SEEN_REFS/8];
  int same_build=r->vocabulary->build_version==SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE;
  int32_t last_field_ord=0;
  (void)last_field_ord;
@@ -6156,9 +6167,7 @@ static SCHEMA_UNUSED int graphdemo_tally_load_message_body(graphdemo_table_messa
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
  ref=entry-r->vocabulary->entries+1;
- if(ref<1||ref>4096)goto damaged;
- if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))goto damaged;
- seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
+ if(!graphdemo_table_message_seen_once(seen,ref))goto damaged;
  switch(entry->id){
  case UINT64_C(0x732dfbcc9b0cf0bb): {
  int same_shape=same_build && entry->own_slot==6;
