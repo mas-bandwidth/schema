@@ -450,6 +450,17 @@ func Judge(old, new Compiler, trees []string, m *Manifest, jsonDir, work string,
 					note = fmt.Sprintf("; a run stopped early, so only what both wrote compares (previous: %s, new: %s)", firstLineOr(oerr), firstLineOr(nerr))
 				}
 				if n == 0 {
+					// NO NAME IN COMMON IS NOT NOTHING TO SAY. When both runs
+					// completed, CompareTrees has already found the first
+					// file one side wrote and the other did not: a pin the
+					// previous release writes and this compiler does not (or
+					// writes under another name) is a difference under an
+					// equal id, and it is recorded before the driver is
+					// listed as uncompared. A run that stopped early reports
+					// no listing difference, so that case is as it was.
+					if diff != nil {
+						add(&r.Differences, fmt.Sprintf("packet wire, unit %s, instance %s", unitNames(d.Units), diff))
+					}
 					add(&r.Uncompared, fmt.Sprintf("packet %s: the two runs wrote no encoding in common%s", d.Name, note))
 					return
 				}
