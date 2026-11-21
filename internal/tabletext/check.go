@@ -27,6 +27,19 @@ func (e *InvalidValue) Error() string {
 	return "invalid_value: " + e.Field + ": " + e.Detail
 }
 
+// FloatInRange reports whether v lies inside a compressed float's declared
+// range AS EVERY RUNTIME HOLDS IT: the value and both ends narrowed to float32
+// (docs/SPEC.md §4.6, the triple is evaluated "at float32, where every runtime
+// evaluates" it; docs/SPEC-TABLES.md §3.3). An end that float32 cannot spell
+// exactly, such as max = 0.1 or min = 0.7, is the float32 nearest it, so the
+// value at that end is in range and one float32 step past it is not. Every
+// engine path that holds a compressed float's range asks this one test: the
+// writer check, the file and fixed reads, and the text read.
+func FloatInRange(f *ir.Field, v float64) bool {
+	x := float32(v)
+	return x >= float32(f.FMin) && x <= float32(f.FMax)
+}
+
 // CheckValue walks a value as the TEXT writer walks it (absent optionals and
 // elided guards are not written, so they are not asked; a deprecated field IS
 // written at its line, docs/SPEC-TABLES.md §16.14 W3, and the text read holds
@@ -233,7 +246,7 @@ func (m *Model) checkCell(name string, cell *Cell, f *ir.Field, seen *checkWalk,
 		if kind == ir.TableKindF32 && math.Abs(cell.F) > math.MaxFloat32 {
 			return bad("%v past float32", cell.F)
 		}
-		if f.HasFloatRange && (cell.F < f.FMin || cell.F > f.FMax) {
+		if f.HasFloatRange && !FloatInRange(f, cell.F) {
 			return bad("%v off its range [%v, %v]", cell.F, f.FMin, f.FMax)
 		}
 		return nil
