@@ -1,0 +1,6 @@
+package claims
+
+table Fleet
+{
+    ships map[int32]int32
+}
