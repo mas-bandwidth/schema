@@ -103,13 +103,17 @@ $(LUA_FUZZ_GENERATED)/.stamp: bin/schema $(LUA_FUZZ_CORPUS) $(LUA_FUZZ_SCRIPT) $
 .PHONY: schema-lua-nightly-fuzz
 schema-lua-nightly-fuzz: schema-lua-fuzz-toolchain $(LUA_FUZZ_GENERATED)/.stamp
 	@rm -rf $(LUA_FUZZ_FINDINGS) && mkdir -p $(LUA_FUZZ_FINDINGS)
-	$(LUA_FUZZ_LUA) $(LUA_FUZZ_SCRIPT) --generated $(LUA_FUZZ_GENERATED) \
+	@set +e; $(LUA_FUZZ_LUA) $(LUA_FUZZ_SCRIPT) --generated $(LUA_FUZZ_GENERATED) \
 		--corpus $(LUA_FUZZ_CORPUS) --seconds $(LUA_FUZZ_SECONDS) \
-		--seed $(LUA_FUZZ_SEED) --findings $(LUA_FUZZ_FINDINGS) $(LUA_FUZZ_SEEDS)
-	@if [ -n "$$(ls $(LUA_FUZZ_FINDINGS)/*.case 2>/dev/null)" ]; then \
+		--seed $(LUA_FUZZ_SEED) --findings $(LUA_FUZZ_FINDINGS) $(LUA_FUZZ_SEEDS) > build/lua-fuzz/nightly.log 2>&1; \
+	status=$$?; cat build/lua-fuzz/nightly.log; \
+	if [ -n "$$(ls $(LUA_FUZZ_FINDINGS)/*.case 2>/dev/null)" ]; then \
 		echo "schema-lua-nightly-fuzz: findings under $(LUA_FUZZ_FINDINGS):"; \
 		ls $(LUA_FUZZ_FINDINGS)/*.case; exit 1; \
-	fi
+	fi; \
+	[ $$status -eq 0 ] || { echo "schema-lua-nightly-fuzz: the harness exited $$status"; exit 1; }; \
+	grep -qE '^lua fuzz: targets=[1-9][0-9]* iterations=[1-9][0-9]* failures=0 seed=$(LUA_FUZZ_SEED)$$' build/lua-fuzz/nightly.log || \
+		{ echo "schema-lua-nightly-fuzz: no line reports targets and iterations above zero at seed $(LUA_FUZZ_SEED); the run fuzzed nothing"; exit 1; }
 
 # THE PLANTED-BAD-PATTERN CONTROL. A scratch copy of the generated tree has the
 # short-file guard in load.lua's open removed (`if blen < 9` becomes

@@ -702,6 +702,8 @@ luau-nightly-fuzz: luau-nightly-fuzz-toolchain $(LUAU_NF_HOST) build/schema-luau
 	fi; \
 	if ! grep -q '^FUZZ-DONE|' $(LUAU_NF)/fuzz.log; then \
 		echo "luau nightly fuzz: no FUZZ-DONE line (hang, assert or a dead harness)"; exit 1; fi; \
+	if ! grep -qE '^FUZZ-DONE\|iterations=[1-9][0-9]*\|findings=0\|hits=[0-9]+\|roots=[1-9][0-9]*\|seeds=[1-9][0-9]*\|' $(LUAU_NF)/fuzz.log; then \
+		echo "luau nightly fuzz: the FUZZ-DONE line does not report iterations, roots and seeds above zero; a run of nothing is not clean"; exit 1; fi; \
 	echo "luau nightly fuzz: clean ($$(grep '^FUZZ-DONE|' $(LUAU_NF)/fuzz.log))"
 
 luau-nightly-fuzz-replay: luau-nightly-fuzz-replay-controls luau-nightly-fuzz-toolchain build/schema-luau-nightly $(LUAU_NF_GEN)/.stamp $(LUAU_NF)/manifest.luau $(LUAU_NF)/fuzz.luau $(LUAU_NF)/replay.luau $(LUAU_NF)/gen-replay.sh
