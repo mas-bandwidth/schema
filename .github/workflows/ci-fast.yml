@@ -236,8 +236,16 @@ jobs:
           # every package compiles, so a diff that touches one of them gets the
           # whole of both selections. The direction of the error is deliberate:
           # shared schema fixtures select every leg that consumes them.
+          #
+          # EVERY TEST OF THE LIST READS A HERE-STRING, never `echo "$files" |
+          # grep -q`: on a list larger than the pipe buffer grep -q exits at its
+          # first match, echo dies of SIGPIPE, pipefail fails the pipeline and
+          # the `if` takes the false branch. PR 4445 (3011 files touching go.mod,
+          # Makefile, compiler/ and ir/) came out `broad=no` that way, run
+          # 44914934707. GNU grep with stdout on /dev/null stops early too, so
+          # `| grep ... >/dev/null` is the same defect. TestNoWorkflowDecidesOnEchoIntoGrep.
           broad=no
-          if echo "$files" | grep -qE '^(ir/|compiler/|tables/|Makefile$|go\.mod$|docs/FIXED-FORM-|internal/codegen/cpp|internal/codegen/ccommon|test/cpp|test/tables/.*\.schema$|\.github/workflows/ci-fast\.yml$)'; then
+          if grep -qE '^(ir/|compiler/|tables/|Makefile$|go\.mod$|docs/FIXED-FORM-|internal/codegen/cpp|internal/codegen/ccommon|test/cpp|test/tables/.*\.schema$|\.github/workflows/ci-fast\.yml$)' <<<"$files"; then
             broad=yes
           fi
 
@@ -335,22 +343,29 @@ jobs:
           # a workflow edit). The packages follow the diff alone, the legs the
           # diff touched and not the broad rule's every leg, and the whole
           # suite runs nightly in ci-full.yml.
+          #
+          # PER DIRECTORY, NOT PER FILE. One awk pass names the directories of
+          # the changed .go files, each once, in the order the diff first names
+          # it; the module walk is parameter expansion. A dirname fork per file
+          # and per parent cost 1m43s of a two-minute job on PR 4445's 2980 .go
+          # files in about 130 directories (run 44914934707).
           {
             packages=""
-            for f in $files; do
-              case "$f" in
-                *.go) d=$(dirname "$f"); [ -d "$d" ] || continue
-                      case "/$d/" in */testdata/*) continue ;; esac
-                      m=$d; while [ "$m" != . ]; do [ -f "$m/go.mod" ] && continue 2; m=$(dirname "$m"); done
-                      case " $packages " in *" ./$d "*) ;; *) packages="$packages ./$d" ;; esac ;;
-              esac
+            go_dirs=$(awk '/\.go$/ { d = $0; if (!sub(/\/[^\/]*$/, "", d)) d = "."; if (!(d in seen)) { seen[d] = 1; print d } }' <<<"$files")
+            for d in $go_dirs; do
+              [ -d "$d" ] || continue
+              case "/$d/" in */testdata/*) continue ;; esac
+              m=$d; while [ "$m" != . ]; do [ -f "$m/go.mod" ] && continue 2; case "$m" in */*) m=${m%/*} ;; *) m=. ;; esac; done
+              case " $packages " in *" ./$d "*) ;; *) packages="$packages ./$d" ;; esac
             done
             # THE RUNTIME-ONLY DIFF. A language's emitted runtime (a .lua, .moo,
             # .nut, .goose, .rs ... file under its codegen directory) is tested
             # by that language's two Go packages, the type surface and the
             # table surface, and the .go rule above names neither. Every
             # language, leg row or not, gets both for a non-Go file under
-            # either of its codegen directories.
+            # either of its codegen directories. Each codegen directory is
+            # resolved once: a later file under it adds nothing new.
+            seen_codegen=""
             for f in $files; do
               case "$f" in
                 *.go) continue ;;
@@ -358,6 +373,8 @@ jobs:
                 *) continue ;;
               esac
               dir=${f#internal/codegen/}; dir=${dir%%/*}
+              case " $seen_codegen " in *" $dir "*) continue ;; esac
+              seen_codegen="$seen_codegen $dir"
               case "$dir" in
                 csharp|cstable) pair="csharp cstable" ;;
                 golang|gotable) pair="golang gotable" ;;
@@ -394,7 +411,7 @@ jobs:
                 squirrel) paths='^(internal/codegen/squirrel/|internal/codegen/squirreltable/|make/squirrel[.-]|tables/cards/squirrel/|test/conformance/squirrel/)' ;;
                 *)        paths="^(internal/codegen/$lang/|internal/codegen/${lang}table/|make/$lang[.-]|test/conformance/$lang/)" ;;
               esac
-              if echo "$files" | grep -E "$paths" >/dev/null; then
+              if grep -qE "$paths" <<<"$files"; then
                 for p in ./internal/codegen/$lang ./internal/codegen/${lang}table; do
                   case " $packages " in *" $p "*) ;; *) packages="$packages $p" ;; esac
                 done
@@ -406,7 +423,7 @@ jobs:
             # them here. Without this a golden-only diff selected nothing and an
             # emitter-only diff selected its own packages, and a stale golden
             # waited for the merge's full run to say so.
-            if echo "$files" | grep -qE '^(internal/codegen/|testdata/golden/|examples/|examples128/|docs/USAGE\.md$)'; then
+            if grep -qE '^(internal/codegen/|testdata/golden/|examples/|examples128/|docs/USAGE\.md$)' <<<"$files"; then
               case " $packages " in *" ./internal/goldens "*) ;; *) packages="$packages ./internal/goldens" ;; esac
             fi
             # THE LANGUAGE LIST. ./internal/languages holds every page that
@@ -415,7 +432,7 @@ jobs:
             # page that states the list, a target file, or the checker's table.
             # Without this a docs-only diff selected nothing and a list could
             # drift until the nightly run.
-            if echo "$files" | grep -qE '^(README\.md|docs/(SPEC|CONTRIBUTING|FAQ|USAGE)\.md|compiler/target_[a-z0-9]+\.go|internal/check/check\.go)$'; then
+            if grep -qE '^(README\.md|docs/(SPEC|CONTRIBUTING|FAQ|USAGE)\.md|compiler/target_[a-z0-9]+\.go|internal/check/check\.go)$' <<<"$files"; then
               case " $packages " in *" ./internal/languages "*) ;; *) packages="$packages ./internal/languages" ;; esac
             fi
             # THE FUZZ SEED CORPORA & FRONT-END INVARIANTS. ./internal/fuzz
@@ -423,7 +440,7 @@ jobs:
             # FuzzPipelineTwoFiles, FuzzFormatIdempotent, FuzzGeneratedCompiles,
             # FuzzTableFrontEnd) plus all-target front-end/codegen regression
             # tests, split by tools/gotestrows into parallel < 45 s rows.
-            if echo "$files" | grep -qE '^(compiler/|ir/|internal/check/|internal/parser/|internal/codegen/)'; then
+            if grep -qE '^(compiler/|ir/|internal/check/|internal/parser/|internal/codegen/)' <<<"$files"; then
               case " $packages " in *" ./internal/fuzz "*) ;; *) packages="$packages ./internal/fuzz" ;; esac
             fi
             # THE WORKFLOW & READINESS AUDITORS. Packages outside ./internal/ci
@@ -432,7 +449,7 @@ jobs:
             # test/conformance/nightly-readiness: pythontable and rubytable
             # readiness checks, negativecontrols matrix checks, and
             # slowgatescan shard coverage (~8 s total in one go-test-touched row).
-            if echo "$files" | grep -qE '^(\.github/(workflows|actions)/|test/conformance/nightly-readiness$)'; then
+            if grep -qE '^(\.github/(workflows|actions)/|test/conformance/nightly-readiness$)' <<<"$files"; then
               for p in ./internal/codegen/pythontable ./internal/codegen/rubytable ./tools/negativecontrols ./tools/slowgatescan; do
                 case " $packages " in *" $p "*) ;; *) packages="$packages $p" ;; esac
               done
@@ -456,17 +473,17 @@ jobs:
           # selected above for examples/ and examples128/) and no fixed-form
           # leg, so they are not the broad rule.
           corpus=no
-          if echo "$files" | grep -E '^(examples/|examples128/|bench/corpus/|test/guard/.*\.schema$)' >/dev/null; then
+          if grep -qE '^(examples/|examples128/|bench/corpus/|test/guard/.*\.schema$)' <<<"$files"; then
             corpus=yes
           fi
           lints=""
-          if [ "$broad" = yes ] || [ "$corpus" = yes ] || case " $legs " in *" dart "*) true ;; *) false ;; esac || echo "$files" | grep 'schema-dart-generated-strict-analyze' >/dev/null; then
+          if [ "$broad" = yes ] || [ "$corpus" = yes ] || case " $legs " in *" dart "*) true ;; *) false ;; esac || grep -q 'schema-dart-generated-strict-analyze' <<<"$files"; then
             lints="$lints dart"
           fi
-          if [ "$broad" = yes ] || [ "$corpus" = yes ] || case " $legs " in *" go "*) true ;; *) false ;; esac || echo "$files" | grep 'schema-go-generated-golangci-lint' >/dev/null; then
+          if [ "$broad" = yes ] || [ "$corpus" = yes ] || case " $legs " in *" go "*) true ;; *) false ;; esac || grep -q 'schema-go-generated-golangci-lint' <<<"$files"; then
             lints="$lints go"
           fi
-          if [ "$broad" = yes ] || [ "$corpus" = yes ] || echo "$files" | grep -E '^(internal/codegen/lua/|internal/codegen/luatable/|make/lua[.-]|test/conformance/lua/)|schema-lua-generated-luacheck' >/dev/null; then
+          if [ "$broad" = yes ] || [ "$corpus" = yes ] || grep -qE '^(internal/codegen/lua/|internal/codegen/luatable/|make/lua[.-]|test/conformance/lua/)|schema-lua-generated-luacheck' <<<"$files"; then
             lints="$lints lua"
           fi
           lints_json=$(printf '%s' "$lints" | xargs -n1 2>/dev/null | awk 'BEGIN{printf "["} NF{printf "%s\"%s\"", (n++?",":""), $1} END{printf "]"}')
@@ -483,7 +500,7 @@ jobs:
           # edits (ir/, compiler/, Makefile, ci-fast.yml) and > 4 language
           # sweeps bounded so a single push never dispatches 18 * 3 = 54 jobs.
           shared_broad=no
-          if echo "$files" | grep -qE '^(ir/|compiler/|tables/|Makefile$|go\.mod$|docs/FIXED-FORM-|test/tables/.*\.schema$|\.github/workflows/ci-fast\.yml$)'; then
+          if grep -qE '^(ir/|compiler/|tables/|Makefile$|go\.mod$|docs/FIXED-FORM-|test/tables/.*\.schema$|\.github/workflows/ci-fast\.yml$)' <<<"$files"; then
             shared_broad=yes
           fi
           verify_count=$(printf '%s' "$touched_legs" | xargs -n1 2>/dev/null | sort -u | wc -l | tr -d ' ')
@@ -498,7 +515,7 @@ jobs:
           # diff touches codegen, IR, compiler, tables, any .schema file, or
           # generated/ itself.
           codegen_touched=no
-          if echo "$files" | grep -qE '^(internal/codegen/|ir/|compiler/|tables/|generated/|test/generated-tree/)|\.schema$'; then
+          if grep -qE '^(internal/codegen/|ir/|compiler/|tables/|generated/|test/generated-tree/)|\.schema$' <<<"$files"; then
             codegen_touched=yes
           fi
 
@@ -508,17 +525,17 @@ jobs:
           #   js     — tables-js-clean
           #   rust   — tables-rust-clippy
           schema_corpus=no
-          if [ "$corpus" = yes ] || echo "$files" | grep -qE '^(ir/$|tables/|test/tables/|testdata/conformance/feature-witnesses/)'; then
+          if [ "$corpus" = yes ] || grep -qE '^(ir/$|tables/|test/tables/|testdata/conformance/feature-witnesses/)' <<<"$files"; then
             schema_corpus=yes
           fi
           clean_legs=""
-          if [ "$schema_corpus" = yes ] || case " $touched_legs " in *" c "*) true ;; *) false ;; esac || echo "$files" | grep -qE '^(make/c-format-allow\.txt$|\.clang-format$)'; then
+          if [ "$schema_corpus" = yes ] || case " $touched_legs " in *" c "*) true ;; *) false ;; esac || grep -qE '^(make/c-format-allow\.txt$|\.clang-format$)' <<<"$files"; then
             clean_legs="$clean_legs c"
           fi
-          if [ "$schema_corpus" = yes ] || case " $touched_legs " in *" elixir "*) true ;; *) false ;; esac || echo "$files" | grep -qE '^test/elixir-tables/'; then
+          if [ "$schema_corpus" = yes ] || case " $touched_legs " in *" elixir "*) true ;; *) false ;; esac || grep -qE '^test/elixir-tables/' <<<"$files"; then
             clean_legs="$clean_legs elixir"
           fi
-          if [ "$schema_corpus" = yes ] || case " $touched_legs " in *" js "*) true ;; *) false ;; esac || echo "$files" | grep -qE '^eslint\.config\.mjs$'; then
+          if [ "$schema_corpus" = yes ] || case " $touched_legs " in *" js "*) true ;; *) false ;; esac || grep -qE '^eslint\.config\.mjs$' <<<"$files"; then
             clean_legs="$clean_legs js"
           fi
           if [ "$schema_corpus" = yes ] || case " $touched_legs " in *" rust "*) true ;; *) false ;; esac; then
