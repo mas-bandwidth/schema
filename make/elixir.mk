@@ -110,14 +110,18 @@ generated/bench/elixir/.stamp: bin/schema $(SCHEMAS_BENCH)
 # units (§6.6); widelist (tables/widelist) a 128-bit list whose node aligns
 # sixteen (§2.8, the cook's node alignment rule). The variable-class surfaces (wire,
 # json-read, json-write, report) answer every carried instance; a construct
-# outside the class writes <case>.absent rather than a wrong answer.
+# outside the class writes <case>.absent rather than a wrong answer. Each name
+# is listed once (internal/ci TestElixirTableUnitsAreListedOnce): the
+# generation below runs the units side by side, each removing its directory
+# first, so a name listed twice raced itself and failed the row with "openat
+# TableRuntime.ex: no such file or directory" (#4530, tblrt1).
 ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	blockdemo:tables/block blockhome:tables/blockhome \
 	tblv1:test/tables/V1.schema tblv2:test/tables/V2.schema \
 	tblw1:test/tables/W1.schema tblw2:test/tables/W2.schema \
 	tblr1:test/tables/R1.schema tblr2:test/tables/R2.schema \
 	tblp1:test/tables/P1.schema \
-	tblp3:test/tables/P3.schema tblrt1:test/tables/RT1.schema jsonkeys:test/tables/JsonKeys.schema \
+	tblp3:test/tables/P3.schema jsonkeys:test/tables/JsonKeys.schema \
 	blobdemo:tables/blobs listdemo:tables/lists tblp2:test/tables/P2.schema \
 	mapdemo:tables/maps messagedemo:tables/messages scalars:tables/scalars \
 	vocabdemo:tables/vocab vocab9demo:tables/vocab9 backenddemo:tables/backend \

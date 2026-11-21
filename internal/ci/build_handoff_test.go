@@ -571,7 +571,7 @@ func TestCConformanceObjectsHandoffThroughMake(t *testing.T) {
 		if err != nil {
 			t.Fatalf("lang-clean (c %s) compiled nothing: %v", spec, err)
 		}
-		for _, s := range strings.Fields(string(log)) {
+		for s := range strings.FieldsSeq(string(log)) {
 			compiled[s]++
 		}
 		if err := os.CopyFS(filepath.Join(shards, fmt.Sprintf("handoff-c-%d", i)), os.DirFS(filepath.Join(dir, "build", "c-conformance-handoff"))); err != nil {

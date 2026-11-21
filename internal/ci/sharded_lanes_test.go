@@ -348,7 +348,7 @@ func TestElixirEbinRebuildsWhenItsBuildChanges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("make elixir-table-shard-units: %v\n%s", err, all)
 	}
-	for _, u := range strings.Fields(all) {
+	for u := range strings.FieldsSeq(all) {
 		p := filepath.Join(dir, "build", "tables-generated-elixir", u)
 		if err := os.MkdirAll(p, 0o755); err != nil {
 			t.Fatal(err)
