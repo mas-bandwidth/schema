@@ -35,9 +35,10 @@ func TestMkdirAllIsUndoneWithTheTransaction(t *testing.T) {
 		if err := txn.MkdirAll(out); err != nil {
 			t.Fatal(err)
 		}
+		// planted first: a view binds the faults in place when it is made
+		fault := FailNthRename(out, 2)
 		txn.Write(filepath.Join(out, "a.txt"), []byte("a"), 0o644)
 		txn.Write(filepath.Join(out, "b.txt"), []byte("b"), 0o644)
-		fault := FailNthRename(out, 2)
 		err := txn.Commit()
 		fault.Remove()
 		if !errors.Is(err, ErrInjected) {

@@ -270,7 +270,7 @@ func TestUnpackBatchWritesEveryTreeOrNone(t *testing.T) {
 			}
 			before := listing(t, b.work)
 			err := b.unpack(x, y)
-			if err == nil || !strings.Contains(err.Error(), filepath.Join("second", "level.json")) {
+			if err == nil || !strings.Contains(err.Error(), y) || !strings.Contains(err.Error(), "level.json") {
 				t.Fatalf("the obstructed second tree was not diagnosed by name: %v", err)
 			}
 			if firstExists {
