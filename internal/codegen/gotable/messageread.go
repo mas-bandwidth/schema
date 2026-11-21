@@ -52,7 +52,7 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 		}
 		g.pf("}\n")
 	}
-	g.pf("default:if ownBuild{r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};r.Report.Unknown++;if !tableMessageSkip(&r.Bits,r.Vocabulary,r.IndexBits,entry,0){r.Report.Refuse(TableRefuseWireDamaged,\"\");return false}\n}}}\n")
+	g.pf("default:if ownBuild{r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};r.Report.Unknown++;if !tableMessageSkip(&r.Bits,r.Vocabulary,r.IndexBits,entry,0,true){r.Report.Refuse(TableRefuseWireDamaged,\"\");return false}\n}}}\n")
 	// THE MESSAGE FORM IS FIXED TABLES ONLY (docs/SPEC-TABLES.md §3.3): the
 	// batch is a fixed root's, and a variable table has no message form.
 	if !st.IsTable || !st.FixedDeclared || st.IsMapEntry() {
@@ -133,7 +133,7 @@ func (g *tableGen) emitMessageReadValue(f *ir.Field, expr, entry, ind string, el
 			}
 			g.pf("if widened {r.Report.Widened++}\n}\n")
 		}
-		g.pf("default:%s.Type=%sTypeNone;r.Report.Unknown++;if !tableMessageSkip(&r.Bits,r.Vocabulary,r.IndexBits,%s,0){%s}\n}}}\n", expr, un.Name, arm, bad)
+		g.pf("default:%s.Type=%sTypeNone;r.Report.Unknown++;if !tableMessageSkip(&r.Bits,r.Vocabulary,r.IndexBits,%s,0,false){%s}\n}}}\n", expr, un.Name, arm, bad)
 		g.pf("}\n")
 	case enumRef(f) != nil:
 		def := fieldDefaultExpr(f)
@@ -244,9 +244,11 @@ func (g *tableGen) emitMessageReadArray(f *ir.Field, expr, entry, ind string) {
 	}
 	g.pf("element:=TableMessageEntry{Shape:%s.Element};_ = element;\n", entry)
 	if f.KeyEnum != "" {
-		// A KEYED SLOT TWICE IN ONE ARRAY IS DAMAGE (docs/SPEC-TABLES.md §3.2, §3.3)
-		g.pf("var seenKeys [64]uint64;seenKey:=seenKeys[:0];lastKey:=0\n")
-		g.pf("for range n {ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok{%s};id,ok:=r.Vocabulary.Name(ref);if !ok{%s};if slices.Contains(seenKey,id){%s};seenKey=append(seenKey,id);var key %s;known:=key.TableEnumValue(id);var scratch %s;p:=&scratch;if known {p=&base[int(key)-1];if exact&&int(key)<=lastKey{%s};lastKey=int(key)}else{r.Report.Unknown++}\n", bad, bad, bad, f.KeyEnum, g.storageElementName(f), bad)
+		// A KEYED SLOT TWICE IN ONE ARRAY IS DAMAGE (docs/SPEC-TABLES.md §3.2,
+		// §3.3): the array is a set on the vocabulary's stack, and each key is
+		// one look at its entry (tableMessageSetRepeat), never a scan
+		g.pf("keys:=tableMessageSetOpen(r.Vocabulary);if keys<0{%s};lastKey:=0\n", bad)
+		g.pf("for range n {ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok{%s};id,ok:=r.Vocabulary.Name(ref);if !ok{%s};if tableMessageSetRepeat(r.Vocabulary,keys,ref){%s};var key %s;known:=key.TableEnumValue(id);var scratch %s;p:=&scratch;if known {p=&base[int(key)-1];if exact&&int(key)<=lastKey{%s};lastKey=int(key)}else{r.Report.Unknown++}\n", bad, bad, bad, f.KeyEnum, g.storageElementName(f), bad)
 		if sink != "" {
 			g.pf("%s:=true\n", sink)
 		}
@@ -255,7 +257,7 @@ func (g *tableGen) emitMessageReadArray(f *ir.Field, expr, entry, ind string) {
 		if sink != "" {
 			g.pf("if exact&&known&&%s{%s}\n", sink, bad)
 		}
-		g.pf("}\n")
+		g.pf("};tableMessageSetClose(r.Vocabulary)\n")
 	} else {
 		over := "TableRefuseCountOverBound"
 		if f.Type.Kind == ir.TBytes {
