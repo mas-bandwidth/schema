@@ -23,45 +23,56 @@ import (
 
 const cookMagic = uint64(0x4B4F4F434D484353)
 
-// goCookReason is Go's generated Open check (docs/SPEC-TABLES.md §7.4) over
-// the same header bytes and build facts, so the expected verdict in this test
-// comes from schema-go's own constants and order rather than from a literal
-// written beside a damaged file.
-func goCookReason(cook []byte, build uint64, rootSize, rootAlign int64) string {
+// goCookVerdict is Go's generated Open check (docs/SPEC-TABLES.md §7.4) over
+// the same header bytes and build facts, folded to its VERDICT: "ok", or
+// "refused" when any clause refuses. The clauses come from schema-go's own
+// constants rather than from a literal written beside a damaged file; which
+// clause fires first, and the reason it names, is per-language diagnostic
+// detail, never compared across targets (docs/rulings.json
+// refusal-verdict-only).
+func goCookVerdict(cook []byte, build uint64, rootSize, rootAlign int64) string {
+	const refused = "refused"
 	if cook == nil {
-		return "unaligned_base"
+		return refused // an unaligned base
 	}
 	n := int64(len(cook))
 	if n < tablecook.HeaderBytes {
-		return "truncated"
+		return refused // truncated
 	}
 	le := binary.LittleEndian
-	if le.Uint64(cook[0:]) != cookMagic {
-		if le.Uint64(cook[0:]) == 0x5343484D434F4F4B {
-			return "foreign_order"
-		}
-		return "not_a_cook"
-	}
-	if le.Uint64(cook[16:]) != 1 {
-		return "not_a_cook"
+	if le.Uint64(cook[0:]) != cookMagic || le.Uint64(cook[16:]) != 1 {
+		return refused // not a cook in this order
 	}
 	if le.Uint64(cook[8:]) != build {
-		return "wrong_build_version"
+		return refused // another build version
 	}
 	if le.Uint64(cook[48:]) != 0 || le.Uint64(cook[56:]) != 0 {
-		return "reserved_not_zero"
+		return refused // reserved words not zero
 	}
 	alignment := int64(le.Uint64(cook[40:]))
 	if alignment < 8 || alignment > 64 || alignment&(alignment-1) != 0 || alignment%rootAlign != 0 {
-		return "bad_alignment"
+		return refused // a bad alignment
 	}
 	dataOffset := (int64(64) + alignment - 1) &^ (alignment - 1)
 	dataLength := int64(le.Uint64(cook[24:]))
 	attribution := int64(le.Uint64(cook[32:]))
 	if dataOffset > n || dataLength > n-dataOffset || attribution != n-dataOffset-dataLength || dataLength < rootSize {
-		return "truncated"
+		return refused // truncated
 	}
 	return "ok"
+}
+
+// cookVerdict folds a cook probe's answer to its verdict: "refused <why>" is
+// "refused" (the why is the Luau leg's diagnostic), "opened" is "ok", and
+// anything else (a DIFF) is itself.
+func cookVerdict(out string) string {
+	if strings.HasPrefix(out, "refused ") {
+		return "refused"
+	}
+	if out == "opened" {
+		return "ok"
+	}
+	return out
 }
 
 // cookDump is the canonical value dump the probe compares: every key sorted
@@ -124,11 +135,11 @@ func cookProbe(g *generatedUnit, rootName, build string, nilBase bool) string {
 	b.WriteString("local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }\n")
 	if nilBase {
 		b.WriteString("local opened, why = cook.open(root, nil, build)\n")
-		b.WriteString("if opened ~= nil then print(\"opened\") else print(why) end\nreturn\n")
+		b.WriteString("if opened ~= nil then print(\"opened\") else print(\"refused \" .. tostring(why)) end\nreturn\n")
 	} else {
 		b.WriteString("local wire = load.loadWalk(root, inputs.wire, report)\n")
 		b.WriteString("local opened, why = cook.open(root, inputs.cook, build)\n")
-		b.WriteString("if opened == nil then print(why) return end\n")
+		b.WriteString("if opened == nil then print(\"refused \" .. tostring(why)) return end\n")
 		b.WriteString("local a, z = dump(wire), dump(opened)\n")
 		b.WriteString("if a ~= z then\n")
 		b.WriteString("  local i, n = 1, math.min(#a, #z)\n")
@@ -197,7 +208,8 @@ func runProbe(t *testing.T, g *generatedUnit, main string, inputs map[string][]b
 // generate (internal/tablecook, the Go writer), opens it through schema_cookread.luau
 // and requires the value to equal Go's variable-form read of the same wire
 // (internal/tabletext + internal/tablewire). One damaged file per §7.4
-// refusal answers the name Go's own check computes. The build version is
+// clause answers the verdict Go's own check computes; the reason the Luau open
+// names is diagnostic only (docs/rulings.json refusal-verdict-only). The build version is
 // passed to Open because the Luau table surface does not yet export it.
 func TestLuauCookOpenAgreesWithGo(t *testing.T) {
 	t.Parallel()
@@ -248,40 +260,104 @@ func TestLuauCookOpenAgreesWithGo(t *testing.T) {
 				return
 			}
 			damaged = true
-			layout := ir.RecordLayout(cu.u, table)
-			cases := []struct {
-				name    string
-				bytes   []byte
-				nilBase bool
-			}{
-				{"not_a_cook", mutate(cooked, func(b []byte) { b[0] ^= 1 }), false},
-				{"foreign_order", mutate(cooked, func(b []byte) { binary.BigEndian.PutUint64(b, cookMagic) }), false},
-				// THE HALF NO HARNESS SURFACE FORGES (docs/PORTING.md I7): the
-				// magic intact and the order word saying the other order
-				{"order_word", mutate(cooked, func(b []byte) { binary.LittleEndian.PutUint64(b[16:], 2) }), false},
-				{"wrong_build_version", mutate(cooked, func(b []byte) { b[8] ^= 1 }), false},
-				{"reserved_not_zero", mutate(cooked, func(b []byte) { b[48] = 1 }), false},
-				{"bad_alignment", mutate(cooked, func(b []byte) { b[40] = 3 }), false},
-				{"truncated", cooked[:len(cooked)-1], false},
-				{"unaligned_base", nil, true},
-			}
-			for _, tc := range cases {
-				t.Run("damaged/"+tc.name, func(t *testing.T) {
-					want := goCookReason(tc.bytes, cu.build, layout.Size, layout.Align)
-					got := runProbe(t, cu.g, cookProbe(cu.g, rootName, build, tc.nilBase), map[string][]byte{"wire": wire, "cook": tc.bytes})
-					if got != want {
-						t.Errorf("%s: got %s, want %s", tc.name, got, want)
-						return
-					}
-					refused++
-				})
-			}
+			refused += cookDamaged(t, cu, cu.g, rootName, wire, cooked, nil)
 		})
 	}
 	// Every probe shells out to the pinned Luau interpreter and skips when the
 	// slow half is off, so the floor holds only where the probes ran.
 	if slowtest.Enabled() && (compared == 0 || refused == 0) {
 		t.Fatalf("comparisons %d, refusals %d", compared, refused)
+	}
+}
+
+// cookDamaged opens one damaged file per §7.4 clause through g's
+// schema_cookread.luau and holds each to Go's verdict; it returns how many
+// agreed, and records every answer in answers when it is not nil.
+func cookDamaged(t *testing.T, cu *cookUnit, g *generatedUnit, rootName string, wire, cooked []byte, answers map[string]string) int {
+	t.Helper()
+	build := fmt.Sprintf("0x%016x", cu.build)
+	layout := ir.RecordLayout(cu.u, cu.m.Lookup(rootName))
+	cases := []struct {
+		name    string
+		bytes   []byte
+		nilBase bool
+	}{
+		{"not_a_cook", mutate(cooked, func(b []byte) { b[0] ^= 1 }), false},
+		{"foreign_order", mutate(cooked, func(b []byte) { binary.BigEndian.PutUint64(b, cookMagic) }), false},
+		// THE HALF NO HARNESS SURFACE FORGES (docs/PORTING.md I7): the
+		// magic intact and the order word saying the other order
+		{"order_word", mutate(cooked, func(b []byte) { binary.LittleEndian.PutUint64(b[16:], 2) }), false},
+		{"wrong_build_version", mutate(cooked, func(b []byte) { b[8] ^= 1 }), false},
+		{"reserved_not_zero", mutate(cooked, func(b []byte) { b[48] = 1 }), false},
+		{"bad_alignment", mutate(cooked, func(b []byte) { b[40] = 3 }), false},
+		{"truncated", cooked[:len(cooked)-1], false},
+		{"unaligned_base", nil, true},
+	}
+	agreed := 0
+	for _, tc := range cases {
+		t.Run("damaged/"+tc.name, func(t *testing.T) {
+			want := goCookVerdict(tc.bytes, cu.build, layout.Size, layout.Align)
+			got := runProbe(t, g, cookProbe(g, rootName, build, tc.nilBase), map[string][]byte{"wire": wire, "cook": tc.bytes})
+			if answers != nil {
+				answers[tc.name] = got
+			}
+			if cookVerdict(got) != want {
+				t.Errorf("%s: got %s, want Go's verdict %s (the reason is diagnostic only)", tc.name, got, want)
+				return
+			}
+			agreed++
+		})
+	}
+	return agreed
+}
+
+// cookReasonNames is every reason name schema_cookread.luau's open answers.
+var cookReasonNames = []string{"unaligned_base", "truncated", "foreign_order", "not_a_cook",
+	"wrong_build_version", "reserved_not_zero", "bad_alignment", "bad_layout"}
+
+// TestLuauCookOpenReasonIsDiagnostic renames every reason the Luau cook open
+// names: each damaged file's verdict is unchanged, so every case must still
+// agree with Go (docs/rulings.json refusal-verdict-only).
+func TestLuauCookOpenReasonIsDiagnostic(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the pinned Luau interpreter")
+	units, _ := readManifest(t)
+	cu := buildCookUnit(t, units, "tabledemo")
+	table := cu.m.Lookup("RootConfig")
+	if table == nil {
+		t.Fatal("tabledemo has no RootConfig")
+	}
+	wire, err := os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "wire", "root_full.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst := cu.m.New(table)
+	var report tabletext.Report
+	if _, err := tablewire.Decode(cu.m, inst, wire, &report); err != nil {
+		t.Fatal(err)
+	}
+	cooked, err := tablecook.Cook(cu.m, inst, tablecook.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(cu.g.files["schema_cookread.luau"])
+	for _, name := range cookReasonNames {
+		q := `"` + name + `"`
+		if !strings.Contains(src, q) {
+			t.Fatalf("NEGATIVE CONTROL FAILED: schema_cookread.luau no longer names %s", q)
+		}
+		src = strings.ReplaceAll(src, q, `"renamed_by_the_plant_`+name+`"`)
+	}
+	planted := &generatedUnit{dir: cu.g.dir, loaded: true, files: maps.Clone(cu.g.files)}
+	planted.files["schema_cookread.luau"] = []byte(src)
+	answers := map[string]string{}
+	if n := cookDamaged(t, cu, planted, "RootConfig", wire, cooked, answers); n != len(answers) {
+		t.Errorf("%d of %d damaged cooks agree with Go's verdict under a reason-only rename", n, len(answers))
+	}
+	for name, got := range answers {
+		if !strings.Contains(got, "renamed_by_the_plant_") {
+			t.Errorf("NEGATIVE CONTROL FAILED: the rename did not reach %s (%q)", name, got)
+		}
 	}
 }
 

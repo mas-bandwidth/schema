@@ -54,12 +54,12 @@ func TestLuauCookOrderWordNegativeControl(t *testing.T) {
 	layout := ir.RecordLayout(cu.u, table)
 	build := fmt.Sprintf("0x%016x", cu.build)
 	forged := mutate(cooked, func(b []byte) { binary.LittleEndian.PutUint64(b[16:], 2) })
-	want := goCookReason(forged, cu.build, layout.Size, layout.Align)
-	if want != "not_a_cook" {
-		t.Fatalf("Go answers %s for the forged order word, not not_a_cook", want)
+	want := goCookVerdict(forged, cu.build, layout.Size, layout.Align)
+	if want != "refused" {
+		t.Fatalf("Go answers %s for the forged order word, not refused", want)
 	}
 	probe := cookProbe(cu.g, "RootConfig", build, false)
-	if got := runProbe(t, cu.g, probe, map[string][]byte{"wire": wire, "cook": forged}); got != want {
+	if got := runProbe(t, cu.g, probe, map[string][]byte{"wire": wire, "cook": forged}); cookVerdict(got) != want {
 		t.Fatalf("the unpatched runtime answers %s for the forged order word, want %s", got, want)
 	}
 	patched := &generatedUnit{dir: cu.g.dir, loaded: true, files: maps.Clone(cu.g.files)}
@@ -68,8 +68,8 @@ func TestLuauCookOrderWordNegativeControl(t *testing.T) {
 		t.Fatalf("the patched runtime no longer opens the clean cook (%s), so the control would go red for the wrong reason", got)
 	}
 	got := runProbe(t, patched, probe, map[string][]byte{"wire": wire, "cook": forged})
-	if got == want {
+	if cookVerdict(got) == want {
 		t.Fatalf("with the order-word test removed the forged cook still answers %s: the gate cannot see the order word", got)
 	}
-	t.Logf("order_word went red with the test removed: answered %q, Go answers %q", got, want)
+	t.Logf("order_word went red with the test removed: answered %q, Go's verdict %q", got, want)
 }
