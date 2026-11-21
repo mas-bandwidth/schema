@@ -203,8 +203,10 @@ func Sums(archives map[string][]byte) string {
 	return b.String()
 }
 
-// Run builds and packs every target into out.
-func Run(version, out string, targets []Target, mtime time.Time, stderr io.Writer) error {
+// Run builds and packs every target into out. The scratch directory the
+// binaries are built in is removed on the way out, and a failure to remove it
+// is returned when nothing else failed first.
+func Run(version, out string, targets []Target, mtime time.Time, stderr io.Writer) (err error) {
 	if err := CheckVersion(version); err != nil {
 		return err
 	}
@@ -223,7 +225,11 @@ func Run(version, out string, targets []Target, mtime time.Time, stderr io.Write
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(bin)
+	defer func() {
+		if rmErr := os.RemoveAll(bin); rmErr != nil && err == nil {
+			err = rmErr
+		}
+	}()
 
 	archives := map[string][]byte{}
 	for _, t := range targets {
@@ -248,7 +254,9 @@ func Run(version, out string, targets []Target, mtime time.Time, stderr io.Write
 			return err
 		}
 		archives[name] = buf.Bytes()
-		fmt.Fprintf(stderr, "releasebin: %s\n", name)
+		if _, err := fmt.Fprintf(stderr, "releasebin: %s\n", name); err != nil {
+			return err
+		}
 	}
 	return os.WriteFile(filepath.Join(out, "SHA256SUMS"), []byte(Sums(archives)), 0o644)
 }
