@@ -219,7 +219,11 @@ func luaBuildVersionGate(t *testing.T, mutate func(*testing.T, map[string][]byte
 func TestLuaBuildVersionFunctional(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "Lua 5.4 functional build-version probe")
-	for clause, whys := range luaBuildVersionGate(t, nil) {
+	allLuaBuildVersionGate := luaBuildVersionGate(t, nil)
+	if len(allLuaBuildVersionGate) == 0 {
+		t.Fatal("luaBuildVersionGate(t, nil) is empty: the loop below would check nothing")
+	}
+	for clause, whys := range allLuaBuildVersionGate {
 		for _, why := range whys {
 			t.Errorf("%s: %s", clause, why)
 		}
@@ -298,6 +302,9 @@ func TestLuaBuildVersionNegativeControlFunctional(t *testing.T) {
 				if len(red[clause]) == 0 {
 					t.Errorf("%s: the %s clause stayed green", ctl.name, clause)
 				}
+			}
+			if len(red) == 0 {
+				t.Fatal("red is empty: the loop below would check nothing")
 			}
 			for clause, whys := range red {
 				if !strings.Contains(strings.Join(ctl.red, " "), clause) {

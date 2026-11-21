@@ -180,7 +180,7 @@ func makeGraph(t *testing.T, root string, replace map[string]string) map[string]
 	// has printed the database
 	cmd := exec.Command("make", "--no-print-directory", "-f", makefile, "-p", "-q", "conformance-leg-inputs-no-such-target")
 	cmd.Dir = root
-	out, _ := cmd.Output()
+	out := makeQueryOutput(t, cmd)
 	graph := map[string][]string{}
 	sc := bufio.NewScanner(strings.NewReader(string(out)))
 	sc.Buffer(make([]byte, 1<<20), 1<<26)

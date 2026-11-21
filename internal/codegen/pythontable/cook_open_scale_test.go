@@ -38,7 +38,11 @@ for n in (1 << 20, 100 << 20, 1 << 30):
             print(n, min(timings))
             view.release()
 `
-	for name, runner := range cookPins() {
+	allCookPins := cookPins()
+	if len(allCookPins) == 0 {
+		t.Fatal("cookPins() is empty: the loop below would check nothing")
+	}
+	for name, runner := range allCookPins {
 		dir := t.TempDir()
 		writeTree(t, dir, files)
 		out := string(runner(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe)}))

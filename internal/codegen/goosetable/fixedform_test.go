@@ -395,6 +395,9 @@ func TestGooseFixedFormRoundTripsEveryFixedRoot(t *testing.T) {
 		paths = append(paths, hits...)
 	}
 	var roots atomic.Int64
+	if len(paths) == 0 {
+		t.Fatal("paths is empty: the loop below would check nothing")
+	}
 	for _, path := range paths {
 		u, err := loadSchemaPaths([]string{path})
 		if err != nil {

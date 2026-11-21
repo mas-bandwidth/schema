@@ -159,7 +159,11 @@ fixed table Big
 	if ir.TableFixedEmitted(u, big) {
 		t.Error("R6: a table past the ceiling is a fixed-form root")
 	}
-	for _, r := range ir.TableFixedFormRoots(u) {
+	allTableFixedFormRoots := ir.TableFixedFormRoots(u)
+	if len(allTableFixedFormRoots) == 0 {
+		t.Fatal("ir.TableFixedFormRoots(u) is empty: the loop below would check nothing")
+	}
+	for _, r := range allTableFixedFormRoots {
 		if r.Name == "Big" {
 			t.Error("R6: TableFixedFormRoots keeps a table past the ceiling")
 		}
@@ -672,7 +676,11 @@ func t03GoR29(t *testing.T) {
 	if !found {
 		t.Error("R29: a body AT 65536 is not a fixed-form root")
 	}
-	for _, r := range ir.TableFixedFormRoots(past) {
+	allTableFixedFormRoots := ir.TableFixedFormRoots(past)
+	if len(allTableFixedFormRoots) == 0 {
+		t.Fatal("ir.TableFixedFormRoots(past) is empty: the loop below would check nothing")
+	}
+	for _, r := range allTableFixedFormRoots {
 		if r.Name == "Lineage" {
 			t.Error("R29: a body one past 65536 is still a fixed-form root")
 		}

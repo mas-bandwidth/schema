@@ -182,7 +182,15 @@ func TestKeyedArrayIndexingJava(t *testing.T) {
 
 	t.Parallel()
 	var javac, javaBin string
-	t.Run("jdk", func(t *testing.T) { javac, javaBin = javaTools(t) })
+	t.Run("jdk", func(t *testing.T) {
+		// javaTools skips this subtest when it finds no JDK; when it returns,
+		// it must have named both tools
+		jc, j := javaTools(t)
+		if jc == "" || j == "" {
+			t.Fatalf("javaTools returned without skipping and named no JDK: javac=%q java=%q", jc, j)
+		}
+		javac, javaBin = jc, j
+	})
 	if javac == "" {
 		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
 			t.Fatal("SCHEMA_REQUIRE_CORPUS is set and TestKeyedArrayIndexingJava found no JDK: set JAVAC and JAVA (make tables-java-keyed passes them)")

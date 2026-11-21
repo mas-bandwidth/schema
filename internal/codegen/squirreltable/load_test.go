@@ -242,8 +242,16 @@ func TestSquirrelTableLoadMatchesTheReports(t *testing.T) {
 				uPaths = append(uPaths, uf.Path)
 			}
 		}
-		if len(uPaths) > 0 {
-			if lock, lok, lerr := lockfile.Open(uPaths); lerr == nil && lok && lock != nil {
+		if len(uPaths) == 0 {
+			t.Fatalf("unit %s: the loaded unit names no source file, so its lock cannot be found", key)
+		}
+		{
+			// a unit with no lock has no lineage; a lock that does not open is a red
+			lock, lok, lerr := lockfile.Open(uPaths)
+			if lerr != nil {
+				t.Fatalf("unit %s: its lock did not open: %v", key, lerr)
+			}
+			if lok && lock != nil {
 				sqLineage = map[string][]squirreltable.FixedLineageEntry{}
 				for _, st := range ir.TableFixedRoots(u) {
 					for _, le := range lockfile.Lineage(lock, st.WireName()) {

@@ -217,11 +217,18 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 		covered[tc.refuser] = true
 	}
 	rseen := map[string]bool{}
-	for _, tc := range refusalTable(cases) {
+	allRefusalTable := refusalTable(cases)
+	if len(allRefusalTable) == 0 {
+		t.Fatal("refusalTable(cases) is empty: the loop below would check nothing")
+	}
+	for _, tc := range allRefusalTable {
 		if rseen[tc.refuser] {
 			t.Errorf("refusal row for refuser %q is registered twice", tc.refuser)
 		}
 		rseen[tc.refuser] = true
+	}
+	if len(leaves) == 0 {
+		t.Fatal("leaves is empty: the loop below would check nothing")
 	}
 	for _, name := range leaves {
 		if !covered[name] {
@@ -274,7 +281,11 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 		if _, err := c.Generate(oneSided, "squirrel", nil); err != nil {
 			t.Errorf("squirrel refused the one-sided integer range it carries: %v", err)
 		}
-		for _, target := range c.Targets() {
+		allTargets := c.Targets()
+		if len(allTargets) == 0 {
+			t.Fatal("c.Targets() is empty: the loop below would check nothing")
+		}
+		for _, target := range allTargets {
 			if carries(target, carryOneSidedRange) {
 				continue
 			}

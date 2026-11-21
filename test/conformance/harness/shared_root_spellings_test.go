@@ -145,6 +145,9 @@ func TestSharedReadableRootStructuralSpellings(t *testing.T) {
 			data = data[:len(data)-4]
 		}
 		shapes := rootStructuralSpellings(st, data)
+		if len(shapes) == 0 {
+			t.Fatal("shapes is empty: the loop below would check nothing")
+		}
 		for shape := range shapes {
 			if shape == "empty-node-table" || shape == "node-table-out-of-place" {
 				t.Errorf("%s (%s): %s", x.name, x.path, shape)

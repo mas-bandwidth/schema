@@ -83,6 +83,9 @@ func TestFixedDepthInsideTheBoundIsSilentAndEmitted(t *testing.T) {
 	if w := ir.TableFixedDepthBounds(u); len(w) != 0 {
 		t.Fatalf("a nesting inside the bound must say nothing: %v", w)
 	}
+	if len(warns) == 0 {
+		t.Fatal("warns is empty: the loop below would check nothing")
+	}
 	for _, w := range warns {
 		if strings.Contains(w, "depth bound") {
 			t.Errorf("the depth bound warned inside itself: %s", w)
@@ -146,6 +149,9 @@ func TestFixedDepthSaysNothingAboutAPlainTable(t *testing.T) {
 	u, warns := depthUnit(t, deepSchema("table", ir.TableFixedMaxDepth+8))
 	if w := ir.TableFixedDepthBounds(u); len(w) != 0 {
 		t.Fatalf("a variable table is not a fixed root: %v", w)
+	}
+	if len(warns) == 0 {
+		t.Fatal("warns is empty: the loop below would check nothing")
 	}
 	for _, w := range warns {
 		if strings.Contains(w, "depth bound") {
@@ -238,6 +244,9 @@ func TestFixedDepthInsideTheBoundEmitsOnAllNineLegs(t *testing.T) {
 	probe, warns := depthUnit(t, deepSchema("fixed table", 20))
 	if n := ir.TableFixedTypeDepth(probe.Tables["Deep"]); n > ir.TableFixedMaxDepth {
 		t.Fatalf("a 20-type chain must sit inside the bound; its layout nests %d", n)
+	}
+	if len(warns) == 0 {
+		t.Fatal("warns is empty: the loop below would check nothing")
 	}
 	for _, w := range warns {
 		if strings.Contains(w, "depth bound") {

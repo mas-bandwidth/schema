@@ -436,7 +436,11 @@ fixed table Root
 	t.Run("dart/R27", func(t *testing.T) {
 		t.Parallel()
 		corpus := fixedCorpus(t)
-		for file, records := range t12ManifestRows(t, corpus) {
+		allT12ManifestRows := t12ManifestRows(t, corpus)
+		if len(allT12ManifestRows) == 0 {
+			t.Fatal("t12ManifestRows(t, corpus) is empty: the loop below would check nothing")
+		}
+		for file, records := range allT12ManifestRows {
 			t.Run(file, func(t *testing.T) {
 				t.Parallel()
 				fixedCorpusRoundTrip(t, corpus, file, records)
@@ -450,7 +454,11 @@ fixed table Root
 	t.Run("dart/P3", func(t *testing.T) {
 		t.Parallel()
 		corpus := fixedCorpus(t)
-		for file := range t12ManifestRows(t, corpus) {
+		allT12ManifestRowss := t12ManifestRows(t, corpus)
+		if len(allT12ManifestRowss) == 0 {
+			t.Fatal("t12ManifestRows(t, corpus) is empty: the loop below would check nothing")
+		}
+		for file := range allT12ManifestRowss {
 			base := t12SchemaBase(file)
 			if base == "" {
 				continue

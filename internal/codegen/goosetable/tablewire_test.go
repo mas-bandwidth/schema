@@ -458,7 +458,11 @@ func TestGooseTableWireNegativeControl(t *testing.T) {
 			}
 			got := runWireSurfaces(t, c, surfaces, sabotage(t, ctl.file, ctl.from, ctl.to))
 			for _, s := range surfaces {
-				for _, name := range failing(c, got, s) {
+				allFailing := failing(c, got, s)
+				if len(allFailing) == 0 {
+					t.Fatal("failing(c, got, s) is empty: the loop below would check nothing")
+				}
+				for _, name := range allFailing {
 					if owns := ctl.owns[s]; owns == nil || !owns(name) {
 						t.Errorf("%s: %s / %s went red, and the break does not own it", ctl.name, s, name)
 					}

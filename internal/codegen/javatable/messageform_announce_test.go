@@ -191,7 +191,11 @@ func TestMessageFormAnnounceJava(t *testing.T) {
 
 	t.Run("2.1", func(t *testing.T) {
 		t.Parallel()
-		for _, row := range announceRows(t) {
+		allAnnounceRows := announceRows(t)
+		if len(allAnnounceRows) == 0 {
+			t.Fatal("announceRows(t) is empty: the loop below would check nothing")
+		}
+		for _, row := range allAnnounceRows {
 			t.Run(row.unit, func(t *testing.T) {
 				t.Parallel()
 				// "Announce and AnnounceMeasure are a compile-time constant byte
@@ -212,7 +216,11 @@ func TestMessageFormAnnounceJava(t *testing.T) {
 
 	t.Run("2.2", func(t *testing.T) {
 		t.Parallel()
-		for _, row := range announceRows(t) {
+		allAnnounceRowss := announceRows(t)
+		if len(allAnnounceRowss) == 0 {
+			t.Fatal("announceRows(t) is empty: the loop below would check nothing")
+		}
+		for _, row := range allAnnounceRowss {
 			t.Run(row.unit, func(t *testing.T) {
 				t.Parallel()
 				// "AnnounceRead accepts each of those files and fills

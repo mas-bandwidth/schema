@@ -99,6 +99,9 @@ func TestJavaMessageSaveFitsItsMeasure(t *testing.T) {
 			}
 
 			out := runMessageBatchProbe(t, u, body.String())
+			if len(ids) == 0 {
+				t.Fatal("ids is empty: the loop below would check nothing")
+			}
 			for _, id := range ids {
 				if line := messageBatchLine(out, id); line != "BATCH "+id+" ok" {
 					t.Errorf("%s: %s", uc.dir, line)

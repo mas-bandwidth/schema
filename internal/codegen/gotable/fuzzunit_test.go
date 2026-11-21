@@ -70,6 +70,9 @@ func TestGoFuzzUnitIsCurrent(t *testing.T) {
 	}
 	sort.Strings(names)
 	dir := filepath.Join(root, goFuzzUnitDir)
+	if len(names) == 0 {
+		t.Fatal("names is empty: the loop below would check nothing")
+	}
 	for _, name := range names {
 		committed, err := os.ReadFile(filepath.Join(dir, name))
 		if err != nil {

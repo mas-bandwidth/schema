@@ -69,6 +69,9 @@ func TestCTableRuntimeNamesAreClaimed(t *testing.T) {
 	}
 	sort.Strings(emittedNames)
 
+	if len(emittedNames) == 0 {
+		t.Fatal("emittedNames is empty: the loop below would check nothing")
+	}
 	for _, name := range emittedNames {
 		if !tablenames.Registered(name) {
 			t.Errorf("the C table emitter emits %s and internal/tablenames does not register it — "+
@@ -77,7 +80,11 @@ func TestCTableRuntimeNamesAreClaimed(t *testing.T) {
 				"so it claims nothing", name)
 		}
 	}
-	for _, name := range tablenames.DefinedBy(tablenames.C) {
+	allDefinedBy := tablenames.DefinedBy(tablenames.C)
+	if len(allDefinedBy) == 0 {
+		t.Fatal("tablenames.DefinedBy(tablenames.C) is empty: the loop below would check nothing")
+	}
+	for _, name := range allDefinedBy {
 		if !emitted[name] {
 			t.Errorf("internal/tablenames says the C backend defines %s, but nothing in the emitted "+
 				"C names it — drop the registration or fix the backend; a claim nothing needs takes "+
@@ -160,6 +167,9 @@ func TestCEmitsTableSources(t *testing.T) {
 	if err != nil {
 		t.Fatalf("--lang c: %v", err)
 	}
+	if len(without) == 0 {
+		t.Fatal("without is empty: the loop below would check nothing")
+	}
 	for name := range without {
 		if strings.HasSuffix(name, "Table.h") || strings.HasSuffix(name, "Table.c") ||
 			strings.HasSuffix(name, "Block.h") || strings.HasSuffix(name, "Block.c") {
@@ -171,6 +181,9 @@ func TestCEmitsTableSources(t *testing.T) {
 	packetOnly, err := generateCUnqualified(unitFromSource(t, packetSrc))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(packetOnly) == 0 {
+		t.Fatal("packetOnly is empty: the loop below would check nothing")
 	}
 	for name, body := range packetOnly {
 		if !strings.HasSuffix(name, ".h") {

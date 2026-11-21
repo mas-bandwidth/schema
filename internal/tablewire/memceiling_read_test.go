@@ -64,7 +64,11 @@ func TestTheOneReadAllocatesNothingAWireCommands(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, data := range oneVerdictMutants(rng, w, 400) {
+		allOneVerdictMutants := oneVerdictMutants(rng, w, 400)
+		if len(allOneVerdictMutants) == 0 {
+			t.Fatal("oneVerdictMutants(rng, w, 400) is empty: the loop below would check nothing")
+		}
+		for _, data := range allOneVerdictMutants {
 			var report tabletext.Report
 			if _, err := Decode(m, m.New(root), data, &report); err != nil && !ReadRefusal(err) {
 				t.Fatalf("a mutant answered an error that is not a refusal: %v", err)

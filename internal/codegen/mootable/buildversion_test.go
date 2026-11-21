@@ -185,7 +185,11 @@ func buildVersionGate(t *testing.T, mutate func(t *testing.T, files map[string][
 func TestMooBuildVersion(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted block and cook runtimes)")
 	t.Parallel()
-	for clause, whys := range buildVersionGate(t, nil) {
+	allBuildVersionGate := buildVersionGate(t, nil)
+	if len(allBuildVersionGate) == 0 {
+		t.Fatal("buildVersionGate(t, nil) is empty: the loop below would check nothing")
+	}
+	for clause, whys := range allBuildVersionGate {
 		for _, why := range whys {
 			t.Errorf("%s: %s", clause, why)
 		}
@@ -247,6 +251,9 @@ func TestMooBuildVersionNegativeControl(t *testing.T) {
 				if len(red[clause]) == 0 {
 					t.Errorf("%s: the %s clause stayed green", ctl.name, clause)
 				}
+			}
+			if len(red) == 0 {
+				t.Fatal("red is empty: the loop below would check nothing")
 			}
 			for clause, whys := range red {
 				if !strings.Contains(strings.Join(ctl.red, " "), clause) {

@@ -54,6 +54,9 @@ func TestLuauUndeclaredUnitKeepsTableAndRuntime(t *testing.T) {
 	// digest above, not by byte-equality.
 	tableRuntime := luautable.Runtime()
 	luauRuntime := luau.Runtime()
+	if len(tableRuntime) == 0 {
+		t.Fatal("tableRuntime is empty: the loop below would check nothing")
+	}
 	for name, src := range tableRuntime {
 		if containsName(undeclaredSchemaModules, name) {
 			continue
@@ -66,6 +69,9 @@ func TestLuauUndeclaredUnitKeepsTableAndRuntime(t *testing.T) {
 		if !bytes.Equal(got, src) {
 			t.Errorf("emitted %s differs from its source in luautable/runtime/", name)
 		}
+	}
+	if len(luauRuntime) == 0 {
+		t.Fatal("luauRuntime is empty: the loop below would check nothing")
 	}
 	for name, src := range luauRuntime {
 		got, ok := defaultUnit.files[name]

@@ -203,7 +203,11 @@ func generatedText(t *testing.T, src, target string) string {
 // count a fresh value can carry, since an array takes no specified default to
 // name another one.
 func TestCountedArrayIsBornAtItsDeclaredMinimum(t *testing.T) {
-	for _, target := range New().Targets() {
+	allTargets := New().Targets()
+	if len(allTargets) == 0 {
+		t.Fatal("New().Targets() is empty: the loop below would check nothing")
+	}
+	for _, target := range allTargets {
 		want, known := bornAtMinimum[target]
 		if !known {
 			t.Errorf("target %q has no birth claim here. A new backend landed and this gate was not told", target)
@@ -220,7 +224,11 @@ func TestCountedArrayIsBornAtItsDeclaredMinimum(t *testing.T) {
 // carries nothing; where the language has none the writer refuses in every
 // build, because forcing an idiom the language lacks would not be native.
 func TestCountOnWriteIsDebugOnlyWhereTheLanguageHasThatIdiom(t *testing.T) {
-	for _, target := range New().Targets() {
+	allTargets := New().Targets()
+	if len(allTargets) == 0 {
+		t.Fatal("New().Targets() is empty: the loop below would check nothing")
+	}
+	for _, target := range allTargets {
 		text := generatedText(t, countedAboveZero, target)
 
 		if writerStillOwed(t, target, text) {

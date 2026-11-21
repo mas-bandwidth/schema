@@ -207,6 +207,9 @@ func TestLuauLayoutAgreementNegativeControl(t *testing.T) {
 		planted.files["schema_cookread.luau"] = []byte(strings.Replace(src, from, to, 1))
 		bad, _ := layoutDisagreements(t, lu, luauLayoutLines(t, planted, lu.names))
 		turned += len(bad)
+		if len(bad) == 0 {
+			t.Fatal("bad is empty: the loop below would check nothing")
+		}
 		for _, b := range bad {
 			// every turned line is a record that holds a pointer-shaped slot
 			name := ""

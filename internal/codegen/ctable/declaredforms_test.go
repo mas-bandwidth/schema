@@ -65,6 +65,9 @@ fixed table Fox { x int32 }
 	if cHasFormFile(decl, "Block.h") || cHasFormFile(decl, "Block.c") {
 		t.Fatalf("a wire-only table emitted a block form file: %v", cKeysOf(decl))
 	}
+	if len(decl) == 0 {
+		t.Fatal("decl is empty: the loop below would check nothing")
+	}
 	for name, data := range decl {
 		src := string(data)
 		for _, forbidden := range []string{

@@ -46,6 +46,9 @@ func TestFixedLibrariesShowAndDeclareOnlyWhatTheyUse(t *testing.T) {
 				}
 			}
 			sort.Strings(names)
+			if len(names) == 0 {
+				t.Fatal("names is empty: the loop below would check nothing")
+			}
 			for _, n := range names {
 				t.Run(n, func(t *testing.T) {
 					t.Parallel()
@@ -90,7 +93,11 @@ func stripImports(src string) string {
 func assertNoUnusedShownName(t *testing.T, src, lib string) {
 	t.Helper()
 	body := stripImports(src)
-	for _, s := range shownNames(src) {
+	allShownNames := shownNames(src)
+	if len(allShownNames) == 0 {
+		t.Fatal("shownNames(src) is empty: the loop below would check nothing")
+	}
+	for _, s := range allShownNames {
 		re := regexp.MustCompile(`\b` + regexp.QuoteMeta(s) + `\b`)
 		if !re.MatchString(body) {
 			t.Errorf("%s: imports %s from a sibling with `show` but never uses it (unused_shown_name)", lib, s)

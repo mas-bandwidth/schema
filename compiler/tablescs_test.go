@@ -32,6 +32,9 @@ func TestCsEmitsTableSources(t *testing.T) {
 		if err != nil {
 			t.Fatalf("--lang %s: %v", target, err)
 		}
+		if len(without) == 0 {
+			t.Fatal("without is empty: the loop below would check nothing")
+		}
 		for name := range without {
 			if strings.HasSuffix(name, "Table.cs") {
 				t.Errorf("--lang %s emitted %s for a table-free unit", target, name)
@@ -331,6 +334,9 @@ func TestCsDescriptorsAreSafelyPublished(t *testing.T) {
 		}
 		if holders == 0 {
 			t.Fatal("the scan found no descriptor accessor at all — the scan, not the emitter, is what broke")
+		}
+		if len(files) == 0 {
+			t.Fatal("files is empty: the loop below would check nothing")
 		}
 		for name, data := range files {
 			text := string(data)

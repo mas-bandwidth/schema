@@ -52,7 +52,11 @@ func TestLockVariantDeprecateWidens(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "Lock.schema"), []byte(tierRow(deprecatedTier())), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	for _, err := range lockfile.Check(load(t, paths), paths) {
+	allCheck := lockfile.Check(load(t, paths), paths)
+	if len(allCheck) == 0 {
+		t.Fatal("lockfile.Check(load(t, paths), paths) is empty: the loop below would check nothing")
+	}
+	for _, err := range allCheck {
 		if !strings.Contains(err.Error(), "write it with `schema lock`") {
 			t.Fatalf("a deprecation is a widening the record must carry, not a break: %v", err)
 		}

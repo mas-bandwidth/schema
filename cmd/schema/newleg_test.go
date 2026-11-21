@@ -344,6 +344,9 @@ func TestScaffoldWritesTheLegFilesInForm(t *testing.T) {
 	if err := writeNewLeg(root, files, false); err != nil {
 		t.Fatalf("new-leg zig: %v", err)
 	}
+	if len(files) == 0 {
+		t.Fatal("files is empty: the loop below would check nothing")
+	}
 	for rel, want := range files {
 		at := filepath.Join(root, filepath.FromSlash(rel))
 		info, err := os.Lstat(at)

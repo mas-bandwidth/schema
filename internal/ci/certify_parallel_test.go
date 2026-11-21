@@ -1,6 +1,7 @@
 package ci
 
 import (
+	"errors"
 	"fmt"
 	"os/exec"
 	"regexp"
@@ -68,11 +69,25 @@ func registeredTestLegs(t *testing.T, root string) []string {
 	return nil
 }
 
+// makeQueryOutput runs a `make -q` query and answers what it printed. -q exits
+// non-zero when a target is out of date (or names nothing), and the database
+// is printed either way, so an exit status passes; a make that did not run at
+// all (not found, not startable) fails the test by name.
+func makeQueryOutput(t *testing.T, cmd *exec.Cmd) []byte {
+	t.Helper()
+	out, err := cmd.Output()
+	var exit *exec.ExitError
+	if err != nil && !errors.As(err, &exit) {
+		t.Fatalf("%s did not run: %v", strings.Join(cmd.Args, " "), err)
+	}
+	return out
+}
+
 func makeTestDatabasePrereqs(t *testing.T, root string) []string {
 	t.Helper()
 	cmd := exec.Command("make", "-qp")
 	cmd.Dir = root
-	out, _ := cmd.Output()
+	out := makeQueryOutput(t, cmd)
 	for line := range strings.SplitSeq(string(out), "\n") {
 		rest, ok := strings.CutPrefix(line, "test:")
 		if !ok {

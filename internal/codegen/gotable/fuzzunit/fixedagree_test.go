@@ -27,7 +27,10 @@ import (
 func TestGeneratedFixedAgreesWithEngine(t *testing.T) {
 	t.Parallel()
 	c := compiler.New()
-	paths, _ := compiler.GatherPaths([]string{"../../../../tables/examples"})
+	paths, err := compiler.GatherPaths([]string{"../../../../tables/examples"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	u, err := c.Load(paths)
 	if err != nil {
 		t.Fatal(err)
@@ -106,7 +109,11 @@ func TestGeneratedFixedAgreesWithEngine(t *testing.T) {
 						note(target.name+" engine-refuses-gen-json", fmt.Sprintf("js=%s %s", texts[0], r2.Reason))
 						continue
 					}
-					w2, _ := tablewire.EncodeFixed(m, i2)
+					w2, w2err := tablewire.EncodeFixed(m, i2)
+					if w2err != nil {
+						note(target.name+" engine-cannot-save-gen-json-value", fmt.Sprintf("js=%s %v", texts[0], w2err))
+						continue
+					}
 					if !bytes.Equal(w2, ew) {
 						note(target.name+" gen-json-value-differs", fmt.Sprintf("in=%s js=%s", hex.EncodeToString(b), texts[0]))
 					}

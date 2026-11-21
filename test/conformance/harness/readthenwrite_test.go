@@ -298,6 +298,9 @@ func TestHarnessIsReadThenWrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(entries) == 0 {
+		t.Fatal("entries is empty: the loop below would check nothing")
+	}
 	for _, e := range entries {
 		if strings.HasSuffix(e.Name(), ".json") && !framingValues[e.Name()] {
 			t.Errorf("framing value %s is referenced by no read row", filepath.Join(framingDir, e.Name()))
@@ -331,6 +334,9 @@ func TestHarnessIsReadThenWrite(t *testing.T) {
 		entries, err := os.ReadDir(filepath.Join(root, hostileDir))
 		if err != nil {
 			t.Fatal(err)
+		}
+		if len(entries) == 0 {
+			t.Fatal("entries is empty: the loop below would check nothing")
 		}
 		for _, e := range entries {
 			if strings.HasSuffix(e.Name(), ".value.json") && !hostileValues[e.Name()] {

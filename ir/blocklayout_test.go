@@ -92,6 +92,9 @@ func TestBlockLayoutMatchesTheWorkedTable(t *testing.T) {
 	}
 	starts, used := ir.BlockExtent(bl, aligns, counts)
 	wantStarts := []int64{192, 320, 26752, 84352, 92992, 95872, 495872, 559872, 572672}
+	if len(starts) == 0 {
+		t.Fatal("starts is empty: the loop below would check nothing")
+	}
 	for i := range starts {
 		if starts[i] != wantStarts[i] {
 			t.Errorf("%s starts at %d, want %d", bl.Arrays[i].Field.Name, starts[i], wantStarts[i])

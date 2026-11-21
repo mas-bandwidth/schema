@@ -315,7 +315,11 @@ table Ledger
 	for _, name := range []string{"rows", "index", "data"} {
 		f := fieldOf(t, model.New(ledger), name).Def
 		id := ir.TableFieldEntry(f).Id
-		for i, e := range v.Entries() {
+		allEntries := v.Entries()
+		if len(allEntries) == 0 {
+			t.Fatal("v.Entries() is empty: the loop below would check nothing")
+		}
+		for i, e := range allEntries {
 			if e.Id == id {
 				t.Errorf("%s, a variable table's field, takes slot %d at kind %d", name, i+1, e.Kind)
 			}

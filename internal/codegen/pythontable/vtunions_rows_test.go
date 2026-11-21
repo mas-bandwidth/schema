@@ -429,6 +429,9 @@ func TestPythonVtUnionsRowsNegativeControl(t *testing.T) {
 						t.Errorf("NEGATIVE CONTROL FAILED: %s left %s green on %s; findings:\n%s", ctl.name, name, r.row, joined)
 					}
 				}
+				if len(fails) == 0 {
+					t.Fatal("fails is empty: the loop below would check nothing")
+				}
 				for _, f := range fails {
 					if strings.Contains(f, "did not run to its end") {
 						t.Errorf("NEGATIVE CONTROL FAILED: %s stopped the probe instead of one read: %s", ctl.name, f)

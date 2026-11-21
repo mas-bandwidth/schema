@@ -45,7 +45,11 @@ from optfloat._schema import cook
 r = Root(); r.value = -1.25
 for order in (1,2): print(cook.cook(r, order).hex())
 `
-	for name, runner := range cookPins() {
+	allCookPins := cookPins()
+	if len(allCookPins) == 0 {
+		t.Fatal("cookPins() is empty: the loop below would check nothing")
+	}
+	for name, runner := range allCookPins {
 		dir := t.TempDir()
 		writeTree(t, dir, files)
 		out := string(runner(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe)}))
@@ -87,7 +91,11 @@ func TestPythonCookOptionalFloatWire(t *testing.T) {
 r = Root(); r.value = -1.25
 print(r.save().hex())
 `
-	for name, runner := range cookPins() {
+	allCookPins := cookPins()
+	if len(allCookPins) == 0 {
+		t.Fatal("cookPins() is empty: the loop below would check nothing")
+	}
+	for name, runner := range allCookPins {
 		dir := t.TempDir()
 		writeTree(t, dir, files)
 		out := strings.TrimSpace(string(runner(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})))

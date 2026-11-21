@@ -73,6 +73,9 @@ fixed table Fox { x int32 }
 	if cppHasFormFile(decl, "Table.cpp") {
 		t.Fatalf("a wire-only table emitted a JSON/text-form translation unit: %v", cppKeysOf(decl))
 	}
+	if len(decl) == 0 {
+		t.Fatal("decl is empty: the loop below would check nothing")
+	}
 	for name, data := range decl {
 		src := string(data)
 		for _, forbidden := range []string{

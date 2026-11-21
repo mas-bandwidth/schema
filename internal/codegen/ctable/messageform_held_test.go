@@ -550,6 +550,9 @@ func cMessageManifestRows(t *testing.T) {
 			rows = append(rows, f)
 		}
 	}
+	if len(rows) == 0 {
+		t.Fatal("rows is empty: the loop below would check nothing")
+	}
 	for _, row := range rows {
 		t.Run(row[0]+"/"+row[1], func(t *testing.T) {
 			t.Parallel()

@@ -307,6 +307,9 @@ func TestEverySpecTablesTargetIsInvokedByCI(t *testing.T) {
 		defined[m[1]] = true
 	}
 
+	if len(targets) == 0 {
+		t.Fatal("targets is empty: the loop below would check nothing")
+	}
 	for _, target := range targets {
 		docLine := startLine + target.line - 1
 		if !defined[target.name] {

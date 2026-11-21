@@ -440,7 +440,11 @@ func TestRubySkeleton(t *testing.T) {
 	t.Run("keyword-fields", func(t *testing.T) {
 		t.Parallel()
 		src := keywordRecord()
-		for _, w := range keywordFields() {
+		allKeywordFields := keywordFields()
+		if len(allKeywordFields) == 0 {
+			t.Fatal("keywordFields() is empty: the loop below would check nothing")
+		}
+		for _, w := range allKeywordFields {
 			for _, want := range []string{
 				":" + w,
 				"@" + w + " = 0",
@@ -671,6 +675,9 @@ func TestRubySkeleton(t *testing.T) {
 			for c := range strings.FieldsSeq(string(lines[1])) {
 				seen[c] = true
 			}
+		}
+		if len(rubyCoreConstants) == 0 {
+			t.Fatal("rubyCoreConstants is empty: the loop below would check nothing")
 		}
 		for c := range rubyCoreConstants {
 			if !seen[c] {

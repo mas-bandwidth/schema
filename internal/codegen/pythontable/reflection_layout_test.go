@@ -264,7 +264,11 @@ func reflectionLayoutRun(t *testing.T, u *ir.Unit, files map[string][]byte, floo
 func TestPythonReflectionLayout(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "both pinned Python interpreters")
-	for _, row := range reflectionUnits(t) {
+	allReflectionUnits := reflectionUnits(t)
+	if len(allReflectionUnits) == 0 {
+		t.Fatal("reflectionUnits(t) is empty: the loop below would check nothing")
+	}
+	for _, row := range allReflectionUnits {
 		t.Run(row.name, func(t *testing.T) {
 			u := loadUnitPaths(t, row.paths...)
 			files, err := reflectionGenerate(u)

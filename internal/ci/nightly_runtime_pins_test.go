@@ -27,6 +27,9 @@ func TestNightlyRuntimePinsMatchMergeAndRelease(t *testing.T) {
 	want := read("ci-full.yml")
 	for _, name := range []string{"ci-fast.yml", "certify.yml", "leg.yml", "nightly-conformance.yml"} {
 		got := read(name)
+		if len(want) == 0 {
+			t.Fatal("want is empty: the loop below would check nothing")
+		}
 		for runtime, pin := range want {
 			if got[runtime] != pin {
 				t.Errorf("%s: %s=%s, merge gate requires %s", name, runtime, got[runtime], pin)

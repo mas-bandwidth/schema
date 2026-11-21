@@ -194,7 +194,11 @@ func TestSchemaSharedHostileCorpusSources(t *testing.T) {
 	}
 	root := repoRoot(t)
 	for _, c := range cases {
-		for _, src := range hostilecorpus.CitedSources(c, hostilecorpus.SourceDirs) {
+		allCitedSources := hostilecorpus.CitedSources(c, hostilecorpus.SourceDirs)
+		if len(allCitedSources) == 0 {
+			t.Fatal("hostilecorpus.CitedSources(c, hostilecorpus.SourceDirs) is empty: the loop below would check nothing")
+		}
+		for _, src := range allCitedSources {
 			p := filepath.Join(root, filepath.FromSlash(src))
 			fi, err := os.Stat(p)
 			if err != nil {

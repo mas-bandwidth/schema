@@ -29,11 +29,19 @@ fixed table Root {
 `
 	runGenerated(t, fixedSchema, fixedLoadNamesProbe)
 	for _, schema := range []string{variableSchema, fixedSchema} {
-		for name, data := range generate(t, schema) {
+		allGenerate := generate(t, schema)
+		if len(allGenerate) == 0 {
+			t.Fatal("generate(t, schema) is empty: the loop below would check nothing")
+		}
+		for name, data := range allGenerate {
 			if !strings.HasSuffix(name, ".go") {
 				continue
 			}
-			for _, literal := range variableReasonLiterals(string(data)) {
+			allVariableReasonLiterals := variableReasonLiterals(string(data))
+			if len(allVariableReasonLiterals) == 0 {
+				t.Fatal("variableReasonLiterals(string(data)) is empty: the loop below would check nothing")
+			}
+			for _, literal := range allVariableReasonLiterals {
 				if literal == "" || !strings.Contains(literal, " ") {
 					continue
 				}

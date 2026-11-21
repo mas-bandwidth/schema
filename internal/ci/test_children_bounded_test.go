@@ -122,6 +122,7 @@ func TestEveryTestChildIsBoundedNegativeControl(t *testing.T) {
 		{"bounded", "package p\nimport \"github.com/mas-bandwidth/schema/v2/internal/testproc\"\nfunc f(t testing.TB) { testproc.Command(t, \"luau\") }\n", 0},
 		{"exec for its types only", "package p\nimport \"os/exec\"\nfunc f(c *exec.Cmd) error { var e *exec.ExitError; _ = e; return c.Run() }\n", 0},
 	}
+	planted := 0
 	for _, c := range cases {
 		at, err := unboundedChildren(token.NewFileSet(), c.name+".go", []byte(c.src))
 		if err != nil {
@@ -130,5 +131,14 @@ func TestEveryTestChildIsBoundedNegativeControl(t *testing.T) {
 		if len(at) != c.want {
 			t.Errorf("%s: the gate saw %d unbounded child(ren) %v, want %d", c.name, len(at), at, c.want)
 		}
+		if c.want > 0 {
+			planted++
+			if len(at) == 0 {
+				t.Errorf("%s: the gate accepted a planted unbounded child", c.name)
+			}
+		}
+	}
+	if planted != 4 {
+		t.Fatalf("the control planted %d unbounded children, want 4: it would pass having refused nothing", planted)
 	}
 }

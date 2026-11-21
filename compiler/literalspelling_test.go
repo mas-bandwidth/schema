@@ -88,6 +88,9 @@ func TestGeneratedIntegerLiteralSpelling(t *testing.T) {
 		}
 		markers := commentMarkers(lang)
 		var all strings.Builder
+		if len(files) == 0 {
+			t.Fatal("files is empty: the loop below would check nothing")
+		}
 		for name, body := range files {
 			for i, line := range strings.Split(string(body), "\n") {
 				if badSpelling.MatchString(codePart(line, markers)) {

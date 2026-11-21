@@ -555,6 +555,9 @@ func TestPythonPacketArrays(t *testing.T) {
 		names = append(names, name)
 	}
 	sort.Strings(names)
+	if len(names) == 0 {
+		t.Fatal("names is empty: the loop below would check nothing")
+	}
 	for _, name := range names {
 		if blocked[name] == "array" {
 			t.Errorf("%s is blocked by the array kind itself", name)

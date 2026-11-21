@@ -93,6 +93,9 @@ func TestCTableNeverEmitsZeroWidthInteger(t *testing.T) {
 			t.Errorf("%s: the C table emitter refused: %v", rel, err)
 			continue
 		}
+		if len(files) == 0 {
+			t.Fatal("files is empty: the loop below would check nothing")
+		}
 		for name, data := range files {
 			for i, line := range strings.Split(string(data), "\n") {
 				for _, b := range banned {

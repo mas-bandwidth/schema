@@ -51,6 +51,9 @@ func TestHostileIllFormedRowHasNoPortExemption(t *testing.T) {
 				byLang[lang] = e
 			}
 		}
+		if len(exemptions) == 0 {
+			t.Fatal("exemptions is empty: the loop below would check nothing")
+		}
 		for _, line := range exemptions {
 			if line != "" {
 				t.Fatalf("%s: %s still carries a retired exemption: %s", caseName, lang, line)

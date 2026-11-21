@@ -206,6 +206,9 @@ func TestGooseSkippedValueIsValidated(t *testing.T) {
 		}
 	}
 
+	if len(rows) == 0 {
+		t.Fatal("rows is empty: the loop below would check nothing")
+	}
 	for _, row := range rows {
 		if row.form != "message" {
 			continue

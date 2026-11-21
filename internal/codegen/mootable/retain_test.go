@@ -52,6 +52,9 @@ func retainRows(t *testing.T) []retainRow {
 	if err := sc.Err(); err != nil {
 		t.Fatal(err)
 	}
+	if len(rows) == 0 {
+		t.Fatal("the manifest names no retain row")
+	}
 	return rows
 }
 
@@ -324,10 +327,13 @@ func evolvedRetainDifferential(t *testing.T, plant func(*generatedUnit), onlyRet
 			inst := m.New(g.unit.Tables[row.root])
 			keep := &tablewire.Retain{Capacity: retainFull, IdCapacity: retainFull}
 			var rep tabletext.Report
-			if _, err := tablewire.DecodeRetain(m, inst, wire, keep, &rep); err == nil {
-				if _, err := tablewire.EncodeRetain(m, inst, keep, &rep); err == nil && len(keep.Ids()) > 0 {
-					probes = append(probes, probe{retainFull, len(keep.Ids()) - 1})
-				}
+			if _, err := tablewire.DecodeRetain(m, inst, wire, keep, &rep); err != nil {
+				// goRetain just read these bytes at this capacity and retained
+				// from them: a refusal here is the engine disagreeing with itself
+				bad = append(bad, fmt.Sprintf("%s (%s/%s): the Go engine retained %d records from this wire and then refused the same read: %v",
+					row.caseName, row.unit, row.root, full.retained, err))
+			} else if _, err := tablewire.EncodeRetain(m, inst, keep, &rep); err == nil && len(keep.Ids()) > 0 {
+				probes = append(probes, probe{retainFull, len(keep.Ids()) - 1})
 			}
 		} else if onlyRetaining {
 			continue

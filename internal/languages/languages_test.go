@@ -165,7 +165,11 @@ func TestUnityIsNeverALanguage(t *testing.T) {
 	if names["cs"] != "C# (modern)" || names["unity"] != "C# (unity)" {
 		t.Errorf("cs is %q and unity is %q; want \"C# (modern)\" and \"C# (unity)\"", names["cs"], names["unity"])
 	}
-	for _, l := range All() {
+	allAll := All()
+	if len(allAll) == 0 {
+		t.Fatal("All() is empty: the loop below would check nothing")
+	}
+	for _, l := range allAll {
 		if l.Name == "Unity" || l.Name == "C#" {
 			t.Errorf("%s is listed as %q", l.Target, l.Name)
 		}

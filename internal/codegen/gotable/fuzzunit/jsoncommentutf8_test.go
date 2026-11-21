@@ -129,7 +129,11 @@ func TestGeneratedJSONCommentIsWellFormedUTF8(t *testing.T) {
 		"multi-byte": " café 日本語 😀 U+10FFFF \xf4\x8f\xbf\xbf ",
 	}
 	for what, body := range read {
-		for where, text := range commentPlacements(body) {
+		allCommentPlacementss := commentPlacements(body)
+		if len(allCommentPlacementss) == 0 {
+			t.Fatal("commentPlacements(body) is empty: the loop below would check nothing")
+		}
+		for where, text := range allCommentPlacementss {
 			check(where+" holding "+what, text, true)
 		}
 	}

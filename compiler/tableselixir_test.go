@@ -36,6 +36,9 @@ func TestElixirEmitsTableModules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(without) == 0 {
+		t.Fatal("without is empty: the loop below would check nothing")
+	}
 	for name := range without {
 		if strings.HasSuffix(name, "Table.ex") || strings.HasSuffix(name, "Block.ex") ||
 			strings.HasSuffix(name, "Cook.ex") || name == "BuildVersion.ex" {
@@ -44,6 +47,9 @@ func TestElixirEmitsTableModules(t *testing.T) {
 	}
 	// ZERO COST, and it is a gate rather than a hope (§2.2): adding a table
 	// moves not one byte of the PACKET modules.
+	if len(without) == 0 {
+		t.Fatal("without is empty: the loop below would check nothing")
+	}
 	for name, data := range without {
 		got, ok := with[name]
 		if !ok {
@@ -138,6 +144,9 @@ func TestElixirRuntimeNamesAreClaimed(t *testing.T) {
 		names = append(names, name)
 	}
 	sort.Strings(names)
+	if len(names) == 0 {
+		t.Fatal("names is empty: the loop below would check nothing")
+	}
 	for _, name := range names {
 		if !tablenames.Registered(name) {
 			t.Errorf("the Elixir table emitter defines the unit-level module %s.%s and "+
@@ -146,7 +155,11 @@ func TestElixirRuntimeNamesAreClaimed(t *testing.T) {
 				"define it) in internal/tablenames", namespace, name)
 		}
 	}
-	for _, name := range tablenames.DefinedBy(tablenames.Elixir) {
+	allDefinedBy := tablenames.DefinedBy(tablenames.Elixir)
+	if len(allDefinedBy) == 0 {
+		t.Fatal("tablenames.DefinedBy(tablenames.Elixir) is empty: the loop below would check nothing")
+	}
+	for _, name := range allDefinedBy {
 		if !emitted[name] {
 			t.Errorf("internal/tablenames says the Elixir backend defines %s, but nothing in the "+
 				"emitted Elixir names it — drop the registration or fix the backend; a claim "+

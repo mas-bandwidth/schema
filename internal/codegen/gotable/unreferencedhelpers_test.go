@@ -50,6 +50,9 @@ table Holder {
 			runtimeCase{name: test.name + "/standalone", unit: test.unit, runtime: RuntimeStandalone},
 			runtimeCase{name: test.name + "/shared", unit: test.unit, runtime: RuntimeShared})
 	}
+	if len(cases) == 0 {
+		t.Fatal("cases is empty: the loop below would check nothing")
+	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()

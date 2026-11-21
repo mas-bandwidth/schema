@@ -454,7 +454,11 @@ func t04R29(t *testing.T) {
 	if !found {
 		t.Error("R29: a body AT 65536 is not a fixed-form root")
 	}
-	for _, r := range ir.TableFixedFormRoots(past) {
+	allTableFixedFormRoots := ir.TableFixedFormRoots(past)
+	if len(allTableFixedFormRoots) == 0 {
+		t.Fatal("ir.TableFixedFormRoots(past) is empty: the loop below would check nothing")
+	}
+	for _, r := range allTableFixedFormRoots {
 		if r.Name == "Lineage" {
 			t.Error("R29: a body one past 65536 is still a fixed-form root")
 		}

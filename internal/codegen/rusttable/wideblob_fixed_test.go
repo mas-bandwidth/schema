@@ -114,6 +114,9 @@ func TestRustWideBlobFixedLoaderNegativeControl(t *testing.T) {
 			if !bad[c.red] {
 				t.Fatalf("NEGATIVE CONTROL FAILED: taking out the %s half left WIDEBLOB %s green\n%s", c.name, c.red, out)
 			}
+			if len(bad) == 0 {
+				t.Fatal("bad is empty: the loop below would check nothing")
+			}
 			for clause := range bad {
 				if clause != c.red {
 					t.Errorf("NEGATIVE CONTROL: taking out the %s half reddened %s outside it", c.name, clause)

@@ -649,6 +649,9 @@ func TestMessageFormHeldCPP(t *testing.T) {
 		loaded[conn.unit] = loadHeldUnitPaths(t, root, paths)
 	}
 
+	if len(rows) == 0 {
+		t.Fatal("rows is empty: the loop below would check nothing")
+	}
 	for _, row := range rows {
 		t.Run(row.name, func(t *testing.T) {
 			t.Parallel()

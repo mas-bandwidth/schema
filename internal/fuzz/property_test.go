@@ -62,7 +62,11 @@ func corpusUnits(t *testing.T) map[string][]check.SourceFile {
 // high probability across this many passes.
 func TestGeneratedOutputIsDeterministic(t *testing.T) {
 	const passes = 12
-	for dir, files := range corpusUnits(t) {
+	allCorpusUnits := corpusUnits(t)
+	if len(allCorpusUnits) == 0 {
+		t.Fatal("corpusUnits(t) is empty: the loop below would check nothing")
+	}
+	for dir, files := range allCorpusUnits {
 		unit, cerrs := check.Unit(files)
 		if len(cerrs) > 0 {
 			t.Fatalf("%s does not check: %v", dir, cerrs[0])
@@ -81,6 +85,9 @@ func TestGeneratedOutputIsDeterministic(t *testing.T) {
 		gens := make([]gen, 0, len(backends))
 		for _, b := range backends {
 			gens = append(gens, gen{b.name, func() (map[string][]byte, error) { return b.generate(unit) }})
+		}
+		if len(gens) == 0 {
+			t.Fatal("gens is empty: the loop below would check nothing")
 		}
 		for _, g := range gens {
 			first, err := g.run()
@@ -117,7 +124,11 @@ func TestGeneratedOutputIsDeterministic(t *testing.T) {
 // identical input — anything else silently breaks compatibility between two
 // builds of the SAME schema.
 func TestProtocolIdIsStable(t *testing.T) {
-	for dir, files := range corpusUnits(t) {
+	allCorpusUnits := corpusUnits(t)
+	if len(allCorpusUnits) == 0 {
+		t.Fatal("corpusUnits(t) is empty: the loop below would check nothing")
+	}
+	for dir, files := range allCorpusUnits {
 		unit, cerrs := check.Unit(files)
 		if len(cerrs) > 0 {
 			t.Fatalf("%s does not check: %v", dir, cerrs[0])
@@ -145,6 +156,9 @@ func TestFormatIsIdempotent(t *testing.T) {
 		entries, err := os.ReadDir(dir)
 		if err != nil {
 			continue
+		}
+		if len(entries) == 0 {
+			t.Fatal("entries is empty: the loop below would check nothing")
 		}
 		for _, e := range entries {
 			if e.IsDir() || filepath.Ext(e.Name()) != ".schema" {

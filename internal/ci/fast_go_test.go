@@ -140,7 +140,11 @@ func TestCIFastAndCIFullRunOnPullRequestWhateverItsBase(t *testing.T) {
 		if branches := workflowTriggerBranches(wfs[name])["pull_request"]; len(branches) != 0 {
 			t.Fatalf("%s pull_request filters bases %v; it must run whatever the base is", name, branches)
 		}
-		for nameJob, body := range yamlJobs(wfs[name]) {
+		allYamlJobs := yamlJobs(wfs[name])
+		if len(allYamlJobs) == 0 {
+			t.Fatal("yamlJobs(wfs[name]) is empty: the loop below would check nothing")
+		}
+		for nameJob, body := range allYamlJobs {
 			if !strings.Contains(jobRunsOn(body), "self-hosted") {
 				continue
 			}

@@ -247,6 +247,9 @@ func TestJSONFuzzSyntheticDriverHelper(t *testing.T) {
 			_ = os.WriteFile(filepath.Join(outDir, name+".wire"), wb, 0o644)
 		}
 	case "json-write":
+		if len(lines) == 0 {
+			t.Fatal("lines is empty: the loop below would check nothing")
+		}
 		for _, line := range lines {
 			f := strings.Fields(strings.TrimSpace(line))
 			if len(f) < 5 || f[0] != "instance" {

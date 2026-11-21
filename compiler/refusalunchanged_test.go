@@ -369,7 +369,11 @@ func allUnchangedProbes() []unchangedProbe {
 
 func TestRefusalUnchangedIgnoresTrivialEmitterChange(t *testing.T) {
 	t.Parallel()
-	for _, p := range allUnchangedProbes() {
+	allAllUnchangedProbes := allUnchangedProbes()
+	if len(allAllUnchangedProbes) == 0 {
+		t.Fatal("allUnchangedProbes() is empty: the loop below would check nothing")
+	}
+	for _, p := range allAllUnchangedProbes {
 		t.Run(p.construct, func(t *testing.T) {
 			t.Parallel()
 			m := newProbeMemo()
@@ -399,7 +403,11 @@ func TestRefusalUnchangedIgnoresTrivialEmitterChange(t *testing.T) {
 
 func TestRefusalUnchangedCatchesConstructKeyedLeak(t *testing.T) {
 	t.Parallel()
-	for _, p := range allUnchangedProbes() {
+	allAllUnchangedProbes := allUnchangedProbes()
+	if len(allAllUnchangedProbes) == 0 {
+		t.Fatal("allUnchangedProbes() is empty: the loop below would check nothing")
+	}
+	for _, p := range allAllUnchangedProbes {
 		t.Run(p.construct, func(t *testing.T) {
 			t.Parallel()
 			m := newProbeMemo()

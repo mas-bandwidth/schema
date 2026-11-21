@@ -66,6 +66,9 @@ func TestJavaEmitsTableSources(t *testing.T) {
 		}
 	}
 	without := javaFiles(t, packetSrc)
+	if len(without) == 0 {
+		t.Fatal("without is empty: the loop below would check nothing")
+	}
 	for name := range without {
 		if strings.HasPrefix(name, "Table") || strings.HasSuffix(name, "Table.java") ||
 			strings.HasSuffix(name, "Row.java") || strings.HasSuffix(name, "Block.java") ||
@@ -81,6 +84,9 @@ func TestJavaEmitsTableSources(t *testing.T) {
 func TestJavaTablesMoveNoGeneratedPacketByte(t *testing.T) {
 	with := javaFiles(t, tableSrc)
 	without := javaFiles(t, packetSrc)
+	if len(without) == 0 {
+		t.Fatal("without is empty: the loop below would check nothing")
+	}
 	for name, data := range without {
 		got, ok := with[name]
 		if !ok {
@@ -202,6 +208,9 @@ func TestJavaTableRuntimeNamesAreClaimed(t *testing.T) {
 	}
 	sort.Strings(names)
 
+	if len(names) == 0 {
+		t.Fatal("names is empty: the loop below would check nothing")
+	}
 	for _, name := range names {
 		if !tablenames.Registered(name) {
 			t.Errorf("the Java table emitter emits %s and internal/tablenames does not register it — "+
@@ -209,7 +218,11 @@ func TestJavaTableRuntimeNamesAreClaimed(t *testing.T) {
 				"(with the backends that define it) in internal/tablenames", name)
 		}
 	}
-	for _, name := range tablenames.DefinedBy(tablenames.Java) {
+	allDefinedBy := tablenames.DefinedBy(tablenames.Java)
+	if len(allDefinedBy) == 0 {
+		t.Fatal("tablenames.DefinedBy(tablenames.Java) is empty: the loop below would check nothing")
+	}
+	for _, name := range allDefinedBy {
 		if !emitted[name] {
 			t.Errorf("internal/tablenames says the Java backend defines %s, but nothing in the emitted "+
 				"Java names it — drop the registration or fix the backend; a claim nothing needs takes "+
@@ -371,6 +384,9 @@ func TestJavaDescriptorsAreSafelyPublished(t *testing.T) {
 		t.Fatal("the scan found no descriptor accessor at all — the scan, not the emitter, is what broke")
 	}
 	// every holder is a private static final class whose one field is final
+	if len(files) == 0 {
+		t.Fatal("files is empty: the loop below would check nothing")
+	}
 	for name, data := range files {
 		text := string(data)
 		for line := range strings.SplitSeq(text, "\n") {
@@ -572,6 +588,9 @@ func TestJavaFixedFormIsEmittedForAFixedRootAndForNothingElse(t *testing.T) {
 	}
 	// and a table-free unit pays nothing for the form existing
 	without := javaFiles(t, packetSrc)
+	if len(without) == 0 {
+		t.Fatal("without is empty: the loop below would check nothing")
+	}
 	for name := range without {
 		if strings.HasSuffix(name, "Fixed.java") {
 			t.Errorf("--lang java emitted %s for a table-free unit", name)

@@ -132,6 +132,9 @@ fn main() {
 	}
 	bin := rustcBuild(t, dir)
 
+	if len(cases) == 0 {
+		t.Fatal("cases is empty: the loop below would check nothing")
+	}
 	for _, c := range cases {
 		inst := m.New(m.Lookup("Guarded"))
 		var rep tabletext.Report

@@ -269,6 +269,9 @@ func t08R28(t *testing.T) {
 
 	// Every guarded entry carries an OFFSET (guard) plus its tag (arg) and the
 	// tag's width (argw); the outer condition is carried on the second lane.
+	if len(plan) == 0 {
+		t.Fatal("plan is empty: the loop below would check nothing")
+	}
 	for _, e := range plan {
 		if e.Guard == ir.TableFixedNoGuard {
 			continue

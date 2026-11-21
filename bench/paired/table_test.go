@@ -175,6 +175,9 @@ func TestALoadedHostSaysSoInTheTable(t *testing.T) {
 }
 
 func TestEveryNineLanguageHasAName(t *testing.T) {
+	if len(nineLanguages) == 0 {
+		t.Fatal("nineLanguages is empty: the loop below would check nothing")
+	}
 	for _, lang := range nineLanguages {
 		if displayName(lang) == lang {
 			t.Fatal("no display name for", lang)

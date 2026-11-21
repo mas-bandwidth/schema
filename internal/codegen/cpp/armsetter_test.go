@@ -117,6 +117,9 @@ func TestUnionArmSetterLeavesTheWireUnmoved(t *testing.T) {
 	t.Parallel()
 	files := examplesUnit(t)
 	golden := filepath.Join("..", "..", "..", "testdata", "golden", "cpp")
+	if len(files) == 0 {
+		t.Fatal("files is empty: the loop below would check nothing")
+	}
 	for name, got := range files {
 		want, err := os.ReadFile(filepath.Join(golden, name))
 		if err != nil {

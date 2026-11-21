@@ -244,6 +244,9 @@ func TestPythonResourceBoundsHostileShapes(t *testing.T) {
 	dir := pythonResourceBoundsUnit(t, "", "")
 	got := pythonResourceBoundsRun(t, dir)
 	wants := pythonResourceBoundsWants()
+	if len(wants) == 0 {
+		t.Fatal("wants is empty: the loop below would check nothing")
+	}
 	for _, name := range slices.Sorted(maps.Keys(wants)) {
 		r, ok := got[name]
 		if !ok {

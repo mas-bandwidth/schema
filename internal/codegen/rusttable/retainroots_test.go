@@ -62,6 +62,9 @@ func TestRetainsAndWidensOnEveryRootRust(t *testing.T) {
 			t.Errorf("%s: the Rust generator emits its retaining codec but wire_fuzz_all.rs does not dispatch it", key)
 		}
 	}
+	if len(dispatched) == 0 {
+		t.Fatal("dispatched is empty: the loop below would check nothing")
+	}
 	for key := range dispatched {
 		if !carried[key] {
 			t.Errorf("%s: wire_fuzz_all.rs dispatches it but no roster unit's Rust output carries its retaining codec", key)

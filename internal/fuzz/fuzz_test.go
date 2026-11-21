@@ -259,6 +259,9 @@ func TestFuzzPipelineAllSixteenEmitters(t *testing.T) {
 		if err != nil {
 			t.Fatalf("python.Generate pass %d: %v", i, err)
 		}
+		if len(first) == 0 {
+			t.Fatal("first is empty: the loop below would check nothing")
+		}
 		for name, wantBytes := range first {
 			if !bytes.Equal(wantBytes, again[name]) {
 				t.Fatalf("python.Generate pass %d: %s differs between runs", i, name)

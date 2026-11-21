@@ -47,6 +47,9 @@ func TestDartEmitsTableSources(t *testing.T) {
 	if err != nil {
 		t.Fatalf("--lang dart: %v", err)
 	}
+	if len(without) == 0 {
+		t.Fatal("without is empty: the loop below would check nothing")
+	}
 	for name := range without {
 		if dartTableSource(name) {
 			t.Errorf("--lang dart emitted %s for a table-free unit", name)
@@ -54,6 +57,9 @@ func TestDartEmitsTableSources(t *testing.T) {
 	}
 	// and the packet half is byte-identical either way: a table moves no
 	// packet byte in this target either
+	if len(without) == 0 {
+		t.Fatal("without is empty: the loop below would check nothing")
+	}
 	for name, data := range without {
 		got, ok := with[name]
 		if !ok {
@@ -111,6 +117,9 @@ func TestDartTableRuntimeNamesAreClaimed(t *testing.T) {
 		names = append(names, name)
 	}
 	sort.Strings(names)
+	if len(names) == 0 {
+		t.Fatal("names is empty: the loop below would check nothing")
+	}
 	for _, name := range names {
 		if !tablenames.Registered(name) {
 			t.Errorf("the Dart table emitter emits %s and internal/tablenames does not register it — "+
@@ -118,7 +127,11 @@ func TestDartTableRuntimeNamesAreClaimed(t *testing.T) {
 				"(with the backends that define it) in internal/tablenames", name)
 		}
 	}
-	for _, name := range tablenames.DefinedBy(tablenames.Dart) {
+	allDefinedBy := tablenames.DefinedBy(tablenames.Dart)
+	if len(allDefinedBy) == 0 {
+		t.Fatal("tablenames.DefinedBy(tablenames.Dart) is empty: the loop below would check nothing")
+	}
+	for _, name := range allDefinedBy {
 		if !emitted[name] {
 			t.Errorf("internal/tablenames says the Dart backend defines %s, but nothing in the emitted "+
 				"Dart names it — drop the registration or fix the backend; a claim nothing needs takes "+
@@ -130,6 +143,9 @@ func TestDartTableRuntimeNamesAreClaimed(t *testing.T) {
 	// name begins with an underscore is the whole class: a schema can spell
 	// that identifier, so the day one is emitted it is an unclaimed collision.
 	private := regexp.MustCompile(`^[A-Za-z<>,\[\] ]*\b_[A-Za-z0-9_]*\s*[=(;]`)
+	if len(files) == 0 {
+		t.Fatal("files is empty: the loop below would check nothing")
+	}
 	for name, data := range files {
 		if !dartTableSource(name) {
 			continue

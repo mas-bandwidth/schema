@@ -241,11 +241,19 @@ func TestEveryProjectTargetsThePinnedSDK(t *testing.T) {
 	}
 
 	// And no workflow keeps a version of its own.
-	for name, data := range workflows(t, root) {
+	allWorkflows := workflows(t, root)
+	if len(allWorkflows) == 0 {
+		t.Fatal("workflows(t, root) is empty: the loop below would check nothing")
+	}
+	for name, data := range allWorkflows {
 		if strings.Contains(data, "setup-dotnet@") && !strings.Contains(data, "cat "+dotnetPinFile) {
 			t.Errorf("%s installs the .NET SDK without reading %s", name, dotnetPinFile)
 		}
-		for _, l := range lines(name, data) {
+		allLines := lines(name, data)
+		if len(allLines) == 0 {
+			t.Fatal("lines(name, data) is empty: the loop below would check nothing")
+		}
+		for _, l := range allLines {
 			if !strings.HasPrefix(l.text, "dotnet-version:") {
 				continue
 			}
@@ -330,6 +338,9 @@ func TestEveryPackageTheBuildRunsIsCommitted(t *testing.T) {
 	sort.Strings(names)
 	t.Logf("packages the make sources run: %s", strings.Join(names, " "))
 
+	if len(names) == 0 {
+		t.Fatal("names is empty: the loop below would check nothing")
+	}
 	for _, pkg := range names {
 		dir := strings.TrimPrefix(pkg, "./")
 		tracked := gitLsFiles(t, root, dir)

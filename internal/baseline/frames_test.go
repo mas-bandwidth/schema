@@ -614,7 +614,11 @@ func heldBy(t *testing.T, ref string) bool {
 
 // TestEvolutionTableFrames is the golden behind §4.1's table.
 func TestEvolutionTableFrames(t *testing.T) {
-	for _, row := range frameRows(t) {
+	allFrameRows := frameRows(t)
+	if len(allFrameRows) == 0 {
+		t.Fatal("frameRows(t) is empty: the loop below would check nothing")
+	}
+	for _, row := range allFrameRows {
 		t.Run(row.name, func(t *testing.T) {
 			base := row.base
 			if base == "" {

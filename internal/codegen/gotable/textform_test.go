@@ -46,6 +46,9 @@ func TestCommentedTextForm(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			if len(plain) == 0 {
+				t.Fatal("plain is empty: the loop below would check nothing")
+			}
 			for name := range plain {
 				if strings.HasSuffix(name, "TableTextForm.go") {
 					t.Fatalf("a default generate emitted %s", name)

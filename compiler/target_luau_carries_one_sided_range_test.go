@@ -25,7 +25,11 @@ func TestLuauCarriesOneSidedRange(t *testing.T) {
 	} else if len(files) == 0 {
 		t.Fatal("luau generated no files for the one-sided range")
 	}
-	for _, lang := range c.Targets() {
+	allTargets := c.Targets()
+	if len(allTargets) == 0 {
+		t.Fatal("c.Targets() is empty: the loop below would check nothing")
+	}
+	for _, lang := range allTargets {
 		if lang == "go" || lang == "luau" {
 			continue
 		}

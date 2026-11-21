@@ -209,6 +209,9 @@ func TestMooJsonWideIntegersAreStrings(t *testing.T) {
 		// exactly one line feed (docs/SPEC-TABLES.md §16.14, W2)
 		want += "\n"
 	}
+	if len(answers) == 0 {
+		t.Fatal("answers is empty: the loop below would check nothing")
+	}
 	for _, a := range answers {
 		switch a.want {
 		case "refused":

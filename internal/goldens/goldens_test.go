@@ -73,6 +73,9 @@ func TestCorpusIsCanonical(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if len(entries) == 0 {
+			t.Fatal("entries is empty: the loop below would check nothing")
+		}
 		for _, e := range entries {
 			if e.IsDir() || !strings.HasSuffix(e.Name(), ".schema") {
 				continue
@@ -276,7 +279,11 @@ func TestGoldenLudicrousId(t *testing.T) {
 // (test/{c,go,rust,cs}-ludicrous).
 func TestGoldenLudicrousSource(t *testing.T) {
 	u := loadCorpusDir(t, corpus128Dir)
-	for _, target := range compiler.New().Targets() {
+	allTargets := compiler.New().Targets()
+	if len(allTargets) == 0 {
+		t.Fatal("compiler.New().Targets() is empty: the loop below would check nothing")
+	}
+	for _, target := range allTargets {
 		pinDir(t, filepath.Join(goldenDir, "ludicrous", target), generate(t, u, target, nil))
 	}
 }
@@ -294,6 +301,9 @@ func pinDir(t *testing.T, dir string, files map[string][]byte) {
 		names = append(names, n)
 	}
 	sort.Strings(names)
+	if len(names) == 0 {
+		t.Fatal("names is empty: the loop below would check nothing")
+	}
 	for _, n := range names {
 		path := filepath.Join(dir, n)
 		if *update {
@@ -374,6 +384,9 @@ func TestGoldenTableSource(t *testing.T) {
 	units, err := tableUnits(tableGoldenDir)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(units) == 0 {
+		t.Fatal("units is empty: the loop below would check nothing")
 	}
 	for _, unit := range units {
 		t.Run(unit.name, func(t *testing.T) {
@@ -483,7 +496,11 @@ func pinnedUnits(t *testing.T) []struct{ name, dir string } {
 func TestWireLawBumpMovesEveryId(t *testing.T) {
 	law := fmt.Sprintf("schema-wire-law %d\n", ir.WireLaw)
 	next := fmt.Sprintf("schema-wire-law %d\n", ir.WireLaw+1)
-	for _, unit := range pinnedUnits(t) {
+	allPinnedUnits := pinnedUnits(t)
+	if len(allPinnedUnits) == 0 {
+		t.Fatal("pinnedUnits(t) is empty: the loop below would check nothing")
+	}
+	for _, unit := range allPinnedUnits {
 		t.Run(unit.name, func(t *testing.T) {
 			u := loadCorpusDir(t, unit.dir)
 			text := ir.WireProjection(u)
@@ -518,7 +535,11 @@ func digest(projection string) uint64 {
 // header lines alone, which is the case a reader has to be able to check by
 // eye.
 func TestGoldenBuildVersion(t *testing.T) {
-	for _, unit := range pinnedUnits(t) {
+	allPinnedUnits := pinnedUnits(t)
+	if len(allPinnedUnits) == 0 {
+		t.Fatal("pinnedUnits(t) is empty: the loop below would check nothing")
+	}
+	for _, unit := range allPinnedUnits {
 		t.Run(unit.name, func(t *testing.T) {
 			u := loadCorpusDir(t, unit.dir)
 			got := fmt.Sprintf("0x%016x\n%s", ir.BuildVersion(u), ir.CookProjection(u))

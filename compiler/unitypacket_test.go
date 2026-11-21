@@ -125,6 +125,9 @@ func TestUnityPacketWireGoldens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(entries) == 0 {
+		t.Fatal("entries is empty: the loop below would check nothing")
+	}
 	for _, e := range entries {
 		b, err := os.ReadFile(filepath.Join(genDir, e.Name()))
 		if err != nil {

@@ -322,6 +322,9 @@ func TestFixedRoadmapCT18DirectArms(t *testing.T) {
 		if err != nil {
 			t.Fatalf("the generated A2 header did not compile: %v\n%s", err, out)
 		}
+		if len(files) == 0 {
+			t.Fatal("files is empty: the loop below would check nothing")
+		}
 		for _, f := range files {
 			if strings.Contains(string(f), "table_fixed_put0") {
 				t.Fatalf("A2.schema's header emits table_fixed_put0:\n%s", f)

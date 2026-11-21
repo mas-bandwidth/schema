@@ -428,7 +428,11 @@ func TestPythonPacketCoreShardPlan(t *testing.T) {
 			t.Errorf("accepted invalid shard %q", value)
 		}
 	}
-	for i := range packetPins() {
+	allPacketPins := packetPins()
+	if len(allPacketPins) == 0 {
+		t.Fatal("packetPins() is empty: the loop below would check nothing")
+	}
+	for i := range allPacketPins {
 		count := 0
 		for shard := range packetCoreShards {
 			if packetCoreSelected(i, shard) {
@@ -482,6 +486,9 @@ func TestPythonPacketCore(t *testing.T) {
 	known := map[string]bool{}
 	for _, pin := range packetPins() {
 		known[pin.name+".bin"] = true
+	}
+	if len(entries) == 0 {
+		t.Fatal("entries is empty: the loop below would check nothing")
 	}
 	for _, p := range entries {
 		if !known[filepath.Base(p)] {

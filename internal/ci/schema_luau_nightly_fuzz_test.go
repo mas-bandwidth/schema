@@ -84,6 +84,9 @@ func TestLuauNightlyFuzzSavedInputs(t *testing.T) {
 		t.Fatal(err)
 	}
 	slug := regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)+$`)
+	if len(bins) == 0 {
+		t.Fatal("bins is empty: the loop below would check nothing")
+	}
 	for _, b := range bins {
 		meta, err := os.ReadFile(b + ".meta")
 		if err != nil {

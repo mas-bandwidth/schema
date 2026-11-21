@@ -367,6 +367,9 @@ int main(void)
 	for _, tc := range cases {
 		names = append(names, tc.name)
 	}
+	if len(names) == 0 {
+		t.Fatal("names is empty: the loop below would check nothing")
+	}
 	for _, name := range names {
 		if !strings.Contains(string(out), "PASS "+name+"\n") {
 			t.Errorf("missing PASS for %s", name)

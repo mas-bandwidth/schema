@@ -182,6 +182,9 @@ func t03R10(t *testing.T) {
 	if err != nil {
 		t.Fatalf("R10: GenerateLineage: %v", err)
 	}
+	if len(files) == 0 {
+		t.Fatal("files is empty: the loop below would check nothing")
+	}
 	for name, src := range files {
 		if !strings.HasSuffix(name, ".java") {
 			continue

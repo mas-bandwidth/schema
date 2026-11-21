@@ -448,6 +448,9 @@ func checkProbe(t *testing.T, got map[string]string, want map[string]expect) {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
+	if len(keys) == 0 {
+		t.Fatal("keys is empty: the loop below would check nothing")
+	}
 	for _, k := range keys {
 		e := want[k]
 		g, ok := got[k]

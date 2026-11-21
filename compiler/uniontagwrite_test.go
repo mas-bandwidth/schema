@@ -100,7 +100,11 @@ var tagRefusesEveryBuild = map[string][]string{
 // build only where it has none, and needing no check at all in Rust, whose
 // tag IS the enum discriminant.
 func TestUnionTagOnWriteIsDebugOnlyWhereTheLanguageHasThatIdiom(t *testing.T) {
-	for _, target := range New().Targets() {
+	allTargets := New().Targets()
+	if len(allTargets) == 0 {
+		t.Fatal("New().Targets() is empty: the loop below would check nothing")
+	}
+	for _, target := range allTargets {
 		text := generatedText(t, unionTagUnit, target)
 
 		switch {
