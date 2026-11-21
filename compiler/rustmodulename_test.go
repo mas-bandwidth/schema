@@ -30,7 +30,7 @@ func unitNamed(t *testing.T, base, src string) *ir.Unit {
 
 func TestRustRefusesAKeywordModuleName(t *testing.T) {
 	t.Parallel()
-	const src = "package p\ntype A { a int32 }\n"
+	const src = "package p\ntype Ship { hp int32 }\n"
 	for _, base := range []string{"type", "Type", "Box", "Match"} {
 		_, err := New().Generate(unitNamed(t, base, src), "rust", Options{})
 		if err == nil || !strings.Contains(err.Error(), "reserved word in Rust") {
