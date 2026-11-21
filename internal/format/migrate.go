@@ -44,7 +44,13 @@ func Migrate(path string, src []byte) ([]byte, error) {
 				flush()
 			}
 		case scanner.Comment:
-			cur.comment = strings.TrimRight(t.Text, " \t")
+			// every comment on the line is kept, in order (SPEC §4.1)
+			text := strings.TrimRight(t.Text, " \t")
+			if cur.comment != "" {
+				cur.comment += " " + text
+			} else {
+				cur.comment = text
+			}
 		default:
 			cur.tokens = append(cur.tokens, t)
 		}

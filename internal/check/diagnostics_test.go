@@ -51,6 +51,16 @@ func TestDiagnostics(t *testing.T) {
 		srcs map[string]string
 		want string // required substring of some diagnostic
 	}{
+		// ---- literals every leg reads alike (SPEC §4.1) ----
+		{name: "decimal size with a leading zero", want: "leading zero",
+			src: "package t\ntype P { name string(010) }\n"},
+		{name: "decimal default with a leading zero", want: "leading zero",
+			src: "package t\ntable T { v int32 = 07 }\n"},
+		// ---- a file's basename becomes generated names (SPEC §4.6) ----
+		{name: "basename not an identifier", want: "must be one",
+			srcs: map[string]string{"my-ships.schema": "package t\ntype A { a int32 }\n"}},
+		{name: "basename with a dot", want: "must be one",
+			srcs: map[string]string{"ships.v2.schema": "package t\ntype A { a int32 }\n"}},
 		// ---- cycles: infinite size, infinite folding ----
 		{name: "type cycle, mutual", want: "type composition cycle",
 			src: "package t\ntype A { b B }\ntype B { a A }\n"},
