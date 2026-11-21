@@ -1,7 +1,7 @@
 package unitytable_test
 
 import (
-	"bytes"
+	"encoding/binary"
 	"os"
 	"path/filepath"
 	"testing"
@@ -27,7 +27,13 @@ func unityWriterRangeCorpus(t *testing.T) string {
 	return corpus
 }
 
-// TestUnityFixedVersioningWriterRangeHostile: THE WRITER'S RANGE IS THE BOUND
+// unityResavedAim: the one CfloatRangeWiden record the probe saved back holds
+// aim's float32 bits exactly (the record ends aim@4, trail@8).
+func unityResavedAim(resaved []byte, bits uint32) bool {
+	return len(resaved) >= 8 && binary.LittleEndian.Uint32(resaved[len(resaved)-8:]) == bits
+}
+
+// TestUnityFixedVersioningWriterRangeHostile:THE WRITER'S RANGE IS THE BOUND
 // (docs/FIXED-FORM-ALGORITHM.md §4.6; docs/rulings.json strict-only-read, which
 // overturned schema#1164 statement B). The shared cross-version vectors every
 // leg reads (fixedvector.WriterRange): an OLD writer's file with one ranged
@@ -75,11 +81,8 @@ func TestUnityFixedVersioningWriterRangeHostile(t *testing.T) {
 			t.Fatal(err)
 		}
 		got := unityRowLoad(t, newer, "CfloatRangeWiden", lin, old, nil)
-		if got.head() != "ok 1 u0 w0" || got.fields["r0.aim"] != "0.5" || got.fields["r0.lead"] != "1" || got.fields["r0.trail"] != "2" {
-			t.Errorf("old_cfloat_range_widen.bin: %s %v, want ok aim 0.5 exactly", got.head(), got.fields)
-		}
-		if len(got.resaved) < 8 || !bytes.Equal(got.resaved[len(got.resaved)-8:len(got.resaved)-4], []byte{0x00, 0x00, 0x00, 0x3f}) {
-			t.Errorf("old_cfloat_range_widen.bin: resaved aim bits are not 0x3F000000")
+		if got.head() != "ok 1 u0 w0" || got.fields["r0.lead"] != "1" || got.fields["r0.trail"] != "2" || !unityResavedAim(got.resaved, 0x3f000000) {
+			t.Errorf("old_cfloat_range_widen.bin: %s %v, want ok with aim 0.5 exactly (0x3F000000 resaved)", got.head(), got.fields)
 		}
 		hostile, err := os.ReadFile(filepath.Join(corpus, fixedvector.CfloatRangeWidenHostile))
 		if err != nil {
@@ -87,9 +90,9 @@ func TestUnityFixedVersioningWriterRangeHostile(t *testing.T) {
 		}
 		nc := unityRowLoad(t, newer, "CfloatRangeWiden", lin, hostile,
 			plantInFile(t, unitytable.RuntimeFile,
-				"if (v < minV || v > maxV) { return TableReport.OutOfRange; }",
-				"if (v < minV) { return TableReport.OutOfRange; }"))
-		if nc.head() != "ok 1 u0 w0" || nc.fields["r0.aim"] != "1.5" {
+				"float maxV = BitConverter.Int32BitsToSingle(unchecked((int)(uint)c.Hi));",
+				"float maxV = float.PositiveInfinity;"))
+		if nc.head() != "ok 1 u0 w0" || !unityResavedAim(nc.resaved, 0x3fc00000) {
 			t.Errorf("the negative control: with the float32 max check planted out, the forged 1.5 did not land: %s %v", nc.head(), nc.fields)
 		}
 	})
