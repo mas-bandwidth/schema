@@ -422,6 +422,13 @@ func main() {
 		if len(batch) > 0 && !*message {
 			fatalf("--batch is the message form's own: pass --message beside it (docs/SPEC-TABLES.md §3.3)")
 		}
+		outs := []outputPath{{"--out", *out}}
+		if *announce != "" {
+			outs = []outputPath{{"--announce", *announce}, {"--out", *out}}
+		}
+		if err := refuseAliasedPaths("pack", outs, nil); err != nil {
+			fatalf("%v", err)
+		}
 		unit := loadUnit(c, rest)
 		var bytes []byte
 		var skipped []string
@@ -440,21 +447,22 @@ func main() {
 		// the next `make` skip the rule and the failure vanish, and writing
 		// `--announce` before the gate would replace a prior announcement
 		// while leaving the prior message beside it. The gate runs first, and
-		// both files land atomically after it.
+		// the pair publishes after it, both files or neither: a failure writing
+		// either keeps the earlier pair byte-for-byte.
 		reportLine(report, verbose)
+		var announcement []byte
+		pub := []pairOutput{{outputPath{"--out", *out}, bytes}}
 		if *announce != "" {
-			announcement := c.Announce(unit)
-			if err := writeAtomic(*announce, announcement); err != nil {
-				fatalf("%v", err)
-			}
-			if verbose {
-				fmt.Printf("announced %s: %d bytes\n", *announce, len(announcement))
-			}
+			announcement = c.Announce(unit)
+			pub = []pairOutput{{outputPath{"--announce", *announce}, announcement}, pub[0]}
 		}
-		if err := writeAtomic(*out, bytes); err != nil {
+		if err := publishOutputs(pub); err != nil {
 			fatalf("%v", err)
 		}
 		if verbose {
+			if *announce != "" {
+				fmt.Printf("announced %s: %d bytes\n", *announce, len(announcement))
+			}
 			fmt.Printf("packed %s: %d bytes\n", *out, len(bytes))
 			for _, name := range skipped {
 				fmt.Printf("passed over %s: a hidden file that is not JSON\n", name)
@@ -543,6 +551,13 @@ func main() {
 		default:
 			fatalf("--byte-order takes little or big, not %q", *byteOrder)
 		}
+		outs := []outputPath{{"--out", *out}}
+		if *attribution != "" {
+			outs = []outputPath{{"--attribution", *attribution}, {"--out", *out}}
+		}
+		if err := refuseAliasedPaths("cook", outs, []outputPath{{"--in", *in}}); err != nil {
+			fatalf("%v", err)
+		}
 		unit := loadUnit(c, fs.Args())
 		wire, packed := cookInput(c, unit, *root, *in, verbose)
 		bytes, cooked, report, err := c.Cook(unit, *root, wire, opts)
@@ -559,6 +574,9 @@ func main() {
 			stage = "cook"
 		}
 		reportLineStage(report, verbose, stage)
+		// the cook and its attribution publish together or not at all, so a
+		// failure writing either keeps the earlier pair byte-for-byte
+		pub := []pairOutput{{outputPath{"--out", *out}, bytes}}
 		if *attribution != "" {
 			// the attribution is SEPARABLE (§6.3): a caller may place the two
 			// parts together or apart, and a build that ships no tooling need
@@ -568,12 +586,10 @@ func main() {
 			if err != nil {
 				fail(err)
 			}
-			if err := writeAtomic(*attribution, side); err != nil {
-				fatalf("%v", err)
-			}
 			bytes = data
+			pub = []pairOutput{{outputPath{"--attribution", *attribution}, side}, {outputPath{"--out", *out}, bytes}}
 		}
-		if err := writeAtomic(*out, bytes); err != nil {
+		if err := publishOutputs(pub); err != nil {
 			fatalf("%v", err)
 		}
 		if verbose {
