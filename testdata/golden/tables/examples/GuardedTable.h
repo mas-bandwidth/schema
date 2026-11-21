@@ -11060,6 +11060,8 @@ inline int64_t PatrolMeasureBody( const Ctx & ctx, const TableNumbering & number
     }
     if ( value.active && value.has_target )
     {
+        schema_assert( value.target_id >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+        schema_assert( value.target_id <= 1000 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         if ( value.target_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 103, 0xb7bc9ac015a25050ull ) ) + 1 + 4; } // target_id
     }
     if ( value.active && !value.has_target )
@@ -11108,6 +11110,8 @@ inline bool PatrolSaveBodyFields( const Ctx & ctx, const TableNumbering & number
         if ( value.target_id != 0 )
         {
             w.header( ids.ref_at( 103, 0xb7bc9ac015a25050ull ), 4 ); // target_id
+            schema_assert( value.target_id >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+            schema_assert( value.target_id <= 1000 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
             w.put32( uint32_t( value.target_id ) );
         }
     }
@@ -12463,6 +12467,8 @@ inline int64_t PatrolMeasureBodyRetain( const Ctx & ctx, const TableNumbering & 
     }
     if ( value.active && value.has_target )
     {
+        schema_assert( value.target_id >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+        schema_assert( value.target_id <= 1000 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         if ( value.target_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 103, 0xb7bc9ac015a25050ull ) ) + 1 + 4; } // target_id
     }
     if ( value.active && !value.has_target )
@@ -12512,6 +12518,8 @@ inline bool PatrolSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & 
         if ( value.target_id != 0 )
         {
             w.header( ids.ref_at( 103, 0xb7bc9ac015a25050ull ), 4 ); // target_id
+            schema_assert( value.target_id >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+            schema_assert( value.target_id <= 1000 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
             w.put32( uint32_t( value.target_id ) );
         }
     }
