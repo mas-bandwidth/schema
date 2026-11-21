@@ -14,12 +14,11 @@ static const ConformanceCodec codecs[] = {
 int conformance_write_refusal_set_backenddemo( const char * root, void * value, const char * path,
                                                const char * kind, const char * text )
 {
-    const long long n = strtoll( text, NULL, 10 );
     if ( strcmp( root, "StorePurchase" ) == 0 )
     {
         backenddemo_store_purchase_t * v = (backenddemo_store_purchase_t *) value;
-        if ( strcmp( path, "quantity" ) == 0 && strcmp( kind, "int" ) == 0 ) { v->quantity = (uint8_t) n; return 1; }
-        if ( strcmp( path, "currency" ) == 0 && strcmp( kind, "ordinal" ) == 0 ) { v->currency = (backenddemo_currency_t) n; return 1; }
+        if ( strcmp( path, "quantity" ) == 0 && strcmp( kind, "int" ) == 0 ) { return CONFORMANCE_WREF_UNSIGNED( v->quantity, text ); }
+        if ( strcmp( path, "currency" ) == 0 && strcmp( kind, "ordinal" ) == 0 ) { return CONFORMANCE_WREF_UNSIGNED( v->currency, text ); }
         if ( strcmp( path, "sku" ) == 0 ) { return conformance_write_refusal_text( v->sku, (int32_t) sizeof( v->sku ) - 1, &v->sku_length, kind, text ); }
     }
     if ( strcmp( root, "LoginRequest" ) == 0 )
@@ -30,7 +29,7 @@ int conformance_write_refusal_set_backenddemo( const char * root, void * value, 
     if ( strcmp( root, "MatchResult" ) == 0 )
     {
         backenddemo_match_result_t * v = (backenddemo_match_result_t *) value;
-        if ( strcmp( path, "players[0].score" ) == 0 && strcmp( kind, "int" ) == 0 ) { v->players[0].score = (int32_t) n; return 1; }
+        if ( strcmp( path, "players[0].score" ) == 0 && strcmp( kind, "int" ) == 0 ) { return CONFORMANCE_WREF_SIGNED( v->players[0].score, text ); }
     }
     return 0;
 }
