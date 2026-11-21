@@ -211,7 +211,7 @@ func tableMessageBodyWideBlob(r *TableMessageReader, value *WideBlob, starts []u
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
-					if n > 70000 {
+					if n > 70000 || n > uint64(entry.Shape.Max) {
 						r.Report.Refuse(TableRefuseLengthOverBound, "WideBlob.label")
 						return false
 					}
