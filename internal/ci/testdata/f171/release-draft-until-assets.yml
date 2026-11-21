@@ -1,0 +1,221 @@
+# F-171 CORPUS CONTROL (green): the release is a draft until the assets job
+# has uploaded, matched and checksummed every archive, then published as
+# latest. internal/ci TestReleaseGoesPublicOnlyWhole must accept this file.
+name: Release
+
+# A RELEASE vX.Y.Z IS MADE HERE AND NOWHERE ELSE (Glenn, 2026-10-15): dispatched
+# by hand with the version, on main, it runs `make release`, which refuses by
+# name a version that does not parse as vMAJOR.MINOR.PATCH, one not greater
+# than the newest v tag, a commit that is not on main, and a patch release
+# that moves the build version's form (ir.BuildVersionForm), and, first of all,
+# a commit whose compiler encodes different wire bytes than the newest v tag's
+# under an equal protocol id (the previous-release differential, #463), and
+# otherwise tags
+# that one commit with that one annotated tag and pushes only that tag, and
+# then publishes the GitHub release on that tag. The
+# number is the dispatcher's choice under docs/VERSIONING.md's rules.
+#
+# WHAT IS PROVEN BEFORE THE TAG DEPENDS ON THE LANE (F-170), and
+# docs/VERSIONING.md says the same. The `full` lane: the proof table must be
+# green AT THAT COMMIT: `make release` refuses unless ci-full's `proof` job
+# left a green report for it (tools/matrix VerifyRelease), naming the red
+# cells when it is not, and the report is read only from a ci-full run at that
+# commit whose conclusion is success: its `verdict` job fails the run on any
+# red go-test, generated, negative-control or vuln row, which `proof` alone
+# does not see. The default `fast` lane (patch releases only, Glenn,
+# 2026-11-21) is locked ONLY on a green CI fast run at the commit: no ci-full,
+# no certify.yml and no nightly runs before the tag; they run nightly after,
+# and may first see the commit once it is public. Nothing here reads a
+# certify.yml run in either lane.
+#
+# THE BINARIES come after the tag, in the `assets` job, which runs only when
+# the `release` job, and so every refusal above, passed. It is a job here and
+# not a workflow on `push: tags`, because a tag pushed with this run's
+# github.token starts no other workflow (GitHub runs no workflow for an event
+# the GITHUB_TOKEN caused, except workflow_dispatch and repository_dispatch).
+# It checks out the new tag, refuses unless the tag names the commit the
+# release job tagged, cross-compiles cmd/schema for six platforms with cgo off
+# and -trimpath (`make release-binaries`, tools/releasebin:
+# schema_<version>_<os>_<arch>.tar.gz, .zip for Windows, and SHA256SUMS), and
+# uploads them to the DRAFT GitHub release the release job made; it checks the
+# draft carries exactly what it built and that every archive downloaded back
+# matches SHA256SUMS, and only then publishes the release as latest (F-171), so
+# no public release is ever empty or partial. It never creates a release: a
+# missing one fails the job, naming that step. It moves no tag and decides
+# nothing about the version.
+#
+#   gh workflow run release.yml --ref main -f version=vX.Y.Z
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'the release version, vMAJOR.MINOR.PATCH, greater than the newest v tag'
+        required: true
+        type: string
+      lane:
+        # fast: a patch release gated on a green CI fast run at the commit
+        # (Glenn, 2026-11-21: "Only run fast CI checks for the point
+        # releases."); full: the ci-full proof report, for any release
+        description: 'fast (patch releases: green CI fast at the commit) or full (the ci-full proof report)'
+        required: true
+        default: fast
+        type: choice
+        options: [fast, full]
+
+# Releases are serial: two dispatches must not both read the same newest tag.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  # the proof report: read from the ci-full run on the commit being released
+  actions: read
+
+jobs:
+  release:
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    # two compilers built, three C++ packet drivers built twice, the
+    # conformance instances packed twice
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # every tag (the newest v tag) and main's whole ancestry are inputs
+          fetch-depth: 0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      # THE RELEASE LOCK: the proof report ci-full's `proof` job wrote at this
+      # exact commit, read only from a ci-full run there whose conclusion is
+      # success (CI-TOOLS-5: `proof` needs only the conformance rows, so a run
+      # red on go-test, generated, the negative controls or vuln can still
+      # carry a green proof; the run's conclusion includes its `verdict` job).
+      # `make release` refuses unless the report is there and green
+      # (tools/matrix VerifyRelease), naming the red cells; a commit with no
+      # green ci-full run refuses here, by name.
+      - name: the proof report at this commit
+        if: inputs.lane == 'full'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          run=$(gh run list --workflow ci-full.yml --commit "$GITHUB_SHA" --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+          if [ -z "$run" ]; then echo "release REFUSES: no green ci-full run at $GITHUB_SHA (a red, cancelled or missing run carries no proof the release can take)"; exit 1; fi
+          gh run download "$run" --name proof --dir build/proof || echo "the green ci-full run $run at $GITHUB_SHA kept no proof report; make release will refuse"
+      - name: make the release tag
+        env:
+          GOFLAGS: -mod=readonly
+          # passed through the environment, never interpolated into the script
+          VERSION: ${{ inputs.version }}
+          # the fast lane's lock asks gh for the CI fast run at the commit
+          RELEASE_LANE: ${{ inputs.lane }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git fetch --quiet origin main
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          make release RELEASE_COMMIT="$GITHUB_SHA" PROOF=build/proof/proof.json PUSH=1
+      # A RELEASE IS A TAG AND A GITHUB RELEASE (Glenn, 2026-11-21: "make sure
+      # schema latest releases aren't just tags, but are real github
+      # releases"). v3.0.0 and v3.0.1 left here as bare tags. This step runs
+      # only after `make release` pushed the tag, makes the release on that
+      # tag and never makes a tag itself (--verify-tag). The body is GitHub's
+      # generated change list; the dispatcher replaces it with written notes,
+      # and a release that moves a protocol id or the build version says so
+      # first (docs/VERSIONING.md).
+      #
+      # IT IS A DRAFT UNTIL ITS ASSETS ARE THERE (F-171): v3.0.2 to v3.0.5 were
+      # public and latest 29 to 107 s before their first binary, and a failed
+      # build or upload would have left an empty release public. The `assets`
+      # job uploads the six archives and SHA256SUMS to this draft, checks the
+      # published set against what it built, and only then publishes it as
+      # latest. If this step fails the tag is already pushed and a re-dispatch
+      # refuses the version, so finish by hand, then re-run the assets job:
+      #
+      #   gh release create vX.Y.Z --verify-tag --title vX.Y.Z --generate-notes --draft
+      - name: make the GitHub release, as a draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # passed through the environment, never interpolated into the script
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          gh release create "$VERSION" --verify-tag --title "$VERSION" --generate-notes --draft
+
+  assets:
+    needs: release
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    # six cross-compiled builds of one Go program, packed, and one upload
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # the tag the release job just pushed
+          ref: refs/tags/${{ inputs.version }}
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: build the release binaries
+        env:
+          GOFLAGS: -mod=readonly
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]; then
+            echo "the tag $VERSION names $(git rev-parse HEAD), not the released commit $GITHUB_SHA: no binaries"
+            exit 1
+          fi
+          make release-binaries VERSION="$VERSION" RELEASE_BINARIES_MTIME="$(git log -1 --format=%ct HEAD)"
+      # uploads only: the release job's "make the GitHub release, as a draft"
+      # step is the one place a release is created
+      - name: attach them to the draft GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if ! gh release view "$VERSION" > /dev/null 2>&1; then
+            echo "no GitHub release $VERSION: the release job's \"make the GitHub release, as a draft\" step did not create it; create it as that step's comment says, then re-run this job"
+            exit 1
+          fi
+          gh release upload "$VERSION" build/release-binaries/schema_"$VERSION"_* build/release-binaries/SHA256SUMS --clobber
+      # THE RELEASE GOES PUBLIC ONLY WHOLE (F-171): the draft's asset names
+      # must be exactly what `make release-binaries` wrote, and every archive
+      # downloaded back from the draft must match SHA256SUMS, which must list
+      # every archive; then, and only then, the draft is published as latest.
+      - name: check the draft's assets, then publish it as latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          built=$(cd build/release-binaries && ls -1 | sort)
+          listed=$( { awk '{print $2}' build/release-binaries/SHA256SUMS; echo SHA256SUMS; } | sed 's/^\*//' | sort)
+          if [ "$built" != "$listed" ]; then
+            printf 'release REFUSES to publish %s: SHA256SUMS does not list exactly the built archives\nbuilt:\n%s\nlisted:\n%s\n' "$VERSION" "$built" "$listed"
+            exit 1
+          fi
+          attached=$(gh release view "$VERSION" --json assets --jq '.assets[].name' | sort)
+          if [ "$attached" != "$built" ]; then
+            printf 'release REFUSES to publish %s: the draft carries other assets than were built\nbuilt:\n%s\nattached:\n%s\n' "$VERSION" "$built" "$attached"
+            exit 1
+          fi
+          published="$RUNNER_TEMP/published-assets"
+          rm -rf "$published"
+          gh release download "$VERSION" --dir "$published"
+          (cd "$published" && sha256sum --strict -c SHA256SUMS)
+          gh release edit "$VERSION" --draft=false --latest
+          echo "published $VERSION as latest with $(echo "$built" | wc -l) assets"
