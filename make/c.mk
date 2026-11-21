@@ -1624,7 +1624,10 @@ REGISTRY_NA_WHY.toolchain.c := builds with the host C compiler (CC), which nothi
 # and never gains one, so a drifting file fails here by name.
 CLANG_FORMAT_PIN   ?= 23.1.3
 CLANG_FORMAT_MAJOR := $(firstword $(subst ., ,$(CLANG_FORMAT_PIN)))
-C_FORMAT_TREES     := build/tables-generated-c generated/c generated/c-ludicrous generated/bench/c generated/bench/tables/c generated/bench/paired/c
+# The committed C source goldens (internal/goldens TestGoldenSourceC and
+# TestGoldenLudicrousSource) are scanned too: a pin left in an old layout is
+# red here by name, not only in the golden tests (F-231).
+C_FORMAT_TREES     := build/tables-generated-c generated/c generated/c-ludicrous generated/bench/c generated/bench/tables/c generated/bench/paired/c testdata/golden/c testdata/golden/ludicrous/c
 # THE UNITS THE GATE MUST FIND, read off the generation registries themselves
 # (tables_generate_c, tables_generate_c_collections, the cards stamp): a unit
 # directory that is missing or empty turns the gate red, and so does a tree
