@@ -107,7 +107,7 @@ def corruptions(root:string, sample:string):
             let rec, reason = schema_rt.load_strict(root, bad, rep)
             assert not rec and reason == "integrity_mismatch"
             assert rep.malformed and rep.damaged and rep.stopped
-            assert rep.unknown == 0 and rep.kind_mismatch == 0 and rep.widened == 0 and rep.clamped == 0 and rep.duplicate == 0
+            assert rep.unknown == 0 and rep.widened == 0
             let n, whole, refused, diagnostic = schema_rt.load_measure(root, bad)
             assert n == -1 and not whole and refused and diagnostic != ""
         write_int8_le(sample, at, original)

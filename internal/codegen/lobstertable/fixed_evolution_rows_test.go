@@ -396,9 +396,10 @@ func TestLobsterFixedRowNormalization(t *testing.T) {
 	}
 }
 
-// TestLobsterFixedRowReports is reports (E9, R16, R18): the fixed form never
-// raises duplicate and has no clamp counter (no `duplicate +=` and no
-// `clamped +=` in the emitted table module or the fixed runtime); a field the
+// TestLobsterFixedRowReports is reports (E9, R16, R18): the fixed form has no
+// kind_mismatch, clamped or duplicate counter at all (docs/rulings.json
+// strict-only-read retired them: no read clamps or counts; the emitted table
+// module and the fixed runtime neither declare nor move one); a field the
 // writer has and the reader dropped counts unknown ONCE per load, not once per
 // record, and a load through a report holding stale counters resets them
 // first (three records: unknown 1, widened 0); and an int8 ranged on its
@@ -412,8 +413,12 @@ func TestLobsterFixedRowReports(t *testing.T) {
 	files := rowFiles(t, u)
 	for _, name := range []string{rowsProbeTable, rowsFixedevolve} {
 		src := string(files[name])
-		if strings.Contains(src, "duplicate +=") || strings.Contains(src, "clamped +=") {
-			t.Errorf("E9: %s moves duplicate or clamped", name)
+		for _, retired := range []string{"kind_mismatch", "clamped", "duplicate"} {
+			for _, use := range []string{retired + " +=", retired + ":int", "." + retired} {
+				if strings.Contains(src, use) {
+					t.Errorf("E9: %s carries the retired counter %s (%q)", name, retired, use)
+				}
+			}
 		}
 	}
 	e := rowEntry(t, u, "R")

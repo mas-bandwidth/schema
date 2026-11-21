@@ -393,8 +393,8 @@ def FromJSON(text:string) -> CardRecord?, CardError?:
     let root = schema_rt.json_read(ROOT, text, report)
     if not root or report.malformed:
         return nil, refuse("cards: JSON is malformed", "malformed")
-    if report.unknown > 0 or report.kind_mismatch > 0 or report.clamped > 0:
-        return nil, refuse("cards: JSON has loss events (unknown={report.unknown} kindMismatch={report.kind_mismatch} clamped={report.clamped}): refused, never truncated",
+    if report.unknown > 0:
+        return nil, refuse("cards: JSON has loss events (unknown={report.unknown}): refused, never truncated",
             "malformed")
     let cerr = check_card(root)
     if cerr:
@@ -819,10 +819,6 @@ def Render(record:CardRecord) -> string?, CardError?:
 def loss_err(report:schema_rt.LoadReport) -> CardError?:
     if report.retain_lost > 0:
         return refuse_with("cards: upgrade: {report.retain_lost} retained field(s) lost, refusing to replace", "retain-lost", report)
-    if report.kind_mismatch > 0:
-        return refuse_with("cards: upgrade: {report.kind_mismatch} kind mismatch(es), refusing to replace", "malformed", report)
-    if report.clamped > 0:
-        return refuse_with("cards: upgrade: {report.clamped} clamped value(s), refusing to replace", "malformed", report)
     if report.malformed:
         return refuse_with("cards: upgrade: malformed wire, refusing to replace", "malformed", report)
     return nil
@@ -869,10 +865,6 @@ def ReadStrict(wire:string) -> CardRecord?, CardError?:
     let report = record.report
     if report.unknown > 0:
         return nil, refuse_with("cards: strict: {report.unknown} unknown field(s), unsupported data", "unknown-present", report)
-    if report.kind_mismatch > 0:
-        return nil, refuse_with("cards: strict: {report.kind_mismatch} kind mismatch(es), unsupported data", "malformed", report)
-    if report.clamped > 0:
-        return nil, refuse_with("cards: strict: {report.clamped} clamped value(s), unsupported data", "malformed", report)
     if report.malformed:
         return nil, refuse_with("cards: strict: malformed wire, unsupported data", "malformed", report)
     return record, nil
@@ -968,9 +960,9 @@ def sha256hex(message:string) -> string:
 // refuse_lossy names the read events that make a record unsafe to hash or
 // rewrite (docs/SPEC-TABLES.md §4, §6.6).
 def refuse_lossy(report:schema_rt.LoadReport) -> CardError?:
-    let lost = report.unknown > 0 or report.kind_mismatch > 0 or report.clamped > 0 or report.retain_lost > 0
+    let lost = report.unknown > 0 or report.retain_lost > 0
     if lost or report.malformed:
-        return refuse_with("cards: record has loss events (unknown={report.unknown} kindMismatch={report.kind_mismatch} clamped={report.clamped} retainLost={report.retain_lost} malformed={report.malformed}): refused, never hashed or rewritten",
+        return refuse_with("cards: record has loss events (unknown={report.unknown} retainLost={report.retain_lost} malformed={report.malformed}): refused, never hashed or rewritten",
             "unknown-present", report)
     return nil
 

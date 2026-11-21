@@ -239,7 +239,7 @@ def drec(rec:schema_rt.Record) -> string:
     return "{{" + concat_string(fs, ";") + "}}"
 def report_line(rep:schema_rt.LoadReport) -> string:
     let verdict = if rep.refused: "refused" else: "read"
-    return "{rep.unknown},{rep.kind_mismatch},{rep.widened},{rep.clamped},{rep.duplicate},{rep.malformed},{verdict}"
+    return "{rep.unknown},{rep.widened},{rep.malformed},{verdict}"
 def run(root:string, file:string):
     let data = read_file(file)
     assert data

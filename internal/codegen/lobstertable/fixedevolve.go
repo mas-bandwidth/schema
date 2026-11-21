@@ -644,13 +644,17 @@ func scatterUnion(g *lobster.Gen, un *ir.Union, expr, at string, salt int64, ind
 	}
 }
 
-// ---- Read-Side Clamp & Write-Side Check -------------------------------------
+// ---- Read-Side Bounds & Write-Side Check ------------------------------------
+//
+// Both passes refuse; nothing clamps (docs/rulings.json strict-only-read).
+// fixedPassCheck is the save's check, fixedPassRead the read's bounds pass
+// (which also lands a deprecated enum ordinal as the default and a compressed
+// float's -0 as +0).
 
 type fixedPass int
 
 const (
-	fixedPassClamp fixedPass = iota
-	fixedPassCheck
+	fixedPassCheck fixedPass = iota
 	fixedPassRead
 )
 
@@ -708,47 +712,35 @@ func fixedCheckNeededField(f *ir.Field, seen map[string]bool) bool {
 	return ir.TableFixedClampNeededField(f)
 }
 
-func fixedBoundNeeded(f *ir.Field, chk bool) bool {
-	if chk && len(lobsterScalarStorageBounds(f, "x")) != 0 {
+func fixedBoundNeeded(f *ir.Field) bool {
+	if len(lobsterScalarStorageBounds(f, "x")) != 0 {
 		return true
 	}
-	if f.Array == ir.ArrayCounted && chk {
+	if f.Array == ir.ArrayCounted {
 		return true
 	}
 	if f.Array != ir.ArrayNone || f.KeyEnumRef != nil {
 		elem := *f
 		elem.Array, elem.KeyEnum, elem.KeyEnumRef = ir.ArrayNone, "", nil
-		return fixedBoundNeeded(&elem, chk)
+		return fixedBoundNeeded(&elem)
 	}
 	if f.Type.Kind == ir.TNamed {
 		if r, ok := f.Type.Ref.(*ir.Struct); ok {
-			return fixedBoundNeededStruct(r, chk)
+			return fixedCheckNeededStruct(r, map[string]bool{})
 		}
 		return ir.TableFixedClampNeededField(f)
 	}
-	if chk {
-		switch f.Type.Kind {
-		case ir.TString, ir.TBytes, ir.TFloat32, ir.TFloat64:
-			return true
-		}
-	}
-	if !chk && f.HasFloatRange && (f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64) {
+	switch f.Type.Kind {
+	case ir.TString, ir.TBytes, ir.TFloat32, ir.TFloat64:
 		return true
 	}
 	_, ok := lobsterScalarWidthBound(f, "x")
 	return ok || len(lobsterScalarRangeBounds(f, "x")) > 0
 }
 
-func fixedBoundNeededStruct(r *ir.Struct, chk bool) bool {
-	if chk {
-		return fixedCheckNeededStruct(r, map[string]bool{})
-	}
-	return ir.TableFixedClampNeeded(r)
-}
-
-func fixedArmNeeded(r *ir.Union, chk bool) bool {
+func fixedArmNeeded(r *ir.Union) bool {
 	for _, v := range r.Variants {
-		if v.F != nil && fixedBoundNeeded(v.F, chk) {
+		if v.F != nil && fixedBoundNeeded(v.F) {
 			return true
 		}
 	}
@@ -756,8 +748,7 @@ func fixedArmNeeded(r *ir.Union, chk bool) bool {
 }
 
 func emitFixedBoundField(g *lobster.Gen, f *ir.Field, val, ind string, pass fixedPass) bool {
-	chk := pass != fixedPassClamp
-	if !fixedBoundNeeded(f, chk) {
+	if !fixedBoundNeeded(f) {
 		return false
 	}
 	if f.Type.Optional {
@@ -771,31 +762,22 @@ func emitFixedBoundField(g *lobster.Gen, f *ir.Field, val, ind string, pass fixe
 }
 
 func emitFixedBoundPayload(g *lobster.Gen, f *ir.Field, val, ind string, pass fixedPass) bool {
-	chk := pass != fixedPassClamp
 	elem := *f
 	elem.Array, elem.KeyEnum, elem.KeyEnumRef = ir.ArrayNone, "", nil
 	loop := func(countExpr string) bool {
 		emitted := false
-		if chk && fixedByteArray(f) {
+		if fixedByteArray(f) {
 			g.Pf("%sif length(%s.%s) < %s:\n%s    return false\n", ind, val, ir.GoExportName(f.Name), countExpr, ind)
 			emitted = true
 		}
-		if !fixedBoundNeeded(&elem, chk) {
+		if !fixedBoundNeeded(&elem) {
 			return emitted
 		}
 		iv := fmt.Sprintf("i_bd_%s", ir.GoExportName(f.Name))
 		g.Pf("%sfor(%s) %s:\n", ind, countExpr, iv)
 		expr := fmt.Sprintf("%s.%s[%s]", val, ir.GoExportName(f.Name), iv)
-		if !chk && fixedByteArray(f) {
-			g.Pf("%s    var byte_value = %s\n", ind, expr)
-			expr = "byte_value"
-		}
 		if !emitFixedBoundElement(g, f, expr, ind+"    ", pass) {
 			g.Pf("%s    pass()\n", ind)
-		}
-		if !chk && fixedByteArray(f) {
-			field := val + "." + ir.GoExportName(f.Name)
-			g.Pf("%s    %s = write_int8_le(%s, %s, byte_value)\n", ind, field, field, iv)
 		}
 		return true
 	}
@@ -807,10 +789,8 @@ func emitFixedBoundPayload(g *lobster.Gen, f *ir.Field, val, ind string, pass fi
 	case f.Array == ir.ArrayCounted:
 		emitted := false
 		cnt := fmt.Sprintf("%s.%sCount", val, ir.GoExportName(f.Name))
-		if chk {
-			g.Pf("%sif %s < %d or %s > %d:\n%s    return false\n", ind, cnt, f.ArrayMin, cnt, f.ArrayBound, ind)
-			emitted = true
-		}
+		g.Pf("%sif %s < %d or %s > %d:\n%s    return false\n", ind, cnt, f.ArrayMin, cnt, f.ArrayBound, ind)
+		emitted = true
 		if loop(cnt) {
 			emitted = true
 		}
@@ -826,59 +806,39 @@ type lobsterScalarBound struct {
 }
 
 func emitFixedBoundElement(g *lobster.Gen, f *ir.Field, expr, ind string, pass fixedPass) bool {
-	chk := pass != fixedPassClamp
 	applyBounds := func(conds []lobsterScalarBound) bool {
 		if len(conds) == 0 {
 			return false
 		}
-		if chk {
-			var parts []string
-			for _, c := range conds {
-				parts = append(parts, "("+c.cond+")")
-			}
-			g.Pf("%sif %s:\n%s    return false\n", ind, strings.Join(parts, " or "), ind)
-			return true
+		var parts []string
+		for _, c := range conds {
+			parts = append(parts, "("+c.cond+")")
 		}
-		for i, c := range conds {
-			kw := "if"
-			if i > 0 {
-				kw = "elif"
-			}
-			g.Pf("%s%s %s:\n%s    %s = %s\n%s    report.clamped += 1\n", ind, kw, c.cond, ind, expr, c.set, ind)
-		}
+		g.Pf("%sif %s:\n%s    return false\n", ind, strings.Join(parts, " or "), ind)
 		return true
 	}
 
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
-			if fixedBoundNeededStruct(r, chk) {
+			if fixedCheckNeededStruct(r, map[string]bool{}) {
 				requireHome(g, r.Name)
-				if chk {
-					helper := "FixedCheckBody"
-					if pass == fixedPassRead {
-						helper = "FixedBoundsBody"
-					}
-					g.Pf("%sif not %s%s(%s):\n%s    return false\n", ind, r.Name, helper, expr, ind)
-				} else {
-					g.Pf("%s%sFixedClampBody(%s, report)\n", ind, r.Name, expr)
+				helper := "FixedCheckBody"
+				if pass == fixedPassRead {
+					helper = "FixedBoundsBody"
 				}
+				g.Pf("%sif not %s%s(%s):\n%s    return false\n", ind, r.Name, helper, expr, ind)
 				return true
 			}
 			return false
 		case *ir.Union:
 			g.TypeRef(r.Name, g.Unit.TableUnions[r.Name] != nil)
-			if chk {
-				g.Pf("%sif schema_rt.ult(%d, int(%s.Type)):\n%s    return false\n", ind, r.Max, expr, ind)
-			} else {
-				g.Pf("%sif schema_rt.ult(%d, int(%s.Type)):\n%s    %s.Type = %s\n%s    report.clamped += 1\n",
-					ind, r.Max, expr, ind, expr, lobster.VariantName(r.Name+"Type", "None"), ind)
-			}
-			if !fixedArmNeeded(r, chk) {
+			g.Pf("%sif schema_rt.ult(%d, int(%s.Type)):\n%s    return false\n", ind, r.Max, expr, ind)
+			if !fixedArmNeeded(r) {
 				return true
 			}
 			for i, v := range r.Variants {
-				if v.F == nil || !fixedBoundNeeded(v.F, chk) {
+				if v.F == nil || !fixedBoundNeeded(v.F) {
 					continue
 				}
 				arm := *v.F
@@ -891,96 +851,59 @@ func emitFixedBoundElement(g *lobster.Gen, f *ir.Field, expr, ind string, pass f
 			return true
 		case *ir.Enum:
 			g.TypeRef(r.Name, false)
-			if chk {
-				for i := range r.Variants {
-					if enumVariantDeprecated(r, i) {
-						if pass == fixedPassRead {
-							variant := "None"
-							if f.Array == ir.ArrayNone && f.HasDefault && f.DefVariant != "" {
-								variant = f.DefVariant
-							}
-							g.Pf("%sif int(%s) == %d:\n%s    %s = %s\n", ind, expr, i+1, ind, expr, lobster.VariantName(r.Name, variant))
-						} else {
-							g.Pf("%sif int(%s) == %d:\n%s    return false\n", ind, expr, i+1, ind)
+			for i := range r.Variants {
+				if enumVariantDeprecated(r, i) {
+					if pass == fixedPassRead {
+						variant := "None"
+						if f.Array == ir.ArrayNone && f.HasDefault && f.DefVariant != "" {
+							variant = f.DefVariant
 						}
-					}
-				}
-				g.Pf("%sif schema_rt.ult(%d, int(%s)):\n%s    return false\n", ind, r.Max, expr, ind)
-			} else {
-				g.Pf("%sif schema_rt.ult(%d, int(%s)):\n%s    %s = %s\n%s    report.clamped += 1\n",
-					ind, r.Max, expr, ind, expr, lobster.VariantName(r.Name, "None"), ind)
-				defVariant := "None"
-				if f.Array == ir.ArrayNone && f.KeyEnum == "" && f.HasDefault && f.DefVariant != "" {
-					for _, v := range r.Variants {
-						if v == f.DefVariant {
-							defVariant = v
-						}
-					}
-				}
-				for i := range r.Variants {
-					if enumVariantDeprecated(r, i) {
-						g.Pf("%sif int(%s) == %d:\n%s    %s = %s\n",
-							ind, expr, i+1, ind, expr, lobster.VariantName(r.Name, defVariant))
+						g.Pf("%sif int(%s) == %d:\n%s    %s = %s\n", ind, expr, i+1, ind, expr, lobster.VariantName(r.Name, variant))
+					} else {
+						g.Pf("%sif int(%s) == %d:\n%s    return false\n", ind, expr, i+1, ind)
 					}
 				}
 			}
+			g.Pf("%sif schema_rt.ult(%d, int(%s)):\n%s    return false\n", ind, r.Max, expr, ind)
 			return true
 		}
 		return false
 	}
 
-	if chk {
-		switch f.Type.Kind {
-		case ir.TFloat32:
-			// THE FINITE RULE (docs/SPEC-TABLES.md §3.3): a NaN or an infinity,
-			// at the width it is written, is invalid_value on a write and
-			// non_finite_float on a read.
-			g.Pf("%sif not schema_rt.finite_f32(%s):\n%s    return false\n", ind, expr, ind)
-			if f.HasFloatRange {
-				g.Pf("%sif %s < %s or %s > %s:\n%s    return false\n", ind, expr, lobster.FormatFloat32(f.FMin), expr, lobster.FormatFloat32(f.FMax), ind)
-				if pass == fixedPassRead {
-					// A COMPRESSED FLOAT'S -0 IS +0 (docs/SPEC-TABLES.md §3.3,
-					// docs/rulings.json fixed-compressed-negzero): inside the
-					// range it lands as the value 0 itself, uncounted.
-					g.Pf("%sif %s == 0.0:\n%s    %s = 0.0\n", ind, expr, ind, expr)
-				}
+	switch f.Type.Kind {
+	case ir.TFloat32:
+		// THE FINITE RULE (docs/SPEC-TABLES.md §3.3): a NaN or an infinity,
+		// at the width it is written, is invalid_value on a write and
+		// non_finite_float on a read.
+		g.Pf("%sif not schema_rt.finite_f32(%s):\n%s    return false\n", ind, expr, ind)
+		if f.HasFloatRange {
+			g.Pf("%sif %s < %s or %s > %s:\n%s    return false\n", ind, expr, lobster.FormatFloat32(f.FMin), expr, lobster.FormatFloat32(f.FMax), ind)
+			if pass == fixedPassRead {
+				// A COMPRESSED FLOAT'S -0 IS +0 (docs/SPEC-TABLES.md §3.3,
+				// docs/rulings.json fixed-compressed-negzero): inside the
+				// range it lands as the value 0 itself, uncounted.
+				g.Pf("%sif %s == 0.0:\n%s    %s = 0.0\n", ind, expr, ind, expr)
 			}
-			return true
-		case ir.TFloat64:
-			g.Pf("%sif not schema_rt.finite_f64(%s):\n%s    return false\n", ind, expr, ind)
-			if f.HasFloatRange {
-				g.Pf("%sif %s < %s or %s > %s:\n%s    return false\n", ind, expr, lobster.FormatFloat(f.FMin), expr, lobster.FormatFloat(f.FMax), ind)
-			}
-			return true
-		case ir.TString:
-			length := slotExpr(expr, f, "Length")
-			g.Pf("%sif %s < 0 or %s > %d or not schema_rt.fixed_utf8_valid_no_nul(%s, 0, %s):\n%s    return false\n",
-				ind, length, length, f.Type.Size, expr, length, ind)
-			return true
-		case ir.TBytes:
-			length := slotExpr(expr, f, "Length")
-			g.Pf("%sif %s < 0 or %s > %d:\n%s    return false\n", ind, length, length, f.Type.Size, ind)
-			return true
 		}
+		return true
+	case ir.TFloat64:
+		g.Pf("%sif not schema_rt.finite_f64(%s):\n%s    return false\n", ind, expr, ind)
+		if f.HasFloatRange {
+			g.Pf("%sif %s < %s or %s > %s:\n%s    return false\n", ind, expr, lobster.FormatFloat(f.FMin), expr, lobster.FormatFloat(f.FMax), ind)
+		}
+		return true
+	case ir.TString:
+		length := slotExpr(expr, f, "Length")
+		g.Pf("%sif %s < 0 or %s > %d or not schema_rt.fixed_utf8_valid_no_nul(%s, 0, %s):\n%s    return false\n",
+			ind, length, length, f.Type.Size, expr, length, ind)
+		return true
+	case ir.TBytes:
+		length := slotExpr(expr, f, "Length")
+		g.Pf("%sif %s < 0 or %s > %d:\n%s    return false\n", ind, length, length, f.Type.Size, ind)
+		return true
 	}
 
-	if !chk && f.HasFloatRange {
-		switch f.Type.Kind {
-		case ir.TFloat32:
-			lo, hi := lobster.FormatFloat32(f.FMin), lobster.FormatFloat32(f.FMax)
-			emitCompressedFloatClamp(g, expr, lo, hi, ind)
-			return true
-		case ir.TFloat64:
-			lo, hi := lobster.FormatFloat(f.FMin), lobster.FormatFloat(f.FMax)
-			emitCompressedFloatClamp(g, expr, lo, hi, ind)
-			return true
-		}
-	}
-
-	emitted := false
-	if chk {
-		emitted = applyBounds(lobsterScalarStorageBounds(f, expr))
-	}
+	emitted := applyBounds(lobsterScalarStorageBounds(f, expr))
 	if applyBounds(lobsterScalarRangeBounds(f, expr)) {
 		emitted = true
 	}
@@ -990,15 +913,6 @@ func emitFixedBoundElement(g *lobster.Gen, f *ir.Field, expr, ind string, pass f
 		}
 	}
 	return emitted
-}
-
-// emitCompressedFloatClamp is the bounds pass's compressed-float clamp. A NaN
-// or an infinity never reaches it: the finite pass refused the batch first
-// (docs/SPEC-TABLES.md §3.3, ruling 1 of 2026-10-27).
-func emitCompressedFloatClamp(g *lobster.Gen, expr, lo, hi, ind string) {
-	g.Pf("%sif %s < %s:\n%s    %s = %s\n%s    report.clamped += 1\n", ind, expr, lo, ind, expr, lo, ind)
-	g.Pf("%selif %s > %s:\n%s    %s = %s\n%s    report.clamped += 1\n", ind, expr, hi, ind, expr, hi, ind)
-	g.Pf("%selif %s == 0.0:\n%s    %s = 0.0\n", ind, expr, ind, expr)
 }
 
 func enumVariantDeprecated(e *ir.Enum, i int) bool {
@@ -1532,7 +1446,6 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 	g.Pf("    var holes = %sHoles\n", name)
 	g.Pf("    let record_bytes = known.record\n")
 	g.Pf("    var census_unknown = 0\n")
-	g.Pf("    var census_kind = 0\n")
 	g.Pf("    if hash != %sHash:\n", name)
 	g.Pf("        let lane = %sLineagePlans[pick]\n", name)
 	g.Pf("        if lane.why != \"\":\n")
@@ -1540,10 +1453,10 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 	g.Pf("        entries = lane.entries\n")
 	g.Pf("        entry_count = lane.count\n")
 	g.Pf("        holes = %sLineageHoles[pick]\n", name)
+	// A leaf the lineage plan cannot carry (a kind change that is not a
+	// widening) set lane.why = kind_mismatch when the plan was built
+	// (fixed_census_kind_mismatch): the lane refuses whole above.
 	g.Pf("        census_unknown = lane.unknown\n")
-	g.Pf("        census_kind = lane.kind_mismatch\n")
-	g.Pf("    if census_kind != 0:\n")
-	g.Pf("        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseKindMismatch)\n")
 	g.Pf("    if entry_count > length(plan):\n")
 	g.Pf("        return schema_rt.fixed_refuse(report, schema_rt.TableRefusePlanTooLarge)\n")
 	g.Pf("    let records_start = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes\n")
@@ -1595,7 +1508,6 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 	g.Pf("            for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseOutOfRange)\n")
 	g.Pf("    report.unknown += census_unknown\n")
-	g.Pf("    report.kind_mismatch += census_kind\n")
 	g.Pf("    return n\n\n")
 }
 

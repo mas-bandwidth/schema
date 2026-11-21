@@ -34,14 +34,14 @@ let back = [tblfnz.NewNegZero()]
 let report = schema_rt.TableReport {}
 let n = tblfnz.NegZeroFixedLoad(back, wire, plan, report)
 print(string(n))
-print("verdict=" + string(report.verdict) + " fixed_raised=" + string(report.fixed_raised) + " reason=" + report.reason + " layout_hash=" + string(report.layout_hash) + " widened=" + string(report.widened) + " unknown=" + string(report.unknown) + " kind_mismatch=" + string(report.kind_mismatch) + " clamped=" + string(report.clamped) + " duplicate=" + string(report.duplicate) + " retained=" + string(report.retained) + " retain_lost=" + string(report.retain_lost) + " malformed=" + string(report.malformed) + " non_finite_float=" + report.non_finite_float)
+print("verdict=" + string(report.verdict) + " fixed_raised=" + string(report.fixed_raised) + " reason=" + report.reason + " layout_hash=" + string(report.layout_hash) + " widened=" + string(report.widened) + " unknown=" + string(report.unknown) + " retained=" + string(report.retained) + " retain_lost=" + string(report.retain_lost) + " malformed=" + string(report.malformed) + " non_finite_float=" + report.non_finite_float)
 print(number_to_string(schema_rt.f32bits(back[0].Value), 16, 8))
 print(nzhex(tblfnz.NegZeroFixedSave(back)))
 `
 
 // fixedNegZeroClean is the report line of a load that refused nothing and
 // counted nothing: every TableReport field at its zero value.
-const fixedNegZeroClean = "verdict=0 fixed_raised=false reason= layout_hash=0 widened=0 unknown=0 kind_mismatch=0 clamped=0 duplicate=0 retained=0 retain_lost=0 malformed=false non_finite_float="
+const fixedNegZeroClean = "verdict=0 fixed_raised=false reason= layout_hash=0 widened=0 unknown=0 retained=0 retain_lost=0 malformed=false non_finite_float="
 
 func TestFixedCompressedNegZeroRead(t *testing.T) {
 	t.Parallel()

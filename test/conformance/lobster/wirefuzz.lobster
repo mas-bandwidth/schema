@@ -85,7 +85,10 @@ def put64(b:string, at:int, v:int) -> string:
 
 // THE REPLY RECORD (test/conformance/README.md): u8 loaded; i32 unknown,
 // kind_mismatch, widened, clamped, duplicate; u8 malformed; u8 refused;
-// i64 measure; i32 retained, retain_lost; i64 saved, then the saved bytes
+// i64 measure; i32 retained, retain_lost; i64 saved, then the saved bytes.
+// kind_mismatch, clamped and duplicate are retired counters
+// (docs/rulings.json strict-only-read): their slots stay in the layout and
+// are always 0.
 def record(loaded:bool, rep:schema_rt.LoadReport, malformed:bool, refused:bool, saved:int, bytes:string) -> string:
     return record_measured(loaded, rep, malformed, refused, -1, false, saved, bytes)
 
@@ -93,10 +96,10 @@ def record_measured(loaded:bool, rep:schema_rt.LoadReport, malformed:bool, refus
     var b = ensure_size("", 47, 0)
     b = put8(b, 0, if loaded: 1 else: 0)
     b = put32(b, 1, rep.unknown)
-    b = put32(b, 5, rep.kind_mismatch)
+    b = put32(b, 5, 0)
     b = put32(b, 9, rep.widened)
-    b = put32(b, 13, rep.clamped)
-    b = put32(b, 17, rep.duplicate)
+    b = put32(b, 13, 0)
+    b = put32(b, 17, 0)
     b = put8(b, 21, if malformed: 1 else: 0)
     // A NaN OR AN INFINITY REFUSES THE READ (docs/SPEC-TABLES.md §3.3): the
     // refusal verdict says so, whatever else the reply carries

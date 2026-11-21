@@ -69,7 +69,7 @@ def bool_word(b:bool) -> string:
 // report_text writes the read report, one Name=value line per counter of the
 // Go TableReport in declaration order (FORMAT.md, "The read report").
 def report_text(r:schema_rt.LoadReport) -> string:
-    return "Retained={r.retained}\nRetainLost={r.retain_lost}\nWidened={r.widened}\nUnknown={r.unknown}\nKindMismatch={r.kind_mismatch}\nClamped={r.clamped}\nDuplicate={r.duplicate}\nMalformed=" + bool_word(r.malformed) + "\n"
+    return "Retained={r.retained}\nRetainLost={r.retain_lost}\nWidened={r.widened}\nUnknown={r.unknown}\nKindMismatch=0\nClamped=0\nDuplicate=0\nMalformed=" + bool_word(r.malformed) + "\n"
 
 def refused(name:string, kind:string):
     write(name + ".refused", kind + "\n")

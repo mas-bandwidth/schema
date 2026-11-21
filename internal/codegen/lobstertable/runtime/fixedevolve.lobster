@@ -78,9 +78,6 @@ class TableReport:
     layout_hash:int = 0
     widened:int = 0
     unknown:int = 0
-    kind_mismatch:int = 0
-    clamped:int = 0
-    duplicate:int = 0
     retained:int = 0
     retain_lost:int = 0
     malformed:bool = false
@@ -95,9 +92,6 @@ def fixed_reset_report(r:TableReport):
     r.layout_hash = 0
     r.widened = 0
     r.unknown = 0
-    r.kind_mismatch = 0
-    r.clamped = 0
-    r.duplicate = 0
     r.retained = 0
     r.retain_lost = 0
     r.malformed = false
@@ -132,9 +126,6 @@ def fixed_report_equal(a:TableReport, b:TableReport) -> bool:
         a.layout_hash == b.layout_hash and
         a.widened == b.widened and
         a.unknown == b.unknown and
-        a.kind_mismatch == b.kind_mismatch and
-        a.clamped == b.clamped and
-        a.duplicate == b.duplicate and
         a.retained == b.retained and
         a.retain_lost == b.retain_lost and
         a.malformed == b.malformed
@@ -227,7 +218,6 @@ class TableFixedLineagePlan:
     entries:[TableFixedEntry] = []
     count:int = 0
     unknown:int = 0
-    kind_mismatch:int = 0
     why:string = ""
 
 class TableFixedLayoutEntry:
@@ -610,6 +600,14 @@ class tableFixedCompiler:
     chain_laid:bool = false
     report:TableReport? = nil
 
+// fixed_census_kind_mismatch marks a leaf the lineage plan cannot carry (a
+// kind change that is not a widening): the census report's reason names it,
+// and the lane refuses the whole load kind_mismatch (strict-only-read; no
+// counter moves).
+def fixed_census_kind_mismatch(c:tableFixedCompiler):
+    if c.report and c.report.reason == "":
+        c.report.reason = TableRefuseKindMismatch
+
 def fixed_lay_guards(c:tableFixedCompiler, links:[TableFixedGuardLink]) -> int:
     let bytes = 16 * length(links)
     let total = 64 * c.capacity
@@ -712,8 +710,7 @@ def fixed_compile_entry(c:tableFixedCompiler, theirs:TableFixedLayoutView, ti:in
                 sign: sign
             })
             return
-        if c.report:
-            c.report.kind_mismatch += 1
+        fixed_census_kind_mismatch(c)
         return
     if me.kind == 35 and te.kind != 35:
         fixed_push(c, TableFixedEntry {
@@ -930,8 +927,8 @@ def fixed_compile_entry(c:tableFixedCompiler, theirs:TableFixedLayoutView, ti:in
                     arg: arg,
                     op: tableFixedWiden
                 })
-            elif c.report:
-                c.report.kind_mismatch += 1
+            else:
+                fixed_census_kind_mismatch(c)
 
 def fixed_match_children(c:tableFixedCompiler, theirs:TableFixedLayoutView, ti:int, their_at:int, mine:TableFixedLayoutView, mi:int, dst:[TableFixedDst], my_at:int, grd:int, arg:int, census:bool) -> void:
     let te = fixed_entry_at(theirs, ti)
@@ -1103,7 +1100,9 @@ def fixed_lineage_plans(known:[TableFixedKnownLayout], my_layout:string, dst:[Ta
                         lane.entries = entries
                         lane.count = made
                         lane.unknown = census.unknown
-                        lane.kind_mismatch = census.kind_mismatch
+                        // a leaf the plan cannot carry refuses this lane
+                        // whole, by name (fixed_census_kind_mismatch)
+                        lane.why = census.reason
                         done = true
         push(out, lane)
     return out
@@ -1501,10 +1500,6 @@ def fixed_report_err(r:TableReport) -> string:
         return "wire_damaged"
     if r.malformed:
         return "malformed"
-    if r.clamped > 0:
-        return TableRefuseClamped
-    if r.kind_mismatch > 0:
-        return TableRefuseKindMismatch
     if r.reason != "":
         return r.reason
     return ""

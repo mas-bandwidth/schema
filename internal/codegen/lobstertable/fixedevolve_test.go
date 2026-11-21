@@ -163,7 +163,7 @@ func TestLobsterFixedFormEvolution(t *testing.T) {
     let n = %s.%sFixedLoad(back, data, plan, r)
     assert_true(n >= 1, "n >= 1")
     assert_true(r.reason == "" and not r.malformed and r.verdict == schema_rt.TableOpenExact, "clean verdict: " + r.reason)
-    assert_true(r.unknown == 0 and r.kind_mismatch == 0 and r.clamped == 0 and r.duplicate == 0, "zero counters")
+    assert_true(r.unknown == 0, "zero counters")
     %s%s%s
     print "PASS"
 `, pkg, table, pkg, table, pkg, pkg, table, counters, bracket, r.check)
@@ -202,7 +202,7 @@ func TestLobsterFixedFormEvolution(t *testing.T) {
     assert_true(r.reason == "layout_unknown", "reason layout_unknown, got " + r.reason)
     assert_eq(r.layout_hash, want, "layout_hash matches file header")
     assert_true(not r.malformed, "refusal by name is not malformed")
-    assert_true(r.widened == 0 and r.unknown == 0 and r.kind_mismatch == 0 and r.clamped == 0 and r.duplicate == 0, "REFUSE moves no counter")
+    assert_true(r.widened == 0 and r.unknown == 0, "REFUSE moves no counter")
     assert_true(%s.%sFixedSave([back[0]]) == %s.%sFixedSave([fresh]), "REFUSE touched destination")`, pkg, table, pkg, table)
 				}
 				body := fmt.Sprintf(`
@@ -273,7 +273,7 @@ func TestLobsterFixedFormEvolution(t *testing.T) {
     let n = %s.%sFixedLoad(back, old_data, plan, r)
     assert_true(n == -1 and r.reason == "layout_unsupported", "floor_below refuses layout_unsupported")
     assert_eq(r.layout_hash, read_uint64_le(old_data, 8), "floor_below layout_hash")
-    assert_true(not r.malformed and r.widened == 0 and r.unknown == 0 and r.clamped == 0, "REFUSE is total")
+    assert_true(not r.malformed and r.widened == 0 and r.unknown == 0, "REFUSE is total")
     let m = %s.%sFixedLoad(back, read_in("mid.bin"), plan, r)
     assert_true(m >= 1 and r.reason == "", "mid_floor at raised floor still reads")
     print "PASS"
@@ -417,7 +417,7 @@ func TestLobsterFixedFormEvolution(t *testing.T) {
         push(back, v)
         let n = %s.%sFixedLoad(back, read_in(fname), plan, r)
         assert_true(n == -1 and r.verdict == schema_rt.TableOpenRefused and r.reason == "count_over_bound", fname + " count_over_bound")
-        assert_true(not r.malformed and r.clamped == 0, fname + " counters untouched")
+        assert_true(not r.malformed, fname + " counters untouched")
         assert_true(back[0].Lead == 0x5A5A5A5A and back[0].ValsCount == 0x5A5A5A5A and back[0].Trail == 0x5A5A5A5A and back[0].Vals[0] == 0, fname + " destination untouched")
     print "PASS"
 `, pkg, pkg, table, pkg, table, pkg, table)
@@ -544,7 +544,7 @@ func TestLobsterFixedFormEvolution(t *testing.T) {
     assert_eq(n, -1, "no_layout returns -1")
     assert_true(r.verdict == schema_rt.TableOpenRefused and r.reason == "no_layout" and not r.malformed, "no_layout verdict")
     assert_eq(r.layout_hash, 0, "no_layout layout_hash == 0")
-    assert_true(r.widened == 0 and r.unknown == 0 and r.kind_mismatch == 0 and r.clamped == 0 and r.duplicate == 0, "no counter moves")
+    assert_true(r.widened == 0 and r.unknown == 0, "no counter moves")
     assert_true(back[0].V.X == 0x5A5A5A5A and back[0].V.Y == 0x5A5A5A5A and back[0].V.Z == 0x5A5A5A5A and back[0].V.W == 0x5A5A5A5A and back[0].Seq == 0x5A5A5A5A, "destination untouched")
     print "PASS"
 `, pkg, table, pkg, table, pkg, pkg, table)
@@ -577,7 +577,7 @@ func TestLobsterFixedFormEvolution(t *testing.T) {
     let n1 = %s.%sFixedLoad(back, read_in("one.bin"), plan, r)
     assert_eq(n1, 1, "unknown_census 1 record")
     assert_eq(r.unknown, 1, "unknown == 1 once per peer, not per element")
-    assert_true(r.kind_mismatch == 0 and r.widened == 0 and r.clamped == 0 and not r.malformed, "clean counters")
+    assert_true(r.widened == 0 and not r.malformed, "clean counters")
     assert_true(back[0].Lead == 1 and back[0].Trail == 2, "brackets")
     for(4) k:
         assert_eq(back[0].Items[k].A, 10 + k, "items.a")
@@ -617,7 +617,7 @@ func TestLobsterFixedFormEvolution(t *testing.T) {
     let plan = %s.make_plan(4096)
     let n = %s.%sFixedLoad(back, read_in("in.bin"), plan, r)
     assert_eq(n, 1, "cfloat_res_refine n == 1")
-    assert_true(r.clamped == 0 and r.widened == 0 and r.unknown == 0 and not r.malformed, "cfloat_res_refine counters")
+    assert_true(r.widened == 0 and r.unknown == 0 and not r.malformed, "cfloat_res_refine counters")
     assert_true(back[0].Lead == 1 and back[0].Trail == 2, "cfloat_res_refine brackets")
     let saved = write_float32_le(schema_rt.zeros(4), 0, back[0].Aim)
     assert_eq(read_uint32_le(saved, 0), %d, "cfloat_res_refine aim bits")
@@ -695,7 +695,7 @@ func TestLobsterFixedFormEvolution(t *testing.T) {
     let plan = %s.make_plan(4096)
     let n = %s.%sFixedLoad(back, read_in("in.bin"), plan, r)
     assert_eq(n, 1, "union_unselected_arm n == 1")
-    assert_true(r.reason == "" and not r.malformed and r.clamped == 0 and r.widened == 0 and r.unknown == 0, "clean counters")
+    assert_true(r.reason == "" and not r.malformed and r.widened == 0 and r.unknown == 0, "clean counters")
     assert_eq(int(back[0].Pick.Type), 1, "pick.type == Alpha")
     assert_eq(back[0].Pick.Alpha.M, 7, "pick.alpha.m == 7")
     assert_eq(back[0].Seq, 15, "seq == 15")

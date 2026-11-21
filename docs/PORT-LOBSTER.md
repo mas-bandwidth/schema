@@ -329,7 +329,8 @@ which keeps its index while every pointer naming it reads null. Pass one
 fills it from the framing, pass two decodes each record's body, then the root
 body; a pointer slot stores the resolved `Record` or blob, never the index.
 `good` is false when the node table could not be read whole, and then every
-pointer reads null. A second slot naming one blob counts `blob_shared`.
+pointer reads null. A second slot naming one blob refuses the load
+`blob_shared`.
 
 **The dispatch table.** A field, an array element and a union arm are read
 by the `Shape` registered under their shape key — `scalar`, `enum`, `ptr`
@@ -354,9 +355,11 @@ The last registration of a key wins, and a shape reads its report through
 id or key, or blob named from two slots refuses the whole load through
 `read_refuse`, which sets `refused` and names the `reason`; nothing of a
 refused load is returned. An accepted read moves only `unknown`, `widened`,
-`retained` and `retain_lost`. `LoadReport` still declares the retired
-`kind_mismatch`, `clamped`, `duplicate` and `blob_shared` counters; no read
-moves them.
+`retained` and `retain_lost`. The retired `kind_mismatch`, `clamped`,
+`duplicate` and `blob_shared` counters are gone from `LoadReport` and from the
+fixed form's `TableReport`; each of those events is a refusal by that name.
+A fixed-form lineage lane whose plan cannot carry a leaf (a kind change that
+is not a widening) refuses `kind_mismatch` through the lane's `why`.
 
 **Carried by the descriptor card.** The descriptor names an enum-keyed
 array's KEY enum (`schema_rt.keyed_enum`) beside the variants
