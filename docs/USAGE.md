@@ -4399,6 +4399,11 @@ The declaration is the generator's whole answer: a construct it does not name
 is still refused, and a key that is not one of `CarryConstructs()` fails
 `Register`.
 
+`Register` calls `Names()` and `Carries()` once each and keeps its own copy of
+what they returned. Editing those slices afterwards, or answering differently
+on a later call, changes neither the names that select your generator nor the
+constructs it is handed: to change either, register on a new `Compiler`.
+
 `compiler.UserAgent()` reports which build of the compiler is running, for a
 tool that stamps its own output.
 

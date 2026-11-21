@@ -28,7 +28,9 @@ type Generator interface {
 	// Names are the --lang spellings that select this generator; the first is
 	// canonical and is the one [Compiler.Targets] reports. The built-in C#
 	// and JavaScript backends answer to two each ("cs"/"csharp",
-	// "js"/"javascript").
+	// "js"/"javascript"). Names is called once, at [Compiler.Register], and
+	// its answer is copied there: a later edit of the returned slice, or a
+	// different answer from a later call, changes nothing.
 	Names() []string
 
 	// Generate returns the emitted files, keyed by output file name, for the
@@ -62,14 +64,45 @@ type ConstructCarrier interface {
 	Carries() []string
 }
 
+// A registration is the driver's own record of one registered generator: what
+// it declared at [Compiler.Register], copied out of the caller's slices then.
+// Dispatch, [Compiler.Targets] and the construct refusals read this record and
+// nothing else; the generator's Names and Carries are never called again, so a
+// declaration cannot change after it was validated — not by a later edit of
+// the slice it was returned in, and not by a method that answers differently
+// the second time.
+type registration struct {
+	gen       Generator
+	canonical string // the first name, as declared at Register
+	// declared is what a [ConstructCarrier] declared; nil for a generator
+	// that made no declaration, for which the built-in registry answers
+	declared map[string]struct{}
+}
+
+// carries answers whether the registered generator carries a construct: its
+// own declaration when it made one, else the built-in registry under its
+// canonical name.
+func (r *registration) carries(construct string) bool {
+	if r.declared != nil {
+		_, carried := r.declared[construct]
+		return carried
+	}
+	return carries(r.canonical, construct)
+}
+
 // Register adds a generator under every name it answers to. It fails on a
 // generator that names itself nothing, on an empty name, on a name another
 // generator already holds — silently shadowing a target would make `--lang`
 // mean different things in different builds — and on a [ConstructCarrier]
 // declaring a construct key [CarryConstructs] does not list. Nothing is
 // registered when it fails.
+//
+// Names and Carries are each called once, here, and their answers are copied:
+// the registration is what they said at this call.
 func (c *Compiler) Register(g Generator) error {
-	names := g.Names()
+	// the copy is taken before anything else runs, so the names that are
+	// validated below are the names that are registered
+	names := slices.Clone(g.Names())
 	if len(names) == 0 {
 		return fmt.Errorf("generator %T names no target", g)
 	}
@@ -93,32 +126,14 @@ func (c *Compiler) Register(g Generator) error {
 		}
 	}
 	if c.gens == nil {
-		c.gens = map[string]Generator{}
+		c.gens = map[string]*registration{}
 	}
+	reg := &registration{gen: g, canonical: names[0], declared: declared}
 	for _, n := range names {
-		c.gens[n] = g
+		c.gens[n] = reg
 	}
-	c.canonical = append(c.canonical, names[0])
-	if declared != nil {
-		if c.declared == nil {
-			c.declared = map[string]map[string]struct{}{}
-		}
-		c.declared[names[0]] = declared
-	}
+	c.canonical = append(c.canonical, reg.canonical)
 	return nil
-}
-
-// carrierOf answers, for the generator registered under canonical name
-// target, whether it carries a construct: its own declaration when it made
-// one, else the built-in registry.
-func (c *Compiler) carrierOf(target string) func(construct string) bool {
-	if set, ok := c.declared[target]; ok {
-		return func(construct string) bool {
-			_, carried := set[construct]
-			return carried
-		}
-	}
-	return func(construct string) bool { return carries(target, construct) }
 }
 
 // Targets returns the canonical name of every registered generator, sorted.
@@ -142,20 +157,23 @@ func (c *Compiler) Targets() []string {
 // exactly as before. A lock that will not parse is an error rather than a
 // silently shorter lineage.
 func (c *Compiler) Generate(u *ir.Unit, target string, opts Options) (map[string][]byte, error) {
-	g, ok := c.gens[target]
+	reg, ok := c.gens[target]
 	if !ok {
 		if len(c.gens) == 0 {
 			return nil, fmt.Errorf("target %q is not implemented — no generators are registered", target)
 		}
 		return nil, fmt.Errorf("target %q is not implemented — %s are the live targets", target, englishList(c.Targets()))
 	}
+	g := reg.gen
 	if validator, ok := g.(interface{ ValidateOptions(*ir.Unit, Options) error }); ok {
 		if err := validator.ValidateOptions(u, opts); err != nil {
 			return nil, err
 		}
 	}
-	carrier := g.Names()[0]
-	has := c.carrierOf(carrier)
+	// the registration record answers, never the generator again: the name
+	// and the declaration are the ones Register validated
+	carrier := reg.canonical
+	has := reg.carries
 	// GO CARRIES THE `timestamp` KIND FIRST (SPEC.md §4.13): every other
 	// target refuses a unit that uses it, here, once, by name — the
 	// construct, the target and the rule — so no other emitter is edited
