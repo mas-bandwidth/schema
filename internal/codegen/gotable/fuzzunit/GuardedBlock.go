@@ -21,6 +21,6 @@
 
 package tabledemo
 
-// table Patrol has NO block form: it is VARIABLE-LENGTH: a pointer or a map in its by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
+// table Patrol has NO block form: it is declared a plain `table`, which is the VARIABLE class whatever its fields are, and only a `fixed table` has a block form (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
