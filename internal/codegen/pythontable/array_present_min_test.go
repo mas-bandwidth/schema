@@ -67,7 +67,7 @@ else:
     assert mode != "refuse", "accepted under/over bound"
     if mode == "read2": assert len(value.items)==2 and value.items[0].n==7
     if mode == "read4": assert len(value.items)==4 and value.items[0].n==7
-    if mode == "absent": assert value.items == []
+    if mode == "absent": assert len(value.items)==2 and all(item.n==0 for item in value.items)
     if mode == "absent_pointer": assert value.items == [None,None]
     if mode == "fixed3": assert len(value.items)==3 and value.items[0].n==7 and value.items[1:] == [None,None]
 print("ok")
