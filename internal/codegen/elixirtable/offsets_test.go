@@ -3,6 +3,7 @@ package elixirtable
 import (
 	"maps"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -289,6 +290,22 @@ Meter.report("` + name + `", fn -> Enum.each(slots, fn {f, n} -> apply(mod, f, [
 
 var cookRuntimeModuleRE = regexp.MustCompile(`defmodule ([A-Za-z0-9_.]+)\.CookRuntime do`)
 
+// compileEbin compiles the generated modules in files with the leg's elixirc
+// into a fresh ebin directory and returns it.
+func compileEbin(t *testing.T, elixirBin string, files map[string][]byte) string {
+	t.Helper()
+	elixirc := elixircBinary(t, elixirBin)
+	src, ebin := t.TempDir(), t.TempDir()
+	names := writeModuleDir(t, src, files)
+	compile := exec.Command(elixirc, append([]string{"-o", ebin}, names...)...)
+	compile.Dir = src
+	compile.Env = append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	if out, err := compile.CombinedOutput(); err != nil {
+		t.Fatalf("elixirc: %v\n%s", err, out)
+	}
+	return ebin
+}
+
 // ordinaryMeter is the allocation meter of clause (a), the one
 // test/elixir-alloc/main.exs uses (docs/PORTING.md I1): the work runs in a
 // FRESH spawned process traced with :erlang.trace/3 on :garbage_collection, and
@@ -436,14 +453,35 @@ func measureOrdinary(t *testing.T, elixirBin string, unit *ir.Unit, runtime, rea
 	if n := strings.Count(string(src), real); n != 1 {
 		t.Fatalf("%s holds the half composition %q %d times, want once: the reader no longer composes from halves", runtime, real, n)
 	}
+	// THE UNIT IS COMPILED ONCE. Every module but the runtime goes through
+	// elixirc into one ebin; each variant then compiles only its own runtime
+	// file (`-r`) beside that ebin, so the three runs differ in the composition
+	// line alone. Compiling the whole unit per variant was nearly all of this
+	// subtest's time (10-24 s a run against a few seconds of measuring, amd-3,
+	// 2026-11-21) and put lang-clean (elixir) past ci-fast's two-minute cap on
+	// loaded runners. The real variant goes through the same `-r` path as the
+	// controls, so no variant is compiled differently from another.
+	shared := map[string][]byte{}
+	maps.Copy(shared, files)
+	delete(shared, runtime)
+	ebin := compileEbin(t, elixirBin, shared)
+	env := append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	figures := map[string]map[string]float64{}
 	for _, v := range []struct{ name, text string }{{"real", real}, {"control", control}, {"boxed", boxed}} {
-		variant := map[string][]byte{}
-		maps.Copy(variant, files)
-		variant[runtime] = []byte(strings.Replace(string(src), real, v.text, 1))
 		dir := t.TempDir()
-		names := writeModuleDir(t, dir, variant)
-		out := runProbe(t, elixirBin, dir, names, ordinaryMeter+probe)
+		if err := os.WriteFile(filepath.Join(dir, runtime), []byte(strings.Replace(string(src), real, v.text, 1)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "probe.exs"), []byte(ordinaryMeter+probe), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command(elixirBin, "-pa", ebin, "-r", runtime, "probe.exs")
+		cmd.Dir, cmd.Env = dir, env
+		raw, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("%s: probe failed: %v\n%s", v.name, err, raw)
+		}
+		out := string(raw)
 		figures[v.name] = map[string]float64{}
 		for line := range strings.SplitSeq(out, "\n") {
 			f := strings.Fields(line)
