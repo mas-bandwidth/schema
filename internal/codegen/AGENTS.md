@@ -16,6 +16,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../../AGENTS.md
 | `darttable/` | Dart table emitter | `go test ./internal/codegen/darttable` | `go test ./internal/codegen/darttable` |
 | `elixir/` | Elixir packet emitter | `go test ./internal/codegen/elixirtable` | `go test ./internal/codegen/elixirtable` |
 | `elixirtable/` | Elixir table emitter | `go test ./internal/codegen/elixirtable` | `go test ./internal/codegen/elixirtable` |
+| `genheader/` | generated-header URL line, shared by every emitter | `go test ./compiler -run TestGeneratedHeader` | `go test ./compiler -run TestGeneratedHeader` |
 | `golang/` | Go packet emitter | `go test ./internal/codegen/golang` | `go test ./internal/codegen/golang` |
 | `goose/` | Goose type emitter (docs/PORT-GOOSE.md) | `go test ./internal/codegen/goose` | `go test ./internal/codegen/goose/...` |
 | `goosetable/` | Goose table emitter (docs/PORT-GOOSE.md) | `go test ./internal/codegen/goosetable` | `go test ./internal/codegen/goosetable` |

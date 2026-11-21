@@ -120,6 +120,7 @@ var catalog = []Entry{
 	e("internal/codegen/ctable", "C table emitter", "go test ./internal/codegen/ctable", "go test ./internal/codegen/ctable"),
 	e("internal/codegen/dart", "Dart packet emitter", "go test ./internal/codegen/dart", "go test ./internal/codegen/dart"),
 	e("internal/codegen/darttable", "Dart table emitter", "go test ./internal/codegen/darttable", "go test ./internal/codegen/darttable"),
+	e("internal/codegen/genheader", "generated-header URL line, shared by every emitter", "go test ./compiler -run TestGeneratedHeader", "go test ./compiler -run TestGeneratedHeader"),
 	e("internal/codegen/elixir", "Elixir packet emitter", "go test ./internal/codegen/elixirtable", "go test ./internal/codegen/elixirtable"),
 	e("internal/codegen/elixirtable", "Elixir table emitter", "go test ./internal/codegen/elixirtable", "go test ./internal/codegen/elixirtable"),
 	e("internal/codegen/lobster", "Lobster type emitter and packet wire (docs/PORT-LOBSTER.md)", "make test-lobster", "go test ./internal/codegen/lobster/..."),
