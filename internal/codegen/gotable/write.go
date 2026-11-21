@@ -714,6 +714,15 @@ func (g *tableGen) emitWireScalar(f *ir.Field, expr, writer, ind string) {
 		if kind == tkF64 {
 			bits = 64
 		}
+		if kind == tkF32 && f.HasFloatRange {
+			// A COMPRESSED FLOAT'S -0 IS WRITTEN AS +0 (docs/SPEC-TABLES.md
+			// §3.3): the writer stores the +0 bits for it, so a -0 that rides
+			// (under a non-zero default, or in an array) is never 0x80000000.
+			// A plain float's -0 is stored bit-exact below.
+			g.pf("%sif %s == 0 {\n%s\t%s.Put32(0)\n%s} else {\n%s\t%s.Put32(math.Float32bits(%s))\n%s}\n",
+				ind, expr, ind, writer, ind, ind, writer, expr, ind)
+			return
+		}
 		g.pf("%s%s.Put%d(math.Float%dbits(%s))\n", ind, writer, bits, bits, expr)
 	default:
 		width := ir.TableKindWidth(kind) * 8

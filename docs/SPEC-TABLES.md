@@ -6840,7 +6840,12 @@ message, fixed, variable and text forms:
 - **A FINITE VALUE PAST AN END IS REFUSED**: every writer refuses it
   `invalid_value`, as it refuses any value off its declared range, and a read
   that meets one where the form carries the float whole refuses it
-  `out_of_range`, naming the field.
+  `out_of_range`, naming the field. The ends are held AT FLOAT32, where every
+  runtime evaluates the triple (SPEC.md §4.6): the value, narrowed to float32,
+  is compared with `float32(min)` and `float32(max)`, on every write and every
+  read in every form. An end float32 cannot spell exactly (`max = 0.1`,
+  `min = 0.7`) is the float32 nearest it, so the value at that end is in range
+  and one float32 step past it is not.
 - **`-0` IS `+0`.** It lands as exactly what `+0` lands as in that form: the
   value `0` itself where the form carries the float, and the INDEX OF 0 FOR
   THAT RANGE where the form quantizes, which decodes to the grid point the
@@ -7168,10 +7173,12 @@ caller's array of values is the whole of its storage.
     its entry table (kind `13`) whatever its value is;
   - an array's `min` is at most its `max`;
   - a packed `bits` and a `max` sit inside what the kind holds;
-  - a RANGED integer's `base` is such that `base + 2^bits - 1` lies inside the
-    announced kind: a width the kind holds is not enough, because under a base
-    near the kind's edge a lawful-looking width names values the kind cannot
-    hold.
+  - a RANGED integer's `base` lies inside the announced kind. The sum is not
+    held here, because `uint8 | min = 200, max = 250` is lawful and announces a
+    six-bit width whose top offsets pass the kind's edge: `base + offset` is
+    held to the announced kind's storage domain on the body, at a named field
+    and on the skip path alike, exactly and never wrapped (A RANGED OFFSET IS
+    HELD TO THE DOMAIN THE READER CAN KNOW, above).
 
   Two rules on the body complete it. An array element that consumes no bits is
   refused where it is walked (A WALKED ARRAY ELEMENT THAT CONSUMES NO BITS

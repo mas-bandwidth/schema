@@ -210,7 +210,7 @@ func encodeFixedElement(m *tabletext.Model, b []byte, f *ir.Field, cell *tablete
 		if err := RefuseNonFinite(m, f, cell.F); err != nil {
 			return err
 		}
-		binary.LittleEndian.PutUint32(b, math.Float32bits(float32(cell.F)))
+		binary.LittleEndian.PutUint32(b, float32Stored(f, cell.F))
 		return nil
 	case ir.TFloat64:
 		if err := RefuseNonFinite(m, f, cell.F); err != nil {
