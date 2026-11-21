@@ -193,8 +193,9 @@ func TestKeyboundToUnboundedIsGrowth(t *testing.T) {
 // its lookup `[..N]Pair` respells it `map[K]V`. The BYTES ARE IDENTICAL when
 // Pair's fields are exactly `key` and `value` — they ride under the same two
 // constant ids — and what the read gains is the ORDER CHECK, so a wire whose
-// entries were not written ascending keeps the ascending prefix and reads
-// short. Warned, never refused: nothing already written changes meaning.
+// entries were not written ascending, or that repeats a key, refuses
+// `wire_damaged` whole (§2.8). Warned, never refused: nothing a conforming
+// writer wrote changes meaning.
 func TestTheArrayToMapEditWarns(t *testing.T) {
 	fs := mapDiff(t, mapPairSrc, mapFixtureSrc, baseline.DefaultTokenPolicy)
 	for _, f := range fs {
@@ -211,6 +212,16 @@ func TestTheArrayToMapEditWarns(t *testing.T) {
 	}
 	if !find(fs, baseline.Warn, "Fleet.ships", "GAINS THE ORDER CHECK") {
 		t.Errorf("the warning does not say what the map direction gains: %s", summary(fs))
+	}
+	// THE ONE READ KEEPS NO PREFIX (§2.8, §4): the warning names the refusal,
+	// never the retired read-short-and-keep-the-prefix answer.
+	if !find(fs, baseline.Warn, "Fleet.ships", "refuses `wire_damaged`") {
+		t.Errorf("the warning does not say a non-ascending wire refuses: %s", summary(fs))
+	}
+	for _, f := range fs {
+		if strings.Contains(f.What, "ascending prefix") || strings.Contains(f.What, "reads short") {
+			t.Errorf("the warning describes the retired prefix read: %s", f.What)
+		}
 	}
 	// and the OTHER direction is the same one edit, losing what the map added
 	back := mapDiff(t, mapFixtureSrc, mapPairSrc, baseline.DefaultTokenPolicy)
