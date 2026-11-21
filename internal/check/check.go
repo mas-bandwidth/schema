@@ -4121,7 +4121,10 @@ func (c *checker) checkClaimedNames() {
 	// beside the unit's own declarations (the runtime tier's scratch holders
 	// and text validator, the flat tier's conversion scratch, build switch and
 	// read slack), and an ES module refuses a second binding of one name.
-	for _, gen := range []string{"NUMBER_SCRATCH", "BIGINT_SCRATCH", "BOOL_SCRATCH", "SC", "PRODUCTION", "FlatReadSlack", "validText"} {
+	// globalThis is the one name the modules reach every builtin through,
+	// so a unit name taking a builtin's name shadows nothing they call
+	// (internal/codegen/js, internal/codegen/jstable).
+	for _, gen := range []string{"NUMBER_SCRATCH", "BIGINT_SCRATCH", "BOOL_SCRATCH", "SC", "PRODUCTION", "FlatReadSlack", "validText", "globalThis"} {
 		add(gen, "a binding every generated JavaScript packet module declares (SPEC §6.1)", unitPos)
 	}
 	// THE VIEW'S OWN UNIT-SCOPE SPELLINGS (docs/SPEC-TABLES.md §8.3, §11),

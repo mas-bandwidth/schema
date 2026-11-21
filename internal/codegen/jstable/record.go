@@ -74,7 +74,7 @@ func jsF32ReaderSource() string {
 // the reader's answer stays an unboxed double (a call's answer in that branch
 // boxed every finite read, 44 bytes a walk on make tables-js-alloc).
 // Module-scope bindings, claimed in internal/tablenames.
-const TableBlockLatch = new WeakMap();
+const TableBlockLatch = new globalThis.WeakMap();
 function TableBlockRefuseFloat(view, field) {
   if (!TableBlockLatch.has(view)) { TableBlockLatch.set(view, field); }
 }
@@ -251,12 +251,12 @@ func emitRecordObject(b *strings.Builder, u *ir.Unit, name string, ml *ir.Member
 			pf("  function %sPresent(view, at) { return view.getUint8(at + %d) !== 0; }\n", member, facts.PresentOffset)
 		}
 	}
-	pf("\n  return Object.freeze({\n")
+	pf("\n  return globalThis.Object.freeze({\n")
 	pf("    Size, Align,\n")
 	pf("    // the same accessors by the field's SCHEMA name, in one uniform\n")
 	pf("    // shape — (bytes, view, at, index) — so a generic reader and the\n")
 	pf("    // named accessors above can be held to each other by a test.\n")
-	pf("    Fields: Object.freeze({ %s }),\n", strings.Join(uniform, ", "))
+	pf("    Fields: globalThis.Object.freeze({ %s }),\n", strings.Join(uniform, ", "))
 	pf("    %s\n", strings.Join(recordMembers(u, ml), ", "))
 	pf("  });\n})();\n\n")
 }
@@ -371,7 +371,7 @@ func emitRowHolder(pf func(string, ...any), u *ir.Unit, owner string, f *ir.Fiel
 	width := pieces[0].Size
 	want := "Number(key)"
 	if width == 8 {
-		want = `typeof key === "bigint" ? key : BigInt(key)`
+		want = `typeof key === "bigint" ? key : globalThis.BigInt(key)`
 	}
 	pf("  // `key` is the integer, ordered by value (signed for a signed kind).\n")
 	pf("  function %sFind(view, at, key) {\n", member)
