@@ -838,6 +838,29 @@ jobs:
       - name: go vet
         run: go vet ./...
 
+  # THE MUTATION DRIVER'S SMOKE SET (tools/mutation/smoke.json): five mutants of
+  # internal/tablecook known to be killed by that package's tests, applied one
+  # at a time to a scratch worktree. Every one must be found and killed, so the
+  # driver the nightly sweep (mutation-nightly.yml) runs cannot rot between
+  # nights: a smoke mutant that survives means the driver stopped mutating or
+  # the test it leans on stopped testing. Measured 21 s on the Studio, cold.
+  mutation-smoke:
+    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 2
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: the smoke mutants are all killed
+        run: go run ./tools/mutation smoke -work "$RUNNER_TEMP/mutation-smoke"
+
   # FAST GOLANGCI-LINT OVER TOUCHED GO PACKAGES (~4-10 s on fleet runners).
   # Catches gocritic / staticcheck / errcheck / unused issues in touched Go
   # packages right on the PR instead of waiting for ci-full.yml's lint job.

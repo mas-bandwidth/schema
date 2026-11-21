@@ -1,0 +1,220 @@
+name: Mutation nightly
+
+# DO THE TESTS NOTICE BREAKAGE? (tools/mutation.) Every night one seeded
+# sample of mutations per core package and per target is applied, one at a
+# time, to a scratch worktree, and the tests that should notice are run. A
+# mutant that every stage leaves green is a line no test holds, and the job
+# fails on it unless tools/mutation/equivalents/<scope>.json names it with the
+# one line that says why no test can tell it from the original.
+#
+# The seed and the sample sizes are fixed here, so a night's sample is the
+# reviewed one until the source moves; when it moves, the new mutants are
+# reviewed like the first ones were. The driver itself fails if it applied no
+# mutation, ran no test, or if a stage is red or shows no proof of testing on
+# the unmutated tree, so this job cannot go green by doing nothing.
+#
+# The fast lane's share is ci-fast.yml's `mutation-smoke`: five mutants known
+# to be killed in seconds, which keeps the driver from rotting between nights.
+#
+# THE SLOT, 02:11 UTC: before the 03:00-04:17 per-language cluster.
+# A schedule fires from the default branch (main) only.
+
+# NIGHTLY RUNS HAVE NO TIMEOUT (the owner, 2026-11-16: "Nightly runs don't
+# have a timeout... they can run as long as they need."). No job or step in
+# this file carries timeout-minutes, and PGROUP_GO_TEST_TIMEOUT: '0' below has
+# tools/pgroup give every go test under a step -timeout=0 in place of the one
+# it names, so a slow row finishes and reports every test. GitHub's default
+# 360-minute job limit is the only backstop, and a job it stops reads
+# cancelled, never green. internal/ci/nightly_test.go holds the rule.
+
+on:
+  # NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is not light moved to
+  # nightly test now." "no exceptions."). A push or pull request runs only the fast lane, ci-fast.yml.
+  schedule:
+    - cron: '11 2 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: mutation-nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # the nightly rule in the header: no go test -timeout under tools/pgroup
+  PGROUP_GO_TEST_TIMEOUT: '0'
+  # the selection: one seed, and the sample per core package and per target
+  MUTATION_SEED: '1121'
+  MUTATION_CORE_N: '60'
+  MUTATION_TARGET_N: '25'
+  # a shared runner: two jobs wide inside each stage
+  MUTATION_JOBS: '2'
+
+jobs:
+  # The two matrices are read from the tree: the core scopes from the driver,
+  # the targets from the conformance registry, which is what names a target's
+  # toolchain. Nothing here types a scope.
+  plan:
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    outputs:
+      core: ${{ steps.discover.outputs.core }}
+      targets: ${{ steps.discover.outputs.targets }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      - id: discover
+        name: the scopes, as two matrices
+        run: |
+          set -euo pipefail
+          core=$(go run ./tools/mutation matrix)
+          targets=$(go run ./test/conformance/harness matrix)
+          echo "$core"
+          echo "$targets"
+          echo "core=$core" >> "$GITHUB_OUTPUT"
+          echo "targets=$targets" >> "$GITHUB_OUTPUT"
+
+  core:
+    needs: plan
+    name: mutation (${{ matrix.scope }})
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        scope: ${{ fromJSON(needs.plan.outputs.core) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: the sibling runtimes, at their pins
+        run: make deps
+      - name: mutate ${{ matrix.scope }} and require every survivor reviewed
+        run: |
+          set -euo pipefail
+          mkdir -p build/mutation-results
+          go run ./tools/mutation run -scope "${{ matrix.scope }}" -n "$MUTATION_CORE_N" -seed "$MUTATION_SEED" \
+            -work "$RUNNER_TEMP/mutation" -out "build/mutation-results/${{ matrix.scope }}.jsonl" -enforce
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: mutation-${{ matrix.scope }}
+          path: build/mutation-results/
+          if-no-files-found: error
+
+  targets:
+    needs: plan
+    if: needs.plan.outputs.targets != '[]'
+    name: mutation (target-${{ matrix.lang }})
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.targets) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+
+      # every sibling SIBLINGS names, at its pin: a target's hostile runner
+      # and its conformance driver do not always read the same one
+      - name: the sibling runtimes, at their pins
+        run: make deps
+
+      # THE TOOLCHAIN STEPS ARE leg.yml's, keyed on the same registry fields,
+      # because the conformance stage below runs the leg's own targets.
+      - name: read the .NET SDK pin
+        if: matrix.dotnet != ''
+        run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        if: (matrix.dotnet != '') && runner.environment == 'github-hosted'
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_PIN }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: matrix.node != ''
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
+        with:
+          components: clippy, rustfmt
+        if: matrix.rust != '' && runner.environment == 'github-hosted'
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        if: matrix.dart != ''
+        with:
+          sdk: ${{ matrix.dart }}
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        if: matrix.java != ''
+        with:
+          distribution: 'temurin'
+          java-version: ${{ matrix.java }}
+      - name: isolate Mix and Hex in the job temp directory
+        if: matrix.otp != ''
+        run: |
+          echo "MIX_HOME=$RUNNER_TEMP/.mix" >> "$GITHUB_ENV"
+          echo "HEX_HOME=$RUNNER_TEMP/.hex" >> "$GITHUB_ENV"
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        if: matrix.otp != '' && runner.environment == 'github-hosted'
+        with:
+          otp-version: ${{ matrix.otp }}
+          elixir-version: ${{ matrix.elixir }}
+      - uses: ./.github/actions/ruby
+        if: matrix.ruby != ''
+      - uses: ./.github/actions/moo
+        if: matrix.moo != ''
+      - uses: ./.github/actions/python
+        if: matrix.python != ''
+      - name: install the Lobster pin
+        if: matrix.lobster != ''
+        run: |
+          set -euo pipefail
+          if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          fi
+          make dist-lobster LOBSTER_VERSION=${{ matrix.lobster }}
+      - name: build and install the pinned Squirrel interpreter
+        if: matrix.squirrel != ''
+        run: |
+          make dist-squirrel
+          mkdir -p "$RUNNER_TEMP/bin"
+          ln -sf "$PWD/dist/squirrel-3.2/bin/sq" "$RUNNER_TEMP/bin/sq"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: install the pinned Lua interpreter
+        if: matrix.lua != ''
+        run: |
+          make dist-lua
+          mkdir -p "$RUNNER_TEMP/bin"
+          ln -sf "$PWD/dist/lua-${{ matrix.lua }}/src/lua" "$RUNNER_TEMP/bin/lua"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: install the Luau pin
+        if: matrix.luau != ''
+        run: make dist-luau LUAU_VERSION=${{ matrix.luau }}
+
+      # the scratch worktree links this checkout's dist/ and its siblings, so
+      # the toolchains above are the ones every stage runs
+      - name: mutate target-${{ matrix.lang }} and require every survivor reviewed
+        run: |
+          set -euo pipefail
+          mkdir -p build/mutation-results
+          go run ./tools/mutation run -scope "target-${{ matrix.lang }}" -n "$MUTATION_TARGET_N" -seed "$MUTATION_SEED" \
+            -work "$RUNNER_TEMP/mutation" -out "build/mutation-results/target-${{ matrix.lang }}.jsonl" -enforce
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: mutation-target-${{ matrix.lang }}
+          path: build/mutation-results/
+          if-no-files-found: error

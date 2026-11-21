@@ -1,1 +1,7 @@
-[]
+[
+  {"scope": "tablecook", "id": "396c9c7fd268", "why": "bit-width in uncook.go (8 to 9): go test ./internal/tablecook goes red in 2 s, measured 2026-11-21"},
+  {"scope": "tablecook", "id": "0025b0d5897c", "why": "drop-call in region.go (a text cell's length is not written): go test ./internal/tablecook goes red in 2 s, measured 2026-11-21"},
+  {"scope": "tablecook", "id": "239f6f55b8f9", "why": "nil-error in check.go (keys out of order are not refused): go test ./internal/tablecook goes red in 3 s, measured 2026-11-21"},
+  {"scope": "tablecook", "id": "30ff01c44203", "why": "cmp-flip in uncook.go (< to <=): go test ./internal/tablecook goes red in 2 s, measured 2026-11-21"},
+  {"scope": "tablecook", "id": "f9b8de79b003", "why": "drop-operand in extent.go (an optional field's presence is not asked): go test ./internal/tablecook goes red in 2 s, measured 2026-11-21"}
+]

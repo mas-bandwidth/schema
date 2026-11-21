@@ -14,13 +14,14 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `luaufuzzhost/` | Luau nightly fuzz host (C++) | `make luau-nightly-fuzz-replay` | `make luau-nightly-fuzz` |
 | `matrix/` | 3.0.0 proof gate | `go test ./tools/matrix` | `make proof` |
 | `moofuzzhost/` | moo wire-fuzz native host (C++) | `make tables-moo-wire-fuzz` | `make tables-moo-wire-fuzz` |
+| `mutation/` | mutation sweep: do the tests notice breakage | `go test ./tools/mutation` | `go run ./tools/mutation smoke -work build/mutation` |
 | `negativecontrols/` | negative-control enumerator | `go test ./tools/negativecontrols` | `go run ./tools/negativecontrols check` |
 | `pgroup/` | process-group runner for CI steps | `go test ./tools/pgroup` | `go run ./tools/pgroup -- make test` |
 | `releasebin/` | release binaries for six platforms | `go test ./tools/releasebin` | `make release-binaries` |
 | `releasediff/` | previous-release differential (#463) | `make release-differential-negative-control` | `make release-differential` |
 | `releasetag/` | promotion and release tags | `go test ./tools/releasetag` | `make release` |
 | `roadmap/` | ROADMAP.md table honesty | `go test ./tools/roadmap` | `go test ./tools/roadmap` |
-| `sabotage/` | negative-control sabotages | `go test ./tools/negativecontrols` | `go run ./tools/sabotage` |
+| `sabotage/` | negative-control sabotages | `go test ./tools/sabotage ./tools/negativecontrols` | `go run ./tools/sabotage` |
 | `slowgatescan/` | SCHEMA_SLOW recipe scan | `make slow-gate-scan` | `make slow-gate-scan` |
 | `treelock/` | generated-tree lock | `go test ./tools/treelock` | `go test ./tools/treelock` |
 | `vuln/` | govulncheck wrapper | `make vuln-selftest` | `make vuln-selftest` |

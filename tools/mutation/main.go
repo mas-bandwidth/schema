@@ -34,6 +34,7 @@ import (
 const usage = `usage: go run ./tools/mutation <command> [flags]
 
   scopes                      every scope, its stages, and what it cannot run
+  matrix                      the core scopes as one line of JSON, for a CI matrix
   list   -scope S [-n N -seed K]
                               the mutants of a scope, or the sample a seed picks
   run    -scope S -work DIR [-n N -seed K] [-deep] [-stages a,b] [-ids x,y]
@@ -113,6 +114,19 @@ func command(name string, args []string) error {
 		return err
 	}
 	switch name {
+	case "matrix":
+		// the core scopes as a GitHub Actions matrix axis; the targets' axis is
+		// the conformance registry's own matrix, which names their toolchains
+		var names []string
+		for _, c := range coreScopes {
+			names = append(names, c.name)
+		}
+		out, err := json.Marshal(names)
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(out))
+		return nil
 	case "scopes":
 		all, err := scopes(root)
 		if err != nil {
@@ -274,7 +288,7 @@ func runScope(root, work, scopeName string, n int, seed uint64, only []string, o
 		if sink, err = os.OpenFile(out, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); err != nil {
 			return nil, err
 		}
-		defer sink.Close()
+		defer func() { _ = sink.Close() }()
 	}
 	var results []Result
 	var writeErr error
@@ -374,6 +388,8 @@ func runSmoke(root, work string) error {
 		if err != nil {
 			return err
 		}
+		// the smoke set leaves no worktree behind in the checkout it ran from
+		_ = exec.Command("git", "-C", root, "worktree", "remove", "--force", filepath.Join(work, scope, "schema")).Run()
 		for _, r := range results {
 			if r.Outcome != outcomeKilled {
 				return fmt.Errorf("smoke mutant %s (%s:%d %s) is %s, and the smoke set is the mutants known to be killed", r.ID, r.File, r.Line, r.Op, r.Outcome)

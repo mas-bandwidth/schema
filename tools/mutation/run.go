@@ -75,7 +75,7 @@ func sweep(scope Scope, tree string, muts []Mutant, opt sweepOptions, run Exec, 
 			return err
 		}
 		limits[i] = 3*took + 2*time.Minute
-		fmt.Fprintf(log, "baseline %s/%s green in %.0fs\n", scope.Name, st.Name, took.Seconds())
+		_, _ = fmt.Fprintf(log, "baseline %s/%s green in %.0fs\n", scope.Name, st.Name, took.Seconds())
 	}
 	build := "go build " + strings.Join(scope.goPackages(), " ")
 	if out, ok, _, _ := run(tree, build, opt.BaselineLimit); !ok {
@@ -138,7 +138,7 @@ func sweep(scope Scope, tree string, muts []Mutant, opt sweepOptions, run Exec, 
 		if err != nil || !bytes.Equal(back, original) {
 			return fmt.Errorf("mutant %s was not reverted in %s, the scratch tree is spoiled", m.ID, m.File)
 		}
-		fmt.Fprintf(log, "%-12s %s %s:%d %s %q -> %q (%s, %.0fs)\n", res.Outcome, m.ID, m.File, m.Line, m.Op, clip(m.Old), clip(m.New), res.Stage, seconds)
+		_, _ = fmt.Fprintf(log, "%-12s %s %s:%d %s %q -> %q (%s, %.0fs)\n", res.Outcome, m.ID, m.File, m.Line, m.Op, clip(m.Old), clip(m.New), res.Stage, seconds)
 		emit(res)
 	}
 	if applied == 0 {
