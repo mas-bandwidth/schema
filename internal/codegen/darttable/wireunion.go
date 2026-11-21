@@ -184,6 +184,13 @@ func (g *wireGen) storageDecl(f *ir.Field, name string) string {
 		return fmt.Sprintf("Uint8List? %s;", name)
 	case f.CountedOnWire():
 		et := g.listElemType(f)
+		if n := f.BornCount(); n > 0 {
+			// A FRESH [Min..N]T IS BORN AT ITS MIN, every slot at the
+			// element's default (docs/SPEC.md §4.2; internal/tabletext
+			// value.go), and the save elides that birth value
+			// (emitCountedBirthRides).
+			return fmt.Sprintf("List<%s> %s = List<%s>.generate(%d, (_) => %s);", et, name, et, n, g.countedBirthElem(f))
+		}
 		return fmt.Sprintf("List<%s> %s = <%s>[];", et, name, et)
 	case isUnionField(f):
 		return fmt.Sprintf("%s %s = %s();", f.Type.Name, name, f.Type.Name)
@@ -559,7 +566,9 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		// internal/tablewire arrayBody, which an arm shares with a field)
 		g.pf("%svar keep = count;\n", ind)
 		if f.Array == ir.ArrayCounted {
-			g.pf("%sif (keep > %d || keep < 0) { %s.report.refuse('count_over_bound'); keep = 0; }\n", ind, f.ArrayBound, p)
+			// a count below the declared Min refuses as one past Max does
+			// (docs/SPEC.md §5.1 row 3)
+			g.pf("%sif (keep > %d || keep < %d) { %s.report.refuse('count_over_bound'); keep = 0; }\n", ind, f.ArrayBound, max(f.ArrayMin, 0), p)
 		} else {
 			g.pf("%sif (keep < 0 || keep > 0x7FFFFFFF) %s\n", ind, bad)
 		}
@@ -1256,7 +1265,8 @@ func (g *wireGen) emitSaveUnionField(f *ir.Field, expr, ind string, id uint64) {
 // over element kind 15 (§3): the live count, then each element's arm header,
 // a None element the single zero byte. An empty array elides (§2.9).
 func (g *wireGen) emitSaveUnionList(f *ir.Field, expr, ind string, id uint64) {
-	g.pf("%s", rideOpen(ind, f, expr+".isNotEmpty"))
+	rides := g.countedRides(f, expr, ind, 0)
+	g.pf("%s", rideOpen(ind, f, rides))
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal s = w.sub();\n", ind)
 	g.pf("%s\ts.putByte(%d);\n", ind, wireKindUnion)

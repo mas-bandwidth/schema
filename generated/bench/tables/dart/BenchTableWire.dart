@@ -2506,20 +2506,54 @@ int _bytesCompare(List<int> a, List<int> b) {
   return a.length.compareTo(b.length);
 }
 
-// _stableSorted is a copy of a map's entries in ascending key order, ties in
-// their stored order (docs/SPEC-TABLES.md §2.8).
-List<T> _stableSorted<T>(List<T> l, int Function(T a, T b) cmp) {
-  final out = List<T>.from(l);
-  for (var i = 1; i < out.length; i++) {
-    final x = out[i];
-    var j = i - 1;
-    while (j >= 0 && cmp(out[j], x) > 0) {
-      out[j + 1] = out[j];
-      j--;
-    }
-    out[j + 1] = x;
+// _intCompare orders two signed integer keys by value (docs/SPEC-TABLES.md §2.8).
+int _intCompare(int a, int b) => a.compareTo(b);
+
+// _u64Compare orders two unsigned keys as 64-bit patterns (docs/SPEC-TABLES.md §2.8).
+int _u64Compare(int a, int b) => _u64Below(a, b) ? -1 : (_u64Above(a, b) ? 1 : 0);
+
+// _stableSortedBy is a copy of a map's entries in ascending key order, ties in
+// their stored order (docs/SPEC-TABLES.md §2.8). Each entry's sort key is
+// built ONCE, and a bottom-up merge sort over the entries' indices makes at
+// most n log2 n compares whatever order the entries arrive in: the JSON read
+// sorts a map in the order the document sent it, so the cost must not depend
+// on that order (§2.8's cost row: the sort is O(n log n) once per map).
+List<T> _stableSortedBy<T, K>(List<T> l, K Function(T) keyOf, int Function(K a, K b) cmp) {
+  final n = l.length;
+  if (n < 2) {
+    return List<T>.from(l);
   }
-  return out;
+  final keys = List<K>.generate(n, (i) => keyOf(l[i]), growable: false);
+  var from = List<int>.generate(n, (i) => i, growable: false);
+  var to = List<int>.filled(n, 0);
+  for (var width = 1; width < n; width *= 2) {
+    for (var lo = 0; lo < n; lo += 2 * width) {
+      final mid = lo + width < n ? lo + width : n;
+      final hi = lo + 2 * width < n ? lo + 2 * width : n;
+      var i = lo;
+      var j = mid;
+      var k = lo;
+      while (i < mid && j < hi) {
+        // the right run's entry goes first only when it is strictly below:
+        // an equal key keeps its stored order
+        if (cmp(keys[from[j]], keys[from[i]]) < 0) {
+          to[k++] = from[j++];
+        } else {
+          to[k++] = from[i++];
+        }
+      }
+      while (i < mid) {
+        to[k++] = from[i++];
+      }
+      while (j < hi) {
+        to[k++] = from[j++];
+      }
+    }
+    final swap = from;
+    from = to;
+    to = swap;
+  }
+  return List<T>.generate(n, (i) => l[from[i]]);
 }
 
 // _wideValid reports whether a run of Dart String UTF-16 codeUnits is well-formed:
@@ -2632,7 +2666,7 @@ final class TableMixed {
   int worldTime = 0;
   int frameTick = 0;
   double serverTime = 0.0;
-  List<TableEntity> entities = <TableEntity>[];
+  List<TableEntity> entities = List<TableEntity>.generate(1, (_) => TableEntity());
   List<TableStat> stats = <TableStat>[];
   TableEvent gameEvent = TableEvent();
   List<int> loadout = List<int>.generate(4, (_) => 0);
@@ -3052,13 +3086,24 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
     w.putU64(v.frameTick);
   }
   assert(!v.serverTime.isFinite || (v.serverTime >= 0.0 && v.serverTime <= 65535.0));
-  if (_f32Bits(v.serverTime) != 0) {
+  if (_f32Bits((v.serverTime == 0 ? 0.0 : v.serverTime)) != 0) {
     w.putLeb(w.refFor(4343163795393112518));
     w.putByte(10);
-    w.putU32(_f32Write(v.serverTime, 'TableMixed.server_time'));
+    w.putU32(_f32Write((v.serverTime == 0 ? 0.0 : v.serverTime), 'TableMixed.server_time'));
   }
   assert(v.entities.length >= 1 && v.entities.length <= 8);
-  if (v.entities.isNotEmpty) {
+  var birthEntities = v.entities.length == 1;
+  if (birthEntities) {
+    for (var bi = 0; bi < 1; bi++) {
+      final mark = w.state.mark();
+      final b = w.sub();
+      b.path = [...w.path, 10, bi];
+      tableEntityWireSaveBody(b, v.entities[bi]);
+      w.state.rollback(mark);
+      if (b.buf.length > 1) { birthEntities = false; break; }
+    }
+  }
+  if (v.entities.isNotEmpty && !birthEntities) {
     final ref = w.refFor(-7828083326636031446);
     final s = w.sub();
     s.putByte(13);
@@ -3137,22 +3182,22 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
     w.putBytes(s.buf);
   }
   assert(!v.aimX.isFinite || (v.aimX >= -1.0 && v.aimX <= 1.0));
-  if (_f32Bits(v.aimX) != 0) {
+  if (_f32Bits((v.aimX == 0 ? 0.0 : v.aimX)) != 0) {
     w.putLeb(w.refFor(-2616736631205226807));
     w.putByte(10);
-    w.putU32(_f32Write(v.aimX, 'TableMixed.aim_x'));
+    w.putU32(_f32Write((v.aimX == 0 ? 0.0 : v.aimX), 'TableMixed.aim_x'));
   }
   assert(!v.aimY.isFinite || (v.aimY >= -1.0 && v.aimY <= 1.0));
-  if (_f32Bits(v.aimY) != 0) {
+  if (_f32Bits((v.aimY == 0 ? 0.0 : v.aimY)) != 0) {
     w.putLeb(w.refFor(-2616737730716855018));
     w.putByte(10);
-    w.putU32(_f32Write(v.aimY, 'TableMixed.aim_y'));
+    w.putU32(_f32Write((v.aimY == 0 ? 0.0 : v.aimY), 'TableMixed.aim_y'));
   }
   assert(!v.aimZ.isFinite || (v.aimZ >= -1.0 && v.aimZ <= 1.0));
-  if (_f32Bits(v.aimZ) != 0) {
+  if (_f32Bits((v.aimZ == 0 ? 0.0 : v.aimZ)) != 0) {
     w.putLeb(w.refFor(-2616738830228483229));
     w.putByte(10);
-    w.putU32(_f32Write(v.aimZ, 'TableMixed.aim_z'));
+    w.putU32(_f32Write((v.aimZ == 0 ? 0.0 : v.aimZ), 'TableMixed.aim_z'));
   }
   if (_f32Bits(v.recoil) != 0) {
     w.putLeb(w.refFor(-7138431908913683369));
@@ -3176,10 +3221,10 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
     w.putU64(v.flux);
   }
   assert(!v.ping.isFinite || (v.ping >= 0.0 && v.ping <= 250.0));
-  if (_f32Bits(v.ping) != 0) {
+  if (_f32Bits((v.ping == 0 ? 0.0 : v.ping)) != 0) {
     w.putLeb(w.refFor(-4669986463835551831));
     w.putByte(10);
-    w.putU32(_f32Write(v.ping, 'TableMixed.ping'));
+    w.putU32(_f32Write((v.ping == 0 ? 0.0 : v.ping), 'TableMixed.ping'));
   }
   assert(v.crcHint >= 0 && v.crcHint <= 16777215);
   if (v.crcHint != 0) {
@@ -4410,8 +4455,8 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
               r.report.refuse('kind_mismatch'); return;
           }
           if (r.report.nonFiniteFloat.isNotEmpty) return;
-          if (d < 0) { r.report.refuse('out_of_range'); return; }
-          if (d > 65535) { r.report.refuse('out_of_range'); return; }
+          if (d < 0.0) { r.report.refuse('out_of_range'); return; }
+          if (d > 65535.0) { r.report.refuse('out_of_range'); return; }
           if (d == 0) d = 0.0;
           v.serverTime = d;
         }
@@ -4430,7 +4475,7 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           if (r.retain != null) { for (final old in v.entities) { r.retain!.forget(old); } }
           v.entities = <TableEntity>[];
           var keep = count;
-          if (keep < 0 || keep > 8) { r.report.refuse('count_over_bound'); return; }
+          if (keep < 1 || keep > 8) { r.report.refuse('count_over_bound'); return; }
           final arr = TableWireReader.sub(r, r.pos, end < r.pos ? r.pos : end);
           for (var i = 0; i < keep; i++) {
             final elen = arr.readLeb();
@@ -4542,8 +4587,8 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
               r.report.refuse('kind_mismatch'); return;
           }
           if (r.report.nonFiniteFloat.isNotEmpty) return;
-          if (d < -1) { r.report.refuse('out_of_range'); return; }
-          if (d > 1) { r.report.refuse('out_of_range'); return; }
+          if (d < -1.0) { r.report.refuse('out_of_range'); return; }
+          if (d > 1.0) { r.report.refuse('out_of_range'); return; }
           if (d == 0) d = 0.0;
           v.aimX = d;
         }
@@ -4560,8 +4605,8 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
               r.report.refuse('kind_mismatch'); return;
           }
           if (r.report.nonFiniteFloat.isNotEmpty) return;
-          if (d < -1) { r.report.refuse('out_of_range'); return; }
-          if (d > 1) { r.report.refuse('out_of_range'); return; }
+          if (d < -1.0) { r.report.refuse('out_of_range'); return; }
+          if (d > 1.0) { r.report.refuse('out_of_range'); return; }
           if (d == 0) d = 0.0;
           v.aimY = d;
         }
@@ -4578,8 +4623,8 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
               r.report.refuse('kind_mismatch'); return;
           }
           if (r.report.nonFiniteFloat.isNotEmpty) return;
-          if (d < -1) { r.report.refuse('out_of_range'); return; }
-          if (d > 1) { r.report.refuse('out_of_range'); return; }
+          if (d < -1.0) { r.report.refuse('out_of_range'); return; }
+          if (d > 1.0) { r.report.refuse('out_of_range'); return; }
           if (d == 0) d = 0.0;
           v.aimZ = d;
         }
@@ -4711,8 +4756,8 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
               r.report.refuse('kind_mismatch'); return;
           }
           if (r.report.nonFiniteFloat.isNotEmpty) return;
-          if (d < 0) { r.report.refuse('out_of_range'); return; }
-          if (d > 250) { r.report.refuse('out_of_range'); return; }
+          if (d < 0.0) { r.report.refuse('out_of_range'); return; }
+          if (d > 250.0) { r.report.refuse('out_of_range'); return; }
           if (d == 0) d = 0.0;
           v.ping = d;
         }
@@ -6119,6 +6164,18 @@ double _jsonFloatField(dynamic val, TableTextReport r, [bool single = false, dou
   r.refuse('kind_mismatch');
   return def;
 }
+
+// _jsonCompressedFloat holds a compressed float's text value to its range,
+// evaluated at the field's width (a float32 range's ends are float32(min) and
+// float32(max)), and folds -0 to +0 (ruling fixed-compressed-negzero), as the
+// binary reads do.
+double _jsonCompressedFloat(double d, TableTextReport r, double lo, double hi, [double def = 0.0]) {
+  if (!(d >= lo && d <= hi)) {
+    r.refuse('out_of_range');
+    return def;
+  }
+  return d == 0 ? 0.0 : d;
+}
 // §16.2: comments and trailing commas are layout, not values. The
 // a repeated key is judged before jsonDecode folds an object's repeated key.
 // String tokens are copied byte-for-byte so comment marks inside them stay text.
@@ -6725,6 +6782,14 @@ List<T> _jsonList<T>(dynamic val, TableTextReport r, int bound, T Function(dynam
   return out;
 }
 
+// _jsonCountMin holds a counted [Min..N] array's read to its declared Min: a
+// shorter one is refused, in the text form as on the wire (docs/SPEC.md §5.1
+// row 3).
+List<T> _jsonCountMin<T>(List<T> out, TableTextReport r, int min) {
+  if (out.length < min) r.refuse('count_over_bound');
+  return out;
+}
+
 List<T> _jsonFixed<T>(dynamic val, TableTextReport r, int n, T Function() def, T Function(dynamic, T) f, [List<T>? fallback]) {
   if (val is! List) {
     r.refuse('kind_mismatch');
@@ -6771,7 +6836,11 @@ List<T> _jsonKeyed<T>(dynamic val, TableTextReport r, int n, T Function() def, M
   return out;
 }
 
-List<T> _jsonMap<T>(dynamic val, TableTextReport r, Object Function(T) keyOf, int Function(T a, T b) cmp, T? Function(String, dynamic) f, [List<T>? fallback]) {
+// _jsonMap reads a map's object in the order the document sent it and lands
+// the entries in ascending key order (§2.8, §16): sortKey builds each entry's
+// key once and _stableSortedBy sorts in O(n log n), so keys sent in
+// descending order cost what any order costs.
+List<T> _jsonMap<T, K>(dynamic val, TableTextReport r, Object Function(T) keyOf, K Function(T) sortKey, int Function(K a, K b) cmp, T? Function(String, dynamic) f, [List<T>? fallback]) {
   final entries = _jsonEntries(val);
   if (entries == null) {
     r.refuse('kind_mismatch');
@@ -6792,7 +6861,7 @@ List<T> _jsonMap<T>(dynamic val, TableTextReport r, Object Function(T) keyOf, in
       out.add(item);
     }
   }
-  return _stableSorted(out, cmp);
+  return _stableSortedBy<T, K>(out, sortKey, cmp);
 }
 
 String? _jsonStringKey(String k, int bound, TableTextReport r) {
@@ -7617,11 +7686,11 @@ void tableMixedToJsonBody(_JOut out, TableMixed v, int depth, _Share sh, [int? l
   out.raw(_jsonString(BigInt.from(v.frameTick).toUnsigned(64).toString()));
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.serverTime >= 0 && v.serverTime <= 65535)) { throw StateError('invalid_value: field server_time out of range'); }
+  if (!(v.serverTime >= 0.0 && v.serverTime <= 65535.0)) { throw StateError('invalid_value: field server_time out of range'); }
   out.line(depth + 1);
   out.raw(_jsonString("server_time"));
   out.raw(': ');
-  out.raw(_jsonFloat(v.serverTime, true));
+  out.raw(_jsonFloat((v.serverTime == 0 ? 0.0 : v.serverTime), true));
   if (comma) out.raw(',');
   comma = true;
   if (v.entities.length < 1 || v.entities.length > 8) { throw StateError('invalid_value: field entities out of range'); }
@@ -7703,25 +7772,25 @@ void tableMixedToJsonBody(_JOut out, TableMixed v, int depth, _Share sh, [int? l
   out.raw(_jsonString(base64Encode(latin1.encode(v.payload))));
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.aimX >= -1 && v.aimX <= 1)) { throw StateError('invalid_value: field aim_x out of range'); }
+  if (!(v.aimX >= -1.0 && v.aimX <= 1.0)) { throw StateError('invalid_value: field aim_x out of range'); }
   out.line(depth + 1);
   out.raw(_jsonString("aim_x"));
   out.raw(': ');
-  out.raw(_jsonFloat(v.aimX, true));
+  out.raw(_jsonFloat((v.aimX == 0 ? 0.0 : v.aimX), true));
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.aimY >= -1 && v.aimY <= 1)) { throw StateError('invalid_value: field aim_y out of range'); }
+  if (!(v.aimY >= -1.0 && v.aimY <= 1.0)) { throw StateError('invalid_value: field aim_y out of range'); }
   out.line(depth + 1);
   out.raw(_jsonString("aim_y"));
   out.raw(': ');
-  out.raw(_jsonFloat(v.aimY, true));
+  out.raw(_jsonFloat((v.aimY == 0 ? 0.0 : v.aimY), true));
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.aimZ >= -1 && v.aimZ <= 1)) { throw StateError('invalid_value: field aim_z out of range'); }
+  if (!(v.aimZ >= -1.0 && v.aimZ <= 1.0)) { throw StateError('invalid_value: field aim_z out of range'); }
   out.line(depth + 1);
   out.raw(_jsonString("aim_z"));
   out.raw(': ');
-  out.raw(_jsonFloat(v.aimZ, true));
+  out.raw(_jsonFloat((v.aimZ == 0 ? 0.0 : v.aimZ), true));
   if (comma) out.raw(',');
   comma = true;
   out.line(depth + 1);
@@ -7749,11 +7818,11 @@ void tableMixedToJsonBody(_JOut out, TableMixed v, int depth, _Share sh, [int? l
   out.raw(_jsonString(v.flux.toString()));
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.ping >= 0 && v.ping <= 250)) { throw StateError('invalid_value: field ping out of range'); }
+  if (!(v.ping >= 0.0 && v.ping <= 250.0)) { throw StateError('invalid_value: field ping out of range'); }
   out.line(depth + 1);
   out.raw(_jsonString("ping"));
   out.raw(': ');
-  out.raw(_jsonFloat(v.ping, true));
+  out.raw(_jsonFloat((v.ping == 0 ? 0.0 : v.ping), true));
   if (comma) out.raw(',');
   comma = true;
   if (!((v.crcHint & ~16777215) == 0)) { throw StateError('invalid_value: field crc_hint out of range'); }
@@ -7836,7 +7905,7 @@ void tableMixedFromJsonFields(TableMixed v, dynamic obj, TableTextReport r, _Sha
         break;
       case "server_time":
         if (!seen.add(key)) r.refuse('text_damaged');
-        v.serverTime = _jsonFloatField(val, r, true, v.serverTime);
+        v.serverTime = _jsonCompressedFloat(_jsonFloatField(val, r, true, v.serverTime), r, 0.0, 65535.0, v.serverTime);
         break;
       case "entities":
         if (!seen.add(key)) r.refuse('text_damaged');
@@ -7853,6 +7922,7 @@ void tableMixedFromJsonFields(TableMixed v, dynamic obj, TableTextReport r, _Sha
           }
           v.entities.add(e);
         }
+        if (v.entities.length < 1) { r.refuse('count_over_bound'); }
         break;
       case "stats":
         if (!seen.add(key)) r.refuse('text_damaged');
@@ -7888,15 +7958,15 @@ void tableMixedFromJsonFields(TableMixed v, dynamic obj, TableTextReport r, _Sha
         break;
       case "aim_x":
         if (!seen.add(key)) r.refuse('text_damaged');
-        v.aimX = _jsonFloatField(val, r, true, v.aimX);
+        v.aimX = _jsonCompressedFloat(_jsonFloatField(val, r, true, v.aimX), r, -1.0, 1.0, v.aimX);
         break;
       case "aim_y":
         if (!seen.add(key)) r.refuse('text_damaged');
-        v.aimY = _jsonFloatField(val, r, true, v.aimY);
+        v.aimY = _jsonCompressedFloat(_jsonFloatField(val, r, true, v.aimY), r, -1.0, 1.0, v.aimY);
         break;
       case "aim_z":
         if (!seen.add(key)) r.refuse('text_damaged');
-        v.aimZ = _jsonFloatField(val, r, true, v.aimZ);
+        v.aimZ = _jsonCompressedFloat(_jsonFloatField(val, r, true, v.aimZ), r, -1.0, 1.0, v.aimZ);
         break;
       case "recoil":
         if (!seen.add(key)) r.refuse('text_damaged');
@@ -7916,7 +7986,7 @@ void tableMixedFromJsonFields(TableMixed v, dynamic obj, TableTextReport r, _Sha
         break;
       case "ping":
         if (!seen.add(key)) r.refuse('text_damaged');
-        v.ping = _jsonFloatField(val, r, true, v.ping);
+        v.ping = _jsonCompressedFloat(_jsonFloatField(val, r, true, v.ping), r, 0.0, 250.0, v.ping);
         break;
       case "crc_hint":
         if (!seen.add(key)) r.refuse('text_damaged');
