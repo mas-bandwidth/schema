@@ -2349,6 +2349,64 @@ fn wref_loadout_config(v: &mut tabledemo::LoadoutConfig, path: &str, kind: &str,
     }
 }
 
+// THE PLAIN VARIABLE ROOTS (§5.1 on a variable Save): graphdemo's Scene and
+// listdemo's Mixed. Each setter changes the one value the row names in the
+// loaded fixture; the generated Save and its debug checks give the verdict.
+fn wref_scene(v: &mut graphdemo::tables::Scene, path: &str, kind: &str, value: &str) -> Mutation {
+    match (path, kind) {
+        ("version", "int") => wref_int(value, &mut v.version),
+        ("ground.depth", "int") => wref_int(value, &mut v.ground.depth),
+        ("layers", "count") => {
+            let element = v.layers.first().cloned().unwrap_or_default();
+            v.layers.resize(wref_usize(value), element);
+            Mutation::Done
+        }
+        ("name", "length") => {
+            v.name = "a".repeat(wref_usize(value));
+            Mutation::Done
+        }
+        _ => fail(&format!("write-refusal: Scene names no {kind} path {path}")),
+    }
+}
+
+fn wref_mixed(v: &mut listdemo::tables::Mixed, path: &str, kind: &str, value: &str) -> Mutation {
+    use listdemo::tables::{Grade, Hit};
+    match (path, kind) {
+        ("bounds[1]", "int") => {
+            if v.bounds.len() < 2 {
+                fail("write-refusal: Mixed fixture holds no bounds[1]");
+            }
+            wref_int(value, &mut v.bounds[1])
+        }
+        ("grades[0]", "ordinal") => {
+            if v.grades.is_empty() {
+                fail("write-refusal: Mixed fixture holds no grades[0]");
+            }
+            v.grades[0] = match value {
+                "0" => Grade::None,
+                "1" => Grade::A,
+                "2" => Grade::B,
+                "3" => Grade::C,
+                _ => return Mutation::Unrepresentable,
+            };
+            Mutation::Done
+        }
+        ("hits[0]", "tag") => {
+            if v.hits.is_empty() {
+                fail("write-refusal: Mixed fixture holds no hits[0]");
+            }
+            v.hits[0] = match value {
+                "0" => Hit::None,
+                "1" => Hit::Point(Default::default()),
+                "2" => Hit::Damage(0),
+                _ => return Mutation::Unrepresentable,
+            };
+            Mutation::Done
+        }
+        _ => fail(&format!("write-refusal: Mixed names no {kind} path {path}")),
+    }
+}
+
 // A writer run under a silent panic hook: a debug_assert! is the refusal, it
 // comes back as Err, and its message is not output.
 fn wref_run<T>(write: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
@@ -2462,6 +2520,39 @@ fn wref_torture_cook(v: &mut cooktorture::TortureCook, path: &str, kind: &str, v
         },
         ("str_arr[0]", "length") => {
             v.str_arr[0].value = "a".repeat(wref_usize(value));
+            Mutation::Done
+        }
+        ("b_u8", "int") => wref_int(value, &mut v.b_u8),
+        ("b_i32", "int") => wref_int(value, &mut v.b_i32),
+        ("b_u64", "int") => wref_int(value, &mut v.b_u64),
+        ("b_bits13", "int") => wref_int(value, &mut v.b_bits13),
+        ("b_bits37", "int") => wref_int(value, &mut v.b_bits37),
+        ("bounded_steps", "count") => {
+            let element = v.bounded_steps.first().cloned().unwrap_or_default();
+            v.bounded_steps.resize(wref_usize(value), element);
+            Mutation::Done
+        }
+        ("bounded_steps[0]", "tag") => {
+            use cooktorture::tables::StepAction;
+            if v.bounded_steps.is_empty() {
+                fail("write-refusal: TortureCook fixture holds no bounded_steps[0]");
+            }
+            v.bounded_steps[0] = match value {
+                "0" => StepAction::None,
+                "1" => StepAction::Idle,
+                "2" => StepAction::Shift(Default::default()),
+                "3" => StepAction::Weight(0),
+                "4" => StepAction::Label(String::new()),
+                _ => return Mutation::Unrepresentable,
+            };
+            Mutation::Done
+        }
+        ("bounded_steps[3].label", "length") => {
+            use cooktorture::tables::StepAction;
+            match v.bounded_steps.get_mut(3) {
+                Some(StepAction::Label(label)) => *label = "a".repeat(wref_usize(value)),
+                _ => fail("write-refusal: TortureCook fixture's bounded_steps[3] is not the label arm"),
+            }
             Mutation::Done
         }
         _ => fail(&format!("write-refusal: TortureCook names no {kind} path {path}")),
@@ -2715,6 +2806,22 @@ fn surface_write_refusal(manifest: &Manifest, out: &str) {
                         wref_check_torture_cook(&v, path, kind);
                         cooktorture::torture_cook_save_checked(&v)
                     }),
+                    Mutation::Unrepresentable => "unrepresentable\n",
+                }
+            }
+            ("graphdemo", "Scene") => {
+                let mut report = graphdemo::TableReport::default();
+                let Some(mut v) = graphdemo::scene_load(&data, &mut report) else { fail(&format!("{case}: load refused {wire}")) };
+                match wref_scene(&mut v, path, kind, value) {
+                    Mutation::Done => wref_save(|| graphdemo::scene_save_checked(&v)),
+                    Mutation::Unrepresentable => "unrepresentable\n",
+                }
+            }
+            ("listdemo", "Mixed") => {
+                let mut report = listdemo::TableReport::default();
+                let Some(mut v) = listdemo::mixed_load(&data, &mut report) else { fail(&format!("{case}: load refused {wire}")) };
+                match wref_mixed(&mut v, path, kind, value) {
+                    Mutation::Done => wref_save(|| listdemo::mixed_save_checked(&v)),
                     Mutation::Unrepresentable => "unrepresentable\n",
                 }
             }
@@ -3044,6 +3151,22 @@ fn surface_write_refusal_json(manifest: &Manifest, out: &str) {
                     Mutation::Done => Ok(wref_run(|| {
                         written(cooktorture::torture_cook_to_json_checked(&v))
                     })),
+                    Mutation::Unrepresentable => Err("unrepresentable\n"),
+                }
+            }
+            ("graphdemo", "Scene") => {
+                let mut report = graphdemo::TableReport::default();
+                let Some(mut v) = graphdemo::scene_load(&data, &mut report) else { fail(&format!("{case}: load refused {wire}")) };
+                match wref_scene(&mut v, path, kind, value) {
+                    Mutation::Done => Ok(wref_run(|| written(graphdemo::scene_to_json_checked(&v)))),
+                    Mutation::Unrepresentable => Err("unrepresentable\n"),
+                }
+            }
+            ("listdemo", "Mixed") => {
+                let mut report = listdemo::TableReport::default();
+                let Some(mut v) = listdemo::mixed_load(&data, &mut report) else { fail(&format!("{case}: load refused {wire}")) };
+                match wref_mixed(&mut v, path, kind, value) {
+                    Mutation::Done => Ok(wref_run(|| written(listdemo::mixed_to_json_checked(&v)))),
                     Mutation::Unrepresentable => Err("unrepresentable\n"),
                 }
             }

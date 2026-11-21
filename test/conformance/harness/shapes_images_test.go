@@ -76,7 +76,7 @@ const shapesWireDir = "wire/tables/shapes" // under the testdata tree
 // from replaced.
 func shapesImage(base, from, to []byte) ([]byte, bool) {
 	at := bytes.Index(base, from)
-	if at < 0 || bytes.Index(base[at+1:], from) >= 0 {
+	if at < 0 || bytes.Contains(base[at+1:], from) {
 		return nil, false
 	}
 	out := append([]byte(nil), base...)
