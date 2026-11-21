@@ -38,6 +38,9 @@ var lobsterRuntimeNames = map[string][]string{
 		"_collections_arr", "_collections_map", "_collections_ptr", "collection_construct",
 	},
 	"cook.lobster": {
+		"CookCheck", "ck_companion", "ck_cyclic", "ck_element", "ck_entry", "ck_extent", "ck_fail", "ck_field", "ck_i32", "ck_key_bytes",
+		"ck_key_order", "ck_map", "ck_node", "ck_place", "ck_placed", "ck_record", "ck_ref", "ck_sint", "ck_slots", "ck_text_slot",
+		"ck_u32", "ck_u64", "ck_u8", "ck_uint", "ck_union", "ck_zero", "cook_check",
 		"CookCarve", "CookDump", "CookField", "CookGraph", "CookNode", "CookOut", "CookRange", "CookRead", "CookTable",
 		"CookUnion", "CookWrite", "cc_elem", "cc_extent", "cc_field", "cc_has_field", "cc_list", "cc_map", "cc_record", "cc_text",
 		"cd_emit", "cd_field", "cd_find", "cd_node", "cd_scalar", "cd_storage", "cd_text", "cg_add_blob",
@@ -133,6 +136,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"json_text_list_registry", "json_text_total", "json_text_total_registry", "json_write",
 	},
 	"load.lobster": {
+		"IdSet", "float_in_range", "idset_add", "idset_has",
 		"declares",
 		"FixedRecordCodec", "fixed_record_codecs", "fixed_record_codec", "register_fixed_record_codec",
 		"ArrayShape", "EnumShape", "KeyedKeys", "KeyedShape", "LoadReport", "LoadState", "MapShape", "Node",
@@ -188,6 +192,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"res_skip_payload", "res_u64", "res_u8", "retain_depth_cap", "retained_no_id", "save_retain",
 	},
 	"schema_save.lobster": {
+		"save_at_birth",
 		"RetainTail", "SaveEdge", "SaveEncoder", "SaveGraph", "SaveIds", "SaveNode", "SaveOut", "active_retain_tail",
 		"encode_body", "encode_body_fields", "encode_field", "encode_node_table", "guard_holds",
 		"register_retain_tail", "retain_tails", "save", "save_arm_header", "save_arm_payload", "save_array",

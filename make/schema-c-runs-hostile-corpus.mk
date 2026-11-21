@@ -13,7 +13,10 @@
 # A disagreement the port already owes is carried, by name, in
 # test/c-hostile/known-findings.tsv, and printed as a FIX-CARD. A disagreement
 # no FIX-CARD names is a failure, and a FIX-CARD that has gone green is a
-# failure too, so the list cannot rot into silence.
+# failure too, so the list cannot rot into silence. A skip (a case the port
+# has no API for) is held the same way, by name, in test/c-hostile/known-skips.tsv:
+# a skip no line names fails, so a binding dropped from the case binary reads
+# red, and a line whose case answers fails too.
 #
 # The planted-verdict control copies the corpus to a scratch directory, flips
 # one accepted case's verdict to a refusal, and requires the runner to go red
@@ -22,6 +25,7 @@
 C_HOSTILE_CORPUS   ?= internal/ci/hostilecorpus/corpus
 C_HOSTILE_BUILD    := build/c-hostile
 C_HOSTILE_FINDINGS ?= test/c-hostile/known-findings.tsv
+C_HOSTILE_SKIPS    ?= test/c-hostile/known-skips.tsv
 C_HOSTILE_SANITIZE ?= -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g
 C_HOSTILE_CFLAGS   := -std=c99 -Wall -Wextra -Werror -O1 -ffp-contract=off $(C_HOSTILE_SANITIZE)
 # One sanitizer translation unit per core. Four-wide left the fleet runner's
@@ -76,7 +80,7 @@ $(C_HOSTILE_BUILD)/hostilecorpusexec: $(wildcard tools/hostilecorpusexec/*.go in
 schema-c-runs-hostile-corpus: $(C_HOSTILE_BUILD)/case $(C_HOSTILE_BUILD)/hostilecorpusexec
 	$(C_HOSTILE_BUILD)/hostilecorpusexec run -port c -exec $(C_HOSTILE_BUILD)/case \
 		-jobs $(C_HOSTILE_RUN_JOBS) \
-		-corpus "$(C_HOSTILE_CORPUS)" -findings "$(C_HOSTILE_FINDINGS)"
+		-corpus "$(C_HOSTILE_CORPUS)" -findings "$(C_HOSTILE_FINDINGS)" -skips "$(C_HOSTILE_SKIPS)"
 
 test-c: schema-c-runs-hostile-corpus
 
@@ -92,7 +96,7 @@ schema-c-runs-hostile-corpus-negative-control: $(C_HOSTILE_BUILD)/case $(C_HOSTI
 		echo 'NEGATIVE CONTROL FAILED: the planted verdict did not apply'; exit 1; fi
 	@if $(C_HOSTILE_BUILD)/hostilecorpusexec run -port c -exec $(C_HOSTILE_BUILD)/case \
 			-jobs $(C_HOSTILE_RUN_JOBS) \
-			-corpus $(C_HOSTILE_BUILD)/plant/corpus -findings "$(C_HOSTILE_FINDINGS)" > $(C_HOSTILE_BUILD)/plant/log 2>&1; then \
+			-corpus $(C_HOSTILE_BUILD)/plant/corpus -findings "$(C_HOSTILE_FINDINGS)" -skips "$(C_HOSTILE_SKIPS)" > $(C_HOSTILE_BUILD)/plant/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: a changed verdict left the corpus green'; \
 		cat $(C_HOSTILE_BUILD)/plant/log; exit 1; fi
 	@grep -q '^FAIL wire-valid ' $(C_HOSTILE_BUILD)/plant/log || \

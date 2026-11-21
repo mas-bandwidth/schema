@@ -918,6 +918,9 @@ func (g *gen) renderArg(e ast.Expr, folded *big.Int, typ string) string {
 		return folded.String()
 	}
 	if !containsIdent(e) {
+		if !literalFits(e, typ) {
+			return folded.String()
+		}
 		return renderExpr(e)
 	}
 	s := renderExpr(e)
@@ -1000,6 +1003,9 @@ func (g *gen) i64Eval(e ast.Expr) (*big.Int, bool) {
 				return nil, false
 			}
 			v.Rem(x, y)
+			if !new(big.Int).Quo(x, y).IsInt64() {
+				return nil, false // rustc evaluates i64::MIN % -1 as an overflow though the remainder is 0
+			}
 		default:
 			return nil, false
 		}
