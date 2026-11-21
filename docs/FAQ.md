@@ -145,9 +145,10 @@ Three things in combination are unusual:
    rollback and deterministic replay cannot be built on floats. No mainstream
    format offers a fixed-point type; you store an int and remember the scale
    yourself, in every language, forever.
-3. **Nine languages proven identical mechanically.** Every CI run generates the
-   corpus in C, C++, C#, Dart, Elixir, Go, Java, JavaScript and Rust and compares the emitted wire against pinned
-   goldens. Cross-language agreement is checked, not asserted.
+3. **Every language proven identical mechanically.** Each language is held to
+   the same pinned wire bytes and the shared conformance corpus, one column per
+   language in [ROADMAP.md](../ROADMAP.md). Cross-language agreement is
+   checked, not asserted.
 
 ## Is bit-packing worth the CPU? Bandwidth is cheap.
 
@@ -298,20 +299,14 @@ cost with no buyer. See
 [SPEC.md](SPEC.md#51-the-write-contract) and
 [USAGE.md](USAGE.md#writes-are-the-callers-responsibility).
 
-## Is everything supported in all nine languages?
+## Is everything supported in every language?
 
-**Yes, on the PACKET wire.** It is generated for C, C++, C#, Dart, Elixir,
-Go, Java, JavaScript and Rust from one IR, and checked against each other in
-CI on every push. Every target's output is held to the same pinned goldens.
-
-**The table wire is not there yet, and the state is one sentence.** All nine
-carry the FIXED class on the wire, the text form, the cook's open, the block's
-read and the descriptors; the variable class is the C++ reference's and the
-tool's; and the id-table wire itself is the reference's and the tool's, with
-the eight ports still writing its previous form
-([#511](https://github.com/mas-bandwidth/schema/issues/511) to
-[#518](https://github.com/mas-bandwidth/schema/issues/518)). The parity gate
-is [#366](https://github.com/mas-bandwidth/schema/issues/366).
+**That is the promise, and [ROADMAP.md](../ROADMAP.md) tracks it feature by
+feature.** Schema generates C, C# (modern), C# (unity), C++, Dart, Elixir, Go,
+Goose, Java, JavaScript, Lobster, Lua, Luau, Python, Ruby, Rust and Squirrel,
+and moo from a build with `-tags schema_leg_moo`, all from one IR. The roadmap
+has one column per language for the packet wire, fixed tables and variable
+tables, and a feature is ticked only when that language carries it.
 
 Parity means everything: fixed point, 128-bit integers, unions and their
 generated tag surface, in every target. Rust's
@@ -359,19 +354,15 @@ requirements are unmet before you find out the hard way.
 
 ## Do I need the serialize runtimes?
 
-In six of the nine languages, yes; in three, no.
+In every language but three, yes.
 
-C, C++, C#, Go, JavaScript and Rust target a small runtime per language
-([serialize](https://github.com/mas-bandwidth/serialize),
-[serialize.c](https://github.com/mas-bandwidth/serialize.c),
-[serialize.cs](https://github.com/mas-bandwidth/serialize.cs),
-[serialize.go](https://github.com/mas-bandwidth/serialize.go),
-[serialize.js](https://github.com/mas-bandwidth/serialize.js),
-[serialize.rs](https://github.com/mas-bandwidth/serialize.rs)). They are small,
-open source, and doing the bit-level stream work the generated code calls
-into. **Dart, Elixir and Java need nothing but their own toolchain** — those
-three carry the bit reader and writer in the generated code itself, and are
-held to the same goldens as the other six.
+Every other target calls a small serialize-family runtime for its language;
+[SPEC.md §1](SPEC.md#1-what-schema-is) names each one. They are small, open
+source, and doing the bit-level stream work the generated code calls into.
+Python, Ruby, Goose and moo ship theirs inside the generated output.
+**Dart, Elixir and Java need nothing but their own toolchain** — those three
+carry the bit reader and writer in the generated code itself, and are held to
+the same goldens as the rest.
 
 JavaScript is the one that goes both ways: generated JS never IMPORTS a
 runtime — every wire call in the runtime tier is a method on the stream you
