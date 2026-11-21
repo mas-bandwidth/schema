@@ -1937,3 +1937,66 @@ jobs:
             clean) make tables-cpp-clean tables-cpp-format-negative-control tables-cpp-warnings-negative-control SCHEMA_REQUIRE_CLANG_FORMAT=1 SCHEMA_REQUIRE_CLANGXX=1 CLANG_FORMAT="$CLANG_FORMAT" ;;
             *) echo "::error::leg-gate-cpp has no part '$PART'"; exit 1 ;;
           esac
+
+  # THE VERDICT: ONE CHECK THAT IS RED WHEN ANY GATE OF THIS RUN DID NOT PASS.
+  # main requires no status check (no branch protection; the only ruleset
+  # carrying one, `block-gate`, is disabled and targets fixed-table-form), so a
+  # job here that is red, cancelled at its two-minute cap or skipped reads
+  # nowhere but its own row. This job needs EVERY other job of the file
+  # (internal/ci TestCIFastVerdictNeedsEveryJob reads the list from this file,
+  # never from a hand list) and fails on any result but success, except a job
+  # the plan selected nothing for: a skip is green only where this script names
+  # the plan output that made it, and the gates that always run (plan,
+  # ci-policy, lint-fast, vet, block-gate) may never skip. `verdict` is the
+  # check to require on main.
+  verdict:
+    needs: [fork-pull-request, plan, lint-fast, ci-policy, vet, golangci-lint-fast, generated-current, lang-clean, lang-lint, verify-leg, block-gate, go-fixed-corpus, go-test-touched, leg-gate, leg-gate-lobster, leg-gate-rust, leg-gate-squirrel, leg-gate-cpp]
+    if: startsWith(github.head_ref, 'sprint/') == false && (always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    # jq over the needs context: seconds
+    timeout-minutes: 2
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    steps:
+      # no checkout, so tools/pgroup is not here: plain bash
+      - name: every gate of this run passed, or the plan selected nothing for it
+        shell: bash
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          jq -r 'to_entries[] | "\(.value.result)\t\(.key)"' <<<"$NEEDS" | sort
+          out() { jq -r --arg k "$1" '.plan.outputs[$k] // ""' <<<"$NEEDS"; }
+          # a skip is green only for the job whose selection came out empty
+          may_skip() {
+            case "$1" in
+              fork-pull-request) return 0 ;;
+              golangci-lint-fast) [ -z "$(out lint_packages)" ] ;;
+              generated-current) [ "$(out codegen_touched)" != yes ] ;;
+              lang-clean) [ "$(out clean_legs)" = '[]' ] ;;
+              lang-lint) [ "$(out lints)" = '[]' ] ;;
+              verify-leg) [ "$(out verify_legs)" = '[]' ] ;;
+              go-fixed-corpus) ! grep -qF '"make":"tables-go-fixedform"' <<<"$(out rows)" ;;
+              go-test-touched) [ -z "$(out packages)" ] ;;
+              leg-gate) [ "$EVENT" != workflow_dispatch ] || [ "$(out legs)" = '[]' ] ;;
+              leg-gate-lobster|leg-gate-rust|leg-gate-squirrel|leg-gate-cpp)
+                [ "$EVENT" != workflow_dispatch ] || ! grep -qF "\"${1#leg-gate-}\"" <<<"$(out legs)" ;;
+              *) return 1 ;;
+            esac
+          }
+          bad=""
+          while IFS=$'\t' read -r job result; do
+            [ -n "$job" ] || continue
+            if [ "$result" = skipped ] && may_skip "$job"; then
+              continue
+            fi
+            bad="$bad$job: $result"$'\n'
+          done < <(jq -r 'to_entries[] | select(.value.result != "success") | "\(.key)\t\(.value.result)"' <<<"$NEEDS")
+          if [ -n "$bad" ]; then
+            echo "::error::not every gate of this run passed (failed, cancelled, or skipped where the plan selected it):"
+            printf '%s' "$bad"
+            exit 1
+          fi
+          echo "every gate passed or was not selected"
