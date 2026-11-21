@@ -1517,6 +1517,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"schema-luau-runs-hostile-corpus.yml:corpus",
 		"schema-luau-runs-hostile-corpus.yml:negative-control",
 		"schema-moo-generated-analyze-strict-gate.yml:gate",
+		"schema-name-buildability.yml:nightly",
 		"schema-moo-nightly-fuzz.yml:nightly",
 		"schema-moo-nightly-fuzz.yml:wiring",
 		"schema-python-nightly-fuzz.yml:nightly",

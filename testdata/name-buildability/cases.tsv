@@ -254,7 +254,7 @@ t_WriteStream	refuse-at-check	Rust	refused on main (survey control)
 t_Writer	builds	-	-
 t_alloc	refuse-at-generate	ruby	Ruby refuses a lowercase type name at generate
 t_assert	refuse-at-check	-	refused on main (survey control)
-t_binary	refuse-at-generate	ruby	Ruby refuses a lowercase type name at generate
+t_binary	refuse-at-check	Go	rule 4: type name shadows a platform name
 t_bit32	refuse-at-generate	ruby	Ruby refuses a lowercase type name at generate
 t_bits	refuse-at-check	-	refused on main (survey control)
 t_buffer	refuse-at-check	Luau	rule 4: type name shadows a platform name
@@ -300,7 +300,6 @@ t_Float32x4List	refuse-at-check	Dart	rule 4: type name shadows a platform name
 t_Uint8ClampedList	refuse-at-check	Dart	rule 4: type name shadows a platform name
 t_strconv	refuse-at-check	Go	rule 4: type name shadows a platform name
 t_slices	refuse-at-check	Go	rule 4: type name shadows a platform name
-t_bytes	refuse-at-check	Go	rule 4: type name shadows a platform name
 t_base64	refuse-at-check	Go	rule 4: type name shadows a platform name
 t_time	refuse-at-check	Go	rule 4: type name shadows a platform name
 t_sync	refuse-at-check	Go	rule 4: type name shadows a platform name
