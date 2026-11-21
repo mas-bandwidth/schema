@@ -6,7 +6,6 @@ package bench
 type SuppressWarningsProbe
 {
     wide  uint128
-    big   int128
     ratio float64
     scale float32
 }

@@ -6,7 +6,6 @@ package bench
 type ArrayProbe
 {
     wide  uint128
-    big   int128
     ratio float64
     scale float32
 }

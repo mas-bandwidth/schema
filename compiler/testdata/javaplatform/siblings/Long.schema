@@ -6,7 +6,6 @@ package bench
 type LongProbe
 {
     wide  uint128
-    big   int128
     ratio float64
     scale float32
 }

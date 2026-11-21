@@ -31,14 +31,14 @@ func jdkShadowUnit(t *testing.T, src string) *ir.Unit {
 
 // A schema type may take the simple name of a platform class the generated
 // Java calls — Arrays, MethodHandles, VarHandle, ByteOrder, and the java.lang
-// names Long, String, Object, Math, System — and becomes a nested class of that
+// names Long, Double, Math, System, StringBuilder — and becomes a nested class of that
 // name. The generated file names every platform class from the package root
 // and imports nothing, so the nested class shadows nothing it uses, and it
 // compiles. (compiler's TestJavaUnitsNamedLikePlatformTypesCompile compiles a
 // type and a sibling file for every platform name the emitters use.)
 func TestJavaPlatformNamesSurviveSameNamedSchemaTypes(t *testing.T) {
 	t.Parallel()
-	for _, name := range []string{"Arrays", "MethodHandles", "VarHandle", "ByteOrder", "Long", "String", "Object", "Math", "System"} {
+	for _, name := range []string{"Arrays", "MethodHandles", "VarHandle", "ByteOrder", "Long", "Double", "Math", "System", "StringBuilder"} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			src := "package jdkshadow\n\ntype " + name + " { v uint8 }\n\ntype Holder\n{\n    x " + name +
@@ -89,12 +89,12 @@ func TestJavaRefusesAPlatformNameObscuredByAClassNamedJava(t *testing.T) {
 	t.Parallel()
 	for _, src := range []string{
 		"type java { w uint8 }\ntype Holder { x java\n f float32 }\n",
-		"union java { a uint8\n b uint16 }\n",
+		"type A { v uint8 }\ntype B { v uint16 }\nunion java { a A\n b B }\ntype Holder { x java }\n",
 		"enum java { A, B }\n",
 		"flags java { A, B }\n",
 		"type Holder { java uint8 }\n",
 		"type Holder { Java uint8 }\n",
-		"union Choice { java uint8\n b uint16 }\n",
+		"type A { v uint8 }\ntype B { v uint16 }\nunion Choice { java A\n b B }\ntype Holder { x Choice }\n",
 	} {
 		_, err := Generate(jdkShadowUnit(t, "package jdkshadow\n\n"+src))
 		if err == nil || !strings.Contains(err.Error(), "obscures the java package") {

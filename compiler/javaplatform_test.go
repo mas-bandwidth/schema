@@ -232,6 +232,18 @@ func javaSiblingPaths(t *testing.T) []string {
 	return paths
 }
 
+// javaProbeLoads reports whether a one-file unit named file holding body
+// passes the checker: whether the name it tries is a legal schema name.
+func javaProbeLoads(t *testing.T, file, body string) bool {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), file)
+	if err := os.WriteFile(p, []byte("package probe\n\n"+body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := New().Load([]string{p})
+	return err == nil
+}
+
 // generateJavaUnit loads and generates one unit for the Java target.
 func generateJavaUnit(paths []string) (*ir.Unit, map[string][]byte, error) {
 	gathered, err := GatherPaths(paths)
@@ -310,11 +322,14 @@ func TestJavaNamesNoPlatformTypeUnqualified(t *testing.T) {
 			}
 		}
 	}) {
-		if !siblings[name] {
-			t.Errorf("generated Java names the platform type %s, and %s/siblings has no %s.schema to shadow it", name, javaPlatformDir, name)
+		// a name the checker refuses (a C header basename, a Dart reserved
+		// word) is no legal schema name, so no fixture can carry it: the
+		// probe proves the refusal, and a fixture is owed for every other
+		if !siblings[name] && javaProbeLoads(t, name+".schema", "type ProbeEntry { v uint8 }\n") {
+			t.Errorf("generated Java names the platform type %s, a legal schema basename, and %s/siblings has no %s.schema to shadow it", name, javaPlatformDir, name)
 		}
-		if !nested[name] {
-			t.Errorf("generated Java names the platform type %s, and %s/nested declares no type %s to shadow it", name, javaPlatformDir, name)
+		if !nested[name] && javaProbeLoads(t, "Probe.schema", "type "+name+" { v uint8 }\n") {
+			t.Errorf("generated Java names the platform type %s, a legal schema type name, and %s/nested declares no type %s to shadow it", name, javaPlatformDir, name)
 		}
 	}
 	if len(use.qualified) < 20 {

@@ -6,7 +6,6 @@ package bench
 type ListProbe
 {
     wide  uint128
-    big   int128
     ratio float64
     scale float32
 }

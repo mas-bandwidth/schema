@@ -6,7 +6,6 @@ package bench
 type ObjectProbe
 {
     wide  uint128
-    big   int128
     ratio float64
     scale float32
 }
