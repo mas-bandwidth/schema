@@ -58,11 +58,18 @@ import (
 // records needs no bump: older files carry the same fact, so untouched schemas
 // do not acquire false additions. `optional` has been recorded since version 1.
 //
-// Version 8 added `mincount=` on a counted array whose range starts above
-// zero, and `deprecated=true` on a deprecated enum variant
-// (docs/SPEC-TABLES.md §18.1). An older file records neither, so it is
-// refused by its version and never read as "no minimum, nothing deprecated".
-const Version = 8
+// Version 8 added `bits=` on a `bits(N)` field (docs/SPEC-TABLES.md §18.1).
+//
+// Version 9 records `bits=`, and adds `mincount=` on a counted array whose
+// range starts above zero and `deprecated=true` on a deprecated enum variant.
+// The number 8 was issued twice while both were unreleased: once to the
+// rendering that added `bits=` alone, and once to one that added `mincount=`
+// and `deprecated=true` alone (F-211). A file opening with 8 may lack either
+// fact, so no 8 is ever read as "no minimum" or "no width": every 8 is refused
+// by its version, and `--update` regenerates it. A NUMBER IS NEVER REUSED for
+// a different set of facts; a rendering that changes the facts takes the next
+// unissued number.
+const Version = 9
 
 // FileName is the baseline's name in the unit directory. Its presence is what
 // turns the check on: no file, no check.
@@ -461,13 +468,20 @@ func renderField(f *ir.Field) Field {
 	if f.Type.Size != 0 {
 		add("size", strconv.FormatInt(f.Type.Size, 10))
 	}
+	// A `bits(N)` FIELD'S N. Its implied range is [0, 2^N - 1], and a reader
+	// refuses a stored value past it `out_of_range` (docs/SPEC-TABLES.md §4).
+	// The `kind` token cannot hold N: bits(9) through bits(16) and uint16 are
+	// all kind 7, so N narrowed inside one storage bucket would move no other
+	// token. It is an extent like a range, judged by RuleShrink (§18.2).
+	if f.Type.Kind == ir.TBits {
+		add("bits", strconv.Itoa(f.Type.Width))
+	}
 	// THE EFFECTIVE RANGE, as DECLARED. A reader refuses a stored value past
 	// its own declared bounds `out_of_range` (docs/SPEC-TABLES.md §4), so a
 	// tightened range is a data edit the wire reports but the baseline is
 	// where it is seen BEFORE it ships — an extent like a capacity, judged the
-	// same way. Only a declared range is recorded: `bits(N)`'s implied
-	// [0, 2^N - 1] is its WIDTH, and the width is the `kind` token, which is
-	// already a fixed fact.
+	// same way. Only a declared range is recorded here; a `bits(N)` field's
+	// implied range is the `bits` token above.
 	switch {
 	case f.HasIntRange && f.IntMin != nil && f.IntMax != nil:
 		// a fixed field's bounds are its WHOLE-UNIT bounds, as declared; the

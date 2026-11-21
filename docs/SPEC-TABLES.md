@@ -17935,7 +17935,7 @@ bounded, UNBOUNDED, enum-keyed or MAP, with the bound's EVALUATED value where
 the shape has one, a counted array's MINIMUM count where its range starts
 above zero (`mincount=`), for a keyed
 array the KEY enum it names, and for a map the KEY's kind and the KEY's
-capacity), string and bytes capacity, a byte buffer's `type=string` or
+capacity), string and bytes capacity, a `bits(N)` field's `N` (`bits=`), a byte buffer's `type=string` or
 `type=bytes` (the blob node's shape, §2.5), the declared
 RANGE (`min=` and `max=`), presence of an optional, a required field's
 `required=true` (§2.3), a fixed field's `F`
@@ -17958,7 +17958,7 @@ file's spelling of the payload-free kind the arm carries on the wire (§3). Ever
 FIELD tokens for what it is, in the field line's own column order and judged
 by the field line's own rules: `kind=`, then where the fact exists `elem=`,
 the `enum=` / `flags=` / `union=` / `type=` that names its referent,
-`array=`, `bound=`, `frac=`, `size=`, `min=` and `max=`. A tightened arm
+`array=`, `bound=`, `frac=`, `size=`, `bits=`, `min=` and `max=`. A tightened arm
 range warns exactly as a field's does, an arm records no default because an
 arm takes none (§2.6), and a renamed arm records `was=` and its alias on
 every spelling, judged on nothing: the id is the identity, and the alias is
@@ -18044,6 +18044,14 @@ token, and its absence is a minimum of zero. The token is judged, so it takes
 the rendering version: a file written before it refuses on check and names
 `--update` as the remedy (§18.4), and is never read as "no minimum".
 
+**THE RENDERING VERSION IS `9`, AND `8` IS REFUSED WHATEVER IT HOLDS.** Two
+unreleased renderings were both numbered `8`: one added `bits=` alone, the
+other `mincount=` and `deprecated=true` alone. A file opening with `8` may
+lack either fact, so the check reads no `8` at all; it refuses the file by its
+version and names `--update` as the remedy, exactly as for any older
+rendering. Rendering `9` records all three. A rendering number names one set
+of facts and is never issued again for another.
+
 **UNBOUNDED TEXT (§2.13.1) RENDERS ITS OWN LINE.** A text list's unbounded
 `value` renders with no `size=` token, and an unbounded map key as
 `keybound=0`, a value no `string(N)` key carries (`N >= 2`), so neither line is
@@ -18061,8 +18069,11 @@ addition does not meet the test.
 holds a stored value to its OWN declared bounds and refuses `out_of_range` past
 them (§4), so a tightened range is a data edit — every stored file holding a
 value past the new bound no longer reads. Only a DECLARED
-range is recorded: `bits(N)`'s implied `[0, 2^N − 1]` is its WIDTH, and the
-width is the `kind` this file already holds fixed. A fixed field's bounds
+range is recorded as `min=` and `max=`. A `bits(N)` field's implied
+`[0, 2^N − 1]` is recorded as `bits=N`, because the `kind` cannot hold it:
+`bits(9)` through `bits(16)` and `uint16` are all kind `7`, so an N narrowed
+inside one storage bucket would move no other token. `bits=` is judged as an
+extent (§18.2). A fixed field's bounds
 are its WHOLE-UNIT bounds, recorded beside the `frac=` that puts them on the
 raw scale (§4).
 
@@ -18085,7 +18096,7 @@ It carries no protocol id and no packet fact: the type wire, the wire-shape
 projection and the protocol id are untouched by all of it (§10).
 
 ```
-schema-tables-baseline 8
+schema-tables-baseline 9
 package shipdemo
 
 table ShipConfig

@@ -63,9 +63,6 @@ type constraintRow struct {
 	// reported rather than failed, so the two changes can land in either
 	// order. Empty means silence fails.
 	owner string
-	// unrecorded is set where the baseline does not record the constraint at
-	// all and the fix is another change's (the same either-order rule).
-	unrecorded string
 }
 
 const sideEnum = "enum Side\n{\n    Left\n    Right\n}\n\n"
@@ -131,8 +128,7 @@ func constraintRows() []constraintRow {
 		{name: "compressed float maximum lowered", decl0: "float32 | min = 0.0, max = 100.0, resolution = 0.5", decl1: "float32 | min = 0.0, max = 50.0, resolution = 0.5", value: "75.0", reason: "out_of_range", names: true},
 		{name: "compressed float minimum raised", decl0: "float32 | min = -100.0, max = 100.0, resolution = 0.5", decl1: "float32 | min = -50.0, max = 100.0, resolution = 0.5", value: "-75.0", reason: "out_of_range", names: true},
 		{name: "fixed maximum lowered", decl0: "fixed(8, 8) | min = -100, max = 100", decl1: "fixed(8, 8) | min = -100, max = 50", value: "75.5", reason: "out_of_range", names: true},
-		{name: "bits width narrowed", decl0: "bits(7)", decl1: "bits(5)", value: "95", reason: "out_of_range", names: true,
-			unrecorded: "#4436 on the review stream (#4501) records bits=N; main does not yet"},
+		{name: "bits width narrowed", decl0: "bits(7)", decl1: "bits(5)", value: "95", reason: "out_of_range", names: true},
 		// ---- kind_mismatch ----
 		{name: "integer width narrowed", decl0: "int32", decl1: "int16", value: "5", reason: "kind_mismatch"},
 		{name: "integer made a float", decl0: "int32", decl1: "float32", value: "5", reason: "kind_mismatch"},
@@ -402,10 +398,6 @@ func TestEveryReaderConstraintMovesTheProjection(t *testing.T) {
 
 				// 2. THE PROJECTION MOVED
 				if baseline.Render(old).Text() == baseline.Render(live).Text() {
-					if row.unrecorded != "" {
-						t.Logf("%s: NOT RECORDED, and owned elsewhere: %s", h.name, row.unrecorded)
-						continue
-					}
 					t.Errorf("%s: THE BASELINE DOES NOT RECORD IT: %q -> %q leaves the projection byte-identical while the old save %s %s",
 						h.name, row.decl0, row.decl1, save, outcome(r))
 					continue

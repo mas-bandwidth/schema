@@ -44,6 +44,7 @@ import (
 	"fmt"
 	"math/big"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -128,6 +129,11 @@ var DefaultTokenPolicy = map[string]TokenRule{
 	// falls outside a wider range.
 	"max": RuleShrink,
 	"min": RuleRaise,
+	// A `bits(N)` FIELD'S N is its implied range [0, 2^N - 1], refused
+	// `out_of_range` past it (§4), and it is judged as a maximum is. A plain
+	// unsigned integer moved to `bits(N)` is judged against the width its kind
+	// implies, or against its declared maximum (see impliedExtent).
+	"bits": RuleShrink,
 	// THE ARRAY SHAPE. Fixed and bounded frame identically on the wire
 	// (docs/SPEC-TABLES.md §3), and moving between them passes. A MAP is the
 	// one shape move that is not free in both directions, so the row is
@@ -799,6 +805,12 @@ func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 		case RuleGain:
 			out = append(out, Finding{Refuse, where, fmt.Sprintf("%s added: records written before it lack the field and a reader refuses them as missing_required", lt.Key)})
 		case RuleShrink, RuleRaise:
+			if was, ok := impliedExtent(lt.Key, bf); ok {
+				if tightened(d.policy[lt.Key], lt.Key, was, lt.Value) {
+					out = append(out, Finding{Warn, where, fmt.Sprintf("%s %s -> %s (%s)", tokenNoun(lt.Key), was, lt.Value, tightenNote(lt.Key))})
+				}
+				continue
+			}
 			out = append(out, Finding{Warn, where, fmt.Sprintf("%s %s added (%s)", tokenNoun(lt.Key), lt.Value, tightenNote(lt.Key))})
 		case RuleCountMin:
 			// a minimum that appeared rose from zero
@@ -818,6 +830,46 @@ func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 		}
 	}
 	return out
+}
+
+// impliedExtent is the extent a baseline field held WITHOUT carrying the
+// token the live field now adds, where its kind implies one. It answers only
+// for `bits`: a plain unsigned integer moved to `bits(N)` keeps its `kind`
+// (bits(9) and uint16 are both kind 7), and its domain before the edit is its
+// declared maximum's bit length, or else its kind's whole storage width. So
+// uint16 -> bits(9) is a width 16 -> 9 narrowing and warns, while
+// uint16 -> bits(16), or `uint16 | max = 300` -> bits(9), loses nothing.
+func impliedExtent(key string, bf Field) (string, bool) {
+	if key != "bits" {
+		return "", false
+	}
+	if max, ok := bf.Get("max"); ok {
+		n, ok := new(big.Int).SetString(max, 10)
+		if !ok || n.Sign() < 0 {
+			return "", false
+		}
+		return strconv.Itoa(max1(n.BitLen())), true
+	}
+	kind, _ := bf.Get("kind")
+	switch kind {
+	case strconv.Itoa(ir.TableKindU8):
+		return "8", true
+	case strconv.Itoa(ir.TableKindU16):
+		return "16", true
+	case strconv.Itoa(ir.TableKindU32):
+		return "32", true
+	case strconv.Itoa(ir.TableKindU64):
+		return "64", true
+	}
+	return "", false
+}
+
+// max1 is n, or 1 when n is 0: a range of [0, 0] still needs one bit.
+func max1(n int) int {
+	if n < 1 {
+		return 1
+	}
+	return n
 }
 
 // tightened reports whether a numeric extent moved in the direction that
@@ -1205,6 +1257,8 @@ func tightenNote(key string) string {
 		return "a file holding a value below the new minimum no longer reads: the load refuses out_of_range"
 	case "max":
 		return "a file holding a value above the new maximum no longer reads: the load refuses out_of_range"
+	case "bits":
+		return "a file holding a value past 2^N - 1 for the new width no longer reads: the load refuses out_of_range"
 	}
 	return "a file holding a value past the new limit no longer reads: the load refuses it"
 }
@@ -1238,6 +1292,8 @@ func tokenNoun(key string) string {
 		return "declared minimum"
 	case "max":
 		return "declared maximum"
+	case "bits":
+		return "bit width"
 	case "optional":
 		return "presence"
 	case "type":

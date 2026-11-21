@@ -1,4 +1,4 @@
-schema-tables-baseline 8
+schema-tables-baseline 7
 package graphdemo
 
 table Album
@@ -100,6 +100,3 @@ enum Tier
 
 ### 2026-09-04 — the id-table wire: sixty-four-bit identity, the enum kind, and rendering version 7 (docs/SPEC-TABLES.md §3, §5, §18.1)
 - baseline REGENERATED over an unreadable one (baseline version 6, this compiler writes 7); the projection is this unit as it stands and the history above is preserved, but the previous projection could not be diffed, so no per-edit lines follow
-
-### 2026-11-21 (UTC) — rendering version 8: a counted array records its minimum count (mincount=) and a deprecated enum variant its marker (deprecated=true), so a moved minimum refuses and a deprecation warns (docs/SPEC-TABLES.md §18.1)
-- baseline REGENERATED over an unreadable one (baseline version 7, this compiler writes 8); the projection is this unit as it stands and the history above is preserved, but the previous projection could not be diffed, so no per-edit lines follow

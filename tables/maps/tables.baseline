@@ -1,4 +1,4 @@
-schema-tables-baseline 8
+schema-tables-baseline 7
 package mapdemo
 
 table 033de3f1246bba76.755332609c470fbd
@@ -215,6 +215,3 @@ union Force
 ### 2026-11-09 (UTC) — kind 33 (wstring) is retired: the Text map drops its wide value
 - table 2492f5fb1b05b45e.a633f1f655715cca: no longer in the closure — no declaration carries any of its identities, so this baseline no longer covers it [warn]
 - retired field Text.wide id=0xa633f1f655715cca — a re-added name or id is refused until this entry is acknowledged (issue #441)
-
-### 2026-11-21 (UTC) — rendering version 8: a counted array records its minimum count (mincount=) and a deprecated enum variant its marker (deprecated=true), so a moved minimum refuses and a deprecation warns (docs/SPEC-TABLES.md §18.1)
-- baseline REGENERATED over an unreadable one (baseline version 7, this compiler writes 8); the projection is this unit as it stands and the history above is preserved, but the previous projection could not be diffed, so no per-edit lines follow
