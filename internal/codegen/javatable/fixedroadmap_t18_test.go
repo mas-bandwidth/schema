@@ -640,8 +640,8 @@ func t18Expect(m manifestRow) map[string]string {
 }
 
 // t18Bound is the reader's own declared bound on a value the manifest states
-// (ALGORITHM §4.6; the cfloat_range_widen row, schema#1164 ruling B: THE BOUNDS
-// PASS IS THE READER'S). The reference's writer stores what it is handed and
+// (ALGORITHM §4.6; the writer's, which the plan carries, is t18WriterBound
+// beside it). The reference's writer stores what it is handed and
 // does not enforce the range it declares, so a manifest value past the READER's
 // own declared range (a float32 `min`/`max`, an integer's or fixed-point's raw
 // range, ir.TableRawRange) is past the bound under the strict read.
@@ -651,13 +651,12 @@ func t18Bound(reader *ir.Unit, root, path, value string) (string, bool) {
 	return t18BoundOf(reader, root, path, value, false)
 }
 
-// t18WriterBound is the writer's declared bound for the one bounded kind whose
-// range survives into the compiled plan: an integer or fixed-point field. A
-// forged value outside the WRITER's range refuses the whole load even when it
-// lies inside the reader's widened range (docs/FIXED-FORM-VERSIONING-TESTS.md,
-// the range_widen vectors). A compressed float's writer bound does NOT survive
-// (schema#1164 ruling B), so that kind answers false here and t18Bound alone
-// decides it.
+// t18WriterBound is the writer's declared bound for every bounded kind whose
+// range the compiled plan carries (ir.TableFixedWriterRanges): an integer, a
+// fixed-point field and a compressed float. A forged value outside the
+// WRITER's range refuses the whole load even when it lies inside the reader's
+// widened range (docs/FIXED-FORM-VERSIONING-TESTS.md, the range_widen and
+// cfloat_range_widen vectors; docs/rulings.json strict-only-read).
 func t18WriterBound(writer *ir.Unit, root, path, value string) (string, bool) {
 	return t18BoundOf(writer, root, path, value, true)
 }
@@ -680,10 +679,31 @@ func t18BoundOf(reader *ir.Unit, root, path, value string, writerOnly bool) (str
 	}
 	if writerOnly {
 		// THE PLAN CARRIES ir.TableFixedWriterRanges, so the writer's decision
-		// reads that same list: a shape or width it leaves out bounds nothing,
-		// and a compressed float never appears in it (schema#1164 ruling B).
+		// reads that same list: a shape or width it leaves out bounds nothing.
+		// A compressed float rides in it too (Float, FLo, FHi; docs/rulings.json
+		// strict-only-read, FIXED-FORM-ALGORITHM §4.6), held in its own type.
 		for _, r := range ir.TableFixedWriterRanges(st) {
 			if r.Name != name {
+				continue
+			}
+			if r.Float {
+				if r.Kind == ir.TableKindF32 {
+					v := math.Float32frombits(uint32(n.Uint64()))
+					switch {
+					case v > float32(r.FHi):
+						return fmt.Sprintf("bound|0x%08X", math.Float32bits(float32(r.FHi))), true
+					case v < float32(r.FLo):
+						return fmt.Sprintf("bound|0x%08X", math.Float32bits(float32(r.FLo))), true
+					}
+				} else {
+					v := math.Float64frombits(n.Uint64())
+					switch {
+					case v > r.FHi:
+						return fmt.Sprintf("bound|0x%016X", math.Float64bits(r.FHi)), true
+					case v < r.FLo:
+						return fmt.Sprintf("bound|0x%016X", math.Float64bits(r.FLo)), true
+					}
+				}
 				continue
 			}
 			lo, hi := big.NewInt(r.Lo), big.NewInt(r.Hi)
@@ -726,9 +746,9 @@ func t18BoundOf(reader *ir.Unit, root, path, value string, writerOnly bool) (str
 }
 
 // TestFixedJavaT18BoundReadsThePlan is the pure-Go half of R27's bound choice:
-// an integer or fixed-point bound is the WRITER's when the plan carries it,
-// while a compressed float's bound is the READER's alone (schema#1164 ruling
-// B). It reads two hand-written units, so it needs neither the C++ corpus nor
+// an integer, fixed-point or compressed-float bound is the WRITER's when the
+// plan carries it (docs/rulings.json strict-only-read, ALGORITHM §4.6), and
+// the reader's own beside it. It reads two hand-written units, so it needs neither the C++ corpus nor
 // a JDK and still pins the decision t18R27 makes over the shared manifest.
 func TestFixedJavaT18BoundReadsThePlan(t *testing.T) {
 	t.Parallel()
@@ -777,8 +797,9 @@ fixed table CfloatRangeWiden
 		{"an integer inside the writer and the reader", oldInt, newInt, "RangeWiden", "r0.v", "150", true, false},
 		{"a fixed array element inside the writer and the reader", oldInt, newInt, "RangeWiden", "r0.vals[2]", "150", true, false},
 		{"a uint64 inside the writer and the reader", oldInt, newInt, "RangeWiden", "r0.u", "1500", true, false},
-		{"a compressed float past the writer, inside the reader", oldFloat, newFloat, "CfloatRangeWiden", "r0.aim", "1.5|0x3FC00000", false, false},
-		{"a compressed float past the reader", oldFloat, newFloat, "CfloatRangeWiden", "r0.aim", "5.0|0x40A00000", false, true},
+		{"a compressed float inside the writer and the reader", oldFloat, newFloat, "CfloatRangeWiden", "r0.aim", "0.5|0x3F000000", false, false},
+		{"a compressed float past the writer, inside the reader", oldFloat, newFloat, "CfloatRangeWiden", "r0.aim", "1.5|0x3FC00000", true, false},
+		{"a compressed float past the reader", oldFloat, newFloat, "CfloatRangeWiden", "r0.aim", "5.0|0x40A00000", true, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if _, got := t18WriterBound(tc.writer, tc.root, tc.path, tc.value); got != tc.writerPast {
@@ -797,8 +818,8 @@ fixed table CfloatRangeWiden
 // row's own unit through the Java leg's GENERATED load and compared value for
 // value against the manifest: a forged file (hostile_*, past_*) against its
 // forged values, every other file against `values=`. A value past the bound
-// the plan carries -- the READER's for a compressed float, the WRITER's for a
-// ranged integer or fixed-point (t18Bound and t18WriterBound) -- REFUSES the
+// the plan carries -- the reader's own, then the WRITER's for a ranged
+// integer, fixed-point or compressed float (t18Bound and t18WriterBound) -- REFUSES the
 // whole load under the strict read, and is asserted so. A row the Java
 // target refuses (a union closure, compiler/target_java.go refuseTableArms) or
 // a root the leg emits no fixed form for is named and not loaded.

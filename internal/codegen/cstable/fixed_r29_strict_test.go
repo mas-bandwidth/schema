@@ -196,3 +196,89 @@ func TestCSharpFixedR29StrictNegativeControl(t *testing.T) {
 		t.Fatalf("NEGATIVE CONTROL FAILED: dropping the refusal reset left the check GREEN: %v", faults)
 	}
 }
+
+// THE WRITER'S FLOAT RANGE (docs/rulings.json strict-only-read,
+// docs/FIXED-FORM-ALGORITHM.md §4.6): a compressed float read under an older
+// lineage entry is held to the min and max THAT writer declared, compared in
+// the field's own type, the same refusal as an integer's. The pair is a
+// widening one (the writer's -1..1, the reader's -2..2) beside a
+// float32 whose writer max 0.3 is not a float32, so the bound must be spelled
+// rounded to float32 (0.3f) and never as the integer lanes' 0..0.
+const (
+	csFixedCfloatWriter = "package wcband\n\nfixed table CBand\n{\n    aim float32 | min = -1, max = 1, resolution = 0.01\n    tip float32 | min = 0, max = 0.3, resolution = 0.01\n}\n"
+	csFixedCfloatReader = "package rcband\n\nfixed table CBand\n{\n    aim float32 | min = -2, max = 2, resolution = 0.01\n    tip float32 | min = 0, max = 0.6, resolution = 0.01\n}\n"
+)
+
+func csFixedCfloatArtifact(t *testing.T) string {
+	t.Helper()
+	writer := unitFrom(t, csFixedCfloatWriter)
+	reader := unitFrom(t, csFixedCfloatReader)
+	entry, ok := FixedLineageOf(writer, "CBand")
+	if !ok {
+		t.Fatal("the older writer has no lineage entry")
+	}
+	files, err := GenerateLineage(reader, map[string][]FixedLineageEntry{"CBand": {entry}})
+	if err != nil {
+		t.Fatalf("GenerateLineage: %v", err)
+	}
+	var b strings.Builder
+	for _, data := range files {
+		b.Write(data)
+	}
+	return b.String()
+}
+
+const (
+	csFixedCfloatAimBound = "if (value.Aim < -1.0f || value.Aim > 1.0f) { clamped++; }"
+	csFixedCfloatTipBound = "if (value.Tip < 0.0f || value.Tip > 0.3f) { clamped++; }"
+)
+
+func csFixedCfloatFaults(src string) []string {
+	var faults []string
+	clamp := t12Norm(csFn(src, "public static bool CBandFixedClampKnown0("))
+	if clamp == "" {
+		return append(faults, "the writer-bound clamp CBandFixedClampKnown0 is not emitted")
+	}
+	for _, want := range []string{csFixedCfloatAimBound, csFixedCfloatTipBound} {
+		if !strings.Contains(clamp, want) {
+			faults = append(faults, "the writer-bound pass does not hold the writer's float range in the field's own type: "+want)
+		}
+	}
+	if !strings.Contains(clamp, `report.Reason = "out_of_range"`) {
+		faults = append(faults, "a float past the writer's bound does not refuse out_of_range")
+	}
+	return faults
+}
+
+// TestCSharpFixedCfloatWriterRange pins the emitted writer-bound clamp for
+// compressed floats.
+func TestCSharpFixedCfloatWriterRange(t *testing.T) {
+	t.Parallel()
+	if faults := csFixedCfloatFaults(csFixedCfloatArtifact(t)); len(faults) != 0 {
+		t.Errorf("the writer's float range is not held:\n  %s", strings.Join(faults, "\n  "))
+	}
+}
+
+// TestCSharpFixedCfloatWriterRangeNegativeControl plants the pre-fix fault
+// (the float bound spelled as the integer lanes' 0..0) and a deleted float
+// check in the real artifact, and requires the check to go red on each.
+func TestCSharpFixedCfloatWriterRangeNegativeControl(t *testing.T) {
+	t.Parallel()
+	src := csFixedCfloatArtifact(t)
+	if faults := csFixedCfloatFaults(src); len(faults) != 0 {
+		t.Fatalf("NEGATIVE CONTROL setup: the real artifact is already red before sabotage:\n  %s", strings.Join(faults, "\n  "))
+	}
+	for _, plant := range []struct{ name, from, to string }{
+		{"integer 0..0 bound", csFixedCfloatAimBound, "if (value.Aim < 0 || value.Aim > 0) { clamped++; }"},
+		{"float check deleted", csFixedCfloatAimBound, ""},
+		{"bound not rounded to float32", csFixedCfloatTipBound, "if (value.Tip < 0.0 || value.Tip > 0.3) { clamped++; }"},
+	} {
+		planted := strings.Replace(src, plant.from, plant.to, 1)
+		if planted == src {
+			t.Fatalf("NEGATIVE CONTROL FAILED: %s: %q is not in the real artifact", plant.name, plant.from)
+		}
+		if faults := csFixedCfloatFaults(planted); len(faults) == 0 {
+			t.Fatalf("NEGATIVE CONTROL FAILED: %s left the check GREEN", plant.name)
+		}
+	}
+}

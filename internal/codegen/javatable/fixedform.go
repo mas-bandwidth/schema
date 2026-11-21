@@ -1756,11 +1756,10 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 		// widened one is refused.
 		//
 		// A RANGED FLOAT OFF ITS RANGE REFUSES out_of_range, exactly as the
-		// ranged integer below does, and against THIS READER'S OWN min and max
-		// (schema#1164, ruled statement B): in the fixed form a compressed
-		// float rides AS THE FLOAT (SPEC §3.4), the bounds are DEFINITIONS in
-		// the digest and the compiled plan carries no range, so the pass can
-		// only be the reader's. The value is finite here, so `<` and `>` see
+		// ranged integer below does. This is THIS READER'S OWN half; on a
+		// compiled lane the lineage entry's writer FLOAT bounds hold the value
+		// to the WRITER's min and max first (TableFixed.checkWriterFloatBounds;
+		// docs/rulings.json strict-only-read, ALGORITHM §4.6). The value is finite here, so `<` and `>` see
 		// every case. A COMPRESSED FLOAT'S `-0` IS `+0` (SPEC §3.3, §3.4;
 		// ALGORITHM §4.6): inside the range only its sign differs, so it lands
 		// as the value zero, refuses nothing and counts nothing.
@@ -1863,8 +1862,8 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 // declared range, and a fixed-point's whole-unit bounds SHIFTED BY F
 // (ir.TableRawRange — ALGORITHM §4.6: "a fixed-point field's bounds are in
 // value units and its storage is raw, so both ends are shifted by F first").
-// A float's bounds are a different rule — the reader's own, schema#1164,
-// statement B — and a bound that does not fit the int64 lanes bounds nothing.
+// A float's bounds are spelled in its own type (fixedFloatRange), and a bound
+// that does not fit the int64 lanes bounds nothing.
 func fixedRawRange(f *ir.Field) (int64, int64, bool) {
 	if f == nil || !f.HasIntRange || f.IntMin == nil || f.IntMax == nil {
 		return 0, 0, false
@@ -2418,12 +2417,19 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("        TableFixed.Prefill pre = Identity.prefill;\n")
 	g.pf("        short[] table = remap;\n")
 	g.pf("        int censusUnknown = 0;\n")
-	if entryBounds != nil {
+	hasBounds := fixedWriterBoundsHave(entryBounds, false)
+	hasFloatBounds := fixedWriterBoundsHave(entryBounds, true)
+	if hasBounds || hasFloatBounds {
 		g.pf("        // THE WRITER'S OWN BOUNDS for the endpoint this file selected (ALGORITHM\n")
 		g.pf("        // §4.6, bill §12.5): held after the plan run and before the scatter,\n")
-		g.pf("        // so a forged value past what the writer could have written lands\n")
-		g.pf("        // the writer's bound and counts, never this reader's wider own.\n")
+		g.pf("        // so a forged value past what the writer could have written refuses\n")
+		g.pf("        // the load, never passing on this reader's wider own (strict-only-read).\n")
+	}
+	if hasBounds {
 		g.pf("        long[] writerBounds = null;\n")
+	}
+	if hasFloatBounds {
+		g.pf("        double[] writerFloatBounds = null;\n")
 	}
 	g.pf("        if (fileHash != hash) {\n")
 	g.pf("            final TableFixed.Plan lane = Lineage.plans[pick];\n")
@@ -2437,8 +2443,11 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("            pre = lane.prefill;\n")
 	g.pf("            table = lane.remap;\n")
 	g.pf("            censusUnknown = lane.unknown;\n")
-	if entryBounds != nil {
+	if hasBounds {
 		g.pf("            writerBounds = Lineage.bounds[pick];\n")
+	}
+	if hasFloatBounds {
+		g.pf("            writerFloatBounds = Lineage.floatBounds[pick];\n")
 	}
 	g.pf("        }\n")
 	g.pf("        final long recordSize = known_.recordBytes;\n")
@@ -2484,8 +2493,11 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("                    System.arraycopy(defaults, off, image, off, hn);\n")
 	g.pf("                }\n")
 	g.pf("                TableFixed.run(entries, made, table, data, at + 8, bodySize, image, report);\n")
-	if entryBounds != nil {
+	if hasBounds {
 		g.pf("                TableFixed.checkWriterBounds(writerBounds, image, report);\n")
+	}
+	if hasFloatBounds {
+		g.pf("                TableFixed.checkWriterFloatBounds(writerFloatBounds, image, report);\n")
 	}
 	g.pf("                scatter(image, 0, pass == 0 ? scratch : values[k], report, true, fileHash == hash);\n")
 	g.pf("                // DAMAGE DISCARDS THE WHOLE LOAD (§4)\n")
@@ -2557,22 +2569,31 @@ func (g *fixedGen) emitLineage(st *ir.Struct, hash uint64, layout []byte, entrie
 	// a flat {dst, width, signed, lo, hi} per leaf, at this reader's image
 	// offsets, in the writer's raw bounds. Only entries that carry them.
 	entryBounds := g.fixedWriterBounds(st, entries, hash)
-	hasBounds := entryBounds != nil
-	if hasBounds {
-		for i, rows := range entryBounds {
-			if len(rows) == 0 {
-				continue
-			}
+	hasBounds := fixedWriterBoundsHave(entryBounds, false)
+	hasFloatBounds := fixedWriterBoundsHave(entryBounds, true)
+	for i, rows := range entryBounds {
+		ints, flts := fixedSplitWriterBounds(rows)
+		if len(ints) > 0 {
 			g.pf("    /** LINEAGE ENTRY %d's writer bounds: the endpoint's own ranged leaves,\n", i)
 			g.pf("     *  raw scale, at this reader's image offsets — what the compiled\n")
 			g.pf("     *  lane's bounds pass holds this endpoint to (ALGORITHM §4.6). */\n")
 			g.pf("    private static final long[] known%dWriterBounds = {\n", i)
-			for _, r := range rows {
+			for _, r := range ints {
 				sgn := int64(0)
 				if r.signed {
 					sgn = 1
 				}
 				g.pf("        %d, %d, %d, %dL, %dL,\n", r.dst, r.width, sgn, r.lo, r.hi)
+			}
+			g.pf("    };\n\n")
+		}
+		if len(flts) > 0 {
+			g.pf("    /** LINEAGE ENTRY %d's writer FLOAT bounds: the endpoint's own compressed\n", i)
+			g.pf("     *  floats, {dst, width, min, max} at this reader's image offsets, held\n")
+			g.pf("     *  in the reader field's own type (ALGORITHM §4.6; strict-only-read). */\n")
+			g.pf("    private static final double[] known%dWriterFloatBounds = {\n", i)
+			for _, r := range flts {
+				g.pf("        %d, %d, %s, %s,\n", r.dst, r.width, fixedDoubleLit(r.flo), fixedDoubleLit(r.fhi))
 			}
 			g.pf("    };\n\n")
 		}
@@ -2588,11 +2609,24 @@ func (g *fixedGen) emitLineage(st *ir.Struct, hash uint64, layout []byte, entrie
 		g.pf("        // bounds nothing: the compiled lane's bounds pass (§4.6).\n")
 		g.pf("        static final long[][] bounds = {\n")
 		for i, rows := range entryBounds {
-			if len(rows) == 0 {
+			if ints, _ := fixedSplitWriterBounds(rows); len(ints) == 0 {
 				g.pf("            null,\n")
 				continue
 			}
 			g.pf("            known%dWriterBounds,\n", i)
+		}
+		g.pf("        };\n")
+	}
+	if hasFloatBounds {
+		g.pf("        // the writer's compressed floats per entry, null where the entry\n")
+		g.pf("        // ranges no float: the same bounds pass, in the field's own type.\n")
+		g.pf("        static final double[][] floatBounds = {\n")
+		for i, rows := range entryBounds {
+			if _, flts := fixedSplitWriterBounds(rows); len(flts) == 0 {
+				g.pf("            null,\n")
+				continue
+			}
+			g.pf("            known%dWriterFloatBounds,\n", i)
 		}
 		g.pf("        };\n")
 	}
@@ -2608,6 +2642,39 @@ type fixedWriterBound struct {
 	width  int64
 	signed bool
 	lo, hi int64
+	// flt marks a COMPRESSED FLOAT's writer range (FIXED-FORM-ALGORITHM §4.6,
+	// docs/rulings.json strict-only-read): flo and fhi are the writer's declared
+	// min and max, width is THIS reader's float width (4 or 8), and lo, hi and
+	// signed are unused. It rides in its own double[] spec, never the long[]
+	// one, which carries integers only.
+	flt      bool
+	flo, fhi float64
+}
+
+// fixedSplitWriterBounds parts one entry's rows into the integer rows the
+// long[] spec carries and the float rows the double[] spec carries.
+func fixedSplitWriterBounds(rows []fixedWriterBound) (ints, flts []fixedWriterBound) {
+	for _, r := range rows {
+		if r.flt {
+			flts = append(flts, r)
+		} else {
+			ints = append(ints, r)
+		}
+	}
+	return ints, flts
+}
+
+// fixedWriterBoundsHave answers whether any entry carries a row of the given
+// shape (float or integer), so a spec array no entry fills is never emitted.
+func fixedWriterBoundsHave(entryBounds [][]fixedWriterBound, flt bool) bool {
+	for _, rows := range entryBounds {
+		for _, r := range rows {
+			if r.flt == flt {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // fixedWriterBounds resolves every entry's ranged leaves onto this reader's
@@ -2630,7 +2697,15 @@ func (g *fixedGen) fixedWriterBounds(st *ir.Struct, entries []FixedLineageEntry,
 				at := int64(0)
 				for _, f := range st.Fields {
 					if _, ok := ir.TableFixedWriterField(f, spec); ok {
-						rows = append(rows, fixedWriterBoundsOfField(f, at, ir.TableKindSigned(spec.Kind), spec.Lo, spec.Hi)...)
+						for _, r := range fixedWriterBoundsOfField(f, at, ir.TableKindSigned(spec.Kind), spec.Lo, spec.Hi) {
+							if spec.Float {
+								// a compressed float's range is a float range,
+								// held in the reader field's own type, never
+								// the integer lanes' 0..0
+								r = fixedWriterBound{dst: r.dst, width: r.width, flt: true, flo: spec.FLo, fhi: spec.FHi}
+							}
+							rows = append(rows, r)
+						}
 						break
 					}
 					at += fixedFieldBytes(f)
@@ -2787,10 +2862,9 @@ func (g *fixedGen) emitDestArray(w *fixedWalk) {
 
 // fixedFloatRange answers a ranged float field's declared bounds as Java
 // literals, rendered from the exact bit pattern so the emitted range check
-// compares against precisely the value the declaration named. A compressed float's
-// bounds are the READER'S here (schema#1164, statement B): the fixed form
-// carries the float itself, not a quantized index, so the compiled plan holds
-// no range and there is no writer bound to check against.
+// compares against precisely the value the declaration named. These are the
+// READER's own bounds; the WRITER's, which the lineage plan carries, ride in
+// the entry's double[] writer float bounds (docs/rulings.json strict-only-read).
 func fixedFloatRange(f *ir.Field) (string, string, bool) {
 	if f == nil || !f.HasFloatRange {
 		return "", "", false

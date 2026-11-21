@@ -382,6 +382,12 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 type fixedWriterBound struct {
 	field  *ir.Field
 	lo, hi *big.Int
+	// flt marks a COMPRESSED FLOAT's writer range (FIXED-FORM-ALGORITHM §4.6,
+	// docs/rulings.json strict-only-read): flo and fhi are the writer's declared
+	// min and max, compared in the reader field's own type, and lo and hi are
+	// unused (the integer lanes would read them as 0..0).
+	flt      bool
+	flo, fhi float64
 }
 
 // fixedWriterBounds resolves every lineage entry's ranged leaves against this
@@ -401,7 +407,11 @@ func (g *tableGen) fixedWriterBounds(st *ir.Struct, entries []FixedLineageEntry,
 			for _, spec := range e.Ranges {
 				for _, f := range st.Fields {
 					if _, ok := ir.TableFixedWriterField(f, spec); ok {
-						rows = append(rows, fixedWriterBound{field: f, lo: big.NewInt(spec.Lo), hi: big.NewInt(spec.Hi)})
+						if spec.Float {
+							rows = append(rows, fixedWriterBound{field: f, flt: true, flo: spec.FLo, fhi: spec.FHi})
+						} else {
+							rows = append(rows, fixedWriterBound{field: f, lo: big.NewInt(spec.Lo), hi: big.NewInt(spec.Hi)})
+						}
 						break
 					}
 				}
@@ -446,12 +456,30 @@ func (g *tableGen) emitFixedWriterClampField(b fixedWriterBound, indent int) {
 	if f.Array == ir.ArrayFixed {
 		i := g.enterLoop()
 		g.pf("%sfor (int %s = 0; %s < %d; ++%s)\n%s{\n", ind, i, i, f.ArrayBound, i, ind)
-		g.emitFixedWriterClampScalar(f, expr+"["+i+"]", b.lo, b.hi, indent+4)
+		g.emitFixedWriterClampLeaf(b, expr+"["+i+"]", indent+4)
 		g.pf("%s}\n", ind)
 		g.leaveLoop()
 		return
 	}
-	g.emitFixedWriterClampScalar(f, expr, b.lo, b.hi, indent)
+	g.emitFixedWriterClampLeaf(b, expr, indent)
+}
+
+// emitFixedWriterClampLeaf holds one leaf to its writer bound: a compressed
+// float against the writer's min and max IN THE FIELD'S OWN TYPE (a float32
+// against the bounds rounded to float32, so the writer's own max is inside), an
+// integer through the raw-scale clamp. The value is finite here: the finite
+// check refused a NaN or an infinity by name before this pass runs.
+func (g *tableGen) emitFixedWriterClampLeaf(b fixedWriterBound, expr string, indent int) {
+	if !b.flt {
+		g.emitFixedWriterClampScalar(b.field, expr, b.lo, b.hi, indent)
+		return
+	}
+	ind := strings.Repeat(" ", indent)
+	lo, hi := formatFloat64(b.flo), formatFloat64(b.fhi)
+	if b.field.Type.Kind == ir.TFloat32 {
+		lo, hi = formatFloat32(b.flo), formatFloat32(b.fhi)
+	}
+	g.csClampBothAs(expr, expr, lo, hi, ind)
 }
 
 // emitFixedWriterClampScalar spells the two-ended clamp for one scalar to the

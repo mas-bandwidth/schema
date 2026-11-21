@@ -12,31 +12,25 @@ import (
 
 // §5.8 row `cfloat_range_widen`: VOLD `aim float32 | min = -1, max = 1,
 // resolution = 0.01`, VNEW widens to min = -2, max = 2. A compressed float
-// rides as the float32 itself (SPEC §3.4), so min/max are digest definitions
-// and the read's bounds pass is the READER's own: a forged value inside the new
-// range (`hostile_`, 1.5) lands WHOLE and reads, and only a value past the
-// reader's own bound (`past_`, 5.0) refuses the whole load under the strict
-// read (docs/SPEC-TABLES.md §4: no clamp-and-count). `old_` (0.5) is the
-// un-forged control that reads. `hostile_` alone would not prove the pass is the
-// reader's, since deleting the emitter's bounds pass outright leaves `hostile_`
-// green and only turns `past_` red.
+// rides as the float32 itself (SPEC §3.4), and on a cross-version read it is
+// held to the WRITER's range the lineage plan carries, like every ranged kind
+// (docs/rulings.json strict-only-read; docs/FIXED-FORM-ALGORITHM.md §4.6). A
+// forged value past the old writer's max 1.0 but inside the new reader's 2.0
+// (`hostile_`, 1.5) refuses the whole load out_of_range, and so does one past
+// both (`past_`, 5.0) (docs/SPEC-TABLES.md §4: no clamp-and-count). `old_`
+// (0.5) is the un-forged control: a writer range narrower than the reader's
+// lands what the writer wrote.
 func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
 	slowtest.Gate(t, "an external toolchain")
 
 	corpus := csFixedCorpus(t)
 	dir := t.TempDir()
 
-	// TWO OF THE THREE EXPECTED VALUES COME FROM THE CORPUS MANIFEST AND THE
-	// THIRD CANNOT (schema#1164). This leg already compared BITS, which is the
-	// right comparison; what it did not do is take the number from the
-	// reference. `old_`'s is the manifest's `values=r0.aim`, `hostile_`'s is the
-	// manifest's own `forged=r0.aim@104` -- the value the reference wrote into
-	// those bytes. `past_`'s 0x40000000 stays a literal and says why: the file
-	// carries 5.0 and what lands is THIS READER'S OWN DECLARED MAX 2.0, which is
-	// the whole content of that column and must not be dressed as an oracle
-	// value.
+	// THE LANDED VALUE COMES FROM THE CORPUS MANIFEST (schema#1164), compared
+	// as BITS: `old_`'s is the manifest's `values=r0.aim`. `hostile_` and
+	// `past_` land nothing: each refuses, and every value is back at its
+	// declared default.
 	oldAim := fmt.Sprintf("0x%08X", csManifestFloatBits(t, corpus, "old_cfloat_range_widen.bin", "values", "r0.aim"))
-	hostileAim := fmt.Sprintf("0x%08X", csManifestFloatBits(t, corpus, "hostile_cfloat_range_widen.bin", "forged", "r0.aim"))
 
 	probes := []csVersionProbe{
 		{name: "cfloat_range_widen/new_reads_old", reader: "VNEW_cfloat_range_widen",
@@ -69,36 +63,39 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
 		{name: "cfloat_range_widen/hostile", reader: "VNEW_cfloat_range_widen",
 			older: []string{"VOLD_cfloat_range_widen"}, suffix: "h", file: "hostile_cfloat_range_widen.bin",
 			body: csVersionHead + `            _ = want;
-            if (n != 1)
+            // THE STRICT READ AGAINST THE WRITER'S RANGE (docs/rulings.json
+            // strict-only-read, docs/FIXED-FORM-ALGORITHM.md §4.6): 1.5 is past
+            // the old writer's max 1.0, which that writer could not have
+            // written; the whole load refuses even though the reader's own
+            // range 2.0 holds it.
+            @TABLE@ fresh = new @TABLE@();
+            if (n != -1)
             {
-                bad += ProbeLog.Fail(@NAME@, "the newer reader did not read exactly one record: n=" + n + " reason=" + r.Reason);
+                bad += ProbeLog.Fail(@NAME@, "a value past the writer's bound must refuse the load: n=" + n);
             }
-            if (r.Refused || r.Verdict != Schema.TableWire.Verdict.Ok || r.Reason != null)
+            if (!r.Refused || r.Verdict != Schema.TableWire.Verdict.Refused || r.Reason != "out_of_range")
             {
-                bad += ProbeLog.Fail(@NAME@, "a clean read is not a refusal: reason=" + r.Reason + " verdict=" + r.Verdict);
+                bad += ProbeLog.Fail(@NAME@, "a value past the writer's bound is an out_of_range refusal: refused=" + r.Refused + " verdict=" + r.Verdict + " reason=" + r.Reason);
             }
-            if (back[0].Lead != 1u || back[0].Trail != 2u)
+            if (back[0].Lead != fresh.Lead || back[0].Trail != fresh.Trail)
             {
-                bad += ProbeLog.Fail(@NAME@, "a neighbor moved: lead=" + back[0].Lead + " trail=" + back[0].Trail);
+                bad += ProbeLog.Fail(@NAME@, "a refusal left a neighbor written: lead=" + back[0].Lead + " trail=" + back[0].Trail);
             }
-            if (System.BitConverter.SingleToInt32Bits(back[0].Aim) != @HOSTILEAIM@)
+            if (System.BitConverter.SingleToInt32Bits(back[0].Aim) != System.BitConverter.SingleToInt32Bits(fresh.Aim))
             {
-                bad += ProbeLog.Fail(@NAME@, "1.5 inside the widened range did not land whole and uncounted: bits=0x" + System.BitConverter.SingleToInt32Bits(back[0].Aim).ToString("x8"));
-            }
-            if (n != 1 || r.Verdict != Schema.TableWire.Verdict.Ok)
-            {
-                bad += ProbeLog.Fail(@NAME@, "a value inside the widened range refused the read: n=" + n + " verdict=" + r.Verdict);
+                bad += ProbeLog.Fail(@NAME@, "1.5 past the writer's bound landed a value: bits=0x" + System.BitConverter.SingleToInt32Bits(back[0].Aim).ToString("x8"));
             }
             if (r.Widened != 0 || r.Unknown != 0 || r.Retained != 0 || r.RetainLost != 0)
             {
-                bad += ProbeLog.Fail(@NAME@, "a counter moved: widened=" + r.Widened + " unknown=" + r.Unknown + " retained=" + r.Retained + " lost=" + r.RetainLost);
+                bad += ProbeLog.Fail(@NAME@, "REFUSE is total: no counter moves: widened=" + r.Widened + " unknown=" + r.Unknown + " retained=" + r.Retained + " lost=" + r.RetainLost);
             }`},
 		{name: "cfloat_range_widen/past", reader: "VNEW_cfloat_range_widen",
 			older: []string{"VOLD_cfloat_range_widen"}, suffix: "p", file: "past_cfloat_range_widen.bin",
 			body: csVersionHead + `            _ = want;
             // THE STRICT READ (docs/SPEC-TABLES.md §4, docs/FIXED-FORM-ALGORITHM.md
-            // §4.6): 5.0 past the reader's own max 2.0 is never clamped; the whole
-            // load refuses and every value it wrote is back at its declared default.
+            // §4.6): 5.0 past the writer's max 1.0 (and the reader's 2.0) is never
+            // clamped; the whole load refuses and every value it wrote is back at
+            // its declared default.
             @TABLE@ fresh = new @TABLE@();
             if (n != -1)
             {
@@ -130,7 +127,6 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
 		probeClass := fmt.Sprintf("Probe%03d", i)
 		body := strings.NewReplacer(
 			"@OLDAIM@", oldAim,
-			"@HOSTILEAIM@", hostileAim,
 			"@NAME@", fmt.Sprintf("%q", p.name),
 			"@TABLE@", table,
 			"@FILE@", fmt.Sprintf("%q", p.file),

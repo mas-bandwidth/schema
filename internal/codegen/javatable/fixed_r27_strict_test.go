@@ -17,7 +17,9 @@ import (
 // (FIXED-FORM-ALGORITHM §5.9 #32 and #37, SPEC-TABLES §3.4): it pins the five
 // range-widening corpus vectors (hostile_range_widen.bin,
 // hostile_range_widen_array.bin, hostile_range_widen_u64.bin,
-// hostile_cfloat_range_widen.bin, past_cfloat_range_widen.bin) under both the
+// hostile_cfloat_range_widen.bin, past_cfloat_range_widen.bin, each refusing
+// past the WRITER's range, plus old_cfloat_range_widen.bin landing 0.5 as the
+// control; docs/rulings.json strict-only-read, ALGORITHM §4.6) under both the
 // manifest bound oracle (t18Bound + t18WriterBound) and the live JDK execution
 // of the generated Java fixed-form readers.
 //
@@ -43,7 +45,12 @@ func checkJavaFixedR27HostileCorpus(t *testing.T, skipWriterBound bool, mutate f
 		{"hostile_range_widen.bin", true, 0},
 		{"hostile_range_widen_array.bin", true, 0},
 		{"hostile_range_widen_u64.bin", true, 0},
-		{"hostile_cfloat_range_widen.bin", false, math.Float32bits(1.5)},
+		// the control: the old writer's 0.5 lands whole through the writer's
+		// narrower float range
+		{"old_cfloat_range_widen.bin", false, math.Float32bits(0.5)},
+		// past the WRITER's max 1.0, inside the reader's 2.0: refuses
+		// (docs/rulings.json strict-only-read, ALGORITHM §4.6)
+		{"hostile_cfloat_range_widen.bin", true, 0},
 		{"past_cfloat_range_widen.bin", true, 0},
 	}
 
@@ -172,17 +179,24 @@ func TestJavaFixedR27OracleHostileNegativeControl(t *testing.T) {
 			from: "if (spec == null || spec.length == 0 || image == null) {",
 			to:   "if (true || spec == null || spec.length == 0 || image == null) {",
 		},
+		// The writer's FLOAT bounds pass skipped: hostile_ (1.5) lands
+		// through the reader's wider 2.0 and the check goes red. (The reader's
+		// own float pass is not separately observable on this row's compiled
+		// lane: the writer's range sits inside the reader's, so the writer's
+		// pass refuses every value the reader's would.)
 		{
-			name: "reader-cfloat-bounds-bypassed",
-			file: "CfloatRangeWidenFixed.java",
-			from: "r.refuse(TableFixed.Reason.outOfRange);",
-			to:   "/* SABOTAGED: reader bound skipped */",
+			name: "writer-cfloat-bounds-bypassed",
+			file: "TableFixed.java",
+			from: "for (int i = 0; i + 3 < spec.length; i += 4) {",
+			to:   "for (int i = 0; false; i += 4) {",
 		},
+		// The writer's float max narrowed from 1.0 to 0.25 in the emitted
+		// spec: the old_ control (0.5) refuses and the check goes red.
 		{
-			name: "cfloat-range-widen-clamped-to-old-writer",
+			name: "writer-cfloat-bound-narrowed",
 			file: "CfloatRangeWidenFixed.java",
-			from: "Float.intBitsToFloat(0x40000000)",
-			to:   "Float.intBitsToFloat(0x3f800000)",
+			from: "Double.longBitsToDouble(0x3ff0000000000000L)",
+			to:   "Double.longBitsToDouble(0x3fd0000000000000L)",
 		},
 	}
 	for _, c := range controls {
