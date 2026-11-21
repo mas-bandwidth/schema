@@ -2391,7 +2391,7 @@ Each leg's variable `Save` and its `Measure`:
 
 - **JavaScript**: 1–8 and 10 every build; 9 not audited
 
-- **Elixir**: 1–6 and 8 every build; 7 unrepresentable (a BEAM float holds no NaN or infinity); 9 unchecked; 10 every build
+- **Elixir**: 1–6 and 8 every build, on every field, union arm payload and array element, `required` or not; 7 unrepresentable (a BEAM float holds no NaN or infinity); 9 unchecked; 10 and 11 every build
 
 - **Lua**: 1–8 every build, `SaveRetain` included; 9 not audited; 10 every build
 
