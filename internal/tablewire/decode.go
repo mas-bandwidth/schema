@@ -635,8 +635,11 @@ func (r *wireReader) mapField(fv *tabletext.Field) bool {
 	}
 	elemKind := r.u8()
 	count, good := r.leb()
-	if !good {
-		return r.damage("a map count that is truncated or not canonical")
+	if !good || r.off > end {
+		// a count LEB that runs past the map's own L is damage, as it is
+		// for an array or a keyed header: the decode may run before the
+		// wire check (readOrder.wireLast), so it never slices past L
+		return r.damage("a map count that is truncated, not canonical or crosses its L")
 	}
 	// THE MAP'S BODY IS AN ARRAY BODY (kind 14), so its element kind is held to
 	// the array list first, under any count (§3, §4).
@@ -1178,7 +1181,8 @@ func (r *wireReader) scalarAt(cell *tabletext.Cell, f *ir.Field, kind int) bool 
 			return true
 		}
 		if f.HasFloatRange {
-			if v < f.FMin || v > f.FMax {
+			// the range as every runtime holds it, at float32 (SPEC.md §4.6)
+			if !tabletext.FloatInRange(f, v) {
 				return r.refuseField(ReasonOutOfRange, f)
 			}
 			if v == 0 {
