@@ -93,7 +93,7 @@ build is pinned to:
 ```
 $ cd ..
 $ git clone --branch v2.1.3 https://github.com/mas-bandwidth/serialize.git
-$ git clone --branch v2.0.2 https://github.com/mas-bandwidth/serialize.c.git
+$ git clone --branch v2.1.1 https://github.com/mas-bandwidth/serialize.c.git
 ```
 
 Nothing to build in either. Part 3 adds `-I ../serialize` to a compile line and
