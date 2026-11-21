@@ -104,8 +104,17 @@ func cmdPin(args []string) {
 	if !validPinVersion(version) {
 		fatalf("schema pin: %s is not a Go pseudo-version or semver tag", version)
 	}
-	if pinUnresolvable[version] {
-		fatalf("schema pin: Go cannot resolve %s: that tag's go.mod names the /v2 module path, so neither path finds it; pin a later v3 release", version)
+	// The denylist is held against the CANONICAL release, the version with any
+	// build metadata cut, because Go resolves v3.0.2+incompatible to the
+	// v3.0.2 tag. Build metadata is refused outright as well: Go accepts none
+	// but +incompatible, which names a module with no go.mod at its major,
+	// and every schema tag has one, so no spelling with a + resolves.
+	canonical, meta, _ := strings.Cut(version, "+")
+	if pinUnresolvable[canonical] {
+		fatalf("schema pin: Go cannot resolve %s: the %s tag's go.mod names the /v2 module path, so neither path finds it; pin a later v3 release", version, canonical)
+	}
+	if meta != "" {
+		fatalf("schema pin: Go cannot resolve %s: a module version takes no build metadata but +incompatible, and schema has a go.mod at every major; pin %s", version, canonical)
 	}
 	newPrefix := pinDirectiveHead + pinModulePath(version) + pinCommandTail
 	dirs := pos[1:]

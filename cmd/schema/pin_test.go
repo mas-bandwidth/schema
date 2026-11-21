@@ -69,8 +69,10 @@ func TestPinWritesAPathGoCanResolve(t *testing.T) {
 		t.Errorf("v1 to v2 pin did not restore the original:\n%q", got)
 	}
 
-	// v3.0.0, v3.0.1 and v3.0.2 carry a go.mod naming /v2: no path resolves them
-	for _, v := range []string{"v3.0.0", "v3.0.1", "v3.0.2"} {
+	// v3.0.0, v3.0.1 and v3.0.2 carry a go.mod naming /v2: no path resolves
+	// them, under any spelling Go reads as the same tag; and no version with
+	// build metadata resolves at all (schema has a go.mod at every major)
+	for _, v := range []string{"v3.0.0", "v3.0.1", "v3.0.2", "v3.0.0+incompatible", "v3.0.2+incompatible", "v3.0.2+build.7", "v3.0.3+incompatible", "v2.9.0+incompatible"} {
 		msg, status := runFail(t, bin, "pin", v, p)
 		if status != 1 {
 			t.Fatalf("pin %s exit %d, want 1\n%s", v, status, msg)
