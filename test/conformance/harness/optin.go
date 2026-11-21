@@ -62,18 +62,17 @@ func optInLines(text string, skip map[string]bool) (kept string, dropped map[str
 }
 
 // caseNotAsked says whether a surface's case sits on a row the leg was not
-// handed. The json-write surface names a case after its row plus ".json"
-// (the file the driver writes), so it is looked up by the row's own name too.
+// handed. Every surface names a case after its row, except json-write, which
+// names it after the file the driver writes: the row's name plus ".json". So
+// a json-write case is looked up by its name less exactly that one suffix and
+// by nothing else: a row may itself be named "x.json", and its case "x.json"
+// on another surface, or the case "x.json" of a row named "x", is not it.
 func caseNotAsked(notAsked map[string]bool, surface, name string) bool {
-	if notAsked[name] {
-		return true
-	}
 	if surface == "json-write" {
-		if row, ok := strings.CutSuffix(name, ".json"); ok {
-			return notAsked[row]
-		}
+		row, ok := strings.CutSuffix(name, ".json")
+		return ok && notAsked[row]
 	}
-	return false
+	return notAsked[name]
 }
 
 // legManifest is the derived manifest a leg is handed, and the cases it is
