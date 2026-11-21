@@ -7,10 +7,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/vacuous"
 )
 
-// TestEveryGoTestCanFail is the vacuous-test gate (rowan/silent-vacuous,
-// 2026-11-21). Glenn: "We simply have to actually be able to trust that our
-// tests actually check for things, don't do nothing, and that we are actually
-// running the tests we think we are."
+// TestEveryGoTestCanFail is the vacuous-test gate (2026-11-21): a test that
+// exists has to be able to fail, and has to check what its name promises.
 //
 // internal/vacuous parses every _test.go file of the repository (parse only:
 // nothing is compiled and no test runs) and refuses the classes it can decide

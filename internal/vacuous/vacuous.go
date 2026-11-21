@@ -1,8 +1,7 @@
 // Package vacuous finds Go tests that run and pass while checking nothing.
 //
-// Glenn, 2026-11-21: "We simply have to actually be able to trust that our
-// tests actually check for things, don't do nothing, and that we are actually
-// running the tests we think we are."
+// The rule (2026-11-21): a test that exists has to be able to fail, and has to
+// check what its name promises.
 //
 // It parses every _test.go file of a tree (go/ast only: nothing is compiled
 // and no test is run, so it costs seconds) and reports seven classes:

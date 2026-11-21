@@ -56,6 +56,20 @@ func skipDir(name string) bool {
 	return name == "testdata" || name == ".git" || name == "node_modules" || name == "vendor"
 }
 
+// notThisTree reports a directory below the root whose tests are not this
+// repository's: the root's build/ (ignored output, where make clones other
+// repositories and writes generated trees) and any nested repository (a
+// directory holding its own .git). Their tests are another repository's to
+// gate; counting them would make this gate red or green on what a bench
+// happens to hold.
+func notThisTree(path, rel string) bool {
+	if rel == "build" {
+		return true
+	}
+	_, err := os.Lstat(filepath.Join(path, ".git"))
+	return err == nil
+}
+
 func loadTree(root string) (*tree, error) {
 	t := &tree{
 		root:    root,
@@ -70,17 +84,17 @@ func loadTree(root string) (*tree, error) {
 		if err != nil {
 			return err
 		}
-		if d.IsDir() {
-			if path != root && skipDir(d.Name()) {
-				return filepath.SkipDir
-			}
-			return nil
-		}
 		rel, err := filepath.Rel(root, path)
 		if err != nil {
 			return err
 		}
 		rel = filepath.ToSlash(rel)
+		if d.IsDir() {
+			if path != root && (skipDir(d.Name()) || notThisTree(path, rel)) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
 		dir := filepath.ToSlash(filepath.Dir(rel))
 		switch {
 		case d.Name() == "go.mod":
