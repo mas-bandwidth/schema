@@ -1,0 +1,6 @@
+package game
+
+table Fleet
+{
+    to_json uint32
+}

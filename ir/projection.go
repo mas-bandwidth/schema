@@ -176,7 +176,7 @@ func WireProjection(u *Unit) string {
 		// Changing this line is a ProjectionVersion bump, taken deliberately
 		// or not at all.
 		fmt.Fprintf(&b, "type %s table=false message=false\n", st.Name)
-		projectItems(&b, st.Items, "  ")
+		projectItems(&b, st.Items, "  ", newCondScope(nil))
 	}
 
 	// unions: arm ORDER, count, arm NAMES and payload type references all
@@ -228,10 +228,37 @@ func WireProjection(u *Unit) string {
 	return b.String()
 }
 
-func projectItems(b *strings.Builder, items []Item, ind string) {
+// condScope is one block's fields by declared name, for resolving a branch
+// condition the way the dominance rule does (SPEC §4.5): a bool field declared
+// earlier in the same or an enclosing block.
+type condScope struct {
+	fields map[string]*Field
+	parent *condScope
+}
+
+func newCondScope(parent *condScope) *condScope {
+	return &condScope{fields: map[string]*Field{}, parent: parent}
+}
+
+// condWireName is the wire name of the field a branch condition names. The
+// condition is the field's NAME, so a `was` rename rides here exactly as it
+// rides on the field line: the old name projects and the id stands
+// (docs/SPEC-TABLES.md §5). A name the scope cannot resolve projects as
+// written.
+func (s *condScope) condWireName(cond string) string {
+	for ; s != nil; s = s.parent {
+		if f, ok := s.fields[cond]; ok {
+			return TableFieldWireName(f)
+		}
+	}
+	return cond
+}
+
+func projectItems(b *strings.Builder, items []Item, ind string, scope *condScope) {
 	for _, item := range items {
 		switch n := item.(type) {
 		case *FieldItem:
+			scope.fields[n.F.Name] = n.F
 			projectField(b, n.F, ind)
 		case *ConstItem:
 			fmt.Fprintf(b, "%sconst-bits value=%s bits=%d\n", ind, n.Value.String(), n.Bits)
@@ -240,11 +267,11 @@ func projectItems(b *strings.Builder, items []Item, ind string) {
 		case *AlignItem:
 			fmt.Fprintf(b, "%salign\n", ind)
 		case *Branch:
-			fmt.Fprintf(b, "%sbranch cond=%s neg=%t\n", ind, n.Cond, n.Neg)
+			fmt.Fprintf(b, "%sbranch cond=%s neg=%t\n", ind, scope.condWireName(n.Cond), n.Neg)
 			fmt.Fprintf(b, "%s then\n", ind)
-			projectItems(b, n.Then, ind+"  ")
+			projectItems(b, n.Then, ind+"  ", newCondScope(scope))
 			fmt.Fprintf(b, "%s else\n", ind)
-			projectItems(b, n.Else, ind+"  ")
+			projectItems(b, n.Else, ind+"  ", newCondScope(scope))
 		}
 	}
 }
@@ -301,7 +328,14 @@ func projectField(b *strings.Builder, f *Field, ind string) {
 	if f.HasDefault {
 		switch {
 		case f.DefVariant != "":
-			fmt.Fprintf(b, " default=variant:%s", f.DefVariant)
+			// the variant's WIRE name (docs/SPEC-TABLES.md §5): a default
+			// variant renamed under `was` keeps its ordinal, and the enum line
+			// already projects the old name, so the id stands
+			def := f.DefVariant
+			if e, ok := f.Type.Ref.(*Enum); ok && f.Type.Kind == TNamed {
+				def = e.VariantWireNameOf(def)
+			}
+			fmt.Fprintf(b, " default=variant:%s", def)
 		case f.Type.Kind == TString || f.Type.Kind == TBytes:
 			fmt.Fprintf(b, " default=bytes:%x", f.DefBytes)
 		case f.DefInt != nil:

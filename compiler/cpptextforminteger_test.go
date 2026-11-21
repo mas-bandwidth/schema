@@ -4,12 +4,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestCPPTextFormIntegralNumbersFunctional(t *testing.T) {
@@ -60,11 +61,11 @@ int main() {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(dir, "probe")
-	cmd := exec.Command("c++", "-std=c++17", "-O1", "-I"+dir, "-I"+ser, path, filepath.Join(dir, "ProbeTable.cpp"), "-o", bin)
+	cmd := testproc.Command(t, "c++", "-std=c++17", "-O1", "-I"+dir, "-I"+ser, path, filepath.Join(dir, "ProbeTable.cpp"), "-o", bin)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, out)
 	}
-	out, err := exec.Command(bin).CombinedOutput()
+	out, err := testproc.Command(t, bin).CombinedOutput()
 	if err != nil {
 		t.Fatalf("run: %v\n%s", err, out)
 	}
@@ -121,11 +122,11 @@ int main() {
 	if err := os.WriteFile(runtime, []byte(damaged), 0600); err != nil {
 		t.Fatal(err)
 	}
-	cmd = exec.Command("c++", "-std=c++17", "-O1", "-I"+dir, "-I"+ser, path, runtime, "-o", bin)
+	cmd = testproc.Command(t, "c++", "-std=c++17", "-O1", "-I"+dir, "-I"+ser, path, runtime, "-o", bin)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("control compile: %v\n%s", err, out)
 	}
-	damagedOut, err := exec.Command(bin).CombinedOutput()
+	damagedOut, err := testproc.Command(t, bin).CombinedOutput()
 	if err != nil {
 		t.Fatalf("control run: %v\n%s", err, damagedOut)
 	}

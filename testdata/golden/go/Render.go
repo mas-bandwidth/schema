@@ -46,11 +46,11 @@ func WriteRenderSprite(stream *serialize.WriteStream, value *RenderSprite) error
 	f3 := uint64(value.Layer) & 0xff
 	f4 := uint64(value.Team) & 0x3
 	w0 := f0
-	stream.SerializeBits64(&w0, 64)
+	_ = stream.SerializeBits64(&w0, 64) // sticky: the stream latches the first error and Err reports it
 	w1 := f1 | f2<<32
-	stream.SerializeBits64(&w1, 64)
+	_ = stream.SerializeBits64(&w1, 64) // sticky: the stream latches the first error and Err reports it
 	w2 := uint32(f3 | f4<<8)
-	stream.SerializeBits(&w2, 10)
+	_ = stream.SerializeBits(&w2, 10) // sticky: the stream latches the first error and Err reports it
 	return stream.Err()
 }
 
@@ -70,11 +70,11 @@ func ReadRenderSprite(stream *serialize.ReadStream, value *RenderSprite) error {
 // RenderSprite nested in another value is read through it.
 func (value *RenderSprite) read(stream *serialize.ReadStream) error {
 	c0 := uint64(0)
-	stream.SerializeBits64(&c0, 64)
+	_ = stream.SerializeBits64(&c0, 64) // sticky: checked once for the run below
 	c1 := uint64(0)
-	stream.SerializeBits64(&c1, 64)
+	_ = stream.SerializeBits64(&c1, 64) // sticky: checked once for the run below
 	n2 := uint32(0)
-	stream.SerializeBits(&n2, 10)
+	_ = stream.SerializeBits(&n2, 10) // sticky: checked once for the run below
 	c2 := uint64(n2)
 	if stream.Err() != nil {
 		return stream.Err()
@@ -119,7 +119,7 @@ func WriteRenderBlock(stream *serialize.WriteStream, value *RenderBlock) error {
 	f10 := uint64(value.WorkerIndex) & 0xffffffff
 	f11 := uint64(value.SpriteCountHint) & 0xffffffff
 	w5 := f10 | f11<<32
-	stream.SerializeBits64(&w5, 64)
+	_ = stream.SerializeBits64(&w5, 64) // sticky: the stream latches the first error and Err reports it
 	if value.SpritesCount < 0 || value.SpritesCount > RenderBlockMaxSprites {
 		return serialize.ErrValueOutOfRange
 	}
@@ -147,15 +147,15 @@ func WriteRenderBlock(stream *serialize.WriteStream, value *RenderBlock) error {
 		f8 := uint64(value.Sprites[i+1].Layer) & 0xff
 		f9 := uint64(value.Sprites[i+1].Team) & 0x3
 		w0 := f0
-		stream.SerializeBits64(&w0, 64)
+		_ = stream.SerializeBits64(&w0, 64) // sticky: the stream latches the first error and Err reports it
 		w1 := f1 | f2<<32
-		stream.SerializeBits64(&w1, 64)
+		_ = stream.SerializeBits64(&w1, 64) // sticky: the stream latches the first error and Err reports it
 		w2 := f3 | f4<<8 | f5<<10
-		stream.SerializeBits64(&w2, 64)
+		_ = stream.SerializeBits64(&w2, 64) // sticky: the stream latches the first error and Err reports it
 		w3 := f5>>54 | f6<<10 | f7<<42
-		stream.SerializeBits64(&w3, 64)
+		_ = stream.SerializeBits64(&w3, 64) // sticky: the stream latches the first error and Err reports it
 		w4 := uint32(f7>>22 | f8<<10 | f9<<18)
-		stream.SerializeBits(&w4, 20)
+		_ = stream.SerializeBits(&w4, 20) // sticky: the stream latches the first error and Err reports it
 	}
 	for ; i < value.SpritesCount; i++ {
 		if value.Sprites[i].Team > 2 {
@@ -167,11 +167,11 @@ func WriteRenderBlock(stream *serialize.WriteStream, value *RenderBlock) error {
 		f3 := uint64(value.Sprites[i].Layer) & 0xff
 		f4 := uint64(value.Sprites[i].Team) & 0x3
 		w0 := f0
-		stream.SerializeBits64(&w0, 64)
+		_ = stream.SerializeBits64(&w0, 64) // sticky: the stream latches the first error and Err reports it
 		w1 := f1 | f2<<32
-		stream.SerializeBits64(&w1, 64)
+		_ = stream.SerializeBits64(&w1, 64) // sticky: the stream latches the first error and Err reports it
 		w2 := uint32(f3 | f4<<8)
-		stream.SerializeBits(&w2, 10)
+		_ = stream.SerializeBits(&w2, 10) // sticky: the stream latches the first error and Err reports it
 	}
 	return stream.Err()
 }
@@ -192,7 +192,7 @@ func ReadRenderBlock(stream *serialize.ReadStream, value *RenderBlock) error {
 // RenderBlock nested in another value is read through it.
 func (value *RenderBlock) read(stream *serialize.ReadStream) error {
 	c5 := uint64(0)
-	stream.SerializeBits64(&c5, 64)
+	_ = stream.SerializeBits64(&c5, 64) // sticky: checked once for the run below
 	if stream.Err() != nil {
 		return stream.Err()
 	}
@@ -212,15 +212,15 @@ func (value *RenderBlock) read(stream *serialize.ReadStream) error {
 	i := int32(0)
 	for ; i+2 <= value.SpritesCount; i += 2 {
 		c0 := uint64(0)
-		stream.SerializeBits64(&c0, 64)
+		_ = stream.SerializeBits64(&c0, 64) // sticky: checked once for the run below
 		c1 := uint64(0)
-		stream.SerializeBits64(&c1, 64)
+		_ = stream.SerializeBits64(&c1, 64) // sticky: checked once for the run below
 		c2 := uint64(0)
-		stream.SerializeBits64(&c2, 64)
+		_ = stream.SerializeBits64(&c2, 64) // sticky: checked once for the run below
 		c3 := uint64(0)
-		stream.SerializeBits64(&c3, 64)
+		_ = stream.SerializeBits64(&c3, 64) // sticky: checked once for the run below
 		n4 := uint32(0)
-		stream.SerializeBits(&n4, 20)
+		_ = stream.SerializeBits(&n4, 20) // sticky: checked once for the run below
 		c4 := uint64(n4)
 		if stream.Err() != nil {
 			return stream.Err()
@@ -254,11 +254,11 @@ func (value *RenderBlock) read(stream *serialize.ReadStream) error {
 	}
 	for ; i < value.SpritesCount; i++ {
 		c0 := uint64(0)
-		stream.SerializeBits64(&c0, 64)
+		_ = stream.SerializeBits64(&c0, 64) // sticky: checked once for the run below
 		c1 := uint64(0)
-		stream.SerializeBits64(&c1, 64)
+		_ = stream.SerializeBits64(&c1, 64) // sticky: checked once for the run below
 		n2 := uint32(0)
-		stream.SerializeBits(&n2, 10)
+		_ = stream.SerializeBits(&n2, 10) // sticky: checked once for the run below
 		c2 := uint64(n2)
 		if stream.Err() != nil {
 			return stream.Err()

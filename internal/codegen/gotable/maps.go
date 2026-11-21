@@ -61,14 +61,14 @@ func (g *tableGen) emitMapSurface(st *ir.Struct, f *ir.Field) {
 	}
 	holder := "*TableMap[" + entry + "]"
 	desc := g.mapDescriptor(f)
-	g.pf("func %sInsert(worker *TableWorker,holder %s,key %s) *%s {p,_:=tableMapPlace(worker,(*tableContainer)(unsafe.Pointer(holder)),%s,%s);if p==nil{return nil};entry:=(*%s)(p);value:=entry;", name, holder, kt, typ, desc, kv, entry)
+	g.pf("func %sInsert(worker *TableWorker,holder %s,key %s) *%s {p,_:=tableMapPlace(worker,holder.container(),%s,%s);if p==nil{return nil};entry:=(*%s)(p);value:=entry;", name, holder, kt, typ, desc, kv, entry)
 	g.emitTableResetField(ir.MapValueField(f))
 	if ir.MapValueField(f).Type.Optional {
 		g.pf("value.ValuePresent=false;")
 	}
 	g.pf("_ = value;return %s }\n", access)
-	g.pf("func %sFind(arena *TableArena,holder %s,key %s) *%s {p:=tableMapFind((*tableContainer)(unsafe.Pointer(holder)),%s,%s,arena);if p==nil{return nil};entry:=(*%s)(p);return %s }\n", name, holder, kt, typ, desc, kv, entry, access)
-	g.pf("func %sErase(arena *TableArena,holder %s,key %s) bool {p:=tableMapFind((*tableContainer)(unsafe.Pointer(holder)),%s,%s,arena);return tableContainerErase(arena,(*tableContainer)(unsafe.Pointer(holder)),p,int64(unsafe.Sizeof(%s{}))) }\n", name, holder, kt, desc, kv, entry)
+	g.pf("func %sFind(arena *TableArena,holder %s,key %s) *%s {p:=tableMapFind(holder.container(),%s,%s,arena);if p==nil{return nil};entry:=(*%s)(p);return %s }\n", name, holder, kt, typ, desc, kv, entry, access)
+	g.pf("func %sErase(arena *TableArena,holder %s,key %s) bool {p:=tableMapFind(holder.container(),%s,%s,arena);return tableContainerErase(arena,holder.container(),p,int64(unsafe.Sizeof(%s{}))) }\n", name, holder, kt, desc, kv, entry)
 	keyexpr := "entry.Key"
 	if key.Type.Kind == ir.TString {
 		keyexpr = "string(entry.Key[:entry.KeyLength])"
@@ -76,10 +76,10 @@ func (g *tableGen) emitMapSurface(st *ir.Struct, f *ir.Field) {
 	if key.Type.TextUnbounded() {
 		keyexpr = "tableTextString(&entry.Key,tableOptionalArena(arena))"
 	}
-	g.pf("func %sEach(holder %s,visit func(%s,*%s)bool,arena ...*TableArena) bool {c:=tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(holder)),int64(unsafe.Sizeof(%s{})),tableOptionalArena(arena));for range holder.Count {entry:=(*%s)(c.Next());if entry==nil||!visit(%s,%s){return false}};return true }\n", name, holder, kt, typ, entry, entry, keyexpr, access)
+	g.pf("func %sEach(holder %s,visit func(%s,*%s)bool,arena ...*TableArena) bool {c:=tableContainerCursorBegin(holder.container(),int64(unsafe.Sizeof(%s{})),tableOptionalArena(arena));for range holder.Count {entry:=(*%s)(c.Next());if entry==nil||!visit(%s,%s){return false}};return true }\n", name, holder, kt, typ, entry, entry, keyexpr, access)
 	g.pf("func %sIndexMeasure(holder %s) int64 {return tableMapIndexMeasure(holder.Count)}\n", name, holder)
-	g.pf("func %sIndex(holder %s,storage []byte) TableMapIndex {return tableMapIndex((*tableContainer)(unsafe.Pointer(holder)),%s,storage)}\n", name, holder, desc)
-	g.pf("func %sIndexFind(index TableMapIndex,holder %s,key %s) *%s {p:=tableMapIndexFind(index,(*tableContainer)(unsafe.Pointer(holder)),%s,%s);if p==nil{return nil};entry:=(*%s)(p);return %s }\n", name, holder, kt, typ, desc, kv, entry, access)
+	g.pf("func %sIndex(holder %s,storage []byte) TableMapIndex {return tableMapIndex(holder.container(),%s,storage)}\n", name, holder, desc)
+	g.pf("func %sIndexFind(index TableMapIndex,holder %s,key %s) *%s {p:=tableMapIndexFind(index,holder.container(),%s,%s);if p==nil{return nil};entry:=(*%s)(p);return %s }\n", name, holder, kt, typ, desc, kv, entry, access)
 }
 func (g *tableGen) emitMapWrite(f *ir.Field, expr, writer, ind string, framed bool) {
 	g.emitListWrite(f, expr, writer, ind, framed)
@@ -101,7 +101,7 @@ func (g *tableGen) emitMapRead(f *ir.Field, ind string) {
 	if g.takeElides() {
 		empty = "if count==0 {" + stop + "};"
 	}
-	g.pf("%s{sub,ok:=r.Body();if !ok||len(sub.Buffer)<2 {%s};kind:=sub.Get8();count,ok:=sub.Leb();if !ok {%s};"+empty+"if kind!=13 {%s};field:=%s;holder:=(*tableContainer)(unsafe.Pointer(&value.%s));if !tableContainerFill(&sub.Nodes.Carve,holder,count,%d,%d) {if sub.Nodes.Carve.Refused {r.Take(sub);return false};%s};holder.Count=0;var last tableMapKey;prior:=false;widened:=false\n", ind, stop, stop, refuse("TableRefuseKindMismatch", owner, "return false"), desc, member(f), layout.Size, layout.Align, stop)
+	g.pf("%s{sub,ok:=r.Body();if !ok||len(sub.Buffer)<2 {%s};kind:=sub.Get8();count,ok:=sub.Leb();if !ok {%s};"+empty+"if kind!=13 {%s};field:=%s;holder:=value.%s.container();if !tableContainerFill(&sub.Nodes.Carve,holder,count,%d,%d) {if sub.Nodes.Carve.Refused {r.Take(sub);return false};%s};holder.Count=0;var last tableMapKey;prior:=false;widened:=false\n", ind, stop, stop, refuse("TableRefuseKindMismatch", owner, "return false"), desc, member(f), layout.Size, layout.Align, stop)
 	g.retainDiscard("r")
 	keyReader := "elem"
 	if g.retain {
@@ -125,7 +125,9 @@ func (g *tableGen) emitMapRead(f *ir.Field, ind string) {
 const tableMapSource = `
 type TableMap[T any] struct { Ref int64; Count int32; _ int32 }
 func (m *TableMap[T]) Clear(){*m=TableMap[T]{}}
-func (m *TableMap[T]) At(index int32,arena ...*TableArena)*T {if m==nil||index<0||index>=m.Count{return nil};c:=tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(m)),int64(unsafe.Sizeof(*new(T))),tableOptionalArena(arena));return (*T)(c.At(index))}
+// container is the map's untyped head: TableMap[T] and tableContainer share one layout.
+func (m *TableMap[T]) container() *tableContainer { return (*tableContainer)(unsafe.Pointer(m)) }
+func (m *TableMap[T]) At(index int32,arena ...*TableArena)*T {if m==nil||index<0||index>=m.Count{return nil};c:=tableContainerCursorBegin(m.container(),int64(unsafe.Sizeof(*new(T))),tableOptionalArena(arena));return (*T)(c.At(index))}
 func (c *tableContainerCursor) Release(){if c.memory!=nil {c.arena.Allocator.free(c.memory);c.memory=nil;c.order=nil}}
 func tableMapCursor(h *tableContainer,f *TableFieldInfo,a *TableArena) tableContainerCursor {
  c:=tableContainerCursorBegin(h,int64(f.ElemSize),a);if !f.Map||a==nil||h.Count==0{return c};bad:=tableContainerCursor{arena:a};if h.Count<0||h.Ref==0{return bad};memory:=a.Allocator.alloc(int64(h.Count)*8);if memory==nil{return bad};order:=unsafe.Slice((*int64)(unsafe.Pointer(&memory[0])),int(h.Count));head:=(*tableContainerHead)(a.At(h.Ref));n:=0

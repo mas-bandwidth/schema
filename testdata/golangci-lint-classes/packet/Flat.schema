@@ -1,0 +1,19 @@
+// Flat.schema — the packet half of the golangci-lint classes corpus
+// (testdata/golangci-lint-classes/README.md, PR #4515, finding F-210).
+//
+// One struct whose fields fold into a flat run of two chunks: the first
+// chunk is 32 bits or fewer and goes to the stream through SerializeBits, the
+// second is a whole 64-bit word through SerializeBits64. The generated write
+// and read discard each call's error explicitly because the stream latches
+// the first error and the run checks stream.Err() once; a bare call is
+// errcheck's finding, and this file is where the gate sees that class.
+
+package lintflat
+
+type FlatRun
+{
+    small bits(9)
+    flag  bool
+    tag   bits(7)
+    wide  bits(64)
+}
