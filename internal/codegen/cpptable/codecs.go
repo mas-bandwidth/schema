@@ -1017,6 +1017,7 @@ func (g *tableGen) emitFloatCheck(kind int, expr, ind, onBad string) {
 
 func (g *tableGen) emitRequiredRangeCheck(f *ir.Field, expr, ind, onBad string) {
 	if !f.Required {
+		g.emitWriteContractAssert(f, expr, ind)
 		return
 	}
 	if f.HasFloatRange {
@@ -1046,6 +1047,34 @@ func (g *tableGen) emitRequiredRangeCheck(f *ir.Field, expr, ind, onBad string) 
 		maxv := (uint64(1) << f.Type.Width) - 1
 		g.pf("%sif ( %s > %dull ) { %s } // | required: bits(%d) width check (§2.3)\n",
 			ind, expr, maxv, onBad, f.Type.Width)
+	}
+}
+
+// emitWriteContractAssert is THE WRITE CONTRACT on a field that is not
+// `required` (docs/SPEC.md §5.1 rows 1 and 2): a ranged integer outside its
+// declared range and a bits(N) value past its width are the caller's bug,
+// held by a DEBUG-ONLY assert exactly as the fixed-form and packet writers
+// hold them, and gone under NDEBUG. Every build's refusal stays the `required`
+// field's (emitRequiredRangeCheck). A float's range is row 10 and is not
+// asserted here, as the fixed writer does not assert it.
+func (g *tableGen) emitWriteContractAssert(f *ir.Field, expr, ind string) {
+	if f.HasFloatRange {
+		return
+	}
+	kind := tableScalarKind(f)
+	width := tableKindWidth(kind)
+	signed := ir.TableKindSigned(kind) || (f.Type.Kind == ir.TInt && f.Type.Timestamp)
+	if rlo, rhi, ok := ir.TableRawRange(f); ok {
+		low, high := tableClampEnds(f, width)
+		if low {
+			g.pf("%sschema_assert( %s >= %s ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)\n", ind, expr, tableIntLit(rlo, signed, width))
+		}
+		if high {
+			g.pf("%sschema_assert( %s <= %s ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)\n", ind, expr, tableIntLit(rhi, signed, width))
+		}
+	}
+	if f.Type.Kind == ir.TBits && f.Type.Width < width*8 {
+		g.pf("%sschema_assert( %s <= %dull ); // the write contract, debug only (docs/SPEC.md §5.1 row 2, bits(%d))\n", ind, expr, (uint64(1)<<f.Type.Width)-1, f.Type.Width)
 	}
 }
 
