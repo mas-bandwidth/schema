@@ -189,8 +189,13 @@ func TestLuauMessageFormMatchesTheGoldens(t *testing.T) {
 			fixed++
 		}
 	}
-	if fixed != 15 {
-		t.Fatalf("the manifest names %d message rows over a fixed root, want the 15 this card pins", fixed)
+	// The want is derived from the manifest, never a hard-coded count a new
+	// row breaks: only a fixed table carries the message form (§3.3), so every
+	// message row that names message bytes sits over a fixed root (a row over
+	// a variable root carries "-" and messageManifest skips it). Zero rows
+	// means the reader, not the manifest, broke.
+	if len(rows) == 0 || fixed != len(rows) {
+		t.Fatalf("the manifest names %d message rows with bytes and %d of them over a fixed root, want every one over a fixed root and at least one", len(rows), fixed)
 	}
 	compared := 0
 	for _, row := range rows {
