@@ -331,6 +331,12 @@ func parseGoTestLine(cmd string) goTestLine {
 				if !afterArgs {
 					l.runsNothing = "-c builds the test binary and runs nothing"
 				}
+			case "overlay", "timeout", "o", "p", "parallel", "cpu", "bench", "benchtime", "fuzz", "fuzztime",
+				"coverprofile", "covermode", "coverpkg", "cpuprofile", "memprofile", "blockprofile", "mutexprofile",
+				"trace", "outputdir", "shuffle", "vet", "mod", "modfile", "ldflags", "gcflags", "asmflags", "pkgdir":
+				// a flag that takes a value: the next word is that value, not
+				// an argument that could be anything
+				next()
 			}
 		} else if strings.HasPrefix(w, "$") && !strings.HasPrefix(w, "$$") {
 			// a whole word that is a make expansion this scan could not
