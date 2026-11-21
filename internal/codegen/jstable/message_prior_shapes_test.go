@@ -15,11 +15,12 @@ import (
 )
 
 // priorShapeRow is one `message-prior` row of the conformance manifest
-// (testdata/conformance/tables/FORMAT.md): a prior writer's batch of one body
-// and whether today's reader reads it.
+// (testdata/conformance/tables/FORMAT.md): a prior writer's batch and whether
+// today's reader reads it.
 type priorShapeRow struct {
 	name   string
 	reason string // "" reads
+	bodies int    // the bodies the batch carries
 }
 
 func priorShapeRows(t *testing.T, repo string) []priorShapeRow {
@@ -36,7 +37,12 @@ func priorShapeRows(t *testing.T, repo string) []priorShapeRow {
 		if len(fields) == 8 && fields[0] == "message-prior" && fields[2] == "tblprior" {
 			// the reason is this reader's own, named by the row's suffix; the
 			// corpus holds a leg to the verdict alone
-			row := priorShapeRow{name: fields[1]}
+			// a writer value that is a JSON array is a batch of that many
+			// bodies, each one object
+			row := priorShapeRow{name: fields[1], bodies: 1}
+			if strings.HasPrefix(fields[6], "[") {
+				row.bodies = strings.Count(fields[6], "},{") + 1
+			}
 			switch {
 			case fields[7] == "read":
 			case strings.HasSuffix(fields[1], "_kind"):
@@ -152,10 +158,10 @@ func TestJsMessagePriorWriterShapes(t *testing.T) {
   voc.Init(new Array(64));
   if (!m.AnnounceRead(voc, announce, {})) { throw new Error("announce refused"); }
   const rep = {};
-  const n = m.PriorLoadMessages([new m.Prior()], voc, new Uint8Array(readFileSync(%q)), rep);
-  console.log("ROW %s loaded=" + (n === 1 && !rep.Damaged) + "|reason=" + (rep.Reason ?? "") + "|oor=" + (rep.Oor ?? 0) + "|mismatch=" + (rep.Mismatch ?? 0));
+  const n = m.PriorLoadMessages([new m.Prior(), new m.Prior(), new m.Prior(), new m.Prior()], voc, new Uint8Array(readFileSync(%q)), rep);
+  console.log("ROW %s loaded=" + (n === %d && !rep.Damaged) + "|reason=" + (rep.Reason ?? "") + "|oor=" + (rep.Oor ?? 0) + "|mismatch=" + (rep.Mismatch ?? 0));
 }
-`, filepath.Join(wires, row.name+"_message.bin"), row.name)
+`, filepath.Join(wires, row.name+"_message.bin"), row.name, row.bodies)
 	}
 	probePath := filepath.Join(dir, "probe.mjs")
 	if err := os.WriteFile(probePath, []byte(probe.String()), 0o600); err != nil {

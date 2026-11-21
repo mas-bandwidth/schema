@@ -1661,6 +1661,11 @@ message-prior prior_quant_past   tblprior Prior test/tables/prior/PriorWide.sche
 # a ranged fixed-point value
 message-prior prior_fx_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"fx":40.5} read
 message-prior prior_fx_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"fx":75.5} refused
+# a batch of two bodies (the writer value is a JSON array of them): when the
+# second carries a value past the reader's range the WHOLE batch refuses, the
+# lawful first body included, and no body is delivered
+message-prior prior_batch_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 [{"mask":25},{"mask":30}] read
+message-prior prior_batch_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 [{"mask":25},{"mask":75}] refused
 # A KIND THAT MOVED (§3.3, §4): the writer's int32 is the reader's int16 and
 # string(16), which the announcement shows and every reader refuses, never
 # defaulting the field and counting it; and the reader's
