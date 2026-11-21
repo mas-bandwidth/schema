@@ -64,5 +64,6 @@ red expectation-unset "EXPECT_DIRS is not set" "$CLANG_FORMAT" UNSET "$out/tree/
 red formatter-exit-9 "exited non-zero" "$out/exit9" "$out/tree/unit" "$out/tree/unit"
 
 sh make/checks/clean-format-path-corpus.sh "$lang" "$out"
+sh make/checks/clean-format-path-roster-test.sh "$lang" "$out"
 
 echo "negative control: the $lang format gate is RED on an empty tree, a missing tree, one missing tree of two, a missing or empty unit directory, an unset expectation, and a formatter that exits 9 with the right bytes"
