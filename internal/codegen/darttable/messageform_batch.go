@@ -492,7 +492,9 @@ func (g *fixedModule) messageRides(f *ir.Field, expr, ind string) string {
 	}
 	if f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64 {
 		// ELISION COMPARES BITS (docs/SPEC-TABLES.md §3.3): a -0 under a +0
-		// default rides, as on the variable form
+		// default rides, as on the variable form; a COMPRESSED float's -0 is
+		// stored as +0 (fixed-compressed-negzero) and compares as +0
+		expr = dartStoredFloat(f, expr)
 		if f.Type.Kind == ir.TFloat32 {
 			def := float32(0)
 			if f.HasDefault {

@@ -59,6 +59,15 @@ function TableVariableSameFloat(f32, a, b) {
   return f32 ? Object.is(Math.fround(a), Math.fround(b)) : Object.is(a, b);
 }
 
+// TableVariableStoredFloat is the value every writer stores for a float: the
+// value itself, except that a COMPRESSED float's -0 (its descriptor carries the
+// range, lo) is stored as +0, the bits +0 stores (docs/SPEC-TABLES.md §3.3;
+// docs/rulings.json fixed-compressed-negzero). A plain float's -0 is a value
+// and rides bit-exact. Elision, the wire store and the text writer all take it.
+function TableVariableStoredFloat(d, v) {
+  return d.lo !== null && v === 0 ? 0 : v;
+}
+
 // the write that meets a non-finite float refuses the save, and names the
 // reason to a MeasureReason walk (TableVariableSaveWhy) when one is asking
 let TableVariableSaveWhy = null;
@@ -72,6 +81,7 @@ function TableVariableRefuseNonFinite() {
 function TableVariableWriteFloat(w, d, v) {
   if (!TableVariableFiniteFloat(d.f32, v)) { return TableVariableRefuseNonFinite(); }
   if (!TableVariableFloatValid(d, v)) { return false; }
+  v = TableVariableStoredFloat(d, v);
   if (d.f32) { w.f32(v); } else { w.f64(v); }
   return true;
 }
@@ -409,7 +419,7 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
       return true;
     case "float":
       if (!TableVariableFiniteFloat(fd.f32, val)) { return TableVariableRefuseNonFinite(); }
-      if (!TableVariableSameFloat(fd.f32, val, fd.def)) {
+      if (!TableVariableSameFloat(fd.f32, TableVariableStoredFloat(fd, val), fd.def)) {
         TableVariableHeader(w, ids, fd, fd.k);
         return TableVariableWriteFloat(w, fd, val);
       }
@@ -2247,7 +2257,7 @@ function TableVariableJsonScalar(d, val, depth, g, out) {
     case "bool": out.push(val ? "true" : "false"); return true;
     case "float": {
       if (!TableVariableFloatValid(d, val)) { return false; }
-      const t = TableVariableFloatText(val, d.f32);
+      const t = TableVariableFloatText(TableVariableStoredFloat(d, val), d.f32);
       if (t === null) { return false; }
       out.push(t);
       return true;

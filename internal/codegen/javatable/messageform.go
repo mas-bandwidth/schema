@@ -2118,7 +2118,9 @@ func (g *messageGen) scalarOrUnionRidesExpr(f *ir.Field, expr string) string {
 		def = init
 	}
 	// A FLOAT RIDES BY ITS BITS (docs/SPEC-TABLES.md §3.3, the 10-15 rule): a
-	// -0 under a +0 default is not the default.
+	// -0 under a +0 default is not the default. A COMPRESSED float's -0 is
+	// stored as +0 (fixed-compressed-negzero), so it compares as +0.
+	expr = javaStoredFloat(f, expr)
 	switch typ {
 	case "float":
 		return "Float.floatToRawIntBits(" + expr + ") != Float.floatToRawIntBits(" + def + ")"

@@ -692,18 +692,20 @@ public final class TableVariable {
         // putF32In and putF64In write a ranged float: its raw bits as putF32
         // and putF64 do, and a value off [lo, hi] refuses the whole save in
         // every build (docs/SPEC.md §5.1 row 10), on every field shape.
+        // A ranged float is a COMPRESSED one, and its -0 is written as +0, the
+        // bits +0 writes (docs/SPEC-TABLES.md §3.3, fixed-compressed-negzero).
         public void putF32In(float v, double lo, double hi) {
             if ((double) v < lo || (double) v > hi) {
                 ids.offRange = true;
             }
-            putF32(v);
+            putF32(v == 0.0f ? 0.0f : v);
         }
 
         public void putF64In(double v, double lo, double hi) {
             if (v < lo || v > hi) {
                 ids.offRange = true;
             }
-            putF64(v);
+            putF64(v == 0.0 ? 0.0 : v);
         }
 
         public void putLeb(long v) {
@@ -5474,9 +5476,9 @@ func writeJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 				fmt.Fprintf(b, "                b.append('\"'); b.append(Long.toUnsignedString(v.%s.get(i))); b.append('\"');\n", m)
 			}
 		case ir.TFloat32:
-			fmt.Fprintf(b, "                TableJson.writeFloat(b, v.%s.get(i), true);\n", m)
+			fmt.Fprintf(b, "                TableJson.writeFloat(b, %s, true);\n", javaStoredFloat(f, "v."+m+".get(i)"))
 		case ir.TFloat64:
-			fmt.Fprintf(b, "                TableJson.writeFloat(b, v.%s.get(i), false);\n", m)
+			fmt.Fprintf(b, "                TableJson.writeFloat(b, %s, false);\n", javaStoredFloat(f, "v."+m+".get(i)"))
 		case ir.TString:
 			if !f.Type.TextUnbounded() && f.Type.Size > 0 {
 				fmt.Fprintf(b, "                if (TableVariable.utf8Len(v.%s.get(i)) > %dL) { throw new TableJson.Refused(\"length_over_bound\"); }\n", m, f.Type.Size)
@@ -5785,9 +5787,9 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	case f.Type.Kind == ir.TBool:
 		fmt.Fprintf(b, "        b.append(v.%s ? \"true\" : \"false\");\n", m)
 	case f.Type.Kind == ir.TFloat32:
-		fmt.Fprintf(b, "        TableJson.writeFloat(b, v.%s, true);\n", m)
+		fmt.Fprintf(b, "        TableJson.writeFloat(b, %s, true);\n", javaStoredFloat(f, "v."+m))
 	case f.Type.Kind == ir.TFloat64:
-		fmt.Fprintf(b, "        TableJson.writeFloat(b, v.%s, false);\n", m)
+		fmt.Fprintf(b, "        TableJson.writeFloat(b, %s, false);\n", javaStoredFloat(f, "v."+m))
 	case (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits) && f.Type.Width <= 32:
 		if f.Type.Kind == ir.TBits {
 			fmt.Fprintf(b, "        if (Long.compareUnsigned((long) v.%s, 1L << %d) >= 0) { throw new TableJson.Refused(\"out_of_range\"); }\n", m, f.Type.Width)
@@ -6732,7 +6734,7 @@ func writeFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) 
 		if f.Type.Kind == ir.TFloat64 {
 			bits = "Double.doubleToRawLongBits"
 		}
-		fmt.Fprintf(b, "        if (%s(v.%s) != %s(%s)) { w.putLeb(w.ref(F_%s)); w.put8(%d); %s }\n", bits, m, bits, variableDefault(f), m, variableWireKind(f), variableFloatPut(f, "w", "v."+m))
+		fmt.Fprintf(b, "        if (%s(%s) != %s(%s)) { w.putLeb(w.ref(F_%s)); w.put8(%d); %s }\n", bits, javaStoredFloat(f, "v."+m), bits, variableDefault(f), m, variableWireKind(f), variableFloatPut(f, "w", "v."+m))
 	case (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits) && f.Type.Width <= 32:
 		k := variableWireKind(f)
 		def := variableDefault(f)

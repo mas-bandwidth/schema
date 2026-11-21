@@ -2473,6 +2473,18 @@ func dartFloatOwner(u *ir.Unit, f *ir.Field, cur *ir.Struct) string {
 // the values differ or both are zero with different signs, so a -0 under a +0
 // default rides and a +0 under a declared -0 default rides. A NaN or an
 // infinity rides too, and the writer refuses it there.
+// dartStoredFloat is the value every writer stores for a float: the value
+// itself, except that a COMPRESSED float's -0 is stored as +0, the bits +0
+// stores (docs/SPEC-TABLES.md §3.3; docs/rulings.json fixed-compressed-negzero).
+// -0.0 == 0 in Dart, so the test stores +0 for both zeros. A plain float's -0
+// is a value and rides bit-exact. Elision and every store take it.
+func dartStoredFloat(f *ir.Field, expr string) string {
+	if f.HasFloatRange && (f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64) {
+		return "(" + expr + " == 0 ? 0.0 : " + expr + ")"
+	}
+	return expr
+}
+
 func floatRides(f *ir.Field, expr, lit string) string {
 	def := 0.0
 	if f.HasDefault {
@@ -2493,6 +2505,7 @@ func (g *wireGen) floatOwner(f *ir.Field) string { return dartFloatOwner(g.unit,
 // This also distinguishes signed zero after underflow. Float64 keeps its
 // existing value-and-sign comparison.
 func wireFloatRides(f *ir.Field, expr, lit string) string {
+	expr = dartStoredFloat(f, expr)
 	if f.Type.Kind == ir.TFloat32 {
 		def := float32(0)
 		if f.HasDefault {
@@ -2683,7 +2696,7 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s", rideOpen(ind, f, wireFloatRides(f, expr, g.floatDefault(f))))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, kind)
-		g.pf("%s\tw.%s(%s(%s, '%s'));\n", ind, put, bits, expr, g.floatOwner(f))
+		g.pf("%s\tw.%s(%s(%s, '%s'));\n", ind, put, bits, dartStoredFloat(f, expr), g.floatOwner(f))
 		g.pf("%s}\n", ind)
 	case enumRef(f) != nil:
 		e := enumRef(f)
@@ -2809,9 +2822,9 @@ func (g *wireGen) emitSaveScalarList(f *ir.Field, expr, ind string, id uint64) {
 	case wireKindBool:
 		g.pf("%s\t\ts.putByte(e ? 1 : 0);\n", ind)
 	case wireKindF32:
-		g.pf("%s\t\ts.putU32(_f32Write(e, '%s'));\n", ind, g.floatOwner(f))
+		g.pf("%s\t\ts.putU32(_f32Write(%s, '%s'));\n", ind, dartStoredFloat(f, "e"), g.floatOwner(f))
 	case wireKindF64:
-		g.pf("%s\t\ts.putU64(_f64Write(e, '%s'));\n", ind, g.floatOwner(f))
+		g.pf("%s\t\ts.putU64(_f64Write(%s, '%s'));\n", ind, dartStoredFloat(f, "e"), g.floatOwner(f))
 	default:
 		if ir.TableKindWide(elemKind) {
 			g.pf("%s\t\t_putWide(s, e, %d);\n", ind, ir.TableKindWidth(elemKind))
