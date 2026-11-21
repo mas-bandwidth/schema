@@ -262,3 +262,33 @@ func TestReferentCorpus(t *testing.T) {
 		}
 	}
 }
+
+// TestReferentRefusalsComeFromTheirRows is the ATTRIBUTION control for the
+// corpus: drop the one policy row a defect turns on and that case passes, so
+// the refusal came from THAT check and not from something else in the walk.
+func TestReferentRefusalsComeFromTheirRows(t *testing.T) {
+	for _, c := range []struct{ dir, row string }{
+		{"f006-by-value-gains-required", "required"},
+		{"f006-arm-payload-gains-required", "required"},
+		{"f009-pointer", "pointer-target"},
+		{"f009-pointer-map-value", "pointer-target"},
+	} {
+		t.Run(c.dir, func(t *testing.T) {
+			read := func(name string) string {
+				t.Helper()
+				data, err := os.ReadFile(filepath.Join("testdata", "referents", c.dir, name))
+				if err != nil {
+					t.Fatal(err)
+				}
+				return string(data)
+			}
+			base, live := committed(t, read("before.schema")), baseline.Render(unit(t, read("after.schema")))
+			if got := baseline.Diff(base, live, baseline.DefaultTokenPolicy); strongest(got) != baseline.Refuse {
+				t.Fatalf("the case does not refuse:%s", summary(got))
+			}
+			if got := baseline.Diff(base, live, without(c.row)); len(got) != 0 {
+				t.Errorf("with the %s row dropped the edit still draws findings:%s", c.row, summary(got))
+			}
+		})
+	}
+}

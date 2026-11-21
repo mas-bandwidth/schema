@@ -4057,7 +4057,9 @@ generates its entry (§2.8): `<Table><Field>Text`, one field named `value`
 holding `string(M)`, or `?string(M)` for the `?` spelling. It is reached only
 through the list that generates it, so it has no `Save`, `Load` or `Open` of its
 own, and in the projections (§18.1, §20.2) it takes a map entry's anonymous key,
-`<holder id>.<field id>`, so a `was` rename moves no line. The storage of the
+`<holder id>.<field id>`, so a `was` rename moves no line; the list field's own
+`type=` spells the record from the holder's and the field's WIRE names, so it
+moves no line either. The storage of the
 list IS an array of that record — the bounded list is `[N]` records and a live
 `<Field>Count`, the unbounded list a `TableList` of records (§2.9) — which is
 why the cooked form (§7), the view (§8) and retain-unknown (§6.6) carry a text
@@ -18230,11 +18232,26 @@ and each vocabulary's standard is its own (§3):
   carrying the same id under a different specified default rewrites the
   meaning of every stored body, and that is the flagship class this file
   exists to refuse. The facts are judged by the same rules a field's own
-  facts are, so the two paths cannot disagree.
-- An **enum** value is its variant NAME hash, so it stands in when every
-  variant name survives.
-- A **union** body opens with its arm NAME hash, and each arm is a field
-  line (§2.6), so it stands in when every arm name survives AND THE FACTS
+  facts are, so the two paths cannot disagree. **Both sides are walked**: a
+  field the new declaration adds is absorbed, unless it is `| required` —
+  every body stored under the old declaration lacks it, and a reader
+  refuses each one `missing_required`, exactly as for a required field added
+  in place (§2.3).
+- A **pointer**'s target is the one referent the wire NAMES: its node
+  carries the table's type id (§3.1, §5). So a pointer slot — scalar, array
+  element or map value — admits no stand-in at all, however alike the two
+  bodies: a stored node of the old type refuses the whole load
+  `wire_damaged` where the reader still declares that type, and reads null
+  counted `unknown` where it does not. Only a rename under `was` keeps the
+  type id, and that one moves no `type=`. A table renamed bare where it is a
+  pointer target is an edit in place, and warns as the read reports it.
+- An **enum** value is its variant's WIRE ID — the hash of its first name,
+  the `was` alias after a rename — so it stands in when every variant id
+  survives. Spelling is not identity: a same-spelled variant under another
+  `was` is a different id, and a differently spelled one whose `was` names
+  the old variant is the same one.
+- A **union** body opens with its arm's WIRE ID, and each arm is a field
+  line (§2.6), so it stands in when every arm id survives AND THE FACTS
   UNDER THOSE ARMS ARE UNCHANGED. The facts are judged by the same rules a
   field's own facts are, the arm's payload included, which is the table
   rule above applied one level in: a union whose arm names all survive
@@ -18253,8 +18270,8 @@ still an edit a save game may not survive.
 **AN ARM'S REFERENT IS JUDGED BY THE SAME THREE STANDARDS**, selected by the
 same token, because an arm's line is a field's line (§18.1, §2.6): an arm
 naming a table or a `type` stands in when the ids and the facts under them
-survive, an arm naming an enum when the names do, an arm naming a union
-when the arm names and the facts under them do, an arm naming a `flags`
+survive, an arm naming an enum when the variant ids do, an arm naming a union
+when the arm ids and the facts under them do, an arm naming a `flags`
 when the bits do. An arm that names NO declaration — a scalar, a
 string, an array of scalars — has its kind and its shape tokens instead.
 Those admit no substitute at all, so any change to one refuses: there is
