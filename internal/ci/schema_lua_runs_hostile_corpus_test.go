@@ -324,7 +324,14 @@ local function caseResult(c)
     end
     local values = M.loadMessages(T, c[4], vocab, payload, r, true)
     if r.nonFiniteFloat ~= nil then return "refuse", "non_finite_float", nil end
-    if r.reason ~= "" then return "refuse", r.reason, nil end
+    -- A MESSAGE READ'S REFUSAL is the verdict, never the reason
+    -- (docs/rulings.json refusal-verdict-only; docs/SPEC-TABLES.md §6.5):
+    -- the corpus names batch_too_large and no_vocabulary on this carrier, and
+    -- every other strict refusal, a bound one record down included
+    -- (count_over_bound, length_over_bound, out_of_range), is the manifest's
+    -- generic damaged, as on the wire.
+    if r.reason == "batch_too_large" or r.reason == "no_vocabulary" then return "refuse", r.reason, nil end
+    if r.reason ~= "" then return "refuse", "damaged", nil end
     if r.refused > 0 then return "refuse", "damaged", nil end
     if r.damaged or values == nil or values[1] == nil then return "refuse", "damaged", nil end
     value = values[1]
