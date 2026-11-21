@@ -820,7 +820,7 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		if born > 0 {
 			// the count is checked against [Min, Max] before the elision test
 			// (docs/SPEC.md §5.1 row 3; Rust write checks are debug asserts only)
-			fmt.Fprintf(b, "%sdebug_assert!(%s.len() >= %d && %s.len() <= %d, \"%s count outside [%d, %d]\");\n", ind, x, born, x, f.ArrayBound, f.Name, born, f.ArrayBound)
+			fmt.Fprintf(b, "%sdebug_assert!(%s && %s.len() <= %d, \"%s count outside [%d, %d]\");\n", ind, lenAtLeast(x, born), x, f.ArrayBound, f.Name, born, f.ArrayBound)
 		}
 		fmt.Fprintf(b, "%sif %s {\n", ind, requiredWriteGuard(f, "!"+x+".is_empty()"))
 		count := x + ".len()"
