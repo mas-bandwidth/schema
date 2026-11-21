@@ -32,7 +32,7 @@ func loadBase(t *testing.T, base, src string) *ir.Unit {
 func TestGoRefusesABasenameGoReadsAsABuildConstraint(t *testing.T) {
 	t.Parallel()
 	const src = "package p\ntype Ship { hp int32 }\ntable Fleet { size int32 }\n"
-	for _, base := range []string{"Player_test", "Player_windows", "Player_amd64", "Player_linux_arm64", "Player_js_test", "_Player"} {
+	for _, base := range []string{"Player_linux.v1", "Player_test", "Player_windows", "Player_amd64", "Player_linux_arm64", "Player_js_test", "_Player"} {
 		_, err := New().Generate(loadBase(t, base, src), "go", Options{})
 		if err == nil || !strings.Contains(err.Error(), "build constraint") {
 			t.Errorf("%s.schema: want the Go file-name refusal, got %v", base, err)
@@ -48,7 +48,7 @@ func TestGoRefusesABasenameGoReadsAsABuildConstraint(t *testing.T) {
 	// a name that only looks like one is generated: the go tool reads the
 	// GOOS/GOARCH parts after the first `_` and before the first `.`, exactly
 	// in lower case, so Player_test.v1.go is an ordinary package file
-	for _, base := range []string{"Player", "linux", "Player_Windows", "Player_tests", "Player_x", "Player_test.v1", "Player_linux.v1"} {
+	for _, base := range []string{"Player", "linux", "Player_Windows", "Player_tests", "Player_x", "Player_test.v1"} {
 		files, err := New().Generate(loadBase(t, base, src), "go", Options{})
 		if err != nil {
 			t.Errorf("%s.schema: %v", base, err)
