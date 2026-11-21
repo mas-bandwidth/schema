@@ -246,7 +246,8 @@ typedef struct blockdemo_table_field_info_t
     int sequence; /* 0 inline field, 1 unbounded list, 2 map */
     uint8_t text_list; /* 0 none, 1 string(M) elements, 2 ?string(M) elements (SPEC-TABLES 2.13) */
     int64_t text_total; /* | total = N byte cap across text-list elements, or 0 (SPEC-TABLES 2.13) */
-    void * (*place)(void * worker,void * slot,const char * key,int32_t length,int64_t number);
+    void * (*place)(void * worker,void * slot,const char * key,int32_t length,int64_t number,int fresh);
+    int32_t array_min; /* a [A..B]T count's declared minimum A (docs/SPEC.md §4.2), else 0 */
 } blockdemo_table_field_info_t;
 
 typedef struct blockdemo_table_type_info_t
@@ -3177,7 +3178,7 @@ static SCHEMA_UNUSED void blockdemo_table_cook_header(uint8_t * raw,uint64_t ver
 #endif
 #ifndef SCHEMA_BLOCKDEMO_TABLE_MESSAGE
 #define SCHEMA_BLOCKDEMO_TABLE_MESSAGE
-enum { BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE=7, BLOCKDEMO_K_TABLE_MESSAGE_ENTRIES_HERE=72, BLOCKDEMO_K_TABLE_ANNOUNCE_BYTES=768, BLOCKDEMO_K_TABLE_MESSAGE_BATCH_MAX=256 };
+enum { BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE=7, BLOCKDEMO_K_TABLE_MESSAGE_ENTRIES_HERE=72, BLOCKDEMO_K_TABLE_ANNOUNCE_BYTES=768, BLOCKDEMO_K_TABLE_MESSAGE_BATCH_MAX=256, BLOCKDEMO_K_TABLE_MESSAGE_SEEN_SLOTS=4096 };
 static const uint8_t BLOCKDEMO_K_TABLE_ANNOUNCE[BLOCKDEMO_K_TABLE_ANNOUNCE_BYTES]={0x01,0x01,0x09,0xbc,0x25,0x30,0x1c,0x18,0x28,0x71,0xbf,0x02,0x0e,0xd8,0x05,0x06,0xd5,0x05,0x77,0x6e,0x48,0x15,0x2b,0xb7,0xdc,0xed,0x06,0x00,0x44,0x41,0xc6,0x45,0xad,0xa9,0x7b,0xee,0x09,0x00,0x38,0x81,0x0a,0xf1,0x1f,0x06,0xa7,0xa3,0x0e,0x00,0x40,0x0d,0xca,0x48,0x91,0xc2,0x9b,0xb3,0x73,0xc5,0x0e,0x00,0x0c,0x06,0x00,0xf3,0xa4,0x48,0x44,0x19,0xab,0xd7,0x56,0x06,0x00,0xea,0x0c,0xe8,0x30,0x94,0xfd,0xe4,0x7c,0x0b,0x17,0x0b,0x8c,0x08,0x79,0xd0,0xf2,0xd5,0x01,0xc0,0x3a,0x5c,0xb5,0x07,0x2e,0xb7,0x08,0x08,0x00,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0x0f,0x46,0x56,0xee,0xb1,0x6b,0x2e,0x8c,0xe6,0x0e,0x04,0x04,0x07,0x00,0x6d,0xfa,0xa8,0xa5,0x48,0xb0,0xae,0xba,0x10,0x04,0x06,0x00,0x63,0x7c,0x51,0x16,0x74,0x6c,0x97,0x77,0x04,0x00,0x4a,0xd7,0xa1,0xfc,0x26,0x3a,0xbf,0x4c,0x0d,0x9f,0x70,0x34,0xcd,0x05,0xfb,0x1a,0xb5,0x0d,0x2e,0xb9,0x4a,0x08,0x0f,0x70,0x61,0x9f,0x08,0x00,0x9b,0x0c,0xfd,0xff,0xc7,0x3d,0x6d,0x33,0x08,0x00,0xc2,0xb9,0x52,0x69,0x15,0x6a,0x0c,0x6a,0x08,0x00,0x5c,0xe1,0xd9,0xfe,0x18,0x7c,0xb2,0xdc,0x0a,0x00,0x91,0x1d,0x1a,0xb7,0xfb,0xb9,0xac,0x6a,0x0b,0xec,0x5a,0xf7,0x85,0xa9,0xa1,0xa3,0x17,0x09,0x00,0x26,0x2e,0x6b,0xe5,0x49,0x44,0x6e,0xb6,0x08,0x00,0x28,0xc2,0xdd,0xcb,0x3b,0xf7,0x7b,0x4d,0x06,0x00,0xad,0x5d,0x4c,0x5e,0x15,0x6f,0x62,0xe5,0x1e,0x2c,0xc3,0xaf,0x19,0xef,0xd9,0x23,0xfa,0x1e,0x12,0x98,0xf1,0x07,0x2c,0xb4,0xda,0x0b,0x08,0x00,0x46,0x3c,0x76,0x85,0x52,0x01,0xe0,0x5d,0x06,0x00,0xa3,0x02,0x02,0x86,0x4c,0xe9,0x63,0xaf,0x0b,0x78,0xd7,0x6e,0xb1,0xa0,0x3f,0x7f,0xfd,0x08,0x00,0x93,0x6c,0x04,0xb4,0x3c,0x7b,0xee,0x0b,0x08,0x00,0xe5,0x3b,0x39,0xd3,0x9c,0xeb,0x89,0xdc,0x1e,0x37,0xea,0x08,0x98,0x2c,0xc6,0x62,0xbb,0x09,0x00,0xa7,0xa2,0x7a,0xba,0xd2,0x22,0x92,0x0f,0x0e,0x00,0x01,0x0d,0x44,0xad,0xe1,0x13,0x49,0x5c,0x4a,0x29,0x0e,0x00,0x80,0x20,0x0d,0x8c,0x60,0x83,0xc2,0x0b,0x26,0xf8,0x84,0x0e,0x00,0x80,0x08,0x0d,0xd0,0xa4,0x1b,0x4b,0x19,0x27,0x30,0x1c,0x0e,0x00,0x80,0x20,0x0d,0x27,0x3d,0x90,0xa9,0x98,0x53,0x12,0x43,0x0e,0x00,0x80,0x20,0x0d,0xd2,0xcf,0x7f,0xff,0xed,0xd7,0xf8,0xc1,0x0e,0x00,0xa0,0x9c,0x01,0x0d,0xff,0x80,0xf4,0xf5,0x39,0x8e,0x40,0x33,0x0e,0x00,0x80,0x40,0x0d,0x6d,0xd1,0x92,0x3e,0x7b,0xb7,0x82,0xd9,0x0e,0x00,0x80,0xfa,0x01,0x0d,0x69,0x6a,0x80,0x85,0x1a,0x8c,0x6a,0x87,0x0e,0x00,0x80,0xfa,0x01,0x0d,0x1f,0x25,0xad,0x45,0xad,0x97,0x5d,0xee,0x0d,0xf2,0x40,0x15,0xb9,0xba,0xa5,0x17,0x69,0x0d,0xec,0x94,0x02,0x39,0x5f,0xc0,0x29,0xcd,0x08,0x00,0x41,0x38,0x13,0x42,0xc2,0x93,0xb5,0x96,0x1e,0xbc,0xb4,0x07,0x2c,0x0e,0x2a,0x1b,0x15,0x1e,0x07,0x17,0x02,0x86,0x4c,0xf5,0x63,0xaf,0x0b,0x54,0x15,0x02,0x86,0x4c,0xf4,0x63,0xaf,0x0b,0x6d,0x1a,0x02,0x86,0x4c,0xf7,0x63,0xaf,0x0b,0x56,0x04,0x02,0x86,0x4c,0xea,0x63,0xaf,0x0b,0xec,0x5a,0xf7,0x85,0xa9,0xa1,0xa3,0x17,0x09,0x01,0x04,0x00,0x73,0xcd,0x00,0x31,0xcb,0x87,0xd5,0xcf,0x0a,0x00,0x68,0x72,0xe7,0xa2,0x86,0x2e,0x7d,0x1f,0x1e,0x71,0x01,0x22,0xa1,0x45,0xfa,0x54,0x15,0x01,0x81,0xcb,0xb9,0xa1,0x7b,0xe9,0x5b,0x4d,0x01,0xc3,0x95,0x4b,0x57,0xab,0xa7,0x3d,0xd2,0x08,0x00,0x54,0x1f,0x54,0xed,0x6a,0x1a,0xa1,0x88,0x08,0x00,0xec,0xeb,0xad,0x52,0xd9,0xc8,0x2c,0x3d,0x00,0x34,0xe6,0x80,0x93,0xf7,0x6e,0x73,0xc8,0x00,0x5e,0x80,0xf4,0xd8,0x72,0xa1,0xe8,0x94,0x00,0xfa,0xef,0x7e,0x96,0xa7,0x5a,0x74,0xa0,0x00,0xca,0xaf,0x76,0x5a,0xd2,0xa4,0xd0,0xf5,0x00,0x5d,0x07,0xd9,0xf6,0x72,0x79,0x8d,0x47,0x00,0x34,0xe2,0x74,0xef,0x2b,0x17,0xa6,0xca,0x00,0x53,0xd6,0x52,0x28,0xac,0xac,0x98,0x4f,0x00,0x19,0x30,0xea,0x44,0x47,0x7e,0x3a,0x7f,0x00,0xc2,0x85,0x52,0xc1,0xc3,0xf7,0x11,0xd0,0x00,0x8a,0xcb,0x54,0xc5,0xa1,0x6a,0x21,0xa8,0x00,0xdb,0x23,0x0e,0xd0,0xa3,0x21,0x23,0x6c,0x00,0x7c,0x1b,0xac,0xfe,0x19,0xde,0xf1,0x9f,0x00,0x2d,0x3e,0x69,0xc1,0xa7,0xd3,0xf3,0xec,0x00,0x1c,0x3f,0x95,0xd5,0x8f,0xd7,0x00,0xcf,0x00,0xb3,0x18,0x32,0x0d,0x7e,0xc9,0x16,0xc4,0x00,0x00,0xfe,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfd,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,};
 static const uint8_t BLOCKDEMO_K_TABLE_MESSAGE_ENTRY_KEY_BYTES[]={0x77,0x6e,0x48,0x15,0x2b,0xb7,0xdc,0xed,0x06,0x00,0x44,0x41,0xc6,0x45,0xad,0xa9,0x7b,0xee,0x09,0x00,0x38,0x81,0x0a,0xf1,0x1f,0x06,0xa7,0xa3,0x0e,0x00,0x40,0x0d,0xca,0x48,0x91,0xc2,0x9b,0xb3,0x73,0xc5,0x0e,0x00,0x0c,0x06,0x00,0xf3,0xa4,0x48,0x44,0x19,0xab,0xd7,0x56,0x06,0x00,0xea,0x0c,0xe8,0x30,0x94,0xfd,0xe4,0x7c,0x0b,0x17,0x0b,0x8c,0x08,0x79,0xd0,0xf2,0xd5,0x01,0xc0,0x3a,0x5c,0xb5,0x07,0x2e,0xb7,0x08,0x08,0x00,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0x0f,0x46,0x56,0xee,0xb1,0x6b,0x2e,0x8c,0xe6,0x0e,0x04,0x04,0x07,0x00,0x6d,0xfa,0xa8,0xa5,0x48,0xb0,0xae,0xba,0x10,0x04,0x06,0x00,0x63,0x7c,0x51,0x16,0x74,0x6c,0x97,0x77,0x04,0x00,0x4a,0xd7,0xa1,0xfc,0x26,0x3a,0xbf,0x4c,0x0d,0x9f,0x70,0x34,0xcd,0x05,0xfb,0x1a,0xb5,0x0d,0x2e,0xb9,0x4a,0x08,0x0f,0x70,0x61,0x9f,0x08,0x00,0x9b,0x0c,0xfd,0xff,0xc7,0x3d,0x6d,0x33,0x08,0x00,0xc2,0xb9,0x52,0x69,0x15,0x6a,0x0c,0x6a,0x08,0x00,0x5c,0xe1,0xd9,0xfe,0x18,0x7c,0xb2,0xdc,0x0a,0x00,0x91,0x1d,0x1a,0xb7,0xfb,0xb9,0xac,0x6a,0x0b,0xec,0x5a,0xf7,0x85,0xa9,0xa1,0xa3,0x17,0x09,0x00,0x26,0x2e,0x6b,0xe5,0x49,0x44,0x6e,0xb6,0x08,0x00,0x28,0xc2,0xdd,0xcb,0x3b,0xf7,0x7b,0x4d,0x06,0x00,0xad,0x5d,0x4c,0x5e,0x15,0x6f,0x62,0xe5,0x1e,0x2c,0xc3,0xaf,0x19,0xef,0xd9,0x23,0xfa,0x1e,0x12,0x98,0xf1,0x07,0x2c,0xb4,0xda,0x0b,0x08,0x00,0x46,0x3c,0x76,0x85,0x52,0x01,0xe0,0x5d,0x06,0x00,0xa3,0x02,0x02,0x86,0x4c,0xe9,0x63,0xaf,0x0b,0x78,0xd7,0x6e,0xb1,0xa0,0x3f,0x7f,0xfd,0x08,0x00,0x93,0x6c,0x04,0xb4,0x3c,0x7b,0xee,0x0b,0x08,0x00,0xe5,0x3b,0x39,0xd3,0x9c,0xeb,0x89,0xdc,0x1e,0x37,0xea,0x08,0x98,0x2c,0xc6,0x62,0xbb,0x09,0x00,0xa7,0xa2,0x7a,0xba,0xd2,0x22,0x92,0x0f,0x0e,0x00,0x01,0x0d,0x44,0xad,0xe1,0x13,0x49,0x5c,0x4a,0x29,0x0e,0x00,0x80,0x20,0x0d,0x8c,0x60,0x83,0xc2,0x0b,0x26,0xf8,0x84,0x0e,0x00,0x80,0x08,0x0d,0xd0,0xa4,0x1b,0x4b,0x19,0x27,0x30,0x1c,0x0e,0x00,0x80,0x20,0x0d,0x27,0x3d,0x90,0xa9,0x98,0x53,0x12,0x43,0x0e,0x00,0x80,0x20,0x0d,0xd2,0xcf,0x7f,0xff,0xed,0xd7,0xf8,0xc1,0x0e,0x00,0xa0,0x9c,0x01,0x0d,0xff,0x80,0xf4,0xf5,0x39,0x8e,0x40,0x33,0x0e,0x00,0x80,0x40,0x0d,0x6d,0xd1,0x92,0x3e,0x7b,0xb7,0x82,0xd9,0x0e,0x00,0x80,0xfa,0x01,0x0d,0x69,0x6a,0x80,0x85,0x1a,0x8c,0x6a,0x87,0x0e,0x00,0x80,0xfa,0x01,0x0d,0x1f,0x25,0xad,0x45,0xad,0x97,0x5d,0xee,0x0d,0xf2,0x40,0x15,0xb9,0xba,0xa5,0x17,0x69,0x0d,0xec,0x94,0x02,0x39,0x5f,0xc0,0x29,0xcd,0x08,0x00,0x41,0x38,0x13,0x42,0xc2,0x93,0xb5,0x96,0x1e,0xbc,0xb4,0x07,0x2c,0x0e,0x2a,0x1b,0x15,0x1e,0x07,0x17,0x02,0x86,0x4c,0xf5,0x63,0xaf,0x0b,0x54,0x15,0x02,0x86,0x4c,0xf4,0x63,0xaf,0x0b,0x6d,0x1a,0x02,0x86,0x4c,0xf7,0x63,0xaf,0x0b,0x56,0x04,0x02,0x86,0x4c,0xea,0x63,0xaf,0x0b,0xec,0x5a,0xf7,0x85,0xa9,0xa1,0xa3,0x17,0x09,0x01,0x04,0x00,0x73,0xcd,0x00,0x31,0xcb,0x87,0xd5,0xcf,0x0a,0x00,0x68,0x72,0xe7,0xa2,0x86,0x2e,0x7d,0x1f,0x1e,0x71,0x01,0x22,0xa1,0x45,0xfa,0x54,0x15,0x01,0x81,0xcb,0xb9,0xa1,0x7b,0xe9,0x5b,0x4d,0x01,0xc3,0x95,0x4b,0x57,0xab,0xa7,0x3d,0xd2,0x08,0x00,0x54,0x1f,0x54,0xed,0x6a,0x1a,0xa1,0x88,0x08,0x00,0xec,0xeb,0xad,0x52,0xd9,0xc8,0x2c,0x3d,0x00,0x34,0xe6,0x80,0x93,0xf7,0x6e,0x73,0xc8,0x00,0x5e,0x80,0xf4,0xd8,0x72,0xa1,0xe8,0x94,0x00,0xfa,0xef,0x7e,0x96,0xa7,0x5a,0x74,0xa0,0x00,0xca,0xaf,0x76,0x5a,0xd2,0xa4,0xd0,0xf5,0x00,0x5d,0x07,0xd9,0xf6,0x72,0x79,0x8d,0x47,0x00,0x34,0xe2,0x74,0xef,0x2b,0x17,0xa6,0xca,0x00,0x53,0xd6,0x52,0x28,0xac,0xac,0x98,0x4f,0x00,0x19,0x30,0xea,0x44,0x47,0x7e,0x3a,0x7f,0x00,0xc2,0x85,0x52,0xc1,0xc3,0xf7,0x11,0xd0,0x00,0x8a,0xcb,0x54,0xc5,0xa1,0x6a,0x21,0xa8,0x00,0xdb,0x23,0x0e,0xd0,0xa3,0x21,0x23,0x6c,0x00,0x7c,0x1b,0xac,0xfe,0x19,0xde,0xf1,0x9f,0x00,0x2d,0x3e,0x69,0xc1,0xa7,0xd3,0xf3,0xec,0x00,0x1c,0x3f,0x95,0xd5,0x8f,0xd7,0x00,0xcf,0x00,0xb3,0x18,0x32,0x0d,0x7e,0xc9,0x16,0xc4,0x00,};
 static const int32_t BLOCKDEMO_K_TABLE_MESSAGE_ENTRY_KEY_OFFSETS[]={0,10,20,32,45,55,64,73,83,93,106,118,128,137,146,156,166,176,186,195,205,215,225,234,243,253,263,272,282,292,301,311,323,336,349,362,375,389,402,416,430,439,448,458,467,476,485,494,503,512,524,534,543,552,561,571,581,590,599,608,617,626,635,644,653,662,671,680,689,698,707,716,725,};
@@ -3364,6 +3365,7 @@ typedef struct blockdemo_table_message_entry_t {
  int16_t value_bits,elem_value_bits;
  uint8_t kind,packing,elem_kind,elem_packing;
  uint16_t own_slot; /* exact compiled encoded-entry identity, zero for another shape */
+ uint16_t first_slot; /* the first slot carrying this id: a body's seen set is keyed by it */
 } blockdemo_table_message_entry_t;
 typedef struct blockdemo_table_message_shape_facts_t {
  uint8_t packing,elem_kind; int64_t value_bits,base_lo,base_hi,min,max;
@@ -3562,9 +3564,14 @@ static SCHEMA_UNUSED int blockdemo_table_announce_once(blockdemo_table_vocabular
   /* Declared canonical bytes identify a shape. Resolved quantization facts
      alone can collapse different triples (#722). Until validation finishes,
      min/max temporarily hold the source span; no announcement pointer escapes. */
+  entry->first_slot=0;
   for(i=0;i<count;i++){int64_t start=v->entries[i].min,length=v->entries[i].max-start;
    if(length==at-began && !memcmp(words+start,words+began,(size_t)length))goto damaged;
+   /* ONE NAME AT TWO SHAPES IS ONE ID (§3.3): the id's first slot stands for it */
+   if(!entry->first_slot && v->entries[i].id==entry->id)entry->first_slot=v->entries[i].first_slot;
    }
+  /* a slot past the seen set has no first slot and is refused where it is used, as a reference past 4096 always was */
+  if(!entry->first_slot && count<BLOCKDEMO_K_TABLE_MESSAGE_SEEN_SLOTS)entry->first_slot=(uint16_t)(count+1);
   entry->min=began;
   entry->max=at;
   count++;
@@ -3573,8 +3580,10 @@ static SCHEMA_UNUSED int blockdemo_table_announce_once(blockdemo_table_vocabular
  at=0;
  {int64_t i;
  for(i=0;i<count;i++){int64_t began=at;
+  uint16_t first=v->entries[i].first_slot;
   if(!blockdemo_table_message_entry_read(words,words_bytes,&at,v->entries+i))goto damaged;
   v->entries[i].own_slot=blockdemo_table_message_own_slot(words+began,at-began);
+  v->entries[i].first_slot=first;
  }}
  v->count=count;
  v->ref_bits=blockdemo_table_bits_required(0,count);
@@ -3641,14 +3650,90 @@ static SCHEMA_UNUSED int blockdemo_table_message_skip_run(blockdemo_table_messag
  if(count>(uint64_t)(INT64_MAX/width))return 0;
  return blockdemo_table_bit_skip(&r->bits,(int64_t)(count*(uint64_t)width));
 }
+/* THE COUNT'S BITS CAN SPELL ABOVE THE ANNOUNCED MAX (§3.3): a count past it
+   is damage at a named field as it is on the skip path. */
 static SCHEMA_UNUSED int blockdemo_table_message_count(blockdemo_table_message_reader_t * r,const blockdemo_table_message_entry_t * e,uint64_t * n)
 {
  uint64_t raw;
  if(!blockdemo_table_bit_get(&r->bits,&raw,blockdemo_table_bits_required(e->min,e->max)))return 0;
  *n=raw+(uint64_t)e->min;
+ if(*n>(uint64_t)e->max)return 0;
  return !(e->kind==14 && e->elem_kind==6) || blockdemo_table_bit_align_read(&r->bits);
 }
+/* A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), and so is one key twice in a
+   keyed array (§3.2). An id is the wire's name, not the slot that carried it:
+   one name may be announced at two shapes, so the bit is the id's FIRST slot,
+   which table_announce_once resolves once per connection; an entry a caller
+   resolved by hand, with no first slot, stands for itself. */
+static SCHEMA_UNUSED int blockdemo_table_message_seen_once(uint8_t * seen,const blockdemo_table_vocabulary_t * v,const blockdemo_table_message_entry_t * entry)
+{
+ int64_t slot=entry->first_slot ? (int64_t)entry->first_slot : (int64_t)(entry-v->entries)+1;
+ if(slot<1||slot>BLOCKDEMO_K_TABLE_MESSAGE_SEEN_SLOTS)return 0;
+ if(seen[(slot-1)>>3]&(uint8_t)(1u<<((slot-1)&7)))return 0;
+ seen[(slot-1)>>3]|=(uint8_t)(1u<<((slot-1)&7));
+ return 1;
+}
+static SCHEMA_UNUSED int blockdemo_table_message_signed_kind(uint8_t kind)
+{
+ return (kind>=2 && kind<=5) || kind==18 || (kind>=20 && kind<=24);
+}
+/* A RANGED VALUE IS HELD TO ITS ANNOUNCED KIND'S STORAGE DOMAIN (§3.3): the
+   offset's bits can spell a value past the sender's range, and base plus
+   offset is never wrapped. The arithmetic is on 64-bit words; no base lies
+   outside its own domain, because the announcement read held it there. */
+static SCHEMA_UNUSED int blockdemo_table_message_ranged_holds(uint8_t kind,uint64_t lo,uint64_t hi,int64_t base_lo,int64_t base_hi)
+{
+ int64_t domain=blockdemo_table_message_kind_bits(kind);
+ int is_signed=blockdemo_table_message_signed_kind(kind);
+ if(domain==128) {
+  uint64_t top_hi=is_signed ? (uint64_t)INT64_MAX : UINT64_MAX;
+  uint64_t room_lo=UINT64_MAX-(uint64_t)base_lo,room_hi=top_hi-(uint64_t)base_hi;
+  return hi<room_hi || (hi==room_hi && lo<=room_lo);
+ }
+ if(hi!=0)return 0;
+ if(!is_signed) {
+  uint64_t top=domain==64 ? UINT64_MAX : (UINT64_C(1)<<domain)-1;
+  return (uint64_t)base_lo<=top && lo<=top-(uint64_t)base_lo;
+ }
+ {
+  int64_t top=domain==64 ? INT64_MAX : (int64_t)((UINT64_C(1)<<(domain-1))-1);
+  int64_t bottom=-top-1;
+  if(base_lo>top || lo>(uint64_t)top-(uint64_t)base_lo)return 0;
+  return base_lo>=bottom;
+ }
+}
+static SCHEMA_UNUSED int blockdemo_table_message_number(blockdemo_table_message_reader_t * r,const blockdemo_table_message_entry_t * e,uint64_t * lo,uint64_t * hi)
+{
+ int64_t width=e->value_bits;
+ uint64_t before;
+ *lo=*hi=0;
+ if(width<0 || width>128 || !blockdemo_table_bit_get(&r->bits,lo,width<64?width:64))return 0;
+ if(width>64 && !blockdemo_table_bit_get(&r->bits,hi,width-64))return 0;
+ if(e->packing==1) {
+  if(!blockdemo_table_message_ranged_holds(e->kind,*lo,*hi,e->base_lo,e->base_hi))return 0;
+  before=*lo;
+  *lo+=(uint64_t)e->base_lo;
+  if(blockdemo_table_message_kind_bits(e->kind)>64)*hi+=(uint64_t)e->base_hi+(*lo<before);
+ } else if(((e->kind>=2 && e->kind<=5)||(e->kind>=20 && e->kind<=23)) && width>0 && width<64 && (*lo&(UINT64_C(1)<<(width-1)))) {
+  *lo|=UINT64_MAX<<width;
+ }
+ if((e->kind>=2 && e->kind<=5)||(e->kind>=20 && e->kind<=23))*hi=(int64_t)*lo<0?UINT64_MAX:0;
+ return 1;
+}
 static SCHEMA_UNUSED int blockdemo_table_message_skip(blockdemo_table_message_reader_t *,const blockdemo_table_message_entry_t *);
+/* A message field cannot be required, so a union FIELD at None is elided at
+   every build: an arm reference 0 stored for one is refused on the skip path
+   as on a read (§3.3(c)). An array element and an arm's own value keep their
+   positional None, so they skip through table_message_skip. */
+static SCHEMA_UNUSED int blockdemo_table_message_skip_field(blockdemo_table_message_reader_t * r,const blockdemo_table_message_entry_t * e)
+{
+ if(e->kind==15) {
+  blockdemo_table_bit_reader_t peek=r->bits;
+  uint64_t arm=0;
+  if(!blockdemo_table_bit_get(&peek,&arm,r->vocabulary->ref_bits)||arm==0)return 0;
+ }
+ return blockdemo_table_message_skip(r,e);
+}
 /* skip_depth is one counter for the unknown-skip walk (docs/SPEC-TABLES.md
    message_skip_depth). table_message_open zeroes it, so every external caller
    starts at 0. A nested body, a union arm and a walked element each enter the
@@ -3656,22 +3741,17 @@ static SCHEMA_UNUSED int blockdemo_table_message_skip(blockdemo_table_message_re
    path. Past 128 is damaged, and 128 itself still skips. */
 static SCHEMA_UNUSED int blockdemo_table_message_skip_body(blockdemo_table_message_reader_t * r)
 {
- uint8_t seen[512];
- /* one bit a reference, as the file form's body skip keeps */
+ uint8_t seen[BLOCKDEMO_K_TABLE_MESSAGE_SEEN_SLOTS/8];
+ /* one bit an id, at its first slot */
  if(r->skip_depth>128)return 0;
  memset(seen,0,sizeof(seen));
  for(;;) {const blockdemo_table_message_entry_t * entry;
- int64_t ref;
   if(!blockdemo_table_message_ref(r,&entry,0))return 0;
   if(entry==NULL)return 1;
   if(entry->id>=UINT64_C(0xfffffffffffffffd))return 0;
-  /* A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or skipped. The
-     reference is bounded where the file form bounds it, so the bitset fits. */
-  ref=entry-r->vocabulary->entries+1;
-  if(ref<1||ref>4096)return 0;
-  if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))return 0;
-  seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
-  if(!blockdemo_table_message_skip(r,entry))return 0;
+  /* A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or skipped. */
+  if(!blockdemo_table_message_seen_once(seen,r->vocabulary,entry))return 0;
+  if(!blockdemo_table_message_skip_field(r,entry))return 0;
  }
 }
 static SCHEMA_UNUSED int blockdemo_table_message_skip_deeper(blockdemo_table_message_reader_t * r,const blockdemo_table_message_entry_t * e)
@@ -3681,6 +3761,28 @@ static SCHEMA_UNUSED int blockdemo_table_message_skip_deeper(blockdemo_table_mes
  ok=blockdemo_table_message_skip(r,e);
  r->skip_depth=saved;
  return ok;
+}
+/* A KEYED ARRAY'S KEY NAMES A DECLARED NO-PAYLOAD ENTRY AND NO KEY REPEATS
+   (§3.2, §3.3): the name reference and the bitset hold it. The walk has its
+   own frame, so the bitset rides only where a keyed array is skipped. */
+static SCHEMA_UNUSED int blockdemo_table_message_skip_keyed(blockdemo_table_message_reader_t * r,const blockdemo_table_message_entry_t * elem,uint64_t n)
+{
+ uint8_t seen[BLOCKDEMO_K_TABLE_MESSAGE_SEEN_SLOTS/8];
+ uint64_t i;
+ const blockdemo_table_message_entry_t * key;
+ int64_t before;
+ memset(seen,0,sizeof(seen));
+ for(i=0;i<n;i++) {
+  if(!blockdemo_table_message_ref(r,&key,1)||key==NULL||!blockdemo_table_message_seen_once(seen,r->vocabulary,key))return 0;
+  before=r->bits.offset;
+  if(elem->value_bits>=0 || elem->kind==0 || elem->kind==32) {
+   if(!blockdemo_table_message_skip(r,elem))return 0;
+  } else if(!blockdemo_table_message_skip_deeper(r,elem))return 0;
+  /* A WALKED ELEMENT THAT CONSUMES NO BITS IS DAMAGE (§3.3); a scalar or a
+     no-payload slot rides its key reference as its payload. */
+  if(r->bits.offset==before && elem->value_bits<0 && elem->kind!=0 && elem->kind!=32)return 0;
+ }
+ return 1;
 }
 static SCHEMA_UNUSED int blockdemo_table_message_skip(blockdemo_table_message_reader_t * r,const blockdemo_table_message_entry_t * e)
 {
@@ -3726,32 +3828,25 @@ static SCHEMA_UNUSED int blockdemo_table_message_skip(blockdemo_table_message_re
   return blockdemo_table_bits_finite64(n);
  case 14:case 16: {
   blockdemo_table_message_entry_t elem=blockdemo_table_message_element(e);
+  /* THE COUNT'S BITS CAN SPELL ABOVE THE ANNOUNCED MAX (§3.3):
+     table_message_count refuses it. */
   if(!blockdemo_table_message_count(r,e,&n))return 0;
-  /* THE COUNT'S BITS CAN SPELL ABOVE THE ANNOUNCED MAX (§3.3). */
-  if(n>(uint64_t)e->max)return 0;
-  /* A RUN OF FIXED-WIDTH ELEMENTS IS ARITHMETIC (§3.3). A float, a ranged or
-     a quantized element carries a value condition, so it is walked; a keyed
-     entry carries a key reference, so it is walked too. */
+  /* A RUN OF FIXED-WIDTH ELEMENTS IS ARITHMETIC (§3.3), and it has to be: a
+     ranged element whose min equals its max rides no bits at all, so a count
+     of 2^32 over one would otherwise buy 2^32 loop turns for a few bytes of
+     wire. Its one value is its base, which the announcement read already held
+     to the kind. A float, a ranged or a quantized element of non-zero width
+     carries a value condition, so it is walked; a keyed entry carries a key
+     reference, so it is walked too. */
   if(e->kind==14 && elem.kind!=13 && elem.kind!=15 && elem.kind!=17 && elem.kind!=30) {
-   if(elem.kind==0||elem.kind==32)return 1;
+   if(elem.kind==0||elem.kind==32||elem.value_bits==0)return 1;
    if(elem.value_bits>0 && elem.kind!=10 && elem.kind!=11 && elem.packing!=1 && elem.packing!=2)
     return blockdemo_table_message_skip_run(r,n,(int64_t)elem.value_bits);
   }
+  if(e->kind==16)return blockdemo_table_message_skip_keyed(r,&elem,n);
   {
-   uint8_t seen[512];
    int64_t before;
-   /* A KEYED ARRAY'S KEY NAMES A DECLARED NO-PAYLOAD ENTRY AND NO KEY
-      REPEATS (§3.2, §3.3): the name reference and the bitset hold it. */
-   if(e->kind==16)memset(seen,0,sizeof(seen));
    for(i=0;i<n;i++) {
-    if(e->kind==16) {
-     int64_t key;
-     if(!blockdemo_table_message_ref(r,&entry,1)||entry==NULL)return 0;
-     key=entry-r->vocabulary->entries+1;
-     if(key<1||key>4096)return 0;
-     if(seen[(key-1)>>3]&(uint8_t)(1u<<((key-1)&7)))return 0;
-     seen[(key-1)>>3]|=(uint8_t)(1u<<((key-1)&7));
-    }
     before=r->bits.offset;
     /* A SCALAR ELEMENT IS NOT A STRUCTURAL PAYLOAD (§3.3), so it is held to
        its own value conditions at the array body's level; only a string, a
@@ -3760,33 +3855,21 @@ static SCHEMA_UNUSED int blockdemo_table_message_skip(blockdemo_table_message_re
     if(elem.value_bits>=0 || elem.kind==0 || elem.kind==32) {
      if(!blockdemo_table_message_skip(r,&elem))return 0;
     } else if(!blockdemo_table_message_skip_deeper(r,&elem))return 0;
-    /* A WALKED ELEMENT THAT CONSUMES NO BITS IS DAMAGE (§3.3). A keyed
-       scalar or no-payload element rides no element bits; its key reference
-       is the payload, and the reference reader's arithmetic run counts it. */
+    /* A WALKED ELEMENT THAT CONSUMES NO BITS IS DAMAGE (§3.3). */
     if(r->bits.offset==before && elem.value_bits<0 && elem.kind!=0 && elem.kind!=32)return 0;
    }
    return 1;
   }
  }
- default:return e->value_bits>=0 && blockdemo_table_bit_skip(&r->bits,e->value_bits);
+ default:
+  /* SKIPPED IS NOT UNREAD (§3.3): a ranged integer's base plus offset is
+     held to its announced kind, as a named read holds it. */
+  if(e->packing==1 && (blockdemo_table_message_integer_kind(e->kind)||blockdemo_table_message_fixed_kind(e->kind))) {
+   uint64_t lo,hi;
+   return blockdemo_table_message_number(r,e,&lo,&hi);
+  }
+  return e->value_bits>=0 && blockdemo_table_bit_skip(&r->bits,e->value_bits);
  }
-}
-static SCHEMA_UNUSED int blockdemo_table_message_number(blockdemo_table_message_reader_t * r,const blockdemo_table_message_entry_t * e,uint64_t * lo,uint64_t * hi)
-{
- int64_t width=e->value_bits;
- uint64_t before;
- *lo=*hi=0;
- if(width<0 || width>128 || !blockdemo_table_bit_get(&r->bits,lo,width<64?width:64))return 0;
- if(width>64 && !blockdemo_table_bit_get(&r->bits,hi,width-64))return 0;
- if(e->packing==1) {
-  before=*lo;
-  *lo+=(uint64_t)e->base_lo;
-  if(blockdemo_table_message_kind_bits(e->kind)>64)*hi+=(uint64_t)e->base_hi+(*lo<before);
- } else if(((e->kind>=2 && e->kind<=5)||(e->kind>=20 && e->kind<=23)) && width>0 && width<64 && (*lo&(UINT64_C(1)<<(width-1)))) {
-  *lo|=UINT64_MAX<<width;
- }
- if((e->kind>=2 && e->kind<=5)||(e->kind>=20 && e->kind<=23))*hi=(int64_t)*lo<0?UINT64_MAX:0;
- return 1;
 }
 /* 1 is a value, 0 damage, and 2 a float whose raw bits are a NaN or an
    infinity (docs/SPEC-TABLES.md §3.3): refused as non_finite_float before the
@@ -4584,21 +4667,17 @@ static SCHEMA_UNUSED int64_t blockdemo_padded_row_save_messages(const blockdemo_
 }
 static SCHEMA_UNUSED int blockdemo_padded_row_load_message_body(blockdemo_table_message_reader_t * r,blockdemo_padded_row_t * value)
 {
- uint8_t seen[512];
+ uint8_t seen[BLOCKDEMO_K_TABLE_MESSAGE_SEEN_SLOTS/8];
  int same_build=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE;
  int32_t last_field_ord=0;
  (void)last_field_ord;
  blockdemo_padded_row_reset(value);
  memset(seen,0,sizeof(seen));
  for(;;){const blockdemo_table_message_entry_t * entry;
- int64_t ref;
  if(!blockdemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
- ref=entry-r->vocabulary->entries+1;
- if(ref<1||ref>4096)goto damaged;
- if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))goto damaged;
- seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
+ if(!blockdemo_table_message_seen_once(seen,r->vocabulary,entry))goto damaged;
  switch(entry->id){
  case UINT64_C(0x56d7ab194448a4f3): {
  int same_shape=same_build && entry->own_slot==5;
@@ -4608,7 +4687,7 @@ static SCHEMA_UNUSED int blockdemo_padded_row_load_message_body(blockdemo_table_
  (void)unknown_before;
  if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,6)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
- if(!blockdemo_table_message_skip(r,entry))goto damaged;
+ if(!blockdemo_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -4636,7 +4715,7 @@ static SCHEMA_UNUSED int blockdemo_padded_row_load_message_body(blockdemo_table_
  (void)unknown_before;
  if(!(entry->kind==11 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,11)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
- if(!blockdemo_table_message_skip(r,entry))goto damaged;
+ if(!blockdemo_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { double decoded=0;
@@ -4670,7 +4749,7 @@ static SCHEMA_UNUSED int blockdemo_padded_row_load_message_body(blockdemo_table_
  (void)unknown_before;
  if(!(entry->kind==1 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,1)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
- if(!blockdemo_table_message_skip(r,entry))goto damaged;
+ if(!blockdemo_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -4693,7 +4772,7 @@ static SCHEMA_UNUSED int blockdemo_padded_row_load_message_body(blockdemo_table_
  (void)unknown_before;
  if(!(entry->kind==8 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,8)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
- if(!blockdemo_table_message_skip(r,entry))goto damaged;
+ if(!blockdemo_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -4721,11 +4800,12 @@ static SCHEMA_UNUSED int blockdemo_padded_row_load_message_body(blockdemo_table_
  (void)unknown_before;
  if(!(entry->kind==12 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,12)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
- if(!blockdemo_table_message_skip(r,entry))goto damaged;
+ if(!blockdemo_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  {uint64_t n,kept;
  if(!blockdemo_table_bit_get(&r->bits,&n,blockdemo_table_bits_required(0,entry->max)))goto damaged;
+  if(n>(uint64_t)entry->max)goto damaged;
   if(!blockdemo_table_bit_align_read(&r->bits))goto damaged;
   if(n>INT64_MAX/8 || !blockdemo_table_bit_has(&r->bits,(int64_t)n*8))goto damaged;
   {const uint8_t * text=r->bits.buffer+(r->bits.offset>>3);
@@ -4755,7 +4835,7 @@ static SCHEMA_UNUSED int blockdemo_padded_row_load_message_body(blockdemo_table_
  (void)unknown_before;
  if(!(entry->kind==14 && entry->elem_kind==7)){if(entry->kind==14 && blockdemo_table_kind_widens(entry->elem_kind,7)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
- if(!blockdemo_table_message_skip(r,entry))goto damaged;
+ if(!blockdemo_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  {uint64_t n,kept,walk,i;
@@ -4800,11 +4880,11 @@ static SCHEMA_UNUSED int blockdemo_padded_row_load_message_body(blockdemo_table_
  (void)unknown_before;
  if(!(entry->kind==16 && entry->elem_kind==6)){if(0){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
- if(!blockdemo_table_message_skip(r,entry))goto damaged;
+ if(!blockdemo_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  {uint64_t n,i;
- uint8_t seen_keys[512];
+ uint8_t seen_keys[BLOCKDEMO_K_TABLE_MESSAGE_SEEN_SLOTS/8];
  int32_t last_slot=-1;
  int k_same=(r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE && entry->own_slot==11);
  blockdemo_table_message_entry_t element_shape=blockdemo_table_message_element(entry);
@@ -4814,11 +4894,7 @@ static SCHEMA_UNUSED int blockdemo_padded_row_load_message_body(blockdemo_table_
   if(!blockdemo_table_message_count(r,entry,&n))goto damaged;
   for(i=0;i<n;i++){const blockdemo_table_message_entry_t * key;
   int32_t slot=-1;
-  int64_t kref;
-  if(!blockdemo_table_message_ref(r,&key,1)||key==NULL)goto damaged;
-  kref=key-r->vocabulary->entries+1;
-  if(kref<1||kref>4096||(seen_keys[(kref-1)>>3]&(uint8_t)(1u<<((kref-1)&7))))goto damaged;
-  seen_keys[(kref-1)>>3]|=(uint8_t)(1u<<((kref-1)&7));
+  if(!blockdemo_table_message_ref(r,&key,1)||key==NULL||!blockdemo_table_message_seen_once(seen_keys,r->vocabulary,key))goto damaged;
   switch(key->id){
   case UINT64_C(0x9ff1de19feac1b7c):slot=0;
   break;
@@ -4881,7 +4957,7 @@ static SCHEMA_UNUSED int blockdemo_padded_row_load_message_body(blockdemo_table_
  if(same_shape)last_field_ord=8;
  if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,4)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
- if(!blockdemo_table_message_skip(r,entry))goto damaged;
+ if(!blockdemo_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -4901,7 +4977,7 @@ static SCHEMA_UNUSED int blockdemo_padded_row_load_message_body(blockdemo_table_
  }
  default:if(same_build)goto damaged;
  r->report->unknown++;
- if(!blockdemo_table_message_skip(r,entry))goto damaged;
+ if(!blockdemo_table_message_skip_field(r,entry))goto damaged;
  break;
  } }
  damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -5361,21 +5437,17 @@ static SCHEMA_UNUSED int64_t blockdemo_padded_frame_save_messages(const blockdem
 }
 static SCHEMA_UNUSED int blockdemo_padded_frame_load_message_body(blockdemo_table_message_reader_t * r,blockdemo_padded_frame_t * value)
 {
- uint8_t seen[512];
+ uint8_t seen[BLOCKDEMO_K_TABLE_MESSAGE_SEEN_SLOTS/8];
  int same_build=r->vocabulary->build_version==SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE;
  int32_t last_field_ord=0;
  (void)last_field_ord;
  blockdemo_padded_frame_reset(value);
  memset(seen,0,sizeof(seen));
  for(;;){const blockdemo_table_message_entry_t * entry;
- int64_t ref;
  if(!blockdemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
- ref=entry-r->vocabulary->entries+1;
- if(ref<1||ref>4096)goto damaged;
- if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))goto damaged;
- seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
+ if(!blockdemo_table_message_seen_once(seen,r->vocabulary,entry))goto damaged;
  switch(entry->id){
  case UINT64_C(0xeddcb72b15486e77): {
  int same_shape=same_build && entry->own_slot==1;
@@ -5385,7 +5457,7 @@ static SCHEMA_UNUSED int blockdemo_padded_frame_load_message_body(blockdemo_tabl
  (void)unknown_before;
  if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,6)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
- if(!blockdemo_table_message_skip(r,entry))goto damaged;
+ if(!blockdemo_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -5413,7 +5485,7 @@ static SCHEMA_UNUSED int blockdemo_padded_frame_load_message_body(blockdemo_tabl
  (void)unknown_before;
  if(!(entry->kind==9 && entry->elem_kind==0)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,9)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
- if(!blockdemo_table_message_skip(r,entry))goto damaged;
+ if(!blockdemo_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  { uint64_t lo,hi;
@@ -5443,7 +5515,7 @@ static SCHEMA_UNUSED int blockdemo_padded_frame_load_message_body(blockdemo_tabl
  }
  if(!(entry->kind==14 && entry->elem_kind==13)){if(entry->kind==14 && blockdemo_table_kind_widens(entry->elem_kind,13)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
- if(!blockdemo_table_message_skip(r,entry))goto damaged;
+ if(!blockdemo_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  {uint64_t n,kept,walk,i;
@@ -5471,11 +5543,13 @@ static SCHEMA_UNUSED int blockdemo_padded_frame_load_message_body(blockdemo_tabl
  (void)unknown_before;
  if(!(entry->kind==14 && entry->elem_kind==6)){if(entry->elem_kind==0 && blockdemo_table_kind_widens(entry->kind,14)){r->report->widened++;
  }else{r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
- if(!blockdemo_table_message_skip(r,entry))goto damaged;
+ if(!blockdemo_table_message_skip_field(r,entry))goto damaged;
  break;
  }}
  {uint64_t n,kept;
  if(!blockdemo_table_bit_get(&r->bits,&n,blockdemo_table_bits_required(entry->min,entry->max)))goto damaged;
+  n+=(uint64_t)entry->min;
+  if(n>(uint64_t)entry->max)goto damaged;
   if(!blockdemo_table_bit_align_read(&r->bits))goto damaged;
   if(n>INT64_MAX/8 || !blockdemo_table_bit_has(&r->bits,(int64_t)n*8))goto damaged;
   kept=n>12 ? 12 : n;
@@ -5494,7 +5568,7 @@ static SCHEMA_UNUSED int blockdemo_padded_frame_load_message_body(blockdemo_tabl
  }
  default:if(same_build)goto damaged;
  r->report->unknown++;
- if(!blockdemo_table_message_skip(r,entry))goto damaged;
+ if(!blockdemo_table_message_skip_field(r,entry))goto damaged;
  break;
  } }
  damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -6170,7 +6244,13 @@ static SCHEMA_UNUSED int64_t blockdemo_padded_row_fixed_load( blockdemo_padded_r
     for ( k = 0; k < count; ++k )
     {
         int32_t rec_widened = report->widened;
-        if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
+        if ( blockdemo_table_fixed_get64( at ) != hash )
+        {
+            int64_t j;
+            for ( j = 0; j < k; ++j ) { blockdemo_padded_row_reset( values + j ); }
+            memset( report, 0, sizeof( *report ) ); report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT;
+            return -1;
+        }
         /* EVERY DEAD BYTE IS ZERO (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,
            §5.3 step 11): a non-zero one refuses the whole load as
            wire_damaged in this check pass, before any byte of the record lands. */
@@ -7902,7 +7982,13 @@ static SCHEMA_UNUSED int64_t blockdemo_padded_frame_fixed_load( blockdemo_padded
     for ( k = 0; k < count; ++k )
     {
         int32_t rec_widened = report->widened;
-        if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
+        if ( blockdemo_table_fixed_get64( at ) != hash )
+        {
+            int64_t j;
+            for ( j = 0; j < k; ++j ) { blockdemo_padded_frame_reset( values + j ); }
+            memset( report, 0, sizeof( *report ) ); report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT;
+            return -1;
+        }
         /* EVERY DEAD BYTE IS ZERO (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,
            §5.3 step 11): a non-zero one refuses the whole load as
            wire_damaged in this check pass, before any byte of the record lands. */
