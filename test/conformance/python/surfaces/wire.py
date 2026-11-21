@@ -1,26 +1,28 @@
-"""The wire surface: observe the public read/save or strict blob refusal."""
+"""The wire surface: observe the public read/save or its refusal."""
 
-from _common import absent, entries, read_bytes, root_class, supported, unit_package, write_bytes
+from _common import absent, answering, entries, no_codec, read_bytes, root_class, supported, unit_package, write_bytes
 
 
 def observed_wire(outdir, case, unit, root, wire):
     """Observe the public verdict without the harness's expected-answer flags."""
     cls = root_class(unit, root)
     if cls is None or not supported(cls):
-        raise AssertionError(case + ": wire root is not generated and supported")
+        # no codec for this root: the per-case absence, never a refusal
+        no_codec(outdir, case)
+        return
     package = unit_package(unit)
     try:
         value = cls.load(read_bytes(wire))
     except package.Refused as err:
-        if err.reason != "blob_shared":
-            raise AssertionError(case + ": unexpected public wire refusal: " + err.reason) from err
-        # The shared harness uses this filename for the observed strict blob
-        # refusal (§2.5). It judges whether this particular input owes it.
-        absent(outdir, case, "blob_shared")
+        # THE PUBLIC REFUSAL IS THE ANSWER, whatever its reason: the harness
+        # compares the verdict (docs/rulings.json refusal-verdict-only) and
+        # judges whether this particular input owes it.
+        absent(outdir, case, err.reason)
         return
     write_bytes(outdir, case, value.save())
 
 
 def run(manifest, outdir):
     for row in entries(manifest, "instance"):
-        observed_wire(outdir, row[1], row[2], row[3], row[4])
+        with answering(row[1]):
+            observed_wire(outdir, row[1], row[2], row[3], row[4])

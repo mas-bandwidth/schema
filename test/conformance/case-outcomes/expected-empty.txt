@@ -1,0 +1,29 @@
+# <surface> <case> <answer> for manifest.txt over an EMPTY generated tree:
+# with no codec at all, every case is an EMPTY <case>.absent, the must-refuse
+# rows and the rows whose inputs are broken among them, and no surface aborts
+# (answers: test/conformance/case-outcomes/check.sh)
+message msg_read absent
+message msg_inapplicable absent
+message msg_error absent
+message msg_no_unit absent
+message msg_inapplicable_no_unit absent
+message msg_no_root absent
+wire wire_read absent
+wire wire_refused absent
+wire wire_error absent
+wire wire_fixed_read absent
+wire wire_fixed_refused absent
+wire wire_blob_read absent
+wire wire_blob_shared absent
+wire wire_no_unit absent
+wire wire_no_root absent
+write-refusal wr_ord_1 absent
+write-refusal wr_ord_256 absent
+write-refusal wr_ord_2p32 absent
+write-refusal wr_error absent
+write-refusal wr_tag_1 absent
+write-refusal wr_tag_256 absent
+write-refusal wr_tag_2p32 absent
+write-refusal wr_count_ok absent
+write-refusal wr_count_past absent
+write-refusal wr_no_unit absent

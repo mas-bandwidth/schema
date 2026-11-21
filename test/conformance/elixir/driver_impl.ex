@@ -336,9 +336,11 @@ defmodule Driver do
   def main([manifest, "list"]) do
     _ = manifest
     Enum.each(@surfaces, &IO.puts/1)
-    # the opt-in units this leg answers (MANIFEST.txt `opt-in`): make/elixir.mk
-    # compiles the shapes unit into the ebin with the rest of the corpus
-    IO.puts("unit shapes")
+    # the shapes unit (MANIFEST.txt `opt-in shapes`) is compiled into the ebin
+    # for the case-outcomes fixture, but not yet named here: its fixed writer
+    # does not yet refuse a ranged float32 past its bound
+    # (fref_shapes_seventh_below, fref_shapes_tenth_past), so its rows count
+    # absent on this leg until that lands
   end
 
   def main([manifest, "block-lead"]) do

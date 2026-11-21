@@ -1,8 +1,9 @@
 """The write-refusal surface: set one field, then Measure and Save."""
 
+import sys
 from copy import deepcopy
 
-from _common import absent, entries, read_bytes, root_class, supported, write_bytes
+from _common import answering, no_codec, entries, read_bytes, root_class, supported, write_bytes
 
 
 def _convert_scalar(current, rule, token):
@@ -21,6 +22,27 @@ def _convert_scalar(current, rule, token):
         raw = bytes.fromhex(token)
         return raw.decode("utf-8", "surrogateescape") if isinstance(current, str) else raw
     raise ValueError("unknown write-refusal mutation: " + rule)
+
+
+_ELEMENT_DEFAULTS = {"bool": False, "float32": 0.0, "float64": 0.0, "string": "", "bytes": b"", "int": 0, "enum": 0}
+
+
+def _element_default(node, name):
+    """The default of one element of the list field name on node, by the
+    field's declared element kind (its descriptor)."""
+    descriptor = getattr(type(node), "descriptor", None)
+    field = next((f for f in descriptor.fields if f.name == name), None) if descriptor is not None else None
+    if field is None:
+        raise ValueError("count mutation: " + name + " has no field descriptor")
+    if field.target:
+        module = type(node).__module__
+        for owner in (sys.modules.get(module), sys.modules.get(module.split(".")[0])):
+            cls = getattr(owner, field.target, None)
+            if cls is not None:
+                return cls()
+    if field.elem_codec in _ELEMENT_DEFAULTS:
+        return _ELEMENT_DEFAULTS[field.elem_codec]
+    raise ValueError("count mutation: no element default for " + name + " (" + field.elem_codec + ")")
 
 
 def _set(value, path, rule, token):
@@ -63,10 +85,13 @@ def _set(value, path, rule, token):
     current = getattr(node, name)
     if rule == "count":
         count = int(token)
-        if count < 0 or not isinstance(current, list) or (count > 0 and not current):
-            raise ValueError("count mutation needs a nonnegative count and a populated list")
+        if count < 0 or not isinstance(current, list):
+            raise ValueError("count mutation needs a nonnegative count and a list")
+        # an empty list grows by its DECLARED element kind's default, never by
+        # copying an element it does not have
+        seed = current[0] if current else (_element_default(node, name) if count > 0 else None)
         resized = current[:count]
-        resized.extend(deepcopy(current[0]) for _ in range(count - len(resized)))
+        resized.extend(deepcopy(seed) for _ in range(count - len(resized)))
         setattr(node, name, resized)
     elif rule == "tag":
         union = type(current)()
@@ -78,19 +103,20 @@ def _set(value, path, rule, token):
 
 def run(manifest, outdir):
     for row in entries(manifest, "write-refusal"):
-        case, unit, root, wire, path, rule, token = row[1], row[2], row[3], row[4], row[5], row[6], row[7]
-        cls = root_class(unit, root)
-        if cls is None:
-            absent(outdir, case, "unit not generated for python")
-            continue
-        if not supported(cls):
-            absent(outdir, case, "the python table runtime does not carry this construct")
-            continue
-        value = cls.load(read_bytes(wire))
-        _set(value, path, rule, token)
-        try:
-            value.measure()
-            value.save()
-            write_bytes(outdir, case, b"wrote\n")
-        except ValueError:
-            write_bytes(outdir, case, b"refused\n")
+        with answering(row[1]):
+            case, unit, root, wire, path, rule, token = row[1], row[2], row[3], row[4], row[5], row[6], row[7]
+            cls = root_class(unit, root)
+            if cls is None:
+                no_codec(outdir, case)
+                continue
+            if not supported(cls):
+                no_codec(outdir, case)
+                continue
+            value = cls.load(read_bytes(wire))
+            _set(value, path, rule, token)
+            try:
+                value.measure()
+                value.save()
+                write_bytes(outdir, case, b"wrote\n")
+            except ValueError:
+                write_bytes(outdir, case, b"refused\n")

@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 def self.run(manifest, outdir)
-  RubyConformance.entries(manifest, 'instance').each do |row|
+  RubyConformance.cases(manifest, 'instance') do |row|
     case_name, unit, root, wire = row[1, 4]
     pkg = RubyConformance.unit_package(unit)
     cls = RubyConformance.root_class(unit, root)
@@ -12,9 +12,10 @@ def self.run(manifest, outdir)
     begin
       value = cls.load(RubyConformance.read_bytes(wire))
     rescue pkg::Refused => e
-      raise "#{case_name}: unexpected public wire refusal: #{e.reason}" unless e.reason == 'blob_shared'
-
-      RubyConformance.absent(outdir, case_name, 'blob_shared')
+      # THE PUBLIC REFUSAL IS THE ANSWER, whatever its reason: the harness
+      # compares the verdict (docs/rulings.json refusal-verdict-only), and
+      # judges whether this input owes it
+      RubyConformance.absent(outdir, case_name, e.reason)
       next
     end
     RubyConformance.write_bytes(outdir, case_name, value.save)

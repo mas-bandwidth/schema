@@ -47,9 +47,13 @@ def main(argv):
         os.makedirs(argv[3], exist_ok=True)
         sys.path.insert(0, HERE)
         sys.path.insert(0, SURFACES)
+        import _common
+
+        _common.SURFACE = name
         module = load_surface(name)
         module.run(argv[1], argv[3])
-        return 0
+        # every case ran; one that hit a driver error reds the surface
+        return 1 if _common.DRIVER_ERRORS else 0
     sys.stderr.write("usage: main.py <manifest> list\n       main.py <manifest> <surface> <outdir>\n")
     return 2
 
