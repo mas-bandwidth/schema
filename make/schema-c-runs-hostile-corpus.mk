@@ -36,14 +36,14 @@ C_HOSTILE_RUN_JOBS ?= 2
 C_HOSTILE_UNITS := tabledemo:tables/examples \
 	messagedemo:tables/messages blobdemo:tables/blobs \
 	graphdemo:tables/pointers scalardemo:tables/scalars \
-	streamdemo:tables/stream mapdemo:tables/maps listdemo:tables/lists shapes:test/tables/shapes probe:$(C_HOSTILE_BUILD)/probe.schema \
+	streamdemo:tables/stream mapdemo:tables/maps listdemo:tables/lists shapes:test/tables/shapes inner:test/tables/inner probe:$(C_HOSTILE_BUILD)/probe.schema \
 	featurewitnesses:testdata/conformance/feature-witnesses/full/Features.schema \
 	hostilepacket:internal/ci/hostilecorpus/corpus/packet/hostile.schema
 
 $(C_HOSTILE_BUILD)/generated/.stamp: bin/schema make/schema-c-runs-hostile-corpus.mk internal/ci/hostilecorpus/corpus.go \
 		$(wildcard tables/examples/*.schema tables/messages/*.schema tables/blobs/*.schema \
 			tables/pointers/*.schema tables/scalars/*.schema tables/stream/*.schema \
-			tables/maps/*.schema tables/lists/*.schema) test/tables/shapes/Shapes.schema testdata/conformance/feature-witnesses/full/Features.schema \
+			tables/maps/*.schema tables/lists/*.schema) test/tables/shapes/Shapes.schema test/tables/inner/Inner.schema testdata/conformance/feature-witnesses/full/Features.schema \
 		internal/ci/hostilecorpus/corpus/packet/hostile.schema
 	@rm -rf $(C_HOSTILE_BUILD)/generated && mkdir -p $(C_HOSTILE_BUILD)/generated
 	@go run ./tools/hostilecorpusexec probe-schema $(C_HOSTILE_BUILD)/probe.schema
