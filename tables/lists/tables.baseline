@@ -1,4 +1,4 @@
-schema-tables-baseline 7
+schema-tables-baseline 9
 package listdemo
 
 table Album
@@ -112,3 +112,6 @@ union Hit
 - Deck.past: renamed under was = "after", which keeps the wire id and NOT the text key — the JSON key is now "past"; pair json = "after" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]
 - Floats.past: renamed under was = "after", which keeps the wire id and NOT the text key — the JSON key is now "past"; pair json = "after" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]
 - Ints.past: renamed under was = "after", which keeps the wire id and NOT the text key — the JSON key is now "past"; pair json = "after" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]
+
+### 2026-11-21 (UTC) — rendering version 9: a bits(N) field records its width (bits=), a counted array its minimum count (mincount=) and a deprecated enum variant its marker (deprecated=true), so a narrowed width warns, a moved minimum refuses and a deprecation warns (docs/SPEC-TABLES.md §18.1)
+- baseline REGENERATED over an unreadable one (baseline version 7, this compiler writes 9); the projection is this unit as it stands and the history above is preserved, but the previous projection could not be diffed, so no per-edit lines follow

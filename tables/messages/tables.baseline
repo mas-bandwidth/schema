@@ -1,4 +1,4 @@
-schema-tables-baseline 7
+schema-tables-baseline 9
 package messagedemo
 
 table Cursor
@@ -107,3 +107,6 @@ union ToolBody
 
 ### 2026-11-18 (UTC) — refresh baseline projection over messagedemo under current v7 rendering
 - no compatibility-affecting edits; the wire absorbs the rest
+
+### 2026-11-21 (UTC) — rendering version 9: a bits(N) field records its width (bits=), a counted array its minimum count (mincount=) and a deprecated enum variant its marker (deprecated=true), so a narrowed width warns, a moved minimum refuses and a deprecation warns (docs/SPEC-TABLES.md §18.1)
+- baseline REGENERATED over an unreadable one (baseline version 7, this compiler writes 9); the projection is this unit as it stands and the history above is preserved, but the previous projection could not be diffed, so no per-edit lines follow

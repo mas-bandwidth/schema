@@ -1,0 +1,95 @@
+{
+  "verdict": "warn",
+  "contains": "wire_damaged",
+  "saves": [
+    {
+      "name": "ordered",
+      "input": {
+        "items": [
+          {
+            "key": 1,
+            "value": 11
+          },
+          {
+            "key": 2,
+            "value": 22
+          }
+        ]
+      },
+      "old": {
+        "items": [
+          {
+            "key": 1,
+            "value": 11
+          },
+          {
+            "key": 2,
+            "value": 22
+          }
+        ]
+      },
+      "new": {
+        "items": {
+          "1": 11,
+          "2": 22
+        }
+      }
+    },
+    {
+      "name": "outoforder",
+      "input": {
+        "items": [
+          {
+            "key": 2,
+            "value": 22
+          },
+          {
+            "key": 1,
+            "value": 11
+          }
+        ]
+      },
+      "old": {
+        "items": [
+          {
+            "key": 2,
+            "value": 22
+          },
+          {
+            "key": 1,
+            "value": 11
+          }
+        ]
+      },
+      "refusal": "wire_damaged"
+    },
+    {
+      "name": "duplicate",
+      "input": {
+        "items": [
+          {
+            "key": 1,
+            "value": 11
+          },
+          {
+            "key": 1,
+            "value": 22
+          }
+        ]
+      },
+      "old": {
+        "items": [
+          {
+            "key": 1,
+            "value": 11
+          },
+          {
+            "key": 1,
+            "value": 22
+          }
+        ]
+      },
+      "refusal": "wire_damaged"
+    }
+  ]
+}

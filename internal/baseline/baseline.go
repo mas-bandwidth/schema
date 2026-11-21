@@ -57,7 +57,19 @@ import (
 // a diagnostic per field. A rule change on a token every rendering already
 // records needs no bump: older files carry the same fact, so untouched schemas
 // do not acquire false additions. `optional` has been recorded since version 1.
-const Version = 7
+//
+// Version 8 added `bits=` on a `bits(N)` field (docs/SPEC-TABLES.md §18.1).
+//
+// Version 9 records `bits=`, and adds `mincount=` on a counted array whose
+// range starts above zero and `deprecated=true` on a deprecated enum variant.
+// The number 8 was issued twice while both were unreleased: once to the
+// rendering that added `bits=` alone, and once to one that added `mincount=`
+// and `deprecated=true` alone (F-211). A file opening with 8 may lack either
+// fact, so no 8 is ever read as "no minimum" or "no width": every 8 is refused
+// by its version, and `--update` regenerates it. A NUMBER IS NEVER REUSED for
+// a different set of facts; a rendering that changes the facts takes the next
+// unissued number.
+const Version = 9
 
 // FileName is the baseline's name in the unit directory. Its presence is what
 // turns the check on: no file, no check.
@@ -184,6 +196,12 @@ type Variant struct {
 	// judged on nothing: the id is the identity, and this is what lets the
 	// check name the spelling a second rename should have used (§18.2).
 	Was string
+	// Deprecated is an enum variant's `| deprecated` marker
+	// (docs/SPEC-TABLES.md §2.15), rendered as `deprecated=true` on its line.
+	// A reader yields the field's declared default for a stored value naming
+	// a deprecated variant and counts nothing, so the marker turning on is
+	// membership narrowed, and the enum walk reports it (§18.2).
+	Deprecated bool
 }
 
 // A Flags is one flags declaration in the closure. The ORDER IS THE FACT:
@@ -287,7 +305,8 @@ func Render(u *ir.Unit) *Unit {
 func renderEnum(e *ir.Enum) Enum {
 	out := Enum{Name: e.Name}
 	for i, v := range e.Variants {
-		out.Variants = append(out.Variants, Variant{Name: v, Id: ir.TableWireId(e.VariantWireName(i)), Was: wasOf(e.Was, i)})
+		out.Variants = append(out.Variants, Variant{Name: v, Id: ir.TableWireId(e.VariantWireName(i)), Was: wasOf(e.Was, i),
+			Deprecated: i < len(e.VariantDeprecated) && e.VariantDeprecated[i]})
 	}
 	return out
 }
@@ -415,6 +434,16 @@ func renderField(u *ir.Unit, f *ir.Field) Field {
 	case f.Array == ir.ArrayCounted:
 		add("array", "bounded")
 		add("bound", strconv.FormatInt(f.ArrayBound, 10))
+		// THE MINIMUM COUNT of a `[Min..N]T` (SPEC §4.6), recorded where it is
+		// above zero. It is two reader facts at once: a present array below
+		// the reader's minimum refuses `count_over_bound`, and the minimum is
+		// the array's BORN count, so an array the writer elided at its born
+		// value reads back with the READER's minimum of default elements. A
+		// `[..N]T` records no token and its absence is a minimum of zero; see
+		// RuleCountMin.
+		if f.ArrayMin > 0 {
+			add("mincount", strconv.FormatInt(f.ArrayMin, 10))
+		}
 	case f.Array == ir.ArrayList:
 		// AN UNBOUNDED ARRAY RENDERS AS `array=unbounded` WITH NO `bound=`
 		// (docs/SPEC-TABLES.md §2.9): the count is the data's, and the only
@@ -441,13 +470,20 @@ func renderField(u *ir.Unit, f *ir.Field) Field {
 	if f.Type.Size != 0 {
 		add("size", strconv.FormatInt(f.Type.Size, 10))
 	}
+	// A `bits(N)` FIELD'S N. Its implied range is [0, 2^N - 1], and a reader
+	// refuses a stored value past it `out_of_range` (docs/SPEC-TABLES.md §4).
+	// The `kind` token cannot hold N: bits(9) through bits(16) and uint16 are
+	// all kind 7, so N narrowed inside one storage bucket would move no other
+	// token. It is an extent like a range, judged by RuleShrink (§18.2).
+	if f.Type.Kind == ir.TBits {
+		add("bits", strconv.Itoa(f.Type.Width))
+	}
 	// THE EFFECTIVE RANGE, as DECLARED. A reader refuses a stored value past
 	// its own declared bounds `out_of_range` (docs/SPEC-TABLES.md §4), so a
 	// tightened range is a data edit the wire reports but the baseline is
 	// where it is seen BEFORE it ships — an extent like a capacity, judged the
-	// same way. Only a declared range is recorded: `bits(N)`'s implied
-	// [0, 2^N - 1] is its WIDTH, and the width is the `kind` token, which is
-	// already a fixed fact.
+	// same way. Only a declared range is recorded here; a `bits(N)` field's
+	// implied range is the `bits` token above.
 	switch {
 	case f.HasIntRange && f.IntMin != nil && f.IntMax != nil:
 		// a fixed field's bounds are its WHOLE-UNIT bounds, as declared; the
@@ -522,11 +558,14 @@ func (u *Unit) Text() string {
 	for _, e := range u.Enums {
 		fmt.Fprintf(&b, "\nenum %s\n", e.Name)
 		for _, v := range e.Variants {
+			fmt.Fprintf(&b, "    variant %s id=0x%016x", v.Name, v.Id)
 			if v.Was != "" {
-				fmt.Fprintf(&b, "    variant %s id=0x%016x was=%s\n", v.Name, v.Id, v.Was)
-			} else {
-				fmt.Fprintf(&b, "    variant %s id=0x%016x\n", v.Name, v.Id)
+				fmt.Fprintf(&b, " was=%s", v.Was)
 			}
+			if v.Deprecated {
+				b.WriteString(" deprecated=true")
+			}
+			b.WriteString("\n")
 		}
 	}
 	for _, f := range u.Flags {
@@ -690,8 +729,15 @@ func (u *Unit) parseMemberLine(path string, lineno int, section string, fields [
 				return bad()
 			}
 			for _, tok := range fields[2:] {
-				if k, val, ok := strings.Cut(tok, "="); ok && k == "was" {
+				k, val, ok := strings.Cut(tok, "=")
+				switch {
+				case ok && k == "was":
 					v.Was = val
+				case ok && k == "deprecated":
+					if val != "true" {
+						return bad()
+					}
+					v.Deprecated = true
 				}
 			}
 			e := &u.Enums[len(u.Enums)-1]
