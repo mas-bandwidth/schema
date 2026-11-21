@@ -66,7 +66,7 @@ func ReadRows(dir string) ([]Row, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }() // read-only: a close error loses nothing
 	var rows []Row
 	sc := bufio.NewScanner(f)
 	for n := 1; sc.Scan(); n++ {
@@ -466,7 +466,7 @@ func stepEnv(run Runner, dir string, env []string, name string, args ...string) 
 		err = fmt.Errorf("the output says FAILED")
 	}
 	if err != nil {
-		return fmt.Errorf("%s %s: %v\n%s", filepath.Base(name), strings.Join(args, " "), err, strings.TrimSpace(out))
+		return fmt.Errorf("%s %s: %w\n%s", filepath.Base(name), strings.Join(args, " "), err, strings.TrimSpace(out))
 	}
 	return nil
 }

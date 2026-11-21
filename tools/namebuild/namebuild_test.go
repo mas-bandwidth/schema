@@ -202,7 +202,7 @@ func runJob(t *testing.T, run Runner, env Env, schema, work string, j Job, unity
 		return nil
 	}
 	if genErr != nil {
-		return fmt.Errorf("FAILED: generate --lang %s refused: %v\n%s", j.Target, genErr, out)
+		return fmt.Errorf("FAILED: generate --lang %s refused: %w\n%s", j.Target, genErr, out)
 	}
 	if j.Target == "unity" {
 		unity.Lock()
