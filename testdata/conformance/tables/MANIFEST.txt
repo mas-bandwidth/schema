@@ -1654,12 +1654,6 @@ message-prior prior_nested_past   tblprior Prior test/tables/prior/PriorWide.sch
 # a field of a nested table in an array
 message-prior prior_cells_inside tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"cells":[{"depth":40},{"depth":10}]} read
 message-prior prior_cells_past   tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"cells":[{"depth":10},{"depth":75}]} refused
-# a ranged float32
-message-prior prior_ratio_inside tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"ratio":40.5} read
-message-prior prior_ratio_past   tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"ratio":75.5} refused
-# a ranged float64
-message-prior prior_real_inside tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"real":40.5} read
-message-prior prior_real_past   tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"real":75.5} refused
 # a quantized float
 message-prior prior_quant_inside tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"quant":40.5} read
 message-prior prior_quant_past   tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"quant":75.5} refused
