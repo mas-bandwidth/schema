@@ -85,6 +85,8 @@ func init() {
 		Name{Name: "kTableMessageEntryKeyBytes", What: "the C message exact encoded-entry proof"},
 		Name{Name: "kTableMessageEntryKeyOffsets", What: "the C message exact encoded-entry proof"},
 		Name{Name: "table_message_own_slot", What: "the C message exact encoded-entry proof"},
+		Name{Name: "kTableMessageSeenRefs", What: "the C message reader reference-capacity bound"},
+		Name{Name: "table_message_seen_once", What: "the C message reader repeat check"},
 		Name{Name: "kTableMessageRefBitsHere", What: "the C message and announcement runtime"},
 		Name{Name: "table_announce_once", What: "the C message and announcement runtime"},
 		Name{Name: "table_bit_align_read", What: "the C message and announcement runtime"},
