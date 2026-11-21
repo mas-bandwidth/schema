@@ -12,6 +12,13 @@ import (
 // failure anywhere leaves the earlier pair exactly as it was — never a new
 // announcement beside an old message, or a new attribution beside an old cook.
 //
+// ONE PUBLISHER PER DESTINATION IS THE CONTRACT, as with any compiler: the
+// promise holds when one run writes to an output at a time. Nothing here takes
+// a lock, so two runs publishing to the same destinations at once can
+// interleave their renames and leave one run's file beside the other's; each
+// file is still whole. The caller gives concurrent runs their own outputs or
+// runs them one after the other, and the help of pack and cook says so.
+//
 // WHETHER TWO PATHS ARE ONE FILE IS THE FILE SYSTEM'S ANSWER, never a string
 // comparison: a symlinked directory, a case-folding volume and APFS's
 // normalization-insensitive names all make two spellings one entry. Every
@@ -105,6 +112,10 @@ func aliasError(verb string, outs []outputPath, ins []outputPath) error {
 // its earlier file back, each that did not is removed — so a failed publish
 // leaves every destination as it found it. No temporary or backup outlives the
 // call.
+//
+// All of that is for the one run writing to these destinations (the contract
+// at the top of this file): another process renaming into them meanwhile is
+// outside it, and undo would then restore over that process's file.
 func publishOutputs(verb string, outs []pairOutput, ins []outputPath) (err error) {
 	temps := make([]string, len(outs))
 	backups := make([]string, len(outs))
