@@ -368,6 +368,11 @@ func (g *fixedGen) emitWriteElement(f *ir.Field, base string, at int64, expr, in
 			return
 		}
 	}
+	if f.HasFloatRange {
+		// a compressed float's -0 is stored as +0, the bits +0 stores
+		// (docs/SPEC-TABLES.md §3.3, ruling fixed-compressed-negzero)
+		expr = "(" + expr + " === 0 ? 0 : " + expr + ")"
+	}
 	g.store(ind, "view", off(base, at), f.Type, expr)
 }
 
@@ -526,7 +531,9 @@ func (g *fixedGen) emitCheckValueElement(f *ir.Field, expr, ind string) {
 		g.pf("%sif (typeof %s !== \"number\" || !Number.isFinite(Math.fround(%s))) { return false; }\n",
 			ind, expr, expr)
 		if lo, hi, ok := fixedFloatClampEnds(f); ok {
-			g.pf("%sif (%s < %s || %s > %s) { return false; }\n", ind, expr, lo, expr, hi)
+			// held at float32, the value the store writes, against the
+			// float32 ends (SPEC §4.6)
+			g.pf("%sif (Math.fround(%s) < %s || Math.fround(%s) > %s) { return false; }\n", ind, expr, lo, expr, hi)
 		}
 		return
 	case ir.TFloat64:

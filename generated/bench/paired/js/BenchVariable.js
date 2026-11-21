@@ -815,6 +815,15 @@ function TableVariableSameFloat(f32, a, b) {
   return f32 ? Object.is(Math.fround(a), Math.fround(b)) : Object.is(a, b);
 }
 
+// TableVariableSameFloatField is the compare for one float descriptor: a
+// COMPRESSED float's -0 IS +0 (§3.3, ruling fixed-compressed-negzero), so it
+// compares by value and a -0 under a +0 default elides; a plain float keeps
+// the bit compare above.
+function TableVariableSameFloatField(d, a, b) {
+  if (d.lo === null) { return TableVariableSameFloat(d.f32, a, b); }
+  return d.f32 ? Math.fround(a) === Math.fround(b) : a === b;
+}
+
 // the write that meets a non-finite float refuses the save, and names the
 // reason to a MeasureReason walk (TableVariableSaveWhy) when one is asking
 let TableVariableSaveWhy = null;
@@ -828,6 +837,8 @@ function TableVariableRefuseNonFinite() {
 function TableVariableWriteFloat(w, d, v) {
   if (!TableVariableFiniteFloat(d.f32, v)) { return TableVariableRefuseNonFinite(); }
   if (!TableVariableFloatValid(d, v)) { return false; }
+  // a compressed float's -0 is stored as +0, the bits +0 stores (§3.3)
+  if (d.lo !== null && v === 0) { v = 0; }
   if (d.f32) { w.f32(v); } else { w.f64(v); }
   return true;
 }
@@ -1165,7 +1176,7 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
       return true;
     case "float":
       if (!TableVariableFiniteFloat(fd.f32, val)) { return TableVariableRefuseNonFinite(); }
-      if (!TableVariableSameFloat(fd.f32, val, fd.def)) {
+      if (!TableVariableSameFloatField(fd, val, fd.def)) {
         TableVariableHeader(w, ids, fd, fd.k);
         return TableVariableWriteFloat(w, fd, val);
       }
@@ -2086,7 +2097,9 @@ function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path)
 // Refuse a writer until the caller supplies a value in the declared range.
 function TableVariableRequiredValue(d, value) {
   if (!d.req || (d.s !== "int" && d.s !== "float")) { return true; }
-  return d.lo === null || (value >= d.lo && value <= d.hi);
+  // a float32 is held at float32, as the writer holds it
+  const x = d.s === "float" && d.f32 ? Math.fround(value) : value;
+  return d.lo === null || (x >= d.lo && x <= d.hi);
 }
 
 // Presence is checked per body, after guards have their final values. A wire
@@ -2133,6 +2146,9 @@ function TableVariableScalar(r, d, kind, report) {
       if (d.f32 && d.lo !== null) {
         if (v < d.lo) { v = Math.fround(d.lo); report.oor++; }
         else if (v > d.hi) { v = Math.fround(d.hi); report.oor++; }
+        // A COMPRESSED FLOAT'S -0 LANDS AS +0 (§3.3, ruling
+        // fixed-compressed-negzero), uncounted
+        else if (v === 0) { v = 0; }
       }
       return v;
     }
@@ -2803,8 +2819,9 @@ function TableVariableElemDefault(e) {
 }
 
 function TableVariableElemIsDefault(e, x) {
-  // a float compares its bit pattern (§3): a -0 under a +0 default rides
-  if (e.s === "float") { return TableVariableSameFloat(e.f32, x, e.def); }
+  // a float compares its bit pattern (§3): a -0 under a +0 default rides,
+  // except a compressed float's, whose -0 is +0 (§3.3)
+  if (e.s === "float") { return TableVariableSameFloatField(e, x, e.def); }
   return x === e.def;
 }
 
@@ -3728,7 +3745,8 @@ function TableVariableJsonScalar(d, val, depth, g, out) {
     case "bool": out.push(val ? "true" : "false"); return true;
     case "float": {
       if (!TableVariableFloatValid(d, val)) { return false; }
-      const t = TableVariableFloatText(val, d.f32);
+      // a compressed float's -0 is written as +0 (§3.3)
+      const t = TableVariableFloatText(d.lo !== null && val === 0 ? 0 : val, d.f32);
       if (t === null) { return false; }
       out.push(t);
       return true;
@@ -4404,11 +4422,6 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
       let x = Number(n.tok);
       // a magnitude the format cannot hold is the wrong shape for the kind
       if (!Number.isFinite(x)) { report.mismatch++; return true; }
-      let ranged = false;
-      if (d.lo !== null) {
-        if (x < d.lo) { x = d.lo; ranged = true; report.oor++; }
-        else if (x > d.hi) { x = d.hi; ranged = true; report.oor++; }
-      }
       if (d.f32) {
         // ONE correctly-rounded conversion at the field's own width
         // (internal/tabletext read.go placeFloat, strconv.ParseFloat(tok, 32);
@@ -4417,8 +4430,16 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
         // a float32 rounding midpoint — the band between FLT_MAX and the
         // midpoint above it among them — so a tie is broken by the exact
         // decimal, compared with the double in integer arithmetic.
-        x = ranged ? Math.fround(x) : TableVariableF32OfToken(n.tok, x);
+        x = TableVariableF32OfToken(n.tok, x);
         if (!Number.isFinite(x)) { report.mismatch++; return true; }
+      }
+      // A COMPRESSED FLOAT IS HELD TO ITS FLOAT32 ENDS (SPEC §4.6) after the
+      // one rounding, so the text "0.1" every writer emits for 0.1f reads
+      // under max = 0.1; its -0 lands as +0, uncounted (§3.3)
+      if (d.lo !== null) {
+        if (x < d.lo) { x = d.lo; report.oor++; }
+        else if (x > d.hi) { x = d.hi; report.oor++; }
+        else if (x === 0) { x = 0; }
       }
       holder[key] = x;
       return true;
