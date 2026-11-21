@@ -1818,3 +1818,92 @@ write-refusal-json jref_union_tag          tabledemo   RootConfig       testdata
 write-refusal-json jref_count              tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              weapons                                  count   9            refused
 write-refusal-json jref_length             tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              version_note                             length  17           refused
 write-refusal-json jref_bytes_length       tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              profiles[0].icon                         length  17           refused
+
+# ---- REVIEW 2026-11-21: CORPUS CASES FOR THE REVIEW'S FINDINGS ----
+# One block, kept apart from every other stream's rows. Each must-refuse case
+# sits beside an accepted twin on the same root; expectations come from the
+# spec and the rulings (SPEC.md §5.1, SPEC-TABLES.md §16), never from a leg.
+
+# R1. §5.1 write refusal on PLAIN VARIABLE tables (ELIXIR-1, ELIXIR-4, GOOSE-4,
+# SQUIRREL-4): every row before this one put rows 1, 2, 3, 5, 6 and 11 on a
+# fixed root only, so a variable Save's checks were unheld by this surface.
+# row 1, a ranged int, at the field and inside a nested variable table and a list element:
+write-refusal wref_var_range_high      graphdemo   Scene       testdata/wire/tables/graph_tree.bin                        version             int     100                  refused
+write-refusal wref_var_range_high_ok   graphdemo   Scene       testdata/wire/tables/graph_tree.bin                        version             int     99                   wrote
+write-refusal wref_var_range_low       graphdemo   Scene       testdata/wire/tables/graph_tree.bin                        version             int     -1                   refused
+write-refusal wref_var_range_low_ok    graphdemo   Scene       testdata/wire/tables/graph_tree.bin                        version             int     0                    wrote
+write-refusal wref_var_nested_range    graphdemo   Scene       testdata/wire/tables/graph_tree.bin                        ground.depth        int     65                   refused
+write-refusal wref_var_nested_range_ok graphdemo   Scene       testdata/wire/tables/graph_tree.bin                        ground.depth        int     64                   wrote
+write-refusal wref_var_list_range      listdemo    Mixed       testdata/wire/tables/list_mixed.bin                        bounds[1]           int     101                  refused
+write-refusal wref_var_list_range_ok   listdemo    Mixed       testdata/wire/tables/list_mixed.bin                        bounds[1]           int     100                  wrote
+# row 2, bits(N) past 2^N - 1 and below 0:
+write-refusal wref_var_bits13_wide     cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin b_bits13            int     8192                 refused
+write-refusal wref_var_bits13_neg      cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin b_bits13            int     -1                   refused
+write-refusal wref_var_bits13_ok       cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin b_bits13            int     8191                 wrote
+write-refusal wref_var_bits37_wide     cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin b_bits37            int     137438953472         refused
+write-refusal wref_var_bits37_ok       cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin b_bits37            int     137438953471         wrote
+# row 3 above Max, a [..N]T holding N+1 (below Min has no variable root with a Min in the corpus: see the report):
+write-refusal wref_var_count           cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin     bounded_steps       count   5                    refused
+write-refusal wref_var_count_ok        cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin     bounded_steps       count   4                    wrote
+write-refusal wref_var_layers_count    graphdemo   Scene       testdata/wire/tables/graph_tree.bin                        layers              count   5                    refused
+write-refusal wref_var_layers_count_ok graphdemo   Scene       testdata/wire/tables/graph_tree.bin                        layers              count   4                    wrote
+# row 4, a string(N) past N bytes, at a scalar field and inside a union arm:
+write-refusal wref_var_str_length      graphdemo   Scene       testdata/wire/tables/graph_tree.bin                        name                length  25                   refused
+write-refusal wref_var_str_length_ok   graphdemo   Scene       testdata/wire/tables/graph_tree.bin                        name                length  24                   wrote
+write-refusal wref_var_arm_length      cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin     bounded_steps[3].label length 13               refused
+write-refusal wref_var_arm_length_ok   cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin     bounded_steps[3].label length 12               wrote
+# row 5, an enum ordinal outside the variant set:
+write-refusal wref_var_enum            listdemo    Mixed       testdata/wire/tables/list_mixed.bin                        grades[0]           ordinal 3                    refused
+write-refusal wref_var_enum_ok         listdemo    Mixed       testdata/wire/tables/list_mixed.bin                        grades[0]           ordinal 2                    wrote
+# row 6, a union tag past the last arm:
+write-refusal wref_var_union_tag       cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin     bounded_steps[0]    tag     5                    refused
+write-refusal wref_var_union_tag_ok    cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin     bounded_steps[0]    tag     4                    wrote
+write-refusal wref_var_list_tag        listdemo    Mixed       testdata/wire/tables/list_mixed.bin                        hits[0]             tag     3                    refused
+write-refusal wref_var_list_tag_ok     listdemo    Mixed       testdata/wire/tables/list_mixed.bin                        hits[0]             tag     2                    wrote
+# row 11, a bare int past its declared width (a typed leg answers `unrepresentable`):
+write-refusal wref_var_i32_wide        cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin b_i32               int     2147483648           refused
+write-refusal wref_var_i32_low         cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin b_i32               int     -2147483649          refused
+write-refusal wref_var_i32_ok          cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin b_i32               int     2147483647           wrote
+write-refusal wref_var_u8_wide         cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin b_u8                int     256                  refused
+write-refusal wref_var_u8_ok           cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin b_u8                int     255                  wrote
+write-refusal wref_var_u64_wide        cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin b_u64               int     18446744073709551616 refused
+write-refusal wref_var_u64_ok          cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin b_u64               int     18446744073709551615 wrote
+# the same rows through the JSON writer (§16.3: what a writer accepts is what a read accepts):
+write-refusal-json jref_var_range_high    graphdemo   Scene       testdata/wire/tables/graph_tree.bin                        version             int     100                  refused
+write-refusal-json jref_var_range_high_ok graphdemo   Scene       testdata/wire/tables/graph_tree.bin                        version             int     99                   wrote
+write-refusal-json jref_var_bits13_wide   cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin b_bits13            int     8192                 refused
+write-refusal-json jref_var_bits13_ok     cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin b_bits13            int     8191                 wrote
+write-refusal-json jref_var_enum          listdemo    Mixed       testdata/wire/tables/list_mixed.bin                        grades[0]           ordinal 3                    refused
+write-refusal-json jref_var_enum_ok       listdemo    Mixed       testdata/wire/tables/list_mixed.bin                        grades[0]           ordinal 2                    wrote
+write-refusal-json jref_var_arm_length    cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin     bounded_steps[3].label length 13               refused
+write-refusal-json jref_var_arm_length_ok cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin     bounded_steps[3].label length 12               wrote
+
+# R2. JSON read (TABLETEXT-1, 2, 3, 4, 8; UNITY-1; repeated map keys). The cap
+# counts every container, placed or skipped, the root at depth 0: depth 128
+# reads, 129 refuses (SPEC-TABLES §16.2). A map object and a union object are
+# containers like any other.
+json-hostile depth-map-at-cap            mapdemo          Depth   testdata/conformance/tables/json-hostile/depth-map-at-cap            read
+json-hostile depth-map-past-cap          mapdemo          Depth   testdata/conformance/tables/json-hostile/depth-map-past-cap          refused
+json-hostile depth-union-at-cap          mapdemo          Depth   testdata/conformance/tables/json-hostile/depth-union-at-cap          read
+json-hostile depth-union-past-cap        mapdemo          Depth   testdata/conformance/tables/json-hostile/depth-union-past-cap        refused
+json-hostile depth-arm-pointer-at-cap    streamdemo       Feed    testdata/conformance/tables/json-hostile/depth-arm-pointer-at-cap    read
+json-hostile depth-arm-pointer-past-cap  streamdemo       Feed    testdata/conformance/tables/json-hostile/depth-arm-pointer-past-cap  refused
+json-hostile label-with-comma            graphdemo        Scene   testdata/conformance/tables/json-hostile/label-with-comma            read
+json-hostile label-missing-comma         graphdemo        Scene   testdata/conformance/tables/json-hostile/label-missing-comma         refused
+json-hostile label-reference-trailing-comma graphdemo     Scene   testdata/conformance/tables/json-hostile/label-reference-trailing-comma read
+json-hostile skipped-plain-object        graphdemo        Scene   testdata/conformance/tables/json-hostile/skipped-plain-object        read
+json-hostile skipped-reference-before-definition graphdemo Scene  testdata/conformance/tables/json-hostile/skipped-reference-before-definition refused
+json-hostile skipped-label-not-first     graphdemo        Scene   testdata/conformance/tables/json-hostile/skipped-label-not-first     refused
+json-hostile skipped-label-fraction      graphdemo        Scene   testdata/conformance/tables/json-hostile/skipped-label-fraction      refused
+json-hostile skipped-label-misspelled    graphdemo        Scene   testdata/conformance/tables/json-hostile/skipped-label-misspelled    refused
+json-hostile skipped-reference-undefined graphdemo        Scene   testdata/conformance/tables/json-hostile/skipped-reference-undefined refused
+json-hostile skipped-label-defined-twice graphdemo        Scene   testdata/conformance/tables/json-hostile/skipped-label-defined-twice refused
+json-hostile map-key-255                 mapdemo          EdgeRow testdata/conformance/tables/json-hostile/map-key-255                 read
+json-hostile map-key-280                 mapdemo          EdgeRow testdata/conformance/tables/json-hostile/map-key-280                 read
+json-hostile map-key-300                 mapdemo          EdgeRow testdata/conformance/tables/json-hostile/map-key-300                 read
+json-hostile map-key-301                 mapdemo          EdgeRow testdata/conformance/tables/json-hostile/map-key-301                 refused
+json-hostile map-int-key-repeated        mapdemo          EdgeRow testdata/conformance/tables/json-hostile/map-int-key-repeated        refused
+json-hostile map-string-key-repeated     mapdemo          EdgeRow testdata/conformance/tables/json-hostile/map-string-key-repeated     refused
+json-hostile map-keys-distinct           mapdemo          EdgeRow testdata/conformance/tables/json-hostile/map-keys-distinct           read
+json-hostile timestamp-int64-min         featurewitnesses Root    testdata/conformance/tables/json-hostile/timestamp-int64-min         read
+json-hostile timestamp-below-int64-min   featurewitnesses Root    testdata/conformance/tables/json-hostile/timestamp-below-int64-min   refused

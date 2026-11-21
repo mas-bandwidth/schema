@@ -253,11 +253,18 @@ func writeRefusalGoSet(owner, fv reflect.Value, name, kind, text string) error {
 		if !ok {
 			return fmt.Errorf("%s: %q is not an integer", name, text)
 		}
+		// A value past the storage's own width (§5.1 row 11 on a bare int) is
+		// one Go's typed storage cannot hold: the type system refused it
+		// before the writer could, and the leg says so rather than writing a
+		// truncated value and calling it "wrote".
 		switch fv.Kind() {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			if !n.IsInt64() || fv.OverflowInt(n.Int64()) {
+				return errWriteRefusalUnrepresentable
+			}
 			fv.SetInt(n.Int64())
 		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-			if n.Sign() < 0 {
+			if n.Sign() < 0 || !n.IsUint64() || fv.OverflowUint(n.Uint64()) {
 				return errWriteRefusalUnrepresentable
 			}
 			fv.SetUint(n.Uint64())
