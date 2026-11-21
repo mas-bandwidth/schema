@@ -480,13 +480,10 @@ func (c *checker) resolveConst(name string) *ir.Const {
 		if out.Storage == "" {
 			out.Storage = "int64"
 		}
+		// a float-typed constant always takes the branch above (an integer
+		// expression evaluates as a float there), so only integer storage is
+		// judged here
 		switch {
-		case isFloatType:
-			// float-typed constant with an integer expression: converts
-			f, _ := new(big.Float).SetInt(v).Float64()
-			out.IsFloat = true
-			out.Float = f
-			out.Int = nil
 		case e.decl.Type != "":
 			if !fitsStorage(v, e.decl.Type) {
 				c.errf(e.decl.Pos, "constant %s value %s does not fit its declared type %s", name, v, e.decl.Type)
