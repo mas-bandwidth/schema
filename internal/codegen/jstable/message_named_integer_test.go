@@ -73,9 +73,9 @@ func TestJsMessageNamedIntegerHeldWhole(t *testing.T) {
 	}
 	for _, want := range []string{
 		"tableMessageReadInteger(r.Bits, entry.Shape)",
-		"if (!holds || x < 0n || x > 255n) { r.Report.Oor++;",
-		"if (!holds || x < 0n || x > 65535n) { r.Report.Oor++;",
-		"if (!holds || x < 0n || x > 511n) { r.Report.Oor++;",
+		"if (!holds || x < 0n || x > 255n) { TableMessageRefuse(r.Report, \"out_of_range\"); return false; }",
+		"if (!holds || x < 0n || x > 65535n) { TableMessageRefuse(r.Report, \"out_of_range\"); return false; }",
+		"if (!holds || x < 0n || x > 511n) { TableMessageRefuse(r.Report, \"out_of_range\"); return false; }",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the named read lacks %q:\n%s", want, body)
