@@ -141,7 +141,7 @@ const tableJsonExtentAdapters = `
 inline int32_t TableJsonExtentCount( const void * slot )
 {
     int32_t count = 0;
-    memcpy( &count, (const uint8_t *) slot + 8, sizeof( count ) );
+    memcpy( &count, reinterpret_cast<const uint8_t *>( slot ) + 8, sizeof( count ) );
     return count < 0 ? 0 : count;
 }
 
@@ -149,7 +149,7 @@ inline const uint8_t * TableJsonExtentElements( const void * slot )
 {
     int64_t delta = 0;
     memcpy( &delta, slot, sizeof( delta ) );
-    return delta != 0 ? (const uint8_t *) slot + delta : NULL;
+    return delta != 0 ? reinterpret_cast<const uint8_t *>( slot ) + delta : NULL;
 }
 `
 
@@ -220,38 +220,38 @@ inline void TableJsonWriteMapIntegerKey( TableJsonOut & out, const void * storag
         int64_t value = 0;
         switch ( key->kind )
         {
-            case 2: value = (int64_t) *(const int8_t *) storage; break;
-            case 3: value = (int64_t) *(const int16_t *) storage; break;
-            case 4: value = (int64_t) *(const int32_t *) storage; break;
-            default: value = *(const int64_t *) storage; break;
+            case 2: value = static_cast<int64_t>( *reinterpret_cast<const int8_t *>( storage ) ); break;
+            case 3: value = static_cast<int64_t>( *reinterpret_cast<const int16_t *>( storage ) ); break;
+            case 4: value = static_cast<int64_t>( *reinterpret_cast<const int32_t *>( storage ) ); break;
+            default: value = *reinterpret_cast<const int64_t *>( storage ); break;
         }
         negative = value < 0;
-        magnitude = negative ? ( ~(uint64_t) value ) + 1 : (uint64_t) value;
+        magnitude = negative ? ( ~static_cast<uint64_t>( value ) ) + 1 : static_cast<uint64_t>( value );
     }
     else
     {
         switch ( key->kind )
         {
-            case 6: magnitude = (uint64_t) *(const uint8_t *) storage; break;
-            case 7: magnitude = (uint64_t) *(const uint16_t *) storage; break;
-            case 8: magnitude = (uint64_t) *(const uint32_t *) storage; break;
-            default: magnitude = *(const uint64_t *) storage; break;
+            case 6: magnitude = static_cast<uint64_t>( *reinterpret_cast<const uint8_t *>( storage ) ); break;
+            case 7: magnitude = static_cast<uint64_t>( *reinterpret_cast<const uint16_t *>( storage ) ); break;
+            case 8: magnitude = static_cast<uint64_t>( *reinterpret_cast<const uint32_t *>( storage ) ); break;
+            default: magnitude = *reinterpret_cast<const uint64_t *>( storage ); break;
         }
     }
     char digits[24];
-    int32_t at = (int32_t) sizeof( digits );
+    int32_t at = static_cast<int32_t>( sizeof( digits ) );
     do
     {
-        digits[--at] = (char) ( '0' + ( magnitude % 10 ) );
+        digits[--at] = static_cast<char>( '0' + ( magnitude % 10 ) );
         magnitude /= 10;
     } while ( magnitude != 0 );
     if ( negative ) { digits[--at] = '-'; }
-    TableJsonWriteString( out, digits + at, (int32_t) sizeof( digits ) - at );
+    TableJsonWriteString( out, digits + at, static_cast<int32_t>( sizeof( digits ) ) - at );
 }
 
 inline void TableJsonWriteMapKey( TableJsonOut & out, const void * entry, const TableFieldInfo * key )
 {
-    const uint8_t * storage = (const uint8_t *) entry + key->offset;
+    const uint8_t * storage = reinterpret_cast<const uint8_t *>( entry ) + key->offset;
     if ( TableJsonMapKeyIsString( key ) )
     {
         if ( key->unbounded )
@@ -264,10 +264,10 @@ inline void TableJsonWriteMapKey( TableJsonOut & out, const void * entry, const 
         // A STRING KEY IS THE STRING (§2.8): every JSON key of a map object is
         // a KEY OF THE MAP and none is a field key, so the ` + "`&`" + ` prefix §16.7
         // reserves for field keys is ordinary data here.
-        TableJsonWriteString( out, (const char *) storage, *(const int32_t *) ( (const uint8_t *) entry + key->count_offset ) );
+        TableJsonWriteString( out, reinterpret_cast<const char *>( storage ), *reinterpret_cast<const int32_t *>( reinterpret_cast<const uint8_t *>( entry ) + key->count_offset ) );
         return;
     }
-    TableJsonWriteMapIntegerKey( out, (const void *) storage, key );
+    TableJsonWriteMapIntegerKey( out, reinterpret_cast<const void *>( storage ), key );
 }
 
 // ToJson WRITES ENTRIES IN ASCENDING KEY ORDER, so unpack then pack is
@@ -289,12 +289,12 @@ inline bool TableJsonWriteMap( TableJsonOut & out, const void * slot, const Tabl
     {
         if ( i > 0 ) { out.put( ',' ); }
         out.line( depth + 1 );
-        const void * entry = (const void *) ( entries + (int64_t) i * f->elem_size );
+        const void * entry = reinterpret_cast<const void *>( entries + static_cast<int64_t>( i ) * f->elem_size );
         TableJsonWriteMapKey( out, entry, key );
         out.raw( ": ", 2 );
         // A map entry cannot omit its value: an absent optional is null,
         // while the key remains in the map (§2.8, §16.2).
-        if ( value->optional && TableJsonGetRaw( (const uint8_t *) entry + value->present_offset, 1 ) == 0 )
+        if ( value->optional && TableJsonGetRaw( reinterpret_cast<const uint8_t *>( entry ) + value->present_offset, 1 ) == 0 )
         {
             out.raw( "null", 4 );
         }
@@ -325,13 +325,13 @@ inline bool TableJsonMapKeyValue( const char * token, int32_t length, const Tabl
     TableReport scratch;
     TableJsonIn probe{};
     probe.text = token;
-    probe.size = (int64_t) length;
+    probe.size = static_cast<int64_t>( length );
     probe.report = &scratch;
     bool integral = false;
     TableJsonSpace( probe );
     if ( probe.pos != 0 ) { return false; } // whitespace is never part of a key
     if ( !TableJsonWalkNumber( probe, &integral ) ) { return false; }
-    if ( probe.pos != (int64_t) length ) { return false; } // trailing bytes: not a number
+    if ( probe.pos != static_cast<int64_t>( length ) ) { return false; } // trailing bytes: not a number
     if ( !TableJsonIntegerTokenOnly( token, length ) ) { return true; } // fraction, exponent or -0: no entry
     // A MAP KEY'S POLICY over the one interpreted value: it REJECTS THE WHOLE
     // ENTRY. A key is an identity, so a out_of_range one is two entries merged, and
@@ -340,7 +340,7 @@ inline bool TableJsonMapKeyValue( const char * token, int32_t length, const Tabl
     const TableJsonInteger number = TableJsonInterpretExact( token, length );
     if ( number.fractional || number.saturated ) { return true; }
     bool moved = false;
-    value = TableJsonIntegerInDomain( number, TableJsonMapKeySigned( key ), (int32_t) key->elem_size, moved );
+    value = TableJsonIntegerInDomain( number, TableJsonMapKeySigned( key ), static_cast<int32_t>( key->elem_size ), moved );
     fits = !moved;
     return true;
 }
@@ -350,7 +350,7 @@ inline bool TableJsonMapKeyValue( const char * token, int32_t length, const Tabl
 // map. An empty object is an empty map, and null is kind_mismatch.
 inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInfo * f, int32_t depth )
 {
-    TableJsonGraphIn * graph = (TableJsonGraphIn *) in.graph;
+    TableJsonGraphIn * graph = reinterpret_cast<TableJsonGraphIn *>( in.graph );
     if ( graph == NULL )
     {
         in.report->damaged = true;
@@ -393,7 +393,7 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
             const int64_t mark = in.pos;
             if ( !TableJsonScanString( in, NULL, 0, &token_length, NULL, true ) ) { return false; }
             in.pos = mark;
-            if ( (int64_t) token_length > kTableBlobMaxLength )
+            if ( static_cast<int64_t>( token_length ) > kTableBlobMaxLength )
             {
                 in.report->damaged = true;
                 in.bad = true;
@@ -406,7 +406,7 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
             }
             else
             {
-                key_heap = (char *) table_allocate( graph->worker->arena->allocator, (int64_t) token_length + 1 );
+                key_heap = reinterpret_cast<char *>( table_allocate( graph->worker->arena->allocator, static_cast<int64_t>( token_length ) + 1 ) );
                 if ( key_heap == NULL )
                 {
                     in.report->damaged = true;
@@ -479,7 +479,7 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
             in.report->refuse_reason = out_of_range;
             place = false;
         }
-        const int32_t before = TableJsonExtentCount( (const void *) slot );
+        const int32_t before = TableJsonExtentCount( reinterpret_cast<const void *>( slot ) );
         void * entry = place ? f->place( *graph->worker, slot, key_str, token_length, key_value ) : NULL;
         if ( key_heap != NULL ) { table_release( graph->worker->arena->allocator, key_heap ); }
         if ( place && entry == NULL )
@@ -493,7 +493,7 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
             in.bad = true;
             return false;
         }
-        else if ( entry != NULL && TableJsonExtentCount( (const void *) slot ) == before )
+        else if ( entry != NULL && TableJsonExtentCount( reinterpret_cast<const void *>( slot ) ) == before )
         {
             in.report->refused = true;
             in.report->refuse_reason = malformed; // last-wins, the object rule inside the map
@@ -508,7 +508,7 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
             // Place resets the value, including a replaced entry, so null
             // leaves it absent at its defaults just as a field's null does.
             if ( !TableJsonLiteral( in, "null" ) ) { return false; }
-            TableJsonSetRaw( (uint8_t *) entry + value->present_offset, 1, 0 );
+            TableJsonSetRaw( reinterpret_cast<uint8_t *>( entry ) + value->present_offset, 1, 0 );
         }
         else if ( value->kind == 17 && !value->is_array )
         {
@@ -520,7 +520,7 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
             if ( got == 'z' )
             {
                 if ( !TableJsonLiteral( in, "null" ) ) { return false; }
-                TableJsonSetRaw( (uint8_t *) entry + value->offset, value->elem_size, 0 );
+                TableJsonSetRaw( reinterpret_cast<uint8_t *>( entry ) + value->offset, value->elem_size, 0 );
             }
             else if ( !TableJsonFieldShapeFits( value, got ) )
             {
@@ -528,7 +528,7 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
                 in.report->refuse_reason = kind_mismatch;
                 if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
             }
-            else if ( !TableJsonReadPointer( in, (uint8_t *) entry + value->offset, value, depth + 1 ) )
+            else if ( !TableJsonReadPointer( in, reinterpret_cast<uint8_t *>( entry ) + value->offset, value, depth + 1 ) )
             {
                 return false;
             }
@@ -539,13 +539,13 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
             in.report->refuse_reason = kind_mismatch;
             // As for an optional field, a non-null key supplies presence
             // even when its value is refused back to the declared defaults.
-            if ( value->optional ) { TableJsonSetRaw( (uint8_t *) entry + value->present_offset, 1, 1 ); }
+            if ( value->optional ) { TableJsonSetRaw( reinterpret_cast<uint8_t *>( entry ) + value->present_offset, 1, 1 ); }
             if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
         }
         else
         {
             if ( !TableJsonReadField( in, entry, value, depth + 1 ) ) { return false; }
-            if ( value->optional ) { TableJsonSetRaw( (uint8_t *) entry + value->present_offset, 1, 1 ); }
+            if ( value->optional ) { TableJsonSetRaw( reinterpret_cast<uint8_t *>( entry ) + value->present_offset, 1, 1 ); }
         }
         c = TableJsonPeek( in );
         if ( c == ',' )
@@ -621,7 +621,7 @@ inline bool TableJsonWriteList( TableJsonOut & out, const void * slot, const Tab
     {
         if ( i > 0 ) { out.put( ',' ); }
         out.line( depth + 1 );
-        const uint8_t * element = elements + (int64_t) i * f->elem_size;
+        const uint8_t * element = elements + static_cast<int64_t>( i ) * f->elem_size;
         if ( f->text_list != 0 )
         {
             if ( !schema_table_json_write_text_element_( out, element, f ) ) { return false; }
@@ -646,7 +646,7 @@ inline bool TableJsonWriteList( TableJsonOut & out, const void * slot, const Tab
 // land, the builder's storage being reclaimed at reset (§2.9).
 inline bool TableJsonReadList( TableJsonIn & in, void * slot, const TableFieldInfo * f, int32_t depth )
 {
-    TableJsonGraphIn * graph = (TableJsonGraphIn *) in.graph;
+    TableJsonGraphIn * graph = reinterpret_cast<TableJsonGraphIn *>( in.graph );
     if ( graph == NULL )
     {
         in.report->damaged = true;
@@ -664,8 +664,8 @@ inline bool TableJsonReadList( TableJsonIn & in, void * slot, const TableFieldIn
         return false;
     }
     in.pos++;
-    TableJsonSetRaw( (uint8_t *) slot, 8, 0 );
-    TableJsonSetRaw( (uint8_t *) slot + 8, 4, 0 );
+    TableJsonSetRaw( reinterpret_cast<uint8_t *>( slot ), 8, 0 );
+    TableJsonSetRaw( reinterpret_cast<uint8_t *>( slot ) + 8, 4, 0 );
     int64_t spent = 0;
     bool total_oor_flag = false;
     for ( ;; )
@@ -711,8 +711,8 @@ inline bool TableJsonReadList( TableJsonIn & in, void * slot, const TableFieldIn
         if ( f->text_list != 0 )
         {
             int32_t elem_bytes = 0;
-            if ( !schema_table_json_read_text_element_( in, (uint8_t *) element, f, depth, elem_bytes ) ) { return false; }
-            if ( f->text_total > 0 && spent + (int64_t) elem_bytes > f->text_total )
+            if ( !schema_table_json_read_text_element_( in, reinterpret_cast<uint8_t *>( element ), f, depth, elem_bytes ) ) { return false; }
+            if ( f->text_total > 0 && spent + static_cast<int64_t>( elem_bytes ) > f->text_total )
             {
                 in.report->refused = true;
                 in.report->refuse_reason = out_of_range;
@@ -721,7 +721,7 @@ inline bool TableJsonReadList( TableJsonIn & in, void * slot, const TableFieldIn
             }
             else
             {
-                spent += (int64_t) elem_bytes;
+                spent += static_cast<int64_t>( elem_bytes );
             }
         }
         else if ( f->kind == 17 )
@@ -732,7 +732,7 @@ inline bool TableJsonReadList( TableJsonIn & in, void * slot, const TableFieldIn
             if ( got == 'z' )
             {
                 if ( !TableJsonLiteral( in, "null" ) ) { return false; }
-                TableJsonSetRaw( (uint8_t *) element, f->elem_size, 0 );
+                TableJsonSetRaw( reinterpret_cast<uint8_t *>( element ), f->elem_size, 0 );
             }
             else if ( got != 'o' )
             {
@@ -1019,19 +1019,19 @@ inline void TableJsonSetRaw( void * storage, uint32_t width, uint64_t value )
     {
         case 1:
         {
-            uint8_t v = (uint8_t) value;
+            uint8_t v = static_cast<uint8_t>( value );
             memcpy( storage, &v, 1 );
             break;
         }
         case 2:
         {
-            uint16_t v = (uint16_t) value;
+            uint16_t v = static_cast<uint16_t>( value );
             memcpy( storage, &v, 2 );
             break;
         }
         case 4:
         {
-            uint32_t v = (uint32_t) value;
+            uint32_t v = static_cast<uint32_t>( value );
             memcpy( storage, &v, 4 );
             break;
         }
@@ -1056,7 +1056,7 @@ inline int64_t TableJsonGetSigned( const void * storage, uint32_t width )
             raw |= ~( ( sign << 1 ) - 1 );
         }
     }
-    return (int64_t) raw;
+    return static_cast<int64_t>( raw );
 }
 
 // ---- the WIDE kinds (docs/SPEC-TABLES.md §3, §16.2) ----
@@ -1150,7 +1150,7 @@ inline uint32_t TableJsonWideMulAdd( TableJsonWide * v, uint32_t m, uint32_t a )
     }
     v->lo = limb[0] | ( limb[1] << 32 );
     v->hi = limb[2] | ( limb[3] << 32 );
-    return (uint32_t) carry;
+    return static_cast<uint32_t>( carry );
 }
 
 // v = v / d; the return is the remainder
@@ -1166,7 +1166,7 @@ inline uint32_t TableJsonWideDiv( TableJsonWide * v, uint32_t d )
     }
     v->lo = limb[0] | ( limb[1] << 32 );
     v->hi = limb[2] | ( limb[3] << 32 );
-    return (uint32_t) rem;
+    return static_cast<uint32_t>( rem );
 }
 
 // The storage of a wide kind, as lanes. A sixteen-byte storage is serialize's
@@ -1181,12 +1181,12 @@ inline TableJsonWide TableJsonWideLoad( const void * storage, uint32_t width, bo
         uint64_t half[2];
         memcpy( half, storage, 16 );
         uint16_t probe = 1;
-        bool little = *(const uint8_t *) &probe == 1;
+        bool little = *reinterpret_cast<const uint8_t *>( &probe ) == 1;
         v.lo = little ? half[0] : half[1];
         v.hi = little ? half[1] : half[0];
         return v;
     }
-    v.lo = is_signed ? (uint64_t) TableJsonGetSigned( storage, width ) : TableJsonGetRaw( storage, width );
+    v.lo = is_signed ? static_cast<uint64_t>( TableJsonGetSigned( storage, width ) ) : TableJsonGetRaw( storage, width );
     v.hi = ( is_signed && ( v.lo >> 63 ) != 0 ) ? ~uint64_t( 0 ) : 0;
     return v;
 }
@@ -1196,7 +1196,7 @@ inline void TableJsonWideStore( void * storage, uint32_t width, TableJsonWide v 
     if ( width == 16 )
     {
         uint16_t probe = 1;
-        bool little = *(const uint8_t *) &probe == 1;
+        bool little = *reinterpret_cast<const uint8_t *>( &probe ) == 1;
         uint64_t half[2];
         half[0] = little ? v.lo : v.hi;
         half[1] = little ? v.hi : v.lo;
@@ -1216,7 +1216,7 @@ inline bool TableJsonCountInContract( const void * base, const TableFieldInfo * 
         return true;
     }
     int32_t count = 0;
-    memcpy( &count, (const uint8_t *) base + f->count_offset, sizeof( count ) );
+    memcpy( &count, reinterpret_cast<const uint8_t *>( base ) + f->count_offset, sizeof( count ) );
     return count >= 0 && count <= f->array_bound;
 }
 
@@ -1240,7 +1240,7 @@ inline int32_t TableJsonCount( const void * base, const TableFieldInfo * f )
         return f->array_bound;
     }
     int32_t count = 0;
-    memcpy( &count, (const uint8_t *) base + f->count_offset, sizeof( count ) );
+    memcpy( &count, reinterpret_cast<const uint8_t *>( base ) + f->count_offset, sizeof( count ) );
     if ( count < 0 ) { count = 0; }
     if ( count > f->array_bound ) { count = f->array_bound; }
     return count;
@@ -1250,7 +1250,7 @@ inline void TableJsonSetCount( void * base, const TableFieldInfo * f, int32_t co
 {
     if ( f->counted )
     {
-        memcpy( (uint8_t *) base + f->count_offset, &count, sizeof( count ) );
+        memcpy( reinterpret_cast<uint8_t *>( base ) + f->count_offset, &count, sizeof( count ) );
     }
 }
 
@@ -1286,7 +1286,7 @@ inline bool TableJsonIsKeyed( const TableFieldInfo * f )
 // the walker spells the shift.
 inline uint64_t TableJsonKeyedSlotKey( int64_t slot )
 {
-    return (uint64_t) ( slot + 1 );
+    return static_cast<uint64_t>( slot + 1 );
 }
 
 // A slot whose key names a variant of the keying enum. Every slot in
@@ -1382,14 +1382,14 @@ inline bool TableJsonGuardHolds( const void * base, const TableTypeInfo * info, 
         }
         const char * start = p;
         while ( *p != 0 && *p != ' ' && *p != '&' ) { p++; }
-        size_t length = (size_t) ( p - start );
+        size_t length = static_cast<size_t>( p - start );
         bool value = false;
         for ( int32_t i = 0; i < info->num_fields; i++ )
         {
             const TableFieldInfo * f = &info->fields[i];
             if ( strlen( f->name ) == length && strncmp( f->name, start, length ) == 0 )
             {
-                value = TableJsonGetRaw( (const uint8_t *) base + f->offset, f->elem_size ) != 0;
+                value = TableJsonGetRaw( reinterpret_cast<const uint8_t *>( base ) + f->offset, f->elem_size ) != 0;
                 break;
             }
         }
@@ -1422,12 +1422,12 @@ struct TableJsonOut
                 overflow = true;
                 return;
             }
-            memcpy( buffer + offset, data, (size_t) count );
+            memcpy( buffer + offset, data, static_cast<size_t>( count ) );
         }
         offset += count;
     }
     void put( char c ) { raw( &c, 1 ); }
-    void text( const char * s ) { raw( s, (int64_t) strlen( s ) ); }
+    void text( const char * s ) { raw( s, static_cast<int64_t>( strlen( s ) ) ); }
     void line( int32_t depth )
     {
         put( '\n' );
@@ -1734,7 +1734,7 @@ inline void TableJsonWriteBase64( TableJsonOut & out, const uint8_t * data, int3
 // anything past U+10FFFF.
 inline int32_t TableJsonUtf8( const char * s, int32_t remaining, int32_t * width )
 {
-    unsigned char lead = (unsigned char) s[0];
+    unsigned char lead = static_cast<unsigned char>( s[0] );
     int32_t want = 0;
     int32_t code = 0;
     if ( lead < 0x80 )
@@ -1764,7 +1764,7 @@ inline int32_t TableJsonUtf8( const char * s, int32_t remaining, int32_t * width
     if ( remaining < want ) { return -1; }
     for ( int32_t i = 1; i < want; i++ )
     {
-        unsigned char next = (unsigned char) s[i];
+        unsigned char next = static_cast<unsigned char>( s[i] );
         if ( ( next & 0xc0 ) != 0x80 ) { return -1; }
         code = ( code << 6 ) | ( next & 0x3f );
     }
@@ -1784,26 +1784,26 @@ inline int32_t TableJsonEncodeUtf8( uint32_t code, char * unit )
 {
     if ( code < 0x80 )
     {
-        unit[0] = (char) code;
+        unit[0] = static_cast<char>( code );
         return 1;
     }
     if ( code < 0x800 )
     {
-        unit[0] = (char) ( 0xc0 | ( code >> 6 ) );
-        unit[1] = (char) ( 0x80 | ( code & 0x3f ) );
+        unit[0] = static_cast<char>( 0xc0 | ( code >> 6 ) );
+        unit[1] = static_cast<char>( 0x80 | ( code & 0x3f ) );
         return 2;
     }
     if ( code < 0x10000 )
     {
-        unit[0] = (char) ( 0xe0 | ( code >> 12 ) );
-        unit[1] = (char) ( 0x80 | ( ( code >> 6 ) & 0x3f ) );
-        unit[2] = (char) ( 0x80 | ( code & 0x3f ) );
+        unit[0] = static_cast<char>( 0xe0 | ( code >> 12 ) );
+        unit[1] = static_cast<char>( 0x80 | ( ( code >> 6 ) & 0x3f ) );
+        unit[2] = static_cast<char>( 0x80 | ( code & 0x3f ) );
         return 3;
     }
-    unit[0] = (char) ( 0xf0 | ( code >> 18 ) );
-    unit[1] = (char) ( 0x80 | ( ( code >> 12 ) & 0x3f ) );
-    unit[2] = (char) ( 0x80 | ( ( code >> 6 ) & 0x3f ) );
-    unit[3] = (char) ( 0x80 | ( code & 0x3f ) );
+    unit[0] = static_cast<char>( 0xf0 | ( code >> 18 ) );
+    unit[1] = static_cast<char>( 0x80 | ( ( code >> 12 ) & 0x3f ) );
+    unit[2] = static_cast<char>( 0x80 | ( ( code >> 6 ) & 0x3f ) );
+    unit[3] = static_cast<char>( 0x80 | ( code & 0x3f ) );
     return 4;
 }
 
@@ -1821,7 +1821,7 @@ inline void TableJsonWriteString( TableJsonOut & out, const char * s, int32_t le
     out.put( '"' );
     for ( int32_t i = 0; i < length; i++ )
     {
-        unsigned char c = (unsigned char) s[i];
+        unsigned char c = static_cast<unsigned char>( s[i] );
         switch ( c )
         {
             case '"': out.raw( "\\\"", 2 ); break;
@@ -1845,7 +1845,7 @@ inline void TableJsonWriteString( TableJsonOut & out, const char * s, int32_t le
                 }
                 else if ( c < 0x80 )
                 {
-                    out.put( (char) c );
+                    out.put( static_cast<char>( c ) );
                 }
                 else
                 {
@@ -1874,7 +1874,7 @@ inline void TableJsonWriteUnsigned( TableJsonOut & out, uint64_t value )
     int32_t n = 0;
     do
     {
-        digits[n++] = (char) ( '0' + (int) ( value % 10 ) );
+        digits[n++] = static_cast<char>( '0' + static_cast<int>( value % 10 ) );
         value /= 10;
     } while ( value != 0 );
     char text[24];
@@ -1887,10 +1887,10 @@ inline void TableJsonWriteSigned( TableJsonOut & out, int64_t value )
     if ( value < 0 )
     {
         out.put( '-' );
-        TableJsonWriteUnsigned( out, uint64_t( 0 ) - (uint64_t) value );
+        TableJsonWriteUnsigned( out, uint64_t( 0 ) - static_cast<uint64_t>( value ) );
         return;
     }
-    TableJsonWriteUnsigned( out, (uint64_t) value );
+    TableJsonWriteUnsigned( out, static_cast<uint64_t>( value ) );
 }
 
 // A wide kind writes its raw storage as §16.2's text: a 128-bit integer as a
@@ -1913,7 +1913,7 @@ inline void TableJsonWriteWide( TableJsonOut & out, const void * storage, const 
     int32_t n = 0;
     do
     {
-        digits[n++] = (char) ( '0' + (int) TableJsonWideDiv( &whole, 10 ) );
+        digits[n++] = static_cast<char>( '0' + static_cast<int>( TableJsonWideDiv( &whole, 10 ) ) );
     } while ( !TableJsonWideZero( whole ) );
     char text[40];
     for ( int32_t i = 0; i < n; i++ ) { text[i] = digits[n - 1 - i]; }
@@ -1944,7 +1944,7 @@ inline void TableJsonWriteWide( TableJsonOut & out, const void * storage, const 
         uint32_t carry = TableJsonWideMulAdd( &fraction, 10, 0 );
         uint64_t digit = TableJsonWideShr( fraction, frac ).lo;
         if ( frac > 64 ) { digit |= uint64_t( carry ) << ( 128 - frac ); }
-        out.put( (char) ( '0' + (int) digit ) );
+        out.put( static_cast<char>( '0' + static_cast<int>( digit ) ) );
         if ( frac < 64 )
         {
             fraction.hi = 0;
@@ -1985,13 +1985,13 @@ inline bool TableJsonWriteFloat( TableJsonOut & out, double value, bool single )
     for ( int digits = low;; digits++ )
     {
         length = snprintf( text, sizeof( text ), "%.*g", digits, value );
-        if ( length <= 0 || length >= (int) sizeof( text ) ) { return false; }
+        if ( length <= 0 || length >= static_cast<int>( sizeof( text ) ) ) { return false; }
         if ( digits >= high ) { break; }
         // the round-trip check runs BEFORE the decimal point is normalised:
         // the token still carries whatever point snprintf just produced
         if ( single )
         {
-            if ( TableJsonSameDouble( (double) strtof( text, NULL ), value ) ) { break; }
+            if ( TableJsonSameDouble( static_cast<double>( strtof( text, NULL ) ), value ) ) { break; }
         }
         else
         {
@@ -2034,9 +2034,9 @@ inline void TableJsonCivilFromDays( int64_t z, int * year, int * month, int * da
     const int64_t mp = ( 5 * doy + 2 ) / 153;
     const int64_t d = doy - ( 153 * mp + 2 ) / 5 + 1;
     const int64_t m = mp < 10 ? mp + 3 : mp - 9;
-    *year = (int) ( y + ( m <= 2 ? 1 : 0 ) );
-    *month = (int) m;
-    *day = (int) d;
+    *year = static_cast<int>( y + ( m <= 2 ? 1 : 0 ) );
+    *month = static_cast<int>( m );
+    *day = static_cast<int>( d );
 }
 
 inline bool TableJsonWriteTimestamp( TableJsonOut & out, const void * storage )
@@ -2060,18 +2060,18 @@ inline bool TableJsonWriteTimestamp( TableJsonOut & out, const void * storage )
     }
     int year = 0, month = 0, day = 0;
     TableJsonCivilFromDays( days, &year, &month, &day );
-    const int hour = (int) ( second_of_day / 3600 );
-    const int minute = (int) ( ( second_of_day / 60 ) % 60 );
-    const int second = (int) ( second_of_day % 60 );
+    const int hour = static_cast<int>( second_of_day / 3600 );
+    const int minute = static_cast<int>( ( second_of_day / 60 ) % 60 );
+    const int second = static_cast<int>( second_of_day % 60 );
     char text[48];
     const int length = snprintf( text, sizeof( text ), "%04d-%02d-%02dT%02d:%02d:%02d", year, month, day, hour, minute, second );
-    if ( length <= 0 || length >= (int) sizeof( text ) ) { return false; }
+    if ( length <= 0 || length >= static_cast<int>( sizeof( text ) ) ) { return false; }
     out.put( '"' );
     out.raw( text, length );
     if ( fraction != 0 )
     {
         char digits[32];
-        snprintf( digits, sizeof( digits ), "%09lld", (long long) fraction );
+        snprintf( digits, sizeof( digits ), "%09lld", static_cast<long long>( fraction ) );
         int placed = 9;
         while ( placed > 1 && digits[placed - 1] == '0' ) { placed--; }
         out.put( '.' );
@@ -2094,11 +2094,11 @@ inline const char * schema_table_json_unbounded_text_at_( const void * slot, int
         len = 0;
         return "";
     }
-    const uint8_t * raw = (const uint8_t *) ( (uintptr_t) slot + (uintptr_t) delta );
+    const uint8_t * raw = reinterpret_cast<const uint8_t *>( static_cast<uintptr_t>( slot ) + static_cast<uintptr_t>( delta ) );
     uint32_t u = 0;
     memcpy( &u, raw, 4 );
-    len = (int32_t) u;
-    return (const char *) ( raw + 8 );
+    len = static_cast<int32_t>( u );
+    return reinterpret_cast<const char *>( raw + 8 );
 }
 
 inline bool schema_table_json_write_text_element_( TableJsonOut & out, const uint8_t * element, const TableFieldInfo * f )
@@ -2121,7 +2121,7 @@ inline bool schema_table_json_write_text_element_( TableJsonOut & out, const uin
     {
         return false;
     }
-    TableJsonWriteString( out, (const char *) val_storage, TableJsonCount( element, value ) );
+    TableJsonWriteString( out, reinterpret_cast<const char *>( val_storage ), TableJsonCount( element, value ) );
     return true;
 }
 
@@ -2135,13 +2135,13 @@ inline bool TableJsonWriteScalar( TableJsonOut & out, const void * storage, cons
     {
         // a union is an object with ONE key, the arm's name; None is {}
         const TableUnionInfo * arms = f->arms();
-        uint64_t tag = TableJsonGetRaw( (const uint8_t *) storage + arms->tag_offset, arms->tag_size );
+        uint64_t tag = TableJsonGetRaw( reinterpret_cast<const uint8_t *>( storage ) + arms->tag_offset, arms->tag_size );
         if ( tag == 0 )
         {
             out.raw( "{}", 2 );
             return true;
         }
-        if ( (int64_t) tag > f->enum_max )
+        if ( static_cast<int64_t>( tag ) > f->enum_max )
         {
             return false; // a tag no arm names, exactly as measure refuses it
         }
@@ -2153,7 +2153,7 @@ inline bool TableJsonWriteScalar( TableJsonOut & out, const void * storage, cons
         if ( !TableJsonNamed( arm ) ) { return false; }
         out.put( '{' );
         out.line( depth + 1 );
-        TableJsonWriteString( out, arm, (int32_t) strlen( arm ) );
+        TableJsonWriteString( out, arm, static_cast<int32_t>( strlen( arm ) ) );
         out.raw( ": ", 2 );
         // THE ARM'S VALUE TAKES THE ARM'S OWN ROW (§16.2): an arm that names
         // no declaration carries the FIELD descriptor a field of its type
@@ -2170,7 +2170,7 @@ inline bool TableJsonWriteScalar( TableJsonOut & out, const void * storage, cons
         {
             out.raw( "null", 4 ); // a payload-free arm: the name selects it (§2.6)
         }
-        else if ( !TableJsonWriteValue( out, (const uint8_t *) storage + arms->arms[tag].offset, arms->arms[tag].table, depth + 1 ) )
+        else if ( !TableJsonWriteValue( out, reinterpret_cast<const uint8_t *>( storage ) + arms->arms[tag].offset, arms->arms[tag].table, depth + 1 ) )
         {
             return false;
         }
@@ -2188,11 +2188,11 @@ inline bool TableJsonWriteScalar( TableJsonOut & out, const void * storage, cons
         // a value no variant names has no text spelling, exactly as it has no
         // wire identity: the writer REFUSES rather than writing None over it,
         // the rule measure and save already apply (docs/SPEC-TABLES.md §5)
-        if ( (int64_t) value > f->enum_max ) { return false; }
+        if ( static_cast<int64_t>( value ) > f->enum_max ) { return false; }
         if ( value != 0 && f->variant_id( value ) == 0 ) { return false; }
         const char * name = f->enum_name( value );
         if ( !TableJsonNamed( name ) ) { return false; }
-        TableJsonWriteString( out, name, (int32_t) strlen( name ) );
+        TableJsonWriteString( out, name, static_cast<int32_t>( strlen( name ) ) );
         return true;
     }
     if ( TableJsonIsFlags( f ) )
@@ -2212,12 +2212,12 @@ inline bool TableJsonWriteScalar( TableJsonOut & out, const void * storage, cons
             {
                 return false; // a bit no variant names has no text spelling
             }
-            const char * name = f->enum_name( (uint64_t) bit );
+            const char * name = f->enum_name( static_cast<uint64_t>( bit ) );
             if ( !TableJsonNamed( name ) ) { return false; }
             if ( !first ) { out.put( ',' ); }
             first = false;
             out.line( depth + 1 );
-            TableJsonWriteString( out, name, (int32_t) strlen( name ) );
+            TableJsonWriteString( out, name, static_cast<int32_t>( strlen( name ) ) );
         }
         out.line( depth );
         out.put( ']' );
@@ -2247,8 +2247,8 @@ inline bool TableJsonWriteScalar( TableJsonOut & out, const void * storage, cons
         {
             float v = 0.0f;
             memcpy( &v, storage, sizeof( v ) );
-            if ( f->has_range && ( v < (float) f->range_min || v > (float) f->range_max ) ) { return false; }
-            return TableJsonWriteFloat( out, (double) v, true );
+            if ( f->has_range && ( v < static_cast<float>( f->range_min ) || v > static_cast<float>( f->range_max ) ) ) { return false; }
+            return TableJsonWriteFloat( out, static_cast<double>( v ), true );
         }
         case 11:
         {
@@ -2294,14 +2294,14 @@ inline bool TableJsonWriteScalar( TableJsonOut & out, const void * storage, cons
 
 inline bool TableJsonWriteField( TableJsonOut & out, const void * base, const TableFieldInfo * f, int32_t depth )
 {
-    const uint8_t * storage = (const uint8_t *) base + f->offset;
+    const uint8_t * storage = reinterpret_cast<const uint8_t *>( base ) + f->offset;
     if ( TableJsonIsMap( f ) )
     {
-        return TableJsonWriteMap( out, (const void *) storage, f, depth );
+        return TableJsonWriteMap( out, reinterpret_cast<const void *>( storage ), f, depth );
     }
     if ( TableJsonIsList( f ) )
     {
-        return TableJsonWriteList( out, (const void *) storage, f, depth );
+        return TableJsonWriteList( out, reinterpret_cast<const void *>( storage ), f, depth );
     }
     if ( !TableJsonCountInContract( base, f ) )
     {
@@ -2320,7 +2320,7 @@ inline bool TableJsonWriteField( TableJsonOut & out, const void * base, const Ta
         {
             if ( i > 0 ) { out.put( ',' ); }
             out.line( depth + 1 );
-            if ( !schema_table_json_write_text_element_( out, storage + (int64_t) i * f->elem_size, f ) ) { return false; }
+            if ( !schema_table_json_write_text_element_( out, storage + static_cast<int64_t>( i ) * f->elem_size, f ) ) { return false; }
         }
         out.line( depth );
         out.put( ']' );
@@ -2345,7 +2345,7 @@ inline bool TableJsonWriteField( TableJsonOut & out, const void * base, const Ta
         {
             if ( i > 0 ) { out.put( ',' ); }
             out.line( depth + 1 );
-            if ( !TableJsonWritePointer( out, storage + (int64_t) i * f->elem_size, f, depth + 1 ) ) { return false; }
+            if ( !TableJsonWritePointer( out, storage + static_cast<int64_t>( i ) * f->elem_size, f, depth + 1 ) ) { return false; }
         }
         out.line( depth );
         out.put( ']' );
@@ -2360,7 +2360,7 @@ inline bool TableJsonWriteField( TableJsonOut & out, const void * base, const Ta
             TableJsonWriteString( out, str, len );
             return true;
         }
-        TableJsonWriteString( out, (const char *) storage, TableJsonCount( base, f ) );
+        TableJsonWriteString( out, reinterpret_cast<const char *>( storage ), TableJsonCount( base, f ) );
         return true;
     }
     if ( TableJsonIsBytes( f ) )
@@ -2382,7 +2382,7 @@ inline bool TableJsonWriteField( TableJsonOut & out, const void * base, const Ta
             first = false;
             out.line( depth + 1 );
             const char * key = f->key_name( TableJsonKeyedSlotKey( slot ) );
-            TableJsonWriteString( out, key, (int32_t) strlen( key ) );
+            TableJsonWriteString( out, key, static_cast<int32_t>( strlen( key ) ) );
             out.raw( ": ", 2 );
             if ( !TableJsonWriteScalar( out, storage + slot * f->elem_size, f, depth + 1 ) )
             {
@@ -2411,7 +2411,7 @@ inline bool TableJsonWriteField( TableJsonOut & out, const void * base, const Ta
         {
             if ( i > 0 ) { out.put( ',' ); }
             out.line( depth + 1 );
-            if ( !TableJsonWriteScalar( out, storage + (int64_t) i * f->elem_size, f, depth + 1 ) )
+            if ( !TableJsonWriteScalar( out, storage + static_cast<int64_t>( i ) * f->elem_size, f, depth + 1 ) )
             {
                 return false;
             }
@@ -2438,7 +2438,7 @@ inline bool TableJsonWriteFields( TableJsonOut & out, const void * base, const T
         // presence (§16.2), so an absent field is an absent key and nothing
         // else would read back as absent
         if ( f->optional &&
-            TableJsonGetRaw( (const uint8_t *) base + f->present_offset, 1 ) == 0 )
+            TableJsonGetRaw( reinterpret_cast<const uint8_t *>( base ) + f->present_offset, 1 ) == 0 )
         {
             continue;
         }
@@ -2449,7 +2449,7 @@ inline bool TableJsonWriteFields( TableJsonOut & out, const void * base, const T
         }
         any = true;
         out.line( depth + 1 );
-        TableJsonWriteString( out, f->json, (int32_t) strlen( f->json ) );
+        TableJsonWriteString( out, f->json, static_cast<int32_t>( strlen( f->json ) ) );
         out.raw( ": ", 2 );
         if ( !TableJsonWriteField( out, base, f, depth + 1 ) ) { return false; }
     }
@@ -2559,26 +2559,26 @@ inline bool TableJsonKeysGrow( TableJsonIn & in, int64_t count, int64_t bytes )
         int64_t * offset = NULL;
         if ( in.key_offset == in.key_inline_offset )
         {
-            offset = (int64_t *) malloc( (size_t) capacity * sizeof( int64_t ) );
+            offset = reinterpret_cast<int64_t *>( malloc( static_cast<size_t>( capacity ) * sizeof( int64_t ) ) );
             if ( offset == NULL ) { return false; }
-            if ( in.key_count > 0 ) { memcpy( offset, in.key_inline_offset, (size_t) in.key_count * sizeof( int64_t ) ); }
+            if ( in.key_count > 0 ) { memcpy( offset, in.key_inline_offset, static_cast<size_t>( in.key_count ) * sizeof( int64_t ) ); }
         }
         else
         {
-            offset = (int64_t *) realloc( in.key_offset, (size_t) capacity * sizeof( int64_t ) );
+            offset = reinterpret_cast<int64_t *>( realloc( in.key_offset, static_cast<size_t>( capacity ) * sizeof( int64_t ) ) );
             if ( offset == NULL ) { return false; }
         }
         in.key_offset = offset;
         int32_t * length = NULL;
         if ( in.key_length == in.key_inline_length )
         {
-            length = (int32_t *) malloc( (size_t) capacity * sizeof( int32_t ) );
+            length = reinterpret_cast<int32_t *>( malloc( static_cast<size_t>( capacity ) * sizeof( int32_t ) ) );
             if ( length == NULL ) { return false; }
-            if ( in.key_count > 0 ) { memcpy( length, in.key_inline_length, (size_t) in.key_count * sizeof( int32_t ) ); }
+            if ( in.key_count > 0 ) { memcpy( length, in.key_inline_length, static_cast<size_t>( in.key_count ) * sizeof( int32_t ) ); }
         }
         else
         {
-            length = (int32_t *) realloc( in.key_length, (size_t) capacity * sizeof( int32_t ) );
+            length = reinterpret_cast<int32_t *>( realloc( in.key_length, static_cast<size_t>( capacity ) * sizeof( int32_t ) ) );
             if ( length == NULL ) { return false; }
         }
         in.key_length = length;
@@ -2591,13 +2591,13 @@ inline bool TableJsonKeysGrow( TableJsonIn & in, int64_t count, int64_t bytes )
         char * grown = NULL;
         if ( in.key_bytes == in.key_inline_bytes )
         {
-            grown = (char *) malloc( (size_t) size );
+            grown = reinterpret_cast<char *>( malloc( static_cast<size_t>( size ) ) );
             if ( grown == NULL ) { return false; }
-            if ( in.key_bytes_used > 0 ) { memcpy( grown, in.key_inline_bytes, (size_t) in.key_bytes_used ); }
+            if ( in.key_bytes_used > 0 ) { memcpy( grown, in.key_inline_bytes, static_cast<size_t>( in.key_bytes_used ) ); }
         }
         else
         {
-            grown = (char *) realloc( in.key_bytes, (size_t) size );
+            grown = reinterpret_cast<char *>( realloc( in.key_bytes, static_cast<size_t>( size ) ) );
             if ( grown == NULL ) { return false; }
         }
         in.key_bytes = grown;
@@ -2613,7 +2613,7 @@ inline bool TableJsonKeyTrack( TableJsonIn & in, const char * key, int32_t lengt
 {
     for ( int64_t i = in.key_mark; i < in.key_count; i++ )
     {
-        if ( in.key_length[i] == length && ( length == 0 || memcmp( in.key_bytes + in.key_offset[i], key, (size_t) length ) == 0 ) )
+        if ( in.key_length[i] == length && ( length == 0 || memcmp( in.key_bytes + in.key_offset[i], key, static_cast<size_t>( length ) ) == 0 ) )
         {
             in.report->refused = true;
             in.report->refuse_reason = malformed;
@@ -2621,9 +2621,9 @@ inline bool TableJsonKeyTrack( TableJsonIn & in, const char * key, int32_t lengt
         }
     }
     const int64_t count = in.key_count + 1;
-    const int64_t bytes = in.key_bytes_used + (int64_t) length;
+    const int64_t bytes = in.key_bytes_used + static_cast<int64_t>( length );
     if ( !TableJsonKeysGrow( in, count, bytes ) ) { in.bad = true; return false; }
-    if ( length != 0 ) { memcpy( in.key_bytes + in.key_bytes_used, key, (size_t) length ); }
+    if ( length != 0 ) { memcpy( in.key_bytes + in.key_bytes_used, key, static_cast<size_t>( length ) ); }
     in.key_offset[in.key_count] = in.key_bytes_used;
     in.key_length[in.key_count] = length;
     in.key_count = count;
@@ -2688,7 +2688,7 @@ inline void TableJsonSpace( TableJsonIn & in )
             const int64_t start = in.pos + 2;
             in.pos = start;
             while ( in.pos < in.size && in.text[in.pos] != '\n' ) { in.pos++; }
-            if ( !TableUtf8Valid( (const uint8_t *) in.text + start, (uint64_t) ( in.pos - start ) ) )
+            if ( !TableUtf8Valid( reinterpret_cast<const uint8_t *>( in.text ) + start, static_cast<uint64_t>( in.pos - start ) ) )
             {
                 in.bad = true;
                 return;
@@ -2706,7 +2706,7 @@ inline void TableJsonSpace( TableJsonIn & in )
                 in.pos = in.size;
                 return;
             }
-            if ( !TableUtf8Valid( (const uint8_t *) in.text + start, (uint64_t) ( at - start ) ) )
+            if ( !TableUtf8Valid( reinterpret_cast<const uint8_t *>( in.text ) + start, static_cast<uint64_t>( at - start ) ) )
             {
                 in.bad = true;
                 return;
@@ -2744,8 +2744,8 @@ inline char TableJsonValueShape( TableJsonIn & in )
 
 inline bool TableJsonLiteral( TableJsonIn & in, const char * word )
 {
-    int64_t length = (int64_t) strlen( word );
-    if ( in.pos + length > in.size || memcmp( in.text + in.pos, word, (size_t) length ) != 0 )
+    int64_t length = static_cast<int64_t>( strlen( word ) );
+    if ( in.pos + length > in.size || memcmp( in.text + in.pos, word, static_cast<size_t>( length ) ) != 0 )
     {
         in.bad = true;
         return false;
@@ -2849,7 +2849,7 @@ inline bool TableJsonScanUnit( TableJsonIn & in, char * unit, int32_t * unit_len
                         in.bad = true;
                         return false;
                     }
-                    uint32_t code = (uint32_t) high;
+                    uint32_t code = static_cast<uint32_t>( high );
                     if ( high >= 0xd800 && high <= 0xdbff && in.pos + 2 <= in.size &&
                         in.text[in.pos] == '\\' && in.text[in.pos + 1] == 'u' )
                     {
@@ -2858,7 +2858,7 @@ inline bool TableJsonScanUnit( TableJsonIn & in, char * unit, int32_t * unit_len
                         int low = TableJsonHex4( in );
                         if ( low >= 0xdc00 && low <= 0xdfff )
                         {
-                            code = 0x10000 + ( ( (uint32_t) high - 0xd800 ) << 10 ) + ( (uint32_t) low - 0xdc00 );
+                            code = 0x10000 + ( ( static_cast<uint32_t>( high ) - 0xd800 ) << 10 ) + ( static_cast<uint32_t>( low ) - 0xdc00 );
                         }
                         else
                         {
@@ -2879,7 +2879,7 @@ inline bool TableJsonScanUnit( TableJsonIn & in, char * unit, int32_t * unit_len
                 default: in.bad = true; return false;
             }
         }
-        else if ( (unsigned char) c < 0x20 )
+        else if ( static_cast<unsigned char>( c ) < 0x20 )
         {
             in.bad = true; // a raw control character is not a JSON string body
             return false;
@@ -2891,7 +2891,7 @@ inline bool TableJsonScanUnit( TableJsonIn & in, char * unit, int32_t * unit_len
             // continuations are taken: the wire imposes no encoding (§3), so
             // a string may legitimately hold a stray lead byte, and one at
             // the end of a text must not swallow the closing quote.
-            unsigned char lead = (unsigned char) c;
+            unsigned char lead = static_cast<unsigned char>( c );
             int32_t want = 1;
             if ( ( lead & 0xe0 ) == 0xc0 ) { want = 2; }
             else if ( ( lead & 0xf0 ) == 0xe0 ) { want = 3; }
@@ -2900,7 +2900,7 @@ inline bool TableJsonScanUnit( TableJsonIn & in, char * unit, int32_t * unit_len
             in.pos++;
             unit_length = 1;
             while ( unit_length < want && in.pos < in.size &&
-                ( (unsigned char) in.text[in.pos] & 0xc0 ) == 0x80 )
+                ( static_cast<unsigned char>( in.text[in.pos] ) & 0xc0 ) == 0x80 )
             {
                 unit[unit_length++] = in.text[in.pos++];
             }
@@ -2912,7 +2912,7 @@ inline bool TableJsonScanUnit( TableJsonIn & in, char * unit, int32_t * unit_len
             // be valid UTF-8, and a kind 12 payload is well-formed UTF-8 (§3),
             // so storage the text form built has to be storage the wire can
             // carry (§5).
-            if ( !TableUtf8Valid( (const uint8_t *) unit, (uint64_t) unit_length ) )
+            if ( !TableUtf8Valid( reinterpret_cast<const uint8_t *>( unit ), static_cast<uint64_t>( unit_length ) ) )
             {
                 in.bad = true;
                 return false;
@@ -2961,7 +2961,7 @@ inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity,
         }
         else if ( !oor_flag && placed + unit_length <= capacity )
         {
-            memcpy( out + placed, unit, (size_t) unit_length );
+            memcpy( out + placed, unit, static_cast<size_t>( unit_length ) );
             placed += unit_length;
         }
         else
@@ -2999,7 +2999,7 @@ inline bool TableJsonScanWideString( TableJsonIn & in, const char ** token, int3
     {
         if ( in.text[k] == '\\' )
         {
-            decoded_text.resize( (size_t) decoded );
+            decoded_text.resize( static_cast<size_t>( decoded ) );
             in.pos = mark;
             if ( !TableJsonScanString( in, decoded ? &decoded_text[0] : NULL, decoded, &decoded ) ) { return false; }
             *token = decoded_text.data();
@@ -3008,7 +3008,7 @@ inline bool TableJsonScanWideString( TableJsonIn & in, const char ** token, int3
         }
     }
     *token = in.text + start;
-    *length = (int32_t) ( end - 1 - start );
+    *length = static_cast<int32_t>( end - 1 - start );
     return true;
 }
 
@@ -3017,7 +3017,7 @@ inline bool TableJsonScanWideString( TableJsonIn & in, const char ** token, int3
 // Compare the key's LENGTH and its bytes; strcmp would stop at a zero byte.
 inline bool TableJsonKeyEquals( const char * name, const char * key, int32_t key_length )
 {
-    return name != NULL && (int32_t) strlen( name ) == key_length && memcmp( name, key, (size_t) key_length ) == 0;
+    return name != NULL && static_cast<int32_t>( strlen( name ) ) == key_length && memcmp( name, key, static_cast<size_t>( key_length ) ) == 0;
 }
 
 // One CHARACTER of a base64 body, after the JSON layer has had its say
@@ -3040,12 +3040,12 @@ inline bool TableJsonBase64Char( TableJsonIn & in, char * c, bool * done )
         in.bad = true;
         return false;
     }
-    const unsigned char lead = (unsigned char) in.text[in.pos];
+    const unsigned char lead = static_cast<unsigned char>( in.text[in.pos] );
     if ( lead >= 0x80 )
     {
         const int64_t remaining = in.size - in.pos;
         int32_t width = 0;
-        if ( TableJsonUtf8( in.text + in.pos, (int32_t) ( remaining < 4 ? remaining : 4 ), &width ) < 0 )
+        if ( TableJsonUtf8( in.text + in.pos, static_cast<int32_t>( remaining < 4 ? remaining : 4 ), &width ) < 0 )
         {
             in.bad = true;
             return false;
@@ -3096,7 +3096,7 @@ inline bool TableJsonScanBase64( TableJsonIn & in, int64_t * symbols_out, bool *
             shape = false;
             continue;
         }
-        const int32_t value = TableJsonBase64Value( (uint8_t) c );
+        const int32_t value = TableJsonBase64Value( static_cast<uint8_t>( c ) );
         if ( value < 0 )
         {
             shape = false;
@@ -3146,13 +3146,13 @@ inline int64_t TableJsonDecodeBase64( TableJsonIn & in, int64_t mark, uint8_t * 
         char c = 0;
         bool done = false;
         if ( !TableJsonBase64Char( in, &c, &done ) || done || c == '=' ) { break; }
-        const int32_t symbol = TableJsonBase64Value( (uint8_t) c );
-        accumulator = ( accumulator << 6 ) | (uint32_t) symbol;
+        const int32_t symbol = TableJsonBase64Value( static_cast<uint8_t>( c ) );
+        accumulator = ( accumulator << 6 ) | static_cast<uint32_t>( symbol );
         held += 6;
         if ( held >= 8 )
         {
             held -= 8;
-            if ( placed < capacity ) { out[placed++] = (uint8_t) ( ( accumulator >> held ) & 0xff ); }
+            if ( placed < capacity ) { out[placed++] = static_cast<uint8_t>( ( accumulator >> held ) & 0xff ); }
             else
             {
                 *oor_flag = true;
@@ -3229,7 +3229,7 @@ inline bool TableJsonScanNumber( TableJsonIn & in, const char ** token, int32_t 
     int64_t count = in.pos - start;
     if ( count <= 0 ) { return false; }
     *token = in.text + start;
-    *length = (int32_t) count;
+    *length = static_cast<int32_t>( count );
     return true;
 }
 
@@ -3274,7 +3274,7 @@ inline double TableJsonTokenDouble( const char * token, int32_t length, bool sin
     int32_t n = 0;
     if ( length < kTableJsonMaxNumber )
     {
-        memcpy( work, token, (size_t) length );
+        memcpy( work, token, static_cast<size_t>( length ) );
         n = length;
     }
     else
@@ -3352,7 +3352,7 @@ inline double TableJsonTokenDouble( const char * token, int32_t length, bool sin
             if ( scale == 0 ) { reversed[rn++] = '0'; }
             while ( scale > 0 )
             {
-                reversed[rn++] = (char) ( '0' + (int32_t) ( scale % 10 ) );
+                reversed[rn++] = static_cast<char>( '0' + static_cast<int32_t>( scale % 10 ) );
                 scale /= 10;
             }
             while ( rn > 0 ) { work[n++] = reversed[--rn]; }
@@ -3367,7 +3367,7 @@ inline double TableJsonTokenDouble( const char * token, int32_t length, bool sin
             if ( work[i] == '.' ) { work[i] = point; }
         }
     }
-    if ( single ) { return (double) strtof( work, NULL ); }
+    if ( single ) { return static_cast<double>( strtof( work, NULL ) ); }
     return strtod( work, NULL );
 }
 
@@ -3422,7 +3422,7 @@ inline TableJsonInteger TableJsonInterpret( const char * token, int32_t length, 
         }
         for ( ; i < length; i++ )
         {
-            const uint64_t digit = (uint64_t) ( token[i] - '0' );
+            const uint64_t digit = static_cast<uint64_t>( token[i] - '0' );
             if ( out.magnitude > ( UINT64_MAX - digit ) / 10 )
             {
                 out.magnitude = UINT64_MAX;
@@ -3454,8 +3454,8 @@ inline TableJsonInteger TableJsonInterpret( const char * token, int32_t length, 
     // truncation never rounds up, so a fraction is exactly "the truncated value
     // is below the whole one" (a fraction exists only below 2^53, where the
     // truncated value converts back exactly)
-    const uint64_t truncated = (uint64_t) whole;
-    if ( (double) truncated < whole )
+    const uint64_t truncated = static_cast<uint64_t>( whole );
+    if ( static_cast<double>( truncated ) < whole )
     {
         out.fractional = true;
         return out;
@@ -3530,7 +3530,7 @@ inline TableJsonInteger TableJsonInterpretExact( const char * token, int32_t len
     }
     // leading and trailing zeros stripped, so the last digit kept is significant
     int32_t start = 0, end = int_len + frac_len;
-    int64_t point = (int64_t) int_len + exp;
+    int64_t point = static_cast<int64_t>( int_len ) + exp;
     while ( start < end && ( start < int_len ? int_digits[start] : frac_digits[start - int_len] ) == '0' )
     {
         start++;
@@ -3556,7 +3556,7 @@ inline TableJsonInteger TableJsonInterpretExact( const char * token, int32_t len
     }
     for ( int32_t k = start; k < end; k++ )
     {
-        const uint64_t digit = (uint64_t) ( ( k < int_len ? int_digits[k] : frac_digits[k - int_len] ) - '0' );
+        const uint64_t digit = static_cast<uint64_t>( ( k < int_len ? int_digits[k] : frac_digits[k - int_len] ) - '0' );
         if ( out.magnitude > ( UINT64_MAX - digit ) / 10 )
         {
             out.magnitude = UINT64_MAX;
@@ -3589,7 +3589,7 @@ inline TableJsonInteger TableJsonIntegerOf( double bound )
     out.saturated = false;
     out.finite = true;
     const double whole = out.negative ? -bound : bound;
-    out.magnitude = whole >= 18446744073709551616.0 ? UINT64_MAX : (uint64_t) whole;
+    out.magnitude = whole >= 18446744073709551616.0 ? UINT64_MAX : static_cast<uint64_t>( whole );
     if ( out.magnitude == 0 ) { out.negative = false; }
     return out;
 }
@@ -3604,7 +3604,7 @@ inline int64_t TableJsonIntegerInDomain( const TableJsonInteger & number, bool i
     uint64_t magnitude = number.magnitude;
     if ( is_signed )
     {
-        const uint64_t high = bytes >= 8 ? (uint64_t) INT64_MAX : ( ( uint64_t( 1 ) << ( bytes * 8 - 1 ) ) - 1 );
+        const uint64_t high = bytes >= 8 ? static_cast<uint64_t>( INT64_MAX ) : ( ( uint64_t( 1 ) << ( bytes * 8 - 1 ) ) - 1 );
         if ( number.negative )
         {
             const uint64_t low = high + 1; // the floor's magnitude
@@ -3613,14 +3613,14 @@ inline int64_t TableJsonIntegerInDomain( const TableJsonInteger & number, bool i
                 magnitude = low;
                 moved = true;
             }
-            return (int64_t) ( ~magnitude + 1 ); // two's complement, INT64_MIN included
+            return static_cast<int64_t>( ~magnitude + 1 ); // two's complement, INT64_MIN included
         }
         if ( magnitude > high )
         {
             magnitude = high;
             moved = true;
         }
-        return (int64_t) magnitude;
+        return static_cast<int64_t>( magnitude );
     }
     // A NEGATIVE TOKEN IN AN UNSIGNED FIELD CLAMPS TO ZERO, and -0 is zero,
     // which is why the sign is dropped at a zero magnitude above
@@ -3635,7 +3635,7 @@ inline int64_t TableJsonIntegerInDomain( const TableJsonInteger & number, bool i
         magnitude = high;
         moved = true;
     }
-    return (int64_t) magnitude;
+    return static_cast<int64_t>( magnitude );
 }
 
 // A number token into a wide kind's raw storage (docs/SPEC-TABLES.md §16.2). A
@@ -3744,10 +3744,10 @@ inline bool TableJsonReadWide( TableJsonIn & in, const char * token, int32_t len
         // digit past that point is inexact, so arbitrary trailing zeros need
         // no buffer space and the input length remains unrestricted.
         const int64_t first = ( point > 0 ? point : 0 ) + start;
-        const int64_t last = (int64_t) start + point + frac - 1;
+        const int64_t last = static_cast<int64_t>( start ) + point + frac - 1;
         for ( int64_t k = first; k < end && k <= last; k++ )
         {
-            fd[fn++] = (char) ( ( k < int_len ? int_digits[k] : frac_digits[k - int_len] ) - '0' );
+            fd[fn++] = static_cast<char>( ( k < int_len ? int_digits[k] : frac_digits[k - int_len] ) - '0' );
         }
         for ( int64_t k = ( last + 1 > first ? last + 1 : first ); k < end; k++ )
         {
@@ -3765,11 +3765,11 @@ inline bool TableJsonReadWide( TableJsonIn & in, const char * token, int32_t len
             for ( int32_t k = fn - 1; k >= 0; k-- )
             {
                 int d = fd[k] * 2 + carry;
-                fd[k] = (char) ( d % 10 );
+                fd[k] = static_cast<char>( d % 10 );
                 carry = d / 10;
             }
             fraction = TableJsonWideShl( fraction, 1 );
-            fraction.lo |= (uint64_t) carry;
+            fraction.lo |= static_cast<uint64_t>( carry );
         }
         for ( int32_t k = 0; k < fn; k++ )
         {
@@ -3784,7 +3784,7 @@ inline bool TableJsonReadWide( TableJsonIn & in, const char * token, int32_t len
         TableJsonWide whole = { 0, 0 };
         for ( int64_t k = start; k < start + point && !saturated; k++ )
         {
-            uint32_t digit = k < end ? (uint32_t) ( ( k < int_len ? int_digits[k] : frac_digits[k - int_len] ) - '0' ) : 0;
+            uint32_t digit = k < end ? static_cast<uint32_t>( ( k < int_len ? int_digits[k] : frac_digits[k - int_len] ) - '0' ) : 0;
             if ( TableJsonWideMulAdd( &whole, 10, digit ) != 0 ) { saturated = true; }
         }
         if ( !saturated && frac > 0 && !TableJsonWideZero( TableJsonWideShr( whole, 128 - frac ) ) ) { saturated = true; }
@@ -3971,7 +3971,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
 // which is Time.UnixNano's domain (1678 through 2262).
 inline int TableJsonTimestampDigit( char c )
 {
-    return ( c >= '0' && c <= '9' ) ? (int) ( c - '0' ) : -1;
+    return ( c >= '0' && c <= '9' ) ? static_cast<int>( c - '0' ) : -1;
 }
 
 inline bool TableJsonTimestampLeap( int year )
@@ -4003,15 +4003,15 @@ inline int TableJsonTimestampMonthDays( int year, int month )
 // the civil-days algorithm, exact for the four-digit years RFC 3339 allows
 inline int64_t TableJsonTimestampDays( int year, int month, int day )
 {
-    int64_t y = (int64_t) year;
-    const int64_t m = (int64_t) month;
+    int64_t y = static_cast<int64_t>( year );
+    const int64_t m = static_cast<int64_t>( month );
     if ( m <= 2 ) { y--; }
     int64_t era = y / 400;
     if ( y < 0 && y % 400 != 0 ) { era--; }
     const int64_t year_of_era = y - era * 400;
     int64_t month_of_year = m + 9;
     if ( m > 2 ) { month_of_year = m - 3; }
-    const int64_t day_of_year = ( 153 * month_of_year + 2 ) / 5 + (int64_t) day - 1;
+    const int64_t day_of_year = ( 153 * month_of_year + 2 ) / 5 + static_cast<int64_t>( day ) - 1;
     const int64_t day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
     return era * 146097 + day_of_era - 719468;
 }
@@ -4160,9 +4160,9 @@ inline bool TableJsonTimestampParse( TableJsonIn & in, int64_t * out )
     if ( phase != 10 ) { return false; }
     if ( offset_sign != 0 && ( offset_hour > 23 || offset_minute > 59 ) ) { return false; }
     for ( ; digits < 9; digits++ ) { fraction *= 10; }
-    const int64_t offset = offset_sign == 0 ? 0 : (int64_t) offset_sign * ( (int64_t) offset_hour * 3600 + (int64_t) offset_minute * 60 );
+    const int64_t offset = offset_sign == 0 ? 0 : static_cast<int64_t>( offset_sign ) * ( static_cast<int64_t>( offset_hour ) * 3600 + static_cast<int64_t>( offset_minute ) * 60 );
     const int64_t seconds = TableJsonTimestampDays( year, month, day ) * 86400 +
-        (int64_t) hour * 3600 + (int64_t) minute * 60 + (int64_t) second - offset;
+        static_cast<int64_t>( hour ) * 3600 + static_cast<int64_t>( minute ) * 60 + static_cast<int64_t>( second ) - offset;
     const int64_t min_second = -9223372037LL;
     const int64_t max_second = 9223372036LL;
     const int64_t min_nanos = 145224192LL;
@@ -4172,8 +4172,8 @@ inline bool TableJsonTimestampParse( TableJsonIn & in, int64_t * out )
     if ( seconds == max_second && fraction > max_nanos ) { return false; }
     // unsigned arithmetic: the validated interval is representable, and the
     // intermediate product is not allowed to overflow a signed int64
-    const uint64_t total = (uint64_t) seconds * 1000000000ULL + (uint64_t) fraction;
-    *out = (int64_t) total;
+    const uint64_t total = static_cast<uint64_t>( seconds ) * 1000000000ULL + static_cast<uint64_t>( fraction );
+    *out = static_cast<int64_t>( total );
     return true;
 }
 
@@ -4191,7 +4191,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
             return false;
         }
         in.pos++;
-        TableJsonSetRaw( (uint8_t *) storage + arms->tag_offset, arms->tag_size, 0 );
+        TableJsonSetRaw( reinterpret_cast<uint8_t *>( storage ) + arms->tag_offset, arms->tag_size, 0 );
         if ( TableJsonPeek( in ) == '}' )
         {
             in.pos++;
@@ -4210,7 +4210,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
         int64_t tag = 0;
         for ( int64_t t = 1; t <= f->enum_max; t++ )
         {
-            if ( TableJsonKeyEquals( f->enum_name( (uint64_t) t ), key, key_length ) )
+            if ( TableJsonKeyEquals( f->enum_name( static_cast<uint64_t>( t ) ), key, key_length ) )
             {
                 tag = t;
                 break;
@@ -4223,7 +4223,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
         }
         else
         {
-            void * payload = (uint8_t *) storage + arms->arms[tag].offset;
+            void * payload = reinterpret_cast<uint8_t *>( storage ) + arms->arms[tag].offset;
             const TableFieldInfo * arm = arms->arms[tag].field;
             bool placed = true;
             if ( arm != NULL )
@@ -4238,7 +4238,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
                 if ( arm->kind == 17 && !arm->is_array && got == 'z' )
                 {
                     if ( !TableJsonLiteral( in, "null" ) ) { return false; }
-                    memset( payload, 0, (size_t) arms->arms[tag].size );
+                    memset( payload, 0, static_cast<size_t>( arms->arms[tag].size ) );
                 }
                 else if ( !TableJsonFieldShapeFits( arm, got ) )
                 {
@@ -4252,14 +4252,14 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
                     // A POINTER ARM'S VALUE IS THE POINTEE IN PLACE, or a
                     // node reference to one (§16.7) — the read a pointer
                     // FIELD takes, which is not the scalar walk
-                    memset( payload, 0, (size_t) arms->arms[tag].size );
+                    memset( payload, 0, static_cast<size_t>( arms->arms[tag].size ) );
                     if ( !TableJsonReadPointer( in, payload, arm, depth + 1 ) ) { return false; }
                 }
                 else
                 {
                     // SELECTION ZERO-ESTABLISHES THE ARM (SPEC §5): an arm
                     // takes no specified default, so zero is the establish
-                    memset( payload, 0, (size_t) arms->arms[tag].size );
+                    memset( payload, 0, static_cast<size_t>( arms->arms[tag].size ) );
                     if ( !TableJsonReadField( in, storage, arm, depth + 1 ) ) { return false; }
                 }
             }
@@ -4296,7 +4296,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
             }
             if ( placed )
             {
-                TableJsonSetRaw( (uint8_t *) storage + arms->tag_offset, arms->tag_size, (uint64_t) tag );
+                TableJsonSetRaw( reinterpret_cast<uint8_t *>( storage ) + arms->tag_offset, arms->tag_size, static_cast<uint64_t>( tag ) );
             }
         }
         char c = TableJsonPeek( in );
@@ -4326,9 +4326,9 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
         name[name_length] = 0;
         for ( int64_t v = 0; v <= f->enum_max; v++ )
         {
-            if ( TableJsonKeyEquals( f->enum_name( (uint64_t) v ), name, name_length ) )
+            if ( TableJsonKeyEquals( f->enum_name( static_cast<uint64_t>( v ) ), name, name_length ) )
             {
-                TableJsonSetRaw( storage, f->elem_size, (uint64_t) v );
+                TableJsonSetRaw( storage, f->elem_size, static_cast<uint64_t>( v ) );
                 return true;
             }
         }
@@ -4375,7 +4375,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
                 bool found = false;
                 for ( int64_t bit = 0; bit <= f->enum_max; bit++ )
                 {
-                    if ( TableJsonKeyEquals( f->enum_name( (uint64_t) bit ), name, name_length ) )
+                    if ( TableJsonKeyEquals( f->enum_name( static_cast<uint64_t>( bit ) ), name, name_length ) )
                     {
                         // A FLAGS NAME TWICE IN ONE ARRAY IS DAMAGE (§16.2): a
                         // repeated name is a repeated key, and refuses malformed
@@ -4433,7 +4433,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
             in.bad = true;
             return false;
         }
-        TableJsonSetRaw( storage, f->elem_size, (uint64_t) nanos );
+        TableJsonSetRaw( storage, f->elem_size, static_cast<uint64_t>( nanos ) );
         return true;
     }
     const char * token = NULL;
@@ -4521,8 +4521,8 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
         }
         if ( single )
         {
-            float narrow = (float) value;
-            if ( !TableJsonFinite( (double) narrow ) )
+            float narrow = static_cast<float>( value );
+            if ( !TableJsonFinite( static_cast<double>( narrow ) ) )
             {
                 in.report->refused = true;
                 in.report->refuse_reason = kind_mismatch;
@@ -4570,11 +4570,11 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
         if ( is_signed )
         {
             const uint64_t lo_magnitude = f->range_int_min < 0
-                ? (uint64_t) ( -( f->range_int_min + 1 ) ) + 1
-                : (uint64_t) f->range_int_min;
+                ? static_cast<uint64_t>( -( f->range_int_min + 1 ) ) + 1
+                : static_cast<uint64_t>( f->range_int_min );
             const uint64_t hi_magnitude = f->range_int_max < 0
-                ? (uint64_t) ( -( f->range_int_max + 1 ) ) + 1
-                : (uint64_t) f->range_int_max;
+                ? static_cast<uint64_t>( -( f->range_int_max + 1 ) ) + 1
+                : static_cast<uint64_t>( f->range_int_max );
             if ( number.negative )
             {
                 below = f->range_int_min >= 0 || number.magnitude > lo_magnitude;
@@ -4582,7 +4582,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
             }
             else
             {
-                below = f->range_int_min > 0 && number.magnitude < (uint64_t) f->range_int_min;
+                below = f->range_int_min > 0 && number.magnitude < static_cast<uint64_t>( f->range_int_min );
                 above = f->range_int_max < 0 || number.magnitude > hi_magnitude;
             }
             if ( below )
@@ -4621,13 +4621,13 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
         }
     }
     bool moved = false;
-    const int64_t value = TableJsonIntegerInDomain( bounded, is_signed, (int32_t) f->elem_size, moved );
+    const int64_t value = TableJsonIntegerInDomain( bounded, is_signed, static_cast<int32_t>( f->elem_size ), moved );
     if ( moved )
     {
         in.report->refused = true;
         in.report->refuse_reason = out_of_range;
     }
-    TableJsonSetRaw( storage, f->elem_size, (uint64_t) value );
+    TableJsonSetRaw( storage, f->elem_size, static_cast<uint64_t>( value ) );
     return true;
 }
 
@@ -4654,7 +4654,7 @@ inline bool schema_table_json_read_text_element_( TableJsonIn & in, uint8_t * el
     else
     {
         int32_t length = 0;
-        if ( !TableJsonScanString( in, (char *) val_storage, (int32_t) value->array_bound, &length, NULL, true ) ) { return false; }
+        if ( !TableJsonScanString( in, reinterpret_cast<char *>( val_storage ), static_cast<int32_t>( value->array_bound ), &length, NULL, true ) ) { return false; }
         val_storage[length] = 0;
         TableJsonSetCount( element, value, length );
         out_bytes = length;
@@ -4668,14 +4668,14 @@ inline bool schema_table_json_read_text_element_( TableJsonIn & in, uint8_t * el
 
 inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldInfo * f, int32_t depth )
 {
-    uint8_t * storage = (uint8_t *) base + f->offset;
+    uint8_t * storage = reinterpret_cast<uint8_t *>( base ) + f->offset;
     if ( TableJsonIsMap( f ) )
     {
-        return TableJsonReadMap( in, (void *) storage, f, depth );
+        return TableJsonReadMap( in, reinterpret_cast<void *>( storage ), f, depth );
     }
     if ( TableJsonIsList( f ) )
     {
-        return TableJsonReadList( in, (void *) storage, f, depth );
+        return TableJsonReadList( in, reinterpret_cast<void *>( storage ), f, depth );
     }
     if ( f->text_list != 0 )
     {
@@ -4687,7 +4687,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
         in.pos++;
         for ( int32_t i = 0; i < f->array_bound; i++ )
         {
-            f->table->reset( storage + (int64_t) i * f->elem_size );
+            f->table->reset( storage + static_cast<int64_t>( i ) * f->elem_size );
         }
         TableJsonSetCount( base, f, 0 );
         int32_t placed = 0;
@@ -4720,10 +4720,10 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             }
             else
             {
-                uint8_t * element = storage + (int64_t) placed * f->elem_size;
+                uint8_t * element = storage + static_cast<int64_t>( placed ) * f->elem_size;
                 int32_t elem_bytes = 0;
                 if ( !schema_table_json_read_text_element_( in, element, f, depth, elem_bytes ) ) { return false; }
-                if ( f->text_total > 0 && spent + (int64_t) elem_bytes > f->text_total )
+                if ( f->text_total > 0 && spent + static_cast<int64_t>( elem_bytes ) > f->text_total )
                 {
                     in.report->refused = true;
                     in.report->refuse_reason = out_of_range;
@@ -4733,7 +4733,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
                 }
                 else
                 {
-                    spent += (int64_t) elem_bytes;
+                    spent += static_cast<int64_t>( elem_bytes );
                     placed++;
                 }
             }
@@ -4762,7 +4762,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             return schema_table_json_read_unbounded_text_( in, storage, NULL );
         }
         int32_t length = 0;
-        if ( !TableJsonScanString( in, (char *) storage, f->array_bound, &length, NULL, true ) ) { return false; }
+        if ( !TableJsonScanString( in, reinterpret_cast<char *>( storage ), f->array_bound, &length, NULL, true ) ) { return false; }
         storage[length] = 0;
         TableJsonSetCount( base, f, length );
         return true;
@@ -4789,15 +4789,15 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             in.report->refuse_reason = kind_mismatch;
             return true;
         }
-        memset( storage, 0, (size_t) f->array_bound );
+        memset( storage, 0, static_cast<size_t>( f->array_bound ) );
         bool oor_flag = false;
-        const int64_t placed = TableJsonDecodeBase64( in, mark, storage, (int64_t) f->array_bound, &oor_flag );
+        const int64_t placed = TableJsonDecodeBase64( in, mark, storage, static_cast<int64_t>( f->array_bound ), &oor_flag );
         if ( oor_flag )
         {
             in.report->refused = true;
             in.report->refuse_reason = out_of_range;
         }
-        TableJsonSetCount( base, f, (int32_t) placed );
+        TableJsonSetCount( base, f, static_cast<int32_t>( placed ) );
         return true;
     }
     if ( TableJsonIsKeyed( f ) )
@@ -4813,11 +4813,11 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
         // occurrence's slots standing
         for ( int32_t i = 0; i < f->array_bound; i++ )
         {
-            void * slot = storage + (int64_t) i * f->elem_size;
+            void * slot = storage + static_cast<int64_t>( i ) * f->elem_size;
             if ( f->kind == 13 ) { f->table->reset( slot ); }
             else
             {
-                memset( slot, 0, (size_t) f->elem_size );
+                memset( slot, 0, static_cast<size_t>( f->elem_size ) );
             }
         }
         // A variant name is a key: repeating it refuses the whole read as
@@ -4924,12 +4924,12 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
         {
             for ( int32_t i = 0; i < f->array_bound; i++ )
             {
-                f->table->reset( storage + (int64_t) i * f->elem_size );
+                f->table->reset( storage + static_cast<int64_t>( i ) * f->elem_size );
             }
         }
         else
         {
-            memset( storage, 0, (size_t) f->array_bound * (size_t) f->elem_size );
+            memset( storage, 0, static_cast<size_t>( f->array_bound ) * static_cast<size_t>( f->elem_size ) );
         }
         TableJsonSetCount( base, f, 0 );
         int32_t placed = 0;
@@ -4962,7 +4962,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
                 if ( got == 'z' )
                 {
                     if ( !TableJsonLiteral( in, "null" ) ) { return false; }
-                    TableJsonSetRaw( storage + (int64_t) placed * f->elem_size, f->elem_size, 0 );
+                    TableJsonSetRaw( storage + static_cast<int64_t>( placed ) * f->elem_size, f->elem_size, 0 );
                 }
                 else if ( got != 'o' )
                 {
@@ -4970,7 +4970,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
                     in.report->refuse_reason = kind_mismatch;
                     if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
                 }
-                else if ( !TableJsonReadPointer( in, storage + (int64_t) placed * f->elem_size, f, depth + 1 ) ) { return false; }
+                else if ( !TableJsonReadPointer( in, storage + static_cast<int64_t>( placed ) * f->elem_size, f, depth + 1 ) ) { return false; }
                 placed++;
             }
             else if ( !TableJsonElementShapeFits( f, TableJsonValueShape( in ) ) )
@@ -4982,7 +4982,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             }
             else
             {
-                if ( !TableJsonReadScalar( in, storage + (int64_t) placed * f->elem_size, f, depth + 1 ) ) { return false; }
+                if ( !TableJsonReadScalar( in, storage + static_cast<int64_t>( placed ) * f->elem_size, f, depth + 1 ) ) { return false; }
                 placed++;
             }
             c = TableJsonPeek( in );
@@ -5061,7 +5061,7 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
         if ( first_key != NULL )
         {
             key_length = first_key_length;
-            memcpy( key, first_key, (size_t) key_length + 1 ); // scanned into a buffer this size by the caller
+            memcpy( key, first_key, static_cast<size_t>( key_length ) + 1 ); // scanned into a buffer this size by the caller
             first_key = NULL;
         }
         else
@@ -5138,7 +5138,7 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
                 if ( got == 'z' )
                 {
                     if ( !TableJsonLiteral( in, "null" ) ) { return false; }
-                    TableJsonSetRaw( (uint8_t *) base + f->offset, f->elem_size, 0 );
+                    TableJsonSetRaw( reinterpret_cast<uint8_t *>( base ) + f->offset, f->elem_size, 0 );
                 }
                 else if ( !TableJsonFieldShapeFits( f, got ) )
                 {
@@ -5146,7 +5146,7 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
                     in.report->refuse_reason = kind_mismatch;
                     if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
                 }
-                else if ( !TableJsonReadPointer( in, (uint8_t *) base + f->offset, f, depth ) )
+                else if ( !TableJsonReadPointer( in, reinterpret_cast<uint8_t *>( base ) + f->offset, f, depth ) )
                 {
                     return false;
                 }
@@ -5160,13 +5160,13 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
                 // ENTRY table its descriptor's table names (docs/SPEC-TABLES.md
                 // §2.8, §16.2): the entry reset would read the slot as an entry.
                 // The oracle is internal/codegen/gotable/mappresence_test.go.
-                if ( TableJsonIsMap( f ) ) { memset( (uint8_t *) base + f->offset, 0, 16 ); }
-                else if ( f->table != NULL ) { f->table->reset( (uint8_t *) base + f->offset ); }
+                if ( TableJsonIsMap( f ) ) { memset( reinterpret_cast<uint8_t *>( base ) + f->offset, 0, 16 ); }
+                else if ( f->table != NULL ) { f->table->reset( reinterpret_cast<uint8_t *>( base ) + f->offset ); }
                 else
                 {
-                    memset( (uint8_t *) base + f->offset, 0, (size_t) f->elem_size );
+                    memset( reinterpret_cast<uint8_t *>( base ) + f->offset, 0, static_cast<size_t>( f->elem_size ) );
                 }
-                TableJsonSetRaw( (uint8_t *) base + f->present_offset, 1, 0 );
+                TableJsonSetRaw( reinterpret_cast<uint8_t *>( base ) + f->present_offset, 1, 0 );
             }
             else
             {
@@ -5183,7 +5183,7 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
                 }
                 if ( f->optional )
                 {
-                    TableJsonSetRaw( (uint8_t *) base + f->present_offset, 1, 1 );
+                    TableJsonSetRaw( reinterpret_cast<uint8_t *>( base ) + f->present_offset, 1, 1 );
                 }
             }
         }
@@ -5222,7 +5222,7 @@ inline bool TableJsonRead( void * value, const TableTypeInfo * info, const char 
         in.report->damaged = true;
         return false;
     }
-    if ( bytes >= 3 && (uint8_t) text[0] == 0xEF && (uint8_t) text[1] == 0xBB && (uint8_t) text[2] == 0xBF ) { in.pos = 3; }
+    if ( bytes >= 3 && static_cast<uint8_t>( text[0] ) == 0xEF && static_cast<uint8_t>( text[1] ) == 0xBB && static_cast<uint8_t>( text[2] ) == 0xBF ) { in.pos = 3; }
     const int32_t missing_before = in.report->missing_required;
     bool ok = TableJsonReadTable( in, value, info, 0 );
     if ( ok )
@@ -5328,7 +5328,7 @@ inline int64_t TableJsonGraphMapSlot( const TableJsonGraphMap & map, uint64_t ke
     uint64_t hash = key * 0x9E3779B97F4A7C15ull;
     hash ^= hash >> 29;
     int64_t mask = map.capacity - 1;
-    int64_t at = (int64_t) ( hash & (uint64_t) mask );
+    int64_t at = static_cast<int64_t>( hash & static_cast<uint64_t>( mask ) );
     while ( map.entries[at].key != 0 && map.entries[at].key != key )
     {
         at = ( at + 1 ) & mask;
@@ -5349,7 +5349,7 @@ inline bool TableJsonGraphMapGrow( TableJsonGraphMap & map )
     grown.allocator = map.allocator;
     grown.capacity = map.capacity != 0 ? map.capacity * 4 : 64;
     grown.count = 0;
-    grown.entries = (TableJsonGraphEntry *) table_allocate( map.allocator, grown.capacity * (int64_t) sizeof( TableJsonGraphEntry ) ); // zeroed, by the pair's contract
+    grown.entries = reinterpret_cast<TableJsonGraphEntry *>( table_allocate( map.allocator, grown.capacity * static_cast<int64_t>( sizeof( TableJsonGraphEntry ) ) ) ); // zeroed, by the pair's contract
     if ( grown.entries == NULL ) { return false; }
     for ( int64_t i = 0; i < map.capacity; i++ )
     {
@@ -5402,7 +5402,7 @@ inline bool TableJsonScanLabel( TableJsonIn & in, uint64_t & label )
     uint64_t value = 0;
     while ( in.pos < in.size && in.text[in.pos] >= '0' && in.text[in.pos] <= '9' )
     {
-        uint64_t digit = (uint64_t) ( in.text[in.pos] - '0' );
+        uint64_t digit = static_cast<uint64_t>( in.text[in.pos] - '0' );
         if ( value > ( UINT64_MAX - digit ) / 10 )
         {
             in.report->damaged = true;
@@ -5426,14 +5426,14 @@ inline bool TableJsonScanLabel( TableJsonIn & in, uint64_t & label )
 inline bool schema_table_json_read_unbounded_text_( TableJsonIn & in, void * slot, int32_t * out_len )
 {
     if ( out_len != NULL ) { *out_len = 0; }
-    TableJsonGraphIn * graph = (TableJsonGraphIn *) in.graph;
+    TableJsonGraphIn * graph = reinterpret_cast<TableJsonGraphIn *>( in.graph );
     if ( graph == NULL || graph->worker == NULL || graph->worker->arena == NULL || graph->worker->arena->locked )
     {
         in.report->damaged = true;
         in.bad = true;
         return false;
     }
-    TableRef * ref = (TableRef *) slot;
+    TableRef * ref = reinterpret_cast<TableRef *>( slot );
     ref->value = 0;
     const int64_t mark = in.pos;
     int32_t length = 0;
@@ -5444,32 +5444,32 @@ inline bool schema_table_json_read_unbounded_text_( TableJsonIn & in, void * slo
         int32_t placed = 0;
         return TableJsonScanString( in, NULL, 0, &placed, NULL, true );
     }
-    if ( (int64_t) length > kTableBlobMaxLength )
+    if ( static_cast<int64_t>( length ) > kTableBlobMaxLength )
     {
         in.report->damaged = true;
         in.bad = true;
         return false;
     }
     uint32_t at = 0;
-    TableBlob * blob = graph->worker->AllocBlob( (int64_t) length, true, at );
+    TableBlob * blob = graph->worker->AllocBlob( static_cast<int64_t>( length ), true, at );
     if ( blob == NULL )
     {
         in.report->damaged = true;
         in.bad = true;
         return false;
     }
-    char * data = (char *) ( blob + 1 );
+    char * data = reinterpret_cast<char *>( blob + 1 );
     int32_t placed = 0;
     if ( !TableJsonScanString( in, data, length, &placed, NULL, true ) ) { return false; }
     data[length] = 0;
-    ref->value = (int64_t) at;
+    ref->value = static_cast<int64_t>( at );
     if ( out_len != NULL ) { *out_len = length; }
     return true;
 }
 
 inline bool TableJsonReadBlob( TableJsonIn & in, void * slot, const TableFieldInfo * f )
 {
-    TableJsonGraphIn * graph = (TableJsonGraphIn *) in.graph;
+    TableJsonGraphIn * graph = reinterpret_cast<TableJsonGraphIn *>( in.graph );
     if ( graph == NULL )
     {
         in.report->damaged = true;
@@ -5481,7 +5481,7 @@ inline bool TableJsonReadBlob( TableJsonIn & in, void * slot, const TableFieldIn
         in.bad = true;
         return false;
     }
-    TableRef * ref = (TableRef *) slot;
+    TableRef * ref = reinterpret_cast<TableRef *>( slot );
     ref->value = 0;
     if ( strcmp( f->type_name, "string" ) == 0 )
     {
@@ -5489,7 +5489,7 @@ inline bool TableJsonReadBlob( TableJsonIn & in, void * slot, const TableFieldIn
         int32_t length = 0;
         if ( !TableJsonScanString( in, NULL, 0, &length, NULL, true ) ) { return false; }
         in.pos = mark;
-        char * data = TableStringEmplace( *graph->worker, *ref, NULL, (int64_t) length );
+        char * data = TableStringEmplace( *graph->worker, *ref, NULL, static_cast<int64_t>( length ) );
         if ( data == NULL )
         {
             in.report->damaged = true;
@@ -5532,7 +5532,7 @@ inline bool TableJsonReadBlob( TableJsonIn & in, void * slot, const TableFieldIn
 // target is a BYTE BUFFER — no table — takes a string instead (§2.5).
 inline bool TableJsonReadPointer( TableJsonIn & in, void * slot, const TableFieldInfo * f, int32_t depth )
 {
-    TableJsonGraphIn * graph = (TableJsonGraphIn *) in.graph;
+    TableJsonGraphIn * graph = reinterpret_cast<TableJsonGraphIn *>( in.graph );
     if ( graph == NULL )
     {
         in.report->damaged = true;
@@ -5656,7 +5656,7 @@ inline bool TableJsonReadPointer( TableJsonIn & in, void * slot, const TableFiel
             in.report->refuse_reason = kind_mismatch;
             return true;
         }
-        ref.value = (int64_t) entry->node;
+        ref.value = static_cast<int64_t>( entry->node );
         memcpy( slot, &ref, sizeof( ref ) );
         return true;
     }
@@ -5682,7 +5682,7 @@ inline bool TableJsonReadPointer( TableJsonIn & in, void * slot, const TableFiel
     }
     TableRef ref;
     memcpy( &ref, slot, sizeof( ref ) );
-    entry->node = (uint32_t) ref.value;
+    entry->node = static_cast<uint32_t>( ref.value );
     entry->type = f->table;
     entry->open = 0;
     return true;
@@ -5696,7 +5696,7 @@ inline bool TableJsonReadPointer( TableJsonIn & in, void * slot, const TableFiel
 // out of place.
 inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32_t key_length, int32_t )
 {
-    TableJsonGraphIn * graph = (TableJsonGraphIn *) in.graph;
+    TableJsonGraphIn * graph = reinterpret_cast<TableJsonGraphIn *>( in.graph );
     if ( graph == NULL || !TableJsonKeyEquals( "&node", key, key_length ) )
     {
         in.report->damaged = true;
@@ -5729,7 +5729,7 @@ struct TableJsonGraphOut
 // last two it is was learned in pass one; pass two spells it.
 inline bool TableJsonWritePointer( TableJsonOut & out, const void * slot, const TableFieldInfo * f, int32_t depth )
 {
-    TableJsonGraphOut * graph = (TableJsonGraphOut *) out.graph;
+    TableJsonGraphOut * graph = reinterpret_cast<TableJsonGraphOut *>( out.graph );
     if ( graph == NULL ) { return false; }
     const void * node = f->resolve( slot );
     if ( node == NULL )
@@ -5738,7 +5738,7 @@ inline bool TableJsonWritePointer( TableJsonOut & out, const void * slot, const 
         return true;
     }
     bool taken = false;
-    TableJsonGraphEntry * entry = TableJsonGraphMapReach( graph->nodes, (uint64_t) (uintptr_t) node, taken );
+    TableJsonGraphEntry * entry = TableJsonGraphMapReach( graph->nodes, static_cast<uint64_t>( static_cast<uintptr_t>( node ) ), taken );
     if ( entry == NULL ) { return false; }
     if ( f->table == NULL )
     {
@@ -5753,12 +5753,12 @@ inline bool TableJsonWritePointer( TableJsonOut & out, const void * slot, const 
             return true;
         }
         if ( entry->count > 1 ) { return false; }
-        const TableBlob * blob = (const TableBlob *) node;
-        if ( blob->length > (uint32_t) 0x7fffffff ) { return false; }
-        if ( strcmp( f->type_name, "string" ) == 0 ) { TableJsonWriteString( out, (const char *) ( blob + 1 ), (int32_t) blob->length ); }
+        const TableBlob * blob = reinterpret_cast<const TableBlob *>( node );
+        if ( blob->length > static_cast<uint32_t>( 0x7fffffff ) ) { return false; }
+        if ( strcmp( f->type_name, "string" ) == 0 ) { TableJsonWriteString( out, reinterpret_cast<const char *>( blob + 1 ), static_cast<int32_t>( blob->length ) ); }
         else
         {
-            TableJsonWriteBase64( out, (const uint8_t *) ( blob + 1 ), (int32_t) blob->length );
+            TableJsonWriteBase64( out, reinterpret_cast<const uint8_t *>( blob + 1 ), static_cast<int32_t>( blob->length ) );
         }
         return true;
     }
@@ -5771,7 +5771,7 @@ inline bool TableJsonWritePointer( TableJsonOut & out, const void * slot, const 
         if ( !taken ) { return entry->open == 0; }
         entry->open = 1;
         if ( !TableJsonWriteValue( out, node, f->table, depth ) ) { return false; }
-        entry = TableJsonGraphMapFind( graph->nodes, (uint64_t) (uintptr_t) node ); // the map may have grown under the descent
+        entry = TableJsonGraphMapFind( graph->nodes, static_cast<uint64_t>( static_cast<uintptr_t>( node ) ) ); // the map may have grown under the descent
         if ( entry == NULL ) { return false; }
         entry->open = 0;
         return true;
@@ -5791,7 +5791,7 @@ inline bool TableJsonWritePointer( TableJsonOut & out, const void * slot, const 
         out.put( '{' );
         out.line( depth + 1 );
         out.raw( "\"&node\": ", 9 );
-        TableJsonWriteUnsigned( out, (uint64_t) entry->label );
+        TableJsonWriteUnsigned( out, static_cast<uint64_t>( entry->label ) );
         out.line( depth );
         out.put( '}' );
         return true;
@@ -5800,7 +5800,7 @@ inline bool TableJsonWritePointer( TableJsonOut & out, const void * slot, const 
     out.put( '{' );
     out.line( depth + 1 );
     out.raw( "\"&node\": ", 9 );
-    TableJsonWriteUnsigned( out, (uint64_t) entry->label );
+    TableJsonWriteUnsigned( out, static_cast<uint64_t>( entry->label ) );
     bool any = true;
     int64_t before = out.offset;
     if ( !TableJsonWriteFields( out, node, f->table, depth, any ) ) { return false; }
@@ -5846,7 +5846,7 @@ inline bool TableJsonReadGraph( TableWorker & worker, void * root, const TableTy
         in.report->damaged = true;
         return false;
     }
-    if ( bytes >= 3 && (uint8_t) text[0] == 0xEF && (uint8_t) text[1] == 0xBB && (uint8_t) text[2] == 0xBF ) { in.pos = 3; }
+    if ( bytes >= 3 && static_cast<uint8_t>( text[0] ) == 0xEF && static_cast<uint8_t>( text[1] ) == 0xBB && static_cast<uint8_t>( text[2] ) == 0xBF ) { in.pos = 3; }
     const int32_t missing_before = in.report->missing_required;
     bool ok = TableJsonReadTable( in, root, info, 0 );
     if ( ok )
@@ -5878,7 +5878,7 @@ inline int64_t TableJsonWriteGraph( const void * root, const TableTypeInfo * inf
     graph.counting = true;
     graph.next_label = 0;
     bool taken = false;
-    TableJsonGraphEntry * entry = TableJsonGraphMapReach( graph.nodes, (uint64_t) (uintptr_t) root, taken );
+    TableJsonGraphEntry * entry = TableJsonGraphMapReach( graph.nodes, static_cast<uint64_t>( static_cast<uintptr_t>( root ) ), taken );
     if ( entry == NULL )
     {
         TableJsonGraphMapShutdown( graph.nodes );

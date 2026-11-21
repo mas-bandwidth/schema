@@ -229,16 +229,16 @@ struct TableFixedEntry
 inline void TableFixedPut8( uint8_t * b, uint8_t v ) { b[0] = v; }
 inline void TableFixedPut16( uint8_t * b, uint16_t v )
 {
-    b[0] = (uint8_t) ( v );
-    b[1] = (uint8_t) ( v >> 8 );
+    b[0] = static_cast<uint8_t>( v );
+    b[1] = static_cast<uint8_t>( v >> 8 );
 }
 inline void TableFixedPut32( uint8_t * b, uint32_t v )
 {
-    for ( int i = 0; i < 4; ++i ) { b[i] = (uint8_t) ( v >> ( 8 * i ) ); }
+    for ( int i = 0; i < 4; ++i ) { b[i] = static_cast<uint8_t>( v >> ( 8 * i ) ); }
 }
 inline void TableFixedPut64( uint8_t * b, uint64_t v )
 {
-    for ( int i = 0; i < 8; ++i ) { b[i] = (uint8_t) ( v >> ( 8 * i ) ); }
+    for ( int i = 0; i < 8; ++i ) { b[i] = static_cast<uint8_t>( v >> ( 8 * i ) ); }
 }
 inline void TableFixedPutF32( uint8_t * b, float v )
 {
@@ -255,13 +255,13 @@ inline void TableFixedPutF64( uint8_t * b, double v )
 inline uint32_t TableFixedGet32( const uint8_t * b )
 {
     uint32_t v = 0;
-    for ( int i = 0; i < 4; ++i ) { v |= ( (uint32_t) b[i] ) << ( 8 * i ); }
+    for ( int i = 0; i < 4; ++i ) { v |= ( static_cast<uint32_t>( b[i] ) ) << ( 8 * i ); }
     return v;
 }
 inline uint64_t TableFixedGet64( const uint8_t * b )
 {
     uint64_t v = 0;
-    for ( int i = 0; i < 8; ++i ) { v |= ( (uint64_t) b[i] ) << ( 8 * i ); }
+    for ( int i = 0; i < 8; ++i ) { v |= ( static_cast<uint64_t>( b[i] ) ) << ( 8 * i ); }
     return v;
 }
 // A LITTLE-ENDIAN LOAD OF 1..8 BYTES, zero-extended. The widen, ordinal and
@@ -270,7 +270,7 @@ inline uint64_t TableFixedGet64( const uint8_t * b )
 inline uint64_t TableFixedGetLe( const uint8_t * b, uint32_t size )
 {
     uint64_t v = 0;
-    for ( uint32_t i = 0; i < size && i < 8; ++i ) { v |= ( (uint64_t) b[i] ) << ( 8 * i ); }
+    for ( uint32_t i = 0; i < size && i < 8; ++i ) { v |= ( static_cast<uint64_t>( b[i] ) ) << ( 8 * i ); }
     return v;
 }
 // THIS BUILD'S HOST ORDER, for the fixed form only. The wire is
@@ -295,7 +295,7 @@ inline uint64_t TableFixedTagAt( const uint8_t * src, uint32_t guard, uint8_t ar
     uint64_t v = 0;
     for ( uint8_t i = 0; i < w; ++i )
     {
-        v |= ( (uint64_t) src[guard + i] ) << ( 8 * i );
+        v |= ( static_cast<uint64_t>( src[guard + i] ) ) << ( 8 * i );
     }
     return v;
 }
@@ -306,7 +306,7 @@ inline uint64_t TableFixedHashOf( const uint8_t * layout, int64_t bytes )
     uint64_t h = 0xcbf29ce484222325ull;
     for ( int64_t i = 0; i < bytes; ++i )
     {
-        h ^= (uint64_t) layout[i];
+        h ^= static_cast<uint64_t>( layout[i] );
         h *= 0x100000001b3ull;
     }
     return h;
@@ -413,26 +413,26 @@ inline void TableFixedStoreNative( uint8_t * dst, uint64_t v, uint32_t size )
 {
     if ( TableFixedBigEndianHost )
     {
-        for ( uint32_t i = 0; i < size && i < 8; ++i ) { dst[i] = (uint8_t) ( v >> ( 8 * ( size - 1 - i ) ) ); }
+        for ( uint32_t i = 0; i < size && i < 8; ++i ) { dst[i] = static_cast<uint8_t>( v >> ( 8 * ( size - 1 - i ) ) ); }
         return;
     }
     switch ( size )
     {
         case 1:
         {
-            uint8_t t = (uint8_t) v;
+            uint8_t t = static_cast<uint8_t>( v );
             memcpy( dst, &t, 1 );
             break;
         }
         case 2:
         {
-            uint16_t t = (uint16_t) v;
+            uint16_t t = static_cast<uint16_t>( v );
             memcpy( dst, &t, 2 );
             break;
         }
         case 4:
         {
-            uint32_t t = (uint32_t) v;
+            uint32_t t = static_cast<uint32_t>( v );
             memcpy( dst, &t, 4 );
             break;
         }
@@ -455,7 +455,7 @@ inline uint64_t TableFixedLoadNative( const uint8_t * src, uint32_t size )
     uint64_t v = 0;
     if ( TableFixedBigEndianHost )
     {
-        for ( uint32_t i = 0; i < size && i < 8; ++i ) { v = ( v << 8 ) | (uint64_t) src[i]; }
+        for ( uint32_t i = 0; i < size && i < 8; ++i ) { v = ( v << 8 ) | static_cast<uint64_t>( src[i] ); }
         return v;
     }
     switch ( size )
@@ -492,20 +492,20 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // is undefined behaviour (docs/FIXED-FORM-ALGORITHM.md §4.5).
             uint8_t * d = dst + p.dst;
             const uint8_t * s = src + p.src;
-            for ( uint32_t i = 0; i < p.size; ++i ) { d[i] = (uint8_t) ( s[i] != 0 ); }
+            for ( uint32_t i = 0; i < p.size; ++i ) { d[i] = static_cast<uint8_t>( s[i] != 0 ); }
             break;
         }
         case kTableFixedCount:
         {
-            int32_t v = (int32_t) TableFixedGet32( src + p.src );
+            int32_t v = static_cast<int32_t>( TableFixedGet32( src + p.src ) );
             if ( v < 0 )
             {
                 v = 0;
                 oor_count++;
             }
-            else if ( v > (int32_t) p.size )
+            else if ( v > static_cast<int32_t>( p.size ) )
             {
-                v = (int32_t) p.size;
+                v = static_cast<int32_t>( p.size );
                 oor_count++;
             }
             memcpy( dst + p.dst, &v, 4 );
@@ -514,15 +514,15 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         case kTableFixedText:
         {
             const uint32_t cap = p.size;
-            int32_t v = (int32_t) TableFixedGet32( src + p.src );
+            int32_t v = static_cast<int32_t>( TableFixedGet32( src + p.src ) );
             if ( v < 0 )
             {
                 v = 0;
                 oor_count++;
             }
-            else if ( (uint32_t) v > cap )
+            else if ( static_cast<uint32_t>( v ) > cap )
             {
-                v = (int32_t) cap;
+                v = static_cast<int32_t>( cap );
                 oor_count++;
             }
             memcpy( dst + p.dst, &v, 4 );
@@ -534,7 +534,7 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
                 // the used length terminates the buffer, whose storage is one
                 // byte longer than the bound for exactly this. A store, not a
                 // call: memset of a runtime length is a call.
-                dst[p.aux + (uint32_t) v] = 0;
+                dst[p.aux + static_cast<uint32_t>( v )] = 0;
             }
             break;
         }
@@ -546,9 +546,9 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // compiler above the entries.
             uint64_t raw = 0;
             raw = TableFixedGetLe( src + p.src, p.size );
-            const uint16_t * table = (const uint16_t *) (const void *) ( base + p.aux );
+            const uint16_t * table = reinterpret_cast<const uint16_t *>( reinterpret_cast<const void *>( base + p.aux ) );
             uint64_t v = 0;
-            if ( raw != 0 && raw <= (uint64_t) table[0] ) { v = table[raw]; }
+            if ( raw != 0 && raw <= static_cast<uint64_t>( table[0] ) ) { v = table[raw]; }
             // AN ORDINAL PAST THE WRITER'S SET LANDS None AND COUNTS CLAMPED
             // (§5.4, §5.8 row 12): the compiled plan counts it exactly as the
             // identity plan's bounds pass does, so the SAME forged bytes land
@@ -574,7 +574,7 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             }
             if ( p.dstsize == 16u )
             {
-                const uint64_t hi = ( p.sign != 0 && (int64_t) raw < 0 ) ? ~0ull : 0ull;
+                const uint64_t hi = ( p.sign != 0 && static_cast<int64_t>( raw ) < 0 ) ? ~0ull : 0ull;
                 TableFixedStoreNative( dst + p.dst, raw, 8u );
                 TableFixedStoreNative( dst + p.dst + 8u, hi, 8u );
             }
@@ -594,7 +594,7 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
                 const uint32_t bits = TableFixedGet32( src + p.src );
                 memcpy( &f, &bits, 4 );
             }
-            const double d = (double) f;
+            const double d = static_cast<double>( f );
             memcpy( dst + p.dst, &d, 8 );
             widened++;
             break;
@@ -611,8 +611,8 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             if ( p.aux == 0 && p.dstsize != 0 )
             {
                 uint64_t raw = 0;
-                raw = TableFixedGetLe( src + p.src, p.sign != 0 ? (uint32_t) p.sign : p.size );
-                if ( raw > (uint64_t) p.dstsize ) { oor_count++; }
+                raw = TableFixedGetLe( src + p.src, p.sign != 0 ? static_cast<uint32_t>( p.sign ) : p.size );
+                if ( raw > static_cast<uint64_t>( p.dstsize ) ) { oor_count++; }
             }
             break;
         }
@@ -633,7 +633,7 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // GCC's array-bounds pass form offsets past a small Reset image
             // on a size branch no entry of this op reaches, and an absent
             // payload is the cold path.
-            const uint8_t flag = (uint8_t) ( src[p.src] != 0 );
+            const uint8_t flag = static_cast<uint8_t>( src[p.src] != 0 );
             dst[p.dst] = flag;
             if ( flag == 0 && defaults != NULL ) { memcpy( dst + p.aux, defaults + p.aux, p.size ); }
             break;
@@ -657,7 +657,7 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
     int32_t widened = 0;
     for ( int32_t i = 0; i < guarded; ++i )
     {
-        TableFixedApply( plan[i], (const uint8_t *) plan, src, dst, oor_count, widened, defaults );
+        TableFixedApply( plan[i], reinterpret_cast<const uint8_t *>( plan ), src, dst, oor_count, widened, defaults );
     }
     for ( int32_t i = guarded; i < count; ++i )
     {
@@ -669,9 +669,9 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
             // CONJUNCTION. A chain past two nested unions rides here whole.
             // guard_index is a BYTE OFFSET from the pool's base.
             bool matches = true;
-            for ( int32_t j = 0; j < (int32_t) p.guard_count; ++j )
+            for ( int32_t j = 0; j < static_cast<int32_t>( p.guard_count ); ++j )
             {
-                const TableFixedGuardLink & l = *(const TableFixedGuardLink *) (const void *) ( (const uint8_t *) guard_pool + p.guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );
+                const TableFixedGuardLink & l = *reinterpret_cast<const TableFixedGuardLink *>( reinterpret_cast<const void *>( reinterpret_cast<const uint8_t *>( guard_pool ) + p.guard_index + j * static_cast<int32_t>( sizeof( TableFixedGuardLink ) ) ) );
                 if ( TableFixedTagAt( src, l.guard, l.argw ) != l.arg )
                 {
                     matches = false;
@@ -690,7 +690,7 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
             if ( p.guard != kTableFixedNoGuard && TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
             if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
         }
-        TableFixedApply( p, (const uint8_t *) plan, src, dst, oor_count, widened, defaults );
+        TableFixedApply( p, reinterpret_cast<const uint8_t *>( plan ), src, dst, oor_count, widened, defaults );
     }
     if ( oor_count != 0 )
     {
@@ -717,20 +717,20 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
 // widen past the record's field.
 inline int64_t TableFixedOptionalWireBytes( const TableFixedEntry & p )
 {
-    return (int64_t) p.meta | ( (int64_t) p.dstsize << 8 );
+    return static_cast<int64_t>( p.meta ) | ( static_cast<int64_t>( p.dstsize ) << 8 );
 }
 
 inline int64_t TableFixedEntryEnd( const TableFixedEntry & p )
 {
     switch ( p.op )
     {
-        case kTableFixedCount: return (int64_t) p.src + 4 + (int64_t) p.size * (int64_t) p.aux;
-        case kTableFixedText: return (int64_t) p.src + 4 + (int64_t) p.size;
-        case kTableFixedPresentDefaults: return (int64_t) p.src + 1 + TableFixedOptionalWireBytes( p );
-        case kTableFixedWidenF: return (int64_t) p.src + 4;
+        case kTableFixedCount: return static_cast<int64_t>( p.src ) + 4 + static_cast<int64_t>( p.size ) * static_cast<int64_t>( p.aux );
+        case kTableFixedText: return static_cast<int64_t>( p.src ) + 4 + static_cast<int64_t>( p.size );
+        case kTableFixedPresentDefaults: return static_cast<int64_t>( p.src ) + 1 + TableFixedOptionalWireBytes( p );
+        case kTableFixedWidenF: return static_cast<int64_t>( p.src ) + 4;
         case kTableFixedPresent:
-        case kTableFixedConst: return (int64_t) p.src;
-        default: return (int64_t) p.src + (int64_t) p.size;
+        case kTableFixedConst: return static_cast<int64_t>( p.src );
+        default: return static_cast<int64_t>( p.src ) + static_cast<int64_t>( p.size );
     }
 }
 
@@ -748,9 +748,9 @@ inline bool TableFixedGuardHolds( const TableFixedEntry & p, const uint8_t * src
 {
     if ( p.guard_count > 0 )
     {
-        for ( int32_t j = 0; j < (int32_t) p.guard_count; ++j )
+        for ( int32_t j = 0; j < static_cast<int32_t>( p.guard_count ); ++j )
         {
-            const TableFixedGuardLink & l = *(const TableFixedGuardLink *) (const void *) ( (const uint8_t *) guard_pool + p.guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );
+            const TableFixedGuardLink & l = *reinterpret_cast<const TableFixedGuardLink *>( reinterpret_cast<const void *>( reinterpret_cast<const uint8_t *>( guard_pool ) + p.guard_index + j * static_cast<int32_t>( sizeof( TableFixedGuardLink ) ) ) );
             if ( TableFixedTagAt( src, l.guard, l.argw ) != l.arg ) { return false; }
         }
         return true;
@@ -770,7 +770,7 @@ inline bool TableFixedInAbsentPayload( const TableFixedEntry * plan, int32_t cou
         const TableFixedEntry & q = plan[i];
         if ( q.op != kTableFixedPresentDefaults || q.size == 0 ) { continue; }
         if ( src[q.src] != 0 ) { continue; }
-        if ( at > (int64_t) q.src && at < (int64_t) q.src + 1 + TableFixedOptionalWireBytes( q ) ) { return true; }
+        if ( at > static_cast<int64_t>( q.src ) && at < static_cast<int64_t>( q.src ) + 1 + TableFixedOptionalWireBytes( q ) ) { return true; }
     }
     return false;
 }
@@ -780,15 +780,15 @@ inline bool TableFixedEntryTagArg( const TableFixedEntry & e, uint32_t tag,
 {
     if ( e.guard_count > 0 )
     {
-        for ( int32_t j = 0; j < (int32_t) e.guard_count; ++j )
+        for ( int32_t j = 0; j < static_cast<int32_t>( e.guard_count ); ++j )
         {
-            const TableFixedGuardLink & l = *(const TableFixedGuardLink *) (const void *) ( (const uint8_t *) guard_pool + e.guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );
-            if ( l.guard == tag ) { arg = (int64_t) l.arg; return true; }
+            const TableFixedGuardLink & l = *reinterpret_cast<const TableFixedGuardLink *>( reinterpret_cast<const void *>( reinterpret_cast<const uint8_t *>( guard_pool ) + e.guard_index + j * static_cast<int32_t>( sizeof( TableFixedGuardLink ) ) ) );
+            if ( l.guard == tag ) { arg = static_cast<int64_t>( l.arg ); return true; }
         }
         return false;
     }
-    if ( e.guard == tag ) { arg = (int64_t) e.arg; return true; }
-    if ( e.guard2 == tag ) { arg = (int64_t) e.arg2; return true; }
+    if ( e.guard == tag ) { arg = static_cast<int64_t>( e.arg ); return true; }
+    if ( e.guard2 == tag ) { arg = static_cast<int64_t>( e.arg2 ); return true; }
     return false;
 }
 
@@ -812,7 +812,7 @@ inline bool TableFixedTagSeen( const TableFixedEntry * plan, int32_t upto, uint3
 inline bool TableFixedDeadSpan( const TableFixedEntry * plan, int32_t count, const uint8_t * src,
     uint32_t tag_at, uint8_t tag_w, const TableFixedGuardLink * guard_pool )
 {
-    const int64_t arm = (int64_t) tag_at + (int64_t) ( tag_w == 0 ? 1 : tag_w );
+    const int64_t arm = static_cast<int64_t>( tag_at ) + static_cast<int64_t>( tag_w == 0 ? 1 : tag_w );
     const uint64_t tag = TableFixedTagAt( src, tag_at, tag_w );
     int64_t widest = arm;
     int64_t taken = arm;
@@ -829,7 +829,7 @@ inline bool TableFixedDeadSpan( const TableFixedEntry * plan, int32_t count, con
             if ( e.dstsize != 0 ) { arm_count = e.dstsize; }
         }
         else if ( e.op == kTableFixedCopy && e.aux != 0 &&
-                  e.src <= tag_at && (int64_t) e.src + (int64_t) e.size == arm &&
+                  e.src <= tag_at && static_cast<int64_t>( e.src ) + static_cast<int64_t>( e.size ) == arm &&
                   TableFixedGuardHolds( e, src, guard_pool ) )
         {
             arm_count = e.aux;
@@ -839,9 +839,9 @@ inline bool TableFixedDeadSpan( const TableFixedEntry * plan, int32_t count, con
         if ( e.guard_count > 0 )
         {
             bool outer_ok = true;
-            for ( int32_t j = 0; j < (int32_t) e.guard_count; ++j )
+            for ( int32_t j = 0; j < static_cast<int32_t>( e.guard_count ); ++j )
             {
-                const TableFixedGuardLink & l = *(const TableFixedGuardLink *) (const void *) ( (const uint8_t *) guard_pool + e.guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );
+                const TableFixedGuardLink & l = *reinterpret_cast<const TableFixedGuardLink *>( reinterpret_cast<const void *>( reinterpret_cast<const uint8_t *>( guard_pool ) + e.guard_index + j * static_cast<int32_t>( sizeof( TableFixedGuardLink ) ) ) );
                 if ( l.guard == tag_at ) { break; }
                 if ( TableFixedTagAt( src, l.guard, l.argw ) != l.arg ) { outer_ok = false; break; }
             }
@@ -854,7 +854,7 @@ inline bool TableFixedDeadSpan( const TableFixedEntry * plan, int32_t count, con
         }
         const int64_t end = TableFixedEntryEnd( e );
         if ( end > widest ) { widest = end; }
-        if ( arg >= 0 && (uint64_t) arg == tag )
+        if ( arg >= 0 && static_cast<uint64_t>( arg ) == tag )
         {
             matched = true;
             if ( end > taken ) { taken = end; }
@@ -882,19 +882,19 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
         if ( i >= guarded && !TableFixedGuardHolds( p, src, guard_pool ) ) { continue; }
         // THE PAYLOAD UNDER A CLEAR FLAG IS DEAD WHOLE: its own entry checks it
         // against zero, and nothing inside it is read as a value.
-        if ( TableFixedInAbsentPayload( plan, count, src, (int64_t) p.src ) ) { continue; }
+        if ( TableFixedInAbsentPayload( plan, count, src, static_cast<int64_t>( p.src ) ) ) { continue; }
         if ( p.op == kTableFixedCount )
         {
-            int32_t v = (int32_t) TableFixedGet32( src + p.src );
-            if ( v < 0 || v > (int32_t) p.size )
+            int32_t v = static_cast<int32_t>( TableFixedGet32( src + p.src ) );
+            if ( v < 0 || v > static_cast<int32_t>( p.size ) )
             {
                 why = count_over_bound;
                 return true;
             }
-            const int64_t base = (int64_t) p.src + 4;
-            const int64_t elem = (int64_t) p.aux;
-            const int64_t live = base + (int64_t) v * elem;
-            const int64_t end = base + (int64_t) p.size * elem;
+            const int64_t base = static_cast<int64_t>( p.src ) + 4;
+            const int64_t elem = static_cast<int64_t>( p.aux );
+            const int64_t live = base + static_cast<int64_t>( v ) * elem;
+            const int64_t end = base + static_cast<int64_t>( p.size ) * elem;
             if ( !TableFixedDeadZero( src, live, end ) )
             {
                 why = wire_damaged;
@@ -904,14 +904,14 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
         else if ( p.op == kTableFixedText )
         {
             const uint32_t cap = p.size;
-            int32_t v = (int32_t) TableFixedGet32( src + p.src );
-            if ( v < 0 || (uint32_t) v > cap )
+            int32_t v = static_cast<int32_t>( TableFixedGet32( src + p.src ) );
+            if ( v < 0 || static_cast<uint32_t>( v ) > cap )
             {
                 why = length_over_bound;
                 return true;
             }
-            const int64_t base = (int64_t) p.src + 4;
-            if ( !TableFixedDeadZero( src, base + (int64_t) v, base + (int64_t) cap ) )
+            const int64_t base = static_cast<int64_t>( p.src ) + 4;
+            if ( !TableFixedDeadZero( src, base + static_cast<int64_t>( v ), base + static_cast<int64_t>( cap ) ) )
             {
                 why = wire_damaged;
                 return true;
@@ -921,7 +921,7 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
         {
             if ( src[p.src] == 0 )
             {
-                const int64_t base = (int64_t) p.src + 1;
+                const int64_t base = static_cast<int64_t>( p.src ) + 1;
                 if ( !TableFixedDeadZero( src, base, base + TableFixedOptionalWireBytes( p ) ) )
                 {
                     why = wire_damaged;
@@ -939,16 +939,16 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
         const TableFixedEntry & e = plan[i];
         if ( e.guard_count > 0 )
         {
-            for ( int32_t j = 0; j < (int32_t) e.guard_count; ++j )
+            for ( int32_t j = 0; j < static_cast<int32_t>( e.guard_count ); ++j )
             {
-                const TableFixedGuardLink & l = *(const TableFixedGuardLink *) (const void *) ( (const uint8_t *) guard_pool + e.guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );
+                const TableFixedGuardLink & l = *reinterpret_cast<const TableFixedGuardLink *>( reinterpret_cast<const void *>( reinterpret_cast<const uint8_t *>( guard_pool ) + e.guard_index + j * static_cast<int32_t>( sizeof( TableFixedGuardLink ) ) ) );
                 if ( j > 0 )
                 {
-                    const TableFixedGuardLink & outer = *(const TableFixedGuardLink *) (const void *) ( (const uint8_t *) guard_pool + e.guard_index + ( j - 1 ) * (int32_t) sizeof( TableFixedGuardLink ) );
+                    const TableFixedGuardLink & outer = *reinterpret_cast<const TableFixedGuardLink *>( reinterpret_cast<const void *>( reinterpret_cast<const uint8_t *>( guard_pool ) + e.guard_index + ( j - 1 ) * static_cast<int32_t>( sizeof( TableFixedGuardLink ) ) ) );
                     if ( TableFixedTagAt( src, outer.guard, outer.argw ) != outer.arg ) { break; }
                 }
                 if ( TableFixedTagSeen( plan, i, l.guard, guard_pool ) ) { continue; }
-                if ( TableFixedInAbsentPayload( plan, count, src, (int64_t) l.guard ) ) { continue; }
+                if ( TableFixedInAbsentPayload( plan, count, src, static_cast<int64_t>( l.guard ) ) ) { continue; }
                 if ( !TableFixedDeadSpan( plan, count, src, l.guard, l.argw, guard_pool ) )
                 {
                     why = wire_damaged;
@@ -962,14 +962,14 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
             const bool outer_holds = e.guard2 == kTableFixedNoGuard ||
                                      TableFixedTagAt( src, e.guard2, e.argw2 ) == e.arg2;
             if ( outer_holds && e.guard != kTableFixedNoGuard && !TableFixedTagSeen( plan, i, e.guard, guard_pool ) &&
-                 !TableFixedInAbsentPayload( plan, count, src, (int64_t) e.guard ) &&
+                 !TableFixedInAbsentPayload( plan, count, src, static_cast<int64_t>( e.guard ) ) &&
                  !TableFixedDeadSpan( plan, count, src, e.guard, e.argw, guard_pool ) )
             {
                 why = wire_damaged;
                 return true;
             }
             if ( e.guard2 != kTableFixedNoGuard && !TableFixedTagSeen( plan, i, e.guard2, guard_pool ) &&
-                 !TableFixedInAbsentPayload( plan, count, src, (int64_t) e.guard2 ) &&
+                 !TableFixedInAbsentPayload( plan, count, src, static_cast<int64_t>( e.guard2 ) ) &&
                  !TableFixedDeadSpan( plan, count, src, e.guard2, e.argw2, guard_pool ) )
             {
                 why = wire_damaged;
@@ -1149,7 +1149,7 @@ inline TableFixedLayoutEntry TableFixedEntryAt( const TableFixedLayoutView & b, 
         out.kind = 0xFFu;
         return out;
     }
-    const uint8_t * e = b.bytes + kTableFixedLayoutHeaderBytes + (int64_t) i * kTableFixedEntryBytes;
+    const uint8_t * e = b.bytes + kTableFixedLayoutHeaderBytes + static_cast<int64_t>( i ) * kTableFixedEntryBytes;
     out.id = TableFixedGet64( e );
     out.kind = e[8];
     out.size = TableFixedGet32( e + 9 );
@@ -1172,9 +1172,9 @@ inline int32_t TableFixedSubtree( const TableFixedLayoutView & b, int32_t i )
     {
         pending--;
         n++;
-        pending += (int64_t) TableFixedEntryAt( b, at ).children;
+        pending += static_cast<int64_t>( TableFixedEntryAt( b, at ).children );
         at++;
-        if ( pending > (int64_t) b.count ) { break; }
+        if ( pending > static_cast<int64_t>( b.count ) ) { break; }
     }
     return n;
 }
@@ -1371,7 +1371,7 @@ inline int32_t TableFixedCheckEntry( TableFixedCheck & c, int32_t i, int32_t dep
     {
         case 13: // a TABLE: its size is the SUM of its fields'
         {
-            if ( (uint64_t) e.size != sum )
+            if ( static_cast<uint64_t>( e.size ) != sum )
             {
                 TableFixedFail( c, layout_size_mismatch );
                 return 0;
@@ -1385,7 +1385,7 @@ inline int32_t TableFixedCheckEntry( TableFixedCheck & c, int32_t i, int32_t dep
                 TableFixedFail( c, layout_kind_invalid );
                 return 0;
             }
-            if ( (uint64_t) e.size != sum + 1u )
+            if ( static_cast<uint64_t>( e.size ) != sum + 1u )
             {
                 TableFixedFail( c, layout_size_mismatch );
                 return 0;
@@ -1508,14 +1508,14 @@ inline bool TableFixedParseLayout( const uint8_t * bytes, int64_t length, TableF
     }
     // 1. THE ENTRY COUNT FITS THE LAYOUT LENGTH EXACTLY
     const uint32_t count = TableFixedGet32( bytes );
-    if ( count == 0u || (int64_t) count * kTableFixedEntryBytes + kTableFixedLayoutHeaderBytes != length )
+    if ( count == 0u || static_cast<int64_t>( count ) * kTableFixedEntryBytes + kTableFixedLayoutHeaderBytes != length )
     {
         why = layout_count_mismatch;
         return false;
     }
     TableFixedLayoutView view;
     view.bytes = bytes;
-    view.count = (int32_t) count;
+    view.count = static_cast<int32_t>( count );
     // 2. THE ROOT IS A TABLE, and its size is the record's body
     const TableFixedLayoutEntry root = TableFixedEntryAt( view, 0 );
     if ( root.kind != 13 )
@@ -1607,21 +1607,21 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
         const uint8_t gw = e.argw == 0 ? 1u : e.argw;
         const uint8_t gw2 = e.argw2 == 0 ? 1u : e.argw2;
         const bool guard_out = ( e.guard != kTableFixedNoGuard &&
-                                   ( e.guard >= c.record || (uint64_t) e.guard + gw > (uint64_t) c.record ) ) ||
+                                   ( e.guard >= c.record || static_cast<uint64_t>( e.guard ) + gw > static_cast<uint64_t>( c.record ) ) ) ||
             ( e.guard2 != kTableFixedNoGuard &&
-                ( e.guard2 >= c.record || (uint64_t) e.guard2 + gw2 > (uint64_t) c.record ) );
-        uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( ( e.op == kTableFixedText || e.op == kTableFixedCount ) ? 4ull : 0ull );
+                ( e.guard2 >= c.record || static_cast<uint64_t>( e.guard2 ) + gw2 > static_cast<uint64_t>( c.record ) ) );
+        uint64_t reach = static_cast<uint64_t>( e.src ) + static_cast<uint64_t>( e.size ) + ( ( e.op == kTableFixedText || e.op == kTableFixedCount ) ? 4ull : 0ull );
         if ( e.op == kTableFixedPresent ) { reach = 0ull; }
-        else if ( e.op == kTableFixedPresentDefaults ) { reach = (uint64_t) e.src + 1ull + (uint64_t) TableFixedOptionalWireBytes( e ); }
-        else if ( e.op == kTableFixedWidenF ) { reach = (uint64_t) e.src + 4ull; }
-        else if ( e.op == kTableFixedConst ) { reach = ( e.aux == 0 && e.dstsize != 0 ) ? (uint64_t) e.src + (uint64_t) ( e.sign != 0 ? e.sign : e.size ) : 0ull; }
-        if ( reach > (uint64_t) c.record || guard_out )
+        else if ( e.op == kTableFixedPresentDefaults ) { reach = static_cast<uint64_t>( e.src ) + 1ull + static_cast<uint64_t>( TableFixedOptionalWireBytes( e ) ); }
+        else if ( e.op == kTableFixedWidenF ) { reach = static_cast<uint64_t>( e.src ) + 4ull; }
+        else if ( e.op == kTableFixedConst ) { reach = ( e.aux == 0 && e.dstsize != 0 ) ? static_cast<uint64_t>( e.src ) + static_cast<uint64_t>( e.sign != 0 ? e.sign : e.size ) : 0ull; }
+        if ( reach > static_cast<uint64_t>( c.record ) || guard_out )
         {
             c.hostile = true;
             return;
         }
     }
-    const int32_t room = c.capacity - ( c.pool + (int32_t) sizeof( TableFixedEntry ) - 1 ) / (int32_t) sizeof( TableFixedEntry );
+    const int32_t room = c.capacity - ( c.pool + static_cast<int32_t>( sizeof( TableFixedEntry ) ) - 1 ) / static_cast<int32_t>( sizeof( TableFixedEntry ) );
     if ( c.count >= room )
     {
         c.overflow = true;
@@ -1640,17 +1640,17 @@ inline uint32_t TableFixedLayTable( TableFixedCompiler & c, const uint16_t * val
         c.overflow = true;
         return 0;
     }
-    const int32_t bytes = ( n + 1 ) * (int32_t) sizeof( uint16_t );
-    const int32_t total = (int32_t) sizeof( TableFixedEntry ) * c.capacity;
+    const int32_t bytes = ( n + 1 ) * static_cast<int32_t>( sizeof( uint16_t ) );
+    const int32_t total = static_cast<int32_t>( sizeof( TableFixedEntry ) ) * c.capacity;
     c.pool += bytes;
-    if ( total - c.pool < c.count * (int32_t) sizeof( TableFixedEntry ) )
+    if ( total - c.pool < c.count * static_cast<int32_t>( sizeof( TableFixedEntry ) ) )
     {
         c.overflow = true;
         return 0;
     }
-    const uint32_t at = (uint32_t) ( total - c.pool );
-    uint16_t * dst = (uint16_t *) (void *) ( (uint8_t *) c.plan + at );
-    dst[0] = (uint16_t) n;
+    const uint32_t at = static_cast<uint32_t>( total - c.pool );
+    uint16_t * dst = reinterpret_cast<uint16_t *>( reinterpret_cast<void *>( reinterpret_cast<uint8_t *>( c.plan ) + at ) );
+    dst[0] = static_cast<uint16_t>( n );
     if ( values != NULL )
     {
         for ( int32_t i = 0; i < n; ++i ) { dst[1 + i] = values[i]; }
@@ -1665,16 +1665,16 @@ inline uint32_t TableFixedLayTable( TableFixedCompiler & c, const uint16_t * val
 // pool does not fit is a refusal by name.
 inline uint32_t TableFixedLayFills( TableFixedCompiler & c, int32_t n )
 {
-    const int32_t total = (int32_t) sizeof( TableFixedEntry ) * c.capacity;
+    const int32_t total = static_cast<int32_t>( sizeof( TableFixedEntry ) ) * c.capacity;
     // ROUNDED SO THE ARRAY IS ALIGNED: a remap table is laid in units of two
     // bytes and this array's members are four wide.
-    c.pool = ( c.pool + n * (int32_t) sizeof( TableFixedFill ) + 3 ) & ~3;
-    if ( total - c.pool < c.count * (int32_t) sizeof( TableFixedEntry ) )
+    c.pool = ( c.pool + n * static_cast<int32_t>( sizeof( TableFixedFill ) ) + 3 ) & ~3;
+    if ( total - c.pool < c.count * static_cast<int32_t>( sizeof( TableFixedEntry ) ) )
     {
         c.overflow = true;
         return 0;
     }
-    return (uint32_t) ( total - c.pool );
+    return static_cast<uint32_t>( total - c.pool );
 }
 
 
@@ -1785,7 +1785,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             e.src = their_at;
             e.dst = at;
             e.size = te.size;
-            e.dstsize = (uint8_t) me.size;
+            e.dstsize = static_cast<uint8_t>( me.size );
             e.guard = guard;
             e.arg = arg;
             e.op = ( te.kind == 10 ) ? kTableFixedWidenF : kTableFixedWiden;
@@ -1810,7 +1810,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             // (§3.4: an absent optional's payload is IGNORED on read). The
             // payload's storage starts at the child's own destination and runs
             // to the present companion, which the reader's layout puts after it.
-            const uint32_t payload_dst = (uint32_t) ( my_at + dst[mi + 1].dst );
+            const uint32_t payload_dst = static_cast<uint32_t>( my_at + dst[mi + 1].dst );
             const uint32_t payload_size = ( aux_at > payload_dst ) ? ( aux_at - payload_dst ) : 0u;
             TableFixedCompileEntry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
             TableFixedEntry e;
@@ -1822,8 +1822,8 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             // pass holds the record's field to zero, and the reader's storage
             // may be wider.
             const uint32_t payload_wire = te.size > 0u ? ( te.size - 1u ) : 0u;
-            e.meta = (uint8_t) ( payload_wire & 0xffu );
-            e.dstsize = (uint8_t) ( ( payload_wire >> 8 ) & 0xffu );
+            e.meta = static_cast<uint8_t>( payload_wire & 0xffu );
+            e.dstsize = static_cast<uint8_t>( ( payload_wire >> 8 ) & 0xffu );
             e.guard = guard;
             e.op = kTableFixedPresentDefaults;
             e.arg = arg;
@@ -1879,12 +1879,12 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             const int32_t tel = ti + 1 + TableFixedSubtree( theirs, ti + 1 );
             const int32_t mel = mi + 1 + TableFixedSubtree( mine, mi + 1 );
             const TableFixedLayoutEntry tee = TableFixedEntryAt( theirs, tel );
-            for ( uint32_t k = 0; k < mkey.children && mi + 2 + (int32_t) k < mine.count; ++k )
+            for ( uint32_t k = 0; k < mkey.children && mi + 2 + static_cast<int32_t>( k ) < mine.count; ++k )
             {
-                const uint64_t key_id = TableFixedEntryAt( mine, mi + 2 + (int32_t) k ).id;
-                for ( uint32_t j = 0; j < tkey.children && ti + 2 + (int32_t) j < theirs.count; ++j )
+                const uint64_t key_id = TableFixedEntryAt( mine, mi + 2 + static_cast<int32_t>( k ) ).id;
+                for ( uint32_t j = 0; j < tkey.children && ti + 2 + static_cast<int32_t>( j ) < theirs.count; ++j )
                 {
-                    if ( TableFixedEntryAt( theirs, ti + 2 + (int32_t) j ).id != key_id ) { continue; }
+                    if ( TableFixedEntryAt( theirs, ti + 2 + static_cast<int32_t>( j ) ).id != key_id ) { continue; }
                     TableFixedCompileEntry( c, theirs, tel, their_at + j * tee.size,
                         mine, mel, dst, at + k * d.stride, guard, arg, census && k == 0 );
                     break;
@@ -1897,7 +1897,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             const uint32_t their_tag = TableFixedTagBytes( theirs, ti );
             const uint32_t my_tag = TableFixedTagBytes( mine, mi );
             const uint8_t saved_argw = c.argw;
-            c.argw = ( their_tag >= 1u && their_tag <= 8u ) ? (uint8_t) their_tag : 1u;
+            c.argw = ( their_tag >= 1u && their_tag <= 8u ) ? static_cast<uint8_t>( their_tag ) : 1u;
             int32_t my_arm = mi + 1;
             // THE TAG'S "NONE" GOES DOWN FIRST AND UNGUARDED. Every tag value
             // below is written under THEIR tag's guard, so a record naming an
@@ -1923,8 +1923,8 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
                 none.op = kTableFixedConst;
                 none.arg = arg;
                 // Writer arm count, for a tag past the old set (bill §12.5).
-                if ( te.children > 0 && te.children <= 255u ) { none.dstsize = (uint8_t) te.children; }
-                none.sign = (uint8_t) their_tag;
+                if ( te.children > 0 && te.children <= 255u ) { none.dstsize = static_cast<uint8_t>( te.children ); }
+                none.sign = static_cast<uint8_t>( their_tag );
                 TableFixedPush( c, none );
                 c.argw = inner_argw;
             }
@@ -1946,11 +1946,11 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
                         tag.aux = k + 1;
                         tag.guard = their_at;
                         tag.op = kTableFixedConst;
-                        tag.arg = (uint64_t) j + 1u;
+                        tag.arg = static_cast<uint64_t>( j ) + 1u;
                         tag.argw = c.argw;
                         TableFixedPush( c, tag );
                         TableFixedCompileEntry( c, theirs, their_arm, their_at + their_tag,
-                            mine, my_arm, dst, at, their_at, (uint64_t) j + 1u, census );
+                            mine, my_arm, dst, at, their_at, static_cast<uint64_t>( j ) + 1u, census );
                         break;
                     }
                     their_arm += TableFixedSubtree( theirs, their_arm );
@@ -1995,7 +1995,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
                 e.src = their_at;
                 e.dst = at;
                 e.size = te.size;
-                e.dstsize = (uint8_t) me.size;
+                e.dstsize = static_cast<uint8_t>( me.size );
                 e.guard = guard;
                 e.arg = arg;
                 e.op = kTableFixedWiden;
@@ -2007,18 +2007,18 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             // variant, not a 255-deep stack array. n past 65535 is a plan
             // that does not fit the uint16 length word; overflow refuses it.
             const uint32_t n = te.children;
-            const uint32_t at_map = TableFixedLayTable( c, NULL, (int32_t) n );
+            const uint32_t at_map = TableFixedLayTable( c, NULL, static_cast<int32_t>( n ) );
             if ( c.overflow ) { break; }
-            uint16_t * map = (uint16_t *) (void *) ( (uint8_t *) c.plan + at_map );
+            uint16_t * map = reinterpret_cast<uint16_t *>( reinterpret_cast<void *>( reinterpret_cast<uint8_t *>( c.plan ) + at_map ) );
             for ( uint32_t j = 0; j < n; ++j )
             {
-                const uint64_t vid = TableFixedEntryAt( theirs, ti + 1 + (int32_t) j ).id;
+                const uint64_t vid = TableFixedEntryAt( theirs, ti + 1 + static_cast<int32_t>( j ) ).id;
                 uint16_t landed = 0;
-                for ( uint32_t k = 0; k < me.children && mi + 1 + (int32_t) k < mine.count; ++k )
+                for ( uint32_t k = 0; k < me.children && mi + 1 + static_cast<int32_t>( k ) < mine.count; ++k )
                 {
-                    if ( TableFixedEntryAt( mine, mi + 1 + (int32_t) k ).id == vid )
+                    if ( TableFixedEntryAt( mine, mi + 1 + static_cast<int32_t>( k ) ).id == vid )
                     {
-                        landed = (uint16_t) ( k + 1 );
+                        landed = static_cast<uint16_t>( k + 1 );
                         break;
                     }
                 }
@@ -2031,7 +2031,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             e.guard = guard;
             e.op = kTableFixedOrdinal;
             e.arg = arg;
-            e.dstsize = (uint8_t) me.size;
+            e.dstsize = static_cast<uint8_t>( me.size );
             e.aux = at_map;
             TableFixedPush( c, e );
             break;
@@ -2062,13 +2062,13 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             {
                 e.size = me.size;
                 e.op = ( me.kind == 1 ) ? kTableFixedBool : kTableFixedCopy;
-                e.elem = (uint8_t) ( me.size == 16 ? 8 : me.size );
+                e.elem = static_cast<uint8_t>( me.size == 16 ? 8 : me.size );
                 TableFixedPush( c, e );
             }
             else if ( te.size < me.size && me.size <= 8 )
             {
                 e.size = te.size;
-                e.dstsize = (uint8_t) me.size;
+                e.dstsize = static_cast<uint8_t>( me.size );
                 e.op = kTableFixedWiden;
                 TableFixedPush( c, e );
             }
@@ -2144,7 +2144,7 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
     {
         const uint32_t at = TableFixedLayFills( c, *fill_count );
         if ( c.overflow ) { return -1; }
-        TableFixedFills( plan, out, cover, cover_count, (TableFixedFill *) (void *) ( (uint8_t *) plan + at ) );
+        TableFixedFills( plan, out, cover, cover_count, reinterpret_cast<TableFixedFill *>( reinterpret_cast<void *>( reinterpret_cast<uint8_t *>( plan ) + at ) ) );
         *fill_at = at;
     }
     return out;
@@ -2201,21 +2201,21 @@ inline void TableFixedClampKnownRanges( const TableFixedKnownRange * ranges, int
                 const uint64_t lo_b_hi = ( b.lo < 0 ) ? ~0ull : 0ull;
                 const uint64_t hi_b_hi = ( b.hi < 0 ) ? ~0ull : 0ull;
                 below = ( hi_lane != lo_b_hi )
-                    ? ( (int64_t) hi_lane < (int64_t) lo_b_hi )
-                    : ( lo_lane < (uint64_t) b.lo );
+                    ? ( static_cast<int64_t>( hi_lane ) < static_cast<int64_t>( lo_b_hi ) )
+                    : ( lo_lane < static_cast<uint64_t>( b.lo ) );
                 above = ( hi_lane != hi_b_hi )
-                    ? ( (int64_t) hi_lane > (int64_t) hi_b_hi )
-                    : ( lo_lane > (uint64_t) b.hi );
+                    ? ( static_cast<int64_t>( hi_lane ) > static_cast<int64_t>( hi_b_hi ) )
+                    : ( lo_lane > static_cast<uint64_t>( b.hi ) );
             }
             else
             {
-                below = ( hi_lane == 0ull ) && ( lo_lane < (uint64_t) b.lo );
-                above = ( hi_lane != 0ull ) || ( lo_lane > (uint64_t) b.hi );
+                below = ( hi_lane == 0ull ) && ( lo_lane < static_cast<uint64_t>( b.lo ) );
+                above = ( hi_lane != 0ull ) || ( lo_lane > static_cast<uint64_t>( b.hi ) );
             }
             if ( below || above )
             {
-                const uint64_t landed = below ? (uint64_t) b.lo : (uint64_t) b.hi;
-                const uint64_t landed_hi = ( b.sgn != 0 && (int64_t) landed < 0 ) ? ~0ull : 0ull;
+                const uint64_t landed = below ? static_cast<uint64_t>( b.lo ) : static_cast<uint64_t>( b.hi );
+                const uint64_t landed_hi = ( b.sgn != 0 && static_cast<int64_t>( landed ) < 0 ) ? ~0ull : 0ull;
                 TableFixedStoreNative( dst + b.dst, landed, 8u );
                 TableFixedStoreNative( dst + b.dst + 8u, landed_hi, 8u );
                 oor_count++;
@@ -2233,26 +2233,26 @@ inline void TableFixedClampKnownRanges( const TableFixedKnownRange * ranges, int
         bool above = false;
         if ( b.sgn != 0 )
         {
-            const unsigned bits = (unsigned) b.width * 8u;
+            const unsigned bits = static_cast<unsigned>( b.width ) * 8u;
             const uint64_t top = 1ull << ( bits - 1 );
             if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
-            below = (int64_t) raw < b.lo;
-            above = (int64_t) raw > b.hi;
+            below = static_cast<int64_t>( raw ) < b.lo;
+            above = static_cast<int64_t>( raw ) > b.hi;
         }
         else
         {
-            below = raw < (uint64_t) b.lo;
-            above = raw > (uint64_t) b.hi;
+            below = raw < static_cast<uint64_t>( b.lo );
+            above = raw > static_cast<uint64_t>( b.hi );
         }
         uint64_t landed = 0;
         if ( below )
         {
-            landed = (uint64_t) b.lo;
+            landed = static_cast<uint64_t>( b.lo );
             oor_count++;
         }
         else if ( above )
         {
-            landed = (uint64_t) b.hi;
+            landed = static_cast<uint64_t>( b.hi );
             oor_count++;
         }
         else
@@ -2335,8 +2335,8 @@ inline void TableFixedPut128( uint8_t * b, serialize::int128_t v )
 }
 inline void TableFixedPut128( uint8_t * b, serialize::uint128_t v )
 {
-    TableFixedPut64( b, (uint64_t) v );
-    TableFixedPut64( b + 8, (uint64_t) ( v >> 64 ) );
+    TableFixedPut64( b, static_cast<uint64_t>( v ) );
+    TableFixedPut64( b + 8, static_cast<uint64_t>( v >> 64 ) );
 }
 `
 
@@ -2355,10 +2355,10 @@ inline uint32_t schema_crc32c( const uint8_t * data, int64_t bytes )
     uint32_t crc = 0xFFFFFFFFu;
     for ( int64_t i = 0; i < bytes; ++i )
     {
-        crc ^= (uint32_t) data[i];
+        crc ^= static_cast<uint32_t>( data[i] );
         for ( int k = 0; k < 8; ++k )
         {
-            const uint32_t mask = (uint32_t) ( -(int32_t) ( crc & 1u ) );
+            const uint32_t mask = static_cast<uint32_t>( -static_cast<int32_t>( crc & 1u ) );
             crc = ( crc >> 1 ) ^ ( 0x82F63B78u & mask );
         }
     }

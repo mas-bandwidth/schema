@@ -42,7 +42,7 @@ func (g *tableGen) emitMessageLoadBody(st *ir.Struct) {
 	g.pf("        uint64_t ref = 0;\n")
 	g.pf("        if ( !r.get( ref, vocabulary.ref_bits ) )\n        {\n            report->damaged = true;\n            return false;\n        }\n")
 	g.pf("        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE\n")
-	g.pf("        if ( ref > (uint64_t) vocabulary.count )\n        {\n            report->damaged = true;\n            return false;\n        }\n")
+	g.pf("        if ( ref > static_cast<uint64_t>( vocabulary.count ) )\n        {\n            report->damaged = true;\n            return false;\n        }\n")
 	g.pf("        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );\n")
 	g.pf("        // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS\n")
 	g.pf("        // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first\n")
@@ -178,7 +178,7 @@ func (g *tableGen) emitMessageReadTextFromChecked(f *ir.Field, value, count, ind
 	g.pf("%s{\n%s    uint64_t n%s = 0;\n", ind, ind, sfx)
 	// A LENGTH WHOSE PAYLOAD RUNS PAST THE BATCH IS DAMAGE at the field that
 	// carried it (§3.3), found before the clamp so nothing else counts
-	g.pf("%[1]s    if ( !r.get( n%[2]s, %[3]s ) || !r.align() || !r.has( (int64_t) n%[4]s * 8 ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx, width, sfx)
+	g.pf("%[1]s    if ( !r.get( n%[2]s, %[3]s ) || !r.align() || !r.has( static_cast<int64_t>( n%[4]s ) * 8 ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx, width, sfx)
 	if f.Type.Kind == ir.TString {
 		g.pf("%s    const uint8_t * text%s = r.buffer + ( r.offset >> 3 );\n", ind, sfx)
 		// ILL-FORMED TEXT IS DAMAGE HERE TOO, AND IT IS TERMINAL (§3.3): the
@@ -198,13 +198,13 @@ func (g *tableGen) emitMessageReadTextFromChecked(f *ir.Field, value, count, ind
 		// applies while the LENGTH IS STILL WIDE: TableUtf8Clamp takes the
 		// wire's own sixty-four bit number and answers at or below the bound,
 		// so a length no reader could have bounded leaves it bounded
-		g.pf("%s    const int32_t kept%s = (int32_t) TableUtf8Clamp( text%s, n%s, %d );\n", ind, sfx, sfx, sfx, f.Type.Size)
-		g.pf("%[1]s    if ( (uint64_t) kept%[2]s < n%[3]s )\n%[1]s    {\n%[1]s        report->refused = true;\n%[1]s        report->refuse_reason = out_of_range;\n%[1]s    }\n", ind, sfx, sfx)
-		g.pf("%s    memcpy( %s, text%s, (size_t) kept%s );\n", ind, value, sfx, sfx)
+		g.pf("%s    const int32_t kept%s = static_cast<int32_t>( TableUtf8Clamp( text%s, n%s, %d ) );\n", ind, sfx, sfx, sfx, f.Type.Size)
+		g.pf("%[1]s    if ( static_cast<uint64_t>( kept%[2]s ) < n%[3]s )\n%[1]s    {\n%[1]s        report->refused = true;\n%[1]s        report->refuse_reason = out_of_range;\n%[1]s    }\n", ind, sfx, sfx)
+		g.pf("%s    memcpy( %s, text%s, static_cast<size_t>( kept%s ) );\n", ind, value, sfx, sfx)
 		g.pf("%s    %s[kept%s] = 0;\n", ind, value, sfx)
 		// the payload is stepped over WHOLE, clamp or not, because the batch's
 		// next field begins after the bytes the length framed
-		g.pf("%s    r.offset += (int64_t) n%s * 8;\n", ind, sfx)
+		g.pf("%s    r.offset += static_cast<int64_t>( n%s ) * 8;\n", ind, sfx)
 		g.pf("%s    %s = kept%s;\n%s}\n", ind, count, sfx, ind)
 		return
 	}
@@ -221,13 +221,13 @@ func (g *tableGen) emitMessageReadTextFromChecked(f *ir.Field, value, count, ind
 	// narrowed FIRST is negative, passes a signed test against the bound
 	// untouched, and lands a negative length in the caller's storage
 	g.pf("%s    int32_t kept%s = 0;\n", ind, sfx)
-	g.pf("%[1]s    if ( n%[2]s > (uint64_t) %[3]d )\n%[1]s    {\n%[1]s        kept%[4]s = %[5]d;\n%[1]s        report->refused = true;\n%[1]s        report->refuse_reason = out_of_range;\n%[1]s        } else { kept%[6]s = (int32_t) n%[7]s;\n%[1]s    }\n", ind, sfx, f.Type.Size, sfx, f.Type.Size, sfx, sfx)
+	g.pf("%[1]s    if ( n%[2]s > static_cast<uint64_t>( %[3]d ) )\n%[1]s    {\n%[1]s        kept%[4]s = %[5]d;\n%[1]s        report->refused = true;\n%[1]s        report->refuse_reason = out_of_range;\n%[1]s        } else { kept%[6]s = static_cast<int32_t>( n%[7]s );\n%[1]s    }\n", ind, sfx, f.Type.Size, sfx, f.Type.Size, sfx, sfx)
 	g.pf("%s    for ( uint64_t %s = 0; %s < n%s; %s++ )\n%s    {\n", ind, idx, idx, sfx, idx, ind)
 	// a `bytes(N)` and every ARRAY whose element kind is 6: the payload is
 	// bytes, so it carries no content rule and the surplus is stepped over
 	// one byte at a time
 	g.pf("%s        uint64_t by%s = 0;\n%s        if ( !r.get( by%s, 8 ) ) { report->damaged = true; return false; }\n", ind, sfx, ind, sfx)
-	g.pf("%s        if ( (int32_t) %s < kept%s ) { %s[%s] = (uint8_t) by%s; }\n%s    }\n", ind, idx, sfx, value, idx, sfx, ind)
+	g.pf("%s        if ( static_cast<int32_t>( %s ) < kept%s ) { %s[%s] = static_cast<uint8_t>( by%s ); }\n%s    }\n", ind, idx, sfx, value, idx, sfx, ind)
 	g.pf("%s    %s = kept%s;\n%s}\n", ind, count, sfx, ind)
 }
 
@@ -249,11 +249,11 @@ func (g *tableGen) emitMessageReadArrayFromChecked(f *ir.Field, base, count, ind
 	idx := "i" + sfx
 	kind := tableScalarKind(f)
 	fixedSurplus := kind != tkTable && kind != tkEnum && kind != tkUnion
-	g.pf("%s{\n%s    uint64_t n%s = (uint64_t) %s.min;\n", ind, ind, sfx, from)
+	g.pf("%s{\n%s    uint64_t n%s = static_cast<uint64_t>( %s.min );\n", ind, ind, sfx, from)
 	g.pf("%s    const int64_t count_bits%s = TableBitsRequired( %s.min, %s.max );\n", ind, sfx, from, from)
 	g.pf("%s    if ( count_bits%s > 0 )\n%s    {\n", ind, sfx, ind)
 	g.pf("%s        uint64_t raw%s = 0;\n%s        if ( !r.get( raw%s, count_bits%s ) ) { report->damaged = true; return false; }\n", ind, sfx, ind, sfx, sfx)
-	g.pf("%s        n%s = raw%s + (uint64_t) %s.min;\n%s    }\n", ind, sfx, sfx, from, ind)
+	g.pf("%s        n%s = raw%s + static_cast<uint64_t>( %s.min );\n%s    }\n", ind, sfx, sfx, from, ind)
 	if gate != "" && f.CountedOnWire() {
 		g.pf("%[1]s    if ( %[2]s && n%[3]s == 0 )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, gate, sfx)
 	}
@@ -263,22 +263,22 @@ func (g *tableGen) emitMessageReadArrayFromChecked(f *ir.Field, base, count, ind
 	// signed test against the bound untouched, and lands a negative count in
 	// the caller's storage
 	g.pf("%s    int32_t kept%s = 0;\n", ind, sfx)
-	g.pf("%[1]s    if ( n%[2]s > (uint64_t) %[3]d )\n%[1]s    {\n%[1]s        kept%[4]s = %[5]d;\n%[1]s        report->refused = true;\n%[1]s        report->refuse_reason = out_of_range;\n%[1]s        } else { kept%[6]s = (int32_t) n%[7]s;\n%[1]s    }\n", ind, sfx, f.ArrayBound, sfx, f.ArrayBound, sfx, sfx)
+	g.pf("%[1]s    if ( n%[2]s > static_cast<uint64_t>( %[3]d ) )\n%[1]s    {\n%[1]s        kept%[4]s = %[5]d;\n%[1]s        report->refused = true;\n%[1]s        report->refuse_reason = out_of_range;\n%[1]s        } else { kept%[6]s = static_cast<int32_t>( n%[7]s );\n%[1]s    }\n", ind, sfx, f.ArrayBound, sfx, f.ArrayBound, sfx, sfx)
 	if f.IsTextList() && ir.TextListPlain(f) && !ir.TextListUnbounded(f) {
 		m := ir.TextListValue(f).Type.Size
 		width := ir.TableMessageBitsRequired(0, m)
 		g.pf("%s    const uint64_t walk%s = n%s;\n", ind, sfx, sfx)
 		g.pf("%s    for ( uint64_t %s = 0; %s < walk%s; %s++ )\n%s    {\n", ind, idx, idx, sfx, idx, ind)
 		inner := ind + "        "
-		g.pf("%sconst bool in_bounds%s = (int32_t) %s < kept%s;\n", inner, sfx, idx, sfx)
+		g.pf("%sconst bool in_bounds%s = static_cast<int32_t>( %s ) < kept%s;\n", inner, sfx, idx, sfx)
 		g.pf("%suint64_t len%s = 0;\n", inner, sfx)
-		g.pf("%[1]sif ( !r.get( len%[2]s, %[3]d ) || !r.align() || !r.has( (int64_t) len%[4]s * 8 ) )\n%[1]s{\n%[1]s    report->damaged = true;\n%[1]s    return false;\n%[1]s}\n", inner, sfx, width, sfx)
+		g.pf("%[1]sif ( !r.get( len%[2]s, %[3]d ) || !r.align() || !r.has( static_cast<int64_t>( len%[4]s ) * 8 ) )\n%[1]s{\n%[1]s    report->damaged = true;\n%[1]s    return false;\n%[1]s}\n", inner, sfx, width, sfx)
 		g.pf("%sconst uint8_t * text%s = r.buffer + ( r.offset >> 3 );\n", inner, sfx)
 		g.pf("%[1]sif ( !TableUtf8Valid( text%[2]s, len%[3]s ) )\n%[1]s{\n%[1]s    report->damaged = true;\n%[1]s    return false;\n%[1]s}\n", inner, sfx, sfx)
-		g.pf("%sconst int32_t keep%s = (int32_t) TableUtf8Clamp( text%s, len%s, %d );\n", inner, sfx, sfx, sfx, m)
-		g.pf("%[1]sif ( (uint64_t) keep%[2]s < len%[3]s )\n%[1]s{\n%[1]s    report->refused = true;\n%[1]s    report->refuse_reason = out_of_range;\n%[1]s}\n", inner, sfx, sfx)
-		g.pf("%[1]sif ( in_bounds%[2]s )\n%[1]s{\n%[1]s    memcpy( %[3]s[%[4]s].value, text%[5]s, (size_t) keep%[6]s );\n%[1]s    %[7]s[%[8]s].value[keep%[9]s] = 0;\n%[1]s    %[10]s[%[11]s].value_length = keep%[12]s;\n%[1]s}\n", inner, sfx, base, idx, sfx, sfx, base, idx, sfx, base, idx, sfx)
-		g.pf("%sr.offset += (int64_t) len%s * 8;\n", inner, sfx)
+		g.pf("%sconst int32_t keep%s = static_cast<int32_t>( TableUtf8Clamp( text%s, len%s, %d ) );\n", inner, sfx, sfx, sfx, m)
+		g.pf("%[1]sif ( static_cast<uint64_t>( keep%[2]s ) < len%[3]s )\n%[1]s{\n%[1]s    report->refused = true;\n%[1]s    report->refuse_reason = out_of_range;\n%[1]s}\n", inner, sfx, sfx)
+		g.pf("%[1]sif ( in_bounds%[2]s )\n%[1]s{\n%[1]s    memcpy( %[3]s[%[4]s].value, text%[5]s, static_cast<size_t>( keep%[6]s ) );\n%[1]s    %[7]s[%[8]s].value[keep%[9]s] = 0;\n%[1]s    %[10]s[%[11]s].value_length = keep%[12]s;\n%[1]s}\n", inner, sfx, base, idx, sfx, sfx, base, idx, sfx, base, idx, sfx)
+		g.pf("%sr.offset += static_cast<int64_t>( len%s ) * 8;\n", inner, sfx)
 		g.pf("%s    }\n", ind)
 		if f.CountedOnWire() {
 			g.pf("%s    %s = kept%s;\n", ind, count, sfx)
@@ -292,7 +292,7 @@ func (g *tableGen) emitMessageReadArrayFromChecked(f *ir.Field, base, count, ind
 		// the walk's bound is this reader's OWN, a compile-time constant, and
 		// not the count narrowed above: the two agree, and a bound that
 		// cannot be moved by a number off the wire is the one to loop against
-		g.pf("%s    if ( surplus_bits%s >= 0 && walk%s > (uint64_t) %d ) { walk%s = (uint64_t) %d; } // the surplus is arithmetic\n", ind, sfx, sfx, f.ArrayBound, sfx, f.ArrayBound)
+		g.pf("%s    if ( surplus_bits%s >= 0 && walk%s > static_cast<uint64_t>( %d ) ) { walk%s = static_cast<uint64_t>( %d ); } // the surplus is arithmetic\n", ind, sfx, sfx, f.ArrayBound, sfx, f.ArrayBound)
 	} else {
 		g.pf("%s    const uint64_t walk%s = n%s;\n", ind, sfx, sfx)
 	}
@@ -304,7 +304,7 @@ func (g *tableGen) emitMessageReadArrayFromChecked(f *ir.Field, base, count, ind
 	}
 	g.pf("%s    for ( uint64_t %s = 0; %s < walk%s; %s++ )\n%s    {\n", ind, idx, idx, sfx, idx, ind)
 	inner := ind + "        "
-	g.pf("%sconst bool in_bounds%s = (int32_t) %s < kept%s;\n", inner, sfx, idx, sfx)
+	g.pf("%sconst bool in_bounds%s = static_cast<int32_t>( %s ) < kept%s;\n", inner, sfx, idx, sfx)
 	elem := fmt.Sprintf("( in_bounds%s ? %s[%s] : scratch%s )", sfx, base, idx, sfx)
 	switch {
 	case tableScalarKind(f) == tkTable:
@@ -510,8 +510,8 @@ func (g *tableGen) emitMessageReadKeyed(f *ir.Field, ind, gate string) {
 	g.pf("%s%s key%s = %s::None;\n", inner, f.KeyEnum, sfx, f.KeyEnum)
 	g.pf("%sconst bool named%s = TableEnumValue( key_entry%s.id, key%s );\n", inner, sfx, sfx, sfx)
 	g.pf("%sif ( !named%s ) { report->unknown++; }\n", inner, sfx)
-	g.pf("%[1]selse\n%[1]s{\n%[1]s    if ( %[6]s && (int32_t) key%[2]s <= last_key_slot%[3]s )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n%[1]s    last_key_slot%[4]s = (int32_t) key%[5]s;\n%[1]s}\n", inner, sfx, sfx, sfx, sfx, gate)
-	g.pf("%sconst int32_t slot%s = named%s ? (int32_t) key%s - 1 : -1;\n", inner, sfx, sfx, sfx)
+	g.pf("%[1]selse\n%[1]s{\n%[1]s    if ( %[6]s && static_cast<int32_t>( key%[2]s ) <= last_key_slot%[3]s )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n%[1]s    last_key_slot%[4]s = static_cast<int32_t>( key%[5]s );\n%[1]s}\n", inner, sfx, sfx, sfx, sfx, gate)
+	g.pf("%sconst int32_t slot%s = named%s ? static_cast<int32_t>( key%s ) - 1 : -1;\n", inner, sfx, sfx, sfx)
 	g.pf("%sconst bool in_bounds%s = slot%s >= 0 && slot%s < %d;\n", inner, sfx, sfx, sfx, f.ArrayBound)
 	elem := fmt.Sprintf("( in_bounds%s ? %s[slot%s] : scratch%s )", sfx, slots, sfx, sfx)
 	switch kind {
@@ -566,21 +566,21 @@ func (g *tableGen) emitMessageReadScalarFromEntryChecked(f *ir.Field, lvalue, in
 		g.pf("%s    if ( %s == 2 )\n%s    {\n", ind, packing, ind)
 		g.pf("%s        uint64_t index%s = 0;\n", ind, sfx)
 		g.pf("%[1]s        if ( !r.get( index%[2]s, %[3]s ) )\n%[1]s        {\n%[1]s            report->damaged = true;\n%[1]s            return false;\n%[1]s        }\n", ind, sfx, bits)
-		g.pf("%[1]s        if ( index%[2]s > (uint64_t) %[3]s )\n%[1]s        {\n%[1]s            report->damaged = true;\n%[1]s            return false;\n%[1]s        } // above the step count\n", ind, sfx, qcount)
-		g.pf("%s        %s = (double) TableMessageDequantize( (uint32_t) index%s, %s, %s, %s );\n%s    }\n", ind, lvalue, sfx, qmin, qdelta, qcount, ind)
+		g.pf("%[1]s        if ( index%[2]s > static_cast<uint64_t>( %[3]s ) )\n%[1]s        {\n%[1]s            report->damaged = true;\n%[1]s            return false;\n%[1]s        } // above the step count\n", ind, sfx, qcount)
+		g.pf("%s        %s = static_cast<double>( TableMessageDequantize( static_cast<uint32_t>( index%s ), %s, %s, %s ) );\n%s    }\n", ind, lvalue, sfx, qmin, qdelta, qcount, ind)
 		g.pf("%s    else\n%s    {\n", ind, ind)
 		g.pf("%s        uint64_t raw%s = 0;\n", ind, sfx)
 		g.pf("%[1]s        if ( !r.get( raw%[2]s, 32 ) )\n%[1]s        {\n%[1]s            report->damaged = true;\n%[1]s            return false;\n%[1]s        }\n", ind, sfx)
 		// A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS (§3.3), and the
 		// batch with it: every finite float32 is exactly a float64, so the
 		// ordinary conversion is the widening
-		g.pf("%[1]s        if ( !TableBitsFinite32( (uint32_t) raw%[2]s ) )\n%[1]s        {\n%[1]s            TableNonFiniteFloat( report );\n%[1]s            return false;\n%[1]s        }\n", ind, sfx)
+		g.pf("%[1]s        if ( !TableBitsFinite32( static_cast<uint32_t>( raw%[2]s ) ) )\n%[1]s        {\n%[1]s            TableNonFiniteFloat( report );\n%[1]s            return false;\n%[1]s        }\n", ind, sfx)
 		if gate != "" {
-			g.pf("%s        const double decoded_d%s = (double) table_bits_to_float( (uint32_t) raw%s );\n", ind, sfx, sfx)
+			g.pf("%s        const double decoded_d%s = static_cast<double>( table_bits_to_float( static_cast<uint32_t>( raw%s ) ) );\n", ind, sfx, sfx)
 			g.pf("%[1]s        if ( %[2]s && ( %[3]s ) )\n%[1]s        {\n%[1]s            report->damaged = true;\n%[1]s            return false;\n%[1]s        }\n", ind, gate, g.fieldIsDefault(f, "decoded_d"+sfx))
 			g.pf("%s        %s = decoded_d%s;\n%s    }\n", ind, lvalue, sfx, ind)
 		} else {
-			g.pf("%s        %s = (double) table_bits_to_float( (uint32_t) raw%s );\n%s    }\n", ind, lvalue, sfx, ind)
+			g.pf("%s        %s = static_cast<double>( table_bits_to_float( static_cast<uint32_t>( raw%s ) ) );\n%s    }\n", ind, lvalue, sfx, ind)
 		}
 		g.pf("%s}\n", ind)
 		return
@@ -613,15 +613,15 @@ func (g *tableGen) emitMessageReadScalarFromEntryChecked(f *ir.Field, lvalue, in
 		// and is never reconstructed and out_of_range (§3.3, SPEC.md §4.3): the
 		// width spells one whenever `count` is not one less than a power of
 		// two, ten bits spelling 1023 over a count of 1000
-		g.pf("%[1]s        if ( index%[2]s > (uint64_t) %[3]s )\n%[1]s        {\n%[1]s            report->damaged = true;\n%[1]s            return false;\n%[1]s        } // above the step count: the packet wire's own refusal\n", ind, sfx, qcount)
-		g.pf("%s        decoded_f%s = TableMessageDequantize( (uint32_t) index%s, %s, %s, %s ); // SPEC.md §4.3's rule, in float32\n%s    }\n", ind, sfx, sfx, qmin, qdelta, qcount, ind)
+		g.pf("%[1]s        if ( index%[2]s > static_cast<uint64_t>( %[3]s ) )\n%[1]s        {\n%[1]s            report->damaged = true;\n%[1]s            return false;\n%[1]s        } // above the step count: the packet wire's own refusal\n", ind, sfx, qcount)
+		g.pf("%s        decoded_f%s = TableMessageDequantize( static_cast<uint32_t>( index%s ), %s, %s, %s ); // SPEC.md §4.3's rule, in float32\n%s    }\n", ind, sfx, sfx, qmin, qdelta, qcount, ind)
 		g.pf("%s    else\n%s    {\n", ind, ind)
 		g.pf("%s        uint64_t raw%s = 0;\n", ind, sfx)
 		g.pf("%[1]s        if ( !r.get( raw%[2]s, 32 ) )\n%[1]s        {\n%[1]s            report->damaged = true;\n%[1]s            return false;\n%[1]s        }\n", ind, sfx)
 		// A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS, before the bounds
 		// and before the field is written, and the batch with it (§3.3)
-		g.pf("%[1]s        if ( !TableBitsFinite32( (uint32_t) raw%[2]s ) )\n%[1]s        {\n%[1]s            TableNonFiniteFloat( report );\n%[1]s            return false;\n%[1]s        }\n", ind, sfx)
-		g.pf("%s        decoded_f%s = table_bits_to_float( (uint32_t) raw%s );\n%s    }\n", ind, sfx, sfx, ind)
+		g.pf("%[1]s        if ( !TableBitsFinite32( static_cast<uint32_t>( raw%[2]s ) ) )\n%[1]s        {\n%[1]s            TableNonFiniteFloat( report );\n%[1]s            return false;\n%[1]s        }\n", ind, sfx)
+		g.pf("%s        decoded_f%s = table_bits_to_float( static_cast<uint32_t>( raw%s ) );\n%s    }\n", ind, sfx, sfx, ind)
 		if gate != "" {
 			g.pf("%[1]s    if ( %[2]s != 2 && %[3]s && ( %[4]s ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, packing, gate, g.fieldIsDefault(f, "decoded_f"+sfx))
 		}
@@ -656,11 +656,11 @@ func (g *tableGen) emitMessageReadScalarFromEntryChecked(f *ir.Field, lvalue, in
 			g.pf("%s        const uint64_t sign%s = uint64_t(1) << ( width%s - 1 );\n", ind, sfx, sfx)
 			g.pf("%s        if ( ( raw%s & sign%s ) != 0 ) { raw%s = raw%s | ~( ( uint64_t(1) << width%s ) - 1 ); }\n", ind, sfx, sfx, sfx, sfx, sfx)
 			g.pf("%s    }\n", ind)
-			g.pf("%s    serialize::uint128_t raw_v%s = ( serialize::uint128_t( (int64_t) raw%s < 0 ? ~uint64_t(0) : uint64_t(0) ) << 64 ) | serialize::uint128_t( raw%s );\n", ind, sfx, sfx, sfx)
+			g.pf("%s    serialize::uint128_t raw_v%s = ( serialize::uint128_t( static_cast<int64_t>( raw%s ) < 0 ? ~uint64_t(0) : uint64_t(0) ) << 64 ) | serialize::uint128_t( raw%s );\n", ind, sfx, sfx, sfx)
 		} else {
 			g.pf("%s    serialize::uint128_t raw_v%s = serialize::uint128_t( raw%s );\n", ind, sfx, sfx)
 		}
-		g.pf("%s    if ( %s == 1 ) { raw_v%s = raw_v%s + ( ( serialize::uint128_t( (uint64_t) %s ) << 64 ) | serialize::uint128_t( (uint64_t) %s ) ); }\n", ind, packing, sfx, sfx, baseHi, base)
+		g.pf("%s    if ( %s == 1 ) { raw_v%s = raw_v%s + ( ( serialize::uint128_t( static_cast<uint64_t>( %s ) ) << 64 ) | serialize::uint128_t( static_cast<uint64_t>( %s ) ) ); }\n", ind, packing, sfx, sfx, baseHi, base)
 		g.pf("%s    %s %s = %s( raw_v%s );\n", ind, storage, decoded, storage, sfx)
 		if gate != "" {
 			g.pf("%[1]s    if ( %[2]s && ( %[3]s ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, gate, g.fieldIsDefault(f, decoded))
@@ -681,7 +681,7 @@ func (g *tableGen) emitMessageReadScalarFromEntryChecked(f *ir.Field, lvalue, in
 		g.pf("%s    uint64_t lo_v%s = 0, hi_v%s = 0;\n", ind, sfx, sfx)
 		g.pf("%[1]s    if ( width%[2]s < 0 || !r.get( lo_v%[3]s, width%[4]s < 64 ? width%[5]s : 64 ) || ( width%[6]s > 64 && !r.get( hi_v%[7]s, width%[8]s - 64 ) ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx, sfx, sfx, sfx, sfx, sfx, sfx)
 		g.pf("%s    serialize::uint128_t raw_v%s = ( serialize::uint128_t( hi_v%s ) << 64 ) | serialize::uint128_t( lo_v%s );\n", ind, sfx, sfx, sfx)
-		g.pf("%s    if ( %s == 1 ) { raw_v%s = raw_v%s + ( ( serialize::uint128_t( (uint64_t) %s ) << 64 ) | serialize::uint128_t( (uint64_t) %s ) ); }\n", ind, packing, sfx, sfx, baseHi, base)
+		g.pf("%s    if ( %s == 1 ) { raw_v%s = raw_v%s + ( ( serialize::uint128_t( static_cast<uint64_t>( %s ) ) << 64 ) | serialize::uint128_t( static_cast<uint64_t>( %s ) ) ); }\n", ind, packing, sfx, sfx, baseHi, base)
 		g.pf("%s    %s %s = %s( raw_v%s );\n", ind, storage, decoded, storage, sfx)
 		if gate != "" {
 			g.pf("%[1]s    if ( %[2]s && ( %[3]s ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, gate, g.fieldIsDefault(f, decoded))
@@ -696,12 +696,12 @@ func (g *tableGen) emitMessageReadScalarFromEntryChecked(f *ir.Field, lvalue, in
 	}
 	g.pf("%s    uint64_t raw%s = 0;\n", ind, sfx)
 	g.pf("%[1]s    if ( width%[2]s < 0 || !r.get( raw%[3]s, width%[4]s ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx, sfx, sfx)
-	g.pf("%s    int64_t decoded_wide%s = (int64_t) raw%s;\n", ind, sfx, sfx)
-	g.pf("%s    if ( %s == 1 ) { decoded_wide%s = (int64_t) ( raw%s + (uint64_t) %s ); }\n", ind, packing, sfx, sfx, base)
+	g.pf("%s    int64_t decoded_wide%s = static_cast<int64_t>( raw%s );\n", ind, sfx, sfx)
+	g.pf("%s    if ( %s == 1 ) { decoded_wide%s = static_cast<int64_t>( raw%s + static_cast<uint64_t>( %s ) ); }\n", ind, packing, sfx, sfx, base)
 	if signed {
 		g.pf("%s    else if ( width%s > 0 && width%s < 64 )\n%s    {\n", ind, sfx, sfx, ind)
 		g.pf("%s        const uint64_t sign%s = uint64_t(1) << ( width%s - 1 );\n", ind, sfx, sfx)
-		g.pf("%s        if ( ( raw%s & sign%s ) != 0 ) { decoded_wide%s = (int64_t) ( raw%s | ~( ( uint64_t(1) << width%s ) - 1 ) ); }\n", ind, sfx, sfx, sfx, sfx, sfx)
+		g.pf("%s        if ( ( raw%s & sign%s ) != 0 ) { decoded_wide%s = static_cast<int64_t>( raw%s | ~( ( uint64_t(1) << width%s ) - 1 ) ); }\n", ind, sfx, sfx, sfx, sfx, sfx)
 		g.pf("%s    }\n", ind)
 	}
 	// THE BOUND APPLIES WHILE THE VALUE IS STILL WIDE, and the narrowing
@@ -711,7 +711,7 @@ func (g *tableGen) emitMessageReadScalarFromEntryChecked(f *ir.Field, lvalue, in
 		g.pf("%s    const int64_t pre_clamp%s = decoded_wide%s;\n", ind, sfx, sfx)
 	}
 	g.emitMessageClampWide(f, signed, bytesWide, "decoded_wide"+sfx, ind+"    ")
-	g.pf("%s    %s %s = (%s) decoded_wide%s;\n", ind, storage, decoded, storage, sfx)
+	g.pf("%s    %s %s = static_cast<%s>( decoded_wide%s );\n", ind, storage, decoded, storage, sfx)
 	if gate != "" {
 		g.pf("%[1]s    if ( %[2]s && decoded_wide%[3]s == pre_clamp%[4]s && ( %[5]s ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, gate, sfx, sfx, g.fieldIsDefault(f, decoded))
 	}
@@ -737,19 +737,19 @@ func (g *tableGen) emitMessageClampWide(f *ir.Field, signed bool, width int, dec
 		if signed {
 			g.pf("%[1]sif ( %[2]s < %[3]s )\n%[1]s{\n%[1]s    %[4]s = %[5]s;\n%[1]s    report->refused = true;\n%[1]s    report->refuse_reason = out_of_range;\n%[1]s}\n", ind, decoded, tableIntLit(lo, true, 8), decoded, tableIntLit(lo, true, 8))
 		} else {
-			g.pf("%[1]sif ( (uint64_t) %[2]s < %[3]s )\n%[1]s{\n%[1]s    %[4]s = (int64_t) %[5]s;\n%[1]s    report->refused = true;\n%[1]s    report->refuse_reason = out_of_range;\n%[1]s}\n", ind, decoded, tableIntLit(lo, false, 8), decoded, tableIntLit(lo, false, 8))
+			g.pf("%[1]sif ( static_cast<uint64_t>( %[2]s ) < %[3]s )\n%[1]s{\n%[1]s    %[4]s = static_cast<int64_t>( %[5]s );\n%[1]s    report->refused = true;\n%[1]s    report->refuse_reason = out_of_range;\n%[1]s}\n", ind, decoded, tableIntLit(lo, false, 8), decoded, tableIntLit(lo, false, 8))
 		}
 	}
 	if hi.Cmp(shi) < 0 {
 		if signed {
 			g.pf("%[1]sif ( %[2]s > %[3]s )\n%[1]s{\n%[1]s    %[4]s = %[5]s;\n%[1]s    report->refused = true;\n%[1]s    report->refuse_reason = out_of_range;\n%[1]s}\n", ind, decoded, tableIntLit(hi, true, 8), decoded, tableIntLit(hi, true, 8))
 		} else {
-			g.pf("%[1]sif ( (uint64_t) %[2]s > %[3]s )\n%[1]s{\n%[1]s    %[4]s = (int64_t) %[5]s;\n%[1]s    report->refused = true;\n%[1]s    report->refuse_reason = out_of_range;\n%[1]s}\n", ind, decoded, tableIntLit(hi, false, 8), decoded, tableIntLit(hi, false, 8))
+			g.pf("%[1]sif ( static_cast<uint64_t>( %[2]s ) > %[3]s )\n%[1]s{\n%[1]s    %[4]s = static_cast<int64_t>( %[5]s );\n%[1]s    report->refused = true;\n%[1]s    report->refuse_reason = out_of_range;\n%[1]s}\n", ind, decoded, tableIntLit(hi, false, 8), decoded, tableIntLit(hi, false, 8))
 		}
 	}
 	if f.Type.Kind == ir.TBits && f.Type.Width < width*8 {
 		maxv := (uint64(1) << f.Type.Width) - 1
-		g.pf("%[1]sif ( (uint64_t) %[2]s > %[3]dull )\n%[1]s{\n%[1]s    %[4]s = (int64_t) %[5]dull;\n%[1]s    report->refused = true;\n%[1]s    report->refuse_reason = out_of_range;\n%[1]s} // bits(%[6]d) width clamp\n", ind, decoded, maxv, decoded, maxv, f.Type.Width)
+		g.pf("%[1]sif ( static_cast<uint64_t>( %[2]s ) > %[3]dull )\n%[1]s{\n%[1]s    %[4]s = static_cast<int64_t>( %[5]dull );\n%[1]s    report->refused = true;\n%[1]s    report->refuse_reason = out_of_range;\n%[1]s} // bits(%[6]d) width clamp\n", ind, decoded, maxv, decoded, maxv, f.Type.Width)
 	}
 }
 

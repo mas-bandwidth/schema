@@ -326,12 +326,12 @@ func (g *tableGen) emitMessageTextPayload(f *ir.Field, entry ir.TableVocabularyE
 	if pass == messagePassMeasure {
 		g.pf("%sbits += %d;\n", ind, width)
 		g.pf("%sbits += TableAlignBits( at + bits );\n", ind)
-		g.pf("%sbits += (int64_t) %s * 8;\n", ind, count)
+		g.pf("%sbits += static_cast<int64_t>( %s ) * 8;\n", ind, count)
 		return
 	}
-	g.pf("%sw.put( (uint64_t) %s, %d );\n", ind, count, width)
+	g.pf("%sw.put( static_cast<uint64_t>( %s ), %d );\n", ind, count, width)
 	g.pf("%sw.align(); // a string or a bytes ALIGNS before its bytes\n", ind)
-	g.pf("%sw.putbytes( (const uint8_t *) %s, %s );\n", ind, value, count)
+	g.pf("%sw.putbytes( reinterpret_cast<const uint8_t *>( %s ), %s );\n", ind, value, count)
 }
 
 // emitMessageArray writes an array's COUNT and then its elements back to back.
@@ -348,7 +348,7 @@ func (g *tableGen) emitMessageArray(f *ir.Field, entry ir.TableVocabularyEntry, 
 		if pass == messagePassMeasure {
 			g.pf("%sbits += %d;\n", ind, width)
 		} else {
-			g.pf("%sw.put( (uint64_t) ( %s ) - %d, %d );\n", ind, count, shape.Min, width)
+			g.pf("%sw.put( static_cast<uint64_t>( %s ) - %d, %d );\n", ind, count, shape.Min, width)
 		}
 	}
 	if ir.TableMessageAligns(entry.Kind, shape) {
@@ -368,14 +368,14 @@ func (g *tableGen) emitMessageArray(f *ir.Field, entry ir.TableVocabularyEntry, 
 		width := ir.TableMessageBitsRequired(0, m)
 		if pass == messagePassMeasure {
 			g.pf("%s", loop)
-			g.pf("%s    bits += %d + TableAlignBits( at + bits ) + (int64_t) %s.value_length * 8;\n", ind, width, elem)
+			g.pf("%s    bits += %d + TableAlignBits( at + bits ) + static_cast<int64_t>( %s.value_length ) * 8;\n", ind, width, elem)
 			g.pf("%s}\n", ind)
 			return
 		}
 		g.pf("%s", loop)
-		g.pf("%s    w.put( (uint64_t) %s.value_length, %d );\n", ind, elem, width)
+		g.pf("%s    w.put( static_cast<uint64_t>( %s.value_length ), %d );\n", ind, elem, width)
 		g.pf("%s    w.align(); // a string payload ALIGNS before its bytes\n", ind)
-		g.pf("%s    w.putbytes( (const uint8_t *) %s.value, %s.value_length );\n", ind, elem, elem)
+		g.pf("%s    w.putbytes( reinterpret_cast<const uint8_t *>( %s.value ), %s.value_length );\n", ind, elem, elem)
 		g.pf("%s}\n", ind)
 		return
 	}
@@ -421,7 +421,7 @@ func (g *tableGen) emitMessageArray(f *ir.Field, entry ir.TableVocabularyEntry, 
 				g.pf("%s", loop)
 				g.pf("%s    if ( !TableFloatFinite( %s ) ) { return -1; } // a NaN or an infinity is refused (§3.3)\n%s}\n", ind, elem, ind)
 			}
-			g.pf("%sbits += (int64_t) ( %s ) * %d;\n", ind, count, width)
+			g.pf("%sbits += static_cast<int64_t>( %s ) * %d;\n", ind, count, width)
 			return
 		}
 		g.pf("%s", loop)
@@ -479,11 +479,11 @@ func (g *tableGen) emitMessageScalar(f *ir.Field, kind uint8, shape ir.TableMess
 			// THE PACKET WIRE'S RULE, IN FLOAT32 (SPEC.md §4.3, §3.3): the
 			// step count and delta are the declaration's, derived once here
 			count, delta, _ := ir.TableMessageQuantization(shape)
-			g.pf("%sw.put( (uint64_t) TableMessageQuantize( float( %s ), %s, %s, %du ), %d );\n",
+			g.pf("%sw.put( static_cast<uint64_t>( TableMessageQuantize( float( %s ), %s, %s, %du ) ), %d );\n",
 				ind, expr, formatFloat(float64(shape.QMin), true), formatFloat(float64(delta), true), count, width)
 			return
 		}
-		g.pf("%sw.put( (uint64_t) table_float_to_bits( %s ), 32 );\n", ind, expr)
+		g.pf("%sw.put( static_cast<uint64_t>( table_float_to_bits( %s ) ), 32 );\n", ind, expr)
 	default:
 		if tableKindWidth(int(kind)) == 16 {
 			// A 128-BIT KIND at the width its shape states: the base subtracted
@@ -515,10 +515,10 @@ func (g *tableGen) emitMessageScalar(f *ir.Field, kind uint8, shape ir.TableMess
 			return
 		}
 		if shape.Packing == ir.TableMessageRanged && shape.Base != nil && shape.Base.Sign() != 0 {
-			g.pf("%sw.put( (uint64_t) ( %s ) - %s, %d );\n", ind, expr, msgBase(shape), width)
+			g.pf("%sw.put( static_cast<uint64_t>( %s ) - %s, %d );\n", ind, expr, msgBase(shape), width)
 			return
 		}
-		g.pf("%sw.put( (uint64_t) ( %s ), %d );\n", ind, expr, width)
+		g.pf("%sw.put( static_cast<uint64_t>( %s ), %d );\n", ind, expr, width)
 	}
 }
 
@@ -645,7 +645,7 @@ func (g *tableGen) emitMessageKeyed(f *ir.Field, entry ir.TableVocabularyEntry, 
 	if pass == messagePassMeasure {
 		g.pf("            bits += %d;\n", width)
 	} else {
-		g.pf("            w.put( (uint64_t) pairs_%s, %d );\n", f.Name, width)
+		g.pf("            w.put( static_cast<uint64_t>( pairs_%s ), %d );\n", f.Name, width)
 	}
 	g.pf("            // ASCENDING BY VARIANT ORDINAL, which is slot order. It is\n")
 	g.pf("            // this writer's choice and a reader must not rely on it: every\n")
@@ -656,7 +656,7 @@ func (g *tableGen) emitMessageKeyed(f *ir.Field, entry ir.TableVocabularyEntry, 
 		g.pf("                bits += %s; // the slot's VARIANT reference, not its position\n", msgRefBits)
 	} else {
 		g.pf("                uint64_t key_slot%s = 0;\n", sfx)
-		g.pf("                if ( !TableEnumSlot( (%s) ( %s + 1 ), key_slot%s ) ) { return false; }\n", f.KeyEnum, idx, sfx)
+		g.pf("                if ( !TableEnumSlot( static_cast<%s>( %s + 1 ), key_slot%s ) ) { return false; }\n", f.KeyEnum, idx, sfx)
 		g.pf("                w.put( key_slot%s, %s ); // the slot's VARIANT reference, not its position\n", sfx, msgRefBits)
 	}
 	inner := ir.TableMessageShape{}
@@ -684,7 +684,7 @@ func (g *tableGen) emitMessageKeyedRides(f *ir.Field, kind int, idx, ind string,
 	sfx := g.msgSfx()
 	slots := g.keyedSlots("value.", f)
 	elem := slots + "[" + idx + "]"
-	g.pf("%sif ( !TableEnumNamed( (%s) ( %s + 1 ) ) ) { return %s; }\n", ind, f.KeyEnum, idx, messageBad(pass))
+	g.pf("%sif ( !TableEnumNamed( static_cast<%s>( %s + 1 ) ) ) { return %s; }\n", ind, f.KeyEnum, idx, messageBad(pass))
 	switch kind {
 	case tkTable:
 		g.pf("%sconst int64_t elem_bits%s = %s;\n", ind, sfx, g.msgMeasureCall(f.Type.Name, g.msgAt(pass), elem))

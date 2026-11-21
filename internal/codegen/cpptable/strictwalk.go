@@ -146,7 +146,7 @@ inline bool TableStrictBody( TableStrict & s, const uint8_t * b, int64_t n, bool
         if ( !r.getleb( ref ) ) { return false; }
         if ( ref == 0 ) { return r.offset == n; } // the terminator is the body's last byte (L3)
         if ( root && s.node_table_present ) { return false; }
-        if ( s.ids == NULL || ref > (uint64_t) s.ids->count ) { return false; } // F9
+        if ( s.ids == NULL || ref > static_cast<uint64_t>( s.ids->count ) ) { return false; } // F9
         if ( ref > s.next_ref ) { return false; }
         if ( ref == s.next_ref ) { s.next_ref++; }
         const uint64_t id = s.ids->at( ref );
@@ -160,14 +160,14 @@ inline bool TableStrictBody( TableStrict & s, const uint8_t * b, int64_t n, bool
             uint64_t len = 0;
             if ( !r.getleb( len ) || !r.room( len ) ) { return false; }
             {
-                TableReader nt( r.buffer + r.offset, (int64_t) len, &ignored, s.ids );
+                TableReader nt( r.buffer + r.offset, static_cast<int64_t>( len ), &ignored, s.ids );
                 uint64_t node_count = 0;
                 if ( !nt.getleb( node_count ) || node_count == 0 ) { return false; }
             }
             s.node_table = r.buffer + r.offset;
-            s.node_table_bytes = (int64_t) len;
+            s.node_table_bytes = static_cast<int64_t>( len );
             s.node_table_present = true;
-            r.offset += (int64_t) len;
+            r.offset += static_cast<int64_t>( len );
             continue;
         }
         // a reserved announcement id out of place (R6): they ride the message
@@ -192,7 +192,7 @@ inline bool TableStrictContent( TableStrict & s, const uint8_t * b, int64_t n, u
     }
     switch ( kind )
     {
-        case 12: return TableUtf8Valid( b, (uint64_t) n ); // ill-formed text is damage
+        case 12: return TableUtf8Valid( b, static_cast<uint64_t>( n ) ); // ill-formed text is damage
         case 31: return true; // the escape: opaque by rule (§3)
         case 32: return n == 0; // kind 32 with a nonzero L is damage
         case 13:
@@ -247,7 +247,7 @@ inline bool TableStrictPayload( TableStrict & s, TableReader & r, uint8_t kind, 
         case 30: // an enum: a variant reference into the id table
         {
             uint64_t ref = 0;
-            if ( !r.getleb( ref ) || ( s.ids != NULL && ref > (uint64_t) s.ids->count ) ) { return false; }
+            if ( !r.getleb( ref ) || ( s.ids != NULL && ref > static_cast<uint64_t>( s.ids->count ) ) ) { return false; }
             if ( ref != 0 )
             {
                 if ( ref > s.next_ref ) { return false; }
@@ -262,8 +262,8 @@ inline bool TableStrictPayload( TableStrict & s, TableReader & r, uint8_t kind, 
             uint64_t n = 0;
             if ( !r.getleb( n ) || !r.room( n ) ) { return false; } // L4
             const uint8_t * b = r.buffer + r.offset;
-            r.offset += (int64_t) n;
-            return TableStrictContent( s, b, (int64_t) n, kind, depth );
+            r.offset += static_cast<int64_t>( n );
+            return TableStrictContent( s, b, static_cast<int64_t>( n ), kind, depth );
         }
         default: break;
     }
@@ -277,22 +277,22 @@ inline bool TableStrictUnion( TableStrict & s, TableReader & r, int depth )
     uint64_t ref = 0;
     if ( !r.getleb( ref ) ) { return false; }
     if ( ref == 0 ) { return true; } // the empty arm carries nothing
-    if ( s.ids == NULL || ref > (uint64_t) s.ids->count || !r.has( 1 ) ) { return false; }
+    if ( s.ids == NULL || ref > static_cast<uint64_t>( s.ids->count ) || !r.has( 1 ) ) { return false; }
     if ( ref > s.next_ref ) { return false; }
     if ( ref == s.next_ref ) { s.next_ref++; }
     const uint8_t kind = r.get8();
     uint64_t len = 0;
     if ( !r.getleb( len ) || !r.room( len ) ) { return false; }
     const uint8_t * b = r.buffer + r.offset;
-    r.offset += (int64_t) len;
+    r.offset += static_cast<int64_t>( len );
     // a union is a level when its arm is structural (docs/SPEC-TABLES.md §4)
     const bool structural = kind == 13 || kind == 14 || kind == 15 || kind == 16;
     if ( structural )
     {
         if ( depth >= kTableStrictMaxDepth ) { return false; }
-        return TableStrictContent( s, b, (int64_t) len, kind, depth + 1 );
+        return TableStrictContent( s, b, static_cast<int64_t>( len ), kind, depth + 1 );
     }
-    return TableStrictContent( s, b, (int64_t) len, kind, depth );
+    return TableStrictContent( s, b, static_cast<int64_t>( len ), kind, depth );
 }
 
 // THE HEADER LIES INSIDE ITS OWN L (H2, H3): a body too short to carry the
@@ -331,15 +331,15 @@ inline bool TableStrictKeyed( TableStrict & s, const uint8_t * b, int64_t n, int
     for ( uint64_t i = 0; i < count; i++ )
     {
         uint64_t key = 0;
-        if ( !r.getleb( key ) || key == 0 || s.ids == NULL || key > (uint64_t) s.ids->count ) { return false; } // H7
+        if ( !r.getleb( key ) || key == 0 || s.ids == NULL || key > static_cast<uint64_t>( s.ids->count ) ) { return false; } // H7
         if ( key > s.next_ref ) { return false; }
         if ( key == s.next_ref ) { s.next_ref++; }
         if ( !TableStrictSeen( seen, key ) ) { return false; } // the same keyed slot twice
         uint64_t len = 0;
         if ( !r.getleb( len ) || !r.room( len ) ) { return false; }
         const uint8_t * eb = r.buffer + r.offset;
-        r.offset += (int64_t) len;
-        if ( !TableStrictContent( s, eb, (int64_t) len, elem, depth ) ) { return false; }
+        r.offset += static_cast<int64_t>( len );
+        if ( !TableStrictContent( s, eb, static_cast<int64_t>( len ), elem, depth ) ) { return false; }
     }
     return r.offset == r.size; // bytes left inside a keyed array's L after its slots
 }
@@ -379,7 +379,7 @@ inline bool TableStrictWalk( const uint8_t * body, int64_t body_bytes, const Tab
             return false;
         }
     }
-    if ( s.next_ref - 1 != (uint64_t) table.count )
+    if ( s.next_ref - 1 != static_cast<uint64_t>( table.count ) )
     {
         report->damaged = true;
         report->refuse_reason = wire_damaged;
@@ -432,7 +432,7 @@ inline bool TableStrictWalk( const uint8_t * body, int64_t body_bytes, const Tab
         }
         if ( !TableNodeScanWhole( scan ) ) { report->damaged = true; report->refuse_reason = wire_damaged; return false; }
     }
-    if ( s.next_ref - 1 != (uint64_t) table.count )
+    if ( s.next_ref - 1 != static_cast<uint64_t>( table.count ) )
     {
         report->damaged = true;
         report->refuse_reason = wire_damaged;
@@ -441,7 +441,7 @@ inline bool TableStrictWalk( const uint8_t * body, int64_t body_bytes, const Tab
     TableNodeDirEntry inline_scratch[64] = {};
     TableNodeDirEntry * scratch = records + 1 <= 64
         ? inline_scratch
-        : (TableNodeDirEntry *) table_allocate( allocator, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) );
+        : reinterpret_cast<TableNodeDirEntry *>( table_allocate( allocator, ( records + 1 ) * static_cast<int64_t>( sizeof( TableNodeDirEntry ) ) ) );
     if ( scratch == NULL ) { report->damaged = true; return false; }
     const bool ok = TableGraphCheck( body, body_bytes, &table, scratch, records + 1, report );
     if ( scratch != inline_scratch ) { table_release( allocator, scratch ); }

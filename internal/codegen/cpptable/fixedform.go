@@ -41,7 +41,7 @@ import (
 // offOf is C++'s offsetof, in the spelling that is a constant expression in
 // every compiler this repo builds under.
 func offOf(owner, member string) string {
-	return fmt.Sprintf("(uint32_t) __builtin_offsetof( %s, %s )", owner, member)
+	return fmt.Sprintf("static_cast<uint32_t>( __builtin_offsetof( %s, %s ) )", owner, member)
 }
 
 // dstRow is one TableFixedDst: MY side of a layout entry, in C++.
@@ -350,7 +350,7 @@ func (g *tableGen) emitFixedWritePayload(f *ir.Field, off int64, buf, val string
 		// declared defaults is the element's default image and not zero — a
 		// value nobody wrote, riding as if somebody had.
 		g.fixedWriteBound(fmt.Sprintf("%s.%s_count", val, f.Name), f.ArrayBound, "count", ind)
-		g.pf("%sTableFixedPut32( %s + %d, (uint32_t) %s.%s_count );\n", ind, buf, base, val, f.Name)
+		g.pf("%sTableFixedPut32( %s + %d, static_cast<uint32_t>( %s.%s_count ) );\n", ind, buf, base, val, f.Name)
 		g.emitFixedWriteLoop(f, base+ir.TableFixedCountBytes, fmt.Sprintf("%s.%s_count", val, f.Name), buf, val+"."+f.Name, depth, indent)
 	case f.Type.Kind == ir.TString:
 		g.emitFixedWriteText(f, base, buf, val, ind, 1)
@@ -365,7 +365,7 @@ func (g *tableGen) emitFixedWriteLoop(f *ir.Field, base int64, count string, buf
 	ind := strings.Repeat(" ", indent)
 	elem := ir.TableFixedElementBytes(f)
 	loop := fixedLoopVar(depth)
-	g.pf("%sfor ( int64_t %s = 0; %s < (int64_t) %s; ++%s )\n%s{\n", ind, loop, loop, count, loop, ind)
+	g.pf("%sfor ( int64_t %s = 0; %s < static_cast<int64_t>( %s ); ++%s )\n%s{\n", ind, loop, loop, count, loop, ind)
 	g.emitFixedWriteElement(f, 0, fmt.Sprintf("%s + %d + %s * %d", buf, base, loop, elem), expr+"["+loop+"]", depth+1, indent+4)
 	g.pf("%s}\n", ind)
 }
@@ -377,12 +377,12 @@ func (g *tableGen) emitFixedWriteLoop(f *ir.Field, base int64, count string, buf
 // with two different values would not compare equal on the second write.
 func (g *tableGen) emitFixedWriteText(f *ir.Field, base int64, buf, val, ind string, unit int64) {
 	g.fixedWriteBound(fmt.Sprintf("%s.%s_length", val, f.Name), f.Type.Size, "length", ind)
-	g.pf("%sTableFixedPut32( %s + %d, (uint32_t) %s.%s_length );\n", ind, buf, base, val, f.Name)
+	g.pf("%sTableFixedPut32( %s + %d, static_cast<uint32_t>( %s.%s_length ) );\n", ind, buf, base, val, f.Name)
 	scale := ""
 	if unit != 1 {
 		scale = fmt.Sprintf("%d * ", unit)
 	}
-	g.pf("%smemcpy( %s + %d, %s.%s, (size_t) ( %s%s.%s_length ) );\n", ind, buf, base+4, val, f.Name, scale, val, f.Name)
+	g.pf("%smemcpy( %s + %d, %s.%s, static_cast<size_t>( %s%s.%s_length ) );\n", ind, buf, base+4, val, f.Name, scale, val, f.Name)
 }
 
 // fixedWriteBound is the WRITE-SIDE CHECK, and it is DEBUG-ONLY BY RULE: NDEBUG
@@ -403,7 +403,7 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 			return
 		case *ir.Union:
 			tag := int64(ir.StorageBitsFor(r.Max) / 8)
-			g.pf("%sTableFixedPut%d( %s + %d, (uint%d_t) %s.type );\n", ind, tag*8, buf, off, tag*8, expr)
+			g.pf("%sTableFixedPut%d( %s + %d, static_cast<uint%d_t>( %s.type ) );\n", ind, tag*8, buf, off, tag*8, expr)
 			g.pf("%sswitch ( %s )\n%s{\n", ind, tagOf(unionTagStorage(r), expr+".type"), ind)
 			for _, v := range r.Variants {
 				g.pf("%s    case %s:\n%s    {\n", ind, tagCase(unionTagStorage(r), f.Type.Name+"Type", ir.GoExportName(v.Name)), ind)
@@ -414,10 +414,10 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 			return
 		case *ir.Enum:
 			w := int64(r.StorageBits / 8)
-			g.pf("%sTableFixedPut%d( %s + %d, (uint%d_t) %s );\n", ind, w*8, buf, off, w*8, expr)
+			g.pf("%sTableFixedPut%d( %s + %d, static_cast<uint%d_t>( %s ) );\n", ind, w*8, buf, off, w*8, expr)
 			return
 		case *ir.Flags:
-			g.pf("%sTableFixedPut64( %s + %d, (uint64_t) %s );\n", ind, buf, off, expr)
+			g.pf("%sTableFixedPut64( %s + %d, static_cast<uint64_t>( %s ) );\n", ind, buf, off, expr)
 			return
 		}
 	}
@@ -434,7 +434,7 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 			g.pf("%sTableFixedPut128( %s + %d, %s );\n", ind, buf, off, expr)
 			return
 		}
-		g.pf("%sTableFixedPut%d( %s + %d, (uint%d_t) %s );\n", ind, w*8, buf, off, w*8, expr)
+		g.pf("%sTableFixedPut%d( %s + %d, static_cast<uint%d_t>( %s ) );\n", ind, w*8, buf, off, w*8, expr)
 	}
 }
 
@@ -460,7 +460,7 @@ func (g *tableGen) emitFixedWriteArm(v ir.UnionVariant, off int64, buf, val stri
 		g.emitFixedWriteArmLoop(v, off, strconv.FormatInt(f.ArrayBound, 10), buf, armValue(val, v), depth, indent)
 	case f.Array == ir.ArrayCounted:
 		g.fixedWriteBound(armCount(val, v), f.ArrayBound, "count", ind)
-		g.pf("%sTableFixedPut32( %s + %d, (uint32_t) %s );\n", ind, buf, off, armCount(val, v))
+		g.pf("%sTableFixedPut32( %s + %d, static_cast<uint32_t>( %s ) );\n", ind, buf, off, armCount(val, v))
 		g.emitFixedWriteArmLoop(v, off+ir.TableFixedCountBytes, armCount(val, v), buf, armValue(val, v), depth, indent)
 	default:
 		g.emitFixedWriteElement(f, off, buf, armValue(val, v), depth, indent)
@@ -474,12 +474,12 @@ func (g *tableGen) emitFixedWriteArm(v ir.UnionVariant, off int64, buf, val stri
 func (g *tableGen) emitFixedWriteTextArm(v ir.UnionVariant, base int64, buf, val, ind string, unit int64) {
 	f := v.F
 	g.fixedWriteBound(armCount(val, v), f.Type.Size, "length", ind)
-	g.pf("%sTableFixedPut32( %s + %d, (uint32_t) %s );\n", ind, buf, base, armCount(val, v))
+	g.pf("%sTableFixedPut32( %s + %d, static_cast<uint32_t>( %s ) );\n", ind, buf, base, armCount(val, v))
 	scale := ""
 	if unit != 1 {
 		scale = fmt.Sprintf("%d * ", unit)
 	}
-	g.pf("%smemcpy( %s + %d, %s, (size_t) ( %s%s ) );\n", ind, buf, base+4, armValue(val, v), scale, armCount(val, v))
+	g.pf("%smemcpy( %s + %d, %s, static_cast<size_t>( %s%s ) );\n", ind, buf, base+4, armValue(val, v), scale, armCount(val, v))
 }
 
 // emitFixedWriteArmLoop is an array arm's element loop: `count` elements from
@@ -488,7 +488,7 @@ func (g *tableGen) emitFixedWriteArmLoop(v ir.UnionVariant, base int64, count st
 	ind := strings.Repeat(" ", indent)
 	elem := ir.TableFixedElementBytes(v.F)
 	loop := fixedLoopVar(depth)
-	g.pf("%sfor ( int64_t %s = 0; %s < (int64_t) %s; ++%s )\n%s{\n", ind, loop, loop, count, loop, ind)
+	g.pf("%sfor ( int64_t %s = 0; %s < static_cast<int64_t>( %s ); ++%s )\n%s{\n", ind, loop, loop, count, loop, ind)
 	g.emitFixedWriteElement(v.F, 0, fmt.Sprintf("%s + %d + %s * %d", buf, base, loop, elem), expr+"["+loop+"]", depth+1, indent+4)
 	g.pf("%s}\n", ind)
 }
@@ -626,7 +626,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("constexpr uint8_t %sFixedLayout[] = {\n", st.Name)
 	g.emitByteArray(layout)
 	g.pf("};\n")
-	g.pf("constexpr int64_t %sFixedLayoutBytes = (int64_t) sizeof( %sFixedLayout );\n\n", st.Name, st.Name)
+	g.pf("constexpr int64_t %sFixedLayoutBytes = static_cast<int64_t>( sizeof( %sFixedLayout ) );\n\n", st.Name, st.Name)
 
 	g.pf("// MY SIDE of the layout, one row per entry: the storage facts a layout\n")
 	g.pf("// entry cannot carry, which is what a plan compiled from another writer's\n")
@@ -684,7 +684,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		// a BYTE OFFSET from the pool's base (the identity pool is this static array).
 		guardIndex := "0"
 		if e.GuardCount > 0 {
-			guardIndex = fmt.Sprintf("%d * (int) sizeof( TableFixedGuardLink )", e.GuardIndex)
+			guardIndex = fmt.Sprintf("%d * static_cast<int>( sizeof( TableFixedGuardLink ) )", e.GuardIndex)
 		}
 		// A COUNT'S AUX IS ITS ELEMENT WIDTH IN BYTES: its Size is the bound in
 		// ELEMENTS, and the dead-byte scan needs the byte span of one slot. A
@@ -784,11 +784,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.emitWriteAssert(st, "values[k]", "        ")
 		g.pf("    }\n")
 	}
-	g.pf("    memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header\n")
+	g.pf("    memset( buffer, 0, static_cast<size_t>( kTableFixedHeaderBytes ) ); // the seven reserved bytes, and the rest of the header\n")
 	g.pf("    buffer[0] = kTableFixedForm;\n")
 	g.pf("    TableFixedPut64( buffer + kTableFixedHashAt, %sFixedHash );\n", st.Name)
-	g.pf("    TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) %sFixedLayoutBytes );\n", st.Name)
-	g.pf("    memcpy( buffer + kTableFixedHeaderBytes + 4, %sFixedLayout, (size_t) %sFixedLayoutBytes );\n", st.Name, st.Name)
+	g.pf("    TableFixedPut32( buffer + kTableFixedHeaderBytes, static_cast<uint32_t>( %sFixedLayoutBytes ) );\n", st.Name)
+	g.pf("    memcpy( buffer + kTableFixedHeaderBytes + 4, %sFixedLayout, static_cast<size_t>( %sFixedLayoutBytes ) );\n", st.Name, st.Name)
 	if fixedFiniteNeededStruct(st, map[string]bool{}) {
 		// A NaN OR AN INFINITY IS REFUSED, NEVER WRITTEN (docs/SPEC-TABLES.md
 		// §3.3): every record is asked before the first byte of the file
@@ -797,7 +797,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + %sFixedLayoutBytes;\n", st.Name)
 	g.pf("    for ( int64_t k = 0; k < count; ++k )\n    {\n")
 	g.pf("        TableFixedPut64( at, %sFixedHash );\n", st.Name)
-	g.pf("        memset( at + 8, 0, (size_t) %sFixedBodyBytes ); // the prefill's zeros\n", st.Name)
+	g.pf("        memset( at + 8, 0, static_cast<size_t>( %sFixedBodyBytes ) ); // the prefill's zeros\n", st.Name)
 	g.pf("        %sFixedWriteBody( at + 8, values[k] );\n", st.Name)
 	if st.Integrity != "" {
 		// THE SEAL (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING): the CRC-32C
@@ -855,11 +855,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    for ( int32_t i = 1; i < kTableFixedHashAt; ++i )\n")
 	g.pf("    {\n        if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }\n    }\n")
 	g.pf("    const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );\n")
-	g.pf("    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )\n    {\n        report->refused = true;\n        report->reason = TableMessageReason::layout_malformed;\n        return -1;\n    }\n")
+	g.pf("    if ( static_cast<int64_t>( layout_bytes ) + kTableFixedHeaderBytes + 4 > bytes )\n    {\n        report->refused = true;\n        report->reason = TableMessageReason::layout_malformed;\n        return -1;\n    }\n")
 	g.pf("    const uint8_t * layout = data + kTableFixedHeaderBytes + 4;\n")
 	g.pf("    const uint64_t hash = TableFixedGet64( data + kTableFixedHashAt ); // the header's hash; digest is not on the wire\n")
 	g.pf("    const uint8_t * at = layout + layout_bytes;\n")
-	g.pf("    const int64_t rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;\n")
+	g.pf("    const int64_t rest = bytes - kTableFixedHeaderBytes - 4 - static_cast<int64_t>( layout_bytes );\n")
 	g.pf("    int32_t lineage_at = -1;\n")
 	g.pf("    for ( int32_t i = 0; i < %sFixedLineageCount; ++i )\n", st.Name)
 	g.pf("    {\n        if ( %sFixedLineage[i] == hash ) { lineage_at = i; break; }\n    }\n", st.Name)
@@ -880,7 +880,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        report->refused = true;\n        report->reason = TableMessageReason::layout_unsupported;\n        report->layout_hash = hash;\n        return -1;\n")
 	g.pf("    }\n")
 	g.pf("    const TableFixedKnownLayout & known = %sFixedKnown[lineage_at];\n", st.Name)
-	g.pf("    if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )\n")
+	g.pf("    if ( static_cast<int64_t>( layout_bytes ) != known.layout_bytes || memcmp( layout, known.layout, static_cast<size_t>( layout_bytes ) ) != 0 )\n")
 	g.pf("    {\n        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;\n    }\n")
 	g.pf("    const TableFixedEntry * entries = %sFixedPlan;\n", st.Name)
 	g.pf("    int32_t entry_count = %sFixedPlanCount;\n", st.Name)
@@ -909,12 +909,12 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("            {\n                dest = cache->storage + cache->used * cache->stride;\n                dest_capacity = cache->stride;\n                storing = 1;\n            }\n")
 	g.pf("            int32_t compiled_guarded = 0;\n")
 	g.pf("            uint32_t fill_at = 0;\n")
-	g.pf("            const int32_t made = TableFixedCompile( parsed, %sFixedLayout, (int32_t) %sFixedLayoutBytes, %sFixedDst,\n", st.Name, st.Name, st.Name)
+	g.pf("            const int32_t made = TableFixedCompile( parsed, %sFixedLayout, static_cast<int32_t>( %sFixedLayoutBytes ), %sFixedDst,\n", st.Name, st.Name, st.Name)
 	g.pf("                                                   %sFixedCover, %sFixedCoverCount,\n", st.Name, st.Name)
 	g.pf("                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );\n")
 	g.pf("            if ( made < 0 )\n            {\n                report->refused = true;\n                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large;\n                return -1;\n            }\n")
 	g.pf("            record_bytes = known.record_bytes;\n")
-	g.pf("            fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;\n")
+	g.pf("            fill = ( fill_count > 0 ) ? reinterpret_cast<const TableFixedFill *>( reinterpret_cast<const void *>( reinterpret_cast<const uint8_t *>( dest ) + fill_at ) ) : NULL;\n")
 	g.pf("            if ( cache != NULL ) { cache->compiles++; }\n")
 	g.pf("            if ( storing )\n            {\n")
 	g.pf("                cache->slots[cache->used].hash = hash;\n")
@@ -957,11 +957,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    // THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4):\n")
 	g.pf("    // an absent payload reads as this Reset image, never as the wire's slack.\n")
 	if presentDefaults {
-		g.pf("    memset( (void *) &defaults, 0, sizeof( defaults ) );\n")
+		g.pf("    memset( reinterpret_cast<void *>( &defaults ), 0, sizeof( defaults ) );\n")
 		g.pf("    %sReset( defaults );\n", st.Name)
 	} else {
 		g.pf("    if ( fill_count > 0 )\n    {\n")
-		g.pf("        memset( (void *) &defaults, 0, sizeof( defaults ) );\n")
+		g.pf("        memset( reinterpret_cast<void *>( &defaults ), 0, sizeof( defaults ) );\n")
 		g.pf("        %sReset( defaults );\n    }\n", st.Name)
 	}
 	// NOTHING OF A REFUSED BATCH IS KEPT (docs/SPEC-TABLES.md §4, §6.5): every
@@ -998,7 +998,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("                    report->reason = wire_damaged;\n")
 	g.pf("                    report->refuse_reason = wire_damaged;\n")
 	g.pf("                    return -1;\n                }\n            }\n        }\n")
-	g.pf("        TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );\n")
+	g.pf("        TableFixedFillRun( fill, fill_count, reinterpret_cast<const uint8_t *>( &defaults ), reinterpret_cast<uint8_t *>( &values[k] ) );\n")
 	if ir.TableFixedClampNeeded(st) {
 		g.pf("        // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md\n")
 		g.pf("        // §5.8): every record written so far goes back to its defaults and\n")
@@ -1006,9 +1006,9 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	}
 	runDefaults := "NULL"
 	if presentDefaults {
-		runDefaults = "(const uint8_t *) &defaults"
+		runDefaults = "reinterpret_cast<const uint8_t *>( &defaults )"
 	}
-	g.pf("        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, %sFixedGuards, %s );\n", st.Name, runDefaults)
+	g.pf("        TableFixedRun( entries, entry_count, entry_guarded, at + 8, reinterpret_cast<uint8_t *>( &values[k] ), report, %sFixedGuards, %s );\n", st.Name, runDefaults)
 	if fixedFiniteNeededStruct(st, map[string]bool{}) {
 		// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the finite pass runs
 		// FIRST, before the bounds pass, over the storage the run just wrote,
@@ -1022,7 +1022,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("            return -1;\n        }\n")
 	}
 	g.pf("        TableFixedClampKnownRanges( %sFixedKnownRanges[lineage_at], %sFixedKnownRangeCounts[lineage_at],\n", st.Name, st.Name)
-	g.pf("                                    (uint8_t *) &values[k], report );\n")
+	g.pf("                                    reinterpret_cast<uint8_t *>( &values[k] ), report );\n")
 	if ir.TableFixedClampNeeded(st) {
 		g.pf("        if ( !%sFixedClamp( values[k], report ) )\n", st.Name)
 		g.pf("        {\n            for ( int64_t j = 0; j <= k; ++j ) { %sReset( values[j] ); }\n", st.Name)
@@ -1377,11 +1377,11 @@ func (g *tableGen) emitFixedClampPayload(f *ir.Field, val string, indent int) {
 	case f.Array == ir.ArrayCounted:
 		// THE LIVE COUNT AND NOT THE BOUND: the slack is the template's zeros
 		// and a zero nobody wrote is not a value to hold to a range.
-		count := fmt.Sprintf("(int64_t) %s.%s_count", val, f.Name)
+		count := fmt.Sprintf("static_cast<int64_t>( %s.%s_count )", val, f.Name)
 		if g.fixedWriteCheck {
 			// the walk stays inside the array; the count's own bound is the
 			// writer's storage check
-			count = fmt.Sprintf("( %s.%s_count >= 0 && %s.%s_count <= %d ? (int64_t) %s.%s_count : 0 )",
+			count = fmt.Sprintf("( %s.%s_count >= 0 && %s.%s_count <= %d ? static_cast<int64_t>( %s.%s_count ) : 0 )",
 				val, f.Name, val, f.Name, f.ArrayBound, val, f.Name)
 		}
 		g.pf("%sfor ( int64_t i = 0; i < %s; ++i )\n%s{\n", ind, count, ind)
@@ -1419,21 +1419,21 @@ func (g *tableGen) emitFixedClampArm(v ir.UnionVariant, expr string, indent int)
 		g.pf("%s}\n", ind)
 	case f.Array == ir.ArrayCounted:
 		idx := fmt.Sprintf("ai_%d", indent)
-		count := fmt.Sprintf("(int64_t) %s", cnt)
+		count := fmt.Sprintf("static_cast<int64_t>( %s )", cnt)
 		if g.fixedWriteCheck {
-			count = fmt.Sprintf("( %s >= 0 && %s <= %d ? (int64_t) %s : 0 )", cnt, cnt, f.ArrayBound, cnt)
+			count = fmt.Sprintf("( %s >= 0 && %s <= %d ? static_cast<int64_t>( %s ) : 0 )", cnt, cnt, f.ArrayBound, cnt)
 		}
 		g.pf("%sfor ( int64_t %s = 0; %s < %s; ++%s )\n%s{\n", ind, idx, idx, count, idx, ind)
 		g.emitFixedClampElement(f, val+"["+idx+"]", indent+4)
 		g.pf("%s}\n", ind)
 	case f.Type.Kind == ir.TString:
-		call := fmt.Sprintf("TableUtf8Valid( (const uint8_t *) %s, (uint64_t) %s )", val, cnt)
+		call := fmt.Sprintf("TableUtf8Valid( reinterpret_cast<const uint8_t *>( %s ), static_cast<uint64_t>( %s ) )", val, cnt)
 		if g.fixedWriteCheck {
-			g.pf("%sbad |= (int) ( %s >= 0 && %s <= %d && !%s );\n", ind, cnt, cnt, f.Type.Size, call)
+			g.pf("%sbad |= static_cast<int>( %s >= 0 && %s <= %d && !%s );\n", ind, cnt, cnt, f.Type.Size, call)
 			return
 		}
 		if g.fixedCheck {
-			g.pf("%sbad |= (int) !%s;\n", ind, call)
+			g.pf("%sbad |= static_cast<int>( !%s );\n", ind, call)
 			return
 		}
 		g.pf("%sif ( !%s )\n%s{\n", ind, call, ind)
@@ -1444,16 +1444,16 @@ func (g *tableGen) emitFixedClampArm(v ir.UnionVariant, expr string, indent int)
 }
 
 func (g *tableGen) emitFixedTextContent(f *ir.Field, val, ind string) {
-	call := fmt.Sprintf("TableUtf8Valid( (const uint8_t *) %s.%s, (uint64_t) %s.%s_length )", val, f.Name, val, f.Name)
+	call := fmt.Sprintf("TableUtf8Valid( reinterpret_cast<const uint8_t *>( %s.%s ), static_cast<uint64_t>( %s.%s_length ) )", val, f.Name, val, f.Name)
 	if g.fixedWriteCheck {
 		// the rule is asked only of a length the storage holds; the length's
 		// own bound is the writer's storage check
-		g.pf("%sbad |= (int) ( %s.%s_length >= 0 && %s.%s_length <= %d && !%s );\n",
+		g.pf("%sbad |= static_cast<int>( %s.%s_length >= 0 && %s.%s_length <= %d && !%s );\n",
 			ind, val, f.Name, val, f.Name, f.Type.Size, call)
 		return
 	}
 	if g.fixedCheck {
-		g.pf("%sbad |= (int) !%s;\n", ind, call)
+		g.pf("%sbad |= static_cast<int>( !%s );\n", ind, call)
 		return
 	}
 	g.pf("%sif ( !%s )\n%s{\n", ind, call, ind)
@@ -1480,9 +1480,9 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 			if ir.TableFixedClampNeeded(r) {
 				switch {
 				case g.fixedWriteCheck:
-					g.pf("%sbad |= (int) !%sFixedWriteAdmits( %s );\n", ind, r.Name, expr)
+					g.pf("%sbad |= static_cast<int>( !%sFixedWriteAdmits( %s ) );\n", ind, r.Name, expr)
 				case g.fixedCheck:
-					g.pf("%sbad |= (int) !%sFixedInRange( %s );\n", ind, r.Name, expr)
+					g.pf("%sbad |= static_cast<int>( !%sFixedInRange( %s ) );\n", ind, r.Name, expr)
 				default:
 					g.pf("%s%sFixedClampBody( %s, oor_count, damaged );\n", ind, r.Name, expr)
 				}
@@ -1496,9 +1496,9 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 			// counts.
 			if !ordinalFillsStorage(r.Max, ir.StorageBitsFor(r.Max)) {
 				if g.fixedCheck {
-					g.pf("%sbad |= (int) ( (uint64_t) %s.type > %du );\n", ind, expr, r.Max)
+					g.pf("%sbad |= static_cast<int>( static_cast<uint64_t>( %s.type ) > %du );\n", ind, expr, r.Max)
 				} else {
-					g.pf("%sif ( (uint64_t) %s.type > %du ) { %s.type = %sType::None; oor_count++; }\n",
+					g.pf("%sif ( static_cast<uint64_t>( %s.type ) > %du ) { %s.type = %sType::None; oor_count++; }\n",
 						ind, expr, r.Max, expr, f.Type.Name)
 				}
 			}
@@ -1533,10 +1533,10 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 				return
 			}
 			if g.fixedCheck {
-				g.pf("%sbad |= (int) ( (uint64_t) %s > %du );\n", ind, expr, r.Max)
+				g.pf("%sbad |= static_cast<int>( static_cast<uint64_t>( %s ) > %du );\n", ind, expr, r.Max)
 				return
 			}
-			g.pf("%sif ( (uint64_t) %s > %du ) { %s = %s::None; oor_count++; }\n",
+			g.pf("%sif ( static_cast<uint64_t>( %s ) > %du ) { %s = %s::None; oor_count++; }\n",
 				ind, expr, r.Max, expr, f.Type.Name)
 			return
 		}
@@ -1587,10 +1587,10 @@ func (g *tableGen) fixedClampBoth(expr, lo, hi, ind string) {
 	// measurably slower — the or folds to a mask the compiler keeps in a
 	// vector lane, and the add does not (test/bench/fixedform_measure.cpp).
 	if g.fixedCheck {
-		g.pf("%sbad |= (int) ( %s < %s ) | (int) ( %s > %s );\n", ind, expr, lo, expr, hi)
+		g.pf("%sbad |= static_cast<int>( %s < %s ) | static_cast<int>( %s > %s );\n", ind, expr, lo, expr, hi)
 		return
 	}
-	g.pf("%soor_count += (int) ( %s < %s ) | (int) ( %s > %s );\n", ind, expr, lo, expr, hi)
+	g.pf("%soor_count += static_cast<int>( %s < %s ) | static_cast<int>( %s > %s );\n", ind, expr, lo, expr, hi)
 	g.pf("%s%s = ( %s < %s ) ? %s : ( ( %s > %s ) ? %s : %s );\n", ind, expr, expr, lo, lo, expr, hi, hi, expr)
 }
 
@@ -1609,7 +1609,7 @@ func (g *tableGen) fixedNegZero(expr string, f32 bool, ind string) {
 		bits, sign, zero = "table_float_to_bits", "0x80000000u", "0.0f"
 	}
 	if g.fixedCheck {
-		g.pf("%sbad |= (int) ( %s( %s ) == %s );\n", ind, bits, expr, sign)
+		g.pf("%sbad |= static_cast<int>( %s( %s ) == %s );\n", ind, bits, expr, sign)
 		return
 	}
 	g.pf("%sif ( !( %s < %s ) && !( %s > %s ) ) { %s = %s; }\n", ind, expr, zero, expr, zero, expr, zero)
@@ -1620,7 +1620,7 @@ func (g *tableGen) fixedNegZero(expr string, f32 bool, ind string) {
 // fields spend one compare and not two.
 func (g *tableGen) fixedClampEnd(expr, op, bound, ind string) {
 	if g.fixedCheck {
-		g.pf("%sbad |= (int) ( %s %s %s );\n", ind, expr, op, bound)
+		g.pf("%sbad |= static_cast<int>( %s %s %s );\n", ind, expr, op, bound)
 		return
 	}
 	g.pf("%soor_count += ( %s %s %s );\n", ind, expr, op, bound)
@@ -1723,7 +1723,7 @@ func (g *tableGen) emitFixedFinitePayload(f *ir.Field, val string, depth, indent
 	case f.Array == ir.ArrayCounted:
 		// the count was refused past its bound before the record landed; the
 		// bound keeps the walk inside storage anyway
-		loop(fmt.Sprintf("(int64_t) %s.%s_count && %s < %d", val, f.Name, i, f.ArrayBound), val+"."+f.Name)
+		loop(fmt.Sprintf("static_cast<int64_t>( %s.%s_count ) && %s < %d", val, f.Name, i, f.ArrayBound), val+"."+f.Name)
 	default:
 		g.emitFixedFiniteElement(f, val+"."+f.Name, depth, indent)
 	}
@@ -1759,7 +1759,7 @@ func (g *tableGen) emitFixedFiniteElement(f *ir.Field, expr string, depth, inden
 				g.emitFixedFiniteElement(v.F, armValue(expr, v)+"["+i+"]", depth+1, indent+12)
 				g.pf("%s}\n", inner)
 			case ir.ArrayCounted:
-				g.pf("%sfor ( int64_t %s = 0; %s < (int64_t) %s && %s < %d; ++%s )\n%s{\n", inner, i, i, armCount(expr, v), i, v.F.ArrayBound, i, inner)
+				g.pf("%sfor ( int64_t %s = 0; %s < static_cast<int64_t>( %s ) && %s < %d; ++%s )\n%s{\n", inner, i, i, armCount(expr, v), i, v.F.ArrayBound, i, inner)
 				g.emitFixedFiniteElement(v.F, armValue(expr, v)+"["+i+"]", depth+1, indent+12)
 				g.pf("%s}\n", inner)
 			default:

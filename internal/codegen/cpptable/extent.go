@@ -65,18 +65,18 @@ inline const char * schema_table_text_from_raw_( const uint8_t * raw, int32_t & 
     }
     uint32_t u = 0;
     memcpy( &u, raw, 4 );
-    if ( u > (uint32_t) INT32_MAX )
+    if ( u > static_cast<uint32_t>( INT32_MAX ) )
     {
         len = -1;
         return NULL;
     }
-    if ( u > 0 && !TableUtf8Valid( raw + 8, (uint64_t) u ) )
+    if ( u > 0 && !TableUtf8Valid( raw + 8, static_cast<uint64_t>( u ) ) )
     {
         len = -1;
         return NULL;
     }
-    len = (int32_t) u;
-    return (const char *) ( raw + 8 );
+    len = static_cast<int32_t>( u );
+    return reinterpret_cast<const char *>( raw + 8 );
 }
 
 inline const char * schema_table_text_at_( const TableRef & ref, int32_t & len )
@@ -86,7 +86,7 @@ inline const char * schema_table_text_at_( const TableRef & ref, int32_t & len )
         len = 0;
         return schema_table_empty_text_ + 8;
     }
-    return schema_table_text_from_raw_( (const uint8_t *) ( (uintptr_t) &ref + (uintptr_t) ref.value ), len );
+    return schema_table_text_from_raw_( reinterpret_cast<const uint8_t *>( static_cast<uintptr_t>( &ref ) + static_cast<uintptr_t>( ref.value ) ), len );
 }
 inline const char * schema_table_text_at_( const TableRegionCtx &, const TableRef & ref, int32_t & len )
 {
@@ -99,12 +99,12 @@ inline const char * schema_table_text_at_( const TableArena & arena, const Table
         len = 0;
         return schema_table_empty_text_ + 8;
     }
-    if ( ref.value < 0 || ref.value > (int64_t) UINT32_MAX )
+    if ( ref.value < 0 || ref.value > static_cast<int64_t>( UINT32_MAX ) )
     {
         len = -1;
         return NULL;
     }
-    return schema_table_text_from_raw_( TableArenaAt( arena, (uint32_t) ref.value ), len );
+    return schema_table_text_from_raw_( TableArenaAt( arena, static_cast<uint32_t>( ref.value ) ), len );
 }
 inline const char * schema_table_text_at_( const TableArenaCtx & ctx, const TableRef & ref, int32_t & len )
 {
@@ -121,7 +121,7 @@ inline bool schema_table_text_store_( TableWorker & worker, TableRef & slot, con
     if ( worker.arena == NULL || worker.arena->locked ) { return false; }
     if ( len < 0 || len > kTableBlobMaxLength ) { return false; }
     if ( len > 0 && text == NULL ) { return false; }
-    if ( !TableUtf8Valid( (const uint8_t *) text, (uint64_t) len ) ) { return false; }
+    if ( !TableUtf8Valid( reinterpret_cast<const uint8_t *>( text ), static_cast<uint64_t>( len ) ) ) { return false; }
     if ( len == 0 )
     {
         slot.value = 0;
@@ -130,13 +130,13 @@ inline bool schema_table_text_store_( TableWorker & worker, TableRef & slot, con
     uint32_t at = 0;
     uint8_t * dst = worker.AllocRaw( 8 + len + 1, 8, at );
     if ( dst == NULL ) { return false; }
-    uint32_t u = (uint32_t) len;
+    uint32_t u = static_cast<uint32_t>( len );
     uint32_t z = 0;
     memcpy( dst, &u, 4 );
     memcpy( dst + 4, &z, 4 );
-    memcpy( dst + 8, text, (size_t) len );
+    memcpy( dst + 8, text, static_cast<size_t>( len ) );
     dst[8 + len] = 0;
-    slot.value = (int64_t) at;
+    slot.value = static_cast<int64_t>( at );
     return true;
 }
 
@@ -159,28 +159,28 @@ inline bool schema_table_text_place_( const TableNodeMap & nodes, TableRef & slo
             nodes.refused = true;
             return false;
         }
-        uint32_t u = (uint32_t) len;
+        uint32_t u = static_cast<uint32_t>( len );
         uint32_t z = 0;
         memcpy( dst, &u, 4 );
         memcpy( dst + 4, &z, 4 );
-        memcpy( dst + 8, src, (size_t) len );
+        memcpy( dst + 8, src, static_cast<size_t>( len ) );
         dst[8 + len] = 0;
-        slot.value = (int64_t) at;
+        slot.value = static_cast<int64_t>( at );
         return true;
     }
-    uint8_t * base = (uint8_t *) ( ( (uintptr_t) nodes.carve->at + 7u ) & ~(uintptr_t) 7u );
+    uint8_t * base = reinterpret_cast<uint8_t *>( ( static_cast<uintptr_t>( nodes.carve->at ) + 7u ) & ~static_cast<uintptr_t>( 7u ) );
     const int64_t bytes = TableAlignUp64( 9 + len );
-    const int64_t pad = (int64_t) ( base - nodes.carve->at );
+    const int64_t pad = static_cast<int64_t>( base - nodes.carve->at );
     if ( pad + bytes > nodes.carve->left ) { return false; }
     nodes.carve->at = base + bytes;
     nodes.carve->left -= pad + bytes;
-    uint32_t u = (uint32_t) len;
+    uint32_t u = static_cast<uint32_t>( len );
     uint32_t z = 0;
     memcpy( base, &u, 4 );
     memcpy( base + 4, &z, 4 );
-    memcpy( base + 8, src, (size_t) len );
+    memcpy( base + 8, src, static_cast<size_t>( len ) );
     base[8 + len] = 0;
-    slot.value = (int64_t) ( base - (const uint8_t *) &slot );
+    slot.value = static_cast<int64_t>( base - reinterpret_cast<const uint8_t *>( &slot ) );
     return true;
 }
 
@@ -205,8 +205,8 @@ inline bool schema_table_text_extent_( const Ctx & ctx, const TableRef & slot, i
     const char * bytes = schema_table_text_at_( ctx, slot, len );
     if ( bytes == NULL ) { return false; }
     if ( len == 0 ) { return true; }
-    at = ( at + 7 ) & ~(int64_t) 7;
-    at += TableAlignUp64( 9 + (int64_t) len );
+    at = ( at + 7 ) & ~static_cast<int64_t>( 7 );
+    at += TableAlignUp64( 9 + static_cast<int64_t>( len ) );
     return true;
 }
 
@@ -221,18 +221,18 @@ inline bool schema_table_text_pack_( const Ctx & ctx, const TableRef & src, Tabl
         dst.value = 0;
         return true;
     }
-    at = ( at + 7 ) & ~(int64_t) 7;
-    const int64_t need = TableAlignUp64( 9 + (int64_t) len );
+    at = ( at + 7 ) & ~static_cast<int64_t>( 7 );
+    const int64_t need = TableAlignUp64( 9 + static_cast<int64_t>( len ) );
     if ( at + need > capacity ) { return false; }
     uint8_t * block = extent + at;
     at += need;
-    uint32_t u = (uint32_t) len;
+    uint32_t u = static_cast<uint32_t>( len );
     uint32_t z = 0;
     memcpy( block, &u, 4 );
     memcpy( block + 4, &z, 4 );
-    memcpy( block + 8, bytes, (size_t) len );
+    memcpy( block + 8, bytes, static_cast<size_t>( len ) );
     block[8 + len] = 0;
-    dst.value = (int64_t) ( block - (const uint8_t *) &dst );
+    dst.value = static_cast<int64_t>( block - reinterpret_cast<const uint8_t *>( &dst ) );
     return true;
 }
 
@@ -244,15 +244,15 @@ inline bool schema_table_text_wire_extent_( TableReader & r, int64_t & at, Table
         r.offset = r.size;
         return true;
     }
-    r.offset += (int64_t) len;
-    if ( len > (uint64_t) kTableBlobMaxLength )
+    r.offset += static_cast<int64_t>( len );
+    if ( len > static_cast<uint64_t>( kTableBlobMaxLength ) )
     {
         reason = blob_over_size_cap;
         return false;
     }
     if ( len == 0 ) { return true; }
-    at = ( at + 7 ) & ~(int64_t) 7;
-    at += TableAlignUp64( 9 + (int64_t) len );
+    at = ( at + 7 ) & ~static_cast<int64_t>( 7 );
+    at += TableAlignUp64( 9 + static_cast<int64_t>( len ) );
     return true;
 }
 
@@ -294,8 +294,8 @@ inline bool TableWireExtentElements( const uint8_t * body, int64_t length, int64
     {
         uint64_t elem = 0;
         if ( !r.getleb( elem ) || !r.room( elem ) ) { return true; }
-        if ( !inner( r.buffer + r.offset, (int64_t) elem, at, ids, reason ) ) { return false; }
-        r.offset += (int64_t) elem;
+        if ( !inner( r.buffer + r.offset, static_cast<int64_t>( elem ), at, ids, reason ) ) { return false; }
+        r.offset += static_cast<int64_t>( elem );
     }
     return true;
 }
@@ -316,8 +316,8 @@ inline bool TableWireExtentKeyed( const uint8_t * body, int64_t length, int64_t 
         if ( !r.getleb( key ) ) { return true; }
         uint64_t elem = 0;
         if ( !r.getleb( elem ) || !r.room( elem ) ) { return true; }
-        if ( !inner( r.buffer + r.offset, (int64_t) elem, at, ids, reason ) ) { return false; }
-        r.offset += (int64_t) elem;
+        if ( !inner( r.buffer + r.offset, static_cast<int64_t>( elem ), at, ids, reason ) ) { return false; }
+        r.offset += static_cast<int64_t>( elem );
     }
     return true;
 }
@@ -527,8 +527,8 @@ func (g *tableGen) emitExtent(st *ir.Struct) {
 			g.pf("%s{\n", ind)
 			g.pf("%s    TableMapCursor<%s> cursor = TableMapOrder( ctx, %s );\n", ind, entry.Name, expr.Src)
 			g.pf("%s    if ( !cursor.ok ) { return false; }\n", ind)
-			g.pf("%s    at = ( at + %d ) & ~(int64_t) %d; // at alignof( %s )\n", ind, alignOfEntry(g.unit, entry)-1, alignOfEntry(g.unit, entry)-1, entry.Name)
-			g.pf("%s    at += (int64_t) cursor.count * (int64_t) sizeof( %s ); // the whole array FIRST\n", ind, entry.Name)
+			g.pf("%s    at = ( at + %d ) & ~static_cast<int64_t>( %d ); // at alignof( %s )\n", ind, alignOfEntry(g.unit, entry)-1, alignOfEntry(g.unit, entry)-1, entry.Name)
+			g.pf("%s    at += static_cast<int64_t>( cursor.count ) * static_cast<int64_t>( sizeof( %s ) ); // the whole array FIRST\n", ind, entry.Name)
 			if g.isVar(entry.Name) {
 				g.pf("%s    for ( int32_t i = 0; i < cursor.count; i++ ) // then, entry by entry in key order\n%s    {\n", ind, ind)
 				g.pf("%[1]s        if ( !%[2]sExtentAt<Ctx, schema_cook_extent>( ctx, *cursor[i], at ) )\n%[1]s        {\n%[1]s            TableMapRelease( cursor );\n%[1]s            return false;\n%[1]s        }\n", ind, entry.Name)
@@ -544,11 +544,11 @@ func (g *tableGen) emitExtent(st *ir.Struct) {
 			g.pf("%s    if ( !cursor.ok ) { return false; }\n", ind)
 			size, align := ir.ListElementLayout(g.unit, f)
 			g.pf("%s    if constexpr ( schema_cook_extent )\n%s    {\n", ind, ind)
-			g.pf("%s        at = ( at + %d ) & ~(int64_t) %d;\n", ind, align-1, align-1)
-			g.pf("%s        at += (int64_t) cursor.count * %d; // canonical cook layout\n", ind, size)
+			g.pf("%s        at = ( at + %d ) & ~static_cast<int64_t>( %d );\n", ind, align-1, align-1)
+			g.pf("%s        at += static_cast<int64_t>( cursor.count ) * %d; // canonical cook layout\n", ind, size)
 			g.pf("%s    }\n%s    else\n%s    {\n", ind, ind, ind)
-			g.pf("%s        at = ( at + (int64_t) alignof( %s ) - 1 ) & ~( (int64_t) alignof( %s ) - 1 );\n", ind, elem, elem)
-			g.pf("%s        at += (int64_t) cursor.count * (int64_t) sizeof( %s ); // native pack layout\n", ind, elem)
+			g.pf("%s        at = ( at + static_cast<int64_t>( alignof( %s ) ) - 1 ) & ~( static_cast<int64_t>( alignof( %s ) ) - 1 );\n", ind, elem, elem)
+			g.pf("%s        at += static_cast<int64_t>( cursor.count ) * static_cast<int64_t>( sizeof( %s ) ); // native pack layout\n", ind, elem)
 			g.pf("%s    }\n", ind)
 			g.emitListElementExtents(f, edgeExpr{Src: "cursor[i]"}, ev, v, ind, " // then, element by element in index order")
 			g.pf("%s}\n", ind)
@@ -592,16 +592,16 @@ func (g *tableGen) emitExtentPack(st *ir.Struct) {
 			g.pf("%s{\n", ind)
 			g.pf("%s    TableMapCursor<%s> cursor = TableMapOrder( ctx, %s );\n", ind, entry.Name, expr.Src)
 			g.pf("%s    if ( !cursor.ok ) { return false; }\n", ind)
-			g.pf("%s    at = ( at + %d ) & ~(int64_t) %d;\n", ind, alignOfEntry(g.unit, entry)-1, alignOfEntry(g.unit, entry)-1)
-			g.pf("%s    const int64_t bytes = (int64_t) cursor.count * (int64_t) sizeof( %s );\n", ind, entry.Name)
+			g.pf("%s    at = ( at + %d ) & ~static_cast<int64_t>( %d );\n", ind, alignOfEntry(g.unit, entry)-1, alignOfEntry(g.unit, entry)-1)
+			g.pf("%s    const int64_t bytes = static_cast<int64_t>( cursor.count ) * static_cast<int64_t>( sizeof( %s ) );\n", ind, entry.Name)
 			g.pf("%[1]s    if ( at + bytes > capacity )\n%[1]s    {\n%[1]s        TableMapRelease( cursor );\n%[1]s        return false;\n%[1]s    }\n", ind)
-			g.pf("%s    %s * placed = (%s *) ( extent + at );\n", ind, entry.Name, entry.Name)
+			g.pf("%s    %s * placed = reinterpret_cast<%s *>( extent + at );\n", ind, entry.Name, entry.Name)
 			g.pf("%s    at += bytes;\n", ind)
 			g.pf("%s    %s.count = cursor.count;\n", ind, slot)
 			g.pf("%s    %s.padding = 0;\n", ind, slot)
-			g.pf("%s    %s.entries.value = cursor.count > 0 ? (int64_t) ( (uint8_t *) placed - (const uint8_t *) &%s.entries ) : 0;\n", ind, slot, slot)
+			g.pf("%s    %s.entries.value = cursor.count > 0 ? static_cast<int64_t>( reinterpret_cast<uint8_t *>( placed ) - reinterpret_cast<const uint8_t *>( &%s.entries ) ) : 0;\n", ind, slot, slot)
 			g.pf("%s    for ( int32_t i = 0; i < cursor.count; i++ )\n%s    {\n", ind, ind)
-			g.pf("%s        memcpy( (void *) ( placed + i ), (const void *) cursor[i], sizeof( %s ) ); // trivially copyable, by construction\n", ind, entry.Name)
+			g.pf("%s        memcpy( reinterpret_cast<void *>( placed + i ), reinterpret_cast<const void *>( cursor[i] ), sizeof( %s ) ); // trivially copyable, by construction\n", ind, entry.Name)
 			g.pf("%s    }\n", ind)
 			if g.isVar(entry.Name) {
 				g.pf("%s    for ( int32_t i = 0; i < cursor.count; i++ )\n%s    {\n", ind, ind)
@@ -617,16 +617,16 @@ func (g *tableGen) emitExtentPack(st *ir.Struct) {
 			g.pf("%s{\n", ind)
 			g.pf("%s    TableListCursor<%s> cursor = TableListElements( ctx, %s );\n", ind, elem, expr.Src)
 			g.pf("%s    if ( !cursor.ok ) { return false; }\n", ind)
-			g.pf("%s    at = ( at + (int64_t) alignof( %s ) - 1 ) & ~( (int64_t) alignof( %s ) - 1 );\n", ind, elem, elem)
-			g.pf("%s    const int64_t bytes = (int64_t) cursor.count * (int64_t) sizeof( %s );\n", ind, elem)
+			g.pf("%s    at = ( at + static_cast<int64_t>( alignof( %s ) ) - 1 ) & ~( static_cast<int64_t>( alignof( %s ) ) - 1 );\n", ind, elem, elem)
+			g.pf("%s    const int64_t bytes = static_cast<int64_t>( cursor.count ) * static_cast<int64_t>( sizeof( %s ) );\n", ind, elem)
 			g.pf("%s    if ( at + bytes > capacity ) { return false; }\n", ind)
-			g.pf("%s    %s * placed = (%s *) ( extent + at );\n", ind, elem, elem)
+			g.pf("%s    %s * placed = reinterpret_cast<%s *>( extent + at );\n", ind, elem, elem)
 			g.pf("%s    at += bytes;\n", ind)
 			g.pf("%s    %s.count = cursor.count;\n", ind, slot)
 			g.pf("%s    %s.padding = 0;\n", ind, slot)
-			g.pf("%s    %s.elements.value = cursor.count > 0 ? (int64_t) ( (uint8_t *) placed - (const uint8_t *) &%s.elements ) : 0;\n", ind, slot, slot)
+			g.pf("%s    %s.elements.value = cursor.count > 0 ? static_cast<int64_t>( reinterpret_cast<uint8_t *>( placed ) - reinterpret_cast<const uint8_t *>( &%s.elements ) ) : 0;\n", ind, slot, slot)
 			g.pf("%s    for ( int32_t i = 0; i < cursor.count; i++ ) // INDEX order, live elements only\n%s    {\n", ind, ind)
-			g.pf("%s        memcpy( (void *) ( placed + i ), (const void *) &cursor[i], sizeof( %s ) ); // trivially copyable, by construction\n", ind, elem)
+			g.pf("%s        memcpy( reinterpret_cast<void *>( placed + i ), reinterpret_cast<const void *>( &cursor[i] ), sizeof( %s ) ); // trivially copyable, by construction\n", ind, elem)
 			g.pf("%s    }\n", ind)
 			g.emitListElementExtents(f, edgeExpr{Src: "cursor[i]", Dst: "placed[i]"}, ev, v, ind, "")
 			g.pf("%s}\n", ind)
@@ -700,14 +700,14 @@ func (g *tableGen) emitUnionWireExtent(un *ir.Union) {
 	g.pf("    uint64_t arm_ref = 0;\n")
 	g.pf("    if ( !r.getleb( arm_ref ) )\n    {\n        r.offset = r.size;\n        return true;\n    }\n")
 	g.pf("    if ( arm_ref == 0 ) { return true; } // None: the reference is the whole payload\n")
-	g.pf("    if ( r.ids == NULL || arm_ref > (uint64_t) r.ids->count )\n    {\n        r.offset = r.size;\n        return true;\n    }\n")
+	g.pf("    if ( r.ids == NULL || arm_ref > static_cast<uint64_t>( r.ids->count ) )\n    {\n        r.offset = r.size;\n        return true;\n    }\n")
 	g.pf("    const uint64_t arm_id = r.ids->at( arm_ref );\n")
 	g.pf("    if ( !r.has( 1 ) )\n    {\n        r.offset = r.size;\n        return true;\n    }\n")
 	g.pf("    r.offset += 1; // the arm's kind byte\n")
 	g.pf("    uint64_t arm_len = 0;\n")
 	g.pf("    if ( !r.getleb( arm_len ) || !r.room( arm_len ) )\n    {\n        r.offset = r.size;\n        return true;\n    }\n")
 	g.pf("    const uint8_t * arm_body = r.buffer + r.offset;\n")
-	g.pf("    r.offset += (int64_t) arm_len;\n")
+	g.pf("    r.offset += static_cast<int64_t>( arm_len );\n")
 	g.pf("    switch ( arm_id )\n    {\n")
 	for _, v := range un.Variants {
 		if v.F == nil {
@@ -715,7 +715,7 @@ func (g *tableGen) emitUnionWireExtent(un *ir.Union) {
 		}
 		switch {
 		case v.Body() && g.hasExtent(v.Ref):
-			g.pf("        case 0x%016xull: if ( !%sWireExtent( arm_body, (int64_t) arm_len, at, r.ids, reason ) ) { return false; } break; // %s\n",
+			g.pf("        case 0x%016xull: if ( !%sWireExtent( arm_body, static_cast<int64_t>( arm_len ), at, r.ids, reason ) ) { return false; } break; // %s\n",
 				ir.TableWireId(v.WireName()), v.Type, v.Name)
 		default:
 			inner, isUnion := v.F.Type.Ref.(*ir.Union)
@@ -723,7 +723,7 @@ func (g *tableGen) emitUnionWireExtent(un *ir.Union) {
 				continue
 			}
 			g.pf("        case 0x%016xull: // %s: an arm that is another union\n        {\n", ir.TableWireId(v.WireName()), v.Name)
-			g.pf("            TableReader arm( arm_body, (int64_t) arm_len, r.report, r.ids );\n")
+			g.pf("            TableReader arm( arm_body, static_cast<int64_t>( arm_len ), r.report, r.ids );\n")
 			g.pf("            if ( !%sWireArmExtent( arm, at, reason ) ) { return false; }\n", inner.Name)
 			g.pf("            break;\n        }\n")
 		}
@@ -766,7 +766,7 @@ func (g *tableGen) emitWireExtent(st *ir.Struct) {
 	g.pf("        uint64_t field_ref = 0;\n")
 	g.pf("        if ( !r.getleb( field_ref ) ) { return true; }\n")
 	g.pf("        if ( field_ref == 0 ) { return true; }\n")
-	g.pf("        if ( ids == NULL || field_ref > (uint64_t) ids->count ) { return true; }\n")
+	g.pf("        if ( ids == NULL || field_ref > static_cast<uint64_t>( ids->count ) ) { return true; }\n")
 	g.pf("        const uint64_t field_id = ids->at( field_ref );\n")
 	g.pf("        if ( !r.has( 1 ) ) { return true; }\n")
 	g.pf("        uint8_t field_kind = r.get8();\n")
@@ -791,8 +791,8 @@ func (g *tableGen) emitWireExtentCases(st *ir.Struct) {
 			g.pf("            uint64_t map_len = 0;\n")
 			g.pf("            if ( !r.getleb( map_len ) || !r.room( map_len ) ) { return true; }\n")
 			g.pf("            const uint8_t * map_body = r.buffer + r.offset;\n")
-			g.pf("            r.offset += (int64_t) map_len;\n")
-			g.pf("            if ( !TableMapWireExtent( map_body, (int64_t) map_len, at, (int64_t) sizeof( %s ), (int64_t) alignof( %s ), %s, ids, reason ) ) { return false; }\n",
+			g.pf("            r.offset += static_cast<int64_t>( map_len );\n")
+			g.pf("            if ( !TableMapWireExtent( map_body, static_cast<int64_t>( map_len ), at, static_cast<int64_t>( sizeof( %s ) ), static_cast<int64_t>( alignof( %s ) ), %s, ids, reason ) ) { return false; }\n",
 				entry.Name, entry.Name, inner)
 			g.pf("            continue;\n        }\n")
 			continue
@@ -807,16 +807,16 @@ func (g *tableGen) emitWireExtentCases(st *ir.Struct) {
 			g.pf("            uint64_t list_len = 0;\n")
 			g.pf("            if ( !r.getleb( list_len ) || !r.room( list_len ) ) { return true; }\n")
 			g.pf("            const uint8_t * list_body = r.buffer + r.offset;\n")
-			g.pf("            r.offset += (int64_t) list_len;\n")
-			g.pf("            if ( !TableListWireExtent( list_body, (int64_t) list_len, at, (int64_t) sizeof( %s ), (int64_t) alignof( %s ), %d, %d, %s, ids, reason ) ) { return false; }\n",
+			g.pf("            r.offset += static_cast<int64_t>( list_len );\n")
+			g.pf("            if ( !TableListWireExtent( list_body, static_cast<int64_t>( list_len ), at, static_cast<int64_t>( sizeof( %s ) ), static_cast<int64_t>( alignof( %s ) ), %d, %d, %s, ids, reason ) ) { return false; }\n",
 				elem, elem, listElementWireKind(f), listElementFloor(f), inner)
 			if ir.TextListPlain(f) && ir.TextListUnbounded(f) {
-				g.pf("            if ( !schema_table_list_text_wire_extent_( list_body, (int64_t) list_len, 0, at, reason ) ) { return false; }\n")
+				g.pf("            if ( !schema_table_list_text_wire_extent_( list_body, static_cast<int64_t>( list_len ), 0, at, reason ) ) { return false; }\n")
 			}
 			if un := listElementUnion(f); un != nil && g.unionHasExtent(un, map[*ir.Union]bool{}) {
 				// the elements' arms, after the whole array: one arm header
 				// per element, read over the same body (§2.6, §2.9)
-				g.pf("            if ( !%sWireArmsExtent( list_body, (int64_t) list_len, at, ids, reason ) ) { return false; }\n", un.Name)
+				g.pf("            if ( !%sWireArmsExtent( list_body, static_cast<int64_t>( list_len ), at, ids, reason ) ) { return false; }\n", un.Name)
 			}
 			g.pf("            continue;\n        }\n")
 			continue
@@ -832,8 +832,8 @@ func (g *tableGen) emitWireExtentCases(st *ir.Struct) {
 			g.pf("            uint64_t list_len = 0;\n")
 			g.pf("            if ( !r.getleb( list_len ) || !r.room( list_len ) ) { return true; }\n")
 			g.pf("            const uint8_t * list_body = r.buffer + r.offset;\n")
-			g.pf("            r.offset += (int64_t) list_len;\n")
-			g.pf("            if ( !schema_table_list_text_wire_extent_( list_body, (int64_t) list_len, %d, at, reason ) ) { return false; }\n", f.ArrayBound)
+			g.pf("            r.offset += static_cast<int64_t>( list_len );\n")
+			g.pf("            if ( !schema_table_list_text_wire_extent_( list_body, static_cast<int64_t>( list_len ), %d, at, reason ) ) { return false; }\n", f.ArrayBound)
 			g.pf("            continue;\n        }\n")
 			continue
 		}
@@ -856,11 +856,11 @@ func (g *tableGen) emitWireExtentCases(st *ir.Struct) {
 			g.pf("            uint64_t nested_len = 0;\n")
 			g.pf("            if ( !r.getleb( nested_len ) || !r.room( nested_len ) ) { return true; }\n")
 			g.pf("            const uint8_t * nested_body = r.buffer + r.offset;\n")
-			g.pf("            r.offset += (int64_t) nested_len;\n")
+			g.pf("            r.offset += static_cast<int64_t>( nested_len );\n")
 			if walk == "" {
-				g.pf("            if ( !%sWireExtent( nested_body, (int64_t) nested_len, at, ids, reason ) ) { return false; }\n", f.Type.Name)
+				g.pf("            if ( !%sWireExtent( nested_body, static_cast<int64_t>( nested_len ), at, ids, reason ) ) { return false; }\n", f.Type.Name)
 			} else {
-				g.pf("            if ( !%s( nested_body, (int64_t) nested_len, at, &%sWireExtent, ids, reason ) ) { return false; }\n", walk, f.Type.Name)
+				g.pf("            if ( !%s( nested_body, static_cast<int64_t>( nested_len ), at, &%sWireExtent, ids, reason ) ) { return false; }\n", walk, f.Type.Name)
 			}
 			g.pf("            continue;\n        }\n")
 		case edgeArm:
@@ -880,8 +880,8 @@ func (g *tableGen) emitWireExtentCases(st *ir.Struct) {
 			g.pf("            uint64_t arms_len = 0;\n")
 			g.pf("            if ( !r.getleb( arms_len ) || !r.room( arms_len ) ) { return true; }\n")
 			g.pf("            const uint8_t * arms_body = r.buffer + r.offset;\n")
-			g.pf("            r.offset += (int64_t) arms_len;\n")
-			g.pf("            if ( !%sWireArmsExtent( arms_body, (int64_t) arms_len, at, ids, reason ) ) { return false; }\n", un.Name)
+			g.pf("            r.offset += static_cast<int64_t>( arms_len );\n")
+			g.pf("            if ( !%sWireArmsExtent( arms_body, static_cast<int64_t>( arms_len ), at, ids, reason ) ) { return false; }\n", un.Name)
 			g.pf("            continue;\n        }\n")
 		}
 	}
@@ -893,7 +893,7 @@ func (g *tableGen) emitWireExtentCases(st *ir.Struct) {
 // caller where a unit has an extent.
 func (g *tableGen) emitRootDataBytes(st *ir.Struct, ind string, onBad ...string) {
 	if !g.anyExtent {
-		g.pf("%sint64_t data = TableAlignUp64( (int64_t) sizeof( %s ) );\n", ind, st.Name)
+		g.pf("%sint64_t data = TableAlignUp64( static_cast<int64_t>( sizeof( %s ) ) );\n", ind, st.Name)
 		return
 	}
 	g.pf("%sint64_t root_extent = 0;\n", ind)
@@ -902,7 +902,7 @@ func (g *tableGen) emitRootDataBytes(st *ir.Struct, ind string, onBad ...string)
 		g.pf("%s    %s\n", ind, statement)
 	}
 	g.pf("%s}\n", ind)
-	g.pf("%sint64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( %s ) ) + root_extent );\n", ind, st.Name)
+	g.pf("%sint64_t data = TableAlignUp64( TableAlignUp64( static_cast<int64_t>( sizeof( %s ) ) ) + root_extent );\n", ind, st.Name)
 }
 
 // ---- the COOK's write side at the extent (docs/SPEC-TABLES.md §2.8, §2.9, §7.6) ----
@@ -953,12 +953,12 @@ func (g *tableGen) emitCookExtent(st *ir.Struct) {
 			g.pf("%s{ // %s\n", ind, f.Name)
 			g.pf("%s    TableMapCursor<%s> cursor = TableMapOrder( ctx, %s );\n", ind, entry.Name, expr.Src)
 			g.pf("%s    if ( !cursor.ok ) { return false; }\n", ind)
-			g.pf("%s    at = ( at + %d ) & ~(int64_t) %d; // at alignof( %s )\n", ind, el.Align-1, el.Align-1, entry.Name)
+			g.pf("%s    at = ( at + %d ) & ~static_cast<int64_t>( %d ); // at alignof( %s )\n", ind, el.Align-1, el.Align-1, entry.Name)
 			g.pf("%s    uint8_t * array = extent + at;\n", ind)
-			g.pf("%s    at += (int64_t) cursor.count * %d; // the whole array FIRST\n", ind, el.Size)
+			g.pf("%s    at += static_cast<int64_t>( cursor.count ) * %d; // the whole array FIRST\n", ind, el.Size)
 			g.pf("%s    // the SIXTEEN BYTES of the slot: the self-relative delta, then the count\n", ind)
-			g.pf("%s    table_cook_put( %s, cursor.count > 0 ? (uint64_t) (int64_t) ( array - ( %s ) ) : 0, 8, order );\n", ind, expr.addr(0), expr.addr(0))
-			g.pf("%s    table_cook_put( %s, (uint64_t) (uint32_t) cursor.count, 4, order );\n", ind, expr.addr(8))
+			g.pf("%s    table_cook_put( %s, cursor.count > 0 ? static_cast<uint64_t>( static_cast<int64_t>( array - ( %s ) ) ) : 0, 8, order );\n", ind, expr.addr(0), expr.addr(0))
+			g.pf("%s    table_cook_put( %s, static_cast<uint64_t>( static_cast<uint32_t>( cursor.count ) ), 4, order );\n", ind, expr.addr(8))
 			g.pf("%s    for ( int32_t i = 0; i < cursor.count; i++ )\n%s    {\n", ind, ind)
 			g.pf("%s        %s\n", ind, g.cookBodyCall(entry, fmt.Sprintf("array + i * %d", el.Size), "*cursor[i]"))
 			g.pf("%s    }\n", ind)
@@ -975,17 +975,17 @@ func (g *tableGen) emitCookExtent(st *ir.Struct) {
 			g.pf("%s{ // %s: an unbounded array\n", ind, f.Name)
 			g.pf("%s    TableListCursor<%s> cursor = TableListElements( ctx, %s );\n", ind, elem, expr.Src)
 			g.pf("%s    if ( !cursor.ok ) { return false; }\n", ind)
-			g.pf("%s    at = ( at + %d ) & ~(int64_t) %d; // at alignof( %s )\n", ind, align-1, align-1, elem)
+			g.pf("%s    at = ( at + %d ) & ~static_cast<int64_t>( %d ); // at alignof( %s )\n", ind, align-1, align-1, elem)
 			g.pf("%s    uint8_t * array = extent + at;\n", ind)
-			g.pf("%s    at += (int64_t) cursor.count * %d; // the whole array FIRST\n", ind, size)
+			g.pf("%s    at += static_cast<int64_t>( cursor.count ) * %d; // the whole array FIRST\n", ind, size)
 			g.pf("%s    // the SIXTEEN BYTES of the slot: the self-relative delta, then the count\n", ind)
-			g.pf("%s    table_cook_put( %s, cursor.count > 0 ? (uint64_t) (int64_t) ( array - ( %s ) ) : 0, 8, order );\n", ind, expr.addr(0), expr.addr(0))
-			g.pf("%s    table_cook_put( %s, (uint64_t) (uint32_t) cursor.count, 4, order );\n", ind, expr.addr(8))
+			g.pf("%s    table_cook_put( %s, cursor.count > 0 ? static_cast<uint64_t>( static_cast<int64_t>( array - ( %s ) ) ) : 0, 8, order );\n", ind, expr.addr(0), expr.addr(0))
+			g.pf("%s    table_cook_put( %s, static_cast<uint64_t>( static_cast<uint32_t>( cursor.count ) ), 4, order );\n", ind, expr.addr(8))
 			g.pf("%s    for ( int32_t i = 0; i < cursor.count; i++ ) // INDEX order, live elements only\n%s    {\n", ind, ind)
 			if listElementIsPointer(f) {
 				// the self-relative delta of §6.3 to the node the numbering reached,
 				// or a refusal for one it did not, exactly as a pointer field's slot
-				g.pf("%s        if ( !table_cook_ref( region, array + i * %d, (const void *) %sAt( ctx, cursor[i] ), order ) ) { return false; }\n", ind, size, f.Type.Name)
+				g.pf("%s        if ( !table_cook_ref( region, array + i * %d, reinterpret_cast<const void *>( %sAt( ctx, cursor[i] ) ), order ) ) { return false; }\n", ind, size, f.Type.Name)
 			} else {
 				g.emitCookWriteElement(f, fmt.Sprintf("array + i * %d", size), "cursor[i]", ind+"        ", "_"+f.Name)
 			}
@@ -1002,13 +1002,13 @@ func (g *tableGen) emitCookExtent(st *ir.Struct) {
 			g.pf("%s    if ( len == 0 )\n%s    {\n", ind, ind)
 			g.pf("%s        table_cook_put( %s, 0, 8, order );\n", ind, expr.addr(0))
 			g.pf("%s    }\n%s    else\n%s    {\n", ind, ind, ind)
-			g.pf("%s        at = ( at + 7 ) & ~(int64_t) 7;\n", ind)
+			g.pf("%s        at = ( at + 7 ) & ~static_cast<int64_t>( 7 );\n", ind)
 			g.pf("%s        uint8_t * block = extent + at;\n", ind)
-			g.pf("%s        at += TableAlignUp64( 9 + (int64_t) len );\n", ind)
-			g.pf("%s        table_cook_put( %s, (uint64_t) (int64_t) ( block - ( %s ) ), 8, order );\n", ind, expr.addr(0), expr.addr(0))
-			g.pf("%s        table_cook_put( block, (uint64_t) (uint32_t) len, 4, order );\n", ind)
+			g.pf("%s        at += TableAlignUp64( 9 + static_cast<int64_t>( len ) );\n", ind)
+			g.pf("%s        table_cook_put( %s, static_cast<uint64_t>( static_cast<int64_t>( block - ( %s ) ) ), 8, order );\n", ind, expr.addr(0), expr.addr(0))
+			g.pf("%s        table_cook_put( block, static_cast<uint64_t>( static_cast<uint32_t>( len ) ), 4, order );\n", ind)
 			g.pf("%s        table_cook_put( block + 4, 0, 4, order );\n", ind)
-			g.pf("%s        memcpy( block + 8, bytes, (size_t) len );\n", ind)
+			g.pf("%s        memcpy( block + 8, bytes, static_cast<size_t>( len ) );\n", ind)
 			g.pf("%s        block[8 + len] = 0;\n", ind)
 			g.pf("%s    }\n%s}\n", ind, ind)
 		},
@@ -1126,11 +1126,11 @@ func (g *tableGen) placeColumn(f *ir.Field) string {
 	if mapKeyIsString(f) {
 		insert = fmt.Sprintf("[]( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * "+
 			"{ if ( key == NULL ) { return NULL; } "+
-			"return (void *) TableMapPlace( worker, *(%s *) slot, TableMapKeyRef{ key, key_length } ); }", hold)
+			"return reinterpret_cast<void *>( TableMapPlace( worker, *reinterpret_cast<%s *>( slot ), TableMapKeyRef{ key, key_length } ) ); }", hold)
 	} else {
 		typ, _ := g.cppFieldType(ir.MapKeyField(f).Type)
 		insert = fmt.Sprintf("[]( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * "+
-			"{ return (void *) TableMapPlace( worker, *(%s *) slot, (%s) key_value ); }", hold, typ)
+			"{ return reinterpret_cast<void *>( TableMapPlace( worker, *reinterpret_cast<%s *>( slot ), static_cast<%s>( key_value ) ) ); }", hold, typ)
 	}
 	return insert + ", "
 }

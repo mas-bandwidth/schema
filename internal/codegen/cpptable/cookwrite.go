@@ -62,11 +62,11 @@ inline void table_cook_put( uint8_t * at, uint64_t value, int32_t width, TableBy
 {
     if ( order == TableByteOrder::Little )
     {
-        for ( int32_t i = 0; i < width; i++ ) { at[i] = (uint8_t) ( value >> ( 8 * i ) ); }
+        for ( int32_t i = 0; i < width; i++ ) { at[i] = static_cast<uint8_t>( value >> ( 8 * i ) ); }
     }
     else
     {
-        for ( int32_t i = 0; i < width; i++ ) { at[i] = (uint8_t) ( value >> ( 8 * ( width - 1 - i ) ) ); }
+        for ( int32_t i = 0; i < width; i++ ) { at[i] = static_cast<uint8_t>( value >> ( 8 * ( width - 1 - i ) ) ); }
     }
 }
 
@@ -98,7 +98,7 @@ inline void table_cook_bytes( uint8_t * at, const void * source, int64_t used, i
 {
     if ( used <= 0 ) { return; }
     const int64_t n = used < capacity ? used : capacity;
-    memcpy( at, source, (size_t) n );
+    memcpy( at, source, static_cast<size_t>( n ) );
 }
 
 `
@@ -154,9 +154,9 @@ inline bool table_cook_ref( const TableCookRegion & region, uint8_t * at, const 
     }
     uint64_t index = 0;
     if ( !TableNumberingIndex( *region.numbering, pointee, index ) ) { return false; }
-    if ( index == 0 || index > (uint64_t) region.count ) { return false; }
-    const int64_t delta = region.offsets[index - 1] - (int64_t) ( at - region.base );
-    table_cook_put( at, (uint64_t) delta, 8, order );
+    if ( index == 0 || index > static_cast<uint64_t>( region.count ) ) { return false; }
+    const int64_t delta = region.offsets[index - 1] - static_cast<int64_t>( at - region.base );
+    table_cook_put( at, static_cast<uint64_t>( delta ), 8, order );
     return true;
 }
 
@@ -299,7 +299,7 @@ func (g *tableGen) emitCookWriteFieldAs(st *ir.Struct, f *ir.Field, offset int64
 		// internal/codegen/gotable/mappresence_test.go TestGoMapPresence.
 		pieces := ir.FieldPieces(g.unit, f, offset)
 		p := pieces[len(pieces)-1]
-		g.pf("    table_cook_put( %s + %d, (uint64_t) ( %s_present ? 1 : 0 ), 1, order ); // ?map's presence companion\n", base, p.Offset, name)
+		g.pf("    table_cook_put( %s + %d, static_cast<uint64_t>( %s_present ? 1 : 0 ), 1, order ); // ?map's presence companion\n", base, p.Offset, name)
 	}
 	if f.IsMap() || f.IsList() {
 		// THE SLOT IS THE EXTENT WRITER'S (docs/SPEC-TABLES.md §2.8, §2.9): the
@@ -321,7 +321,7 @@ func (g *tableGen) emitCookWriteFieldAs(st *ir.Struct, f *ir.Field, offset int64
 		// the presence companion is the LAST piece, and it is a slot the other
 		// side reads (§20.2's `optional=true`)
 		p := pieces[len(pieces)-1]
-		g.pf("    table_cook_put( %s + %d, (uint64_t) ( %s_present ? 1 : 0 ), 1, order ); // ?T's presence companion\n", base, p.Offset, name)
+		g.pf("    table_cook_put( %s + %d, static_cast<uint64_t>( %s_present ? 1 : 0 ), 1, order ); // ?T's presence companion\n", base, p.Offset, name)
 		// AN ABSENT OPTIONAL'S PAYLOAD IS DEAD BYTES (docs/SPEC-TABLES.md §7.2;
 		// docs/rulings.json fixed-dead-bytes-are-zero): zero on write whatever
 		// the element's declared default is, so the payload rides only when the
@@ -333,7 +333,7 @@ func (g *tableGen) emitCookWriteFieldAs(st *ir.Struct, f *ir.Field, offset int64
 	case f.Type.Blob():
 		// a byte buffer's slot is the same delta, to the blob node the
 		// numbering reached under its reserved type id (§2.5)
-		g.pf("    if ( !table_cook_ref( region, %s + %d, (const void *) TableBlobAt( ctx, %s ), order ) ) { return false; } // %s\n", base, value.Offset, name, f.Name)
+		g.pf("    if ( !table_cook_ref( region, %s + %d, reinterpret_cast<const void *>( TableBlobAt( ctx, %s ) ), order ) ) { return false; } // %s\n", base, value.Offset, name, f.Name)
 	case f.Type.Pointer:
 		// the self-relative delta of §6.3, or a refusal for a node the numbering
 		// did not reach; the pointee is resolved through the same context the
@@ -343,7 +343,7 @@ func (g *tableGen) emitCookWriteFieldAs(st *ir.Struct, f *ir.Field, offset int64
 		// zero (§7.2).
 		t := f.Type.Name
 		if f.Array == ir.ArrayNone {
-			g.pf("    if ( !table_cook_ref( region, %s + %d, (const void *) %sAt( ctx, %s ), order ) ) { return false; } // %s\n", base, value.Offset, t, name, f.Name)
+			g.pf("    if ( !table_cook_ref( region, %s + %d, reinterpret_cast<const void *>( %sAt( ctx, %s ) ), order ) ) { return false; } // %s\n", base, value.Offset, t, name, f.Name)
 		} else {
 			bound := fmt.Sprintf("%d", f.ArrayBound)
 			slots := "every slot"
@@ -357,10 +357,10 @@ func (g *tableGen) emitCookWriteFieldAs(st *ir.Struct, f *ir.Field, offset int64
 				slots = "the live slots, the rest zero"
 			}
 			g.pf("    for ( int32_t i%s = 0; i%s < %s; i%s++ ) // %s: an array of pointers, %s\n    {\n", sfx, sfx, bound, sfx, f.Name, slots)
-			g.pf("        if ( !table_cook_ref( region, %[1]s + %[2]d + i%[3]s * 8, (const void *) %[4]sAt( ctx, %[5]s[i%[6]s] ), order ) ) { return false; }\n", base, value.Offset, sfx, t, name, sfx)
+			g.pf("        if ( !table_cook_ref( region, %[1]s + %[2]d + i%[3]s * 8, reinterpret_cast<const void *>( %[4]sAt( ctx, %[5]s[i%[6]s] ) ), order ) ) { return false; }\n", base, value.Offset, sfx, t, name, sfx)
 			g.pf("    }\n")
 			if f.Array == ir.ArrayCounted {
-				g.pf("    table_cook_put( %s + %d, (uint64_t) (uint32_t) %s_count, 4, order );\n", base, pieces[1].Offset, name)
+				g.pf("    table_cook_put( %s + %d, static_cast<uint64_t>( static_cast<uint32_t>( %s_count ) ), 4, order );\n", base, pieces[1].Offset, name)
 			}
 		}
 	case f.Type.TextUnbounded():
@@ -369,7 +369,7 @@ func (g *tableGen) emitCookWriteFieldAs(st *ir.Struct, f *ir.Field, offset int64
 		// the buffer, then the int32 used length beside it — two pieces, each
 		// aligned on its own, which is what the generated record declares
 		g.pf("    table_cook_bytes( %s + %d, %s, %s_length, %d );\n", base, value.Offset, name, name, value.Size)
-		g.pf("    table_cook_put( %s + %d, (uint64_t) (uint32_t) %s_length, 4, order );\n", base, pieces[1].Offset, name)
+		g.pf("    table_cook_put( %s + %d, static_cast<uint64_t>( static_cast<uint32_t>( %s_length ) ), 4, order );\n", base, pieces[1].Offset, name)
 	case f.KeyEnum != "", f.Array == ir.ArrayFixed, f.Array == ir.ArrayCounted:
 		stride := cookElementBytes(g.unit, f)
 		element := fmt.Sprintf("%s[i%s]", name, sfx)
@@ -396,7 +396,7 @@ func (g *tableGen) emitCookWriteFieldAs(st *ir.Struct, f *ir.Field, offset int64
 		g.emitCookWriteElement(f, fmt.Sprintf("%s + %d + i%s * %d", base, value.Offset, sfx, stride), element, "        ", sfx)
 		g.pf("    }\n")
 		if f.Array == ir.ArrayCounted {
-			g.pf("    table_cook_put( %s + %d, (uint64_t) (uint32_t) %s_count, 4, order );\n", base, pieces[1].Offset, name)
+			g.pf("    table_cook_put( %s + %d, static_cast<uint64_t>( static_cast<uint32_t>( %s_count ) ), 4, order );\n", base, pieces[1].Offset, name)
 		}
 	default:
 		g.emitCookWriteElement(f, fmt.Sprintf("%s + %d", base, value.Offset), name, "    ", sfx)
@@ -413,13 +413,13 @@ func (g *tableGen) emitCookWriteElement(f *ir.Field, at, value, indent, sfx stri
 	t := f.Type
 	switch t.Kind {
 	case ir.TBool:
-		g.pf("%stable_cook_put( %s, (uint64_t) ( %s ? 1 : 0 ), 1, order );\n", indent, at, value)
+		g.pf("%stable_cook_put( %s, static_cast<uint64_t>( %s ? 1 : 0 ), 1, order );\n", indent, at, value)
 	case ir.TFloat32:
 		// the IEEE-754 BITS, through the target's order: a float copied as a
 		// float would be swapped by nothing. A NaN or an infinity is refused,
 		// never cooked (docs/SPEC-TABLES.md §3.3)
 		g.pf("%sif ( !TableFloatFinite( %s ) ) { return false; } // a NaN or an infinity is refused (§3.3)\n", indent, value)
-		g.pf("%s{ uint32_t bits = 0; memcpy( &bits, &%s, 4 ); table_cook_put( %s, (uint64_t) bits, 4, order ); }\n", indent, value, at)
+		g.pf("%s{ uint32_t bits = 0; memcpy( &bits, &%s, 4 ); table_cook_put( %s, static_cast<uint64_t>( bits ), 4, order ); }\n", indent, value, at)
 	case ir.TFloat64:
 		g.pf("%sif ( !TableFloatFinite( %s ) ) { return false; } // a NaN or an infinity is refused (§3.3)\n", indent, value)
 		g.pf("%s{ uint64_t bits = 0; memcpy( &bits, &%s, 8 ); table_cook_put( %s, bits, 8, order ); }\n", indent, value, at)
@@ -430,21 +430,21 @@ func (g *tableGen) emitCookWriteElement(f *ir.Field, at, value, indent, sfx stri
 			g.pf("%[1]s{\n%[1]s    serialize::uint128_t raw_v = serialize::uint128_t( %[2]s );\n%[1]s    table_cook_put128( %[3]s, uint64_t( raw_v ), uint64_t( raw_v >> 64 ), order );\n%[1]s}\n", indent, value, at)
 			return
 		}
-		g.pf("%stable_cook_put( %s, (uint64_t) %s, %d, order );\n", indent, at, value, int64(t.Width)/8)
+		g.pf("%stable_cook_put( %s, static_cast<uint64_t>( %s ), %d, order );\n", indent, at, value, int64(t.Width)/8)
 	case ir.TBits:
 		width := int64(8)
 		if t.Width <= 32 {
 			width = 4
 		}
-		g.pf("%stable_cook_put( %s, (uint64_t) %s, %d, order );\n", indent, at, value, width)
+		g.pf("%stable_cook_put( %s, static_cast<uint64_t>( %s ), %d, order );\n", indent, at, value, width)
 	case ir.TNamed:
 		switch ref := t.Ref.(type) {
 		case *ir.Enum:
 			// the slot holds the ORDINAL at the enum's own storage width, not
 			// the wire's variant-name hash (§7.2)
-			g.pf("%stable_cook_put( %s, (uint64_t) %s, %d, order );\n", indent, at, value, int64(ir.StorageBitsFor(ref.Max))/8)
+			g.pf("%stable_cook_put( %s, static_cast<uint64_t>( %s ), %d, order );\n", indent, at, value, int64(ir.StorageBitsFor(ref.Max))/8)
 		case *ir.Flags:
-			g.pf("%stable_cook_put( %s, (uint64_t) %s, 8, order ); // a mask rides raw, in every target\n", indent, at, value)
+			g.pf("%stable_cook_put( %s, static_cast<uint64_t>( %s ), 8, order ); // a mask rides raw, in every target\n", indent, at, value)
 		case *ir.Struct:
 			g.pf("%s%s\n", indent, g.cookBodyCall(ref, at, value))
 		case *ir.Union:
@@ -472,7 +472,7 @@ func (g *tableGen) cookBodyCall(ref *ir.Struct, at, value string) string {
 func (g *tableGen) emitCookWriteUnion(un *ir.Union, at, value, indent, sfx string) {
 	_, _, tag, armOffset := ir.UnionLayout(g.unit, un)
 	g.pf("%s{\n", indent)
-	g.pf("%s    table_cook_put( %s, (uint64_t) %s.type, %d, order ); // the tag; None is the tag alone\n", indent, at, value, tag)
+	g.pf("%s    table_cook_put( %s, static_cast<uint64_t>( %s.type ), %d, order ); // the tag; None is the tag alone\n", indent, at, value, tag)
 	g.pf("%s    switch ( %s )\n%s    {\n", indent, tagOf(unionTagStorage(un), value+".type"), indent)
 	for _, v := range un.Variants {
 		switch {
@@ -536,20 +536,20 @@ func (g *tableGen) emitCookWriteRoot(st *ir.Struct) {
 	g.pf("// two cooks of one value ONE artifact (§7).\n")
 	g.pf("inline bool %sCook( const %s & value, void * out, uint64_t capacity, TableByteOrder order )\n{\n", n, n)
 	g.pf("    if ( out == NULL ) { return false; }\n")
-	g.pf("    const uint64_t need = (uint64_t) %sCookMeasure( value );\n", n)
+	g.pf("    const uint64_t need = static_cast<uint64_t>( %sCookMeasure( value ) );\n", n)
 	g.pf("    if ( capacity < need ) { return false; }\n")
-	g.pf("    uint8_t * raw = (uint8_t *) out;\n")
-	g.pf("    memset( raw, 0, (size_t) need );\n")
+	g.pf("    uint8_t * raw = reinterpret_cast<uint8_t *>( out );\n")
+	g.pf("    memset( raw, 0, static_cast<size_t>( need ) );\n")
 	g.pf("    // the HEADER (§7.1), every word a u64 in the order the file is produced in\n")
 	g.pf("    table_cook_put( raw + 0, TableCookMagic, 8, order );\n")
 	g.pf("    table_cook_put( raw + 8, BuildVersion, 8, order );\n")
-	g.pf("    table_cook_put( raw + 16, (uint64_t) ( order == TableByteOrder::Big ? 2 : 1 ), 8, order );\n")
+	g.pf("    table_cook_put( raw + 16, static_cast<uint64_t>( order == TableByteOrder::Big ? 2 : 1 ), 8, order );\n")
 	g.pf("    table_cook_put( raw + 24, %d, 8, order ); // data_length, rounded to the region's alignment\n", dataLength)
 	g.pf("    table_cook_put( raw + 32, 16, 8, order ); // attribution_length: one entry, one node\n")
 	g.pf("    table_cook_put( raw + 40, %d, 8, order ); // the region's alignment\n", align)
 	g.pf("    // the two RESERVED words are zero, and the memset already wrote them\n")
 	g.pf("    // the DATA part: the region, which for a fixed root is the record at its base\n")
-	g.pf("    if ( !%[1]sCookBody( raw + %[2]d, value, order ) )\n    {\n        memset( raw, 0, (size_t) need );\n        return false;\n    } // a NaN or an infinity writes no cook (§3.3)\n", n, dataOffset)
+	g.pf("    if ( !%[1]sCookBody( raw + %[2]d, value, order ) )\n    {\n        memset( raw, 0, static_cast<size_t>( need ) );\n        return false;\n    } // a NaN or an infinity writes no cook (§3.3)\n", n, dataOffset)
 	g.pf("    // the ATTRIBUTION part: the node directory (§6.3), written beside the data\n")
 	g.pf("    // for `schema cook-check` — one entry, the root at offset zero, and its type\n")
 	g.pf("    // id is the fnv1a64 of the table's name (§3.1)\n")
@@ -628,7 +628,7 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 				if g.hasExtent(t) {
 					ind = "            "
 				}
-				g.emitCookNodeBytes(t, ind, fmt.Sprintf("*(const %s *) numbering.entries[k].node", t.Name), "return false;")
+				g.emitCookNodeBytes(t, ind, fmt.Sprintf("*reinterpret_cast<const %s *>( numbering.entries[k].node )", t.Name), "return false;")
 				g.pf("%sbreak;\n", ind)
 				continue
 			}
@@ -640,7 +640,7 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 			if b.terminated {
 				extra = 1
 			}
-			g.pf("            case %[1]s:\n                size = kTableBlobHeader + (int64_t) ( (const TableBlob *) numbering.entries[k].node )->length + %[2]d;\n                node_align = 8;\n                break; // *%[3]s\n", b.constant, extra, b.word)
+			g.pf("            case %[1]s:\n                size = kTableBlobHeader + static_cast<int64_t>( ( reinterpret_cast<const TableBlob *>( numbering.entries[k].node ) )->length ) + %[2]d;\n                node_align = 8;\n                break; // *%[3]s\n", b.constant, extra, b.word)
 		}
 		g.pf("            default: return false;\n")
 		g.pf("        }\n")
@@ -670,7 +670,7 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 		g.pf("    if ( %sNumberFrom( ctx, numbering, root ) && %sCookLayout( numbering, region ) )\n    {\n", n, n)
 	}
 	g.pf("        const int64_t data_offset = ( kTableCookHeaderBytes + region.align - 1 ) & ~( region.align - 1 );\n")
-	g.pf("        bytes = data_offset + region.bytes + region.count * (int64_t) sizeof( TableNodeDirEntry );\n")
+	g.pf("        bytes = data_offset + region.bytes + region.count * static_cast<int64_t>( sizeof( TableNodeDirEntry ) );\n")
 	g.pf("    }\n")
 	g.pf("    TableNumberingShutdown( numbering );\n")
 	g.pf("    return bytes;\n}\n\n")
@@ -694,7 +694,7 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 	g.pf("    TableCookRegion region;\n")
 	g.pf("    bool ok = %sNumberFrom( ctx, numbering, root );\n", n)
 	g.pf("    if ( ok )\n    {\n")
-	g.pf("        region.offsets = (int64_t *) table_allocate( allocator, ( numbering.count + 1 ) * (int64_t) sizeof( int64_t ) );\n")
+	g.pf("        region.offsets = reinterpret_cast<int64_t *>( table_allocate( allocator, ( numbering.count + 1 ) * static_cast<int64_t>( sizeof( int64_t ) ) ) );\n")
 	if g.anyExtent {
 		g.pf("        ok = region.offsets != NULL && %sCookLayout( ctx, root, numbering, region );\n", n)
 	} else {
@@ -703,12 +703,12 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 	g.pf("    }\n")
 	g.pf("    if ( ok )\n    {\n")
 	g.pf("        const int64_t data_offset = ( kTableCookHeaderBytes + region.align - 1 ) & ~( region.align - 1 );\n")
-	g.pf("        const int64_t attribution = region.count * (int64_t) sizeof( TableNodeDirEntry );\n")
+	g.pf("        const int64_t attribution = region.count * static_cast<int64_t>( sizeof( TableNodeDirEntry ) );\n")
 	g.pf("        const int64_t need = data_offset + region.bytes + attribution;\n")
-	g.pf("        ok = (uint64_t) need <= capacity;\n")
+	g.pf("        ok = static_cast<uint64_t>( need ) <= capacity;\n")
 	g.pf("        if ( ok )\n        {\n")
-	g.pf("            uint8_t * raw = (uint8_t *) out;\n")
-	g.pf("            memset( raw, 0, (size_t) need ); // EVERY BYTE NO FIELD COVERS IS ZERO (§7.2)\n")
+	g.pf("            uint8_t * raw = reinterpret_cast<uint8_t *>( out );\n")
+	g.pf("            memset( raw, 0, static_cast<size_t>( need ) ); // EVERY BYTE NO FIELD COVERS IS ZERO (§7.2)\n")
 	g.pf("            region.base = raw + data_offset;\n")
 	g.pf("            // the DATA part: the root at the region's base, then every numbered\n")
 	g.pf("            // node at the offset the layout gave it, each through its own writer\n")
@@ -729,22 +729,22 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 	}
 	for _, t := range reachable {
 		if g.anyExtent {
-			g.pf("                    case 0x%016[1]xull:\n                        ok = %[2]sCookNode( ctx, region, at, *(const %[3]s *) node, order );\n                        break; // %[4]s\n", ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
+			g.pf("                    case 0x%016[1]xull:\n                        ok = %[2]sCookNode( ctx, region, at, *reinterpret_cast<const %[3]s *>( node ), order );\n                        break; // %[4]s\n", ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
 			continue
 		}
 		if g.isVar(t.Name) {
-			g.pf("                    case 0x%016[1]xull:\n                        ok = %[2]sCookBody( ctx, region, at, *(const %[3]s *) node, order );\n                        break; // %[4]s\n", ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
+			g.pf("                    case 0x%016[1]xull:\n                        ok = %[2]sCookBody( ctx, region, at, *reinterpret_cast<const %[3]s *>( node ), order );\n                        break; // %[4]s\n", ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
 		} else {
-			g.pf("                    case 0x%016[1]xull:\n                        ok = %[2]sCookBody( at, *(const %[3]s *) node, order );\n                        break; // %[4]s\n", ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
+			g.pf("                    case 0x%016[1]xull:\n                        ok = %[2]sCookBody( at, *reinterpret_cast<const %[3]s *>( node ), order );\n                        break; // %[4]s\n", ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
 		}
 	}
 	for _, b := range blobs {
 		// the header's length in the target's order, then the bytes verbatim;
 		// the memset's zeros are the pad word, a string's terminator and the tail
 		g.pf("                    case %s:\n                    {\n", b.constant)
-		g.pf("                        const TableBlob * blob = (const TableBlob *) node; // *%s\n", b.word)
-		g.pf("                        table_cook_put( at, (uint64_t) blob->length, 4, order );\n")
-		g.pf("                        table_cook_bytes( at + kTableBlobHeader, (const void *) ( blob + 1 ), (int64_t) blob->length, (int64_t) blob->length );\n")
+		g.pf("                        const TableBlob * blob = reinterpret_cast<const TableBlob *>( node ); // *%s\n", b.word)
+		g.pf("                        table_cook_put( at, static_cast<uint64_t>( blob->length ), 4, order );\n")
+		g.pf("                        table_cook_bytes( at + kTableBlobHeader, reinterpret_cast<const void *>( blob + 1 ), static_cast<int64_t>( blob->length ), static_cast<int64_t>( blob->length ) );\n")
 		g.pf("                        break;\n                    }\n")
 	}
 	if nodeLoop {
@@ -758,7 +758,7 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 	g.pf("            table_cook_put( entry + 8, 0x%016xull, 8, order ); // the root: fnv1a64( \"%s\" )\n", ir.TableWireId(st.WireName()), n)
 	g.pf("            for ( int64_t k = 0; k < numbering.count; k++ )\n            {\n")
 	g.pf("                entry += sizeof( TableNodeDirEntry );\n")
-	g.pf("                table_cook_put( entry, (uint64_t) region.offsets[k + 1], 8, order );\n")
+	g.pf("                table_cook_put( entry, static_cast<uint64_t>( region.offsets[k + 1] ), 8, order );\n")
 	g.pf("                table_cook_put( entry + 8, numbering.entries[k].type_id, 8, order );\n")
 	g.pf("            }\n")
 	g.pf("            // and the HEADER (§7.1), every word a u64 in the order the file is\n")
@@ -766,10 +766,10 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 	g.pf("            if ( ok )\n            {\n")
 	g.pf("                table_cook_put( raw + 0, TableCookMagic, 8, order );\n")
 	g.pf("                table_cook_put( raw + 8, BuildVersion, 8, order );\n")
-	g.pf("                table_cook_put( raw + 16, (uint64_t) ( order == TableByteOrder::Big ? 2 : 1 ), 8, order );\n")
-	g.pf("                table_cook_put( raw + 24, (uint64_t) region.bytes, 8, order );\n")
-	g.pf("                table_cook_put( raw + 32, (uint64_t) attribution, 8, order );\n")
-	g.pf("                table_cook_put( raw + 40, (uint64_t) region.align, 8, order );\n")
+	g.pf("                table_cook_put( raw + 16, static_cast<uint64_t>( order == TableByteOrder::Big ? 2 : 1 ), 8, order );\n")
+	g.pf("                table_cook_put( raw + 24, static_cast<uint64_t>( region.bytes ), 8, order );\n")
+	g.pf("                table_cook_put( raw + 32, static_cast<uint64_t>( attribution ), 8, order );\n")
+	g.pf("                table_cook_put( raw + 40, static_cast<uint64_t>( region.align ), 8, order );\n")
 	g.pf("            }\n")
 	g.pf("        }\n")
 	g.pf("    }\n")
@@ -798,12 +798,12 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 	g.pf("    if ( builder.region != NULL ) { return %sCookMeasure( builder.AsConst(), builder.arena.allocator ); }\n", n)
 	g.pf("    if ( builder.root_ref.null() ) { return -1; } // the root allocation failed\n")
 	g.pf("    TableArenaCtx ctx = { &builder.arena };\n")
-	g.pf("    return %sCookMeasureFrom( ctx, *(const %s *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), builder.arena.allocator );\n}\n\n", n, n)
+	g.pf("    return %sCookMeasureFrom( ctx, *reinterpret_cast<const %s *>( TableArenaAt( builder.arena, static_cast<uint32_t>( builder.root_ref.value ) ) ), builder.arena.allocator );\n}\n\n", n, n)
 	g.pf("inline bool %sCook( const %sBuilder & builder, void * out, uint64_t capacity, TableByteOrder order )\n{\n", n, n)
 	g.pf("    if ( builder.region != NULL ) { return %sCook( builder.AsConst(), out, capacity, order, builder.arena.allocator ); }\n", n)
 	g.pf("    if ( builder.root_ref.null() ) { return false; } // the root allocation failed\n")
 	g.pf("    TableArenaCtx ctx = { &builder.arena };\n")
-	g.pf("    return %sCookFrom( ctx, *(const %s *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), out, capacity, order, builder.arena.allocator );\n}\n\n", n, n)
+	g.pf("    return %sCookFrom( ctx, *reinterpret_cast<const %s *>( TableArenaAt( builder.arena, static_cast<uint32_t>( builder.root_ref.value ) ) ), out, capacity, order, builder.arena.allocator );\n}\n\n", n, n)
 }
 
 // noCookRefs reports a record whose cook body resolves no reference through

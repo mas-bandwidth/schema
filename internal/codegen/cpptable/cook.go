@@ -189,8 +189,8 @@ inline const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint6
     // a null buffer is the CALLER's defect, as an unaligned base is; a buffer
     // shorter than the header has no header to read and is truncated
     if ( bytes == NULL ) { return TableCookRefuse( reason, unaligned_base ); }
-    if ( length < (uint64_t) kTableCookHeaderBytes ) { return TableCookRefuse( reason, truncated ); }
-    const uint8_t * raw = (const uint8_t *) bytes;
+    if ( length < static_cast<uint64_t>( kTableCookHeaderBytes ) ) { return TableCookRefuse( reason, truncated ); }
+    const uint8_t * raw = reinterpret_cast<const uint8_t *>( bytes );
     // the MAGIC, bytewise and first: it is what establishes the byte order
     // every other header word is read in, so nothing else may be read before
     // it. A byte-reversed constant is a cook of the other order and refuses
@@ -228,7 +228,7 @@ inline const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint6
     // The DATA part begins at align_up( 64, alignment ). It is DERIVED and not
     // a header field, because a fact a reader computes is a fact two writers
     // cannot disagree about.
-    const uint64_t data_offset = ( (uint64_t) kTableCookHeaderBytes + alignment - 1 ) & ~( alignment - 1 );
+    const uint64_t data_offset = ( static_cast<uint64_t>( kTableCookHeaderBytes ) + alignment - 1 ) & ~( alignment - 1 );
     if ( length < data_offset ) { return TableCookRefuse( reason, truncated ); }
     // the two part lengths against the length the caller passed. The whole
     // file is data_offset + data_length + attribution_length, and a length
@@ -248,7 +248,7 @@ inline const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint6
     // alignment, so a base an allocator or mmap gave you is already aligned —
     // mmap gives page alignment for free — and a base that is not is a caller's
     // buffer this form cannot be read out of: the caller's defect, not the file's.
-    if ( ( (uintptr_t) base % (uintptr_t) alignment ) != 0 ) { return TableCookRefuse( reason, unaligned_base ); }
+    if ( ( static_cast<uintptr_t>( base ) % static_cast<uintptr_t>( alignment ) ) != 0 ) { return TableCookRefuse( reason, unaligned_base ); }
     return base;
 }
 ` + tableCookWriteRuntime + `
@@ -322,7 +322,7 @@ func (g *tableGen) emitCookOpen(st *ir.Struct) {
 	g.pf("// over the ATTRIBUTION part beside the data — a person's decision, never a\n")
 	g.pf("// parameter on a load.\n")
 	g.pf("inline const %s * %sOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )\n{\n", n, n)
-	g.pf("    return (const %s *) TableCookOpen( bytes, length, (uint64_t) sizeof( %s ), (uint64_t) %d, reason );\n}\n\n", n, n, ir.CookNodeAlign(g.unit, st))
+	g.pf("    return reinterpret_cast<const %s *>( TableCookOpen( bytes, length, static_cast<uint64_t>( sizeof( %s ) ), static_cast<uint64_t>( %d ), reason ) );\n}\n\n", n, n, ir.CookNodeAlign(g.unit, st))
 }
 
 // emitCookLayoutAsserts is this backend's half of the LAYOUT CONTRACT

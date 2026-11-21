@@ -186,7 +186,7 @@ struct TableListConst<T *>
     typedef const T * Result;
     static Result At( const TableRef * element )
     {
-        return element->value != 0 ? (const T *) ( (const uint8_t *) element + element->value ) : NULL;
+        return element->value != 0 ? reinterpret_cast<const T *>( reinterpret_cast<const uint8_t *>( element ) + element->value ) : NULL;
     }
 };
 
@@ -213,7 +213,7 @@ struct TableList
     // base and no context.
     const Element * Elements() const
     {
-        return elements.value != 0 ? (const Element *) ( (const uint8_t *) &elements + elements.value ) : NULL;
+        return elements.value != 0 ? reinterpret_cast<const Element *>( reinterpret_cast<const uint8_t *>( &elements ) + elements.value ) : NULL;
     }
     int32_t size() const { return count; }
 
@@ -226,7 +226,7 @@ struct TableList
     // schema_fatal and this refusal lands in your own handler.
     void RefuseIndex( int32_t index ) const
     {
-        if ( (uint32_t) index >= (uint32_t) count )
+        if ( static_cast<uint32_t>( index ) >= static_cast<uint32_t>( count ) )
         {
             schema_assert( false && "an unbounded array is indexed inside its count, which came from a file" );
             schema_fatal();
@@ -294,15 +294,15 @@ template <typename T>
 inline TableListHead * TableListReach( TableWorker & worker, TableList<T> & list )
 {
     if ( worker.arena == NULL || worker.arena->locked ) { return NULL; }
-    if ( list.elements.value != 0 ) { return (TableListHead *) TableArenaAt( *worker.arena, (uint32_t) list.elements.value ); }
+    if ( list.elements.value != 0 ) { return reinterpret_cast<TableListHead *>( TableArenaAt( *worker.arena, static_cast<uint32_t>( list.elements.value ) ) ); }
     uint32_t at = 0;
-    TableListHead * head = (TableListHead *) worker.AllocRaw( (int64_t) sizeof( TableListHead ), (int64_t) alignof( TableListHead ), at );
+    TableListHead * head = reinterpret_cast<TableListHead *>( worker.AllocRaw( static_cast<int64_t>( sizeof( TableListHead ) ), static_cast<int64_t>( alignof( TableListHead ) ), at ) );
     if ( head == NULL ) { return NULL; }
     head->first.value = 0;
     head->last.value = 0;
     head->live = 0;
     head->dead = 0;
-    list.elements.value = (int64_t) at;
+    list.elements.value = static_cast<int64_t>( at );
     return head;
 }
 
@@ -318,28 +318,28 @@ inline typename TableList<T>::Element * TableListAppend( TableWorker & worker, T
     TableListSegment<Element> * segment = NULL;
     if ( head->last.value != 0 )
     {
-        segment = (TableListSegment<Element> *) TableArenaAt( *worker.arena, (uint32_t) head->last.value );
+        segment = reinterpret_cast<TableListSegment<Element> *>( TableArenaAt( *worker.arena, static_cast<uint32_t>( head->last.value ) ) );
         if ( segment->used >= kTableListSegmentElements ) { segment = NULL; }
     }
     if ( segment == NULL )
     {
         uint32_t at = 0;
-        segment = (TableListSegment<Element> *) worker.AllocRaw( (int64_t) sizeof( TableListSegment<Element> ), (int64_t) alignof( TableListSegment<Element> ), at );
+        segment = reinterpret_cast<TableListSegment<Element> *>( worker.AllocRaw( static_cast<int64_t>( sizeof( TableListSegment<Element> ) ), static_cast<int64_t>( alignof( TableListSegment<Element> ) ), at ) );
         if ( segment == NULL ) { return NULL; } // the arena could not carve another segment
         segment->next.value = 0;
         segment->used = 0;
         segment->padding = 0;
-        for ( int32_t i = 0; i < (int32_t) ( sizeof( segment->dead ) / sizeof( segment->dead[0] ) ); i++ ) { segment->dead[i] = 0; }
+        for ( int32_t i = 0; i < static_cast<int32_t>( sizeof( segment->dead ) / sizeof( segment->dead[0] ) ); i++ ) { segment->dead[i] = 0; }
         if ( head->last.value != 0 )
         {
-            TableListSegment<Element> * previous = (TableListSegment<Element> *) TableArenaAt( *worker.arena, (uint32_t) head->last.value );
-            previous->next.value = (int64_t) at;
+            TableListSegment<Element> * previous = reinterpret_cast<TableListSegment<Element> *>( TableArenaAt( *worker.arena, static_cast<uint32_t>( head->last.value ) ) );
+            previous->next.value = static_cast<int64_t>( at );
         }
         else
         {
-            head->first.value = (int64_t) at;
+            head->first.value = static_cast<int64_t>( at );
         }
-        head->last.value = (int64_t) at;
+        head->last.value = static_cast<int64_t>( at );
     }
     Element * element = segment->elements + segment->used;
     segment->used++;
@@ -368,9 +368,9 @@ inline void schema_table_list_drop_last_( TableArena & arena, TableList<T> & lis
 {
     typedef typename TableList<T>::Element Element;
     if ( list.elements.value == 0 || list.count <= 0 ) { return; }
-    TableListHead * head = (TableListHead *) TableArenaAt( arena, (uint32_t) list.elements.value );
+    TableListHead * head = reinterpret_cast<TableListHead *>( TableArenaAt( arena, static_cast<uint32_t>( list.elements.value ) ) );
     if ( head->last.value == 0 ) { return; }
-    TableListSegment<Element> * seg = (TableListSegment<Element> *) TableArenaAt( arena, (uint32_t) head->last.value );
+    TableListSegment<Element> * seg = reinterpret_cast<TableListSegment<Element> *>( TableArenaAt( arena, static_cast<uint32_t>( head->last.value ) ) );
     if ( seg->used <= 0 ) { return; }
     const int32_t j = seg->used - 1;
     seg->dead[j >> 6] |= 1ull << ( j & 63 );
@@ -389,14 +389,14 @@ inline bool TableListErase( TableArena & arena, TableList<T> & list, const typen
 {
     typedef typename TableList<T>::Element Element;
     if ( list.elements.value == 0 || element == NULL ) { return false; }
-    TableListHead * head = (TableListHead *) TableArenaAt( arena, (uint32_t) list.elements.value );
+    TableListHead * head = reinterpret_cast<TableListHead *>( TableArenaAt( arena, static_cast<uint32_t>( list.elements.value ) ) );
     TableRef segment_ref = head->first;
     while ( segment_ref.value != 0 )
     {
-        TableListSegment<Element> * segment = (TableListSegment<Element> *) TableArenaAt( arena, (uint32_t) segment_ref.value );
+        TableListSegment<Element> * segment = reinterpret_cast<TableListSegment<Element> *>( TableArenaAt( arena, static_cast<uint32_t>( segment_ref.value ) ) );
         if ( element >= segment->elements && element < segment->elements + segment->used )
         {
-            const int32_t i = (int32_t) ( element - segment->elements );
+            const int32_t i = static_cast<int32_t>( element - segment->elements );
             if ( TableListSegmentDead( segment->dead, i ) ) { return false; } // already erased
             segment->dead[i / 32] |= 1u << ( i % 32 );
             head->live--;
@@ -430,7 +430,7 @@ struct TableListEach
                 if ( segment == NULL ) { return; }
                 if ( index >= segment->used )
                 {
-                    segment = segment->next.value != 0 ? (TableListSegment<Element> *) TableArenaAt( *arena, (uint32_t) segment->next.value ) : NULL;
+                    segment = segment->next.value != 0 ? reinterpret_cast<TableListSegment<Element> *>( TableArenaAt( *arena, static_cast<uint32_t>( segment->next.value ) ) ) : NULL;
                     index = 0;
                     continue;
                 }
@@ -456,7 +456,7 @@ struct TableListEach
 
     Iterator begin() const
     {
-        Iterator it = { arena, first.value != 0 ? (TableListSegment<Element> *) TableArenaAt( *arena, (uint32_t) first.value ) : NULL, 0 };
+        Iterator it = { arena, first.value != 0 ? reinterpret_cast<TableListSegment<Element> *>( TableArenaAt( *arena, static_cast<uint32_t>( first.value ) ) ) : NULL, 0 };
         it.Skip();
         return it;
     }
@@ -473,7 +473,7 @@ inline TableListEach<T> TableListEachOf( const TableArena & arena, const TableLi
     TableListEach<T> each = { &arena, TableRef() };
     if ( list.elements.value != 0 )
     {
-        const TableListHead * head = (const TableListHead *) TableArenaAt( arena, (uint32_t) list.elements.value );
+        const TableListHead * head = reinterpret_cast<const TableListHead *>( TableArenaAt( arena, static_cast<uint32_t>( list.elements.value ) ) );
         each.first = head->first;
     }
     return each;
@@ -507,7 +507,7 @@ struct TableListCursor
         if ( elements != NULL ) { return elements + index; }
         if ( segment == NULL || index < logical )
         {
-            segment = first.value != 0 ? (const TableListSegment<Element> *) TableArenaAt( *arena, (uint32_t) first.value ) : NULL;
+            segment = first.value != 0 ? reinterpret_cast<const TableListSegment<Element> *>( TableArenaAt( *arena, static_cast<uint32_t>( first.value ) ) ) : NULL;
             within = -1;
             logical = -1;
         }
@@ -518,7 +518,7 @@ struct TableListCursor
                 within++;
                 while ( segment != NULL && within >= segment->used )
                 {
-                    segment = segment->next.value != 0 ? (const TableListSegment<Element> *) TableArenaAt( *arena, (uint32_t) segment->next.value ) : NULL;
+                    segment = segment->next.value != 0 ? reinterpret_cast<const TableListSegment<Element> *>( TableArenaAt( *arena, static_cast<uint32_t>( segment->next.value ) ) ) : NULL;
                     within = 0;
                 }
                 if ( segment == NULL ) { return NULL; } // the slot and the head disagree
@@ -556,7 +556,7 @@ inline TableListCursor<typename TableList<T>::Element> TableListElements( const 
         cursor.count = 0;
         return cursor;
     }
-    const TableListHead * head = (const TableListHead *) TableArenaAt( arena, (uint32_t) list.elements.value );
+    const TableListHead * head = reinterpret_cast<const TableListHead *>( TableArenaAt( arena, static_cast<uint32_t>( list.elements.value ) ) );
     if ( head->live != list.count ) { return cursor; } // the slot and the head disagree: refused, never guessed
     cursor.first = head->first;
     cursor.ok = true;
@@ -596,7 +596,7 @@ inline TableListFill<T> TableListFillBegin( const TableNodeMap & nodes, TableLis
     list.elements.value = 0;
     list.count = 0;
     if ( nodes.carve == NULL ) { return fill; }
-    if ( n > (uint64_t) INT32_MAX )
+    if ( n > static_cast<uint64_t>( INT32_MAX ) )
     {
         // A COUNT ABOVE THE int32 STORAGE CAP (§2.2, §2.9): into a region it was
         // refused by LoadMeasure before this ran, and into a builder it is the
@@ -610,16 +610,16 @@ inline TableListFill<T> TableListFillBegin( const TableNodeMap & nodes, TableLis
         fill.ok = true;
         return fill;
     }
-    const int64_t align = (int64_t) alignof( Element );
-    uint8_t * base = (uint8_t *) ( ( (uintptr_t) nodes.carve->at + (uintptr_t) ( align - 1 ) ) & ~( (uintptr_t) ( align - 1 ) ) );
-    const int64_t bytes = (int64_t) n * (int64_t) sizeof( Element );
-    const int64_t pad = (int64_t) ( base - nodes.carve->at );
+    const int64_t align = static_cast<int64_t>( alignof( Element ) );
+    uint8_t * base = reinterpret_cast<uint8_t *>( ( static_cast<uintptr_t>( nodes.carve->at ) + static_cast<uintptr_t>( align - 1 ) ) & ~( static_cast<uintptr_t>( align - 1 ) ) );
+    const int64_t bytes = static_cast<int64_t>( n ) * static_cast<int64_t>( sizeof( Element ) );
+    const int64_t pad = static_cast<int64_t>( base - nodes.carve->at );
     if ( pad + bytes > nodes.carve->left ) { return fill; } // the measure and the load disagree: refused
     nodes.carve->at = base + bytes;
     nodes.carve->left -= pad + bytes;
-    fill.array = (Element *) base;
-    fill.capacity = (int32_t) n;
-    list.elements.value = (int64_t) ( base - (const uint8_t *) &list.elements );
+    fill.array = reinterpret_cast<Element *>( base );
+    fill.capacity = static_cast<int32_t>( n );
+    list.elements.value = static_cast<int64_t>( base - reinterpret_cast<const uint8_t *>( &list.elements ) );
     fill.ok = true;
     return fill;
 }
@@ -655,9 +655,9 @@ inline void TableListFillDrop( TableListFill<T> & fill )
         return;
     }
     if ( fill.list->elements.value == 0 ) { return; }
-    TableListHead * head = (TableListHead *) TableArenaAt( *fill.worker->arena, (uint32_t) fill.list->elements.value );
+    TableListHead * head = reinterpret_cast<TableListHead *>( TableArenaAt( *fill.worker->arena, static_cast<uint32_t>( fill.list->elements.value ) ) );
     if ( head->last.value == 0 ) { return; }
-    TableListSegment<Element> * segment = (TableListSegment<Element> *) TableArenaAt( *fill.worker->arena, (uint32_t) head->last.value );
+    TableListSegment<Element> * segment = reinterpret_cast<TableListSegment<Element> *>( TableArenaAt( *fill.worker->arena, static_cast<uint32_t>( head->last.value ) ) );
     if ( segment->used <= 0 ) { return; }
     const int32_t i = segment->used - 1;
     if ( TableListSegmentDead( segment->dead, i ) ) { return; }
@@ -699,26 +699,26 @@ inline bool TableListWireExtent( const uint8_t * body, int64_t length, int64_t &
     }
     uint64_t n = 0;
     if ( !r.getleb( n ) ) { return true; }
-    if ( n > (uint64_t) INT32_MAX )
+    if ( n > static_cast<uint64_t>( INT32_MAX ) )
     {
         reason = count_over_extent_cap;
         return false;
     }
     const int64_t rest = length - r.offset;
-    if ( n > (uint64_t) ( rest / elem_floor ) )
+    if ( n > static_cast<uint64_t>( rest / elem_floor ) )
     {
         reason = count_over_length;
         return false;
     } // an N the list's L cannot carry
     at = ( at + elem_align - 1 ) & ~( elem_align - 1 );
-    at += (int64_t) n * elem_size;
+    at += static_cast<int64_t>( n ) * elem_size;
     if ( inner == NULL ) { return true; } // nothing below an element: one depth is the whole term
     for ( uint64_t i = 0; i < n; i++ )
     {
         uint64_t elem = 0;
         if ( !r.getleb( elem ) || !r.room( elem ) ) { return true; } // framing damage: the load reports it
-        if ( !inner( r.buffer + r.offset, (int64_t) elem, at, ids, reason ) ) { return false; }
-        r.offset += (int64_t) elem;
+        if ( !inner( r.buffer + r.offset, static_cast<int64_t>( elem ), at, ids, reason ) ) { return false; }
+        r.offset += static_cast<int64_t>( elem );
     }
     return true;
 }
@@ -777,7 +777,7 @@ func (g *tableGen) emitListWriteField(f *ir.Field) {
 	restore := g.openElemCache(f, listElementWireKind(f), 0, "            ", "_"+f.Name)
 	defer restore()
 	g.emitArrayBodyMeasure(f, listElementWireKind(f), "body_"+f.Name, cursor+".count", cursor+"[%s]", "            ", "return false;", "_"+f.Name)
-	g.pf("            w.header( ref_%[1]s, %[2]d );\n            w.putleb( (uint64_t) body_%[3]s ); // %[4]s\n", f.Name, tkArray, f.Name, f.Name)
+	g.pf("            w.header( ref_%[1]s, %[2]d );\n            w.putleb( static_cast<uint64_t>( body_%[3]s ) ); // %[4]s\n", f.Name, tkArray, f.Name, f.Name)
 	g.emitArrayBodyWrite(f, listElementWireKind(f), cursor+".count", cursor+"[%s]", "            ", "_"+f.Name)
 	g.pf("        }\n")
 	g.pf("    }\n")
@@ -793,7 +793,7 @@ func (g *tableGen) emitListReadField(f *ir.Field) {
 	elemKind := listElementWireKind(f)
 	g.pf("%suint64_t body_len = 0;\n", ind)
 	g.pf("%[1]sif ( !r.getleb( body_len ) || !r.room( body_len ) )\n%[1]s{\n%[1]s    r.report->damaged = true;\n%[1]s    return false;\n%[1]s}\n", ind)
-	g.pf("%sint64_t body_end = r.offset + (int64_t) body_len;\n", ind)
+	g.pf("%sint64_t body_end = r.offset + static_cast<int64_t>( body_len );\n", ind)
 	g.pf("%s// A BODY TOO SHORT FOR ITS OWN HEADER is INERT (§4): the field keeps\n", ind)
 	g.pf("%s// the value it has, no counter is raised, and the walk continues past L.\n", ind)
 	g.pf("%sif ( body_len >= 2 )\n%s{\n", ind, ind)
@@ -868,15 +868,15 @@ func (g *tableGen) emitListFill(f *ir.Field, elemKind int, ind string, widened b
 	if f.IsTextList() && f.TextTotal > 0 {
 		if ir.TextListUnbounded(f) {
 			if ir.TextListOptional(f) {
-				g.pf("%s            if ( slot->value_present ) { spent += (int64_t) schema_table_text_placed_len_( nodes, slot->value ); }\n", ind)
+				g.pf("%s            if ( slot->value_present ) { spent += static_cast<int64_t>( schema_table_text_placed_len_( nodes, slot->value ) ); }\n", ind)
 			} else {
-				g.pf("%s            spent += (int64_t) schema_table_text_placed_len_( nodes, slot->value );\n", ind)
+				g.pf("%s            spent += static_cast<int64_t>( schema_table_text_placed_len_( nodes, slot->value ) );\n", ind)
 			}
 		} else {
 			if ir.TextListOptional(f) {
-				g.pf("%s            if ( slot->value_present && slot->value_length > 0 ) { spent += (int64_t) slot->value_length; }\n", ind)
+				g.pf("%s            if ( slot->value_present && slot->value_length > 0 ) { spent += static_cast<int64_t>( slot->value_length ); }\n", ind)
 			} else {
-				g.pf("%s            if ( slot->value_length > 0 ) { spent += (int64_t) slot->value_length; }\n", ind)
+				g.pf("%s            if ( slot->value_length > 0 ) { spent += static_cast<int64_t>( slot->value_length ); }\n", ind)
 			}
 		}
 		g.pf("%[1]s            if ( spent > %[2]d )\n%[1]s            {\n%[1]s                r.report->refused = true;\n%[1]s                r.report->refuse_reason = out_of_range;\n%[1]s                TableListFillDrop( fill );\n%[1]s                elements_consumed = false;\n%[1]s                break;\n%[1]s            } // | total = %[3]d (§2.13)\n", ind, f.TextTotal, f.TextTotal)
@@ -918,7 +918,7 @@ func (g *tableGen) emitListEdge(f *ir.Field, v edgeVisitor, onBad string) {
 	if v.write != "" {
 		placed = "placed_" + f.Name
 		slot := v.write + "." + f.Name
-		g.pf("        %s * %s = (%s *) ( %s.elements.value != 0 ? ( (uint8_t *) &%s.elements + %s.elements.value ) : NULL );\n",
+		g.pf("        %s * %s = reinterpret_cast<%s *>( %s.elements.value != 0 ? ( reinterpret_cast<uint8_t *>( &%s.elements ) + %s.elements.value ) : NULL );\n",
 			elem, placed, elem, slot, slot, slot)
 	}
 	g.pf("        for ( int32_t i = 0; i < %s.count; i++ )\n        {\n", cursor)
@@ -1007,7 +1007,7 @@ func (g *tableGen) emitListAlignAsserts(members []*ir.Struct) {
 // for itself, because TableList<T> is a type it has no name for. The key
 // arguments are the map's and a list ignores them: it appends.
 func (g *tableGen) listPlaceThunk(f *ir.Field) string {
-	return fmt.Sprintf("[]( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(%s *) slot ); return NULL; } return (void *) TableListPlace( worker, *(%s *) slot ); }", g.listStorageType(f), g.listStorageType(f))
+	return fmt.Sprintf("[]( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *reinterpret_cast<%s *>( slot ) ); return NULL; } return reinterpret_cast<void *>( TableListPlace( worker, *reinterpret_cast<%s *>( slot ) ) ); }", g.listStorageType(f), g.listStorageType(f))
 }
 
 // emitUnboundedTextSurface emits the getter/setter surface for an unbounded scalar string field (§2.13.1).
@@ -1043,7 +1043,7 @@ func (g *tableGen) emitUnboundedTextSurface(st *ir.Struct, f *ir.Field) {
 	g.pf("    return %sText( *worker.arena, value, length, present );\n}\n\n", name)
 	g.pf("inline bool %sSet( TableWorker & worker, %s & value, const char * text, int64_t len = -1 )\n{\n", name, st.Name)
 	g.pf("    if ( text == NULL ) { return false; }\n")
-	g.pf("    if ( len < 0 ) { len = (int64_t) strlen( text ); }\n")
+	g.pf("    if ( len < 0 ) { len = static_cast<int64_t>( strlen( text ) ); }\n")
 	g.pf("    if ( !schema_table_text_store_( worker, value.%s, text, len ) ) { return false; }\n", field)
 	if optional {
 		g.pf("    value.%s_present = true;\n", field)
@@ -1076,15 +1076,15 @@ func (g *tableGen) emitTextListSurface(st *ir.Struct, f *ir.Field) {
 		}
 		g.pf("    const int32_t n = element.%s_length;\n", val.Name)
 		g.pf("    if ( n < 0 || n > %d ) { return false; }\n", m)
-		g.pf("    if ( out != NULL && capacity < (int64_t) n ) { return false; }\n")
-		g.pf("    if ( out != NULL ) { memcpy( out, element.%s, (size_t) n ); }\n", val.Name)
+		g.pf("    if ( out != NULL && capacity < static_cast<int64_t>( n ) ) { return false; }\n")
+		g.pf("    if ( out != NULL ) { memcpy( out, element.%s, static_cast<size_t>( n ) ); }\n", val.Name)
 		g.pf("    if ( length != NULL ) { *length = n; }\n")
 		g.pf("    if ( present != NULL ) { *present = true; }\n")
 		g.pf("    return true;\n}\n\n")
 		g.pf("inline bool %sAppend( %s & value, const char * text )\n{\n", name, st.Name)
 		g.pf("    if ( text == NULL ) { return false; }\n")
-		g.pf("    const int64_t n = (int64_t) strlen( text );\n")
-		g.pf("    if ( n > %d || !TableUtf8Valid( (const uint8_t *) text, (uint64_t) n ) ) { return false; }\n", m)
+		g.pf("    const int64_t n = static_cast<int64_t>( strlen( text ) );\n")
+		g.pf("    if ( n > %d || !TableUtf8Valid( reinterpret_cast<const uint8_t *>( text ), static_cast<uint64_t>( n ) ) ) { return false; }\n", m)
 		g.pf("    if ( value.%s_count < 0 || value.%s_count >= %d ) { return false; }\n", field, field, f.ArrayBound)
 		if f.TextTotal > 0 {
 			g.pf("    int64_t spent = 0;\n")
@@ -1093,14 +1093,14 @@ func (g *tableGen) emitTextListSurface(st *ir.Struct, f *ir.Field) {
 				g.pf("        if ( !value.%s[i].%s_present ) { continue; }\n", field, val.Name)
 			}
 			g.pf("        if ( value.%s[i].%s_length < 0 || value.%s[i].%s_length > %d ) { return false; }\n", field, val.Name, field, val.Name, m)
-			g.pf("        spent += (int64_t) value.%s[i].%s_length;\n    }\n", field, val.Name)
+			g.pf("        spent += static_cast<int64_t>( value.%s[i].%s_length );\n    }\n", field, val.Name)
 			g.pf("    if ( spent + n > %d ) { return false; }\n", f.TextTotal)
 		}
 		g.pf("    %s & element = value.%s[value.%s_count];\n", f.Type.Name, field, field)
 		g.pf("    %sReset( element );\n", f.Type.Name)
-		g.pf("    memcpy( element.%s, text, (size_t) n );\n", val.Name)
+		g.pf("    memcpy( element.%s, text, static_cast<size_t>( n ) );\n", val.Name)
 		g.pf("    element.%s[n] = 0;\n", val.Name)
-		g.pf("    element.%s_length = (int32_t) n;\n", val.Name)
+		g.pf("    element.%s_length = static_cast<int32_t>( n );\n", val.Name)
 		if optional {
 			g.pf("    element.%s_present = true;\n", val.Name)
 		}
@@ -1129,8 +1129,8 @@ func (g *tableGen) emitTextListSurface(st *ir.Struct, f *ir.Field) {
 		g.pf("    int32_t n = 0;\n")
 		g.pf("    const char * s = schema_table_text_at_( element.%s, n );\n", val.Name)
 		g.pf("    if ( s == NULL || n < 0 ) { return false; }\n")
-		g.pf("    if ( out != NULL && capacity < (int64_t) n ) { return false; }\n")
-		g.pf("    if ( out != NULL && n > 0 ) { memcpy( out, s, (size_t) n ); }\n")
+		g.pf("    if ( out != NULL && capacity < static_cast<int64_t>( n ) ) { return false; }\n")
+		g.pf("    if ( out != NULL && n > 0 ) { memcpy( out, s, static_cast<size_t>( n ) ); }\n")
 		g.pf("    if ( length != NULL ) { *length = n; }\n")
 		g.pf("    if ( present != NULL ) { *present = true; }\n")
 		g.pf("    return true;\n}\n\n")
@@ -1145,8 +1145,8 @@ func (g *tableGen) emitTextListSurface(st *ir.Struct, f *ir.Field) {
 		g.pf("    int32_t n = 0;\n")
 		g.pf("    const char * s = schema_table_text_at_( arena, element.%s, n );\n", val.Name)
 		g.pf("    if ( s == NULL || n < 0 ) { return false; }\n")
-		g.pf("    if ( out != NULL && capacity < (int64_t) n ) { return false; }\n")
-		g.pf("    if ( out != NULL && n > 0 ) { memcpy( out, s, (size_t) n ); }\n")
+		g.pf("    if ( out != NULL && capacity < static_cast<int64_t>( n ) ) { return false; }\n")
+		g.pf("    if ( out != NULL && n > 0 ) { memcpy( out, s, static_cast<size_t>( n ) ); }\n")
 		g.pf("    if ( length != NULL ) { *length = n; }\n")
 		g.pf("    if ( present != NULL ) { *present = true; }\n")
 		g.pf("    return true;\n}\n\n")
@@ -1155,8 +1155,8 @@ func (g *tableGen) emitTextListSurface(st *ir.Struct, f *ir.Field) {
 		g.pf("    return %sTextAt( *worker.arena, value, i, out, capacity, length, present );\n}\n\n", name)
 		g.pf("inline bool %sAppend( TableWorker & worker, %s & value, const char * text )\n{\n", name, st.Name)
 		g.pf("    if ( text == NULL || worker.arena == NULL ) { return false; }\n")
-		g.pf("    const int64_t n = (int64_t) strlen( text );\n")
-		g.pf("    if ( n > kTableBlobMaxLength || !TableUtf8Valid( (const uint8_t *) text, (uint64_t) n ) ) { return false; }\n")
+		g.pf("    const int64_t n = static_cast<int64_t>( strlen( text ) );\n")
+		g.pf("    if ( n > kTableBlobMaxLength || !TableUtf8Valid( reinterpret_cast<const uint8_t *>( text ), static_cast<uint64_t>( n ) ) ) { return false; }\n")
 		g.pf("    if ( value.%s_count < 0 || value.%s_count >= %d ) { return false; }\n", field, field, f.ArrayBound)
 		if f.TextTotal > 0 {
 			g.pf("    int64_t spent = 0;\n")
@@ -1166,7 +1166,7 @@ func (g *tableGen) emitTextListSurface(st *ir.Struct, f *ir.Field) {
 			}
 			g.pf("        int32_t plen = 0;\n")
 			g.pf("        if ( schema_table_text_at_( *worker.arena, value.%s[i].%s, plen ) == NULL || plen < 0 ) { return false; }\n", field, val.Name)
-			g.pf("        spent += (int64_t) plen;\n    }\n")
+			g.pf("        spent += static_cast<int64_t>( plen );\n    }\n")
 			g.pf("    if ( spent + n > %d ) { return false; }\n", f.TextTotal)
 		}
 		g.pf("    %s & element = value.%s[value.%s_count];\n", f.Type.Name, field, field)
@@ -1201,13 +1201,13 @@ func (g *tableGen) emitTextListSurface(st *ir.Struct, f *ir.Field) {
 		g.pf("    int32_t n = 0;\n")
 		g.pf("    const char * s = schema_table_text_at_( element.%s, n );\n", val.Name)
 		g.pf("    if ( s == NULL || n < 0 ) { return false; }\n")
-		g.pf("    if ( out != NULL && capacity < (int64_t) n ) { return false; }\n")
-		g.pf("    if ( out != NULL && n > 0 ) { memcpy( out, s, (size_t) n ); }\n")
+		g.pf("    if ( out != NULL && capacity < static_cast<int64_t>( n ) ) { return false; }\n")
+		g.pf("    if ( out != NULL && n > 0 ) { memcpy( out, s, static_cast<size_t>( n ) ); }\n")
 	} else {
 		g.pf("    const int32_t n = element.%s_length;\n", val.Name)
 		g.pf("    if ( n < 0 || n > %d ) { return false; }\n", m)
-		g.pf("    if ( out != NULL && capacity < (int64_t) n ) { return false; }\n")
-		g.pf("    if ( out != NULL && n > 0 ) { memcpy( out, element.%s, (size_t) n ); }\n", val.Name)
+		g.pf("    if ( out != NULL && capacity < static_cast<int64_t>( n ) ) { return false; }\n")
+		g.pf("    if ( out != NULL && n > 0 ) { memcpy( out, element.%s, static_cast<size_t>( n ) ); }\n", val.Name)
 	}
 	g.pf("    if ( length != NULL ) { *length = n; }\n")
 	g.pf("    if ( present != NULL ) { *present = true; }\n")
@@ -1226,13 +1226,13 @@ func (g *tableGen) emitTextListSurface(st *ir.Struct, f *ir.Field) {
 		g.pf("    int32_t n = 0;\n")
 		g.pf("    const char * s = schema_table_text_at_( arena, element->%s, n );\n", val.Name)
 		g.pf("    if ( s == NULL || n < 0 ) { return false; }\n")
-		g.pf("    if ( out != NULL && capacity < (int64_t) n ) { return false; }\n")
-		g.pf("    if ( out != NULL && n > 0 ) { memcpy( out, s, (size_t) n ); }\n")
+		g.pf("    if ( out != NULL && capacity < static_cast<int64_t>( n ) ) { return false; }\n")
+		g.pf("    if ( out != NULL && n > 0 ) { memcpy( out, s, static_cast<size_t>( n ) ); }\n")
 	} else {
 		g.pf("    const int32_t n = element->%s_length;\n", val.Name)
 		g.pf("    if ( n < 0 || n > %d ) { return false; }\n", m)
-		g.pf("    if ( out != NULL && capacity < (int64_t) n ) { return false; }\n")
-		g.pf("    if ( out != NULL && n > 0 ) { memcpy( out, element->%s, (size_t) n ); }\n", val.Name)
+		g.pf("    if ( out != NULL && capacity < static_cast<int64_t>( n ) ) { return false; }\n")
+		g.pf("    if ( out != NULL && n > 0 ) { memcpy( out, element->%s, static_cast<size_t>( n ) ); }\n", val.Name)
 	}
 	g.pf("    if ( length != NULL ) { *length = n; }\n")
 	g.pf("    if ( present != NULL ) { *present = true; }\n")
@@ -1242,11 +1242,11 @@ func (g *tableGen) emitTextListSurface(st *ir.Struct, f *ir.Field) {
 	g.pf("    return %sTextAt( *worker.arena, value, i, out, capacity, length, present );\n}\n\n", name)
 	g.pf("inline bool %sAppend( TableWorker & worker, %s & value, const char * text )\n{\n", name, st.Name)
 	g.pf("    if ( text == NULL || worker.arena == NULL ) { return false; }\n")
-	g.pf("    const int64_t n = (int64_t) strlen( text );\n")
+	g.pf("    const int64_t n = static_cast<int64_t>( strlen( text ) );\n")
 	if unbounded {
-		g.pf("    if ( n > kTableBlobMaxLength || !TableUtf8Valid( (const uint8_t *) text, (uint64_t) n ) ) { return false; }\n")
+		g.pf("    if ( n > kTableBlobMaxLength || !TableUtf8Valid( reinterpret_cast<const uint8_t *>( text ), static_cast<uint64_t>( n ) ) ) { return false; }\n")
 	} else {
-		g.pf("    if ( n > %d || !TableUtf8Valid( (const uint8_t *) text, (uint64_t) n ) ) { return false; }\n", m)
+		g.pf("    if ( n > %d || !TableUtf8Valid( reinterpret_cast<const uint8_t *>( text ), static_cast<uint64_t>( n ) ) ) { return false; }\n", m)
 	}
 	if f.TextTotal > 0 {
 		g.pf("    int64_t spent = 0;\n")
@@ -1261,10 +1261,10 @@ func (g *tableGen) emitTextListSurface(st *ir.Struct, f *ir.Field) {
 		if unbounded {
 			g.pf("        int32_t plen = 0;\n")
 			g.pf("        if ( schema_table_text_at_( *worker.arena, prior->%s, plen ) == NULL || plen < 0 ) { return false; }\n", val.Name)
-			g.pf("        spent += (int64_t) plen;\n")
+			g.pf("        spent += static_cast<int64_t>( plen );\n")
 		} else {
 			g.pf("        if ( prior->%s_length < 0 || prior->%s_length > %d ) { return false; }\n", val.Name, val.Name, m)
-			g.pf("        spent += (int64_t) prior->%s_length;\n", val.Name)
+			g.pf("        spent += static_cast<int64_t>( prior->%s_length );\n", val.Name)
 		}
 		g.pf("    }\n")
 		g.pf("    if ( spent + n > %d ) { return false; }\n", f.TextTotal)
@@ -1274,9 +1274,9 @@ func (g *tableGen) emitTextListSurface(st *ir.Struct, f *ir.Field) {
 	if unbounded {
 		g.pf("    if ( !schema_table_text_store_( worker, element->%[1]s, text, n ) )\n    {\n        schema_table_list_drop_last_( *worker.arena, value.%[2]s );\n        return false;\n    }\n", val.Name, field)
 	} else {
-		g.pf("    memcpy( element->%s, text, (size_t) n );\n", val.Name)
+		g.pf("    memcpy( element->%s, text, static_cast<size_t>( n ) );\n", val.Name)
 		g.pf("    element->%s[n] = 0;\n", val.Name)
-		g.pf("    element->%s_length = (int32_t) n;\n", val.Name)
+		g.pf("    element->%s_length = static_cast<int32_t>( n );\n", val.Name)
 	}
 	if optional {
 		g.pf("    element->%s_present = true;\n", val.Name)

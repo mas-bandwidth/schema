@@ -188,7 +188,7 @@ inline int TableKeyOrder( const char * a, int64_t a_length, const char * b, int6
     const int64_t common = a_length < b_length ? a_length : b_length;
     if ( common > 0 )
     {
-        const int order = memcmp( (const void *) a, (const void *) b, (size_t) common );
+        const int order = memcmp( reinterpret_cast<const void *>( a ), reinterpret_cast<const void *>( b ), static_cast<size_t>( common ) );
         if ( order != 0 ) { return order < 0 ? -1 : 1; }
     }
     return a_length < b_length ? -1 : ( a_length > b_length ? 1 : 0 );
@@ -239,7 +239,7 @@ struct TableMap
 // base and no context.
     const Entry * Entries() const
     {
-        return entries.value != 0 ? (const Entry *) ( (const uint8_t *) &entries + entries.value ) : NULL;
+        return entries.value != 0 ? reinterpret_cast<const Entry *>( reinterpret_cast<const uint8_t *>( &entries ) + entries.value ) : NULL;
     }
     int32_t size() const { return count; }
 
@@ -281,7 +281,7 @@ struct TableMap
     struct ConstEntry
     {
         decltype( TableEntryKey( TableDeclRef<const Entry>() ) ) key;
-        decltype( TableEntryFound( (const Entry *) NULL ) ) value;
+        decltype( TableEntryFound( static_cast<const Entry *>( NULL ) ) ) value;
     };
 
     struct ConstIterator
@@ -422,15 +422,15 @@ inline TableMapCursor<Entry> TableMapOrder( const TableArena & arena, const Tabl
         cursor.count = 0;
         return cursor;
     }
-    const TableMapHead * head = (const TableMapHead *) TableArenaAt( arena, (uint32_t) map.entries.value );
+    const TableMapHead * head = reinterpret_cast<const TableMapHead *>( TableArenaAt( arena, static_cast<uint32_t>( map.entries.value ) ) );
     if ( head->live != map.count ) { return cursor; } // the slot and the head disagree: refused, never guessed
-    const Entry ** order = (const Entry **) table_allocate( arena.allocator, (int64_t) map.count * (int64_t) sizeof( const Entry * ) );
+    const Entry ** order = reinterpret_cast<const Entry **>( table_allocate( arena.allocator, static_cast<int64_t>( map.count ) * static_cast<int64_t>( sizeof( const Entry * ) ) ) );
     if ( order == NULL ) { return cursor; }
     int32_t at = 0;
     TableRef segment_ref = head->first;
     while ( segment_ref.value != 0 && at < map.count )
     {
-        const TableMapSegment<Entry> * segment = (const TableMapSegment<Entry> *) TableArenaAt( arena, (uint32_t) segment_ref.value );
+        const TableMapSegment<Entry> * segment = reinterpret_cast<const TableMapSegment<Entry> *>( TableArenaAt( arena, static_cast<uint32_t>( segment_ref.value ) ) );
         for ( int32_t i = 0; i < segment->used && at < map.count; i++ )
         {
             if ( TableMapSegmentDead( segment->dead, i ) ) { continue; }
@@ -458,7 +458,7 @@ inline TableMapCursor<Entry> TableMapOrder( const TableArenaCtx & ctx, const Tab
 template <typename Entry>
 inline void TableMapRelease( TableMapCursor<Entry> & cursor )
 {
-    if ( cursor.order != NULL ) { table_release( cursor.allocator, (void *) cursor.order ); }
+    if ( cursor.order != NULL ) { table_release( cursor.allocator, reinterpret_cast<void *>( cursor.order ) ); }
     cursor.order = NULL;
 }
 
@@ -474,15 +474,15 @@ template <typename Entry>
 inline TableMapHead * TableMapReach( TableWorker & worker, TableMap<Entry> & map )
 {
     if ( worker.arena == NULL || worker.arena->locked ) { return NULL; }
-    if ( map.entries.value != 0 ) { return (TableMapHead *) TableArenaAt( *worker.arena, (uint32_t) map.entries.value ); }
+    if ( map.entries.value != 0 ) { return reinterpret_cast<TableMapHead *>( TableArenaAt( *worker.arena, static_cast<uint32_t>( map.entries.value ) ) ); }
     uint32_t at = 0;
-    TableMapHead * head = (TableMapHead *) worker.AllocRaw( (int64_t) sizeof( TableMapHead ), (int64_t) alignof( TableMapHead ), at );
+    TableMapHead * head = reinterpret_cast<TableMapHead *>( worker.AllocRaw( static_cast<int64_t>( sizeof( TableMapHead ) ), static_cast<int64_t>( alignof( TableMapHead ) ), at ) );
     if ( head == NULL ) { return NULL; }
     head->first.value = 0;
     head->last.value = 0;
     head->live = 0;
     head->dead = 0;
-    map.entries.value = (int64_t) at;
+    map.entries.value = static_cast<int64_t>( at );
     return head;
 }
 
@@ -494,28 +494,28 @@ inline Entry * TableMapAppend( TableWorker & worker, TableMapHead * head, TableM
     TableMapSegment<Entry> * segment = NULL;
     if ( head->last.value != 0 )
     {
-        segment = (TableMapSegment<Entry> *) TableArenaAt( *worker.arena, (uint32_t) head->last.value );
+        segment = reinterpret_cast<TableMapSegment<Entry> *>( TableArenaAt( *worker.arena, static_cast<uint32_t>( head->last.value ) ) );
         if ( segment->used >= kTableMapSegmentEntries ) { segment = NULL; }
     }
     if ( segment == NULL )
     {
         uint32_t at = 0;
-        segment = (TableMapSegment<Entry> *) worker.AllocRaw( (int64_t) sizeof( TableMapSegment<Entry> ), (int64_t) alignof( TableMapSegment<Entry> ), at );
+        segment = reinterpret_cast<TableMapSegment<Entry> *>( worker.AllocRaw( static_cast<int64_t>( sizeof( TableMapSegment<Entry> ) ), static_cast<int64_t>( alignof( TableMapSegment<Entry> ) ), at ) );
         if ( segment == NULL ) { return NULL; } // the arena could not carve another segment
         segment->next.value = 0;
         segment->used = 0;
         segment->padding = 0;
-        for ( int32_t i = 0; i < (int32_t) ( sizeof( segment->dead ) / sizeof( segment->dead[0] ) ); i++ ) { segment->dead[i] = 0; }
+        for ( int32_t i = 0; i < static_cast<int32_t>( sizeof( segment->dead ) / sizeof( segment->dead[0] ) ); i++ ) { segment->dead[i] = 0; }
         if ( head->last.value != 0 )
         {
-            TableMapSegment<Entry> * previous = (TableMapSegment<Entry> *) TableArenaAt( *worker.arena, (uint32_t) head->last.value );
-            previous->next.value = (int64_t) at;
+            TableMapSegment<Entry> * previous = reinterpret_cast<TableMapSegment<Entry> *>( TableArenaAt( *worker.arena, static_cast<uint32_t>( head->last.value ) ) );
+            previous->next.value = static_cast<int64_t>( at );
         }
         else
         {
-            head->first.value = (int64_t) at;
+            head->first.value = static_cast<int64_t>( at );
         }
-        head->last.value = (int64_t) at;
+        head->last.value = static_cast<int64_t>( at );
     }
     Entry * entry = segment->entries + segment->used;
     segment->used++;
@@ -529,11 +529,11 @@ template <typename Entry, typename Key>
 inline Entry * TableMapScan( const TableArena & arena, const TableMap<Entry> & map, Key key )
 {
     if ( map.entries.value == 0 ) { return NULL; }
-    const TableMapHead * head = (const TableMapHead *) TableArenaAt( arena, (uint32_t) map.entries.value );
+    const TableMapHead * head = reinterpret_cast<const TableMapHead *>( TableArenaAt( arena, static_cast<uint32_t>( map.entries.value ) ) );
     TableRef segment_ref = head->first;
     while ( segment_ref.value != 0 )
     {
-        TableMapSegment<Entry> * segment = (TableMapSegment<Entry> *) TableArenaAt( arena, (uint32_t) segment_ref.value );
+        TableMapSegment<Entry> * segment = reinterpret_cast<TableMapSegment<Entry> *>( TableArenaAt( arena, static_cast<uint32_t>( segment_ref.value ) ) );
         for ( int32_t i = 0; i < segment->used; i++ )
         {
             if ( TableMapSegmentDead( segment->dead, i ) ) { continue; }
@@ -552,11 +552,11 @@ template <typename Entry, typename Key>
 inline bool TableMapErase( TableArena & arena, TableMap<Entry> & map, Key key )
 {
     if ( map.entries.value == 0 ) { return false; }
-    TableMapHead * head = (TableMapHead *) TableArenaAt( arena, (uint32_t) map.entries.value );
+    TableMapHead * head = reinterpret_cast<TableMapHead *>( TableArenaAt( arena, static_cast<uint32_t>( map.entries.value ) ) );
     TableRef segment_ref = head->first;
     while ( segment_ref.value != 0 )
     {
-        TableMapSegment<Entry> * segment = (TableMapSegment<Entry> *) TableArenaAt( arena, (uint32_t) segment_ref.value );
+        TableMapSegment<Entry> * segment = reinterpret_cast<TableMapSegment<Entry> *>( TableArenaAt( arena, static_cast<uint32_t>( segment_ref.value ) ) );
         for ( int32_t i = 0; i < segment->used; i++ )
         {
             if ( TableMapSegmentDead( segment->dead, i ) ) { continue; }
@@ -592,7 +592,7 @@ struct TableMapEach
                 if ( segment == NULL ) { return; }
                 if ( index >= segment->used )
                 {
-                    segment = segment->next.value != 0 ? (TableMapSegment<Entry> *) TableArenaAt( *arena, (uint32_t) segment->next.value ) : NULL;
+                    segment = segment->next.value != 0 ? reinterpret_cast<TableMapSegment<Entry> *>( TableArenaAt( *arena, static_cast<uint32_t>( segment->next.value ) ) ) : NULL;
                     index = 0;
                     continue;
                 }
@@ -618,7 +618,7 @@ struct TableMapEach
 
     Iterator begin() const
     {
-        Iterator it = { arena, first.value != 0 ? (TableMapSegment<Entry> *) TableArenaAt( *arena, (uint32_t) first.value ) : NULL, 0 };
+        Iterator it = { arena, first.value != 0 ? reinterpret_cast<TableMapSegment<Entry> *>( TableArenaAt( *arena, static_cast<uint32_t>( first.value ) ) ) : NULL, 0 };
         it.Skip();
         return it;
     }
@@ -635,7 +635,7 @@ inline TableMapEach<Entry> TableMapEachOf( const TableArena & arena, const Table
     TableMapEach<Entry> each = { &arena, TableRef() };
     if ( map.entries.value != 0 )
     {
-        const TableMapHead * head = (const TableMapHead *) TableArenaAt( arena, (uint32_t) map.entries.value );
+        const TableMapHead * head = reinterpret_cast<const TableMapHead *>( TableArenaAt( arena, static_cast<uint32_t>( map.entries.value ) ) );
         each.first = head->first;
     }
     return each;
@@ -661,13 +661,13 @@ inline bool TableMapVisitStored( const TableArenaCtx & ctx, const TableMap<Entry
 {
     if ( map.count < 0 ) { return false; }
     if ( map.entries.value == 0 ) { return map.count == 0; }
-    const TableMapHead * head = (const TableMapHead *) TableArenaAt( *ctx.arena, (uint32_t) map.entries.value );
+    const TableMapHead * head = reinterpret_cast<const TableMapHead *>( TableArenaAt( *ctx.arena, static_cast<uint32_t>( map.entries.value ) ) );
     if ( head->live != map.count ) { return false; }
     int32_t seen = 0;
     TableRef segment_ref = head->first;
     while ( segment_ref.value != 0 )
     {
-        const TableMapSegment<Entry> * segment = (const TableMapSegment<Entry> *) TableArenaAt( *ctx.arena, (uint32_t) segment_ref.value );
+        const TableMapSegment<Entry> * segment = reinterpret_cast<const TableMapSegment<Entry> *>( TableArenaAt( *ctx.arena, static_cast<uint32_t>( segment_ref.value ) ) );
         for ( int32_t i = 0; i < segment->used; i++ )
         {
             if ( TableMapSegmentDead( segment->dead, i ) ) { continue; }
@@ -714,7 +714,7 @@ inline TableMapFill<Entry> TableMapFillBegin( const TableNodeMap & nodes, TableM
     map.entries.value = 0;
     map.count = 0;
     if ( nodes.carve == NULL ) { return fill; }
-    if ( n > (uint64_t) INT32_MAX )
+    if ( n > static_cast<uint64_t>( INT32_MAX ) )
     {
         fill.refused = nodes.carve->worker != NULL;
         return fill;
@@ -725,16 +725,16 @@ inline TableMapFill<Entry> TableMapFillBegin( const TableNodeMap & nodes, TableM
         fill.ok = true;
         return fill;
     }
-    const int64_t align = (int64_t) alignof( Entry );
-    uint8_t * base = (uint8_t *) ( ( (uintptr_t) nodes.carve->at + (uintptr_t) ( align - 1 ) ) & ~( (uintptr_t) ( align - 1 ) ) );
-    const int64_t bytes = (int64_t) n * (int64_t) sizeof( Entry );
-    const int64_t pad = (int64_t) ( base - nodes.carve->at );
+    const int64_t align = static_cast<int64_t>( alignof( Entry ) );
+    uint8_t * base = reinterpret_cast<uint8_t *>( ( static_cast<uintptr_t>( nodes.carve->at ) + static_cast<uintptr_t>( align - 1 ) ) & ~( static_cast<uintptr_t>( align - 1 ) ) );
+    const int64_t bytes = static_cast<int64_t>( n ) * static_cast<int64_t>( sizeof( Entry ) );
+    const int64_t pad = static_cast<int64_t>( base - nodes.carve->at );
     if ( pad + bytes > nodes.carve->left ) { return fill; } // the measure and the load disagree: refused
     nodes.carve->at = base + bytes;
     nodes.carve->left -= pad + bytes;
-    fill.array = (Entry *) base;
-    fill.capacity = (int32_t) n;
-    map.entries.value = (int64_t) ( base - (const uint8_t *) &map.entries );
+    fill.array = reinterpret_cast<Entry *>( base );
+    fill.capacity = static_cast<int32_t>( n );
+    map.entries.value = static_cast<int64_t>( base - reinterpret_cast<const uint8_t *>( &map.entries ) );
     fill.ok = true;
     return fill;
 }
@@ -781,7 +781,7 @@ inline void TableMapFillReset( TableMapFill<Entry> & fill )
     }
     if ( fill.map->entries.value != 0 )
     {
-        TableMapHead * head = (TableMapHead *) TableArenaAt( *fill.worker->arena, (uint32_t) fill.map->entries.value );
+        TableMapHead * head = reinterpret_cast<TableMapHead *>( TableArenaAt( *fill.worker->arena, static_cast<uint32_t>( fill.map->entries.value ) ) );
         head->first.value = 0;
         head->last.value = 0;
         head->live = 0;
@@ -804,12 +804,12 @@ template <typename Entry>
 inline Entry * TableMapLive( const TableArena & arena, const TableMap<Entry> & map, int32_t index )
 {
     if ( map.entries.value == 0 ) { return NULL; }
-    const TableMapHead * head = (const TableMapHead *) TableArenaAt( arena, (uint32_t) map.entries.value );
+    const TableMapHead * head = reinterpret_cast<const TableMapHead *>( TableArenaAt( arena, static_cast<uint32_t>( map.entries.value ) ) );
     TableRef segment_ref = head->first;
     int32_t at = 0;
     while ( segment_ref.value != 0 )
     {
-        TableMapSegment<Entry> * segment = (TableMapSegment<Entry> *) TableArenaAt( arena, (uint32_t) segment_ref.value );
+        TableMapSegment<Entry> * segment = reinterpret_cast<TableMapSegment<Entry> *>( TableArenaAt( arena, static_cast<uint32_t>( segment_ref.value ) ) );
         for ( int32_t i = 0; i < segment->used; i++ )
         {
             if ( TableMapSegmentDead( segment->dead, i ) ) { continue; }
@@ -847,26 +847,26 @@ inline bool TableMapWireExtent( const uint8_t * body, int64_t length, int64_t & 
     if ( r.get8() != 13 ) { return true; } // not an array of tables: §4's ordinary kind mismatch
     uint64_t n = 0;
     if ( !r.getleb( n ) ) { return true; }
-    if ( n > (uint64_t) INT32_MAX )
+    if ( n > static_cast<uint64_t>( INT32_MAX ) )
     {
         reason = count_over_extent_cap;
         return false;
     }
     const int64_t rest = length - r.offset;
-    if ( n > (uint64_t) ( rest / kTableMapEntryFloor ) )
+    if ( n > static_cast<uint64_t>( rest / kTableMapEntryFloor ) )
     {
         reason = count_over_length;
         return false;
     } // an N the map's L cannot carry
     at = ( at + entry_align - 1 ) & ~( entry_align - 1 );
-    at += (int64_t) n * entry_size;
+    at += static_cast<int64_t>( n ) * entry_size;
     if ( inner == NULL ) { return true; } // no map below an entry: one depth is the whole term
     for ( uint64_t i = 0; i < n; i++ )
     {
         uint64_t elem = 0;
         if ( !r.getleb( elem ) || !r.room( elem ) ) { return true; } // framing damage: the load reports it
-        if ( !inner( r.buffer + r.offset, (int64_t) elem, at, ids, reason ) ) { return false; }
-        r.offset += (int64_t) elem;
+        if ( !inner( r.buffer + r.offset, static_cast<int64_t>( elem ), at, ids, reason ) ) { return false; }
+        r.offset += static_cast<int64_t>( elem );
     }
     return true;
 }
@@ -901,7 +901,7 @@ inline Entry * TableMapPlace( TableWorker & worker, TableMap<Entry> & map, Key k
     TableReset( *entry );
     if ( !TableEntrySetKey( worker, *entry, key ) )
     {
-        TableMapSegment<Entry> * seg = (TableMapSegment<Entry> *) TableArenaAt( *worker.arena, (uint32_t) head->last.value );
+        TableMapSegment<Entry> * seg = reinterpret_cast<TableMapSegment<Entry> *>( TableArenaAt( *worker.arena, static_cast<uint32_t>( head->last.value ) ) );
         seg->dead[( seg->used - 1 ) / 32] |= 1u << ( ( seg->used - 1 ) % 32 );
         head->live--;
         map.count--;
@@ -932,20 +932,20 @@ struct TableMapIndex
 inline uint64_t TableMapHash( const void * bytes, int64_t length )
 {
     uint64_t hash = 0xCBF29CE484222325ull;
-    const uint8_t * at = (const uint8_t *) bytes;
+    const uint8_t * at = reinterpret_cast<const uint8_t *>( bytes );
     for ( int64_t i = 0; i < length; i++ )
     {
-        hash ^= (uint64_t) at[i];
+        hash ^= static_cast<uint64_t>( at[i] );
         hash *= 0x100000001B3ull;
     }
     return hash;
 }
-inline uint64_t TableMapHash( uint64_t key ) { return TableMapHash( (const void *) &key, (int64_t) sizeof( key ) ); }
+inline uint64_t TableMapHash( uint64_t key ) { return TableMapHash( reinterpret_cast<const void *>( &key ), static_cast<int64_t>( sizeof( key ) ) ); }
 inline uint64_t schema_table_map_hash_text_( const TableRef & ref )
 {
     int32_t n = 0;
     const char * s = schema_table_text_at_( ref, n );
-    return TableMapHash( (const void *) ( s != NULL ? s : "" ), n > 0 ? n : 0 );
+    return TableMapHash( reinterpret_cast<const void *>( s != NULL ? s : "" ), n > 0 ? n : 0 );
 }
 
 // this runtime's own load factor, and no port reproduces it either: the next
@@ -993,20 +993,20 @@ func (g *tableGen) emitMapEntrySurface(owner *ir.Struct, f *ir.Field) {
 		g.pf("    if ( astr == NULL )\n    {\n        astr = \"\";\n        alen = 0;\n    }\n")
 		g.pf("    if ( bstr == NULL )\n    {\n        bstr = \"\";\n        blen = 0;\n    }\n")
 		g.pf("    return TableKeyOrder( astr, alen, bstr, blen );\n}\n")
-		g.pf("inline int TableEntryOrder( const %s & a, const %s & b ) { return TableEntryOrder( (const TableArena *) NULL, a, b ); }\n", n, n)
+		g.pf("inline int TableEntryOrder( const %s & a, const %s & b ) { return TableEntryOrder( static_cast<const TableArena *>( NULL ), a, b ); }\n", n, n)
 		g.pf("inline int TableEntryOrder( const TableArena * arena, const %s & entry, TableMapKeyRef key )\n{\n", n)
 		g.pf("    int32_t elen = 0;\n")
 		g.pf("    const char * estr = ( arena != NULL ) ? schema_table_text_at_( *arena, entry.key, elen ) : schema_table_text_at_( entry.key, elen );\n")
 		g.pf("    if ( estr == NULL )\n    {\n        estr = \"\";\n        elen = 0;\n    }\n")
 		g.pf("    return TableKeyOrder( estr, elen, key.data, key.length );\n}\n")
-		g.pf("inline int TableEntryOrder( const %s & entry, TableMapKeyRef key ) { return TableEntryOrder( (const TableArena *) NULL, entry, key ); }\n", n)
+		g.pf("inline int TableEntryOrder( const %s & entry, TableMapKeyRef key ) { return TableEntryOrder( static_cast<const TableArena *>( NULL ), entry, key ); }\n", n)
 		g.pf("inline int TableEntryOrder( const TableArena * arena, const %s & entry, const char * key )\n{\n", n)
 		g.pf("    return TableEntryOrder( arena, entry, TableMapKeyRef{ key, TableKeyLength( key, k%sKeyBound ) } );\n}\n", n)
-		g.pf("inline int TableEntryOrder( const %s & entry, const char * key ) { return TableEntryOrder( (const TableArena *) NULL, entry, key ); }\n", n)
+		g.pf("inline int TableEntryOrder( const %s & entry, const char * key ) { return TableEntryOrder( static_cast<const TableArena *>( NULL ), entry, key ); }\n", n)
 		g.pf("inline const char * TableEntryKey( const %[1]s & entry )\n{\n    int32_t len = 0;\n    const char * s = schema_table_text_at_( entry.key, len );\n    return s != NULL ? s : \"\";\n}\n", n)
 		g.pf("inline const char * TableEntryKey( const TableArena * arena, const %[1]s & entry )\n{\n    int32_t len = 0;\n    const char * s = ( arena != NULL ) ? schema_table_text_at_( *arena, entry.key, len ) : schema_table_text_at_( entry.key, len );\n    return s != NULL ? s : \"\";\n}\n", n)
 		g.pf("inline bool TableEntrySetKey( TableWorker & worker, %s & entry, TableMapKeyRef key )\n{\n", n)
-		g.pf("    return schema_table_text_store_( worker, entry.key, key.data, (int64_t) key.length );\n}\n")
+		g.pf("    return schema_table_text_store_( worker, entry.key, key.data, static_cast<int64_t>( key.length ) );\n}\n")
 	case mapKeyIsString(f):
 		bound := key.Type.Size
 		g.pf("static const int64_t k%sKeyBound = %d; // string(%d): the key's storage, and the length an insert refuses past\n\n", n, bound, bound)
@@ -1025,18 +1025,18 @@ func (g *tableGen) emitMapEntrySurface(owner *ir.Struct, f *ir.Field) {
 		g.pf("inline const char * TableEntryKey( const %s & entry ) { return entry.key; } // NUL-terminated, the storage's own bytes\n", n)
 		g.pf("inline const char * TableEntryKey( const TableArena *, const %s & entry ) { return entry.key; }\n", n)
 		g.pf("inline void TableEntrySetKey( %s & entry, TableMapKeyRef key )\n{\n", n)
-		g.pf("    memcpy( (void *) entry.key, (const void *) key.data, (size_t) key.length );\n")
+		g.pf("    memcpy( reinterpret_cast<void *>( entry.key ), reinterpret_cast<const void *>( key.data ), static_cast<size_t>( key.length ) );\n")
 		g.pf("    entry.key[key.length] = 0; // NUL-terminated BESIDE its length, for a C call site\n")
-		g.pf("    entry.key_length = (int32_t) key.length;\n}\n")
+		g.pf("    entry.key_length = static_cast<int32_t>( key.length );\n}\n")
 		g.pf("inline bool TableEntrySetKey( TableWorker &, %[1]s & entry, TableMapKeyRef key )\n{\n    TableEntrySetKey( entry, key );\n    return true;\n}\n", n)
 	default:
 		order := mapKeyOrderType(f)
 		typ, _ := g.cppFieldType(key.Type)
 		g.pf("\ninline int TableEntryOrder( const %s & a, const %s & b )\n{\n", n, n)
-		g.pf("    return TableKeyOrder( (%s) a.key, (%s) b.key ); // integers compare by VALUE, %s\n}\n", order, order, signedWord(key))
+		g.pf("    return TableKeyOrder( static_cast<%s>( a.key ), static_cast<%s>( b.key ) ); // integers compare by VALUE, %s\n}\n", order, order, signedWord(key))
 		g.pf("inline int TableEntryOrder( const TableArena *, const %s & a, const %s & b ) { return TableEntryOrder( a, b ); }\n", n, n)
 		g.pf("inline int TableEntryOrder( const %s & entry, %s key )\n{\n", n, typ)
-		g.pf("    return TableKeyOrder( (%s) entry.key, (%s) key );\n}\n", order, order)
+		g.pf("    return TableKeyOrder( static_cast<%s>( entry.key ), static_cast<%s>( key ) );\n}\n", order, order)
 		g.pf("inline int TableEntryOrder( const TableArena *, const %s & entry, %s key ) { return TableEntryOrder( entry, key ); }\n", n, typ)
 		g.pf("inline %s TableEntryKey( const %s & entry ) { return entry.key; }\n", typ, n)
 		g.pf("inline %s TableEntryKey( const TableArena *, const %s & entry ) { return entry.key; }\n", typ, n)
@@ -1092,7 +1092,7 @@ func (g *tableGen) emitMapEntrySurface(owner *ir.Struct, f *ir.Field) {
 		g.pf("inline %s * TableEntryValue( %s * entry ) { return &entry->value; }\n", typ, n)
 	}
 	// the builder's iteration proxy: the key beside the value, by value
-	g.pf("struct %[1]sEach\n{\n    %[2]s key;\n    decltype( TableEntryValue( (%[3]s *) NULL ) ) value;\n};\n", n, g.mapKeyCallType(f), n)
+	g.pf("struct %[1]sEach\n{\n    %[2]s key;\n    decltype( TableEntryValue( static_cast<%[3]s *>( NULL ) ) ) value;\n};\n", n, g.mapKeyCallType(f), n)
 	g.pf("inline %sEach TableEntryEach( const TableArena * arena, %s * entry ) { return %sEach{ TableEntryKey( arena, *entry ), TableEntryValue( entry ) }; }\n", n, n, n)
 	// the value half an Insert resets before handing it back
 	// the parameter is named `value` because the field it resets is the
@@ -1205,7 +1205,7 @@ func (g *tableGen) emitMapMeasureField(f *ir.Field) {
 		g.pf("        if ( order_%s.count > 0 )\n        {\n", f.Name)
 	}
 	g.pf("            const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
-	g.pf("            int64_t body_%s = 1 + TableLebBytes( (uint64_t) order_%s.count ); // the element kind byte and the count\n", f.Name, f.Name)
+	g.pf("            int64_t body_%s = 1 + TableLebBytes( static_cast<uint64_t>( order_%s.count ) ); // the element kind byte and the count\n", f.Name, f.Name)
 	g.pf("            for ( int32_t i = 0; i < order_%s.count; i++ )\n            {\n", f.Name)
 	g.inStep("i", func() {
 		g.pf("                const int64_t elem_%s = %s;\n", f.Name, g.measureCall(f, entry.Name, "*order_"+f.Name+"[i]"))
@@ -1236,7 +1236,7 @@ func (g *tableGen) emitMapWriteField(f *ir.Field) {
 		g.pf("        if ( order_%s.count > 0 ) // an EMPTY map elides, the by-value rule (§3)\n        {\n", f.Name)
 	}
 	g.pf("            const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
-	g.pf("            int64_t body_%s = 1 + TableLebBytes( (uint64_t) order_%s.count );\n", f.Name, f.Name)
+	g.pf("            int64_t body_%s = 1 + TableLebBytes( static_cast<uint64_t>( order_%s.count ) );\n", f.Name, f.Name)
 	g.pf("            for ( int32_t i = 0; i < order_%s.count; i++ )\n            {\n", f.Name)
 	g.inStep("i", func() {
 		g.pf("                const int64_t elem_%s = %s;\n", f.Name, g.measureCall(f, entry.Name, "*order_"+f.Name+"[i]"))
@@ -1244,13 +1244,13 @@ func (g *tableGen) emitMapWriteField(f *ir.Field) {
 	g.pf("                if ( elem_%[1]s < 0 )\n                {\n                    TableMapRelease( order_%[2]s );\n                    return false;\n                }\n", f.Name, f.Name)
 	g.pf("                body_%s += %s;\n", f.Name, framed("elem_"+f.Name))
 	g.pf("            }\n")
-	g.pf("            w.header( ref_%[1]s, %[2]d );\n            w.putleb( (uint64_t) body_%[3]s );\n", f.Name, tkArray, f.Name)
-	g.pf("            w.put8( %[1]d );\n            w.putleb( (uint64_t) order_%[2]s.count );\n", tkTable, f.Name)
+	g.pf("            w.header( ref_%[1]s, %[2]d );\n            w.putleb( static_cast<uint64_t>( body_%[3]s ) );\n", f.Name, tkArray, f.Name)
+	g.pf("            w.put8( %[1]d );\n            w.putleb( static_cast<uint64_t>( order_%[2]s.count ) );\n", tkTable, f.Name)
 	g.pf("            for ( int32_t i = 0; i < order_%s.count; i++ )\n            {\n", f.Name)
 	g.inStep("i", func() {
 		g.pf("                const int64_t elem_len_%s = %s;\n", f.Name, g.measureCall(f, entry.Name, "*order_"+f.Name+"[i]"))
 		g.pf("                if ( elem_len_%[1]s < 0 )\n                {\n                    TableMapRelease( order_%[2]s );\n                    return false;\n                }\n", f.Name, f.Name)
-		g.pf("                w.putleb( (uint64_t) elem_len_%s );\n", f.Name)
+		g.pf("                w.putleb( static_cast<uint64_t>( elem_len_%s ) );\n", f.Name)
 		g.pf("                if ( !%[1]s )\n                {\n                    TableMapRelease( order_%[2]s );\n                    return false;\n                }\n", g.saveCall(f, entry.Name, "*order_"+f.Name+"[i]"), f.Name)
 	})
 	g.pf("            }\n")
@@ -1301,7 +1301,7 @@ func (g *tableGen) emitMapKeyReader(f *ir.Field) {
 	g.pf("        uint64_t field_ref = 0;\n")
 	g.pf("        if ( !r.getleb( field_ref ) )\n        {\n            out.damaged = true;\n            return out;\n        }\n")
 	g.pf("        if ( field_ref == 0 )\n        {\n            out.damaged = r.offset != r.size;\n            return out;\n        } // the terminator consumes the entry's L\n")
-	g.pf("        if ( ids == NULL || field_ref > (uint64_t) ids->count )\n        {\n            out.damaged = true;\n            return out;\n        }\n")
+	g.pf("        if ( ids == NULL || field_ref > static_cast<uint64_t>( ids->count ) )\n        {\n            out.damaged = true;\n            return out;\n        }\n")
 	g.pf("        const uint64_t field_id = ids->at( field_ref );\n")
 	g.pf("        if ( !r.has( 1 ) )\n        {\n            out.damaged = true;\n            return out;\n        }\n")
 	g.pf("        uint8_t field_kind = r.get8();\n")
@@ -1322,7 +1322,7 @@ func (g *tableGen) emitMapKeyReader(f *ir.Field) {
 			g.pf("                uint64_t widened_v = 0;\n")
 			g.pf("                if ( !TableReadUnsignedAt( r, field_kind, widened_v ) )\n                {\n                    out.damaged = true;\n                    return out;\n                }\n")
 		}
-		g.pf("                out.key = (%s) widened_v;\n", typ)
+		g.pf("                out.key = static_cast<%s>( widened_v );\n", typ)
 		g.pf("                continue; // the LAST occurrence is the one §3 keeps\n")
 		g.pf("            }\n")
 	}
@@ -1334,20 +1334,20 @@ func (g *tableGen) emitMapKeyReader(f *ir.Field) {
 		g.pf("                if ( !r.getleb( key_len ) || !r.room( key_len ) )\n                {\n                    out.damaged = true;\n                    return out;\n                }\n")
 		g.pf("                // a key a string value would refuse as malformed makes the MAP malformed (§2.8, §3)\n")
 		g.pf("                if ( !TableUtf8Valid( r.buffer + r.offset, key_len ) )\n                {\n                    out.damaged = true;\n                    return out;\n                }\n")
-		g.pf("                out.key = (const char *) ( r.buffer + r.offset );\n")
-		g.pf("                out.length = (int32_t) key_len;\n")
+		g.pf("                out.key = reinterpret_cast<const char *>( r.buffer + r.offset );\n")
+		g.pf("                out.length = static_cast<int32_t>( key_len );\n")
 		if ir.MapKeyUnbounded(f) {
 			g.pf("                out.over = false;\n")
 		} else {
 			g.pf("                out.over = key_len > %d; // KEYS NEVER CLAMP: the entry is dropped whole\n", key.Type.Size)
 		}
-		g.pf("                r.offset += (int64_t) key_len;\n")
+		g.pf("                r.offset += static_cast<int64_t>( key_len );\n")
 		g.pf("                continue; // the LAST occurrence is the one §3 keeps\n")
 	} else {
 		width := tableKindWidth(kind)
 		typ, _ := g.cppFieldType(key.Type)
 		g.pf("                if ( !r.has( %[1]d ) )\n                {\n                    out.damaged = true;\n                    return out;\n                }\n", width)
-		g.pf("                out.key = (%s) r.%s();\n", typ, tableGet(width))
+		g.pf("                out.key = static_cast<%s>( r.%s() );\n", typ, tableGet(width))
 		g.pf("                continue; // the LAST occurrence is the one §3 keeps\n")
 	}
 	g.pf("            }\n        }\n")
@@ -1368,7 +1368,7 @@ func (g *tableGen) emitMapReadField(f *ir.Field) {
 	ind := "                "
 	g.pf("%suint64_t body_len = 0;\n", ind)
 	g.pf("%[1]sif ( !r.getleb( body_len ) || !r.room( body_len ) )\n%[1]s{\n%[1]s    r.report->damaged = true;\n%[1]s    return false;\n%[1]s}\n", ind)
-	g.pf("%sint64_t body_end = r.offset + (int64_t) body_len;\n", ind)
+	g.pf("%sint64_t body_end = r.offset + static_cast<int64_t>( body_len );\n", ind)
 	g.pf("%sif ( body_len >= 2 )\n%s{\n", ind, ind)
 	g.pf("%s    uint8_t elem_kind = r.get8();\n", ind)
 	g.pf("%s    uint64_t count = 0;\n", ind)
@@ -1396,8 +1396,8 @@ func (g *tableGen) emitMapReadField(f *ir.Field) {
 	g.pf("%s        uint64_t elem_len = 0;\n", ind)
 	g.pf("%[1]s        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) )\n%[1]s        {\n%[1]s            r.report->damaged = true;\n%[1]s            break;\n%[1]s        }\n", ind)
 	g.pf("%s        const uint8_t * elem_body = sub.buffer + sub.offset;\n", ind)
-	g.pf("%s        sub.offset += (int64_t) elem_len;\n", ind)
-	g.pf("%s        %sKeyRead read = %sReadKey( elem_body, (int64_t) elem_len, r.ids );\n", ind, n, n)
+	g.pf("%s        sub.offset += static_cast<int64_t>( elem_len );\n", ind)
+	g.pf("%s        %sKeyRead read = %sReadKey( elem_body, static_cast<int64_t>( elem_len ), r.ids );\n", ind, n, n)
 	g.pf("%s        // A KEY KIND THE DECLARATION WIDENS: the map counts ONE widened (§2.8, §4)\n", ind)
 	g.pf("%[1]s        if ( read.widened && !map_widened )\n%[1]s        {\n%[1]s            map_widened = true;\n%[1]s            r.report->widened++;\n%[1]s        }\n", ind)
 	g.pf("%s        // THE KEY KIND IS CHECKED FIRST: a key read under another kind\n", ind)
@@ -1419,7 +1419,7 @@ func (g *tableGen) emitMapReadField(f *ir.Field) {
 		g.pf("%s        const int order = landed ? TableKeyOrder( last_key, last_length, read.key, read.length ) : -1;\n", ind)
 	} else {
 		ord := mapKeyOrderType(f)
-		g.pf("%s        const int order = landed ? TableKeyOrder( (%s) last_key, (%s) read.key ) : -1;\n", ind, ord, ord)
+		g.pf("%s        const int order = landed ? TableKeyOrder( static_cast<%s>( last_key ), static_cast<%s>( read.key ) ) : -1;\n", ind, ord, ord)
 	}
 	g.pf("%s        if ( order > 0 )\n%s        {\n", ind, ind)
 	g.pf("%s            // DESCENDING: not a body any conforming writer produced. It is\n", ind)
@@ -1439,7 +1439,7 @@ func (g *tableGen) emitMapReadField(f *ir.Field) {
 	g.pf("%s        }\n", ind)
 	g.pf("%[1]s        if ( slot == NULL )\n%[1]s        {\n%[1]s            r.report->damaged = true;\n%[1]s            break;\n%[1]s        }\n", ind)
 	g.pf("%s        {\n", ind)
-	g.pf("%s            TableReader elem( elem_body, (int64_t) elem_len, r.report, r.ids );\n", ind)
+	g.pf("%s            TableReader elem( elem_body, static_cast<int64_t>( elem_len ), r.report, r.ids );\n", ind)
 	g.inStep("fill.map->count - 1", func() {
 		g.pf("%s            %s;\n", ind, g.loadCall(f, n, "elem", "*slot"))
 		g.emitLoadRefusal(n, ind+"            ")
@@ -1527,17 +1527,17 @@ func (g *tableGen) emitMapBuilderSurface(owner *ir.Struct, f *ir.Field) {
 	g.pf("// CONTRACT of the lookup — the same value the sorted array's Find returns\n")
 	g.pf("// for the same key, and no allocation past the storage the caller handed in.\n")
 	g.pf("inline int64_t %s( const TableMap<%s> & map )\n{\n", mapVerb(owner.Name, f, "IndexMeasure"), n)
-	g.pf("    return (int64_t) TableMapIndexSlots( map.count ) * (int64_t) sizeof( int32_t );\n}\n\n")
+	g.pf("    return static_cast<int64_t>( TableMapIndexSlots( map.count ) ) * static_cast<int64_t>( sizeof( int32_t ) );\n}\n\n")
 	g.pf("inline TableMapIndex %s( const TableMap<%s> & map, void * storage, int64_t bytes )\n{\n", mapVerb(owner.Name, f, "Index"), n)
 	g.pf("    TableMapIndex index;\n")
 	g.pf("    const int32_t slots = TableMapIndexSlots( map.count );\n")
-	g.pf("    if ( storage == NULL || bytes < (int64_t) slots * (int64_t) sizeof( int32_t ) ) { return index; }\n")
-	g.pf("    index.slots = (int32_t *) storage;\n")
+	g.pf("    if ( storage == NULL || bytes < static_cast<int64_t>( slots ) * static_cast<int64_t>( sizeof( int32_t ) ) ) { return index; }\n")
+	g.pf("    index.slots = reinterpret_cast<int32_t *>( storage );\n")
 	g.pf("    index.capacity = slots;\n")
 	g.pf("    for ( int32_t i = 0; i < slots; i++ ) { index.slots[i] = 0; }\n")
 	g.pf("    const %s * entries = map.Entries();\n", n)
 	g.pf("    for ( int32_t i = 0; i < map.count; i++ ) // ONE PASS over the sorted array\n    {\n")
-	g.pf("        int32_t at = (int32_t) ( %s & (uint64_t) ( slots - 1 ) );\n", g.mapIndexHash(f, "entries[i]"))
+	g.pf("        int32_t at = static_cast<int32_t>( %s & static_cast<uint64_t>( slots - 1 ) );\n", g.mapIndexHash(f, "entries[i]"))
 	g.pf("        while ( index.slots[at] != 0 ) { at = ( at + 1 ) & ( slots - 1 ); }\n")
 	g.pf("        index.slots[at] = i + 1; // slots are ENTRY INDICES; 0 is an empty slot\n")
 	g.pf("    }\n")
@@ -1547,7 +1547,7 @@ func (g *tableGen) emitMapBuilderSurface(owner *ir.Struct, f *ir.Field) {
 		g.mapFindReturn(f), mapVerb(owner.Name, f, "IndexFind"), n, key)
 	g.pf("    if ( !index.good ) { return map.Find( key ); } // an index that did not build is not a wrong answer\n")
 	g.pf("    const %s * entries = map.Entries();\n", n)
-	g.pf("    int32_t at = (int32_t) ( %s & (uint64_t) ( index.capacity - 1 ) );\n", g.mapIndexHashOfKey(f, "key"))
+	g.pf("    int32_t at = static_cast<int32_t>( %s & static_cast<uint64_t>( index.capacity - 1 ) );\n", g.mapIndexHashOfKey(f, "key"))
 	g.pf("    for ( int32_t probe = 0; probe < index.capacity; probe++ )\n    {\n")
 	g.pf("        const int32_t slot = index.slots[at];\n")
 	g.pf("        if ( slot == 0 ) { return NULL; }\n")
@@ -1588,16 +1588,16 @@ func (g *tableGen) mapIndexHash(f *ir.Field, entry string) string {
 		return fmt.Sprintf("schema_table_map_hash_text_( %s.key )", entry)
 	}
 	if mapKeyIsString(f) {
-		return fmt.Sprintf("TableMapHash( (const void *) %s.key, %s.key_length )", entry, entry)
+		return fmt.Sprintf("TableMapHash( reinterpret_cast<const void *>( %s.key ), %s.key_length )", entry, entry)
 	}
-	return fmt.Sprintf("TableMapHash( (uint64_t) %s.key )", entry)
+	return fmt.Sprintf("TableMapHash( static_cast<uint64_t>( %s.key ) )", entry)
 }
 
 func (g *tableGen) mapIndexHashOfKey(f *ir.Field, key string) string {
 	if mapKeyIsString(f) {
-		return fmt.Sprintf("TableMapHash( (const void *) %s, TableKeyLength( %s, k%sKeyBound ) )", key, key, mapEntryOf(f).Name)
+		return fmt.Sprintf("TableMapHash( reinterpret_cast<const void *>( %s ), TableKeyLength( %s, k%sKeyBound ) )", key, key, mapEntryOf(f).Name)
 	}
-	return fmt.Sprintf("TableMapHash( (uint64_t) %s )", key)
+	return fmt.Sprintf("TableMapHash( static_cast<uint64_t>( %s ) )", key)
 }
 
 // emitMapBuilderSurfaces emits every map field's builder five and side index,

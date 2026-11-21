@@ -261,7 +261,7 @@ func (v *viewGen) emitOutsideDescriptor(g *tableGen, st *ir.Struct) {
 	g.pf("const TableTypeInfo * %sTableType()\n{\n", st.Name)
 	if len(st.Fields) == 0 {
 		g.emitTagsStatic(st.Name+"_tags", st.Tags, "static const", "    ")
-		g.pf("    static const TableTypeInfo info = { \"%s\", (uint32_t) sizeof( %s ), 0, NULL, %s%s, %s, false };\n",
+		g.pf("    static const TableTypeInfo info = { \"%s\", static_cast<uint32_t>( sizeof( %s ) ), 0, NULL, %s%s, %s, false };\n",
 			st.Name, st.Name, resetLambda(st.Name), g.modeColumn(st), annotationColumns(st.Doc, st.Tags, st.Name+"_tags"))
 		g.pf("    return &info;\n}\n\n")
 		return
@@ -288,7 +288,7 @@ func (v *viewGen) emitOutsideDescriptor(g *tableGen, st *ir.Struct) {
 		g.emitFieldInfo(f, fieldSpelling{owner: st.Name, member: f.Name, indent: "    ", guard: "", outside: true}, false)
 	}
 	g.pf("    };\n")
-	g.pf("    static const TableTypeInfo info = { \"%s\", (uint32_t) sizeof( %s ), %d, fields, %s%s, %s, false };\n",
+	g.pf("    static const TableTypeInfo info = { \"%s\", static_cast<uint32_t>( sizeof( %s ) ), %d, fields, %s%s, %s, false };\n",
 		st.Name, st.Name, len(st.Fields), resetLambda(st.Name), g.modeColumn(st), annotationColumns(st.Doc, st.Tags, st.Name+"_tags"))
 	g.pf("    return &info;\n}\n\n")
 }
@@ -507,7 +507,7 @@ func constantIntValue(value *big.Int) string {
 	if value.IsInt64() {
 		return value.String()
 	}
-	return fmt.Sprintf("(int64_t) 0x%016xull", value.Uint64())
+	return fmt.Sprintf("static_cast<int64_t>( 0x )%016xull", value.Uint64())
 }
 
 // ---- the sets, and the order they are listed in ----

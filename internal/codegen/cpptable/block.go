@@ -128,15 +128,15 @@ struct TableBlockRows
     {
         uint8_t * p;
         int32_t stride;
-        T & operator*() const { return *(T *) p; }
+        T & operator*() const { return *reinterpret_cast<T *>( p ); }
         iterator & operator++() { p += stride; return *this; }
         bool operator!=( const iterator & other ) const { return p != other.p; }
     };
 
     iterator begin() const { return iterator{ base, stride }; }
-    iterator end() const { return iterator{ base + (ptrdiff_t) count * stride, stride }; }
+    iterator end() const { return iterator{ base + static_cast<ptrdiff_t>( count ) * stride, stride }; }
     int32_t size() const { return count; }
-    operator T *() const { return (T *) base; }
+    operator T *() const { return reinterpret_cast<T *>( base ); }
 };
 
 // A CONTIGUOUS view of one array, available because the pitch IS sizeof
@@ -174,15 +174,15 @@ struct TableBlockConstRows
     {
         const uint8_t * p;
         int32_t stride;
-        const T & operator*() const { return *(const T *) p; }
+        const T & operator*() const { return *reinterpret_cast<const T *>( p ); }
         iterator & operator++() { p += stride; return *this; }
         bool operator!=( const iterator & other ) const { return p != other.p; }
     };
 
     iterator begin() const { return iterator{ base, stride }; }
-    iterator end() const { return iterator{ base + (ptrdiff_t) count * stride, stride }; }
+    iterator end() const { return iterator{ base + static_cast<ptrdiff_t>( count ) * stride, stride }; }
     int32_t size() const { return count; }
-    operator const T *() const { return (const T *) base; }
+    operator const T *() const { return reinterpret_cast<const T *>( base ); }
 };
 
 template <typename T>
@@ -459,8 +459,8 @@ func (g *tableGen) emitBlockSurface(bl *ir.BlockLayout) {
 	g.pf("        allocator = from;\n")
 	g.pf("        allocation = allocator.alloc( allocator.context, %sBlockMaxBytes + %d );\n", name, ir.BlockAlign-1)
 	g.pf("        if ( allocation == NULL )\n        {\n            base = NULL;\n            return false;\n        }\n")
-	g.pf("        const uintptr_t raw = (uintptr_t) allocation;\n")
-	g.pf("        base = (uint8_t *) ( ( raw + %d ) & ~(uintptr_t) %d );\n", ir.BlockAlign-1, ir.BlockAlign-1)
+	g.pf("        const uintptr_t raw = static_cast<uintptr_t>( allocation );\n")
+	g.pf("        base = reinterpret_cast<uint8_t *>( ( raw + %d ) & ~static_cast<uintptr_t>( %d ) );\n", ir.BlockAlign-1, ir.BlockAlign-1)
 	g.pf("        return true;\n    }\n\n")
 	g.pf("    void Destroy()\n    {\n")
 	g.pf("        if ( allocation != NULL ) { allocator.free( allocator.context, allocation ); }\n")
@@ -589,7 +589,7 @@ func (g *tableGen) emitBlockLayoutAsserts(bl *ir.BlockLayout) {
 	for _, a := range bl.Arrays {
 		g.emitBlockRowAsserts(a.ElemName, seen)
 		field := ir.GoExportName(a.Field.Name)
-		g.pf("static_assert( %sBlock::%sStride == (int64_t) sizeof( %s ), \"%s's pitch is its element's sizeof, always (docs/SPEC-TABLES.md §2.7)\" );\n",
+		g.pf("static_assert( %sBlock::%sStride == static_cast<int64_t>( sizeof( %s ) ), \"%s's pitch is its element's sizeof, always (docs/SPEC-TABLES.md §2.7)\" );\n",
 			name, field, a.ElemName, a.Field.Name)
 	}
 	g.pf("\n")
@@ -663,17 +663,17 @@ func (g *tableGen) emitBlockFillPath(bl *ir.BlockLayout) {
 	}
 	g.pf("    if ( storage.base == NULL )\n        return false; // Create was not called, or the allocator refused\n")
 	g.pf("    block.base = storage.base;\n")
-	g.pf("    block.projection = (%sBlock::Projection *) storage.base;\n", name)
+	g.pf("    block.projection = reinterpret_cast<%sBlock::Projection *>( storage.base );\n", name)
 	g.pf("    block.projection->magic = TableBlockMagic;\n")
 	g.pf("    block.projection->build_version = BuildVersion;\n")
 	g.pf("    block.projection->byte_order = TableBlockByteOrder;\n")
 	g.pf("    int64_t offset = %d; // sizeof the projection\n", bl.Projection.Size)
 	for _, a := range bl.Arrays {
 		g.pf("    offset = table_block_align( offset, %d ); // max( 64, alignof( %s ) )\n", blockStartAlign(a), a.ElemName)
-		g.pf("    block.projection->%s.offset_of = (uint64_t) offset;\n", a.Field.Name)
-		g.pf("    block.projection->%s.count = (uint32_t) counts.%s;\n", a.Field.Name, a.Field.Name)
-		g.pf("    block.projection->%s.stride = (uint32_t) sizeof( %s );\n", a.Field.Name, a.ElemName)
-		g.pf("    offset += (int64_t) counts.%s * (int64_t) sizeof( %s );\n", a.Field.Name, a.ElemName)
+		g.pf("    block.projection->%s.offset_of = static_cast<uint64_t>( offset );\n", a.Field.Name)
+		g.pf("    block.projection->%s.count = static_cast<uint32_t>( counts.%s );\n", a.Field.Name, a.Field.Name)
+		g.pf("    block.projection->%s.stride = static_cast<uint32_t>( sizeof( %s ) );\n", a.Field.Name, a.ElemName)
+		g.pf("    offset += static_cast<int64_t>( counts.%s ) * static_cast<int64_t>( sizeof( %s ) );\n", a.Field.Name, a.ElemName)
 	}
 	g.pf("    block.bytes = table_block_align( offset, %d );\n", ir.BlockAlign)
 	g.pf("    return true;\n}\n\n")
@@ -691,7 +691,7 @@ func (g *tableGen) emitBlockFillPath(bl *ir.BlockLayout) {
 	g.pf("    int64_t used = %d;\n", bl.Projection.Size)
 	for _, a := range bl.Arrays {
 		g.pf("    {\n")
-		g.pf("        const int64_t end = (int64_t) block.projection->%s.offset_of + (int64_t) block.projection->%s.count * (int64_t) block.projection->%s.stride;\n",
+		g.pf("        const int64_t end = static_cast<int64_t>( block.projection->%s.offset_of ) + static_cast<int64_t>( block.projection->%s.count ) * static_cast<int64_t>( block.projection->%s.stride );\n",
 			a.Field.Name, a.Field.Name, a.Field.Name)
 		g.pf("        if ( end > used ) used = end;\n")
 		g.pf("    }\n")
@@ -707,16 +707,16 @@ func (g *tableGen) emitBlockFillPath(bl *ir.BlockLayout) {
 		g.pf("inline TableBlockRows<%s> %s%s( const %sBlock & block )\n{\n", a.ElemName, name, field, name)
 		g.pf("    TableBlockRows<%s> rows;\n", a.ElemName)
 		g.pf("    rows.base = block.base + block.projection->%s.offset_of;\n", a.Field.Name)
-		g.pf("    rows.count = (int32_t) block.projection->%s.count;\n", a.Field.Name)
-		g.pf("    rows.stride = (int32_t) block.projection->%s.stride;\n", a.Field.Name)
+		g.pf("    rows.count = static_cast<int32_t>( block.projection->%s.count );\n", a.Field.Name)
+		g.pf("    rows.stride = static_cast<int32_t>( block.projection->%s.stride );\n", a.Field.Name)
 		g.pf("    return rows;\n}\n\n")
 
 		g.pf("// %s, as a CONTIGUOUS view — available because the pitch IS sizeof (§2.7),\n", a.Field.Name)
 		g.pf("// which is how the fast path is actually written.\n")
 		g.pf("inline TableBlockSpan<%s> %s%sSpan( const %sBlock & block )\n{\n", a.ElemName, name, field, name)
 		g.pf("    TableBlockSpan<%s> span;\n", a.ElemName)
-		g.pf("    span.rows = (%s *) ( block.base + block.projection->%s.offset_of );\n", a.ElemName, a.Field.Name)
-		g.pf("    span.count = (int32_t) block.projection->%s.count;\n", a.Field.Name)
+		g.pf("    span.rows = reinterpret_cast<%s *>( block.base + block.projection->%s.offset_of );\n", a.ElemName, a.Field.Name)
+		g.pf("    span.count = static_cast<int32_t>( block.projection->%s.count );\n", a.Field.Name)
 		g.pf("    return span;\n}\n\n")
 	}
 	g.pf("// ---- block fill path: end ----\n\n")
@@ -747,16 +747,16 @@ func (g *tableGen) emitBlockConstReadPath(bl *ir.BlockLayout) {
 		g.pf("inline TableBlockConstRows<%s> %s%s( const %sBlock::Const & block )\n{\n", a.ElemName, name, field, name)
 		g.pf("    TableBlockConstRows<%s> rows;\n", a.ElemName)
 		g.pf("    rows.base = block.base + block.projection->%s.offset_of;\n", a.Field.Name)
-		g.pf("    rows.count = (int32_t) block.projection->%s.count;\n", a.Field.Name)
-		g.pf("    rows.stride = (int32_t) block.projection->%s.stride;\n", a.Field.Name)
+		g.pf("    rows.count = static_cast<int32_t>( block.projection->%s.count );\n", a.Field.Name)
+		g.pf("    rows.stride = static_cast<int32_t>( block.projection->%s.stride );\n", a.Field.Name)
 		g.pf("    return rows;\n}\n\n")
 
 		g.pf("// %s, as a CONTIGUOUS const view, available because the pitch IS sizeof\n", a.Field.Name)
 		g.pf("// (§2.7), which is how a consumer's fast path is actually written.\n")
 		g.pf("inline TableBlockConstSpan<%s> %s%sSpan( const %sBlock::Const & block )\n{\n", a.ElemName, name, field, name)
 		g.pf("    TableBlockConstSpan<%s> span;\n", a.ElemName)
-		g.pf("    span.rows = (const %s *) ( block.base + block.projection->%s.offset_of );\n", a.ElemName, a.Field.Name)
-		g.pf("    span.count = (int32_t) block.projection->%s.count;\n", a.Field.Name)
+		g.pf("    span.rows = reinterpret_cast<const %s *>( block.base + block.projection->%s.offset_of );\n", a.ElemName, a.Field.Name)
+		g.pf("    span.count = static_cast<int32_t>( block.projection->%s.count );\n", a.Field.Name)
 		g.pf("    return span;\n}\n\n")
 	}
 }
@@ -799,7 +799,7 @@ func (g *tableGen) emitBlockOpenBody(bl *ir.BlockLayout) {
 	g.pf("    if ( bytes < %d ) { return TableCookRefuse( reason, truncated ) != NULL; }\n", bl.Projection.Size)
 	g.pf("    // EVERY PROLOGUE WORD IS READ BYTEWISE, because the base's alignment is\n")
 	g.pf("    // the LAST clause (§7, §19.2) and nothing before it may assume one\n")
-	g.pf("    const uint8_t * raw = (const uint8_t *) base;\n")
+	g.pf("    const uint8_t * raw = reinterpret_cast<const uint8_t *>( base );\n")
 	g.pf("    const uint64_t magic = table_block_read64( raw );\n")
 	g.pf("    if ( magic != TableBlockMagic )\n")
 	g.pf("    {\n")
@@ -824,16 +824,16 @@ func (g *tableGen) emitBlockOpenBody(bl *ir.BlockLayout) {
 		g.pf("        const uint64_t offset_of = table_block_read64( triple );\n")
 		g.pf("        const uint64_t count = table_block_read32( triple + 8 );\n")
 		g.pf("        const uint64_t stride = table_block_read32( triple + 12 );\n")
-		g.pf("        if ( stride != (uint64_t) sizeof( %s ) ) { return TableCookRefuse( reason, bad_layout ) != NULL; }\n", a.ElemName)
+		g.pf("        if ( stride != static_cast<uint64_t>( sizeof( %s ) ) ) { return TableCookRefuse( reason, bad_layout ) != NULL; }\n", a.ElemName)
 		g.pf("        // past the DECLARED MAXIMUM: Begin refuses this on the producer side\n")
 		g.pf("        // and Open refuses it here, because a consumer that sizes anything by\n")
 		g.pf("        // the maximum would overflow on a count the maximum does not bound\n")
-		g.pf("        if ( count > (uint64_t) %sBlock::%sMax ) { return TableCookRefuse( reason, bad_layout ) != NULL; }\n", name, ir.GoExportName(a.Field.Name))
+		g.pf("        if ( count > static_cast<uint64_t>( %sBlock::%sMax ) ) { return TableCookRefuse( reason, bad_layout ) != NULL; }\n", name, ir.GoExportName(a.Field.Name))
 		g.pf("        if ( offset_of < %d || ( offset_of %% %d ) != 0 ) { return TableCookRefuse( reason, bad_layout ) != NULL; }\n", bl.Projection.Size, blockStartAlign(a))
-		g.pf("        if ( offset_of > (uint64_t) bytes ) { return TableCookRefuse( reason, bad_layout ) != NULL; }\n")
+		g.pf("        if ( offset_of > static_cast<uint64_t>( bytes ) ) { return TableCookRefuse( reason, bad_layout ) != NULL; }\n")
 		g.pf("        const uint64_t rows = count * stride; // both bounded above: this cannot carry\n")
-		g.pf("        if ( rows > (uint64_t) bytes - offset_of ) { return TableCookRefuse( reason, bad_layout ) != NULL; }\n")
-		g.pf("        const int64_t end = (int64_t) ( offset_of + rows );\n")
+		g.pf("        if ( rows > static_cast<uint64_t>( bytes ) - offset_of ) { return TableCookRefuse( reason, bad_layout ) != NULL; }\n")
+		g.pf("        const int64_t end = static_cast<int64_t>( offset_of + rows );\n")
 		g.pf("        if ( end > used ) used = end;\n")
 		g.pf("    }\n")
 	}
@@ -846,7 +846,7 @@ func (g *tableGen) emitBlockOpenBody(bl *ir.BlockLayout) {
 	g.pf("    used += padding;\n")
 	g.pf("    // the base's alignment, LAST: the only clause that reads nothing out of\n")
 	g.pf("    // the block, and the caller's defect rather than the file's\n")
-	g.pf("    if ( ( (uintptr_t) base %% %d ) != 0 ) { return TableCookRefuse( reason, unaligned_base ) != NULL; }\n", ir.BlockAlign)
+	g.pf("    if ( ( static_cast<uintptr_t>( base ) %% %d ) != 0 ) { return TableCookRefuse( reason, unaligned_base ) != NULL; }\n", ir.BlockAlign)
 	g.pf("    *used_out = used;\n")
 	g.pf("    return true;\n}\n\n")
 	g.pf("} // namespace\n\n")
@@ -857,8 +857,8 @@ func (g *tableGen) emitBlockOpenBody(bl *ir.BlockLayout) {
 	g.pf("    block.base = NULL;\n    block.projection = NULL;\n    block.bytes = 0;\n")
 	g.pf("    int64_t used = 0;\n")
 	g.pf("    if ( !%s( base, bytes, &used, reason ) ) { return false; }\n", check)
-	g.pf("    block.base = (uint8_t *) base;\n")
-	g.pf("    block.projection = (%sBlock::Projection *) base;\n", name)
+	g.pf("    block.base = reinterpret_cast<uint8_t *>( base );\n")
+	g.pf("    block.projection = reinterpret_cast<%sBlock::Projection *>( base );\n", name)
 	g.pf("    block.bytes = used;\n")
 	g.pf("    return true;\n}\n\n")
 
@@ -869,8 +869,8 @@ func (g *tableGen) emitBlockOpenBody(bl *ir.BlockLayout) {
 	g.pf("    block.base = NULL;\n    block.projection = NULL;\n    block.bytes = 0;\n")
 	g.pf("    int64_t used = 0;\n")
 	g.pf("    if ( !%s( base, bytes, &used, reason ) ) { return false; }\n", check)
-	g.pf("    block.base = (const uint8_t *) base;\n")
-	g.pf("    block.projection = (const %sBlock::Projection *) base;\n", name)
+	g.pf("    block.base = reinterpret_cast<const uint8_t *>( base );\n")
+	g.pf("    block.projection = reinterpret_cast<const %sBlock::Projection *>( base );\n", name)
 	g.pf("    block.bytes = used;\n")
 	g.pf("    return true;\n}\n\n")
 }

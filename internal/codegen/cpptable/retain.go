@@ -270,21 +270,21 @@ inline void TableRetainWrite64( uint8_t * p, uint64_t v )
     TableRetainWrite32( p + 4, uint32_t( v >> 32 ) );
 }
 
-inline int64_t TableRetainRecordBytes( const uint8_t * record ) { return (int64_t) TableRetainRead32( record ); }
+inline int64_t TableRetainRecordBytes( const uint8_t * record ) { return static_cast<int64_t>( TableRetainRead32( record ) ); }
 inline uint32_t TableRetainRecordNode( const uint8_t * record ) { return TableRetainRead32( record + 4 ); }
-inline int32_t TableRetainRecordDepth( const uint8_t * record ) { return (int32_t) TableRetainRead32( record + 8 ); }
-inline int64_t TableRetainRecordPayloadBytes( const uint8_t * record ) { return (int64_t) TableRetainRead32( record + 12 ); }
+inline int32_t TableRetainRecordDepth( const uint8_t * record ) { return static_cast<int32_t>( TableRetainRead32( record + 8 ) ); }
+inline int64_t TableRetainRecordPayloadBytes( const uint8_t * record ) { return static_cast<int64_t>( TableRetainRead32( record + 12 ) ); }
 inline uint64_t TableRetainRecordId( const uint8_t * record ) { return TableRetainRead64( record + 16 ); }
 inline uint8_t TableRetainRecordKind( const uint8_t * record ) { return record[24]; }
 inline bool TableRetainRecordPlaced( const uint8_t * record ) { return record[25] != 0; }
 inline const uint8_t * TableRetainRecordSteps( const uint8_t * record ) { return record + kTableRetainRecordHeader; }
 inline const uint8_t * TableRetainRecordPayload( const uint8_t * record )
 {
-    return record + kTableRetainRecordHeader + 8 * (int64_t) TableRetainRecordDepth( record );
+    return record + kTableRetainRecordHeader + 8 * static_cast<int64_t>( TableRetainRecordDepth( record ) );
 }
 inline uint8_t * TableRetainRecordPayload( uint8_t * record )
 {
-    return record + kTableRetainRecordHeader + 8 * (int64_t) TableRetainRecordDepth( record );
+    return record + kTableRetainRecordHeader + 8 * static_cast<int64_t>( TableRetainRecordDepth( record ) );
 }
 
 // THE RECORD'S OWN BODY, resolved through the directory the buffer holds. A
@@ -292,8 +292,8 @@ inline uint8_t * TableRetainRecordPayload( uint8_t * record )
 inline const void * TableRetainRecordAt( const TableRetain & retain, const uint8_t * record )
 {
     const uint32_t node = TableRetainRecordNode( record );
-    if ( retain.directory == NULL || node == 0 || (int64_t) node > retain.directory_count ) { return NULL; }
-    return (const void *) ( retain.base + retain.directory[node - 1].offset );
+    if ( retain.directory == NULL || node == 0 || static_cast<int64_t>( node ) > retain.directory_count ) { return NULL; }
+    return reinterpret_cast<const void *>( retain.base + retain.directory[node - 1].offset );
 }
 
 // Does this record belong to the body the walk is standing in? The node first,
@@ -365,8 +365,8 @@ struct TableRetainIds
             overflow = true;
             return 1;
         }
-        if ( known.count != before ) { known_slot[(int32_t) k - 1] = ++count; }
-        return (uint64_t) known_slot[(int32_t) k - 1];
+        if ( known.count != before ) { known_slot[static_cast<int32_t>( k ) - 1] = ++count; }
+        return static_cast<uint64_t>( known_slot[static_cast<int32_t>( k ) - 1] );
     }
 
     // THE MERGED NUMBERING IS NOT THE GENERATED TABLE'S, so the ordinal slot
@@ -396,7 +396,7 @@ struct TableRetainIds
         }
         for ( int32_t i = 0; i < retain->id_used; i++ )
         {
-            if ( retain->ids[i].id == id ) { return (uint64_t) retain->ids[i].slot; }
+            if ( retain->ids[i].id == id ) { return static_cast<uint64_t>( retain->ids[i].slot ); }
         }
         if ( retain->id_used >= retain->id_capacity )
         {
@@ -406,7 +406,7 @@ struct TableRetainIds
         retain->ids[retain->id_used].id = id;
         retain->ids[retain->id_used].slot = ++count;
         retain->id_used++;
-        return (uint64_t) count;
+        return static_cast<uint64_t>( count );
     }
 
     // undo every entry taken since mark, in either store. Both are appended in
@@ -500,7 +500,7 @@ struct TableRetainIn
 
 inline void TableRetainInRaw( TableRetainIn & s, const uint8_t * from, int64_t bytes )
 {
-    if ( s.out != NULL ) { memcpy( s.out + s.out_at, from, (size_t) bytes ); }
+    if ( s.out != NULL ) { memcpy( s.out + s.out_at, from, static_cast<size_t>( bytes ) ); }
     s.out_at += bytes;
 }
 
@@ -554,7 +554,7 @@ inline bool TableRetainInRef( TableRetainIn & s, bool zero_allowed )
         TableRetainInId( s, kTableRetainNoId );
         return true;
     }
-    if ( s.ids == NULL || ref > (uint64_t) s.ids->count ) { return false; }
+    if ( s.ids == NULL || ref > static_cast<uint64_t>( s.ids->count ) ) { return false; }
     const uint64_t id = s.ids->at( ref );
     if ( TableRetainReservedId( id ) ) { return false; }
     TableRetainInId( s, id );
@@ -584,7 +584,7 @@ inline int64_t TableRetainInSlot( TableRetainIn & s )
 
 inline void TableRetainInPatch( TableRetainIn & s, int64_t slot, int64_t resolved )
 {
-    if ( s.out != NULL ) { TableRetainWrite32( s.out + slot, (uint32_t) resolved ); }
+    if ( s.out != NULL ) { TableRetainWrite32( s.out + slot, static_cast<uint32_t>( resolved ) ); }
 }
 
 // one framed CONTENT: the slot, the content, and the slot filled in behind it.
@@ -660,12 +660,12 @@ inline int64_t TableRetainInContent( TableRetainIn & s, uint8_t kind, int64_t le
                 if ( !TableRetainInRef( s, false ) ) { return -1; }
                 uint64_t slot_bytes = 0;
                 if ( !TableRetainInLebRead( s, slot_bytes ) ) { return -1; }
-                if ( slot_bytes > (uint64_t) ( end - s.at ) ) { return -1; }
+                if ( slot_bytes > static_cast<uint64_t>( end - s.at ) ) { return -1; }
                 // The keyed entry's framing adds nothing by itself (§4): what
                 // it frames is its element, and only a structural element is a
                 // level.
                 const int32_t elem_depth = depth + ( elem_kind == 13 || elem_kind == 14 || elem_kind == 16 ? 1 : 0 );
-                if ( TableRetainInFramed( s, elem_kind, (int64_t) slot_bytes, elem_depth ) < 0 ) { return -1; }
+                if ( TableRetainInFramed( s, elem_kind, static_cast<int64_t>( slot_bytes ), elem_depth ) < 0 ) { return -1; }
             }
             break;
         }
@@ -759,10 +759,10 @@ inline int64_t TableRetainInPayload( TableRetainIn & s, uint8_t kind, int32_t de
         {
             uint64_t length = 0;
             if ( !TableRetainInLebRead( s, length ) ) { return -1; }
-            if ( length > (uint64_t) ( s.size - s.at ) ) { return -1; }
+            if ( length > static_cast<uint64_t>( s.size - s.at ) ) { return -1; }
             TableRetainInLeb( s, length );
-            TableRetainInRaw( s, s.in + s.at, (int64_t) length );
-            s.at += (int64_t) length;
+            TableRetainInRaw( s, s.in + s.at, static_cast<int64_t>( length ) );
+            s.at += static_cast<int64_t>( length );
             break;
         }
         case 13:
@@ -771,8 +771,8 @@ inline int64_t TableRetainInPayload( TableRetainIn & s, uint8_t kind, int32_t de
         {
             uint64_t length = 0;
             if ( !TableRetainInLebRead( s, length ) ) { return -1; }
-            if ( length > (uint64_t) ( s.size - s.at ) ) { return -1; }
-            if ( TableRetainInFramed( s, kind, (int64_t) length, depth + 1 ) < 0 ) { return -1; }
+            if ( length > static_cast<uint64_t>( s.size - s.at ) ) { return -1; }
+            if ( TableRetainInFramed( s, kind, static_cast<int64_t>( length ), depth + 1 ) < 0 ) { return -1; }
             break;
         }
         case 15: // a UNION: the arm id reference, and when it is not zero its kind, L and payload
@@ -788,12 +788,12 @@ inline int64_t TableRetainInPayload( TableRetainIn & s, uint8_t kind, int32_t de
             TableRetainInRaw( s, &arm_kind, 1 );
             uint64_t length = 0;
             if ( !TableRetainInLebRead( s, length ) ) { return -1; }
-            if ( length > (uint64_t) ( s.size - s.at ) ) { return -1; }
+            if ( length > static_cast<uint64_t>( s.size - s.at ) ) { return -1; }
             // A UNION WHOSE ARM IS STRUCTURAL ADDS TWO LEVELS (§4): the union,
             // then the table, array or keyed body inside it. A union arm that is
             // another union adds one, and a scalar or None arm adds none.
             const int32_t arm_depth = depth + ( arm_kind == 15 ? 1 : ( arm_kind == 13 || arm_kind == 14 || arm_kind == 16 ? 2 : 0 ) );
-            if ( TableRetainInFramed( s, arm_kind, (int64_t) length, arm_depth ) < 0 ) { return -1; }
+            if ( TableRetainInFramed( s, arm_kind, static_cast<int64_t>( length ), arm_depth ) < 0 ) { return -1; }
             break;
         }
         case 30: // an ENUM's variant reference, zero for None
@@ -829,7 +829,7 @@ inline bool TableRetainCapture( TableRetain * retain, TableReader & r, const Tab
     {
         uint64_t raw = 0;
         for ( int64_t i = wire_bytes - 1; i >= 0; i-- ) { raw = ( raw << 8 ) | r.buffer[start + i]; }
-        if ( kind == 10 ? !TableBitsFinite32( (uint32_t) raw ) : !TableBitsFinite64( raw ) )
+        if ( kind == 10 ? !TableBitsFinite32( static_cast<uint32_t>( raw ) ) : !TableBitsFinite64( raw ) )
         {
             TableNonFiniteFloat( r.report );
             return true;
@@ -858,7 +858,7 @@ inline bool TableRetainCapture( TableRetain * retain, TableReader & r, const Tab
         return true;
     }
 
-    const int64_t need = kTableRetainRecordHeader + 8 * (int64_t) path.depth + payload;
+    const int64_t need = kTableRetainRecordHeader + 8 * static_cast<int64_t>( path.depth ) + payload;
     if ( need > 0xFFFFFFFFll || retain->used + need > retain->capacity )
     {
         // REFUSAL IS PER RECORD AND NEVER PARTIAL: the buffer never holds a
@@ -867,10 +867,10 @@ inline bool TableRetainCapture( TableRetain * retain, TableReader & r, const Tab
         return true;
     }
     uint8_t * record = retain->bytes + retain->used;
-    TableRetainWrite32( record, (uint32_t) need );
+    TableRetainWrite32( record, static_cast<uint32_t>( need ) );
     TableRetainWrite32( record + 4, path.node );
-    TableRetainWrite32( record + 8, (uint32_t) path.depth );
-    TableRetainWrite32( record + 12, (uint32_t) payload );
+    TableRetainWrite32( record + 8, static_cast<uint32_t>( path.depth ) );
+    TableRetainWrite32( record + 12, static_cast<uint32_t>( payload ) );
     TableRetainWrite64( record + 16, field_id );
     record[24] = kind;
     record[25] = 0;
@@ -884,7 +884,7 @@ inline bool TableRetainCapture( TableRetain * retain, TableReader & r, const Tab
     write.size = wire_bytes;
     write.at = 0;
     write.ids = r.ids;
-    write.out = record + kTableRetainRecordHeader + 8 * (int64_t) path.depth;
+    write.out = record + kTableRetainRecordHeader + 8 * static_cast<int64_t>( path.depth );
     write.out_at = 0;
     write.too_deep = false;
     if ( TableRetainInPayload( write, kind, 0 ) < 0 )
@@ -959,7 +959,7 @@ inline void TableRetainDiscard( TableRetain * retain, const TableRetainPath & pa
         const int64_t bytes = TableRetainRecordBytes( retain->bytes + read );
         if ( !TableRetainUnder( retain->bytes + read, path.at, *retain, path, field, ordinal ) )
         {
-            if ( write != read ) { memmove( retain->bytes + write, retain->bytes + read, (size_t) bytes ); }
+            if ( write != read ) { memmove( retain->bytes + write, retain->bytes + read, static_cast<size_t>( bytes ) ); }
             write += bytes;
             kept++;
         }
@@ -1063,7 +1063,7 @@ inline bool TableRetainOutFramed( TableRetainOut & s, uint8_t kind, int32_t dept
 {
     if ( s.at + kTableRetainSlotBytes > s.size ) { return false; }
     uint8_t * const slot = s.in + s.at;
-    const int64_t resolved = (int64_t) TableRetainRead32( slot );
+    const int64_t resolved = static_cast<int64_t>( TableRetainRead32( slot ) );
     s.at += kTableRetainSlotBytes;
     if ( s.w == NULL )
     {
@@ -1071,12 +1071,12 @@ inline bool TableRetainOutFramed( TableRetainOut & s, uint8_t kind, int32_t dept
         if ( !TableRetainOutContent( s, kind, resolved, depth ) ) { return false; }
         const int64_t wire = s.bytes - began;
         if ( wire > 0xFFFFFFFFll ) { return false; }
-        TableRetainWrite32( slot + 4, (uint32_t) wire );
-        s.bytes += TableLebBytes( (uint64_t) wire );
+        TableRetainWrite32( slot + 4, static_cast<uint32_t>( wire ) );
+        s.bytes += TableLebBytes( static_cast<uint64_t>( wire ) );
         return true;
     }
-    const int64_t wire = (int64_t) TableRetainRead32( slot + 4 );
-    TableRetainOutLeb( s, (uint64_t) wire );
+    const int64_t wire = static_cast<int64_t>( TableRetainRead32( slot + 4 ) );
+    TableRetainOutLeb( s, static_cast<uint64_t>( wire ) );
     const int64_t began = s.bytes;
     if ( !TableRetainOutContent( s, kind, resolved, depth ) ) { return false; }
     return s.bytes - began == wire;
@@ -1221,10 +1221,10 @@ inline bool TableRetainOutPayload( TableRetainOut & s, uint8_t kind, int32_t dep
         {
             uint64_t length = 0;
             if ( !TableRetainOutLebRead( s, length ) ) { return false; }
-            if ( length > (uint64_t) ( s.size - s.at ) ) { return false; }
+            if ( length > static_cast<uint64_t>( s.size - s.at ) ) { return false; }
             TableRetainOutLeb( s, length );
-            TableRetainOutRaw( s, s.in + s.at, (int64_t) length );
-            s.at += (int64_t) length;
+            TableRetainOutRaw( s, s.in + s.at, static_cast<int64_t>( length ) );
+            s.at += static_cast<int64_t>( length );
             break;
         }
         case 13:
@@ -1387,13 +1387,13 @@ template <typename Ctx, typename Measure>
 inline int64_t TableNodeTablePayloadRetain( const Ctx & ctx, TableRetainIds & ids, const TableNumbering & n,
     TableRetain * retain, Measure measure )
 {
-    int64_t payload = TableLebBytes( (uint64_t) n.count );
+    int64_t payload = TableLebBytes( static_cast<uint64_t>( n.count ) );
     for ( int64_t k = 0; k < n.count; k++ )
     {
         payload += TableLebBytes( ids.ref( n.entries[k].type_id ) );
         const int64_t body = measure( ctx, n, ids, n.entries[k].type_id, n.entries[k].node, retain );
         if ( body < 0 ) { return -1; }
-        payload += TableLebBytes( (uint64_t) body ) + body;
+        payload += TableLebBytes( static_cast<uint64_t>( body ) ) + body;
     }
     return payload;
 }
@@ -1406,7 +1406,7 @@ inline int64_t TableNodeTableMeasureRetain( const Ctx & ctx, TableRetainIds & id
     const uint64_t ref = ids.ref( kTableNodeTableFieldId );
     const int64_t payload = TableNodeTablePayloadRetain( ctx, ids, n, retain, measure );
     if ( payload < 0 ) { return -1; }
-    return TableLebBytes( ref ) + 1 + TableLebBytes( (uint64_t) payload ) + payload;
+    return TableLebBytes( ref ) + 1 + TableLebBytes( static_cast<uint64_t>( payload ) ) + payload;
 }
 
 template <typename Ctx, typename Measure, typename Save>
@@ -1418,14 +1418,14 @@ inline bool TableNodeTableSaveRetain( const Ctx & ctx, TableWriter & w, TableRet
     const int64_t payload = TableNodeTablePayloadRetain( ctx, ids, n, retain, measure );
     if ( payload < 0 ) { return false; }
     w.header( ref, 12 ); // kind 12 is the opaque byte payload, exactly as the plain save writes it
-    w.putleb( (uint64_t) payload );
-    w.putleb( (uint64_t) n.count );
+    w.putleb( static_cast<uint64_t>( payload ) );
+    w.putleb( static_cast<uint64_t>( n.count ) );
     for ( int64_t k = 0; k < n.count; k++ )
     {
         w.putleb( ids.ref( n.entries[k].type_id ) );
         const int64_t body = measure( ctx, n, ids, n.entries[k].type_id, n.entries[k].node, retain );
         if ( body < 0 ) { return false; }
-        w.putleb( (uint64_t) body );
+        w.putleb( static_cast<uint64_t>( body ) );
         if ( !save( ctx, n, w, ids, n.entries[k].type_id, n.entries[k].node, retain ) ) { return false; }
     }
     return true;
@@ -1507,13 +1507,13 @@ func (g *tableGen) emitRetainRoot(st *ir.Struct) {
 			g.pf("%s    switch ( type_id )\n%s    {\n", ind, ind)
 			for _, t := range reachable {
 				if g.isVar(t.Name) {
-					g.pf("%s        case 0x%016xull: return %sMeasureBodyRetain( c, nn, ii, *(const %s *) node, rt, at ); // %s\n", ind, ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
+					g.pf("%s        case 0x%016xull: return %sMeasureBodyRetain( c, nn, ii, *reinterpret_cast<const %s *>( node ), rt, at ); // %s\n", ind, ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
 					continue
 				}
-				g.pf("%s        case 0x%016xull: return %sMeasureBodyRetain( ii, *(const %s *) node, rt, at ); // %s\n", ind, ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
+				g.pf("%s        case 0x%016xull: return %sMeasureBodyRetain( ii, *reinterpret_cast<const %s *>( node ), rt, at ); // %s\n", ind, ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
 			}
 			for _, b := range blobs {
-				g.pf("%s        case %s: return (int64_t) ( (const TableBlob *) node )->length;\n", ind, b.constant)
+				g.pf("%s        case %s: return static_cast<int64_t>( ( reinterpret_cast<const TableBlob *>( node ) )->length );\n", ind, b.constant)
 			}
 			g.pf("%s        default: break;\n%s    }\n", ind, ind)
 		}
@@ -1529,15 +1529,15 @@ func (g *tableGen) emitRetainRoot(st *ir.Struct) {
 			g.pf("%s    switch ( type_id )\n%s    {\n", ind, ind)
 			for _, t := range reachable {
 				if g.isVar(t.Name) {
-					g.pf("%s        case 0x%016xull: return %sSaveBodyRetain( c, nn, ww, ii, *(const %s *) node, rt, at ); // %s\n", ind, ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
+					g.pf("%s        case 0x%016xull: return %sSaveBodyRetain( c, nn, ww, ii, *reinterpret_cast<const %s *>( node ), rt, at ); // %s\n", ind, ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
 					continue
 				}
-				g.pf("%s        case 0x%016xull: return %sSaveBodyRetain( ww, ii, *(const %s *) node, rt, at ); // %s\n", ind, ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
+				g.pf("%s        case 0x%016xull: return %sSaveBodyRetain( ww, ii, *reinterpret_cast<const %s *>( node ), rt, at ); // %s\n", ind, ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
 			}
 			for _, b := range blobs {
 				g.pf("%s        case %s:\n%s        {\n", ind, b.constant, ind)
-				g.pf("%s            const TableBlob * blob = (const TableBlob *) node;\n", ind)
-				g.pf("%s            ww.raw( (const void *) ( blob + 1 ), (int64_t) blob->length );\n%s            return true;\n%s        }\n", ind, ind, ind)
+				g.pf("%s            const TableBlob * blob = reinterpret_cast<const TableBlob *>( node );\n", ind)
+				g.pf("%s            ww.raw( reinterpret_cast<const void *>( blob + 1 ), static_cast<int64_t>( blob->length ) );\n%s            return true;\n%s        }\n", ind, ind, ind)
 			}
 			g.pf("%s        default: break;\n%s    }\n", ind, ind)
 		}
@@ -1561,7 +1561,7 @@ func (g *tableGen) emitRetainRoot(st *ir.Struct) {
 	g.pf("    if ( %sNumberFrom( ctx, numbering, root ) && !numbering.shared )\n    {\n", n)
 	g.pf("        TableRetainIds ids( retain );\n")
 	g.pf("        if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it\n")
-	g.pf("        bytes = %sMeasureBodyRetain( ctx, numbering, ids, root, retain, TableRetainPathRoot( (const void *) &root, 1 ) );\n", n)
+	g.pf("        bytes = %sMeasureBodyRetain( ctx, numbering, ids, root, retain, TableRetainPathRoot( reinterpret_cast<const void *>( &root ), 1 ) );\n", n)
 	g.pf("        if ( bytes >= 0 )\n        {\n")
 	g.pf("            const int64_t table = TableNodeTableMeasureRetain( ctx, ids, numbering, retain, retain_measure );\n")
 	// THE INTEGRITY TRAILER is counted only by a root that declares it
@@ -1598,7 +1598,7 @@ func (g *tableGen) emitRetainRoot(st *ir.Struct) {
 	g.pf("    // the root's own fields, then the RETAINED TAIL, then the node table's\n")
 	g.pf("    // field: a retained field is one of the root's own values, and the tail\n")
 	g.pf("    // is pinned before the large and damage-prone part (§6.6, §3.1)\n")
-	g.pf("    bool ok = %sSaveBodyFieldsRetain( ctx, numbering, w, ids, root, retain, TableRetainPathRoot( (const void *) &root, 1 ) ) &&\n", n)
+	g.pf("    bool ok = %sSaveBodyFieldsRetain( ctx, numbering, w, ids, root, retain, TableRetainPathRoot( reinterpret_cast<const void *>( &root ), 1 ) ) &&\n", n)
 	g.pf("        TableNodeTableSaveRetain( ctx, w, ids, numbering, retain, retain_measure, retain_save );\n")
 	g.pf("    TableNumberingShutdown( numbering );\n")
 	g.pf("    if ( !ok || ids.overflow ) { return -1; }\n")
@@ -1679,7 +1679,7 @@ func (g *tableGen) emitRetainRefusals(members []*ir.Struct) {
 		why := fmt.Sprintf("%s is a FIXED-class root (docs/SPEC-TABLES.md §6.1): it is a value with no region and no node directory, so retain-unknown has no anchor for a path's first step. LoadRetain, MeasureRetain and SaveRetain, and the message form's LoadRetainMessages and SaveRetainMessages beside them (§3.3), are refused by name on a fixed-class root (§6.6). Retention is a REGION round trip: load a variable-class root, or save without it.", st.Name)
 		for _, verb := range []string{"LoadRetain", "MeasureRetain", "SaveRetain", "LoadRetainMessages", "SaveRetainMessages"} {
 			g.pf("template <typename... Args>\ninline void %s%s( Args &&... )\n{\n", st.Name, verb)
-			g.pf("    static_assert( sizeof...( Args ) == (size_t) -1,\n        \"%s\" );\n}\n\n", why)
+			g.pf("    static_assert( sizeof...( Args ) == static_cast<size_t>( -1 ),\n        \"%s\" );\n}\n\n", why)
 		}
 	}
 	if !first {

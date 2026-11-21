@@ -209,11 +209,11 @@ struct TableBitWriter
                 bits += n * 8;
                 return;
             }
-            memcpy( buffer + ( bits >> 3 ), data, (size_t) n );
+            memcpy( buffer + ( bits >> 3 ), data, static_cast<size_t>( n ) );
             bits += n * 8;
             return;
         }
-        for ( int64_t i = 0; i < n; i++ ) { put( (uint64_t) data[i], 8 ); }
+        for ( int64_t i = 0; i < n; i++ ) { put( static_cast<uint64_t>( data[i] ), 8 ); }
     }
 
     // a string's or a bytes' payload ALIGNS before its bytes, and a batch
@@ -282,7 +282,7 @@ struct TableBitReader
         if ( n < 0 || !has( n * 8 ) ) { return false; }
         if ( ( offset & 7 ) == 0 )
         {
-            memcpy( out, buffer + ( offset >> 3 ), (size_t) n );
+            memcpy( out, buffer + ( offset >> 3 ), static_cast<size_t>( n ) );
             offset += n * 8;
             return true;
         }
@@ -290,7 +290,7 @@ struct TableBitReader
         {
             uint64_t by = 0;
             if ( !get( by, 8 ) ) { return false; }
-            out[i] = (uint8_t) by;
+            out[i] = static_cast<uint8_t>( by );
         }
         return true;
     }
@@ -318,7 +318,7 @@ struct TableBitReader
 inline int64_t TableBitsRequired( int64_t min, int64_t max )
 {
     if ( max <= min ) { return 0; }
-    uint64_t span = (uint64_t) ( max - min );
+    uint64_t span = static_cast<uint64_t>( max - min );
     int64_t n = 0;
     while ( span > 0 )
     {
@@ -410,9 +410,9 @@ inline bool TableMessageQuantization( float qmin, float qmax, float qres, float 
     if ( !( delta - delta == 0.0f ) || !( values - values == 0.0f ) ) { return false; } // Inf - Inf is NaN
     if ( !( values >= 1.0f ) ) { values = 1.0f; }
     else if ( values > 4294967040.0f ) { values = 4294967040.0f; } // the largest float below 2^32
-    count = (uint32_t) values;
-    if ( (float) count < values ) { count++; } // ceil, on a value the cast holds exactly
-    bits = TableBitsRequired( 0, (int64_t) count );
+    count = static_cast<uint32_t>( values );
+    if ( static_cast<float>( count ) < values ) { count++; } // ceil, on a value the cast holds exactly
+    bits = TableBitsRequired( 0, static_cast<int64_t>( count ) );
     return true;
 }
 
@@ -438,9 +438,9 @@ inline uint32_t TableMessageQuantize( float value, float qmin, float delta, uint
     float normalized = ( value - qmin ) / delta;
     if ( !( normalized >= 0.0f ) ) { normalized = 0.0f; }
     else if ( !( normalized <= 1.0f ) ) { normalized = 1.0f; }
-    float scaled = normalized * (float) count;
+    float scaled = normalized * static_cast<float>( count );
     TABLE_FLOAT_FORCE_ROUND( scaled );
-    uint32_t index = (uint32_t) ( scaled + 0.5f ); // floor of a non-negative value
+    uint32_t index = static_cast<uint32_t>( scaled + 0.5f ); // floor of a non-negative value
     if ( index > count ) { index = count; }
     return index;
 }
@@ -449,7 +449,7 @@ inline uint32_t TableMessageQuantize( float value, float qmin, float delta, uint
 inline float TableMessageDequantize( uint32_t index, float qmin, float delta, uint32_t count )
 {
     if ( index > count ) { index = count; }
-    const float normalized = (float) index / (float) count;
+    const float normalized = static_cast<float>( index ) / static_cast<float>( count );
     float scaled = normalized * delta;
     TABLE_FLOAT_FORCE_ROUND( scaled );
     return scaled + qmin;
@@ -529,7 +529,7 @@ inline bool TableMessageEntryRead( const uint8_t * in, int64_t size, int64_t & a
         min, max, elem_kind };
     if ( !TableMessageShapeRead( in, size, at, entry.kind, own ) ) { return false; }
     entry.packing = packing;
-    entry.value_bits = (int16_t) TableMessageValueBits( entry.kind, packing, bits );
+    entry.value_bits = static_cast<int16_t>( TableMessageValueBits( entry.kind, packing, bits ) );
     entry.base_lo = base_lo;
     entry.base_hi = base_hi;
     entry.qmin = qmin;
@@ -549,7 +549,7 @@ inline bool TableMessageEntryRead( const uint8_t * in, int64_t size, int64_t & a
             elem_min, elem_max, inner_kind };
         if ( !TableMessageShapeRead( in, size, at, entry.elem_kind, elem ) ) { return false; }
         entry.elem_packing = elem_packing;
-        entry.elem_value_bits = (int16_t) TableMessageValueBits( entry.elem_kind, elem_packing, elem_bits );
+        entry.elem_value_bits = static_cast<int16_t>( TableMessageValueBits( entry.elem_kind, elem_packing, elem_bits ) );
         entry.elem_base_lo = elem_base_lo;
         entry.elem_base_hi = elem_base_hi;
         entry.elem_qmin = elem_qmin;
@@ -577,16 +577,16 @@ inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & a
         if ( f.packing == 0 ) { return true; }
         if ( f.packing == 1 && kind != 10 )
         {
-            if ( !TableMessageLeb( in, size, at, v ) || v > (uint64_t) TableMessageKindBits( kind ) ) { return false; }
-            f.value_bits = (int64_t) v;
+            if ( !TableMessageLeb( in, size, at, v ) || v > static_cast<uint64_t>( TableMessageKindBits( kind ) ) ) { return false; }
+            f.value_bits = static_cast<int64_t>( v );
             if ( kind == 18 || kind == 19 || TableMessageFixedKind( kind ) )
             {
                 if ( at + 16 > size ) { return false; }
                 uint64_t lo = 0, hi = 0;
                 for ( int i = 0; i < 8; i++ ) { lo |= uint64_t( in[at + i] ) << ( 8 * i ); }
                 for ( int i = 0; i < 8; i++ ) { hi |= uint64_t( in[at + 8 + i] ) << ( 8 * i ); }
-                f.base_lo = (int64_t) lo;
-                f.base_hi = (int64_t) hi;
+                f.base_lo = static_cast<int64_t>( lo );
+                f.base_hi = static_cast<int64_t>( hi );
                 at += 16;
                 if ( kind >= 20 && kind <= 23 )
                 {
@@ -612,10 +612,10 @@ inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & a
                 return true;
             }
             if ( !TableMessageLeb( in, size, at, v ) ) { return false; }
-            if ( kind >= 2 && kind <= 5 ) { f.base_lo = (int64_t) ( v >> 1 ) ^ -(int64_t) ( v & 1 ); } // zigzag
+            if ( kind >= 2 && kind <= 5 ) { f.base_lo = static_cast<int64_t>( v >> 1 ) ^ -static_cast<int64_t>( v & 1 ); } // zigzag
             else
             {
-                f.base_lo = (int64_t) v;
+                f.base_lo = static_cast<int64_t>( v );
             }                                                       // the unsigned domain, whole
             if ( kind >= 2 && kind <= 4 )
             {
@@ -627,7 +627,7 @@ inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & a
             else if ( kind >= 6 && kind <= 8 )
             {
                 const int64_t w = TableMessageKindBits( kind );
-                if ( (uint64_t) f.base_lo > ( uint64_t( 1 ) << w ) - 1 ) { return false; }
+                if ( static_cast<uint64_t>( f.base_lo ) > ( uint64_t( 1 ) << w ) - 1 ) { return false; }
             }
             return true;
         }
@@ -656,8 +656,8 @@ inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & a
     // length arithmetic in a range that overflows.
     if ( kind == 12 )
     {
-        if ( !TableMessageLeb( in, size, at, v ) || v > (uint64_t) INT32_MAX ) { return false; }
-        f.max = (int64_t) v;
+        if ( !TableMessageLeb( in, size, at, v ) || v > static_cast<uint64_t>( INT32_MAX ) ) { return false; }
+        f.max = static_cast<int64_t>( v );
         return true;
     }
     if ( kind == 14 || kind == 16 )
@@ -665,11 +665,11 @@ inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & a
         if ( kind == 14 )
         {
             if ( !TableMessageLeb( in, size, at, v ) || v > kTableMessageListMax ) { return false; }
-            f.min = (int64_t) v;
+            f.min = static_cast<int64_t>( v );
         }
         if ( !TableMessageLeb( in, size, at, v ) || v > kTableMessageListMax ) { return false; }
-        if ( (int64_t) v < f.min ) { return false; }
-        f.max = (int64_t) v;
+        if ( static_cast<int64_t>( v ) < f.min ) { return false; }
+        f.max = static_cast<int64_t>( v );
         if ( at >= size ) { return false; }
         f.elem_kind = in[at++];
         if ( !TableMessageKnownKind( f.elem_kind ) ) { return false; }
@@ -845,7 +845,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
         TableReport probe_rep;
         TableReader vr( buffer + 1, body_bytes, &probe_rep, &table );
         uint64_t vref = 0;
-        while ( vr.getleb( vref ) && vref != 0 && vref <= (uint64_t) table.count && vr.has( 1 ) )
+        while ( vr.getleb( vref ) && vref != 0 && vref <= static_cast<uint64_t>( table.count ) && vr.has( 1 ) )
         {
             const uint64_t vid = table.at( vref );
             const uint8_t vkind = vr.get8();
@@ -871,7 +871,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
         {
             return TableStrictFailed( strict_ann, to );
         }
-        if ( !strict_ann.node_table_present && strict_ann.next_ref - 1 != (uint64_t) table.count )
+        if ( !strict_ann.node_table_present && strict_ann.next_ref - 1 != static_cast<uint64_t>( table.count ) )
         {
             to->damaged = true;
             return false;
@@ -891,7 +891,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
             return false;
         }
         if ( ref == 0 ) { break; }
-        if ( ref > (uint64_t) table.count || !r.has( 1 ) )
+        if ( ref > static_cast<uint64_t>( table.count ) || !r.has( 1 ) )
         {
             to->damaged = true;
             return false;
@@ -918,12 +918,12 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
             // kind 14 over element kind 6, which is §3's spelling for an
             // opaque run of bytes
             uint64_t framed = 0;
-            if ( kind != 14 || !r.getleb( framed ) || !r.has( (int64_t) framed ) )
+            if ( kind != 14 || !r.getleb( framed ) || !r.has( static_cast<int64_t>( framed ) ) )
             {
                 to->damaged = true;
                 return false;
             }
-            const int64_t begin = r.offset, end = r.offset + (int64_t) framed;
+            const int64_t begin = r.offset, end = r.offset + static_cast<int64_t>( framed );
             r.offset = end;
             if ( begin >= end || r.buffer[begin] != 6 )
             {
@@ -932,19 +932,19 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
             }
             int64_t at = begin + 1;
             uint64_t length = 0;
-            if ( !TableMessageLeb( r.buffer, end, at, length ) || at + (int64_t) length != end )
+            if ( !TableMessageLeb( r.buffer, end, at, length ) || at + static_cast<int64_t>( length ) != end )
             {
                 to->damaged = true;
                 return false;
             }
-            if ( (int64_t) length > vocabulary.max_bytes )
+            if ( static_cast<int64_t>( length ) > vocabulary.max_bytes )
             {
                 to->refused = true;
                 to->reason = vocabulary_too_large;
                 return false;
             }
             words = r.buffer + at;
-            words_bytes = (int64_t) length;
+            words_bytes = static_cast<int64_t>( length );
             seen_vocabulary++;
             continue;
         }
@@ -1019,7 +1019,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
         for ( int64_t seen = 0; seen < count; seen++ )
         {
             const TableMessageEntry & other = vocabulary.entries[seen];
-            if ( other.max - other.min == length && memcmp( words + other.min, words + began, (size_t) length ) == 0 )
+            if ( other.max - other.min == length && memcmp( words + other.min, words + began, static_cast<size_t>( length ) ) == 0 )
             {
                 to->damaged = true;
                 return false;
@@ -1067,7 +1067,7 @@ inline bool TableMessageReserved( uint64_t id )
 // the position it was used in, so the next bit's meaning is what is in doubt.
 inline bool TableMessageNameEntry( const TableVocabulary & vocabulary, uint64_t ref, TableMessageEntry & entry )
 {
-    if ( ref == 0 || ref > (uint64_t) vocabulary.count ) { return false; }
+    if ( ref == 0 || ref > static_cast<uint64_t>( vocabulary.count ) ) { return false; }
     entry = TableVocabularyEntryAt( vocabulary, ref );
     return !TableMessageReserved( entry.id ) && entry.kind == 0;
 }
@@ -1077,7 +1077,7 @@ inline bool TableMessageNameEntry( const TableVocabulary & vocabulary, uint64_t 
 // and a reserved id belongs to no arm (§3.3).
 inline bool TableMessageArmEntry( const TableVocabulary & vocabulary, uint64_t ref, TableMessageEntry & entry )
 {
-    if ( ref == 0 || ref > (uint64_t) vocabulary.count ) { return false; }
+    if ( ref == 0 || ref > static_cast<uint64_t>( vocabulary.count ) ) { return false; }
     entry = TableVocabularyEntryAt( vocabulary, ref );
     return !TableMessageReserved( entry.id ) && entry.kind != 0;
 }
@@ -1172,8 +1172,8 @@ inline bool TableMessageSkipRanged( TableBitReader & r, uint8_t kind, int64_t wi
         // the room above the base is top minus base, exact at 128 bits
         // because no base lies above the top of its own domain
         const uint64_t top_hi = is_signed ? uint64_t( INT64_MAX ) : UINT64_MAX;
-        const uint64_t room_lo = UINT64_MAX - (uint64_t) base_lo;
-        const uint64_t room_hi = top_hi - (uint64_t) base_hi;
+        const uint64_t room_lo = UINT64_MAX - static_cast<uint64_t>( base_lo );
+        const uint64_t room_hi = top_hi - static_cast<uint64_t>( base_hi );
         return hi < room_hi || ( hi == room_hi && lo <= room_lo );
     }
     // AT SIXTY-FOUR BITS OR FEWER the offset is one word and so is the base,
@@ -1181,13 +1181,13 @@ inline bool TableMessageSkipRanged( TableBitReader & r, uint8_t kind, int64_t wi
     if ( !is_signed )
     {
         const uint64_t top = domain == 64 ? UINT64_MAX : ( uint64_t( 1 ) << domain ) - 1;
-        const uint64_t base = (uint64_t) base_lo;
+        const uint64_t base = static_cast<uint64_t>( base_lo );
         return base <= top && lo <= top - base;
     }
-    const int64_t top = domain == 64 ? INT64_MAX : (int64_t) ( ( uint64_t( 1 ) << ( domain - 1 ) ) - 1 );
+    const int64_t top = domain == 64 ? INT64_MAX : static_cast<int64_t>( ( uint64_t( 1 ) << ( domain - 1 ) ) - 1 );
     const int64_t bottom = -top - 1;
-    if ( base_lo > top || lo > (uint64_t) top - (uint64_t) base_lo ) { return false; }
-    return base_lo >= bottom || lo >= (uint64_t) bottom - (uint64_t) base_lo;
+    if ( base_lo > top || lo > static_cast<uint64_t>( top ) - static_cast<uint64_t>( base_lo ) ) { return false; }
+    return base_lo >= bottom || lo >= static_cast<uint64_t>( bottom ) - static_cast<uint64_t>( base_lo );
 }
 
 // THE SKIP PATH'S SEEN SET is a fixed bitmap over an id's FIRST vocabulary
@@ -1208,7 +1208,7 @@ inline bool TableMessageSeenOnce( uint64_t * seen, const TableVocabulary & vocab
     {
         if ( TableVocabularyEntryAt( vocabulary, i ).id == id ) { slot = i; break; }
     }
-    if ( slot >= (uint64_t) kTableMessageSeenBits ) { return false; }
+    if ( slot >= static_cast<uint64_t>( kTableMessageSeenBits ) ) { return false; }
     const uint64_t bit = uint64_t( 1 ) << ( slot & 63 );
     if ( ( seen[slot >> 6] & bit ) != 0 ) { return false; }
     seen[slot >> 6] |= bit;
@@ -1255,8 +1255,8 @@ inline bool TableMessageSkipRun( TableBitReader & r, uint64_t n, int64_t width )
 {
     if ( width < 0 ) { return false; }
     if ( width == 0 ) { return true; }
-    if ( n > (uint64_t) ( INT64_MAX / width ) ) { return false; }
-    return r.skip( (int64_t) ( n * (uint64_t) width ) );
+    if ( n > static_cast<uint64_t>( INT64_MAX / width ) ) { return false; }
+    return r.skip( static_cast<int64_t>( n * static_cast<uint64_t>( width ) ) );
 }
 
 inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry, int depth )
@@ -1282,10 +1282,10 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
         {
             uint64_t n = 0;
             if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() ) { return false; }
-            if ( n > (uint64_t) ( ( r.bits - r.offset ) / 8 ) ) { return false; }
+            if ( n > static_cast<uint64_t>( ( r.bits - r.offset ) / 8 ) ) { return false; }
             const uint8_t * text = r.buffer + ( r.offset >> 3 );
             if ( !TableUtf8Valid( text, n ) ) { return false; }
-            return r.skip( (int64_t) n * 8 );
+            return r.skip( static_cast<int64_t>( n ) * 8 );
         }
         case 31:
         {
@@ -1293,7 +1293,7 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
             // the one path a later-major writer has on this form (§3.3)
             uint64_t n = 0;
             if ( !r.align() || !r.get( n, 32 ) ) { return false; }
-            return r.skip( (int64_t) n * 8 );
+            return r.skip( static_cast<int64_t>( n ) * 8 );
         }
         case 10:
         {
@@ -1301,12 +1301,12 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
             {
                 uint64_t index = 0;
                 if ( !r.get( index, entry.value_bits ) ) { return false; }
-                if ( index > (uint64_t) entry.qcount ) { return false; } // above the step count
+                if ( index > static_cast<uint64_t>( entry.qcount ) ) { return false; } // above the step count
                 return true;
             }
             uint64_t raw = 0;
             if ( !r.get( raw, 32 ) ) { return false; }
-            return TableBitsFinite32( (uint32_t) raw );
+            return TableBitsFinite32( static_cast<uint32_t>( raw ) );
         }
         case 11:
         {
@@ -1317,16 +1317,16 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
         case 14:
         case 16:
         {
-            uint64_t n = (uint64_t) entry.min;
+            uint64_t n = static_cast<uint64_t>( entry.min );
             const int64_t width = entry.kind == 16 ? TableBitsRequired( 0, entry.max ) : TableBitsRequired( entry.min, entry.max );
             if ( entry.kind == 16 ) { n = 0; }
             if ( width > 0 )
             {
                 uint64_t raw = 0;
                 if ( !r.get( raw, width ) ) { return false; }
-                n = entry.kind == 16 ? raw : raw + (uint64_t) entry.min;
+                n = entry.kind == 16 ? raw : raw + static_cast<uint64_t>( entry.min );
             }
-            if ( n > (uint64_t) entry.max ) { return false; } // a count above its announced maximum
+            if ( n > static_cast<uint64_t>( entry.max ) ) { return false; } // a count above its announced maximum
             if ( entry.kind == 14 && entry.elem_kind == 6 && !r.align() ) { return false; }
             // A RUN OF FIXED-WIDTH ELEMENTS IS ONE MULTIPLICATION (§3.3), and
             // only an element whose width is its own content's is walked
@@ -1370,7 +1370,7 @@ inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vo
         uint64_t ref = 0;
         if ( !r.get( ref, vocabulary.ref_bits ) ) { return false; }
         if ( ref == 0 ) { return true; }
-        if ( ref > (uint64_t) vocabulary.count ) { return false; }
+        if ( ref > static_cast<uint64_t>( vocabulary.count ) ) { return false; }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         if ( TableMessageReserved( entry.id ) ) { return false; }
         if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) ) { return false; } // one id twice
@@ -1394,7 +1394,7 @@ inline int64_t AnnounceMeasure() { return kTableAnnounceBytes; }
 inline int64_t Announce( uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < kTableAnnounceBytes ) { return -1; }
-    memcpy( buffer, kTableAnnounce, (size_t) kTableAnnounceBytes );
+    memcpy( buffer, kTableAnnounce, static_cast<size_t>( kTableAnnounceBytes ) );
     return kTableAnnounceBytes;
 }
 
@@ -1419,7 +1419,7 @@ inline bool TableMessageBatchBegin( TableMessageBatch & batch, uint8_t * buffer,
     batch.w = TableBitWriter( buffer + 1, capacity - 1 );
     batch.declared = bodies;
     batch.written = 0;
-    batch.w.put( (uint64_t) ( bodies - 1 ), 8 ); // a ranged integer over [1, 256]
+    batch.w.put( static_cast<uint64_t>( bodies - 1 ), 8 ); // a ranged integer over [1, 256]
     return true;
 }
 
@@ -1488,7 +1488,7 @@ inline int64_t TableMessageBatchOpen( TableMessageBatchReader & br, const TableV
         br.report->damaged = true;
         return -1;
     }
-    br.remaining = (int64_t) count + 1;
+    br.remaining = static_cast<int64_t>( count ) + 1;
     return br.remaining;
 }
 

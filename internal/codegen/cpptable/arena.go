@@ -45,14 +45,14 @@ const cppBlobThunks = `
 template <typename Ctx>
 inline int64_t TableBlobMeasureThunk( const void *, const TableNumbering &, TableIds &, const void * node )
 {
-    return (int64_t) ( (const TableBlob *) node )->length;
+    return static_cast<int64_t>( ( reinterpret_cast<const TableBlob *>( node ) )->length );
 }
 
 template <typename Ctx>
 inline bool TableBlobSaveThunk( const void *, const TableNumbering &, TableWriter & w, TableIds &, const void * node )
 {
-    const TableBlob * blob = (const TableBlob *) node;
-    w.raw( (const void *) ( blob + 1 ), (int64_t) blob->length );
+    const TableBlob * blob = reinterpret_cast<const TableBlob *>( node );
+    w.raw( reinterpret_cast<const void *>( blob + 1 ), static_cast<int64_t>( blob->length ) );
     return true;
 }
 `
@@ -90,9 +90,9 @@ func tableArenaRuntime(u *ir.Unit, anyExtent bool) string {
     {
         at = 0;
         if ( arena == NULL || arena->locked ) { return NULL; }
-        if ( bytes <= 0 || align > (int64_t) kTableAlign ) { return NULL; }
+        if ( bytes <= 0 || align > static_cast<int64_t>( kTableAlign ) ) { return NULL; }
         const int64_t rounded = TableAlignUp64( bytes );
-        if ( rounded > (int64_t) kTableSlabBytes )
+        if ( rounded > static_cast<int64_t>( kTableSlabBytes ) )
         {
             at = TableArenaGrabSpan( *arena, rounded );
             if ( at == kTableAllocFailed )
@@ -102,7 +102,7 @@ func tableArenaRuntime(u *ir.Unit, anyExtent bool) string {
             }
             return TableArenaAt( *arena, at );
         }
-        if ( end == 0 || next + (uint32_t) rounded > end )
+        if ( end == 0 || next + static_cast<uint32_t>( rounded ) > end )
         {
             uint32_t offset = TableArenaGrabSlab( *arena );
             if ( offset == kTableAllocFailed ) { return NULL; }
@@ -111,7 +111,7 @@ func tableArenaRuntime(u *ir.Unit, anyExtent bool) string {
             if ( next == 0 ) { next = kTableAlign; } // offset 0 is null: the arena's head stays reserved
         }
         at = next;
-        next += (uint32_t) rounded;
+        next += static_cast<uint32_t>( rounded );
         return TableArenaAt( *arena, at ); // the segment came back zeroed
     }
 `
@@ -396,7 +396,7 @@ inline uint32_t TableArenaGrabSlab( TableArena & arena )
                 // at the segment or not at all. It costs nothing measurable: a
                 // fresh segment is untouched pages either way, and the default
                 // pair's calloc has the kernel hand them over zeroed.
-                uint8_t * memory = (uint8_t *) table_allocate( arena.allocator, (int64_t) kTableSegmentSize );
+                uint8_t * memory = reinterpret_cast<uint8_t *>( table_allocate( arena.allocator, static_cast<int64_t>( kTableSegmentSize ) ) );
                 if ( memory == NULL ) { return kTableAllocFailed; }
                 uint8_t * expected = NULL;
                 if ( !arena.segments[segment].compare_exchange_strong( expected, memory, std::memory_order_acq_rel ) )
@@ -430,8 +430,8 @@ inline uint32_t TableArenaGrabSlab( TableArena & arena )
 // exhausted — a loud refusal, never a smaller blob.
 inline uint32_t TableArenaGrabSpan( TableArena & arena, int64_t bytes )
 {
-    if ( bytes <= 0 || bytes > ( (int64_t) kTableMaxSegments - 2 ) * (int64_t) kTableSegmentSize ) { return kTableAllocFailed; }
-    const uint32_t spanned = (uint32_t) ( ( bytes + kTableSegmentSize - 1 ) >> kTableSegmentBits );
+    if ( bytes <= 0 || bytes > ( static_cast<int64_t>( kTableMaxSegments ) - 2 ) * static_cast<int64_t>( kTableSegmentSize ) ) { return kTableAllocFailed; }
+    const uint32_t spanned = static_cast<uint32_t>( ( bytes + kTableSegmentSize - 1 ) >> kTableSegmentBits );
     for ( ;; )
     {
         uint32_t cursor = arena.cursor.load( std::memory_order_acquire );
@@ -443,7 +443,7 @@ inline uint32_t TableArenaGrabSpan( TableArena & arena, int64_t bytes )
         // first index, so a plain store suffices, and the block comes back
         // ZEROED like every segment — the blob's bytes and its tail are zeros
         // until written
-        uint8_t * memory = (uint8_t *) table_allocate( arena.allocator, bytes );
+        uint8_t * memory = reinterpret_cast<uint8_t *>( table_allocate( arena.allocator, bytes ) );
         if ( memory == NULL ) { return kTableAllocFailed; }
         arena.segments[start].store( memory, std::memory_order_release );
         return start << kTableSegmentBits;
@@ -471,7 +471,7 @@ struct TableWorker
         static_assert( alignof( T ) <= kTableAlign, "a table node's alignment must fit the arena's" );
         TableSlot<T> slot;
         if ( arena == NULL || arena->locked ) { return slot; }
-        uint32_t bytes = TableAlignUp( (uint32_t) sizeof( T ) );
+        uint32_t bytes = TableAlignUp( static_cast<uint32_t>( sizeof( T ) ) );
         if ( bytes > kTableSlabBytes ) { return slot; } // a node larger than a slab: refused, never split
         if ( end == 0 || next + bytes > end )
         {
@@ -523,7 +523,7 @@ struct TableWorker
         if ( arena == NULL || arena->locked ) { return NULL; }
         if ( length < 0 || length > kTableBlobMaxLength ) { return NULL; }
         const int64_t bytes = TableBlobStorage( length, terminated );
-        if ( bytes > (int64_t) kTableSlabBytes )
+        if ( bytes > static_cast<int64_t>( kTableSlabBytes ) )
         {
             at = TableArenaGrabSpan( *arena, bytes );
             if ( at == kTableAllocFailed )
@@ -534,7 +534,7 @@ struct TableWorker
         }
         else
         {
-            if ( end == 0 || next + (uint32_t) bytes > end )
+            if ( end == 0 || next + static_cast<uint32_t>( bytes ) > end )
             {
                 uint32_t offset = TableArenaGrabSlab( *arena );
                 if ( offset == kTableAllocFailed ) { return NULL; }
@@ -543,10 +543,10 @@ struct TableWorker
                 if ( next == 0 ) { next = kTableAlign; } // offset 0 is null: the arena's head stays reserved
             }
             at = next;
-            next += (uint32_t) bytes;
+            next += static_cast<uint32_t>( bytes );
         }
-        TableBlob * blob = (TableBlob *) TableArenaAt( *arena, at );
-        blob->length = (uint32_t) length; // the bytes after it are the segment's zeros
+        TableBlob * blob = reinterpret_cast<TableBlob *>( TableArenaAt( *arena, at ) );
+        blob->length = static_cast<uint32_t>( length ); // the bytes after it are the segment's zeros
         blob->zero = 0;
         return blob;
     }
@@ -558,7 +558,7 @@ struct TableWorker
         uint32_t at = 0;
         TableBlob * blob = AllocBlob( length, false, at );
         if ( blob == NULL ) { return slot; }
-        slot.data = (uint8_t *) ( blob + 1 );
+        slot.data = reinterpret_cast<uint8_t *>( blob + 1 );
         slot.length = length;
         slot.ref.value = at;
         return slot;
@@ -571,7 +571,7 @@ struct TableWorker
         uint32_t at = 0;
         TableBlob * blob = AllocBlob( length, true, at );
         if ( blob == NULL ) { return slot; }
-        slot.data = (char *) ( blob + 1 );
+        slot.data = reinterpret_cast<char *>( blob + 1 );
         slot.length = length;
         slot.ref.value = at;
         return slot;
@@ -628,7 +628,7 @@ inline void TablePackMapShutdown( TablePackMap & map )
 // an empty map and keeps the capacity the first paid for.
 inline void TablePackMapReset( TablePackMap & map )
 {
-    if ( map.entries != NULL ) { memset( map.entries, 0, (size_t) map.capacity * sizeof( TablePackEntry ) ); }
+    if ( map.entries != NULL ) { memset( map.entries, 0, static_cast<size_t>( map.capacity ) * sizeof( TablePackEntry ) ); }
     map.count = 0;
 }
 
@@ -637,11 +637,11 @@ inline void TablePackMapReset( TablePackMap & map )
 // would collide on every node of one type
 inline int64_t TablePackMapSlot( const TablePackMap & map, const void * key )
 {
-    uint64_t hash = (uint64_t) (uintptr_t) key;
+    uint64_t hash = static_cast<uint64_t>( static_cast<uintptr_t>( key ) );
     hash *= 0x9E3779B97F4A7C15ull;
     hash ^= hash >> 29;
     int64_t mask = map.capacity - 1;
-    int64_t at = (int64_t) ( hash & (uint64_t) mask );
+    int64_t at = static_cast<int64_t>( hash & static_cast<uint64_t>( mask ) );
     while ( map.entries[at].key != NULL && map.entries[at].key != key )
     {
         at = ( at + 1 ) & mask;
@@ -666,7 +666,7 @@ inline bool TablePackMapGrow( TablePackMap & map )
     TablePackMap grown;
     grown.allocator = map.allocator;
     grown.capacity = map.capacity != 0 ? map.capacity * 4 : 1024;
-    grown.entries = (TablePackEntry *) table_allocate( map.allocator, grown.capacity * (int64_t) sizeof( TablePackEntry ) );
+    grown.entries = reinterpret_cast<TablePackEntry *>( table_allocate( map.allocator, grown.capacity * static_cast<int64_t>( sizeof( TablePackEntry ) ) ) );
     if ( grown.entries == NULL ) { return false; }
     for ( int64_t i = 0; i < map.capacity; i++ )
     {
@@ -746,16 +746,16 @@ struct TableRegionCtx
 // terminator is really there. The same holds for every node's At.
 inline const TableBlob * TableBlobAt( const TableRef & ref )
 {
-    return ref.value != 0 ? (const TableBlob *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
+    return ref.value != 0 ? reinterpret_cast<const TableBlob *>( static_cast<uintptr_t>( &ref ) + static_cast<uintptr_t>( ref.value ) ) : NULL;
 }
 inline const TableBlob * TableBlobAt( const TableRegionCtx &, const TableRef & ref ) { return TableBlobAt( ref ); }
 inline const TableBlob * TableBlobAt( const TableArenaCtx & ctx, const TableRef & ref )
 {
-    return ref.value != 0 ? (const TableBlob *) TableArenaAt( *ctx.arena, (uint32_t) ref.value ) : NULL;
+    return ref.value != 0 ? reinterpret_cast<const TableBlob *>( TableArenaAt( *ctx.arena, static_cast<uint32_t>( ref.value ) ) ) : NULL;
 }
 inline const TableBlob * TableBlobAt( const TableArena & arena, const TableRef & ref )
 {
-    return ref.value != 0 ? (const TableBlob *) TableArenaAt( arena, (uint32_t) ref.value ) : NULL;
+    return ref.value != 0 ? reinterpret_cast<const TableBlob *>( TableArenaAt( arena, static_cast<uint32_t>( ref.value ) ) ) : NULL;
 }
 
 inline TableBytesView TableBytesViewOf( const TableBlob * blob )
@@ -763,8 +763,8 @@ inline TableBytesView TableBytesViewOf( const TableBlob * blob )
     TableBytesView view = { NULL, 0 };
     if ( blob != NULL )
     {
-        view.data = (const uint8_t *) ( blob + 1 );
-        view.length = (int64_t) blob->length;
+        view.data = reinterpret_cast<const uint8_t *>( blob + 1 );
+        view.length = static_cast<int64_t>( blob->length );
     }
     return view;
 }
@@ -773,8 +773,8 @@ inline TableStringView TableStringViewOf( const TableBlob * blob )
     TableStringView view = { NULL, 0 };
     if ( blob != NULL )
     {
-        view.data = (const char *) ( blob + 1 );
-        view.length = (int64_t) blob->length;
+        view.data = reinterpret_cast<const char *>( blob + 1 );
+        view.length = static_cast<int64_t>( blob->length );
     }
     return view;
 }
@@ -803,7 +803,7 @@ inline char * TableStringEmplace( TableWorker & worker, TableRef & slot, const c
 {
     TableStringSlot allocated = worker.AllocString( length );
     slot = allocated.ref;
-    if ( allocated.data != NULL && text != NULL && length > 0 ) { memcpy( allocated.data, text, (size_t) length ); }
+    if ( allocated.data != NULL && text != NULL && length > 0 ) { memcpy( allocated.data, text, static_cast<size_t>( length ) ); }
     return allocated.data;
 }
 
@@ -915,7 +915,7 @@ inline bool TableNumberingIndex( const TableNumbering & n, const void * node, ui
     if ( n.seen.capacity == 0 ) { return false; }
     const TablePackEntry & entry = n.seen.entries[TablePackMapSlot( n.seen, node )];
     if ( entry.key != node ) { return false; }
-    index = (uint64_t) entry.offset;
+    index = static_cast<uint64_t>( entry.offset );
     return true;
 }
 
@@ -929,11 +929,11 @@ inline bool TableNumberingAppend( TableNumbering & n, const TableNodeEntry & ent
         // entry and the growth is the same growth it always was.
         int64_t capacity = n.capacity != 0 ? n.capacity * 4 : 256;
         TableAllocator allocator = n.seen.allocator;
-        TableNodeEntry * grown = (TableNodeEntry *) table_allocate( allocator, capacity * (int64_t) sizeof( TableNodeEntry ) );
+        TableNodeEntry * grown = reinterpret_cast<TableNodeEntry *>( table_allocate( allocator, capacity * static_cast<int64_t>( sizeof( TableNodeEntry ) ) ) );
         if ( grown == NULL ) { return false; }
         if ( n.entries != NULL )
         {
-            memcpy( grown, n.entries, (size_t) n.count * sizeof( TableNodeEntry ) );
+            memcpy( grown, n.entries, static_cast<size_t>( n.count ) * sizeof( TableNodeEntry ) );
             table_release( allocator, n.entries );
         }
         n.entries = grown;
@@ -952,11 +952,11 @@ inline bool TableNumberingWorkPush( TableNumbering & n, const TableNodeEntry & e
     {
         int64_t capacity = n.work_capacity != 0 ? n.work_capacity * 4 : 256;
         TableAllocator allocator = n.seen.allocator;
-        TableNodeEntry * grown = (TableNodeEntry *) table_allocate( allocator, capacity * (int64_t) sizeof( TableNodeEntry ) );
+        TableNodeEntry * grown = reinterpret_cast<TableNodeEntry *>( table_allocate( allocator, capacity * static_cast<int64_t>( sizeof( TableNodeEntry ) ) ) );
         if ( grown == NULL ) { return false; }
         if ( n.work != NULL )
         {
-            memcpy( grown, n.work, (size_t) n.work_count * sizeof( TableNodeEntry ) );
+            memcpy( grown, n.work, static_cast<size_t>( n.work_count ) * sizeof( TableNodeEntry ) );
             table_release( allocator, n.work );
         }
         n.work = grown;
@@ -974,13 +974,13 @@ inline bool TableNumberingWorkPush( TableNumbering & n, const TableNodeEntry & e
 template <typename Ctx, typename T>
 inline int64_t TableNodeMeasureThunk( const void * ctx, const TableNumbering & numbering, TableIds & ids, const void * node )
 {
-    return TableNodeMeasure( *(const Ctx *) ctx, numbering, ids, *(const T *) node );
+    return TableNodeMeasure( *reinterpret_cast<const Ctx *>( ctx ), numbering, ids, *reinterpret_cast<const T *>( node ) );
 }
 
 template <typename Ctx, typename T>
 inline bool TableNodeSaveThunk( const void * ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const void * node )
 {
-    return TableNodeSave( *(const Ctx *) ctx, numbering, w, ids, *(const T *) node );
+    return TableNodeSave( *reinterpret_cast<const Ctx *>( ctx ), numbering, w, ids, *reinterpret_cast<const T *>( node ) );
 }
 // ---- a BYTE BUFFER's record (docs/SPEC-TABLES.md §2.5, §3.1) ----
 //
@@ -1004,13 +1004,13 @@ static const uint64_t kTableStringTypeId = ` + fmt.Sprintf("0x%016xull", ir.Stri
 template <typename Ctx>
 inline int64_t TableNodeTablePayload( const Ctx & ctx, TableIds & ids, const TableNumbering & n )
 {
-    int64_t payload = TableLebBytes( (uint64_t) n.count );
+    int64_t payload = TableLebBytes( static_cast<uint64_t>( n.count ) );
     for ( int64_t k = 0; k < n.count; k++ )
     {
         payload += TableLebBytes( ids.ref( n.entries[k].type_id ) );
-        const int64_t body = n.entries[k].measure( (const void *) &ctx, n, ids, n.entries[k].node );
+        const int64_t body = n.entries[k].measure( reinterpret_cast<const void *>( &ctx ), n, ids, n.entries[k].node );
         if ( body < 0 ) { return -1; }
-        payload += TableLebBytes( (uint64_t) body ) + body;
+        payload += TableLebBytes( static_cast<uint64_t>( body ) ) + body;
     }
     return payload;
 }
@@ -1022,7 +1022,7 @@ inline int64_t TableNodeTableMeasure( const Ctx & ctx, TableIds & ids, const Tab
     const uint64_t ref = ids.ref( kTableNodeTableFieldId );
     const int64_t payload = TableNodeTablePayload( ctx, ids, n );
     if ( payload < 0 ) { return -1; }
-    return TableLebBytes( ref ) + 1 + TableLebBytes( (uint64_t) payload ) + payload;
+    return TableLebBytes( ref ) + 1 + TableLebBytes( static_cast<uint64_t>( payload ) ) + payload;
 }
 
 template <typename Ctx>
@@ -1033,15 +1033,15 @@ inline bool TableNodeTableSave( const Ctx & ctx, TableWriter & w, TableIds & ids
     const int64_t payload = TableNodeTablePayload( ctx, ids, n );
     if ( payload < 0 ) { return false; }
     w.header( ref, 12 ); // kind 12 is the opaque byte payload: a reader that cannot name the id skips by L
-    w.putleb( (uint64_t) payload );
-    w.putleb( (uint64_t) n.count );
+    w.putleb( static_cast<uint64_t>( payload ) );
+    w.putleb( static_cast<uint64_t>( n.count ) );
     for ( int64_t k = 0; k < n.count; k++ )
     {
         w.putleb( ids.ref( n.entries[k].type_id ) );
-        const int64_t body = n.entries[k].measure( (const void *) &ctx, n, ids, n.entries[k].node );
+        const int64_t body = n.entries[k].measure( reinterpret_cast<const void *>( &ctx ), n, ids, n.entries[k].node );
         if ( body < 0 ) { return false; }
-        w.putleb( (uint64_t) body );
-        if ( !n.entries[k].save( (const void *) &ctx, n, w, ids, n.entries[k].node ) ) { return false; }
+        w.putleb( static_cast<uint64_t>( body ) );
+        if ( !n.entries[k].save( reinterpret_cast<const void *>( &ctx ), n, w, ids, n.entries[k].node ) ) { return false; }
     }
     return true;
 }
@@ -1107,7 +1107,7 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
 {
     slot.value = 0;
     if ( index == kTableNodeIndexNull || !map.good ) { return; }
-    if ( index - 1 >= (uint64_t) map.count )
+    if ( index - 1 >= static_cast<uint64_t>( map.count ) )
     {
         report->damaged = true; // an index above node_count + 1
         return;
@@ -1147,11 +1147,11 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
     }
     if ( map.cycle_indices && target != kTableBytesTypeId && target != kTableStringTypeId )
     {
-        slot.value = (int64_t) index;
+        slot.value = static_cast<int64_t>( index );
         return;
     }
-    slot.value = map.arena ? (int64_t) entry.offset
-                           : (int64_t) ( ( map.base + entry.offset ) - (const uint8_t *) &slot );
+    slot.value = map.arena ? static_cast<int64_t>( entry.offset )
+                           : static_cast<int64_t>( ( map.base + entry.offset ) - reinterpret_cast<const uint8_t *>( &slot ) );
 }
 
 // ---- A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4) ----
@@ -1189,14 +1189,14 @@ inline bool TableCycleIsVertex( const TableCycle & c, int64_t p )
 
 inline uint32_t TableCycleOrdinal( const TableCycle & c, int64_t p )
 {
-    return (uint32_t) ( ( c.entries[p].offset >> kTableCycleOrdinalShift ) & 0x3FFFu );
+    return static_cast<uint32_t>( ( c.entries[p].offset >> kTableCycleOrdinalShift ) & 0x3FFFu );
 }
 
 inline const void * TableCycleNode( const TableCycle & c, int64_t p )
 {
     const uint64_t offset = c.entries[p].offset & kTableCycleOffsetMask;
-    if ( c.arena != NULL ) { return (const void *) TableArenaAt( *c.arena, (uint32_t) offset ); }
-    return (const void *) ( c.base + offset );
+    if ( c.arena != NULL ) { return reinterpret_cast<const void *>( TableArenaAt( *c.arena, static_cast<uint32_t>( offset ) ) ); }
+    return reinterpret_cast<const void *>( c.base + offset );
 }
 
 inline bool TableCycleBegin( TableCycle & c, TableNodeDirEntry * entries, int64_t count, const uint8_t * base, const TableArena * arena, uint32_t ( *ordinal )( uint64_t type_id ) )
@@ -1225,7 +1225,7 @@ inline bool TableCycleBegin( TableCycle & c, TableNodeDirEntry * entries, int64_
         }
         const uint32_t kind = ordinal( e.type_id );
         if ( kind == 0 ) { continue; } // a byte buffer or an already marked blob
-        e.offset |= kTableCycleVertex | ( (uint64_t) kind << kTableCycleOrdinalShift );
+        e.offset |= kTableCycleVertex | ( static_cast<uint64_t>( kind ) << kTableCycleOrdinalShift );
         e.type_id = 0;
         c.vertices++;
     }
@@ -1234,8 +1234,8 @@ inline bool TableCycleBegin( TableCycle & c, TableNodeDirEntry * entries, int64_
 
 inline void TableCyclePush( TableCycle & c, int64_t p )
 {
-    c.entries[p].type_id = ( c.entries[p].type_id & 0xFFFFFFFFull ) | ( (uint64_t) c.head << 32 );
-    c.head = (uint32_t) ( p + 1 );
+    c.entries[p].type_id = ( c.entries[p].type_id & 0xFFFFFFFFull ) | ( static_cast<uint64_t>( c.head ) << 32 );
+    c.head = static_cast<uint32_t>( p + 1 );
 }
 
 // TableCycleEdge is one stored pointer slot: pass one counts the in-degree of
@@ -1244,13 +1244,13 @@ inline void TableCyclePush( TableCycle & c, int64_t p )
 inline bool TableCycleEdge( TableCycle & c, const TableRef & slot )
 {
     if ( slot.value == 0 ) { return true; }
-    const uint64_t index = (uint64_t) slot.value;
-    if ( index - 1 >= (uint64_t) c.count )
+    const uint64_t index = static_cast<uint64_t>( slot.value );
+    if ( index - 1 >= static_cast<uint64_t>( c.count ) )
     {
         c.broken = true;
         return false;
     }
-    const int64_t p = (int64_t) index - 1;
+    const int64_t p = static_cast<int64_t>( index ) - 1;
     if ( !TableCycleIsVertex( c, p ) )
     {
         c.broken = true;
@@ -1262,11 +1262,11 @@ inline bool TableCycleEdge( TableCycle & c, const TableRef & slot )
         // The visitor borrows const views, but these are this load's mutable
         // construction slots. No caller can observe their temporary indices.
         TableRef & output = const_cast<TableRef &>( slot );
-        output.value = c.arena != NULL ? (int64_t) offset
-                                       : (int64_t) ( ( c.base + offset ) - (const uint8_t *) &slot );
+        output.value = c.arena != NULL ? static_cast<int64_t>( offset )
+                                       : static_cast<int64_t>( ( c.base + offset ) - reinterpret_cast<const uint8_t *>( &slot ) );
         return true;
     }
-    const uint32_t degree = (uint32_t) c.entries[p].type_id;
+    const uint32_t degree = static_cast<uint32_t>( c.entries[p].type_id );
     if ( !c.releasing )
     {
         if ( degree == 0xFFFFFFFFu )
@@ -1305,12 +1305,12 @@ inline bool TableCycleAcyclic( TableCycle & c, const Ctx & ctx, Visit visit )
     c.releasing = true;
     for ( int64_t p = 0; p < c.count; p++ )
     {
-        if ( TableCycleIsVertex( c, p ) && (uint32_t) c.entries[p].type_id == 0 ) { TableCyclePush( c, p ); }
+        if ( TableCycleIsVertex( c, p ) && static_cast<uint32_t>( c.entries[p].type_id ) == 0 ) { TableCyclePush( c, p ); }
     }
     while ( c.head != 0 )
     {
-        const int64_t p = (int64_t) c.head - 1;
-        c.head = (uint32_t) ( c.entries[p].type_id >> 32 );
+        const int64_t p = static_cast<int64_t>( c.head ) - 1;
+        c.head = static_cast<uint32_t>( c.entries[p].type_id >> 32 );
         // a node is entered ONCE: more entries than nodes is a walk gone wrong
         if ( ++c.processed > c.vertices )
         {
@@ -1397,7 +1397,7 @@ inline bool TableNodeScanOpen( TableNodeScan & s )
         uint64_t ref = 0;
         if ( !s.fields.getleb( ref ) ) { break; }
         if ( ref == 0 ) { break; } // the terminator
-        if ( s.ids == NULL || ref > (uint64_t) s.ids->count ) { break; }
+        if ( s.ids == NULL || ref > static_cast<uint64_t>( s.ids->count ) ) { break; }
         const uint64_t id = s.ids->at( ref );
         if ( !s.fields.has( 1 ) ) { break; }
         const uint8_t kind = s.fields.get8();
@@ -1416,8 +1416,8 @@ inline bool TableNodeScanOpen( TableNodeScan & s )
                 return false;
             }
             s.payload = s.fields.buffer + s.fields.offset;
-            s.payload_size = (int64_t) length;
-            s.fields.offset += (int64_t) length;
+            s.payload_size = static_cast<int64_t>( length );
+            s.fields.offset += static_cast<int64_t>( length );
             continue;
         }
         if ( !s.fields.skip( kind ) ) { break; }
@@ -1442,7 +1442,7 @@ inline bool TableNodeScanNext( TableNodeScan & s, uint64_t & type_id, const uint
     TableReader rec( s.payload, s.payload_size, s.fields.report, s.ids );
     rec.offset = s.payload_offset;
     uint64_t ref = 0;
-    if ( !rec.getleb( ref ) || ref == 0 || s.ids == NULL || ref > (uint64_t) s.ids->count )
+    if ( !rec.getleb( ref ) || ref == 0 || s.ids == NULL || ref > static_cast<uint64_t>( s.ids->count ) )
     {
         s.damaged = true; // a type id reference of 0, or one past the table
         return false;
@@ -1464,13 +1464,13 @@ inline bool TableNodeScanNext( TableNodeScan & s, uint64_t & type_id, const uint
         s.damaged = true; // a record whose length is damaged
         return false;
     }
-    if ( declared_length > (uint64_t) ( s.payload_size - rec.offset ) )
+    if ( declared_length > static_cast<uint64_t>( s.payload_size - rec.offset ) )
     {
         s.damaged = true; // a record whose length runs past its field
         return false;
     }
     body = s.payload + rec.offset;
-    length = (int64_t) declared_length;
+    length = static_cast<int64_t>( declared_length );
     s.payload_offset = rec.offset + length;
     s.records++;
     return true;
@@ -1483,7 +1483,7 @@ inline bool TableNodeScanWhole( TableNodeScan & s )
 {
     if ( s.damaged ) { return false; }
     if ( !s.present ) { return true; } // no node table at all is not a broken one
-    return s.declared == (uint64_t) s.records;
+    return s.declared == static_cast<uint64_t>( s.records );
 }
 
 // ---- THE GRAPH, OVER EVERY KIND-17 PAYLOAD (docs/SPEC-TABLES.md §3.1, §6.5) ----
@@ -1555,7 +1555,7 @@ inline bool TableGraphPayload( TableGraphCollect & c, TableReader & r, uint8_t k
         case 30:
         {
             uint64_t ref = 0;
-            if ( !r.getleb( ref ) || c.ids == NULL || ref > (uint64_t) c.ids->count ) { c.damaged = true; return false; }
+            if ( !r.getleb( ref ) || c.ids == NULL || ref > static_cast<uint64_t>( c.ids->count ) ) { c.damaged = true; return false; }
             return true;
         }
         case 15:
@@ -1565,8 +1565,8 @@ inline bool TableGraphPayload( TableGraphCollect & c, TableReader & r, uint8_t k
             uint64_t n = 0;
             if ( !r.getleb( n ) || !r.room( n ) ) { c.damaged = true; return false; }
             const uint8_t * b = r.buffer + r.offset;
-            r.offset += (int64_t) n;
-            return TableGraphContent( c, b, (int64_t) n, kind, depth );
+            r.offset += static_cast<int64_t>( n );
+            return TableGraphContent( c, b, static_cast<int64_t>( n ), kind, depth );
         }
         default: break;
     }
@@ -1584,7 +1584,7 @@ inline bool TableGraphBody( TableGraphCollect & c, const uint8_t * b, int64_t n,
         uint64_t ref = 0;
         if ( !r.getleb( ref ) ) { c.damaged = true; return false; }
         if ( ref == 0 ) { if ( exact && r.offset != n ) { c.damaged = true; return false; } return true; }
-        if ( c.ids == NULL || ref > (uint64_t) c.ids->count || !r.has( 1 ) ) { c.damaged = true; return false; }
+        if ( c.ids == NULL || ref > static_cast<uint64_t>( c.ids->count ) || !r.has( 1 ) ) { c.damaged = true; return false; }
         const uint64_t id = c.ids->at( ref );
         const uint8_t kind = r.get8();
         if ( id == kTableNodeTableFieldId )
@@ -1592,7 +1592,7 @@ inline bool TableGraphBody( TableGraphCollect & c, const uint8_t * b, int64_t n,
             if ( !root || kind != 12 ) { c.damaged = true; return false; }
             uint64_t len = 0;
             if ( !r.getleb( len ) || !r.room( len ) ) { c.damaged = true; return false; }
-            r.offset += (int64_t) len;
+            r.offset += static_cast<int64_t>( len );
             continue;
         }
         if ( !TableGraphPayload( c, r, kind, depth ) ) { return false; }
@@ -1610,7 +1610,7 @@ inline bool TableGraphContent( TableGraphCollect & c, const uint8_t * b, int64_t
     switch ( kind )
     {
         case 12:
-            if ( !TableUtf8Valid( b, (uint64_t) n ) ) { c.damaged = true; return false; }
+            if ( !TableUtf8Valid( b, static_cast<uint64_t>( n ) ) ) { c.damaged = true; return false; }
             return true;
         case 31:
             return true; // opaque: the one kind whose meaning a reader may not know (§3)
@@ -1632,7 +1632,7 @@ inline bool TableGraphContent( TableGraphCollect & c, const uint8_t * b, int64_t
             if ( !TableArrayElementKind( elem ) ) { c.damaged = true; c.closed_kind = true; return false; }
             uint64_t count = 0;
             if ( !r.getleb( count ) ) { c.damaged = true; return false; }
-            if ( count > (uint64_t) ( r.size - r.offset ) ) { c.damaged = true; return false; }
+            if ( count > static_cast<uint64_t>( r.size - r.offset ) ) { c.damaged = true; return false; }
             for ( uint64_t i = 0; i < count; i++ ) { if ( !TableGraphPayload( c, r, elem, depth + 1 ) ) { return false; } }
             return true;
         }
@@ -1647,16 +1647,16 @@ inline bool TableGraphContent( TableGraphCollect & c, const uint8_t * b, int64_t
             if ( !TableKeyedElementKind( elem ) ) { c.damaged = true; c.closed_kind = true; return false; }
             uint64_t count = 0;
             if ( !r.getleb( count ) ) { c.damaged = true; return false; }
-            if ( count > (uint64_t) ( r.size - r.offset ) ) { c.damaged = true; return false; }
+            if ( count > static_cast<uint64_t>( r.size - r.offset ) ) { c.damaged = true; return false; }
             for ( uint64_t i = 0; i < count; i++ )
             {
                 uint64_t key = 0;
-                if ( !r.getleb( key ) || key == 0 || c.ids == NULL || key > (uint64_t) c.ids->count ) { c.damaged = true; return false; }
+                if ( !r.getleb( key ) || key == 0 || c.ids == NULL || key > static_cast<uint64_t>( c.ids->count ) ) { c.damaged = true; return false; }
                 uint64_t len = 0;
                 if ( !r.getleb( len ) || !r.room( len ) ) { c.damaged = true; return false; }
                 const uint8_t * eb = r.buffer + r.offset;
-                r.offset += (int64_t) len;
-                if ( !TableGraphContent( c, eb, (int64_t) len, elem, depth + 1 ) ) { return false; }
+                r.offset += static_cast<int64_t>( len );
+                if ( !TableGraphContent( c, eb, static_cast<int64_t>( len ), elem, depth + 1 ) ) { return false; }
             }
             return true;
         }
@@ -1685,19 +1685,19 @@ inline bool TableGraphUnion( TableGraphCollect & c, TableReader & r, int depth )
     uint64_t ref = 0;
     if ( !r.getleb( ref ) ) { c.damaged = true; return false; }
     if ( ref == 0 ) { return true; }
-    if ( c.ids == NULL || ref > (uint64_t) c.ids->count || !r.has( 1 ) ) { c.damaged = true; return false; }
+    if ( c.ids == NULL || ref > static_cast<uint64_t>( c.ids->count ) || !r.has( 1 ) ) { c.damaged = true; return false; }
     const uint8_t kind = r.get8();
     uint64_t len = 0;
     if ( !r.getleb( len ) || !r.room( len ) ) { c.damaged = true; return false; }
     const uint8_t * b = r.buffer + r.offset;
-    r.offset += (int64_t) len;
+    r.offset += static_cast<int64_t>( len );
     const bool structural = kind == 13 || kind == 14 || kind == 15 || kind == 16;
     if ( structural )
     {
         if ( depth >= kTableGraphMaxDepth ) { c.damaged = true; return false; }
-        if ( !TableGraphContent( c, b, (int64_t) len, kind, depth + 1 ) ) { return false; }
+        if ( !TableGraphContent( c, b, static_cast<int64_t>( len ), kind, depth + 1 ) ) { return false; }
     }
-    else if ( !TableGraphContent( c, b, (int64_t) len, kind, depth ) ) { return false; }
+    else if ( !TableGraphContent( c, b, static_cast<int64_t>( len ), kind, depth ) ) { return false; }
     return true;
 }
 
@@ -1710,9 +1710,9 @@ struct TableGraphCount
 
 inline bool TableGraphCountEdge( void * ctx, uint64_t index )
 {
-    TableGraphCount * c = (TableGraphCount *) ctx;
+    TableGraphCount * c = reinterpret_cast<TableGraphCount *>( ctx );
     if ( index == 0 ) { return true; }
-    if ( index - 1 >= (uint64_t) c->count ) { c->bad = true; return false; }
+    if ( index - 1 >= static_cast<uint64_t>( c->count ) ) { c->bad = true; return false; }
     c->nodes[index - 1].type_id += 1;
     return true;
 }
@@ -1728,19 +1728,19 @@ struct TableGraphKahn
 
 inline void TableGraphKahnPush( TableGraphKahn & k, int64_t p )
 {
-    k.nodes[p].type_id = kTableGraphQueued | (uint64_t) ( k.head + 1 );
+    k.nodes[p].type_id = kTableGraphQueued | static_cast<uint64_t>( k.head + 1 );
     k.head = p;
 }
 
 inline bool TableGraphKahnEdge( void * ctx, uint64_t index )
 {
-    TableGraphKahn * k = (TableGraphKahn *) ctx;
+    TableGraphKahn * k = reinterpret_cast<TableGraphKahn *>( ctx );
     if ( index == 0 ) { return true; }
-    if ( index - 1 >= (uint64_t) k->count ) { k->bad = true; return false; }
+    if ( index - 1 >= static_cast<uint64_t>( k->count ) ) { k->bad = true; return false; }
     TableNodeDirEntry & e = k->nodes[index - 1];
     if ( ( e.type_id & kTableGraphQueued ) != 0 || e.type_id == 0 ) { k->bad = true; return false; }
     e.type_id -= 1;
-    if ( e.type_id == 0 ) { TableGraphKahnPush( *k, (int64_t) index - 1 ); }
+    if ( e.type_id == 0 ) { TableGraphKahnPush( *k, static_cast<int64_t>( index ) - 1 ); }
     return true;
 }
 
@@ -1755,22 +1755,22 @@ struct TableGraphReach
 
 inline bool TableGraphReachEdge( void * ctx, uint64_t index )
 {
-    TableGraphReach * r = (TableGraphReach *) ctx;
+    TableGraphReach * r = reinterpret_cast<TableGraphReach *>( ctx );
     if ( index == 0 ) { return true; }
-    if ( index - 1 >= (uint64_t) r->count ) { r->bad = true; return false; }
-    const int64_t t = (int64_t) index - 1;
+    if ( index - 1 >= static_cast<uint64_t>( r->count ) ) { r->bad = true; return false; }
+    const int64_t t = static_cast<int64_t>( index ) - 1;
     if ( ( r->nodes[t].type_id & kTableGraphVisited ) != 0 ) { return true; }
     r->nodes[t].type_id = kTableGraphVisited;
     if ( r->tail < 0 ) { r->head = t; }
-    else { r->nodes[r->tail].type_id = kTableGraphVisited | (uint64_t) ( t + 1 ); }
+    else { r->nodes[r->tail].type_id = kTableGraphVisited | static_cast<uint64_t>( t + 1 ); }
     r->tail = t;
     return true;
 }
 
 inline bool TableGraphParseNode( TableGraphCollect & c, const uint8_t * wire, int64_t wire_bytes, uint64_t start, bool root )
 {
-    if ( start > (uint64_t) wire_bytes ) { c.damaged = true; return false; }
-    return TableGraphBody( c, wire + start, wire_bytes - (int64_t) start, root, root, 0 );
+    if ( start > static_cast<uint64_t>( wire_bytes ) ) { c.damaged = true; return false; }
+    return TableGraphBody( c, wire + start, wire_bytes - static_cast<int64_t>( start ), root, root, 0 );
 }
 
 inline bool TableGraphFail( TableReport * report )
@@ -1797,9 +1797,9 @@ inline bool TableGraphCheck( const uint8_t * wire, int64_t wire_bytes, const Tab
         {
             const int64_t k = records + 1;
             if ( k >= count ) { return true; } // a scan this check cannot frame is the typed read's to judge
-            scratch[k].offset = (uint64_t) ( body - wire );
+            scratch[k].offset = static_cast<uint64_t>( body - wire );
             if ( type_id == kTableStringTypeId || type_id == kTableBytesTypeId ) { scratch[k].offset |= kTableGraphBlob; }
-            if ( type_id == kTableStringTypeId && !TableUtf8Valid( body, (uint64_t) length ) ) { return TableGraphFail( report ); }
+            if ( type_id == kTableStringTypeId && !TableUtf8Valid( body, static_cast<uint64_t>( length ) ) ) { return TableGraphFail( report ); }
             records++;
         }
         if ( !TableNodeScanWhole( scan ) || records + 1 != count ) { return true; } // the typed read names the framing
@@ -1834,13 +1834,13 @@ inline bool TableGraphCheck( const uint8_t * wire, int64_t wire_bytes, const Tab
     while ( kahn.head >= 0 )
     {
         const int64_t p = kahn.head;
-        kahn.head = (int64_t) ( scratch[p].type_id & kTableGraphLinkMask ) - 1;
+        kahn.head = static_cast<int64_t>( scratch[p].type_id & kTableGraphLinkMask ) - 1;
         kahn.processed++;
         if ( ( scratch[p].offset & kTableGraphBlob ) != 0 ) { continue; }
         TableGraphCollect collect = { ids, &kahn, &TableGraphKahnEdge, false, false };
         if ( !TableGraphParseNode( collect, wire, wire_bytes, scratch[p].offset & kTableGraphBodyMask, p == 0 ) ) { return ( kahn.bad || collect.closed_kind ) ? TableGraphFail( report ) : true; }
     }
-    if ( kahn.bad || kahn.processed != (uint64_t) n ) { return TableGraphFail( report ); }
+    if ( kahn.bad || kahn.processed != static_cast<uint64_t>( n ) ) { return TableGraphFail( report ); }
 
     for ( int64_t i = 0; i < n; i++ ) { scratch[i].type_id = 0; }
     TableGraphReach reach = { scratch, n, 0, 0, false };
@@ -1848,7 +1848,7 @@ inline bool TableGraphCheck( const uint8_t * wire, int64_t wire_bytes, const Tab
     while ( reach.head >= 0 )
     {
         const int64_t p = reach.head;
-        reach.head = (int64_t) ( scratch[p].type_id & kTableGraphLinkMask ) - 1;
+        reach.head = static_cast<int64_t>( scratch[p].type_id & kTableGraphLinkMask ) - 1;
         if ( reach.head < 0 ) { reach.tail = -1; }
         if ( ( scratch[p].offset & kTableGraphBlob ) != 0 ) { continue; }
         TableGraphCollect collect = { ids, &reach, &TableGraphReachEdge, false, false };

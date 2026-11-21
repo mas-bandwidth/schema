@@ -105,19 +105,19 @@ inline bool TableReadSignedAt( TableReader & r, uint8_t kind, int64_t & out )
     {
         case 2:
             if ( !r.has( 1 ) ) { return false; }
-            out = (int8_t) r.get8();
+            out = static_cast<int8_t>( r.get8() );
             return true;
         case 3:
             if ( !r.has( 2 ) ) { return false; }
-            out = (int16_t) r.get16();
+            out = static_cast<int16_t>( r.get16() );
             return true;
         case 4:
             if ( !r.has( 4 ) ) { return false; }
-            out = (int32_t) r.get32();
+            out = static_cast<int32_t>( r.get32() );
             return true;
         default:
             if ( !r.has( 8 ) ) { return false; }
-            out = (int64_t) r.get64();
+            out = static_cast<int64_t>( r.get64() );
             return true;
     }
 }
@@ -317,11 +317,11 @@ func (g *tableGen) emitWidenedScalarChecked(f *ir.Field, declared int, kindExpr,
 		g.pf("%s    if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }\n", ind)
 		if forbidDefault {
 			g.pf("%s    else\n%s    {\n", ind, ind)
-			g.pf("%s        const double decoded_d = (double) table_bits_to_float( widened_bits );\n", ind)
+			g.pf("%s        const double decoded_d = static_cast<double>( table_bits_to_float( widened_bits ) );\n", ind)
 			g.emitIfActions(ind+"        ", g.fieldIsDefault(f, "decoded_d"), onTrunc...)
 			g.pf("%s        %s = decoded_d;\n%s    }\n%s}\n", ind, lvalue, ind, ind)
 		} else {
-			g.pf("%s    else { %s = (double) table_bits_to_float( widened_bits ); }\n%s}\n", ind, lvalue, ind)
+			g.pf("%s    else { %s = static_cast<double>( table_bits_to_float( widened_bits ) ); }\n%s}\n", ind, lvalue, ind)
 		}
 		return
 	}
@@ -347,12 +347,12 @@ func (g *tableGen) emitWidenedScalarChecked(f *ir.Field, declared int, kindExpr,
 	if width == 16 {
 		// the two lanes of serialize's pair, the high one the sign's
 		if signed {
-			g.pf("%s%s decoded_v = %s( ( serialize::uint128_t( widened_v < 0 ? ~0ull : 0ull ) << 64 ) | serialize::uint128_t( (uint64_t) widened_v ) );\n", ind, storage, storage)
+			g.pf("%s%s decoded_v = %s( ( serialize::uint128_t( widened_v < 0 ? ~0ull : 0ull ) << 64 ) | serialize::uint128_t( static_cast<uint64_t>( widened_v ) ) );\n", ind, storage, storage)
 		} else {
 			g.pf("%s%s decoded_v = %s( widened_v );\n", ind, storage, storage)
 		}
 	} else {
-		g.pf("%s%s decoded_v = (%s) widened_v;\n", ind, storage, storage)
+		g.pf("%s%s decoded_v = static_cast<%s>( widened_v );\n", ind, storage, storage)
 	}
 	if forbidDefault {
 		g.emitIfActions(ind, g.fieldIsDefault(f, "decoded_v"), onTrunc...)
@@ -417,7 +417,7 @@ func (g *tableGen) emitWidenedElements(f *ir.Field, declared int, kindExpr, elem
 	g.pf("%sr.report->widened++;\n", ind)
 	g.pf("%suint64_t widened_decoded = 0;\n", ind)
 	g.pf("%sfor ( uint64_t widened_i = 0; widened_i < %s; widened_i++ )\n%s{\n", ind, keepExpr, ind)
-	elemDst := fmt.Sprintf(elems, "(int32_t) widened_i")
+	elemDst := fmt.Sprintf(elems, "static_cast<int32_t>( widened_i )")
 	g.emitWidenedScalar(f, declared, kindExpr, elemDst, ind+"    ", rdr, "r.report->damaged = true;", "break;")
 	if g.elemNonDefaultVar != "" {
 		g.pf("%s    if ( %s ) { %s = true; }\n", ind, g.fieldDiffers(f, elemDst), g.elemNonDefaultVar)
@@ -425,7 +425,7 @@ func (g *tableGen) emitWidenedElements(f *ir.Field, declared int, kindExpr, elem
 	g.pf("%s    widened_decoded = widened_i + 1;\n", ind)
 	g.pf("%s}\n", ind)
 	if count != "" {
-		g.pf("%s%s = (int32_t) widened_decoded;\n", ind, count)
+		g.pf("%s%s = static_cast<int32_t>( widened_decoded );\n", ind, count)
 	} else {
 		g.pf("%s(void) widened_decoded;\n", ind)
 	}
@@ -447,20 +447,20 @@ func (g *tableGen) emitKeyedTriples(f *ir.Field, kind int, ind string, widened b
 	g.pf("%s            // merely foreign, and damage discards the whole load (§3.2,\n", ind)
 	g.pf("%s            // §4).\n", ind)
 	g.pf("%s            r.report->damaged = true;\n%s            break;\n%s        }\n", ind, ind, ind)
-	g.pf("%[1]s        if ( key_ref > (uint64_t) r.ids->count )\n%[1]s        {\n%[1]s            r.report->damaged = true;\n%[1]s            break;\n%[1]s        }\n", ind)
+	g.pf("%[1]s        if ( key_ref > static_cast<uint64_t>( r.ids->count ) )\n%[1]s        {\n%[1]s            r.report->damaged = true;\n%[1]s            break;\n%[1]s        }\n", ind)
 	g.pf("%s        uint64_t elem_len = 0;\n", ind)
 	g.pf("%[1]s        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) )\n%[1]s        {\n%[1]s            r.report->damaged = true;\n%[1]s            break;\n%[1]s        }\n", ind)
 	g.pf("%s        %s slot = %s::None;\n", ind, f.KeyEnum, f.KeyEnum)
 	g.pf("%s        if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )\n%s        {\n", ind, ind)
 	g.pf("%[1]s            r.report->unknown++;\n%[1]s            %[2]s // a slot this reader cannot name\n", ind, g.retainLostInline())
-	g.pf("%s            sub.offset += (int64_t) elem_len;\n%s            continue;\n%s        }\n", ind, ind, ind)
+	g.pf("%s            sub.offset += static_cast<int64_t>( elem_len );\n%s            continue;\n%s        }\n", ind, ind, ind)
 	// The writer's enum order and slot elision policy are not on form 1;
 	// the strict wire walk already rejects repeated key references without
 	// rejecting lawful older or widened default-valued slots (SPEC-TABLES §3.2, §4).
-	g.pf("%s        {\n%s            TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );\n", ind, ind)
+	g.pf("%s        {\n%s            TableReader elem( sub.buffer + sub.offset, static_cast<int64_t>( elem_len ), r.report, r.ids );\n", ind, ind)
 	// the key k lives at STORAGE INDEX k-1 (docs/SPEC-TABLES.md §2.4)
 	slot := g.keyedSlots("value.", f) + "[int32_t( slot ) - 1]"
-	onTrunc := []string{"r.report->damaged = true;", "sub.offset += (int64_t) elem_len;", "continue;"}
+	onTrunc := []string{"r.report->damaged = true;", "sub.offset += static_cast<int64_t>( elem_len );", "continue;"}
 	switch {
 	case widened:
 		g.emitWidenedScalarChecked(f, kind, "elem_kind", slot, ind+"            ", "elem", false, onTrunc...)
@@ -476,7 +476,7 @@ func (g *tableGen) emitKeyedTriples(f *ir.Field, kind int, ind string, widened b
 		g.emitTableReadScalarFromChecked(f, kind, slot, ind+"            ", "elem", false, onTrunc...)
 	}
 	g.pf("%s        }\n", ind)
-	g.pf("%s        sub.offset += (int64_t) elem_len;\n", ind)
+	g.pf("%s        sub.offset += static_cast<int64_t>( elem_len );\n", ind)
 	g.pf("%s    }\n", ind)
 }
 

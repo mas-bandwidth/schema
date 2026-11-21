@@ -87,7 +87,7 @@ inline bool TableUtf8Valid( const uint8_t * bytes, uint64_t length )
 // copy would run at SIZE_MAX.
 inline int64_t TableUtf8Clamp( const uint8_t * bytes, uint64_t length, int64_t bound )
 {
-    if ( length <= (uint64_t) bound ) { return (int64_t) length; }
+    if ( length <= static_cast<uint64_t>( bound ) ) { return static_cast<int64_t>( length ); }
     int64_t cut = bound;
     while ( cut > 0 && ( bytes[cut] & 0xC0 ) == 0x80 ) { cut--; }
     return cut;
@@ -200,7 +200,7 @@ inline std::string tableTextFormJoin( const std::string & path, const std::strin
 
 inline std::string tableTextFormIndex( const std::string & path, size_t i )
 {
-    return path + "[" + std::to_string( (long long) i ) + "]";
+    return path + "[" + std::to_string( static_cast<long long>( i ) ) + "]";
 }
 
 struct TableTextFormReader
@@ -232,24 +232,24 @@ struct TableTextFormReader
 
     static void putUtf8( std::string & out, uint32_t c )
     {
-        if ( c < 0x80 ) { out += (char) c; }
+        if ( c < 0x80 ) { out += static_cast<char>( c ); }
         else if ( c < 0x800 )
         {
-            out += (char) ( 0xC0 | ( c >> 6 ) );
-            out += (char) ( 0x80 | ( c & 0x3F ) );
+            out += static_cast<char>( 0xC0 | ( c >> 6 ) );
+            out += static_cast<char>( 0x80 | ( c & 0x3F ) );
         }
         else if ( c < 0x10000 )
         {
-            out += (char) ( 0xE0 | ( c >> 12 ) );
-            out += (char) ( 0x80 | ( ( c >> 6 ) & 0x3F ) );
-            out += (char) ( 0x80 | ( c & 0x3F ) );
+            out += static_cast<char>( 0xE0 | ( c >> 12 ) );
+            out += static_cast<char>( 0x80 | ( ( c >> 6 ) & 0x3F ) );
+            out += static_cast<char>( 0x80 | ( c & 0x3F ) );
         }
         else
         {
-            out += (char) ( 0xF0 | ( c >> 18 ) );
-            out += (char) ( 0x80 | ( ( c >> 12 ) & 0x3F ) );
-            out += (char) ( 0x80 | ( ( c >> 6 ) & 0x3F ) );
-            out += (char) ( 0x80 | ( c & 0x3F ) );
+            out += static_cast<char>( 0xF0 | ( c >> 18 ) );
+            out += static_cast<char>( 0x80 | ( ( c >> 12 ) & 0x3F ) );
+            out += static_cast<char>( 0x80 | ( ( c >> 6 ) & 0x3F ) );
+            out += static_cast<char>( 0x80 | ( c & 0x3F ) );
         }
     }
 
@@ -267,12 +267,12 @@ struct TableTextFormReader
         i++;
         while ( i < n )
         {
-            const unsigned char c = (unsigned char) s[i++];
+            const unsigned char c = static_cast<unsigned char>( s[i++] );
             if ( c == '"' ) { return true; }
             if ( c < 0x20 ) { return fail( "text_encoding" ); }
             if ( c != '\\' )
             {
-                out += (char) c;
+                out += static_cast<char>( c );
                 continue;
             }
             if ( i >= n ) { return fail( "text_unterminated" ); }
@@ -295,7 +295,7 @@ struct TableTextFormReader
                     {
                         const int h = hex( s[i + k] );
                         if ( h < 0 ) { return fail( "text_encoding" ); }
-                        cp = ( cp << 4 ) | (uint32_t) h;
+                        cp = ( cp << 4 ) | static_cast<uint32_t>( h );
                     }
                     i += 4;
                     if ( cp >= 0xD800 && cp <= 0xDBFF )
@@ -307,7 +307,7 @@ struct TableTextFormReader
                         {
                             const int h = hex( s[i + k] );
                             if ( h < 0 ) { return fail( "text_encoding" ); }
-                            low = ( low << 4 ) | (uint32_t) h;
+                            low = ( low << 4 ) | static_cast<uint32_t>( h );
                         }
                         i += 4;
                         if ( low < 0xDC00 || low > 0xDFFF ) { return fail( "text_encoding" ); }
@@ -387,7 +387,7 @@ struct TableTextFormReader
             if ( ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '(' || ch == ')' || ch == ';' || ch == '"' ) { break; }
             i++;
         }
-        const std::string atom( s + start, (size_t) ( i - start ) );
+        const std::string atom( s + start, static_cast<size_t>( i - start ) );
         if ( atom.empty() ) { return fail( "text_syntax" ); }
         node.start = begin;
         node.end = i;
@@ -471,7 +471,7 @@ inline void TableTextFormJsonString( std::string & out, const std::string & s )
     out += '"';
     for ( size_t i = 0; i < s.size(); i++ )
     {
-        const unsigned char c = (unsigned char) s[i];
+        const unsigned char c = static_cast<unsigned char>( s[i] );
         switch ( c )
         {
             case '"': out += "\\\""; break;
@@ -490,7 +490,7 @@ inline void TableTextFormJsonString( std::string & out, const std::string & s )
                 }
                 else
                 {
-                    out += (char) c;
+                    out += static_cast<char>( c );
                 }
         }
     }
@@ -584,7 +584,7 @@ inline std::string tableTextFormCanonDecimal( const std::string & token )
     }
     digits = digits.substr( 0, end );
     char buffer[32];
-    snprintf( buffer, sizeof( buffer ), "e%lld", (long long) exponent );
+    snprintf( buffer, sizeof( buffer ), "e%lld", static_cast<long long>( exponent ) );
     return std::string( negative ? "-" : "" ) + digits + buffer;
 }
 
@@ -602,13 +602,13 @@ inline bool tableTextFormInteger( const std::string & token, std::string & integ
     if ( exponent < 0 ) { *why = "text_kind_mismatch"; return false; }
     const size_t sign = canon[0] == '-' ? 1 : 0;
     const size_t digits = e - sign;
-    if ( exponent > 39 || digits > 39 || digits + (size_t) exponent > 39 )
+    if ( exponent > 39 || digits > 39 || digits + static_cast<size_t>( exponent ) > 39 )
     {
         *why = "text_bound";
         return false;
     }
     integer = canon.substr( 0, e );
-    integer.append( (size_t) exponent, '0' );
+    integer.append( static_cast<size_t>( exponent ), '0' );
     return true;
 }
 
@@ -617,16 +617,16 @@ inline std::string tableTextFormCanonFloat( const std::string & token, bool wide
     char buffer[32];
     if ( !wide )
     {
-        const float value = (float) strtod( token.c_str(), NULL );
+        const float value = static_cast<float>( strtod( token.c_str(), NULL ) );
         uint32_t bits = 0;
         memcpy( &bits, &value, sizeof( bits ) );
-        snprintf( buffer, sizeof( buffer ), "%llx", (unsigned long long) bits );
+        snprintf( buffer, sizeof( buffer ), "%llx", static_cast<unsigned long long>( bits ) );
         return std::string( buffer );
     }
     const double value = strtod( token.c_str(), NULL );
     uint64_t bits = 0;
     memcpy( &bits, &value, sizeof( bits ) );
-    snprintf( buffer, sizeof( buffer ), "%llx", (unsigned long long) bits );
+    snprintf( buffer, sizeof( buffer ), "%llx", static_cast<unsigned long long>( bits ) );
     return std::string( buffer );
 }
 
@@ -641,7 +641,7 @@ inline bool tableTextFormTimestampParse( const std::string & s, int64_t * out )
     for ( size_t k = 0; k < s.size(); k++ )
     {
         const char c = s[k];
-        if ( (unsigned char) c == 0 || (unsigned char) c >= 0x80 ) { return false; }
+        if ( static_cast<unsigned char>( c ) == 0 || static_cast<unsigned char>( c ) >= 0x80 ) { return false; }
         if ( phase == 0 )
         {
             const int digit = TableJsonTimestampDigit( c );
@@ -763,9 +763,9 @@ inline bool tableTextFormTimestampParse( const std::string & s, int64_t * out )
     if ( hour > 23 || minute > 59 || second > 59 ) { return false; }
     if ( offset_sign != 0 && ( offset_hour > 23 || offset_minute > 59 ) ) { return false; }
     for ( ; digits < 9; digits++ ) { fraction *= 10; }
-    const int64_t offset = offset_sign == 0 ? 0 : (int64_t) offset_sign * ( (int64_t) offset_hour * 3600 + (int64_t) offset_minute * 60 );
+    const int64_t offset = offset_sign == 0 ? 0 : static_cast<int64_t>( offset_sign ) * ( static_cast<int64_t>( offset_hour ) * 3600 + static_cast<int64_t>( offset_minute ) * 60 );
     const int64_t seconds = TableJsonTimestampDays( year, month, day ) * 86400 +
-        (int64_t) hour * 3600 + (int64_t) minute * 60 + (int64_t) second - offset;
+        static_cast<int64_t>( hour ) * 3600 + static_cast<int64_t>( minute ) * 60 + static_cast<int64_t>( second ) - offset;
     const int64_t min_second = -9223372037LL;
     const int64_t max_second = 9223372036LL;
     const int64_t min_nanos = 145224192LL;
@@ -773,8 +773,8 @@ inline bool tableTextFormTimestampParse( const std::string & s, int64_t * out )
     if ( seconds < min_second || seconds > max_second ) { return false; }
     if ( seconds == min_second && fraction < min_nanos ) { return false; }
     if ( seconds == max_second && fraction > max_nanos ) { return false; }
-    const uint64_t total = (uint64_t) seconds * 1000000000ULL + (uint64_t) fraction;
-    *out = (int64_t) total;
+    const uint64_t total = static_cast<uint64_t>( seconds ) * 1000000000ULL + static_cast<uint64_t>( fraction );
+    *out = static_cast<int64_t>( total );
     return true;
 }
 
@@ -787,7 +787,7 @@ inline bool tableTextFormTimestampParse( const std::string & s, int64_t * out )
 inline bool tableTextFormFixedExact( const std::string & token, int frac )
 {
     const char * s = token.c_str();
-    const int32_t length = (int32_t) token.size();
+    const int32_t length = static_cast<int32_t>( token.size() );
     int32_t i = 0;
     if ( i < length && ( s[i] == '-' || s[i] == '+' ) ) { i++; }
     const int32_t int_start = i;
@@ -831,21 +831,21 @@ inline bool tableTextFormFixedExact( const std::string & token, int frac )
     // point is relative to start once the leading zeros are gone: a point at or
     // past the last digit leaves no fraction, and the fractional digits number
     // len - point, so a token finer than F decimal places has no exact spelling.
-    const int64_t len = (int64_t) ( end - start );
+    const int64_t len = static_cast<int64_t>( end - start );
     if ( point >= len ) { return true; }
     const int64_t fractional = len - point;
     if ( fractional > frac ) { return false; }
     char fd[256];
     int32_t fn = 0;
     for ( int64_t z = point; z < 0; z++ ) { fd[fn++] = 0; }
-    for ( int64_t k = ( point > 0 ? point : 0 ) + start; k < end; k++ ) { fd[fn++] = (char) digit( (int32_t) k ); }
+    for ( int64_t k = ( point > 0 ? point : 0 ) + start; k < end; k++ ) { fd[fn++] = static_cast<char>( digit( static_cast<int32_t>( k ) ) ); }
     for ( int b = 0; b < frac; b++ )
     {
         int carry = 0;
         for ( int32_t k = fn - 1; k >= 0; k-- )
         {
             const int d = fd[k] * 2 + carry;
-            fd[k] = (char) ( d % 10 );
+            fd[k] = static_cast<char>( d % 10 );
             carry = d / 10;
         }
     }
@@ -872,7 +872,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             return false;
         }
         const TableFieldInfo * val = &f->table->fields[0];
-        if ( !val->unbounded && val->array_bound != 0 && (int64_t) n.text.size() > val->array_bound )
+        if ( !val->unbounded && val->array_bound != 0 && static_cast<int64_t>( n.text.size() ) > val->array_bound )
         {
             *why = "text_bound";
             return false;
@@ -918,7 +918,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
                     *why = "text_kind_mismatch";
                     return false;
                 }
-                if ( !key->unbounded && key->array_bound != 0 && (int64_t) pair.items[0].text.size() > key->array_bound )
+                if ( !key->unbounded && key->array_bound != 0 && static_cast<int64_t>( pair.items[0].text.size() ) > key->array_bound )
                 {
                     *why = "text_bound";
                     return false;
@@ -933,9 +933,9 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
                     return false;
                 }
                 if ( !tableTextFormInteger( pair.items[0].text, resolved_key, why ) ) { return false; }
-                const TableJsonInteger number = TableJsonInterpretExact( resolved_key.c_str(), (int32_t) resolved_key.size() );
+                const TableJsonInteger number = TableJsonInterpretExact( resolved_key.c_str(), static_cast<int32_t>( resolved_key.size() ) );
                 bool moved = false;
-                (void) TableJsonIntegerInDomain( number, key->kind >= 2 && key->kind <= 5, (int32_t) key->elem_size, moved );
+                (void) TableJsonIntegerInDomain( number, key->kind >= 2 && key->kind <= 5, static_cast<int32_t>( key->elem_size ), moved );
                 if ( number.saturated || moved )
                 {
                     *why = "text_bound";
@@ -1006,7 +1006,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             int32_t slot = -1;
             for ( int32_t s = 1; s <= f->array_bound; s++ )
             {
-                const char * name = f->key_name( (uint64_t) s );
+                const char * name = f->key_name( static_cast<uint64_t>( s ) );
                 if ( name != NULL && key.text == name )
                 {
                     slot = s;
@@ -1063,7 +1063,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             int64_t tag = 0;
             for ( int64_t t = 1; t <= f->enum_max; t++ )
             {
-                if ( strcmp( f->enum_name( (uint64_t) t ), key.text.c_str() ) == 0 )
+                if ( strcmp( f->enum_name( static_cast<uint64_t>( t ) ), key.text.c_str() ) == 0 )
                 {
                     tag = t;
                     break;
@@ -1150,7 +1150,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
         }
         for ( int64_t v = 0; v <= f->enum_max; v++ )
         {
-            const char * name = f->enum_name( (uint64_t) v );
+            const char * name = f->enum_name( static_cast<uint64_t>( v ) );
             if ( name != NULL && n.text == name )
             {
                 TableTextFormJsonString( out, n.text );
@@ -1182,7 +1182,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             bool found = false;
             for ( int64_t b = 0; b <= f->enum_max; b++ )
             {
-                const char * name = f->enum_name( (uint64_t) b );
+                const char * name = f->enum_name( static_cast<uint64_t>( b ) );
                 if ( name != NULL && n.items[i].text == name )
                 {
                     found = true;
@@ -1223,7 +1223,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             return false;
         }
         TableTextFormJsonString( out, n.text );
-        tableTextFormCanon( spans, path, std::to_string( (long long) nanos ) );
+        tableTextFormCanon( spans, path, std::to_string( static_cast<long long>( nanos ) ) );
         return true;
     }
     if ( f->kind == 12 )
@@ -1233,7 +1233,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             *why = "text_kind_mismatch";
             return false;
         }
-        int64_t size = (int64_t) n.text.size();
+        int64_t size = static_cast<int64_t>( n.text.size() );
         if ( !f->unbounded && f->array_bound != 0 && size > f->array_bound )
         {
             *why = "text_bound";
@@ -1324,7 +1324,7 @@ inline bool TableTextFormField( const TableTextFormNode & n, const TableFieldInf
                 return false;
             }
             int64_t dec = 0;
-            if ( !TableB64Valid( n.text.c_str(), (int64_t) n.text.size(), dec ) )
+            if ( !TableB64Valid( n.text.c_str(), static_cast<int64_t>( n.text.size() ), dec ) )
             {
                 *why = "text_encoding";
                 return false;
@@ -1345,7 +1345,7 @@ inline bool TableTextFormField( const TableTextFormNode & n, const TableFieldInf
                 *why = "text_kind_mismatch";
                 return false;
             }
-            if ( !f->unbounded_container && n.items.size() > (size_t) f->array_bound )
+            if ( !f->unbounded_container && n.items.size() > static_cast<size_t>( f->array_bound ) )
             {
                 *why = "text_bound";
                 return false;
@@ -1360,7 +1360,7 @@ inline bool TableTextFormField( const TableTextFormNode & n, const TableFieldInf
                 if ( !TableTextFormScalar( n.items[i], f, out, why, ip, spans, refs ) ) { return false; }
                 if ( n.items[i].kind == '"' )
                 {
-                    spent += (int64_t) n.items[i].text.size();
+                    spent += static_cast<int64_t>( n.items[i].text.size() );
                     if ( f->text_total > 0 && spent > f->text_total )
                     {
                         *why = "text_bound";
@@ -1378,12 +1378,12 @@ inline bool TableTextFormField( const TableTextFormNode & n, const TableFieldInf
                 *why = "text_kind_mismatch";
                 return false;
             }
-            if ( !f->counted && n.items.size() != (size_t) f->array_bound )
+            if ( !f->counted && n.items.size() != static_cast<size_t>( f->array_bound ) )
             {
                 *why = "text_bound";
                 return false;
             }
-            if ( f->counted && n.items.size() > (size_t) f->array_bound )
+            if ( f->counted && n.items.size() > static_cast<size_t>( f->array_bound ) )
             {
                 *why = "text_bound";
                 return false;
@@ -1419,7 +1419,7 @@ inline bool tableTextFormGuard( const char * guard, const TableTextFormNode & re
         }
         const char * start = p;
         while ( *p != 0 && *p != ' ' && *p != '&' ) { p++; }
-        const std::string name( start, (size_t) ( p - start ) );
+        const std::string name( start, static_cast<size_t>( p - start ) );
         bool val = false;
         for ( int32_t j = 0; j < info->num_fields; j++ )
         {
@@ -1480,7 +1480,7 @@ inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInf
                 *why = "text_reference";
                 return false;
             }
-            out += "{\"&node\":" + std::to_string( (unsigned long long) found + 1 ) + "}";
+            out += "{\"&node\":" + std::to_string( static_cast<unsigned long long>( found ) + 1 ) + "}";
             return true;
         }
         if ( found != refs.labels.size() )
@@ -1501,7 +1501,7 @@ inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInf
     const bool array_root = !pointer && info->json_array && info->num_fields == 1;
     if ( !array_root ) { out += '{'; }
     bool wrote = labeled;
-    if ( labeled ) { out += "\"&node\":" + std::to_string( (unsigned long long) definition + 1 ); }
+    if ( labeled ) { out += "\"&node\":" + std::to_string( static_cast<unsigned long long>( definition ) + 1 ); }
     std::vector<int32_t> seen;
     std::vector<size_t> seen_val;
     for ( size_t i = first; i < n.items.size(); i += 2 )
@@ -1636,9 +1636,9 @@ inline std::string tableTextFormApply( const std::string & src, const std::vecto
     size_t at = 0;
     for ( size_t i = 0; i < splices.size(); i++ )
     {
-        out.append( src, at, (size_t) ( splices[i].start - (int64_t) at ) );
+        out.append( src, at, static_cast<size_t>( splices[i].start - static_cast<int64_t>( at ) ) );
         out += splices[i].text;
-        at = (size_t) splices[i].end;
+        at = static_cast<size_t>( splices[i].end );
     }
     out.append( src, at, std::string::npos );
     return out;
@@ -1653,7 +1653,7 @@ inline bool tableTextFormEditText( const std::string & document, const TableType
     *why = NULL;
     tableTextFormSpans original;
     std::string originalJson;
-    if ( !tableTextFormParse( document.data(), (int64_t) document.size(), info, originalJson, why, &original ) ) { return false; }
+    if ( !tableTextFormParse( document.data(), static_cast<int64_t>( document.size() ), info, originalJson, why, &original ) ) { return false; }
     std::vector<tableTextFormSplice> splices;
     for ( int64_t e = 0; e < count; e++ )
     {
@@ -1670,7 +1670,7 @@ inline bool tableTextFormEditText( const std::string & document, const TableType
         }
         TableTextFormReader r;
         r.s = edits[e].text;
-        r.n = (int64_t) strlen( edits[e].text );
+        r.n = static_cast<int64_t>( strlen( edits[e].text ) );
         r.i = 0;
         r.why = why;
         r.gap();
@@ -1712,7 +1712,7 @@ inline bool tableTextFormEditText( const std::string & document, const TableType
     // Validate the whole edit first; a refusal leaves the old pair untouched.
     std::string allJson;
     const std::string all = tableTextFormApply( document, splices );
-    if ( !tableTextFormParse( all.data(), (int64_t) all.size(), info, allJson, why, NULL ) ) { return false; }
+    if ( !tableTextFormParse( all.data(), static_cast<int64_t>( all.size() ), info, allJson, why, NULL ) ) { return false; }
     // A semantic no-op retains the old spelling (§16.9.3, Go
     // internal/codegen/gotable/textform.go tableTextFormEdit): compare the
     // LANDED value at the edited path, so a float32 that rounds the candidate
@@ -1725,12 +1725,12 @@ inline bool tableTextFormEditText( const std::string & document, const TableType
         const std::string candidate = tableTextFormApply( document, one );
         std::string candidateJson;
         tableTextFormSpans candidateSpans;
-        if ( !tableTextFormParse( candidate.data(), (int64_t) candidate.size(), info, candidateJson, why, &candidateSpans ) ) { return false; }
+        if ( !tableTextFormParse( candidate.data(), static_cast<int64_t>( candidate.size() ), info, candidateJson, why, &candidateSpans ) ) { return false; }
         const tableTextFormSpan * after = candidateSpans.find( splices[i].path );
         if ( after == NULL || after->canon != splices[i].canon ) { kept.push_back( splices[i] ); }
     }
     edited = tableTextFormApply( document, kept );
-    if ( !tableTextFormParse( edited.data(), (int64_t) edited.size(), info, json, why, NULL ) ) { return false; }
+    if ( !tableTextFormParse( edited.data(), static_cast<int64_t>( edited.size() ), info, json, why, NULL ) ) { return false; }
     return true;
 }
 
@@ -1807,7 +1807,7 @@ func (g *tableGen) emitTextFormDefinitions(st *ir.Struct) {
 		g.pf("    std::string json;\n")
 		g.pf("    if ( !TableTextFormToJson( text, bytes, %sTableType(), json, refusal ) ) { return false; }\n", st.Name)
 		g.pf("    TableReport report;\n")
-		g.pf("    if ( !%sFromJson( builder, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )\n", st.Name)
+		g.pf("    if ( !%sFromJson( builder, json.data(), static_cast<int64_t>( json.size() ), &report ) || report.damaged || report.unknown != 0 || report.refused )\n", st.Name)
 		g.pf("    {\n        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? \"text_bound\" : \"text_kind_mismatch\";\n        return false;\n    }\n")
 		g.pf("    return true;\n}\n\n")
 		g.pf("bool %sLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, %sBuilder & builder, const char ** refusal )\n{\n", st.Name, st.Name)
@@ -1816,12 +1816,12 @@ func (g *tableGen) emitTextFormDefinitions(st *ir.Struct) {
 		saveBody(g, st)
 		g.pf("bool %sEditTextForm( const char * document, int64_t document_bytes, const TableTextFormEdit * edits, int64_t count, char * buffer, int64_t capacity, int64_t * edited_bytes, %sBuilder & builder, const char ** refusal )\n{\n", st.Name, st.Name)
 		g.pf("    std::string edited;\n    std::string json;\n")
-		g.pf("    if ( !tableTextFormEditText( std::string( document, (size_t) document_bytes ), %sTableType(), edits, count, edited, json, refusal ) ) { return false; }\n", st.Name)
-		g.pf("    if ( edited_bytes != NULL ) { *edited_bytes = (int64_t) edited.size(); }\n")
-		g.pf("    if ( buffer == NULL || capacity < (int64_t) edited.size() ) { return false; }\n")
+		g.pf("    if ( !tableTextFormEditText( std::string( document, static_cast<size_t>( document_bytes ) ), %sTableType(), edits, count, edited, json, refusal ) ) { return false; }\n", st.Name)
+		g.pf("    if ( edited_bytes != NULL ) { *edited_bytes = static_cast<int64_t>( edited.size() ); }\n")
+		g.pf("    if ( buffer == NULL || capacity < static_cast<int64_t>( edited.size() ) ) { return false; }\n")
 		g.pf("    if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }\n")
 		g.pf("    TableReport report;\n")
-		g.pf("    if ( !%sFromJson( builder, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )\n", st.Name)
+		g.pf("    if ( !%sFromJson( builder, json.data(), static_cast<int64_t>( json.size() ), &report ) || report.damaged || report.unknown != 0 || report.refused )\n", st.Name)
 		g.pf("    {\n        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? \"text_bound\" : \"text_kind_mismatch\";\n        return false;\n    }\n")
 		g.pf("    return true;\n}\n\n")
 		return
@@ -1830,7 +1830,7 @@ func (g *tableGen) emitTextFormDefinitions(st *ir.Struct) {
 	g.pf("    std::string json;\n")
 	g.pf("    if ( !TableTextFormToJson( text, bytes, %sTableType(), json, refusal ) ) { return false; }\n", st.Name)
 	g.pf("    TableReport report;\n")
-	g.pf("    if ( !%sFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )\n", st.Name)
+	g.pf("    if ( !%sFromJson( value, json.data(), static_cast<int64_t>( json.size() ), &report ) || report.damaged || report.unknown != 0 || report.refused )\n", st.Name)
 	g.pf("    {\n        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? \"text_bound\" : \"text_kind_mismatch\";\n        return false;\n    }\n")
 	g.pf("    return true;\n}\n\n")
 	g.pf("bool %sLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, %s & value, const char ** refusal )\n{\n", st.Name, st.Name)
@@ -1839,12 +1839,12 @@ func (g *tableGen) emitTextFormDefinitions(st *ir.Struct) {
 	saveBody(g, st)
 	g.pf("bool %sEditTextForm( const char * document, int64_t document_bytes, const TableTextFormEdit * edits, int64_t count, char * buffer, int64_t capacity, int64_t * edited_bytes, %s & value, const char ** refusal )\n{\n", st.Name, st.Name)
 	g.pf("    std::string edited;\n    std::string json;\n")
-	g.pf("    if ( !tableTextFormEditText( std::string( document, (size_t) document_bytes ), %sTableType(), edits, count, edited, json, refusal ) ) { return false; }\n", st.Name)
-	g.pf("    if ( edited_bytes != NULL ) { *edited_bytes = (int64_t) edited.size(); }\n")
-	g.pf("    if ( buffer == NULL || capacity < (int64_t) edited.size() ) { return false; }\n")
+	g.pf("    if ( !tableTextFormEditText( std::string( document, static_cast<size_t>( document_bytes ) ), %sTableType(), edits, count, edited, json, refusal ) ) { return false; }\n", st.Name)
+	g.pf("    if ( edited_bytes != NULL ) { *edited_bytes = static_cast<int64_t>( edited.size() ); }\n")
+	g.pf("    if ( buffer == NULL || capacity < static_cast<int64_t>( edited.size() ) ) { return false; }\n")
 	g.pf("    if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }\n")
 	g.pf("    TableReport report;\n")
-	g.pf("    if ( !%sFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )\n", st.Name)
+	g.pf("    if ( !%sFromJson( value, json.data(), static_cast<int64_t>( json.size() ), &report ) || report.damaged || report.unknown != 0 || report.refused )\n", st.Name)
 	g.pf("    {\n        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? \"text_bound\" : \"text_kind_mismatch\";\n        return false;\n    }\n")
 	g.pf("    return true;\n}\n\n")
 }
@@ -1853,7 +1853,7 @@ func (g *tableGen) emitTextFormDefinitions(st *ir.Struct) {
 // nothing else, or -1 when the caller's buffer cannot hold them.
 func saveBody(g *tableGen, st *ir.Struct) {
 	g.pf("    if ( document == NULL || document_bytes < 0 || buffer == NULL || capacity < document_bytes ) { return -1; }\n")
-	g.pf("    if ( document_bytes > 0 ) { memcpy( buffer, document, (size_t) document_bytes ); }\n")
+	g.pf("    if ( document_bytes > 0 ) { memcpy( buffer, document, static_cast<size_t>( document_bytes ) ); }\n")
 	g.pf("    return document_bytes;\n}\n\n")
 }
 

@@ -212,7 +212,7 @@ func (g *tableGen) step(f *ir.Field) string {
 	if index == "" {
 		index = "0"
 	}
-	return fmt.Sprintf("TableRetainStepInto( %s, %d, (uint32_t) ( %s ) )", at, g.ordinal[f], index)
+	return fmt.Sprintf("TableRetainStepInto( %s, %d, static_cast<uint32_t>( %s ) )", at, g.ordinal[f], index)
 }
 
 // verb is a body function's own name under the family being emitted: the
@@ -414,7 +414,7 @@ const tableAllocatorHook = `
 // structure's allocations somewhere else again.
 #ifndef schema_allocate
 #include <stdlib.h> // calloc, free
-#define schema_allocate( bytes ) calloc( (size_t) 1, (size_t) ( bytes ) )
+#define schema_allocate( bytes ) calloc( static_cast<size_t>( 1 ), static_cast<size_t>( bytes ) )
 #define schema_release( pointer ) free( pointer )
 #endif // #ifndef schema_allocate
 `
@@ -521,7 +521,7 @@ template <typename T, typename E>
 struct TableKeyed
 {
     // the extent is the enum's, derived here and named nowhere else
-    static constexpr int32_t kSlots = (int32_t) E::Max;
+    static constexpr int32_t kSlots = static_cast<int32_t>( E::Max );
 
     // THE SLOT ARRAY STATES NO INITIALIZER OF ITS OWN (schema#335). A
     // self-initialising element already carries the declared defaults, and cl
@@ -534,12 +534,12 @@ struct TableKeyed
     T & operator[]( E key )
     {
         RefuseKey( key );
-        return slots[ (int32_t) key - 1 ];
+        return slots[ static_cast<int32_t>( key ) - 1 ];
     }
     const T & operator[]( E key ) const
     {
         RefuseKey( key );
-        return slots[ (int32_t) key - 1 ];
+        return slots[ static_cast<int32_t>( key ) - 1 ];
     }
 
     // THE REFUSAL, and it stands in EVERY BUILD, AT BOTH ENDS. The storage
@@ -558,7 +558,7 @@ struct TableKeyed
     // perfectly-predicted compare, on a path that reads config.
     static void RefuseKey( E key )
     {
-        if ( (uint32_t) ( (int32_t) key - 1 ) >= (uint32_t) kSlots )
+        if ( static_cast<uint32_t>( static_cast<int32_t>( key ) - 1 ) >= static_cast<uint32_t>( kSlots ) )
         {
             schema_assert( false && "an enum-keyed array holds one slot per named variant: None keys none, and neither does a key past Max" );
             schema_fatal();
@@ -587,7 +587,7 @@ struct TableKeyed
     {
         T * slots;
         int32_t index; // the STORAGE index; the key it holds is index + 1
-        Entry operator*() const { return Entry{ (E) ( index + 1 ), slots[index] }; }
+        Entry operator*() const { return Entry{ static_cast<E>( index + 1 ), slots[index] }; }
         Iterator & operator++() { index++; return *this; }
         bool operator==( const Iterator & other ) const { return index == other.index; }
         bool operator!=( const Iterator & other ) const { return index != other.index; }
@@ -597,7 +597,7 @@ struct TableKeyed
     {
         const T * slots;
         int32_t index; // the STORAGE index; the key it holds is index + 1
-        ConstEntry operator*() const { return ConstEntry{ (E) ( index + 1 ), slots[index] }; }
+        ConstEntry operator*() const { return ConstEntry{ static_cast<E>( index + 1 ), slots[index] }; }
         ConstIterator & operator++() { index++; return *this; }
         bool operator==( const ConstIterator & other ) const { return index == other.index; }
         bool operator!=( const ConstIterator & other ) const { return index != other.index; }
@@ -850,9 +850,9 @@ namespace ` + pkg + ` {
 // reason text rather than in the enum. They sit in a private high range so a
 // value Go appends later can never collide with them, which the enum's
 // int32_t underlying type keeps inside its own range.
-constexpr TableRefuseReason no_vocabulary = (TableRefuseReason) 0x20000000; // no table for this connection: the message arrived before the announcement, or after a refused one
-constexpr TableRefuseReason second_announcement = (TableRefuseReason) 0x20000001; // a second announcement on a connection: it sets nothing, amends nothing, and the connection closes
-constexpr TableRefuseReason vocabulary_too_large = (TableRefuseReason) 0x20000002; // an announcement above the receiver's declared bound, refused before an entry is touched
+constexpr TableRefuseReason no_vocabulary = static_cast<TableRefuseReason>( 0x20000000 ); // no table for this connection: the message arrived before the announcement, or after a refused one
+constexpr TableRefuseReason second_announcement = static_cast<TableRefuseReason>( 0x20000001 ); // a second announcement on a connection: it sets nothing, amends nothing, and the connection closes
+constexpr TableRefuseReason vocabulary_too_large = static_cast<TableRefuseReason>( 0x20000002 ); // an announcement above the receiver's declared bound, refused before an entry is touched
 
 // THE MESSAGE PATH SPEAKS THE ONE VOCABULARY (§6.5): TableMessageReason is a
 // TableRefuseReason, converting both ways, and not a second enum. It is a
@@ -1156,7 +1156,7 @@ struct TableWriter
             overflow = true;
             return;
         }
-        memcpy( buffer + offset, data, (size_t) bytes );
+        memcpy( buffer + offset, data, static_cast<size_t>( bytes ) );
         offset += bytes;
     }
     ` + forceInline + ` void put8( uint8_t v ) { raw( &v, 1 ); }
@@ -1392,7 +1392,7 @@ inline void TableIdsWrite( TableWriter & w, const TableIds & ids )
 #if defined( __BYTE_ORDER__ ) && defined( __ORDER_LITTLE_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
     if ( count > 0 )
     {
-        memcpy( dst, ids.ids, (size_t) ( count * 8 ) );
+        memcpy( dst, ids.ids, static_cast<size_t>( count * 8 ) );
     }
     const uint64_t n = uint64_t( count );
     memcpy( dst + count * 8, &n, 8 );
@@ -1470,7 +1470,7 @@ struct TableReader
     // capability, so one past what remains must be compared UNSIGNED. Casting
     // it to int64 first turns 0xFFFFFFFFFFFFFFFF into -1, and a negative
     // length looks like room.
-    ` + forceInline + ` bool room( uint64_t bytes ) const { return bytes <= (uint64_t) ( size - offset ); }
+    ` + forceInline + ` bool room( uint64_t bytes ) const { return bytes <= static_cast<uint64_t>( size - offset ); }
     ` + forceInline + ` uint8_t get8() { return buffer[offset++]; }
     ` + forceInline + ` uint16_t get16()
     {
@@ -1561,7 +1561,7 @@ struct TableReader
     {
         uint64_t ref = 0;
         if ( !getleb( ref ) ) { return false; }
-        if ( ref == 0 || ids == NULL || ref > (uint64_t) ids->count ) { return false; }
+        if ( ref == 0 || ids == NULL || ref > static_cast<uint64_t>( ids->count ) ) { return false; }
         id = ids->at( ref );
         return true;
     }
@@ -1612,7 +1612,7 @@ struct TableReader
             case 32:
             {
                 uint64_t n = 0;
-                if ( r.getleb( n ) && r.room( n ) ) { r.offset += (int64_t) n; }
+                if ( r.getleb( n ) && r.room( n ) ) { r.offset += static_cast<int64_t>( n ); }
                 return false;
             }
             case 13:
@@ -1622,8 +1622,8 @@ struct TableReader
                 uint64_t n = 0;
                 if ( !r.getleb( n ) || !r.room( n ) ) return false;
                 const uint8_t * b = r.buffer + r.offset;
-                r.offset += (int64_t) n;
-                return badElementKindContent( kind, b, (int64_t) n, depth );
+                r.offset += static_cast<int64_t>( n );
+                return badElementKindContent( kind, b, static_cast<int64_t>( n ), depth );
             }
             case 15: return badElementKindUnion( r, depth );
             default: break;
@@ -1656,7 +1656,7 @@ struct TableReader
         {
             uint64_t ref = 0;
             if ( !r.getleb( ref ) || ref == 0 ) return false;
-            if ( ids == NULL || ref > (uint64_t) ids->count || !r.has( 1 ) ) return false;
+            if ( ids == NULL || ref > static_cast<uint64_t>( ids->count ) || !r.has( 1 ) ) return false;
             const uint8_t field_kind = r.get8();
             const int64_t before = r.offset;
             if ( badElementKindPayload( field_kind, r, depth ) ) return true;
@@ -1673,7 +1673,7 @@ struct TableReader
         TableReader r( b + 1, n - 1, report, ids );
         uint64_t count = 0;
         if ( !r.getleb( count ) ) return false;
-        if ( count > (uint64_t) ( r.size - r.offset ) ) return false;
+        if ( count > static_cast<uint64_t>( r.size - r.offset ) ) return false;
         for ( uint64_t i = 0; i < count; i++ )
         {
             const int64_t before = r.offset;
@@ -1692,17 +1692,17 @@ struct TableReader
         TableReader r( b + 1, n - 1, report, ids );
         uint64_t count = 0;
         if ( !r.getleb( count ) ) return false;
-        if ( count > (uint64_t) ( r.size - r.offset ) ) return false;
+        if ( count > static_cast<uint64_t>( r.size - r.offset ) ) return false;
         for ( uint64_t i = 0; i < count; i++ )
         {
             uint64_t key = 0;
             if ( !r.getleb( key ) ) return false;
-            if ( key == 0 || ids == NULL || key > (uint64_t) ids->count ) return false;
+            if ( key == 0 || ids == NULL || key > static_cast<uint64_t>( ids->count ) ) return false;
             uint64_t len = 0;
             if ( !r.getleb( len ) || !r.room( len ) ) return false;
             const uint8_t * eb = r.buffer + r.offset;
-            r.offset += (int64_t) len;
-            if ( badElementKindContent( elem, eb, (int64_t) len, depth ) ) return true;
+            r.offset += static_cast<int64_t>( len );
+            if ( badElementKindContent( elem, eb, static_cast<int64_t>( len ), depth ) ) return true;
         }
         return false;
     }
@@ -1711,15 +1711,15 @@ struct TableReader
     {
         uint64_t arm = 0;
         if ( !r.getleb( arm ) || arm == 0 ) return false;
-        if ( ids == NULL || arm > (uint64_t) ids->count || !r.has( 1 ) ) return false;
+        if ( ids == NULL || arm > static_cast<uint64_t>( ids->count ) || !r.has( 1 ) ) return false;
         const uint8_t arm_kind = r.get8();
         uint64_t n = 0;
         if ( !r.getleb( n ) || !r.room( n ) ) return false;
         const uint8_t * b = r.buffer + r.offset;
-        r.offset += (int64_t) n;
+        r.offset += static_cast<int64_t>( n );
         const bool structural = arm_kind == 13 || arm_kind == 14 || arm_kind == 15 || arm_kind == 16;
         if ( !structural ) return false;
-        return badElementKindContent( arm_kind, b, (int64_t) n, depth );
+        return badElementKindContent( arm_kind, b, static_cast<int64_t>( n ), depth );
     }
 
     // skip one payload by kind; false = framing damage. FOUR RULES COVER THE
@@ -1787,7 +1787,7 @@ struct TableReader
                 uint64_t n = 0;
                 if ( !getleb( n ) ) return false;
                 if ( !room( n ) ) { return false; }
-                offset += (int64_t) n;
+                offset += static_cast<int64_t>( n );
                 return true;
             }
             case 13: // a TABLE body: open it for an off-list array or keyed header (§3, §4)
@@ -1798,8 +1798,8 @@ struct TableReader
                 if ( !getleb( n ) ) return false;
                 if ( !room( n ) ) return false;
                 const uint8_t * b = buffer + offset;
-                offset += (int64_t) n;
-                return !badElementKindContent( kind, b, (int64_t) n, depth );
+                offset += static_cast<int64_t>( n );
+                return !badElementKindContent( kind, b, static_cast<int64_t>( n ), depth );
             }
             case 15: // union: the arm id reference, then its kind, its L and its payload (reference 0 = empty)
             {
@@ -1812,8 +1812,8 @@ struct TableReader
                 if ( !getleb( n ) ) return false;
                 if ( !room( n ) ) return false;
                 const uint8_t * b = buffer + offset;
-                offset += (int64_t) n;
-                return !badElementKindContent( arm_kind, b, (int64_t) n, depth );
+                offset += static_cast<int64_t>( n );
+                return !badElementKindContent( arm_kind, b, static_cast<int64_t>( n ), depth );
             }
             // KIND 34 IS RESERVED FOR float16 AND IS NOT PART OF THIS MAJOR (§3):
             // no writer emits it and no reader has a rule for it, so a reader
@@ -1888,16 +1888,16 @@ inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableI
     uint64_t lo = uint64_t( tail[0] ) | uint64_t( tail[1] ) << 8 | uint64_t( tail[2] ) << 16 | uint64_t( tail[3] ) << 24;
     uint64_t hi = uint64_t( tail[4] ) | uint64_t( tail[5] ) << 8 | uint64_t( tail[6] ) << 16 | uint64_t( tail[7] ) << 24;
     uint64_t count = lo | ( hi << 32 );
-    if ( count > (uint64_t) ( bytes / 8 ) ) { return TableOpenDamaged; }
+    if ( count > static_cast<uint64_t>( bytes / 8 ) ) { return TableOpenDamaged; }
     // THE BOUNDED-WORK CONTRACT (docs/SPEC-TABLES.md §3): a table that claims
     // more than kTableProbeBound entries is malformed for the whole wire, even
     // where the buffer would hold them, so the distinctness walk below stays
     // bounded no matter how large the file is.
-    if ( count > (uint64_t) kTableProbeBound ) { return TableOpenDamaged; }
-    const int64_t span = (int64_t) count * 8 + 8;
+    if ( count > static_cast<uint64_t>( kTableProbeBound ) ) { return TableOpenDamaged; }
+    const int64_t span = static_cast<int64_t>( count ) * 8 + 8;
     if ( span + 1 > bytes ) { return TableOpenDamaged; }
     table.entries = buffer + bytes - span;
-    table.count = (int64_t) count;
+    table.count = static_cast<int64_t>( count );
     // THE ENTRIES ARE DISTINCT: a table that carries one id twice is malformed
     // for the whole wire, because no wire this schema writes carries a repeat
     // and it would leave one more shape of table for a hostile writer to aim
@@ -1965,7 +1965,7 @@ inline bool TableBodyEndsEarly( const uint8_t * body, int64_t bytes, const Table
         uint64_t ref = 0;
         if ( !r.getleb( ref ) ) { return false; }
         if ( ref == 0 ) { return r.offset != bytes; }
-        if ( ref > (uint64_t) table.count ) { return false; }
+        if ( ref > static_cast<uint64_t>( table.count ) ) { return false; }
         if ( !r.has( 1 ) ) { return false; }
         if ( !r.skip( r.get8() ) ) { return false; }
     }
