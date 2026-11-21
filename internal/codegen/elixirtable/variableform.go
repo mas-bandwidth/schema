@@ -269,7 +269,7 @@ func firstUseSource() string {
   # enum's variant, a union's arm, a keyed slot's key and a node record's type
   # each use their id where the walk meets them.
   defp first_use_order?(body, ids) do
-    with {:ok, <<>>, acc, table} <- first_use_fields(body, ids, {[], MapSet.new()}, true, nil),
+    with {:ok, <<>>, acc, table} <- first_use_fields(body, ids, {[], MapSet.new()}, true, nil, 0),
          {:ok, {order, _seen}} <- first_use_nodes(table, ids, acc) do
       Enum.reverse(order) == first_use_entries(ids)
     else
@@ -294,7 +294,14 @@ func firstUseSource() string {
 
   # first_use_fields walks one body to its terminator. In the root body the
   # node table's payload is set aside, its records walked after the body.
-  defp first_use_fields(bin, ids, acc, root, table) do
+  #
+  # THE WALK IS DEPTH-BOUNDED (ELIXIR-6): d counts the framed contents it has
+  # descended, and past 512 the walk answers :error, which first_use_order?/2
+  # maps to "framing this walk cannot follow", the strict walk's to refuse
+  # (its own cap is 128 bodies, and no lawful nesting spends more than a few
+  # framed contents per body). The walk runs on attacker bytes before any
+  # other walk on the announcement read, so it never recurses without bound.
+  defp first_use_fields(bin, ids, acc, root, table, d) do
     case first_use_leb(bin) do
       {0, rest} ->
         {:ok, rest, acc, table}
@@ -303,12 +310,12 @@ func firstUseSource() string {
         case first_use(ids, ref, acc) do
           {:ok, 0x%016X, acc} when root and kind == 12 ->
             with {:ok, content, rest} <- first_use_framed(rest) do
-              first_use_fields(rest, ids, acc, root, content)
+              first_use_fields(rest, ids, acc, root, content, d)
             end
 
           {:ok, _id, acc} ->
-            with {:ok, rest, acc} <- first_use_payload(rest, kind, ids, acc) do
-              first_use_fields(rest, ids, acc, root, table)
+            with {:ok, rest, acc} <- first_use_payload(rest, kind, ids, acc, d) do
+              first_use_fields(rest, ids, acc, root, table, d)
             end
 
           :error ->
@@ -346,9 +353,10 @@ func firstUseSource() string {
        when type_id in [0x%016X, 0x%016X],
        do: {:ok, acc}
 
-  defp first_use_record(record, _type_id, ids, acc), do: first_use_content(record, 13, ids, acc)
+  defp first_use_record(record, _type_id, ids, acc),
+    do: first_use_content(record, 13, ids, acc, 0)
 
-  defp first_use_payload(bin, kind, ids, acc) when kind in [17, 30] do
+  defp first_use_payload(bin, kind, ids, acc, _d) when kind in [17, 30] do
     case first_use_leb(bin) do
       {0, rest} ->
         {:ok, rest, acc}
@@ -364,7 +372,7 @@ func firstUseSource() string {
     end
   end
 
-  defp first_use_payload(bin, 15, ids, acc) do
+  defp first_use_payload(bin, 15, ids, acc, d) do
     case first_use_leb(bin) do
       {0, rest} ->
         {:ok, rest, acc}
@@ -372,7 +380,7 @@ func firstUseSource() string {
       {ref, <<kind, rest::binary>>} ->
         with {:ok, _id, acc} <- first_use(ids, ref, acc),
              {:ok, content, rest} <- first_use_framed(rest),
-             {:ok, acc} <- first_use_content(content, kind, ids, acc) do
+             {:ok, acc} <- first_use_content(content, kind, ids, acc, d + 1) do
           {:ok, rest, acc}
         end
 
@@ -381,14 +389,14 @@ func firstUseSource() string {
     end
   end
 
-  defp first_use_payload(bin, kind, ids, acc) when kind in [12, 13, 14, 16, 31, 32] do
+  defp first_use_payload(bin, kind, ids, acc, d) when kind in [12, 13, 14, 16, 31, 32] do
     with {:ok, content, rest} <- first_use_framed(bin),
-         {:ok, acc} <- first_use_content(content, kind, ids, acc) do
+         {:ok, acc} <- first_use_content(content, kind, ids, acc, d + 1) do
       {:ok, rest, acc}
     end
   end
 
-  defp first_use_payload(bin, kind, _ids, acc) do
+  defp first_use_payload(bin, kind, _ids, acc, _d) do
     w = first_use_width(kind)
 
     case bin do
@@ -397,50 +405,52 @@ func firstUseSource() string {
     end
   end
 
-  defp first_use_content(b, 13, ids, acc) do
-    case first_use_fields(b, ids, acc, false, nil) do
+  defp first_use_content(_b, _kind, _ids, _acc, d) when d > 512, do: :error
+
+  defp first_use_content(b, 13, ids, acc, d) do
+    case first_use_fields(b, ids, acc, false, nil, d) do
       {:ok, <<>>, acc, nil} -> {:ok, acc}
       _ -> :error
     end
   end
 
-  defp first_use_content(<<ek, rest::binary>>, kind, ids, acc) when kind in [14, 16] do
+  defp first_use_content(<<ek, rest::binary>>, kind, ids, acc, d) when kind in [14, 16] do
     case first_use_leb(rest) do
-      {n, items} when kind == 14 -> first_use_elements(items, ek, n, ids, acc)
-      {n, items} -> first_use_slots(items, ek, n, ids, acc)
+      {n, items} when kind == 14 -> first_use_elements(items, ek, n, ids, acc, d)
+      {n, items} -> first_use_slots(items, ek, n, ids, acc, d)
       :error -> :error
     end
   end
 
-  defp first_use_content(_b, kind, _ids, _acc) when kind in [14, 16], do: :error
+  defp first_use_content(_b, kind, _ids, _acc, _d) when kind in [14, 16], do: :error
 
-  defp first_use_content(b, kind, ids, acc) when kind in [15, 17, 30] do
-    case first_use_payload(b, kind, ids, acc) do
+  defp first_use_content(b, kind, ids, acc, d) when kind in [15, 17, 30] do
+    case first_use_payload(b, kind, ids, acc, d) do
       {:ok, <<>>, acc} -> {:ok, acc}
       _ -> :error
     end
   end
 
-  defp first_use_content(_b, _kind, _ids, acc), do: {:ok, acc}
+  defp first_use_content(_b, _kind, _ids, acc, _d), do: {:ok, acc}
 
-  defp first_use_elements(<<>>, _ek, 0, _ids, acc), do: {:ok, acc}
-  defp first_use_elements(_rest, _ek, 0, _ids, _acc), do: :error
+  defp first_use_elements(<<>>, _ek, 0, _ids, acc, _d), do: {:ok, acc}
+  defp first_use_elements(_rest, _ek, 0, _ids, _acc, _d), do: :error
 
-  defp first_use_elements(rest, ek, n, ids, acc) do
-    with {:ok, rest, acc} <- first_use_payload(rest, ek, ids, acc) do
-      first_use_elements(rest, ek, n - 1, ids, acc)
+  defp first_use_elements(rest, ek, n, ids, acc, d) do
+    with {:ok, rest, acc} <- first_use_payload(rest, ek, ids, acc, d) do
+      first_use_elements(rest, ek, n - 1, ids, acc, d)
     end
   end
 
-  defp first_use_slots(<<>>, _ek, 0, _ids, acc), do: {:ok, acc}
-  defp first_use_slots(_rest, _ek, 0, _ids, _acc), do: :error
+  defp first_use_slots(<<>>, _ek, 0, _ids, acc, _d), do: {:ok, acc}
+  defp first_use_slots(_rest, _ek, 0, _ids, _acc, _d), do: :error
 
-  defp first_use_slots(rest, ek, n, ids, acc) do
+  defp first_use_slots(rest, ek, n, ids, acc, d) do
     with {key, rest} <- first_use_leb(rest),
          {:ok, _id, acc} <- first_use(ids, key, acc),
          {:ok, content, rest} <- first_use_framed(rest),
-         {:ok, acc} <- first_use_content(content, ek, ids, acc) do
-      first_use_slots(rest, ek, n - 1, ids, acc)
+         {:ok, acc} <- first_use_content(content, ek, ids, acc, d + 1) do
+      first_use_slots(rest, ek, n - 1, ids, acc, d)
     end
   end
 
