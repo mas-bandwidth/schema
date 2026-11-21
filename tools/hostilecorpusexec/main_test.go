@@ -62,7 +62,7 @@ func TestKnownFindingCannotHideExecutionFailure(t *testing.T) {
 			if mode == "hang" {
 				budget = 250 * time.Millisecond
 			}
-			ok, err := run("test", binary, corpus, findings, "", 1, budget)
+			ok, err := run("test", binary, corpus, findings, "", "", 1, budget)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -70,5 +70,54 @@ func TestKnownFindingCannotHideExecutionFailure(t *testing.T) {
 				t.Fatalf("known finding with %s: success=%v, want %v", mode, ok, want)
 			}
 		})
+	}
+}
+
+// TestSkipsAreHeldByName is CI-TOOLS-3: a skip passes only when known-skips.tsv
+// names its case, so a binding dropped from a case binary reads red rather
+// than as one more skip; and a carried skip whose case answers, or is gone
+// from the manifest, is stale.
+func TestSkipsAreHeldByName(t *testing.T) {
+	binary, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	corpus := t.TempDir()
+	manifest := "probe\twire\tprobe.schema\tRoot\tinputs/probe.bin\ttest\trefuse\tdamaged\t-\n"
+	if err := os.WriteFile(filepath.Join(corpus, "manifest.tsv"), []byte(manifest), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	write := func(name, body string) string {
+		p := filepath.Join(t.TempDir(), name)
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	carried := write("known-skips.tsv", "# name\twhy\nprobe\tno file-form load for this root\n")
+	gone := write("known-skips.tsv", "probe\tno file-form load for this root\nno-such-case\tgone from the manifest\n")
+	for _, c := range []struct {
+		name, mode, skips string
+		want              bool
+	}{
+		{"a skip no line names", "skip", "", false},
+		{"a skip the list names", "skip", carried, true},
+		{"a carried skip whose case answers", "match", carried, false},
+		{"a carried skip whose case is gone", "skip", gone, false},
+		{"no skip and no list", "match", "", true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("SCHEMA_HOSTILE_RUNNER_TEST_ANSWER", c.mode)
+			ok, err := run("test", binary, corpus, "", c.skips, "", 1, 5*time.Second)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if ok != c.want {
+				t.Fatalf("success=%v, want %v", ok, c.want)
+			}
+		})
+	}
+	if _, _, err := loadSkips(write("bad.tsv", "probe\n")); err == nil {
+		t.Error("a skip line with no reason was accepted")
 	}
 }

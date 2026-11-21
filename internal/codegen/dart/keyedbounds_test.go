@@ -3,7 +3,6 @@ package dart
 import (
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,6 +12,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestDartKeyedArraysAreHeldAtBothEnds holds the Dart keyed-array extent (issue
@@ -72,7 +73,7 @@ func TestDartKeyedArraysAreHeldAtBothEnds(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "keyed_probe.dart"), []byte(keyedProbe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dartBinaryDart(t), "--enable-asserts", "keyed_probe.dart")
+	cmd := testproc.Command(t, dartBinaryDart(t), "--enable-asserts", "keyed_probe.dart")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("keyed-array runtime probe: %v\n%s", err, out)

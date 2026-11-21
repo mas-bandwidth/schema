@@ -685,7 +685,7 @@ func TestMooMessageFormEvolvesNegativeControl(t *testing.T) {
 			"\t\tif Cmp.cmp(value, hi) > 0 then\n\t\t\tvalue = hi\n"},
 		{"quantized_out_of_range", "\t\tif V.cmp64(lo, hi, fd.flo[1], fd.flo[2]) < 0 or V.cmp64(lo, hi, fd.fhi[1], fd.fhi[2]) > 0 then\n\t\t\treturn nil, refuseRead(t, \"out_of_range\")\n",
 			"\t\tif V.cmp64(lo, hi, fd.fhi[1], fd.fhi[2]) > 0 then\n\t\t\treturn fd.fhi32, true\n"},
-		{"count_over_bound", "\tif n > fd.bound then\n\t\treturn refuseRead(t, \"count_over_bound\")\n",
+		{"count_over_bound", "\tif n > fd.bound or (fd.array == \"counted\" and n < (fd.min or 0)) then\n\t\t-- below this build's Min refuses as past its bound does (SPEC.md\n\t\t-- §5.1 row 3)\n\t\treturn refuseRead(t, \"count_over_bound\")\n",
 			"\tif false then\n\t\treturn refuseRead(t, \"count_over_bound\")\n"},
 		{"length_over_bound", "\tif fd.bound ~= nil and n > fd.bound then\n\t\treturn refuseRead(t, \"length_over_bound\")\n\tend\n\tlocal keep = n\n\tif isBytes then",
 			"\tlocal keep = n\n\tif fd.bound ~= nil and keep > fd.bound then\n\t\tkeep = fd.bound\n\tend\n\tif isBytes then"},

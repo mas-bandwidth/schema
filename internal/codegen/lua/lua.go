@@ -56,8 +56,9 @@ type Module struct {
 	File *ir.File
 	Body strings.Builder
 
-	requires map[string]bool
-	helpers  map[string]string
+	requires   map[string]bool
+	helpers    map[string]string
+	wideBounds map[string]string // a 128-bit bound literal -> its module constant (write.go)
 }
 
 // Helper records a module-local helper function, emitted once after `local _M`

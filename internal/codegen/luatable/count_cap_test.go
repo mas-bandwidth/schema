@@ -199,7 +199,8 @@ func runCountCap(t *testing.T, schema string, rows []countCapRow, edit func(map[
 // must answer nil on every builder read with the reason count_over_extent_cap,
 // refused set, malformed unset, no counter moved and nothing retained; the
 // good row reads clean; a damage row is malformed and never the refusal, and a
-// counted one also moves a counter.
+// counted one also moves a counter on the tolerant walk (a strict read the wire-alone
+// check refuses never walks, so its report carries the verdict alone).
 func countCapFaults(rows []countCapRow, got map[string]string) []string {
 	var bad []string
 	for _, row := range rows {
@@ -221,7 +222,7 @@ func countCapFaults(rows []countCapRow, got map[string]string) []string {
 				}
 			default:
 				f := strings.Fields(line)
-				if len(f) != 6 || f[0] != "nil" || f[1] == "count_over_extent_cap" || f[3] != "true" || (row.class == countedRow && f[4] == "0") {
+				if len(f) != 6 || f[0] != "nil" || f[1] == "count_over_extent_cap" || f[3] != "true" || (row.class == countedRow && path == "tolerant" && f[4] == "0") {
 					bad = append(bad, fmt.Sprintf("%s %s: %q, want damage and not the count-cap refusal", row.name, path, line))
 				}
 			}

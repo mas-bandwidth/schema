@@ -758,6 +758,14 @@ func (g *gen) carrierEval(e ast.Expr) (*big.Int, bool, bool) {
 			return nil, yw, false
 		}
 		wide := xw || yw
+		if !wide && (!fitsCarrier(x, false) || !fitsCarrier(y, false)) {
+			// a literal past INT32_MAX is typed uint in C# (0x80000000,
+			// 3000000000), so literal-only arithmetic on it evaluates in
+			// uint — `0x80000000 - 0x80000001` is a CS0220 build break
+			// although the checked value -1 fits; each operand must be the
+			// int this carrier assumes
+			return nil, wide, false
+		}
 		v := new(big.Int)
 		switch e.Op {
 		case "+":
@@ -776,6 +784,9 @@ func (g *gen) carrierEval(e ast.Expr) (*big.Int, bool, bool) {
 				return nil, wide, false
 			}
 			v.Rem(x, y)
+			if !fitsCarrier(new(big.Int).Quo(x, y), wide) {
+				return nil, wide, false // the target computes the quotient: MIN % -1 overflows though the remainder is 0
+			}
 		default:
 			return nil, wide, false
 		}
