@@ -28,10 +28,10 @@ import (
 // node_count_disagrees.bin (body damage), beside node_clean.bin, their
 // accepted twin on the same root.
 
-// TestPythonRetainingLoadResetsBeforeItOpensTheFile is the fast half: the
+// TestPythonRetainResetsBeforeOpen is the fast half: the
 // emitted load_retain empties the store before the integrity check and the
 // file read, so no refusal can leave it as an earlier load left it.
-func TestPythonRetainingLoadResetsBeforeItOpensTheFile(t *testing.T) {
+func TestPythonRetainResetsBeforeOpen(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct{ name, schema, open string }{
 		{"plain", "package probe\ntable Root { n int32 }\n", "return load_table(cls, data, report, retain)"},
@@ -67,11 +67,11 @@ func TestPythonRetainingLoadResetsBeforeItOpensTheFile(t *testing.T) {
 	}
 }
 
-// TestPythonRetainingLoadEmptiesTheStoreOnARefusal is the run-time proof, on
+// TestPythonRetainRefusalEmptiesTheStore is the run-time proof, on
 // both pinned interpreters: a store an earlier load left a capture in is
 // handed back empty by every refused retaining load, and an accepted load of
 // the clean twin is the control.
-func TestPythonRetainingLoadEmptiesTheStoreOnARefusal(t *testing.T) {
+func TestPythonRetainRefusalEmptiesTheStore(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "both pinned Python interpreters")
 	root := filepath.Join("..", "..", "..")
