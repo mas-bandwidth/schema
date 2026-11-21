@@ -717,13 +717,14 @@ func (g *tableGen) emitWireScalar(f *ir.Field, expr, writer, ind string) {
 		g.pf("%s%s.Put%d(math.Float%dbits(%s))\n", ind, writer, bits, bits, expr)
 	default:
 		width := ir.TableKindWidth(kind) * 8
-		if width == 128 {
+		switch {
+		case width == 128:
 			g.pf("%s%s.Put128(%s.Lo, %s.Hi)\n", ind, writer, expr, expr)
-		} else if width == 64 && goFieldType(f.Type) == "int64" {
+		case width == 64 && goFieldType(f.Type) == "int64":
 			g.pf("%s%s.putI64(%s)\n", ind, writer, expr)
-		} else if goFieldType(f.Type) == fmt.Sprintf("int%d", width) { // the mask is the same-width store, said so gosec can see it
+		case goFieldType(f.Type) == fmt.Sprintf("int%d", width): // the mask is the same-width store, said so gosec can see it
 			g.pf("%s%s.Put%d(uint%d(int64(%s)&0x%x))\n", ind, writer, width, width, expr, uint64(1)<<width-1)
-		} else {
+		default:
 			g.pf("%s%s.Put%d(uint%d(%s))\n", ind, writer, width, width, expr)
 		}
 	}
