@@ -404,7 +404,7 @@ func randomConstCorpus(seed int64) string {
 		span := new(big.Int).Sub(hi, lo)
 		return new(big.Int).Add(lo, new(big.Int).Rand(rng, new(big.Int).Add(span, big.NewInt(1))))
 	}
-	for i := 0; i < 8; i++ {
+	for range 8 {
 		s := storages[rng.Intn(len(storages))]
 		v := edge(s.lo, s.hi)
 		n := name(len(consts))
@@ -764,7 +764,7 @@ func agreeRun(t *testing.T, cmd *exec.Cmd) string {
 
 func agreeLines(text string, re *regexp.Regexp) []string {
 	var out []string
-	for _, l := range strings.Split(text, "\n") {
+	for l := range strings.SplitSeq(text, "\n") {
 		if re.MatchString(l) {
 			out = append(out, l)
 		}
