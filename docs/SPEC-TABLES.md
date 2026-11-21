@@ -3565,7 +3565,7 @@ fixed table ShipConfig
 }
 ```
 
-New locks start with `schema-lock 9`, use the prospective full-width, path-addressed definitions digest, and include complete `writer=<hex>` snapshots (the fixed-form algorithm §5.2). Rendering6/7/8 histories are salvaged without changing their saved wire keys; relocking appends the prospective current identity. Historical snapshots are checked against each entry’s recorded digest scheme. The supported rendering-7 example below remains readable unchanged; its absent snapshots are legacy-unknown.
+New locks start with `schema-lock 10`, use the prospective full-width, path-addressed definitions digest, and include complete `writer=<hex>` snapshots (the fixed-form algorithm §5.2). Rendering6/7/8 histories are salvaged without changing their saved wire keys; relocking appends the prospective current identity. Historical snapshots are checked against each entry’s recorded digest scheme. The supported rendering-7 example below remains readable unchanged; its absent snapshots are legacy-unknown.
 
 ```
 schema-lock 7
@@ -3674,7 +3674,7 @@ under a new name:
   and append a new one"*
 - a **moved range, resolution or fixed-point scale**, none of which moves a
   byte and all of which change what the bytes say: *"… is [1, 240] in the lock
-  and [1, 480] in the declaration — a field already in the lock keeps its
+  and [1, 120] in the declaration — a field already in the lock keeps its
   range: the bounds and the resolution are the scale a stored value is read
   back at, so moving them reads every record already written as a different
   number (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new
@@ -3775,9 +3775,9 @@ schema lock [--print] [--verbose] [--retire Table[@0x...] --reason <text>] [dir|
 Apart from `--retire`, it only ever APPENDS entries and values, adds blocks and
 flips `deprecated` on:
 it runs the check's own comparison first and **refuses everything the check
-refuses** — a reorder, a removal, a widening, a kind change, a held type that
-moved, an array element that moved, a union arm's payload type that moved, a
-moved default, a moved range, a flipped `?`, a reordered value list, an
+refuses** — a reorder, a removal, a narrowing, a kind change, a held type that
+moved, an array element that moved, a union arm whose payload names a
+different declaration, a moved default, a narrowed range, a flipped `?`, a reordered value list, an
 un-deprecation, a table withdrawn without a retirement, a type gone from the closure, a hand-edited
 file — so the one command that moves the file cannot be the one that breaks
 the rule. The ONE
@@ -4541,8 +4541,8 @@ MEANS, never where it is.
 refused. And undeprecating — taking `| deprecated` off again — is refused by
 the lock and by §21.1's monotone check, naming the enum and the variant. A
 deprecated field keeps this same one-way rule today; the field's own refusal is
-stated once, in `internal/lockfile/monotone.go:465` and pinned by
-TestLockFieldUndeprecateRefuses and TestUnDepRecateRefused. The variant is the
+stated once, in `monotoneAt` (`internal/lockfile/monotone.go`) and pinned by
+TestLockFieldUndeprecateRefuses and TestUnDeprecateRefused. The variant is the
 same rule one level in, not a second one.
 
 **READ.** A reader that meets a deprecated variant's id — on any form — yields
@@ -6840,7 +6840,12 @@ message, fixed, variable and text forms:
 - **A FINITE VALUE PAST AN END IS REFUSED**: every writer refuses it
   `invalid_value`, as it refuses any value off its declared range, and a read
   that meets one where the form carries the float whole refuses it
-  `out_of_range`, naming the field.
+  `out_of_range`, naming the field. The ends are held AT FLOAT32, where every
+  runtime evaluates the triple (SPEC.md §4.6): the value, narrowed to float32,
+  is compared with `float32(min)` and `float32(max)`, on every write and every
+  read in every form. An end float32 cannot spell exactly (`max = 0.1`,
+  `min = 0.7`) is the float32 nearest it, so the value at that end is in range
+  and one float32 step past it is not.
 - **`-0` IS `+0`.** It lands as exactly what `+0` lands as in that form: the
   value `0` itself where the form carries the float, and the INDEX OF 0 FOR
   THAT RANGE where the form quantizes, which decodes to the grid point the
@@ -7168,10 +7173,12 @@ caller's array of values is the whole of its storage.
     its entry table (kind `13`) whatever its value is;
   - an array's `min` is at most its `max`;
   - a packed `bits` and a `max` sit inside what the kind holds;
-  - a RANGED integer's `base` is such that `base + 2^bits - 1` lies inside the
-    announced kind: a width the kind holds is not enough, because under a base
-    near the kind's edge a lawful-looking width names values the kind cannot
-    hold.
+  - a RANGED integer's `base` lies inside the announced kind. The sum is not
+    held here, because `uint8 | min = 200, max = 250` is lawful and announces a
+    six-bit width whose top offsets pass the kind's edge: `base + offset` is
+    held to the announced kind's storage domain on the body, at a named field
+    and on the skip path alike, exactly and never wrapped (A RANGED OFFSET IS
+    HELD TO THE DOMAIN THE READER CAN KNOW, above).
 
   Two rules on the body complete it. An array element that consumes no bits is
   refused where it is walked (A WALKED ARRAY ELEMENT THAT CONSUMES NO BITS
@@ -18545,8 +18552,8 @@ A field REPOINTED at another union carries a pair too (§18.3): a
 replacement whose shared arm holds a twin payload refuses on `default=`, one
 whose shared arm holds a scalar refuses on `payload=`, and a union carrying
 every arm of the old one under the same facts stands in.
-`TestBaselineRefusesTToOptional` holds the one-way optional edit and a new
-optional field. The projection over the corpus regenerates byte-identical. The warn class
+`TestBaselineAllowsOptionalEvolution` holds the optional edit in both
+directions and a new optional field. The projection over the corpus regenerates byte-identical. The warn class
 warns and does not refuse. A tightened range
 warns from either end and a loosened one is silent, over a ranged integer, a
 fixed field's whole-unit bounds and a compressed float's. The `was` chain

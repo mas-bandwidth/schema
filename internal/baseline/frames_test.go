@@ -693,6 +693,134 @@ func TestEvolutionTableDocsAgreeWithTheGolden(t *testing.T) {
 	}
 }
 
+// versioningRows maps each docs/VERSIONING.md evolution-table row to the
+// golden fixtures (frameRows, by name) whose pinned verdicts its cells must
+// agree with. VERSIONING.md says #446's golden reads its table, and this is
+// what makes that true: the page is held to the same pins §4.1 is.
+var versioningRows = map[string][]string{
+	"| a field added, removed or reordered |":                    {"a field added", "a field removed", "a field reordered"},
+	"| a field renamed under `was` |":                            {"a field renamed under was"},
+	"| a field renamed a second time,":                           {"a field renamed a second time, was naming the intermediate spelling"},
+	"| a field of a `type` that a table reaches, renamed under":  {"a type's field renamed under was"},
+	"| a field of a `type` that a table reaches, renamed bare |": {"a type's field renamed bare"},
+	"| an enum variant or a union arm renamed under `was` |":     {"an enum variant renamed under was"},
+	"| an enum variant or a union arm renamed bare |":            {"an enum variant renamed bare"},
+	"| a variant or an arm renamed a second time,":               {"an enum variant renamed a second time, was naming the intermediate spelling"},
+	"| a scalar's default changed |":                             {"a specified default changed"},
+	"| a bound raised or lowered,":                               {"an array bound shrunk"},
+	"| a range tightened |":                                      {"a declared range tightened"},
+	"| a field's kind changed (":                                 {"a field moved to *T", "a scalar kind changed"},
+	"| a field's kind WIDENED (":                                 {"a scalar kind widened"},
+	"| `T`→`?T` |":                                               {"a field moved to ?T"},
+	"| `?T`→`T` |":                                               {"an optional field made plain"},
+	"| an enum variant added or removed |":                       {"an enum variant added", "an enum variant removed"},
+	"| an enum variant renamed |":                                {"an enum variant renamed bare"},
+	"| a `fixed` field's `F` moved |":                            {"a fixed field's F moved under the same storage width"},
+	"| a field's referent replaced by one that cannot stand in":  {"a field's referent swapped for one that cannot stand in"},
+	"| a field or a union arm changed between an enum and its":   {"a field changed from an enum to its raw integer"},
+	"| a union arm's declared type changed |":                    {"a union arm's declared type changed"},
+	"| a flags variant inserted or removed |":                    {"a flags variant inserted"},
+	"| a keyed array made positional |":                          {"an array changed from keyed to positional"},
+	"| a map's KEY kind changed, or its KEY bound tightened":     {"a map's key kind changed", "a map's key bound tightened"},
+	"| an array changed between `[]T` and `[..N]T`":              {"an unbounded array given a bound its count passes"},
+	"| an unbounded array's ELEMENT retyped":                     {"an unbounded array's element retyped"},
+	"| a guard added or removed |":                               {"an if guard added"},
+	"| a table renamed bare |":                                   {"a type held by value renamed", "a table renamed where it is a pointer target"},
+	"| a table renamed under `was` |":                            {"a table renamed under was"},
+}
+
+// versioningLeftOut names the VERSIONING.md rows no frame fixture runs, each
+// with the test in this package that holds its baseline cell instead, or ""
+// where the row is not an edit the three frames can run.
+var versioningLeftOut = map[string]string{
+	"| a field renamed bare |":                                "internal/baseline TestRemovalAndAdditionWarnAsAPossibleRename",
+	"| a string, bytes or flags default changed |":            "internal/baseline TestValueDefaultsAreJudgedAsDefaults",
+	"| an enum variant reordered |":                           "internal/baseline TestAbsorbedEdits",
+	"| a flags variant reordered or renamed in place |":       "internal/baseline TestRefusals",
+	"| a union arm reordered or renamed |":                    "internal/baseline TestWarnings",
+	"| a keyed array's key enum swapped for another |":        "internal/baseline TestRefusals",
+	"| a `json =` key changed |":                              "internal/baseline TestRenameHintsTheJsonPairing",
+	"| a `///` doc comment or a tag added, changed or remove": "",
+	"| `\\| required` added to a shipped table field |":       "internal/baseline TestRequiredIsJudgedByTheTablesBaseline",
+	"| `\\| required` removed from a table field |":           "internal/baseline TestRequiredIsJudgedByTheTablesBaseline",
+	"| a retired name re-added with a new meaning |":          "internal/baseline TestRetiredNamesLedger",
+	"| a language added to the build |":                       "",
+}
+
+// verdictWord is the word a VERSIONING.md cell uses for a pinned baseline
+// verdict.
+var verdictWord = map[string]string{"pass": "pass", "warn": "warn", "refuse": "refuse"}
+
+// TestVersioningEvolutionTableAgreesWithTheGolden holds docs/VERSIONING.md's
+// evolution table to the golden exactly as
+// [TestEvolutionTableDocsAgreeWithTheGolden] holds §4.1's: every row is named
+// by a fixture or left out with the test that holds it, and each named row's
+// read, baseline and build cells say what its fixtures pin. A row that says
+// the baseline refuses an edit the engine passes goes red here.
+func TestVersioningEvolutionTableAgreesWithTheGolden(t *testing.T) {
+	page, err := os.ReadFile("../../docs/VERSIONING.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := evolutionTableRows(t, string(page))
+	fixtures := map[string]frameRow{}
+	for _, f := range frameRows(t) {
+		fixtures[f.name] = f
+	}
+
+	covered := map[string]bool{}
+	for fragment, names := range versioningRows {
+		row := evolutionRow(t, rows, fragment)
+		covered[row] = true
+		read, base, build := tableCell(t, row, 2), tableCell(t, row, 3), tableCell(t, row, 4)
+		refusedRead, refusedBase := false, false
+		for _, name := range names {
+			f, ok := fixtures[name]
+			if !ok {
+				t.Errorf("VERSIONING.md row %q names fixture %q, which frameRows does not carry", fragment, name)
+				continue
+			}
+			if !strings.Contains(base, verdictWord[f.baseline]) {
+				t.Errorf("VERSIONING.md row %q: the baseline cell is %q, and fixture %q pins %s", fragment, base, name, f.baseline)
+			}
+			refusedBase = refusedBase || f.baseline == "refuse"
+			switch f.build {
+			case "moves":
+				if !strings.Contains(build, "moves") {
+					t.Errorf("VERSIONING.md row %q: the build cell is %q, and fixture %q pins moves", fragment, build, name)
+				}
+			case "stands":
+				if !strings.Contains(build, "nothing") && !strings.HasPrefix(build, "no") {
+					t.Errorf("VERSIONING.md row %q: the build cell is %q, and fixture %q pins stands", fragment, build, name)
+				}
+			}
+			if f.readHeldBy == "" {
+				refusedRead = refusedRead || f.read == "refused"
+			}
+		}
+		if !refusedBase && strings.Contains(base, "refuse") {
+			t.Errorf("VERSIONING.md row %q: the baseline cell says it refuses (%q), and no fixture it names refuses", fragment, base)
+		}
+		if refusedRead && !strings.Contains(read, "refuse") {
+			t.Errorf("VERSIONING.md row %q: the read cell is %q, and a fixture it names refuses the read", fragment, read)
+		}
+		if !refusedRead && strings.Contains(read, "refuse") {
+			t.Errorf("VERSIONING.md row %q: the read cell says the read refuses (%q), and no fixture it names refuses it", fragment, read)
+		}
+	}
+	for fragment, test := range versioningLeftOut {
+		covered[evolutionRow(t, rows, fragment)] = true
+		if test != "" && !heldBy(t, test) {
+			t.Errorf("VERSIONING.md row %q is held by %s, which no longer exists", fragment, test)
+		}
+	}
+	for _, row := range rows {
+		if !covered[row] {
+			t.Errorf("VERSIONING.md evolution row has no fixture and no named holder: %s", row)
+		}
+	}
+}
+
 // tableRow finds the one markdown table line containing fragment.
 func tableRow(t *testing.T, text, fragment string) string {
 	t.Helper()

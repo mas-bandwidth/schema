@@ -158,7 +158,7 @@ func TestGeneratedMessageRepeatNegativeControl(t *testing.T) {
 		order, unordered    string
 	}{
 		{"internal/codegen/gotable/fuzzunit/RangesTableMessage.go", "if tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {", "if false && tableMessageSeenRepeat(r.Vocabulary, starts, depth, ref) {", "^TestGeneratedMessageRefusesRepeatedFieldId$", "if order >= ", "if false && order >= "},
-		{"internal/codegen/gotable/fuzzunit/KeyedTableMessage.go", "if slices.Contains(seenKey, id) {", "if false && slices.Contains(seenKey, id) {", "^TestGeneratedMessageRefusesRepeatedKeyedSlot$", "if exact && int(key) <= lastKey {", "if exact && false && int(key) <= lastKey {"},
+		{"internal/codegen/gotable/fuzzunit/KeyedTableMessage.go", "if tableMessageSetRepeat(r.Vocabulary, keys, ref) {", "if false && tableMessageSetRepeat(r.Vocabulary, keys, ref) {", "^TestGeneratedMessageRefusesRepeatedKeyedSlot$", "if exact && int(key) <= lastKey {", "if exact && false && int(key) <= lastKey {"},
 	} {
 		out, failed := runSabotagedChained(t, "../../../..", "./internal/codegen/gotable/fuzzunit", c.run,
 			slowtest.Sabotage{File: c.file, From: c.from, To: c.to, All: true},

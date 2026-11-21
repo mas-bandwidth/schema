@@ -137,16 +137,16 @@ func TestTheKeyKindIsFixed(t *testing.T) {
 	}
 }
 
-// TestTheKeyBoundIsAnExtent: a tightened `string(N)` key does not clamp. An
-// entry whose key does not fit is skipped WHOLE and counted, because a
-// clamped key is a merged entry (§2.8) — lossy, reported, and so a warning.
+// TestTheKeyBoundIsAnExtent: a stored key past a tightened `string(N)` key
+// bound refuses the whole load `length_over_bound` (§2.8, §4) — the data
+// survives in the file and the read reports it, and so a warning.
 func TestTheKeyBoundIsAnExtent(t *testing.T) {
 	tightened := editOf(t, mapFixtureSrc, "map[string(32)]ShipConfig", "map[string(16)]ShipConfig")
 	fs := mapDiff(t, mapFixtureSrc, tightened, baseline.DefaultTokenPolicy)
 	if !find(fs, baseline.Warn, "Fleet.ships", "map key capacity 32 -> 16") {
 		t.Errorf("a tightened key bound is not warned on the map's own line: %s", summary(fs))
 	}
-	if !find(fs, baseline.Warn, "Fleet.ships", "skipped WHOLE") {
+	if !find(fs, baseline.Warn, "Fleet.ships", "map KEY longer than the new capacity no longer reads") {
 		t.Errorf("the warning does not say what a key that does not fit costs: %s", summary(fs))
 	}
 	// ATTRIBUTION: the map line's row, and the entry's own `size` row beside it

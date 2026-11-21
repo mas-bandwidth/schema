@@ -76,7 +76,7 @@ func ReadReport(m *tabletext.Model, root string, wire []byte) (tabletext.Report,
 		return report, err
 	}
 	if !ok {
-		return report, fmt.Errorf("the bytes are not a %s body — the framing is damaged past the point the walk could continue (docs/SPEC-TABLES.md §4)", root)
+		return report, noVerdict(root)
 	}
 	return report, nil
 }
@@ -121,12 +121,12 @@ func UnpackMessages(m *tabletext.Model, trees []MessageTree, announcement, messa
 	}
 	// the refusal comes back BEFORE anything is written: a batch this engine
 	// does not decode is not a tree half-written to disk
-	delivered, ok, err := tablewire.DecodeMessages(m, insts, message, &vocabulary, &report)
+	_, ok, err := tablewire.DecodeMessages(m, insts, message, &vocabulary, &report)
 	if err != nil {
 		return report, err
 	}
 	if !ok {
-		return report, fmt.Errorf("the bytes are not a batch of these roots: the framing is damaged inside body %d, and the %d before it stand (docs/SPEC-TABLES.md §3.3, §4)", delivered+1, delivered)
+		return report, noVerdict("message batch")
 	}
 	for i, tree := range trees {
 		if err := writeTree(m, insts[i], tree.Root, tree.Dir, oneFile || m.NeedsLabels(tree.Root)); err != nil {
@@ -163,7 +163,7 @@ func unpackWith(m *tabletext.Model, root string, wire []byte, dir string, oneFil
 		return report, err
 	}
 	if !ok {
-		return report, fmt.Errorf("the bytes are not a %s body — the framing is damaged past the point the walk could continue (docs/SPEC-TABLES.md §4)", root)
+		return report, noVerdict(root)
 	}
 	return report, writeTree(m, inst, root, dir, oneFile)
 }
@@ -332,4 +332,13 @@ func treeComponent(key string) bool {
 	return key != "" && key != "." && key != ".." && filepath.IsLocal(key) &&
 		!strings.ContainsAny(key, "/\\:") && strings.IndexFunc(key, unicode.IsControl) < 0 &&
 		!strings.HasSuffix(key, ".") && !strings.HasSuffix(key, " ")
+}
+
+// noVerdict is the answer to a read that returned neither a value nor a
+// verdict. The engine never does: a read RETURNS the whole value or REFUSES
+// with a reason (docs/SPEC-TABLES.md §6.5), and a damaged message batch
+// delivers no body at all (§3.3, §4), so nothing before the damage stands.
+// It is kept so a broken engine fails loudly rather than writing defaults.
+func noVerdict(what string) error {
+	return fmt.Errorf("internal error: the %s read returned no value and no refusal; a read returns the whole value or refuses it whole (docs/SPEC-TABLES.md §6.5)", what)
 }
