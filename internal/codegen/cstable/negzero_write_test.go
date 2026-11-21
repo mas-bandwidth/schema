@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // THE VARIABLE WRITER STORES +0 FOR A COMPRESSED FLOAT'S -0 (docs/SPEC-TABLES.md
@@ -177,7 +177,9 @@ func csNegZeroWriteRun(t *testing.T) ([]byte, error) {
 	}
 	args = append(args, sources...)
 	args = append(args, main)
-	compile := exec.Command(dotnet, args...)
+	// both children through testproc, so neither outlives the test
+	// (internal/ci's TestEveryTestChildIsBounded)
+	compile := testproc.Command(t, dotnet, args...)
 	compile.Env, compile.Dir = csDotnetEnv(dir, dir), dir
 	compileOut, compileErr := compile.CombinedOutput()
 	if compileErr != nil {
@@ -187,7 +189,7 @@ func csNegZeroWriteRun(t *testing.T) ([]byte, error) {
 	if err := os.WriteFile(filepath.Join(dir, "csnegzerowrite.runtimeconfig.json"), []byte(cfg), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	run := exec.Command(dotnet, "exec", app)
+	run := testproc.Command(t, dotnet, "exec", app)
 	run.Env, run.Dir = csDotnetEnv(dir, dir), dir
 	runOut, runErr := run.CombinedOutput()
 	return append(compileOut, runOut...), runErr
