@@ -53,12 +53,10 @@ func runJavaBlobSharedStrict(t *testing.T, mutate func(unitName, fileName, src s
 		return fmt.Errorf("expected 9 shared blob-report cases, got %d", len(cases))
 	}
 
-	type oracleVerdict struct {
-		refused bool
-		damaged bool
-		reason  string
-	}
-	verdicts := map[string]oracleVerdict{}
+	// THE ORACLE'S VERDICT, never its reason (docs/rulings.json
+	// refusal-verdict-only): refused, or a read whose saved bytes the
+	// census carries. Why the oracle refused is not handed to Java.
+	verdicts := map[string]bool{}
 	m := tabletext.NewModel(censusUnit)
 	for _, row := range cases {
 		wire, err := hex.DecodeString(row.Wire)
@@ -78,18 +76,11 @@ func runJavaBlobSharedStrict(t *testing.T, mutate func(unitName, fileName, src s
 			if err != nil && !tablewire.ReadRefusal(err) {
 				return fmt.Errorf("%s retain=%v: oracle: %w", row.Name, retaining, err)
 			}
-			reason, _, _ := strings.Cut(r.Reason, ":")
-			damaged := (!ok || r.Refused) && reason == "wire_damaged"
-			refused := (!ok || r.Refused) && !damaged
-			ov := oracleVerdict{
-				refused: refused,
-				damaged: damaged,
-				reason:  reason,
+			refused := !ok || r.Refused
+			if first, seen := verdicts[row.Name]; seen && first != refused {
+				return fmt.Errorf("%s retain=%v: oracle verdict moved: refused %v vs %v (%s)", row.Name, retaining, first, refused, r.Reason)
 			}
-			if first, seen := verdicts[row.Name]; seen && first != ov {
-				return fmt.Errorf("%s retain=%v: oracle verdict moved: %+v vs %+v", row.Name, retaining, first, ov)
-			}
-			verdicts[row.Name] = ov
+			verdicts[row.Name] = refused
 		}
 	}
 
@@ -135,9 +126,8 @@ func runJavaBlobSharedStrict(t *testing.T, mutate func(unitName, fileName, src s
 		for _, b := range wire {
 			elems = append(elems, fmt.Sprintf("(byte) 0x%02x", b))
 		}
-		ov := verdicts[tc.Name]
-		fmt.Fprintf(&censusBody, "        checkCensus(%q, new byte[]{%s}, %q, %t, %t, %q);\n",
-			tc.Name, strings.Join(elems, ", "), tc.Saved, ov.refused, ov.damaged, ov.reason)
+		fmt.Fprintf(&censusBody, "        checkCensus(%q, new byte[]{%s}, %q, %t);\n",
+			tc.Name, strings.Join(elems, ", "), tc.Saved, verdicts[tc.Name])
 	}
 
 	censusPkg := javaPackageOf(censusUnit)
@@ -156,7 +146,14 @@ public final class BlobSharedStrictDriver {
         checks++;
     }
 
-    private static void checkCensus(String name, byte[] wire, String savedHex, boolean wantRefused, boolean wantDamaged, String wantReason) {
+    // refusedLoad is the strict read's verdict: no value, and the report
+    // refused (or damaged, Java's own flag for framing damage). The reason is
+    // Java's diagnostic, never compared with another target's.
+    private static boolean refusedLoad(Object v, boolean refused, boolean damaged) {
+        return v == null && (refused || damaged);
+    }
+
+    private static void checkCensus(String name, byte[] wire, String savedHex, boolean wantRefused) {
         for (boolean retaining : new boolean[]{false, true}) {
             %s.TableRetain retain = new %s.TableRetain(1 << 16, 1024);
             %s.TableVariable.Report report = new %s.TableVariable.Report();
@@ -164,14 +161,10 @@ public final class BlobSharedStrictDriver {
                     ? %s.RootRetain.loadRetain(wire, retain, report)
                     : %s.RootVariable.load(wire, report);
             String why = name + " retain=" + retaining;
-            if (wantRefused || wantDamaged) {
+            if (wantRefused) {
                 require(v == null, "strict refusal returned value: " + why);
-                require(report.refused == wantRefused && report.damaged == wantDamaged,
-                        "strict flags mismatch: " + why + " refused=" + report.refused + " damaged=" + report.damaged);
-                if (wantRefused) {
-                    require(wantReason.equals(report.reason),
-                            "strict reason mismatch: " + why + " got=" + report.reason + " want=" + wantReason);
-                }
+                require(report.refused || report.damaged,
+                        "strict refusal not reported: " + why + " refused=" + report.refused + " damaged=" + report.damaged + " reason=" + report.reason);
                 if (retaining) {
                     require(retain.used == 0 && retain.idUsed == 0,
                             "refused retaining load kept a tail: " + why);
@@ -199,21 +192,21 @@ public final class BlobSharedStrictDriver {
 
         blobdemo.TableVariable.Report report = new blobdemo.TableVariable.Report();
         blobdemo.CatalogVariable.Value loaded = blobdemo.CatalogVariable.load(wire, report);
-        require(loaded == null && report.refused && "blob_shared".equals(report.reason), "blob_shared.bin plain load");
+        require(refusedLoad(loaded, report.refused, report.damaged), "blob_shared.bin plain load reason=" + report.reason);
 
         blobdemo.TableRetain retain = new blobdemo.TableRetain(1 << 20, 1024);
         blobdemo.TableVariable.Report rreport = new blobdemo.TableVariable.Report();
         blobdemo.CatalogVariable.Value rloaded = blobdemo.CatalogRetain.loadRetain(wire, retain, rreport);
-        require(rloaded == null && rreport.refused && "blob_shared".equals(rreport.reason) && retain.used == 0, "blob_shared.bin retain load");
+        require(refusedLoad(rloaded, rreport.refused, rreport.damaged) && retain.used == 0, "blob_shared.bin retain load reason=" + rreport.reason);
 
         mapdemo.TableVariable.Report sreport = new mapdemo.TableVariable.Report();
         mapdemo.DocsVariable.Value sloaded = mapdemo.DocsVariable.load(swire, sreport);
-        require(sloaded == null && sreport.refused && "blob_shared".equals(sreport.reason), "blob_shared_string.bin plain load");
+        require(refusedLoad(sloaded, sreport.refused, sreport.damaged), "blob_shared_string.bin plain load reason=" + sreport.reason);
 
         mapdemo.TableRetain sretain = new mapdemo.TableRetain(1 << 20, 1024);
         mapdemo.TableVariable.Report srreport = new mapdemo.TableVariable.Report();
         mapdemo.DocsVariable.Value srloaded = mapdemo.DocsRetain.loadRetain(swire, sretain, srreport);
-        require(srloaded == null && srreport.refused && "blob_shared".equals(srreport.reason) && sretain.used == 0, "blob_shared_string.bin retain load");
+        require(refusedLoad(srloaded, srreport.refused, srreport.damaged) && sretain.used == 0, "blob_shared_string.bin retain load reason=" + srreport.reason);
 
         blobdemo.CatalogVariable.Value fresh = new blobdemo.CatalogVariable.Value();
         fresh.thumb = new byte[]{1, 2, 3};
@@ -303,6 +296,29 @@ func TestJavaBlobSharedStrict(t *testing.T) {
 	t.Parallel()
 	if err := runJavaBlobSharedStrict(t, nil); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestJavaBlobSharedStrictReasonIsDiagnostic renames every blob_shared and
+// kind_mismatch refusal the emitted Java can give: the verdicts are unchanged,
+// so the test stays green (docs/rulings.json refusal-verdict-only).
+func TestJavaBlobSharedStrictReasonIsDiagnostic(t *testing.T) {
+	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
+	t.Parallel()
+	renamed := 0
+	err := runJavaBlobSharedStrict(t, func(unitName, fileName, src string) string {
+		for _, reason := range []string{"blob_shared", "kind_mismatch"} {
+			anchor := "report.refuse(\"" + reason + "\")"
+			renamed += strings.Count(src, anchor)
+			src = strings.ReplaceAll(src, anchor, "report.refuse(\"renamed_by_the_plant\")")
+		}
+		return src
+	})
+	if renamed == 0 {
+		t.Fatal("the rename plant found no blob_shared or kind_mismatch refusal in the emitted Java")
+	}
+	if err != nil {
+		t.Fatalf("a renamed refusal reason turned the strict read red: %v", err)
 	}
 }
 
