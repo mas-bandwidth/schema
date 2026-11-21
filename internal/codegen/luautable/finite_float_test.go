@@ -508,12 +508,13 @@ func newFiniteFixture(t *testing.T) *finiteFixture {
 		in[r.name] = wire
 		var rep tabletext.Report
 		_, derr := tablewire.Decode(m, m.New(m.Lookup("Var")), wire, &rep)
-		var rf *tablewire.NonFiniteRefusal
-		if !errors.As(derr, &rf) {
-			t.Fatalf("%s: the Go reader answered %v, want a NonFiniteRefusal", r.name, derr)
+		if !tablewire.ReadRefusal(derr) {
+			t.Fatalf("%s: the Go reader answered %v, want a refusal", r.name, derr)
 		}
-		fx.want["var/read/"+r.name] = rep.Reason
-		fx.want["var/strict/"+r.name] = "non_finite_float " + rf.Field
+		// the engine's verdict only: the reason it names is its own diagnostic
+		// (docs/rulings.json refusal-verdict-only)
+		fx.want["var/read/"+r.name] = finiteRefused
+		fx.want["var/strict/"+r.name] = finiteRefused
 	}
 	fx.want["var/read/twin"] = "loaded"
 	writes := []struct {
@@ -552,11 +553,10 @@ func newFiniteFixture(t *testing.T) *finiteFixture {
 	in["retain"] = mustPatch(t, newTwin, le64(twinZ), le64(snan64))
 	var rep tabletext.Report
 	ok, derr := tablewire.Decode(m, m.New(m.Lookup("Var")), in["retain"], &rep)
-	var rf *tablewire.NonFiniteRefusal
-	if ok || !errors.As(derr, &rf) {
+	if ok || !tablewire.ReadRefusal(derr) {
 		t.Fatalf("the Go plain read did not refuse an unknown non-finite float: ok=%v err=%v", ok, derr)
 	}
-	fx.want["retain/plain"] = "non_finite_float"
+	fx.want["retain/plain"] = finiteRefused
 	fx.want["retain/twin"] = "loaded"
 	// retain/read is held by pattern below: the id is the field-name hash
 
@@ -577,10 +577,10 @@ func newFiniteFixture(t *testing.T) *finiteFixture {
 	for _, w := range []string{"msgA", "msgYs"} {
 		var mrep tabletext.Report
 		_, _, derr := tablewire.DecodeMessages(m, []*tabletext.Instance{m.New(m.Lookup("Msg"))}, in[w], &voc, &mrep)
-		if _, ok := errors.AsType[*tablewire.NonFiniteRefusal](derr); !ok {
-			t.Fatalf("%s: the Go batch reader answered %v, want a NonFiniteRefusal", w, derr)
+		if !tablewire.ReadRefusal(derr) {
+			t.Fatalf("%s: the Go batch reader answered %v, want a refusal", w, derr)
 		}
-		fx.want["msg/read/"+w] = mrep.Reason
+		fx.want["msg/read/"+w] = finiteRefused
 	}
 	fx.want["msg/twin"] = "same"
 	fx.want["msg/write"] = "non_finite_float Msg.a non_finite_float"
@@ -636,6 +636,20 @@ func newFiniteFixture(t *testing.T) *finiteFixture {
 	return fx
 }
 
+// finiteRefused is the want of a read row held to the engine's VERDICT: the
+// Luau read must refuse, and the reason it prints is diagnostic only, never
+// compared across targets (docs/rulings.json refusal-verdict-only).
+const finiteRefused = "refused"
+
+// finiteVerdict is a read row's answer folded to its verdict: "loaded", a
+// missing row (""), or "refused" for any reason the Luau read named.
+func finiteVerdict(answer string) string {
+	if answer == "" || answer == "loaded" {
+		return answer
+	}
+	return finiteRefused
+}
+
 var retainReadAnswer = regexp.MustCompile(`^non_finite_float Var\.0x[0-9a-f]{16}$`)
 
 // run writes the unit with files' overrides and answers every row.
@@ -666,7 +680,11 @@ func (fx *finiteFixture) run(t *testing.T, override map[string][]byte) map[strin
 func (fx *finiteFixture) red(got map[string]string) []string {
 	var out []string
 	for name, want := range fx.want {
-		if got[name] != want {
+		answer := got[name]
+		if want == finiteRefused {
+			answer = finiteVerdict(answer)
+		}
+		if answer != want {
 			out = append(out, name)
 		}
 	}
@@ -690,9 +708,43 @@ func TestLuauTablesAreFiniteOnly(t *testing.T) {
 		if name == "retain/read" {
 			want = retainReadAnswer.String()
 		}
-		t.Errorf("%s: the Luau leg answered %q, want %q", name, got[name], want)
+		t.Errorf("%s: the Luau leg answered %q, want %q (a %q row compares the verdict only)", name, got[name], want, finiteRefused)
 	}
 	t.Logf("%d finite-float rows held", len(got))
+}
+
+// TestLuauFiniteFloatReadReasonIsDiagnostic renames the reason the Luau
+// variable and batch reads name for a non-finite float. The verdict is
+// unchanged, so every row stays green: a read row is held to the engine's
+// verdict, never to its reason (docs/rulings.json refusal-verdict-only).
+func TestLuauFiniteFloatReadReasonIsDiagnostic(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the pinned Luau interpreter")
+	fx := newFiniteFixture(t)
+	override := map[string][]byte{}
+	for _, p := range []struct {
+		file, old, new string
+		n              int
+	}{
+		{"schema_load.luau", `"non_finite_float`, `"renamed_by_the_plant`, -1},
+		{"schema_message.luau", `if read then "non_finite_float: "`, `if read then "renamed_by_the_plant: "`, 1},
+	} {
+		src := string(fx.files[p.file])
+		n := strings.Count(src, p.old)
+		if n == 0 || (p.n > 0 && n != p.n) {
+			t.Fatalf("NEGATIVE CONTROL FAILED: the rename anchor matches %d times in %s: %q", n, p.file, p.old)
+		}
+		override[p.file] = []byte(strings.ReplaceAll(src, p.old, p.new))
+	}
+	got := fx.run(t, override)
+	for _, row := range []string{"var/read/varA", "var/strict/varB", "msg/read/msgA", "retain/plain"} {
+		if !strings.Contains(got[row], "renamed_by_the_plant") {
+			t.Errorf("NEGATIVE CONTROL FAILED: the rename did not reach %s (%q)", row, got[row])
+		}
+	}
+	if red := fx.red(got); len(red) != 0 {
+		t.Errorf("a reason-only rename reds %v: the read rows must compare the verdict only", red)
+	}
 }
 
 func TestLuauFiniteFloatNegativeControl(t *testing.T) {
@@ -721,7 +773,7 @@ func TestLuauFiniteFloatNegativeControl(t *testing.T) {
 	}
 	// every refusal row is some control's: a rule with no witness is a gap
 	for name, want := range fx.want {
-		if strings.Contains(want, "non_finite_float") && !covered[name] {
+		if (want == finiteRefused || strings.Contains(want, "non_finite_float")) && !covered[name] {
 			t.Errorf("the refusal row %s has no negative control", name)
 		}
 	}
