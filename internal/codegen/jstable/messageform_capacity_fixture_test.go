@@ -30,21 +30,21 @@ func TestJsMessageLoadCapacityFixture(t *testing.T) {
 	probe := messageProbeHeader(u, st, "") + `
 const wire = new Uint8Array(readFileSync("./batch_capacity_two.bin"));
 const one = [new LoginRequest()];
-one[0].client_build = 17;
+one[0].clientBuild = 17;
 const report = {};
 const count = LoginRequestLoadMessages(one, v, wire, report);
-if (count !== 0 || report.Verdict !== 1 || report.Reason !== "batch_too_large" || one[0].client_build !== 17) {
-  fail("storage for one: count=" + count + " client_build=" + one[0].client_build + " " + JSON.stringify(report));
+if (count !== 0 || report.Verdict !== 1 || report.Reason !== "batch_too_large" || one[0].clientBuild !== 17) {
+  fail("storage for one: count=" + count + " client_build=" + one[0].clientBuild + " " + JSON.stringify(report));
 }
 const two = [new LoginRequest(), new LoginRequest()];
 const loaded = {};
 const got = LoginRequestLoadMessages(two, v, wire, loaded);
-if (got !== 2 || loaded.Verdict !== 0 || two[0].client_build !== 40 || two[1].client_build !== 40) {
-  fail("storage for two: count=" + got + " " + JSON.stringify(loaded) + " " + JSON.stringify(two));
+if (got !== 2 || loaded.Verdict !== 0 || two[0].clientBuild !== 40 || two[1].clientBuild !== 40) {
+  fail("storage for two: count=" + got + " " + JSON.stringify(loaded) + " clientBuild=" + two[0].clientBuild + "," + two[1].clientBuild);
 }
 ` + probeTail()
 	out, err := jsRunMessageProbe(t, node, u, map[string][]byte{
-		"ann.bin":                 tablewire.Announce(u),
+		"ann.bin":                tablewire.Announce(u),
 		"batch_capacity_two.bin": fixture,
 	}, probe)
 	if err != nil {
