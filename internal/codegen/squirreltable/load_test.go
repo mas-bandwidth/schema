@@ -476,12 +476,15 @@ func TestSquirrelTableLoadNegativeControl(t *testing.T) {
 	t.Logf("unpatched %q, patched %q: the reports comparison goes red", want, got)
 }
 
-// TestSquirrelLoadClampsThe128BitRange is the 128-bit clamp's direct control
-// (docs/SPEC-TABLES.md §4: "A 128-bit integer clamps to its declared bounds in
-// 128 bits"). A form-1 body carries an int128 past its declared max; the load
-// clamps it to the bound, counts one `clamped` and saves the clamped value,
-// exactly as the Go engine does. With rangeScalar's array branch reverted it
-// saves the raw value and reports no clamp, so this control goes red.
+// TestSquirrelLoadClampsThe128BitRange is SKIPPED, and its body still states
+// the retired clamp rule (a 128-bit value past its bound landed as the bound,
+// counted once): it waits to be re-pinned as a refusal verdict
+// (docs/plans/strict-only.md). NO READ CLAMPS (docs/rulings.json
+// strict-only-read): a form-1 body carrying an int128 past its declared max
+// refuses the whole load out_of_range and nothing lands. The walk's
+// rangeScalar (runtime/load.nut) still counts the event in `oor` as it passes,
+// and that count is what the strict load refuses on; the value it computed is
+// never handed back.
 func TestSquirrelLoadClampsThe128BitRange(t *testing.T) {
 	t.Skip("layer 4 (squirrel): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
