@@ -36,7 +36,8 @@
 //
 // A run that compared nothing proves nothing, so it refuses too: no packet
 // driver compared on both sides, or, against a previous release of 3.0.0 or
-// later (TableFormsNote), no table-form encoding compared. Each is named in
+// later (TableFormsNote), no encoding compared in the variable form, or none
+// in the message form: each form is owed on its own. Each is named in
 // the report under "nothing".
 //
 // It exits 1 on a difference or an empty wire and 0 otherwise. -old-bin and -new-bin take
@@ -503,8 +504,15 @@ func Judge(old, new Compiler, trees []string, m *Manifest, jsonDir, work string,
 	}
 	if tableCompared[0]+tableCompared[1] > 0 {
 		r.Compared = append(r.Compared, fmt.Sprintf("table forms: %d variable-form and %d message-form encodings of %s, Go engine", tableCompared[0], tableCompared[1], ManifestPath))
-	} else if TablesOwed(old.Name()) {
-		r.Nothing = append(r.Nothing, fmt.Sprintf("table forms: no instance of %s was encoded by both compilers (see unreadable and uncompared)", ManifestPath))
+	}
+	// each owed form on its own: a run that compared the variable form and
+	// lost every message-form encoding proves nothing about the message form
+	if TablesOwed(old.Name()) {
+		for k, form := range []string{"variable form", "message form"} {
+			if tableCompared[k] == 0 {
+				r.Nothing = append(r.Nothing, fmt.Sprintf("table %s: no instance of %s was encoded in it by both compilers (see unreadable and uncompared)", form, ManifestPath))
+			}
+		}
 	}
 	if packetCompared == 0 {
 		r.Nothing = append(r.Nothing, "packet wire: no driver wrote an encoding both compilers' C++ agree to compare (see unreadable and uncompared)")

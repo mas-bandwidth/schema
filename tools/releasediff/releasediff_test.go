@@ -321,7 +321,7 @@ func TestJudgeRefusesARunThatComparedNothing(t *testing.T) {
 			old:     fake{name: "v3.0.1", ids: both.ids, packet: both.packet, pack: both.pack},
 			new:     fake{name: "HEAD", packet: both.packet, pack: both.pack},
 			refused: true,
-			nothing: []string{"table forms:", "packet wire:"},
+			nothing: []string{"table variable form:", "table message form:", "packet wire:"},
 		},
 		{
 			name:    "no packet driver builds against the new C++",
@@ -335,7 +335,23 @@ func TestJudgeRefusesARunThatComparedNothing(t *testing.T) {
 			old:     fake{name: "v3.0.1", ids: both.ids, packet: both.packet, pack: both.pack},
 			new:     fake{name: "HEAD", ids: both.ids, packet: both.packet},
 			refused: true,
-			nothing: []string{"table forms:"},
+			nothing: []string{"table variable form:", "table message form:"},
+		},
+		{
+			// Stella's control on #4462: every message-form output gone while
+			// the variable form and the packets stay
+			name:    "the new compiler writes no message form",
+			old:     fake{name: "v3.0.1", ids: both.ids, packet: both.packet, pack: both.pack},
+			new:     fake{name: "HEAD", ids: both.ids, packet: both.packet, pack: map[string]string{"s1/v": "\x01"}},
+			refused: true,
+			nothing: []string{"table message form:"},
+		},
+		{
+			name:    "the new compiler writes no variable form",
+			old:     fake{name: "v3.0.1", ids: both.ids, packet: both.packet, pack: both.pack},
+			new:     fake{name: "HEAD", ids: both.ids, packet: both.packet, pack: map[string]string{"s1/m": "\x02"}},
+			refused: true,
+			nothing: []string{"table variable form:"},
 		},
 		{
 			name:    "no table forms against a 2.x release, which owes none",
