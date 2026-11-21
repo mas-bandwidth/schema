@@ -64,14 +64,28 @@ fi
 # side: the gate is about 250 s of clang-format CPU over 580 files, past what
 # one runner gives a row in two minutes, and no row keeps a verdict between
 # runs. make/shard.sh deals each row its share of the distinct files above,
-# largest first, so the rows carry about the same bytes (dealt from the
-# name-sorted file list, one row held half again the bytes of another); a row
-# judges every path whose key it formats. A ratchet line is judged in the row
-# that formats its file's key; the "no longer generated" check reads the tree
-# and runs in every row.
+# largest first and SNAKED (rows 1..N, then N..1, then 1..N), so no row takes
+# the largest of every round and the rows carry about the same work. Dealt
+# from the name-sorted file list, the three rows' formats took 31, 51 and 59 s
+# on four workers (per-file clang-format times measured on a loaded bench);
+# dealt this way they take 33, 30 and 31 s, against a floor of 30 s, the one
+# slowest file. A row judges every path whose key it formats: a ratchet line is
+# judged in the row that formats its file's key; the "no longer generated"
+# check reads the tree and runs in every row.
 shard=
 if [ -n "${C_FORMAT_SHARD:-}" ]; then
-	sh "$(dirname "$0")/../shard.sh" "$C_FORMAT_SHARD" < "$OUT/c-format-order-all.txt" > "$OUT/c-format-order.txt" || {
+	n=${C_FORMAT_SHARD#*/}
+	case "$n" in
+	'' | *[!0-9]* | 0*) cp "$OUT/c-format-order-all.txt" "$OUT/c-format-snake.txt" ;; # shard.sh refuses it below
+	*) awk -v n="$n" '{ a[NR] = $0 } END {
+		for (lo = 1; lo <= NR; lo += n) {
+			hi = lo + n - 1; if (hi > NR) hi = NR
+			if (((lo - 1) / n) % 2 == 0) { for (i = lo; i <= hi; i++) print a[i] }
+			else { for (i = hi; i >= lo; i--) print a[i] }
+		}
+	}' "$OUT/c-format-order-all.txt" > "$OUT/c-format-snake.txt" ;;
+	esac
+	sh "$(dirname "$0")/../shard.sh" "$C_FORMAT_SHARD" < "$OUT/c-format-snake.txt" > "$OUT/c-format-order.txt" || {
 		echo "tables-c-clean: C_FORMAT_SHARD=$C_FORMAT_SHARD is not a shard"
 		exit 1
 	}
@@ -125,7 +139,7 @@ if [ -s "$OUT/c-format-files.txt" ]; then
 		echo "tables-c-clean: $(wc -l < "$OUT/c-format-results.txt" | tr -d ' ') verdicts for $(wc -l < "$OUT/c-format-files.txt" | tr -d ' ') files"; bad=1; }
 	echo "tables-c-clean: $(wc -l < "$OUT/c-format-files.txt" | tr -d ' ') files, $(wc -l < "$OUT/c-format-order.txt" | tr -d ' ') distinct by content and name, each formatted once"
 fi
-rm -rf "$work" "$OUT/c-format-all.txt" "$OUT/c-format-keys-all.txt" "$OUT/c-format-order-all.txt" "$OUT/c-format-run-keys.txt" \
+rm -rf "$work" "$OUT/c-format-all.txt" "$OUT/c-format-keys-all.txt" "$OUT/c-format-order-all.txt" "$OUT/c-format-snake.txt" "$OUT/c-format-run-keys.txt" \
 	"$OUT/c-format-keys.txt" "$OUT/c-format-order.txt" "$OUT/c-format-files.txt" "$OUT/c-format-results.txt"
 
 for f in $(grep -v '^#' "$allow" | grep . || true); do
