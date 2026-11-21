@@ -99,10 +99,26 @@ func (r *registration) carries(construct string) bool {
 //
 // Names and Carries are each called once, here, and their answers are copied:
 // the registration is what they said at this call.
+//
+// Both are called before anything is checked, and no code of the generator
+// runs after that: the names are checked against the registry as it stands
+// once both have returned, and inserted in the same step. So a Register
+// entered from inside a generator's Names or Carries is an ordinary Register
+// that completes first, and the outer one is then held to what it left — it
+// is refused as a duplicate if the inner one took one of its names. Whatever
+// the callbacks do, the registry is one a sequence of plain Register calls
+// could have built: one generator per name, and no name twice in
+// [Compiler.Targets]. A Compiler is not safe for concurrent use.
 func (c *Compiler) Register(g Generator) error {
-	// the copy is taken before anything else runs, so the names that are
-	// validated below are the names that are registered
+	// COLLECT: every call into the generator, and a copy of each answer
 	names := slices.Clone(g.Names())
+	var constructs []string
+	cc, declares := g.(ConstructCarrier)
+	if declares {
+		constructs = slices.Clone(cc.Carries())
+	}
+	// CHECK, then INSERT: nothing below calls the generator, so the registry
+	// the names are checked against is the one they are inserted into
 	if len(names) == 0 {
 		return fmt.Errorf("generator %T names no target", g)
 	}
@@ -115,8 +131,7 @@ func (c *Compiler) Register(g Generator) error {
 		}
 	}
 	var declared map[string]struct{}
-	if cc, ok := g.(ConstructCarrier); ok {
-		constructs := cc.Carries()
+	if declares {
 		declared = make(map[string]struct{}, len(constructs))
 		for _, construct := range constructs {
 			if _, known := knownCarryConstructs[construct]; !known {
