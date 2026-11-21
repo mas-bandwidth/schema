@@ -1611,6 +1611,16 @@ message varevo3_msg_notice varevo3_conn EvoMsg testdata/conformance/tables/wire/
 message-drift varevo_msg_v1_to_v3       tblvarevo3 varevo1_conn EvoMsg testdata/conformance/tables/wire/varevo3_msg.bin testdata/wire/tables/varevo_msg_batch_v1.bin            testdata/wire/tables/varevo_msg_batch_v1_as_v3.bin
 message-drift varevo_msg_v3_to_v1_batch tblvarevo1 varevo3_conn EvoMsg testdata/conformance/tables/wire/varevo1_msg.bin testdata/wire/tables/fuzz-vectors/varevo_msg_batch_v3.bin testdata/wire/tables/varevo_msg_batch_v3_as_v1.bin
 
+# A PRIOR WRITER'S LAWFUL MESSAGE AT A TIGHTENED RANGE (docs/SPEC-TABLES.md §3.3,
+# §4): the earlier release test/tables/prior/BackendWideScore.schema is
+# tables/backend with PlayerRow.score declared 0..200000, and today's reader
+# declares 0..100000. `harness generate` writes that writer's announcement and
+# its two batches of one body; every reader reads the body whose score is 80000
+# and REFUSES the one whose score is 150000 (out_of_range): no reader clamps the
+# value, and none delivers the message with a counter moved.
+message-prior match_prior_inside backenddemo MatchResult testdata/conformance/tables/wire/match_full.bin test/tables/prior/BackendWideScore.schema 0x0000000000000000 testdata/conformance/tables/prior/match_prior_inside.json testdata/wire/tables/match_prior_conn.bin testdata/wire/tables/match_prior_inside_message.bin testdata/wire/tables/match_prior_inside_as_current.bin
+message-prior match_prior_past   backenddemo MatchResult testdata/conformance/tables/wire/match_full.bin test/tables/prior/BackendWideScore.schema 0x0000000000000000 testdata/conformance/tables/prior/match_prior_past.json   testdata/wire/tables/match_prior_conn.bin testdata/wire/tables/match_prior_past_message.bin   -
+
 rewrite varevo_v1_as_v2                 tblvarevo2 EvoDoc testdata/conformance/tables/wire/varevo_v1_full.bin
 rewrite varevo_v1_as_v3                 tblvarevo3 EvoDoc testdata/conformance/tables/wire/varevo_v1_full.bin
 rewrite varevo_v1_ping_as_v3            tblvarevo3 EvoDoc testdata/conformance/tables/wire/varevo_v1_ping.bin

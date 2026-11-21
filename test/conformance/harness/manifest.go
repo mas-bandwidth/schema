@@ -253,6 +253,14 @@ type AnnounceGrown struct {
 // message batch written by that peer, FileWire is a placeholder file-form path
 // for drivers that inspect column 5, and SaveWire is the canonical Form-2
 // message batch re-saved in Unit's own vocabulary after loading PeerWire.
+//
+// A PRIOR-WRITER row (`message-prior`) is the same read with the peer NAMED BY
+// ITS SCHEMA rather than by a connection: WriterSchema is an earlier release of
+// Unit's own schema, WriterValue is a value that release may lawfully write,
+// and `harness generate` writes PeerAnnounce and PeerWire from the two with the
+// independent engine. PeerConn is empty and PeerBuildVersion is the writer's.
+// A SaveWire of `-` is a row every reader REFUSES: the prior writer's lawful
+// value lies outside what this reader's declaration holds (§4).
 type MessageDrift struct {
 	Name     string
 	Unit     string
@@ -261,6 +269,27 @@ type MessageDrift struct {
 	FileWire string
 	PeerWire string
 	SaveWire string
+
+	WriterSchema     string
+	WriterValue      string
+	PeerAnnounce     string
+	PeerBuildVersion uint64
+}
+
+// Refused says every reader owes this row a refusal.
+func (md MessageDrift) Refused() bool { return md.SaveWire == "-" }
+
+// DriftPeer answers the peer's announcement wire and build version: the named
+// connection's, or a prior-writer row's own.
+func (m *Manifest) DriftPeer(md MessageDrift) (string, uint64, error) {
+	if md.PeerConn == "" {
+		return md.PeerAnnounce, md.PeerBuildVersion, nil
+	}
+	pc, err := m.LookupConnection(md.PeerConn)
+	if err != nil {
+		return "", 0, err
+	}
+	return pc.Wire, pc.BuildVersion, nil
 }
 
 // AnnouncementMalformed is the diagnostic reason for a message row whose
@@ -631,6 +660,20 @@ func ReadManifest(path, jsonDir string) (m *Manifest, err error) {
 			m.MessageDrifts = append(m.MessageDrifts, MessageDrift{
 				Name: f[1], Unit: f[2], PeerConn: f[3], Root: f[4],
 				FileWire: f[5], PeerWire: f[6], SaveWire: f[7],
+			})
+		case "message-prior":
+			// message-prior <name> <unit> <root> <file-wire> <writer schema> <writer build version> <writer value json> <announcement wire> <prior message wire> <resaved message wire or ->
+			if len(f) != 11 {
+				return nil, fmt.Errorf("%s: message-prior takes name, unit, root, file wire, writer schema, writer build version, writer value, announcement wire, prior message wire, resaved message wire or -", where)
+			}
+			bv, err := strconv.ParseUint(f[6], 0, 64)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %q is not a build version: %w", where, f[6], err)
+			}
+			m.MessageDrifts = append(m.MessageDrifts, MessageDrift{
+				Name: f[1], Unit: f[2], Root: f[3], FileWire: f[4],
+				WriterSchema: f[5], PeerBuildVersion: bv, WriterValue: f[7],
+				PeerAnnounce: f[8], PeerWire: f[9], SaveWire: f[10],
 			})
 		case "retain":
 			// retain <case> <unit> <root> <wire> <capacity> <ids> <save|->

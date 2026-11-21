@@ -255,11 +255,13 @@ func deriveManifest(m *Manifest, path string) error {
 		fmt.Fprintf(&b, "message %s %s %s %s %s\n", g.Name, g.Name, msg.Root, msg.FileWire, msg.MessageWire)
 	}
 	for _, md := range m.MessageDrifts {
-		pc, err := m.LookupConnection(md.PeerConn)
+		// the answer is withheld here too: a row every reader refuses is
+		// handed the same two lines as one it reads
+		peerWire, peerBuild, err := m.DriftPeer(md)
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(&b, "connection %s %s 0x%016x %s\n", md.Name, md.Unit, pc.BuildVersion, pc.Wire)
+		fmt.Fprintf(&b, "connection %s %s 0x%016x %s\n", md.Name, md.Unit, peerBuild, peerWire)
 		fmt.Fprintf(&b, "message %s %s %s %s %s\n", md.Name, md.Name, md.Root, md.FileWire, md.PeerWire)
 	}
 	for _, rc := range m.Retains {
@@ -455,6 +457,10 @@ func expectations(m *Manifest, surface string, reports map[string]string, jsonDi
 			out = append(out, expectation{name: g.Name, want: want})
 		}
 		for _, md := range m.MessageDrifts {
+			if md.Refused() {
+				out = append(out, expectation{name: md.Name})
+				continue
+			}
 			want, err := os.ReadFile(md.SaveWire)
 			if err != nil {
 				return nil, err

@@ -447,11 +447,16 @@ func generateMessageDrifts(u *units, m *Manifest, drifts []MessageDrift) error {
 		if err != nil {
 			return err
 		}
-		pc, err := m.LookupConnection(md.PeerConn)
+		if md.WriterSchema != "" {
+			if err := generatePriorWriter(md); err != nil {
+				return fmt.Errorf("message-prior %s: %w", md.Name, err)
+			}
+		}
+		peerWire, _, err := m.DriftPeer(md)
 		if err != nil {
 			return fmt.Errorf("message-drift %s: %w", md.Name, err)
 		}
-		ann, err := os.ReadFile(pc.Wire)
+		ann, err := os.ReadFile(peerWire)
 		if err != nil {
 			return fmt.Errorf("message-drift %s: %w", md.Name, err)
 		}
@@ -479,6 +484,15 @@ func generateMessageDrifts(u *units, m *Manifest, drifts []MessageDrift) error {
 		}
 		var drep tabletext.Report
 		gotCnt, ok, err := tablewire.DecodeMessages(model, vals, batch, &vocab, &drep)
+		if md.Refused() {
+			// THE ROW EVERY READER REFUSES: the engine must refuse it too,
+			// and for the one reason the row exists to hold, so a row that
+			// went red for damage cannot stand in for the range rule.
+			if reason := tablewire.RefusalReason(err); ok || reason != tablewire.ReasonOutOfRange {
+				return fmt.Errorf("message-drift %s: the row owes an out_of_range refusal and the engine answered ok=%v reason=%q err=%v", md.Name, ok, reason, err)
+			}
+			continue
+		}
 		if !ok || err != nil || drep.Refused || gotCnt != cnt {
 			return fmt.Errorf("message-drift %s: DecodeMessages ok=%v cnt=%d err=%w rep=%+v", md.Name, ok, gotCnt, err, drep)
 		}
@@ -491,6 +505,49 @@ func generateMessageDrifts(u *units, m *Manifest, drifts []MessageDrift) error {
 		}
 	}
 	return nil
+}
+
+// generatePriorWriter writes a prior-writer row's two peer files with the
+// independent engine: the announcement of the EARLIER release named by
+// WriterSchema, and the batch of one body that release writes for WriterValue.
+// The value is lawful for that writer, which the writer's own text read and
+// message write both hold before a byte lands.
+func generatePriorWriter(md MessageDrift) error {
+	paths, err := compiler.GatherPaths([]string{md.WriterSchema})
+	if err != nil {
+		return err
+	}
+	c := compiler.New()
+	c.FormatInPlace = false
+	writer, err := c.Load(paths)
+	if err != nil {
+		return fmt.Errorf("loading the writer %s: %w", md.WriterSchema, err)
+	}
+	if bv := ir.BuildVersion(writer); bv != md.PeerBuildVersion {
+		return fmt.Errorf("the writer %s has build version 0x%016x and the row names 0x%016x", md.WriterSchema, bv, md.PeerBuildVersion)
+	}
+	text, err := os.ReadFile(md.WriterValue)
+	if err != nil {
+		return err
+	}
+	model := tabletext.NewModel(writer)
+	root := model.Lookup(md.Root)
+	if root == nil {
+		return fmt.Errorf("root %q names no table of the writer", md.Root)
+	}
+	value := model.New(root)
+	var rep tabletext.Report
+	if !model.Read(value, text, &rep) {
+		return fmt.Errorf("the writer refuses its own value %s: %+v", md.WriterValue, rep)
+	}
+	batch, err := tablewire.EncodeMessages(model, []*tabletext.Instance{value})
+	if err != nil {
+		return fmt.Errorf("the writer refuses to write %s: %w", md.WriterValue, err)
+	}
+	if err := writeFileAtomic(md.PeerAnnounce, tablewire.Announce(writer)); err != nil {
+		return err
+	}
+	return writeFileAtomic(md.PeerWire, batch)
 }
 
 func retainValues(u *units, retains []RetainCase, jsonDir string) error {
