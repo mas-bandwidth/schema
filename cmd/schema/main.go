@@ -17,6 +17,7 @@
 //	schema version                                   print the build identity
 //	schema new-leg    <lang> [--root .] [--verbose]  write a language-leg skeleton
 //	schema pin        <version> <dir>... [--mixed-ok]  move every go:generate pin to <version>
+//	schema help       [ai]                           the command list, or the guidance block for AI assistants
 //
 // Every command here is a few lines over the public API in
 // github.com/mas-bandwidth/schema/v2/compiler: this binary holds the CLI's
@@ -70,6 +71,15 @@ func main() {
 	case "version", "--version", "-version", "-v":
 		fmt.Println(compiler.UserAgent())
 	case "help", "--help", "-help", "-h":
+		// `schema help` is the command list; `schema help <topic>` prints one
+		// topic to stdout, where a user redirects it into a file.
+		if len(os.Args) > 2 {
+			if err := helpTopic(os.Stdout, os.Args[2]); err != nil {
+				fmt.Fprintln(os.Stderr, "schema: "+err.Error())
+				os.Exit(2)
+			}
+			return
+		}
 		usage()
 	case "check":
 		fs := flag.NewFlagSet("check", flag.ExitOnError)
@@ -809,6 +819,11 @@ func usage() {
   schema version
   schema new-leg    <lang> [--root .] [--verbose]
   schema pin        <version> <dir>... [--mixed-ok]
+  schema help       [ai]
+
+help ai prints a block to paste into a project's AGENTS.md or CLAUDE.md: what
+the .schema files are, the commands, and the guide for AI assistants
+(docs/AI.md).
 
 check handed a SAVED FILE rather than a schema source answers its FORM BYTE
 first, on one line — FORM 1 the variable form, FORM 2 the message form, FORM 3

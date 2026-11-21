@@ -1,0 +1,15 @@
+# schema
+
+> Schema is the data language for games. You declare constants, enums, flags, types, unions and tables in .schema files, and the schema compiler generates bit-packed serialization code from that one definition in C, C# (modern), C# (unity), C++, Dart, Elixir, Go, Goose, Java, JavaScript, Lobster, Lua, Luau, Python, Ruby, Rust and Squirrel, and moo from a build with `-tags schema_leg_moo`. Types are the same-build packet wire; tables are the versioned wire for saves, config, assets and messages between builds.
+
+## Docs
+
+- [AI.md](https://github.com/mas-bandwidth/schema/blob/main/docs/AI.md): the guide for AI assistants using schema: the whole language on one page, the commands, calling the generated code, common mistakes, safe schema changes
+- [TUTORIAL.md](https://github.com/mas-bandwidth/schema/blob/main/docs/TUTORIAL.md): a step-by-step tutorial from an empty directory to a program that uses every feature
+- [USAGE.md](https://github.com/mas-bandwidth/schema/blob/main/docs/USAGE.md): every language feature with the code it generates, and per-language notes
+- [CLI.md](https://github.com/mas-bandwidth/schema/blob/main/docs/CLI.md): the schema command line
+- [SPEC.md](https://github.com/mas-bandwidth/schema/blob/main/docs/SPEC.md): the normative reference for the language and the packet wire
+- [SPEC-TABLES.md](https://github.com/mas-bandwidth/schema/blob/main/docs/SPEC-TABLES.md): the normative reference for tables: the table wire, fixed and message forms, cooking, the text form
+- [FAQ.md](https://github.com/mas-bandwidth/schema/blob/main/docs/FAQ.md): blunt questions and honest answers, including what the language does not have
+- [VERSIONING.md](https://github.com/mas-bandwidth/schema/blob/main/docs/VERSIONING.md): the versioning promise, the protocol id, and how to change a schema without breaking old data
+- [COMPARISON.md](https://github.com/mas-bandwidth/schema/blob/main/docs/COMPARISON.md): one game packet measured against Cap'n Proto, Protobuf and FlatBuffers

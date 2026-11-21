@@ -35,8 +35,11 @@ of 2026-09-18 is AGENTS.md alone. The maintainer context behind these rules is
 
 **Who this repo is for.** Schema is the data language for games: you declare
 constants, enums, flags, types and tables once, and the compiler generates
-bit-packed serialization code in **ten languages** — C, C++, C#, Dart, Elixir,
-Go, Java, JavaScript, Lua and Rust. The compiler is Go (`cmd/` + `internal/`, public
+bit-packed serialization code in C, C# (modern), C# (unity), C++, Dart,
+Elixir, Go, Goose, Java, JavaScript, Lobster, Lua, Luau, Python, Ruby, Rust
+and Squirrel, and moo from a build with `-tags schema_leg_moo`
+(internal/languages derives that list; its test holds this page to it). The
+compiler is Go (`cmd/` + `internal/`, public
 API `compiler/` and `ir/`). The compiler is AGPL-3.0; **the code it generates is
 yours**, by an explicit permanent grant in [LICENSE](../LICENSE).
 

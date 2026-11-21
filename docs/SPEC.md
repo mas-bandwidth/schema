@@ -7,27 +7,31 @@ document disagree, one of them is a bug (see VERSIONING.md).
 ## 1. What schema is
 
 **schema** is a small language for describing bitpacked network data, and a
-compiler — written in Go — that translates `*.schema` files into generated C,
-C++, C#, Dart, Elixir, Go, Java, JavaScript, Rust, Lobster, Lua, Luau, Python, Ruby and
-Squirrel source code. Twelve of the fifteen targets read and write through a
-serialize-family runtime library; the other three carry the bit reader and
-writer in the generated code itself and
-need nothing but their own toolchain:
+compiler — written in Go — that translates `*.schema` files into generated
+source code in C, C# (modern), C# (unity), C++, Dart, Elixir, Go, Goose, Java,
+JavaScript, Lobster, Lua, Luau, Python, Ruby, Rust and Squirrel, and moo from
+a build with `-tags schema_leg_moo`. Every target but Dart, Elixir and Java
+reads and writes through a serialize-family runtime library; those three carry
+the bit reader and writer in the generated code itself and need nothing but
+their own toolchain:
 
 | target | runtime library |
 |---|---|
 | C | [serialize.c](https://github.com/mas-bandwidth/serialize.c) |
 | C++ | [serialize](https://github.com/mas-bandwidth/serialize) |
-| C# | [serialize.cs](https://github.com/mas-bandwidth/serialize.cs) |
+| C# (modern) | [serialize.cs](https://github.com/mas-bandwidth/serialize.cs) |
+| C# (unity) | [serialize.cs](https://github.com/mas-bandwidth/serialize.cs) ([UNITY.md](UNITY.md)) |
 | Dart | none — the generated code is self-contained |
 | Elixir | none — the generated code is self-contained |
 | Go | [serialize.go](https://github.com/mas-bandwidth/serialize.go) |
+| Goose | [serialize.goose](https://github.com/mas-bandwidth/serialize.goose), vendored at `internal/codegen/goose/runtime/` and emitted beside the generated modules |
 | Java | none — the generated code is self-contained |
 | JavaScript | [serialize.js](https://github.com/mas-bandwidth/serialize.js) |
 | Rust | [serialize.rs](https://github.com/mas-bandwidth/serialize.rs) |
 | Lobster | [serialize.lobster](https://github.com/mas-bandwidth/serialize.lobster) |
 | Lua | [serialize.lua](https://github.com/mas-bandwidth/serialize.lua) |
 | Luau | [serialize.luau](https://github.com/mas-bandwidth/serialize.luau) |
+| moo | [serialize.moo](https://github.com/mas-bandwidth/serialize.moo), vendored at `internal/codegen/moo/runtime/` and emitted beside the generated modules |
 | Python | serialize.py, staged in this repository at `third_party/serialize.py/` and shipped inside each generated package |
 | Ruby | [serialize.rb](https://github.com/mas-bandwidth/serialize.rb), staged at `third_party/serialize.rb/` and vendored into each generated package |
 | Squirrel | [serialize.nut](https://github.com/mas-bandwidth/serialize.nut) |
