@@ -86,7 +86,7 @@ inline const char * schema_table_text_at_( const TableRef & ref, int32_t & len )
         len = 0;
         return schema_table_empty_text_ + 8;
     }
-    return schema_table_text_from_raw_( reinterpret_cast<const uint8_t *>( static_cast<uintptr_t>( &ref ) + static_cast<uintptr_t>( ref.value ) ), len );
+    return schema_table_text_from_raw_( reinterpret_cast<const uint8_t *>( reinterpret_cast<uintptr_t>( &ref ) + static_cast<uintptr_t>( ref.value ) ), len );
 }
 inline const char * schema_table_text_at_( const TableRegionCtx &, const TableRef & ref, int32_t & len )
 {
@@ -168,7 +168,7 @@ inline bool schema_table_text_place_( const TableNodeMap & nodes, TableRef & slo
         slot.value = static_cast<int64_t>( at );
         return true;
     }
-    uint8_t * base = reinterpret_cast<uint8_t *>( ( static_cast<uintptr_t>( nodes.carve->at ) + 7u ) & ~static_cast<uintptr_t>( 7u ) );
+    uint8_t * base = reinterpret_cast<uint8_t *>( ( reinterpret_cast<uintptr_t>( nodes.carve->at ) + 7u ) & ~static_cast<uintptr_t>( 7u ) );
     const int64_t bytes = TableAlignUp64( 9 + len );
     const int64_t pad = static_cast<int64_t>( base - nodes.carve->at );
     if ( pad + bytes > nodes.carve->left ) { return false; }

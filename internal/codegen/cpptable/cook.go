@@ -248,7 +248,7 @@ inline const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint6
     // alignment, so a base an allocator or mmap gave you is already aligned —
     // mmap gives page alignment for free — and a base that is not is a caller's
     // buffer this form cannot be read out of: the caller's defect, not the file's.
-    if ( ( static_cast<uintptr_t>( base ) % static_cast<uintptr_t>( alignment ) ) != 0 ) { return TableCookRefuse( reason, unaligned_base ); }
+    if ( ( reinterpret_cast<uintptr_t>( base ) % static_cast<uintptr_t>( alignment ) ) != 0 ) { return TableCookRefuse( reason, unaligned_base ); }
     return base;
 }
 ` + tableCookWriteRuntime + `

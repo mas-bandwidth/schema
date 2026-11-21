@@ -726,7 +726,7 @@ inline TableMapFill<Entry> TableMapFillBegin( const TableNodeMap & nodes, TableM
         return fill;
     }
     const int64_t align = static_cast<int64_t>( alignof( Entry ) );
-    uint8_t * base = reinterpret_cast<uint8_t *>( ( static_cast<uintptr_t>( nodes.carve->at ) + static_cast<uintptr_t>( align - 1 ) ) & ~( static_cast<uintptr_t>( align - 1 ) ) );
+    uint8_t * base = reinterpret_cast<uint8_t *>( ( reinterpret_cast<uintptr_t>( nodes.carve->at ) + static_cast<uintptr_t>( align - 1 ) ) & ~( static_cast<uintptr_t>( align - 1 ) ) );
     const int64_t bytes = static_cast<int64_t>( n ) * static_cast<int64_t>( sizeof( Entry ) );
     const int64_t pad = static_cast<int64_t>( base - nodes.carve->at );
     if ( pad + bytes > nodes.carve->left ) { return fill; } // the measure and the load disagree: refused

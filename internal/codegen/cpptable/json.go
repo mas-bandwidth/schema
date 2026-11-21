@@ -2094,7 +2094,7 @@ inline const char * schema_table_json_unbounded_text_at_( const void * slot, int
         len = 0;
         return "";
     }
-    const uint8_t * raw = reinterpret_cast<const uint8_t *>( static_cast<uintptr_t>( slot ) + static_cast<uintptr_t>( delta ) );
+    const uint8_t * raw = reinterpret_cast<const uint8_t *>( reinterpret_cast<uintptr_t>( slot ) + static_cast<uintptr_t>( delta ) );
     uint32_t u = 0;
     memcpy( &u, raw, 4 );
     len = static_cast<int32_t>( u );
@@ -5738,7 +5738,7 @@ inline bool TableJsonWritePointer( TableJsonOut & out, const void * slot, const 
         return true;
     }
     bool taken = false;
-    TableJsonGraphEntry * entry = TableJsonGraphMapReach( graph->nodes, static_cast<uint64_t>( static_cast<uintptr_t>( node ) ), taken );
+    TableJsonGraphEntry * entry = TableJsonGraphMapReach( graph->nodes, static_cast<uint64_t>( reinterpret_cast<uintptr_t>( node ) ), taken );
     if ( entry == NULL ) { return false; }
     if ( f->table == NULL )
     {
@@ -5771,7 +5771,7 @@ inline bool TableJsonWritePointer( TableJsonOut & out, const void * slot, const 
         if ( !taken ) { return entry->open == 0; }
         entry->open = 1;
         if ( !TableJsonWriteValue( out, node, f->table, depth ) ) { return false; }
-        entry = TableJsonGraphMapFind( graph->nodes, static_cast<uint64_t>( static_cast<uintptr_t>( node ) ) ); // the map may have grown under the descent
+        entry = TableJsonGraphMapFind( graph->nodes, static_cast<uint64_t>( reinterpret_cast<uintptr_t>( node ) ) ); // the map may have grown under the descent
         if ( entry == NULL ) { return false; }
         entry->open = 0;
         return true;
@@ -5878,7 +5878,7 @@ inline int64_t TableJsonWriteGraph( const void * root, const TableTypeInfo * inf
     graph.counting = true;
     graph.next_label = 0;
     bool taken = false;
-    TableJsonGraphEntry * entry = TableJsonGraphMapReach( graph.nodes, static_cast<uint64_t>( static_cast<uintptr_t>( root ) ), taken );
+    TableJsonGraphEntry * entry = TableJsonGraphMapReach( graph.nodes, static_cast<uint64_t>( reinterpret_cast<uintptr_t>( root ) ), taken );
     if ( entry == NULL )
     {
         TableJsonGraphMapShutdown( graph.nodes );

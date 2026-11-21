@@ -637,7 +637,7 @@ inline void TablePackMapReset( TablePackMap & map )
 // would collide on every node of one type
 inline int64_t TablePackMapSlot( const TablePackMap & map, const void * key )
 {
-    uint64_t hash = static_cast<uint64_t>( static_cast<uintptr_t>( key ) );
+    uint64_t hash = static_cast<uint64_t>( reinterpret_cast<uintptr_t>( key ) );
     hash *= 0x9E3779B97F4A7C15ull;
     hash ^= hash >> 29;
     int64_t mask = map.capacity - 1;
@@ -746,7 +746,7 @@ struct TableRegionCtx
 // terminator is really there. The same holds for every node's At.
 inline const TableBlob * TableBlobAt( const TableRef & ref )
 {
-    return ref.value != 0 ? reinterpret_cast<const TableBlob *>( static_cast<uintptr_t>( &ref ) + static_cast<uintptr_t>( ref.value ) ) : NULL;
+    return ref.value != 0 ? reinterpret_cast<const TableBlob *>( reinterpret_cast<uintptr_t>( &ref ) + static_cast<uintptr_t>( ref.value ) ) : NULL;
 }
 inline const TableBlob * TableBlobAt( const TableRegionCtx &, const TableRef & ref ) { return TableBlobAt( ref ); }
 inline const TableBlob * TableBlobAt( const TableArenaCtx & ctx, const TableRef & ref )

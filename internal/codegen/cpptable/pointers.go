@@ -567,9 +567,9 @@ func (g *tableGen) emitPointerTargetSurface(st *ir.Struct) {
 	n := st.Name
 	g.pf("// %s is a pointer target.\n", n)
 	g.pf("inline const %s * %sAt( const TableRef & ref ) // the const form's hot path: one add, no base\n{\n", n, n)
-	g.pf("    return ref.value != 0 ? reinterpret_cast<const %s *>( static_cast<uintptr_t>( &ref ) + static_cast<uintptr_t>( ref.value ) ) : NULL;\n}\n", n)
+	g.pf("    return ref.value != 0 ? reinterpret_cast<const %s *>( reinterpret_cast<uintptr_t>( &ref ) + static_cast<uintptr_t>( ref.value ) ) : NULL;\n}\n", n)
 	g.pf("inline %s * %sAt( TableRef & ref )\n{\n", n, n)
-	g.pf("    return ref.value != 0 ? reinterpret_cast<%s *>( static_cast<uintptr_t>( &ref ) + static_cast<uintptr_t>( ref.value ) ) : NULL;\n}\n", n)
+	g.pf("    return ref.value != 0 ? reinterpret_cast<%s *>( reinterpret_cast<uintptr_t>( &ref ) + static_cast<uintptr_t>( ref.value ) ) : NULL;\n}\n", n)
 	g.pf("inline const %s * %sAt( const TableRegionCtx &, const TableRef & ref ) { return %sAt( ref ); }\n", n, n, n)
 	g.pf("inline const %s * %sAt( const TableArenaCtx & ctx, const TableRef & ref )\n{\n", n, n)
 	g.pf("    return ref.value != 0 ? reinterpret_cast<const %s *>( TableArenaAt( *ctx.arena, static_cast<uint32_t>( ref.value ) ) ) : NULL;\n}\n", n)
@@ -1834,7 +1834,7 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 	g.pf("    const int64_t wire_bytes = body_bytes;\n")
 	if !g.anyExtent {
 		g.pf("    if ( region == NULL || region_bytes < static_cast<int64_t>( sizeof( %s ) ) )\n    {\n        out->damaged = true;\n        return NULL;\n    }\n", n)
-		g.pf("    if ( ( ( static_cast<uintptr_t>( region ) ) & ( kTableAlign - 1 ) ) != 0 )\n    {\n        out->damaged = true;\n        return NULL;\n    }\n")
+		g.pf("    if ( ( ( reinterpret_cast<uintptr_t>( region ) ) & ( kTableAlign - 1 ) ) != 0 )\n    {\n        out->damaged = true;\n        return NULL;\n    }\n")
 		g.pf("    memset( region, 0, static_cast<size_t>( region_bytes ) );\n")
 		g.pf("    uint64_t type_id = 0;\n")
 		g.pf("    const uint8_t * body = NULL;\n")
@@ -1855,7 +1855,7 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 		g.pf("    int64_t attribution = ( records + 1 ) * static_cast<int64_t>( sizeof( TableNodeDirEntry ) );\n")
 		g.pf("    if ( data + attribution > region_bytes )\n    {\n        out->damaged = true;\n        return NULL;\n    }\n\n")
 	} else {
-		g.pf("    if ( region != NULL && region_bytes > 0 && ( ( static_cast<uintptr_t>( region ) ) & ( kTableAlign - 1 ) ) == 0 )\n    {\n        memset( region, 0, static_cast<size_t>( region_bytes ) );\n    }\n")
+		g.pf("    if ( region != NULL && region_bytes > 0 && ( ( reinterpret_cast<uintptr_t>( region ) ) & ( kTableAlign - 1 ) ) == 0 )\n    {\n        memset( region, 0, static_cast<size_t>( region_bytes ) );\n    }\n")
 		g.pf("    uint64_t type_id = 0;\n")
 		g.pf("    const uint8_t * body = NULL;\n")
 		g.pf("    int64_t length = 0;\n\n")
@@ -1958,7 +1958,7 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 		g.pf("        return NULL;\n")
 		g.pf("    }\n")
 		g.pf("    if ( region == NULL || region_bytes < static_cast<int64_t>( sizeof( %s ) ) )\n    {\n        out->damaged = true;\n        return NULL;\n    }\n", n)
-		g.pf("    if ( ( ( static_cast<uintptr_t>( region ) ) & ( kTableAlign - 1 ) ) != 0 )\n    {\n        out->damaged = true;\n        return NULL;\n    }\n")
+		g.pf("    if ( ( ( reinterpret_cast<uintptr_t>( region ) ) & ( kTableAlign - 1 ) ) != 0 )\n    {\n        out->damaged = true;\n        return NULL;\n    }\n")
 		g.pf("    int64_t attribution = ( records + 1 ) * static_cast<int64_t>( sizeof( TableNodeDirEntry ) );\n")
 		g.pf("    if ( data + attribution > region_bytes )\n    {\n        out->damaged = true;\n        return NULL;\n    }\n\n")
 	}
