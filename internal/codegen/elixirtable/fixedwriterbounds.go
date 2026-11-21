@@ -8,10 +8,11 @@ import (
 )
 
 // THE WRITER'S RANGE IS THE BOUND (docs/FIXED-FORM-ALGORITHM.md §4.5, §4.6,
-// bill §12.5). A ranged integer read through a COMPILED lane is clamped first
-// to the range ITS WRITER declared, the lineage entry the file was written
-// under, and then to this reader's own range in the projection; each clamp
-// that fires counts once. The writer's ranges and their match onto this
+// bill §12.5; docs/rulings.json strict-only-read). A ranged integer, and a
+// compressed float, read through a COMPILED lane is held first to the range
+// ITS WRITER declared, the lineage entry the file was written under, and then
+// to this reader's own range in the projection; a value past either refuses
+// the whole load out_of_range. The writer's ranges and their match onto this
 // reader's fields are the compiler's own (ir.TableFixedWriterRanges,
 // ir.TableFixedWriterField), shared by every leg.
 
@@ -19,13 +20,17 @@ import (
 // reader's field, the image offset of one leaf (a fixed array has a row per
 // element), the writer's raw bounds, and which ends can fire. An end is
 // dropped when it sits on the storage width's own limit, where no load can
-// fail it, or on the reader's own end, where the projection's clamp lands the
-// same value and counts the same once.
+// fail it, or on the reader's own end, where the projection holds the same
+// bound. A compressed float's bounds are float literals already rounded to
+// the field's own type (flo, fhi), so the runtime compares a float32 against
+// a float32 bound.
 type fixedWriterBound struct {
 	field     *ir.Field
 	at        int64
 	lo, hi    *big.Int
 	low, high bool
+	float     bool
+	flo, fhi  string
 }
 
 // fixedWriterBounds resolves one lineage entry's writer ranges onto this
@@ -50,6 +55,9 @@ func fixedWriterBounds(st *ir.Struct, e FixedLineageEntry) []fixedWriterBound {
 // fixedWriterBoundsOf spells one resolved writer field at this reader's image
 // offsets: a scalar is one row, a fixed array one per element at its stride.
 func fixedWriterBoundsOf(f, w *ir.Field, at int64) []fixedWriterBound {
+	if w.HasFloatRange {
+		return fixedWriterFloatBoundsOf(f, w, at)
+	}
 	lo, hi, ok := ir.TableRawRange(w)
 	rlo, rhi, rok := ir.TableRawRange(f)
 	if !ok {
@@ -74,6 +82,32 @@ func fixedWriterBoundsOf(f, w *ir.Field, at int64) []fixedWriterBound {
 	out := make([]fixedWriterBound, 0, n)
 	for i := range n {
 		out = append(out, fixedWriterBound{field: f, at: at + i*stride, lo: lo, hi: hi, low: low, high: high})
+	}
+	return out
+}
+
+// fixedWriterFloatBoundsOf spells a compressed float's writer range: the
+// writer's min and max rounded to the field's own type (fixedFloatRangeOf),
+// one row per leaf. A float has no storage-width limit to drop an end on; an
+// end on the reader's own is dropped, the projection holding the same bound.
+func fixedWriterFloatBoundsOf(f, w *ir.Field, at int64) []fixedWriterBound {
+	lo, hi, ok := fixedFloatRangeOf(w)
+	if !ok {
+		return nil
+	}
+	rlo, rhi, rok := fixedFloatRangeOf(f)
+	low := !rok || lo != rlo
+	high := !rok || hi != rhi
+	if !low && !high {
+		return nil
+	}
+	n, stride := int64(1), ir.TableFixedElementBytes(f)
+	if f.Array == ir.ArrayFixed {
+		n = f.ArrayBound
+	}
+	out := make([]fixedWriterBound, 0, n)
+	for i := range n {
+		out = append(out, fixedWriterBound{field: f, at: at + i*stride, low: low, high: high, float: true, flo: lo, fhi: hi})
 	}
 	return out
 }
@@ -107,7 +141,7 @@ func (g *fixedGen) emitWriterBounds(st *ir.Struct, snake string, entries []Fixed
 	g.pf("  # THE WRITER'S OWN RANGES BY LINEAGE ENTRY (docs/FIXED-FORM-ALGORITHM.md\n")
 	g.pf("  # §4.6, bill §12.5): held on a compiled lane's image after the plan and\n")
 	g.pf("  # before the projection, so a forged value past what that writer could\n")
-	g.pf("  # have written lands the WRITER's bound and counts, and the projection\n")
+	g.pf("  # have written refuses the whole load out_of_range, and the projection\n")
 	g.pf("  # then holds this reader's own range.\n")
 	fn := snake + "_fixed_writer_bounds"
 	// `mix format` keeps one-line clauses together and sets a do/end clause
@@ -119,6 +153,10 @@ func (g *fixedGen) emitWriterBounds(st *ir.Struct, snake string, entries []Fixed
 		}
 		items := make([]string, len(rows))
 		for k, b := range rows {
+			if b.float {
+				items[k] = fmt.Sprintf("{%d, %d, :float, %s, %s}", b.at, 8*ir.TableFixedStorageBytes(b.field.Type), b.flo, b.fhi)
+				continue
+			}
 			sign := ":unsigned"
 			if ir.TableKindSigned(ir.TableScalarKind(b.field)) {
 				sign = ":signed"

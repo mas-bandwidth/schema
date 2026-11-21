@@ -10,18 +10,25 @@ package elixirtable
 // built the C++ reference corpus. The page sentence each assertion implements
 // is quoted beside it.
 //
-// elixir/C7 [weak]: a ranged scalar clamps to the min and the max, COUNT
-// clamped — §4.6 "A RANGED SCALAR clamps to the min and max the plan carries,
-// `COUNT clamped`"; the pass runs on the generated projection, which both plans
-// land through (§4.6 "ONE pass cover BOTH plans").
+// THE ROADMAP TITLES BELOW ARE QUOTED AS FILED, from the tolerant era. Under
+// the one strict read (docs/rulings.json strict-only-read) no read clamps and
+// there is no `clamped` counter: the projection's pass moves a local count `c`
+// for a value past its bound, and R.range_check/2 refuses the whole load
+// out_of_range on any count. What each subtest asserts is the emitted text of
+// that pass.
 //
-// elixir/C9 [verify]: a union tag past the declared arms lands None and counts
-// one `clamped` — §4.6 "A UNION TAG past the plan's arm count ... lands `None`
-// ... and `COUNT clamped`".
+// elixir/C7 [weak]: a ranged scalar is held to the min and the max — §4.6 "A
+// RANGED SCALAR clamps to the min and max the plan carries, `COUNT clamped`";
+// the pass runs on the generated projection, which both plans land through
+// (§4.6 "ONE pass cover BOTH plans").
 //
-// elixir/C10 [verify]: an enum ordinal past the top variant lands None and
-// counts one `clamped` — §4.6 "an ENUM ORDINAL past the plan's top variant,
-// lands `None` ... and `COUNT clamped`".
+// elixir/C9 [verify]: a union tag past the declared arms moves the pass's
+// count — §4.6 "A UNION TAG past the plan's arm count ... lands `None` ... and
+// `COUNT clamped`".
+//
+// elixir/C10 [verify]: an enum ordinal past the top variant moves the pass's
+// count — §4.6 "an ENUM ORDINAL past the plan's top variant, lands `None` ...
+// and `COUNT clamped`".
 //
 // elixir/C12 [verify]: §4.5's last row — "a byte of `0` or `1` lands as the
 // language's own false or true".
@@ -112,22 +119,25 @@ func t06HasNot(t *testing.T, src, want, rule string) {
 
 // ---- elixir/C7 --------------------------------------------------------------
 
-// t06C7 holds elixir/C7 to §4.6: the ranged scalar clamps to the min and the
-// max and counts ONE `clamped`, on the projection both plans land through.
+// t06C7 holds elixir/C7 to §4.6: the projection both plans land through emits
+// the ranged scalar's bounds pass (R.clamps/4 moves the count `c` by one for a
+// value past [-5, 5], and a count refuses the load), and the runtime's
+// R.clamps/4 adds one past a bound and nothing inside it.
 func t06C7(t *testing.T) {
 	module, runtime := t06Emit(t)
-	// THE PROJECTION CLAMPS AND COUNTS.
+	// THE PROJECTION'S PASS OVER THE RANGED SCALAR.
 	t06Has(t, module, "c = R.clamps(c, f_x, -5, 5)", "C7 the ranged scalar counts one clamp")
 	t06Has(t, module, "x: min(max(f_x, -5), 5)", "C7 the ranged scalar lands clamped to its declared bounds")
-	// THE RUNTIME'S CLAMP COUNTS EXACTLY ONCE.
+	// THE RUNTIME'S PASS ADDS EXACTLY ONE PER VALUE PAST A BOUND.
 	t06Has(t, runtime, "def clamps(acc, v, lo, hi) when v < lo or v > hi, do: acc + 1", "C7 the clamp counts once")
 	t06Has(t, runtime, "def clamps(acc, _v, _lo, _hi), do: acc", "C7 an in-range value moves no counter")
 }
 
 // ---- elixir/C9 --------------------------------------------------------------
 
-// t06C9 holds elixir/C9 to §4.6: a tag past the declared arms lands None and
-// counts one `clamped`, never the forged ordinal.
+// t06C9 holds elixir/C9 to §4.6: the union projection decodes a tag past the
+// declared arms to {nil, c + 1, m}, moving the pass's count by one (which
+// refuses the load), and tag 0 to {nil, c, m}, moving nothing.
 func t06C9(t *testing.T) {
 	module, _ := t06Emit(t)
 	t06Has(t, module, "  # BEYOND THE DECLARED ARMS lands None and counts one `unknown`", "C9 the union projection names the rule")
@@ -137,8 +147,9 @@ func t06C9(t *testing.T) {
 
 // ---- elixir/C10 -------------------------------------------------------------
 
-// t06C10 holds elixir/C10 to §4.6: an ordinal past the top variant lands None
-// and counts one `clamped`.
+// t06C10 holds elixir/C10 to §4.6: the projection emits R.past/3 over an
+// ordinal, which moves the pass's count by one past the top variant (and a
+// count refuses the load) and nothing inside it.
 func t06C10(t *testing.T) {
 	module, runtime := t06Emit(t)
 	t06Has(t, module, "if(f_tier <= 3, do: f_tier, else: 0)", "C10 an ordinal past the top variant lands None")
@@ -185,8 +196,9 @@ func t06R17(t *testing.T) {
 
 // ---- elixir/C1 --------------------------------------------------------------
 
-// t06C1 holds elixir/C1 to §4.5 `count`: a negative count floors to zero and
-// counts one `clamped`.
+// t06C1 holds elixir/C1 to §4.5 `count`: the runtime refuses a negative raw
+// count `count_over_bound`, and the projection's pass over the count is
+// emitted (R.clamps/4 against [1, 8]).
 func t06C1(t *testing.T) {
 	module, runtime := t06Emit(t)
 	t06Has(t, module, "min(max(n_vals, 0), 8)", "C1 a negative count floors to zero")
@@ -196,9 +208,10 @@ func t06C1(t *testing.T) {
 
 // ---- elixir/C2 --------------------------------------------------------------
 
-// t06C2 holds elixir/C2 to §4.5 `count`: a count past the bound the plan
-// carries (the writer's own, in elements) lands the bound and counts one
-// `clamped`.
+// t06C2 holds elixir/C2 to §4.5 `count`: the runtime refuses a raw count past
+// the bound the plan carries (the writer's own, in elements)
+// `count_over_bound`, and the projection's pass over the count is emitted
+// (R.clamps/4 against [1, 8]).
 func t06C2(t *testing.T) {
 	module, runtime := t06Emit(t)
 	t06Has(t, module, "min(max(n_vals, 0), 8)", "C2 a count past Max lands the bound")

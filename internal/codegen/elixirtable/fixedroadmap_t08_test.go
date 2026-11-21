@@ -449,8 +449,8 @@ func t08Unsigned128(t *testing.T) {
 // ---- ranged-integers/elixir/valid-data -------------------------------------
 
 // t08Ranged holds the ranged-integers row to §3.4: a ranged field rides as its
-// storage-width integer, clamped to its declared non-default bound. The declared
-// bounds -5 and 5 are both written and read back.
+// storage-width integer, held to its declared non-default bound. The declared
+// bounds -5 and 5 and a value between them are written and read back.
 func t08Ranged(t *testing.T) {
 	t08RunProbe(t, t08Scalars, t08RoundTrip("ranged-integers",
 		"V{r: -5}", "V{r: 0}", "V{r: 5}"))

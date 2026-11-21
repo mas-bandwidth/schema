@@ -27,6 +27,8 @@ package elixirtable
 // elixir/R16 [weak]: §5.4's counters exactly (unknown once per endpoint at COMPILE,
 // widened and clamped once per entry per record, the bounds pass counts a
 // forged ordinal remapped to None, copy/const/present/ordinal move nothing).
+// These titles are the roadmap's as filed; under strict-only-read no read
+// clamps, and a count from the bounds pass refuses the whole load out_of_range.
 //
 // elixir/R18 [weak]: a clamp that cannot fire is not emitted and nothing moves.
 //
@@ -237,9 +239,11 @@ fixed table T
 // ---- elixir/R16 --------------------------------------------------------------
 
 // t05R16 holds elixir/R16 to §5.4's counters, each asserted by the site that
-// owns it: the census ONCE per endpoint after the loop, the widen and clamp bumps of
-// the plan's step, the bounds pass's `clamps`/`fclamps`, and the ordinal remap
-// that lands None and counts one in the bounds pass and nowhere else.
+// owns it: the census ONCE per endpoint after the loop, the widen bump of the
+// plan's step, the bounds pass's `clamps`/`fclamps`/`past` (each adds one to
+// the pass's local count for a value past its bound), and range_check, which
+// refuses the whole load out_of_range on any count (strict-only-read: no read
+// clamps).
 func t05R16(t *testing.T) {
 	runtime := t05Runtime(t)
 	for _, want := range []string{
@@ -248,11 +252,11 @@ func t05R16(t *testing.T) {
 		"unknown: report.unknown + unknown",
 		// widened: once per entry per record.
 		"bump(report, :widened)",
-		// clamped: once per entry per record, count and text.
+		// the bounds pass: any count past a bound refuses out_of_range.
 		"def range_check(_report, _n), do: throw({:refuse, :out_of_range})",
 		"def clamps(acc, v, lo, hi) when v < lo or v > hi, do: acc + 1",
 		"def fclamps(acc, v, lo, hi) when v < lo or v > hi, do: acc + 1",
-		// the bounds pass counts a forged ordinal remapped to None.
+		// the bounds pass counts a forged ordinal past the top variant.
 		"def past(acc, v, variants) when v > variants, do: acc + 1",
 	} {
 		t05Has(t, runtime, want, "R16 §5.4's counters")
@@ -295,8 +299,9 @@ fixed table Cfg
 
 // ---- elixir/C3 ---------------------------------------------------------------
 
-// t05C3 holds elixir/C3: a text length is clamped ONCE in the bounds pass, at
-// the field's declared capacity.
+// t05C3 holds elixir/C3: a text length is checked ONCE in the bounds pass,
+// against the field's declared capacity (R.clamps/4 adds one past it, and a
+// count refuses the load).
 func t05C3(t *testing.T) {
 	out, err := Generate(unitFrom(t, `package probe
 

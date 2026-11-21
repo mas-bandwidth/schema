@@ -206,8 +206,8 @@ fixed table Everything
 		t.Fatalf("the identity plan is %s, not %s", plan[0].String(), want)
 	}
 	// AND THE PROJECTION IS WHERE THE BOUNDS WENT: the generated decode must
-	// hold a ranged value and move the count, or the `clamped` the plan used
-	// to move stopped moving.
+	// carry the bounds pass (R.clamps/4) that moves the count a value past its
+	// range refuses on, or the fold dropped a check.
 	out, err := Generate(u)
 	if err != nil {
 		t.Fatal(err)
@@ -254,11 +254,12 @@ fixed table Cfg
 	}
 }
 
-// CLAMP AND ORDINAL COUNT LIVE ELEMENTS ONLY, and on this path that is the
-// PROJECTION's shape rather than a plan op's wrapper. The identity plan here is
-// one run of bytes, so there is no `:live` tuple to hang a guard on; what has to
-// hold instead is that the generated walk stops AT THE COUNT — the zero clause
-// is the whole of it, so a slack slot is never read and so never clamps — and
+// THE BOUNDS PASS AND THE ORDINAL CHECK SEE LIVE ELEMENTS ONLY, and on this path
+// that is the PROJECTION's shape rather than a plan op's wrapper. The identity
+// plan here is one run of bytes, so there is no `:live` tuple to hang a guard
+// on; what has to hold instead is that the generated walk stops AT THE COUNT —
+// the zero clause is the whole of it, so a slack slot is never read and so never
+// moves the count a load refuses on — and
 // that an absent optional's payload folds its counter away. C++ walks
 // items_count; so does this. The sibling rule on a COMPILED plan is
 // FixedRuntime's, where the interpreter does carry :live and :present.
@@ -281,15 +282,15 @@ fixed table Live
 	body := string(out["ProbeFixed.ex"])
 	for _, want := range []string{
 		// THE WALK STOPS AT THE COUNT: n reaches zero and the slack behind the
-		// live elements is never matched, so it moves no `clamped`.
+		// live elements is never matched, so it moves no count.
 		"defp live_marks_fixed_list(_bin, 0, c, m), do: {[], c, m}",
 		"defp live_grades_fixed_list(_bin, 0, c, m), do: {[], c, m}",
-		// AND THE COUNT IT IS HANDED IS THE CLAMPED ONE, so a hostile count
-		// walks the bound and not itself.
+		// AND THE COUNT IT IS HANDED IS HELD TO [0, bound], so even a count the
+		// pass refuses on walks no further than the bound.
 		"live_marks_fixed_list(b_marks, min(max(n_marks, 0), 4), c, m)",
 		"live_grades_fixed_list(b_grades, min(max(n_grades, 0), 4), c, m)",
-		// AN ABSENT OPTIONAL'S PAYLOAD MOVES NO COUNTER: the payload's clamp
-		// lands in a shadow counter the present flag either keeps or drops.
+		// AN ABSENT OPTIONAL'S PAYLOAD MOVES NO COUNT: the payload's bounds
+		// check lands in a shadow count the present flag either keeps or drops.
 		"p_note = R.flag(p_note)",
 		"c = if(p_note, do: c_note, else: c)",
 	} {
@@ -721,10 +722,11 @@ func findGenerated(t *testing.T, out map[string][]byte, needle string) string {
 
 // THE COUNT OP'S BOUND IS THE WRITER'S their_n, NEVER THE READER'S OWN (§5.2
 // EMIT kind 14, bill §12.5). The plan carries THAT ENDPOINT's bounds for the hostile
-// pass, so a count forged past what the writer could have written clamps and
-// counts one `clamped`. Held to the READER's bound instead — which on a grown
-// array is the larger number — a count between `their_n` and `my_n` goes through
-// untouched and every slot behind it reads as live.
+// pass, so a count forged past what the writer could have written refuses the
+// whole load (strict-only-read). Held to the READER's bound instead — which on a
+// grown array is the larger number — a count between `their_n` and `my_n` goes
+// through untouched and every slot behind it reads as live. This test reads the
+// generated runtime: its count op names `their_n` and not `my_n`.
 func TestFixedCountOpIsBoundedByTheWriter(t *testing.T) {
 	out, err := Generate(unitFrom(t, `package probe
 

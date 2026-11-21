@@ -10,38 +10,33 @@ import (
 )
 
 // §5.8 row cfloat_range_widen: the OLD writer's aim range is [-1,1], the NEW
-// reader's is [-2,2] — the range WIDENED. A compressed float rides as the
-// float32 ITSELF (SPEC §3.4), so the old bound is nowhere on the wire and the
-// bounds pass on a READ is THE READER's. old_ lands the writer's 0.5 whole;
-// hostile_ is forged to 1.5 (outside the OLD bound, inside the NEW) and lands
-// 1.5 WHOLE, which says the pass is the reader's and not the writer's; past_ is
-// forged to 5.0 (outside both) and, under strict-only, refuses the whole batch
-// as out_of_range — the assertion that proves there is a pass at all, since
-// deleting the emitter pass keeps hostile_ green and only past_ goes red.
+// reader's is [-2,2] — the range WIDENED. A compressed float is held to the
+// WRITER's range the lineage plan carries, like every ranged kind
+// (docs/rulings.json strict-only-read, docs/FIXED-FORM-ALGORITHM.md §4.6).
+// old_ is the control (the writer's range is NARROWER than the reader's) and
+// lands the writer's 0.5 exactly; hostile_ is forged to 1.5 (outside the OLD
+// writer's bound, inside the NEW reader's) and refuses the whole batch
+// out_of_range, which is what says the bound is the writer's; past_ is forged
+// to 5.0 (outside both) and refuses whole too. Deleting the lineage entry's
+// writer pass (fixed_clamp_known_N) turns hostile_ red while past_ stays green
+// on the reader's own bound.
 
 func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
 	slowtest.Gate(t, "an external toolchain")
 
 	corpus := versionCorpus(t)
-	// TWO OF THE THREE NUMBERS COME FROM THE CORPUS MANIFEST AND THE THIRD
-	// CANNOT (schema#1164). `old_`'s is `values=r0.aim`, `hostile_`'s is the
-	// manifest's own `forged=r0.aim@104`. `past_`'s 0x40000000 stays a literal:
-	// the file carries 5.0 and what lands is THIS READER'S OWN DECLARED MAX 2.0,
-	// which is the whole content of that column.
+	// THE ONE VALUE THAT LANDS COMES FROM THE CORPUS MANIFEST: `old_`'s
+	// `values=r0.aim`, compared by its float32 bits.
 	oldAim := versionManifestFloatBits(t, corpus, "old_cfloat_range_widen.bin", "values", "r0.aim")
-	hostileAim := versionManifestFloatBits(t, corpus, "hostile_cfloat_range_widen.bin", "forged", "r0.aim")
 
 	tests := fmt.Sprintf(`
-/// §5.8 row cfloat_range_widen, NEW-READS-OLD across THREE corpus files. In the
-/// fixed form a compressed float rides as the float32 ITSELF (SPEC §3.4), so the
-/// OLD writer's [-1,1] bound is nowhere on the wire and the bounds pass on a
-/// READ is THE READER'S: one pass over the reader's own [-2,2]. old_ lands the
-/// writer's 0.5 whole. hostile_ is the old bytes with aim forged to 1.5 —
-/// outside the OLD bound, inside the NEW — and lands 1.5 WHOLE, which is what
-/// says the pass is the READER's and not the writer's. past_ is forged to 5.0,
-/// outside BOTH, and refuses as out_of_range (strict-only), which is what says
-/// there is a pass at all: delete the emitter's pass and hostile_ stays green
-/// while only past_ goes red.
+/// §5.8 row cfloat_range_widen, NEW-READS-OLD across THREE corpus files. A
+/// compressed float is held to the WRITER's range the lineage plan carries
+/// (strict-only-read, FIXED-FORM-ALGORITHM §4.6). old_ lands the writer's 0.5
+/// exactly: the OLD writer's [-1,1] is narrower than the reader's [-2,2].
+/// hostile_ is the old bytes with aim forged to 1.5 — outside the OLD writer's
+/// bound, inside the NEW reader's — and refuses whole as out_of_range. past_
+/// is forged to 5.0, outside BOTH, and refuses whole as out_of_range.
 #[test]
 fn v_cfloat_range_widen_new_reads_old() {
     // old_cfloat_range_widen.bin: the OLD writer, aim = 0.5, on the old grid.
@@ -79,22 +74,14 @@ fn v_cfloat_range_widen_new_reads_old() {
         let mut remap = vec![0u16; 4096];
         let mut report = TableFixedReport::default();
         let n = LOADFN(&mut values, &hostile_data, &mut plan, &mut remap, &mut report);
-        let n = n.unwrap_or_else(|| panic!(
-            "hostile_: the newer reader REFUSED the forged file: {} {:?}", report.reason.name(), report
-        ));
-        assert_eq!(n, 1, "hostile_ carries one record, not {n}");
+        // STRICT-ONLY: a value past THE WRITER'S range refuses the whole batch
+        // as out_of_range, though it lies inside this reader's own.
+        assert!(n.is_none(), "hostile_: 1.5 past the writer's [-1,1] was read, not refused: {:?}", report);
         assert!(
-            !report.refused && report.reason == TableFixedReason::None,
-            "hostile_: a clean NEW-READS-OLD is not a refusal: {:?}", report
+            report.refused && report.reason == TableFixedReason::OutOfRange,
+            "hostile_: 1.5 past the writer's [-1,1] is an out_of_range refusal: {:?}", report
         );
-        assert!(!report.damaged, "hostile_: a clean backward read is not damage: {:?}", report);
-        assert_eq!(values[0].lead, 1, "hostile_: the lead bracket moved: lead={}", values[0].lead);
-        assert_eq!(values[0].trail, 2, "hostile_: the trail bracket moved: trail={}", values[0].trail);
-        assert_eq!(values[0].aim.to_bits(), %[5]d, "hostile_: the manifest's own forged value, inside the reader's range, lands WHOLE: aim={:#x}", values[0].aim.to_bits());
-        assert!(
-            report.unknown == 0 && report.widened == 0,
-            "hostile_: counters moved on a clean backward read: {:?}", report
-        );
+        assert!(!report.damaged, "hostile_: a refusal is not damage: {:?}", report);
     }
 
     // past_cfloat_range_widen.bin: the old bytes with aim FORGED to 5.0,
@@ -106,8 +93,8 @@ fn v_cfloat_range_widen_new_reads_old() {
         let mut remap = vec![0u16; 4096];
         let mut report = TableFixedReport::default();
         let n = LOADFN(&mut values, &past_data, &mut plan, &mut remap, &mut report);
-        // STRICT-ONLY: a value past THE READER'S OWN range refuses the whole
-        // batch as out_of_range; it is never clamped to the reader's max.
+        // STRICT-ONLY: a value past both ranges refuses the whole batch as
+        // out_of_range.
         assert!(n.is_none(), "past_: 5.0 past the reader's [-2,2] was read, not refused: {:?}", report);
         assert!(
             report.refused && report.reason == TableFixedReason::OutOfRange,
@@ -118,7 +105,7 @@ fn v_cfloat_range_widen_new_reads_old() {
 }
 `, filepath.Join(corpus, "old_cfloat_range_widen.bin"),
 		filepath.Join(corpus, "hostile_cfloat_range_widen.bin"),
-		filepath.Join(corpus, "past_cfloat_range_widen.bin"), oldAim, hostileAim)
+		filepath.Join(corpus, "past_cfloat_range_widen.bin"), oldAim)
 
 	repo, err := filepath.Abs("../../..")
 	if err != nil {

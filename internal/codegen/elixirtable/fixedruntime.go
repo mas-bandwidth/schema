@@ -339,13 +339,27 @@ const fixedRuntimeBody = `  @moduledoc """
   @doc """
   A COMPILED LANE'S IMAGE HELD TO ITS WRITER'S OWN RANGES, before the projection
   holds this reader's own (docs/FIXED-FORM-ALGORITHM.md §4.6, bill §12.5). Each
-  bound is {offset, bits, sign, lo, hi} on the raw scale; a value past one lands
-  that bound. Answers the image and how many clamps fired, and a clean image
-  comes back as it went in, with no new binary.
+  bound is {offset, bits, sign, lo, hi} on the raw scale, or {offset, bits,
+  :float, lo, hi} for a compressed float with its bounds in the field's own
+  type. Answers the image and how many values lie past a bound; the caller
+  refuses the whole load out_of_range on any (docs/rulings.json
+  strict-only-read), and a clean image comes back as it went in, with no new
+  binary. A NaN or an infinity matches no float pattern and passes here, so
+  the decode refuses it as non_finite_float.
   """
   def writer_bounds(image, bounds), do: writer_bounds(image, bounds, 0)
 
   defp writer_bounds(image, [], c), do: {image, c}
+
+  defp writer_bounds(image, [{at, bits, :float, lo, hi} | rest], c) do
+    case image do
+      <<_::binary-size(^at), v::little-float-size(^bits), _::binary>> when v < lo or v > hi ->
+        writer_bounds(image, rest, c + 1)
+
+      _ ->
+        writer_bounds(image, rest, c)
+    end
+  end
 
   defp writer_bounds(image, [{at, bits, sign, lo, hi} | rest], c) do
     case writer_raw(image, at, bits, sign) do
@@ -382,9 +396,9 @@ const fixedRuntimeBody = `  @moduledoc """
   the guard compares by VALUE, because a 0.0 pattern no longer matches a -0 on
   OTP 27 and later.
 
-  Which bound is the reader's own and not the writer's is schema#1164, ruled
-  statement B: a compressed float rides AS THE FLOAT in the fixed form, its
-  bounds are definitions in the digest, and the compiled plan carries no range.
+  These hold the reader's own bounds; the WRITER's range is held first, by
+  'writer_bounds/2' (docs/rulings.json strict-only-read, which overturned
+  schema#1164 statement B), and a count from either refuses the load.
   """
   def fclamp(v, lo, _hi) when v < lo, do: lo
   def fclamp(v, _lo, hi) when v > hi, do: hi

@@ -4,9 +4,10 @@ package elixirtable
 // compressed float's step: `aim float32 | min = -1, max = 1, resolution = 0.1`
 // on VOLD and `resolution = 0.01` on VNEW. In the FIXED form the float rides as
 // the float32 itself (SPEC §3.4), so this row takes NO hostile file — the step
-// is a definition in the digest, not the bytes. `clamped` is asserted EXACTLY
-// == 0: the old step 0.1 is a whole multiple of the reader's 0.01, so a reader
-// that requantized would move the counter, which a `>= 1` would pass.
+// is a definition in the digest, not the bytes. The read must land :ok with the
+// old value BIT-EXACT and `unknown` and `widened` at 0: the old step 0.1 is a
+// whole multiple of the reader's 0.01, so a reader that requantized would move
+// the value off the manifest's bits.
 //
 // `aim` IS COMPARED BY ITS float32 BITS, AGAINST THE CORPUS MANIFEST
 // (schema#1164, Glenn 2026-09-19: "do whatever is needed to make sure that a

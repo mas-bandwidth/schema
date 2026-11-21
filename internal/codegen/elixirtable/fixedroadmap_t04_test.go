@@ -191,7 +191,7 @@ func t04R15(t *testing.T) {
 	// THE FOUR FORWARD-READ CLAMPS ARE RETIRED: the cross-version half is the
 	// refusal above, so no plan entry clamps a count across a version, remaps an
 	// unknown variant to None, or drops-and-counts an unknown field FORWARD. The
-	// runtime's one count clamp is the reader's own bound within a version, and
+	// runtime's one count check is the reader's own bound within a version, and
 	// the one unknown census is the backward drop the landing rules count.
 	if strings.Contains(fixedRuntimeBody, "defp forward") || strings.Contains(fixedRuntimeBody, "layout_newer, report") {
 		t.Error("R15: a forward-read clamp survives the retired-runtime row")
@@ -334,8 +334,8 @@ fixed table T
 	t04Has(t, fixedRuntimeBody, "{:ordinal, their_at, at, size_at(theirs, ti), size_at(mine, mi), List.to_tuple([their_variants | remap])}", "R20 an older enum's ordinals are remapped to the reader's")
 	t04Has(t, fixedRuntimeBody, "{elem(remap, raw), report}", "R20 the writer's ordinal lands the reader's ordinal")
 
-	// a narrower value past its range still counts as clamped, the same bound
-	// answer §3 gives every value outside its reader's range.
+	// the runtime's count check is present: clamp_count refuses a count past
+	// its bound `count_over_bound`, never clamping it (strict-only-read).
 	t04Has(t, fixedRuntimeBody, "defp clamp_count(raw, max, report)", "R20 an out-of-range count clamps to the reader's bound")
 }
 
@@ -364,7 +364,8 @@ func t04R21(t *testing.T) {
 
 // t04R29 holds elixir/R29 to SPEC-TABLES.md §3.4 and FIXED-FORM-ALGORITHM.md
 // §5.2: the band case — a widening across the 65536 ceiling is refused WHOLE,
-// and the bounds pass clamps a value to the writer's bounds and counts.
+// and the runtime carries the count check (clamp_count), which refuses a
+// count past its bound.
 func t04R29(t *testing.T) {
 	t04Has(t, fixedRuntimeBody, "@record_max 65536", "R29 the 65536 ceiling")
 	t04Has(t, fixedRuntimeBody, "size > @record_max -> {:error, :layout_record_too_large}", "R29 a record past the ceiling is refused")

@@ -5,9 +5,10 @@ package elixirtable
 // bounds: VOLD_array_bounded_grow ([..4]int32), which WROTE the file, and
 // VMID_array_bounded_grow ([..6]int32), the distractor, which did not. The
 // count word is forged to 7 exactly as the landed single-endpoint test forges it.
-// The number that makes this test worth having is 6: a reader that clamps to
-// its own bound lands 8, a reader that clamps to whichever endpoint it saw last
-// lands 6, and only a plan that carries the WRITING endpoint's bound lands 4.
+// The number that makes this test worth having is 6: a reader held to its own
+// bound (8) or to whichever endpoint it saw last (6) lets the 7 through, and
+// only a plan that carries the WRITING endpoint's bound (4) refuses the whole
+// load (strict-only-read), which is what the probe asserts.
 
 import (
 	"bytes"

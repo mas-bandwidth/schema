@@ -36,8 +36,9 @@ func TestFixedVersioningUnionTagBothPlans(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// THE IDENTITY PLAN COUNTS THE CLAMP. Its decode projection holds the tag
-	// past the declared arms to None and counts one `clamped`.
+	// THE IDENTITY PLAN REFUSES TOO. Its decode projection sees the tag past
+	// the declared arms and the whole load refuses out_of_range, moving no
+	// counter.
 	bodyIdentity := `  data = File.read!(file())
   {tag, reason, report} = load(data)
   check(tag == :error and reason == :out_of_range,
@@ -45,10 +46,10 @@ func TestFixedVersioningUnionTagBothPlans(t *testing.T) {
   check(report.unknown == 0 and report.widened == 0 and report.retained == 0 and report.retain_lost == 0,
     "a refusal moved a counter: #{why(report)}")`
 
-	// THE COMPILED PLAN COUNTS TOO (schema#1254 closed on this leg): the union
-	// case pushes an unguarded :tagcount carrying the WRITER'S ARM COUNT, and its
-	// step clause counts a raw tag past that set as unknown. Both bodies are the
-	// same assertions.
+	// THE COMPILED PLAN REFUSES THE SAME WAY (schema#1254 closed on this leg):
+	// the union case pushes an unguarded :tagcount carrying the WRITER'S ARM
+	// COUNT, and a raw tag past that set refuses the load out_of_range. Both
+	// bodies are the same assertions.
 	bodyCompiled := `  data = File.read!(file())
   {tag, reason, report} = load(data)
   check(tag == :error and reason == :out_of_range,

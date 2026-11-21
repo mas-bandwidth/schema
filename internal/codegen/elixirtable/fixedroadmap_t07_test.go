@@ -228,7 +228,7 @@ func t07W3(t *testing.T) {
 // t07W5 holds elixir/W5 to §3.1 and the C++ reference's NDEBUG rule: the
 // write-side bound check is a debug-assert equivalent. The BEAM has no
 // compile-out assert, so this port raises, exactly as its packet codec does for
-// the same field; the read side still clamps in every build.
+// the same field; the read side refuses a value past its range in every build.
 func t07W5(t *testing.T) {
 	t07Has(t, fixedRuntimeBody, "NDEBUG", "W5 the C++ reference's NDEBUG assert is the rule")
 	t07Has(t, fixedRuntimeBody, "def ranged(value, {lo, hi}) when is_integer(value) and value >= lo and value <= hi, do: value", "W5 the write check passes an in-range value")

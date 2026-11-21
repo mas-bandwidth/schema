@@ -245,8 +245,8 @@ fixed table Root
 // t12PayloadFreeArms holds payload-free-arms/elixir/valid-data to §2.6 and
 // FIXED-FORM-ALGORITHM.md §1/§3.1: a payload-free arm has no storage in the
 // union value (a bare atom), writes its tag ordinal with zero-filled widest-arm slack, and
-// reads back with its tag ordinal intact and `clamped == 0` (never falling into
-// the out-of-range `_ ->` clamp clause).
+// reads back :ok with its tag ordinal intact beside a scalar arm (never falling
+// into the out-of-range `_ ->` clause, which would refuse the load).
 func t12PayloadFreeArms(t *testing.T) {
 	slowtest.Gate(t, "the Elixir toolchain (it compiles and runs the generated module)")
 	u := unitFrom(t, `package probe

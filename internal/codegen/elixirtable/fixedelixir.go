@@ -1051,9 +1051,10 @@ func (g *fixedGen) leafDec(f *ir.Field, v string) leafDec {
 		// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): R.f32_value/1 and
 		// R.f64_value/1 refuse a NaN or an infinity on its raw bits, before
 		// the bits become a float, so a RANGED float's bounds below only ever
-		// see a finite value. A ranged float is held to this READER'S OWN
-		// bounds and counted, exactly as a ranged integer below is
-		// (schema#1164, ruled statement B). An absent optional's payload is
+		// see a finite value. A ranged float is held here to this READER'S
+		// OWN bounds and counted, exactly as a ranged integer below is; its
+		// WRITER's range is held before this, by R.writer_bounds/2
+		// (strict-only-read, §4.6). An absent optional's payload is
 		// unspecified and takes the present test (R.f32_value/2).
 		bits, value := 32, "R.f32_value"
 		if f.Type.Kind == ir.TFloat64 {

@@ -182,13 +182,11 @@ func fixedIdentityPlan(st *ir.Struct) []fixedPlanEntry {
 // fixedFloatRangeOf answers a ranged float's bounds as Elixir float literals,
 // or ok=false where the field has no float range. A float32 field's ends are
 // narrowed to float32 first, so the comparison is against exactly the value
-// the reader's own declaration names and not a double a hair wider. The
-// literals go through fixedFloatLiteral, the same speller the defaults use.
-//
-// Which bound is the reader's own and not the writer's is schema#1164, ruled
-// statement B: a compressed float rides AS THE FLOAT in the fixed form, so its
-// min and max are definitions in the digest and the compiled plan carries no
-// range at all.
+// the declaration names and not a double a hair wider. The literals go
+// through fixedFloatLiteral, the same speller the defaults use. It spells the
+// reader's own bounds for the projection and, on the image ir.TableFixedWriterField
+// makes, the WRITER's bounds for R.writer_bounds/2 (docs/rulings.json
+// strict-only-read, docs/FIXED-FORM-ALGORITHM.md §4.6).
 func fixedFloatRangeOf(f *ir.Field) (string, string, bool) {
 	if f == nil || !f.HasFloatRange {
 		return "", "", false

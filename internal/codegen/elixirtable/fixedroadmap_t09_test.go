@@ -217,9 +217,9 @@ fixed table T
 }
 
 // t09Compressed holds compressed-floats to §3.4: a `float32` with
-// min/max/resolution is stored as its float32 and the read clamps a value
-// outside the declared range and counts one `clamped`; a value inside the
-// range round-trips and a write at either bound is exact.
+// min/max/resolution is stored as its float32; a value on the grid and a value
+// at either bound round-trip exactly, and a value above max refuses the whole
+// read (out_of_range or invalid_value; strict-only-read: nothing is clamped).
 func t09Compressed(t *testing.T) {
 	u := unitFrom(t, `package probe
 
