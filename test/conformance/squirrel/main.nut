@@ -217,13 +217,17 @@ local writeReadBack = function(T, root, v, cname) {
     writeText(outdir + "/" + cname, "refused\n");
     return;
   }
-  local json = T[root + "ToJson"](v);
-  if (json == null) throw cname + ": ToJson refused the value";
-  local n = T[root + "Measure"](v);
-  local out = T[root + "Save"](v);
-  if (n < 0 || out == null || out.len() != n) throw cname + ": the write-back wire does not match the measure";
-  writeBytes(outdir + "/" + cname + ".wire", out);
-  writeText(outdir + "/" + cname, "read\n" + json);
+  // THE READ ACCEPTED: that is the verdict, whatever the writers make of the
+  // value afterwards. A writer that refuses it (a tree past the depth cap the
+  // reader let through) leaves its half out, and the harness fails the case by
+  // name, by verdict or by the missing value or wire; the surface goes on to
+  // the next case rather than dying here.
+  local json = null;
+  try { json = T[root + "ToJson"](v); } catch (e) { json = null; }
+  local n = -1, out = null;
+  try { n = T[root + "Measure"](v); out = T[root + "Save"](v); } catch (e) { out = null; }
+  if (n >= 0 && out != null && out.len() == n) writeBytes(outdir + "/" + cname + ".wire", out);
+  writeText(outdir + "/" + cname, "read\n" + (json == null ? "" : json));
 };
 
 
@@ -906,12 +910,20 @@ if (mode == "write-refusal" || mode == "write-refusal-fixed" || mode == "write-r
       if (fd == null) throw path + ": no field " + fname + " in " + tname;
       if (si < segments.len() - 1) {
         local child = owner[fd.member];
-        if (fd.shape == "union" && idx == null && si == segments.len() - 2) {
-          local ud = T[fd.table + "Descriptor"];
+        // a union's arm, held by the field itself or by one element of an
+        // array of unions (bounded_steps[3].label): the element IS the union
+        // value, never a table to look up by the union's name
+        local unionName = null;
+        if (fd.shape == "union" && idx == null) unionName = fd.table;
+        if (fd.shape == "arr" && idx != null && fd.elem != null && fd.elem.shape == "union") unionName = fd.elem.table;
+        if (unionName != null && si == segments.len() - 2) {
+          if (idx != null) child = child[idx];
+          if (child == null) throw path + ": " + seg + " holds no union";
+          local ud = T[unionName + "Descriptor"];
           local armName = segments[si + 1];
           local arm = null;
           foreach (a in ud.arms) { if (a.name == armName) { arm = a; break; } }
-          if (arm == null) throw path + ": no arm " + armName + " in " + fd.table;
+          if (arm == null) throw path + ": no arm " + armName + " in " + unionName;
           local holder = child;
           local key = arm.member;
           local d = arm.payload;
