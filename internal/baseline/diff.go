@@ -7,9 +7,11 @@
 //   - REFUSE — the meaning changed and nothing on the wire says so. A
 //     specified default, a flags variant's bit position, a field's kind, a
 //     field pointed at a declaration that cannot stand in for the old one.
-//   - WARN — the data survives but something is lost, and the read report
-//     says so at runtime (clamped, unknown). A shrunk bound, a removed enum
-//     variant or union arm, a closure member that is no longer covered.
+//   - WARN — the data survives in the file, and the read answers what it
+//     cannot take: it refuses (`out_of_range`, `count_over_bound`,
+//     `length_over_bound`) or counts `unknown`. A shrunk bound, a tightened
+//     range, a removed enum variant or union arm, a closure member that is no
+//     longer covered.
 //   - PASS — the wire absorbs it. Fields added, removed, reordered or
 //     renamed under `was`; variants appended; bounds grown.
 //
@@ -42,6 +44,7 @@ import (
 	"fmt"
 	"math/big"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -53,7 +56,7 @@ type Verdict int
 const (
 	// Pass — the wire absorbs the edit; no reader is affected.
 	Pass Verdict = iota
-	// Warn — data survives, something is lost, and the read report counts it.
+	// Warn — data survives in the file, and the read refuses or counts what it cannot take.
 	Warn
 	// Refuse — an old file's meaning changed, silently.
 	Refuse
@@ -80,7 +83,7 @@ const (
 	// RuleFixed — any change, addition or removal is a refusal.
 	RuleFixed
 	// RuleShrink — a smaller value warns; a larger one passes. The extent
-	// the token names got tighter, and a stored value past it clamps.
+	// the token names got tighter, and a reader refuses a stored value past it.
 	RuleShrink
 	// RuleRaise — a larger value warns; a smaller one passes. RuleShrink's
 	// mirror, for the bottom end of a range: raising a minimum tightens it.
@@ -108,29 +111,34 @@ var DefaultTokenPolicy = map[string]TokenRule{
 	"elem":    RuleFixed,  // an array's element kind is that same fact, one level in
 	"default": RuleFixed,  // an elided field MEANS the reader's default (docs/SPEC-TABLES.md §4)
 	"frac":    RuleFixed,  // a fixed field's raw value under a moved F is a different number, and no counter can fire
-	"bound":   RuleShrink, // a count past the reader's bound keeps the prefix and counts clamped
+	"bound":   RuleShrink, // a count past the reader's bound refuses the load `count_over_bound`
 	"size":    RuleShrink, // a string/bytes capacity is a bound like any other
-	// THE DECLARED RANGE, judged from both ends: a reader clamps a stored
-	// value to its own bounds and counts `clamped` (docs/SPEC-TABLES.md §4), so
-	// a tightened range is an extent shrinking like any other — a maximum
+	// THE DECLARED RANGE, judged from both ends: a reader refuses a stored
+	// value past its own bounds `out_of_range` (docs/SPEC-TABLES.md §4), so a
+	// tightened range is an extent shrinking like any other — a maximum
 	// lowered or a minimum raised. Loosening passes: nothing already written
 	// falls outside a wider range.
 	"max": RuleShrink,
 	"min": RuleRaise,
+	// A `bits(N)` FIELD'S N is its implied range [0, 2^N - 1], refused
+	// `out_of_range` past it (§4), and it is judged as a maximum is. A plain
+	// unsigned integer moved to `bits(N)` is judged against the width its kind
+	// implies, or against its declared maximum (see impliedExtent).
+	"bits": RuleShrink,
 	// THE ARRAY SHAPE. Fixed and bounded frame identically on the wire
 	// (docs/SPEC-TABLES.md §3), and moving between them passes. A MAP is the
 	// one shape move that is not free in both directions, so the row is
 	// RuleShape rather than RulePass: see mapShapeFinding.
 	"array": RuleShape,
 	// A MAP'S KEY, which is the map's own pair of facts (docs/SPEC-TABLES.md
-	// §2.8). A key kind the reader does not declare resets the map to EMPTY
-	// and counts one kind_mismatch, so it is fixed exactly as `kind` is; a
-	// tightened key bound skips whole entries and counts them, so it is an
-	// extent exactly as `bound` is.
+	// §2.8). A key kind the reader does not declare refuses the load
+	// `kind_mismatch`, so it is fixed exactly as `kind` is; a stored key past
+	// a tightened key bound refuses it `length_over_bound`, so it is an extent
+	// exactly as `bound` is.
 	"keykind":  RuleFixed,
 	"keybound": RuleShrink,
-	// A TEXT LIST'S TOTAL (docs/SPEC-TABLES.md §2.13, §18.2): a reader keeps the
-	// prefix within its own total and counts clamped, so a lowered or newly
+	// A TEXT LIST'S TOTAL (docs/SPEC-TABLES.md §2.13, §18.2): a reader refuses
+	// a list past its own total `length_over_bound`, so a lowered or newly
 	// declared total warns and a raised or removed one passes
 	"total": RuleShrink,
 	"was":   RulePass, // `was` is the rename that PRESERVES identity — that is its whole job
@@ -775,6 +783,12 @@ func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 		case RuleGain:
 			out = append(out, Finding{Refuse, where, fmt.Sprintf("%s added: records written before it lack the field and a reader refuses them as missing_required", lt.Key)})
 		case RuleShrink, RuleRaise:
+			if was, ok := impliedExtent(lt.Key, bf); ok {
+				if tightened(d.policy[lt.Key], lt.Key, was, lt.Value) {
+					out = append(out, Finding{Warn, where, fmt.Sprintf("%s %s -> %s (%s)", tokenNoun(lt.Key), was, lt.Value, tightenNote(lt.Key))})
+				}
+				continue
+			}
 			out = append(out, Finding{Warn, where, fmt.Sprintf("%s %s added (%s)", tokenNoun(lt.Key), lt.Value, tightenNote(lt.Key))})
 		}
 	}
@@ -791,6 +805,46 @@ func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 		}
 	}
 	return out
+}
+
+// impliedExtent is the extent a baseline field held WITHOUT carrying the
+// token the live field now adds, where its kind implies one. It answers only
+// for `bits`: a plain unsigned integer moved to `bits(N)` keeps its `kind`
+// (bits(9) and uint16 are both kind 7), and its domain before the edit is its
+// declared maximum's bit length, or else its kind's whole storage width. So
+// uint16 -> bits(9) is a width 16 -> 9 narrowing and warns, while
+// uint16 -> bits(16), or `uint16 | max = 300` -> bits(9), loses nothing.
+func impliedExtent(key string, bf Field) (string, bool) {
+	if key != "bits" {
+		return "", false
+	}
+	if max, ok := bf.Get("max"); ok {
+		n, ok := new(big.Int).SetString(max, 10)
+		if !ok || n.Sign() < 0 {
+			return "", false
+		}
+		return strconv.Itoa(max1(n.BitLen())), true
+	}
+	kind, _ := bf.Get("kind")
+	switch kind {
+	case strconv.Itoa(ir.TableKindU8):
+		return "8", true
+	case strconv.Itoa(ir.TableKindU16):
+		return "16", true
+	case strconv.Itoa(ir.TableKindU32):
+		return "32", true
+	case strconv.Itoa(ir.TableKindU64):
+		return "64", true
+	}
+	return "", false
+}
+
+// max1 is n, or 1 when n is 0: a range of [0, 0] still needs one bit.
+func max1(n int) int {
+	if n < 1 {
+		return 1
+	}
+	return n
 }
 
 // tightened reports whether a numeric extent moved in the direction that
@@ -1053,42 +1107,119 @@ func findEnum(u *Unit, name string) *Enum {
 	return nil
 }
 
-// retiredMatch reports whether a live declaration is the one a ledger entry
-// names: the SAME vocabulary, and the entry's name or its wire id (issue
-// #441). A name reused anywhere shares the id, because the id is the name's
-// hash, so the id half catches a collision under a new spelling.
-func retiredMatch(r Retired, vocab, name string, id uint64) bool {
-	return r.Vocab == vocab && (r.Name == name || r.Id == id)
+// Scope splits a ledger entry's name into the declaration it was retired
+// from — a table's wire name, an enum's or a union's name — and the member's
+// own name. A member name never carries a dot, so the last one separates them.
+func (r Retired) Scope() (scope, member string, ok bool) {
+	i := strings.LastIndex(r.Name, ".")
+	if i <= 0 || i == len(r.Name)-1 {
+		return "", "", false
+	}
+	return r.Name[:i], r.Name[i+1:], true
+}
+
+// Names reports whether a member of declaration `scope` is the one a ledger
+// entry retired (issue #441): the SAME declaration, and the member's name, its
+// `was` alias or its wire id. The id half catches a collision under a new
+// spelling. The scope half is what keeps the id honest: a field's, a
+// variant's and an arm's wire id is the hash of its BARE name, so the same id
+// rides in every declaration with a member of that name, and it identifies a
+// member only within one body — the refusal is of a name reused "in the same
+// scope" (docs/SPEC-TABLES.md §18.4). This is the one statement of the match:
+// the baseline check and internal/check's retired-name refusal both call it.
+func (r Retired) Names(scope, name, was string, id uint64) bool {
+	s, m, ok := r.Scope()
+	if !ok || s != scope {
+		return false
+	}
+	return m == name || (was != "" && m == was) || r.Id == id
+}
+
+// Table finds a closure member by its wire name, or by the declared name a
+// `was` rename recorded beside it.
+func (u *Unit) Table(name string) *Table {
+	for i := range u.Tables {
+		t := &u.Tables[i]
+		if t.Name == name || (t.Declared != "" && t.Declared == name) {
+			return t
+		}
+	}
+	return nil
+}
+
+// RetiredField is the field of the entry's own table that the entry names,
+// or nil when that table carries none.
+func (u *Unit) RetiredField(r Retired) *Field {
+	scope, _, ok := r.Scope()
+	if !ok {
+		return nil
+	}
+	t := u.Table(scope)
+	if t == nil {
+		return nil
+	}
+	for i := range t.Fields {
+		f := &t.Fields[i]
+		was, _ := f.Get("was")
+		if r.Names(scope, f.Name, was, f.Id) {
+			return f
+		}
+	}
+	return nil
+}
+
+// RetiredVariant is the variant of the entry's own enum that the entry
+// names, or nil when that enum carries none.
+func (u *Unit) RetiredVariant(r Retired) *Variant {
+	scope, _, ok := r.Scope()
+	if !ok {
+		return nil
+	}
+	e := findEnum(u, scope)
+	if e == nil {
+		return nil
+	}
+	for i := range e.Variants {
+		v := &e.Variants[i]
+		if r.Names(scope, v.Name, v.Was, v.Id) {
+			return v
+		}
+	}
+	return nil
+}
+
+// RetiredArm is the arm of the entry's own union that the entry names, or
+// nil when that union carries none.
+func (u *Unit) RetiredArm(r Retired) *Field {
+	scope, _, ok := r.Scope()
+	if !ok {
+		return nil
+	}
+	un := findUnion(u, scope)
+	if un == nil {
+		return nil
+	}
+	for i := range un.Arms {
+		a := &un.Arms[i]
+		was, _ := a.Get("was")
+		if r.Names(scope, a.Name, was, a.Id) {
+			return a
+		}
+	}
+	return nil
 }
 
 // liveMatchesRetired reports whether the live projection carries the
-// declaration a retired entry names — the resurrection the ledger refuses.
+// declaration a retired entry names — the resurrection the ledger refuses —
+// within the table, enum or union it was retired from.
 func liveMatchesRetired(live *Unit, r Retired) bool {
 	switch r.Vocab {
 	case "field":
-		for _, t := range live.Tables {
-			for _, f := range t.Fields {
-				if retiredMatch(r, "field", t.Name+"."+f.Name, f.Id) {
-					return true
-				}
-			}
-		}
+		return live.RetiredField(r) != nil
 	case "enum-variant":
-		for _, e := range live.Enums {
-			for _, v := range e.Variants {
-				if retiredMatch(r, "enum-variant", e.Name+"."+v.Name, v.Id) {
-					return true
-				}
-			}
-		}
+		return live.RetiredVariant(r) != nil
 	case "union-arm":
-		for _, un := range live.Unions {
-			for _, a := range un.Arms {
-				if retiredMatch(r, "union-arm", un.Name+"."+a.Name, a.Id) {
-					return true
-				}
-			}
-		}
+		return live.RetiredArm(r) != nil
 	}
 	return false
 }
@@ -1157,24 +1288,27 @@ func retirements(base, live *Unit, date string) []Retired {
 	return out
 }
 
-// tightenNote says what a reader loses when one of the extents tightens — the
-// runtime event is the same (clamped), the loss is not.
+// tightenNote says what a reader does when one of the extents tightens: the
+// read is strict, so a stored value past the new extent refuses the whole
+// load (docs/SPEC-TABLES.md §4, §6.5), and the reason names which extent.
 func tightenNote(key string) string {
 	switch key {
 	case "bound":
-		return "a stored count past the new bound keeps the bounded prefix and counts clamped"
+		return "a file holding a count past the new bound no longer reads: the load refuses count_over_bound"
 	case "size":
-		return "a stored value longer than the new capacity is truncated and counts clamped"
+		return "a file holding a value longer than the new capacity no longer reads: the load refuses length_over_bound"
 	case "keybound":
-		return "an entry whose KEY does not fit the new capacity is skipped WHOLE and counted, because a clamped key is a merged entry (docs/SPEC-TABLES.md §2.8)"
+		return "a file holding a map KEY longer than the new capacity no longer reads: the load refuses length_over_bound (docs/SPEC-TABLES.md §2.8)"
 	case "total":
-		return "a stored text list whose elements sum past the new total keeps the prefix within it, drops the rest and counts clamped (docs/SPEC-TABLES.md §2.13)"
+		return "a file holding a text list whose elements sum past the new total no longer reads: the load refuses length_over_bound (docs/SPEC-TABLES.md §2.13)"
 	case "min":
-		return "a stored value below the new minimum reads back AS the minimum and counts clamped"
+		return "a file holding a value below the new minimum no longer reads: the load refuses out_of_range"
 	case "max":
-		return "a stored value above the new maximum reads back AS the maximum and counts clamped"
+		return "a file holding a value above the new maximum no longer reads: the load refuses out_of_range"
+	case "bits":
+		return "a file holding a value past 2^N - 1 for the new width no longer reads: the load refuses out_of_range"
 	}
-	return "stored values past the new limit are clamped"
+	return "a file holding a value past the new limit no longer reads: the load refuses it"
 }
 
 // tokenNoun names a token in a diagnostic the way a person would say it.
@@ -1204,6 +1338,8 @@ func tokenNoun(key string) string {
 		return "declared minimum"
 	case "max":
 		return "declared maximum"
+	case "bits":
+		return "bit width"
 	case "optional":
 		return "presence"
 	case "type":

@@ -66,7 +66,24 @@ type line struct {
 // never breaks an alignment group (SPEC §7.4 rule 2) and it makes a variant
 // list one-per-line (rule 5).
 func (l line) isDocLine() bool {
-	return len(l.tokens) == 0 && strings.HasPrefix(l.comment, "///")
+	return len(l.tokens) == 0 && strings.HasPrefix(skipBlockComments(l.comment), "///")
+}
+
+// skipBlockComments drops the `/* */` comments that open s: a block comment
+// may sit before a `///` on its line (the doc line is still a doc line), and
+// the formatter keeps both.
+func skipBlockComments(s string) string {
+	for {
+		s = strings.TrimLeft(s, " \t")
+		if !strings.HasPrefix(s, "/*") {
+			return s
+		}
+		end := strings.Index(s[2:], "*/")
+		if end < 0 {
+			return s
+		}
+		s = s[2+end+2:]
+	}
 }
 
 func render(path string, src []byte) ([]byte, error) {
@@ -94,7 +111,14 @@ func render(path string, src []byte) ([]byte, error) {
 				flush()
 			}
 		case scanner.Comment:
-			cur.comment = strings.TrimRight(t.Text, " \t")
+			// two comments can share a physical line (`/* a */ // b`): both
+			// are kept, in order, never the last alone (SPEC §4.1)
+			text := strings.TrimRight(t.Text, " \t")
+			if cur.comment != "" {
+				cur.comment += " " + text
+			} else {
+				cur.comment = text
+			}
 		default:
 			cur.tokens = append(cur.tokens, t)
 		}
@@ -112,6 +136,16 @@ func render(path string, src []byte) ([]byte, error) {
 		for len(work.tokens) > 1 && work.tokens[0].Kind == scanner.RBrace {
 			normalized = append(normalized, line{tokens: work.tokens[:1]})
 			work = line{tokens: work.tokens[1:], comment: work.comment}
+		}
+		// a line ENDING in a } that closes a block opened on an earlier line
+		// (`    B }`) ends the body there: the brace stands alone, as the
+		// canonical form and every body scan below expect (SPEC §4.1: the }
+		// terminates the item before it)
+		if n := len(work.tokens); n > 1 && work.tokens[n-1].Kind == scanner.RBrace {
+			if opens, closes := braceDelta(work.tokens); closes > opens {
+				normalized = append(normalized, line{tokens: work.tokens[:n-1], comment: work.comment})
+				work = line{tokens: work.tokens[n-1:]}
+			}
 		}
 		// a line ENDING in { opens a multi-line block: the brace stands alone
 		// (a group that closes on the same line ends in }, not {, and passes
@@ -328,7 +362,24 @@ func reorderAttrs(tokens []scanner.Token) []scanner.Token {
 		if t.Kind != scanner.Pipe {
 			continue
 		}
-		entries := splitTop(tokens[i+1:], scanner.Comma)
+		// the section ends at the line's end or at a closing delimiter it
+		// did not open — the } of a one-line body (`type T { a int32 | x }`),
+		// which rides after the reordered entries
+		section, rest := tokens[i+1:], []scanner.Token(nil)
+		depth := 0
+		for k, tk := range section {
+			switch tk.Kind {
+			case scanner.LParen, scanner.LBrack, scanner.LBrace:
+				depth++
+			case scanner.RParen, scanner.RBrack, scanner.RBrace:
+				depth--
+			}
+			if depth < 0 {
+				section, rest = section[:k], section[k:]
+				break
+			}
+		}
+		entries := splitTop(section, scanner.Comma)
 		var valueless, valued [][]scanner.Token
 		for _, e := range entries {
 			if containsKind(e, scanner.Assign) {
@@ -346,7 +397,7 @@ func reorderAttrs(tokens []scanner.Token) []scanner.Token {
 			first = false
 			out = append(out, e...)
 		}
-		return out
+		return append(out, rest...)
 	}
 	return tokens
 }
@@ -371,8 +422,13 @@ func isAttrOpen(tokens []scanner.Token, i int) bool {
 		return true // ] ends the line -> attributes
 	}
 	next := tokens[j]
-	if next.Kind == scanner.Ident || next.Kind.IsKeyword() {
+	switch {
+	case next.Kind == scanner.Ident || next.Kind.IsKeyword():
 		return false // ]Type -> an array bound
+	case next.Kind == scanner.Question || next.Kind == scanner.Star || next.Kind == scanner.LBrack:
+		// ]?T, ]*T and ][..]T are type starts after a bound too
+		// (docs/SPEC-TABLES.md §2.1, §2.3, §2.13)
+		return false
 	}
 	return true
 }
@@ -437,8 +493,15 @@ func needSpace(prev, cur scanner.Token, tokens []scanner.Token, i int) bool {
 		return true
 	case scanner.RBrace:
 		return true // one-line lists close with ` }`
+	case scanner.Colon:
+		// `::` joins a qualified binding name (`cpp_native = math::Vec2`,
+		// SPEC §4.2): the colons are tight against each other and their
+		// neighbours; `:` appears nowhere else in the grammar
+		return false
 	}
 	switch prev.Kind {
+	case scanner.Colon:
+		return false
 	case scanner.LParen, scanner.Dot, scanner.DotDot, scanner.Not:
 		return false
 	case scanner.Question:
@@ -610,7 +673,9 @@ func alignColumns(lines []string, variants []bool) []string {
 			}
 			ind := out[i][:len(out[i])-len(strings.TrimLeft(out[i], " "))]
 			if tail == "" {
-				out[i] = ind + name
+				// an unqualified variant keeps its line whole: a trailing
+				// comment is left where it is, never dropped (SPEC §4.1)
+				continue
 			} else {
 				out[i] = ind + pad(name, maxName) + " " + tail
 			}
@@ -655,7 +720,7 @@ func alignColumns(lines []string, variants []bool) []string {
 
 // isDocComment reports a rendered line that is a standalone `///` doc comment.
 func isDocComment(s string) bool {
-	return strings.HasPrefix(strings.TrimLeft(s, " "), "///")
+	return strings.HasPrefix(skipBlockComments(s), "///")
 }
 
 // splitVariant recognizes a variant line of an enum or flags body and splits
@@ -871,8 +936,10 @@ func fpBound(a *ast.ArrayBound) string {
 		return fmt.Sprintf("[..%s]", fpExpr(a.Hi))
 	case ast.ArrayRange:
 		return fmt.Sprintf("[%s..%s]", fpExpr(a.Lo), fpExpr(a.Hi))
+	case ast.ArrayList:
+		return "[]"
 	}
-	return ""
+	return "?"
 }
 
 func fpScalar(t ast.ScalarType) string {
@@ -882,6 +949,13 @@ func fpScalar(t ast.ScalarType) string {
 		inner := t
 		inner.Optional = false
 		return "?" + fpScalar(inner)
+	}
+	if t.ElemOptional {
+		// `[..N]?T`: the element's `?` after the bound is a different field
+		// from `[..N]T` (docs/SPEC-TABLES.md §2.3)
+		inner := t
+		inner.ElemOptional = false
+		return "elem?" + fpScalar(inner)
 	}
 	switch t.Kind {
 	case ast.ScalarInt:
@@ -934,13 +1008,9 @@ func fpScalar(t ast.ScalarType) string {
 func fpAttrs(attrs []ast.Attr) string {
 	var valueless, valued []string
 	for _, a := range attrs {
-		// language-binding attrs (cpp_native/cpp_include) rename what one
-		// target CALLS the storage — they cannot change a single wire bit, so
-		// they stay out of the protocol id: two units differing only in
-		// bindings speak the same protocol.
-		if strings.HasPrefix(a.Key, "cpp_") {
-			continue
-		}
+		// language-binding attrs (cpp_native/cpp_include) stay out of the
+		// PROTOCOL id, but they change the generated C++, so the formatter's
+		// own safety net sees them like any other attribute
 		if a.Value == nil {
 			valueless = append(valueless, a.Key)
 		} else {
@@ -958,7 +1028,39 @@ func fpNames(names []ast.Name) string {
 	return strings.Join(out, ",")
 }
 
+// fpExpr fingerprints an expression. It writes into one builder so a long
+// operator chain costs linear work, not a copy of the left subtree at every
+// level.
 func fpExpr(e ast.Expr) string {
+	var b strings.Builder
+	fpExprTo(&b, e)
+	return b.String()
+}
+
+func fpExprTo(b *strings.Builder, e ast.Expr) {
+	switch e := e.(type) {
+	case *ast.UnaryExpr:
+		b.WriteString("(- ")
+		fpExprTo(b, e.X)
+		b.WriteString(")")
+		return
+	case *ast.BinaryExpr:
+		b.WriteString("(" + e.Op + " ")
+		fpExprTo(b, e.X)
+		b.WriteString(" ")
+		fpExprTo(b, e.Y)
+		b.WriteString(")")
+		return
+	case *ast.ParenExpr:
+		b.WriteString("(paren ")
+		fpExprTo(b, e.X)
+		b.WriteString(")")
+		return
+	}
+	b.WriteString(fpLeaf(e))
+}
+
+func fpLeaf(e ast.Expr) string {
 	switch e := e.(type) {
 	case nil:
 		return ""
@@ -978,12 +1080,6 @@ func fpExpr(e ast.Expr) string {
 		return "{" + strings.Join(names, ",") + "}"
 	case *ast.MaxExpr:
 		return e.Enum + "." + e.Sel
-	case *ast.UnaryExpr:
-		return "(- " + fpExpr(e.X) + ")"
-	case *ast.BinaryExpr:
-		return "(" + e.Op + " " + fpExpr(e.X) + " " + fpExpr(e.Y) + ")"
-	case *ast.ParenExpr:
-		return "(paren " + fpExpr(e.X) + ")"
 	}
 	return "?"
 }
