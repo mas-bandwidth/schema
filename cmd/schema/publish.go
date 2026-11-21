@@ -196,7 +196,7 @@ func publishOutputsWith(f atomicfile.Files, verb string, outs []pairOutput, ins 
 	err := txn.Commit()
 	if errors.Is(err, atomicfile.ErrAppeared) && len(outs) == 2 {
 		// two names that did not exist, which this volume takes for one
-		return fmt.Errorf("%w (%v)", aliasMessage(verb, outs[0].outputPath, outs[1].outputPath), err)
+		return fmt.Errorf("%w (%w)", aliasMessage(verb, outs[0].outputPath, outs[1].outputPath), err)
 	}
 	if err != nil {
 		return fmt.Errorf("%s: %w", verb, err)

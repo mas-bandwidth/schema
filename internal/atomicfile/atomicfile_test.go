@@ -330,7 +330,7 @@ func TestCommitIsAllOrNothing(t *testing.T) {
 		dir, commit := tree(t)
 		a, twin := filepath.Join(dir, "a.txt"), filepath.Join(dir, "twin.txt")
 		before := map[string]fs.FileInfo{}
-		for _, name := range strings.Fields(treeBefore) {
+		for name := range strings.FieldsSeq(treeBefore) {
 			if !strings.HasSuffix(name, "/") {
 				before[name] = lstat(t, filepath.Join(dir, name))
 			}

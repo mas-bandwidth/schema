@@ -28,6 +28,7 @@ import (
 	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 )
@@ -537,8 +538,7 @@ func plain(c *change, err error) error {
 	if errors.As(err, &pe) && c.next != "" && strings.HasSuffix(pe.Path, filepath.Base(c.next)) {
 		return &fs.PathError{Op: pe.Op, Path: c.f.shown(c.path), Err: pe.Err}
 	}
-	var le *os.LinkError
-	if errors.As(err, &le) {
+	if le, ok := errors.AsType[*os.LinkError](err); ok {
 		return &fs.PathError{Op: "replace", Path: c.f.shown(c.path), Err: le.Err}
 	}
 	return err
@@ -575,8 +575,8 @@ func (t *Txn) Commit() error {
 				_ = c.f.Remove(c.next)
 			}
 		}
-		for i := len(t.made) - 1; i >= 0; i-- {
-			_ = t.made[i].f.Remove(t.made[i].name)
+		for _, m := range slices.Backward(t.made) {
+			_ = m.f.Remove(m.name)
 		}
 	}
 	unchanged := func(c *change, err error) error {
