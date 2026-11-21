@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 // TestJsSaveElidesACountedArrayAtItsBirth holds the JavaScript variable Save to
