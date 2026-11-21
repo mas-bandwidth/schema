@@ -155,7 +155,10 @@ cross-language test — the Rust, Go, Node.js, .NET, Dart, Java and Erlang/Elixi
 toolchains (the Makefile pins Dart SDK 3.13.2, Temurin JDK 21.0.12.1 and
 Erlang/OTP 29.0.5 + Elixir 1.20.4; unpack them under `dist/` per the Makefile's
 `DART`, `JAVA`/`JAVAC` and `ELIXIR`/`MIX` notes, or set `DART=dart JAVA=java
-JAVAC=javac ELIXIR=elixir MIX=mix` if compatible versions are on your PATH).
+JAVAC=javac ELIXIR=elixir MIX=mix` if compatible versions are on your PATH),
+and the Goose, Lobster, Lua, Luau, Moo, Python, Ruby and Squirrel toolchains,
+which `make dist-goose`, `dist-lobster`, `dist-lua`, `dist-luau`, `dist-moo`,
+`dist-python`, `dist-ruby` and `dist-squirrel` stage at their pins.
 
 The serialize runtimes must be checked out as **siblings** of this
 repository:
@@ -179,7 +182,10 @@ provide, so a change that breaks it is wrong until proven otherwise.
 
 **`make test` refuses a missing pinned toolchain by name, and runs without a
 leg only when you name the skip on purpose.** A pin the Makefile names
-(`NODE`, `DART`, `JAVA`/`JAVAC`, `ELIXIR`/`MIX`/`ELIXIRC`, `DOTNET`) that does
+(`NODE`/`ESLINT`, `DART`, `JAVA`/`JAVAC`, `ELIXIR`/`MIX`/`ELIXIRC`, `DOTNET`,
+`GOOSE`, `LOBSTER`, `LUA`, `LUAU`, `MOO`/`MOO_ANALYZE`,
+`PYTHON`/`PYTHON_FLOOR`/`MYPY`, `RUBY`/`RUBY_FLOOR`/`RUBOCOP`/`STEEP`/`RBS`,
+`SQ`) that does
 not resolve stops the run before it starts. Every registered leg is probed, so
 one run names every leg it would have skipped and the path each pin looked in
 rather than sending you back for the next name; to run the chain without those

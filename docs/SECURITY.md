@@ -7,7 +7,7 @@ deserve very different weight.
 packet paths and consume bytes from the network. A bug in the emitted read path
 — one that lets a hostile buffer read out of bounds, or lets a declared bound
 be exceeded without the read failing — is a serious vulnerability in every
-program built from that schema, in nine languages at once. Report these.
+program built from that schema, in every target at once. Report these.
 
 **The compiler itself is a build-time tool** that consumes schema files, which
 are normally written by you and live in your repository. A crash on a malformed
@@ -78,7 +78,7 @@ the buffer. Specifically:
   maximum region-over-wire ratio and a mutant above it is a divergence.
 - Any read that continues past the end of the stream instead of failing.
 - Integer overflow in a bit or byte count computed from wire data.
-- **Any divergence between the nine languages on the above** — if C++ refuses
+- **Any divergence between the eighteen targets on the above** — if C++ refuses
   an input and Go accepts it, that is a security bug even if neither is
   memory-unsafe, because deployments mix languages across client and server.
 
@@ -106,11 +106,13 @@ what the language specifies, in a way that weakens a check.
 
 ## What we do to find these ourselves
 
-- A native Go fuzz harness drives parse → check → generate across the C, C++, C#, Dart, Go, JavaScript and Rust
-  backends. Every crasher ever found is committed as a permanent regression
+- A native Go fuzz harness drives parse → check → generate across the C, C++,
+  C# (modern), Dart, Elixir, Go, Goose, Java, JavaScript, Lobster, Lua, Luau,
+  Moo, Python, Rust and Squirrel backends. Every crasher ever found is committed as a permanent regression
   input and re-run on every push.
-- The cross-language corpus generates the same schemas in C, C++, C#, Dart,
-  Elixir, Go, Java, JavaScript and Rust
+- The cross-language corpus generates the same schemas in C, C++,
+  C# (modern), C# (unity), Dart, Elixir, Go, Goose, Java, JavaScript, Lobster,
+  Lua, Luau, Moo, Python, Ruby, Rust and Squirrel
   and compares emitted wire bit for bit against pinned goldens.
   That comparison is not a per-push macOS job, and it is not promised on every
   push. Per-push evidence is Linux.
