@@ -197,6 +197,7 @@ var catalog = []Entry{
 	e("tools/releasediff", "previous-release differential (#463)", "make release-differential-negative-control", "make release-differential"),
 	e("tools/releasebin", "release binaries for six platforms", "go test ./tools/releasebin", "make release-binaries"),
 	e("tools/releasetag", "promotion and release tags", "go test ./tools/releasetag", "make release"),
+	e("tools/releasetargets", "certify release-gates planner from make's database", "go test ./tools/releasetargets", "go run ./tools/releasetargets -fixtures tools/releasetargets/testdata/f066"),
 	e("tools/roadmap", "ROADMAP.md table honesty", "go test ./tools/roadmap", "go test ./tools/roadmap"),
 	e("tools/sabotage", "negative-control sabotages", "go test ./tools/negativecontrols", "go run ./tools/sabotage"),
 	e("tools/slowgatescan", "SCHEMA_SLOW recipe scan", "make slow-gate-scan", "make slow-gate-scan"),
