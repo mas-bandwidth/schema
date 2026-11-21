@@ -69,6 +69,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/ccommon"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/cfmt"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/genheader"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -818,6 +819,21 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 // no lock, and every table then carries the one entry it can always compute:
 // its own.
 func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
+	out, err := generateLineage(u, lineage)
+	if err != nil {
+		return nil, err
+	}
+	// THE HOUSE LAYOUT (make/c.mk tables-c-clean): every file leaves here as
+	// the repo's .clang-format lays it out, by cfmt, so a user needs no
+	// clang-format. The tables-c-clean gate holds the result to the pinned
+	// clang-format over the whole corpus.
+	for name, data := range out {
+		out[name] = []byte(cfmt.Format(formatCompactCFunctions(string(data))))
+	}
+	return out, nil
+}
+
+func generateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return generateViewFiles(u, nil, nil, nil, false, false, false, false), nil
 	}
@@ -1014,9 +1030,6 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		}
 	}
 	maps.Copy(out, generateViewFiles(u, closure, variable, targets, anyKeyed, anyList, anyMap, anyUnboundedText))
-	for name, data := range out {
-		out[name] = []byte(formatCompactCFunctions(string(data)))
-	}
 	return out, nil
 }
 

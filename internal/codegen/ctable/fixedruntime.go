@@ -1431,10 +1431,7 @@ static SCHEMA_UNUSED void table_fixed_push( TableFixedCompiler * c, TableFixedEn
         if ( e.guard != SCHEMA_TABLE_FIXED_NO_GUARD ) { e.argw = c->argw ? c->argw : (uint8_t) 1; }
         const uint8_t gw = e.argw == 0 ? (uint8_t) 1 : e.argw;
         const uint8_t gw2 = e.argw2 == 0 ? (uint8_t) 1 : e.argw2;
-        const int guard_out = ( e.guard != SCHEMA_TABLE_FIXED_NO_GUARD &&
-            ( e.guard >= c->record || (uint64_t) e.guard + gw > (uint64_t) c->record ) ) ||
-            ( e.guard2 != SCHEMA_TABLE_FIXED_NO_GUARD &&
-            ( e.guard2 >= c->record || (uint64_t) e.guard2 + gw2 > (uint64_t) c->record ) );
+        const int guard_out = ( e.guard != SCHEMA_TABLE_FIXED_NO_GUARD && ( e.guard >= c->record || (uint64_t) e.guard + gw > (uint64_t) c->record ) ) || ( e.guard2 != SCHEMA_TABLE_FIXED_NO_GUARD && ( e.guard2 >= c->record || (uint64_t) e.guard2 + gw2 > (uint64_t) c->record ) );
         uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( ( e.op == kTableFixedText || e.op == kTableFixedCount ) ? 4ull : 0ull );
         if ( e.op == kTableFixedPresent ) { reach = 0ull; }
         else if ( e.op == kTableFixedPresentDefaults ) { reach = (uint64_t) e.src + 1ull + (uint64_t) e.dead; }

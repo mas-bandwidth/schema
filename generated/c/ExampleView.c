@@ -90,8 +90,8 @@ static const example_table_variant_info_t schema_example_arr_uneven_items_outsid
 };
 static const example_table_union_arm_info_t schema_example_arr_uneven_items_outside_arms_[] = {
     { 0, NULL, NULL, 0 },
-    { (uint32_t)offsetof( example_uneven_t, as.narrow ), &schema_example_narrow_info_, NULL, (uint32_t)sizeof( ((example_uneven_t *)0)->as.narrow ) },
-    { (uint32_t)offsetof( example_uneven_t, as.wide ), &schema_example_wide_info_, NULL, (uint32_t)sizeof( ((example_uneven_t *)0)->as.wide ) },
+    { (uint32_t) offsetof( example_uneven_t, as.narrow ), &schema_example_narrow_info_, NULL, (uint32_t) sizeof( ( (example_uneven_t *) 0 )->as.narrow ) },
+    { (uint32_t) offsetof( example_uneven_t, as.wide ), &schema_example_wide_info_, NULL, (uint32_t) sizeof( ( (example_uneven_t *) 0 )->as.wide ) },
 };
 static const example_table_union_info_t schema_example_arr_uneven_items_outside_union_ = { (uint32_t) offsetof( example_uneven_t, type ), (uint32_t) sizeof( ( (example_uneven_t *) 0 )->type ), schema_example_arr_uneven_items_outside_arms_ };
 static const example_table_field_info_t schema_example_arr_uneven_fields_[] = {
@@ -142,8 +142,8 @@ static const example_table_variant_info_t schema_example_default_choice_packet_c
 };
 static const example_table_union_arm_info_t schema_example_default_choice_packet_choice_outside_arms_[] = {
     { 0, NULL, NULL, 0 },
-    { (uint32_t)offsetof( example_default_choice_t, as.first ), &schema_example_default_arm_info_, NULL, (uint32_t)sizeof( ((example_default_choice_t *)0)->as.first ) },
-    { (uint32_t)offsetof( example_default_choice_t, as.second ), &schema_example_default_arm_info_, NULL, (uint32_t)sizeof( ((example_default_choice_t *)0)->as.second ) },
+    { (uint32_t) offsetof( example_default_choice_t, as.first ), &schema_example_default_arm_info_, NULL, (uint32_t) sizeof( ( (example_default_choice_t *) 0 )->as.first ) },
+    { (uint32_t) offsetof( example_default_choice_t, as.second ), &schema_example_default_arm_info_, NULL, (uint32_t) sizeof( ( (example_default_choice_t *) 0 )->as.second ) },
 };
 static const example_table_union_info_t schema_example_default_choice_packet_choice_outside_union_ = { (uint32_t) offsetof( example_default_choice_t, type ), (uint32_t) sizeof( ( (example_default_choice_t *) 0 )->type ), schema_example_default_choice_packet_choice_outside_arms_ };
 static const example_table_field_info_t schema_example_default_choice_packet_fields_[] = {
@@ -216,8 +216,8 @@ static const example_table_variant_info_t schema_example_holds_empty_union_u_out
 };
 static const example_table_union_arm_info_t schema_example_holds_empty_union_u_outside_arms_[] = {
     { 0, NULL, NULL, 0 },
-    { (uint32_t)offsetof( example_empty_union_t, as.a ), &schema_example_empty_a_info_, NULL, (uint32_t)sizeof( ((example_empty_union_t *)0)->as.a ) },
-    { (uint32_t)offsetof( example_empty_union_t, as.b ), &schema_example_empty_b_info_, NULL, (uint32_t)sizeof( ((example_empty_union_t *)0)->as.b ) },
+    { (uint32_t) offsetof( example_empty_union_t, as.a ), &schema_example_empty_a_info_, NULL, (uint32_t) sizeof( ( (example_empty_union_t *) 0 )->as.a ) },
+    { (uint32_t) offsetof( example_empty_union_t, as.b ), &schema_example_empty_b_info_, NULL, (uint32_t) sizeof( ( (example_empty_union_t *) 0 )->as.b ) },
 };
 static const example_table_union_info_t schema_example_holds_empty_union_u_outside_union_ = { (uint32_t) offsetof( example_empty_union_t, type ), (uint32_t) sizeof( ( (example_empty_union_t *) 0 )->type ), schema_example_holds_empty_union_u_outside_arms_ };
 static const example_table_field_info_t schema_example_holds_empty_union_fields_[] = {
@@ -235,8 +235,8 @@ static const example_table_variant_info_t schema_example_holds_uneven_u_outside_
 };
 static const example_table_union_arm_info_t schema_example_holds_uneven_u_outside_arms_[] = {
     { 0, NULL, NULL, 0 },
-    { (uint32_t)offsetof( example_uneven_t, as.narrow ), &schema_example_narrow_info_, NULL, (uint32_t)sizeof( ((example_uneven_t *)0)->as.narrow ) },
-    { (uint32_t)offsetof( example_uneven_t, as.wide ), &schema_example_wide_info_, NULL, (uint32_t)sizeof( ((example_uneven_t *)0)->as.wide ) },
+    { (uint32_t) offsetof( example_uneven_t, as.narrow ), &schema_example_narrow_info_, NULL, (uint32_t) sizeof( ( (example_uneven_t *) 0 )->as.narrow ) },
+    { (uint32_t) offsetof( example_uneven_t, as.wide ), &schema_example_wide_info_, NULL, (uint32_t) sizeof( ( (example_uneven_t *) 0 )->as.wide ) },
 };
 static const example_table_union_info_t schema_example_holds_uneven_u_outside_union_ = { (uint32_t) offsetof( example_uneven_t, type ), (uint32_t) sizeof( ( (example_uneven_t *) 0 )->type ), schema_example_holds_uneven_u_outside_arms_ };
 static const example_table_field_info_t schema_example_holds_uneven_fields_[] = {
@@ -307,8 +307,8 @@ static const example_table_variant_info_t schema_example_probe_collider_shape_ou
 };
 static const example_table_union_arm_info_t schema_example_probe_collider_shape_outside_arms_[] = {
     { 0, NULL, NULL, 0 },
-    { (uint32_t)offsetof( example_probe_shape_t, as.ring ), &schema_example_probe_ring_info_, NULL, (uint32_t)sizeof( ((example_probe_shape_t *)0)->as.ring ) },
-    { (uint32_t)offsetof( example_probe_shape_t, as.slab ), &schema_example_probe_slab_info_, NULL, (uint32_t)sizeof( ((example_probe_shape_t *)0)->as.slab ) },
+    { (uint32_t) offsetof( example_probe_shape_t, as.ring ), &schema_example_probe_ring_info_, NULL, (uint32_t) sizeof( ( (example_probe_shape_t *) 0 )->as.ring ) },
+    { (uint32_t) offsetof( example_probe_shape_t, as.slab ), &schema_example_probe_slab_info_, NULL, (uint32_t) sizeof( ( (example_probe_shape_t *) 0 )->as.slab ) },
 };
 static const example_table_union_info_t schema_example_probe_collider_shape_outside_union_ = { (uint32_t) offsetof( example_probe_shape_t, type ), (uint32_t) sizeof( ( (example_probe_shape_t *) 0 )->type ), schema_example_probe_collider_shape_outside_arms_ };
 static const example_table_variant_info_t schema_example_probe_collider_backup_outside_variants_[] = {
@@ -318,8 +318,8 @@ static const example_table_variant_info_t schema_example_probe_collider_backup_o
 };
 static const example_table_union_arm_info_t schema_example_probe_collider_backup_outside_arms_[] = {
     { 0, NULL, NULL, 0 },
-    { (uint32_t)offsetof( example_probe_shape_t, as.ring ), &schema_example_probe_ring_info_, NULL, (uint32_t)sizeof( ((example_probe_shape_t *)0)->as.ring ) },
-    { (uint32_t)offsetof( example_probe_shape_t, as.slab ), &schema_example_probe_slab_info_, NULL, (uint32_t)sizeof( ((example_probe_shape_t *)0)->as.slab ) },
+    { (uint32_t) offsetof( example_probe_shape_t, as.ring ), &schema_example_probe_ring_info_, NULL, (uint32_t) sizeof( ( (example_probe_shape_t *) 0 )->as.ring ) },
+    { (uint32_t) offsetof( example_probe_shape_t, as.slab ), &schema_example_probe_slab_info_, NULL, (uint32_t) sizeof( ( (example_probe_shape_t *) 0 )->as.slab ) },
 };
 static const example_table_union_info_t schema_example_probe_collider_backup_outside_union_ = { (uint32_t) offsetof( example_probe_shape_t, type ), (uint32_t) sizeof( ( (example_probe_shape_t *) 0 )->type ), schema_example_probe_collider_backup_outside_arms_ };
 static const example_table_variant_info_t schema_example_probe_collider_extras_outside_variants_[] = {
@@ -329,8 +329,8 @@ static const example_table_variant_info_t schema_example_probe_collider_extras_o
 };
 static const example_table_union_arm_info_t schema_example_probe_collider_extras_outside_arms_[] = {
     { 0, NULL, NULL, 0 },
-    { (uint32_t)offsetof( example_probe_shape_t, as.ring ), &schema_example_probe_ring_info_, NULL, (uint32_t)sizeof( ((example_probe_shape_t *)0)->as.ring ) },
-    { (uint32_t)offsetof( example_probe_shape_t, as.slab ), &schema_example_probe_slab_info_, NULL, (uint32_t)sizeof( ((example_probe_shape_t *)0)->as.slab ) },
+    { (uint32_t) offsetof( example_probe_shape_t, as.ring ), &schema_example_probe_ring_info_, NULL, (uint32_t) sizeof( ( (example_probe_shape_t *) 0 )->as.ring ) },
+    { (uint32_t) offsetof( example_probe_shape_t, as.slab ), &schema_example_probe_slab_info_, NULL, (uint32_t) sizeof( ( (example_probe_shape_t *) 0 )->as.slab ) },
 };
 static const example_table_union_info_t schema_example_probe_collider_extras_outside_union_ = { (uint32_t) offsetof( example_probe_shape_t, type ), (uint32_t) sizeof( ( (example_probe_shape_t *) 0 )->type ), schema_example_probe_collider_extras_outside_arms_ };
 static const example_table_field_info_t schema_example_probe_collider_fields_[] = {
@@ -754,7 +754,7 @@ static const example_table_field_info_t schema_example_wide_fields_[] = {
 
 const example_table_type_info_t schema_example_wide_info_ = { "Wide", (uint32_t) sizeof( example_wide_t ), 1, schema_example_wide_fields_, schema_example_wide_reset_raw_, EXAMPLE_TABLE_DOC_NONE, 0, NULL, 0 };
 
-const example_unit_view_info_t * schema_example_unit_view_(void)
+const example_unit_view_info_t * schema_example_unit_view_( void )
 {
     static const example_view_variant_t MissileType_view_variants[] = {
         { 0, "None", 0, NULL, NULL, NULL, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
@@ -938,27 +938,27 @@ const example_unit_view_info_t * schema_example_unit_view_(void)
     };
     static const example_view_constant_t constants[] = {
         { "CeilingCount", "Types.schema", "uint64", 0, (int64_t) 0xffffffffffffffffull, 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
-        { "FloorLimit", "Types.schema", "int64", 0, (-INT64_C(9223372036854775807)-1), 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
+        { "FloorLimit", "Types.schema", "int64", 0, ( -INT64_C( 9223372036854775807 ) - 1 ), 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
         { "HalfTurn", "Wire.schema", "float64", 1, 0, 180.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
-        { "MaxBlockSize", "Constants.schema", "int64", 0, INT64_C(2000), 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
-        { "MaxChatLength", "Constants.schema", "int64", 0, INT64_C(256), 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
-        { "MaxHealth", "Constants.schema", "int64", 0, INT64_C(1000), 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
-        { "MaxInputsPerPacket", "Constants.schema", "int64", 0, INT64_C(16), 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
-        { "MaxObjects", "Constants.schema", "int64", 0, INT64_C(10000), 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
-        { "MaxPositionUnits", "Constants.schema", "int64", 0, INT64_C(8388608), 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
-        { "MaxSpeedMeters", "Constants.schema", "int64", 0, INT64_C(2048), 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
-        { "MaxVelocityUnits", "Constants.schema", "int64", 0, INT64_C(2097152), 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
-        { "MaxWorldMeters", "Constants.schema", "int64", 0, INT64_C(8192), 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
-        { "NumTeams", "Constants.schema", "int64", 0, INT64_C(2), 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
-        { "PositionUnits", "Constants.schema", "int64", 0, INT64_C(1024), 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
-        { "ProbeId", "Wire.schema", "uint64", 0, INT64_C(244837814094590), 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
-        { "RenderBlockMaxSprites", "Render.schema", "int64", 0, INT64_C(64), 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
-        { "RotationUnits", "Constants.schema", "int64", 0, INT64_C(1024), 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
-        { "ShipMaxLasers", "Constants.schema", "int64", 0, INT64_C(16), 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
-        { "ShipMaxMissiles", "Constants.schema", "int64", 0, INT64_C(16), 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
+        { "MaxBlockSize", "Constants.schema", "int64", 0, INT64_C( 2000 ), 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
+        { "MaxChatLength", "Constants.schema", "int64", 0, INT64_C( 256 ), 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
+        { "MaxHealth", "Constants.schema", "int64", 0, INT64_C( 1000 ), 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
+        { "MaxInputsPerPacket", "Constants.schema", "int64", 0, INT64_C( 16 ), 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
+        { "MaxObjects", "Constants.schema", "int64", 0, INT64_C( 10000 ), 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
+        { "MaxPositionUnits", "Constants.schema", "int64", 0, INT64_C( 8388608 ), 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
+        { "MaxSpeedMeters", "Constants.schema", "int64", 0, INT64_C( 2048 ), 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
+        { "MaxVelocityUnits", "Constants.schema", "int64", 0, INT64_C( 2097152 ), 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
+        { "MaxWorldMeters", "Constants.schema", "int64", 0, INT64_C( 8192 ), 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
+        { "NumTeams", "Constants.schema", "int64", 0, INT64_C( 2 ), 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
+        { "PositionUnits", "Constants.schema", "int64", 0, INT64_C( 1024 ), 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
+        { "ProbeId", "Wire.schema", "uint64", 0, INT64_C( 244837814094590 ), 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
+        { "RenderBlockMaxSprites", "Render.schema", "int64", 0, INT64_C( 64 ), 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
+        { "RotationUnits", "Constants.schema", "int64", 0, INT64_C( 1024 ), 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
+        { "ShipMaxLasers", "Constants.schema", "int64", 0, INT64_C( 16 ), 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
+        { "ShipMaxMissiles", "Constants.schema", "int64", 0, INT64_C( 16 ), 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
         { "SpinRate", "Wire.schema", "float64", 1, 0, 1.5, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
         { "TickRate", "Wire.schema", "float32", 1, 0, 60.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
-        { "VelocityUnits", "Constants.schema", "int64", 0, INT64_C(1024), 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
+        { "VelocityUnits", "Constants.schema", "int64", 0, INT64_C( 1024 ), 0.0, EXAMPLE_TABLE_DOC_NONE, 0, NULL },
     };
     static const example_unit_view_info_t info = { "example", 0x2bf51af687ac0abdull,
         74, types,

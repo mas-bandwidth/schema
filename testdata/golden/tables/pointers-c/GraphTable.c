@@ -102,10 +102,30 @@ static SCHEMA_UNUSED uint64_t graphdemo_table_json_get_raw( const void * storage
 {
     switch ( width )
     {
-        case 1: { uint8_t v = 0;  memcpy( &v, storage, 1 ); return v; }
-        case 2: { uint16_t v = 0; memcpy( &v, storage, 2 ); return v; }
-        case 4: { uint32_t v = 0; memcpy( &v, storage, 4 ); return v; }
-        case 8: { uint64_t v = 0; memcpy( &v, storage, 8 ); return v; }
+        case 1:
+        {
+            uint8_t v = 0;
+            memcpy( &v, storage, 1 );
+            return v;
+        }
+        case 2:
+        {
+            uint16_t v = 0;
+            memcpy( &v, storage, 2 );
+            return v;
+        }
+        case 4:
+        {
+            uint32_t v = 0;
+            memcpy( &v, storage, 4 );
+            return v;
+        }
+        case 8:
+        {
+            uint64_t v = 0;
+            memcpy( &v, storage, 8 );
+            return v;
+        }
         default: break;
     }
     return 0;
@@ -115,10 +135,30 @@ static SCHEMA_UNUSED void graphdemo_table_json_set_raw( void * storage, uint32_t
 {
     switch ( width )
     {
-        case 1: { uint8_t v = (uint8_t) value;   memcpy( storage, &v, 1 ); break; }
-        case 2: { uint16_t v = (uint16_t) value; memcpy( storage, &v, 2 ); break; }
-        case 4: { uint32_t v = (uint32_t) value; memcpy( storage, &v, 4 ); break; }
-        case 8: { uint64_t v = value;            memcpy( storage, &v, 8 ); break; }
+        case 1:
+        {
+            uint8_t v = (uint8_t) value;
+            memcpy( storage, &v, 1 );
+            break;
+        }
+        case 2:
+        {
+            uint16_t v = (uint16_t) value;
+            memcpy( storage, &v, 2 );
+            break;
+        }
+        case 4:
+        {
+            uint32_t v = (uint32_t) value;
+            memcpy( storage, &v, 4 );
+            break;
+        }
+        case 8:
+        {
+            uint64_t v = value;
+            memcpy( storage, &v, 8 );
+            break;
+        }
         default: break;
     }
 }
@@ -152,7 +192,7 @@ static SCHEMA_UNUSED int graphdemo_table_json_kind_fixed( uint8_t kind ) { retur
 static SCHEMA_UNUSED int graphdemo_table_json_kind_wide_integer( uint8_t kind )
 {
     return kind == 5 || kind == 9 || kind == 18 || kind == 19 ||
-           kind == 23 || kind == 24 || kind == 28 || kind == 29;
+        kind == 23 || kind == 24 || kind == 28 || kind == 29;
 }
 
 static SCHEMA_UNUSED int graphdemo_table_json_wide_zero( graphdemo_table_json_wide_t v ) { return v.lo == 0 && v.hi == 0; }
@@ -171,7 +211,11 @@ static SCHEMA_UNUSED graphdemo_table_json_wide_t graphdemo_table_json_wide_shl( 
     graphdemo_table_json_wide_t r = { 0, 0 };
     if ( n <= 0 ) { return v; }
     if ( n >= 128 ) { return r; }
-    if ( n >= 64 ) { r.hi = v.lo << ( n - 64 ); return r; }
+    if ( n >= 64 )
+    {
+        r.hi = v.lo << ( n - 64 );
+        return r;
+    }
     r.hi = ( v.hi << n ) | ( v.lo >> ( 64 - n ) );
     r.lo = v.lo << n;
     return r;
@@ -182,7 +226,11 @@ static SCHEMA_UNUSED graphdemo_table_json_wide_t graphdemo_table_json_wide_shr( 
     graphdemo_table_json_wide_t r = { 0, 0 };
     if ( n <= 0 ) { return v; }
     if ( n >= 128 ) { return r; }
-    if ( n >= 64 ) { r.lo = v.hi >> ( n - 64 ); return r; }
+    if ( n >= 64 )
+    {
+        r.lo = v.hi >> ( n - 64 );
+        return r;
+    }
     r.lo = ( v.lo >> n ) | ( v.hi << ( 64 - n ) );
     r.hi = v.hi >> n;
     return r;
@@ -239,7 +287,8 @@ static SCHEMA_UNUSED graphdemo_table_json_wide_t graphdemo_table_json_wide_load(
     {
         uint64_t half[2];
         memcpy( half, storage, 16 );
-        v.lo = half[0]; v.hi = half[1];
+        v.lo = half[0];
+        v.hi = half[1];
         return v;
     }
     v.lo = is_signed ? (uint64_t) graphdemo_table_json_get_signed( storage, width ) : graphdemo_table_json_get_raw( storage, width );
@@ -252,7 +301,8 @@ static SCHEMA_UNUSED void graphdemo_table_json_wide_store( void * storage, uint3
     if ( width == 16 )
     {
         uint64_t half[2];
-        half[0] = v.lo; half[1] = v.hi;
+        half[0] = v.lo;
+        half[1] = v.hi;
         memcpy( storage, half, 16 );
         return;
     }
@@ -284,8 +334,10 @@ static SCHEMA_UNUSED int graphdemo_table_json_wide_in_contract( const void * sto
     }
     is_signed = graphdemo_table_json_kind_wide_signed( f->kind ) || f->kind == 5;
     raw = graphdemo_table_json_wide_load( storage, f->elem_size, is_signed );
-    lo.lo = f->wide->lo[0]; lo.hi = f->wide->lo[1];
-    hi.lo = f->wide->hi[0]; hi.hi = f->wide->hi[1];
+    lo.lo = f->wide->lo[0];
+    lo.hi = f->wide->lo[1];
+    hi.lo = f->wide->hi[0];
+    hi.hi = f->wide->hi[1];
     return graphdemo_table_json_wide_compare( raw, lo, is_signed ) >= 0 && graphdemo_table_json_wide_compare( raw, hi, is_signed ) <= 0;
 }
 
@@ -370,7 +422,7 @@ static SCHEMA_UNUSED char graphdemo_table_json_shape( const graphdemo_table_fiel
     if ( f->kind == 12 ) { return 's'; }           /* string */
     if ( graphdemo_table_json_is_bytes( f ) ) { return 's'; }   /* bytes: base64 */
     if ( graphdemo_table_json_is_keyed( f ) ) { return 'o'; }   /* an object keyed by variant NAME */
-    if ( f->sequence==2 ) { return 'o'; }
+    if ( f->sequence == 2 ) { return 'o'; }
     if ( f->is_array ) { return 'a'; }
     if ( f->arms != NULL ) { return 'o'; }         /* union: an object with ONE key */
     if ( f->kind == 17 ) { return f->table == NULL ? 's' : 'o'; }
@@ -432,7 +484,11 @@ static SCHEMA_UNUSED int graphdemo_table_json_guard_holds( const void * base, co
         int32_t i;
         while ( *p == ' ' || *p == '&' ) { p++; }
         if ( *p == 0 ) { return 1; }
-        if ( *p == '!' ) { want = 0; p++; }
+        if ( *p == '!' )
+        {
+            want = 0;
+            p++;
+        }
         start = p;
         while ( *p != 0 && *p != ' ' && *p != '&' ) { p++; }
         length = (size_t) ( p - start );
@@ -470,7 +526,11 @@ static SCHEMA_UNUSED void graphdemo_table_json_raw( graphdemo_table_json_out_t *
 {
     if ( out->buffer != NULL )
     {
-        if ( out->offset + count > out->capacity ) { out->overflow = 1; return; }
+        if ( out->offset + count > out->capacity )
+        {
+            out->overflow = 1;
+            return;
+        }
         memcpy( out->buffer + out->offset, data, (size_t) count );
     }
     out->offset += count;
@@ -500,7 +560,7 @@ static SCHEMA_UNUSED int32_t graphdemo_table_json_base64_value( uint8_t c )
         -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
         -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 62, -1, -1, -1, 63,
         52, 53, 54, 55, 56, 57, 58, 59, 60, 61, -1, -1, -1, -1, -1, -1,
-        -1,  0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14,
+        -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
         15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, -1, -1, -1, -1, -1,
         -1, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
         41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, -1, -1, -1, -1, -1,
@@ -511,8 +571,7 @@ static SCHEMA_UNUSED int32_t graphdemo_table_json_base64_value( uint8_t c )
         -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
         -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
         -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    };
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 };
     return values[c];
 }
 
@@ -523,12 +582,12 @@ static SCHEMA_UNUSED void graphdemo_table_json_write_base64( graphdemo_table_jso
     graphdemo_table_json_put( out, '"' );
     for ( ; length - i >= 3; i += 3 )
     {
-        uint32_t triple = ( (uint32_t) data[i] << 16 ) | ( (uint32_t) data[i+1] << 8 ) | (uint32_t) data[i+2];
+        uint32_t triple = ( (uint32_t) data[i] << 16 ) | ( (uint32_t) data[i + 1] << 8 ) | (uint32_t) data[i + 2];
         char quad[4];
-        quad[0] = alphabet[ ( triple >> 18 ) & 0x3f ];
-        quad[1] = alphabet[ ( triple >> 12 ) & 0x3f ];
-        quad[2] = alphabet[ ( triple >> 6 ) & 0x3f ];
-        quad[3] = alphabet[ triple & 0x3f ];
+        quad[0] = alphabet[( triple >> 18 ) & 0x3f];
+        quad[1] = alphabet[( triple >> 12 ) & 0x3f];
+        quad[2] = alphabet[( triple >> 6 ) & 0x3f];
+        quad[3] = alphabet[triple & 0x3f];
         graphdemo_table_json_raw( out, quad, 4 );
     }
     if ( i < length )
@@ -536,12 +595,12 @@ static SCHEMA_UNUSED void graphdemo_table_json_write_base64( graphdemo_table_jso
         int32_t left = length - i;
         uint32_t triple = (uint32_t) data[i] << 16;
         char quad[4];
-        if ( left == 2 ) { triple |= (uint32_t) data[i+1] << 8; }
-        quad[0] = alphabet[ ( triple >> 18 ) & 0x3f ];
-        quad[1] = alphabet[ ( triple >> 12 ) & 0x3f ];
+        if ( left == 2 ) { triple |= (uint32_t) data[i + 1] << 8; }
+        quad[0] = alphabet[( triple >> 18 ) & 0x3f];
+        quad[1] = alphabet[( triple >> 12 ) & 0x3f];
         quad[2] = '=';
         quad[3] = '=';
-        if ( left == 2 ) { quad[2] = alphabet[ ( triple >> 6 ) & 0x3f ]; }
+        if ( left == 2 ) { quad[2] = alphabet[( triple >> 6 ) & 0x3f]; }
         graphdemo_table_json_raw( out, quad, 4 );
     }
     graphdemo_table_json_put( out, '"' );
@@ -556,11 +615,30 @@ static SCHEMA_UNUSED int32_t graphdemo_table_json_utf8( const char * s, int32_t 
     int32_t want = 0;
     int32_t code = 0;
     int32_t i;
-    if ( lead < 0x80 ) { *width = 1; return lead; }
-    else if ( lead >= 0xc2 && lead <= 0xdf ) { want = 2; code = lead & 0x1f; }
-    else if ( lead >= 0xe0 && lead <= 0xef ) { want = 3; code = lead & 0x0f; }
-    else if ( lead >= 0xf0 && lead <= 0xf4 ) { want = 4; code = lead & 0x07; }
-    else { return -1; }
+    if ( lead < 0x80 )
+    {
+        *width = 1;
+        return lead;
+    }
+    else if ( lead >= 0xc2 && lead <= 0xdf )
+    {
+        want = 2;
+        code = lead & 0x1f;
+    }
+    else if ( lead >= 0xe0 && lead <= 0xef )
+    {
+        want = 3;
+        code = lead & 0x0f;
+    }
+    else if ( lead >= 0xf0 && lead <= 0xf4 )
+    {
+        want = 4;
+        code = lead & 0x07;
+    }
+    else
+    {
+        return -1;
+    }
     if ( remaining < want ) { return -1; }
     for ( i = 1; i < want; i++ )
     {
@@ -595,7 +673,7 @@ static SCHEMA_UNUSED void graphdemo_table_json_write_string( graphdemo_table_jso
         schema_assert( c != 0 );
         switch ( c )
         {
-            case '"':  graphdemo_table_json_raw( out, "\\\"", 2 ); break;
+            case '"': graphdemo_table_json_raw( out, "\\\"", 2 ); break;
             case '\\': graphdemo_table_json_raw( out, "\\\\", 2 ); break;
             case '\b': graphdemo_table_json_raw( out, "\\b", 2 ); break;
             case '\f': graphdemo_table_json_raw( out, "\\f", 2 ); break;
@@ -606,8 +684,12 @@ static SCHEMA_UNUSED void graphdemo_table_json_write_string( graphdemo_table_jso
                 if ( c < 0x20 )
                 {
                     char escape[6];
-                    escape[0] = '\\'; escape[1] = 'u'; escape[2] = '0'; escape[3] = '0';
-                    escape[4] = hex[ c >> 4 ]; escape[5] = hex[ c & 0xf ];
+                    escape[0] = '\\';
+                    escape[1] = 'u';
+                    escape[2] = '0';
+                    escape[3] = '0';
+                    escape[4] = hex[c >> 4];
+                    escape[5] = hex[c & 0xf];
                     graphdemo_table_json_raw( out, escape, 6 );
                 }
                 else if ( c < 0x80 )
@@ -688,8 +770,15 @@ static SCHEMA_UNUSED void graphdemo_table_json_write_wide_digits( graphdemo_tabl
     graphdemo_table_json_put( out, '.' );
     // the fraction bits alone: v with everything at and above bit F cleared
     graphdemo_table_json_wide_t fraction = v;
-    if ( frac < 64 ) { fraction.hi = 0; fraction.lo &= ( (uint64_t) ( 1 ) << frac ) - 1; }
-    else { fraction.hi &= ( (uint64_t) ( 1 ) << ( frac - 64 ) ) - 1; }
+    if ( frac < 64 )
+    {
+        fraction.hi = 0;
+        fraction.lo &= ( (uint64_t) ( 1 ) << frac ) - 1;
+    }
+    else
+    {
+        fraction.hi &= ( (uint64_t) ( 1 ) << ( frac - 64 ) ) - 1;
+    }
     if ( frac == 0 ) { fraction.lo = 0; }
     if ( graphdemo_table_json_wide_zero( fraction ) )
     {
@@ -704,8 +793,15 @@ static SCHEMA_UNUSED void graphdemo_table_json_write_wide_digits( graphdemo_tabl
         uint64_t digit = graphdemo_table_json_wide_shr( fraction, frac ).lo;
         if ( frac > 64 ) { digit |= (uint64_t) ( carry ) << ( 128 - frac ); }
         graphdemo_table_json_put( out, (char) ( '0' + (int) digit ) );
-        if ( frac < 64 ) { fraction.hi = 0; fraction.lo &= ( (uint64_t) ( 1 ) << frac ) - 1; }
-        else { fraction.hi &= ( (uint64_t) ( 1 ) << ( frac - 64 ) ) - 1; }
+        if ( frac < 64 )
+        {
+            fraction.hi = 0;
+            fraction.lo &= ( (uint64_t) ( 1 ) << frac ) - 1;
+        }
+        else
+        {
+            fraction.hi &= ( (uint64_t) ( 1 ) << ( frac - 64 ) ) - 1;
+        }
     }
 }
 
@@ -733,7 +829,7 @@ static SCHEMA_UNUSED int graphdemo_table_json_write_float( graphdemo_table_json_
     int digits;
     char point;
     if ( !graphdemo_table_json_finite( value ) ) { return 0; }
-    for ( digits = low; ; digits++ )
+    for ( digits = low;; digits++ )
     {
         length = snprintf( text, sizeof( text ), "%.*g", digits, value );
         if ( length <= 0 || length >= (int) sizeof( text ) ) { return 0; }
@@ -787,10 +883,18 @@ static SCHEMA_UNUSED int schema_graphdemo_table_json_write_timestamp_( graphdemo
     memcpy( &nanos, storage, sizeof( nanos ) );
     seconds = nanos / 1000000000;
     fraction = nanos % 1000000000;
-    if ( fraction < 0 ) { fraction += 1000000000; seconds -= 1; }
+    if ( fraction < 0 )
+    {
+        fraction += 1000000000;
+        seconds -= 1;
+    }
     days = seconds / 86400;
     second_of_day = seconds % 86400;
-    if ( second_of_day < 0 ) { second_of_day += 86400; days -= 1; }
+    if ( second_of_day < 0 )
+    {
+        second_of_day += 86400;
+        days -= 1;
+    }
     schema_graphdemo_table_json_civil_from_days_( days, &year, &month, &day );
     hour = (int) ( second_of_day / 3600 );
     minute = (int) ( ( second_of_day / 60 ) % 60 );
@@ -819,16 +923,22 @@ static SCHEMA_UNUSED int graphdemo_table_json_write_value( graphdemo_table_json_
    vocabulary, or a number */
 static SCHEMA_UNUSED int graphdemo_table_json_write_field( graphdemo_table_json_out_t * out, const void * base, const graphdemo_table_field_info_t * f, int32_t depth );
 #ifdef SCHEMA_GRAPHDEMO_TABLE_SEQUENCE_RUNTIME
-static SCHEMA_UNUSED int graphdemo_table_json_write_list(graphdemo_table_json_out_t * out,const void * storage,const graphdemo_table_field_info_t * f,int32_t depth);
+static SCHEMA_UNUSED int graphdemo_table_json_write_list( graphdemo_table_json_out_t * out, const void * storage, const graphdemo_table_field_info_t * f, int32_t depth );
 #ifdef SCHEMA_GRAPHDEMO_TABLE_MAP_RUNTIME
-static SCHEMA_UNUSED int graphdemo_table_json_write_map(graphdemo_table_json_out_t * out,const void * storage,const graphdemo_table_field_info_t * f,int32_t depth);
+static SCHEMA_UNUSED int graphdemo_table_json_write_map( graphdemo_table_json_out_t * out, const void * storage, const graphdemo_table_field_info_t * f, int32_t depth );
 #endif
 #endif
 #ifdef SCHEMA_GRAPHDEMO_TABLE_GRAPH_RUNTIME
 static SCHEMA_UNUSED int graphdemo_table_json_write_pointer( graphdemo_table_json_out_t * out, const void * slot, const graphdemo_table_field_info_t * f, int32_t depth );
 #else
 static SCHEMA_UNUSED int graphdemo_table_json_write_pointer( graphdemo_table_json_out_t * out, const void * slot, const graphdemo_table_field_info_t * f, int32_t depth )
-{ (void)out; (void)slot; (void)f; (void)depth; return 0; }
+{
+    (void) out;
+    (void) slot;
+    (void) f;
+    (void) depth;
+    return 0;
+}
 #endif
 #ifdef SCHEMA_GRAPHDEMO_TABLE_UNBOUNDED_TEXT_RUNTIME
 static SCHEMA_UNUSED int schema_graphdemo_table_json_write_unbounded_text_( graphdemo_table_json_out_t * out, const void * slot );
@@ -870,7 +980,7 @@ static SCHEMA_UNUSED int64_t schema_graphdemo_table_json_text_bytes_( const void
 static SCHEMA_UNUSED int graphdemo_table_json_write_scalar( graphdemo_table_json_out_t * out, const void * storage, const graphdemo_table_field_info_t * f, int32_t depth )
 {
     if ( f->text_list != 0 ) { return schema_graphdemo_table_json_write_text_element_( out, storage, f ); }
-    if ( f->kind == 17 ) { return graphdemo_table_json_write_pointer(out,storage,f,depth); }
+    if ( f->kind == 17 ) { return graphdemo_table_json_write_pointer( out, storage, f, depth ); }
     if ( f->arms != NULL )
     {
         /* a union is an object with ONE key, the arm's name; None is {} */
@@ -894,9 +1004,11 @@ static SCHEMA_UNUSED int graphdemo_table_json_write_scalar( graphdemo_table_json
         graphdemo_table_json_line( out, depth + 1 );
         graphdemo_table_json_write_string( out, arm, (int32_t) strlen( arm ) );
         graphdemo_table_json_raw( out, ": ", 2 );
-        if ( arms->arms[tag].field != NULL ) {
-            if ( !graphdemo_table_json_write_field( out, storage, arms->arms[tag].field, depth+1 ) ) { return 0; }
-        } else if ( arms->arms[tag].table == NULL ) { graphdemo_table_json_raw( out, "null", 4 ); }
+        if ( arms->arms[tag].field != NULL )
+        {
+            if ( !graphdemo_table_json_write_field( out, storage, arms->arms[tag].field, depth + 1 ) ) { return 0; }
+        }
+        else if ( arms->arms[tag].table == NULL ) { graphdemo_table_json_raw( out, "null", 4 ); }
         else if ( !graphdemo_table_json_write_value( out, (const uint8_t *) storage + arms->arms[tag].offset, arms->arms[tag].table, depth + 1 ) )
         {
             return 0;
@@ -997,7 +1109,10 @@ static SCHEMA_UNUSED int graphdemo_table_json_write_scalar( graphdemo_table_json
         }
         case 36:
             return schema_graphdemo_table_json_write_timestamp_( out, storage );
-        case 2: case 3: case 4: case 5:
+        case 2:
+        case 3:
+        case 4:
+        case 5:
             graphdemo_table_json_write_signed( out, graphdemo_table_json_get_signed( storage, f->elem_size ) );
             return 1;
         default:
@@ -1010,9 +1125,9 @@ static SCHEMA_UNUSED int graphdemo_table_json_write_field( graphdemo_table_json_
 {
     const uint8_t * storage = (const uint8_t *) base + f->offset;
 #ifdef SCHEMA_GRAPHDEMO_TABLE_SEQUENCE_RUNTIME
-    if(f->sequence==1) { return graphdemo_table_json_write_list(out,storage,f,depth); }
+    if ( f->sequence == 1 ) { return graphdemo_table_json_write_list( out, storage, f, depth ); }
 #ifdef SCHEMA_GRAPHDEMO_TABLE_MAP_RUNTIME
-    if(f->sequence==2) { return graphdemo_table_json_write_map(out,storage,f,depth); }
+    if ( f->sequence == 2 ) { return graphdemo_table_json_write_map( out, storage, f, depth ); }
 #endif
 #endif
     if ( !graphdemo_table_json_count_in_contract( base, f ) ) { return 0; }
@@ -1052,7 +1167,11 @@ static SCHEMA_UNUSED int graphdemo_table_json_write_field( graphdemo_table_json_
                 return 0;
             }
         }
-        if ( first ) { graphdemo_table_json_raw( out, "}", 1 ); return 1; }
+        if ( first )
+        {
+            graphdemo_table_json_raw( out, "}", 1 );
+            return 1;
+        }
         graphdemo_table_json_line( out, depth );
         graphdemo_table_json_put( out, '}' );
         return 1;
@@ -1102,12 +1221,15 @@ static SCHEMA_UNUSED int graphdemo_table_json_write_fields( graphdemo_table_json
            presence (§16.2), so an absent field is an absent key and nothing
            else would read back as absent */
         if ( f->optional &&
-             graphdemo_table_json_get_raw( (const uint8_t *) base + f->present_offset, 1 ) == 0 )
+            graphdemo_table_json_get_raw( (const uint8_t *) base + f->present_offset, 1 ) == 0 )
         {
             continue;
         }
         if ( !*any ) { graphdemo_table_json_put( out, '{' ); }
-        else { graphdemo_table_json_put( out, ',' ); }
+        else
+        {
+            graphdemo_table_json_put( out, ',' );
+        }
         *any = 1;
         graphdemo_table_json_line( out, depth + 1 );
         graphdemo_table_json_write_string( out, f->json, (int32_t) strlen( f->json ) );
@@ -1121,9 +1243,15 @@ static SCHEMA_UNUSED int graphdemo_table_json_write_value( graphdemo_table_json_
 {
     int any = 0;
     if ( info->json_array && info->num_fields == 1 ) { return graphdemo_table_json_write_field( out, base, &info->fields[0], depth ); }
-    if ( !graphdemo_table_json_write_fields(out,base,info,depth,&any) ) { return 0; }
-    if ( !any ) { graphdemo_table_json_raw(out,"{}",2); return 1; }
-    graphdemo_table_json_line(out,depth); graphdemo_table_json_put(out,'}'); return 1;
+    if ( !graphdemo_table_json_write_fields( out, base, info, depth, &any ) ) { return 0; }
+    if ( !any )
+    {
+        graphdemo_table_json_raw( out, "{}", 2 );
+        return 1;
+    }
+    graphdemo_table_json_line( out, depth );
+    graphdemo_table_json_put( out, '}' );
+    return 1;
 }
 
 /* ---- reading ---- */
@@ -1151,7 +1279,11 @@ static SCHEMA_UNUSED int graphdemo_table_json_comment_text( const char * s, int6
         int32_t width = 0;
         int64_t left = length - i;
         if ( c == 0 ) { return 0; }
-        if ( c < 0x80 ) { i++; continue; }
+        if ( c < 0x80 )
+        {
+            i++;
+            continue;
+        }
         if ( graphdemo_table_json_utf8( s + i, left > 4 ? 4 : (int32_t) left, &width ) < 0 ) { return 0; }
         i += width;
     }
@@ -1163,7 +1295,11 @@ static SCHEMA_UNUSED void graphdemo_table_json_space( graphdemo_table_json_in_t 
     while ( in->pos < in->size )
     {
         char c = in->text[in->pos];
-        if ( c == ' ' || c == '\t' || c == '\n' || c == '\r' ) { in->pos++; continue; }
+        if ( c == ' ' || c == '\t' || c == '\n' || c == '\r' )
+        {
+            in->pos++;
+            continue;
+        }
         /* SPEC-TABLES 16.2: comments are whitespace on read, and their bytes are text. */
         if ( c == '/' && in->pos + 1 < in->size && in->text[in->pos + 1] == '/' )
         {
@@ -1171,15 +1307,28 @@ static SCHEMA_UNUSED void graphdemo_table_json_space( graphdemo_table_json_in_t 
             in->pos += 2;
             start = in->pos;
             while ( in->pos < in->size && in->text[in->pos] != '\n' ) { in->pos++; }
-            if ( !graphdemo_table_json_comment_text( in->text + start, in->pos - start ) ) { in->bad = 1; return; }
+            if ( !graphdemo_table_json_comment_text( in->text + start, in->pos - start ) )
+            {
+                in->bad = 1;
+                return;
+            }
             continue;
         }
         if ( c == '/' && in->pos + 1 < in->size && in->text[in->pos + 1] == '*' )
         {
             int64_t at = in->pos + 2;
-            while ( at + 1 < in->size && !(in->text[at] == '*' && in->text[at + 1] == '/') ) { at++; }
-            if ( at + 1 >= in->size ) { in->bad = 1; in->pos = in->size; return; }
-            if ( !graphdemo_table_json_comment_text( in->text + in->pos + 2, at - ( in->pos + 2 ) ) ) { in->bad = 1; return; }
+            while ( at + 1 < in->size && !( in->text[at] == '*' && in->text[at + 1] == '/' ) ) { at++; }
+            if ( at + 1 >= in->size )
+            {
+                in->bad = 1;
+                in->pos = in->size;
+                return;
+            }
+            if ( !graphdemo_table_json_comment_text( in->text + in->pos + 2, at - ( in->pos + 2 ) ) )
+            {
+                in->bad = 1;
+                return;
+            }
             in->pos = at + 2;
             continue;
         }
@@ -1203,7 +1352,8 @@ static SCHEMA_UNUSED char graphdemo_table_json_value_shape( graphdemo_table_json
         case '{': return 'o';
         case '[': return 'a';
         case '"': return 's';
-        case 't': case 'f': return 'b';
+        case 't':
+        case 'f': return 'b';
         case 'n': return 'z';
         case 0: return 0;
         default: return 'n';
@@ -1235,7 +1385,10 @@ static SCHEMA_UNUSED int graphdemo_table_json_hex4( graphdemo_table_json_in_t * 
         if ( c >= '0' && c <= '9' ) { digit = c - '0'; }
         else if ( c >= 'a' && c <= 'f' ) { digit = c - 'a' + 10; }
         else if ( c >= 'A' && c <= 'F' ) { digit = c - 'A' + 10; }
-        else { return -1; }
+        else
+        {
+            return -1;
+        }
         value = ( value << 4 ) | digit;
     }
     in->pos += 4;
@@ -1254,16 +1407,26 @@ static SCHEMA_UNUSED int graphdemo_table_json_hex4( graphdemo_table_json_in_t * 
    DECODED value. */
 static SCHEMA_UNUSED int graphdemo_table_json_base64_step( graphdemo_table_json_in_t * in, char c, char * decoded )
 {
-    if ( (unsigned char) c < 0x20 ) { in->bad = 1; return -1; }
+    if ( (unsigned char) c < 0x20 )
+    {
+        in->bad = 1;
+        return -1;
+    }
     if ( c == '\\' )
     {
         char escape;
         int code;
-        if ( in->pos >= in->size ) { in->bad = 1; return -1; }
+        if ( in->pos >= in->size )
+        {
+            in->bad = 1;
+            return -1;
+        }
         escape = in->text[in->pos++];
         switch ( escape )
         {
-            case '"': case '\\': case '/': *decoded = escape; return 1;
+            case '"':
+            case '\\':
+            case '/': *decoded = escape; return 1;
             case 'b': *decoded = '\b'; return 1;
             case 'f': *decoded = '\f'; return 1;
             case 'n': *decoded = '\n'; return 1;
@@ -1271,7 +1434,11 @@ static SCHEMA_UNUSED int graphdemo_table_json_base64_step( graphdemo_table_json_
             case 't': *decoded = '\t'; return 1;
             case 'u':
                 code = graphdemo_table_json_hex4( in );
-                if ( code < 0 ) { in->bad = 1; return -1; }
+                if ( code < 0 )
+                {
+                    in->bad = 1;
+                    return -1;
+                }
                 if ( code >= 0x80 ) { return 0; }
                 *decoded = (char) code;
                 return 1;
@@ -1282,7 +1449,11 @@ static SCHEMA_UNUSED int graphdemo_table_json_base64_step( graphdemo_table_json_
     {
         int32_t width = 0;
         int64_t left = in->size - ( in->pos - 1 );
-        if ( graphdemo_table_json_utf8( in->text + in->pos - 1, left > 4 ? 4 : (int32_t) left, &width ) < 0 ) { in->bad = 1; return -1; }
+        if ( graphdemo_table_json_utf8( in->text + in->pos - 1, left > 4 ? 4 : (int32_t) left, &width ) < 0 )
+        {
+            in->bad = 1;
+            return -1;
+        }
         in->pos += width - 1;
         return 0;
     }
@@ -1304,7 +1475,11 @@ static SCHEMA_UNUSED int graphdemo_table_json_base64_scan( graphdemo_table_json_
     int64_t pad = 0;
     int32_t last = 0;
     int damaged = 0;
-    if ( graphdemo_table_json_peek( in ) != '"' ) { in->bad = 1; return -1; }
+    if ( graphdemo_table_json_peek( in ) != '"' )
+    {
+        in->bad = 1;
+        return -1;
+    }
     in->pos++;
     *mark = in->pos;
     for ( ;; )
@@ -1313,17 +1488,37 @@ static SCHEMA_UNUSED int graphdemo_table_json_base64_scan( graphdemo_table_json_
         char decoded = 0;
         int32_t val;
         int step;
-        if ( in->pos >= in->size ) { in->bad = 1; return -1; }
+        if ( in->pos >= in->size )
+        {
+            in->bad = 1;
+            return -1;
+        }
         c = in->text[in->pos++];
         if ( c == '"' ) { break; }
         step = graphdemo_table_json_base64_step( in, c, &decoded );
         if ( step < 0 ) { return -1; }
-        if ( step == 0 ) { damaged = 1; continue; }
+        if ( step == 0 )
+        {
+            damaged = 1;
+            continue;
+        }
         if ( damaged ) { continue; }
-        if ( decoded == '=' ) { pad++; continue; }
-        if ( pad > 0 ) { damaged = 1; continue; }
+        if ( decoded == '=' )
+        {
+            pad++;
+            continue;
+        }
+        if ( pad > 0 )
+        {
+            damaged = 1;
+            continue;
+        }
         val = graphdemo_table_json_base64_value( (uint8_t) decoded );
-        if ( val < 0 ) { damaged = 1; continue; }
+        if ( val < 0 )
+        {
+            damaged = 1;
+            continue;
+        }
         last = val;
         symbols++;
     }
@@ -1373,7 +1568,11 @@ static SCHEMA_UNUSED void graphdemo_table_json_base64_decode( graphdemo_table_js
 
 static SCHEMA_UNUSED int32_t graphdemo_table_json_encode_utf8( uint32_t code, char * unit )
 {
-    if ( code < 0x80 ) { unit[0] = (char) code; return 1; }
+    if ( code < 0x80 )
+    {
+        unit[0] = (char) code;
+        return 1;
+    }
     if ( code < 0x800 )
     {
         unit[0] = (char) ( 0xc0 | ( code >> 6 ) );
@@ -1405,42 +1604,90 @@ static SCHEMA_UNUSED int graphdemo_table_json_scan_unit( graphdemo_table_json_in
     int32_t unit_length = 0;
     *unit_length_out = 0;
     {
-        if ( in->pos >= in->size ) { in->bad = 1; return 0; }
+        if ( in->pos >= in->size )
+        {
+            in->bad = 1;
+            return 0;
+        }
         char c = in->text[in->pos];
-        if ( c == '"' ) { in->pos++; return 1; }
+        if ( c == '"' )
+        {
+            in->pos++;
+            return 1;
+        }
         if ( c == '\\' )
         {
             in->pos++;
-            if ( in->pos >= in->size ) { in->bad = 1; return 0; }
+            if ( in->pos >= in->size )
+            {
+                in->bad = 1;
+                return 0;
+            }
             char escape = in->text[in->pos++];
             switch ( escape )
             {
-                case '"':  unit[0] = '"';  unit_length = 1; break;
-                case '\\': unit[0] = '\\'; unit_length = 1; break;
-                case '/':  unit[0] = '/';  unit_length = 1; break;
-                case 'b':  unit[0] = '\b'; unit_length = 1; break;
-                case 'f':  unit[0] = '\f'; unit_length = 1; break;
-                case 'n':  unit[0] = '\n'; unit_length = 1; break;
-                case 'r':  unit[0] = '\r'; unit_length = 1; break;
-                case 't':  unit[0] = '\t'; unit_length = 1; break;
+                case '"':
+                    unit[0] = '"';
+                    unit_length = 1;
+                    break;
+                case '\\':
+                    unit[0] = '\\';
+                    unit_length = 1;
+                    break;
+                case '/':
+                    unit[0] = '/';
+                    unit_length = 1;
+                    break;
+                case 'b':
+                    unit[0] = '\b';
+                    unit_length = 1;
+                    break;
+                case 'f':
+                    unit[0] = '\f';
+                    unit_length = 1;
+                    break;
+                case 'n':
+                    unit[0] = '\n';
+                    unit_length = 1;
+                    break;
+                case 'r':
+                    unit[0] = '\r';
+                    unit_length = 1;
+                    break;
+                case 't':
+                    unit[0] = '\t';
+                    unit_length = 1;
+                    break;
                 case 'u':
                 {
                     int high = graphdemo_table_json_hex4( in );
-                    if ( high < 0 ) { in->bad = 1; return 0; }
+                    if ( high < 0 )
+                    {
+                        in->bad = 1;
+                        return 0;
+                    }
                     uint32_t code = (uint32_t) high;
                     if ( high >= 0xd800 && high <= 0xdbff )
                     {
                         int low = -1;
                         if ( in->pos + 2 <= in->size &&
-                             in->text[in->pos] == '\\' && in->text[in->pos + 1] == 'u' )
+                            in->text[in->pos] == '\\' && in->text[in->pos + 1] == 'u' )
                         {
                             in->pos += 2;
                             low = graphdemo_table_json_hex4( in );
                         }
-                        if ( low < 0xdc00 || low > 0xdfff ) { in->bad = 1; return 0; }
+                        if ( low < 0xdc00 || low > 0xdfff )
+                        {
+                            in->bad = 1;
+                            return 0;
+                        }
                         code = 0x10000 + ( ( (uint32_t) high - 0xd800 ) << 10 ) + ( (uint32_t) low - 0xdc00 );
                     }
-                    else if ( code >= 0xdc00 && code <= 0xdfff ) { in->bad = 1; return 0; }
+                    else if ( code >= 0xdc00 && code <= 0xdfff )
+                    {
+                        in->bad = 1;
+                        return 0;
+                    }
                     unit_length = graphdemo_table_json_encode_utf8( code, unit );
                     break;
                 }
@@ -1468,7 +1715,7 @@ static SCHEMA_UNUSED int graphdemo_table_json_scan_unit( graphdemo_table_json_in
             in->pos++;
             unit_length = 1;
             while ( unit_length < want && in->pos < in->size &&
-                    ( (unsigned char) in->text[in->pos] & 0xc0 ) == 0x80 )
+                ( (unsigned char) in->text[in->pos] & 0xc0 ) == 0x80 )
             {
                 unit[unit_length++] = in->text[in->pos++];
             }
@@ -1499,7 +1746,11 @@ static SCHEMA_UNUSED int graphdemo_table_json_scan_string_as( graphdemo_table_js
 {
     int32_t placed = 0;
     int out_of_range = 0;
-    if ( graphdemo_table_json_peek( in ) != '"' ) { in->bad = 1; return 0; }
+    if ( graphdemo_table_json_peek( in ) != '"' )
+    {
+        in->bad = 1;
+        return 0;
+    }
     in->pos++;
     for ( ;; )
     {
@@ -1507,8 +1758,20 @@ static SCHEMA_UNUSED int graphdemo_table_json_scan_string_as( graphdemo_table_js
         int32_t unit_length = 0;
         if ( !graphdemo_table_json_scan_unit( in, unit, &unit_length ) ) { return 0; }
         if ( unit_length == 0 ) { break; }
-        if ( text && unit[0] == 0 ) { in->bad = 1; return 0; } /* text_holds_zero (§16.3) */
-        if ( out == NULL ) { if ( placed > INT32_MAX - unit_length ) { in->bad = 1; return 0; } placed += unit_length; }
+        if ( text && unit[0] == 0 )
+        {
+            in->bad = 1;
+            return 0;
+        } /* text_holds_zero (§16.3) */
+        if ( out == NULL )
+        {
+            if ( placed > INT32_MAX - unit_length )
+            {
+                in->bad = 1;
+                return 0;
+            }
+            placed += unit_length;
+        }
         else
         {
             if ( !out_of_range && placed <= capacity - unit_length )
@@ -1522,7 +1785,7 @@ static SCHEMA_UNUSED int graphdemo_table_json_scan_string_as( graphdemo_table_js
             }
         }
     }
-    if ( out_of_range ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
+    if ( out_of_range ) { in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
     if ( length != NULL ) { *length = placed; }
     return 1;
 }
@@ -1618,7 +1881,11 @@ static SCHEMA_UNUSED int graphdemo_table_json_integer_token( const char * text, 
 {
     int64_t i = 0;
     int negative = 0;
-    if ( i < length && text[i] == '-' ) { negative = 1; i++; }
+    if ( i < length && text[i] == '-' )
+    {
+        negative = 1;
+        i++;
+    }
     if ( i >= length ) { return 0; }
     if ( text[i] == '0' ) { return !negative && i + 1 == length; }
     if ( text[i] < '1' || text[i] > '9' ) { return 0; }
@@ -1662,13 +1929,21 @@ static SCHEMA_UNUSED double graphdemo_table_json_token_double( const char * toke
         int sticky = 0;          /* a non-zero digit was dropped */
         int32_t kept = 0;
         int32_t n = 0;
-        if ( token[i] == '-' ) { work[n++] = '-'; i++; }
+        if ( token[i] == '-' )
+        {
+            work[n++] = '-';
+            i++;
+        }
         work[n++] = '0';
         work[n++] = point;
         for ( ; i < length && token[i] != 'e' && token[i] != 'E'; i++ )
         {
             const char c = token[i];
-            if ( c == '.' ) { fraction = 1; continue; }
+            if ( c == '.' )
+            {
+                fraction = 1;
+                continue;
+            }
             if ( !seen && c == '0' )
             {
                 if ( fraction ) { exponent--; }
@@ -1676,14 +1951,22 @@ static SCHEMA_UNUSED double graphdemo_table_json_token_double( const char * toke
             }
             seen = 1;
             if ( !fraction ) { exponent++; }
-            if ( kept < GRAPHDEMO_K_TABLE_JSON_MAX_NUMBER - 32 ) { work[n++] = c; kept++; }
+            if ( kept < GRAPHDEMO_K_TABLE_JSON_MAX_NUMBER - 32 )
+            {
+                work[n++] = c;
+                kept++;
+            }
             else if ( c != '0' ) { sticky = 1; }
         }
         if ( i < length )
         {
             int negative = 0;
             i++;
-            if ( token[i] == '-' || token[i] == '+' ) { negative = token[i] == '-'; i++; }
+            if ( token[i] == '-' || token[i] == '+' )
+            {
+                negative = token[i] == '-';
+                i++;
+            }
             for ( ; i < length; i++ )
             {
                 /* past this no document holds enough digits to bring the
@@ -1692,7 +1975,11 @@ static SCHEMA_UNUSED double graphdemo_table_json_token_double( const char * toke
             }
             exponent += negative ? -written : written;
         }
-        if ( !seen ) { work[n++] = '0'; exponent = 0; }
+        if ( !seen )
+        {
+            work[n++] = '0';
+            exponent = 0;
+        }
         if ( sticky ) { work[n++] = '1'; }
         /* ten to the 99999 overflows and ten to the -99999 underflows whatever
            seven hundred digits stand in front of it */
@@ -1721,26 +2008,46 @@ static SCHEMA_UNUSED int64_t graphdemo_table_json_token_integer( const char * to
     for ( ; i < length; i++ )
     {
         uint64_t digit = (uint64_t) ( token[i] - '0' );
-        if ( magnitude > ( UINT64_MAX - digit ) / 10 ) { over = 1; break; }
+        if ( magnitude > ( UINT64_MAX - digit ) / 10 )
+        {
+            over = 1;
+            break;
+        }
         magnitude = magnitude * 10 + digit;
     }
     if ( !is_signed )
     {
         /* -0 IS zero, and clamping it would report an event that did not
            happen; only a real negative magnitude is out of range here */
-        if ( negative ) { *saturated = magnitude != 0; return 0; }
-        if ( over ) { *saturated = 1; return (int64_t) UINT64_MAX; }
+        if ( negative )
+        {
+            *saturated = magnitude != 0;
+            return 0;
+        }
+        if ( over )
+        {
+            *saturated = 1;
+            return (int64_t) UINT64_MAX;
+        }
         *saturated = 0;
         return (int64_t) magnitude;
     }
     if ( negative )
     {
-        if ( over || magnitude > ( (uint64_t) 1 << 63 ) ) { *saturated = 1; return INT64_MIN; }
+        if ( over || magnitude > ( (uint64_t) 1 << 63 ) )
+        {
+            *saturated = 1;
+            return INT64_MIN;
+        }
         *saturated = 0;
         if ( magnitude == ( (uint64_t) 1 << 63 ) ) { return INT64_MIN; }
         return -(int64_t) magnitude;
     }
-    if ( over || magnitude > (uint64_t) INT64_MAX ) { *saturated = 1; return INT64_MAX; }
+    if ( over || magnitude > (uint64_t) INT64_MAX )
+    {
+        *saturated = 1;
+        return INT64_MAX;
+    }
     *saturated = 0;
     return (int64_t) magnitude;
 }
@@ -1750,9 +2057,19 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_pointer( graphdemo_table_json
 static SCHEMA_UNUSED int graphdemo_table_json_skipped_ampersand( graphdemo_table_json_in_t * in, const char * key );
 #else
 static SCHEMA_UNUSED int graphdemo_table_json_read_pointer( graphdemo_table_json_in_t * in, void * slot, const graphdemo_table_field_info_t * f, int32_t depth )
-{ (void)slot; (void)f; (void)depth; in->bad = 1; return 0; }
+{
+    (void) slot;
+    (void) f;
+    (void) depth;
+    in->bad = 1;
+    return 0;
+}
 static SCHEMA_UNUSED int graphdemo_table_json_skipped_ampersand( graphdemo_table_json_in_t * in, const char * key )
-{ (void)key; in->bad = 1; return 0; }
+{
+    (void) key;
+    in->bad = 1;
+    return 0;
+}
 #endif
 
 /* THE KEYS OF ONE OBJECT (docs/SPEC-TABLES.md §16.2): a repeated key refuses
@@ -1767,10 +2084,10 @@ static SCHEMA_UNUSED int graphdemo_table_json_skipped_ampersand( graphdemo_table
 #define GRAPHDEMO_K_TABLE_JSON_KEYS_LOCAL 64
 
 #ifndef schema_allocate
-#define schema_allocate(bytes) calloc(1,(size_t)(bytes))
+#define schema_allocate( bytes ) calloc( 1, (size_t) ( bytes ) )
 #endif
 #ifndef schema_release
-#define schema_release(pointer) free(pointer)
+#define schema_release( pointer ) free( pointer )
 #endif
 
 typedef struct graphdemo_table_json_key_t
@@ -1830,9 +2147,17 @@ static SCHEMA_UNUSED int graphdemo_table_json_keys_add( graphdemo_table_json_in_
         const int64_t capacity = keys->capacity * 2;
         graphdemo_table_json_key_t * grown;
         int64_t j;
-        if ( (uint64_t) capacity > SIZE_MAX / sizeof( graphdemo_table_json_key_t ) ) { in->bad = 1; return -1; }
+        if ( (uint64_t) capacity > SIZE_MAX / sizeof( graphdemo_table_json_key_t ) )
+        {
+            in->bad = 1;
+            return -1;
+        }
         grown = (graphdemo_table_json_key_t *) schema_allocate( capacity * (int64_t) sizeof( graphdemo_table_json_key_t ) );
-        if ( grown == NULL ) { in->bad = 1; return -1; }
+        if ( grown == NULL )
+        {
+            in->bad = 1;
+            return -1;
+        }
         memset( grown, 0, (size_t) capacity * sizeof( graphdemo_table_json_key_t ) );
         for ( j = 0; j < keys->capacity; j++ )
         {
@@ -1866,14 +2191,26 @@ static SCHEMA_UNUSED int graphdemo_table_json_skip_members( graphdemo_table_json
     uint64_t seen[64];
     int32_t seen_count = 0;
     int first = 1;
-    if ( depth > GRAPHDEMO_K_TABLE_JSON_MAX_DEPTH ) { in->bad = 1; return 0; }
+    if ( depth > GRAPHDEMO_K_TABLE_JSON_MAX_DEPTH )
+    {
+        in->bad = 1;
+        return 0;
+    }
     memset( seen, 0, sizeof( seen ) );
     in->pos++; /* the opening bracket */
     for ( ;; )
     {
         char c = graphdemo_table_json_peek( in );
-        if ( c == close ) { in->pos++; return 1; }
-        if ( c == 0 ) { in->bad = 1; return 0; }
+        if ( c == close )
+        {
+            in->pos++;
+            return 1;
+        }
+        if ( c == 0 )
+        {
+            in->bad = 1;
+            return 0;
+        }
         int consumed = 0;
         if ( close == '}' )
         {
@@ -1883,26 +2220,52 @@ static SCHEMA_UNUSED int graphdemo_table_json_skip_members( graphdemo_table_json
             int added;
             uint64_t hash = 1469598103934665603ULL;
             int32_t k;
-            if ( !graphdemo_table_json_scan_text(in,key,GRAPHDEMO_K_TABLE_JSON_MAX_KEY-1,&length) ) { return 0; }
+            if ( !graphdemo_table_json_scan_text( in, key, GRAPHDEMO_K_TABLE_JSON_MAX_KEY - 1, &length ) ) { return 0; }
             key[length] = 0;
             for ( k = 0; k < length; k++ ) { hash = ( hash ^ (uint64_t) (unsigned char) key[k] ) * 1099511628211ULL; }
             for ( k = 0; k < seen_count; k++ )
             {
-                if ( seen[k] == hash ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; in->bad = 1; return 0; }
+                if ( seen[k] == hash )
+                {
+                    in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                    in->bad = 1;
+                    return 0;
+                }
             }
             if ( seen_count < 64 ) { seen[seen_count++] = hash; }
-            if ( graphdemo_table_json_peek( in ) != ':' ) { in->bad = 1; return 0; }
+            if ( graphdemo_table_json_peek( in ) != ':' )
+            {
+                in->bad = 1;
+                return 0;
+            }
             in->pos++;
             added = graphdemo_table_json_keys_add( in, keys, quote, key, length );
             if ( added < 0 ) { return 0; }
-            if ( added == 0 ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
-            if ( key[0] == '&' && in->graph != NULL ) { if ( !first ) { in->bad = 1; return 0; } if ( !graphdemo_table_json_skipped_ampersand(in,key) ) { return 0; } consumed = 1; }
+            if ( added == 0 ) { in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
+            if ( key[0] == '&' && in->graph != NULL )
+            {
+                if ( !first )
+                {
+                    in->bad = 1;
+                    return 0;
+                }
+                if ( !graphdemo_table_json_skipped_ampersand( in, key ) ) { return 0; }
+                consumed = 1;
+            }
         }
         first = 0;
         if ( !consumed && !graphdemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
         c = graphdemo_table_json_peek( in );
-        if ( c == ',' ) { in->pos++; continue; }   /* a trailing comma is accepted */
-        if ( c == close ) { in->pos++; return 1; }
+        if ( c == ',' )
+        {
+            in->pos++;
+            continue;
+        }   /* a trailing comma is accepted */
+        if ( c == close )
+        {
+            in->pos++;
+            return 1;
+        }
         in->bad = 1;
         return 0;
     }
@@ -1925,14 +2288,15 @@ static SCHEMA_UNUSED int graphdemo_table_json_skip_value( graphdemo_table_json_i
     switch ( c )
     {
         case '{': return graphdemo_table_json_skip_container( in, '}', depth );
-        case '[': return graphdemo_table_json_skip_container( in, ']', depth );
-        /* a skipped string is held to the text rules of a placed value: a
+        case '[':
+            return graphdemo_table_json_skip_container( in, ']', depth );
+            /* a skipped string is held to the text rules of a placed value: a
            U+0000 refuses the read (§16.3), as text_holds_zero does at a field */
         case '"': return graphdemo_table_json_scan_text( in, NULL, 0, NULL );
         case 't': return graphdemo_table_json_literal( in, "true" );
         case 'f': return graphdemo_table_json_literal( in, "false" );
         case 'n': return graphdemo_table_json_literal( in, "null" );
-        case 0:   in->bad = 1; return 0;
+        case 0: in->bad = 1; return 0;
         default:
         {
             /* consumed, never converted: skipping needs no buffer, and this
@@ -1940,7 +2304,11 @@ static SCHEMA_UNUSED int graphdemo_table_json_skip_value( graphdemo_table_json_i
                the SAME production the value path scans, so an unknown key
                cannot smuggle past a number a named key would refuse. */
             int integral = 0;
-            if ( !graphdemo_table_json_walk_number( in, &integral ) ) { in->bad = 1; return 0; }
+            if ( !graphdemo_table_json_walk_number( in, &integral ) )
+            {
+                in->bad = 1;
+                return 0;
+            }
             return 1;
         }
     }
@@ -1992,7 +2360,11 @@ static SCHEMA_UNUSED graphdemo_table_json_integer_t graphdemo_table_json_interpr
         return out;
     }
     const double d = graphdemo_table_json_token_double( token, length, 0 );
-    if ( !graphdemo_table_json_finite( d ) ) { out.finite = 0; return out; }
+    if ( !graphdemo_table_json_finite( d ) )
+    {
+        out.finite = 0;
+        return out;
+    }
     out.negative = d < 0;
     const double whole = out.negative ? -d : d;
     // THE DOMAIN IS ESTABLISHED BEFORE THE CAST: a magnitude past what sixty-four
@@ -2005,7 +2377,11 @@ static SCHEMA_UNUSED graphdemo_table_json_integer_t graphdemo_table_json_interpr
         return out;
     }
     const uint64_t truncated = (uint64_t) whole;
-    if ( (double) truncated != whole ) { out.fractional = 1; return out; }
+    if ( (double) truncated != whole )
+    {
+        out.fractional = 1;
+        return out;
+    }
     out.magnitude = truncated;
     if ( out.magnitude == 0 ) { out.negative = 0; }
     return out;
@@ -2039,17 +2415,33 @@ static SCHEMA_UNUSED int64_t graphdemo_table_json_integer_in_domain( graphdemo_t
         if ( number.negative )
         {
             const uint64_t low = high + 1; // the floor's magnitude
-            if ( magnitude > low ) { magnitude = low; *moved = 1; }
+            if ( magnitude > low )
+            {
+                magnitude = low;
+                *moved = 1;
+            }
             return (int64_t) ( ~magnitude + 1 ); // two's complement, INT64_MIN included
         }
-        if ( magnitude > high ) { magnitude = high; *moved = 1; }
+        if ( magnitude > high )
+        {
+            magnitude = high;
+            *moved = 1;
+        }
         return (int64_t) magnitude;
     }
     // A NEGATIVE TOKEN IN AN UNSIGNED FIELD CLAMPS TO ZERO, and -0 is zero,
     // which is why the sign is dropped at a zero magnitude above
-    if ( number.negative ) { *moved = 1; return 0; }
+    if ( number.negative )
+    {
+        *moved = 1;
+        return 0;
+    }
     const uint64_t high = bytes >= 8 ? UINT64_MAX : ( ( (uint64_t) 1 << ( bytes * 8 ) ) - 1 );
-    if ( magnitude > high ) { magnitude = high; *moved = 1; }
+    if ( magnitude > high )
+    {
+        magnitude = high;
+        *moved = 1;
+    }
     return (int64_t) magnitude;
 }
 
@@ -2064,50 +2456,97 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_wide( graphdemo_table_json_in
        kind keeps its exact decimal spelling */
     if ( !graphdemo_table_json_kind_fixed( f->kind ) && !graphdemo_table_json_integer_token( token, length ) )
     {
-        in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
+        in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
         return 1;
     }
     if ( graphdemo_table_json_kind_fixed( f->kind ) )
     {
         int64_t k = 0;
         if ( k < length && token[k] == '-' ) { k++; }
-        if ( k >= length ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH; return 1; }
-        if ( token[k] == '0' ) { k++; if ( k < length && token[k] >= '0' && token[k] <= '9' ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH; return 1; } }
-        else if ( token[k] >= '1' && token[k] <= '9' ) { while ( k < length && token[k] >= '0' && token[k] <= '9' ) { k++; } }
-        else { in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH; return 1; }
+        if ( k >= length )
+        {
+            in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
+            return 1;
+        }
+        if ( token[k] == '0' )
+        {
+            k++;
+            if ( k < length && token[k] >= '0' && token[k] <= '9' )
+            {
+                in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                return 1;
+            }
+        }
+        else if ( token[k] >= '1' && token[k] <= '9' )
+        {
+            while ( k < length && token[k] >= '0' && token[k] <= '9' ) { k++; }
+        }
+        else
+        {
+            in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
+            return 1;
+        }
         if ( k < length && token[k] == '.' )
         {
             k++;
-            if ( k >= length || token[k] < '0' || token[k] > '9' ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH; return 1; }
+            if ( k >= length || token[k] < '0' || token[k] > '9' )
+            {
+                in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                return 1;
+            }
             while ( k < length && token[k] >= '0' && token[k] <= '9' ) { k++; }
         }
         if ( k < length && ( token[k] == 'e' || token[k] == 'E' ) )
         {
             k++;
             if ( k < length && ( token[k] == '-' || token[k] == '+' ) ) { k++; }
-            if ( k >= length || token[k] < '0' || token[k] > '9' ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH; return 1; }
+            if ( k >= length || token[k] < '0' || token[k] > '9' )
+            {
+                in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                return 1;
+            }
             while ( k < length && token[k] >= '0' && token[k] <= '9' ) { k++; }
         }
-        if ( k != length ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH; return 1; }
+        if ( k != length )
+        {
+            in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
+            return 1;
+        }
     }
-    if ( i < length && ( token[i] == '-' || token[i] == '+' ) ) { negative = token[i] == '-'; i++; }
+    if ( i < length && ( token[i] == '-' || token[i] == '+' ) )
+    {
+        negative = token[i] == '-';
+        i++;
+    }
     const char * int_digits = token + i;
     int64_t int_len = 0;
-    while ( i < length && token[i] >= '0' && token[i] <= '9' ) { int_len++; i++; }
+    while ( i < length && token[i] >= '0' && token[i] <= '9' )
+    {
+        int_len++;
+        i++;
+    }
     const char * frac_digits = token + i;
     int64_t frac_len = 0;
     if ( i < length && token[i] == '.' )
     {
         i++;
         frac_digits = token + i;
-        while ( i < length && token[i] >= '0' && token[i] <= '9' ) { frac_len++; i++; }
+        while ( i < length && token[i] >= '0' && token[i] <= '9' )
+        {
+            frac_len++;
+            i++;
+        }
     }
     int64_t exp = 0;
     if ( i < length && ( token[i] == 'e' || token[i] == 'E' ) )
     {
         i++;
         int exp_negative = 0;
-        if ( i < length && ( token[i] == '-' || token[i] == '+' ) ) { exp_negative = token[i] == '-'; i++; }
+        if ( i < length && ( token[i] == '-' || token[i] == '+' ) )
+        {
+            exp_negative = token[i] == '-';
+            i++;
+        }
         while ( i < length && token[i] >= '0' && token[i] <= '9' )
         {
             // held past any count of digits a document can put in front
@@ -2120,7 +2559,11 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_wide( graphdemo_table_json_in
     // zeros stripped. digit( k ) reads the k-th of the int and frac runs.
     int64_t start = 0, end = int_len + frac_len;
     int64_t point = int_len + exp;
-    while ( start < end && ( start < int_len ? int_digits[start] : frac_digits[start - int_len] ) == '0' ) { start++; point--; }
+    while ( start < end && ( start < int_len ? int_digits[start] : frac_digits[start - int_len] ) == '0' )
+    {
+        start++;
+        point--;
+    }
     while ( end > start && ( end - 1 < int_len ? int_digits[end - 1] : frac_digits[end - 1 - int_len] ) == '0' ) { end--; }
 
     graphdemo_table_json_wide_t raw = { 0, 0 };
@@ -2140,7 +2583,7 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_wide( graphdemo_table_json_in
     }
     else if ( point < -40 )
     {
-        in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH; // finer than any F can spell
+        in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH; // finer than any F can spell
         return 1;
     }
     else
@@ -2157,7 +2600,7 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_wide( graphdemo_table_json_in
         const int64_t fraction_digits = ( point < 0 ? -point : 0 ) + ( end - start - ( point > 0 ? point : 0 ) );
         if ( fraction_digits > frac || fraction_digits > (int64_t) sizeof( fd ) )
         {
-            in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
+            in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
             return 1;
         }
         for ( int64_t z = point; z < 0; z++ ) { fd[fn++] = 0; }
@@ -2182,7 +2625,7 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_wide( graphdemo_table_json_in
         {
             if ( fd[k] != 0 )
             {
-                in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
                 return 1;
             }
         }
@@ -2210,16 +2653,29 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_wide( graphdemo_table_json_in
         else
         {
             if ( saturated ) { raw = unsigned_max; }
-            if ( negative && !graphdemo_table_json_wide_zero( raw ) ) { raw.lo = 0; raw.hi = 0; saturated = 1; }
+            if ( negative && !graphdemo_table_json_wide_zero( raw ) )
+            {
+                raw.lo = 0;
+                raw.hi = 0;
+                saturated = 1;
+            }
         }
     }
-    if ( saturated ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
+    if ( saturated ) { in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
     if ( f->wide != NULL )
     {
         graphdemo_table_json_wide_t lo = { f->wide->lo[0], f->wide->lo[1] };
         graphdemo_table_json_wide_t hi = { f->wide->hi[0], f->wide->hi[1] };
-        if ( graphdemo_table_json_wide_compare( raw, lo, is_signed ) < 0 ) { raw = lo; in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
-        else if ( graphdemo_table_json_wide_compare( raw, hi, is_signed ) > 0 ) { raw = hi; in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
+        if ( graphdemo_table_json_wide_compare( raw, lo, is_signed ) < 0 )
+        {
+            raw = lo;
+            in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE;
+        }
+        else if ( graphdemo_table_json_wide_compare( raw, hi, is_signed ) > 0 )
+        {
+            raw = hi;
+            in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE;
+        }
     }
     graphdemo_table_json_wide_store( storage, f->elem_size, raw );
     return 1;
@@ -2229,9 +2685,9 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_wide( graphdemo_table_json_in
 /* place one scalar at one storage address */
 static SCHEMA_UNUSED int graphdemo_table_json_read_field( graphdemo_table_json_in_t * in, void * base, const graphdemo_table_field_info_t * f, int32_t depth );
 #ifdef SCHEMA_GRAPHDEMO_TABLE_SEQUENCE_RUNTIME
-static SCHEMA_UNUSED int graphdemo_table_json_read_list(graphdemo_table_json_in_t * in,void * storage,const graphdemo_table_field_info_t * f,int32_t depth);
+static SCHEMA_UNUSED int graphdemo_table_json_read_list( graphdemo_table_json_in_t * in, void * storage, const graphdemo_table_field_info_t * f, int32_t depth );
 #ifdef SCHEMA_GRAPHDEMO_TABLE_MAP_RUNTIME
-static SCHEMA_UNUSED int graphdemo_table_json_read_map(graphdemo_table_json_in_t * in,void * storage,const graphdemo_table_field_info_t * f,int32_t depth);
+static SCHEMA_UNUSED int graphdemo_table_json_read_map( graphdemo_table_json_in_t * in, void * storage, const graphdemo_table_field_info_t * f, int32_t depth );
 #endif
 #endif
 #ifdef SCHEMA_GRAPHDEMO_TABLE_UNBOUNDED_TEXT_RUNTIME
@@ -2251,8 +2707,17 @@ static SCHEMA_UNUSED int schema_graphdemo_table_json_timestamp_month_days_( int 
 {
     switch ( month )
     {
-        case 1: case 3: case 5: case 7: case 8: case 10: case 12: return 31;
-        case 4: case 6: case 9: case 11: return 30;
+        case 1:
+        case 3:
+        case 5:
+        case 7:
+        case 8:
+        case 10:
+        case 12: return 31;
+        case 4:
+        case 6:
+        case 9:
+        case 11: return 30;
         case 2: return schema_graphdemo_table_json_timestamp_leap_( year ) ? 29 : 28;
     }
     return 0;
@@ -2284,7 +2749,11 @@ static SCHEMA_UNUSED int schema_graphdemo_table_json_timestamp_parse_( graphdemo
     const int64_t min_nanos = 145224192LL;
     const int64_t max_nanos = 854775807LL;
     uint64_t total;
-    if ( graphdemo_table_json_peek( in ) != '"' ) { in->bad = 1; return 0; }
+    if ( graphdemo_table_json_peek( in ) != '"' )
+    {
+        in->bad = 1;
+        return 0;
+    }
     in->pos++;
     for ( ;; )
     {
@@ -2298,9 +2767,18 @@ static SCHEMA_UNUSED int schema_graphdemo_table_json_timestamp_parse_( graphdemo
         if ( phase == 0 )
         {
             const int digit = schema_graphdemo_table_json_timestamp_digit_( c );
-            if ( index == 4 || index == 7 ) { if ( c != '-' ) { return 0; } }
-            else if ( index == 10 ) { if ( c != 'T' && c != 't' ) { return 0; } }
-            else if ( index == 13 || index == 16 ) { if ( c != ':' ) { return 0; } }
+            if ( index == 4 || index == 7 )
+            {
+                if ( c != '-' ) { return 0; }
+            }
+            else if ( index == 10 )
+            {
+                if ( c != 'T' && c != 't' ) { return 0; }
+            }
+            else if ( index == 13 || index == 16 )
+            {
+                if ( c != ':' ) { return 0; }
+            }
             else
             {
                 if ( digit < 0 ) { return 0; }
@@ -2309,7 +2787,10 @@ static SCHEMA_UNUSED int schema_graphdemo_table_json_timestamp_parse_( graphdemo
                 else if ( index < 10 ) { day = day * 10 + digit; }
                 else if ( index < 13 ) { hour = hour * 10 + digit; }
                 else if ( index < 16 ) { minute = minute * 10 + digit; }
-                else { second = second * 10 + digit; }
+                else
+                {
+                    second = second * 10 + digit;
+                }
             }
             index++;
             if ( index == 19 ) { phase = 1; }
@@ -2317,9 +2798,22 @@ static SCHEMA_UNUSED int schema_graphdemo_table_json_timestamp_parse_( graphdemo
         }
         if ( phase == 1 )
         {
-            if ( c == '.' ) { phase = 2; continue; }
-            if ( c == 'Z' || c == 'z' ) { phase = 10; continue; }
-            if ( c == '+' || c == '-' ) { offset_sign = c == '-' ? -1 : 1; phase = 4; continue; }
+            if ( c == '.' )
+            {
+                phase = 2;
+                continue;
+            }
+            if ( c == 'Z' || c == 'z' )
+            {
+                phase = 10;
+                continue;
+            }
+            if ( c == '+' || c == '-' )
+            {
+                offset_sign = c == '-' ? -1 : 1;
+                phase = 4;
+                continue;
+            }
             return 0;
         }
         if ( phase == 2 )
@@ -2332,8 +2826,17 @@ static SCHEMA_UNUSED int schema_graphdemo_table_json_timestamp_parse_( graphdemo
                 continue;
             }
             if ( digits == 0 ) { return 0; }
-            if ( c == 'Z' || c == 'z' ) { phase = 10; continue; }
-            if ( c == '+' || c == '-' ) { offset_sign = c == '-' ? -1 : 1; phase = 4; continue; }
+            if ( c == 'Z' || c == 'z' )
+            {
+                phase = 10;
+                continue;
+            }
+            if ( c == '+' || c == '-' )
+            {
+                offset_sign = c == '-' ? -1 : 1;
+                phase = 4;
+                continue;
+            }
             return 0;
         }
         if ( phase == 4 )
@@ -2352,7 +2855,12 @@ static SCHEMA_UNUSED int schema_graphdemo_table_json_timestamp_parse_( graphdemo
             phase = 6;
             continue;
         }
-        if ( phase == 6 ) { if ( c != ':' ) { return 0; } phase = 7; continue; }
+        if ( phase == 6 )
+        {
+            if ( c != ':' ) { return 0; }
+            phase = 7;
+            continue;
+        }
         if ( phase == 7 )
         {
             const int digit = schema_graphdemo_table_json_timestamp_digit_( c );
@@ -2404,7 +2912,7 @@ static SCHEMA_UNUSED int schema_graphdemo_table_json_text_total_keep_( graphdemo
     *spent += schema_graphdemo_table_json_text_bytes_( p, 1, f );
     if ( *spent <= f->text_total ) { return 1; }
     f->table->reset( p );
-    in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE;
+    in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE;
     return 0;
 }
 
@@ -2417,8 +2925,12 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_scalar( graphdemo_table_json_
     if ( f->text_list != 0 ) { return schema_graphdemo_table_json_read_text_element_( in, storage, f, depth ); }
     if ( f->kind == 17 )
     {
-        if ( graphdemo_table_json_value_shape(in) == 'z' ) { graphdemo_table_json_set_raw(storage,f->elem_size,0); return graphdemo_table_json_literal(in,"null"); }
-        return graphdemo_table_json_read_pointer(in,storage,f,depth);
+        if ( graphdemo_table_json_value_shape( in ) == 'z' )
+        {
+            graphdemo_table_json_set_raw( storage, f->elem_size, 0 );
+            return graphdemo_table_json_literal( in, "null" );
+        }
+        return graphdemo_table_json_read_pointer( in, storage, f, depth );
     }
     if ( f->arms != NULL )
     {
@@ -2430,18 +2942,34 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_scalar( graphdemo_table_json_
         int64_t tag = 0;
         int64_t t;
         char c;
-        if ( graphdemo_table_json_peek( in ) != '{' ) { in->bad = 1; return 0; }
+        if ( graphdemo_table_json_peek( in ) != '{' )
+        {
+            in->bad = 1;
+            return 0;
+        }
         in->pos++;
         graphdemo_table_json_set_raw( (uint8_t *) storage + arms->tag_offset, arms->tag_size, 0 );
-        if ( graphdemo_table_json_peek( in ) == '}' ) { in->pos++; return 1; }
+        if ( graphdemo_table_json_peek( in ) == '}' )
+        {
+            in->pos++;
+            return 1;
+        }
         if ( !graphdemo_table_json_scan_text( in, key, GRAPHDEMO_K_TABLE_JSON_MAX_KEY - 1, &key_length ) ) { return 0; }
         key[key_length] = 0;
-        if ( graphdemo_table_json_peek( in ) != ':' ) { in->bad = 1; return 0; }
+        if ( graphdemo_table_json_peek( in ) != ':' )
+        {
+            in->bad = 1;
+            return 0;
+        }
         in->pos++;
         for ( t = 1; t <= f->enum_max; t++ )
         {
             const char * name = graphdemo_table_json_variant_name( f, (uint64_t) t );
-            if ( name != NULL && strcmp( name, key ) == 0 ) { tag = t; break; }
+            if ( name != NULL && strcmp( name, key ) == 0 )
+            {
+                tag = t;
+                break;
+            }
         }
         if ( tag == 0 )
         {
@@ -2452,24 +2980,39 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_scalar( graphdemo_table_json_
         {
             void * payload = (uint8_t *) storage + arms->arms[tag].offset;
             const graphdemo_table_field_info_t * arm = arms->arms[tag].field;
-            char want = arm != NULL ? graphdemo_table_json_shape( arm ) : (arms->arms[tag].table != NULL ? 'o' : 'z');
-            if ( !( arm != NULL ? graphdemo_table_json_shape_accepts( arm, graphdemo_table_json_value_shape( in ) ) : graphdemo_table_json_value_shape( in ) == want ) && !(arm != NULL && arm->kind == 17 && !arm->is_array && graphdemo_table_json_value_shape(in) == 'z') ) {
-                in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
-                if ( !graphdemo_table_json_skip_value( in, depth+1 ) ) { return 0; }
-            } else {
-                if ( arm != NULL ) {
+            char want = arm != NULL ? graphdemo_table_json_shape( arm ) : ( arms->arms[tag].table != NULL ? 'o' : 'z' );
+            if ( !( arm != NULL ? graphdemo_table_json_shape_accepts( arm, graphdemo_table_json_value_shape( in ) ) : graphdemo_table_json_value_shape( in ) == want ) && !( arm != NULL && arm->kind == 17 && !arm->is_array && graphdemo_table_json_value_shape( in ) == 'z' ) )
+            {
+                in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                if ( !graphdemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
+            }
+            else
+            {
+                if ( arm != NULL )
+                {
                     memset( payload, 0, arms->arms[tag].size );
-                    if ( !graphdemo_table_json_read_field( in, storage, arm, depth+1 ) ) { return 0; }
-                } else if ( arms->arms[tag].table != NULL ) {
+                    if ( !graphdemo_table_json_read_field( in, storage, arm, depth + 1 ) ) { return 0; }
+                }
+                else if ( arms->arms[tag].table != NULL )
+                {
                     arms->arms[tag].table->reset( payload );
-                    if ( !graphdemo_table_json_read_table( in, payload, arms->arms[tag].table, depth+1 ) ) { return 0; }
-                } else if ( !graphdemo_table_json_literal( in, "null" ) ) { return 0; }
-                graphdemo_table_json_set_raw( (uint8_t *)storage+arms->tag_offset, arms->tag_size, (uint64_t)tag );
+                    if ( !graphdemo_table_json_read_table( in, payload, arms->arms[tag].table, depth + 1 ) ) { return 0; }
+                }
+                else if ( !graphdemo_table_json_literal( in, "null" ) ) { return 0; }
+                graphdemo_table_json_set_raw( (uint8_t *) storage + arms->tag_offset, arms->tag_size, (uint64_t) tag );
             }
         }
         c = graphdemo_table_json_peek( in );
-        if ( c == ',' ) { in->pos++; c = graphdemo_table_json_peek( in ); }
-        if ( c == '}' ) { in->pos++; return 1; }
+        if ( c == ',' )
+        {
+            in->pos++;
+            c = graphdemo_table_json_peek( in );
+        }
+        if ( c == '}' )
+        {
+            in->pos++;
+            return 1;
+        }
         in->bad = 1; /* a second key: a one-of with two arms is not a value */
         return 0;
     }
@@ -2503,16 +3046,28 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_scalar( graphdemo_table_json_
     if ( graphdemo_table_json_is_flags( f ) )
     {
         uint64_t bits = 0;
-        if ( graphdemo_table_json_peek( in ) != '[' ) { in->bad = 1; return 0; }
+        if ( graphdemo_table_json_peek( in ) != '[' )
+        {
+            in->bad = 1;
+            return 0;
+        }
         in->pos++;
         for ( ;; )
         {
             char c = graphdemo_table_json_peek( in );
-            if ( c == ']' ) { in->pos++; break; }
-            if ( c == 0 ) { in->bad = 1; return 0; }
+            if ( c == ']' )
+            {
+                in->pos++;
+                break;
+            }
+            if ( c == 0 )
+            {
+                in->bad = 1;
+                return 0;
+            }
             if ( c != '"' )
             {
-                in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
                 if ( !graphdemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
             else
@@ -2530,7 +3085,7 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_scalar( graphdemo_table_json_
                     {
                         /* a known variant named twice is a repeated key, refused like one
                            (§16.2): a conforming writer writes each set bit's name once */
-                        if ( ( bits & ( (uint64_t) 1 << bit ) ) != 0 ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
+                        if ( ( bits & ( (uint64_t) 1 << bit ) ) != 0 ) { in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                         bits |= (uint64_t) 1 << bit;
                         found = 1;
                         break;
@@ -2539,8 +3094,16 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_scalar( graphdemo_table_json_
                 if ( !found ) { in->report->unknown++; }
             }
             c = graphdemo_table_json_peek( in );
-            if ( c == ',' ) { in->pos++; continue; }
-            if ( c == ']' ) { in->pos++; break; }
+            if ( c == ',' )
+            {
+                in->pos++;
+                continue;
+            }
+            if ( c == ']' )
+            {
+                in->pos++;
+                break;
+            }
             in->bad = 1;
             return 0;
         }
@@ -2550,7 +3113,12 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_scalar( graphdemo_table_json_
     if ( f->kind == 1 )
     {
         char c = graphdemo_table_json_peek( in );
-        if ( c == 't' ) { if ( !graphdemo_table_json_literal( in, "true" ) ) { return 0; } graphdemo_table_json_set_raw( storage, f->elem_size, 1 ); return 1; }
+        if ( c == 't' )
+        {
+            if ( !graphdemo_table_json_literal( in, "true" ) ) { return 0; }
+            graphdemo_table_json_set_raw( storage, f->elem_size, 1 );
+            return 1;
+        }
         if ( !graphdemo_table_json_literal( in, "false" ) ) { return 0; }
         graphdemo_table_json_set_raw( storage, f->elem_size, 0 );
         return 1;
@@ -2558,7 +3126,11 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_scalar( graphdemo_table_json_
     if ( f->kind == 36 )
     {
         int64_t nanos = 0;
-        if ( !schema_graphdemo_table_json_timestamp_parse_( in, &nanos ) ) { in->bad = 1; return 0; }
+        if ( !schema_graphdemo_table_json_timestamp_parse_( in, &nanos ) )
+        {
+            in->bad = 1;
+            return 0;
+        }
         graphdemo_table_json_set_raw( storage, f->elem_size, (uint64_t) nanos );
         return 1;
     }
@@ -2597,20 +3169,28 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_scalar( graphdemo_table_json_
            clean writes back. */
         if ( !graphdemo_table_json_finite( fvalue ) )
         {
-            in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
+            in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
             return 1;
         }
         if ( f->has_range )
         {
-            if ( fvalue < f->range_min ) { fvalue = f->range_min; in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
-            else if ( fvalue > f->range_max ) { fvalue = f->range_max; in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
+            if ( fvalue < f->range_min )
+            {
+                fvalue = f->range_min;
+                in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE;
+            }
+            else if ( fvalue > f->range_max )
+            {
+                fvalue = f->range_max;
+                in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE;
+            }
         }
         if ( single )
         {
             float narrow = (float) fvalue;
             if ( !graphdemo_table_json_finite( (double) narrow ) )
             {
-                in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
                 return 1;
             }
             memcpy( storage, &narrow, sizeof( narrow ) );
@@ -2626,17 +3206,17 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_scalar( graphdemo_table_json_
     // through a double and its range is tested on the exact value.
     if ( !graphdemo_table_json_integer_token( token, length ) )
     {
-        in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
+        in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
         return 1;
     }
     const int is_signed = f->kind >= 2 && f->kind <= 5;
     const graphdemo_table_json_integer_t number = graphdemo_table_json_interpret( token, length, 1 );
     if ( !number.finite )
     {
-        in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
+        in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
         return 1;
     }
-    if ( number.saturated ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE; } // past what sixty-four bits hold
+    if ( number.saturated ) { in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE; } // past what sixty-four bits hold
     // THE DECLARED RANGE FIRST, THEN THE STORAGE WIDTH, the wire's order (§4),
     // so a text and a wire loaded from the same data land the same instance.
     // A 64-bit integer's range is compared on the exact 128-bit lanes: a value
@@ -2647,8 +3227,16 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_scalar( graphdemo_table_json_
         graphdemo_table_json_wide_t lo = { f->wide->lo[0], f->wide->lo[1] };
         graphdemo_table_json_wide_t hi = { f->wide->hi[0], f->wide->hi[1] };
         if ( number.negative ) { v = graphdemo_table_json_wide_neg( v ); }
-        if ( graphdemo_table_json_wide_compare( v, lo, is_signed ) < 0 ) { v = lo; in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
-        else if ( graphdemo_table_json_wide_compare( v, hi, is_signed ) > 0 ) { v = hi; in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
+        if ( graphdemo_table_json_wide_compare( v, lo, is_signed ) < 0 )
+        {
+            v = lo;
+            in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE;
+        }
+        else if ( graphdemo_table_json_wide_compare( v, hi, is_signed ) > 0 )
+        {
+            v = hi;
+            in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE;
+        }
         graphdemo_table_json_set_raw( storage, f->elem_size, v.lo );
         return 1;
     }
@@ -2656,12 +3244,20 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_scalar( graphdemo_table_json_
     if ( f->has_range )
     {
         const double scale = number.negative ? -(double) number.magnitude : (double) number.magnitude;
-        if ( scale < f->range_min ) { bounded = graphdemo_table_json_integer_of( f->range_min ); in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
-        else if ( scale > f->range_max ) { bounded = graphdemo_table_json_integer_of( f->range_max ); in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
+        if ( scale < f->range_min )
+        {
+            bounded = graphdemo_table_json_integer_of( f->range_min );
+            in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE;
+        }
+        else if ( scale > f->range_max )
+        {
+            bounded = graphdemo_table_json_integer_of( f->range_max );
+            in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE;
+        }
     }
     int moved = 0;
     const int64_t value = graphdemo_table_json_integer_in_domain( bounded, is_signed, (int32_t) f->elem_size, &moved );
-    if ( moved ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
+    if ( moved ) { in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
     graphdemo_table_json_set_raw( storage, f->elem_size, (uint64_t) value );
     return 1;
 }
@@ -2670,9 +3266,9 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_field( graphdemo_table_json_i
 {
     uint8_t * storage = (uint8_t *) base + f->offset;
 #ifdef SCHEMA_GRAPHDEMO_TABLE_SEQUENCE_RUNTIME
-    if(f->sequence==1) { return graphdemo_table_json_read_list(in,storage,f,depth); }
+    if ( f->sequence == 1 ) { return graphdemo_table_json_read_list( in, storage, f, depth ); }
 #ifdef SCHEMA_GRAPHDEMO_TABLE_MAP_RUNTIME
-    if(f->sequence==2) { return graphdemo_table_json_read_map(in,storage,f,depth); }
+    if ( f->sequence == 2 ) { return graphdemo_table_json_read_map( in, storage, f, depth ); }
 #endif
 #endif
     if ( f->kind == 12 && f->text_list == 0 )
@@ -2700,14 +3296,14 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_field( graphdemo_table_json_i
         if ( scanned == 0 )
         {
             /* the field keeps its default and the event is counted */
-            in->report->refused=1, in->report->refuse_reason=reason;
+            in->report->refused = 1, in->report->refuse_reason = reason;
             return 1;
         }
         memset( storage, 0, (size_t) f->array_bound );
         graphdemo_table_json_base64_decode( in, mark, storage, f->array_bound );
         if ( length > f->array_bound )
         {
-            in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE;
+            in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE;
             length = f->array_bound;
         }
         graphdemo_table_json_set_count( base, f, (int32_t) length );
@@ -2720,13 +3316,20 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_field( graphdemo_table_json_i
            occurrence's slots standing */
         int32_t i;
         uint64_t seen[8];
-        if ( graphdemo_table_json_peek( in ) != '{' ) { in->bad = 1; return 0; }
+        if ( graphdemo_table_json_peek( in ) != '{' )
+        {
+            in->bad = 1;
+            return 0;
+        }
         in->pos++;
         for ( i = 0; i < f->array_bound; i++ )
         {
             void * slot = storage + (int64_t) i * f->elem_size;
             if ( f->kind == 13 ) { f->table->reset( slot ); }
-            else { memset( slot, 0, (size_t) f->elem_size ); }
+            else
+            {
+                memset( slot, 0, (size_t) f->elem_size );
+            }
         }
         /* A KEYED OBJECT'S KEYS ARE KEYS: a variant named twice is a repeated
            key like any other, last-wins and counted (§16.2). Tracked the way
@@ -2735,69 +3338,97 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_field( graphdemo_table_json_i
            being counted. */
         memset( seen, 0, sizeof( seen ) );
         {
-        uint64_t unplaced[64];
-        int32_t unplaced_count = 0;
-        memset( unplaced, 0, sizeof( unplaced ) );
-        for ( ;; )
-        {
-            char c = graphdemo_table_json_peek( in );
-            char key[GRAPHDEMO_K_TABLE_JSON_MAX_KEY];
-            int32_t key_length = 0;
-            int64_t slot = -1;
-            int64_t v;
-            if ( c == '}' ) { in->pos++; break; }
-            if ( c == 0 ) { in->bad = 1; return 0; }
-            if ( !graphdemo_table_json_scan_text( in, key, GRAPHDEMO_K_TABLE_JSON_MAX_KEY - 1, &key_length ) ) { return 0; }
-            key[key_length] = 0;
-            if ( graphdemo_table_json_peek( in ) != ':' ) { in->bad = 1; return 0; }
-            in->pos++;
-            for ( v = 0; v < f->array_bound; v++ )
+            uint64_t unplaced[64];
+            int32_t unplaced_count = 0;
+            memset( unplaced, 0, sizeof( unplaced ) );
+            for ( ;; )
             {
-                /* nothing is stored for None, so "None" finds no slot and is
+                char c = graphdemo_table_json_peek( in );
+                char key[GRAPHDEMO_K_TABLE_JSON_MAX_KEY];
+                int32_t key_length = 0;
+                int64_t slot = -1;
+                int64_t v;
+                if ( c == '}' )
+                {
+                    in->pos++;
+                    break;
+                }
+                if ( c == 0 )
+                {
+                    in->bad = 1;
+                    return 0;
+                }
+                if ( !graphdemo_table_json_scan_text( in, key, GRAPHDEMO_K_TABLE_JSON_MAX_KEY - 1, &key_length ) ) { return 0; }
+                key[key_length] = 0;
+                if ( graphdemo_table_json_peek( in ) != ':' )
+                {
+                    in->bad = 1;
+                    return 0;
+                }
+                in->pos++;
+                for ( v = 0; v < f->array_bound; v++ )
+                {
+                    /* nothing is stored for None, so "None" finds no slot and is
                    an unknown key like any other name this reader cannot place */
-                const char * name;
-                if ( !graphdemo_table_json_keyed_slot_valid( f, v ) ) { continue; }
-                name = graphdemo_table_json_key_name( f, graphdemo_table_json_keyed_slot_key( v ) );
-                if ( name != NULL && strcmp( name, key ) == 0 ) { slot = v; break; }
-            }
-            if ( slot >= 0 && slot < 512 )
-            {
-                uint64_t bit = (uint64_t) 1 << ( slot & 63 );
-                if ( ( seen[slot >> 6] & bit ) != 0 ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
-                seen[slot >> 6] |= bit;
-            }
-            if ( slot < 0 )
-            {
-                /* a key this reader cannot place is still a key: spelling
+                    const char * name;
+                    if ( !graphdemo_table_json_keyed_slot_valid( f, v ) ) { continue; }
+                    name = graphdemo_table_json_key_name( f, graphdemo_table_json_keyed_slot_key( v ) );
+                    if ( name != NULL && strcmp( name, key ) == 0 )
+                    {
+                        slot = v;
+                        break;
+                    }
+                }
+                if ( slot >= 0 && slot < 512 )
+                {
+                    uint64_t bit = (uint64_t) 1 << ( slot & 63 );
+                    if ( ( seen[slot >> 6] & bit ) != 0 ) { in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
+                    seen[slot >> 6] |= bit;
+                }
+                if ( slot < 0 )
+                {
+                    /* a key this reader cannot place is still a key: spelling
                    it twice is a repeated key, refused like a placed one.
                    Tracked by hash, bounded and allocation-free; past the
                    table its repeats stop being counted. */
-                uint64_t hash = 1469598103934665603ULL;
-                int32_t ki;
-                for ( ki = 0; ki < key_length; ki++ ) { hash = ( hash ^ (uint64_t) (unsigned char) key[ki] ) * 1099511628211ULL; }
-                for ( ki = 0; ki < unplaced_count; ki++ )
-                {
-                    if ( unplaced[ki] == hash ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
+                    uint64_t hash = 1469598103934665603ULL;
+                    int32_t ki;
+                    for ( ki = 0; ki < key_length; ki++ ) { hash = ( hash ^ (uint64_t) (unsigned char) key[ki] ) * 1099511628211ULL; }
+                    for ( ki = 0; ki < unplaced_count; ki++ )
+                    {
+                        if ( unplaced[ki] == hash )
+                        {
+                            in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                            break;
+                        }
+                    }
+                    if ( ki == unplaced_count && unplaced_count < 64 ) { unplaced[unplaced_count++] = hash; }
+                    in->report->unknown++;
+                    if ( !graphdemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
                 }
-                if ( ki == unplaced_count && unplaced_count < 64 ) { unplaced[unplaced_count++] = hash; }
-                in->report->unknown++;
-                if ( !graphdemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
-            }
-            else if ( !graphdemo_table_json_element_shape_accepts( f, graphdemo_table_json_value_shape( in ) ) && !(f->kind == 17 && graphdemo_table_json_value_shape(in) == 'z') )
-            {
-                in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
-                if ( !graphdemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
-            }
-            else if ( !graphdemo_table_json_read_scalar( in, storage + slot * f->elem_size, f, depth + 1 ) )
-            {
+                else if ( !graphdemo_table_json_element_shape_accepts( f, graphdemo_table_json_value_shape( in ) ) && !( f->kind == 17 && graphdemo_table_json_value_shape( in ) == 'z' ) )
+                {
+                    in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !graphdemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
+                }
+                else if ( !graphdemo_table_json_read_scalar( in, storage + slot * f->elem_size, f, depth + 1 ) )
+                {
+                    return 0;
+                }
+                c = graphdemo_table_json_peek( in );
+                if ( c == ',' )
+                {
+                    in->pos++;
+                    continue;
+                } /* a trailing comma is accepted */
+                if ( c == '}' )
+                {
+                    in->pos++;
+                    break;
+                }
+                in->bad = 1;
                 return 0;
             }
-            c = graphdemo_table_json_peek( in );
-            if ( c == ',' ) { in->pos++; continue; } /* a trailing comma is accepted */
-            if ( c == '}' ) { in->pos++; break; }
-            in->bad = 1;
-            return 0;
-        }
         }
         return 1;
     }
@@ -2810,7 +3441,11 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_field( graphdemo_table_json_i
            this occurrence's elements are placed — the re-establishment a nested
            table and a union arm already get. */
         int32_t placed = 0;
-        if ( graphdemo_table_json_peek( in ) != '[' ) { in->bad = 1; return 0; }
+        if ( graphdemo_table_json_peek( in ) != '[' )
+        {
+            in->bad = 1;
+            return 0;
+        }
         in->pos++;
         int64_t spent = 0;
         int full = 0;
@@ -2831,25 +3466,33 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_field( graphdemo_table_json_i
         for ( ;; )
         {
             char c = graphdemo_table_json_peek( in );
-            if ( c == ']' ) { in->pos++; break; }
-            if ( c == 0 ) { in->bad = 1; return 0; }
+            if ( c == ']' )
+            {
+                in->pos++;
+                break;
+            }
+            if ( c == 0 )
+            {
+                in->bad = 1;
+                return 0;
+            }
             if ( full )
             {
                 /* the total dropped this element; one past [..N] is counted
                    as well, as the wire counts its count clamp (§2.13) */
-                if ( ++seen > f->array_bound ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
+                if ( ++seen > f->array_bound ) { in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
                 if ( !graphdemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
             else if ( placed >= f->array_bound )
             {
                 /* more elements than the reader's bound: the bounded prefix
                    is kept and the excess counts, the wire's rule (§4) */
-                in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE;
+                in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE;
                 if ( !graphdemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
-            else if ( !graphdemo_table_json_element_shape_accepts( f, graphdemo_table_json_value_shape( in ) ) && !( ( f->kind == 17 || f->text_list == 2 ) && graphdemo_table_json_value_shape(in) == 'z') )
+            else if ( !graphdemo_table_json_element_shape_accepts( f, graphdemo_table_json_value_shape( in ) ) && !( ( f->kind == 17 || f->text_list == 2 ) && graphdemo_table_json_value_shape( in ) == 'z' ) )
             {
-                in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
                 if ( !graphdemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
                 placed++;
             }
@@ -2868,8 +3511,16 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_field( graphdemo_table_json_i
                 }
             }
             c = graphdemo_table_json_peek( in );
-            if ( c == ',' ) { in->pos++; continue; }
-            if ( c == ']' ) { in->pos++; break; }
+            if ( c == ',' )
+            {
+                in->pos++;
+                continue;
+            }
+            if ( c == ']' )
+            {
+                in->pos++;
+                break;
+            }
             in->bad = 1;
             return 0;
         }
@@ -2917,33 +3568,55 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_table_members( graphdemo_tabl
         int64_t quote = first_quote;
         int32_t index = -1;
         int32_t i;
-        if ( first_key != NULL ) { memcpy(key,first_key,(size_t)first_length); key[first_length] = 0; key_length = first_length; first_key = NULL; }
+        if ( first_key != NULL )
+        {
+            memcpy( key, first_key, (size_t) first_length );
+            key[first_length] = 0;
+            key_length = first_length;
+            first_key = NULL;
+        }
         else
         {
-            c = graphdemo_table_json_peek(in);
-            if ( c == '}' ) { in->pos++; return schema_graphdemo_table_json_require_seen_( in, base, info, seen ); }
-            if ( c == 0 ) { in->bad = 1; return 0; }
+            c = graphdemo_table_json_peek( in );
+            if ( c == '}' )
+            {
+                in->pos++;
+                return schema_graphdemo_table_json_require_seen_( in, base, info, seen );
+            }
+            if ( c == 0 )
+            {
+                in->bad = 1;
+                return 0;
+            }
             quote = in->pos;
-            if ( !graphdemo_table_json_scan_text(in,key,GRAPHDEMO_K_TABLE_JSON_MAX_KEY-1,&key_length) ) { return 0; }
+            if ( !graphdemo_table_json_scan_text( in, key, GRAPHDEMO_K_TABLE_JSON_MAX_KEY - 1, &key_length ) ) { return 0; }
             key[key_length] = 0;
-            if ( graphdemo_table_json_peek(in) != ':' ) { in->bad = 1; return 0; }
+            if ( graphdemo_table_json_peek( in ) != ':' )
+            {
+                in->bad = 1;
+                return 0;
+            }
             in->pos++;
         }
         {
             const int added = graphdemo_table_json_keys_add( in, keys, quote, key, key_length );
             if ( added < 0 ) { return 0; }
-            if ( added == 0 ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
+            if ( added == 0 ) { in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
         }
         for ( i = 0; i < info->num_fields; i++ )
         {
-            if ( strcmp( info->fields[i].json, key ) == 0 ) { index = i; break; }
+            if ( strcmp( info->fields[i].json, key ) == 0 )
+            {
+                index = i;
+                break;
+            }
         }
         if ( key[0] == '&' )
         {
             /* THE AMPERSAND PREFIX IS RESERVED TO THE FORM (docs/SPEC-TABLES.md
                16.7): never a field this build lacks, always a construct it
                cannot honor. MALFORMED and refused, never counted as unknown. */
-            in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
             in->bad = 1;
             return 0;
         }
@@ -2959,7 +3632,7 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_table_members( graphdemo_tabl
             if ( index < 512 )
             {
                 uint64_t bit = (uint64_t) 1 << ( index & 63 );
-                if ( ( seen[index >> 6] & bit ) != 0 ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
+                if ( ( seen[index >> 6] & bit ) != 0 ) { in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                 seen[index >> 6] |= bit;
             }
             /* PRESENCE OF THE KEY IS THE PRESENCE (§16.2): reaching this line
@@ -2976,15 +3649,18 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_table_members( graphdemo_tabl
                    ENTRY table its descriptor names (docs/SPEC-TABLES.md §2.8, §16.2). */
                 if ( f->sequence == 2 ) { memset( (uint8_t *) base + f->offset, 0, 16 ); }
                 else if ( f->table != NULL ) { f->table->reset( (uint8_t *) base + f->offset ); }
-                else { memset( (uint8_t *) base + f->offset, 0, (size_t) f->elem_size ); }
+                else
+                {
+                    memset( (uint8_t *) base + f->offset, 0, (size_t) f->elem_size );
+                }
                 graphdemo_table_json_set_raw( (uint8_t *) base + f->present_offset, 1, 0 );
             }
             else
             {
-                if ( !graphdemo_table_json_shape_accepts( f, got ) && !(f->kind == 17 && !f->is_array && got == 'z') )
+                if ( !graphdemo_table_json_shape_accepts( f, got ) && !( f->kind == 17 && !f->is_array && got == 'z' ) )
                 {
                     /* the wrong JSON type for the kind: skipped, never coerced */
-                    in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
                     if ( !graphdemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
                 }
                 else if ( !graphdemo_table_json_read_field( in, base, f, depth ) )
@@ -2998,8 +3674,16 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_table_members( graphdemo_tabl
             }
         }
         c = graphdemo_table_json_peek( in );
-        if ( c == ',' ) { in->pos++; continue; } /* a trailing comma is accepted */
-        if ( c == '}' ) { in->pos++; return schema_graphdemo_table_json_require_seen_( in, base, info, seen ); }
+        if ( c == ',' )
+        {
+            in->pos++;
+            continue;
+        } /* a trailing comma is accepted */
+        if ( c == '}' )
+        {
+            in->pos++;
+            return schema_graphdemo_table_json_require_seen_( in, base, info, seen );
+        }
         in->bad = 1;
         return 0;
     }
@@ -3021,15 +3705,27 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_table_keys( graphdemo_table_j
 
 static SCHEMA_UNUSED int graphdemo_table_json_read_table( graphdemo_table_json_in_t * in, void * base, const graphdemo_table_type_info_t * info, int32_t depth )
 {
-    if ( depth > GRAPHDEMO_K_TABLE_JSON_MAX_DEPTH ) { in->bad = 1; return 0; }
+    if ( depth > GRAPHDEMO_K_TABLE_JSON_MAX_DEPTH )
+    {
+        in->bad = 1;
+        return 0;
+    }
     if ( info->json_array && info->num_fields == 1 )
     {
-        if ( graphdemo_table_json_peek(in) != '[' ) { in->bad = 1; return 0; }
+        if ( graphdemo_table_json_peek( in ) != '[' )
+        {
+            in->bad = 1;
+            return 0;
+        }
         return graphdemo_table_json_read_field( in, base, &info->fields[0], depth );
     }
-    if ( graphdemo_table_json_peek(in) != '{' ) { in->bad = 1; return 0; }
+    if ( graphdemo_table_json_peek( in ) != '{' )
+    {
+        in->bad = 1;
+        return 0;
+    }
     in->pos++;
-    return graphdemo_table_json_read_table_keys(in,base,info,depth,NULL,0,-1);
+    return graphdemo_table_json_read_table_keys( in, base, info, depth, NULL, 0, -1 );
 }
 
 static SCHEMA_UNUSED int graphdemo_table_json_read( void * value, const graphdemo_table_type_info_t * info, const char * text, int64_t bytes, graphdemo_table_report_t * report )
@@ -3048,7 +3744,7 @@ static SCHEMA_UNUSED int graphdemo_table_json_read( void * value, const graphdem
     info->reset( value );
     if ( text == NULL || bytes < 0 )
     {
-        in.report->refused=1, in.report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+        in.report->refused = 1, in.report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
         return 0;
     }
     if ( bytes >= 3 && (uint8_t) text[0] == 0xEF && (uint8_t) text[1] == 0xBB && (uint8_t) text[2] == 0xBF ) { in.pos = 3; }
@@ -3061,7 +3757,7 @@ static SCHEMA_UNUSED int graphdemo_table_json_read( void * value, const graphdem
     }
     if ( in.bad || !ok )
     {
-        if ( in.bad || in.report->missing_required == missing_before ) { in.report->refused=1, in.report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
+        if ( in.bad || in.report->missing_required == missing_before ) { in.report->refused = 1, in.report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
         return 0;
     }
     return 1;
@@ -3112,10 +3808,11 @@ typedef struct graphdemo_table_json_graph_map_t
 
 static SCHEMA_UNUSED uint64_t graphdemo_table_json_graph_slot( const graphdemo_table_json_graph_map_t * map, uint64_t key )
 {
-    uint64_t hash = key * UINT64_C(0x9E3779B97F4A7C15);
+    uint64_t hash = key * UINT64_C( 0x9E3779B97F4A7C15 );
     uint64_t at;
-    hash ^= hash >> 29; at = hash & (map->capacity-1);
-    while ( map->entries[at].key != 0 && map->entries[at].key != key ) { at = (at+1) & (map->capacity-1); }
+    hash ^= hash >> 29;
+    at = hash & ( map->capacity - 1 );
+    while ( map->entries[at].key != 0 && map->entries[at].key != key ) { at = ( at + 1 ) & ( map->capacity - 1 ); }
     return at;
 }
 
@@ -3123,31 +3820,37 @@ static SCHEMA_UNUSED graphdemo_table_json_graph_entry_t * graphdemo_table_json_g
 {
     graphdemo_table_json_graph_entry_t * entry;
     if ( map->capacity == 0 ) { return NULL; }
-    entry = &map->entries[graphdemo_table_json_graph_slot(map,key)];
+    entry = &map->entries[graphdemo_table_json_graph_slot( map, key )];
     return entry->key == key ? entry : NULL;
 }
 
 static SCHEMA_UNUSED graphdemo_table_json_graph_entry_t * graphdemo_table_json_graph_reach( graphdemo_table_json_graph_map_t * map, uint64_t key, int * taken )
 {
     graphdemo_table_json_graph_entry_t * entry;
-    if ( map->capacity == 0 || map->count >= map->capacity - map->capacity/4 - 1 )
+    if ( map->capacity == 0 || map->count >= map->capacity - map->capacity / 4 - 1 )
     {
         graphdemo_table_json_graph_map_t grown;
         uint64_t i;
-        grown.capacity = map->capacity ? map->capacity*4 : 64;
-        if ( grown.capacity < map->capacity || grown.capacity > INT64_MAX / sizeof(graphdemo_table_json_graph_entry_t) ) { return NULL; }
-        grown.count = map->count; grown.allocator=map->allocator;
-        grown.entries = (graphdemo_table_json_graph_entry_t *)graphdemo_table_allocate(map->allocator,(int64_t)grown.capacity*sizeof(graphdemo_table_json_graph_entry_t));
+        grown.capacity = map->capacity ? map->capacity * 4 : 64;
+        if ( grown.capacity < map->capacity || grown.capacity > INT64_MAX / sizeof( graphdemo_table_json_graph_entry_t ) ) { return NULL; }
+        grown.count = map->count;
+        grown.allocator = map->allocator;
+        grown.entries = (graphdemo_table_json_graph_entry_t *) graphdemo_table_allocate( map->allocator, (int64_t) grown.capacity * sizeof( graphdemo_table_json_graph_entry_t ) );
         if ( grown.entries == NULL ) { return NULL; }
         for ( i = 0; i < map->capacity; i++ )
         {
-            if ( map->entries[i].key ) { grown.entries[graphdemo_table_json_graph_slot(&grown,map->entries[i].key)] = map->entries[i]; }
+            if ( map->entries[i].key ) { grown.entries[graphdemo_table_json_graph_slot( &grown, map->entries[i].key )] = map->entries[i]; }
         }
-        graphdemo_table_release(map->allocator,map->entries); *map = grown;
+        graphdemo_table_release( map->allocator, map->entries );
+        *map = grown;
     }
-    entry = &map->entries[graphdemo_table_json_graph_slot(map,key)];
+    entry = &map->entries[graphdemo_table_json_graph_slot( map, key )];
     *taken = entry->key != key;
-    if ( *taken ) { entry->key = key; map->count++; }
+    if ( *taken )
+    {
+        entry->key = key;
+        map->count++;
+    }
     return entry;
 }
 
@@ -3160,57 +3863,86 @@ typedef struct graphdemo_table_json_graph_in_t
 static SCHEMA_UNUSED int graphdemo_table_json_scan_label( graphdemo_table_json_in_t * in, uint64_t * label )
 {
     uint64_t value = 0;
-    graphdemo_table_json_space(in);
-    if ( in->pos >= in->size || in->text[in->pos] < '1' || in->text[in->pos] > '9' ) { in->bad = 1; return 0; }
+    graphdemo_table_json_space( in );
+    if ( in->pos >= in->size || in->text[in->pos] < '1' || in->text[in->pos] > '9' )
+    {
+        in->bad = 1;
+        return 0;
+    }
     while ( in->pos < in->size && in->text[in->pos] >= '0' && in->text[in->pos] <= '9' )
     {
-        uint64_t digit = (uint64_t)(in->text[in->pos]-'0');
-        if ( value > (UINT64_MAX-digit)/10 ) { in->bad = 1; return 0; }
-        value = value*10+digit; in->pos++;
+        uint64_t digit = (uint64_t) ( in->text[in->pos] - '0' );
+        if ( value > ( UINT64_MAX - digit ) / 10 )
+        {
+            in->bad = 1;
+            return 0;
+        }
+        value = value * 10 + digit;
+        in->pos++;
     }
-    *label = value; return 1;
+    *label = value;
+    return 1;
 }
 
 static SCHEMA_UNUSED void * graphdemo_table_json_emplace( graphdemo_table_json_graph_in_t * graph, void * slot, const graphdemo_table_type_info_t * type )
 {
-    uint32_t at = graphdemo_table_worker_bump(graph->worker,type->size);
+    uint32_t at = graphdemo_table_worker_bump( graph->worker, type->size );
     void * node;
     if ( at == GRAPHDEMO_K_TABLE_ALLOC_FAILED ) { return NULL; }
-    node = graphdemo_table_arena_at(graph->worker->arena,at);
-    type->reset(node); ((graphdemo_table_ref_t *)slot)->value = at; return node;
+    node = graphdemo_table_arena_at( graph->worker->arena, at );
+    type->reset( node );
+    ( (graphdemo_table_ref_t *) slot )->value = at;
+    return node;
 }
 
 static SCHEMA_UNUSED int graphdemo_table_json_read_blob( graphdemo_table_json_in_t * in, void * slot, const graphdemo_table_field_info_t * f )
 {
-    graphdemo_table_json_graph_in_t * graph=(graphdemo_table_json_graph_in_t *)in->graph;
-    graphdemo_table_ref_t * ref=(graphdemo_table_ref_t *)slot;
-    int64_t mark=0, length=0;
-    int reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OK, scanned;
+    graphdemo_table_json_graph_in_t * graph = (graphdemo_table_json_graph_in_t *) in->graph;
+    graphdemo_table_ref_t * ref = (graphdemo_table_ref_t *) slot;
+    int64_t mark = 0, length = 0;
+    int reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_OK, scanned;
     uint8_t * data;
-    if(graph==NULL || graphdemo_table_json_peek(in)!='"') { in->bad=1; return 0; }
-    ref->value=0;
-    if(strcmp(f->type_name,"string")==0)
+    if ( graph == NULL || graphdemo_table_json_peek( in ) != '"' )
     {
-        int32_t count=0, written=0;
-        char * text;
-        mark=in->pos;
-        if(!graphdemo_table_json_scan_text(in,NULL,0,&count)) { return 0; }
-        in->pos=mark; text=graphdemo_table_string_emplace(graph->worker,ref,NULL,count);
-        if(text==NULL) { in->bad=1; return 0; }
-        return graphdemo_table_json_scan_text(in,text,count,&written);
+        in->bad = 1;
+        return 0;
     }
-    scanned=graphdemo_table_json_base64_scan(in,&mark,&length,&reason);
-    if(scanned<0) { return 0; }
-    if(scanned==0) { in->report->refused=1, in->report->refuse_reason=reason; return 1; }
-    data=graphdemo_table_bytes_emplace(graph->worker,ref,length);
-    if(data==NULL) { in->bad=1; return 0; }
-    graphdemo_table_json_base64_decode(in,mark,data,length);
+    ref->value = 0;
+    if ( strcmp( f->type_name, "string" ) == 0 )
+    {
+        int32_t count = 0, written = 0;
+        char * text;
+        mark = in->pos;
+        if ( !graphdemo_table_json_scan_text( in, NULL, 0, &count ) ) { return 0; }
+        in->pos = mark;
+        text = graphdemo_table_string_emplace( graph->worker, ref, NULL, count );
+        if ( text == NULL )
+        {
+            in->bad = 1;
+            return 0;
+        }
+        return graphdemo_table_json_scan_text( in, text, count, &written );
+    }
+    scanned = graphdemo_table_json_base64_scan( in, &mark, &length, &reason );
+    if ( scanned < 0 ) { return 0; }
+    if ( scanned == 0 )
+    {
+        in->report->refused = 1, in->report->refuse_reason = reason;
+        return 1;
+    }
+    data = graphdemo_table_bytes_emplace( graph->worker, ref, length );
+    if ( data == NULL )
+    {
+        in->bad = 1;
+        return 0;
+    }
+    graphdemo_table_json_base64_decode( in, mark, data, length );
     return 1;
 }
 
 static SCHEMA_UNUSED int graphdemo_table_json_read_pointer( graphdemo_table_json_in_t * in, void * slot, const graphdemo_table_field_info_t * f, int32_t depth )
 {
-    graphdemo_table_json_graph_in_t * graph = (graphdemo_table_json_graph_in_t *)in->graph;
+    graphdemo_table_json_graph_in_t * graph = (graphdemo_table_json_graph_in_t *) in->graph;
     graphdemo_table_json_graph_entry_t * entry;
     char key[GRAPHDEMO_K_TABLE_JSON_MAX_KEY], c;
     int32_t length = 0;
@@ -3218,59 +3950,116 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_pointer( graphdemo_table_json
     uint64_t label = 0;
     int taken = 0, bare;
     void * node;
-    if(graph!=NULL && f->table==NULL) { return graphdemo_table_json_read_blob(in,slot,f); }
-    if ( graph == NULL || depth+1 > GRAPHDEMO_K_TABLE_JSON_MAX_DEPTH || graphdemo_table_json_peek(in) != '{' ) { in->bad = 1; return 0; }
-    in->pos++; c = graphdemo_table_json_peek(in);
+    if ( graph != NULL && f->table == NULL ) { return graphdemo_table_json_read_blob( in, slot, f ); }
+    if ( graph == NULL || depth + 1 > GRAPHDEMO_K_TABLE_JSON_MAX_DEPTH || graphdemo_table_json_peek( in ) != '{' )
+    {
+        in->bad = 1;
+        return 0;
+    }
+    in->pos++;
+    c = graphdemo_table_json_peek( in );
     if ( c == '}' )
     {
-        node = graphdemo_table_json_emplace(graph,slot,f->table);
-        if ( node == NULL ) { in->bad = 1; return 0; }
-        return graphdemo_table_json_read_table_keys(in,node,f->table,depth+1,NULL,0,-1);
+        node = graphdemo_table_json_emplace( graph, slot, f->table );
+        if ( node == NULL )
+        {
+            in->bad = 1;
+            return 0;
+        }
+        return graphdemo_table_json_read_table_keys( in, node, f->table, depth + 1, NULL, 0, -1 );
     }
     quote = in->pos;
-    if ( !graphdemo_table_json_scan_text(in,key,GRAPHDEMO_K_TABLE_JSON_MAX_KEY-1,&length) ) { return 0; }
+    if ( !graphdemo_table_json_scan_text( in, key, GRAPHDEMO_K_TABLE_JSON_MAX_KEY - 1, &length ) ) { return 0; }
     key[length] = 0;
-    if ( graphdemo_table_json_peek(in) != ':' ) { in->bad = 1; return 0; }
-    in->pos++;
-    if ( strcmp(key,"&node") != 0 )
+    if ( graphdemo_table_json_peek( in ) != ':' )
     {
-        node = graphdemo_table_json_emplace(graph,slot,f->table);
-        if ( node == NULL ) { in->bad = 1; return 0; }
-        return graphdemo_table_json_read_table_keys(in,node,f->table,depth+1,key,length,quote);
+        in->bad = 1;
+        return 0;
     }
-    if ( !graphdemo_table_json_scan_label(in,&label) ) { return 0; }
-    entry = graphdemo_table_json_graph_reach(&graph->labels,label,&taken);
-    if ( entry == NULL ) { in->bad = 1; return 0; }
-    c = graphdemo_table_json_peek(in);
-    if ( c == ',' ) { in->pos++; c = graphdemo_table_json_peek(in); }
+    in->pos++;
+    if ( strcmp( key, "&node" ) != 0 )
+    {
+        node = graphdemo_table_json_emplace( graph, slot, f->table );
+        if ( node == NULL )
+        {
+            in->bad = 1;
+            return 0;
+        }
+        return graphdemo_table_json_read_table_keys( in, node, f->table, depth + 1, key, length, quote );
+    }
+    if ( !graphdemo_table_json_scan_label( in, &label ) ) { return 0; }
+    entry = graphdemo_table_json_graph_reach( &graph->labels, label, &taken );
+    if ( entry == NULL )
+    {
+        in->bad = 1;
+        return 0;
+    }
+    c = graphdemo_table_json_peek( in );
+    if ( c == ',' )
+    {
+        in->pos++;
+        c = graphdemo_table_json_peek( in );
+    }
     bare = c == '}';
-    if ( bare == taken ) { in->bad = 1; return 0; }
+    if ( bare == taken )
+    {
+        in->bad = 1;
+        return 0;
+    }
     if ( bare )
     {
         in->pos++;
-        if ( entry->open ) { in->bad = 1; return 0; }
-        ((graphdemo_table_ref_t *)slot)->value = 0;
+        if ( entry->open )
+        {
+            in->bad = 1;
+            return 0;
+        }
+        ( (graphdemo_table_ref_t *) slot )->value = 0;
         if ( entry->type == NULL ) { return 1; }
-        if ( entry->type != f->table ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH; return 1; }
-        ((graphdemo_table_ref_t *)slot)->value = entry->node; return 1;
+        if ( entry->type != f->table )
+        {
+            in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
+            return 1;
+        }
+        ( (graphdemo_table_ref_t *) slot )->value = entry->node;
+        return 1;
     }
-    node = graphdemo_table_json_emplace(graph,slot,f->table);
-    if ( node == NULL ) { in->bad = 1; return 0; }
+    node = graphdemo_table_json_emplace( graph, slot, f->table );
+    if ( node == NULL )
+    {
+        in->bad = 1;
+        return 0;
+    }
     entry->open = 1;
-    if ( !graphdemo_table_json_read_table_keys(in,node,f->table,depth+1,NULL,0,-1) ) { return 0; }
-    entry = graphdemo_table_json_graph_find(&graph->labels,label);
-    if ( entry == NULL ) { in->bad = 1; return 0; }
-    entry->node = (uint32_t)((graphdemo_table_ref_t *)slot)->value; entry->type = f->table; entry->open = 0; return 1;
+    if ( !graphdemo_table_json_read_table_keys( in, node, f->table, depth + 1, NULL, 0, -1 ) ) { return 0; }
+    entry = graphdemo_table_json_graph_find( &graph->labels, label );
+    if ( entry == NULL )
+    {
+        in->bad = 1;
+        return 0;
+    }
+    entry->node = (uint32_t) ( (graphdemo_table_ref_t *) slot )->value;
+    entry->type = f->table;
+    entry->open = 0;
+    return 1;
 }
 
 static SCHEMA_UNUSED int graphdemo_table_json_skipped_ampersand( graphdemo_table_json_in_t * in, const char * key )
 {
-    graphdemo_table_json_graph_in_t * graph = (graphdemo_table_json_graph_in_t *)in->graph;
+    graphdemo_table_json_graph_in_t * graph = (graphdemo_table_json_graph_in_t *) in->graph;
     uint64_t label = 0;
     int taken = 0;
-    if ( graph == NULL || strcmp(key,"&node") != 0 ) { in->bad = 1; return 0; }
-    if ( !graphdemo_table_json_scan_label(in,&label) ) { return 0; }
-    if ( graphdemo_table_json_graph_reach(&graph->labels,label,&taken) == NULL ) { in->bad = 1; return 0; }
+    if ( graph == NULL || strcmp( key, "&node" ) != 0 )
+    {
+        in->bad = 1;
+        return 0;
+    }
+    if ( !graphdemo_table_json_scan_label( in, &label ) ) { return 0; }
+    if ( graphdemo_table_json_graph_reach( &graph->labels, label, &taken ) == NULL )
+    {
+        in->bad = 1;
+        return 0;
+    }
     return 1;
 }
 
@@ -3283,22 +4072,33 @@ typedef struct graphdemo_table_json_graph_out_t
 
 static SCHEMA_UNUSED int graphdemo_table_json_write_pointer( graphdemo_table_json_out_t * out, const void * slot, const graphdemo_table_field_info_t * f, int32_t depth )
 {
-    graphdemo_table_json_graph_out_t * graph = (graphdemo_table_json_graph_out_t *)out->graph;
-    const void * node = graphdemo_table_ref_at(NULL,(const graphdemo_table_ref_t *)slot);
+    graphdemo_table_json_graph_out_t * graph = (graphdemo_table_json_graph_out_t *) out->graph;
+    const void * node = graphdemo_table_ref_at( NULL, (const graphdemo_table_ref_t *) slot );
     graphdemo_table_json_graph_entry_t * entry;
     int taken = 0, any = 1;
     int64_t before;
     if ( graph == NULL ) { return 0; }
-    if ( node == NULL ) { graphdemo_table_json_raw(out,"null",4); return 1; }
-    entry = graphdemo_table_json_graph_reach(&graph->nodes,(uint64_t)(uintptr_t)node,&taken);
-    if ( entry == NULL ) { return 0; }
-    if(f->table==NULL)
+    if ( node == NULL )
     {
-        const graphdemo_table_blob_t * blob=(const graphdemo_table_blob_t *)node;
-        if(graph->counting) { entry->count++; return 1; }
-        if(entry->count>1 || blob->length>INT32_MAX) { return 0; }
-        if(strcmp(f->type_name,"string")==0) { graphdemo_table_json_write_string(out,(const char *)(blob+1),(int32_t)blob->length); }
-        else { graphdemo_table_json_write_base64(out,(const uint8_t *)(blob+1),(int32_t)blob->length); }
+        graphdemo_table_json_raw( out, "null", 4 );
+        return 1;
+    }
+    entry = graphdemo_table_json_graph_reach( &graph->nodes, (uint64_t) (uintptr_t) node, &taken );
+    if ( entry == NULL ) { return 0; }
+    if ( f->table == NULL )
+    {
+        const graphdemo_table_blob_t * blob = (const graphdemo_table_blob_t *) node;
+        if ( graph->counting )
+        {
+            entry->count++;
+            return 1;
+        }
+        if ( entry->count > 1 || blob->length > INT32_MAX ) { return 0; }
+        if ( strcmp( f->type_name, "string" ) == 0 ) { graphdemo_table_json_write_string( out, (const char *) ( blob + 1 ), (int32_t) blob->length ); }
+        else
+        {
+            graphdemo_table_json_write_base64( out, (const uint8_t *) ( blob + 1 ), (int32_t) blob->length );
+        }
         return 1;
     }
     if ( graph->counting )
@@ -3306,43 +4106,68 @@ static SCHEMA_UNUSED int graphdemo_table_json_write_pointer( graphdemo_table_jso
         entry->count++;
         if ( !taken ) { return entry->open == 0; }
         entry->open = 1;
-        if ( !graphdemo_table_json_write_value(out,node,f->table,depth) ) { return 0; }
-        entry = graphdemo_table_json_graph_find(&graph->nodes,(uint64_t)(uintptr_t)node);
+        if ( !graphdemo_table_json_write_value( out, node, f->table, depth ) ) { return 0; }
+        entry = graphdemo_table_json_graph_find( &graph->nodes, (uint64_t) (uintptr_t) node );
         if ( entry == NULL ) { return 0; }
-        entry->open = 0; return 1;
+        entry->open = 0;
+        return 1;
     }
-    if ( entry->count <= 1 ) { return graphdemo_table_json_write_value(out,node,f->table,depth); }
+    if ( entry->count <= 1 ) { return graphdemo_table_json_write_value( out, node, f->table, depth ); }
     if ( depth > GRAPHDEMO_K_TABLE_JSON_MAX_DEPTH ) { return 0; }
-    graphdemo_table_json_put(out,'{'); graphdemo_table_json_line(out,depth+1); graphdemo_table_json_raw(out,"\"&node\": ",9);
+    graphdemo_table_json_put( out, '{' );
+    graphdemo_table_json_line( out, depth + 1 );
+    graphdemo_table_json_raw( out, "\"&node\": ", 9 );
     if ( entry->label )
     {
-        graphdemo_table_json_write_unsigned(out,(uint64_t)entry->label);
-        graphdemo_table_json_line(out,depth); graphdemo_table_json_put(out,'}'); return 1;
+        graphdemo_table_json_write_unsigned( out, (uint64_t) entry->label );
+        graphdemo_table_json_line( out, depth );
+        graphdemo_table_json_put( out, '}' );
+        return 1;
     }
     entry->label = ++graph->next_label;
-    graphdemo_table_json_write_unsigned(out,(uint64_t)entry->label);
+    graphdemo_table_json_write_unsigned( out, (uint64_t) entry->label );
     before = out->offset;
-    if ( !graphdemo_table_json_write_fields(out,node,f->table,depth,&any) || out->offset == before ) { return 0; }
-    graphdemo_table_json_line(out,depth); graphdemo_table_json_put(out,'}'); return 1;
+    if ( !graphdemo_table_json_write_fields( out, node, f->table, depth, &any ) || out->offset == before ) { return 0; }
+    graphdemo_table_json_line( out, depth );
+    graphdemo_table_json_put( out, '}' );
+    return 1;
 }
 
 static SCHEMA_UNUSED int graphdemo_table_json_read_graph( graphdemo_table_worker_t * worker, void * root, const graphdemo_table_type_info_t * info, const char * text, int64_t bytes, graphdemo_table_report_t * report )
 {
     graphdemo_table_json_graph_in_t graph;
     graphdemo_table_json_in_t in;
-    graphdemo_table_report_t ignored = {0};
+    graphdemo_table_report_t ignored = { 0 };
     int ok;
-    memset(&graph,0,sizeof(graph)); graph.worker = worker; graph.labels.allocator=worker->arena!=NULL ? worker->arena->allocator : graphdemo_table_default_allocator();
-    memset(&in,0,sizeof(in)); in.text = text; in.size = bytes; in.report = report ? report : &ignored; in.graph = &graph;
-    if ( root == NULL || worker->arena == NULL || text == NULL || bytes < 0 ) { in.report->refused=1, in.report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
-    info->reset(root);
+    memset( &graph, 0, sizeof( graph ) );
+    graph.worker = worker;
+    graph.labels.allocator = worker->arena != NULL ? worker->arena->allocator : graphdemo_table_default_allocator();
+    memset( &in, 0, sizeof( in ) );
+    in.text = text;
+    in.size = bytes;
+    in.report = report ? report : &ignored;
+    in.graph = &graph;
+    if ( root == NULL || worker->arena == NULL || text == NULL || bytes < 0 )
+    {
+        in.report->refused = 1, in.report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+        return 0;
+    }
+    info->reset( root );
     if ( bytes >= 3 && (uint8_t) text[0] == 0xEF && (uint8_t) text[1] == 0xBB && (uint8_t) text[2] == 0xBF ) { in.pos = 3; }
     {
         int32_t missing_before = in.report->missing_required;
-        ok = graphdemo_table_json_read_table(&in,root,info,0);
-        if ( ok ) { graphdemo_table_json_space(&in); if ( in.pos != in.size ) { in.bad = 1; } }
-        graphdemo_table_release(graph.labels.allocator,graph.labels.entries);
-        if ( in.bad || !ok ) { if ( in.bad || in.report->missing_required == missing_before ) { in.report->refused=1, in.report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; } return 0; }
+        ok = graphdemo_table_json_read_table( &in, root, info, 0 );
+        if ( ok )
+        {
+            graphdemo_table_json_space( &in );
+            if ( in.pos != in.size ) { in.bad = 1; }
+        }
+        graphdemo_table_release( graph.labels.allocator, graph.labels.entries );
+        if ( in.bad || !ok )
+        {
+            if ( in.bad || in.report->missing_required == missing_before ) { in.report->refused = 1, in.report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
+            return 0;
+        }
     }
     return 1;
 }
@@ -3354,67 +4179,124 @@ static SCHEMA_UNUSED int64_t graphdemo_table_json_write_graph( const void * root
     graphdemo_table_json_graph_entry_t * entry;
     int taken = 0, ok;
     if ( root == NULL ) { return -1; }
-    memset(&graph,0,sizeof(graph)); graph.counting = 1; graph.nodes.allocator=allocator;
-    entry = graphdemo_table_json_graph_reach(&graph.nodes,(uint64_t)(uintptr_t)root,&taken);
+    memset( &graph, 0, sizeof( graph ) );
+    graph.counting = 1;
+    graph.nodes.allocator = allocator;
+    entry = graphdemo_table_json_graph_reach( &graph.nodes, (uint64_t) (uintptr_t) root, &taken );
     if ( entry == NULL ) { return -1; }
     entry->open = 1;
-    memset(&count,0,sizeof(count)); count.graph = &graph;
-    ok = graphdemo_table_json_write_value(&count,root,info,0);
+    memset( &count, 0, sizeof( count ) );
+    count.graph = &graph;
+    ok = graphdemo_table_json_write_value( &count, root, info, 0 );
     graph.counting = 0;
-    memset(&out,0,sizeof(out)); out.buffer = buffer; out.capacity = capacity; out.graph = &graph;
-    if ( ok ) { ok = graphdemo_table_json_write_value(&out,root,info,0); }
-    graphdemo_table_release(graph.nodes.allocator,graph.nodes.entries);
+    memset( &out, 0, sizeof( out ) );
+    out.buffer = buffer;
+    out.capacity = capacity;
+    out.graph = &graph;
+    if ( ok ) { ok = graphdemo_table_json_write_value( &out, root, info, 0 ); }
+    graphdemo_table_release( graph.nodes.allocator, graph.nodes.entries );
     if ( !ok ) { return -1; }
-    graphdemo_table_json_put(&out,'\n'); return out.overflow || out.invalid ? -1 : out.offset;
+    graphdemo_table_json_put( &out, '\n' );
+    return out.overflow || out.invalid ? -1 : out.offset;
 }
 /* ---- json graph walk: end ---- */
 
 #ifdef SCHEMA_GRAPHDEMO_TABLE_SEQUENCE_RUNTIME
-static SCHEMA_UNUSED int graphdemo_table_json_write_list(graphdemo_table_json_out_t * out,const void * storage,const graphdemo_table_field_info_t * f,int32_t depth)
+static SCHEMA_UNUSED int graphdemo_table_json_write_list( graphdemo_table_json_out_t * out, const void * storage, const graphdemo_table_field_info_t * f, int32_t depth )
 {
-    const TableSequence * list=(const TableSequence *)storage;
-    TableSequenceCursor cursor=table_sequence_cursor(NULL,list,f->elem_size); int32_t i;
-    if(!cursor.ok) { return 0; }
-    if(f->text_total>0 && list->count>0 && schema_graphdemo_table_json_text_bytes_(cursor.array,list->count,f)>f->text_total) { return 0; }
-    graphdemo_table_json_put(out,'[');
-    for(i=0;i<list->count;i++) {
-        const void * element=table_sequence_next(&cursor); if(element==NULL) { return 0; }
-        if(i) { graphdemo_table_json_put(out,','); } graphdemo_table_json_line(out,depth+1);
-        if(!graphdemo_table_json_write_scalar(out,element,f,depth+1)) { return 0; }
+    const TableSequence * list = (const TableSequence *) storage;
+    TableSequenceCursor cursor = table_sequence_cursor( NULL, list, f->elem_size );
+    int32_t i;
+    if ( !cursor.ok ) { return 0; }
+    if ( f->text_total > 0 && list->count > 0 && schema_graphdemo_table_json_text_bytes_( cursor.array, list->count, f ) > f->text_total ) { return 0; }
+    graphdemo_table_json_put( out, '[' );
+    for ( i = 0; i < list->count; i++ )
+    {
+        const void * element = table_sequence_next( &cursor );
+        if ( element == NULL ) { return 0; }
+        if ( i ) { graphdemo_table_json_put( out, ',' ); }
+        graphdemo_table_json_line( out, depth + 1 );
+        if ( !graphdemo_table_json_write_scalar( out, element, f, depth + 1 ) ) { return 0; }
     }
-    if(list->count) { graphdemo_table_json_line(out,depth); } graphdemo_table_json_put(out,']'); return 1;
+    if ( list->count ) { graphdemo_table_json_line( out, depth ); }
+    graphdemo_table_json_put( out, ']' );
+    return 1;
 }
-static SCHEMA_UNUSED int graphdemo_table_json_read_list(graphdemo_table_json_in_t * in,void * storage,const graphdemo_table_field_info_t * f,int32_t depth)
+static SCHEMA_UNUSED int graphdemo_table_json_read_list( graphdemo_table_json_in_t * in, void * storage, const graphdemo_table_field_info_t * f, int32_t depth )
 {
-    graphdemo_table_json_graph_in_t * graph=(graphdemo_table_json_graph_in_t *)in->graph;
-    TableSequence * list=(TableSequence *)storage;
-    int64_t spent=0; int full=0;
-    if(graph==NULL || graphdemo_table_json_peek(in)!='[') { in->bad=1; return 0; }
-    memset(list,0,sizeof(*list)); in->pos++;
-    for(;;) {
-        char c=graphdemo_table_json_peek(in); void * element;
-        if(c==']') { in->pos++; return 1; }
-        if(c==0) { in->bad=1; return 0; }
-        if(full) {
-            if(!graphdemo_table_json_skip_value(in,depth+1)) { return 0; }
-            c=graphdemo_table_json_peek(in);
-            if(c==',') { in->pos++; continue; }
-            if(c==']') { in->pos++; return 1; }
-            in->bad=1; return 0;
+    graphdemo_table_json_graph_in_t * graph = (graphdemo_table_json_graph_in_t *) in->graph;
+    TableSequence * list = (TableSequence *) storage;
+    int64_t spent = 0;
+    int full = 0;
+    if ( graph == NULL || graphdemo_table_json_peek( in ) != '[' )
+    {
+        in->bad = 1;
+        return 0;
+    }
+    memset( list, 0, sizeof( *list ) );
+    in->pos++;
+    for ( ;; )
+    {
+        char c = graphdemo_table_json_peek( in );
+        void * element;
+        if ( c == ']' )
+        {
+            in->pos++;
+            return 1;
         }
-        element=table_sequence_add(graph->worker,list,f->elem_size);
-        if(element==NULL) { in->bad=1; return 0; }
-        if(f->kind==13 || f->text_list!=0) { f->table->reset(element); }
-        if(!graphdemo_table_json_element_shape_accepts(f,graphdemo_table_json_value_shape(in)) && !((f->kind==17 || f->text_list==2) && graphdemo_table_json_value_shape(in)=='z')) {
-            in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH; if(!graphdemo_table_json_skip_value(in,depth+1)) { return 0; }
-        } else if(!graphdemo_table_json_read_scalar(in,element,f,depth+1)) { return 0; }
-        else if(f->text_total>0 && !schema_graphdemo_table_json_text_total_keep_(in,element,f,&spent)) {
-            full=1; table_sequence_erase(graph->worker->arena,list,element,f->elem_size);
+        if ( c == 0 )
+        {
+            in->bad = 1;
+            return 0;
         }
-        c=graphdemo_table_json_peek(in);
-        if(c==',') { in->pos++; continue; }
-        if(c==']') { in->pos++; return 1; }
-        in->bad=1; return 0;
+        if ( full )
+        {
+            if ( !graphdemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
+            c = graphdemo_table_json_peek( in );
+            if ( c == ',' )
+            {
+                in->pos++;
+                continue;
+            }
+            if ( c == ']' )
+            {
+                in->pos++;
+                return 1;
+            }
+            in->bad = 1;
+            return 0;
+        }
+        element = table_sequence_add( graph->worker, list, f->elem_size );
+        if ( element == NULL )
+        {
+            in->bad = 1;
+            return 0;
+        }
+        if ( f->kind == 13 || f->text_list != 0 ) { f->table->reset( element ); }
+        if ( !graphdemo_table_json_element_shape_accepts( f, graphdemo_table_json_value_shape( in ) ) && !( ( f->kind == 17 || f->text_list == 2 ) && graphdemo_table_json_value_shape( in ) == 'z' ) )
+        {
+            in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
+            if ( !graphdemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
+        }
+        else if ( !graphdemo_table_json_read_scalar( in, element, f, depth + 1 ) ) { return 0; }
+        else if ( f->text_total > 0 && !schema_graphdemo_table_json_text_total_keep_( in, element, f, &spent ) )
+        {
+            full = 1;
+            table_sequence_erase( graph->worker->arena, list, element, f->elem_size );
+        }
+        c = graphdemo_table_json_peek( in );
+        if ( c == ',' )
+        {
+            in->pos++;
+            continue;
+        }
+        if ( c == ']' )
+        {
+            in->pos++;
+            return 1;
+        }
+        in->bad = 1;
+        return 0;
     }
 }
 #endif
@@ -3429,24 +4311,40 @@ static SCHEMA_UNUSED graphdemo_table_json_integer_t graphdemo_table_json_interpr
     out.saturated = 0;
     out.finite = 1;
     int32_t i = 0;
-    if ( i < length && token[i] == '-' ) { out.negative = 1; i++; } // WalkNumber refuses a leading plus
+    if ( i < length && token[i] == '-' )
+    {
+        out.negative = 1;
+        i++;
+    } // WalkNumber refuses a leading plus
     const char * int_digits = token + i;
     int32_t int_len = 0;
-    while ( i < length && token[i] >= '0' && token[i] <= '9' ) { int_len++; i++; }
+    while ( i < length && token[i] >= '0' && token[i] <= '9' )
+    {
+        int_len++;
+        i++;
+    }
     const char * frac_digits = token + i;
     int32_t frac_len = 0;
     if ( i < length && token[i] == '.' )
     {
         i++;
         frac_digits = token + i;
-        while ( i < length && token[i] >= '0' && token[i] <= '9' ) { frac_len++; i++; }
+        while ( i < length && token[i] >= '0' && token[i] <= '9' )
+        {
+            frac_len++;
+            i++;
+        }
     }
     int64_t exp = 0;
     if ( i < length && ( token[i] == 'e' || token[i] == 'E' ) )
     {
         i++;
         int exp_negative = 0;
-        if ( i < length && ( token[i] == '-' || token[i] == '+' ) ) { exp_negative = token[i] == '-'; i++; }
+        if ( i < length && ( token[i] == '-' || token[i] == '+' ) )
+        {
+            exp_negative = token[i] == '-';
+            i++;
+        }
         while ( i < length && token[i] >= '0' && token[i] <= '9' )
         {
             if ( exp < 100000 ) { exp = exp * 10 + ( token[i] - '0' ); }
@@ -3457,144 +4355,325 @@ static SCHEMA_UNUSED graphdemo_table_json_integer_t graphdemo_table_json_interpr
     // leading and trailing zeros stripped, so the last digit kept is significant
     int32_t start = 0, end = int_len + frac_len;
     int64_t point = (int64_t) int_len + exp;
-    while ( start < end && ( start < int_len ? int_digits[start] : frac_digits[start - int_len] ) == '0' ) { start++; point--; }
+    while ( start < end && ( start < int_len ? int_digits[start] : frac_digits[start - int_len] ) == '0' )
+    {
+        start++;
+        point--;
+    }
     while ( end > start && ( end - 1 < int_len ? int_digits[end - 1] : frac_digits[end - 1 - int_len] ) == '0' ) { end--; }
     const int64_t digits = end - start;
-    if ( digits == 0 ) { out.negative = 0; return out; } // the value is zero, and -0 IS zero
-    if ( point < digits ) { out.fractional = 1; return out; } // a significant digit below the point
-    if ( point > 20 ) { out.magnitude = UINT64_MAX; out.saturated = 1; return out; }
+    if ( digits == 0 )
+    {
+        out.negative = 0;
+        return out;
+    } // the value is zero, and -0 IS zero
+    if ( point < digits )
+    {
+        out.fractional = 1;
+        return out;
+    } // a significant digit below the point
+    if ( point > 20 )
+    {
+        out.magnitude = UINT64_MAX;
+        out.saturated = 1;
+        return out;
+    }
     for ( int32_t k = start; k < end; k++ )
     {
         const uint64_t digit = (uint64_t) ( ( k < int_len ? int_digits[k] : frac_digits[k - int_len] ) - '0' );
-        if ( out.magnitude > ( UINT64_MAX - digit ) / 10 ) { out.magnitude = UINT64_MAX; out.saturated = 1; return out; }
+        if ( out.magnitude > ( UINT64_MAX - digit ) / 10 )
+        {
+            out.magnitude = UINT64_MAX;
+            out.saturated = 1;
+            return out;
+        }
         out.magnitude = out.magnitude * 10 + digit;
     }
     for ( int64_t k = digits; k < point; k++ ) // the point's own zeros, which no digit spells
     {
-        if ( out.magnitude > UINT64_MAX / 10 ) { out.magnitude = UINT64_MAX; out.saturated = 1; return out; }
+        if ( out.magnitude > UINT64_MAX / 10 )
+        {
+            out.magnitude = UINT64_MAX;
+            out.saturated = 1;
+            return out;
+        }
         out.magnitude *= 10;
     }
     return out;
 }
 
-static SCHEMA_UNUSED int graphdemo_table_json_write_map(graphdemo_table_json_out_t * out,const void * storage,const graphdemo_table_field_info_t * f,int32_t depth)
+static SCHEMA_UNUSED int graphdemo_table_json_write_map( graphdemo_table_json_out_t * out, const void * storage, const graphdemo_table_field_info_t * f, int32_t depth )
 {
-    const TableSequence * map=(const TableSequence *)storage;
-    TableSequenceCursor cursor=table_sequence_cursor(NULL,map,f->elem_size); int32_t i;
-    const graphdemo_table_field_info_t * key=&f->table->fields[0]; const graphdemo_table_field_info_t * value=&f->table->fields[1];
-    if(!cursor.ok) { return 0; } graphdemo_table_json_put(out,'{');
-    for(i=0;i<map->count;i++) {
-        const uint8_t * entry=(const uint8_t *)table_sequence_next(&cursor); if(entry==NULL) { return 0; }
-        if(i) { graphdemo_table_json_put(out,','); } graphdemo_table_json_line(out,depth+1);
-        if(key->kind==12) {
+    const TableSequence * map = (const TableSequence *) storage;
+    TableSequenceCursor cursor = table_sequence_cursor( NULL, map, f->elem_size );
+    int32_t i;
+    const graphdemo_table_field_info_t * key = &f->table->fields[0];
+    const graphdemo_table_field_info_t * value = &f->table->fields[1];
+    if ( !cursor.ok ) { return 0; }
+    graphdemo_table_json_put( out, '{' );
+    for ( i = 0; i < map->count; i++ )
+    {
+        const uint8_t * entry = (const uint8_t *) table_sequence_next( &cursor );
+        if ( entry == NULL ) { return 0; }
+        if ( i ) { graphdemo_table_json_put( out, ',' ); }
+        graphdemo_table_json_line( out, depth + 1 );
+        if ( key->kind == 12 )
+        {
 #ifdef SCHEMA_GRAPHDEMO_TABLE_UNBOUNDED_TEXT_RUNTIME
-            if(!key->counted) { if(!schema_graphdemo_table_json_write_unbounded_text_(out,entry+key->offset)) { return 0; } }
+            if ( !key->counted )
+            {
+                if ( !schema_graphdemo_table_json_write_unbounded_text_( out, entry + key->offset ) ) { return 0; }
+            }
             else
 #endif
-            { graphdemo_table_json_write_string(out,(const char *)entry+key->offset,graphdemo_table_json_count(entry,key)); }
-        }
-        else {
-            graphdemo_table_json_put(out,'"');
-            if(key->kind>=2 && key->kind<=5) { graphdemo_table_json_write_signed(out,graphdemo_table_json_get_signed(entry+key->offset,key->elem_size)); }
-            else { graphdemo_table_json_write_unsigned(out,graphdemo_table_json_get_raw(entry+key->offset,key->elem_size)); }
-            graphdemo_table_json_put(out,'"');
-        }
-        graphdemo_table_json_raw(out,": ",2); if(value->optional && !graphdemo_table_json_get_raw(entry+value->present_offset,1)) { graphdemo_table_json_raw(out,"null",4); } else if(!graphdemo_table_json_write_field(out,entry,value,depth+1)) { return 0; }
-    }
-    if(map->count) { graphdemo_table_json_line(out,depth); } graphdemo_table_json_put(out,'}'); return 1;
-}
-static SCHEMA_UNUSED int graphdemo_table_json_map_key_value(const char * token,int32_t length,const graphdemo_table_field_info_t * key,int64_t * value,int * fits)
-{
-    graphdemo_table_report_t scratch={0}; graphdemo_table_json_in_t probe; graphdemo_table_json_integer_t number; int integral=0,moved=0;
-    memset(&probe,0,sizeof(probe)); probe.text=token; probe.size=length; probe.report=&scratch; *fits=0;
-    graphdemo_table_json_space(&probe); if(probe.pos!=0 || !graphdemo_table_json_walk_number(&probe,&integral) || probe.pos!=length) { return 0; }
-    /* the KEY takes the integer-token spelling (§16.2): a fraction, an
-       exponent or -0 is the wrong shape, and the value is tested exactly */
-    if ( !graphdemo_table_json_integer_token(token,length) ) { return 1; }
-    number=graphdemo_table_json_interpret_exact(token,length); if(number.fractional || number.saturated) { return 1; }
-    *value=graphdemo_table_json_integer_in_domain(number,key->kind>=2 && key->kind<=5,(int32_t)key->elem_size,&moved); *fits=!moved; return 1;
-}
-static SCHEMA_UNUSED int graphdemo_table_json_read_map(graphdemo_table_json_in_t * in,void * storage,const graphdemo_table_field_info_t * f,int32_t depth)
-{
-    graphdemo_table_json_graph_in_t * graph=(graphdemo_table_json_graph_in_t *)in->graph; TableSequence * map=(TableSequence *)storage;
-    const graphdemo_table_field_info_t * key=&f->table->fields[0]; const graphdemo_table_field_info_t * value=&f->table->fields[1];
-    if(graph==NULL || graphdemo_table_json_peek(in)!='{' || depth+1>GRAPHDEMO_K_TABLE_JSON_MAX_DEPTH) { in->bad=1; return 0; }
-    memset(map,0,sizeof(*map)); in->pos++;
-    for(;;) {
-        char c=graphdemo_table_json_peek(in),token[GRAPHDEMO_K_TABLE_JSON_MAX_KEY]; int32_t length=0,before; int64_t number=0; int place=1; void * entry;
-        graphdemo_table_report_t scratch={0}; graphdemo_table_json_in_t scan=*in; scan.report=&scratch;
-        if(c=='}') { in->pos++; return 1; } if(c==0) { in->bad=1; return 0; }
-#ifdef SCHEMA_GRAPHDEMO_TABLE_UNBOUNDED_TEXT_RUNTIME
-        if(key->kind==12 && !key->counted) {
-            int64_t mark=in->pos; char * dyn=NULL; const char * kptr=token;
-            if(!graphdemo_table_json_scan_text(&scan,NULL,INT32_MAX,&length)) { in->pos=scan.pos; in->bad=1; return 0; }
-            if(length>=GRAPHDEMO_K_TABLE_JSON_MAX_KEY) {
-                dyn=(char *)graphdemo_table_allocate(graph->labels.allocator,(int64_t)length+1);
-                if(dyn==NULL) { in->bad=1; return 0; }
-                kptr=dyn;
+            {
+                graphdemo_table_json_write_string( out, (const char *) entry + key->offset, graphdemo_table_json_count( entry, key ) );
             }
-            scan=*in; scan.report=&scratch; scan.pos=mark;
-            if(!graphdemo_table_json_scan_text(&scan,(char *)kptr,length,&length)) { graphdemo_table_release(graph->labels.allocator,dyn); in->pos=scan.pos; in->bad=1; return 0; }
-            ((char *)kptr)[length]=0; in->pos=scan.pos;
-            if(graphdemo_table_json_peek(in)!=':') { graphdemo_table_release(graph->labels.allocator,dyn); in->bad=1; return 0; }
-            in->pos++;
-            before=map->count; entry=f->place(graph->worker,map,kptr,length,0);
-            graphdemo_table_release(graph->labels.allocator,dyn);
-            if(entry==NULL) { in->bad=1; return 0; }
-        } else
-#endif
+        }
+        else
         {
-            if(!graphdemo_table_json_scan_text(&scan,token,GRAPHDEMO_K_TABLE_JSON_MAX_KEY-1,&length)) { in->pos=scan.pos; in->bad=1; return 0; }
-            in->pos=scan.pos; token[length]=0;
-            if(graphdemo_table_json_peek(in)!=':') { in->bad=1; return 0; } in->pos++;
-            if(key->kind==12) {
-                if((scratch.refused && scratch.refuse_reason==SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE) || length>key->array_bound) { in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE; place=0; }
-            } else {
-                int fits=0;
-                if(scratch.refused) { in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH; place=0; }
-                else if(!graphdemo_table_json_map_key_value(token,length,key,&number,&fits)) { in->bad=1; return 0; }
-                else if(!fits) { in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH; place=0; }
+            graphdemo_table_json_put( out, '"' );
+            if ( key->kind >= 2 && key->kind <= 5 ) { graphdemo_table_json_write_signed( out, graphdemo_table_json_get_signed( entry + key->offset, key->elem_size ) ); }
+            else
+            {
+                graphdemo_table_json_write_unsigned( out, graphdemo_table_json_get_raw( entry + key->offset, key->elem_size ) );
             }
-            before=map->count; entry=place ? f->place(graph->worker,map,token,length,number) : NULL;
-            if(place && entry==NULL) { in->bad=1; return 0; }
+            graphdemo_table_json_put( out, '"' );
         }
-        if(entry!=NULL && map->count==before) { in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
-        c=graphdemo_table_json_value_shape(in);
-        if(entry==NULL) { if(!graphdemo_table_json_skip_value(in,depth+1)) { return 0; } }
-        else if(value->optional && c=='z') {
-            if(!graphdemo_table_json_literal(in,"null")) { return 0; }
-        } else {
-            if(!graphdemo_table_json_shape_accepts(value,c) && !(value->kind==17 && !value->is_array && c=='z')) {
-                in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH; if(!graphdemo_table_json_skip_value(in,depth+1)) { return 0; }
-            } else if(!graphdemo_table_json_read_field(in,entry,value,depth+1)) { return 0; }
-            if(value->optional) { graphdemo_table_json_set_raw((uint8_t *)entry+value->present_offset,1,1); }
-        }
-        c=graphdemo_table_json_peek(in); if(c==',') { in->pos++; continue; } if(c=='}') { in->pos++; return 1; }
-        in->bad=1; return 0;
+        graphdemo_table_json_raw( out, ": ", 2 );
+        if ( value->optional && !graphdemo_table_json_get_raw( entry + value->present_offset, 1 ) ) { graphdemo_table_json_raw( out, "null", 4 ); }
+        else if ( !graphdemo_table_json_write_field( out, entry, value, depth + 1 ) ) { return 0; }
     }
-}
-#endif
-#ifdef SCHEMA_GRAPHDEMO_TABLE_UNBOUNDED_TEXT_RUNTIME
-static SCHEMA_UNUSED int schema_graphdemo_table_json_write_unbounded_text_(graphdemo_table_json_out_t * out,const void * slot)
-{
-    int32_t len=0; const char * text=schema_graphdemo_table_text_at_(NULL,(const graphdemo_table_ref_t *)slot,&len);
-    if(len<0) { return 0; }
-    graphdemo_table_json_write_string(out,text,len);
+    if ( map->count ) { graphdemo_table_json_line( out, depth ); }
+    graphdemo_table_json_put( out, '}' );
     return 1;
 }
-static SCHEMA_UNUSED int schema_graphdemo_table_json_read_unbounded_text_(graphdemo_table_json_in_t * in,void * slot)
+static SCHEMA_UNUSED int graphdemo_table_json_map_key_value( const char * token, int32_t length, const graphdemo_table_field_info_t * key, int64_t * value, int * fits )
 {
-    graphdemo_table_json_graph_in_t * graph=(graphdemo_table_json_graph_in_t *)in->graph;
-    graphdemo_table_ref_t * ref=(graphdemo_table_ref_t *)slot;
-    int64_t mark; int32_t count=0,written=0; char * text;
-    if(graph==NULL || graphdemo_table_json_peek(in)!='"') { in->bad=1; return 0; }
-    ref->value=0; mark=in->pos;
-    if(!graphdemo_table_json_scan_text(in,NULL,INT32_MAX,&count)) { return 0; }
-    in->pos=mark;
-    if(count==0) { return graphdemo_table_json_scan_text(in,NULL,0,&written); }
-    text=graphdemo_table_string_emplace(graph->worker,ref,NULL,count);
-    if(text==NULL) { in->bad=1; return 0; }
-    return graphdemo_table_json_scan_text(in,text,count,&written);
+    graphdemo_table_report_t scratch = { 0 };
+    graphdemo_table_json_in_t probe;
+    graphdemo_table_json_integer_t number;
+    int integral = 0, moved = 0;
+    memset( &probe, 0, sizeof( probe ) );
+    probe.text = token;
+    probe.size = length;
+    probe.report = &scratch;
+    *fits = 0;
+    graphdemo_table_json_space( &probe );
+    if ( probe.pos != 0 || !graphdemo_table_json_walk_number( &probe, &integral ) || probe.pos != length ) { return 0; }
+    /* the KEY takes the integer-token spelling (§16.2): a fraction, an
+       exponent or -0 is the wrong shape, and the value is tested exactly */
+    if ( !graphdemo_table_json_integer_token( token, length ) ) { return 1; }
+    number = graphdemo_table_json_interpret_exact( token, length );
+    if ( number.fractional || number.saturated ) { return 1; }
+    *value = graphdemo_table_json_integer_in_domain( number, key->kind >= 2 && key->kind <= 5, (int32_t) key->elem_size, &moved );
+    *fits = !moved;
+    return 1;
+}
+static SCHEMA_UNUSED int graphdemo_table_json_read_map( graphdemo_table_json_in_t * in, void * storage, const graphdemo_table_field_info_t * f, int32_t depth )
+{
+    graphdemo_table_json_graph_in_t * graph = (graphdemo_table_json_graph_in_t *) in->graph;
+    TableSequence * map = (TableSequence *) storage;
+    const graphdemo_table_field_info_t * key = &f->table->fields[0];
+    const graphdemo_table_field_info_t * value = &f->table->fields[1];
+    if ( graph == NULL || graphdemo_table_json_peek( in ) != '{' || depth + 1 > GRAPHDEMO_K_TABLE_JSON_MAX_DEPTH )
+    {
+        in->bad = 1;
+        return 0;
+    }
+    memset( map, 0, sizeof( *map ) );
+    in->pos++;
+    for ( ;; )
+    {
+        char c = graphdemo_table_json_peek( in ), token[GRAPHDEMO_K_TABLE_JSON_MAX_KEY];
+        int32_t length = 0, before;
+        int64_t number = 0;
+        int place = 1;
+        void * entry;
+        graphdemo_table_report_t scratch = { 0 };
+        graphdemo_table_json_in_t scan = *in;
+        scan.report = &scratch;
+        if ( c == '}' )
+        {
+            in->pos++;
+            return 1;
+        }
+        if ( c == 0 )
+        {
+            in->bad = 1;
+            return 0;
+        }
+#ifdef SCHEMA_GRAPHDEMO_TABLE_UNBOUNDED_TEXT_RUNTIME
+        if ( key->kind == 12 && !key->counted )
+        {
+            int64_t mark = in->pos;
+            char * dyn = NULL;
+            const char * kptr = token;
+            if ( !graphdemo_table_json_scan_text( &scan, NULL, INT32_MAX, &length ) )
+            {
+                in->pos = scan.pos;
+                in->bad = 1;
+                return 0;
+            }
+            if ( length >= GRAPHDEMO_K_TABLE_JSON_MAX_KEY )
+            {
+                dyn = (char *) graphdemo_table_allocate( graph->labels.allocator, (int64_t) length + 1 );
+                if ( dyn == NULL )
+                {
+                    in->bad = 1;
+                    return 0;
+                }
+                kptr = dyn;
+            }
+            scan = *in;
+            scan.report = &scratch;
+            scan.pos = mark;
+            if ( !graphdemo_table_json_scan_text( &scan, (char *) kptr, length, &length ) )
+            {
+                graphdemo_table_release( graph->labels.allocator, dyn );
+                in->pos = scan.pos;
+                in->bad = 1;
+                return 0;
+            }
+            ( (char *) kptr )[length] = 0;
+            in->pos = scan.pos;
+            if ( graphdemo_table_json_peek( in ) != ':' )
+            {
+                graphdemo_table_release( graph->labels.allocator, dyn );
+                in->bad = 1;
+                return 0;
+            }
+            in->pos++;
+            before = map->count;
+            entry = f->place( graph->worker, map, kptr, length, 0 );
+            graphdemo_table_release( graph->labels.allocator, dyn );
+            if ( entry == NULL )
+            {
+                in->bad = 1;
+                return 0;
+            }
+        }
+        else
+#endif
+        {
+            if ( !graphdemo_table_json_scan_text( &scan, token, GRAPHDEMO_K_TABLE_JSON_MAX_KEY - 1, &length ) )
+            {
+                in->pos = scan.pos;
+                in->bad = 1;
+                return 0;
+            }
+            in->pos = scan.pos;
+            token[length] = 0;
+            if ( graphdemo_table_json_peek( in ) != ':' )
+            {
+                in->bad = 1;
+                return 0;
+            }
+            in->pos++;
+            if ( key->kind == 12 )
+            {
+                if ( ( scratch.refused && scratch.refuse_reason == SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE ) || length > key->array_bound )
+                {
+                    in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE;
+                    place = 0;
+                }
+            }
+            else
+            {
+                int fits = 0;
+                if ( scratch.refused )
+                {
+                    in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    place = 0;
+                }
+                else if ( !graphdemo_table_json_map_key_value( token, length, key, &number, &fits ) )
+                {
+                    in->bad = 1;
+                    return 0;
+                }
+                else if ( !fits )
+                {
+                    in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    place = 0;
+                }
+            }
+            before = map->count;
+            entry = place ? f->place( graph->worker, map, token, length, number ) : NULL;
+            if ( place && entry == NULL )
+            {
+                in->bad = 1;
+                return 0;
+            }
+        }
+        if ( entry != NULL && map->count == before ) { in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
+        c = graphdemo_table_json_value_shape( in );
+        if ( entry == NULL )
+        {
+            if ( !graphdemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
+        }
+        else if ( value->optional && c == 'z' )
+        {
+            if ( !graphdemo_table_json_literal( in, "null" ) ) { return 0; }
+        }
+        else
+        {
+            if ( !graphdemo_table_json_shape_accepts( value, c ) && !( value->kind == 17 && !value->is_array && c == 'z' ) )
+            {
+                in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                if ( !graphdemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
+            }
+            else if ( !graphdemo_table_json_read_field( in, entry, value, depth + 1 ) ) { return 0; }
+            if ( value->optional ) { graphdemo_table_json_set_raw( (uint8_t *) entry + value->present_offset, 1, 1 ); }
+        }
+        c = graphdemo_table_json_peek( in );
+        if ( c == ',' )
+        {
+            in->pos++;
+            continue;
+        }
+        if ( c == '}' )
+        {
+            in->pos++;
+            return 1;
+        }
+        in->bad = 1;
+        return 0;
+    }
+}
+#endif
+#ifdef SCHEMA_GRAPHDEMO_TABLE_UNBOUNDED_TEXT_RUNTIME
+static SCHEMA_UNUSED int schema_graphdemo_table_json_write_unbounded_text_( graphdemo_table_json_out_t * out, const void * slot )
+{
+    int32_t len = 0;
+    const char * text = schema_graphdemo_table_text_at_( NULL, (const graphdemo_table_ref_t *) slot, &len );
+    if ( len < 0 ) { return 0; }
+    graphdemo_table_json_write_string( out, text, len );
+    return 1;
+}
+static SCHEMA_UNUSED int schema_graphdemo_table_json_read_unbounded_text_( graphdemo_table_json_in_t * in, void * slot )
+{
+    graphdemo_table_json_graph_in_t * graph = (graphdemo_table_json_graph_in_t *) in->graph;
+    graphdemo_table_ref_t * ref = (graphdemo_table_ref_t *) slot;
+    int64_t mark;
+    int32_t count = 0, written = 0;
+    char * text;
+    if ( graph == NULL || graphdemo_table_json_peek( in ) != '"' )
+    {
+        in->bad = 1;
+        return 0;
+    }
+    ref->value = 0;
+    mark = in->pos;
+    if ( !graphdemo_table_json_scan_text( in, NULL, INT32_MAX, &count ) ) { return 0; }
+    in->pos = mark;
+    if ( count == 0 ) { return graphdemo_table_json_scan_text( in, NULL, 0, &written ); }
+    text = graphdemo_table_string_emplace( graph->worker, ref, NULL, count );
+    if ( text == NULL )
+    {
+        in->bad = 1;
+        return 0;
+    }
+    return graphdemo_table_json_scan_text( in, text, count, &written );
 }
 #endif
 static const graphdemo_table_field_info_t schema_graphdemo_meta_fields_[] = {
@@ -3695,61 +4774,60 @@ int64_t schema_graphdemo_settings_to_json_( const graphdemo_settings_t * value, 
 
 int schema_graphdemo_list_node_from_json_( graphdemo_list_node_builder_t * builder, const char * text, int64_t bytes, graphdemo_table_report_t * report )
 {
-    return graphdemo_table_json_read_graph(&builder->main,graphdemo_list_node_builder_root(builder),&schema_graphdemo_list_node_info_,text,bytes,report);
+    return graphdemo_table_json_read_graph( &builder->main, graphdemo_list_node_builder_root( builder ), &schema_graphdemo_list_node_info_, text, bytes, report );
 }
 
 int64_t schema_graphdemo_list_node_to_json_( const graphdemo_list_node_t * value, char * buffer, int64_t capacity, graphdemo_table_allocator_t allocator )
 {
-    return graphdemo_table_json_write_graph(value,&schema_graphdemo_list_node_info_,buffer,capacity,allocator);
+    return graphdemo_table_json_write_graph( value, &schema_graphdemo_list_node_info_, buffer, capacity, allocator );
 }
 
 int schema_graphdemo_tree_node_from_json_( graphdemo_tree_node_builder_t * builder, const char * text, int64_t bytes, graphdemo_table_report_t * report )
 {
-    return graphdemo_table_json_read_graph(&builder->main,graphdemo_tree_node_builder_root(builder),&schema_graphdemo_tree_node_info_,text,bytes,report);
+    return graphdemo_table_json_read_graph( &builder->main, graphdemo_tree_node_builder_root( builder ), &schema_graphdemo_tree_node_info_, text, bytes, report );
 }
 
 int64_t schema_graphdemo_tree_node_to_json_( const graphdemo_tree_node_t * value, char * buffer, int64_t capacity, graphdemo_table_allocator_t allocator )
 {
-    return graphdemo_table_json_write_graph(value,&schema_graphdemo_tree_node_info_,buffer,capacity,allocator);
+    return graphdemo_table_json_write_graph( value, &schema_graphdemo_tree_node_info_, buffer, capacity, allocator );
 }
 
 int schema_graphdemo_layer_from_json_( graphdemo_layer_builder_t * builder, const char * text, int64_t bytes, graphdemo_table_report_t * report )
 {
-    return graphdemo_table_json_read_graph(&builder->main,graphdemo_layer_builder_root(builder),&schema_graphdemo_layer_info_,text,bytes,report);
+    return graphdemo_table_json_read_graph( &builder->main, graphdemo_layer_builder_root( builder ), &schema_graphdemo_layer_info_, text, bytes, report );
 }
 
 int64_t schema_graphdemo_layer_to_json_( const graphdemo_layer_t * value, char * buffer, int64_t capacity, graphdemo_table_allocator_t allocator )
 {
-    return graphdemo_table_json_write_graph(value,&schema_graphdemo_layer_info_,buffer,capacity,allocator);
+    return graphdemo_table_json_write_graph( value, &schema_graphdemo_layer_info_, buffer, capacity, allocator );
 }
 
 int schema_graphdemo_scene_from_json_( graphdemo_scene_builder_t * builder, const char * text, int64_t bytes, graphdemo_table_report_t * report )
 {
-    return graphdemo_table_json_read_graph(&builder->main,graphdemo_scene_builder_root(builder),&schema_graphdemo_scene_info_,text,bytes,report);
+    return graphdemo_table_json_read_graph( &builder->main, graphdemo_scene_builder_root( builder ), &schema_graphdemo_scene_info_, text, bytes, report );
 }
 
 int64_t schema_graphdemo_scene_to_json_( const graphdemo_scene_t * value, char * buffer, int64_t capacity, graphdemo_table_allocator_t allocator )
 {
-    return graphdemo_table_json_write_graph(value,&schema_graphdemo_scene_info_,buffer,capacity,allocator);
+    return graphdemo_table_json_write_graph( value, &schema_graphdemo_scene_info_, buffer, capacity, allocator );
 }
 
 int schema_graphdemo_depot_from_json_( graphdemo_depot_builder_t * builder, const char * text, int64_t bytes, graphdemo_table_report_t * report )
 {
-    return graphdemo_table_json_read_graph(&builder->main,graphdemo_depot_builder_root(builder),&schema_graphdemo_depot_info_,text,bytes,report);
+    return graphdemo_table_json_read_graph( &builder->main, graphdemo_depot_builder_root( builder ), &schema_graphdemo_depot_info_, text, bytes, report );
 }
 
 int64_t schema_graphdemo_depot_to_json_( const graphdemo_depot_t * value, char * buffer, int64_t capacity, graphdemo_table_allocator_t allocator )
 {
-    return graphdemo_table_json_write_graph(value,&schema_graphdemo_depot_info_,buffer,capacity,allocator);
+    return graphdemo_table_json_write_graph( value, &schema_graphdemo_depot_info_, buffer, capacity, allocator );
 }
 
 int schema_graphdemo_album_from_json_( graphdemo_album_builder_t * builder, const char * text, int64_t bytes, graphdemo_table_report_t * report )
 {
-    return graphdemo_table_json_read_graph(&builder->main,graphdemo_album_builder_root(builder),&schema_graphdemo_album_info_,text,bytes,report);
+    return graphdemo_table_json_read_graph( &builder->main, graphdemo_album_builder_root( builder ), &schema_graphdemo_album_info_, text, bytes, report );
 }
 
 int64_t schema_graphdemo_album_to_json_( const graphdemo_album_t * value, char * buffer, int64_t capacity, graphdemo_table_allocator_t allocator )
 {
-    return graphdemo_table_json_write_graph(value,&schema_graphdemo_album_info_,buffer,capacity,allocator);
+    return graphdemo_table_json_write_graph( value, &schema_graphdemo_album_info_, buffer, capacity, allocator );
 }
-
