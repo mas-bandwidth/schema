@@ -21,7 +21,8 @@ import (
 // reference #42, run seed 24845619678): a body in it carries bytes after its
 // terminator inside its record length, which the strict Go oracle refuses
 // as wire_damaged (internal/tablewire's body walk), and the Dart leg must
-// refuse the same load with the same reason. The mutant bytes are embedded
+// refuse the same load. Why it refuses is Dart's own diagnostic, never
+// compared (docs/rulings.json refusal-verdict-only). The mutant bytes are embedded
 // as hex, so the test reproduces without the fuzz output.
 // sha256 0329ec90564c4ddf1cbb96a12f01d45fa38ac11109a0d087740a5298ef5ac195.
 const sceneRef42MutantHex = "01010c0474726565020402000000031102041104051107060c4d06070e000401000000010c0161091103000707080402000000000a0d0b0c03746f700c11050d1106000a080b0c046c656674000a090b0c057269676874000e0d0f04030000000b0c036d69640000861b638ebaadbcc437ea08982cc662bb030c9a5fcc128f0a95b31e51efb8255be84db4487b6d5feeffffffffffffffffa99fa6a599c80ef6ea0ce83094fde47c28f025a0ba6c31e51d434c78a3907eb93d62cb8fecfcf739b01c04a2ad70b02405d8145753aaaa76c8c204b4a28a8b9d66fe00649160807a0f00000000000000"
@@ -60,7 +61,7 @@ func graphdemoUnit(t *testing.T) *ir.Unit {
 
 // TestWireReportSceneReferenceMalformedDart pins that the Dart leg reads the
 // Scene reference #42 mutant exactly as the Go oracle does: the whole load
-// refused, with the strict reason wire_damaged on both sides.
+// refused. The verdict is compared; Dart's reason is printed as a diagnostic.
 func TestWireReportSceneReferenceMalformedDart(t *testing.T) {
 	slowtest.Gate(t, "an external toolchain")
 
@@ -132,10 +133,6 @@ void main() {
     stderr.writeln('FAIL: Dart read accepted, oracle refused');
     exitCode = 1;
   }
-  if (report.reason != 'wire_damaged') {
-    stderr.writeln('FAIL: Dart refused as ${report.reason}, oracle wire_damaged');
-    exitCode = 1;
-  }
   stdout.writeln('unknown=${report.unknown} '
       'widened=${report.widened} '
       'refused=${report.refused} reason=${report.reason}');
@@ -150,7 +147,7 @@ void main() {
 	if err != nil {
 		t.Fatalf("dart probe failed: %v\n%s", err, out)
 	}
-	if !strings.Contains(string(out), "refused=true reason=wire_damaged") {
+	if !strings.Contains(string(out), "refused=true reason=") {
 		t.Fatalf("the Dart leg does not refuse the mutant as the oracle does: %s", out)
 	}
 }
