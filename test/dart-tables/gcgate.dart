@@ -534,10 +534,12 @@ void _drive(List<String> args) {
   );
 
   var failed = false;
+  var rowsRun = 0;
   for (final spec in _rows) {
     if (onlySet.isNotEmpty && !onlySet.contains(spec.name)) {
       continue;
     }
+    rowsRun++;
     final iters = spec.ceiling == null
         ? (scaleIters ~/ 10 < 500 ? 500 : scaleIters ~/ 10)
         : scaleIters;
@@ -571,6 +573,12 @@ void _drive(List<String> args) {
     );
   }
 
+  if (rowsRun == 0) {
+    stdout.writeln(
+      'FAILED: SCHEMA_DART_ALLOC_ROWS names no row of this gate: nothing was measured',
+    );
+    exit(1);
+  }
   if (runningSdk != pinnedDartSdk && !anySdk) {
     stdout.writeln(
       'FAILED: allocation certification requires Dart SDK $pinnedDartSdk (pinned in make/dart.mk), running $runningSdk; set SCHEMA_DART_ALLOC_ANY_SDK=1 to report observations without certifying',

@@ -1968,12 +1968,12 @@ build/packet-write-cfloat/dart/.stamp: bin/schema test/packet-write-cfloat/CFloa
 	@touch $@
 
 .PHONY: packet-write-cfloat-dart packet-write-cfloat-dart-negative-control
-packet-write-cfloat-dart: build/packet-write-cfloat/dart/.stamp
+packet-write-cfloat-dart: build/mustrun build/packet-write-cfloat/dart/.stamp
 	$(DART) analyze build/packet-write-cfloat/dart test/packet-write-cfloat/dart
 	$(DART) format --set-exit-if-changed --output=none build/packet-write-cfloat/dart test/packet-write-cfloat/dart
-	$(DART) --enable-asserts test/packet-write-cfloat/dart/main.dart test/packet-write-cfloat/cases.txt
+	$(MUSTRUN) -name packet-write-cfloat-dart -count 10 -- $(DART) --enable-asserts test/packet-write-cfloat/dart/main.dart test/packet-write-cfloat/cases.txt
 	$(DART) compile exe -o build/packet-write-cfloat/dart/checker test/packet-write-cfloat/dart/main.dart >/dev/null
-	./build/packet-write-cfloat/dart/checker test/packet-write-cfloat/cases.txt
+	$(MUSTRUN) -name packet-write-cfloat-dart-aot -count 10 -- ./build/packet-write-cfloat/dart/checker test/packet-write-cfloat/cases.txt
 
 packet-write-cfloat-dart-negative-control: packet-write-cfloat-dart
 	@rm -rf build/packet-write-cfloat/dart-negative && mkdir -p build/packet-write-cfloat/dart-negative
@@ -2012,10 +2012,10 @@ build/packet-write-text/dart/.stamp: bin/schema test/packet-write-text/dart/Pack
 	@touch $@
 
 .PHONY: packet-write-text-dart packet-write-text-dart-negative-control
-packet-write-text-dart: build/packet-write-text/dart/.stamp
+packet-write-text-dart: build/mustrun build/packet-write-text/dart/.stamp
 	$(DART) analyze build/packet-write-text/dart/gen test/packet-write-text/dart
 	$(DART) format --set-exit-if-changed --output=none build/packet-write-text/dart/gen test/packet-write-text/dart
-	$(DART) --enable-asserts test/packet-write-text/dart/main.dart test/packet-write-text/cases.txt
+	$(MUSTRUN) -name packet-write-text-dart -count 11 -- $(DART) --enable-asserts test/packet-write-text/dart/main.dart test/packet-write-text/cases.txt
 
 packet-write-text-dart-negative-control: packet-write-text-dart
 	@mkdir -p build/packet-write-text/dart-negative

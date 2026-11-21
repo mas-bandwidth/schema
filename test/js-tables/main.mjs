@@ -603,6 +603,14 @@ function fuzz(blockPath, cookPath, mutants) {
     bytes.set(copy.subarray(0, Math.min(claim, copy.length)));
     if (opensOrRefuses(subject.open, bytes)) { opened++; } else { refused++; }
   }
+  // a run that forged nothing (N of zero, or not a number), or in which no
+  // mutant ever opened, checked nothing of the read path: red, never "OK"
+  if (!(mutants >= 1) || opened === 0 || refused === 0) {
+    console.log("FAILED: tables JS fuzz ran " + mutants + " mutants, " + opened + " opened, " + refused +
+      " refused: the campaign needs at least one of each verdict to have tested anything");
+    failed = true;
+    return;
+  }
   console.log("tables JS fuzz: " + mutants + " forged blocks and cooks — " + refused +
     " refused, " + opened + " opened and read entirely inside the bytes they were given; " +
     "no exception escaped a reader");

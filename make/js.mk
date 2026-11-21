@@ -586,8 +586,8 @@ build/js-fixed-optional/.stamp: bin/schema test/js-tables/fixedoptional_corpus.c
 # because the reference's records are set from CONSTRUCTED storage and one of
 # them uses NOTHING of a string whose declared default is not empty.
 .PHONY: tables-js-fixed-form
-tables-js-fixed-form: build/js-fixed/.stamp build/js-fixed-corpus/.stamp build/js-fixed-optional/.stamp build/fixedform-corpus/.stamp
-	cd $(CURDIR) && $(NODE) test/js-tables/fixedform.mjs build/js-fixed build/js-fixed-corpus build/js-fixed-optional build/fixedform-corpus
+tables-js-fixed-form: build/mustrun build/js-fixed/.stamp build/js-fixed-corpus/.stamp build/js-fixed-optional/.stamp build/fixedform-corpus/.stamp
+	cd $(CURDIR) && $(MUSTRUN) -name tables-js-fixed-form -count 1 -- $(NODE) test/js-tables/fixedform.mjs build/js-fixed build/js-fixed-corpus build/js-fixed-optional build/fixedform-corpus
 
 # THE VERSIONING HALF OF THE FIXED FORM ON THE JAVASCRIPT LEG (§5 of
 # docs/FIXED-FORM-ALGORITHM.md, the rows of docs/FIXED-FORM-VERSIONING-TESTS.md).
@@ -1881,9 +1881,9 @@ build/packet-write-cfloat/js/.stamp: bin/schema test/packet-write-cfloat/CFloat.
 	@touch $@
 
 .PHONY: packet-write-cfloat-js packet-write-cfloat-js-negative-control
-packet-write-cfloat-js: build/packet-write-cfloat/js/.stamp
-	$(NODE) test/packet-write-cfloat/js/main.mjs test/packet-write-cfloat/cases.txt build/packet-write-cfloat/js
-	NODE_ENV=production $(NODE) test/packet-write-cfloat/js/main.mjs test/packet-write-cfloat/cases.txt build/packet-write-cfloat/js
+packet-write-cfloat-js: build/mustrun build/packet-write-cfloat/js/.stamp
+	$(MUSTRUN) -name packet-write-cfloat-js -count 10 -- $(NODE) test/packet-write-cfloat/js/main.mjs test/packet-write-cfloat/cases.txt build/packet-write-cfloat/js
+	NODE_ENV=production $(MUSTRUN) -name packet-write-cfloat-js-production -count 10 -- $(NODE) test/packet-write-cfloat/js/main.mjs test/packet-write-cfloat/cases.txt build/packet-write-cfloat/js
 
 packet-write-cfloat-js-negative-control: packet-write-cfloat-js
 	@mkdir -p build/packet-write-cfloat/js-negative-flat

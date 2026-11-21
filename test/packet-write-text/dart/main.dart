@@ -37,13 +37,18 @@ bool same(Text value, Uint8List raw) {
 
 void main(List<String> args) {
   final lines = File(args[0]).readAsLinesSync();
+  var ran = 0;
   for (var line in lines) {
     line = line.trim();
     if (line.isEmpty || line.startsWith('#')) continue;
+    ran++;
     final parts = line.split('|');
     final name = parts[0].trim();
     final raw = parseHex(parts[1].trim());
     final verdict = parts[2].trim();
+    if (verdict != 'written' && verdict != 'refused') {
+      throw StateError('cases: $name: verdict "$verdict" is neither written nor refused');
+    }
     final sent = value(raw);
     if (verdict == 'refused') {
       try {
@@ -67,7 +72,10 @@ void main(List<String> args) {
       fail('$name read back differs');
     }
   }
-  if (failures != 0) {
+  // One unit per shared case: tools/mustrun holds the count to the one the
+  // recipe registers, so an emptied or shortened cases.txt is red.
+  stdout.writeln('packet-write-text Dart: ran $ran, failed $failures');
+  if (failures != 0 || ran == 0) {
     exit(1);
   }
 }
