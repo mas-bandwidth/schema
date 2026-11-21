@@ -211,15 +211,20 @@ func TestCExternalsCarryThePackage(t *testing.T) {
 	// every definition at file scope in the .c is either static or carries the
 	// package prefix; a bare `const TableTypeInfo ConfigTableInfo` would be the
 	// defect this test names
+	externals := 0
 	for line := range strings.SplitSeq(stripCComments(string(source)), "\n") {
 		if !strings.HasPrefix(line, "const ") && !strings.HasPrefix(line, "int ") &&
 			!strings.HasPrefix(line, "int64_t ") {
 			continue
 		}
+		externals++
 		if !strings.Contains(line, "schema_probe_") {
 			t.Errorf("a definition with external linkage does not carry the package, so two units "+
 				"could not link together: %s", strings.TrimSpace(line))
 		}
+	}
+	if externals == 0 {
+		t.Fatal("ProbeTable.c holds no file-scope `const`/`int`/`int64_t` definition: the package-prefix scan checked nothing")
 	}
 }
 

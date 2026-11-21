@@ -146,6 +146,7 @@ func TestDartTableRuntimeNamesAreClaimed(t *testing.T) {
 	if len(files) == 0 {
 		t.Fatal("files is empty: the loop below would check nothing")
 	}
+	scanned := 0
 	for name, data := range files {
 		if !dartTableSource(name) {
 			continue
@@ -154,11 +155,15 @@ func TestDartTableRuntimeNamesAreClaimed(t *testing.T) {
 			if line == "" || line[0] == ' ' || line[0] == '/' {
 				continue // indented: a member, which claims nothing
 			}
+			scanned++
 			if private.MatchString(line) {
 				t.Errorf("%s declares a PRIVATE library-scope name: %q — a schema may spell that "+
 					"identifier, so it is an unclaimed collision; make it a member instead", name, line)
 			}
 		}
+	}
+	if scanned == 0 {
+		t.Error("no column-zero line of a Dart table source was scanned: the private-name check checked nothing")
 	}
 }
 

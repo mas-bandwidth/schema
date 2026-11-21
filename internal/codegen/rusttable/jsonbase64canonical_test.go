@@ -150,13 +150,13 @@ func TestRustJsonBase64Canonical(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: the generated reader did not run: %v\n%s", schema, err, out)
 		}
+		if !strings.Contains(out, "PROBE DONE") {
+			t.Fatalf("%s: the probe did not finish:\n%s", schema, out)
+		}
 		for line := range strings.SplitSeq(out, "\n") {
 			if strings.HasPrefix(line, "MISMATCH ") {
 				t.Errorf("%s", line)
 			}
-		}
-		if !strings.Contains(out, "PROBE DONE") {
-			t.Fatalf("%s: the probe did not finish:\n%s", schema, out)
 		}
 	}
 }

@@ -264,6 +264,7 @@ func TestRubyPins(t *testing.T) {
 	envRubyRE := regexp.MustCompile(`/usr/bin/env\s+ruby`)
 	execRubyRE := regexp.MustCompile(`(Command|LookPath)\("ruby`)
 
+	codeLines := 0
 	for _, f := range legFiles {
 		rel, err := filepath.Rel(root, f)
 		if err != nil {
@@ -281,9 +282,13 @@ func TestRubyPins(t *testing.T) {
 			if strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "//") {
 				continue
 			}
+			codeLines++
 			if bareRubyRE.MatchString(line) || envRubyRE.MatchString(line) || execRubyRE.MatchString(line) {
 				t.Errorf("%s:%d runs an interpreter from PATH: %s", rel, i+1, trimmed)
 			}
 		}
+	}
+	if codeLines == 0 {
+		t.Fatal("no non-comment line was read from the Ruby leg files: the PATH-interpreter check checked nothing")
 	}
 }

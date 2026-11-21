@@ -33,6 +33,8 @@ func TestOwnerName(t *testing.T) {
 	}
 
 	scanned := 0
+	linesScanned := 0
+	citations := 0
 	for _, path := range files {
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -47,10 +49,12 @@ func TestOwnerName(t *testing.T) {
 			continue
 		}
 		for i, line := range strings.Split(string(data), "\n") {
+			linesScanned++
 			if owner.MatchString(line) {
 				t.Errorf("%s:%d: ruling citation names the maintainer; cite the date and docs/rulings.json key", rel, i+1)
 			}
 			for _, m := range citationKey.FindAllStringSubmatch(line, -1) {
+				citations++
 				if !keys[m[1]] {
 					t.Errorf("%s:%d: docs/rulings.json has no ruling %q", rel, i+1, m[1])
 				}
@@ -59,6 +63,15 @@ func TestOwnerName(t *testing.T) {
 	}
 	if scanned == 0 {
 		t.Fatal("no file scanned; this gate would pass over an empty set")
+	}
+	if linesScanned == 0 {
+		t.Fatal("the scanned files hold no lines; the maintainer-name check read nothing")
+	}
+	// AGENTS.md, docs/SPEC.md and internal/ci cite rulings by key today
+	// (write-refusal, tables-finite-only, agents-md-alone, ...): a citation
+	// pattern that matches none of them has stopped checking the keys.
+	if citations == 0 {
+		t.Fatal("no docs/rulings.json citation matched in the scanned files; the key check checked nothing")
 	}
 }
 

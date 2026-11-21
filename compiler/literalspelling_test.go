@@ -99,6 +99,9 @@ func TestGeneratedIntegerLiteralSpelling(t *testing.T) {
 			}
 			all.Write(body)
 		}
+		if all.Len() == 0 {
+			t.Errorf("%s: every generated file is empty: the literal-spelling scan checked no line", lang)
+		}
 		for _, needle := range want[lang] {
 			if !strings.Contains(all.String(), needle) {
 				t.Errorf("%s: generated code lacks %q", lang, needle)

@@ -172,11 +172,16 @@ func TestBuildVersionMovesOnAMeaningEdit(t *testing.T) {
 func TestBuildVersionSurvivesAWasRename(t *testing.T) {
 	u := loadRender(t)
 	baseline := ir.BuildVersion(u)
+	renamed := 0
 	for _, f := range u.Tables["RenderShip"].Fields {
 		if f.Name == "thrust" {
 			f.WasName = "thrust"
 			f.Name = "throttle"
+			renamed++
 		}
+	}
+	if renamed != 1 {
+		t.Fatalf("RenderShip has %d fields named thrust, want 1: with no rename the unchanged build version proves nothing", renamed)
 	}
 	if got := ir.BuildVersion(u); got != baseline {
 		t.Errorf("a `was` rename moved the build version (0x%016x -> 0x%016x) — the projections key on the WIRE ID for exactly this reason",

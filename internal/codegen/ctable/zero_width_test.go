@@ -97,13 +97,20 @@ func TestCTableNeverEmitsZeroWidthInteger(t *testing.T) {
 			t.Fatal("files is empty: the loop below would check nothing")
 		}
 		for name, data := range files {
+			scanned := 0
 			for i, line := range strings.Split(string(data), "\n") {
+				if strings.TrimSpace(line) != "" {
+					scanned++
+				}
 				for _, b := range banned {
 					if strings.Contains(line, b) {
 						t.Errorf("%s: %s:%d prints a zero-width integer (%s): %s", rel, name, i+1, b, strings.TrimSpace(line))
 						break
 					}
 				}
+			}
+			if scanned == 0 {
+				t.Errorf("%s: %s holds no text, so the zero-width ban was checked against nothing", rel, name)
 			}
 		}
 	}

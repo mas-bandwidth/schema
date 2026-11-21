@@ -157,12 +157,17 @@ func TestTableWithoutACppFixedRowRefusesToRebaseTheColumn(t *testing.T) {
 	if !strings.Contains(got, "unavailable rather than re-based") {
 		t.Fatal(got)
 	}
+	rows := 0
 	for line := range strings.SplitSeq(got, "\n") {
-		if strings.HasPrefix(line, "| C") || strings.HasPrefix(line, "| Rust") {
+		if strings.HasPrefix(line, "| C++ |") || strings.HasPrefix(line, "| Go |") || strings.HasPrefix(line, "| Rust |") {
+			rows++
 			if !strings.HasSuffix(line, "| — |") {
 				t.Fatal("no row may read against a reference that is not there:", line)
 			}
 		}
+	}
+	if rows != len(table.Rows) {
+		t.Fatalf("checked %d table rows, want all %d:\n%s", rows, len(table.Rows), got)
 	}
 }
 

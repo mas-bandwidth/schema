@@ -87,6 +87,11 @@ func reflectionLayoutWant(u *ir.Unit) string {
 	}
 	slices.SortFunc(entries, cmp)
 	records = append(records, entries...)
+	if len(records) == 0 {
+		// an empty want equals an empty probe output: the comparison would
+		// pass having compared no layout at all
+		panic("reflectionLayoutWant: the unit has no records to derive a layout for")
+	}
 	var b strings.Builder
 	for _, st := range records {
 		layout := ir.RecordLayout(u, st)

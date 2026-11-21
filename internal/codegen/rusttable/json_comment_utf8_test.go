@@ -135,15 +135,15 @@ fn main() {
 	}
 	bin := rustcBuild(t, root)
 	out, err := exec.Command(bin).CombinedOutput()
-	for line := range strings.SplitSeq(string(out), "\n") {
-		if line, ok := strings.CutPrefix(line, "MISMATCH "); ok {
-			t.Errorf("%s", line)
-		}
-	}
 	if err != nil {
 		t.Fatalf("the comment-utf8 probe did not run: %v\n%s", err, out)
 	}
 	if !strings.Contains(string(out), "PROBE DONE") {
 		t.Fatalf("the comment-utf8 probe did not finish:\n%s", out)
+	}
+	for line := range strings.SplitSeq(string(out), "\n") {
+		if line, ok := strings.CutPrefix(line, "MISMATCH "); ok {
+			t.Errorf("%s", line)
+		}
 	}
 }

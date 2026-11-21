@@ -353,11 +353,13 @@ func TestSquirrelTableLoadMatchesTheReports(t *testing.T) {
 	}
 	writeFile(t, filepath.Join(dir, "inst.nut"), []byte(ip.String()))
 	instStdout := sqrun.Run(t, dir, "inst.nut", instInputs)
+	instLines := 0
 	for line := range strings.SplitSeq(strings.TrimRight(string(instStdout), "\n"), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) != 2 {
 			t.Fatalf("instance probe line %q is not a case and a report", line)
 		}
+		instLines++
 		wantRefused := false
 		for _, in := range instances {
 			if in.name == fields[0] && in.goRefusal == "wire-refused" {
@@ -367,6 +369,9 @@ func TestSquirrelTableLoadMatchesTheReports(t *testing.T) {
 		if refusedNow := strings.HasSuffix(fields[1], ",refused"); refusedNow != wantRefused {
 			t.Errorf("%s: an instance of a generated unit was refused=%t, the manifest says %t", fields[0], refusedNow, wantRefused)
 		}
+	}
+	if instLines != len(instOrder) {
+		t.Errorf("the instance probe answered %d rows, want %d", instLines, len(instOrder))
 	}
 	if len(instOrder) != len(instances)-refusedInstanceCount(instances, refusedSet) {
 		t.Errorf("loaded %d instance rows, want %d", len(instOrder), len(instances)-refusedInstanceCount(instances, refusedSet))

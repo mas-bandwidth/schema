@@ -383,10 +383,15 @@ fixed table T
 		reflect.TypeFor[ir.Struct](),
 		reflect.TypeFor[ir.Unit](),
 	} {
+		scanned := 0
 		for sf := range rt.Fields() {
+			scanned++
 			if strings.Contains(strings.ToLower(sf.Name), "limit") {
 				t.Fatalf("R5: the IR declares %s.%s, a table-declared reader-side limit; ALGORITHM §5.2 reserves 'L' only until one exists, and the digest must then carry it", rt.Name(), sf.Name)
 			}
+		}
+		if scanned == 0 {
+			t.Fatalf("R5: %s has no fields, so the reader-limit premise was checked against nothing", rt.Name())
 		}
 	}
 	// The reserved row stays empty: no table spelling puts an 'L' in the digest.

@@ -183,7 +183,12 @@ func TestCIFastAndCIFullRunOnPullRequestWhateverItsBase(t *testing.T) {
 		t.Fatal("ci-fast.yml does not trigger on a push to main")
 	}
 	mainPush := ciEvent{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema", PlanPkgs: "./internal/codegen/gotable", PlanLegs: `["go"]`}
-	for nameJob, body := range yamlJobs(wfs["ci-fast.yml"]) {
+	fastJobs := yamlJobs(wfs["ci-fast.yml"])
+	if len(fastJobs) == 0 {
+		t.Fatal("ci-fast.yml has no jobs: the push-to-main check below would check nothing")
+	}
+	checkedOnPush := 0
+	for nameJob, body := range fastJobs {
 		if strings.Contains(body, "github.event_name == 'workflow_dispatch'") {
 			continue // the leg rows run on dispatch only
 		}
@@ -197,6 +202,10 @@ func TestCIFastAndCIFullRunOnPullRequestWhateverItsBase(t *testing.T) {
 		if !runs {
 			t.Fatalf("ci-fast.yml %s does not run on a push to main", nameJob)
 		}
+		checkedOnPush++
+	}
+	if checkedOnPush == 0 {
+		t.Fatal("every ci-fast.yml job was skipped: no job was checked to run on a push to main")
 	}
 }
 

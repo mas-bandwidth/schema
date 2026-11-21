@@ -387,16 +387,26 @@ func TestJavaDescriptorsAreSafelyPublished(t *testing.T) {
 	if len(files) == 0 {
 		t.Fatal("files is empty: the loop below would check nothing")
 	}
+	holderClasses, infoFields := 0, 0
 	for name, data := range files {
 		text := string(data)
 		for line := range strings.SplitSeq(text, "\n") {
-			if strings.Contains(line, "Holder {") && !strings.Contains(line, "private static final class") {
-				t.Errorf("%s: a descriptor holder is not a private static final class: %q", name, strings.TrimSpace(line))
+			if strings.Contains(line, "Holder {") {
+				holderClasses++
+				if !strings.Contains(line, "private static final class") {
+					t.Errorf("%s: a descriptor holder is not a private static final class: %q", name, strings.TrimSpace(line))
+				}
 			}
-			if strings.Contains(line, "INFO =") && !strings.Contains(line, "static final") {
-				t.Errorf("%s: a holder's INFO is not final: %q", name, strings.TrimSpace(line))
+			if strings.Contains(line, "INFO =") {
+				infoFields++
+				if !strings.Contains(line, "static final") {
+					t.Errorf("%s: a holder's INFO is not final: %q", name, strings.TrimSpace(line))
+				}
 			}
 		}
+	}
+	if holderClasses == 0 || infoFields == 0 {
+		t.Fatalf("found %d holder classes and %d INFO fields beside %d holder-backed accessors: the holder-shape scan checked nothing", holderClasses, infoFields, holders)
 	}
 }
 

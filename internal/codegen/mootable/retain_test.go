@@ -575,11 +575,15 @@ end
 			t.Fatalf("no line for ids %q in %q", want, got)
 		}
 	}
+	// "1000\t" also holds "0\t", so the Contains checks above cannot pin the
+	// ids=0 line: count the lines checked, by their first field, as well
+	seen := map[string]int{}
 	for line := range strings.SplitSeq(got, "\n") {
 		f := strings.Fields(line)
 		if len(f) != 6 {
 			t.Fatalf("moo printed %q", got)
 		}
+		seen[f[0]]++
 		if f[2] != "true" {
 			t.Errorf("ids %s: the second save is not the first: %q", f[0], line)
 		}
@@ -596,6 +600,9 @@ end
 			// load has nothing to lose
 			t.Errorf("ids %s: the second save lost records: %q", f[0], line)
 		}
+	}
+	if len(seen) != 3 || seen["1000"] != 1 || seen["2"] != 1 || seen["0"] != 1 {
+		t.Fatalf("want exactly one line for each of ids 1000, 2 and 0, got %v in %q", seen, got)
 	}
 }
 

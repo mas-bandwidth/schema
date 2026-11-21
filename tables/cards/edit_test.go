@@ -240,14 +240,22 @@ func TestFieldEditLeavesTheTaskHashAlone(t *testing.T) {
 	if hash == origHash {
 		t.Fatal("a task-bearing paths edit left the task hash unchanged")
 	}
+	edited := rec.Wire()
 	if _, _, err := ToJSON(rec); err != nil {
 		t.Fatalf("ToJSON after edits: %v", err)
 	}
 	if _, err := TaskHash(rec); err != nil {
 		t.Fatalf("TaskHash after builder cleanup: %v", err)
 	}
-	if !bytes.Equal(rec.Wire(), rec.Wire()) {
-		t.Fatal("Wire() unstable after edits")
+	if !bytes.Equal(rec.Wire(), edited) {
+		t.Fatal("Wire() unstable after edits: ToJSON or TaskHash moved the edited wire")
+	}
+	reloaded, _, err := Load(edited)
+	if err != nil {
+		t.Fatalf("the edited wire does not load: %v", err)
+	}
+	if got, err := TaskHash(reloaded); err != nil || got != hash {
+		t.Fatalf("the edited wire reloads to task hash %x (%v), want the edited record's %x", got, err, hash)
 	}
 
 	emptyRec := buildCfg(t, cardCfg{body: "body", test: "T", done: "d"})
@@ -272,14 +280,22 @@ func TestFieldEditLeavesTheTaskHashAlone(t *testing.T) {
 	if err := SetNeeds(emptyRec, []string{"n"}); err != nil {
 		t.Fatalf("SetNeeds empty->growing: %v", err)
 	}
+	grown := emptyRec.Wire()
 	if _, _, err := ToJSON(emptyRec); err != nil {
 		t.Fatalf("ToJSON after empty->growing: %v", err)
 	}
 	if _, err := TaskHash(emptyRec); err != nil {
 		t.Fatalf("TaskHash after empty->growing cleanup: %v", err)
 	}
-	if !bytes.Equal(emptyRec.Wire(), emptyRec.Wire()) {
-		t.Fatal("Wire() unstable after empty->growing edits")
+	if !bytes.Equal(emptyRec.Wire(), grown) {
+		t.Fatal("Wire() unstable after empty->growing edits: ToJSON or TaskHash moved the edited wire")
+	}
+	regrown, _, err := Load(grown)
+	if err != nil {
+		t.Fatalf("the empty->growing wire does not load: %v", err)
+	}
+	if got, err := TaskHash(regrown); err != nil || got != emptyHash2 {
+		t.Fatalf("the empty->growing wire reloads to task hash %x (%v), want the edited record's %x (needs are not task-bearing)", got, err, emptyHash2)
 	}
 }
 

@@ -652,10 +652,17 @@ func TestRubySkeleton(t *testing.T) {
 			if string(lines[0]) != version {
 				t.Fatalf("the %s pin is Ruby %s, want %s", p.name, lines[0], version)
 			}
+			constants := 0
 			for c := range strings.FieldsSeq(string(lines[1])) {
+				constants++
 				if !rubyCoreConstants[c] {
 					t.Errorf("rubyCoreConstants lacks %s, which Ruby %s defines", c, version)
 				}
+			}
+			// Object.constants always holds Object itself: an empty line is a
+			// probe that read nothing, not an interpreter with no constants
+			if constants == 0 {
+				t.Fatalf("Ruby %s's pins probe listed no Object.constants: the core-constants check checked nothing", version)
 			}
 			// The probe heads the line, so an empty answer is still a line.
 			if s := string(lines[2]); s != "unlexed:" {

@@ -281,6 +281,7 @@ func TestCppBoolFunctionsNeverReturnMinusOne(t *testing.T) {
 	masked := maskCpp(string(header))
 	boolDef := regexp.MustCompile(`\bbool\s+([A-Za-z_]\w*)\s*\(`)
 	minusOne := regexp.MustCompile(`\breturn\s+-1\s*;`)
+	definitions := 0
 	for _, m := range boolDef.FindAllStringSubmatchIndex(masked, -1) {
 		name := masked[m[2]:m[3]]
 		open := strings.LastIndex(masked[m[0]:m[1]], "(") + m[0]
@@ -320,9 +321,13 @@ func TestCppBoolFunctionsNeverReturnMinusOne(t *testing.T) {
 		if bodyEnd < 0 {
 			t.Fatalf("%s: bool %s has no closing brace", headerName, name)
 		}
+		definitions++
 		if loc := minusOne.FindStringIndex(masked[bodyStart:bodyEnd]); loc != nil {
 			line := 1 + strings.Count(masked[:bodyStart+loc[0]], "\n")
 			t.Errorf("%s:%d: bool %s returns -1; the failure path must return the caller's false", headerName, line, name)
 		}
+	}
+	if definitions == 0 {
+		t.Fatalf("%s: no bool function definition found: the return -1 check checked nothing", headerName)
 	}
 }

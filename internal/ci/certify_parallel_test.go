@@ -62,6 +62,9 @@ func registeredTestLegs(t *testing.T, root string) []string {
 			}
 			legs = append(legs, leg)
 		}
+		if len(legs) == 0 {
+			t.Fatalf("make -s registry's test: line names no leg: %q", line)
+		}
 		slices.Sort(legs)
 		return legs
 	}

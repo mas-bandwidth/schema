@@ -151,10 +151,15 @@ print("the type-id index is built", T.TypeIds[desc.type_id] == desc)
 	if err != nil {
 		t.Fatalf("probe: %v\n%s", err, stderr)
 	}
+	lines := 0
 	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
+		lines++
 		if !strings.HasSuffix(line, "\ttrue") {
 			t.Errorf("sealed gate: %s", line)
 		}
+	}
+	if lines != 8 {
+		t.Errorf("sealed gate: the probe printed %d lines, want 8:\n%s", lines, out)
 	}
 }
 

@@ -120,6 +120,7 @@ func TestUnionArmSetterLeavesTheWireUnmoved(t *testing.T) {
 	if len(files) == 0 {
 		t.Fatal("files is empty: the loop below would check nothing")
 	}
+	maxConstants := 0
 	for name, got := range files {
 		want, err := os.ReadFile(filepath.Join(golden, name))
 		if err != nil {
@@ -135,11 +136,15 @@ func TestUnionArmSetterLeavesTheWireUnmoved(t *testing.T) {
 		}
 		for line := range strings.SplitSeq(string(want), "\n") {
 			if strings.Contains(line, "MaxBits =") || strings.Contains(line, "MaxBytes =") {
+				maxConstants++
 				if !strings.Contains(string(got), line+"\n") {
 					t.Errorf("%s: a Max constant moved: %q", name, line)
 				}
 			}
 		}
+	}
+	if maxConstants == 0 {
+		t.Fatal("no pinned data header carries a MaxBits or MaxBytes constant: the Max check checked nothing")
 	}
 }
 

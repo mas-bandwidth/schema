@@ -68,6 +68,7 @@ func TestJavaMessageSaveFitsItsMeasure(t *testing.T) {
 
 			var body strings.Builder
 			var ids []string
+			seededRun := 0
 			for _, name := range uc.tables {
 				st := m.Lookup(name)
 				if st == nil {
@@ -83,6 +84,7 @@ func TestJavaMessageSaveFitsItsMeasure(t *testing.T) {
 				ids = append(ids, id)
 
 				if seed, ok := uc.seeded[name]; ok {
+					seededRun++
 					seedInst := m.New(st)
 					var rep tabletext.Report
 					if !m.Read(seedInst, []byte(seed), &rep) || rep != (tabletext.Report{}) {
@@ -96,6 +98,9 @@ func TestJavaMessageSaveFitsItsMeasure(t *testing.T) {
 					body.WriteString(saveFitsBody(name, id, announce, seedWire))
 					ids = append(ids, id)
 				}
+			}
+			if seededRun != len(uc.seeded) {
+				t.Fatalf("%s: %d of %d seeded values name a table this case runs, so a seeded save went unchecked", uc.dir, seededRun, len(uc.seeded))
 			}
 
 			out := runMessageBatchProbe(t, u, body.String())
