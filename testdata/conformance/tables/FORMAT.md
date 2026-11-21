@@ -43,7 +43,7 @@ instance     <name> <unit> <root> <wire file> [no-text] [wire-refused]
 connection   <key> <unit> <build version> <announcement wire file>
 message      <name> <connection> <root> <file-form wire> <message-form wire>
 message-drift <name> <unit> <peer connection> <root> <file-form wire> <peer message wire> <resaved message wire or ->
-message-prior <name> <unit> <root> <file-form wire> <writer schema> <writer build version> <writer value> <announcement wire> <prior message wire> <resaved message wire or ->
+message-prior <name> <unit> <root> <writer schema> <writer build version> <writer value> <read|refused>
 retain       <case> <unit> <root> <wire> <capacity> <ids> <save or ->
 report       <case> <unit> <root> <wire file>
 rewrite      <case> <unit> <root> <wire file>
@@ -133,15 +133,19 @@ json-write-refusal <case> <unit> <root> <wire file> <damage>
   vocabulary. A driver is handed an ordinary `connection` and `message` pair
   keyed by the row's name.
 - **`message-prior`** is the same read with the peer named by its SCHEMA: an
-  earlier release of `<unit>`'s own schema, and a value (§16 text) that release
-  may lawfully write. `harness generate` writes the announcement and the batch
-  of one body from the two with the independent engine, and holds
-  `<writer build version>` to the schema. A `<resaved message wire>` of `-` is a
-  row every reader REFUSES: the value is lawful for the prior writer and lies
-  outside what this reader's declaration holds (docs/SPEC-TABLES.md §4,
-  `out_of_range`). The reader never clamps it and never delivers the message
-  with a counter moved; the generate step requires the engine's refusal to be
-  that reason. A driver sees the same two lines either way.
+  earlier release of `<unit>`'s own schema, and `<writer value>`, the §16 text
+  of a value that release may lawfully write, spelled without spaces. `harness
+  generate` writes four files under `testdata/wire/tables/prior/` from the two
+  with the independent engine: `<unit>_<root>_conn.bin`, the writer's
+  announcement; `<unit>_<root>_default.bin`, the reader's default value in the
+  file form; `<name>_message.bin`, the writer's batch of one body; and for a
+  `read` row `<name>_resaved.bin`, that body re-saved by the reader. It holds
+  `<writer build version>` to the schema. A `refused` row is one every reader
+  REFUSES: the value is lawful for the prior writer and lies outside what this
+  reader's declaration holds (docs/SPEC-TABLES.md §4, `out_of_range`). No
+  reader clamps it or delivers the message with a counter moved, and the
+  generate step requires the engine's refusal to carry that reason. A driver
+  is handed the same `connection` and `message` pair either way.
 - **`retain`** reads through the retaining path under the row's two caller
   capacities. `<capacity>` is `full`, or `short`: one byte below the storage this
   implementation used in a roomy load. `<ids>` is `full` or an explicit entry

@@ -448,7 +448,7 @@ func generateMessageDrifts(u *units, m *Manifest, drifts []MessageDrift) error {
 			return err
 		}
 		if md.WriterSchema != "" {
-			if err := generatePriorWriter(md); err != nil {
+			if err := generatePriorWriter(u, md); err != nil {
 				return fmt.Errorf("message-prior %s: %w", md.Name, err)
 			}
 		}
@@ -512,7 +512,23 @@ func generateMessageDrifts(u *units, m *Manifest, drifts []MessageDrift) error {
 // WriterSchema, and the batch of one body that release writes for WriterValue.
 // The value is lawful for that writer, which the writer's own text read and
 // message write both hold before a byte lands.
-func generatePriorWriter(md MessageDrift) error {
+func generatePriorWriter(u *units, md MessageDrift) error {
+	reader, err := u.get(md.Unit)
+	if err != nil {
+		return err
+	}
+	rmodel := tabletext.NewModel(reader)
+	rroot := rmodel.Lookup(md.Root)
+	if rroot == nil {
+		return fmt.Errorf("root %q names no table of the reader", md.Root)
+	}
+	file, err := tablewire.Encode(rmodel, rmodel.New(rroot))
+	if err != nil {
+		return fmt.Errorf("the reader's default value: %w", err)
+	}
+	if err := writeFileAtomic(md.FileWire, file); err != nil {
+		return err
+	}
 	paths, err := compiler.GatherPaths([]string{md.WriterSchema})
 	if err != nil {
 		return err
@@ -526,10 +542,7 @@ func generatePriorWriter(md MessageDrift) error {
 	if bv := ir.BuildVersion(writer); bv != md.PeerBuildVersion {
 		return fmt.Errorf("the writer %s has build version 0x%016x and the row names 0x%016x", md.WriterSchema, bv, md.PeerBuildVersion)
 	}
-	text, err := os.ReadFile(md.WriterValue)
-	if err != nil {
-		return err
-	}
+	text := []byte(md.WriterValue)
 	model := tabletext.NewModel(writer)
 	root := model.Lookup(md.Root)
 	if root == nil {
