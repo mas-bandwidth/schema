@@ -1007,9 +1007,9 @@ func (g *fixedModule) emitMessageReadField(f *ir.Field, mine ir.TableVocabularyE
 	compat := messageCompatibilityCond(f, mine, "entry")
 	g.pf("%slet widened = false;\n", ind)
 	if compat != "" {
-		g.pf("%sif (entry.Shape.Kind !== %d || entry.Element.Kind !== %d) { if (%s) { widened = true; } else { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0, true)) { r.Report.Damaged = true; return false; } break; } }\n", ind, mine.Kind, mine.Shape.Elem, compat)
+		g.pf("%sif (entry.Shape.Kind !== %d || entry.Element.Kind !== %d) { if (%s) { widened = true; } else { %s; } }\n", ind, mine.Kind, mine.Shape.Elem, compat, messageKindMismatch)
 	} else {
-		g.pf("%sif (entry.Shape.Kind !== %d || entry.Element.Kind !== %d) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0, true)) { r.Report.Damaged = true; return false; } break; }\n", ind, mine.Kind, mine.Shape.Elem)
+		g.pf("%sif (entry.Shape.Kind !== %d || entry.Element.Kind !== %d) { %s; }\n", ind, mine.Kind, mine.Shape.Elem, messageKindMismatch)
 	}
 	atField := !f.Type.Optional && !f.Required
 	cond := ""
@@ -1287,6 +1287,12 @@ func messageIntDomain(width int, signed bool) (string, string) {
 // §3.3, §4).
 const messageOutOfRange = "TableMessageRefuse(r.Report, \"out_of_range\"); return false"
 
+// messageKindMismatch is the message read's refusal of a field or union arm
+// whose ANNOUNCED kind is not this reader's and does not widen into it: the
+// batch refuses kind_mismatch, as the engine's message read does. Nothing is
+// skipped, defaulted and counted (docs/SPEC-TABLES.md §3.3, §4).
+const messageKindMismatch = "TableMessageRefuse(r.Report, \"kind_mismatch\"); return false"
+
 // emitMessageDomainHold refuses out_of_range a reconstructed integer outside
 // the announced kind's domain (holds) or outside [lo, hi], the reader's own
 // kind.
@@ -1371,9 +1377,9 @@ func (g *fixedModule) emitMessageReadUnion(f *ir.Field, mem, ind string, atField
 		g.pf("%s      case 0x%016xn: {\n", ind, arm.Id)
 		g.pf("%s        let armWidened = false;\n", ind)
 		if compat != "" {
-			g.pf("%s        if (arm.Shape.Kind !== %d || arm.Element.Kind !== %d) { if (%s) { armWidened = true; } else { %s.type = 0; r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, arm, 0)) { r.Report.Damaged = true; return false; } break; } }\n", ind, arm.Kind, arm.Shape.Elem, compat, mem)
+			g.pf("%s        if (arm.Shape.Kind !== %d || arm.Element.Kind !== %d) { if (%s) { armWidened = true; } else { %s; } }\n", ind, arm.Kind, arm.Shape.Elem, compat, messageKindMismatch)
 		} else {
-			g.pf("%s        if (arm.Shape.Kind !== %d || arm.Element.Kind !== %d) { %s.type = 0; r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, arm, 0)) { r.Report.Damaged = true; return false; } break; }\n", ind, arm.Kind, arm.Shape.Elem, mem)
+			g.pf("%s        if (arm.Shape.Kind !== %d || arm.Element.Kind !== %d) { %s; }\n", ind, arm.Kind, arm.Shape.Elem, messageKindMismatch)
 		}
 		g.pf("%s        %s.type = %d;\n", ind, mem, i+1)
 		if !v.Void() {
