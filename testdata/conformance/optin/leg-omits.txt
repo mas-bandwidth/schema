@@ -1,0 +1,6 @@
+unit scalars tables/scalars
+unit tblvarevo3 test/tables/varevo/VarEvo3.schema
+instance score scalars SimState testdata/conformance/tables/wire/scalars_full.bin
+instance shared scalars SimState testdata/conformance/tables/wire/scalars_default.bin
+connection varevo3_conn tblvarevo3 0x25fed5501e5d7aa5 testdata/wire/tables/varevo3_conn.bin
+write-refusal-message mref_unionstr_ok varevo3_conn EvoMsg testdata/conformance/tables/wire/varevo3_msg_notice.bin payload.notice bytes 61C3A962

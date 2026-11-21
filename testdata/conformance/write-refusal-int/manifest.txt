@@ -1,0 +1,48 @@
+# THE INTEGER-ASSIGNMENT CORPUS (F-098, F-099): write-refusal rows that set a
+# TortureCook integer, on every path a row takes to one, to a value past its
+# declared kind, with the value at each end of the range beside it. A driver
+# manifest (testdata/conformance/tables/FORMAT.md, the derived form: no
+# verdict); answers.txt holds what a driver owes for each case. The Java
+# driver answers it in
+# internal/codegen/javatable/conformance_writerefusal_int_test.go.
+unit cooktorture test/tables/cooktorture/CookTorture.schema
+# a scalar field
+write-refusal i32_past_max      cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin b_i32                int 2147483648
+write-refusal i32_max           cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin b_i32                int 2147483647
+write-refusal i32_past_min      cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin b_i32                int -2147483649
+write-refusal u32_negative      cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin b_u32                int -1
+write-refusal u32_max           cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin b_u32                int 4294967295
+write-refusal u32_past_max      cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin b_u32                int 4294967296
+write-refusal i64_past_max      cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin b_i64                int 9223372036854775808
+write-refusal i64_max           cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin b_i64                int 9223372036854775807
+write-refusal u64_negative      cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin b_u64                int -1
+write-refusal u64_max           cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin b_u64                int 18446744073709551615
+write-refusal u64_past_max      cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin b_u64                int 18446744073709551616
+# storage wider than the declaration: the writer's refusal, not the driver's
+write-refusal u8_past_max       cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin b_u8                 int 256
+write-refusal u8_negative       cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin b_u8                 int -1
+write-refusal u8_max            cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin b_u8                 int 255
+# an array element
+write-refusal arr_i32_past_max  cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin arr_i32[0]           int 2147483648
+write-refusal arr_i32_max       cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin arr_i32[0]           int 2147483647
+write-refusal arr_u32_negative  cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin arr_u32[0]           int -1
+write-refusal arr_u32_max       cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin arr_u32[0]           int 4294967295
+write-refusal arr_i64_past_max  cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin arr_i64[0]           int 9223372036854775808
+write-refusal arr_i64_max       cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin arr_i64[0]           int 9223372036854775807
+write-refusal arr_u64_negative  cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin arr_u64[0]           int -1
+write-refusal arr_u64_max       cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin arr_u64[0]           int 18446744073709551615
+# a channel-array element
+write-refusal chan_i32_past_max cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin chan_i32[0]          int 2147483648
+write-refusal chan_i32_max      cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin chan_i32[0]          int 2147483647
+write-refusal chan_u64_negative cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin chan_u64[0]          int -1
+write-refusal chan_u64_max      cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin chan_u64[0]          int 18446744073709551615
+# a map entry's key and value
+write-refusal map32_key_past    cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin map_i32_u32[0].key   int 2147483648
+write-refusal map32_val_neg     cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin map_i32_u32[0].value int -1
+write-refusal map32_val_max     cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin map_i32_u32[0].value int 4294967295
+write-refusal map64_key_past    cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin map_i64_u64[0].key   int 9223372036854775808
+write-refusal map64_val_past    cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin map_i64_u64[0].value int 18446744073709551616
+write-refusal map64_val_max     cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin map_i64_u64[0].value int 18446744073709551615
+# a nested record's field
+write-refusal nested_past_max   cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin opt_entry.stamp      int 9223372036854775808
+write-refusal nested_max        cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin opt_entry.stamp      int 9223372036854775807

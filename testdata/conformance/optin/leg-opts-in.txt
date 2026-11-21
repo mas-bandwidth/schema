@@ -1,0 +1,11 @@
+unit scalars tables/scalars
+unit tblvarevo3 test/tables/varevo/VarEvo3.schema
+unit backenddemo tables/backend
+instance score scalars SimState testdata/conformance/tables/wire/scalars_full.bin
+instance score.json backenddemo StorePurchase testdata/conformance/tables/wire/store_full.bin
+instance shared scalars SimState testdata/conformance/tables/wire/scalars_default.bin
+connection varevo3_conn tblvarevo3 0x25fed5501e5d7aa5 testdata/wire/tables/varevo3_conn.bin
+connection backend_conn backenddemo 0x2309093a1139c6cc testdata/wire/tables/backend_conn.bin
+write-refusal shared backenddemo StorePurchase testdata/conformance/tables/wire/store_full.bin quantity int 100
+write-refusal-message mref_range_high_ok backend_conn StorePurchase testdata/conformance/tables/wire/store_full.bin quantity int 99
+write-refusal-message mref_unionstr_ok varevo3_conn EvoMsg testdata/conformance/tables/wire/varevo3_msg_notice.bin payload.notice bytes 61C3A962

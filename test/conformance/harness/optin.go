@@ -47,8 +47,12 @@ func optInLines(text string, skip map[string]bool) (kept string, dropped map[str
 			drop = true
 		case f[0] == "connection" && len(f) > 1 && conns[f[1]]:
 			drop = true
-		case (f[0] == "message" || f[0] == "message-refusal") && len(f) > 2 && conns[f[2]]:
-			drop, dropped[f[1]] = true, true
+		case onConnection[f[0]]:
+			// its third field is a connection key, never a unit, even where
+			// a key happens to spell an omitted unit's name
+			if len(f) > 2 && conns[f[2]] {
+				drop, dropped[f[1]] = true, true
+			}
 		case f[0] == "cook-write" && len(f) > 1 && instances[f[1]]:
 			drop, dropped[f[1]] = true, true
 		case len(f) > 2 && skip[f[2]]:
@@ -60,6 +64,58 @@ func optInLines(text string, skip map[string]bool) (kept string, dropped map[str
 		}
 	}
 	return strings.TrimSuffix(b.String(), "\n"), dropped
+}
+
+// onConnection is the derived line kinds whose third field is a connection
+// key rather than a unit: the row reads the connection's unit.
+var onConnection = map[string]bool{"message": true, "message-refusal": true, "write-refusal-message": true}
+
+// checkLegRows holds the filtered manifest to the cases the leg is asked: no
+// row it keeps belongs to a case the leg is not asked, and no row it keeps
+// names a connection or an instance it dropped. Either would hand a driver a
+// row it can answer only by failing its whole surface, so the leg's manifest
+// is refused here instead, naming the row.
+func checkLegRows(kept string, cases notAsked) error {
+	conns, instances := map[string]bool{}, map[string]bool{}
+	for line := range strings.SplitSeq(kept, "\n") {
+		if f := strings.Fields(line); len(f) > 1 {
+			switch f[0] {
+			case "connection":
+				conns[f[1]] = true
+			case "instance":
+				instances[f[1]] = true
+			}
+		}
+	}
+	for line := range strings.SplitSeq(kept, "\n") {
+		f := strings.Fields(line)
+		if len(f) < 2 || strings.HasPrefix(f[0], "#") {
+			continue
+		}
+		var surfaces []caseKey
+		switch f[0] {
+		case "unit", "opt-in", "connection", "forgery":
+		case "instance":
+			surfaces = []caseKey{{"wire", f[1]}, {"json-read", f[1]}, {"json-write", f[1] + ".json"}}
+		case "json-write-refusal":
+			surfaces = []caseKey{{"json-write", f[1] + ".json"}}
+		default:
+			surfaces = []caseKey{{f[0], f[1]}}
+		}
+		for _, key := range surfaces {
+			if unit, ok := cases[key]; ok {
+				return fmt.Errorf("`%s` is a row of case %q on the %s surface, which reads the omitted unit %s",
+					strings.Join(f, " "), key.name, key.surface, unit)
+			}
+		}
+		if onConnection[f[0]] && len(f) > 2 && !conns[f[2]] {
+			return fmt.Errorf("`%s` names connection %s, which the leg is not handed", strings.Join(f, " "), f[2])
+		}
+		if f[0] == "cook-write" && !instances[f[1]] {
+			return fmt.Errorf("`%s` names instance %s, which the leg is not handed", strings.Join(f, " "), f[1])
+		}
+	}
+	return nil
 }
 
 // caseKey is a case as a driver answers it: its surface and its name there.
@@ -142,6 +198,9 @@ func legManifest(m *Manifest, derived, lang string, listed map[string]bool) (str
 		return "", nil, nil, err
 	}
 	kept, _ := optInLines(string(text), skip)
+	if err := checkLegRows(kept, cases); err != nil {
+		return "", nil, nil, fmt.Errorf("the manifest for %s: %w", lang, err)
+	}
 	path := strings.TrimSuffix(derived, ".txt") + "-" + lang + ".txt"
 	if err := os.WriteFile(path, []byte(kept), 0o644); err != nil {
 		return "", nil, nil, err
