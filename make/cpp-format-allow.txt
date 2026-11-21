@@ -5,6 +5,13 @@
 # Make a file clean, then delete its line. Never add one. The packet emitter's
 # files (<Name>.h, <Name>Wire.h) are clean and are never listed.
 # `make tables-cpp-clean-census` writes the list as it stands.
+# The one exception (docs/PORTING.md J4): the packetunions corpus unit's two
+# table files, PacketUnionsTable.cpp and PacketUnionsTable.h, added once when
+# the unit joined (PR #4450). Its C++ is byte-identical from the baseline
+# compiler and from that PR, so the drift is the table emitter's existing form,
+# and clang-format reports exactly these two files. Its packet files are clean
+# and not listed. A drifting file not listed, and a listed file that is clean
+# or gone, still fail.
 build/tables-generated/a1/A1Table.cpp
 build/tables-generated/a1/A1Table.h
 build/tables-generated/a2/A2Table.cpp

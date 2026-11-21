@@ -1623,6 +1623,20 @@ code. The admission is limited to the observed kinds in `make/cpp-warn-allow.txt
 the normal shrink-only rule, new-kind rejection, stale-entry rejection and source
 negative control remain in force. The format inventory is unchanged.
 
+**One-time packetunions inventory, warning and format.** The corpus unit
+`test/tables/packetunions` (PR #4450) generates C++ that was absent from both
+censuses. A second reader generated it with the baseline compiler and with the
+PR and got byte-identical files, so the findings are the emitter's existing
+forms, not a change in it. On the warning ratchet it adds five paths and 21
+path/kind pairs: the table files carry exactly `A1Table`'s kinds, and the packet
+files (`PacketUnions.h`, `PacketUnionsWire.h`) only the three packet kinds the
+list's header names. On the format ratchet it adds two files,
+`PacketUnionsTable.cpp` and `PacketUnionsTable.h`; the packet files are
+format-clean and not listed. clang++ and clang-format report exactly these
+entries. This is the format ratchet's only admitted addition. No existing entry
+changed, and the normal shrink-only rule, new-kind and new-file rejection,
+stale-entry rejection and the source negative controls remain in force.
+
 **Targets:** clean
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | goose | moo | lobster | squirrel | luau | lua | python | ruby | unity |
