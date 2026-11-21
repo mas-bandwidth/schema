@@ -56,6 +56,9 @@
 #include "CookTortureTable.h"
 #include "CookTortureBlock.h"
 #include "CookTortureWideTable.h"
+// the SHAPES unit (test/tables/shapes): bounds a float32 cannot hold exactly,
+// -0, counted arrays with a Min, a degenerate fixed field, scalar union arms
+#include "ShapesTable.h"
 // the MESSAGE FORM's units (docs/SPEC-TABLES.md §3.3): the three backend
 // messages the ruling measured, and the WIDE-VOCABULARY unit whose slots fall
 // on both sides of the one-byte boundary
@@ -386,6 +389,8 @@ static const Codec codecs[] = {
     CODEC( "tblvarevo1", tblvarevo1, EvoMsg ),
     CODEC( "tblvarevo3", tblvarevo3, EvoMsg ),
     CODEC( "cooktorture", cooktorture, TortureFixedWref ),
+    // the SHAPES unit (test/tables/shapes), opted in by `list` below
+    CODEC( "shapes", shapes, FixedBounds ),
 };
 
 // ---------------------------------------------------------------------------
@@ -493,6 +498,7 @@ static const VarCodec var_codecs[] = {
     VARCODEC( "tblvarevo3", tblvarevo3, EvoDoc ),
     VARCODEC( "cooktorture", cooktorture, TortureCook ),
     VARCODEC( "cooktorturewide", cooktorturewide, TortureWideCook ),
+    VARCODEC( "shapes", shapes, Bounds ),
 
     VARCODEC( "graphdemo", graphdemo, Scene ),
     VARCODEC( "graphdemo", graphdemo, ListNode ),
@@ -2051,6 +2057,72 @@ template <typename T> static bool wref_store_int( T & field, const std::string &
     return true;
 }
 
+// The `real` kind (FORMAT.md): a decimal parsed as a double, then rounded to the
+// float storage the way any caller's assignment rounds it, so a row can name
+// the float32 one step past a bound exactly.
+static bool parse_wref_real_f32( const std::string & text, float & out )
+{
+    char * end = NULL;
+    const double d = strtod( text.c_str(), &end );
+    if ( end == NULL || *end != 0 ) return false;
+    out = (float) d;
+    return true;
+}
+
+static bool parse_wref_float_kind( const std::string & kind, const std::string & text, float & out )
+{
+    if ( kind == "real" ) return parse_wref_real_f32( text, out );
+    if ( kind == "float" ) return parse_wref_f32( text, out );
+    return false;
+}
+
+// The SHAPES unit's rows (test/tables/shapes): the fields both roots share.
+template <typename T, typename E> static bool write_refusal_shapes_common( T & v, E * tones, int32_t tones_count,
+                                                                           const std::string & path, const std::string & kind,
+                                                                           const std::string & text )
+{
+    const long long n = strtoll( text.c_str(), NULL, 10 );
+    if ( path == "tenth" ) return parse_wref_float_kind( kind, text, v.tenth );
+    if ( path == "seventh" ) return parse_wref_float_kind( kind, text, v.seventh );
+    if ( path == "ranged" ) return parse_wref_float_kind( kind, text, v.ranged );
+    if ( path == "zero" ) return parse_wref_float_kind( kind, text, v.zero );
+    if ( path == "nonzero" ) return parse_wref_float_kind( kind, text, v.nonzero );
+    if ( path == "octets" && kind == "count" )
+    {
+        const int32_t storage = (int32_t) ( sizeof( v.octets ) / sizeof( v.octets[0] ) );
+        for ( int32_t i = v.octets_count; i < (int32_t) n && i < storage; i++ ) v.octets[i] = 9;
+        v.octets_count = (int32_t) n;
+        return true;
+    }
+    if ( path == "recs" && kind == "count" )
+    {
+        const int32_t storage = (int32_t) ( sizeof( v.recs ) / sizeof( v.recs[0] ) );
+        for ( int32_t i = v.recs_count; i < (int32_t) n && i < storage; i++ ) v.recs[i] = v.recs[0];
+        v.recs_count = (int32_t) n;
+        return true;
+    }
+    if ( path == "tones[0]" && kind == "ordinal" )
+    {
+        if ( tones_count < 1 || tones == NULL ) return false;
+        tones[0] = (E) n;
+        return true;
+    }
+    if ( path == "pick" && kind == "tag" )
+    {
+        // a lawful tag takes its arm at the arm's declared default
+        switch ( n )
+        {
+            case 1: v.pick.small = 0; break;
+            case 2: v.pick.ratio = 0.0f; break;
+            case 3: v.pick.on = false; break;
+            default: break;
+        }
+        v.pick.type = (shapes::PickType) n;
+        return true;
+    }
+    return false;
+}
+
 // The REVIEW-1121 rows on PLAIN VARIABLE roots (MANIFEST.txt, R1): the value is
 // the region the load left, set in place.
 static bool write_refusal_set_variable( const std::string & root, void * value, const std::string & path,
@@ -2129,6 +2201,22 @@ static bool write_refusal_set_variable( const std::string & root, void * value, 
             v.bounded_steps[0].type = (cooktorture::StepActionType) n;
             return true;
         }
+    }
+    if ( root == "Bounds" )
+    {
+        shapes::Bounds & v = *(shapes::Bounds *) value;
+        shapes::Tone * tones = v.tones.count < 1 || v.tones.elements.value == 0
+                                   ? NULL
+                                   : (shapes::Tone *) ( (uint8_t *) &v.tones.elements + v.tones.elements.value );
+        return write_refusal_shapes_common( v, tones, v.tones.count, path, kind, text );
+    }
+    if ( root == "FixedBounds" )
+    {
+        shapes::FixedBounds & v = *(shapes::FixedBounds *) value;
+        if ( path == "plain" ) return parse_wref_float_kind( kind, text, v.plain );
+        if ( path == "wide" && kind == "real" ) { char * end = NULL; v.wide = strtod( text.c_str(), &end ); return end != NULL && *end == 0; }
+        if ( path == "wide" && kind == "float" ) return parse_wref_f64( text, v.wide );
+        return write_refusal_shapes_common( v, v.tones, v.tones_count, path, kind, text );
     }
     return false;
 }
@@ -2279,6 +2367,7 @@ static bool write_refusal_fixed_save( const std::string & root, const void * val
     if ( root == "LoadoutConfig" ) { wrote = tabledemo::LoadoutConfigFixedSave( (const tabledemo::LoadoutConfig *) value, 1, buffer, capacity ); return true; }
     if ( root == "SimState" ) { wrote = scalardemo::SimStateFixedSave( (const scalardemo::SimState *) value, 1, buffer, capacity ); return true; }
     if ( root == "TortureFixedWref" ) { wrote = cooktorture::TortureFixedWrefFixedSave( (const cooktorture::TortureFixedWref *) value, 1, buffer, capacity ); return true; }
+    if ( root == "FixedBounds" ) { wrote = shapes::FixedBoundsFixedSave( (const shapes::FixedBounds *) value, 1, buffer, capacity ); return true; }
     return false;
 }
 
@@ -2469,6 +2558,8 @@ int main( int argc, char ** argv )
     if ( surface == "list" )
     {
         printf( "wire\nmessage\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook-write\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n" );
+        // the opt-in units this leg answers (MANIFEST.txt `opt-in`)
+        printf( "unit shapes\n" );
         return 0;
     }
     if ( argc < 4 )
