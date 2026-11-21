@@ -2297,8 +2297,8 @@ export function tableMessageSkipBody(r, v, indexBits, depth) {
 }
 // A scalar reconstructs at the announced storage width. A ranged value is the
 // offset plus the base, in unsigned 64-bit arithmetic so a negative base wraps
-// as it does in the reference; the caller then narrows to its own declared
-// width and clamps.
+// as it does in the reference; the caller then holds the value to its own
+// declared range, refusing out_of_range past it (§3.3, §4).
 export function tableMessageKindWidens(from, to) {
   return (from >= 2 && from <= 5 && ((to > from && to <= 5) || to === 18)) ||
          (from >= 6 && from <= 9 && ((to > from && to <= 9) || to === 19)) ||
