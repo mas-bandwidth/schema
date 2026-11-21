@@ -748,19 +748,75 @@ func (g *gen) emitCookRow(st *ir.Struct) {
 	g.pf("    fn default() -> Self {\n")
 	g.pf("        // a cooked record's zero form is a value of the type: zero is valid\n")
 	g.pf("        // for every scalar, and false is a valid bool\n")
-	if cookNamedTextReachable(st) {
+	if text, born := cookNamedTextReachable(st), cookBornReachable(st, map[*ir.Struct]bool{}); text || born {
 		// NAMED string(N)/bytes(N) DEFAULTS LIVE HERE (SPEC §4.2), matching
 		// C++ `char label[8 + 1] = "fx"`. Prefill already carries the same
 		// bytes for holes the plan does not write; this is constructed
 		// storage, not dest-row, not identity fill.
 		g.pf("        let mut value: Self = unsafe { core::mem::zeroed() };\n")
-		g.emitCookNamedTextDefaults(st, "        ")
+		if text {
+			g.emitCookNamedTextDefaults(st, "        ")
+		}
+		if born {
+			g.pf("        // a counted [Min..N] array is born at Min, here or in a nested\n")
+			g.pf("        // record (docs/SPEC.md §4.2)\n")
+			g.emitCookBornCounts(st, "        ")
+		}
 		g.pf("        value\n")
 	} else {
 		g.pf("        unsafe { core::mem::zeroed() }\n")
 	}
 	g.pf("    }\n}\n\n")
 	g.emitCookMapFinds(st)
+}
+
+// cookBornReachable is whether a fresh row of st holds a counted array
+// [Min..N]T with Min above zero, directly or in a nested record: such an array
+// is BORN AT ITS MINIMUM (docs/SPEC.md §4.2), Min default elements, so the
+// zero form is not a value of the type.
+func cookBornReachable(st *ir.Struct, seen map[*ir.Struct]bool) bool {
+	if st == nil || seen[st] {
+		return false
+	}
+	seen[st] = true
+	for _, f := range st.Fields {
+		if f.Type.Optional || f.Type.Pointer || f.KeyEnum != "" {
+			continue
+		}
+		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+			return true
+		}
+		if ref, ok := f.Type.Ref.(*ir.Struct); ok && f.Type.Kind == ir.TNamed && (f.Array == ir.ArrayNone || f.Array == ir.ArrayFixed) && cookBornReachable(ref, seen) {
+			return true
+		}
+	}
+	return false
+}
+
+// emitCookBornCounts births every counted array at its declared minimum and
+// every nested record through its own Default, so a fresh row is a value of
+// the type (docs/SPEC.md §4.2): the elements are their zero defaults, as the
+// fixed form's default image holds them.
+func (g *gen) emitCookBornCounts(st *ir.Struct, ind string) {
+	for _, f := range st.Fields {
+		if f.Type.Optional || f.Type.Pointer || f.KeyEnum != "" {
+			continue
+		}
+		ref, isStruct := f.Type.Ref.(*ir.Struct)
+		isStruct = isStruct && f.Type.Kind == ir.TNamed
+		nestedBorn := isStruct && cookBornReachable(ref, map[*ir.Struct]bool{})
+		switch {
+		case f.Array == ir.ArrayCounted && f.ArrayMin > 0:
+			g.pf("%svalue.%s_count = %d;\n", ind, f.Name, f.ArrayMin)
+			if nestedBorn {
+				g.pf("%svalue.%s = [%sRow::default(); %d];\n", ind, f.Name, ref.Name, f.ArrayBound)
+			}
+		case nestedBorn && f.Array == ir.ArrayNone:
+			g.pf("%svalue.%s = %sRow::default();\n", ind, f.Name, ref.Name)
+		case nestedBorn && f.Array == ir.ArrayFixed:
+			g.pf("%svalue.%s = [%sRow::default(); %d];\n", ind, f.Name, ref.Name, f.ArrayBound)
+		}
+	}
 }
 
 // cookSpanElement is a list element's cooked slot type, or "" for an element

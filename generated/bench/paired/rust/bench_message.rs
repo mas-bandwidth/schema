@@ -156,9 +156,7 @@ pub fn mixed_entity_save_message_body(w: &mut TableBitWriter, value: &MixedEntit
 /// kind is a kind mismatch, skipped.
 pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut MixedEntityRow) -> bool {
     *value = mixed_entity_message_default();
-    let mut seen_ids = [0u64; 64];
-    let mut seen_count = 0usize;
-    let mut seen_more: Vec<u64> = Vec::new();
+    let mut seen = TableMessageSeen::default();
     let same_build = v.build_version == BUILD_VERSION;
     let mut next_field = 0usize;
     let dflt = mixed_entity_message_default();
@@ -167,9 +165,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
         if reference == 0 { return true; }
         let Some(entry) = v.entry(reference).copied() else { report.damaged = true; return false; };
         if entry.id >= 0xffff_ffff_ffff_fffd { report.damaged = true; return false; }
-        if seen_ids[..core::cmp::min(seen_count, seen_ids.len())].contains(&entry.id) || seen_more.contains(&entry.id) { report.damaged = true; return false; }
-        if seen_count < seen_ids.len() { seen_ids[seen_count] = entry.id; } else { seen_more.push(entry.id); }
-        seen_count += 1;
+        if !seen.once(v.seen_key(reference)) { report.damaged = true; return false; }
         match entry.id {
             0x23fcfd6678e36712 => {
                 if same_build && next_field > 0 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
@@ -182,7 +178,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                             widened = true;
                         } else {
                             report.damaged = true;
-                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f1;
                         }
                     }
@@ -210,7 +206,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                             widened = true;
                         } else {
                             report.damaged = true;
-                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f2;
                         }
                     }
@@ -238,7 +234,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                             widened = true;
                         } else {
                             report.damaged = true;
-                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f3;
                         }
                     }
@@ -266,7 +262,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                             widened = true;
                         } else {
                             report.damaged = true;
-                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f4;
                         }
                     }
@@ -294,7 +290,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                             widened = true;
                         } else {
                             report.damaged = true;
-                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f5;
                         }
                     }
@@ -322,7 +318,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                             widened = true;
                         } else {
                             report.damaged = true;
-                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f6;
                         }
                     }
@@ -350,7 +346,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                             widened = true;
                         } else {
                             report.damaged = true;
-                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f7;
                         }
                     }
@@ -378,7 +374,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                             widened = true;
                         } else {
                             report.damaged = true;
-                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f8;
                         }
                     }
@@ -406,7 +402,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                             widened = true;
                         } else {
                             report.damaged = true;
-                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f9;
                         }
                     }
@@ -434,7 +430,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                             widened = true;
                         } else {
                             report.damaged = true;
-                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f10;
                         }
                     }
@@ -458,7 +454,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                 'f11: {
                     if entry.kind != 30 || entry.shape.elem != 0 {
                         report.damaged = true;
-                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f11;
                     }
                     {
@@ -504,7 +500,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                             widened = true;
                         } else {
                             report.damaged = true;
-                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f12;
                         }
                     }
@@ -527,7 +523,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                 'f13: {
                     if entry.kind != 1 || entry.shape.elem != 0 {
                         report.damaged = true;
-                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f13;
                     }
                     {
@@ -547,7 +543,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                 'f14: {
                     if entry.kind != 1 || entry.shape.elem != 0 {
                         report.damaged = true;
-                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f14;
                     }
                     {
@@ -563,7 +559,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
             _ => {
                 if same_build { report.damaged = true; return false; } // a field the record does not declare (§3.3 (b))
                 report.unknown += 1;
-                if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
             }
         }
     }
@@ -608,9 +604,7 @@ pub fn mixed_stat_save_message_body(w: &mut TableBitWriter, value: &MixedStatRow
 /// kind is a kind mismatch, skipped.
 pub fn mixed_stat_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut MixedStatRow) -> bool {
     *value = mixed_stat_message_default();
-    let mut seen_ids = [0u64; 64];
-    let mut seen_count = 0usize;
-    let mut seen_more: Vec<u64> = Vec::new();
+    let mut seen = TableMessageSeen::default();
     let same_build = v.build_version == BUILD_VERSION;
     let mut next_field = 0usize;
     let dflt = mixed_stat_message_default();
@@ -619,9 +613,7 @@ pub fn mixed_stat_load_message_body(r: &mut TableBitReader, v: &TableVocabulary,
         if reference == 0 { return true; }
         let Some(entry) = v.entry(reference).copied() else { report.damaged = true; return false; };
         if entry.id >= 0xffff_ffff_ffff_fffd { report.damaged = true; return false; }
-        if seen_ids[..core::cmp::min(seen_count, seen_ids.len())].contains(&entry.id) || seen_more.contains(&entry.id) { report.damaged = true; return false; }
-        if seen_count < seen_ids.len() { seen_ids[seen_count] = entry.id; } else { seen_more.push(entry.id); }
-        seen_count += 1;
+        if !seen.once(v.seen_key(reference)) { report.damaged = true; return false; }
         match entry.id {
             0x80ab75f0866dbf65 => {
                 if same_build && next_field > 0 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
@@ -630,7 +622,7 @@ pub fn mixed_stat_load_message_body(r: &mut TableBitReader, v: &TableVocabulary,
                 'f15: {
                     if entry.kind != 6 || entry.shape.elem != 0 {
                         report.damaged = true;
-                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f15;
                     }
                     {
@@ -656,7 +648,7 @@ pub fn mixed_stat_load_message_body(r: &mut TableBitReader, v: &TableVocabulary,
                             widened = true;
                         } else {
                             report.damaged = true;
-                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f16;
                         }
                     }
@@ -676,7 +668,7 @@ pub fn mixed_stat_load_message_body(r: &mut TableBitReader, v: &TableVocabulary,
             _ => {
                 if same_build { report.damaged = true; return false; } // a field the record does not declare (§3.3 (b))
                 report.unknown += 1;
-                if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
             }
         }
     }
@@ -735,9 +727,7 @@ pub fn mixed_hit_event_save_message_body(w: &mut TableBitWriter, value: &MixedHi
 /// kind is a kind mismatch, skipped.
 pub fn mixed_hit_event_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut MixedHitEventRow) -> bool {
     *value = mixed_hit_event_message_default();
-    let mut seen_ids = [0u64; 64];
-    let mut seen_count = 0usize;
-    let mut seen_more: Vec<u64> = Vec::new();
+    let mut seen = TableMessageSeen::default();
     let same_build = v.build_version == BUILD_VERSION;
     let mut next_field = 0usize;
     let dflt = mixed_hit_event_message_default();
@@ -746,9 +736,7 @@ pub fn mixed_hit_event_load_message_body(r: &mut TableBitReader, v: &TableVocabu
         if reference == 0 { return true; }
         let Some(entry) = v.entry(reference).copied() else { report.damaged = true; return false; };
         if entry.id >= 0xffff_ffff_ffff_fffd { report.damaged = true; return false; }
-        if seen_ids[..core::cmp::min(seen_count, seen_ids.len())].contains(&entry.id) || seen_more.contains(&entry.id) { report.damaged = true; return false; }
-        if seen_count < seen_ids.len() { seen_ids[seen_count] = entry.id; } else { seen_more.push(entry.id); }
-        seen_count += 1;
+        if !seen.once(v.seen_key(reference)) { report.damaged = true; return false; }
         match entry.id {
             0xb7bc9ac015a25050 => {
                 if same_build && next_field > 0 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
@@ -761,7 +749,7 @@ pub fn mixed_hit_event_load_message_body(r: &mut TableBitReader, v: &TableVocabu
                             widened = true;
                         } else {
                             report.damaged = true;
-                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f17;
                         }
                     }
@@ -789,7 +777,7 @@ pub fn mixed_hit_event_load_message_body(r: &mut TableBitReader, v: &TableVocabu
                             widened = true;
                         } else {
                             report.damaged = true;
-                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f18;
                         }
                     }
@@ -817,7 +805,7 @@ pub fn mixed_hit_event_load_message_body(r: &mut TableBitReader, v: &TableVocabu
                             widened = true;
                         } else {
                             report.damaged = true;
-                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f19;
                         }
                     }
@@ -841,7 +829,7 @@ pub fn mixed_hit_event_load_message_body(r: &mut TableBitReader, v: &TableVocabu
                 'f20: {
                     if entry.kind != 1 || entry.shape.elem != 0 {
                         report.damaged = true;
-                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f20;
                     }
                     {
@@ -857,7 +845,7 @@ pub fn mixed_hit_event_load_message_body(r: &mut TableBitReader, v: &TableVocabu
             _ => {
                 if same_build { report.damaged = true; return false; } // a field the record does not declare (§3.3 (b))
                 report.unknown += 1;
-                if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
             }
         }
     }
@@ -903,9 +891,7 @@ pub fn mixed_chat_event_save_message_body(w: &mut TableBitWriter, value: &MixedC
 /// kind is a kind mismatch, skipped.
 pub fn mixed_chat_event_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut MixedChatEventRow) -> bool {
     *value = mixed_chat_event_message_default();
-    let mut seen_ids = [0u64; 64];
-    let mut seen_count = 0usize;
-    let mut seen_more: Vec<u64> = Vec::new();
+    let mut seen = TableMessageSeen::default();
     let same_build = v.build_version == BUILD_VERSION;
     let mut next_field = 0usize;
     let dflt = mixed_chat_event_message_default();
@@ -914,9 +900,7 @@ pub fn mixed_chat_event_load_message_body(r: &mut TableBitReader, v: &TableVocab
         if reference == 0 { return true; }
         let Some(entry) = v.entry(reference).copied() else { report.damaged = true; return false; };
         if entry.id >= 0xffff_ffff_ffff_fffd { report.damaged = true; return false; }
-        if seen_ids[..core::cmp::min(seen_count, seen_ids.len())].contains(&entry.id) || seen_more.contains(&entry.id) { report.damaged = true; return false; }
-        if seen_count < seen_ids.len() { seen_ids[seen_count] = entry.id; } else { seen_more.push(entry.id); }
-        seen_count += 1;
+        if !seen.once(v.seen_key(reference)) { report.damaged = true; return false; }
         match entry.id {
             0xa5013e9ad5caeda4 => {
                 if same_build && next_field > 0 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
@@ -929,7 +913,7 @@ pub fn mixed_chat_event_load_message_body(r: &mut TableBitReader, v: &TableVocab
                             widened = true;
                         } else {
                             report.damaged = true;
-                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f21;
                         }
                     }
@@ -957,7 +941,7 @@ pub fn mixed_chat_event_load_message_body(r: &mut TableBitReader, v: &TableVocab
                             widened = true;
                         } else {
                             report.damaged = true;
-                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f22;
                         }
                     }
@@ -977,7 +961,7 @@ pub fn mixed_chat_event_load_message_body(r: &mut TableBitReader, v: &TableVocab
             _ => {
                 if same_build { report.damaged = true; return false; } // a field the record does not declare (§3.3 (b))
                 report.unknown += 1;
-                if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
             }
         }
     }
@@ -1023,9 +1007,7 @@ pub fn mixed_pickup_event_save_message_body(w: &mut TableBitWriter, value: &Mixe
 /// kind is a kind mismatch, skipped.
 pub fn mixed_pickup_event_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut MixedPickupEventRow) -> bool {
     *value = mixed_pickup_event_message_default();
-    let mut seen_ids = [0u64; 64];
-    let mut seen_count = 0usize;
-    let mut seen_more: Vec<u64> = Vec::new();
+    let mut seen = TableMessageSeen::default();
     let same_build = v.build_version == BUILD_VERSION;
     let mut next_field = 0usize;
     let dflt = mixed_pickup_event_message_default();
@@ -1034,9 +1016,7 @@ pub fn mixed_pickup_event_load_message_body(r: &mut TableBitReader, v: &TableVoc
         if reference == 0 { return true; }
         let Some(entry) = v.entry(reference).copied() else { report.damaged = true; return false; };
         if entry.id >= 0xffff_ffff_ffff_fffd { report.damaged = true; return false; }
-        if seen_ids[..core::cmp::min(seen_count, seen_ids.len())].contains(&entry.id) || seen_more.contains(&entry.id) { report.damaged = true; return false; }
-        if seen_count < seen_ids.len() { seen_ids[seen_count] = entry.id; } else { seen_more.push(entry.id); }
-        seen_count += 1;
+        if !seen.once(v.seen_key(reference)) { report.damaged = true; return false; }
         match entry.id {
             0x9e7fd06d864fbd56 => {
                 if same_build && next_field > 0 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
@@ -1049,7 +1029,7 @@ pub fn mixed_pickup_event_load_message_body(r: &mut TableBitReader, v: &TableVoc
                             widened = true;
                         } else {
                             report.damaged = true;
-                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f23;
                         }
                     }
@@ -1077,7 +1057,7 @@ pub fn mixed_pickup_event_load_message_body(r: &mut TableBitReader, v: &TableVoc
                             widened = true;
                         } else {
                             report.damaged = true;
-                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f24;
                         }
                     }
@@ -1097,7 +1077,7 @@ pub fn mixed_pickup_event_load_message_body(r: &mut TableBitReader, v: &TableVoc
             _ => {
                 if same_build { report.damaged = true; return false; } // a field the record does not declare (§3.3 (b))
                 report.unknown += 1;
-                if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
             }
         }
     }
@@ -1258,7 +1238,7 @@ pub fn bench_mixed_save_message_body(w: &mut TableBitWriter, value: &BenchMixedR
         }
     }
     {
-        debug_assert!(value.entities_count >= 0 && value.entities_count <= 8, "the declared count is the bound (docs/SPEC-TABLES.md §3.4)");
+        debug_assert!(value.entities_count >= 1 && value.entities_count <= 8, "the declared count is the bound (docs/SPEC-TABLES.md §3.4)");
         if value.entities_count > 0 {
             w.put(10, TABLE_MESSAGE_REF_BITS);
             w.put((value.entities_count as u64).wrapping_sub(1), 3);
@@ -1334,6 +1314,7 @@ pub fn bench_mixed_save_message_body(w: &mut TableBitWriter, value: &BenchMixedR
     {
         if value.aim_x != dflt.aim_x {
             w.put(16, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(!value.aim_x.is_finite() || (value.aim_x >= f32::from_bits(0xbf800000) && value.aim_x <= f32::from_bits(0x3f800000)), "aim_x out of range");
             if !value.aim_x.is_finite() { return false; }
             table_message_write_scalar(w, &TableMessageShape { packing: 2, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0xbf800000), qdelta: f32::from_bits(0x40000000), qcount: 200 }, value.aim_x.to_bits() as u64, 0);
         }
@@ -1341,6 +1322,7 @@ pub fn bench_mixed_save_message_body(w: &mut TableBitWriter, value: &BenchMixedR
     {
         if value.aim_y != dflt.aim_y {
             w.put(17, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(!value.aim_y.is_finite() || (value.aim_y >= f32::from_bits(0xbf800000) && value.aim_y <= f32::from_bits(0x3f800000)), "aim_y out of range");
             if !value.aim_y.is_finite() { return false; }
             table_message_write_scalar(w, &TableMessageShape { packing: 2, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0xbf800000), qdelta: f32::from_bits(0x40000000), qcount: 200 }, value.aim_y.to_bits() as u64, 0);
         }
@@ -1348,6 +1330,7 @@ pub fn bench_mixed_save_message_body(w: &mut TableBitWriter, value: &BenchMixedR
     {
         if value.aim_z != dflt.aim_z {
             w.put(18, TABLE_MESSAGE_REF_BITS);
+            debug_assert!(!value.aim_z.is_finite() || (value.aim_z >= f32::from_bits(0xbf800000) && value.aim_z <= f32::from_bits(0x3f800000)), "aim_z out of range");
             if !value.aim_z.is_finite() { return false; }
             table_message_write_scalar(w, &TableMessageShape { packing: 2, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0xbf800000), qdelta: f32::from_bits(0x40000000), qcount: 200 }, value.aim_z.to_bits() as u64, 0);
         }
@@ -1424,9 +1407,7 @@ pub fn bench_mixed_save_message_body(w: &mut TableBitWriter, value: &BenchMixedR
 #[allow(clippy::needless_range_loop)]
 pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut BenchMixedRow) -> bool {
     *value = bench_mixed_message_default();
-    let mut seen_ids = [0u64; 64];
-    let mut seen_count = 0usize;
-    let mut seen_more: Vec<u64> = Vec::new();
+    let mut seen = TableMessageSeen::default();
     let same_build = v.build_version == BUILD_VERSION;
     let mut next_field = 0usize;
     let dflt = bench_mixed_message_default();
@@ -1435,9 +1416,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
         if reference == 0 { return true; }
         let Some(entry) = v.entry(reference).copied() else { report.damaged = true; return false; };
         if entry.id >= 0xffff_ffff_ffff_fffd { report.damaged = true; return false; }
-        if seen_ids[..core::cmp::min(seen_count, seen_ids.len())].contains(&entry.id) || seen_more.contains(&entry.id) { report.damaged = true; return false; }
-        if seen_count < seen_ids.len() { seen_ids[seen_count] = entry.id; } else { seen_more.push(entry.id); }
-        seen_count += 1;
+        if !seen.once(v.seen_key(reference)) { report.damaged = true; return false; }
         match entry.id {
             0xaa38aca481f528a8 => {
                 if same_build && next_field > 0 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
@@ -1450,7 +1429,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                             widened = true;
                         } else {
                             report.damaged = true;
-                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f28;
                         }
                     }
@@ -1478,7 +1457,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                             widened = true;
                         } else {
                             report.damaged = true;
-                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f29;
                         }
                     }
@@ -1506,7 +1485,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                             widened = true;
                         } else {
                             report.damaged = true;
-                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f30;
                         }
                     }
@@ -1534,7 +1513,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                             widened = true;
                         } else {
                             report.damaged = true;
-                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f31;
                         }
                     }
@@ -1561,7 +1540,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                             widened = true;
                         } else {
                             report.damaged = true;
-                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f32;
                         }
                     }
@@ -1588,7 +1567,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                             widened = true;
                         } else {
                             report.damaged = true;
-                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f33;
                         }
                     }
@@ -1616,7 +1595,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                             widened = true;
                         } else {
                             report.damaged = true;
-                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f34;
                         }
                     }
@@ -1644,7 +1623,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                             widened = true;
                         } else {
                             report.damaged = true;
-                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f35;
                         }
                     }
@@ -1668,7 +1647,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 'f36: {
                     if entry.kind != 22 || entry.shape.elem != 0 {
                         report.damaged = true;
-                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f36;
                     }
                     {
@@ -1690,13 +1669,14 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 'f37: {
                     if entry.kind != 14 || entry.shape.elem != 13 {
                         report.damaged = true;
-                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f37;
                     }
                     {
                         let Some(n) = table_message_count(r, &entry.shape) else { report.damaged = true; return false; };
                         if entry.shape.elem == 6 && !r.align() { report.damaged = true; return false; }
-                        let element38 = TableMessageEntry { id: 0, kind: entry.shape.elem, shape: entry.element, element: TableMessageShape::default() };
+                        let element38 = TableMessageEntry { id: 0, kind: entry.shape.elem, shape: entry.element, element: TableMessageShape::default(), first: 0 };
+                        if n < 1 { report.damaged = true; return false; }
                         let keep = core::cmp::min(n, 8);
                         if keep < n { report.damaged = true; }
                         let width = table_message_value_bits(element38.kind, &element38.shape);
@@ -1722,13 +1702,13 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 'f39: {
                     if entry.kind != 14 || entry.shape.elem != 13 {
                         report.damaged = true;
-                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f39;
                     }
                     {
                         let Some(n) = table_message_count(r, &entry.shape) else { report.damaged = true; return false; };
                         if entry.shape.elem == 6 && !r.align() { report.damaged = true; return false; }
-                        let element40 = TableMessageEntry { id: 0, kind: entry.shape.elem, shape: entry.element, element: TableMessageShape::default() };
+                        let element40 = TableMessageEntry { id: 0, kind: entry.shape.elem, shape: entry.element, element: TableMessageShape::default(), first: 0 };
                         let keep = core::cmp::min(n, 80);
                         if keep < n { report.damaged = true; }
                         let width = table_message_value_bits(element40.kind, &element40.shape);
@@ -1754,7 +1734,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 'f41: {
                     if entry.kind != 15 || entry.shape.elem != 0 {
                         report.damaged = true;
-                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f41;
                     }
                     {
@@ -1826,13 +1806,13 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 'f49: {
                     if entry.kind != 14 || entry.shape.elem != 6 {
                         report.damaged = true;
-                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f49;
                     }
                     {
                         let Some(n) = table_message_count(r, &entry.shape) else { report.damaged = true; return false; };
                         if entry.shape.elem == 6 && !r.align() { report.damaged = true; return false; }
-                        let element50 = TableMessageEntry { id: 0, kind: entry.shape.elem, shape: entry.element, element: TableMessageShape::default() };
+                        let element50 = TableMessageEntry { id: 0, kind: entry.shape.elem, shape: entry.element, element: TableMessageShape::default(), first: 0 };
                         let keep = core::cmp::min(n, 4);
                         if keep < n { report.damaged = true; }
                         let width = table_message_value_bits(element50.kind, &element50.shape);
@@ -1861,7 +1841,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 'f51: {
                     if entry.kind != 12 || entry.shape.elem != 0 {
                         report.damaged = true;
-                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f51;
                     }
                     {
@@ -1891,7 +1871,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 'f52: {
                     if entry.kind != 14 || entry.shape.elem != 6 {
                         report.damaged = true;
-                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f52;
                     }
                     {
@@ -1915,66 +1895,54 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
             0xdbaf7be5e24296c9 => {
                 if same_build && next_field > 15 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
                 next_field = 16;
-                let unknown_before = report.unknown;
                 'f53: {
                     if entry.kind != 10 || entry.shape.elem != 0 {
                         report.damaged = true;
-                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f53;
                     }
                     {
                         let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = if table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.aim_x"); 0.0 };
                         if x < f32::from_bits(0xbf800000) { x = f32::from_bits(0xbf800000); report.damaged = true; } else if x > f32::from_bits(0x3f800000) { x = f32::from_bits(0x3f800000); report.damaged = true; }
+                        if x == 0.0 { x = 0.0; }
                         value.aim_x = x;
-                    }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.aim_x != dflt.aim_x;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
                 }
             }
             0xdbaf7ae5e2429516 => {
                 if same_build && next_field > 16 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
                 next_field = 17;
-                let unknown_before = report.unknown;
                 'f54: {
                     if entry.kind != 10 || entry.shape.elem != 0 {
                         report.damaged = true;
-                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f54;
                     }
                     {
                         let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = if table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.aim_y"); 0.0 };
                         if x < f32::from_bits(0xbf800000) { x = f32::from_bits(0xbf800000); report.damaged = true; } else if x > f32::from_bits(0x3f800000) { x = f32::from_bits(0x3f800000); report.damaged = true; }
+                        if x == 0.0 { x = 0.0; }
                         value.aim_y = x;
-                    }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.aim_y != dflt.aim_y;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
                 }
             }
             0xdbaf79e5e2429363 => {
                 if same_build && next_field > 17 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
                 next_field = 18;
-                let unknown_before = report.unknown;
                 'f55: {
                     if entry.kind != 10 || entry.shape.elem != 0 {
                         report.damaged = true;
-                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f55;
                     }
                     {
                         let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = if table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.aim_z"); 0.0 };
                         if x < f32::from_bits(0xbf800000) { x = f32::from_bits(0xbf800000); report.damaged = true; } else if x > f32::from_bits(0x3f800000) { x = f32::from_bits(0x3f800000); report.damaged = true; }
+                        if x == 0.0 { x = 0.0; }
                         value.aim_z = x;
-                    }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.aim_z != dflt.aim_z;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
                 }
             }
@@ -1985,7 +1953,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 'f56: {
                     if entry.kind != 10 || entry.shape.elem != 0 {
                         report.damaged = true;
-                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f56;
                     }
                     {
@@ -2010,7 +1978,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                             widened = true;
                         } else {
                             report.damaged = true;
-                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f57;
                         }
                     }
@@ -2037,7 +2005,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                             widened = true;
                         } else {
                             report.damaged = true;
-                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f58;
                         }
                     }
@@ -2064,7 +2032,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                             widened = true;
                         } else {
                             report.damaged = true;
-                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f59;
                         }
                     }
@@ -2088,7 +2056,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 'f60: {
                     if entry.kind != 26 || entry.shape.elem != 0 {
                         report.damaged = true;
-                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f60;
                     }
                     {
@@ -2114,7 +2082,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                             widened = true;
                         } else {
                             report.damaged = true;
-                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f61;
                         }
                     }
@@ -2138,7 +2106,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 'f62: {
                     if entry.kind != 1 || entry.shape.elem != 0 {
                         report.damaged = true;
-                        if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                         break 'f62;
                     }
                     {
@@ -2162,7 +2130,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                             widened = true;
                         } else {
                             report.damaged = true;
-                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f63;
                         }
                     }
@@ -2190,7 +2158,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                             widened = true;
                         } else {
                             report.damaged = true;
-                            if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                            if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
                             break 'f64;
                         }
                     }
@@ -2210,7 +2178,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
             _ => {
                 if same_build { report.damaged = true; return false; } // a field the record does not declare (§3.3 (b))
                 report.unknown += 1;
-                if !table_message_skip(r, v, &entry, 0) { report.damaged = true; return false; }
+                if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
             }
         }
     }
