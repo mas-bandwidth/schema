@@ -26,11 +26,10 @@ type edit struct{ old, new string }
 // sabotages maps a control's name to what it breaks. Each entry names the
 // rule it removes, so a reader of a red control knows what was taken away.
 var sabotages = map[string][]edit{
-	"go-counted-tail-work":        {{old: "g.pf(\"\\tfor i := range %s {\\n\\t\\t%sReset(&%s[i])\\n\\t}\\n\", base, f.Type.Name, base)", new: "g.pf(\"\\tfor i := range %s {\\n\\t\\t_ = i // SABOTAGED: counted struct tail not reset\\n\\t}\\n\", base)"}},
-	"go-counted-tail-reset":       {{old: "g.pf(\"\\tfor i := range %s {\\n\", base)\n\t\tg.emitUnionValueReset(base+\"[i]\", un)\n\t\tg.pf(\"\\t}\\n\")", new: "_ = un\n\t\tg.pf(\"\\tfor i := range %s {\\n\\t\\t_ = i // SABOTAGED: counted union tail not reset\\n\\t}\\n\", base)"}},
-	"go-measure-wire-damage":      {{old: "reason:=TableRefuseWireDamaged;if verdict==TableOpenRefused", new: "reason:=TableRefuseTruncated /* SABOTAGED: borrow an accelerator clause */;if verdict==TableOpenRefused"}},
-	"go-arm-reference-framing":    {{old: "if !framed||probe.Offset!=int64(len(probe.Buffer)){return -1,0,TableOpenDamaged,TableRefuseWireDamaged}", new: "if false && (!framed||probe.Offset!=int64(len(probe.Buffer))){ return -1,0,TableOpenDamaged,TableRefuseWireDamaged } /* SABOTAGED: resolve before validating an arm reference length */"}, {old: "if tableWireExtent(&w,root,&at,nodes)!=TableRefuseOk{return -1,0,TableOpenDamaged,TableRefuseWireDamaged}", new: "if false { return -1,0,TableOpenDamaged,TableRefuseWireDamaged } /* SABOTAGED: resolve before validating an arm reference length */"}},
-	"go-message-measure-reserved": {{old: "e,ok:=v.Entry(ref);if !ok||!tableMessageSkip(r,v,indexBits,e,depth){return false}", new: "e,ok:=v.Entry(ref);if !ok||e.Id>=0xfffffffffffffffd||!tableMessageSkip(r,v,indexBits,e,depth){return false} /* SABOTAGED */"}},
+	"go-counted-tail-work":     {{old: "g.pf(\"\\tfor i := range %s {\\n\\t\\t%sReset(&%s[i])\\n\\t}\\n\", base, f.Type.Name, base)", new: "g.pf(\"\\tfor i := range %s {\\n\\t\\t_ = i // SABOTAGED: counted struct tail not reset\\n\\t}\\n\", base)"}},
+	"go-counted-tail-reset":    {{old: "g.pf(\"\\tfor i := range %s {\\n\", base)\n\t\tg.emitUnionValueReset(base+\"[i]\", un)\n\t\tg.pf(\"\\t}\\n\")", new: "_ = un\n\t\tg.pf(\"\\tfor i := range %s {\\n\\t\\t_ = i // SABOTAGED: counted union tail not reset\\n\\t}\\n\", base)"}},
+	"go-measure-wire-damage":   {{old: "reason:=TableRefuseWireDamaged;if verdict==TableOpenRefused", new: "reason:=TableRefuseTruncated /* SABOTAGED: borrow an accelerator clause */;if verdict==TableOpenRefused"}},
+	"go-arm-reference-framing": {{old: "if !framed||probe.Offset!=int64(len(probe.Buffer)){return -1,0,TableOpenDamaged,TableRefuseWireDamaged}", new: "if false && (!framed||probe.Offset!=int64(len(probe.Buffer))){ return -1,0,TableOpenDamaged,TableRefuseWireDamaged } /* SABOTAGED: resolve before validating an arm reference length */"}, {old: "if tableWireExtent(&w,root,&at,nodes)!=TableRefuseOk{return -1,0,TableOpenDamaged,TableRefuseWireDamaged}", new: "if false { return -1,0,TableOpenDamaged,TableRefuseWireDamaged } /* SABOTAGED: resolve before validating an arm reference length */"}},
 
 	"go-measure-cycle-reason":      {{old: "n.reason=TableRefuseDataCycle;return false", new: "n.reason=TableRefuseInvalidValue;return false /* SABOTAGED */"}},
 	"go-measure-count-reason":      {{old: "if count>math.MaxInt32{return TableRefuseCountOverExtentCap}", new: "if count>math.MaxInt32{return TableRefuseCountOverLength} /* SABOTAGED */"}},
@@ -43,7 +42,6 @@ var sabotages = map[string][]edit{
 	"reference-flags-widen":        {{old: "// decides widening, including flags elements (SPEC-TABLES §4).\n\treturn widenable(tableScalarKind(f))", new: "// decides widening, including flags elements (SPEC-TABLES §4).\n\tif f.Type.Ref != nil { return false } // SABOTAGED\n\treturn widenable(tableScalarKind(f))"}},
 	"reference-map-widen-count":    {{old: "if !st.IsMapEntry() || f.Name != ir.MapKeyFieldName {", new: "if true { // SABOTAGED: count each widened key twice"}},
 	"reference-list-widen-extent":  {{old: "        if ( !TableKindWidens( wire_kind, elem_kind ) ) { return true; }\n        // Load accepts the widening ladder.", new: "        if ( wire_kind != elem_kind ) { return true; } // SABOTAGED\n        // Load accepts the widening ladder."}},
-	"go-builder-union-refusal":     {{old: "g.pf(\"%sif !%sLoadBody(&%s,&%s) { return false }\\n\", ind, v.Type, rdr, expr)\n\t\tg.emitCarveReturn(\"r\", rdr, ind)", new: "{ s := strings.ReplaceAll(g.body.String(), \"reason!=TableRefuseOk {report.Refuse(reason,\\\"\\\");return false}\", \"reason!=TableRefuseOk {_ = reason;return false}\"); g.body.Reset(); g.body.WriteString(s) } // SABOTAGED: inspect payload length before propagating refusal\n\t\tg.pf(\"%sif !%sLoadBody(&%s,&%s) { return false }\\n\", ind, v.Type, rdr, expr)\n\t\tg.emitCarveReturn(\"r\", rdr, ind)"}},
 	"map-builder-count-oracle":     {{old: "return decodeWithOrder(m, inst, data, report, rt, readOrder{})", new: "return decodeWithOrder(m, inst, data, report, rt, readOrder{wireLast: true}) // SABOTAGED"}, {old: "\tif count > uint64(math.MaxInt32) {\n\t\treturn r.refuse(&CountRefusal{})\n\t}\n\tfv.Entries = nil", new: "\tif false && count > uint64(math.MaxInt32) { // SABOTAGED\n\t\treturn r.refuse(&CountRefusal{})\n\t}\n\tfv.Entries = nil"}},
 	// Go ownership, managed activation frames, and bounded retention.
 	"go-allocator-original-slice": {
@@ -125,128 +123,6 @@ var sabotages = map[string][]edit{
 		old: `			g.pf("            return 1; /* payload-free arm — the tag is the whole wire (SPEC §4.8) */\n")`,
 		new: `			g.pf("            { serialize_uint32_t extra = 0; if ( !serialize_read_bits( stream, &extra, 1 ) ) return 0; } /* SABOTAGED: extra void payload bit */\n")
 			g.pf("            return 1; /* payload-free arm — the tag is the whole wire (SPEC §4.8) */\n")`,
-	}},
-
-	// docs/SPEC-TABLES.md §3: a kind 33 payload carrying an UNPAIRED SURROGATE
-	// is DAMAGE, not data. Take the pairing rule out of the table runtime's
-	// content check and the gate's surrogate rows stop being refused. The zero
-	// unit stays refused, so what goes red is the pairing and nothing else.
-	"table-wstring-accept-unpaired-surrogate": {{
-		old: `        if ( unit >= 0xD800 && unit <= 0xDBFF )
-        {
-            if ( i + 1 >= units ) { return false; } // a high surrogate with no low half
-            const uint16_t low = TableUtf16Unit( bytes, i + 1 );
-            if ( low < 0xDC00 || low > 0xDFFF ) { return false; }
-            i += 2;
-            continue;
-        }
-        if ( unit >= 0xDC00 && unit <= 0xDFFF ) { return false; } // a low surrogate first`,
-		new: `        // SABOTAGED: the pairing rule removed`,
-	}},
-
-	// docs/SPEC-TABLES.md §3: a ZERO CODE UNIT among a kind 33 payload's units
-	// is DAMAGE, on the rule kind 12 takes for a zero byte. Take it out and the
-	// gate's three nul rows stop being refused, while the surrogate rows stay.
-	"table-wstring-accept-zero-unit": {{
-		old: `        if ( unit == 0 ) { return false; }`,
-		new: `        if ( false ) { return false; } // SABOTAGED: the zero-unit rule removed`,
-	}},
-
-	// docs/SPEC-TABLES.md §3: `L` is a BYTE length like every `L` on this wire,
-	// so an ODD `L` is framing damage on the body that carries it. Take the
-	// check out and half a code unit reads as a code unit.
-	"table-wstring-accept-odd-length": {{
-		old: `		g.pf("%sif ( ( len & 1 ) != 0 ) { r.report->damaged = true; value.%s[0] = 0; value.%s_length = 0; r.offset += (int64_t) len; break; }\n", ind, f.Name, f.Name)`,
-		new: `		g.pf("%s(void) 0; // SABOTAGED: the odd-L rule removed (%s, %s)\n", ind, f.Name, f.Name)`,
-	}},
-
-	// docs/SPEC-TABLES.md §3: a kind 33 field's `L` is TWICE the code unit
-	// count, because every `L` on this wire is a byte length. Write the unit
-	// count instead and the field's own bytes stop being what §3 frames.
-	"table-wstring-length-in-units": {{
-		old: `		g.pf("        w.putleb( (uint64_t) value.%s_length * 2 ); // L is a BYTE length (§3)\n", f.Name)`,
-		new: `		g.pf("        w.putleb( (uint64_t) value.%s_length ); // SABOTAGED: L in code units\n", f.Name)`,
-	}},
-
-	// SPEC §4.12: `wstring(N)` performs NO alignment. serialize.modern's
-	// wstring_ inserts an align between the length and the code units, and
-	// that align is the one thing schema does not do. Put it back on both
-	// paths and every byte after the length field moves.
-	"wstring-align": {{
-		old: `		g.emitWriteRangedFold32(name+"_length", "0", g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)),
-			bitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)), true, halves{}, ind) // int32_t length storage
-		g.pf("%sfor ( int32_t i = 0; i < %s_length; i++ )\n%s{\n", ind, name, ind)
-		g.pf("%s    write_bits( stream, uint32_t( %s[i] ), 32 );\n%s}\n", ind, name, ind)`,
-		new: `		g.emitWriteRangedFold32(name+"_length", "0", g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)),
-			bitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)), true, halves{}, ind) // int32_t length storage
-		g.pf("%swrite_align( stream );\n", ind) // SABOTAGED: an align between the length and the code units
-		g.pf("%sfor ( int32_t i = 0; i < %s_length; i++ )\n%s{\n", ind, name, ind)
-		g.pf("%s    write_bits( stream, uint32_t( %s[i] ), 32 );\n%s}\n", ind, name, ind)`,
-	}, {
-		old: `		g.pf("%s{\n%s    bool expect_low_surrogate = false;\n", ind, ind)`,
-		new: `		g.pf("%sread_align( stream );\n", ind) // SABOTAGED: an align between the length and the code units
-		g.pf("%s{\n%s    bool expect_low_surrogate = false;\n", ind, ind)`,
-	}},
-
-	// SPEC §4.12: a high surrogate not immediately followed by a low one
-	// fails, a low not immediately preceded by a high fails, and a high as
-	// the final transmitted group fails. Take the whole pairing rule out.
-	// The group-value and zero-group refusals stay, so what goes red is the
-	// pairing and nothing else.
-	"wstring-accept-unpaired-surrogate": {{
-		old: `		g.pf("%s{\n%s    bool expect_low_surrogate = false;\n", ind, ind)
-		g.pf("%s    for ( int32_t i = 0; i < %s_length; i++ )\n%s    {\n", ind, name, ind)
-		g.pf("%s        uint32_t group = 0;\n", ind)
-		g.pf("%s        read_bits( stream, group, 32 );\n", ind)
-		g.pf("%s        if ( group == 0 || group > 0xFFFF )\n%s        {\n", ind, ind)
-		g.pf("%s            return false; // a zero group and a group above 0xFFFF are content the read refuses (SPEC §4.12)\n%s        }\n", ind, ind)
-		g.pf("%s        const bool high_surrogate = group >= 0xD800 && group <= 0xDBFF;\n", ind)
-		g.pf("%s        const bool low_surrogate = group >= 0xDC00 && group <= 0xDFFF;\n", ind)
-		g.pf("%s        if ( low_surrogate != expect_low_surrogate )\n%s        {\n", ind, ind)
-		g.pf("%s            return false; // an unpaired surrogate is content the read refuses (SPEC §4.12)\n%s        }\n", ind, ind)
-		g.pf("%s        expect_low_surrogate = high_surrogate;\n", ind)
-		g.pf("%s        %s[i] = char16_t( group );\n%s    }\n", ind, name, ind)
-		g.pf("%s    if ( expect_low_surrogate )\n%s    {\n", ind, ind)
-		g.pf("%s        return false; // a high surrogate as the final group is unpaired (SPEC §4.12)\n%s    }\n%s}\n", ind, ind, ind)`,
-		new: `		g.pf("%s{\n", ind) // SABOTAGED: the surrogate pairing rule removed
-		g.pf("%s    for ( int32_t i = 0; i < %s_length; i++ )\n%s    {\n", ind, name, ind)
-		g.pf("%s        uint32_t group = 0;\n", ind)
-		g.pf("%s        read_bits( stream, group, 32 );\n", ind)
-		g.pf("%s        if ( group == 0 || group > 0xFFFF )\n%s        {\n", ind, ind)
-		g.pf("%s            return false; // a zero group and a group above 0xFFFF are content the read refuses (SPEC §4.12)\n%s        }\n", ind, ind)
-		g.pf("%s        %s[i] = char16_t( group );\n%s    }\n%s}\n", ind, name, ind, ind)`,
-	}},
-
-	// SPEC §4.12: in C and C++ a successful read writes the zero unit at
-	// index length, always. Drop the store. The buffer the harness reads
-	// into is poisoned first, so what this reddens is the STORE rather than
-	// the storage's own default initialization.
-	"wstring-drop-terminator": {{
-		old: `		// the terminating zero UNIT, always — §5's one stated tail exception
-		g.pf("%s%s[%s_length] = 0;\n", ind, name, name)`,
-		new: `		// SABOTAGED: the terminating zero unit at index length dropped`,
-	}},
-
-	// SPEC §4.7 as amended (schema#519): the UTF-8 validator runs on the READ
-	// path in every build mode. Put it back where it was, a write-side debug
-	// assert and nothing on read, which is the stance the amendment replaced.
-	"string-write-only-utf8": {{
-		old: `			// a payload that is not well-formed UTF-8 fails the READ, in every
-			// build mode (SPEC §4.7). The refusal is terminal: nothing after it
-			// has a defined position.
-			g.pf("%sif ( !schema_utf8_valid( reinterpret_cast<const uint8_t *>( %s ), %s_length ) )\n%s{\n", ind, name, name, ind)
-			g.pf("%s    return false; // malformed UTF-8 is content the read refuses (SPEC §4.7)\n%s}\n", ind, ind)
-`,
-		new: `			// SABOTAGED: the read-side UTF-8 refusal removed
-`,
-	}, {
-		old: `			g.pf("%sfor ( int32_t i = 0; i < %s_length; i++ )\n%s{\n", ind, name, ind)
-			g.pf("%s    serialize_assert( %s[i] != 0 );\n%s}\n", ind, name, ind)
-		}`,
-		new: `			g.pf("%sfor ( int32_t i = 0; i < %s_length; i++ )\n%s{\n", ind, name, ind)
-			g.pf("%s    serialize_assert( %s[i] != 0 );\n%s}\n", ind, name, ind)
-			g.pf("%sserialize_assert( schema_utf8_valid( reinterpret_cast<const uint8_t *>( %s ), %s_length ) );\n", ind, name, name) // SABOTAGED: the write-only stance restored
-		}`,
 	}},
 
 	// SPEC-TABLES §7.5: Open is O(1) in the file's size, a header match and

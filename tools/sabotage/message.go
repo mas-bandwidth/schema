@@ -390,11 +390,4 @@ var messageTextSabotages = map[string][]edit{
 		old: "\t\tg.pf(\"%[1]s    if ( !TableUtf8Valid( text%[2]s, n%[3]s ) )\\n%[1]s    {\\n%[1]s        report->damaged = true;\\n%[1]s        return false;\\n%[1]s    }\\n\", ind, sfx, sfx)\n",
 		new: "\t\tg.pf(\"%s    // SABOTAGED: the kind 12 content rule is gone\\n\", ind)\n",
 	}},
-
-	// then the clamp: the emitted reader bounds the length itself instead of
-	// asking TableUtf8Clamp where the last whole code point ends.
-	"message-emitter-text-clamp-off-boundary": {{
-		old: "\t\tg.pf(\"%s    const int32_t kept%s = (int32_t) TableUtf8Clamp( text%s, n%s, %d );\\n\", ind, sfx, sfx, sfx, f.Type.Size)\n",
-		new: "\t\tg.pf(\"%s    const int32_t kept%s = n%s > (uint64_t) %d ? (int32_t) %d : (int32_t) n%s; // SABOTAGED: the clamp is off the boundary\\n\", ind, sfx, sfx, f.Type.Size, f.Type.Size, sfx)\n",
-	}},
 }

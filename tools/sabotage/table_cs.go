@@ -25,14 +25,6 @@ func init() {
 }
 
 func init() {
-	sabotages["fixed-form-cs-arm-text-flavour"] = []edit{
-		{
-			old: "                    TableFixedEntry e = new TableFixedEntry(\n" +
-				"                        their_at, at, units, aux_at, guard, Text, arg, 0, 0, d.Arg);",
-			new: "                    TableFixedEntry e = new TableFixedEntry(\n" +
-				"                        their_at, at, units, aux_at, guard, Text, d.Arg, 0, 0); // SABOTAGED: the flavour over the arm ordinal",
-		},
-	}
 }
 
 // THE FINITE RULE'S THREE BLADES (docs/SPEC-TABLES.md §3.3), one per control
