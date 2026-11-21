@@ -96,8 +96,8 @@ func TestJavaScriptObjectModelNamesRefused(t *testing.T) {
 // arguments as a binding, a binding named undefined takes the value the
 // generated modules compare against, and TypeScript refuses a declaration
 // named after a predefined type (unknown, never, symbol, number, bigint,
-// undefined). Each is refused as every kind of declaration. A FIELD of the
-// same name is a property and binds nothing, so it is kept.
+// undefined). TypeScript predefined type names may still name a value-only
+// constant. A field name is a property, so every spelling is kept there.
 func TestJavaScriptUnbindableNamesRefusedAsDeclarations(t *testing.T) {
 	t.Parallel()
 	compile := func(source string) []error {
@@ -133,6 +133,12 @@ func TestJavaScriptUnbindableNamesRefusedAsDeclarations(t *testing.T) {
 	for _, name := range []string{"eval", "arguments", "undefined", "unknown", "never", "symbol", "number", "bigint"} {
 		for kind, source := range forms(name) {
 			errs := compile(source)
+			if kind == "const" && name != "eval" && name != "arguments" && name != "undefined" {
+				if len(errs) != 0 {
+					t.Errorf("TypeScript permits const %s as a value binding: %v", name, errs)
+				}
+				continue
+			}
 			named := false
 			for _, err := range errs {
 				if strings.Contains(err.Error(), name) && strings.Contains(err.Error(), "JavaScript") {

@@ -512,11 +512,13 @@ func loadJsGlobalsShadow(t *testing.T) *ir.Unit {
 }
 
 // A declaration named after a TypeScript predefined type (unknown, never,
-// symbol, number, bigint, undefined) cannot be declared in a .d.ts, so the
-// checker refuses it before a declaration file is written (internal/check,
-// TestJavaScriptUnbindableNamesRefusedAsDeclarations). What is left type-checks:
-// types named intrinsic and declare, which TypeScript reads as keywords only
-// where it expects one, and fields named like every refused declaration.
+// symbol, number, bigint, undefined) cannot be declared as a type in a .d.ts,
+// so the checker refuses it before a declaration file is written
+// (internal/check, TestJavaScriptUnbindableNamesRefusedAsDeclarations). What
+// is left type-checks: types named intrinsic and declare, which TypeScript
+// reads as keywords only where it expects one, fields named like every
+// refused declaration, and consts named after the predefined types, which
+// are values and never types.
 func TestJsDeclarationsBesideTypeScriptTypeNamesTypeCheck(t *testing.T) {
 	t.Parallel()
 	load := func(src string) (*ir.Unit, error) {
@@ -533,6 +535,12 @@ func TestJsDeclarationsBesideTypeScriptTypeNamesTypeCheck(t *testing.T) {
 		}
 	}
 	u, err := load(`package demo
+
+const number = 1
+const bigint = 18446744073709551615
+const symbol = 3
+const unknown = 4
+const never = 0.5
 
 type Clean { value uint32 }
 type intrinsic { value uint32 }
