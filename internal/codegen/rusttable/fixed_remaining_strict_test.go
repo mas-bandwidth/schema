@@ -12,6 +12,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // THE STRICT READ'S ONE RULE (docs/plans/strict-only.md): a count, a length,
@@ -248,12 +250,12 @@ fn main() {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(dir, "probe")
-	build := exec.Command("rustc", "--edition", "2024", "-O", "-A", "warnings", "-o", bin, "main.rs")
+	build := testproc.Command(t, "rustc", "--edition", "2024", "-O", "-A", "warnings", "-o", bin, "main.rs")
 	build.Dir = dir
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("rustc build failed: %v\n%s", err, out)
 	}
-	out, err := exec.Command(bin).CombinedOutput()
+	out, err := testproc.Command(t, bin).CombinedOutput()
 	return string(out), err
 }
 

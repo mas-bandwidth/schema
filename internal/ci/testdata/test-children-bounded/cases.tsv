@@ -1,0 +1,34 @@
+# The test-children-bounded policy corpus: TestEveryTestChildIsBoundedCorpus
+# reads every row.
+# fixture	placed_at	unbounded
+#
+# fixture: a Go source file beside this one (kept as .go.txt so no Go tool
+#          takes it for part of the module).
+# placed_at: the repository path the gate judges the fixture as if it were at.
+# unbounded: how many unbounded children the gate must report there.
+#
+# an interpreter leg's test (covered before the compiled legs were)
+direct_command.go.txt	internal/codegen/luautable/fixture_test.go	1
+command_context.go.txt	internal/codegen/luautable/fixture_test.go	1
+renamed_import.go.txt	internal/codegen/luautable/fixture_test.go	1
+function_value.go.txt	internal/codegen/luautable/fixture_test.go	1
+bounded_command.go.txt	internal/codegen/luautable/fixture_test.go	0
+exec_types_only.go.txt	internal/codegen/luautable/fixture_test.go	0
+# a compiled leg's test: it builds a binary, then runs it
+compiled_helper.go.txt	internal/codegen/rusttable/fixture_test.go	2
+compiled_helper.go.txt	internal/codegen/ctable/fixture_test.go	2
+compiled_helper.go.txt	internal/codegen/cpptable/fixture_test.go	2
+compiled_helper.go.txt	internal/codegen/cstable/fixture_test.go	2
+compiled_helper.go.txt	internal/codegen/unitytable/fixture_test.go	2
+compiled_helper.go.txt	internal/codegen/javatable/fixture_test.go	2
+compiled_helper.go.txt	internal/codegen/gotable/fixture_test.go	2
+compiled_helper.go.txt	internal/codegen/gotable/fuzzunit/fixture_test.go	2
+compiled_helper.go.txt	compiler/fixture_test.go	2
+bounded_compiled_helper.go.txt	internal/codegen/rusttable/fixture_test.go	0
+bounded_compiled_helper.go.txt	compiler/fixture_test.go	0
+# a run-helper package: every file is judged, not only its tests
+direct_command.go.txt	internal/codegen/luau/luaurun/run.go	1
+# outside the gate's reach: a covered package's non-test file, and a package
+# whose tests start no child
+direct_command.go.txt	internal/codegen/rusttable/emit.go	0
+direct_command.go.txt	internal/baseline/fixture_test.go	0

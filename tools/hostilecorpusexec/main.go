@@ -17,7 +17,8 @@
 //	                        engine's canonical text carries none)
 //	accept bytes\n<bytes>   a packet re-written by the port's own writer
 //	accept -\n              an accepted announcement: no digest
-//	refuse <reason>\n       a named refusal, or damaged
+//	refuse <reason>\n       a refusal; the reason is the port's own diagnostic
+//	                        and is never compared (refusal-verdict-only)
 //	skip <why>\n            a carrier the port has no API for
 //	unbound <what>\n        the runner names no binding: the runner's defect
 //	error <what>\n          the port could not answer
@@ -259,7 +260,7 @@ func run(port, binary, corpus, findingsPath, skipsPath, only string, jobs int, b
 				fmt.Printf("STALE %s: FIX-CARD %s names a case this port skips\n", c.Name, f.slug)
 				stale++
 			}
-		case got == want:
+		case agrees(got, want):
 			if has {
 				fmt.Printf("STALE %s: FIX-CARD %s no longer reproduces\n", c.Name, f.slug)
 				stale++
@@ -300,13 +301,42 @@ func expected(c hostilecorpus.Case) answer {
 	return answer{"refuse", c.Reason}
 }
 
+// agrees reports whether a port's answer conforms to the manifest's. A refusal
+// conforms on its verdict alone (docs/rulings.json refusal-verdict-only,
+// SPEC-TABLES §6.5 and §13.10): the reason a port names is its own diagnostic
+// detail, printed on a FAIL line but never compared. An accept conforms on the
+// digest of its decoded value.
+func agrees(got, want answer) bool {
+	if got.kind == "refuse" && want.kind == "refuse" {
+		return true
+	}
+	return got == want
+}
+
 // sanitizerMarks are the lines a sanitizer prints when it reports; one on
 // stderr fails the case whatever the exit status.
 var sanitizerMarks = []string{"ERROR: AddressSanitizer", "ERROR: LeakSanitizer", "runtime error:", "SUMMARY: UndefinedBehaviorSanitizer", "WARNING: ThreadSanitizer"}
 
+// startBudget starts a case's budget: the channel fires when it runs out, and
+// stop releases it. The runner reads no clock but this one, so a test can
+// hand it a budget that is already spent, or one that never runs out.
+var startBudget = func(budget time.Duration) (fire <-chan time.Time, stop func() bool) {
+	t := time.NewTimer(budget)
+	return t.C, t.Stop
+}
+
 func runCase(binary, corpus string, c hostilecorpus.Case, budget time.Duration) (answer, string) {
-	ctx, cancel := context.WithTimeout(context.Background(), budget)
-	defer cancel()
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
+	fire, stop := startBudget(budget)
+	defer stop()
+	go func() {
+		select {
+		case <-fire:
+			cancel(errOverBudget)
+		case <-ctx.Done():
+		}
+	}()
 	cmd := exec.CommandContext(ctx, binary, c.Carrier, c.Schema, c.Table, filepath.Join(corpus, c.Input))
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -315,7 +345,7 @@ func runCase(binary, corpus string, c hostilecorpus.Case, budget time.Duration) 
 	cmd.WaitDelay = time.Second
 	err := cmd.Run()
 	raw := stdout.String()
-	if ctx.Err() != nil {
+	if errors.Is(context.Cause(ctx), errOverBudget) {
 		return answer{"fail", fmt.Sprintf("hang: over the %v budget", budget)}, raw
 	}
 	for _, mark := range sanitizerMarks {
@@ -353,6 +383,9 @@ func runCase(binary, corpus string, c hostilecorpus.Case, budget time.Duration) 
 	}
 	return answer{"fail", "unreadable answer: " + firstLine(raw)}, raw
 }
+
+// errOverBudget is the cause a case is killed with when its budget runs out.
+var errOverBudget = errors.New("over the case budget")
 
 func firstLine(s string) string {
 	line, _, _ := strings.Cut(strings.TrimSpace(s), "\n")

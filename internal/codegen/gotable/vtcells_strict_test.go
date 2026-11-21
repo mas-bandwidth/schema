@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,6 +14,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // vtCellsFiles generates both the pack and table halves of a unit, so a probe
@@ -56,7 +57,7 @@ func vtCellsRun(t *testing.T, schema, testSource string, edit func(map[string][]
 	if err := os.WriteFile(filepath.Join(dir, "probe_test.go"), []byte(testSource), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("go", "test", "-count=1", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", ".")
 	cmd.Dir = dir
 	return cmd.CombinedOutput()
 }

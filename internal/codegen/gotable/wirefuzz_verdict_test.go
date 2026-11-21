@@ -31,6 +31,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/goname"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func goWireFuzzVerdictMakefileCheck(mk string) error {
@@ -461,7 +463,7 @@ func goWireFuzzEnsureEnv(t *testing.T, root string) {
 			return
 		}
 		goWireFuzzHarnessBin = filepath.Join(goWireFuzzTempDir, "conformance-harness")
-		cmd := exec.Command("go", "build", "-o", goWireFuzzHarnessBin, "./test/conformance/harness")
+		cmd := testproc.Command(t, "go", "build", "-o", goWireFuzzHarnessBin, "./test/conformance/harness")
 		cmd.Dir = root
 		if out, err := cmd.CombinedOutput(); err != nil {
 			goWireFuzzSetupErr = fmt.Errorf("build conformance-harness: %w\n%s", err, out)
@@ -537,7 +539,7 @@ func goWireFuzzEnsureEnv(t *testing.T, root string) {
 			return
 		}
 		goWireFuzzCleanBin = filepath.Join(goWireFuzzTempDir, "wirefuzz-driver")
-		cmd = exec.Command("go", "build", "-o", goWireFuzzCleanBin, ".")
+		cmd = testproc.Command(t, "go", "build", "-o", goWireFuzzCleanBin, ".")
 		cmd.Dir = goWireFuzzDriverDir
 		if out, err := cmd.CombinedOutput(); err != nil {
 			goWireFuzzSetupErr = fmt.Errorf("build wirefuzz-driver: %w\n%s", err, out)
@@ -578,7 +580,7 @@ func goBuildWireFuzzPlantedDriver(t *testing.T, rel, anchor, replacement string,
 		t.Fatal(err)
 	}
 	bin := filepath.Join(dir, "wirefuzz-driver")
-	cmd := exec.Command("go", "build", "-overlay", overlayPath, "-o", bin, ".")
+	cmd := testproc.Command(t, "go", "build", "-overlay", overlayPath, "-o", bin, ".")
 	cmd.Dir = goWireFuzzDriverDir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("build planted wirefuzz-driver (%s): %v\n%s", rel, err, out)
@@ -639,7 +641,7 @@ func runGoWireFuzzVerdictPipe(t *testing.T, root, harnessBin, driverBin, manifes
 	)
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, harnessBin, args...)
+	cmd := testproc.CommandContext(t, ctx, harnessBin, args...)
 	cmd.Dir = root
 	out, err := cmd.CombinedOutput()
 	return string(out), err
