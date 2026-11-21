@@ -21,7 +21,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -30,6 +29,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // packetVoidPythonFixture returns the Python half of test/packet-void: a
@@ -303,7 +304,7 @@ func runUnionOracle(t *testing.T, runtime string) (string, error) {
 	if err := os.WriteFile(filepath.Join(dir, "oracle_test.go"), []byte(unionGoOracle(unionHostile)), 0o644); err != nil {
 		return "", err
 	}
-	cmd := exec.Command("go", "test", "-count=1", "-timeout", "300s", "-v", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", "-timeout", "300s", "-v", ".")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GOFLAGS=-mod=mod")
 	out, err := cmd.CombinedOutput()
@@ -386,23 +387,19 @@ from pyunion import (
     Refused,
 )
 
-
 def fail(message: str) -> None:
     print("FAILED: " + message)
     raise SystemExit(1)
-
 
 def mk(value: Any, **fields: Any) -> Any:
     for key, field in fields.items():
         setattr(value, key, field)
     return value
 
-
 BUILD: "dict[str, Callable[[], Any]]" = {
 ` + builders.String() + `}
 
 ROOTS: "dict[str, Any]" = {"Action": Action, "Nest": Nest, "Outer": Outer, "Envelope": Envelope}
-
 
 def inactive(value: Any, where: str) -> None:
     """Every unselected payload arm a read leaves is at its declared defaults."""
@@ -423,7 +420,6 @@ def inactive(value: Any, where: str) -> None:
         inactive(value.act, where + ".act")
         inactive(value.outer, where + ".outer")
 
-
 def expect_invalid(label: str, value: Any, path: str) -> None:
     try:
         value.write()
@@ -432,7 +428,6 @@ def expect_invalid(label: str, value: Any, path: str) -> None:
             fail("write " + label + " raised InvalidValue without " + path + ": " + str(exc))
         return
     fail("write " + label + " was accepted")
-
 
 def main() -> None:
     # declared defaults, born in every arm at construction (SPEC §5)
@@ -514,7 +509,6 @@ def main() -> None:
     if idle.write() != mk(Action(), type=ActionType.Stop).write():
         fail("an unselected arm changed the wire")
     print("ok")
-
 
 main()
 `

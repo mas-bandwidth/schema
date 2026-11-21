@@ -132,7 +132,8 @@ fixed table CF
 	if write == "" {
 		t.Fatal("R30: cf_fixed_write_body is not emitted")
 	}
-	t06Has(t, write, "value.q.to_le_bytes()",
+	// The float rides as itself, with -0 stored as +0 (negative-zero rule).
+	t06Has(t, write, "(if value.q == 0.0 { 0.0 } else { value.q }).to_le_bytes()",
 		"R30 a compressed float rides as the float, not as a quantized index")
 	if strings.Contains(write, "resolution") || strings.Contains(write, ".round(") {
 		t.Error("R30: the writer quantizes a compressed float; on this form it rides as the float")

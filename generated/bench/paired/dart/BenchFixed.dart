@@ -3365,9 +3365,10 @@ bool tableMessageSkip(TableMessageReader r, int kind, TableMessageShape s, [int 
         }
       }
       // THE COUNT'S BITS CAN SPELL MORE THAN max - min, so a count above the
-      // announced maximum is damage here as it is at a named field
-      // (docs/SPEC-TABLES.md §3.3, §4).
-      if (n > s.max) return false;
+      // announced maximum refuses count_over_bound here as it does at a named
+      // field, before any element (docs/SPEC-TABLES.md §3.3, §4; the
+      // reference's skip, internal/tablewire/messagedecode.go).
+      if (n > s.max) return r.report.Refuse('count_over_bound');
       if (kind == 14 && s.elem == 6 && !r.bits.align()) return false;
       final inner = s.inner ?? TableMessageShape();
       // elementRunBits + skipRun (internal/tablewire/messagedecode.go): a
@@ -4036,7 +4037,7 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
         if (sameBuild) { r.report.Damage(); return false; } // a field the record does not declare (§3.3)
         r.report.unknown++;
         if (!tableMessageSkipEntry(r, entry, 0, true)) {
-          r.report.Damage();
+          if (!r.report.refused) r.report.Damage();
           return false;
         }
         break;
@@ -4131,7 +4132,7 @@ bool mixedStatLoadMessageBody(TableMessageReader r, MixedStat value) {
         if (sameBuild) { r.report.Damage(); return false; } // a field the record does not declare (§3.3)
         r.report.unknown++;
         if (!tableMessageSkipEntry(r, entry, 0, true)) {
-          r.report.Damage();
+          if (!r.report.refused) r.report.Damage();
           return false;
         }
         break;
@@ -4279,7 +4280,7 @@ bool mixedHitEventLoadMessageBody(TableMessageReader r, MixedHitEvent value) {
         if (sameBuild) { r.report.Damage(); return false; } // a field the record does not declare (§3.3)
         r.report.unknown++;
         if (!tableMessageSkipEntry(r, entry, 0, true)) {
-          r.report.Damage();
+          if (!r.report.refused) r.report.Damage();
           return false;
         }
         break;
@@ -4374,7 +4375,7 @@ bool mixedChatEventLoadMessageBody(TableMessageReader r, MixedChatEvent value) {
         if (sameBuild) { r.report.Damage(); return false; } // a field the record does not declare (§3.3)
         r.report.unknown++;
         if (!tableMessageSkipEntry(r, entry, 0, true)) {
-          r.report.Damage();
+          if (!r.report.refused) r.report.Damage();
           return false;
         }
         break;
@@ -4472,7 +4473,7 @@ bool mixedPickupEventLoadMessageBody(
         if (sameBuild) { r.report.Damage(); return false; } // a field the record does not declare (§3.3)
         r.report.unknown++;
         if (!tableMessageSkipEntry(r, entry, 0, true)) {
-          r.report.Damage();
+          if (!r.report.refused) r.report.Damage();
           return false;
         }
         break;
@@ -5029,7 +5030,7 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
             if (r.bits.failed) { r.report.Damage(); return false; }
             n = raw + shape.min;
           }
-          if (n > shape.max) { r.report.Damage(); return false; }
+          if (n > shape.max) { r.report.Refuse('count_over_bound'); return false; }
           if (entry.kind == 14 && shape.elem == 6 && !r.bits.align()) { r.report.Damage(); return false; }
           if (n < 1 || n > 8) { r.report.Refuse('count_over_bound'); return false; }
           for (var i4 = 0; i4 < n; i4++) {
@@ -5070,7 +5071,7 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
             if (r.bits.failed) { r.report.Damage(); return false; }
             n = raw + shape.min;
           }
-          if (n > shape.max) { r.report.Damage(); return false; }
+          if (n > shape.max) { r.report.Refuse('count_over_bound'); return false; }
           if (entry.kind == 14 && shape.elem == 6 && !r.bits.align()) { r.report.Damage(); return false; }
           if (n > 80) { r.report.Refuse('count_over_bound'); return false; }
           for (var i5 = 0; i5 < n; i5++) {
@@ -5151,7 +5152,7 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
               default:
                 value.gameEvent.type = MixedEventType.none; r.report.unknown++;
                 if (!tableMessageSkipEntry(r, arm)) {
-                  r.report.Damage();
+                  if (!r.report.refused) r.report.Damage();
                   return false;
                 }
                 break;
@@ -5177,7 +5178,7 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
             if (r.bits.failed) { r.report.Damage(); return false; }
             n = raw + shape.min;
           }
-          if (n > shape.max) { r.report.Damage(); return false; }
+          if (n > shape.max) { r.report.Refuse('count_over_bound'); return false; }
           if (entry.kind == 14 && shape.elem == 6 && !r.bits.align()) { r.report.Damage(); return false; }
           if (n > 4) { r.report.Refuse('count_over_bound'); return false; }
           for (var i6 = 0; i6 < n; i6++) {
@@ -5612,7 +5613,7 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
         if (sameBuild) { r.report.Damage(); return false; } // a field the record does not declare (§3.3)
         r.report.unknown++;
         if (!tableMessageSkipEntry(r, entry, 0, true)) {
-          r.report.Damage();
+          if (!r.report.refused) r.report.Damage();
           return false;
         }
         break;
@@ -5673,7 +5674,7 @@ bool fixedTableLoadMessageBody(TableMessageReader r, FixedTable value) {
         if (sameBuild) { r.report.Damage(); return false; } // a field the record does not declare (§3.3)
         r.report.unknown++;
         if (!tableMessageSkipEntry(r, entry, 0, true)) {
-          r.report.Damage();
+          if (!r.report.refused) r.report.Damage();
           return false;
         }
         break;

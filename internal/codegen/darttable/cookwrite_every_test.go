@@ -17,7 +17,6 @@ import (
 	"encoding/hex"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -26,6 +25,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // cookEveryFamily names one construct family the variable cook writer carries:
@@ -114,7 +115,7 @@ func TestCookWriteEveryConstructDart(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(dir, "cook_every_probe.dart"), []byte(fam.probe), 0600); err != nil {
 				t.Fatal(err)
 			}
-			cmd := exec.Command(dartBinary(t), "--enable-asserts", "cook_every_probe.dart")
+			cmd := testproc.Command(t, dartBinary(t), "--enable-asserts", "cook_every_probe.dart")
 			cmd.Dir = dir
 			out, err := cmd.CombinedOutput()
 			if err != nil {
@@ -122,12 +123,12 @@ func TestCookWriteEveryConstructDart(t *testing.T) {
 			}
 			if strings.HasPrefix(fam.name, "guarded-") {
 				executable := filepath.Join(dir, "cook_every_probe")
-				compile := exec.Command(dartBinary(t), "compile", "exe", "-o", executable, "cook_every_probe.dart")
+				compile := testproc.Command(t, dartBinary(t), "compile", "exe", "-o", executable, "cook_every_probe.dart")
 				compile.Dir = dir
 				if build, err := compile.CombinedOutput(); err != nil {
 					t.Fatalf("guarded cook native compile: %v\n%s", err, build)
 				}
-				native := exec.Command(executable)
+				native := testproc.Command(t, executable)
 				native.Dir = dir
 				nativeOut, err := native.CombinedOutput()
 				if err != nil || !bytes.Equal(nativeOut, out) {

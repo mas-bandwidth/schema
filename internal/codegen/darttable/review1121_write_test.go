@@ -3,12 +3,12 @@ package darttable
 import (
 	"fmt"
 	"maps"
-	"os/exec"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // THE VARIABLE SAVE HOLDS THE WRITE CONTRACT IN A DEBUG RUN (docs/SPEC.md
@@ -127,7 +127,7 @@ func runDartWriteContract(t *testing.T, asserts bool) map[string]string {
 	if asserts {
 		args = append([]string{"--enable-asserts"}, args...)
 	}
-	cmd := exec.Command(dartBinary(t), args...)
+	cmd := testproc.Command(t, dartBinary(t), args...)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

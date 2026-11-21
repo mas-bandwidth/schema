@@ -3,13 +3,13 @@ package ctable
 import (
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // The file, fixed and JSON read rules of the 2026-11-21 review for the C leg
@@ -311,10 +311,10 @@ func runCStrictProgram(t *testing.T, schema, main string) (string, error) {
 	args := []string{"-std=c99", "-D_POSIX_C_SOURCE=200809L", "-DNDEBUG", "-Wall", "-Wextra", "-Werror", "-O1", "-fsanitize=undefined", "-fno-sanitize-recover=all", "-I", dir, "-I", ser, mainPath}
 	args = append(args, cfiles...)
 	args = append(args, "-lm", "-lpthread", "-o", bin)
-	if out, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile C failed: %v\n%s", err, out)
 	}
-	out, err := exec.Command(bin).CombinedOutput()
+	out, err := testproc.Command(t, bin).CombinedOutput()
 	return string(out), err
 }
 

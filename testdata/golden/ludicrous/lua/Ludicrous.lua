@@ -36,6 +36,44 @@ local BOOL = { value = false }
 
 local WIDE = { value = { lo = 0, hi = 0 } }
 
+local function wide_value(v)
+  return type(v) == "table" and math.type(v.lo) == "integer" and math.type(v.hi) == "integer"
+end
+
+local function wide_less(a, b, signed)
+  if a.hi ~= b.hi then
+    if signed then return a.hi < b.hi end
+    return math.ult(a.hi, b.hi)
+  end
+  return math.ult(a.lo, b.lo)
+end
+
+local function wide_within(v, min, max, signed)
+  return wide_value(v) and not wide_less(v, min, signed) and not wide_less(max, v, signed)
+end
+
+local WIDE_BOUND_1 = { lo = 0xfffffff0bdc00000, hi = 0xffffffffffffffff }
+
+local WIDE_BOUND_2 = { lo = 0x0000000f42400000, hi = 0x0000000000000000 }
+
+local WIDE_BOUND_3 = { lo = 0x0000000000000000, hi = 0x0000000000000000 }
+
+local WIDE_BOUND_4 = { lo = 0x0000001e84800000, hi = 0x0000000000000000 }
+
+local WIDE_BOUND_5 = { lo = 0xfffffffed5fa0e00, hi = 0xffffffffffffffff }
+
+local WIDE_BOUND_6 = { lo = 0x000000012a05f200, hi = 0x0000000000000000 }
+
+local WIDE_BOUND_7 = { lo = 0x0000000000000000, hi = 0xfffffff000000000 }
+
+local WIDE_BOUND_8 = { lo = 0x0000000000000000, hi = 0x0000001000000000 }
+
+local WIDE_BOUND_9 = { lo = 0xfffffffffffffc18, hi = 0xffffffffffffffff }
+
+local WIDE_BOUND_10 = { lo = 0x00000000000003e8, hi = 0x0000000000000000 }
+
+local WIDE_BOUND_11 = { lo = 0xfffff4c58c31d00e, hi = 0xffffffffffffffff }
+
 -- The unit's protocol id — the hash of its wire shape (SPEC §3.1), as the
 -- 64 bits of a Lua integer (a hex literal wraps; read it unsigned).
 _M.ProtocolId = 0xd2ded2cc8a482aa1
@@ -409,15 +447,20 @@ end
 
 -- type FixedProbe (SPEC §6.1: the wire order is the declared order)
 function _M.WriteFixedProbe(stream, v)
+  if math.type(v.Angle) ~= "integer" or v.Angle < -11796480 or v.Angle > 11796480 then return false end
   -- the Q format's raw offset (SPEC §4.3)
   if not stream:serializeFixed({ value = v.Angle }, 16, 16, -180, 180) then return false end
+  if math.type(v.Position) ~= "integer" or v.Position < -1966080000 or v.Position > 1966080000 then return false end
   -- the Q format's raw offset (SPEC §4.3)
   if not stream:serializeFixed({ value = v.Position }, 48, 16, -30000, 30000) then return false end
+  if not wide_within(v.Reach, WIDE_BOUND_1, WIDE_BOUND_2, true) then return false end
   -- the Q format's raw offset (SPEC §4.3)
   if not stream:serializeFixed({ value = v.Reach }, 112, 16, -1000000, 1000000) then return false end
+  if math.type(v.Ticks) ~= "integer" or v.Ticks < 0 or v.Ticks > 1000000 then return false end
   -- the Q format's raw offset (SPEC §4.3)
   if not stream:serializeFixed({ value = v.Ticks }, 32, 0, 0, 1000000) then return false end
   for _i = 1, 2 do
+    if math.type(v.Samples[_i]) ~= "integer" or v.Samples[_i] < -524288 or v.Samples[_i] > 524288 then return false end
     -- the Q format's raw offset (SPEC §4.3)
     if not stream:serializeFixed({ value = v.Samples[_i] }, 16, 16, -8, 8) then return false end
   end
@@ -426,18 +469,24 @@ end
 
 -- type UnsignedProbe (SPEC §6.1: the wire order is the declared order)
 function _M.WriteUnsignedProbe(stream, v)
+  if math.type(v.Angle) ~= "integer" or v.Angle < 0 or v.Angle > 23592960 then return false end
   -- the Q format's raw offset (SPEC §4.3)
   if not stream:serializeFixed({ value = v.Angle }, 16, 16, 0, 360) then return false end
+  if math.type(v.Span) ~= "integer" or math.ult(v.Span, 0) or math.ult(0xffffffffffff0000, v.Span) then return false end
   -- the Q format's raw offset (SPEC §4.3)
   if not stream:serializeFixed({ value = v.Span }, 48, 16, 0, 281474976710655) then return false end
+  if not wide_within(v.Reach, WIDE_BOUND_3, WIDE_BOUND_4, false) then return false end
   -- the Q format's raw offset (SPEC §4.3)
   if not stream:serializeFixed({ value = v.Reach }, 112, 16, 0, 2000000) then return false end
+  if math.type(v.Ticks) ~= "integer" or v.Ticks < 0 or v.Ticks > 1000000 then return false end
   -- the Q format's raw offset (SPEC §4.3)
   if not stream:serializeFixed({ value = v.Ticks }, 32, 0, 0, 1000000) then return false end
   for _i = 1, 2 do
+    if math.type(v.Samples[_i]) ~= "integer" or v.Samples[_i] < 0 or v.Samples[_i] > 1048576 then return false end
     -- the Q format's raw offset (SPEC §4.3)
     if not stream:serializeFixed({ value = v.Samples[_i] }, 16, 16, 0, 16) then return false end
   end
+  if math.type(v.Locked) ~= "integer" or v.Locked < 196608 or v.Locked > 196608 then return false end
   -- the Q format's raw offset (SPEC §4.3)
   if not stream:serializeFixed({ value = v.Locked }, 16, 16, 3, 3) then return false end
   -- the declared width (SPEC §5.1 row 11)
@@ -448,7 +497,9 @@ end
 
 -- type WideProbe (SPEC §6.1: the wire order is the declared order)
 function _M.WriteWideProbe(stream, v)
+  if not wide_value(v.EntityId) then return false end
   if not stream:serializeUint128({ value = v.EntityId }) then return false end -- uint128 raw (SPEC §4.3)
+  if not wide_within(v.Energy, WIDE_BOUND_5, WIDE_BOUND_6, true) then return false end -- SPEC §5.1 row 1
   -- int128, offset from min (SPEC §4.3)
   if
     not stream:serializeInt128(
@@ -459,6 +510,7 @@ function _M.WriteWideProbe(stream, v)
   then
     return false
   end
+  if not wide_within(v.Flux, WIDE_BOUND_7, WIDE_BOUND_8, true) then return false end -- SPEC §5.1 row 1
   -- int128, offset from min (SPEC §4.3)
   if
     not stream:serializeInt128(
@@ -469,6 +521,7 @@ function _M.WriteWideProbe(stream, v)
   then
     return false
   end
+  if not wide_within(v.Bias, WIDE_BOUND_9, WIDE_BOUND_10, true) then return false end -- SPEC §5.1 row 1
   -- int128, offset from min (SPEC §4.3)
   if
     not stream:serializeInt128(
@@ -479,6 +532,7 @@ function _M.WriteWideProbe(stream, v)
   then
     return false
   end
+  if not wide_value(v.Seed) then return false end
   if not stream:serializeUint128({ value = v.Seed }) then return false end -- uint128 raw (SPEC §4.3)
   return true
 end
@@ -493,10 +547,12 @@ function _M.WriteLudicrousState(stream, v)
   if math.type(v.KeysCount) ~= "integer" or v.KeysCount < 0 or v.KeysCount > 4 then return false end
   if not stream:serializeBits({ value = v.KeysCount }, 3) then return false end -- the count
   for _i = 1, v.KeysCount do
+    if not wide_value(v.Keys[_i]) then return false end
     if not stream:serializeUint128({ value = v.Keys[_i] }) then return false end -- uint128 raw (SPEC §4.3)
   end
   if not stream:serializeBool({ value = v.HasTarget }) then return false end -- SPEC §4.3
   if v.HasTarget then
+    if not wide_value(v.TargetId) then return false end
     if not stream:serializeUint128({ value = v.TargetId }) then return false end -- uint128 raw (SPEC §4.3)
   end
   return true
@@ -504,9 +560,11 @@ end
 
 -- type DegenerateProbe (SPEC §6.1: the wire order is the declared order)
 function _M.WriteDegenerateProbe(stream, v)
+  if math.type(v.LockedFixed) ~= "integer" or v.LockedFixed < -196608 or v.LockedFixed > -196608 then return false end
   -- the Q format's raw offset (SPEC §4.3)
   if not stream:serializeFixed({ value = v.LockedFixed }, 16, 16, -3, -3) then return false end
   if math.type(v.LockedInt) ~= "integer" or v.LockedInt < 7 or v.LockedInt > 7 then return false end
+  if not wide_within(v.LockedWide, WIDE_BOUND_11, WIDE_BOUND_11, true) then return false end -- SPEC §5.1 row 1
   -- int128, offset from min (SPEC §4.3)
   if
     not stream:serializeInt128(
@@ -525,10 +583,13 @@ end
 
 -- type FixedVec (SPEC §6.1: the wire order is the declared order)
 function _M.WriteFixedVec(stream, v)
+  if math.type(v.X) ~= "integer" or v.X < -6553600000 or v.X > 6553600000 then return false end
   -- the Q format's raw offset (SPEC §4.3)
   if not stream:serializeFixed({ value = v.X }, 48, 16, -100000, 100000) then return false end
+  if math.type(v.Y) ~= "integer" or v.Y < -6553600000 or v.Y > 6553600000 then return false end
   -- the Q format's raw offset (SPEC §4.3)
   if not stream:serializeFixed({ value = v.Y }, 48, 16, -100000, 100000) then return false end
+  if math.type(v.Z) ~= "integer" or v.Z < -6553600000 or v.Z > 6553600000 then return false end
   -- the Q format's raw offset (SPEC §4.3)
   if not stream:serializeFixed({ value = v.Z }, 48, 16, -100000, 100000) then return false end
   return true
@@ -536,12 +597,16 @@ end
 
 -- type FixedQuat (SPEC §6.1: the wire order is the declared order)
 function _M.WriteFixedQuat(stream, v)
+  if math.type(v.X) ~= "integer" or v.X < -1073741824 or v.X > 1073741824 then return false end
   -- the Q format's raw offset (SPEC §4.3)
   if not stream:serializeFixed({ value = v.X }, 2, 30, -1, 1) then return false end
+  if math.type(v.Y) ~= "integer" or v.Y < -1073741824 or v.Y > 1073741824 then return false end
   -- the Q format's raw offset (SPEC §4.3)
   if not stream:serializeFixed({ value = v.Y }, 2, 30, -1, 1) then return false end
+  if math.type(v.Z) ~= "integer" or v.Z < -1073741824 or v.Z > 1073741824 then return false end
   -- the Q format's raw offset (SPEC §4.3)
   if not stream:serializeFixed({ value = v.Z }, 2, 30, -1, 1) then return false end
+  if math.type(v.W) ~= "integer" or v.W < -1073741824 or v.W > 1073741824 then return false end
   -- the Q format's raw offset (SPEC §4.3)
   if not stream:serializeFixed({ value = v.W }, 2, 30, -1, 1) then return false end
   return true

@@ -1863,19 +1863,20 @@ type TableMessageEntry struct {
 }
 
 // Storage belongs to the caller and is resolved once for one connection direction.
-// setProbes counts the looks the key and skipped-id duplicate tests take, so a
-// test pins their work by a count and never a clock.
+// setProbes counts the looks the key and skipped-id duplicate tests take, and
+// announceProbes the compares that resolve two slots of one id to the first,
+// so a test pins their work by a count and never a clock.
 type TableVocabulary struct {
-	Entries            []TableMessageEntry
-	Count, RefBits     int64
-	BuildVersion       uint64
-	Announced, Refused bool
-	MaxBytes           int64
-	Strict             bool
-	bodyClock          uint64
-	setTop             int
-	setStarts          [320]uint64
-	setProbes          uint64
+	Entries                   []TableMessageEntry
+	Count, RefBits            int64
+	BuildVersion              uint64
+	Announced, Refused        bool
+	MaxBytes                  int64
+	Strict                    bool
+	bodyClock                 uint64
+	setTop                    int
+	setStarts                 [320]uint64
+	setProbes, announceProbes uint64
 }
 type TableMessageReader struct {
 	Bits       TableBitReader

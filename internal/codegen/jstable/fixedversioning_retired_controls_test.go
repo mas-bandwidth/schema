@@ -14,6 +14,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // These probes replace the still-printed historical controls in fixedform.mjs.
@@ -179,14 +181,14 @@ func jsFixedCPPFiles(t *testing.T, schemas map[string]string, driver string, out
 		t.Fatal(err)
 	}
 	args = append(args, "-I", serialize, driverPath, "-o", filepath.Join(dir, "corpus"))
-	if out, err := exec.Command(tool, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, tool, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile C++ optional oracle: %v\n%s", err, out)
 	}
 	var paths []string
 	for _, output := range outputs {
 		paths = append(paths, filepath.Join(dir, output))
 	}
-	if out, err := exec.Command(filepath.Join(dir, "corpus"), paths...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, filepath.Join(dir, "corpus"), paths...).CombinedOutput(); err != nil {
 		t.Fatalf("run C++ optional oracle: %v\n%s", err, out)
 	}
 	return dir

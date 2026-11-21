@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -17,6 +16,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func runDartWireIdFirstUse(t *testing.T, sabotage bool) ([]byte, error) {
@@ -107,7 +108,7 @@ func runDartWireIdFirstUse(t *testing.T, sabotage bool) ([]byte, error) {
 	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(script.String()), 0600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dartBinary(t), "--enable-asserts", "probe.dart")
+	cmd := testproc.Command(t, dartBinary(t), "--enable-asserts", "probe.dart")
 	cmd.Dir = dir
 	return cmd.CombinedOutput()
 }
@@ -162,7 +163,7 @@ table Root { values []int32 }`)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, dartBinary(t), "--enable-asserts", "probe.dart")
+	cmd := testproc.CommandContext(t, ctx, dartBinary(t), "--enable-asserts", "probe.dart")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("bounded count probe: %v: %s", err, out)

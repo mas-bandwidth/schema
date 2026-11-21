@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -12,6 +11,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // retainReadSurfaceLoadAnchor is the generated retaining load of a variable
@@ -79,7 +80,7 @@ func runRetainReadSurface(t *testing.T, plant func(files map[string][]byte) int)
 	var answers []map[string][]byte
 	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
 		outdir := t.TempDir()
-		cmd := exec.Command(pin, "-W", "error", "-I", "-B", filepath.Join(root, "test/conformance/python/main.py"), manifest, "retain", outdir)
+		cmd := testproc.Command(t, pin, "-W", "error", "-I", "-B", filepath.Join(root, "test/conformance/python/main.py"), manifest, "retain", outdir)
 		cmd.Dir = root
 		cmd.Env = append(os.Environ(), "PYTHON_CONFORMANCE_GENERATED="+generated)
 		if output, err := cmd.CombinedOutput(); err != nil {

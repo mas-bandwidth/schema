@@ -3,12 +3,13 @@ package jstable
 import (
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const jsFixedTotalSchema = `package probe
@@ -89,7 +90,7 @@ func runJsFixedTotal(t *testing.T, files map[string][]byte) ([]byte, error) {
 	if err := os.WriteFile(filepath.Join(dir, "probe.mjs"), []byte(jsFixedTotalProbe), 0600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(jsNode(t), "probe.mjs")
+	cmd := testproc.Command(t, jsNode(t), "probe.mjs")
 	cmd.Dir = dir
 	return cmd.CombinedOutput()
 }

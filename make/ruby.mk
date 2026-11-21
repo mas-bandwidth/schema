@@ -8,9 +8,14 @@
 # (R5 fixed tables and R6 variable tables) satisfy the cross-leg table gates,
 # so R4 builds build/schema-ruby with -tags schema_leg_ruby.
 
-build/schema-ruby: $(shell find compiler internal cmd ir -name '*.go' -o -name '*.rb' -o -name '*.rbs' 2>/dev/null)
+build/schema-ruby: $(shell find compiler internal cmd ir -name '*.go' -o -name '*.rb' -o -name '*.rbs' 2>/dev/null) $(EMBED_SOURCES)
 	@mkdir -p build
 	go build -tags schema_leg_ruby -o $@ ./cmd/schema
+# SERIALIZE_PIN, the vendored serialize.rb's pin, and every other runtime file
+# the compiler embeds: a pin bump must rebuild the compiler and so
+# build/conformance-ruby, or a stale runtime can pass.
+# TestConformanceCompilersRebuildOnTheirRuntime holds it.
+build/schema-ruby: $(shell find internal/codegen/ruby/runtime internal/codegen/rubytable/runtime -type f 2>/dev/null)
 
 .PHONY: test-ruby test-ruby-recipe update-goldens-ruby ruby-skeleton-negative-control
 test-ruby: ruby-toolchain-check ruby-serialize-test packet-utf8-ruby bench-ruby-gate

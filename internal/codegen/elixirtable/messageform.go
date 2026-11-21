@@ -577,7 +577,10 @@ const messageBatchRuntimeBody = `  @batch_max 256
       # DAMAGE ANYWHERE IN THE BATCH DISCARDS THE WHOLE BATCH
       # (docs/SPEC-TABLES.md §3.3, §4): no body is delivered and the count is
       # zero, for damage inside a body and for "BYTES AFTER THE PAD" alike.
-      r = {bytes_to_int(rest), 0, bit_size(rest)}
+      # THE READER READS THE BINARY AT A MOVING BIT OFFSET: it never turns the
+      # batch into one integer, so a read costs the bits it reads and a
+      # hostile batch's trailing bytes cost nothing (ELIXIR-5).
+      r = {rest, 0, bit_size(rest)}
 
       case read_bodies(vocab, r, count, [], own_record(vocab)) do
         {:ok, bodies, r} ->
@@ -963,7 +966,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
   # align that precedes a string or a bytes array guarantees.
   defp put_bytes({acc, nbits}, bytes) do
     n = byte_size(bytes)
-    {acc ||| bytes_to_int(bytes) <<< nbits, nbits + n * 8}
+    {acc ||| :binary.decode_unsigned(bytes, :little) <<< nbits, nbits + n * 8}
   end
 
   # ---------------------------------------------------------------------------
@@ -1509,8 +1512,8 @@ const messageBatchRuntimeBody = `  @batch_max 256
     end
   end
 
-  defp bits_left({_int, off, total}) when total > off, do: total - off
-  defp bits_left({_int, _off, _total}), do: 0
+  defp bits_left({_bin, off, total}) when total > off, do: total - off
+  defp bits_left({_bin, _off, _total}), do: 0
 
   defp read_union(vocab, r, depth, sub) do
     case get_bits(r, vocab.ref_bits) do
@@ -1609,21 +1612,36 @@ const messageBatchRuntimeBody = `  @batch_max 256
   defp bit_mask(0), do: 0
   defp bit_mask(n), do: (1 <<< n) - 1
 
-  defp get_bits({int, off, total}, n) do
+  # THE READER'S STATE is {batch, bit offset, bit count}: the batch binary
+  # itself, never an integer made of it. Bit i of the stream is bit i rem 8 of
+  # byte i div 8 (low bit first, docs/SPEC-TABLES.md §3.3), so n bits at off
+  # are the little-endian integer of the bytes they span, shifted down by
+  # off rem 8: a sub-binary match and a decode of those bytes alone.
+  defp get_bits({bin, off, total}, n) do
     if off + n > total do
       :error
     else
-      {:ok, int >>> off &&& bit_mask(n), {int, off + n, total}}
+      {:ok, peek_bits(bin, off, n), {bin, off + n, total}}
     end
   end
 
-  defp align({int, off, total}) do
+  defp peek_bits(_bin, _off, 0), do: 0
+
+  defp peek_bits(bin, off, n) do
+    first = div(off, 8)
+    shift = rem(off, 8)
+    span = div(shift + n + 7, 8)
+    <<_::binary-size(^first), window::binary-size(^span), _::binary>> = bin
+    :binary.decode_unsigned(window, :little) >>> shift &&& bit_mask(n)
+  end
+
+  defp align({bin, off, total}) do
     pad = rem(8 - rem(off, 8), 8)
 
-    if off + pad > total or (int >>> off &&& bit_mask(pad)) != 0 do
+    if off + pad > total or peek_bits(bin, off, pad) != 0 do
       :error
     else
-      {:ok, {int, off + pad, total}}
+      {:ok, {bin, off + pad, total}}
     end
   end
 
@@ -1632,16 +1650,18 @@ const messageBatchRuntimeBody = `  @batch_max 256
   # 0..(n - 1) with no step is the descending range 0..-1 when n is 0, and that
   # range walks two bytes. Positive lengths step //1. A run past the batch
   # stays :error.
-  defp take_bytes({_int, _off, _total} = r, 0), do: {:ok, <<>>, r}
+  defp take_bytes({_bin, _off, _total} = r, 0), do: {:ok, <<>>, r}
 
-  defp take_bytes({int, off, total}, n) when is_integer(n) and n > 0 do
+  # The bytes are copied out of the batch, so a delivered text never holds
+  # the whole batch alive.
+  defp take_bytes({bin, off, total}, n) when is_integer(n) and n > 0 do
     need = n * 8
 
     if off + need > total do
       :error
     else
-      bytes = for i <- 0..(n - 1)//1, into: <<>>, do: <<int >>> (off + 8 * i) &&& 0xFF>>
-      {:ok, bytes, {int, off + need, total}}
+      bytes = :binary.copy(binary_part(bin, div(off, 8), n))
+      {:ok, bytes, {bin, off + need, total}}
     end
   end
 
@@ -1655,9 +1675,9 @@ const messageBatchRuntimeBody = `  @batch_max 256
 
   # The batch ends at the pad to the byte boundary: no more than seven bits left,
   # and all of them zero (docs/SPEC-TABLES.md §3.3).
-  defp batch_ends_clean?({int, off, total}) do
+  defp batch_ends_clean?({bin, off, total}) do
     rem_bits = total - off
-    rem_bits < 8 and (rem_bits == 0 or (int >>> off &&& bit_mask(rem_bits)) == 0)
+    rem_bits < 8 and peek_bits(bin, off, rem_bits) == 0
   end
 
   defp int_to_bytes(_int, 0), do: <<>>
@@ -1665,12 +1685,6 @@ const messageBatchRuntimeBody = `  @batch_max 256
   defp int_to_bytes(int, nbytes) do
     for i <- 0..(nbytes - 1), into: <<>>, do: <<int >>> (8 * i) &&& 0xFF>>
   end
-
-  defp bytes_to_int(bin), do: bytes_to_int(bin, 0, 0)
-  defp bytes_to_int(<<>>, _i, acc), do: acc
-
-  defp bytes_to_int(<<b, rest::binary>>, i, acc),
-    do: bytes_to_int(rest, i + 1, acc ||| b <<< (8 * i))
 
   defp bit_length(0), do: 0
   defp bit_length(n), do: bit_length(n, 0)

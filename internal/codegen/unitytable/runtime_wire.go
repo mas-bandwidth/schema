@@ -1582,8 +1582,17 @@ internal static partial class TableWire
             if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry e)) { return false; }
             if (reference == 0) { return true; }
             if (Reserved(e.Id) || !SeenOnce(few, ref count, ref more, e.Id)) { return false; }
-            if (!MessageSkip(ref r, d, e.Kind, e.Shape, depth)) { return false; }
+            if (!MessageSkipField(ref r, d, e, depth)) { return false; }
         }
+    }
+    // A message field cannot be required, so a writer elides a union FIELD at
+    // None at every build (§3.3 (c)): arm reference 0 stored for one is refused
+    // on the skip path as on a named read. An array element and an arm's own
+    // value keep their positional None and skip through MessageSkip.
+    static bool MessageSkipField(ref BitReader r, MessageRead d, TableMessageEntry e, int depth)
+    {
+        if (e.Kind == 15) { BitReader arm = r; if (!MessageReference(ref arm, d, out ulong armRef, out _) || armRef == 0) { return false; } }
+        return MessageSkip(ref r, d, e.Kind, e.Shape, depth);
     }
     // SeenOnce records one id of a body or one key of a keyed array and
     // answers false on a repeat: an id twice in one body, or a key twice in
@@ -1748,7 +1757,7 @@ internal static partial class TableWire
             if (field == null)
             {
                 if (same) { return false; }
-                d.Report.Unknown++; if (!MessageSkip(ref r, d, entry.Kind, entry.Shape, depth)) { return false; } continue;
+                d.Report.Unknown++; if (!MessageSkipField(ref r, d, entry, depth)) { return false; } continue;
             }
             bool exact = same && MessageEntryMatchesOwn(entry, field.MessageSlot);
             if (exact)
@@ -1956,6 +1965,9 @@ internal static partial class TableWire
         UInt128Value stored = bits; bool negative = false, above = false;
         if (shape.Packing == 1)
         {
+            // A RANGED VALUE IS HELD TO ITS ANNOUNCED KIND (§3.3): base plus
+            // offset is never wrapped, named or skipped
+            if (MessageNumber(kind) && !RangedHolds(kind, shape.Base, bits)) { return Fail(d.Report, "out_of_range: " + f.Name); }
             stored = unchecked(bits + shape.Base);
             bool baseNegative = (kind >= 18 || Signed(kind)) && unchecked((Int128Value)shape.Base) < 0;
             negative = baseNegative && bits < unchecked(0 - shape.Base);
