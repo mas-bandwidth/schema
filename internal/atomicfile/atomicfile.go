@@ -8,10 +8,13 @@
 // temporary file beside the file it replaces, written whole and synced, and
 // only then publishes by rename, so the failures a write meets in practice
 // happen before anything has changed. A command that changes several entries
-// gets all of them or none: when a publishing rename fails, every original
-// entry already moved aside is renamed back, the entry itself (the same
-// inode, with its hard links, its mode and the time it was last written),
-// not a copy of its bytes.
+// gets all of them or none. A file being replaced never goes missing: its
+// original stays at its name, kept also under a second name (a hard link), and
+// one rename puts the new file over it; when a publishing rename fails, every
+// original already replaced is renamed back over the new file, the entry
+// itself (the same inode, with its hard links, its mode and the time it was
+// last written), not a copy of its bytes. Only a file system that makes no
+// hard link gets a copy, of the bytes and the mode.
 //
 // A path that is a symbolic link is followed: the file it names is the one
 // replaced, and the link stays. An existing file keeps its mode. A file its
@@ -24,6 +27,7 @@ package atomicfile
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"math/rand/v2"
 	"os"
@@ -48,6 +52,10 @@ type Files struct {
 	Remove func(name string) error
 	// RemoveAll removes an entry and, for a directory, everything under it.
 	RemoveAll func(name string) error
+	// Link makes newname a second name of the file oldname.
+	Link func(oldname, newname string) error
+	// Open opens a file for reading.
+	Open func(name string) (*os.File, error)
 	// Lstat describes an entry without following a symbolic link.
 	Lstat func(name string) (fs.FileInfo, error)
 	// Readlink reads a symbolic link.
@@ -74,6 +82,8 @@ func OS() Files {
 		Rename:    os.Rename,
 		Remove:    os.Remove,
 		RemoveAll: os.RemoveAll,
+		Link:      os.Link,
+		Open:      os.Open,
 		Lstat:     os.Lstat,
 		Readlink:  os.Readlink,
 		Mkdir:     os.Mkdir,
@@ -99,6 +109,8 @@ func InRoot(r *os.Root) Files {
 		Rename:    r.Rename,
 		Remove:    r.Remove,
 		RemoveAll: r.RemoveAll,
+		Link:      r.Link,
+		Open:      r.Open,
 		Lstat:     r.Lstat,
 		Readlink:  r.Readlink,
 		Mkdir:     r.Mkdir,
@@ -238,7 +250,9 @@ type change struct {
 	file string // write: path with every symbolic link followed
 	next string // write: the staged new content, beside file
 	kept string // where the original entry is kept while the commit publishes; respell: the name it passes through
-	// aside: the original entry is at kept, not at its own name
+	// aside: the original entry is at kept. A remove or a respell moved it
+	// there; a write made kept a second name of it (or, where the file
+	// system has no hard links, a copy) and left it at its own name.
 	aside bool
 	// placed: the new entry is at its own name
 	placed bool
@@ -492,13 +506,15 @@ func (c *change) publish() error {
 			if info.IsDir() {
 				return &fs.PathError{Op: "write", Path: f.shown(c.file), Err: syscall.EISDIR}
 			}
-			if err := f.Rename(c.file, c.kept); err != nil {
+			// the original stays at its name, so a reader never finds the
+			// file missing; the backup is what a failure puts back
+			if err := c.backUp(info); err != nil {
 				return err
 			}
-			c.aside = true
 		case !errors.Is(err, fs.ErrNotExist):
 			return err
 		}
+		// one rename replaces the original with the new file
 		if err := f.Rename(c.next, c.file); err != nil {
 			return err
 		}
@@ -528,22 +544,61 @@ func (c *change) publish() error {
 	return nil
 }
 
+// backUp keeps the original of a write at kept while it stays at its own
+// name: a hard link, so what a failure renames back is the entry itself (the
+// same inode, with its other links, its mode and the time it was last
+// written); where the file system makes no hard link, a copy of its bytes
+// and mode.
+func (c *change) backUp(info fs.FileInfo) error {
+	f := c.f
+	if err := f.Link(c.file, c.kept); err == nil {
+		c.aside = true
+		return nil
+	}
+	src, err := f.Open(c.file)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = src.Close() }()
+	dst, err := f.Create(c.kept, info.Mode().Perm())
+	if err != nil {
+		return err
+	}
+	c.aside = true // made: a failure from here removes it
+	_, err = io.Copy(dst, src)
+	if err == nil {
+		err = dst.Chmod(info.Mode().Perm())
+	}
+	if err == nil {
+		err = syncFile(dst)
+	}
+	if cerr := dst.Close(); err == nil {
+		err = cerr
+	}
+	return err
+}
+
 // putBack undoes publish, as far as it got.
 func (c *change) putBack() error {
 	f := c.f
 	switch c.kind {
 	case write:
-		if c.aside {
-			// over the new file, if it is there
+		switch {
+		case c.placed && c.aside:
+			// the original entry, renamed back over the new file
 			if err := f.Rename(c.kept, c.file); err != nil {
 				return err
 			}
 			c.aside, c.placed = false, false
-		} else if c.placed {
+		case c.placed:
 			if err := f.Remove(c.file); err != nil {
 				return err
 			}
 			c.placed = false
+		case c.aside:
+			// the original never left its name: only its backup goes
+			_ = f.Remove(c.kept)
+			c.aside = false
 		}
 	case remove:
 		if c.aside {
@@ -590,10 +645,12 @@ func plain(c *change, err error) error {
 // staged is removed and the tree is as it was.
 //
 // Only then is each change published, in the order it was made. One file
-// alone is replaced by a single rename. With more, each original entry is
-// renamed aside to a kept name and the staged file renamed into its place;
-// if a rename fails, every entry already moved is put back, last first, and
-// the error says nothing was changed. When every change is published the
+// alone is replaced by a single rename. With more, each original file is
+// first linked to a kept name, staying at its own, and the staged file is
+// renamed over it, so an existing file is never missing, not even between
+// two renames (an entry to remove or respell is renamed aside); if a rename
+// fails, every entry already moved is put back, last first, and the error
+// says nothing was changed. When every change is published the
 // kept originals are removed.
 //
 // In a [Txn.Distinct] transaction two writes that reach one file are an

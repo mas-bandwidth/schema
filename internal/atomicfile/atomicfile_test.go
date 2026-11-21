@@ -620,3 +620,133 @@ func TestInExistingDirectoriesMakesNone(t *testing.T) {
 		t.Errorf("the new file holds %q", got)
 	}
 }
+
+// Where the file system makes no hard link the original is backed up by a
+// copy of its bytes and mode, still staying at its name: a failed publish
+// puts those back, and a successful one leaves no copy behind.
+func TestABackupIsACopyWhereLinksFail(t *testing.T) {
+	t.Parallel()
+	errNoLink := errors.New("hard links unsupported (injected)")
+	for _, fail := range []bool{false, true} {
+		t.Run(map[bool]string{false: "the publish lands", true: "the second rename fails"}[fail], func(t *testing.T) {
+			t.Parallel()
+			dir := tempDir(t)
+			a, b := filepath.Join(dir, "a.txt"), filepath.Join(dir, "b.txt")
+			put(t, a, "old a", 0o640)
+			put(t, b, "old b", 0o600)
+			f := OS()
+			links := 0
+			f.Link = func(oldname, newname string) error { links++; return errNoLink }
+			rename := f.Rename
+			f.Rename = func(oldname, newname string) error {
+				if fail && newname == b && strings.Contains(oldname, ".new.") {
+					return errNoLink
+				}
+				// neither original is ever missing
+				for _, p := range []string{a, b} {
+					if _, err := os.Lstat(p); err != nil {
+						t.Errorf("before renaming %s: %s is missing: %v", oldname, p, err)
+					}
+				}
+				return rename(oldname, newname)
+			}
+			txn := New()
+			v := txn.With(f)
+			v.Write(a, []byte("new a"), 0o644)
+			v.Write(b, []byte("new b"), 0o644)
+			err := txn.Commit()
+			if links == 0 {
+				t.Fatal("no hard link was tried")
+			}
+			want := map[string]string{a: "new a", b: "new b"}
+			if fail {
+				if !errors.Is(err, errNoLink) || !strings.Contains(err.Error(), "nothing was changed") {
+					t.Fatalf("commit = %v; want the failure, saying nothing was changed", err)
+				}
+				want = map[string]string{a: "old a", b: "old b"}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+			for p, w := range want {
+				if got := read(t, p); got != w {
+					t.Errorf("%s holds %q; want %q", p, got, w)
+				}
+			}
+			if fail {
+				if m := lstat(t, a).Mode().Perm(); m != 0o640 {
+					t.Errorf("the copied-back original has mode %v; want 0640", m)
+				}
+			}
+			if got := names(t, dir); got != "a.txt b.txt" {
+				t.Errorf("the directory holds %q; want the two files alone", got)
+			}
+		})
+	}
+}
+
+// A pair publish over two existing files never leaves either missing: with
+// hard links the original stays at its name until the new file is renamed
+// over it, and a failure renames the original entry back over the new one.
+func TestAnExistingFileIsNeverMissing(t *testing.T) {
+	t.Parallel()
+	for _, failAt := range []string{"", "a.txt", "b.txt"} {
+		t.Run("fail at "+failAt, func(t *testing.T) {
+			t.Parallel()
+			dir := tempDir(t)
+			a, b := filepath.Join(dir, "a.txt"), filepath.Join(dir, "b.txt")
+			put(t, a, "old a", 0o644)
+			put(t, b, "old b", 0o644)
+			beforeA, beforeB := lstat(t, a), lstat(t, b)
+			look := func(step string) {
+				for _, p := range []string{a, b} {
+					if _, err := os.Lstat(p); err != nil {
+						t.Errorf("after %s: %s is missing: %v", step, p, err)
+					}
+				}
+			}
+			errInjected := errors.New("rename refused (injected)")
+			f := OS()
+			rename, link, remove := f.Rename, f.Link, f.Remove
+			failed := false
+			f.Rename = func(oldname, newname string) error {
+				if failAt != "" && filepath.Base(newname) == failAt && !failed {
+					failed = true
+					look("a refused rename")
+					return errInjected
+				}
+				err := rename(oldname, newname)
+				look("rename " + oldname)
+				return err
+			}
+			f.Link = func(oldname, newname string) error {
+				err := link(oldname, newname)
+				look("link " + oldname)
+				return err
+			}
+			f.Remove = func(name string) error {
+				err := remove(name)
+				look("remove " + name)
+				return err
+			}
+			txn := New()
+			v := txn.With(f)
+			v.Write(a, []byte("new a"), 0o644)
+			v.Write(b, []byte("new b"), 0o644)
+			err := txn.Commit()
+			if failAt == "" {
+				if err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			if !errors.Is(err, errInjected) {
+				t.Fatalf("commit = %v; want the injected failure", err)
+			}
+			same(t, "after the failure", a, beforeA)
+			same(t, "after the failure", b, beforeB)
+			if got := names(t, dir); got != "a.txt b.txt" {
+				t.Errorf("the directory holds %q", got)
+			}
+		})
+	}
+}

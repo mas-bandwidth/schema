@@ -92,6 +92,10 @@ func TestPairedPublishNeverHidesAnExistingDestination(t *testing.T) {
 			}
 			f.Remove = func(name string) error { return wrap("remove "+name, remove(name)) }
 			f.RemoveAll = func(name string) error { return wrap("remove "+name, removeAll(name)) }
+			link := f.Link
+			f.Link = func(oldname, newname string) error {
+				return wrap("link "+oldname+" to "+newname, link(oldname, newname))
+			}
 
 			err := publishOutputsWith(f, tc.Verb, []pairOutput{
 				{outputPath{flags[tc.Verb], side}, []byte(news[side])},

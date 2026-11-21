@@ -252,11 +252,13 @@ type pinChange struct {
 //
 // Every file's new content is staged first, beside the file it replaces, so
 // the failures a pin meets in practice (a read-only directory, a full disk)
-// happen before anything has changed. Only then is each file published; if
-// a rename fails, every original already moved aside is renamed back over
-// its path, so what returns is the entry itself (the same inode, with its
-// hard links, its mode and the time it was last written), not a copy of its
-// bytes, and "nothing was changed" is true.
+// happen before anything has changed. Only then is each file published:
+// its original is linked to a kept name and stays at its path while the new
+// file is renamed over it, so no generate.go is ever missing; if a rename
+// fails, every original already replaced is renamed back over its path, so
+// what returns is the entry itself (the same inode, with its hard links, its
+// mode and the time it was last written), not a copy of its bytes, and
+// "nothing was changed" is true.
 //
 // An original that will not go back is the one case that ends neither all
 // old nor all new: it is left at its kept name, never removed, and the error
