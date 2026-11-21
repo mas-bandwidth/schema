@@ -944,7 +944,7 @@ export function WriteRealPacketFlat(view, value) {
   if (!Number.isInteger(value.f088Int) || value.f088Int < -694 || value.f088Int > 694) {
     return -1;
   }
-  if (value.f089Bits < 0n || value.f089Bits > 281474976710655n) {
+  if (typeof value.f089Bits !== "bigint" || value.f089Bits < 0n || value.f089Bits > 281474976710655n) {
     return -1;
   }
   v = (((((value.f088Int >>> 0) - 4294966602) >>> 0) & 0x7ff)) >>> 0;
@@ -1000,7 +1000,7 @@ export function WriteRealPacketFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (5 - sb);
   }
-  if (value.f093Bits < 0n || value.f093Bits > 18446744073709551615n) {
+  if (typeof value.f093Bits !== "bigint" || value.f093Bits < 0n || value.f093Bits > 18446744073709551615n) {
     return -1;
   }
   v = ((value.f092Bool ? 1 : 0)) >>> 0;

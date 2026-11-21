@@ -75,7 +75,7 @@ func TestTwinRuleJudgesSharedTwinsOnTheLegsOwnAnswers(t *testing.T) {
 	// two refusals share one twin: one is absent, the other passes, the twin
 	// passes; only the twin loses its pass, and the passing refusal keeps it
 	pairs := map[string]string{"a_neg": "a_ok", "a_wide": "a_ok"}
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		r, changed := outcomes(pairs, map[string]string{"a_neg": outcomeAbsent, "a_wide": outcomePass, "a_ok": outcomePass})
 		if !reflect.DeepEqual(changed, []string{"a_ok"}) || r.outcome["a_wide"] != outcomePass {
 			t.Fatalf("changed=%v a_wide=%q", changed, r.outcome["a_wide"])
