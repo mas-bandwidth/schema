@@ -1868,18 +1868,21 @@ jobs:
             files="ir/"
           fi
 
-          # THE PR SELECTION.
+          # THE PR SELECTION. Each test reads a here-string, never `echo
+          # "$files" | grep`: on a list larger than the pipe buffer grep stops
+          # at its first match, echo dies of SIGPIPE and pipefail turns the
+          # match into the false branch (ci-fast.yml plan, run 44914934707).
           broad=no
-          if echo "$files" | grep -E '^(ir/|compiler/|tables/|Makefile$|go\.mod$|docs/FIXED-FORM-|internal/codegen/cpp|internal/codegen/ccommon|test/cpp|test/tables/.*\.schema$|\.github/workflows/ci-full\.yml$)' >/dev/null; then
+          if grep -qE '^(ir/|compiler/|tables/|Makefile$|go\.mod$|docs/FIXED-FORM-|internal/codegen/cpp|internal/codegen/ccommon|test/cpp|test/tables/.*\.schema$|\.github/workflows/ci-full\.yml$)' <<<"$files"; then
             broad=yes
           fi
           pins=no
           pin_files=$(echo "$files" | grep -vE '^internal/(ci|fuzz|slowtest|docgate|jsontestsuite|memceiling|publicapi)/|^internal/codegen/(dart|darttable|elixir|elixirtable|golang|gotable|goose|goosetable|java|javatable|js|jstable|lobster|lobstertable|lua|luatable|luau|luautable|moo|mootable|python|rust|rusttable|squirrel|squirreltable)/|^testdata/golden/(build-version|dart|elixir|go|java|js|lua|luau|ludicrous|rust)/' || true)
-          if [ "$broad" = yes ] || echo "$pin_files" | grep -E '^(cmd/|internal/|examples/|examples128/|bench/corpus/|test/(main|second|ludicrous_main)\.cpp$|test/(bench|tables|packet-defaults|conformance/harness|conformance/cpp)/|testdata/|go\.sum$|make/(c|cpp|cs)[.-])' >/dev/null; then
+          if [ "$broad" = yes ] || grep -qE '^(cmd/|internal/|examples/|examples128/|bench/corpus/|test/(main|second|ludicrous_main)\.cpp$|test/(bench|tables|packet-defaults|conformance/harness|conformance/cpp)/|testdata/|go\.sum$|make/(c|cpp|cs)[.-])' <<<"$pin_files"; then
             pins=yes
           fi
           cs=no
-          if [ "$broad" = yes ] || echo "$files" | grep -E '^(internal/codegen/cstable/|internal/codegen/csharp/|generated/cs/|test/cs-tables/|make/cs\.mk$|make/cs-[^/]*\.mk$)' >/dev/null; then
+          if [ "$broad" = yes ] || grep -qE '^(internal/codegen/cstable/|internal/codegen/csharp/|generated/cs/|test/cs-tables/|make/cs\.mk$|make/cs-[^/]*\.mk$)' <<<"$files"; then
             cs=yes
           fi
           printf 'pins=%s\ncs=%s\n' "$pins" "$cs" >> "$GITHUB_OUTPUT"
@@ -3241,7 +3244,7 @@ jobs:
           csv=$(ls bench/results/*.csv | grep -v -- '-plan-read-' | tail -1)
           out=$(./bench/run.sh --render "$csv" 2>&1)
           echo "$out"
-          echo "$out" | grep -q "language        %" || { echo "::error::render printed no table header"; exit 1; }
+          grep -q "language        %" <<<"$out" || { echo "::error::render printed no table header"; exit 1; }
           rows=$(echo "$out" | grep -cE "^  [a-z]+ ")
           [ "$rows" -ge 1 ] || { echo "::error::render printed zero language rows"; exit 1; }
 
