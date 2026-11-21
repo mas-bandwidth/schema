@@ -3895,15 +3895,15 @@ tables-maps-dead-entry-negative-control: bin/schema build/tables-generated/.stam
 tables-maps-ascending-negative-control: bin/schema build/tables-generated/.stamp
 	$(call map_negative_control,ascending,'s@if ( order > 0 )@if ( order > 0 \&\& false )@',internal/codegen/cpptable/maps.go,a shuffled map left the map gate GREEN)
 
-# THE DUPLICATE RULE IS DROPPED. A repeated key REFUSES the whole load under
+# THE REPEATED-KEY REFUSAL IS DROPPED. A repeated key REFUSES the whole load under
 # the strict read (docs/SPEC-TABLES.md §6.5), whichever slot the repeat
 # decoded into, so the sabotage drops the refusal itself: the row whose
 # DUPLICATE entry ELIDES a field the first occurrence set is then accepted,
 # and its refusal check goes red. (Swapping the slot alone, the control's
 # tolerant-era form, no longer moves the verdict.)
-.PHONY: tables-maps-duplicate-negative-control
-tables-maps-duplicate-negative-control: bin/schema build/tables-generated/.stamp
-	$(call map_negative_control,duplicate,'s@%\[1\]s        if ( order == 0 )\\n%\[1\]s        {\\n%\[1\]s            r.report->refused = true;@%[1]s        if ( false ) // SABOTAGED\\n%[1]s        {\\n%[1]s            r.report->refused = true;@',internal/codegen/cpptable/maps.go,accepting a duplicate key left the map gate GREEN)
+.PHONY: tables-maps-repeated-key-negative-control
+tables-maps-repeated-key-negative-control: bin/schema build/tables-generated/.stamp
+	$(call map_negative_control,repeatedkey,'s@%\[1\]s        if ( order == 0 )\\n%\[1\]s        {\\n%\[1\]s            r.report->refused = true;@%[1]s        if ( false ) // SABOTAGED\\n%[1]s        {\\n%[1]s            r.report->refused = true;@',internal/codegen/cpptable/maps.go,accepting a duplicate key left the map gate GREEN)
 
 # THE KEY-KIND RULE DECODES ANYWAY. The row written under a CHANGED KEY KIND
 # meets it: the strict read refuses it as kind_mismatch, and the sabotaged
@@ -3921,30 +3921,30 @@ tables-maps-key-kind-negative-control: bin/schema build/tables-generated/.stamp
 # accepted under a key the wire never spelled. Two emitter files, so the
 # recipe is spelled out rather than taken from map_negative_control; the
 # rest of it is that define.
-.PHONY: tables-maps-clamp-negative-control
-tables-maps-clamp-negative-control: bin/schema build/tables-generated/.stamp
+.PHONY: tables-maps-key-over-bound-negative-control
+tables-maps-key-over-bound-negative-control: bin/schema build/tables-generated/.stamp
 	@mkdir -p build
 	@sed -e 's@out.over = key_len > %d;@out.over = ( key_len > %d ) \&\& false; // SABOTAGED@' \
-		internal/codegen/cpptable/maps.go > build/map-clamp.gotext
-	@test "$$(grep -c SABOTAGED build/map-clamp.gotext)" = "1" || \
+		internal/codegen/cpptable/maps.go > build/map-key-over-bound.gotext
+	@test "$$(grep -c SABOTAGED build/map-key-over-bound.gotext)" = "1" || \
 		{ echo "NEGATIVE CONTROL FAILED: the clamp sabotage did not land in maps.go exactly once"; exit 1; }
 	@sed -e 's@len, %\[3\]d );\\n%\[1\]s    r.report->refused = true;\\n%\[1\]s    r.report->refuse_reason = out_of_range;\\n%\[1\]s} // at a code point boundary@len, %[3]d );\\n%[1]s} // SABOTAGED: cut down, not refused@' \
-		internal/codegen/cpptable/codecs.go > build/map-clamp-codecs.gotext
-	@test "$$(grep -c SABOTAGED build/map-clamp-codecs.gotext)" = "1" || \
+		internal/codegen/cpptable/codecs.go > build/map-key-over-bound-codecs.gotext
+	@test "$$(grep -c SABOTAGED build/map-key-over-bound-codecs.gotext)" = "1" || \
 		{ echo "NEGATIVE CONTROL FAILED: the clamp sabotage did not land in codecs.go exactly once"; exit 1; }
-	@printf '{"Replace":{"%s/internal/codegen/cpptable/maps.go":"%s/build/map-clamp.gotext","%s/internal/codegen/cpptable/codecs.go":"%s/build/map-clamp-codecs.gotext"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > build/map-clamp-overlay.json
-	@go build -overlay=build/map-clamp-overlay.json -o build/schema-map-clamp ./cmd/schema
-	@rm -rf build/tables-map-clamp && mkdir -p build/tables-map-clamp
-	@./build/schema-map-clamp generate --lang cpp --out build/tables-map-clamp/maps tables/maps
-	@$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-map-clamp/maps -Itest/tables test/tables/maps_main.cpp \
-		build/tables-map-clamp/maps/*Table.cpp -o build/schema_test_maps_clamp
-	@if ./build/schema_test_maps_clamp > build/map-clamp.log 2>&1; then \
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/maps.go":"%s/build/map-key-over-bound.gotext","%s/internal/codegen/cpptable/codecs.go":"%s/build/map-key-over-bound-codecs.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > build/map-key-over-bound-overlay.json
+	@go build -overlay=build/map-key-over-bound-overlay.json -o build/schema-map-key-over-bound ./cmd/schema
+	@rm -rf build/tables-map-key-over-bound && mkdir -p build/tables-map-key-over-bound
+	@./build/schema-map-key-over-bound generate --lang cpp --out build/tables-map-key-over-bound/maps tables/maps
+	@$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-map-key-over-bound/maps -Itest/tables test/tables/maps_main.cpp \
+		build/tables-map-key-over-bound/maps/*Table.cpp -o build/schema_test_maps_key_over_bound
+	@if ./build/schema_test_maps_key_over_bound > build/map-key-over-bound.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: clamping an over-long key left the map gate GREEN"; exit 1; \
 	fi
-	@grep -q "^FAIL test/tables/maps_main.cpp" build/map-clamp.log || \
-		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on a CHECK"; cat build/map-clamp.log; exit 1; }
-	@echo "negative control: clamp turns the MAP GATE red on $$(grep -c '^FAIL' build/map-clamp.log) failures"
+	@grep -q "^FAIL test/tables/maps_main.cpp" build/map-key-over-bound.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on a CHECK"; cat build/map-key-over-bound.log; exit 1; }
+	@echo "negative control: a planted key clamp turns the MAP GATE red on $$(grep -c '^FAIL' build/map-key-over-bound.log) failures"
 
 # N = 100000 UNDER A SHORT L. The measure-refusals row meets it: a Fleet of a
 # few dozen bytes whose map count the body cannot carry answers -1 with the
@@ -4112,9 +4112,9 @@ tables-maps-place-failure-negative-control: bin/schema build/tables-generated/.s
 tables-maps-negative-controls: tables-maps-sort-negative-control \
 	tables-maps-dead-entry-negative-control \
 	tables-maps-ascending-negative-control \
-	tables-maps-duplicate-negative-control \
+	tables-maps-repeated-key-negative-control \
 	tables-maps-key-kind-negative-control \
-	tables-maps-clamp-negative-control \
+	tables-maps-key-over-bound-negative-control \
 	tables-maps-fit-negative-control \
 	tables-maps-cap-negative-control \
 	tables-maps-depth-negative-control \
