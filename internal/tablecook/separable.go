@@ -17,6 +17,8 @@ package tablecook
 import (
 	"encoding/binary"
 	"fmt"
+
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // magicOrder reads the magic BYTEWISE, before anything else, and answers the
@@ -46,10 +48,24 @@ func SplitAttribution(file []byte) (data, attribution []byte, err error) {
 	if n == 0 {
 		return nil, nil, fmt.Errorf("this cook already carries data alone: its attribution length is zero")
 	}
-	if n < 0 || n > int64(len(file)) {
-		return nil, nil, fmt.Errorf("the attribution length %d does not fit the file's %d bytes", n, len(file))
+	// THE CUT IS WHERE THE HEADER SAYS THE ATTRIBUTION BEGINS, and every word
+	// that says so is from the file: the alignment and both part lengths are
+	// bounded before any of them is added, and the cut must leave the header
+	// whole, at the data part's end (TABLETEXT-7b). A length word that only
+	// fit the file would cut inside the header.
+	size := int64(len(file))
+	align := int64(ord.Uint64(file[offAlign:]))
+	if align < ir.RegionAlignFloor || align > 64 || align&(align-1) != 0 {
+		return nil, nil, fmt.Errorf("bad_alignment: the recorded alignment %d is not a power of two from %d through 64", align, ir.RegionAlignFloor)
 	}
-	cut := int64(len(file)) - n
+	dataLength := int64(ord.Uint64(file[offDataLen:]))
+	if n < 0 || n > size || dataLength < 0 || dataLength > size {
+		return nil, nil, fmt.Errorf("a part length (%d data, %d attribution) does not fit the file's %d bytes", dataLength, n, size)
+	}
+	cut := alignUp(HeaderBytes, align) + dataLength
+	if cut+n != size {
+		return nil, nil, fmt.Errorf("truncated or trailing: the header describes %d bytes and the file is %d", cut+n, size)
+	}
 	data = append([]byte(nil), file[:cut]...)
 	ord.PutUint64(data[offAttribLen:], 0)
 	return data, append([]byte(nil), file[cut:]...), nil

@@ -36,7 +36,8 @@ func TestLockCFloatRangeWidensAllows(t *testing.T) {
 }
 
 // THE RANGE NARROWS: every record already written whose value is above the new
-// max now clamps, so the lock refuses by name.
+// max is outside the new reader's range and the strict read refuses it, so the
+// lock refuses by name.
 func TestLockCFloatRangeNarrowsRefuses(t *testing.T) {
 	rowRefuses(t, cfRow(cfBase), cfRow("min = 0, max = 0.5, resolution = 0.1"),
 		"range narrowed", "keeps its range")

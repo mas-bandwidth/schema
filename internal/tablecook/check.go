@@ -184,7 +184,10 @@ func checkDirectory(m *tabletext.Model, h Header, dir []DirectoryEntry) error {
 			// offsets are those padded starts (§6.3)
 			return fmt.Errorf("directory entry %d (%s) starts at %d, which is not aligned to %d", i+1, name, e.Offset, align)
 		}
-		if e.Offset+size > h.DataLength {
+		// the offset is a word from the file, so it is bounded BEFORE anything
+		// is added to it: `e.Offset+size` on an offset near 2^63 wraps negative
+		// and would pass a bound written as a sum (TABLETEXT-7)
+		if e.Offset < 0 || e.Offset > h.DataLength || size > h.DataLength-e.Offset {
 			return fmt.Errorf("directory entry %d (%s) needs %d bytes at %d and the data part is %d: the node leaves the region", i+1, name, size, e.Offset, h.DataLength)
 		}
 		prevEnd = e.Offset + size
@@ -774,12 +777,14 @@ func (s *scan) ref(at int64, f *ir.Field) error {
 	if delta == RefNull {
 		return nil // null, and null is the only value a slot holds for absence
 	}
+	// the delta is a word from the file: it is bounded against the region
+	// before it is added, so `at + delta` cannot wrap
+	if delta < -at || delta >= s.h.DataLength-at {
+		return fmt.Errorf("the reference's delta %d from offset %d leaves the region of %d bytes", delta, at, s.h.DataLength)
+	}
 	target := at + delta
 	slot := s.entryAt(target)
 	if slot < 0 {
-		if target < 0 || target >= s.h.DataLength {
-			return fmt.Errorf("the reference resolves to offset %d, which leaves the region", target)
-		}
 		return fmt.Errorf("the reference resolves to offset %d, which the directory does not name", target)
 	}
 	want, wantName := ir.TableTypeId(ir.PointeeWireName(f)), f.Type.Name

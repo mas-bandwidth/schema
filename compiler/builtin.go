@@ -36,7 +36,7 @@ var unionArrayTargets []string
 
 // blobTargets is the canonical name of every built-in target whose table
 // backend carries a BYTES BUFFER — `*bytes` (docs/SPEC-TABLES.md §2.5);
-// refuseBlobs and refuseBytes name them.
+// refuseBytes names them.
 var blobTargets []string
 
 // stringTargets is the canonical name of every built-in target whose table
@@ -138,30 +138,6 @@ func refuseUnionArrays(u *ir.Unit, target string) error {
 	carry, flags := carriers(unionArrayTargets)
 	return fmt.Errorf("unit declares an array of unions in a table closure (%s) — an array of unions is %s only today, and the %s form is a named follow-on; generate with %s, or wrap the union in a table and declare an array of that (docs/SPEC-TABLES.md §2.6, §11)",
 		englishList(fields), englishList(carry), target, englishList(flags))
-}
-
-// refuseBlobs is the named refusal every target without the construct gives a
-// unit whose closure holds a BYTE BUFFER field (docs/SPEC-TABLES.md §2.5, §11):
-// the targets that carry the blob node are named, and each remaining port's is
-// a named follow-on — refused loudly here rather than emitted as a pointer
-// naming a table the unit never declares.
-func refuseBlobs(u *ir.Unit, target string) error {
-	if slices.Contains(blobTargets, target) {
-		return nil
-	}
-	names := ir.BlobFields(u)
-	if len(names) == 0 {
-		return nil
-	}
-	legacy := make([]string, 0, len(blobTargets))
-	for _, t := range blobTargets {
-		if t != "java" {
-			legacy = append(legacy, t)
-		}
-	}
-	carry, flags := carriers(legacy)
-	return fmt.Errorf("unit declares a byte buffer field (%s) — *bytes and *string are %s only today, and the %s form is a named follow-on; generate with %s, or move the table to its own unit (docs/SPEC-TABLES.md §2.5, §11)",
-		englishList(names), englishList(carry), target, englishList(flags))
 }
 
 // blobFieldsByKind is ir.BlobFields split by the blob's kind: the `*bytes`
