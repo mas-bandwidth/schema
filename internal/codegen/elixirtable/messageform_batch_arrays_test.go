@@ -5,78 +5,117 @@ package elixirtable
 // message rows hold arrays of tables and of unions only, so the builder
 // (expectedArrayValue, messageform_batch_test.go) refused an array of integers
 // and an array of enums before the native decoder ran, which blocked adding a
-// message row with either lawful shape. Each row here is a schema and a value
-// of its own: the Go oracle (internal/tablewire) writes the announcement and
-// the batch, the builder renders the value LoadMessages must return, and the
-// generated Elixir loads, saves and measures the batch. The table and union
-// rows are the controls: shapes the builder already carried.
+// message row with either lawful shape (review finding F-124 on #4450).
+//
+// The cases are committed corpus, testdata/messagearrayshapes: one schema with
+// a fixed root per element kind, cases.tsv naming each case's root and value,
+// and the announcement and one-body batch the Go oracle (internal/tablewire)
+// writes for each, pinned beside them. The oracle half runs in every build and
+// holds the pinned bytes to what the oracle writes today; the native half,
+// under SCHEMA_SLOW, has the generated Elixir load, save and measure each
+// pinned batch against the value the builder renders. The table and union
+// cases are the controls: shapes the builder already carried.
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
+// arrayShapesCase is one line of testdata/messagearrayshapes/cases.tsv.
+type arrayShapesCase struct {
+	name, root, text string
+}
+
+func arrayShapesCases(t *testing.T, dir string) []arrayShapesCase {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(dir, "cases.tsv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cases []arrayShapesCase
+	for line := range strings.SplitSeq(string(data), "\n") {
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		f := strings.Split(line, "\t")
+		if len(f) != 3 {
+			t.Fatalf("cases.tsv: %q is not name, root and value", line)
+		}
+		cases = append(cases, arrayShapesCase{f[0], f[1], f[2]})
+	}
+	// The two controls and the reviewer's two shapes are the floor.
+	have := map[string]bool{}
+	for _, c := range cases {
+		have[c.name] = true
+	}
+	for _, want := range []string{"table", "union", "integer", "enum"} {
+		if !have[want] {
+			t.Fatalf("cases.tsv lost the %s case", want)
+		}
+	}
+	return cases
+}
+
+// pinnedOracleBytes holds a committed corpus file to what the Go oracle
+// writes, or rewrites it under SCHEMA_UPDATE_ARRAYSHAPES_CORPUS=1.
+func pinnedOracleBytes(t *testing.T, path string, written []byte) {
+	t.Helper()
+	if os.Getenv("SCHEMA_UPDATE_ARRAYSHAPES_CORPUS") == "1" {
+		if err := os.WriteFile(path, written, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	pinned, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("the pinned corpus file %s is unreadable: %v", path, err)
+	}
+	if !bytes.Equal(pinned, written) {
+		t.Fatalf("%s: the Go oracle writes % x, the corpus pins % x", path, written, pinned)
+	}
+}
+
 func TestMessageFormBatchElixirArrayShapes(t *testing.T) {
 	t.Parallel()
-	const head = "package tblarrayshapes\n\nenum Grade\n{\n    Bronze\n    Silver\n}\n\ntype Point\n{\n    x uint16\n}\n\nunion Shape\n{\n    point Point\n}\n\n"
-	rows := []struct {
-		name, fields, text string
-	}{
-		// The controls: element kinds the builder carried before this test.
-		{"table", "    seq int32\n    values [2]Point\n", `{"seq": 7, "values": [{"x": 1}, {"x": 2}]}`},
-		{"union", "    seq int32\n    values [2]Shape\n", `{"seq": 7, "values": [{"point": {"x": 1}}, {}]}`},
-		// The reviewer's two shapes (F-124), then the rest of the class.
-		{"integer", "    seq int32\n    values [2]uint16\n", `{"seq": 7, "values": [1, 2]}`},
-		{"enum", "    seq int32\n    values [2]Grade\n", `{"seq": 7, "values": ["Bronze", "Silver"]}`},
-		{"integer_one_at_zero", "    seq int32\n    values [2]uint16\n", `{"seq": 7, "values": [0, 2]}`},
-		{"enum_one_at_none", "    seq int32\n    values [2]Grade\n", `{"seq": 7, "values": ["None", "Silver"]}`},
-		{"integer_all_at_zero", "    seq int32\n    values [2]uint16\n", `{"seq": 7, "values": [0, 0]}`},
-		{"enum_all_at_none", "    seq int32\n    values [2]Grade\n", `{"seq": 7, "values": ["None", "None"]}`},
-		{"signed", "    seq int32\n    values [3]int16\n", `{"seq": 7, "values": [-1, 0, 32767]}`},
-		{"bool", "    seq int32\n    values [3]bool\n", `{"seq": 7, "values": [true, false, true]}`},
-		{"counted_integer", "    seq int32\n    values [..3]uint16\n", `{"seq": 7, "values": [5, 0]}`},
-		{"counted_enum", "    seq int32\n    values [..3]Grade\n", `{"seq": 7, "values": ["Silver", "None"]}`},
-		{"counted_empty", "    seq int32\n    values [..3]uint16\n", `{"seq": 7, "values": []}`},
+	dir, err := filepath.Abs(filepath.Join("testdata", "messagearrayshapes"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, row := range rows {
-		t.Run(row.name, func(t *testing.T) {
+	cases := arrayShapesCases(t, dir)
+	u := messageLoadUnit(t, dir, []string{"ArrayShapes.schema"})
+	ann := filepath.Join(dir, "conn.bin")
+	pinnedOracleBytes(t, ann, tablewire.Announce(u))
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			dir := t.TempDir()
-			if err := os.WriteFile(filepath.Join(dir, "ArrayShapes.schema"), []byte(head+"fixed table Root\n{\n"+row.fields+"}\n"), 0o600); err != nil {
-				t.Fatal(err)
-			}
-			jsonPath := filepath.Join(dir, "value.json")
-			if err := os.WriteFile(jsonPath, []byte(row.text), 0o600); err != nil {
-				t.Fatal(err)
-			}
-			u := messageLoadUnit(t, dir, []string{"ArrayShapes.schema"})
-			st := u.Tables["Root"]
+			st := u.Tables[c.root]
 			if st == nil || !st.FixedDeclared {
-				t.Fatal("the schema declares no fixed table Root")
+				t.Fatalf("ArrayShapes.schema declares no fixed table %s", c.root)
 			}
 			m := tabletext.NewModel(u)
 			inst := m.New(st)
 			var report tabletext.Report
-			if !m.Read(inst, []byte(row.text), &report) {
-				t.Fatalf("the Go text reader refuses %s", row.text)
+			if !m.Read(inst, []byte(c.text), &report) {
+				t.Fatalf("the Go text reader refuses %s", c.text)
 			}
 			batch, err := tablewire.EncodeMessage(m, inst)
 			if err != nil {
 				t.Fatalf("the Go oracle refuses the value: %v", err)
 			}
-			ann, batchPath := filepath.Join(dir, "conn.bin"), filepath.Join(dir, "message.bin")
-			if err := os.WriteFile(ann, tablewire.Announce(u), 0o600); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(batchPath, batch, 0o600); err != nil {
+			batchPath := filepath.Join(dir, c.name+".message.bin")
+			pinnedOracleBytes(t, batchPath, batch)
+			jsonPath := filepath.Join(t.TempDir(), "value.json")
+			if err := os.WriteFile(jsonPath, []byte(c.text), 0o600); err != nil {
 				t.Fatal(err)
 			}
 			expected := expectedMessageBody(t, u, st, jsonPath)
-			out, err := runMessageBatchProbe(t, u, ann, batchPath, roundTripBody(messageBatchRow{name: row.name, root: "Root"}, expected))
+			out, err := runMessageBatchProbe(t, u, ann, batchPath, roundTripBody(messageBatchRow{name: c.name, root: c.root}, expected))
 			if err != nil {
 				t.Fatalf("expected %s\n%v\n%s", expected, err, out)
 			}

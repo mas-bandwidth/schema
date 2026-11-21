@@ -1,0 +1,6 @@
+package tblvaluedefaults
+
+type Plain
+{
+    v uint8
+}

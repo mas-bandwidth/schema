@@ -1,0 +1,71 @@
+// ArrayShapes.schema: one fixed table per array element kind the message
+// form carries (docs/SPEC-TABLES.md §3.3), the corpus of
+// TestMessageFormBatchElixirArrayShapes (review finding F-124 on #4450).
+// TablePair and UnionPair are the controls, the element kinds the Elixir
+// batch test's expected-value builder carried before; the rest are the
+// integer, enum and bool elements it refused.
+package tblarrayshapes
+
+enum Grade
+{
+    Bronze
+    Silver
+}
+
+type Point
+{
+    x uint16
+}
+
+union Shape
+{
+    point Point
+}
+
+fixed table TablePair
+{
+    seq    int32
+    values [2]Point
+}
+
+fixed table UnionPair
+{
+    seq    int32
+    values [2]Shape
+}
+
+fixed table U16Pair
+{
+    seq    int32
+    values [2]uint16
+}
+
+fixed table GradePair
+{
+    seq    int32
+    values [2]Grade
+}
+
+fixed table I16Triple
+{
+    seq    int32
+    values [3]int16
+}
+
+fixed table BoolTriple
+{
+    seq    int32
+    values [3]bool
+}
+
+fixed table U16Counted
+{
+    seq    int32
+    values [..3]uint16
+}
+
+fixed table GradeCounted
+{
+    seq    int32
+    values [..3]Grade
+}

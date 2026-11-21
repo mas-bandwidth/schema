@@ -9,11 +9,33 @@ package compiler
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
+
+// committedGateControl reads one committed gate-control unit from
+// compiler/testdata/gatecontrols, the corpus the generation gates' negative
+// controls run (review findings F-137, F-138, F-139 on #4450). When derived is
+// not empty the committed text must equal it: the control is that one
+// mutation of the live fixture and nothing else, and a fixture edit that
+// leaves the copy behind turns the control red by name rather than letting it
+// pass on a stale unit.
+func committedGateControl(t *testing.T, name, derived string) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("testdata", "gatecontrols", name))
+	if err != nil {
+		t.Fatalf("the committed gate control %s is unreadable: %v", name, err)
+	}
+	if derived != "" && string(data) != derived {
+		t.Fatalf("compiler/testdata/gatecontrols/%s is not the one mutation of the live fixture it stands for; rewrite it from the fixture", name)
+	}
+	return string(data)
+}
 
 // fieldShape spells one field as the schema declares it: the array or keyed
 // prefix with its bound, `?` and `*`, the type, and a specified default.

@@ -68,7 +68,9 @@ func TestValueDefaultsGateNegativeControls(t *testing.T) {
 		t.Fatal(err)
 	}
 	src := string(data)
-	const plain = "package tblvaluedefaults\n\ntype Plain\n{\n    v uint8\n}\n"
+	// The reviewer's replacement fixture (F-139), committed corpus: one scalar
+	// packet type, no table and no default.
+	plain := committedGateControl(t, "valuedefaults-one-scalar-packet.schema", "")
 	mutate := func(from, to string) string { return strings.Replace(src, from, to, 1) }
 	units := []struct{ name, text string }{
 		{"one_scalar_packet", plain},

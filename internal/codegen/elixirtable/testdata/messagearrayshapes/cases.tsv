@@ -1,0 +1,20 @@
+# The message-form array corpus (review finding F-124 on #4450), read by
+# TestMessageFormBatchElixirArrayShapes. One case per line, tab separated:
+# the case name, the fixed root in ArrayShapes.schema, and the value's text.
+# conn.bin is the unit's announcement and <name>.message.bin the one-body
+# batch, both written by the Go oracle (internal/tablewire) and pinned here;
+# SCHEMA_UPDATE_ARRAYSHAPES_CORPUS=1 rewrites them. table and union are the
+# controls; integer and enum are the reviewer's two shapes.
+table	TablePair	{"seq": 7, "values": [{"x": 1}, {"x": 2}]}
+union	UnionPair	{"seq": 7, "values": [{"point": {"x": 1}}, {}]}
+integer	U16Pair	{"seq": 7, "values": [1, 2]}
+enum	GradePair	{"seq": 7, "values": ["Bronze", "Silver"]}
+integer_one_at_zero	U16Pair	{"seq": 7, "values": [0, 2]}
+enum_one_at_none	GradePair	{"seq": 7, "values": ["None", "Silver"]}
+integer_all_at_zero	U16Pair	{"seq": 7, "values": [0, 0]}
+enum_all_at_none	GradePair	{"seq": 7, "values": ["None", "None"]}
+signed	I16Triple	{"seq": 7, "values": [-1, 0, 32767]}
+bool	BoolTriple	{"seq": 7, "values": [true, false, true]}
+counted_integer	U16Counted	{"seq": 7, "values": [5, 0]}
+counted_enum	GradeCounted	{"seq": 7, "values": ["Silver", "None"]}
+counted_empty	U16Counted	{"seq": 7, "values": []}

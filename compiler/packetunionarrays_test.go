@@ -96,7 +96,10 @@ func TestPacketUnionArraysEveryTarget(t *testing.T) {
 // same field names, and the fixture with those fields renamed, fail the unit
 // half. The fixture with both tables removed is what a target emits when it
 // writes the packet files and drops every table product: its real output, for
-// every target, fails the output half by root name.
+// every target, fails the output half by root name. The scalar-array and
+// tables-dropped units are committed corpus (compiler/testdata/gatecontrols,
+// F-137 and F-138); each must equal its one mutation of the live fixture, so
+// it carries that one condition alone.
 func TestPacketUnionArraysGateNegativeControls(t *testing.T) {
 	t.Parallel()
 	data, err := os.ReadFile("../test/tables/packetunions/PacketUnions.schema")
@@ -118,6 +121,7 @@ func TestPacketUnionArraysGateNegativeControls(t *testing.T) {
 		if strings.Contains(mutated, "]Shape") {
 			t.Fatal("the mutation left an array of Shape")
 		}
+		mutated = committedGateControl(t, "packetunions-scalar-arrays.schema", mutated)
 		u, err := unitFromText(mutated)
 		if err != nil {
 			t.Fatal(err)
@@ -142,6 +146,7 @@ func TestPacketUnionArraysGateNegativeControls(t *testing.T) {
 		if !ok {
 			t.Fatal("the fixture no longer marks where its tables start")
 		}
+		packets = committedGateControl(t, "packetunions-tables-dropped.schema", packets)
 		u, err := unitFromText(packets)
 		if err != nil {
 			t.Fatal(err)
