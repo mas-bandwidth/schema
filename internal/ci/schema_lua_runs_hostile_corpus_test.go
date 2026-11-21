@@ -497,6 +497,13 @@ func TestSchemaLuaRunsHostileCorpus(t *testing.T) {
 			t.Logf("FIX-CARD: %s: %s (%s/%s)", want.fix, c.Input, want.verdict, want.reason)
 		}
 	}
+	// THE LEDGER (internal/ci/hostilecorpus/ledger.go): the cases the Lua
+	// reader answered against the cases the folder registers, per carrier.
+	summary, err := hostilecorpus.RanEvery(corpusDir, slices.Collect(maps.Keys(answers)), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("lua hostile-corpus ledger: %s", summary)
 	t.Logf("%d hostile-corpus cases; %d carried findings with their fix cards", len(cases), len(carried))
 }
 

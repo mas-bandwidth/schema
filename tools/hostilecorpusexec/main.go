@@ -193,7 +193,7 @@ func loadSkips(path string) (map[string]string, []string, error) {
 }
 
 func run(port, binary, corpus, findingsPath, skipsPath, only string, jobs int, budget time.Duration) (bool, error) {
-	_, cases, err := hostilecorpus.LoadManifest(corpus)
+	cases, err := hostilecorpus.Registered(corpus)
 	if err != nil {
 		return false, err
 	}
@@ -236,9 +236,19 @@ func run(port, binary, corpus, findingsPath, skipsPath, only string, jobs int, b
 
 	var pass, carried, skipped, unexplained, stale int
 	seen := map[string]bool{}
+	// THE LEDGER (internal/ci/hostilecorpus/ledger.go): cases the binary
+	// answered against cases the folder registers, per carrier. answers is
+	// filled by the workers; a slot none of them reached has no kind.
+	ledger := hostilecorpus.NewLedger(cases)
 	for i, c := range cases {
 		seen[c.Name] = true
 		got := answers[i]
+		switch _, held := knownSkips[c.Name]; {
+		case got.kind == "skip" && held:
+			ledger.Skipped(c.Name, knownSkips[c.Name])
+		case got.kind != "skip" && got.kind != "":
+			ledger.Ran(c.Name)
+		}
 		want := expected(c)
 		f, has := findings[c.Name]
 		_, skipKnown := knownSkips[c.Name]
@@ -290,6 +300,11 @@ func run(port, binary, corpus, findingsPath, skipsPath, only string, jobs int, b
 	}
 	fmt.Printf("%s: %d cases: %d pass, %d carried as FIX-CARD, %d skipped, %d unexplained, %d stale\n",
 		port, len(cases), pass, carried, skipped, unexplained, stale)
+	if err := ledger.Check(); err != nil {
+		fmt.Printf("FAIL %s %v\n", port, err)
+		return false, nil
+	}
+	fmt.Printf("%s hostile-corpus ledger: %s\n", port, ledger.Summary())
 	return unexplained == 0 && stale == 0, nil
 }
 

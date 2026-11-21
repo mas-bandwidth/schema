@@ -672,6 +672,9 @@ type runOptions struct {
 	// results, when set, is where every case's verdict is written
 	// (writeResults), the input tools/matrix proof reads.
 	results string
+	// everySurface, which `harness run` sets, holds the committed registry to
+	// a manifest that registers at least one case on every surface (proveRan).
+	everySurface bool
 }
 
 func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPath, work, only, skip string, opts runOptions) (bool, error) {
@@ -845,6 +848,16 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 		}
 	}
 
+	if len(langs) == 0 {
+		// A RUN THAT RAN NO LEG PROVES NOTHING. An empty registry, an --only
+		// that names no registered leg and a --skip that names them all each
+		// used to print the success footer over an empty matrix.
+		_, _ = fmt.Fprintf(w, "conformance FAILED: no leg ran — %d driver(s) registered at %s, --only %q, --skip %q\n",
+			len(drivers), driversPath, only, skip)
+		return false, nil
+	}
+	proveRan(langs, results, discovered && opts.everySurface)
+
 	if opts.coverage != nil {
 		*opts.coverage = append(*opts.coverage, coverageRows(langs, results, want, m, opts.claims)...)
 	}
@@ -854,6 +867,44 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 		}
 	}
 	return report(w, langs, results), nil
+}
+
+// proveRan holds a run to having looked at what the manifest registers: cases
+// run equals cases registered, per leg and per surface, and neither is zero.
+//
+//   - every case a surface registers has exactly one verdict, so a scoring loop
+//     that stops early is a failure and not a smaller total;
+//   - under `harness run` over the committed registry (everySurface) a surface
+//     that registers no case is a failure: the manifest lost its rows, and
+//     "pass 0/0" compared nothing;
+//   - a leg that answered no case on any surface is a failure: every surface
+//     absent, or every case `.absent`, is a leg that was not run.
+//
+// A substituted registry is one leg of a port over a manifest of its own
+// choosing, so the per-surface floor does not reach it; the other two do.
+func proveRan(langs []string, results map[string]map[string]*result, everySurface bool) {
+	for _, l := range langs {
+		answered := 0
+		for _, s := range surfaces {
+			r := results[l][s]
+			if len(r.cases) != r.total {
+				r.failures = append(r.failures, fmt.Sprintf(
+					"%d case(s) registered and %d given a verdict: the run stopped short of the surface", r.total, len(r.cases)))
+			}
+			if everySurface && r.total == 0 {
+				r.failures = append(r.failures, "the manifest registers no case on this surface, so the leg compared nothing")
+			}
+			for _, v := range r.cases {
+				if v != "absent" {
+					answered++
+				}
+			}
+		}
+		if answered == 0 {
+			r := results[l][surfaces[0]]
+			r.failures = append(r.failures, "the leg answered no case on any surface: every one is absent, so nothing was compared")
+		}
+	}
 }
 
 // scoreAnswer scores one case written by a leg. The blob-shared marker

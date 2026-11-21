@@ -305,6 +305,7 @@ func main() {
 			opts.claims = set
 		}
 		opts.results = *resultsOut
+		opts.everySurface = true
 		ok, err := runWith(os.Stdout, m, *manifest, *jsonDir, *reports, *drivers, *work, *only, *skip, opts)
 		if err != nil {
 			fatalf("%v", err)

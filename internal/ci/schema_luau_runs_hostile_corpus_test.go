@@ -485,6 +485,7 @@ func runHostileCorpus(t *testing.T, root, corpusDir string, plant bool) []string
 	}
 	sort.Strings(schemas)
 	var findings []string
+	var ran []string
 	for _, schema := range schemas {
 		group := bySchema[schema]
 		packet := group[0].carrier == "packet"
@@ -519,6 +520,7 @@ func runHostileCorpus(t *testing.T, root, corpusDir string, plant bool) []string
 				t.Fatalf("%s: probe line %q is not name/verdict/reason/digest", schema, line)
 			}
 			got[f[0]] = [4]string{f[0], f[1], f[2], f[3]}
+			ran = append(ran, f[0])
 		}
 		for _, c := range group {
 			g, ok := got[c.name]
@@ -565,6 +567,13 @@ func runHostileCorpus(t *testing.T, root, corpusDir string, plant bool) []string
 			}
 		}
 	}
+	// THE LEDGER (internal/ci/hostilecorpus/ledger.go): the cases the Luau
+	// probe printed a verdict for against the cases the folder registers.
+	summary, err := hostilecorpus.RanEvery(corpusDir, ran, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("luau hostile-corpus ledger: %s", summary)
 	return findings
 }
 

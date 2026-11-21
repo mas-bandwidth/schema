@@ -366,12 +366,21 @@ func main() {
 	units := flag.String("units", "build/lobster-hostile", "where each schema's unit is generated")
 	findingsPath := flag.String("findings", "test/conformance/lobster/hostile-known-findings.tsv", "the carried disagreements")
 	noGenerate := flag.Bool("no-generate", false, "run over the units already in --units")
+	absentPath := flag.String("absent-schemas", "test/conformance/lobster/hostile-absent-schemas.tsv", "the schemas the target refuses, held by name")
 	flag.Parse()
 
-	_, cases, err := hostilecorpus.LoadManifest(*corpus)
+	// THE LEDGER (internal/ci/hostilecorpus/ledger.go): the cases the Lobster
+	// reader answered against the cases the folder registers. A schema the
+	// target refuses is absent only when --absent-schemas names it.
+	cases, err := hostilecorpus.Registered(*corpus)
 	if err != nil {
 		fatalf("%v", err)
 	}
+	heldSchemas, err := hostilecorpus.LoadHeld(*absentPath)
+	if err != nil {
+		fatalf("%v", err)
+	}
+	ledger := hostilecorpus.NewLedger(cases)
 	findings, err := readFindings(*findingsPath)
 	if err != nil {
 		fatalf("%v", err)
@@ -418,12 +427,18 @@ func main() {
 		if why, no := absent[c.Schema]; no {
 			missing++
 			fmt.Printf("ABSENT %s carrier=%s: %s\n", c.Name, c.Carrier, why)
+			if held, ok := heldSchemas[c.Schema]; ok {
+				ledger.Skipped(c.Name, held)
+			}
 			if finding, owed := findings[c.Name]; owed {
 				stale = append(stale, fmt.Sprintf("STALE FIX-CARD %s: the case is absent; delete its line (%s)", c.Name, finding))
 			}
 			continue
 		}
 		a, ok := answers[c.Schema][c.Name]
+		if ok {
+			ledger.Ran(c.Name)
+		}
 		var got string
 		switch {
 		case !ok:
@@ -465,7 +480,19 @@ func main() {
 		fmt.Println(line)
 	}
 	fmt.Printf("lobster hostile corpus: %d pass, %d carried, %d absent, %d fail, %d stale, of %d cases\n", pass, carried, missing, len(bad), len(stale), len(cases))
-	if len(bad) > 0 || len(stale) > 0 {
+	for schema := range heldSchemas {
+		if _, no := absent[schema]; !no {
+			stale = append(stale, schema)
+			fmt.Printf("STALE %s: %s holds a schema the target generates, or the corpus no longer names: delete its line\n", schema, *absentPath)
+		}
+	}
+	lerr := ledger.Check()
+	if lerr != nil {
+		fmt.Printf("FAIL lobster %v\n", lerr)
+	} else {
+		fmt.Printf("lobster hostile-corpus ledger: %s\n", ledger.Summary())
+	}
+	if len(bad) > 0 || len(stale) > 0 || lerr != nil {
 		os.Exit(1)
 	}
 }

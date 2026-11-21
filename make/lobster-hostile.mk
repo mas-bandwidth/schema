@@ -55,5 +55,17 @@ schema-lobster-runs-hostile-corpus-negative-control: schema-lobster-runs-hostile
 	@grep -q '^FAIL packet-reserved-nonzero ' $(LOBSTER_HOSTILE_BUILD)-plant.log || \
 		{ echo 'NEGATIVE CONTROL FAILED: the runner went red without naming the packet row the planted reader accepts'; \
 		  cat $(LOBSTER_HOSTILE_BUILD)-plant.log; exit 1; }
+	@# THE LEDGER'S CONTROL: one unit gone from a copy of the generated units
+	@# is a run short by that schema's cases, which used to print ABSENT lines
+	@# and exit 0; it must be red and say the cases were not run.
+	@rm -rf $(LOBSTER_HOSTILE_BUILD)-short && cp -R $(LOBSTER_HOSTILE_BUILD) $(LOBSTER_HOSTILE_BUILD)-short
+	@rm -rf $(LOBSTER_HOSTILE_BUILD)-short/tables_examples
+	@if go run ./test/conformance/lobster/hostile --units $(LOBSTER_HOSTILE_BUILD)-short --no-generate \
+			> $(LOBSTER_HOSTILE_BUILD)-short.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: a run short by one schema left the corpus green'; \
+		cat $(LOBSTER_HOSTILE_BUILD)-short.log; exit 1; fi
+	@grep -q 'is registered and was not run' $(LOBSTER_HOSTILE_BUILD)-short.log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the short run went red without the ledger naming a case not run'; \
+		  cat $(LOBSTER_HOSTILE_BUILD)-short.log; exit 1; }
 	@$(MAKE) --no-print-directory schema-lobster-runs-hostile-corpus
-	@echo 'lobster hostile-corpus negative control: planted table and packet reader faults red the corpus; unplanted it is green'
+	@echo 'lobster hostile-corpus negative control: planted table and packet reader faults and a run one schema short red the corpus; unplanted it is green'

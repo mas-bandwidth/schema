@@ -428,6 +428,23 @@ func squirrelRunHostileCorpus(t *testing.T, plant func(files map[string][]byte))
 			}
 		}
 	}
+	// THE LEDGER (internal/ci/hostilecorpus/ledger.go): the cases the Squirrel
+	// reader printed a verdict for against the cases the folder registers. A
+	// case of a schema the generator refuses is held only by its row in the
+	// expected-mismatch list, which names its fix card.
+	held := hostilecorpus.Held{}
+	for _, c := range cases {
+		if _, no := unsupported[c.schema]; no {
+			if m, known := squirrelExpectedHostileMismatchFor(c.name); known {
+				held[c.name] = m.fixCard
+			}
+		}
+	}
+	summary, err := hostilecorpus.RanEvery(squirrelHostileCorpusDir(t), slices.Collect(maps.Keys(got)), held)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("squirrel hostile-corpus ledger: %s", summary)
 	return len(cases), mismatchNames, findingLines
 }
 
