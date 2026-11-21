@@ -740,12 +740,14 @@ func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 				continue
 			}
 			// A KEYED ARRAY'S BOUND IS ITS KEY ENUM'S SIZE, and its slots ride
-			// under variant name ids (docs/SPEC-TABLES.md §3.2): an unknown key is
-			// skipped and counted `unknown`, so there is no bounded prefix and
-			// nothing is clamped. The enum walk already reports each variant
-			// that went, correctly and by name — this row would say the wrong
-			// thing and say it a second time.
-			if shape, _ := bf.Get("array"); shape == "keyed" {
+			// under variant name ids (docs/SPEC-TABLES.md §3.2), so there is no
+			// bounded prefix. The enum walk already reports each variant that
+			// went, correctly and by name — the bound row would say the wrong
+			// thing and say it a second time. ONLY the bound is exempt: the
+			// ELEMENT's range and capacity are an ordinary value's, and a
+			// reader refuses a stored element past them (§4), so they are
+			// judged below as on any other field.
+			if shape, _ := bf.Get("array"); shape == "keyed" && bt.Key == "bound" {
 				continue
 			}
 			if !tightened(d.policy[bt.Key], bt.Key, bt.Value, lv) {
