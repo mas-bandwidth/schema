@@ -75,9 +75,11 @@ func TestFixedOracle(t *testing.T) {
 			bad[i] ^= x
 			var rep TableReport
 			n := ReadingFixedLoad(make([]Reading, 4), bad, make([]TableFixedEntry, ReadingFixedPlanMax), &rep)
-			reason := rep.Reason
-			if n >= 0 { reason = "read" }
-			fmt.Printf("flip %d %02x %s\n", i, x, reason)
+			if n >= 0 {
+				fmt.Printf("flip %d %02x read\n", i, x)
+			} else {
+				fmt.Printf("flip %d %02x refused %q\n", i, x, rep.Reason)
+			}
 		}
 	}
 }
@@ -137,10 +139,12 @@ for i = 0, buffer.len(keyed) - 1 do
 		local ok, err = pcall(F.load, T.ReadingDescriptor, readingFixed, bad)
 		local verdict = "read"
 		if not ok then
+			-- a named refusal is the verdict "refused", its name diagnostic only;
+			-- anything else raised is a crash, never a refusal
 			if type(err) == "table" and (err :: any).name ~= nil then
-				verdict = (err :: any).name
+				verdict = "refused " .. tostring((err :: any).name)
 			else
-				verdict = "error"
+				verdict = "error " .. (string.gsub(tostring(err), "%s", "_"))
 			end
 		end
 		print(string.format("flip %d %02x %s", i, x, verdict))
@@ -217,7 +221,7 @@ func goFixedIntegrityOracle(t *testing.T, schema string) (keyed, keyless []byte,
 				t.Fatalf("the oracle's plain hex: %v", err)
 			}
 		case "flip":
-			if len(f) != 4 {
+			if !(len(f) == 4 && f[3] == "read") && !(len(f) >= 5 && f[3] == "refused") {
 				t.Fatalf("unexpected oracle flip line %q", line)
 			}
 			verdicts[f[1]+" "+f[2]] = f[3]
@@ -231,14 +235,53 @@ func goFixedIntegrityOracle(t *testing.T, schema string) (keyed, keyless []byte,
 
 // TestLuauFixedFormIntegrity pins §2.14's fixed-form trailer: the declaring
 // table's save is the keyless file plus the CRC-32C of every byte before it,
-// the keyless file is unchanged, and every flip keeps the form byte's name or
-// refuses integrity_mismatch with nothing landed.
+// the keyless file is unchanged, and every flip reads or refuses exactly where
+// the generated Go refuses. A flip is held to Go's VERDICT only: the reason a
+// refusal names is per-language diagnostic detail, never compared across
+// targets (docs/rulings.json refusal-verdict-only), and a Luau error that is
+// not a named refusal is a crash, never a refusal.
 func TestLuauFixedFormIntegrity(t *testing.T) {
 	slowtest.Gate(t, "the pinned Luau interpreter and the schema-go oracle")
 	t.Parallel()
+	luauFixedFormIntegrity(t, nil)
+}
+
+// TestLuauFixedFormIntegrityReasonIsDiagnostic renames the Luau fixed read's
+// integrity_mismatch: every flip's verdict is unchanged, so the test must stay
+// green.
+func TestLuauFixedFormIntegrityReasonIsDiagnostic(t *testing.T) {
+	slowtest.Gate(t, "the pinned Luau interpreter and the schema-go oracle")
+	t.Parallel()
+	out := luauFixedFormIntegrity(t, func(t *testing.T, dir string) {
+		path := filepath.Join(dir, "schema_fixed.luau")
+		src, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		const anchor = `return no("integrity_mismatch")`
+		if n := strings.Count(string(src), anchor); n != 1 {
+			t.Fatalf("NEGATIVE CONTROL FAILED: the rename anchor appears %d times in schema_fixed.luau, want 1", n)
+		}
+		planted := strings.Replace(string(src), anchor, `return no("renamed_by_the_plant")`, 1)
+		if err := os.WriteFile(path, []byte(planted), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if !strings.Contains(out, " refused renamed_by_the_plant\n") {
+		t.Errorf("NEGATIVE CONTROL FAILED: the rename reached no flip:\n%s", out)
+	}
+}
+
+// luauFixedFormIntegrity runs the probe over the unit, edited by plant first
+// when it is not nil, holds it to the Go oracle, and returns the probe's output.
+func luauFixedFormIntegrity(t *testing.T, plant func(*testing.T, string)) string {
+	t.Helper()
 	wantKeyed, wantKeyless, wantVerdicts := goFixedIntegrityOracle(t, luauFixedIntegritySchema)
 
 	g := generateFiles(t, map[string]string{"Probe.schema": luauFixedIntegritySchema})
+	if plant != nil {
+		plant(t, g.dir)
+	}
 	if err := os.WriteFile(filepath.Join(g.dir, "main.luau"), []byte(luauFixedIntegrityProbe), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -246,6 +289,7 @@ func TestLuauFixedFormIntegrity(t *testing.T) {
 
 	var gotKeyed, gotKeyless []byte
 	gotVerdicts := map[string]string{}
+	gotDetail := map[string]string{}
 	records, values := -1, 0
 	for line := range strings.SplitSeq(out, "\n") {
 		f := strings.Fields(line)
@@ -272,10 +316,15 @@ func TestLuauFixedFormIntegrity(t *testing.T) {
 		case "value":
 			values++
 		case "flip":
-			if len(f) != 4 {
+			if len(f) < 4 {
 				t.Fatalf("unexpected Luau flip line %q", line)
 			}
+			// the verdict alone ("read", "refused", or "error" for a crash,
+			// which matches no Go verdict); the rest is diagnostic
 			gotVerdicts[f[1]+" "+f[2]] = f[3]
+			if f[3] == "refused" || f[3] == "error" {
+				gotDetail[f[1]+" "+f[2]] = strings.Join(f[3:], " ")
+			}
 		}
 	}
 	if len(gotKeyed) == 0 || len(gotKeyless) == 0 {
@@ -298,12 +347,13 @@ func TestLuauFixedFormIntegrity(t *testing.T) {
 		if got := gotVerdicts[key]; got != want {
 			bad++
 			if bad <= 10 {
-				t.Errorf("byte/flip %s: Luau answered %q, Go answered %q", key, got, want)
+				t.Errorf("byte/flip %s: Luau answered %q (%s), Go's verdict %q", key, got, gotDetail[key], want)
 			}
 		}
 	}
 	if bad > 0 {
-		t.Fatalf("%d of %d flips disagree with the Go oracle", bad, len(wantVerdicts))
+		t.Fatalf("%d of %d flips disagree with the Go oracle's verdict", bad, len(wantVerdicts))
 	}
-	t.Logf("Reading %d bytes, %d flips agree with the Go oracle", len(gotKeyed), len(gotVerdicts))
+	t.Logf("Reading %d bytes, %d flip verdicts agree with the Go oracle", len(gotKeyed), len(gotVerdicts))
+	return out
 }
