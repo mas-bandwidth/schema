@@ -929,7 +929,15 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 			r.mark(e.name, outcomeFail)
 			return
 		}
-		if _, absent := os.Stat(answer + ".absent"); absent == nil {
+		if why, absent := os.ReadFile(answer + ".absent"); absent == nil {
+			if surface == "message" && bytes.HasPrefix(why, []byte("refused")) {
+				// THE LEG RAN THE READ AND REFUSED IT. That is an answer, the
+				// wrong one for a row that owes bytes, and never a missing
+				// feature.
+				r.failures = append(r.failures, fmt.Sprintf("%s: the leg refused a message the row owes bytes for: %s", e.name, bytes.TrimSpace(why)))
+				r.mark(e.name, outcomeFail)
+				return
+			}
 			// An ordinary per-case absence is a missing feature for this leg.
 			r.missing++
 			r.mark(e.name, outcomeAbsent)
