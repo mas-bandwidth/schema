@@ -8,7 +8,8 @@ name: Release
 # a commit whose compiler encodes different wire bytes than the newest v tag's
 # under an equal protocol id (the previous-release differential, #463), and
 # otherwise tags
-# that one commit with that one annotated tag and pushes only that tag. The
+# that one commit with that one annotated tag and pushes only that tag, and
+# then publishes the GitHub release on that tag. The
 # number is the dispatcher's choice under docs/VERSIONING.md's rules; CI,
 # including a certify.yml run on the commit, must be green first.
 # And the proof table must be green AT THAT COMMIT: `make release` refuses
@@ -77,3 +78,22 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           make release RELEASE_COMMIT="$GITHUB_SHA" PROOF=build/proof/proof.json PUSH=1
+      # A RELEASE IS A TAG AND A GITHUB RELEASE (Glenn, 2026-11-21: "make sure
+      # schema latest releases aren't just tags, but are real github
+      # releases"). v3.0.0 and v3.0.1 left here as bare tags. This step runs
+      # only after `make release` pushed the tag, publishes the release on that
+      # tag and never makes a tag itself (--verify-tag). The body is GitHub's
+      # generated change list; the dispatcher replaces it with written notes,
+      # and a release that moves a protocol id or the build version says so
+      # first (docs/VERSIONING.md). If this step fails the tag is already
+      # pushed and a re-dispatch refuses the version, so finish by hand:
+      #
+      #   gh release create vX.Y.Z --verify-tag --title vX.Y.Z --generate-notes --latest
+      - name: publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # passed through the environment, never interpolated into the script
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          gh release create "$VERSION" --verify-tag --title "$VERSION" --generate-notes --latest
