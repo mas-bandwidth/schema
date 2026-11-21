@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -25,6 +24,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // t12Probe is the probe template the write/extents subtests drive: it saves one
@@ -115,7 +116,7 @@ func t12Capability(t *testing.T, src, body string, records int) string {
 	if err := os.WriteFile(filepath.Join(dir, "t12_probe.dart"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dartBinary(t), "--enable-asserts", "t12_probe.dart")
+	cmd := testproc.Command(t, dartBinary(t), "--enable-asserts", "t12_probe.dart")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -616,7 +617,7 @@ func t12RunProbe(t *testing.T, dir, name, probe string) string {
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dartBinary(t), "--enable-asserts", name)
+	cmd := testproc.Command(t, dartBinary(t), "--enable-asserts", name)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

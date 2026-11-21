@@ -24,7 +24,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -33,6 +32,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestDartPointerTargetBlobKindRefused(t *testing.T) {
@@ -374,7 +375,7 @@ func dartBlobKindExec(t *testing.T, files map[string][]byte, source, mode string
 	if mode != "" {
 		args = append([]string{mode}, args...)
 	}
-	cmd := exec.Command(dartBinary(t), args...)
+	cmd := testproc.Command(t, dartBinary(t), args...)
 	cmd.Dir = dir
 	out, err := cmd.Output()
 	return string(out), err

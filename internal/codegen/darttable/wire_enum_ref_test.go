@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -21,6 +20,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // The clean fixture is listdemo.Mixed's own wire (tables/lists): the root's
@@ -144,7 +145,7 @@ void main() {
 	if err := os.WriteFile(filepath.Join(dir, "wire_enum_ref_probe.dart"), []byte(probe.String()), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dart, "--enable-asserts", "wire_enum_ref_probe.dart")
+	cmd := testproc.Command(t, dart, "--enable-asserts", "wire_enum_ref_probe.dart")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

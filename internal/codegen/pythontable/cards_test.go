@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,6 +15,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestPythonCards checks every answer from the nine-surface manifest with both
@@ -233,10 +234,10 @@ int main(int argc, char **argv) {
 	}
 	bin := filepath.Join(dir, "probe")
 	args = append(args, "-o", bin)
-	if out, err := exec.Command("c++", args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, "c++", args...).CombinedOutput(); err != nil {
 		t.Fatalf("C++ build: %v\n%s", err, out)
 	}
-	got, err := exec.Command(bin, input).Output()
+	got, err := testproc.Command(t, bin, input).Output()
 	if err != nil {
 		t.Fatalf("C++ JSON: %v", err)
 	}

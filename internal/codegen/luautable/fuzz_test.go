@@ -475,7 +475,7 @@ func runLuauFuzzDifferential(t *testing.T, edit func([]byte) []byte) luauFuzzRes
 			// only staged there once.
 			for _, c := range g.chunks() {
 				slots <- struct{}{}
-				c.out, c.err = luauFuzzRun(luau, g, c)
+				c.out, c.err = luauFuzzRun(t, luau, g, c)
 				<-slots
 			}
 		}(g)
@@ -519,7 +519,7 @@ func runLuauFuzzDifferential(t *testing.T, edit func([]byte) []byte) luauFuzzRes
 
 // luauFuzzRun writes one chunk's inputs.luau and runs the probe under the
 // pinned interpreter with the unit directory as the working directory.
-func luauFuzzRun(lua string, g *luauFuzzGroup, c *luauFuzzChunk) ([]byte, error) {
+func luauFuzzRun(t testing.TB, lua string, g *luauFuzzGroup, c *luauFuzzChunk) ([]byte, error) {
 	var b strings.Builder
 	b.WriteString("return table.freeze({\n")
 	fmt.Fprintf(&b, "\troot = %q,\n", g.root)
@@ -542,7 +542,7 @@ func luauFuzzRun(lua string, g *luauFuzzGroup, c *luauFuzzChunk) ([]byte, error)
 	if err := os.WriteFile(filepath.Join(g.dir, "inputs.luau"), []byte(b.String()), 0o644); err != nil {
 		return nil, err
 	}
-	cmd := exec.Command(lua, "wirefuzz.luau")
+	cmd := testproc.Command(t, lua, "wirefuzz.luau")
 	cmd.Dir = g.dir
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr

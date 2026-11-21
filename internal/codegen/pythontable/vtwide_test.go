@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"math/big"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -35,6 +34,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 type wideVTConstruct struct{ name, schema, root, json string }
@@ -330,7 +331,7 @@ func wideCellFailures(t *testing.T, mutate func(map[string][]byte)) (fails []str
 				{"current", currentPy},
 				{"floor", floorPy},
 			} {
-				cmd := exec.Command(pin.bin, "-W", "error", "-I", "-B", "main.py")
+				cmd := testproc.Command(t, pin.bin, "-W", "error", "-I", "-B", "main.py")
 				cmd.Dir = cell.dir
 				var out, errb bytes.Buffer
 				cmd.Stdout = &out
@@ -346,7 +347,7 @@ func wideCellFailures(t *testing.T, mutate func(map[string][]byte)) (fails []str
 			}
 			if mutate == nil {
 				for _, target := range []string{cell.pkg, cell.pkg + "/_schema"} {
-					cmd := exec.Command(mypyBin, "--strict", "--python-version", "3.11", "--no-color-output", "--cache-dir", filepath.Join(cell.dir, ".mypy_cache"), target)
+					cmd := testproc.Command(t, mypyBin, "--strict", "--python-version", "3.11", "--no-color-output", "--cache-dir", filepath.Join(cell.dir, ".mypy_cache"), target)
 					cmd.Dir = cell.dir
 					if out, err := cmd.CombinedOutput(); err != nil {
 						res.fails = append(res.fails, fmt.Sprintf("%s: mypy --strict over %s:\n%s", cell.name, target, out))

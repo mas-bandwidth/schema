@@ -37,6 +37,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // fuzzMutantsPerInstance is how many mutants each corpus instance wire yields.
@@ -256,7 +258,7 @@ func startFuzzLegAt(t *testing.T, dir, driver string, builder bool, roster []fuz
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	t.Cleanup(cancel)
-	leg := &fuzzLeg{cmd: exec.CommandContext(ctx, sq, args...)}
+	leg := &fuzzLeg{cmd: testproc.CommandContext(t, ctx, sq, args...)}
 	leg.cmd.Dir = dir
 	leg.cmd.Env = append(os.Environ(), "SCHEMA_SQUIRREL_CONFORMANCE="+dir)
 	leg.cmd.Stderr = &leg.stderr
@@ -352,7 +354,7 @@ func fuzzTarget(t *testing.T, repo, dir string) string {
 	bin := filepath.Join(dir, "schema-squirrel")
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "build", "-o", bin, "./cmd/schema")
+	cmd := testproc.CommandContext(t, ctx, "go", "build", "-o", bin, "./cmd/schema")
 	cmd.Dir = repo
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("building the tagged compiler: %v\n%s", err, out)
@@ -380,7 +382,7 @@ func runWireFuzzDifferential(t *testing.T, edit func(name string, src []byte) []
 	for _, mu := range manifestUnits(t, manifest) {
 		out := filepath.Join(dir, mu.key)
 		ctx, cancel := slowtest.ProbeContext(t)
-		gen := exec.CommandContext(ctx, schema, append([]string{"generate", "--lang", "squirrel", "--out", out}, mu.paths...)...)
+		gen := testproc.CommandContext(t, ctx, schema, append([]string{"generate", "--lang", "squirrel", "--out", out}, mu.paths...)...)
 		gen.Dir = repo
 		msg, err := gen.CombinedOutput()
 		cancel()
