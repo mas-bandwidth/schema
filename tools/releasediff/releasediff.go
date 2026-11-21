@@ -34,7 +34,13 @@
 // either compiler refuses, a driver that builds on one side only, and an
 // instance one side refuses to encode.
 //
-// It exits 1 on a difference and 0 otherwise. -old-bin and -new-bin take
+// A run that compared nothing proves nothing, so it refuses too: no packet
+// driver compared on both sides, or, against a previous release of 3.0.0 or
+// later (TableFormsNote), no encoding compared in the variable form, or none
+// in the message form: each form is owed on its own. Each is named in
+// the report under "nothing".
+//
+// It exits 1 on a difference or an empty wire and 0 otherwise. -old-bin and -new-bin take
 // prebuilt compilers (the negative control hands it a sabotaged one), and
 // -corpus reads the corpus from a directory instead of REV's tree.
 //
@@ -309,6 +315,25 @@ type Report struct {
 	Unreadable  []string // a unit one side refuses
 	Uncompared  []string // a driver or an instance one side cannot encode
 	Differences []string // the refusals
+	Nothing     []string // a wire this run compared no encoding of: a refusal too
+}
+
+// Refused is the verdict: a difference under an equal id, or a wire the run
+// compared nothing of.
+func (r *Report) Refused() bool {
+	return len(r.Differences) > 0 || len(r.Nothing) > 0
+}
+
+// TablesOwed says whether a run against prev must compare the table forms:
+// from 3.0.0 on (TableFormsNote). A prev that is not a release tag (a
+// negative control's prebuilt compiler) owes them too.
+func TablesOwed(prev string) bool {
+	m := versionForm.FindStringSubmatch(prev)
+	if m == nil {
+		return true
+	}
+	major, _ := strconv.ParseUint(m[1], 10, 64)
+	return major >= 3
 }
 
 // Judge runs the differential: the packet drivers, whose sources are looked
@@ -383,6 +408,7 @@ func Judge(old, new Compiler, trees []string, m *Manifest, jsonDir, work string,
 
 	// THE PACKET WIRE: one driver source on both sides, the first tree whose
 	// copy builds against both compilers' C++
+	packetCompared := 0
 	for _, d := range drivers {
 		wg.Go(func() {
 			sem <- struct{}{}
@@ -428,6 +454,9 @@ func Judge(old, new Compiler, trees []string, m *Manifest, jsonDir, work string,
 					return
 				}
 				add(&r.Compared, fmt.Sprintf("packet wire, driver %s (%s, tree %d): %d encodings, C++ reference%s", d.Name, strings.Join(d.Sources, " "), ti, n, note))
+				mu.Lock()
+				packetCompared += n
+				mu.Unlock()
 				if diff != nil {
 					add(&r.Differences, fmt.Sprintf("packet wire, unit %s, instance %s", unitNames(d.Units), diff))
 				}
@@ -475,6 +504,18 @@ func Judge(old, new Compiler, trees []string, m *Manifest, jsonDir, work string,
 	}
 	if tableCompared[0]+tableCompared[1] > 0 {
 		r.Compared = append(r.Compared, fmt.Sprintf("table forms: %d variable-form and %d message-form encodings of %s, Go engine", tableCompared[0], tableCompared[1], ManifestPath))
+	}
+	// each owed form on its own: a run that compared the variable form and
+	// lost every message-form encoding proves nothing about the message form
+	if TablesOwed(old.Name()) {
+		for k, form := range []string{"variable form", "message form"} {
+			if tableCompared[k] == 0 {
+				r.Nothing = append(r.Nothing, fmt.Sprintf("table %s: no instance of %s was encoded in it by both compilers (see unreadable and uncompared)", form, ManifestPath))
+			}
+		}
+	}
+	if packetCompared == 0 {
+		r.Nothing = append(r.Nothing, "packet wire: no driver wrote an encoding both compilers' C++ agree to compare (see unreadable and uncompared)")
 	}
 	for _, l := range [][]string{r.Compared, r.Uncompared, r.Differences} {
 		slices.Sort(l)
@@ -532,8 +573,15 @@ func (r *Report) Print(w io.Writer, oldName, newName string) {
 	for _, d := range r.Differences {
 		_, _ = fmt.Fprintf(w, "DIFFERENCE under an equal protocol id: %s\n", d)
 	}
+	for _, n := range r.Nothing {
+		_, _ = fmt.Fprintf(w, "NOTHING COMPARED: %s\n", n)
+	}
 	if len(r.Differences) > 0 {
 		_, _ = fmt.Fprintf(w, "release-differential: REFUSED, %d encoding(s) differ under an equal protocol id\n", len(r.Differences))
+		return
+	}
+	if len(r.Nothing) > 0 {
+		_, _ = fmt.Fprintf(w, "release-differential: REFUSED, %d wire(s) compared nothing, so the run proves nothing about them\n", len(r.Nothing))
 		return
 	}
 	_, _ = fmt.Fprintf(w, "release-differential: ok, every encoding compared is the same bytes (%d comparison line(s), %d unit(s) with a moved id)\n", len(r.Compared), len(r.Moved))
@@ -873,7 +921,7 @@ func run(prev, rev, oldBin, newBin, corpus, serialize, work string, jobs int) er
 		return err
 	}
 	r.Print(os.Stdout, old.Name(), nw.Name())
-	if len(r.Differences) > 0 {
+	if r.Refused() {
 		return errRefused
 	}
 	return nil

@@ -79,6 +79,12 @@ local f32Bits = function(v) {
   scratch.seek(0); scratch.writen(v.tofloat(), 'f');
   scratch.seek(0); return scratch.readn('i') & 0xffffffff;
 };
+// f32 is v rounded to float32, as a Squirrel float: a float32's declared
+// range is held at float32 (docs/SPEC.md §4.6)
+_M.f32 <- function(v) {
+  scratch.seek(0); scratch.writen(v.tofloat(), 'f');
+  scratch.seek(0); return scratch.readn('f');
+};
 _M.putF32 <- function(b, at, v) {
   local bits = f32Bits(v);
   if ((bits & 0x7f800000) == 0x7f800000) return false;
@@ -103,6 +109,23 @@ _M.getF64 <- function(b, at) {
   if ((bits & 0x7ff0000000000000) == 0x7ff0000000000000) return null;
   return casti2f(bits);
 };
+
+// text answers the string payload b[at..at+n) as a Squirrel string, built in
+// work linear in n up to its log factor (docs/SECURITY.md): Squirrel strings
+// are immutable, so a per-byte append copies the prefix each step and costs
+// the square of the length; the halves are joined instead, as load.nut's
+// joinText does. textCat is the one concatenation, the seam a test counts.
+local TEXT_BYTE = array(256);
+for (local i = 0; i < 256; i++) TEXT_BYTE[i] = format("%c", i);
+local textCat = function(a, b) { return a + b; };
+local joinText = null;
+joinText = function(b, lo, hi) {
+  local span = hi - lo;
+  if (span <= 1) return span == 1 ? TEXT_BYTE[b[lo] & 0xff] : "";
+  local mid = lo + (span >> 1);
+  return textCat(joinText(b, lo, mid), joinText(b, mid, hi));
+};
+_M.text <- function(b, at, n) { return joinText(b, at, at + n); };
 
 // textIllFormed reports whether the string payload at b[at..at+n) is NOT the
 // text its kind says (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11): UTF-8

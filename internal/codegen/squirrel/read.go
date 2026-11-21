@@ -243,7 +243,15 @@ func emitReadScalar(m *Module, f *ir.Field, target, ind string) {
 		m.Printf("%s%s = %s.value;\n", ind, target, scratch)
 	case ir.TFixed:
 		if f.IntMin.Cmp(f.IntMax) == 0 {
-			m.Printf("%s%s = %s;\n", ind, target, IntLit(new(big.Int).Lsh(f.IntMin, uint(f.Type.FracBits))))
+			// zero bits: the raw value min << F comes from the range alone
+			// (SPEC §4.3); a 128-bit value is the [lo, hi] pair the wide
+			// codec lands, and its raw value can be wider than 64 bits
+			raw := new(big.Int).Lsh(f.IntMin, uint(f.Type.FracBits))
+			lit := IntLit
+			if f.Type.Width > 64 {
+				lit = Int128Lit
+			}
+			m.Printf("%s%s = %s;\n", ind, target, lit(raw))
 			return
 		}
 		if f.Type.Width > 64 {

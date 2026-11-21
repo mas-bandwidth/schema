@@ -469,8 +469,8 @@ func emitFixedPlanDecodeValue(m *Module, f *ir.Field, node *fixedLayoutNode, at 
 			switch f.Type.Kind {
 			case ir.TString:
 				m.Printf("%sif (_rt_fixed.textIllFormed(b, at + %s + 4, n)) return \"text_ill_formed\";\n", ind, off)
-				m.Printf("%slocal s = \"\"; for (local i = 0; i < n; i++) s += b[at + %s + 4 + i].tochar();\n", ind, off)
-				m.Printf("%s%s = s;\n", ind, expr)
+				// built in work linear in n, never a per-byte append (SQUIRREL-3)
+				m.Printf("%s%s = _rt_fixed.text(b, at + %s + 4, n);\n", ind, expr, off)
 			default:
 				m.Printf("%s%s = blob(n); for (local i = 0; i < n; i++) %s[i] = b[at + %s + 4 + i];\n", ind, expr, expr, off)
 			}
