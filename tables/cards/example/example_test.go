@@ -15,7 +15,7 @@ import (
 )
 
 // TestCardsCustomerExample exercises the documented facade: a checked parse,
-// defensive wire ownership, strict versus tolerant reads, atomic edits, the
+// defensive wire ownership, the strict read and ReadStrict, atomic edits, the
 // task hash's field choice, a historical upgrade and a lossy future probe
 // (docs/CARDS.md, docs/SPEC-TABLES.md §4, §5, §6.2, §6.6).
 func TestCardsCustomerExample(t *testing.T) {
