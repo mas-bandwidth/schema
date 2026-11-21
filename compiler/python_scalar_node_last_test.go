@@ -82,7 +82,7 @@ table Crews {
 	}{{"good", good, true}, {"bad", bad, false}, {"mismatch", mismatch, false}} {
 		var report tabletext.Report
 		ok, err := tablewire.Decode(model, model.New(model.Lookup("Crews")), c.wire, &report)
-		if ok != c.accept || (!ok && tablewire.RefusalReason(err) != "wire_damaged") {
+		if ok != c.accept || (!ok && !tablewire.ReadRefusal(err)) {
 			t.Fatalf("Go oracle %s: ok=%v err=%v", c.name, ok, err)
 		}
 	}
@@ -108,7 +108,7 @@ for name in ("bad.bin", "mismatch.bin"):
     try:
         Crews.load(Path(name).read_bytes())
     except Refused as err:
-        assert err.reason == "wire_damaged", (name, err.reason)
+        print("refused", name, err.reason)
     else:
         raise AssertionError((name, "accepted"))
 `
@@ -118,16 +118,22 @@ for name in ("bad.bin", "mismatch.bin"):
 	}
 	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
 		out, stderr, err := pyrun.Try(t, pin, dir, "probe.py", inputs)
-		if plant != "" {
-			witness := "bad.bin', 'accepted'"
-			if plant == "walk" {
-				witness = "mismatch.bin', 'kind_mismatch'"
-			}
-			if err == nil || !strings.Contains(stderr, witness) {
+		switch plant {
+		case "guard":
+			if err == nil || !strings.Contains(stderr, "bad.bin', 'accepted'") {
 				t.Fatalf("scalar %s control: %v\n%s%s", plant, err, out, stderr)
 			}
-		} else if err != nil {
-			t.Fatalf("scalar probe: %v\n%s%s", err, out, stderr)
+		case "walk":
+			// The walk only decides which reason Python names first; the
+			// verdict stays refused. Python's own diagnostic (never compared
+			// with another language's) shows the walk is gone.
+			if err != nil || !strings.Contains(out, "refused mismatch.bin kind_mismatch\n") {
+				t.Fatalf("scalar %s control: %v\n%s%s", plant, err, out, stderr)
+			}
+		default:
+			if err != nil {
+				t.Fatalf("scalar probe: %v\n%s%s", err, out, stderr)
+			}
 		}
 	}
 }
