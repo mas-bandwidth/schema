@@ -67,6 +67,9 @@ say("var_past", varSave(function(v) { v.R = 0.1000001; }) == null ? "refused" : 
 b = varSave(function(v) { v.Z = -0.0; });
 back = b == null ? null : T.VLoad(b);
 say("var_negzero_store", back == null ? "none" : sign(back.Z) + " " + negbits(b));
+b = varSave(function(v) { v.Z = -1e-50; });
+back = b == null ? null : T.VLoad(b);
+say("var_tiny_store", back == null ? "none" : sign(back.Z) + " " + negbits(b));
 b = varSave(function(v) { v.Z = 0.25; });
 back = (b != null && patch(b)) ? T.VLoad(b) : null;
 say("var_negzero_read", back == null ? "none" : sign(back.Z));
@@ -83,6 +86,9 @@ say("json_write_max", T.VToJson(v) == null ? "refused" : "wrote");
 v = T.V(); v.Z = -0.0;
 local text = T.VToJson(v);
 say("json_write_negzero", text == null ? "refused" : (text.find("-0") == null ? "+0" : "-0"));
+v = T.V(); v.Z = -1e-50;
+text = T.VToJson(v);
+say("json_write_tiny", text == null ? "refused" : (text.find("-0") == null ? "+0" : "-0"));
 
 // THE MESSAGE FORM
 local voc = {};
@@ -122,6 +128,9 @@ say("fixed_past", fixedSave(function(f) { f.R = 0.1000001; }) == null ? "refused
 b = fixedSave(function(f) { f.Z = -0.0; });
 back = b == null ? null : fixedLoad(b);
 say("fixed_negzero_store", back == null ? "none" : sign(back.Z) + " " + negbits(b));
+b = fixedSave(function(f) { f.Z = -1e-50; });
+back = b == null ? null : fixedLoad(b);
+say("fixed_tiny_store", back == null ? "none" : sign(back.Z) + " " + negbits(b));
 b = fixedSave(function(f) { f.Z = 0.25; });
 back = (b != null && patch(b)) ? fixedLoad(b) : null;
 say("fixed_negzero_read", back == null ? "none" : sign(back.Z));
@@ -141,12 +150,12 @@ func TestSquirrelFloat32RangeAtFloat32AndNegativeZero(t *testing.T) {
 	}
 	for _, row := range [][2]string{
 		{"var_max", "read"}, {"var_f32", "wrote"}, {"var_past", "refused"},
-		{"var_negzero_store", "+0 0"}, {"var_negzero_read", "+0"},
+		{"var_negzero_store", "+0 0"}, {"var_tiny_store", "+0 0"}, {"var_negzero_read", "+0"},
 		{"json_max", "read"}, {"json_past", "refused"}, {"json_negzero_read", "+0"},
-		{"json_write_max", "wrote"}, {"json_write_negzero", "+0"},
+		{"json_write_max", "wrote"}, {"json_write_negzero", "+0"}, {"json_write_tiny", "+0"},
 		{"msg_max", "read"}, {"msg_f32", "wrote"}, {"msg_past", "refused"},
 		{"fixed_max", "read"}, {"fixed_f32", "wrote"}, {"fixed_past", "refused"},
-		{"fixed_negzero_store", "+0 0"}, {"fixed_negzero_read", "+0"},
+		{"fixed_negzero_store", "+0 0"}, {"fixed_tiny_store", "+0 0"}, {"fixed_negzero_read", "+0"},
 	} {
 		if got[row[0]] != row[1] {
 			t.Errorf("%s: %q, want %q", row[0], got[row[0]], row[1])

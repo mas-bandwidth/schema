@@ -655,8 +655,9 @@ func fixedEmitWriteElement(m *Module, f *ir.Field, at int64, expr, ind, dyn stri
 			}
 			m.Printf("%sif ((%s < %s || %s > %s) && %s) %s\n", ind, x, lo, x, hi, finite, fixedWriteRefusal(m, f))
 			// a compressed float's -0 is stored as +0 (docs/SPEC-TABLES.md
-			// §3.3, ruling fixed-compressed-negzero)
-			stored = "(" + expr + " == 0 ? 0.0 : " + expr + ")"
+			// §3.3, ruling fixed-compressed-negzero), judged after the value
+			// is narrowed, so a tiny negative that rounds to -0 stores +0
+			stored = "(" + x + " == 0 ? 0.0 : " + expr + ")"
 		}
 		m.Printf("%sif (!_rt_fixed.%s(b, at + %s, %s)) { _M.FixedField <- %s; return \"non_finite_float\"; }\n",
 			ind, put, off, stored, squirrel.StringLit([]byte(FloatOwner(m.Unit, f))))

@@ -1282,7 +1282,9 @@ writeScalar = function(T, d, val, depth, g, out) {
       // only a number is a float's value, refused before it is converted
       if (typeof val != "float" && typeof val != "integer") return false;
       // a compressed float's -0 is written as +0 (docs/SPEC-TABLES.md §3.3)
-      if (has(d, "fmin") && val == 0) val = 0.0;
+      // judged at the field's width, so a tiny negative that narrows to a
+      // float32 -0 is written as +0 too
+      if (has(d, "fmin") && (d.f32 ? widenF32(narrowF32(val.tofloat(), 0)[0]) : val) == 0) val = 0.0;
       local t = floatText(val, d.f32);
       if (t == null) return false; // a non-finite float (§16.3)
       if (!floatAdmitted(d, val)) return false;

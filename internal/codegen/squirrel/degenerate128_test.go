@@ -32,7 +32,7 @@ type D
 
 const degenerate128Main = `local schema = dofile("schema_module.nut", true);
 local serialize = dofile("serialize.nut", true);
-local Degen = schema.require("degen");
+local Degen = schema.require("Degen");
 local v = Degen.D();
 v.A = [0, 3];
 v.B = [-512, -1];
