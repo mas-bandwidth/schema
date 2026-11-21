@@ -14,6 +14,7 @@ HC_PACKET( BadConst )
 HC_PACKET( BadReserved )
 HC_PACKET( BadAlign )
 HC_PACKET( Truncated )
+HC_PACKET( OneArm )
 
 #define HC_PACKET_ROW( TYPE ) \
     hc_binding_t row; \
@@ -35,6 +36,7 @@ extern "C" const hc_binding_t * hc_bindings_hostilepacket( int * count )
         { HC_PACKET_ROW( BadReserved ); rows.push_back( row ); }
         { HC_PACKET_ROW( BadAlign ); rows.push_back( row ); }
         { HC_PACKET_ROW( Truncated ); rows.push_back( row ); }
+        { HC_PACKET_ROW( OneArm ); rows.push_back( row ); }
     }
     *count = (int) rows.size();
     return rows.data();

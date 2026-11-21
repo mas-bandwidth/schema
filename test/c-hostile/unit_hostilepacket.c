@@ -15,6 +15,7 @@ HC_PACKET( bad_const )
 HC_PACKET( bad_reserved )
 HC_PACKET( bad_align )
 HC_PACKET( truncated )
+HC_PACKET( one_arm )
 
 #define HC_PACKET_ROW( TABLE, FN ) \
     { .schema = "internal/ci/hostilecorpus/corpus/packet/hostile.schema", .table = TABLE, .packet = hc_packet_##FN }
@@ -28,6 +29,7 @@ static const hc_binding_t rows[] = {
     HC_PACKET_ROW( "BadReserved", bad_reserved ),
     HC_PACKET_ROW( "BadAlign", bad_align ),
     HC_PACKET_ROW( "Truncated", truncated ),
+    HC_PACKET_ROW( "OneArm", one_arm ),
 };
 
 const hc_binding_t * hc_bindings_hostilepacket( int * count )
