@@ -11,11 +11,12 @@ import (
 // THE WRITER'S RANGE IS THE BOUND (docs/FIXED-FORM-ALGORITHM.md §4.5), the
 // shared cross-version vectors every leg reads (fixedvector.WriterRange): an
 // OLD writer's file with one ranged value forged past that writer's range, read
-// by the NEW reader whose own range is wider. The reader clamps to the WRITER's
-// range and counts `clamped` once: a scalar, one element of a ranged fixed
-// array (held the same as a scalar), and a uint64 at or above 2^63 (compared
-// unsigned, so it lands the max). The answer is the manifest's `expect=`, which
-// is what the C++ reference's own NEW reader landed from the same bytes.
+// by the NEW reader whose own range is wider. A value past the WRITER's range
+// refuses the whole load out_of_range (docs/rulings.json strict-only-read,
+// §4.6): a scalar, one element of a ranged fixed array (held the same as a
+// scalar), a uint64 at or above 2^63 (compared unsigned), and a compressed
+// float (compared as a float32 against the writer's bounds narrowed to
+// float32), as the C++ reference's own NEW reader answers the same bytes.
 func TestFixedVersioningRangeWidenHostile(t *testing.T) {
 	slowtest.Gate(t, "dart (it runs the generated NEW reader over the forged file)")
 	corpus := fixedCorpus(t)

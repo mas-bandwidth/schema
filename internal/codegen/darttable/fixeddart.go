@@ -1162,8 +1162,9 @@ func fixedBitsClamp(t ir.FieldType) (*big.Int, bool) {
 // fixedFloatClampEnds answers a ranged float's bounds as Dart double literals.
 // A float32 field's ends are narrowed to float32 first, so the comparison is
 // against exactly the value the reader's own declaration names and not a
-// double that is a hair wider. Which bound is the reader's own and not the
-// writer's is schema#1164, statement B.
+// double that is a hair wider. The writer's pass (fixedwriterbounds.go) spells
+// a writer's range through it too, on the writer's field image
+// (docs/rulings.json strict-only-read).
 func fixedFloatClampEnds(f *ir.Field) (lo, hi string, ok bool) {
 	if f == nil || !f.HasFloatRange {
 		return "", "", false

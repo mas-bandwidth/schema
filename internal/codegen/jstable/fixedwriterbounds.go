@@ -15,18 +15,25 @@ import (
 // REFUSES out_of_range rather than clamping. The writer's ranges and their
 // match onto this reader's fields are the compiler's own
 // (ir.TableFixedWriterRanges, ir.TableFixedWriterField), shared by every leg.
+// A COMPRESSED FLOAT is held to its writer's range the same way
+// (docs/rulings.json strict-only-read, FIXED-FORM-ALGORITHM §4.6): a value
+// outside it refuses the whole load out_of_range, compared in the field's own
+// type (a float32 against the writer's bounds narrowed to float32).
 
 // fixedWriterBound is one writer range resolved onto this reader's image: the
 // reader's field, the image offset of one leaf (a fixed array has a row per
 // element), the writer's raw bounds, and which ends can fire. An end is
 // dropped when it sits on the storage width's own limit, where no load can
-// fail it, or on the reader's own end, where the projection's clamp lands the
-// same value and counts the same once.
+// fail it, or on the reader's own end, where the projection's own pass refuses
+// the same value. A compressed float's row sets flt and carries the writer's
+// bounds as literals in flo and fhi; lo, hi, low and high are unused.
 type fixedWriterBound struct {
 	field     *ir.Field
 	at        int64
 	lo, hi    *big.Int
 	low, high bool
+	flt       bool
+	flo, fhi  string
 }
 
 // fixedWriterBounds resolves one lineage entry's writer ranges onto this
@@ -51,6 +58,17 @@ func fixedWriterBounds(st *ir.Struct, e FixedLineageEntry) []fixedWriterBound {
 // fixedWriterBoundsOf spells one resolved writer field at this reader's image
 // offsets: a scalar is one row, a fixed array one per element at its stride.
 func fixedWriterBoundsOf(f, w *ir.Field, at int64) []fixedWriterBound {
+	n, stride := int64(1), ir.TableFixedElementBytes(f)
+	if f.Array == ir.ArrayFixed {
+		n = f.ArrayBound
+	}
+	if flo, fhi, fok := fixedFloatClampEnds(w); fok {
+		out := make([]fixedWriterBound, 0, n)
+		for i := range n {
+			out = append(out, fixedWriterBound{field: f, at: at + i*stride, flt: true, flo: flo, fhi: fhi})
+		}
+		return out
+	}
 	lo, hi, ok := ir.TableRawRange(w)
 	rlo, rhi, rok := ir.TableRawRange(f)
 	if !ok {
@@ -67,10 +85,6 @@ func fixedWriterBoundsOf(f, w *ir.Field, at int64) []fixedWriterBound {
 	high := hi.Cmp(smax) < 0 && (!rok || hi.Cmp(rhi) != 0)
 	if !low && !high {
 		return nil
-	}
-	n, stride := int64(1), ir.TableFixedElementBytes(f)
-	if f.Array == ir.ArrayFixed {
-		n = f.ArrayBound
 	}
 	out := make([]fixedWriterBound, 0, n)
 	for i := range n {
@@ -118,6 +132,17 @@ func (g *fixedModule) emitWriterBounds(st *ir.Struct, entries []FixedLineageEntr
 		names[i] = fmt.Sprintf("%sFixedWriterBounds%d", st.Name, i)
 		g.pf("function %s(view, report) {\n", names[i])
 		for _, b := range rows {
+			if b.flt {
+				// A compressed float: the getter reads the field's own type
+				// (a float32 exactly), the bounds are narrowed to it, and a
+				// NaN fails both comparisons, so it refuses too.
+				get, _ := fixedGetter(b.field.Type)
+				g.pf("  {\n")
+				g.pf("    const n = view.%s(%d, true);\n", get, b.at)
+				g.pf("    if (!(n >= %s && n <= %s)) { report.refused = TableFixedRefusal.OutOfRange; return; }\n", b.flo, b.fhi)
+				g.pf("  }\n")
+				continue
+			}
 			asBig := fixedIsBig(b.field.Type)
 			lo, hi := jsIntLit(b.lo, asBig), jsIntLit(b.hi, asBig)
 			g.pf("  {\n")

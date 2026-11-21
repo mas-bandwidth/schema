@@ -18,11 +18,9 @@ package darttable
 
 import (
 	"bytes"
-	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"maps"
-	"math"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -75,33 +73,11 @@ var fixedCorpusContracts = map[string]fixedCorpusContract{
 			return fixedCorpusClampedCell(t, corpus, "new_fixed_I_grow_element.bin", "VNEW_fixed_I_grow_element", data, "vals", 0, "r0.vals[0]")
 		},
 	},
-	// An OLD writer's bytes with aim forged to 1.5, read by the NEW reader:
-	// it lands WHOLE and uncounted, the bounds pass being the READER's
-	// (docs/FIXED-FORM-VERSIONING-TESTS.md, the compressed-float hostile
-	// pass, schema#1164 statement B). The rewrite is in the reader's own
-	// layout, so it is the reference's NEW file with aim = the forged value.
-	"hostile_cfloat_range_widen.bin": {
-		reader: "VNEW_cfloat_range_widen", older: []string{"VOLD_cfloat_range_widen"}, refuses: false,
-		cite: "docs/FIXED-FORM-VERSIONING-TESTS.md (compressed-float hostile pass; schema#1164 B) and docs/SPEC-TABLES.md §3.4 (a record is stamped by its writer's layout)",
-		expect: func(t *testing.T, corpus string, data []byte) []byte {
-			at, forged := fixedCorpusForgedAim(t, corpus, "hostile_cfloat_range_widen.bin")
-			return fixedCorpusNewWithAim(t, corpus, data, at, forged)
-		},
-	},
-	// The same old file with aim forged to 5.0, past the reader's [-2, 2] as
-	// well: it clamps to the READER's 2.0 and counts once (same citation).
-	"past_cfloat_range_widen.bin": {
-		reader: "VNEW_cfloat_range_widen", older: []string{"VOLD_cfloat_range_widen"}, refuses: true,
-		cite: "docs/FIXED-FORM-VERSIONING-TESTS.md (compressed-float hostile pass: past the reader's range clamps to the reader's bound) and docs/SPEC-TABLES.md §4",
-		expect: func(t *testing.T, corpus string, data []byte) []byte {
-			at, forged := fixedCorpusForgedAim(t, corpus, "past_cfloat_range_widen.bin")
-			f := fixedCorpusField(t, "VNEW_cfloat_range_widen", "aim")
-			if !f.HasFloatRange || float64(math.Float32frombits(forged)) <= f.FMax {
-				t.Fatalf("past_cfloat_range_widen.bin: the forged aim %#08x is not past the reader's max %v", forged, f.FMax)
-			}
-			return fixedCorpusNewWithAim(t, corpus, data, at, math.Float32bits(float32(f.FMax)))
-		},
-	},
+	// hostile_ and past_cfloat_range_widen.bin (an OLD writer's aim forged to
+	// 1.5 and to 5.0) are shared writer's-range vectors: init below rules them
+	// with the rest of fixedvector.WriterRange. Both REFUSE whole out_of_range,
+	// held to the WRITER's [-1, 1] (docs/rulings.json strict-only-read,
+	// FIXED-FORM-ALGORITHM §4.6).
 }
 
 // TestFixedCorpusRoundTripsByteIdenticalDart is dart/R27: every manifest row,
@@ -271,19 +247,6 @@ void main() {
 	}
 }
 
-// fixedCorpusField answers one field of a schema's root.
-func fixedCorpusField(t *testing.T, base, name string) *ir.Field {
-	t.Helper()
-	st := versionRoot(t, versionSchema(t, base))
-	for _, f := range st.Fields {
-		if f.Name == name {
-			return f
-		}
-	}
-	t.Fatalf("%s's root declares no %s", base, name)
-	return nil
-}
-
 // fixedCorpusManifestRaw answers a manifest value as the raw integer the dump
 // set: a plain integer, or a fixed value's `<units>|raw=<n>`.
 func fixedCorpusManifestRaw(t *testing.T, corpus, file, key string) int64 {
@@ -376,70 +339,18 @@ func fixedCorpusLE(b []byte) int64 {
 	return int64(u<<shift) >> shift
 }
 
-// fixedCorpusForgedAim answers the manifest's `forged=r0.aim@<at>=<v>|0x<bits>`.
-func fixedCorpusForgedAim(t *testing.T, corpus, file string) (int, uint32) {
-	t.Helper()
-	data, err := os.ReadFile(filepath.Join(corpus, "manifest.txt"))
-	if err != nil {
-		t.Fatalf("the corpus manifest is not readable: %v", err)
-	}
-	for line := range strings.SplitSeq(string(data), "\n") {
-		if !strings.Contains(line, "file="+file+" ") {
-			continue
-		}
-		for field := range strings.FieldsSeq(line) {
-			v, ok := strings.CutPrefix(field, "forged=r0.aim@")
-			if !ok {
-				continue
-			}
-			atText, _, _ := strings.Cut(v, "=")
-			at, err := strconv.Atoi(atText)
-			if err != nil {
-				t.Fatalf("%s: unreadable forged offset %q", file, atText)
-			}
-			return at, versionManifestFloatBits(t, corpus, file, "forged", "r0.aim")
-		}
-	}
-	t.Fatalf("the manifest carries no forged aim for %s", file)
-	return 0, 0
-}
-
 // The shared writer's-range vectors (internal/fixedvector.WriterRange): an
-// OLD writer's bytes with one ranged cell forged past that writer's range,
-// inside the NEW reader's. Under the one read the reader refuses the whole
-// batch as out_of_range (the manifest carries no `expect=`), so the contract
-// has no rewrite to build.
+// OLD writer's bytes with one ranged cell (an integer, or a compressed float)
+// forged past that writer's range. Under the one read the reader refuses the
+// whole batch as out_of_range (docs/rulings.json strict-only-read), so the
+// contract has no rewrite to build.
 func init() {
 	for _, vec := range fixedvector.WriterRange {
 		fixedCorpusContracts[vec.File] = fixedCorpusContract{
 			reader: "VNEW_" + vec.Row, older: []string{"VOLD_" + vec.Row}, refuses: true,
-			cite: "docs/FIXED-FORM-ALGORITHM.md §4.5 (a ranged value past the writer's range for its lineage entry refuses out_of_range)",
+			cite: "docs/FIXED-FORM-ALGORITHM.md §4.5, §4.6 (a ranged value past the writer's range for its lineage entry refuses out_of_range)",
 		}
 	}
-}
-
-// fixedCorpusNewWithAim is the reference's NEW-generation file — the reader's
-// own layout, stamped by its own hash — with aim's four bytes set to `bits`.
-// The old file it stands in for must agree with it everywhere but the layout
-// hashes and the forged aim, which is checked: the two writers held the same
-// lead and trail.
-func fixedCorpusNewWithAim(t *testing.T, corpus string, old []byte, at int, bits uint32) []byte {
-	t.Helper()
-	nu, err := os.ReadFile(filepath.Join(corpus, "new_cfloat_range_widen.bin"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(nu) != len(old) {
-		t.Fatalf("the new file is %d bytes and the old %d: the layouts are not one size", len(nu), len(old))
-	}
-	st := versionRoot(t, versionSchema(t, "VNEW_cfloat_range_widen"))
-	body := len(nu) - int(fixedTypeBytes(st))
-	if !bytes.Equal(nu[body:at], old[body:at]) || !bytes.Equal(nu[at+4:], old[at+4:]) {
-		t.Fatal("the new and old cfloat_range_widen records differ outside aim")
-	}
-	out := slices.Clone(nu)
-	binary.LittleEndian.PutUint32(out[at:], bits)
-	return out
 }
 
 // TestFixedFloat32CellsStoreBitsNotDoubles pins the store and load path of a

@@ -106,10 +106,13 @@ func t06R30(t *testing.T) {
 		"R30 the compressed float rides as the float itself")
 	t02Has(t, body, "value.aim = TableFixedLayout.float32Value(bits);",
 		"R30 the compressed float lands as the float itself")
-	// (2) THE BOUNDS ARE THE READER'S OWN (schema#1164 statement B), stated on
-	// the widened reader's -2..2.
-	t02Has(t, body, "if (value.aim < -2.0) {", "R30 clamps to the reader's own min")
-	t02Has(t, body, "} else if (value.aim > 2.0) {", "R30 clamps to the reader's own max")
+	// (2) THE DECODE'S BOUNDS ARE THE READER'S OWN, stated on the widened
+	// reader's -2..2. The OLD writer's -1..1 is held before it, by the writer's
+	// pass for that lineage entry (docs/rulings.json strict-only-read,
+	// FIXED-FORM-ALGORITHM §4.6), compared as the float32 it is.
+	t02Has(t, body, "if (value.aim < -2.0) {", "R30 holds the reader's own min")
+	t02Has(t, body, "} else if (value.aim > 2.0) {", "R30 holds the reader's own max")
+	t02Has(t, src, "if (!(n0 >= -1.0 && n0 <= 1.0)) {", "R30 holds the OLD writer's own -1..1")
 	// (3) THE RESOLUTION IS A DEFINITION AND NEVER ON THE WIRE.
 	if strings.Contains(body, "0.01") {
 		t.Errorf("R30 the resolution is a definition: the decode does no resolution arithmetic, but it mentions 0.01")

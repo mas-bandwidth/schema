@@ -1,17 +1,17 @@
 package jstable
 
-// cfloat_range_widen (docs/FIXED-FORM-VERSIONING-TESTS.md §5.8): OLD `aim
-// float32 | min = -1, max = 1, resolution = 0.01`, NEW `min = -2, max = 2` — the
-// range WIDENED. In the fixed form a compressed float rides as the float32 ITSELF
-// (SPEC §3.4), so min and max are DEFINITIONS in the digest, never carried on the
-// wire: the emitter lays down one pass over the READER's own min and max, and the
-// OLD writer's bound has nowhere to live once a record is resolved. The clamp
-// counter is asserted EXACTLY on every read, never `>= 1`: a value inside the new
-// range lands WHOLE and UNCOUNTED, and only a value past the READER's own bound
-// clamps and counts. `hostile_` landing 1.5 rather than the OLD writer's 1.0 is
-// what proves the pass is the READER's and not the writer's; on its own that read
-// stays green under either rule, and only `past_` landing 2.0 rather than the
-// forged 5.0 proves there is a pass at all.
+// cfloat_range_widen (docs/FIXED-FORM-VERSIONING-TESTS.md §5.8, "Hostile rows"):
+// OLD `aim float32 | min = -1, max = 1, resolution = 0.01`, NEW `min = -2, max =
+// 2` — the range WIDENED. In the fixed form a compressed float rides as the
+// float32 ITSELF (SPEC §3.4), so min and max are DEFINITIONS in the digest; the
+// lineage plan carries the OLD writer's range, and the NEW reader holds a value
+// read under that entry to the WRITER's range (docs/rulings.json
+// strict-only-read, FIXED-FORM-ALGORITHM §4.6): a value outside it refuses the
+// whole load out_of_range, never a clamp. `old_` (0.5, inside the writer's
+// range) is the control and lands exactly; `hostile_` (1.5: inside the reader's
+// range, outside the writer's) refuses whole, which only the writer's pass can
+// make it do; `past_` (5.0, outside both) refuses whole. A refusal leaves the
+// destination untouched and moves no counter.
 
 import (
 	"fmt"
@@ -26,48 +26,45 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
 	older := jsReadSchema(t, "VOLD_cfloat_range_widen")
 	table := jsFixedRootName(t, older)
 	oldAim := jsManifestFloatBits(t, corpus, "old_cfloat_range_widen.bin", "values", "r0.aim")
-	hostileAim := jsManifestFloatBits(t, corpus, "hostile_cfloat_range_widen.bin", "forged", "r0.aim")
 	src := jsFloatBitsPrelude + fmt.Sprintf(`
-const READ = (f, wantBits, clamped, tag) => {
+const LOAD = (f) => {
   const data = readFileSync(f);
   const back = []; for (let k = 0; k < 8; k++) { back.push(new T()); InitT(back[k]); }
-  const report = new TableFixedReport(); const r = report;
+  const fresh0 = show(back[0]);
+  const r = new TableFixedReport();
   const plan = TNewPlan(4096, 4096);
-  const n = TLoad(back, back.length, data, data.length, plan, report);
-  if (n !== 1) { fail(tag + ": n is not 1: " + n + " " + reason(r)); }
-  if (back[0].lead !== 1 || back[0].trail !== 2) {
-    fail(tag + ": the row moved a neighbor: " + show(back[0]));
-  }
-  if (f32bits(back[0].aim) !== wantBits) {
-    fail(tag + ": aim landed bits " + f32bits(back[0].aim).toString(16) + ", want " + wantBits.toString(16) + " (" + back[0].aim + ")");
-  }
-  if (r.oor !== clamped) {
-    fail(tag + ": clamped landed " + r.oor + ", want exactly " + clamped + ": " + reason(r));
-  }
+  const n = TLoad(back, back.length, data, data.length, plan, r);
   if (r.unknown !== 0 || r.mismatch !== 0 || r.widened !== 0 || r.repeated !== 0) {
-    fail(tag + ": counters moved on a clean read: " + reason(r));
+    fail(f + ": a counter that must not move did: " + reason(r));
   }
-  if (r.damaged) { fail(tag + ": not malformed: " + reason(r)); }
-  if (r.refused !== 0) { fail(tag + ": not a refusal: " + reason(r)); }
+  return { back, fresh0, r, n };
 };
-READ(%[1]q, %[4]d, 0, "old_");
-READ(%[2]q, %[5]d, 0, "hostile_");
 {
-  const data = readFileSync(%[3]q);
-  const back = []; for (let k = 0; k < 8; k++) { back.push(new T()); InitT(back[k]); }
-  const report = new TableFixedReport(); const r = report;
-  const plan = TNewPlan(4096, 4096);
-  const n = TLoad(back, back.length, data, data.length, plan, report);
-  if (n !== -1 || r.refused !== TableFixedRefusal.OutOfRange || r.damaged || r.oor !== 0) {
-    fail("past_: expected out_of_range refusal: n=" + n + " " + reason(r));
+  const { back, r, n } = LOAD(%[1]q);
+  if (n !== 1 || r.refused !== 0 || r.damaged || r.oor !== 0) {
+    fail("old_: the control lands one record: n=" + n + " " + reason(r));
   }
-  if (r.unknown !== 0 || r.mismatch !== 0 || r.widened !== 0 || r.repeated !== 0) {
-    fail("past_: a refusal moved a counter: " + reason(r));
+  if (back[0].lead !== 1 || back[0].trail !== 2) {
+    fail("old_: the row moved a neighbor: " + show(back[0]));
+  }
+  if (f32bits(back[0].aim) !== %[4]d) {
+    fail("old_: aim landed bits " + f32bits(back[0].aim).toString(16) + ", want " + (%[4]d).toString(16) + " (" + back[0].aim + ")");
   }
 }
+const REFUSE = (f, tag) => {
+  const { back, fresh0, r, n } = LOAD(f);
+  if (n !== -1 || r.refused !== TableFixedRefusal.OutOfRange || r.damaged || r.oor !== 0) {
+    fail(tag + ": a value past the WRITER's range owes out_of_range: n=" + n + " " + reason(r));
+  }
+  if (show(back[0]) !== fresh0) {
+    fail(tag + ": a refused read must leave the destination untouched: " + show(back[0]));
+  }
+};
+REFUSE(%[2]q, "hostile_");
+REFUSE(%[3]q, "past_");
 `, filepath.Join(corpus, "old_cfloat_range_widen.bin"),
 		filepath.Join(corpus, "hostile_cfloat_range_widen.bin"),
-		filepath.Join(corpus, "past_cfloat_range_widen.bin"), oldAim, hostileAim)
+		filepath.Join(corpus, "past_cfloat_range_widen.bin"), oldAim)
 	out, err := jsRunVersionProbe(t, node, newer, []string{older}, 0, table, src)
 	if err != nil {
 		t.Fatalf("cfloat_range_widen: %v\n%s", err, out)
