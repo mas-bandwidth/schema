@@ -3343,6 +3343,12 @@ jobs:
 
       - run: go vet ./...
       - run: go build ./...
+      # THE WINDOWS-ONLY TESTS. A _test.go file under `//go:build windows` is
+      # compiled by no Linux row, so this job is its one lane: until 2026-11-21
+      # tools/treelock/treelock_windows_test.go was run by nothing. Each such
+      # test is named here; internal/ci's TestEveryGoTestIsAssignedToALane is
+      # red for one that is not.
+      - run: go test ./tools/treelock/ -count=1 -run '^TestTreelockWindowsRefusal$'
 
       # THE ONE WINDOWS WRITER. Vet and build above cover the whole module, so
       # this is the widest Windows cache available, and `msvc` — which builds
