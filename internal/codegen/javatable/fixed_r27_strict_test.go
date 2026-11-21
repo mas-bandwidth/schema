@@ -36,6 +36,15 @@ func checkJavaFixedR27HostileCorpus(t *testing.T, skipWriterBound bool, mutate f
 	for _, r := range t18Rows(t, corpus) {
 		byFile[r.m.File] = r
 	}
+	// THE CONTROL IS A CROSS-VERSION READ: the manifest's old_ row is the old
+	// reader's own file, so here the NEW reader reads it through its lineage,
+	// as it reads hostile_ and past_. The writer's float range is narrower
+	// than the reader's, and the 0.5 it wrote lands whole.
+	if r, ok := byFile["old_cfloat_range_widen.bin"]; ok {
+		r.reader = "test/tables/VNEW_" + r.m.Row + ".schema"
+		r.older = []string{"VOLD_" + r.m.Row + ".schema"}
+		byFile[r.m.File] = r
+	}
 
 	wantRows := []struct {
 		file       string

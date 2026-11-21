@@ -204,8 +204,8 @@ var t18Prefix = map[string]string{
 // t18Row is one manifest row with the two units it names: the WRITER's, whose
 // header the file carries (W13), and the READER's, which loads it (R27). They
 // are the same unit except on the forged sides, which the OLD generation wrote
-// and the NEW generation reads through its lineage (fixedversioning_cfloat_
-// range_widen_test.go: the reader's bound is the one that counts).
+// and the NEW generation reads through its lineage, held to the WRITER's
+// range (fixedversioning_cfloat_range_widen_test.go; strict-only-read).
 type t18Row struct {
 	m      manifestRow
 	writer string   // schema path under the repo root
