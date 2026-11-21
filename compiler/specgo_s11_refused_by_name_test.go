@@ -31,28 +31,28 @@ func TestSpecGoS11RefusedByName(t *testing.T) {
 	}{
 		{
 			name:  "variable-length wire surface",
-			want:  []string{"Java, JavaScript and Rust backends", "`<Base>Table.java`"},
-			stale: []string{"Elixir, Go,", "`<Base>Table.go`"},
+			want:  []string{"no target is in that state: every target carries the variable\n  class on the wire"},
+			stale: []string{"Elixir, Go,", "`<Base>Table.go`", "Java, JavaScript and Rust backends", "`<Base>Table.java`"},
 		},
 		{
 			name:  "table-closure union",
-			want:  []string{"carried by C, C++, C# and Go", "backend but C, C++, C# and Go"},
-			stale: []string{"carried by C and C++", "backend but C and C++"},
+			want:  []string{"a table closure, and a TABLE-CLOSURE union, are carried by every target."},
+			stale: []string{"carried by C and C++", "backend but C and C++", "carried by C, C++, C# and Go", "backend but C, C++, C# and Go"},
 		},
 		{
 			name:  "array of unions",
-			want:  []string{"the remaining ports'", "under every backend but C, C++"},
-			stale: []string{"under every backend but C++"},
+			want:  []string{"**every target carries in a table closure**"},
+			stale: []string{"under every backend but C++", "the remaining ports'", "under every backend but C, C++"},
 		},
 		{
 			name:  "byte buffers",
-			want:  []string{"C, C++, C#, Go, Elixir, JavaScript and Rust carry `*bytes`", "Dart and Java carry `*string` only"},
-			stale: []string{"under every backend but C++"},
+			want:  []string{"**Every target carries `*bytes` and `*string`.**"},
+			stale: []string{"under every backend but C++", "C, C++, C#, Go, Elixir, JavaScript and Rust carry `*bytes`", "Dart and Java carry `*string` only"},
 		},
 		{
 			name:  "optional fields",
-			want:  []string{"`?T` and a by-value `?[N]T` over a variable closure are legal on Go, C", "an optional COUNTED array or a MAP VALUE over a"},
-			stale: []string{"on any value whose closure is VARIABLE", "is legal on Go"},
+			want:  []string{"`?T` and a by-value `?[N]T` over a variable closure are legal on every\n  target", "an optional COUNTED array or a MAP VALUE over a"},
+			stale: []string{"on any value whose closure is VARIABLE", "is legal on Go", "over a variable closure are legal on Go, C"},
 		},
 		{
 			name:  "Go message paragraph",

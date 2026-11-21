@@ -139,12 +139,14 @@ func TestSpecTablesCurrent(t *testing.T) {
 			text: s161,
 			wants: []string{
 				"the FIXED class in every table backend",
-				"C++, C, C#, Dart, Elixir, Go, Goose, Java, JavaScript, Lobster, Lua, Luau, MOO, Rust and Squirrel",
+				"C, C++, C# (modern), C# (unity), Dart, Elixir, Go, Goose, Java, JavaScript, Lobster, Lua, Luau, Moo, Python, Ruby, Rust and Squirrel",
 				"ELIXIR HAS A WALK TO MEASURE",
 				"it emits the text form and both table wires",
 			},
 			stales: []string{
 				"the FIXED class in all nine",
+				"C++, C, C#, Dart, Elixir, Go, Goose, Java, JavaScript, Lobster, Lua, Luau, MOO, Rust and Squirrel",
+				"the absence is already made one level up",
 				"ELIXIR HAS NO WALK TO MEASURE",
 				"it emits no text form and no table wire",
 			},

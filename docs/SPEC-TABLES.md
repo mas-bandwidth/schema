@@ -290,15 +290,15 @@ none for a `table` — neither declares the member nor reads it. Every generated
 language has a table backend; refusal is scoped to a construct, never the table declaration.
 
 **WIRE FORM STATUS.** Section 3's id-table form is carried by the C++
-reference, the compiler engine (`internal/tablewire`), C, C#, Go, Dart,
-JavaScript, Rust, Elixir, Java, Python and Ruby. Section 3.4's FIXED form is carried by the C++ reference, by Go,
+reference, the compiler engine (`internal/tablewire`) and every other target. Section 3.4's FIXED form is carried by the C++ reference, by Go,
 by Rust, by Elixir, by Java, by Python (`fixed_load`, `fixed_save`;
 docs/port-python/table-fixed-form.md), by Ruby (`fixed_load`, `fixed_save`;
 docs/PORT-RUBY.md), by Dart, and by JavaScript, whose
 layout/block, hash and record bytes are held against the reference's own over the
 paired bench's corpus, the seven reference files (`tables-dart-fixed-form`), and over an
 OPTIONAL corpus the reference writes at every place a present byte can ride —
-a nested table, a scalar, an enum, and one inside a nested body (`tables-js-fixed-form`).
+a nested table, a scalar, an enum, and one inside a nested body (`tables-js-fixed-form`),
+and by every other target.
 Dart's registered target carries direct scalar, text, bounded-array and
 payload-free union arms in explicitly fixed table
 closures supported by its fixed emitter. A payload-free arm carries its tag
@@ -738,9 +738,8 @@ order-word check (`test/js-tables/main.mjs`): a file whose magic is intact and
 whose order word records the other order, which is exactly the file a reader
 leaning on one check would open.
 
-**The BLOCK FORM (§2.7, §19) is BUILT by C++ and C, and READ by the other
-seven** — C#, Dart, Elixir, Go, Java, JavaScript and Rust each emit the open
-path, the projection and the accessors, and none emits a fill path — and it
+**The BLOCK FORM (§2.7, §19) is BUILT and READ by every target** — each
+emits the fill path, the open path, the projection and the accessors — and it
 took C++ and C# TOGETHER to land, because the
 form is an ABI between two languages and one
 language alone cannot hold the gate it exists for (§12.1). C++ emits
@@ -765,13 +764,10 @@ compile time under C99's own means (§20.3); and **Elixir emits `<Base>Block.ex`
 beside `BlockRuntime.ex`, and it is the READING TIER** — there is no projection
 record and no layout assert, because a BEAM term has no layout to assert, so the
 descriptors ARE the mechanism and the typed accessors read each row field at its
-offset out of a SUB-BINARY the runtime shares rather than copies; the block and
-the cook (§7) are the whole of what Elixir emits for a table, and it emits no
-table wire (schema#515). **The unit's
+offset out of a SUB-BINARY the runtime shares rather than copies. **The unit's
 shared runtime is named by the PACKAGE in every port, so file order cannot
 reach it (§19.2)** — and in Java the package IS the unit scope, so each runtime
-type is a file of its own name and no rule is needed at all. The READ side is what the ported backends carry: a block is
-laid out by a producer, and the producer's half is C++'s. The Table sources
+type is a file of its own name and no rule is needed at all. The Table sources
 carry not one symbol of any of it, and the build fails if one appears.
 
 **What is absent, and by absence rather than by refusal** (§2.7): a
@@ -780,16 +776,13 @@ closure — and neither does a table whose closure carries a UNION, because
 §19.3 pins the C# side to Sequential with generated padding and Sequential
 cannot overlay arms. Each says so in the Block header rather than going
 missing — and in the JavaScript module, which says the same thing in its own
-file. No backend is without a Block file to say it in: all nine emit one, as
-all nine emit a Table file.
+file. No backend is without a Block file to say it in: every backend emits
+one, as every backend emits a Table file.
 
-**The VIEW's type half and unit registry (§8.2–§8.7) are specified and
-unimplemented.** What ships today is §8.1: a table's descriptors, built in,
-and the same descriptors for every type a table reaches. No backend emits a
-view file yet; a backend that does not emit one simply does not have it,
-because nothing in a schema requests it and no flag selects it (§8.4). C++
-and C# take it together, because the gate it exists for is one listing both
-backends reproduce, and the remaining backends are a named follow-on (§15).
+**The VIEW's unit registry (§8.3) is carried by every backend**, beside
+§8.1: a table's descriptors, built in, and the same descriptors for every type
+a table reaches; §15 names where the view of a table-free unit is still owed.
+Nothing in a schema requests a view and no flag selects it (§8.4).
 
 **One front-end change comes BEFORE any emitter.** The VIEW FILE's descriptor
 surface (`TableTypeInfo`, `TableFieldInfo`, `TableUnionInfo`,
@@ -1233,9 +1226,7 @@ is not this rule's: the extent walk that `PackMeasure`, `CookMeasure` and
 also holds a list or a map, cleared after that container was filled, is
 refused by those three (`Measure` and `Save` write it as absent) until the
 container is emptied; an absent T's pointer edges never meet that walk.
-Go, C, C# and C++ carry the construct;
-every other target refuses a unit holding one, by name, until its
-own turn (§11).
+Every target carries the construct.
 
 `?` applies to a nested table, a nested `type`, an enum, a `flags` mask,
 any scalar, a bounded array of those, and a MAP in a variable table (§2.8,
@@ -1753,11 +1744,11 @@ reads.
 wire, region and text forms; Go carries `*bytes` and `*string`** with the
 blob-node runtime, the region and cook views and the text form (§8, §16.8).
 Python and Ruby carry both on their wire, cook and text forms
-(docs/port-python/table-blobs.md, docs/PORT-RUBY.md).
+(docs/port-python/table-blobs.md, docs/PORT-RUBY.md), and every other target
+carries both too.
 Every writer of the wire, the message form and the text refuses a blob named
 from two slots by name, `blob_shared`, and the strict read refuses it too
-(§6.5); the remaining ports refuse a unit that declares one, by name (§11), and
-are a named follow-on (§15). The corpus holds the construct in `tables/blobs`: a small
+(§6.5). The corpus holds the construct in `tables/blobs`: a small
 blob beside a caption, a blob past 64 KiB, a shared blob, and a present blob
 and string of length zero beside null slots, each crossing the wire and the
 cook in the harness, and the text where the form can carry it.
@@ -1936,7 +1927,7 @@ stated before it is wire, as `[E]*T` does.
 
 **A union with a payload that is not a declared `type` is a TABLE-CLOSURE
 construct.** Payload-free arms are outside that class and ride the packet
-wire in all nine backends (SPEC §4.8). A table-closure union is emitted beside
+wire in every backend (SPEC §4.8). A table-closure union is emitted beside
 the tables, in C++ in the Table header after the tables its arms name and
 never in the packet header, and in JavaScript in `<Base>.js` importing each
 `table` arm class its constructor instantiates (`new <Arm>()`) from the unit
@@ -1947,7 +1938,7 @@ body that holds one is refused by name, as is such a union that no table
 reaches (§11). A table holding one has no BLOCK form, by §19's standing rule
 for every union in a block closure. The packet wire's encoding of a general
 arm is stated where the packet union is (SPEC §4.8), and carrying it in the
-nine backends is the named follow-on (§15).
+eighteen backends is the named follow-on (§15).
 
 **THE TAG SHAPE IS THE PACKET TAG ENUM'S, MEMBER FOR MEMBER.** A different
 emitter writes it, so it is worth saying what it writes: `<Union>Type` carries
@@ -1959,9 +1950,8 @@ variant count is its `Max`, so the tag carries no Count member (SPEC §4.2,
 the 2026-09-13 ruling). It is the same construct to a reader: one logging
 which body arrived writes `EnumName( edit.body.type )` whichever union it
 holds, so it presents the same surface. Nothing on the read or write path
-calls the function and no generated code does. The table layer is the C++
-reference's (§11, §15), so this shape has ONE emitter where the packet shape
-has nine. `Count` is therefore an ordinary ARM NAME here as it is on a packet
+calls the function and no generated code does. Every backend's table layer
+emits this shape beside its packet emitter's (§11). `Count` is therefore an ordinary ARM NAME here as it is on a packet
 union (SPEC §4.11): no member exists to collide with it, so an arm exporting
 `Count` is accepted, over the exported spelling, so `count` goes with it.
 
@@ -2099,7 +2089,7 @@ diagnostic:
 - **`bits(N)`, `bytes(N)`, a `type`, a `table`, a pointer, an optional and a
   union.** None is a key.
 
-**The ORDER is total, and it is the same in nine languages.** Integers
+**The ORDER is total, and it is the same in every language.** Integers
 compare by VALUE, signed for the signed kinds and unsigned for the unsigned.
 Strings compare by BYTES, unsigned, a shorter string that is a prefix of a
 longer one first: `memcmp` over the common length, then the lengths, at any
@@ -2162,9 +2152,8 @@ map refusal naming the construct whatever the `?`; and beside `| required`,
 by §2.3's rule that a required marker would forbid the absence that makes a
 field optional. An optional map as a map's VALUE, `map[K]?map[K2]V`, is
 refused by name as a named follow-on (§15): the optional map is a FIELD's
-presence, and a table wrapping the inner map, made optional, serves. A target
-that does not carry the optional map refuses a unit that declares one, by
-name (§15); Go carries it first.
+presence, and a table wrapping the inner map, made optional, serves. Every
+target carries the optional map.
 
 **A VALUE is anything a table field can hold**: a scalar, an enum, a `flags`
 mask, `string(N)`, `bytes(N)`, a declared `type`, a table by value, `*T`,
@@ -2495,8 +2484,8 @@ places**: the wire's element order, the cook's bytes, and a loaded region.
   is written.
 - **What that buys is everything the cook exists for.** Zero bytes past the
   entries themselves. `Open` still O(1) and untouched. `Find` in place with
-  `log n` compares and no pointer chase. The same arithmetic in nine
-  languages with nothing to reproduce but a compare. `memcpy` relocation
+  `log n` compares and no pointer chase. The same arithmetic in every
+  language with nothing to reproduce but a compare. `memcpy` relocation
   intact, because the one reference is self-relative. And a byte-stable cook,
   because a sorted array of records has exactly one image.
 - **NEVER closed addressing.** A node per entry is a pointer per entry, an
@@ -2733,7 +2722,7 @@ SILENT edit** (§3, §3.1, §3.2): kind `17` exists because a node index and a
 both arrays, and kind `30` because an enum's variant id and a raw integer are
 both integers. There is no silent edit here, because a map and an array of pairs
 are the same data read correctly either way in both directions, so a kind
-would buy bytes and nothing else, and every kind is a row nine ports skip
+would buy bytes and nothing else, and every kind is a row eighteen ports skip
 forever. The unspent kind is also what keeps the `[..N]Pair` migration, which
 a dedicated kind would end.
 
@@ -2761,7 +2750,7 @@ binary-searching it. Row by row, with the section that holds each:
 | evolution by name | a key or value type change is reported, never misdecoded; the map reads empty and says so (§2.8, §4) | a type change misdecodes or drops by field number | none; a vtable slot's type is trusted |
 | a shared node as a value | `map[K]*T`: two keys, one node, on the wire, in a region and in the text as `&node` (§3.1, §16.7) | tree only; a value is copied per key | an `Offset` may be reused by the builder; nothing preserves it through text |
 | a map as a value | `map[K]map[K2]V`, by value, recursing (§2.8) | a map value may not be a map | a vector of tables of vectors, by hand |
-| zero allocation on `Load` and `Find`, every language | the region load allocates nothing and `Find` is in place (§6.5, §2.8); **Elixir emits no table wire today** and has no `Load` to measure (schema#515) | a hash map is allocated on parse in every runtime | `LookupByKey` allocates nothing; in C++, Swift and C |
+| zero allocation on `Load` and `Find`, every language | the region load allocates nothing and `Find` is in place (§6.5, §2.8) | a hash map is allocated on parse in every runtime | `LookupByKey` allocates nothing; in C++, Swift and C |
 | a cook looked up in place | `Open` is O(1) and `Find` runs over the mapped bytes (§7) | none; parse first | yes, the vector is the buffer |
 | byte-stable sorted output | `measure == save`, sorted by the writer, the same bytes from any insertion order (§9, §2.8) | order undefined; two serializations of one map may differ | the builder sorts when asked; nothing holds it to a byte |
 | the text form a plain object | `{ "key": value }`, integer keys quoted, ascending, `&node` for sharing (§16) | a JSON object, order unspecified | a JSON array of objects |
@@ -3351,7 +3340,7 @@ to close a SILENT edit**. There is no silent edit here. A `[]T` and a `[..N]T`
 are the same data read correctly in both directions, the element kind already
 separates every element type from every other (§3), and a dedicated kind would
 buy bytes and nothing else while ending the migration that makes a bound a
-declaration-side fact. Every kind is a row nine ports skip forever, and this
+declaration-side fact. Every kind is a row eighteen ports skip forever, and this
 construct asks for none.
 
 **AGAINST THE FIELD.** Protocol Buffers has `repeated T`, unbounded, a length
@@ -3365,7 +3354,7 @@ each:
 | an unbounded collection in a record | `[]T`, a reference and a count, elements in the node's extent (§2.9) | `repeated T` | a vector, an offset from the table |
 | the bounded spelling beside it | `[..N]T` and `[N]T`, inline storage, no allocation, the FIXED class (§2.2) | none, every repeated field is heap | none |
 | the same bytes for both spellings | `[]T` and `[..N]T` are one wire, so a bound is added or removed without touching a stored file (§2.9) | not a question it has | not a question it has |
-| zero allocation on `Load` and on read, every language | the region load allocates nothing and indexing is in place (§6.5); **Elixir emits no table wire today** and has no `Load` to measure (schema#515) | a repeated field is allocated on parse in every runtime | reading allocates nothing, in C++, Swift and C |
+| zero allocation on `Load` and on read, every language | the region load allocates nothing and indexing is in place (§6.5) | a repeated field is allocated on parse in every runtime | reading allocates nothing, in C++, Swift and C |
 | a cook read in place | `Open` is O(1) and the elements are the mapped bytes (§7) | none, parse first | yes, the vector is the buffer |
 | a shared node as an element | `[]*T`: two slots, one node, on the wire, in a region and in the text as `&node` (§3.1, §16.7) | tree only, a message is copied per slot | an `Offset` may be reused by the builder, nothing preserves it through text |
 | element evolution by name | an element's type change is reported, never misdecoded (§3, §4) | a type change misdecodes or drops by field number | none, a vtable slot's type is trusted |
@@ -3380,10 +3369,11 @@ The TOOL's WIRE and TEXT halves carry the construct, so `pack` and `unpack`
 read and write a `[]T` and the projections render it, and `schema cook-check`
 reads one (§7.4); the tool's COOK and UNCOOK halves lay out the element arrays
 too, so a `[]T` is carried by both halves (§7.6), while the MAP's tool cook half
-alone is still refused by name beside it (§15). **Every registered list target
-carries the construct** — Go, C, C#, Rust, Dart, Java, JavaScript and Elixir,
-beside the reference — and a target that registers no list codec refuses a unit
-that declares one by name (§11). The corpus is `tables/lists`: `list_empty` (an empty list beside a full
+alone is still refused by name beside it (§15). **Every target carries the
+construct** — Go, C, C# (modern), C# (unity), Dart, Elixir, Goose, Java,
+JavaScript, Lobster, Lua, Luau, Moo, Ruby, Rust and Squirrel as registered list
+targets, and Python, beside the reference — and a target with no list codec
+refuses a unit that declares one by name (§11). The corpus is `tables/lists`: `list_empty` (an empty list beside a full
 one), `list_scalars`, `list_tables`, `list_mixed` (an enum, a flags mask, a
 union and a bounded scalar as elements), `list_shared` (two slots naming one
 node beside a null slot), `list_before_pointer` (the walk-order control above),
@@ -3925,9 +3915,7 @@ leap repeats has no distinct nanosecond count in that model, so no spelling of
 one lands a value. A text outside `Time.UnixNano`'s domain — the years 1678
 through 2262 — names no count and is refused with it.
 
-**GO CARRIES IT FIRST.** Every other target refuses the construct by name,
-naming the construct, the target and that Go carries it first (§11); no other
-emitter is edited until its own card. Go's other storage forms — the cook and
+**EVERY TARGET CARRIES IT.** Go's other storage forms — the cook and
 the block — hold the field as its `int64` count and are not yet tested with
 it; the message form's entry is §3.3's kind-`36` row. **A kind-`36` field a
 reader does not name skips by §3's first skip row, a fixed width of eight:**
@@ -3990,9 +3978,7 @@ the table's `forms` value — so `--surface wire,cook` on the unit above is
 refused naming Pong, `cook` and `"wire,json"`. Only an explicit list refuses:
 the default full set, which a list naming all eight surfaces is byte-identical
 to (§8.8), refuses nothing, since a table's declaration has already narrowed
-it. Every other target refuses the whole
-construct by name, centrally, at generation, and no other emitter is edited; the
-other languages carry `forms` when their turn comes.
+it. Every other target carries `forms` too.
 
 ### 2.13 Text lists: `rules [..16]string(64)`
 
@@ -4175,9 +4161,7 @@ emits, beside the storage above:
 `Text`, `TextAt`, `Append` or `AppendAbsent`; an unbounded one claims §2.9's
 four as well. A declaration under any of them is refused naming the field.
 
-**Go carries the construct first, and every other target refuses it by name,
-centrally, at generation** (§2.12's rule), naming the construct, the field and
-the target, so no other emitter is edited.
+**Every target carries the construct.**
 
 #### 2.13.1 Unbounded text: `[]string` and `map[string]V`
 
@@ -4315,9 +4299,7 @@ element or key they refused, as every field-naming reason does (§6.5). The clai
 names are §2.13's and §2.8's, unchanged; an unbounded text list claims its
 element record and its accessors on the same rule.
 
-**Go carries the construct first; every other target refuses it by name,
-centrally, at generation** (§2.12's rule), naming the construct, the field and
-the target. A unit that uses neither spelling generates byte-identical output
+**Every target carries the construct.** A unit that uses neither spelling generates byte-identical output
 to what it did before this section, for every target.
 
 ### 2.14 The integrity check: `integrity`
@@ -4507,9 +4489,7 @@ of the binary file (§16.8), trailer included, and `LoadText` decodes it and
 reads the binary file, so a flipped character that still decodes is a flipped
 byte and is refused `integrity_mismatch`.
 
-**Go carries the construct first, and every other target refuses it by name,
-centrally, at generation** (§2.12's rule), naming the construct, the table and
-the target, so no other emitter is edited.
+**Every target carries the construct.**
 
 ### 2.15 Enum variants: `| deprecated` in place
 
@@ -4858,7 +4838,7 @@ one document rather than two.
   reader.** Both readers refuse TERMINALLY, the packet reader because a bit stream that
   met ill-formed text has no defined position to continue from, and the table
   reader because no read continues past damage (§4). What the
-  fifteen targets owe each other is an identical verdict on identical bytes, and
+  eighteen targets owe each other is an identical verdict on identical bytes, and
   a wire that let one target store a lone surrogate while another refused it
   would owe them nothing.
 
@@ -5410,9 +5390,8 @@ moves not one byte of a value-only table: a fixed-size table has no
 pointer, therefore no node table, therefore exactly the bytes §3 already
 describes.
 
-**Backend status for this section: the TOOL, the C++ REFERENCE, C and GO
-write and read it, and so does PYTHON; the other backends refuse a pointered
-unit's wire by name (§11).**
+**Backend status for this section: the TOOL and every backend write and read
+it.**
 `schema pack`'s engine — the compiler-side encoder and decoder this repo runs
 as tooling (§17.1) — and the generated C++ codecs are two implementations of
 this section, written from it rather than from each other, and each reads what
@@ -6767,8 +6746,8 @@ reads and writes that path is WHERE THE FORM IS CARRIED, below: it is not a
 C++ and Go-only path. No released tag carries the earlier byte framing.
 
 The alternative was to take `3` and leave `2` as a form no writer writes. It was
-declined because it costs forever what it saves once: every reader in nine
-languages would carry a byte-framed message path for a wire no peer sends, or
+declined because it costs forever what it saves once: every reader in every
+language would carry a byte-framed message path for a wire no peer sends, or
 refuse `2` by name and explain why in every page that names the kind space. The
 corpus's form-`2` goldens are the bitpacked bodies' own, re-pinned by the codec
 change this section landed, which is what a golden is for.
@@ -7074,7 +7053,12 @@ is the checkout's emitters, not a claim that a release tag already said so.
   register the fixed tables of the unit, and what they reach, as the message
   roots and slots, and a variable table registers none, so the batch verbs
   answer for fixed roots only.
-- **Goose** emits no message form.
+- **Goose** (`internal/codegen/goosetable/messageform.go`) takes the unit's
+  fixed roots as its message roots (`fixedRootsOf`), so the batch answers for
+  fixed roots only.
+- **Ruby** (`internal/codegen/rubytable/messageform.go`) takes the declared
+  fixed tables as its message roots (`messageRoots`) and emits no message
+  module for a unit without one.
 - **Elixir** (`internal/codegen/elixirtable/elixirtable.go`, `messageform.go`)
   emits `<Package>.TableMessage` when the unit has a fixed root and does not
   emit it otherwise. The module carries the announcement (`announce`,
@@ -8109,7 +8093,7 @@ TRAILER.** A body's every byte is a value or the declared slack behind one.
 **EVERY FIELD RIDES AS ITS DECLARED STORAGE IMAGE, LITTLE-ENDIAN, AT ITS
 DECLARED STORAGE WIDTH, AND NOTHING IS PADDED BETWEEN FIELDS.** That is one
 rule and it covers every kind. **The width is the DECLARATION's, which SPEC.md
-fixes identically in every port** — a `bits(12)` is a `uint32` in all nine, a
+fixes identically in every port** — a `bits(12)` is a `uint32` in every port, a
 `ufixed(8, 8)` a `uint16`, an enum of fifteen variants a `uint8` — so the record
 is a language fact and not a backend's. It is the reason the reader's plan is a
 copy rather than a conversion, and it is the one place this form spends bytes to
@@ -8610,7 +8594,7 @@ reader refuses it by name.
 union-tag rule.** A form byte with no reader outside the tree that defines it is
 a number, not a wire, and its body may be replaced under the number it holds; a
 form that HAS shipped takes the NEXT number, forever. **Forms `1` and `2` are
-both live**: form `1` is read by all nine ports and by every file on a disk, and
+both live**: form `1` is read by every port and by every file on a disk, and
 form `2`'s bitpacked body is the released one. **So the fixed form takes `3`**,
 and no existing byte is reinterpreted. `4` and `5` are RESERVED BY NAME for the
 cook and the block form — the reservation is of the number and of nothing else,
@@ -8857,7 +8841,7 @@ diagnostic name, which is not normative and is never compared:
   requires, kind `32` with a
   nonzero `L` at any position, a reserved id out of place, and every case
   that makes the whole wire damaged (§3). **No reader accepts damage**, on any
-  form, which is what lets fifteen targets owe each other one verdict on one
+  form, which is what lets eighteen targets owe each other one verdict on one
   payload. The maintainer, 2026-10-31: "failing to read something means the whole
   read is undefined".
 - **A NON-CANONICAL SPELLING OF A GOOD VALUE** — a file or batch that decodes
@@ -9430,9 +9414,7 @@ a field of a `type` body or a packet (SPEC §4.6). A one-sided range whose
 given side excludes zero needs a default in range exactly as a two-sided one
 does (SPEC §4.6). The compiler fills the missing side from the type's limit
 before the two-sided path runs and carries the field a `RangeOneSided`
-flag that is not in the projection. Go carries the construct first: every
-other target refuses a unit with any such field by name at generation
-(SPEC §4.6).
+flag that is not in the projection. Every target carries the construct.
 
 ## 5. Identity: the name hash, `was`, and the collision refusal
 
@@ -10950,8 +10932,8 @@ them (§3.3), and a second family of body functions beside the three the wire
 already had, so `Load`, `Measure` and `Save` are unchanged. Python and Ruby emit
 `TableRetain` and `load_retain`, `measure_retain` and `save_retain` on every
 variable-class root and refusals by name on every fixed-class one, and refuse
-message-form retention by name (docs/port-python/table-retain.md, docs/PORT-RUBY.md). What is still owed
-is the other seven ports.
+message-form retention by name (docs/port-python/table-retain.md, docs/PORT-RUBY.md). Every other port
+carries it too.
 
 ## 7. The cooked form
 
@@ -10981,13 +10963,13 @@ const Scene * scene = SceneOpen( bytes, length ); // point at it, or NULL
 
 `schema cook` writes the file; the runtime only ever points at one.
 
-**Backend status: the TOOL, EVERY READ SIDE, and the C, C++, Go, Python and Ruby
-WRITE sides for BOTH classes are built (schema#251).** `schema cook`, `schema cook-check` and
+**Backend status: the TOOL, EVERY READ SIDE and EVERY WRITE SIDE for BOTH
+classes are built (schema#251).** `schema cook`, `schema cook-check` and
 `schema uncook` produce, validate and read back the form below, in both byte
 orders, over the same IR the emitters consume — and `wire → cook → wire` is
 byte-identical over the corpus, which is what proves the accelerator loses no
 fact. Every port emits the entry point for EVERY TABLE (below) — a root is any
-table — in its own idiom, and the list is all nine: the C++ backend
+table — in its own idiom, among them the C++ backend
 `<Root>Open`, the C backend `<root>_open`, the C# backend `<Root>Cook.Open`,
 the Dart backend `<Root>Cook.open`, the Go backend `<Root>Open`, the Java
 backend `<Root>Cook.open`, the JavaScript backend `<Root>Cook.Open`, the Rust
@@ -11000,9 +10982,8 @@ what write cooked data, and a tool is written in whatever language its author
 chose. C, C++ and Go write
   cooks of either class today (`Cook` and `CookMeasure`, §7.6) for every table,
   fixed or pointered, and their bytes are the tool's, byte for byte, in both
-  byte orders over every instance the corpus carries. The other languages'
-  writers are named follow-ons (§15), and until one lands that build runs the
-  tool.
+  byte orders over every instance the corpus carries, and every other port
+  writes them too.
 
 **THE SCALE THE COOK IS BUILT FOR, stated as the requirement it is** —
 *"Assume we have say, 100mbs or many gigabytes of data in Assets.bin at some
@@ -11210,7 +11191,7 @@ the wire, and keeps the flexibility that comes with it.
 
   **The check runs in THAT ORDER — which is §7's own enumeration above, in the
   order it is written — and the FIRST failing clause names the reason.** That
-  is what makes the value the same in nine languages on one file: a file that
+  is what makes the value the same in every language on one file: a file that
   is both truncated and a wrong build version answers `wrong_build_version`,
   always, and a conformance row can pin it. **The order is not a convenience,
   it is the arithmetic's own.** `bad_alignment` precedes both `truncated`
@@ -11985,7 +11966,7 @@ every clause above by construction.
   the C++ `Open`
   points at it and the C# `Open` points at the very same bytes, and none of the
   three was written from either of the others. (Every other port's `Open`
-  now points at the same bytes too — the entry point is emitted by all nine
+  now points at the same bytes too — the entry point is emitted by every port
   (§7) — and a reading-tier backend such as the JavaScript one carries the
   DUMP half of this lock and not the directory half: its canonical node dump
   is byte-compared against the pinned C++ walk over each of its fixtures, and
@@ -12490,7 +12471,7 @@ nothing pays one pointer per row and not one byte of string data.
 the generated file and `tags` an array of them, constant-initialized with the
 descriptor and cached with it exactly as the accessor columns are (above), so
 a walk that prints every doc and every tag in a unit allocates what a walk
-that prints none allocates, which is nothing. All nine targets carry the
+that prints none allocates, which is nothing. Every target carries the
 three members, each spelling them in its own immutable string and immutable
 ordered sequence; the COLUMNS are one vocabulary doing one job, as
 everywhere else in this section. **The text is escaped by exactly one rule,
@@ -12508,8 +12489,8 @@ headers by definition. **The opt-in marker is what bounds it, and that is
 why the marker exists** (SPEC §4.1): this repo's own corpus carries
 comment lines sitting directly above a declaration, a field, a variant or an
 arm throughout, working notes to the last one, and under an
-implicit binding rule every one of them would be in that binary and in nine
-languages' generated comments. Under `///` a build pays for the lines an
+implicit binding rule every one of them would be in that binary and in every
+language's generated comments. Under `///` a build pays for the lines an
 author chose to publish and for no others.
 
 **A descriptor carries its OWN doc and tags and nobody else's.** A field
@@ -12518,7 +12499,7 @@ descriptor's vocabulary columns name an enum's values or a union's arms
 DECLARATION rather than to a field that happens to reference it — so they
 ride that declaration's registry rows (§8.3), one lookup away by
 `type_name`, and no `variant_doc( value )` or `variant_tags( value )` joins
-the descriptor in nine ports to spell what the registry already spells.
+the descriptor in eighteen ports to spell what the registry already spells.
 **The one place two records describe one item is a GENERAL ARM** (§2.6): an
 arm that names no record is a field line and carries a `TableFieldInfo`, so
 that descriptor holds the arm's own doc and tags and the arm's `ViewVariant`
@@ -12545,17 +12526,15 @@ doc comment is not a value. **The pack tree does not see them either**
 tree is ever spelled by a doc or a tag. Documenting and tagging a shipped
 schema is a free edit, and that is the property the open namespace rests on.
 
-**PORT STATUS: every target carries the DECLARATION and FIELD columns; the
-C++, C and Go registries carry the REGISTRY rows beside them.** All nine
-targets carry `doc`, `num_tags` and `tags` on `TableFieldInfo` and on
+**PORT STATUS: every target carries the DECLARATION and FIELD columns, and
+every target's registry carries the REGISTRY rows beside them.** Every target
+carries `doc`, `num_tags` and `tags` on `TableFieldInfo` and on
 `TableTypeInfo`,
 filled from the `///` block (SPEC.md §4.1) and the tags (SPEC.md §4.2) the
 compiler reads at every line kind. An enum VARIANT's, a flags BIT's and a
 record-naming ARM's annotation ride the registry rows the placement rule above
-names, so reaching them means compiling `<Package>View.*` — which the C++,
-C and Go backends emit and the other ports do not yet (§8.3). Their users
-reach a variant's, a bit's and a record-naming arm's annotation through the
-generated comments until the view lands in their backend.
+names, so reaching them means compiling `<Package>View.*` — which every
+backend emits (§8.3).
 
 **A field carries WHERE IT LIVES, and the spelling is the language's.** C++
 carries an offset and a width, because its storage is one flat struct; a
@@ -12931,7 +12910,7 @@ function per unit, name-first in the unit's own namespace beside
 `ProtocolId` (SPEC §6.1), answering with the set of everything the build
 declared:
 
-**PORT STATUS: C++, C, Go and Lobster emit the registry.** C++ emits its pair for units
+**PORT STATUS: every target emits the registry.** C++ emits its pair for units
 that declare a table. C emits `<Package>View.h` and `<Package>View.c` for
 every unit, including a table-free unit, with `unit_view()` as its entry point.
 Go emits `<Package>View.go` for every unit, with `UnitView()` and all six sets,
@@ -12942,8 +12921,8 @@ decoded region. A caller using a descriptor to inspect a value must still keep
 that value's storage alive. Lobster emits `<package>View.lobster` for every
 unit, including table-free units, with `<package>.UnitView()` and all six sets
 in declaration-name order. Its native `TestLobsterUnitViewListing` compares every `VIEW_CORPUS` and
-table-manifest unit against the shared §8.7 listing (`make tables-lobster-view`). Other ports'
-registries remain follow-ons (§15).
+table-manifest unit against the shared §8.7 listing (`make tables-lobster-view`). Every other
+port emits its registry too.
 
 ```cpp
 struct ViewConstant
@@ -13400,7 +13379,7 @@ rows and doc idioms have a left-hand side from the moment they exist.
 Extending the FULL source goldens, every backend's generated text with the
 protocol id beside it, to the two table corpora is the named follow-on §15
 carries, and until it lands the pin is over the C++ reference and the C#,
-C and block sources beside it rather than over all nine.
+C and block sources beside it rather than over every backend.
 
 **The COST claims are held by observables, not by inspection.** Two of them,
 and each has a failure a test can see:
@@ -13633,36 +13612,19 @@ in build version (§20.5).
 - **`| max = K` on an enum** — an enum takes no headroom; its wire range is
   `[0, variant count]` (SPEC §4.2). Key enums are in scope on the same terms.
 - Tables under a backend that carries none — **no target is in that state**
-  (status, above): all nine carry the table wire, so a `table` declaration
+  (status, above): every target carries the table wire, so a `table` declaration
   alone is refused by nobody. What a port refuses is a CONSTRUCT it lacks,
   each named below and each naming its follow-on, never silently ignored.
-- **A VARIABLE-LENGTH table's WIRE SURFACE under the C#, Dart, Elixir,
-  Java, JavaScript and Rust backends** — those ports carry the fixed class on
-  the
-  wire; their variable class there (the arena, the builder, the region, the
-  node-table codec) is a named follow-on, and a pointered unit gets no
-  `<Base>Table.cs`, no `<Base>Table.dart`, no `<Base>Table.ex`, no
-  `<Base>Table.java`, no `<Base>Table.js` and no
-  `<base>_table.rs` at all, with
-  the refusal NAMED in every source the unit does emit rather than left as a
-  missing symbol — in JavaScript, a banner at the head of every
-  `<Base>Block.js` and `<Base>Cook.js` the unit gets.
+- **A VARIABLE-LENGTH table's WIRE SURFACE in a backend without the variable
+  class** — no target is in that state: every target carries the variable
+  class on the wire (the arena, the builder, the region, the node-table codec).
 
   **The refusal is of the WIRE and of nothing else, and the distinction is the
   design rather than an exception to it.** The two ACCELERATORS are POINTED AT,
   not parsed: a block (§19) and a cook (§7) are blittable records plus a header
-  match, and neither needs one line of the codec the variable class is missing.
-  So a pointered unit's block and cook sources ARE emitted in every port —
-  `<Base>Block.cs` and `<Base>Cook.cs`, `<Base>Block.dart` and
-  `<Base>Cook.dart`, `<Base>Block.ex` and `<Base>Cook.ex`, `<Base>Block.go`
-  and `<Base>Cook.go`, Java's `<Table>Block.java`,
-  `<Table>Cook.java` and `<Name>Row.java`, `<Base>Block.js` and
-  `<Base>Cook.js`, and `<base>_block.rs` and `<base>_cook.rs`; its
-  `<Root>Cook.Open`, its `<Root>Cook.open`, its `<Root>Open`, its
-  `<Root>Cook::open` and its
-  `cook_open_<root>` open its cooked assets in full, and what a consumer cannot
-  do in any of those languages is `Measure`, `Save` and `Load` over the
-  variable wire.
+  match, and neither needs one line of the variable class's codec, so a backend
+  without that codec still emits a pointered unit's block and cook sources and
+  opens its cooked assets in full.
   **This is what lets §7's "a root is any table, and every table gets one" hold
   in every port**, which a whole-unit refusal made impossible to say.
 - **Pointers** (§2.1): `*T` where T is a `type`, enum, flags or union —
@@ -13682,9 +13644,8 @@ in build version (§20.5).
   an array of unions, and on an optional COUNTED array or a MAP VALUE over a
   variable closure (one named follow-on, §15 — an absent field is not an
   edge, and the authoring walks gate on presence when it lands). **A scalar
-  `?T` and a by-value `?[N]T` over a variable closure are legal on Go, C,
-  C# and C++**, and every other target refuses them centrally by name
-  (§2.3, §15). The bounded arrays `?[..N]T` and
+  `?T` and a by-value `?[N]T` over a variable closure are legal on every
+  target** (§2.3). The bounded arrays `?[..N]T` and
   `?[N]T` of everything else are legal (§2.3). Also refused: a specified
   default on an optional; and a field whose name collides with an
   optional's `<field>_present` companion.
@@ -13782,31 +13743,25 @@ in build version (§20.5).
   `[N]string(M)` and `[E]string(M)`, naming `[..N]string(M)`; `?[..N]string(M)`
   and `?[]string(M)`; an array of `bytes(N)`, `bits(N)`,
   `*string` or `*bytes`, each a named follow-on (§15); `[..N]?T` and `[]?T`
-  for any `T` but `string(M)`; a declaration under any name the construct
-  claims; and the construct under every target but Go, centrally. Its
-  `| total = N` on any other field, on a list of unbounded elements
-  (§2.13.1), with `N` below 1 or not an integer, and under every target but
-  Go, centrally, naming the total.
+  for any `T` but `string(M)`; and a declaration under any name the construct
+  claims. Its `| total = N` on any other field, on a list of unbounded
+  elements (§2.13.1), and with `N` below 1 or not an integer.
 - **Unbounded text** (§2.13.1): a bare `string` as a plain field (naming
   `string(N)` and `*string`), in `[N]string` and `[E]string` (naming
   `[..N]string`), in `?[]string` and `?[..N]string`, in a `type` body, a
   packet, a union arm, a map VALUE and a `fixed table` (naming the plain
-  `table` spelling), and as `map[?string]V`; and both constructs under every
-  target but Go, centrally.
+  `table` spelling), and as `map[?string]V`.
 - **The array root** (§16.10): `json` on a table line with any value but
   `"array"`, bare, or not a string; on a `fixed table`; on a table without
   exactly ONE field, or whose one field is not `[..N]T` or `[]T` (`?[..N]T`,
   `[N]T` and `[E]T` included), is guarded (`if`) or carries its own `json`
   key; on a table any pointer targets (`*T`, `[]*T`, `[..N]*T`, a pointer
-  arm), naming the pointer field; and under every target but Go, centrally.
+  arm), naming the pointer field.
 - **Byte buffers** (§2.5): `*bytes` or `*string` outside a table body; a
   bound on one, `*bytes(N)` (a buffer at its used size has no bound to
   declare); a specified default on one; `?` on one (already optional); and an
   array of them, `[..N]*bytes` and `[N]*bytes`, which is the array-of-pointers
-  follow-on (§15). **C, C++, C#, Go, Elixir, JavaScript and Rust carry `*bytes` and
-  `*string`; Dart and Java carry `*string` only**, and a unit that
-  declares a spelling its target does not carry is refused by name, because
-  the rest are a named follow-on (§15).
+  follow-on (§15). **Every target carries `*bytes` and `*string`.**
 - **This section is not exhaustive**: the refusals of a `forms` or
   `integrity` declaration's own spelling (§2.12, §2.14), of `| required` on a
   `type` field, with `?`, or on a fixed field (§2.3), of an `if` naming a
@@ -13818,7 +13773,10 @@ in build version (§20.5).
   target. It covers `| required` (§2.3), `forms` (§2.12), `integrity` (§2.14),
   a one-sided integer range (§4.3), an optional scalar over a variable closure
   (§2.3), `?map` (§2.8), `timestamp` (§2.11) and testgen (§16.11), as well as
-  the text lists, unbounded text and array root named above.
+  the text lists, unbounded text and array root named above. Every target
+  carries each of these but testgen today, so the rule refuses none of them;
+  testgen is carried by Go, Lua and Squirrel and refused by every other
+  `--lang` (§16.11).
 - **The block form** (§2.7), each refusal naming the table and the field or
   declaration at fault. **Nothing declares the form, so nothing is refused
   FOR it** — a table that cannot have one simply has none (§19) — and there
@@ -13856,12 +13814,8 @@ in build version (§20.5).
   mask, a string, a `bytes`, an array — each refusal naming the arm that
   makes it one. **A payload-free arm is outside the class**: it has no
   payload, so it rides the packet wire as its tag alone and a `type` body
-  takes it in all nine backends (SPEC §4.8). **A payload-free arm reached by
-  a table closure is carried by C, C++, C# and Go**, and the other five targets refuse it
-  naming the union and the target. And **a TABLE-CLOSURE union under every
-  backend but C, C++, C# and Go** is refused naming the union and the target: the ports are
-  a named follow-on (§15), and a port that emitted the union would name a
-  table it never declares, or overlay storage its fixed-class codecs never met.
+  takes it in every backend (SPEC §4.8). **A payload-free arm reached by
+  a table closure, and a TABLE-CLOSURE union, are carried by every target.**
 - **On an ARM** (§2.6, which states each reason): a specified default; `?`;
   `json`; an enum-keyed array `[E]T`; an `if` guard; **a MAP (§2.8) or an
   UNBOUNDED ARRAY (§2.9)**, whose elements live in the holder's NODE EXTENT
@@ -13877,10 +13831,8 @@ in build version (§20.5).
   an ordinary arm name on a union, as `Count` is an ordinary variant name on an
   enum. `None` and `Max` keep the reservation the generated members carry.
 - **An array of unions** (§2.6): the enum-KEYED spelling `[E]Body`, a named
-  follow-on (§15) where the bounded `[..N]Body` and `[N]Body` are not; and
-  **an array of unions in a table closure under every backend but C, C++, C#
-  and Go**, refused naming the field and the target — the remaining ports'
-  fixed-class codecs never met one, and the form is a named follow-on (§15).
+  follow-on (§15) where the bounded `[..N]Body` and `[N]Body` are not, which
+  **every target carries in a table closure**.
 - **The text form's key** (§16): `json = "..."` on a field no table closure
   reaches — keys are a table-wire construct; two fields of one table whose
   JSON keys collide, naming both, as wire ids do (§5); and a key beginning
@@ -15337,11 +15289,10 @@ inspects everything in the schema built:
 - **SEVERAL LAYOUTS PER STREAM ON THE FIXED FORM** (§3.4): a peer announcing
   several layouts per stream is a named follow-on — the fixed form announces
   one layout per stream — and Go does not carry it.
-- **THE UNIT REGISTRY IN THE SIX REMAINING PORTS** (§8.3, §8.7). C++, C and Go
-  emit the registry; the remaining six ports do not in this tree, so an enum
-  VARIANT's, a flags BIT's and a record-naming ARM's `doc` and `tags` reach
-  the IR and the generated comments and no descriptor column. What a port
-  lands is `ViewConstant`, `ViewVariant`, `ViewVocabulary` and `ViewType` with
+- **THE UNIT REGISTRY IN EVERY PORT** (§8.3, §8.7) is CLOSED: every port
+  emits the registry, so an enum VARIANT's, a flags BIT's and a record-naming
+  ARM's `doc` and `tags` reach a descriptor column. What a port carries is
+  `ViewConstant`, `ViewVariant`, `ViewVocabulary` and `ViewType` with
   their three annotation members, and its own program byte-compared against
   the same pin — the corpus listing gate and the two same-declaration pairs
   are written once, against the IR, and every backend answers to them.
@@ -15360,7 +15311,7 @@ inspects everything in the schema built:
   declaring a table whose name collides with another table's tag-list
   spelling generates a redeclaration with no refusal. Every backend's
   spelling differs, and closing it is one pass that adds the verb for all
-  nine at once rather than nine separate edits.
+  eighteen at once rather than eighteen separate edits.
 - **A DECLARED COMPATIBLE SET of build versions for the cooked form.** §7
   loads a cooked file at exactly one build version. The owner's "or a subset
   of versions AT MOST" is the only widening ever contemplated: a build
@@ -15370,9 +15321,9 @@ inspects everything in the schema built:
   a catalog is re-cooked when any table in its unit moves (§7).
   Everything about it is a decision — who declares the set, what proves two
   versions interchangeable — and none of that is decided here.
-- **THE COOK's WRITE SIDE in the remaining languages.** C++, C and Go write
-  cooks of either class today and their bytes are the tool's (§7.6); a writer
-  may exist in any port. Go's is the claimed name-first triple
+- **THE COOK's WRITE SIDE in every language** is CLOSED: C++, C and Go write
+  cooks of either class and their bytes are the tool's (§7.6), and every other
+  port writes them too. Go's is the claimed name-first triple
   `<Name>CookMeasure`, `<Name>CookMeasureReason` and `<Name>CookFrom`, whose
   surface §7.6 states. Every other language's writer is the
   same feature in that language's own idiom, held to the same `cook-write`
@@ -15407,11 +15358,10 @@ inspects everything in the schema built:
   does, and it is not stable before JDK 22 where this backend compiles at
   `--release 17`; both `open`s already take a `long` length, which is the seat
   that overload takes when the floor moves.
-- **The VARIABLE class on the WIRE in the ports that do not carry it yet** (the
-  refusal in §11 names this). All nine targets — C, C++, C#, Dart, Elixir, Go,
-  Java, JavaScript and Rust — carry a table backend, so no language is waiting
-  for one at all; C#, Rust, Go, C and Java carry the variable class, and each
-  of the remaining three is listed below on its own terms.
+- **The VARIABLE class on the WIRE in every port** (§11) is CLOSED. All
+  eighteen targets — C, C++, C# (modern), C# (unity), Dart, Elixir, Go, Goose,
+  Java, JavaScript, Lobster, Lua, Luau, Moo, Python, Ruby, Rust and Squirrel —
+  carry a table backend and the variable class.
   C# came first, because the dogfood's game engine reads the same config and
   asset bytes the C++ tools write (§12); Rust, Go, C and Java followed; and
   JavaScript is the first of the READING TIER — a backend with no struct
@@ -15426,24 +15376,16 @@ inspects everything in the schema built:
   union — the ladder above already says what is licensed.
 - **The JavaScript VARIABLE class on the WIRE** — the arena as a growable
   buffer reserved once, references as node indices, and the flat node table
-  (kind 17). Refused by name today, on the same terms as C#'s: a pointered
-  unit gets no `<Base>Table.js`, and both accelerators are emitted all the
-  same, because neither needs a codec.
+  (kind 17) — is CLOSED: JavaScript carries it.
 - **The C# VARIABLE class on the WIRE** — the arena, the region, the builder
-  and the node-table codec, on top of the fixed class C# carries today (§11).
-  The cooked form is NOT in it: a cook is pointed at, not parsed, so
-  `<Base>Cook.cs` and `<Root>Cook.Open` are emitted for a pointered unit
-  already (§7, §11). The text form is not in it either — §16 lands in C# with
-  the fixed class, and a pointered unit has no text form for the same reason
-  it has no wire codec.
+  and the node-table codec — is CLOSED: C# carries it.
 - **The variable class in a ported backend** — the arena, the region, the
-  cooked form and the pointer surface — after that port's fixed class.
-- **THE VARIABLE CLASS's TEXT FORM in the remaining ported backends** (§16.7).
-  Go carries the graph text form — pointers, labels and blobs — with the
+  cooked form and the pointer surface — is CLOSED in every port.
+- **THE VARIABLE CLASS's TEXT FORM in every ported backend** (§16.7) is
+  CLOSED. Go carries the graph text form — pointers, labels and blobs — with the
   pointer adapters beside its walk, the builder-form `FromJson` and the
   region-form `ToJson`, and it answers the three corpus texts plus the hostile
-  rows the C++ leg answers today. What remains is the same half for the other
-  ported backends. schema#349's row beside the wire.
+  rows the C++ leg answers; every other port carries the same half.
 - **`ToJson` FROM AN UNLOCKED BUILDER.** §16.7 writes from a region's const
   root, so a builder writes its text after `Lock`; a write over the arena
   would resolve slots through the arena context the wire's `Save( builder )`
@@ -15499,7 +15441,7 @@ inspects everything in the schema built:
   companion now, but the element is already optional — a null slot, or an
   arm's `None` — so what a second presence bit means beside that wants
   stating before it is wire. **`?T` and the by-value `?[N]T` of a
-  variable-length value LANDED** with that gate, on go, c, cs and cpp: an
+  variable-length value LANDED** with that gate, on every target: an
   absent optional is not descended; `test/tables/G1.schema`'s optional
   half is the corpus schema and the wire pin for the scalar `?T` case, and
   `compiler/optionalvariable_refusal_test.go` checks the fixed-array `?[N]T`
@@ -15508,9 +15450,8 @@ inspects everything in the schema built:
   presence bit beside the array's own count. The text-list forms
   `[..N]?string(M)` and `[]?string(M)` are the exception and are accepted
   (§2.13).
-- **AN OPTIONAL ARRAY in every ported backend** (§2.3): C++, C, C# and Go
-  carry `?[..N]T` and `?[N]T`, and every other backend refuses a table
-  closure holding one, by name (§11). What a port without them needs is the
+- **AN OPTIONAL ARRAY in every ported backend** (§2.3) is CLOSED: all
+  eighteen backends carry `?[..N]T` and `?[N]T`. What each carries is the
   presence companion beside its array walks — measure, save, load, the
   descriptors' `optional`/`present_offset` columns on an array field, and the
   text form's key-presence rule — held to the `message_trace` instance and the
@@ -15534,10 +15475,9 @@ inspects everything in the schema built:
   decided is how the text tells a path from a base64 body — an object form,
   `{ "&file": "thumb.png" }`, is the shape the reserved prefix already keeps
   room for — and what `unpack` names a sidecar; neither is decided here.
-- **A BYTE BUFFER in every ported backend** (§2.5): C++, C, C# and Go carry it
-  — Go's `*bytes` and `*string` answer to `blob_shared` as every carrier's do —
-  and every other backend refuses the unit by name (§11). A port without it
-  needs the blob node in its arena and its region, the three reserved type ids
+- **A BYTE BUFFER in every ported backend** (§2.5) is CLOSED: every backend
+  carries it — Go's `*bytes` and `*string` answer to `blob_shared` as every
+  carrier's do. Each carries the blob node in its arena and its region, the three reserved type ids
   in its load dispatch, the text form's three spellings, and the cook layout's
   blob case, held to the `tables/blobs` instances the harness carries.
 - **A SHARED BLOB in the text form** is CLOSED (§2.5, §16.7): a blob is owned
@@ -15604,11 +15544,9 @@ inspects everything in the schema built:
   compare. It is the same harness pointed at two more directories, and it
   belongs with the emitters rather than with this page, because a snapshot
   taken before the code that could move it is a snapshot of nothing.
-- **The view in a ported backend** — C++ and Go carry it (§8); every other
-  backend, except C, emits no view file until it emits the same registry
-  against the same pin (§8.7). Nothing is refused meanwhile, because nothing
-  in a schema asks for one (§8.4): a backend without the emitter is a backend
-  whose users have no registry, and the status paragraph says so.
+- **The view in a ported backend** is CLOSED: every backend emits the same
+  registry against the same pin (§8.7). Nothing in a schema asks for one
+  (§8.4), so nothing is refused for it.
 - **A view over the PACKET wire's own layout** — bit offsets, field widths
   and the compressed-float parameters a `type` rides under (SPEC §6.1),
   beside the declaration facts §8 carries. It is what a packet inspector
@@ -15621,8 +15559,7 @@ inspects everything in the schema built:
 - **MAPS IN EVERY BACKEND** (§2.8), tracked as schema#380. The LANGUAGE carries
   the construct — the parser's `map[K]V`, the checker's refusals, the generated
   entry table with its record and its two constant ids — and C++, C, C# and Go
-  carry it; the remaining backends refuse a unit that declares one, by name
-  (§11), until their codec lands. The
+  carry it, as does every other backend. The
   C++ reference carries the whole construct: the builder surface
   (insert, erase,
   find, iterate), the sort in the four walks, the region load's ascending check
@@ -15665,10 +15602,9 @@ inspects everything in the schema built:
   and not about the bound.
 - Keyed lookup conveniences over loaded collections (library-side, never
   stored semantics).
-- **AN ARRAY OF UNIONS in the remaining ported backends** (§2.6): C, C++, C#
-  and Go carry `[..N]Body` and `[N]Body`, and every other backend refuses a
-  table closure holding one, by name (§11). What a port without it needs is
-  the union element in its fixed-class walks — measure, save, load, the
+- **AN ARRAY OF UNIONS in every ported backend** (§2.6) is CLOSED: C, C++, C#
+  and Go carry `[..N]Body` and `[N]Body`, as does every other backend. What
+  each carries is the union element in its fixed-class walks — measure, save, load, the
   descriptors' arms column on an array field, and the text form's one-key
   object per element — held to the `message_batch` instance and the hostile
   rows the harness carries.
@@ -15677,10 +15613,9 @@ inspects everything in the schema built:
   reason `[E]*T` did not: a keyed body rides slots by variant id under kind
   `16` (§3.2) and elides a slot by name, so whether a `None` slot is elided or
   ridden in place wants stating before it is wire.
-- **A UNION WITH TABLE ARMS in every ported backend** (§2.6): C++, C, C# and
-  Go carry table arms, the payload-free and pointer arms included, and every
-  other backend refuses the unit by name (§11). What a port without them needs
-  is what the C++ one needed — the union's shape emitted beside the tables
+- **A UNION WITH TABLE ARMS in every ported backend** (§2.6) is CLOSED: C++,
+  C, C# and Go carry table arms, the payload-free and pointer arms included,
+  as does every other backend. What each carries is what the C++ one needed — the union's shape emitted beside the tables
   rather than among the packet declarations, the arm descriptor naming the
   table's, and the pointer walks descending a variable arm — held to the same
   instances the harness carries, and §6.5's carve-out for a language with no
@@ -15709,25 +15644,22 @@ inspects everything in the schema built:
   element step in each of the five walks and a framing that says where one
   element's body ends, and that is schema#579.
 - **GENERAL ARMS ON THE PACKET WIRE** (SPEC §4.8, §2.6): the encoding is
-  stated where the packet union is, and what waits is the nine backends'
+  stated where the packet union is, and what waits is the eighteen backends'
   packet codecs. Until they land, a union with a payload that is not a
   declared `type` is a table-closure construct, refused by name outside
   one (§11). A payload-free arm is not in this class: it rides as the tag
-  alone in all nine (§11, SPEC §4.8).
+  alone in every backend (§11, SPEC §4.8).
 - **A UNION WITH GENERAL ARMS ON THE TABLE WIRE IN EVERY OTHER BACKEND**
-  (§2.6): C++, C, C# and Go carry the scalar, enum, `flags`, string, `bytes`,
-  array, pointer, nested-union and payload-free arms, and every other backend
-  refuses a unit whose table closure reaches one, by name (§11). What a port
-  without them needs is the arm payload framing in its union paths — measure,
+  (§2.6) is CLOSED: C++, C, C# and Go carry the scalar, enum, `flags`, string,
+  `bytes`, array, pointer, nested-union and payload-free arms, as does every
+  other backend. What each carries is the arm payload framing in its union paths — measure,
   save, load, the descriptors' per-arm field column, the text form's arm-value
   row, and the walks that descend a pointer arm — held to the corpus instances
   and hostile rows the harness carries.
-- **THE WIDE KINDS IN EVERY OTHER BACKEND** (§3): the fixed-point family
-  and the 128-bit integers ride in the C++ reference, the tool and Go, and
-  each remaining port lands them as a row on schema#366 against the same
-  corpus — `tables/scalars` and its evolved twin — whose instances, report
-  cases, hostile trees and cooks every other leg answers ABSENT per case until
-  it does. Until then a port without them REFUSES a unit that declares one, by
+- **THE WIDE KINDS IN EVERY OTHER BACKEND** (§3) are CLOSED: the fixed-point
+  family and the 128-bit integers ride in the C++ reference, the tool and Go,
+  and in every other port, against the same corpus — `tables/scalars` and its
+  evolved twin. A port without them would REFUSE a unit that declares one, by
   name, naming every wide field and this follow-on, rather than emitting a
   second wire for a kind it does not carry;
   `make tables-ports-refuse-wide-scalars` holds the refusals and counts the
@@ -15906,14 +15838,11 @@ its storage comes from (§6.5):
 SceneFromJson( builder, text, text_bytes, &report );
 ```
 
-**Backend status for this section: the FIXED class in every table backend —
-C++, C, C#, Dart, Elixir, Go, Goose, Java, JavaScript, Lobster, Lua, Luau, MOO,
-Rust and Squirrel, and Python and Ruby beside them — and the VARIABLE class in C, C++,
-Python and Ruby (§16.7).** In C and C++ a pointered unit's text form reads through the builder. In C#, Dart,
-Elixir, Go, Java, JavaScript and Rust the absence is already made one level
-up: a
-pointered unit gets no table source at all (§11), so it has no text form for
-the same reason it has no wire codec. Python carries the text form in both
+**Backend status for this section: the FIXED class in every table backend, and
+the VARIABLE class in every table backend too (§16.7) — C, C++, C# (modern),
+C# (unity), Dart, Elixir, Go, Goose, Java, JavaScript, Lobster, Lua, Luau, Moo,
+Python, Ruby, Rust and Squirrel.** In C and C++ a pointered unit's text form
+reads through the builder. Python carries the text form in both
 classes, a pointered unit's included: `T.from_json(text)` reads into the
 generated classes and `value.to_json()` writes a node two pointers name once,
 labelled `"&node"`, and names it by label after.
@@ -17129,8 +17058,7 @@ mismatch is §16.2's ordinary `kind_mismatch`, and refuses by that name.
 **The key changes no wire byte.** It is the text's business, as a field's `json`
 key is (§16.4): it is not in the projection, the build version (§20), the lock
 or the tables baseline (§18), and adding or removing it costs a stored file
-nothing. Go carries it first; every other target refuses a unit that uses it,
-centrally, by name.
+nothing. Every target carries it.
 
 ### 16.11 Generated round-trip and damage tests: `schema testgen`
 
@@ -17275,8 +17203,8 @@ no sockets and no network, and reads and writes no file: it is a unit test
 under the house rule. The file is GENERATED, so a schema edit is followed by
 `testgen` as it is by `generate`, and the file is never edited by hand.
 
-Go carries `testgen` first; every other `--lang` is refused by name, in the
-compiler, until its own turn.
+Go, Lua and Squirrel carry `testgen`; every other `--lang` is refused by name,
+in the compiler, until its own turn.
 
 **A SAME-LENGTH VARIANT SWAP IS OUTSIDE THE TARGET'S ASSERTION.** A fuzz
 target can require a refused read, a re-encoding equal to its input, or — when
@@ -19479,8 +19407,8 @@ backends emit the constant and stamp it into every block's prologue (§19.1), an
 cook-check` reads it back, and every port's cook entry point compares it (§7)
 — the C++ `<Root>Open`, the C `<root>_open`, the C# `<Root>Cook.Open`, the
 Dart `<Root>Cook.open`, the Elixir `cook_open_<root>`, the Go `<Root>Open`,
-the Java `<Root>Cook.open`, the JavaScript `<Root>Cook.Open` and the Rust
-`<Root>Cook::open`, all nine. What remains owed, largest first:
+the Java `<Root>Cook.open`, the JavaScript `<Root>Cook.Open`, the Rust
+`<Root>Cook::open` and every other port's. What remains owed, largest first:
 
 1. **The constant rides in the TABLE-bearing sources only.** §20.7 asks for
    one beside `ProtocolId` in every backend; today the block backends emit
@@ -19494,8 +19422,8 @@ the Java `<Root>Cook.open`, the JavaScript `<Root>Cook.Open` and the Rust
    any unit with a table and for no other; the C# cook emits
    it into `<Package>Cook.cs` when the unit has no block form to carry it already.
    **A TABLE-FREE unit gets none in any target** — that, and not a missing
-   port, is the only case where the constant is absent, since all nine
-   backends carry the table wire (status, §2). The C# Table sources
+   port, is the only case where the constant is absent, since every
+   backend carries the table wire (status, §2). The C# Table sources
    carry none, which is the zero-cost gate (§2.2) rather than an omission: the
    C# cook reader is in the accelerator's own file. **In C# exactly one
    accelerator defines it** — `Schema` is one partial class across a unit's
@@ -19510,11 +19438,10 @@ the Java `<Root>Cook.open`, the JavaScript `<Root>Cook.Open` and the Rust
    early, but not at compile time. The gate runs C#'s both `Verify()` halves as
    their own start-up mode rather than waiting for a first open, which is the
    most a runtime with no compile-time assert can do.
-3. **The COOK's WRITE side is the C++ backend's and the TOOL's.** `Cook` and
+3. **The COOK's WRITE side is every backend's and the TOOL's.** `Cook` and
    `CookMeasure` are emitted for every FIXED table in C++ and their bytes are
-   `schema cook`'s, byte for byte, in both byte orders (§7.6). A pointered
-   root's writer, and every other language's, are named follow-ons (§15). BOTH
-   read sides are emitted and gated.
+   `schema cook`'s, byte for byte, in both byte orders (§7.6); every other
+   port writes cooks too (§7). BOTH read sides are emitted and gated.
 4. **A UNION-BEARING closure has no C# cook reader**, for the reason it has no
    block form: §19.3 pins a blittable C# record to `Sequential`, which cannot
    overlay arms. The generated file names the table and the reason, the table's
