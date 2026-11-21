@@ -801,6 +801,9 @@ const wireRows = [
   ["cooktorture", "TortureCook", "cooktorture/CookTortureVariable.js"],
   ["cooktorture", "TortureFixedWref", "cooktorture/CookTortureVariable.js"],
   ["cooktorturewide", "TortureWideCook", "cooktorturewide/CookTortureWideVariable.js"],
+  // string, bytes and flags defaults in every carried field shape (SPEC §4.2)
+  ["tblvaluedefaults", "VarDefaults", "valuedefaults/TblvaluedefaultsVariable.js"],
+  ["tblvaluedefaults", "FixedDefaults", "valuedefaults/TblvaluedefaultsVariable.js"],
   // the message corpus's root on the variable wire: union arms of every
   // carried field type, wide text among them (§2.6, §3)
   ["messagedemo", "ToolMessage", "messages/MessagedemoVariable.js"],
@@ -1021,6 +1024,7 @@ const textUnits = {
   listdemo: "lists/ListdemoVariable.js",
   widelist: "widelist/WidelistdemoVariable.js",
   shapes: "shapes/ShapesVariable.js",
+  tblvaluedefaults: "valuedefaults/TblvaluedefaultsVariable.js",
 };
 
 // unitView binds a unit's variable module and its View (<Pkg>View.js beside

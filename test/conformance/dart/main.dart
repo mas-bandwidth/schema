@@ -156,6 +156,12 @@ import '../../../build/tables-generated-dart-scalars/shapes/ShapesWire.dart' as 
 import '../../../build/tables-generated-dart-scalars/shapes/ShapesFixed.dart' as shapes_fixed;
 import '../../../build/tables-generated-dart-scalars/shapes/Shapes.dart' as shapes_pkt;
 import '../../../build/tables-generated-dart-scalars/shapes/Int128.dart' as shapes_i128;
+// the VALUE-DEFAULTS unit (docs/SPEC.md §4.2): string, bytes and flags
+// defaults in every carried field shape, a variable root and a fixed root
+import '../../../build/tables-generated-dart/valuedefaults/TblvaluedefaultsWire.dart' as tblvaluedefaults;
+import '../../../build/tables-generated-dart/valuedefaults/TblvaluedefaultsFixed.dart' as tblvaluedefaults_fixed;
+import '../../../build/tables-generated-dart/valuedefaults/ValueDefaultsFixed.dart' as valuedefaults_fixed;
+import '../../../build/tables-generated-dart/valuedefaults/ValueDefaults.dart' as valuedefaults_packet;
 
 // Decode JSON bytes before entering a generated String reader. The generated
 // reader owns the one leading byte-order mark skip (docs/SPEC-TABLES.md §16.2,
@@ -1086,6 +1092,73 @@ void _f2w_fixedevo_EvoRoot(tblfixedevo_fixed.EvoRoot f, tblfixedevo.EvoRoot w) {
   w.defFlags = f.defFlags;
   w.hasExtraOpt = f.extraOptPresent;
   if (f.extraOptPresent) _f2w_fixedevo_EvoSub(f.extraOpt, w.extraOpt);
+}
+
+void _w2f_valuedefaults_Item(tblvaluedefaults.Item w, valuedefaults_packet.Item f) {
+  _w2fUtf8(w.s, f.s, (n) => f.sLength = n);
+  _w2fBytes(w.b, f.b, (n) => f.bLength = n);
+  f.f = w.f;
+  f.n = w.n;
+}
+
+void _f2w_valuedefaults_Item(valuedefaults_packet.Item f, tblvaluedefaults.Item w) {
+  w.s = _f2wUtf8(f.s, f.sLength);
+  w.b = _f2wBytes(f.b, f.bLength);
+  w.f = f.f;
+  w.n = f.n;
+}
+
+void _w2f_valuedefaults_FixedDefaults(tblvaluedefaults.FixedDefaults w, tblvaluedefaults_fixed.FixedDefaults f) {
+  _w2fUtf8(w.s, f.s, (n) => f.sLength = n);
+  _w2fBytes(w.b, f.b, (n) => f.bLength = n);
+  f.f = w.f;
+  _w2f_valuedefaults_Item(w.item, f.item);
+  if (w.counted.length > 3) {
+    throw StateError('count_over_bound');
+  }
+  f.countedCount = w.counted.length;
+  for (var i = 0; i < w.counted.length; i++) {
+    _w2f_valuedefaults_Item(w.counted[i], f.counted[i]);
+  }
+  for (var i = 0; i < 2; i++) {
+    _w2f_valuedefaults_Item(w.pair[i], f.pair[i]);
+  }
+  for (var i = 0; i < 3; i++) {
+    _w2f_valuedefaults_Item(w.keyed[i], f.keyed[i]);
+  }
+  f.pick.type = w.pick.armTag;
+  if (w.pick.armTag == 1) {
+    _w2f_valuedefaults_Item(w.pick.item, f.pick.item);
+  } else if (w.pick.armTag == 2) {
+    f.pick.count = w.pick.count;
+  }
+}
+
+void _f2w_valuedefaults_FixedDefaults(tblvaluedefaults_fixed.FixedDefaults f, tblvaluedefaults.FixedDefaults w) {
+  w.s = _f2wUtf8(f.s, f.sLength);
+  w.b = _f2wBytes(f.b, f.bLength);
+  w.f = f.f;
+  _f2w_valuedefaults_Item(f.item, w.item);
+  if (f.countedCount < 0 || f.countedCount > 3) {
+    throw StateError('count_over_bound');
+  }
+  w.counted = List<tblvaluedefaults.Item>.generate(f.countedCount, (i) {
+    final item = tblvaluedefaults.Item();
+    _f2w_valuedefaults_Item(f.counted[i], item);
+    return item;
+  });
+  for (var i = 0; i < 2; i++) {
+    _f2w_valuedefaults_Item(f.pair[i], w.pair[i]);
+  }
+  for (var i = 0; i < 3; i++) {
+    _f2w_valuedefaults_Item(f.keyed[i], w.keyed[i]);
+  }
+  w.pick.armTag = f.pick.type;
+  if (f.pick.type == 1) {
+    _f2w_valuedefaults_Item(f.pick.item, w.pick.item);
+  } else if (f.pick.type == 2) {
+    w.pick.count = f.pick.count;
+  }
 }
 
 void _w2f_cooktorture_TortureFixedWref(cooktorture.TortureFixedWref w, cooktorture_fixed.TortureFixedWref f) {
@@ -2522,6 +2595,18 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
         return _fixedSaveOne(f, shapes_fixed.fixedBoundsFixedMeasure, shapes_fixed.fixedBoundsFixedSave);
       }
       return _fixedResave(wire, shapes_fixed.FixedBounds.new, shapes_fixed.fixedBoundsFixedNewPlan, shapes_fixed.TableFixedReport.new, (rep) => rep.refused != 0, shapes_fixed.fixedBoundsFixedLoad, shapes_fixed.fixedBoundsFixedMeasure, shapes_fixed.fixedBoundsFixedSave);
+    case 'tblvaluedefaults VarDefaults':
+      return _wireResaveOne(wire, tblvaluedefaults.TableWireReport.new, (rep) => (rep.refused, rep.refusal), tblvaluedefaults.varDefaultsWireLoad, tblvaluedefaults.varDefaultsWireSave);
+    case 'tblvaluedefaults FixedDefaults':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tblvaluedefaults.TableWireReport();
+        final w = tblvaluedefaults.fixedDefaultsWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = tblvaluedefaults_fixed.FixedDefaults();
+        _w2f_valuedefaults_FixedDefaults(w, f);
+        return _fixedSaveOne(f, valuedefaults_fixed.fixedDefaultsFixedMeasure, valuedefaults_fixed.fixedDefaultsFixedSave);
+      }
+      return _fixedResave(wire, tblvaluedefaults_fixed.FixedDefaults.new, valuedefaults_fixed.fixedDefaultsFixedNewPlan, tblvaluedefaults_fixed.TableFixedReport.new, (rep) => rep.refused != 0, valuedefaults_fixed.fixedDefaultsFixedLoad, valuedefaults_fixed.fixedDefaultsFixedMeasure, valuedefaults_fixed.fixedDefaultsFixedSave);
     case 'listdemo Army':
       return _wireResaveOne(wire, listdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), listdemo.armyWireLoad, listdemo.armyWireSave);
     case 'listdemo Mixed':
@@ -3054,6 +3139,18 @@ Uint8List? jsonReadSave(String unit, String root, String text) {
       final f = shapes_fixed.FixedBounds();
       _w2f_shapes_FixedBounds(w, f);
       return _fixedSaveOne(f, shapes_fixed.fixedBoundsFixedMeasure, shapes_fixed.fixedBoundsFixedSave);
+    case 'tblvaluedefaults VarDefaults':
+      final rep = tblvaluedefaults.TableTextReport();
+      final v = tblvaluedefaults.varDefaultsFromJson(text, rep);
+      if (rep.refused) return null;
+      return tblvaluedefaults.varDefaultsWireSave(v);
+    case 'tblvaluedefaults FixedDefaults':
+      final rep = tblvaluedefaults.TableTextReport();
+      final w = tblvaluedefaults.fixedDefaultsFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = tblvaluedefaults_fixed.FixedDefaults();
+      _w2f_valuedefaults_FixedDefaults(w, f);
+      return _fixedSaveOne(f, valuedefaults_fixed.fixedDefaultsFixedMeasure, valuedefaults_fixed.fixedDefaultsFixedSave);
     case 'listdemo Army':
       final rep = listdemo.TableTextReport();
       final v = listdemo.armyFromJson(text, rep);
@@ -3513,6 +3610,23 @@ String? jsonWriteText(String unit, String root, Uint8List wire) {
       final w = shapes.FixedBounds();
       _f2w_shapes_FixedBounds(f, w);
       return shapes.fixedBoundsToJson(w);
+    case 'tblvaluedefaults VarDefaults':
+      final rep = tblvaluedefaults.TableWireReport();
+      final v = tblvaluedefaults.varDefaultsWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return tblvaluedefaults.varDefaultsToJson(v);
+    case 'tblvaluedefaults FixedDefaults':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tblvaluedefaults.TableWireReport();
+        final w = tblvaluedefaults.fixedDefaultsWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return tblvaluedefaults.fixedDefaultsToJson(w);
+      }
+      final f = _fixedLoadOne(wire, tblvaluedefaults_fixed.FixedDefaults.new, valuedefaults_fixed.fixedDefaultsFixedNewPlan, tblvaluedefaults_fixed.TableFixedReport.new, (rep) => rep.refused != 0, valuedefaults_fixed.fixedDefaultsFixedLoad);
+      if (f == null) return null;
+      final w = tblvaluedefaults.FixedDefaults();
+      _f2w_valuedefaults_FixedDefaults(f, w);
+      return tblvaluedefaults.fixedDefaultsToJson(w);
     case 'listdemo Army':
       final rep = listdemo.TableWireReport();
       final v = listdemo.armyWireLoad(wire, rep);
@@ -5069,6 +5183,16 @@ String? jsonHostileReport(String unit, String root, String text) {
         r = cooktorturewide.TableTextReport();
         final v = cooktorturewide.tortureWideCookFromJson(text, r);
         encode = () => cooktorturewide.tortureWideCookToJson(v);
+        break;
+      case 'tblvaluedefaults VarDefaults':
+        r = tblvaluedefaults.TableTextReport();
+        final v = tblvaluedefaults.varDefaultsFromJson(text, r);
+        encode = () => tblvaluedefaults.varDefaultsToJson(v);
+        break;
+      case 'tblvaluedefaults FixedDefaults':
+        r = tblvaluedefaults.TableTextReport();
+        final v = tblvaluedefaults.fixedDefaultsFromJson(text, r);
+        encode = () => tblvaluedefaults.fixedDefaultsToJson(v);
         break;
       case 'streamdemo Feed':
         r = streamdemo.TableTextReport();

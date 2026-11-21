@@ -211,6 +211,7 @@ int conformance_write_refusal_set_listdemo( const char * root, void * value, con
 int conformance_write_refusal_write_listdemo( int surface, const char * root, const void * value, const uint8_t * announcement, int64_t announcement_bytes, uint8_t * buffer, int64_t capacity, int64_t * wrote );
 int conformance_write_refusal_set_shapes( const char * root, void * value, const char * path, const char * kind, const char * text );
 int conformance_write_refusal_write_shapes( int surface, const char * root, const void * value, const uint8_t * announcement, int64_t announcement_bytes, uint8_t * buffer, int64_t capacity, int64_t * wrote );
+const ConformanceCodec * conformance_codecs_tblvaluedefaults( int * count );
 
 /* the BLOCK unit (blockdemo): open one image at the extent and pointer the
  * caller claims, and read every row out of the descriptors */

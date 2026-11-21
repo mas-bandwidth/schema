@@ -1,0 +1,94 @@
+{
+  "s": "dflt",
+  "b": "YWI=",
+  "f": [
+    "Jump",
+    "Fly"
+  ],
+  "item": {
+    "s": "dflt",
+    "b": "YWI=",
+    "f": [
+      "Jump",
+      "Fly"
+    ],
+    "n": 4
+  },
+  "counted": [
+    {
+      "s": "dflt",
+      "b": "YWI=",
+      "f": [
+        "Jump",
+        "Fly"
+      ],
+      "n": 0
+    },
+    {
+      "s": "dflt",
+      "b": "YWI=",
+      "f": [
+        "Jump",
+        "Fly"
+      ],
+      "n": 3
+    }
+  ],
+  "pair": [
+    {
+      "s": "",
+      "b": "YWI=",
+      "f": [
+        "Jump",
+        "Fly"
+      ],
+      "n": 0
+    },
+    {
+      "s": "dflt",
+      "b": "YWI=",
+      "f": [
+        "Jump",
+        "Fly"
+      ],
+      "n": 0
+    }
+  ],
+  "keyed": {
+    "Alpha": {
+      "s": "dflt",
+      "b": "YWI=",
+      "f": [
+        "Jump",
+        "Fly"
+      ],
+      "n": 0
+    },
+    "Beta": {
+      "s": "dflt",
+      "b": "YWI=",
+      "f": [],
+      "n": 0
+    },
+    "Gamma": {
+      "s": "dflt",
+      "b": "YWI=",
+      "f": [
+        "Jump",
+        "Fly"
+      ],
+      "n": 0
+    }
+  },
+  "pick": {
+    "item": {
+      "s": "dflt",
+      "b": "YWI=",
+      "f": [
+        "Jump",
+        "Fly"
+      ],
+      "n": 0
+    }
+  }
+}

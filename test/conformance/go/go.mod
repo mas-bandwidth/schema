@@ -198,3 +198,6 @@ replace writebounds => ../../../build/tables-generated-go/writebounds
 require shapes v0.0.0
 
 replace shapes => ../../../build/tables-generated-go/shapes
+require tblvaluedefaults v0.0.0
+
+replace tblvaluedefaults => ../../../build/tables-generated-go/valuedefaults

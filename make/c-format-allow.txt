@@ -26,6 +26,10 @@ build/tables-generated-c/pointers/MarksTable.h
 build/tables-generated-c/pointers/PartsTable.h
 build/tables-generated-c/scalars/ScalarsTable.h
 build/tables-generated-c/stream/StreamTable.h
+build/tables-generated-c/valuedefaults/TblvaluedefaultsView.c
+build/tables-generated-c/valuedefaults/TblvaluedefaultsView.h
+build/tables-generated-c/valuedefaults/ValueDefaultsTable.c
+build/tables-generated-c/valuedefaults/ValueDefaultsTable.h
 build/tables-generated-c/vocab/VocabTable.h
 build/tables-generated-c/vocab9/Vocab9Table.h
 generated/bench/c/BenchView.c

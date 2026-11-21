@@ -81,6 +81,23 @@ tables. These items occupy packet bits and contribute no table field. The
 checks this distinction in `TestPythonTableHostedPacketItemsGenerate` and
 `TestPythonTableHostedPacketItems`.
 
+### Declared defaults in table fields
+
+[SPEC §4.2](SPEC.md#42-grammar) places string, bytes and flags defaults
+on fields. A field in an embedded type keeps those defaults when the type
+is used in an array, keyed slot, map value, optional, pointer or union arm.
+SPEC-TABLES §§4 and 22.2 define variable-form elision and reconstruction.
+Section 3.4 defines fixed-record prefill, and §16.2 applies declared defaults
+to absent JSON keys.
+
+The [tables manifest](../testdata/conformance/tables/MANIFEST.txt) registers
+`vd_var_defaults` and `vd_fixed_defaults` for construction values, and
+`vd_var_values` and `vd_fixed_values` for values distinct from their defaults,
+including empty strings, empty bytes, and zero masks. The accepted JSON cases
+`vd-var-omitted` and `vd-fixed-omitted` exercise omitted fields.
+`TestValueDefaultsEveryShape` checks that the registered compiler targets
+generate both roots from [the shared declaration](../test/tables/ValueDefaults.schema).
+
 ## 2. The surfaces
 
 A surface is one question put to every case of the corpus that applies to it.
