@@ -23,6 +23,7 @@ manifest=$corpus/manifest.tsv
 rm -rf "$work" && mkdir -p "$work" || exit 2
 abs_corpus=$(cd "$corpus" && pwd)
 : >"$work/lines"
+: >"$work/ran"
 for s in $(awk -F'\t' '!/^#/ && NF >= 9 { print $3 }' "$manifest" | LC_ALL=C sort -u); do
 	slug=$(echo "$s" | tr '/.' '__')
 	src=$s
@@ -136,6 +137,10 @@ while IFS='	' read -r name carrier schema_path table input _ verdict reason dige
 		absent=$((absent + 1))
 		continue
 	fi
+	# THE LEDGER (docs/HOSTILE-CORPUS.md): the cases a reader answered, per
+	# carrier, which tools/hostileledger holds to the corpus folder. An
+	# absent row and a row with no line are cases not run.
+	echo "$carrier" >>"$work/ran"
 	ok=1
 	why=
 	if [ "$got_verdict" != "$verdict" ]; then
@@ -180,6 +185,10 @@ while IFS='	' read -r name carrier schema_path table input _ verdict reason dige
 	fi
 done <"$manifest"
 echo "goose hostile corpus: $pass agree with the engine, $carried carried by name, $absent absent (carriers or schemas the port does not read yet)"
+LC_ALL=C sort "$work/ran" | uniq -c | while read -r n carrier; do
+	echo "hostile-ledger ran $carrier $n"
+done
+echo "hostile-ledger end"
 if [ $pass -eq 0 ]; then
 	echo "goose hostile corpus REFUSES: no case ran"
 	exit 2

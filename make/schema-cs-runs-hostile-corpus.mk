@@ -41,7 +41,7 @@ $(CS_HOSTILE_BUILD)/bin/.stamp: $(CS_HOSTILE_BUILD)/generated/.stamp test/cs-hos
 
 .PHONY: schema-cs-runs-hostile-corpus
 schema-cs-runs-hostile-corpus: $(CS_HOSTILE_BUILD)/bin/.stamp
-	$(DOTNET) $(CS_HOSTILE_BUILD)/bin/cshostile.dll "$(CS_HOSTILE_CORPUS)" "$(CS_HOSTILE_FINDINGS)"
+	$(call hostile_ledgered,cs,$(CS_HOSTILE_BUILD)/run.log,$(DOTNET) $(CS_HOSTILE_BUILD)/bin/cshostile.dll "$(CS_HOSTILE_CORPUS)" "$(CS_HOSTILE_FINDINGS)",$(CS_HOSTILE_CORPUS))
 
 # The port's normal unit target runs the corpus: this file is included after
 # make/cs.mk by the Makefile's wildcard, so the prerequisite lands here and

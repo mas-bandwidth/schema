@@ -319,8 +319,17 @@ static class Runner
         int passed = 0, carried = 0, skipped = 0;
         var bad = new List<string>();
         var stale = new List<string>();
+        // THE LEDGER (docs/HOSTILE-CORPUS.md): the cases a reader answered, per
+        // carrier, which tools/hostileledger holds to the corpus folder. A
+        // skip is no answer, so a skipped case is a case not run.
+        var ran = new SortedDictionary<string, int>(StringComparer.Ordinal);
         foreach (Case c in cases)
         {
+            if (c.Got != null && !c.Got.StartsWith("skip: ", StringComparison.Ordinal))
+            {
+                ran.TryGetValue(c.Carrier, out int n);
+                ran[c.Carrier] = n + 1;
+            }
             // A packet refusal compares by verdict only: ports name packet
             // refusals differently, so the runner names them all packet_refused.
             string want = c.Verdict == "accept" ? H.Accept(c.Digest) : H.Refuse(c.Carrier == "packet" ? "packet_refused" : c.Reason);
@@ -372,6 +381,11 @@ static class Runner
         }
         Console.WriteLine(cases.Count + " cases: " + passed + " pass, " + carried + " carried as FIX-CARD, " + skipped + " skipped, "
             + bad.Count + " unexplained, " + stale.Count + " stale");
+        foreach (KeyValuePair<string, int> e in ran)
+        {
+            Console.WriteLine("hostile-ledger ran " + e.Key + " " + e.Value);
+        }
+        Console.WriteLine("hostile-ledger end");
         return bad.Count == 0 && stale.Count == 0 ? 0 : 1;
     }
 }

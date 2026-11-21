@@ -59,7 +59,7 @@ $(DART_HOSTILE_BUILD)/dispatch.dart: $(DART_HOSTILE_BUILD)/generated/.stamp $(DA
 .PHONY: schema-dart-runs-hostile-corpus
 schema-dart-runs-hostile-corpus: $(DART_HOSTILE_BUILD)/dispatch.dart
 	$(DART) run test/dart-hostile/reasons_test.dart
-	$(DART) run test/dart-hostile/runner.dart "$(DART_HOSTILE_CORPUS)" "$(DART_HOSTILE_FINDINGS)"
+	$(call hostile_ledgered,dart,$(DART_HOSTILE_BUILD)/run.log,$(DART) run test/dart-hostile/runner.dart "$(DART_HOSTILE_CORPUS)" "$(DART_HOSTILE_FINDINGS)",$(DART_HOSTILE_CORPUS))
 
 test-dart: schema-dart-runs-hostile-corpus
 

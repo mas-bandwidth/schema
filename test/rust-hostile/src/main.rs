@@ -543,7 +543,14 @@ fn main() {
     let (mut passed, mut carried, mut skipped) = (0, 0, 0);
     let mut bad = Vec::new();
     let mut stale = Vec::new();
+    // THE LEDGER (docs/HOSTILE-CORPUS.md): the cases a reader answered, per
+    // carrier, which tools/hostileledger holds to the corpus folder. A SKIP
+    // and a case no worker reached are cases not run.
+    let mut ran: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
     for (f, got) in manifest.iter().zip(results.iter()) {
+        if got.as_ref().is_some_and(|g| !g.starts_with("SKIP ")) {
+            *ran.entry(f[1].clone()).or_insert(0) += 1;
+        }
         let got = got.clone().unwrap_or_else(|| "runner error: no result".to_string());
         let (name, carrier) = (&f[0], &f[1]);
         let expected = if f[6] == "accept" {
@@ -582,6 +589,10 @@ fn main() {
         bad.len(),
         stale.len()
     );
+    for (carrier, n) in &ran {
+        println!("hostile-ledger ran {carrier} {n}");
+    }
+    println!("hostile-ledger end");
     if !bad.is_empty() || !stale.is_empty() {
         std::process::exit(1);
     }

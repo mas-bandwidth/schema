@@ -746,6 +746,9 @@ public final class Runner {
         List<String> bad = new ArrayList<>();
         List<String> stale = new ArrayList<>();
         java.util.Set<String> seen = new java.util.HashSet<>();
+        // THE LEDGER (docs/HOSTILE-CORPUS.md): the cases a reader answered, per
+        // carrier, which tools/hostileledger holds to the corpus folder.
+        java.util.Map<String, Integer> ran = new java.util.TreeMap<>();
         for (String[] f : manifest) {
             String name = f[0];
             String carrier = f[1];
@@ -753,6 +756,7 @@ public final class Runner {
             byte[] payload = Files.readAllBytes(corpus.resolve(f[4]));
             String expected = f[6].equals("accept") ? accept(f[8]) : refuse(f[7]);
             String got = isolated(packetDir, name, carrier, f[2], f[3], payload, budgetMs);
+            ran.merge(carrier, 1, Integer::sum);
             String[] finding = findings.get(name);
             if (got.equals(expected)) {
                 if (finding != null) {
@@ -779,6 +783,10 @@ public final class Runner {
         System.out.println(
                 manifest.size() + " cases: " + passed + " pass, " + carried + " carried as FIX-CARD, "
                         + bad.size() + " unexplained, " + stale.size() + " stale");
+        for (java.util.Map.Entry<String, Integer> e : ran.entrySet()) {
+            System.out.println("hostile-ledger ran " + e.getKey() + " " + e.getValue());
+        }
+        System.out.println("hostile-ledger end");
         System.exit(!bad.isEmpty() || !stale.isEmpty() ? 1 : 0);
     }
 }

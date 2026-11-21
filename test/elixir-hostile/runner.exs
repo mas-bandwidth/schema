@@ -461,6 +461,9 @@ end
     expected = if verdict == "accept", do: {:accept, want_digest}, else: {:refuse, want_reason}
 
     got = isolated.(carrier, schema, table, payload)
+    # THE LEDGER (docs/HOSTILE-CORPUS.md): the cases a reader answered, per
+    # carrier, which tools/hostileledger holds to the corpus folder.
+    Process.put({:hostile_ran, carrier}, Process.get({:hostile_ran, carrier}, 0) + 1)
 
     cond do
       got == expected ->
@@ -498,6 +501,12 @@ orphans =
 stale = stale ++ orphans
 
 IO.puts("#{length(manifest)} cases: #{passed} pass, #{carried} carried as FIX-CARD, #{length(bad)} unexplained, #{length(stale)} stale")
+
+for {{:hostile_ran, carrier}, n} <- Enum.sort(Process.get()) do
+  IO.puts("hostile-ledger ran #{carrier} #{n}")
+end
+
+IO.puts("hostile-ledger end")
 
 if bad != [] or stale != [] do
   System.halt(1)

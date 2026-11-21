@@ -60,9 +60,7 @@ $(ELIXIR_HOSTILE_BUILD)/packet/.stamp: bin/schema make/hostile-packet-units.sh m
 
 .PHONY: schema-elixir-runs-hostile-corpus
 schema-elixir-runs-hostile-corpus: $(ELIXIR_HOSTILE_BUILD)/ebin/.stamp $(ELIXIR_HOSTILE_BUILD)/packet/.stamp
-	SCHEMA_ELIXIR_HOSTILE_FINDINGS=$(ELIXIR_HOSTILE_FINDINGS) \
-		$(ELIXIR) test/elixir-hostile/runner.exs "$(ELIXIR_HOSTILE_CORPUS)" \
-		"$(CURDIR)/$(ELIXIR_HOSTILE_BUILD)/ebin" "$(CURDIR)/$(ELIXIR_HOSTILE_BUILD)/packet"
+	$(call hostile_ledgered,elixir,$(ELIXIR_HOSTILE_BUILD)/run.log,SCHEMA_ELIXIR_HOSTILE_FINDINGS=$(ELIXIR_HOSTILE_FINDINGS) $(ELIXIR) test/elixir-hostile/runner.exs "$(ELIXIR_HOSTILE_CORPUS)" "$(CURDIR)/$(ELIXIR_HOSTILE_BUILD)/ebin" "$(CURDIR)/$(ELIXIR_HOSTILE_BUILD)/packet",$(ELIXIR_HOSTILE_CORPUS))
 
 # The port's normal unit target runs the corpus: this file is included after
 # make/elixir.mk by the Makefile's wildcard, so the prerequisite lands here and

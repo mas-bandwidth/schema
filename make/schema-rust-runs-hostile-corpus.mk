@@ -85,11 +85,11 @@ schema-rust-runs-hostile-corpus-build: $(RUST_HOSTILE_BUILD)/.stamp
 # never hides what the debug run says.
 .PHONY: schema-rust-runs-hostile-corpus
 schema-rust-runs-hostile-corpus: schema-rust-runs-hostile-corpus-build
-	@status=0; \
+	$(call hostile_ledgered,rust,$(RUST_HOSTILE_BUILD)/run.log,status=0; \
 	for profile in $(RUST_HOSTILE_PROFILES); do \
 		$(RUST_HOSTILE_TARGET)/$$profile/rust-hostile "$(RUST_HOSTILE_CORPUS)" "$(RUST_HOSTILE_FINDINGS)" $$profile || status=1; \
 	done; \
-	exit $$status
+	[ $$status -eq 0 ],$(RUST_HOSTILE_CORPUS),-runs $(words $(RUST_HOSTILE_PROFILES)) -skips test/rust-hostile/known-skips.tsv)
 
 # The port's normal unit target runs the corpus: this file is included after
 # make/rust.mk by the Makefile's wildcard, so the prerequisite lands here and
