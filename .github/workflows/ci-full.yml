@@ -1700,11 +1700,14 @@ jobs:
   # rebases; that scan proves the rules EXIST, and the emission from nothing is
   # what proves one ran.
 
-  # THE LEGS UNDER THEIR BUILD TAGS (make/moo-tagged.mk, make/goose-tagged.mk).
-  # `-tags schema_leg_moo` registers the moo target, so every cross-target gate in
-  # ./compiler meets one more target; go-test above runs both packages
-  # untagged, and certify's test-moo-tables runs only the compiler's tests
-  # named Moo, so without this job a tagged red lands unseen. It is its own
+  # THE MOO LEG WHOLE AND THE NEW-LEG TAG (make/moo-tagged.mk,
+  # make/newleg-tagged.mk). Every shipped target is built in (Glenn,
+  # 2026-11-21: "all languages, by default, all the time."), so the moo rows
+  # build with no tag; they keep the job because they run the compiler,
+  # mootable and harness packages whole under SCHEMA_SLOW=1 with the pinned
+  # moo interpreter, which go-test's rows do not. The new-leg-tag row builds
+  # the harness under a made-up leg's tag (schema_leg_tagprobe), the one
+  # tagged admission left, which a `schema new-leg` leg uses. It is its own
   # job, beside go-test rather than one of its rows, because
   # tools/slowgatescan credits each go-test row with the tests it selects, and
   # this run selects the compiler's tests a second time under another build.
@@ -1743,7 +1746,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [ moo-compiler, moo-table, goose ]
+        group: [ moo-compiler, moo-table, new-leg-tag ]
     env:
       PGROUP_WALL: ''
     defaults:
@@ -1779,34 +1782,34 @@ jobs:
       # per-commit smokes and the goose row need neither. The moo pin itself
       # both moo rows run under on every event.
       - name: install the Luau and Squirrel pins
-        if: github.event_name == 'schedule' && matrix.group != 'goose'
+        if: github.event_name == 'schedule' && matrix.group != 'new-leg-tag'
         run: make dist-luau dist-squirrel
       - uses: ./.github/actions/moo
-        if: matrix.group != 'goose'
+        if: matrix.group != 'new-leg-tag'
 
-      - name: the moo leg's compiler under schema_leg_moo (smoke)
+      - name: the moo leg's compiler, default build (smoke)
         if: matrix.group == 'moo-compiler' && github.event_name != 'schedule'
         run: make test-moo-tagged-compiler-smoke
 
-      - name: the moo leg's compiler under schema_leg_moo
+      - name: the moo leg's compiler, default build
         if: matrix.group == 'moo-compiler' && github.event_name == 'schedule'
         run: make test-moo-tagged-compiler
 
-      - name: the moo leg's table and conformance packages under schema_leg_moo (smoke)
+      - name: the moo leg's table and conformance packages, default build (smoke)
         if: matrix.group == 'moo-table' && github.event_name != 'schedule'
         run: make test-moo-tagged-table-smoke
 
-      - name: the moo leg's table and conformance packages under schema_leg_moo
+      - name: the moo leg's table and conformance packages, default build
         if: matrix.group == 'moo-table' && github.event_name == 'schedule'
         run: make test-moo-tagged-table
 
-      - name: the conformance harness under schema_leg_goose (smoke)
-        if: matrix.group == 'goose' && github.event_name != 'schedule'
-        run: make test-goose-tagged-harness-smoke
+      - name: the conformance harness under a made-up new leg's tag (smoke)
+        if: matrix.group == 'new-leg-tag' && github.event_name != 'schedule'
+        run: make test-tagged-harness-smoke
 
-      - name: the conformance harness under schema_leg_goose
-        if: matrix.group == 'goose' && github.event_name == 'schedule'
-        run: make test-goose-tagged-harness
+      - name: the conformance harness under a made-up new leg's tag
+        if: matrix.group == 'new-leg-tag' && github.event_name == 'schedule'
+        run: make test-tagged-harness
 
       # the go-test job's report step, whatever happened above
       - name: report every test this row ran, and each package's named budget

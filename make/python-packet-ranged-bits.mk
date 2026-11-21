@@ -21,7 +21,7 @@ PYTHON_CI_SUPPORT_GROUPS += python-ci-packet-ranged-bits
 python-ci-packet-ranged-bits: python-packet-ranged-bits-negative-control python-packet-ranged-bits-goref-negative-control deps-go
 
 python-packet-ranged-bits-negative-control: python-toolchain-check deps-go
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketRangedBitsNegativeControl$$' ./internal/codegen/python/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestPythonPacketRangedBitsNegativeControl$$' ./internal/codegen/python/
 
 python-packet-ranged-bits-goref-negative-control: python-toolchain-check deps-go
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketRangedBitsGoReferenceNegativeControl$$' ./internal/codegen/python/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestPythonPacketRangedBitsGoReferenceNegativeControl$$' ./internal/codegen/python/

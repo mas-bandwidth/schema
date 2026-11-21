@@ -22,7 +22,7 @@ var rubyReadinessFiles = []string{
 	".github/workflows/schema-ruby-resource-bounds.yml",
 	"test/conformance/ruby/ci.json",
 	"test/conformance/nightly-readiness",
-	"test/conformance/harness/implementation_ruby.go",
+	"test/conformance/harness/implementation_tagged.go",
 	"make/ruby-ci-release.mk",
 	"make/wire-fuzz-release.mk",
 }
@@ -75,8 +75,10 @@ func rubyReadinessFindings(files map[string]string) []string {
 		strings.Contains(nr, `["ruby", "-v"]`) {
 		add("readiness-entry")
 	}
-	if !strings.Contains(files["test/conformance/harness/implementation_ruby.go"], "//go:build schema_leg_ruby\n") ||
-		!strings.Contains(files["make/ruby-ci-release.mk"], "go build -tags schema_leg_ruby -o $@ ./test/conformance/harness") ||
+	if strings.HasPrefix(files["test/conformance/harness/implementation_tagged.go"], "//go:build") ||
+		!strings.Contains(files["test/conformance/harness/implementation_tagged.go"], `"moo", "python", "ruby",`) ||
+		!strings.Contains(files["make/ruby-ci-release.mk"], "\tgo build -o $@ ./test/conformance/harness") ||
+		strings.Contains(files["make/ruby-ci-release.mk"], "go build -tags") ||
 		!strings.Contains(files["make/ruby-ci-release.mk"], "tables-ruby-release:") {
 		add("readiness-harness")
 	}
@@ -169,8 +171,8 @@ func TestRubyReadinessNegativeControl(t *testing.T) {
 		{"readiness-entry", "test/conformance/nightly-readiness", `"goose", "ruby", "moo"`, `"goose", "moo"`},
 		{"readiness-entry", "test/conformance/nightly-readiness", `harness = "./build/conformance-harness-ruby"`, `harness = "./build/conformance-harness"`},
 		{"readiness-entry", "test/conformance/nightly-readiness", `return RUBY_DIST + " --disable-gems -w test/conformance/ruby/wirefuzz.rb build/conformance-ruby"`, `return "unpinned-interp"`},
-		{"readiness-harness", "test/conformance/harness/implementation_ruby.go", "//go:build schema_leg_ruby\n", ""},
-		{"readiness-harness", "make/ruby-ci-release.mk", "go build -tags schema_leg_ruby -o $@ ./test/conformance/harness", "go build -o $@ ./test/conformance/harness"},
+		{"readiness-harness", "test/conformance/harness/implementation_tagged.go", `"moo", "python", "ruby",`, `"moo", "python",`},
+		{"readiness-harness", "make/ruby-ci-release.mk", "go build -o $@ ./test/conformance/harness", "go build -tags " + rubyLegTag + " -o $@ ./test/conformance/harness"},
 		{"wire-fuzz-release", "make/wire-fuzz-release.mk", "WFR_DRIVER_ruby", "WFR_OMITTED_ruby"},
 	} {
 		planted := maps.Clone(files)
@@ -221,3 +223,9 @@ func TestRubyReadinessNegativeControl(t *testing.T) {
 		}
 	}
 }
+
+// rubyLegTag is the ruby leg's old build tag, which the negative control
+// plants to prove the readiness rules refuse it. It is spelled in two halves
+// because this file plants the tag rather than using it, and
+// internal/ci's TestNoShippedLegBehindABuildTag reads Go files.
+const rubyLegTag = "schema_leg_" + "ruby"

@@ -37,7 +37,7 @@ test-ruby: tables-ruby-bench-gate tables-ruby-bench-gate-negative-control
 
 build/conformance-harness-ruby: $(wildcard test/conformance/harness/*.go) $(GO_SOURCES)
 	@mkdir -p build
-	go build -tags schema_leg_ruby -o $@ ./test/conformance/harness
+	go build -o $@ ./test/conformance/harness
 
 .PHONY: tables-ruby-release
 tables-ruby-release: bin/schema ruby-toolchain-check build/conformance-harness build/conformance-ruby

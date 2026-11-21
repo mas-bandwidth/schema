@@ -2,24 +2,23 @@ package main
 
 import "testing"
 
-// All 18 targets are admitted in every build, tagged or not: a build without a
-// target's tag reports its registration missing rather than leaving it out.
-// Any other name is never admitted.
-func TestImplementationAdmitsEveryTargetInEveryBuild(t *testing.T) {
-	if len(everyTarget) != 18 {
-		t.Fatalf("everyTarget has %d names, want the 18 targets: %v", len(everyTarget), everyTarget)
-	}
+// The tagged mechanism a `schema new-leg` leg uses, held on a made-up leg that
+// is no shipped name: tagprobe is admitted only in a harness built with
+// schema_leg_tagprobe (implementation_tagprobe_on_test.go), never otherwise
+// (implementation_tagprobe_off_test.go); the 18 shipped targets are admitted in
+// both builds; any other name never.
+func TestImplementationAdmitsTaggedLanguagesByBuild(t *testing.T) {
 	for _, lang := range everyTarget {
 		if !admittedImplementationLanguage(lang) {
 			t.Errorf("%s is not admitted", lang)
 		}
 	}
-	for _, lang := range []string{"", "Goose", "Lua", "csharp", "unity3d"} {
+	for _, lang := range []string{"", "Goose", "Lua", "csharp", "unity3d", "zig", "Tagprobe", "tagprobe "} {
 		if admittedImplementationLanguage(lang) {
 			t.Errorf("%q is admitted", lang)
 		}
 	}
-	if !admittedImplementationLanguage("goose") {
-		t.Errorf("goose is not admitted in a build where the goose tag is %t", gooseTagged)
+	if got := admittedImplementationLanguage("tagprobe"); got != tagprobeTagged {
+		t.Errorf("tagprobe admitted=%t in a build where the tagprobe tag is %t", got, tagprobeTagged)
 	}
 }

@@ -70,7 +70,7 @@ control)
         exit 1
     fi
     printf '{"Replace":{"%s/%s":"%s/%s/runtime.moo"}}\n' "$root" "$source" "$root" "$out" > "$out/overlay.json"
-    go build -tags schema_leg_moo -overlay "$root/$out/overlay.json" -o "$out/schema-moo" ./cmd/schema
+    go build -overlay "$root/$out/overlay.json" -o "$out/schema-moo" ./cmd/schema
     # the units exactly as make/moo-conformance.mk's build/conformance-moo generates them
     mkdir -p "$out/generated"
     grep '^unit[[:space:]]' testdata/conformance/tables/MANIFEST.txt |

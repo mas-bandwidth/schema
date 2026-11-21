@@ -39,8 +39,11 @@ func TestNightlyAcceptanceCoversEveryTarget(t *testing.T) {
 		}
 	}
 	coverage := yamlJobs(wf)["coverage"]
-	if !strings.Contains(coverage, `go run -tags "$HARNESS_TAGS" ./test/conformance/harness coverage --in build/nightly/rows --require-every-target`) {
-		t.Errorf("coverage step does not require every target from a fully tagged harness:\n%s", coverage)
+	if !strings.Contains(coverage, `go run ./test/conformance/harness coverage --in build/nightly/rows --require-every-target`) {
+		t.Errorf("coverage step does not require every target from the default-build harness:\n%s", coverage)
+	}
+	if strings.Contains(coverage, "-tags") {
+		t.Errorf("coverage step builds the harness with tags; every target is in the default build:\n%s", coverage)
 	}
 }
 

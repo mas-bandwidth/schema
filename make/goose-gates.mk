@@ -31,7 +31,7 @@ endef
 .PHONY: $(GOOSE_GATES_SCHEMA)
 $(GOOSE_GATES_SCHEMA):
 	@mkdir -p build
-	go build -tags schema_leg_goose -o $@ ./cmd/schema
+	go build -o $@ ./cmd/schema
 
 # THE STRICT GATE (docs/PORTING.md J4). Goose v2026.2 ships no formatter and
 # no warnings-as-errors switch; its compiler's warnings are its analyzer (the
@@ -99,7 +99,7 @@ tables-goose-strict-emitter-negative-control:
 		echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/goosetable/fixedform.go":"%s/$(GOOSE_GATES_DIR)/fixedform-unreachable.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" >$(GOOSE_GATES_DIR)/fixedform-overlay.json
-	@go build -tags schema_leg_goose -overlay=$(GOOSE_GATES_DIR)/fixedform-overlay.json -o build/schema-goose-unreachable ./cmd/schema
+	@go build -overlay=$(GOOSE_GATES_DIR)/fixedform-overlay.json -o build/schema-goose-unreachable ./cmd/schema
 	@rm -rf $(GOOSE_GATES_DIR)/sabotage && mkdir -p $(GOOSE_GATES_DIR)/sabotage
 	@./build/schema-goose-unreachable generate --lang goose --out $(GOOSE_GATES_DIR)/sabotage/tabledemo tables/examples >/dev/null 2>&1
 	@./build/schema-goose-unreachable generate --lang goose --out $(GOOSE_GATES_DIR)/sabotage/tblk2 test/tables/K2.schema
@@ -151,7 +151,7 @@ tables-goose-runtime-home-negative-control:
 		echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/goosetable/goosetable.go":"%s/$(GOOSE_GATES_DIR)/goosetable-fileorder.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" >$(GOOSE_GATES_DIR)/goosetable-overlay.json
-	@go build -tags schema_leg_goose -overlay=$(GOOSE_GATES_DIR)/goosetable-overlay.json -o build/schema-goose-fileorder ./cmd/schema
+	@go build -overlay=$(GOOSE_GATES_DIR)/goosetable-overlay.json -o build/schema-goose-fileorder ./cmd/schema
 	@if sh make/goose-runtime-home.sh ./build/schema-goose-fileorder $(GOOSE_GATES_DIR)/runtime-home-sabotage >$(GOOSE_GATES_DIR)/runtime-home-sabotage.log 2>&1; then \
 		cat $(GOOSE_GATES_DIR)/runtime-home-sabotage.log; echo "NEGATIVE CONTROL FAILED: the runtime home gate stayed green under the file-order rule"; exit 1; fi
 	@for m in schema_tables.goose fixed.goose; do \
@@ -176,7 +176,7 @@ tables-goose-unit-home-negative-control:
 		echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/goosetable/goosetable.go":"%s/$(GOOSE_GATES_DIR)/goosetable-unitorder.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" >$(GOOSE_GATES_DIR)/goosetable-unit-overlay.json
-	@go build -tags schema_leg_goose -overlay=$(GOOSE_GATES_DIR)/goosetable-unit-overlay.json -o build/schema-goose-unitorder ./cmd/schema
+	@go build -overlay=$(GOOSE_GATES_DIR)/goosetable-unit-overlay.json -o build/schema-goose-unitorder ./cmd/schema
 	@if sh make/goose-runtime-home.sh ./build/schema-goose-unitorder $(GOOSE_GATES_DIR)/unit-home-sabotage >$(GOOSE_GATES_DIR)/unit-home-sabotage.log 2>&1; then \
 		cat $(GOOSE_GATES_DIR)/unit-home-sabotage.log; echo "NEGATIVE CONTROL FAILED: the runtime home gate stayed green with the unit module on the file order"; exit 1; fi
 	@for f in Guarded_unit.goose Aaa_unit.goose; do \

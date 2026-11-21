@@ -29,7 +29,7 @@ func TestPythonCompilerCIShardCoverage(t *testing.T) {
 		}
 		return out
 	}
-	listed := strings.Split(string(run("go", "test", "-tags", "schema_leg_python", "-list", "Python", "./compiler")), "\n")
+	listed := strings.Split(string(run("go", "test", "-list", "Python", "./compiler")), "\n")
 	var wanted []string
 	for _, name := range listed {
 		if regexp.MustCompile(`^(Test|Example|Fuzz)[A-Za-z0-9_]*$`).MatchString(name) {

@@ -5,24 +5,18 @@ import (
 	"strings"
 )
 
-// The cross-target carrier gates name the MOO leg only where the target is
-// built in (`-tags schema_leg_moo`, compiler/target_moo.go). mooLegBuilt is
-// that tag's answer (mooleg_on_test.go, mooleg_off_test.go).
+// The cross-target carrier gates name the MOO leg: moo is a built-in target
+// of the default build (compiler/target_moo.go), so every carrier list and
+// refusal spelling holds it.
 
-// withMooLeg is a sorted carrier list with moo in it when the leg is built.
+// withMooLeg is a sorted carrier list with moo in it.
 func withMooLeg(carriers []string) []string {
-	if !mooLegBuilt {
-		return carriers
-	}
 	return slices.Sorted(slices.Values(append(slices.Clone(carriers), "moo")))
 }
 
 // mooLegSpelled is a refusal's carrier list as it reads with the moo leg
-// built: moo sorts right after luau.
+// built in: moo sorts right after luau.
 func mooLegSpelled(s string) string {
-	if !mooLegBuilt {
-		return s
-	}
 	if strings.Contains(s, " luau, ") {
 		return strings.Replace(s, " luau, ", " luau, moo, ", 1)
 	}

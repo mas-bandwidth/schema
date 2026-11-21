@@ -12,7 +12,7 @@ package moo_test
 // runs only on a quiet fleet bench with SCHEMA_MOO_FIXED_BENCH=1 set:
 //
 //   SCHEMA_SLOW=1 SCHEMA_MOO_FIXED_BENCH=1 go test -count=1 -v -timeout 900s \
-//     -tags schema_leg_moo ./bench/tables/moo/ \
+//     ./bench/tables/moo/ \
 //     -run '^TestMooFixedHotPathBench$'
 //
 // THE WORKLOAD IS THE BENCH'S CORPUS, not a probe written down here. The unit

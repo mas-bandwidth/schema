@@ -2,10 +2,8 @@
 // and a new one adds a file (docs/CONTRIBUTING.md, "Adding a language").
 //
 // Scaffolded by `schema new-leg goose`; docs/PORT-GOOSE.md is the port's
-// design. The schema_leg_goose tag keeps this target out of the default nine
-// until the packet surface has claims in compiler/*_test.go;
-// `go build -tags schema_leg_goose` is `schema generate --lang goose`. Drop
-// the tag when the port joins the builtins.
+// design. Goose is a built-in target of the default build, with no build tag
+// (compiler/target_moo_builtin_test.go holds every shipped target there).
 package compiler
 
 import (

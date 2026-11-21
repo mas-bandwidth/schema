@@ -9,13 +9,13 @@
 # (testdata/conformance/tables/reports.txt), the save byte for byte against
 # every instance wire, each construct round-tripped from a wire the Go
 # reference engine wrote, each gate's negative control; then the target's
-# compiler claims under its build tag (compiler/tablesmoo_test.go). No real
+# compiler claims (compiler/tablesmoo_test.go). No real
 # time, no socket, no network: inputs go in as source (moorun).
 # The fixed-form tests read the reference's corpus, so it is built first.
 .PHONY: test-moo-tables
 test-moo-tables: toolchain-moo build/fixedform-corpus/.stamp
 	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/mootable/...
-	SCHEMA_SLOW=1 go test -count=1 -tags schema_leg_moo -run 'Moo' ./compiler/
+	SCHEMA_SLOW=1 go test -count=1 -run 'Moo' ./compiler/
 
 # the table surface is part of the moo leg's `make test` half: test-moo (make/moo.mk)
 # takes it as a prerequisite, so the leg stays one leg (REGISTERED_LEGS)

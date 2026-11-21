@@ -1,5 +1,3 @@
-//go:build schema_leg_moo
-
 package compiler
 
 import (

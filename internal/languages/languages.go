@@ -42,7 +42,7 @@ var generatorNames = map[string]string{
 
 // languageNames are the prose names of languages whose checker display name
 // (the spelling diagnostics print) is not the prose one. Moo is capitalised in
-// prose; `--lang moo`, `schema_leg_moo` and file names keep their spelling.
+// prose; `--lang moo` and file names keep their spelling.
 var languageNames = map[string]string{
 	"moo": "Moo",
 }

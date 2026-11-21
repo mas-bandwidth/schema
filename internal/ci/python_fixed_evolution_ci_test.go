@@ -164,7 +164,7 @@ func TestPythonFixedEvolutionCICoverage(t *testing.T) {
 		}
 		return out
 	}
-	listed := strings.Fields(string(run("go", "test", "-tags", "schema_leg_python", "-list", "^TestPythonFixedProofEvolution", "./internal/codegen/pythontable")))
+	listed := strings.Fields(string(run("go", "test", "-list", "^TestPythonFixedProofEvolution", "./internal/codegen/pythontable")))
 	var aggregate string
 	var rows []fixedEvolutionRow
 	for line := range strings.SplitSeq(strings.TrimSpace(string(run("make", "-s", "python-fixed-evolution-ci-patterns"))), "\n") {

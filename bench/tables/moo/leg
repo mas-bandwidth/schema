@@ -10,7 +10,7 @@ GEN="$MOO_BENCH_GEN"
 case "$1" in
 build)
     [ -x "$MOO" ] || command -v "$MOO" >/dev/null 2>&1 || { echo "no moo interpreter at $MOO -- run make dist-moo" >&2; exit 2; }
-    [ -x ./build/schema-moo ] || go build -tags schema_leg_moo -o build/schema-moo ./cmd/schema
+    [ -x ./build/schema-moo ] || go build -o build/schema-moo ./cmd/schema
     rm -rf "$GEN" "$GEN.src"
     mkdir -p "$GEN" "$GEN.src"
     sed 's/^fixed table /table /' bench/corpus/BenchTable.schema > "$GEN.src/BenchTable.schema"

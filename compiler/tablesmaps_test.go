@@ -169,9 +169,9 @@ func TestMapCarriers(t *testing.T) {
 	}
 }
 
-// The map gates name the Python leg only where the target is built in
-// (`-tags schema_leg_python`): compiler/carries_python_maps.go registers it as
-// a map carrier, from an init that runs before the targets' own files.
+// The map gates name the Python leg, a built-in target of every build:
+// compiler/carries_python_maps.go registers it as a map carrier, from an init
+// that runs before the targets' own files.
 func pythonMapLegBuilt() bool {
 	return slices.Contains(New().Targets(), "python")
 }

@@ -6,7 +6,7 @@
 # is missing (make dist-goose).
 #
 #   cards-goose-generate                       the Card unit generated for goose
-#                                              (the schema_leg_goose target), the
+#                                              (the built-in goose target), the
 #                                              facade and the driver beside it
 #   cards-goose-conformance                    the harness's `cards` check over
 #                                              tables/cards/goose/driver
@@ -26,7 +26,7 @@ cards-goose-generate: $(CARDS_GOOSE_GENERATED)/.stamp
 $(CARDS_GOOSE_GENERATED)/.stamp: tables/cards/Card.schema tables/cards/schema.lock tables/cards/goose/cards.goose tables/cards/goose/driver.goose $(CARDS_GOOSE_SOURCES)
 	@rm -rf $(CARDS_GOOSE_GENERATED)
 	@mkdir -p $(CARDS_GOOSE_GENERATED)
-	go build -tags schema_leg_goose -o build/schema-goose-cards ./cmd/schema
+	go build -o build/schema-goose-cards ./cmd/schema
 	./build/schema-goose-cards generate --lang goose --out $(CARDS_GOOSE_GENERATED) tables/cards
 	cp tables/cards/goose/cards.goose tables/cards/goose/driver.goose $(CARDS_GOOSE_GENERATED)/
 	@touch $@

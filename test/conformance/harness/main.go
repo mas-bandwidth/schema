@@ -115,7 +115,7 @@ flags:
   --claims            fail a case the leg CLAIMS and answers ABSENT: its unit
                       uses a construct the leg's target registers as carried
                       (compiler/carries_<target>.go); build the harness with
-                      every schema_leg_<lang> tag (run only)
+                      no tag: every shipped target is built in (run only)
   --coverage <path>   write the run's coverage rows as JSON (run, cross-read)
   --lang <lang>       the leg whose writes are re-read (cross-read only)
   --writes <dir>      that leg's answers, <surface>/<case> (cross-read only)

@@ -254,8 +254,7 @@ func TestEveryTargetCoverageWorkflowReportsBeforeFailure(t *testing.T) {
 		}
 		cmd := exec.Command("bash", "--noprofile", "--norc", "-c", run)
 		cmd.Dir = dir
-		// HARNESS_TAGS is the workflow-level env the step builds the harness with.
-		cmd.Env = append(os.Environ(), "PATH="+filepath.Join(dir, "bin")+":"+os.Getenv("PATH"), "GITHUB_STEP_SUMMARY="+summary, "HARNESS_TAGS=schema_leg_goose,schema_leg_moo,schema_leg_python,schema_leg_ruby")
+		cmd.Env = append(os.Environ(), "PATH="+filepath.Join(dir, "bin")+":"+os.Getenv("PATH"), "GITHUB_STEP_SUMMARY="+summary)
 		out, err := cmd.CombinedOutput()
 		if (err != nil) != guarded {
 			t.Fatalf("guarded=%t exit=%v output=%s", guarded, err, out)

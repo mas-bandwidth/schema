@@ -1,5 +1,3 @@
-//go:build schema_leg_python
-
 package compiler
 
 // THE ID-TABLE WIRE's enum and escape kinds carry no key in

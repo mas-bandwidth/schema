@@ -36,7 +36,7 @@ packet-finite-ruby: build/schema-ruby ruby-toolchain-check
 	$(RUBY_FLOOR) --disable-gems -w test/packet-finite/ruby/main.rb build/packet-finite/ruby/generated
 
 packet-finite-ruby-negative-control: ruby-toolchain-check
-	sh test/slowgate/proof packet-finite-ruby-negative-control 'TestRubyPacketFiniteNegativeControl' -count=1 -timeout 600s -tags schema_leg_ruby -run '^TestRubyPacketFiniteNegativeControl$$' ./internal/codegen/ruby/
+	sh test/slowgate/proof packet-finite-ruby-negative-control 'TestRubyPacketFiniteNegativeControl' -count=1 -timeout 600s -run '^TestRubyPacketFiniteNegativeControl$$' ./internal/codegen/ruby/
 
 .PHONY: packet-void-ruby packet-void-ruby-negative-control
 packet-void-ruby: build/schema-ruby ruby-toolchain-check
@@ -46,27 +46,27 @@ packet-void-ruby: build/schema-ruby ruby-toolchain-check
 	$(RUBY_FLOOR) --disable-gems -w test/packet-void/ruby/main.rb build/packet-void/ruby/generated
 
 packet-void-ruby-negative-control: ruby-toolchain-check
-	sh test/slowgate/proof packet-void-ruby-negative-control 'TestRubyPacketVoidNegativeControl' -count=1 -timeout 600s -tags schema_leg_ruby -run '^TestRubyPacketVoidNegativeControl$$' ./internal/codegen/ruby/
+	sh test/slowgate/proof packet-void-ruby-negative-control 'TestRubyPacketVoidNegativeControl' -count=1 -timeout 600s -run '^TestRubyPacketVoidNegativeControl$$' ./internal/codegen/ruby/
 
 .PHONY: packet-defaults-ruby packet-defaults-ruby-negative-control
 packet-defaults-ruby: ruby-toolchain-check
-	sh test/slowgate/proof packet-defaults-ruby 'TestRubyPacketDefaults' -count=1 -timeout 600s -tags schema_leg_ruby -run '^TestRubyPacketDefaults$$' ./internal/codegen/ruby/
+	sh test/slowgate/proof packet-defaults-ruby 'TestRubyPacketDefaults' -count=1 -timeout 600s -run '^TestRubyPacketDefaults$$' ./internal/codegen/ruby/
 
 packet-defaults-ruby-negative-control: ruby-toolchain-check
-	sh test/slowgate/proof packet-defaults-ruby-negative-control 'TestRubyPacketDefaultsNegativeControl' -count=1 -timeout 600s -tags schema_leg_ruby -run '^TestRubyPacketDefaultsNegativeControl$$' ./internal/codegen/ruby/
+	sh test/slowgate/proof packet-defaults-ruby-negative-control 'TestRubyPacketDefaultsNegativeControl' -count=1 -timeout 600s -run '^TestRubyPacketDefaultsNegativeControl$$' ./internal/codegen/ruby/
 
 .PHONY: ruby-packet-close ruby-packet-close-negative-control ruby-packet-analyzer ruby-packet-analyzer-negative-control
 ruby-packet-close: ruby-toolchain-check
-	sh test/slowgate/proof ruby-packet-close 'TestRubyPacketClose' -count=1 -timeout 600s -tags schema_leg_ruby -run '^TestRubyPacketClose$$' ./internal/codegen/ruby/
+	sh test/slowgate/proof ruby-packet-close 'TestRubyPacketClose' -count=1 -timeout 600s -run '^TestRubyPacketClose$$' ./internal/codegen/ruby/
 
 ruby-packet-close-negative-control: ruby-toolchain-check
-	sh test/slowgate/proof ruby-packet-close-negative-control 'TestRubyPacketCloseNegativeControl' -count=1 -timeout 600s -tags schema_leg_ruby -run '^TestRubyPacketCloseNegativeControl$$' ./internal/codegen/ruby/
+	sh test/slowgate/proof ruby-packet-close-negative-control 'TestRubyPacketCloseNegativeControl' -count=1 -timeout 600s -run '^TestRubyPacketCloseNegativeControl$$' ./internal/codegen/ruby/
 
 ruby-packet-analyzer: ruby-toolchain-check
-	sh test/slowgate/proof ruby-packet-analyzer 'TestRubyPacketCloseAnalyzer' -count=1 -timeout 600s -tags schema_leg_ruby -run '^TestRubyPacketCloseAnalyzer$$' ./internal/codegen/ruby/
+	sh test/slowgate/proof ruby-packet-analyzer 'TestRubyPacketCloseAnalyzer' -count=1 -timeout 600s -run '^TestRubyPacketCloseAnalyzer$$' ./internal/codegen/ruby/
 
 ruby-packet-analyzer-negative-control: ruby-toolchain-check
-	sh test/slowgate/proof ruby-packet-analyzer-negative-control 'TestRubyPacketCloseAnalyzerNegativeControl' -count=1 -timeout 600s -tags schema_leg_ruby -run '^TestRubyPacketCloseAnalyzerNegativeControl$$' ./internal/codegen/ruby/
+	sh test/slowgate/proof ruby-packet-analyzer-negative-control 'TestRubyPacketCloseAnalyzerNegativeControl' -count=1 -timeout 600s -run '^TestRubyPacketCloseAnalyzerNegativeControl$$' ./internal/codegen/ruby/
 
 .PHONY: bench-ruby-gate bench-ruby-negative-control
 bench-ruby-gate: generated/bench/ruby/.stamp ruby-toolchain-check

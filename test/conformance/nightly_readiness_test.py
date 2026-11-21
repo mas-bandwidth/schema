@@ -705,7 +705,7 @@ class Contracts(unittest.TestCase):
         self.assertEqual(m.driver_command(ROOT,"python"),
                          m.PYTHON_DIST+" -W error -I -B test/conformance/python/wirefuzz.py build/conformance-python")
         self.assertNotIn("python",m.MIXED_BUILDER)
-        self.assertEqual(m.GO_TAGS,{"python":"schema_leg_python"})
+        self.assertEqual(m.GO_TAGS,{})
 
     def test_python_main_uses_tagged_harness_pins_and_tags(self):
         real=m.Runner
@@ -722,7 +722,7 @@ class Contracts(unittest.TestCase):
             for package in ("lockfile","python","pythontable"):
                 for name in ("native-list-"+package,"native-"+package):
                     argv=calls[name][0]
-                    self.assertEqual(argv[argv.index("-tags")+1],"schema_leg_python",name)
+                    self.assertNotIn("-tags",argv,name)
             for name in ("native-list-gotable","native-gotable"):
                 self.assertNotIn(name,calls)
             for arm in ("plain","retain"):
@@ -734,7 +734,7 @@ class Contracts(unittest.TestCase):
             for label,tests in m.PYTHON_PACKET_PROBES.items():
                 argv=calls["packet-"+label+"-0"][0]
                 self.assertEqual(argv[-1],"./internal/codegen/python")
-                self.assertEqual(argv[argv.index("-tags")+1],"schema_leg_python")
+                self.assertNotIn("-tags",argv)
                 self.assertEqual(argv[argv.index("-run")+1],"^("+"|".join(tests)+")$")
             for name in ("retain-python-save","retain-python-remap"):
                 argv=calls[name][0]

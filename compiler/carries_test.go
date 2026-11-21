@@ -24,7 +24,7 @@ var nonGoCarriers = map[string][]string{
 	"dart": {carryOptionalVariableClosure},
 	"java": {carryOptionalVariableClosure, carryOneSidedRange, carryForms, carryArrayRoot, carryTimestamp, carryOptionalMap, carryRequired, carryIntegrity, carryTextList, carryTextListTotal, carryUnboundedText},
 	"luau": {carryTimestamp, carryRequired, carryForms, carryIntegrity, carryUnboundedText, carryTextListTotal, carryTextList, carryArrayRoot, carryOneSidedRange, carryOptionalVariableClosure, carryOptionalMap},
-	// moo (behind schema_leg_moo; compiler/carries_moo.go): each proven by
+	// moo (built in; compiler/carries_moo.go): each proven by
 	// internal/codegen/mootable's TestMooTableConstructsMatchTheGoEngine, the
 	// text form's by its carries_test.go
 	"moo":      {carryTimestamp, carryRequired, carryForms, carryIntegrity, carryUnboundedText, carryTextListTotal, carryTextList, carryArrayRoot, carryOneSidedRange, carryOptionalVariableClosure, carryOptionalMap},

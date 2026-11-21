@@ -12,7 +12,7 @@ GOOSE_FUZZ_N      ?= 2000
 .PHONY: $(GOOSE_FUZZ_SCHEMA)
 $(GOOSE_FUZZ_SCHEMA):
 	@mkdir -p build
-	go build -tags schema_leg_goose -o $@ ./cmd/schema
+	go build -o $@ ./cmd/schema
 
 # goose_fuzz_units OUTDIR: every unit of the conformance manifest the goose
 # target generates, one directory each, written by this head's compiler (a
