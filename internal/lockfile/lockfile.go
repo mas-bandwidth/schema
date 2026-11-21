@@ -112,7 +112,16 @@ import (
 // 9 records prospective, path-addressed full-width fixed definitions digests.
 // Existing v6/v7/v8 entries retain their exact legacy digest and wire key; a
 // relock appends the current identity rather than rewriting a shipped entry.
-const Version = 9
+// 10 records a union's SCALAR ARM — one that names no declaration — by its facts
+// as well as its spelling (`arm pid payload=uint32 kind=8 width=4 default=0
+// min=0 max=1000`): the entry facts a field line carries, from `kind=` on, and
+// the values hash digests them. Before it an arm was judged by its spelling
+// alone, so a narrowed arm range passed and every lawful arm widening was
+// refused; now the monotone law judges an arm as it judges a field
+// (docs/FIXED-FORM-ALGORITHM.md §5.1, "each payload WIDENS"). v9 and older locks
+// SALVAGE: an arm they recorded by spelling is held to that spelling until the
+// next `schema lock` writes its facts down.
+const Version = 10
 
 // salvageFrom is the oldest rendering version this compiler reads and carries
 // forward rather than refusing (§11.8). Below it a lock holds nothing a hand or
@@ -343,6 +352,13 @@ type ValueList struct {
 	// nested record's `Name@0xhash`, or a scalar arm's type spelling, or
 	// "" on a payload-free arm. Nil on an enum or a flags mask.
 	Payloads []string
+
+	// Arms are a union's SCALAR ARMS judged as entries, parallel to Values:
+	// the facts a field line carries (Name and Id left empty, since the arm
+	// line already names it), and nil on an arm that names a declaration, on
+	// a payload-free arm, and on an arm an older rendering (before Version 10)
+	// recorded by spelling alone. Nil on an enum or a flags mask.
+	Arms []*Entry
 }
 
 // Child is the word one value of this list is called: a union has ARMS and an
@@ -545,60 +561,69 @@ func (r *renderer) renderTable(decl string, st *ir.Struct) Table {
 	}
 	layout := ir.RecordLayout(r.u, st)
 	for _, f := range st.Fields {
-		e := Entry{
-			Name:       fieldWireName(f),
-			Id:         ir.TableFieldWireId(f),
-			Kind:       ir.TableFieldKind(f),
-			Default:    defaultText(f),
-			Frac:       -1,
-			Optional:   f.Type.Optional,
-			Deprecated: f.Deprecated,
-		}
-		switch {
-		case f.HasIntRange && f.IntMin != nil && f.IntMax != nil:
-			e.Min, e.Max = f.IntMin.String(), f.IntMax.String()
-		case f.HasFloatRange:
-			e.Min, e.Max, e.Res = floatText(f.FMin), floatText(f.FMax), floatText(f.Resolution)
-		}
-		if f.Type.Kind == ir.TFixed {
-			e.Frac = f.Type.FracBits
-			e.IBits = f.Type.IntBits
-		}
-		switch f.Type.Kind {
-		case ir.TString, ir.TBytes:
-			e.Cap = f.Type.Size
-		case ir.TBits:
-			e.Bits = f.Type.Width
-		}
-		switch {
-		case f.KeyEnum != "":
-			e.Shape, e.Bound = "keyed", f.ArrayBound
-		case f.Array == ir.ArrayFixed:
-			e.Shape, e.Bound = "fixed", f.ArrayBound
-		case f.Array == ir.ArrayCounted:
-			e.Shape, e.Bound = "counted", f.ArrayBound
-		case f.Array == ir.ArrayList:
-			e.Shape = "list"
-		}
+		var width int64
 		if fl := layout.FieldByName(f.Name); fl != nil {
-			e.Width = fl.Size
+			width = fl.Size
 		}
-		// held= is taken for EVERY kind, so a named type in a slot is never
-		// silent for want of an arm here; held() is what knows which kinds
-		// name one.
-		e.HeldName, e.HeldHash = r.held(f)
-		if e.Kind == ir.TableKindArray || e.Kind == ir.TableKindKeyed {
-			e.ElemKind = ir.TableElemKind(f)
-			e.ElemWidth = elemSize(r.u, f)
-		}
-		if f.KeyEnumRef != nil {
-			v := r.enumList(f.KeyEnumRef)
-			e.KeyName, e.KeyHash = v.Name, v.Hash
-		}
-		t.Entries = append(t.Entries, e)
+		t.Entries = append(t.Entries, r.entry(f, width))
 	}
 	t.Layout = LayoutHash(t.Entries)
 	return t
+}
+
+// entry is one field line's facts: a record's field, or a union's scalar arm,
+// which is a field line too (docs/SPEC-TABLES.md §2.6). width is the field's
+// whole storage, as the holder lays it out.
+func (r *renderer) entry(f *ir.Field, width int64) Entry {
+	e := Entry{
+		Name:       fieldWireName(f),
+		Id:         ir.TableFieldWireId(f),
+		Kind:       ir.TableFieldKind(f),
+		Default:    defaultText(f),
+		Frac:       -1,
+		Optional:   f.Type.Optional,
+		Deprecated: f.Deprecated,
+		Width:      width,
+	}
+	switch {
+	case f.HasIntRange && f.IntMin != nil && f.IntMax != nil:
+		e.Min, e.Max = f.IntMin.String(), f.IntMax.String()
+	case f.HasFloatRange:
+		e.Min, e.Max, e.Res = floatText(f.FMin), floatText(f.FMax), floatText(f.Resolution)
+	}
+	if f.Type.Kind == ir.TFixed {
+		e.Frac = f.Type.FracBits
+		e.IBits = f.Type.IntBits
+	}
+	switch f.Type.Kind {
+	case ir.TString, ir.TBytes:
+		e.Cap = f.Type.Size
+	case ir.TBits:
+		e.Bits = f.Type.Width
+	}
+	switch {
+	case f.KeyEnum != "":
+		e.Shape, e.Bound = "keyed", f.ArrayBound
+	case f.Array == ir.ArrayFixed:
+		e.Shape, e.Bound = "fixed", f.ArrayBound
+	case f.Array == ir.ArrayCounted:
+		e.Shape, e.Bound = "counted", f.ArrayBound
+	case f.Array == ir.ArrayList:
+		e.Shape = "list"
+	}
+	// held= is taken for EVERY kind, so a named type in a slot is never
+	// silent for want of an arm here; held() is what knows which kinds
+	// name one.
+	e.HeldName, e.HeldHash = r.held(f)
+	if e.Kind == ir.TableKindArray || e.Kind == ir.TableKindKeyed {
+		e.ElemKind = ir.TableElemKind(f)
+		e.ElemWidth = elemSize(r.u, f)
+	}
+	if f.KeyEnumRef != nil {
+		v := r.enumList(f.KeyEnumRef)
+		e.KeyName, e.KeyHash = v.Name, v.Hash
+	}
+	return e
 }
 
 func (r *renderer) held(f *ir.Field) (string, uint64) {
@@ -655,13 +680,35 @@ func (r *renderer) unionList(un *ir.Union) ValueList {
 	}
 	vals := make([]string, len(un.Variants))
 	payloads := make([]string, len(un.Variants))
+	arms := make([]*Entry, len(un.Variants))
 	for i, arm := range un.Variants {
 		vals[i] = arm.WireName()
 		payloads[i] = r.armPayload(arm)
+		arms[i] = r.armEntry(arm)
 	}
-	v := newValueList(DeclUnion, un.Name, vals, nil, payloads)
+	v := ValueList{Decl: DeclUnion, Name: un.Name, Values: vals, Payloads: payloads, Arms: arms}
+	v.Hash = ValuesHash(&v)
 	r.unions[un] = v
 	return v
+}
+
+// armEntry is a SCALAR ARM's facts, judged by the monotone law exactly as a
+// field's are (docs/FIXED-FORM-ALGORITHM.md §5.1: "each payload WIDENS"). An
+// arm that names a declaration is judged in that declaration's own block and
+// by its name on payload=, and a payload-free arm has no facts, so both answer
+// nil. The width is the arm's own storage in the union's overlay; the union's
+// size is the holder's fact and moves the holder's entry.
+func (r *renderer) armEntry(arm ir.UnionVariant) *Entry {
+	if arm.F == nil {
+		return nil
+	}
+	if name, _ := r.held(arm.F); name != "" {
+		return nil
+	}
+	width, _ := ir.ArmLayout(r.u, arm)
+	e := r.entry(arm.F, width)
+	e.Name, e.Id = "", 0
+	return &e
 }
 
 func (r *renderer) armPayload(arm ir.UnionVariant) string {
@@ -834,20 +881,36 @@ func LayoutHash(entries []Entry) uint64 {
 // carries and for the same reason.
 func ValuesHash(v *ValueList) uint64 {
 	var b strings.Builder
-	for i, s := range v.Values {
-		b.WriteString(v.Child())
-		b.WriteByte(' ')
-		b.WriteString(s)
-		if valueDeprecated(v, i) {
-			b.WriteString(" deprecated")
-		}
-		if payload := valuePayload(v, i); payload != "" {
-			b.WriteString(" payload=")
-			b.WriteString(payload)
-		}
+	for i := range v.Values {
+		b.WriteString(valueLine(v, i))
 		b.WriteByte('\n')
 	}
 	return ir.TableWireId(b.String())
+}
+
+// valueLine is one variant or arm line as the file carries it, and the unit
+// the values hash digests: a scalar arm's facts (Version 10) ride after its
+// payload=, so a line from an older rendering is this line's prefix.
+func valueLine(v *ValueList, i int) string {
+	s := v.Child() + " " + v.Values[i]
+	if valueDeprecated(v, i) {
+		s += " deprecated"
+	}
+	if payload := valuePayload(v, i); payload != "" {
+		s += " payload=" + payload
+	}
+	if arm := valueArm(v, i); arm != nil {
+		s += " " + arm.facts()
+	}
+	return s
+}
+
+// valueArm is a union arm's judged facts, nil where it has none.
+func valueArm(v *ValueList, i int) *Entry {
+	if i < 0 || i >= len(v.Arms) {
+		return nil
+	}
+	return v.Arms[i]
 }
 
 func valuePayload(v *ValueList, i int) string {
@@ -866,7 +929,13 @@ func valueDeprecated(v *ValueList, i int) bool {
 
 // line is one entry's text, and the unit the layout hash digests.
 func (e Entry) line() string {
-	s := fmt.Sprintf("field %s id=0x%016x kind=%d width=%d default=%s", e.Name, e.Id, e.Kind, e.Width, e.Default)
+	return fmt.Sprintf("field %s id=0x%016x ", e.Name, e.Id) + e.facts()
+}
+
+// facts is an entry's line from `kind=` on: everything but the name and the id,
+// which a union arm's line already carries as its own (Version 10).
+func (e Entry) facts() string {
+	s := fmt.Sprintf("kind=%d width=%d default=%s", e.Kind, e.Width, e.Default)
 	if e.Min != "" || e.Max != "" {
 		s += " min=" + e.Min + " max=" + e.Max
 	}
@@ -965,15 +1034,8 @@ func (u *Unit) Text() string {
 	}
 	for _, v := range u.Values {
 		fmt.Fprintf(&b, "\n%s %s values=0x%016x\n", v.Decl, v.Name, v.Hash)
-		for i, s := range v.Values {
-			line := fmt.Sprintf("    %s %s", v.Child(), s)
-			if valueDeprecated(&v, i) {
-				line += " deprecated"
-			}
-			if payload := valuePayload(&v, i); payload != "" {
-				line += " payload=" + payload
-			}
-			fmt.Fprintln(&b, line)
+		for i := range v.Values {
+			fmt.Fprintf(&b, "    %s\n", valueLine(&v, i))
 		}
 	}
 	return b.String()
@@ -1136,13 +1198,20 @@ func Parse(path string, data []byte) (*Unit, error) {
 			}
 			payload := ""
 			deprecated := false
+			// A SCALAR ARM'S FACTS (Version 10) follow its payload=, spelled
+			// as a field line spells them from `kind=` on.
+			var facts []string
 			for _, tok := range fields[2:] {
 				key, val, valued := strings.Cut(tok, "=")
 				switch {
+				case len(facts) > 0:
+					facts = append(facts, tok)
 				case !valued && key == "deprecated" && fields[0] == "variant":
 					deprecated = true
 				case valued && key == "payload":
 					payload = val
+				case valued && key == "kind" && fields[0] == "arm" && payload != "" && u.Version >= 10:
+					facts = append(facts, tok)
 				default:
 					return nil, fmt.Errorf("%s: %q is not a fact a %s line carries", where, tok, fields[0])
 				}
@@ -1150,9 +1219,19 @@ func Parse(path string, data []byte) (*Unit, error) {
 			if fields[0] == "variant" && payload != "" {
 				return nil, fmt.Errorf("%s: a variant line names one value", where)
 			}
+			var arm *Entry
+			if len(facts) > 0 {
+				e, err := parseEntry(append([]string{"field", fields[1], "id=0x0"}, facts...))
+				if err != nil {
+					return nil, fmt.Errorf("%s: %w", where, err)
+				}
+				e.Name = ""
+				arm = &e
+			}
 			curList.Values = append(curList.Values, fields[1])
 			if curList.Decl == DeclUnion {
 				curList.Payloads = append(curList.Payloads, payload)
+				curList.Arms = append(curList.Arms, arm)
 			} else {
 				curList.Deprecated = append(curList.Deprecated, deprecated)
 			}

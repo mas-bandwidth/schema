@@ -334,6 +334,24 @@ func diffValues(lk, lv *ValueList, policy Policy) error {
 				where, lv.Values[i], valueRule(lk, lv, want, lv.Values[i]), lk.Child())
 		}
 		if lk.Decl == DeclUnion {
+			// A SCALAR ARM ON BOTH SIDES is judged by the monotone law, fact
+			// for fact, as a field is (docs/FIXED-FORM-ALGORITHM.md §5.1: "each
+			// payload WIDENS"): a narrowed range or a narrower integer is
+			// refused, and a wider one is a change the record must carry. An
+			// arm that names a declaration is judged in that declaration's own
+			// block and here by its name; an arm an older rendering recorded
+			// by spelling alone is held to that spelling until `schema lock`
+			// writes its facts down.
+			if wantArm, gotArm := valueArm(lk, i), valueArm(lv, i); wantArm != nil && gotArm != nil {
+				widened, what, err := monotoneAt(where, *wantArm, *gotArm, false)
+				if err != nil {
+					return err
+				}
+				if widened && policy == Current {
+					return stale(lv.Decl, lv.Name, valueName(lv, i), what)
+				}
+				continue
+			}
 			wantP := payloadTypeName(valuePayload(lk, i))
 			gotP := payloadTypeName(valuePayload(lv, i))
 			if wantP != gotP {

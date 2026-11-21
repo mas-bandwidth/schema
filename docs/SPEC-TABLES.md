@@ -3565,7 +3565,7 @@ fixed table ShipConfig
 }
 ```
 
-New locks start with `schema-lock 9`, use the prospective full-width, path-addressed definitions digest, and include complete `writer=<hex>` snapshots (the fixed-form algorithm §5.2). Rendering6/7/8 histories are salvaged without changing their saved wire keys; relocking appends the prospective current identity. Historical snapshots are checked against each entry’s recorded digest scheme. The supported rendering-7 example below remains readable unchanged; its absent snapshots are legacy-unknown.
+New locks start with `schema-lock 10`, use the prospective full-width, path-addressed definitions digest, and include complete `writer=<hex>` snapshots (the fixed-form algorithm §5.2). Rendering6/7/8 histories are salvaged without changing their saved wire keys; relocking appends the prospective current identity. Historical snapshots are checked against each entry’s recorded digest scheme. The supported rendering-7 example below remains readable unchanged; its absent snapshots are legacy-unknown.
 
 ```
 schema-lock 7
@@ -3674,7 +3674,7 @@ under a new name:
   and append a new one"*
 - a **moved range, resolution or fixed-point scale**, none of which moves a
   byte and all of which change what the bytes say: *"… is [1, 240] in the lock
-  and [1, 480] in the declaration — a field already in the lock keeps its
+  and [1, 120] in the declaration — a field already in the lock keeps its
   range: the bounds and the resolution are the scale a stored value is read
   back at, so moving them reads every record already written as a different
   number (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new
@@ -3775,9 +3775,9 @@ schema lock [--print] [--verbose] [--retire Table[@0x...] --reason <text>] [dir|
 Apart from `--retire`, it only ever APPENDS entries and values, adds blocks and
 flips `deprecated` on:
 it runs the check's own comparison first and **refuses everything the check
-refuses** — a reorder, a removal, a widening, a kind change, a held type that
-moved, an array element that moved, a union arm's payload type that moved, a
-moved default, a moved range, a flipped `?`, a reordered value list, an
+refuses** — a reorder, a removal, a narrowing, a kind change, a held type that
+moved, an array element that moved, a union arm whose payload names a
+different declaration, a moved default, a narrowed range, a flipped `?`, a reordered value list, an
 un-deprecation, a table withdrawn without a retirement, a type gone from the closure, a hand-edited
 file — so the one command that moves the file cannot be the one that breaks
 the rule. The ONE
