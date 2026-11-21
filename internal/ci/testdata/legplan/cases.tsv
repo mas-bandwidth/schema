@@ -1,0 +1,22 @@
+# The leg-gate planner corpus (TestLegGateRunsOnTheDiffThatTouchesItsLeg).
+# One case per line, tab-separated:
+#   id    the files a diff touches (space-separated)
+#   legs  the plan's legs output, as the leg-gate jobs read it
+#   rows  the plan's leg_rows on a pull request and a push, leg/part in
+#         order ("-" for none); dispatch adds the rows past the cap
+#   jobs  the ci-fast.yml leg-gate jobs that run on a same-repository pull
+#         request and on a push with that plan ("-" for none)
+# Every case runs the plan step's own selector script from ci-fast.yml.
+cs-emitter	internal/codegen/cstable/wire.go	["cs"]	cs/versioning-assembly,cs/versioning-rows	leg-gate,leg-gate-cs
+cs-leg-tree	test/cs-tables/byte-order	["cs"]	cs/versioning-assembly,cs/versioning-rows	leg-gate,leg-gate-cs
+cs-make	make/cs.mk	["cs"]	cs/versioning-assembly,cs/versioning-rows	leg-gate,leg-gate-cs
+rust-emitter	internal/codegen/rusttable/mapsarms.go	["rust"]	rust/fixed	leg-gate
+c-emitter	internal/codegen/ctable/ctable.go	["c"]	c/fixed,c/clean	leg-gate
+shared-table-code	internal/tablewire/decode.go	["c","cpp","cs","dart","elixir","go","goose","java","js","lobster","luau","rust","squirrel"]	c/fixed,c/clean,cpp/plain,cs/versioning-assembly,cs/versioning-rows,dart/fixed,elixir/fixed,go/fixed,go/versioning,goose/fixedform,goose/versioning,java/fixed,js/fixed,lobster/gates,luau/fixed,luau/bench,rust/fixed,squirrel/test	leg-gate,leg-gate-cpp,leg-gate-cs,leg-gate-lobster,leg-gate-squirrel
+shared-header	internal/codegen/genheader/genheader.go	["c","cpp","cs","dart","elixir","go","goose","java","js","lobster","luau","rust","squirrel"]	c/fixed,c/clean,cpp/plain,cs/versioning-assembly,cs/versioning-rows,dart/fixed,elixir/fixed,go/fixed,go/versioning,goose/fixedform,goose/versioning,java/fixed,js/fixed,lobster/gates,luau/fixed,luau/bench,rust/fixed,squirrel/test	leg-gate,leg-gate-cpp,leg-gate-cs,leg-gate-lobster,leg-gate-squirrel
+python-emitter	internal/codegen/pythontable/fixedform.go	["python"]	python/plan-selection,python/rest	leg-gate
+lua-emitter	internal/codegen/luatable/luatable.go	["lua"]	lua/fixed	leg-gate
+unity-emitter	internal/codegen/unitytable/carriers.go	["unity"]	-	-
+unrelated-docs	README.md	[]	-	-
+unrelated-go	internal/ci/ci_test.go	[]	-	-
+unrelated-other-leg	internal/codegen/javatable/declarations.go	["java"]	java/fixed	leg-gate

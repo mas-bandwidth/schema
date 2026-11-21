@@ -816,6 +816,18 @@ tables-cs-versioning: tables-fixedform-corpus
 	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 20m -run 'TestFixedVersioning'
 	@echo 'tables C# versioning: §5 read both columns of every row against the C++ reference bytes'
 
+# THE SAME RUN IN TWO HALVES, for ci-fast.yml's two-minute rows: the one
+# probe assembly (^TestFixedVersioning$, about half the run) and every other
+# TestFixedVersioning* test. Together they run exactly what -run
+# 'TestFixedVersioning' runs; tables-cs-versioning stays the one-job form.
+.PHONY: tables-cs-versioning-assembly tables-cs-versioning-rows
+tables-cs-versioning-assembly: tables-fixedform-corpus
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 20m -run '^TestFixedVersioning$$'
+	@echo 'tables C# versioning (assembly): §5 read both columns of every row against the C++ reference bytes'
+tables-cs-versioning-rows: tables-fixedform-corpus
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 20m -run 'TestFixedVersioning' -skip '^TestFixedVersioning$$'
+	@echo 'tables C# versioning (rows): every other TestFixedVersioning test against the C++ reference bytes'
+
 .PHONY: tables-cs-fixed-t13
 tables-cs-fixed-t13:
 	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 20m -run 'TestFixedRoadmapCSharpT13SecondLayoutForAHeldHash'

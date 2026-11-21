@@ -59,7 +59,7 @@ func TestSquirrelCardRowsFitTheCap(t *testing.T) {
 		}
 	}
 
-	const marker = "squirrel) make dist-squirrel"
+	const marker = "squirrel/test) make dist-squirrel"
 	i := strings.Index(text, marker)
 	if i < 0 {
 		t.Fatal("ci-fast.yml has no squirrel fixed-form arm")

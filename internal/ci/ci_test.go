@@ -590,6 +590,7 @@ type ciEvent struct {
 	Labels         []string // pull_request labels
 	PlanPkgs       string   // needs.plan.outputs.packages
 	PlanLegs       string   // needs.plan.outputs.legs
+	PlanLegRows    string   // needs.plan.outputs.leg_rows; PlanLegs when omitted
 	PlanRows       string   // needs.plan.outputs.rows
 	PlanResult     string   // needs.plan.result, success when omitted
 	GoCorpusResult string   // needs.go-fixed-corpus.result, success when omitted
@@ -987,6 +988,13 @@ func resolveCIToken(tok string, ev ciEvent) (string, error) {
 		return ev.PlanPkgs, nil
 	case "needs.plan.outputs.legs":
 		return ev.PlanLegs, nil
+	case "needs.plan.outputs.leg_rows":
+		// a case that names no rows stands in its legs: empty exactly when
+		// they are (leg_gate_plan_test.go runs the plan for the real rows)
+		if ev.PlanLegRows == "" {
+			return ev.PlanLegs, nil
+		}
+		return ev.PlanLegRows, nil
 	case "needs.plan.outputs.codegen_touched":
 		for pkg := range strings.FieldsSeq(ev.PlanPkgs) {
 			if strings.HasPrefix(pkg, "./internal/codegen") || pkg == "./ir" || pkg == "./compiler" || pkg == "./..." {
@@ -1169,14 +1177,15 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		PlanPkgs: planPkgs,
 		PlanLegs: planLegs,
 	}
-	// The leg gates (fixed form + versioning, every leg) are not light: they
-	// run on dispatch only (the owner, 2026-11-15, "no exceptions"); the
-	// nightly ci-full.yml runs every leg.
-	for _, job := range []string{"leg-gate", "leg-gate-cpp", "leg-gate-lobster", "leg-gate-rust", "leg-gate-squirrel"} {
+	// The leg gates (fixed form + versioning) run on the pull request that
+	// touches their leg, in rows that each fit the two-minute cap: run on
+	// dispatch only, they let #4470 merge with the C# leg red. ci-full.yml
+	// still runs every leg nightly. leg_gate_plan_test.go holds the planner.
+	for _, job := range []string{"leg-gate", "leg-gate-cpp", "leg-gate-cs", "leg-gate-lobster", "leg-gate-squirrel"} {
 		pr := sameRepoMainUnlabeled
-		pr.PlanLegs = `["cpp","go","lobster","rust","squirrel"]`
-		if ok, _ := jobSelectsSelfHosted(wfs["ci-fast.yml"], job, pr); ok {
-			errs = append(errs, fmt.Sprintf("same-repo PR into main ran ci-fast.yml:%s; the leg gates run on dispatch only", job))
+		pr.PlanLegs = `["cpp","cs","go","lobster","rust","squirrel"]`
+		if ok, err := jobSelectsSelfHosted(wfs["ci-fast.yml"], job, pr); err != nil || !ok {
+			errs = append(errs, fmt.Sprintf("same-repo PR into main selecting its leg did not run ci-fast.yml:%s (err=%v)", job, err))
 		}
 	}
 	for _, wantKey := range []string{
@@ -1213,30 +1222,15 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 			errs = append(errs, fmt.Sprintf("stream-to-dev PR did not run ci-fast.yml:%s (err=%v)", job, err))
 		}
 	}
-	if ok, _ := jobRunsInWorkflow(wfs["ci-fast.yml"], "leg-gate", streamToDevPR); ok {
-		errs = append(errs, "stream-to-dev PR ran ci-fast.yml:leg-gate below main")
+	// a stream-to-dev PR runs the leg gate of the leg it touches (go) and
+	// no other leg's rows
+	if ok, err := jobRunsInWorkflow(wfs["ci-fast.yml"], "leg-gate", streamToDevPR); err != nil || !ok {
+		errs = append(errs, fmt.Sprintf("stream-to-dev PR touching the go leg did not run ci-fast.yml:leg-gate (err=%v)", err))
 	}
-	if ok, _ := jobRunsInWorkflow(wfs["ci-fast.yml"], "leg-gate-lobster", streamToDevPR); ok {
-		errs = append(errs, "stream-to-dev PR ran ci-fast.yml:leg-gate-lobster below main")
-	}
-	if ok, _ := jobRunsInWorkflow(wfs["ci-fast.yml"], "leg-gate-squirrel", streamToDevPR); ok {
-		errs = append(errs, "stream-to-dev PR ran ci-fast.yml:leg-gate-squirrel below main")
-	}
-	if ok, _ := jobRunsInWorkflow(wfs["ci-fast.yml"], "leg-gate-cpp", streamToDevPR); ok {
-		errs = append(errs, "stream-to-dev PR ran ci-fast.yml:leg-gate-cpp below main")
-	}
-	if ok, _ := jobRunsInWorkflow(wfs["ci-fast.yml"], "leg-gate-rust", streamToDevPR); ok {
-		errs = append(errs, "stream-to-dev PR ran ci-fast.yml:leg-gate-rust below main")
-	}
-	// the Rust probe row runs exactly when the plan selects the Rust leg
-	rustIntoMain := sameRepoMainUnlabeled
-	rustIntoMain.Name = "workflow_dispatch"
-	rustIntoMain.PlanLegs = `["rust"]`
-	if ok, err := jobSelectsSelfHosted(wfs["ci-fast.yml"], "leg-gate-rust", rustIntoMain); err != nil || !ok {
-		errs = append(errs, fmt.Sprintf("a dispatch selecting the Rust leg did not run ci-fast.yml:leg-gate-rust (err=%v)", err))
-	}
-	if ok, _ := jobSelectsSelfHosted(wfs["ci-fast.yml"], "leg-gate-rust", sameRepoMainUnlabeled); ok {
-		errs = append(errs, "ci-fast.yml:leg-gate-rust ran with no Rust leg in the plan")
+	for _, job := range []string{"leg-gate-cpp", "leg-gate-cs", "leg-gate-lobster", "leg-gate-squirrel"} {
+		if ok, _ := jobRunsInWorkflow(wfs["ci-fast.yml"], job, streamToDevPR); ok {
+			errs = append(errs, "stream-to-dev PR touching only the go leg ran ci-fast.yml:"+job)
+		}
 	}
 	// the C++ parts run exactly when the plan selects the C++ leg
 	cppIntoMain := sameRepoMainUnlabeled
@@ -1298,8 +1292,8 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 			errs = append(errs, fmt.Sprintf("PR into an unnamed base did not run ci-fast.yml:%s (err=%v)", job, err))
 		}
 	}
-	if ok, _ := jobRunsInWorkflow(wfs["ci-fast.yml"], "leg-gate", unnamedBase); ok {
-		errs = append(errs, "PR into an unnamed base ran ci-fast.yml:leg-gate below main")
+	if ok, err := jobRunsInWorkflow(wfs["ci-fast.yml"], "leg-gate", unnamedBase); err != nil || !ok {
+		errs = append(errs, fmt.Sprintf("PR into an unnamed base touching the go leg did not run ci-fast.yml:leg-gate (err=%v)", err))
 	}
 	forkUnnamed := unnamedBase
 	forkUnnamed.HeadRepo = forkRepo
@@ -1366,14 +1360,14 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 	// does not name it (a push-and-pull-request replay, say).
 	// The plan here selects the Lobster leg too, whose rows are a job of
 	// their own (ci-fast.yml leg-gate-lobster) gated on that selection.
-	// leg-gate-squirrel, leg-gate-cpp and leg-gate-rust are gated the same way
-	// on theirs.
+	// leg-gate-squirrel, leg-gate-cpp and leg-gate-cs are gated the same way
+	// on theirs; the Rust probes are leg-gate's rust/probes row.
 	dispatchEv := ciEvent{
 		Name:     "workflow_dispatch",
 		Branch:   "main",
 		Repo:     repo,
 		PlanPkgs: planPkgs,
-		PlanLegs: `["cpp","go","lobster","rust","squirrel"]`,
+		PlanLegs: `["cpp","cs","go","lobster","rust","squirrel"]`,
 	}
 	for _, sh := range shJobs {
 		if !workflowTriggersOn(wfs[sh.Workflow], dispatchEv) {
@@ -1433,8 +1427,8 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-fast.yml:lang-lint",
 		"ci-fast.yml:leg-gate",
 		"ci-fast.yml:leg-gate-cpp",
+		"ci-fast.yml:leg-gate-cs",
 		"ci-fast.yml:leg-gate-lobster",
-		"ci-fast.yml:leg-gate-rust",
 		"ci-fast.yml:leg-gate-squirrel",
 		"ci-fast.yml:lint-fast",
 		"ci-fast.yml:plan",

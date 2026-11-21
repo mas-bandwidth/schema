@@ -18,6 +18,10 @@ PYTHON_CI_SUPPORT_GROUPS += $(PYTHON_FIXED_SUITE_TARGETS)
 .PHONY: python-fixed-form-proof python-fixed-form-bench $(PYTHON_FIXED_SUITE_TARGETS)
 test-python: $(PYTHON_FIXED_SUITE_TARGETS)
 python-fixed-form-proof: $(PYTHON_FIXED_SUITE_TARGETS)
+# the same rows in two halves for ci-fast.yml's two-minute leg-gate rows:
+# plan-selection (most of the wall) alone, every other row together
+.PHONY: python-fixed-form-proof-rest
+python-fixed-form-proof-rest: $(filter-out python-fixed-form-proof-plan-selection,$(PYTHON_FIXED_SUITE_TARGETS))
 $(PYTHON_FIXED_SUITE_TARGETS): build/fixedform-corpus/.stamp
 	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -v -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonFixedProofSuite$$/^$(@:python-fixed-form-proof-%=%)$$' ./internal/codegen/pythontable/
 python-fixed-form-bench:

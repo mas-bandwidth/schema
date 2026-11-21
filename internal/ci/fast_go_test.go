@@ -124,8 +124,8 @@ func TestCIFastAndCIFullRunOnPullRequestWhateverItsBase(t *testing.T) {
 			t.Fatalf("ci-fast.yml %s did not run on a pull request into %s: ok=%v err=%v", job, ev.Branch, ok, err)
 		}
 	}
-	if ok, err := jobRunsInWorkflow(wfs["ci-fast.yml"], "leg-gate", ev); err != nil || ok {
-		t.Fatalf("ci-fast.yml leg-gate ran below main on a pull request into %s: ok=%v err=%v", ev.Branch, ok, err)
+	if ok, err := jobRunsInWorkflow(wfs["ci-fast.yml"], "leg-gate", ev); err != nil || !ok {
+		t.Fatalf("ci-fast.yml leg-gate did not run on a pull request into %s that touches the go leg: ok=%v err=%v", ev.Branch, ok, err)
 	}
 	// ci-full.yml runs nightly and on dispatch only (the owner, 2026-11-15: "I
 	// want everything that is not light moved to nightly test now." "no
@@ -179,9 +179,9 @@ func TestCIFastAndCIFullRunOnPullRequestWhateverItsBase(t *testing.T) {
 		t.Fatal("ci-fast.yml does not trigger on a push to main")
 	}
 	mainPush := ciEvent{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema", PlanPkgs: "./internal/codegen/gotable", PlanLegs: `["go"]`}
-	for nameJob, body := range yamlJobs(wfs["ci-fast.yml"]) {
-		if strings.Contains(body, "github.event_name == 'workflow_dispatch'") {
-			continue // the leg rows run on dispatch only
+	for nameJob := range yamlJobs(wfs["ci-fast.yml"]) {
+		if leg, ok := strings.CutPrefix(nameJob, "leg-gate-"); ok && !strings.Contains(mainPush.PlanLegs, `"`+leg+`"`) {
+			continue // a leg's own rows run when the plan selects that leg (leg_gate_plan_test.go)
 		}
 		if nameJob == "fork-pull-request" {
 			continue // a fork's pull request only: the red verdict that no CI ran
