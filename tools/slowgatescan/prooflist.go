@@ -104,7 +104,9 @@ func proofRefsFromRecipes(recipes []recipe) (refs []proofRef, unread []string) {
 		if !strings.Contains(r.cmd, "test/slowgate/proof") {
 			continue
 		}
-		words := shellWords(r.cmd)
+		// the words of the simple command that runs the script, so a quote
+		// elsewhere on a long line cannot swallow it
+		words := shellWords(r.cmd[commandStart(r.cmd, strings.Index(r.cmd, "test/slowgate/proof")):])
 		at := -1
 		for i, w := range words {
 			if w == "test/slowgate/proof" || strings.HasSuffix(w, "/test/slowgate/proof") {
@@ -270,7 +272,12 @@ func shellWords(s string) []string {
 			b.Reset()
 		}
 	}
+	// depth counts the parentheses and braces of an expansion being read:
+	// `$(abspath $(DIR))` and `$$(cat list.txt)` are each one word, spaces and
+	// all, as make and the shell read them.
 	single, double, esc := false, false, false
+	depth := 0
+	var prev rune
 	for _, r := range s {
 		switch {
 		case esc:
@@ -278,15 +285,22 @@ func shellWords(s string) []string {
 			esc = false
 		case r == '\\' && !single:
 			esc = true
-		case r == '\'' && !double:
+		case r == '\'' && !double && depth == 0:
 			single = !single
-		case r == '"' && !single:
+		case r == '"' && !single && depth == 0:
 			double = !double
-		case (r == ' ' || r == '\t') && !single && !double:
+		case (r == '(' || r == '{') && !single && (prev == '$' || depth > 0):
+			depth++
+			b.WriteRune(r)
+		case (r == ')' || r == '}') && !single && depth > 0:
+			depth--
+			b.WriteRune(r)
+		case (r == ' ' || r == '\t') && !single && !double && depth == 0:
 			flush()
 		default:
 			b.WriteRune(r)
 		}
+		prev = r
 	}
 	flush()
 	return out
