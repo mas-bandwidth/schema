@@ -68,8 +68,9 @@ test-go: tables-go-fixedform
 
 # The hand-editable text form (docs/SPEC-TABLES.md §16.9): the textform surface,
 # both table classes, held to test/conformance/textform/ (the positive vectors
-# and their oracles, the leaf edits, every refusal by name, the attachment
-# oracle and a seeded edit fuzz).
+# and their oracles, the leaf edits, every refusal vector refused (the verdict,
+# never its .reason name: refusal-verdict-only), the attachment oracle and a
+# seeded edit fuzz).
 .PHONY: tables-go-textform
 tables-go-textform:
 	sh test/slowgate/proof tables-go-textform \
