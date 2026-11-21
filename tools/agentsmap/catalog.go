@@ -178,7 +178,9 @@ var catalog = []Entry{
 	e("testdata/conformance", "table conformance dumps", "make conformance", "make conformance"),
 	e("testdata/golden", "generated-source goldens", "go test ./internal/goldens", "make update-goldens"),
 	e("testdata/jsontestsuite", "vendored JSONTestSuite (MIT)", "go test ./internal/tabletext", "go test ./internal/tabletext -run JSONTestSuite"),
+	e("testdata/lua-nightly-fuzz", "Lua fuzz replay controls", "make schema-lua-fuzz-replay-controls", "make schema-lua-fuzz-replay"),
 	e("testdata/luau-nightly-fuzz", "Luau nightly fuzz repros", "make luau-nightly-fuzz-replay", "make luau-nightly-fuzz"),
+	e("testdata/moo-wire-fuzz-pinned-controls", "moo pinned-list controls", "make tables-moo-wire-fuzz-pinned-list-controls", "go test ./internal/ci -run TestMooPinnedListIsReadWhole"),
 	e("testdata/wire", "pinned wire bytes", "go test ./internal/goldens", "make update-goldens"),
 
 	// tools/
