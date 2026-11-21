@@ -620,7 +620,7 @@ tables-dart-order-negative-control: build/tables-generated-dart/.stamp build/coo
 		echo "NEGATIVE CONTROL FAILED: the block row stayed green with the order check removed"; \
 		tail -20 build/dart-order-nc/log-block; exit 1; \
 	fi
-	@grep -q "ORDER FAIL block" build/dart-order-nc/log-block || \
+	@grep -Eq "ORDER FAIL block.*a forged order word OPENED" build/dart-order-nc/log-block || \
 		{ echo "NEGATIVE CONTROL FAILED: the block row went red for another reason"; \
 		  tail -20 build/dart-order-nc/log-block; exit 1; }
 	@if grep -q "ORDER FAIL cook" build/dart-order-nc/log-block; then \
@@ -644,7 +644,7 @@ tables-dart-order-negative-control: build/tables-generated-dart/.stamp build/coo
 		echo "NEGATIVE CONTROL FAILED: the cook row stayed green with the order check removed"; \
 		tail -20 build/dart-order-nc/log-cook; exit 1; \
 	fi
-	@grep -q "ORDER FAIL cook" build/dart-order-nc/log-cook || \
+	@grep -Eq "ORDER FAIL cook.*a forged order word OPENED" build/dart-order-nc/log-cook || \
 		{ echo "NEGATIVE CONTROL FAILED: the cook row went red for another reason"; \
 		  tail -20 build/dart-order-nc/log-cook; exit 1; }
 	@if grep -q "ORDER FAIL block" build/dart-order-nc/log-cook; then \
