@@ -3035,6 +3035,12 @@ function TableVariableTextWide(d, tok, holder, key, report) {
       return false;
     } else {
       const scale = point - digits.length;
+      // MORE FRACTION DIGITS THAN F IS NEVER EXACT, refused before any BigInt
+      // work: k/2^F spells at most F decimal fraction digits, and the digits
+      // here carry no trailing zero, so 10^(-scale) cannot divide them times
+      // 2^F. It is the answer the remainder test below gives, without the
+      // document-sized BigInt and divisor (js.md Q2).
+      if (-scale > d.frac) { report.mismatch++; return false; }
       raw = BigInt(digits) << BigInt(d.frac);
       if (scale >= 0) {
         raw *= 10n ** BigInt(scale);
