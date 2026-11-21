@@ -730,8 +730,22 @@ jobs:
 
   # Keep policy checks in a separate two-minute job: on loaded runners the
   # whole-tree modernizer and these checks exceed the combined budget.
+  #
+  # THREE ROWS, BY TEST NAME (2026-11-21). One `go test ./internal/ci/` ran
+  # 57-63 s of tests at GOMAXPROCS 2 (run 44928202537, 1m17s job) and went
+  # past the two-minute cap under load (run 44928096491, cancelled at 2m5s).
+  # Measured serially on amd-2 the package is ~74 s of test time, a third of
+  # it the fast-plan and opt-verify selector tests (one bash per case) and
+  # another seventh the Python plan. So the package runs as three rows side
+  # by side, each on its own runner with the cap to itself. The rows are
+  # COMPLETE BY CONSTRUCTION: every row but `rest` selects with `-run`, and
+  # `rest` is `-skip` of exactly the union of those patterns, so a new test
+  # lands in `rest` unless it is named into a row.
+  # TestCIPolicyShardsCoverEveryTest holds that union and checks every Test
+  # function in the package is selected by exactly one row.
   ci-policy:
     if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    name: ci-policy (${{ matrix.shard }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
     # Bound Go's nested policy-test fan-out to the validated bench setting.
@@ -740,6 +754,16 @@ jobs:
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: selectors
+            select: -run '^(TestFastPlan|TestOptVerify)'
+          - shard: python-legs
+            select: -run '^(TestPython|TestConformance|TestCertify|TestNo)'
+          - shard: rest
+            select: -skip '^(TestFastPlan|TestOptVerify|TestPython|TestConformance|TestCertify|TestNo)'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # the gate runs hosted, so setup-go always runs here; the guard keeps the
@@ -774,18 +798,23 @@ jobs:
       # package goes GREEN HAVING RUN NOTHING. Fourteen did. This scan fails any
       # such recipe line BY NAME, costs milliseconds, and is on the FAST lane
       # because the regression it catches is somebody adding the fifteenth.
+      # The scan, the slowtest gate and the bench parse cost seconds; they run
+      # once, in the `rest` row.
       - name: the positive gate targets still set SCHEMA_SLOW (schema#988)
+        if: matrix.shard == 'rest'
         run: make slow-gate-scan
 
       - name: every toolchain test source calls slowtest.Gate (issue #1025)
+        if: matrix.shard == 'rest'
         run: go test ./internal/slowtest/...
       # CI LINTS ITSELF (issues #470, #472), over every workflow file in the
       # tree — this one included: every `uses:` names a full commit SHA with the
       # tag in a trailing comment, nothing runs @latest, and every csproj
       # agrees with the one .NET SDK pin.
       - name: CI lints itself — action pins and the .NET SDK pin
-        run: go test ./internal/ci/
+        run: go test ${{ matrix.select }} ./internal/ci/
       - name: bench scripts parse
+        if: matrix.shard == 'rest'
         run: bash -n bench/run.sh
 
   # GO VET, a job of its own beside lint-fast: in one job with modernize the
