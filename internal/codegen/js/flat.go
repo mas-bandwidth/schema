@@ -1056,7 +1056,10 @@ func (g *fgen) emitWriteScalar(f *ir.Field, name, ind string) {
 			}
 			return
 		}
-		g.guard(fmt.Sprintf("%s < 0n || %s > %sn", name, name, max.String()), "", ind)
+		// BigInt storage: the type is tested first, because a relational
+		// test against a BigInt bound is false for a boolean, a numeric
+		// string or a Number rather than refusing it (see guardBareInt)
+		g.guard(fmt.Sprintf("typeof %s !== \"bigint\" || %s < 0n || %s > %sn", name, name, name, max.String()), "", ind)
 		g.emitWriteWideOffset(name, w, ind)
 	case ir.TBool:
 		g.chunkAdd(fmt.Sprintf("(%s ? 1 : 0)", name), 1, ind)
@@ -1175,7 +1178,7 @@ func (g *fgen) emitWriteFixed(f *ir.Field, name, ind string) {
 		return
 	}
 	// wide lane: BigInt raw storage, offset in 32-bit groups
-	g.guard(fmt.Sprintf("%s < %sn || %s > %sn", name, rawMin.String(), name, rawMax.String()), "", ind)
+	g.guard(fmt.Sprintf("typeof %s !== \"bigint\" || %s < %sn || %s > %sn", name, name, rawMin.String(), name, rawMax.String()), "", ind)
 	off := fmt.Sprintf("%s - %sn", name, rawMin.String())
 	if rawMin.Sign() == 0 {
 		off = name
@@ -1192,7 +1195,7 @@ func (g *fgen) emitWriteInt(f *ir.Field, name, ind string) {
 				return
 			}
 			bits := ir.BitsRequired(f.IntMin, f.IntMax)
-			g.guard(fmt.Sprintf("%s < %sn || %s > %sn", name, f.IntMin.String(), name, f.IntMax.String()), "", ind)
+			g.guard(fmt.Sprintf("typeof %s !== \"bigint\" || %s < %sn || %s > %sn", name, name, f.IntMin.String(), name, f.IntMax.String()), "", ind)
 			off := fmt.Sprintf("%s - %sn", name, f.IntMin.String())
 			if f.IntMin.Sign() == 0 {
 				off = name
@@ -1217,13 +1220,15 @@ func (g *fgen) emitWriteInt(f *ir.Field, name, ind string) {
 		switch intRangePath(f.IntMin, f.IntMax) {
 		case "int32":
 			if w > 32 {
-				// BigInt storage, int32-family range: truncate to the call
-				// family's domain first (the C# (int) cast's twin), then the
-				// Number-domain offset
+				// BigInt storage, int32-family range: the BigInt itself is
+				// guarded, type first, before it narrows (SPEC §5.1 row 1). A
+				// narrowing to the low 32 bits first would turn 2^32 + 50
+				// into 50 and write it; inside the range the narrowing to a
+				// Number is exact, then the Number-domain offset
 				g.chunkFlush(ind)
-				g.pf("%sSC.setBigUint64(0, %s, true);\n", ind, name)
-				g.pf("%sn = SC.getInt32(0, true);\n", ind)
-				g.guard(fmt.Sprintf("n < %s || n > %s", f.IntMin.String(), f.IntMax.String()), "", ind)
+				g.guard(fmt.Sprintf("typeof %s !== \"bigint\" || %s < %sn || %s > %sn", name, name, f.IntMin.String(), name, f.IntMax.String()),
+					"", ind)
+				g.pf("%sn = Number(%s);\n", ind, name)
 				// n is a mutable temp: its piece merges before anything reuses it
 				g.emitWriteRangedNum("n", f.IntMin.Int64(), f.IntMax.Int64(), ind)
 				g.chunkFlush(ind)
@@ -1301,10 +1306,12 @@ func bareIntBounds(f *ir.Field) (*big.Int, *big.Int) {
 
 // emitWriteRangedBig is the BigInt-domain ranged write (int64 family and
 // full-range unsigned): BigInt has no storage bound, so both halves of the
-// declared range test are always live; offset via asUintN.
+// declared range test are always live, after the BigInt type test that keeps
+// a boolean, a numeric string or a Number from passing them; offset via
+// asUintN.
 func (g *fgen) emitWriteRangedBig(f *ir.Field, name, ind string) {
 	bits := ir.BitsRequired(f.IntMin, f.IntMax)
-	g.guard(fmt.Sprintf("%s < %sn || %s > %sn", name, f.IntMin.String(), name, f.IntMax.String()), "", ind)
+	g.guard(fmt.Sprintf("typeof %s !== \"bigint\" || %s < %sn || %s > %sn", name, name, f.IntMin.String(), name, f.IntMax.String()), "", ind)
 	off := fmt.Sprintf("%s - %sn", name, f.IntMin.String())
 	if f.IntMin.Sign() == 0 {
 		off = name

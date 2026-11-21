@@ -102,6 +102,9 @@ export function ZeroArmsAgree(value) {
 }
 
 export function WriteArmsAgree(stream, value) {
+  if (!Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
+    return false;
+  }
   NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
@@ -111,15 +114,24 @@ export function WriteArmsAgree(stream, value) {
     return false;
   }
   if (value.flag) {
+    if (!Number.isInteger(value.a) || value.a < 0 || value.a > 2047) {
+      return false;
+    }
     NUMBER_SCRATCH.value = value.a;
     if (!stream.serializeBits(NUMBER_SCRATCH, 11)) {
       return false;
     }
   } else {
+    if (!Number.isInteger(value.b) || value.b < 0 || value.b > 2047) {
+      return false;
+    }
     NUMBER_SCRATCH.value = value.b;
     if (!stream.serializeBits(NUMBER_SCRATCH, 11)) {
       return false;
     }
+  }
+  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 127) {
+    return false;
   }
   NUMBER_SCRATCH.value = value.tail;
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
@@ -199,6 +211,9 @@ export function ZeroArmsDisagree(value) {
 }
 
 export function WriteArmsDisagree(stream, value) {
+  if (!Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
+    return false;
+  }
   NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
@@ -208,15 +223,24 @@ export function WriteArmsDisagree(stream, value) {
     return false;
   }
   if (value.flag) {
+    if (!Number.isInteger(value.a) || value.a < 0 || value.a > 2047) {
+      return false;
+    }
     NUMBER_SCRATCH.value = value.a;
     if (!stream.serializeBits(NUMBER_SCRATCH, 11)) {
       return false;
     }
   } else {
+    if (!Number.isInteger(value.b) || value.b < 0 || value.b > 7) {
+      return false;
+    }
     NUMBER_SCRATCH.value = value.b;
     if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
       return false;
     }
+  }
+  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 127) {
+    return false;
   }
   NUMBER_SCRATCH.value = value.tail;
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
@@ -290,6 +314,9 @@ export function ZeroArmEmpty(value) {
 }
 
 export function WriteArmEmpty(stream, value) {
+  if (!Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
+    return false;
+  }
   NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
@@ -299,10 +326,16 @@ export function WriteArmEmpty(stream, value) {
     return false;
   }
   if (value.flag) {
+    if (!Number.isInteger(value.a) || value.a < 0 || value.a > 524287) {
+      return false;
+    }
     NUMBER_SCRATCH.value = value.a;
     if (!stream.serializeBits(NUMBER_SCRATCH, 19)) {
       return false;
     }
+  }
+  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 127) {
+    return false;
   }
   NUMBER_SCRATCH.value = value.tail;
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
@@ -389,6 +422,9 @@ export function ZeroArmsNested(value) {
 }
 
 export function WriteArmsNested(stream, value) {
+  if (!Number.isInteger(value.lead) || value.lead < 0 || value.lead > 7) {
+    return false;
+  }
   NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
@@ -403,21 +439,33 @@ export function WriteArmsNested(stream, value) {
       return false;
     }
     if (value.inner) {
+      if (!Number.isInteger(value.x) || value.x < 0 || value.x > 536870911) {
+        return false;
+      }
       NUMBER_SCRATCH.value = value.x;
       if (!stream.serializeBits(NUMBER_SCRATCH, 29)) {
         return false;
       }
     } else {
+      if (!Number.isInteger(value.y) || value.y < 0 || value.y > 31) {
+        return false;
+      }
       NUMBER_SCRATCH.value = value.y;
       if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
         return false;
       }
     }
   } else {
+    if (!Number.isInteger(value.z) || value.z < 0 || value.z > 8191) {
+      return false;
+    }
     NUMBER_SCRATCH.value = value.z;
     if (!stream.serializeBits(NUMBER_SCRATCH, 13)) {
       return false;
     }
+  }
+  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 63) {
+    return false;
   }
   NUMBER_SCRATCH.value = value.tail;
   if (!stream.serializeBits(NUMBER_SCRATCH, 6)) {
@@ -515,6 +563,9 @@ export function ZeroArmAlign(value) {
 }
 
 export function WriteArmAlign(stream, value) {
+  if (!Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
+    return false;
+  }
   NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
@@ -538,10 +589,16 @@ export function WriteArmAlign(stream, value) {
       return false;
     }
   } else {
+    if (!Number.isInteger(value.b) || value.b < 0 || value.b > 1023) {
+      return false;
+    }
     NUMBER_SCRATCH.value = value.b;
     if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
       return false;
     }
+  }
+  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 127) {
+    return false;
   }
   NUMBER_SCRATCH.value = value.tail;
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
@@ -631,6 +688,9 @@ export function ZeroArmArray(value) {
 }
 
 export function WriteArmArray(stream, value) {
+  if (!Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
+    return false;
+  }
   NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
@@ -657,10 +717,16 @@ export function WriteArmArray(stream, value) {
       }
     }
   } else {
+    if (!Number.isInteger(value.b) || value.b < 0 || value.b > 511) {
+      return false;
+    }
     NUMBER_SCRATCH.value = value.b;
     if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
       return false;
     }
+  }
+  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 127) {
+    return false;
   }
   NUMBER_SCRATCH.value = value.tail;
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
@@ -728,6 +794,9 @@ export function ZeroNarrow(value) {
 }
 
 export function WriteNarrow(stream, value) {
+  if (!Number.isInteger(value.n) || value.n < 0 || value.n > 7) {
+    return false;
+  }
   NUMBER_SCRATCH.value = value.n;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
@@ -766,6 +835,9 @@ export function ZeroWide(value) {
 }
 
 export function WriteWide(stream, value) {
+  if (typeof value.w !== "bigint" || value.w < 0n || value.w > 137438953471n) {
+    return false;
+  }
   BIGINT_SCRATCH.value = value.w;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 37)) {
     return false;
@@ -896,11 +968,17 @@ export function ZeroHoldsUneven(value) {
 }
 
 export function WriteHoldsUneven(stream, value) {
+  if (!Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
+    return false;
+  }
   NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
   if (!WriteUneven(stream, value.u)) {
+    return false;
+  }
+  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 2047) {
     return false;
   }
   NUMBER_SCRATCH.value = value.tail;
@@ -962,6 +1040,9 @@ export function ZeroArrUneven(value) {
 }
 
 export function WriteArrUneven(stream, value) {
+  if (!Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
+    return false;
+  }
   NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
@@ -977,6 +1058,9 @@ export function WriteArrUneven(stream, value) {
     if (!WriteUneven(stream, value.items[i])) {
       return false;
     }
+  }
+  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 7) {
+    return false;
   }
   NUMBER_SCRATCH.value = value.tail;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
@@ -1053,6 +1137,9 @@ export function ZeroRegainAfterAlign(value) {
 }
 
 export function WriteRegainAfterAlign(stream, value) {
+  if (!Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
+    return false;
+  }
   NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
@@ -1086,16 +1173,28 @@ export function WriteRegainAfterAlign(stream, value) {
   if (!stream.serializeBytes(value.s.subarray(0, value.sLength))) {
     return false;
   }
+  if (!Number.isInteger(value.p) || value.p < 0 || value.p > 4294967295) {
+    return false;
+  }
   NUMBER_SCRATCH.value = value.p;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
+    return false;
+  }
+  if (!Number.isInteger(value.q) || value.q < 0 || value.q > 536870911) {
     return false;
   }
   NUMBER_SCRATCH.value = value.q;
   if (!stream.serializeBits(NUMBER_SCRATCH, 29)) {
     return false;
   }
+  if (!Number.isInteger(value.r) || value.r < 0 || value.r > 524287) {
+    return false;
+  }
   NUMBER_SCRATCH.value = value.r;
   if (!stream.serializeBits(NUMBER_SCRATCH, 19)) {
+    return false;
+  }
+  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 15) {
     return false;
   }
   NUMBER_SCRATCH.value = value.tail;
