@@ -18,11 +18,11 @@ import (
 // one and this READER's narrow one. A writer value past the reader's
 // declaration is out of the reader's range on every read.
 func scalarRangeFields(writer bool) string {
-	r, b, c, s, e := "uint16 | min = 0, max = 250", "bits(4)", "float32 | min = 0, max = 10, resolution = 0.5", "int8", "Color"
+	r, b, c, s, e, n := "uint16 | min = 0, max = 250", "bits(4)", "float32 | min = 0, max = 10, resolution = 0.5", "int8", "Color", "int32 | min = 0, max = 50"
 	if writer {
-		r, b, c, s, e = "uint16 | min = 0, max = 1000", "bits(8)", "float32 | min = 0, max = 100, resolution = 0.5", "int8", "WideColor"
+		r, b, c, s, e, n = "uint16 | min = 0, max = 1000", "bits(8)", "float32 | min = 0, max = 100, resolution = 0.5", "int8", "WideColor", "int32 | min = 0, max = 100"
 	}
-	return fmt.Sprintf("{\n    keep uint32\n    r %s\n    b %s\n    c %s\n    s %s\n    e %s\n}\n", r, b, c, s, e)
+	return fmt.Sprintf("{\n    keep uint32\n    r %s\n    b %s\n    c %s\n    s %s\n    e %s\n    n %s\n}\n", r, b, c, s, e, n)
 }
 
 func scalarRangeSchema(writer bool) string {
@@ -32,6 +32,30 @@ func scalarRangeSchema(writer bool) string {
 		color = "enum WideColor { Red, Green, Blue }\n"
 	}
 	return "package probe\n\n" + color + "\nfixed table M\n" + fields + "\ntable V\n" + fields
+}
+
+// TestJsMessageRangedScalarReadRefuses is the fast half: the generated message
+// read of a ranged int32 holds the value to this reader's declared range by
+// refusing out_of_range, and carries no clamp and no counter
+// (docs/SPEC-TABLES.md §3.3, §4).
+func TestJsMessageRangedScalarReadRefuses(t *testing.T) {
+	t.Parallel()
+	files, err := Generate(unitFrom(t, scalarRangeSchema(false)))
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	body := jsFn(string(files["ProbeTable.js"]), "MLoadMessageBody")
+	if body == "" {
+		t.Fatal("the generated module has no MLoadMessageBody")
+	}
+	if want := `if (x < 0 || x > 50) { TableMessageRefuse(r.Report, "out_of_range"); return false; }`; !strings.Contains(body, want) {
+		t.Errorf("the message read of an int32 with range 0..50 lacks %q:\n%s", want, body)
+	}
+	for _, never := range []string{"Oor++", "x = 50"} {
+		if strings.Contains(body, never) {
+			t.Errorf("the message read still clamps or counts (%q):\n%s", never, body)
+		}
+	}
 }
 
 // TestJsScalarOutOfRangeRefusedAsTheOracle is one table over the JavaScript
@@ -77,6 +101,9 @@ func TestJsScalarOutOfRangeRefusedAsTheOracle(t *testing.T) {
 	}{
 		{"in_range", `{"r": 250, "b": 15, "c": 10, "s": -128, "e": "Green"}`, ""},
 		{"ranged_integer_past_max", `{"r": 300}`, tablewire.ReasonOutOfRange},
+		// the prior writer's lawful int32 (range 0..100) at this reader's 0..50
+		{"prior_writer_int32_inside", `{"n": 40}`, ""},
+		{"prior_writer_int32_past_max", `{"n": 75}`, tablewire.ReasonOutOfRange},
 		{"bits_past_width", `{"b": 200}`, tablewire.ReasonOutOfRange},
 		{"compressed_float_past_max", `{"c": 50}`, tablewire.ReasonOutOfRange},
 		{"enum_variant_unnamed", `{"e": "Blue"}`, ""},
