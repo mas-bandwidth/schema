@@ -827,6 +827,11 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 					}
 				}
 			}
+			// a pass on one half of a refusal pair counts only beside an
+			// answer on the other half (twins.go)
+			for _, name := range applyTwinRule(twinPairs(s, legWant, wireRefusals), r) {
+				_, _ = io.WriteString(w, "conformance TWIN "+d.lang+" / "+s+": "+name+" counts absent: the other half of its refusal pair was not answered\n")
+			}
 			if reference && r.missing > r.named {
 				r.failures = append(r.failures, fmt.Sprintf(
 					"the REFERENCE leg answered ABSENT for %d case(s) — an absence here is the corpus "+

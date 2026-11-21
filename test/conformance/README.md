@@ -100,6 +100,14 @@ An EMPTY `.absent` is the per-case absence below, a leg with no codec for the
 root: on a row that expects a refusal it counts absent, never PASS, so a leg
 that cannot read a root cannot pass the must-refuse rows on it.
 
+**A refusal row and its accepted twin are one claim** (`harness/twins.go`).
+Per leg and per surface, when one half of a pair passes and the leg did not
+answer the other (absent at either grain), the passing half counts absent
+too, and the harness prints a `conformance TWIN` line naming it. An answer
+that fails counts as answered. The twin is found by name: `<case>_ok`, a
+bound's `past`/`at` sides, `illformed`/`wellformed`, or `<prefix>_ok` for a
+shorter prefix of the refusal's name.
+
 **A CASE may be absent too, and it is said the same way.** A driver that
 cannot answer one case of a surface it otherwise implements writes
 `<case>.absent` — an empty file, beside where the answer would go — and the
