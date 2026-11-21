@@ -23,11 +23,12 @@
 // BUFFERS).
 //
 // THE ROSTER this leg answers 1 for is the form-1 FILE roots of the units the
-// target generates, with retention off. A form-2 (message) entry is driven
-// through LoadMessages/SaveMessages, which this leg does not carry, and the
-// Squirrel port has no retention (docs/SPEC-TABLES.md §6.6): both answer 0, as
-// does a root of a unit the target refuses (build/conformance-squirrel/
-// REFUSED.txt), so the harness never sends them a mutant.
+// target generates, the retaining arm's variable roots (LoadRetain and
+// SaveRetain), and, outside the builder arm, the form-2 (message) roots,
+// driven through the unit's LoadMessages and SaveMessages against its own
+// announced vocabulary (docs/SPEC-TABLES.md §3.3). A root of a unit the target
+// refuses (build/conformance-squirrel/REFUSED.txt) answers 0, so the harness
+// never sends it a mutant.
 //
 // TWO ARMS, ONE DRIVER (make/squirrel-fuzz.mk). The Squirrel load builds
 // class instances and has no caller region to size (docs/PORT-SQUIRREL.md,
@@ -54,6 +55,7 @@ local input = ::stdin;
 local out = ::stdout;
 
 local FORM_VARIABLE = 1;
+local FORM_MESSAGE = 2;
 local builder = vargv.len() >= 1 && vargv[0] == "builder";
 // `mixed` is the harness's --mixed-builder profile (the Goose, Dart and
 // JavaScript legs' one): ONE process over the whole file roster, each FIXED
@@ -202,6 +204,25 @@ local openUnit = function(key) {
   return opened;
 };
 
+// THE MESSAGE VOCABULARY (docs/SPEC-TABLES.md §3.3): the connection's announced
+// table, derived from the unit's OWN announcement (the vocabulary is a pure
+// function of the build, so both sides derive the same one), read once per
+// unit, as messagefuzz.nut does; null when the unit carries no announcement
+local ownVocabOf = function(u) {
+  if ("ownVocab" in u) return u.ownVocab;
+  local vocab = null;
+  if (("Announce" in u.T) && ("AnnounceRead" in u.T) && ("AnnounceMeasure" in u.T)) {
+    local size = u.T.AnnounceMeasure();
+    local ann = blob(size);
+    if (u.T.Announce(ann) != size) throw "wirefuzz.nut: the unit's own Announce failed";
+    ann.seek(0);
+    vocab = {};
+    if (!u.T.AnnounceRead(vocab, ann, {})) throw "wirefuzz.nut: the unit's own AnnounceRead failed";
+  }
+  u.ownVocab <- vocab;
+  return vocab;
+};
+
 // THE ROSTER (test/conformance/README.md): u32 count, then per root the unit
 // key, the root's name, the FORM and RETAIN; one byte per entry in reply.
 local head = take(4);
@@ -227,6 +248,16 @@ for (local i = 0; i < count; i++) {
       if (u != false && (root in u.T.Descriptors) && u.T.Descriptors[root].variable && ((root + "LoadRetain") in u.T)) {
         codec = { u = u, root = root, d = u.T.Descriptors[root], retain = true };
       }
+    }
+  } else if (form == FORM_MESSAGE && retain == 0 && !builder) {
+    // a message root: a fixed table the unit's LoadMessages names, loaded
+    // into the unit's batch storage under its own vocabulary
+    local u = openUnit(unit);
+    if (u != false && (root in u.T.Descriptors) && u.T.Descriptors[root].fixed &&
+        ((root + "LoadMessages") in u.T) && ("TableMessageBatchMax" in u.T) && ownVocabOf(u) != null) {
+      local storage = array(u.T.TableMessageBatchMax);
+      for (local j = 0; j < storage.len(); j++) storage[j] = u.T[root]();
+      codec = { u = u, root = root, d = u.T.Descriptors[root], retain = false, message = true, storage = storage };
     }
   }
   roster[i] = codec;
@@ -255,7 +286,35 @@ for (;;) {
   local loaded = false;
   local strictRefused = false;
   local saved = null;
-  if (c.retain) {
+  if ("message" in c) {
+    // THE MESSAGE READ (docs/SPEC-TABLES.md §3.3): the whole wire is one
+    // batch; it loads every message or refuses, and the saved bytes are
+    // SaveMessages' over what it loaded
+    local T = c.u.T;
+    local lim = wire.len() >= 2 ? ((wire[1] & 0xff) + 1) : 1;
+    if (lim > c.storage.len()) lim = c.storage.len();
+    for (local j = 0; j < lim; j++) c.storage[j] = T[c.root]();
+    local lr = {};
+    local n = T[c.root + "LoadMessages"](c.storage, c.u.ownVocab, wire, lr);
+    if ("unknown" in lr) report.unknown = lr.unknown;
+    if ("widened" in lr) report.widened = lr.widened;
+    local damaged = (("bodyDamaged" in lr) && lr.bodyDamaged) || (("damaged" in lr) && lr.damaged);
+    local refusedHere = (("refused" in lr) && lr.refused) ||
+      (("nonFiniteFloat" in lr) && lr.nonFiniteFloat != null && lr.nonFiniteFloat != "");
+    report.bodyDamaged = damaged;
+    if (n >= 1 && !damaged && !refusedHere) {
+      local values = c.storage.slice(0, n);
+      local size = T[c.root + "MeasureMessages"](values, {});
+      if (size >= 0) {
+        local outBuf = blob(size);
+        if (T[c.root + "SaveMessages"](values, outBuf, {}) == size) {
+          loaded = true;
+          saved = outBuf;
+        }
+      }
+    }
+    strictRefused = !loaded;
+  } else if (c.retain) {
     local store = { capacity = 64 * wire.len() + 4096, idCapacity = 1 << 17 };
     local v = c.u.T[c.root + "LoadRetain"](wire, store, report);
     loaded = v != null && !report.bodyDamaged && !report.refused;

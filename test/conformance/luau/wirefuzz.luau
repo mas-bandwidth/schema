@@ -39,8 +39,8 @@
 -- read whole is the LoadMeasure refusal the harness accepts on the same terms
 -- (test/conformance/README.md, "The wire-fuzz driver"; §6.5).
 
-type Unit = { S: any, load: any, save: any, retain: any?, align: number, measure: boolean? }
-type Entry = { u: Unit, root: string, retain: boolean }
+type Unit = { S: any, load: any, save: any, retain: any?, align: number, measure: boolean?, M: any?, ownVocab: any? }
+type Entry = { u: Unit, root: string, retain: boolean, message: boolean? }
 
 
 -- ---- LOADMEASURE (docs/SPEC-TABLES.md §6.5; internal/tablewire/extent.go) --
@@ -672,6 +672,52 @@ local function answer(u: Unit, root: string, wire: buffer, retain: boolean?): bu
 end
 
 
+-- answerMessage reads one FORM-2 mutant (docs/SPEC-TABLES.md §3.3): the whole
+-- wire is one message batch under the unit's own announced vocabulary, loaded
+-- whole or refused, and the saved bytes are SaveMessages' over what it loaded,
+-- as test/conformance/luau/messagefuzz.luau answers a form-5 frame's batch.
+local function messageReply(ok: boolean, rep: any, malformed: boolean, saved: buffer?): buffer
+	local slen = if saved ~= nil then buffer.len(saved) else 0
+	local b = buffer.create(47 + slen)
+	buffer.writeu8(b, 0, if ok then 1 else 0)
+	buffer.writei32(b, 1, rep.unknown or 0)
+	buffer.writei32(b, 5, 0)
+	buffer.writei32(b, 9, rep.widened or 0)
+	buffer.writei32(b, 13, 0)
+	buffer.writei32(b, 17, 0)
+	buffer.writeu8(b, 21, if malformed then 1 else 0)
+	buffer.writeu8(b, 22, if ok then 0 else 1)
+	buffer.writeinteger(b, 23, -1i)
+	buffer.writei32(b, 31, 0)
+	buffer.writei32(b, 35, 0)
+	if saved == nil then
+		buffer.writeinteger(b, 39, -1i)
+	else
+		buffer.writeinteger(b, 39, integer.create(slen))
+		buffer.copy(b, 47, saved, 0, slen)
+	end
+	return b
+end
+
+local function answerMessage(u: Unit, root: string, wire: buffer): buffer
+	local M: any = u.M
+	local rep: any = {}
+	local count, bodies = M.LoadMessages(u.ownVocab, root, wire, 256, rep)
+	if count < 1 or rep.malformed or (rep.verdict or 0) ~= 0 or (rep.reason ~= nil and rep.reason ~= "") then
+		return messageReply(false, rep, rep.malformed == true, nil)
+	end
+	local srep: any = {}
+	local size = M.MeasureMessages(u.ownVocab, root, bodies, srep)
+	if size < 0 then
+		return messageReply(false, rep, false, nil)
+	end
+	local out, n = M.SaveMessages(u.ownVocab, root, bodies, srep)
+	if out == nil or n ~= size then
+		return messageReply(false, rep, false, nil)
+	end
+	return messageReply(true, rep, false, out)
+end
+
 -- THE PIPE (test/conformance/README.md, "The wire-fuzz driver": the stream is
 -- little-endian throughout, the roster once, then one reply per mutant).
 local function pipe(host: any)
@@ -709,6 +755,7 @@ local function pipe(host: any)
 				local S = require(base .. "schema_tables")
 				lookup_S = S
 				local align = 8
+				local announcement: buffer? = nil
 				for _, name in units[key] or {} do
 					-- a closure, not pcall(require, ...): require resolves
 					-- ./ and ../ against the chunk that calls it
@@ -719,6 +766,9 @@ local function pipe(host: any)
 						end
 						error(mod, 0)
 					end
+					if announcement == nil and mod ~= nil and mod.TableMessageAnnouncement ~= nil then
+						announcement = mod.TableMessageAnnouncement
+					end
 					for k, v in mod do
 						if type(k) == "string" and string.sub(k, -10) == "Descriptor" and type(v) == "table" and v.fields ~= nil and v.id ~= nil then
 							local a = math.max(layout.record_layout(v).align, layout.extent_align(v, {}))
@@ -726,7 +776,23 @@ local function pipe(host: any)
 						end
 					end
 				end
-				return { S = S, load = require(base .. "schema_load"), save = require(base .. "schema_save"), retain = require(base .. "schema_retain"), align = align, measure = true }
+				-- THE MESSAGE FORM (§3.3): the unit's own announcement read into
+				-- its own vocabulary, once; a unit with no announcement or no
+				-- message module carries no form-2 codec, and its form-2 roots
+				-- answer 0
+				local M: any = nil
+				local ownVocab: any = nil
+				if announcement ~= nil then
+					local okM, mm = pcall(function(): any return require(base .. "schema_message") end)
+					if okM and mm ~= nil then
+						local vocab = mm.NewVocabulary()
+						if mm.AnnounceRead(vocab, announcement, {}) then
+							M = mm
+							ownVocab = vocab
+						end
+					end
+				end
+				return { S = S, load = require(base .. "schema_load"), save = require(base .. "schema_save"), retain = require(base .. "schema_retain"), align = align, measure = true, M = M, ownVocab = ownVocab }
 			end)
 			local next: Unit | false = false
 			if ok then
@@ -751,16 +817,30 @@ local function pipe(host: any)
 		assert(fb ~= nil, "wirefuzz: the roster ended inside an entry")
 		local form, retain = buffer.readu8(fb, 0), buffer.readu8(fb, 1)
 		local entry: Entry | false = false
-		-- A FORM-2 entry is the message batch reader, which this leg does not
-		-- drive, so it answers 0 (test/conformance/README.md, "The wire-fuzz
-		-- driver"). A RETAIN entry is the retention arm, driven through
+		-- A FORM-2 entry is the message batch reader, driven through the
+		-- unit's schema_message LoadMessages and SaveMessages (answerMessage).
+		-- A RETAIN entry is the retention arm, driven through
 		-- schema_retain.luau's LoadRetain and SaveRetain.
 		-- Every entry answered 0 is NOTED by name (__luaufuzz.note, the file
 		-- LUAUFUZZ_NOTE names): make/luau-fuzz.mk holds the list to
 		-- test/conformance/luau/wire-fuzz-absent.txt, so a root that drops out
 		-- is a reviewed change and never a quieter run.
 		local why = ""
-		if form ~= 1 then
+		if form == 2 then
+			local u = unit(key)
+			if u == nil then
+				why = "refused"
+			elseif retain ~= 0 or u.M == nil then
+				why = "message"
+			else
+				local okd, d = pcall(u.S.lookup, root)
+				if not okd or d == nil then
+					why = "no-codec"
+				else
+					entry = { u = u, root = root, retain = false, message = true }
+				end
+			end
+		elseif form ~= 1 then
 			why = "message"
 		else
 			local u = unit(key)
@@ -790,7 +870,11 @@ local function pipe(host: any)
 		assert(wire ~= nil, "wirefuzz: the stream ended inside a mutant")
 		local entry = roster[index + 1]
 		assert(entry, "wirefuzz: a mutant for a root this leg answered 0")
-		host.write(answer(entry.u, entry.root, wire, entry.retain))
+		if entry.message then
+			host.write(answerMessage(entry.u, entry.root, wire))
+		else
+			host.write(answer(entry.u, entry.root, wire, entry.retain))
+		end
 	end
 end
 
