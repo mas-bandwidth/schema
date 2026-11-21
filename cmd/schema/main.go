@@ -30,7 +30,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path"
@@ -100,7 +99,10 @@ func main() {
 		}
 		// A REFUSED BYTE IS A FAILING CHECK: the exit is nonzero once the
 		// unit, if one was named too, has had its own answer.
-		wireRefused := printWireForms(os.Stdout, wires)
+		lines, wireRefused := wireFormLines(wires)
+		for _, l := range lines {
+			fmt.Println(l)
+		}
 		// A CHECK OVER FILES ALONE IS FINISHED: there is no unit to compile,
 		// and defaulting to the working directory would compile something the
 		// caller never named.
@@ -945,17 +947,17 @@ func splitWireFiles(args []string) (schemas []string, wires []wireFile, err erro
 	return schemas, wires, nil
 }
 
-// printWireForms prints each saved file's form line (docs/SPEC-TABLES.md §3)
-// and reports whether any byte was refused.
-func printWireForms(w io.Writer, wires []wireFile) (refused bool) {
+// wireFormLines is each saved file's form line (docs/SPEC-TABLES.md §3),
+// `<path>: <line>`, and whether any byte was refused.
+func wireFormLines(wires []wireFile) (lines []string, refused bool) {
 	for _, f := range wires {
 		line := ir.WireFormLine(f.head)
-		fmt.Fprintf(w, "%s: %s\n", f.path, line)
+		lines = append(lines, f.path+": "+line)
 		if strings.HasPrefix(line, "REFUSED") {
 			refused = true
 		}
 	}
-	return refused
+	return lines, refused
 }
 
 // loadUnit gathers the unit's files and compiles them, exiting nonzero on any

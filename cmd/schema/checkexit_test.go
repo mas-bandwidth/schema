@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestPrintWireFormsReportsARefusal(t *testing.T) {
+func TestWireFormLinesReportARefusal(t *testing.T) {
 	t.Parallel()
 	for _, row := range []struct {
 		head    []byte
@@ -23,17 +23,15 @@ func TestPrintWireFormsReportsARefusal(t *testing.T) {
 		{[]byte{'p'}, true},
 		{nil, true}, // an empty file
 	} {
-		var out strings.Builder
-		got := printWireForms(&out, []wireFile{{path: "saved.bin", head: row.head}})
+		lines, got := wireFormLines([]wireFile{{path: "saved.bin", head: row.head}})
 		if got != row.refused {
-			t.Errorf("head %v: refused = %v, want %v (%q)", row.head, got, row.refused, out.String())
+			t.Errorf("head %v: refused = %v, want %v (%q)", row.head, got, row.refused, lines)
 		}
-		if !strings.HasPrefix(out.String(), "saved.bin: ") {
-			t.Errorf("head %v: the line must name its file: %q", row.head, out.String())
+		if len(lines) != 1 || !strings.HasPrefix(lines[0], "saved.bin: ") {
+			t.Errorf("head %v: one line naming its file, got %q", row.head, lines)
 		}
 	}
-	var out strings.Builder
-	if !printWireForms(&out, []wireFile{{path: "a.bin", head: []byte{1}}, {path: "b.bin", head: []byte{0}}}) {
+	if _, refused := wireFormLines([]wireFile{{path: "a.bin", head: []byte{1}}, {path: "b.bin", head: []byte{0}}}); !refused {
 		t.Error("one refused file among good ones must make the check fail")
 	}
 }
