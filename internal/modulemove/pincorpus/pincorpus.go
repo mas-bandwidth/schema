@@ -57,7 +57,12 @@ type Spelling struct {
 	Path string `json:"path"`
 	// Reason is a phrase the refusal must carry.
 	Reason string `json:"reason"`
-	File   string `json:"-"`
+	// GitTime makes this row a Go resolution case. The runner creates the commit
+	// locally at GitTime and substitutes its revision for Version's last component.
+	GitTime string `json:"git_time"`
+	// ResolveError is empty when Go must resolve the pin, or text its refusal must name.
+	ResolveError string `json:"resolve_error"`
+	File         string `json:"-"`
 }
 
 // Entry is one directory entry of an adopter tree: a regular file holding
