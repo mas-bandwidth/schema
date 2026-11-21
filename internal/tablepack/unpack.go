@@ -173,16 +173,17 @@ func unpackWith(m *tabletext.Model, root string, wire []byte, dir string, oneFil
 // message writes is the tree a file writes.
 func writeTree(m *tabletext.Model, inst *tabletext.Instance, root, dir string, oneFile bool) error {
 	st := inst.Def
+	if !oneFile && treeNamesOverlap(st, root) {
+		// two entries of the expanded tree would share one name, or one would
+		// take `<Root>.json`, which pack reads as the whole root (§17.2):
+		// that tree could not be written whole or would not pack back. The
+		// whole root is the same instance, so it is written instead, decided
+		// before anything touches the disk.
+		oneFile = true
+	}
 	if !oneFile {
 		for _, f := range st.Fields {
 			key := ir.TableFieldJsonKey(f)
-			if key == root && f.KeyEnum == "" {
-				// `<key>.json` would be `<Root>.json`, which pack reads as the
-				// whole root (§17.2): the expanded tree would not pack back.
-				// Write the whole root instead, which is the same instance.
-				oneFile = true
-				break
-			}
 			if !treeComponent(key) {
 				return fmt.Errorf("field %s: JSON key %q is not one safe local path component; use --one-file to preserve this key in JSON", f.Name, key)
 			}
@@ -242,6 +243,29 @@ func writeTree(m *tabletext.Model, inst *tabletext.Instance, root, dir string, o
 		written[key+".json"] = true
 	}
 	return prune(out, owned, written)
+}
+
+// treeNamesOverlap reports whether the expanded tree's entries at the root
+// level collide: every field's entry (`<key>.json` for a value, `<key>/` for
+// an enum-keyed array) is computed first, with `<Root>.json` reserved for the
+// whole root, and any two that name one entry — compared case-folded, since
+// a case-insensitive filesystem would merge them too — overlap. Every
+// declared field counts, written or not, so the shape a schema unpacks to
+// does not depend on the values.
+func treeNamesOverlap(st *ir.Struct, root string) bool {
+	taken := map[string]bool{strings.ToLower(root + ".json"): true}
+	for _, f := range st.Fields {
+		name := ir.TableFieldJsonKey(f)
+		if f.KeyEnum == "" {
+			name += ".json"
+		}
+		name = strings.ToLower(name)
+		if taken[name] {
+			return true
+		}
+		taken[name] = true
+	}
+	return false
 }
 
 func unpackKeyed(m *tabletext.Model, fv *tabletext.Field, parent *os.Root, dir string) error {
