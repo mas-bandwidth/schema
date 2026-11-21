@@ -228,6 +228,72 @@ func TestCppTextWriteRefusesACountBelowItsMinimum(t *testing.T) {
 	}
 }
 
+const hostileRulesFloatSchema = `package hostilefloat
+
+table Ranged
+{
+    tenth float32 = 0 | min = 0, max = 0.1, resolution = 0.01
+}
+
+fixed table FixedRanged
+{
+    tenth float32 = 0 | min = 0, max = 0.1, resolution = 0.01
+}
+`
+
+// Row 10 of the write contract (docs/SPEC.md §5.1): a ranged float off its
+// range is the caller's bug on every writer, and no writer quantizes or
+// clamps it in the build where its check is active. C++ is an assert leg, so
+// it is a debug-only schema_assert, and a float32's ends are compared at
+// float32.
+func TestCppWritersAssertARangedFloatInsideItsRange(t *testing.T) {
+	t.Parallel()
+	src := hostileRulesEmitted(t, hostileRulesFloatSchema)
+	const assert = "schema_assert( !( value.tenth < 0.0f ) && !( value.tenth > 0.1f ) ); // the write contract, debug only (docs/SPEC.md §5.1 row 10)"
+	for _, head := range []string{"inline int64_t RangedMeasureBody(", "inline bool RangedSaveBodyFields(", "inline int64_t FixedRangedMeasureMessageBody(", "inline bool FixedRangedSaveMessageBody("} {
+		if body := hostileFunction(t, src, head); !strings.Contains(body, assert) {
+			t.Fatalf("%s does not assert row 10: no %q in\n%s", head, assert, body)
+		}
+	}
+	admits := hostileFunction(t, src, "inline bool FixedRangedFixedWriteAdmits(")
+	const check = "bad |= (int) ( value.tenth < 0.0f ) | (int) ( value.tenth > 0.1f );"
+	if !strings.Contains(admits, check) {
+		t.Fatalf("the fixed write check does not hold row 10: no %q in\n%s", check, admits)
+	}
+}
+
+const hostileRulesFloatDefaultSchema = `package hostiledefault
+
+table Born
+{
+    seventh float32 = 0.7 | min = 0.7, max = 1, resolution = 0.01
+}
+
+fixed table FixedBorn
+{
+    seventh float32 = 0.7 | min = 0.7, max = 1, resolution = 0.01
+}
+`
+
+// A compressed float's default test against a default that is not zero is
+// spelled with the ordered comparisons, never == or !=: 0.7f is not an exact
+// literal, and clang's -Wfloat-equal reds the comparison in the consumer's
+// build (make tables-cpp-clean). The truth table is !='s, a NaN included.
+func TestCppCompressedFloatDefaultTestIsOrdered(t *testing.T) {
+	t.Parallel()
+	src := hostileRulesEmitted(t, hostileRulesFloatDefaultSchema)
+	for _, bad := range []string{"!= 0.7f", "== 0.7f"} {
+		if at := strings.Index(src, bad); at >= 0 {
+			from := strings.LastIndex(src[:at], "\n") + 1
+			end := at + strings.Index(src[at:], "\n")
+			t.Fatalf("a float equality against the inexact default: %s", src[from:end])
+		}
+	}
+	if !strings.Contains(src, "!( value.seventh >= 0.7f && value.seventh <= 0.7f )") {
+		t.Fatal("the elision test of a compressed float born at 0.7 is not the ordered spelling")
+	}
+}
+
 // hostileFunction is the text of the first DEFINITION whose head contains
 // head, up to the closing brace in column one: these runtime functions carry
 // '{' and '}' as character literals, which a brace count would misread.

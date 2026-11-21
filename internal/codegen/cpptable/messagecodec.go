@@ -467,6 +467,11 @@ func (g *tableGen) emitMessageScalar(f *ir.Field, kind uint8, shape ir.TableMess
 		// §3.3), a compressed float's too, before it is quantized: the measure
 		// and the save refuse it at the same place
 		g.pf("%sif ( !TableFloatFinite( %s ) ) { return %s; } // a NaN or an infinity is refused (§3.3)\n", ind, expr, messageBad(pass))
+		if f.HasFloatRange {
+			// ROW 10 (docs/SPEC.md §5.1): the quantizer's clamp is not the
+			// writer's answer to an off-range value in a debug build
+			g.emitFloatRangeAssert(f, expr, ind)
+		}
 	}
 	if pass == messagePassMeasure {
 		g.pf("%sbits += %d;\n", ind, width)

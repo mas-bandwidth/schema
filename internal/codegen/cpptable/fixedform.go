@@ -1563,10 +1563,16 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 	}
 	width := int(ir.TableFixedStorageBytes(f.Type))
 	switch {
+	case g.fixedWriteCheck && f.Type.Kind == ir.TFloat32 && f.HasFloatRange:
+		// A FLOAT'S RANGE IS ROW 10 of the write contract (docs/SPEC.md §5.1),
+		// which every writer holds, the message form's included: the ends
+		// alone, a float32's compared at float32. A -0 is not a violation;
+		// the writer stores +0 for it.
+		g.fixedClampBoth(expr, formatFloat(f.FMin, true), formatFloat(f.FMax, true), ind)
+	case g.fixedWriteCheck && f.Type.Kind == ir.TFloat64 && f.HasFloatRange:
+		g.fixedClampBoth(expr, formatFloat(f.FMin, false), formatFloat(f.FMax, false), ind)
 	case g.fixedWriteCheck && (f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64):
-		// A FLOAT'S RANGE IS ROW 10, not the write check's (docs/SPEC.md
-		// §5.1): a quantized float past its range is the message form's to
-		// clamp, and the writers hold row 10 where the table says they do.
+		// an unranged float has no row of the write contract to hold
 	case f.Type.Kind == ir.TFloat32 && f.HasFloatRange:
 		g.fixedClampBoth(expr, formatFloat(f.FMin, true), formatFloat(f.FMax, true), ind)
 		g.fixedNegZero(expr, true, ind)
