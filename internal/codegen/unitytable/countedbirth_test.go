@@ -109,9 +109,11 @@ static class ProbeMain
         Row("rec_min_one_msg", Msg(fr), "020001c30100000000");
         var vr = Probe.Schema.NewVarRec(); var ve = vr.Few[1]; ve.N = 56; vr.Few[1] = ve;
         Row("rec_min_one_var", Var(vr), "01010e0c0d020100070204380000000000198ceafe187dc6dc71f801864ce363af0200000000000000");
-        var fr3 = Probe.Schema.NewFixRec(); fr3.FewCount = 3;
+        // a slot past the birth count is storage, not a default element, so
+        // the third one is set to a default record before it is counted
+        var fr3 = Probe.Schema.NewFixRec(); fr3.FewCount = 3; fr3.Few[2] = fr3.Few[0];
         Row("rec_min_plus1_msg", Msg(fr3), "0200090000");
-        var vr3 = Probe.Schema.NewVarRec(); vr3.FewCount = 3;
+        var vr3 = Probe.Schema.NewVarRec(); vr3.FewCount = 3; vr3.Few[2] = vr3.Few[0];
         Row("rec_min_plus1_var", Var(vr3), "01010e080d0301000100010000198ceafe187dc6dc0100000000000000");
         return bad;
     }
