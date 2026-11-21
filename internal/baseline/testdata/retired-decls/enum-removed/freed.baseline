@@ -1,0 +1,22 @@
+schema-tables-baseline 7
+package decls
+
+table Holder
+    field c id=0xaf63de4c8601eff2 kind=4
+
+## retired
+    enum Mode id=0x37cbecaec58e2192 date=2026-11-21
+    field Holder.m id=0xaf63e04c8601f358 date=2026-11-21
+    enum-variant Mode.One id=0x3011ca19bf83690f date=2026-11-21
+    enum-variant Mode.Two id=0x6d1df319e235a369 date=2026-11-21
+
+## history
+### 2026-11-21 (UTC) — original
+- baseline created over 1 table — data written BEFORE this point is not covered by it
+
+### 2026-11-21 (UTC) — free the name
+- enum Mode: no longer in the closure — no declaration carries any of its identities, so this baseline no longer covers it [warn]
+- retired enum Mode id=0x37cbecaec58e2192 — a re-added name or id is refused until this entry is acknowledged (issue #441)
+- retired field Holder.m id=0xaf63e04c8601f358 — a re-added name or id is refused until this entry is acknowledged (issue #441)
+- retired enum-variant Mode.One id=0x3011ca19bf83690f — a re-added name or id is refused until this entry is acknowledged (issue #441)
+- retired enum-variant Mode.Two id=0x6d1df319e235a369 — a re-added name or id is refused until this entry is acknowledged (issue #441)

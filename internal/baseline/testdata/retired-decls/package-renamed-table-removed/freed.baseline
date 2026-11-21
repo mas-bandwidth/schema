@@ -1,0 +1,20 @@
+schema-tables-baseline 7
+package declsnext
+
+table Holder
+    field c id=0xaf63de4c8601eff2 kind=4
+
+## retired
+    table Extra id=0xbce8d5791b8d6ac9 date=2026-11-21
+    field Extra.v id=0xaf63eb4c86020609 date=2026-11-21
+    field Holder.extra id=0xfd29ee12a979cb69 date=2026-11-21
+
+## history
+### 2026-11-21 (UTC) — original
+- baseline created over 2 tables — data written BEFORE this point is not covered by it
+
+### 2026-11-21 (UTC) — free the name
+- baseline REGENERATED over a foreign unit's baseline (baseline is for package decls, this unit is package declsnext); the projection is this unit as it stands and the history above is preserved, but the previous projection could not be diffed, so no per-edit lines follow
+- retired table Extra id=0xbce8d5791b8d6ac9 — a re-added name or id is refused until this entry is acknowledged (issue #441)
+- retired field Extra.v id=0xaf63eb4c86020609 — a re-added name or id is refused until this entry is acknowledged (issue #441)
+- retired field Holder.extra id=0xfd29ee12a979cb69 — a re-added name or id is refused until this entry is acknowledged (issue #441)

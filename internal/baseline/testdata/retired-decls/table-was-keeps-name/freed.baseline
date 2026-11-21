@@ -1,0 +1,17 @@
+schema-tables-baseline 7
+package decls
+
+table Holder
+    field p id=0xaf63ed4c8602096f kind=17 type=ListNode
+    field c id=0xaf63de4c8601eff2 kind=4
+
+table ListNode name=Link
+    field value id=0x7ce4fd9430e80cea kind=4
+    field next id=0xe5316cbaa025f028 kind=17 type=ListNode
+
+## history
+### 2026-11-21 (UTC) — original
+- baseline created over 2 tables — data written BEFORE this point is not covered by it
+
+### 2026-11-21 (UTC) — free the name
+- no compatibility-affecting edits; the wire absorbs the rest
