@@ -53,8 +53,8 @@ func TestGooseHoldsACountMinimumInsideEachCountedChild(t *testing.T) {
 		{"_TightFixedStrictRefuse", "if v.NestCount < 1 { return schema_rt::FixedRefuseCountOverBound; }"},
 		{"_TightFixedStrictRefuse", "_ChildFixedStrictRefuse(v.Nest[j1]);"},
 		// the fixed write contract, which Goose refuses in every build
-		{"_ChildFixedCheck", "if v.ValsCount < 2 || (v.ValsCount as i64) > 4 { return false; }"},
-		{"_TightFixedCheck", "if v.NestCount < 1 || (v.NestCount as i64) > 4 { return false; }"},
+		{"_ChildFixedCheck", "if (v.ValsCount as i64) < 2 || (v.ValsCount as i64) > 4 { return false; }"},
+		{"_TightFixedCheck", "if (v.NestCount as i64) < 1 || (v.NestCount as i64) > 4 { return false; }"},
 		{"_LooseFixedCheck", "if !_ChildFixedCheck(v.Nest[j1]) { return false; }"},
 	} {
 		body, ok := fixedFunctionBody(code, c.fn)
@@ -81,7 +81,7 @@ func TestGooseHoldsACountMinimumInsideEachCountedChild(t *testing.T) {
 	// the variable read decodes every counted array, a child's included,
 	// through one runtime branch that holds the descriptor's minimum
 	load := string(Runtime()["wire_load.goose"])
-	if !strings.Contains(load, "} else if d.array == ArrayCounted && count < d.min as! u64 {") {
+	if !strings.Contains(load, "} else if !bytes && d.array == ArrayCounted && count < d.min as! u64 {") {
 		t.Error("wire_load.goose's counted-array decode does not hold the descriptor's minimum")
 	}
 	if !strings.Contains(code, `name: "vals", slot: "Vals", json: "vals", ordinal: 0, kind: 14, shape: schema_rt::ShapeArr, ek: 6, array: schema_rt::ArrayCounted, bound: 4, min: 2,`) {

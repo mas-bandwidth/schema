@@ -63,7 +63,7 @@ func TestLobsterHoldsACountMinimumInsideEachCountedChild(t *testing.T) {
 		t.Error("Child.vals's descriptor does not carry its minimum to the variable read")
 	}
 	load := string(lobstertable.Runtime()["load.lobster"])
-	if !strings.Contains(load, "    if f.array == \"counted\" and count < f.min:\n        return read_refuse(rep, \"count_over_bound\"), false\n") {
+	if !strings.Contains(load, "    if not is_bytes and f.array == \"counted\" and count < f.min:\n        return read_refuse(rep, \"count_over_bound\"), false\n") {
 		t.Error("load.lobster's counted-array decode does not refuse a count under the descriptor's minimum")
 	}
 }
