@@ -26,9 +26,9 @@ func releaseGuideErrors(guide, releaseWF string) []string {
 	if strings.Contains(g, releaseGuideOldPromise) {
 		errs = append(errs, "the release guide promises full certification across every language before every release, and release.yml's fast lane runs CI fast only (F-170)")
 	}
-	full := strings.Index(guide, "**The full lane**")
+	full := strings.Contains(guide, "**The full lane**")
 	fast := strings.Index(guide, "**The fast lane**")
-	if full < 0 || fast < 0 {
+	if !full || fast < 0 {
 		errs = append(errs, "the release guide does not state both lanes' guarantees (**The full lane**, **The fast lane**)")
 		return errs
 	}

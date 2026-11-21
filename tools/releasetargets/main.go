@@ -57,10 +57,10 @@ const legsVariable = "WIRE_FUZZ_RELEASE_LEGS"
 const wireFuzzPrefix = "tables-wire-fuzz-release-"
 
 var (
-	// a port's release gate: one word between tables- and -release
+	// a port's release gate: one word between tables- and -release.
 	releaseRule = regexp.MustCompile(`^tables-[a-z0-9]+-release$`)
 	// a leg's release wire-fuzz gate: one word after the prefix (so the
-	// tables-wire-fuzz-release-negative-control rule is not a leg)
+	// tables-wire-fuzz-release-negative-control rule is not a leg).
 	wireFuzzRule = regexp.MustCompile(`^` + wireFuzzPrefix + `[a-z0-9]+$`)
 	// a variable line in the database: NAME := value, NAME = value, ...
 	variableLine = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_.-]*) (:::=|::=|:=|\?=|=) ?(.*)$`)
@@ -158,7 +158,7 @@ func plan(db database, also []string) ([]string, error) {
 	case len(strings.Fields(legs.value)) == 0:
 		errs = append(errs, legsVariable+" is empty: the wire-fuzz release legs plan nothing")
 	default:
-		for _, leg := range strings.Fields(legs.value) {
+		for leg := range strings.FieldsSeq(legs.value) {
 			name := wireFuzzPrefix + leg
 			if !db.rules[name] {
 				errs = append(errs, fmt.Sprintf("%s names the leg %q, and make defines no rule %s", legsVariable, leg, name))
@@ -258,12 +258,12 @@ func checkFixture(db []byte, src []byte, also []string) error {
 			return fmt.Errorf("planned %v, want a refusal naming %s", got, refuse)
 		}
 		if !strings.Contains(err.Error(), refuse) {
-			return fmt.Errorf("refused without naming %s:\n%v", refuse, err)
+			return fmt.Errorf("refused without naming %s:\n%w", refuse, err)
 		}
 		return nil
 	}
 	if err != nil {
-		return fmt.Errorf("refused, want %v:\n%v", want, err)
+		return fmt.Errorf("refused, want %v:\n%w", want, err)
 	}
 	if !slices.Equal(got, want) {
 		return fmt.Errorf("planned %v, want %v", got, want)

@@ -339,8 +339,8 @@ func embedOwners(list string, files []string, exists func(string) bool) (src, te
 // testdataOwners maps the diff's files under a testdata/ directory to the
 // main-module package that directory belongs to: the directory holding the
 // topmost testdata/ in the path (pkg/testdata/a/b.yml belongs to pkg). Its
-// tests read those files at run time (os.ReadFile, filepath.Glob), which no
-// go:embed records, so without this a testdata-only diff, a new fixture or
+// tests read those files at run time (os.ReadFile, filepath.Glob), which
+// no go:embed records, so without this a testdata-only diff, a new fixture or
 // corpus case, selected no package and its tests did not run on the pull
 // request that changed what they read. The owner is selected alone, as a
 // test embed is: testdata is no package's build input.
