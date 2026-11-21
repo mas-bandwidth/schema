@@ -552,6 +552,50 @@ local function census_value(T, d, node)
   return 0
 end
 
+-- A NARROWED SPAN IS AN UNLAWFUL LINEAGE (docs/FIXED-FORM-ALGORITHM.md §5.4,
+-- the Go engine's tableFixedCompile): an older writer's array that holds more
+-- elements than this reader's bound has no plan, and a file under that entry's
+-- hash refuses layout_malformed before any record is read. The walk follows
+-- census_value's: the fields both sides declare, optionals through their
+-- payload, array elements and union arms.
+local function narrowed_value(T, d, node)
+  if d == nil or node == nil then return false end
+  local s = d.shape
+  if s == "table" then
+    local desc = T.Tables[d.target]
+    if desc == nil or node.kind ~= 13 then return false end
+    local byId = {}
+    for _, f in ipairs(desc.fields) do
+      if f.id ~= nil then byId[f.id] = f end
+    end
+    for _, child in ipairs(node.children) do
+      local f = child.id ~= nil and byId[child.id] or nil
+      if f ~= nil then
+        local c = (f.optional and child.kind == 35) and child.children[1] or child
+        if narrowed_value(T, f, c) then return true end
+      end
+    end
+    return false
+  elseif s == "array" then
+    if node.kind ~= 14 and node.kind ~= 16 then return false end
+    local elem = node.kind == 16 and node.children[2] or node.children[1]
+    local es = elem and elem.size or 0
+    local head = (node.kind == 16 or d.fixed) and 0 or 4
+    local theirs = es > 0 and math.floor((node.size - head) / es) or 0
+    if d.bound ~= nil and theirs > d.bound then return true end
+    return narrowed_value(T, d.elem, elem)
+  elseif s == "union" then
+    local un = T.Unions[d.target]
+    if un == nil or node.kind ~= 15 then return false end
+    for k, armNode in ipairs(node.children) do
+      local arm = un.arms[k]
+      if arm ~= nil and arm.field ~= nil and narrowed_value(T, arm.field, armNode) then return true end
+    end
+    return false
+  end
+  return false
+end
+
 local function compat_old(d, node)
   if d == nil or node == nil then return false end
   local s = d.shape
@@ -1021,6 +1065,9 @@ function F.prepare(T)
       entry.unknown = 0
       if entry.tree and not entry.tree.refusal then
         entry.unknown = census_value(T, { shape = "table", target = fixed.table }, entry.tree)
+        if entry.hash ~= fixed.hash and narrowed_value(T, { shape = "table", target = fixed.table }, entry.tree) then
+          entry.tree = { refusal = "layout_malformed", kind = 13, size = 0, children = {} }
+        end
       end
     end
   end
