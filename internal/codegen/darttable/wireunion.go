@@ -947,16 +947,35 @@ func mapKeyCompare(f *ir.Field) string {
 	return fmt.Sprintf("_u64Below(a.%s, b.%s) ? -1 : (_u64Above(a.%s, b.%s) ? 1 : 0)", k, k, k, k)
 }
 
+// mapSortArgs is what _stableSortedBy takes for a map field's entries (§2.8):
+// the sort key's Dart type, the expression that builds one entry's key ONCE
+// (a string key's UTF-8 bytes, an integer key itself; the entry is `e`), and
+// the compare over two keys. Building the key outside the compare is the
+// point: a string compare that encoded both keys allocated two byte lists
+// per comparison.
+func mapSortArgs(f *ir.Field) (keyType, keyOf, cmp string) {
+	key := ir.MapKeyField(f)
+	k := fieldMember(key)
+	switch {
+	case key.Type.Kind == ir.TString:
+		return "List<int>", "utf8.encode(e." + k + ")", "_bytesCompare"
+	case key.Type.Kind == ir.TInt && key.Type.Signed:
+		return "int", "e." + k, "_intCompare"
+	}
+	return "int", "e." + k, "_u64Compare"
+}
+
 // mapSorted is a Dart expression for a map field's entries in ASCENDING KEY
 // ORDER, the writer's rule the walk and the save share (§2.8,
 // internal/tablewire MapEntryOrder): a stable sort of a copy, so the caller's
 // list is not reordered.
 func mapSorted(f *ir.Field, expr string) string {
-	return fmt.Sprintf("_stableSorted(%s, (%s a, %s b) => %s)", expr, f.MapEntry.Name, f.MapEntry.Name, mapKeyCompare(f))
+	keyType, keyOf, cmp := mapSortArgs(f)
+	return fmt.Sprintf("_stableSortedBy<%s, %s>(%s, (%s e) => %s, %s)", f.MapEntry.Name, keyType, expr, f.MapEntry.Name, keyOf, cmp)
 }
 
-// emitMapRuntime emits the two helpers mapSorted uses: a byte-order compare
-// and a stable insertion sort (§2.8).
+// emitMapRuntime emits the helpers mapSorted uses: the key compares and a
+// stable merge sort over keys built once (§2.8).
 func (g *wireGen) emitMapRuntime() {
 	g.pf(`// _bytesCompare orders two keys by their UTF-8 bytes (docs/SPEC-TABLES.md §2.8).
 int _bytesCompare(List<int> a, List<int> b) {
@@ -967,20 +986,54 @@ int _bytesCompare(List<int> a, List<int> b) {
   return a.length.compareTo(b.length);
 }
 
-// _stableSorted is a copy of a map's entries in ascending key order, ties in
-// their stored order (docs/SPEC-TABLES.md §2.8).
-List<T> _stableSorted<T>(List<T> l, int Function(T a, T b) cmp) {
-  final out = List<T>.from(l);
-  for (var i = 1; i < out.length; i++) {
-    final x = out[i];
-    var j = i - 1;
-    while (j >= 0 && cmp(out[j], x) > 0) {
-      out[j + 1] = out[j];
-      j--;
-    }
-    out[j + 1] = x;
+// _intCompare orders two signed integer keys by value (docs/SPEC-TABLES.md §2.8).
+int _intCompare(int a, int b) => a.compareTo(b);
+
+// _u64Compare orders two unsigned keys as 64-bit patterns (docs/SPEC-TABLES.md §2.8).
+int _u64Compare(int a, int b) => _u64Below(a, b) ? -1 : (_u64Above(a, b) ? 1 : 0);
+
+// _stableSortedBy is a copy of a map's entries in ascending key order, ties in
+// their stored order (docs/SPEC-TABLES.md §2.8). Each entry's sort key is
+// built ONCE, and a bottom-up merge sort over the entries' indices makes at
+// most n log2 n compares whatever order the entries arrive in: the JSON read
+// sorts a map in the order the document sent it, so the cost must not depend
+// on that order (§2.8's cost row: the sort is O(n log n) once per map).
+List<T> _stableSortedBy<T, K>(List<T> l, K Function(T) keyOf, int Function(K a, K b) cmp) {
+  final n = l.length;
+  if (n < 2) {
+    return List<T>.from(l);
   }
-  return out;
+  final keys = List<K>.generate(n, (i) => keyOf(l[i]), growable: false);
+  var from = List<int>.generate(n, (i) => i, growable: false);
+  var to = List<int>.filled(n, 0);
+  for (var width = 1; width < n; width *= 2) {
+    for (var lo = 0; lo < n; lo += 2 * width) {
+      final mid = lo + width < n ? lo + width : n;
+      final hi = lo + 2 * width < n ? lo + 2 * width : n;
+      var i = lo;
+      var j = mid;
+      var k = lo;
+      while (i < mid && j < hi) {
+        // the right run's entry goes first only when it is strictly below:
+        // an equal key keeps its stored order
+        if (cmp(keys[from[j]], keys[from[i]]) < 0) {
+          to[k++] = from[j++];
+        } else {
+          to[k++] = from[i++];
+        }
+      }
+      while (i < mid) {
+        to[k++] = from[i++];
+      }
+      while (j < hi) {
+        to[k++] = from[j++];
+      }
+    }
+    final swap = from;
+    from = to;
+    to = swap;
+  }
+  return List<T>.generate(n, (i) => l[from[i]]);
 }
 
 // _wideValid reports whether a run of Dart String UTF-16 codeUnits is well-formed:

@@ -613,7 +613,11 @@ List<T> _jsonKeyed<T>(dynamic val, TableTextReport r, int n, T Function() def, M
   return out;
 }
 
-List<T> _jsonMap<T>(dynamic val, TableTextReport r, Object Function(T) keyOf, int Function(T a, T b) cmp, T? Function(String, dynamic) f, [List<T>? fallback]) {
+// _jsonMap reads a map's object in the order the document sent it and lands
+// the entries in ascending key order (§2.8, §16): sortKey builds each entry's
+// key once and _stableSortedBy sorts in O(n log n), so keys sent in
+// descending order cost what any order costs.
+List<T> _jsonMap<T, K>(dynamic val, TableTextReport r, Object Function(T) keyOf, K Function(T) sortKey, int Function(K a, K b) cmp, T? Function(String, dynamic) f, [List<T>? fallback]) {
   final entries = _jsonEntries(val);
   if (entries == null) {
     r.refuse('kind_mismatch');
@@ -634,7 +638,7 @@ List<T> _jsonMap<T>(dynamic val, TableTextReport r, Object Function(T) keyOf, in
       out.add(item);
     }
   }
-  return _stableSorted(out, cmp);
+  return _stableSortedBy<T, K>(out, sortKey, cmp);
 }
 
 String? _jsonStringKey(String k, int bound, TableTextReport r) {
@@ -989,7 +993,8 @@ func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int, fallback ...strin
 		}
 		et := f.MapEntry.Name
 		valMember := fieldMember(value)
-		cmpExpr := fmt.Sprintf("(%s a, %s b) => %s", et, et, mapKeyCompare(f))
+		keyType, keyOf, cmp := mapSortArgs(f)
+		sortArgs := fmt.Sprintf("(%s e) => %s, %s", et, keyOf, cmp)
 		var valBody string
 		if value.Type.Optional {
 			valBody = fmt.Sprintf("if (%s == null) { m%d.%s = false; } else { m%d.%s = true; m%d.%s = %s; }",
@@ -997,8 +1002,8 @@ func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int, fallback ...strin
 		} else {
 			valBody = fmt.Sprintf("m%d.%s = %s;", d, valMember, g.jsonReadExpr(value, item, d+1, fmt.Sprintf("m%d.%s", d, valMember)))
 		}
-		return fmt.Sprintf("_jsonMap<%s>(%s, r, (m%d) => m%d.%s, %s, (k%d, %s) { final kk%d = %s; if (kk%d == null) return null; final m%d = %s(); m%d.%s = kk%d; %s return m%d; }%s)",
-			et, val, d, d, fieldMember(key), cmpExpr, d, item, d, keyExpr, d, d, et, d, fieldMember(key), d, valBody, d, fbArg)
+		return fmt.Sprintf("_jsonMap<%s, %s>(%s, r, (m%d) => m%d.%s, %s, (k%d, %s) { final kk%d = %s; if (kk%d == null) return null; final m%d = %s(); m%d.%s = kk%d; %s return m%d; }%s)",
+			et, keyType, val, d, d, fieldMember(key), sortArgs, d, item, d, keyExpr, d, d, et, d, fieldMember(key), d, valBody, d, fbArg)
 	case isKeyed(f):
 		en := f.KeyEnumRef
 		var slots strings.Builder
