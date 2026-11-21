@@ -193,7 +193,7 @@ func TestCppNamedRangedReadHoldsTheAnnouncedDomain(t *testing.T) {
 		}
 	}
 	guarded := 0
-	for _, line := range strings.Split(root, "\n") {
+	for line := range strings.SplitSeq(root, "\n") {
 		sum := strings.Contains(line, "packing == 1") && strings.Contains(line, "+") &&
 			(strings.Contains(line, "{ decoded_wide") || strings.Contains(line, "{ raw_v"))
 		if !sum {
