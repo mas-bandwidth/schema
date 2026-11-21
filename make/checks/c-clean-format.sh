@@ -21,39 +21,15 @@ jobs=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 work=$OUT/c-format-workers
 rm -rf "$work" && mkdir -p "$work"
 
-find "$@" \( -name '*.h' -o -name '*.c' \) | sort > "$OUT/c-format-files.txt"
-# THE SHARD (C_FORMAT_SHARD=K/N, unset by default: every file). The per-commit
-# lane (ci-fast.yml lang-clean, the c rows) runs the gate as N rows side by
-# side, each formatting the files make/shard.sh deals it from the sorted list:
-# the gate is about 250 s of clang-format CPU over 580 files, past what one
-# runner gives a row in two minutes, and no row keeps a verdict between runs.
-# A ratchet line is judged in the row that formats its file; the "no longer
-# generated" check reads the tree and runs in every row.
-shard=
-if [ -n "${C_FORMAT_SHARD:-}" ]; then
-	mv "$OUT/c-format-files.txt" "$OUT/c-format-all.txt"
-	sh "$(dirname "$0")/../shard.sh" "$C_FORMAT_SHARD" < "$OUT/c-format-all.txt" > "$OUT/c-format-files.txt" || {
-		echo "tables-c-clean: C_FORMAT_SHARD=$C_FORMAT_SHARD is not a shard"
-		exit 1
-	}
-	shard=" (shard $C_FORMAT_SHARD: $(wc -l < "$OUT/c-format-files.txt" | tr -d ' ') of $(wc -l < "$OUT/c-format-all.txt" | tr -d ' ') files)"
-	rm -f "$OUT/c-format-all.txt"
-fi
-
-# ONE FORMAT PER DISTINCT (CONTENT, NAME). Every table unit emits its own copy
-# of the same runtime header, so much of the corpus is the same bytes under the
-# same base name in another directory. clang-format's answer is a function of
-# the bytes, the style (one file, named absolutely here) and the file NAME, from
-# which it reads the language (a .c and a .h of one content can differ: the
-# same-bytes control, tables-c-clean-same-bytes-control). So the key is the
-# content hash AND the base name: a path whose key was already formatted IN THIS
-# RUN gets that format's verdict, because it is the same question; nothing is
+# ONE FORMAT PER DISTINCT (CONTENT, NAME). clang-format's answer is a function
+# of the bytes, the style (one file, named absolutely above) and the file NAME,
+# from which it reads the language (a .c and a .h of one content can differ:
+# tables-c-clean-same-bytes-control). So each file's key is its content hash AND
+# its base name, one file per key is formatted, and every path with that key
+# gets that verdict IN THIS RUN, because it is the same question; nothing is
 # kept between runs. Every path still gets its own verdict line and its own
-# ratchet check below, and a path left without a verdict is red.
-#
-# LARGEST FIRST, ONE PER WORKER. The distinct files go to the workers in
-# descending size, one file per worker, so the longest format starts at once
-# instead of queueing behind fifteen others in a batch of sixteen.
+# ratchet check below, and a path left without a verdict is red. With no sha256
+# tool the key is the path, and every file is formatted.
 if command -v sha256sum >/dev/null 2>&1; then
 	hash="sha256sum"
 elif command -v shasum >/dev/null 2>&1; then
@@ -61,21 +37,58 @@ elif command -v shasum >/dev/null 2>&1; then
 else
 	hash=""
 fi
-: > "$OUT/c-format-order.txt"
-if [ -s "$OUT/c-format-files.txt" ]; then
-	# <key> <path>, one line per file; with no sha256 tool the key is the
-	# path itself, and every file is formatted
+find "$@" \( -name '*.h' -o -name '*.c' \) | sort > "$OUT/c-format-all.txt"
+: > "$OUT/c-format-keys-all.txt"
+: > "$OUT/c-format-order-all.txt"
+if [ -s "$OUT/c-format-all.txt" ]; then
+	# <key> <path>, one line per file, in path order
 	if [ -n "$hash" ]; then
 		# shellcheck disable=SC2086
-		xargs $hash < "$OUT/c-format-files.txt" \
+		xargs $hash < "$OUT/c-format-all.txt" \
 			| awk '{ p = $2; sub(/^\*/, "", p); n = split(p, s, "/"); print $1 "/" s[n] " " p }' \
-			| sort -k2,2 > "$OUT/c-format-keys.txt"
+			| sort -k2,2 > "$OUT/c-format-keys-all.txt"
 	else
-		awk '{ print $1 " " $1 }' "$OUT/c-format-files.txt" > "$OUT/c-format-keys.txt"
+		awk '{ print $1 " " $1 }' "$OUT/c-format-all.txt" > "$OUT/c-format-keys-all.txt"
 	fi
-	sort -u -k1,1 "$OUT/c-format-keys.txt" | awk '{ print $2 }' > "$OUT/c-format-reps.txt"
-	xargs wc -c < "$OUT/c-format-reps.txt" | awk '$2 != "total" { print $1 " " $2 }' \
-		| sort -k1,1nr | awk '{ print $2 }' > "$OUT/c-format-order.txt"
+	# one file per key (its first path in byte order), LARGEST FIRST (ties in
+	# byte order of path): the order the workers take them in and the order
+	# the shards are dealt from. LC_ALL=C, so every row computes the same list
+	# whatever its locale, and shard.sh deals each key to exactly one row.
+	LC_ALL=C sort -k1,1 -k2,2 "$OUT/c-format-keys-all.txt" | awk '!seen[$1]++ { print $2 }' \
+		| xargs wc -c | awk '$2 != "total" { print $1 " " $2 }' \
+		| LC_ALL=C sort -k1,1nr -k2,2 | awk '{ print $2 }' > "$OUT/c-format-order-all.txt"
+fi
+
+# THE SHARD (C_FORMAT_SHARD=K/N, unset by default: every file). The per-commit
+# lane (ci-fast.yml lang-clean, the c rows) runs the gate as N rows side by
+# side: the gate is about 250 s of clang-format CPU over 580 files, past what
+# one runner gives a row in two minutes, and no row keeps a verdict between
+# runs. make/shard.sh deals each row its share of the distinct files above,
+# largest first, so the rows carry about the same bytes (dealt from the
+# name-sorted file list, one row held half again the bytes of another); a row
+# judges every path whose key it formats. A ratchet line is judged in the row
+# that formats its file's key; the "no longer generated" check reads the tree
+# and runs in every row.
+shard=
+if [ -n "${C_FORMAT_SHARD:-}" ]; then
+	sh "$(dirname "$0")/../shard.sh" "$C_FORMAT_SHARD" < "$OUT/c-format-order-all.txt" > "$OUT/c-format-order.txt" || {
+		echo "tables-c-clean: C_FORMAT_SHARD=$C_FORMAT_SHARD is not a shard"
+		exit 1
+	}
+else
+	cp "$OUT/c-format-order-all.txt" "$OUT/c-format-order.txt"
+fi
+# this run's paths: every path whose key is a key this run formats
+awk 'NR == FNR { o[$1] = 1; next } ($2 in o) { print $1 }' "$OUT/c-format-order.txt" "$OUT/c-format-keys-all.txt" > "$OUT/c-format-run-keys.txt"
+awk 'NR == FNR { k[$1] = 1; next } ($1 in k)' "$OUT/c-format-run-keys.txt" "$OUT/c-format-keys-all.txt" > "$OUT/c-format-keys.txt"
+awk '{ print $2 }' "$OUT/c-format-keys.txt" > "$OUT/c-format-files.txt"
+if [ -n "${C_FORMAT_SHARD:-}" ]; then
+	shard=" (shard $C_FORMAT_SHARD: $(wc -l < "$OUT/c-format-files.txt" | tr -d ' ') of $(wc -l < "$OUT/c-format-all.txt" | tr -d ' ') files)"
+fi
+
+# ONE FILE PER WORKER, in the order above, so the longest format starts at once
+# instead of queueing behind fifteen others in a batch of sixteen.
+if [ -s "$OUT/c-format-order.txt" ]; then
 	xargs -P "$jobs" -n 1 sh -c '
 		cf=$1; st=$2; wk=$3; shift 3
 		out="$wk/res.$$"
@@ -88,6 +101,7 @@ if [ -s "$OUT/c-format-files.txt" ]; then
 		done
 	' _ "$CLANG_FORMAT" "$style" "$work" < "$OUT/c-format-order.txt"
 fi
+
 
 bad=0
 if [ -s "$OUT/c-format-files.txt" ]; then
@@ -111,7 +125,8 @@ if [ -s "$OUT/c-format-files.txt" ]; then
 		echo "tables-c-clean: $(wc -l < "$OUT/c-format-results.txt" | tr -d ' ') verdicts for $(wc -l < "$OUT/c-format-files.txt" | tr -d ' ') files"; bad=1; }
 	echo "tables-c-clean: $(wc -l < "$OUT/c-format-files.txt" | tr -d ' ') files, $(wc -l < "$OUT/c-format-order.txt" | tr -d ' ') distinct by content and name, each formatted once"
 fi
-rm -rf "$work" "$OUT/c-format-files.txt" "$OUT/c-format-results.txt" "$OUT/c-format-keys.txt" "$OUT/c-format-reps.txt" "$OUT/c-format-order.txt"
+rm -rf "$work" "$OUT/c-format-all.txt" "$OUT/c-format-keys-all.txt" "$OUT/c-format-order-all.txt" "$OUT/c-format-run-keys.txt" \
+	"$OUT/c-format-keys.txt" "$OUT/c-format-order.txt" "$OUT/c-format-files.txt" "$OUT/c-format-results.txt"
 
 for f in $(grep -v '^#' "$allow" | grep . || true); do
 	[ -f "$f" ] || { echo "tables-c-clean: $f is listed in $allow but no longer generated — remove its line"; bad=1; }
