@@ -32,7 +32,9 @@
 // differing byte; so does a packet driver that passes its own checks on one
 // side only, since those checks read the bytes it wrote. A unit whose id moved is listed, not compared; so is a unit
 // either compiler refuses, a driver that builds on one side only, and an
-// instance one side refuses to encode.
+// instance the previous release refuses to encode. An instance the previous
+// release encodes and the new compiler refuses is a writer regression, and
+// refuses.
 //
 // A run that compared nothing proves nothing, so it refuses too: no packet
 // driver compared on both sides, or, against a previous release of 3.0.0 or
@@ -486,7 +488,9 @@ func Judge(old, new Compiler, trees []string, m *Manifest, jsonDir, work string,
 				case oerr != nil:
 					add(&r.Uncompared, fmt.Sprintf("table %s, unit %s, instance %s: %s refuses it (%s)", form, j.inst.Unit, j.inst.Name, old.Name(), firstLine(oerr)))
 				case nerr != nil:
-					add(&r.Uncompared, fmt.Sprintf("table %s, unit %s, instance %s: %s refuses it (%s)", form, j.inst.Unit, j.inst.Name, new.Name(), firstLine(nerr)))
+					// a value the previous release writes and this one
+					// will not: a writer regression, never new reach
+					add(&r.Differences, fmt.Sprintf("table %s, unit %s, instance %s: %s encodes it and %s refuses it (%s)", form, j.inst.Unit, j.inst.Name, old.Name(), new.Name(), firstLine(nerr)))
 				default:
 					mu.Lock()
 					tableCompared[k]++
