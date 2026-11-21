@@ -1003,8 +1003,8 @@ tables-elixir-release:
 # each prints "ran N, failed M" as its last line and tools/mustrun holds N
 # to the number here, so a check that stops running, or a run that checks
 # nothing, is red. A commit that adds or removes a check changes the number.
-ELIXIR_MAIN_CHECKS := 1
-ELIXIR_LUDICROUS_CHECKS := 1
+ELIXIR_MAIN_CHECKS := 454
+ELIXIR_LUDICROUS_CHECKS := 43
 .PHONY: test-elixir test-elixir-recipe
 test-elixir: toolchain-elixir generated/elixir/.stamp generated/elixir-ludicrous/.stamp generated/bench/elixir/.stamp
 	$(MAKE) test-elixir-recipe

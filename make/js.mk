@@ -1272,10 +1272,10 @@ test-js: cards-js-test cards-js-conformance cards-js-conformance-negative-contro
 # each prints "ran N, failed M" as its last line and tools/mustrun holds N
 # to the number here, so a check that stops running, or a run that checks
 # nothing, is red. A commit that adds or removes a check changes the number.
-JS_MAIN_CHECKS := 1
-JS_MAIN_CHECKS_PRODUCTION := 1
-JS_LUDICROUS_CHECKS := 1
-JS_LUDICROUS_CHECKS_PRODUCTION := 1
+JS_MAIN_CHECKS := 1434
+JS_MAIN_CHECKS_PRODUCTION := 1434
+JS_LUDICROUS_CHECKS := 49
+JS_LUDICROUS_CHECKS_PRODUCTION := 49
 .PHONY: test-js
 test-js: build/mustrun toolchain-js generated/js/.stamp generated/js-ludicrous/.stamp generated/bench/js/.stamp
 	$(MAKE) tables-js-standalone

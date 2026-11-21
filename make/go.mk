@@ -806,8 +806,8 @@ conformance-negative-control-go-write-refusal-message: build/conformance-harness
 # each prints "ran N, failed M" as its last line and tools/mustrun holds N
 # to the number here, so a check that stops running, or a run that checks
 # nothing, is red. A commit that adds or removes a check changes the number.
-GO_MAIN_CHECKS := 1
-GO_LUDICROUS_CHECKS := 1
+GO_MAIN_CHECKS := 525
+GO_LUDICROUS_CHECKS := 53
 .PHONY: test-go
 test-go: build/mustrun generated/bench/tables/go/.stamp generated/bench/paired/go/.stamp generated/go/.stamp generated/go-ludicrous/.stamp generated/bench/go/.stamp
 	$(MAKE) conformance-negative-control-go

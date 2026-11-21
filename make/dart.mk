@@ -1373,10 +1373,10 @@ test-dart: tables-dart-cook-map tables-dart-cook-map-negative-control
 # to the number here, so a check that stops running, or a run that checks
 # nothing, is red. A commit that adds or removes a check changes the number.
 # The asserts-on JIT twin and the AOT twin count separately.
-DART_MAIN_CHECKS := 1
-DART_MAIN_CHECKS_AOT := 1
-DART_LUDICROUS_CHECKS := 1
-DART_LUDICROUS_CHECKS_AOT := 1
+DART_MAIN_CHECKS := 803
+DART_MAIN_CHECKS_AOT := 803
+DART_LUDICROUS_CHECKS := 48
+DART_LUDICROUS_CHECKS_AOT := 48
 .PHONY: test-dart
 test-dart: toolchain-dart build/mustrun generated/dart/.stamp generated/dart-ludicrous/.stamp generated/bench/dart/.stamp
 	$(MAKE) tables-dart-clean
