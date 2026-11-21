@@ -806,15 +806,14 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 				}
 				continue
 			}
+			// A DRIVER THAT STOPS EARLY fails the surface, and every case it
+			// left unanswered fails BY NAME: the rows it answered before it
+			// stopped are still scored, so one bad row never hides the rest
+			// as a blank 0/N, and no row it never reached reads as absent.
+			stopped := 0
 			if code != 0 {
-				for _, e := range legWant {
-					r.verdict(e.name, "fail")
-				}
+				stopped = code
 				r.failures = append(r.failures, fmt.Sprintf("the driver exited %d\n%s", code, indent(stderr, "    ")))
-				for _, e := range legWant {
-					r.mark(e.name, outcomeFail)
-				}
-				continue
 			}
 			for _, line := range exemptions {
 				_, _ = io.WriteString(w, "conformance EXEMPTS "+line+"\n")
@@ -824,6 +823,12 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 					r.missing++
 					r.mark(e.name, outcomeAbsent)
 					r.verdict(e.name, "absent")
+					continue
+				}
+				if stopped != 0 && !wroteCase(out, e.name) {
+					r.failures = append(r.failures, fmt.Sprintf("%s: no answer: the driver exited %d before it reached this case", e.name, stopped))
+					r.mark(e.name, outcomeFail)
+					r.verdict(e.name, "fail")
 					continue
 				}
 				pass, named, missing, failed := r.pass, r.named, r.missing, len(r.failures)
@@ -879,6 +884,17 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 		}
 	}
 	return report(w, langs, results), nil
+}
+
+// wroteCase reports whether a leg wrote anything for one case: its answer or
+// its `<case>.absent`.
+func wroteCase(out, name string) bool {
+	for _, p := range []string{name, name + ".absent"} {
+		if _, err := os.Stat(filepath.Join(out, p)); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // scoreRefusalAbsent scores the `<case>.absent` a leg wrote on a row whose
