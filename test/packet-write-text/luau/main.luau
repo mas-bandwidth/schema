@@ -26,12 +26,16 @@ local function trim(s: string): string
 	return (string.gsub(s, "^%s*(.-)%s*$", "%1"))
 end
 
+-- failed is set by any failed check; caseFailed by a failed check inside the
+-- case being run, so the count line counts CASES both ways (it counted
+-- checks as failures and cases as runs, and printed "ran 4, failed 12").
 local failed = false
-local failures = 0
+local caseFailed = false
+local failedCases = 0
 local function check(ok: boolean, what: string)
 	if not ok then
 		failed = true
-		failures += 1
+		caseFailed = true
 		print("FAILED: " .. what)
 	end
 end
@@ -39,6 +43,7 @@ end
 local refused, written = 0, 0
 for line in string.gmatch(casesText, "[^\n]+") do
 	if string.sub(line, 1, 1) ~= "#" and trim(line) ~= "" then
+		caseFailed = false
 		local parts = string.split(line, "|")
 		check(#parts == 3, "packet-write-text case line has three fields: " .. line)
 		local name, used, verdict = trim(parts[1]), unhex(trim(parts[2])), trim(parts[3])
@@ -73,6 +78,9 @@ for line in string.gmatch(casesText, "[^\n]+") do
 		else
 			check(false, "packet-write-text " .. name .. " has a known verdict")
 		end
+		if caseFailed then
+			failedCases += 1
+		end
 	end
 end
 check(refused > 0 and written > 0, "packet-write-text cases: both verdicts present")
@@ -80,7 +88,7 @@ check(refused > 0 and written > 0, "packet-write-text cases: both verdicts prese
 -- The last stdout line is the count tools/mustrun reads: the cases run and
 -- the failed checks among them.
 print(string.format("packet-write-text Luau: %d ill-formed cases refused; %d well-formed cases written and read back byte exact", refused, written))
-print(string.format("packet-write-text Luau: ran %d, failed %d", refused + written, failures))
+print(string.format("packet-write-text Luau: ran %d, failed %d", refused + written, failedCases))
 if failed or refused + written == 0 then
 	error("packet-write-text Luau: FAILED")
 end

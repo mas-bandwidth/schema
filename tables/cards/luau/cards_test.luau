@@ -4,6 +4,10 @@
 local cards = require("./cards")
 local inputs = require("./inputs")
 local passed, failed = 0, 0
+-- every test runs; a failed one is recorded here and the run raises once, at
+-- the end, naming each failure and the count (it raised at the first failure,
+-- so a red run never showed how many tests ran or failed)
+local failures = {}
 
 local function test(name, body)
   local ok, err = pcall(body)
@@ -11,7 +15,7 @@ local function test(name, body)
     passed = passed + 1
   else
     failed = failed + 1
-    error("FAIL " .. name .. ": " .. tostring(err), 0)
+    failures[#failures + 1] = "FAIL " .. name .. ": " .. tostring(err)
   end
 end
 
@@ -210,7 +214,10 @@ test("Codec conversion preserves shared-blob refusal", function()
   eq(codec.Save(root), nil, "shared blob must not be cloned into two permitted blobs")
 end)
 
--- The returned line is the count tools/mustrun reads from unit.txt; a failed
--- test raises above, and a run of no test is a failure.
-if passed == 0 then error("FAIL cards (luau): no test ran", 0) end
+-- The returned line is the count tools/mustrun reads from unit.txt. A failed
+-- test or a run of no test raises here, so the driver exits non-zero and
+-- writes no unit.txt; the raised text carries the same count line.
+local count = string.format("cards (luau): ran %d, failed %d", passed + failed, failed)
+if passed + failed == 0 then failures[#failures + 1] = "FAIL cards (luau): no test ran" end
+if #failures > 0 then error(table.concat(failures, "\n") .. "\n" .. count, 0) end
 return string.format("cards (luau): %d passed, %d failed\ncards (luau): ran %d, failed %d\n", passed, failed, passed + failed, failed)

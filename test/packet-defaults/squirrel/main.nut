@@ -323,5 +323,7 @@ if (listed == null || listed.len() == 0) {
   foreach (name, wasRead in listed) check(wasRead, "vector " + name + " is in the directory and this driver does not read it");
 }
 print("packet defaults Squirrel: ran " + ran + ", failed " + failed + "\n");
-if (failed > 0) throw "packet defaults squirrel: " + failed + " check(s) failed";
+// sq exits 0 after a throw, so a failed or empty run returns 1: the status.
+if (failed > 0 || ran == 0) return 1;
 print("packet defaults Squirrel: constructors, eight C++ goldens and reused storage OK\n");
+return 0;

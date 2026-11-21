@@ -72,5 +72,7 @@ if (listed == null || listed.len() == 0) {
   foreach (name, wasRead in listed) check(wasRead, "vector " + name + " is in the directory and this driver does not read it");
 }
 print("packet end Squirrel: ran " + ran + ", failed " + failed + "\n");
-if (failed > 0) throw "packet end squirrel: " + failed + " check(s) failed";
+// sq exits 0 after a throw, so a failed or empty run returns 1: the status.
+if (failed > 0 || ran == 0) return 1;
 print("packet end Squirrel: exact packet reads 3; trailing byte and padding refused\n");
+return 0;

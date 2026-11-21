@@ -180,5 +180,7 @@ outcome(c, "Arm", arm(c.ArmType.Elements, function(v) { v.Elements = elements([0
 // The last stdout line on a pass is the count tools/mustrun reads; sq exits 0
 // on a runtime error, so a run that dies prints no count line.
 print("packet write bare-int Squirrel count: ran " + checked + ", failed " + failed + "\n");
-if (failed > 0) throw "packet write bare-int squirrel: " + failed + " check(s) failed";
+// sq exits 0 after a throw, so a failed or empty run returns 1: the status.
+if (failed > 0 || checked == 0) return 1;
 print("packet write bare-int Squirrel: " + cases + " shared cases and " + checked + " checks OK\n");
+return 0;
