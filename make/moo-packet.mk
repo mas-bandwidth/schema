@@ -51,7 +51,7 @@ MOO_PACKET_DEFAULTS_RUN = -analyze -schema test/packet-defaults/Defaults.schema 
 
 .PHONY: packet-defaults-moo packet-defaults-moo-negative-control
 packet-defaults-moo: toolchain-moo moo-packet-driver packet-defaults-cpp build/mustrun
-	$(MUSTRUN) -name packet-defaults-moo -count 1 -- $(MOO_PACKET_DRIVER) $(MOO_PACKET_DEFAULTS_RUN)
+	$(MUSTRUN) -name packet-defaults-moo -count 129 -- $(MOO_PACKET_DRIVER) $(MOO_PACKET_DEFAULTS_RUN)
 
 packet-defaults-moo-negative-control: packet-defaults-moo
 	$(call moo-packet-sabotaged-driver,build/packet-defaults/moo-negative,packet-defaults-moo-constructor-bytes,moo.go)
@@ -81,7 +81,7 @@ endef
 
 .PHONY: packet-finite-moo packet-finite-moo-negative-control
 packet-finite-moo: toolchain-moo moo-packet-driver build/mustrun
-	$(MUSTRUN) -name packet-finite-moo -count 1 -- $(MOO_PACKET_DRIVER) $(MOO_PACKET_FINITE_RUN)
+	$(MUSTRUN) -name packet-finite-moo -count 111 -- $(MOO_PACKET_DRIVER) $(MOO_PACKET_FINITE_RUN)
 
 packet-finite-moo-negative-control: packet-finite-moo
 	$(call packet-finite-moo-control,read)
@@ -122,7 +122,7 @@ MOO_PACKET_END_RUN = -analyze -schema test/packet-end/End.schema -inputs testdat
 
 .PHONY: packet-end-moo packet-end-moo-negative-control
 packet-end-moo: toolchain-moo moo-packet-driver build/mustrun
-	$(MUSTRUN) -name packet-end-moo -count 1 -- $(MOO_PACKET_DRIVER) $(MOO_PACKET_END_RUN)
+	$(MUSTRUN) -name packet-end-moo -count 3 -- $(MOO_PACKET_DRIVER) $(MOO_PACKET_END_RUN)
 
 packet-end-moo-negative-control: packet-end-moo
 	$(call moo-packet-sabotaged-driver,build/packet-end/moo-negative,packet-end-moo-no-end,wire.go)

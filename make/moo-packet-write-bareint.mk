@@ -12,7 +12,7 @@ MOO_PACKET_BAREINT_RUN = -analyze -schema test/packet-write-bareint/BareInt.sche
 
 .PHONY: packet-write-bareint-moo packet-write-bareint-moo-negative-control
 packet-write-bareint-moo: toolchain-moo moo-packet-driver build/mustrun
-	$(MUSTRUN) -name packet-write-bareint-moo -count 1 -- $(MOO_PACKET_DRIVER) $(MOO_PACKET_BAREINT_RUN)
+	$(MUSTRUN) -name packet-write-bareint-moo -count 90 -- $(MOO_PACKET_DRIVER) $(MOO_PACKET_BAREINT_RUN)
 
 packet-write-bareint-moo-negative-control: packet-write-bareint-moo
 	$(call moo-packet-sabotaged-driver,build/packet-write-bareint/moo-negative,packet-write-bareint-moo-signed-width,wire.go)

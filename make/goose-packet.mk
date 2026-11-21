@@ -78,7 +78,7 @@ packet-defaults-goose: goose-packet-ready packet-defaults-cpp build/mustrun
 	./build/schema-goose-packet generate --lang goose --out build/packet-defaults/goose test/packet-defaults/Defaults.schema
 	./build/schema-goose-packet generate --lang goose --out build/packet-defaults/goose test/packet-defaults/Plain.schema
 	cp test/packet-defaults/goose/main.goose build/packet-defaults/goose/
-	env -u SCHEMA_UPDATE_WIRE_GOLDENS $(MUSTRUN) -name packet-defaults-goose -count 1 -- $(GOOSE) run build/packet-defaults/goose/main.goose -- testdata/wire/packet-defaults $(PACKET_DEFAULTS_GOOSE_GOLDENS)
+	env -u SCHEMA_UPDATE_WIRE_GOLDENS $(MUSTRUN) -name packet-defaults-goose -count 76 -- $(GOOSE) run build/packet-defaults/goose/main.goose -- testdata/wire/packet-defaults $(PACKET_DEFAULTS_GOOSE_GOLDENS)
 
 # Removes only the constructor's byte literal, its length kept: the program
 # must compile and fail the exact constructor-bytes marker.
@@ -101,7 +101,7 @@ packet-finite-goose: goose-packet-ready build/mustrun
 	@rm -rf build/packet-finite/goose && mkdir -p build/packet-finite/goose
 	./build/schema-goose-packet generate --lang goose --out build/packet-finite/goose test/packet-finite/Finite.schema
 	cp test/packet-finite/goose/main.goose build/packet-finite/goose/
-	$(MUSTRUN) -name packet-finite-goose -count 1 -- $(GOOSE) run build/packet-finite/goose/main.goose
+	$(MUSTRUN) -name packet-finite-goose -count 72 -- $(GOOSE) run build/packet-finite/goose/main.goose
 
 # One control per direction: each removes that direction's finite rule and
 # must fail exactly that direction's 24 vectors (test/packet-finite/goose/
@@ -135,7 +135,7 @@ packet-end-goose: goose-packet-ready build/mustrun
 	@rm -rf build/packet-end/goose && mkdir -p build/packet-end/goose
 	./build/schema-goose-packet generate --lang goose --out build/packet-end/goose test/packet-end/End.schema
 	cp test/packet-end/goose/main.goose build/packet-end/goose/
-	env -u SCHEMA_UPDATE_WIRE_GOLDENS $(MUSTRUN) -name packet-end-goose -count 1 -- $(GOOSE) run build/packet-end/goose/main.goose -- testdata/wire/packet-end $(PACKET_END_GOOSE_VECTORS)
+	env -u SCHEMA_UPDATE_WIRE_GOLDENS $(MUSTRUN) -name packet-end-goose -count 3 -- $(GOOSE) run build/packet-end/goose/main.goose -- testdata/wire/packet-end $(PACKET_END_GOOSE_VECTORS)
 
 # Removes the public read's runtime end call (SPEC §5): a whole trailing byte
 # and set padding must then read as the value, so the driver's two refusal
@@ -160,7 +160,7 @@ packet-write-cfloat-goose: goose-packet-ready build/mustrun
 	./build/schema-goose-packet generate --lang goose --out build/packet-write-cfloat/goose test/packet-write-cfloat/CFloat.schema
 	cp test/goose/driverlib.goose test/packet-write-cfloat/goose/main.goose build/packet-write-cfloat/goose/
 	go run ./test/packet-write-cfloat/goose/cases.go test/packet-write-cfloat/cases.txt > build/packet-write-cfloat/goose/cases
-	$(MUSTRUN) -name packet-write-cfloat-goose -count 1 -- $(GOOSE) run build/packet-write-cfloat/goose/main.goose < build/packet-write-cfloat/goose/cases
+	$(MUSTRUN) -name packet-write-cfloat-goose -count 10 -- $(GOOSE) run build/packet-write-cfloat/goose/main.goose < build/packet-write-cfloat/goose/cases
 
 packet-write-cfloat-goose-negative-control: packet-write-cfloat-goose
 	$(call goose-packet-sabotaged,build/packet-write-cfloat/goose-negative,packet-write-cfloat-goose,internal/codegen/goose/write.go)
@@ -185,7 +185,7 @@ packet-write-text-goose: goose-packet-ready build/mustrun
 	./build/schema-goose-packet generate --lang goose --out build/packet-write-text/goose test/packet-write-text/Text.schema
 	cp test/goose/driverlib.goose test/packet-write-text/goose/main.goose build/packet-write-text/goose/
 	go run ./test/packet-write-text/goose/cases.go test/packet-write-text/cases.txt > build/packet-write-text/goose/cases
-	$(MUSTRUN) -name packet-write-text-goose -count 1 -- $(GOOSE) run build/packet-write-text/goose/main.goose < build/packet-write-text/goose/cases
+	$(MUSTRUN) -name packet-write-text-goose -count 11 -- $(GOOSE) run build/packet-write-text/goose/main.goose < build/packet-write-text/goose/cases
 
 packet-write-text-goose-negative-control: packet-write-text-goose
 	$(call goose-packet-sabotaged,build/packet-write-text/goose-negative,packet-write-text-goose,internal/codegen/goose/write.go)

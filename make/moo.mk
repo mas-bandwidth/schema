@@ -81,7 +81,7 @@ cards-moo-test: toolchain-moo cards-moo-generate build/cards-driver-moo cards-co
 	$(MOO_ANALYZE) build/cards-moo-analyze/cards.moo build/cards-moo-analyze/cards_codec.moo build/cards-moo-analyze/cards_test.moo build/cards-moo-analyze/driver.moo
 	@rm -f build/cards-moo-unit/unit.txt
 	./build/cards-driver-moo tables/cards/moo/UNIT_INPUTS.txt unit build/cards-moo-unit
-	$(MUSTRUN) -name cards-moo-test -count 1 -- cat build/cards-moo-unit/unit.txt
+	$(MUSTRUN) -name cards-moo-test -count 11 -- cat build/cards-moo-unit/unit.txt
 
 cards-moo-conformance: toolchain-moo cards-moo-generate build/cards-driver-moo build/conformance-harness cards-corpus-check
 	SCHEMA_REQUIRE_CARDS_CORPUS=1 SCHEMA_CARDS_SURFACES=$(CARDS_MOO_REQUIRE) ./build/conformance-harness cards --work build/cards-moo-conformance --corpus tables/cards/conformance --driver tables/cards/moo/driver --require $(CARDS_MOO_REQUIRE)

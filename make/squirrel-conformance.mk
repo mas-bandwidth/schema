@@ -164,6 +164,6 @@ conformance-negative-control-squirrel-absent: build/conformance-harness build/co
 # assertions unseen.
 .PHONY: squirrel-wire-lib-test
 squirrel-wire-lib-test: toolchain-squirrel build/mustrun
-	$(MUSTRUN) -name squirrel-wire-lib-test -count 1 -- "$(SQ)" test/conformance/squirrel/lib/wire_test.nut
+	$(MUSTRUN) -name squirrel-wire-lib-test -count 50 -- "$(SQ)" test/conformance/squirrel/lib/wire_test.nut
 
 test-squirrel: squirrel-wire-lib-test

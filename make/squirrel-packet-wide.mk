@@ -37,7 +37,7 @@ build/packet-defaults/squirrel/.stamp: bin/schema test/packet-defaults/Defaults.
 PACKET_DEFAULTS_SQUIRREL_GOLDENS = $(sort $(notdir $(wildcard testdata/wire/packet-defaults/*.bin)))
 .PHONY: packet-defaults-squirrel packet-defaults-squirrel-negative-control
 packet-defaults-squirrel: build/packet-defaults/squirrel/.stamp packet-defaults-cpp toolchain-squirrel build/mustrun
-	$(MUSTRUN) -name packet-defaults-squirrel -count 1 -- "$(SQ)" test/packet-defaults/squirrel/main.nut testdata/wire/packet-defaults --vectors $(PACKET_DEFAULTS_SQUIRREL_GOLDENS)
+	$(MUSTRUN) -name packet-defaults-squirrel -count 111 -- "$(SQ)" test/packet-defaults/squirrel/main.nut testdata/wire/packet-defaults --vectors $(PACKET_DEFAULTS_SQUIRREL_GOLDENS)
 
 # THE CONSTRUCTOR-BYTES CONTROL: drop only the emitted byte-literal assignments
 # in the constructor and require the runtime check to fail on constructor bytes.
@@ -63,7 +63,7 @@ build/packet-end/squirrel/.stamp: bin/schema test/packet-end/End.schema make/squ
 PACKET_END_SQUIRREL_VECTORS = $(sort $(notdir $(wildcard testdata/wire/packet-end/*.bin)))
 .PHONY: packet-end-squirrel packet-end-squirrel-negative-control
 packet-end-squirrel: build/packet-end/squirrel/.stamp toolchain-squirrel build/mustrun
-	$(MUSTRUN) -name packet-end-squirrel -count 1 -- "$(SQ)" test/packet-end/squirrel/main.nut testdata/wire/packet-end build/packet-end/squirrel --vectors $(PACKET_END_SQUIRREL_VECTORS)
+	$(MUSTRUN) -name packet-end-squirrel -count 11 -- "$(SQ)" test/packet-end/squirrel/main.nut testdata/wire/packet-end build/packet-end/squirrel --vectors $(PACKET_END_SQUIRREL_VECTORS)
 
 # THE END-CHECK CONTROL: remove the generated read's end call, so the public
 # read accepts a whole byte left after the object and nonzero unused bits in
