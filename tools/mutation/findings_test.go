@@ -287,4 +287,20 @@ func TestScratchTreeRemovesNothingItDidNotMake(t *testing.T) {
 			t.Errorf("%s is left after its run removed it", filepath.Dir(tree))
 		}
 	}
+
+	// a copy that cannot be made takes away what it made, and only that
+	if _, remove, err := scratchTree(t.TempDir(), work, "check"); err == nil || remove != nil {
+		t.Errorf("a scratch copy of a directory that is no git checkout: err %v, remove set %v", err, remove != nil)
+	}
+	entries, err := os.ReadDir(work)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var left []string
+	for _, e := range entries {
+		left = append(left, e.Name())
+	}
+	if strings.Join(left, " ") != "check peer.txt" || !exists(notes) {
+		t.Errorf("after a failed copy the work directory holds %v", left)
+	}
 }

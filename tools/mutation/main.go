@@ -335,7 +335,7 @@ func runScope(root, work, scopeName string, n int, seed uint64, only []string, o
 // it and nothing else: whatever was under <work> before is never removed, and
 // two runs of one scope at once never share a copy. remove takes away the
 // worktree and that directory, and nothing else.
-func scratchTree(root, work, scope string) (tree string, remove func(), err error) {
+func scratchTree(root, work, scope string) (string, func(), error) {
 	dir, err := filepath.Abs(work)
 	if err != nil {
 		return "", nil, err
@@ -350,23 +350,26 @@ func scratchTree(root, work, scope string) (tree string, remove func(), err erro
 	if err != nil {
 		return "", nil, err
 	}
-	tree = filepath.Join(base, "schema")
-	remove = func() {
-		_ = exec.Command("git", "-C", root, "worktree", "remove", "--force", tree).Run()
+	copyAt := filepath.Join(base, "schema")
+	removeCopy := func() {
+		_ = exec.Command("git", "-C", root, "worktree", "remove", "--force", copyAt).Run()
 		_ = os.RemoveAll(base)
 	}
-	defer func() {
-		if err != nil {
-			remove()
-			tree, remove = "", nil
-		}
-	}()
+	if err := fillScratch(root, copyAt); err != nil {
+		removeCopy()
+		return "", nil, err
+	}
+	return copyAt, removeCopy, nil
+}
+
+// fillScratch checks HEAD out at tree and links the siblings and dist/ in.
+func fillScratch(root, tree string) error {
 	if b, err := exec.Command("git", "-C", root, "worktree", "add", "--detach", tree, "HEAD").CombinedOutput(); err != nil {
-		return "", nil, fmt.Errorf("git worktree add: %w\n%s", err, b)
+		return fmt.Errorf("git worktree add: %w\n%s", err, b)
 	}
 	siblings, err := os.ReadFile(filepath.Join(root, "SIBLINGS"))
 	if err != nil {
-		return "", nil, err
+		return err
 	}
 	for line := range strings.SplitSeq(string(siblings), "\n") {
 		f := strings.Fields(line)
@@ -378,15 +381,15 @@ func scratchTree(root, work, scope string) (tree string, remove func(), err erro
 			continue // not staged here; a stage that needs it says so on the baseline
 		}
 		if err := os.Symlink(have, filepath.Join(tree, filepath.FromSlash(f[0]))); err != nil {
-			return "", nil, err
+			return err
 		}
 	}
 	if dist := filepath.Join(root, "dist"); exists(dist) {
 		if err := os.Symlink(dist, filepath.Join(tree, "dist")); err != nil {
-			return "", nil, err
+			return err
 		}
 	}
-	return tree, remove, nil
+	return nil
 }
 
 func exists(path string) bool {
