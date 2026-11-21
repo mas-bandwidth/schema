@@ -59,10 +59,12 @@ func checkReservedNodeType(t *testing.T, plant bool) {
 	if len(golden) != 77 || golden[13] != 3 || binary.LittleEndian.Uint64(golden[37:45]) != ^uint64(0) {
 		t.Fatal("list_shared fixture layout changed")
 	}
+	// The verdict is the contract (docs/rulings.json, refusal-verdict-only):
+	// why a read refused is each side's own diagnostic, never compared.
 	type vector struct {
-		name   string
-		wire   []byte
-		reason string
+		name    string
+		wire    []byte
+		refused bool
 	}
 	mutateID := func(id uint64) []byte {
 		b := append([]byte(nil), golden...)
@@ -73,7 +75,7 @@ func checkReservedNodeType(t *testing.T, plant bool) {
 	node[13] = 2
 	none := append([]byte(nil), golden...)
 	none[13] = 0
-	cases := []vector{{"legal", golden, ""}, {"reserved_node", node, "wire_damaged"}, {"reserved_build", mutateID(^uint64(1)), "wire_damaged"}, {"reserved_vocab", mutateID(^uint64(2)), "wire_damaged"}, {"hash_zero", mutateID(0), ""}, {"type_ref_none", none, "wire_damaged"}}
+	cases := []vector{{"legal", golden, false}, {"reserved_node", node, true}, {"reserved_build", mutateID(^uint64(1)), true}, {"reserved_vocab", mutateID(^uint64(2)), true}, {"hash_zero", mutateID(0), false}, {"type_ref_none", none, true}}
 	dir := t.TempDir()
 	writeTree(t, dir, files)
 	var manifest strings.Builder
@@ -81,33 +83,35 @@ func checkReservedNodeType(t *testing.T, plant bool) {
 	for _, c := range cases {
 		var rep tabletext.Report
 		ok, e := tablewire.Decode(model, model.New(model.Lookup("Album")), c.wire, &rep)
-		reason := ""
-		if !ok {
-			reason = tablewire.RefusalReason(e)
+		if !ok && !tablewire.ReadRefusal(e) {
+			t.Fatalf("Go oracle %s: fails with %v, which is not a read's refusal", c.name, e)
 		}
-		if ok != (c.reason == "") || reason != c.reason {
-			t.Fatalf("Go oracle %s: ok=%v, got %q, expected %q (%v)", c.name, ok, reason, c.reason, e)
+		if ok == c.refused {
+			t.Fatalf("Go oracle %s: ok=%v, expected refused=%v (%v)", c.name, ok, c.refused, e)
 		}
 		if err := os.WriteFile(filepath.Join(dir, c.name+".bin"), c.wire, 0600); err != nil {
 			t.Fatal(err)
 		}
-		fmt.Fprintf(&manifest, "%s %s\n", c.name, c.reason)
+		verdict := "accepted"
+		if c.refused {
+			verdict = "refused"
+		}
+		fmt.Fprintf(&manifest, "%s %s\n", c.name, verdict)
 	}
 	probe := pyrun.ImportPrelude + `from pathlib import Path
 from listdemo import Album, Refused
 from listdemo._schema import LoadReport
 for line in Path("cases.txt").read_text().splitlines():
-    parts = line.split()
-    name, reason = parts[0], parts[1] if len(parts) > 1 else ""
+    name, verdict = line.split()
     report = LoadReport()
     report.unknown, report.widened, report.retained, report.retain_lost = 77, 66, 55, 44
     try:
         value = Album.load(Path(name + ".bin").read_bytes(), report=report)
     except Refused as err:
-        assert err.reason == reason, (name, err.reason, reason)
+        assert verdict == "refused", (name, "refused", err.reason)
         assert (report.unknown, report.widened, report.retained, report.retain_lost) == (77, 66, 55, 44)
     else:
-        assert not reason, (name, "accepted", reason)
+        assert verdict == "accepted", (name, "accepted", verdict)
         if name == "legal":
             assert value.photos[2] is None
             assert value.save() == Path(name + ".bin").read_bytes()
