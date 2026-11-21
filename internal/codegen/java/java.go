@@ -1643,6 +1643,8 @@ func wrapCall(l string) []string {
 		lhs, callee = "return ", strings.TrimPrefix(head, "return ")
 	case strings.HasPrefix(head, "assert "):
 		lhs, callee = "assert ", strings.TrimPrefix(head, "assert ")
+	case strings.HasPrefix(head, "throw "):
+		lhs, callee = "throw ", strings.TrimPrefix(head, "throw ")
 	case strings.Contains(head, " = "):
 		k := strings.LastIndex(head, " = ")
 		lhs, callee = head[:k+3], head[k+3:]
@@ -1702,7 +1704,7 @@ func wrapCall(l string) []string {
 // breakPrefixed is breakArg for an operand behind a prefix (`? `, `: `, an
 // operator): the prefix leads its first line.
 func breakPrefixed(ind, prefix, e, tail string) []string {
-	w := breakArg(ind, e, tail)
+	w := breakArgLed(ind, javaWidth(prefix), e, tail)
 	if w == nil {
 		return nil
 	}
@@ -1714,8 +1716,13 @@ func breakPrefixed(ind, prefix, e, tail string) []string {
 // `new`) opens its own argument list eight columns deeper, all on one line
 // when they fit and one a line otherwise, recursively; a string literal is
 // left whole. nil when the argument is neither.
-func breakArg(ind, a, end string) []string {
-	if javaWidth(ind+a+end) <= javaColumnLimit || isSingleStringLit(a) {
+func breakArg(ind, a, end string) []string { return breakArgLed(ind, 0, a, end) }
+
+// breakArgLed is breakArg for an argument whose first line carries lead more
+// columns ahead of it (a prefix the caller lays down, `? ` or an operator):
+// they count when the argument is measured whole and on a chain's receiver.
+func breakArgLed(ind string, lead int, a, end string) []string {
+	if javaWidth(ind+a+end)+lead <= javaColumnLimit || isSingleStringLit(a) {
 		return []string{ind + a + end}
 	}
 	if c, x, y, ok := splitTernary(a); ok {
@@ -1734,7 +1741,16 @@ func breakArg(ind, a, end string) []string {
 		if len(parts) == 1 {
 			tail = end
 		}
-		out := breakArg(ind, parts[0], tail)
+		// a call leading the chain and too wide for its line: its arguments
+		// sixteen columns in, past the chain's own continuation
+		var out []string
+		if open := strings.IndexByte(parts[0], '('); open > 0 && javaWidth(ind+parts[0]+tail) > javaColumnLimit &&
+			javaCallee.MatchString(strings.TrimPrefix(parts[0][:open], "new ")) {
+			out = breakCallAt(ind, parts[0], ind+"                ", tail)
+		}
+		if out == nil {
+			out = breakArg(ind, parts[0], tail)
+		}
 		if out == nil {
 			return nil
 		}
@@ -1784,7 +1800,7 @@ func breakArg(ind, a, end string) []string {
 	open := strings.IndexByte(a, '(')
 	if open < 0 || !strings.HasSuffix(a, ")") || matchParen(a, open) != len(a)-1 {
 		// a chain of calls: broken before each, eight columns in
-		return layoutChain(ind, a, end)
+		return layoutChainLed(ind+strings.Repeat(" ", lead), ind, a, end)
 	}
 	if !javaCallee.MatchString(strings.TrimPrefix(a[:open], "new ")) {
 		return nil
@@ -2585,7 +2601,13 @@ func emptyBlocks(lines []string) []string {
 	for i := 0; i < len(lines); i++ {
 		l := lines[i]
 		if i+1 < len(lines) && strings.HasSuffix(l, "{") && strings.TrimSpace(lines[i+1]) == "}" && len(indentOf(lines[i+1])) <= len(indentOf(l)) && !strings.HasSuffix(strings.TrimSpace(l), "= {") && !strings.HasSuffix(l, "[] {") {
-			out = append(out, l+"}")
+			// the closing brace counts against the limit: a for header it
+			// pushes past breaks at its semicolons
+			if w := wrapFor(l + "}"); w != nil {
+				out = append(out, w...)
+			} else {
+				out = append(out, l+"}")
+			}
 			i++
 			continue
 		}
@@ -3060,23 +3082,36 @@ func breakCond(ind, head, expr, tail string) []string {
 	return out
 }
 
-// wrapFor breaks a for header wider than the limit at its semicolons.
+// wrapFor breaks a for header wider than the limit at its semicolons; an
+// empty body (`) {}`) rides the last line. A condition still too wide for its
+// line breaks at its operators, eight columns under it.
 func wrapFor(l string) []string {
 	if javaWidth(l) <= javaColumnLimit || strings.Contains(l, "//") {
 		return nil
 	}
 	ind := indentOf(l)
 	t := strings.TrimSpace(l)
-	if !strings.HasPrefix(t, "for (") || !strings.HasSuffix(t, ") {") {
+	open := ") {"
+	if strings.HasSuffix(t, ") {}") {
+		open = ") {}"
+	}
+	if !strings.HasPrefix(t, "for (") || !strings.HasSuffix(t, open) {
 		return nil
 	}
-	parts := strings.Split(t[5:len(t)-3], "; ")
+	parts := strings.Split(t[5:len(t)-len(open)], "; ")
 	if len(parts) != 3 {
 		return nil
 	}
-	out := []string{ind + "for (" + parts[0] + ";", ind + "        " + parts[1] + ";", ind + "        " + parts[2] + ") {"}
+	cond := []string{ind + "        " + parts[1] + ";"}
+	if javaWidth(cond[0]) > javaColumnLimit {
+		cond = breakCond(ind+"        ", "", parts[1], ";")
+		if cond == nil {
+			return nil
+		}
+	}
+	out := append(append([]string{ind + "for (" + parts[0] + ";"}, cond...), ind+"        "+parts[2]+open)
 	if parts[2] == "" || parts[2] == " " {
-		out = []string{ind + "for (" + parts[0] + ";", ind + "        " + parts[1] + "; ) {"}
+		out = []string{ind + "for (" + parts[0] + ";", ind + "        " + parts[1] + "; " + open}
 	}
 	for _, o := range out {
 		if javaWidth(o) > javaColumnLimit {
@@ -3106,8 +3141,14 @@ func wrapChain(ind, lhs, rhs string) []string {
 
 // layoutChain lays a chain of two or more calls out from inner: the receiver
 // on the first line, every later dereference eight columns in; end closes the
-// last line. nil when e is not such a chain or a line will not fit.
-func layoutChain(inner, e, end string) []string {
+// last line. A parenthesized receiver (`((T) v).m(x)`) breaks before its one
+// call too. nil when e is not such a chain or a line will not fit.
+func layoutChain(inner, e, end string) []string { return layoutChainLed(inner, inner, e, end) }
+
+// layoutChainLed is layoutChain with the receiver's line opened by lead (its
+// indent and whatever prefix the line carries, `assert ` or `&& `) and the
+// later lines at inner.
+func layoutChainLed(lead, inner, e, end string) []string {
 	segs := chainSegments(e)
 	if len(segs) < 2 || segs[0] == "" || (segs[0][0] >= '0' && segs[0][0] <= '9') {
 		return nil // a number's point is not a dereference
@@ -3122,18 +3163,23 @@ func layoutChain(inner, e, end string) []string {
 			calls++
 		}
 	}
-	if calls < 2 || k >= len(segs) {
+	need := 2
+	if strings.HasPrefix(segs[0], "(") && matchParen(segs[0], 0) == len(segs[0])-1 {
+		need = 1 // the receiver is one parenthesized expression, not a cast's type
+	}
+	if calls < need || k >= len(segs) {
 		return nil
 	}
 	var out []string
 	last := len(segs) - 1
-	if one := inner + recv; javaWidth(one) <= javaColumnLimit {
+	if one := lead + recv; javaWidth(one) <= javaColumnLimit {
 		out = append(out, one)
 	} else if prefixCall {
 		w := breakCallAt(inner, recv, inner+"                ", "")
 		if w == nil {
 			return nil
 		}
+		w[0] = lead + strings.TrimLeft(w[0], " ")
 		out = append(out, w...)
 	} else {
 		return nil
@@ -4025,8 +4071,7 @@ func wrapAssertOperand(prefixLine, contInd, expr string) []string {
 		var out []string
 		if javaWidth(prefixLine+sub[0]) <= javaColumnLimit {
 			out = append(out, prefixLine+sub[0])
-		} else if w := layoutChain(contInd+"        ", sub[0], ""); w != nil {
-			w[0] = prefixLine + strings.TrimLeft(w[0], " ")
+		} else if w := layoutChainLed(prefixLine, contInd+"        ", sub[0], ""); w != nil {
 			out = append(out, w...)
 		} else if w := breakArg(contInd, sub[0], ""); w != nil {
 			w[0] = prefixLine + strings.TrimLeft(w[0], " ")

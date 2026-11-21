@@ -195,7 +195,10 @@ func writeMapFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fiel
 	fmt.Fprintf(b, "                    if(keyReport.widened>0&&!keyWidened){report.widened++;keyWidened=true;}if(keyReport.refused){report.refuse(keyReport.reason);v.%s.clear();break;}if(keyReport.damaged||kr.fail||kr.off!=kr.limit){report.damaged=true;break;}\n", m)
 	key := ir.MapKeyField(f)
 	if key.Type.Kind == ir.TString && !key.Type.TextUnbounded() {
-		fmt.Fprintf(b, "                    if(keyValue.key.getBytes(java.nio.charset.StandardCharsets.UTF_8).length>%d){report.refuse(\"length_over_bound\");continue;}\n", key.Type.Size)
+		// utf8Len counts what getBytes(UTF_8) would write (a lone surrogate is
+		// the one byte of its replacement) without the copy, and keeps the
+		// check inside the formatter's 100 columns at this depth
+		fmt.Fprintf(b, "                    if(TableVariable.utf8Len(keyValue.key)>%dL){report.refuse(\"length_over_bound\");continue;}\n", key.Type.Size)
 	}
 	fmt.Fprintf(b, "                    int order=v.%s.isEmpty()?-1:"+st.Name+"Variable.compare_%s(v.%s.get(v.%s.size()-1),keyValue);if(order>0){report.damaged=true;break;} %s decoded=new %s();int priorWidened=report.widened;\n", m, m, m, m, entry, entry)
 	if retain {

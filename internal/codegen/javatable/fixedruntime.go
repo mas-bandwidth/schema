@@ -1555,9 +1555,7 @@ public final class TableFixed {
          */
         int layGuards() {
             if (2 * (poolUsed + chainLen) > pool.length) {
-                pool =
-                        java.util.Arrays.copyOf(
-                                pool, java.lang.Math.max(2 * (poolUsed + chainLen), 2 * pool.length + 16));
+                pool = java.util.Arrays.copyOf(pool, java.lang.Math.max(2 * (poolUsed + chainLen), 2 * pool.length + 16));
             }
             final int at = poolUsed;
             for (int j = 0; j < chainLen; j++) {
