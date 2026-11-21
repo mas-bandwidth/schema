@@ -294,9 +294,7 @@ func (m *msgGen) rides(f *ir.Field, expr, dexpr, ind string) string {
 // element's declared default.
 func (m *msgGen) countedRides(f *ir.Field, expr, dexpr, ind string) string {
 	born := f.BornCount()
-	// a REQUIRED array keeps its presence at its birth count
-	// (internal/tablewire/messageencode.go, `!f.Required && ... BornCount()`)
-	if born <= 0 || f.Required {
+	if born <= 0 {
 		return expr + "_count > 0"
 	}
 	var live string

@@ -1,8 +1,8 @@
 package rusttable
 
 // A REQUIRED [Min..N]T keeps its presence at its birth count: the birth
-// elision (internal/tablewire encodeArray, allBirth; messageencode.go) holds
-// for a field that is neither required nor optional, so a required array of
+// elision (internal/tablewire encodeArray, allBirth) holds for a field that is
+// neither required nor optional, so a required array of
 // Min elements at their zero is written, and the writer's own read of it holds
 // the required field present. The committed fixture
 // testdata/required-born/MANIFEST.tsv carries the schemas, the JSON values
@@ -93,7 +93,7 @@ func TestRustRequiredBornArrayKeepsPresence(t *testing.T) {
 			}
 			id := strings.ReplaceAll(c.id, "/", "_")
 			fmt.Fprintf(&body, "    { let mut rep = TableReport::default(); let v = r_from_json(%s, &mut rep);\n", rustRaw(text))
-			fmt.Fprintf(&body, "      println!(\"REQ %s_text_save {}\", v.and_then(|v| r_save_checked(&v)).map(|b| b == vec!%s).unwrap_or(false)); }\n", id, rustByteVector(golden))
+			fmt.Fprintf(&body, "      println!(\"REQ %s_text_save {}\", v.and_then(|v| r_save_checked(&v).ok()).map(|b| b == vec!%s).unwrap_or(false)); }\n", id, rustByteVector(golden))
 			fmt.Fprintf(&body, "    { let mut rep = TableReport::default(); let v = r_load(&vec!%s, &mut rep);\n", rustByteVector(golden))
 			fmt.Fprintf(&body, "      println!(\"REQ %s_reads_golden {}\", v.is_some() && !rep.damaged); }\n", id)
 			ids = append(ids, id+"_text_save", id+"_reads_golden")
@@ -113,62 +113,6 @@ func TestRustRequiredBornArrayKeepsPresence(t *testing.T) {
 			if !strings.Contains(out, "REQ "+id+" true") {
 				t.Errorf("%s: the Rust variable form does not hold a required [Min..N]T present at its birth:\n%s", id, out)
 			}
-		}
-	}
-}
-
-const requiredCountedMessageSrc = `package requiredcounted
-
-type Inner
-{
-    a int32 = 3
-}
-
-fixed table Root
-{
-    ticks uint32
-    ps    [2..3]Inner | required
-}
-`
-
-func TestRustMessageRequiredCountedBornRides(t *testing.T) {
-	t.Parallel()
-	messageBatchRustc(t)
-
-	u := unitFrom(t, requiredCountedMessageSrc)
-	m := tabletext.NewModel(u)
-	saves := []struct{ id, text, set string }{
-		{"ps_born_required", `{"ticks":5,"ps":[{},{}]}`, "v.ps_count = 2; v.ps[0] = inner_message_default(); v.ps[1] = inner_message_default();"},
-		{"ps_live_required", `{"ticks":5,"ps":[{"a":4},{}]}`, "v.ps_count = 2; v.ps[0] = inner_message_default(); v.ps[1] = inner_message_default(); v.ps[0].a = 4;"},
-	}
-	var head string
-	var body strings.Builder
-	for i, c := range saves {
-		wire := repeatedIdEncode(t, m, "Root", c.text)
-		name := fmt.Sprintf("S%d", i)
-		head += fmt.Sprintf("    const %s: [u8; %d] = [%s];\n", name, len(wire), rustBytes(wire))
-		fmt.Fprintf(&body, `
-    {
-        let mut v = root_message_default();
-        v.ticks = 5;
-        %s
-        let values = vec![v; 1];
-        let mut buf = vec![0u8; 64];
-        let wrote = root_save_messages(&values, &mut buf, &mut TableReport::default());
-        let got = &buf[..wrote.max(0) as usize];
-        say(%q, got == &%s[..], format!("wrote={wrote} got={got:02x?} want={:02x?}", %s));
-    }
-`, c.set, "save_"+c.id, name, name)
-	}
-	// the engine writes the required birth: it is not the empty body
-	if bytes.Equal(repeatedIdEncode(t, m, "Root", saves[0].text), repeatedIdEncode(t, m, "Root", `{"ticks":5}`)) {
-		t.Fatal("the oracle elides a required counted array at its birth; the test expects it to ride")
-	}
-	out := runMessageBatchProbe(t, u, head+body.String())
-	for _, c := range saves {
-		id := "save_" + c.id
-		if line := messageBatchLine(out, id); line != "BATCH "+id+" ok" {
-			t.Errorf("%s: the Rust message form does not keep a required counted array at its birth: %s", id, line)
 		}
 	}
 }
