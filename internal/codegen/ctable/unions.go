@@ -219,6 +219,7 @@ func (g *tableGen) wireBarePayload(f *ir.Field, expr, ind string) {
 		if f.Array == ir.ArrayCounted {
 			n = expr + "_count"
 			g.writeStorageBound(n, f.ArrayBound, ind)
+			g.writeCountMin(f, n, ind)
 		}
 		g.pf("%s{ int32_t i; table_writer_put8( w, %d ); table_writer_leb( w, (uint64_t)(%s) );\n", ind, ir.TableWireScalarKind(f), n)
 		g.pf("%s  for ( i=0; i<%s; i++ ) {\n", ind, n)
