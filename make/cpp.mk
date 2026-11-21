@@ -229,9 +229,20 @@ TABLES_CPP_SOAK_RELEASE_ITERATIONS ?= 250000
 TABLES_CXXFLAGS_RELEASE = $(TABLES_CXXFLAGS) -O2 -DNDEBUG
 CPP_RELEASE_DIR := build/cpp-release
 
+CPP_RELEASE_JSON_OBJS = $(patsubst build/tables-generated/%.cpp,$(CPP_RELEASE_DIR)/objs/build/tables-generated/%.o,$(wildcard $(addsuffix /*Table.cpp,$(addprefix build/tables-generated/,$(PINS_WIRE_TABLES_DIRS)))))
+
+$(CPP_RELEASE_DIR)/objs/test/tables/main.o: test/tables/main.cpp test/tables/message_form.h build/tables-generated/.stamp make/cpp.mk
+	@mkdir -p $(@D)
+	$(CXX) $(TABLES_CXXFLAGS_RELEASE) $(TABLES_INCLUDES) -c $< -o $@
+
+$(CPP_RELEASE_DIR)/objs/%.o: %.cpp build/tables-generated/.stamp make/cpp.mk
+	@mkdir -p $(@D)
+	$(CXX) $(TABLES_CXXFLAGS_RELEASE) $(TABLES_INCLUDES) -c $< -o $@
+
 $(CPP_RELEASE_DIR)/tables: build/tables-generated/.stamp test/tables/main.cpp test/tables/message_form.h make/cpp.mk
 	@mkdir -p $(CPP_RELEASE_DIR)
-	$(CXX) $(TABLES_CXXFLAGS_RELEASE) $(TABLES_INCLUDES) test/tables/main.cpp $(TABLES_JSON_SOURCES) -o $@
+	@$(MAKE) --no-print-directory $(CPP_RELEASE_DIR)/objs/test/tables/main.o $(CPP_RELEASE_JSON_OBJS)
+	$(CXX) $(TABLES_CXXFLAGS_RELEASE) $(CPP_RELEASE_DIR)/objs/test/tables/main.o $(CPP_RELEASE_JSON_OBJS) -o $@
 
 $(CPP_RELEASE_DIR)/maps: build/tables-generated/.stamp test/tables/maps_main.cpp make/cpp.mk
 	@mkdir -p $(CPP_RELEASE_DIR)
@@ -251,7 +262,8 @@ $(CPP_RELEASE_DIR)/retain: build/tables-generated/.stamp test/tables/retain_main
 
 $(CPP_RELEASE_DIR)/soak: build/tables-generated/.stamp test/tables/soak_main.cpp make/cpp.mk
 	@mkdir -p $(CPP_RELEASE_DIR)
-	$(CXX) $(TABLES_CXXFLAGS_RELEASE) $(TABLES_INCLUDES) $(TABLES_CPP_SOAK_SRCS) -o $@
+	@$(MAKE) --no-print-directory $(addprefix $(CPP_RELEASE_DIR)/objs/,$(TABLES_CPP_SOAK_SRCS:.cpp=.o))
+	$(CXX) $(TABLES_CXXFLAGS_RELEASE) $(addprefix $(CPP_RELEASE_DIR)/objs/,$(TABLES_CPP_SOAK_SRCS:.cpp=.o)) -o $@
 
 $(CPP_RELEASE_DIR)/block_fuzz: build/tables-generated/.stamp test/tables/block_fuzz_main.cpp make/cpp.mk
 	@mkdir -p $(CPP_RELEASE_DIR)
@@ -262,20 +274,27 @@ $(CPP_RELEASE_DIR)/block_fuzz: build/tables-generated/.stamp test/tables/block_f
 tables-cpp-release-battery: $(CPP_RELEASE_DIR)/tables $(CPP_RELEASE_DIR)/maps $(CPP_RELEASE_DIR)/lists \
 		$(CPP_RELEASE_DIR)/arms $(CPP_RELEASE_DIR)/retain $(CPP_RELEASE_DIR)/soak \
 		$(CPP_RELEASE_DIR)/block_fuzz
-	$(MAKE) tables-cpp-release-flags-negative-control
-	./$(CPP_RELEASE_DIR)/tables
-	./$(CPP_RELEASE_DIR)/maps
-	./$(CPP_RELEASE_DIR)/lists
-	./$(CPP_RELEASE_DIR)/arms
-	./$(CPP_RELEASE_DIR)/retain
+	@set -e; \
+	mkdir -p build/cpp-release-logs; \
+	( $(MAKE) --no-print-directory tables-cpp-release-flags-negative-control > build/cpp-release-logs/flags-nc.log 2>&1 ) & p1=$$!; \
+	( ./$(CPP_RELEASE_DIR)/tables > build/cpp-release-logs/tables.log 2>&1 && ./$(CPP_RELEASE_DIR)/maps > build/cpp-release-logs/maps.log 2>&1 && ./$(CPP_RELEASE_DIR)/lists > build/cpp-release-logs/lists.log 2>&1 && ./$(CPP_RELEASE_DIR)/arms > build/cpp-release-logs/arms.log 2>&1 && ./$(CPP_RELEASE_DIR)/retain > build/cpp-release-logs/retain.log 2>&1 ) & p2=$$!; \
+	( $(MAKE) --no-print-directory tables-cpp-soak-negative-control > build/cpp-release-logs/soak-nc.log 2>&1 ) & p3=$$!; \
+	( SEED=$(SEED) N=500000 ./$(CPP_RELEASE_DIR)/block_fuzz > build/cpp-release-logs/block-fuzz-1.log 2>&1 ) & p4=$$!; \
+	( SEED=2 N=500000 ./$(CPP_RELEASE_DIR)/block_fuzz > build/cpp-release-logs/block-fuzz-2.log 2>&1 ) & p5=$$!; \
+	( $(MAKE) --no-print-directory tables-keyed-none-refusal-ndebug > build/cpp-release-logs/keyed-none.log 2>&1 && $(MAKE) --no-print-directory tables-keyed-none-refusal-negative-control >> build/cpp-release-logs/keyed-none.log 2>&1 ) & p6=$$!; \
+	( $(MAKE) --no-print-directory tables-keyed-max-refusal-ndebug > build/cpp-release-logs/keyed-max.log 2>&1 && $(MAKE) --no-print-directory tables-keyed-max-refusal-negative-control >> build/cpp-release-logs/keyed-max.log 2>&1 ) & p7=$$!; \
+	rc=0; \
+	for item in "$$p1:flags-nc" "$$p2:suites" "$$p3:soak-nc" "$$p4:block-fuzz-1" "$$p5:block-fuzz-2" "$$p6:keyed-none" "$$p7:keyed-max"; do \
+		pid=$${item%%:*}; name=$${item#*:}; \
+		if ! wait "$$pid"; then rc=1; fi; \
+		if [ "$$name" = suites ]; then \
+			for s in tables maps lists arms retain; do [ -f "build/cpp-release-logs/$$s.log" ] && cat "build/cpp-release-logs/$$s.log" || true; done; \
+		else \
+			cat "build/cpp-release-logs/$$name.log"; \
+		fi; \
+	done; \
+	test "$$rc" -eq 0
 	./$(CPP_RELEASE_DIR)/soak $(TABLES_CPP_SOAK_RELEASE_ITERATIONS)
-	$(MAKE) tables-cpp-soak-negative-control
-	SEED=$(SEED) N=500000 ./$(CPP_RELEASE_DIR)/block_fuzz
-	SEED=2 N=500000 ./$(CPP_RELEASE_DIR)/block_fuzz
-	$(MAKE) tables-keyed-none-refusal-ndebug
-	$(MAKE) tables-keyed-none-refusal-negative-control
-	$(MAKE) tables-keyed-max-refusal-ndebug
-	$(MAKE) tables-keyed-max-refusal-negative-control
 
 # THE RELEASE TIER'S NEGATIVE CONTROL. The whole point of the tier is that the
 # battery runs with asserts compiled out and the optimizer on, so a flag

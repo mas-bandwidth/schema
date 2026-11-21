@@ -21,7 +21,20 @@
  *   ./build/schema_test_c_soak <iterations>
  */
 
+#if ( defined( __unix__ ) || defined( __APPLE__ ) ) && ( !defined( _POSIX_C_SOURCE ) || _POSIX_C_SOURCE < 200809L )
+#undef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
+
 #include "driver.h"
+
+#if defined( __unix__ ) || defined( __APPLE__ )
+#include <sys/wait.h>
+#include <unistd.h>
+#define SCHEMA_SOAK_HAS_FORK 1
+#else
+#define SCHEMA_SOAK_HAS_FORK 0
+#endif
 
 #if defined( __GLIBC__ )
 #include <malloc.h>
@@ -307,59 +320,191 @@ int main( int argc, char ** argv )
         }
     }
 
-    before = live_bytes();
-    /* one uncounted pass first, so a lazily-initialised stdio buffer or locale
-       table is charged to the setup rather than to the loop */
-    printf( "c tables soak: counting allocator calls over the measured loop\n" );
-    fflush( stdout );
-    schema_soak_counting = 1;
-    for ( ;; )
     {
-        for ( i = 0; i < num_cases; i++ )
+        unsigned int workers = 1u;
+#if SCHEMA_SOAK_HAS_FORK
+        const char * workers_env = getenv( "SCHEMA_SOAK_WORKERS" );
+        if ( workers_env != NULL && workers_env[0] != '\0' )
         {
-            const ConformanceCodec * codec = loaded[i].codec;
-            void * value;
-            if ( codec == NULL ) { continue; }
-            value = codec->storage();
-            ConformanceReport report;
-            int64_t written;
-            memset( &report, 0, sizeof( report ) );
-            /* READ, then WRITE, then read the TEXT out: the three paths §2
-               promises allocate nothing */
-            case_load( &cases[i], codec, value, loaded[i].wire, (int64_t) loaded[i].bytes, &report );
-            written = case_save( &cases[i], codec, value, loaded[i].scratch, loaded[i].scratch_bytes );
-            if ( written != loaded[i].scratch_bytes )
-            {
-                fprintf( stderr, "soak: %s re-saved at %lld bytes, not %lld\n",
-                         cases[i].wire, (long long) written, (long long) loaded[i].scratch_bytes );
-                return 1;
-            }
-            if ( loaded[i].text != NULL )
-            {
-                if ( codec->to_json( value, loaded[i].text, loaded[i].text_bytes ) != loaded[i].text_bytes )
-                {
-                    fprintf( stderr, "soak: %s wrote a text of a different length\n", cases[i].wire );
-                    return 1;
-                }
-                memset( &report, 0, sizeof( report ) );
-                if ( !codec->from_json( value, loaded[i].text, loaded[i].text_bytes, &report ) )
-                {
-                    fprintf( stderr, "soak: %s's own text did not read back\n", cases[i].wire );
-                    return 1;
-                }
-            }
+            unsigned long parsed = strtoul( workers_env, NULL, 10 );
+            if ( parsed >= 1ul && parsed <= 32ul ) { workers = (unsigned int) parsed; }
+            else if ( parsed > 32ul ) { workers = 32u; }
         }
-        iterations++;
-        if ( iterations == 1 ) { settled = live_bytes(); }
-        /* TWO PASSES IS THE FLOOR, whatever the count: `settled` is sampled
-           after the first pass and `after` at the end, so one pass would
-           compare a number with itself. The CROSS-ENDIAN leg
-           (`tables-c-big-endian`) asks for zero passes — the golden gate it
-           exists for has already run, above, before the loop — and gets two. */
-        if ( iterations >= 2 && iterations >= target ) { break; }
+        else if ( target >= 8192u )
+        {
+            long ncpu = sysconf( _SC_NPROCESSORS_ONLN );
+            if ( ncpu > 1 && ncpu <= 32 ) { workers = (unsigned int) ncpu; }
+            else if ( ncpu > 32 ) { workers = 32u; }
+        }
+        if ( target < 4u ) { workers = 1u; }
+        else if ( (uint64_t) workers * 2u > target ) { workers = (unsigned int) ( target / 2u ); }
+#endif
+        before = live_bytes();
+        /* one uncounted pass first, so a lazily-initialised stdio buffer or locale
+           table is charged to the setup rather than to the loop */
+        printf( "c tables soak: counting allocator calls over the measured loop\n" );
+        fflush( stdout );
+
+#if SCHEMA_SOAK_HAS_FORK
+        if ( workers > 1u )
+        {
+            pid_t pids[32];
+            unsigned int w;
+            int any_failed = 0;
+            for ( w = 0; w < workers; w++ )
+            {
+                const uint64_t worker_target = ( target / workers ) + ( (uint64_t) w < ( target % workers ) ? 1u : 0u );
+                pid_t pid = fork();
+                if ( pid < 0 )
+                {
+                    fprintf( stderr, "soak: fork failed on worker %u\n", w );
+                    return 1;
+                }
+                if ( pid == 0 )
+                {
+                    int64_t w_before = live_bytes(), w_settled = 0, w_after = 0;
+                    uint64_t w_iters = 0;
+                    schema_soak_calls = 0;
+                    schema_soak_counting = 1;
+                    for ( ;; )
+                    {
+                        for ( i = 0; i < num_cases; i++ )
+                        {
+                            const ConformanceCodec * codec = loaded[i].codec;
+                            void * value;
+                            if ( codec == NULL ) { continue; }
+                            value = codec->storage();
+                            ConformanceReport report;
+                            int64_t written;
+                            memset( &report, 0, sizeof( report ) );
+                            /* READ, then WRITE, then read the TEXT out: the three paths §2
+                               promises allocate nothing */
+            case_load( &cases[i], codec, value, loaded[i].wire, (int64_t) loaded[i].bytes, &report );
+                            written = case_save( &cases[i], codec, value, loaded[i].scratch, loaded[i].scratch_bytes );
+                            if ( written != loaded[i].scratch_bytes )
+                            {
+                                schema_soak_counting = 0;
+                                fprintf( stderr, "soak: %s re-saved at %lld bytes, not %lld\n",
+                                         cases[i].wire, (long long) written, (long long) loaded[i].scratch_bytes );
+                                _exit( 1 );
+                            }
+                            if ( loaded[i].text != NULL )
+                            {
+                                if ( codec->to_json( value, loaded[i].text, loaded[i].text_bytes ) != loaded[i].text_bytes )
+                                {
+                                    schema_soak_counting = 0;
+                                    fprintf( stderr, "soak: %s wrote a text of a different length\n", cases[i].wire );
+                                    _exit( 1 );
+                                }
+                                memset( &report, 0, sizeof( report ) );
+                                if ( !codec->from_json( value, loaded[i].text, loaded[i].text_bytes, &report ) )
+                                {
+                                    schema_soak_counting = 0;
+                                    fprintf( stderr, "soak: %s's own text did not read back\n", cases[i].wire );
+                                    _exit( 1 );
+                                }
+                            }
+                        }
+                        w_iters++;
+                        if ( w_iters == 1 ) { w_settled = live_bytes(); }
+                        if ( w_iters >= 2 && w_iters >= worker_target ) { break; }
+                    }
+                    schema_soak_counting = 0;
+                    w_after = live_bytes();
+                    if ( w_before >= 0 && w_after != w_settled )
+                    {
+                        printf( "c tables soak: worker %u live allocation %lld bytes before, %lld after the first iteration, %lld at the end\n",
+                                w, (long long) w_before, (long long) w_settled, (long long) w_after );
+                        fflush( stdout );
+                        fprintf( stderr, "SOAK FAILED: live allocation moved from %lld to %lld over %llu iterations — "
+                                 "the read and write paths allocate nothing, so this is a leak\n",
+                                 (long long) w_settled, (long long) w_after, (unsigned long long) w_iters );
+                        _exit( 1 );
+                    }
+#if SCHEMA_SOAK_COUNTS
+                    if ( schema_soak_calls != 0 )
+                    {
+                        printf( "c tables soak: worker %u live allocation %lld bytes before, %lld after the first iteration, %lld at the end\n",
+                                w, (long long) w_before, (long long) w_settled, (long long) w_after );
+                        fflush( stdout );
+                        fprintf( stderr, "SOAK FAILED: the read and write paths made %llu allocator call(s) over %llu "
+                                 "iterations — §2 says they allocate NOTHING, and a live-byte sample cannot see a "
+                                 "malloc/free pair because the number returns to where it was\n",
+                                 (unsigned long long) schema_soak_calls, (unsigned long long) w_iters );
+                        _exit( 1 );
+                    }
+#endif
+                    _exit( 0 );
+                }
+                pids[w] = pid;
+            }
+            for ( w = 0; w < workers; w++ )
+            {
+                int wstatus = 0;
+                if ( waitpid( pids[w], &wstatus, 0 ) < 0 || !WIFEXITED( wstatus ) || WEXITSTATUS( wstatus ) != 0 )
+                {
+                    any_failed = 1;
+                }
+            }
+            if ( any_failed ) { return 1; }
+            iterations = target;
+            settled = before;
+            after = before;
+            schema_soak_calls = 0;
+        }
+        else
+#endif
+        {
+            schema_soak_counting = 1;
+            for ( ;; )
+            {
+                for ( i = 0; i < num_cases; i++ )
+                {
+                    const ConformanceCodec * codec = loaded[i].codec;
+                    void * value;
+                    if ( codec == NULL ) { continue; }
+                    value = codec->storage();
+                    ConformanceReport report;
+                    int64_t written;
+                    memset( &report, 0, sizeof( report ) );
+                    /* READ, then WRITE, then read the TEXT out: the three paths §2
+                       promises allocate nothing */
+            case_load( &cases[i], codec, value, loaded[i].wire, (int64_t) loaded[i].bytes, &report );
+                    written = case_save( &cases[i], codec, value, loaded[i].scratch, loaded[i].scratch_bytes );
+                    if ( written != loaded[i].scratch_bytes )
+                    {
+                        fprintf( stderr, "soak: %s re-saved at %lld bytes, not %lld\n",
+                                 cases[i].wire, (long long) written, (long long) loaded[i].scratch_bytes );
+                        return 1;
+                    }
+                    if ( loaded[i].text != NULL )
+                    {
+                        if ( codec->to_json( value, loaded[i].text, loaded[i].text_bytes ) != loaded[i].text_bytes )
+                        {
+                            fprintf( stderr, "soak: %s wrote a text of a different length\n", cases[i].wire );
+                            return 1;
+                        }
+                        memset( &report, 0, sizeof( report ) );
+                        if ( !codec->from_json( value, loaded[i].text, loaded[i].text_bytes, &report ) )
+                        {
+                            fprintf( stderr, "soak: %s's own text did not read back\n", cases[i].wire );
+                            return 1;
+                        }
+                    }
+                }
+                iterations++;
+                if ( iterations == 1 ) { settled = live_bytes(); }
+                /* TWO PASSES IS THE FLOOR, whatever the count: `settled` is sampled
+                   after the first pass and `after` at the end, so one pass would
+                   compare a number with itself. The CROSS-ENDIAN leg
+                   (`tables-c-big-endian`) asks for zero passes — the golden gate it
+                   exists for has already run, above, before the loop — and gets two. */
+                if ( iterations >= 2 && iterations >= target ) { break; }
+            }
+            schema_soak_counting = 0;
+            after = live_bytes();
+        }
     }
-    schema_soak_counting = 0;
-    after = live_bytes();
 
     printf( "c tables soak: %llu iterations over %u cases\n", (unsigned long long) iterations, (unsigned) num_cases );
     if ( before < 0 )

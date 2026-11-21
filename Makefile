@@ -3497,8 +3497,14 @@ build/schema_test_bench_table: generated/bench/tables/cpp/.stamp test/bench/tabl
 # THE TOOLCHAIN GATE IS THE FIRST PREREQUISITE (issue #599): a pinned toolchain
 # that does not resolve stops the chain by name here, before an hour of C++,
 # rather than in the middle of a leg with a shell's "command not found".
-.PHONY: test-core-tables-1 test-core-tables-2 test-core-tables-3
-test-core-tables-1: build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_tables_asan build/conformance-harness
+.PHONY: test-core-tables-1 test-core-tables-1a test-core-tables-1b test-core-tables-1c test-core-tables-1d test-core-tables-2 test-core-tables-3
+test-core-tables-1:
+	$(MAKE) test-core-tables-1a
+	$(MAKE) test-core-tables-1b
+	$(MAKE) test-core-tables-1c
+	$(MAKE) test-core-tables-1d
+
+test-core-tables-1a: build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_tables_asan
 	# THE TOOLCHAIN GATE's own control (issue #599): the gate above is what
 	# stands between a missing toolchain and a green run, so it is held to the
 	# same rule as every other gate here. It has to go red on demand, by name.
@@ -3519,6 +3525,8 @@ test-core-tables-1: build/schema_test build/schema_test_guard build/schema_test_
 	# read for is truncate taking the slot back — so its control is here.
 	$(MAKE) tables-ref-ordinal-negative-control
 	$(MAKE) tables-ref-ordinal-shared-negative-control
+
+test-core-tables-1b: build/tables-generated/.stamp
 	# THE ID TABLE'S DISTINCTNESS GATE (docs/SPEC-TABLES.md §3): TableOpen
 	# answers "one id in two entries" two ways, and the corpus above takes
 	# only one of them, so the gate below builds the other one's tables by
@@ -3526,6 +3534,8 @@ test-core-tables-1: build/schema_test build/schema_test_guard build/schema_test_
 	# the probe's comparison and requires the gate to go red.
 	$(MAKE) tables-distinctness
 	$(MAKE) tables-distinctness-negative-control
+
+test-core-tables-1c: build/conformance-harness build/wire-fuzz-cpp build/wire-fuzz-cpp-asan
 	# THE WIRE FUZZER (docs/SPEC-TABLES.md §4.2): the tolerant read on hostile
 	# bytes against the engine, plain and sanitized, at a short random pass —
 	# the enumerated passes run whole whatever N is — and its two controls at
@@ -3539,6 +3549,8 @@ test-core-tables-1: build/schema_test build/schema_test_guard build/schema_test_
 	# at N=0, one per engine.
 	$(MAKE) tables-wire-fuzz-retain N=20000
 	$(MAKE) tables-wire-fuzz-retain-negative-control N=0
+
+test-core-tables-1d: build/tables-generated/.stamp build/conformance-harness
 	# THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): its rules are refusals and an
 	# ORDER, and a green run cannot be read for either, so each control removes
 	# one and names the gate that must go red.
@@ -5276,17 +5288,34 @@ build/conformance-cpp: build/tables-generated/.stamp test/conformance/cpp/main.c
 # and the sanitized one turns a one-byte over-read into a finding on the
 # mutant that caused it. SEED and N size the random pass; the enumerated
 # passes run whatever N is.
+CONFORMANCE_ASAN_OBJECTS = $(patsubst build/tables-generated/%.cpp,build/conformance-cpp-asan-objs/%.o,$(CONFORMANCE_SOURCES))
+
+build/conformance-cpp-objs/_main/wire_fuzz_main.o: test/tables/wire_fuzz_main.cpp build/tables-generated/.stamp
+	@mkdir -p $(@D)
+	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) -c $< -o $@
+
+build/conformance-cpp-asan-objs/%.o: build/tables-generated/%.cpp build/tables-generated/.stamp
+	@mkdir -p $(@D)
+	$(CXX) $(TABLES_CXXFLAGS) -O1 -fsanitize=address,undefined -fno-sanitize-recover=all \
+		-fno-omit-frame-pointer -g $(CONFORMANCE_INCLUDES) -c $< -o $@
+
+build/conformance-cpp-asan-objs/_main/wire_fuzz_main.o: test/tables/wire_fuzz_main.cpp build/tables-generated/.stamp
+	@mkdir -p $(@D)
+	$(CXX) $(TABLES_CXXFLAGS) -O1 -fsanitize=address,undefined -fno-sanitize-recover=all \
+		-fno-omit-frame-pointer -g $(CONFORMANCE_INCLUDES) -c $< -o $@
+
 build/wire-fuzz-cpp: build/tables-generated/.stamp test/tables/wire_fuzz_main.cpp
 	@mkdir -p build
-	@$(MAKE) --no-print-directory $(CONFORMANCE_OBJECTS)
-	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) test/tables/wire_fuzz_main.cpp \
+	@$(MAKE) --no-print-directory $(CONFORMANCE_OBJECTS) build/conformance-cpp-objs/_main/wire_fuzz_main.o
+	$(CXX) $(TABLES_CXXFLAGS) build/conformance-cpp-objs/_main/wire_fuzz_main.o \
 		$(CONFORMANCE_OBJECTS) -o $@
 
 build/wire-fuzz-cpp-asan: build/tables-generated/.stamp test/tables/wire_fuzz_main.cpp
 	@mkdir -p build
+	@$(MAKE) --no-print-directory $(CONFORMANCE_ASAN_OBJECTS) build/conformance-cpp-asan-objs/_main/wire_fuzz_main.o
 	$(CXX) $(TABLES_CXXFLAGS) -O1 -fsanitize=address,undefined -fno-sanitize-recover=all \
-		-fno-omit-frame-pointer -g $(CONFORMANCE_INCLUDES) test/tables/wire_fuzz_main.cpp \
-		$(CONFORMANCE_SOURCES) -o $@
+		-fno-omit-frame-pointer -g build/conformance-cpp-asan-objs/_main/wire_fuzz_main.o \
+		$(CONFORMANCE_ASAN_OBJECTS) -o $@
 
 # THE ID TABLE'S DISTINCTNESS GATE (docs/SPEC-TABLES.md §3): a table that
 # carries one id twice is malformed, and TableOpen answers that question TWO
@@ -5307,16 +5336,23 @@ build/wire-fuzz-cpp-asan: build/tables-generated/.stamp test/tables/wire_fuzz_ma
 # is header-only and names no runtime" means when a leg says it.
 .PHONY: tables-distinctness
 tables-distinctness: build/tables-generated/.stamp test/tables/distinct_main.cpp
-	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/examples \
-		test/tables/distinct_main.cpp -o build/schema_test_distinct
-	./build/schema_test_distinct
-	$(CXX) $(TABLES_CXXFLAGS) -DNDEBUG -O2 -Ibuild/tables-generated/examples \
-		test/tables/distinct_main.cpp -o build/schema_test_distinct_ndebug
-	./build/schema_test_distinct_ndebug
-	$(CXX) $(TABLES_CXXFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all \
-		-fno-omit-frame-pointer -g -Ibuild/tables-generated/examples \
-		test/tables/distinct_main.cpp -o build/schema_test_distinct_asan
-	./build/schema_test_distinct_asan
+	@set -e; \
+	( $(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/examples test/tables/distinct_main.cpp -o build/schema_test_distinct ) & c1=$$!; \
+	( $(CXX) $(TABLES_CXXFLAGS) -DNDEBUG -O2 -Ibuild/tables-generated/examples test/tables/distinct_main.cpp -o build/schema_test_distinct_ndebug ) & c2=$$!; \
+	( $(CXX) $(TABLES_CXXFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g -Ibuild/tables-generated/examples test/tables/distinct_main.cpp -o build/schema_test_distinct_asan ) & c3=$$!; \
+	wait "$$c1" && wait "$$c2" && wait "$$c3"
+	@set -e; \
+	mkdir -p build/distinct-logs; \
+	( ./build/schema_test_distinct > build/distinct-logs/debug.log 2>&1 ) & r1=$$!; \
+	( ./build/schema_test_distinct_ndebug > build/distinct-logs/ndebug.log 2>&1 ) & r2=$$!; \
+	( ./build/schema_test_distinct_asan > build/distinct-logs/asan.log 2>&1 ) & r3=$$!; \
+	rc=0; \
+	for item in "$$r1:debug" "$$r2:ndebug" "$$r3:asan"; do \
+		pid=$${item%%:*}; name=$${item#*:}; \
+		if ! wait "$$pid"; then rc=1; fi; \
+		cat "build/distinct-logs/$$name.log"; \
+	done; \
+	test "$$rc" -eq 0
 	@echo "distinctness gate: one verdict across both walks, debug, release and sanitized"
 
 # ITS NEGATIVE CONTROL. A gate over a check that is correct TWICE cannot be
@@ -5355,9 +5391,9 @@ tables-distinctness-negative-control: bin/schema test/tables/distinct_main.cpp
 
 .PHONY: tables-wire-fuzz
 tables-wire-fuzz: build/conformance-harness build/wire-fuzz-cpp build/wire-fuzz-cpp-asan
-	sh test/conformance/wire-fuzz-complete build/wire-fuzz-cpp-plain.log ./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp --seed $(SEED) --n $(N)
-	sh test/conformance/wire-fuzz-complete build/wire-fuzz-cpp-plain-asan.log ./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp-asan --seed $(SEED) --n $(N) \
-		--failed build/wire-fuzz/failed-asan.bin
+	sh test/conformance/wire-fuzz-complete build/wire-fuzz-cpp-plain-$(SEED).log ./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp --seed $(SEED) --n $(N)
+	sh test/conformance/wire-fuzz-complete build/wire-fuzz-cpp-plain-asan-$(SEED).log ./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp-asan --seed $(SEED) --n $(N) \
+		--failed build/wire-fuzz/failed-asan-$(SEED).bin
 
 # THE WIRE FUZZER'S NEGATIVE CONTROLS (docs/SPEC-TABLES.md §4.2). A fuzzer
 # that has never gone red proves nothing about the reader it points at, so
@@ -5499,13 +5535,27 @@ tables-cpp-names-negative-control:
 # A 2 GiB input and a ~2.8 GiB output under Clang UBSan cost about twenty
 # seconds and do not fit the owner's two-minute per-commit rule, which is why
 # the test gates itself on SCHEMA_CERTIFY_INT32_MAX and this target sets it.
+CPP_RELEASE_JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 .PHONY: tables-cpp-release
-tables-cpp-release: tables-cpp-release-battery
-	$(MAKE) tables-wire-fuzz N=500000
-	$(MAKE) tables-wire-fuzz SEED=2 N=500000
-	$(MAKE) tables-wire-fuzz-retain N=500000
-	$(MAKE) tables-wire-fuzz-retain SEED=2 N=500000
-	SCHEMA_SLOW=1 SCHEMA_CERTIFY_INT32_MAX=1 go test -count=1 -run '^TestIssue746Base64WriterInt32MaxUBSan$$' ./compiler
+tables-cpp-release:
+	$(MAKE) -j$(CPP_RELEASE_JOBS) $(CPP_RELEASE_DIR)/tables $(CPP_RELEASE_DIR)/maps $(CPP_RELEASE_DIR)/lists \
+		$(CPP_RELEASE_DIR)/arms $(CPP_RELEASE_DIR)/retain $(CPP_RELEASE_DIR)/soak \
+		$(CPP_RELEASE_DIR)/block_fuzz build/conformance-harness build/wire-fuzz-cpp build/wire-fuzz-cpp-asan
+	$(MAKE) tables-cpp-release-battery
+	@set -e; \
+	mkdir -p build/cpp-release-logs; \
+	( $(MAKE) --no-print-directory tables-wire-fuzz N=500000 > build/cpp-release-logs/wf-plain-1.log 2>&1 ) & p1=$$!; \
+	( $(MAKE) --no-print-directory tables-wire-fuzz SEED=2 N=500000 > build/cpp-release-logs/wf-plain-2.log 2>&1 ) & p2=$$!; \
+	( $(MAKE) --no-print-directory tables-wire-fuzz-retain N=500000 > build/cpp-release-logs/wf-retain-1.log 2>&1 ) & p3=$$!; \
+	( $(MAKE) --no-print-directory tables-wire-fuzz-retain SEED=2 N=500000 > build/cpp-release-logs/wf-retain-2.log 2>&1 ) & p4=$$!; \
+	( SCHEMA_SLOW=1 SCHEMA_CERTIFY_INT32_MAX=1 go test -count=1 -run '^TestIssue746Base64WriterInt32MaxUBSan$$' ./compiler > build/cpp-release-logs/issue746.log 2>&1 ) & p5=$$!; \
+	rc=0; \
+	for item in "$$p1:wf-plain-1" "$$p2:wf-plain-2" "$$p3:wf-retain-1" "$$p4:wf-retain-2" "$$p5:issue746"; do \
+		pid=$${item%%:*}; name=$${item#*:}; \
+		if ! wait "$$pid"; then rc=1; fi; \
+		cat "build/cpp-release-logs/$$name.log"; \
+	done; \
+	test "$$rc" -eq 0
 
 .PHONY: tables-wire-fuzz-negative-control tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control
 tables-wire-fuzz-negative-control: tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-message-text-oracle-negative-control tables-wire-fuzz-message-text-leg-negative-control
@@ -5885,9 +5935,9 @@ tables-wire-fuzz-nested-arm-trailing-negative-control: build/conformance-harness
 # name (§3.3).
 .PHONY: tables-wire-fuzz-retain
 tables-wire-fuzz-retain: build/conformance-harness build/wire-fuzz-cpp build/wire-fuzz-cpp-asan
-	sh test/conformance/wire-fuzz-complete build/wire-fuzz-cpp-retain.log ./build/conformance-harness wire-fuzz --retain --driver ./build/wire-fuzz-cpp --seed $(SEED) --n $(N)
-	sh test/conformance/wire-fuzz-complete build/wire-fuzz-cpp-retain-asan.log ./build/conformance-harness wire-fuzz --retain --driver ./build/wire-fuzz-cpp-asan --seed $(SEED) --n $(N) \
-		--failed build/wire-fuzz/failed-retain-asan.bin
+	sh test/conformance/wire-fuzz-complete build/wire-fuzz-cpp-retain-$(SEED).log ./build/conformance-harness wire-fuzz --retain --driver ./build/wire-fuzz-cpp --seed $(SEED) --n $(N)
+	sh test/conformance/wire-fuzz-complete build/wire-fuzz-cpp-retain-asan-$(SEED).log ./build/conformance-harness wire-fuzz --retain --driver ./build/wire-fuzz-cpp-asan --seed $(SEED) --n $(N) \
+		--failed build/wire-fuzz/failed-retain-asan-$(SEED).bin
 
 # TWO NEGATIVE CONTROLS STAND BEHIND THE RETENTION LEG, one per engine,
 # because a leg that has never gone red proves nothing about either. Each

@@ -999,8 +999,11 @@ tables-elixir-release:
 # both and the block lead gate — then the format check and the packet tests.
 # The port emits the whole variable class (docs/SPEC-TABLES.md §2, §3, §16),
 # whose own gate is tables-elixir-variable-class above.
-.PHONY: test-elixir
+.PHONY: test-elixir test-elixir-recipe
 test-elixir: toolchain-elixir generated/elixir/.stamp generated/elixir-ludicrous/.stamp generated/bench/elixir/.stamp
+	$(MAKE) test-elixir-recipe
+
+test-elixir-recipe: toolchain-elixir generated/elixir/.stamp generated/elixir-ludicrous/.stamp generated/bench/elixir/.stamp
 	$(MAKE) tables-elixir-fuzz
 	$(MAKE) tables-elixir-block-lead
 	$(MIX) format --check-formatted generated/elixir/*.ex generated/elixir-ludicrous/*.ex generated/bench/elixir/*.ex generated/bench/elixir/realworld/*.ex

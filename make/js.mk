@@ -402,12 +402,21 @@ tables-js-usage: bin/schema build/cook-open/.stamp docs/USAGE.md
 	cd $(JS_USAGE_DIR) && $(NODE) usage.mjs $(CURDIR)/build/cook-open/Scene.cook
 
 .PHONY: tables-js-release
-tables-js-release: build/tables-generated-js/.stamp build/js-fuzz-scene.cook
-	$(MAKE) tables-js-fuzz N=200000
+tables-js-release: build/tables-generated-js/.stamp build/js-fuzz-scene.cook bin/schema build/cook-open/.stamp
+	@set -e; \
+	mkdir -p build/js-release-logs; \
+	( $(MAKE) --no-print-directory tables-js-fuzz N=200000 > build/js-release-logs/fuzz.log 2>&1 ) & p1=$$!; \
+	( $(MAKE) --no-print-directory tables-js-alloc-negative-control > build/js-release-logs/alloc-nc.log 2>&1 ) & p2=$$!; \
+	( $(MAKE) --no-print-directory tables-js-usage > build/js-release-logs/usage.log 2>&1 ) & p3=$$!; \
+	rc=0; \
+	for item in "$$p1:fuzz" "$$p2:alloc-nc" "$$p3:usage"; do \
+		pid=$${item%%:*}; name=$${item#*:}; \
+		if ! wait "$$pid"; then rc=1; fi; \
+		cat "build/js-release-logs/$$name.log"; \
+	done; \
+	test "$$rc" -eq 0
 	$(MAKE) tables-js-alloc ITERS=2000000
-	$(MAKE) tables-js-alloc-negative-control
 	$(MAKE) tables-js-soak
-	$(MAKE) tables-js-usage
 	@echo "tables JS release gate: the fuzzer at depth, the allocation floor at scale, the hour's soak, and the page's example"
 
 # THE REFUSAL IS SCOPED TO THE POINTERED TABLE, NOT THE UNIT. This gate was

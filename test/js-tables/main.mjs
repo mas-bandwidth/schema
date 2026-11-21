@@ -37,7 +37,8 @@
 import { readFileSync, existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import v8 from "node:v8";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { availableParallelism } from "node:os";
 import { resolve } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 
@@ -951,7 +952,7 @@ const SoakSamples = 16;
 // record per iteration over even the short count
 const SoakDriftCeiling = 1 << 20;
 
-function soakOne(only, passes) {
+function soakOne(only, passes, sampleCount = SoakSamples) {
   const [what, ceiling, , body] = allocationPaths()[only];
   settle(body, 40);
   if (global.gc) { global.gc(); }
@@ -964,7 +965,7 @@ function soakOne(only, passes) {
   if (global.gc) { global.gc(); }
   const heap0 = v8.getHeapStatistics().used_heap_size;
   let first = null, worst = 0, red = 0;
-  for (let s = 0; s < SoakSamples; s++) {
+  for (let s = 0; s < sampleCount; s++) {
     const rate = sampleBytes(per, measured, every) - instrument;
     if (first === null) { first = rate; }
     if (rate > worst) { worst = rate; }
@@ -972,10 +973,29 @@ function soakOne(only, passes) {
   }
   if (global.gc) { global.gc(); }
   const drift = v8.getHeapStatistics().used_heap_size - heap0;
-  return { what, ceiling, samples: SoakSamples, per, first, worst, red, drift };
+  return { what, ceiling, samples: sampleCount, per, first, worst, red, drift };
 }
 
-function checkSoak(passes) {
+function spawnSoakWorker(only, passes, workerSamples) {
+  return new Promise((resolveWorker) => {
+    const child = spawn(
+      process.execPath,
+      ["--expose-gc", fileURLToPath(import.meta.url), "soak-one", String(only), String(passes), String(workerSamples)],
+      { env: process.env, stdio: ["ignore", "pipe", "pipe"] },
+    );
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => { stdout += chunk; });
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    child.on("close", (status) => {
+      resolveWorker({ status, stdout, stderr });
+    });
+  });
+}
+
+async function checkSoak(passes) {
   const major = process.versions.node.split(".")[0];
   if (major !== PinnedNodeMajor && process.env.SCHEMA_JS_ALLOC_ANY_NODE !== "1") {
     console.log("FAILED: the soak holds the allocation floor of node " + PinnedNodeMajor +
@@ -984,15 +1004,56 @@ function checkSoak(passes) {
     return;
   }
   const count = allocationPaths().length;
+  const rawCpus = Number(process.env.SCHEMA_JS_SOAK_WORKERS ?? availableParallelism());
+  const cpus = Number.isFinite(rawCpus) && rawCpus >= 1 ? Math.min(32, Math.floor(rawCpus)) : 1;
+  const workersPerPath = passes >= 67108864
+    ? Math.max(1, Math.min(8, Math.floor(cpus / Math.max(1, count))))
+    : 1;
+
+  const pathPromises = [];
+  for (let i = 0; i < count; i++) {
+    const shards = [];
+    for (let w = 0; w < workersPerPath; w++) {
+      const wSamples = Math.floor(SoakSamples / workersPerPath) + (w < (SoakSamples % workersPerPath) ? 1 : 0);
+      if (wSamples > 0) {
+        shards.push(spawnSoakWorker(i, passes, wSamples));
+      }
+    }
+    pathPromises.push(Promise.all(shards));
+  }
+  const allResults = await Promise.all(pathPromises);
+
   let countRed = false, driftRed = false;
   for (let i = 0; i < count; i++) {
-    const child = spawnSync(process.execPath, ["--expose-gc", fileURLToPath(import.meta.url), "soak-one", String(i), String(passes)],
-      { encoding: "utf8", env: process.env });
-    if (child.status !== 0) {
-      check(false, "the soak child for path " + i + " exited " + child.status + ": " + (child.stderr || "").trim());
-      return;
+    const shardResults = allResults[i];
+    let first = null, worst = 0, red = 0, totalSamples = 0, positiveDrift = 0, maxRawDrift = null;
+    let baseRow = null;
+    for (const child of shardResults) {
+      if (child.status !== 0) {
+        check(false, "the soak child for path " + i + " exited " + child.status + ": " + (child.stderr || "").trim());
+        return;
+      }
+      const part = JSON.parse((child.stdout || "").trim().split("\n").pop());
+      if (baseRow === null) {
+        baseRow = part;
+        first = part.first;
+      }
+      if (part.worst > worst) { worst = part.worst; }
+      red += part.red;
+      totalSamples += part.samples;
+      if (part.drift > 0) { positiveDrift += part.drift; }
+      if (maxRawDrift === null || part.drift > maxRawDrift) { maxRawDrift = part.drift; }
     }
-    const row = JSON.parse((child.stdout || "").trim().split("\n").pop());
+    const row = {
+      what: baseRow.what,
+      ceiling: baseRow.ceiling,
+      samples: totalSamples,
+      per: baseRow.per,
+      first,
+      worst,
+      red,
+      drift: positiveDrift > 0 ? positiveDrift : (maxRawDrift ?? 0),
+    };
     const gated = row.ceiling !== null;
     console.log("soak: " + row.what.padEnd(26) + " " + row.samples + " x " + row.per + " passes, " +
       "first " + Math.max(0, row.first).toFixed(1) + " worst " + Math.max(0, row.worst).toFixed(1) +
@@ -1136,10 +1197,11 @@ if (mode === "fuzz") {
   checkAllocation(Number(process.argv[3] ?? 300000));
 } else if (mode === "soak-one") {
   // one path's soak, in this process, for checkSoak — the output is one JSON line
-  process.stdout.write(JSON.stringify(soakOne(Number(process.argv[3]), Number(process.argv[4]))) + "\n");
+  const shardSamples = process.argv[5] !== undefined ? Number(process.argv[5]) : SoakSamples;
+  process.stdout.write(JSON.stringify(soakOne(Number(process.argv[3]), Number(process.argv[4]), shardSamples)) + "\n");
   process.exit(0);
 } else if (mode === "soak") {
-  checkSoak(Number(process.env.TABLES_JS_SOAK_ITERATIONS ?? process.argv[3] ?? 4000000));
+  await checkSoak(Number(process.env.TABLES_JS_SOAK_ITERATIONS ?? process.argv[3] ?? 4000000));
 } else {
   checkForeignByteOrder();
   checkWholeSurface();

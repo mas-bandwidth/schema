@@ -17,35 +17,6 @@ name: python leg
 # still runs the unsplit make target on macOS.
 
 on:
-  push:
-    branches: [ main, dev ]
-    paths:
-      - 'make/python*'
-      - 'tools/python-ci-*.sh'
-      - '.github/workflows/python-leg.yml'
-      - '.github/actions/python/**'
-      - 'third_party/serialize.py/**'
-      - 'compiler/*python*'
-      - 'internal/codegen/python/**'
-      - 'internal/codegen/pythontable/**'
-      - 'internal/tablenames/python.go'
-      - 'test/conformance/python/**'
-      - 'ir/**'
-      - 'internal/check/**'
-  pull_request:
-    paths:
-      - 'make/python*'
-      - 'tools/python-ci-*.sh'
-      - '.github/workflows/python-leg.yml'
-      - '.github/actions/python/**'
-      - 'third_party/serialize.py/**'
-      - 'compiler/*python*'
-      - 'internal/codegen/python/**'
-      - 'internal/codegen/pythontable/**'
-      - 'internal/tablenames/python.go'
-      - 'test/conformance/python/**'
-      - 'ir/**'
-      - 'internal/check/**'
   workflow_dispatch:
 
 permissions:
