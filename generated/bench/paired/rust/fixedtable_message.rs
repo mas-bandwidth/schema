@@ -225,9 +225,12 @@ pub fn fixed_table_save_messages(values: &[FixedTableRow], buffer: &mut [u8], re
 /// A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md §3.3):
 /// no body of it is delivered, so the count is zero, every body read so far
 /// goes back to its declared defaults, and the reason is non_finite_float.
+/// A VALUE OUTSIDE ITS DECLARED RANGE, met before any damage, refuses the
+/// batch the same way BY NAME as out_of_range (§3.3), the field in oor_field.
 pub fn fixed_table_load_messages(values: &mut [FixedTableRow], vocabulary: &TableVocabulary, data: &[u8], report: &mut TableReport) -> (usize, bool) {
     report.non_finite_float = "";
     report.non_finite_float_id = None;
+    report.oor_field = "";
     report.damaged = false;
     let Some(count) = table_message_batch_open(vocabulary, data, report) else {
         return (0, false);
@@ -246,6 +249,9 @@ pub fn fixed_table_load_messages(values: &mut [FixedTableRow], vocabulary: &Tabl
             }
             for value in values.iter_mut().take(count) {
                 *value = fixed_table_message_default();
+            }
+            if !report.oor_field.is_empty() {
+                return (0, report.refuse(TableReason::OutOfRange));
             }
             return (0, false);
         }
