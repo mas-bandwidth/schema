@@ -8,13 +8,17 @@
 // for, carrier by carrier. A case is either RAN or held by NAME with a reason;
 // anything else is red, and so is a run of nothing.
 //
-// A Go runner keeps a Ledger and calls Check. A runner in another language
-// prints one block of lines when it is done,
+// The comparison is by IDENTITY, never by count: the set of case names run
+// against the set registered. A Go runner keeps a Ledger and calls Check. A
+// runner in another language prints one line per row its reader answered and
+// closes the block when it is done,
 //
-//	hostile-ledger ran <carrier> <cases the reader answered>
+//	hostile-ledger ran <case name>
 //	hostile-ledger end
 //
-// and tools/hostileledger holds that block to the folder (CheckLog).
+// and tools/hostileledger holds that block to the folder (CheckLog). The
+// expected names come from the folder and never from the runner's own
+// enumerator, so a runner whose enumerator drops a case cannot credit it.
 package hostilecorpus
 
 import (
@@ -22,7 +26,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 )
 
@@ -236,8 +239,9 @@ func summary(registered, ran, skipped Counts) string {
 	return fmt.Sprintf("ran %d of %d registered, %d held by name (%s)", nran, nr, nskip, strings.Join(parts, ", "))
 }
 
-// LedgerBlocks reads every `hostile-ledger` block a runner printed: the cases
-// it ran per carrier, one block per run of the corpus.
+// LedgerBlocks reads every `hostile-ledger` block a runner printed: how many
+// rows it ran of each case, by the case's name, one block per run of the
+// corpus.
 func LedgerBlocks(log string) ([]Counts, error) {
 	var out []Counts
 	var cur Counts
@@ -255,18 +259,11 @@ func LedgerBlocks(log string) ([]Counts, error) {
 			}
 			out = append(out, cur)
 			cur = nil
-		case len(f) == 3 && f[0] == "ran":
-			v, err := strconv.Atoi(f[2])
-			if err != nil || v < 0 {
-				return nil, fmt.Errorf("log line %d: %q is not a count", n+1, line)
-			}
+		case len(f) == 2 && f[0] == "ran":
 			if cur == nil {
 				cur = Counts{}
 			}
-			if _, dup := cur[f[1]]; dup {
-				return nil, fmt.Errorf("log line %d: the carrier %s is counted twice in one block", n+1, f[1])
-			}
-			cur[f[1]] = v
+			cur[f[1]]++
 		default:
 			return nil, fmt.Errorf("log line %d: %q is not a ledger line", n+1, line)
 		}
@@ -277,12 +274,20 @@ func LedgerBlocks(log string) ([]Counts, error) {
 	return out, nil
 }
 
-// CheckLog holds a runner's printed ledger to the folder. runs is how many
-// times the runner went over the corpus (the Rust runner runs it once per
-// build profile). heldCases names cases the port does not run, heldCarriers
-// whole carriers it has no reader for; a held name that is run, or that the
-// corpus no longer registers, is stale and red. It returns the green summary.
-func CheckLog(cases []Case, log string, runs int, heldCases, heldCarriers Held) (string, error) {
+// CheckLog holds a runner's printed ledger to the folder, BY IDENTITY: the set
+// of case names the runner ran against the set the folder registers. A count
+// is not enough (a runner that ran a held case in place of an owed one on the
+// same carrier has the right count), so a registered case that did not run, a
+// name that ran and is not registered, a held case that ran, and a case that
+// ran more or fewer rows than its carrier owes are each red by name.
+//
+// runs is how many times the runner goes over the corpus (the Rust runner
+// runs it once per build profile). rows is how many rows a case of a carrier
+// owes where that is not one (the JavaScript runner reads a packet case in
+// two tiers under two modes: four). heldCases names cases the port does not
+// run, heldCarriers whole carriers it has no reader for; a held name the
+// corpus no longer registers is stale and red. It returns the green summary.
+func CheckLog(cases []Case, log string, runs int, heldCases, heldCarriers Held, rows Counts) (string, error) {
 	blocks, err := LedgerBlocks(log)
 	if err != nil {
 		return "", err
@@ -290,10 +295,14 @@ func CheckLog(cases []Case, log string, runs int, heldCases, heldCarriers Held) 
 	if len(blocks) != runs {
 		return "", fmt.Errorf("hostile-corpus ledger: the runner printed %d ledger block(s) and owes %d: a run that prints none did not finish", len(blocks), runs)
 	}
-	registered, owed, held := Counts{}, Counts{}, Counts{}
-	names := map[string]bool{}
+	if len(cases) == 0 {
+		return "", fmt.Errorf("hostile-corpus ledger: the corpus registers no case")
+	}
+	registered, held := Counts{}, Counts{}
+	carrier := map[string]string{}
+	isHeld := map[string]bool{}
 	for _, c := range cases {
-		names[c.Name] = true
+		carrier[c.Name] = c.Carrier
 		registered[c.Carrier]++
 		_, heldCase := heldCases[c.Name]
 		_, heldCarrier := heldCarriers[c.Carrier]
@@ -301,44 +310,59 @@ func CheckLog(cases []Case, log string, runs int, heldCases, heldCarriers Held) 
 			return "", fmt.Errorf("hostile-corpus ledger: %s is held by name and its carrier %s is held too: drop one", c.Name, c.Carrier)
 		}
 		if heldCase || heldCarrier {
+			isHeld[c.Name] = true
 			held[c.Carrier]++
-		} else {
-			owed[c.Carrier]++
 		}
-	}
-	if len(cases) == 0 {
-		return "", fmt.Errorf("hostile-corpus ledger: the corpus registers no case")
 	}
 	var bad []string
 	for name := range heldCases {
-		if !names[name] {
+		if _, ok := carrier[name]; !ok {
 			bad = append(bad, fmt.Sprintf("the held case %s is not in the corpus: delete its line", name))
 		}
 	}
-	for carrier := range heldCarriers {
-		if registered[carrier] == 0 {
-			bad = append(bad, fmt.Sprintf("the held carrier %s has no case in the corpus: delete its line", carrier))
+	for c := range heldCarriers {
+		if registered[c] == 0 {
+			bad = append(bad, fmt.Sprintf("the held carrier %s has no case in the corpus: delete its line", c))
+		}
+	}
+	for c := range rows {
+		if registered[c] == 0 {
+			bad = append(bad, fmt.Sprintf("rows are owed for the carrier %s, which has no case in the corpus", c))
 		}
 	}
 	var last string
 	for i, ran := range blocks {
+		ranCases := Counts{}
 		total := 0
-		for carrier, n := range ran {
-			total += n
-			if registered[carrier] == 0 {
-				bad = append(bad, fmt.Sprintf("run %d: %d case(s) ran on the carrier %s, which the corpus does not register", i+1, n, carrier))
+		for name, n := range ran {
+			if _, ok := carrier[name]; !ok {
+				bad = append(bad, fmt.Sprintf("run %d: %s ran and the corpus does not register it", i+1, name))
+				continue
 			}
+			total += n
 		}
-		for carrier, n := range registered {
-			if ran[carrier] != owed[carrier] {
-				bad = append(bad, fmt.Sprintf("run %d: carrier %s ran %d case(s) and owes %d (%d registered, %d held by name)",
-					i+1, carrier, ran[carrier], owed[carrier], n, held[carrier]))
+		for _, c := range cases {
+			owes := 1
+			if n, ok := rows[c.Carrier]; ok {
+				owes = n
+			}
+			got := ran[c.Name]
+			switch {
+			case isHeld[c.Name] && got > 0:
+				bad = append(bad, fmt.Sprintf("run %d: %s (%s) is held by name and ran: delete its line", i+1, c.Name, c.Carrier))
+			case isHeld[c.Name]:
+			case got == 0:
+				bad = append(bad, fmt.Sprintf("run %d: %s (%s) is registered and was not run", i+1, c.Name, c.Carrier))
+			case got != owes:
+				bad = append(bad, fmt.Sprintf("run %d: %s (%s) ran %d row(s) and owes %d", i+1, c.Name, c.Carrier, got, owes))
+			default:
+				ranCases[c.Carrier]++
 			}
 		}
 		if total == 0 {
 			bad = append(bad, fmt.Sprintf("run %d: no case ran: the run compared nothing", i+1))
 		}
-		last = summary(registered, ran, held)
+		last = summary(registered, ranCases, held)
 	}
 	sort.Strings(bad)
 	if len(bad) > 0 {

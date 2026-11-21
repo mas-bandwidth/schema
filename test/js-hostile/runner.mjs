@@ -679,11 +679,13 @@ async function run(corpus, genDir, serializeJs, findingsPath) {
   for (const r of skipped) {
     console.log(`SKIP ${r.id}: carrier ${r.carrier} has no JavaScript reader`);
   }
-  // THE LEDGER (docs/HOSTILE-CORPUS.md): the cases a reader answered, per
-  // carrier, which tools/hostileledger holds to the corpus folder. A case
-  // ran when every one of its rows (a packet case has one per tier and mode)
-  // came back with an answer; a skipped or unbound row leaves it not run.
-  const answeredRows = new Map();
+  // THE LEDGER (docs/HOSTILE-CORPUS.md): one line per ROW a reader answered,
+  // by its case's name. tools/hostileledger holds the lines to the corpus
+  // folder, and it owes the rows from the folder, never from caseRows above:
+  // one per case, and one per tier and mode for a packet case. A case this
+  // file's own enumerator made no row for is therefore a case not run, and a
+  // skipped or unbound row leaves its case short.
+  const ranRows = [];
   live.forEach((row, i) => {
     const got = answers[i];
     if (got.verdict === "unbound") {
@@ -691,7 +693,7 @@ async function run(corpus, genDir, serializeJs, findingsPath) {
       unbound.push(row.id);
       return;
     }
-    answeredRows.set(row.name, (answeredRows.get(row.name) || 0) + 1);
+    ranRows.push(row.name);
     const w = want(row);
     const agrees = got.verdict === w.verdict && got.detail === w.detail;
     const finding = findings.get(row.id);
@@ -718,18 +720,8 @@ async function run(corpus, genDir, serializeJs, findingsPath) {
   }
   console.log(`${cases.length} cases, ${all.length} rows: ${passed} pass, ${carried} carried as FIX-CARD, ` +
     `${bad.length} unexplained, ${stale.length} stale, ${skipped.length} skipped, ${unbound.length} unbound`);
-  const owedRows = new Map();
-  for (const r of all) {
-    owedRows.set(r.name, (owedRows.get(r.name) || 0) + 1);
-  }
-  const ran = new Map();
-  for (const c of cases) {
-    if (answeredRows.get(c.name) === owedRows.get(c.name)) {
-      ran.set(c.carrier, (ran.get(c.carrier) || 0) + 1);
-    }
-  }
-  for (const carrier of [...ran.keys()].sort()) {
-    console.log(`hostile-ledger ran ${carrier} ${ran.get(carrier)}`);
+  for (const name of ranRows) {
+    console.log(`hostile-ledger ran ${name}`);
   }
   console.log("hostile-ledger end");
   process.exit(bad.length > 0 || stale.length > 0 || unbound.length > 0 ? 1 : 0);

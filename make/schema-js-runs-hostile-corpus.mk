@@ -37,7 +37,7 @@ schema-js-hostile-generate: bin/schema
 
 .PHONY: schema-js-runs-hostile-corpus
 schema-js-runs-hostile-corpus: schema-js-hostile-generate
-	$(call hostile_ledgered,js,$(JS_HOSTILE_BUILD)/run.log,$(NODE) test/js-hostile/runner.mjs run "$(JS_HOSTILE_CORPUS)" $(JS_HOSTILE_BUILD)/generated "$(JS_HOSTILE_SERIALIZE)" "$(JS_HOSTILE_FINDINGS)",$(JS_HOSTILE_CORPUS))
+	$(call hostile_ledgered,js,$(JS_HOSTILE_BUILD)/run.log,$(NODE) test/js-hostile/runner.mjs run "$(JS_HOSTILE_CORPUS)" $(JS_HOSTILE_BUILD)/generated "$(JS_HOSTILE_SERIALIZE)" "$(JS_HOSTILE_FINDINGS)",$(JS_HOSTILE_CORPUS),-rows packet=4)
 
 test-js: schema-js-runs-hostile-corpus
 

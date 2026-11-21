@@ -37,17 +37,25 @@ func write(t *testing.T, text string) string {
 	return path
 }
 
-const whole = "PASS t-one\nhostile-ledger ran text 2\nhostile-ledger ran wire 1\nhostile-ledger end\n3 cases: 3 pass\n"
+const whole = "PASS t-one\nhostile-ledger ran t-one\nhostile-ledger ran t-two\nhostile-ledger ran w-one\nhostile-ledger end\n3 cases: 3 pass\n"
+
+func ran(names ...string) string {
+	var b strings.Builder
+	for _, n := range names {
+		b.WriteString("hostile-ledger ran " + n + "\n")
+	}
+	return b.String() + "hostile-ledger end\n3 cases: 3 pass\n"
+}
 
 // TestAWholeRunIsGreen is the control every red below stands beside.
 func TestAWholeRunIsGreen(t *testing.T) {
-	out, err := check("zz", corpus(t), write(t, whole), 1, "", "")
+	out, err := check("zz", corpus(t), write(t, whole), 1, "", "", "")
 	if err != nil {
 		t.Fatalf("CONTROL FAILED: a whole run is red: %v", err)
 	}
 	for _, s := range []string{
 		"zz hostile-corpus ledger: ran 3 of 3 registered, 0 held by name (text 2/2, wire 1/1), 1 run(s)",
-		"zz hostile-corpus ledger negative control: one text case short of the registry is red",
+		"zz hostile-corpus ledger negative controls: t-one dropped is red by name; t-one run under an unregistered name (the same count) is red by name",
 	} {
 		if !strings.Contains(out, s) {
 			t.Errorf("the tool does not say %q:\n%s", s, out)
@@ -63,17 +71,21 @@ func TestAShortOrEmptyRunIsRed(t *testing.T) {
 		runs      int
 		says      string
 	}{
-		{"one case short", "hostile-ledger ran text 1\nhostile-ledger ran wire 1\nhostile-ledger end\n3 cases\n", 1, "carrier text ran 1 case(s) and owes 2"},
-		{"a carrier never run", "hostile-ledger ran text 2\nhostile-ledger end\n3 cases\n", 1, "carrier wire ran 0 case(s) and owes 1"},
-		{"nothing run", "hostile-ledger end\n3 cases\n", 1, "no case ran"},
+		{"one case short", ran("t-one", "w-one"), 1, "t-two (text) is registered and was not run"},
+		{"a carrier never run", ran("t-one", "t-two"), 1, "w-one (wire) is registered and was not run"},
+		{"nothing run", ran(), 1, "no case ran"},
 		{"no ledger at all", "3 cases: 3 pass\n", 1, "printed 0 ledger block(s) and owes 1"},
-		{"stopped before the end line", "hostile-ledger ran text 2\nhostile-ledger ran wire 1\n", 1, "has no `hostile-ledger end`"},
+		{"stopped before the end line", "hostile-ledger ran t-one\nhostile-ledger ran t-two\nhostile-ledger ran w-one\n", 1, "has no `hostile-ledger end`"},
 		{"one profile of two", whole, 2, "printed 1 ledger block(s) and owes 2"},
-		{"more than the registry", "hostile-ledger ran text 3\nhostile-ledger ran wire 1\nhostile-ledger end\n", 1, "carrier text ran 3 case(s) and owes 2"},
-		{"a carrier the corpus has not", whole + "hostile-ledger ran packet 1\nhostile-ledger end\n", 2, "which the corpus does not register"},
+		{"a case twice", ran("t-one", "t-one", "t-two", "w-one"), 1, "t-one (text) ran 2 row(s) and owes 1"},
+		// THE RIGHT COUNT AND THE WRONG CASES: three names ran, three are
+		// registered, and one of the three is not the corpus's
+		{"the same count under another name", ran("t-one", "t-three", "w-one"), 1, "t-three ran and the corpus does not register it"},
+		{"the same count, one case twice for another", ran("t-one", "t-one", "w-one"), 1, "t-two (text) is registered and was not run"},
+		{"a line that is not a ledger line", "hostile-ledger ran text 2\nhostile-ledger end\n", 1, "is not a ledger line"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := check("zz", corpus(t), write(t, tc.log), tc.runs, "", "")
+			_, err := check("zz", corpus(t), write(t, tc.log), tc.runs, "", "", "")
 			if err == nil || !strings.Contains(err.Error(), tc.says) {
 				t.Errorf("want red saying %q, got %v", tc.says, err)
 			}
@@ -81,33 +93,62 @@ func TestAShortOrEmptyRunIsRed(t *testing.T) {
 	}
 }
 
-// TestHeldNamesAreCountedAndGoStale: a case or a carrier a port does not run
-// is held by name with a reason, counted, and red once it runs or is gone.
-func TestHeldNamesAreCountedAndGoStale(t *testing.T) {
-	skipOne := write(t, "# held\nt-two\tno reader for it yet\n")
+// TestHeldNamesAreIdentities: a case or a carrier a port does not run is held
+// by name with a reason. The reviewer's control is the second check here: a
+// run that ran the HELD case and dropped an owed one on the same carrier has
+// the count the list allows and is red on both names.
+func TestHeldNamesAreIdentities(t *testing.T) {
+	skipTwo := write(t, "# held\nt-two\tno reader for it yet\n")
 	noWire := write(t, "wire\tthe port reads no wire\n")
 
-	out, err := check("zz", corpus(t), write(t, "hostile-ledger ran text 1\nhostile-ledger end\n"), 1, skipOne, noWire)
+	out, err := check("zz", corpus(t), write(t, ran("t-one")), 1, skipTwo, noWire, "")
 	if err != nil {
 		t.Fatalf("a run short by exactly its held names is red: %v", err)
 	}
 	if !strings.Contains(out, "ran 1 of 3 registered, 2 held by name (text 1/2, wire 0/1)") {
 		t.Errorf("the held names are not counted:\n%s", out)
 	}
-	if _, err := check("zz", corpus(t), write(t, whole), 1, skipOne, ""); err == nil || !strings.Contains(err.Error(), "carrier text ran 2 case(s) and owes 1") {
+	_, err = check("zz", corpus(t), write(t, ran("t-two", "w-one")), 1, skipTwo, "", "")
+	if err == nil || !strings.Contains(err.Error(), "t-one (text) is registered and was not run") || !strings.Contains(err.Error(), "t-two (text) is held by name and ran") {
+		t.Errorf("the held case run in place of an owed one (the same count) is not red on both names: %v", err)
+	}
+	if _, err := check("zz", corpus(t), write(t, whole), 1, skipTwo, "", ""); err == nil || !strings.Contains(err.Error(), "t-two (text) is held by name and ran") {
 		t.Errorf("a held case that ran is not stale: %v", err)
 	}
-	if _, err := check("zz", corpus(t), write(t, whole), 1, "", noWire); err == nil || !strings.Contains(err.Error(), "carrier wire ran 1 case(s) and owes 0") {
+	if _, err := check("zz", corpus(t), write(t, whole), 1, "", noWire, ""); err == nil || !strings.Contains(err.Error(), "w-one (wire) is held by name and ran") {
 		t.Errorf("a held carrier that ran is not stale: %v", err)
 	}
-	if _, err := check("zz", corpus(t), write(t, whole), 1, write(t, "gone\twhy\n"), ""); err == nil || !strings.Contains(err.Error(), "the held case gone is not in the corpus") {
+	if _, err := check("zz", corpus(t), write(t, whole), 1, write(t, "gone\twhy\n"), "", ""); err == nil || !strings.Contains(err.Error(), "the held case gone is not in the corpus") {
 		t.Errorf("a held case the corpus dropped is not stale: %v", err)
 	}
-	if _, err := check("zz", corpus(t), write(t, whole), 1, "", write(t, "packet\twhy\n")); err == nil || !strings.Contains(err.Error(), "the held carrier packet has no case in the corpus") {
+	if _, err := check("zz", corpus(t), write(t, whole), 1, "", write(t, "packet\twhy\n"), ""); err == nil || !strings.Contains(err.Error(), "the held carrier packet has no case in the corpus") {
 		t.Errorf("a held carrier the corpus dropped is not stale: %v", err)
 	}
-	if _, err := check("zz", corpus(t), write(t, whole), 1, write(t, "t-two\n"), ""); err == nil {
+	if _, err := check("zz", corpus(t), write(t, whole), 1, write(t, "t-two\n"), "", ""); err == nil {
 		t.Errorf("a held line with no reason was read")
+	}
+}
+
+// TestRowsOwedPerCase: a runner that reads one case as several rows (the
+// JavaScript runner's packet tiers and modes) owes every one of them. The
+// reviewer's control is the enumerator that drops a case's only job: the
+// runner's summary read "1 cases, 0 rows: 0 pass" and exited 0; with no row
+// run, the case is red by name whatever the runner's own count says.
+func TestRowsOwedPerCase(t *testing.T) {
+	if _, err := check("zz", corpus(t), write(t, ran("t-one", "t-two", "w-one", "w-one")), 1, "", "", "wire=2"); err != nil {
+		t.Fatalf("CONTROL FAILED: every row of every case: %v", err)
+	}
+	if _, err := check("zz", corpus(t), write(t, whole), 1, "", "", "wire=2"); err == nil || !strings.Contains(err.Error(), "w-one (wire) ran 1 row(s) and owes 2") {
+		t.Errorf("a case one row short is not red: %v", err)
+	}
+	if _, err := check("zz", corpus(t), write(t, ran("t-one", "t-two")+"1 cases, 0 rows: 0 pass\n"), 1, "", "", "wire=2"); err == nil || !strings.Contains(err.Error(), "w-one (wire) is registered and was not run") {
+		t.Errorf("a case whose enumerator produced no row is not red: %v", err)
+	}
+	if _, err := check("zz", corpus(t), write(t, whole), 1, "", "", "packet=4"); err == nil || !strings.Contains(err.Error(), "rows are owed for the carrier packet") {
+		t.Errorf("rows owed for a carrier the corpus has not: %v", err)
+	}
+	if _, err := check("zz", corpus(t), write(t, whole), 1, "", "", "wire"); err == nil {
+		t.Errorf("a malformed -rows was read")
 	}
 }
 
@@ -125,13 +166,13 @@ func TestTheRegistryIsTheFolder(t *testing.T) {
 	if err := os.WriteFile(path, []byte(strings.Join(lines[:3], "")), 0o644); err != nil { // drops w-one
 		t.Fatal(err)
 	}
-	if _, err := check("zz", dir, write(t, "hostile-ledger ran text 2\nhostile-ledger end\n"), 1, "", ""); err == nil || !strings.Contains(err.Error(), "no manifest row names (w-one.bin)") {
+	if _, err := check("zz", dir, write(t, ran("t-one", "t-two")), 1, "", "", ""); err == nil || !strings.Contains(err.Error(), "no manifest row names (w-one.bin)") {
 		t.Errorf("a manifest that lost a row agrees with a runner that lost it too: %v", err)
 	}
 	if err := os.WriteFile(path, []byte(lines[0]), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := check("zz", dir, write(t, "hostile-ledger end\n"), 1, "", ""); err == nil || !strings.Contains(err.Error(), "registers no case") {
+	if _, err := check("zz", dir, write(t, ran()), 1, "", "", ""); err == nil || !strings.Contains(err.Error(), "registers no case") {
 		t.Errorf("a header-only manifest is not red: %v", err)
 	}
 }

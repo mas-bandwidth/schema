@@ -477,9 +477,9 @@ Future<void> main(List<String> args) async {
   var passed = 0, carried = 0;
   final bad = <String>[], stale = <String>[];
   final seen = <String>{};
-  // THE LEDGER (docs/HOSTILE-CORPUS.md): the cases a reader answered, per
-  // carrier, which tools/hostileledger holds to the corpus folder.
-  final ran = <String, int>{};
+  // THE LEDGER (docs/HOSTILE-CORPUS.md): the cases a reader answered, by
+  // name, which tools/hostileledger holds to the corpus folder.
+  final ran = <String>[];
   for (final m in manifest) {
     final name = m[0], carrier = m[1], schema = m[2], table = m[3], input = m[4];
     final verdict = m[6], reason = m[7], digest = m[8];
@@ -487,7 +487,7 @@ Future<void> main(List<String> args) async {
     final want = verdict == 'accept' ? Answer('accept', digest == '-' ? '-' : digest) : Answer('refuse', reason);
     final payload = File('$corpus/$input').readAsBytesSync();
     final got = await isolated(carrier, schema, table, payload, budget);
-    ran[carrier] = (ran[carrier] ?? 0) + 1;
+    ran.add(name);
     final agrees = got.verdict == want.verdict && got.detail == want.detail;
     final finding = findings[name];
     if (agrees) {
@@ -513,8 +513,8 @@ Future<void> main(List<String> args) async {
   }
   stdout.writeln('${manifest.length} cases: $passed pass, $carried carried as FIX-CARD, '
       '${bad.length} unexplained, ${stale.length} stale');
-  for (final carrier in ran.keys.toList()..sort()) {
-    stdout.writeln('hostile-ledger ran $carrier ${ran[carrier]}');
+  for (final name in ran) {
+    stdout.writeln('hostile-ledger ran $name');
   }
   stdout.writeln('hostile-ledger end');
   exit(bad.isNotEmpty || stale.isNotEmpty ? 1 : 0);
