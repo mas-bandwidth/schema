@@ -35,7 +35,6 @@ static int parse_cooktorture_f64( const char * text, double * out )
 int conformance_write_refusal_set_cooktorture( const char * root, void * value, const char * path,
                                                const char * kind, const char * text )
 {
-    const long long n = strtoll( text, NULL, 10 );
     if ( strcmp( root, "TortureFixedWref" ) == 0 )
     {
         cooktorture_torture_fixed_wref_t * v = (cooktorture_torture_fixed_wref_t *) value;
@@ -43,9 +42,10 @@ int conformance_write_refusal_set_cooktorture( const char * root, void * value, 
         if ( strcmp( path, "counted_f64" ) == 0 && strcmp( kind, "count" ) == 0 )
         {
             const int32_t cap = (int32_t) ( sizeof( v->counted_f64 ) / sizeof( v->counted_f64[0] ) );
+            const int32_t count = conformance_write_refusal_count( text );
             int32_t i;
-            for ( i = v->counted_f64_count; i < (int32_t) n && i < cap; i++ ) { v->counted_f64[i] = v->counted_f64[0]; }
-            v->counted_f64_count = (int32_t) n;
+            for ( i = v->counted_f64_count; i < count && i < cap; i++ ) { v->counted_f64[i] = v->counted_f64[0]; }
+            v->counted_f64_count = count;
             return 1;
         }
         if ( strcmp( path, "fixed_f32[1]" ) == 0 && strcmp( kind, "float" ) == 0 ) { return parse_cooktorture_f32( text, &v->fixed_f32[1] ); }

@@ -147,6 +147,53 @@ sub snake {
 	return lc($s);
 }
 print <<'GOOSE_WREF_HELPERS';
+// THE ONE CHECKED CONVERSION the setters below go through. wref_parse_i64
+// keeps an i64 and wraps past it, and `as!` keeps the low bits, so a token
+// past the declared kind (18446744073709551616 into a one-byte ordinal, a
+// count of 4294967297 into an int32) landed as a lawful value and the row
+// answered `wrote` for a value it never wrote. A setter asks wref_fits_i64
+// (or wref_fits_u64 for a uint64 field) before it parses, holds the parsed
+// value to the field's declared range, and answers 2, `unrepresentable`,
+// when the kind cannot hold it.
+fn wref_digits(s: const u8[:]) -> const u8[:] {
+    var i: i64 = 0;
+    if s.len > 0 && (s[0] == '-' || s[0] == '+') { i = 1; }
+    if i >= s.len { return ""; }
+    var k: i64 = i;
+    while k < s.len {
+        if s[k] < '0' || s[k] > '9' { return ""; }
+        k += 1;
+    }
+    while i < s.len - 1 && s[i] == '0' { i += 1; }
+    return s[i..s.len];
+}
+fn wref_at_most(a: const u8[:], b: const u8[:]) -> bool {
+    if a.len != b.len { return a.len < b.len; }
+    var i: i64 = 0;
+    while i < a.len {
+        if a[i] != b[i] { return a[i] < b[i]; }
+        i += 1;
+    }
+    return true;
+}
+fn wref_fits_i64(s: const u8[:]) -> bool {
+    let m = wref_digits(s);
+    if m.len == 0 { return false; }
+    if s[0] == '-' { return wref_at_most(m, "9223372036854775808"); }
+    return wref_at_most(m, "9223372036854775807");
+}
+fn wref_fits_u64(s: const u8[:]) -> bool {
+    let m = wref_digits(s);
+    if m.len == 0 { return false; }
+    if s[0] == '-' { return m == "0"; }
+    return wref_at_most(m, "18446744073709551615");
+}
+// a token wref_fits_u64 admitted: no prefix of its digits overflows a u64
+fn wref_parse_u64(s: const u8[:]) -> u64 {
+    var acc: u64 = 0;
+    for c in wref_digits(s) { acc = acc * 10 + ((c - '0') as u64); }
+    return acc;
+}
 fn wref_parse_i64(s: const u8[:]) -> i64 {
     if s.len == 0 { return 0; }
     var neg = false;
@@ -256,7 +303,9 @@ for my $st (sort keys %structs) {
 			if ($et eq "u8" && exists $structs{$st}{"${f}Length"}) {
 				print "        if rest.len == 0 && idx < 0 {\n";
 				print "            if kind == \"length\" {\n";
+				print "                if !wref_fits_i64(text) { return 2; }\n";
 				print "                let n = wref_parse_i64(text);\n";
+				print "                if n < -2147483648 || n > 2147483647 { return 2; }\n";
 				print "                var k: i64 = 0; while k < n && k < $cap { v.$f\[k] = 'a'; k += 1; }\n";
 				print "                v.${f}Length = n as! i32; return 1;\n";
 				print "            }\n";
@@ -269,7 +318,9 @@ for my $st (sort keys %structs) {
 			} else {
 				if (exists $structs{$st}{"${f}Count"}) {
 					print "        if rest.len == 0 && idx < 0 && kind == \"count\" {\n";
+					print "            if !wref_fits_i64(text) { return 2; }\n";
 					print "            let n = wref_parse_i64(text);\n";
+					print "            if n < -2147483648 || n > 2147483647 { return 2; }\n";
 					print "            var k: i64 = v.${f}Count as i64;\n";
 					print "            while k >= 0 && k < n && k < $cap { if v.${f}Count > 0 { v.$f\[k] = v.$f\[0]; } k += 1; }\n";
 					print "            v.${f}Count = n as! i32; return 1;\n";
@@ -290,6 +341,7 @@ for my $st (sort keys %structs) {
 		} elsif ($unions{$ft}) {
 			print "        if rest.len > 0 && idx < 0 { return wref_set_$ft(v.$f, rest, kind, text); }\n";
 			print "        if rest.len == 0 && idx < 0 && kind == \"tag\" {\n";
+			print "            if !wref_fits_i64(text) { return 2; }\n";
 			print "            let n = wref_parse_i64(text);\n";
 			print "            if n < 0 || n > 255 { return 2; }\n";
 			print "            v.$f = ${ns}::New$ft();\n";
@@ -305,13 +357,17 @@ for my $st (sort keys %structs) {
 			my $cast_t = exists($enums{$ft}) ? "${ns}::$ft" : $ft;
 			if ($raw_t =~ /^(u8|u16|u32|u64|i8|i16|i32|i64)$/) {
 				print "        if rest.len == 0 && idx < 0 && (kind == \"int\" || kind == \"ordinal\") {\n";
-				print "            let n = wref_parse_i64(text);\n";
-				if (my $b = $int_bounds{$raw_t}) {
-					print "            if n < $b->[0] || n > $b->[1] { return 2; }\n";
-				} elsif ($raw_t eq "u64") {
-					print "            if n < 0 { return 2; }\n";
+				if ($raw_t eq "u64") {
+					print "            if !wref_fits_u64(text) { return 2; }\n";
+					print "            v.$f = wref_parse_u64(text) as! $cast_t; return 1;\n";
+				} else {
+					print "            if !wref_fits_i64(text) { return 2; }\n";
+					print "            let n = wref_parse_i64(text);\n";
+					if (my $b = $int_bounds{$raw_t}) {
+						print "            if n < $b->[0] || n > $b->[1] { return 2; }\n";
+					}
+					print "            v.$f = n as! $cast_t; return 1;\n";
 				}
-				print "            v.$f = n as! $cast_t; return 1;\n";
 				print "        }\n";
 			}
 		}
