@@ -1,4 +1,4 @@
-package main
+package vacuous
 
 import (
 	"go/ast"

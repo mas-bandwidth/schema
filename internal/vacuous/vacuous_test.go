@@ -1,4 +1,4 @@
-package main
+package vacuous
 
 import (
 	"bytes"
@@ -397,7 +397,7 @@ func TestGateRefusesEachGatedClass(t *testing.T) {
 			}
 		}
 		var stdout, stderr bytes.Buffer
-		status := runMain(dir, false, &stdout, &stderr)
+		status, _ := Run(dir, false, &stdout, &stderr)
 		refusedHere := strings.Contains(stdout.String(), class+"\t")
 		if gated && tc.name != "2 filtered slice" {
 			seen[class] = true
@@ -423,7 +423,7 @@ func TestGateRefusesAnEmptyTree(t *testing.T) {
 		t.Fatal(err)
 	}
 	var stdout, stderr bytes.Buffer
-	if status := runMain(dir, false, &stdout, &stderr); status != 1 || !strings.Contains(stderr.String(), "no _test.go file was analyzed") {
+	if status, _ := Run(dir, false, &stdout, &stderr); status != 1 || !strings.Contains(stderr.String(), "no _test.go file was analyzed") {
 		t.Fatalf("an empty tree: status %d, stderr %q; want 1 and the no-file line", status, stderr.String())
 	}
 	// a test file with no test function in it
@@ -431,7 +431,7 @@ func TestGateRefusesAnEmptyTree(t *testing.T) {
 		t.Fatal(err)
 	}
 	stderr.Reset()
-	if status := runMain(dir, false, &stdout, &stderr); status != 1 || !strings.Contains(stderr.String(), "no test function was analyzed") {
+	if status, _ := Run(dir, false, &stdout, &stderr); status != 1 || !strings.Contains(stderr.String(), "no test function was analyzed") {
 		t.Fatalf("a tree with no test function: status %d, stderr %q; want 1 and the no-function line", status, stderr.String())
 	}
 	// and the honest tree passes, so the two refusals above are not the only answer
@@ -439,7 +439,7 @@ func TestGateRefusesAnEmptyTree(t *testing.T) {
 		t.Fatal(err)
 	}
 	stderr.Reset()
-	if status := runMain(dir, false, &stdout, &stderr); status != 0 || !strings.Contains(stderr.String(), "2 test files, 1 test functions, 0 refused findings") {
+	if status, _ := Run(dir, false, &stdout, &stderr); status != 0 || !strings.Contains(stderr.String(), "2 test files, 1 test functions, 0 refused findings") {
 		t.Fatalf("an honest tree: status %d, stderr %q; want 0 and the counts", status, stderr.String())
 	}
 }

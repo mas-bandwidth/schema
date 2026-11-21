@@ -1,4 +1,4 @@
-package main
+package vacuous
 
 import (
 	"fmt"
@@ -47,7 +47,17 @@ func applyFixes(root string, findings []Finding) (int, error) {
 			if strings.TrimSpace(indent) != "" {
 				continue // the loop does not start its line
 			}
-			check := fmt.Sprintf("%sif len(%s) == 0 {\n%s\t%s.Fatal(\"%s is empty: the loop below would check nothing\")\n%s}\n", indent, f.fixKey, indent, f.fixT, f.fixKey, indent)
+			what, bind := f.fixKey, ""
+			if f.fixHoist {
+				// name the ranged call, so that it can be counted
+				call := src[f.fixX0:f.fixX1]
+				if strings.ContainsAny(call, "\n\"`") {
+					continue // a call over several lines, or holding a string: left for a person
+				}
+				what, bind = call, fmt.Sprintf("%s%s := %s\n", indent, f.fixKey, call)
+				src = src[:f.fixX0] + f.fixKey + src[f.fixX1:]
+			}
+			check := fmt.Sprintf("%s%sif len(%s) == 0 {\n%s\t%s.Fatal(\"%s is empty: the loop below would check nothing\")\n%s}\n", bind, indent, f.fixKey, indent, f.fixT, what, indent)
 			src = src[:lineStart] + check + src[lineStart:]
 			fixed++
 		}

@@ -1,4 +1,4 @@
-package main
+package vacuous
 
 import (
 	"fmt"
@@ -21,6 +21,9 @@ type Finding struct {
 	fixKey string // class 2: the collection a non-empty check would name
 	fixT   string // class 2: the testing parameter in scope at the loop
 	fixAt  int    // class 2: the byte offset of the loop in its file
+
+	fixHoist     bool // class 2: fixKey is a new name for the ranged call
+	fixX0, fixX1 int  // class 2: the byte range of the ranged call
 }
 
 func (f Finding) String() string {
@@ -163,11 +166,12 @@ type localDefs struct {
 	assigns  map[string][]ast.Expr // name -> right-hand sides assigned to it (nil entry: declared with no value)
 	appended map[string]bool
 	always   map[string]bool // appended to by a statement that always runs
+	index    map[string]int  // name -> its position on the left of its last assignment
 	params   map[string]bool
 }
 
 func collectDefs(d *ast.FuncDecl) *localDefs {
-	l := &localDefs{assigns: map[string][]ast.Expr{}, appended: map[string]bool{}, always: map[string]bool{}, params: map[string]bool{}}
+	l := &localDefs{assigns: map[string][]ast.Expr{}, appended: map[string]bool{}, always: map[string]bool{}, index: map[string]int{}, params: map[string]bool{}}
 	addParams := func(ft *ast.FuncType) {
 		if ft.Params == nil {
 			return
@@ -212,6 +216,7 @@ func collectDefs(d *ast.FuncDecl) *localDefs {
 					}
 				}
 				l.assigns[id.Name] = append(l.assigns[id.Name], rhs)
+				l.index[id.Name] = i
 			}
 		case *ast.ValueSpec:
 			for i, id := range n.Names {
@@ -247,7 +252,10 @@ func (r *run) rangeSource(s *scope, l *localDefs, x ast.Expr, depth int) (source
 			return "", ""
 		}
 		switch callee {
-		case "make", "new", "string", "append":
+		case "make", "new", "append":
+			return "", ""
+		}
+		if r.scalarResult(s, x, 0) {
 			return "", ""
 		}
 		if passthrough[callee] && len(x.Args) >= 1 {
@@ -281,6 +289,9 @@ func (r *run) rangeSource(s *scope, l *localDefs, x ast.Expr, depth int) (source
 		}
 		for _, rhs := range rhss {
 			if rhs == nil {
+				continue
+			}
+			if call, ok := rhs.(*ast.CallExpr); ok && r.scalarResult(s, call, l.index[x.Name]) {
 				continue
 			}
 			if id, ok := rhs.(*ast.Ident); ok && id.Name == x.Name {
@@ -472,20 +483,43 @@ func (r *run) rule2(s *scope) {
 	}
 	name := s.decl.Name.Name
 	var stack []ast.Node
+	hoisted := map[string]bool{}
 	report := func(loop ast.Node, source, key string) {
 		class := "2"
 		if source == textSource {
 			class = "2t"
 		}
 		r.add(class, loop, name, gatedSource(source), "assertions run only inside a loop over %s, and nothing checks that it is non-empty", source)
-		if key == "" || len(stack) < 2 {
+		if len(stack) < 2 {
 			return
 		}
 		if _, labeled := stack[len(stack)-2].(*ast.LabeledStmt); labeled {
 			return
 		}
 		f := &r.findings[len(r.findings)-1]
-		f.fixKey, f.fixT, f.fixAt = key, testingName(s.decl, stack), r.a.t.fset.Position(loop.Pos()).Offset
+		f.fixT, f.fixAt = testingName(s.decl, stack), r.a.t.fset.Position(loop.Pos()).Offset
+		if key != "" {
+			f.fixKey = key
+			return
+		}
+		// an unnamed call: name it, so that it can be counted
+		rs, ok := loop.(*ast.RangeStmt)
+		if !ok {
+			return
+		}
+		call, ok := rs.X.(*ast.CallExpr)
+		if !ok || !r.collectionResult(s, call) {
+			return
+		}
+		callee := exprString(call.Fun)
+		last := callee[strings.LastIndex(callee, ".")+1:]
+		hoist := "all" + strings.ToUpper(last[:1]) + last[1:]
+		for hoisted[hoist] || usesName(s.decl, hoist) {
+			hoist += "s"
+		}
+		hoisted[hoist] = true
+		f.fixKey, f.fixHoist = hoist, true
+		f.fixX0, f.fixX1 = r.a.t.fset.Position(call.Pos()).Offset, r.a.t.fset.Position(call.End()).Offset
 	}
 	ast.Inspect(s.decl.Body, func(n ast.Node) bool {
 		if n == nil {
@@ -1212,8 +1246,7 @@ func (r *run) rule6(s *scope) {
 	})
 	// parallel subtests whose results the parent reads straight after registering them:
 	// a parallel subtest only starts once the parent function has returned
-	var blocks func(list []ast.Stmt)
-	blocks = func(list []ast.Stmt) {
+	blocks := func(list []ast.Stmt) {
 		for i, st := range list {
 			var parallel *ast.FuncLit
 			ast.Inspect(st, func(n ast.Node) bool {
@@ -1227,10 +1260,31 @@ func (r *run) rule6(s *scope) {
 			if parallel == nil {
 				continue
 			}
+			// what the subtest writes that it did not itself declare
 			carried := assignedNames(parallel.Body)
+			ast.Inspect(parallel.Body, func(n ast.Node) bool {
+				switch n := n.(type) {
+				case *ast.AssignStmt:
+					if n.Tok == token.DEFINE {
+						for _, lhs := range n.Lhs {
+							if id, ok := lhs.(*ast.Ident); ok {
+								delete(carried, id.Name)
+							}
+						}
+					}
+				case *ast.ValueSpec:
+					for _, id := range n.Names {
+						delete(carried, id.Name)
+					}
+				}
+				return true
+			})
 			for _, after := range list[i+1:] {
 				used := ""
 				ast.Inspect(after, func(n ast.Node) bool {
+					if call, ok := n.(*ast.CallExpr); ok && subtestCall(s, call) != nil {
+						return false // a later subtest is not the parent
+					}
 					if id, ok := n.(*ast.Ident); ok && carried[id.Name] {
 						used = id.Name
 					}
@@ -1391,4 +1445,108 @@ func verdictKept(sig signature, lhs []ast.Expr) bool {
 		}
 	}
 	return false
+}
+
+// scalarTypes are result types that are not a collection to range over.
+var scalarTypes = map[string]bool{
+	"int": true, "int8": true, "int16": true, "int32": true, "int64": true, "uint": true, "uint8": true, "uint16": true,
+	"uint32": true, "uint64": true, "uintptr": true, "float32": true, "float64": true, "bool": true, "string": true,
+	"error": true, "byte": true, "rune": true,
+}
+
+// scalarResult reports whether result idx of a call is known to be a number, a
+// string or a bool: a conversion to one, or a function of this tree declared
+// to return one. Ranging over it is counting, not walking a collection.
+func (r *run) scalarResult(s *scope, call *ast.CallExpr, idx int) bool {
+	var decls []*ast.FuncDecl
+	switch fun := call.Fun.(type) {
+	case *ast.Ident:
+		if scalarTypes[fun.Name] {
+			return true
+		}
+		decls = s.file.pkg.funcs[fun.Name]
+	case *ast.SelectorExpr:
+		if x, ok := fun.X.(*ast.Ident); ok {
+			if _, isPkg := s.file.imports[x.Name]; isPkg {
+				if p := r.a.t.imported(s.file, x.Name); p != nil {
+					decls = p.funcs[fun.Sel.Name]
+				}
+				break
+			}
+		}
+		decls = s.file.pkg.methods[fun.Sel.Name]
+	}
+	if len(decls) == 0 {
+		return false
+	}
+	for _, d := range decls {
+		if d.Type.Results == nil {
+			return false
+		}
+		i := 0
+		scalar := false
+		for _, f := range d.Type.Results.List {
+			for range max(len(f.Names), 1) {
+				if id, ok := f.Type.(*ast.Ident); ok && i == idx && scalarTypes[id.Name] {
+					scalar = true
+				}
+				i++
+			}
+		}
+		if !scalar {
+			return false
+		}
+	}
+	return true
+}
+
+// usesName reports whether a function already mentions an identifier.
+func usesName(d *ast.FuncDecl, name string) bool {
+	found := false
+	ast.Inspect(d, func(n ast.Node) bool {
+		if id, ok := n.(*ast.Ident); ok && id.Name == name {
+			found = true
+		}
+		return !found
+	})
+	return found
+}
+
+// collectionResult reports whether a call is known to answer one slice, array
+// or map: a function or method of this tree declared so.
+func (r *run) collectionResult(s *scope, call *ast.CallExpr) bool {
+	var decls []*ast.FuncDecl
+	switch fun := call.Fun.(type) {
+	case *ast.Ident:
+		decls = s.file.pkg.funcs[fun.Name]
+	case *ast.SelectorExpr:
+		if x, ok := fun.X.(*ast.Ident); ok {
+			if _, isPkg := s.file.imports[x.Name]; isPkg {
+				if p := r.a.t.imported(s.file, x.Name); p != nil {
+					decls = p.funcs[fun.Sel.Name]
+				}
+				break
+			}
+		}
+		decls = append(decls, s.file.pkg.methods[fun.Sel.Name]...)
+		for local := range s.file.imports {
+			if p := r.a.t.imported(s.file, local); p != nil {
+				decls = append(decls, p.methods[fun.Sel.Name]...)
+			}
+		}
+	}
+	if len(decls) == 0 {
+		return false
+	}
+	for _, d := range decls {
+		if d.Type.Results == nil || len(d.Type.Results.List) != 1 || len(d.Type.Results.List[0].Names) > 1 {
+			return false
+		}
+		switch d.Type.Results.List[0].Type.(type) {
+		case *ast.ArrayType, *ast.MapType:
+		default:
+			return false
+		}
+	}
+	return true
 }
