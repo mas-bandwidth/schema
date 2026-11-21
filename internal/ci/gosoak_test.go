@@ -88,7 +88,7 @@ func TestGoReleaseSoakFitsItsBudget(t *testing.T) {
 	// go test package results and reports them whatever happened
 	for _, want := range []string{
 		`run: echo "PGROUP_GO_TEST_SUMMARY=$RUNNER_TEMP/go-test-summary" >> "$GITHUB_ENV"`,
-		"        if: always()\n        run: go run ./tools/gotestreport -budget 10m \"$PGROUP_GO_TEST_SUMMARY\"",
+		"        if: always()\n        run: go run ./tools/gotestreport \"$PGROUP_GO_TEST_SUMMARY\"",
 	} {
 		if !strings.Contains(gates, want) {
 			t.Errorf("certify.yml release-gates lacks %q: nothing would read the soak's budget", want)

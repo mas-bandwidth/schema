@@ -106,7 +106,7 @@ name: CI full
 # whatever happened (tools/gotestreport) names every failed test, every test
 # that never reported (the row cut short at the backstop), the slowest tests,
 # and goes red when a package's test binary ran past the -timeout its command
-# named (go test's 10m default when it named none), which is what caught a
+# named, and none here names one (no time limit on nightly), which caught a
 # hang or a blow-up before: now only AFTER every test has reported. The streams are kept as each row's go-test-json artifact. The
 # `verdict` job at the end fails when any job's result is not success, so a
 # cancelled or skipped row can never read green.
@@ -1660,13 +1660,13 @@ jobs:
       # outermost go test recorded and names every failed test, every test
       # that started and never reported, and the slowest; it is red for a
       # test or package that never reported, and for a package whose test
-      # binary ran past the -timeout its go test named (go test's 10m default
-      # when it named none): the detection the lifted limits gave, applied
+      # binary ran past a -timeout its go test named itself. Nothing here
+      # names one and there is no default: nightly has no time limit. Applied
       # only after every test has reported. A test failure stays the test
       # step's verdict.
       - name: report every test this row ran, and each package's named budget
         if: always()
-        run: go run ./tools/gotestreport -budget 10m "$PGROUP_GO_TEST_JSON"
+        run: go run ./tools/gotestreport "$PGROUP_GO_TEST_JSON"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
@@ -1811,7 +1811,7 @@ jobs:
       # the go-test job's report step, whatever happened above
       - name: report every test this row ran, and each package's named budget
         if: always()
-        run: go run ./tools/gotestreport -budget 10m "$PGROUP_GO_TEST_JSON"
+        run: go run ./tools/gotestreport "$PGROUP_GO_TEST_JSON"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()

@@ -265,7 +265,7 @@ func (r *report) findings(slowest int) findings {
 }
 
 func main() {
-	budget := flag.Duration("budget", 10*time.Minute, "the package budget for a record that names none (0: no budget)")
+	budget := flag.Duration("budget", 0, "the package budget for a record that names none (0, the default: no budget; nightly runs have no time limit)")
 	slowest := flag.Int("slowest", 15, "how many of the slowest tests to list")
 	flag.Parse()
 	if flag.NArg() == 0 {

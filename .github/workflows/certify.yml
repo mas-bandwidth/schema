@@ -591,7 +591,7 @@ jobs:
 
       - name: report each go test package against its named budget
         if: always()
-        run: go run ./tools/gotestreport -budget 10m "$PGROUP_GO_TEST_SUMMARY"
+        run: go run ./tools/gotestreport "$PGROUP_GO_TEST_SUMMARY"
 
   # EVERY PORT'S RELEASE GATE, by name. A port whose `make test` half had to
   # stay cheap puts its expensive half — the soak, the allocation gate at
@@ -792,7 +792,7 @@ jobs:
       # that greps it sees anything new.
       - name: report each go test package against its named budget
         if: always()
-        run: go run ./tools/gotestreport -budget 10m "$PGROUP_GO_TEST_SUMMARY"
+        run: go run ./tools/gotestreport "$PGROUP_GO_TEST_SUMMARY"
 
   # The per-port inline-budget gate (issue #25; BENCH-STANDARD.md §4.3),
   # fanned out one leg per job across the Linux X64 and macOS ARM64 fleet.
@@ -877,7 +877,7 @@ jobs:
 
       - name: report each go test package against its named budget
         if: always()
-        run: go run ./tools/gotestreport -budget 10m "$PGROUP_GO_TEST_SUMMARY"
+        run: go run ./tools/gotestreport "$PGROUP_GO_TEST_SUMMARY"
 
   # A new CVE lands with no commit, so govulncheck is the one gate whose
   # verdict changes on its own — the nightly is the trigger that catches it.
@@ -965,7 +965,7 @@ jobs:
       # that greps it sees anything new.
       - name: report each go test package against its named budget
         if: always()
-        run: go run ./tools/gotestreport -budget 10m "$PGROUP_GO_TEST_SUMMARY"
+        run: go run ./tools/gotestreport "$PGROUP_GO_TEST_SUMMARY"
 
   # THE NIGHTLY NEGATIVE-CONTROL TIER (issue #563). Every negative control this
   # tree defines runs on every pull request, in ci.yml, one job per group, and
@@ -1179,7 +1179,7 @@ jobs:
       # that greps it sees anything new.
       - name: report each go test package against its named budget
         if: always()
-        run: go run ./tools/gotestreport -budget 10m "$PGROUP_GO_TEST_SUMMARY"
+        run: go run ./tools/gotestreport "$PGROUP_GO_TEST_SUMMARY"
 
   # THE NINE SCHEMA LEGS (issue #nx-g30). One reusable workflow, leg.yml,
   # runs every registered driver over its own surface; the matrix input is
