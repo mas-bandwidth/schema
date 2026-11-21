@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 // TestStrictOnlyModelsAreRecorded holds the strict-only layer 1 models to the
@@ -43,7 +45,7 @@ func TestStrictOnlyModelsAreRecorded(t *testing.T) {
 		}
 	}
 
-	paths, err := filepath.Glob(filepath.Join(root, "tla", "MCReadOrder*.cfg"))
+	paths, err := provesran.Glob(filepath.Join(root, "tla", "MCReadOrder*.cfg"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,11 +184,11 @@ func tlaUnrecordedFiles(tlaDir string, runs map[string]tlaRun) ([]string, error)
 			covered[name] = true
 		}
 	}
-	all, err := filepath.Glob(filepath.Join(tlaDir, "*.tla"))
+	all, err := provesran.Glob(filepath.Join(tlaDir, "*.tla"))
 	if err != nil {
 		return nil, err
 	}
-	configs, err := filepath.Glob(filepath.Join(tlaDir, "*.cfg"))
+	configs, err := provesran.Glob(filepath.Join(tlaDir, "*.cfg"))
 	if err != nil {
 		return nil, err
 	}

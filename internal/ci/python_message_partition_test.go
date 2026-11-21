@@ -12,6 +12,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 // pythonMessagePlanCheck proves the per-commit message rows partition the
@@ -122,7 +124,7 @@ func pythonMessagePlanCheck(tests []string, makefile []byte) error {
 // source, independently of the Make partition.
 func pythonMessageTests(t *testing.T) []string {
 	t.Helper()
-	files, err := filepath.Glob(filepath.Join(repoRoot(t), "internal/codegen/pythontable", "*_test.go"))
+	files, err := provesran.Glob(filepath.Join(repoRoot(t), "internal/codegen/pythontable", "*_test.go"))
 	if err != nil {
 		t.Fatal(err)
 	}

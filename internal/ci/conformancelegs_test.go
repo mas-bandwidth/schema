@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 // TestConformanceLegsRebuildFromTheirInputs pins each conformance leg's
@@ -131,7 +133,7 @@ func conformanceLegGaps(t *testing.T, replace map[string]string) []string {
 			gaps = append(gaps, leg.name+": the compiler's Go sources are not an input of "+leg.target)
 		}
 		for _, pkg := range leg.packages {
-			files, err := filepath.Glob(filepath.Join(root, "internal", "codegen", pkg, "runtime", "*"))
+			files, err := provesran.Glob(filepath.Join(root, "internal", "codegen", pkg, "runtime", "*"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -229,7 +231,7 @@ func manifestUnitSchemas(t *testing.T, root string) []string {
 				out = append(out, p)
 				continue
 			}
-			found, err := filepath.Glob(filepath.Join(root, p, "*.schema"))
+			found, err := provesran.Glob(filepath.Join(root, p, "*.schema"))
 			if err != nil {
 				t.Fatal(err)
 			}

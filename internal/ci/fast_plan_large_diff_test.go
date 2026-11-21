@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 // echoIntoGrep is a condition decided by a pipeline whose left side can die of
@@ -62,7 +64,7 @@ func workflowAndActionFiles(t *testing.T) map[string]string {
 	for name, text := range workflows(t, root) {
 		out["workflows/"+name] = text
 	}
-	actions, err := filepath.Glob(filepath.Join(root, ".github", "actions", "*", "action.yml"))
+	actions, err := provesran.Glob(filepath.Join(root, ".github", "actions", "*", "action.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +179,7 @@ func largeDiffDirs(t *testing.T, root string, max int) []string {
 			if _, err := os.Stat(filepath.Join(path, "go.mod")); err == nil {
 				return filepath.SkipDir // a nested module
 			}
-			gos, _ := filepath.Glob(filepath.Join(path, "*.go"))
+			gos, _ := provesran.Glob(filepath.Join(path, "*.go"))
 			if len(gos) > 0 {
 				dirs = append(dirs, rel)
 			}
