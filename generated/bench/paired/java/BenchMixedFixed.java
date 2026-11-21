@@ -270,7 +270,7 @@ public final class BenchMixedFixed {
             if (live) {
                 r.refuse(TableFixed.Reason.outOfRange);
             }
-        } // bits(16) clamps to 2^N - 1
+        } // bits(16) past 2^N - 1 refuses
         {
             long q = TableFixed.get32(b, at + 4);
             if (q < 0L) {
@@ -325,7 +325,7 @@ public final class BenchMixedFixed {
             if (live) {
                 r.refuse(TableFixed.Reason.outOfRange);
             }
-        } // bits(48) clamps to 2^N - 1
+        } // bits(48) past 2^N - 1 refuses
         {
             long q = TableFixed.get32(b, at + 48);
             if (q < 0L) {
@@ -574,7 +574,7 @@ public final class BenchMixedFixed {
             if (live) {
                 r.refuse(TableFixed.Reason.outOfRange);
             }
-        } // bits(24) clamps to 2^N - 1
+        } // bits(24) past 2^N - 1 refuses
         if ((b[at + 1227] & 0xFF) > 1) {
             if (live) {
                 r.refuse(TableFixed.Reason.wireDamaged);
