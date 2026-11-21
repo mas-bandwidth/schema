@@ -825,6 +825,9 @@ test-go: generated/bench/tables/go/.stamp generated/bench/paired/go/.stamp gener
 TEST_LEGS         += test-go
 CONFORMANCE_LEGS  += $(call unless_skipped,go,build/conformance-go)
 BENCH_TABLES_LEGS += generated/bench/tables/go/.stamp
+REGISTRY_NA       += goldens:go toolchain:go
+REGISTRY_NA_WHY.goldens.go   := no committed table goldens; its packet goldens (testdata/golden/go) are rewritten by internal/goldens at the top of update-goldens
+REGISTRY_NA_WHY.toolchain.go := go.mod's go line sets the floor and the go command refuses an older one; bin/schema needs Go before any probe could run
 
 .PHONY: tables-go-wire-fuzz tables-go-wire-fuzz-negative-control
 tables-go-wire-fuzz: build/conformance-harness build/conformance-go

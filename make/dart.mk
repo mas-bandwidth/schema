@@ -1399,6 +1399,8 @@ TEST_LEGS         += test-dart
 TOOLCHAIN_LEGS    += dart
 TOOLCHAIN_PINS_dart := DART
 CONFORMANCE_LEGS  += $(call unless_skipped,dart,build/conformance-dart)
+REGISTRY_NA       += goldens:dart
+REGISTRY_NA_WHY.goldens.dart := no committed table goldens; its packet goldens (testdata/golden/dart) are rewritten by internal/goldens at the top of update-goldens
 # Packet UTF-8 content validation, including a compiled mutation control.
 build/packet-text/dart/.stamp: bin/schema test/packet-text/Narrow.schema
 	./bin/schema generate --lang dart --out build/packet-text/dart test/packet-text/Narrow.schema

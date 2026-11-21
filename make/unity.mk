@@ -124,6 +124,9 @@ test-unity: toolchain-unity
 TEST_LEGS          += test-unity
 TOOLCHAIN_LEGS     += unity
 TOOLCHAIN_PINS_unity := DOTNET
+REGISTRY_NA        += bench-tables:unity goldens:unity
+REGISTRY_NA_WHY.bench-tables.unity := bench/tables/unity/leg build generates and builds its own unit, so the aggregate has no prerequisite to add
+REGISTRY_NA_WHY.goldens.unity      := no committed goldens of any kind: its generated tables are checked against the shared wire goldens (testdata/wire/tables)
 
 # ---- the table core ----
 
