@@ -23,10 +23,13 @@
 package main
 
 import (
+	"bytes"
 	"embed"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -302,28 +305,33 @@ func runScope(root, work, scopeName string, n int, seed uint64, only []string, o
 		}
 	}
 	fmt.Fprintf(os.Stderr, "scope %s: %d of %d mutants, seed %d, in %s\n", s.Name, len(muts), total, seed, tree)
-	var sink *os.File
-	if out != "" {
-		if sink, err = os.OpenFile(out, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); err != nil {
+	return sweepToOutput(*s, tree, muts, opt, shell, os.Stderr, out)
+}
+
+// sweepToOutput holds results until the restored baseline has validated them.
+func sweepToOutput(scope Scope, tree string, muts []Mutant, opt sweepOptions, run Exec, log io.Writer, out string) ([]Result, error) {
+	var results []Result
+	if err := sweep(scope, tree, muts, opt, run, log, func(r Result) {
+		results = append(results, r)
+	}); err != nil {
+		return nil, err
+	}
+	if out == "" || len(results) == 0 {
+		return results, nil
+	}
+	var lines bytes.Buffer
+	enc := json.NewEncoder(&lines)
+	for _, result := range results {
+		if err := enc.Encode(result); err != nil {
 			return nil, err
 		}
-		defer func() { _ = sink.Close() }()
 	}
-	var results []Result
-	var writeErr error
-	emit := func(r Result) {
-		results = append(results, r)
-		if sink != nil {
-			line, _ := json.Marshal(r)
-			if _, err := sink.Write(append(line, '\n')); err != nil && writeErr == nil {
-				writeErr = err
-			}
-		}
+	sink, err := os.OpenFile(out, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return nil, err
 	}
-	if err := sweep(*s, tree, muts, opt, shell, os.Stderr, emit); err != nil {
-		return results, err
-	}
-	return results, writeErr
+	_, writeErr := sink.Write(lines.Bytes())
+	return results, errors.Join(writeErr, sink.Close())
 }
 
 // scratchTree makes this run's scratch copy: a detached worktree of HEAD at
@@ -527,6 +535,9 @@ func readResults(path string) ([]Result, error) {
 			return nil, fmt.Errorf("%s: %w", path, err)
 		}
 		out = append(out, r)
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("%s: no result", path)
 	}
 	return out, nil
 }
