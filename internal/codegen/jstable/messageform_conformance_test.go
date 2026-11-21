@@ -196,6 +196,23 @@ func manifestMessageRoots(t *testing.T) []string {
 			roots = append(roots, key)
 		}
 	}
+	// the `message-prior` rows (testdata/conformance/tables/FORMAT.md) ride
+	// the same row table on their own surface:
+	// message-prior <name> <unit> <root> ...
+	data, err := os.ReadFile("../../../testdata/conformance/tables/MANIFEST.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		f := strings.Fields(line)
+		if len(f) < 4 || f[0] != "message-prior" {
+			continue
+		}
+		if key := f[2] + "/" + f[3]; !seen[key] {
+			seen[key] = true
+			roots = append(roots, key)
+		}
+	}
 	sort.Strings(roots)
 	return roots
 }
