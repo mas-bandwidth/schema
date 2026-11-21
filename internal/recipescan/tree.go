@@ -70,20 +70,20 @@ func ScanTree(root string, roots []string) ([]Finding, Stats, error) {
 			}
 			out = append(out, ScanScript(rel, string(src), &st)...)
 		default:
-			// A script without the suffix would be read by nobody: find it
-			// by its first line, under the directories that hold recipes.
-			if !strings.HasPrefix(rel, "make/") && !strings.HasPrefix(rel, "tools/") {
-				return nil
-			}
+			// A script without the suffix is found by its first line,
+			// anywhere in the tree (F-069: test/slowgate/proof, the
+			// generated-tree verifier and the language driver wrappers live
+			// under test/ and .github/, and a scan of make/ and tools/ alone
+			// never read them).
 			f, err := os.Open(path)
 			if err != nil {
 				return err
 			}
-			head := make([]byte, 64)
+			head := make([]byte, 128)
 			n, _ := f.Read(head)
 			_ = f.Close()
 			line, _, _ := strings.Cut(string(head[:n]), "\n")
-			if strings.HasPrefix(line, "#!") && (strings.Contains(line, "sh")) {
+			if ShellShebang(line) {
 				src, err := os.ReadFile(path)
 				if err != nil {
 					return err
@@ -111,6 +111,34 @@ func ScanTree(root string, roots []string) ([]Finding, Stats, error) {
 	return out, st, nil
 }
 
+// ShellShebang reports whether a file's first line starts it under a POSIX
+// shell: "#!/bin/sh", "#!/usr/bin/env bash", "#!/bin/bash -e" and the like.
+func ShellShebang(line string) bool {
+	if !strings.HasPrefix(line, "#!") {
+		return false
+	}
+	f := strings.Fields(strings.TrimPrefix(line, "#!"))
+	if len(f) == 0 {
+		return false
+	}
+	prog := filepath.Base(f[0])
+	if prog == "env" {
+		for _, a := range f[1:] {
+			if strings.HasPrefix(a, "-") || strings.Contains(a, "=") {
+				continue
+			}
+			prog = filepath.Base(a)
+			break
+		}
+	}
+	switch prog {
+	case "sh", "bash", "dash", "ksh", "zsh":
+		return true
+	}
+	return false
+}
+
 // RootMakefiles are the makefiles of this repository that make is started
-// on. Every other makefile is included by one of them.
-var RootMakefiles = []string{"Makefile", ".github/actions/dist-pins/print.mk"}
+// on. Every other makefile is included by one of them, or (like
+// .github/actions/dist-pins/print.mk) read beside the root with a second -f.
+var RootMakefiles = []string{"Makefile"}

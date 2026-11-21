@@ -16,8 +16,15 @@
 //	                  trailing "; true", after anything but a named utility
 //	                  whose status is not a verdict (rm, kill, grep -c, ...)
 //	unset-strict      "set +e" or "set +o pipefail"
-//	background        "cmd &" with no "wait" in the same recipe line or script
+//	background        "cmd &" with no "wait" in the same recipe line or script,
+//	                  or a bare "wait" (no PID) after a background job: a bare
+//	                  wait returns 0 whatever the jobs did (F-068)
 //	nested-pipe       sh -c / bash -c text that pipes without pipefail
+//	stamp             a rule with prerequisites whose recipe skips its work
+//	                  when its own target exists ("if ! test -f $@"), so a
+//	                  newer input never reruns it; or "&& touch $@" followed by
+//	                  statements that decide the recipe's status instead of the
+//	                  command that guards the stamp (F-046)
 //
 // A file the scan cannot place under one of its two readers is an error, and
 // so is a scan that read no recipe: the scan proves it ran.
@@ -50,6 +57,7 @@ const (
 	RuleUnsetStrict   = "unset-strict"
 	RuleBackground    = "background"
 	RuleNestedPipe    = "nested-pipe"
+	RuleStamp         = "stamp"
 	RuleUnchecked     = "unchecked"
 )
 
@@ -98,15 +106,30 @@ func scanShell(text string, ctx shellContext, st *Stats) []Finding {
 		out = append(out, Finding{File: ctx.file, Line: ctx.baseLine + t.line, Rule: rule, Text: msg})
 	}
 	hasWait := false
+	hasBackground := false
 	for _, t := range toks {
 		if !t.op && t.text == "wait" {
 			hasWait = true
+		}
+		if t.op && t.text == "&" {
+			hasBackground = true
 		}
 	}
 	inCasePattern := false
 	for k, t := range toks {
 		if !t.op {
 			switch t.text {
+			case "wait":
+				// F-068: "cmd & cmd & wait" returns 0 whatever the jobs did.
+				if hasBackground && commandStart(toks, k) && (k+1 >= len(toks) || toks[k+1].op) {
+					add(t, RuleBackground, "a bare wait returns 0 whatever the background jobs did: keep each $! and wait on it, reading its status")
+				}
+			case "touch":
+				// F-046: "gen && touch $@" whose status the next statements replace.
+				if ctx.makefile && k > 0 && toks[k-1].op && toks[k-1].text == "&&" && k+1 < len(toks) &&
+					(toks[k+1].text == "$@" || toks[k+1].text == `"$@"`) && !onlyClosersAfterStatement(toks, k+1) {
+					add(t, RuleStamp, "the status of the command that guards \"touch $@\" is lost: later statements decide the recipe's status")
+				}
 			case "case":
 				// the pattern list starts after "in"
 			case "in":
@@ -193,6 +216,36 @@ func scanShell(text string, ctx shellContext, st *Stats) []Finding {
 		out = append(out, scanShell(s.text, subCtx, st)...)
 	}
 	return out
+}
+
+// onlyClosersAfterStatement reports whether the statement holding index k is
+// the one whose status the text ends with: after it come only closers (fi,
+// done, esac, "}", ")") and ";", or an "||" / "&&" that reads its status.
+func onlyClosersAfterStatement(toks []token, k int) bool {
+	j := k + 1
+	for ; j < len(toks); j++ {
+		t := toks[j]
+		if !t.op {
+			continue
+		}
+		if t.text == "||" || t.text == "&&" {
+			return true
+		}
+		if t.text == ";" {
+			break
+		}
+	}
+	for ; j < len(toks); j++ {
+		t := toks[j]
+		if t.op && (t.text == ";" || t.text == ")") {
+			continue
+		}
+		if !t.op && (t.text == "fi" || t.text == "done" || t.text == "esac" || t.text == "}") {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func flagsHavePipefail(toks []token) bool {
@@ -425,22 +478,28 @@ func groupExitsNonZero(group []token) bool {
 }
 
 // A makefile's recipes run under the shell the makefile names. strictShell
-// reports whether that is bash with -e and pipefail.
+// reports whether that is bash with pipefail (and whether it adds -e).
+//
+// The flags go in SHELL itself, never in .SHELLFLAGS (F-060): GNU Make 3.81,
+// the make macOS ships, ignores .SHELLFLAGS and runs "bash -c", so a pipeline
+// whose first stage failed was green there and red under make 4. Both read
+// "SHELL := bash -o pipefail" the same way. A makefile that sets .SHELLFLAGS
+// at all is a finding.
 var (
-	shellAssign = regexp.MustCompile(`(?m)^SHELL\s*:?=\s*(\S+)\s*$`)
+	shellAssign = regexp.MustCompile(`(?m)^SHELL\s*:?=\s*(.*?)\s*$`)
 	flagsAssign = regexp.MustCompile(`(?m)^\.SHELLFLAGS\s*:?=\s*(.*)$`)
 )
 
 func strictShell(src string) (pipefail, errexit bool) {
 	sh := shellAssign.FindAllStringSubmatch(src, -1)
-	fl := flagsAssign.FindAllStringSubmatch(src, -1)
-	if len(sh) != 1 || len(fl) != 1 {
+	if len(sh) != 1 || flagsAssign.MatchString(src) {
 		return false, false
 	}
-	if !strings.HasSuffix(sh[0][1], "bash") {
+	words := strings.Fields(sh[0][1])
+	if len(words) == 0 || !strings.HasSuffix(words[0], "bash") {
 		return false, false
 	}
-	flags := strings.Fields(fl[0][1])
+	flags := words[1:]
 	hasE := false
 	for _, f := range flags {
 		if strings.HasPrefix(f, "-") && !strings.HasPrefix(f, "--") && strings.ContainsRune(f, 'e') {
@@ -453,6 +512,43 @@ func strictShell(src string) (pipefail, errexit bool) {
 		}
 	}
 	return pipefail, hasE
+}
+
+var (
+	// selfGuard is a recipe asking whether its own target is absent before it
+	// does its work: "if ! test -f $@", "if [ ! -f $@ ]", "if ! [ -e $@ ]".
+	selfGuard = regexp.MustCompile(`\bif\s+(!\s+test\s+-[efs]|test\s+!\s+-[efs]|\[\s+!\s+-[efs]|!\s+\[\s+-[efs])\s+"?\$@"?`)
+	// headerLine is "targets: prerequisites" (or "::"), not an assignment.
+	headerLine = regexp.MustCompile(`^([^\s=#:][^=:]*?)::?(\s+(.*))?$`)
+	targetVar  = regexp.MustCompile(`^[A-Za-z_.][A-Za-z0-9_.]*\s*(:|\+|\?|!)?=`)
+)
+
+// ruleHeader reads a rule's header line and returns the number of its normal
+// prerequisites (order-only ones after "|" and an inline ";" recipe are not
+// counted). ok is false for a line that is not a rule header, and for a
+// target-specific variable line.
+func ruleHeader(line string) (int, bool) {
+	if strings.HasPrefix(line, ".PHONY") || strings.HasPrefix(line, "ifeq") || strings.HasPrefix(line, "ifneq") ||
+		strings.HasPrefix(line, "include") || strings.HasPrefix(line, "-include") || strings.HasPrefix(line, "export") {
+		return 0, false
+	}
+	m := headerLine.FindStringSubmatch(line)
+	if m == nil {
+		// "target: prereq" whose target holds $(...) with a colon-free body
+		// is matched above; a line with "=" before its colon is not a header.
+		return 0, false
+	}
+	rest := m[3]
+	if targetVar.MatchString(strings.TrimSpace(rest)) {
+		return 0, false
+	}
+	if i := strings.IndexByte(rest, ';'); i >= 0 {
+		rest = rest[:i]
+	}
+	if i := strings.IndexByte(rest, '|'); i >= 0 {
+		rest = rest[:i]
+	}
+	return len(strings.Fields(rest)), true
 }
 
 type logicalLine struct {
@@ -494,23 +590,32 @@ func ScanMakefile(file, src string, root, errexit bool, st *Stats) []Finding {
 		errexit = e
 		if !pf {
 			out = append(out, Finding{File: file, Line: 1, Rule: RuleNoStrictShell,
-				Text: "the makefile must set SHELL to bash and .SHELLFLAGS to -o pipefail -c, each exactly once"})
+				Text: "the makefile must set SHELL to \"bash -o pipefail\" exactly once and never set .SHELLFLAGS (make 3.81 ignores it)"})
 		}
 	} else if shellAssign.MatchString(src) || flagsAssign.MatchString(src) {
 		out = append(out, Finding{File: file, Line: 1, Rule: RuleNoStrictShell,
 			Text: "an included makefile sets SHELL or .SHELLFLAGS: only the root makefile may"})
 	}
 	inDefine := false
+	// prereqs is the number of normal prerequisites of the rule the recipe
+	// lines belong to, or -1 when it is not known (a canned recipe in a
+	// define that a $(call) expands).
+	prereqs := -1
 	for _, ll := range joinLines(src) {
 		text := ll.text
 		trim := strings.TrimSpace(text)
 		if !strings.HasPrefix(text, "\t") {
 			if strings.HasPrefix(trim, "define ") {
 				inDefine = true
+				prereqs = -1
 				continue
 			}
 			if trim == "endef" {
 				inDefine = false
+				continue
+			}
+			if n, ok := ruleHeader(trim); ok {
+				prereqs = n
 				continue
 			}
 			if !inDefine {
@@ -519,6 +624,12 @@ func ScanMakefile(file, src string, root, errexit bool, st *Stats) []Finding {
 		}
 		if trim == "" || strings.HasPrefix(trim, "#") {
 			continue
+		}
+		if prereqs != 0 {
+			if m := selfGuard.FindStringIndex(text); m != nil {
+				out = append(out, Finding{File: file, Line: ll.line + strings.Count(text[:m[0]], "\n"), Rule: RuleStamp,
+					Text: "the recipe skips its work when its own target exists, so a prerequisite newer than the target never reruns it: compare with each prerequisite (test \"$@\" -nt) instead"})
+			}
 		}
 		st.Recipes++
 		body := strings.TrimLeft(text, " \t")

@@ -33,12 +33,15 @@
 # is its LAST command's, so `go test ... | tee log` was green whatever go test
 # said (make/rust.mk did exactly that: go test printed FAIL and exited 1, and
 # the target printed its success line). With pipefail a pipeline fails when any
-# stage fails. These two lines are set once, here; no included makefile may set
-# them, and internal/ci (TestRecipesCannotSwallowAFailure) refuses a makefile
-# without them along with every other way a recipe can lose an exit status
-# (internal/recipescan names the rules).
-SHELL := bash
-.SHELLFLAGS := -o pipefail -c
+# stage fails. The flag goes IN SHELL, never in .SHELLFLAGS: GNU Make 3.81 (the
+# make macOS ships) ignores .SHELLFLAGS and ran plain "bash -c", so the same
+# recipe was red under make 4 and green under 3.81 (F-060); both makes run
+# "bash -o pipefail -c" from this one line. It is set once, here; no included
+# makefile may set SHELL or .SHELLFLAGS, and internal/ci
+# (TestRecipesCannotSwallowAFailure) refuses a makefile without it along with
+# every other way a recipe can lose an exit status (internal/recipescan names
+# the rules).
+SHELL := bash -o pipefail
 
 CXX      ?= c++
 CXXFLAGS ?= -std=c++17 -Wall -Wextra -Werror -ffp-contract=off
