@@ -1281,6 +1281,8 @@ writeScalar = function(T, d, val, depth, g, out) {
     case "float": {
       // only a number is a float's value, refused before it is converted
       if (typeof val != "float" && typeof val != "integer") return false;
+      // a compressed float's -0 is written as +0 (docs/SPEC-TABLES.md §3.3)
+      if (has(d, "fmin") && val == 0) val = 0.0;
       local t = floatText(val, d.f32);
       if (t == null) return false; // a non-finite float (§16.3)
       if (!floatAdmitted(d, val)) return false;
@@ -1979,6 +1981,10 @@ readArray = function(T, c, fd, r, v, depth) {
     return false;
   }
   if (!fixed && out.len() > placed) out.resize(placed);
+  // a counted array closed below its declared Min is off the count's own
+  // range, refused as the count past Max is (docs/SPEC.md §5.1 row 3;
+  // tabletext read.go readArray)
+  if (fd.counted && placed < fd.min) r.report.oor++;
   return true;
 };
 

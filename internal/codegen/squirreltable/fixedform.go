@@ -535,9 +535,8 @@ func fixedEmitDecodeText(m *Module, f *ir.Field, off, expr, ind string) {
 	switch f.Type.Kind {
 	case ir.TString:
 		m.Printf("%sif (_rt_fixed.textIllFormed(b, at + %s + %d, n)) return \"text_ill_formed\";\n", ind, off, fixedCountBytes)
-		m.Printf("%slocal s = \"\";\n", ind)
-		m.Printf("%sfor (local i = 0; i < n; i++) s += b[at + %s + %d + i].tochar();\n", ind, off, fixedCountBytes)
-		m.Printf("%s%s = s;\n", ind, expr)
+		// built in work linear in n, never a per-byte append (SQUIRREL-3)
+		m.Printf("%s%s = _rt_fixed.text(b, at + %s + %d, n);\n", ind, expr, off, fixedCountBytes)
 	default:
 		m.Printf("%s%s = blob(n);\n", ind, expr)
 		m.Printf("%sfor (local i = 0; i < n; i++) %s[i] = b[at + %s + %d + i];\n", ind, expr, off, fixedCountBytes)
@@ -641,19 +640,26 @@ func fixedEmitWriteElement(m *Module, f *ir.Field, at int64, expr, ind, dyn stri
 		// narrows to one) is left to the store below, which refuses it as
 		// non_finite_float (row 7).
 		m.Printf("%sif (typeof %s != \"float\" && typeof %s != \"integer\") %s\n", ind, expr, expr, fixedWriteRefusal(m, f))
+		stored := expr
 		if f.HasFloatRange {
-			lo := strconv.FormatFloat(f.FMin, 'e', -1, 64)
-			hi := strconv.FormatFloat(f.FMax, 'e', -1, 64)
+			lo, hi := fixedFloatEnds(f)
 			finite := fmt.Sprintf("%s >= %s && %s <= %s", expr, "-1.7976931348623157e+308", expr, "1.7976931348623157e+308")
+			x := expr
 			if f.Type.Kind == ir.TFloat32 {
 				// the least magnitude that rounds to a float32 infinity
 				edge := strconv.FormatFloat(math.Ldexp(1, 128)-math.Ldexp(1, 103), 'e', -1, 64)
 				finite = fmt.Sprintf("%s > -%s && %s < %s", expr, edge, expr, edge)
+				// the range is held at float32 (SPEC.md §4.6): the value
+				// narrowed, against the narrowed ends
+				x = "_rt_fixed.f32(" + expr + ")"
 			}
-			m.Printf("%sif ((%s < %s || %s > %s) && %s) %s\n", ind, expr, lo, expr, hi, finite, fixedWriteRefusal(m, f))
+			m.Printf("%sif ((%s < %s || %s > %s) && %s) %s\n", ind, x, lo, x, hi, finite, fixedWriteRefusal(m, f))
+			// a compressed float's -0 is stored as +0 (docs/SPEC-TABLES.md
+			// §3.3, ruling fixed-compressed-negzero)
+			stored = "(" + expr + " == 0 ? 0.0 : " + expr + ")"
 		}
 		m.Printf("%sif (!_rt_fixed.%s(b, at + %s, %s)) { _M.FixedField <- %s; return \"non_finite_float\"; }\n",
-			ind, put, off, expr, squirrel.StringLit([]byte(FloatOwner(m.Unit, f))))
+			ind, put, off, stored, squirrel.StringLit([]byte(FloatOwner(m.Unit, f))))
 		return
 	}
 	if f.Type.Kind == ir.TBool {
@@ -974,6 +980,17 @@ func fixedEmitDecodeElement(m *Module, f *ir.Field, at int64, expr, ind, dyn str
 	fixedEmitRangeGuard(m, f, expr, ind, fixedStorageBytes(f.Type))
 }
 
+// fixedFloatEnds spells a ranged float's ends as the fixed guards compare
+// them: a float32's at the float32 nearest each declared end (docs/SPEC.md
+// §4.6, the triple is evaluated at float32), a float64's as declared.
+func fixedFloatEnds(f *ir.Field) (string, string) {
+	lo, hi := f.FMin, f.FMax
+	if f.Type.Kind == ir.TFloat32 {
+		lo, hi = float64(float32(lo)), float64(float32(hi))
+	}
+	return strconv.FormatFloat(lo, 'e', -1, 64), strconv.FormatFloat(hi, 'e', -1, 64)
+}
+
 // fixedEmitRangeGuard emits the declared-range refusal for one decoded leaf,
 // the Go engine's scalarAt rule over the fixed form's storage bytes
 // (docs/SPEC-TABLES.md §3.3, §4; docs/plans/strict-only.md: a value out of
@@ -984,8 +1001,7 @@ func fixedEmitDecodeElement(m *Module, f *ir.Field, at int64, expr, ind, dyn str
 func fixedEmitRangeGuard(m *Module, f *ir.Field, expr, ind string, storage int64) {
 	if f.Type.Kind == ir.TFloat32 {
 		if f.HasFloatRange {
-			lo := strconv.FormatFloat(f.FMin, 'e', -1, 64)
-			hi := strconv.FormatFloat(f.FMax, 'e', -1, 64)
+			lo, hi := fixedFloatEnds(f)
 			m.Printf("%sif (%s < %s || %s > %s) return \"out_of_range\";\n", ind, expr, lo, expr, hi)
 			m.Printf("%sif (%s == 0.0) %s = 0.0;\n", ind, expr, expr)
 		}
