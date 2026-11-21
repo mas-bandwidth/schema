@@ -27,10 +27,10 @@ func TestGoMessageLoadCapacityFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runGeneratedTables(t, string(schema), strings.ReplaceAll(goCapacityFixtureProbe, "FIXTURE", fixture))
+	runGeneratedLineageProbe(t, string(schema), nil, strings.ReplaceAll(goCapacityFixtureProbe, "FIXTURE", fixture))
 }
 
-const goCapacityFixtureProbe = `package backenddemo
+const goCapacityFixtureProbe = `package probe
 
 import (
 	"os"
