@@ -38,6 +38,7 @@ func init() {
 		Name{Name: "TableDesc", What: "one table's runtime descriptor", Scoped: true},
 		Name{Name: "UnionDesc", What: "one union's runtime descriptor", Scoped: true},
 		Name{Name: "KeyedArray", What: "an enum-keyed array container", Scoped: true},
+		Name{Name: "Keyed", What: "the namespace of the generated keyed-array classes, SchemaTable::Keyed::<Table>::Field_<field>", Scoped: true},
 		Name{Name: "BlockOpen", What: "open a block-form buffer", Scoped: true},
 		Name{Name: "BlockBuild", What: "build a block-form buffer", Scoped: true},
 		Name{Name: "CookOpen", What: "open a cooked image", Scoped: true},

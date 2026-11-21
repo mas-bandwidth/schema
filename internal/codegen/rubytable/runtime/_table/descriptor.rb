@@ -79,6 +79,13 @@ module SchemaRuntimeUnit
       cls.new
     end
 
+    # The namespace of the generated keyed-array classes: one module per table,
+    # one class per keyed field, SchemaTable::Keyed::<Table>::Field_<field>
+    # (internal/codegen/rubytable, keyedRoot). It holds nothing else, so no
+    # declaration can spell a wrapper's name.
+    module Keyed
+    end
+
     # Enum-keyed array container (docs/PORT-RUBY.md, Tables: [E]T).
     # Keys are 1..key_max; any non-Integer or out-of-range key raises IndexError.
     class KeyedArray

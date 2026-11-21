@@ -866,6 +866,8 @@
       def skip_space: () -> untyped
       def text: () -> untyped
     end
+    module Keyed
+    end
     class KeyedArray
       @_s_values: untyped
       @key_max: untyped

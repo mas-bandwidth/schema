@@ -328,6 +328,9 @@ func emitFileModule(u *ir.Unit, mod string, plan *filePlan, blocks *ir.BlockUnit
 	}
 
 	for _, st := range orderStructs(plan.tables) {
+		if hasKeyedField(st) {
+			fmt.Fprintf(&b, "  module %s\n  end\n\n", keyedNamespace(st.Name))
+		}
 		for _, f := range st.Fields {
 			if f.KeyEnum != "" {
 				emitKeyedClass(&b, st.Name, f, surfaces)
@@ -340,8 +343,42 @@ func emitFileModule(u *ir.Unit, mod string, plan *filePlan, blocks *ir.BlockUnit
 	return s + "\nend\n"
 }
 
+// keyedRoot is the namespace every keyed-array wrapper class lives under
+// (F-083, F-084). SchemaTable is the runtime's own module, claimed for every
+// table unit (internal/tablenames/ruby.go), and its Keyed module
+// (runtime/_table/descriptor.rb) holds nothing but the wrappers, so no
+// declaration of the unit module can spell a wrapper's name. Under it each
+// table owns the module of its own name, which no other table can, and each
+// keyed field of that table owns the class Field_<field>: a field's name is
+// unique in its table and the prefix makes it a constant whatever its case.
+// The pair (table, field) maps to one name and two pairs never to the same
+// one, where the old <Table><Field>KeyedArray, spelled in the unit module,
+// was reopened by a declared table QuestRankKeyedArray and was the one class
+// of both Quest.rank_value and QuestRank.value. Every reference spells the
+// whole path from the unit module, and the classes are opened by that path
+// (`class SchemaTable::Keyed::Quest::Field_rank`), never nested in Keyed or
+// SchemaTable, so the element default inside resolves its names in the unit
+// module as before.
+const keyedRoot = "SchemaTable::Keyed"
+
+// keyedPrefix starts a keyed field's class name under its table's namespace.
+const keyedPrefix = "Field_"
+
+func hasKeyedField(st *ir.Struct) bool {
+	for _, f := range st.Fields {
+		if f.KeyEnum != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func keyedNamespace(tableName string) string {
+	return keyedRoot + "::" + tableName
+}
+
 func keyedClassName(tableName string, f *ir.Field) string {
-	return tableName + ir.GoExportName(f.Name) + "KeyedArray"
+	return keyedNamespace(tableName) + "::" + keyedPrefix + f.Name
 }
 
 func emitKeyedClass(b *strings.Builder, tableName string, f *ir.Field, surfaces Surfaces) {

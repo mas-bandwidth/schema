@@ -435,6 +435,9 @@ func emitRBS(u *ir.Unit, mod string, plans []*filePlan, surfaces Surfaces, hasMe
 		}
 
 		for _, st := range orderStructs(plan.tables) {
+			if hasKeyedField(st) {
+				fmt.Fprintf(&b, "\n  module %s\n  end\n", keyedNamespace(st.Name))
+			}
 			for _, fld := range st.Fields {
 				if fld.KeyEnum != "" {
 					kname := keyedClassName(st.Name, fld)
