@@ -364,7 +364,7 @@ func setRefusalInt(cell *tabletext.Cell, f *ir.Field, text string) bool {
 	if !ok {
 		return false
 	}
-	if !refusalIntHeld(ir.TableScalarKind(f), n) {
+	if !refusalIntHeld(f, n) {
 		return false
 	}
 	cell.Wide = new(big.Int).Set(n)
@@ -378,25 +378,35 @@ func setRefusalInt(cell *tabletext.Cell, f *ir.Field, text string) bool {
 	return true
 }
 
-// refusalIntHeld says whether Go storage for a declared integer kind can hold
-// n at all: an int64 for a signed kind or a timestamp, a uint64 for an unsigned
-// one, the wide value for a 128-bit kind. The instance model's cell is 64 raw
-// bits, so a value past them would be stored as another value (2^63 in an
-// int64 cell reads back as -2^63, which the writer then rightly writes). Such
-// a value is unrepresentable, as the Go reference driver answers it
-// (test/conformance/go/writerefusal.go); a value the storage holds and the
-// declaration does not reaches the writer, which refuses it.
-func refusalIntHeld(kind int, n *big.Int) bool {
-	switch {
-	case kind < 0 || ir.TableKindWide(kind):
+// refusalIntHeld says whether the instance model's cell holds n as the value
+// it is. The cell is 64 raw bits (a 128-bit kind keeps its wide value), read
+// signed for a signed kind or a timestamp and unsigned otherwise. A field
+// declared narrower than 64 bits holds a value past its declaration in those
+// bits, and the writer refuses it by width: the battery runs. A field declared
+// 64 bits wide has no spare bits: 2^63 at an int64 would read back as -2^63,
+// -1 at a uint64 as 2^64-1, both lawful, and the writer would write another
+// value. Such a value, and any value past 64 bits, is unrepresentable, as the
+// Go reference driver answers it (test/conformance/go/writerefusal.go), and
+// the harness scores it as the refusal.
+func refusalIntHeld(f *ir.Field, n *big.Int) bool {
+	kind := ir.TableScalarKind(f)
+	if kind < 0 || ir.TableKindWide(kind) {
 		return true
-	case ir.TableKindSigned(kind) || kind == ir.TableKindTimestamp:
-		return n.IsInt64()
-	case kind >= ir.TableKindU8 && kind <= ir.TableKindU64,
-		kind >= ir.TableKindUFixed8 && kind <= ir.TableKindUFixed64:
-		return n.IsUint64()
 	}
-	return true
+	if !n.IsInt64() && !n.IsUint64() {
+		return false
+	}
+	bits := f.Type.Width
+	if bits == 0 {
+		bits = 8 * tabletext.StorageBytes(f)
+	}
+	if bits < 64 {
+		return true
+	}
+	if ir.TableKindSigned(kind) || kind == ir.TableKindTimestamp {
+		return n.IsInt64()
+	}
+	return n.IsUint64()
 }
 
 func refusalFloat(text string) (float64, error) {
