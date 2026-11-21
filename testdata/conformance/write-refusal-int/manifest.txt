@@ -4,7 +4,10 @@
 # manifest (testdata/conformance/tables/FORMAT.md, the derived form: no
 # verdict); answers.txt holds what a driver owes for each case. The Java
 # driver answers it in
-# internal/codegen/javatable/conformance_writerefusal_int_test.go.
+# internal/codegen/javatable/conformance_writerefusal_int_test.go, and the
+# harness's Go engine in test/conformance/harness/writerefusal_test.go
+# (TestWriteRefusalEngineHoldsTheIntCorpus), where `refused` and
+# `unrepresentable` are the one verdict, as the harness scores them.
 unit cooktorture test/tables/cooktorture/CookTorture.schema
 # a scalar field
 write-refusal i32_past_max      cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin b_i32                int 2147483648

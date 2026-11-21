@@ -11,7 +11,7 @@ import (
 // TestJavaDriverAnswersBothOptInLegs drives the Java conformance driver over
 // the two manifests the harness hands a leg from the committed opt-in corpus
 // (testdata/conformance/optin/MANIFEST.txt): one for a leg that names
-// `unit backenddemo`, one for a leg that does not. The harness pins both
+// both opt-in units, one for a leg that names neither. The harness pins both
 // (test/conformance/harness/optin_corpus_test.go). Every surface exits 0 on
 // both, so each case is scored on its own (F-186: a write-refusal-message row
 // left behind on a dropped connection failed the whole surface); a case the
@@ -38,6 +38,11 @@ func TestJavaDriverAnswersBothOptInLegs(t *testing.T) {
 			{"wire", "shared", "*"},
 			{"json-write", "score.json", "*"},
 			{"json-write", "score.json.json", "*"},
+			{"wire", "wireonly", "*"},
+			{"json-write", "wireonly.json", "*"},
+			{"wire", "plain_text", "*"},
+			{"json-write", "plain_text.json", "*"},
+			{"cook-write", "torture_cook_extremes", "*"},
 		}},
 		{"leg-omits.txt", []answer{
 			{"write-refusal-message", "mref_range_high_ok", ""},
@@ -48,6 +53,13 @@ func TestJavaDriverAnswersBothOptInLegs(t *testing.T) {
 			{"wire", "shared", "*"},
 			{"json-write", "score.json", "*"},
 			{"json-write", "score.json.json", ""},
+			// F-243: the wire-only row runs; its namesake is not asked
+			{"wire", "wireonly", "*"},
+			{"json-write", "wireonly.json", ""},
+			{"wire", "plain_text", ""},
+			{"json-write", "plain_text.json", ""},
+			// F-244: the required cook-write row runs
+			{"cook-write", "torture_cook_extremes", "*"},
 		}},
 	}
 	for _, leg := range legs {

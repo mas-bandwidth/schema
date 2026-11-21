@@ -71,7 +71,8 @@ func handed(rows, kind, name string) bool {
 	return false
 }
 
-// TestOptInCorpusOmittingLegIsHandedNoRowOfTheUnit (F-186, F-096, F-097): a
+// TestOptInCorpusOmittingLegIsHandedNoRowOfTheUnit (F-186, F-096, F-097,
+// F-243, F-244): a
 // leg whose `list` does not name `unit backenddemo` is handed none of that
 // unit's rows: not its connection, and not the write-refusal-message row that
 // reads it through that connection, which a driver could answer only by
@@ -94,6 +95,14 @@ func TestOptInCorpusOmittingLegIsHandedNoRowOfTheUnit(t *testing.T) {
 		{"write-refusal-message", "mref_unionstr_ok", true},
 		{"instance", "score", true},
 		{"instance", "shared", true},
+		// F-243: the no-text instance shares its name with the opt-in unit's
+		// json-write-refusal row, and no case
+		{"json-write-refusal", "wireonly", false},
+		{"instance", "wireonly", true},
+		// F-244: the cook-write row's input file spells an omitted unit's key
+		{"unit", "testdata/conformance/tables/json/torture_cook_extremes.json", false},
+		{"cook-write", "torture_cook_extremes", true},
+		{"instance", "torture_cook_extremes", true},
 	} {
 		if got := handed(rows, c.kind, c.name); got != c.want {
 			t.Errorf("leg handed %s %s = %v, want %v", c.kind, c.name, got, c.want)
@@ -110,21 +119,33 @@ func TestOptInCorpusOmittingLegIsHandedNoRowOfTheUnit(t *testing.T) {
 		{"wire", "shared", false},
 		{"json-write", "shared.json", false},
 		{"write-refusal", "shared", true},
+		// F-243
+		{"wire", "wireonly", false},
+		{"json-write", "wireonly.json", true},
+		// F-244
+		{"cook-write", "torture_cook_extremes", false},
+		{"cook-write", "torture_cook_extremes-be", false},
 	})
 	pinOptInCorpus(t, "leg-omits.txt", rows)
 }
 
-// TestOptInCorpusOptedInLegIsHandedEveryRow: a leg that names the unit is
-// handed the derived manifest whole and is asked every case.
+// TestOptInCorpusOptedInLegIsHandedEveryRow: a leg that names both opt-in
+// units is handed the derived manifest whole and is asked every case.
 func TestOptInCorpusOptedInLegIsHandedEveryRow(t *testing.T) {
 	t.Parallel()
-	rows, cases := optInCorpusLeg(t, map[string]bool{"unit backenddemo": true})
+	rows, cases := optInCorpusLeg(t, map[string]bool{
+		"unit backenddemo": true,
+		"unit testdata/conformance/tables/json/torture_cook_extremes.json": true,
+	})
 	if len(cases) != 0 {
 		t.Errorf("an opted-in leg is not asked %v", cases)
 	}
-	for _, name := range []string{"mref_range_high_ok", "mref_unionstr_ok"} {
-		if !handed(rows, "write-refusal-message", name) {
-			t.Errorf("an opted-in leg is not handed %s", name)
+	for _, c := range []struct{ kind, name string }{
+		{"write-refusal-message", "mref_range_high_ok"}, {"write-refusal-message", "mref_unionstr_ok"},
+		{"json-write-refusal", "wireonly"}, {"instance", "wireonly"}, {"cook-write", "torture_cook_extremes"},
+	} {
+		if !handed(rows, c.kind, c.name) {
+			t.Errorf("an opted-in leg is not handed %s %s", c.kind, c.name)
 		}
 	}
 	pinOptInCorpus(t, "leg-opts-in.txt", rows)

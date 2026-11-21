@@ -8,8 +8,15 @@
 
 unit scalars     tables/scalars
 unit tblvarevo3  test/tables/varevo/VarEvo3.schema
+unit blobdemo    tables/blobs
+unit cooktorture test/tables/cooktorture/CookTorture.schema
 unit backenddemo tables/backend
 opt-in backenddemo
+# F-244: a second opt-in unit whose key happens to spell the file a required
+# cook-write row reads (the derived line's third column). A unit key is any
+# token; the coincidence says nothing about the row.
+unit testdata/conformance/tables/json/torture_cook_extremes.json tables/backend
+opt-in testdata/conformance/tables/json/torture_cook_extremes.json
 
 connection varevo3_conn tblvarevo3  0x25fed5501e5d7aa5 testdata/wire/tables/varevo3_conn.bin
 connection backend_conn backenddemo 0x2309093a1139c6cc testdata/wire/tables/backend_conn.bin
@@ -20,10 +27,28 @@ connection backend_conn backenddemo 0x2309093a1139c6cc testdata/wire/tables/back
 instance score      scalars     SimState      testdata/conformance/tables/wire/scalars_full.bin
 instance score.json backenddemo StorePurchase testdata/conformance/tables/wire/store_full.bin
 
+# Every surface's own key form: an opt-in instance with an ordinary name has
+# the cases wire/plain_text, json-read/plain_text and json-write/plain_text.json
+# (the json-write case is named after its file). A leg that omits the unit is
+# scored absent on all three, never "the driver wrote nothing"; `score` is the
+# control on a required unit.
+instance plain_text backenddemo StorePurchase testdata/conformance/tables/wire/store_default.bin
+
 # F-097: one name, two surfaces, two units. The required instance's wire and
 # text cases are asked; the opt-in write-refusal row is not.
 instance shared      scalars     SimState      testdata/conformance/tables/wire/scalars_default.bin
 write-refusal shared backenddemo StorePurchase testdata/conformance/tables/wire/store_full.bin quantity int 100 refused
+
+# F-243: a no-text instance on a required unit has a wire case alone, so a
+# json-write-refusal of the same name on the opt-in unit owns `wireonly.json`
+# and shares no case with it. The wire row is handed and asked either way.
+instance wireonly           blobdemo    Catalog       testdata/wire/tables/blob_equal_bytes.bin no-text
+json-write-refusal wireonly backenddemo StorePurchase testdata/conformance/tables/wire/store_full.bin narrow:sku
+
+# F-244: the required cook-write row, whose input file is the instance's JSON
+# text, testdata/conformance/tables/json/torture_cook_extremes.json.
+instance torture_cook_extremes cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin
+cook-write torture_cook_extremes testdata/conformance/tables/cook-write/torture_cook_extremes.cook testdata/conformance/tables/cook-write/torture_cook_extremes-be.cook
 
 # F-186: a write-refusal-message row reads the opt-in unit through its
 # connection, so a leg that omits the unit is handed neither; the row on a

@@ -1,6 +1,11 @@
 unit scalars tables/scalars
 unit tblvarevo3 test/tables/varevo/VarEvo3.schema
+unit blobdemo tables/blobs
+unit cooktorture test/tables/cooktorture/CookTorture.schema
 instance score scalars SimState testdata/conformance/tables/wire/scalars_full.bin
 instance shared scalars SimState testdata/conformance/tables/wire/scalars_default.bin
+instance wireonly blobdemo Catalog testdata/wire/tables/blob_equal_bytes.bin no-text
+instance torture_cook_extremes cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin
 connection varevo3_conn tblvarevo3 0x25fed5501e5d7aa5 testdata/wire/tables/varevo3_conn.bin
+cook-write torture_cook_extremes testdata/conformance/tables/json/torture_cook_extremes.json - -
 write-refusal-message mref_unionstr_ok varevo3_conn EvoMsg testdata/conformance/tables/wire/varevo3_msg_notice.bin payload.notice bytes 61C3A962
