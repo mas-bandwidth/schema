@@ -3888,6 +3888,9 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
         {
             uint64_t n = 0;
             if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() ) { return false; }
+            // a length above the ANNOUNCED max, which its bits can spell and
+            // no conforming writer emits, refuses as at a named field (§3.3)
+            if ( n > (uint64_t) entry.max ) { return false; }
             if ( n > (uint64_t) ( ( r.bits - r.offset ) / 8 ) ) { return false; }
             const uint8_t * text = r.buffer + ( r.offset >> 3 );
             if ( !TableUtf8Valid( text, n ) ) { return false; }

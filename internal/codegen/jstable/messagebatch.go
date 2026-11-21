@@ -258,7 +258,9 @@ export function tableMessageSkip(r, v, indexBits, e, depth) {
     }
     case 12: {
       const [n, ok] = tableMessageCount(r, s);
-      if (!ok) { return false; }
+      // a length above the ANNOUNCED max, which its bits can spell and no
+      // conforming writer emits, refuses as at a named field (§3.3)
+      if (!ok || n > BigInt(s.Max)) { return false; }
       if (!r.Align()) { return false; }
       // A SKIPPED STRING IS HELD TO THE TEXT RULE (§3.3, §4): bytes this
       // reader does not keep are still damage when ill-formed.

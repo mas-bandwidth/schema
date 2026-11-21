@@ -255,6 +255,10 @@ func tableMessageBodyRootConfig(r *TableMessageReader, value *RootConfig, starts
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
+					if n > uint64(entry.Shape.Max) {
+						r.Report.Refuse(TableRefuseCountOverBound, "RootConfig.weapons")
+						return false
+					}
 					if entry.Element.Kind == 6 && !r.Bits.Align() {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
@@ -305,6 +309,10 @@ func tableMessageBodyRootConfig(r *TableMessageReader, value *RootConfig, starts
 					n, ok := tableMessageCount(&r.Bits, entry.Shape)
 					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if n > uint64(entry.Shape.Max) {
+						r.Report.Refuse(TableRefuseCountOverBound, "RootConfig.profiles")
 						return false
 					}
 					if entry.Element.Kind == 6 && !r.Bits.Align() {
@@ -1254,6 +1262,10 @@ func tableMessageBodyLoadoutConfig(r *TableMessageReader, value *LoadoutConfig, 
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
+					if n > uint64(entry.Shape.Max) {
+						r.Report.Refuse(TableRefuseCountOverBound, "LoadoutConfig.grades")
+						return false
+					}
 					if entry.Element.Kind == 6 && !r.Bits.Align() {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
@@ -1320,6 +1332,10 @@ func tableMessageBodyLoadoutConfig(r *TableMessageReader, value *LoadoutConfig, 
 					n, ok := tableMessageCount(&r.Bits, entry.Shape)
 					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if n > uint64(entry.Shape.Max) {
+						r.Report.Refuse(TableRefuseCountOverBound, "LoadoutConfig.podium")
 						return false
 					}
 					if entry.Element.Kind == 6 && !r.Bits.Align() {
@@ -1474,6 +1490,10 @@ func tableMessageBodyLoadoutConfig(r *TableMessageReader, value *LoadoutConfig, 
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
+					if n > uint64(entry.Shape.Max) {
+						r.Report.Refuse(TableRefuseCountOverBound, "LoadoutConfig.backups")
+						return false
+					}
 					if entry.Element.Kind == 6 && !r.Bits.Align() {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
@@ -1519,6 +1539,10 @@ func tableMessageBodyLoadoutConfig(r *TableMessageReader, value *LoadoutConfig, 
 					n, ok := tableMessageCount(&r.Bits, entry.Shape)
 					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if n > uint64(entry.Shape.Max) {
+						r.Report.Refuse(TableRefuseCountOverBound, "LoadoutConfig.attachments")
 						return false
 					}
 					if entry.Element.Kind == 6 && !r.Bits.Align() {
@@ -1919,6 +1943,10 @@ func tableMessageBodyProfileConfig(r *TableMessageReader, value *ProfileConfig, 
 					n, ok := tableMessageCount(&r.Bits, entry.Shape)
 					if !ok || !r.Bits.Align() {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if n > uint64(entry.Shape.Max) {
+						r.Report.Refuse(TableRefuseCountOverBound, "ProfileConfig.icon")
 						return false
 					}
 					start := r.Bits.Offset / 8
@@ -2405,6 +2433,10 @@ func tableMessageBodyProfileConfig(r *TableMessageReader, value *ProfileConfig, 
 					n, ok := tableMessageCount(&r.Bits, entry.Shape)
 					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if n > uint64(entry.Shape.Max) {
+						r.Report.Refuse(TableRefuseCountOverBound, "ProfileConfig.ratings")
 						return false
 					}
 					if entry.Element.Kind == 6 && !r.Bits.Align() {

@@ -3490,6 +3490,10 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
+					if n > uint64(entry.Shape.Max) {
+						r.Report.Refuse(TableRefuseCountOverBound, "TableMixed.entities")
+						return false
+					}
 					if entry.Element.Kind == 6 && !r.Bits.Align() {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
@@ -3551,6 +3555,10 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 					n, ok := tableMessageCount(&r.Bits, entry.Shape)
 					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if n > uint64(entry.Shape.Max) {
+						r.Report.Refuse(TableRefuseCountOverBound, "TableMixed.stats")
 						return false
 					}
 					if entry.Element.Kind == 6 && !r.Bits.Align() {
@@ -3729,6 +3737,10 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
+					if n > uint64(entry.Shape.Max) {
+						r.Report.Refuse(TableRefuseCountOverBound, "TableMixed.loadout")
+						return false
+					}
 					if entry.Element.Kind == 6 && !r.Bits.Align() {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
@@ -3859,6 +3871,10 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 					n, ok := tableMessageCount(&r.Bits, entry.Shape)
 					if !ok || !r.Bits.Align() {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if n > uint64(entry.Shape.Max) {
+						r.Report.Refuse(TableRefuseCountOverBound, "TableMixed.payload")
 						return false
 					}
 					start := r.Bits.Offset / 8
