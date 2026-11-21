@@ -484,6 +484,18 @@ jobs:
                 case " $packages " in *" $p "*) ;; *) packages="$packages $p" ;; esac
               done
             fi
+            # THE COMPILER'S OWN PAGE-TEXT TESTS. ./compiler holds the tests
+            # that read a page's text: docs_test.go parses every declaration
+            # fence, and the spec_*, port_*_page_*, aidoc, carries and
+            # security-page tests hold sentences of the pages, docs/plans/ and
+            # docs/rulings.json to the code. A page-only diff selected none of
+            # them, so a page edit that broke one went green here and red on
+            # the merge's full run. Any path under docs/, the README or a
+            # skill selects the package; its `split` lines in
+            # .github/go-test-rows.txt keep every row inside the cap.
+            if grep -qE '^(README\.md|docs/|skills/)' <<<"$files"; then
+              case " $packages " in *" ./compiler "*) ;; *) packages="$packages ./compiler" ;; esac
+            fi
             # THE LANGUAGE LIST. ./internal/languages holds every page that
             # states the supported languages to the generator registry and the
             # reserved-word table, so a diff to either side re-checks it: a
