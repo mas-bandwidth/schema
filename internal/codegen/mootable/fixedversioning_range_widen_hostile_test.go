@@ -14,10 +14,11 @@ import (
 // OLD writer's file with one ranged value forged past that writer's range, read
 // by the NEW reader whose own range is wider. Under the one read the reader
 // REFUSES THE WHOLE LOAD out_of_range — a scalar, one element of a ranged fixed
-// array, and a uint64 at or above 2^63 compared unsigned — exactly as the C++
-// reference's own NEW reader does (the manifest line carries no expect=). The
-// negative control holds only the reader's range and requires the scalar
-// vector to land.
+// array, a uint64 at or above 2^63 compared unsigned, and a compressed float
+// compared in its own type (docs/rulings.json strict-only-read) — exactly as
+// the C++ reference's own NEW reader does (the manifest line carries no
+// expect=). The negative controls hold only the reader's range and require the
+// scalar vector, and the compressed float's, to land.
 func TestMooFixedVersioningRangeWidenHostile(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
@@ -46,5 +47,13 @@ func TestMooFixedVersioningRangeWidenHostile(t *testing.T) {
 	plant(t, g, "\tif n.wlo ~= nil and (", "\tif false and (")
 	if got := runFixedLoad(t, g, "VNEW_range_widenTable", "RangeWiden", corpusFile(t, corpus, fixedvector.RangeWidenHostile)); !strings.HasPrefix(got.head, "ok 1 ") || got.dump["r0.v"] != "150" {
 		t.Errorf("the negative control: the reader's range alone still refuses the writer's overrun: %s %v", got.head, got.dump)
+	}
+	// the float check's own negative control: with the writer's float32 range
+	// planted out, the reader's wider range alone lands the forged 1.5
+	older, newer = readTestSchema(t, "VOLD_cfloat_range_widen"), readTestSchema(t, "VNEW_cfloat_range_widen")
+	g = fixedUnit(t, newer, lineageOf(t, []*ir.Unit{older}, 0))
+	plant(t, g, "\t\tif n.wflo ~= nil then\n", "\t\tif false then\n")
+	if got := runFixedLoad(t, g, "VNEW_cfloat_range_widenTable", "CfloatRangeWiden", corpusFile(t, corpus, "hostile_cfloat_range_widen.bin")); !strings.HasPrefix(got.head, "ok 1 ") || got.dump["r0.aim"] != "0x3FC00000" {
+		t.Errorf("the float negative control: the reader's range alone still refuses the writer's overrun: %s %v", got.head, got.dump)
 	}
 }

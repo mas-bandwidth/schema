@@ -692,11 +692,16 @@ func TestPythonFixedProofEvolutionWriterBounds(t *testing.T) {
 	slowtest.Gate(t, "the pinned Python interpreters and C++ fixed-form corpus")
 	repo := filepath.Join("..", "..", "..")
 	for _, tc := range []struct {
-		row, anchor string
-		mutants     []string
+		row, anchor, good string
+		mutants           []string
 	}{
-		{"range_widen", `if value < spec.get("lo", 0) or value > spec.get("hi", len(spec.get("variants", []))):`, []string{"hostile_range_widen.bin", "hostile_range_widen_array.bin", "hostile_range_widen_u64.bin"}},
-		{"cfloat_range_widen", `if spec.get("ranged", False) and not spec["lo"] <= value <= spec["hi"]:`, []string{"hostile_cfloat_range_widen.bin"}},
+		{"range_widen", `if value < spec.get("lo", 0) or value > spec.get("hi", len(spec.get("variants", []))):`, `assert len(rows) == 1`, []string{"hostile_range_widen.bin", "hostile_range_widen_array.bin", "hostile_range_widen_u64.bin"}},
+		// a compressed float is held to the WRITER's range like every ranged
+		// kind (docs/rulings.json strict-only-read; FIXED-FORM-ALGORITHM §4.6),
+		// compared in its own type: the old file (the writer's range narrower
+		// than the reader's) lands 0.5 exactly, and the hostile (1.5, inside the
+		// reader's range) and past (5.0) files each refuse the whole load
+		{"cfloat_range_widen", `if spec.get("ranged", False) and not spec["lo"] <= value <= spec["hi"]:`, `assert len(rows) == 1 and rows[0].lead == 1 and rows[0].aim == 0.5 and rows[0].trail == 2`, []string{"hostile_cfloat_range_widen.bin", "past_cfloat_range_widen.bin"}},
 	} {
 		t.Run(tc.row, func(t *testing.T) {
 			t.Parallel()
@@ -721,7 +726,8 @@ func TestPythonFixedProofEvolutionWriterBounds(t *testing.T) {
 			script := fmt.Sprintf(`from %s import %s as Root, Refused
 with open(%q, 'rb') as f:
     good = f.read()
-assert len(Root.fixed_load(good)) == 1
+rows = Root.fixed_load(good)
+%s
 for name in %s:
     with open(name, 'rb') as f:
         wire = f.read()
@@ -732,7 +738,7 @@ for name in %s:
     else:
         raise AssertionError('writer_bounds_control_' + name)
 print('writer-bounds')
-`, newer.Package, root, "old_"+tc.row+".bin", pythonStringList(tc.mutants))
+`, newer.Package, root, "old_"+tc.row+".bin", tc.good, pythonStringList(tc.mutants))
 			if out, _ := pythonFixedRun(t, files, script, inputs); strings.TrimSpace(out) != "writer-bounds" {
 				t.Fatalf("writer bounds: %s", out)
 			}

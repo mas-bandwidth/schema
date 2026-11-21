@@ -375,7 +375,11 @@ func writerIndexedBounds(g *Gen, writer *ir.Struct, layout []byte) []string {
 				out = append(out, fmt.Sprintf("[%d] = { raw = true, lo = %s, hi = %s }", cur, rawLit(g, w, signed, lo), rawLit(g, w, signed, hi)))
 			}
 		case ir.TFloat32, ir.TFloat64:
-			if f.HasFloatRange && f.Resolution == 0 && f.Round == "" {
+			// a ranged float, compressed or not, is held to the WRITER's range like
+			// every ranged kind (docs/rulings.json strict-only-read, which overturned
+			// schema#1164 statement B; FIXED-FORM-ALGORITHM §4.6), compared in the
+			// field's own type: a float32 against its float32-rounded bound
+			if f.HasFloatRange {
 				fmin, fmax := f.FMin, f.FMax
 				if f.Type.Kind == ir.TFloat32 {
 					fmin, fmax = float64(float32(fmin)), float64(float32(fmax))

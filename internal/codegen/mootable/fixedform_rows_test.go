@@ -4,7 +4,7 @@ package mootable_test
 // (docs/FIXED-FORM-VERSIONING-TESTS.md, docs/FIXED-FORM-ALGORITHM.md §4.5,
 // §5.4, §5.8): the rows the Go leg holds that fixedform_test.go does not —
 // the lineage merge, the compile census over many records, the forged
-// ordinal on both plans, the compressed float's reader-side bounds pass, and
+// ordinal on both plans, the compressed float held to the writer's range, and
 // hostile bool and present bytes. The bytes are the C++ reference's corpus
 // (SCHEMA_REQUIRE_CORPUS=1 makes its absence a failure) or a moo-saved record
 // forged in place. Every generated unit passes moo-analyze with no output.
@@ -146,12 +146,15 @@ func TestMooFixedForgedOrdinalBothPlans(t *testing.T) {
 	}
 }
 
-// TestMooFixedVersioningCfloatRangeWidenBounds: a compressed float's range is
-// the READER's on this form (the plan carries no writer range for a float,
-// FIXED-FORM-ALGORITHM.md §5.8 row 4), and the bounds pass refuses, never
-// clamps. The hostile file (aim forged to 1.5, past the old writer's max and
-// inside the new reader's) lands whole; the past file (aim 5.0, outside the
-// reader's range too) refuses the whole load out_of_range.
+// TestMooFixedVersioningCfloatRangeWidenBounds: a compressed float is held to
+// the WRITER's range the lineage plan carries, like every ranged kind
+// (docs/rulings.json strict-only-read, which overturned schema#1164 statement
+// B; FIXED-FORM-ALGORITHM.md §4.6), compared in the field's own type, and the
+// bounds pass refuses, never clamps. The old file (aim 0.5, the writer's range
+// narrower than the reader's) lands 0.5 exactly; the hostile file (aim forged
+// to 1.5, past the old writer's max and inside the new reader's) and the past
+// file (aim 5.0, outside the reader's range too) each refuse the whole load
+// out_of_range.
 func TestMooFixedVersioningCfloatRangeWidenBounds(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
@@ -159,12 +162,14 @@ func TestMooFixedVersioningCfloatRangeWidenBounds(t *testing.T) {
 	manifest := readFixedManifest(t, corpus)
 	older, newer := readTestSchema(t, "VOLD_cfloat_range_widen"), readTestSchema(t, "VNEW_cfloat_range_widen")
 	g := fixedUnit(t, newer, lineageOf(t, []*ir.Unit{older}, 0))
-	got := runFixedLoad(t, g, "VNEW_cfloat_range_widenTable", "CfloatRangeWiden", corpusFile(t, corpus, "hostile_cfloat_range_widen.bin"))
-	if got.head != "ok 1 u0 k0 c0 w0" || got.dump["r0.aim"] != "0x3FC00000" || got.dump["r0.lead"] != "1" || got.dump["r0.trail"] != "2" {
-		t.Errorf("hostile_cfloat_range_widen.bin: %s %v, want ok aim 0x3FC00000", got.head, got.dump)
+	got := runFixedLoad(t, g, "VNEW_cfloat_range_widenTable", "CfloatRangeWiden", corpusFile(t, corpus, "old_cfloat_range_widen.bin"))
+	if got.head != "ok 1 u0 k0 c0 w0" || got.dump["r0.aim"] != "0x3F000000" || got.dump["r0.lead"] != "1" || got.dump["r0.trail"] != "2" {
+		t.Errorf("old_cfloat_range_widen.bin: %s %v, want ok aim 0x3F000000 (0.5 exactly)", got.head, got.dump)
 	}
-	if got := runFixedLoad(t, g, "VNEW_cfloat_range_widenTable", "CfloatRangeWiden", corpusFile(t, corpus, "past_cfloat_range_widen.bin")); got.head != "refused out_of_range CfloatRangeWiden.aim false -" {
-		t.Errorf("past_cfloat_range_widen.bin: %s, want the whole load refused out_of_range", got.head)
+	for _, name := range []string{"hostile_cfloat_range_widen.bin", "past_cfloat_range_widen.bin"} {
+		if got := runFixedLoad(t, g, "VNEW_cfloat_range_widenTable", "CfloatRangeWiden", corpusFile(t, corpus, name)); got.head != "refused out_of_range CfloatRangeWiden.aim false -" {
+			t.Errorf("%s: %s %v, want the whole load refused out_of_range", name, got.head, got.dump)
+		}
 	}
 	// the hostile file's forged value is the manifest's own
 	if want := manifest["hostile_cfloat_range_widen.bin"]; want.records != 1 {
