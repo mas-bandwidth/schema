@@ -783,11 +783,32 @@ func hostileAnnouncement(n int) []byte {
 // TestLuauVocabularyDefaultEntryBound pins the receiver's DEFAULT entry bound
 // (docs/SPEC-TABLES.md §3.3): a vocabulary with no declared MaxEntries takes
 // the conforming 4096 (ir.TableVocabularyMaxEntries), never "unbounded". The
-// engine is the oracle: it accepts 4096 entries and refuses 4097 by name, and
-// the Luau reader must agree on both. Red at the base, where the Luau reader
-// read a zero bound as no bound and accepted 4097.
+// engine is the oracle: it accepts 4096 entries and refuses 4097, and the Luau
+// reader must agree on both VERDICTS. Why a read refused is per-language
+// diagnostic detail (docs/rulings.json refusal-verdict-only): the reason Luau
+// names is printed in a failure, never compared. Red at the base, where the
+// Luau reader read a zero bound as no bound and accepted 4097.
 func TestLuauVocabularyDefaultEntryBound(t *testing.T) {
 	t.Parallel()
+	luauVocabularyDefaultEntryBound(t, nil)
+}
+
+// TestLuauVocabularyDefaultEntryBoundReasonIsDiagnostic renames the Luau
+// runtime's refusal reason for an oversized vocabulary: the verdict is
+// unchanged, so the bound test must stay green (refusal-verdict-only).
+func TestLuauVocabularyDefaultEntryBoundReasonIsDiagnostic(t *testing.T) {
+	t.Parallel()
+	luauVocabularyDefaultEntryBound(t, func(t *testing.T, runtime map[string][]byte) {
+		src := string(runtime["schema_message.luau"])
+		if n := strings.Count(src, `"vocabulary_too_large"`); n == 0 {
+			t.Fatalf("NEGATIVE CONTROL FAILED: schema_message.luau no longer names \"vocabulary_too_large\"")
+		}
+		runtime["schema_message.luau"] = []byte(strings.ReplaceAll(src, `"vocabulary_too_large"`, `"renamed_by_the_plant"`))
+	})
+}
+
+func luauVocabularyDefaultEntryBound(t *testing.T, plant func(*testing.T, map[string][]byte)) {
+	t.Helper()
 	slowtest.Gate(t, "luau (the pinned release)")
 	want := map[string]string{}
 	inputs := map[string][]byte{}
@@ -800,22 +821,26 @@ func TestLuauVocabularyDefaultEntryBound(t *testing.T) {
 		err := v.AnnounceRead(data, &r)
 		switch {
 		case err == nil && !r.Refused:
-			want[name] = "accept\t-"
+			want[name] = "accept"
 		case err != nil:
 			var mr *tablewire.MessageRefusal
 			if !errors.As(err, &mr) {
-				t.Fatalf("%s: engine returned an unnamed refusal: %v", name, err)
+				t.Fatalf("%s: the engine failed without a refusal: %v", name, err)
 			}
-			want[name] = "refuse\t" + mr.Reason.String()
+			want[name] = "refuse"
 		default:
 			t.Fatalf("%s: the engine read the hand-built announcement as damaged", name)
 		}
 	}
-	if want["entries_4096"] != "accept\t-" || want["entries_4097"] != "refuse\tvocabulary_too_large" {
+	if want["entries_4096"] != "accept" || want["entries_4097"] != "refuse" {
 		t.Fatalf("the engine oracle moved: %q", want)
 	}
+	runtime := luautable.Runtime()
+	if plant != nil {
+		plant(t, runtime)
+	}
 	dir := t.TempDir()
-	for name, data := range luautable.Runtime() {
+	for name, data := range runtime {
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -844,8 +869,9 @@ end
 		got[name] = rest
 	}
 	for name, w := range want {
-		if got[name] != w {
-			t.Errorf("FIX-CARD: luau-hostile-corpus: %s got %q want %q (the engine's verdict)", name, got[name], w)
+		verdict, _, _ := strings.Cut(got[name], "\t")
+		if verdict != w {
+			t.Errorf("FIX-CARD: luau-hostile-corpus: %s got %q want %s (the engine's verdict; the reason is diagnostic only)", name, got[name], w)
 		}
 	}
 }
