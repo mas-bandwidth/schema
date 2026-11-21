@@ -435,8 +435,24 @@ local function digits_less(a, b)
   return a < b
 end
 
+-- the kinds whose storage is wider than 32 bits, which JSON spells as a
+-- string of digits (docs/SPEC-TABLES.md §16.2; json.lua is_wide_integer_kind)
+local function wide_json_kind(kind)
+  return kind == 5 or kind == 9 or kind == 18 or kind == 19 or kind == 23 or kind == 24 or kind == 28 or kind == 29
+end
+
 local function int_bounds(d)
-  if d.lo ~= nil and d.hi ~= nil then return tostring(d.lo), tostring(d.hi) end
+  if d.shape == "wide" then
+    -- a 128-bit kind's range; a declared range is the JSON read's to check,
+    -- refused there out_of_range and so text_bound here
+    if d.signed then
+      return "-170141183460469231731687303715884105728", "170141183460469231731687303715884105727"
+    end
+    return "0", "340282366920938463463374607431768211455"
+  end
+  if math.type(d.lo) == "integer" and math.type(d.hi) == "integer" and (d.signed or (d.lo >= 0 and d.hi >= 0)) then
+    return tostring(d.lo), tostring(d.hi)
+  end
   local bits = d.bits
   if bits == nil or bits <= 0 then bits = (d.width or 8) * 8 end
   if d.signed then
@@ -673,7 +689,13 @@ resolve_value = function(T, d, node, labels)
       return quote(node.v)
     end
     if node.k ~= "num" then fail("text_kind_mismatch", node.pos) end
+    -- §16.9.2: an integer of any width is a number here; the JSON it
+    -- resolves to spells a kind wider than 32 bits as its string (§16.2)
+    if wide_json_kind(d.kind) then return quote(integer_text(d, node)) end
     return integer_text(d, node)
+  elseif s == "wide" then
+    if node.k ~= "num" then fail("text_kind_mismatch", node.pos) end
+    return quote(integer_text(d, node))
   elseif s == "float" then
     if node.k ~= "num" then fail("text_kind_mismatch", node.pos) end
     local x = tonumber(node.v)
