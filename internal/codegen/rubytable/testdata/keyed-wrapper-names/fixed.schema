@@ -1,0 +1,24 @@
+// F-083 and F-084 on the fixed form, whose plan finds each keyed wrapper by
+// name in the unit's fixed class registry: a declared fixed table spelled like
+// the old wrapper name, and two keyed fields whose old names coincide.
+package league
+
+enum Team { red, blue }
+
+enum Phase { a, b, c }
+
+fixed table Quest
+{
+    rank       [Team]int32
+    rank_value [Team]int32
+}
+
+fixed table QuestRankKeyedArray
+{
+    v int32
+}
+
+fixed table QuestRank
+{
+    value [Phase]int32
+}

@@ -1,0 +1,23 @@
+// The control: the same shapes with names that never met the old wrapper
+// spellings (Stella's renames, QuestRankInventory and QuestPhase).
+package league
+
+enum Team { red, blue }
+
+enum Phase { a, b, c }
+
+table Quest
+{
+    rank       [Team]int32
+    rank_value [Team]int32
+}
+
+table QuestRankInventory
+{
+    v int32
+}
+
+table QuestPhase
+{
+    value [Phase]int32
+}

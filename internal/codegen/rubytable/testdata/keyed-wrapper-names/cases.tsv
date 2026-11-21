@@ -1,0 +1,24 @@
+# The committed corpus of TestRubyKeyedWrapperNames (F-083, F-084).
+# id	schema	probe (a Ruby expression in the unit module League)	expect
+# expect is "held <inspect>" when the expression answers, "raised <Class>"
+# when it raises.
+f083-assign	declared	q = Quest.new; q.rank[1] = 3; q.rank[2] = 4; q.rank._values	held [3, 4]
+f083-roundtrip	declared	q = Quest.new; q.rank[1] = 3; q.rank[2] = 4; Quest.load(q.save).rank._values	held [3, 4]
+f083-json	declared	q = Quest.new; q.rank[2] = 7; Quest.from_json(q.to_json).rank._values	held [0, 7]
+f083-table-own	declared	t = QuestRankKeyedArray.new; t.v = 5; QuestRankKeyedArray.load(t.save).v	held 5
+f083-table-class	declared	QuestRankKeyedArray.new.is_a?(SchemaTable::KeyedArray)	held false
+f083-third	declared	Quest.new.rank[3] = 1	raised IndexError
+f084-size-team	twowrappers	Quest.new.rank_value.key_max	held 2
+f084-size-phase	twowrappers	QuestRank.new.value.key_max	held 3
+f084-third-team	twowrappers	Quest.new.rank_value[3] = 1	raised IndexError
+f084-third-phase	twowrappers	r = QuestRank.new; r.value[3] = 9; QuestRank.load(r.save).value._values	held [0, 0, 9]
+f084-distinct	twowrappers	Quest.new.rank_value.class == QuestRank.new.value.class	held false
+fixed-assign	fixed	q = Quest.new; q.rank[1] = 3; q.rank_value[2] = 4; Quest.fixed_load(Quest.fixed_save([q]))[0].then { |x| [x.rank._values, x.rank_value._values] }	held [[3, 0], [0, 4]]
+fixed-size	fixed	[Quest.new.rank_value.key_max, QuestRank.new.value.key_max]	held [2, 3]
+fixed-phase	fixed	r = QuestRank.new; r.value[3] = 9; QuestRank.fixed_load(QuestRank.fixed_save([r]))[0].value._values	held [0, 0, 9]
+fixed-table-own	fixed	t = QuestRankKeyedArray.new; t.v = 5; QuestRankKeyedArray.fixed_load(QuestRankKeyedArray.fixed_save([t]))[0].v	held 5
+fixed-third	fixed	Quest.new.rank_value[3] = 1	raised IndexError
+control-assign	control	q = Quest.new; q.rank[1] = 3; q.rank_value[2] = 4; [q.rank._values, q.rank_value._values]	held [[3, 0], [0, 4]]
+control-size	control	[Quest.new.rank_value.key_max, QuestPhase.new.value.key_max]	held [2, 3]
+control-table-own	control	t = QuestRankInventory.new; t.v = 5; QuestRankInventory.load(t.save).v	held 5
+control-third	control	Quest.new.rank[3] = 1	raised IndexError

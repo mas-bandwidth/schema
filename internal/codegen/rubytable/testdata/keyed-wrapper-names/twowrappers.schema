@@ -1,0 +1,18 @@
+// F-084: two keyed-array fields whose (table, field) pairs concatenate to one
+// spelling, Quest + rank_value and QuestRank + value. Each owes its own
+// wrapper, sized by its own key enum (Team has two variants, Phase three).
+package league
+
+enum Team { red, blue }
+
+enum Phase { a, b, c }
+
+table Quest
+{
+    rank_value [Team]int32
+}
+
+table QuestRank
+{
+    value [Phase]int32
+}

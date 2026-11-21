@@ -1,0 +1,16 @@
+// F-083: a declared table spelled like the keyed-array wrapper the Ruby
+// emitter used to invent for Quest.rank (<Table><Field>KeyedArray). The
+// declaration is legal; the wrapper must not share its name.
+package league
+
+enum Team { red, blue }
+
+table Quest
+{
+    rank [Team]int32
+}
+
+table QuestRankKeyedArray
+{
+    v int32
+}
