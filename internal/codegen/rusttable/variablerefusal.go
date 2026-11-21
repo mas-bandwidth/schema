@@ -206,13 +206,28 @@ func variableFieldConstruct(f *ir.Field) string {
 		inner.Array = ir.ArrayNone
 		inner.ArrayBound = 0
 		return variableFieldConstruct(&inner)
-	case f.Array == ir.ArrayCounted && f.ArrayMin > 0:
-		return "a counted array with a declared minimum [Min..N]T is outside the variable class this leg carries (§3)"
+	case f.Array == ir.ArrayCounted && f.ArrayMin > 0 && !countedMinCarried(f):
+		return "a counted array with a declared minimum [Min..N]T of text, bytes, union or pointer elements is outside the variable class this leg carries (§3)"
 	}
 	if ref, ok := f.Type.Ref.(*ir.Union); ok {
 		return unionFieldConstruct(ref, map[*ir.Union]bool{})
 	}
 	return ""
+}
+
+// countedMinCarried reports a [Min..N]T whose element this leg's variable
+// codec carries at its birth count (ir.Field.BornCount, SPEC §4.6): a scalar,
+// an enum or a table by value. A fresh value holds Min elements at their
+// zero, the save elides exactly that, and a read below Min refuses.
+func countedMinCarried(f *ir.Field) bool {
+	if f.IsTextList() || f.Type.Pointer || f.Type.Optional || f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
+		return false
+	}
+	switch classOf(f) {
+	case vScalar, vEnum, vTable:
+		return true
+	}
+	return false
 }
 
 func unionFieldConstruct(un *ir.Union, seen map[*ir.Union]bool) string {
