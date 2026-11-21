@@ -389,99 +389,83 @@ func TestJudgeRefusesARunThatComparedNothing(t *testing.T) {
 	}
 }
 
-// pins is a fake whose packet drivers write the pin files it names: a driver
-// maps to its file names, and a driver with none completes having written
-// nothing. stopped makes every run fail its own check after writing.
-type pins struct {
-	fake
-	files   map[string][]string
-	stopped bool
-}
-
-func (f pins) Packet(d PacketDriver, tree, out string) (bool, error) {
-	dir := filepath.Join(out, "testdata", "wire")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return false, err
+// TestJudgeCorpus replays the committed judge corpus (testdata/judge-corpus)
+// through the real Judge: the same cases `releasediff -judge-corpus` runs
+// before every release differential. F-142 is three of them: two completed
+// runs of one driver under an equal id, where the driver's only pin is gone
+// from the new side, renamed on it, or new on it, so no file name overlaps.
+// CompareTrees reported the listing difference and Judge returned at "no
+// encoding in common" before recording it; the release passed on the other
+// drivers. The controls beside them are the reviewer's: identical outputs
+// pass, an extra pin beside a common one refuses, and two runs that stopped
+// early are not held to their listing.
+func TestJudgeCorpus(t *testing.T) {
+	t.Parallel()
+	cases, err := ReadJudgeCorpus(filepath.Join("testdata", "judge-corpus"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, name := range f.files[d.Name] {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte("\x01"), 0o644); err != nil {
-			return false, err
+	for _, id := range []string{"identical", "pin-removed", "pin-renamed", "pin-new-side-only", "pin-extra", "both-stopped-early"} {
+		if !slices.ContainsFunc(cases, func(c JudgeCase) bool { return c.ID == id }) {
+			t.Errorf("the corpus has lost the case %s", id)
 		}
 	}
-	if f.stopped {
-		return true, errors.New("FAILED: buffer[0] == 0x51 (test/main.cpp:194)")
-	}
-	return true, nil
-}
-
-// TestJudgeRefusesAPinOnOneSideOnlyWhenNoNameOverlaps is F-142. Two completed
-// runs of one driver under an equal id: the previous release writes the
-// driver's only pin and the new compiler writes none, or writes it under
-// another name. CompareTrees reports the listing difference; Judge returned at
-// "no encoding in common" before recording it, the other drivers compared, and
-// the release passed with a packet writer regression in it. The controls are
-// hers: identical outputs pass, an extra pin beside a common one refuses, and
-// a run that stopped early is still not held to its listing.
-func TestJudgeRefusesAPinOnOneSideOnlyWhenNoNameOverlaps(t *testing.T) {
-	t.Parallel()
-	m := &Manifest{
-		Units:     map[string][]string{"same": {"tables/same"}},
-		Keys:      []string{"same"},
-		Instances: []Instance{{"s1", "same", "Root"}},
-	}
-	base := fake{
-		ids:  map[string]string{"examples": "0x1", "examples128": "0x2", "bench/corpus/Bench.schema": "0x6", "bench/corpus/RealWorld.schema": "0x7", "tables/same": "0x3"},
-		pack: map[string]string{"s1/v": "\x01", "s1/m": "\x02"},
-	}
-	side := func(name string, examples128 []string, stopped bool) pins {
-		f := base
-		f.name = name
-		return pins{fake: f, stopped: stopped, files: map[string][]string{
-			"examples": {"a.bin"}, "examples128": examples128, "bench": {"b.bin"},
-		}}
-	}
-	tree := writeTree(t, map[string]string{"test/main.cpp": "", "test/ludicrous_main.cpp": "", "test/bench/main.cpp": ""})
-	for _, c := range []struct {
-		name     string
-		old, new pins
-		want     string // a difference that must be there; "" is no difference at all
-	}{
-		{"control: identical outputs", side("v3.0.1", []string{"wide.bin"}, false), side("HEAD", []string{"wide.bin"}, false), ""},
-		{"the new side's only pin is gone", side("v3.0.1", []string{"wide.bin"}, false), side("HEAD", nil, false),
-			"packet wire, unit examples128, instance wide.bin"},
-		{"the new side's only pin is renamed", side("v3.0.1", []string{"wide.bin"}, false), side("HEAD", []string{"wider.bin"}, false),
-			"packet wire, unit examples128, instance wide.bin"},
-		{"the previous side wrote none and the new side one", side("v3.0.1", nil, false), side("HEAD", []string{"wide.bin"}, false),
-			"packet wire, unit examples128, instance wide.bin"},
-		{"control: an extra pin beside a common one", side("v3.0.1", []string{"wide.bin"}, false), side("HEAD", []string{"wide.bin", "extra.bin"}, false),
-			"packet wire, unit examples128, instance extra.bin"},
-		{"control: both runs stopped early, so a listing is not held", side("v3.0.1", []string{"wide.bin"}, true), side("HEAD", nil, true), ""},
-	} {
-		t.Run(c.name, func(t *testing.T) {
+	for _, c := range cases {
+		t.Run(c.ID, func(t *testing.T) {
 			t.Parallel()
-			r, err := Judge(c.old, c.new, []string{tree}, m, "json", t.TempDir(), 3)
-			if err != nil {
+			if err := RunJudgeCase(filepath.Join("testdata", "judge-corpus"), c, t.TempDir()); err != nil {
 				t.Fatal(err)
 			}
-			if c.want == "" {
-				if len(r.Differences) != 0 {
-					t.Fatalf("differences %q; want none", r.Differences)
-				}
-				return
-			}
-			if !slices.ContainsFunc(r.Differences, func(d string) bool { return strings.HasPrefix(d, c.want) }) {
-				t.Fatalf("differences %q; want one starting %q", r.Differences, c.want)
-			}
-			if !r.Refused() {
-				t.Fatal("a pin on one side only did not refuse the release")
-			}
-			// the driver is still listed as having nothing in common, where
-			// that is so: the difference is added, the listing is kept
-			if len(c.new.files["examples128"]) < 2 && !slices.ContainsFunc(r.Uncompared, func(u string) bool {
-				return strings.HasPrefix(u, "packet examples128: the two runs wrote no encoding in common")
-			}) {
-				t.Errorf("uncompared %q does not list the driver", r.Uncompared)
-			}
 		})
+	}
+}
+
+// TestJudgeCorpusRunnerNeverPassesOnNothing: the runner over an empty corpus,
+// a case folder the index does not name, a case with no verdict, and a case
+// whose verdict is not the one Judge comes to are each an error.
+func TestJudgeCorpusRunnerNeverPassesOnNothing(t *testing.T) {
+	t.Parallel()
+	plant := func(index string, listings map[string]string) string {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "CASES.tsv"), []byte(index), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		for path, body := range listings {
+			p := filepath.Join(dir, filepath.FromSlash(path))
+			if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return dir
+	}
+	same := "examples\ta.bin\t01\nexamples128\tw.bin\t07\nbench\tb.bin\t03\n"
+	whole := map[string]string{"one/previous.tsv": same, "one/new.tsv": same}
+
+	lines, err := RunJudgeCorpus(plant("one\tpass\tcontrol\n", whole), t.TempDir())
+	if err != nil || !strings.Contains(strings.Join(lines, "\n"), "all 1 case(s)") {
+		t.Fatalf("CONTROL FAILED: a corpus of one passing case: %v\n%s", err, strings.Join(lines, "\n"))
+	}
+	for _, tc := range []struct {
+		name, index string
+		listings    map[string]string
+		says        string
+	}{
+		{"an empty corpus", "# no case\n", nil, "names no case"},
+		{"no index", "", nil, "names no case"},
+		{"a case folder the index does not name", "one\tpass\tcontrol\n", map[string]string{"one/previous.tsv": same, "one/new.tsv": same, "two/new.tsv": same}, "CASES.tsv does not name it: an unread case"},
+		{"a case with no verdict", "one\t\tcontrol\n", whole, "a case is id, verdict"},
+		{"a refusal that names nothing", "one\trefuse:\tcontrol\n", whole, "a case is id, verdict"},
+		{"a case named twice", "one\tpass\ta\none\tpass\tb\n", whole, "named twice"},
+		{"a case with no listing", "one\tpass\tcontrol\n", map[string]string{"one/previous.tsv": same}, "new.tsv"},
+		{"a listing of no driver", "one\tpass\tcontrol\n", map[string]string{"one/previous.tsv": same, "one/new.tsv": "# nothing\n"}, "lists no driver"},
+		{"a verdict Judge does not come to", "one\trefuse:packet wire, unit examples128\tcontrol\n", whole, "owes a refusal"},
+		{"a pass Judge refuses", "one\tpass\tcontrol\n", map[string]string{"one/previous.tsv": same, "one/new.tsv": strings.Replace(same, "07", "08", 1)}, "owes a pass and the release was refused"},
+	} {
+		if _, err := RunJudgeCorpus(plant(tc.index, tc.listings), t.TempDir()); err == nil || !strings.Contains(err.Error(), tc.says) {
+			t.Errorf("%s: want an error saying %q, got %v", tc.name, tc.says, err)
+		}
 	}
 }

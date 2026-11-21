@@ -824,7 +824,19 @@ func main() {
 	serialize := flag.String("serialize", "../serialize", "the serialize C++ runtime the packet drivers include")
 	work := flag.String("work", "build/release-differential", "the scratch directory, emptied first")
 	jobs := flag.Int("j", runtime.NumCPU(), "encodings at once")
+	judgeCorpus := flag.String("judge-corpus", "", "replay this committed corpus of Judge cases and exit (testdata/judge-corpus)")
 	flag.Parse()
+	if *judgeCorpus != "" {
+		lines, err := RunJudgeCorpus(*judgeCorpus, filepath.Join(*work, "judge-corpus"))
+		for _, line := range lines {
+			fmt.Println(line)
+		}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "release-differential: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if err := run(*prev, *rev, *oldBin, *newBin, *corpus, *serialize, *work, *jobs); err != nil {
 		if !errors.Is(err, errRefused) {
 			fmt.Fprintf(os.Stderr, "release-differential: %v\n", err)
