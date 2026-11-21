@@ -4080,6 +4080,13 @@ func rustConstantClaim(gen string) string {
 		ir.RustConstName(gen), gen)
 }
 
+// JavaScriptUnbindableNames is every name a schema declaration cannot take
+// because the generated JavaScript module or its TypeScript declaration file
+// cannot bind it (SPEC §4.6, §6.1), and that no other rule already refuses.
+func JavaScriptUnbindableNames() []string {
+	return []string{"eval", "arguments", "undefined", "unknown", "never", "symbol", "number", "bigint"}
+}
+
 // checkClaimedNames builds the FULL top-level symbol table generation will
 // produce — every declaration plus every derived name any target emits (the
 // split functions, constructors, size constants, tag/variant constants, the
@@ -4126,6 +4133,20 @@ func (c *checker) checkClaimedNames() {
 	// (internal/codegen/js, internal/codegen/jstable).
 	for _, gen := range []string{"NUMBER_SCRATCH", "BIGINT_SCRATCH", "BOOL_SCRATCH", "SC", "PRODUCTION", "FlatReadSlack", "validText", "globalThis"} {
 		add(gen, "a binding every generated JavaScript packet module declares (SPEC §6.1)", unitPos)
+	}
+	// THE NAMES NO JAVASCRIPT MODULE OR DECLARATION FILE CAN BIND. A
+	// declaration becomes a module-scope binding of its own name (a class, a
+	// const) and a declaration of it in the .d.ts. An ES module is strict
+	// code: it refuses eval and arguments as a binding. undefined is the
+	// value the modules compare against. TypeScript refuses a class or enum
+	// named after one of its own predefined types (unknown, never, symbol,
+	// number, bigint, undefined; the rest are refused already, as another
+	// target's reserved word or the schema's own). A FIELD of any of these is
+	// a property and binds nothing, so the refusal is here, at the
+	// declaration, and not among the reserved words, which refuse every kind
+	// of name.
+	for _, gen := range JavaScriptUnbindableNames() {
+		add(gen, "a name no generated JavaScript module or TypeScript declaration can bind (an ES module refuses eval and arguments as bindings, undefined is the value its code compares against, and TypeScript refuses a declaration named after a predefined type)", unitPos)
 	}
 	// THE VIEW'S OWN UNIT-SCOPE SPELLINGS (docs/SPEC-TABLES.md §8.3, §11),
 	// refused as declaration names in EVERY unit, always. They belong to the
