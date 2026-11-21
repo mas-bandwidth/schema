@@ -95,10 +95,11 @@ type Compiler struct {
 	canonical []string             // one per registered generator, its first name
 }
 
-// New returns a driver with the built-in generators registered — c, cpp, cs
-// (csharp), dart, elixir, go, java, js (javascript) and rust — and the load
-// policy the CLI runs on: no writes to the input tree. Set
-// [Compiler.FormatInPlace] to canonicalize the sources on the way in.
+// New returns a driver with every built-in generator this build carries
+// registered — [Compiler.Targets] lists them, and they are the --lang values
+// the CLI accepts — and the load policy the CLI runs on: no writes to the
+// input tree. Set [Compiler.FormatInPlace] to canonicalize the sources on the
+// way in.
 func New() *Compiler {
 	c := &Compiler{}
 	for _, g := range builtins() {
