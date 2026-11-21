@@ -40,7 +40,12 @@ func refuseMaps(u *ir.Unit, target string) error {
 // carries `?map[K]V` first, and a target that carries the plain map is refused
 // too, because its writer would elide a present empty map as absent.
 func refuseOptionalMaps(u *ir.Unit, target string) error {
-	if fields := ir.OptionalMapFields(u); !carries(target, carryOptionalMap) && len(fields) > 0 {
+	return refuseOptionalMapsBy(u, target, func(construct string) bool { return carries(target, construct) })
+}
+
+// refuseOptionalMapsBy is refuseOptionalMaps with the carrier answer given.
+func refuseOptionalMapsBy(u *ir.Unit, target string, has func(string) bool) error {
+	if fields := ir.OptionalMapFields(u); !has(carryOptionalMap) && len(fields) > 0 {
 		return fmt.Errorf("target %q refuses the construct optional map on field %s — ?map[K]V is Go's first; no other target carries it until its turn (docs/SPEC-TABLES.md §2.8)", target, fields[0])
 	}
 	return nil
