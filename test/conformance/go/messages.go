@@ -15,6 +15,7 @@ import (
 	"tblk2"
 	"tblm1"
 	"tblm2"
+	"tblprior"
 	tblscalars2 "tblscalars2"
 	"tblv1"
 	"tblv2"
@@ -151,7 +152,14 @@ func surfaceMessage(lines []line, out string) error {
 		}
 		answer, report, ok := codec.run(announcement, wire, false)
 		if !ok {
-			return fmt.Errorf("%s: message load/save %+v", f[1], report)
+			// THE ANSWER IS WHAT THE PUBLIC READ RETURNED: a batch the read
+			// refuses delivers no body, so the row is answered refused and
+			// nothing is saved. Whether the row owed a refusal is the
+			// harness's to say; a row that owed bytes is failed by it.
+			if err := spillAbsentReason(out, f[1], fmt.Sprintf("refused: %+v", report)); err != nil {
+				return err
+			}
+			continue
 		}
 		if err := spill(out, f[1], answer); err != nil {
 			return err
@@ -229,6 +237,15 @@ var messageCodecs = []messageCodec{
 		v.Init(make([]tblvarevo3.TableMessageEntry, max(4096, tblvarevo3.TableMessageEntriesHere)))
 		return v
 	}, tblvarevo3.AnnounceMeasure, tblvarevo3.Announce, tblvarevo3.AnnounceRead, tblvarevo3.EvoMsgLoadMessages, tblvarevo3.EvoMsgMeasureMessages, tblvarevo3.EvoMsgSaveMessages, func(r *tblvarevo3.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}),
+	// the prior-writer rows (FORMAT.md `message-prior`): one field per shape a
+	// ranged value takes, read against an earlier release's announcement
+	messageRow("tblprior", "Prior", tblprior.PriorReset, func() *tblprior.TableVocabulary {
+		v := new(tblprior.TableVocabulary)
+		v.Init(make([]tblprior.TableMessageEntry, max(4096, tblprior.TableMessageEntriesHere)))
+		return v
+	}, tblprior.AnnounceMeasure, tblprior.Announce, tblprior.AnnounceRead, tblprior.PriorLoadMessages, tblprior.PriorMeasureMessages, tblprior.PriorSaveMessages, func(r *tblprior.TableReport) report {
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),
 	messageRow("tblvarevo2", "EvoMsg", tblvarevo2.EvoMsgReset, func() *tblvarevo2.TableVocabulary {

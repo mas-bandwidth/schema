@@ -160,6 +160,10 @@ require tblvarevo3 v0.0.0
 
 replace tblvarevo3 => ../../../build/tables-generated-go/varevo3
 
+require tblprior v0.0.0
+
+replace tblprior => ../../../build/tables-generated-go/prior
+
 require cooktorture v0.0.0
 
 replace cooktorture => ../../../build/tables-generated-go/cooktorture

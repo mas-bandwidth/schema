@@ -351,6 +351,10 @@ type expectation struct {
 	// nil means the row owes no wire (a refusal, or a surface that does not
 	// write one).
 	save []byte
+	// codec names, for a message row every reader refuses, a row of the same
+	// unit and root that every reader READS: the refusal is scored as one
+	// only from a leg that answered that row with bytes.
+	codec string
 	// verdictOnly scores the first line alone: a json-hostile row's uncarried
 	// verdict is a port's behaviour before the ruling, and the value that
 	// behaviour leaves is not the standard's.
@@ -458,7 +462,7 @@ func expectations(m *Manifest, surface string, reports map[string]string, jsonDi
 		}
 		for _, md := range m.MessageDrifts {
 			if md.Refused() {
-				out = append(out, expectation{name: md.Name})
+				out = append(out, expectation{name: md.Name, codec: m.driftCodecWitness(md)})
 				continue
 			}
 			want, err := os.ReadFile(md.SaveWire)
@@ -878,6 +882,18 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 			r.failures = append(r.failures, fmt.Sprintf("%s: expected refusal, driver wrote nothing", e.name))
 			r.mark(e.name, outcomeFail)
 			return
+		}
+		if e.codec != "" {
+			// A REFUSAL IS AN ANSWER ONLY FROM A LEG THAT CAN READ THE ROOT.
+			// The marker is the one a leg with no codec writes too, so a
+			// prior-writer row counts it as a refusal only beside the bytes
+			// the same leg wrote for a row of the same root that reads;
+			// without them the leg never ran the read, and the row is absent.
+			if _, err := os.Stat(filepath.Join(out, e.codec)); err != nil {
+				r.missing++
+				r.mark(e.name, outcomeAbsent)
+				return
+			}
 		}
 		r.pass++
 		r.mark(e.name, outcomePass)
