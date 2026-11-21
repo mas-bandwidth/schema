@@ -8,8 +8,9 @@
 //	hostile-ledger end
 //
 // This tool reads the runner's log and the corpus folder and compares the two
-// SETS of names: every registered case ran (as many rows as its carrier owes),
-// no name ran that the folder does not register, and a case or a carrier a
+// SETS of names: every registered case ran (every row of it, each by its own
+// id, where a carrier is read as several), no name ran that the folder does
+// not register, and a case or a carrier a
 // list holds by name did not run. A count is not enough: a run of the right
 // number of the wrong cases is red by name. A log with no ledger, a run of
 // nothing and a stale held name are red too. The names come from the folder
@@ -25,7 +26,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strconv"
+	"slices"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/ci/hostilecorpus"
@@ -38,10 +39,10 @@ func main() {
 	runs := flag.Int("runs", 1, "how many times the runner goes over the corpus")
 	skips := flag.String("skips", "", "cases held by name: name<TAB>reason lines")
 	carriers := flag.String("absent-carriers", "", "carriers held by name: carrier<TAB>reason lines")
-	rows := flag.String("rows", "", "rows a case owes where that is not one: <carrier>=<n>, comma separated")
+	rows := flag.String("rows", "", "the rows a case of a carrier owes, each by its id suffix: <carrier>=<row>,<row>,... (a row prints as <case>@<row>)")
 	flag.Parse()
 	if *port == "" || *logPath == "" || flag.NArg() != 0 {
-		fmt.Fprintln(os.Stderr, "usage: hostileledger -port <port> -log <runner output> [-corpus dir] [-runs n] [-skips tsv] [-absent-carriers tsv] [-rows carrier=n]")
+		fmt.Fprintln(os.Stderr, "usage: hostileledger -port <port> -log <runner output> [-corpus dir] [-runs n] [-skips tsv] [-absent-carriers tsv] [-rows carrier=row,row]")
 		os.Exit(2)
 	}
 	out, err := check(*port, *corpus, *logPath, *runs, *skips, *carriers, *rows)
@@ -53,14 +54,14 @@ func main() {
 }
 
 func check(port, corpus, logPath string, runs int, skipsPath, carriersPath, rowsSpec string) (string, error) {
-	rows := hostilecorpus.Counts{}
-	for _, spec := range strings.Fields(strings.ReplaceAll(rowsSpec, ",", " ")) {
-		carrier, n, ok := strings.Cut(spec, "=")
-		count, err := strconv.Atoi(n)
-		if !ok || carrier == "" || err != nil || count < 1 {
-			return "", fmt.Errorf("-rows %q: want <carrier>=<rows a case of it owes>", spec)
+	rows := map[string][]string{}
+	for _, spec := range strings.Fields(rowsSpec) {
+		carrier, list, ok := strings.Cut(spec, "=")
+		names := strings.Split(list, ",")
+		if !ok || carrier == "" || slices.Contains(names, "") || len(names) != len(slices.Compact(slices.Sorted(slices.Values(names)))) {
+			return "", fmt.Errorf("-rows %q: want <carrier>=<row>,<row>,... with every row named once", spec)
 		}
-		rows[carrier] = count
+		rows[carrier] = names
 	}
 	cases, err := hostilecorpus.Registered(corpus)
 	if err != nil {
@@ -87,19 +88,29 @@ func check(port, corpus, logPath string, runs int, skipsPath, carriersPath, rows
 	// THE NEGATIVE CONTROLS, on this log. One case's lines taken out is a
 	// runner that dropped it; the same lines under another name is a runner
 	// that ran the right NUMBER of cases and the wrong ones. Both must be red.
+	// the controls edit a copy with LF line endings: a runner on a CRLF
+	// platform prints the same records, and the parser already reads them
+	text := strings.ReplaceAll(string(log), "\r\n", "\n")
+	blocks, err := hostilecorpus.LedgerBlocks(text)
+	if err != nil {
+		return out, err
+	}
 	var victim string
 	for _, c := range cases {
-		if strings.Contains(string(log), "hostile-ledger ran "+c.Name+"\n") {
-			victim = c.Name
+		if id := hostilecorpus.RowIDs(c, rows)[0]; blocks[0][id] > 0 {
+			victim = id
 			break
 		}
 	}
 	line := "hostile-ledger ran " + victim + "\n"
-	dropped := strings.ReplaceAll(string(log), line, "")
-	if _, err := hostilecorpus.CheckLog(cases, dropped, runs, heldCases, heldCarriers, rows); err == nil || !strings.Contains(err.Error(), victim) {
+	dropped := strings.ReplaceAll(text, line, "")
+	if dropped == text {
+		return out, fmt.Errorf("NEGATIVE CONTROL FAILED: the control found no line of %q to take out", victim)
+	}
+	if _, err := hostilecorpus.CheckLog(cases, dropped, runs, heldCases, heldCarriers, rows); err == nil || !strings.Contains(err.Error(), strings.SplitN(victim, "@", 2)[0]) {
 		return out, fmt.Errorf("NEGATIVE CONTROL FAILED: the log without %s passed the ledger, or went red without naming it: %v", victim, err)
 	}
-	renamed := strings.ReplaceAll(string(log), line, "hostile-ledger ran "+victim+"-not-registered\n")
+	renamed := strings.ReplaceAll(text, line, "hostile-ledger ran "+victim+"-not-registered\n")
 	if _, err := hostilecorpus.CheckLog(cases, renamed, runs, heldCases, heldCarriers, rows); err == nil || !strings.Contains(err.Error(), victim+"-not-registered ran and the corpus does not register it") {
 		return out, fmt.Errorf("NEGATIVE CONTROL FAILED: the log with %s run under another name passed the ledger: %v", victim, err)
 	}

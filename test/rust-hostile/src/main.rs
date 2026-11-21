@@ -575,7 +575,10 @@ fn main() {
                 println!("PASS {name}");
                 passed += 1;
             }
-        } else if let Some(fc) = finding {
+        } else if let Some(fc) = finding.filter(|_| got.starts_with("accept ") || got.starts_with("refuse ")) {
+            // A FINDING CARRIES A READER'S VERDICT, never an execution failure
+            // (F-070): a timeout, a crash or a runner error is not the
+            // disagreement the finding names, and falls through to FAIL.
             println!("FIX-CARD: {}: {} {}", fc[1], fc[2], fc[3]);
             carried += 1;
         } else {

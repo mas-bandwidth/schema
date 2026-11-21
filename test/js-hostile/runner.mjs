@@ -680,7 +680,7 @@ async function run(corpus, genDir, serializeJs, findingsPath) {
     console.log(`SKIP ${r.id}: carrier ${r.carrier} has no JavaScript reader`);
   }
   // THE LEDGER (docs/HOSTILE-CORPUS.md): one line per ROW a reader answered,
-  // by its case's name. tools/hostileledger holds the lines to the corpus
+  // by the row's id (the case's name, and for a packet case its tier and mode). tools/hostileledger holds the lines to the corpus
   // folder, and it owes the rows from the folder, never from caseRows above:
   // one per case, and one per tier and mode for a packet case. A case this
   // file's own enumerator made no row for is therefore a case not run, and a
@@ -693,7 +693,7 @@ async function run(corpus, genDir, serializeJs, findingsPath) {
       unbound.push(row.id);
       return;
     }
-    ranRows.push(row.name);
+    ranRows.push(row.id);
     const w = want(row);
     const agrees = got.verdict === w.verdict && got.detail === w.detail;
     const finding = findings.get(row.id);
@@ -704,7 +704,10 @@ async function run(corpus, genDir, serializeJs, findingsPath) {
       } else {
         passed++;
       }
-    } else if (finding !== undefined) {
+      // A FINDING CARRIES A READER'S VERDICT, never an execution failure
+      // (F-070): an error answer (a worker over budget, a crash, a throw) is
+      // not the disagreement the finding names, and reads FAIL.
+    } else if (finding !== undefined && (got.verdict === "accept" || got.verdict === "refuse")) {
       console.log(`FIX-CARD: ${finding[1]}: ${finding[2]} ${finding[3]} (got ${show(got)})`);
       carried++;
     } else {
@@ -720,8 +723,8 @@ async function run(corpus, genDir, serializeJs, findingsPath) {
   }
   console.log(`${cases.length} cases, ${all.length} rows: ${passed} pass, ${carried} carried as FIX-CARD, ` +
     `${bad.length} unexplained, ${stale.length} stale, ${skipped.length} skipped, ${unbound.length} unbound`);
-  for (const name of ranRows) {
-    console.log(`hostile-ledger ran ${name}`);
+  for (const id of ranRows) {
+    console.log(`hostile-ledger ran ${id}`);
   }
   console.log("hostile-ledger end");
   process.exit(bad.length > 0 || stale.length > 0 || unbound.length > 0 ? 1 : 0);

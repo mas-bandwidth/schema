@@ -766,7 +766,11 @@ public final class Runner {
                     System.out.println("PASS " + name);
                     passed++;
                 }
-            } else if (finding != null) {
+            // A FINDING CARRIES A READER'S VERDICT, never an execution failure
+            // (F-070): a timeout, a crash or a reader missing from the
+            // classpath is not the disagreement the finding names, and reads
+            // FAIL whatever known-findings.tsv says about the case.
+            } else if (finding != null && (got.startsWith("accept ") || got.startsWith("refuse "))) {
                 System.out.println("FIX-CARD: " + finding[1] + ": " + finding[2] + " " + finding[3]);
                 carried++;
             } else {

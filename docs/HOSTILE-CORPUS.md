@@ -138,6 +138,41 @@ its port still owes in a `known-findings.tsv` beside the runner and prints them
 as FIX-CARDs. A disagreement no FIX-CARD names fails the run, and so does a
 FIX-CARD whose case has gone green.
 
+## The ledger
+
+A runner loops over the manifest, and its own summary cannot say whether the
+loop reached every row. So every runner proves it ran, against the corpus
+folder and by case name (`internal/ci/hostilecorpus/ledger.go`).
+
+- **What is registered** is read from the folder on every run: the rows of
+  `manifest.tsv`, with no case named twice and no file under `inputs/` that no
+  manifest in the folder names. No runner or recipe carries a count.
+- **What ran** is the set of case names the port's reader gave a verdict for.
+  A Go runner (the engine replay, `tools/hostilecorpusexec` for C and C++, and
+  the Lobster, Lua, Luau, Python, Ruby and Squirrel runners) keeps a ledger and
+  checks it. Every other runner prints one `hostile-ledger ran <case>` line per
+  row it answered, then `hostile-ledger end`, and `tools/hostileledger` holds
+  the log to the folder (`make/hostile-ledger.mk`).
+- **The comparison is of the two sets.** A registered case that did not run, a
+  name that ran and is not registered, a case run twice, and a run of nothing
+  are each red by name. A matching count of the wrong cases is red.
+- **A case a port does not run is held by name with a reason**, in a file
+  beside the runner: `known-skips.tsv` (C, C++, Rust), the Lobster
+  `hostile-absent-schemas.tsv`, the Ruby `ruby-hostile-reader-unavailable.tsv`,
+  and for Goose `absent-carriers.tsv` and `absent-cases.tsv`. A held case that
+  runs, or that the corpus no longer has, is stale and red. Goose is the only
+  port with held cases today: it reads the `wire` and `packet` carriers, 17 of
+  the 192 cases.
+- `tools/hostileledger` runs two negative controls on every log after a green
+  check: the log with one case's lines removed, and the log with one case run
+  under an unregistered name. Both must be red by name.
+
+The JavaScript runner reads a packet case as four rows (two tiers under two
+modes). Its recipe names them with `-rows`, and each is owed once by its own
+id (`<case>@<tier>-<mode>`), so one tier run twice does not stand in for the
+other. The Rust runner goes over the
+corpus once per build profile, so its recipe passes `-runs`.
+
 ## Reasons
 
 `damaged` is a read that reports a malformed/kind-mismatch event without naming

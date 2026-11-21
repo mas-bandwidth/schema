@@ -359,7 +359,10 @@ static class Runner
                     passed++;
                 }
             }
-            else if (finding != null)
+            // A FINDING CARRIES A READER'S VERDICT, never an execution failure
+            // (F-070): a timeout, a crash or a runner error is not the
+            // disagreement the finding names, and reads FAIL.
+            else if (finding != null && (c.Got.StartsWith("accept ", StringComparison.Ordinal) || c.Got.StartsWith("refuse ", StringComparison.Ordinal)))
             {
                 Console.WriteLine("FIX-CARD: " + finding[1] + ": " + finding[2] + " " + finding[3]);
                 carried++;

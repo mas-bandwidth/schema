@@ -466,7 +466,10 @@ func main() {
 		case got == want:
 			pass++
 			fmt.Printf("PASS %s\n", c.Name)
-		case owed:
+		// A FINDING CARRIES A READER'S VERDICT, never an execution failure
+		// (F-070): a case with no answer, or an answer that is neither an
+		// accept nor a refusal, fails whatever the findings file says.
+		case owed && ok && (a[0] == "accept" || a[0] == "refuse"):
 			carried++
 			fmt.Printf("FIX-CARD %s carrier=%s: %s (got %s, want %s)\n", c.Name, c.Carrier, finding, got, want)
 		default:

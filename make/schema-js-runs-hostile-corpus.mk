@@ -35,9 +35,14 @@ schema-js-hostile-generate: bin/schema
 	@rm -rf $(JS_HOSTILE_BUILD)/generated && mkdir -p $(JS_HOSTILE_BUILD)/generated
 	@$(NODE) test/js-hostile/runner.mjs generate "$(JS_HOSTILE_CORPUS)" $(JS_HOSTILE_BUILD)/generated ./bin/schema >/dev/null
 
+# The rows a packet case owes the ledger (tools/hostileledger -rows): both read
+# tiers under both modes, each by its own id, so four runs of one tier are
+# not two tiers twice. test/js-hostile/runner.mjs prints <case>@<tier>-<mode>.
+JS_HOSTILE_PACKET_ROWS := packet=runtime-development,runtime-production,flat-development,flat-production
+
 .PHONY: schema-js-runs-hostile-corpus
 schema-js-runs-hostile-corpus: schema-js-hostile-generate
-	$(call hostile_ledgered,js,$(JS_HOSTILE_BUILD)/run.log,$(NODE) test/js-hostile/runner.mjs run "$(JS_HOSTILE_CORPUS)" $(JS_HOSTILE_BUILD)/generated "$(JS_HOSTILE_SERIALIZE)" "$(JS_HOSTILE_FINDINGS)",$(JS_HOSTILE_CORPUS),-rows packet=4)
+	$(call hostile_ledgered,js,$(JS_HOSTILE_BUILD)/run.log,$(NODE) test/js-hostile/runner.mjs run "$(JS_HOSTILE_CORPUS)" $(JS_HOSTILE_BUILD)/generated "$(JS_HOSTILE_SERIALIZE)" "$(JS_HOSTILE_FINDINGS)",$(JS_HOSTILE_CORPUS),-rows $(JS_HOSTILE_PACKET_ROWS))
 
 test-js: schema-js-runs-hostile-corpus
 

@@ -239,9 +239,24 @@ func summary(registered, ran, skipped Counts) string {
 	return fmt.Sprintf("ran %d of %d registered, %d held by name (%s)", nran, nr, nskip, strings.Join(parts, ", "))
 }
 
+// RowIDs are the rows one case owes, by the id a runner prints for each: the
+// case's own name, or for a carrier read as several rows `<name>@<row>` for
+// each row the carrier names (the JavaScript runner reads a packet case in
+// two tiers under two modes, four rows that are each their own reader path).
+func RowIDs(c Case, rows map[string][]string) []string {
+	suffixes, ok := rows[c.Carrier]
+	if !ok {
+		return []string{c.Name}
+	}
+	out := make([]string, 0, len(suffixes))
+	for _, s := range suffixes {
+		out = append(out, c.Name+"@"+s)
+	}
+	return out
+}
+
 // LedgerBlocks reads every `hostile-ledger` block a runner printed: how many
-// rows it ran of each case, by the case's name, one block per run of the
-// corpus.
+// times it ran each row, by the row's id, one block per run of the corpus.
 func LedgerBlocks(log string) ([]Counts, error) {
 	var out []Counts
 	var cur Counts
@@ -278,16 +293,16 @@ func LedgerBlocks(log string) ([]Counts, error) {
 // of case names the runner ran against the set the folder registers. A count
 // is not enough (a runner that ran a held case in place of an owed one on the
 // same carrier has the right count), so a registered case that did not run, a
-// name that ran and is not registered, a held case that ran, and a case that
-// ran more or fewer rows than its carrier owes are each red by name.
+// row id that ran and is not registered, a held case that ran, and a row that
+// ran more or fewer times than once are each red by name.
 //
 // runs is how many times the runner goes over the corpus (the Rust runner
-// runs it once per build profile). rows is how many rows a case of a carrier
-// owes where that is not one (the JavaScript runner reads a packet case in
-// two tiers under two modes: four). heldCases names cases the port does not
+// runs it once per build profile). rows names the rows a case of a carrier
+// owes where that is not the one row of its own name (RowIDs): each is
+// tracked by its own id, so four runs of one tier are not two tiers twice. heldCases names cases the port does not
 // run, heldCarriers whole carriers it has no reader for; a held name the
 // corpus no longer registers is stale and red. It returns the green summary.
-func CheckLog(cases []Case, log string, runs int, heldCases, heldCarriers Held, rows Counts) (string, error) {
+func CheckLog(cases []Case, log string, runs int, heldCases, heldCarriers Held, rows map[string][]string) (string, error) {
 	blocks, err := LedgerBlocks(log)
 	if err != nil {
 		return "", err
@@ -330,33 +345,46 @@ func CheckLog(cases []Case, log string, runs int, heldCases, heldCarriers Held, 
 			bad = append(bad, fmt.Sprintf("rows are owed for the carrier %s, which has no case in the corpus", c))
 		}
 	}
+	owed := map[string]bool{}
+	for _, c := range cases {
+		for _, id := range RowIDs(c, rows) {
+			owed[id] = true
+		}
+	}
 	var last string
 	for i, ran := range blocks {
 		ranCases := Counts{}
 		total := 0
-		for name, n := range ran {
-			if _, ok := carrier[name]; !ok {
-				bad = append(bad, fmt.Sprintf("run %d: %s ran and the corpus does not register it", i+1, name))
+		for id, n := range ran {
+			if !owed[id] {
+				bad = append(bad, fmt.Sprintf("run %d: %s ran and the corpus does not register it", i+1, id))
 				continue
 			}
 			total += n
 		}
 		for _, c := range cases {
-			owes := 1
-			if n, ok := rows[c.Carrier]; ok {
-				owes = n
+			ids := RowIDs(c, rows)
+			got := 0
+			for _, id := range ids {
+				got += ran[id]
 			}
-			got := ran[c.Name]
 			switch {
 			case isHeld[c.Name] && got > 0:
 				bad = append(bad, fmt.Sprintf("run %d: %s (%s) is held by name and ran: delete its line", i+1, c.Name, c.Carrier))
 			case isHeld[c.Name]:
 			case got == 0:
 				bad = append(bad, fmt.Sprintf("run %d: %s (%s) is registered and was not run", i+1, c.Name, c.Carrier))
-			case got != owes:
-				bad = append(bad, fmt.Sprintf("run %d: %s (%s) ran %d row(s) and owes %d", i+1, c.Name, c.Carrier, got, owes))
 			default:
-				ranCases[c.Carrier]++
+				whole := true
+				for _, id := range ids {
+					if n := ran[id]; n != 1 {
+						whole = false
+						bad = append(bad, fmt.Sprintf("run %d: %s (%s): the row %s ran %d time(s) and owes 1", i+1, c.Name, c.Carrier, id, n))
+					}
+				}
+				if whole {
+					ranCases[c.Carrier]++
+				}
 			}
 		}
 		if total == 0 {

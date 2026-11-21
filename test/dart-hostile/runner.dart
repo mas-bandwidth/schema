@@ -497,7 +497,10 @@ Future<void> main(List<String> args) async {
       } else {
         passed++;
       }
-    } else if (finding != null) {
+      // A FINDING CARRIES A READER'S VERDICT, never an execution failure
+      // (F-070): an error answer (a timeout, a crash, an unbound reader) is
+      // not the disagreement the finding names, and reads FAIL.
+    } else if (finding != null && (got.verdict == 'accept' || got.verdict == 'refuse')) {
       stdout.writeln('FIX-CARD: ${finding[1]}: ${finding[2]} ${finding[3]} (got $got)');
       carried++;
     } else {
