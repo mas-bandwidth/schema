@@ -241,13 +241,16 @@ on a runtime library.
 
 ## Only nine languages. What about Python, Swift?
 
-Not supported today. The nine exist because they are what the authors ship
+Python is supported (below); Swift is not supported today. The nine exist because they are what the authors ship
 in: C++ engine, C# for Unity, Go for backend services, Rust for tooling,
 JavaScript for the browser client, Dart for Flutter clients, Elixir for the
 BEAM realtime services, Java for the JVM side of the estate.
 
-Python is being ported now, one layer at a time, and does not generate code
-yet: [PORT-PYTHON.md](PORT-PYTHON.md) is its design.
+Python generates code today: `--lang python` writes a package for the packet
+wire and both table classes, and [PORT-PYTHON.md](PORT-PYTHON.md) is its
+design. Its one open gap is a string, bytes or flags default on a packet
+`type`, which `--lang python` refuses; the roadmap data
+([roadmap.sexp](roadmap.sexp) and its evidence) marks that cell open.
 
 A new backend is a Go package that walks the same IR the existing nine consume,
 and the cross-language test harness would tell you immediately whether it

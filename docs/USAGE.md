@@ -319,7 +319,7 @@ by a generated tag.
 ```
 union ColliderShape
 {
-    box     BoxCollider
+    cube    BoxCollider
     sphere  SphereCollider
     capsule CapsuleCollider
     hull    HullCollider
@@ -339,7 +339,7 @@ declared order, then `Max`), and the wire is the tag in minimal
 bits for `[0, variant count]` followed by **the selected payload only**:
 
 ```cpp
-enum class ColliderShapeType : uint8_t { None = 0, Box = 1, Sphere = 2, Capsule = 3, Hull = 4, Max = 4 };
+enum class ColliderShapeType : uint8_t { None = 0, Cube = 1, Sphere = 2, Capsule = 3, Hull = 4, Max = 4 };
 
 struct ColliderShape
 {
@@ -347,7 +347,7 @@ struct ColliderShape
 
     union
     {
-        BoxCollider box;
+        BoxCollider cube;
         SphereCollider sphere;
         CapsuleCollider capsule;
         HullCollider hull;
@@ -355,7 +355,7 @@ struct ColliderShape
 
     ColliderShape() : type( ColliderShapeType::None ) {}
 
-    BoxCollider & SelectBox();         // sets the tag and constructs the arm (below)
+    BoxCollider & SelectCube();        // sets the tag and constructs the arm (below)
     SphereCollider & SelectSphere();
     CapsuleCollider & SelectCapsule();
     HullCollider & SelectHull();
@@ -370,7 +370,9 @@ before it rides. The representation is per target, all nine covered: C++ and
 C generate the tagged union above; Go, C#, JS, Dart and Java lay the
 tag beside one pre-allocated arm per variant with a payload; Elixir uses
 immutable structs with a tag and arm fields; Rust gets a real
-`enum ColliderShape { None, Box(BoxCollider), ... }`.
+`enum ColliderShape { None, Cube(BoxCollider), ... }`. (The arm is `cube`
+because `box` is a reserved word in Rust, and the checker refuses a name that
+is reserved in any target.)
 
 **In C++, select an arm with its setter.** Every arm gets a generated member
 function `Select<Variant>()` on the union struct. For an arm with a payload it
@@ -422,8 +424,8 @@ All nine targets carry payload-free arms in a `type` body. Select one by
 setting its tag alone: it has no payload to initialize. In C++ its setter,
 `Select<Variant>()` returning `void`, is that assignment. C and C++ emit no
 member for a payload-free arm, and omit the storage union entirely when no
-arm has a payload. Payload-free arms in a table closure are carried by C++, C, C#
-and Go; the other five targets refuse that table-side use (SPEC-TABLES.md §11).
+arm has a payload. Payload-free arms in a table closure are carried by every
+target in the default build too (SPEC-TABLES.md §2.6).
 
 **Building your protocol.** A union of payload types is a message system
 waiting for your framing, and the primitives compose into whichever framing
@@ -527,7 +529,7 @@ enum Rarity | loot
 table ShipConfig | designer_facing
 {
     /// The hull's structural health. A hull at zero is destroyed.
-    health   float32 = 100.0 | ui_slider, min = 0.0, max = 1000.0
+    health   float32 = 100.0 | ui_slider, min = 0.0, max = 1000.0, resolution = 0.1
     texture  uint64          | asset_ref
     nickname string(32)      | localized
 }
@@ -574,9 +576,8 @@ for the missing side, so `count int64 | min = 0` is exactly
 `count int64 | min = 0, max = 9223372036854775807` and
 `hi int32 | max = 100` is exactly `hi int32 | min = -2147483648, max = 100`
 (SPEC-TABLES.md §4). The one-sided spelling is the two-sided declaration —
-the same wire and generated code, byte for byte. Go carries it first, and
-every other target refuses it by name until its own turn (SPEC §4.6,
-docs/SPEC-TABLES.md §4). It applies to integer table
+the same wire and generated code, byte for byte. Every target in the default
+build carries it (SPEC §4.6, docs/SPEC-TABLES.md §4). It applies to integer table
 fields only; on a float, fixed-point, `int128`/`uint128`, timestamp or named
 type, beside `resolution`, or on a `type`/packet field it is refused by name.
 
@@ -801,8 +802,8 @@ previous packet through a branch that was not taken this time.
 **A `| required` field inside a branch applies only while the branch is
 taken.** With the branch off the field is absent and a read does not demand
 it; with the branch on it must ride and a read refuses a record missing it
-with `missing_required`. Go carries `| required` first; every other target
-refuses it by name until its own turn (SPEC §4.6, docs/SPEC-TABLES.md §2.3).
+with `missing_required`. Every target in the default build carries
+`| required` (SPEC §4.2, docs/SPEC-TABLES.md §2.3).
 
 ---
 
@@ -830,8 +831,11 @@ caps Caps = { Jump, Crouch }
 On the table wire a field holding its declared default is not written and
 an absent field reads as it, so with the lines above an EMPTY name rides,
 because absence would read back as "untitled". C++ and Go carry all three on
-both wires. C carries them on the packet wire and refuses defaults reachable
-from a table; the other six targets refuse a unit declaring these defaults.
+both wires, and so does every other target in the default build except
+Python: `--lang python` carries them in tables, fixed and variable, and today
+refuses a packet `type` that declares one ("packet-wire defaults are ... only
+today, and the python form is a named follow-on"); the roadmap data marks
+that cell open.
 Packet defaults initialize storage and do not omit fields from the wire.
 In C, call the generated `new_<type>()` constructor to apply declared defaults;
 in Go, call `New<Type>()`. Zero-filled storage alone does not apply them.
@@ -1035,24 +1039,21 @@ allocates, a fixed table WITH a union may allocate for the arm in a language
 that has no native union, and a variable-length table allocates by nature —
 in C++ the caller owns it.
 
-A table lives on its own wire — self-describing and evolution-tolerant,
-carried by **eight of the nine targets**: C++ and C take both classes, and C#,
-Dart, Go, Java, JavaScript and Rust take the fixed class, wire and text form
-both; the pointer surface ON THE WIRE is a follow-on in those five whose cook
-and block accelerators read a pointered unit today — Go is not among them, for
-it carries the root surface itself through `RootBuilder` and `LoadBuilder`.
-Elixir emits no table wire: it carries the two accelerators' read side only
-(schema#515).
+A table lives on its own wire — self-describing and evolution-tolerant —
+and **every target in the default build carries both classes**: the fixed
+class and the variable class (pointers, the flat node table, maps, blobs,
+unbounded arrays), the wire and the text form, as the Fixed tables and
+Variable tables sections of [ROADMAP.md](../ROADMAP.md) record cell by cell.
+Go carries the root surface through `RootBuilder` and `LoadBuilder`.
 
 **Each field is a reference, a kind byte and a payload**, and the file carries
 every id it used once each in a trailer at the end, so a field header spends
 one byte on the reference where the eight-byte id itself would have spent
 eight. The file opens with a one-byte FORM version — `1` for a file — which a
 reader that does not know it refuses by name. *That form is written by the C++
-reference, by the tool, and by Go; the seven other backends still write its
-previous form, and each is a named follow-on
-([#511](https://github.com/mas-bandwidth/schema/issues/511) to
-[#518](https://github.com/mas-bandwidth/schema/issues/518), PORTING.md M20).*
+reference, by the tool, and by Go, and by every other backend too: the
+conformance harness reads every corpus input in every leg and holds each
+leg's rewrite to the same bytes (SPEC-TABLES.md §22.7).*
 Field identity is a hash of the
 field NAME, so any reader takes any data, both directions: unknown fields are
 skipped by their kind, absent fields take their declared defaults, a field
@@ -2163,15 +2164,15 @@ counts `unknown`; arms may be removed and reordered freely. Unlike a
 `type`-only payload, a message may carry a nested table or a whole
 collection. A union declared for the packet wire still takes `type` payloads
 only — types stay value semantics. *The C++ reference, the tool, C, C# and Go carry
-the form; every other backend refuses a unit that declares one, by name, and
-the ports are a named follow-on
-([#392](https://github.com/mas-bandwidth/schema/issues/392),
-SPEC-TABLES.md §15).*
+the form, and so does every other target in the default build
+(SPEC-TABLES.md §2.6).*
 
 An arm is a field line, so an arm's type is any type a field's is — a scalar
 with its bounds, a compressed float, a string, a bounded array, an enum, a
 `flags` mask, a declared `type`, a `table`, a pointer, another union — and an
-arm may carry **no payload at all**, written as its name alone:
+arm may carry **no payload at all**, written as its name alone. A union with
+an arm that is not a declared `type` belongs to a table closure, so a table
+holds it:
 
 ```
 union Value
@@ -2181,6 +2182,11 @@ union Value
     samples [..8]float32
     doc     OpenDocument
     ping
+}
+
+table Setting
+{
+    value Value
 }
 ```
 
@@ -2449,11 +2455,9 @@ SPEC-TABLES §15.
 
 ### Maps: `ships map[string(32)]ShipConfig`
 
-*Specified and carried by the C++ reference, the tool and Go. Every other
-backend refuses a unit that declares one, by name, because a map makes its
-holder variable, and the ports are a named follow-on
-([#380](https://github.com/mas-bandwidth/schema/issues/380),
-SPEC-TABLES.md §11, §15).*
+*Specified, and carried by the C++ reference, the tool, Go and every other
+target in the default build (SPEC-TABLES.md §2.8). A map makes its holder
+variable, so it is refused in a `fixed table` and in a `type`.*
 
 A map is a **lookup the runtime provides over entries the wire carries as a
 sorted array**. It spends no wire kind and invents no encoding: on the wire,
@@ -2493,8 +2497,8 @@ form. A `type` body refuses one by name. There is no bound on the count, no
 elides. What bounds a read is `LoadMeasure`, whose answer the caller owns
 and can refuse.
 
-**`?map[K]V` says absent apart from empty** (SPEC-TABLES.md §2.8; Go carries
-it first, every other target refuses it by name). In a variable table,
+**`?map[K]V` says absent apart from empty** (SPEC-TABLES.md §2.8; every
+target in the default build carries it). In a variable table,
 `tags ?map[string(8)]int32` carries a `TagsPresent` bool beside the map, as
 every `?T` does. Absent writes nothing; present always rides, so a present
 EMPTY map writes its two-byte array body (`0d 00`) and reads back present
@@ -2756,8 +2760,9 @@ neither spelling widens into the other. In a `fixed table` the slot is an
 `int64`'s and the layout names it as one, so the fixed form does not tell the
 two apart. It is a bare TABLE field only in this major — a `timestamp` in a
 packet `type`, in an array, optional, map value or union arm is refused by
-name — and **Go carries it first**: every other target refuses the construct
-by name until its own card.
+name — and **every target in the default build carries it**, the field
+holding the signed 64-bit nanosecond count; Go adds the `time.Time`
+accessors above.
 
 ### The block form: rows another language points at
 
@@ -3319,9 +3324,17 @@ type Buff
 {
     mult float32 = 1.0 | was = "multiplier"
 }
+
+table Loadout
+{
+    grade  Grade
+    effect Effect
+    buff   Buff
+}
 ```
 
-A qualified variant ends its line, so the newline is its separator. Stored
+`Loadout` is what makes the three renames legal: `was` needs a table to reach
+the declaration (below). A qualified variant ends its line, so the newline is its separator. Stored
 values naming `Silver` load as `Argent`, stored `ward` bodies load into
 `shield`, an enum-keyed `[Grade]int32` keeps its `Silver` slot, and neither
 id moves. A `flags` variant refuses `was`: a mask is positional, so a rename
@@ -4433,14 +4446,17 @@ namespaced engine type — `math::Vec2`, the common case — is written
 `cpp_native = math::Vec2` and emits as `::math::Vec2`. No global alias in
 your own header is needed.
 
-**C#** — modern .NET: .NET 8 or later and C# 12 or later. Types and unions
+**C# (modern)** — `--lang cs`: .NET 8 or later and C# 12 or later. Types and unions
 are structs with `[InlineArray]` buffers, taken by `ref`; assigning one
 copies it. Reads scalars without boxing. Unity's runtime (C# 9,
-netstandard2.1) is the job of the separate Unity generator, `--lang unity`;
+netstandard2.1) is the job of the separate C# (unity) generator, `--lang unity`;
 this target no longer compiles there.
 
-**Unity** — `--lang unity`: C# 9 over netstandard2.1, the surface Unity
-2021.2 through Unity 6 compiles, under IL2CPP and AOT. Packet types only.
+**C# (unity)** — `--lang unity`: C# 9 over netstandard2.1, the surface Unity
+2021.2 through Unity 6 compiles, under IL2CPP and AOT. It emits the packet
+types and the full table surface beside them (`<Base>.Tables.cs`,
+`<Base>.Cook.cs`, `Tables.View.cs`, `Tables.Runtime.cs`, and
+`<Base>.Block.cs` where a fixed table has a block form).
 Types and unions are unmanaged structs with fixed-size buffers, taken by
 `ref`, against serialize.cs's streams. Writes are checked in debug asserts
 only; a public read checks the whole packet, its end included. See
@@ -4640,10 +4656,14 @@ linter reads it as another repository's path rather than its own.
 directives from the serialize.elixir port. Generated code is
 **self-contained**: it defines its own modules and touches nothing beyond the
 standard library. Each schema file becomes one module of `defstruct` types
-plus a file-scope module of wire functions — `write_<name>(value)` returns
-the wire binary, `read_<name>(data, num_bits)` returns the family verdict as
-`{:ok, value} | :error` and never raises on hostile bytes,
-`measure_<name>(value)` and `zero_<name>()` complete the surface. Every
+plus a file-scope module of wire functions — `write_<name>!(value)` returns
+the wire binary and raises `ArgumentError` on a value its declaration does not
+admit, `write_<name>(value)` returns the same as a verdict, `{:ok, binary}` or
+`{:error, message}`, `read_<name>(data, num_bits)` returns the family verdict
+as `{:ok, value} | :error` and never raises on hostile bytes,
+`read_<name>_bits(data, num_bits)` also reports the bits consumed, and
+`<name>_max_bits()`, `<name>_max_bytes()` and `zero_<name>()` complete the
+surface. Every
 packing intermediate stays under the BEAM's small-integer boundary (32-bit
 groups through a byte-granular scratch on the write side, the port's 40-bit
 windows on the read side), and loops are tail-recursive function heads.
@@ -4652,11 +4672,13 @@ Floats are finite (SPEC §4.3): a write of anything but a float that fits the
 width raises `ArgumentError` with a `non_finite_float` message, a read refuses
 a NaN or an infinity on its raw bits, and `-0.0` and subnormals ride bit
 exact. Validation is always on: there is no compile-out
-assert on the BEAM, so writer contracts raise `ArgumentError` in every
-build (the O(1) checks only) and readers validate everything:
+assert on the BEAM, so writer contracts refuse in every build (the O(1)
+checks only: the bang form raises `ArgumentError`, the plain form returns
+`{:error, message}`) and readers validate everything:
 
 ```elixir
-wire = Example.Types.write_ship_create(ship)
+wire = Example.Types.write_ship_create!(ship)
+# or, as a verdict: {:ok, wire} = Example.Types.write_ship_create(ship)
 
 case Example.Types.read_ship_create(packet, byte_size(packet) * 8) do
   {:ok, value} -> handle(value)

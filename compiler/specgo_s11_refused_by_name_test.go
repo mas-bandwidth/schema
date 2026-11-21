@@ -46,12 +46,12 @@ func TestSpecGoS11RefusedByName(t *testing.T) {
 		},
 		{
 			name:  "byte buffers",
-			want:  []string{"C, C++, C#, Go, Elixir, JavaScript and Rust carry `*bytes`", "Dart and Java carry `*string` only"},
-			stale: []string{"under every backend but C++"},
+			want:  []string{"**Every target in the default build carries `*bytes` and"},
+			stale: []string{"under every backend but C++", "Dart and Java carry `*string` only", "C, C++, C#, Go, Elixir, JavaScript and Rust carry `*bytes`"},
 		},
 		{
 			name:  "optional fields",
-			want:  []string{"`?T` and a by-value `?[N]T` over a variable closure are legal on Go, C", "an optional COUNTED array or a MAP VALUE over a"},
+			want:  []string{"`?T` and a by-value `?[N]T` over a variable closure are legal on every", "an optional COUNTED array or a MAP VALUE over a"},
 			stale: []string{"on any value whose closure is VARIABLE", "is legal on Go"},
 		},
 		{
@@ -78,8 +78,9 @@ func TestSpecGoS11RefusedByName(t *testing.T) {
 			want: []string{"This section is not exhaustive", "`timestamp` outside a bare\n  table field body"},
 		},
 		{
-			name: "central Go-first refusal",
-			want: []string{"The central Go-first refusal", "a one-sided integer range (§4.3)", "testgen (§16.11)"},
+			name:  "central carrier refusal",
+			want:  []string{"The central carrier refusal", "a one-sided integer range (§4.3)", "testgen (§16.11)", "the default build now registers all of them"},
+			stale: []string{"The central Go-first refusal"},
 		},
 	}
 

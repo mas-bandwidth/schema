@@ -291,7 +291,7 @@ const C int32 = 1.5
 
 ```
 $ schema check .
-Bad.schema:3:1: constant C has integer type int32 but a float expression
+Bad.schema:3:17: constant C has integer type int32 but a float expression
 schema: 1 error(s)
 ```
 
@@ -390,15 +390,10 @@ enum ShipType { None, Fighter }
 ```
 $ schema check .
 Bad.schema:3:17: variant None is a compile error — every enum has None = 0 implicitly (SPEC §4.2)
-Bad.schema:3:17: enum ShipType's generated variant constant collides with enum ShipType's generated None constant — both generate the symbol ShipTypeNone; rename at the source (SPEC §4.6)
-Bad.schema:3:17: variant None collides with the implicit None variant inside enum ShipType (both become the associated constant NONE in Rust) — rename at the source (SPEC §4.6)
-Bad.schema:3:17: enum ShipType's generated variant constants (C form) collides with enum ShipType's generated variant constants (C form) — both generate the symbol SHIP_TYPE_NONE; rename at the source (SPEC §4.6)
-schema: 4 error(s)
+schema: 1 error(s)
 ```
 
-One mistake, four errors. The first line is the rule and the other three are
-the same collision seen through Go's, Rust's and C's generated spellings. Read
-the first one.
+One mistake, one error: the line names the rule it breaks.
 
 You also get a name function for logging, free:
 
@@ -423,8 +418,9 @@ Go, C#, and JavaScript, `enum_name_ship_type` in Rust and Elixir,
 `starlight_enum_name_ship_type` in C (where every name carries the package),
 `enumNameShipType` in Dart and Java.
 
-A multi-line variant list is fine, because variants are comma-separated either
-way and a trailing comma is allowed:
+A multi-line variant list is fine. A variant is separated from the next by a
+comma or by a newline (SPEC §4.1), and a trailing comma is allowed, so both of
+these declare the same enum:
 
 ```
 enum Big
@@ -433,32 +429,19 @@ enum Big
     B,
     C,
 }
-```
 
-Write the variants one per line without commas, the way fields are written, and
-the parser stops. `bad/Bad.schema`:
-
-```
-package bad
-
-enum Big
+enum Small
 {
     A
     B
+    C
 }
 ```
 
-```
-$ schema check .
-Bad.schema:5:6: expected }, found "newline"
-Bad.schema:6:5: unexpected "B" at file scope (declarations begin with package, const, enum, flags, type, table or union)
-schema: 2 error(s)
-```
-
-Variants are a comma-separated list. Fields, which arrive in Part 3, are a
-block of lines. That is the one place in the language where two body grammars
-sit side by side, and it is worth meeting it here rather than at your first
-packet.
+One per line without commas is the way fields are written too, and it is the
+form a variant needs when it carries a qualification section (`Rare |
+celebrate`), because the section runs to the end of its line. `schema fmt`
+writes a plain variant list with commas between the variants.
 
 ### flags
 
@@ -2389,13 +2372,8 @@ table T { u ?U }
 ```
 $ schema check .
 Bad.schema:12:14: field u: ?U marks a union optional, and a union is ALREADY optional — its None arm IS the absence, and an empty union elides exactly as an absent optional does; drop the ? (docs/SPEC-TABLES.md §2.3)
-Bad.schema:6:1: union U: the arm a A is not a declared type, and no table reaches U — such an arm is a table-closure construct, and a union outside one takes `type` payloads only; hold the union in a table body, or make the arm a type (docs/SPEC-TABLES.md §2.6, §11, §15)
-schema: 2 error(s)
+schema: 1 error(s)
 ```
-
-Read the first line. The second is the reachability walk losing sight of `U`
-because the `?` made the field unusable, and it prescribes a fix the schema
-already has.
 
 ```
 package bad
@@ -4968,7 +4946,7 @@ table T
 
 ```
 $ schema check .
-Bad.schema:5:5: const(value, bits) is a packet-wire construct — a table's wire is field-tagged TLV with no bit positions; remove it from table T (docs/SPEC-TABLES.md)
+Bad.schema:5:5: const(value, bits) is a packet-wire construct — a table's wire is `id reference, kind, payload` against the id table, with no bit positions; remove it from table T (docs/SPEC-TABLES.md §3)
 schema: 1 error(s)
 ```
 
@@ -4985,7 +4963,7 @@ table T
 
 ```
 $ schema check .
-Bad.schema:6:5: align is a packet-wire construct — a table's wire is field-tagged TLV with no bit positions; remove it from table T (docs/SPEC-TABLES.md)
+Bad.schema:6:5: align is a packet-wire construct — a table's wire is `id reference, kind, payload` against the id table, with no bit positions; remove it from table T (docs/SPEC-TABLES.md §3)
 schema: 1 error(s)
 ```
 
