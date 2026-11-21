@@ -246,9 +246,26 @@ func expected(c hostilecorpus.Case) answer {
 // stderr fails the case whatever the exit status.
 var sanitizerMarks = []string{"ERROR: AddressSanitizer", "ERROR: LeakSanitizer", "runtime error:", "SUMMARY: UndefinedBehaviorSanitizer", "WARNING: ThreadSanitizer"}
 
+// startBudget starts a case's budget: the channel fires when it runs out, and
+// stop releases it. The runner reads no clock but this one, so a test can
+// hand it a budget that is already spent, or one that never runs out.
+var startBudget = func(budget time.Duration) (fire <-chan time.Time, stop func() bool) {
+	t := time.NewTimer(budget)
+	return t.C, t.Stop
+}
+
 func runCase(binary, corpus string, c hostilecorpus.Case, budget time.Duration) (answer, string) {
-	ctx, cancel := context.WithTimeout(context.Background(), budget)
-	defer cancel()
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
+	fire, stop := startBudget(budget)
+	defer stop()
+	go func() {
+		select {
+		case <-fire:
+			cancel(errOverBudget)
+		case <-ctx.Done():
+		}
+	}()
 	cmd := exec.CommandContext(ctx, binary, c.Carrier, c.Schema, c.Table, filepath.Join(corpus, c.Input))
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -257,7 +274,7 @@ func runCase(binary, corpus string, c hostilecorpus.Case, budget time.Duration) 
 	cmd.WaitDelay = time.Second
 	err := cmd.Run()
 	raw := stdout.String()
-	if ctx.Err() != nil {
+	if context.Cause(ctx) == errOverBudget {
 		return answer{"fail", fmt.Sprintf("hang: over the %v budget", budget)}, raw
 	}
 	for _, mark := range sanitizerMarks {
@@ -295,6 +312,9 @@ func runCase(binary, corpus string, c hostilecorpus.Case, budget time.Duration) 
 	}
 	return answer{"fail", "unreadable answer: " + firstLine(raw)}, raw
 }
+
+// errOverBudget is the cause a case is killed with when its budget runs out.
+var errOverBudget = errors.New("over the case budget")
 
 func firstLine(s string) string {
 	line, _, _ := strings.Cut(strings.TrimSpace(s), "\n")
