@@ -6,7 +6,15 @@
  * CASE RUNS IN A CHILD: the child loads, sets, writes and exits with a code for
  * wrote or refused-by-return; the parent reads the status, and death by
  * SIGABRT is the assert's refusal. The child's stderr goes to /dev/null so the
- * assert's text stays out of the harness log. */
+ * assert's text stays out of the harness log.
+ *
+ * THE CHILD WRITES NO CORE. On a host whose core_pattern pipes to a crash
+ * handler (Ubuntu's apport, on the fleet runners), the kernel starts that
+ * handler for every abort whatever the core limit is, and the four refusal
+ * surfaces abort about two hundred times: 75 s of the C conformance row's
+ * wall time on amd-1 went to it, with the driver itself using under two
+ * seconds of CPU (#4530). A child that is not dumpable gets no core and no
+ * handler; it still dies by SIGABRT, and that is still the refusal. */
 
 #define _POSIX_C_SOURCE 200809L
 
@@ -15,6 +23,9 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#if defined( __linux__ )
+#include <sys/prctl.h>
+#endif
 
 #include "driver.h"
 
@@ -166,6 +177,9 @@ int conformance_write_refusal_case( int surface, const ConformanceCodec * codec,
         ConformanceReport report;
         void * value = codec->storage();
         int quiet;
+#if defined( __linux__ )
+        (void) prctl( PR_SET_DUMPABLE, 0, 0, 0, 0 );
+#endif
         memset( &report, 0, sizeof( report ) );
         if ( !codec->load( value, wire, bytes, &report ) ) { _exit( 2 ); }
         if ( !write_units[which].set( root, value, path, kind, text ) ) { _exit( kNoSetterExit ); }
