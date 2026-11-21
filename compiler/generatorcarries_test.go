@@ -62,7 +62,7 @@ func loadSource(t *testing.T, src string) *ir.Unit {
 
 const carriesTimestampSrc = "package probe\n\ntable Event\n{\n    id        uint32\n    opened_at timestamp\n}\n"
 
-// one unit per construct, each using that construct and no other gated one
+// One unit per construct, each using that construct and no other gated one.
 var carriesUnits = []struct {
 	construct string
 	src       string
