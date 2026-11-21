@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/mas-bandwidth/schema/v2/internal/languages"
 )
 
 // maxRootBytes is the ceiling on the root AGENTS.md. A harness reads that
@@ -132,7 +134,7 @@ func renderPage(root, dir string, idx catalogIndex) string {
 	if dir == "" {
 		b.WriteString("# AGENTS.md — generated map\n\n")
 		b.WriteString("Do not edit. `make map` regenerates this file. Rules: [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md). Ruling 2026-09-18 (`docs/rulings.json`, `agents-md-alone`): AGENTS.md alone — no `CLAUDE.md`, no pointer, no symlink.\n\n")
-		b.WriteString("Schema is the data language for games. One definition compiles to bit-packed codecs in C, C++, C#, Dart, Elixir, Go, Java, JavaScript, Lua and Rust. The compiler is AGPL-3.0; generated code is yours ([LICENSE](LICENSE)). Public Go API: `compiler/`, `ir/`.\n\n")
+		b.WriteString("Schema is the data language for games. One definition compiles to bit-packed codecs in " + languages.Summary() + ". The compiler is AGPL-3.0; generated code is yours ([LICENSE](LICENSE)). Public Go API: `compiler/`, `ir/`.\n\n")
 		b.WriteString("```\nmake\nmake test\nbin/schema check <dir>\n```\n\n")
 	} else {
 		depth := strings.Count(dir, "/") + 1

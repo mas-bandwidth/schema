@@ -144,7 +144,8 @@ and that this run did not write. With `--surface` nothing is removed; only
 
 A declaration's name and its fields' names are checked against the reserved
 words of EVERY supported language (SPEC §4.6) — C, C++, C#, Go, Rust, Java,
-JavaScript, Dart, Elixir, Lua, Luau, Squirrel, Goose, Lobster and Python — whatever
+JavaScript, Dart, Elixir, Lua, Luau, moo, Squirrel, Goose, Lobster, Python and
+Ruby — whatever
 target is generated, one diagnostic per name listing every language it
 collides with: a schema compiled only for C++ today must still compile for
 Elixir tomorrow. Go is the exception (SPEC §4.6, the Go
