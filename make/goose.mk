@@ -123,6 +123,37 @@ build/conformance-goose: $(GOOSE_MANIFEST) make/goose.mk $(GO_SOURCES) \
 	done
 generated/bench/tables/goose/.stamp: ;
 
+# THE WHOLE CORPUS OVER AN EMPTY TREE (the Ruby and Python legs' rule, review
+# F-086/F-087): every surface, every row, through the harness, with no Goose
+# codec at all. The run is green (a missing codec is absence, never a failure
+# or a pass) and every answer the driver leaves is an EMPTY <case>.absent.
+# Before, `list` refused an empty tree outright, and the block and cook
+# surfaces wrote nothing for a unit not generated. The driver's `list` over
+# the empty tree is held equal to its `list` over the real one, which the
+# goose programs answer.
+.PHONY: conformance-goose-empty-tree
+conformance-goose-empty-tree: build/conformance-harness build/conformance-cpp build/schema_test_cook build/conformance-goose
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	@mkdir -p build/conformance-goose-empty-gen
+	@test -z "$$(ls -A build/conformance-goose-empty-gen)" || { echo 'build/conformance-goose-empty-gen is not empty'; exit 1; }
+	@sh test/conformance/goose/driver $(GOOSE_MANIFEST) list > build/conformance-goose-list-real.txt || \
+		{ echo 'conformance-goose-empty-tree: list over the real tree failed'; exit 1; }
+	@SCHEMA_GOOSE_GENERATED=build/conformance-goose-empty-gen sh test/conformance/goose/driver $(GOOSE_MANIFEST) list > build/conformance-goose-list-empty.txt || \
+		{ echo 'conformance-goose-empty-tree: list refuses an empty tree'; exit 1; }
+	@cmp -s build/conformance-goose-list-real.txt build/conformance-goose-list-empty.txt || \
+		{ echo 'conformance-goose-empty-tree: list over an empty tree differs from the goose programs list:'; \
+		  diff build/conformance-goose-list-real.txt build/conformance-goose-list-empty.txt; exit 1; }
+	@SCHEMA_GOOSE_GENERATED=build/conformance-goose-empty-gen \
+		./build/conformance-harness run --only goose --work build/conformance-goose-empty > build/conformance-goose-empty.log 2>&1 || \
+		{ echo 'conformance-goose-empty-tree: the run over an empty tree is not green'; tail -40 build/conformance-goose-empty.log; exit 1; }
+	@answers=$$(find build/conformance-goose-empty/out/goose -type f | wc -l | tr -d ' '); \
+	stray=$$(find build/conformance-goose-empty/out/goose -type f \( ! -name '*.absent' -o -size +0 \) | head -5); \
+	test "$$answers" -gt 0 || { echo 'conformance-goose-empty-tree: the driver answered nothing'; exit 1; }; \
+	test -z "$$stray" || { echo "conformance-goose-empty-tree: answers beside a missing codec that are not an EMPTY .absent: $$stray"; exit 1; }; \
+	echo "conformance-goose-empty-tree: $$answers cases, every one an EMPTY .absent, run green"
+
+test-goose: conformance-goose-empty-tree
+
 TEST_LEGS         += test-goose
 TOOLCHAIN_LEGS    += goose
 TOOLCHAIN_PINS_goose := GOOSE

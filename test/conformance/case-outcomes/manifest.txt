@@ -19,11 +19,7 @@
 #     no answer, the case named on stderr, the cases after it still answered,
 #     and the surface's exit status non-zero.
 #
-# Every refused row sits beside a legal control on the same root, but for the
-# variable Bounds: its legal images (bounds_octets_at_min and the rest) do not
-# yet save in Ruby or Python, whose writers hold the float32 `seventh` to its
-# range at binary64 (0.699999988 < 0.7), so FixedBounds carries the pair. The
-# same
+# Every refused row sits beside a legal control on the same root. The same
 # manifest run over an EMPTY generated tree (expected-empty.txt) answers every
 # case absent and exits 0.
 
@@ -39,6 +35,7 @@ message msg_no_unit              gone_backend_conn LoginRequest testdata/conform
 message msg_inapplicable_no_unit gone_graph_conn   Scene        testdata/wire/tables/graph_tree.bin            -
 message msg_no_root              backend_conn      NoSuchRoot   testdata/conformance/tables/wire/login_full.bin testdata/wire/tables/login_full_message.bin
 
+instance wire_read          shapes     Bounds      testdata/wire/tables/shapes/bounds_octets_at_min.bin
 instance wire_refused       shapes     Bounds      testdata/wire/tables/shapes/bounds_octets_below_min.bin no-text wire-refused
 instance wire_error         shapes     Bounds      test/conformance/case-outcomes/no-such-file.bin
 instance wire_fixed_read    shapes     FixedBounds testdata/wire/tables/shapes/fixed_octets_three.bin

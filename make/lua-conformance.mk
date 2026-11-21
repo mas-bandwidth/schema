@@ -37,3 +37,24 @@ conformance-negative-control-lua-cycle: build/conformance-harness
 	sh test/conformance/lua/negative-control cycle
 conformance-negative-control-lua-write: build/conformance-harness
 	sh test/conformance/lua/negative-control write
+
+# THE WHOLE CORPUS OVER AN EMPTY TREE (the Ruby and Python legs' rule, review
+# F-086/F-087): every surface, every row, through the harness, with no Lua
+# codec at all. The run is green (a missing codec is absence, never a failure
+# or a pass) and every answer the driver leaves is an EMPTY <case>.absent.
+# Before, the block, cook and forgery surfaces aborted on the first unit not
+# generated ("unit not generated for lua").
+.PHONY: conformance-lua-empty-tree
+conformance-lua-empty-tree: toolchain-lua build/conformance-harness build/conformance-cpp build/schema_test_cook
+	@mkdir -p build/conformance-lua-empty-gen
+	@test -z "$$(ls -A build/conformance-lua-empty-gen)" || { echo 'build/conformance-lua-empty-gen is not empty'; exit 1; }
+	@LUA=$(LUA) LUA_CONFORMANCE_GENERATED=build/conformance-lua-empty-gen \
+		./build/conformance-harness run --only lua --work build/conformance-lua-empty > build/conformance-lua-empty.log 2>&1 || \
+		{ echo 'conformance-lua-empty-tree: the run over an empty tree is not green'; tail -40 build/conformance-lua-empty.log; exit 1; }
+	@answers=$$(find build/conformance-lua-empty/out/lua -type f | wc -l | tr -d ' '); \
+	stray=$$(find build/conformance-lua-empty/out/lua -type f \( ! -name '*.absent' -o -size +0 \) | head -5); \
+	test "$$answers" -gt 0 || { echo 'conformance-lua-empty-tree: the driver answered nothing'; exit 1; }; \
+	test -z "$$stray" || { echo "conformance-lua-empty-tree: answers beside a missing codec that are not an EMPTY .absent: $$stray"; exit 1; }; \
+	echo "conformance-lua-empty-tree: $$answers cases, every one an EMPTY .absent, run green"
+
+test-lua: conformance-lua-empty-tree
