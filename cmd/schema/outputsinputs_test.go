@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/publish"
 )
 
 // inputTree is a pack tree as the reviewer's reproduction has it: a field
@@ -349,9 +351,9 @@ func TestPublishThatCannotPutAnEntryBackNamesBothPaths(t *testing.T) {
 	errDisk := errors.New("permission denied (injected)")
 	dir, payload, side := pairFixture(t)
 	onto := 0
-	f := publishFiles{
-		createTemp: os.CreateTemp,
-		rename: func(oldpath, newpath string) error {
+	f := publish.Files{
+		CreateTemp: os.CreateTemp,
+		Rename: func(oldpath, newpath string) error {
 			switch newpath {
 			case payload:
 				return errDisk // publishing the payload

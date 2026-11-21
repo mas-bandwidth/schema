@@ -102,6 +102,7 @@ var catalog = []Entry{
 	e("internal/modulemove", "pin and release boundary of the /v3 module move", "go test ./internal/modulemove", "go test ./internal/modulemove"),
 	e("internal/parser", "recursive-descent parser", "go test ./internal/parser", "go test ./internal/parser"),
 	e("internal/publicapi", "external-module API gate", "go test ./internal/publicapi", "go test ./internal/publicapi"),
+	e("internal/publish", "all-or-nothing publisher of files and trees; path identity", "go test ./internal/publish", "go test ./internal/publish"),
 	e("internal/rfc3339", "strict RFC 3339 timestamp parser", "go test ./internal/rfc3339", "go test ./internal/rfc3339"),
 	e("internal/scanner", "tokenizer", "go test ./internal/parser", "go test ./internal/parser"),
 	e("internal/slowtest", "1-2 minute unit-test gate", "make slow-gate-scan", "make slow-gate-scan"),

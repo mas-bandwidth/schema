@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/modulemove"
+	"github.com/mas-bandwidth/schema/v2/internal/publish"
 )
 
 // The pin directive an adopter writes in each package's generate.go; the Go
@@ -219,11 +220,15 @@ type pinChange struct {
 	mode os.FileMode
 }
 
-// pinFiles is the seam of the shared publisher (publish.go), under the name
-// the pin tests fail it by.
-type pinFiles = publishFiles
+// pinFiles is the two file operations a pin can fail in, a seam so the tests
+// fail each one at a chosen file without a real read-only or full disk. It is
+// the seam of the shared publisher (internal/publish), which does the work.
+type pinFiles struct {
+	createTemp func(dir, pattern string) (*os.File, error)
+	rename     func(oldpath, newpath string) error
+}
 
-var osPinFiles = osPublishFiles
+var osPinFiles = pinFiles{createTemp: os.CreateTemp, rename: os.Rename}
 
 // publishPins moves every file or none.
 //
@@ -247,37 +252,38 @@ var osPinFiles = osPublishFiles
 // An original that will not go back is the one case that ends neither all
 // old nor all new: it is left at its kept name, never removed, and the error
 // names it.
-func publishPins(f pinFiles, changes []pinChange) error {
-	entries := make([]*publishEntry, 0, len(changes))
+func publishPins(pf pinFiles, changes []pinChange) error {
+	f := publish.Files{CreateTemp: pf.createTemp, Rename: pf.rename}
+	entries := make([]*publish.Entry, 0, len(changes))
 	seen := map[string]bool{}
 	for _, ch := range changes {
 		file, err := filepath.EvalSymlinks(ch.path)
 		if err != nil {
-			cleanPublish(entries)
+			publish.Clean(entries)
 			return fmt.Errorf("nothing was changed: %w", err)
 		}
 		if seen[file] {
 			continue
 		}
 		seen[file] = true
-		e := &publishEntry{name: ch.path, dest: file}
+		e := &publish.Entry{Name: ch.path, Dest: file}
 		entries = append(entries, e)
-		if e.next, err = f.stage(file, "new", ch.next, ch.mode); err == nil {
-			e.kept, err = f.stage(file, "orig", nil, ch.mode)
+		if e.Next, err = f.Stage(file, "new", ch.next, ch.mode); err == nil {
+			e.Kept, err = f.Stage(file, "orig", nil, ch.mode)
 		}
 		if err != nil {
-			cleanPublish(entries)
+			publish.Clean(entries)
 			return fmt.Errorf("nothing was changed: %w", err)
 		}
 	}
-	// the publisher shared with pack, cook, uncook and unpack (publish.go)
-	if fail := f.publish(entries, nil, nil); fail != nil {
-		if len(fail.stuck) > 0 {
-			return fmt.Errorf("%w; the pin is HALF MOVED: these files could not be put back as they were: %s", fail.cause, strings.Join(fail.stuck, ", "))
+	// the publisher shared with pack, cook, uncook and unpack (internal/publish)
+	if fail := f.Publish(entries, nil, nil); fail != nil {
+		if len(fail.Stuck) > 0 {
+			return fmt.Errorf("%w; the pin is HALF MOVED: these files could not be put back as they were: %s", fail.Cause, strings.Join(fail.Stuck, ", "))
 		}
-		return fmt.Errorf("nothing was changed (every file already moved was put back as it was): %w", fail.cause)
+		return fmt.Errorf("nothing was changed (every file already moved was put back as it was): %w", fail.Cause)
 	}
-	if left := removeKept(entries); len(left) > 0 {
+	if left := publish.RemoveKept(entries); len(left) > 0 {
 		return fmt.Errorf("every pin moved, but these kept originals could not be removed: %s", strings.Join(left, ", "))
 	}
 	return nil
