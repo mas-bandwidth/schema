@@ -15,6 +15,7 @@
     { "include": "#contextual-declaration" },
     { "include": "#const-declaration" },
     { "include": "#keywords" },
+    { "include": "#timestamp-field" },
     { "include": "#numbers" },
     { "include": "#operators" },
     { "include": "#punctuation" },
@@ -153,6 +154,13 @@
         "2": { "name": "entity.name.constant.schema" }
       }
     },
+    "timestamp-field": {
+      "comment": "timestamp is a contextual type word (SPEC §4.13): a type only in a field's type position, right after the field name. A field NAMED timestamp stays a plain identifier. A keyword at the same position wins, since #keywords comes first.",
+      "match": "\\b([A-Za-z_][A-Za-z0-9_]*)[ \\t]+(timestamp)\\b",
+      "captures": {
+        "2": { "name": "support.type.primitive.timestamp.schema" }
+      }
+    },
     "keywords": {
       "patterns": [
         {
@@ -168,13 +176,13 @@
           "match": "\\bmap\\b"
         },
         {
-          "comment": "Reserved and refused by the compiler (SPEC §4.2, §4.4).",
+          "comment": "Reserved and refused by the compiler (SPEC §4.2, §4.4, §4.12).",
           "name": "invalid.illegal.reserved.schema",
-          "match": "\\b(message|object|switch|case|int|uint)\\b"
+          "match": "\\b(message|object|switch|case|int|uint|wstring)\\b"
         },
         {
           "name": "support.type.primitive.schema",
-          "match": "\\b(bool|float32|float64|string|wstring|bytes|bits|fixed|ufixed|int8|int16|int32|int64|int128|uint8|uint16|uint32|uint64|uint128)\\b"
+          "match": "\\b(bool|float32|float64|string|bytes|bits|fixed|ufixed|int8|int16|int32|int64|int128|uint8|uint16|uint32|uint64|uint128)\\b"
         },
         {
           "name": "storage.type.schema",

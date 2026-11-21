@@ -343,7 +343,7 @@ var claimed = []string{
 
 var primitive = map[scanner.Kind]bool{
 	scanner.KwBool: true, scanner.KwFloat32: true, scanner.KwFloat64: true,
-	scanner.KwString: true, scanner.KwWString: true, scanner.KwBytes: true,
+	scanner.KwString: true, scanner.KwBytes: true,
 	scanner.KwBits: true, scanner.KwUfixed: true,
 	scanner.KwInt8: true, scanner.KwInt16: true, scanner.KwInt32: true, scanner.KwInt64: true,
 	scanner.KwInt128: true, scanner.KwUint8: true, scanner.KwUint16: true,
@@ -361,7 +361,8 @@ func expectations(toks []scanner.Token) []string {
 	qualName := false // the next identifier names a qualification
 	enumDepth := -1   // brace depth of an enum or flags body, or -1
 	enumPending := false
-	var prev scanner.Token // the last token that is not a comment or newline
+	var prev scanner.Token    // the last token that is not a comment or newline
+	prevWasFieldName := false // prev is an identifier that began its line inside a body
 	next := func(i int) scanner.Kind {
 		for j := i + 1; j < len(toks); j++ {
 			if toks[j].Kind != scanner.Comment && toks[j].Kind != scanner.Newline {
@@ -414,7 +415,7 @@ func expectations(toks []scanner.Token) []string {
 		case scanner.KwMap:
 			want[i] = "storage.type.map"
 		case scanner.KwMessage, scanner.KwObject, scanner.KwSwitch, scanner.KwCase,
-			scanner.KwInt, scanner.KwUint:
+			scanner.KwInt, scanner.KwUint, scanner.KwWString:
 			want[i] = "invalid.illegal"
 		case scanner.Pipe:
 			inQual, qualName = true, true
@@ -446,6 +447,10 @@ func expectations(toks []scanner.Token) []string {
 			case prev.Kind == scanner.KwType || prev.Kind == scanner.KwTable || prev.Kind == scanner.KwEnum ||
 				(prev.Kind == scanner.Ident && (prev.Text == "flags" || prev.Text == "union") && want[prevIndex(toks, i)] == "storage.type"):
 				want[i] = "entity.name.type"
+			case t.Text == "timestamp" && prevWasFieldName && !inQual:
+				// the contextual type word of SPEC §4.13, in a field's type
+				// position; a field NAMED timestamp falls through to plain
+				want[i] = "support.type.primitive"
 			case inQual && qualName:
 				want[i] = "entity.other.attribute-name"
 			case enumDepth >= 0 && depth == enumDepth && !inQual:
@@ -459,6 +464,7 @@ func expectations(toks []scanner.Token) []string {
 		if t.Kind != scanner.Pipe && t.Kind != scanner.Comma {
 			qualName = false
 		}
+		prevWasFieldName = t.Kind == scanner.Ident && atLineStart && depth > 0
 		prev = t
 	}
 	return want
@@ -491,6 +497,11 @@ func corpus(t *testing.T) []string {
 			t.Fatal(err)
 		}
 	}
+	// timestamp in a field's type position is in no corpus above; these
+	// witnesses carry it
+	files = append(files,
+		filepath.Join("..", "..", "testdata", "conformance", "feature-witnesses", "timestamp", "Probe.schema"),
+		filepath.Join("..", "..", "testdata", "conformance", "feature-witnesses", "full", "Features.schema"))
 	if len(files) < 50 {
 		t.Fatalf("found %d .schema files in the corpus; expected the whole of examples/, examples128/ and tables/", len(files))
 	}
@@ -602,6 +613,7 @@ func TestGrammarSamples(t *testing.T) {
 		{"/// a doc comment", "a doc comment", "comment.line.documentation"},
 		{"/* a\nblock */", "block", "comment.block"},
 		{"message M {}", "message", "invalid.illegal"},
+		{"    name wstring(16)", "wstring", "invalid.illegal"},
 		{"    reaction float32 = 0.2", "0.2", "constant.numeric.float"},
 	}
 	for _, c := range cases {
@@ -626,5 +638,53 @@ func TestGrammarSamples(t *testing.T) {
 	at := strings.Index(src, "flags")
 	if hasScope(scopes[at], "storage") {
 		t.Errorf("an indented field named flags got %v", scopes[at])
+	}
+}
+
+// TestGrammarTimestampTypeVersusName: timestamp is a type only in a field's
+// type position (SPEC §4.13). As a field's name it is a plain identifier.
+func TestGrammarTimestampTypeVersusName(t *testing.T) {
+	g, err := loadGrammar(grammarPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		src    string
+		nth    int // which occurrence of timestamp, from 0
+		isType bool
+	}{
+		{"table T\n{\n    at timestamp\n}", 0, true},
+		{"table T\n{\n    at   timestamp // when\n}", 0, true},
+		{"table T\n{\n    timestamp int64\n}", 0, false},
+		{"table T\n{\n    timestamp   int64 | min = 0\n}", 0, false},
+		{"table T\n{\n    timestamp timestamp\n}", 0, false},
+		{"table T\n{\n    timestamp timestamp\n}", 1, true},
+		{"table T\n{\n    if timestamp\n    {\n    }\n}", 0, false},
+		{"// a timestamp in a comment\n", 0, false},
+	}
+	for _, c := range cases {
+		at := -1
+		for k, from := 0, 0; k <= c.nth; k++ {
+			i := strings.Index(c.src[from:], "timestamp")
+			if i < 0 {
+				t.Fatalf("occurrence %d of timestamp is not in %q", c.nth, c.src)
+			}
+			at = from + i
+			from = at + 1
+		}
+		scopes := g.tokenize(c.src)
+		for off := at; off < at+len("timestamp"); off++ {
+			got := hasScope(scopes[off], "support.type.primitive")
+			if got != c.isType {
+				t.Errorf("timestamp #%d in %q: got %v, want type=%v", c.nth, c.src, scopes[off], c.isType)
+				break
+			}
+		}
+	}
+	// the keyword before it keeps its own scope
+	src := "table T\n{\n    if timestamp\n    {\n    }\n}"
+	scopes := g.tokenize(src)
+	if at := strings.Index(src, "if"); !hasScope(scopes[at], "keyword.control") {
+		t.Errorf("if before timestamp got %v, want keyword.control", scopes[at])
 	}
 }
