@@ -1,8 +1,8 @@
 package javatable
 
 import (
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -252,10 +252,10 @@ func TestJavaCompressedFloatVariableAndJson(t *testing.T) {
 		}
 		sort.Strings(sources)
 		args := append([]string{"--release", "17", "-nowarn", "-d", dir}, sources...)
-		if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+		if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 			t.Fatalf("javac: %v\n%s", err, out)
 		}
-		out, err := exec.Command(java, "-ea", "-cp", dir, u.Package+".Driver").CombinedOutput()
+		out, err := testproc.Command(t, java, "-ea", "-cp", dir, u.Package+".Driver").CombinedOutput()
 		if err != nil {
 			t.Fatalf("java: %v\n%s", err, out)
 		}

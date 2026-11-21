@@ -1,8 +1,9 @@
 package java
 
 import (
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -126,6 +127,7 @@ func TestDocCommentKeepsItsText(t *testing.T) {
 
 // The generated unit compiles with javac where a JDK is installed.
 func TestDocCommentEscapeCompiles(t *testing.T) {
+	slowtest.Gate(t, "javac")
 	javac, _ := compressedFloatJavaTools(t)
 	src := generateDocEscapeJava(t)
 	dir := t.TempDir()
@@ -133,7 +135,7 @@ func TestDocCommentEscapeCompiles(t *testing.T) {
 	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(javac, "--release", "17", "-nowarn", "-d", filepath.Join(dir, "classes"), path)
+	cmd := testproc.Command(t, javac, "--release", "17", "-nowarn", "-d", filepath.Join(dir, "classes"), path)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
