@@ -283,8 +283,22 @@ func TestCppCompressedFloatNegZeroAndFloat32Range(t *testing.T) {
 // enum outside its set) already refuses in every build through TableEnumRef.
 func TestCppVariableSaveAssertsTheWriteContract(t *testing.T) {
 	t.Parallel()
-	src := resourceBoundsEmitted(t)
-	save := cppFunctionText(t, src, "inline bool RootSaveBodyFields(")
+	files, err := Generate(cppUnitFrom(t, `package contractfast
+
+table Root
+{
+    small int8 | min = -100, max = 100
+    mask  bits(13)
+}
+`))
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	var sb strings.Builder
+	for _, text := range files {
+		sb.Write(text)
+	}
+	save := cppFunctionText(t, sb.String(), "inline bool RootSaveBodyFields(")
 	for _, want := range []string{
 		"schema_assert( value.small >= ", // row 1, a ranged field
 		"schema_assert( value.small <= ",
