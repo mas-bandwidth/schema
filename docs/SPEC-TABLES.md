@@ -17167,8 +17167,8 @@ no randomness, no clock, no seed. Each sample is named:
   point or compressed float at its declared or implied minimum, a string or a
   byte buffer empty, a counted array at its minimum count, an enum at its first
   variant, a flags set empty, a `bool` false; every optional PRESENT; every
-  union at its first arm; every pointer to a table not already on the path a
-  present node.
+  union at its first arm; every pointer to a table the sample has not yet
+  written a present node.
 - `high`: every bounded field AT ITS HIGH BOUND — the maximum value, a
   `string(N)` or `bytes(N)` of N bytes, a `[..N]` array of N elements, an enum
   at its last variant, every flag set, a `bool` true; an unbounded collection
@@ -17183,8 +17183,11 @@ no randomness, no clock, no seed. Each sample is named:
   least one sample.
 
 A text-list element that may be absent (`?string(M)`) is written absent once in
-`high`; an optional map value present. A pointer to a table already on the
-path is null, so a recursive declaration has finite samples. A deprecated field
+`high`; an optional map value present. A pointer to a table the sample has
+already written as a pointer's node, on the path or anywhere before it, is
+null, so each table is written at most once: a recursive declaration has
+finite samples, and a sample's size is linear in the declaration however
+densely its tables point at each other. A deprecated field
 (§2.10) is never written. A field kind the generator does not spell is REFUSED
 BY NAME at testgen, naming the field, never skipped.
 
