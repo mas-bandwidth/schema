@@ -27,16 +27,18 @@ func (e *InvalidValue) Error() string {
 	return "invalid_value: " + e.Field + ": " + e.Detail
 }
 
-// CheckValue walks a value as the writers walk it (absent optionals, elided
-// guards and deprecated fields are not written, so they are not asked) and
-// answers the first value outside its declaration as an *InvalidValue. It is
+// CheckValue walks a value as the TEXT writer walks it (absent optionals and
+// elided guards are not written, so they are not asked; a deprecated field IS
+// written at its line, docs/SPEC-TABLES.md §16.14 W3, and the text read holds
+// it to its declaration, so it is asked like any other field) and answers the
+// first value outside its declaration as an *InvalidValue. It is
 // the check of the TEXT writer, which carries a flags mask by its names, so a
 // mask bit that names no variant (one a newer writer appended) refuses there
 // rather than being dropped. A zero byte or unit is ill-formed text there too
 // (docs/SPEC.md §5.1 row 8): the text reader refuses `\u0000` in placed text,
 // so a writer never produces text its own reader refuses.
 func (m *Model) CheckValue(inst *Instance) error {
-	return m.checkInstance(inst, &checkWalk{seen: map[*Instance]bool{}, binaryText: true})
+	return m.checkInstance(inst, &checkWalk{seen: map[*Instance]bool{}, binaryText: true, writesDeprecated: true})
 }
 
 // CheckFileValue is CheckValue for the VARIABLE file form, which
@@ -57,7 +59,7 @@ func (m *Model) CheckFileValue(inst *Instance) error {
 // (docs/SPEC-TABLES.md §3.4, §22.6; docs/rulings.json
 // fixed-deprecated-field-is-carried).
 func (m *Model) CheckFixedValue(inst *Instance) error {
-	return m.checkInstance(inst, &checkWalk{seen: map[*Instance]bool{}, wholeMasks: true, binaryText: true, fixedForm: true})
+	return m.checkInstance(inst, &checkWalk{seen: map[*Instance]bool{}, wholeMasks: true, binaryText: true, writesDeprecated: true})
 }
 
 // CheckBinaryValue is CheckValue for the binary writers that do not carry a
@@ -70,13 +72,14 @@ func (m *Model) CheckBinaryValue(inst *Instance) error {
 
 // checkWalk is one CheckValue walk: the instances already asked, whether the
 // writer carries a flags mask whole, whether a zero byte or unit is
-// ill-formed text for this writer, and whether this is the FIXED form, whose
-// writer carries a deprecated field and so checks it like any other.
+// ill-formed text for this writer, and whether the writer writes a
+// deprecated field (the fixed form and the text form do) and so checks it
+// like any other.
 type checkWalk struct {
-	seen       map[*Instance]bool
-	wholeMasks bool
-	binaryText bool
-	fixedForm  bool
+	seen             map[*Instance]bool
+	wholeMasks       bool
+	binaryText       bool
+	writesDeprecated bool
 }
 
 func (m *Model) checkInstance(inst *Instance, seen *checkWalk) error {
@@ -87,10 +90,11 @@ func (m *Model) checkInstance(inst *Instance, seen *checkWalk) error {
 	guards := Guards(inst.Def)
 	for i := range inst.Fields {
 		fv := &inst.Fields[i]
-		// THE VARIABLE, MESSAGE AND TEXT FORMS NEVER WRITE A DEPRECATED FIELD
+		// THE VARIABLE AND MESSAGE FORMS NEVER WRITE A DEPRECATED FIELD
 		// (docs/SPEC-TABLES.md §3.4, §22.6): their walks skip it. The fixed
-		// form carries it, so its walk checks it like any other field.
-		if fv.Def.Deprecated && !seen.fixedForm {
+		// form carries it and the text form writes it at its line (§16.14
+		// W3), so their walks check it like any other field.
+		if fv.Def.Deprecated && !seen.writesDeprecated {
 			continue
 		}
 		if terms, guarded := guards[fv.Def.Name]; guarded && !inst.GuardHolds(terms) {
