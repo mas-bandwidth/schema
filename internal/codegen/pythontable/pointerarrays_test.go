@@ -187,11 +187,13 @@ func encodeOracleJSON(t *testing.T, m *tabletext.Model, rootName, js string) []b
 	return wire
 }
 
+// hostileCase is a wire the Go engine refuses. The verdict is the contract
+// (docs/rulings.json, refusal-verdict-only): Python must refuse it too, for
+// whatever reason is its own.
 type hostileCase struct {
-	name   string
-	table  string
-	wire   []byte
-	reason string
+	name  string
+	table string
+	wire  []byte
 }
 
 // buildChainWire returns the Go engine's own wire for a Root whose head is a
@@ -606,7 +608,6 @@ func buildHostileCorpus(t *testing.T, u *ir.Unit, m *tabletext.Model) []hostileC
 		if ok || !tablewire.ReadRefusal(err) || !rep.Refused {
 			t.Fatalf("hostile case %s was NOT refused by Go tablewire.Decode: ok=%v err=%v rep=%+v", c.name, ok, err, rep)
 		}
-		c.reason = tablewire.RefusalReason(err)
 	}
 	return cases
 }
@@ -942,7 +943,7 @@ table Guarded
 		fmt.Fprintf(&manifest, "GOOD %s %s %s\n", gc.name, gc.table, hex.EncodeToString(gc.wire))
 	}
 	for _, hc := range hostileCorpus {
-		fmt.Fprintf(&manifest, "BAD %s %s %s %s\n", hc.name, hc.table, hc.reason, hex.EncodeToString(hc.wire))
+		fmt.Fprintf(&manifest, "BAD %s %s %s\n", hc.name, hc.table, hex.EncodeToString(hc.wire))
 	}
 	fmt.Fprintf(&manifest, "GOLD list_shared %s\n", hex.EncodeToString(listSharedWire))
 	fmt.Fprintf(&manifest, "GOLD list_before_pointer %s\n", hex.EncodeToString(listBeforePtrWire))
@@ -1151,14 +1152,13 @@ for ln in lines:
             assert val.shelf.fixed3[0] is leaf and val.shelf.fixed3[2] is leaf
             assert val.shelf.extra[0] is leaf
     elif tag == "BAD":
-        _, name, tbl_name, want_reason, hx = parts
+        _, name, tbl_name, hx = parts
         wire = bytes.fromhex(hx)
         cls = TABLES[tbl_name]
         sentinel = make_report(77, 66, 55, 44)
         try:
             cls.load(wire, report=sentinel)
-        except Refused as exc:
-            assert exc.reason == want_reason, f"{name}: got reason {exc.reason!r}, want {want_reason!r}"
+        except Refused:
             assert (sentinel.unknown, sentinel.widened, sentinel.retained, sentinel.retain_lost) == (77, 66, 55, 44), f"{name}: report mutated on refusal"
         else:
             raise AssertionError(f"hostile vector {name} was accepted!")
