@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/mas-bandwidth/schema/v2/internal/atomicfile"
 )
@@ -75,9 +74,6 @@ func failOnce(path string, err error) func(oldpath, newpath string) error {
 	}
 }
 
-// pinOld is the time the fixtures' files were last written, long before any
-// test runs, so a file that was rewritten shows.
-var pinOld = time.Date(2020, 2, 3, 4, 5, 6, 0, time.UTC)
 
 // TestPinPublishAllOrNothing fails a two-file pin at each point it can fail,
 // through publishPins' seam, and holds the tree to all old or all new: a

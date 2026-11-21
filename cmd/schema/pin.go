@@ -124,13 +124,27 @@ func cmdPin(args []string) {
 	if len(pos) < 1 {
 		fatalf("schema pin needs a version: schema pin <version> <dir>...")
 	}
-	version := pos[0]
-	modulePath, err := pinTarget(version, modulemove.FirstV3ModuleTag, pinMainModule)
+	changed, err := runPin(atomicfile.OS(), pos[0], pos[1:], mixedOk, modulemove.FirstV3ModuleTag, pinMainModule)
 	if err != nil {
 		fatalf("%v", err)
 	}
+	for _, path := range changed {
+		fmt.Println(path)
+	}
+}
+
+// runPin is the whole command behind its arguments: the pin of dirs to
+// version, with the file operations, the boundary and the build's own module
+// path passed in. It returns the files it moved, or the refusal, which is the
+// line the command prints. cmdPin passes the real ones; the committed corpus
+// (internal/modulemove/pincorpus) runs every adopter tree through here with
+// its own, in process.
+func runPin(f atomicfile.Files, version string, dirs []string, mixedOk bool, boundary, ownModule string) ([]string, error) {
+	modulePath, err := pinTarget(version, boundary, ownModule)
+	if err != nil {
+		return nil, err
+	}
 	newPrefix := pinDirectiveHead + modulePath + pinCommandTail
-	dirs := pos[1:]
 	if len(dirs) == 0 {
 		dirs = []string{"."}
 	}
@@ -141,10 +155,10 @@ func cmdPin(args []string) {
 	for _, dir := range dirs {
 		info, err := os.Stat(dir)
 		if err != nil {
-			fatalf("schema pin: %s: %v", dir, err)
+			return nil, fmt.Errorf("schema pin: %s: %w", dir, err)
 		}
 		if !info.IsDir() {
-			fatalf("schema pin: %s is not a directory", dir)
+			return nil, fmt.Errorf("schema pin: %s is not a directory", dir)
 		}
 		pins := 0
 		werr := filepath.WalkDir(dir, func(path string, d iofs.DirEntry, e error) error {
@@ -190,7 +204,7 @@ func cmdPin(args []string) {
 			return nil
 		})
 		if werr != nil {
-			fatalf("schema pin: %v", werr)
+			return nil, fmt.Errorf("schema pin: %w", werr)
 		}
 		if pins == 0 {
 			noPin = append(noPin, dir)
@@ -198,7 +212,7 @@ func cmdPin(args []string) {
 	}
 
 	if len(noPin) > 0 {
-		fatalf("schema pin: no go:generate pin to move under %s", strings.Join(noPin, ", "))
+		return nil, fmt.Errorf("schema pin: no go:generate pin to move under %s", strings.Join(noPin, ", "))
 	}
 	if len(versions) > 1 && !mixedOk {
 		names := make([]string, 0, len(versions))
@@ -206,15 +220,17 @@ func cmdPin(args []string) {
 			names = append(names, v)
 		}
 		sort.Strings(names)
-		fatalf("schema pin: the tree's pins already differ from each other (%s); pass --mixed-ok to move them together", strings.Join(names, ", "))
+		return nil, fmt.Errorf("schema pin: the tree's pins already differ from each other (%s); pass --mixed-ok to move them together", strings.Join(names, ", "))
 	}
 
-	if err := publishPins(atomicfile.OS(), changes); err != nil {
-		fatalf("schema pin: %v", err)
+	if err := publishPins(f, changes); err != nil {
+		return nil, fmt.Errorf("schema pin: %w", err)
 	}
+	changed := make([]string, 0, len(changes))
 	for _, ch := range changes {
-		fmt.Println(ch.path)
+		changed = append(changed, ch.path)
 	}
+	return changed, nil
 }
 
 // pinChange is one generate.go to move: the bytes it held, the bytes it
