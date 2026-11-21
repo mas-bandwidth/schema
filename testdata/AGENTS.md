@@ -8,4 +8,5 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `golden/` | generated-source goldens | `go test ./internal/goldens` | `make update-goldens` |
 | `jsontestsuite/` | vendored JSONTestSuite (MIT) | `go test ./internal/tabletext` | `go test ./internal/tabletext -run JSONTestSuite` |
 | `luau-nightly-fuzz/` | Luau nightly fuzz repros | `make luau-nightly-fuzz-replay` | `make luau-nightly-fuzz` |
+| `name-buildability/` | name-shadowing probe corpus | `go test ./internal/check -run TestNameBuildabilityCorpus` | `make name-buildability` |
 | `wire/` | pinned wire bytes | `go test ./internal/goldens` | `make update-goldens` |

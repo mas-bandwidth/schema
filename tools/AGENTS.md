@@ -14,6 +14,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `luaufuzzhost/` | Luau nightly fuzz host (C++) | `make luau-nightly-fuzz-replay` | `make luau-nightly-fuzz` |
 | `matrix/` | 3.0.0 proof gate | `go test ./tools/matrix` | `make proof` |
 | `moofuzzhost/` | moo wire-fuzz native host (C++) | `make tables-moo-wire-fuzz` | `make tables-moo-wire-fuzz` |
+| `namebuild/` | name-buildability nightly, all 18 targets | `go test ./tools/namebuild` | `make name-buildability` |
 | `negativecontrols/` | negative-control enumerator | `go test ./tools/negativecontrols` | `go run ./tools/negativecontrols check` |
 | `pgroup/` | process-group runner for CI steps | `go test ./tools/pgroup` | `go run ./tools/pgroup -- make test` |
 | `releasebin/` | release binaries for six platforms | `go test ./tools/releasebin` | `make release-binaries` |
