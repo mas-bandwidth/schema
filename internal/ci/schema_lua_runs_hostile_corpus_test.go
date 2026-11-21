@@ -79,12 +79,18 @@ const (
 
 // luaHostilePlant replaces from with to in one emitted runtime file of every
 // table unit's scratch copy; the zero value plants nothing.
-type luaHostilePlant struct{ file, from, to string }
+type luaHostilePlant struct {
+	file, from, to string
+	// unavailable marks every table unit as one that did not generate: no
+	// reader at all, which is this runner's failure and never a refusal
+	unavailable bool
+}
 
 var (
-	luaHostileGatePlant  = luaHostilePlant{luaHostilePlantFile, luaHostilePlantFrom, luaHostilePlantTo}
-	luaHostileCrashPlant = luaHostilePlant{luaHostilePlantFile, luaHostilePlantFrom, luaHostileCrashTo}
-	luaHostileEmptyPlant = luaHostilePlant{luaHostileEmptyFile, luaHostileEmptyFrom, luaHostileEmptyTo}
+	luaHostileGatePlant        = luaHostilePlant{file: luaHostilePlantFile, from: luaHostilePlantFrom, to: luaHostilePlantTo}
+	luaHostileCrashPlant       = luaHostilePlant{file: luaHostilePlantFile, from: luaHostilePlantFrom, to: luaHostileCrashTo}
+	luaHostileEmptyPlant       = luaHostilePlant{file: luaHostileEmptyFile, from: luaHostileEmptyFrom, to: luaHostileEmptyTo}
+	luaHostileUnavailablePlant = luaHostilePlant{unavailable: true}
 )
 
 // luaHostileCase is one manifest row.
@@ -195,6 +201,10 @@ func luaHostileGenerate(t *testing.T, root, dir string, cases []luaHostileCase, 
 			// lineage, which a bare backend call cannot see.
 			files, err = compiler.New().Generate(u, "lua", compiler.Options{})
 			entry.module = luatable.ModuleName(u)
+		}
+		if err == nil && plant.unavailable && !packet {
+			err = fmt.Errorf("PLANTED: the unit did not generate")
+			planted++
 		}
 		if err != nil {
 			entry.unavailable = err.Error()
@@ -649,6 +659,16 @@ func TestSchemaLuaHostileCorpusPlantedReader(t *testing.T) {
 			strings.Join(emptied, "\n  "))
 	} else {
 		t.Logf("the planted empty batch read is red on a refused case: %s", why)
+	}
+	// THE UNAVAILABLE PLANT: no table unit generated. A missing reader is
+	// this runner's failure, so a case the manifest refuses must go red as an
+	// error, never pass as a refusal.
+	missing := luaHostileCompare(t, cases, luaHostileRun(t, root, corpusDir, cases, luaHostileUnavailablePlant))
+	if why := luaHostileCrashedRefusal(missing); why == "" {
+		t.Fatalf("a missing reader passed as a refusal: no case the manifest refuses went red as an error:\n  %s",
+			strings.Join(missing, "\n  "))
+	} else {
+		t.Logf("the planted missing reader is red on a refused case: %s", why)
 	}
 }
 
