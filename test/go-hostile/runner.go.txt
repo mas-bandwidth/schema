@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/tables/goruntime"
@@ -34,6 +35,9 @@ func run(dir string) error {
 	scan := bufio.NewScanner(file)
 	scan.Buffer(make([]byte, 4096), 4*1024*1024)
 	total, passed, failed := 0, 0, 0
+	// THE LEDGER (docs/HOSTILE-CORPUS.md): the cases dispatch answered, per
+	// carrier, which tools/hostileledger holds to the corpus folder.
+	ran := map[string]int{}
 	seen := map[string]bool{}
 	for scan.Scan() {
 		line := scan.Text()
@@ -54,6 +58,7 @@ func run(dir string) error {
 		}
 		total++
 		got := dispatch(row[1], row[2], row[3], data)
+		ran[row[1]]++
 		var want string
 		switch row[6] {
 		case "accept":
@@ -75,6 +80,15 @@ func run(dir string) error {
 		return err
 	}
 	fmt.Printf("generated go: %d cases: %d pass, %d unexplained, 0 skipped\n", total, passed, failed)
+	carriers := make([]string, 0, len(ran))
+	for carrier := range ran {
+		carriers = append(carriers, carrier)
+	}
+	sort.Strings(carriers)
+	for _, carrier := range carriers {
+		fmt.Printf("hostile-ledger ran %s %d\n", carrier, ran[carrier])
+	}
+	fmt.Println("hostile-ledger end")
 	if total == 0 || failed != 0 {
 		return fmt.Errorf("generated Go corpus disagrees: %d failures across %d cases", failed, total)
 	}

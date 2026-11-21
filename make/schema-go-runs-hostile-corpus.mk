@@ -27,7 +27,7 @@ schema-go-hostile-generate: bin/schema tables-go-sibling-runtime
 
 schema-go-runs-hostile-corpus: schema-go-hostile-generate
 	cd $(GO_HOSTILE_BUILD) && go build -mod=mod -o runner .
-	$(GO_HOSTILE_BUILD)/runner "$(GO_HOSTILE_STAGE)"
+	$(call hostile_ledgered,go,$(GO_HOSTILE_BUILD)/run.log,$(GO_HOSTILE_BUILD)/runner "$(GO_HOSTILE_STAGE)",)
 
 test-go: schema-go-runs-hostile-corpus
 
