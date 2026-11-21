@@ -18,6 +18,7 @@ bin/schema check <dir>
 | `comparison/` | Cap'n/PB/FlatBuffers packet numbers | `none` | `comparison/measure.sh` |
 | `compiler/` | public driver API | `go test ./compiler` | `go test ./compiler` |
 | `docs/` | spec, tutorial, contributing | `go test ./compiler` | `go test ./compiler` |
+| `editors/` | TextMate grammar, VS Code, Linguist kit | `go test ./editors/...` | `go test ./editors/...` |
 | `examples/` | type-wire corpus | `go test ./internal/goldens` | `make check` |
 | `examples128/` | int128/fixed corpus | `go test ./internal/goldens` | `make check` |
 | `generated/` | committed per-language output | `test/generated-tree/verify` | `make generated-current` |

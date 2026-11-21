@@ -385,13 +385,12 @@ func renderField(f *ir.Field) Field {
 		// token says WHICH array it is. Its two own facts are the KEY's:
 		//
 		//   - the key KIND, judged like any kind. A key arriving under a kind
-		//     the reader does not declare resets the whole map to empty and
-		//     counts one kind_mismatch (§2.8) — the value is gone and the
-		//     wire says only that it disagreed.
-		//   - the key BOUND, judged like any extent. A tightened `string(N)`
-		//     key does not clamp: an entry whose key does not fit is SKIPPED
-		//     whole and counted, because a clamped key is a merged entry
-		//     (§2.8). Lossy by entries, reported, and so a warning.
+		//     the reader does not declare refuses the whole load
+		//     `kind_mismatch` (§2.8, §4).
+		//   - the key BOUND, judged like any extent. A stored key that does
+		//     not fit a tightened `string(N)` refuses the whole load
+		//     `length_over_bound` (§2.8, §4): the data survives in the file,
+		//     the read reports what it cannot take, and so a warning.
 		//
 		// A map carries no `bound`: its count is unbounded by design, and the
 		// only ceiling is the int32 extent cap every array shares (§2.2).
@@ -425,8 +424,8 @@ func renderField(f *ir.Field) Field {
 		add("array", "unbounded")
 	}
 	if f.TextTotal > 0 {
-		// a TEXT LIST's TOTAL (docs/SPEC-TABLES.md §2.13, §18.1): a reader drops
-		// the elements past its own total and counts clamped, so it is an
+		// a TEXT LIST's TOTAL (docs/SPEC-TABLES.md §2.13, §18.1): a reader
+		// refuses a list past its own total `length_over_bound`, so it is an
 		// extent like a bound, judged by RuleShrink (§18.2)
 		add("total", strconv.FormatInt(f.TextTotal, 10))
 	}
@@ -440,8 +439,8 @@ func renderField(f *ir.Field) Field {
 	if f.Type.Size != 0 {
 		add("size", strconv.FormatInt(f.Type.Size, 10))
 	}
-	// THE EFFECTIVE RANGE, as DECLARED. A reader clamps a stored value to its
-	// own declared bounds and counts `clamped` (docs/SPEC-TABLES.md §4), so a
+	// THE EFFECTIVE RANGE, as DECLARED. A reader refuses a stored value past
+	// its own declared bounds `out_of_range` (docs/SPEC-TABLES.md §4), so a
 	// tightened range is a data edit the wire reports but the baseline is
 	// where it is seen BEFORE it ships — an extent like a capacity, judged the
 	// same way. Only a declared range is recorded: `bits(N)`'s implied

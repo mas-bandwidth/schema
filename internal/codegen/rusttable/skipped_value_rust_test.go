@@ -137,6 +137,21 @@ fn nested_row(name: &str, v: &TableVocabulary, first: u64, second: u64) {
     println!("ROW\t{}\t{}", name, if ok { "read" } else { "refused" });
 }
 
+// A body naming every reference in refs, then the end reference.
+fn body_row(name: &str, v: &TableVocabulary, refs: &[u64]) {
+    let mut buf = vec![0u8; (refs.len() + 1) * 8];
+    let mut w = TableBitWriter::new(&mut buf);
+    for &x in refs {
+        w.put(x, v.ref_bits);
+    }
+    w.put(0, v.ref_bits);
+    let used = ((w.bits + 7) / 8) as usize;
+    let mut r = TableBitReader::new(&buf[..used]);
+    let body = TableMessageEntry { kind: 13, ..Default::default() };
+    let ok = table_message_skip(&mut r, v, &body, 0);
+    println!("ROW\t{}\t{}", name, if ok { "read" } else { "refused" });
+}
+
 fn ranged_entry(kind: u8, bits: u64, base_lo: u64, base_hi: u64) -> TableMessageEntry {
     let mut e = TableMessageEntry::default();
     e.kind = kind;
@@ -252,6 +267,23 @@ fn main() {
     big.announced = true;
     nested_row("nested-id-slot-past-4096-distinct", &big, 4096, 4097);
     nested_row("nested-id-slot-past-4096", &big, 4096, 4096);
+
+    // THE CALLER-DECLARED CAPACITY IS THE BOUND (§3.3): a vocabulary declared
+    // past 4096 admits every distinct id it holds in one body.
+    let wide_n = 4096 + 65;
+    let mut wide_storage = vec![TableMessageEntry::default(); wide_n];
+    for i in 0..wide_n { wide_storage[i].id = (i + 1) as u64; wide_storage[i].kind = 0; }
+    let mut wide = TableVocabulary::new(&mut wide_storage);
+    wide.count = wide_n;
+    wide.ref_bits = table_message_bits(wide_n as u64);
+    wide.announced = true;
+    let past: Vec<u64> = (4097..=(wide_n as u64)).collect();
+    body_row("body-65-ids-past-4096-distinct", &wide, &past);
+    let mut again = past.clone();
+    again.push(4097);
+    body_row("body-65-ids-past-4096-repeat", &wide, &again);
+    let all: Vec<u64> = (1..=(wide_n as u64)).collect();
+    body_row("body-every-id-of-capacity", &wide, &all);
 `)
 	body.WriteString("}\n")
 
@@ -338,6 +370,9 @@ var rustSkippedShapeVerdicts = map[string]string{
 	"nested-id-two-refs":                "refused",
 	"nested-id-slot-past-4096-distinct": "read",
 	"nested-id-slot-past-4096":          "refused",
+	"body-65-ids-past-4096-distinct":    "read",
+	"body-65-ids-past-4096-repeat":      "refused",
+	"body-every-id-of-capacity":         "read",
 	"announce-elem-12":                  "read",
 	"announce-elem-14":                  "refused",
 	"announce-elem-16":                  "refused",

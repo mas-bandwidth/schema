@@ -7,8 +7,13 @@
 # For every unit the goose target generated (a directory with a table
 # module), builds the leg for that unit and runs the harness's two arms over
 # it: --builder over its variable-class file roots, the region arm over its
-# value-only roots. An arm with no root of this unit is said and skipped. Every
-# arm that ran is required green; the line printed per arm is the harness's.
+# value-only roots. An arm whose driver announces no root of this unit (the
+# harness's "the leg has a codec for none") is held by name: it passes only
+# when test/conformance/goose/wirefuzz-noroots.tsv carries the unit and the
+# arm, and a carried row whose arm runs, or whose unit is gone, fails. So a
+# driver that stops presenting a unit's roots reads red, never as one arm
+# fewer. Every arm that ran is required green; the line printed per arm is the
+# harness's.
 # `retain` selects only --builder --retain, and `all` adds it to both plain
 # arms. Every mode compiles the unit legs once before running its arms.
 set -u
@@ -23,6 +28,12 @@ case "$mode" in
 esac
 rm -rf "$work" && mkdir -p "$work" || exit 2
 known_file=${SCHEMA_GOOSE_WIREFUZZ_KNOWN:-test/conformance/goose/wirefuzz-known.tsv}
+noroots_file=${SCHEMA_GOOSE_WIREFUZZ_NOROOTS:-test/conformance/goose/wirefuzz-noroots.tsv}
+if [ ! -f "$noroots_file" ]; then
+	echo "goose wire-fuzz: $noroots_file is missing: the arms that announce no roots cannot be held by name" >&2
+	exit 2
+fi
+: >"$work/noroots-seen.txt"
 fail=0
 ran=0
 known_red=0
@@ -50,8 +61,21 @@ for u in $(cat "$work/units.txt"); do
 		"$harness" wire-fuzz $flag --driver "$work/$u/wirefuzz $u $driver_arm" --seed "$seed" --n "$n" \
 			--failed "$work/failed-$u-$arm.bin" >"$log" 2>&1
 		rc=$?
+		noroots=$(awk -F'\t' -v u="$u" -v a="$arm" '$1 == u && $2 == a { print $3 }' "$noroots_file")
 		if [ $rc -ne 0 ] && grep -q 'the leg has a codec for none' "$log"; then
+			if [ -n "$noroots" ]; then
+				echo "goose wire-fuzz: $u ($arm arm): no roots, carried: $noroots"
+				printf '%s\t%s\n' "$u" "$arm" >>"$work/noroots-seen.txt"
+			else
+				echo "goose wire-fuzz: $u ($arm arm) RED: its driver announces no roots, and $noroots_file does not carry it:"
+				sed 's/^/  /' "$log"
+				fail=1
+			fi
 			continue
+		fi
+		if [ -n "$noroots" ]; then
+			echo "goose wire-fuzz: $u ($arm arm) runs, but $noroots_file carries it as announcing no roots: remove the row"
+			fail=1
 		fi
 		ran=$((ran + 1))
 		known=$(awk -F'\t' -v u="$u" -v a="$arm" '$1 == u && $2 == a { print $3 }' "$known_file")
@@ -78,6 +102,19 @@ for u in $(cat "$work/units.txt"); do
 		fi
 	done
 done
+# a carried row of an arm this mode runs whose unit and arm never answered
+# "no roots": the unit is gone, or its leg did not build
+for arm in $arms; do
+	awk -F'\t' -v a="$arm" '!/^#/ && NF >= 3 && $2 == a { print $1 "\t" $2 }' "$noroots_file"
+done | while IFS="$(printf '\t')" read -r u arm; do
+	if ! grep -qxF "$(printf '%s\t%s' "$u" "$arm")" "$work/noroots-seen.txt"; then
+		echo "goose wire-fuzz: $noroots_file carries $u ($arm arm), which did not answer no roots: remove the row"
+		echo stale >>"$work/noroots-stale.txt"
+	fi
+done
+if [ -s "$work/noroots-stale.txt" ]; then
+	fail=1
+fi
 if [ $ran -eq 0 ]; then
 	echo "goose wire-fuzz REFUSES: no arm ran over $units"
 	exit 2

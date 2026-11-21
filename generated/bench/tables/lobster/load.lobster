@@ -200,6 +200,56 @@ let string_blob_id = 0x704be0d8faaffc58 // FNV-1a 64 of "string"
 let bytes_blob_id = 0x2f2ec0474f1c4fe4 // FNV-1a 64 of "bytes"
 let map_key_id = 0x3dc94a19365b10ec // FNV-1a 64 of "key"
 
+// IdSet is the set every DUPLICATE TEST asks (an id table's entries, a
+// body's field ids, a keyed array's keys, a message's announced ids and
+// named fields): open addressing over Lobster's own hash, so n insertions
+// cost near-linear work, as the Go reference's map does, and never the
+// n × n of a scan of every word seen before.
+class IdSet:
+    keys:[int] = []
+    used:[bool] = []
+    n:int = 0
+
+// idset_has is whether x is in the set.
+def idset_has(s:IdSet, x:int) -> bool:
+    if length(s.keys) == 0:
+        return false
+    let mask = length(s.keys) - 1
+    var i = hash(x) & mask
+    while s.used[i]:
+        if s.keys[i] == x:
+            return true
+        i = (i + 1) & mask
+    return false
+
+// idset_add inserts x and answers false when x was already present.
+def idset_add(s:IdSet, x:int) -> bool:
+    if (s.n + 1) * 2 > length(s.keys):
+        let old_keys = s.keys
+        let old_used = s.used
+        var cap = 16
+        while cap < (s.n + 1) * 4:
+            cap *= 2
+        s.keys = []
+        s.used = []
+        while length(s.keys) < cap:
+            push(s.keys, 0)
+            push(s.used, false)
+        s.n = 0
+        for(old_keys) k, i:
+            if old_used[i]:
+                idset_add(s, k)
+    let mask = length(s.keys) - 1
+    var i = hash(x) & mask
+    while s.used[i]:
+        if s.keys[i] == x:
+            return false
+        i = (i + 1) & mask
+    s.used[i] = true
+    s.keys[i] = x
+    s.n++
+    return true
+
 // LoadState is one load's shared state: the id table, the report, and the
 // numbering (Go's decodeState). variable is false for a value-only root,
 // whose reader resolves nothing and names no node table (§3.1).
@@ -508,6 +558,18 @@ def finite_f32(x:float) -> bool:
 def finite_f64(x:float) -> bool:
     return finite_f64_bits(f64bits(x))
 
+// float_in_range is whether x lies inside a compressed float's declared range
+// AS EVERY RUNTIME HOLDS IT: the value and both ends narrowed to float32
+// (docs/SPEC.md §4.6, the triple is evaluated at float32; docs/SPEC-TABLES.md
+// §3.3; Go's tabletext.FloatInRange). An end float32 cannot spell exactly,
+// such as max = 0.1, is the float32 nearest it, so the value at that end is
+// in range and one float32 step past it is not. Every path that holds a
+// compressed float's range asks this one test: the writers' check, the
+// variable read and the JSON read, so no writer emits bytes a reader refuses.
+def float_in_range(fd:FieldDescriptor, x:float) -> bool:
+    let v = fround(x)
+    return v >= fround(fd.flo) and v <= fround(fd.fhi)
+
 // parse_float64 is a number token as the nearest double, the answer strtod
 // and Go's ParseFloat give on every host: a magnitude past the largest double
 // is an infinity of the token's sign, and one below the smallest subnormal is
@@ -625,7 +687,7 @@ def scalar_at(r:Reader, cell:Value, fd:FieldDescriptor, declared:int, kind:int) 
         if not finite_f32_bits(bits):
             refuse_non_finite(rep, fd)
             return read_refuse(rep, "non_finite_float")
-        if declared != 11 and fd.franged and (v < fd.flo or v > fd.fhi):
+        if declared != 11 and fd.franged and not float_in_range(fd, v):
             return read_refuse(rep, "out_of_range")
         if declared != 11 and fd.franged and v == 0.0:
             // a compressed float's -0 lands as +0 (§3.3, the special values)
@@ -693,14 +755,13 @@ def scalar_admitted(fd:FieldDescriptor, kind:int, v:Value) -> bool:
     if kind == 1:
         return true
     if kind == 10:
-        let x = fround(v.f)
         if not finite_f32(v.f):
             return false
-        return not fd.franged or (x >= fround(fd.flo) and x <= fround(fd.fhi))
+        return not fd.franged or float_in_range(fd, v.f)
     if kind == 11:
         if not finite_f64(v.f):
             return false
-        return not fd.franged or (v.f >= fd.flo and v.f <= fd.fhi)
+        return not fd.franged or float_in_range(fd, v.f)
     let width = kind_width(kind)
     if width == 0:
         return true
@@ -794,6 +855,11 @@ def reset_slot(sl:Slot):
     if f.s == "arr":
         for(f.bound):
             push(sl.elems, element_zero(f))
+        // a counted array is BORN AT ITS MINIMUM (docs/SPEC.md §4.6, §4.2;
+        // Go's ir.Field.BornCount): a range above zero has no wire-legal
+        // count at zero
+        if f.array == "counted":
+            sl.count = f.min
         return
     sl.cell = field_default(f)
 
@@ -1192,6 +1258,11 @@ def array_body(r:Reader, sl:Slot, framed:int) -> bool, bool:
         return collection_cap(r), false
     if f.array != "list" and count > f.bound:
         return read_refuse(rep, if is_bytes: "length_over_bound" else: "count_over_bound"), false
+    // a counted array below its declared minimum has no wire-legal count
+    // (docs/SPEC.md §5.1 row 3; Go's tablewire decode refuses it as the
+    // bound it is)
+    if not is_bytes and f.array == "counted" and count < f.min:
+        return read_refuse(rep, "count_over_bound"), false
     if ek != f.ek:
         rep.widened++
     if is_bytes:
@@ -1748,12 +1819,12 @@ def trailer(data:string) -> [int], int, bool:
         return [], 0, false
     let first = size - span
     let ids = []
+    let distinct = IdSet {}
     var i = 0
     while i < count:
         let id = read_int64_le(data, first + i * 8)
-        for(ids) seen:
-            if seen == id:
-                return [], 0, false
+        if not idset_add(distinct, id):
+            return [], 0, false
         push(ids, id)
         i++
     return ids, first, true
@@ -2230,7 +2301,7 @@ def wire_content_at(c:WireCheck, r:Reader, kind:int) -> bool:
         // impossible count before allocating a declaration-sized container.
         if count > r.hi - r.off:
             return read_refuse(c.st.report, "wire_damaged")
-        let keys:[int] = []
+        let keys = IdSet {}
         var i = 0
         while i < count:
             if kind == 16:
@@ -2239,10 +2310,8 @@ def wire_content_at(c:WireCheck, r:Reader, kind:int) -> bool:
                     return read_refuse(c.st.report, "wire_damaged")
                 if not wire_ref(c, key):
                     return false
-                for(keys) seen:
-                    if seen == key:
-                        return read_refuse(c.st.report, "wire_damaged")
-                push(keys, key)
+                if not idset_add(keys, key):
+                    return read_refuse(c.st.report, "wire_damaged")
                 let n, framed = leb(r)
                 if not framed or not has(r, n):
                     return read_refuse(c.st.report, "wire_damaged")
@@ -2258,7 +2327,7 @@ def wire_content_at(c:WireCheck, r:Reader, kind:int) -> bool:
     return r.off == r.hi or read_refuse(c.st.report, "wire_damaged")
 
 def wire_body(c:WireCheck, r:Reader, root:bool) -> bool:
-    let seen:[int] = []
+    let seen = IdSet {}
     var node_seen = false
     while true:
         let ref, ok = leb(r)
@@ -2276,10 +2345,8 @@ def wire_body(c:WireCheck, r:Reader, root:bool) -> bool:
         let id, named = rid(r, ref)
         if not named or not has(r, 1):
             return read_refuse(c.st.report, "wire_damaged")
-        for(seen) old:
-            if old == id:
-                return read_refuse(c.st.report, "wire_damaged")
-        push(seen, id)
+        if not idset_add(seen, id):
+            return read_refuse(c.st.report, "wire_damaged")
         let kind = u8(r)
         if id == build_version_id or id == message_vocabulary_id:
             return read_refuse(c.st.report, "wire_damaged")

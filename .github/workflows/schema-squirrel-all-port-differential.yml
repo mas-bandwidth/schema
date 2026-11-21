@@ -88,6 +88,15 @@ jobs:
         run: |
           export GOFLAGS=-mod=readonly
           make dist-squirrel
+      # EVERY REGISTERED PORT NEEDS ITS PIN. Ruby joined the ports, and
+      # `make toolchain` refuses the whole lens by name when dist/ruby-4.0.9 is
+      # absent ("the pinned toolchain does not resolve for: ruby"); the C++
+      # conformance driver includes serialize.h from the ../serialize sibling.
+      # Both are staged the way ruby-leg.yml and python-leg.yml stage them.
+      - name: The pinned Ruby interpreters
+        uses: ./.github/actions/ruby
+      - name: Stage the sibling runtimes
+        run: make serialize-siblings
       - name: The same corpus and the same vectors through every port
         run: |
           export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1

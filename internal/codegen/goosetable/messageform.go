@@ -370,7 +370,8 @@ func (e *msgEmit) putValue(ind int, f *ir.Field, entry ir.TableVocabularyEntry, 
 		count := fmt.Sprint(f.ArrayBound)
 		if f.Array == ir.ArrayCounted {
 			count = pl.val + "Count"
-			e.p(ind, "if %s < 0 || %s > %d { return schema_rt::msg_refuse(w, schema_rt::MsgRefuseInvalidValue); }", count, count, f.ArrayBound)
+			// a count below Min or past Max is refused (SPEC.md §5.1 row 3)
+			e.p(ind, "if %s < %d || %s > %d { return schema_rt::msg_refuse(w, schema_rt::MsgRefuseInvalidValue); }", count, f.ArrayMin, count, f.ArrayBound)
 		}
 		if bits := ir.TableMessageCountBits(entry.Shape); bits > 0 {
 			e.put(ind, fmt.Sprintf("(%s as! u64) - %d", count, entry.Shape.Min), int64(bits))
@@ -514,6 +515,11 @@ func (e *msgEmit) putField(ind int, f *ir.Field) {
 		header(ind + 1)
 		e.p(ind, "}")
 	case f.Array == ir.ArrayCounted:
+		if f.ArrayMin > 0 {
+			// an empty array below Min is refused, never elided as absent
+			// (SPEC.md §5.1 row 3)
+			e.p(ind, "if %sCount < %d { return schema_rt::msg_refuse(w, schema_rt::MsgRefuseInvalidValue); }", pl.val, f.ArrayMin)
+		}
 		e.p(ind, "if %sCount != 0 {", pl.val)
 		header(ind + 1)
 		e.p(ind, "}")
@@ -717,16 +723,18 @@ func (e *msgEmit) getScalar(ind int, f *ir.Field, en, dst string, element bool) 
 			e.p(ind, "%s = schema_rt::msg_f32(r, %s);", dst, en)
 			return
 		}
-		// THE ONE RULE (§3.3): compared as float64, one past an end refuses
-		// out_of_range, and a -0 lands as +0, uncounted
+		// THE ONE RULE (§3.3): one past an end refuses out_of_range, and a
+		// -0 lands as +0, uncounted. THE RANGE IS HELD AT FLOAT32 (SPEC.md
+		// §4.6, tabletext.FloatInRange): a bound float32 cannot spell
+		// exactly (max = 0.1) is the float32 nearest it, so the top grid
+		// step is lawful.
 		e.p(ind, "var q%s = schema_rt::msg_f32(r, %s);", v, en)
 		e.p(ind, "if !r.ok { return false; }")
-		e.p(ind, "let wide%s: f64 = q%s;", v, v)
-		e.p(ind, "if wide%s < schema_rt::fixed_bits_f64(0x%016x) {", v, math.Float64bits(f.FMin))
+		e.p(ind, "if q%s < %s {", v, f32Lit(float32(f.FMin)))
 		e.p(ind+1, "return schema_rt::msg_refuse_read(r, schema_rt::MsgRefuseOutOfRange);")
-		e.p(ind, "} else if wide%s > schema_rt::fixed_bits_f64(0x%016x) {", v, math.Float64bits(f.FMax))
+		e.p(ind, "} else if q%s > %s {", v, f32Lit(float32(f.FMax)))
 		e.p(ind+1, "return schema_rt::msg_refuse_read(r, schema_rt::MsgRefuseOutOfRange);")
-		e.p(ind, "} else if wide%s == 0.0 {", v)
+		e.p(ind, "} else if q%s == 0.0 {", v)
 		e.p(ind+1, "q%s = 0.0;", v)
 		e.p(ind, "}")
 		e.p(ind, "%s = q%s;", dst, v)
@@ -982,6 +990,12 @@ func (e *msgEmit) getFieldValue(ind int, f *ir.Field, en string, pl, def place, 
 			e.p(ind, "if %s && n%s == 0 { return schema_rt::msg_damage(r); }", fieldGate, v)
 		}
 		e.p(ind, "if n%s > %d { return schema_rt::msg_refuse_read(r, schema_rt::MsgRefuseCountOverBound); }", v, f.ArrayBound)
+		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+			// a count below THIS reader's Min is off the count's own range,
+			// refused as the count past Max is (SPEC.md §5.1 row 3;
+			// tablewire messagedecode refuses count_over_bound)
+			e.p(ind, "if n%s < %d { return schema_rt::msg_refuse_read(r, schema_rt::MsgRefuseCountOverBound); }", v, f.ArrayMin)
+		}
 		e.p(ind, "let el%s = schema_rt::msg_inner(r, %s);", v, en)
 		e.p(ind, "let k%s = n%s;", v, v)
 		// THE SURPLUS OF A FIXED-WIDTH ELEMENT IS ARITHMETIC (§3.3); an
