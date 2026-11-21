@@ -14,13 +14,13 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `cookgen/` | cook fixture generator | `make tables-cook-scale` | `go build -o build/cookgen ./test/cookgen` |
 | `cpp-hostile/` | C++ hostile-corpus runner | `make schema-cpp-runs-hostile-corpus` | `make schema-cpp-runs-hostile-corpus` |
 | `cpp-tables/` | C++ table runtime-home digest | `make tables-cpp-runtime-home` | `make tables-cpp-runtime-home` |
-| `cs/` | C# packet tests | `make test-cs` | `make test-cs` |
-| `cs-block/` | C# block tests | `make test-cs` | `make test-cs` |
-| `cs-cook/` | C# cook tests | `make test-cs` | `make test-cs` |
-| `cs-hostile/` | C# hostile-corpus runner | `make schema-cs-runs-hostile-corpus` | `make schema-cs-runs-hostile-corpus` |
-| `cs-ludicrous/` | C# int128 tests | `make test-cs` | `make test-cs` |
-| `cs-tables/` | C# table tests | `make test-cs` | `make test-cs` |
-| `cs-view/` | C# view tests | `make test-cs` | `make test-cs` |
+| `cs/` | C# (modern) packet tests | `make test-cs` | `make test-cs` |
+| `cs-block/` | C# (modern) block tests | `make test-cs` | `make test-cs` |
+| `cs-cook/` | C# (modern) cook tests | `make test-cs` | `make test-cs` |
+| `cs-hostile/` | C# (modern) hostile-corpus runner | `make schema-cs-runs-hostile-corpus` | `make schema-cs-runs-hostile-corpus` |
+| `cs-ludicrous/` | C# (modern) int128 tests | `make test-cs` | `make test-cs` |
+| `cs-tables/` | C# (modern) table tests | `make test-cs` | `make test-cs` |
+| `cs-view/` | C# (modern) view tests | `make test-cs` | `make test-cs` |
 | `dart/` | Dart packet tests | `make test-dart` | `make test-dart` |
 | `dart-hostile/` | Dart hostile-corpus runner | `make schema-dart-runs-hostile-corpus` | `make schema-dart-runs-hostile-corpus` |
 | `dart-ludicrous/` | Dart int128 tests | `make test-dart` | `make test-dart` |
@@ -87,11 +87,11 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `slowgate/` | SCHEMA_SLOW proof wrapper | `make slow-gate-scan` | `make slow-gate-scan` |
 | `table-base64/` | table base64 gates | `make test` | `make test` |
 | `tables/` | C++ table tests | `make test` | `./build/schema_test_tables` |
-| `unity/` | Unity C# packet wire tests | `make test-unity` | `make unity-wire` |
-| `unity-hostile/` | Unity C# hostile-corpus runner | `make schema-unity-runs-hostile-corpus` | `make schema-unity-runs-hostile-corpus` |
-| `verify-bitphase/` | 18-language packet 0..63 bit-phase sweep | `make verify-bitphase-js` | `./build/verify-bitphase-bin --lang all` |
-| `verify-canonical/` | 18-language canonical-write permutation gate | `make verify-canonical-js` | `./build/verify-canonical-bin --lang all` |
-| `verify-reuse/` | 18-language dirty-instance and sub-slice reuse gate | `make verify-reuse-js` | `./build/verify-reuse-bin --lang all` |
-| `verify-tablegen/` | 18-language random 2-generation schema & lineage fuzzer | `make verify-tablegen-js` | `./build/verify-tablegen-bin --lang all` |
+| `unity/` | C# (unity) packet wire tests | `make test-unity` | `make unity-wire` |
+| `unity-hostile/` | C# (unity) hostile-corpus runner | `make schema-unity-runs-hostile-corpus` | `make schema-unity-runs-hostile-corpus` |
+| `verify-bitphase/` | 18-target packet 0..63 bit-phase sweep | `make verify-bitphase-js` | `./build/verify-bitphase-bin --lang all` |
+| `verify-canonical/` | 18-target canonical-write permutation gate | `make verify-canonical-js` | `./build/verify-canonical-bin --lang all` |
+| `verify-reuse/` | 18-target dirty-instance and sub-slice reuse gate | `make verify-reuse-js` | `./build/verify-reuse-bin --lang all` |
+| `verify-tablegen/` | 18-target random 2-generation schema & lineage fuzzer | `make verify-tablegen-js` | `./build/verify-tablegen-bin --lang all` |
 | `verify-vm/` | VM optimization fast-verify deep runner | `make verify-js-bench` | `go build -o build/vmverify ./test/verify-vm` |
 | `vocabgen/` | wide-vocabulary generator | `make check` | `go run ./test/vocabgen` |

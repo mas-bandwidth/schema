@@ -1,8 +1,9 @@
 # Original-nine nightly readiness
 
 Run `test/conformance/nightly-readiness <lang>` for exactly one of
-`cpp c cs go rust java js dart elixir goose moo python`. Goose, MOO and Python,
-the languages past the original nine, run the same expanded shape (below). The nightly workflow must preserve
+`cpp c cs go rust java js dart elixir goose ruby moo python`. Goose, MOO and
+Python, languages past the original nine, run the same expanded shape (below);
+the script accepts Ruby as well. The nightly workflow must preserve
 stdout and `build/nightly-readiness/<lang>/`, and write a passing readiness
 receipt only after exit zero. Every phase is attempted; one failed phase keeps
 the final result incomplete. A green conformance report or a manually completed
@@ -25,7 +26,7 @@ does not add an all-pairs matrix or ask the reference to read each writer.
 | Wire and retaining load | Build the existing all-roots driver. Run the shared differential `wire-fuzz` directly for plain and `--retain`, each at seeds 1, 2 and 3 with 100000 random mutants plus the complete enumerated pass. Dart and JavaScript use the mixed-builder profile for their managed variable-file loaders; the complete fixed/message roster retains its form-specific oracle. No `--finite-owed`, replay-only replacement, caller seed/count reduction or custom roster is accepted. |
 | Wire/retention controls | Execute the existing planted wire controls and retention controls. C, Go and Rust's existing retention overlays are reproduced with only the outer Go-suite timeout changed to zero; the exact intended test failure and diagnostic remain mandatory. |
 
-C# runs those six passes through its native region loader and retaining loader,
+C# (modern) runs those six passes through its native region loader and retaining loader,
 then runs three additional plain mutable-builder passes with `--builder` at the
 same seeds and counts. The two profiles have different count-cap contracts.
 Each has its own mandatory phase names and strict summary; neither can stand
@@ -39,7 +40,7 @@ The packet/table package pairs are:
 | --- | --- | --- | --- |
 | C++ | cpp | cpptable | schema_test, guard, random, ludicrous |
 | C | c | ctable | normal, ASan, ludicrous, bench |
-| C# | csharp | cstable | dotnet Debug and Release, normal and ludicrous |
+| C# (modern) | csharp | cstable | dotnet Debug and Release, normal and ludicrous |
 | Go | golang | gotable | go run, normal and ludicrous |
 | Rust | rust | rusttable | cargo Debug and Release, normal and ludicrous |
 | Java | java | javatable | with and without -ea, normal and ludicrous |
@@ -164,8 +165,8 @@ copy of the emitted runtime or the driver in-test: `retain-python-save` and
 Python has no §5.6 retirement; any `RETIRED` or `SKIP` marker is incomplete.
 
 Wire controls are the existing `tables[-<lang>]-wire-fuzz-negative-control`
-targets, with C#'s pack control and Elixir's refusal control. Retention controls
-are C++'s retaining differential pair; C's dropped retained field; C#'s
+targets, with C# (modern)'s pack control and Elixir's refusal control. Retention controls
+are C++'s retaining differential pair; C's dropped retained field; C# (modern)'s
 `tables-cs-retain-negative-control`; Go's file-count floor and unknown-node
 controls; Rust's capacity-check overlay; Goose's, MOO's and Python's in-test retention controls; Java's declared-default and node-record
 controls; JavaScript's cards upgrade control alongside the full native RT1
@@ -221,7 +222,7 @@ runs may use N=0; they never stand in for the six positive release runs.
 
 ## Known incomplete acceptance exposed by this entrypoint
 
-This is intentionally not a retrospective claim that today's nine ports are
+This is intentionally not a retrospective claim that the original nine ports are
 complete. Existing defaults let Java run no random mutants; Java, Dart and
 several other release targets permit finite-value exemptions; JavaScript and
 Elixir drivers acknowledge absent roots. Some native packages have live owed

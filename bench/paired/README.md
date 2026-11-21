@@ -476,9 +476,10 @@ owes a hand-written arm. Glenn's ruling neither relaxes nor restates it; nothing
 multiplies the two together any more.
 
 A leg with no runner is NAMED with its reason in `nine.sh`'s own vocabulary and
-never estimated. Nine table runners exist under `bench/tables/` today, Dart's
-(`bench/tables/dart`) the last to land, so no line of the nine is a named
-refusal on this tree; the vocabulary stays for a leg branch that lacks one.
+never estimated. `bench/tables/` carries a runner directory for all eighteen
+targets today, and each of the nine legs this driver carries has its own,
+Dart's (`bench/tables/dart`) the last of the nine to land, so no line of the
+nine is a named refusal on this tree; the vocabulary stays for a leg branch that lacks one.
 
 This mode publishes nothing and seals nothing until a confirmation pass carries
 it: like fast mode it is the diagnostic, and the certified sitting is still
