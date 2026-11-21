@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sync"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // A fixed read's value has the same text and cooked images as every other
@@ -24,7 +25,7 @@ func TestRustFixedRootTextAndCook(t *testing.T) {
 		t.Fatal(err)
 	}
 	rustMakeMu.Lock()
-	build := exec.Command("make", "build/conformance-rust")
+	build := testproc.Command(t, "make", "build/conformance-rust")
 	build.Dir = root
 	out, err := build.CombinedOutput()
 	rustMakeMu.Unlock()
@@ -50,7 +51,7 @@ func TestRustFixedRootTextAndCook(t *testing.T) {
 		if err := os.Mkdir(outdir, 0o700); err != nil {
 			t.Fatal(err)
 		}
-		cmd := exec.Command(filepath.Join(root, "build/conformance-rust"), manifest, surface, outdir)
+		cmd := testproc.Command(t, filepath.Join(root, "build/conformance-rust"), manifest, surface, outdir)
 		cmd.Dir = root
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("Rust %s: %v\n%s", surface, err, out)

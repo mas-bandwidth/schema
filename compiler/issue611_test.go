@@ -3,12 +3,13 @@ package compiler
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // Issue #611: a json-hostile verdict is COUNTERS AND A VERDICT ONLY, so a port
@@ -77,7 +78,7 @@ func TestIssue611(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "ceiling_test.go"), []byte(testSrc), 0644); err != nil {
 			t.Fatal(err)
 		}
-		cmd := exec.Command("go", "test", "-count=1", ".")
+		cmd := testproc.Command(t, "go", "test", "-count=1", ".")
 		cmd.Dir = dir
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("go test: %v\n%s", err, strings.TrimSpace(string(out)))
@@ -144,7 +145,7 @@ class Program {
 		if err := os.WriteFile(filepath.Join(dir, "Program.cs"), []byte(program), 0644); err != nil {
 			t.Fatal(err)
 		}
-		cmd := exec.Command(dotnet, "run", "--configuration", "Release", "-property:UseSharedCompilation=false")
+		cmd := testproc.Command(t, dotnet, "run", "--configuration", "Release", "-property:UseSharedCompilation=false")
 		cmd.Dir = dir
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("dotnet run: %v\n%s", err, strings.TrimSpace(string(out)))

@@ -13,6 +13,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const rangeAssertWideSchema = `package rangewide
@@ -129,14 +131,14 @@ func TestCppRangeAssertWideStorage(t *testing.T) {
 	}
 	exe := filepath.Join(dir, "probe")
 	args := []string{"-std=c++17", "-Wall", "-Wextra", "-Werror", "-I", dir, probe, "-o", exe}
-	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, args...).CombinedOutput(); err != nil {
 		t.Fatalf("the C++ probe did not compile: %v\n%s", err, out)
 	}
-	if out, err := exec.Command(exe, "ok").CombinedOutput(); err != nil || !strings.Contains(string(out), "wrote ok") {
+	if out, err := testproc.Command(t, exe, "ok").CombinedOutput(); err != nil || !strings.Contains(string(out), "wrote ok") {
 		t.Fatalf("an in-range write must go through: %v\n%s", err, out)
 	}
 	for _, field := range []string{"id", "span", "count"} {
-		out, err := exec.Command(exe, field).CombinedOutput()
+		out, err := testproc.Command(t, exe, field).CombinedOutput()
 		if err == nil || !strings.Contains(string(out), "FAILED: serialize_assert: ") || !strings.Contains(string(out), "value."+field) {
 			t.Errorf("an out-of-range %s must fire its range assert: %v\n%s", field, err, out)
 		}
