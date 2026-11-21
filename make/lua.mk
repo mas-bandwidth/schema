@@ -172,7 +172,7 @@ build/packet-finite/lua/.stamp: bin/schema test/packet-finite/lua/Finite.schema
 
 .PHONY: packet-finite-lua packet-finite-lua-negative-control
 packet-finite-lua: toolchain-lua build/packet-finite/lua/.stamp build/mustrun
-	$(MUSTRUN) -name packet-finite-lua -count 1 -- $(LUA) test/packet-finite/lua/main.lua build/packet-finite/lua/generated
+	$(MUSTRUN) -name packet-finite-lua -count 121 -- $(LUA) test/packet-finite/lua/main.lua build/packet-finite/lua/generated
 
 # $(1) is the direction: read or write.
 define packet-finite-lua-control
@@ -228,7 +228,7 @@ build/packet-defaults/lua/.stamp: bin/schema test/packet-defaults/Defaults.schem
 PACKET_DEFAULTS_LUA_GOLDENS = $(sort $(notdir $(wildcard testdata/wire/packet-defaults/*.bin)))
 .PHONY: packet-defaults-lua packet-defaults-lua-negative-control
 packet-defaults-lua: toolchain-lua build/packet-defaults/lua/.stamp build/mustrun
-	$(MUSTRUN) -name packet-defaults-lua -count 1 -- $(LUA) test/packet-defaults/lua/main.lua build/packet-defaults/lua/generated testdata/wire/packet-defaults $(PACKET_DEFAULTS_LUA_GOLDENS)
+	$(MUSTRUN) -name packet-defaults-lua -count 104 -- $(LUA) test/packet-defaults/lua/main.lua build/packet-defaults/lua/generated testdata/wire/packet-defaults $(PACKET_DEFAULTS_LUA_GOLDENS)
 
 packet-defaults-lua-negative-control: packet-defaults-lua
 	@rm -rf build/packet-defaults/lua-negative && mkdir -p build/packet-defaults/lua-negative
@@ -324,7 +324,7 @@ $(CARDS_LUA_GENERATED)/.stamp: bin/schema tables/cards/Card.schema tables/cards/
 	@touch $@
 
 cards-lua-test: toolchain-lua cards-lua-generate tables/cards/lua/cards.lua tables/cards/lua/cards_test.lua build/mustrun
-	$(MUSTRUN) -name cards-lua-test -count 1 -- $(LUA) tables/cards/lua/cards_test.lua
+	$(MUSTRUN) -name cards-lua-test -count 8 -- $(LUA) tables/cards/lua/cards_test.lua
 
 cards-lua-conformance: toolchain-lua build/conformance-harness cards-lua-generate
 	./build/conformance-harness cards --work build/cards-lua-conformance --corpus tables/cards/conformance --driver 'tables/cards/lua/driver' --require $(CARDS_REQUIRE_LUA)
@@ -481,7 +481,7 @@ build/packet-end/lua/.stamp: bin/schema test/packet-end/End.schema
 PACKET_END_LUA_VECTORS = $(sort $(notdir $(wildcard testdata/wire/packet-end/*.bin)))
 .PHONY: packet-end-lua packet-end-lua-negative-control
 packet-end-lua: toolchain-lua build/packet-end/lua/.stamp build/mustrun
-	$(MUSTRUN) -name packet-end-lua -count 1 -- $(LUA) test/packet-end/lua/main.lua build/packet-end/lua/generated testdata/wire/packet-end $(PACKET_END_LUA_VECTORS)
+	$(MUSTRUN) -name packet-end-lua -count 3 -- $(LUA) test/packet-end/lua/main.lua build/packet-end/lua/generated testdata/wire/packet-end $(PACKET_END_LUA_VECTORS)
 
 packet-end-lua-negative-control: packet-end-lua
 	@rm -rf build/packet-end/lua-negative && mkdir -p build/packet-end/lua-negative
@@ -509,7 +509,7 @@ build/packet-write-cfloat/lua/.stamp: bin/schema test/packet-write-cfloat/CFloat
 PACKET_WRITE_CFLOAT_LUA_DIR ?= build/packet-write-cfloat/lua/generated
 .PHONY: packet-write-cfloat-lua packet-write-cfloat-lua-negative-control
 packet-write-cfloat-lua: toolchain-lua build/packet-write-cfloat/lua/.stamp build/mustrun
-	$(MUSTRUN) -name packet-write-cfloat-lua -count 1 -- $(LUA) test/packet-write-cfloat/lua/main.lua $(PACKET_WRITE_CFLOAT_LUA_DIR) test/packet-write-cfloat
+	$(MUSTRUN) -name packet-write-cfloat-lua -count 10 -- $(LUA) test/packet-write-cfloat/lua/main.lua $(PACKET_WRITE_CFLOAT_LUA_DIR) test/packet-write-cfloat
 
 packet-write-cfloat-lua-negative-control: packet-write-cfloat-lua
 	@rm -rf build/packet-write-cfloat/lua-negative && mkdir -p build/packet-write-cfloat/lua-negative/generated
@@ -535,7 +535,7 @@ build/packet-write-bareint/lua/.stamp: bin/schema test/packet-write-bareint/Bare
 
 .PHONY: packet-write-bareint-lua packet-write-bareint-lua-negative-control
 packet-write-bareint-lua: toolchain-lua build/packet-write-bareint/lua/.stamp build/mustrun
-	$(MUSTRUN) -name packet-write-bareint-lua -count 1 -- $(LUA) test/packet-write-bareint/lua/main.lua build/packet-write-bareint/lua/generated test/packet-write-bareint
+	$(MUSTRUN) -name packet-write-bareint-lua -count 67 -- $(LUA) test/packet-write-bareint/lua/main.lua build/packet-write-bareint/lua/generated test/packet-write-bareint
 
 # The control removes the width test of a bare field below 64 bits: an
 # out-of-width value must then write its low bits, and the gate must name

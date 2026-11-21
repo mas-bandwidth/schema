@@ -11,7 +11,7 @@ build/packet-write-text/lua/.stamp: bin/schema test/packet-write-text/Text.schem
 PACKET_WRITE_TEXT_LUA_DIR ?= build/packet-write-text/lua/generated
 .PHONY: packet-write-text-lua packet-write-text-lua-negative-control
 packet-write-text-lua: toolchain-lua build/packet-write-text/lua/.stamp build/mustrun
-	$(MUSTRUN) -name packet-write-text-lua -count 1 -- $(LUA) test/packet-write-text/lua/main.lua $(PACKET_WRITE_TEXT_LUA_DIR) test/packet-write-text
+	$(MUSTRUN) -name packet-write-text-lua -count 11 -- $(LUA) test/packet-write-text/lua/main.lua $(PACKET_WRITE_TEXT_LUA_DIR) test/packet-write-text
 
 packet-write-text-lua-negative-control: packet-write-text-lua
 	@rm -rf build/packet-write-text/lua-negative && mkdir -p build/packet-write-text/lua-negative/generated
