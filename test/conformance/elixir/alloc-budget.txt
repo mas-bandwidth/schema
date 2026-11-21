@@ -149,3 +149,7 @@ torture_fixed_wref 9191 75 5494
 torture_fixed_wref_str 8844 69 5385
 torture_wide_cook 26214 67 14927
 torture_wide_cook_extremes 71553 122 31800
+vd_var_defaults 41560 201 30922
+vd_var_values 74401 284 45924
+vd_fixed_defaults 20332 131 15974
+vd_fixed_values 20189 139 16438

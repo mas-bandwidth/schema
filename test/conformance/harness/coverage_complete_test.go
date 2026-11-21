@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -102,9 +103,7 @@ func TestEveryTargetCoverageSemanticRefusalsAreAnswers(t *testing.T) {
 	// lua is one of the 18: an absent surface and no fixed-form gate are owed.
 	damaged := append(slices.Clone(rows), coverageRow{Lang: "lua", Direction: directionReadsCpp, Surface: "wire", SurfaceAbsent: true})
 	owed := map[string]string{}
-	for lang, verdict := range fixed {
-		owed[lang] = verdict
-	}
+	maps.Copy(owed, fixed)
 	owed["lua"] = "none"
 	if problems := strings.Join(everyTargetCoverageProblems(damaged, owed, shape), "\n"); !strings.Contains(problems, "lua / wire: unexpected surface/class") || !strings.Contains(problems, `lua: fixed form requires pass, got "none"`) {
 		t.Fatalf("an incomplete lua leg passed: %v", problems)
