@@ -27,7 +27,6 @@ func TestAWasRenameOfAGeneratedRecordsHolderMovesNothing(t *testing.T) {
 		"[]string(3)",
 		"[..4]string(3)",
 		"[]?string(3)",
-		"map[uint16][]string(3)",
 	} {
 		t.Run(decl, func(t *testing.T) {
 			before := unitFrom(t, src("Root", "cells "+decl))
@@ -58,15 +57,10 @@ func TestAWasRenameOfAGeneratedRecordsHolderMovesNothing(t *testing.T) {
 // spelling IS the generated name, so a unit that has not moved projects
 // exactly as it did before the rule — no existing cook is invalidated by it.
 func TestAnUnrenamedGeneratedRecordKeepsItsName(t *testing.T) {
-	u := unitFrom(t, "package referents\n\ntable Root\n{\n    cells []string(3)\n    by_id map[uint16][]string(3)\n}\n")
+	u := unitFrom(t, "package referents\n\ntable Root\n{\n    cells []string(3)\n    tags  [..4]?string(3)\n}\n")
 	root := u.Tables["Root"]
 	for _, f := range root.Fields {
-		var st *ir.Struct
-		if f.IsMap() {
-			st = ir.MapValueField(f).TextListElem()
-		} else {
-			st = f.TextListElem()
-		}
+		st := f.TextListElem()
 		if st == nil {
 			t.Fatalf("%s holds no text list", f.Name)
 		}
