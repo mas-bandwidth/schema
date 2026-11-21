@@ -156,8 +156,16 @@ func checkRefusalUnchangedFrom(units unitSource, gen generateFunc, targets []str
 			}
 		}
 		if p.uses != nil {
-			uw, _ := unitFromText(src + "\n" + p.using)
-			uc, _ := unitFromText(src + "\n" + p.control)
+			uw, werr := unitFromText(src + "\n" + p.using)
+			if werr != nil {
+				errs = append(errs, fmt.Sprintf("%s: the probe's using unit does not load: %v", p.construct, werr))
+				continue
+			}
+			uc, cerr := unitFromText(src + "\n" + p.control)
+			if cerr != nil {
+				errs = append(errs, fmt.Sprintf("%s: the probe's control unit does not load: %v", p.construct, cerr))
+				continue
+			}
 			if uw, uc := p.uses(uw), p.uses(uc); !uw || uc {
 				errs = append(errs, fmt.Sprintf("%s: the probe is wrong: using uses the construct %v, control uses it %v", p.construct, uw, uc))
 			}

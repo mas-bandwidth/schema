@@ -286,7 +286,10 @@ func TestTheTwoFormsRoundTrip(t *testing.T) {
 // figure that drifts moves a pinned wire.
 func TestTheCostRows(t *testing.T) {
 	m, model, vocabulary := backend(t)
-	c, _ := m.LookupConnection("backend_conn")
+	c, err := m.LookupConnection("backend_conn")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if got := len(wireBytes(t, c.Wire)); got != 280 {
 		t.Errorf("the announcement is %d bytes, want 280", got)
 	}
@@ -471,7 +474,10 @@ func TestTheBatch(t *testing.T) {
 // damage (docs/SPEC-TABLES.md §3.3, §11).
 func TestTheMessageFormRefusesByName(t *testing.T) {
 	m, model, vocabulary := backend(t)
-	c, _ := m.LookupConnection("backend_conn")
+	c, err := m.LookupConnection("backend_conn")
+	if err != nil {
+		t.Fatal(err)
+	}
 	announcement := wireBytes(t, c.Wire)
 	message := wireBytes(t, "testdata/wire/tables/login_full_message.bin")
 
@@ -529,7 +535,10 @@ func TestTheMessageFormRefusesByName(t *testing.T) {
 			t.Error("second_announcement: the refused announcement moved the vocabulary")
 		}
 		// and a DIFFERENT second announcement changes nothing either
-		vc, _ := m.LookupConnection("vocab_conn")
+		vc, err := m.LookupConnection("vocab_conn")
+		if err != nil {
+			t.Fatal(err)
+		}
 		var other tabletext.Report
 		derr = vocabulary.AnnounceRead(wireBytes(t, vc.Wire), &other)
 		refusal("second_announcement (another unit)", derr, tablewire.ReasonSecondAnnouncement, other)
@@ -570,7 +579,12 @@ func TestTheMessageFormRefusesByName(t *testing.T) {
 	// refused for want of one
 	{
 		bounded := tablewire.Vocabulary{MaxEntries: 4}
-		_ = bounded.AnnounceRead(announcement, &tabletext.Report{})
+		var announceReport tabletext.Report
+		aerr := bounded.AnnounceRead(announcement, &announceReport)
+		refusal("vocabulary_too_large (4 entries)", aerr, tablewire.ReasonVocabularyTooLarge, announceReport)
+		if bounded.Announced() {
+			t.Error("a refused announcement set a vocabulary")
+		}
 		var report tabletext.Report
 		inst := model.New(model.Lookup("LoginRequest"))
 		_, derr := tablewire.DecodeMessage(model, inst, message, &bounded, &report)
@@ -977,7 +991,10 @@ func TestTheThreeReservedIdsWhereTheyDoNotBelong(t *testing.T) {
 // malformed whole and sets nothing, and the unit's own announcement reads.
 func TestTheReservedIdsInAnAnnouncement(t *testing.T) {
 	m, _, _ := backend(t)
-	c, _ := m.LookupConnection("backend_conn")
+	c, err := m.LookupConnection("backend_conn")
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, row := range []string{"build_version", "vocabulary", "second_node_table"} {
 		wire := wireBytes(t, "testdata/wire/tables/announce_reserved_"+row+".bin")
 		var v tablewire.Vocabulary

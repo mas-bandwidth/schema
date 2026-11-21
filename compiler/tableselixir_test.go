@@ -636,6 +636,9 @@ func TestElixirSegmentOrderScanGoesRed(t *testing.T) {
 			"end\n"),
 	}
 	native, little := elixirHostOrderSegments(files)
+	if len(native) == 0 {
+		t.Fatal("the scan accepted the planted host-order segments: it reported none, so it cannot go red")
+	}
 	if len(native) != 2 {
 		t.Fatalf("the scan saw %d of the 2 planted host-order segments (%v) — it is blind, and every green run of TestElixirSegmentsNeverConsultTheHost proves nothing", len(native), native)
 	}

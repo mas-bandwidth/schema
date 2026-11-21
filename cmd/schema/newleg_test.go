@@ -130,7 +130,10 @@ func TestNewLegZigWritesSkeletonAndFixturePasses(t *testing.T) {
 
 func TestHelpListsNewLeg(t *testing.T) {
 	bin := buildCLI(t)
-	out, _ := exec.Command(bin, "help").CombinedOutput()
+	out, err := exec.Command(bin, "help").CombinedOutput()
+	if err != nil {
+		t.Fatalf("schema help: %v\n%s", err, out)
+	}
 	if !strings.Contains(string(out), "schema new-leg") {
 		t.Fatalf("help does not list new-leg:\n%s", out)
 	}

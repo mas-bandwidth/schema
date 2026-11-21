@@ -84,9 +84,13 @@ func TestOrphanDiesWithTheCommand(t *testing.T) {
 func TestOrphanOutlivesABareCommand(t *testing.T) {
 	slowtest.Gate(t, "sh and sleep")
 	pidFile := filepath.Join(t.TempDir(), "pid")
-	_ = exec.Command("sh", "-c", orphanScript, "sh", pidFile).Run()
+	err := exec.Command("sh", "-c", orphanScript, "sh", pidFile).Run()
 	pid := readPid(t, pidFile)
 	defer syscall.Kill(pid, syscall.SIGKILL)
+	var ee *exec.ExitError
+	if !errors.As(err, &ee) || ee.ExitCode() != 3 {
+		t.Fatalf("bare script exit = %v, want the script's status 3", err)
+	}
 	time.Sleep(500 * time.Millisecond)
 	if !alive(pid) {
 		t.Fatalf("the background sleep (pid %d) died without pgroup: the orphan test above proves nothing", pid)

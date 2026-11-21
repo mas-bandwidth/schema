@@ -1193,7 +1193,10 @@ func TestAZeroWidthElementUnderAWideCount(t *testing.T) {
 // vocabulary from it, or decodes the body.
 func TestARefusedFirstAnnouncement(t *testing.T) {
 	m, model, _ := backend(t)
-	c, _ := m.LookupConnection("backend_conn")
+	c, err := m.LookupConnection("backend_conn")
+	if err != nil {
+		t.Fatal(err)
+	}
 	announcement := wireBytes(t, c.Wire)
 	v := tablewire.Vocabulary{MaxEntries: 4}
 	var first tabletext.Report

@@ -448,7 +448,14 @@ func driveSeeds(t *testing.T, repo, bin string, units map[string]*carriedUnit, s
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = stdin.Close(); _ = cmd.Wait() }()
+	// EOF on stdin ends the driver's stream and it returns from main, so
+	// anything but a clean exit (a panic, a signal) is a driver that broke.
+	defer func() {
+		_ = stdin.Close()
+		if err := cmd.Wait(); err != nil {
+			t.Errorf("the driver did not exit cleanly at the end of its input: %v\n%s", err, stderr.String())
+		}
+	}()
 	stdout := bufio.NewReader(stdoutPipe)
 
 	var roster bytes.Buffer

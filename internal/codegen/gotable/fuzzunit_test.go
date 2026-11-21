@@ -83,6 +83,7 @@ func TestGoFuzzUnitIsCurrent(t *testing.T) {
 			t.Errorf("%s: %s", filepath.Join(goFuzzUnitDir, name), goFuzzFirstDiff(committed, emitted[name]))
 		}
 	}
+	walked := 0
 	err = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -94,6 +95,7 @@ func TestGoFuzzUnitIsCurrent(t *testing.T) {
 		if err != nil {
 			return err
 		}
+		walked++
 		if _, ok := emitted[rel]; !ok {
 			t.Errorf("%s: committed .go file the compiler does not emit", filepath.Join(goFuzzUnitDir, rel))
 		}
@@ -101,6 +103,9 @@ func TestGoFuzzUnitIsCurrent(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("walk %s: %v", goFuzzUnitDir, err)
+	}
+	if walked == 0 {
+		t.Fatalf("walked %s and checked no committed .go file", goFuzzUnitDir)
 	}
 	t.Logf("fuzz unit compared with the in-process compiler: %d files", len(emitted))
 }

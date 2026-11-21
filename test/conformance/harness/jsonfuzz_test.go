@@ -232,7 +232,13 @@ func TestJSONFuzzSyntheticDriverHelper(t *testing.T) {
 			}
 			jb, _ := mod.Write(val)
 			jb = oneText(jb)
-			wb, _ := tablewire.Encode(mod, val)
+			// a value the strict read accepted must save; a failed save is a
+			// driver failure the parent reports by the exit status
+			wb, eerr := tablewire.Encode(mod, val)
+			if eerr != nil {
+				os.Stderr.WriteString(name + ": save: " + eerr.Error() + "\n")
+				os.Exit(1)
+			}
 			if sabotage == "flip-json-char" && !sabotaged && len(jb) > 2 {
 				sabotaged = true
 				jb = append([]byte{}, jb...)

@@ -53,14 +53,23 @@ func TestDependentsSelectsEveryPackageThatBuildsOnAChange(t *testing.T) {
 func TestDependentsControlDirectoriesAloneMissTablewire(t *testing.T) {
 	t.Parallel()
 	tb := table{short: map[string]float64{}, plain: map[string]float64{}}
-	for _, pkgs := range [][]string{{"./internal/parser"}, append([]string{"./internal/parser"}, dependents(listFixture, []string{"./internal/parser"})...)} {
-		found := false
+	tablewireInARow := func(pkgs []string) bool {
 		for _, r := range plan(tb, pkgs, false, 60) {
-			found = found || slices.Contains(strings.Fields(r.Packages), "./internal/tablewire")
+			if slices.Contains(strings.Fields(r.Packages), "./internal/tablewire") {
+				return true
+			}
 		}
-		if want := len(pkgs) > 1; found != want {
-			t.Fatalf("packages %v: tablewire in a row = %v, want %v", pkgs, found, want)
-		}
+		return false
+	}
+	// THE CONTROL: the diff's directories alone must miss tablewire. If they
+	// do not, the miss this witness reverses is not reproduced.
+	alone := []string{"./internal/parser"}
+	if tablewireInARow(alone) {
+		t.Fatalf("packages %v: the directories alone put tablewire in a row; the control does not reproduce the miss", alone)
+	}
+	withDependents := append([]string{"./internal/parser"}, dependents(listFixture, []string{"./internal/parser"})...)
+	if !tablewireInARow(withDependents) {
+		t.Fatalf("packages %v: tablewire is in no row even with dependents", withDependents)
 	}
 }
 

@@ -151,7 +151,13 @@ func TestTaskHashFramesLogicalFields(t *testing.T) {
 		{"boundary", cardCfg{body: "ab", paths: []string{"c"}, test: "T", done: "d"}},
 		{"empty entry", cardCfg{body: "a", paths: []string{"bc", ""}, test: "T", done: "d"}},
 	}
-	baseHash, _ := TaskHash(rec)
+	baseHash, err := TaskHash(rec)
+	if err != nil {
+		t.Fatalf("TaskHash again: %v", err)
+	}
+	if baseHash != got {
+		t.Fatalf("hashing the same record twice disagrees: %x then %x", got, baseHash)
+	}
 	for _, tc := range included {
 		r := buildCfg(t, tc.cfg)
 		h, err := TaskHash(r)
