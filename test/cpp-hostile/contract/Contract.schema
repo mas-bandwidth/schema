@@ -1,4 +1,4 @@
-// THE VARIABLE SAVE'S WRITE CONTRACT (docs/SPEC.md §5.1 rows 1, 2, 5 and 10),
+// THE VARIABLE SAVE'S WRITE CONTRACT (docs/SPEC.md §5.1 rows 1, 2, 3, 5 and 10),
 // read by test/cpp-hostile/contract/contract.cpp: one value per row at each
 // position it can ride in (a field, an array element and a union arm's
 // payload), set one past its declaration in a debug build. Row 10, a ranged
@@ -33,4 +33,23 @@ table Contract
 fixed table FixedContract
 {
     ratio float32 = 0 | min = 0, max = 0.1, resolution = 0.01
+}
+
+// Row 3 one record down (F-184): a child whose count is below its own
+// declared minimum, held in a counted array that declares no minimum
+// (LooseNest) and one that declares its own (TightNest). The FixedSave and
+// the SaveMessages assert it, and the FixedLoad's bounds pass refuses it.
+fixed table MinChild
+{
+    vals [2..4]uint8
+}
+
+fixed table LooseNest
+{
+    nest [..4]MinChild
+}
+
+fixed table TightNest
+{
+    nest [1..4]MinChild
 }

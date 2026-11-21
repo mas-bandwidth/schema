@@ -228,6 +228,46 @@ func TestCppTextWriteRefusesACountBelowItsMinimum(t *testing.T) {
 	}
 }
 
+const hostileRulesNestedMinSchema = `package hostilenested
+
+fixed table Child
+{
+    vals [2..4]uint8
+}
+
+fixed table Loose
+{
+    nest [..4]Child
+}
+
+fixed table Tight
+{
+    nest [1..4]Child
+}
+`
+
+// A child's count minimum is a bound of every record that holds the child
+// (docs/SPEC.md §5.1 row 3), whatever the holding array's own minimum: the
+// fixed read's bounds pass, its check and its write check walk a counted
+// array of records whose only bound is a positive minimum inside the record
+// (F-184).
+func TestCppFixedFormHoldsACountMinimumInsideEachCountedChild(t *testing.T) {
+	t.Parallel()
+	src := hostileRulesEmitted(t, hostileRulesNestedMinSchema)
+	for _, c := range []struct{ head, call string }{
+		{"inline bool LooseFixedWriteAdmits(", "bad |= (int) !ChildFixedWriteAdmits( value.nest[i] );"},
+		{"TABLE_FIXED_INLINE bool LooseFixedInRange(", "bad |= (int) !ChildFixedInRange( value.nest[i] );"},
+		{"inline void LooseFixedClampBody(", "ChildFixedClampBody( value.nest[i], oor_count, damaged );"},
+		{"inline bool TightFixedWriteAdmits(", "bad |= (int) !ChildFixedWriteAdmits( value.nest[i] );"},
+		{"TABLE_FIXED_INLINE bool TightFixedInRange(", "bad |= (int) !ChildFixedInRange( value.nest[i] );"},
+		{"inline void TightFixedClampBody(", "ChildFixedClampBody( value.nest[i], oor_count, damaged );"},
+	} {
+		if body := hostileFunction(t, src, c.head); !strings.Contains(body, c.call) {
+			t.Errorf("%s does not walk the children: no %q in\n%s", c.head, c.call, body)
+		}
+	}
+}
+
 const hostileRulesFloatSchema = `package hostilefloat
 
 table Ranged
