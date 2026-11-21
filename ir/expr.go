@@ -40,9 +40,13 @@ func RenderExpr(e Expr) string {
 // RenderExprIdent renders e for a generated target, spelling every constant
 // reference through ident — the one point where the targets differ (Go and
 // C++ keep the schema spelling, Rust wants [RustConstName], a namespaced
-// target qualifies). A nil ident keeps the schema spelling. Two rules the
+// target qualifies). A nil ident keeps the schema spelling. Three rules the
 // neutral [RenderExpr] form does not need:
 //
+//   - An integer literal takes the spelling every target reads as the same
+//     value: `0X` becomes `0x`, and a binary literal (no C99 spelling) or a
+//     leading-zero decimal (octal in the C family and Go) renders as its
+//     decimal value.
 //   - Doubled unary minus parenthesizes ("-(-x)"): "--" is a decrement
 //     operator in the C family and a parse error in Go and Rust, so the bare
 //     concatenation compiles somewhere as the wrong program.
@@ -58,7 +62,7 @@ func RenderExpr(e Expr) string {
 func RenderExprIdent(e Expr, ident func(name string) string) string {
 	switch e := e.(type) {
 	case *ast.IntLit:
-		return e.Text
+		return targetIntSpelling(e)
 	case *ast.FloatLit:
 		return e.Text
 	case *ast.IdentExpr:
@@ -76,6 +80,29 @@ func RenderExprIdent(e Expr, ident func(name string) string) string {
 		return fmt.Sprintf("%s %s %s", RenderExprIdent(e.X, ident), e.Op, RenderExprIdent(e.Y, ident))
 	case *ast.ParenExpr:
 		return "(" + RenderExprIdent(e.X, ident) + ")"
+	}
+	return "?"
+}
+
+// targetIntSpelling is an integer literal in the one spelling C99, C++, C#,
+// Go, JavaScript and Rust all read as the compiler's own value (SPEC §4.1):
+// a lowercase-prefixed hex literal and a decimal without a leading zero keep
+// the author's spelling; `0X` is lowered to `0x`, since Rust has no `0X`; a
+// binary literal renders as its decimal value, since C99 has none; and a
+// decimal with a leading zero (refused by the scanner, but an IR built
+// elsewhere could carry one) renders as its value, since C, C++ and Go would
+// read the spelling as octal.
+func targetIntSpelling(e *ast.IntLit) string {
+	t := e.Text
+	switch {
+	case strings.HasPrefix(t, "0x"):
+		return t
+	case strings.HasPrefix(t, "0X"):
+		return "0x" + t[2:]
+	case t == "0" || (t != "" && t[0] >= '1' && t[0] <= '9' && strings.Trim(t, "0123456789") == ""):
+		return t
+	case e.Value != nil:
+		return e.Value.String()
 	}
 	return "?"
 }
