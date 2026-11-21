@@ -1,0 +1,24 @@
+// A union with SCALAR arms inside a fixed table's closure, locked by the
+// rendering-9 compiler (schema-lock 9), which recorded a scalar arm by its type
+// spelling alone (`arm pid payload=uint32`). The lock beside it is that
+// compiler's own output and is never regenerated: scalararm_test.go holds that
+// a newer rendering still reads it and carries it forward.
+package scalararmv9
+
+type User
+{
+    name string(16)
+}
+
+union Origin
+{
+    user User
+    pid  uint32     | min = 0, max = 1000
+    note string(24)
+}
+
+fixed table Edit
+{
+    origin Origin
+    seq    uint32
+}

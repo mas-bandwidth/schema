@@ -659,13 +659,20 @@ func TableVocabularyName(u *Unit, id uint64) string {
 	case StringWireTypeId:
 		return "string"
 	}
-	for member := range TableClosure(u) {
-		if TableWireId(member) == id {
-			return member
-		}
+	// EVERY ID IS COMPARED AS THE VOCABULARY ANNOUNCES IT: under the WIRE name,
+	// so a table, variant or arm renamed under `was` is named by the id its old
+	// name hashes to (§5). The walks are in sorted order, so two members whose
+	// names hash alike give one answer on every run.
+	for _, member := range sortedKeysOf(TableClosure(u)) {
 		st := memberStruct(u, member)
 		if st == nil {
+			if TableWireId(member) == id {
+				return member
+			}
 			continue
+		}
+		if TableWireId(st.WireName()) == id {
+			return member
 		}
 		for _, f := range st.Fields {
 			if TableFieldWireId(f) == id {
@@ -680,17 +687,20 @@ func TableVocabularyName(u *Unit, id uint64) string {
 			}
 		}
 	}
-	for _, e := range u.Enums {
-		for _, v := range e.Variants {
-			if TableWireId(v) == id {
+	for _, name := range sortedKeysOf(u.Enums) {
+		e := u.Enums[name]
+		for i, v := range e.Variants {
+			if TableWireId(e.VariantWireName(i)) == id {
 				return v
 			}
 		}
 	}
-	for _, un := range u.Unions {
-		for _, v := range un.Variants {
-			if TableWireId(v.Name) == id {
-				return v.Name
+	for _, unions := range []map[string]*Union{u.Unions, u.TableUnions} {
+		for _, name := range sortedKeysOf(unions) {
+			for _, v := range unions[name].Variants {
+				if TableWireId(v.WireName()) == id {
+					return v.Name
+				}
 			}
 		}
 	}

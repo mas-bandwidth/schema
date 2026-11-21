@@ -499,7 +499,10 @@ from this projection rather than carried in it.
   take no parentheses; array bounds are a prefix (`[..MaxObjects]ObjectState`);
   there are no semicolons; the canonical formatter is `schemafmt` — one
   style, no options.
-- **Integer literals:** decimal, hex (`0x`), binary (`0b`). **Float
+- **Integer literals:** decimal, hex (`0x`), binary (`0b`). A decimal
+  number never starts with `0` followed by another digit (`010`, `00`,
+  `01.5`): C, C++ and Go would read the spelling as octal, so it is refused
+  by name wherever a number stands. **Float
   literals** (decimal, with optional fraction and exponent) appear in float
   constants and as float attribute values (`min`/`max`/`resolution` on
   `float32`).
