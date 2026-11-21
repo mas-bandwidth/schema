@@ -1567,7 +1567,7 @@ tables-c-versioning: tables-fixedform-corpus
 test-c: build/schema_test_c build/schema_test_c_asan build/schema_test_c_ludicrous build/schema_test_bench_c build/conformance-harness build/conformance-c build/conformance-c-asan build/schema_test_c_fuzz build/schema_test_c_soak build/schema_test_c_variable build/schema_test_c_variable_asan
 	$(MAKE) test-c-recipe
 
-test-c-recipe: build/schema_test_c build/schema_test_c_asan build/schema_test_c_ludicrous build/schema_test_bench_c build/conformance-harness build/conformance-c build/conformance-c-asan build/schema_test_c_fuzz build/schema_test_c_soak build/schema_test_c_variable build/schema_test_c_variable_asan
+test-c-recipe: build/mustrun build/schema_test_c build/schema_test_c_asan build/schema_test_c_ludicrous build/schema_test_bench_c build/conformance-harness build/conformance-c build/conformance-c-asan build/schema_test_c_fuzz build/schema_test_c_soak build/schema_test_c_variable build/schema_test_c_variable_asan
 	$(MAKE) tables-c-wire-fuzz SEED=1 N=20000
 	$(MAKE) tables-c-zero-cost
 	$(MAKE) tables-c-json-walk
@@ -1590,10 +1590,10 @@ test-c-recipe: build/schema_test_c build/schema_test_c_asan build/schema_test_c_
 	./build/conformance-harness run --drivers test/conformance/c/drivers-asan.txt --work build/conformance-c-asan-work
 	$(MAKE) conformance-negative-control-c
 	$(MAKE) conformance-negative-control-c-foreign
-	cd test/c && ../../build/schema_test_c
-	cd test/c && ../../build/schema_test_c_asan
-	cd test/c-ludicrous && ../../build/schema_test_c_ludicrous
-	./build/schema_test_bench_c
+	cd test/c && ../../$(MUSTRUN) -name schema_test_c -count 840 -- ../../build/schema_test_c
+	cd test/c && ../../$(MUSTRUN) -name schema_test_c_asan -count 840 -- ../../build/schema_test_c_asan
+	cd test/c-ludicrous && ../../$(MUSTRUN) -name schema_test_c_ludicrous -count 39 -- ../../build/schema_test_c_ludicrous
+	$(MUSTRUN) -name schema_test_bench_c -count 35 -- ./build/schema_test_bench_c
 
 TEST_LEGS         += test-c
 CONFORMANCE_LEGS  += $(call unless_skipped,c,build/conformance-c)
