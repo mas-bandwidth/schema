@@ -1317,7 +1317,9 @@ inline bool TableJsonCountInContract( const void * base, const TableFieldInfo * 
     }
     int32_t count = 0;
     memcpy( &count, (const uint8_t *) base + f->count_offset, sizeof( count ) );
-    return count >= 0 && count <= f->array_bound;
+    // a [A..B]T count below its declared Min is outside the contract too
+    // (docs/SPEC.md §5.1 row 3); array_min is 0 on every other field
+    return count >= f->array_min && count <= f->array_bound;
 }
 
 inline bool TableJsonWideInContract( const void * storage, const TableFieldInfo * f )
