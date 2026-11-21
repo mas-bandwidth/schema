@@ -32,6 +32,18 @@ func TestUnpackTreeNameOverlapStaysReversible(t *testing.T) {
 			"package probe\nenum Team { Red, Blue }\ntable Player { level int32\n scores [Team]int32 | json = \"Player.json\" }\n",
 			`{"level": 7, "Player.json": {"Red": 1, "Blue": 2}}`,
 		},
+		{
+			// two keys one normalizing filesystem stores as one path: é as
+			// U+00E9, and e followed by U+0301
+			"two Unicode spellings of one name",
+			"package probe\ntable Player { a int32 | json = \"Café\"\n b int32 | json = \"Café\" }\n",
+			"{\"Café\": 7, \"Café\": 9}",
+		},
+		{
+			"a key differing only in case",
+			"package probe\ntable Player { a int32 | json = \"score\"\n b int32 | json = \"Score\" }\n",
+			`{"score": 7, "Score": 9}`,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
