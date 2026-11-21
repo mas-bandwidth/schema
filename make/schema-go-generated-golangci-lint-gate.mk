@@ -197,7 +197,7 @@ schema-go-generated-golangci-lint-gate-ratchet-regenerate: schema-go-generated-g
 # unchecked error (errcheck's oldest pattern) in a file that carries the same
 # "Code generated ... DO NOT EDIT." header as the real corpus, so the control
 # also proves linters.exclusions.generated: disable is in force. The ratchet
-# goes red and names errcheck with both counts (403 > pinned 402); the same
+# goes red and names errcheck with both counts (251 > pinned 250); the same
 # tree is green once the plant is removed.
 .PHONY: schema-go-generated-golangci-lint-gate-negative-control
 schema-go-generated-golangci-lint-gate-negative-control: schema-go-generated-golangci-lint-gate-probe $(GOLANGCI_GATE_CONFIG) $(GOLANGCI_GATE_STAMP)
@@ -242,7 +242,7 @@ schema-go-generated-golangci-lint-gate-negative-control: schema-go-generated-gol
 		cat $(GOLANGCI_GATE_DIR)/plant.ratchet.log; exit 1; fi
 	@grep -q 'errcheck' $(GOLANGCI_GATE_DIR)/plant.ratchet.log || { \
 		echo "NEGATIVE CONTROL FAILED: the ratchet did not name errcheck"; cat $(GOLANGCI_GATE_DIR)/plant.ratchet.log; exit 1; }
-	@grep -q 'count 403 > pinned 402' $(GOLANGCI_GATE_DIR)/plant.ratchet.log || { \
+	@grep -q 'count 251 > pinned 250' $(GOLANGCI_GATE_DIR)/plant.ratchet.log || { \
 		echo "NEGATIVE CONTROL FAILED: the ratchet did not name both counts"; cat $(GOLANGCI_GATE_DIR)/plant.ratchet.log; exit 1; }
 	@rm -f $(GOLANGCI_GATE_DIR)/plant/planted_bad.go
 	@cd $(GOLANGCI_GATE_DIR)/plant && GOLANGCI_LINT_CACHE="$(GOLANGCI_GATE_CACHE)" $(GOLANGCI_LINT) run --allow-parallel-runners --config "$(CURDIR)/$(GOLANGCI_GATE_CONFIG)" \
@@ -263,14 +263,14 @@ schema-go-generated-golangci-lint-gate-negative-control: schema-go-generated-gol
 	@echo "schema Go generated golangci-lint negative control: the plant is red and named, the same tree is green without it"
 
 # THE RATCHET CONTROL. The pins themselves are perturbed by one (example
-# errcheck 402 -> 401), simulating a finding growth with no code change; the
+# errcheck 250 -> 249), simulating a finding growth with no code change; the
 # ratchet must go red naming errcheck and both counts. The unperturbed pins
 # must stay green, so the control cannot pass by failing everything.
 .PHONY: schema-go-generated-golangci-lint-gate-negative-control-ratchet
 schema-go-generated-golangci-lint-gate-negative-control-ratchet:
 	@mkdir -p $(GOLANGCI_GATE_DIR)
 	@awk -F'\t' 'BEGIN{OFS="\t"} $$0 ~ /^#/ || NF < 4 {print; next} \
-		$$1=="example" && $$2=="errcheck" {$$4=401} {print}' \
+		$$1=="example" && $$2=="errcheck" {$$4=249} {print}' \
 		$(GOLANGCI_GATE_RATCHET) > $(GOLANGCI_GATE_DIR)/ratchet-minus-one.tsv
 	@awk -F'\t' 'BEGIN{OFS="\t"} $$0 ~ /^#/ || NF < 4 {next} {print}' \
 		$(GOLANGCI_GATE_RATCHET) > $(GOLANGCI_GATE_DIR)/actual-at-pin.tsv
@@ -282,7 +282,7 @@ schema-go-generated-golangci-lint-gate-negative-control-ratchet:
 		cat $(GOLANGCI_GATE_DIR)/ratchet-control.log; exit 1; fi
 	@grep -q 'errcheck' $(GOLANGCI_GATE_DIR)/ratchet-control.log || { \
 		echo "NEGATIVE CONTROL FAILED: the ratchet did not name errcheck"; cat $(GOLANGCI_GATE_DIR)/ratchet-control.log; exit 1; }
-	@grep -q 'count 402 > pinned 401' $(GOLANGCI_GATE_DIR)/ratchet-control.log || { \
+	@grep -q 'count 250 > pinned 249' $(GOLANGCI_GATE_DIR)/ratchet-control.log || { \
 		echo "NEGATIVE CONTROL FAILED: the ratchet did not name both counts"; cat $(GOLANGCI_GATE_DIR)/ratchet-control.log; exit 1; }
 	@$(MAKE) --no-print-directory schema-go-generated-golangci-lint-gate-ratchet \
 		GOLANGCI_GATE_ACTUAL=$(GOLANGCI_GATE_DIR)/actual-at-pin.tsv \

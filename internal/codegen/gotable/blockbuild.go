@@ -19,6 +19,9 @@ func TableBlockDefaultAllocator() TableBlockAllocator {
  }, Free:func([]byte){}}
 }
 
+// tableBlockAlign64 is raw's first 64-aligned byte, every block storage's base.
+func tableBlockAlign64(raw []byte) unsafe.Pointer { return unsafe.Pointer(&raw[(-uintptr(unsafe.Pointer(&raw[0])))&63]) }
+
 // TableBlockRefusal names the producer count that violates its declared bound.
 type TableBlockRefusal struct { Array string; Count, Maximum int64 }
 
@@ -37,7 +40,7 @@ func (g *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
 	g.hf("if s==nil || s.allocation!=nil || a.Alloc==nil || a.Free==nil {return false}\n")
 	g.hf("raw:=a.Alloc(%sBlockMaxBytes+63)\n", n)
 	g.hf("if int64(len(raw))<%sBlockMaxBytes+63 {if raw!=nil {a.Free(raw)};return false}\n", n)
-	g.hf("s.allocation=raw;s.allocator=a;offset:=(-uintptr(unsafe.Pointer(&raw[0])))&63;s.base=unsafe.Pointer(&raw[offset]);return true\n}\n")
+	g.hf("s.allocation=raw;s.allocator=a;s.base=tableBlockAlign64(raw);return true\n}\n")
 	g.hf("func (s *%sBlockStorage) Destroy() {if s!=nil && s.allocation!=nil {s.allocator.Free(s.allocation);*s=%sBlockStorage{}}}\n\n", n, n)
 	g.hf("// ---- block fill path: begin ----\n")
 	g.hf("// %sBlockBegin writes only the prologue and triples, never rows or padding.\n", n)
