@@ -47,7 +47,6 @@ import (
 	"regexp"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/provesran"
@@ -78,8 +77,9 @@ type recipe struct {
 	target   string
 	cmd      string
 	packages []string
-	armed    bool // sets SCHEMA_SLOW / SCHEMA_REQUIRE_CORPUS, or runs through test/slowgate/proof
+	armed    bool // the gate is open for what it runs: SCHEMA_SLOW=1, a non-empty SCHEMA_REQUIRE_CORPUS, or test/slowgate/proof
 	runPat   string
+	test     goTestLine // the line as the shell, the go tool and the test binary read it
 }
 
 type exception struct {
@@ -176,26 +176,33 @@ func main() {
 //   - no test that reaches the gate (gatedTests, by directory, under any build
 //     context) is selected.
 //
-// Selection is Go's own (internal/runmatch, a port of testing/match.go):
+// The line is read as the shell, the go tool and the test binary read it
+// (gotestline.go: the last -run wins, -args -test.run counts), and selection
+// is Go's own (internal/runmatch, a port of testing/match.go):
 // `-run TestGated/roundtrip` runs TestGated, which skips at the gate before
 // any subtest is reached; `-run 'TestFast/unused|TestGated/roundtrip'` runs
 // both parents.
 //
-// Anything short of the proof is bare: no -run pattern, an element that does
-// not compile, a -skip (which this scan does not model), a `./...`, a package
-// whose declarations cannot be read, or a package gated by the marker alone
-// (another module's, whose reach this scan does not compute).
+// Anything short of the proof is bare: a line this scan cannot read, no -run
+// pattern, an element that does not compile, a -skip (which this scan does not
+// model), a `./...`, a package whose declarations cannot be read, or a package
+// gated by the marker alone (another module's, whose reach this scan does not
+// compute).
 func selectsNoGatedTest(root string, r recipe, gatedTests map[string][]string) bool {
-	if r.runPat == "" || len(r.packages) == 0 || runsNothingOrUnmodelled(r.cmd) {
+	if ok, _ := r.test.provable(); !ok || len(r.packages) == 0 {
 		return false
 	}
-	selector, err := runmatch.Compile(r.runPat)
+	selector, err := runmatch.Compile(r.test.run)
 	if err != nil {
 		return false
 	}
-	ctx, ok := recipeBuildContext(r.cmd)
-	if !ok {
-		return false
+	ctx := build.Default
+	ctx.BuildTags = r.test.tags
+	if r.test.goos != "" {
+		ctx.GOOS = r.test.goos
+	}
+	if r.test.goarch != "" {
+		ctx.GOARCH = r.test.goarch
 	}
 	for _, pkg := range r.packages {
 		if strings.HasSuffix(pkg, "/...") {
@@ -221,72 +228,6 @@ func selectsNoGatedTest(root string, r recipe, gatedTests map[string][]string) b
 		}
 	}
 	return true
-}
-
-// runsNothingOrUnmodelled reports a `go test` flag under which the line's
-// tests do not run, or run in a way this scan does not model: -count=0 runs
-// each test zero times, -list prints names, -c only builds the test binary,
-// and -skip removes tests from the selection. A -count this scan cannot read
-// (a variable) is the same: nothing is proven.
-func runsNothingOrUnmodelled(cmd string) bool {
-	words := shellWords(cmd)
-	for i, w := range words {
-		name, value, hasValue := strings.Cut(strings.TrimPrefix(strings.TrimPrefix(w, "-"), "-"), "=")
-		if !strings.HasPrefix(w, "-") {
-			continue
-		}
-		name = strings.TrimPrefix(name, "test.")
-		switch name {
-		case "skip", "list", "c":
-			return true
-		case "count":
-			if !hasValue && i+1 < len(words) {
-				value = words[i+1]
-			}
-			if n, err := strconv.Atoi(value); err != nil || n < 1 {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-var (
-	goosAssign   = regexp.MustCompile(`(?:^|[\s;&(])GOOS=(\S+)`)
-	goarchAssign = regexp.MustCompile(`(?:^|[\s;&(])GOARCH=(\S+)`)
-)
-
-// recipeBuildContext is the build context a recipe line's `go test` compiles
-// under: the lane's (go/build's default, which reads GOOS, GOARCH and
-// CGO_ENABLED), with the line's own GOOS=, GOARCH= and -tags over it. A test
-// declared in a file that context leaves out is not a test the line can run.
-// ok is false when the line sets one of them to something this scan cannot
-// read (a variable), and then nothing is proven about it.
-func recipeBuildContext(cmd string) (ctx build.Context, ok bool) {
-	ctx = build.Default
-	ctx.BuildTags = nil
-	if m := goosAssign.FindStringSubmatch(cmd); m != nil {
-		ctx.GOOS = strings.Trim(m[1], `"'`)
-	}
-	if m := goarchAssign.FindStringSubmatch(cmd); m != nil {
-		ctx.GOARCH = strings.Trim(m[1], `"'`)
-	}
-	words := shellWords(cmd)
-	for i, w := range words {
-		tags, found := strings.CutPrefix(w, "-tags=")
-		if !found && w == "-tags" && i+1 < len(words) {
-			tags, found = words[i+1], true
-		}
-		if found {
-			ctx.BuildTags = append(ctx.BuildTags, strings.FieldsFunc(tags, func(r rune) bool { return r == ',' || r == ' ' || r == '\t' })...)
-		}
-	}
-	for _, v := range append([]string{ctx.GOOS, ctx.GOARCH}, ctx.BuildTags...) {
-		if strings.Contains(v, "$") {
-			return ctx, false
-		}
-	}
-	return ctx, true
 }
 
 func runStatic(root string, recipes []recipe, exceptions []exception, gated map[string]bool, gatedTests map[string][]string) int {
@@ -1333,9 +1274,13 @@ func judgeRecipeLine(rel string, start int, target, cmd string, gated map[string
 	if strings.HasPrefix(strings.TrimSpace(cmd), "#") {
 		return recipe{}, false
 	}
-	armed := strings.Contains(cmd, "SCHEMA_SLOW=1") ||
-		strings.Contains(cmd, "SCHEMA_REQUIRE_CORPUS") ||
-		proof
+	parsed := parseGoTestLine(cmd)
+	armed := parsed.armed()
+	runPat := runPattern(cmd)
+	if parsed.undecided == "" && parsed.unreadArg == "" {
+		// the pattern in force is the last one, wherever it is spelled
+		runPat = parsed.run
+	}
 	named := namedPackages(cmd)
 	pkgs := packagesOf(cmd, gated)
 	if proof && len(pkgs) == 0 {
@@ -1362,7 +1307,7 @@ func judgeRecipeLine(rel string, start int, target, cmd string, gated map[string
 	ledger.Judged()
 	return recipe{
 		file: rel, line: start, target: target, cmd: cmd,
-		packages: pkgs, armed: armed, runPat: runPattern(cmd),
+		packages: pkgs, armed: armed, runPat: runPat, test: parsed,
 	}, true
 }
 

@@ -142,6 +142,17 @@ if [ -s "$work/claimed-but-emitted" ]; then
 	printf '  drop the line from %s: it is generator output now, and the exception hides its staleness.\n' "${exceptions:-test/generated-tree/not-emitted}"
 fi
 
+# THE GATE PROVES IT COMPARED SOMETHING. With no file on both sides there is
+# nothing to differ: every list above is empty and the verdict would be
+# "current" over zero files. That is this script handed the wrong directories
+# (or an emission that wrote nothing into a tree that is gone), never a pass.
+if [ ! -s "$work/common" ]; then
+	fail=1
+	printf 'EMPTY — the emission and the tree hold no file in common, so nothing was compared:\n'
+	printf '    emitted: %s file(s) in %s\n    tree:    %s file(s) in %s\n' "$(count "$work/emitted")" "$emitted_dir" "$(count "$work/tree")" "$tree_dir"
+	printf '  a comparison of nothing proves nothing; check the two directories this was given.\n'
+fi
+
 if [ "$fail" -ne 0 ]; then
 	printf 'the generated/ tree is NOT what this compiler emits. The lists above are the whole difference.\n'
 	exit 1

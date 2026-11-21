@@ -1,0 +1,315 @@
+package main
+
+import (
+	"regexp"
+	"strconv"
+	"strings"
+)
+
+// goTestLine is one recipe line read the way the shell, the go tool and the
+// test binary read it — not by looking for text. Text was the defect three
+// times over: `-run TestFast -run TestGated` was read as its first -run (Go
+// takes the last), `-args -test.run TestGated` as no selector at all, and
+// `env -u SCHEMA_REQUIRE_CORPUS go test` as a line that SETS the variable it
+// removes, because the name appears on it.
+//
+// What the scan does not decide, it does not credit: a line whose command it
+// cannot find is neither armed nor proven, a gate variable whose value it
+// cannot read arms nothing, and a flag or argument it cannot read proves
+// nothing about what the line selects.
+type goTestLine struct {
+	undecided string // why the command could not be found as one command, or ""
+	unreadEnv string // why a gate variable's value could not be read, or ""
+	unreadArg string // why a flag or an argument could not be read, or ""
+	proof     bool   // it runs test/slowgate/proof, which sets SCHEMA_SLOW=1 itself
+
+	run    string // the -run pattern in force (the last one), make's `$$` read as `$`
+	hasRun bool
+	// runsNothing: a flag in force makes the tests not run, or run in a way
+	// this scan does not model (-count=0, -list, -c, -exec, -skip).
+	runsNothing string
+	tags        []string
+
+	slow, requireCorpus string // SCHEMA_SLOW and SCHEMA_REQUIRE_CORPUS as the test binary sees them
+	goos, goarch        string // GOOS and GOARCH the line sets for the command, or ""
+}
+
+// armed reports whether the gate is open for the tests this line runs:
+// internal/slowtest.Enabled is SCHEMA_SLOW == "1" or a non-empty
+// SCHEMA_REQUIRE_CORPUS, and the proof script sets the first.
+func (l goTestLine) armed() bool {
+	if l.undecided != "" {
+		return false
+	}
+	return l.proof || l.slow == "1" || l.requireCorpus != ""
+}
+
+var shellAssignment = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_]*)=(.*)$`)
+
+// unread marks a value the scan cannot know: a make or shell expansion.
+const unread = "\x00unread"
+
+func readable(value string) (string, bool) {
+	value = strings.ReplaceAll(value, "$$", "\x01")
+	if strings.ContainsAny(value, "$`") || strings.Contains(value, "\x01(") || strings.Contains(value, "\x01{") || shellVariable.MatchString(value) {
+		return "", false
+	}
+	return strings.ReplaceAll(value, "\x01", "$"), true
+}
+
+// shellVariable is a shell expansion left after make's own: `$$name` (read
+// here with `$$` already folded to \x01).
+var shellVariable = regexp.MustCompile("\x01[A-Za-z_]")
+
+// commandEnd reports whether a shell word ends the simple command it is in.
+func commandEnd(w string) bool {
+	switch w {
+	case "&&", "||", "|", ";", "then", "do", "else", "fi", "done", ")", "}", "&":
+		return true
+	}
+	return strings.HasPrefix(w, ">") || strings.HasPrefix(w, "<") || strings.HasPrefix(w, "2>") || strings.HasPrefix(w, "1>")
+}
+
+// transparent words open a command without being one.
+func transparent(w string) bool {
+	switch w {
+	case "if", "!", "(", "{", "while", "until", "elif", "time", "exec":
+		return true
+	}
+	return false
+}
+
+func parseGoTestLine(cmd string) goTestLine {
+	var l goTestLine
+	words := shellWords(cmd)
+
+	// the invocation: `go test`, or the proof script (whose arguments after
+	// <label> '<names>' are go test's)
+	at, args, found := -1, 0, 0
+	for i, w := range words {
+		w = strings.TrimLeft(w, "@-+(")
+		switch {
+		case w == "go" && i+1 < len(words) && words[i+1] == "test":
+			found++
+			if at < 0 {
+				at, args = i, i+2
+			}
+		case w == "test/slowgate/proof" || strings.HasSuffix(w, "/test/slowgate/proof"):
+			found++
+			if at < 0 {
+				at, args = i, i+3
+				l.proof = true
+			}
+		}
+	}
+	switch {
+	case found == 0:
+		l.undecided = "it runs no `go test` this scan can find as a command"
+		return l
+	case found > 1:
+		l.undecided = "it runs more than one test command on one line"
+		return l
+	}
+
+	// THE ENVIRONMENT, word by word up to the invocation. exported holds what
+	// every later command on the line inherits; prefix holds the assignments
+	// in front of the command being read, which reach that command alone.
+	exported := map[string]string{}
+	prefix := map[string]string{}
+	command, viaEnv, unsetting := false, false, false
+	for i := 0; i < at; i++ {
+		w := words[i]
+		ended := strings.HasSuffix(w, ";")
+		w = strings.TrimSuffix(w, ";")
+		if !command {
+			w = strings.TrimLeft(w, "@-+(")
+		}
+		switch {
+		case w == "":
+		case commandEnd(w):
+			ended = true
+		case !command && transparent(w):
+		case !command && w == "export":
+			// the assignments that follow are exported: they outlive this command
+			for i+1 < at {
+				m := shellAssignment.FindStringSubmatch(strings.TrimSuffix(words[i+1], ";"))
+				if m == nil {
+					break
+				}
+				exported[m[1]] = m[2]
+				i++
+				if strings.HasSuffix(words[i], ";") {
+					break
+				}
+			}
+			ended = true
+		case !command && w == "unset":
+			command, unsetting = true, true
+		case unsetting:
+			delete(exported, w)
+			exported[w] = ""
+		case viaEnv && w == "-i":
+			for name := range exported {
+				exported[name] = ""
+			}
+			for name := range prefix {
+				prefix[name] = ""
+			}
+			exported["SCHEMA_SLOW"], exported["SCHEMA_REQUIRE_CORPUS"] = "", ""
+		case viaEnv && (w == "-u" || w == "--unset") && i+1 < at:
+			i++
+			prefix[strings.TrimSuffix(words[i], ";")] = ""
+		case viaEnv && strings.HasPrefix(w, "--unset="):
+			prefix[strings.TrimPrefix(w, "--unset=")] = ""
+		case (!command || viaEnv) && shellAssignment.MatchString(w):
+			m := shellAssignment.FindStringSubmatch(w)
+			prefix[m[1]] = m[2]
+		default:
+			if !command {
+				command = true
+			}
+			viaEnv = w == "env" || (viaEnv && strings.HasPrefix(w, "-"))
+		}
+		if ended {
+			if !command {
+				// assignments that stand alone are shell variables: whether a
+				// later command inherits one depends on whether the name was
+				// already exported, which this line does not say
+				for name := range prefix {
+					exported[name] = unread
+				}
+			}
+			prefix = map[string]string{}
+			command, viaEnv, unsetting = false, false, false
+		}
+	}
+	value := func(name string) string {
+		v, ok := prefix[name]
+		if !ok {
+			v, ok = exported[name]
+		}
+		if !ok || v == "" {
+			return ""
+		}
+		if v == unread {
+			l.unreadEnv = "the value of " + name + " for the test command cannot be read"
+			return ""
+		}
+		if r, ok := readable(v); ok {
+			return r
+		}
+		l.unreadEnv = "the value of " + name + " for the test command cannot be read"
+		return ""
+	}
+	l.slow, l.requireCorpus = value("SCHEMA_SLOW"), value("SCHEMA_REQUIRE_CORPUS")
+	gateUnread := l.unreadEnv
+	l.goos, l.goarch = value("GOOS"), value("GOARCH")
+	if l.unreadEnv != gateUnread {
+		// a build context this scan cannot read voids what it proves about
+		// the selection, not whether the gate is open
+		l.unreadArg, l.unreadEnv = l.unreadEnv, gateUnread
+	}
+
+	// THE FLAGS, last one wins, before and after the package list. After
+	// -args everything goes to the test binary, which reads the -test.* forms;
+	// the go tool reads both forms.
+	afterArgs := false
+	count := ""
+	for i := args; i < len(words); i++ {
+		w := words[i]
+		ended := strings.HasSuffix(w, ";")
+		w = strings.TrimSuffix(w, ";")
+		if commandEnd(w) {
+			break
+		}
+		if w == "-args" || w == "--args" {
+			afterArgs = true
+			continue
+		}
+		if strings.HasPrefix(w, "-") && len(w) > 1 {
+			name, val, hasVal := strings.Cut(strings.TrimPrefix(strings.TrimPrefix(w, "-"), "-"), "=")
+			testForm := strings.HasPrefix(name, "test.")
+			name = strings.TrimPrefix(name, "test.")
+			if afterArgs && !testForm {
+				// the test binary's own flag, not one of testing's; one spelled
+				// like testing's is a line whose author meant something this
+				// scan will not guess
+				switch name {
+				case "run", "count", "skip", "list":
+					l.unreadArg = "-" + name + " after -args is not a flag the testing package reads (it reads -test." + name + ")"
+				}
+				name = ""
+			}
+			next := func() string {
+				if hasVal {
+					return val
+				}
+				if i+1 < len(words) {
+					i++
+					ended = ended || strings.HasSuffix(words[i], ";")
+					return strings.TrimSuffix(words[i], ";")
+				}
+				return ""
+			}
+			switch name {
+			case "run":
+				v, ok := readable(next())
+				if !ok {
+					l.unreadArg = "its -run pattern cannot be read"
+				}
+				l.run, l.hasRun = v, true
+			case "count":
+				count = next()
+			case "tags":
+				v, ok := readable(next())
+				if !ok {
+					l.unreadArg = "its -tags cannot be read"
+				}
+				l.tags = strings.FieldsFunc(v, func(r rune) bool { return r == ',' || r == ' ' || r == '\t' })
+			case "skip":
+				if next() != "" {
+					l.runsNothing = "-skip removes tests from the selection, which this scan does not model"
+				}
+			case "list":
+				next()
+				l.runsNothing = "-list prints test names and runs none"
+			case "exec":
+				next()
+				l.runsNothing = "-exec runs the test binary through another program"
+			case "c":
+				if !afterArgs {
+					l.runsNothing = "-c builds the test binary and runs nothing"
+				}
+			}
+		} else if _, ok := readable(w); !ok && l.unreadArg == "" {
+			l.unreadArg = "an argument of the test command cannot be read (" + w + ")"
+		}
+		if ended {
+			break
+		}
+	}
+	if count != "" {
+		if n, err := strconv.Atoi(count); err != nil {
+			l.unreadArg = "its -count cannot be read"
+		} else if n < 1 {
+			l.runsNothing = "-count=" + count + " runs each test zero times"
+		}
+	}
+	return l
+}
+
+// provable reports whether the line's selection can be reasoned about at all,
+// and if not, why.
+func (l goTestLine) provable() (bool, string) {
+	switch {
+	case l.undecided != "":
+		return false, l.undecided
+	case l.unreadArg != "":
+		return false, l.unreadArg
+	case l.runsNothing != "":
+		return false, l.runsNothing
+	case !l.hasRun:
+		return false, "it has no -run pattern, so it runs every test of the package"
+	}
+	return true, ""
+}

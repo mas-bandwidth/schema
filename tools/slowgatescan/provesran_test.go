@@ -313,6 +313,17 @@ func TestUnarmedLineVerdictFollowsGoSelection(t *testing.T) {
 		{"go test -count=1 -run TestFast ./pkg", 0, "it runs TestFast once"},
 		{"go test -list TestFast -run TestFast ./pkg", 1, "-list prints names and runs nothing"},
 		{"go test -c -run TestFast ./pkg", 1, "-c builds the test binary and runs nothing"},
+		// the line is read as the go tool and the test binary read it
+		{"go test -run TestFast -run TestGated ./pkg", 1, "a repeated flag: the last -run wins, and it selects the gated test"},
+		{"go test -run TestGated -run TestFast ./pkg", 0, "a repeated flag: the last -run wins, and it selects TestFast alone"},
+		{"go test ./pkg -args -test.run TestGated", 1, "-args -test.run is the selector the test binary reads"},
+		{"go test -run TestFast ./pkg -args -test.run TestGated", 1, "the -test.run after -args is the last selector"},
+		{"go test ./pkg -args -test.run TestFast", 0, "-args -test.run selects TestFast alone"},
+		{"go test ./pkg -v -run TestFast", 0, "a flag after the package list is still a flag"},
+		{"go test ./pkg -test.run=TestGated", 1, "the go tool reads the -test. form too"},
+		{"go test -run TestFast ./pkg -args -run TestGated", 1, "-run after -args is not testing's flag: undecided"},
+		{"go test -run TestFast ./pkg -args -test.count=0", 1, "-test.count=0 after -args runs nothing"},
+		{"go test -run $$(cat pattern.txt) ./pkg", 1, "the pattern cannot be read"},
 		// declarations are read under the build context the line runs in
 		{"GOOS=linux go test -run 'TestFeature' ./pkg", 1, "TestFeature is behind a build tag the line does not set: no tests to run"},
 		{"GOOS=linux go test -tags include_optional_feature -run 'TestFeature' ./pkg", 0, "with the tag it runs TestFeature"},
@@ -346,6 +357,52 @@ func TestUnarmedLineVerdictFollowsGoSelection(t *testing.T) {
 		}
 		if got := runStatic(root, recipes, nil, gated, gatedTests); got != tc.want {
 			t.Errorf("unarmed `%s`: the static scan exited %d, want %d (%s)", tc.recipe, got, tc.want, tc.why)
+		}
+	}
+}
+
+// TestArmingIsTheEnvironmentTheTestSees holds "armed" to the environment the
+// test binary gets, word by word, not to the variable's name appearing on the
+// line: an assignment in front of the command arms; `env -u`, `unset`, an
+// empty value and a value other than 1 for SCHEMA_SLOW do not; a later word
+// overrides an earlier one; and a value this scan cannot read arms nothing.
+func TestArmingIsTheEnvironmentTheTestSees(t *testing.T) {
+	t.Parallel()
+	for cmd, want := range map[string]bool{
+		"go test ./pkg":                                                      false,
+		"SCHEMA_SLOW=1 go test ./pkg":                                        true,
+		"SCHEMA_REQUIRE_CORPUS=1 go test ./pkg":                              true,
+		"env -u SCHEMA_REQUIRE_CORPUS go test ./pkg":                         false,
+		"SCHEMA_REQUIRE_CORPUS=1 env -u SCHEMA_REQUIRE_CORPUS go test ./pkg": false,
+		"env -u SCHEMA_SLOW SCHEMA_SLOW=1 go test ./pkg":                     true,
+		"env SCHEMA_SLOW=1 go test ./pkg":                                    true,
+		"env -i go test ./pkg":                                               false,
+		"SCHEMA_SLOW=1 env -i go test ./pkg":                                 false,
+		"SCHEMA_SLOW= go test ./pkg":                                         false,
+		"SCHEMA_REQUIRE_CORPUS= go test ./pkg":                               false,
+		"SCHEMA_SLOW=0 go test ./pkg":                                        false,
+		"SCHEMA_SLOW=1 SCHEMA_SLOW=0 go test ./pkg":                          false,
+		"SCHEMA_SLOW=0 SCHEMA_SLOW=1 go test ./pkg":                          true,
+		"unset SCHEMA_SLOW; go test ./pkg":                                   false,
+		"export SCHEMA_SLOW=1; go test ./pkg":                                true,
+		"export SCHEMA_SLOW=1; unset SCHEMA_SLOW; go test ./pkg":             false,
+		"export SCHEMA_SLOW=1 && SCHEMA_SLOW= go test ./pkg":                 false,
+		"SCHEMA_SLOW=1 true; go test ./pkg":                                  false,
+		"SCHEMA_SLOW=1; go test ./pkg":                                       false,
+		"SCHEMA_SLOW=1 cd pkg && go test .":                                  false,
+		"cd pkg && SCHEMA_SLOW=1 go test .":                                  true,
+		"echo SCHEMA_SLOW=1 && go test ./pkg":                                false,
+		"echo SCHEMA_REQUIRE_CORPUS is not set here; go test ./pkg":          false,
+		"SCHEMA_REQUIRE_CORPUS=$(REQUIRE) go test ./pkg":                     false,
+		"SCHEMA_REQUIRE_CORPUS=$$require go test ./pkg":                      false,
+		"SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) nice -n 19 go test ./pkg":      true,
+		"@if SCHEMA_SLOW=1 go test ./pkg > log 2>&1; then echo red; fi":      true,
+		"@if ( cd pkg && SCHEMA_SLOW=1 go test . ); then echo red; fi":       true,
+		"sh test/slowgate/proof label 'TestGated' ./pkg -count=1":            true,
+		"go test ./a && SCHEMA_SLOW=1 go test ./pkg":                         false,
+	} {
+		if got := parseGoTestLine(cmd).armed(); got != want {
+			t.Errorf("armed(%q) = %v, want %v", cmd, got, want)
 		}
 	}
 }

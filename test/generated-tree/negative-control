@@ -85,6 +85,13 @@ ignored)
 clean)
 	expect_red=no
 	expected='generated/ tree is current' ;;
+empty)
+	# A COMPARISON OF NOTHING. Two trees with no file in common have no file
+	# that differs, none stale and none missing, and the gate used to call
+	# that "current: 0 emitted file(s) byte-identical". It is the gate pointed
+	# at the wrong directories, and it is red.
+	rm "$emitted/go/ATable.go" "$tree/go/ATable.go"
+	expected='EMPTY — the emission and the tree hold no file in common' ;;
 *)
 	printf 'unknown control: %s\n' "$mode" >&2; exit 1 ;;
 esac

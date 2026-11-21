@@ -32,6 +32,7 @@ func page(path, purpose, guard, command string) Entry {
 // catalog is the map. Top-level directories must all appear; a Page directory's
 // immediate child directories must all appear.
 var catalog = []Entry{
+	e(".claude-plugin", "plugin marketplace entry for skills/", "none", "none"),
 	e(".github", "CI workflows", "go test ./internal/ci", "make test"),
 	page("bench", "cross-language serialize bench", "go test ./bench/corpus", "bench/run.sh"),
 	e("cmd", "schema CLI", "go test ./cmd/schema", "go test ./cmd/schema"),
@@ -101,7 +102,9 @@ var catalog = []Entry{
 	e("internal/memceiling", "memory ceiling for allocating tests", "go test ./internal/memceiling", "go test ./internal/memceiling"),
 	e("internal/parser", "recursive-descent parser", "go test ./internal/parser", "go test ./internal/parser"),
 	e("internal/publicapi", "external-module API gate", "go test ./internal/publicapi", "go test ./internal/publicapi"),
+	e("internal/provesran", "zero-match and unknown-candidate refusal for scans", "go test ./internal/provesran", "go test ./internal/provesran"),
 	e("internal/rfc3339", "strict RFC 3339 timestamp parser", "go test ./internal/rfc3339", "go test ./internal/rfc3339"),
+	e("internal/runmatch", "go test -run selection, as Go matches it", "go test ./internal/runmatch", "go test ./internal/runmatch"),
 	e("internal/scanner", "tokenizer", "go test ./internal/parser", "go test ./internal/parser"),
 	e("internal/slowtest", "1-2 minute unit-test gate", "make slow-gate-scan", "make slow-gate-scan"),
 	e("internal/tablecook", "cook form", "go test ./internal/tablecook", "go test ./internal/tablecook"),

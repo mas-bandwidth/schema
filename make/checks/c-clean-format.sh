@@ -21,7 +21,14 @@ jobs=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 work=$OUT/c-format-workers
 rm -rf "$work" && mkdir -p "$work"
 
+# THE GATE PROVES IT RAN. A tree that is not there, or trees that hold no C at
+# all, used to leave the file list empty, skip every check below and print
+# "clean": a gate that looked at nothing. Both are failures by name.
+for t in "$@"; do
+	[ -d "$t" ] || { echo "tables-c-clean: $t is not a directory — the gate was pointed at a tree that is not generated"; exit 1; }
+done
 find "$@" \( -name '*.h' -o -name '*.c' \) | sort > "$OUT/c-format-files.txt"
+[ -s "$OUT/c-format-files.txt" ] || { echo "tables-c-clean: no generated C under $*"; exit 1; }
 if [ -s "$OUT/c-format-files.txt" ]; then
 	xargs -P "$jobs" -n 16 sh -c '
 		cf=$1; st=$2; wk=$3; shift 3
@@ -37,8 +44,19 @@ if [ -s "$OUT/c-format-files.txt" ]; then
 fi
 
 bad=0
+: > "$OUT/c-format-results.txt"
 if ls "$work"/res.* >/dev/null 2>&1; then
 	cat "$work"/res.* | sort -k2,2 > "$OUT/c-format-results.txt"
+fi
+# every file found has exactly one verdict: a worker that died, or wrote
+# nothing, is a file nobody judged
+found=$(wc -l < "$OUT/c-format-files.txt" | tr -d ' ')
+judged=$(wc -l < "$OUT/c-format-results.txt" | tr -d ' ')
+if [ "$found" != "$judged" ]; then
+	echo "tables-c-clean: found $found generated C files and judged $judged — a file without a verdict is not a clean file"
+	bad=1
+fi
+if [ -s "$OUT/c-format-results.txt" ]; then
 	while IFS="$(printf '\t')" read -r verdict f; do
 		if [ "$verdict" = "CLEAN" ]; then
 			if grep -Fxq "$f" "$allow"; then echo "tables-c-clean: $f is clean now — remove its line from $allow"; bad=1; fi
@@ -48,10 +66,15 @@ if ls "$work"/res.* >/dev/null 2>&1; then
 		fi
 	done < "$OUT/c-format-results.txt"
 fi
-rm -rf "$work" "$OUT/c-format-files.txt" "$OUT/c-format-results.txt"
-
 for f in $(grep -v '^#' "$allow" | grep . || true); do
-	[ -f "$f" ] || { echo "tables-c-clean: $f is listed in $allow but no longer generated — remove its line"; bad=1; }
+	if [ ! -f "$f" ]; then
+		echo "tables-c-clean: $f is listed in $allow but no longer generated — remove its line"; bad=1
+	elif ! grep -Fxq "$f" "$OUT/c-format-files.txt"; then
+		# listed, on disk, and outside every tree this run judged: the line
+		# excuses a file the gate never looked at
+		echo "tables-c-clean: $f is listed in $allow but is under none of the trees this gate scans ($*) — remove its line, or scan its tree"; bad=1
+	fi
 done
+rm -rf "$work" "$OUT/c-format-files.txt" "$OUT/c-format-results.txt"
 [ $bad -eq 0 ] || exit 1
 echo "C: clang-format clean over $*, $(wc -l < "$seen" | tr -d ' ') table-emitter files still on the ratchet"
