@@ -150,7 +150,7 @@ type emittedRoot struct {
 	layout bool
 }
 
-var descriptorRe = regexp.MustCompile(`(?m)^_T\.(\w+)Descriptor = _schema_tables\.table\(\{\n\tname = "(\w+)",\n(?:\t.*\n)*?\ttable = true,\n(?:\tforms = .*\n)?\tfixed = (true|false),`)
+var descriptorRe = regexp.MustCompile(`(?m)^_T\.(\w+)Descriptor = _F_schema__tables\.table\(\{\n\tname = "(\w+)",\n(?:\t.*\n)*?\ttable = true,\n(?:\tforms = .*\n)?\tfixed = (true|false),`)
 
 // emittedRoots reads every TABLE descriptor (table = true: a packet type or a
 // map entry a table reaches is not a root) and fixed layout the unit's modules
@@ -179,7 +179,7 @@ func emittedRoots(g *generatedUnit) map[string]emittedRoot {
 // emits no entry would read its trailer as framing damage.
 func emittedIntegrity(t *testing.T, g *generatedUnit, root string) {
 	t.Helper()
-	anchor := fmt.Sprintf("_T.%sDescriptor = _schema_tables.table({\n", root)
+	anchor := fmt.Sprintf("_T.%sDescriptor = _F_schema__tables.table({\n", root)
 	for _, data := range g.files {
 		i := strings.Index(string(data), anchor)
 		if i < 0 {

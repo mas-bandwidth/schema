@@ -8,12 +8,15 @@
 //
 // THE WRITER CONTRACT (SPEC §5). Luau has no debug-only assert idiom, so the
 // contract is checked in every build, as Go and Elixir check it: a value
-// outside its declared range, or of the wrong Luau storage type, makes the
-// write return false before any of it rides. The guard runs BEFORE the
-// runtime call because serialize.luau 2.x TRAPS on write misuse (it raises,
-// IMPLEMENTING.md U9) rather than latching a reason: a generated writer
-// never hands the runtime a value it would raise on, so a caller's bad value
-// is a false, never an error.
+// outside its declared range, of the wrong Luau storage type, or (for a
+// float) not finite at its width makes the write return false at that field,
+// before that value rides; the fields before it have already ridden, so a
+// false leaves a partial stream the caller discards. The guard runs BEFORE
+// the runtime call because serialize.luau 2.x TRAPS on write misuse (it
+// raises, IMPLEMENTING.md U9) rather than latching a reason: a generated
+// writer never hands the runtime a value it would raise on, so a caller's bad
+// value is a false, never an error. A stream with too little room for the
+// value still traps: size it from <Name>MaxBytes.
 //
 // Every value rides through the module's holders (BITS, BIG, BOOL, WIDE,
 // declared by read.go): a holder is filled and consumed by the same call, so
@@ -79,6 +82,7 @@ func emitWriteStruct(g *Gen, st *ir.Struct) {
 	g.Pf("-- Write%s writes the type wire (SPEC §6.1: the wire order is the declared\n", st.Name)
 	g.Pf("-- order); false refuses a value that breaks the writer contract (SPEC §5).\n")
 	g.Pf("function %s.Write%s(stream: any, v: any): boolean\n", g.Self, st.Name)
+	g.Pf("  if type(v) ~= \"table\" then return false end\n")
 	emitWriteItems(g, st.Items, "  ")
 	g.Pf("  return true\nend\n\n")
 }
@@ -132,6 +136,11 @@ func emitWriteField(g *Gen, val string, f *ir.Field, indent string) {
 	if f.Array == ir.ArrayCounted {
 		count := val + "Count"
 		guardNum(g, indent, count, big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound), "the count guards the loop (SPEC §6.3)")
+		if isByteElem(f.Type) {
+			g.Pf("%sif type(%s) ~= \"buffer\" or buffer.len(%s) < %s then return false end\n", indent, val, val, count)
+		} else {
+			g.Pf("%sif type(%s) ~= \"table\" then return false end\n", indent, val)
+		}
 		emitBitsOrSkip(g, indent, offsetExpr(count, big.NewInt(f.ArrayMin)),
 			ir.BitsRequired(big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound)), "the count (SPEC §4.6)")
 		g.Pf("%sfor _i = 1, %s do\n", indent, count)
@@ -149,6 +158,8 @@ func emitWriteField(g *Gen, val string, f *ir.Field, indent string) {
 	}
 	if isByteElem(f.Type) {
 		g.Pf("%sif type(%s) ~= \"buffer\" or buffer.len(%s) ~= %s then return false end\n", indent, val, val, bound)
+	} else {
+		g.Pf("%sif type(%s) ~= \"table\" then return false end\n", indent, val)
 	}
 	g.Pf("%sfor _i = 1, %s do\n", indent, bound)
 	emitWriteElem(g, val, f, indent+"  ")
@@ -305,14 +316,17 @@ func emitWriteScalar(g *Gen, val, length string, f *ir.Field, indent string) {
 			emitBitsOrSkip(g, indent, offsetExpr(val, rawMin), bits, "the Q format's raw offset (SPEC §4.3)")
 		}
 	case ir.TFloat32:
+		guardFinite32(g, indent, val)
 		if f.HasFloatRange {
-			g.Pf("%sif %s == %s and %s ~= math.huge and %s ~= -math.huge and (%s < %s or %s > %s) then return false end\n", indent, val, val, val, val, val, FloatLiteral(f.FMin), val, FloatLiteral(f.FMax))
+			g.Pf("%sif %s < %s or %s > %s then return false end\n", indent, val, FloatLiteral(f.FMin), val, FloatLiteral(f.FMax))
 			call(fmt.Sprintf("stream:serializeCompressedFloat({ value = %s }, %s, %s, %s)", val,
 				FloatLiteral(f.FMin), FloatLiteral(f.FMax), FloatLiteral(f.Resolution)), " -- the step index (SPEC §4.3)")
 		} else {
 			call(fmt.Sprintf("stream:serializeFloat({ value = %s })", val), "")
 		}
 	case ir.TFloat64:
+		g.Pf("%sif type(%s) ~= \"number\" or %s ~= %s or %s == math.huge or %s == -math.huge then return false end -- finite (SPEC §5.1)\n",
+			indent, val, val, val, val, val)
 		call(fmt.Sprintf("stream:serializeDouble({ value = %s })", val), "")
 	case ir.TString, ir.TBytes:
 		size := t.Size
@@ -343,9 +357,19 @@ func emitWriteScalar(g *Gen, val, length string, f *ir.Field, indent string) {
 			g.Pf(" then return false end\n")
 			emitBits64OrSkip(g, indent, val, int64(ref.WireBits), "the flags wire width")
 		case *ir.Struct, *ir.Union:
+			g.Pf("%sif type(%s) ~= \"table\" then return false end\n", indent, val)
 			call(fmt.Sprintf("%s(stream, %s)", g.writeRef(t.Name), val), "")
 		}
 	}
+}
+
+// guardFinite32 refuses a float32 value that is not a number or does not stay
+// finite once narrowed to float32: below 2^128 - 2^103 it rounds to at most
+// the largest float32, and from there it rounds to infinity; NaN fails the
+// compare (SPEC §5.1, finite floats only).
+func guardFinite32(g *Gen, indent, val string) {
+	g.Pf("%sif type(%s) ~= \"number\" or not (math.abs(%s) < 3.4028235677973366e38) then return false end -- finite at float32 (SPEC §5.1)\n",
+		indent, val, val)
 }
 
 // offset64 is val's offset from lo in the integer domain.
@@ -387,6 +411,7 @@ func emitWriteUnion(g *Gen, un *ir.Union) {
 	g.Pf("%s.%sMaxBytes = %d\n\n", g.Self, un.Name, ir.MaxBytes(maxBits))
 	g.Pf("-- Write%s writes union %s (SPEC §4.8: None = 0, then each declared arm)\n", un.Name, un.Name)
 	g.Pf("function %s.Write%s(stream: any, v: any): boolean\n", g.Self, un.Name)
+	g.Pf("  if type(v) ~= \"table\" then return false end\n")
 	guardNum(g, "  ", "v.Type", big.NewInt(0), big.NewInt(un.Max), "a tag that names no arm cannot ride")
 	emitBitsOrSkip(g, "  ", "v.Type", ir.BitsRequired(big.NewInt(0), big.NewInt(un.Max)), "the union tag")
 	for i, arm := range un.Variants {

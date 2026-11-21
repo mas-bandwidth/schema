@@ -986,7 +986,9 @@ _M.W13MaxBytes = 24
 -- WriteW13 writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteW13(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.ItemsCount) ~= "number" or v.ItemsCount % 1 ~= 0 or v.ItemsCount < 0 or v.ItemsCount > 12 then return false end -- the count guards the loop (SPEC §6.3)
+  if type(v.Items) ~= "table" then return false end
   BITS.value = v.ItemsCount
   if not stream:serializeBits(BITS, 4) then return false end -- the count (SPEC §4.6)
   for _i = 1, v.ItemsCount do
@@ -1005,7 +1007,9 @@ _M.W17MaxBytes = 24
 -- WriteW17 writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteW17(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.ItemsCount) ~= "number" or v.ItemsCount % 1 ~= 0 or v.ItemsCount < 0 or v.ItemsCount > 9 then return false end -- the count guards the loop (SPEC §6.3)
+  if type(v.Items) ~= "table" then return false end
   BITS.value = v.ItemsCount
   if not stream:serializeBits(BITS, 4) then return false end -- the count (SPEC §4.6)
   for _i = 1, v.ItemsCount do
@@ -1024,7 +1028,9 @@ _M.W26MaxBytes = 24
 -- WriteW26 writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteW26(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.ItemsCount) ~= "number" or v.ItemsCount % 1 ~= 0 or v.ItemsCount < 0 or v.ItemsCount > 6 then return false end -- the count guards the loop (SPEC §6.3)
+  if type(v.Items) ~= "table" then return false end
   BITS.value = v.ItemsCount
   if not stream:serializeBits(BITS, 3) then return false end -- the count (SPEC §4.6)
   for _i = 1, v.ItemsCount do
@@ -1043,7 +1049,9 @@ _M.W1MaxBytes = 8
 -- WriteW1 writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteW1(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.ItemsCount) ~= "number" or v.ItemsCount % 1 ~= 0 or v.ItemsCount < 0 or v.ItemsCount > 20 then return false end -- the count guards the loop (SPEC §6.3)
+  if type(v.Items) ~= "buffer" or buffer.len(v.Items) < v.ItemsCount then return false end
   BITS.value = v.ItemsCount
   if not stream:serializeBits(BITS, 5) then return false end -- the count (SPEC §4.6)
   for _i = 1, v.ItemsCount do
@@ -1062,7 +1070,9 @@ _M.W52MaxBytes = 24
 -- WriteW52 writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteW52(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.ItemsCount) ~= "number" or v.ItemsCount % 1 ~= 0 or v.ItemsCount < 0 or v.ItemsCount > 3 then return false end -- the count guards the loop (SPEC §6.3)
+  if type(v.Items) ~= "table" then return false end
   BITS.value = v.ItemsCount
   if not stream:serializeBits(BITS, 2) then return false end -- the count (SPEC §4.6)
   for _i = 1, v.ItemsCount do
@@ -1081,7 +1091,9 @@ _M.W50MaxBytes = 24
 -- WriteW50 writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteW50(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.ItemsCount) ~= "number" or v.ItemsCount % 1 ~= 0 or v.ItemsCount < 0 or v.ItemsCount > 3 then return false end -- the count guards the loop (SPEC §6.3)
+  if type(v.Items) ~= "table" then return false end
   BITS.value = v.ItemsCount
   if not stream:serializeBits(BITS, 2) then return false end -- the count (SPEC §4.6)
   for _i = 1, v.ItemsCount do
@@ -1100,6 +1112,8 @@ _M.F13MaxBytes = 16
 -- WriteF13 writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteF13(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
+  if type(v.Items) ~= "table" then return false end
   for _i = 1, 7 do
     if type(v.Items[_i]) ~= "number" or v.Items[_i] % 1 ~= 0 or v.Items[_i] < 0 or v.Items[_i] > 8191 then return false end
     BITS.value = v.Items[_i]
@@ -1116,6 +1130,7 @@ _M.Tri3MaxBytes = 8
 -- WriteTri3 writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteTri3(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.A) ~= "number" or v.A % 1 ~= 0 or v.A < 0 or v.A > 1 then return false end
   BITS.value = v.A
   if not stream:serializeBits(BITS, 1) then return false end -- the declared bit width
@@ -1133,10 +1148,13 @@ _M.ArrTri3MaxBytes = 8
 -- WriteArrTri3 writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteArrTri3(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.ItemsCount) ~= "number" or v.ItemsCount % 1 ~= 0 or v.ItemsCount < 0 or v.ItemsCount > 10 then return false end -- the count guards the loop (SPEC §6.3)
+  if type(v.Items) ~= "table" then return false end
   BITS.value = v.ItemsCount
   if not stream:serializeBits(BITS, 4) then return false end -- the count (SPEC §4.6)
   for _i = 1, v.ItemsCount do
+    if type(v.Items[_i]) ~= "table" then return false end
     if not _M.WriteTri3(stream, v.Items[_i]) then return false end
   end
   return true
@@ -1150,6 +1168,7 @@ _M.ElevenMaxBytes = 8
 -- WriteEleven writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteEleven(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.A) ~= "number" or v.A % 1 ~= 0 or v.A < 0 or v.A > 7 then return false end
   BITS.value = v.A
   if not stream:serializeBits(BITS, 3) then return false end -- the declared bit width
@@ -1167,7 +1186,10 @@ _M.ArrElevenMaxBytes = 16
 -- WriteArrEleven writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteArrEleven(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
+  if type(v.Items) ~= "table" then return false end
   for _i = 1, 9 do
+    if type(v.Items[_i]) ~= "table" then return false end
     if not _M.WriteEleven(stream, v.Items[_i]) then return false end
   end
   return true
@@ -1181,6 +1203,7 @@ _M.EmptyAMaxBytes = 0
 -- WriteEmptyA writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteEmptyA(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   return true
 end
 
@@ -1192,6 +1215,7 @@ _M.EmptyBMaxBytes = 0
 -- WriteEmptyB writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteEmptyB(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   return true
 end
 
@@ -1202,13 +1226,16 @@ _M.EmptyUnionMaxBytes = 8
 
 -- WriteEmptyUnion writes union EmptyUnion (SPEC §4.8: None = 0, then each declared arm)
 function _M.WriteEmptyUnion(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.Type) ~= "number" or v.Type % 1 ~= 0 or v.Type < 0 or v.Type > 2 then return false end -- a tag that names no arm cannot ride
   BITS.value = v.Type
   if not stream:serializeBits(BITS, 2) then return false end -- the union tag
   if v.Type == 1 then
+    if type(v.A) ~= "table" then return false end
     if not _M.WriteEmptyA(stream, v.A) then return false end
   end
   if v.Type == 2 then
+    if type(v.B) ~= "table" then return false end
     if not _M.WriteEmptyB(stream, v.B) then return false end
   end
   return true
@@ -1222,9 +1249,11 @@ _M.HoldsEmptyUnionMaxBytes = 8
 -- WriteHoldsEmptyUnion writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteHoldsEmptyUnion(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.Lead) ~= "number" or v.Lead % 1 ~= 0 or v.Lead < 0 or v.Lead > 31 then return false end
   BITS.value = v.Lead
   if not stream:serializeBits(BITS, 5) then return false end -- the declared bit width
+  if type(v.U) ~= "table" then return false end
   if not _M.WriteEmptyUnion(stream, v.U) then return false end
   if type(v.Tail) ~= "number" or v.Tail % 1 ~= 0 or v.Tail < 0 or v.Tail > 127 then return false end
   BITS.value = v.Tail
@@ -1240,6 +1269,7 @@ _M.StrsMaxBytes = 24
 -- WriteStrs writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteStrs(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.Lead) ~= "number" or v.Lead % 1 ~= 0 or v.Lead < 0 or v.Lead > 31 then return false end
   BITS.value = v.Lead
   if not stream:serializeBits(BITS, 5) then return false end -- the declared bit width
@@ -1269,13 +1299,16 @@ _M.ArrNestedMaxBytes = 8
 -- WriteArrNested writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteArrNested(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.Lead) ~= "number" or v.Lead % 1 ~= 0 or v.Lead < 0 or v.Lead > 31 then return false end
   BITS.value = v.Lead
   if not stream:serializeBits(BITS, 5) then return false end -- the declared bit width
   if type(v.ItemsCount) ~= "number" or v.ItemsCount % 1 ~= 0 or v.ItemsCount < 0 or v.ItemsCount > 4 then return false end -- the count guards the loop (SPEC §6.3)
+  if type(v.Items) ~= "table" then return false end
   BITS.value = v.ItemsCount
   if not stream:serializeBits(BITS, 3) then return false end -- the count (SPEC §4.6)
   for _i = 1, v.ItemsCount do
+    if type(v.Items[_i]) ~= "table" then return false end
     if not _M.WriteEleven(stream, v.Items[_i]) then return false end
   end
   if type(v.Tail) ~= "number" or v.Tail % 1 ~= 0 or v.Tail < 0 or v.Tail > 7 then return false end
@@ -1292,6 +1325,7 @@ _M.SoleMaxBytes = 8
 -- WriteSole writes the type wire (SPEC §6.1: the wire order is the declared
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteSole(stream: any, v: any): boolean
+  if type(v) ~= "table" then return false end
   if type(v.Only) ~= "number" or v.Only % 1 ~= 0 or v.Only < 0 or v.Only > 8191 then return false end
   BITS.value = v.Only
   if not stream:serializeBits(BITS, 13) then return false end -- the declared bit width
