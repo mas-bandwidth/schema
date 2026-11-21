@@ -149,7 +149,7 @@ public final class MixedEntityFixed {
             if (live) {
                 r.refuse(TableFixed.Reason.outOfRange);
             }
-        } // bits(12) clamps to 2^N - 1
+        } // bits(12) past 2^N - 1 refuses
         {
             long q = TableFixed.get32(b, at + 4);
             if (q < -16383L) {
@@ -201,14 +201,14 @@ public final class MixedEntityFixed {
             if (live) {
                 r.refuse(TableFixed.Reason.outOfRange);
             }
-        } // bits(9) clamps to 2^N - 1
+        } // bits(9) past 2^N - 1 refuses
         v.pitch = TableFixed.get32(b, at + 20);
         if (Integer.compareUnsigned(v.pitch, 511) > 0) {
             v.pitch = (int) (511L);
             if (live) {
                 r.refuse(TableFixed.Reason.outOfRange);
             }
-        } // bits(9) clamps to 2^N - 1
+        } // bits(9) past 2^N - 1 refuses
         {
             long q = TableFixed.get32(b, at + 24);
             if (q < -2048L) {
