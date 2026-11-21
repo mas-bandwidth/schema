@@ -105,7 +105,7 @@ func lexJavaCode(src string) []javaTok {
 			}
 			out = append(out, javaTok{s: `""`, line: line})
 			i = j + 1
-		case isIdent(c) && !(c >= '0' && c <= '9'):
+		case isIdent(c) && (c < '0' || c > '9'):
 			j := i
 			for j < len(src) && isIdent(src[j]) {
 				j++
