@@ -734,7 +734,7 @@ func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 			switch {
 			case !present:
 				out = append(out, Finding{Refuse, where, fmt.Sprintf("%s %s removed", tokenNoun(bt.Key), bt.Value)})
-			case lv != bt.Value && !(bt.Key == "default" && d.sameDefaultVariant(bf, lf, bt.Value, lv)):
+			case lv != bt.Value && (bt.Key != "default" || !d.sameDefaultVariant(bf, lf, bt.Value, lv)):
 				out = append(out, Finding{Refuse, where, fmt.Sprintf("%s %s -> %s", tokenNoun(bt.Key), bt.Value, lv)})
 			}
 		case RuleShrink, RuleRaise:
