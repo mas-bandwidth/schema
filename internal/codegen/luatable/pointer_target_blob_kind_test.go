@@ -12,8 +12,9 @@
 // every row of testdata/conformance/feature-witnesses/pointer-targets, runs
 // through every public read of the variable form (the plain load, the strict
 // read, the retaining load) with the Go engine (tablewire.Decode,
-// tablewire.DecodeRetain) as the oracle: the verdict, a refusal's reason and a
-// read's unknown count are compared. The walk Load wraps is held to the
+// tablewire.DecodeRetain) as the oracle: the verdict and a read's unknown count
+// are compared; a refusal's reason is diagnostic only, never compared
+// (docs/rulings.json refusal-verdict-only). The walk Load wraps is held to the
 // unknown count of every read row. The same gate holds the leg's save and
 // retaining save to never emitting a blob record no pointer reaches.
 package luatable
@@ -68,11 +69,17 @@ func blobKindEngine(m *tabletext.Model, row blobKindRow) map[string]blobKindVerd
 	for name, read := range reads {
 		var report tabletext.Report
 		ok, err := read(m.New(m.Lookup(row.root)), &report)
-		if ok && err == nil && !report.Refused {
+		switch {
+		case ok && err == nil && !report.Refused:
 			answers[name] = blobKindVerdict{verdict: "read", unknown: report.Unknown}
-			continue
+		case tablewire.ReadRefusal(err) || (err == nil && report.Refused):
+			// the verdict; the reason is the engine's own diagnostic
+			answers[name] = blobKindVerdict{verdict: "refused", reason: tablewire.RefusalReason(err)}
+		default:
+			// an error that is not a read's refusal is a failure, never a
+			// refusal: the verdict "error" matches no row
+			answers[name] = blobKindVerdict{verdict: "error", reason: fmt.Sprintf("ok=%v err=%v", ok, err)}
 		}
-		answers[name] = blobKindVerdict{verdict: "refused", reason: tablewire.RefusalReason(err)}
 	}
 	return answers
 }
@@ -101,15 +108,26 @@ for i = 1, tonumber(inputs.n) do
   local lr = fresh()
   local lv = load.Load(T, root, wire, lr)
   local sok, sv = pcall(refusal.ReadStrict, T, root, wire)
-  local sreason = ""
-  if not sok then sreason = tostring(sv):match("^[%a_]+") or tostring(sv) end
-  if sok and sv == nil then sreason = "nil" end
+  -- ReadStrict refuses by raising its reason name (refusal.lua's refuse);
+  -- anything else raised, or a nil with no refusal, is a crash, never a
+  -- refusal
+  local sverdict, sreason = "read", ""
+  if not sok then
+    local msg = tostring(sv)
+    if type(sv) == "string" and (msg:match("^[%a_]+$") or msg:match("^[%a_]+: ")) then
+      sverdict, sreason = "refused", msg:match("^[%a_]+")
+    else
+      sverdict, sreason = "error", (msg:gsub("[|\n]", " "))
+    end
+  elseif sv == nil then
+    sverdict, sreason = "error", "ReadStrict returned nil without a refusal"
+  end
   local rr = fresh()
   local rv = retain.LoadRetain(T, root, wire, { list = {}, used = 0 }, rr)
   print(table.concat({ i,
     tostring(wv ~= nil), wr.unknown,
     tostring(lv ~= nil), lr.unknown, tostring(lr.reason), ptr(lv, field),
-    tostring(sok and sv ~= nil), sreason, ptr(sok and sv or nil, field),
+    sverdict, sreason, ptr(sok and sv or nil, field),
     tostring(rv ~= nil), rr.unknown, tostring(rr.reason), ptr(rv, field) }, "|"))
 end
 `
@@ -150,17 +168,24 @@ func luaBlobKindAnswers(t *testing.T, files map[string][]byte, module string, ro
 			}
 			return blobKindVerdict{verdict: "refused", reason: reason}
 		}
+		strict := answer(f[7] == "read", "-1", f[8], f[9])
+		if f[7] == "error" {
+			// a crash is never a refusal: the verdict "error" matches no row
+			strict = blobKindVerdict{verdict: "error", reason: f[8]}
+		}
 		answers[i] = map[string]blobKindVerdict{
 			"load":   answer(f[3] == "true", f[4], f[5], f[6]),
-			"strict": answer(f[7] == "true", "-1", f[8], f[9]),
+			"strict": strict,
 			"retain": answer(f[10] == "true", f[11], f[12], f[13]),
 		}
 	}
 	return walks, answers
 }
 
-// blobKindProblems names every Lua answer that is not the row's verdict, the
-// engine's verdict, the engine's refusal reason or the pinned unknown count.
+// blobKindProblems names every Lua answer that is not the row's verdict (the
+// engine's verdict, checked against the row before this runs) or the pinned
+// unknown count. A refusal's reason is per-language diagnostic detail, printed
+// in a problem but never compared (docs/rulings.json refusal-verdict-only).
 func blobKindProblems(rows []blobKindRow, engine []map[string]blobKindVerdict, walks []int, lua []map[string]blobKindVerdict) []string {
 	var problems []string
 	for i, row := range rows {
@@ -170,14 +195,11 @@ func blobKindProblems(rows []blobKindRow, engine []map[string]blobKindVerdict, w
 		}
 		for _, entry := range []string{"load", "strict", "retain"} {
 			a := lua[i][entry]
-			if a.verdict != row.verdict {
-				problems = append(problems, fmt.Sprintf("%s (%s): the read %s, the row says %s", row.name, entry, a.verdict, row.verdict))
+			if a.verdict != row.verdict || oracle.verdict != row.verdict {
+				problems = append(problems, fmt.Sprintf("%s (%s): the read %s (%s), the row says %s, the engine %s (%s)", row.name, entry, a.verdict, a.reason, row.verdict, oracle.verdict, oracle.reason))
 				continue
 			}
 			if a.verdict == "refused" {
-				if a.reason != oracle.reason {
-					problems = append(problems, fmt.Sprintf("%s (%s): refused %s, the engine refuses %s", row.name, entry, a.reason, oracle.reason))
-				}
 				continue
 			}
 			if a.unknown >= 0 && row.unknown >= 0 && a.unknown != row.unknown {
@@ -324,6 +346,36 @@ func TestLuaPointerTargetBlobKindRefused(t *testing.T) {
 		}
 		if !named {
 			t.Error("the planted root-closure rule did not go red on text-names-bytes")
+		}
+	})
+
+	// A REASON IS DIAGNOSTIC (docs/rulings.json refusal-verdict-only): renaming
+	// the leg's wire_damaged leaves every verdict where it was, so no row goes
+	// red.
+	t.Run("a reason-only rename stays green", func(t *testing.T) {
+		renamed := maps.Clone(files)
+		hits := 0
+		for name, src := range files {
+			if n := bytes.Count(src, []byte(`"wire_damaged"`)); n > 0 {
+				hits += n
+				renamed[name] = bytes.ReplaceAll(src, []byte(`"wire_damaged"`), []byte(`"renamed_by_the_plant"`))
+			}
+		}
+		if hits == 0 {
+			t.Fatal("NEGATIVE CONTROL FAILED: the generated reader names no \"wire_damaged\"")
+		}
+		walks, lua := luaBlobKindAnswers(t, renamed, ModuleName(u), rows)
+		reached := false
+		for i := range rows {
+			for _, a := range lua[i] {
+				reached = reached || a.reason == "renamed_by_the_plant"
+			}
+		}
+		if !reached {
+			t.Error("NEGATIVE CONTROL FAILED: the rename reached no refused row")
+		}
+		for _, p := range blobKindProblems(rows, engine, walks, lua) {
+			t.Error(p)
 		}
 	})
 
