@@ -1067,13 +1067,13 @@ for key in $(awk '$1 == "unit" { print $2 }' "$1"); do
 		if [ ! -d "$u" ]; then
 			awk -v k="$key" -v s="$2" '
 				$1 == "connection" { unit_of[$2] = $3 }
-				s == "message" && $1 == "message" && unit_of[$3] == k && $6 == "-" { print $2 " absent variable table: the message form is fixed tables only (SPEC-TABLES §3.3)"; next }
+				s == "message" && $1 == "message" && unit_of[$3] == k && $6 == "-" { print $2 " absent"; next }
 				(s == "json-read" || s == "json-write") && $1 == "instance" && $3 == k {
 					no_text = 0; for (i = 6; i <= NF; i++) if ($i == "no-text") no_text = 1;
-					if (!no_text) print $2 (s == "json-write" ? ".json" : "") " absent target-refuses-schema";
+					if (!no_text) print $2 (s == "json-write" ? ".json" : "") " absent";
 					next
 				}
-				s == "json-write" && $1 == "json-write-refusal" && $3 == k { print $2 ".json absent target-refuses-schema"; next }
+				s == "json-write" && $1 == "json-write-refusal" && $3 == k { print $2 ".json absent"; next }
 				(s == "message" && $1 == "message" && unit_of[$3] == k) ||
 				(s == "wire" && $1 == "instance" && $3 == k) ||
 				(s == "report" && $1 == "report" && $3 == k) ||
