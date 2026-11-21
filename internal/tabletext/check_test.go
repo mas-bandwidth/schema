@@ -104,8 +104,7 @@ func TestJsonrefTextWriterChecksDeprecatedFields(t *testing.T) {
 			inst := m.New(st)
 			c.set(inst)
 			out, err := m.Write(inst)
-			var invalid *tabletext.InvalidValue
-			if !errors.As(err, &invalid) {
+			if _, ok := errors.AsType[*tabletext.InvalidValue](err); !ok {
 				var r tabletext.Report
 				readBack := m.Read(m.New(st), out, &r)
 				t.Errorf("%s, %s: Write err=%v, want invalid_value (read of the output: %v %+v)", class, c.name, err, readBack, r)
