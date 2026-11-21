@@ -85,3 +85,40 @@ func TestGeneratedMessageSetsKeepOuterMarks(t *testing.T) {
 		t.Fatal("a fresh sibling set saw the closed sets' mark of 3")
 	}
 }
+
+// TestGeneratedMessageSeenFirstIsLinear: two slots announcing one id are one
+// entry, the first, and resolving that is a sort in the caller's storage, so
+// its compares grow as n log n and never as the square of the entry count
+// (schema review of 2026-11-21; the old resolve compared every pair). A count,
+// not a clock.
+func TestGeneratedMessageSeenFirstIsLinear(t *testing.T) {
+	t.Parallel()
+	v := &TableVocabulary{}
+	v.Init(make([]TableMessageEntry, 6))
+	for i, id := range []uint64{5, 7, 5, 9, 7, 5} {
+		v.Entries[i].ID = id
+	}
+	v.Count = 6
+	TableMessageSeenFirst(v)
+	for i, want := range []uint64{0, 0, 1, 0, 2, 1} {
+		if v.Entries[i].bodyFirst != want || v.Entries[i].bodySeenAt != 0 {
+			t.Fatalf("entry %d (id %d): first %d, parked %d; want first %d, parked 0", i, v.Entries[i].ID, v.Entries[i].bodyFirst, v.Entries[i].bodySeenAt, want)
+		}
+	}
+	for _, n := range []int{64, 512, 4000} {
+		v := setVocabulary(n)
+		TableMessageSeenFirst(v)
+		log := uint64(0)
+		for 1<<log < n {
+			log++
+		}
+		if v.announceProbes == 0 || v.announceProbes > 4*uint64(n)*log {
+			t.Fatalf("n=%d: %d compares, want between 1 and %d", n, v.announceProbes, 4*uint64(n)*log)
+		}
+		for i := range n {
+			if v.Entries[i].ID != uint64(1000+i) || v.Entries[i].bodyFirst != 0 {
+				t.Fatalf("n=%d: entry %d moved or was given a first", n, i)
+			}
+		}
+	}
+}

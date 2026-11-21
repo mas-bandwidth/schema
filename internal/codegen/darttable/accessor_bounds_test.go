@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -12,6 +11,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // SPEC-TABLES §7 and §19: a malformed trusted accelerator still refuses rather
@@ -60,7 +61,7 @@ func TestDartBlockAndCookAccessorsRefuseOutOfRange(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "accessor_bounds_probe.dart"), []byte(source), 0600); err != nil {
 			t.Fatal(err)
 		}
-		cmd := exec.Command(dartBinary(t), "--enable-asserts", "accessor_bounds_probe.dart")
+		cmd := testproc.Command(t, dartBinary(t), "--enable-asserts", "accessor_bounds_probe.dart")
 		cmd.Dir = dir
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("accessor refusal probe: %v\n%s", err, out)

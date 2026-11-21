@@ -3,7 +3,6 @@ package luatable
 import (
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -12,6 +11,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestLuaUnitStandsAlone holds docs/PORTING.md M4b for the Lua leg: a
@@ -115,7 +116,7 @@ func requireEveryModule(t *testing.T, probe, dir string) (string, error) {
 			args = append(args, name)
 		}
 	}
-	cmd := exec.Command(luarun.Interpreter(t), args...)
+	cmd := testproc.Command(t, luarun.Interpreter(t), args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(),
 		"LUA_PATH="+filepath.Join(dir, "?.lua"),

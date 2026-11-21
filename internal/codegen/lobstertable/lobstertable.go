@@ -54,9 +54,23 @@ func Runtime() map[string][]byte {
 // A Part is a later form's contribution to one <Base>Table.lobster module.
 type Part func(g *lobster.Gen) error
 
+// genCall is what one generation call was handed beyond the unit: the
+// fixed-form lineage GenerateLineage names, per table, oldest first. explicit
+// is set for a GenerateLineage call, whose lineage (nil included) replaces the
+// sibling discovery a plain Generate does. It travels with the call to the
+// parts that read it, so overlapping calls never see each other's.
+type genCall struct {
+	lineage  map[string][]FixedLineageEntry
+	explicit bool
+}
+
+// callPart is a part that reads the call's own inputs.
+type callPart func(g *lobster.Gen, c *genCall) error
+
 type part struct {
 	name string
 	fn   Part
+	call callPart
 }
 
 var parts []part
@@ -64,7 +78,13 @@ var parts []part
 // Register joins a later form to every table module; parts run in name
 // order (docs/PORT-LOBSTER.md, THE RUNTIME LAYOUT).
 func Register(name string, fn Part) {
-	parts = append(parts, part{name, fn})
+	parts = append(parts, part{name: name, fn: fn})
+	sort.Slice(parts, func(i, j int) bool { return parts[i].name < parts[j].name })
+}
+
+// registerCall is Register for a part that reads the call's inputs.
+func registerCall(name string, fn callPart) {
+	parts = append(parts, part{name: name, call: fn})
 	sort.Slice(parts, func(i, j int) bool { return parts[i].name < parts[j].name })
 }
 
@@ -72,6 +92,10 @@ func Register(name string, fn Part) {
 // A table-free unit emits its metadata in the view alone, with descriptor
 // primitives but no table modules or codecs. Packet codecs are unchanged.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
+	return generate(u, &genCall{})
+}
+
+func generate(u *ir.Unit, c *genCall) (map[string][]byte, error) {
 	if len(u.Files) == 0 {
 		return map[string][]byte{}, nil
 	}
@@ -96,7 +120,13 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		g.Import(f.Base) // unreferenced packet types still supply reflection accessors
 		emitFile(g, reach)
 		for _, p := range parts {
-			if err := p.fn(g); err != nil {
+			var err error
+			if p.call != nil {
+				err = p.call(g, c)
+			} else {
+				err = p.fn(g)
+			}
+			if err != nil {
 				return nil, fmt.Errorf("lobster %s: %s: %w", p.name, f.Base, err)
 			}
 		}

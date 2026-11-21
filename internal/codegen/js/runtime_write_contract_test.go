@@ -2,7 +2,6 @@ package js
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -10,6 +9,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJsRuntimeWriteRefusesNonFiniteAndWideRangeInProduction pins SPEC §5.1 on
@@ -123,7 +124,7 @@ console.log("ok");
 				if err := os.WriteFile(filepath.Join(dir, "run.mjs"), []byte(script), 0o644); err != nil {
 					t.Fatal(err)
 				}
-				cmd := exec.Command(node, filepath.Join(dir, "run.mjs"))
+				cmd := testproc.Command(t, node, filepath.Join(dir, "run.mjs"))
 				env := os.Environ()
 				if prod {
 					env = append(env, "NODE_ENV=production")

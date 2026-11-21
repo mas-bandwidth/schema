@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,6 +14,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // docs/SPEC-TABLES.md §16.2 Numbers: a JSON number token's LENGTH is never why
@@ -108,7 +109,7 @@ func TestJSONLongNumberOracle(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("go", "test", "-count=1", "-run", "^TestJSONLongNumberOracle$", "-v", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", "-run", "^TestJSONLongNumberOracle$", "-v", ".")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

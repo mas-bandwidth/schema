@@ -25,7 +25,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -36,6 +35,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const dartTextDifferentialSchema = `package probe
@@ -200,7 +201,7 @@ func runDartTextDifferential(t *testing.T, schema string, seed uint64, n int, ed
 	if err := os.Mkdir(out, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dart, "--enable-asserts", "probe.dart")
+	cmd := testproc.Command(t, dart, "--enable-asserts", "probe.dart")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(),
 		"SCHEMA_TEXT_DIFF_DIR="+out,

@@ -24,6 +24,13 @@ const tableRegionWriteSource = `
         {
             int n = value.Count(f);
             if (f.DefaultBytes != null) { return n != f.DefaultBytes.Length || !value.Buffer(f).Slice(0, n).SequenceEqual(f.DefaultBytes); }
+            // BORN AT ITS MIN (docs/SPEC.md §4.2), as Rides says
+            if (f.ArrayMin > 0)
+            {
+                if (n != f.ArrayMin || f.Kind == 13 && f.KeyId == null) { return true; }
+                for (int i = 0; i < n; i++) { if (!RegionDefaultElement(value, f, i)) { return true; } }
+                return false;
+            }
             return n != 0;
         }
         if (!f.IsArray) { return !RegionDefaultElement(value, f, 0); }

@@ -46,6 +46,8 @@ func TestTextListAndArrayRootRefusals(t *testing.T) {
 			"package t\nunion U {\n    words [..4]string(8)\n}\ntable H {\n    u U\n}\n"},
 		{"[N]string(M)", "a text list is COUNTED",
 			"package t\ntable L {\n    rules [4]string(8)\n}\n"},
+		{"[A..N]string(M)", "field rules: [A..N]string(M) is refused — a text list is COUNTED",
+			"package t\ntable L {\n    rules [2..5]string(8)\n}\n"},
 		{"[E]string(M)", "a text list is COUNTED",
 			"package t\nenum E { A, B }\ntable L {\n    rules [E]string(8)\n}\n"},
 		{"?[..N]string(M)", "puts a presence bit on a list of text",

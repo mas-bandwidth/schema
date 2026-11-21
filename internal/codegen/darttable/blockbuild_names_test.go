@@ -3,13 +3,14 @@ package darttable
 import (
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // Count parameters share begin's scope with its storage and refusal context;
@@ -87,7 +88,7 @@ void main(){
 			t.Fatal(err)
 		}
 		for _, args := range [][]string{{"analyze", "block_names_probe.dart"}, {"--enable-asserts", "block_names_probe.dart"}} {
-			cmd := exec.Command(dartBinary(t), args...)
+			cmd := testproc.Command(t, dartBinary(t), args...)
 			cmd.Dir = dir
 			if out, err := cmd.CombinedOutput(); err != nil {
 				t.Fatalf("block count names %v: %v\n%s", args, err, out)

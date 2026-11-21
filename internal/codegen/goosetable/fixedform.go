@@ -507,7 +507,8 @@ func (e *fixedEmit) checkValue(ind int, f *ir.Field, pl place) {
 		e.p(ind, "}")
 	case f.Array == ir.ArrayCounted:
 		cnt := pl.val + "Count"
-		e.p(ind, "if %s < 0 || (%s as i64) > %d { return false; }", cnt, cnt, f.ArrayBound)
+		// a count below Min or past Max breaks the contract (SPEC.md §5.1 row 3)
+		e.p(ind, "if (%s as i64) < %d || (%s as i64) > %d { return false; }", cnt, f.ArrayMin, cnt, f.ArrayBound)
 		if !elemNeedsCheck(el) {
 			return
 		}
@@ -586,7 +587,7 @@ func (e *fixedEmit) scanValue(ind int, f *ir.Field, off string) {
 		e.p(ind+1, "%s += 1;", i)
 		e.p(ind, "}")
 	case f.Array == ir.ArrayCounted:
-		e.p(ind, "r = schema_rt::fixed_scan_count(b, %s, %d);", off, f.ArrayBound)
+		e.p(ind, "r = schema_rt::fixed_scan_count(b, %s, %d, %d);", off, f.ArrayMin, f.ArrayBound)
 		e.p(ind, "if r != 0 { return r; }")
 		c := e.loopVar()
 		e.p(ind, "let %s = schema_rt::fixed_u32(b, %s) as i64;", c, off)
@@ -835,6 +836,110 @@ func (e *fixedEmit) strictRefuseElem(ind int, f *ir.Field, pl place) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// THE READ-SIDE FINITE PASS (docs/SPEC-TABLES.md §3.3; rulings
+// tables-finite-only and packet-floats-finite): every fixed read refuses a NaN
+// or an infinity as non_finite_float, as the Go reference's
+// <T>FixedFiniteBody does. It runs over storage after the run, BEFORE the
+// strict bounds pass (so a compressed float's range test never sees one), over
+// what a read can have written: a counted array's live elements, an
+// optional's payload under its flag, a union's taken arm. A type that holds no
+// float emits an empty pass and no call to it.
+// ---------------------------------------------------------------------------
+
+// finiteNeeded is whether a field holds a float anywhere a read lands one.
+func finiteNeeded(f *ir.Field, seen map[string]bool) bool {
+	switch f.Type.Kind {
+	case ir.TFloat32, ir.TFloat64:
+		return true
+	case ir.TNamed:
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			if seen[r.Name] {
+				return false
+			}
+			seen[r.Name] = true
+			for _, sf := range r.Fields {
+				if finiteNeeded(sf, seen) {
+					return true
+				}
+			}
+		case *ir.Union:
+			if seen[r.Name] {
+				return false
+			}
+			seen[r.Name] = true
+			for _, v := range r.Variants {
+				if v.F != nil && finiteNeeded(v.F, seen) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// finiteStruct is whether a fixed root holds a float anywhere a read lands one.
+func finiteStruct(st *ir.Struct) bool {
+	seen := map[string]bool{st.Name: true}
+	for _, f := range st.Fields {
+		if finiteNeeded(f, seen) {
+			return true
+		}
+	}
+	return false
+}
+
+func (e *fixedEmit) finiteField(ind int, base string, f *ir.Field) {
+	if !finiteNeeded(f, map[string]bool{}) {
+		return
+	}
+	pl := fieldPlace(base, f)
+	if f.Type.Optional {
+		e.p(ind, "if %s {", presentOf(base, f))
+		e.finiteValue(ind+1, f, pl)
+		e.p(ind, "}")
+		return
+	}
+	e.finiteValue(ind, f, pl)
+}
+
+func (e *fixedEmit) finiteValue(ind int, f *ir.Field, pl place) {
+	el := elemOf(f)
+	switch {
+	case f.KeyEnum != "" || f.Array == ir.ArrayFixed:
+		i := e.loopVar()
+		e.p(ind, "var %s: i64 = 0;", i)
+		e.p(ind, "while %s < %d {", i, slotCount(f))
+		e.finiteElem(ind+1, el, pl.at(i))
+		e.p(ind+1, "%s += 1;", i)
+		e.p(ind, "}")
+	case f.Array == ir.ArrayCounted:
+		i := e.loopVar()
+		e.p(ind, "var %s: i64 = 0;", i)
+		e.p(ind, "while %s < %sCount {", i, pl.val)
+		e.finiteElem(ind+1, el, pl.at(i))
+		e.p(ind+1, "%s += 1;", i)
+		e.p(ind, "}")
+	default:
+		e.finiteElem(ind, el, pl)
+	}
+}
+
+func (e *fixedEmit) finiteElem(ind int, f *ir.Field, pl place) {
+	switch e.kindOf(f) {
+	case kStruct, kUnion:
+		if finiteNeeded(f, map[string]bool{}) {
+			e.home(f.Type.Name)
+			e.p(ind, "if !_%sFixedFinite(%s) { return false; }", f.Type.Name, pl.val)
+		}
+	case kF32:
+		e.p(ind, "if (schema_rt::fixed_f32_bits(%s) & 0x7f800000) == 0x7f800000 { return false; }", pl.val)
+	case kF64:
+		e.p(ind, "if (schema_rt::fixed_f64_bits(%s) & 0x7ff0000000000000) == 0x7ff0000000000000 { return false; }", pl.val)
+	}
+}
+
 // a scalarBound is one declared bound of an integer-shaped value: the test
 // that it is broken, and the value a read lands when it is.
 type scalarBound struct {
@@ -1001,7 +1106,7 @@ func (e *fixedEmit) emitStruct(st *ir.Struct) error {
 	}
 	n := st.Name
 	typ := e.structType(st)
-	e.declare("_"+n+"FixedWrite", "_"+n+"FixedCheck", "_"+n+"FixedScan", "_"+n+"FixedRead", "_"+n+"FixedClamp", "_"+n+"FixedStrictRefuse")
+	e.declare("_"+n+"FixedWrite", "_"+n+"FixedCheck", "_"+n+"FixedScan", "_"+n+"FixedRead", "_"+n+"FixedClamp", "_"+n+"FixedStrictRefuse", "_"+n+"FixedFinite")
 	e.p(0, "// ---- %s's record image, C = %d bytes (docs/FIXED-FORM-ALGORITHM.md §3) ----", n, ir.TableFixedTypeBytes(st))
 
 	e.loop = 0
@@ -1062,6 +1167,16 @@ func (e *fixedEmit) emitStruct(st *ir.Struct) error {
 	}
 	e.p(1, "return 0;")
 	e.p(0, "}\n")
+
+	e.loop = 0
+	e.p(0, "// _%sFixedFinite is %s's read-side finite pass (SPEC-TABLES §3.3): false on the", n, n)
+	e.p(0, "// first NaN or infinity a read landed, which refuses non_finite_float.")
+	e.p(0, "fn _%sFixedFinite(v: const %s&) -> bool {", n, typ)
+	for _, f := range st.Fields {
+		e.finiteField(1, "v", f)
+	}
+	e.p(1, "return true;")
+	e.p(0, "}\n")
 	return e.err
 }
 
@@ -1081,7 +1196,7 @@ func (e *fixedEmit) emitUnion(un *ir.Union) error {
 	typ := e.unionType(un)
 	tw := ir.TableFixedUnionTagBytes(un)
 	widest := ir.TableFixedUnionBytes(un) - tw
-	e.declare("_"+n+"FixedWrite", "_"+n+"FixedCheck", "_"+n+"FixedScan", "_"+n+"FixedRead", "_"+n+"FixedClamp", "_"+n+"FixedStrictRefuse")
+	e.declare("_"+n+"FixedWrite", "_"+n+"FixedCheck", "_"+n+"FixedScan", "_"+n+"FixedRead", "_"+n+"FixedClamp", "_"+n+"FixedStrictRefuse", "_"+n+"FixedFinite")
 	e.p(0, "// ---- union %s's record image: a %d-byte tag, then %d bytes of arm (docs/FIXED-FORM-ALGORITHM.md §3) ----", n, tw, widest)
 	arms := func(fn func(ind int, tag int, v ir.UnionVariant)) {
 		first := true
@@ -1200,6 +1315,19 @@ func (e *fixedEmit) emitUnion(un *ir.Union) error {
 	}
 	e.p(1, "return 0;")
 	e.p(0, "}\n")
+
+	e.loop = 0
+	e.p(0, "fn _%sFixedFinite(v: const %s&) -> bool {", n, typ)
+	for i, v := range un.Variants {
+		if v.F == nil || !finiteNeeded(armField(v), map[string]bool{}) {
+			continue
+		}
+		e.p(1, "if v.Type == %d {", i+1)
+		e.finiteField(2, "v", armField(v))
+		e.p(1, "}")
+	}
+	e.p(1, "return true;")
+	e.p(0, "}\n")
 	return e.err
 }
 
@@ -1268,6 +1396,15 @@ func (e *fixedEmit) emitRoot(st *ir.Struct) {
 	e.p(1, "k = 0;")
 	e.p(1, "while k < n {")
 	e.p(2, "_%sFixedRead(data, first + k * %sFixedRecordBytes, values[k]);", n, n)
+	if finiteStruct(st) {
+		// A FLOAT IS FINITE (SPEC-TABLES §3.3): the finite pass runs before
+		// the bounds pass and a NaN or an infinity refuses the whole batch
+		e.p(2, "if !_%sFixedFinite(values[k]) {", n)
+		e.p(3, "var j: i64 = 0;")
+		e.p(3, "while j <= k { values[j] = %s { .. }; j += 1; }", typ)
+		e.p(3, "return schema_rt::fixed_refuse(report, schema_rt::FixedRefuseNonFiniteFloat, false);")
+		e.p(2, "}")
+	}
 	e.p(2, "let why = _%sFixedStrictRefuse(values[k]);", n)
 	e.p(2, "if why != 0 {")
 	e.p(3, "var j: i64 = 0;")
