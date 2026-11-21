@@ -146,6 +146,12 @@ pub struct TableMessageEntry {
     pub kind: u8,
     pub shape: TableMessageShape,
     pub element: TableMessageShape,
+    /// THE ID'S ORDINAL among the vocabulary's distinct ids, counted from 1 in
+    /// announcement order and set once when the announcement is accepted: two
+    /// slots announcing one id at two shapes share it, so a body's seen set is
+    /// keyed by id (§3.3). Zero for an entry a caller built by hand, which
+    /// stands for its own slot.
+    pub first: u32,
 }
 
 // ---- the resolved vocabulary ------------------------------------------------
@@ -188,6 +194,24 @@ impl<'a> TableVocabulary<'a> {
             return None;
         }
         Some(&self.entries[reference as usize - 1])
+    }
+
+    /// THE SEEN KEY of a reference (§3.3): the entry's id ordinal, set once at
+    /// announce. An entry built by hand carries no ordinal and stands for the
+    /// first slot announcing its id, found by a scan of the slots before it,
+    /// so two slots naming one id share a key either way.
+    pub fn seen_key(&self, reference: u64) -> u64 {
+        let Some(e) = self.entry(reference) else {
+            return reference;
+        };
+        if e.first != 0 {
+            return e.first as u64;
+        }
+        let before = reference as usize - 1;
+        match self.entries[..before].iter().position(|x| x.id == e.id) {
+            Some(i) => i as u64 + 1,
+            None => reference,
+        }
     }
 
     /// THE ID a NAME reference spells (§3.3): an enum's variant or a keyed
@@ -488,6 +512,21 @@ fn announce_read_once(
             return false;
         }
         *slot = entry;
+    }
+    // EACH ID's ORDINAL, once per connection (§3.3): a body's repeat test
+    // is then one bit per id, whichever slot names it. The scan is quadratic
+    // in the entry count, once per announcement, as the triple test above is.
+    let mut ordinals = 0u32;
+    for i in 0..count {
+        let (before, rest) = vocabulary.entries.split_at_mut(i);
+        let id = rest[0].id;
+        rest[0].first = match before.iter().find(|e| e.id == id) {
+            Some(e) => e.first,
+            None => {
+                ordinals += 1;
+                ordinals
+            }
+        };
     }
     vocabulary.count = count;
     vocabulary.ref_bits = bits_required(count);
@@ -1320,7 +1359,14 @@ pub fn table_message_skip_ranged(r: &mut TableBitReader, kind: u8, width: i64, s
     } else {
         0
     };
-    let offset = ((hi as u128) << 64) | lo as u128;
+    table_message_ranged(kind, ((hi as u128) << 64) | lo as u128, s).is_some()
+}
+
+/// A RANGED value's base plus offset, HELD TO THE ANNOUNCED KIND's STORAGE
+/// DOMAIN and never wrapped (§3.3): the 128-bit two's-complement image of the
+/// value, or None when the sum lands outside the kind. The named read and the
+/// skip both take it, so the two give one verdict.
+pub fn table_message_ranged(kind: u8, offset: u128, s: &TableMessageShape) -> Option<u128> {
     let bits = kind_bits(kind);
     if table_message_signed_kind(kind) {
         // Narrow announcements store a sign-extended 64-bit base; wide
@@ -1332,16 +1378,16 @@ pub fn table_message_skip_ranged(r: &mut TableBitReader, kind: u8, width: i64, s
             s.base_lo as i64 as i128
         };
         let biased = (base as u128) ^ (1u128 << 127);
-        let Some(sum) = biased.checked_add(offset) else { return false };
+        let sum = biased.checked_add(offset)?;
         let value = (sum ^ (1u128 << 127)) as i128;
         let bottom = if bits >= 128 { i128::MIN } else { -(1i128 << (bits - 1)) };
         let top = if bits >= 128 { i128::MAX } else { (1i128 << (bits - 1)) - 1 };
-        value >= bottom && value <= top
+        if value >= bottom && value <= top { Some(value as u128) } else { None }
     } else {
         let base = if bits > 64 { ((s.base_hi as u128) << 64) | s.base_lo as u128 } else { s.base_lo as u128 };
-        let Some(value) = base.checked_add(offset) else { return false };
+        let value = base.checked_add(offset)?;
         let top = if bits >= 128 { u128::MAX } else { (1u128 << bits) - 1 };
-        value <= top
+        if value <= top { Some(value) } else { None }
     }
 }
 
@@ -1357,9 +1403,11 @@ pub fn table_message_read_scalar(r: &mut TableBitReader, kind: u8, s: &TableMess
     let mut lo = r.get(core::cmp::min(bits, 64))?;
     let mut hi = if bits > 64 { r.get(bits - 64)? } else { 0 };
     if s.packing == 1 && kind != 10 {
-        let (sum, carry) = lo.overflowing_add(s.base_lo);
-        lo = sum;
-        hi = hi.wrapping_add(s.base_hi).wrapping_add(carry as u64);
+        // BASE PLUS OFFSET IS HELD TO THE ANNOUNCED KIND, never wrapped and
+        // never truncated to its width (§3.3): a sum outside the kind is damage.
+        let value = table_message_ranged(kind, ((hi as u128) << 64) | lo as u128, s)?;
+        lo = value as u64;
+        hi = (value >> 64) as u64;
     }
     if s.packing == 2 && kind == 10 {
         // AN INDEX ABOVE THE ENDPOINT's ANNOUNCED count IS BATCH DAMAGE (§3.3,
@@ -1408,9 +1456,68 @@ pub fn table_message_write_scalar(w: &mut TableBitWriter, s: &TableMessageShape,
     }
 }
 
-/// A strict skip of one value by the ENDPOINT's shape (§3.3): what a reader does
-/// with a field it cannot name, or one whose kind is not the declaration's.
+/// THE KEYS A BODY HAS NAMED (§3.3): one bit per id ordinal up to
+/// TABLE_MESSAGE_SEEN_KEYS (the conforming default vocabulary, 4096), on the
+/// stack, so a body's repeat test is constant work per reference and
+/// allocates nothing. A vocabulary the caller declared larger keeps up to
+/// TABLE_MESSAGE_SEEN_PAST keys past the bitset in a short list beside it; a
+/// body naming more distinct ids than that past 4096 is refused as past this
+/// receiver's bound.
+pub const TABLE_MESSAGE_SEEN_KEYS: u64 = 4096;
+pub const TABLE_MESSAGE_SEEN_PAST: usize = 64;
+
+pub struct TableMessageSeen {
+    bits: [u64; 64],
+    past: [u64; TABLE_MESSAGE_SEEN_PAST],
+    past_count: usize,
+}
+
+impl Default for TableMessageSeen {
+    fn default() -> Self {
+        TableMessageSeen { bits: [0u64; 64], past: [0u64; TABLE_MESSAGE_SEEN_PAST], past_count: 0 }
+    }
+}
+
+impl TableMessageSeen {
+    /// Marks a key: false when the key was named before or is out of bounds.
+    pub fn once(&mut self, key: u64) -> bool {
+        if key == 0 {
+            return false;
+        }
+        if key > TABLE_MESSAGE_SEEN_KEYS {
+            if self.past[..self.past_count].contains(&key) || self.past_count == TABLE_MESSAGE_SEEN_PAST {
+                return false;
+            }
+            self.past[self.past_count] = key;
+            self.past_count += 1;
+            return true;
+        }
+        let i = (key - 1) as usize;
+        let bit = 1u64 << (i & 63);
+        if self.bits[i >> 6] & bit != 0 {
+            return false;
+        }
+        self.bits[i >> 6] |= bit;
+        true
+    }
+}
+
+/// A strict skip of one POSITIONAL value by the ENDPOINT's shape (§3.3): an
+/// array element or a union arm's payload, where a union's None is lawful.
 pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &TableMessageEntry, depth: u32) -> bool {
+    table_message_skip_at(r, v, e, depth, false)
+}
+
+/// A strict skip of one FIELD by the ENDPOINT's shape (§3.3): what a reader
+/// does with a field it cannot name, or one whose kind is not the
+/// declaration's. A message field is never required, so a union FIELD's None
+/// elides and its explicit arm reference 0 is damage (§3.3 (c)), whether this
+/// reader names the field or not.
+pub fn table_message_skip_field(r: &mut TableBitReader, v: &TableVocabulary, e: &TableMessageEntry, depth: u32) -> bool {
+    table_message_skip_at(r, v, e, depth, true)
+}
+
+fn table_message_skip_at(r: &mut TableBitReader, v: &TableVocabulary, e: &TableMessageEntry, depth: u32, field: bool) -> bool {
     if depth > 128 {
         return false;
     }
@@ -1428,7 +1535,7 @@ pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &Table
         17 => false,
         15 => match r.get(v.ref_bits) {
             None => false,
-            Some(0) => true,
+            Some(0) => !field,
             Some(reference) => match v.entry(reference).copied() {
                 Some(arm) => arm.id < 0xffff_ffff_ffff_fffd && arm.kind != 0 &&
                     table_message_skip(r, v, &arm, depth + u32::from(matches!(arm.kind, 13..=16))),
@@ -1477,7 +1584,7 @@ pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &Table
             if n > s.max || (e.kind == 14 && s.elem == 6 && !r.align()) {
                 return false;
             }
-            let element = TableMessageEntry { id: 0, kind: s.elem, shape: e.element, element: TableMessageShape::default() };
+            let element = TableMessageEntry { id: 0, kind: s.elem, shape: e.element, element: TableMessageShape::default(), first: 0 };
             // A RUN OF FIXED-WIDTH ELEMENTS IS ARITHMETIC (§3.3): a float, a
             // ranged or quantized element carries a value condition, and a
             // keyed entry carries a key reference, so those are walked.
@@ -1492,20 +1599,17 @@ pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &Table
                 }
             }
             // A KEYED ARRAY'S KEY NAMES A DECLARED NO-PAYLOAD ENTRY AND NO KEY
-            // REPEATS (§3.2, §3.3): the set is one id per entry and the caller's
-            // vocabulary sizes it.
-            let mut seen: Vec<u64> = Vec::with_capacity(v.count);
+            // REPEATS (§3.2, §3.3): the set is one bit per id, on the stack.
+            let mut seen = TableMessageSeen::default();
             for _ in 0..n {
                 // THE KEY IS PART OF THE WALKED ELEMENT: the offset is sampled
                 // before it so a width-0 slot cannot accept the run unread.
                 let at = r.offset;
                 if e.kind == 16 {
                     let Some(reference) = r.get(v.ref_bits) else { return false };
-                    let Some(id) = v.name(reference) else { return false };
-                    if seen.contains(&id) {
+                    if v.name(reference).is_none() || !seen.once(v.seen_key(reference)) {
                         return false;
                     }
-                    seen.push(id);
                 }
                 if !table_message_skip(r, v, &element, depth + 1) {
                     return false;
@@ -1538,9 +1642,9 @@ pub fn table_message_skip_body(r: &mut TableBitReader, v: &TableVocabulary, dept
         return false;
     }
     // A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or skipped: the set
-    // is one id per entry, whichever slot carried it, and the caller's
-    // vocabulary sizes it. A reference the entry table returns is lawful.
-    let mut seen: Vec<u64> = Vec::with_capacity(v.count);
+    // is one bit per id, whichever slot carried it, on the stack. A union
+    // field of a skipped body is a field, so its explicit None is damage.
+    let mut seen = TableMessageSeen::default();
     loop {
         match r.get(v.ref_bits) {
             None => return false,
@@ -1550,11 +1654,10 @@ pub fn table_message_skip_body(r: &mut TableBitReader, v: &TableVocabulary, dept
                 if e.id >= 0xffff_ffff_ffff_fffd {
                     return false;
                 }
-                if seen.contains(&e.id) {
+                if !seen.once(v.seen_key(reference)) {
                     return false;
                 }
-                seen.push(e.id);
-                if !table_message_skip(r, v, &e, depth) {
+                if !table_message_skip_field(r, v, &e, depth) {
                     return false;
                 }
             }
