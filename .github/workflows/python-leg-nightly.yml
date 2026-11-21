@@ -47,5 +47,11 @@ jobs:
           go-version-file: go.mod
           cache: false
       - uses: ./.github/actions/python
+      # The C++ identity tests (TestPythonCardsCppIdentity,
+      # TestPythonCookCppIdentity) compile against the pinned serialize
+      # sibling at ../serialize, as python-leg.yml's rows do; without this
+      # step they fail with "serialize.h: no such file or directory".
+      - name: stage the sibling runtimes
+        run: make serialize-siblings
       - name: make test-python
         run: make -j"$(getconf _NPROCESSORS_ONLN)" test-python
