@@ -824,7 +824,7 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		birthElides := born > 0 && !f.Required && !f.Type.Optional
 		live := "!" + x + ".is_empty()"
 		if birthElides && classOf(f) != vTable {
-			live =fmt.Sprintf("%s.len() != %d || %s.iter().take(%d).any(|e| %s)", x, born, x, born, elemNonDefaultExpr(f, "e"))
+			live = fmt.Sprintf("%s.len() != %d || %s.iter().take(%d).any(|e| %s)", x, born, x, born, elemNonDefaultExpr(f, "e"))
 		}
 		fmt.Fprintf(b, "%sif %s {\n", ind, requiredWriteGuard(f, live))
 		count := x + ".len()"
