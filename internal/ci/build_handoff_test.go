@@ -281,7 +281,7 @@ func TestBuildHandoffGiveWritesTheShard(t *testing.T) {
 	}
 	dirIs(t, r.path("from/s1/built"), map[string]string{"A.beam": "alpha-beam", "D.beam": "driver@checkout-1"})
 	for rel, lines := range map[string][]string{
-		"from/s1/inputs.sha256": {"  u1/a.ex", "  driver.ex"},
+		"from/s1/inputs.sha256": {"  driver.ex", "  u1/a.ex"},
 		"from/s1/.manifest":     {"  ./A.beam", "  ./D.beam"},
 	} {
 		b, err := os.ReadFile(r.path(rel))
@@ -559,6 +559,10 @@ func TestCConformanceObjectsHandoffThroughMake(t *testing.T) {
 	compiled := map[string]int{}
 	for i, spec := range specs {
 		dir := tree(fmt.Sprintf("clean-%d", i))
+		// another gate on the same row writes beside the corpus (the zero-cost
+		// gate's cards/): no object reads it, so it is not an input, and the
+		// verify row, which never has it, still takes the shards
+		write(filepath.Join(dir, "build", "tables-generated-c", "cards", "Card.h"), fmt.Sprintf("/* card %d */\n", i), 0o644)
 		out, err := makeC(t, dir, nil, "c-conformance-objs-handoff", "C_CONFORMANCE_SHARD="+spec)
 		if err != nil || !strings.Contains(out, "build-handoff: gave ") {
 			t.Fatalf("lang-clean (c %s): make c-conformance-objs-handoff: %v\n%s", spec, err, out)

@@ -91,6 +91,23 @@ toolchain() {
 	esac
 }
 
+# inputs <pattern>...: one path per line. A glob is expanded here, and one
+# that matches nothing names nothing (an include directory with no header);
+# any other name is kept as given, so a named input that is missing refuses.
+inputs() {
+	for p in "$@"; do
+		case "$p" in
+		*[*?[]*)
+			for f in $p; do
+				[ -e "$f" ] && printf '%s\n' "$f"
+			done
+			;;
+		*) printf '%s\n' "$p" ;;
+		esac
+	done
+	return 0
+}
+
 mode=${1-}
 case "$mode" in
 give)
@@ -114,9 +131,10 @@ give)
 		mkdir -p "$(dirname "$dest/built/$f")"
 		cp "$built/$f" "$dest/built/$f"
 	done
-	# the inputs may be globs over the generated tree
-	# shellcheck disable=SC2068
-	sha256sum $@ > "$dest/inputs.sha256" || die "give: an input is missing"
+	named=$(inputs "$@" | LC_ALL=C sort -u)
+	[ -n "$named" ] || die "give: no inputs"
+	# shellcheck disable=SC2086
+	sha256sum $named > "$dest/inputs.sha256" || die "give: an input is missing"
 	printf '%s\n' "$options" > "$dest/options.txt"
 	toolchain > "$dest/toolchain.txt"
 	manifest "$dest/built" > "$dest/.manifest"
@@ -133,10 +151,8 @@ take)
 	done
 	[ $# -gt 0 ] || die "take: no -- before the inputs"
 	shift
-	# the inputs may be globs over the generated tree
-	# shellcheck disable=SC2068
-	inputs=$(ls -1 $@ 2>/dev/null | LC_ALL=C sort -u)
-	[ -n "$inputs" ] || die "take: no input is here"
+	here_inputs=$(inputs "$@" | while IFS= read -r f; do [ -e "$f" ] && printf '%s\n' "$f"; done | LC_ALL=C sort -u)
+	[ -n "$here_inputs" ] || die "take: no input is here"
 	[ -d "$from" ] || die "take: $from is not a directory: no lang-clean shard was handed over"
 	shards=$(find "$from" -name units.txt | LC_ALL=C sort)
 	[ -n "$shards" ] || die "take: $from holds no shard"
@@ -185,7 +201,7 @@ take)
 	[ -z "$split" ] || die "take: files in more than one shard but not in all:$split"
 	# every input here was compiled by some shard, and no shard compiled an
 	# input that is not here (sha256sum -c above refuses those)
-	printf '%s\n' "$inputs" > "$here"
+	printf '%s\n' "$here_inputs" > "$here"
 	unread=$(LC_ALL=C sort -u "$named" | LC_ALL=C comm -13 - "$here" | tr '\n' ' ')
 	[ -z "$unread" ] || die "take: no shard compiled $unread"
 	# shellcheck disable=SC2086

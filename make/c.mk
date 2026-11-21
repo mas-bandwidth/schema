@@ -286,10 +286,12 @@ $(C_CONFORMANCE_OBJDIR)/%.o: %.c build/tables-generated-c/.stamp $(wildcard test
 C_CONFORMANCE_HANDOFF_SOURCES = $(sort $(C_CONFORMANCE_SOURCES) test/c-tables/wire_fuzz_main.c)
 C_CONFORMANCE_HANDOFF_OBJECTS = $(addprefix $(C_CONFORMANCE_OBJDIR)/,$(C_CONFORMANCE_HANDOFF_SOURCES:.c=.o))
 C_CONFORMANCE_HANDOFF_OPTIONS = $(TABLES_CFLAGS) $(C_CONFORMANCE_INCLUDES)
-# every header and generated file an object can read; the shell expands the
-# find when the recipe runs, after the corpus is generated
-C_CONFORMANCE_HANDOFF_INPUTS = $(wildcard test/conformance/c/*.h) $(wildcard test/c-tables/*.h) $(wildcard $(SERIALIZE_C)/*.h) \
-	$$(find build/tables-generated-c -type f -name '*.[ch]' | LC_ALL=C sort)
+# every header an object can read: those in each directory on its include
+# path and beside each source. These are globs the handoff expands when it
+# runs, after the corpus is generated; the rest of build/tables-generated-c
+# is other gates' output (the lang-clean (c) row writes cards/ beside it) and
+# is not read here.
+C_CONFORMANCE_HANDOFF_INPUTS = $(foreach d,$(sort $(patsubst -I%,%,$(filter -I%,$(C_CONFORMANCE_INCLUDES))) $(patsubst %/,%,$(dir $(C_CONFORMANCE_HANDOFF_SOURCES)))),'$(d)/*.h')
 C_CONFORMANCE_SHARD ?=
 C_CONFORMANCE_FROM ?=
 ifneq ($(C_CONFORMANCE_SHARD),)
