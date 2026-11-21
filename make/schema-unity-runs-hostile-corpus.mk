@@ -23,6 +23,9 @@
 UNITY_HOSTILE_CORPUS   ?= internal/ci/hostilecorpus/corpus
 UNITY_HOSTILE_BUILD    ?= build/unity-hostile
 UNITY_HOSTILE_FINDINGS ?= test/unity-hostile/known-findings.tsv
+# The rows the port may skip. A skip is no verdict: gen fails when the dispatch
+# skips a row this list does not name, or a named row no longer skips.
+UNITY_HOSTILE_SKIPS    ?= test/unity-hostile/known-skips.tsv
 
 UNITY_HOSTILE_DOTNET_FLAGS = -v q --nologo \
 	-p:HostileGeneratedDir=$(CURDIR)/$(UNITY_HOSTILE_BUILD)/generated \
@@ -30,8 +33,8 @@ UNITY_HOSTILE_DOTNET_FLAGS = -v q --nologo \
 
 $(UNITY_HOSTILE_BUILD)/generated/.stamp: bin/schema make/schema-unity-runs-hostile-corpus.mk \
 		test/unity-hostile/gen/main.go internal/ci/hostilecorpus/corpus.go $(UNITY_HOSTILE_CORPUS)/manifest.tsv \
-		$(wildcard tables/*/*.schema)
-	go run ./test/unity-hostile/gen -schema bin/schema -corpus $(UNITY_HOSTILE_CORPUS) -out $(UNITY_HOSTILE_BUILD)/generated
+		$(UNITY_HOSTILE_SKIPS) $(wildcard tables/*/*.schema)
+	go run ./test/unity-hostile/gen -schema bin/schema -corpus $(UNITY_HOSTILE_CORPUS) -out $(UNITY_HOSTILE_BUILD)/generated -known-skips $(UNITY_HOSTILE_SKIPS)
 	@touch $@
 
 $(UNITY_HOSTILE_BUILD)/bin/.stamp: $(UNITY_HOSTILE_BUILD)/generated/.stamp test/unity-hostile/Runner.cs test/unity-hostile/unityhostile.csproj test/unity-hostile/units/unityhostileunits.csproj

@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -20,6 +19,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestElixirFixedVersioningProbesStrict(t *testing.T) {
@@ -189,7 +190,7 @@ Probe.run()
 		args = append(args, "-r", n)
 	}
 	args = append(args, "probe.exs")
-	cmd := exec.Command(elixirBin, args...)
+	cmd := testproc.Command(t, elixirBin, args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	out, err := cmd.CombinedOutput()

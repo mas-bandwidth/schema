@@ -98,6 +98,11 @@ func init() {
 		Name{Name: "TableMessageWriteScalar", What: "one scalar written by this build's own shape (§3.3)", Scoped: true},
 		Name{Name: "TableMessageSkip", What: "the skip of one unknown value by the endpoint's shape (§3.3)", Scoped: true},
 		Name{Name: "TableMessageSkipBody", What: "a nested body skipped whole to its zero reference (§3.3)", Scoped: true},
+		Name{Name: "TableMessageSkipField", What: "the skip of one field the reader cannot name or whose kind differs, a union field's arm 0 refused (§3.3 (c))", Scoped: true},
+		Name{Name: "TableMessageSkipAt", What: "the shared skip walk behind TableMessageSkip and TableMessageSkipField (§3.3)", Scoped: true},
+		Name{Name: "TableMessageRanged", What: "a ranged value's base plus offset held to the announced kind's domain, never wrapped (§3.3)", Scoped: true},
+		Name{Name: "TableMessageSeen", What: "the set of ids or keys a body has named, bitset plus ordered overflow, without a cap (§3.3)", Scoped: true},
+		Name{Name: "TableMessageSeenKeys", What: "the bitset size of TableMessageSeen: the conforming default vocabulary, 4096 (§3.3)", Scoped: true},
 		Name{Name: "TableMessageBatchOpen", What: "the batch's form byte, vocabulary and count checks (§3.3)", Scoped: true},
 		Name{Name: "TableMessageBatchClose", What: "the batch's zero pad and nothing after it (§3.3)", Scoped: true},
 		// THE VARIABLE WIRE's runtime (docs/SPEC-TABLES.md §3, §3.1), emitted for

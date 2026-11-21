@@ -3,13 +3,14 @@ package jstable
 import (
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // A repeated key refuses the read in every object the text walks, whether the
@@ -80,7 +81,7 @@ for (const row of rows) {
 	if err := os.WriteFile(filepath.Join(dir, "repeat.mjs"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, "repeat.mjs")
+	cmd := testproc.Command(t, node, "repeat.mjs")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

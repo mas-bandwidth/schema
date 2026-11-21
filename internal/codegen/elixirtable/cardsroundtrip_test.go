@@ -3,7 +3,6 @@ package elixirtable
 import (
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -12,6 +11,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // generateElixir lowers a unit through the packet and table emitters.
@@ -85,7 +86,7 @@ func runProbe(t *testing.T, elixirBin, dir string, names []string, probe string)
 		args = append(args, "-r", n)
 	}
 	args = append(args, "probe.exs")
-	cmd := exec.Command(elixirBin, args...)
+	cmd := testproc.Command(t, elixirBin, args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	out, err := cmd.CombinedOutput()

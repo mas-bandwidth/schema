@@ -3,7 +3,6 @@ package pythontable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -11,6 +10,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestPythonRetainRoundTrip uses the shared cross-version C++-pinned files.
@@ -1046,7 +1047,7 @@ func TestPythonRetainManifestSave(t *testing.T) {
 	}
 	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
 		outdir := t.TempDir()
-		cmd := exec.Command(pin, "-W", "error", "-I", "-B", filepath.Join(root, "test/conformance/python/main.py"), manifest, "retain-save", outdir)
+		cmd := testproc.Command(t, pin, "-W", "error", "-I", "-B", filepath.Join(root, "test/conformance/python/main.py"), manifest, "retain-save", outdir)
 		cmd.Dir = root
 		cmd.Env = append(os.Environ(), "PYTHON_CONFORMANCE_GENERATED="+generated)
 		if output, err := cmd.CombinedOutput(); err != nil {
@@ -1795,7 +1796,7 @@ func TestPythonRetainDriverNegativeControl(t *testing.T) {
 	}
 	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
 		outdir := t.TempDir()
-		cmd := exec.Command(pin, "-W", "error", "-I", "-B", filepath.Join(root, "test/conformance/python/main.py"), manifest, "retain-save", outdir)
+		cmd := testproc.Command(t, pin, "-W", "error", "-I", "-B", filepath.Join(root, "test/conformance/python/main.py"), manifest, "retain-save", outdir)
 		cmd.Dir = root
 		cmd.Env = append(os.Environ(), "PYTHON_CONFORMANCE_GENERATED="+generated)
 		output, err := cmd.CombinedOutput()

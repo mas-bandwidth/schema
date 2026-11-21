@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"encoding/binary"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sync"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // THE DART MESSAGE FUZZ ARM HONOURS WHAT THE LOAD RETURNS (docs/SPEC-TABLES.md
@@ -49,7 +50,7 @@ func TestMessageFuzzArmHonoursLoadResultDart(t *testing.T) {
 		t.Helper()
 		dartMakeMu.Lock()
 		defer dartMakeMu.Unlock()
-		cmd := exec.Command("make", append(append([]string{"-C", root}, vars...), target)...)
+		cmd := testproc.Command(t, "make", append(append([]string{"-C", root}, vars...), target)...)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("make %s: %v\n%s", target, err, out)
 		}
@@ -91,7 +92,7 @@ func TestMessageFuzzArmHonoursLoadResultDart(t *testing.T) {
 
 	drive := func(argv ...string) []byte {
 		t.Helper()
-		cmd := exec.Command(argv[0], append(argv[1:], "wire-fuzz")...)
+		cmd := testproc.Command(t, argv[0], append(argv[1:], "wire-fuzz")...)
 		cmd.Dir = root
 		cmd.Stdin = bytes.NewReader(in.Bytes())
 		var stderr bytes.Buffer

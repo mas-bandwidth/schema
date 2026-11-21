@@ -851,8 +851,12 @@ func valueDescriptor(f *ir.Field, withDefault bool) string {
 		if f.HasFloatRange && t.Kind == ir.TFloat32 {
 			// a ranged float32 clamps on the fixed read (§3.4; the variable
 			// form carries the same bound as a fixed-point raw range), and
-			// its three facts are what the message form quantizes by (§3.3)
-			s += fmt.Sprintf(", fmin = %s, fmax = %s, res = %s", lua.FloatLiteral(f.FMin), lua.FloatLiteral(f.FMax), lua.FloatLiteral(f.Resolution))
+			// its three facts are what the message form quantizes by (§3.3). The ends are
+			// the float32 the declaration names, where every runtime evaluates
+			// the triple (docs/SPEC.md §4.6), so a range check compares at float32
+			// and 0.1f lies under max = 0.1; the quantizer narrows them again,
+			// which changes nothing.
+			s += fmt.Sprintf(", fmin = %s, fmax = %s, res = %s", lua.FloatLiteral(float64(float32(f.FMin))), lua.FloatLiteral(float64(float32(f.FMax))), lua.FloatLiteral(f.Resolution))
 		}
 		if withDefault {
 			v := 0.0

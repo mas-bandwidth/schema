@@ -3,7 +3,6 @@ package jstable
 import (
 	"encoding/hex"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -12,6 +11,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestListSaveLoadMeasureCoversFramingJavaScript pins the JavaScript variable
@@ -93,7 +94,7 @@ writeFileSync(process.argv[2], m + "\n" + (v === null ? "null" : "ok") + "\n");
 		t.Fatal(err)
 	}
 	outPath := filepath.Join(dir, "out.txt")
-	cmd := exec.Command(node, script, outPath)
+	cmd := testproc.Command(t, node, script, outPath)
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("node probe failed: %v\n%s", err, out)

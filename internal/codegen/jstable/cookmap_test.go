@@ -3,12 +3,13 @@ package jstable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // docs/PORTING.md M19 on the JavaScript cook: a map or list holder is sixteen
@@ -55,7 +56,7 @@ func runNodeScript(t *testing.T, node, dir, script string) map[string]string {
 	if err := os.WriteFile(path, []byte(script), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, path)
+	cmd := testproc.Command(t, node, path)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
