@@ -1012,6 +1012,12 @@ async function surfaceWire(lines, outDir) {
       // by its own name, which is the wire refusal the harness holds a
       // wire-refused instance to.
       if (r.sharedBlob > 0) { writeFileSync(join(outDir, f[1] + ".absent"), "blob_shared"); continue; }
+      // A WIRE-REFUSED INSTANCE (FORMAT.md): every port refuses its bytes, and
+      // the answer is the read's own reason; any other refused load is a red
+      if (f.includes("wire-refused")) {
+        writeFileSync(join(outDir, f[1] + ".absent"), (r.reason || "refused") + "\n");
+        continue;
+      }
       fail(f[1] + ": load refused " + f[4]);
     }
     const saved = codec.save(v);
