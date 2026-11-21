@@ -1440,6 +1440,7 @@ rewrite node_chain_two graphdemo ListNode testdata/wire/tables/framing/node_chai
 rewrite array_L2_empty tblr1 Cfg testdata/wire/tables/framing/array_L2_empty.bin
 rewrite union_arm_zero_in_field tblr1 Cfg testdata/wire/tables/framing/union_arm_zero_in_field.bin
 rewrite node_index_null graphdemo ListNode testdata/wire/tables/framing/node_index_null.bin
+rewrite node_type_undeclared graphdemo ListNode testdata/wire/tables/framing/node_type_undeclared.bin
 
 rewrite rewrite_fields_reversed tblw1 Fleet testdata/wire/tables/rewrite_fields_reversed.bin
 
