@@ -2216,7 +2216,34 @@ mEncodeBody = function(c: any, desc: any, rec: any): boolean
 				elide = ((val.Type or 0) == 0)
 			elseif fd.s == "arr" then
 				if fd.array == "counted" then
-					elide = ((rec[fd.slot .. "Count"] or 0) == 0)
+					-- A COUNTED ARRAY IS BORN AT ITS MINIMUM (docs/SPEC-TABLES.md
+					-- §22.2, tablewire messageElides): with a positive minimum
+					-- it elides at exactly that count of default elements (a
+					-- table element by a body that is its terminator alone);
+					-- the probe above has already refused a count off [min, max]
+					local n = rec[fd.slot .. "Count"] or 0
+					local born = fd.min or 0
+					if born == 0 then
+						elide = (n == 0)
+					elseif n == born then
+						local allDef = true
+						for i = 1, n do
+							local el = if typeof(val) == "buffer" then buffer.readu8(val, i - 1) else val[i]
+							if fd.e.s == "tab" then
+								local ep = { w = mNewWriter(true), refBits = c.refBits, byId = c.byId, entries = c.entries, reason = nil, field = nil }
+								if not mEncodeBody(ep, S.lookup(fd.e.t), el) then
+									c.reason, c.field = ep.reason, ep.field
+									return false
+								end
+								if ep.w.bits > c.refBits then allDef = false; break end
+							elseif fd.e.s == "union" then
+								if (el.Type or 0) ~= 0 then allDef = false; break end
+							elseif not mAtDefault(fd.e, el) then
+								allDef = false; break
+							end
+						end
+						elide = allDef
+					end
 				elseif fd.array == "keyed" then
 					elide = (probe.w.bits <= bitsReq(0, entry.shape.max))
 				elseif fd.array == "fixed" and fd.e.s ~= "tab" then

@@ -1017,7 +1017,24 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 			local born = fd.min or 0
 			if not required then
 				if n == 0 then return true end
-				if n == born and fd.e.s ~= "tab" then
+				if n == born and fd.e.s == "tab" then
+					-- A COUNTED ARRAY OF TABLES AT ITS BIRTH (§22.2,
+					-- tablewire encodeArray): every element's body the
+					-- terminator alone elides the field; the probe's ids are
+					-- undone either way, so a riding array interns as before
+					local m = mark(c.ids)
+					local all = true
+					for i = 1, n do
+						local b = body_of(c, St.lookup(fd.e.t), elem_at(val, i))
+						if b == nil then
+							rollback(c.ids, m)
+							return false
+						end
+						if b.n > 1 then all = false; break end
+					end
+					rollback(c.ids, m)
+					if all then return true end
+				elseif n == born then
 					local lens = v[fd.slot .. "Length"]
 					local all = true
 					for i = 1, n do
