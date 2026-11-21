@@ -1604,6 +1604,8 @@ TEST_LEGS         += test-c
 CONFORMANCE_LEGS  += $(call unless_skipped,c,build/conformance-c)
 BENCH_TABLES_LEGS += generated/bench/tables/c/.stamp
 GOLDENS_LEGS      += update-goldens-c
+REGISTRY_NA       += toolchain:c
+REGISTRY_NA_WHY.toolchain.c := builds with the host C compiler (CC), which nothing pins; clang-format's pin (CLANG_FORMAT_PIN) is held by the format gates
 
 # THE GENERATED C IS FORMAT-CANONICAL (issue #424). `clang-format` is the
 # language's formatting authority, and the style is the repo's .clang-format,

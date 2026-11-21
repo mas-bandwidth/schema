@@ -7,7 +7,6 @@ import (
 	"maps"
 	"math/big"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -19,6 +18,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestMessageFormBatchJavaScript holds the BATCH half of the message form
@@ -601,7 +602,7 @@ func jsRunMessageProbe(t *testing.T, node string, u *ir.Unit, extra map[string][
 	if err := os.WriteFile(filepath.Join(dir, "probe.mjs"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, filepath.Join(dir, "probe.mjs"))
+	cmd := testproc.Command(t, node, filepath.Join(dir, "probe.mjs"))
 	cmd.Dir = dir
 	return cmd.CombinedOutput()
 }

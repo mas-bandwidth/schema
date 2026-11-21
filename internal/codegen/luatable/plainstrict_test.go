@@ -50,6 +50,12 @@ local strict = load.Load(T, "` + root + `", wire, sr)
 local keys = { "damaged", "refused", "unknown", "kindChanged", "outOfRange", "widened", "repeatedKey" }
 for _, k in ipairs(keys) do
   local wantVal = tr[k]
+  -- A WIRE THE WIRE-ALONE CHECK REFUSES IS REFUSED BEFORE THE WALK (§6.5,
+  -- tablewire decode.go's phase one): the walk never ran, so the report
+  -- carries the verdict alone, as the reference engine's does.
+  if sr.wireAlone then
+    if k == "damaged" then wantVal = false else wantVal = 0 end
+  end
   if k == "damaged" and sr.wireDamaged then wantVal = true end
   if k == "refused" and sr.reason == "count_over_extent_cap" then wantVal = 1 end
   assert(sr[k] == wantVal, "plain read report " .. k .. ": got " .. tostring(sr[k]) .. ", want " .. tostring(wantVal))

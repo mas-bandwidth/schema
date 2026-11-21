@@ -2164,6 +2164,9 @@ TEST_LEGS          += test-java
 TOOLCHAIN_LEGS     += java
 TOOLCHAIN_PINS_java := JAVA JAVAC
 CONFORMANCE_LEGS   += $(call unless_skipped,java,build-conformance-java)
+REGISTRY_NA        += bench-tables:java goldens:java
+REGISTRY_NA_WHY.bench-tables.java := bench/tables/java has no leg script, so bench/tables/run.sh runs no Java leg and nothing builds TableMain.java yet
+REGISTRY_NA_WHY.goldens.java      := no committed table goldens; its packet goldens (testdata/golden/java) are rewritten by internal/goldens at the top of update-goldens
 CONFORMANCE_ENV    += JAVA=$(JAVA)
 # Packet UTF-8 content validation, including a compiled mutation control.
 build/packet-text/java/.stamp: bin/schema test/packet-text/Narrow.schema

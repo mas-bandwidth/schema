@@ -2860,7 +2860,13 @@ namespace Tabledemo
                     }
                     if (f.HasRange)
                     {
-                        if (value < f.RangeMin || value > f.RangeMax) { return RefuseText(ref input, "out_of_range"); }
+                        // A FLOAT32'S RANGE IS HELD AT FLOAT32 (docs/SPEC.md §4.6): the
+                        // value and both bounds at the field's own width, so the top grid
+                        // step its writer emits reads back
+                        if (single ? (float)value < (float)f.RangeMin || (float)value > (float)f.RangeMax : value < f.RangeMin || value > f.RangeMax)
+                        { return RefuseText(ref input, "out_of_range"); }
+                        // A COMPRESSED FLOAT'S -0 LANDS AS +0 (docs/SPEC-TABLES.md §3.3)
+                        value += 0.0;
                     }
                     if (single)
                     {
@@ -2877,47 +2883,11 @@ namespace Tabledemo
                     }
                     return true;
                 }
-                // JSON HAS ONE NUMBER TYPE. 2.0 IS the integer 2 and 1e3 IS 1000, and a
-                // library that round-trips numbers through a double emits them that
-                // way — this walker's own float writer emits 1e+21. So an integer field
-                // takes any number whose VALUE is integral, however it was spelled;
-                // only a genuinely fractional value is the wrong shape for it.
+                // Every kind left here is a narrow integer, and the integer token rule
+                // above has already refused a fraction, an exponent and -0, so the
+                // token's digits are the value.
                 bool isSigned = f.Kind >= 2 && f.Kind <= 5;
-                bool saturated = false;
-                long value2 = 0;
-                if (tokenIntegral)
-                {
-                    value2 = TokenInteger(token, isSigned, out saturated);
-                }
-                else
-                {
-                    double d = TokenDouble(token, false);
-                    if (!Finite(d))
-                    {
-                        return RefuseText(ref input, "kind_mismatch");
-                    }
-                    if (isSigned)
-                    {
-                        if (d >= 9223372036854775808.0) { value2 = long.MaxValue; saturated = true; }
-                        else if (d < -9223372036854775808.0) { value2 = long.MinValue; saturated = true; }
-                        else if (d != (double)(long)d) { return RefuseText(ref input, "kind_mismatch"); }
-                        else { value2 = (long)d; }
-                    }
-                    else
-                    {
-                        if (d < 0.0)
-                        {
-                            // a negative for an unsigned field clamps to zero, as the
-                            // exact digit path already does
-                            if (d != (double)(long)d) { return RefuseText(ref input, "kind_mismatch"); }
-                            value2 = 0;
-                            saturated = true;
-                        }
-                        else if (d >= 18446744073709551616.0) { value2 = unchecked((long)ulong.MaxValue); saturated = true; }
-                        else if (d != (double)(ulong)d) { return RefuseText(ref input, "kind_mismatch"); }
-                        else { value2 = unchecked((long)(ulong)d); }
-                    }
-                }
+                long value2 = TokenInteger(token, isSigned, out bool saturated);
                 if (saturated) { return RefuseText(ref input, "out_of_range"); }
                 // Exact typed bounds preserve integers above 2^53 and unsigned values
                 // above Int64.MaxValue. The field's storage-width clamp follows this.
@@ -3083,6 +3053,7 @@ namespace Tabledemo
                         }
                     }
                     if (clamped) { return RefuseText(ref input, "length_over_bound"); }
+                    if (placed < f.ArrayMin) { return RefuseText(ref input, "count_over_bound"); }
                     PutCount(value, f, placed);
                     return true;
                 }
@@ -3201,8 +3172,10 @@ namespace Tabledemo
                         input.Bad = true;
                         return false;
                     }
-                    // a fixed array's tail keeps the defaults the prefill left there,
-                    // exactly as a short wire count does
+                    // A COUNT BELOW THE DECLARED MIN IS REFUSED (docs/SPEC.md §5.1 row
+                    // 3). A fixed array's tail keeps the defaults the prefill left
+                    // there, exactly as a short wire count does.
+                    if (placed < f.ArrayMin) { return RefuseText(ref input, "count_over_bound"); }
                     PutCount(value, f, placed);
                     return true;
                 }
@@ -4800,7 +4773,8 @@ namespace Tabledemo
             {
                 if (f.WireGuard != null && !f.WireGuard(value)) { return false; }
                 // text or bytes with a declared default elide at it, as Rides says
-                if (!f.Optional && f.Counted && f.DefaultBytes == null) { return f.GetCount(value) != 0; }
+                // and a [A..B] array born at A elides at its birth value, as Rides says
+                if (!f.Optional && f.Counted && f.DefaultBytes == null && f.ArrayMin == 0) { return f.GetCount(value) != 0; }
                 return Rides(value, f);
             }
             static void MessageBody(ref BitWriter w, object value, TableTypeInfo type)
@@ -4918,8 +4892,17 @@ namespace Tabledemo
                     if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry e)) { return false; }
                     if (reference == 0) { return true; }
                     if (Reserved(e.Id) || !SeenOnce(few, ref count, ref more, e.Id)) { return false; }
-                    if (!MessageSkip(ref r, d, e.Kind, e.Shape, depth)) { return false; }
+                    if (!MessageSkipField(ref r, d, e, depth)) { return false; }
                 }
+            }
+            // A message field cannot be required, so a writer elides a union FIELD at
+            // None at every build (§3.3 (c)): arm reference 0 stored for one is refused
+            // on the skip path as on a named read. An array element and an arm's own
+            // value keep their positional None and skip through MessageSkip.
+            static bool MessageSkipField(ref BitReader r, MessageRead d, TableMessageEntry e, int depth)
+            {
+                if (e.Kind == 15) { BitReader arm = r; if (!MessageReference(ref arm, d, out ulong armRef, out _) || armRef == 0) { return false; } }
+                return MessageSkip(ref r, d, e.Kind, e.Shape, depth);
             }
             // SeenOnce records one id of a body or one key of a keyed array and
             // answers false on a repeat: an id twice in one body, or a key twice in
@@ -5068,7 +5051,7 @@ namespace Tabledemo
                     {
                         if (same) { return false; }
                         d.Report.Unknown++;
-                        if (!MessageSkip(ref r, d, entry.Kind, entry.Shape, depth)) { return false; }
+                        if (!MessageSkipField(ref r, d, entry, depth)) { return false; }
                         continue;
                     }
                     if (same && field.Ordinal <= last) { return false; }
@@ -5098,6 +5081,16 @@ namespace Tabledemo
                 {
                     int n = f.GetCount(value);
                     if (f.DefaultBytes != null) { return n == f.DefaultBytes.Length && f.GetBuffer(value).AsSpan(0, n).SequenceEqual(f.DefaultBytes); }
+                    // BORN AT ITS MIN (docs/SPEC.md §4.2): a [A..B] array at A default
+                    // elements is the birth value the writer elides. A table element's
+                    // default is not judged from storage, and a quantized float's
+                    // stored value cannot say it, so neither is refused here.
+                    if (f.ArrayMin > 0)
+                    {
+                        if (n != f.ArrayMin || f.Kind == 13 || shape.Inner != null && shape.Inner.Packing == 2) { return false; }
+                        for (int i = 0; i < n; i++) { if (!DefaultElement(value, f, i)) { return false; } }
+                        return true;
+                    }
                     return n == 0;
                 }
                 if (!f.IsArray)
@@ -5114,9 +5107,11 @@ namespace Tabledemo
                 if (f.IsArray && f.GetBuffer != null)
                 {
                     if (!r.Get(BitCount(shape.Max - shape.Min), out UInt128 raw) || !r.Align()) { return false; }
-                    ulong n = (ulong)raw;
+                    // bytes(N) AND [..N]uint8 ARE ONE KIND (§3.3): the count rides as
+                    // count - the announced min, as an array's does
+                    ulong n = (ulong)raw + shape.Min;
                     if (n > (ulong)((r.End - r.At) / 8)) { return false; }
-                    if (n > (ulong)f.ArrayBound) { return Fail(d.Report, "count_over_bound: " + f.Name); }
+                    if (n < (ulong)f.ArrayMin || n > (ulong)f.ArrayBound) { return Fail(d.Report, "count_over_bound: " + f.Name); }
                     int kept = (int)n;
                     if (value != null) { r.Bytes.Slice((int)(r.At / 8), kept).CopyTo(f.GetBuffer(value)); f.SetCount(value, kept); }
                     r.At += (long)n * 8; return true;
@@ -5160,7 +5155,8 @@ namespace Tabledemo
                         return true;
                     }
                     int run = Width(shape.Elem) != 0 ? ValueBits(shape.Elem, shape.Inner) : -1;
-                    if (n > (ulong)f.ArrayBound) { return Fail(d.Report, "count_over_bound: " + f.Name); }
+                    // A COUNT BELOW THE DECLARED MIN IS REFUSED (docs/SPEC.md §5.1 row 3)
+                    if (n < (ulong)f.ArrayMin || n > (ulong)f.ArrayBound) { return Fail(d.Report, "count_over_bound: " + f.Name); }
                     int kept = (int)n;
                     int previous = f.Counted && value != null && f.GetCount != null ? f.GetCount(value) : 0;
                     // A FLOAT PAST THE BOUND IS STILL TESTED (docs/SPEC-TABLES.md §3.3):
@@ -5237,6 +5233,9 @@ namespace Tabledemo
                 UInt128 stored = bits; bool negative = false, above = false;
                 if (shape.Packing == 1)
                 {
+                    // A RANGED VALUE IS HELD TO ITS ANNOUNCED KIND (§3.3): base plus
+                    // offset is never wrapped, named or skipped
+                    if (MessageNumber(kind) && !RangedHolds(kind, shape.Base, bits)) { return Fail(d.Report, "out_of_range: " + f.Name); }
                     stored = unchecked(bits + shape.Base);
                     bool baseNegative = (kind >= 18 || Signed(kind)) && unchecked((Int128)shape.Base) < 0;
                     negative = baseNegative && bits < unchecked(0 - shape.Base);
@@ -5560,6 +5559,14 @@ namespace Tabledemo
                 {
                     int n = f.GetCount(value);
                     if (f.DefaultBytes != null) { return n != f.DefaultBytes.Length || !f.GetBuffer(value).AsSpan(0, n).SequenceEqual(f.DefaultBytes); }
+                    // BORN AT ITS MIN (docs/SPEC.md §4.2): a [A..B] array's birth value
+                    // is A default elements, and that is what the writer elides
+                    if (f.ArrayMin > 0)
+                    {
+                        if (n != f.ArrayMin || f.Kind == 13 && f.KeyId == null) { return true; }
+                        for (int i = 0; i < n; i++) { if (!DefaultElement(value, f, i)) { return true; } }
+                        return false;
+                    }
                     return n != 0;
                 }
                 if (!f.IsArray) { return !DefaultElement(value, f, 0); }
@@ -6198,7 +6205,7 @@ namespace Tabledemo
                     if (!Compatible(elementKind, f.Kind, report)) { return false; }
                     if (f.Dynamic && count > int.MaxValue) { return CollectionCap(report); }
                     int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
-                    if (!f.Dynamic && count > (ulong)f.ArrayBound) { return Fail(report, "count_over_bound: " + f.Name); }
+                    if (!f.Dynamic && (count < (ulong)f.ArrayMin || count > (ulong)f.ArrayBound)) { return Fail(report, "count_over_bound: " + f.Name); }
                     int decoded = 0;
                     for (int i = 0; i < keep; i++)
                     {
@@ -6282,7 +6289,7 @@ namespace Tabledemo
                     else
                     {
                         int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
-                        if (!f.Dynamic && count > (ulong)f.ArrayBound) { return Fail(report, "count_over_bound: " + f.Name); }
+                        if (!f.Dynamic && (count < (ulong)f.ArrayMin || count > (ulong)f.ArrayBound)) { return Fail(report, "count_over_bound: " + f.Name); }
                         int previous = f.Counted && f.GetCount != null ? f.GetCount(value) : 0;
                         int decoded = 0; long textSpent = 0;
                         for (int i = 0; i < keep; i++)

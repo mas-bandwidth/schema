@@ -6656,6 +6656,39 @@ registry:
 	@echo "goldens: $(GOLDENS_LEGS)"
 	@echo "toolchain: $(TOOLCHAIN_LEGS)"
 
+# THE REGISTRY COMPLETENESS GATE (internal/ci/registrycomplete_test.go): every
+# one of the 18 targets (SCHEMA_PORTS) is on every list above, or its
+# make/<lang>.mk declares that list not applicable to it and says why:
+#
+#   REGISTRY_NA                       += <list>:<lang>
+#   REGISTRY_NA_WHY.<list>.<lang>     := <the reason, one line>
+#
+# A port on neither, a declaration with no reason, a declaration for a port
+# the list already carries, and a declaration naming no list or port each
+# fail by name. It reads the lists as registered, so it refuses to run under
+# SCHEMA_SKIP_LEGS (a skipped leg drops off CONFORMANCE_LEGS).
+REGISTRY_LISTS := test conformance bench-tables goldens toolchain
+registry_on.test         = $(filter test-$(1),$(TEST_LEGS))
+registry_on.conformance  = $(filter %-$(1) %-$(1)/.stamp,$(CONFORMANCE_LEGS))
+registry_on.bench-tables = $(filter generated/bench/tables/$(1)/.stamp,$(BENCH_TABLES_LEGS))
+registry_on.goldens      = $(filter update-goldens-$(1),$(GOLDENS_LEGS))
+registry_on.toolchain    = $(filter $(1),$(TOOLCHAIN_LEGS))
+REGISTRY_CELLS = $(foreach l,$(REGISTRY_LISTS),$(foreach p,$(SCHEMA_PORTS),$(l):$(p)))
+registry_cell = $(if $(call registry_on.$(1),$(2)),$(if $(filter $(1):$(2),$(REGISTRY_NA)),$(1):$(2) is on the list and also declared not applicable),$(if $(filter $(1):$(2),$(REGISTRY_NA)),$(if $(strip $(REGISTRY_NA_WHY.$(1).$(2))),,$(1):$(2) is declared not applicable with no reason),$(1):$(2) is on neither the list nor REGISTRY_NA))
+REGISTRY_GAPS = $(strip $(foreach l,$(REGISTRY_LISTS),$(foreach p,$(SCHEMA_PORTS),$(call registry_cell,$(l),$(p)))) \
+	$(foreach na,$(filter-out $(REGISTRY_CELLS),$(REGISTRY_NA)),$(na) names no list or no port))
+
+.PHONY: registry-complete registry-na
+registry-complete:
+	@$(if $(strip $(SKIPPED_LEGS)),echo "registry-complete: run it without SCHEMA_SKIP_LEGS ($(strip $(SKIPPED_LEGS))): it reads the lists as registered"; exit 1)
+	@$(if $(REGISTRY_GAPS),$(foreach l,$(REGISTRY_LISTS),$(foreach p,$(SCHEMA_PORTS),$(if $(call registry_cell,$(l),$(p)),echo "registry-complete: $(call registry_cell,$(l),$(p))";))) \
+		$(foreach na,$(filter-out $(REGISTRY_CELLS),$(REGISTRY_NA)),echo "registry-complete: $(na) names no list or no port";) exit 1)
+	@$(foreach na,$(sort $(REGISTRY_NA)),echo "  n/a $(na): $(REGISTRY_NA_WHY.$(subst :,.,$(na)))";)
+	@echo "registry complete: $(words $(SCHEMA_PORTS)) targets on $(words $(REGISTRY_LISTS)) lists, $(words $(sort $(REGISTRY_NA))) declared not applicable"
+
+registry-na:
+	@echo "$(strip $(REGISTRY_NA))"
+
 # ---------------------------------------------------------------------------
 # THE TOOLCHAIN GATE (issue #599), the aggregate ----------------------------
 #

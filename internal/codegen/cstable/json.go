@@ -1729,7 +1729,13 @@ public static class TableJson
             }
             if (f.HasRange)
             {
-                if (value < f.RangeMin || value > f.RangeMax) { return RefuseText(ref input, "out_of_range"); }
+                // A FLOAT32'S RANGE IS HELD AT FLOAT32 (docs/SPEC.md §4.6): the
+                // value and both bounds at the field's own width, so the top grid
+                // step its writer emits reads back
+                if (single ? (float)value < (float)f.RangeMin || (float)value > (float)f.RangeMax : value < f.RangeMin || value > f.RangeMax)
+                { return RefuseText(ref input, "out_of_range"); }
+                // A COMPRESSED FLOAT'S -0 LANDS AS +0 (docs/SPEC-TABLES.md §3.3)
+                value += 0.0;
             }
             if (single)
             {
@@ -1746,47 +1752,11 @@ public static class TableJson
             }
             return true;
         }
-        // JSON HAS ONE NUMBER TYPE. 2.0 IS the integer 2 and 1e3 IS 1000, and a
-        // library that round-trips numbers through a double emits them that
-        // way — this walker's own float writer emits 1e+21. So an integer field
-        // takes any number whose VALUE is integral, however it was spelled;
-        // only a genuinely fractional value is the wrong shape for it.
+        // Every kind left here is a narrow integer, and the integer token rule
+        // above has already refused a fraction, an exponent and -0, so the
+        // token's digits are the value.
         bool isSigned = f.Kind >= 2 && f.Kind <= 5;
-        bool saturated = false;
-        long value2 = 0;
-        if (tokenIntegral)
-        {
-            value2 = TokenInteger(token, isSigned, out saturated);
-        }
-        else
-        {
-            double d = TokenDouble(token, false);
-            if (!Finite(d))
-            {
-                return RefuseText(ref input, "kind_mismatch");
-            }
-            if (isSigned)
-            {
-                if (d >= 9223372036854775808.0) { value2 = long.MaxValue; saturated = true; }
-                else if (d < -9223372036854775808.0) { value2 = long.MinValue; saturated = true; }
-                else if (d != (double)(long)d) { return RefuseText(ref input, "kind_mismatch"); }
-                else { value2 = (long)d; }
-            }
-            else
-            {
-                if (d < 0.0)
-                {
-                    // a negative for an unsigned field clamps to zero, as the
-                    // exact digit path already does
-                    if (d != (double)(long)d) { return RefuseText(ref input, "kind_mismatch"); }
-                    value2 = 0;
-                    saturated = true;
-                }
-                else if (d >= 18446744073709551616.0) { value2 = unchecked((long)ulong.MaxValue); saturated = true; }
-                else if (d != (double)(ulong)d) { return RefuseText(ref input, "kind_mismatch"); }
-                else { value2 = unchecked((long)(ulong)d); }
-            }
-        }
+        long value2 = TokenInteger(token, isSigned, out bool saturated);
         if (saturated) { return RefuseText(ref input, "out_of_range"); }
         // Exact typed bounds preserve integers above 2^53 and unsigned values
         // above Int64.MaxValue. The field's storage-width clamp follows this.
@@ -1952,6 +1922,7 @@ public static class TableJson
                 }
             }
             if (clamped) { return RefuseText(ref input, "length_over_bound"); }
+            if (placed < f.ArrayMin) { return RefuseText(ref input, "count_over_bound"); }
             PutCount(value, f, placed);
             return true;
         }
@@ -2070,8 +2041,10 @@ public static class TableJson
                 input.Bad = true;
                 return false;
             }
-            // a fixed array's tail keeps the defaults the prefill left there,
-            // exactly as a short wire count does
+            // A COUNT BELOW THE DECLARED MIN IS REFUSED (docs/SPEC.md §5.1 row
+            // 3). A fixed array's tail keeps the defaults the prefill left
+            // there, exactly as a short wire count does.
+            if (placed < f.ArrayMin) { return RefuseText(ref input, "count_over_bound"); }
             PutCount(value, f, placed);
             return true;
         }

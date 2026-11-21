@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,6 +14,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // 2026-10-18: the Lua leg had no block builder. docs/SPEC-TABLES.md §19.1 is
@@ -105,7 +106,7 @@ hexline(tostring(refusal.array) .. "|" .. tostring(refusal.count) .. "|" .. tost
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("nice", "-n", "19", "go", "test", "-count=1", "-timeout", "600s", "-run", "^TestLuaBlockOpen$", ".")
+	cmd := testproc.Command(t, "nice", "-n", "19", "go", "test", "-count=1", "-timeout", "600s", "-run", "^TestLuaBlockOpen$", ".")
 	cmd.Dir = dir
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("the generated Go reader: %v\n%s", err, output)

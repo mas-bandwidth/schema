@@ -68,6 +68,7 @@ func TestFastPlanSelectsTableFixtures(t *testing.T) {
 		{"documentation", "README.md", "no|"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel() // each case is its own bash over a read-only script
 			cmd := exec.Command("bash", "-euo", "pipefail", "-c", script.String())
 			cmd.Env = append(scriptEnv(os.Environ()), "files="+tc.files)
 			out, err := cmd.CombinedOutput()
@@ -233,6 +234,7 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel() // each case is its own bash over a read-only script
 			cmd := exec.Command("bash", "-euo", "pipefail", "-c", script.String())
 			cmd.Env = append(scriptEnv(os.Environ()), "files="+tc.files)
 			cmd.Dir = repoRoot(t)
@@ -314,6 +316,7 @@ func TestFastPlanSelectsLanguageLints(t *testing.T) {
 		{"squirrel make file", "make/squirrel.mk", `[]|./internal/codegen/squirrel ./internal/codegen/squirreltable`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel() // each case is its own bash over a read-only script
 			cmd := exec.Command("bash", "-euo", "pipefail", "-c", script.String())
 			cmd.Env = append(scriptEnv(os.Environ()), "files="+tc.files)
 			cmd.Dir = repoRoot(t)
@@ -369,6 +372,7 @@ func TestFastPlanSelectsCodegenAndLanguageCleanGates(t *testing.T) {
 		{"eslint config", "eslint.config.mjs", `no|["js"]`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel() // each case is its own bash over a read-only script
 			cmd := exec.Command("bash", "-euo", "pipefail", "-c", script.String())
 			cmd.Env = append(scriptEnv(os.Environ()), "files="+tc.files)
 			cmd.Dir = repoRoot(t)

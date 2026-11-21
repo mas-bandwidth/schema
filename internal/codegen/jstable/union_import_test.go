@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -17,6 +16,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/viewlisting"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestUnionClassesImportTheTablesTheyBuild holds the JavaScript union emitter
@@ -109,7 +110,7 @@ func TestUnionClassesImportTheTablesTheyBuild(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cmd := exec.Command(node, filepath.Join(dir, "probe.mjs"))
+	cmd := testproc.Command(t, node, filepath.Join(dir, "probe.mjs"))
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -160,7 +161,7 @@ func TestUnionClassesImportTheTablesTheyBuild(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "harness.mjs"), []byte(broken), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd = exec.Command(node, filepath.Join(dir, "probe.mjs"))
+	cmd = testproc.Command(t, node, filepath.Join(dir, "probe.mjs"))
 	cmd.Dir = dir
 	out, err = cmd.CombinedOutput()
 	if err != nil || !strings.Contains(string(out), "trailing packet data refused") {

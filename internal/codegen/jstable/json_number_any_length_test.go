@@ -4,13 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // A JSON number's LENGTH is never why a read refuses: a valid number is read
@@ -114,7 +115,7 @@ for (const row of rows) {
 	if err := os.WriteFile(filepath.Join(dir, "probe.mjs"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, "probe.mjs")
+	cmd := testproc.Command(t, node, "probe.mjs")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

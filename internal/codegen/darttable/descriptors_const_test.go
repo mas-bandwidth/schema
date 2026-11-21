@@ -2,12 +2,13 @@ package darttable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestDartDescriptorsAreConstants holds docs/PORTING.md M13 on the Dart leg:
@@ -121,7 +122,7 @@ func runDescriptorProbe(t *testing.T, dart string, files, packet map[string][]by
 	if err := os.WriteFile(filepath.Join(dir, "descriptors_probe.dart"), []byte(descriptorProbe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dart, "--enable-asserts", "descriptors_probe.dart")
+	cmd := testproc.Command(t, dart, "--enable-asserts", "descriptors_probe.dart")
 	cmd.Dir = dir
 	return cmd.CombinedOutput()
 }

@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -30,6 +29,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const wireLebSchema = `package probe
@@ -139,7 +140,7 @@ check(reader.wireBadPointerIndex()==%t,'%s: bad pointer index');}
 	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(b.String()), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dartBinary(t), "--enable-asserts", "probe.dart")
+	cmd := testproc.Command(t, dartBinary(t), "--enable-asserts", "probe.dart")
 	cmd.Dir = dir
 	return cmd.CombinedOutput()
 }

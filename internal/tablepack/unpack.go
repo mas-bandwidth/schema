@@ -4,10 +4,13 @@
 package tablepack
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -174,12 +177,23 @@ func unpackWith(m *tabletext.Model, root string, wire []byte, dir string, oneFil
 func writeTree(m *tabletext.Model, inst *tabletext.Instance, root, dir string, oneFile bool) error {
 	st := inst.Def
 	if !oneFile {
+		// a key that is no safe path component at all is refused by name, as
+		// before: the caller asked for a tree and is told how to keep the key
 		for _, f := range st.Fields {
 			key := ir.TableFieldJsonKey(f)
 			if !treeComponent(key) {
 				return fmt.Errorf("field %s: JSON key %q is not one safe local path component; use --one-file to preserve this key in JSON", f.Name, key)
 			}
 		}
+	}
+	if !oneFile && treeNamesOverlap(st, root) {
+		// two entries of the expanded tree would share one name, or one would
+		// take `<Root>.json`, which pack reads as the whole root (§17.2), or a
+		// name is one a filesystem may store as another: that tree could not
+		// be written whole or would not pack back. The whole root is the same
+		// instance, so it is written instead, decided before anything touches
+		// the disk.
+		oneFile = true
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -195,12 +209,20 @@ func writeTree(m *tabletext.Model, inst *tabletext.Instance, root, dir string, o
 	for i := range st.Fields {
 		owned[ir.TableFieldJsonKey(st.Fields[i])] = true
 	}
+	// an entry in the way that names no field refuses the unpack before a
+	// byte is written, and stays where it is (§17.3)
+	if err := preflight(out, dir, st, root, oneFile, owned); err != nil {
+		return err
+	}
 	if oneFile {
 		text, err := m.Write(inst)
 		if err != nil {
 			return err
 		}
 		name := root + ".json"
+		if err := claimEntry(out, dir, name, false, owned); err != nil {
+			return err
+		}
 		if err := out.WriteFile(name, append(text, '\n'), 0o644); err != nil {
 			return err
 		}
@@ -219,7 +241,7 @@ func writeTree(m *tabletext.Model, inst *tabletext.Instance, root, dir string, o
 			continue
 		}
 		if f.KeyEnum != "" {
-			if err := unpackKeyed(m, fv, out, key); err != nil {
+			if err := unpackKeyed(m, fv, out, dir, key, owned); err != nil {
 				return err
 			}
 			written[key] = true
@@ -227,6 +249,9 @@ func writeTree(m *tabletext.Model, inst *tabletext.Instance, root, dir string, o
 		}
 		text, err := m.WriteValue(fv)
 		if err != nil {
+			return err
+		}
+		if err := claimEntry(out, dir, key+".json", false, owned); err != nil {
 			return err
 		}
 		if err := out.WriteFile(key+".json", append(text, '\n'), 0o644); err != nil {
@@ -237,7 +262,79 @@ func writeTree(m *tabletext.Model, inst *tabletext.Instance, root, dir string, o
 	return prune(out, owned, written)
 }
 
-func unpackKeyed(m *tabletext.Model, fv *tabletext.Field, parent *os.Root, dir string) error {
+// treeNamesOverlap reports whether the expanded tree's entries at the root
+// level collide: every field's entry (`<key>.json` for a value, `<key>/` for
+// an enum-keyed array) is computed first, with `<Root>.json` reserved for the
+// whole root, and any two that name one entry — compared case-folded, since
+// a case-insensitive filesystem would merge them too — overlap. Every
+// declared field counts, written or not, so the shape a schema unpacks to
+// does not depend on the values.
+//
+// A name that is not plain portable ASCII counts as an overlap too: two
+// different Unicode spellings (é as one code point, or e and a combining
+// accent) are different keys but one path on a filesystem that normalizes
+// names, as macOS does, and no rule short of the filesystem's own says which
+// pairs those are. The whole root keeps such keys inside one JSON text, where
+// they stay distinct. An enum-keyed array's variant files are checked the
+// same way inside their directory.
+func treeNamesOverlap(st *ir.Struct, root string) bool {
+	taken := map[string]bool{}
+	claim := func(seen map[string]bool, name string) bool {
+		if !portableName(name) {
+			return true
+		}
+		folded := strings.ToLower(name)
+		if seen[folded] {
+			return true
+		}
+		seen[folded] = true
+		return false
+	}
+	if claim(taken, root+".json") {
+		return true
+	}
+	for _, f := range st.Fields {
+		name := ir.TableFieldJsonKey(f)
+		if f.KeyEnum == "" {
+			name += ".json"
+		}
+		if claim(taken, name) {
+			return true
+		}
+		if f.KeyEnum == "" {
+			continue
+		}
+		variants := map[string]bool{}
+		for slot := tabletext.KeyedFirstSlot(); slot < tabletext.KeyedSlotCount(f); slot++ {
+			if claim(variants, tabletext.EnumName(f.KeyEnumRef, tabletext.KeyedSlotValue(f, slot))+".json") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// portableName holds a name to the POSIX portable filename characters,
+// [A-Za-z0-9._-]: the names every filesystem stores as written.
+func portableName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '.', c == '_', c == '-':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func unpackKeyed(m *tabletext.Model, fv *tabletext.Field, parent *os.Root, where, dir string, parentOwned map[string]bool) error {
+	if err := claimEntry(parent, where, dir, true, parentOwned); err != nil {
+		return err
+	}
 	if err := parent.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
@@ -257,6 +354,9 @@ func unpackKeyed(m *tabletext.Model, fv *tabletext.Field, parent *os.Root, dir s
 		owned[name] = true
 		text, err := m.WriteElement(fv, slot)
 		if err != nil {
+			return err
+		}
+		if err := claimEntry(out, filepath.Join(where, dir), name+".json", false, owned); err != nil {
 			return err
 		}
 		if err := out.WriteFile(name+".json", append(text, '\n'), 0o644); err != nil {
@@ -281,6 +381,9 @@ func prune(out *os.Root, owned, written map[string]bool) error {
 		if written[e.Name()] {
 			continue
 		}
+		// exactly what the entry names: claimEntry has already given every
+		// written name its own spelling on a case-insensitive filesystem, and
+		// an entry that only folds to an owned name names no field (§17.3)
 		key, ok := entryKey(e)
 		if !ok || !owned[key] {
 			continue
@@ -290,6 +393,158 @@ func prune(out *os.Root, owned, written map[string]bool) error {
 		}
 	}
 	return nil
+}
+
+// foldedIn reports whether name equals one of the written names under Unicode
+// case folding, the comparison a case-insensitive filesystem makes. The names
+// an unpack writes are portable ASCII (treeNamesOverlap), and normalization
+// leaves ASCII as it is, so folding is the whole of the comparison.
+func foldedIn(name string, written map[string]bool) bool {
+	if written[name] {
+		return true
+	}
+	for w := range written {
+		if strings.EqualFold(name, w) {
+			return true
+		}
+	}
+	return false
+}
+
+// obstruction answers what stands where name, about to be written at this
+// level as a file or (dir) a directory, must go. Nothing, or the exact entry
+// of the right kind: "" and nil. An entry the filesystem takes for name but
+// spells differently — a case-insensitive filesystem keeps the old spelling
+// when a write lands on it — that names, under the folding that filesystem
+// applies, a value this level owns: its name, for claimEntry to rename (a directory, children and all) or remove (a value file). Any
+// other entry in the way names no field (§17.3) and is never deleted: the
+// unpack is refused by naming it, where it lies.
+func obstruction(out *os.Root, where, name string, dir bool, owned map[string]bool) (string, error) {
+	refuse := func(entry string) error {
+		return fmt.Errorf("%s: %s is in the way of the %s this unpack writes there, and it names no field the schema owns at that level, so it is left in place; move it and unpack again (docs/SPEC-TABLES.md §17.3)",
+			where, entry, name)
+	}
+	entries, err := fs.ReadDir(out.FS(), ".")
+	if err != nil {
+		return "", err
+	}
+	for _, e := range entries {
+		if e.Name() == name {
+			if e.IsDir() == dir {
+				return "", nil
+			}
+			return "", refuse(e.Name())
+		}
+	}
+	if _, err := out.Lstat(name); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return "", nil // nothing answers to the name on this filesystem
+		}
+		return "", err
+	}
+	// the name resolves to an entry spelled otherwise: the filesystem folds
+	for _, e := range entries {
+		if !strings.EqualFold(e.Name(), name) {
+			continue
+		}
+		stem, named := e.Name(), e.IsDir()
+		if n := len(stem); !named && n > len(".json") && strings.EqualFold(stem[n-len(".json"):], ".json") {
+			stem, named = stem[:n-len(".json")], true
+		}
+		if e.IsDir() == dir && named && foldedIn(stem, owned) {
+			return e.Name(), nil
+		}
+		return "", refuse(e.Name())
+	}
+	return "", refuse(name)
+}
+
+// claimEntry makes name the one entry that answers to it before it is
+// written: an owned entry the filesystem takes for it under another spelling
+// is renamed to it (a directory, keeping every child) or removed (a value
+// file), so the name lands spelled as written (pack matches names
+// exactly); anything else in the way refuses the unpack and stays.
+func claimEntry(out *os.Root, where, name string, dir bool, owned map[string]bool) error {
+	alias, err := obstruction(out, where, name, dir, owned)
+	if err != nil || alias == "" {
+		return err
+	}
+	if !dir {
+		// one owned value file, about to be written again
+		return out.Remove(alias)
+	}
+	// a directory may hold entries no schema owns (§17.3): it is renamed to
+	// the written spelling with every child in it, never removed. Through a
+	// temporary name, because a case-insensitive filesystem may take a
+	// rename between two spellings of one name as a rename onto itself.
+	tmp := ""
+	for i := 0; ; i++ {
+		tmp = fmt.Sprintf(".%s.unpack-rename-%d", name, i)
+		if _, err := out.Lstat(tmp); errors.Is(err, fs.ErrNotExist) {
+			break
+		} else if err != nil {
+			return err
+		}
+	}
+	if err := out.Rename(alias, tmp); err != nil {
+		return err
+	}
+	return out.Rename(tmp, name)
+}
+
+// preflight refuses, before anything is written, an entry that stands where
+// the unpack would write and names no field: at the root's level (the whole
+// root file, a field file, an enum-keyed array's directory) and inside an
+// existing keyed directory (each variant file).
+func preflight(out *os.Root, where string, st *ir.Struct, root string, oneFile bool, owned map[string]bool) error {
+	if oneFile {
+		_, err := obstruction(out, where, root+".json", false, owned)
+		return err
+	}
+	for _, f := range st.Fields {
+		key := ir.TableFieldJsonKey(f)
+		if f.KeyEnum == "" {
+			if _, err := obstruction(out, where, key+".json", false, owned); err != nil {
+				return err
+			}
+			continue
+		}
+		alias, err := obstruction(out, where, key, true, owned)
+		if err != nil {
+			return err
+		}
+		at := key
+		if alias != "" {
+			at = alias
+		}
+		if fi, err := out.Lstat(at); err != nil || !fi.IsDir() {
+			continue
+		}
+		sub, err := out.OpenRoot(at)
+		if err != nil {
+			return err
+		}
+		variants := keyedVariants(f)
+		for _, name := range slices.Sorted(maps.Keys(variants)) {
+			if _, err := obstruction(sub, filepath.Join(where, key), name+".json", false, variants); err != nil {
+				_ = sub.Close()
+				return err
+			}
+		}
+		_ = sub.Close()
+	}
+	return nil
+}
+
+// keyedVariants is the variant names an enum-keyed array's directory owns.
+func keyedVariants(f *ir.Field) map[string]bool {
+	owned := map[string]bool{}
+	for slot := tabletext.KeyedFirstSlot(); slot < tabletext.KeyedSlotCount(f); slot++ {
+		if name := tabletext.EnumName(f.KeyEnumRef, tabletext.KeyedSlotValue(f, slot)); name != "" {
+			owned[name] = true
+		}
+	}
+	return owned
 }
 
 // DescribeAnnouncement prints an announcement's VOCABULARY decoded

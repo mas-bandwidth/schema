@@ -7,7 +7,6 @@ import (
 	"math/big"
 	"math/bits"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -21,6 +20,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const blockReadSchema = `package probe
@@ -230,7 +231,7 @@ func blockReadDamage(t *testing.T, block []byte, bl *ir.BlockLayout) []blockRead
 
 func runBlockProbe(t *testing.T, dir, name string) {
 	t.Helper()
-	cmd := exec.Command("nice", "-n", "19", "go", "test", "-count=1", "-timeout", "600s", "-run", "^"+name+"$", ".")
+	cmd := testproc.Command(t, "nice", "-n", "19", "go", "test", "-count=1", "-timeout", "600s", "-run", "^"+name+"$", ".")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("generated Go probe %s: %v\n%s", name, err, out)
