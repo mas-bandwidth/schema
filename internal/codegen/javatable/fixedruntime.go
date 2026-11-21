@@ -1012,12 +1012,13 @@ public final class TableFixed {
      * §4.6's bounds pass for a COMPILED lane: the WRITER's own bounded leaves, straight-line over
      * the record image after the plan run and before the scatter. spec is a flat array of {dst,
      * width, signed, lo, hi} rows, one per leaf the writer declared, or null when the entry bounds
-     * nothing — the reader's range is the wider one, so checking only it would accept a value the old
-     * writer could not have written (bill §12.5). A leaf off the WRITER's range refuses the load
-     * as outOfRange, exactly as the scatter's own pass refuses the reader's; the value stored at
-     * the bound is never seen, because the refused load is discarded whole (strict-only-read). The comparison is in the field's own
-     * type: signed for a signed kind, UNSIGNED for an unsigned one, so a uint64 at or above 2^63 is
-     * past the max and never below the min (an unsigned kind's bounds are never negative).
+     * nothing — the reader's range is the wider one, so checking only it would accept a value
+     * the old writer could not have written (bill §12.5). A leaf off the WRITER's range refuses
+     * the load as outOfRange, exactly as the scatter's own pass refuses the reader's; the value
+     * stored at the bound is never seen, because the refused load is discarded whole
+     * (strict-only-read). The comparison is in the field's own type: signed for a signed kind,
+     * UNSIGNED for an unsigned one, so a uint64 at or above 2^63 is past the max and never below
+     * the min (an unsigned kind's bounds are never negative).
      */
     public static void checkWriterBounds(long[] spec, byte[] image, Report report) {
         if (spec == null || spec.length == 0 || image == null) {
