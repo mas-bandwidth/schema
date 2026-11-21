@@ -2,6 +2,7 @@ package tabletext
 
 import (
 	"math/big"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -77,5 +78,42 @@ func TestWideText(t *testing.T) {
 		if back.Cmp(raw) != 0 {
 			t.Errorf("bytes %s: back as %v", r.raw, back)
 		}
+	}
+}
+
+// TABLETEXT-5. A token whose decimal fraction is longer than F can spell is
+// inexact by counting alone: with trailing zeros stripped the value has
+// exactly len(digits) - point fractional decimal digits, and a dyadic fraction
+// of F bits has at most F of them. ParseWide answers it before any big.Int is
+// built, so a hostile megabyte of fraction digits costs a linear scan and not
+// a quadratic decimal conversion. The work is counted as allocations, never
+// timed: the refusal allocates nothing, at any length.
+func TestWideLongFractionRefusesWithoutArithmetic(t *testing.T) {
+	for _, n := range []int{100, 100000} {
+		token := "0." + strings.Repeat("1", n)
+		for _, kind := range []int{ir.TableKindFixed32, ir.TableKindFixed64} {
+			if _, exact, _ := ParseWide(token, kind, 16); exact {
+				t.Fatalf("%d fraction digits at F=16: placed, want inexact", n)
+			}
+			allocs := testing.AllocsPerRun(3, func() { ParseWide(token, kind, 16) })
+			if allocs != 0 {
+				t.Errorf("%d fraction digits at F=16: %v allocations, want 0 (the arithmetic ran)", n, allocs)
+			}
+		}
+	}
+	// the boundary: 16 fractional digits at F=16 is exactly 2^-16 when the
+	// digits spell it, and 17 never is
+	if raw, exact, _ := ParseWide("0.0000152587890625", ir.TableKindFixed32, 16); !exact || raw.String() != "1" {
+		t.Fatalf("2^-16: got %v exact=%v", raw, exact)
+	}
+	if _, exact, _ := ParseWide("0.00001525878906251", ir.TableKindFixed32, 16); exact {
+		t.Fatal("17 fractional digits at F=16 placed")
+	}
+	// trailing zeros do not count, and an exponent moves the point
+	if raw, exact, _ := ParseWide("0.5"+strings.Repeat("0", 100000), ir.TableKindFixed32, 16); !exact || raw.String() != "32768" {
+		t.Fatalf("0.5 with trailing zeros: got %v exact=%v", raw, exact)
+	}
+	if raw, exact, _ := ParseWide("5"+strings.Repeat("1", 30)+"e-30", ir.TableKindFixed32, 16); exact {
+		t.Fatalf("30 fractional digits through an exponent placed %v", raw)
 	}
 }

@@ -441,10 +441,10 @@ func TableKindWideInteger(kind int) bool {
 
 // ImpliedRange is the range a declaration implies without declaring one:
 // `bits(N)` declares its bound by its WIDTH, `[0, 2^N - 1]`, and a value past
-// it clamps and counts exactly as a declared `| max` would (docs/SPEC-TABLES.md
+// it refuses exactly as one past a declared `| max` does (docs/SPEC-TABLES.md
 // §16.2). The generated descriptors carry it in the same `has_range` columns a
-// declared range uses, so the two implementations clamp on the same numbers in
-// the same order. ok is false when the field implies nothing.
+// declared range uses, so the two implementations refuse on the same numbers.
+// ok is false when the field implies nothing.
 func ImpliedRange(f *ir.Field) (lo, hi float64, ok bool) {
 	if f.Type.Kind != ir.TBits || f.HasIntRange || f.Type.Width >= 64 {
 		return 0, 0, false
