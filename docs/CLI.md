@@ -8,12 +8,19 @@ documented where the command is: [USAGE.md](USAGE.md).
 file changed; the line's module path moves to the one the version's major
 requires (`schema/vN` from v2 on). `--mixed-ok` may sit before or after the
 directories; it accepts a tree whose pins already differ and moves them
-together. The command refuses by name a version that is not a Go pseudo-version
-or semver tag, the tags v3.0.0, v3.0.1 and v3.0.2 under any spelling and any version with build
-metadata such as `+incompatible` (which Go cannot resolve), a directory that
+together. A pseudo-version is a commit and is always accepted.
+The command refuses by name a version that is not a Go pseudo-version
+or a semver tag; every v3 tag cut before the module path moved to `/v3`, under
+any spelling (the boundary is `internal/modulemove.FirstV3ModuleTag`; while it
+is unset, every v3 tag), pointing at the prebuilt binaries and at
+`go install` of main instead; any version with build metadata such as `+incompatible` (which Go
+cannot resolve); a directory that
 does not exist or holds no pin line, and a mixed tree without `--mixed-ok`,
-exiting 1 without changing any file. See USAGE.md's Go adoption notes for the
-bump recipe.
+exiting 1 without changing any file. A write that fails part way also exits 1
+with every file as it was: the tree ends all old or all new. A `generate.go`
+that is a symbolic link is followed: the file it names is rewritten and the
+link is left as it is. See USAGE.md's Go
+adoption notes for the bump recipe.
 
 `generate --lang go` emits Go that imports the shared table runtime
 `github.com/mas-bandwidth/schema/v2/tables/goruntime` by default; the compiler

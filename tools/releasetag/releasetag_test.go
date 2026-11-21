@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/modulemove"
 )
 
 const (
@@ -135,6 +137,7 @@ func TestPromoteAndReleaseDriveOnlyTheirOneTag(t *testing.T) {
 			"rev-parse --verify " + otherSHA + "^{commit}": otherSHA + "\n",
 			"show v2.5.0:" + FormSource:                    formSrc(4),
 			"show " + mergeSHA + ":" + FormSource:          formSrc(4),
+			"show " + mergeSHA + ":go.mod":                 goModSrc("2"),
 		}}
 	}
 
@@ -276,6 +279,7 @@ func TestReleaseFormGate(t *testing.T) {
 			"rev-list origin/main":                mergeSHA + "\n",
 			"show v2.5.0:" + FormSource:           formSrc(3),
 			"show " + mergeSHA + ":" + FormSource: formSrc(4),
+			"show " + mergeSHA + ":go.mod":        goModSrc("2"),
 		}}
 		err := Release(g, c.version, "HEAD", "origin/main", true, io.Discard)
 		if got := errors.Is(err, ErrFormMoved); got != c.wantRefuse {
@@ -286,6 +290,100 @@ func TestReleaseFormGate(t *testing.T) {
 		}
 		if !c.wantRefuse && len(g.writes()) != 2 {
 			t.Errorf("release %s wrote %q; want its tag and its push", c.version, g.writes())
+		}
+	}
+}
+
+// goModSrc is a go.mod naming this module at major suffix /v<major> ("" for
+// none), assembled from parts so the module-path move program leaves it alone.
+func goModSrc(major string) string {
+	path := "github.com/mas-bandwidth/" + "schema"
+	if major != "" {
+		path += "/v" + major
+	}
+	return "module " + path + "\n\ngo 1.26\n"
+}
+
+// TestReleaseModuleGate drives internal/modulemove's release gate through
+// Release and a fake git: go.mod is read at the commit being tagged, and a
+// tag whose go.mod does not carry its major, which pin's boundary does not
+// cover, refuses and writes nothing, naming the version. The pure rule is
+// tested in internal/modulemove; this pins that the tagger runs it.
+func TestReleaseModuleGate(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		version, goModMajor string
+		wantRefuse          bool
+	}{
+		{"v2.6.0", "2", false},
+		{"v2.6.0", "4", true},
+		{"v2.6.0", "", true},
+		{"v4.0.0", "2", true},
+	} {
+		g := &fakeGit{answers: map[string]string{
+			"rev-parse --verify HEAD^{commit}":    mergeSHA + "\n",
+			"tag --list v*":                       "v2.4.0\nv2.5.0\n",
+			"rev-list origin/main":                mergeSHA + "\n",
+			"show v2.5.0:" + FormSource:           formSrc(4),
+			"show " + mergeSHA + ":" + FormSource: formSrc(4),
+			"show " + mergeSHA + ":go.mod":        goModSrc(c.goModMajor),
+		}}
+		err := Release(g, c.version, "HEAD", "origin/main", true, io.Discard)
+		if got := errors.Is(err, modulemove.ErrModuleMismatch); got != c.wantRefuse {
+			t.Errorf("Release(%s) on a go.mod at /v%s: err = %v; want refusal %v", c.version, c.goModMajor, err, c.wantRefuse)
+		}
+		if c.wantRefuse {
+			if len(g.writes()) != 0 {
+				t.Errorf("refused release %s wrote %q", c.version, g.writes())
+			}
+			if err != nil && !strings.Contains(err.Error(), c.version) {
+				t.Errorf("refusal does not name %s: %v", c.version, err)
+			}
+		} else if len(g.writes()) != 2 {
+			t.Errorf("release %s wrote %q; want its tag and its push", c.version, g.writes())
+		}
+	}
+}
+
+// TestReleaseHoldsTheBoundaryAgainstTagsAlreadyCut drives the history half of
+// the module gate through release and a fake git: with a boundary set, the
+// go.mod AT every v3 tag is read, and a boundary at or below a tag cut with
+// /v2 refuses and writes nothing, because pin would hand that tag out. The
+// reviewer's case: boundary v3.0.3, tags through v3.0.5 cut with /v2, the
+// first /v3 release going out as v3.0.6. The pure rule is tested in
+// internal/modulemove; this pins that the tagger feeds it the real tags.
+func TestReleaseHoldsTheBoundaryAgainstTagsAlreadyCut(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		boundary string
+		want     error
+	}{
+		{"v3.0.3", modulemove.ErrBoundaryStale},
+		{"v3.0.6", nil},
+		{"v3.0.7", modulemove.ErrBoundaryCovers}, // the tag resolves and pin would refuse it
+	} {
+		g := &fakeGit{answers: map[string]string{
+			"rev-parse --verify HEAD^{commit}":    mergeSHA + "\n",
+			"tag --list v*":                       "v2.9.0\nv3.0.0\nv3.0.1\nv3.0.2\nv3.0.3\nv3.0.4\nv3.0.5\nv3.0.5-promote\n",
+			"rev-list origin/main":                mergeSHA + "\n",
+			"show v3.0.5:" + FormSource:           formSrc(4),
+			"show " + mergeSHA + ":" + FormSource: formSrc(4),
+			"show " + mergeSHA + ":go.mod":        goModSrc("3"),
+		}}
+		// every v3 tag already cut declares /v2; the v2 tag and the tag
+		// that is not a release are never read
+		for _, tag := range []string{"v3.0.0", "v3.0.1", "v3.0.2", "v3.0.3", "v3.0.4", "v3.0.5"} {
+			g.answers["show "+tag+":go.mod"] = goModSrc("2")
+		}
+		err := release(g, "v3.0.6", "HEAD", "origin/main", true, io.Discard, c.boundary)
+		if !errors.Is(err, c.want) || (c.want == nil) != (err == nil) {
+			t.Errorf("release v3.0.6 with boundary %s over tags through v3.0.5 at /v2: err = %v; want %v", c.boundary, err, c.want)
+		}
+		if c.want != nil && len(g.writes()) != 0 {
+			t.Errorf("refused release (boundary %s) wrote %q", c.boundary, g.writes())
+		}
+		if c.want == nil && len(g.writes()) != 2 {
+			t.Errorf("release (boundary %s) wrote %q; want its tag and its push", c.boundary, g.writes())
 		}
 	}
 }
