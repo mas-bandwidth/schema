@@ -513,7 +513,7 @@ command did. Errors always print, one diagnostic per line.
 `--lang` takes `c`, `cpp`, `cs` (C# (modern): .NET 8+, C# 12), `dart`,
 `elixir`, `go`, `goose`, `java`, `js`, `lobster`, `lua`, `luau`, `python`,
 `ruby`, `rust`, `squirrel` and `unity` (C# (unity): C# 9 over
-netstandard2.1, the surface Unity compiles, [UNITY.md](UNITY.md)). moo is
+netstandard2.1, the surface Unity compiles, [UNITY.md](UNITY.md)). Moo is
 generated only by a compiler built with `go build -tags schema_leg_moo`.
 `--surface` (Go and Python) narrows the table surfaces emitted and
 `--runtime` (Go) picks the shared or standalone table runtime

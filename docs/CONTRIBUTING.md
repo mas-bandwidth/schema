@@ -35,10 +35,12 @@ of 2026-09-18 is AGENTS.md alone. The maintainer context behind these rules is
 
 **Who this repo is for.** Schema is the data language for games: you declare
 constants, enums, flags, types and tables once, and the compiler generates
-bit-packed serialization code in C, C# (modern), C# (unity), C++, Dart,
-Elixir, Go, Goose, Java, JavaScript, Lobster, Lua, Luau, Python, Ruby, Rust
-and Squirrel, and moo from a build with `-tags schema_leg_moo`
-(internal/languages derives that list; its test holds this page to it). The
+bit-packed serialization code in C, C++, C# (modern), C# (unity), Dart,
+Elixir, Go, Goose, Java, JavaScript, Lobster, Lua, Luau, Moo, Python, Ruby,
+Rust and Squirrel: eighteen targets, seventeen languages, since the two C#
+generators are one language (internal/languages derives that list; its test
+holds this page to it). The default build leaves Moo out: `--lang moo` needs
+a compiler built with `-tags schema_leg_moo`. The
 compiler is Go (`cmd/` + `internal/`, public
 API `compiler/` and `ir/`). The compiler is AGPL-3.0; **the code it generates is
 yours**, by an explicit permanent grant in [LICENSE](../LICENSE).
@@ -48,7 +50,7 @@ yours**, by an explicit permanent grant in [LICENSE](../LICENSE).
    the table wire. Where the code and a spec disagree, one of them has a bug and
    the tests decide which. **Read the spec before the code.**
 2. **C++ is the reference.** C++ writes the pins in `testdata/wire/` and
-   `testdata/golden/`; every one of the other eight legs byte-compares against
+   `testdata/golden/`; every other leg byte-compares against
    them. Cross-language wire identity is a standing gate, and so is
    fixed(I, F)/int128/uint128 identity in the ludicrous legs.
 3. **The wire is law.** A change that moves shipped bytes is a deliberate,
@@ -237,7 +239,7 @@ Nothing was dropped. `internal/slowtest` gates the toolchain half:
 - **the full set, for the check** — `SCHEMA_SLOW=1 go test ./compiler/
   ./internal/codegen/...`: the same plus every toolchain test. Minutes. Run it
   once before you open a pull request, not between edits.
-- **the nine leg gates** are unchanged, because each already exports
+- **the leg gates** are unchanged, because each already exports
   `SCHEMA_REQUIRE_CORPUS=1` and `slowtest.Enabled` counts that as the slow half
   being on. `make tables-<leg>-fixedform`, `make tables-<leg>-versioning` and
   `make tables-cs-leg` prove exactly what they proved before.
@@ -443,7 +445,7 @@ the packet surface has claims and the port joins the builtins (Lua was
 scaffolded this way and joined them).
 
 A backend is a Go package under `internal/codegen/` that walks the same IR the
-existing ten consume, plus one file in `compiler/` — `target_<lang>.go` —
+existing generators consume, plus one file in `compiler/` — `target_<lang>.go` —
 that registers it as a `compiler.Generator`, the public registration interface
 and the only way any target reaches the driver. The cross-language harness is
 what makes this tractable: generate the corpus in your language, encode the

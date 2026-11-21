@@ -8,9 +8,10 @@ document disagree, one of them is a bug (see VERSIONING.md).
 
 **schema** is a small language for describing bitpacked network data, and a
 compiler — written in Go — that translates `*.schema` files into generated
-source code in C, C# (modern), C# (unity), C++, Dart, Elixir, Go, Goose, Java,
-JavaScript, Lobster, Lua, Luau, Python, Ruby, Rust and Squirrel, and moo from
-a build with `-tags schema_leg_moo`. Every target but Dart, Elixir and Java
+source code in C, C++, C# (modern), C# (unity), Dart, Elixir, Go, Goose, Java,
+JavaScript, Lobster, Lua, Luau, Moo, Python, Ruby, Rust and Squirrel. The
+default build leaves Moo out: `--lang moo` needs a compiler built with
+`-tags schema_leg_moo`. Every target but Dart, Elixir and Java
 reads and writes through a serialize-family runtime library; those three carry
 the bit reader and writer in the generated code itself and need nothing but
 their own toolchain:
@@ -31,7 +32,7 @@ their own toolchain:
 | Lobster | [serialize.lobster](https://github.com/mas-bandwidth/serialize.lobster) |
 | Lua | [serialize.lua](https://github.com/mas-bandwidth/serialize.lua) |
 | Luau | [serialize.luau](https://github.com/mas-bandwidth/serialize.luau) |
-| moo | [serialize.moo](https://github.com/mas-bandwidth/serialize.moo), vendored at `internal/codegen/moo/runtime/` and emitted beside the generated modules |
+| Moo | [serialize.moo](https://github.com/mas-bandwidth/serialize.moo), vendored at `internal/codegen/moo/runtime/` and emitted beside the generated modules |
 | Python | serialize.py, staged in this repository at `third_party/serialize.py/` and shipped inside each generated package |
 | Ruby | [serialize.rb](https://github.com/mas-bandwidth/serialize.rb), staged at `third_party/serialize.rb/` and vendored into each generated package |
 | Squirrel | [serialize.nut](https://github.com/mas-bandwidth/serialize.nut) |
@@ -444,7 +445,7 @@ from this projection rather than carried in it.
   directly above things — above a declaration, a field, a variant or an
   arm, throughout this repo's own corpus — and under an
   implicit rule every one of them would become a descriptor string, a comment
-  in nine generated languages, and read-only data in the binary of every game
+  in every generated language, and read-only data in the binary of every game
   that links the table headers (SPEC-TABLES.md §8.1). What a build carries is
   what an author asked it to carry. The marker costs the language nothing:
   `///` is a `//` line by ordinary lexing, so a reader that does not know the
@@ -1559,7 +1560,7 @@ All compile errors with positions:
   Every command — `check`, `generate --lang L` for
   any L, and the rest — checks a declaration or field name against the
   reserved words of all seventeen languages: C, C++, C#, Go, Rust, Java,
-  JavaScript, Dart, Elixir, Lua, Luau, moo, Squirrel, Goose, Lobster,
+  JavaScript, Dart, Elixir, Lua, Luau, Moo, Squirrel, Goose, Lobster,
   Python and Ruby. The words
   live in ONE table in the checker (a language's keywords and literals, plus
   the predeclared names its generated code would shadow: Go's universe block,
@@ -3315,12 +3316,11 @@ internal/ast/
 internal/check/        resolver, constant folding, shape checks, dominance rule,
                        the protocol id
 internal/format/       schemafmt
-internal/codegen/      c/  cpp/  csharp/  dart/  elixir/  golang/  java/  js/
-                       rust/ — registered on the driver through the public
-                       generator interface; ctable/, cpptable/, cstable/,
-                       darttable/, elixirtable/, gotable/, javatable/,
-                       jstable/ and rusttable/ are the table emitters, one
-                       per backend, all nine (SPEC-TABLES.md)
+internal/codegen/      one directory per backend (c/, cpp/, csharp/, golang/,
+                       ...) — registered on the driver through the public
+                       generator interface — and beside each its table
+                       emitter (ctable/, cpptable/, cstable/, gotable/, ...)
+                       (SPEC-TABLES.md)
 internal/fuzz/         compiler fuzzing (gate 6)
 internal/publicapi/    the acceptance gate: an external module, public API only
 examples/              the corpus — always compiles under this spec as written

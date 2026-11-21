@@ -1,6 +1,6 @@
 ---
 name: schema
-description: Use when writing or changing .schema files, or generating serialization code for games with the schema compiler (packets, backend messages, save games, config, cooked assets) in C, C++, C#, Dart, Elixir, Go, Goose, Java, JavaScript, Lobster, Lua, Luau, Python, Ruby, Rust or Squirrel.
+description: Use when writing or changing .schema files, or generating serialization code for games with the schema compiler (packets, backend messages, save games, config, cooked assets) in C, C++, C#, Dart, Elixir, Go, Goose, Java, JavaScript, Lobster, Lua, Luau, Moo, Python, Ruby, Rust or Squirrel.
 ---
 
 # schema
@@ -48,7 +48,8 @@ schema generate --lang <lang> --out <out> <dir>
    run it again.
 3. `schema generate` once for each language the project uses. `--lang` takes
    `c`, `cpp`, `cs`, `dart`, `elixir`, `go`, `goose`, `java`, `js`, `lobster`,
-   `lua`, `luau`, `python`, `ruby`, `rust`, `squirrel` or `unity`.
+   `lua`, `luau`, `python`, `ruby`, `rust`, `squirrel` or `unity`; `moo` needs
+   a compiler built with `-tags schema_leg_moo`.
 4. Build the project and run its tests.
 
 Before changing a `type`, run `schema id <dir>`; if the id moves, every peer
