@@ -2372,8 +2372,8 @@ build/packet-end-c-test: build/packet-end/c/.stamp test/packet-end/c/main.c $(SE
 		test/packet-end/c/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
 
 .PHONY: packet-end-c packet-end-c-negative-control
-packet-end-c: build/packet-end-c-test
-	./build/packet-end-c-test testdata/wire/packet-end
+packet-end-c: build/mustrun build/packet-end-c-test
+	$(MUSTRUN) -name packet-end-c -count 3 -- ./build/packet-end-c-test testdata/wire/packet-end
 
 packet-end-c-negative-control: packet-end-c
 	@mkdir -p build/packet-end/c-negative

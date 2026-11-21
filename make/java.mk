@@ -2135,7 +2135,7 @@ conformance-negative-control-java-walk: build/conformance-harness
 # has no budget for them (see that target). Then the packet tests, with and
 # without -ea.
 .PHONY: test-java
-test-java: toolchain-java generated/java/.stamp generated/java-ludicrous/.stamp generated/bench/java/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
+test-java: build/mustrun toolchain-java generated/java/.stamp generated/java-ludicrous/.stamp generated/bench/java/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
 	$(MAKE) tables-java-compile
 	$(MAKE) tables-java-standalone
 	$(MAKE) tables-java-zero-cost
@@ -2152,10 +2152,10 @@ test-java: toolchain-java generated/java/.stamp generated/java-ludicrous/.stamp 
 	$(MAKE) tables-java-message-batch
 	# THE VARIABLE CLASS against the committed reference bytes (docs/SPEC-TABLES.md §2, §3, §16)
 	$(MAKE) tables-java-variable-class
-	cd test/java && $(JAVA) -ea -cp ../../build/java-test Main
-	cd test/java && $(JAVA) -cp ../../build/java-test Main
-	cd test/java-ludicrous && $(JAVA) -ea -cp ../../build/java-test-ludicrous Main
-	cd test/java-ludicrous && $(JAVA) -cp ../../build/java-test-ludicrous Main
+	cd test/java && ../../$(MUSTRUN) -name test-java-ea -count 866 -- $(JAVA) -ea -cp ../../build/java-test Main
+	cd test/java && ../../$(MUSTRUN) -name test-java -count 860 -- $(JAVA) -cp ../../build/java-test Main
+	cd test/java-ludicrous && ../../$(MUSTRUN) -name test-java-ludicrous-ea -count 48 -- $(JAVA) -ea -cp ../../build/java-test-ludicrous Main
+	cd test/java-ludicrous && ../../$(MUSTRUN) -name test-java-ludicrous -count 47 -- $(JAVA) -cp ../../build/java-test-ludicrous Main
 
 TEST_LEGS          += test-java
 TOOLCHAIN_LEGS     += java
@@ -2598,11 +2598,11 @@ build/packet-end/java/.stamp: bin/schema test/packet-end/End.schema make/java.mk
 	@touch $@
 
 .PHONY: packet-end-java packet-end-java-negative-control
-packet-end-java: build/packet-end/java/.stamp
+packet-end-java: build/mustrun build/packet-end/java/.stamp
 	@mkdir -p build/packet-end/java/classes
 	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-end/java/classes build/packet-end/java/gen/*.java test/packet-end/java/Main.java
-	$(JAVA) -ea -cp build/packet-end/java/classes Main testdata/wire/packet-end
-	$(JAVA) -cp build/packet-end/java/classes Main testdata/wire/packet-end
+	$(MUSTRUN) -name packet-end-java-ea -count 3 -- $(JAVA) -ea -cp build/packet-end/java/classes Main testdata/wire/packet-end
+	$(MUSTRUN) -name packet-end-java -count 3 -- $(JAVA) -cp build/packet-end/java/classes Main testdata/wire/packet-end
 
 packet-end-java-negative-control: packet-end-java
 	@mkdir -p build/packet-end/java-negative
