@@ -3,7 +3,9 @@
 package testproc_test
 
 import (
+	"reflect"
 	"runtime"
+	"syscall"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -23,4 +25,11 @@ func TestChildLeadsItsOwnGroup(t *testing.T) {
 	if runtime.GOOS == "linux" && !hasDeathSignal(cmd.SysProcAttr) {
 		t.Fatal("on Linux the child carries no parent-death signal")
 	}
+}
+
+// hasDeathSignal reads Pdeathsig by name: the field exists only on Linux, and
+// this file builds on every unix host.
+func hasDeathSignal(a *syscall.SysProcAttr) bool {
+	f := reflect.ValueOf(a).Elem().FieldByName("Pdeathsig")
+	return f.IsValid() && f.Interface() == syscall.SIGKILL
 }
