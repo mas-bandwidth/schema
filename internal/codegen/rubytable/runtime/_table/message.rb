@@ -674,9 +674,7 @@ module SchemaRuntimeUnit
           msg_read_value(reader, elem, shape.inner, vocab, own_version, keys, stats, depth + 1)
         end
         if fd.array_kind == 1 && count < fd.bound
-          (fd.bound - count).times do
-            values << (elem.codec == 'table' ? new_by_name(elem.target) : elem.default_value)
-          end
+          (fd.bound - count).times { values << born_element(fd, elem) }
         end
         return fd.codec == 'bytes' ? values.pack('C*') : values
       when 30
