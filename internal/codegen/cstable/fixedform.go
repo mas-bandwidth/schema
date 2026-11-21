@@ -2251,7 +2251,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	if hasWriterBounds {
 		g.pf("        if (writerClamp != null && !writerClamp.Invoke(values[k], report)) { refused = true; }\n")
 	}
-	if ir.TableFixedClampNeeded(st) {
+	if ir.TableFixedBoundsNeeded(st) {
 		g.pf("        if (!%sFixedClamp(values[k], report)) { refused = true; }\n", name)
 	}
 	// THE FORGED ORDINAL'S CLAMP IS THE BOUNDS STEP'S TOO (§5.4): the ordinal

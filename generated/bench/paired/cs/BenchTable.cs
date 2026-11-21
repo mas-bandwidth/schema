@@ -6072,7 +6072,7 @@ namespace Bench
                     if (!Compatible(elementKind, f.Kind, report)) { return false; }
                     if (f.Dynamic && count > int.MaxValue) { return CollectionCap(report); }
                     int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
-                    if (!f.Dynamic && count > (ulong)f.ArrayBound) { return Fail(report, "count_over_bound: " + f.Name); }
+                    if (!f.Dynamic && (count < (ulong)f.ArrayMin || count > (ulong)f.ArrayBound)) { return Fail(report, "count_over_bound: " + f.Name); }
                     int decoded = 0;
                     for (int i = 0; i < keep; i++)
                     {
@@ -6156,7 +6156,7 @@ namespace Bench
                     else
                     {
                         int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
-                        if (!f.Dynamic && count > (ulong)f.ArrayBound) { return Fail(report, "count_over_bound: " + f.Name); }
+                        if (!f.Dynamic && (count < (ulong)f.ArrayMin || count > (ulong)f.ArrayBound)) { return Fail(report, "count_over_bound: " + f.Name); }
                         int previous = f.Counted && f.GetCount != null ? f.GetCount(value) : 0;
                         int decoded = 0; long textSpent = 0;
                         for (int i = 0; i < keep; i++)
@@ -9606,6 +9606,7 @@ namespace Bench
             // bits(48) width clamp
             if (value.FrameTick > 281474976710655ul) { clamped++; }
             if (value.ServerTime < 0 || value.ServerTime > 16776960) { clamped++; }
+            if (value.EntitiesCount < 1) { clamped++; }
             if (value.Entities != null)
             {
                 for (int i = 0; i < value.EntitiesCount && i < value.Entities.Length; ++i)
@@ -9722,6 +9723,7 @@ namespace Bench
             // bits(48) width clamp
             if (value.FrameTick > 281474976710655ul) { clamped++; }
             if (value.ServerTime < 0 || value.ServerTime > 16776960) { clamped++; }
+            if (value.EntitiesCount < 1) { clamped++; }
             if (value.Entities != null)
             {
                 for (int i = 0; i < value.EntitiesCount && i < value.Entities.Length; ++i)
