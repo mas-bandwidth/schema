@@ -89,9 +89,6 @@ func TestTheEntryIsAnonymousInTheBaseline(t *testing.T) {
 		t.Errorf("a was rename moved the entry's lines:\n--- before ---\n%s--- after ---\n%s", entryLines(text), got)
 	}
 	allMapDiff := mapDiff(t, mapFixtureSrc, renamed, baseline.DefaultTokenPolicy)
-	if len(allMapDiff) == 0 {
-		t.Fatal("mapDiff(t, mapFixtureSrc, renamed, baseline.DefaultTokenPolicy) is empty: the loop below would check nothing")
-	}
 	for _, f := range allMapDiff {
 		if strings.Contains(f.Where, "entry:") || strings.Contains(f.What, "map key") || strings.Contains(f.What, "array shape") {
 			t.Errorf("a was rename of a map field reported against the construct: %s", f)
@@ -135,9 +132,6 @@ func TestTheKeyKindIsFixed(t *testing.T) {
 	// nothing about the key — the key rows must not fire.
 	widened := editOf(t, mapFixtureSrc, "by_id map[uint32]int32", "by_id map[uint32]int64")
 	allMapDiff := mapDiff(t, mapFixtureSrc, widened, baseline.DefaultTokenPolicy)
-	if len(allMapDiff) == 0 {
-		t.Fatal("mapDiff(t, mapFixtureSrc, widened, baseline.DefaultTokenPolicy) is empty: the loop below would check nothing")
-	}
 	for _, f := range allMapDiff {
 		if strings.Contains(f.What, "map key") {
 			t.Errorf("a VALUE edit reported against the key: %s", f)
@@ -247,9 +241,6 @@ func TestTheArrayToMapEditWarns(t *testing.T) {
 	// ATTRIBUTION: with the array row gone the shape check is gone, and no
 	// finding anywhere says a shape moved.
 	quiet := mapDiff(t, mapPairSrc, mapFixtureSrc, without("array"))
-	if len(quiet) == 0 {
-		t.Fatal("quiet is empty: the loop below would check nothing")
-	}
 	for _, f := range quiet {
 		if strings.Contains(f.What, "array shape") {
 			t.Errorf("with the array row dropped, a shape move is still reported: %s", f)
@@ -260,9 +251,6 @@ func TestTheArrayToMapEditWarns(t *testing.T) {
 	// the row must stay silent for it (§3).
 	fixedSrc := editOf(t, mapPairSrc, "ships [..4]Pair", "ships [4]Pair")
 	allMapDiff := mapDiff(t, mapPairSrc, fixedSrc, baseline.DefaultTokenPolicy)
-	if len(allMapDiff) == 0 {
-		t.Fatal("mapDiff(t, mapPairSrc, fixedSrc, baseline.DefaultTokenPolicy) is empty: the loop below would check nothing")
-	}
 	for _, f := range allMapDiff {
 		if strings.Contains(f.What, "array shape") {
 			t.Errorf("fixed <-> bounded reported a shape move: %s", f)

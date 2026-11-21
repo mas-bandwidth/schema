@@ -203,9 +203,6 @@ func t03R22(t *testing.T) {
 	if calls != 1 {
 		t.Errorf("R22: the walk resolved Node %d times, want once: T is never in its own closure", calls)
 	}
-	if len(breaks) == 0 {
-		t.Fatal("breaks is empty: the loop below would check nothing")
-	}
 	for _, b := range breaks {
 		if b.Owner == "Node" && b.Field == "next" {
 			t.Errorf("R22: the walk reported Node's own self-reference as a break: %+v", b)

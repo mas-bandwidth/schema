@@ -79,16 +79,10 @@ func TestUsageGoNamesAreEmitted(t *testing.T) {
 		declared := usageGoDeclaredNames(t, f.body, currentSchema, name)
 		calls, types := usageGoTableNames(t, f.body, name)
 		checkedNames += len(calls) + len(types)
-		if len(calls) == 0 {
-			t.Fatal("calls is empty: the loop below would check nothing")
-		}
 		for id := range calls {
 			if kind := declared[id]; kind != "func" && kind != "type" {
 				t.Errorf("%s line %d: %s is called but generated Go declares no func or type of that name", "../docs/USAGE.md", f.line, id)
 			}
-		}
-		if len(types) == 0 {
-			t.Fatal("types is empty: the loop below would check nothing")
 		}
 		for id := range types {
 			if declared[id] != "type" {

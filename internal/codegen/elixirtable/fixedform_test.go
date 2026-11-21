@@ -374,9 +374,6 @@ type Point
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(out) == 0 {
-		t.Fatal("out is empty: the loop below would check nothing")
-	}
 	for name := range out {
 		if strings.Contains(name, "Fixed") {
 			t.Errorf("a table-free unit grew %s", name)

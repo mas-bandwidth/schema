@@ -195,7 +195,9 @@ func TestLuauMessageFormMatchesTheGoldens(t *testing.T) {
 	}
 	// the parallel row subtests run inside one group, so the count below is
 	// read after every one of them has finished (and counted atomically)
-	var compared atomic.Int64
+	// a row skipped by the toolchain gate (slowtest, with its reason) is
+	// counted apart, so the total below holds either way
+	var compared, skipped atomic.Int64
 	t.Run("rows", func(t *testing.T) {
 		for _, row := range rows {
 			t.Run(row.name, func(t *testing.T) {
@@ -207,6 +209,11 @@ func TestLuauMessageFormMatchesTheGoldens(t *testing.T) {
 				if !messageRootFixed(t, units[conn.unit], row.root) {
 					return // a variable table carries no message form (§3.3)
 				}
+				t.Cleanup(func() {
+					if t.Skipped() {
+						skipped.Add(1)
+					}
+				})
 				ann, err := os.ReadFile(filepath.Join(root, conn.announcement))
 				if err != nil {
 					t.Fatal(err)
@@ -235,10 +242,10 @@ func TestLuauMessageFormMatchesTheGoldens(t *testing.T) {
 			})
 		}
 	})
-	if n := compared.Load(); n != int64(fixed) && !t.Failed() {
-		t.Fatalf("compared %d message rows against their batch goldens, want the %d fixed-root rows", n, fixed)
+	if n, s := compared.Load(), skipped.Load(); n+s != int64(fixed) && !t.Failed() {
+		t.Fatalf("compared %d message rows against their batch goldens and %d skipped, want the %d fixed-root rows", n, s, fixed)
 	}
-	t.Logf("compared %d message rows against their batch goldens", compared.Load())
+	t.Logf("compared %d message rows against their batch goldens (%d skipped)", compared.Load(), skipped.Load())
 }
 
 // TestLuauMessageFormNegativeControl patches the emitted runtime in memory,

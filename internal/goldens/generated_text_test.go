@@ -100,6 +100,7 @@ func TestGeneratedTextNamesNoMachine(t *testing.T) {
 		t.Run(target, func(t *testing.T) {
 			t.Parallel()
 			emitted := 0
+			scanned := 0
 			for _, dir := range units {
 				paths, err := compiler.GatherPaths([]string{dir})
 				if err != nil {
@@ -119,9 +120,7 @@ func TestGeneratedTextNamesNoMachine(t *testing.T) {
 					names = append(names, name)
 				}
 				sort.Strings(names)
-				if len(names) == 0 {
-					t.Fatal("names is empty: the loop below would check nothing")
-				}
+				scanned += len(names)
 				for _, name := range names {
 					text := files[name]
 					where := target + " " + dir + " " + name
@@ -145,6 +144,9 @@ func TestGeneratedTextNamesNoMachine(t *testing.T) {
 			}
 			if emitted == 0 {
 				t.Errorf("target %s emitted no unit, so nothing of its output was checked", target)
+			}
+			if scanned == 0 {
+				t.Errorf("target %s emitted no file across every unit, so nothing of its output was scanned", target)
 			}
 		})
 	}

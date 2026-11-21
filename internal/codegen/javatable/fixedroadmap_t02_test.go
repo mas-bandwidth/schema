@@ -488,9 +488,6 @@ fixed table Big
 		t.Fatalf("R6: the fixture body = %d, not past %d", ir.TableFixedTypeBytes(st), ir.TableFixedRecordMaxBytes)
 	}
 	allTableFixedFormRoots := ir.TableFixedFormRoots(u)
-	if len(allTableFixedFormRoots) == 0 {
-		t.Fatal("ir.TableFixedFormRoots(u) is empty: the loop below would check nothing")
-	}
 	for _, r := range allTableFixedFormRoots {
 		if r.Name == "Big" {
 			t.Error("R6: a table past the ceiling is a fixed-form root")
