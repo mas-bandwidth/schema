@@ -320,16 +320,16 @@ func TestConstrainedTestGateNegativeControl(t *testing.T) {
 	t.Parallel()
 	const tagged = "//go:build schema_leg_x\n\npackage p\n"
 	root := writeTree(t, map[string]string{
-		"a/plain_test.go":            "package a\n",
-		"a/unix_test.go":             "//go:build unix\n\npackage a\n",
-		"a/on_test.go":               tagged,                                   // make target a workflow runs: proven
-		"b/on_test.go":               tagged,                                   // the tagged command names ./a/ only
-		"c/on_test.go":               "//go:build schema_leg_y\n\npackage c\n", // its make target is in no workflow
-		"d/lock_windows_test.go":     "package d\n",                            // a Windows job tests ./d/
-		"e/lock_windows_test.go":     "package e\n",                            // the Windows job only vets it
-		"f/wire_plan9_test.go":       "package f\n",
-		"g/both_test.go":             "//go:build windows && schema_leg_x\n\npackage g\n",
-		"Makefile":                   "test-x-tagged:\n\tSCHEMA_SLOW=1 go test -count=1 -tags schema_leg_x ./a/\n\ntest-y-tagged:\n\tgo test -tags schema_leg_y ./c/\n",
+		"a/plain_test.go":        "package a\n",
+		"a/unix_test.go":         "//go:build unix\n\npackage a\n",
+		"a/on_test.go":           tagged,                                   // make target a workflow runs: proven
+		"b/on_test.go":           tagged,                                   // the tagged command names ./a/ only
+		"c/on_test.go":           "//go:build schema_leg_y\n\npackage c\n", // its make target is in no workflow
+		"d/lock_windows_test.go": "package d\n",                            // a Windows job tests ./d/
+		"e/lock_windows_test.go": "package e\n",                            // the Windows job only vets it
+		"f/wire_plan9_test.go":   "package f\n",
+		"g/both_test.go":         "//go:build windows && schema_leg_x\n\npackage g\n",
+		"Makefile":               "test-x-tagged:\n\tSCHEMA_SLOW=1 go test -count=1 -tags schema_leg_x ./a/\n\ntest-y-tagged:\n\tgo test -tags schema_leg_y ./c/\n",
 		// F-180: a Windows step that only echoes the command, one whose
 		// test step is off, one that cds elsewhere first, one with a
 		// working-directory, and a job that is off: none runs the package

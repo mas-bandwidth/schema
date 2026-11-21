@@ -544,7 +544,7 @@ var (
 
 var (
 	literalFalse = regexp.MustCompile(`^(false|\$\{\{\s*false\s*\}\})$`)
-	// cd, pushd, or go test -C: what follows runs somewhere else
+	// cd, pushd, or go test -C: what follows runs somewhere else.
 	changesDir = regexp.MustCompile(`(^|[;&|(]\s*)(cd|pushd)\s|\sgo test\s+-C[ =]|^go test\s+-C[ =]`)
 )
 
