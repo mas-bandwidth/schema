@@ -12,6 +12,11 @@
 // bit 0 through the generated Read<Root> as packet_refused, and an accept is
 // held by the SHA-256 of the bytes Write<Root> writes back.
 //
+// A refusal conforms on its verdict alone (docs/rulings.json
+// refusal-verdict-only, SPEC-TABLES §6.5 and §13.10): the name the port gives
+// it is printed on a FAIL line as its diagnostic and never compared
+// (TestScorerOutcomes grades the shared scorer outcome cases through agrees).
+//
 // A disagreement the port already owes is carried by name in the findings
 // file and printed as a FIX-CARD; one no finding names fails, and a finding
 // whose case has gone green fails too, so the list cannot rot. Reads files
@@ -338,6 +343,40 @@ func digest(answerHex string, packet bool) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
+// answerOf is the runner's one-line answer for the program's line about a
+// case (a[0] the verdict, a[1] the hex text or the refusal's name), or for no
+// line at all.
+func answerOf(a []string, ok, packet bool) string {
+	switch {
+	case !ok:
+		return "no answer"
+	case a[0] == hostilecorpus.Accept:
+		d, err := digest(a[1], packet)
+		if err != nil {
+			return "accept, " + err.Error()
+		}
+		return "accept " + d
+	case a[0] == hostilecorpus.Refuse:
+		return "refuse " + a[1]
+	}
+	return a[0] + " " + a[1]
+}
+
+// expected is the manifest's answer for a case.
+func expected(c hostilecorpus.Case) string {
+	if c.Verdict == hostilecorpus.Accept {
+		return "accept " + c.Digest
+	}
+	return "refuse " + c.Reason
+}
+
+// agrees reports whether the port's answer conforms to the manifest's: a
+// refusal on its verdict alone, whatever either names (refusal-verdict-only);
+// an accept on its digest. No answer is never a refusal.
+func agrees(got, want string) bool {
+	return got == want
+}
+
 // readFindings: name<TAB>one line, `#` comments.
 func readFindings(path string) (map[string]string, error) {
 	out := map[string]string{}
@@ -424,31 +463,12 @@ func main() {
 			continue
 		}
 		a, ok := answers[c.Schema][c.Name]
-		var got string
-		switch {
-		case !ok:
-			got = "no answer"
-		case a[0] == "accept":
-			d, err := digest(a[1], c.Carrier == "packet")
-			if err != nil {
-				got = "accept, " + err.Error()
-			} else {
-				got = "accept " + d
-			}
-		case a[0] == "refuse":
-			got = "refuse " + a[1]
-		default:
-			got = a[0] + " " + a[1]
-		}
-		want := "refuse " + c.Reason
-		if c.Verdict == hostilecorpus.Accept {
-			want = "accept " + c.Digest
-		}
+		got, want := answerOf(a, ok, c.Carrier == "packet"), expected(c)
 		finding, owed := findings[c.Name]
 		switch {
-		case got == want && owed:
+		case agrees(got, want) && owed:
 			stale = append(stale, fmt.Sprintf("STALE FIX-CARD %s: the case passes; delete its line (%s)", c.Name, finding))
-		case got == want:
+		case agrees(got, want):
 			pass++
 			fmt.Printf("PASS %s\n", c.Name)
 		case owed:

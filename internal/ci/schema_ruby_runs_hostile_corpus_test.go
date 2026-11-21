@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v2/internal/ci/hostilecorpus"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/ruby/rubyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -25,8 +26,12 @@ const (
 	rubyHostileProbeSchemaPath = "schemas/probe.schema"
 	rubyHostileProbeSchema     = "package probe\n\ntable Root\n{\n    entries map[int32]int32\n}\n"
 
+	// The planted reader bug: the form gates refuse the form they carry, so
+	// every clean wire the corpus accepts is refused. The plant changes a
+	// verdict: a refusal conforms on its verdict alone (refusal-verdict-only),
+	// so a plant that only renamed a refusal would leave the corpus green.
 	rubyHostilePlantFrom = "if form != FORM"
-	rubyHostilePlantTo   = "if form != FORM && form != 0xff"
+	rubyHostilePlantTo   = "if form != FORM || true"
 
 	rubyAllocationFactorF = 512.0
 	rubyAllocationSlackKB = 2048.0
@@ -132,8 +137,8 @@ func rubyHostilePlant(t *testing.T, files map[string][]byte) {
 	for name := range files {
 		if strings.HasSuffix(name, "/_fixed.rb") {
 			src := string(files[name])
-			src = strings.ReplaceAll(src, "if b0 != 3", "if b0 != 3 && b0 != 0xff")
-			src = strings.ReplaceAll(src, "if b0 != form", "if b0 != form && b0 != 0xff")
+			src = strings.ReplaceAll(src, "if b0 != 3", "if b0 != 3 || true")
+			src = strings.ReplaceAll(src, "if b0 != form", "if b0 != form || true")
 			files[name] = []byte(src)
 		}
 		if strings.HasSuffix(name, "/_table/load.rb") {
@@ -207,8 +212,16 @@ def refuse_reason(carrier, exc)
   reason.empty? ? 'damaged' : reason
 end
 
+# A writer that refuses the value the read accepted is an error, never a
+# refusal: a refusal conforms on its verdict alone (refusal-verdict-only).
+def written(what)
+  yield
+rescue Refused => e
+  raise "#{what} refused the decoded value: #{e.respond_to?(:reason) ? e.reason : ''}"
+end
+
 def canonical_text(value)
-  text = value.to_json
+  text = written('the text writer') { value.to_json }
   text = text.byteslice(0, text.bytesize - 1) if text.getbyte(-1) == 10
   text.b
 end
@@ -218,7 +231,7 @@ def run_case(carrier, root_name, payload)
   case carrier
   when 'packet'
     value = root.read(payload)
-    ['accept', '-', value.write]
+    ['accept', '-', written('the packet writer') { value.write }]
   when 'text'
     text = payload.dup.force_encoding(Encoding::UTF_8)
     raise Refused.new('invalid_utf8') unless text.valid_encoding?
@@ -348,7 +361,9 @@ func rubyHostileRun(t *testing.T, root, corpusDir string, cases []rubyHostileCas
 						t.Fatalf("read Ruby answer for %s: %v", fields[1], err)
 					}
 				}
-				if prev, ok := answers[fields[1]]; ok && (prev.verdict != answer.verdict || prev.reason != answer.reason) {
+				// two refusals agree whatever each names (refusal-verdict-only)
+				if prev, ok := answers[fields[1]]; ok && (prev.verdict != answer.verdict ||
+					(answer.verdict != rubyHostileRefuse && prev.reason != answer.reason)) {
 					t.Fatalf("%s: the two pinned Ruby interpreters disagree: %s/%s vs %s/%s",
 						fields[1], prev.verdict, prev.reason, answer.verdict, answer.reason)
 				}
@@ -359,39 +374,66 @@ func rubyHostileRun(t *testing.T, root, corpusDir string, cases []rubyHostileCas
 	return answers
 }
 
+// rubyHostileGrade grades one answer against its case and returns "" when it
+// conforms, else the disagreement. A refusal conforms on its verdict alone,
+// whatever reason either side names (docs/rulings.json refusal-verdict-only,
+// SPEC-TABLES §6.5 and §13.10); an accept on its decoded value's digest; a
+// crash or no answer never conforms.
+func rubyHostileGrade(c rubyHostileCase, a rubyHostileAnswer, answered bool) string {
+	if !answered {
+		return fmt.Sprintf("%s: want %s/%s, got no answer", c.Name, c.Verdict, c.Reason)
+	}
+	if a.verdict != c.Verdict || a.reason != c.Reason {
+		return fmt.Sprintf("%s: want %s/%s, got %s/%s", c.Name, c.Verdict, c.Reason, a.verdict, a.reason)
+	}
+	if c.Verdict == rubyHostileAccept {
+		if a.text == nil {
+			return fmt.Sprintf("%s: want digest %s, got no text", c.Name, c.Digest)
+		}
+		sum := sha256.Sum256(a.text)
+		if got := hex.EncodeToString(sum[:]); got != c.Digest {
+			return fmt.Sprintf("%s: want digest %s, got %s", c.Name, c.Digest, got)
+		}
+	}
+	return ""
+}
+
 func rubyHostileCompare(cases []rubyHostileCase, answers map[string]rubyHostileAnswer) []string {
 	var bad []string
 	for _, c := range cases {
 		a, ok := answers[c.Name]
-		if !ok {
-			bad = append(bad, fmt.Sprintf("%s: want %s/%s, got no answer", c.Name, c.Verdict, c.Reason))
+		if ok && a.verdict == rubyHostileRefuse && a.reason == "reader_unavailable" {
 			continue
 		}
-		if a.verdict == rubyHostileRefuse && a.reason == "reader_unavailable" {
-			continue
-		}
-		verdictOK := a.verdict == c.Verdict && a.reason == c.Reason
-		digestOK := true
-		gotDigest := ""
-		if c.Verdict == rubyHostileAccept && a.verdict == rubyHostileAccept {
-			if a.text == nil {
-				digestOK = false
-			} else {
-				sum := sha256.Sum256(a.text)
-				gotDigest = hex.EncodeToString(sum[:])
-				digestOK = gotDigest == c.Digest
-			}
-		}
-		if verdictOK && digestOK {
-			continue
-		}
-		if !verdictOK {
-			bad = append(bad, fmt.Sprintf("%s: want %s/%s, got %s/%s", c.Name, c.Verdict, c.Reason, a.verdict, a.reason))
-		} else {
-			bad = append(bad, fmt.Sprintf("%s: want digest %s, got %s", c.Name, c.Digest, gotDigest))
+		if why := rubyHostileGrade(c, a, ok); why != "" {
+			bad = append(bad, why)
 		}
 	}
 	return bad
+}
+
+// TestSchemaRubyHostileScorerOutcomes grades the shared scorer outcome cases
+// (hostilecorpus.ScorerOutcomesPath) through rubyHostileGrade: a refusal with
+// another reason or none passes; a changed verdict either way, a different
+// accepted value or a crash fails. It runs no Ruby.
+func TestSchemaRubyHostileScorerOutcomes(t *testing.T) {
+	t.Parallel()
+	outcomes, err := hostilecorpus.LoadScorerOutcomes(repoRoot(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, o := range outcomes {
+		c := rubyHostileCase{Name: o.Name, Carrier: "text", Verdict: o.Verdict, Reason: o.Reason, Digest: o.Digest}
+		a := rubyHostileAnswer{verdict: "crash", reason: "SystemExit: the worker exited with status 3"}
+		if name, refused := o.Refused(); refused {
+			a = rubyHostileAnswer{verdict: rubyHostileRefuse, reason: name}
+		} else if text, accepted := o.Accepted(); accepted {
+			a = rubyHostileAnswer{verdict: rubyHostileAccept, reason: "-", text: text}
+		}
+		if why := rubyHostileGrade(c, a, true); (why == "") != o.Pass {
+			t.Errorf("%s: graded %q, the fixture says pass=%t", o.Name, why, o.Pass)
+		}
+	}
 }
 
 func TestSchemaRubyRunsHostileCorpus(t *testing.T) {
