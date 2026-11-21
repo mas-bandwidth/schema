@@ -21,9 +21,10 @@ import (
 // the aliased names). Every expected value is the one Go pins in
 // internal/codegen/gotable/textform_test.go TestDocumentVectors for the same
 // schema text and the same input bytes (kinds.value.json). This port computes
-// no expectation of its own; the refusals assert §16.9.4's stable names
-// against the whole refusals corpus (test/conformance/textform/refusals),
-// each .sexp against its .reason, as Go's TestDocumentRefusals does.
+// no expectation of its own; every .sexp in the refusals corpus
+// (test/conformance/textform/refusals) must refuse, as Go's
+// TestDocumentRefusals holds: the verdict only, never the .reason name
+// (docs/rulings.json refusal-verdict-only).
 func TestCPPTextFormDocumentVectors(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the C++ compiler")
@@ -236,13 +237,11 @@ func TestCPPTextFormDocumentVectors(t *testing.T) {
 		})
 	}
 
-	reason := func(stem string) string {
-		b, err := os.ReadFile(filepath.Join("..", "test", "conformance", "textform", "refusals", stem+".reason"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		return strings.TrimSpace(string(b))
-	}
+	// The refusals corpus holds the VERDICT only (docs/rulings.json
+	// refusal-verdict-only): the read returned false. The name the driver
+	// prints is per-language diagnostic detail and the .reason beside each
+	// vector is recommended vocabulary, never compared. A crash or a non-zero
+	// exit fails in run, never counts as a refusal.
 	names, err := filepath.Glob(filepath.Join("..", "test", "conformance", "textform", "refusals", "*.sexp"))
 	if err != nil || len(names) == 0 {
 		t.Fatalf("no refusal vectors: %v", err)
@@ -261,8 +260,8 @@ func TestCPPTextFormDocumentVectors(t *testing.T) {
 			t.Parallel()
 			main, bin := writeDriver(t, string(input), cppRefusalDriver)
 			compile(t, main, bin)
-			if got, want := run(t, bin), reason(stem); got != want {
-				t.Fatalf("got %q, want %q", got, want)
+			if got := run(t, bin); got == "accepted" || got == "" {
+				t.Fatalf("got %q, want refused", got)
 			}
 		})
 		ran++
