@@ -1239,7 +1239,7 @@ pub fn bench_mixed_save_message_body(w: &mut TableBitWriter, value: &BenchMixedR
     }
     {
         debug_assert!(value.entities_count >= 1 && value.entities_count <= 8, "the declared count is the bound (docs/SPEC-TABLES.md §3.4)");
-        if value.entities_count > 0 {
+        if value.entities_count > 0 && (value.entities_count != 1 || (0..1).any(|i| { let mut probe = TableBitWriter::measure(); !mixed_entity_save_message_body(&mut probe, &value.entities[i]) || probe.bits > TABLE_MESSAGE_REF_BITS as u64 })) {
             w.put(10, TABLE_MESSAGE_REF_BITS);
             w.put((value.entities_count as u64).wrapping_sub(1), 3);
             for i in 0..(value.entities_count as usize) {
@@ -1690,7 +1690,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         value.entities_count = keep as i32;
                     }
                     if same_build && report.unknown == unknown_before {
-                        let rides = value.entities_count > 0;
+                        let rides = value.entities_count > 0 && (value.entities_count != 1 || (0..1).any(|i| { let mut probe = TableBitWriter::measure(); !mixed_entity_save_message_body(&mut probe, &value.entities[i]) || probe.bits > TABLE_MESSAGE_REF_BITS as u64 }));
                         if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
                 }
