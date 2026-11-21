@@ -797,33 +797,49 @@ defmodule Driver do
   # build: `{:error, _}` from a save, or the `ArgumentError` the fixed writer
   # raises. A value this leg's terms cannot hold (a BEAM float holds no NaN or
   # infinity) answers `unrepresentable`, which only a refused row accepts.
+  #
+  # ONE CASE NEVER ANSWERS FOR ANOTHER (each_case/3), and a case ends one of
+  # three ways, told apart by what happened and never by the case's name:
+  #   the codec is absent for the case (the unit has no codec module, or the
+  #     codec's own descriptors carry no such root): an EMPTY <case>.absent;
+  #   the present codec answered through its public write contract: `wrote`,
+  #     or `refused` for the refusal that contract spells (codec_refusal?/2);
+  #   anything else is a DRIVER ERROR: the case and the error go to stderr, the
+  #     remaining cases still run, and the surface exits non-zero at its end.
   defp run(surface, rows, outdir)
        when surface in ["write-refusal", "write-refusal-fixed", "write-refusal-json"] do
-    for [name, unit, root, wire, path, kind, text | _] <- rows(rows, surface) do
-      case table_module(unit) do
-        nil ->
-          write_absent(outdir, name)
+    each_case(surface, rows(rows, surface), fn [name, unit, root, wire, path, kind, text | _] ->
+      mod = table_module(unit)
 
-        mod ->
-          {:ok, value, _report} = mod.load(root, File.read!(wire))
-          ctx = %{mod: mod, ns: namespace(unit_package(unit)), descs: mod.descriptors()}
+      if mod == nil or not is_map_key(mod.descriptors(), root) do
+        write_absent(outdir, name)
+      else
+        ns = namespace(unit_package(unit))
 
-          answer =
-            case WriteRefusal.set(ctx, root, value, path, kind, text) do
-              :unrepresentable ->
-                "unrepresentable"
+        value =
+          case mod.load(root, File.read!(wire)) do
+            {:ok, value, _report} -> value
+            other -> raise "the codec did not load the row's instance: #{inspect(other)}"
+          end
 
-              {:ok, changed} ->
-                zero =
-                  kind == "bytes" and
-                    :binary.match(Base.decode16!(text, case: :mixed), <<0>>) != :nomatch
+        ctx = %{mod: mod, ns: ns, descs: mod.descriptors()}
 
-                write_refusal_answer(surface, mod, root, changed, zero)
-            end
+        answer =
+          case WriteRefusal.set(ctx, root, value, path, kind, text) do
+            :unrepresentable ->
+              "unrepresentable"
 
-          write(outdir, name, answer <> "\n")
+            {:ok, changed} ->
+              zero =
+                kind == "bytes" and
+                  :binary.match(Base.decode16!(text, case: :mixed), <<0>>) != :nomatch
+
+              write_refusal_answer(surface, mod, ns, root, changed, zero)
+          end
+
+        write(outdir, name, answer <> "\n")
       end
-    end
+    end)
   end
 
   # THE MESSAGE FORM's writer: the row's <unit> is a connection whose announced
@@ -841,43 +857,87 @@ defmodule Driver do
         {{conn, file}, batch}
       end)
 
-    for [name, connection, root, wire, path, kind, text | _] <-
-          rows(rows, "write-refusal-message") do
-      with {unit, announcement} <- Map.get(connections, connection),
-           mod when mod != nil <- message_module(unit),
-           table when table != nil <- table_module(unit),
-           batch when is_binary(batch) <- Map.get(batches, {connection, wire}) do
-        {:ok, announced} = mod.announce_read(File.read!(announcement))
-        {:ok, vocab} = mod.for_root(announced, root)
-        {:ok, [body]} = mod.load_messages(vocab, File.read!(batch))
-        uview_mod = Module.concat([Macro.camelize(unit_package(unit)), "UnitView"])
-        unions = if Code.ensure_loaded?(uview_mod) and function_exported?(uview_mod, :unit_view, 0),
-          do: Map.new(uview_mod.unit_view().unions, fn u -> {u.name, u} end),
-          else: %{}
-        ctx = %{descs: table.descriptors(), vocab: vocab, unions: unions}
+    each_case("write-refusal-message", rows(rows, "write-refusal-message"), fn
+      [name, connection, root, wire, path, kind, text | _] ->
+        # a row naming a connection or a message the manifest does not define
+        # is no absence of this leg's: it is an error, and says so
+        {unit, announcement} =
+          Map.get(connections, connection) ||
+            raise "the row names no connection the manifest defines: #{connection}"
 
-        answer =
-          case WriteRefusal.set_message(ctx, root, body, path, kind, text) do
-            :unrepresentable ->
-              "unrepresentable"
+        batch =
+          Map.get(batches, {connection, wire}) ||
+            raise "the row names no message of #{connection} over #{wire}"
 
-            {:ok, changed} ->
-              case mod.save_messages(vocab, [changed]) do
-                {:ok, _bytes} -> "wrote"
-                {:error, _reason} -> "refused"
-              end
-          end
+        mod = message_module(unit)
+        table = table_module(unit)
 
-        write(outdir, name, answer <> "\n")
-      else
-        _ -> write_absent(outdir, name)
-      end
-    end
+        if mod == nil or table == nil or not is_map_key(table.descriptors(), root) do
+          write_absent(outdir, name)
+        else
+          {:ok, announced} = mod.announce_read(File.read!(announcement))
+          {:ok, vocab} = mod.for_root(announced, root)
+          {:ok, [body]} = mod.load_messages(vocab, File.read!(batch))
+          uview_mod = Module.concat([Macro.camelize(unit_package(unit)), "UnitView"])
+
+          unions =
+            if Code.ensure_loaded?(uview_mod) and function_exported?(uview_mod, :unit_view, 0),
+              do: Map.new(uview_mod.unit_view().unions, fn u -> {u.name, u} end),
+              else: %{}
+
+          ctx = %{descs: table.descriptors(), vocab: vocab, unions: unions}
+
+          answer =
+            case WriteRefusal.set_message(ctx, root, body, path, kind, text) do
+              :unrepresentable ->
+                "unrepresentable"
+
+              {:ok, changed} ->
+                # the message writer's public contract: {:ok, bytes}, or
+                # {:error, reason} for a value it refuses; nothing else
+                case mod.save_messages(vocab, [changed]) do
+                  {:ok, bytes} when is_binary(bytes) -> "wrote"
+                  {:error, reason} when is_atom(reason) -> "refused"
+                end
+            end
+
+          write(outdir, name, answer <> "\n")
+        end
+    end)
   end
 
   defp run(surface, _rows, _outdir) do
     IO.puts(:stderr, "the Elixir leg does not implement #{surface}")
     System.halt(2)
+  end
+
+  # THE PER-CASE LOOP of the write-refusal surfaces. A case that raises, throws
+  # or exits is that case's driver error and no other's: its name and the error
+  # go to stderr, it leaves no answer, the cases after it still run, and the
+  # surface exits non-zero once the last case is done, so the run is red and
+  # every other case's answer is still there to read.
+  defp each_case(surface, cases, fun) do
+    errors =
+      Enum.count(cases, fn row ->
+        try do
+          fun.(row)
+          false
+        rescue
+          e -> case_error(surface, row, Exception.format(:error, e, __STACKTRACE__))
+        catch
+          kind, payload -> case_error(surface, row, Exception.format(kind, payload, __STACKTRACE__))
+        end
+      end)
+
+    if errors > 0 do
+      IO.puts(:stderr, "#{surface}: #{errors} case(s) ended in a driver error")
+      System.halt(1)
+    end
+  end
+
+  defp case_error(surface, row, text) do
+    IO.puts(:stderr, "#{surface} #{List.first(row) || "?"}: driver error: #{text}")
+    true
   end
 
   # ---- the VARIABLE FORM's surfaces (docs/SPEC-TABLES.md §3, §16) ----
@@ -1147,28 +1207,46 @@ defmodule Driver do
   # and `write-refusal-fixed` reach the same writer on a fixed root, as the Go
   # driver's do. The text writer answers `wrote` only when its text spells a
   # zero byte as \u0000 (docs/SPEC-TABLES.md §16.3).
-  defp write_refusal_answer("write-refusal-json", mod, root, value, zero) do
+  #
+  # A REFUSAL IS WHAT THE CODEC'S PUBLIC CONTRACT SPELLS, and nothing else: the
+  # writer's `{:error, reason}`, or an `ArgumentError` the unit's own generated
+  # code raised (codec_refusal?/2). Any other return and any other exception
+  # (a KeyError, a FunctionClauseError, an ArgumentError out of a BIF handed a
+  # value the driver built wrongly) is a driver error, and reaches each_case/3.
+  defp write_refusal_answer("write-refusal-json", mod, ns, root, value, zero) do
     case mod.to_json(root, value) do
       {:ok, text} ->
         if zero and not String.contains?(IO.iodata_to_binary(text), "\\u0000"),
           do: "wrote without \\u0000",
           else: "wrote"
 
-      _ ->
+      {:error, reason} when is_atom(reason) ->
         "refused"
     end
   rescue
-    ArgumentError -> "refused"
+    e in ArgumentError ->
+      if codec_refusal?(__STACKTRACE__, ns), do: "refused", else: reraise(e, __STACKTRACE__)
   end
 
-  defp write_refusal_answer(_surface, mod, root, value, _zero) do
+  defp write_refusal_answer(_surface, mod, ns, root, value, _zero) do
     case mod.save(root, value) do
-      {:ok, _bytes} -> "wrote"
-      {:error, _reason} -> "refused"
+      {:ok, bytes} when is_binary(bytes) -> "wrote"
+      {:error, reason} when is_atom(reason) -> "refused"
     end
   rescue
-    ArgumentError -> "refused"
+    e in ArgumentError ->
+      if codec_refusal?(__STACKTRACE__, ns), do: "refused", else: reraise(e, __STACKTRACE__)
   end
+
+  # the fixed writer refuses by raising ArgumentError FROM THE UNIT'S OWN
+  # MODULES: the frame that raised is the stack's first, and it is a function
+  # of a module under the unit's namespace. An ArgumentError whose first frame
+  # is anyone else's (:erlang.hd/1, String.to_integer/1) is a crash, not an
+  # answer.
+  defp codec_refusal?([{mod, _fun, _arity, _where} | _], ns) when is_atom(mod),
+    do: String.starts_with?(Atom.to_string(mod), Atom.to_string(ns) <> ".")
+
+  defp codec_refusal?(_stack, _ns), do: false
 
   # the unit's message module, <Package>.TableMessage, resolved the way
   # table_module resolves <Package>.Table. nil when the leg has none.
@@ -1342,13 +1420,13 @@ defmodule WriteRefusal do
     result =
       cond do
         f.t == :keyed and rest == [] and index != nil ->
-          kname = Enum.at(f.key_names, index)
+          kname = element!(f.key_names, index, seg)
           with {:ok, v} <- leaf(ctx, f.item, Map.get(current, kname), kind, text),
                do: {:ok, Map.put(current, kname, v)}
 
         f.t == :map and index != nil and length(rest) == 1 ->
           entries = Enum.sort_by(Map.to_list(current), &elem(&1, 0))
-          {old_k, old_v} = Enum.at(entries, index)
+          {old_k, old_v} = element!(entries, index, seg)
 
           case hd(rest) do
             "key" ->
@@ -1366,8 +1444,23 @@ defmodule WriteRefusal do
           with {:ok, new_p} <- scalar(cur_p, kind, text),
                do: {:ok, {arm_name, new_p}}
 
+        # an array of unions: the element is the union value itself, {arm,
+        # payload}, and the path's last name is the arm whose payload is set.
+        # A union is no table, so it has no descriptor to walk into.
+        f.t == :list and Map.get(f, :elem_t) == :union and index != nil and length(rest) == 1 ->
+          arm_name = hd(rest)
+
+          cur_p =
+            case element!(current, index, seg) do
+              {^arm_name, p} -> p
+              _ -> nil
+            end
+
+          with {:ok, new_p} <- scalar(cur_p, kind, text),
+               do: {:ok, List.replace_at(current, index, {arm_name, new_p})}
+
         Map.get(f, :text_list, false) and rest == [] and index != nil ->
-          elem_map = Enum.at(current, index)
+          elem_map = element!(current, index, seg)
           with {:ok, new_s} <- scalar(Map.get(elem_map, "value"), kind, text),
                do: {:ok, List.replace_at(current, index, Map.put(elem_map, "value", new_s))}
 
@@ -1377,7 +1470,7 @@ defmodule WriteRefusal do
               leaf(ctx, f, current, kind, text)
 
             {[], i} ->
-              with {:ok, v} <- leaf(ctx, f, Enum.at(current, i), kind, text),
+              with {:ok, v} <- leaf(ctx, f, element!(current, i, seg), kind, text),
                    do: {:ok, List.replace_at(current, i, v)}
 
             {_, nil} ->
@@ -1385,7 +1478,7 @@ defmodule WriteRefusal do
 
             {_, i} ->
               with {:ok, v} <-
-                     set_in(ctx, Map.fetch!(ctx.descs, f.elem), Enum.at(current, i), rest, kind, text),
+                     set_in(ctx, Map.fetch!(ctx.descs, f.elem), element!(current, i, seg), rest, kind, text),
                    do: {:ok, List.replace_at(current, i, v)}
           end
       end
@@ -1396,9 +1489,19 @@ defmodule WriteRefusal do
     end
   end
 
+  # EVERY TOKEN IS CONVERTED AGAINST THE FIELD'S DECLARED KIND, and none is
+  # narrowed: a BEAM integer has no width, so an ordinal, a tag or an int the
+  # declared kind cannot hold (256 or 4294967296 against a u8) reaches the
+  # codec's own write check as the integer the row spells. An `ordinal` on a
+  # field that is no enum, and a `tag` on one that is no union, is a row this
+  # driver cannot set: an error, never a guess.
+  #
   # an enum by its raw ordinal: the member's name, and an ordinal no member
   # carries stays the bare integer, which the writer must refuse
   defp leaf(_ctx, f, _current, "ordinal", text) do
+    if not is_map_key(f, :ords),
+      do: raise("write-refusal: ordinal on #{f.name}, which declares no enum")
+
     k = String.to_integer(text)
     {:ok, member_name(f, k) || if(k == 0, do: nil, else: k)}
   end
@@ -1407,6 +1510,9 @@ defmodule WriteRefusal do
   # defaults (an empty payload the codec fills); a tag past the arms stays the
   # bare integer beside an empty payload, which the writer must refuse
   defp leaf(ctx, f, _current, "tag", text) do
+    if f.t != :union and Map.get(f, :elem_t) != :union,
+      do: raise("write-refusal: tag on #{f.name}, which declares no union")
+
     t = String.to_integer(text)
 
     case Module.concat(ctx.ns, f.type_name <> "Type").from_int(t) do
@@ -1416,7 +1522,29 @@ defmodule WriteRefusal do
     end
   end
 
+  # the used count of an array: a new element is a copy of element 0, and an
+  # EMPTY array has no element 0, so it grows by the declared element kind's
+  # default (default_element/2)
+  defp leaf(ctx, f, current, "count", text),
+    do: {:ok, resize(current || [], String.to_integer(text), fn -> default_element(ctx, f) end)}
+
   defp leaf(_ctx, _f, current, kind, text), do: scalar(current, kind, text)
+
+  # The default element of an array field's declared element kind, in the
+  # table value's terms: the descriptor's own elem_default where it carries
+  # one, else by the element's kind. A record is its descriptor's fields at
+  # their declared defaults.
+  defp default_element(ctx, f) do
+    cond do
+      f.t != :list -> raise "write-refusal: count on #{f.name}, which declares no array"
+      is_map_key(f, :elem_default) and f.elem_t != :record -> f.elem_default
+      f.elem_t == :record -> Map.new(Map.fetch!(ctx.descs, f.elem).fields, &{&1.name, &1.default})
+      f.elem_t in [:union, :enum, :pointer] -> nil
+      f.elem_t == :int -> 0
+      f.elem_t == :float -> 0.0
+      true -> raise "write-refusal: no default element of kind #{inspect(f.elem_t)} for #{f.name}"
+    end
+  end
 
   # ---- the message body ----
 
@@ -1444,7 +1572,7 @@ defmodule WriteRefusal do
               message_leaf(ctx, f, current, kind, text)
 
             {[], i} ->
-              with {:ok, v} <- message_leaf(ctx, f, Enum.at(current, i), kind, text),
+              with {:ok, v} <- message_leaf(ctx, f, element!(current, i, seg), kind, text),
                    do: {:ok, List.replace_at(current, i, v)}
 
             {_, nil} ->
@@ -1455,7 +1583,7 @@ defmodule WriteRefusal do
                      set_body(
                        ctx,
                        Map.fetch!(ctx.descs, f.elem),
-                       Enum.at(current, i),
+                       element!(current, i, seg),
                        rest,
                        kind,
                        text
@@ -1470,6 +1598,14 @@ defmodule WriteRefusal do
       {:ok, v} when rest == [] and index == nil and is_map_key(f, :default) and v == f.default ->
         {:ok, List.keydelete(body, ref, 0)}
 
+      # None is the declared default of an enum or a union whose descriptor
+      # default is nil, and the body spells None as the zero reference or
+      # :none, so that too is the default the writer elides
+      {:ok, v}
+      when rest == [] and index == nil and f.t in [:enum, :union] and
+             is_map_key(f, :default) and f.default == nil and v in [0, :none] ->
+        {:ok, List.keydelete(body, ref, 0)}
+
       {:ok, v} ->
         {:ok, in_declaration_order(ctx, desc, List.keystore(body, ref, 0, {ref, v}))}
 
@@ -1481,16 +1617,28 @@ defmodule WriteRefusal do
   # an enum rides as the reference of its member's id; an ordinal no member
   # carries has no member to reference, so it rides as a reference past the
   # whole vocabulary, which names no member and the writer must refuse
+  #
+  # The reference past the vocabulary is length + |k|, never length + k: the
+  # sum must not land back on a reference the vocabulary does hold (k below
+  # one would), where the writer would see a legal member the row never
+  # named. Ordinal zero is None, the zero reference.
   defp message_leaf(ctx, f, _current, "ordinal", text) do
+    if not is_map_key(f, :ords),
+      do: raise("write-refusal: ordinal on #{f.name}, which declares no enum")
+
     k = String.to_integer(text)
 
     case member_name(f, k) do
-      nil -> {:ok, length(ctx.vocab.entries) + k}
+      nil when k == 0 -> {:ok, 0}
+      nil -> {:ok, length(ctx.vocab.entries) + abs(k)}
       name -> {:ok, ref_of(ctx.vocab, Map.fetch!(f.by_name, name))}
     end
   end
 
   defp message_leaf(ctx, f, _current, "tag", text) do
+    if f.t != :union and Map.get(f, :elem_t) != :union,
+      do: raise("write-refusal: tag on #{f.name}, which declares no union")
+
     t = String.to_integer(text)
 
     if t == 0 do
@@ -1501,7 +1649,7 @@ defmodule WriteRefusal do
 
       case variant do
         nil ->
-          {:ok, {length(ctx.vocab.entries) + t, nil}}
+          {:ok, {length(ctx.vocab.entries) + abs(t), nil}}
 
         v ->
           default_val =
@@ -1524,20 +1672,39 @@ defmodule WriteRefusal do
   defp message_leaf(_ctx, %{t: :bytes}, _current, "bytes", text),
     do: {:ok, :binary.bin_to_list(Base.decode16!(text, case: :mixed))}
 
+  # the used count of an array in the message body's terms: an empty one grows
+  # by the declared element kind's default as the body spells it (a record is
+  # an empty body, its fields at their defaults; None is :none for a union and
+  # the zero reference for an enum)
+  defp message_leaf(_ctx, f, current, "count", text) do
+    default = fn ->
+      cond do
+        f.t != :list -> raise "write-refusal: count on #{f.name}, which declares no array"
+        f.elem_t == :record -> []
+        f.elem_t == :union -> :none
+        f.elem_t in [:int, :enum] -> 0
+        f.elem_t == :float -> 0.0
+        true -> raise "write-refusal: no default element of kind #{inspect(f.elem_t)} for #{f.name}"
+      end
+    end
+
+    {:ok, resize(current || [], String.to_integer(text), default)}
+  end
+
   defp message_leaf(_ctx, _f, current, kind, text), do: scalar(current, kind, text)
 
   # ---- the kinds both values share ----
 
   defp scalar(_current, "int", text), do: {:ok, String.to_integer(text)}
 
-  # the used count of an array: a new element is a copy of element 0
+  # the used count of an array reached with no field of its own (a union arm's
+  # payload, a map entry's value): a new element is a copy of element 0, and
+  # with no declared element kind in hand an empty one cannot grow
   defp scalar(current, "count", text) do
-    n = String.to_integer(text)
-    list = current || []
-
-    if n <= length(list),
-      do: {:ok, Enum.take(list, n)},
-      else: {:ok, list ++ List.duplicate(hd(list), n - length(list))}
+    {:ok,
+     resize(current || [], String.to_integer(text), fn ->
+       raise "write-refusal: an empty array with no declared element kind cannot grow"
+     end)}
   end
 
   # the used length of a text, filled with `a`
@@ -1555,7 +1722,24 @@ defmodule WriteRefusal do
 
   defp scalar(_current, kind, _text), do: raise("write-refusal: no value of kind #{kind}")
 
+  # an array at a new used count: cut to n, or grown to n by copies of element
+  # 0, and by `default.()` when there is no element 0 to copy
+  defp resize(list, n, _default) when is_list(list) and n <= length(list),
+    do: Enum.take(list, n)
+
+  defp resize([], n, default), do: List.duplicate(default.(), n)
+
+  defp resize([first | _] = list, n, _default),
+    do: list ++ List.duplicate(first, n - length(list))
+
   # ---- lookup ----
+
+  # the element a path's [i] names. An index past the value is a row this
+  # driver cannot set, and says so: a nil taken for the element would leave the
+  # value unchanged and the case answering `wrote` for a write never tried.
+  defp element!(list, i, _seg) when is_list(list) and i < length(list), do: Enum.at(list, i)
+
+  defp element!(_value, _i, seg), do: raise("write-refusal: #{seg} names no element of the value")
 
   defp segment(seg) do
     case Regex.run(@segment, seg) do
