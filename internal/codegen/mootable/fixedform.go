@@ -20,7 +20,6 @@ import (
 	"math/big"
 	"sort"
 	"strings"
-	"sync"
 
 	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -184,7 +183,7 @@ func emitFixedRoot(g *Gen, root *ir.Struct) {
 	g.Pf("\tfloor = %d,\n", floor)
 	g.Pf("\tlineage = {\n")
 	for _, e := range entries {
-		writer := resolveMooEntryWriter(g.Unit, root, e, own.Wire)
+		writer := resolveMooEntryWriter(g, root, e, own.Wire)
 		g.Pf("\t\t{ hash = %s, recordBytes = %d, retired = %v, layout = %s%s }, -- 0x%016x\n",
 			IdLit(e.Wire), e.Record-fixedHashBytes, e.Retired, bytesLit(e.Layout), writerRanges(g, root, writer, e.Layout), e.Wire)
 	}
@@ -200,32 +199,47 @@ func emitFixedRoot(g *Gen, root *ir.Struct) {
 // ranged fixed array's range holds each element the same as a scalar; the
 // runtime lands it on the array's element node. An entry with no writer, or
 // no such field, lays down nothing.
-var mooUnitLocks sync.Map // *ir.Unit -> *lockfile.Unit
 
-func resolveMooEntryWriter(u *ir.Unit, root *ir.Struct, e FixedLineageEntry, ownWire uint64) *ir.Struct {
+// writerLookup is ONE generation's read of the unit's lock, for the lineage
+// entries handed in without their writer: opened at the first entry that asks
+// and dropped with the generation, so a long-lived process that generates the
+// same unit again reads the lock as it is then, and keeps no unit or lock once
+// the call returns (GenerateLineage makes one per call).
+type writerLookup struct {
+	opened bool
+	lock   *lockfile.Unit
+}
+
+func (w *writerLookup) unitLock(u *ir.Unit) *lockfile.Unit {
+	if w.opened {
+		return w.lock
+	}
+	w.opened = true
+	var paths []string
+	for _, f := range u.Files {
+		if f != nil && f.Path != "" {
+			paths = append(paths, f.Path)
+		}
+	}
+	if len(paths) > 0 {
+		if lk, ok, err := lockfile.Open(paths); err == nil && ok {
+			w.lock = lk
+		}
+	}
+	return w.lock
+}
+
+func resolveMooEntryWriter(g *Gen, root *ir.Struct, e FixedLineageEntry, ownWire uint64) *ir.Struct {
 	if e.Writer != nil {
 		return e.Writer
 	}
-	if u == nil || root == nil || e.Wire == ownWire {
+	if g.Unit == nil || root == nil || e.Wire == ownWire {
 		return nil
 	}
-	var lock *lockfile.Unit
-	if v, ok := mooUnitLocks.Load(u); ok {
-		lock, _ = v.(*lockfile.Unit)
-	} else {
-		var paths []string
-		for _, f := range u.Files {
-			if f != nil && f.Path != "" {
-				paths = append(paths, f.Path)
-			}
-		}
-		if len(paths) > 0 {
-			if lk, ok, err := lockfile.Open(paths); err == nil && ok {
-				lock = lk
-			}
-		}
-		mooUnitLocks.Store(u, lock)
+	if g.writers == nil {
+		g.writers = &writerLookup{}
 	}
+	lock := g.writers.unitLock(g.Unit)
 	if lock == nil {
 		return nil
 	}
