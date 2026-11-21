@@ -241,7 +241,15 @@ for (const line of lines.slice(1)) {
   const out = [new Msg()];
   const rep = {};
   const n = MsgLoadMessages(out, v, Uint8Array.from(Buffer.from(hexBatch, "hex")), rep);
-  const refused = n !== 1 || rep.Damaged || (rep.Oor | 0) > 0 || (rep.Mismatch | 0) > 0 || Boolean(rep.Reason);
+  // The verdict is what the public API returned: the count, Damaged and the
+  // refusal reason. A counter is never a refusal; a value counted and
+  // delivered instead of refused is a failure in its own right.
+  const refused = n !== 1 || rep.Damaged || Boolean(rep.Reason);
+  if ((rep.Oor | 0) > 0 || (rep.Mismatch | 0) > 0) {
+    failed = true;
+    console.log("FAILED: " + name + ": the read counted (Oor/Mismatch) instead of refusing: n=" + n + " " + JSON.stringify(rep));
+    continue;
+  }
   let got = "refused";
   if (!refused && want[0] === "refused") {
     got = "read";
