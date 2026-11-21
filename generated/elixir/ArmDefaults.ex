@@ -173,6 +173,10 @@ defmodule Example.ArmDefaults do
     {data, scratch, scratch_bits} =
       wZdefault_armZentries(value_entries, <<>>, scratch, scratch_bits)
 
+    if not is_integer(value_marker) do
+      raise ArgumentError, "value.marker is not an integer"
+    end
+
     if value_marker < 0 do
       raise ArgumentError, "value.marker is below the wire minimum"
     end
@@ -332,6 +336,10 @@ defmodule Example.ArmDefaults do
           {data, scratch, scratch_bits} =
             wZdefault_armZentries(value_first_entries, data, scratch, scratch_bits)
 
+          if not is_integer(value_first_marker) do
+            raise ArgumentError, "value.first.marker is not an integer"
+          end
+
           if value_first_marker < 0 do
             raise ArgumentError, "value.first.marker is below the wire minimum"
           end
@@ -363,6 +371,10 @@ defmodule Example.ArmDefaults do
 
           {data, scratch, scratch_bits} =
             wZdefault_armZentries(value_second_entries, data, scratch, scratch_bits)
+
+          if not is_integer(value_second_marker) do
+            raise ArgumentError, "value.second.marker is not an integer"
+          end
 
           if value_second_marker < 0 do
             raise ArgumentError, "value.second.marker is below the wire minimum"
@@ -560,6 +572,10 @@ defmodule Example.ArmDefaults do
           {data, scratch, scratch_bits} =
             wZdefault_armZentries(value_choice_first_entries, data, scratch, scratch_bits)
 
+          if not is_integer(value_choice_first_marker) do
+            raise ArgumentError, "value.choice.first.marker is not an integer"
+          end
+
           if value_choice_first_marker < 0 do
             raise ArgumentError, "value.choice.first.marker is below the wire minimum"
           end
@@ -595,6 +611,10 @@ defmodule Example.ArmDefaults do
 
           {data, scratch, scratch_bits} =
             wZdefault_armZentries(value_choice_second_entries, data, scratch, scratch_bits)
+
+          if not is_integer(value_choice_second_marker) do
+            raise ArgumentError, "value.choice.second.marker is not an integer"
+          end
 
           if value_choice_second_marker < 0 do
             raise ArgumentError, "value.choice.second.marker is below the wire minimum"
@@ -779,6 +799,10 @@ defmodule Example.ArmDefaults do
 
     {data, scratch, scratch_bits} =
       wZdefault_armZentries(value_payload_entries, <<>>, scratch, scratch_bits)
+
+    if not is_integer(value_payload_marker) do
+      raise ArgumentError, "value.payload.marker is not an integer"
+    end
 
     if value_payload_marker < 0 do
       raise ArgumentError, "value.payload.marker is below the wire minimum"
@@ -987,6 +1011,10 @@ defmodule Example.ArmDefaults do
           {data, scratch, scratch_bits} =
             wZdefault_armZentries(value_first_payload_entries, data, scratch, scratch_bits)
 
+          if not is_integer(value_first_payload_marker) do
+            raise ArgumentError, "value.first.payload.marker is not an integer"
+          end
+
           if value_first_payload_marker < 0 do
             raise ArgumentError, "value.first.payload.marker is below the wire minimum"
           end
@@ -1038,6 +1066,10 @@ defmodule Example.ArmDefaults do
 
           {data, scratch, scratch_bits} =
             wZdefault_armZentries(value_second_payload_entries, data, scratch, scratch_bits)
+
+          if not is_integer(value_second_payload_marker) do
+            raise ArgumentError, "value.second.payload.marker is not an integer"
+          end
 
           if value_second_payload_marker < 0 do
             raise ArgumentError, "value.second.payload.marker is below the wire minimum"

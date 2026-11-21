@@ -248,6 +248,10 @@ defmodule Example.Joins do
   def write_arms_agree!(value) do
     %{lead: value_lead, flag: value_flag, tail: value_tail} = value
 
+    if not is_integer(value_lead) do
+      raise ArgumentError, "value.lead is not an integer"
+    end
+
     if value_lead < 0 do
       raise ArgumentError, "value.lead is below the wire minimum"
     end
@@ -264,6 +268,10 @@ defmodule Example.Joins do
 
     {data, scratch} =
       if value_flag do
+        if not is_integer(value.a) do
+          raise ArgumentError, "value.a is not an integer"
+        end
+
         if value.a < 0 do
           raise ArgumentError, "value.a is below the wire minimum"
         end
@@ -278,6 +286,10 @@ defmodule Example.Joins do
         scratch = scratch >>> 16
         {data, scratch}
       else
+        if not is_integer(value.b) do
+          raise ArgumentError, "value.b is not an integer"
+        end
+
         if value.b < 0 do
           raise ArgumentError, "value.b is below the wire minimum"
         end
@@ -292,6 +304,10 @@ defmodule Example.Joins do
         scratch = scratch >>> 16
         {data, scratch}
       end
+
+    if not is_integer(value_tail) do
+      raise ArgumentError, "value.tail is not an integer"
+    end
 
     if value_tail < 0 do
       raise ArgumentError, "value.tail is below the wire minimum"
@@ -417,6 +433,10 @@ defmodule Example.Joins do
   def write_arms_disagree!(value) do
     %{lead: value_lead, flag: value_flag, tail: value_tail} = value
 
+    if not is_integer(value_lead) do
+      raise ArgumentError, "value.lead is not an integer"
+    end
+
     if value_lead < 0 do
       raise ArgumentError, "value.lead is below the wire minimum"
     end
@@ -433,6 +453,10 @@ defmodule Example.Joins do
 
     {data, scratch} =
       if value_flag do
+        if not is_integer(value.a) do
+          raise ArgumentError, "value.a is not an integer"
+        end
+
         if value.a < 0 do
           raise ArgumentError, "value.a is below the wire minimum"
         end
@@ -447,6 +471,10 @@ defmodule Example.Joins do
         scratch = scratch >>> 16
         {data, scratch}
       else
+        if not is_integer(value.b) do
+          raise ArgumentError, "value.b is not an integer"
+        end
+
         if value.b < 0 do
           raise ArgumentError, "value.b is below the wire minimum"
         end
@@ -461,6 +489,10 @@ defmodule Example.Joins do
         scratch = scratch >>> 8
         {data, scratch}
       end
+
+    if not is_integer(value_tail) do
+      raise ArgumentError, "value.tail is not an integer"
+    end
 
     if value_tail < 0 do
       raise ArgumentError, "value.tail is below the wire minimum"
@@ -590,6 +622,10 @@ defmodule Example.Joins do
   def write_arm_empty!(value) do
     %{lead: value_lead, flag: value_flag, tail: value_tail} = value
 
+    if not is_integer(value_lead) do
+      raise ArgumentError, "value.lead is not an integer"
+    end
+
     if value_lead < 0 do
       raise ArgumentError, "value.lead is below the wire minimum"
     end
@@ -606,6 +642,10 @@ defmodule Example.Joins do
 
     {data, scratch, scratch_bits} =
       if value_flag do
+        if not is_integer(value.a) do
+          raise ArgumentError, "value.a is not an integer"
+        end
+
         if value.a < 0 do
           raise ArgumentError, "value.a is below the wire minimum"
         end
@@ -624,6 +664,10 @@ defmodule Example.Joins do
         scratch_bits = 6
         {data, scratch, scratch_bits}
       end
+
+    if not is_integer(value_tail) do
+      raise ArgumentError, "value.tail is not an integer"
+    end
 
     if value_tail < 0 do
       raise ArgumentError, "value.tail is below the wire minimum"
@@ -754,6 +798,10 @@ defmodule Example.Joins do
   def write_arms_nested!(value) do
     %{lead: value_lead, outer: value_outer, tail: value_tail} = value
 
+    if not is_integer(value_lead) do
+      raise ArgumentError, "value.lead is not an integer"
+    end
+
     if value_lead < 0 do
       raise ArgumentError, "value.lead is below the wire minimum"
     end
@@ -775,6 +823,10 @@ defmodule Example.Joins do
 
         {data, scratch} =
           if value.inner do
+            if not is_integer(value.x) do
+              raise ArgumentError, "value.x is not an integer"
+            end
+
             if value.x < 0 do
               raise ArgumentError, "value.x is below the wire minimum"
             end
@@ -789,6 +841,10 @@ defmodule Example.Joins do
             scratch = scratch >>> 32
             {data, scratch}
           else
+            if not is_integer(value.y) do
+              raise ArgumentError, "value.y is not an integer"
+            end
+
             if value.y < 0 do
               raise ArgumentError, "value.y is below the wire minimum"
             end
@@ -807,6 +863,10 @@ defmodule Example.Joins do
         scratch_bits = 2
         {data, scratch, scratch_bits}
       else
+        if not is_integer(value.z) do
+          raise ArgumentError, "value.z is not an integer"
+        end
+
         if value.z < 0 do
           raise ArgumentError, "value.z is below the wire minimum"
         end
@@ -822,6 +882,10 @@ defmodule Example.Joins do
         scratch_bits = 1
         {data, scratch, scratch_bits}
       end
+
+    if not is_integer(value_tail) do
+      raise ArgumentError, "value.tail is not an integer"
+    end
 
     if value_tail < 0 do
       raise ArgumentError, "value.tail is below the wire minimum"
@@ -986,6 +1050,10 @@ defmodule Example.Joins do
   def write_arm_align!(value) do
     %{lead: value_lead, flag: value_flag, tail: value_tail} = value
 
+    if not is_integer(value_lead) do
+      raise ArgumentError, "value.lead is not an integer"
+    end
+
     if value_lead < 0 do
       raise ArgumentError, "value.lead is below the wire minimum"
     end
@@ -1025,6 +1093,10 @@ defmodule Example.Joins do
         scratch = 0
         {data, scratch}
       else
+        if not is_integer(value.b) do
+          raise ArgumentError, "value.b is not an integer"
+        end
+
         if value.b < 0 do
           raise ArgumentError, "value.b is below the wire minimum"
         end
@@ -1039,6 +1111,10 @@ defmodule Example.Joins do
         scratch = 0
         {data, scratch}
       end
+
+    if not is_integer(value_tail) do
+      raise ArgumentError, "value.tail is not an integer"
+    end
 
     if value_tail < 0 do
       raise ArgumentError, "value.tail is below the wire minimum"
@@ -1179,6 +1255,10 @@ defmodule Example.Joins do
   def write_arm_array!(value) do
     %{lead: value_lead, flag: value_flag, tail: value_tail} = value
 
+    if not is_integer(value_lead) do
+      raise ArgumentError, "value.lead is not an integer"
+    end
+
     if value_lead < 0 do
       raise ArgumentError, "value.lead is below the wire minimum"
     end
@@ -1212,6 +1292,10 @@ defmodule Example.Joins do
 
         {data, scratch, scratch_bits}
       else
+        if not is_integer(value.b) do
+          raise ArgumentError, "value.b is not an integer"
+        end
+
         if value.b < 0 do
           raise ArgumentError, "value.b is below the wire minimum"
         end
@@ -1227,6 +1311,10 @@ defmodule Example.Joins do
         scratch_bits = 7
         {data, scratch, scratch_bits}
       end
+
+    if not is_integer(value_tail) do
+      raise ArgumentError, "value.tail is not an integer"
+    end
 
     if value_tail < 0 do
       raise ArgumentError, "value.tail is below the wire minimum"
@@ -1359,6 +1447,10 @@ defmodule Example.Joins do
   """
   @spec write_narrow!(Example.Narrow.t()) :: binary()
   def write_narrow!(value) do
+    if not is_integer(value.n) do
+      raise ArgumentError, "value.n is not an integer"
+    end
+
     if value.n < 0 do
       raise ArgumentError, "value.n is below the wire minimum"
     end
@@ -1459,6 +1551,10 @@ defmodule Example.Joins do
   """
   @spec write_wide!(Example.Wide.t()) :: binary()
   def write_wide!(value) do
+    if not is_integer(value.w) do
+      raise ArgumentError, "value.w is not an integer"
+    end
+
     if value.w < 0 do
       raise ArgumentError, "value.w is below the wire minimum"
     end
@@ -1599,6 +1695,10 @@ defmodule Example.Joins do
     {data, scratch, scratch_bits} =
       case value do
         {:narrow, value_narrow} ->
+          if not is_integer(value_narrow.n) do
+            raise ArgumentError, "value.narrow.n is not an integer"
+          end
+
           if value_narrow.n < 0 do
             raise ArgumentError, "value.narrow.n is below the wire minimum"
           end
@@ -1613,6 +1713,10 @@ defmodule Example.Joins do
           {data, scratch, scratch_bits}
 
         {:wide, value_wide} ->
+          if not is_integer(value_wide.w) do
+            raise ArgumentError, "value.wide.w is not an integer"
+          end
+
           if value_wide.w < 0 do
             raise ArgumentError, "value.wide.w is below the wire minimum"
           end
@@ -1757,6 +1861,10 @@ defmodule Example.Joins do
   def write_holds_uneven!(value) do
     %{lead: value_lead, u: value_u, tail: value_tail} = value
 
+    if not is_integer(value_lead) do
+      raise ArgumentError, "value.lead is not an integer"
+    end
+
     if value_lead < 0 do
       raise ArgumentError, "value.lead is below the wire minimum"
     end
@@ -1789,6 +1897,10 @@ defmodule Example.Joins do
     {data, scratch, scratch_bits} =
       case value_u do
         {:narrow, value_u_narrow} ->
+          if not is_integer(value_u_narrow.n) do
+            raise ArgumentError, "value.u.narrow.n is not an integer"
+          end
+
           if value_u_narrow.n < 0 do
             raise ArgumentError, "value.u.narrow.n is below the wire minimum"
           end
@@ -1805,6 +1917,10 @@ defmodule Example.Joins do
           {data, scratch, scratch_bits}
 
         {:wide, value_u_wide} ->
+          if not is_integer(value_u_wide.w) do
+            raise ArgumentError, "value.u.wide.w is not an integer"
+          end
+
           if value_u_wide.w < 0 do
             raise ArgumentError, "value.u.wide.w is below the wire minimum"
           end
@@ -1827,6 +1943,10 @@ defmodule Example.Joins do
           scratch_bits = 7
           {data, scratch, scratch_bits}
       end
+
+    if not is_integer(value_tail) do
+      raise ArgumentError, "value.tail is not an integer"
+    end
 
     if value_tail < 0 do
       raise ArgumentError, "value.tail is below the wire minimum"
@@ -1973,6 +2093,10 @@ defmodule Example.Joins do
   def write_arr_uneven!(value) do
     %{lead: value_lead, items: value_items, tail: value_tail} = value
 
+    if not is_integer(value_lead) do
+      raise ArgumentError, "value.lead is not an integer"
+    end
+
     if value_lead < 0 do
       raise ArgumentError, "value.lead is below the wire minimum"
     end
@@ -1993,6 +2117,10 @@ defmodule Example.Joins do
     scratch = scratch ||| v <<< 5
     scratch_bits = 7
     {data, scratch, scratch_bits} = wZarr_unevenZitems(value_items, <<>>, scratch, scratch_bits)
+
+    if not is_integer(value_tail) do
+      raise ArgumentError, "value.tail is not an integer"
+    end
 
     if value_tail < 0 do
       raise ArgumentError, "value.tail is below the wire minimum"
@@ -2119,6 +2247,10 @@ defmodule Example.Joins do
       tail: value_tail
     } = value
 
+    if not is_integer(value_lead) do
+      raise ArgumentError, "value.lead is not an integer"
+    end
+
     if value_lead < 0 do
       raise ArgumentError, "value.lead is below the wire minimum"
     end
@@ -2166,6 +2298,10 @@ defmodule Example.Joins do
     # the used bytes ride whole — the stream is byte-aligned here
     data = <<data::binary, value_s::binary>>
 
+    if not is_integer(value_p) do
+      raise ArgumentError, "value.p is not an integer"
+    end
+
     if value_p < 0 do
       raise ArgumentError, "value.p is below the wire minimum"
     end
@@ -2176,6 +2312,10 @@ defmodule Example.Joins do
 
     v = value_p &&& 0xFFFFFFFF
     scratch = v
+
+    if not is_integer(value_q) do
+      raise ArgumentError, "value.q is not an integer"
+    end
 
     if value_q < 0 do
       raise ArgumentError, "value.q is below the wire minimum"
@@ -2189,6 +2329,10 @@ defmodule Example.Joins do
     sc0 = scratch
     scratch = v
 
+    if not is_integer(value_r) do
+      raise ArgumentError, "value.r is not an integer"
+    end
+
     if value_r < 0 do
       raise ArgumentError, "value.r is below the wire minimum"
     end
@@ -2199,6 +2343,10 @@ defmodule Example.Joins do
 
     v = value_r &&& 0x7FFFF
     scratch = scratch ||| v <<< 29
+
+    if not is_integer(value_tail) do
+      raise ArgumentError, "value.tail is not an integer"
+    end
 
     if value_tail < 0 do
       raise ArgumentError, "value.tail is below the wire minimum"
@@ -2337,6 +2485,10 @@ defmodule Example.Joins do
   defp wZarm_arrayZitems([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp wZarm_arrayZitems([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+    if not is_integer(e1) do
+      raise ArgumentError, "e is not an integer"
+    end
+
     if e1 < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -2348,6 +2500,10 @@ defmodule Example.Joins do
     v = e1
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 13
+
+    if not is_integer(e2) do
+      raise ArgumentError, "e is not an integer"
+    end
 
     if e2 < 0 do
       raise ArgumentError, "e is below the wire minimum"
@@ -2361,6 +2517,10 @@ defmodule Example.Joins do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 13
 
+    if not is_integer(e3) do
+      raise ArgumentError, "e is not an integer"
+    end
+
     if e3 < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -2372,6 +2532,10 @@ defmodule Example.Joins do
     v = e3
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 13
+
+    if not is_integer(e4) do
+      raise ArgumentError, "e is not an integer"
+    end
 
     if e4 < 0 do
       raise ArgumentError, "e is below the wire minimum"
@@ -2392,6 +2556,10 @@ defmodule Example.Joins do
   end
 
   defp wZarm_arrayZitems([e | rest], data, scratch, scratch_bits) do
+    if not is_integer(e) do
+      raise ArgumentError, "e is not an integer"
+    end
+
     if e < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -2459,6 +2627,10 @@ defmodule Example.Joins do
     {data, scratch, scratch_bits} =
       case e do
         {:narrow, e_narrow} ->
+          if not is_integer(e_narrow.n) do
+            raise ArgumentError, "e.narrow.n is not an integer"
+          end
+
           if e_narrow.n < 0 do
             raise ArgumentError, "e.narrow.n is below the wire minimum"
           end
@@ -2477,6 +2649,10 @@ defmodule Example.Joins do
           {data, scratch, scratch_bits}
 
         {:wide, e_wide} ->
+          if not is_integer(e_wide.w) do
+            raise ArgumentError, "e.wide.w is not an integer"
+          end
+
           if e_wide.w < 0 do
             raise ArgumentError, "e.wide.w is below the wire minimum"
           end
@@ -2550,6 +2726,10 @@ defmodule Example.Joins do
     do: {data, scratch, scratch_bits}
 
   defp wZregain_after_alignZitems([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+    if not is_integer(e1) do
+      raise ArgumentError, "e is not an integer"
+    end
+
     if e1 < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -2561,6 +2741,10 @@ defmodule Example.Joins do
     v = e1
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 13
+
+    if not is_integer(e2) do
+      raise ArgumentError, "e is not an integer"
+    end
 
     if e2 < 0 do
       raise ArgumentError, "e is below the wire minimum"
@@ -2574,6 +2758,10 @@ defmodule Example.Joins do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 13
 
+    if not is_integer(e3) do
+      raise ArgumentError, "e is not an integer"
+    end
+
     if e3 < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -2585,6 +2773,10 @@ defmodule Example.Joins do
     v = e3
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 13
+
+    if not is_integer(e4) do
+      raise ArgumentError, "e is not an integer"
+    end
 
     if e4 < 0 do
       raise ArgumentError, "e is below the wire minimum"
@@ -2605,6 +2797,10 @@ defmodule Example.Joins do
   end
 
   defp wZregain_after_alignZitems([e | rest], data, scratch, scratch_bits) do
+    if not is_integer(e) do
+      raise ArgumentError, "e is not an integer"
+    end
+
     if e < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end

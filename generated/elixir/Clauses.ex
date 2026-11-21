@@ -1007,6 +1007,10 @@ defmodule Example.Clauses do
   def write_tri3!(value) do
     %{a: value_a, b: value_b} = value
 
+    if not is_integer(value_a) do
+      raise ArgumentError, "value.a is not an integer"
+    end
+
     if value_a < 0 do
       raise ArgumentError, "value.a is below the wire minimum"
     end
@@ -1017,6 +1021,10 @@ defmodule Example.Clauses do
 
     v = value_a &&& 0x1
     scratch = v
+
+    if not is_integer(value_b) do
+      raise ArgumentError, "value.b is not an integer"
+    end
 
     if value_b < 0 do
       raise ArgumentError, "value.b is below the wire minimum"
@@ -1225,6 +1233,10 @@ defmodule Example.Clauses do
   def write_eleven!(value) do
     %{a: value_a, b: value_b} = value
 
+    if not is_integer(value_a) do
+      raise ArgumentError, "value.a is not an integer"
+    end
+
     if value_a < 0 do
       raise ArgumentError, "value.a is below the wire minimum"
     end
@@ -1235,6 +1247,10 @@ defmodule Example.Clauses do
 
     v = value_a &&& 0x7
     scratch = v
+
+    if not is_integer(value_b) do
+      raise ArgumentError, "value.b is not an integer"
+    end
 
     if value_b < 0 do
       raise ArgumentError, "value.b is below the wire minimum"
@@ -1741,6 +1757,10 @@ defmodule Example.Clauses do
   def write_holds_empty_union!(value) do
     %{lead: value_lead, u: value_u, tail: value_tail} = value
 
+    if not is_integer(value_lead) do
+      raise ArgumentError, "value.lead is not an integer"
+    end
+
     if value_lead < 0 do
       raise ArgumentError, "value.lead is below the wire minimum"
     end
@@ -1768,6 +1788,10 @@ defmodule Example.Clauses do
       end
 
     scratch = scratch ||| v <<< 5
+
+    if not is_integer(value_tail) do
+      raise ArgumentError, "value.tail is not an integer"
+    end
 
     if value_tail < 0 do
       raise ArgumentError, "value.tail is below the wire minimum"
@@ -1901,6 +1925,10 @@ defmodule Example.Clauses do
   def write_strs!(value) do
     %{lead: value_lead, s: value_s, b: value_b, tail: value_tail} = value
 
+    if not is_integer(value_lead) do
+      raise ArgumentError, "value.lead is not an integer"
+    end
+
     if value_lead < 0 do
       raise ArgumentError, "value.lead is below the wire minimum"
     end
@@ -1943,6 +1971,10 @@ defmodule Example.Clauses do
     data = <<data::binary, scratch>>
     # the used bytes ride whole — the stream is byte-aligned here
     data = <<data::binary, value_b::binary>>
+
+    if not is_integer(value_tail) do
+      raise ArgumentError, "value.tail is not an integer"
+    end
 
     if value_tail < 0 do
       raise ArgumentError, "value.tail is below the wire minimum"
@@ -2090,6 +2122,10 @@ defmodule Example.Clauses do
   def write_arr_nested!(value) do
     %{lead: value_lead, items: value_items, tail: value_tail} = value
 
+    if not is_integer(value_lead) do
+      raise ArgumentError, "value.lead is not an integer"
+    end
+
     if value_lead < 0 do
       raise ArgumentError, "value.lead is below the wire minimum"
     end
@@ -2112,6 +2148,10 @@ defmodule Example.Clauses do
     scratch_bits = 0
     scratch = 0
     {data, scratch, scratch_bits} = wZarr_nestedZitems(value_items, data, scratch, scratch_bits)
+
+    if not is_integer(value_tail) do
+      raise ArgumentError, "value.tail is not an integer"
+    end
 
     if value_tail < 0 do
       raise ArgumentError, "value.tail is below the wire minimum"
@@ -2229,6 +2269,10 @@ defmodule Example.Clauses do
   """
   @spec write_sole!(Example.Sole.t()) :: binary()
   def write_sole!(value) do
+    if not is_integer(value.only) do
+      raise ArgumentError, "value.only is not an integer"
+    end
+
     if value.only < 0 do
       raise ArgumentError, "value.only is below the wire minimum"
     end
@@ -2307,6 +2351,10 @@ defmodule Example.Clauses do
   defp wZw13Zitems([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp wZw13Zitems([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+    if not is_integer(e1) do
+      raise ArgumentError, "e is not an integer"
+    end
+
     if e1 < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -2318,6 +2366,10 @@ defmodule Example.Clauses do
     v = e1
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 13
+
+    if not is_integer(e2) do
+      raise ArgumentError, "e is not an integer"
+    end
 
     if e2 < 0 do
       raise ArgumentError, "e is below the wire minimum"
@@ -2331,6 +2383,10 @@ defmodule Example.Clauses do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 13
 
+    if not is_integer(e3) do
+      raise ArgumentError, "e is not an integer"
+    end
+
     if e3 < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -2342,6 +2398,10 @@ defmodule Example.Clauses do
     v = e3
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 13
+
+    if not is_integer(e4) do
+      raise ArgumentError, "e is not an integer"
+    end
 
     if e4 < 0 do
       raise ArgumentError, "e is below the wire minimum"
@@ -2362,6 +2422,10 @@ defmodule Example.Clauses do
   end
 
   defp wZw13Zitems([e | rest], data, scratch, scratch_bits) do
+    if not is_integer(e) do
+      raise ArgumentError, "e is not an integer"
+    end
+
     if e < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -2404,6 +2468,10 @@ defmodule Example.Clauses do
   defp wZw17Zitems([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp wZw17Zitems([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+    if not is_integer(e1) do
+      raise ArgumentError, "e is not an integer"
+    end
+
     if e1 < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -2415,6 +2483,10 @@ defmodule Example.Clauses do
     v = e1
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 17
+
+    if not is_integer(e2) do
+      raise ArgumentError, "e is not an integer"
+    end
 
     if e2 < 0 do
       raise ArgumentError, "e is below the wire minimum"
@@ -2428,6 +2500,10 @@ defmodule Example.Clauses do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 17
 
+    if not is_integer(e3) do
+      raise ArgumentError, "e is not an integer"
+    end
+
     if e3 < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -2439,6 +2515,10 @@ defmodule Example.Clauses do
     v = e3
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 17
+
+    if not is_integer(e4) do
+      raise ArgumentError, "e is not an integer"
+    end
 
     if e4 < 0 do
       raise ArgumentError, "e is below the wire minimum"
@@ -2463,6 +2543,10 @@ defmodule Example.Clauses do
   end
 
   defp wZw17Zitems([e | rest], data, scratch, scratch_bits) do
+    if not is_integer(e) do
+      raise ArgumentError, "e is not an integer"
+    end
+
     if e < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -2503,6 +2587,10 @@ defmodule Example.Clauses do
   defp wZw26Zitems([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp wZw26Zitems([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+    if not is_integer(e1) do
+      raise ArgumentError, "e is not an integer"
+    end
+
     if e1 < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -2515,6 +2603,10 @@ defmodule Example.Clauses do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 26
 
+    if not is_integer(e2) do
+      raise ArgumentError, "e is not an integer"
+    end
+
     if e2 < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -2526,6 +2618,10 @@ defmodule Example.Clauses do
     v = e2
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 26
+
+    if not is_integer(e3) do
+      raise ArgumentError, "e is not an integer"
+    end
 
     if e3 < 0 do
       raise ArgumentError, "e is below the wire minimum"
@@ -2542,6 +2638,10 @@ defmodule Example.Clauses do
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 26
+
+    if not is_integer(e4) do
+      raise ArgumentError, "e is not an integer"
+    end
 
     if e4 < 0 do
       raise ArgumentError, "e is below the wire minimum"
@@ -2562,6 +2662,10 @@ defmodule Example.Clauses do
   end
 
   defp wZw26Zitems([e | rest], data, scratch, scratch_bits) do
+    if not is_integer(e) do
+      raise ArgumentError, "e is not an integer"
+    end
+
     if e < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -2592,6 +2696,10 @@ defmodule Example.Clauses do
   defp wZw1Zitems([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp wZw1Zitems([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+    if not is_integer(e1) do
+      raise ArgumentError, "e is not an integer"
+    end
+
     if e1 < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -2603,6 +2711,10 @@ defmodule Example.Clauses do
     v = e1
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
+
+    if not is_integer(e2) do
+      raise ArgumentError, "e is not an integer"
+    end
 
     if e2 < 0 do
       raise ArgumentError, "e is below the wire minimum"
@@ -2616,6 +2728,10 @@ defmodule Example.Clauses do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
 
+    if not is_integer(e3) do
+      raise ArgumentError, "e is not an integer"
+    end
+
     if e3 < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -2627,6 +2743,10 @@ defmodule Example.Clauses do
     v = e3
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
+
+    if not is_integer(e4) do
+      raise ArgumentError, "e is not an integer"
+    end
 
     if e4 < 0 do
       raise ArgumentError, "e is below the wire minimum"
@@ -2647,6 +2767,10 @@ defmodule Example.Clauses do
   end
 
   defp wZw1Zitems([e | rest], data, scratch, scratch_bits) do
+    if not is_integer(e) do
+      raise ArgumentError, "e is not an integer"
+    end
+
     if e < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -2772,6 +2896,10 @@ defmodule Example.Clauses do
   defp wZw52Zitems([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp wZw52Zitems([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+    if not is_integer(e1) do
+      raise ArgumentError, "e is not an integer"
+    end
+
     if e1 < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -2786,6 +2914,10 @@ defmodule Example.Clauses do
     v = e1 >>> 32
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 20
+
+    if not is_integer(e2) do
+      raise ArgumentError, "e is not an integer"
+    end
 
     if e2 < 0 do
       raise ArgumentError, "e is below the wire minimum"
@@ -2806,6 +2938,10 @@ defmodule Example.Clauses do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 20
 
+    if not is_integer(e3) do
+      raise ArgumentError, "e is not an integer"
+    end
+
     if e3 < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -2824,6 +2960,10 @@ defmodule Example.Clauses do
     v = e3 >>> 32
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 20
+
+    if not is_integer(e4) do
+      raise ArgumentError, "e is not an integer"
+    end
 
     if e4 < 0 do
       raise ArgumentError, "e is below the wire minimum"
@@ -2855,6 +2995,10 @@ defmodule Example.Clauses do
   end
 
   defp wZw52Zitems([e | rest], data, scratch, scratch_bits) do
+    if not is_integer(e) do
+      raise ArgumentError, "e is not an integer"
+    end
+
     if e < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -2892,6 +3036,10 @@ defmodule Example.Clauses do
   defp wZw50Zitems([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp wZw50Zitems([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+    if not is_integer(e1) do
+      raise ArgumentError, "e is not an integer"
+    end
+
     if e1 < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -2906,6 +3054,10 @@ defmodule Example.Clauses do
     v = e1 >>> 32
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 18
+
+    if not is_integer(e2) do
+      raise ArgumentError, "e is not an integer"
+    end
 
     if e2 < 0 do
       raise ArgumentError, "e is below the wire minimum"
@@ -2926,6 +3078,10 @@ defmodule Example.Clauses do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 18
 
+    if not is_integer(e3) do
+      raise ArgumentError, "e is not an integer"
+    end
+
     if e3 < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -2944,6 +3100,10 @@ defmodule Example.Clauses do
     v = e3 >>> 32
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 18
+
+    if not is_integer(e4) do
+      raise ArgumentError, "e is not an integer"
+    end
 
     if e4 < 0 do
       raise ArgumentError, "e is below the wire minimum"
@@ -2975,6 +3135,10 @@ defmodule Example.Clauses do
   end
 
   defp wZw50Zitems([e | rest], data, scratch, scratch_bits) do
+    if not is_integer(e) do
+      raise ArgumentError, "e is not an integer"
+    end
+
     if e < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -3012,6 +3176,10 @@ defmodule Example.Clauses do
   defp wZf13Zitems([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp wZf13Zitems([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+    if not is_integer(e1) do
+      raise ArgumentError, "e is not an integer"
+    end
+
     if e1 < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -3023,6 +3191,10 @@ defmodule Example.Clauses do
     v = e1
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 13
+
+    if not is_integer(e2) do
+      raise ArgumentError, "e is not an integer"
+    end
 
     if e2 < 0 do
       raise ArgumentError, "e is below the wire minimum"
@@ -3036,6 +3208,10 @@ defmodule Example.Clauses do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 13
 
+    if not is_integer(e3) do
+      raise ArgumentError, "e is not an integer"
+    end
+
     if e3 < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -3047,6 +3223,10 @@ defmodule Example.Clauses do
     v = e3
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 13
+
+    if not is_integer(e4) do
+      raise ArgumentError, "e is not an integer"
+    end
 
     if e4 < 0 do
       raise ArgumentError, "e is below the wire minimum"
@@ -3067,6 +3247,10 @@ defmodule Example.Clauses do
   end
 
   defp wZf13Zitems([e | rest], data, scratch, scratch_bits) do
+    if not is_integer(e) do
+      raise ArgumentError, "e is not an integer"
+    end
+
     if e < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -3111,6 +3295,10 @@ defmodule Example.Clauses do
   defp wZarr_tri3Zitems([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
     %{a: e1_a, b: e1_b} = e1
 
+    if not is_integer(e1_a) do
+      raise ArgumentError, "e.a is not an integer"
+    end
+
     if e1_a < 0 do
       raise ArgumentError, "e.a is below the wire minimum"
     end
@@ -3122,6 +3310,10 @@ defmodule Example.Clauses do
     v = e1_a &&& 0x1
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
+
+    if not is_integer(e1_b) do
+      raise ArgumentError, "e.b is not an integer"
+    end
 
     if e1_b < 0 do
       raise ArgumentError, "e.b is below the wire minimum"
@@ -3136,6 +3328,10 @@ defmodule Example.Clauses do
     scratch_bits = scratch_bits + 2
     %{a: e2_a, b: e2_b} = e2
 
+    if not is_integer(e2_a) do
+      raise ArgumentError, "e.a is not an integer"
+    end
+
     if e2_a < 0 do
       raise ArgumentError, "e.a is below the wire minimum"
     end
@@ -3147,6 +3343,10 @@ defmodule Example.Clauses do
     v = e2_a &&& 0x1
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
+
+    if not is_integer(e2_b) do
+      raise ArgumentError, "e.b is not an integer"
+    end
 
     if e2_b < 0 do
       raise ArgumentError, "e.b is below the wire minimum"
@@ -3161,6 +3361,10 @@ defmodule Example.Clauses do
     scratch_bits = scratch_bits + 2
     %{a: e3_a, b: e3_b} = e3
 
+    if not is_integer(e3_a) do
+      raise ArgumentError, "e.a is not an integer"
+    end
+
     if e3_a < 0 do
       raise ArgumentError, "e.a is below the wire minimum"
     end
@@ -3172,6 +3376,10 @@ defmodule Example.Clauses do
     v = e3_a &&& 0x1
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
+
+    if not is_integer(e3_b) do
+      raise ArgumentError, "e.b is not an integer"
+    end
 
     if e3_b < 0 do
       raise ArgumentError, "e.b is below the wire minimum"
@@ -3186,6 +3394,10 @@ defmodule Example.Clauses do
     scratch_bits = scratch_bits + 2
     %{a: e4_a, b: e4_b} = e4
 
+    if not is_integer(e4_a) do
+      raise ArgumentError, "e.a is not an integer"
+    end
+
     if e4_a < 0 do
       raise ArgumentError, "e.a is below the wire minimum"
     end
@@ -3197,6 +3409,10 @@ defmodule Example.Clauses do
     v = e4_a &&& 0x1
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
+
+    if not is_integer(e4_b) do
+      raise ArgumentError, "e.b is not an integer"
+    end
 
     if e4_b < 0 do
       raise ArgumentError, "e.b is below the wire minimum"
@@ -3219,6 +3435,10 @@ defmodule Example.Clauses do
   defp wZarr_tri3Zitems([e | rest], data, scratch, scratch_bits) do
     %{a: e_a, b: e_b} = e
 
+    if not is_integer(e_a) do
+      raise ArgumentError, "e.a is not an integer"
+    end
+
     if e_a < 0 do
       raise ArgumentError, "e.a is below the wire minimum"
     end
@@ -3230,6 +3450,10 @@ defmodule Example.Clauses do
     v = e_a &&& 0x1
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
+
+    if not is_integer(e_b) do
+      raise ArgumentError, "e.b is not an integer"
+    end
 
     if e_b < 0 do
       raise ArgumentError, "e.b is below the wire minimum"
@@ -3390,6 +3614,10 @@ defmodule Example.Clauses do
   defp wZarr_elevenZitems([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
     %{a: e1_a, b: e1_b} = e1
 
+    if not is_integer(e1_a) do
+      raise ArgumentError, "e.a is not an integer"
+    end
+
     if e1_a < 0 do
       raise ArgumentError, "e.a is below the wire minimum"
     end
@@ -3401,6 +3629,10 @@ defmodule Example.Clauses do
     v = e1_a &&& 0x7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 3
+
+    if not is_integer(e1_b) do
+      raise ArgumentError, "e.b is not an integer"
+    end
 
     if e1_b < 0 do
       raise ArgumentError, "e.b is below the wire minimum"
@@ -3415,6 +3647,10 @@ defmodule Example.Clauses do
     scratch_bits = scratch_bits + 8
     %{a: e2_a, b: e2_b} = e2
 
+    if not is_integer(e2_a) do
+      raise ArgumentError, "e.a is not an integer"
+    end
+
     if e2_a < 0 do
       raise ArgumentError, "e.a is below the wire minimum"
     end
@@ -3426,6 +3662,10 @@ defmodule Example.Clauses do
     v = e2_a &&& 0x7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 3
+
+    if not is_integer(e2_b) do
+      raise ArgumentError, "e.b is not an integer"
+    end
 
     if e2_b < 0 do
       raise ArgumentError, "e.b is below the wire minimum"
@@ -3440,6 +3680,10 @@ defmodule Example.Clauses do
     scratch_bits = scratch_bits + 8
     %{a: e3_a, b: e3_b} = e3
 
+    if not is_integer(e3_a) do
+      raise ArgumentError, "e.a is not an integer"
+    end
+
     if e3_a < 0 do
       raise ArgumentError, "e.a is below the wire minimum"
     end
@@ -3451,6 +3695,10 @@ defmodule Example.Clauses do
     v = e3_a &&& 0x7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 3
+
+    if not is_integer(e3_b) do
+      raise ArgumentError, "e.b is not an integer"
+    end
 
     if e3_b < 0 do
       raise ArgumentError, "e.b is below the wire minimum"
@@ -3465,6 +3713,10 @@ defmodule Example.Clauses do
     scratch_bits = scratch_bits + 8
     %{a: e4_a, b: e4_b} = e4
 
+    if not is_integer(e4_a) do
+      raise ArgumentError, "e.a is not an integer"
+    end
+
     if e4_a < 0 do
       raise ArgumentError, "e.a is below the wire minimum"
     end
@@ -3476,6 +3728,10 @@ defmodule Example.Clauses do
     v = e4_a &&& 0x7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 3
+
+    if not is_integer(e4_b) do
+      raise ArgumentError, "e.b is not an integer"
+    end
 
     if e4_b < 0 do
       raise ArgumentError, "e.b is below the wire minimum"
@@ -3498,6 +3754,10 @@ defmodule Example.Clauses do
   defp wZarr_elevenZitems([e | rest], data, scratch, scratch_bits) do
     %{a: e_a, b: e_b} = e
 
+    if not is_integer(e_a) do
+      raise ArgumentError, "e.a is not an integer"
+    end
+
     if e_a < 0 do
       raise ArgumentError, "e.a is below the wire minimum"
     end
@@ -3509,6 +3769,10 @@ defmodule Example.Clauses do
     v = e_a &&& 0x7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 3
+
+    if not is_integer(e_b) do
+      raise ArgumentError, "e.b is not an integer"
+    end
 
     if e_b < 0 do
       raise ArgumentError, "e.b is below the wire minimum"
@@ -3571,6 +3835,10 @@ defmodule Example.Clauses do
   defp wZarr_nestedZitems([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
     %{a: e1_a, b: e1_b} = e1
 
+    if not is_integer(e1_a) do
+      raise ArgumentError, "e.a is not an integer"
+    end
+
     if e1_a < 0 do
       raise ArgumentError, "e.a is below the wire minimum"
     end
@@ -3582,6 +3850,10 @@ defmodule Example.Clauses do
     v = e1_a &&& 0x7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 3
+
+    if not is_integer(e1_b) do
+      raise ArgumentError, "e.b is not an integer"
+    end
 
     if e1_b < 0 do
       raise ArgumentError, "e.b is below the wire minimum"
@@ -3596,6 +3868,10 @@ defmodule Example.Clauses do
     scratch_bits = scratch_bits + 8
     %{a: e2_a, b: e2_b} = e2
 
+    if not is_integer(e2_a) do
+      raise ArgumentError, "e.a is not an integer"
+    end
+
     if e2_a < 0 do
       raise ArgumentError, "e.a is below the wire minimum"
     end
@@ -3607,6 +3883,10 @@ defmodule Example.Clauses do
     v = e2_a &&& 0x7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 3
+
+    if not is_integer(e2_b) do
+      raise ArgumentError, "e.b is not an integer"
+    end
 
     if e2_b < 0 do
       raise ArgumentError, "e.b is below the wire minimum"
@@ -3621,6 +3901,10 @@ defmodule Example.Clauses do
     scratch_bits = scratch_bits + 8
     %{a: e3_a, b: e3_b} = e3
 
+    if not is_integer(e3_a) do
+      raise ArgumentError, "e.a is not an integer"
+    end
+
     if e3_a < 0 do
       raise ArgumentError, "e.a is below the wire minimum"
     end
@@ -3632,6 +3916,10 @@ defmodule Example.Clauses do
     v = e3_a &&& 0x7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 3
+
+    if not is_integer(e3_b) do
+      raise ArgumentError, "e.b is not an integer"
+    end
 
     if e3_b < 0 do
       raise ArgumentError, "e.b is below the wire minimum"
@@ -3646,6 +3934,10 @@ defmodule Example.Clauses do
     scratch_bits = scratch_bits + 8
     %{a: e4_a, b: e4_b} = e4
 
+    if not is_integer(e4_a) do
+      raise ArgumentError, "e.a is not an integer"
+    end
+
     if e4_a < 0 do
       raise ArgumentError, "e.a is below the wire minimum"
     end
@@ -3657,6 +3949,10 @@ defmodule Example.Clauses do
     v = e4_a &&& 0x7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 3
+
+    if not is_integer(e4_b) do
+      raise ArgumentError, "e.b is not an integer"
+    end
 
     if e4_b < 0 do
       raise ArgumentError, "e.b is below the wire minimum"
@@ -3679,6 +3975,10 @@ defmodule Example.Clauses do
   defp wZarr_nestedZitems([e | rest], data, scratch, scratch_bits) do
     %{a: e_a, b: e_b} = e
 
+    if not is_integer(e_a) do
+      raise ArgumentError, "e.a is not an integer"
+    end
+
     if e_a < 0 do
       raise ArgumentError, "e.a is below the wire minimum"
     end
@@ -3690,6 +3990,10 @@ defmodule Example.Clauses do
     v = e_a &&& 0x7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 3
+
+    if not is_integer(e_b) do
+      raise ArgumentError, "e.b is not an integer"
+    end
 
     if e_b < 0 do
       raise ArgumentError, "e.b is below the wire minimum"

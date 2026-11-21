@@ -896,8 +896,10 @@ defmodule Bench.BenchFixed do
         byte_size(v_player_name)::little-signed-32, v_player_name::binary,
         0::size(R.string_slack(v_player_name, 15))-unit(8),
         byte_size(v_payload)::little-signed-32, v_payload::binary,
-        0::size(R.text_slack(v_payload, 16))-unit(8), R.f32_bits(v_aim_x)::little-unsigned-32,
-        R.f32_bits(v_aim_y)::little-unsigned-32, R.f32_bits(v_aim_z)::little-unsigned-32,
+        0::size(R.text_slack(v_payload, 16))-unit(8),
+        R.f32_bits(R.cfloat_zero(v_aim_x))::little-unsigned-32,
+        R.f32_bits(R.cfloat_zero(v_aim_y))::little-unsigned-32,
+        R.f32_bits(R.cfloat_zero(v_aim_z))::little-unsigned-32,
         R.f32_bits(v_recoil)::little-unsigned-32, R.f64_bits(v_drift)::little-unsigned-64,
         R.fits(v_wide_key, 128, false)::little-unsigned-128,
         R.ranged(v_flux, @r_bench_mixed_flux)::little-signed-128,
@@ -939,7 +941,7 @@ defmodule Bench.BenchFixed do
     c = R.clamps(c, f_world_time, -1_000_000_000_000, 1_000_000_000_000)
     c = R.clamps(c, f_frame_tick, 0, 281_474_976_710_655)
     c = R.clamps(c, f_server_time, 0, 16_776_960)
-    c = R.clamps(c, n_entities, 0, 8)
+    c = R.clamps(c, n_entities, 1, 8)
     {l_entities, c, m} = mixed_entity_fixed_list(b_entities, min(max(n_entities, 0), 8), c, m)
     c = R.clamps(c, n_stats, 0, 80)
     {l_stats, c, m} = mixed_stat_fixed_list(b_stats, min(max(n_stats, 0), 80), c, m)

@@ -311,7 +311,7 @@ defmodule Benchtable.TableMessage do
   # enum's variant, a union's arm, a keyed slot's key and a node record's type
   # each use their id where the walk meets them.
   defp first_use_order?(body, ids) do
-    with {:ok, <<>>, acc, table} <- first_use_fields(body, ids, {[], MapSet.new()}, true, nil),
+    with {:ok, <<>>, acc, table} <- first_use_fields(body, ids, {[], MapSet.new()}, true, nil, 0),
          {:ok, {order, _seen}} <- first_use_nodes(table, ids, acc) do
       Enum.reverse(order) == first_use_entries(ids)
     else
@@ -336,7 +336,14 @@ defmodule Benchtable.TableMessage do
 
   # first_use_fields walks one body to its terminator. In the root body the
   # node table's payload is set aside, its records walked after the body.
-  defp first_use_fields(bin, ids, acc, root, table) do
+  #
+  # THE WALK IS DEPTH-BOUNDED (ELIXIR-6): d counts the framed contents it has
+  # descended, and past 512 the walk answers :error, which first_use_order?/2
+  # maps to "framing this walk cannot follow", the strict walk's to refuse
+  # (its own cap is 128 bodies, and no lawful nesting spends more than a few
+  # framed contents per body). The walk runs on attacker bytes before any
+  # other walk on the announcement read, so it never recurses without bound.
+  defp first_use_fields(bin, ids, acc, root, table, d) do
     case first_use_leb(bin) do
       {0, rest} ->
         {:ok, rest, acc, table}
@@ -345,12 +352,12 @@ defmodule Benchtable.TableMessage do
         case first_use(ids, ref, acc) do
           {:ok, 0xFFFFFFFFFFFFFFFF, acc} when root and kind == 12 ->
             with {:ok, content, rest} <- first_use_framed(rest) do
-              first_use_fields(rest, ids, acc, root, content)
+              first_use_fields(rest, ids, acc, root, content, d)
             end
 
           {:ok, _id, acc} ->
-            with {:ok, rest, acc} <- first_use_payload(rest, kind, ids, acc) do
-              first_use_fields(rest, ids, acc, root, table)
+            with {:ok, rest, acc} <- first_use_payload(rest, kind, ids, acc, d) do
+              first_use_fields(rest, ids, acc, root, table, d)
             end
 
           :error ->
@@ -388,9 +395,10 @@ defmodule Benchtable.TableMessage do
        when type_id in [0x704BE0D8FAAFFC58, 0x2F2EC0474F1C4FE4],
        do: {:ok, acc}
 
-  defp first_use_record(record, _type_id, ids, acc), do: first_use_content(record, 13, ids, acc)
+  defp first_use_record(record, _type_id, ids, acc),
+    do: first_use_content(record, 13, ids, acc, 0)
 
-  defp first_use_payload(bin, kind, ids, acc) when kind in [17, 30] do
+  defp first_use_payload(bin, kind, ids, acc, _d) when kind in [17, 30] do
     case first_use_leb(bin) do
       {0, rest} ->
         {:ok, rest, acc}
@@ -406,7 +414,7 @@ defmodule Benchtable.TableMessage do
     end
   end
 
-  defp first_use_payload(bin, 15, ids, acc) do
+  defp first_use_payload(bin, 15, ids, acc, d) do
     case first_use_leb(bin) do
       {0, rest} ->
         {:ok, rest, acc}
@@ -414,7 +422,7 @@ defmodule Benchtable.TableMessage do
       {ref, <<kind, rest::binary>>} ->
         with {:ok, _id, acc} <- first_use(ids, ref, acc),
              {:ok, content, rest} <- first_use_framed(rest),
-             {:ok, acc} <- first_use_content(content, kind, ids, acc) do
+             {:ok, acc} <- first_use_content(content, kind, ids, acc, d + 1) do
           {:ok, rest, acc}
         end
 
@@ -423,14 +431,14 @@ defmodule Benchtable.TableMessage do
     end
   end
 
-  defp first_use_payload(bin, kind, ids, acc) when kind in [12, 13, 14, 16, 31, 32] do
+  defp first_use_payload(bin, kind, ids, acc, d) when kind in [12, 13, 14, 16, 31, 32] do
     with {:ok, content, rest} <- first_use_framed(bin),
-         {:ok, acc} <- first_use_content(content, kind, ids, acc) do
+         {:ok, acc} <- first_use_content(content, kind, ids, acc, d + 1) do
       {:ok, rest, acc}
     end
   end
 
-  defp first_use_payload(bin, kind, _ids, acc) do
+  defp first_use_payload(bin, kind, _ids, acc, _d) do
     w = first_use_width(kind)
 
     case bin do
@@ -439,50 +447,52 @@ defmodule Benchtable.TableMessage do
     end
   end
 
-  defp first_use_content(b, 13, ids, acc) do
-    case first_use_fields(b, ids, acc, false, nil) do
+  defp first_use_content(_b, _kind, _ids, _acc, d) when d > 512, do: :error
+
+  defp first_use_content(b, 13, ids, acc, d) do
+    case first_use_fields(b, ids, acc, false, nil, d) do
       {:ok, <<>>, acc, nil} -> {:ok, acc}
       _ -> :error
     end
   end
 
-  defp first_use_content(<<ek, rest::binary>>, kind, ids, acc) when kind in [14, 16] do
+  defp first_use_content(<<ek, rest::binary>>, kind, ids, acc, d) when kind in [14, 16] do
     case first_use_leb(rest) do
-      {n, items} when kind == 14 -> first_use_elements(items, ek, n, ids, acc)
-      {n, items} -> first_use_slots(items, ek, n, ids, acc)
+      {n, items} when kind == 14 -> first_use_elements(items, ek, n, ids, acc, d)
+      {n, items} -> first_use_slots(items, ek, n, ids, acc, d)
       :error -> :error
     end
   end
 
-  defp first_use_content(_b, kind, _ids, _acc) when kind in [14, 16], do: :error
+  defp first_use_content(_b, kind, _ids, _acc, _d) when kind in [14, 16], do: :error
 
-  defp first_use_content(b, kind, ids, acc) when kind in [15, 17, 30] do
-    case first_use_payload(b, kind, ids, acc) do
+  defp first_use_content(b, kind, ids, acc, d) when kind in [15, 17, 30] do
+    case first_use_payload(b, kind, ids, acc, d) do
       {:ok, <<>>, acc} -> {:ok, acc}
       _ -> :error
     end
   end
 
-  defp first_use_content(_b, _kind, _ids, acc), do: {:ok, acc}
+  defp first_use_content(_b, _kind, _ids, acc, _d), do: {:ok, acc}
 
-  defp first_use_elements(<<>>, _ek, 0, _ids, acc), do: {:ok, acc}
-  defp first_use_elements(_rest, _ek, 0, _ids, _acc), do: :error
+  defp first_use_elements(<<>>, _ek, 0, _ids, acc, _d), do: {:ok, acc}
+  defp first_use_elements(_rest, _ek, 0, _ids, _acc, _d), do: :error
 
-  defp first_use_elements(rest, ek, n, ids, acc) do
-    with {:ok, rest, acc} <- first_use_payload(rest, ek, ids, acc) do
-      first_use_elements(rest, ek, n - 1, ids, acc)
+  defp first_use_elements(rest, ek, n, ids, acc, d) do
+    with {:ok, rest, acc} <- first_use_payload(rest, ek, ids, acc, d) do
+      first_use_elements(rest, ek, n - 1, ids, acc, d)
     end
   end
 
-  defp first_use_slots(<<>>, _ek, 0, _ids, acc), do: {:ok, acc}
-  defp first_use_slots(_rest, _ek, 0, _ids, _acc), do: :error
+  defp first_use_slots(<<>>, _ek, 0, _ids, acc, _d), do: {:ok, acc}
+  defp first_use_slots(_rest, _ek, 0, _ids, _acc, _d), do: :error
 
-  defp first_use_slots(rest, ek, n, ids, acc) do
+  defp first_use_slots(rest, ek, n, ids, acc, d) do
     with {key, rest} <- first_use_leb(rest),
          {:ok, _id, acc} <- first_use(ids, key, acc),
          {:ok, content, rest} <- first_use_framed(rest),
-         {:ok, acc} <- first_use_content(content, ek, ids, acc) do
-      first_use_slots(rest, ek, n - 1, ids, acc)
+         {:ok, acc} <- first_use_content(content, ek, ids, acc, d + 1) do
+      first_use_slots(rest, ek, n - 1, ids, acc, d)
     end
   end
 
@@ -1580,7 +1590,10 @@ defmodule Benchtable.TableMessage do
       # DAMAGE ANYWHERE IN THE BATCH DISCARDS THE WHOLE BATCH
       # (docs/SPEC-TABLES.md §3.3, §4): no body is delivered and the count is
       # zero, for damage inside a body and for "BYTES AFTER THE PAD" alike.
-      r = {bytes_to_int(rest), 0, bit_size(rest)}
+      # THE READER READS THE BINARY AT A MOVING BIT OFFSET: it never turns the
+      # batch into one integer, so a read costs the bits it reads and a
+      # hostile batch's trailing bytes cost nothing (ELIXIR-5).
+      r = {rest, 0, bit_size(rest)}
 
       case read_bodies(vocab, r, count, [], own_record(vocab)) do
         {:ok, bodies, r} ->
@@ -1966,7 +1979,7 @@ defmodule Benchtable.TableMessage do
   # align that precedes a string or a bytes array guarantees.
   defp put_bytes({acc, nbits}, bytes) do
     n = byte_size(bytes)
-    {acc ||| bytes_to_int(bytes) <<< nbits, nbits + n * 8}
+    {acc ||| :binary.decode_unsigned(bytes, :little) <<< nbits, nbits + n * 8}
   end
 
   # ---------------------------------------------------------------------------
@@ -2512,8 +2525,8 @@ defmodule Benchtable.TableMessage do
     end
   end
 
-  defp bits_left({_int, off, total}) when total > off, do: total - off
-  defp bits_left({_int, _off, _total}), do: 0
+  defp bits_left({_bin, off, total}) when total > off, do: total - off
+  defp bits_left({_bin, _off, _total}), do: 0
 
   defp read_union(vocab, r, depth, sub) do
     case get_bits(r, vocab.ref_bits) do
@@ -2612,21 +2625,36 @@ defmodule Benchtable.TableMessage do
   defp bit_mask(0), do: 0
   defp bit_mask(n), do: (1 <<< n) - 1
 
-  defp get_bits({int, off, total}, n) do
+  # THE READER'S STATE is {batch, bit offset, bit count}: the batch binary
+  # itself, never an integer made of it. Bit i of the stream is bit i rem 8 of
+  # byte i div 8 (low bit first, docs/SPEC-TABLES.md §3.3), so n bits at off
+  # are the little-endian integer of the bytes they span, shifted down by
+  # off rem 8: a sub-binary match and a decode of those bytes alone.
+  defp get_bits({bin, off, total}, n) do
     if off + n > total do
       :error
     else
-      {:ok, int >>> off &&& bit_mask(n), {int, off + n, total}}
+      {:ok, peek_bits(bin, off, n), {bin, off + n, total}}
     end
   end
 
-  defp align({int, off, total}) do
+  defp peek_bits(_bin, _off, 0), do: 0
+
+  defp peek_bits(bin, off, n) do
+    first = div(off, 8)
+    shift = rem(off, 8)
+    span = div(shift + n + 7, 8)
+    <<_::binary-size(^first), window::binary-size(^span), _::binary>> = bin
+    :binary.decode_unsigned(window, :little) >>> shift &&& bit_mask(n)
+  end
+
+  defp align({bin, off, total}) do
     pad = rem(8 - rem(off, 8), 8)
 
-    if off + pad > total or (int >>> off &&& bit_mask(pad)) != 0 do
+    if off + pad > total or peek_bits(bin, off, pad) != 0 do
       :error
     else
-      {:ok, {int, off + pad, total}}
+      {:ok, {bin, off + pad, total}}
     end
   end
 
@@ -2635,16 +2663,18 @@ defmodule Benchtable.TableMessage do
   # 0..(n - 1) with no step is the descending range 0..-1 when n is 0, and that
   # range walks two bytes. Positive lengths step //1. A run past the batch
   # stays :error.
-  defp take_bytes({_int, _off, _total} = r, 0), do: {:ok, <<>>, r}
+  defp take_bytes({_bin, _off, _total} = r, 0), do: {:ok, <<>>, r}
 
-  defp take_bytes({int, off, total}, n) when is_integer(n) and n > 0 do
+  # The bytes are copied out of the batch, so a delivered text never holds
+  # the whole batch alive.
+  defp take_bytes({bin, off, total}, n) when is_integer(n) and n > 0 do
     need = n * 8
 
     if off + need > total do
       :error
     else
-      bytes = for i <- 0..(n - 1)//1, into: <<>>, do: <<int >>> (off + 8 * i) &&& 0xFF>>
-      {:ok, bytes, {int, off + need, total}}
+      bytes = :binary.copy(binary_part(bin, div(off, 8), n))
+      {:ok, bytes, {bin, off + need, total}}
     end
   end
 
@@ -2658,9 +2688,9 @@ defmodule Benchtable.TableMessage do
 
   # The batch ends at the pad to the byte boundary: no more than seven bits left,
   # and all of them zero (docs/SPEC-TABLES.md §3.3).
-  defp batch_ends_clean?({int, off, total}) do
+  defp batch_ends_clean?({bin, off, total}) do
     rem_bits = total - off
-    rem_bits < 8 and (rem_bits == 0 or (int >>> off &&& bit_mask(rem_bits)) == 0)
+    rem_bits < 8 and peek_bits(bin, off, rem_bits) == 0
   end
 
   defp int_to_bytes(_int, 0), do: <<>>
@@ -2668,12 +2698,6 @@ defmodule Benchtable.TableMessage do
   defp int_to_bytes(int, nbytes) do
     for i <- 0..(nbytes - 1), into: <<>>, do: <<int >>> (8 * i) &&& 0xFF>>
   end
-
-  defp bytes_to_int(bin), do: bytes_to_int(bin, 0, 0)
-  defp bytes_to_int(<<>>, _i, acc), do: acc
-
-  defp bytes_to_int(<<b, rest::binary>>, i, acc),
-    do: bytes_to_int(rest, i + 1, acc ||| b <<< (8 * i))
 
   defp bit_length(0), do: 0
   defp bit_length(n), do: bit_length(n, 0)

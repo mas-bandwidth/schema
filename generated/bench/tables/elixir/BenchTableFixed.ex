@@ -934,7 +934,7 @@ defmodule Benchtable.BenchTableFixed do
         R.ranged(v_nonce, @r_table_mixed_nonce)::little-unsigned-64,
         R.ranged(v_world_time, @r_table_mixed_world_time)::little-signed-64,
         R.fits(v_frame_tick, 48, false)::little-unsigned-64,
-        R.f32_bits(v_server_time)::little-unsigned-32>>
+        R.f32_bits(R.cfloat_zero(v_server_time))::little-unsigned-32>>
 
     n_entities = R.count(v_entities, 1, 8)
     acc = <<acc::binary, n_entities::little-signed-32>>
@@ -957,12 +957,15 @@ defmodule Benchtable.BenchTableFixed do
         byte_size(v_player_name)::little-signed-32, v_player_name::binary,
         0::size(R.string_slack(v_player_name, 15))-unit(8),
         byte_size(v_payload)::little-signed-32, v_payload::binary,
-        0::size(R.text_slack(v_payload, 16))-unit(8), R.f32_bits(v_aim_x)::little-unsigned-32,
-        R.f32_bits(v_aim_y)::little-unsigned-32, R.f32_bits(v_aim_z)::little-unsigned-32,
+        0::size(R.text_slack(v_payload, 16))-unit(8),
+        R.f32_bits(R.cfloat_zero(v_aim_x))::little-unsigned-32,
+        R.f32_bits(R.cfloat_zero(v_aim_y))::little-unsigned-32,
+        R.f32_bits(R.cfloat_zero(v_aim_z))::little-unsigned-32,
         R.f32_bits(v_recoil)::little-unsigned-32, R.f64_bits(v_drift)::little-unsigned-64,
         R.fits(v_wide_key, 64, false)::little-unsigned-64,
         R.ranged(v_flux, @r_table_mixed_flux)::little-signed-64,
-        R.f32_bits(v_ping)::little-unsigned-32, R.fits(v_crc_hint, 24, false)::little-unsigned-32,
+        R.f32_bits(R.cfloat_zero(v_ping))::little-unsigned-32,
+        R.fits(v_crc_hint, 24, false)::little-unsigned-32,
         if(v_has_extra, do: 1, else: 0)::unsigned-8,
         R.ranged(v_extra, @r_table_mixed_extra)::little-signed-32,
         R.ranged(v_idle_ticks, @r_table_mixed_idle_ticks)::little-signed-32>>
@@ -999,7 +1002,7 @@ defmodule Benchtable.BenchTableFixed do
     c = R.clamps(c, f_world_time, -1_000_000_000_000, 1_000_000_000_000)
     c = R.clamps(c, f_frame_tick, 0, 281_474_976_710_655)
     c = R.fclamps(c, R.f32_value(f_server_time), 0.0, 65535.0)
-    c = R.clamps(c, n_entities, 0, 8)
+    c = R.clamps(c, n_entities, 1, 8)
     {l_entities, c, m} = table_entity_fixed_list(b_entities, min(max(n_entities, 0), 8), c, m)
     c = R.clamps(c, n_stats, 0, 80)
     {l_stats, c, m} = table_stat_fixed_list(b_stats, min(max(n_stats, 0), 80), c, m)

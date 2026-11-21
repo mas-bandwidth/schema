@@ -661,6 +661,10 @@ defmodule Realworld.RealWorld do
       f097_bits: value_f097_bits
     } = value
 
+    if not is_integer(value_f001_int) do
+      raise ArgumentError, "value.f001_int is not an integer"
+    end
+
     if value_f001_int < -805_495 do
       raise ArgumentError, "value.f001_int is below the wire minimum"
     end
@@ -680,6 +684,10 @@ defmodule Realworld.RealWorld do
     sc1 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 5
+
+    if not is_integer(value_f003_int) do
+      raise ArgumentError, "value.f003_int is not an integer"
+    end
 
     if value_f003_int < -835_897 do
       raise ArgumentError, "value.f003_int is below the wire minimum"
@@ -705,6 +713,10 @@ defmodule Realworld.RealWorld do
     v = cf_quantize(value_f004_cf32, 0.0, 2000.0, 20000, 20000.0)
     scratch = scratch ||| v <<< 26
 
+    if not is_integer(value_f005_uint) do
+      raise ArgumentError, "value.f005_uint is not an integer"
+    end
+
     if value_f005_uint < 0 do
       raise ArgumentError, "value.f005_uint is below the wire minimum"
     end
@@ -715,6 +727,10 @@ defmodule Realworld.RealWorld do
 
     v = value_f005_uint
     scratch = scratch ||| v <<< 41
+
+    if not is_integer(value_f006_int) do
+      raise ArgumentError, "value.f006_int is not an integer"
+    end
 
     if value_f006_int < -1513 do
       raise ArgumentError, "value.f006_int is below the wire minimum"
@@ -752,6 +768,10 @@ defmodule Realworld.RealWorld do
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 2
 
+    if not is_integer(value_f009_int) do
+      raise ArgumentError, "value.f009_int is not an integer"
+    end
+
     if value_f009_int < -22 do
       raise ArgumentError, "value.f009_int is below the wire minimum"
     end
@@ -765,6 +785,10 @@ defmodule Realworld.RealWorld do
     v = f32_bits(value_f010f32)
     sc6 = scratch
     scratch = v
+
+    if not is_integer(value_f011_bits) do
+      raise ArgumentError, "value.f011_bits is not an integer"
+    end
 
     if value_f011_bits < 0 do
       raise ArgumentError, "value.f011_bits is below the wire minimum"
@@ -799,6 +823,10 @@ defmodule Realworld.RealWorld do
         v = f32_bits(value_f013f32)
         scratch = scratch ||| v <<< 3
 
+        if not is_integer(value_f014_uint) do
+          raise ArgumentError, "value.f014_uint is not an integer"
+        end
+
         if value_f014_uint < 0 do
           raise ArgumentError, "value.f014_uint is below the wire minimum"
         end
@@ -810,6 +838,10 @@ defmodule Realworld.RealWorld do
         v = value_f014_uint
         scratch = scratch ||| v <<< 35
 
+        if not is_integer(value_f015_int) do
+          raise ArgumentError, "value.f015_int is not an integer"
+        end
+
         if value_f015_int < -21 do
           raise ArgumentError, "value.f015_int is below the wire minimum"
         end
@@ -820,6 +852,10 @@ defmodule Realworld.RealWorld do
 
         v = value_f015_int + 21
         scratch = scratch ||| v <<< 45
+
+        if not is_integer(value_f016_fixed) do
+          raise ArgumentError, "value.f016_fixed is not an integer"
+        end
 
         if value_f016_fixed < -37_748_736 do
           raise ArgumentError, "value.f016_fixed is below the wire minimum"
@@ -833,6 +869,10 @@ defmodule Realworld.RealWorld do
         sc7 = scratch
         scratch = scratch >>> 48
         scratch = scratch ||| v <<< 3
+
+        if not is_integer(value_f017_uint) do
+          raise ArgumentError, "value.f017_uint is not an integer"
+        end
 
         if value_f017_uint < 0 do
           raise ArgumentError, "value.f017_uint is below the wire minimum"
@@ -850,6 +890,10 @@ defmodule Realworld.RealWorld do
       else
         {data, scratch}
       end
+
+    if not is_integer(value_f018_int) do
+      raise ArgumentError, "value.f018_int is not an integer"
+    end
 
     if value_f018_int < -834 do
       raise ArgumentError, "value.f018_int is below the wire minimum"
@@ -873,6 +917,10 @@ defmodule Realworld.RealWorld do
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 6
 
+    if not is_integer(value_f021_ufixed) do
+      raise ArgumentError, "value.f021_ufixed is not an integer"
+    end
+
     if value_f021_ufixed < 0 do
       raise ArgumentError, "value.f021_ufixed is below the wire minimum"
     end
@@ -889,6 +937,10 @@ defmodule Realworld.RealWorld do
     sc10 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 1
+
+    if not is_integer(value_f023_bits) do
+      raise ArgumentError, "value.f023_bits is not an integer"
+    end
 
     if value_f023_bits < 0 do
       raise ArgumentError, "value.f023_bits is below the wire minimum"
@@ -907,6 +959,10 @@ defmodule Realworld.RealWorld do
     scratch = scratch >>> 24
     scratch = scratch ||| v <<< 2
 
+    if not is_integer(value_f025_fixed) do
+      raise ArgumentError, "value.f025_fixed is not an integer"
+    end
+
     if value_f025_fixed < -30464 do
       raise ArgumentError, "value.f025_fixed is below the wire minimum"
     end
@@ -917,6 +973,10 @@ defmodule Realworld.RealWorld do
 
     v = value_f025_fixed + 30464
     scratch = scratch ||| v <<< 34
+
+    if not is_integer(value_f026_bits) do
+      raise ArgumentError, "value.f026_bits is not an integer"
+    end
 
     if value_f026_bits < 0 do
       raise ArgumentError, "value.f026_bits is below the wire minimum"
@@ -941,6 +1001,10 @@ defmodule Realworld.RealWorld do
 
     v = cf_quantize(value_f027_cf32, -2.0, 4.0, 16, 16.0)
     scratch = scratch ||| v <<< 11
+
+    if not is_integer(value_f028_bits) do
+      raise ArgumentError, "value.f028_bits is not an integer"
+    end
 
     if value_f028_bits < 0 do
       raise ArgumentError, "value.f028_bits is below the wire minimum"
@@ -976,6 +1040,10 @@ defmodule Realworld.RealWorld do
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 4
 
+    if not is_integer(value_f031_bits) do
+      raise ArgumentError, "value.f031_bits is not an integer"
+    end
+
     if value_f031_bits < 0 do
       raise ArgumentError, "value.f031_bits is below the wire minimum"
     end
@@ -987,6 +1055,10 @@ defmodule Realworld.RealWorld do
     v = value_f031_bits &&& 0x1
     scratch = scratch ||| v <<< 36
 
+    if not is_integer(value_f032_int) do
+      raise ArgumentError, "value.f032_int is not an integer"
+    end
+
     if value_f032_int < -3 do
       raise ArgumentError, "value.f032_int is below the wire minimum"
     end
@@ -997,6 +1069,10 @@ defmodule Realworld.RealWorld do
 
     v = value_f032_int + 3
     scratch = scratch ||| v <<< 37
+
+    if not is_integer(value_f033_uint) do
+      raise ArgumentError, "value.f033_uint is not an integer"
+    end
 
     if value_f033_uint < 0 do
       raise ArgumentError, "value.f033_uint is below the wire minimum"
@@ -1010,6 +1086,10 @@ defmodule Realworld.RealWorld do
     sc16 = scratch
     scratch = v
 
+    if not is_integer(value_f034_uint) do
+      raise ArgumentError, "value.f034_uint is not an integer"
+    end
+
     if value_f034_uint < 0 do
       raise ArgumentError, "value.f034_uint is below the wire minimum"
     end
@@ -1020,6 +1100,10 @@ defmodule Realworld.RealWorld do
 
     v = value_f034_uint
     scratch = scratch ||| v <<< 18
+
+    if not is_integer(value_f035_bits) do
+      raise ArgumentError, "value.f035_bits is not an integer"
+    end
 
     if value_f035_bits < 0 do
       raise ArgumentError, "value.f035_bits is below the wire minimum"
@@ -1038,6 +1122,10 @@ defmodule Realworld.RealWorld do
     v = if value_f038_bool, do: 1, else: 0
     scratch = scratch ||| v <<< 45
 
+    if not is_integer(value_f039_bits) do
+      raise ArgumentError, "value.f039_bits is not an integer"
+    end
+
     if value_f039_bits < 0 do
       raise ArgumentError, "value.f039_bits is below the wire minimum"
     end
@@ -1051,6 +1139,10 @@ defmodule Realworld.RealWorld do
     scratch = scratch >>> 40
     scratch = scratch ||| v <<< 6
 
+    if not is_integer(value_f040_fixed) do
+      raise ArgumentError, "value.f040_fixed is not an integer"
+    end
+
     if value_f040_fixed < -20480 do
       raise ArgumentError, "value.f040_fixed is below the wire minimum"
     end
@@ -1062,6 +1154,10 @@ defmodule Realworld.RealWorld do
     v = value_f040_fixed + 20480
     scratch = scratch ||| v <<< 25
 
+    if not is_integer(value_f041_int) do
+      raise ArgumentError, "value.f041_int is not an integer"
+    end
+
     if value_f041_int < -55 do
       raise ArgumentError, "value.f041_int is below the wire minimum"
     end
@@ -1072,6 +1168,10 @@ defmodule Realworld.RealWorld do
 
     v = value_f041_int + 55
     scratch = scratch ||| v <<< 41
+
+    if not is_integer(value_f042_bits) do
+      raise ArgumentError, "value.f042_bits is not an integer"
+    end
 
     if value_f042_bits < 0 do
       raise ArgumentError, "value.f042_bits is below the wire minimum"
@@ -1108,6 +1208,10 @@ defmodule Realworld.RealWorld do
         v = f32_bits(value_f044f32)
         scratch = scratch ||| v <<< 7
 
+        if not is_integer(value_f045_bits) do
+          raise ArgumentError, "value.f045_bits is not an integer"
+        end
+
         if value_f045_bits < 0 do
           raise ArgumentError, "value.f045_bits is below the wire minimum"
         end
@@ -1118,6 +1222,10 @@ defmodule Realworld.RealWorld do
 
         v = value_f045_bits &&& 0xFFF
         scratch = scratch ||| v <<< 39
+
+        if not is_integer(value_f046_uint) do
+          raise ArgumentError, "value.f046_uint is not an integer"
+        end
 
         if value_f046_uint < 0 do
           raise ArgumentError, "value.f046_uint is below the wire minimum"
@@ -1131,6 +1239,10 @@ defmodule Realworld.RealWorld do
         sc19 = scratch
         scratch = scratch >>> 48
         scratch = scratch ||| v <<< 3
+
+        if not is_integer(value_f047_int) do
+          raise ArgumentError, "value.f047_int is not an integer"
+        end
 
         if value_f047_int < -430_976 do
           raise ArgumentError, "value.f047_int is below the wire minimum"
@@ -1162,6 +1274,10 @@ defmodule Realworld.RealWorld do
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
+
+    if not is_integer(value_f049_ufixed) do
+      raise ArgumentError, "value.f049_ufixed is not an integer"
+    end
 
     if value_f049_ufixed < 0 do
       raise ArgumentError, "value.f049_ufixed is below the wire minimum"
@@ -1195,6 +1311,10 @@ defmodule Realworld.RealWorld do
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 1
 
+        if not is_integer(value_f052_int) do
+          raise ArgumentError, "value.f052_int is not an integer"
+        end
+
         if value_f052_int < -57 do
           raise ArgumentError, "value.f052_int is below the wire minimum"
         end
@@ -1209,6 +1329,10 @@ defmodule Realworld.RealWorld do
         v = f32_bits(value_f053f32)
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 32
+
+        if not is_integer(value_f054_int) do
+          raise ArgumentError, "value.f054_int is not an integer"
+        end
 
         if value_f054_int < -35 do
           raise ArgumentError, "value.f054_int is below the wire minimum"
@@ -1234,6 +1358,10 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
 
+    if not is_integer(value_f056_int) do
+      raise ArgumentError, "value.f056_int is not an integer"
+    end
+
     if value_f056_int < -13 do
       raise ArgumentError, "value.f056_int is below the wire minimum"
     end
@@ -1245,6 +1373,10 @@ defmodule Realworld.RealWorld do
     v = value_f056_int + 13
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 5
+
+    if not is_integer(value_f057_int) do
+      raise ArgumentError, "value.f057_int is not an integer"
+    end
 
     if value_f057_int < -15 do
       raise ArgumentError, "value.f057_int is below the wire minimum"
@@ -1276,6 +1408,10 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
 
+    if not is_integer(value_f060_bits) do
+      raise ArgumentError, "value.f060_bits is not an integer"
+    end
+
     if value_f060_bits < 0 do
       raise ArgumentError, "value.f060_bits is below the wire minimum"
     end
@@ -1299,6 +1435,10 @@ defmodule Realworld.RealWorld do
     v = cf_quantize(value_f061_cf32, -90.0, 180.0, 360, 360.0)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 9
+
+    if not is_integer(value_f062_uint) do
+      raise ArgumentError, "value.f062_uint is not an integer"
+    end
 
     if value_f062_uint < 0 do
       raise ArgumentError, "value.f062_uint is below the wire minimum"
@@ -1339,6 +1479,10 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
 
+    if not is_integer(value_f064_uint) do
+      raise ArgumentError, "value.f064_uint is not an integer"
+    end
+
     if value_f064_uint < 0 do
       raise ArgumentError, "value.f064_uint is below the wire minimum"
     end
@@ -1362,6 +1506,10 @@ defmodule Realworld.RealWorld do
     v = cf_quantize(value_f065_cf32, 0.0, 30.0, 60, 60.0)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 6
+
+    if not is_integer(value_f066_ufixed) do
+      raise ArgumentError, "value.f066_ufixed is not an integer"
+    end
 
     if value_f066_ufixed < 0 do
       raise ArgumentError, "value.f066_ufixed is below the wire minimum"
@@ -1403,6 +1551,10 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 11
 
+    if not is_integer(value_f069_bits) do
+      raise ArgumentError, "value.f069_bits is not an integer"
+    end
+
     if value_f069_bits < 0 do
       raise ArgumentError, "value.f069_bits is below the wire minimum"
     end
@@ -1414,6 +1566,10 @@ defmodule Realworld.RealWorld do
     v = value_f069_bits &&& 0x7FF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 11
+
+    if not is_integer(value_f070_uint) do
+      raise ArgumentError, "value.f070_uint is not an integer"
+    end
 
     if value_f070_uint < 0 do
       raise ArgumentError, "value.f070_uint is below the wire minimum"
@@ -1454,6 +1610,10 @@ defmodule Realworld.RealWorld do
     v = cf_quantize(value_f072_cf32, 0.0, 100.0, 10000, 10000.0)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 14
+
+    if not is_integer(value_f073_int) do
+      raise ArgumentError, "value.f073_int is not an integer"
+    end
 
     if value_f073_int < -4 do
       raise ArgumentError, "value.f073_int is below the wire minimum"
@@ -1513,6 +1673,10 @@ defmodule Realworld.RealWorld do
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 32
 
+        if not is_integer(value_f076_int) do
+          raise ArgumentError, "value.f076_int is not an integer"
+        end
+
         if value_f076_int < -26218 do
           raise ArgumentError, "value.f076_int is below the wire minimum"
         end
@@ -1524,6 +1688,10 @@ defmodule Realworld.RealWorld do
         v = value_f076_int + 26218
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 16
+
+        if not is_integer(value_f077_int) do
+          raise ArgumentError, "value.f077_int is not an integer"
+        end
 
         if value_f077_int < -17 do
           raise ArgumentError, "value.f077_int is below the wire minimum"
@@ -1541,6 +1709,10 @@ defmodule Realworld.RealWorld do
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 6
 
+        if not is_integer(value_f078_bits) do
+          raise ArgumentError, "value.f078_bits is not an integer"
+        end
+
         if value_f078_bits < 0 do
           raise ArgumentError, "value.f078_bits is below the wire minimum"
         end
@@ -1552,6 +1724,10 @@ defmodule Realworld.RealWorld do
         v = value_f078_bits &&& 0x1FF
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 9
+
+        if not is_integer(value_f079_uint) do
+          raise ArgumentError, "value.f079_uint is not an integer"
+        end
 
         if value_f079_uint < 0 do
           raise ArgumentError, "value.f079_uint is below the wire minimum"
@@ -1581,6 +1757,10 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
 
+    if not is_integer(value_f081_bits) do
+      raise ArgumentError, "value.f081_bits is not an integer"
+    end
+
     if value_f081_bits < 0 do
       raise ArgumentError, "value.f081_bits is below the wire minimum"
     end
@@ -1592,6 +1772,10 @@ defmodule Realworld.RealWorld do
     v = value_f081_bits &&& 0x1FFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 29
+
+    if not is_integer(value_f082_bits) do
+      raise ArgumentError, "value.f082_bits is not an integer"
+    end
 
     if value_f082_bits < 0 do
       raise ArgumentError, "value.f082_bits is below the wire minimum"
@@ -1612,6 +1796,10 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 3
 
+    if not is_integer(value_f084_ufixed) do
+      raise ArgumentError, "value.f084_ufixed is not an integer"
+    end
+
     if value_f084_ufixed < 0 do
       raise ArgumentError, "value.f084_ufixed is below the wire minimum"
     end
@@ -1623,6 +1811,10 @@ defmodule Realworld.RealWorld do
     v = value_f084_ufixed
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
+
+    if not is_integer(value_f085_bits) do
+      raise ArgumentError, "value.f085_bits is not an integer"
+    end
 
     if value_f085_bits < 0 do
       raise ArgumentError, "value.f085_bits is below the wire minimum"
@@ -1639,6 +1831,10 @@ defmodule Realworld.RealWorld do
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 21
+
+    if not is_integer(value_f086_uint) do
+      raise ArgumentError, "value.f086_uint is not an integer"
+    end
 
     if value_f086_uint < 0 do
       raise ArgumentError, "value.f086_uint is below the wire minimum"
@@ -1667,6 +1863,10 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
 
+    if not is_integer(value_f088_int) do
+      raise ArgumentError, "value.f088_int is not an integer"
+    end
+
     if value_f088_int < -694 do
       raise ArgumentError, "value.f088_int is below the wire minimum"
     end
@@ -1678,6 +1878,10 @@ defmodule Realworld.RealWorld do
     v = value_f088_int + 694
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 11
+
+    if not is_integer(value_f089_bits) do
+      raise ArgumentError, "value.f089_bits is not an integer"
+    end
 
     if value_f089_bits < 0 do
       raise ArgumentError, "value.f089_bits is below the wire minimum"
@@ -1697,6 +1901,10 @@ defmodule Realworld.RealWorld do
     v = value_f089_bits >>> 32 &&& 0xFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
+
+    if not is_integer(value_f090_uint) do
+      raise ArgumentError, "value.f090_uint is not an integer"
+    end
 
     if value_f090_uint < 0 do
       raise ArgumentError, "value.f090_uint is below the wire minimum"
@@ -1725,6 +1933,10 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
 
+    if not is_integer(value_f093_bits) do
+      raise ArgumentError, "value.f093_bits is not an integer"
+    end
+
     if value_f093_bits < 0 do
       raise ArgumentError, "value.f093_bits is below the wire minimum"
     end
@@ -1747,6 +1959,10 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 1
 
+    if not is_integer(value_f095_fixed) do
+      raise ArgumentError, "value.f095_fixed is not an integer"
+    end
+
     if value_f095_fixed < -103_350_272 do
       raise ArgumentError, "value.f095_fixed is below the wire minimum"
     end
@@ -1763,6 +1979,10 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 28
 
+    if not is_integer(value_f096_bits) do
+      raise ArgumentError, "value.f096_bits is not an integer"
+    end
+
     if value_f096_bits < 0 do
       raise ArgumentError, "value.f096_bits is below the wire minimum"
     end
@@ -1774,6 +1994,10 @@ defmodule Realworld.RealWorld do
     v = value_f096_bits &&& 0x3FFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 18
+
+    if not is_integer(value_f097_bits) do
+      raise ArgumentError, "value.f097_bits is not an integer"
+    end
 
     if value_f097_bits < 0 do
       raise ArgumentError, "value.f097_bits is below the wire minimum"

@@ -512,6 +512,10 @@ defmodule Example.Types do
   def write_handle!(value) do
     %{object_id: value_object_id, object_sequence: value_object_sequence} = value
 
+    if not is_integer(value_object_id) do
+      raise ArgumentError, "value.object_id is not an integer"
+    end
+
     if value_object_id < 0 do
       raise ArgumentError, "value.object_id is below the wire minimum"
     end
@@ -635,6 +639,10 @@ defmodule Example.Types do
   def write_quantized_position!(value) do
     %{x: value_x, y: value_y, z: value_z} = value
 
+    if not is_integer(value_x) do
+      raise ArgumentError, "value.x is not an integer"
+    end
+
     if value_x < -8_388_608 do
       raise ArgumentError, "value.x is below the wire minimum"
     end
@@ -646,6 +654,10 @@ defmodule Example.Types do
     v = value_x + 8_388_608
     scratch = v
 
+    if not is_integer(value_y) do
+      raise ArgumentError, "value.y is not an integer"
+    end
+
     if value_y < -8_388_608 do
       raise ArgumentError, "value.y is below the wire minimum"
     end
@@ -656,6 +668,10 @@ defmodule Example.Types do
 
     v = value_y + 8_388_608
     scratch = scratch ||| v <<< 25
+
+    if not is_integer(value_z) do
+      raise ArgumentError, "value.z is not an integer"
+    end
 
     if value_z < -8_388_608 do
       raise ArgumentError, "value.z is below the wire minimum"
@@ -778,6 +794,10 @@ defmodule Example.Types do
   def write_quantized_velocity!(value) do
     %{x: value_x, y: value_y, z: value_z} = value
 
+    if not is_integer(value_x) do
+      raise ArgumentError, "value.x is not an integer"
+    end
+
     if value_x < -2_097_152 do
       raise ArgumentError, "value.x is below the wire minimum"
     end
@@ -789,6 +809,10 @@ defmodule Example.Types do
     v = value_x + 2_097_152
     scratch = v
 
+    if not is_integer(value_y) do
+      raise ArgumentError, "value.y is not an integer"
+    end
+
     if value_y < -2_097_152 do
       raise ArgumentError, "value.y is below the wire minimum"
     end
@@ -799,6 +823,10 @@ defmodule Example.Types do
 
     v = value_y + 2_097_152
     scratch = scratch ||| v <<< 23
+
+    if not is_integer(value_z) do
+      raise ArgumentError, "value.z is not an integer"
+    end
 
     if value_z < -2_097_152 do
       raise ArgumentError, "value.z is below the wire minimum"
@@ -920,6 +948,10 @@ defmodule Example.Types do
   def write_quantized_rotation!(value) do
     %{x: value_x, y: value_y, z: value_z, w: value_w} = value
 
+    if not is_integer(value_x) do
+      raise ArgumentError, "value.x is not an integer"
+    end
+
     if value_x < -1024 do
       raise ArgumentError, "value.x is below the wire minimum"
     end
@@ -930,6 +962,10 @@ defmodule Example.Types do
 
     v = value_x + 1024
     scratch = v
+
+    if not is_integer(value_y) do
+      raise ArgumentError, "value.y is not an integer"
+    end
 
     if value_y < -1024 do
       raise ArgumentError, "value.y is below the wire minimum"
@@ -942,6 +978,10 @@ defmodule Example.Types do
     v = value_y + 1024
     scratch = scratch ||| v <<< 12
 
+    if not is_integer(value_z) do
+      raise ArgumentError, "value.z is not an integer"
+    end
+
     if value_z < -1024 do
       raise ArgumentError, "value.z is below the wire minimum"
     end
@@ -952,6 +992,10 @@ defmodule Example.Types do
 
     v = value_z + 1024
     scratch = scratch ||| v <<< 24
+
+    if not is_integer(value_w) do
+      raise ArgumentError, "value.w is not an integer"
+    end
 
     if value_w < -1024 do
       raise ArgumentError, "value.w is below the wire minimum"
@@ -1787,6 +1831,10 @@ defmodule Example.Types do
     scratch = v
     %{x: value_position_x, y: value_position_y, z: value_position_z} = value_position
 
+    if not is_integer(value_position_x) do
+      raise ArgumentError, "value.position.x is not an integer"
+    end
+
     if value_position_x < -8_388_608 do
       raise ArgumentError, "value.position.x is below the wire minimum"
     end
@@ -1797,6 +1845,10 @@ defmodule Example.Types do
 
     v = value_position_x + 8_388_608
     scratch = scratch ||| v <<< 3
+
+    if not is_integer(value_position_y) do
+      raise ArgumentError, "value.position.y is not an integer"
+    end
 
     if value_position_y < -8_388_608 do
       raise ArgumentError, "value.position.y is below the wire minimum"
@@ -1810,6 +1862,10 @@ defmodule Example.Types do
     sc0 = scratch
     scratch = scratch >>> 24
     scratch = scratch ||| v <<< 4
+
+    if not is_integer(value_position_z) do
+      raise ArgumentError, "value.position.z is not an integer"
+    end
 
     if value_position_z < -8_388_608 do
       raise ArgumentError, "value.position.z is below the wire minimum"
@@ -1829,6 +1885,10 @@ defmodule Example.Types do
       w: value_rotation_w
     } = value_rotation
 
+    if not is_integer(value_rotation_x) do
+      raise ArgumentError, "value.rotation.x is not an integer"
+    end
+
     if value_rotation_x < -1024 do
       raise ArgumentError, "value.rotation.x is below the wire minimum"
     end
@@ -1842,6 +1902,10 @@ defmodule Example.Types do
     scratch = scratch >>> 48
     scratch = scratch ||| v <<< 6
 
+    if not is_integer(value_rotation_y) do
+      raise ArgumentError, "value.rotation.y is not an integer"
+    end
+
     if value_rotation_y < -1024 do
       raise ArgumentError, "value.rotation.y is below the wire minimum"
     end
@@ -1853,6 +1917,10 @@ defmodule Example.Types do
     v = value_rotation_y + 1024
     scratch = scratch ||| v <<< 18
 
+    if not is_integer(value_rotation_z) do
+      raise ArgumentError, "value.rotation.z is not an integer"
+    end
+
     if value_rotation_z < -1024 do
       raise ArgumentError, "value.rotation.z is below the wire minimum"
     end
@@ -1863,6 +1931,10 @@ defmodule Example.Types do
 
     v = value_rotation_z + 1024
     scratch = scratch ||| v <<< 30
+
+    if not is_integer(value_rotation_w) do
+      raise ArgumentError, "value.rotation.w is not an integer"
+    end
 
     if value_rotation_w < -1024 do
       raise ArgumentError, "value.rotation.w is below the wire minimum"
@@ -1881,6 +1953,10 @@ defmodule Example.Types do
       z: value_linear_velocity_z
     } = value_linear_velocity
 
+    if not is_integer(value_linear_velocity_x) do
+      raise ArgumentError, "value.linear_velocity.x is not an integer"
+    end
+
     if value_linear_velocity_x < -2_097_152 do
       raise ArgumentError, "value.linear_velocity.x is below the wire minimum"
     end
@@ -1894,6 +1970,10 @@ defmodule Example.Types do
     scratch = scratch >>> 48
     scratch = scratch ||| v <<< 6
 
+    if not is_integer(value_linear_velocity_y) do
+      raise ArgumentError, "value.linear_velocity.y is not an integer"
+    end
+
     if value_linear_velocity_y < -2_097_152 do
       raise ArgumentError, "value.linear_velocity.y is below the wire minimum"
     end
@@ -1904,6 +1984,10 @@ defmodule Example.Types do
 
     v = value_linear_velocity_y + 2_097_152
     scratch = scratch ||| v <<< 29
+
+    if not is_integer(value_linear_velocity_z) do
+      raise ArgumentError, "value.linear_velocity.z is not an integer"
+    end
 
     if value_linear_velocity_z < -2_097_152 do
       raise ArgumentError, "value.linear_velocity.z is below the wire minimum"
@@ -1947,6 +2031,10 @@ defmodule Example.Types do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 2
 
+    if not is_integer(value_health) do
+      raise ArgumentError, "value.health is not an integer"
+    end
+
     if value_health < 0 do
       raise ArgumentError, "value.health is below the wire minimum"
     end
@@ -1958,6 +2046,10 @@ defmodule Example.Types do
     v = value_health
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 10
+
+    if not is_integer(value_thrust) do
+      raise ArgumentError, "value.thrust is not an integer"
+    end
 
     if value_thrust < 0 do
       raise ArgumentError, "value.thrust is below the wire minimum"
@@ -2173,6 +2265,10 @@ defmodule Example.Types do
   def write_expression_probe!(value) do
     %{hardpoint_index: value_hardpoint_index, spin_rate: value_spin_rate} = value
 
+    if not is_integer(value_hardpoint_index) do
+      raise ArgumentError, "value.hardpoint_index is not an integer"
+    end
+
     if value_hardpoint_index < 0 do
       raise ArgumentError, "value.hardpoint_index is below the wire minimum"
     end
@@ -2183,6 +2279,10 @@ defmodule Example.Types do
 
     v = value_hardpoint_index
     scratch = v
+
+    if not is_integer(value_spin_rate) do
+      raise ArgumentError, "value.spin_rate is not an integer"
+    end
 
     if value_spin_rate < 1024 do
       raise ArgumentError, "value.spin_rate is below the wire minimum"
@@ -2313,6 +2413,10 @@ defmodule Example.Types do
       ceiling_default: value_ceiling_default
     } = value
 
+    if not is_integer(value_floor_bound) do
+      raise ArgumentError, "value.floor_bound is not an integer"
+    end
+
     if value_floor_bound < -9_223_372_036_854_775_808 do
       raise ArgumentError, "value.floor_bound is below the wire minimum"
     end
@@ -2327,6 +2431,10 @@ defmodule Example.Types do
     v = w >>> 32
     sc0 = scratch
     scratch = v
+
+    if not is_integer(value_doubled_floor) do
+      raise ArgumentError, "value.doubled_floor is not an integer"
+    end
 
     if value_doubled_floor < -9_223_372_036_854_775_808 do
       raise ArgumentError, "value.doubled_floor is below the wire minimum"
@@ -2343,6 +2451,10 @@ defmodule Example.Types do
     v = w >>> 32
     sc2 = scratch
     scratch = v
+
+    if not is_integer(value_ceiling_range) do
+      raise ArgumentError, "value.ceiling_range is not an integer"
+    end
 
     if value_ceiling_range < 1 do
       raise ArgumentError, "value.ceiling_range is below the wire minimum"
@@ -2553,6 +2665,10 @@ defmodule Example.Types do
       ceiling_def: value_ceiling_def
     } = value
 
+    if not is_integer(value_clamped_floor) do
+      raise ArgumentError, "value.clamped_floor is not an integer"
+    end
+
     if value_clamped_floor < -9_223_372_036_854_775_808 do
       raise ArgumentError, "value.clamped_floor is below the wire minimum"
     end
@@ -2567,6 +2683,10 @@ defmodule Example.Types do
     v = w >>> 32
     sc0 = scratch
     scratch = v
+
+    if not is_integer(value_clamped_ceiling) do
+      raise ArgumentError, "value.clamped_ceiling is not an integer"
+    end
 
     if value_clamped_ceiling < 1 do
       raise ArgumentError, "value.clamped_ceiling is below the wire minimum"

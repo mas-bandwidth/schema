@@ -510,6 +510,10 @@ defmodule Bench.Bench do
       blob: value_blob
     } = value
 
+    if not is_integer(value_a) do
+      raise ArgumentError, "value.a is not an integer"
+    end
+
     if value_a < -100 do
       raise ArgumentError, "value.a is below the wire minimum"
     end
@@ -520,6 +524,10 @@ defmodule Bench.Bench do
 
     v = value_a + 100
     scratch = v
+
+    if not is_integer(value_b) do
+      raise ArgumentError, "value.b is not an integer"
+    end
 
     if value_b < 0 do
       raise ArgumentError, "value.b is below the wire minimum"
@@ -532,6 +540,10 @@ defmodule Bench.Bench do
     v = value_b
     scratch = scratch ||| v <<< 8
 
+    if not is_integer(value_c) do
+      raise ArgumentError, "value.c is not an integer"
+    end
+
     if value_c < -1_000_000 do
       raise ArgumentError, "value.c is below the wire minimum"
     end
@@ -543,6 +555,10 @@ defmodule Bench.Bench do
     v = value_c + 1_000_000
     scratch = scratch ||| v <<< 24
 
+    if not is_integer(value_bits7) do
+      raise ArgumentError, "value.bits7 is not an integer"
+    end
+
     if value_bits7 < 0 do
       raise ArgumentError, "value.bits7 is below the wire minimum"
     end
@@ -553,6 +569,10 @@ defmodule Bench.Bench do
 
     v = value_bits7 &&& 0x7F
     scratch = scratch ||| v <<< 45
+
+    if not is_integer(value_bits13) do
+      raise ArgumentError, "value.bits13 is not an integer"
+    end
 
     if value_bits13 < 0 do
       raise ArgumentError, "value.bits13 is below the wire minimum"
@@ -566,6 +586,10 @@ defmodule Bench.Bench do
     sc0 = scratch
     scratch = scratch >>> 48
     scratch = scratch ||| v <<< 4
+
+    if not is_integer(value_bits23) do
+      raise ArgumentError, "value.bits23 is not an integer"
+    end
 
     if value_bits23 < 0 do
       raise ArgumentError, "value.bits23 is below the wire minimum"
@@ -786,6 +810,10 @@ defmodule Bench.Bench do
       f9: value_f9
     } = value
 
+    if not is_integer(value_f0) do
+      raise ArgumentError, "value.f0 is not an integer"
+    end
+
     if value_f0 < -100 do
       raise ArgumentError, "value.f0 is below the wire minimum"
     end
@@ -796,6 +824,10 @@ defmodule Bench.Bench do
 
     v = value_f0 + 100
     scratch = v
+
+    if not is_integer(value_f1) do
+      raise ArgumentError, "value.f1 is not an integer"
+    end
 
     if value_f1 < 0 do
       raise ArgumentError, "value.f1 is below the wire minimum"
@@ -808,6 +840,10 @@ defmodule Bench.Bench do
     v = value_f1
     scratch = scratch ||| v <<< 8
 
+    if not is_integer(value_f2) do
+      raise ArgumentError, "value.f2 is not an integer"
+    end
+
     if value_f2 < -1_000_000 do
       raise ArgumentError, "value.f2 is below the wire minimum"
     end
@@ -818,6 +854,10 @@ defmodule Bench.Bench do
 
     v = value_f2 + 1_000_000
     scratch = scratch ||| v <<< 24
+
+    if not is_integer(value_f3) do
+      raise ArgumentError, "value.f3 is not an integer"
+    end
 
     if value_f3 < 0 do
       raise ArgumentError, "value.f3 is below the wire minimum"
@@ -830,6 +870,10 @@ defmodule Bench.Bench do
     v = value_f3
     scratch = scratch ||| v <<< 45
 
+    if not is_integer(value_f4) do
+      raise ArgumentError, "value.f4 is not an integer"
+    end
+
     if value_f4 < -15 do
       raise ArgumentError, "value.f4 is below the wire minimum"
     end
@@ -840,6 +884,10 @@ defmodule Bench.Bench do
 
     v = value_f4 + 15
     scratch = scratch ||| v <<< 47
+
+    if not is_integer(value_f5) do
+      raise ArgumentError, "value.f5 is not an integer"
+    end
 
     if value_f5 < 0 do
       raise ArgumentError, "value.f5 is below the wire minimum"
@@ -854,6 +902,10 @@ defmodule Bench.Bench do
     scratch = scratch >>> 48
     scratch = scratch ||| v <<< 4
 
+    if not is_integer(value_f6) do
+      raise ArgumentError, "value.f6 is not an integer"
+    end
+
     if value_f6 < -2048 do
       raise ArgumentError, "value.f6 is below the wire minimum"
     end
@@ -864,6 +916,10 @@ defmodule Bench.Bench do
 
     v = value_f6 + 2048
     scratch = scratch ||| v <<< 14
+
+    if not is_integer(value_f7) do
+      raise ArgumentError, "value.f7 is not an integer"
+    end
 
     if value_f7 < 0 do
       raise ArgumentError, "value.f7 is below the wire minimum"
@@ -876,6 +932,10 @@ defmodule Bench.Bench do
     v = value_f7
     scratch = scratch ||| v <<< 26
 
+    if not is_integer(value_f8) do
+      raise ArgumentError, "value.f8 is not an integer"
+    end
+
     if value_f8 < -600_000 do
       raise ArgumentError, "value.f8 is below the wire minimum"
     end
@@ -886,6 +946,10 @@ defmodule Bench.Bench do
 
     v = value_f8 + 600_000
     scratch = scratch ||| v <<< 34
+
+    if not is_integer(value_f9) do
+      raise ArgumentError, "value.f9 is not an integer"
+    end
 
     if value_f9 < 0 do
       raise ArgumentError, "value.f9 is below the wire minimum"
@@ -1053,6 +1117,10 @@ defmodule Bench.Bench do
       b48: value_b48
     } = value
 
+    if not is_integer(value_b7) do
+      raise ArgumentError, "value.b7 is not an integer"
+    end
+
     if value_b7 < 0 do
       raise ArgumentError, "value.b7 is below the wire minimum"
     end
@@ -1063,6 +1131,10 @@ defmodule Bench.Bench do
 
     v = value_b7 &&& 0x7F
     scratch = v
+
+    if not is_integer(value_b13) do
+      raise ArgumentError, "value.b13 is not an integer"
+    end
 
     if value_b13 < 0 do
       raise ArgumentError, "value.b13 is below the wire minimum"
@@ -1075,6 +1147,10 @@ defmodule Bench.Bench do
     v = value_b13 &&& 0x1FFF
     scratch = scratch ||| v <<< 7
 
+    if not is_integer(value_b23) do
+      raise ArgumentError, "value.b23 is not an integer"
+    end
+
     if value_b23 < 0 do
       raise ArgumentError, "value.b23 is below the wire minimum"
     end
@@ -1086,6 +1162,10 @@ defmodule Bench.Bench do
     v = value_b23 &&& 0x7FFFFF
     scratch = scratch ||| v <<< 20
 
+    if not is_integer(value_b3) do
+      raise ArgumentError, "value.b3 is not an integer"
+    end
+
     if value_b3 < 0 do
       raise ArgumentError, "value.b3 is below the wire minimum"
     end
@@ -1096,6 +1176,10 @@ defmodule Bench.Bench do
 
     v = value_b3 &&& 0x7
     scratch = scratch ||| v <<< 43
+
+    if not is_integer(value_b32) do
+      raise ArgumentError, "value.b32 is not an integer"
+    end
 
     if value_b32 < 0 do
       raise ArgumentError, "value.b32 is below the wire minimum"
@@ -1110,6 +1194,10 @@ defmodule Bench.Bench do
     scratch = scratch >>> 40
     scratch = scratch ||| v <<< 6
 
+    if not is_integer(value_b11) do
+      raise ArgumentError, "value.b11 is not an integer"
+    end
+
     if value_b11 < 0 do
       raise ArgumentError, "value.b11 is below the wire minimum"
     end
@@ -1120,6 +1208,10 @@ defmodule Bench.Bench do
 
     v = value_b11 &&& 0x7FF
     scratch = scratch ||| v <<< 38
+
+    if not is_integer(value_b19) do
+      raise ArgumentError, "value.b19 is not an integer"
+    end
 
     if value_b19 < 0 do
       raise ArgumentError, "value.b19 is below the wire minimum"
@@ -1133,6 +1225,10 @@ defmodule Bench.Bench do
     sc1 = scratch
     scratch = scratch >>> 48
     scratch = scratch ||| v <<< 1
+
+    if not is_integer(value_b48) do
+      raise ArgumentError, "value.b48 is not an integer"
+    end
 
     if value_b48 < 0 do
       raise ArgumentError, "value.b48 is below the wire minimum"
@@ -1431,6 +1527,10 @@ defmodule Bench.Bench do
       firing: value_firing
     } = value
 
+    if not is_integer(value_entity_id) do
+      raise ArgumentError, "value.entity_id is not an integer"
+    end
+
     if value_entity_id < 0 do
       raise ArgumentError, "value.entity_id is below the wire minimum"
     end
@@ -1441,6 +1541,10 @@ defmodule Bench.Bench do
 
     v = value_entity_id &&& 0xFFF
     scratch = v
+
+    if not is_integer(value_pos_x) do
+      raise ArgumentError, "value.pos_x is not an integer"
+    end
 
     if value_pos_x < -16383 do
       raise ArgumentError, "value.pos_x is below the wire minimum"
@@ -1453,6 +1557,10 @@ defmodule Bench.Bench do
     v = value_pos_x + 16383
     scratch = scratch ||| v <<< 12
 
+    if not is_integer(value_pos_y) do
+      raise ArgumentError, "value.pos_y is not an integer"
+    end
+
     if value_pos_y < -16383 do
       raise ArgumentError, "value.pos_y is below the wire minimum"
     end
@@ -1463,6 +1571,10 @@ defmodule Bench.Bench do
 
     v = value_pos_y + 16383
     scratch = scratch ||| v <<< 27
+
+    if not is_integer(value_pos_z) do
+      raise ArgumentError, "value.pos_z is not an integer"
+    end
 
     if value_pos_z < -16383 do
       raise ArgumentError, "value.pos_z is below the wire minimum"
@@ -1477,6 +1589,10 @@ defmodule Bench.Bench do
     scratch = scratch >>> 40
     scratch = scratch ||| v <<< 2
 
+    if not is_integer(value_yaw) do
+      raise ArgumentError, "value.yaw is not an integer"
+    end
+
     if value_yaw < 0 do
       raise ArgumentError, "value.yaw is below the wire minimum"
     end
@@ -1487,6 +1603,10 @@ defmodule Bench.Bench do
 
     v = value_yaw &&& 0x1FF
     scratch = scratch ||| v <<< 17
+
+    if not is_integer(value_pitch) do
+      raise ArgumentError, "value.pitch is not an integer"
+    end
 
     if value_pitch < 0 do
       raise ArgumentError, "value.pitch is below the wire minimum"
@@ -1499,6 +1619,10 @@ defmodule Bench.Bench do
     v = value_pitch &&& 0x1FF
     scratch = scratch ||| v <<< 26
 
+    if not is_integer(value_vel_x) do
+      raise ArgumentError, "value.vel_x is not an integer"
+    end
+
     if value_vel_x < -2048 do
       raise ArgumentError, "value.vel_x is below the wire minimum"
     end
@@ -1509,6 +1633,10 @@ defmodule Bench.Bench do
 
     v = value_vel_x + 2048
     scratch = scratch ||| v <<< 35
+
+    if not is_integer(value_vel_y) do
+      raise ArgumentError, "value.vel_y is not an integer"
+    end
 
     if value_vel_y < -2048 do
       raise ArgumentError, "value.vel_y is below the wire minimum"
@@ -1523,6 +1651,10 @@ defmodule Bench.Bench do
     scratch = scratch >>> 40
     scratch = scratch ||| v <<< 7
 
+    if not is_integer(value_vel_z) do
+      raise ArgumentError, "value.vel_z is not an integer"
+    end
+
     if value_vel_z < -2048 do
       raise ArgumentError, "value.vel_z is below the wire minimum"
     end
@@ -1533,6 +1665,10 @@ defmodule Bench.Bench do
 
     v = value_vel_z + 2048
     scratch = scratch ||| v <<< 19
+
+    if not is_integer(value_health) do
+      raise ArgumentError, "value.health is not an integer"
+    end
 
     if value_health < 0 do
       raise ArgumentError, "value.health is below the wire minimum"
@@ -1708,6 +1844,10 @@ defmodule Bench.Bench do
   def write_mixed_stat!(value) do
     %{stat_id: value_stat_id, delta: value_delta} = value
 
+    if not is_integer(value_stat_id) do
+      raise ArgumentError, "value.stat_id is not an integer"
+    end
+
     if value_stat_id < 0 do
       raise ArgumentError, "value.stat_id is below the wire minimum"
     end
@@ -1718,6 +1858,10 @@ defmodule Bench.Bench do
 
     v = value_stat_id &&& 0xFF
     scratch = v
+
+    if not is_integer(value_delta) do
+      raise ArgumentError, "value.delta is not an integer"
+    end
 
     if value_delta < -512 do
       raise ArgumentError, "value.delta is below the wire minimum"
@@ -1832,6 +1976,10 @@ defmodule Bench.Bench do
       crit: value_crit
     } = value
 
+    if not is_integer(value_target_id) do
+      raise ArgumentError, "value.target_id is not an integer"
+    end
+
     if value_target_id < 0 do
       raise ArgumentError, "value.target_id is below the wire minimum"
     end
@@ -1843,6 +1991,10 @@ defmodule Bench.Bench do
     v = value_target_id &&& 0xFFF
     scratch = v
 
+    if not is_integer(value_damage) do
+      raise ArgumentError, "value.damage is not an integer"
+    end
+
     if value_damage < 0 do
       raise ArgumentError, "value.damage is below the wire minimum"
     end
@@ -1853,6 +2005,10 @@ defmodule Bench.Bench do
 
     v = value_damage
     scratch = scratch ||| v <<< 12
+
+    if not is_integer(value_hit_kind) do
+      raise ArgumentError, "value.hit_kind is not an integer"
+    end
 
     if value_hit_kind < 0 do
       raise ArgumentError, "value.hit_kind is below the wire minimum"
@@ -1974,6 +2130,10 @@ defmodule Bench.Bench do
   def write_mixed_chat_event!(value) do
     %{channel: value_channel, speaker: value_speaker} = value
 
+    if not is_integer(value_channel) do
+      raise ArgumentError, "value.channel is not an integer"
+    end
+
     if value_channel < 0 do
       raise ArgumentError, "value.channel is below the wire minimum"
     end
@@ -1984,6 +2144,10 @@ defmodule Bench.Bench do
 
     v = value_channel
     scratch = v
+
+    if not is_integer(value_speaker) do
+      raise ArgumentError, "value.speaker is not an integer"
+    end
 
     if value_speaker < 0 do
       raise ArgumentError, "value.speaker is below the wire minimum"
@@ -2092,6 +2256,10 @@ defmodule Bench.Bench do
   def write_mixed_pickup_event!(value) do
     %{item_id: value_item_id, amount: value_amount} = value
 
+    if not is_integer(value_item_id) do
+      raise ArgumentError, "value.item_id is not an integer"
+    end
+
     if value_item_id < 0 do
       raise ArgumentError, "value.item_id is below the wire minimum"
     end
@@ -2102,6 +2270,10 @@ defmodule Bench.Bench do
 
     v = value_item_id &&& 0x3FF
     scratch = v
+
+    if not is_integer(value_amount) do
+      raise ArgumentError, "value.amount is not an integer"
+    end
 
     if value_amount < 0 do
       raise ArgumentError, "value.amount is below the wire minimum"
@@ -2255,6 +2427,10 @@ defmodule Bench.Bench do
             crit: value_hit_crit
           } = value_hit
 
+          if not is_integer(value_hit_target_id) do
+            raise ArgumentError, "value.hit.target_id is not an integer"
+          end
+
           if value_hit_target_id < 0 do
             raise ArgumentError, "value.hit.target_id is below the wire minimum"
           end
@@ -2266,6 +2442,10 @@ defmodule Bench.Bench do
           v = value_hit_target_id &&& 0xFFF
           scratch = scratch ||| v <<< 2
 
+          if not is_integer(value_hit_damage) do
+            raise ArgumentError, "value.hit.damage is not an integer"
+          end
+
           if value_hit_damage < 0 do
             raise ArgumentError, "value.hit.damage is below the wire minimum"
           end
@@ -2276,6 +2456,10 @@ defmodule Bench.Bench do
 
           v = value_hit_damage
           scratch = scratch ||| v <<< 14
+
+          if not is_integer(value_hit_hit_kind) do
+            raise ArgumentError, "value.hit.hit_kind is not an integer"
+          end
 
           if value_hit_hit_kind < 0 do
             raise ArgumentError, "value.hit.hit_kind is below the wire minimum"
@@ -2297,6 +2481,10 @@ defmodule Bench.Bench do
         {:chat, value_chat} ->
           %{channel: value_chat_channel, speaker: value_chat_speaker} = value_chat
 
+          if not is_integer(value_chat_channel) do
+            raise ArgumentError, "value.chat.channel is not an integer"
+          end
+
           if value_chat_channel < 0 do
             raise ArgumentError, "value.chat.channel is below the wire minimum"
           end
@@ -2307,6 +2495,10 @@ defmodule Bench.Bench do
 
           v = value_chat_channel
           scratch = scratch ||| v <<< 2
+
+          if not is_integer(value_chat_speaker) do
+            raise ArgumentError, "value.chat.speaker is not an integer"
+          end
 
           if value_chat_speaker < 0 do
             raise ArgumentError, "value.chat.speaker is below the wire minimum"
@@ -2326,6 +2518,10 @@ defmodule Bench.Bench do
         {:pickup, value_pickup} ->
           %{item_id: value_pickup_item_id, amount: value_pickup_amount} = value_pickup
 
+          if not is_integer(value_pickup_item_id) do
+            raise ArgumentError, "value.pickup.item_id is not an integer"
+          end
+
           if value_pickup_item_id < 0 do
             raise ArgumentError, "value.pickup.item_id is below the wire minimum"
           end
@@ -2336,6 +2532,10 @@ defmodule Bench.Bench do
 
           v = value_pickup_item_id &&& 0x3FF
           scratch = scratch ||| v <<< 2
+
+          if not is_integer(value_pickup_amount) do
+            raise ArgumentError, "value.pickup.amount is not an integer"
+          end
 
           if value_pickup_amount < 0 do
             raise ArgumentError, "value.pickup.amount is below the wire minimum"
@@ -2562,6 +2762,10 @@ defmodule Bench.Bench do
     v = 49374
     scratch = v
 
+    if not is_integer(value_sequence) do
+      raise ArgumentError, "value.sequence is not an integer"
+    end
+
     if value_sequence < 0 do
       raise ArgumentError, "value.sequence is below the wire minimum"
     end
@@ -2573,6 +2777,10 @@ defmodule Bench.Bench do
     v = value_sequence &&& 0xFFFF
     scratch = scratch ||| v <<< 16
 
+    if not is_integer(value_ack_sequence) do
+      raise ArgumentError, "value.ack_sequence is not an integer"
+    end
+
     if value_ack_sequence < 0 do
       raise ArgumentError, "value.ack_sequence is below the wire minimum"
     end
@@ -2583,6 +2791,10 @@ defmodule Bench.Bench do
 
     v = value_ack_sequence
     scratch = scratch ||| v <<< 32
+
+    if not is_integer(value_ack_bits) do
+      raise ArgumentError, "value.ack_bits is not an integer"
+    end
 
     if value_ack_bits < 0 do
       raise ArgumentError, "value.ack_bits is below the wire minimum"
@@ -2631,6 +2843,10 @@ defmodule Bench.Bench do
     sc3 = scratch
     scratch = v
 
+    if not is_integer(value_nonce) do
+      raise ArgumentError, "value.nonce is not an integer"
+    end
+
     if value_nonce < 0 do
       raise ArgumentError, "value.nonce is below the wire minimum"
     end
@@ -2645,6 +2861,10 @@ defmodule Bench.Bench do
     v = value_nonce >>> 32
     sc5 = scratch
     scratch = v
+
+    if not is_integer(value_world_time) do
+      raise ArgumentError, "value.world_time is not an integer"
+    end
 
     if value_world_time < -1_000_000_000_000 do
       raise ArgumentError, "value.world_time is below the wire minimum"
@@ -2661,6 +2881,10 @@ defmodule Bench.Bench do
     v = w >>> 32
     scratch = scratch ||| v <<< 32
 
+    if not is_integer(value_frame_tick) do
+      raise ArgumentError, "value.frame_tick is not an integer"
+    end
+
     if value_frame_tick < 0 do
       raise ArgumentError, "value.frame_tick is below the wire minimum"
     end
@@ -2675,6 +2899,10 @@ defmodule Bench.Bench do
     scratch = scratch ||| v <<< 1
     v = value_frame_tick >>> 32 &&& 0xFFFF
     scratch = scratch ||| v <<< 33
+
+    if not is_integer(value_server_time) do
+      raise ArgumentError, "value.server_time is not an integer"
+    end
 
     if value_server_time < 0 do
       raise ArgumentError, "value.server_time is below the wire minimum"
@@ -2764,6 +2992,10 @@ defmodule Bench.Bench do
             crit: value_game_event_hit_crit
           } = value_game_event_hit
 
+          if not is_integer(value_game_event_hit_target_id) do
+            raise ArgumentError, "value.game_event.hit.target_id is not an integer"
+          end
+
           if value_game_event_hit_target_id < 0 do
             raise ArgumentError, "value.game_event.hit.target_id is below the wire minimum"
           end
@@ -2776,6 +3008,10 @@ defmodule Bench.Bench do
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 12
 
+          if not is_integer(value_game_event_hit_damage) do
+            raise ArgumentError, "value.game_event.hit.damage is not an integer"
+          end
+
           if value_game_event_hit_damage < 0 do
             raise ArgumentError, "value.game_event.hit.damage is below the wire minimum"
           end
@@ -2787,6 +3023,10 @@ defmodule Bench.Bench do
           v = value_game_event_hit_damage
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 12
+
+          if not is_integer(value_game_event_hit_hit_kind) do
+            raise ArgumentError, "value.game_event.hit.hit_kind is not an integer"
+          end
 
           if value_game_event_hit_hit_kind < 0 do
             raise ArgumentError, "value.game_event.hit.hit_kind is below the wire minimum"
@@ -2814,6 +3054,10 @@ defmodule Bench.Bench do
             speaker: value_game_event_chat_speaker
           } = value_game_event_chat
 
+          if not is_integer(value_game_event_chat_channel) do
+            raise ArgumentError, "value.game_event.chat.channel is not an integer"
+          end
+
           if value_game_event_chat_channel < 0 do
             raise ArgumentError, "value.game_event.chat.channel is below the wire minimum"
           end
@@ -2825,6 +3069,10 @@ defmodule Bench.Bench do
           v = value_game_event_chat_channel
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 2
+
+          if not is_integer(value_game_event_chat_speaker) do
+            raise ArgumentError, "value.game_event.chat.speaker is not an integer"
+          end
 
           if value_game_event_chat_speaker < 0 do
             raise ArgumentError, "value.game_event.chat.speaker is below the wire minimum"
@@ -2849,6 +3097,10 @@ defmodule Bench.Bench do
             amount: value_game_event_pickup_amount
           } = value_game_event_pickup
 
+          if not is_integer(value_game_event_pickup_item_id) do
+            raise ArgumentError, "value.game_event.pickup.item_id is not an integer"
+          end
+
           if value_game_event_pickup_item_id < 0 do
             raise ArgumentError, "value.game_event.pickup.item_id is below the wire minimum"
           end
@@ -2860,6 +3112,10 @@ defmodule Bench.Bench do
           v = value_game_event_pickup_item_id &&& 0x3FF
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 10
+
+          if not is_integer(value_game_event_pickup_amount) do
+            raise ArgumentError, "value.game_event.pickup.amount is not an integer"
+          end
 
           if value_game_event_pickup_amount < 0 do
             raise ArgumentError, "value.game_event.pickup.amount is below the wire minimum"
@@ -2987,6 +3243,10 @@ defmodule Bench.Bench do
     sc12 = scratch
     scratch = v
 
+    if not is_integer(value_flux) do
+      raise ArgumentError, "value.flux is not an integer"
+    end
+
     if value_flux < -1_267_650_600_228_229_401_496_703_205_376 do
       raise ArgumentError, "value.flux is below the wire minimum"
     end
@@ -3007,6 +3267,10 @@ defmodule Bench.Bench do
     scratch = v
     v = w >>> 96
     scratch = scratch ||| v <<< 32
+
+    if not is_integer(value_ping) do
+      raise ArgumentError, "value.ping is not an integer"
+    end
 
     if value_ping < 0 do
       raise ArgumentError, "value.ping is below the wire minimum"
@@ -3034,6 +3298,10 @@ defmodule Bench.Bench do
     # align: zero-pad to the byte boundary (SPEC §4.3)
     data = <<data::binary, scratch>>
 
+    if not is_integer(value_crc_hint) do
+      raise ArgumentError, "value.crc_hint is not an integer"
+    end
+
     if value_crc_hint < 0 do
       raise ArgumentError, "value.crc_hint is below the wire minimum"
     end
@@ -3047,6 +3315,10 @@ defmodule Bench.Bench do
     v = if value_has_extra, do: 1, else: 0
     scratch = scratch ||| v <<< 24
 
+    if not is_integer(value_extra) do
+      raise ArgumentError, "value.extra is not an integer"
+    end
+
     if value_extra < 0 do
       raise ArgumentError, "value.extra is below the wire minimum"
     end
@@ -3057,6 +3329,10 @@ defmodule Bench.Bench do
 
     v = value_extra
     scratch = scratch ||| v <<< 25
+
+    if not is_integer(value_idle_ticks) do
+      raise ArgumentError, "value.idle_ticks is not an integer"
+    end
 
     if value_idle_ticks < 0 do
       raise ArgumentError, "value.idle_ticks is below the wire minimum"
@@ -3643,6 +3919,10 @@ defmodule Bench.Bench do
       firing: e_firing
     } = e
 
+    if not is_integer(e_entity_id) do
+      raise ArgumentError, "e.entity_id is not an integer"
+    end
+
     if e_entity_id < 0 do
       raise ArgumentError, "e.entity_id is below the wire minimum"
     end
@@ -3654,6 +3934,10 @@ defmodule Bench.Bench do
     v = e_entity_id &&& 0xFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 12
+
+    if not is_integer(e_pos_x) do
+      raise ArgumentError, "e.pos_x is not an integer"
+    end
 
     if e_pos_x < -16383 do
       raise ArgumentError, "e.pos_x is below the wire minimum"
@@ -3667,6 +3951,10 @@ defmodule Bench.Bench do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 15
 
+    if not is_integer(e_pos_y) do
+      raise ArgumentError, "e.pos_y is not an integer"
+    end
+
     if e_pos_y < -16383 do
       raise ArgumentError, "e.pos_y is below the wire minimum"
     end
@@ -3678,6 +3966,10 @@ defmodule Bench.Bench do
     v = e_pos_y + 16383
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 15
+
+    if not is_integer(e_pos_z) do
+      raise ArgumentError, "e.pos_z is not an integer"
+    end
 
     if e_pos_z < -16383 do
       raise ArgumentError, "e.pos_z is below the wire minimum"
@@ -3695,6 +3987,10 @@ defmodule Bench.Bench do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 15
 
+    if not is_integer(e_yaw) do
+      raise ArgumentError, "e.yaw is not an integer"
+    end
+
     if e_yaw < 0 do
       raise ArgumentError, "e.yaw is below the wire minimum"
     end
@@ -3706,6 +4002,10 @@ defmodule Bench.Bench do
     v = e_yaw &&& 0x1FF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 9
+
+    if not is_integer(e_pitch) do
+      raise ArgumentError, "e.pitch is not an integer"
+    end
 
     if e_pitch < 0 do
       raise ArgumentError, "e.pitch is below the wire minimum"
@@ -3719,6 +4019,10 @@ defmodule Bench.Bench do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 9
 
+    if not is_integer(e_vel_x) do
+      raise ArgumentError, "e.vel_x is not an integer"
+    end
+
     if e_vel_x < -2048 do
       raise ArgumentError, "e.vel_x is below the wire minimum"
     end
@@ -3730,6 +4034,10 @@ defmodule Bench.Bench do
     v = e_vel_x + 2048
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 12
+
+    if not is_integer(e_vel_y) do
+      raise ArgumentError, "e.vel_y is not an integer"
+    end
 
     if e_vel_y < -2048 do
       raise ArgumentError, "e.vel_y is below the wire minimum"
@@ -3747,6 +4055,10 @@ defmodule Bench.Bench do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 12
 
+    if not is_integer(e_vel_z) do
+      raise ArgumentError, "e.vel_z is not an integer"
+    end
+
     if e_vel_z < -2048 do
       raise ArgumentError, "e.vel_z is below the wire minimum"
     end
@@ -3758,6 +4070,10 @@ defmodule Bench.Bench do
     v = e_vel_z + 2048
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 12
+
+    if not is_integer(e_health) do
+      raise ArgumentError, "e.health is not an integer"
+    end
 
     if e_health < 0 do
       raise ArgumentError, "e.health is below the wire minimum"
@@ -3803,6 +4119,10 @@ defmodule Bench.Bench do
   defp wZbench_mixedZstats([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
     %{stat_id: e1_stat_id, delta: e1_delta} = e1
 
+    if not is_integer(e1_stat_id) do
+      raise ArgumentError, "e.stat_id is not an integer"
+    end
+
     if e1_stat_id < 0 do
       raise ArgumentError, "e.stat_id is below the wire minimum"
     end
@@ -3814,6 +4134,10 @@ defmodule Bench.Bench do
     v = e1_stat_id &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
+
+    if not is_integer(e1_delta) do
+      raise ArgumentError, "e.delta is not an integer"
+    end
 
     if e1_delta < -512 do
       raise ArgumentError, "e.delta is below the wire minimum"
@@ -3828,6 +4152,10 @@ defmodule Bench.Bench do
     scratch_bits = scratch_bits + 10
     %{stat_id: e2_stat_id, delta: e2_delta} = e2
 
+    if not is_integer(e2_stat_id) do
+      raise ArgumentError, "e.stat_id is not an integer"
+    end
+
     if e2_stat_id < 0 do
       raise ArgumentError, "e.stat_id is below the wire minimum"
     end
@@ -3839,6 +4167,10 @@ defmodule Bench.Bench do
     v = e2_stat_id &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
+
+    if not is_integer(e2_delta) do
+      raise ArgumentError, "e.delta is not an integer"
+    end
 
     if e2_delta < -512 do
       raise ArgumentError, "e.delta is below the wire minimum"
@@ -3853,6 +4185,10 @@ defmodule Bench.Bench do
     scratch_bits = scratch_bits + 10
     %{stat_id: e3_stat_id, delta: e3_delta} = e3
 
+    if not is_integer(e3_stat_id) do
+      raise ArgumentError, "e.stat_id is not an integer"
+    end
+
     if e3_stat_id < 0 do
       raise ArgumentError, "e.stat_id is below the wire minimum"
     end
@@ -3864,6 +4200,10 @@ defmodule Bench.Bench do
     v = e3_stat_id &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
+
+    if not is_integer(e3_delta) do
+      raise ArgumentError, "e.delta is not an integer"
+    end
 
     if e3_delta < -512 do
       raise ArgumentError, "e.delta is below the wire minimum"
@@ -3882,6 +4222,10 @@ defmodule Bench.Bench do
     scratch_bits = scratch_bits + 10
     %{stat_id: e4_stat_id, delta: e4_delta} = e4
 
+    if not is_integer(e4_stat_id) do
+      raise ArgumentError, "e.stat_id is not an integer"
+    end
+
     if e4_stat_id < 0 do
       raise ArgumentError, "e.stat_id is below the wire minimum"
     end
@@ -3893,6 +4237,10 @@ defmodule Bench.Bench do
     v = e4_stat_id &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
+
+    if not is_integer(e4_delta) do
+      raise ArgumentError, "e.delta is not an integer"
+    end
 
     if e4_delta < -512 do
       raise ArgumentError, "e.delta is below the wire minimum"
@@ -3915,6 +4263,10 @@ defmodule Bench.Bench do
   defp wZbench_mixedZstats([e | rest], data, scratch, scratch_bits) do
     %{stat_id: e_stat_id, delta: e_delta} = e
 
+    if not is_integer(e_stat_id) do
+      raise ArgumentError, "e.stat_id is not an integer"
+    end
+
     if e_stat_id < 0 do
       raise ArgumentError, "e.stat_id is below the wire minimum"
     end
@@ -3926,6 +4278,10 @@ defmodule Bench.Bench do
     v = e_stat_id &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
+
+    if not is_integer(e_delta) do
+      raise ArgumentError, "e.delta is not an integer"
+    end
 
     if e_delta < -512 do
       raise ArgumentError, "e.delta is below the wire minimum"
