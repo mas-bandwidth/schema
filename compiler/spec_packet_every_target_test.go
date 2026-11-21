@@ -58,7 +58,7 @@ func TestSpecPacketGuaranteesNameEveryTarget(t *testing.T) {
 		t.Error("§3 must record that MOO gets both string checks from its runtime serializeString")
 	}
 	matrix := section(algorithm, "## 7. ", "## 8. ")
-	if !strings.Contains(matrix, "| construct | fixture | c | cpp | cs | rust | java | js | dart | elixir | go | lua | luau | squirrel | moo | goose | lobster |") {
-		t.Error("§7 matrix header must name all fifteen packet targets in §5.1 order")
+	if !strings.Contains(matrix, "| construct | fixture | c | cpp | cs | rust | java | js | dart | elixir | go | lua | luau | squirrel | moo | goose | lobster | python | ruby | unity |") {
+		t.Error("§7 matrix header must name all eighteen packet targets, §5.1's order then python, ruby and unity")
 	}
 }

@@ -59,7 +59,7 @@ func TestFixedAlgorithmCurrent(t *testing.T) {
 			wants: []string{
 				"`docs/rulings.json`, `write-refusal`",
 				"a debug-only assert in C, C++, C#, Rust, Java and Dart",
-				"a refusal in every build in Go, JavaScript, Elixir, Lua, Luau, Squirrel, MOO and Goose",
+				"a refusal in every build in Go, JavaScript, Elixir, Lua, Luau, Squirrel, Moo, Goose, Lobster, Python and Ruby",
 			},
 			stales: []string{
 				"Write-side bound checks are DEBUG ONLY, by rule, in every language that has a debug-only idiom.",
