@@ -4,6 +4,8 @@ package compiler
 
 import (
 	"fmt"
+	"go/build"
+	"io"
 	"maps"
 	"slices"
 	"strings"
@@ -106,44 +108,37 @@ func refuseGoConstraintNames(u *ir.Unit, files map[string][]byte) error {
 }
 
 // goConstraintName answers what about a .go file name the go tool reads as a
-// build constraint, or "" for a plain name. It follows go/build: the leading
-// `_` or `.`, then the name up to its first `.`, with everything before its
-// first `_` ignored and the `_`-separated parts matched exactly.
+// build constraint, or "" for a plain name, and asks go/build itself rather
+// than restating its rules. A name ending `_test.go` is test-only (go/build
+// reads that suffix off the whole name). Every other name rule — a leading `_`
+// or `.`, and the `_<goos>` / `_<goarch>` suffix read up to the first `.`,
+// with its own trailing `_test` normalization — rejects a file for some
+// platform, so the name is matched under a GOOS and GOARCH no suffix can name:
+// a plain name matches there, a constrained one does not. Only the NAME is
+// judged; the content handed to go/build is a bare package clause.
 func goConstraintName(name string) string {
-	if strings.HasPrefix(name, "_") || strings.HasPrefix(name, ".") {
-		return "a leading " + name[:1]
-	}
-	stem, _, _ := strings.Cut(name, ".")
-	i := strings.Index(stem, "_")
-	if i < 0 {
-		return ""
-	}
-	parts := strings.Split(stem[i:], "_")
-	n := len(parts)
-	if parts[n-1] == "test" {
+	if strings.HasSuffix(name, "_test.go") {
 		return "the _test suffix"
 	}
-	if n >= 3 && goKnownOS[parts[n-2]] && goKnownArch[parts[n-1]] {
-		return "the _" + parts[n-2] + "_" + parts[n-1] + " suffix"
+	ctxt := build.Default
+	ctxt.GOOS, ctxt.GOARCH = "schemanoos", "schemanoarch"
+	ctxt.BuildTags, ctxt.ToolTags, ctxt.ReleaseTags = nil, nil, nil
+	ctxt.CgoEnabled = false
+	ctxt.JoinPath = func(elem ...string) string { return strings.Join(elem, "/") }
+	ctxt.OpenFile = func(string) (io.ReadCloser, error) {
+		return io.NopCloser(strings.NewReader("package p\n")), nil
 	}
-	if goKnownOS[parts[n-1]] || goKnownArch[parts[n-1]] {
-		return "the _" + parts[n-1] + " suffix"
+	ok, err := ctxt.MatchFile(".", name)
+	if err != nil {
+		return "the name (" + err.Error() + ")"
+	}
+	if !ok {
+		if strings.HasPrefix(name, "_") || strings.HasPrefix(name, ".") {
+			return "a leading " + name[:1]
+		}
+		return "a GOOS or GOARCH suffix"
 	}
 	return ""
-}
-
-// goKnownOS and goKnownArch are the go tool's file-name GOOS and GOARCH lists
-// (internal/syslist), including the names it reserves without supporting.
-var goKnownOS = setOf("aix", "android", "darwin", "dragonfly", "freebsd", "hurd", "illumos", "ios", "js", "linux", "nacl", "netbsd", "openbsd", "plan9", "solaris", "wasip1", "windows", "zos")
-
-var goKnownArch = setOf("386", "amd64", "amd64p32", "arm", "armbe", "arm64", "arm64be", "loong64", "mips", "mipsle", "mips64", "mips64le", "mips64p32", "mips64p32le", "ppc", "ppc64", "ppc64le", "riscv", "riscv64", "s390", "s390x", "sparc", "sparc64", "wasm")
-
-func setOf(names ...string) map[string]bool {
-	m := make(map[string]bool, len(names))
-	for _, n := range names {
-		m[n] = true
-	}
-	return m
 }
 
 // goTableLineage is the lock's lineage in the Go backend's own spelling. Nil in,
