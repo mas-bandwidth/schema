@@ -61,85 +61,90 @@ func runCorpus(root, work string) error {
 	if err := json.Unmarshal(b, &cf); err != nil {
 		return fmt.Errorf("cases.json: %w", err)
 	}
-	checked := 0
+	// every case runs, and every wrong verdict is named, before the corpus fails
+	checked, wrong := 0, 0
 	for _, c := range cf.Stages {
-		n, err := corpusStage(root, dir, cf.Go, c)
+		n, bad, err := corpusStage(root, dir, cf.Go, c)
 		if err != nil {
 			return fmt.Errorf("corpus stage %s: %w", c.Name, err)
 		}
 		checked += n
-	}
-	if err := corpusScratch(root, dir); err != nil {
-		return fmt.Errorf("corpus scratch: %w", err)
+		wrong += bad
 	}
 	checked++
-	if checked == 0 {
-		return errors.New("corpus: no case was checked")
+	if err := corpusScratch(root, dir); err != nil {
+		fmt.Printf("  WRONG %-14s F-052: %v\n", "scratch-ownership", err)
+		wrong++
+	}
+	if wrong > 0 {
+		return fmt.Errorf("corpus: %d of %d cases did not get their recorded verdict", wrong, checked)
 	}
 	fmt.Printf("mutation corpus: %d cases classified as recorded\n", checked)
 	return nil
 }
 
 // corpusStage copies the corpus module to a directory of its own and sweeps
-// the stage's mutants through it.
-func corpusStage(root, dir string, goDirs []string, c corpusCase) (int, error) {
+// the stage's mutants through it. It returns how many cases it checked and
+// how many of them got a verdict other than the recorded one; err is a
+// corpus that could not be run at all.
+func corpusStage(root, dir string, goDirs []string, c corpusCase) (checked, wrong int, err error) {
 	if len(c.Mutants) == 0 {
-		return 0, errors.New("names no mutant")
+		return 0, 0, errors.New("names no mutant")
 	}
 	tree, err := os.MkdirTemp(dir, "corpus-"+c.Name+"-")
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	defer func() { _ = os.RemoveAll(tree) }()
 	if err := os.CopyFS(tree, os.DirFS(filepath.Join(root, "tools", "mutation", "testdata", "corpus"))); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	var muts []Mutant
-	want := map[string]string{}
 	for _, cm := range c.Mutants {
 		src, err := os.ReadFile(filepath.Join(tree, filepath.FromSlash(cm.File)))
 		if err != nil {
-			return 0, err
+			return 0, 0, err
 		}
 		at := strings.Index(string(src), cm.Old)
 		if at < 0 || strings.Count(string(src), cm.Old) != 1 {
-			return 0, fmt.Errorf("mutant %s: %q is not in %s exactly once", cm.ID, cm.Old, cm.File)
+			return 0, 0, fmt.Errorf("mutant %s: %q is not in %s exactly once", cm.ID, cm.Old, cm.File)
 		}
 		m := Mutant{ID: cm.ID, File: cm.File, Op: "corpus", Old: cm.Old, New: cm.New, Start: at, End: at + len(cm.Old)}
 		m.Line, m.Context = lineOf(src, at)
 		muts = append(muts, m)
-		want[cm.ID] = cm.Want
 	}
 	scope := Scope{Name: "corpus", Go: goDirs, Stages: []Stage{{Name: c.Name, Sh: c.Sh, Proof: c.Proof, Counted: c.Counted}}}
 	got := map[string]Result{}
-	err = sweep(scope, tree, muts, sweepOptions{BaselineLimit: time.Minute}, shell, io.Discard, func(r Result) { got[r.ID] = r })
+	swept := sweep(scope, tree, muts, sweepOptions{BaselineLimit: time.Minute}, shell, io.Discard, func(r Result) { got[r.ID] = r })
 	if c.Refused != "" {
-		if err == nil || !strings.Contains(err.Error(), c.Refused) {
-			return 0, fmt.Errorf("the sweep must refuse this stage saying %q, and it said %v with verdicts %v", c.Refused, err, outcomes(got))
-		}
-		if len(got) != 0 {
-			return 0, fmt.Errorf("the sweep refused the stage and still gave verdicts %v", outcomes(got))
+		if swept == nil || !strings.Contains(swept.Error(), c.Refused) || len(got) != 0 {
+			fmt.Printf("  WRONG %-14s the sweep must refuse this stage saying %q, and it said %v with verdicts %v\n", c.Name, c.Refused, swept, outcomes(got))
+			return 1, 1, nil
 		}
 		fmt.Printf("  %-20s refused: %s\n", c.Name, c.Refused)
-		return 1, nil
+		return 1, 0, nil
 	}
-	if err != nil {
-		return 0, err
+	if swept != nil {
+		return 0, 0, swept
 	}
-	n := 0
 	for _, cm := range c.Mutants {
+		checked++
 		r, ok := got[cm.ID]
-		if !ok {
-			return n, fmt.Errorf("mutant %s got no verdict", cm.ID)
+		switch {
+		case !ok:
+			fmt.Printf("  WRONG %-14s got no verdict\n", cm.ID)
+			wrong++
+		case r.Outcome != cm.Want:
+			fmt.Printf("  WRONG %-14s is %s and the corpus says %s (%s)\n%s\n", cm.ID, r.Outcome, cm.Want, cm.Case, indent(firstLine(r.Tail)))
+			wrong++
+		default:
+			fmt.Printf("  %-20s %-12s %s\n", cm.ID, r.Outcome, cm.Case)
 		}
-		if r.Outcome != cm.Want {
-			return n, fmt.Errorf("mutant %s (%s) is %s and the corpus says %s: %s\n%s", cm.ID, cm.Case, r.Outcome, cm.Want, r.Stage, r.Tail)
-		}
-		fmt.Printf("  %-20s %-12s %s\n", cm.ID, r.Outcome, cm.Case)
-		n++
 	}
-	return n, nil
+	return checked, wrong, nil
 }
+
+func indent(s string) string { return "        " + s }
 
 func outcomes(got map[string]Result) map[string]string {
 	out := map[string]string{}
@@ -175,6 +180,9 @@ func corpusScratch(root, dir string) error {
 		return err
 	}
 	defer removeFirst()
+	if err := sameFiles(work, before, "with one copy made"); err != nil {
+		return err
+	}
 	second, removeSecond, err := scratchTree(root, work, "check")
 	if err != nil {
 		return err

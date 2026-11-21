@@ -258,6 +258,11 @@ func TestScratchTreeRemovesNothingItDidNotMake(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	for _, f := range []string{notes, peer} { // peer.txt is the control
+		if !exists(f) {
+			t.Errorf("%s was removed by making one scratch copy", f)
+		}
+	}
 	second, removeSecond, err := scratchTree(root, work, "check")
 	if err != nil {
 		t.Fatal(err)
