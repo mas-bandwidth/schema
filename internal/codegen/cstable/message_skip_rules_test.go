@@ -5,7 +5,7 @@ import "testing"
 // A SKIPPED MESSAGE PAYLOAD IS HELD TO §4's RULES (docs/SPEC-TABLES.md §3.3):
 // a payload under an entry this reader does not declare is read through the
 // same conditions a named read applies, as the engine's skip does
-// (internal/tablewire/messagedecode.go skip, skipBody, skipRanged).
+// (internal/tablewire/messagedecode.go skip, skipBody, rangedValue).
 func TestCSharpMessageSkipHoldsTheReadRules(t *testing.T) {
 	t.Parallel()
 	const skip, skipEnd = "static bool MessageSkip(ref BitReader r", "static bool MessageCompatible("
