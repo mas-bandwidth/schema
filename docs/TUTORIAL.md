@@ -215,7 +215,9 @@ Your constants are there as real `constexpr` values, so the bound you declared
 is the bound your C++ compares against with no second copy to drift. Run the
 same command with `--lang go`, `--lang cs`, `--lang rust`, or `c`, `unity`,
 `dart`, `elixir`, `goose`, `java`, `js`, `lobster`, `lua`, `luau`, `moo`,
-`python`, `ruby`, `squirrel`, and the same constants land in that language.
+`python`, `ruby`, `squirrel`, and the same constants land in that language
+(`moo` needs a compiler built with `-tags schema_leg_moo`; the default build
+refuses it by name).
 
 Note that `TickInterval` arrives as `0.016666666666666666` and not as
 `1.0 / TickRate`. A constant's own expression is folded at generation, so a
@@ -1819,18 +1821,19 @@ that wrote it, the language has a second declaration: `table`.
 State this before you build on it, because it decides where you put your
 tables.
 
-**The table wire is C++'s within one build.** The other eight targets generate
-a table surface, and its wire is a different form, so a table saved by C++ does
-not read in them and a table saved by them does not read in C++. Issues #511 to
-#518 carry the port, one per language, and each names the work.
+**Every target reads and writes the table wire.** It is one form, so a table
+saved by C++ loads in Go, in C# and in every other target, and a table saved
+by any of them loads in C++ ([ROADMAP.md](../ROADMAP.md) has a column per
+language). This tutorial builds in C++, the reference.
 
-**The packet wire, the cook and the block cross all nine.** Parts 3 through 5
-are the packet wire, Part 11 is the cook and Part 12 is the block, and Part 13
-runs each of the three from C against C++'s own bytes.
+**The packet wire, the cook and the block cross every target too.** Parts 3
+through 5 are the packet wire, Part 11 is the cook and Part 12 is the block,
+and Part 13 runs each of the three from Go against C++'s own bytes.
 
-So: a save format, a config format and a message channel are C++'s to read
-today. Data another language must read this week rides the packet wire when
-both sides ship together, and the cook or the block when they share a build.
+So: a save format, a config format and a message channel are any language's to
+read. What decides where data goes is how long it lives: a table when it
+outlives the build that wrote it, the packet wire when both sides ship
+together, and the cook or the block when they share a build.
 
 ### Declaring one
 
@@ -2599,17 +2602,13 @@ spellings is a wire break the report calls `kind_mismatch`, because the two are
 different encodings and not a refactor. Part 10's baseline refuses that edit
 outright.
 
-### A second unit: the C++-only forms
+### A second unit: the tools' own tables
 
-Part 6's rule said the table wire is C++'s. Some table **declarations** are
-C++'s too, and the compiler refuses them by name on the other eight targets.
-Rather than lose the whole `starlight` unit's eight backends, put those
-declarations in a unit of their own. That is what the refusal tells you to do:
-
-```
-$ schema generate --lang go --out gen .
-schema: unit declares a union a TABLE CLOSURE holds (ToolBody) — the table side of a union, whose arms are field lines of any type, is cpp only today, and the go form is a named follow-on; generate with --lang cpp, or move the union and its tables to their own unit (docs/SPEC-TABLES.md §2.6, §11)
-```
+A unit is a directory and a package, and one project may hold several. The
+editor tools talk to each other in messages the game never ships, so those
+declarations go in a unit of their own, with its own package and its own
+generated output, and `starlight` stays what the game links. It is also where
+this tutorial puts the table forms it has not shown yet.
 
 `starlight/tools/Tools.schema`, its own directory and its own package:
 
@@ -2659,7 +2658,8 @@ table AttachmentSet
 }
 ```
 
-Four C++-only forms live in there, and Part 8's maps make a fifth.
+Four table forms `starlight` has not used live in there, and Part 8's maps
+make a fifth. Every target generates all of them.
 
 **A union a table closure holds.** In a `type` body every arm names a declared
 type, which is what Part 5's refusal said. In a table closure an arm is a field
@@ -2793,8 +2793,25 @@ the union empty as `None`, skips the body by its length and counts `unknown`,
 and arms may be removed and reordered freely. Everything Part 6 taught about
 fields applies to messages.
 
-The `starlight` unit itself still generates for every target but Python, whose
-packet wire does not carry `PacketHeader`'s `const` yet:
+The tools unit is not C++'s alone. The same directory generates for Go, with
+every form above:
+
+```
+$ schema generate --lang go --out gengo --verbose .
+wrote gengo/StarlighttoolsTable.go
+wrote gengo/StarlighttoolsTableJson.go
+wrote gengo/StarlighttoolsTableMessage.go
+wrote gengo/StarlighttoolsView.go
+wrote gengo/Tools.go
+wrote gengo/ToolsCook.go
+wrote gengo/ToolsTable.go
+```
+
+The `starlight` unit itself generates for sixteen of the eighteen targets in a
+default build. The two lines that are not `ok` are the tool's own refusals:
+`moo` is not in a default build (it needs a compiler built with
+`-tags schema_leg_moo`), and Python does not carry `PacketHeader`'s `const`
+in a unit that declares tables yet:
 
 ```
 $ cd .. && for l in c cpp cs dart elixir go goose java js lobster lua luau moo python ruby rust squirrel unity; do printf "%-8s " $l; schema generate --lang $l --out /tmp/g-$l . && echo ok; done
@@ -2810,7 +2827,7 @@ js       ok
 lobster  ok
 lua      ok
 luau     ok
-moo      ok
+moo      schema: target "moo" is not implemented — c, cpp, cs, dart, elixir, go, goose, java, js, lobster, lua, luau, python, ruby, rust, squirrel and unity are the live targets
 python   schema: python: PacketHeader uses the packet kind const, which the Python packet wire does not carry yet (docs/PORT-PYTHON.md, THE CARD MAP: P4 the packet wire)
 ruby     ok
 rust     ok
@@ -2820,8 +2837,7 @@ unity    ok
 
 **You now have** `GameConfig`, one declared root and one binary format, with
 optional blocks and per-ship-type tuning that survives enum surgery, plus a
-second unit where the C++-only forms live without costing the first unit its
-eight backends.
+second unit, with its own package, for the tools' messages and attachments.
 
 ---
 
@@ -2915,7 +2931,8 @@ Resist reaching for `*T` to mean "optional". That is `?T`, with no allocation
 and still fixed size. A pointer is for structure: recursion, sharing, a subtree
 you would rather not carry by value.
 
-Pointers cost the `starlight` unit none of its backends:
+Pointers cost the `starlight` unit none of its backends. The same two lines
+refuse as in Part 7, for the same reasons, and every other target generates:
 
 ```
 $ for l in c cpp cs dart elixir go goose java js lobster lua luau moo python ruby rust squirrel unity; do printf "%-8s " $l; schema generate --lang $l --out /tmp/g-$l . && echo ok; done
@@ -2931,7 +2948,7 @@ js       ok
 lobster  ok
 lua      ok
 luau     ok
-moo      ok
+moo      schema: target "moo" is not implemented — c, cpp, cs, dart, elixir, go, goose, java, js, lobster, lua, luau, python, ruby, rust, squirrel and unity are the live targets
 python   schema: python: PacketHeader uses the packet kind const, which the Python packet wire does not carry yet (docs/PORT-PYTHON.md, THE CARD MAP: P4 the packet wire)
 ruby     ok
 rust     ok
@@ -3212,8 +3229,8 @@ message pays the framing instead.
 ### Maps
 
 A pointer is one node reached by one edge. A map is many values reached by a
-key, and it is the same machinery. A map is one of Part 7's C++-only forms, so
-it goes in the second unit, `starlight/tools/Fleet.schema`:
+key, and it is the same machinery. The fleet editor is a tool, so its map
+goes in the second unit, `starlight/tools/Fleet.schema`:
 
 ```
 package starlighttools
@@ -4262,8 +4279,8 @@ table RenderFrame
 
 Nothing there is new: ordinary bounded arrays of ordinary fixed tables, and
 `RenderFrame` still has `Measure`, `Save`, `Load` and a cook like any table.
-Adding three tables passes the baseline, and the unit still generates for every
-target but Python, as in Part 7:
+Adding three tables passes the baseline, and the unit generates as it did in
+Part 7, the same two refusals included:
 
 ```
 $ schema check .
@@ -4282,7 +4299,7 @@ js       ok
 lobster  ok
 lua      ok
 luau     ok
-moo      ok
+moo      schema: target "moo" is not implemented — c, cpp, cs, dart, elixir, go, goose, java, js, lobster, lua, luau, python, ruby, rust, squirrel and unity are the live targets
 python   schema: python: PacketHeader uses the packet kind const, which the Python packet wire does not carry yet (docs/PORT-PYTHON.md, THE CARD MAP: P4 the packet wire)
 ruby     ok
 rust     ok
@@ -4524,9 +4541,9 @@ hand-writing a UI per table.
 
 ### Three wires cross to Go
 
-Part 6 drew the line: the packet wire, the cook and the block cross all nine
-targets, and the table wire is C++'s within one build. This part runs all three
-crossings, from the same `starlight` unit, into Go.
+Part 6 said every wire crosses every target. This part runs three of the
+crossings, the packet wire, the cook and the block, from the same `starlight`
+unit, into Go.
 
 Generate the Go side of the unit you already have:
 
@@ -5030,8 +5047,8 @@ first. For a buffer whose size is a runtime fact, point at it: `*bytes` and
 
 SPEC-TABLES §8.3 describes a **unit registry**, `UnitView()`, one entry point
 listing every declaration in the build. The per-table and per-type descriptors
-Part 13 walked are in every target. The unit-wide root is in C++, for a unit
-that declares a table — this one does, so the pair is right there in the
+Part 13 walked are in every target, and so is the unit-wide root, for a unit
+that declares a table. This one does, so in C++ the pair is right there in the
 listing:
 
 ```
@@ -5087,10 +5104,10 @@ surface, and `make check` runs the compiler over them.
 ### What you built
 
 One unit, `starlight`, nine schema files, and a second unit beside it for the
-C++-only table forms. Out of that: packets that refuse hostile bytes in three
+tools' own tables. Out of that: packets that refuse hostile bytes in three
 bytes a ship, a save format that survives two years of schema drift and says
 exactly what it absorbed, a designer JSON loop, fleets keyed by name, cooked
-configs that open by pointer from C++ and from C, and a 60 Hz block handoff
+configs that open by pointer from C++ and from Go, and a 60 Hz block handoff
 read in place from another language.
 
 Every byte of it came out of declarations short enough to read aloud.
