@@ -471,6 +471,19 @@ jobs:
             if grep -qE '^(internal/codegen/|testdata/golden/|examples/|examples128/|docs/USAGE\.md$)' <<<"$files"; then
               case " $packages " in *" ./internal/goldens "*) ;; *) packages="$packages ./internal/goldens" ;; esac
             fi
+            # THE PAGES' CLAIMS AND EXAMPLES (review finding F-173).
+            # ./internal/docgate holds every fenced example on the pages to its
+            # class and the per-page count to its record, and
+            # ./internal/tablepack holds every doc-claim sentence to an actual
+            # read, so a diff to a page, a skill or either package's testdata
+            # re-checks them here (both packages run in about 25 s). Without
+            # this a docs-only diff selected nothing, and a page could say a
+            # reader does what it does not until the merge's full run.
+            if grep -qE '^(README\.md|docs/[A-Za-z0-9_-]+\.md|skills/|internal/docgate/|internal/tablepack/)' <<<"$files"; then
+              for p in ./internal/docgate ./internal/tablepack; do
+                case " $packages " in *" $p "*) ;; *) packages="$packages $p" ;; esac
+              done
+            fi
             # THE LANGUAGE LIST. ./internal/languages holds every page that
             # states the supported languages to the generator registry and the
             # reserved-word table, so a diff to either side re-checks it: a
