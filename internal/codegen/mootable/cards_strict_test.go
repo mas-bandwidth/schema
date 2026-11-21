@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,6 +13,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestMooCardsReadThenWrite pins the moo cards facade and driver
@@ -205,7 +206,7 @@ func runMooCardsSurface(t *testing.T, generated map[string][]byte, facade map[st
 		return nil, nil, err
 	}
 
-	cmd := exec.Command(mooBin, filepath.Join(stage, "driver.moo"))
+	cmd := testproc.Command(t, mooBin, filepath.Join(stage, "driver.moo"))
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

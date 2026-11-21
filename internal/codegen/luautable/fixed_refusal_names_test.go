@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,6 +15,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // fixedNamesSchema is the Point and Row pair of gotable's
@@ -159,7 +160,7 @@ func fixedGoOracle(t *testing.T, schemaSrc string) map[string]fixedOracleCase {
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("go", "test", "-count=1", "-timeout", "600s", "-run", "^TestFixedOracle$", "-v", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", "-timeout", "600s", "-run", "^TestFixedOracle$", "-v", ".")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -19,6 +18,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // bitsTopSchema declares bits(N) at each width whose top the double cannot
@@ -278,7 +279,7 @@ func TestLuauLoadBitsTopEveryWidth(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("nice", "-n", "19", "go", "test", "-count=1", "-timeout", "600s", "-run", "^TestBitsTopOracle$", "-v", ".")
+	cmd := testproc.Command(t, "nice", "-n", "19", "go", "test", "-count=1", "-timeout", "600s", "-run", "^TestBitsTopOracle$", "-v", ".")
 	cmd.Dir = goDir
 	cmd.Env = append(os.Environ(), "GOFLAGS=-mod=readonly")
 	out, err := cmd.CombinedOutput()

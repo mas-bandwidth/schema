@@ -11,13 +11,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestSimStateKindPassDamageRefusedJavaScript(t *testing.T) {
@@ -71,7 +72,7 @@ console.log(JSON.stringify({ malformed: report.damaged, loaded: !!v }));
 	if err := os.WriteFile(filepath.Join(dir, "probe.mjs"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, filepath.Join(dir, "probe.mjs"))
+	cmd := testproc.Command(t, node, filepath.Join(dir, "probe.mjs"))
 	cmd.Dir = dir
 	probeOut, err := cmd.CombinedOutput()
 	if err != nil {

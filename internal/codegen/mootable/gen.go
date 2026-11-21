@@ -32,6 +32,9 @@ type Gen struct {
 	// reaches, which the unit view writes (view.go): its ids are 0 and its
 	// text keys empty (docs/SPEC-TABLES.md §8.2).
 	wireless bool
+	// writers is the generation's read of the unit's lock, shared by every
+	// module of one GenerateLineage call and never kept past it.
+	writers *writerLookup
 
 	body     strings.Builder
 	requires map[string]bool

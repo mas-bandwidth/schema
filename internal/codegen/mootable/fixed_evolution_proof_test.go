@@ -17,7 +17,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -28,6 +27,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/mootable"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // evoFile frames a form-3 file: the header, the layout, and each body behind
@@ -1524,7 +1525,7 @@ func TestMooFixedEvolutionWriterRange(t *testing.T) {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(dir, "probe")
-	if out, err := exec.Command("g++", "-std=c++17", "-ffp-contract=off", "-I"+headers, "-I"+resolveSerializeInclude(dir), filepath.Join(dir, "probe.cpp"), "-o", bin).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, "g++", "-std=c++17", "-ffp-contract=off", "-I"+headers, "-I"+resolveSerializeInclude(dir), filepath.Join(dir, "probe.cpp"), "-o", bin).CombinedOutput(); err != nil {
 		t.Fatalf("the C++ reference probe does not build: %v\n%s", err, out)
 	}
 	lineage := lineageOf(t, []*ir.Unit{older}, 0)
@@ -1548,7 +1549,7 @@ func TestMooFixedEvolutionWriterRange(t *testing.T) {
 		if err := os.WriteFile(p, file, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		ref, err := exec.Command(bin, p).Output()
+		ref, err := testproc.Command(t, bin, p).Output()
 		if err != nil {
 			t.Fatal(err)
 		}
