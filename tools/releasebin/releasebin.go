@@ -255,7 +255,7 @@ func Run(version, out string, targets []Target, mtime time.Time, stderr io.Write
 
 func main() {
 	version := flag.String("version", "", "the version every binary reports and every archive is named for")
-	out := flag.String("out", "build/release-binaries","the directory the archives and SHA256SUMS are written to")
+	out := flag.String("out", "build/release-binaries", "the directory the archives and SHA256SUMS are written to")
 	mtime := flag.Int64("mtime", 0, "the modification time, in Unix seconds, of every archive entry")
 	targets := flag.String("targets", "", "comma-separated os/arch list (default: every release target)")
 	flag.Parse()
