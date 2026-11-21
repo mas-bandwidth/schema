@@ -325,6 +325,58 @@ local function hexstr(buf: buffer): string
 	end
 	return table.concat(parts)
 end
+-- THE MESSAGE BODY'S VALUE (harness only): placeBody writes the port's own
+-- decoding of a body (schema_message.luau transcodeBody's items, each a
+-- field ordinal and a node) into a fresh instance of the root, field by
+-- field, so the digest is of what the port read. It decodes nothing itself:
+-- every value is a node the port produced. A field shape or node kind it
+-- does not place raises, and the case answers error rather than a digest.
+local placeBody: any
+local function placeScalar(fd: any, node: any): number
+	local v16 = node.val16
+	if typeof(v16) ~= "buffer" or fd.s ~= "int" or fd.dom ~= "number" then
+		error("placeBody: an unplaced scalar (" .. tostring(fd.s) .. ", node kind " .. tostring(node.kind) .. ")")
+	end
+	local kw = fd.kw or 0
+	if kw == 1 then return if fd.signed then buffer.readi8(v16, 0) else buffer.readu8(v16, 0) end
+	if kw == 2 then return if fd.signed then buffer.readi16(v16, 0) else buffer.readu16(v16, 0) end
+	if kw == 4 then return if fd.signed then buffer.readi32(v16, 0) else buffer.readu32(v16, 0) end
+	error("placeBody: an unplaced scalar width " .. tostring(kw))
+end
+placeBody = function(desc: any, inst: any, items: any)
+	for _, it in items do
+		local fd = desc.fields[it.ord + 1]
+		local node = it.node
+		if fd == nil then error("placeBody: " .. desc.name .. " has no field at ordinal " .. tostring(it.ord)) end
+		if fd.s == "tab" and node.kind == 13 then
+			placeBody(S.lookup(fd.t), inst[fd.slot], node.fields)
+		elseif fd.s == "str" and node.kind == 12 then
+			buffer.writestring(inst[fd.slot], 0, node.str)
+			inst[fd.slot .. "Length"] = #node.str
+		elseif fd.s == "bytes" and node.kind == 14 then
+			for i, el in node.elems do
+				buffer.writeu8(inst[fd.slot], i - 1, buffer.readu8(el.val16, 0))
+			end
+			inst[fd.slot .. "Length"] = #node.elems
+		elseif fd.s == "arr" and fd.array == "counted" and node.kind == 14 then
+			local dst = inst[fd.slot]
+			for i, el in node.elems do
+				if fd.e.s == "tab" and el.kind == 13 then
+					placeBody(S.lookup(fd.e.t), dst[i], el.fields)
+				elseif typeof(dst) == "buffer" then
+					buffer.writeu8(dst, i - 1, placeScalar(fd.e, el))
+				else
+					dst[i] = placeScalar(fd.e, el)
+				end
+			end
+			inst[fd.slot .. "Count"] = #node.elems
+		elseif fd.s == "int" then
+			inst[fd.slot] = placeScalar(fd, node)
+		else
+			error("placeBody: an unplaced field " .. desc.name .. "." .. fd.name .. " (" .. tostring(fd.s) .. ", node kind " .. tostring(node.kind) .. ")")
+		end
+	end
+end
 local function digest(root: string, v: any): string
 	local rep = newreport()
 	local out = J.ToJson(root, v, rep)
@@ -411,15 +463,22 @@ for _, c in CASES do
 			verdict, reason = "refuse", "damaged"
 		else
 			-- schema_message.luau hands back each body as a bit range, not an
-			-- instance. A body exactly one reference wide can only be the
-			-- zero reference that ends it (every other reference is followed
-			-- by at least the terminator), so it decodes to the root's
-			-- default instance, which the canonical writer then digests like
-			-- any other accept. A wider body has fields this probe cannot
-			-- place yet: it prints a marker that is not a digest, so the
-			-- runner reports it as a finding instead of passing it unchecked.
+			-- instance. Under a unit that registers its own build
+			-- (S.buildOf), the body comes back as the port's own decoding of
+			-- it in the reader's vocabulary (ownTree: one item per field that
+			-- is not at its default, in field order), which placeBody puts
+			-- into the root's default instance for the canonical writer to
+			-- digest. Without one, a body exactly one reference wide can only
+			-- be the zero reference that ends it (every other reference is
+			-- followed by at least the terminator), so it decodes to the
+			-- root's default instance. Any other body prints a marker that is
+			-- not a digest, so the runner reports it as a finding instead of
+			-- passing it unchecked.
 			local body = bodies[1]
-			if body ~= nil and body.to - body.from == voc.refBits then
+			if body ~= nil and body.ownTree ~= nil then
+				v = S.lookup(c.root).new()
+				placeBody(S.lookup(c.root), v, body.ownTree)
+			elseif body ~= nil and body.to - body.from == voc.refBits then
 				v = S.lookup(c.root).new()
 			else
 				dig = "message-body-undecoded"
