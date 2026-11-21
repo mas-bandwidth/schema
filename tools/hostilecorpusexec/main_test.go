@@ -24,7 +24,14 @@ func TestMain(m *testing.M) {
 			fmt.Fprintln(os.Stderr, "ERROR: AddressSanitizer: test marker")
 			fmt.Println("refuse different_reason")
 		case "hang":
-			time.Sleep(time.Minute)
+			// block for good on a pipe this process holds both ends of:
+			// only a kill ends it, and no clock is read
+			r, w, err := os.Pipe()
+			if err != nil {
+				os.Exit(5)
+			}
+			_, _ = r.Read(make([]byte, 1))
+			_ = w.Close()
 		case "error":
 			fmt.Println("error test failure")
 		case "unbound":
@@ -40,6 +47,8 @@ func TestMain(m *testing.M) {
 	}
 	os.Exit(m.Run())
 }
+
+var realBudget = startBudget
 
 func TestKnownFindingCannotHideExecutionFailure(t *testing.T) {
 	binary, err := os.Executable()
@@ -58,11 +67,19 @@ func TestKnownFindingCannotHideExecutionFailure(t *testing.T) {
 	for _, mode := range []string{"mismatch", "match", "exit", "sanitizer", "hang", "error", "unbound", "unreadable", "skip"} {
 		t.Run(mode, func(t *testing.T) {
 			t.Setenv("SCHEMA_HOSTILE_RUNNER_TEST_ANSWER", mode)
-			budget := 5 * time.Second
-			if mode == "hang" {
-				budget = 250 * time.Millisecond
+			// the budget is injected, never read off a clock: the hanging
+			// case gets one that is already spent, every other case one
+			// that never runs out
+			spent := make(chan time.Time, 1)
+			spent <- time.Time{}
+			startBudget = func(time.Duration) (<-chan time.Time, func() bool) {
+				if mode == "hang" {
+					return spent, func() bool { return true }
+				}
+				return nil, func() bool { return true }
 			}
-			ok, err := run("test", binary, corpus, findings, "", "", 1, budget)
+			t.Cleanup(func() { startBudget = realBudget })
+			ok, err := run("test", binary, corpus, findings, "", "", 1, time.Hour)
 			if err != nil {
 				t.Fatal(err)
 			}
