@@ -226,10 +226,13 @@ tables-java-generated-fresh: bin/schema
 	./bin/schema generate --lang java --out $(JAVA_FRESH)/gen tables/lists > /dev/null
 	rm -rf $(JAVA_FRESH)/gen && ./bin/schema generate --lang java --out $(JAVA_FRESH)/gen $(JAVA_FRESH)/wide > /dev/null
 	$(JAVAC) --release 17 -nowarn -d $(JAVA_FRESH)/classes $(JAVA_FRESH)/gen/*.java
-	@missing=$$($(MAKE) --no-print-directory -n -B build/tables-generated-java/.stamp 2>/dev/null | \
-		grep -o 'generate --lang java --out build/tables-generated-java/[a-z0-9]*' | sed 's/.* //' | \
-		while read d; do $(MAKE) --no-print-directory -n -B build/tables-generated-java/.stamp 2>/dev/null | \
-			grep -q "rm -rf $$d && " || echo $$d; done); \
+	@# The stamp's plan is read once, and every reader takes all of its input:
+	@# under pipefail `make -n | grep -q` let make die of SIGPIPE and every unit
+	@# read as missing (the F-067 shape). Zero generate lines is red too.
+	@plan=$$($(MAKE) --no-print-directory -n -B build/tables-generated-java/.stamp 2>/dev/null); \
+	dirs=$$(printf '%s\n' "$$plan" | grep -o 'generate --lang java --out build/tables-generated-java/[a-z0-9]*' | sed 's/.* //'); \
+	if [ -z "$$dirs" ]; then echo "tables-java-generated-fresh: the stamp's plan has no generate line"; exit 1; fi; \
+	missing=$$(for d in $$dirs; do printf '%s\n' "$$plan" | grep -F "rm -rf $$d && " >/dev/null || echo $$d; done); \
 	if [ -n "$$missing" ]; then echo "tables-java-generated-fresh: generated without being emptied first: $$missing"; exit 1; fi
 	@echo 'tables-java-generated-fresh: a unit regenerated as a wide-kind unit compiles, and every unit directory is emptied before its generate'
 
