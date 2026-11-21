@@ -56,3 +56,25 @@ func TestAnEmptySampleIsRed(t *testing.T) {
 		t.Errorf("the tablegen roster names %d targets, not 18: %v", len(allLangs), allLangs)
 	}
 }
+
+// TestSampleCases replays the committed sample cases (testdata/sample-cases),
+// the same file `verify-tablegen --sample-cases` runs before every
+// verify-tablegen-<lang> target. F-045 is no-schema.
+func TestSampleCases(t *testing.T) {
+	cases, err := readSampleCases("testdata/sample-cases")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]bool{}
+	for _, c := range cases {
+		ids[c.id] = true
+		if err := holdVerdict(c, runSampleCase(c)); err != nil {
+			t.Errorf("%s: %v", c.id, err)
+		}
+	}
+	for _, id := range []string{"one-schema", "default-sample", "no-schema", "negative-sample", "fewer-pairs-than-asked", "pairs-with-no-case"} {
+		if !ids[id] {
+			t.Errorf("the case folder has lost %s", id)
+		}
+	}
+}

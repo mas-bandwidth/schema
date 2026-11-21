@@ -445,8 +445,16 @@ func main() {
 	schemaMooFlag := flag.String("schema-moo", "./build/schema-moo", "path to build/schema-moo")
 	workFlag := flag.String("work", "./build/verify-tablegen", "working directory")
 	corpusFlag := flag.String("corpus", "", "pre-generated corpus directory (optional)")
+	sampleCasesFlag := flag.String("sample-cases", "", "replay this committed folder of sample cases and exit (testdata/sample-cases)")
 	genOnlyFlag := flag.Bool("generate-only", false, "only generate schemas, lockfiles, and oracle corpus")
 	flag.Parse()
+	if *sampleCasesFlag != "" {
+		if err := runSampleCases(*sampleCasesFlag); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	repoRoot, err := filepath.Abs(*repoFlag)
 	if err != nil {

@@ -270,8 +270,21 @@ func main() {
 	schemaMooFlag := flag.String("schema-moo", "./build/schema-moo", "path to build/schema-moo")
 	workFlag := flag.String("work", "./build/verify-bitphase", "working directory")
 	corpusFlag := flag.String("corpus", "", "pre-generated corpus directory (optional)")
+	rosterCasesFlag := flag.String("roster-cases", "", "replay this committed folder of manifest cases and exit (testdata/roster-cases)")
 	genOnlyFlag := flag.Bool("generate-only", false, "only build oracle and generate corpus")
 	flag.Parse()
+	if *rosterCasesFlag != "" {
+		scratch, err := os.MkdirTemp("", "bitphase-roster-cases-")
+		if err == nil {
+			err = runRosterCases(*rosterCasesFlag, scratch)
+			_ = os.RemoveAll(scratch)
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	repoRoot, err := filepath.Abs(*repoFlag)
 	if err != nil {

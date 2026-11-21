@@ -97,3 +97,43 @@ func TestManifestIsHeldToTheRosterByIdentity(t *testing.T) {
 		t.Errorf("a malformed line: %v", err)
 	}
 }
+
+// TestRosterCases replays the committed roster cases (testdata/roster-cases),
+// the same files `verify-bitphase --roster-cases` runs before every
+// verify-bitphase-<lang> target. F-043 is first-row-66-times; one-row-short is
+// its control, and whole is the corpus as the oracle writes it.
+func TestRosterCases(t *testing.T) {
+	dir := filepath.Join("testdata", "roster-cases")
+	cases, err := readRosterCases(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]bool{}
+	for _, c := range cases {
+		ids[c.id] = true
+		if err := holdVerdict(c, runRosterCase(dir, c, t.TempDir())); err != nil {
+			t.Errorf("%s: %v", c.id, err)
+		}
+	}
+	for _, id := range []string{"whole", "first-row-66-times", "one-row-short", "one-row-twice-for-another", "copied-vector"} {
+		if !ids[id] {
+			t.Errorf("the case folder has lost %s", id)
+		}
+	}
+	empty := t.TempDir()
+	if err := os.WriteFile(filepath.Join(empty, "CASES.tsv"), []byte("# none\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readRosterCases(empty); err == nil || !strings.Contains(err.Error(), "names no case") {
+		t.Errorf("an empty case folder was read: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(empty, "CASES.tsv"), []byte("a\tpass\t-\tcontrol\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(empty, "b.manifest.tsv"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readRosterCases(empty); err == nil || !strings.Contains(err.Error(), "an unread case") {
+		t.Errorf("a manifest no case names was not an error: %v", err)
+	}
+}

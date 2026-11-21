@@ -102,7 +102,7 @@ wfr_runs = $(foreach a,$(WIRE_FUZZ_RELEASE_ARMS),$(foreach s,$(WIRE_FUZZ_RELEASE
 # no hyphen, so the words of the name are the run's coordinates.
 define wfr_leg
 .PHONY: tables-wire-fuzz-release-$(1) $(call wfr_runs,$(1))
-$(call wfr_runs,$(1)): build/conformance-harness build/wirefuzzrelease $$(if $$(WFR_DRIVER_$(1)),$$(WFR_DEPS_$(1)))
+$(call wfr_runs,$(1)): build/conformance-harness build/wirefuzzrelease wire-fuzz-release-cases $$(if $$(WFR_DRIVER_$(1)),$$(WFR_DEPS_$(1)))
 	@WFR_DRIVER="$$(strip $$(WFR_DRIVER_$(1)))" WFR_FLAGS="$$(WFR_FLAGS_$(1))" WFR_ENV="$$(WFR_ENV_$(1))" WFR_TOOL=./build/wirefuzzrelease \
 		sh make/checks/wire-fuzz-release-run.sh $(1) $$(word 4,$$(subst -, ,$$@)) $$(word 5,$$(subst -, ,$$@)) \
 		$$(WIRE_FUZZ_RELEASE_N) $$(WIRE_FUZZ_RELEASE_DIR)
@@ -116,6 +116,13 @@ $(foreach l,$(WIRE_FUZZ_RELEASE_LEGS),$(eval $(call wfr_leg,$(l))))
 build/wirefuzzrelease: $(wildcard tools/wirefuzzrelease/*.go)
 	@mkdir -p build
 	go build -o $@ ./tools/wirefuzzrelease
+
+# THE GATE'S OWN CASES (tools/wirefuzzrelease/testdata/gate-cases): committed
+# harness logs and rosters with the verdict each owes, the reviewer's controls
+# among them. Every run of the gate replays them first; it reads files only.
+.PHONY: wire-fuzz-release-cases
+wire-fuzz-release-cases: build/wirefuzzrelease
+	./build/wirefuzzrelease cases
 
 .PHONY: wire-fuzz-release wire-fuzz-release-table wire-fuzz-release-targets
 # Dry run of the release gate's name. The runs stay

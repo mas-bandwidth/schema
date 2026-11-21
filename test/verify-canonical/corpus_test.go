@@ -74,3 +74,33 @@ func TestPermutationsAreHeldByIdentity(t *testing.T) {
 		}
 	}
 }
+
+// TestCorpusCases replays the committed corpus cases (testdata/corpus-cases),
+// the same file `verify-canonical --corpus-cases` runs before every
+// verify-canonical-<lang> target. F-044 is sorted-three-times.
+func TestCorpusCases(t *testing.T) {
+	dir := filepath.Join("testdata", "corpus-cases")
+	cases, err := readCorpusCases(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]bool{}
+	for _, c := range cases {
+		ids[c.id] = true
+		if err := holdVerdict(c, runCorpusCase(c, t.TempDir())); err != nil {
+			t.Errorf("%s: %v", c.id, err)
+		}
+	}
+	for _, id := range []string{"whole", "sorted-three-times", "reverse-is-empty-object", "reverse-and-shuffled-swapped", "shuffled-missing"} {
+		if !ids[id] {
+			t.Errorf("the case folder has lost %s", id)
+		}
+	}
+	empty := t.TempDir()
+	if err := os.WriteFile(filepath.Join(empty, "CASES.tsv"), []byte("# none\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readCorpusCases(empty); err == nil || !strings.Contains(err.Error(), "names no case") {
+		t.Errorf("an empty case folder was read: %v", err)
+	}
+}

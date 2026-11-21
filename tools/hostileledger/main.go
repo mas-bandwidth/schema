@@ -40,7 +40,25 @@ func main() {
 	skips := flag.String("skips", "", "cases held by name: name<TAB>reason lines")
 	carriers := flag.String("absent-carriers", "", "carriers held by name: carrier<TAB>reason lines")
 	rows := flag.String("rows", "", "the rows a case of a carrier owes, each by its id suffix: <carrier>=<row>,<row>,... (a row prints as <case>@<row>)")
+	ledgerCorpus := flag.String("ledger-corpus", "", "replay this committed corpus of ledger cases and exit (testdata/ledger-corpus)")
 	flag.Parse()
+	if *ledgerCorpus != "" {
+		scratch, err := os.MkdirTemp("", "ledger-corpus-")
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
+		lines, err := runLedgerCorpus(*ledgerCorpus, scratch)
+		_ = os.RemoveAll(scratch)
+		for _, line := range lines {
+			fmt.Println(line)
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "hostileledger:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if *port == "" || *logPath == "" || flag.NArg() != 0 {
 		fmt.Fprintln(os.Stderr, "usage: hostileledger -port <port> -log <runner output> [-corpus dir] [-runs n] [-skips tsv] [-absent-carriers tsv] [-rows carrier=row,row]")
 		os.Exit(2)

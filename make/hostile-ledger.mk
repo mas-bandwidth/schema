@@ -21,3 +21,13 @@ define hostile_ledgered
 	@set +e; { $(3); } > $(2) 2>&1; rc=$$?; cat $(2); [ $$rc -eq 0 ] || exit $$rc; \
 	go run ./tools/hostileledger -port $(1) -corpus "$(4)" -log $(2) $(5)
 endef
+
+# THE LEDGER'S OWN CORPUS (tools/hostileledger/testdata/ledger-corpus): committed
+# runner logs and the verdict each owes, the reviewer's findings beside their
+# controls, replayed through the tool. The generated-Go gate depends on it, so
+# it runs wherever test-go does; it reads files only.
+.PHONY: hostile-ledger-corpus
+hostile-ledger-corpus:
+	go run ./tools/hostileledger -ledger-corpus tools/hostileledger/testdata/ledger-corpus
+
+schema-go-runs-hostile-corpus: hostile-ledger-corpus

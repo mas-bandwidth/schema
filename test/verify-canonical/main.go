@@ -354,8 +354,21 @@ func main() {
 	schemaMooFlag := flag.String("schema-moo", "./build/schema-moo", "path to build/schema-moo")
 	workFlag := flag.String("work", "./build/verify-canonical", "working directory")
 	corpusFlag := flag.String("corpus", "", "pre-generated corpus directory (optional)")
+	corpusCasesFlag := flag.String("corpus-cases", "", "replay this committed folder of corpus cases and exit (testdata/corpus-cases)")
 	genOnlyFlag := flag.Bool("generate-only", false, "only generate canonical corpus")
 	flag.Parse()
+	if *corpusCasesFlag != "" {
+		scratch, err := os.MkdirTemp("", "canonical-corpus-cases-")
+		if err == nil {
+			err = runCorpusCases(*corpusCasesFlag, scratch)
+			_ = os.RemoveAll(scratch)
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	repoRoot, err := filepath.Abs(*repoFlag)
 	if err != nil {

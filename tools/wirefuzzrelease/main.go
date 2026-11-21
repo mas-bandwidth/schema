@@ -77,6 +77,25 @@ func main() {
 		if !ok {
 			os.Exit(1)
 		}
+	case "cases":
+		dir := GateCasesDir
+		if len(os.Args) > 2 {
+			dir = os.Args[2]
+		}
+		scratch, err := os.MkdirTemp("", "wire-fuzz-release-cases-")
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "wirefuzzrelease:", err)
+			os.Exit(2)
+		}
+		lines, err := runGateCases(dir, scratch)
+		_ = os.RemoveAll(scratch)
+		for _, line := range lines {
+			fmt.Println(line)
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "wirefuzzrelease:", err)
+			os.Exit(1)
+		}
 	default:
 		usage()
 	}
@@ -84,7 +103,8 @@ func main() {
 
 func usage() {
 	fmt.Fprintln(os.Stderr, "usage: wirefuzzrelease row -leg L -arm A -seed S -dir D [-owed F] [-absent F] (-no-driver | -status N -secs N -n N)\n"+
-		"       wirefuzzrelease table -leg L -dir D -arms \"plain retain\" -seeds \"1 2 3\" -n N")
+		"       wirefuzzrelease table -leg L -dir D -arms \"plain retain\" -seeds \"1 2 3\" -n N\n"+
+		"       wirefuzzrelease cases [dir]")
 	os.Exit(2)
 }
 

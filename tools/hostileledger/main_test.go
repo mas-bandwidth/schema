@@ -202,3 +202,73 @@ func TestTheRegistryIsTheFolder(t *testing.T) {
 		t.Errorf("a header-only manifest is not red: %v", err)
 	}
 }
+
+// TestLedgerCorpus replays the committed ledger corpus (testdata/ledger-corpus):
+// the same cases `hostileledger -ledger-corpus` runs under make
+// hostile-ledger-corpus. The reviewer's findings are cases there beside their
+// controls: F-061 displaced-case, F-062 zero-rows, F-071 tier-twice, F-073 crlf.
+func TestLedgerCorpus(t *testing.T) {
+	dir := filepath.Join("testdata", "ledger-corpus")
+	cases, err := readLedgerCorpus(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]bool{}
+	for _, c := range cases {
+		ids[c.id] = true
+		t.Run(c.id, func(t *testing.T) {
+			if err := runLedgerCase(dir, c, t.TempDir()); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+	for _, id := range []string{"whole", "held-case", "displaced-case", "missing-answer", "rows-whole", "zero-rows", "tier-twice", "one-tier-only", "crlf", "nothing"} {
+		if !ids[id] {
+			t.Errorf("the corpus has lost the case %s", id)
+		}
+	}
+}
+
+// TestLedgerCorpusRunnerNeverPassesOnNothing: an empty index, a case folder
+// the index does not name, a case with no log and a verdict the ledger does
+// not come to are each an error.
+func TestLedgerCorpusRunnerNeverPassesOnNothing(t *testing.T) {
+	plant := func(index string, logs map[string]string) string {
+		dir := t.TempDir()
+		if err := os.CopyFS(filepath.Join(dir, "corpus"), os.DirFS(filepath.Join("testdata", "ledger-corpus", "corpus"))); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "CASES.tsv"), []byte(index), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		for id, log := range logs {
+			if err := os.MkdirAll(filepath.Join(dir, id), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, id, "log.txt"), []byte(log), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return dir
+	}
+	if lines, err := runLedgerCorpus(plant("one\tpass\t-\tcontrol\n", map[string]string{"one": whole}), t.TempDir()); err != nil || !strings.Contains(strings.Join(lines, "\n"), "all 1 case(s)") {
+		t.Fatalf("CONTROL FAILED: a corpus of one passing case: %v", err)
+	}
+	for _, tc := range []struct {
+		name, index string
+		logs        map[string]string
+		says        string
+	}{
+		{"an empty corpus", "# none\n", nil, "names no case"},
+		{"an unread case folder", "one\tpass\t-\tcontrol\n", map[string]string{"one": whole, "two": whole}, "CASES.tsv does not name it: an unread case"},
+		{"a case with no verdict", "one\t\t-\tcontrol\n", map[string]string{"one": whole}, "a case is id, verdict"},
+		{"a case with no log", "one\tpass\t-\tcontrol\n", nil, "log.txt"},
+		{"a flag the corpus does not know", "one\tpass\tfast\tcontrol\n", map[string]string{"one": whole}, "is not one the corpus knows"},
+		{"a pass the ledger refuses", "one\tpass\t-\tcontrol\n", map[string]string{"one": ran("t-one")}, "owes a pass and the ledger is red"},
+		{"a refusal the ledger does not make", "one\tred:was not run\t-\tcontrol\n", map[string]string{"one": whole}, "owes a refusal"},
+	} {
+		if _, err := runLedgerCorpus(plant(tc.index, tc.logs), t.TempDir()); err == nil || !strings.Contains(err.Error(), tc.says) {
+			t.Errorf("%s: want an error saying %q, got %v", tc.name, tc.says, err)
+		}
+	}
+}

@@ -208,3 +208,54 @@ func TestWriteRow(t *testing.T) {
 		t.Errorf("a leg with no driver: %q", got)
 	}
 }
+
+// TestGateCases replays the committed gate cases (testdata/gate-cases), the
+// same files `wirefuzzrelease cases` runs before every run of the release
+// gate. The reviewer's controls are cases there: a Go run of zero mutants and
+// one with an absent seed, one mutant under a budget of 100000 on Go and on
+// Python (F-064), and a leg whose first row was never written (F-065).
+func TestGateCases(t *testing.T) {
+	dir := filepath.Join("testdata", "gate-cases")
+	cases, err := readGateCases(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]bool{}
+	for _, c := range cases {
+		ids[c.id] = true
+		got, err := runGateCase(dir, c, t.TempDir())
+		if err := holdGateVerdict(c, got, err); err != nil {
+			t.Errorf("%s: %v", c.id, err)
+		}
+	}
+	for _, id := range []string{"go-whole", "python-whole", "go-zero-mutants", "go-absent-seed", "go-one-mutant", "python-one-mutant", "go-no-count", "go-other-seed", "go-other-arm", "go-failing-process", "go-six-rows", "go-first-row-gone", "go-last-row-gone"} {
+		if !ids[id] {
+			t.Errorf("the case folder has lost %s", id)
+		}
+	}
+	empty := t.TempDir()
+	if err := os.WriteFile(filepath.Join(empty, "CASES.tsv"), []byte("# none\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runGateCases(empty, t.TempDir()); err == nil || !strings.Contains(err.Error(), "names no case") {
+		t.Errorf("an empty case folder passed: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(empty, "CASES.tsv"), []byte("a\tpass\ttable\tgo -\tcontrol\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(empty, "b.log"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runGateCases(empty, t.TempDir()); err == nil || !strings.Contains(err.Error(), "an unread case") {
+		t.Errorf("a log no case names was not an error: %v", err)
+	}
+	if err := os.Remove(filepath.Join(empty, "b.log")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(empty, "CASES.tsv"), []byte("a\tred:nothing\ttable\tgo -\tcontrol\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runGateCases(empty, t.TempDir()); err == nil || !strings.Contains(err.Error(), "owes a RED") {
+		t.Errorf("a verdict the gate does not come to passed: %v", err)
+	}
+}
