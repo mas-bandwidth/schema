@@ -303,6 +303,43 @@ func TestLuaFixedEvolutionArrayBounds(t *testing.T) {
 	}
 }
 
+// TestLuaFixedEvolutionArrayNarrowed holds an older writer's array to this
+// reader's bound (docs/FIXED-FORM-ALGORITHM.md §5.4): a lineage entry whose
+// counted or fixed array holds more elements than this reader declares is a
+// narrowed span, unlawful in the Go engine's plan compile, and a file under
+// its hash refuses layout_malformed before any record lands, whatever count
+// the record carries. The same reader still reads its own build's file.
+func TestLuaFixedEvolutionArrayNarrowed(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "lua (it runs the emitted fixed-form runtime)")
+	for _, c := range []struct{ name, older, newer, fill string }{
+		{
+			"counted [..4] read as [..2]",
+			"package probe\nfixed table N\n{\n    lead uint32 = 1\n    vals [..4]int32\n    trail uint32 = 2\n}\n",
+			"package probe\nfixed table N\n{\n    lead uint32 = 1\n    vals [..2]int32\n    trail uint32 = 2\n}\n",
+			"v.vals = { 10 }",
+		},
+		{
+			"fixed [4] read as [2]",
+			"package probe\nfixed table N\n{\n    lead uint32 = 1\n    vals [4]int32\n    trail uint32 = 2\n}\n",
+			"package probe\nfixed table N\n{\n    lead uint32 = 1\n    vals [2]int32\n    trail uint32 = 2\n}\n",
+			"v.vals = { 10, 20, 0, 0 }",
+		},
+	} {
+		older := luaEvoSource(t, c.older)
+		newer := luaEvoSource(t, c.newer)
+		file := luaEvoGen(t, older, nil).save(t, "N", "local v = T.NewN(); "+c.fill+"; values[1] = v")
+		g := luaEvoGen(t, newer, luaEvoLineage(t, older, "N"))
+		if got := g.load(t, "N", file).head; got != "refused layout_malformed" {
+			t.Errorf("%s: %s, want refused layout_malformed", c.name, got)
+		}
+		own := g.save(t, "N", "local v = T.NewN(); v.vals = { 10, 20 }; values[1] = v")
+		if got := g.load(t, "N", own).head; got != "ok 1 w0 u0" {
+			t.Errorf("%s: this build's own file: %s", c.name, got)
+		}
+	}
+}
+
 // TestLuaFixedEvolutionText is text (C3, C4, C5, R24): a length past the
 // field's capacity refuses; ill-formed UTF-8 or a zero in the USED bytes and an
 // unpaired surrogate in a wstring's used units refuse; a hostile byte in the
