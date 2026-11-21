@@ -212,6 +212,9 @@ func writeTree(m *tabletext.Model, inst *tabletext.Instance, root, dir string, o
 			return err
 		}
 		name := root + ".json"
+		if err := claimEntry(out, name, false); err != nil {
+			return err
+		}
 		if err := out.WriteFile(name, append(text, '\n'), 0o644); err != nil {
 			return err
 		}
@@ -238,6 +241,9 @@ func writeTree(m *tabletext.Model, inst *tabletext.Instance, root, dir string, o
 		}
 		text, err := m.WriteValue(fv)
 		if err != nil {
+			return err
+		}
+		if err := claimEntry(out, key+".json", false); err != nil {
 			return err
 		}
 		if err := out.WriteFile(key+".json", append(text, '\n'), 0o644); err != nil {
@@ -318,6 +324,9 @@ func portableName(name string) bool {
 }
 
 func unpackKeyed(m *tabletext.Model, fv *tabletext.Field, parent *os.Root, dir string) error {
+	if err := claimEntry(parent, dir, true); err != nil {
+		return err
+	}
 	if err := parent.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
@@ -339,6 +348,9 @@ func unpackKeyed(m *tabletext.Model, fv *tabletext.Field, parent *os.Root, dir s
 		if err != nil {
 			return err
 		}
+		if err := claimEntry(out, name+".json", false); err != nil {
+			return err
+		}
 		if err := out.WriteFile(name+".json", append(text, '\n'), 0o644); err != nil {
 			return err
 		}
@@ -358,11 +370,62 @@ func prune(out *os.Root, owned, written map[string]bool) error {
 		return err
 	}
 	for _, e := range entries {
-		if written[e.Name()] {
+		if foldedIn(e.Name(), written) {
+			// a name this unpack wrote, as the filesystem spells it: a
+			// case-insensitive one keeps an existing entry's spelling when
+			// a write lands on it, and that entry is the value just written
 			continue
 		}
-		key, ok := entryKey(e)
-		if !ok || !owned[key] {
+		// what the entry names, folded as the filesystem folds it: on a
+		// case-insensitive one PLAYER.JSON is the Player.json this level owns
+		key, ok := e.Name(), e.IsDir()
+		if n := len(key); !ok && n > len(".json") && strings.EqualFold(key[n-len(".json"):], ".json") {
+			key, ok = key[:n-len(".json")], true
+		}
+		if !ok || !foldedIn(key, owned) {
+			continue
+		}
+		if err := out.RemoveAll(e.Name()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// foldedIn reports whether name equals one of the written names under Unicode
+// case folding, the comparison a case-insensitive filesystem makes. The names
+// an unpack writes are portable ASCII (treeNamesOverlap), and normalization
+// leaves ASCII as it is, so folding is the whole of the comparison.
+func foldedIn(name string, written map[string]bool) bool {
+	if written[name] {
+		return true
+	}
+	for w := range written {
+		if strings.EqualFold(name, w) {
+			return true
+		}
+	}
+	return false
+}
+
+// claimEntry makes name, about to be written at this level, the one entry
+// that answers to it: an existing entry that a case-insensitive filesystem
+// would take for name but that is spelled differently, or that is a directory
+// where a file is written (or a file where a directory is), is removed first.
+// Left in place, a case-insensitive filesystem would write into the old
+// spelling — and pack, which matches names exactly, would read it as another
+// field — while a case-sensitive one would keep both, two entries claiming
+// one value. Every such entry names a value this level owns.
+func claimEntry(out *os.Root, name string, dir bool) error {
+	entries, err := fs.ReadDir(out.FS(), ".")
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if !strings.EqualFold(e.Name(), name) {
+			continue
+		}
+		if e.Name() == name && e.IsDir() == dir {
 			continue
 		}
 		if err := out.RemoveAll(e.Name()); err != nil {
