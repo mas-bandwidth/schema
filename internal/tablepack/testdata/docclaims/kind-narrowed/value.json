@@ -1,1 +1,1 @@
-{"name": "Kestrel", "health": 250, "speed": 900, "armor": 8, "kind": "Corvette"}
+{"name": "Kestrel", "health": 250, "speed": 900, "armor": "8", "kind": "Corvette"}
