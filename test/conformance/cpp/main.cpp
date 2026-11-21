@@ -1641,7 +1641,16 @@ static int surface_json_hostile( const std::string & out )
                 std::vector<uint8_t> region;
                 Report again;
                 const void * root = variable->load( region, saved.data(), (int64_t) saved.size(), &again );
-                if ( root == NULL || !variable->to_json( root, value_text ) ) return 1;
+                if ( root == NULL || !variable->to_json( root, value_text ) )
+                {
+                    // A READ THE LEG CANNOT WRITE BACK is this case's wrong
+                    // answer, not the surface's: a text past the depth cap that
+                    // the read let through meets the writer's cap here. Say so
+                    // in the value, and the case fails by name while every
+                    // other row is still scored.
+                    static const char unwritable[] = "(read, and the value it left could not be written back)\n";
+                    value_text.assign( unwritable, unwritable + sizeof( unwritable ) - 1 );
+                }
             }
         }
         else
@@ -1926,6 +1935,9 @@ enum
     kWroteExit = 10,
     kRefusedExit = 11,
     kNoSetterExit = 3,
+    // the value is past the storage's own width (§5.1 row 11): C++'s typed
+    // storage cannot hold it, so there is nothing for the writer to refuse
+    kUnrepresentableExit = 12,
 };
 
 // The hex of a `bytes` or `units` value: two digits a byte, or four a unit.
@@ -2009,6 +2021,114 @@ static bool write_refusal_bytes_field( uint8_t * storage, int32_t capacity, int3
         for ( size_t i = 0; i < bytes.size(); i++ ) storage[i] = (uint8_t) bytes[i];
         length = (int32_t) bytes.size();
         return true;
+    }
+    return false;
+}
+
+// A decimal integer as __int128, saturating far past any storage, so a value
+// past 64 bits still compares as past it.
+static __int128 wref_int128( const std::string & text )
+{
+    size_t i = 0;
+    bool negative = false;
+    if ( i < text.size() && ( text[i] == '-' || text[i] == '+' ) ) { negative = text[i] == '-'; i++; }
+    __int128 v = 0;
+    const __int128 cap = (__int128) 1 << 100;
+    for ( ; i < text.size() && text[i] >= '0' && text[i] <= '9'; i++ )
+    {
+        if ( v < cap ) v = v * 10 + ( text[i] - '0' );
+    }
+    return negative ? -v : v;
+}
+
+// Stores an integer the row names in typed storage, or ends the child as
+// UNREPRESENTABLE when the storage cannot hold it (§5.1 row 11 on a bare int).
+template <typename T> static bool wref_store_int( T & field, const std::string & text )
+{
+    const __int128 v = wref_int128( text );
+    if ( v < (__int128) std::numeric_limits<T>::min() || v > (__int128) std::numeric_limits<T>::max() ) _exit( kUnrepresentableExit );
+    field = (T) v;
+    return true;
+}
+
+// The REVIEW-1121 rows on PLAIN VARIABLE roots (MANIFEST.txt, R1): the value is
+// the region the load left, set in place.
+static bool write_refusal_set_variable( const std::string & root, void * value, const std::string & path,
+                                        const std::string & kind, const std::string & text )
+{
+    const long long n = strtoll( text.c_str(), NULL, 10 );
+    if ( root == "Scene" )
+    {
+        graphdemo::Scene & v = *(graphdemo::Scene *) value;
+        if ( path == "version" && kind == "int" ) return wref_store_int( v.version, text );
+        if ( path == "ground.depth" && kind == "int" ) return wref_store_int( v.ground.depth, text );
+        if ( path == "name" ) return write_refusal_text( v.name, (int32_t) sizeof( v.name ) - 1, v.name_length, kind, text );
+        if ( path == "layers" && kind == "count" )
+        {
+            const int32_t storage = (int32_t) ( sizeof( v.layers ) / sizeof( v.layers[0] ) );
+            for ( int32_t i = v.layers_count; i < (int32_t) n && i < storage; i++ ) v.layers[i] = v.ground;
+            v.layers_count = (int32_t) n;
+            return true;
+        }
+    }
+    if ( root == "Mixed" )
+    {
+        listdemo::Mixed & v = *(listdemo::Mixed *) value;
+        if ( path == "bounds[1]" && kind == "int" )
+        {
+            if ( v.bounds.count < 2 || v.bounds.elements.value == 0 ) return false;
+            int32_t * elems = (int32_t *) ( (uint8_t *) &v.bounds.elements + v.bounds.elements.value );
+            return wref_store_int( elems[1], text );
+        }
+        if ( path == "grades[0]" && kind == "ordinal" )
+        {
+            if ( v.grades.count < 1 || v.grades.elements.value == 0 ) return false;
+            listdemo::Grade * elems = (listdemo::Grade *) ( (uint8_t *) &v.grades.elements + v.grades.elements.value );
+            elems[0] = (listdemo::Grade) n;
+            return true;
+        }
+        if ( path == "hits[0]" && kind == "tag" )
+        {
+            if ( v.hits.count < 1 || v.hits.elements.value == 0 ) return false;
+            listdemo::Hit * elems = (listdemo::Hit *) ( (uint8_t *) &v.hits.elements + v.hits.elements.value );
+            // a lawful tag takes its arm at its defaults
+            if ( n == 2 ) elems[0].damage = 0;
+            elems[0].type = (listdemo::HitType) n;
+            return true;
+        }
+    }
+    if ( root == "TortureCook" )
+    {
+        cooktorture::TortureCook & v = *(cooktorture::TortureCook *) value;
+        if ( path == "b_bits13" && kind == "int" )
+        {
+            // bits(13) in uint32 storage: past 2^13 - 1 is the WRITER's to refuse
+            // (row 2); below 0 the storage cannot hold
+            return wref_store_int( v.b_bits13, text );
+        }
+        if ( path == "b_bits37" && kind == "int" ) return wref_store_int( v.b_bits37, text );
+        if ( path == "b_i32" && kind == "int" ) return wref_store_int( v.b_i32, text );
+        if ( path == "b_u8" && kind == "int" ) return wref_store_int( v.b_u8, text );
+        if ( path == "b_u64" && kind == "int" ) return wref_store_int( v.b_u64, text );
+        if ( path == "bounded_steps" && kind == "count" )
+        {
+            const int32_t storage = (int32_t) ( sizeof( v.bounded_steps ) / sizeof( v.bounded_steps[0] ) );
+            for ( int32_t i = v.bounded_steps_count; i < (int32_t) n && i < storage; i++ ) v.bounded_steps[i] = v.bounded_steps[0];
+            v.bounded_steps_count = (int32_t) n;
+            return true;
+        }
+        if ( path == "bounded_steps[3].label" )
+        {
+            if ( v.bounded_steps_count < 4 || v.bounded_steps[3].type != cooktorture::StepActionType::Label ) return false;
+            return write_refusal_text( v.bounded_steps[3].label.value, 12, v.bounded_steps[3].label.value_length, kind, text );
+        }
+        if ( path == "bounded_steps[0]" && kind == "tag" )
+        {
+            if ( v.bounded_steps_count < 1 ) return false;
+            if ( n == 4 ) { memset( v.bounded_steps[0].label.value, 0, sizeof( v.bounded_steps[0].label.value ) ); v.bounded_steps[0].label.value_length = 0; }
+            v.bounded_steps[0].type = (cooktorture::StepActionType) n;
+            return true;
+        }
     }
     return false;
 }
@@ -2149,7 +2269,7 @@ static bool write_refusal_set( const std::string & root, void * value, const std
             return true;
         }
     }
-    return false;
+    return write_refusal_set_variable( root, value, path, kind, text );
 }
 
 // The fixed form's FixedSave, a batch of one, for the roots the rows name.
@@ -2316,6 +2436,7 @@ static int surface_write_refusal( const std::string & surface, const std::string
         if ( WIFSIGNALED( status ) && WTERMSIG( status ) == SIGABRT ) verdict = "refused\n";
         else if ( WIFEXITED( status ) && WEXITSTATUS( status ) == kRefusedExit ) verdict = "refused\n";
         else if ( WIFEXITED( status ) && WEXITSTATUS( status ) == kWroteExit ) verdict = "wrote\n";
+        else if ( WIFEXITED( status ) && WEXITSTATUS( status ) == kUnrepresentableExit ) verdict = "unrepresentable\n";
         else if ( WIFEXITED( status ) && WEXITSTATUS( status ) == kNoSetterExit )
         {
             fprintf( stderr, "driver: %s %s: no setter for %s %s %s\n", surface.c_str(), f[1].c_str(), f[3].c_str(), f[5].c_str(), f[6].c_str() );
