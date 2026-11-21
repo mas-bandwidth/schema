@@ -203,7 +203,7 @@ func TestNightlyRedOpensAndPinsTheIssueOnAFailedNight(t *testing.T) {
 	want := []string{
 		listCall,
 		"label create nightly-red --repo " + nightlyRedRepo + " --color B60205 --description the ci-full nightly is red or did not complete --force",
-		"issue create --repo " + nightlyRedRepo + " --title CI full nightly is red --label nightly-red --body-file -",
+		"issue create --repo " + nightlyRedRepo + " --title CI full nightly is not green --label nightly-red --body-file -",
 		"issue pin 4600 --repo " + nightlyRedRepo,
 	}
 	if got := f.issueCalls(); !slices.Equal(got, want) {
