@@ -113,8 +113,10 @@ func splitPinArgs(args []string) (pos []string, mixedOk bool) {
 // from each other unless --mixed-ok is given. It prints one line per file
 // changed and exits 0, or exits 1 having changed nothing: on a refusal no
 // file is written at all, and a write that fails part way puts back every
-// file already moved (publishPins), so the tree ends all old or all new. No
-// other file is touched.
+// file already moved, the original entry itself (publishPins), so the tree
+// ends all old or all new. A generate.go that is a symbolic link is
+// followed: the file it names is the one moved, and the link stays. No other
+// file is touched.
 func cmdPin(args []string) {
 	pos, mixedOk := splitPinArgs(args)
 	if len(pos) < 1 {
@@ -231,10 +233,10 @@ type pinFiles struct {
 
 var osPinFiles = pinFiles{createTemp: os.CreateTemp, rename: os.Rename}
 
-// stage writes data to a temporary beside path, with path's mode, and
-// returns its name; on a failure the temporary is gone.
-func (f pinFiles) stage(path string, data []byte, mode os.FileMode) (string, error) {
-	tmp, err := f.createTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
+// stage writes data to a new file beside path, with the given mode, and
+// returns its name; on a failure that file is gone.
+func (f pinFiles) stage(path, kind string, data []byte, mode os.FileMode) (string, error) {
+	tmp, err := f.createTemp(filepath.Dir(path), "."+filepath.Base(path)+"."+kind+".*")
 	if err != nil {
 		return "", err
 	}
@@ -253,58 +255,108 @@ func (f pinFiles) stage(path string, data []byte, mode os.FileMode) (string, err
 	return name, nil
 }
 
-// restore puts a published file's original bytes back: staged and renamed
-// like any write, and written in place if that cannot be done.
-func (f pinFiles) restore(ch pinChange) error {
-	name, err := f.stage(ch.path, ch.orig, ch.mode)
-	if err == nil {
-		if err = f.rename(name, ch.path); err == nil {
-			return nil
-		}
-		_ = os.Remove(name)
-	}
-	return os.WriteFile(ch.path, ch.orig, ch.mode)
+// pinEntry is one file on its way through publishPins.
+type pinEntry struct {
+	path string // as the adopter named it
+	file string // the file itself: path with every symbolic link followed
+	next string // the staged new content, beside file
+	kept string // where the original entry is kept while the pin is published
+	// aside: the original entry is at kept, not at file
+	aside bool
 }
 
-// publishPins moves every file or none. Every file's new content is staged
-// first, beside the file it replaces, so the failures a pin meets in practice
-// (a read-only directory, a full disk) happen before any file has changed:
-// the temporaries are removed and the tree is as it was. Only then is each
-// staged file renamed over its original; if a rename fails, the files already
-// renamed are put back from the original bytes and the rest are never
-// touched. A put-back that itself fails is named in the error, with the files
-// left at the new pin, because nothing more can be done about it here.
+// publishPins moves every file or none.
+//
+// A generate.go that is a symbolic link is followed: the file it names is
+// the one moved, and the link is never replaced. Two paths that reach one
+// file move it once.
+//
+// Every file's new content is staged first, beside the file it replaces,
+// with a name reserved for keeping the original, so the failures a pin meets
+// in practice (a read-only directory, a full disk) happen before anything has
+// changed: what was staged is removed and the tree is as it was.
+//
+// Only then is each file published: the original ENTRY is renamed aside to
+// its kept name and the staged file renamed into its place. If either rename
+// fails, every original already moved aside is renamed back over its path, so
+// what returns is the entry itself (the same inode, with its hard links, its
+// mode and the time it was last written), not a copy of its bytes, and
+// "nothing was changed" is true. When every file is published the kept
+// originals are removed.
+//
+// An original that will not go back is the one case that ends neither all
+// old nor all new: it is left at its kept name, never removed, and the error
+// names it.
 func publishPins(f pinFiles, changes []pinChange) error {
-	staged := make([]string, 0, len(changes))
-	drop := func(names []string) {
-		for _, name := range names {
-			_ = os.Remove(name)
+	entries := make([]*pinEntry, 0, len(changes))
+	// clean removes what is no longer wanted: every staged file still there,
+	// and every kept name that does not hold an original.
+	clean := func() {
+		for _, e := range entries {
+			_ = os.Remove(e.next)
+			if !e.aside {
+				_ = os.Remove(e.kept)
+			}
 		}
 	}
+	seen := map[string]bool{}
 	for _, ch := range changes {
-		name, err := f.stage(ch.path, ch.next, ch.mode)
+		file, err := filepath.EvalSymlinks(ch.path)
 		if err != nil {
-			drop(staged)
+			clean()
 			return fmt.Errorf("nothing was changed: %w", err)
 		}
-		staged = append(staged, name)
+		if seen[file] {
+			continue
+		}
+		seen[file] = true
+		e := &pinEntry{path: ch.path, file: file}
+		if e.next, err = f.stage(file, "new", ch.next, ch.mode); err == nil {
+			entries = append(entries, e)
+			e.kept, err = f.stage(file, "orig", nil, ch.mode)
+		}
+		if err != nil {
+			clean()
+			return fmt.Errorf("nothing was changed: %w", err)
+		}
 	}
-	for i, ch := range changes {
-		err := f.rename(staged[i], ch.path)
+
+	for _, e := range entries {
+		err := f.rename(e.file, e.kept)
+		if err == nil {
+			e.aside = true
+			err = f.rename(e.next, e.file)
+		}
 		if err == nil {
 			continue
 		}
-		drop(staged[i:])
 		var stuck []string
-		for _, done := range changes[:i] {
-			if rerr := f.restore(done); rerr != nil {
-				stuck = append(stuck, fmt.Sprintf("%s (%v)", done.path, rerr))
+		for _, back := range entries {
+			if !back.aside {
+				continue
 			}
+			if rerr := f.rename(back.kept, back.file); rerr != nil {
+				stuck = append(stuck, fmt.Sprintf("%s (its original is kept at %s: %v)", back.path, back.kept, rerr))
+				continue
+			}
+			back.aside = false
+			back.kept = "" // the name is the original's own again
 		}
+		clean()
 		if len(stuck) > 0 {
-			return fmt.Errorf("%w; the pin is HALF MOVED: these files hold the new pin and could not be put back: %s", err, strings.Join(stuck, ", "))
+			return fmt.Errorf("%w; the pin is HALF MOVED: these files could not be put back as they were: %s", err, strings.Join(stuck, ", "))
 		}
-		return fmt.Errorf("nothing was changed (every file already moved was put back): %w", err)
+		return fmt.Errorf("nothing was changed (every file already moved was put back as it was): %w", err)
+	}
+
+	var left []string
+	for _, e := range entries {
+		if err := os.Remove(e.kept); err != nil {
+			left = append(left, fmt.Sprintf("%s (%v)", e.kept, err))
+		}
+	}
+	if len(left) > 0 {
+		return fmt.Errorf("every pin moved, but these kept originals could not be removed: %s", strings.Join(left, ", "))
 	}
 	return nil
 }

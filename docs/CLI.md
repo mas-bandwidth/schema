@@ -17,7 +17,9 @@ is unset, every v3 tag), pointing at the prebuilt binaries and at
 cannot resolve); a directory that
 does not exist or holds no pin line, and a mixed tree without `--mixed-ok`,
 exiting 1 without changing any file. A write that fails part way also exits 1
-with every file as it was: the tree ends all old or all new. See USAGE.md's Go
+with every file as it was: the tree ends all old or all new. A `generate.go`
+that is a symbolic link is followed: the file it names is rewritten and the
+link is left as it is. See USAGE.md's Go
 adoption notes for the bump recipe.
 
 `generate --lang go` emits Go that imports the shared table runtime

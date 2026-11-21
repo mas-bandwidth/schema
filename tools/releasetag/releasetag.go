@@ -243,6 +243,12 @@ func Promote(g Git, rev string, push bool, out io.Writer) error {
 // ancestry is main. It writes nothing unless push is set, and nothing on a
 // refusal.
 func Release(g Git, version, rev, mainRef string, push bool, out io.Writer) error {
+	return release(g, version, rev, mainRef, push, out, modulemove.FirstV3ModuleTag)
+}
+
+// release is Release with pin's boundary passed in, so the tests drive the
+// module gate on both sides of the /v3 module move.
+func release(g Git, version, rev, mainRef string, push bool, out io.Writer, boundary string) error {
 	if _, err := ParseVersion(version); err != nil {
 		return err // before any git call: the cheapest refusal first
 	}
@@ -269,7 +275,28 @@ func Release(g Git, version, rev, mainRef string, push bool, out io.Writer) erro
 	if err != nil {
 		return err
 	}
-	if err := modulemove.ReleaseGate(tag, goMod, modulemove.FirstV3ModuleTag); err != nil {
+	// A boundary, once set, is held against the v3 tags already cut: the
+	// module path each one's own go.mod names, read from the tag. With no
+	// boundary pin refuses every v3 tag and there is nothing to read.
+	var tagModules map[string]string
+	if boundary != "" {
+		tagModules = map[string]string{}
+		for _, existing := range fields(tags) {
+			if _, err := ParseVersion(existing); err != nil || modulemove.Major(existing) != 3 {
+				continue
+			}
+			src, err := g.Run("show", existing+":go.mod")
+			if err != nil {
+				return err
+			}
+			path, err := modulemove.ModulePath(src)
+			if err != nil {
+				return fmt.Errorf("%s: %w", existing, err)
+			}
+			tagModules[existing] = path
+		}
+	}
+	if err := modulemove.ReleaseGate(tag, goMod, boundary, tagModules); err != nil {
 		return err
 	}
 	if newest, ok := NewestRelease(fields(tags)); ok {

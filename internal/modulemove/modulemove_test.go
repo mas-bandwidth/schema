@@ -2,6 +2,7 @@ package modulemove
 
 import (
 	"errors"
+	"maps"
 	"strings"
 	"testing"
 )
@@ -29,6 +30,9 @@ func TestPreModuleMove(t *testing.T) {
 		{"v3.0.4", "v3.1.0", true},
 		{"v3.1.0-rc.1", "v3.1.0", true},
 		{"v3.1.0", "v3.1.0", false},
+		// the tags cut with /v2 stay refused under a boundary just above them
+		{"v3.0.5", "v3.0.6", true},
+		{"v3.0.6", "v3.0.6", false},
 		{"v3.1.1", "v3.1.0", false},
 		{"v3.10.0", "v3.9.0", false},
 		{"v2.9.0", "", false},
@@ -70,24 +74,44 @@ func TestCompare(t *testing.T) {
 func TestReleaseGate(t *testing.T) {
 	t.Parallel()
 	v2, v3 := goModAt("/v2"), goModAt("/v3")
+	// the tags already cut, each with the module path its own go.mod names:
+	// v3.0.0 to v3.0.5 from the /v2 go.mod, and then v3.1.0 from /v3
+	through305 := map[string]string{"v2.9.0": moduleBase + "/v2"}
+	for _, tag := range []string{"v3.0.0", "v3.0.1", "v3.0.2", "v3.0.3", "v3.0.4", "v3.0.5"} {
+		through305[tag] = moduleBase + "/v2"
+	}
+	through310 := map[string]string{"v3.1.0": moduleBase + "/v3"}
+	maps.Copy(through310, through305)
 	for _, c := range []struct {
 		name, version, goMod, boundary string
+		tags                           map[string]string
 		want                           error
 	}{
-		{"a v2 tag on a /v2 go.mod", "v2.9.0", v2, "", nil},
-		{"v3.0.4 on a /v2 go.mod, no boundary: pin refuses it", "v3.0.4", v2, "", nil},
-		{"v3.0.4 on a /v2 go.mod, boundary above it", "v3.0.4", v2, "v3.1.0", nil},
-		{"the first /v3 tag, at the boundary", "v3.1.0", v3, "v3.1.0", nil},
-		{"a later /v3 tag", "v3.2.0", v3, "v3.1.0", nil},
-		{"a /v2 go.mod tagged at or past the boundary", "v3.1.0", v2, "v3.1.0", ErrModuleMismatch},
-		{"a /v3 go.mod with no boundary set", "v3.1.0", v3, "", ErrBoundaryCovers},
-		{"a /v3 go.mod tagged below the boundary", "v3.0.9", v3, "v3.1.0", ErrBoundaryCovers},
-		{"a v4 tag on a /v3 go.mod", "v4.0.0", v3, "v3.1.0", ErrModuleMismatch},
-		{"a v2 tag on a /v3 go.mod", "v2.10.0", v3, "v3.1.0", ErrModuleMismatch},
-		{"a v1 tag on a /v2 go.mod", "v1.17.0", v2, "", ErrModuleMismatch},
-		{"no module line", "v2.9.0", "go 1.26\n", "", ErrNoModule},
+		{"a v2 tag on a /v2 go.mod", "v2.9.0", v2, "", nil, nil},
+		{"v3.0.4 on a /v2 go.mod, no boundary: pin refuses it", "v3.0.4", v2, "", nil, nil},
+		{"v3.0.6 on a /v2 go.mod, no boundary, after v3.0.5", "v3.0.6", v2, "", through305, nil},
+		{"v3.0.4 on a /v2 go.mod, boundary above it", "v3.0.4", v2, "v3.1.0", nil, nil},
+		{"the first /v3 tag, at the boundary", "v3.1.0", v3, "v3.1.0", through305, nil},
+		{"a later /v3 tag", "v3.2.0", v3, "v3.1.0", through310, nil},
+		{"a /v2 go.mod tagged at or past the boundary", "v3.1.0", v2, "v3.1.0", nil, ErrModuleMismatch},
+		{"a /v3 go.mod with no boundary set", "v3.1.0", v3, "", nil, ErrBoundaryCovers},
+		{"a /v3 go.mod tagged below the boundary", "v3.0.9", v3, "v3.1.0", nil, ErrBoundaryCovers},
+		{"a v4 tag on a /v3 go.mod", "v4.0.0", v3, "v3.1.0", through310, ErrModuleMismatch},
+		{"a v2 tag on a /v3 go.mod", "v2.10.0", v3, "v3.1.0", through310, ErrModuleMismatch},
+		{"a v1 tag on a /v2 go.mod", "v1.17.0", v2, "", nil, ErrModuleMismatch},
+		{"no module line", "v2.9.0", "go 1.26\n", "", nil, ErrNoModule},
+		// the reviewer's case: a stale boundary of v3.0.3, tags through
+		// v3.0.5 cut with /v2, the first /v3 release going out as v3.0.6.
+		// Pin would then hand out v3.0.3 to v3.0.5, which do not resolve.
+		{"a stale boundary below tags cut with /v2", "v3.0.6", v3, "v3.0.3", through305, ErrBoundaryStale},
+		{"the boundary at the first /v3 release", "v3.0.6", v3, "v3.0.6", through305, nil},
+		// the first release with a /v3 go.mod must be the boundary itself
+		{"the first /v3 release above the boundary", "v3.0.7", v3, "v3.0.6", through305, ErrBoundaryStale},
+		{"a later /v3 release above the boundary", "v3.1.1", v3, "v3.1.0", through310, nil},
+		// a boundary above a tag that resolves makes pin refuse it
+		{"a boundary above a tag cut with /v3", "v3.2.1", v3, "v3.2.0", through310, ErrBoundaryCovers},
 	} {
-		err := ReleaseGate(c.version, c.goMod, c.boundary)
+		err := ReleaseGate(c.version, c.goMod, c.boundary, c.tags)
 		if !errors.Is(err, c.want) || (c.want == nil) != (err == nil) {
 			t.Errorf("%s: ReleaseGate(%s, boundary %q) = %v; want %v", c.name, c.version, c.boundary, err, c.want)
 		}

@@ -344,3 +344,46 @@ func TestReleaseModuleGate(t *testing.T) {
 		}
 	}
 }
+
+// TestReleaseHoldsTheBoundaryAgainstTagsAlreadyCut drives the history half of
+// the module gate through release and a fake git: with a boundary set, the
+// go.mod AT every v3 tag is read, and a boundary at or below a tag cut with
+// /v2 refuses and writes nothing, because pin would hand that tag out. The
+// reviewer's case: boundary v3.0.3, tags through v3.0.5 cut with /v2, the
+// first /v3 release going out as v3.0.6. The pure rule is tested in
+// internal/modulemove; this pins that the tagger feeds it the real tags.
+func TestReleaseHoldsTheBoundaryAgainstTagsAlreadyCut(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		boundary string
+		want     error
+	}{
+		{"v3.0.3", modulemove.ErrBoundaryStale},
+		{"v3.0.6", nil},
+		{"v3.0.7", modulemove.ErrBoundaryCovers}, // the tag resolves and pin would refuse it
+	} {
+		g := &fakeGit{answers: map[string]string{
+			"rev-parse --verify HEAD^{commit}":    mergeSHA + "\n",
+			"tag --list v*":                       "v2.9.0\nv3.0.0\nv3.0.1\nv3.0.2\nv3.0.3\nv3.0.4\nv3.0.5\nv3.0.5-promote\n",
+			"rev-list origin/main":                mergeSHA + "\n",
+			"show v3.0.5:" + FormSource:           formSrc(4),
+			"show " + mergeSHA + ":" + FormSource: formSrc(4),
+			"show " + mergeSHA + ":go.mod":        goModSrc("3"),
+		}}
+		// every v3 tag already cut declares /v2; the v2 tag and the tag
+		// that is not a release are never read
+		for _, tag := range []string{"v3.0.0", "v3.0.1", "v3.0.2", "v3.0.3", "v3.0.4", "v3.0.5"} {
+			g.answers["show "+tag+":go.mod"] = goModSrc("2")
+		}
+		err := release(g, "v3.0.6", "HEAD", "origin/main", true, io.Discard, c.boundary)
+		if !errors.Is(err, c.want) || (c.want == nil) != (err == nil) {
+			t.Errorf("release v3.0.6 with boundary %s over tags through v3.0.5 at /v2: err = %v; want %v", c.boundary, err, c.want)
+		}
+		if c.want != nil && len(g.writes()) != 0 {
+			t.Errorf("refused release (boundary %s) wrote %q", c.boundary, g.writes())
+		}
+		if c.want == nil && len(g.writes()) != 2 {
+			t.Errorf("release (boundary %s) wrote %q; want its tag and its push", c.boundary, g.writes())
+		}
+	}
+}

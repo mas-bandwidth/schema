@@ -3942,7 +3942,10 @@ differ from each other (`--mixed-ok` accepts the tree and moves them
 together; the flag may sit before or after the directories). Nothing else in
 the files moves, and no other file is touched. The move is all or nothing:
 every file's new content is staged before any file is replaced, and a write
-that fails (a read-only directory, say) exits 1 with every file as it was.
+that fails (a read-only directory, say) exits 1 with every file as it was:
+the original directory entry is put back, not a copy of its bytes. A
+`generate.go` that is a symbolic link is followed: the file it names is
+rewritten and the link is left as it is.
 
 **A unit that declares only tables needs no dependency.** The generated Go
 imports the standard library alone, so the files drop into any Go module

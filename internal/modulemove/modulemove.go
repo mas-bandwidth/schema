@@ -12,7 +12,9 @@ package modulemove
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -32,6 +34,7 @@ const FirstV3ModuleTag = ""
 var (
 	ErrModuleMismatch = errors.New("go.mod's module path does not carry the major of the version being tagged")
 	ErrBoundaryCovers = errors.New("pin's boundary refuses a tag whose go.mod Go can resolve")
+	ErrBoundaryStale  = errors.New("pin's boundary is not the first v3 tag cut with the /v3 module path")
 	ErrNoModule       = errors.New("go.mod has no module line")
 )
 
@@ -182,10 +185,18 @@ func PathFor(version string) string {
 // refuses it, so no adopter is handed it); a tag whose go.mod does carry its
 // major is refused when the boundary covers it, because pin would then refuse
 // a tag that resolves.
-func ReleaseGate(version, goMod, boundary string) error {
+//
+// The boundary is held against history as well (BoundaryGate): tagModules is
+// the module path each release tag already cut declares in its own go.mod. And
+// the first v3 release whose go.mod names /v3 must BE the boundary: a boundary
+// set to anything else is stale before the tag is cut.
+func ReleaseGate(version, goMod, boundary string, tagModules map[string]string) error {
 	have, err := ModulePath(goMod)
 	if err != nil {
 		return fmt.Errorf("%s: %w", version, err)
+	}
+	if err := BoundaryGate(boundary, tagModules); err != nil {
+		return fmt.Errorf("tagging %s: %w", version, err)
 	}
 	want := PathFor(version)
 	pre := PreModuleMove(version, boundary)
@@ -194,8 +205,48 @@ func ReleaseGate(version, goMod, boundary string) error {
 		return fmt.Errorf("%w: tagging %s needs go.mod to name %s, and it names %s, so Go cannot resolve the tag; pin's boundary (internal/modulemove.FirstV3ModuleTag = %q) does not cover it, so pin would hand it to adopters", ErrModuleMismatch, version, want, have, boundary)
 	case have == want && pre:
 		return fmt.Errorf("%w: go.mod names %s, so Go resolves %s, but pin's boundary (internal/modulemove.FirstV3ModuleTag = %q) refuses it; set the boundary to the first tag cut with the /v3 module path", ErrBoundaryCovers, have, version, boundary)
+	case have == want && Major(version) == 3 && version != boundary && firstV3Module(tagModules):
+		return fmt.Errorf("%w: %s would be the first v3 tag cut with a go.mod naming %s, and pin's boundary (internal/modulemove.FirstV3ModuleTag) is %q; set the boundary to %s, or release as %s", ErrBoundaryStale, version, have, boundary, version, boundary)
 	}
 	return nil
+}
+
+// BoundaryGate holds the boundary against the release tags already cut.
+// tagModules maps each existing tag to the module path the go.mod AT that tag
+// declares (tools/releasetag reads it from git; the rule itself needs none).
+// With a boundary set, every v3 tag whose go.mod does not name /v3 must lie
+// below it, or pin would hand out a published tag Go cannot resolve; and every
+// v3 tag whose go.mod does name /v3 must lie at or above it, or pin would
+// refuse a tag that resolves. An unset boundary refuses every v3 tag, so
+// history cannot contradict it here (TreeGate refuses it on a /v3 go.mod).
+func BoundaryGate(boundary string, tagModules map[string]string) error {
+	if boundary == "" {
+		return nil
+	}
+	for _, tag := range slices.Sorted(maps.Keys(tagModules)) {
+		if Major(tag) != 3 || IsPseudoVersion(tag) {
+			continue
+		}
+		have, below := tagModules[tag], Compare(tag, boundary) < 0
+		switch {
+		case have != PathFor(tag) && !below:
+			return fmt.Errorf("%w: %s is already cut with a go.mod naming %s, so Go cannot resolve it, and pin's boundary (internal/modulemove.FirstV3ModuleTag = %q) does not refuse it; the boundary must be greater than every v3 tag cut before the module moved", ErrBoundaryStale, tag, have, boundary)
+		case have == PathFor(tag) && below:
+			return fmt.Errorf("%w: %s is already cut with a go.mod naming %s, so Go resolves it, and pin's boundary (internal/modulemove.FirstV3ModuleTag = %q) refuses it; the boundary is the FIRST tag cut with the /v3 module path", ErrBoundaryCovers, tag, have, boundary)
+		}
+	}
+	return nil
+}
+
+// firstV3Module reports whether no v3 tag already cut declares /v3: the
+// release being checked would be the first that Go resolves under /v3.
+func firstV3Module(tagModules map[string]string) bool {
+	for tag, have := range tagModules {
+		if Major(tag) == 3 && !IsPseudoVersion(tag) && have == PathFor(tag) {
+			return false
+		}
+	}
+	return true
 }
 
 // TreeGate checks a tree's go.mod against the boundary before any version is
@@ -203,7 +254,9 @@ func ReleaseGate(version, goMod, boundary string) error {
 // CI: a /v2 go.mod with a boundary set would let pin hand out v3 tags cut from
 // it, and a /v3 go.mod with none would make pin refuse the first tag that
 // resolves. With a boundary set, the release of the boundary tag itself from
-// this tree must pass ReleaseGate.
+// this tree must pass ReleaseGate. It sees no tags (a pull request's checkout
+// has none): the boundary is held against the tags already cut at release
+// time, by ReleaseGate in tools/releasetag.
 func TreeGate(goMod, boundary string) error {
 	have, err := ModulePath(goMod)
 	if err != nil {
@@ -216,7 +269,7 @@ func TreeGate(goMod, boundary string) error {
 		return fmt.Errorf("%w: internal/modulemove.FirstV3ModuleTag = %q but go.mod still names %s; unset it until go.mod moves to /v3", ErrModuleMismatch, boundary, have)
 	}
 	if boundary != "" && have == PathFor(boundary) {
-		return ReleaseGate(boundary, goMod, boundary)
+		return ReleaseGate(boundary, goMod, boundary, nil)
 	}
 	return nil
 }
