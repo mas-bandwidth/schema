@@ -45,6 +45,7 @@ inline bool TableKindWidens( uint8_t kind, uint8_t declared )
         case 9: return kind >= 6 && kind < declared;
         case 19: return kind >= 6 && kind <= 9;
         case 11: return kind == 10;
+        default: break;
     }
     return false;
 }
@@ -86,6 +87,7 @@ inline int64_t TableKindWidth( uint8_t kind )
         case 19:
         case 24:
         case 29: return 16;
+        default: break;
     }
     return 0;
 }

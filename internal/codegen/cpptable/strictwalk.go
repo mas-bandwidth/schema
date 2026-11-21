@@ -82,6 +82,7 @@ inline int32_t TableStrictWidth( uint8_t kind )
         case 4: case 8: case 10: case 22: case 27: return 4;
         case 5: case 9: case 11: case 23: case 28: case 36: return 8;
         case 18: case 19: case 24: case 29: return 16;
+        default: break;
     }
     return 0;
 }
@@ -216,6 +217,7 @@ inline bool TableStrictContent( TableStrict & s, const uint8_t * b, int64_t n, u
             if ( !TableStrictPayload( s, r, kind, depth ) ) { return false; }
             return r.offset == n; // bytes left inside an arm after its payload
         }
+        default: break;
     }
     return false; // a kind no reader can skip (R3)
 }
@@ -263,6 +265,7 @@ inline bool TableStrictPayload( TableStrict & s, TableReader & r, uint8_t kind, 
             r.offset += (int64_t) n;
             return TableStrictContent( s, b, (int64_t) n, kind, depth );
         }
+        default: break;
     }
     return false; // a kind no reader can skip (R3)
 }

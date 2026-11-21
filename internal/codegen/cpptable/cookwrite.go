@@ -473,19 +473,19 @@ func (g *tableGen) emitCookWriteUnion(un *ir.Union, at, value, indent, sfx strin
 	_, _, tag, armOffset := ir.UnionLayout(g.unit, un)
 	g.pf("%s{\n", indent)
 	g.pf("%s    table_cook_put( %s, (uint64_t) %s.type, %d, order ); // the tag; None is the tag alone\n", indent, at, value, tag)
-	g.pf("%s    switch ( %s.type )\n%s    {\n", indent, value, indent)
+	g.pf("%s    switch ( %s )\n%s    {\n", indent, tagOf(unionTagStorage(un), value+".type"), indent)
 	for _, v := range un.Variants {
 		switch {
 		case v.Void():
 			// a payload-free arm writes the tag and nothing else (§2.6)
 		case v.Body():
-			g.pf("%s        case %sType::%s: %s break;\n", indent, un.Name, ir.GoExportName(v.Name),
+			g.pf("%s        case %s: %s break;\n", indent, tagCase(unionTagStorage(un), un.Name+"Type", ir.GoExportName(v.Name)),
 				g.cookBodyCall(v.Ref, fmt.Sprintf("%s + %d", at, armOffset), fmt.Sprintf("%s.%s", value, v.Name)))
 		case v.F != nil:
 			// AN ARM IS A FIELD LINE (§2.6): its pieces sit at the arms'
 			// shared offset and ride exactly as a field's do, through the
 			// same writer
-			g.pf("%s        case %sType::%s:\n%s        {\n", indent, un.Name, ir.GoExportName(v.Name), indent)
+			g.pf("%s        case %s:\n%s        {\n", indent, tagCase(unionTagStorage(un), un.Name+"Type", ir.GoExportName(v.Name)), indent)
 			saved := g.indent
 			g.indent = g.indent + indent + "        "
 			g.emitCookWriteFieldAs(nil, v.F, armOffset, armValue(value, v), at, sfx+"a")

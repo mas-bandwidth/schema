@@ -1153,7 +1153,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("            uint32_t at = %sNodeAlloc( type_id, builder.main, length );\n", n)
 	if g.rootReachesStringBlob(st) {
 		// the text blob rule (§3.1), on the builder's path as on the region's
-		g.pf("            if ( type_id == kTableStringTypeId && !TableUtf8Valid( body, length ) )\n            {\n")
+		g.pf("            if ( type_id == kTableStringTypeId && !TableUtf8Valid( body, (uint64_t) length ) )\n            {\n")
 		g.pf("                out->damaged = true;\n")
 		g.pf("                directory[k + 1].offset = kTableNodeAbsent;\n")
 		g.pf("                directory[k + 1].type_id = type_id;\n")
@@ -1637,7 +1637,7 @@ func (g *tableGen) emitVariableUnionWalk(f *ir.Field, v edgeVisitor) {
 // subjects, and `label` names the field for the comment.
 func (g *tableGen) emitUnionArmWalk(un *ir.Union, value edgeExpr, v edgeVisitor, label, indent string) {
 	_, _, _, armOffset := ir.UnionLayout(g.unit, un)
-	g.pf("%sswitch ( %s.type ) // %s: the set arm is the edge\n%s{\n", indent, value.Src, label, indent)
+	g.pf("%sswitch ( %s ) // %s: the set arm is the edge\n%s{\n", indent, tagOf(unionTagStorage(un), value.Src+".type"), label, indent)
 	for _, arm := range un.Variants {
 		if arm.F == nil {
 			continue
@@ -1645,11 +1645,11 @@ func (g *tableGen) emitUnionArmWalk(un *ir.Union, value edgeExpr, v edgeVisitor,
 		armExpr := value.member(arm.Name, armOffset)
 		switch {
 		case arm.F.Type.Blob():
-			g.pf("%s    case %sType::%s:\n%s    {\n", indent, un.Name, ir.GoExportName(arm.Name), indent)
+			g.pf("%s    case %s:\n%s    {\n", indent, tagCase(unionTagStorage(un), un.Name+"Type", ir.GoExportName(arm.Name)), indent)
 			v.blob(arm.F, armExpr)
 			g.pf("%s        break;\n%s    }\n", indent, indent)
 		case arm.F.Type.Pointer:
-			g.pf("%s    case %sType::%s:\n%s    {\n", indent, un.Name, ir.GoExportName(arm.Name), indent)
+			g.pf("%s    case %s:\n%s    {\n", indent, tagCase(unionTagStorage(un), un.Name+"Type", ir.GoExportName(arm.Name)), indent)
 			slots, count := armExpr, ""
 			if armCompanioned(arm) {
 				slots, count = armExpr.member("value", 0), armExpr.Src+".value_count"
@@ -1657,7 +1657,7 @@ func (g *tableGen) emitUnionArmWalk(un *ir.Union, value edgeExpr, v edgeVisitor,
 			g.emitPointerSlotsOf(arm.F, slots, count, func(slot edgeExpr) { v.pointer(arm.F, slot) })
 			g.pf("%s        break;\n%s    }\n", indent, indent)
 		case arm.Type != "" && g.isVar(arm.Type):
-			g.pf("%s    case %sType::%s:\n%s    {\n", indent, un.Name, ir.GoExportName(arm.Name), indent)
+			g.pf("%s    case %s:\n%s    {\n", indent, tagCase(unionTagStorage(un), un.Name+"Type", ir.GoExportName(arm.Name)), indent)
 			v.descend(arm.Type, armExpr, indent+"        ")
 			g.pf("%s        break;\n%s    }\n", indent, indent)
 		default:
@@ -1665,7 +1665,7 @@ func (g *tableGen) emitUnionArmWalk(un *ir.Union, value edgeExpr, v edgeVisitor,
 			if !isUnion || !g.unionHasEdge(inner, map[*ir.Union]bool{}) {
 				continue
 			}
-			g.pf("%s    case %sType::%s:\n%s    {\n", indent, un.Name, ir.GoExportName(arm.Name), indent)
+			g.pf("%s    case %s:\n%s    {\n", indent, tagCase(unionTagStorage(un), un.Name+"Type", ir.GoExportName(arm.Name)), indent)
 			g.emitUnionArmWalk(inner, armExpr, v, label, indent+"        ")
 			g.pf("%s        break;\n%s    }\n", indent, indent)
 		}
@@ -1904,7 +1904,7 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 		g.pf("            while ( TableNodeScanNext( scan, type_id, body, length ) )\n            {\n")
 		g.pf("                uint32_t at = %sNodeAlloc( type_id, builder.main, length );\n", n)
 		if g.rootReachesStringBlob(st) {
-			g.pf("                if ( type_id == kTableStringTypeId && !TableUtf8Valid( body, length ) )\n                {\n")
+			g.pf("                if ( type_id == kTableStringTypeId && !TableUtf8Valid( body, (uint64_t) length ) )\n                {\n")
 			g.pf("                    out->damaged = true;\n")
 			g.pf("                    directory[k + 1].offset = kTableNodeAbsent;\n")
 			g.pf("                    directory[k + 1].type_id = type_id;\n")
@@ -2006,7 +2006,7 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 		// payload (docs/SPEC-TABLES.md §3.1): the record is malformed and
 		// every slot naming it reads null, which is what an absent directory
 		// entry already resolves to
-		g.pf("            if ( type_id == kTableStringTypeId && !TableUtf8Valid( body, length ) )\n            {\n")
+		g.pf("            if ( type_id == kTableStringTypeId && !TableUtf8Valid( body, (uint64_t) length ) )\n            {\n")
 		g.pf("                out->damaged = true;\n")
 		g.pf("                directory[k + 1].offset = kTableNodeAbsent;\n")
 		g.pf("                directory[k + 1].type_id = type_id;\n")

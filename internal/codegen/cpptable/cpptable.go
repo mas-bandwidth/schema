@@ -1474,7 +1474,7 @@ struct TableReader
     ` + forceInline + ` uint8_t get8() { return buffer[offset++]; }
     ` + forceInline + ` uint16_t get16()
     {
-        uint16_t v = uint16_t( buffer[offset] ) | uint16_t( buffer[offset + 1] ) << 8;
+        uint16_t v = uint16_t( buffer[offset] | ( buffer[offset + 1] << 8 ) );
         offset += 2;
         return v;
     }
@@ -1626,6 +1626,7 @@ struct TableReader
                 return badElementKindContent( kind, b, (int64_t) n, depth );
             }
             case 15: return badElementKindUnion( r, depth );
+            default: break;
         }
         return false;
     }
@@ -1643,6 +1644,7 @@ struct TableReader
                 TableReader r( b, n, report, ids );
                 return badElementKindUnion( r, depth );
             }
+            default: break;
         }
         return false;
     }
@@ -1733,16 +1735,25 @@ struct TableReader
             case 2:
             case 6:
             case 20:
-            case 25: return has( 1 ) ? ( offset += 1, true ) : false;
+            case 25:
+                if ( !has( 1 ) ) { return false; }
+                offset += 1;
+                return true;
             case 3:
             case 7:
             case 21:
-            case 26: return has( 2 ) ? ( offset += 2, true ) : false;
+            case 26:
+                if ( !has( 2 ) ) { return false; }
+                offset += 2;
+                return true;
             case 4:
             case 8:
             case 10:
             case 22:
-            case 27: return has( 4 ) ? ( offset += 4, true ) : false;
+            case 27:
+                if ( !has( 4 ) ) { return false; }
+                offset += 4;
+                return true;
             // 36 is the TIMESTAMP: its payload is the i64's eight bytes even
             // though its kind is its own (docs/SPEC-TABLES.md §2.11, §3), so
             // an unnamed or kind-mismatched timestamp skips cleanly, exactly
@@ -1752,11 +1763,17 @@ struct TableReader
             case 11:
             case 23:
             case 28:
-            case 36: return has( 8 ) ? ( offset += 8, true ) : false;
+            case 36:
+                if ( !has( 8 ) ) { return false; }
+                offset += 8;
+                return true;
             case 18:
             case 19:
             case 24:
-            case 29: return has( 16 ) ? ( offset += 16, true ) : false;
+            case 29:
+                if ( !has( 16 ) ) { return false; }
+                offset += 16;
+                return true;
             case 17:
             case 30: // a NODE INDEX (§3.1) and an ENUM's variant reference: one LEB128 and stop
             {
@@ -1769,7 +1786,9 @@ struct TableReader
             {
                 uint64_t n = 0;
                 if ( !getleb( n ) ) return false;
-                return room( n ) ? ( offset += (int64_t) n, true ) : false;
+                if ( !room( n ) ) { return false; }
+                offset += (int64_t) n;
+                return true;
             }
             case 13: // a TABLE body: open it for an off-list array or keyed header (§3, §4)
             case 14: // an ARRAY body: its element kind is closed under any count (§3)
@@ -1801,6 +1820,7 @@ struct TableReader
             // meets it only as DAMAGE, exactly as it meets 35 or 200. A bare 34
             // is a writer that ignored the escape kind 31.
             case 34: return false;
+            default: break;
         }
         return false;
     }

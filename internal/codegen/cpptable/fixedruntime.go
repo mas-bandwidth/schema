@@ -1270,6 +1270,7 @@ inline bool TableFixedLeafSize( uint8_t kind, uint32_t size, bool & is_leaf )
         case 24:
         case 29: return size == 16u;
         case 32: return size == 0u;                  // a variant, and an arm that holds nothing
+        default: break;
     }
     is_leaf = false;
     return true;

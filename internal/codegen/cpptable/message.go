@@ -449,7 +449,7 @@ inline uint32_t TableMessageQuantize( float value, float qmin, float delta, uint
 inline float TableMessageDequantize( uint32_t index, float qmin, float delta, uint32_t count )
 {
     if ( index > count ) { index = count; }
-    const float normalized = index / (float) count;
+    const float normalized = (float) index / (float) count;
     float scaled = normalized * delta;
     TABLE_FLOAT_FORCE_ROUND( scaled );
     return scaled + qmin;
@@ -1351,6 +1351,7 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
             }
             return true;
         }
+        default: break;
     }
     const int64_t width = entry.value_bits;
     if ( entry.packing == 1 && ( TableMessageIntegerKind( entry.kind ) || TableMessageFixedKind( entry.kind ) ) )

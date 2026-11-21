@@ -404,9 +404,9 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 		case *ir.Union:
 			tag := int64(ir.StorageBitsFor(r.Max) / 8)
 			g.pf("%sTableFixedPut%d( %s + %d, (uint%d_t) %s.type );\n", ind, tag*8, buf, off, tag*8, expr)
-			g.pf("%sswitch ( %s.type )\n%s{\n", ind, expr, ind)
+			g.pf("%sswitch ( %s )\n%s{\n", ind, tagOf(unionTagStorage(r), expr+".type"), ind)
 			for _, v := range r.Variants {
-				g.pf("%s    case %sType::%s:\n%s    {\n", ind, f.Type.Name, ir.GoExportName(v.Name), ind)
+				g.pf("%s    case %s:\n%s    {\n", ind, tagCase(unionTagStorage(r), f.Type.Name+"Type", ir.GoExportName(v.Name)), ind)
 				g.emitFixedWriteArm(v, off+tag, buf, expr, depth, indent+8)
 				g.pf("%s        break;\n%s    }\n", ind, ind)
 			}
@@ -1505,12 +1505,12 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 			if !ir.TableFixedClampNeededUnionArm(r) {
 				return
 			}
-			g.pf("%sswitch ( %s.type )\n%s{\n", ind, expr, ind)
+			g.pf("%sswitch ( %s )\n%s{\n", ind, tagOf(unionTagStorage(r), expr+".type"), ind)
 			for _, v := range r.Variants {
 				if v.F == nil || !ir.TableFixedClampNeededField(v.F) {
 					continue
 				}
-				g.pf("%s    case %sType::%s:\n%s    {\n", ind, f.Type.Name, ir.GoExportName(v.Name), ind)
+				g.pf("%s    case %s:\n%s    {\n", ind, tagCase(unionTagStorage(r), f.Type.Name+"Type", ir.GoExportName(v.Name)), ind)
 				g.emitFixedClampArm(v, expr, indent+8)
 				g.pf("%s        break;\n%s    }\n", ind, ind)
 			}
@@ -1745,12 +1745,12 @@ func (g *tableGen) emitFixedFiniteElement(f *ir.Field, expr string, depth, inden
 			g.pf("%sif ( !%sFixedFiniteBody( %s ) ) { return false; }\n", ind, r.Name, expr)
 		}
 	case *ir.Union:
-		g.pf("%sswitch ( %s.type )\n%s{\n", ind, expr, ind)
+		g.pf("%sswitch ( %s )\n%s{\n", ind, tagOf(unionTagStorage(r), expr+".type"), ind)
 		for _, v := range r.Variants {
 			if v.F == nil || !fixedFiniteNeededField(v.F, map[string]bool{}) {
 				continue
 			}
-			g.pf("%s    case %sType::%s:\n%s    {\n", ind, f.Type.Name, ir.GoExportName(v.Name), ind)
+			g.pf("%s    case %s:\n%s    {\n", ind, tagCase(unionTagStorage(r), f.Type.Name+"Type", ir.GoExportName(v.Name)), ind)
 			inner := strings.Repeat(" ", indent+8)
 			i := fixedLoopVar(depth)
 			switch v.F.Array {

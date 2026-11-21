@@ -306,12 +306,22 @@ func (g *gen) emitTagEnum(name string, members []string, docs []string, comment 
 	// the tag enum's name surface is a declared enum's, member for member: a
 	// reader logging which message arrived writes EnumName( value ) whichever
 	// enum it is. Nothing on the read or write path calls it.
+	g.emitEnumName(name, storage, members)
+}
+
+// emitEnumName emits EnumName for an enum or a union's tag enum. The switch
+// is over the STORAGE integer, not the enum: an out-of-set value is real input
+// here ("???"), so the switch needs its default, and a switch over the enum
+// that names every enumerator AND has a default draws -Wcovered-switch-default
+// while dropping the default draws -Wswitch-default. Over the integer both
+// hold, and every enumerator still has its own case.
+func (g *gen) emitEnumName(name, storage string, members []string) {
 	g.pf("// EnumName: debug/log name for any %s value, out-of-set included\n", name)
 	g.pf("inline const char * EnumName( %s value )\n{\n", name)
-	g.pf("    switch ( value )\n    {\n")
-	g.pf("        case %s::None: return \"None\";\n", name)
+	g.pf("    switch ( static_cast<%s>( value ) )\n    {\n", storage)
+	g.pf("        case static_cast<%s>( %s::None ): return \"None\";\n", storage, name)
 	for _, m := range members {
-		g.pf("        case %s::%s: return \"%s\";\n", name, m, m)
+		g.pf("        case static_cast<%s>( %s::%s ): return \"%s\";\n", storage, name, m, m)
 	}
 	g.pf("        default: return \"???\";\n    }\n}\n\n")
 }
@@ -464,19 +474,9 @@ func (g *gen) emitEnum(d *ir.Enum) {
 	}
 	g.pf("    Max = %d, // the exported extent (SPEC §4.2)\n", d.Max)
 	g.pf("};\n\n")
-	g.pf("// EnumName: debug/log name for any %s value, out-of-set included\n", d.Name)
-	g.pf("inline const char * EnumName( %s value )\n{\n", d.Name)
-	g.pf("    switch ( value )\n    {\n")
-	g.pf("        case %s::None: return \"None\";\n", d.Name)
-	for _, v := range d.Variants {
-		g.pf("        case %s::%s: return \"%s\";\n", d.Name, v, v)
-	}
-	if d.Max != int64(len(d.Variants)) {
-		// Max is an extent that no variant carries, so -Wswitch-enum wants it
-		// named; it shares the out-of-set answer
-		g.pf("        case %s::Max:\n", d.Name)
-	}
-	g.pf("        default: return \"???\";\n    }\n}\n\n")
+	// Max, an extent no variant carries when it is wider than the variants,
+	// shares the out-of-set answer: over the storage integer it needs no case
+	g.emitEnumName(d.Name, cppUint(d.StorageBits), d.Variants)
 }
 
 func (g *gen) emitFlags(d *ir.Flags) {

@@ -1008,6 +1008,7 @@ inline uint64_t TableJsonGetRaw( const void * storage, uint32_t width )
             memcpy( &v, storage, 8 );
             return v;
         }
+        default: break;
     }
     return 0;
 }
@@ -1040,6 +1041,7 @@ inline void TableJsonSetRaw( void * storage, uint32_t width, uint64_t value )
             memcpy( storage, &v, 8 );
             break;
         }
+        default: break;
     }
 }
 
@@ -1099,8 +1101,8 @@ inline int TableJsonWideCompare( TableJsonWide a, TableJsonWide b, bool is_signe
 
 inline TableJsonWide TableJsonWideShl( TableJsonWide v, int n )
 {
-    TableJsonWide r = { 0, 0 };
     if ( n <= 0 ) { return v; }
+    TableJsonWide r = { 0, 0 };
     if ( n >= 128 ) { return r; }
     if ( n >= 64 )
     {
@@ -1114,8 +1116,8 @@ inline TableJsonWide TableJsonWideShl( TableJsonWide v, int n )
 
 inline TableJsonWide TableJsonWideShr( TableJsonWide v, int n )
 {
-    TableJsonWide r = { 0, 0 };
     if ( n <= 0 ) { return v; }
+    TableJsonWide r = { 0, 0 };
     if ( n >= 128 ) { return r; }
     if ( n >= 64 )
     {
@@ -1960,6 +1962,19 @@ inline void TableJsonWriteWide( TableJsonOut & out, const void * storage, const 
 // readable. Non-finite values have no JSON spelling at all, and the writer
 // REFUSES rather than losing one silently — the same rule measure and save
 // already apply to an enum value no variant names (§5).
+//
+// "Reads back as the same value" is BIT equality: both sides are finite here,
+// and snprintf keeps a zero's sign ("-0"), so it is == on every value this
+// loop meets, said as the exact identity the round trip promises.
+inline bool TableJsonSameDouble( double a, double b )
+{
+    uint64_t abits = 0;
+    uint64_t bbits = 0;
+    memcpy( &abits, &a, sizeof( abits ) );
+    memcpy( &bbits, &b, sizeof( bbits ) );
+    return abits == bbits;
+}
+
 inline bool TableJsonWriteFloat( TableJsonOut & out, double value, bool single )
 {
     if ( !TableJsonFinite( value ) ) { return false; }
@@ -1976,11 +1991,11 @@ inline bool TableJsonWriteFloat( TableJsonOut & out, double value, bool single )
         // the token still carries whatever point snprintf just produced
         if ( single )
         {
-            if ( (double) strtof( text, NULL ) == value ) { break; }
+            if ( TableJsonSameDouble( (double) strtof( text, NULL ), value ) ) { break; }
         }
         else
         {
-            if ( strtod( text, NULL ) == value ) { break; }
+            if ( TableJsonSameDouble( strtod( text, NULL ), value ) ) { break; }
         }
     }
     char point = TableJsonDecimalPoint();
@@ -2897,7 +2912,7 @@ inline bool TableJsonScanUnit( TableJsonIn & in, char * unit, int32_t * unit_len
             // be valid UTF-8, and a kind 12 payload is well-formed UTF-8 (§3),
             // so storage the text form built has to be storage the wire can
             // carry (§5).
-            if ( !TableUtf8Valid( (const uint8_t *) unit, unit_length ) )
+            if ( !TableUtf8Valid( (const uint8_t *) unit, (uint64_t) unit_length ) )
             {
                 in.bad = true;
                 return false;
@@ -3436,8 +3451,11 @@ inline TableJsonInteger TableJsonInterpret( const char * token, int32_t length, 
         out.saturated = true;
         return out;
     }
+    // truncation never rounds up, so a fraction is exactly "the truncated value
+    // is below the whole one" (a fraction exists only below 2^53, where the
+    // truncated value converts back exactly)
     const uint64_t truncated = (uint64_t) whole;
-    if ( (double) truncated != whole )
+    if ( (double) truncated < whole )
     {
         out.fractional = true;
         return out;
@@ -3977,6 +3995,7 @@ inline int TableJsonTimestampMonthDays( int year, int month )
         case 9:
         case 11: return 30;
         case 2: return TableJsonTimestampLeap( year ) ? 29 : 28;
+        default: break;
     }
     return 0;
 }

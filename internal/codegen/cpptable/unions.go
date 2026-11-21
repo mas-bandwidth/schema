@@ -13,6 +13,30 @@ import (
 // spelling is the packet emitter's to the character, so a table arm and a type
 // arm read as one family.
 
+// A SWITCH OVER A TAG OR AN ENUM THAT KEEPS A DEFAULT is spelled over the
+// STORAGE integer, never the enum: an out-of-set value is real input wherever
+// such a switch sits, so the default is load-bearing, and over the enum a
+// switch naming every enumerator draws -Wcovered-switch-default with the
+// default and -Wswitch-default without it, while one naming only some draws
+// -Wswitch-enum. Over the integer every case still names its enumerator.
+
+// unionTagStorage is a union tag enum's storage type, as emitTableUnion
+// declares it.
+func unionTagStorage(un *ir.Union) string {
+	return fmt.Sprintf("uint%d_t", ir.StorageBitsFor(int64(len(un.Variants))))
+}
+
+// enumStorage is a declared enum's storage type.
+func enumStorage(e *ir.Enum) string { return fmt.Sprintf("uint%d_t", e.StorageBits) }
+
+// tagOf is a tag or enum value as its storage integer, for the switch head.
+func tagOf(storage, expr string) string { return fmt.Sprintf("static_cast<%s>( %s )", storage, expr) }
+
+// tagCase is one enumerator as its storage integer, for a case label.
+func tagCase(storage, enum, variant string) string {
+	return fmt.Sprintf("static_cast<%s>( %s::%s )", storage, enum, variant)
+}
+
 // tableUnionsOf returns the unions this file declares that carry a table arm,
 // in declaration order: the checker assembles them beside the decl stream.
 func tableUnionsOf(f *ir.File) []*ir.Union { return f.TableUnions }
@@ -113,10 +137,10 @@ func (g *tableGen) emitTableUnion(un *ir.Union) {
 	// or write path calls it.
 	g.pf("// EnumName: debug/log name for any %sType value, out-of-set included\n", un.Name)
 	g.pf("inline const char * EnumName( %sType value )\n{\n", un.Name)
-	g.pf("    switch ( value )\n    {\n")
-	g.pf("        case %sType::None: return \"None\";\n", un.Name)
+	g.pf("    switch ( %s )\n    {\n", tagOf(storage, "value"))
+	g.pf("        case %s: return \"None\";\n", tagCase(storage, un.Name+"Type", "None"))
 	for _, v := range un.Variants {
-		g.pf("        case %sType::%s: return \"%s\";\n", un.Name, ir.GoExportName(v.Name), ir.GoExportName(v.Name))
+		g.pf("        case %s: return \"%s\";\n", tagCase(storage, un.Name+"Type", ir.GoExportName(v.Name)), ir.GoExportName(v.Name))
 	}
 	g.pf("        default: return \"???\";\n    }\n}\n\n")
 

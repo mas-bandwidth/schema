@@ -557,11 +557,11 @@ func (g *tableGen) emitMessageUnion(f *ir.Field, expr, ind string, pass messageP
 	sfx := g.msgEnter()
 	defer g.msgLeave()
 	un := f.Type.Ref.(*ir.Union)
-	g.pf("%sswitch ( %s.type )\n%s{\n", ind, expr, ind)
+	g.pf("%sswitch ( %s )\n%s{\n", ind, tagOf(unionTagStorage(un), expr+".type"), ind)
 	for _, v := range un.Variants {
 		g.noteRef(v.Type)
 		arm := ir.TableArmEntry(v)
-		g.pf("%s    case %sType::%s:\n%s    {\n", ind, un.Name, ir.GoExportName(v.Name), ind)
+		g.pf("%s    case %s:\n%s    {\n", ind, tagCase(unionTagStorage(un), un.Name+"Type", ir.GoExportName(v.Name)), ind)
 		g.emitMessageHeader(arm, pass, ind+"        ")
 		switch {
 		case v.Void():

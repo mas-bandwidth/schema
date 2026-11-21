@@ -60,6 +60,7 @@ func (g *gen) emitUnionMaxBits(d *ir.Union) {
 func (g *gen) emitUnionWire(d *ir.Union) {
 	g.needsSerialize = true
 	tag := d.Name + "Type"
+	storage := cppUint(ir.StorageBitsFor(int64(len(d.Variants))))
 
 	g.pf("SCHEMA_WRITE_INLINE bool Write%s( serialize::WriteStream & stream, const %s & value )\n{\n", d.Name, d.Name)
 	if d.Max == 0 {
@@ -74,12 +75,14 @@ func (g *gen) emitUnionWire(d *ir.Union) {
 		// the tag is a write-side contract like every other value the caller
 		// supplies: asserted before it rides, gone under NDEBUG (SPEC §5)
 		g.pf("    serialize_assert( value.type <= %s::Max ); // an out-of-set tag is caller error (SPEC §4.8, §5)\n", tag)
-		g.pf("    switch ( value.type )\n    {\n")
-		g.pf("        case %s::None:\n", tag)
+		// over the tag's STORAGE integer, as EnumName is (emitEnumName): the
+		// default is the out-of-set tag's, and every arm keeps its own case
+		g.pf("    switch ( static_cast<%s>( value.type ) )\n    {\n", storage)
+		g.pf("        case static_cast<%s>( %s::None ):\n", storage, tag)
 		g.pf("            write_bits( stream, 0u, %d );\n", bits)
 		g.pf("            return true; // no payload — the tag is the whole wire (SPEC §4.8)\n")
 		for i, v := range d.Variants {
-			g.pf("        case %s::%s:\n", tag, ir.GoExportName(v.Name))
+			g.pf("        case static_cast<%s>( %s::%s ):\n", storage, tag, ir.GoExportName(v.Name))
 			g.pf("            write_bits( stream, %du, %d );\n", i+1, bits)
 			if v.Void() {
 				g.pf("            return true; // payload-free arm — the tag is the whole wire (SPEC §4.8)\n")
@@ -106,10 +109,10 @@ func (g *gen) emitUnionWire(d *ir.Union) {
 	// 0 <= int32_t( E::Max ) always true through the enum's unsigned storage
 	g.pf("    read_int( stream, tag_value, 0, %d ); // %s::Max — rejects a tag above the count (SPEC §4.8)\n", d.Max, tag)
 	g.pf("    value.type = %s( tag_value );\n", tag)
-	g.pf("    switch ( value.type )\n    {\n")
-	g.pf("        case %s::None:\n            return true;\n", tag)
+	g.pf("    switch ( static_cast<%s>( value.type ) )\n    {\n", storage)
+	g.pf("        case static_cast<%s>( %s::None ):\n            return true;\n", storage, tag)
 	for _, v := range d.Variants {
-		g.pf("        case %s::%s:\n", tag, ir.GoExportName(v.Name))
+		g.pf("        case static_cast<%s>( %s::%s ):\n", storage, tag, ir.GoExportName(v.Name))
 		if v.Void() {
 			g.pf("            return true; // payload-free arm — the tag is the whole wire (SPEC §4.8)\n")
 			continue
@@ -118,6 +121,7 @@ func (g *gen) emitUnionWire(d *ir.Union) {
 		g.pf("            ::new ( static_cast<void *>( &value.%s ) ) %s{};\n", v.Name, v.Type)
 		g.pf("            return Read%sBody( stream, value.%s );\n", v.Type, v.Name)
 	}
+	g.pf("        default:\n            break; // read_int above refused every tag past Max\n")
 	g.pf("    }\n    return false;\n}\n\n")
 	g.emitReadEnd(d.Name)
 }

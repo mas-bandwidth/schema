@@ -1526,6 +1526,7 @@ inline int32_t TableGraphWidth( uint8_t kind )
         case 4: case 8: case 10: case 22: case 27: return 4;
         case 5: case 9: case 11: case 23: case 28: case 36: return 8;
         case 18: case 19: case 24: case 29: return 16;
+        default: break;
     }
     return 0;
 }
@@ -1567,6 +1568,7 @@ inline bool TableGraphPayload( TableGraphCollect & c, TableReader & r, uint8_t k
             r.offset += (int64_t) n;
             return TableGraphContent( c, b, (int64_t) n, kind, depth );
         }
+        default: break;
     }
     c.damaged = true;
     return false;
@@ -1672,6 +1674,7 @@ inline bool TableGraphContent( TableGraphCollect & c, const uint8_t * b, int64_t
             if ( r.offset != n ) { c.damaged = true; return false; }
             return true;
         }
+        default: break;
     }
     c.damaged = true;
     return false;

@@ -717,6 +717,7 @@ func addArmEnums(un *ir.Union, add func(*ir.Enum), seen map[*ir.Union]bool) {
 // per translation unit whatever the include order.
 func (g *tableGen) emitEnumIdentity(e *ir.Enum) {
 	guard := strings.ToUpper(g.unit.Package) + "_SCHEMA_TABLE_ENUM_" + strings.ToUpper(e.Name)
+	st := enumStorage(e) // every switch below keeps its default: over the storage integer (unions.go)
 	g.pf("// %s on the TABLE wire: a value rides under its OWN kind 30, carrying the\n", e.Name)
 	g.pf("// REFERENCE to its variant name's id, whatever the declaration-side storage\n")
 	g.pf("// width — so a variant may be added anywhere, removed, or reordered and old\n")
@@ -724,12 +725,12 @@ func (g *tableGen) emitEnumIdentity(e *ir.Enum) {
 	g.pf("// the one value that names no id, so no declared variant can be mistaken for it.\n")
 	g.pf("#ifndef %s\n#define %s\n", guard, guard)
 	g.pf("inline bool TableEnumRef( TableIds & ids, %s value, uint64_t & ref )\n{\n", e.Name)
-	g.pf("    switch ( value )\n    {\n")
-	g.pf("        case %[1]s::None:\n            ref = 0;\n            return true;\n", e.Name)
+	g.pf("    switch ( %s )\n    {\n", tagOf(st, "value"))
+	g.pf("        case %s:\n            ref = 0;\n            return true;\n", tagCase(st, e.Name, "None"))
 	for i, v := range e.Variants {
 		// The switch chooses the variant at runtime, but each arm names one
 		// constant ID and can use that ID's known ordinal like a field header.
-		g.pf("        case %[1]s::%[2]s:\n            ref = %[3]s;\n            return true;\n", e.Name, v, g.wireRef(ir.TableWireId(e.VariantWireName(i))))
+		g.pf("        case %s:\n            ref = %s;\n            return true;\n", tagCase(st, e.Name, v), g.wireRef(ir.TableWireId(e.VariantWireName(i))))
 	}
 	g.pf("        default: return false; // no variant names this value: no wire identity\n")
 	g.pf("    }\n}\n")
@@ -739,44 +740,44 @@ func (g *tableGen) emitEnumIdentity(e *ir.Enum) {
 		// takes its entry from the generated table exactly as it always did,
 		// and the overload is what lets one codec serve both families.
 		g.pf("inline bool TableEnumRef( TableRetainIds & ids, %s value, uint64_t & ref )\n{\n", e.Name)
-		g.pf("    switch ( value )\n    {\n")
-		g.pf("        case %[1]s::None:\n            ref = 0;\n            return true;\n", e.Name)
+		g.pf("    switch ( %s )\n    {\n", tagOf(st, "value"))
+		g.pf("        case %s:\n            ref = 0;\n            return true;\n", tagCase(st, e.Name, "None"))
 		for i, v := range e.Variants {
-			g.pf("        case %[1]s::%[2]s:\n            ref = %[3]s;\n            return true;\n", e.Name, v, g.wireRef(ir.TableWireId(e.VariantWireName(i))))
+			g.pf("        case %s:\n            ref = %s;\n            return true;\n", tagCase(st, e.Name, v), g.wireRef(ir.TableWireId(e.VariantWireName(i))))
 		}
 		g.pf("        default: return false;\n")
 		g.pf("    }\n}\n")
 	}
 	g.pf("inline bool TableEnumNamed( %s value )\n{\n", e.Name)
-	g.pf("    switch ( value )\n    {\n")
-	g.pf("        case %s::None: return true;\n", e.Name)
+	g.pf("    switch ( %s )\n    {\n", tagOf(st, "value"))
+	g.pf("        case %s: return true;\n", tagCase(st, e.Name, "None"))
 	for _, v := range e.Variants {
-		g.pf("        case %s::%s: return true;\n", e.Name, v)
+		g.pf("        case %s: return true;\n", tagCase(st, e.Name, v))
 	}
 	g.pf("        default: return false;\n")
 	g.pf("    }\n}\n")
 	// THE MESSAGE FORM's half: the SLOT, a literal, with no id table in sight
 	// (docs/SPEC-TABLES.md §3.3). A variant rides under its WIRE name; one the
 	// message closure does not reach has no slot, so it answers false like a
-	// value no variant names (every variant keeps its case: -Wswitch-enum).
+	// value no variant names (every variant keeps its case).
 	g.pf("inline bool TableEnumSlot( %s value, uint64_t & slot )\n{\n", e.Name)
-	g.pf("    switch ( value )\n    {\n")
-	g.pf("        case %[1]s::None:\n            slot = 0;\n            return true;\n", e.Name)
+	g.pf("    switch ( %s )\n    {\n", tagOf(st, "value"))
+	g.pf("        case %s:\n            slot = 0;\n            return true;\n", tagCase(st, e.Name, "None"))
 	for i, v := range e.Variants {
 		slot, ok := g.slots[ir.TableVocabularyEntry{Id: ir.TableWireId(e.VariantWireName(i))}.Key()]
 		if !ok {
-			g.pf("        case %[1]s::%[2]s:\n            return false; // outside the message closure: no slot\n", e.Name, v)
+			g.pf("        case %s:\n            return false; // outside the message closure: no slot\n", tagCase(st, e.Name, v))
 			continue
 		}
-		g.pf("        case %[1]s::%[2]s:\n            slot = %[3]d;\n            return true;\n", e.Name, v, slot)
+		g.pf("        case %s:\n            slot = %d;\n            return true;\n", tagCase(st, e.Name, v), slot)
 	}
 	g.pf("        default: return false; // no variant names this value: no wire identity\n")
 	g.pf("    }\n}\n")
 	g.pf("inline bool TableEnumId( %s value, uint64_t & id )\n{\n", e.Name)
-	g.pf("    switch ( value )\n    {\n")
-	g.pf("        case %[1]s::None:\n            id = 0;\n            return true;\n", e.Name)
+	g.pf("    switch ( %s )\n    {\n", tagOf(st, "value"))
+	g.pf("        case %s:\n            id = 0;\n            return true;\n", tagCase(st, e.Name, "None"))
 	for i, v := range e.Variants {
-		g.pf("        case %[1]s::%[2]s:\n            id = 0x%016[3]xull;\n            return true;\n", e.Name, v, ir.TableWireId(e.VariantWireName(i)))
+		g.pf("        case %s:\n            id = 0x%016xull;\n            return true;\n", tagCase(st, e.Name, v), ir.TableWireId(e.VariantWireName(i)))
 	}
 	g.pf("        default: return false; // no variant names this value: no wire identity\n")
 	g.pf("    }\n}\n")
@@ -1384,11 +1385,11 @@ func (g *tableGen) emitUnionPayloadMeasure(f *ir.Field, expr, into, ind, onBad, 
 	wasField := g.unionField
 	g.unionField = f
 	defer func() { g.unionField = wasField }()
-	g.pf("%sswitch ( %s.type )\n%s{\n", ind, expr, ind)
-	g.pf("%s    case %sType::None: break;\n", ind, un.Name)
+	g.pf("%sswitch ( %s )\n%s{\n", ind, tagOf(unionTagStorage(un), expr+".type"), ind)
+	g.pf("%s    case %s: break;\n", ind, tagCase(unionTagStorage(un), un.Name+"Type", "None"))
 	for ai, v := range un.Variants {
 		g.noteRef(v.Type)
-		g.pf("%s    case %sType::%s:\n%s    {\n", ind, un.Name, ir.GoExportName(v.Name), ind)
+		g.pf("%s    case %s:\n%s    {\n", ind, tagCase(unionTagStorage(un), un.Name+"Type", ir.GoExportName(v.Name)), ind)
 		g.pf("%s        int64_t %s = 0;\n", ind, body)
 		g.pf("%s        const uint64_t arm_ref%s = %s;\n", ind, sfx, g.wireRef(ir.TableWireId(v.WireName())))
 		g.inStep(strconv.Itoa(ai), func() { g.emitArmMeasure(v, expr, body, ind+"        ", onBad, sfx) })
@@ -1760,7 +1761,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		case tkEnum:
 			// the slot's reference is already resolved above, like key_ref:
 			// writing it here rather than resolving the same value twice
-			g.pf("                w.putleb( TableLebBytes( element_ref ) );\n                w.putleb( element_ref );\n")
+			g.pf("                w.putleb( (uint64_t) TableLebBytes( element_ref ) );\n                w.putleb( element_ref );\n")
 		default:
 			g.pf("                w.putleb( %d );\n", tableKindWidth(kind))
 			g.emitTableWriteElement(f, kind, g.keyedSlots("value.", f)+"[i]", "                ", "")
@@ -1976,10 +1977,10 @@ func (g *tableGen) emitUnionPayloadSave(f *ir.Field, expr, ind, onBad, sfx strin
 	wasField := g.unionField
 	g.unionField = f
 	defer func() { g.unionField = wasField }()
-	g.pf("%sswitch ( %s.type )\n%s{\n", ind, expr, ind)
+	g.pf("%sswitch ( %s )\n%s{\n", ind, tagOf(unionTagStorage(un), expr+".type"), ind)
 	for ai, v := range un.Variants {
 		g.noteRef(v.Type)
-		g.pf("%s    case %sType::%s:\n%s    {\n", ind, un.Name, ir.GoExportName(v.Name), ind)
+		g.pf("%s    case %s:\n%s    {\n", ind, tagCase(unionTagStorage(un), un.Name+"Type", ir.GoExportName(v.Name)), ind)
 		g.pf("%s        const uint64_t arm_ref%s = %s;\n", ind, sfx, g.wireRef(ir.TableWireId(v.WireName())))
 		g.pf("%s        int64_t %s = 0;\n", ind, body)
 		g.inStep(strconv.Itoa(ai), func() { g.emitArmMeasure(v, expr, body, ind+"        ", onBad, sfx) })
