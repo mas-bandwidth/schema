@@ -108,6 +108,27 @@ instances: a backend with no variable class still answers the wire surface over
 every FIXED instance, and a leg that failed the whole surface for them would say
 nothing about what it does carry.
 
+**A PORT'S ABSENCE IS DECLARED, OR IT IS RED.** A driver table that simply
+has no entry for a row writes `<case>.absent` exactly as a missing feature
+does, so the driver's word alone cannot tell them apart (the JavaScript leg's
+messagedemo/ToolMessage row read ABSENT behind a green cell on 2026-11-21).
+Every absence a port answers — `<case>.absent`, a surface left out of `list`,
+or exit code 2 — fails the leg unless its committed capability list,
+`test/conformance/<lang>/absent.txt`, declares it:
+
+```
+<surface> <case|*> <citation> [why, in words]
+```
+
+`*` declares a whole surface. The citation is the repo path (optionally
+anchored with `§` or `#`) where the lack is stated: a spec section, the port's
+document, a ruling. A declared case the leg answers anyway fails too, and so
+does a line naming a case the corpus does not have, so the list cannot go
+stale behind a fix. The rule holds in every run, under a committed registry or
+a substituted one; `harness/declared.go` carries it and
+`harness/declared_test.go` its reversed witnesses and the check that every
+committed citation names a file.
+
 **THE REFERENCE LEG MAY NOT ANSWER ABSENT, AT EITHER GRAIN**, and that rule is
 what makes absence safe rather than a place to hide: an absence from the
 reference leg — `cpp`, first in the discovered registry, and the one

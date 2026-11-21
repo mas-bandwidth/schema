@@ -740,6 +740,17 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 		langs = append(langs, d.lang)
 		results[d.lang] = map[string]*result{}
 
+		// THE DECLARED ABSENCES (declared.go): what the leg's committed
+		// capability list says it lacks, and nothing else, may be ABSENT.
+		decl, err := readDeclaredAbsences(declaredAbsencePath(d.lang))
+		if err != nil {
+			return false, err
+		}
+		if reference && len(decl) > 0 {
+			return false, fmt.Errorf("%s: the REFERENCE leg declares absences, and it may answer none (test/conformance/README.md)",
+				declaredAbsencePath(d.lang))
+		}
+
 		listed, err := listSurfaces(d, derived)
 		if err != nil {
 			return false, fmt.Errorf("%s: %w", d.lang, err)
@@ -755,6 +766,7 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			}
 			r := &result{total: len(legWant)}
 			results[d.lang][s] = r
+			r.failures = append(r.failures, staleDeclarations(d.lang, s, decl, legWant)...)
 			if !listed[s] {
 				r.absent = true
 				for _, e := range legWant {
@@ -762,6 +774,8 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 				}
 				if reference {
 					r.failures = append(r.failures, absentReference(s, "`list` does not name it"))
+				} else if !surfaceDeclared(decl, s, legWant) {
+					r.failures = append(r.failures, undeclaredSurface(d.lang, s, "`list` does not name it"))
 				}
 				if opts.claims != nil {
 					opts.claims.enforce(d.lang, s, legWant, r)
@@ -786,6 +800,8 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 				}
 				if reference {
 					r.failures = append(r.failures, absentReference(s, "the driver exited 2"))
+				} else if !surfaceDeclared(decl, s, legWant) {
+					r.failures = append(r.failures, undeclaredSurface(d.lang, s, "the driver exited 2"))
 				}
 				if opts.claims != nil {
 					opts.claims.enforce(d.lang, s, legWant, r)
@@ -838,6 +854,9 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 					"the REFERENCE leg answered ABSENT for %d case(s) — an absence here is the corpus "+
 						"losing its own expectation, not a missing feature; the reference answers every case "+
 						"it registers a surface for", r.missing-r.named))
+			}
+			if !reference {
+				enforceDeclared(d.lang, s, decl, legWant, r)
 			}
 			if opts.claims != nil {
 				opts.claims.enforce(d.lang, s, legWant, r)

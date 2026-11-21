@@ -32,6 +32,42 @@ type fakeLeg struct {
 	unlisted string // a surface left out of `list` altogether
 	exitTwo  string // a surface the driver exits 2 on
 	caseGone bool   // the wire surface answers `<case>.absent` for its one case
+	// undeclared leaves the leg's capability list (declared.go) without the
+	// absences above; by default a planted port declares every one, so a
+	// test about some other rule is not red on this one
+	undeclared bool
+}
+
+// declarations is the capability list a port declaring its own absences
+// commits: one line per absence the fake leg answers.
+func (leg fakeLeg) declarations() string {
+	var b strings.Builder
+	if leg.unlisted != "" {
+		fmt.Fprintf(&b, "%s * docs/SPEC-TABLES.md\n", leg.unlisted)
+	}
+	if leg.exitTwo != "" {
+		fmt.Fprintf(&b, "%s * docs/SPEC-TABLES.md\n", leg.exitTwo)
+	}
+	if leg.caseGone {
+		for _, s := range []string{"wire", "json-read"} {
+			if s != leg.unlisted && s != leg.exitTwo {
+				fmt.Fprintf(&b, "%s alpha docs/SPEC-TABLES.md\n", s)
+			}
+		}
+	}
+	return b.String()
+}
+
+// declareIn points the harness's capability lists at dir for this test and
+// plants lang's list there.
+func declareIn(t *testing.T, dir, lang string, leg fakeLeg) {
+	t.Helper()
+	before := declaredAbsenceDir
+	declaredAbsenceDir = dir
+	t.Cleanup(func() { declaredAbsenceDir = before })
+	if text := leg.declarations(); text != "" && !leg.undeclared && lang != referenceLang {
+		writeFile(t, filepath.Join(dir, lang, declaredAbsenceFile), text)
+	}
 }
 
 // fakeCorpus is a one-instance conformance corpus: enough for the wire, json-read
@@ -116,6 +152,7 @@ func (c fakeCorpus) committed(t *testing.T, legs map[string]fakeLeg) string {
 	dir := filepath.Join(t.TempDir(), "registry")
 	for lang, leg := range legs {
 		c.driverScript(t, filepath.Join(dir, lang, "driver"), leg)
+		declareIn(t, dir, lang, leg)
 	}
 	return dir
 }
@@ -128,6 +165,16 @@ func (c fakeCorpus) substituted(t *testing.T, lang string, leg fakeLeg) string {
 	dir := filepath.Join(t.TempDir(), "registry with spaces")
 	script := filepath.Join(dir, "driver")
 	c.driverScript(t, script, leg)
+	// a substituted leg reads the list its language commits; a port's
+	// absences under one are declared exactly as in the matrix
+	if lang == referenceLang {
+		before := declaredAbsenceDir
+		declaredAbsenceDir = filepath.Join(dir, "lists")
+		t.Cleanup(func() { declaredAbsenceDir = before })
+		writeFile(t, filepath.Join(dir, "lists", lang, declaredAbsenceFile), leg.declarations())
+	} else {
+		declareIn(t, filepath.Join(dir, "lists"), lang, leg)
+	}
 	path := filepath.Join(dir, "drivers.txt")
 	// Registry commands are whitespace-delimited. Keep the fixture's command
 	// legal even when its host path contains spaces; Chdir restores at cleanup.
@@ -246,10 +293,34 @@ func TestReferenceCaseAbsent(t *testing.T) {
 		[]string{footer})
 }
 
+// TestPortUndeclaredAbsenceFails is the reversed witness of the declared
+// absences (declared.go), end to end: the same three answers from a port
+// whose capability list does not declare them are red, each by name, at every
+// grain — before the rule this run was green and printed `+1a`.
+func TestPortUndeclaredAbsenceFails(t *testing.T) {
+	needShell(t)
+	c := newFakeCorpus(t)
+	out, ok := c.runHarness(t, c.committed(t, map[string]fakeLeg{
+		referenceLang: {},
+		"zz":          {unlisted: "json-write", exitTwo: "json-read", caseGone: true, undeclared: true},
+	}))
+	if ok {
+		t.Errorf("a port's UNDECLARED absences left the harness green:\n%s", out)
+	}
+	mustSay(t, out,
+		[]string{
+			"zz / wire: alpha: answered ABSENT and",
+			"the zz leg is ABSENT on the whole json-write surface (`list` does not name it)",
+			"the zz leg is ABSENT on the whole json-read surface (the driver exited 2)",
+		},
+		[]string{footer})
+}
+
 // TestPortAbsenceStaysAllowed is the other direction, and the half a one-sided
-// rule would break: absent is not failure for a port. The same three answers
-// from a leg that is not the reference stay green and stay PRINTED, because
-// the matrix is the completion tracker.
+// rule would break: a DECLARED absence is not failure for a port. The same
+// three answers from a leg that is not the reference, each declared in the
+// leg's capability list, stay green and stay PRINTED, because the matrix is
+// the completion tracker.
 func TestPortAbsenceStaysAllowed(t *testing.T) {
 	needShell(t)
 	absences := fakeLeg{unlisted: "json-write", exitTwo: "json-read", caseGone: true}

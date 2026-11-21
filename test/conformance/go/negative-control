@@ -133,7 +133,11 @@ if [ "$mode" = absent ]; then
     printf '{"Replace":{"%s/%s":"%s/%s/present.gotext"}}\n' "$root" "$source" "$root" "$out" > "$out/present-overlay.json"
     (cd test/conformance/go && go build -overlay "$root/$out/present-overlay.json" -o "$root/$out/present-driver" .)
     printf 'go %s/present-driver\n' "$out" > "$out/present-drivers.txt"
-    if ! build/conformance-harness run --drivers "$out/present-drivers.txt" --work "$out/present-work" > "$out/present-log" 2>&1; then
+    # the two modelled absences are declared in a scratch capability list
+    # (test/conformance/harness/declared.go): an undeclared one is red
+    mkdir -p "$out/declared/go"
+    printf 'wire root_full test/conformance/go/negative-control\nframing frame_empty_table test/conformance/go/negative-control\n' > "$out/declared/go/absent.txt"
+    if ! build/conformance-harness run --drivers "$out/present-drivers.txt" --declared "$out/declared" --work "$out/present-work" > "$out/present-log" 2>&1; then
         echo "negative control baseline failed: explicit absence markers must be accepted" >&2
         cat "$out/present-log" >&2
         exit 1

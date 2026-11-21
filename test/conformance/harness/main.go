@@ -116,6 +116,9 @@ flags:
                       uses a construct the leg's target registers as carried
                       (compiler/carries_<target>.go); build the harness with
                       every schema_leg_<lang> tag (run only)
+  --declared <dir>    where each leg's capability list <dir>/<lang>/absent.txt
+                      is read: every ABSENT answer it does not declare fails
+                      the leg (declared.go; default test/conformance; run only)
   --coverage <path>   write the run's coverage rows as JSON (run, cross-read)
   --lang <lang>       the leg whose writes are re-read (cross-read only)
   --writes <dir>      that leg's answers, <surface>/<case> (cross-read only)
@@ -175,6 +178,7 @@ func main() {
 	expected := fs.String("expected", "", "where the card expected answers live, default <corpus>/expected (cards only)")
 	require := fs.String("require", "", "comma-separated required card surfaces, default all nine (cards only)")
 	claims := fs.Bool("claims", false, "fail a claimed case answered ABSENT (run only)")
+	declared := fs.String("declared", defaultDriversDir, "where each leg's capability list <dir>/<lang>/absent.txt is read (run only)")
 	coverage := fs.String("coverage", "", "write coverage rows as JSON (run, cross-read)")
 	lang := fs.String("lang", "", "the original-nine language (implementation), or writes to re-read (cross-read)")
 	writes := fs.String("writes", "", "that leg's answers (cross-read only)")
@@ -305,6 +309,7 @@ func main() {
 			opts.claims = set
 		}
 		opts.results = *resultsOut
+		declaredAbsenceDir = *declared
 		ok, err := runWith(os.Stdout, m, *manifest, *jsonDir, *reports, *drivers, *work, *only, *skip, opts)
 		if err != nil {
 			fatalf("%v", err)
