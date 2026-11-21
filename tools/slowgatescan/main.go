@@ -1062,16 +1062,10 @@ func gatedPackagesWith(root string, reaching map[string][]string) (map[string]bo
 			return err
 		}
 		if info.IsDir() {
-			// the directories the go tool never builds a package from are
-			// not gated packages: testdata, vendor, and names starting with
-			// `_` or `.` (the reviewer's F-241: the scan's own corpus trees
+			// a directory the go tool builds no package from is not a gated
+			// package (the reviewer's F-241: the scan's own corpus trees
 			// under testdata were counted, 58 → 62)
-			name := info.Name()
-			if path != root && (name == "testdata" || name == "vendor" || strings.HasPrefix(name, "_") || strings.HasPrefix(name, ".")) {
-				return filepath.SkipDir
-			}
-			switch name {
-			case "build", "generated", "node_modules":
+			if notBuilt(root, path, info.Name()) {
 				return filepath.SkipDir
 			}
 			return nil

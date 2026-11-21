@@ -86,7 +86,7 @@ func TestCoverageTableThatCannotBeWrittenIsRed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("control: a green accounting left no table: %v", err)
 	}
-	for _, want := range []string{"make\t./pkg.TestFirst\tfirst", "make\t./pkg.TestSecond\tsecond"} {
+	for _, want := range []string{"make\tpkg.TestFirst\tfirst", "make\tpkg.TestSecond\tsecond"} {
 		if !strings.Contains(string(b), want) {
 			t.Errorf("control: the table lacks %q:\n%s", want, b)
 		}

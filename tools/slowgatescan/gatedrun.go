@@ -71,6 +71,24 @@ func gatedRunPatternFor(root string, pkgs []string) (string, error) {
 	return b.String(), nil
 }
 
+// notBuilt reports whether a directory under root holds no package this scan
+// reads. Every walk here shares it, so no walk counts what another skips: the
+// marker walk counted testdata the call-graph walk skipped, and both counted
+// vendor, `_` and `.` directories (the reviewer's F-241). The go tool builds
+// no package under testdata, ./... matches none under vendor, and it ignores
+// names starting with `_` or `.`; build, generated and node_modules hold this
+// repo's outputs and third-party trees, not its packages.
+func notBuilt(root, path, name string) bool {
+	if path == root {
+		return false
+	}
+	switch name {
+	case "testdata", "vendor", "build", "generated", "node_modules":
+		return true
+	}
+	return strings.HasPrefix(name, "_") || strings.HasPrefix(name, ".")
+}
+
 // gatedTestPackages returns, per package directory (slash-separated,
 // relative to root), the sorted top-level tests that reach slowtest.Gate.
 func gatedTestPackages(root string) (map[string][]string, error) {
@@ -108,8 +126,7 @@ func gatedTestPackages(root string) (map[string][]string, error) {
 			return err
 		}
 		if d.IsDir() {
-			switch d.Name() {
-			case ".git", "build", "generated", "node_modules", "testdata":
+			if notBuilt(root, path, d.Name()) {
 				return filepath.SkipDir
 			}
 			if nestedModule(root, path) {
@@ -190,8 +207,7 @@ func moduleFuncs(root string) (map[funcKey]funcBody, error) {
 			return err
 		}
 		if d.IsDir() {
-			switch d.Name() {
-			case ".git", "build", "generated", "node_modules", "testdata":
+			if notBuilt(root, path, d.Name()) {
 				return filepath.SkipDir
 			}
 			if nestedModule(root, path) {

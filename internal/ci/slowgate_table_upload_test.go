@@ -31,7 +31,7 @@ func slowGateTableUploadFault(name, workflow string) string {
 	}
 	var steps [][]line
 	for _, l := range lines(name, job) {
-		if strings.HasPrefix(l.text, "- ") {
+		if strings.HasPrefix(l.full, "- ") {
 			steps = append(steps, nil)
 		}
 		if len(steps) > 0 {
@@ -41,7 +41,7 @@ func slowGateTableUploadFault(name, workflow string) string {
 	for _, step := range steps {
 		fields := map[string]string{}
 		for _, l := range step {
-			key, value, ok := strings.Cut(strings.TrimPrefix(l.text, "- "), ":")
+			key, value, ok := strings.Cut(l.text, ":")
 			if ok {
 				fields[key] = strings.TrimSpace(value)
 			}
