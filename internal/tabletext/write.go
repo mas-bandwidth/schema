@@ -606,9 +606,9 @@ func (m *Model) writeScalar(w *writer, cell *Cell, f *ir.Field, depth int) error
 		}
 		return nil
 	case ir.TableKindF32:
-		return writeFloat(w, cell.F, true)
+		return writeFloat(w, StoredFloat(f, cell.F), true)
 	case ir.TableKindF64:
-		return writeFloat(w, cell.F, false)
+		return writeFloat(w, StoredFloat(f, cell.F), false)
 	case ir.TableKindTimestamp:
 		// §16.2's timestamp row: RFC 3339 with nanoseconds and a Z offset, the
 		// zero time spelled "1970-01-01T00:00:00Z" — byte for byte what the
@@ -708,6 +708,20 @@ func writeBase64(w *writer, data []byte) {
 // the field's own width, and at 9 or 17 when no earlier one does. Non-finite values have no JSON spelling at all and the
 // writer REFUSES rather than losing one silently — the rule measure and save
 // already apply to an enum value no variant names (§5).
+// StoredFloat is the value every writer stores for a float cell: the cell
+// itself, except that a COMPRESSED float's -0 is stored as +0, the same bits
+// +0 stores (docs/SPEC-TABLES.md §3.3, the special values; docs/rulings.json
+// fixed-compressed-negzero: "a compressed float's negative zero reads as +0
+// and is written as +0"). A plain float's -0 is a value and rides bit-exact.
+// Every store of a float cell goes through it: the variable form, the fixed
+// form, the cook and the text writer.
+func StoredFloat(f *ir.Field, v float64) float64 {
+	if f.HasFloatRange && v == 0 {
+		return 0
+	}
+	return v
+}
+
 func writeFloat(w *writer, value float64, single bool) error {
 	if math.IsNaN(value) || math.IsInf(value, 0) {
 		return fmt.Errorf("float %v has no JSON spelling — the writer refuses it rather than losing it silently (docs/SPEC-TABLES.md §16.2)", value)

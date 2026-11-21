@@ -1085,11 +1085,17 @@ func tableJSONWriteScalar(out *tableJSONOut, storage unsafe.Pointer, f *TableFie
 		if f.HasRange && (value < float32(f.RangeMin) || value > float32(f.RangeMax)) {
 			return false
 		}
+		if f.HasRange && value == 0 {
+			value = 0 // a compressed float's -0 is written as +0 (docs/SPEC-TABLES.md §3.3)
+		}
 		return tableJSONWriteFloat(out, float64(value), true)
 	case 11:
 		value := *(*float64)(storage)
 		if f.HasRange && (value < f.RangeMin || value > f.RangeMax) {
 			return false
+		}
+		if f.HasRange && value == 0 {
+			value = 0 // a compressed float's -0 is written as +0 (docs/SPEC-TABLES.md §3.3)
 		}
 		return tableJSONWriteFloat(out, value, false)
 	case 2, 3, 4:

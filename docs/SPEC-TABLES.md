@@ -20184,7 +20184,7 @@ fixed form writes it as held too, and §22.6 says so.
 |---|---|---|
 | a bare integer, `bool`, `bits(N)`, an enum, a `flags` mask, a fixed-point value, a 128-bit integer, a `timestamp` | it equals its declared default (zero when none is declared) | the kind of §3's mapping, the payload at its width |
 | a PLAIN `float32`/`float64` | its BIT PATTERN equals the default's, so a `-0` against a `+0` default rides (§3.3) | the bit pattern as held, never normalized |
-| a COMPRESSED float (a declared range) | its value `==` the default, so `-0` elides against `+0` (§3.3) | kind `10`, the bit pattern as held |
+| a COMPRESSED float (a declared range) | its value `==` the default, so `-0` elides against `+0` (§3.3) | kind `10`, the value's bit pattern, except that a `-0` is stored as `+0`, the bits `+0` stores (§3.3; ruled 2026-11-10, docs/rulings.json fixed-compressed-negzero) |
 | `string(N)`, `string` | its bytes equal the declared default's (empty when none is declared) | kind `12`, `L` then the bytes as held, no normalization of any kind |
 | a nested `T` by value (a `type` or a `table`) | its body would be its terminator alone: every field of it elided, and no retained field in it (§6.6) | kind `13`, `L`, the body |
 | `?T`, `?[..]T`, `?map` (an optional) | it is absent | ALWAYS when present, even entirely default: a present optional array or map with no element writes its two-byte body, element kind and `N = 0` |

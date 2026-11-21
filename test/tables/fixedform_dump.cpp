@@ -765,26 +765,78 @@ static bool fu2_file( const char * dir )
 // landing, the value 0 itself, which is also the canonical bytes with that
 // field all zero.
 //
+// THE -0 FILE IS COMMITTED, NOT WRITTEN HERE. A writer stores +0 for a
+// compressed float's -0 (ruled 2026-11-10, docs/rulings.json
+// fixed-compressed-negzero), so no lawful writer produces this file: it is a
+// HOSTILE wire file, test/tables/fnz/negative_zero.bin, which is the +0
+// control test/tables/fnz/negative_zero_control.bin with the four `value`
+// bytes set to -0's by hand. The dump checks both before it copies the -0 file
+// into the corpus: the reference's own save of the +0 record IS the control
+// (a layout change that stales the pair stops the dump here), the -0 file is
+// the control with the sign bit alone set in `value`.
+//
 // THE DUMP ASSERTS THE REFERENCE'S OWN READ BEFORE IT WRITES THE FILE, the way
 // it asserts hostile_range_widen.bin: the file reads as one record, refused and
 // counted nothing, its `value` lands as +0 with the sign bit clear, and saving
 // that landing writes the canonical bytes. Each leg then holds its own reader
 // to the same bytes.
+#ifndef FIXEDFORM_FNZ_VECTORS
+#define FIXEDFORM_FNZ_VECTORS "test/tables/fnz"
+#endif
+static bool slurp( const char * path, std::vector<uint8_t> & out )
+{
+    FILE * f = std::fopen( path, "rb" );
+    if ( !f ) { std::fprintf( stderr, "cannot read %s\n", path ); return false; }
+    out.clear();
+    uint8_t chunk[4096];
+    size_t n = 0;
+    while ( ( n = std::fread( chunk, 1, sizeof( chunk ), f ) ) > 0 ) { out.insert( out.end(), chunk, chunk + n ); }
+    const bool ok = std::ferror( f ) == 0;
+    return std::fclose( f ) == 0 && ok;
+}
 static bool nz_file( const char * dir )
 {
+    const int64_t value_at = tblfnz::kTableFixedHeaderBytes + 4 + tblfnz::NegZeroFixedLayoutBytes + 8 + 4;
+    std::vector<uint8_t> control;
+    {
+        // the reference's save of the +0 record, which the committed control must be
+        std::vector<tblfnz::NegZero> plus( 1 );
+        tblfnz::NegZeroReset( plus[0] );
+        plus[0].lead = 1u;
+        plus[0].value = 0.0f;
+        plus[0].trail = 2u;
+        control.resize( (size_t) tblfnz::NegZeroFixedMeasure( 1 ) );
+        if ( tblfnz::NegZeroFixedSave( plus.data(), 1, control.data(), (int64_t) control.size() ) != (int64_t) control.size() )
+        {
+            std::fprintf( stderr, "negative_zero_control.bin: save refused\n" );
+            return false;
+        }
+        std::vector<uint8_t> committed;
+        if ( !slurp( FIXEDFORM_FNZ_VECTORS "/negative_zero_control.bin", committed ) ) { return false; }
+        if ( committed != control )
+        {
+            std::fprintf( stderr, "%s/negative_zero_control.bin is not the reference's save of the +0 record: regenerate the pair (FNZ.schema)\n", FIXEDFORM_FNZ_VECTORS );
+            return false;
+        }
+    }
+    std::vector<uint8_t> out;
+    if ( !slurp( FIXEDFORM_FNZ_VECTORS "/negative_zero.bin", out ) ) { return false; }
+    {
+        std::vector<uint8_t> want = control;
+        want[(size_t) value_at + 3] = 0x80u; // -0 is the sign bit alone, little-endian
+        if ( out != want )
+        {
+            std::fprintf( stderr, "%s/negative_zero.bin is not the control with -0's bits in value\n", FIXEDFORM_FNZ_VECTORS );
+            return false;
+        }
+    }
+    // the manifest line describes the committed file's record
     std::vector<tblfnz::NegZero> v( 1 );
     tblfnz::NegZeroReset( v[0] );
     MS( v[0].lead, 1u );
     MS( v[0].value, float_from_bits( 0x80000000u ) );
     MS( v[0].trail, 2u );
     g_expect = "r0.value=0";
-    std::vector<uint8_t> out( (size_t) tblfnz::NegZeroFixedMeasure( 1 ) );
-    if ( tblfnz::NegZeroFixedSave( v.data(), 1, out.data(), (int64_t) out.size() ) != (int64_t) out.size() )
-    {
-        std::fprintf( stderr, "negative_zero.bin: save refused\n" );
-        g_values.clear();
-        return false;
-    }
     {
         tblfnz::NegZero back;
         tblfnz::NegZeroReset( back );
@@ -808,10 +860,7 @@ static bool nz_file( const char * dir )
             g_values.clear();
             return false;
         }
-        const int64_t value_at = tblfnz::kTableFixedHeaderBytes + 4 + tblfnz::NegZeroFixedLayoutBytes + 8 + 4;
-        std::vector<uint8_t> canonical = out;
-        std::memset( (void *) ( canonical.data() + value_at ), 0, 4 );
-        if ( again != canonical )
+        if ( again != control )
         {
             std::fprintf( stderr, "negative_zero.bin: saving the landed +0 did not write the canonical bytes\n" );
             g_values.clear();
