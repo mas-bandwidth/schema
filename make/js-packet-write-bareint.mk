@@ -38,9 +38,9 @@ define packet_write_bareint_js_control
 endef
 
 .PHONY: packet-write-bareint-js packet-write-bareint-js-negative-control
-packet-write-bareint-js: build/packet-write-bareint/js/.stamp
-	$(NODE) test/packet-write-bareint/js/main.mjs test/packet-write-bareint/cases.txt build/packet-write-bareint/js
-	NODE_ENV=production $(NODE) test/packet-write-bareint/js/main.mjs test/packet-write-bareint/cases.txt build/packet-write-bareint/js
+packet-write-bareint-js: build/mustrun build/packet-write-bareint/js/.stamp
+	$(MUSTRUN) -name packet-write-bareint-js -count 86 -- $(NODE) test/packet-write-bareint/js/main.mjs test/packet-write-bareint/cases.txt build/packet-write-bareint/js
+	NODE_ENV=production $(MUSTRUN) -name packet-write-bareint-js-production -count 86 -- $(NODE) test/packet-write-bareint/js/main.mjs test/packet-write-bareint/cases.txt build/packet-write-bareint/js
 
 packet-write-bareint-js-negative-control: packet-write-bareint-js
 	$(call packet_write_bareint_js_control,packet-write-bareint-js-flat-width,flat,flat,FAILED: bareint checked/flat int8-above-max: wrote a value its width refuses,the flat width check removal reds int8-above-max)

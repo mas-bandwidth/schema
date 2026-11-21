@@ -845,6 +845,13 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 		}
 	}
 
+	// A run that compared no leg proved nothing: --only naming no registered
+	// driver (a typo, or a leg whose driver file is gone), an empty registry, or
+	// every leg skipped. It must not print "every registered surface passes".
+	if len(langs) == 0 {
+		return false, fmt.Errorf("conformance ran no leg: the registry, --only %q and --skip left nothing to compare", only)
+	}
+
 	if opts.coverage != nil {
 		*opts.coverage = append(*opts.coverage, coverageRows(langs, results, want, m, opts.claims)...)
 	}

@@ -802,8 +802,14 @@ conformance-negative-control-go-write-refusal-message: build/conformance-harness
 # negative control, the forgery fuzzer plain and under -race, and the soak's
 # short default count; the hour is `make tables-go-soak` — the standalone gate, the
 # bench units' compile gates, and the packet tests.
+# The registered counts of the primary packet harnesses (test/go, test/go-ludicrous):
+# each prints "ran N, failed M" as its last line and tools/mustrun holds N
+# to the number here, so a check that stops running, or a run that checks
+# nothing, is red. A commit that adds or removes a check changes the number.
+GO_MAIN_CHECKS := 525
+GO_LUDICROUS_CHECKS := 53
 .PHONY: test-go
-test-go: generated/bench/tables/go/.stamp generated/bench/paired/go/.stamp generated/go/.stamp generated/go-ludicrous/.stamp generated/bench/go/.stamp
+test-go: build/mustrun generated/bench/tables/go/.stamp generated/bench/paired/go/.stamp generated/go/.stamp generated/go-ludicrous/.stamp generated/bench/go/.stamp
 	$(MAKE) conformance-negative-control-go
 	$(MAKE) conformance-negative-control-go-walk
 	$(MAKE) conformance-negative-control-go-key-order
@@ -819,8 +825,14 @@ test-go: generated/bench/tables/go/.stamp generated/bench/paired/go/.stamp gener
 	bench/tables/go/leg build
 	cd generated/bench/go && go build ./...
 	cd generated/bench/paired/go && go build ./...
-	cd test/go && go run .
-	cd test/go-ludicrous && go run .
+	$(MAKE) test-go-packet
+
+# The primary packet harnesses on their own, so they can be run (and broken on
+# purpose) without the rest of the leg; test-go and _verify-go-conformance run it.
+.PHONY: test-go-packet
+test-go-packet: build/mustrun generated/go/.stamp generated/go-ludicrous/.stamp generated/bench/go/.stamp
+	cd test/go && "$(CURDIR)/$(MUSTRUN)" -name test-go-main -count $(GO_MAIN_CHECKS) -- go run .
+	cd test/go-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name test-go-ludicrous -count $(GO_LUDICROUS_CHECKS) -- go run .
 
 TEST_LEGS         += test-go
 CONFORMANCE_LEGS  += $(call unless_skipped,go,build/conformance-go)

@@ -493,12 +493,14 @@ tables-elixir-fuzz-negative-control: build/conformance-elixir-manifest/manifest.
 	$(call ELIXIR_SABOTAGED_BUILD,$(CONFORMANCE_NEGATIVE_ELIXIR_FUZZ),internal/codegen/elixirtable/block.go,ELIXIR_FUZZ_SED)
 	@if SEED=$(SEED) ELIXIR_TABLES_EBIN=$(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_FUZZ)/ebin \
 			BEAM_PATH="$(BEAM_PATH)" ./test/conformance/elixir/driver \
-			build/conformance-elixir-manifest/manifest.txt fuzz $(ELIXIR_FUZZ_N) > /dev/null 2>&1; then \
+			build/conformance-elixir-manifest/manifest.txt fuzz $(ELIXIR_FUZZ_N) > $(CONFORMANCE_NEGATIVE_ELIXIR_FUZZ)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a reader with no extent bound left the fuzz oracle green"; \
 		exit 1; \
-	else \
-		echo "elixir fuzz negative control: a block reader with both extent bounds removed reds the oracle"; \
 	fi
+	@grep -q "reader left the buffer on mutant" $(CONFORMANCE_NEGATIVE_ELIXIR_FUZZ)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the fuzz oracle went red for another reason"; \
+		  tail -20 $(CONFORMANCE_NEGATIVE_ELIXIR_FUZZ)/log; exit 1; }
+	@echo "elixir fuzz negative control: a block reader with both extent bounds removed reds the oracle"
 
 # THE RETAIN SURFACES' NEGATIVE CONTROL (docs/SPEC-TABLES.md §6.6): a copy of
 # the emitter whose retaining save finds the retained records of the ROOT body
@@ -557,12 +559,14 @@ tables-elixir-block-lead-negative-control: build/conformance-elixir-manifest/man
 	$(call ELIXIR_SABOTAGED_BUILD,$(CONFORMANCE_NEGATIVE_ELIXIR_LEAD),internal/codegen/elixirtable/block.go,ELIXIR_LEAD_SED)
 	@if ELIXIR_TABLES_EBIN=$(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_LEAD)/ebin \
 			BEAM_PATH="$(BEAM_PATH)" ./test/conformance/elixir/driver \
-			build/conformance-elixir-manifest/manifest.txt block-lead > /dev/null 2>&1; then \
+			build/conformance-elixir-manifest/manifest.txt block-lead > $(CONFORMANCE_NEGATIVE_ELIXIR_LEAD)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a reader that does not check the base left the gate green"; \
 		exit 1; \
-	else \
-		echo "elixir base-alignment negative control: dropping the check reds the gate"; \
 	fi
+	@grep -q "BASE ALIGNMENT GATE FAILED: .* answered open, wanted refuse" $(CONFORMANCE_NEGATIVE_ELIXIR_LEAD)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the base-alignment gate went red for another reason"; \
+		  tail -20 $(CONFORMANCE_NEGATIVE_ELIXIR_LEAD)/log; exit 1; }
+	@echo "elixir base-alignment negative control: dropping the check reds the gate"
 
 # THE OFFSETS/COOK-DELTA COMPOSITION GATE (docs/PORTING.md M2): the block's
 # offset_of and the cook's self-relative delta are composed from two 32-bit
@@ -999,16 +1003,28 @@ tables-elixir-release:
 # both and the block lead gate — then the format check and the packet tests.
 # The port emits the whole variable class (docs/SPEC-TABLES.md §2, §3, §16),
 # whose own gate is tables-elixir-variable-class above.
+# The registered counts of the primary packet harnesses (test/elixir, test/elixir-ludicrous):
+# each prints "ran N, failed M" as its last line and tools/mustrun holds N
+# to the number here, so a check that stops running, or a run that checks
+# nothing, is red. A commit that adds or removes a check changes the number.
+ELIXIR_MAIN_CHECKS := 454
+ELIXIR_LUDICROUS_CHECKS := 43
 .PHONY: test-elixir test-elixir-recipe
 test-elixir: toolchain-elixir generated/elixir/.stamp generated/elixir-ludicrous/.stamp generated/bench/elixir/.stamp
 	$(MAKE) test-elixir-recipe
 
-test-elixir-recipe: toolchain-elixir generated/elixir/.stamp generated/elixir-ludicrous/.stamp generated/bench/elixir/.stamp
+test-elixir-recipe: build/mustrun toolchain-elixir generated/elixir/.stamp generated/elixir-ludicrous/.stamp generated/bench/elixir/.stamp
 	$(MAKE) tables-elixir-fuzz
 	$(MAKE) tables-elixir-block-lead
 	$(MIX) format --check-formatted generated/elixir/*.ex generated/elixir-ludicrous/*.ex generated/bench/elixir/*.ex generated/bench/elixir/realworld/*.ex
-	cd test/elixir && $(ELIXIR) main.exs
-	cd test/elixir-ludicrous && $(ELIXIR) main.exs
+	$(MAKE) test-elixir-packet
+
+# The primary packet harnesses on their own, so they can be run (and broken on
+# purpose) without the rest of the leg.
+.PHONY: test-elixir-packet
+test-elixir-packet: build/mustrun toolchain-elixir generated/elixir/.stamp generated/elixir-ludicrous/.stamp generated/bench/elixir/.stamp
+	cd test/elixir && "$(CURDIR)/$(MUSTRUN)" -name test-elixir-main -count $(ELIXIR_MAIN_CHECKS) -- $(ELIXIR) main.exs
+	cd test/elixir-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name test-elixir-ludicrous -count $(ELIXIR_LUDICROUS_CHECKS) -- $(ELIXIR) main.exs
 
 TEST_LEGS            += test-elixir
 TOOLCHAIN_LEGS       += elixir
