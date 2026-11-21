@@ -105,9 +105,9 @@ static class ProbeMain
 
         Row("rec_birth_msg", Msg(Probe.Schema.NewFixRec()), "020000");
         Row("rec_birth_var", Var(Probe.Schema.NewVarRec()), "01000000000000000000");
-        var fr = Probe.Schema.NewFixRec(); fr.Few[1].N = 56;
+        var fr = Probe.Schema.NewFixRec(); var fe = fr.Few[1]; fe.N = 56; fr.Few[1] = fe;
         Row("rec_min_one_msg", Msg(fr), "020001c30100000000");
-        var vr = Probe.Schema.NewVarRec(); vr.Few[1].N = 56;
+        var vr = Probe.Schema.NewVarRec(); var ve = vr.Few[1]; ve.N = 56; vr.Few[1] = ve;
         Row("rec_min_one_var", Var(vr), "01010e0c0d020100070204380000000000198ceafe187dc6dc71f801864ce363af0200000000000000");
         var fr3 = Probe.Schema.NewFixRec(); fr3.FewCount = 3;
         Row("rec_min_plus1_msg", Msg(fr3), "0200090000");
