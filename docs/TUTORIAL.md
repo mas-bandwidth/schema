@@ -192,7 +192,7 @@ Open `gen/Game.h`:
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package starlight — protocol id 0xead34ae7a8da1280
+// package starlight — protocol id 0x477e2a74578e864f
 
 #pragma once
 
@@ -202,7 +202,7 @@ namespace starlight {
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-inline constexpr uint64_t ProtocolId = 0xead34ae7a8da1280ull;
+inline constexpr uint64_t ProtocolId = 0x477e2a74578e864full;
 
 inline constexpr int64_t MaxPlayers = 64;
 inline constexpr int64_t TickRate = 60;
@@ -233,7 +233,7 @@ why are:
 
 ```
 $ schema id .
-0xead34ae7a8da1280
+0x477e2a74578e864f
 ```
 
 and `schema projection .`, which prints the exact text the id hashes. Diff
@@ -244,7 +244,7 @@ declaration you typed differently.
 
 `main.cpp`, beside your schema files:
 
-<!-- example: owed -->
+<!-- example: compile unit=internal/docgate/testdata/units/tutorial/part1 -->
 ```cpp
 #include "Game.h"
 #include <cstdio>
@@ -582,7 +582,7 @@ declare a kind before its variants are known, fields of it round-trip as
 
 `main.cpp`, entire:
 
-<!-- example: owed -->
+<!-- example: compile unit=internal/docgate/testdata/units/tutorial/part2 -->
 ```cpp
 #include "Game.h"
 #include <cstdio>
@@ -616,7 +616,7 @@ ship type 1 is Fighter
 ship type 2 is Freighter
 ship type 3 is Corvette
 systems: Shields|WarpDrive
-weapon extent 15
+weapon extent 2
 pending extent 0
 ```
 
@@ -624,7 +624,7 @@ The unit's id moved when you added those declarations, as promised in Part 1:
 
 ```
 $ schema id .
-0x6cf8f673fb5b6972
+0x7b840ef4f35e804c
 ```
 
 **You now have** named ship types and system masks, with logging names, in
@@ -737,7 +737,7 @@ spelling.
 `GameWire.h` includes `serialize.h`, which is the header-only checkout you made
 in Part 1. `main.cpp`, entire:
 
-<!-- example: owed -->
+<!-- example: compile unit=internal/docgate/testdata/units/tutorial/part3 -->
 ```cpp
 #include "GameWire.h"
 #include <cstdio>
@@ -870,7 +870,7 @@ whose rest state is not zero.
 
 ```
 $ schema id .
-0x4cba7275991924f6
+0x591fe300f0d12126
 ```
 
 **You now have** a real network message, three bytes on the wire, hostile input
@@ -1269,7 +1269,7 @@ contract asks for.
 
 `main.cpp`, entire:
 
-<!-- example: owed -->
+<!-- example: compile unit=internal/docgate/testdata/units/tutorial/part4 -->
 ```cpp
 #include "GameWire.h"
 #include <cstdio>
@@ -1329,7 +1329,7 @@ own `operator+=`.
 
 ```
 $ schema id .
-0xf5e372aa2e4e3a2a
+0xc6300b7d1a259359
 ```
 
 **You now have** the full vocabulary of scalar and buffer fields, a ship state
@@ -1678,7 +1678,7 @@ length, align, then the raw bytes.
 
 `main.cpp`, entire:
 
-<!-- example: owed -->
+<!-- example: compile unit=internal/docgate/testdata/units/tutorial/part5 -->
 ```cpp
 #include "NetWire.h"
 #include <cstdio>
@@ -2553,7 +2553,7 @@ element inside it is a real reference either way.
 
 `config.cpp`, entire:
 
-<!-- example: owed -->
+<!-- example: compile unit=internal/docgate/testdata/units/tutorial/part7 -->
 ```cpp
 #include "ConfigTable.h"
 #include <cstdio>
@@ -2574,10 +2574,10 @@ int main()
 
     ShipConfig & fighter = config.ships[ShipType::Fighter];
     printf( "fighter measures %lld with settings absent\n",
-        (long long) ShipConfigMeasure( fighter ) );
+        (long long) ShipConfigMeasure( &fighter ) );
     fighter.settings_present = true;
     printf( "fighter measures %lld with settings present and all-default\n",
-        (long long) ShipConfigMeasure( fighter ) );
+        (long long) ShipConfigMeasure( &fighter ) );
 
     config.ships[ShipType::Corvette].max_health = 400.0f;
 
@@ -2586,9 +2586,9 @@ int main()
         printf( "slot %-10s health=%g\n", EnumName( ship_type ), ship.max_health );
     }
 
-    int64_t size = GameConfigMeasure( config );
+    int64_t size = GameConfigMeasure( &config );
     std::vector<uint8_t> buffer( size );
-    GameConfigSave( config, buffer.data(), size );
+    GameConfigSave( &config, buffer.data(), size );
     printf( "GameConfig is %lld bytes\n", (long long) size );
 
     FILE * f = fopen( "config.bin", "wb" );
@@ -2618,7 +2618,7 @@ The `starlight-2.0` copy from Part 6 already has `Interceptor` inserted in the
 middle. Give it this `Config.schema` too, and read the 1.0 file with
 `keyed.cpp`, entire:
 
-<!-- example: owed -->
+<!-- example: compile unit=internal/docgate/testdata/units/tutorial/part7-2.0 -->
 ```cpp
 #include "ConfigTable.h"
 #include <cstdio>
@@ -2641,11 +2641,18 @@ static std::vector<uint8_t> Slurp( const char * path )
 int main( int, char ** argv )
 {
     using namespace starlight;
-    std::vector<uint8_t> buffer = Slurp( argv[1] );
+    std::vector<uint8_t> wire = Slurp( argv[1] );
+    int64_t need = GameConfigLoadMeasure( wire.data(), (int64_t) wire.size() );
+    std::vector<uint8_t> region( need > 0 ? need : 0 );
     TableReport report;
-    GameConfig config;
-    GameConfigLoad( config, buffer.data(), (int64_t) buffer.size(), &report );
-    for ( auto [ ship_type, ship ] : config.ships )
+    const GameConfig * config = GameConfigLoad( region.data(), (int64_t) region.size(),
+        wire.data(), (int64_t) wire.size(), &report );
+    if ( config == NULL )
+    {
+        printf( "load: refused\n" );
+        return 1;
+    }
+    for ( auto [ ship_type, ship ] : config->ships )
     {
         printf( "slot %-12s health=%g\n", EnumName( ship_type ), ship.max_health );
     }
@@ -2672,7 +2679,7 @@ at all.
 Keys in data-driven code are runtime values: an enum read out of a file, a key
 a tool hands you. `none.cpp`, entire:
 
-<!-- example: owed -->
+<!-- example: compile unit=internal/docgate/testdata/units/tutorial/part7 -->
 ```cpp
 #include "ConfigTable.h"
 #include <cstdio>
@@ -2824,7 +2831,7 @@ struct Attachment {
 A reference is not a value, so a table that holds one is built rather than
 filled, which is Part 8's builder arriving early. `tools.cpp`, entire:
 
-<!-- example: owed -->
+<!-- example: compile unit=internal/docgate/testdata/units/tutorial/tools -->
 ```cpp
 #include "ToolsTable.h"
 #include <cstdio>
@@ -2842,20 +2849,20 @@ int main()
     memcpy( open.body.open.path, "ship.cfg", 8 );
     open.body.open.path_length = 8;
     open.body.open.line = 42;
-    printf( "open  measures %lld bytes\n", (long long) ToolMessageMeasure( open ) );
+    printf( "open  measures %lld bytes\n", (long long) ToolMessageMeasure( &open ) );
 
     // an arm that is a bare scalar
     ToolMessage ping;
     ping.sequence = 4;
     ping.body.type = ToolBodyType::Ping;
     ping.body.ping = 99;
-    printf( "ping  measures %lld bytes\n", (long long) ToolMessageMeasure( ping ) );
+    printf( "ping  measures %lld bytes\n", (long long) ToolMessageMeasure( &ping ) );
 
     // an arm with no payload at all: a value of the tag enum and no member
     ToolMessage close;
     close.sequence = 5;
     close.body.type = ToolBodyType::Close;
-    printf( "close measures %lld bytes\n", (long long) ToolMessageMeasure( close ) );
+    printf( "close measures %lld bytes\n", (long long) ToolMessageMeasure( &close ) );
 
     // an array of unions
     ToolLog log;
@@ -2864,7 +2871,7 @@ int main()
     log.events[0].ping = 7;
     log.events[1].type = ToolBodyType::Close;
     printf( "a log of %d events measures %lld bytes\n",
-        log.events_count, (long long) ToolLogMeasure( log ) );
+        log.events_count, (long long) ToolLogMeasure( &log ) );
 
     // *string and *bytes: buffers at their used size, so their holder is built
     AttachmentSetBuilder builder;
@@ -3008,17 +3015,22 @@ Bad.schema:5:11: field p: a pointer field takes no specified default — a fresh
 schema: 1 error(s)
 ```
 
-One rule you do not declare: **the compiler derives the mode.** A table with no
-pointer anywhere in its by-value closure is fixed size, which is everything
-Parts 6 and 7 did, a plain struct with zero overhead from this part. One
-pointer anywhere in that closure makes the table variable length, and it is
-never held by value again. You build it, lock it, and read it through a root
-pointer. `Route` and `Waypoint` are variable, and `ShipConfig` and `GameConfig`
-are still fixed, in the same unit.
+One rule you declare rather than discover: **a table's class is written in its
+declaration** (docs/SPEC-TABLES.md §2.2). A plain `table` is the variable class
+whatever its fields, which is what every table since Part 6 has been: it is
+measured and saved through a pointer to its root, and loaded into a region you
+size. `fixed table T` claims the fixed class, a plain struct whose `Measure`,
+`Save` and `Load` take the struct itself, and the compiler refuses a
+`fixed table` whose by-value closure holds a pointer, naming the field. Nothing
+is inferred in either direction, so a pointer added to a fixed table later is a
+compile error and never a quiet change of API. `Route` and `Waypoint` are plain
+tables like `ShipConfig` and `GameConfig`. What a pointer adds is the builder: a
+table that holds one is built, locked, and read through a root pointer, which is
+the next section. Part 12 declares the tutorial's first `fixed table`.
 
 Resist reaching for `*T` to mean "optional". That is `?T`, with no allocation
-and still fixed size. A pointer is for structure: recursion, sharing, a subtree
-you would rather not carry by value.
+and no builder. A pointer is for structure: recursion, sharing, a subtree you
+would rather not carry by value.
 
 Pointers cost the `starlight` unit none of its backends:
 
@@ -3343,7 +3355,7 @@ The key is a bounded string or an integer, and the value is anything a field
 can be, including another map. A map makes its holder variable length, so it
 lives in a builder too. `fleet.cpp`, entire:
 
-<!-- example: owed -->
+<!-- example: compile unit=internal/docgate/testdata/units/tutorial/tools -->
 ```cpp
 #include "FleetTable.h"
 #include <cstdio>
@@ -3458,7 +3470,7 @@ it.
 
 `json.cpp`, entire:
 
-<!-- example: owed -->
+<!-- example: compile unit=internal/docgate/testdata/units/tutorial/part9 -->
 ```cpp
 #include "ConfigTable.h"
 #include "SceneTable.h"
@@ -3470,7 +3482,7 @@ using namespace starlight;
 
 int main()
 {
-    // a fixed table, out and back
+    // a table, out and back
     ShipConfig ship;
     memcpy( ship.display_name, "Kestrel", 7 );
     ship.display_name_length = 7;
@@ -3478,9 +3490,9 @@ int main()
     ship.armor = 8;
     ship.ship_type = ShipType::Corvette;
 
-    int64_t size = ShipConfigToJsonMeasure( ship );   // exact, writes nothing
+    int64_t size = ShipConfigToJsonMeasure( &ship );  // exact, writes nothing
     std::vector<char> text( size + 1, 0 );
-    ShipConfigToJson( ship, text.data(), size );
+    ShipConfigToJson( &ship, text.data(), size );
     printf( "%s", text.data() );
 
     const char * edited =
@@ -3490,18 +3502,20 @@ int main()
         "  \"armor\": 4,\n"
         "  \"ship_type\": \"Corvette\"\n"
         "}\n";
+    ShipConfigBuilder from_text;                       // text is read into a builder
     TableReport report;
-    ShipConfig loaded;
-    bool ok = ShipConfigFromJson( loaded, edited, (int64_t) strlen( edited ), &report );
+    bool ok = ShipConfigFromJson( from_text, edited, (int64_t) strlen( edited ), &report );
+    from_text.Lock();
+    const ShipConfig * loaded = from_text.AsConst();
     printf( "from json: %s  name=%s health=%g armor=%d\n", ok ? "ok" : "stopped",
-        loaded.display_name, loaded.max_health, loaded.armor );
+        loaded->display_name, loaded->max_health, loaded->armor );
     printf( "report: unknown=%d refused=%d\n",
         report.unknown, (int) report.refused );
 
     ShipConfig bad;
     bad.ship_type = (ShipType) 99;
     printf( "ToJsonMeasure on an unnamed enum value: %lld\n",
-        (long long) ShipConfigToJsonMeasure( bad ) );
+        (long long) ShipConfigToJsonMeasure( &bad ) );
 
     // a graph, out and back
     RouteBuilder builder;
@@ -3575,7 +3589,9 @@ is a default the binary wire would have elided. The absent optionals,
 render by variant name, the output is pretty-printed with a two-space indent,
 and it ends in one newline.
 
-**Reading text uses the same report as the wire.** `max_helth` is `unknown`,
+**Reading text uses the same report as the wire.** `FromJson` reads into a
+builder, the way a variable table is made, and `Lock` hands back the root.
+`max_helth` is `unknown`,
 and `max_health` stayed at its declared 100, so the typo did not vanish
 silently. A text read is one read, the same as the wire's: write `armor` twice
 and the whole read refuses (`malformed`), and write `"armor": 11` and it
@@ -3589,8 +3605,8 @@ it returns -1 rather than inventing JSON.
 **Graphs have a text form too**, and it handles what plain JSON cannot:
 sharing. The first reference to a node is its body, labeled `"&node": 1`. The
 second reference is the label alone. A null pointer is `null`. `RouteFromJson`
-reads into a **builder**, because text becomes a graph and graphs are built,
-and the shared node comes back shared.
+reads into a **builder** like `ShipConfigFromJson`, and the shared node comes
+back shared.
 
 If your text has to meet an existing convention, `| json = "type"` renames the
 key in text only, and no wire byte moves. A one-file unit of its own,
@@ -3608,7 +3624,7 @@ table Prop
 
 `j.cpp`, entire:
 
-<!-- example: owed -->
+<!-- example: compile unit=internal/docgate/testdata/units/tutorial/jname -->
 ```cpp
 #include "PropTable.h"
 #include <cstdio>
@@ -3621,9 +3637,9 @@ int main()
     Prop p;
     memcpy( p.kind, "rock", 4 );
     p.kind_length = 4;
-    int64_t n = PropToJsonMeasure( p );
+    int64_t n = PropToJsonMeasure( &p );
     std::vector<char> t( n + 1, 0 );
-    PropToJson( p, t.data(), n );
+    PropToJson( &p, t.data(), n );
     printf( "%s", t.data() );
     return 0;
 }
@@ -3703,7 +3719,7 @@ $ echo $?
 Silent, as always. The game loads `packed.bin` with the same `GameConfigLoad`
 as ever. `loadpacked.cpp`, entire:
 
-<!-- example: owed -->
+<!-- example: compile unit=internal/docgate/testdata/units/tutorial/part9 -->
 ```cpp
 #include "ConfigTable.h"
 #include <cstdio>
@@ -3726,15 +3742,21 @@ static std::vector<uint8_t> Slurp( const char * path )
 int main( int, char ** argv )
 {
     using namespace starlight;
-    std::vector<uint8_t> buffer = Slurp( argv[1] );
+    std::vector<uint8_t> wire = Slurp( argv[1] );
+    int64_t need = GameConfigLoadMeasure( wire.data(), (int64_t) wire.size() );
+    std::vector<uint8_t> region( need > 0 ? need : 0 );
     TableReport report;
-    GameConfig config;
-    bool ok = GameConfigLoad( config, buffer.data(), (int64_t) buffer.size(), &report );
-    const ShipConfig & corvette = config.ships[ShipType::Corvette];
-    printf( "%s: level=%s weapons=%d w0.damage=%g corvette=%g sensitivity=%g (present=%d)\n",
-        ok ? "ok" : "stopped", config.level_name, config.weapons_count,
-        config.weapons[0].damage, corvette.max_health,
-        corvette.settings.sensitivity, (int) corvette.settings_present );
+    const GameConfig * config = GameConfigLoad( region.data(), (int64_t) region.size(),
+        wire.data(), (int64_t) wire.size(), &report );
+    if ( config == NULL )
+    {
+        printf( "load: refused\n" );
+        return 1;
+    }
+    const ShipConfig & corvette = config->ships[ShipType::Corvette];
+    printf( "ok: level=%s weapons=%d w0.damage=%g corvette=%g sensitivity=%g (present=%d)\n",
+        config->level_name, config->weapons_count, config->weapons[0].damage,
+        corvette.max_health, corvette.settings.sensitivity, (int) corvette.settings_present );
     return 0;
 }
 ```
@@ -3964,7 +3986,7 @@ warning: tables.baseline: ShipConfig.top_speed: renamed under was = "max_speed",
 riding under `max_speed`'s hash, so `ship.bin`, written back in Part 6 when the
 field was still called `max_speed`, loads into `top_speed`. `was.cpp`, entire:
 
-<!-- example: owed -->
+<!-- example: compile unit=internal/docgate/testdata/units/tutorial/part10 -->
 ```cpp
 #include "ConfigTable.h"
 #include <cstdio>
@@ -3987,11 +4009,18 @@ static std::vector<uint8_t> Slurp( const char * path )
 int main( int, char ** argv )
 {
     using namespace starlight;
-    std::vector<uint8_t> buffer = Slurp( argv[1] );
+    std::vector<uint8_t> wire = Slurp( argv[1] );
+    int64_t need = ShipConfigLoadMeasure( wire.data(), (int64_t) wire.size() );
+    std::vector<uint8_t> region( need > 0 ? need : 0 );
     TableReport report;
-    ShipConfig config;
-    ShipConfigLoad( config, buffer.data(), (int64_t) buffer.size(), &report );
-    printf( "top_speed=%g unknown=%d\n", config.top_speed, report.unknown );
+    const ShipConfig * config = ShipConfigLoad( region.data(), (int64_t) region.size(),
+        wire.data(), (int64_t) wire.size(), &report );
+    if ( config == NULL )
+    {
+        printf( "load: refused\n" );
+        return 1;
+    }
+    printf( "top_speed=%g unknown=%d\n", config->top_speed, report.unknown );
     return 0;
 }
 ```
@@ -4112,14 +4141,14 @@ of Part 9 or from a wire file, one command either way:
 
 ```
 $ schema cook --root GameConfig --in tree --out Game.cook --verbose .
-report: silent — the data matched the schema exactly
-report: silent — the data matched the schema exactly
-cooked Game.cook: 464 bytes, build version 0x2a6da3e6d7889a61, little-endian, root GameConfig, 1 nodes, 384 data bytes, 16 attribution bytes
+report (pack): silent — the data matched the schema exactly
+report (cook): silent — the data matched the schema exactly
+cooked Game.cook: 464 bytes, build version 0xf83ce781bf1d276e, little-endian, root GameConfig, 1 nodes, 384 data bytes, 16 attribution bytes
 ```
 
 And the game opens it. `cook.cpp`, entire:
 
-<!-- example: owed -->
+<!-- example: compile unit=internal/docgate/testdata/units/tutorial/part11 -->
 ```cpp
 #include "ConfigTable.h"
 #include <cstdio>
@@ -4144,7 +4173,7 @@ int main( int, char ** argv )
     using namespace starlight;
 
     std::vector<uint8_t> bytes = Slurp( argv[1] );
-    const GameConfig * config = GameConfigOpen( bytes.data(), (int64_t) bytes.size() );
+    const GameConfig * config = GameConfigOpen( bytes.data(), (uint64_t) bytes.size() );
     if ( config == NULL )
     {
         // wrong build, corrupt, truncated, or a foreign byte order:
@@ -4157,13 +4186,20 @@ int main( int, char ** argv )
         config->ships[ShipType::Corvette].max_health );
 
     // the same bytes, from code instead of the tool
-    GameConfig value;
-    TableReport report;
     std::vector<uint8_t> wire = Slurp( "packed.bin" );
-    GameConfigLoad( value, wire.data(), (int64_t) wire.size(), &report );
+    int64_t need = GameConfigLoadMeasure( wire.data(), (int64_t) wire.size() );
+    std::vector<uint8_t> region( need > 0 ? need : 0 );
+    TableReport report;
+    const GameConfig * value = GameConfigLoad( region.data(), (int64_t) region.size(),
+        wire.data(), (int64_t) wire.size(), &report );
+    if ( value == NULL )
+    {
+        printf( "packed.bin: refused\n" );
+        return 1;
+    }
     int64_t size = GameConfigCookMeasure( value );
     std::vector<uint8_t> mine( size );
-    GameConfigCook( value, mine.data(), size, TableByteOrder::Little );
+    GameConfigCook( value, mine.data(), (uint64_t) size, TableByteOrder::Little );
     FILE * f = fopen( "Mine.cook", "wb" );
     fwrite( mine.data(), 1, size, f );
     fclose( f );
@@ -4227,7 +4263,7 @@ $ echo $?
 $ schema id .
 0xf582c91be9c0c274
 $ schema build-version .
-0x779449d8f015c68c
+0x9ea4d7c7b862aafa
 $ ./cook Game.cook
 not this build's cook
 ```
@@ -4244,7 +4280,9 @@ A big-endian cook refuses on a little-endian build the same way:
 
 ```
 $ schema cook --root GameConfig --in tree --out GameBig.cook --byte-order big --verbose .
-cooked GameBig.cook: 464 bytes, build version 0x2a6da3e6d7889a61, big-endian, root GameConfig, 1 nodes, 384 data bytes, 16 attribution bytes
+report (pack): silent — the data matched the schema exactly
+report (cook): silent — the data matched the schema exactly
+cooked GameBig.cook: 464 bytes, build version 0xf83ce781bf1d276e, big-endian, root GameConfig, 1 nodes, 384 data bytes, 16 attribution bytes
 $ ./cook GameBig.cook
 not this build's cook
 ```
@@ -4260,7 +4298,7 @@ offline, once, on purpose:
 
 ```
 $ schema cook-check --root GameConfig --verbose Game.cook .
-ok: build version 0x2a6da3e6d7889a61, little-endian, root GameConfig, 1 nodes, 384 data bytes, 16 attribution bytes, 0 reference slots
+ok: build version 0xf83ce781bf1d276e, little-endian, root GameConfig, 1 nodes, 384 data bytes, 16 attribution bytes, 0 reference slots
 ```
 
 `cook-check` verifies every reference and count against the attribution, a
@@ -4294,7 +4332,7 @@ file to diff when you want to know **why** the version moved:
 ```
 $ schema build-version --facts .
 schema-build-version 6
-protocol c08f66a810e84fcd
+protocol f582c91be9c0c274
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
 record GameConfig sizeof=384 alignof=8
@@ -4313,7 +4351,7 @@ header and block prologue.
 The store contract is one line: your pipeline stores assets under the triple
 **(asset hash, build version, byte order)**. The asset hash is the hash of the
 wire file you cooked from. The build version is target neutral, which the
-big-endian cook above shows by stamping the same `0x2a6da3e6d7889a61`, and
+big-endian cook above shows by stamping the same `0xf83ce781bf1d276e`, and
 `byteorder little` appearing in the facts is a generation input that never
 varies. Byte order is the third coordinate, carried in the header and refused
 by `Open` on a mismatch. Your game asks for exactly that triple, anything that
@@ -4344,7 +4382,7 @@ Two constants join `Game.schema`, `const MaxShips = 4096` and
 ```
 package starlight
 
-table RenderShip
+fixed table RenderShip
 {
     x     float32
     y     float32
@@ -4352,7 +4390,7 @@ table RenderShip
     hull  float32 = 1.0
 }
 
-table RenderLaser
+fixed table RenderLaser
 {
     x0 float32
     y0 float32
@@ -4360,7 +4398,7 @@ table RenderLaser
     y1 float32
 }
 
-table RenderFrame
+fixed table RenderFrame
 {
     frame  uint64
     ships  [..MaxShips]RenderShip
@@ -4368,16 +4406,29 @@ table RenderFrame
 }
 ```
 
-Nothing there is new: ordinary bounded arrays of ordinary fixed tables, and
-`RenderFrame` still has `Measure`, `Save`, `Load` and a cook like any table.
-Adding three tables passes the baseline, and the unit still generates for all
-nine:
+One word is new, and Part 8 promised it: `fixed table` claims the FIXED class
+(docs/SPEC-TABLES.md §2.2), a plain struct of known `sizeof` with no builder and
+no region, and the block form below belongs to that class alone. A nested
+table must be fixed too, which is why all three say so. Adding three tables
+passes the baseline, and `check` has one thing to say about the size:
 
 ```
 $ schema check .
+warning: table RenderFrame: a fixed table's record body is 196624 bytes, past the 65536-byte fixed-form ceiling (docs/SPEC-TABLES.md §3.4) — THE FIXED FORM IS NOT EMITTED FOR IT, because no conforming reader decodes a record that size; it has NO FILE FORM: its file save refuses and its read refuses form 1; the `fixed` keyword still buys it the CLASS (a by-value storage, a cook, a block form)
 $ echo $?
 0
-$ for l in c cpp cs dart elixir go java js rust; do printf "%-8s " $l; schema generate --lang $l --out /tmp/g-$l . && echo ok; done
+```
+
+Read it as a design note. Four thousand ships and eight thousand lasers at
+their maxima make a 192 KB struct, too big for any reader to decode as a record,
+so `RenderFrame` saves to no file and reads from none. It keeps everything this
+part needs: by-value storage, a cook, and the block. A frame is a handoff and
+not a document, and `RenderShip` and `RenderLaser`, small on their own, keep
+their file form. The warning repeats on every command over the unit, so the
+loop below drops it; the unit still generates for all nine:
+
+```
+$ for l in c cpp cs dart elixir go java js rust; do printf "%-8s " $l; schema generate --lang $l --out /tmp/g-$l . 2>/dev/null && echo ok; done
 c        ok
 cpp      ok
 cs       ok
@@ -4397,15 +4448,15 @@ a fixed pitch. The other side reads three numbers and points.
 You reach for it by including it. `RenderBlock.h` and `RenderBlock.cpp` sit
 beside `RenderTable.h`, and a project that never blocks a table compiles none
 of it. Which arrays move out of line is one rule: the table's own bounded
-arrays of structs, and nothing else. A row's pitch is its `sizeof`. A
-variable-length table has no block form, because a pointer means no fixed
-pitch, so `Route` from Part 8 has none and `RenderFrame` does.
+arrays of structs, and nothing else. A row's pitch is its `sizeof`. A plain
+`table` has no block form, because the variable class promises no fixed pitch,
+so `Route` from Part 8 and `GameConfig` have none and `RenderFrame` does.
 
 ### Produce it, wide and allocation free
 
 `produce.cpp`, entire:
 
-<!-- example: owed -->
+<!-- example: compile unit=internal/docgate/testdata/units/tutorial/part12 -->
 ```cpp
 #include "RenderBlock.h"
 #include <cstdio>
@@ -4461,7 +4512,7 @@ int main()
 $ c++ -std=c++17 -Wall -Wextra -Werror -I gen -I . -o produce produce.cpp gen/RenderBlock.cpp gen/RenderTable.cpp
 $ ./produce
 block: 56064 bytes of 196672 max (frame 1207, 3000 ships)
-build version 0xb837cbad7d9fd592
+build version 0x50bb1cc4b2f9c3a5
 wrote frame.block
 refused: array ships count 5000 max 4096
 ```
@@ -4564,10 +4615,10 @@ func main() {
 ```
 $ go run .
 go read: frame=1207 ships=3000 ships[2999]=(2999, -2999)
-go build version 0xb837cbad7d9fd592
+go build version 0x50bb1cc4b2f9c3a5
 ```
 
-The two builds carry the same build version, `0xb837cbad7d9fd592` in the C++
+The two builds carry the same build version, `0x50bb1cc4b2f9c3a5` in the C++
 header and the Go source alike. `RenderFrameBlockOpen` checks the prologue,
 which is the magic, the byte order, the **build version**, the base's 64-byte
 alignment, every count against its declared maximum, and every extent, and then
@@ -4589,7 +4640,7 @@ guarantees nothing.
 only the Go side, and:
 
 ```
-table RenderShip
+fixed table RenderShip
 {
     x      float32
     y      float32
@@ -4640,7 +4691,7 @@ $ schema generate --lang go --out gengo .
 
 `writepacket.cpp`, entire:
 
-<!-- example: owed -->
+<!-- example: compile unit=internal/docgate/testdata/units/tutorial/part12 -->
 ```cpp
 #include "NetWire.h"
 #include <cstdio>
@@ -4744,7 +4795,10 @@ re-cook before crossing:
 
 ```
 $ schema cook --root GameConfig --in tree --out Game.cook --verbose .
-cooked Game.cook: 464 bytes, build version 0xb837cbad7d9fd592, little-endian, root GameConfig, 1 nodes, 384 data bytes, 16 attribution bytes
+warning: table RenderFrame: a fixed table's record body is 196624 bytes, past the 65536-byte fixed-form ceiling (docs/SPEC-TABLES.md §3.4) — THE FIXED FORM IS NOT EMITTED FOR IT, because no conforming reader decodes a record that size; it has NO FILE FORM: its file save refuses and its read refuses form 1; the `fixed` keyword still buys it the CLASS (a by-value storage, a cook, a block form)
+report (pack): silent — the data matched the schema exactly
+report (cook): silent — the data matched the schema exactly
+cooked Game.cook: 464 bytes, build version 0x50bb1cc4b2f9c3a5, little-endian, root GameConfig, 1 nodes, 384 data bytes, 16 attribution bytes
 ```
 
 `opencook.go`, entire:
@@ -4820,7 +4874,7 @@ and kinds, storage offsets, ranges, enum vocabularies, optionals and branch
 guards. That is enough to write a generic editor, printer or differ with no
 RTTI and no schema files shipped at runtime. `reflect.cpp`, entire:
 
-<!-- example: owed -->
+<!-- example: compile unit=internal/docgate/testdata/units/tutorial/part12 -->
 ```cpp
 #include "ConfigTable.h"
 #include <cstdio>

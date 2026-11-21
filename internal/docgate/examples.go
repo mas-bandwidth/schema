@@ -32,11 +32,10 @@ import (
 //     so a page cannot drift into fragments without the count moving.
 //   - OWED: `<!-- example: owed -->` on the line above the fence. A whole
 //     program the page means to compile that does not compile against
-//     today's generator (the tutorial's later parts were written against a
-//     table API the declared table classes replaced, docs/SPEC-TABLES.md
-//     §2.2). It is counted, never compiled, and the number of them is a
-//     ceiling the gate holds (OwedCeiling): fixing one lowers it, and adding
-//     one is red.
+//     today's generator. It is counted, never compiled, and the number of
+//     them is a ceiling the gate holds (OwedCeiling): fixing one lowers it,
+//     and adding one is red. The ceiling is 0, so the class exists to name
+//     the debt a future API change makes, never to carry it.
 //
 // An example in none of the four is a finding, and so is a fence in a
 // language the gate has never heard of: silence is never the passing state.
@@ -348,9 +347,10 @@ var ParseOnly = map[string]bool{"go": true, "js": true, "python": true, "ruby": 
 
 // OwedCeiling is the most OWED examples the pages may carry. It only ever
 // comes down: an owed program fixed and marked compile lowers it, and a new
-// owed example is red. The tutorial's parts after Part 6 hold them (the
-// table API they were written against predates the declared table classes).
-const OwedCeiling = 18
+// owed example is red. It is 0: the tutorial's eighteen owed programs were
+// rewritten against the declared table classes and are compile examples, each
+// against the unit of its part under testdata/units/tutorial.
+const OwedCeiling = 0
 
 // Count is how many examples of one page, one language and one class there are.
 type Count struct {
