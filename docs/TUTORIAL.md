@@ -1851,6 +1851,7 @@ both sides ship together, and the cook or the block when they share a build.
 
 `Config.schema`, a new file in the same unit:
 
+<!-- example: schema unit=internal/docgate/testdata/units/tutorial/starlight file=Config.schema -->
 ```
 package starlight
 
@@ -1930,6 +1931,7 @@ struct ShipConfig {
 The encode surface is a measure and save split, and you own every buffer,
 because generated table code allocates nothing. `save.cpp`, entire:
 
+<!-- example: compile unit=internal/docgate/testdata/units/tutorial/starlight -->
 ```cpp
 #include "ConfigTable.h"
 #include <cstdio>
@@ -1948,13 +1950,13 @@ int main()
     ship.armor = 8;
     ship.ship_type = ShipType::Corvette;
 
-    int64_t size = ShipConfigMeasure( ship );          // exact, writes nothing
+    int64_t size = ShipConfigMeasure( &ship );         // exact, writes nothing
     std::vector<uint8_t> buffer( size );
-    int64_t wrote = ShipConfigSave( ship, buffer.data(), size );
+    int64_t wrote = ShipConfigSave( &ship, buffer.data(), size );
     printf( "measured %lld, saved %lld bytes\n", (long long) size, (long long) wrote );
 
     ShipConfig blank;
-    printf( "an all-default ShipConfig measures %lld bytes\n", (long long) ShipConfigMeasure( blank ) );
+    printf( "an all-default ShipConfig measures %lld bytes\n", (long long) ShipConfigMeasure( &blank ) );
 
     FILE * f = fopen( "ship.bin", "wb" );
     fwrite( buffer.data(), 1, wrote, f );
@@ -2174,7 +2176,7 @@ You can see `kind_mismatch` by copying the unit again to `starlight-3.0` and
 making `armor` a `float32 = 1.0`. `load3.cpp` there is `load.cpp` with one
 printf, because `armor` is a different C++ type now:
 
-<!-- example: compile unit=generated/bench/tables/cpp harness=cpp-table-report -->
+<!-- example: compile unit=internal/docgate/testdata/units/tutorial/starlight-3.0 harness=cpp-tutorial-load -->
 ```cpp
     printf( "load: %s  armor=%g (a float now)\n", ok ? "ok" : "stopped", loaded.armor );
     printf( "  report: unknown=%d kind_mismatch=%d clamped=%d\n",
