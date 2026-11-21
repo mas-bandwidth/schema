@@ -41,9 +41,14 @@ func TestGoRefusesABasenameGoReadsAsABuildConstraint(t *testing.T) {
 			t.Errorf("%s.schema: cpp refused a basename only Go cannot carry: %v", base, err)
 		}
 	}
+	// `_test.go` is read off the WHOLE name, past a dot: test-only
+	if _, err := New().Generate(loadBase(t, "Player.v1_test", src), "go", Options{}); err == nil || !strings.Contains(err.Error(), "build constraint") {
+		t.Errorf("Player.v1_test.schema: want the Go file-name refusal, got %v", err)
+	}
 	// a name that only looks like one is generated: the go tool reads the
-	// parts after the first `_`, exactly in lower case
-	for _, base := range []string{"Player", "linux", "Player_Windows", "Player_tests", "Player_x"} {
+	// GOOS/GOARCH parts after the first `_` and before the first `.`, exactly
+	// in lower case, so Player_test.v1.go is an ordinary package file
+	for _, base := range []string{"Player", "linux", "Player_Windows", "Player_tests", "Player_x", "Player_test.v1", "Player_linux.v1"} {
 		files, err := New().Generate(loadBase(t, base, src), "go", Options{})
 		if err != nil {
 			t.Errorf("%s.schema: %v", base, err)
