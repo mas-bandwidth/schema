@@ -1035,6 +1035,19 @@ macro_rules! with_root {
                 use streamdemo::{feed_from_json_bytes as $from_json, feed_load as $load, feed_save_checked as $save, feed_to_json_checked as $to_json};
                 Some($body)
             }
+            // the opt-in shapes unit (MANIFEST.txt `opt-in shapes`)
+            ("shapes", "Bounds") => {
+                #[allow(unused_imports)]
+                use shapes::{bounds_from_json_bytes as $from_json, bounds_load as $load, bounds_save_checked as $save, bounds_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("shapes", "FixedBounds") => {
+                #[allow(unused_imports, unused_variables)]
+                use shapes::{fixed_bounds_from_json_bytes as $from_json, fixed_bounds_load as $load, fixed_bounds_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(shapes, FixedBounds, FixedBoundsRow, fixed_bounds_cook_write, fixed_bounds_fixed_save, fixed_bounds_fixed_measure);
+                Some($body)
+            }
             ("listdemo", "Ints") => {
                 #[allow(unused_imports)]
                 use listdemo::{ints_from_json_bytes as $from_json, ints_load as $load, ints_save_checked as $save, ints_to_json_checked as $to_json};
@@ -1334,6 +1347,7 @@ fn fixed_read(unit: &str, root: &str, data: &[u8]) -> Option<FixedRead> {
         ("tblscalars2", "SimState") => fixed_read!(tblscalars2, sim_state_fixed_load, sim_state_fixed_save, sim_state_fixed_measure, SimStateRow, data),
         ("tblfixedevo", "EvoRoot") => fixed_read!(tblfixedevo, evo_root_fixed_load, evo_root_fixed_save, evo_root_fixed_measure, EvoRootRow, data),
         ("cooktorture", "TortureFixedWref") => fixed_read!(cooktorture, torture_fixed_wref_fixed_load, torture_fixed_wref_fixed_save, torture_fixed_wref_fixed_measure, TortureFixedWrefRow, data),
+        ("shapes", "FixedBounds") => fixed_read!(shapes, fixed_bounds_fixed_load, fixed_bounds_fixed_save, fixed_bounds_fixed_measure, FixedBoundsRow, data),
         ("tblvarevo1", "EvoMsg") => fixed_read!(tblvarevo1, evo_msg_fixed_load, evo_msg_fixed_save, evo_msg_fixed_measure, EvoMsgRow, data),
         ("tblvarevo2", "EvoMsg") => fixed_read!(tblvarevo2, evo_msg_fixed_load, evo_msg_fixed_save, evo_msg_fixed_measure, EvoMsgRow, data),
         ("tblvarevo3", "EvoMsg") => fixed_read!(tblvarevo3, evo_msg_fixed_load, evo_msg_fixed_save, evo_msg_fixed_measure, EvoMsgRow, data),
@@ -1421,6 +1435,12 @@ macro_rules! with_fixed_value_root {
                 use cooktorture as $k;
                 #[allow(unused_imports)]
                 use $k::{TortureFixedWrefRow as $row, TortureFixedWref as $value, torture_fixed_wref_fixed_load as $load, torture_fixed_wref_fixed_save as $save, torture_fixed_wref_fixed_measure as $measure, torture_fixed_wref_to_json_checked as $to, torture_fixed_wref_from_json_bytes as $from, torture_fixed_wref_cook_write as $cook};
+                Some($body)
+            }
+            ("shapes", "FixedBounds") => {
+                use shapes as $k;
+                #[allow(unused_imports)]
+                use $k::{FixedBoundsRow as $row, FixedBounds as $value, fixed_bounds_fixed_load as $load, fixed_bounds_fixed_save as $save, fixed_bounds_fixed_measure as $measure, fixed_bounds_to_json_checked as $to, fixed_bounds_from_json_bytes as $from, fixed_bounds_cook_write as $cook};
                 Some($body)
             }
             ("tblvarevo1", "EvoMsg") => {
@@ -2656,6 +2676,98 @@ fn wref_login_request_row(v: &mut backenddemo::LoginRequestRow, path: &str, kind
 
 fn wref_check_login_request_row(_v: &backenddemo::LoginRequestRow, _path: &str, _kind: &str) {}
 
+// THE SHAPES UNIT (test/tables/shapes; MANIFEST.txt `opt-in shapes`). A `real`
+// is a decimal parsed as an f64 and rounded to the float32 storage the way any
+// caller's assignment rounds it, so a row can name the float32 one step past a
+// bound exactly; a `float` names a non-finite value (FORMAT.md). The bounds,
+// the count under Min and the enum extent are the generated writers' own
+// checks (debug asserts on the wire, refusals in the text writer).
+fn wref_shapes_float(kind: &str, value: &str) -> f32 {
+    match kind {
+        "real" => value.parse::<f64>().unwrap_or_else(|_| fail(&format!("write-refusal: real value {value}"))) as f32,
+        "float" => wref_float(value),
+        _ => fail(&format!("write-refusal: {kind} is not a float kind")),
+    }
+}
+
+fn wref_bounds(v: &mut shapes::tables::Bounds, path: &str, kind: &str, value: &str) -> Mutation {
+    use shapes::tables::{Pick, Tone};
+    match (path, kind) {
+        ("tenth", "real" | "float") => v.tenth = wref_shapes_float(kind, value),
+        ("seventh", "real" | "float") => v.seventh = wref_shapes_float(kind, value),
+        ("ranged", "real" | "float") => v.ranged = wref_shapes_float(kind, value),
+        ("zero", "real" | "float") => v.zero = wref_shapes_float(kind, value),
+        ("nonzero", "real" | "float") => v.nonzero = wref_shapes_float(kind, value),
+        ("octets", "count") => v.octets.resize(wref_usize(value), 9),
+        ("recs", "count") => {
+            let element = v.recs.first().cloned().unwrap_or_default();
+            v.recs.resize(wref_usize(value), element);
+        }
+        // a Rust enum and a Rust union are native enums: an ordinal or a tag
+        // outside the set cannot be built
+        ("tones[0]", "ordinal") => {
+            if v.tones.is_empty() {
+                fail("write-refusal: Bounds fixture holds no tones[0]");
+            }
+            v.tones[0] = match value {
+                "0" => Tone::None,
+                "1" => Tone::Low,
+                "2" => Tone::Mid,
+                "3" => Tone::High,
+                _ => return Mutation::Unrepresentable,
+            };
+        }
+        // a lawful tag takes its arm at the arm's declared default
+        ("pick", "tag") => {
+            v.pick = match value {
+                "0" => Pick::None,
+                "1" => Pick::Small(0),
+                "2" => Pick::Ratio(0.0),
+                "3" => Pick::On(false),
+                _ => return Mutation::Unrepresentable,
+            };
+        }
+        _ => fail(&format!("write-refusal: Bounds names no {kind} path {path}")),
+    }
+    Mutation::Done
+}
+
+fn wref_fixed_bounds_row(v: &mut shapes::FixedBoundsRow, path: &str, kind: &str, value: &str) -> Mutation {
+    match (path, kind) {
+        ("tenth", "real" | "float") => v.tenth = wref_shapes_float(kind, value),
+        ("seventh", "real" | "float") => v.seventh = wref_shapes_float(kind, value),
+        ("ranged", "real" | "float") => v.ranged = wref_shapes_float(kind, value),
+        ("zero", "real" | "float") => v.zero = wref_shapes_float(kind, value),
+        ("nonzero", "real" | "float") => v.nonzero = wref_shapes_float(kind, value),
+        ("plain", "real" | "float") => v.plain = wref_shapes_float(kind, value),
+        ("wide", "real") => v.wide = value.parse::<f64>().unwrap_or_else(|_| fail(&format!("write-refusal: real value {value}"))),
+        ("wide", "float") => v.wide = wref_float(value) as f64,
+        ("octets", "count") => {
+            let n = wref_usize(value);
+            for i in (v.octets_count.max(0) as usize)..n.min(v.octets.len()) {
+                v.octets[i] = 9;
+            }
+            v.octets_count = n as i32;
+        }
+        ("recs", "count") => {
+            let n = wref_usize(value);
+            for i in (v.recs_count.max(0) as usize)..n.min(v.recs.len()) {
+                v.recs[i] = v.recs[0];
+            }
+            v.recs_count = n as i32;
+        }
+        // a Row holds an ordinal as plain storage
+        ("tones[0]", "ordinal") => {
+            if v.tones_count < 1 {
+                fail("write-refusal: FixedBounds fixture holds no tones[0]");
+            }
+            return wref_int(value, &mut v.tones[0]);
+        }
+        _ => fail(&format!("write-refusal: FixedBounds names no {kind} path {path}")),
+    }
+    Mutation::Done
+}
+
 fn wref_evo_msg_row(v: &mut tblvarevo3::EvoMsgRow, path: &str, kind: &str, value: &str) -> Mutation {
     match (path, kind) {
         ("payload.notice", "bytes" | "length") => {
@@ -2764,6 +2876,13 @@ fn wref_fixed_case(f: &[String], data: &[u8]) -> &'static str {
                 Mutation::Unrepresentable => "unrepresentable\n",
             }
         }
+        ("shapes", "FixedBounds") => {
+            let mut row = wref_fixed_row!(shapes, fixed_bounds_fixed_load, FixedBoundsRow, case, wire, data);
+            match wref_fixed_bounds_row(&mut row, path, kind, value) {
+                Mutation::Done => wref_fixed_save(row, |_| {}, shapes::fixed_bounds_fixed_measure, shapes::fixed_bounds_fixed_save),
+                Mutation::Unrepresentable => "unrepresentable\n",
+            }
+        }
         _ => fail(&format!("write-refusal: no fixed root {unit} {root}")),
     }
 }
@@ -2824,6 +2943,14 @@ fn surface_write_refusal(manifest: &Manifest, out: &str) {
                 let Some(mut v) = listdemo::mixed_load(&data, &mut report) else { fail(&format!("{case}: load refused {wire}")) };
                 match wref_mixed(&mut v, path, kind, value) {
                     Mutation::Done => wref_save(|| listdemo::mixed_save_checked(&v)),
+                    Mutation::Unrepresentable => "unrepresentable\n",
+                }
+            }
+            ("shapes", "Bounds") => {
+                let mut report = shapes::TableReport::default();
+                let Some(mut v) = shapes::bounds_load(&data, &mut report) else { fail(&format!("{case}: load refused {wire}")) };
+                match wref_bounds(&mut v, path, kind, value) {
+                    Mutation::Done => wref_save(|| shapes::bounds_save_checked(&v)),
                     Mutation::Unrepresentable => "unrepresentable\n",
                 }
             }
@@ -3172,6 +3299,14 @@ fn surface_write_refusal_json(manifest: &Manifest, out: &str) {
                     Mutation::Unrepresentable => Err("unrepresentable\n"),
                 }
             }
+            ("shapes", "Bounds") => {
+                let mut report = shapes::TableReport::default();
+                let Some(mut v) = shapes::bounds_load(&data, &mut report) else { fail(&format!("{case}: load refused {wire}")) };
+                match wref_bounds(&mut v, path, kind, value) {
+                    Mutation::Done => Ok(wref_run(|| written(shapes::bounds_to_json_checked(&v)))),
+                    Mutation::Unrepresentable => Err("unrepresentable\n"),
+                }
+            }
             _ => fail(&format!("write-refusal-json: no root {unit} {root}")),
         };
         let answer = match outcome {
@@ -3207,6 +3342,8 @@ fn main() {
             // (§3.3); the retaining file rows read through tblrt1 (§6.6).
             "wire\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-write\nmessage\nblock-reason\ncook-reason\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json"
         );
+        // the opt-in units this leg answers (MANIFEST.txt `opt-in`)
+        println!("unit shapes");
         return;
     }
     if args.len() < 4 {
