@@ -950,6 +950,10 @@ func scanMakefiles(root string, gated map[string]bool) ([]recipe, error) {
 	if err != nil {
 		return nil, err
 	}
+	macros, err := readMakeMacros(files)
+	if err != nil {
+		return nil, err
+	}
 	// Every recipe line that runs `go test` or the proof script is a candidate,
 	// and every candidate is placed: it names a gated package (a recipe, armed
 	// or bare), it names only packages that hold no gated test, it is armed
@@ -958,7 +962,7 @@ func scanMakefiles(root string, gated map[string]bool) ([]recipe, error) {
 	ledger := provesran.NewLedger("`go test` and test/slowgate/proof recipe lines in Makefile, make/*.mk and make/checks/*.mk")
 	var out []recipe
 	for _, f := range files {
-		rs, err := scanOne(root, f, gated, vars, ledger)
+		rs, err := scanOne(root, f, gated, vars, macros, ledger)
 		if err != nil {
 			return nil, err
 		}
@@ -1026,28 +1030,170 @@ func expandMakeVariables(cmd string, vars map[string]string) string {
 	return cmd
 }
 
+// makeMacros is the `define NAME` … `endef` blocks of the scanned makefiles.
+// A recipe that calls one runs the block's lines with its arguments in place
+// of $(1)…$(9), so that is how the scan reads it: `$(call squirrel_nc,$@,
+// TestSquirrelJsonNegativeControl,internal/codegen/squirreltable)` is a proof
+// call that names a test and a package. Read as written, the call was no
+// candidate at all and the block's own line named the package `./$(3)/`, so
+// nineteen required names were checked against nothing.
+type makeMacros struct {
+	bodies map[string][]string // each block's recipe lines, continuations joined
+	called map[string]bool     // blocks some recipe line calls
+}
+
+var makeCall = regexp.MustCompile(`\$\(call ([A-Za-z_][A-Za-z0-9_]*),`)
+
+// logicalRecipe joins the recipe line at index i with its backslash
+// continuations, and returns the index of its last physical line.
+func logicalRecipe(lines []string, i int) (string, int) {
+	cmd := lines[i]
+	for strings.HasSuffix(strings.TrimRight(cmd, " "), `\`) && i+1 < len(lines) {
+		i++
+		cmd = strings.TrimSuffix(strings.TrimRight(cmd, " "), `\`) + " " + lines[i]
+	}
+	return cmd, i
+}
+
+func readLines(path string) ([]string, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	lines := strings.Split(string(b), "\n")
+	for i := range lines {
+		lines[i] = strings.TrimSuffix(lines[i], "\r")
+	}
+	return lines, nil
+}
+
+// defineName is the NAME of a `define NAME` line, or "".
+func defineName(line string) string {
+	rest, ok := strings.CutPrefix(line, "define ")
+	if !ok {
+		return ""
+	}
+	if f := strings.Fields(rest); len(f) > 0 {
+		return f[0]
+	}
+	return ""
+}
+
+func readMakeMacros(files []string) (makeMacros, error) {
+	m := makeMacros{bodies: map[string][]string{}, called: map[string]bool{}}
+	for _, path := range files {
+		lines, err := readLines(path)
+		if err != nil {
+			return m, err
+		}
+		define := ""
+		for i := 0; i < len(lines); i++ {
+			if define == "" {
+				if name := defineName(lines[i]); name != "" {
+					define = name
+					continue
+				}
+			} else if strings.HasPrefix(lines[i], "endef") {
+				define = ""
+				continue
+			}
+			if !strings.HasPrefix(lines[i], "\t") {
+				continue
+			}
+			var cmd string
+			cmd, i = logicalRecipe(lines, i)
+			if define != "" {
+				m.bodies[define] = append(m.bodies[define], cmd)
+				continue
+			}
+			for _, c := range makeCall.FindAllStringSubmatch(cmd, -1) {
+				m.called[c[1]] = true
+			}
+		}
+	}
+	return m, nil
+}
+
+// instantiate returns the lines a recipe line's $(call NAME,…) runs: each
+// known block's lines with the call's arguments substituted.
+func (m makeMacros) instantiate(cmd string) []string {
+	var out []string
+	for _, loc := range makeCall.FindAllStringSubmatchIndex(cmd, -1) {
+		body, ok := m.bodies[cmd[loc[2]:loc[3]]]
+		if !ok {
+			continue
+		}
+		args, ok := callArguments(cmd[loc[1]:])
+		if !ok {
+			continue
+		}
+		for _, line := range body {
+			for n := 9; n >= 1; n-- {
+				arg := ""
+				if n <= len(args) {
+					arg = args[n-1]
+				}
+				line = strings.ReplaceAll(line, fmt.Sprintf("$(%d)", n), arg)
+			}
+			// a block is expanded twice (the call, then the recipe), so it
+			// spells a shell `$` as `$$$$`; one expansion leaves `$$`
+			out = append(out, strings.ReplaceAll(line, "$$$$", "$$"))
+		}
+	}
+	return out
+}
+
+// callArguments splits the text after `$(call NAME,` at its top-level commas,
+// up to the parenthesis that closes the call.
+func callArguments(rest string) ([]string, bool) {
+	var args []string
+	depth, start := 0, 0
+	for i, r := range rest {
+		switch r {
+		case '(', '{':
+			depth++
+		case ')', '}':
+			if depth == 0 {
+				return append(args, strings.TrimSpace(rest[start:i])), true
+			}
+			depth--
+		case ',':
+			if depth == 0 {
+				args = append(args, strings.TrimSpace(rest[start:i]))
+				start = i + 1
+			}
+		}
+	}
+	return nil, false
+}
+
 // goTestCommand is `go test` as a command word. `printf 'go test/conformance'`,
 // `cargo test` and `cp a.go test/x` are not it.
 var goTestCommand = regexp.MustCompile("(?:^|[\\s;&|(@=/+`\"'-])go test(?:\\s|$)")
 
-func scanOne(root, path string, gated map[string]bool, vars map[string]string, ledger *provesran.Ledger) ([]recipe, error) {
-	fh, err := os.Open(path)
+func scanOne(root, path string, gated map[string]bool, vars map[string]string, macros makeMacros, ledger *provesran.Ledger) ([]recipe, error) {
+	lines, err := readLines(path)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = fh.Close() }() // Read-only input; Scanner reports read errors.
 	rel, err := filepath.Rel(root, path)
 	if err != nil {
 		return nil, err
 	}
 	var out []recipe
 	target := "(no target)"
-	sc := bufio.NewScanner(fh)
-	sc.Buffer(make([]byte, 1<<20), 1<<20)
-	lineNo := 0
-	for sc.Scan() {
-		lineNo++
-		line := sc.Text()
+	define := ""
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
+		if define == "" {
+			if name := defineName(line); name != "" {
+				define = name
+				continue
+			}
+		} else if strings.HasPrefix(line, "endef") {
+			define = ""
+			continue
+		}
 		if !strings.HasPrefix(line, "\t") {
 			if m := targetLine.FindStringSubmatch(line); m != nil && !strings.HasPrefix(line, "#") {
 				names := strings.Fields(m[1])
@@ -1057,54 +1203,64 @@ func scanOne(root, path string, gated map[string]bool, vars map[string]string, l
 			}
 			continue
 		}
-		start := lineNo
-		cmd := line
-		for strings.HasSuffix(strings.TrimRight(cmd, " "), `\`) && sc.Scan() {
-			lineNo++
-			cmd = strings.TrimSuffix(strings.TrimRight(cmd, " "), `\`) + " " + sc.Text()
-		}
-		cmd = expandMakeVariables(cmd, vars)
-		proof := strings.Contains(cmd, "test/slowgate/proof")
-		if !strings.Contains(cmd, "go test") && !proof {
+		start := i + 1
+		var cmd string
+		cmd, i = logicalRecipe(lines, i)
+		if define != "" && macros.called[define] {
+			// a block some recipe calls is judged at each call, with the
+			// call's arguments; its own text names `$(1)`, not a package
 			continue
 		}
-		if strings.Contains(cmd, "#") && strings.HasPrefix(strings.TrimSpace(cmd), "#") {
-			continue
-		}
-		armed := strings.Contains(cmd, "SCHEMA_SLOW=1") ||
-			strings.Contains(cmd, "SCHEMA_REQUIRE_CORPUS") ||
-			proof
-		named := namedPackages(cmd)
-		pkgs := packagesOf(cmd, gated)
-		if proof && len(pkgs) == 0 {
-			// A proof line is kept whatever it names: its required names are
-			// audited against the package's declarations (prooflist.go), and
-			// a line dropped here was a list nobody checked.
-			pkgs = named
-		}
-		if len(pkgs) == 0 {
-			switch {
-			case proof:
-				ledger.Unknown(fmt.Sprintf("%s:%d: %s", rel, start, target),
-					"runs test/slowgate/proof on a package this scan cannot read, so its required names are checked against nothing: spell the package on the line")
-			case len(named) > 0, armed, !goTestCommand.MatchString(cmd):
-				// it names only packages that hold no gated test; or it sets
-				// the variable, so nothing it runs can skip at the gate; or
-				// `go test` is text in the line, not a command it runs
-				ledger.Judged()
-			default:
-				ledger.Unknown(fmt.Sprintf("%s:%d: %s", rel, start, target),
-					"runs `go test` without the variable on packages this scan cannot read (no ./package on the line, no `cd <dir> &&`, and no simple make variable that names one): spell the package on the line")
+		for _, run := range append([]string{cmd}, macros.instantiate(cmd)...) {
+			if r, ok := judgeRecipeLine(rel, start, target, expandMakeVariables(run, vars), gated, ledger); ok {
+				out = append(out, r)
 			}
-			continue
 		}
-		ledger.Judged()
-		out = append(out, recipe{
-			file: rel, line: start, target: target, cmd: cmd,
-			packages: pkgs, armed: armed, runPat: runPattern(cmd),
-		})
 	}
-	return out, sc.Err()
+	return out, nil
+}
+
+// judgeRecipeLine places one recipe line, and returns it as a recipe when it
+// names a gated package or runs the proof script.
+func judgeRecipeLine(rel string, start int, target, cmd string, gated map[string]bool, ledger *provesran.Ledger) (recipe, bool) {
+	proof := strings.Contains(cmd, "test/slowgate/proof")
+	if !strings.Contains(cmd, "go test") && !proof {
+		return recipe{}, false
+	}
+	if strings.HasPrefix(strings.TrimSpace(cmd), "#") {
+		return recipe{}, false
+	}
+	armed := strings.Contains(cmd, "SCHEMA_SLOW=1") ||
+		strings.Contains(cmd, "SCHEMA_REQUIRE_CORPUS") ||
+		proof
+	named := namedPackages(cmd)
+	pkgs := packagesOf(cmd, gated)
+	if proof && len(pkgs) == 0 {
+		// A proof line is kept whatever it names: its required names are
+		// audited against the package's declarations (prooflist.go), and a
+		// line dropped here was a list nobody checked.
+		pkgs = named
+	}
+	where := fmt.Sprintf("%s:%d: %s", rel, start, target)
+	if len(pkgs) == 0 {
+		switch {
+		case proof:
+			ledger.Unknown(where, "runs test/slowgate/proof on a package this scan cannot read, so its required names are checked against nothing: spell the package on the line")
+		case len(named) > 0, armed, !goTestCommand.MatchString(cmd):
+			// it names only packages that hold no gated test; or it sets the
+			// variable, so nothing it runs can skip at the gate; or `go test`
+			// is text in the line, not a command it runs
+			ledger.Judged()
+		default:
+			ledger.Unknown(where, "runs `go test` without the variable on packages this scan cannot read (no ./package on the line, no `cd <dir> &&`, no simple make variable that names one): spell the package on the line")
+		}
+		return recipe{}, false
+	}
+	ledger.Judged()
+	return recipe{
+		file: rel, line: start, target: target, cmd: cmd,
+		packages: pkgs, armed: armed, runPat: runPattern(cmd),
+	}, true
 }
 
 // packagesOf is the gated packages a recipe line names, as namedPackages
