@@ -493,14 +493,29 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
         }
         if (allDef) { return true; }
       }
-      w.leb(ids.ref(fd.id));
-      w.u8(14);
+      // A COUNTED ARRAY AT ITS BIRTH ELIDES (§3; tablewire encodeArray): Min
+      // elements, each at its default — a table element's body the terminator
+      // alone — is the value a fresh holder has, so it is not written, exactly
+      // as a scalar at its default is not
+      let birth = (fd.min || 0) > 0 && n === fd.min && !fd.req && !fd.opt;
+      const mark = ids.mark();
+      const ref = ids.ref(fd.id);
       const body = new TableVariableWriter();
       body.u8(fd.ek);
       body.leb(n);
       for (let i = 0; i < n; i++) {
+        const at = body.len;
         if (!TableVariableWriteElement(fd, body, ids, nodes, val[i], retain, path, i)) { return false; }
+        if (birth) {
+          const s = fd.e.s;
+          birth = s === "tab" ? body.len - at === 2 && body.b[at] === 1 && body.b[at + 1] === 0
+            : s === "union" || s === "ptr" ? val[i] === null
+            : !fd.tl && TableVariableElemIsDefault(fd.e, val[i]);
+        }
       }
+      if (birth) { ids.rollback(mark); return true; }
+      w.leb(ref);
+      w.u8(14);
       w.leb(body.len);
       w.raw(body.b);
       return true;
@@ -2512,18 +2527,28 @@ class TableVariableTextIn {
     if (this.number() === null) { this.bad = true; return false; }
     return true;
   }
-  // a skipped OBJECT may still be a pointer's: an "&node" opening it names a
-  // node the storage could not hold, and the label still exists (§16.7)
+  // a skipped OBJECT may still be a pointer's, and THE LABEL RULES HOLD THERE
+  // (§16.7): a label alone (a trailing comma allowed) REFERS, so the text must
+  // have defined it and closed that definition; a label with fields DEFINES,
+  // so the text must not have defined it, and it is registered with no node,
+  // open until this skipped object closes — a later reference reads null and
+  // a second definition refuses
   skipContainer(close, depth, graph, report) {
     if (depth > 128) { this.bad = true; return false; }
     this.p++;
     let first = true;
+    let opened = null;
+    const closed = () => {
+      this.p++;
+      if (opened !== null) { graph.set(opened, { node: null, c: null, open: false }); }
+      return true;
+    };
     // a skipped object's keys are held to the layer's rule too: a repeated
     // key refuses in every object of the text (§16.2, §16.12)
     const keys = close === "}" ? new Set() : null;
     for (;;) {
       let ch = this.peek();
-      if (ch === close) { this.p++; return true; }
+      if (ch === close) { return closed(); }
       if (ch === "") { this.bad = true; return false; }
       if (close === "}") {
         const key = this.name();
@@ -2533,24 +2558,31 @@ class TableVariableTextIn {
         this.p++;
         if (keys.has(key)) { this.bad = true; return false; }
         keys.add(key);
-        if (key.length > 0 && key[0] === "&") {
+        if (key.length > 0 && key[0] === "&" && graph !== null) {
           if (!first || key !== "&node") { this.bad = true; return false; }
           const label = this.label();
           if (label === null) { return false; }
-          if (!graph.has(label)) { graph.set(label, { node: null, c: null, open: false }); }
-          first = false;
+          const entry = graph.get(label);
           ch = this.peek();
-          if (ch === ",") { this.p++; continue; }
-          if (ch === close) { this.p++; return true; }
-          this.bad = true;
-          return false;
+          if (ch !== "," && ch !== close) { this.bad = true; return false; }
+          if (ch === ",") { this.p++; ch = this.peek(); }
+          if (ch === close) {
+            this.p++;
+            if (entry === undefined || entry.open) { this.bad = true; return false; }
+            return true;
+          }
+          if (entry !== undefined) { this.bad = true; return false; }
+          graph.set(label, { node: null, c: null, open: true });
+          opened = label;
+          first = false;
+          continue;
         }
       }
       first = false;
       if (!this.skip(depth + 1, graph, report)) { return false; }
       ch = this.peek();
       if (ch === ",") { this.p++; continue; }
-      if (ch === close) { this.p++; return true; }
+      if (ch === close) { return closed(); }
       this.bad = true;
       return false;
     }
@@ -2587,7 +2619,10 @@ function TableVariableFromJson(c, text, report) {
   // The dialect accepts exactly one BOM at byte zero, never as whitespace.
   if (text.charCodeAt(0) === 0xfeff) { inp.p = 1; }
   const v = c.make();
-  const ok = TableVariableReadTable(c, inp, v, 0, new Map(), report);
+  // the label graph exists for a VARIABLE root only (§2.2, §16.7): a fixed
+  // root has no pointer, so an "&node" in a value it skips is a key like any
+  // other and the value is skipped whole
+  const ok = TableVariableReadTable(c, inp, v, 0, c.variable ? new Map() : null, report);
   if (ok) {
     inp.space();
     if (inp.p !== text.length) { inp.bad = true; }
@@ -2845,7 +2880,7 @@ function TableVariableTextArray(fd, inp, v, depth, graph, report) {
 // already defined, alone, REFERS to it; any other key is a node named once.
 // A reference inside its own definition is the cycle the wire refuses.
 function TableVariableTextPointer(d, inp, holder, key, depth, graph, report) {
-  if (depth + 1 > 128) { inp.bad = true; return false; }
+  if (graph === null || depth + 1 > 128) { inp.bad = true; return false; }
   if (inp.peek() !== "{") { inp.bad = true; return false; }
   inp.p++;
   let ch = inp.peek();
@@ -2865,6 +2900,9 @@ function TableVariableTextPointer(d, inp, holder, key, depth, graph, report) {
   if (label === null) { return false; }
   const entry = graph.get(label);
   ch = inp.peek();
+  // the label is followed by its object's , or } and nothing else:
+  // {"&node": 1 "x": 2} is not JSON (§16.7, RFC 8259's value-separator)
+  if (ch !== "," && ch !== "}") { inp.bad = true; return false; }
   if (ch === ",") { inp.p++; ch = inp.peek(); }
   const bare = ch === "}";
   if (bare !== (entry !== undefined)) { inp.bad = true; return false; }

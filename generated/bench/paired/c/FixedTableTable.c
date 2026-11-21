@@ -1747,12 +1747,15 @@ static SCHEMA_UNUSED int64_t bench_table_json_token_integer( const char * token,
 
 #ifdef SCHEMA_BENCH_TABLE_GRAPH_RUNTIME
 static SCHEMA_UNUSED int bench_table_json_read_pointer( bench_table_json_in_t * in, void * slot, const bench_table_field_info_t * f, int32_t depth );
-static SCHEMA_UNUSED int bench_table_json_skipped_ampersand( bench_table_json_in_t * in, const char * key );
+static SCHEMA_UNUSED int bench_table_json_skipped_ampersand( bench_table_json_in_t * in, const char * key, int * reference, uint64_t * opened );
+static SCHEMA_UNUSED void bench_table_json_skipped_close( bench_table_json_in_t * in, uint64_t opened );
 #else
 static SCHEMA_UNUSED int bench_table_json_read_pointer( bench_table_json_in_t * in, void * slot, const bench_table_field_info_t * f, int32_t depth )
 { (void)slot; (void)f; (void)depth; in->bad = 1; return 0; }
-static SCHEMA_UNUSED int bench_table_json_skipped_ampersand( bench_table_json_in_t * in, const char * key )
-{ (void)key; in->bad = 1; return 0; }
+static SCHEMA_UNUSED int bench_table_json_skipped_ampersand( bench_table_json_in_t * in, const char * key, int * reference, uint64_t * opened )
+{ (void)key; (void)reference; (void)opened; in->bad = 1; return 0; }
+static SCHEMA_UNUSED void bench_table_json_skipped_close( bench_table_json_in_t * in, uint64_t opened )
+{ (void)in; (void)opened; }
 #endif
 
 /* THE KEYS OF ONE OBJECT (docs/SPEC-TABLES.md §16.2): a repeated key refuses
@@ -1763,8 +1766,9 @@ static SCHEMA_UNUSED int bench_table_json_skipped_ampersand( bench_table_json_in
    object of a few keys and on the heap past that, so the set is as large as
    the object's own keys and never limited by the table's width. Two keys are
    the same key when their DECODED bytes are, so an escape spells the same key
-   as the character it names. */
-#define BENCH_K_TABLE_JSON_KEYS_LOCAL 64
+   as the character it names. The stack set is small (eight keys at half
+   load) because one lives in every frame of a text nested to the depth cap. */
+#define BENCH_K_TABLE_JSON_KEYS_LOCAL 16
 
 #ifndef schema_allocate
 #define schema_allocate(bytes) calloc(1,(size_t)(bytes))
@@ -1866,15 +1870,15 @@ static SCHEMA_UNUSED int bench_table_json_skip_members( bench_table_json_in_t * 
     uint64_t seen[64];
     int32_t seen_count = 0;
     int first = 1;
+    uint64_t opened = 0; /* the label a definition this skipped object opened */
     if ( depth > BENCH_K_TABLE_JSON_MAX_DEPTH ) { in->bad = 1; return 0; }
     memset( seen, 0, sizeof( seen ) );
     in->pos++; /* the opening bracket */
     for ( ;; )
     {
         char c = bench_table_json_peek( in );
-        if ( c == close ) { in->pos++; return 1; }
+        if ( c == close ) { in->pos++; bench_table_json_skipped_close( in, opened ); return 1; }
         if ( c == 0 ) { in->bad = 1; return 0; }
-        int consumed = 0;
         if ( close == '}' )
         {
             char key[BENCH_K_TABLE_JSON_MAX_KEY];
@@ -1896,13 +1900,25 @@ static SCHEMA_UNUSED int bench_table_json_skip_members( bench_table_json_in_t * 
             added = bench_table_json_keys_add( in, keys, quote, key, length );
             if ( added < 0 ) { return 0; }
             if ( added == 0 ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; }
-            if ( key[0] == '&' && in->graph != NULL ) { if ( !first ) { in->bad = 1; return 0; } if ( !bench_table_json_skipped_ampersand(in,key) ) { return 0; } consumed = 1; }
+            if ( key[0] == '&' && in->graph != NULL )
+            {
+                /* THE LABEL RULES HOLD IN A SKIPPED VALUE (§16.7): a label
+                   alone refers and must name a closed definition; a label
+                   with fields defines, must be new, and stays open until this
+                   object closes. Its comma, if any, is consumed with it. */
+                int reference = 0;
+                if ( !first ) { in->bad = 1; return 0; }
+                if ( !bench_table_json_skipped_ampersand( in, key, &reference, &opened ) ) { return 0; }
+                if ( reference ) { return 1; }
+                first = 0;
+                continue;
+            }
         }
         first = 0;
-        if ( !consumed && !bench_table_json_skip_value( in, depth + 1 ) ) { return 0; }
+        if ( !bench_table_json_skip_value( in, depth + 1 ) ) { return 0; }
         c = bench_table_json_peek( in );
         if ( c == ',' ) { in->pos++; continue; }   /* a trailing comma is accepted */
-        if ( c == close ) { in->pos++; return 1; }
+        if ( c == close ) { in->pos++; bench_table_json_skipped_close( in, opened ); return 1; }
         in->bad = 1;
         return 0;
     }
@@ -2408,19 +2424,45 @@ static SCHEMA_UNUSED int schema_bench_table_json_text_total_keep_( bench_table_j
     return 0;
 }
 
+/* THE NESTING WALK'S FRAMES STAY SMALL. A text nested to the depth cap
+   (kTableJsonMaxDepth) recurses read_scalar -> read_pointer or read_union ->
+   read_table -> read_field once per level, and the 512 KiB stack a case thread
+   has must hold all of them, sanitizers included. So the recursive dispatch
+   keeps no buffer of its own: a union's key, a leaf's spelling, a keyed array's
+   tracking each live in a reader of their own, kept out of line, whose frame
+   exists only while that one value is read. */
+#ifndef SCHEMA_BENCH_JSON_NOINLINE
+#if defined(__GNUC__) || defined(__clang__)
+#define SCHEMA_BENCH_JSON_NOINLINE __attribute__((noinline))
+#elif defined(_MSC_VER)
+#define SCHEMA_BENCH_JSON_NOINLINE __declspec(noinline)
+#else
+#define SCHEMA_BENCH_JSON_NOINLINE
+#endif
+#endif
+
+static SCHEMA_UNUSED SCHEMA_BENCH_JSON_NOINLINE int bench_table_json_read_union( bench_table_json_in_t * in, void * storage, const bench_table_field_info_t * f, int32_t depth );
+static SCHEMA_UNUSED SCHEMA_BENCH_JSON_NOINLINE int bench_table_json_read_leaf( bench_table_json_in_t * in, void * storage, const bench_table_field_info_t * f, int32_t depth );
+
 static SCHEMA_UNUSED int bench_table_json_read_scalar( bench_table_json_in_t * in, void * storage, const bench_table_field_info_t * f, int32_t depth )
 {
-    const char * token = NULL;
-    int64_t length = 0;
-    int integral = 0;
-    char textbuf[192]; /* a wide fixed's string spelling: 128 fraction digits, a whole part, a sign and a point */
     if ( f->text_list != 0 ) { return schema_bench_table_json_read_text_element_( in, storage, f, depth ); }
     if ( f->kind == 17 )
     {
         if ( bench_table_json_value_shape(in) == 'z' ) { bench_table_json_set_raw(storage,f->elem_size,0); return bench_table_json_literal(in,"null"); }
         return bench_table_json_read_pointer(in,storage,f,depth);
     }
-    if ( f->arms != NULL )
+    if ( f->arms != NULL ) { return bench_table_json_read_union( in, storage, f, depth ); }
+    if ( f->kind == 13 )
+    {
+        f->table->reset( storage );
+        return bench_table_json_read_table( in, storage, f->table, depth + 1 );
+    }
+    return bench_table_json_read_leaf( in, storage, f, depth );
+}
+
+static SCHEMA_UNUSED SCHEMA_BENCH_JSON_NOINLINE int bench_table_json_read_union( bench_table_json_in_t * in, void * storage, const bench_table_field_info_t * f, int32_t depth )
+{
     {
         /* a union is an object with ONE key, the arm's name; {} is None, and
            two keys is a text this walk will not guess at */
@@ -2443,10 +2485,14 @@ static SCHEMA_UNUSED int bench_table_json_read_scalar( bench_table_json_in_t * i
             const char * name = bench_table_json_variant_name( f, (uint64_t) t );
             if ( name != NULL && strcmp( name, key ) == 0 ) { tag = t; break; }
         }
+        /* DEPTH (§16.2): the union's holder is at depth, the union object at
+           depth+1, and the arm's value at depth+2, where it is read or
+           skipped; a field arm reads through read_field(depth+1), whose own
+           scalar walk adds the level, as a by-value field's does */
         if ( tag == 0 )
         {
             in->report->unknown++;
-            if ( !bench_table_json_skip_value( in, depth + 1 ) ) { return 0; }
+            if ( !bench_table_json_skip_value( in, depth + 2 ) ) { return 0; }
         }
         else
         {
@@ -2455,14 +2501,14 @@ static SCHEMA_UNUSED int bench_table_json_read_scalar( bench_table_json_in_t * i
             char want = arm != NULL ? bench_table_json_shape( arm ) : (arms->arms[tag].table != NULL ? 'o' : 'z');
             if ( !( arm != NULL ? bench_table_json_shape_accepts( arm, bench_table_json_value_shape( in ) ) : bench_table_json_value_shape( in ) == want ) && !(arm != NULL && arm->kind == 17 && !arm->is_array && bench_table_json_value_shape(in) == 'z') ) {
                 in->report->refused=1, in->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH;
-                if ( !bench_table_json_skip_value( in, depth+1 ) ) { return 0; }
+                if ( !bench_table_json_skip_value( in, depth+2 ) ) { return 0; }
             } else {
                 if ( arm != NULL ) {
                     memset( payload, 0, arms->arms[tag].size );
                     if ( !bench_table_json_read_field( in, storage, arm, depth+1 ) ) { return 0; }
                 } else if ( arms->arms[tag].table != NULL ) {
                     arms->arms[tag].table->reset( payload );
-                    if ( !bench_table_json_read_table( in, payload, arms->arms[tag].table, depth+1 ) ) { return 0; }
+                    if ( !bench_table_json_read_table( in, payload, arms->arms[tag].table, depth+2 ) ) { return 0; }
                 } else if ( !bench_table_json_literal( in, "null" ) ) { return 0; }
                 bench_table_json_set_raw( (uint8_t *)storage+arms->tag_offset, arms->tag_size, (uint64_t)tag );
             }
@@ -2473,11 +2519,16 @@ static SCHEMA_UNUSED int bench_table_json_read_scalar( bench_table_json_in_t * i
         in->bad = 1; /* a second key: a one-of with two arms is not a value */
         return 0;
     }
-    if ( f->kind == 13 )
-    {
-        f->table->reset( storage );
-        return bench_table_json_read_table( in, storage, f->table, depth + 1 );
-    }
+}
+
+/* every value that holds no nested value: an enum, flags, a bool, a
+   timestamp, a number */
+static SCHEMA_UNUSED SCHEMA_BENCH_JSON_NOINLINE int bench_table_json_read_leaf( bench_table_json_in_t * in, void * storage, const bench_table_field_info_t * f, int32_t depth )
+{
+    const char * token = NULL;
+    int64_t length = 0;
+    int integral = 0;
+    char textbuf[192]; /* a wide fixed's string spelling: 128 fraction digits, a whole part, a sign and a point */
     if ( bench_table_json_is_enum( f ) )
     {
         char name[BENCH_K_TABLE_JSON_MAX_KEY];
@@ -2681,6 +2732,9 @@ static SCHEMA_UNUSED int bench_table_json_read_scalar( bench_table_json_in_t * i
     return 1;
 }
 
+static SCHEMA_UNUSED SCHEMA_BENCH_JSON_NOINLINE int bench_table_json_read_keyed( bench_table_json_in_t * in, uint8_t * storage, const bench_table_field_info_t * f, int32_t depth );
+static SCHEMA_UNUSED SCHEMA_BENCH_JSON_NOINLINE int bench_table_json_read_array( bench_table_json_in_t * in, void * base, uint8_t * storage, const bench_table_field_info_t * f, int32_t depth );
+
 static SCHEMA_UNUSED int bench_table_json_read_field( bench_table_json_in_t * in, void * base, const bench_table_field_info_t * f, int32_t depth )
 {
     uint8_t * storage = (uint8_t *) base + f->offset;
@@ -2728,7 +2782,13 @@ static SCHEMA_UNUSED int bench_table_json_read_field( bench_table_json_in_t * in
         bench_table_json_set_count( base, f, (int32_t) length );
         return 1;
     }
-    if ( bench_table_json_is_keyed( f ) )
+    if ( bench_table_json_is_keyed( f ) ) { return bench_table_json_read_keyed( in, storage, f, depth ); }
+    if ( f->is_array ) { return bench_table_json_read_array( in, base, storage, f, depth ); }
+    return bench_table_json_read_scalar( in, storage, f, depth );
+}
+
+static SCHEMA_UNUSED SCHEMA_BENCH_JSON_NOINLINE int bench_table_json_read_keyed( bench_table_json_in_t * in, uint8_t * storage, const bench_table_field_info_t * f, int32_t depth )
+{
     {
         /* every slot back to its declared defaults first, so a key the text
            omits keeps them and a repeated field key cannot leave an earlier
@@ -2816,7 +2876,10 @@ static SCHEMA_UNUSED int bench_table_json_read_field( bench_table_json_in_t * in
         }
         return 1;
     }
-    if ( f->is_array )
+}
+
+static SCHEMA_UNUSED SCHEMA_BENCH_JSON_NOINLINE int bench_table_json_read_array( bench_table_json_in_t * in, void * base, uint8_t * storage, const bench_table_field_info_t * f, int32_t depth )
+{
     {
         /* LAST WINS has to be true of a repeated ARRAY key too, and it is
            wire-visible: a fixed array writes every slot, so a second, shorter
@@ -2896,7 +2959,6 @@ static SCHEMA_UNUSED int bench_table_json_read_field( bench_table_json_in_t * in
         bench_table_json_set_count( base, f, placed );
         return 1;
     }
-    return bench_table_json_read_scalar( in, storage, f, depth );
 }
 
 /* ONE table object: keys are field keys, unknown ones are skipped and
