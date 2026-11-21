@@ -1,0 +1,40 @@
+# F-180 corpus (internal/ci TestConstrainedTestGateCorpus): Windows jobs, each
+# of which does or does not compile a Windows-only test package. WANT names
+# the files no lane compiles.
+jobs:
+  runs:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: go test ./d/
+      - name: a tagged run from the root
+        run: SCHEMA_SLOW=1 go test -count=1 ./m/
+  vets:
+    runs-on: windows-latest
+    steps:
+      - run: go vet ./e/
+  echoes:
+    runs-on: windows-latest
+    steps:
+      - run: echo "go test ./h/"
+  step-off:
+    runs-on: windows-latest
+    steps:
+      - if: false
+        run: go test ./i/
+  cd-elsewhere:
+    runs-on: windows-latest
+    steps:
+      - run: |
+          cd nested
+          go test ./j/
+  working-directory:
+    runs-on: windows-latest
+    steps:
+      - working-directory: nested
+        run: go test ./k/
+  job-off:
+    if: ${{ false }}
+    runs-on: windows-latest
+    steps:
+      - run: go test ./l/

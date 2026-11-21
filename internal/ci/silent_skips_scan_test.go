@@ -537,10 +537,15 @@ func (p laneProof) covers(dir string) bool {
 
 var (
 	skipMakeTarget = regexp.MustCompile(`^([A-Za-z0-9_.%-]+(?:[ \t]+[A-Za-z0-9_.%-]+)*)[ \t]*:([^=]|$)`)
-	skipGoTestCmd  = regexp.MustCompile(`(^|[\s;&|(])go test(\s|$)`)
 	skipTagsFlag   = regexp.MustCompile(`-tags[ =]+["']?([A-Za-z0-9_, ]+?)["']?(\s+-|\s+\./|\s*$)`)
 	skipPkgToken   = regexp.MustCompile(`(^|\s)(\./[A-Za-z0-9_./-]*)`)
 	skipJobHeader  = regexp.MustCompile(`^  ([A-Za-z0-9_-]+):\s*(#.*)?$`)
+)
+
+var (
+	literalFalse = regexp.MustCompile(`^(false|\$\{\{\s*false\s*\}\})$`)
+	// cd, pushd, or go test -C: what follows runs somewhere else
+	changesDir = regexp.MustCompile(`(^|[;&|(]\s*)(cd|pushd)\s|\sgo test\s+-C[ =]|^go test\s+-C[ =]`)
 )
 
 func goTestPackages(line string) []string {
@@ -577,6 +582,12 @@ func laneProofs(root string) ([]laneProof, error) {
 			text string
 		}
 		var cmds []cmd
+		// A command is credited only when it runs, and runs where the
+		// workflow checked the tree out: a `go test` the line itself runs
+		// (not text an echo prints), not in a job or step whose `if:` is the
+		// literal false, and not after a working-directory or a cd, where
+		// ./pkg names some other package (F-180).
+		var jobOff, jobMoved, inSteps, stepOff, stepMoved bool
 		flush := func() {
 			for _, c := range cmds {
 				lane := buildLane{goos: "linux", goarch: "amd64", tags: map[string]bool{}}
@@ -597,6 +608,7 @@ func laneProofs(root string) ([]laneProof, error) {
 				})
 			}
 			cmds, goos, goarch = nil, "", ""
+			jobOff, jobMoved, inSteps, stepOff, stepMoved = false, false, false, false, false
 		}
 		for i, line := range strings.Split(string(b), "\n") {
 			if strings.HasPrefix(strings.TrimSpace(line), "#") {
@@ -617,8 +629,34 @@ func laneProofs(root string) ([]laneProof, error) {
 					goos, goarch = "darwin", "arm64"
 				}
 			}
-			if skipGoTestCmd.MatchString(line) {
+			t := strings.TrimSpace(line)
+			if t == "steps:" {
+				inSteps = true
+			}
+			if strings.HasPrefix(t, "- ") {
+				stepOff, stepMoved = false, false
+				t = strings.TrimSpace(strings.TrimPrefix(t, "- "))
+			}
+			if v, ok := strings.CutPrefix(t, "if:"); ok && literalFalse.MatchString(strings.TrimSpace(v)) {
+				if inSteps {
+					stepOff = true
+				} else {
+					jobOff = true
+				}
+			}
+			if v, ok := strings.CutPrefix(t, "working-directory:"); ok && strings.Trim(strings.TrimSpace(v), `"'`) != "." {
+				if inSteps {
+					stepMoved = true
+				} else {
+					jobMoved = true
+				}
+			}
+			moves := changesDir.MatchString(strings.TrimSpace(strings.TrimPrefix(t, "run:")))
+			if goTestCommand.MatchString(t) && !jobOff && !stepOff && !jobMoved && !stepMoved && !moves {
 				cmds = append(cmds, cmd{i + 1, line})
+			}
+			if moves {
+				stepMoved = true
 			}
 		}
 		flush()
@@ -645,8 +683,9 @@ func laneProofs(root string) ([]laneProof, error) {
 				}
 				continue
 			}
-			if !skipGoTestCmd.MatchString(line) {
-				continue
+			recipe := strings.TrimLeft(strings.TrimSpace(line), "@+-")
+			if !goTestCommand.MatchString(recipe) || changesDir.MatchString(recipe) {
+				continue // not a go test the recipe runs from the tree's root
 			}
 			m := skipTagsFlag.FindStringSubmatch(line)
 			if m == nil {

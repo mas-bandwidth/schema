@@ -330,7 +330,21 @@ func TestConstrainedTestGateNegativeControl(t *testing.T) {
 		"f/wire_plan9_test.go":       "package f\n",
 		"g/both_test.go":             "//go:build windows && schema_leg_x\n\npackage g\n",
 		"Makefile":                   "test-x-tagged:\n\tSCHEMA_SLOW=1 go test -count=1 -tags schema_leg_x ./a/\n\ntest-y-tagged:\n\tgo test -tags schema_leg_y ./c/\n",
-		".github/workflows/full.yml": "jobs:\n  tagged:\n    runs-on: [self-hosted, Linux]\n    steps:\n      - run: make test-x-tagged\n  windows:\n    runs-on: windows-latest\n    steps:\n      - run: go vet ./...\n      - run: go test ./d/\n",
+		// F-180: a Windows step that only echoes the command, one whose
+		// test step is off, one that cds elsewhere first, one with a
+		// working-directory, and a job that is off: none runs the package
+		"h/echo_windows_test.go":   "package h\n",
+		"i/off_windows_test.go":    "package i\n",
+		"j/moved_windows_test.go":  "package j\n",
+		"k/wd_windows_test.go":     "package k\n",
+		"l/joboff_windows_test.go": "package l\n",
+		".github/workflows/full.yml": "jobs:\n  tagged:\n    runs-on: [self-hosted, Linux]\n    steps:\n      - run: make test-x-tagged\n" +
+			"  windows:\n    runs-on: windows-latest\n    steps:\n      - run: go vet ./...\n      - run: go test ./d/\n" +
+			"      - run: echo \"go test ./h/\"\n" +
+			"      - if: false\n        run: go test ./i/\n" +
+			"      - run: |\n          cd nested\n          go test ./j/\n" +
+			"      - working-directory: nested\n        run: go test ./k/\n" +
+			"  windows-off:\n    if: ${{ false }}\n    runs-on: windows-latest\n    steps:\n      - run: go test ./l/\n",
 	})
 	scan, err := scanConstrainedTests(root)
 	if err != nil {
@@ -344,12 +358,51 @@ func TestConstrainedTestGateNegativeControl(t *testing.T) {
 	for _, c := range neverCompiled(scan, proofs) {
 		got = append(got, c.file)
 	}
-	want := []string{"b/on_test.go", "c/on_test.go", "e/lock_windows_test.go", "f/wire_plan9_test.go", "g/both_test.go"}
+	want := []string{"b/on_test.go", "c/on_test.go", "e/lock_windows_test.go", "f/wire_plan9_test.go", "g/both_test.go",
+		"h/echo_windows_test.go", "i/off_windows_test.go", "j/moved_windows_test.go", "k/wd_windows_test.go", "l/joboff_windows_test.go"}
 	if strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Errorf("never compiled:\n got %v\nwant %v\nproofs: %+v", got, want, proofs)
 	}
-	if len(scan.constrained) != 8 || len(scan.excluded) != 7 {
-		t.Errorf("the scan found %d constrained and %d excluded test files, want 8 and 7", len(scan.constrained), len(scan.excluded))
+	if len(scan.constrained) != 13 || len(scan.excluded) != 12 {
+		t.Errorf("the scan found %d constrained and %d excluded test files, want 13 and 12", len(scan.constrained), len(scan.excluded))
+	}
+}
+
+// F-180 CORPUS: testdata/f180-lanes is a committed tree, a workflow of Windows
+// jobs and a Windows-only test package for each. Only a go test the step
+// itself runs, from the tree's root, in a job and step that are on, compiles
+// its package; WANT lists the rest. d/ and m/ are the controls.
+func TestConstrainedTestGateCorpus(t *testing.T) {
+	t.Parallel()
+	root := filepath.Join("testdata", "f180-lanes")
+	b, err := os.ReadFile(filepath.Join(root, "WANT"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var want []string
+	for line := range strings.Lines(string(b)) {
+		if line = strings.TrimSpace(line); line != "" && !strings.HasPrefix(line, "#") {
+			want = append(want, line)
+		}
+	}
+	scan, err := scanConstrainedTests(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proofs, err := laneProofs(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, c := range neverCompiled(scan, proofs) {
+		got = append(got, c.file)
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("never compiled:\n got %v\nwant %v\nproofs: %+v", got, want, proofs)
+	}
+	// the scan proves it read the tree: every package of it is a candidate
+	if len(scan.excluded) != len(want)+2 {
+		t.Errorf("the scan found %d Windows-only test files, want %d (WANT and the two controls)", len(scan.excluded), len(want)+2)
 	}
 }
 
