@@ -12,16 +12,19 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// A COUNT ABOVE THE ANNOUNCED MAXIMUM REFUSES count_over_bound on the message
-// form, on the named path and on the skip path, for an array and for an
-// enum-keyed array (docs/SPEC-TABLES.md §3.3: a count is read before any
-// body; §6.5: `count_over_bound` is "a count past its bound"; the reference's
-// array, keyed and skip, internal/tablewire/messagedecode.go). The count's
-// bits can spell more than max - min, and the count is judged before any
-// element, so the reason is the count's, not wire_damaged.
+// A COUNT ABOVE THE ANNOUNCED MAXIMUM REFUSES the read on the message form,
+// on the named path and on the skip path, for an array and for an enum-keyed
+// array (docs/SPEC-TABLES.md §3.3: a count is read before any body; the
+// reference's array, keyed and skip, internal/tablewire/messagedecode.go). The
+// count's bits can spell more than max - min, and the count is judged before
+// any element.
 //
-// Every refusal is checked by its REASON, taken first from the Go reference
-// on the same bytes, and every refusal has an accepted twin on the same entry.
+// Every case is checked by its VERDICT alone, taken first from the Go
+// reference on the same bytes: refused, or the value (docs/rulings.json
+// refusal-verdict-only, SPEC-TABLES §6.5 and §13.10). Why a read refused is
+// per-language diagnostic detail, never compared: the reason each side names
+// (count_over_bound, out_of_range) is printed on a failure and nothing more.
+// Every refusal has an accepted twin on the same entry.
 const countOverAnnouncedSchema = `package probe
 
 enum Color { Red, Green, Blue }
@@ -72,10 +75,10 @@ func countOverAnnouncedVocabulary(t *testing.T, u *ir.Unit) []ir.TableVocabulary
 }
 
 type countOverCase struct {
-	name   string
-	wire   []byte
-	reason string // "" is a load
-	check  string // a Dart expression over `value` that holds on a load
+	name    string
+	wire    []byte
+	refuses bool   // the verdict: refused, or a load of one value
+	check   string // a Dart expression over `value` that holds on a load
 }
 
 func countOverAnnouncedCases() []countOverCase {
@@ -83,23 +86,23 @@ func countOverAnnouncedCases() []countOverCase {
 	body := func() *review1121Bits { return &review1121Bits{} }
 	ref := func(b *review1121Bits, slot int) *review1121Bits { return b.put(uint64(slot), refBits) }
 	var cases []countOverCase
-	add := func(name, reason, check string, b *review1121Bits) {
-		cases = append(cases, countOverCase{name: name, wire: b.batch(refBits), reason: reason, check: check})
+	add := func(name string, refuses bool, check string, b *review1121Bits) {
+		cases = append(cases, countOverCase{name: name, wire: b.batch(refBits), refuses: refuses, check: check})
 	}
-	add("named_array_past_announced_max", "count_over_bound", "", ref(body(), coArr).put(6, 3))
-	add("named_array_top_count_bits", "count_over_bound", "", ref(body(), coArr).put(7, 3))
-	add("named_array_past_reader_bound", "count_over_bound", "", ref(body(), coArr).put(5, 3).align().bytes(1, 2, 3, 4, 5))
-	add("named_array_at_reader_bound_reads", "", "value.arrCount == 4 && value.arr[3] == 4", ref(body(), coArr).put(4, 3).align().bytes(1, 2, 3, 4))
-	add("named_keyed_past_announced_max", "count_over_bound", "", ref(body(), coKeyed).put(3, 2))
-	add("named_keyed_empty_reads", "", "true", ref(body(), coKeyed).put(0, 2))
-	add("skipped_array_past_announced_max", "count_over_bound", "", ref(body(), coSkipArr).put(6, 3))
-	add("skipped_array_at_announced_max_reads", "", "true", ref(body(), coSkipArr).put(5, 3).align().bytes(1, 2, 3, 4, 5))
-	add("skipped_keyed_past_announced_max", "count_over_bound", "", ref(body(), coSkipKeyed).put(3, 2))
-	add("skipped_keyed_empty_reads", "", "true", ref(body(), coSkipKeyed).put(0, 2))
-	// The skip path's own refusal keeps its reason: a ranged value past its
-	// kind refuses out_of_range there, never wire_damaged.
-	add("skipped_ranged_past_kind", "out_of_range", "", ref(body(), coSkipU8).put(63, 6))
-	add("skipped_ranged_at_kind_top_reads", "", "true", ref(body(), coSkipU8).put(55, 6))
+	const refuse, load = true, false
+	add("named_array_past_announced_max", refuse, "", ref(body(), coArr).put(6, 3))
+	add("named_array_top_count_bits", refuse, "", ref(body(), coArr).put(7, 3))
+	add("named_array_past_reader_bound", refuse, "", ref(body(), coArr).put(5, 3).align().bytes(1, 2, 3, 4, 5))
+	add("named_array_at_reader_bound_reads", load, "value.arrCount == 4 && value.arr[3] == 4", ref(body(), coArr).put(4, 3).align().bytes(1, 2, 3, 4))
+	add("named_keyed_past_announced_max", refuse, "", ref(body(), coKeyed).put(3, 2))
+	add("named_keyed_empty_reads", load, "true", ref(body(), coKeyed).put(0, 2))
+	add("skipped_array_past_announced_max", refuse, "", ref(body(), coSkipArr).put(6, 3))
+	add("skipped_array_at_announced_max_reads", load, "true", ref(body(), coSkipArr).put(5, 3).align().bytes(1, 2, 3, 4, 5))
+	add("skipped_keyed_past_announced_max", refuse, "", ref(body(), coSkipKeyed).put(3, 2))
+	add("skipped_keyed_empty_reads", load, "true", ref(body(), coSkipKeyed).put(0, 2))
+	// The skip path's own refusal: a ranged value past its kind refuses.
+	add("skipped_ranged_past_kind", refuse, "", ref(body(), coSkipU8).put(63, 6))
+	add("skipped_ranged_at_kind_top_reads", load, "true", ref(body(), coSkipU8).put(55, 6))
 	return cases
 }
 
@@ -123,10 +126,11 @@ func countOverAnnouncedProbe(ann []byte, cases []countOverCase) string {
 		fmt.Fprintf(&b, "  {\n    final value = h.Root();\n    h.initRoot(value);\n")
 		fmt.Fprintf(&b, "    final rep = h.TableReport();\n")
 		fmt.Fprintf(&b, "    final count = r.rootLoadMessages(<h.Root>[value], Uint8List.fromList(%s), vocab, rep);\n", dartBytes(tc.wire))
-		if tc.reason == "" {
+		if !tc.refuses {
 			fmt.Fprintf(&b, "    report(%q, count == 1 && !rep.refused && (%s), count, rep);\n", tc.name, tc.check)
 		} else {
-			fmt.Fprintf(&b, "    report(%q, count == 0 && rep.refused && rep.reason == %q, count, rep);\n", tc.name, tc.reason)
+			// the verdict alone: rep.reason is printed on a FAIL, never compared
+			fmt.Fprintf(&b, "    report(%q, count == 0 && rep.refused, count, rep);\n", tc.name)
 		}
 		fmt.Fprintf(&b, "  } // %d\n", i)
 	}
@@ -135,9 +139,40 @@ func countOverAnnouncedProbe(ann []byte, cases []countOverCase) string {
 }
 
 // TestDartMessageCountOverAnnounced holds the emitted Dart batch read to the
-// reference's reason for a count above the announced maximum.
+// reference's verdict for a count above the announced maximum.
 func TestDartMessageCountOverAnnounced(t *testing.T) {
 	t.Parallel()
+	countOverAnnouncedRun(t, nil)
+}
+
+// TestDartMessageCountOverAnnouncedReasonIsDiagnostic renames every reason the
+// emitted batch read refuses with (count_over_bound, out_of_range) in a
+// scratch copy and requires every case to stay green: a reason-only
+// difference from the reference is per-language detail, never a failure
+// (docs/rulings.json refusal-verdict-only).
+func TestDartMessageCountOverAnnouncedReasonIsDiagnostic(t *testing.T) {
+	t.Parallel()
+	countOverAnnouncedRun(t, func(files map[string][]byte) {
+		renamed := 0
+		for name, src := range files {
+			text := string(src)
+			for _, reason := range []string{"count_over_bound", "out_of_range"} {
+				from := "Refuse('" + reason + "')"
+				renamed += strings.Count(text, from)
+				text = strings.ReplaceAll(text, from, "Refuse('renamed_by_the_plant')")
+			}
+			files[name] = []byte(text)
+		}
+		if renamed == 0 {
+			t.Fatal("the plant renamed no refusal: the emitted batch read no longer spells Refuse('count_over_bound')")
+		}
+	})
+}
+
+// countOverAnnouncedRun runs every case against the Go reference's verdict,
+// then through the emitted Dart batch read, edited by edit when it is not nil.
+func countOverAnnouncedRun(t *testing.T, edit func(map[string][]byte)) {
+	t.Helper()
 	u := unitFrom(t, countOverAnnouncedSchema)
 	entries := countOverAnnouncedVocabulary(t, u)
 	// ANOTHER BUILD VERSION: the undeclared entries are fields only a writer
@@ -155,22 +190,23 @@ func TestDartMessageCountOverAnnounced(t *testing.T) {
 		inst := m.New(m.Lookup("Root"))
 		var g tabletext.Report
 		n, _, err := tablewire.DecodeMessages(m, []*tabletext.Instance{inst}, tc.wire, &vocab, &g)
-		reason := ""
 		var refusal *tablewire.Refusal
+		refused := false
 		switch {
 		case errors.As(err, &refusal):
-			reason = refusal.Reason
+			refused = true
 		case err != nil:
-			reason = err.Error()
+			// not a refusal: the reference failed, and the case cannot stand on it
+			t.Fatalf("%s: the Go reference failed without refusing: %v", tc.name, err)
 		case n != 1 || g.Refused:
-			reason = "refused without a reason"
+			refused = true
 		}
-		if reason != tc.reason {
-			t.Fatalf("%s: the Go reference answered %q, the case says %q", tc.name, reason, tc.reason)
+		if refused != tc.refuses {
+			t.Fatalf("%s: the Go reference's verdict is refused=%t, the case says refused=%t", tc.name, refused, tc.refuses)
 		}
 	}
 
-	out, err := runBatchProbe(t, u, "Root", countOverAnnouncedProbe(ann, cases))
+	out, err := runBatchProbe(t, u, "Root", countOverAnnouncedProbe(ann, cases), edit)
 	if err != nil {
 		t.Fatalf("the Dart count-over-announced reads did not hold: %v\n%s", err, out)
 	}
