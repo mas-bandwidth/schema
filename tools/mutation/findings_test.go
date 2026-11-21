@@ -35,8 +35,8 @@ const (
 	nativePassed      = "CORPUS_SUM_PASSED\n"
 	nativeFailed      = "the sum is -1, want 5\n"
 	nativeUnbuildable = "native/sum.c: In function 'main':\nnative/sum.c:7:20: error: 'missing_value' undeclared (first use in this function)\n    7 |         int got = 2 + missing_value;\n      |                       ^~~~~~~~~~~~~\n"
-	// the same refusal from a make recipe, as a target's conformance stage
-	// builds its driver
+	// The same refusal from a make recipe, as a target's conformance stage
+	// builds its driver.
 	nativeUnbuildableByMake = "mkdir -p build\ncc -std=c11 -o build/conformance-harness build/arithmetic.c\nbuild/arithmetic.c: In function 'main':\nbuild/arithmetic.c:7:5: error: duplicate case value\n    7 |     case 5: return 0;\n      |     ^~~~\nmake: *** [Makefile:5: arithmetic-build] Error 1\n"
 )
 
