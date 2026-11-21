@@ -732,7 +732,7 @@ func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 			switch {
 			case !present:
 				out = append(out, Finding{Refuse, where, fmt.Sprintf("%s %s removed", tokenNoun(bt.Key), bt.Value)})
-			case lv != bt.Value:
+			case lv != bt.Value && !(bt.Key == "default" && d.sameDefaultVariant(bf, lf, bt.Value, lv)):
 				out = append(out, Finding{Refuse, where, fmt.Sprintf("%s %s -> %s", tokenNoun(bt.Key), bt.Value, lv)})
 			}
 		case RuleShrink, RuleRaise:
@@ -1042,6 +1042,42 @@ func findUnion(u *Unit, name string) *Union {
 		}
 	}
 	return nil
+}
+
+// sameDefaultVariant reports whether two spellings of an enum field's default
+// name ONE variant. A table enum value rides as its variant's wire id, the
+// hash of the `was` name after a rename (docs/SPEC-TABLES.md §5), so a default
+// variant renamed under `was` means what it meant: each side's spelling is
+// resolved in its own unit's enum, and the two ids compared. A spelling either
+// side cannot resolve is no match, and the edit is judged as written.
+func (d *differ) sameDefaultVariant(bf, lf Field, was, now string) bool {
+	be, ok := bf.Get("enum")
+	if !ok {
+		return false
+	}
+	le, ok := lf.Get("enum")
+	if !ok {
+		return false
+	}
+	bid, ok := variantId(findEnum(d.base, be), was)
+	if !ok {
+		return false
+	}
+	lid, ok := variantId(findEnum(d.live, le), now)
+	return ok && bid == lid
+}
+
+// variantId is the wire id of the variant an enum declares under name.
+func variantId(e *Enum, name string) (uint64, bool) {
+	if e == nil {
+		return 0, false
+	}
+	for _, v := range e.Variants {
+		if v.Name == name {
+			return v.Id, true
+		}
+	}
+	return 0, false
 }
 
 func findEnum(u *Unit, name string) *Enum {
