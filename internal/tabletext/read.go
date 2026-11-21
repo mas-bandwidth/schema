@@ -435,9 +435,9 @@ func (in *reader) scanUnit() (unit []byte, done bool, ok bool) {
 		default:
 			// a UTF-8 sequence read WHOLE, so the clamp can only land between
 			// code points. Only bytes that ACTUALLY look like continuations
-			// are taken: the wire imposes no encoding (§3), so a string may
-			// legitimately hold a stray lead byte, and one at the end of a
-			// text must not swallow the closing quote.
+			// are taken, so a stray lead byte at the end of a text does not
+			// swallow the closing quote; the sequence taken is then refused
+			// below unless it is one code point.
 			lead := c
 			want := 1
 			switch {
@@ -1460,12 +1460,11 @@ func (in *reader) readTextList(fv *Field, depth int) bool {
 // unknown key is skipped and counted, and `"None"` is such a key because None
 // keys no slot (§2.4).
 //
-// A KEYED OBJECT'S KEYS ARE KEYS: a variant named twice is a duplicate key
-// like any other, last-wins and counted (§16.2). The count is taken on the
-// RESOLVED SLOT and before the shape check, so a repeat the walk then refuses
-// is still a repeat; a key that names no slot — an unknown variant, or `"None"`
-// — is `unknown` EACH TIME and is never a duplicate, because there is no slot
-// for it to be a repeat of.
+// A KEYED OBJECT'S KEYS ARE KEYS: a key repeated once decoded is a repeated
+// key like any other and refuses the read `malformed` (§16.2), a variant named
+// twice, None twice and an unknown variant twice alike. The repeat is found on
+// the decoded key and before the shape check, so a repeat whose value has the
+// wrong shape is still a repeat.
 func (in *reader) readKeyed(fv *Field, depth int) bool {
 	f := fv.Def
 	if in.peek() != '{' {
@@ -1933,8 +1932,8 @@ func (in *reader) readUnion(cell *Cell, un *ir.Union, depth int) bool {
 			shape = 'a'
 		}
 		if in.valueShape() != shape {
-			// the wrong JSON type for the arm's row: the union reads None,
-			// the event is counted, and the enclosing object continues (§16.2)
+			// the wrong JSON type for the arm's row refuses the read
+			// kind_mismatch (§16.2, strict read)
 			return in.fail("kind_mismatch: " + un.Name)
 		} else {
 			payload := in.m.New(arm.Ref)
@@ -1947,8 +1946,8 @@ func (in *reader) readUnion(cell *Cell, un *ir.Union, depth int) bool {
 	} else {
 		// THE ARM'S VALUE TAKES THE ARM'S OWN ROW (§16.2): an arm is a field
 		// line, so its value reads through the field walk one key down, and a
-		// value of the wrong shape for that row is a KIND MISMATCH — the
-		// union reads None and the enclosing object continues
+		// value of the wrong shape for that row is a KIND MISMATCH, which
+		// refuses the read
 		fv := in.m.NewArm(arm)
 		shape := in.valueShape()
 		switch {
@@ -2041,9 +2040,6 @@ func (in *reader) readFlags(cell *Cell, fl *ir.Flags, depth int) bool {
 	return true
 }
 
-// tokenInteger converts a token digit by digit so no width and no locale can
-// move it. Saturation is reported as a clamp, the wire's rule for a value
-// outside what the reader can hold (§4).
 // ---- ONE CHECKED NUMERIC INTERPRETATION (docs/SPEC-TABLES.md §16.2) ----
 //
 // AN INTEGER FIELD TAKES AN INTEGER TOKEN ONLY — digits with an optional minus,
@@ -2423,8 +2419,8 @@ func (in *reader) placeWide(cell *Cell, f *ir.Field, token string, kind int) boo
 // readMap places a MAP's entries from a JSON object (docs/SPEC-TABLES.md §2.8,
 // §16): the object's KEY is the map's key and its value is the entry's value.
 // JSON has no integer keys, so an INTEGER-keyed map spells its keys as strings
-// of digits, and a key that is not one is the wrong shape for the kind —
-// counted, the entry skipped, never coerced.
+// of digits, and a key that is not one is the wrong shape for the kind and
+// refuses the read, never coerced.
 //
 // A key past the declaration's capacity refuses `length_over_bound`, and a
 // repeated key refuses: the text form spells no value the wire cannot.

@@ -220,9 +220,10 @@ func WideFromBytes(b []byte, kind int) *big.Int {
 	return v
 }
 
-// WideClamp applies a field's declared raw range (ir.TableRawRange) to a
-// decoded value, the wire's rule for every bounded scalar (docs/SPEC-TABLES.md
-// §4): the value lands on the nearer bound and the event is counted.
+// WideClamp holds a decoded value to a field's declared raw range
+// (ir.TableRawRange, docs/SPEC-TABLES.md §4): it answers the nearer bound and
+// whether the value was outside, and every caller refuses the value when it
+// was (strict read); the clamped value is never placed.
 func WideClamp(raw *big.Int, f *ir.Field) (*big.Int, bool) {
 	lo, hi, ok := ir.TableRawRange(f)
 	if !ok {
