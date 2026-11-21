@@ -65,26 +65,30 @@ func TestSpecGoUsageFirstHalfStaleStatus(t *testing.T) {
 	// doc comments: /// above an if branch is refused.
 	has("above an if branch")
 
-	// union: payload-free arms in a table closure are carried by C++, C, C# and Go.
-	has("Payload-free arms in a table closure are carried by C++, C, C#\nand Go; the other five targets refuse")
+	// union: payload-free arms in a table closure are carried by every target.
+	has("Payload-free arms in a table closure are carried by every\ntarget too")
 	notHas("Payload-free arms in a table closure are C++ only")
 	notHas("other six targets refuse that table-side use")
+	notHas("the other five targets refuse that table-side use")
 
 	// wide text: there is no wstring type; text is UTF-8 string.
 	has("There is no wide string type")
 	notHas("table kind `33`")
 
-	// defaults: Go carries string, bytes and flags defaults on the table wire.
-	has("C++ and Go carry all three on")
+	// defaults: every target carries string, bytes and flags defaults on the
+	// table wire, and every target but Python on the packet wire.
+	has("Every target carries all three\non the table wire")
 	notHas("C and Go carry them on the packet wire")
+	notHas("the other six targets refuse a unit declaring these defaults")
 
 	// Tables intro: Go carries the pointer surface with RootBuilder/LoadBuilder.
 	has("`RootBuilder` and `LoadBuilder`")
 	notHas("is a follow-on in those six")
 
-	// form byte: Go writes the current form.
-	has("and by Go; the seven other backends")
+	// form byte: every backend writes the current form.
+	has("reference, by the tool, and by every other backend")
 	notHas("the eight other backends still write its previous")
+	notHas("the seven other backends still write its")
 
 	// message form: one list, SPEC-TABLES.md "WHERE THE FORM IS CARRIED".
 	// A supported carrier missing from that section, or a false exclusion
@@ -165,26 +169,30 @@ func TestSpecGoUsageFirstHalfStaleStatus(t *testing.T) {
 		t.Error("SPEC-TABLES.md still says the other seven carry the variable form alone")
 	}
 
-	// messages, table arms: C++, the tool, C, C# and Go carry table-armed unions.
-	has("The C++ reference, the tool, C, C# and Go carry")
+	// messages, table arms: the tool and every backend carry table-armed unions.
+	has("The tool and every backend carry the\nform")
 	notHas("The C++ reference and the tool carry the")
 	notHas("The C++ reference, the tool and Go carry")
+	notHas("The C++ reference, the tool, C, C# and Go carry")
 
 	// messages, arm refusals: an array of tables and a timestamp.
 	has("an array of tables")
 	has("a timestamp, or an unbounded")
 
-	// maps banner: Go carries maps.
-	has("carried by the C++ reference, the tool and Go")
+	// maps banner: every backend carries maps.
+	has("carried by the C++ reference, the tool and every other\nbackend")
 	notHas("carried by the C++ reference and the tool.")
+	notHas("carried by the C++ reference, the tool and Go. Every other")
 
 	// ranged integers: cite SPEC-TABLES.md §4, not §4.3.
 	has("(SPEC-TABLES.md §4). The one-sided spelling")
 	notHas("(SPEC-TABLES.md §4.3)")
-	has("Go carries it first, and")
+	has("Every target carries it\n(SPEC §4.6, docs/SPEC-TABLES.md §4)")
+	notHas("Go carries it first, and\nevery other target refuses it by name")
 
-	// | required is Go-first.
-	has("Go carries `| required` first; every other target")
+	// | required: every target carries it.
+	has("Every target carries `| required`")
+	notHas("Go carries `| required` first; every other target")
 
 	// --surface: every surface implies wire; unknown surface refused by name.
 	has("Every surface implies `wire`")

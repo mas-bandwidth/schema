@@ -207,8 +207,9 @@ inline constexpr float Pi = 3.1415927f;
 
 Your constants are there as real `constexpr` values, so the bound you declared
 is the bound your C++ compares against with no second copy to drift. Run the
-same command with `--lang go`, `--lang cs`, `--lang rust`, or `c`, `dart`,
-`elixir`, `java`, `js`, and the same constants land in that language.
+same command with `--lang go`, `--lang cs`, `--lang rust`, or `c`, `unity`,
+`dart`, `elixir`, `goose`, `java`, `js`, `lobster`, `lua`, `luau`, `moo`,
+`python`, `ruby`, `squirrel`, and the same constants land in that language.
 
 Note that `TickInterval` arrives as `0.016666666666666666` and not as
 `1.0 / TickRate`. A constant's own expression is folded at generation, so a
@@ -785,8 +786,8 @@ by hand, with 1013 in the health bits. A value outside its declared range is
 **refused, not clamped**. The read returns false and you drop the packet. The
 same goes for counts past an array bound, string lengths past their maximum,
 enum values above the extent, and reads that run past the end of the buffer.
-This holds in all nine languages, because the same compiler wrote all nine
-readers.
+This holds in every language, because the same compiler wrote every one of
+the readers.
 
 One buffer contract to know before this ships. The C and C++ readers pull a
 64-bit word at a time, so a receive buffer's **allocation** must extend at
@@ -855,7 +856,7 @@ $ schema id .
 ```
 
 **You now have** a real network message, three bytes on the wire, hostile input
-refused, in any of nine languages.
+refused, in every language schema targets.
 
 ---
 
@@ -1136,14 +1137,15 @@ under it for why the assert is worth having: the pack subtracts the low
 bound, so `window_count = 0` wraps `0 - 2` to a large unsigned value, and the
 loop below reads that many elements past the caller's array and writes them
 into the stream: defined, unspecified, and the caller's bug. Writing correctly is the caller's job, and
-the assert is there to catch you in debug before you ship it. Seven targets
+the assert is there to catch you in debug before you ship it. Eight targets
 assert (`serialize_assert` in C++ and C, `debug_assert!` in Rust,
-`Debug.Assert` in C#, `assert` in Java and Dart, the checked writer in
-JavaScript); Go returns `ErrValueOutOfRange` and Elixir raises an
-`ArgumentError` in every build, because neither language has a debug-only
-idiom worth faking.
-And the READ refuses a bad count in every build, in all nine — that side is
-never trusted.
+`Debug.Assert` in C# (modern) and C# (unity), `assert` in Java, Dart and
+Lobster); Go returns `ErrValueOutOfRange`, Elixir raises an `ArgumentError`,
+Python and Ruby raise `InvalidValue`, and JavaScript, Lua, Luau, Moo, Squirrel
+and Goose return a refusal, all in every build, because none of those languages
+has a debug-only idiom worth faking.
+And the READ refuses a bad count in every build, in every language — that side
+is never trusted.
 
 Reach for `[A..B]` with A above zero wherever the count genuinely has a floor.
 The tool holds both ends of it for you.
@@ -2807,19 +2809,29 @@ the union empty as `None`, skips the body by its length and counts `unknown`,
 and arms may be removed and reordered freely. Everything Part 6 taught about
 fields applies to messages.
 
-The `starlight` unit itself still generates for all nine:
+The `starlight` unit itself still generates for every target but Python, whose
+packet wire does not carry `PacketHeader`'s `const` yet:
 
 ```
-$ cd .. && for l in c cpp cs dart elixir go java js rust; do printf "%-8s " $l; schema generate --lang $l --out /tmp/g-$l . && echo ok; done
+$ cd .. && for l in c cpp cs dart elixir go goose java js lobster lua luau moo python ruby rust squirrel unity; do printf "%-8s " $l; schema generate --lang $l --out /tmp/g-$l . && echo ok; done
 c        ok
 cpp      ok
 cs       ok
 dart     ok
 elixir   ok
 go       ok
+goose    ok
 java     ok
 js       ok
+lobster  ok
+lua      ok
+luau     ok
+moo      ok
+python   schema: python: PacketHeader uses the packet kind const, which the Python packet wire does not carry yet (docs/PORT-PYTHON.md, THE CARD MAP: P4 the packet wire)
+ruby     ok
 rust     ok
+squirrel ok
+unity    ok
 ```
 
 **You now have** `GameConfig`, one declared root and one binary format, with
@@ -2922,16 +2934,25 @@ you would rather not carry by value.
 Pointers cost the `starlight` unit none of its backends:
 
 ```
-$ for l in c cpp cs dart elixir go java js rust; do printf "%-8s " $l; schema generate --lang $l --out /tmp/g-$l . && echo ok; done
+$ for l in c cpp cs dart elixir go goose java js lobster lua luau moo python ruby rust squirrel unity; do printf "%-8s " $l; schema generate --lang $l --out /tmp/g-$l . && echo ok; done
 c        ok
 cpp      ok
 cs       ok
 dart     ok
 elixir   ok
 go       ok
+goose    ok
 java     ok
 js       ok
+lobster  ok
+lua      ok
+luau     ok
+moo      ok
+python   schema: python: PacketHeader uses the packet kind const, which the Python packet wire does not carry yet (docs/PORT-PYTHON.md, THE CARD MAP: P4 the packet wire)
+ruby     ok
 rust     ok
+squirrel ok
+unity    ok
 ```
 
 ### The builder life
@@ -4257,23 +4278,32 @@ table RenderFrame
 
 Nothing there is new: ordinary bounded arrays of ordinary fixed tables, and
 `RenderFrame` still has `Measure`, `Save`, `Load` and a cook like any table.
-Adding three tables passes the baseline, and the unit still generates for all
-nine:
+Adding three tables passes the baseline, and the unit still generates for every
+target but Python, as in Part 7:
 
 ```
 $ schema check .
 $ echo $?
 0
-$ for l in c cpp cs dart elixir go java js rust; do printf "%-8s " $l; schema generate --lang $l --out /tmp/g-$l . && echo ok; done
+$ for l in c cpp cs dart elixir go goose java js lobster lua luau moo python ruby rust squirrel unity; do printf "%-8s " $l; schema generate --lang $l --out /tmp/g-$l . && echo ok; done
 c        ok
 cpp      ok
 cs       ok
 dart     ok
 elixir   ok
 go       ok
+goose    ok
 java     ok
 js       ok
+lobster  ok
+lua      ok
+luau     ok
+moo      ok
+python   schema: python: PacketHeader uses the packet kind const, which the Python packet wire does not carry yet (docs/PORT-PYTHON.md, THE CARD MAP: P4 the packet wire)
+ruby     ok
 rust     ok
+squirrel ok
+unity    ok
 ```
 
 But every fixed table also gets a third form of the same declaration, the
@@ -4775,7 +4805,7 @@ too.
 
 The `schema` binary is a thin client of a Go library, so anything the CLI does
 your build tools can do in process, and you can register your own generator
-beside the nine. A directory of its own, `docsgen/`, with a `go.mod`:
+beside the built-in ones. A directory of its own, `docsgen/`, with a `go.mod`:
 
 ```
 module docsgen
@@ -5049,7 +5079,8 @@ One pair for the whole unit, named for the package. Nothing includes it and
 nothing asks for it: compile `StarlightView.cpp` in a tool and it walks the
 build; leave it out of the game and the binary carries none of it.
 
-The other eight targets have no view file yet. A C++ unit that declares no
+Every other target carries the unit view too, in its own spelling (ROADMAP.md,
+"the unit registry, UnitView"). A C++ unit that declares no
 table has neither a registry nor per-type descriptors yet.
 
 ### Where to go next
