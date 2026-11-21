@@ -249,8 +249,14 @@ end
 -- born_tables: a counted array of tables holding its birth count, which
 -- elides when every element's body is its terminator alone (§22.2)
 local function born_tables(fd, n, textvf)
-  return not fd.required and not fd.optional and not fd.list and not fd.fixed
-    and (fd.min or 0) > 0 and n == fd.min and fd.elem.shape == "table" and textvf == nil
+  return not fd.required
+    and not fd.optional
+    and not fd.list
+    and not fd.fixed
+    and (fd.min or 0) > 0
+    and n == fd.min
+    and fd.elem.shape == "table"
+    and textvf == nil
 end
 
 local function id_ref(ids, id)
