@@ -29,3 +29,10 @@ python-vt-evolution-skip-negative-control:
 python-ci-vt-evolution: python-vt-evolution-public-renames-negative-control
 python-vt-evolution-public-renames-negative-control:
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonEvolutionRenameNegativeControls$$' ./compiler/
+
+# The reason is a diagnostic: every refusal reason renamed in a copy of the
+# runtime, and every wire case must stay green (refusal-verdict-only).
+.PHONY: python-vt-evolution-reason-is-diagnostic
+python-ci-vt-evolution: python-vt-evolution-reason-is-diagnostic
+python-vt-evolution-reason-is-diagnostic:
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtEvolutionReasonIsDiagnostic$$' ./internal/codegen/pythontable/

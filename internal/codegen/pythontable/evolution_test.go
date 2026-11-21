@@ -16,12 +16,13 @@ package pythontable
 // The second set is the other direction and the refusals: a NEWER wire read
 // by an OLD declaration (fields, nested-table fields and a `*T` the old
 // reader does not declare, skipped and counted unknown), and hand-built wires
-// the engine refuses, each with the exact reason the engine names. SKIPPED IS
-// NOT UNREAD (§4): a field the reader skips is walked by the same wire rules,
-// so ill-formed text, a bad element kind, a reference past the id table or a
-// bad pointer inside it refuses the load. For every wire the engine's verdict
-// (the reason it refuses, or its unknown count and its canonical re-encoding
-// of what it read) is the Python leg's, under both pinned interpreters.
+// the engine refuses. SKIPPED IS NOT UNREAD (§4): a field the reader skips is
+// walked by the same wire rules, so ill-formed text, a bad element kind, a
+// reference past the id table or a bad pointer inside it refuses the load. For
+// every wire the engine's verdict (refused, or its unknown count and its
+// canonical re-encoding of what it read) is the Python leg's, under both
+// pinned interpreters. Why a read refused is each language's own diagnostic
+// and is never compared (docs/rulings.json, refusal-verdict-only).
 //
 // The third set is the write side: a value outside its declaration (not a
 // str, a string or bytes over its bound, an enum ordinal that names no
@@ -491,8 +492,8 @@ func vtNested(n int) []byte {
 
 // vtWireCase is one wire read by the generated package of reader at root:
 // either the engine's own wire of json written under writer, or a
-// hand-built wire. want is the engine's verdict, held here by name: the
-// reason it refuses, or "" where it accepts.
+// hand-built wire. want is the engine's verdict: "refused" where it refuses,
+// or "" where it accepts.
 type vtWireCase struct {
 	name   string
 	reader string
@@ -532,86 +533,86 @@ var vtWireCases = []vtWireCase{
 	// SKIPPED IS NOT UNREAD: the old reader refuses what the engine refuses
 	// inside a field it does not declare, for every kind a skipped field can
 	// hold.
-	vtBad("skip_text_ill_formed", "Doc", "wire_damaged", func(ids []uint64) []byte {
+	vtBad("skip_text_ill_formed", "Doc", "refused", func(ids []uint64) []byte {
 		return vtFile(ids, vtField(vtRefUnknown, ir.TableKindString, vtFramed(vtIllText)))
 	}),
-	vtBad("skip_text_nul", "Doc", "wire_damaged", func(ids []uint64) []byte {
+	vtBad("skip_text_nul", "Doc", "refused", func(ids []uint64) []byte {
 		return vtFile(ids, vtField(vtRefUnknown, ir.TableKindString, vtFramed([]byte("a\x00"))))
 	}),
-	vtBad("skip_text_ill_formed_flat", "Flat", "wire_damaged", func(ids []uint64) []byte {
+	vtBad("skip_text_ill_formed_flat", "Flat", "refused", func(ids []uint64) []byte {
 		return vtFile(ids, vtField(vtRefUnknown, ir.TableKindString, vtFramed(vtIllText)))
 	}),
-	vtBad("skip_enum_past_ids", "Doc", "wire_damaged", func(ids []uint64) []byte {
+	vtBad("skip_enum_past_ids", "Doc", "refused", func(ids []uint64) []byte {
 		return vtFile(ids, vtField(vtRefUnknown, ir.TableKindEnum, vtLeb(uint64(len(ids)+1))))
 	}),
-	vtBad("skip_bytes_element_kind", "Doc", "wire_damaged", func(ids []uint64) []byte {
+	vtBad("skip_bytes_element_kind", "Doc", "refused", func(ids []uint64) []byte {
 		return vtFile(ids, vtField(vtRefUnknown, ir.TableKindArray, vtFramed([]byte{ir.TableKindRetiredWstring, 0})))
 	}),
-	vtBad("skip_bytes_trailing", "Doc", "wire_damaged", func(ids []uint64) []byte {
+	vtBad("skip_bytes_trailing", "Doc", "refused", func(ids []uint64) []byte {
 		return vtFile(ids, vtField(vtRefUnknown, ir.TableKindArray, vtFramed([]byte{ir.TableKindU8, 1, 'A', 'B'})))
 	}),
-	vtBad("skip_list_ill_formed_text", "Doc", "wire_damaged", func(ids []uint64) []byte {
+	vtBad("skip_list_ill_formed_text", "Doc", "refused", func(ids []uint64) []byte {
 		return vtFile(ids, vtField(vtRefUnknown, ir.TableKindArray,
 			vtFramed(vtCat([]byte{ir.TableKindString, 1}, vtFramed(vtIllText)))))
 	}),
-	vtBad("skip_list_count_cap", "Doc", "count_over_extent_cap", func(ids []uint64) []byte {
+	vtBad("skip_list_count_cap", "Doc", "refused", func(ids []uint64) []byte {
 		return vtFile(ids, vtField(vtRefUnknown, ir.TableKindArray,
 			vtFramed(vtCat([]byte{ir.TableKindU8}, vtLeb(1<<31)))))
 	}),
-	vtBad("skip_table_ill_formed_text", "Doc", "wire_damaged", func(ids []uint64) []byte {
+	vtBad("skip_table_ill_formed_text", "Doc", "refused", func(ids []uint64) []byte {
 		inner := vtBody(vtField(vtRefUnknown, ir.TableKindString, vtFramed(vtIllText)))
 		return vtFile(ids, vtField(vtRefUnknown, ir.TableKindTable, vtFramed(inner)))
 	}),
-	vtBad("skip_table_bool_byte", "Doc", "wire_damaged", func(ids []uint64) []byte {
+	vtBad("skip_table_bool_byte", "Doc", "refused", func(ids []uint64) []byte {
 		inner := vtBody(vtField(vtRefUnknown, ir.TableKindBool, []byte{2}))
 		return vtFile(ids, vtField(vtRefUnknown, ir.TableKindTable, vtFramed(inner)))
 	}),
-	vtBad("skip_map_ill_formed_text", "Doc", "wire_damaged", func(ids []uint64) []byte {
+	vtBad("skip_map_ill_formed_text", "Doc", "refused", func(ids []uint64) []byte {
 		entry := vtBody(vtField(vtRefUnknown, ir.TableKindString, vtFramed(vtIllText)))
 		return vtFile(ids, vtField(vtRefUnknown, ir.TableKindArray,
 			vtFramed(vtCat([]byte{ir.TableKindTable, 1}, vtFramed(entry)))))
 	}),
-	vtBad("skip_keyed_zero_key", "Doc", "wire_damaged", func(ids []uint64) []byte {
+	vtBad("skip_keyed_zero_key", "Doc", "refused", func(ids []uint64) []byte {
 		return vtFile(ids, vtField(vtRefUnknown, ir.TableKindKeyed,
 			vtFramed(vtCat([]byte{ir.TableKindU8, 1, 0}, vtFramed([]byte{7})))))
 	}),
-	vtBad("skip_union_ill_formed_text", "Doc", "wire_damaged", func(ids []uint64) []byte {
+	vtBad("skip_union_ill_formed_text", "Doc", "refused", func(ids []uint64) []byte {
 		return vtFile(ids, vtField(vtRefUnknown, ir.TableKindUnion,
 			vtLeb(vtRefUnknown), []byte{ir.TableKindString}, vtFramed(vtIllText)))
 	}),
-	vtBad("skip_float_non_finite", "Doc", "non_finite_float", func(ids []uint64) []byte {
+	vtBad("skip_float_non_finite", "Doc", "refused", func(ids []uint64) []byte {
 		return vtFile([]uint64{ids[vtRefUnknown-1]}, vtField(1, ir.TableKindF64, vtNaN64))
 	}),
-	vtBad("skip_kind_no_reader_skips", "Doc", "wire_damaged", func(ids []uint64) []byte {
+	vtBad("skip_kind_no_reader_skips", "Doc", "refused", func(ids []uint64) []byte {
 		return vtFile(ids, vtField(vtRefUnknown, ir.TableKindRetiredWstring, vtFramed(nil)))
 	}),
-	vtBad("skip_field_twice", "Doc", "wire_damaged", func(ids []uint64) []byte {
+	vtBad("skip_field_twice", "Doc", "refused", func(ids []uint64) []byte {
 		f := vtField(vtRefUnknown, ir.TableKindU8, []byte{1})
 		return vtFile(ids, f, f)
 	}),
-	vtBad("skip_nested_past_bound", "Doc", "wire_damaged", func(ids []uint64) []byte {
+	vtBad("skip_nested_past_bound", "Doc", "refused", func(ids []uint64) []byte {
 		return vtFile(ids, vtNested(ir.TableBinaryMaxDepth+1))
 	}),
 	vtBad("skip_nested_at_bound", "Doc", "", func(ids []uint64) []byte {
 		return vtFile([]uint64{ids[vtRefUnknown-1]}, vtNested(ir.TableBinaryMaxDepth))
 	}),
-	vtBad("skip_pointer_past_nodes", "Doc", "wire_damaged", func(ids []uint64) []byte {
+	vtBad("skip_pointer_past_nodes", "Doc", "refused", func(ids []uint64) []byte {
 		return vtFile(ids, vtField(vtRefUnknown, ir.TableKindPointer, vtLeb(2)))
 	}),
-	vtBad("skip_pointer_to_root", "Doc", "wire_damaged", func(ids []uint64) []byte {
+	vtBad("skip_pointer_to_root", "Doc", "refused", func(ids []uint64) []byte {
 		return vtFile(ids, vtField(vtRefUnknown, ir.TableKindPointer, vtLeb(ir.NodeWireIndexRoot)))
 	}),
-	vtBad("skip_record_ill_formed_text", "Doc", "wire_damaged", func(ids []uint64) []byte {
+	vtBad("skip_record_ill_formed_text", "Doc", "refused", func(ids []uint64) []byte {
 		rec := vtRecord(vtRefType, vtBody(vtField(vtRefUnknown, ir.TableKindString, vtFramed(vtIllText))))
 		return vtFile(ids[:3],
 			vtField(vtRefUnknown, ir.TableKindPointer, vtLeb(2)),
 			vtField(vtRefNode, ir.TableKindString, vtFramed(vtCat(vtLeb(1), rec))))
 	}),
-	vtBad("skip_record_unreached", "Doc", "wire_damaged", func(ids []uint64) []byte {
+	vtBad("skip_record_unreached", "Doc", "refused", func(ids []uint64) []byte {
 		rec := vtRecord(2, vtBody())
 		return vtFile([]uint64{ids[vtRefNode-1], ids[vtRefType-1]}, vtField(1, ir.TableKindString, vtFramed(vtCat(vtLeb(1), rec))))
 	}),
-	vtBad("skip_record_cycle", "Doc", "wire_damaged", func(ids []uint64) []byte {
+	vtBad("skip_record_cycle", "Doc", "refused", func(ids []uint64) []byte {
 		rec := vtRecord(vtRefType, vtBody(vtField(vtRefUnknown, ir.TableKindPointer, vtLeb(2))))
 		return vtFile(ids[:3],
 			vtField(vtRefUnknown, ir.TableKindPointer, vtLeb(2)),
@@ -632,19 +633,19 @@ var vtWireCases = []vtWireCase{
 
 	// THE NEW READER'S OWN FIELDS: a known string, bytes or enum the engine
 	// refuses.
-	vtKnownBad("known_string_over_bound", "length_over_bound", func(ids []uint64) []byte {
+	vtKnownBad("known_string_over_bound", "refused", func(ids []uint64) []byte {
 		return vtFile([]uint64{ids[vtRefS-1]}, vtField(1, ir.TableKindString, vtFramed([]byte("123456789"))))
 	}),
-	vtKnownBad("known_text_ill_formed", "wire_damaged", func(ids []uint64) []byte {
+	vtKnownBad("known_text_ill_formed", "refused", func(ids []uint64) []byte {
 		return vtFile(ids, vtField(vtRefS, ir.TableKindString, vtFramed(vtIllText)))
 	}),
-	vtKnownBad("known_bytes_element_not_u8", "kind_mismatch", func(ids []uint64) []byte {
+	vtKnownBad("known_bytes_element_not_u8", "refused", func(ids []uint64) []byte {
 		return vtFile([]uint64{ids[vtRefB-1]}, vtField(1, ir.TableKindArray, vtFramed([]byte{ir.TableKindU16, 0})))
 	}),
-	vtKnownBad("known_bytes_over_bound", "length_over_bound", func(ids []uint64) []byte {
+	vtKnownBad("known_bytes_over_bound", "refused", func(ids []uint64) []byte {
 		return vtFile([]uint64{ids[vtRefB-1]}, vtField(1, ir.TableKindArray, vtFramed([]byte{ir.TableKindU8, 5, 1, 2, 3, 4, 5})))
 	}),
-	vtKnownBad("known_enum_past_ids", "wire_damaged", func(ids []uint64) []byte {
+	vtKnownBad("known_enum_past_ids", "refused", func(ids []uint64) []byte {
 		return vtFile(ids, vtField(vtRefG, ir.TableKindEnum, vtLeb(uint64(len(ids)+1))))
 	}),
 }
@@ -660,8 +661,9 @@ func vtWireOf(t *testing.T, c vtWireCase, reader *ir.Unit) []byte {
 }
 
 // vtEngineLine is the engine's verdict on the case's wire as the probe prints
-// it: the reason it refuses, or its unknown count and the hex of its own
-// canonical write of the value it read.
+// it: refused, or its unknown count and the hex of its own canonical write of
+// the value it read. The verdict alone: why the engine refused is its own
+// diagnostic, never the Python leg's to match.
 func vtEngineLine(t *testing.T, c vtWireCase, reader *ir.Unit, wire []byte) string {
 	t.Helper()
 	m := tabletext.NewModel(reader)
@@ -673,14 +675,16 @@ func vtEngineLine(t *testing.T, c vtWireCase, reader *ir.Unit, wire []byte) stri
 	var rep tabletext.Report
 	ok, err := tablewire.Decode(m, inst, wire, &rep)
 	if !ok {
-		reason := tablewire.RefusalReason(err)
-		if reason != c.want {
-			t.Fatalf("%s: the engine refuses with %q (%v), the case says %q", c.name, reason, err, c.want)
+		if !tablewire.ReadRefusal(err) {
+			t.Fatalf("%s: the engine fails with %v, which is not a read's refusal", c.name, err)
 		}
-		return fmt.Sprintf("case %s refused %s", c.name, reason)
+		if c.want != "refused" {
+			t.Fatalf("%s: the engine refuses (%v), the case says it accepts", c.name, err)
+		}
+		return fmt.Sprintf("case %s refused", c.name)
 	}
 	if c.want != "" {
-		t.Fatalf("%s: the engine accepts the wire, the case says it refuses with %q", c.name, c.want)
+		t.Fatalf("%s: the engine accepts the wire, the case says it refuses", c.name)
 	}
 	canonical, err := tablewire.Encode(m, inst)
 	if err != nil {
@@ -699,7 +703,8 @@ for name, root in CASES:
     try:
         value = root.load(data, report)
     except _schema.Refused as err:
-        print("case", name, "refused", err.reason)
+        print("case", name, "refused")
+        print("diagnostic", name, err.reason)
         continue
     out = value.save()
     print("case", name, "accepted", "unknown=" + str(report.unknown), "save=" + out.hex(), "measure=" + str(value.measure() == len(out)))
@@ -745,16 +750,20 @@ func vtWireFailures(t *testing.T, reader string, cases []vtWireCase, mutate func
 	dir := vtGenerate(t, cases[0].name, reader, mutate)
 	got := vtRunBoth(t, cases[0].name, dir, inputs)
 	lines := map[string]string{}
+	diagnostics := map[string]string{}
 	for line := range strings.SplitSeq(strings.TrimRight(got, "\n"), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) >= 2 && fields[0] == "case" {
 			lines[fields[1]] = line
 		}
+		if len(fields) >= 3 && fields[0] == "diagnostic" {
+			diagnostics[fields[1]] = fields[2]
+		}
 	}
 	var fails []string
 	for _, c := range cases {
 		if lines[c.name] != want[c.name] {
-			fails = append(fails, fmt.Sprintf("%s: Python answers %q, the engine %q", c.name, lines[c.name], want[c.name]))
+			fails = append(fails, fmt.Sprintf("%s: Python answers %q (diagnostic %q), the engine %q", c.name, lines[c.name], diagnostics[c.name], want[c.name]))
 		}
 	}
 	return fails
@@ -946,6 +955,26 @@ func vtControlRed(t *testing.T, what, name string, fails []string) {
 	}
 	if !strings.HasPrefix(fails[0], name+":") {
 		t.Fatalf("NEGATIVE CONTROL FAILED: the gate went red, but not by the name %s:\n%s", name, fails[0])
+	}
+}
+
+// TestPythonVtEvolutionReasonIsDiagnostic renames every refusal reason in a
+// copy of the generated runtime and requires every wire case to stay green:
+// the cross-language contract is the verdict, and why a read refused is
+// Python's own diagnostic (docs/rulings.json, refusal-verdict-only).
+//
+// Functional (the pinned interpreters): run with SCHEMA_SLOW=1.
+func TestPythonVtEvolutionReasonIsDiagnostic(t *testing.T) {
+	t.Parallel()
+	order, groups := vtWireGroups(vtWireCases)
+	for i, reader := range order {
+		cases := groups[reader]
+		t.Run(fmt.Sprintf("wire_%d_%s", i, cases[0].root), func(t *testing.T) {
+			t.Parallel()
+			for _, f := range vtWireFailures(t, reader, cases, plantReasonRename) {
+				t.Error(f)
+			}
+		})
 	}
 }
 
