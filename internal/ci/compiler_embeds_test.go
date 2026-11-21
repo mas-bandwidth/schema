@@ -29,7 +29,7 @@ func compilerTargets(db string) map[string][]string {
 	target, prereqs := "", []string(nil)
 	for line := range strings.SplitSeq(db, "\n") {
 		if rest, ok := strings.CutPrefix(line, ".PHONY:"); ok {
-			for _, p := range strings.Fields(rest) {
+			for p := range strings.FieldsSeq(rest) {
 				phony[p] = true
 			}
 			continue
