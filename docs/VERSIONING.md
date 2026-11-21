@@ -993,7 +993,8 @@ either by hand.
   any of those, a commit whose compiler encodes different wire bytes than the
   newest `v` tag's under an equal protocol id (the previous-release
   differential). It tags that one commit with that one annotated tag and pushes
-  nothing else. CI must be green on the commit, including the full
+  nothing else, and the workflow then publishes the GitHub release on that
+  tag: a release is never a bare tag. CI must be green on the commit, including the full
   certification run across every language, before the release is dispatched.
 
 The rules for which number a release takes are the ones above; the tooling
