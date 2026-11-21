@@ -1072,6 +1072,40 @@ public final class TableFixed {
         }
     }
 
+    /**
+     * §4.6's bounds pass for a COMPILED lane's COMPRESSED FLOATS: the WRITER's own declared min
+     * and max, which the long[] spec above cannot carry (it holds integers only). spec is a flat
+     * array of {dst, width, min, max} rows, or null when the entry ranges no float. A value off
+     * the WRITER's range refuses the load as outOfRange (docs/rulings.json strict-only-read): the
+     * writer could not have written it, and the refused load is discarded whole. THE COMPARISON
+     * IS IN THE FIELD'S OWN TYPE: a float against the bounds rounded to float, so the writer's
+     * own max is inside, and a double against the bounds as declared. A NaN or an infinity is
+     * left for the scatter, which refuses it by name as nonFiniteFloat.
+     */
+    public static void checkWriterFloatBounds(double[] spec, byte[] image, Report report) {
+        if (spec == null || spec.length == 0 || image == null) {
+            return;
+        }
+        for (int i = 0; i + 3 < spec.length; i += 4) {
+            final int at = (int) spec[i];
+            final int width = (int) spec[i + 1];
+            if (at < 0 || at + width > image.length) {
+                continue;
+            }
+            if (width == 4) {
+                final float f = Float.intBitsToFloat(get32(image, at));
+                if (Float.isFinite(f) && (f < (float) spec[i + 2] || f > (float) spec[i + 3])) {
+                    report.refuse(Reason.outOfRange);
+                }
+            } else if (width == 8) {
+                final double d = Double.longBitsToDouble(get64(image, at));
+                if (Double.isFinite(d) && (d < spec[i + 2] || d > spec[i + 3])) {
+                    report.refuse(Reason.outOfRange);
+                }
+            }
+        }
+    }
+
     // ---- THE LAYOUT ---------------------------------------------------------
     //
     // An entry is SEVENTEEN BYTES and the layout is a COUNT and a run of them.
