@@ -104,7 +104,6 @@ var tableSeedDirs = []string{
 	"../../examples", "../../examples128", "../../bench", "../../testdata",
 }
 
-
 // tableHandSeeds are shapes aimed at the table front end's own guards, so a
 // regression in any of them is found in seconds rather than hours.
 var tableHandSeeds = []string{
