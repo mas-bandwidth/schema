@@ -227,8 +227,8 @@ func TestGooseMessageRangedHeldToAnnouncedKind(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			got := reviewMsgProbe(t, reader, writer, []reviewMsgCase{c}, show[c.name[0]])[c.name]
-			if strings.HasPrefix(c.want, "refused ") {
-				if len(got) < 2 || got[0] == "1" || got[1] != strings.TrimPrefix(c.want, "refused ") {
+			if after, ok := strings.CutPrefix(c.want, "refused "); ok {
+				if len(got) < 2 || got[0] == "1" || got[1] != after {
 					t.Errorf("the load answered %q, want %s", got, c.want)
 				}
 				return
@@ -288,8 +288,8 @@ fixed table Msg
 	lines := reviewMsgProbe(t, reader, writer, cases, []string{"schema_rt::fixed_f32_bits(@.X)", "@.NCount"})
 	for _, c := range cases {
 		got := lines[c.name]
-		if strings.HasPrefix(c.want, "refused ") {
-			if len(got) < 2 || got[0] == "1" || got[1] != strings.TrimPrefix(c.want, "refused ") {
+		if after, ok := strings.CutPrefix(c.want, "refused "); ok {
+			if len(got) < 2 || got[0] == "1" || got[1] != after {
 				t.Errorf("%s: the load answered %q, want %s", c.name, got, c.want)
 			}
 			continue
