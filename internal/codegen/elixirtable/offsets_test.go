@@ -3,13 +3,13 @@ package elixirtable
 import (
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -297,7 +297,7 @@ func compileEbin(t *testing.T, elixirBin string, files map[string][]byte) string
 	elixirc := elixircBinary(t, elixirBin)
 	src, ebin := t.TempDir(), t.TempDir()
 	names := writeModuleDir(t, src, files)
-	compile := exec.Command(elixirc, append([]string{"-o", ebin}, names...)...)
+	compile := testproc.Command(t, elixirc, append([]string{"-o", ebin}, names...)...)
 	compile.Dir = src
 	compile.Env = append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	if out, err := compile.CombinedOutput(); err != nil {
@@ -475,7 +475,7 @@ func measureOrdinary(t *testing.T, elixirBin string, unit *ir.Unit, runtime, rea
 		if err := os.WriteFile(filepath.Join(dir, "probe.exs"), []byte(ordinaryMeter+probe), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		cmd := exec.Command(elixirBin, "-pa", ebin, "-r", runtime, "probe.exs")
+		cmd := testproc.Command(t, elixirBin, "-pa", ebin, "-r", runtime, "probe.exs")
 		cmd.Dir, cmd.Env = dir, env
 		raw, err := cmd.CombinedOutput()
 		if err != nil {
