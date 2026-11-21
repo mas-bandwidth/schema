@@ -246,8 +246,11 @@ func TestLuauEveryTypeHasAViewNegativeControl(t *testing.T) {
 // §3.1). The probe unit declares no fixed table, so the build version a fixed
 // table registers for the message form (§3.3) leaves it where it was.
 // Refreshed for the deliberate WireLaw 3 / BuildVersionForm 6 transition:
-// only protocol identity and announcement build words changed.
-const wantTableDigest = "0ad731512f0efcd8bed679ef4c3c20e17d129907c821f6ffbdc2b4e8c72410f1"
+// only protocol identity and announcement build words changed. Moved again
+// when every generated header gained the genheader comment line (the
+// compiler's URL and how to regenerate); with that line removed the bytes
+// hash to the previous digest, 0ad731512f0efcd8.
+const wantTableDigest = "106461f41beec6697d280bae7b32638e46368656bde43ac1a0fdb6d194fa10c2"
 
 // declaredViewNames is every `type`, `union`, `enum` and `flags` the unit
 // declares, the set §8.2 says every one of has a view.
