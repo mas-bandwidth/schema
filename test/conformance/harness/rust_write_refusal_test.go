@@ -66,7 +66,7 @@ func TestRustDriverAnswersWriteRefusal(t *testing.T) {
 		t.Run(surface, func(t *testing.T) {
 			var rows []WriteRefusal
 			for _, wr := range m.WriteRefusals {
-				if wr.Surface() == surface && !notAsked[wr.Name] {
+				if wr.Surface() == surface && !notAsked.has(surface, wr.Name) {
 					rows = append(rows, wr)
 				}
 			}

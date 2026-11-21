@@ -808,7 +808,7 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 				_, _ = io.WriteString(w, "conformance EXEMPTS "+line+"\n")
 			}
 			for _, e := range legWant {
-				if caseNotAsked(notAsked, s, e.name) {
+				if notAsked.has(s, e.name) {
 					r.missing++
 					r.mark(e.name, outcomeAbsent)
 					r.verdict(e.name, "absent")

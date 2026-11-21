@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"sort"
 	"strings"
@@ -61,24 +62,65 @@ func optInLines(text string, skip map[string]bool) (kept string, dropped map[str
 	return strings.TrimSuffix(b.String(), "\n"), dropped
 }
 
-// caseNotAsked says whether a surface's case sits on a row the leg was not
-// handed. Every surface names a case after its row, except json-write, which
-// names it after the file the driver writes: the row's name plus ".json". So
-// a json-write case is looked up by its name less exactly that one suffix and
-// by nothing else: a row may itself be named "x.json", and its case "x.json"
-// on another surface, or the case "x.json" of a row named "x", is not it.
-func caseNotAsked(notAsked map[string]bool, surface, name string) bool {
-	if surface == "json-write" {
-		row, ok := strings.CutSuffix(name, ".json")
-		return ok && notAsked[row]
+// caseKey is a case as a driver answers it: its surface and its name there.
+type caseKey struct {
+	surface, name string
+}
+
+// caseOwners maps every case to the unit its row reads. A CASE'S IDENTITY IS
+// (unit, surface, name), and a name alone says nothing: the manifest lets an
+// instance and a write-refusal row on two units share a name, and each is a
+// case of its own surface. What it may not do is put two units' rows under ONE
+// name on ONE surface, because a driver answers a case by surface and name and
+// the answer would belong to both; that manifest is refused here.
+func caseOwners(m *Manifest) (map[caseKey]string, error) {
+	owners := map[caseKey]string{}
+	err := walkCases(m, func(surface, name, unit, _ string) error {
+		key := caseKey{surface, name}
+		if had, ok := owners[key]; ok && had != unit {
+			return fmt.Errorf("the manifest is ambiguous: case %q of the %s surface belongs to a row on unit %s and a row on unit %s; "+
+				"a case is answered by surface and name, so one name on one surface is one unit's", name, surface, had, unit)
+		}
+		owners[key] = unit
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	return notAsked[name]
+	return owners, nil
+}
+
+// notAsked is the cases a leg is not handed, each with the omitted opt-in
+// unit its row reads: the whole identity, so a case of another unit that
+// shares the name, on this surface's neighbour, is still asked.
+type notAsked map[caseKey]string
+
+// has says whether the case of this surface under this name is one the leg
+// was not handed.
+func (n notAsked) has(surface, name string) bool {
+	_, ok := n[caseKey{surface, name}]
+	return ok
+}
+
+// casesNotAsked is every case whose row reads a unit in skip.
+func casesNotAsked(m *Manifest, skip map[string]bool) (notAsked, error) {
+	owners, err := caseOwners(m)
+	if err != nil {
+		return nil, err
+	}
+	out := notAsked{}
+	for key, unit := range owners {
+		if skip[unit] {
+			out[key] = unit
+		}
+	}
+	return out, nil
 }
 
 // legManifest is the derived manifest a leg is handed, and the cases it is
 // not asked: derived itself when the leg opted into every opt-in unit, and
 // otherwise a filtered copy beside it.
-func legManifest(m *Manifest, derived, lang string, listed map[string]bool) (string, map[string]bool, []string, error) {
+func legManifest(m *Manifest, derived, lang string, listed map[string]bool) (string, notAsked, []string, error) {
 	skip := map[string]bool{}
 	var missing []string
 	for key := range m.OptIn {
@@ -89,16 +131,20 @@ func legManifest(m *Manifest, derived, lang string, listed map[string]bool) (str
 	}
 	sort.Strings(missing)
 	if len(skip) == 0 {
-		return derived, map[string]bool{}, nil, nil
+		return derived, notAsked{}, nil, nil
+	}
+	cases, err := casesNotAsked(m, skip)
+	if err != nil {
+		return "", nil, nil, err
 	}
 	text, err := os.ReadFile(derived)
 	if err != nil {
 		return "", nil, nil, err
 	}
-	kept, dropped := optInLines(string(text), skip)
+	kept, _ := optInLines(string(text), skip)
 	path := strings.TrimSuffix(derived, ".txt") + "-" + lang + ".txt"
 	if err := os.WriteFile(path, []byte(kept), 0o644); err != nil {
 		return "", nil, nil, err
 	}
-	return path, dropped, missing, nil
+	return path, cases, missing, nil
 }
