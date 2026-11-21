@@ -1,0 +1,153 @@
+// Wire.schema: a type named for every platform type the Java emitters name,
+// each a nested class of Wire that shadows that simple name in the file, beside
+// fields of every kind and the table forms (compiler/javaplatform_test.go).
+package javaplatform
+
+type Array { v uint8 }
+type ArrayDeque { v uint8 }
+type ArrayList { v uint8 }
+type Arrays { v uint8 }
+type AssertionError { v uint8 }
+type Base64 { v uint8 }
+type BigDecimal { v uint8 }
+type BigInteger { v uint8 }
+type Boolean { v uint8 }
+type ByteBuffer { v uint8 }
+type ByteOrder { v uint8 }
+type Character { v uint8 }
+type CharacterCodingException { v uint8 }
+type CodingErrorAction { v uint8 }
+type Consumer { v uint8 }
+type Double { v uint8 }
+type Float { v uint8 }
+type Formatter { v uint8 }
+type HashMap { v uint8 }
+type HashSet { v uint8 }
+type IdentityHashMap { v uint8 }
+type IllegalArgumentException { v uint8 }
+type IllegalStateException { v uint8 }
+type IndexOutOfBoundsException { v uint8 }
+type IntConsumer { v uint8 }
+type Integer { v uint8 }
+type List { v uint8 }
+type Long { v uint8 }
+type Map { v uint8 }
+type Math { v uint8 }
+type MathContext { v uint8 }
+type MethodHandles { v uint8 }
+type NoSuchFieldException { v uint8 }
+type Number { v uint8 }
+type NumberFormatException { v uint8 }
+type Object { v uint8 }
+type Override { v uint8 }
+type ReflectiveOperationException { v uint8 }
+type RoundingMode { v uint8 }
+type RuntimeException { v uint8 }
+type Set { v uint8 }
+type StandardCharsets { v uint8 }
+type String { v uint8 }
+type StringBuilder { v uint8 }
+type Supplier { v uint8 }
+type SuppressWarnings { v uint8 }
+type System { v uint8 }
+type ThreadLocal { v uint8 }
+type TreeMap { v uint8 }
+type VarHandle { v uint8 }
+
+enum Team { Red, Blue }
+
+flags Mode { Fast, Quiet, Loud }
+
+type Holder
+{
+    flag    bool
+    small   uint8
+    signed  int16
+    word    uint32
+    big     int64
+    huge    uint64
+    wide    uint128
+    vast    int128
+    ratio   float32
+    precise float64
+    unit    float32 | min = 0, max = 1, resolution = 0.01
+    name    string(16)
+    blob    bytes(8)
+    side    Team
+    mode    Mode
+    raw     [4]uint8
+    words   [3]uint32
+    many    [0..4]uint16
+    s0 Array
+    s1 ArrayDeque
+    s2 ArrayList
+    s3 Arrays
+    s4 AssertionError
+    s5 Base64
+    s6 BigDecimal
+    s7 BigInteger
+    s8 Boolean
+    s9 ByteBuffer
+    s10 ByteOrder
+    s11 Character
+    s12 CharacterCodingException
+    s13 CodingErrorAction
+    s14 Consumer
+    s15 Double
+    s16 Float
+    s17 Formatter
+    s18 HashMap
+    s19 HashSet
+    s20 IdentityHashMap
+    s21 IllegalArgumentException
+    s22 IllegalStateException
+    s23 IndexOutOfBoundsException
+    s24 IntConsumer
+    s25 Integer
+    s26 List
+    s27 Long
+    s28 Map
+    s29 Math
+    s30 MathContext
+    s31 MethodHandles
+    s32 NoSuchFieldException
+    s33 Number
+    s34 NumberFormatException
+    s35 Object
+    s36 Override
+    s37 ReflectiveOperationException
+    s38 RoundingMode
+    s39 RuntimeException
+    s40 Set
+    s41 StandardCharsets
+    s42 String
+    s43 StringBuilder
+    s44 Supplier
+    s45 SuppressWarnings
+    s46 System
+    s47 ThreadLocal
+    s48 TreeMap
+    s49 VarHandle
+}
+
+table Shelf
+{
+    a     float32
+    b     float64
+    n     int64
+    u     uint64
+    side  Team
+    mode  Mode
+    title string(32)
+    items []uint32
+}
+
+fixed table Slot
+{
+    a    float32
+    b    float64
+    n    int64
+    wide uint128
+    side Team
+    name string(16)
+}

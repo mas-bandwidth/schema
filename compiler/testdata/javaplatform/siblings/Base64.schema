@@ -1,0 +1,12 @@
+// Base64.schema beside bench/corpus/Bench.schema and FixedTable.schema: the
+// outer class bench.Base64, which every other file of package bench sees by
+// its simple name (compiler/javaplatform_test.go).
+package bench
+
+type Base64Probe
+{
+    wide  uint128
+    big   int128
+    ratio float64
+    scale float32
+}

@@ -104,11 +104,7 @@ func generate(u *ir.Unit, canon func([]byte) []byte) (map[string][]byte, error) 
 	}
 	for _, f := range u.Files {
 		g := &gen{unit: u, file: f, home: f.Base == home, bulkBytes: bulk}
-		g.shadow, g.obscured = javaShadowNames(f)
 		g.emitFile()
-		if err := g.platformConflict(); err != nil {
-			return nil, err
-		}
 		out[f.Base+".java"] = canon(g.assemble())
 	}
 	return out, nil
@@ -287,8 +283,6 @@ type gen struct {
 
 	usesWire   bool            // the file emitted wire functions: the VarHandle rides
 	usesArrays bool            // the file calls Arrays.fill
-	shadow     map[string]bool // the platform classes a class of this file takes the simple name of (javaShadowNames)
-	obscured   bool            // a class of this file is named `java`
 	helpers    map[string]bool // the bitpacker helpers the file's bodies call
 }
 
@@ -405,76 +399,6 @@ func (g *gen) qualifyType(name string) string {
 	return g.qualify(name, name)
 }
 
-// javaPlatform is each platform class the generated file imports, by its
-// simple name.
-var javaPlatform = map[string]string{
-	"Arrays":        "java.util.Arrays",
-	"MethodHandles": "java.lang.invoke.MethodHandles",
-	"VarHandle":     "java.lang.invoke.VarHandle",
-	"ByteOrder":     "java.nio.ByteOrder",
-}
-
-// javaShadowNames reads, off the file's declarations, which platform classes
-// the file's own classes take the simple names of — the outer class (the
-// file's basename) and every nested class (a type, an enum, a flags mask, a
-// union and its <Name>Type tag) — and whether one of them is named `java`.
-// A member class shadows a single-type import inside the file (JLS §6.4.1),
-// and a class named `java` obscures the java package for every qualified
-// name in the class body (JLS §6.4.2). It is decided from the declarations
-// before a line is emitted, so no emitted text is ever rewritten.
-func javaShadowNames(f *ir.File) (map[string]bool, bool) {
-	names := map[string]bool{f.Base: true}
-	for _, d := range f.Decls {
-		switch d := d.(type) {
-		case *ir.Struct:
-			names[d.Name] = true
-		case *ir.Enum:
-			names[d.Name] = true
-		case *ir.Flags:
-			names[d.Name] = true
-		case *ir.Union:
-			names[d.Name] = true
-			names[d.Name+"Type"] = true
-		}
-	}
-	shadow := map[string]bool{}
-	for n := range javaPlatform {
-		if names[n] {
-			shadow[n] = true
-		}
-	}
-	return shadow, names["java"]
-}
-
-// arraysFill is how the file calls java.util.Arrays.fill: through its import,
-// or — where a class of the file takes the name Arrays — through a static
-// import of the method, which no class name can shadow (methods and types
-// are separate namespaces) and which names no package in the class body. The
-// generated methods are prefixed (write, read, zero, ...), so none is `fill`.
-func (g *gen) arraysFill() string {
-	if g.shadow["Arrays"] {
-		return "fill"
-	}
-	return "Arrays.fill"
-}
-
-// platformConflict refuses the one file the generated Java cannot name its
-// platform classes in: a class of the file takes the name VarHandle or
-// ByteOrder, so the word-access field must name it in full, and another class
-// of the file is named `java`, which obscures that full name.
-func (g *gen) platformConflict() error {
-	if !g.usesWire || !g.obscured {
-		return nil
-	}
-	for _, n := range []string{"VarHandle", "ByteOrder"} {
-		if g.shadow[n] {
-			return fmt.Errorf("schema file %s.schema: the Java target must name %s in full as %s, because a class of the file takes the name %s, and the class `java` this file also declares obscures the java package inside the generated class (JLS §6.4.2); rename one of them",
-				g.file.Base, n, javaPlatform[n], n)
-		}
-	}
-	return nil
-}
-
 func (g *gen) assemble() []byte {
 	var h strings.Builder
 	// the basename, not the invocation-relative path: output is deterministic
@@ -512,33 +436,12 @@ func (g *gen) assemble() []byte {
 	}
 	h.WriteString("\n")
 	fmt.Fprintf(&h, "package %s;\n\n", g.unit.Package)
-	// a shadowed Arrays or MethodHandles is reached through a static import
-	// of the one method the file calls; a shadowed VarHandle or ByteOrder is
-	// named in full where it is used (platformConflict refuses the file in
-	// which that full name is obscured)
-	var statics, imports []string
+	var imports []string
 	if g.usesWire {
-		if g.shadow["MethodHandles"] {
-			statics = append(statics, "java.lang.invoke.MethodHandles.byteArrayViewVarHandle")
-		}
-		for _, n := range []string{"MethodHandles", "VarHandle", "ByteOrder"} {
-			if !g.shadow[n] {
-				imports = append(imports, javaPlatform[n])
-			}
-		}
+		imports = append(imports, "java.lang.invoke.MethodHandles", "java.lang.invoke.VarHandle", "java.nio.ByteOrder")
 	}
 	if g.usesArrays {
-		if g.shadow["Arrays"] {
-			statics = append(statics, "java.util.Arrays.fill")
-		} else {
-			imports = append(imports, "java.util.Arrays")
-		}
-	}
-	for _, imp := range statics {
-		fmt.Fprintf(&h, "import static %s;\n", imp)
-	}
-	if len(statics) > 0 {
-		h.WriteString("\n")
+		imports = append(imports, "java.util.Arrays")
 	}
 	for _, imp := range imports {
 		fmt.Fprintf(&h, "import %s;\n", imp)
@@ -554,26 +457,8 @@ func (g *gen) assemble() []byte {
 	if g.usesWire {
 		h.WriteString("    // 64-bit little-endian word access into byte[] — the proven-fast JVM\n")
 		h.WriteString("    // form (VarHandle byteArrayViewVarHandle, serialize.java's own).\n")
-		shadowed := g.shadow
-		name := func(n string) string {
-			if shadowed[n] {
-				return javaPlatform[n]
-			}
-			return n
-		}
-		if !shadowed["VarHandle"] && !shadowed["MethodHandles"] && !shadowed["ByteOrder"] {
-			h.WriteString("    private static final VarHandle LONG_LE =\n")
-			h.WriteString("            MethodHandles.byteArrayViewVarHandle(long[].class, ByteOrder.LITTLE_ENDIAN);\n\n")
-		} else {
-			// the shadow-proof spelling, laid out as the formatter breaks it
-			call := "MethodHandles.byteArrayViewVarHandle"
-			if shadowed["MethodHandles"] {
-				call = "byteArrayViewVarHandle" // the static import
-			}
-			fmt.Fprintf(&h, "    private static final %s LONG_LE =\n", name("VarHandle"))
-			fmt.Fprintf(&h, "            %s(\n", call)
-			fmt.Fprintf(&h, "                long[].class, %s.LITTLE_ENDIAN);\n\n", name("ByteOrder"))
-		}
+		h.WriteString("    private static final VarHandle LONG_LE =\n")
+		h.WriteString("            MethodHandles.byteArrayViewVarHandle(long[].class, ByteOrder.LITTLE_ENDIAN);\n\n")
 		for _, helper := range javaHelpers {
 			if g.helpers[helper.name] {
 				h.WriteString(helper.src)
@@ -830,7 +715,7 @@ func (g *gen) emitStorageField(f *ir.Field) []string {
 			}
 			g.bpf("        public final %s[] %s = new %s[%s];\n", typ, name, typ, bound)
 			ctor = append(ctor,
-				fmt.Sprintf("            %s(%s, %s.zero);\n", g.arraysFill(), name, typ))
+				fmt.Sprintf("            Arrays.fill(%s, %s.zero);\n", name, typ))
 			g.usesArrays = true
 		default:
 			g.bpf("        public final %s[] %s = new %s[%s];\n", scalarJavaType(f.Type), name, scalarJavaType(f.Type), bound)

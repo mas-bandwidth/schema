@@ -1,0 +1,11 @@
+// Clean.schema: the control, an outer class named for no platform type
+// (compiler/javaplatform_test.go).
+package bench
+
+type CleanProbe
+{
+    wide  uint128
+    big   int128
+    ratio float64
+    scale float32
+}

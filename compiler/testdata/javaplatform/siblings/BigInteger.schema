@@ -1,0 +1,12 @@
+// BigInteger.schema beside bench/corpus/Bench.schema and FixedTable.schema: the
+// outer class bench.BigInteger, which every other file of package bench sees by
+// its simple name (compiler/javaplatform_test.go).
+package bench
+
+type BigIntegerProbe
+{
+    wide  uint128
+    big   int128
+    ratio float64
+    scale float32
+}
