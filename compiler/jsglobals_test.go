@@ -12,6 +12,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -464,7 +465,7 @@ func TestJsUnitDeclaringEveryGlobalRunsAndTypeChecks(t *testing.T) {
 		if _, err := os.Stat(index); err != nil {
 			t.Skip("no serialize.js runtime: set SERIALIZE_JS or stage the sibling checkout")
 		}
-		cmd := exec.Command(node, "run.mjs")
+		cmd := testproc.Command(t, node, "run.mjs")
 		cmd.Dir = dir
 		cmd.Env = append(os.Environ(), "SERIALIZE_JS_INDEX="+index)
 		out, err := cmd.CombinedOutput()
@@ -488,7 +489,7 @@ func TestJsUnitDeclaringEveryGlobalRunsAndTypeChecks(t *testing.T) {
 				args = append(args, name)
 			}
 		}
-		cmd := exec.Command(tsc, args...)
+		cmd := testproc.Command(t, tsc, args...)
 		cmd.Dir = dir
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("tsc --strict: %v\n%s", err, out)

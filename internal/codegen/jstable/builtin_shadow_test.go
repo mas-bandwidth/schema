@@ -2,7 +2,6 @@ package jstable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -13,6 +12,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // A table module imports the unit's types, so a type named like a builtin the
@@ -153,7 +153,7 @@ func TestJsTableBuiltinsSurviveSameNamedSchemaTypes(t *testing.T) {
 		if err := os.WriteFile(script, []byte(strings.Join(imports, "\n")+"\nconsole.log('OK');\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		cmd := exec.Command(node, script)
+		cmd := testproc.Command(t, node, script)
 		cmd.Dir = dir
 		got, err := cmd.CombinedOutput()
 		if err != nil || !strings.Contains(string(got), "OK") {
