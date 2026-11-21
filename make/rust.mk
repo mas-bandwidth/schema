@@ -655,6 +655,10 @@ test-rust: generated/rust/.stamp generated/rust-ludicrous/.stamp generated/bench
 
 TEST_LEGS         += test-rust
 CONFORMANCE_LEGS  += $(call unless_skipped,rust,build/conformance-rust)
+REGISTRY_NA       += bench-tables:rust goldens:rust toolchain:rust
+REGISTRY_NA_WHY.bench-tables.rust := bench/tables/rust is the fixed form's paired leg, built and run by bench/paired (THE PAIRED BENCH UNIT, above), not by bench/tables/run.sh
+REGISTRY_NA_WHY.goldens.rust      := no committed table goldens; its packet goldens (testdata/golden/rust) are rewritten by internal/goldens at the top of update-goldens
+REGISTRY_NA_WHY.toolchain.rust    := no pin yet: cargo is the host's rustup default (the PATH note at the top of this file)
 
 # Packet defaults share the C++ oracle. Both build modes consume its byte and
 # bit pins, and the control removes only constructor byte copies.

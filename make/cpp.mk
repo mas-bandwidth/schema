@@ -3,6 +3,15 @@
 # live here, not in the root Makefile (docs/CONTRIBUTING.md, "Adding a
 # language").
 
+# The registry (Makefile, THE REGISTRY COMPLETENESS GATE): C++ is the reference
+# the aggregates are built around, so it rides on none of the lists.
+REGISTRY_NA += test:cpp conformance:cpp bench-tables:cpp goldens:cpp toolchain:cpp
+REGISTRY_NA_WHY.test.cpp         := the reference is the root test target itself (its test: lines here and in the Makefile), not a leg of it
+REGISTRY_NA_WHY.conformance.cpp  := build/conformance-cpp is a prerequisite of the conformance target itself: the harness's reference driver
+REGISTRY_NA_WHY.bench-tables.cpp := generated/bench/tables/cpp/.stamp is a prerequisite of the bench-tables target itself
+REGISTRY_NA_WHY.goldens.cpp      := the update-goldens recipe copies the C++ table goldens (testdata/golden/tables/<unit>) itself, before the legs
+REGISTRY_NA_WHY.toolchain.cpp    := builds with the host C++ compiler (CXX), which nothing pins; clang-format's pin (CLANG_FORMAT_PIN) is held by tables-cpp-clean
+
 CARDS_CPP_GENERATED := build/tables-generated-cpp/cards
 
 CARDS_CPP_STAMP := $(CARDS_CPP_GENERATED)/.stamp
