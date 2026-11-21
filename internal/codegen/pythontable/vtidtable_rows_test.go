@@ -11,7 +11,8 @@ package pythontable
 //	report    the plain load answers reports.txt's verdict; for a refused
 //	          wire the variable reader (load_table), where the escape (31) and
 //	          payload-free (32) kinds are judged, answers the Go engine's own
-//	          decode of the same bytes (read, or refused by its reason)
+//	          verdict on the same bytes (read, or refused; why a read refused
+//	          is each side's own diagnostic, never compared)
 //
 // A refused read returns nothing (it raises), so no partial value reaches the
 // caller. TestPythonVtIdtableRowsNegativeControl plants, one at a time, a
@@ -95,7 +96,8 @@ func vtIdtableManifest(t *testing.T, repo string) (map[string]vtIdtableRow, map[
 }
 
 // vtIdtableEngineVerdict is the Go engine's verdict on wire at root through
-// decode: "read", or the refusal's reason name.
+// decode: "read" or "refused". Any error that is not a read's refusal fails
+// the test.
 func vtIdtableEngineVerdict(t *testing.T, u *ir.Unit, root string, wire []byte, decode func(*tabletext.Model, *tabletext.Instance, []byte, *tabletext.Report) (bool, error)) string {
 	t.Helper()
 	m := tabletext.NewModel(u)
@@ -105,11 +107,10 @@ func vtIdtableEngineVerdict(t *testing.T, u *ir.Unit, root string, wire []byte, 
 	if ok {
 		return "read"
 	}
-	reason := tablewire.RefusalReason(err)
-	if reason == "" {
-		t.Fatalf("the Go engine refuses with %v, not a reasoned refusal", err)
+	if !tablewire.ReadRefusal(err) {
+		t.Fatalf("the Go engine fails with %v, which is not a read's refusal", err)
 	}
-	return reason
+	return "refused"
 }
 
 // vtIdtableProbe reads the wire at root through the plain load and, for a
@@ -124,14 +125,14 @@ with open("wire", "rb") as f:
 def variable():
     try:
         load_table(%[2]s, data)
-    except Refused as err:
-        return "refused:" + err.reason
+    except Refused:
+        return "refused"
     return "read"
 
 try:
     value = %[2]s.load(data)
-except Refused as err:
-    print("refused", err.reason, variable())
+except Refused:
+    print("refused", variable())
 else:
     saved = value.save()
     print("saved", len(data), "same" if saved == data else "diff", value.measure())
@@ -198,16 +199,13 @@ func vtIdtableCase(t *testing.T, repo, name string, mutate func(*testing.T, map[
 			return fmt.Sprintf("%s (%s/%s): Python %s, the Go engine %s", name, row.unit, row.root, got, want)
 		}
 		if verdict == "refused" {
-			// The refusal is the Go engine's by name: the plain load is held
-			// to Decode's reason, and the variable reader to DecodeVariable's
-			// verdict on the same bytes (read when an escape it cannot name
-			// is skipped and counted unknown, else refused by its reason).
+			// The refusal is the Go engine's verdict: the plain load is held
+			// to Decode's, and the variable reader to DecodeVariable's on the
+			// same bytes (read when an escape it cannot name is skipped and
+			// counted unknown, else refused).
 			plain := vtIdtableEngineVerdict(t, u, row.root, wire, tablewire.Decode)
 			variable := vtIdtableEngineVerdict(t, u, row.root, wire, tablewire.DecodeVariable)
-			if variable != "read" {
-				variable = "refused:" + variable
-			}
-			if want := "refused " + plain + " " + variable; got != want {
+			if want := plain + " " + variable; got != want {
 				return fmt.Sprintf("%s (%s/%s): Python %q, the Go engine %q", name, row.unit, row.root, got, want)
 			}
 		}
@@ -239,6 +237,29 @@ func TestPythonVtIdtableRows(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			if fail := vtIdtableCase(t, repo, name, nil); fail != "" {
+				t.Error(fail)
+			}
+		})
+	}
+}
+
+// TestPythonVtIdtableRowsReasonIsDiagnostic renames every refusal reason in a
+// copy of the emitted runtime and requires every case to stay green: the
+// cross-language contract is the verdict, and why a read refused is Python's
+// own diagnostic (docs/rulings.json, refusal-verdict-only).
+//
+// Functional (python pins): run with SCHEMA_SLOW=1; make test-python does.
+func TestPythonVtIdtableRowsReasonIsDiagnostic(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the pinned Python interpreters")
+	repo, err := pyrun.RepoRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range vtIdtableRowCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if fail := vtIdtableCase(t, repo, name, plantReasonRename); fail != "" {
 				t.Error(fail)
 			}
 		})

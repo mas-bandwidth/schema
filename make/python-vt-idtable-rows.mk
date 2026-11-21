@@ -3,8 +3,10 @@
 # holds every manifest case luatable's vtcells_test.go names for the row to the
 # one read on read-then-write under both pinned interpreters: each instance
 # saves back byte for byte, and each report row answers the Go engine's
-# verdict, the plain load by Decode's reason and the variable reader by
-# DecodeVariable's.
+# verdict (read or refused; the reason is never compared), the plain load by
+# Decode's and the variable reader by DecodeVariable's. The ReasonIsDiagnostic
+# sibling renames every refusal reason in a copy of the runtime and must stay
+# green.
 #
 # python-vt-idtable-rows-negative-control: in copies of the emitted runtime,
 # one fault at a time, the fixed save's layout hash is one bit off, the fixed
@@ -14,7 +16,7 @@
 # make/negative-controls.d/python-vt-idtable-rows-negative-control.json.
 .PHONY: python-vt-idtable-rows python-vt-idtable-rows-negative-control
 python-vt-idtable-rows: deps-go python-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtIdtableRows$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtIdtableRows(ReasonIsDiagnostic)?$$' ./internal/codegen/pythontable/
 
 python-vt-idtable-rows-negative-control: deps-go python-toolchain-check
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtIdtableRowsNegativeControl$$' ./internal/codegen/pythontable/
