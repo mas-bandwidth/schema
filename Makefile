@@ -4882,8 +4882,9 @@ tables-arms-negative-controls: tables-arms-list-edge-negative-control \
 # breaking under an unchanged schema is stop-the-line, never a quiet re-pin
 # (SPEC §3.1) — this target is for intentional emitter/schema changes only.
 update-goldens: build/schema_test_retain build/schema_test build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/schema_test_tables build/schema_test_block build/schema_test_maps build/schema_test_lists build/schema_test_arms build/conformance-harness
-	@mkdir -p testdata/golden testdata/wire testdata/wire/tables
+	@mkdir -p testdata/golden testdata/golden/tables testdata/wire testdata/wire/tables
 	go test ./internal/goldens -update -run 'TestGolden'
+	go test -tags schema_leg_moo ./internal/goldens -update -run 'TestGolden'
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_tables
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_block
@@ -6534,7 +6535,7 @@ include $(wildcard make/*.mk)
 # unchanged.
 .PHONY: test-moo-tagged-compiler test-moo-tagged-table
 test-moo-tagged-compiler: toolchain-moo build/fixedform-corpus/.stamp
-	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 60m -tags schema_leg_moo ./compiler/
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 60m -tags schema_leg_moo ./compiler/ ./internal/goldens/
 test-moo-tagged-table: toolchain-moo build/fixedform-corpus/.stamp
 	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 60m -tags schema_leg_moo ./internal/codegen/mootable/ ./test/conformance/harness/
 # THE PER-COMMIT SMOKES OF THE SAME MATRIX (ci-full.yml's leg-tagged job,
@@ -6548,6 +6549,7 @@ test-moo-tagged-table: toolchain-moo build/fixedform-corpus/.stamp
 .PHONY: test-moo-tagged-compiler-smoke test-moo-tagged-table-smoke test-goose-tagged-harness-smoke
 test-moo-tagged-compiler-smoke: toolchain-moo
 	SCHEMA_SLOW=1 go test -count=1 -timeout 60m -tags schema_leg_moo -run '^(TestMoo|TestEachTargetDeclaresWhatItCarries)' ./compiler/
+	sh test/slowgate/proof moo-tagged-goldens 'TestGoldenLudicrousSource TestGoldenSourceEveryTarget TestGoldenDirectoriesBelongToTargets' -count=1 -tags schema_leg_moo -run '^TestGolden' ./internal/goldens/
 test-moo-tagged-table-smoke: toolchain-moo
 	SCHEMA_SLOW=1 go test -count=1 -timeout 60m -tags schema_leg_moo -run '^TestMooTableDescriptorsLoad$$' ./internal/codegen/mootable/
 	SCHEMA_SLOW=1 go test -count=1 -timeout 60m -tags schema_leg_moo -run '^TestImplementationAdmitsTaggedLanguagesByBuild$$' ./test/conformance/harness/
@@ -7939,6 +7941,7 @@ pins-source-cs: bin/schema
 pins-source-goldens: bin/schema
 	@mkdir -p testdata/golden
 	go test ./internal/goldens -update -run '^TestGolden'
+	go test -tags schema_leg_moo ./internal/goldens -update -run '^TestGolden'
 	go test ./internal/goldens -count=1 -run '^TestGolden'
 
 .PHONY: pins-source

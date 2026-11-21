@@ -21,7 +21,19 @@ jobs=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 work=$OUT/c-format-workers
 rm -rf "$work" && mkdir -p "$work"
 
-find "$@" \( -name '*.h' -o -name '*.c' \) | sort > "$OUT/c-format-files.txt"
+# find's own status is read (a pipe would hand back sort's), and a tree with
+# no .h or .c is a failure: the gate would otherwise print "clean" over nothing.
+if ! find "$@" \( -name '*.h' -o -name '*.c' \) > "$OUT/c-format-found.txt"; then
+	echo "tables-c-clean: cannot list $*" >&2
+	exit 1
+fi
+sort "$OUT/c-format-found.txt" > "$OUT/c-format-files.txt"
+rm -f "$OUT/c-format-found.txt"
+if [ ! -s "$OUT/c-format-files.txt" ]; then
+	echo "tables-c-clean: no .h or .c file under $*; nothing was held to clang-format" >&2
+	exit 1
+fi
+checked=$(wc -l < "$OUT/c-format-files.txt" | tr -d ' ')
 if [ -s "$OUT/c-format-files.txt" ]; then
 	xargs -P "$jobs" -n 16 sh -c '
 		cf=$1; st=$2; wk=$3; shift 3
@@ -48,10 +60,18 @@ if ls "$work"/res.* >/dev/null 2>&1; then
 		fi
 	done < "$OUT/c-format-results.txt"
 fi
+# every listed file has a verdict: a worker that died, or clang-format missing
+# from every worker, leaves fewer verdicts than files
+judged=0
+[ -f "$OUT/c-format-results.txt" ] && judged=$(wc -l < "$OUT/c-format-results.txt" | tr -d ' ')
+if [ "$judged" -ne "$checked" ]; then
+	echo "tables-c-clean: $judged verdicts for $checked files; the format check did not finish" >&2
+	bad=1
+fi
 rm -rf "$work" "$OUT/c-format-files.txt" "$OUT/c-format-results.txt"
 
 for f in $(grep -v '^#' "$allow" | grep . || true); do
 	[ -f "$f" ] || { echo "tables-c-clean: $f is listed in $allow but no longer generated — remove its line"; bad=1; }
 done
 [ $bad -eq 0 ] || exit 1
-echo "C: clang-format clean over $*, $(wc -l < "$seen" | tr -d ' ') table-emitter files still on the ratchet"
+echo "C: clang-format clean over $*: $checked files checked, $(wc -l < "$seen" | tr -d ' ') table-emitter files still on the ratchet"
