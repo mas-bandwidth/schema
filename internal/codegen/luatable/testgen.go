@@ -255,6 +255,13 @@ func ltgUnreadableUint64(st *ir.Struct, seen map[*ir.Struct]bool) string {
 		if t.Kind == ir.TNamed {
 			switch ref := t.Ref.(type) {
 			case *ir.Struct:
+				// a table is walked once: one that reaches itself (through a
+				// pointer) ends here, so the walk's depth is bounded by the
+				// closure's table count
+				if seen[ref] {
+					return ""
+				}
+				seen[ref] = true
 				for _, inner := range ref.Fields {
 					if name := field(inner); name != "" {
 						return name
@@ -373,8 +380,11 @@ func ltgQuote(s string) string {
 	return b.String()
 }
 
-// ltgGen spells one sample. path holds the tables on the current pointer path,
-// so a recursive declaration ends in null (§16.11).
+// ltgGen spells one sample. path holds every table the sample has written as a
+// pointer's node, so a pointer to one already written ends in null and each
+// table is written at most once: a recursive declaration ends, and a sample's
+// size is linear in the declaration however densely the tables point at each
+// other (§16.11).
 type ltgGen struct {
 	mode int
 	arm  int
@@ -625,7 +635,6 @@ func (g *ltgGen) pointer(j *ltgJSON, f *ir.Field) error {
 		return nil
 	}
 	g.path[st.Name] = true
-	defer delete(g.path, st.Name)
 	return g.table(j, st)
 }
 

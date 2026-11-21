@@ -179,8 +179,11 @@ func (j *tgJSON) expr() string {
 	return strings.Join(j.parts, " + ")
 }
 
-// tgGen spells one sample. path holds the tables on the current pointer path,
-// so a recursive declaration ends in null (§16.11).
+// tgGen spells one sample. path holds every table the sample has written as a
+// pointer's node, so a pointer to one already written ends in null and each
+// table is written at most once: a recursive declaration ends, and a sample's
+// size is linear in the declaration however densely the tables point at each
+// other (§16.11).
 type tgGen struct {
 	mode int
 	arm  int
@@ -421,7 +424,6 @@ func (g *tgGen) pointer(j *tgJSON, f *ir.Field) error {
 		return nil
 	}
 	g.path[st.Name] = true
-	defer delete(g.path, st.Name)
 	return g.table(j, st)
 }
 
