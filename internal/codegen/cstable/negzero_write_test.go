@@ -15,119 +15,142 @@ import (
 
 // THE VARIABLE WRITER STORES +0 FOR A COMPRESSED FLOAT'S -0 (docs/SPEC-TABLES.md
 // §3.3, ruled 2026-11-10 fixed-compressed-negzero): the same bytes it stores
-// for +0, on every C# (modern) path that writes the variable form. A clean
-// leaf (the typed writer) under a non-zero default and under a +0 default
-// (where -0 IS the default and is elided, as the reference elides it), an
-// array element (the descriptor walk), and a value saved
-// from a native region (the region writer). A plain float keeps its -0.
+// for +0, on every C# (modern) path that writes the variable form. The rows
+// are the committed corpus testdata/conformance/feature-witnesses/
+// compressed-negzero-writers (cases.tsv): each loads the reference's +0 twin,
+// sets the field to -0 in the NATIVE value after the load, saves, and owes
+// the reference bytes. The value rows cover the descriptor walk (a variable
+// table: a leaf under a non-zero default, a leaf whose -0 is its +0 default,
+// an array element stored because its neighbour rides) and the typed writer
+// (a fixed table's variable-form save); the region rows cover the region
+// writer. A plain float keeps its -0 (the control rows).
 func TestCSharpVariableWriterStoresCompressedNegZeroAsPositive(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the .NET SDK (it compiles and runs the generated C# writer)")
-	out, err := csNegZeroWriteRun(t)
+	schema, rows := csNegZeroWitness(t)
+	out, err := csNegZeroWriteRun(t, schema, csNegZeroWriteMain(rows))
 	if err != nil {
 		t.Fatalf("probe: %v\n%s", err, out)
 	}
-	for _, row := range []string{
-		"leaf_nonzero_default",
-		"leaf_zero_default_elided",
-		"array_element",
-		"region_writer",
-		"plain_float_keeps_negzero",
-	} {
-		if !strings.Contains(string(out), "ROW "+row+": ok") {
-			t.Errorf("row %s is not held:\n%s", row, out)
+	for _, row := range rows {
+		if !strings.Contains(string(out), "ROW "+row.name+": ok") {
+			t.Errorf("row %s is not held:\n%s", row.name, out)
 		}
 	}
 }
 
-const csNegZeroWriteSchema = `package nzw
+const csNegZeroWitnessDir = "../../../testdata/conformance/feature-witnesses/compressed-negzero-writers"
 
-table Var
-{
-    a  float32 = 0.05 | min = 0, max = 0.1, resolution = 0.01
-    z  float32 | min = 0, max = 0.1, resolution = 0.01
-    xs [2]float32 | min = 0, max = 0.1, resolution = 0.01
-    p  float32
+type csNegZeroRow struct {
+	name, carrier, root, path string
+	base, expect              []byte
 }
-`
 
-const csNegZeroWriteMain = `using System;
+// csNegZeroWitness reads the corpus: its unit, and every row with its two
+// pinned wires.
+func csNegZeroWitness(t *testing.T) (string, []csNegZeroRow) {
+	t.Helper()
+	schema, err := os.ReadFile(filepath.Join(csNegZeroWitnessDir, "Probe.schema"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text, err := os.ReadFile(filepath.Join(csNegZeroWitnessDir, "cases.tsv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire := func(name string) []byte {
+		b, err := os.ReadFile(filepath.Join(csNegZeroWitnessDir, name+".bin"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	var rows []csNegZeroRow
+	for i, line := range strings.Split(string(text), "\n") {
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		f := strings.Split(line, "\t")
+		if len(f) != 6 {
+			t.Fatalf("cases.tsv:%d: %d fields, want 6", i+1, len(f))
+		}
+		rows = append(rows, csNegZeroRow{name: f[0], carrier: f[1], root: f[2], path: f[4], base: wire(f[3]), expect: wire(f[5])})
+	}
+	if len(rows) == 0 {
+		t.Fatal("cases.tsv names no row")
+	}
+	return string(schema), rows
+}
+
+// csNegZeroMember is a corpus path as a C# member: `xs[0]` is `Xs[0]`.
+func csNegZeroMember(path string) string {
+	return strings.ToUpper(path[:1]) + path[1:]
+}
+
+func csNegZeroBytes(b []byte) string {
+	var s strings.Builder
+	s.WriteString("new byte[] {")
+	for i, c := range b {
+		if i > 0 {
+			s.WriteString(",")
+		}
+		fmt.Fprintf(&s, "0x%02x", c)
+	}
+	s.WriteString("}")
+	return s.String()
+}
+
+// csNegZeroWriteMain is the probe over the rows: one block per row.
+func csNegZeroWriteMain(rows []csNegZeroRow) string {
+	var b strings.Builder
+	b.WriteString(`using System;
 using System.Runtime.InteropServices;
 using Nzw;
 
 static class ProbeMain
 {
-    static int Row(string name, bool ok, string why)
+    static string Hex(byte[] b) { return Convert.ToHexString(b); }
+    static int Check(string name, bool loaded, byte[] got, byte[] want)
     {
-        Console.WriteLine("ROW " + name + ": " + (ok ? "ok" : "FAILED " + why));
+        bool ok = loaded && got.AsSpan().SequenceEqual(want);
+        Console.WriteLine("ROW " + name + ": " + (ok ? "ok" : "FAILED loaded=" + loaded + " " + Hex(got) + " vs " + Hex(want)));
         return ok ? 0 : 1;
     }
-    static byte[] Save(Var v)
-    {
-        byte[] buf = new byte[Schema.VarMeasure(v)];
-        long n = Schema.VarSave(v, buf);
-        return buf.AsSpan(0, (int)Math.Max(0, n)).ToArray();
-    }
-    static string Hex(byte[] b) { return Convert.ToHexString(b); }
-    static int Same(string name, Var neg, Var pos)
-    {
-        byte[] a = Save(neg), b = Save(pos);
-        return Row(name, a.Length > 0 && a.AsSpan().SequenceEqual(b), Hex(a) + " vs " + Hex(b));
-    }
-    static unsafe byte[] ViaRegion(byte[] image)
-    {
-        long cap = 1 << 16;
-        IntPtr region = Marshal.AllocHGlobal((IntPtr)cap);
-        try
-        {
-            var rep = new TableReport();
-            if (Schema.VarLoad(region, cap, image, rep) == null) { return new byte[0]; }
-            byte[] buf = new byte[Schema.VarMeasure(region)];
-            long n = Schema.VarSave(region, buf);
-            return buf.AsSpan(0, (int)Math.Max(0, n)).ToArray();
-        }
-        finally { Marshal.FreeHGlobal(region); }
-    }
-    // the image of a value whose a field is -0, made by writing a = 0.07 and
-    // storing -0's bits over the one place its four bytes sit
-    static byte[] NegZeroImage()
-    {
-        var v = new Var(); v.A = 0.07f;
-        byte[] b = Save(v);
-        byte[] pat = BitConverter.GetBytes(0.07f);
-        int at = b.AsSpan().IndexOf(pat);
-        if (at < 0 || b.AsSpan(at + 1).IndexOf(pat) >= 0) { return new byte[0]; }
-        BitConverter.GetBytes(0x80000000u).CopyTo(b, at);
-        return b;
-    }
+    static byte[] Cut(byte[] buf, long n) { return buf.AsSpan(0, (int)Math.Max(0, n)).ToArray(); }
+    static byte[] Save(Var v) { byte[] buf = new byte[Schema.VarMeasure(v)]; return Cut(buf, Schema.VarSave(v, buf)); }
+    static byte[] Save(Fix v) { byte[] buf = new byte[Schema.FixMeasure(v)]; return Cut(buf, Schema.FixSave(v, buf)); }
+    static byte[] SaveRegion(IntPtr region) { byte[] buf = new byte[Schema.VarMeasure(region)]; return Cut(buf, Schema.VarSave(region, buf)); }
 
-    static int Main()
+    static unsafe int Main()
     {
         int bad = 0;
-        { var n = new Var(); n.A = -0.0f; var p = new Var(); p.A = 0.0f; bad += Same("leaf_nonzero_default", n, p); }
-        { var n = new Var(); n.Z = -0.0f; bad += Same("leaf_zero_default_elided", n, new Var()); }
-        { var n = new Var(); n.Xs[0] = -0.0f; var p = new Var(); p.Xs[0] = 0.0f; bad += Same("array_element", n, p); }
-        {
-            var p = new Var(); p.A = 0.0f;
-            byte[] image = NegZeroImage();
-            byte[] a = image.Length > 0 ? ViaRegion(image) : new byte[0], b = ViaRegion(Save(p));
-            bad += Row("region_writer", a.Length > 0 && a.AsSpan().SequenceEqual(b), "image=" + Hex(image) + " " + Hex(a) + " vs " + Hex(b));
-        }
-        {
-            var n = new Var(); n.P = -0.0f;
-            byte[] a = Save(n), b = Save(new Var());
-            bad += Row("plain_float_keeps_negzero", a.Length > b.Length && a.AsSpan().IndexOf(BitConverter.GetBytes(0x80000000u)) >= 0, Hex(a) + " vs " + Hex(b));
-        }
-        Console.WriteLine(bad == 0 ? "PROBE OK" : "FAILED " + bad);
+        const long cap = 1 << 16;
+`)
+	for _, r := range rows {
+		m := csNegZeroMember(r.path)
+		switch r.carrier {
+		case "value":
+			fmt.Fprintf(&b, "        { var v = new %s(); bool loaded = Schema.%sLoad(v, %s, new TableReport()); v.%s = -0.0f; bad += Check(%q, loaded, Save(v), %s); }\n",
+				r.root, r.root, csNegZeroBytes(r.base), m, r.name, csNegZeroBytes(r.expect))
+		case "region":
+			fmt.Fprintf(&b, "        { IntPtr region = Marshal.AllocHGlobal((IntPtr)cap); try { %sRow* row = Schema.%sLoad(region, cap, %s, new TableReport()); if (row != null) { row->%s = -0.0f; } bad += Check(%q, row != null, row != null ? SaveRegion(region) : new byte[0], %s); } finally { Marshal.FreeHGlobal(region); } }\n",
+				r.root, r.root, csNegZeroBytes(r.base), m, r.name, csNegZeroBytes(r.expect))
+		default:
+			fmt.Fprintf(&b, "        Console.WriteLine(\"ROW %s: FAILED unknown carrier %s\"); bad++;\n", r.name, r.carrier)
+		}
+	}
+	b.WriteString(`        Console.WriteLine(bad == 0 ? "PROBE OK" : "FAILED " + bad);
         return bad == 0 ? 0 : 1;
     }
 }
-`
+`)
+	return b.String()
+}
 
-func csNegZeroWriteRun(t *testing.T) ([]byte, error) {
+func csNegZeroWriteRun(t *testing.T, schema, probe string) ([]byte, error) {
 	t.Helper()
 	dir := t.TempDir()
-	u := unitFrom(t, csNegZeroWriteSchema)
+	u := unitFrom(t, schema)
 	files, err := csharp.Generate(u)
 	if err != nil {
 		t.Fatal(err)
@@ -164,7 +187,7 @@ func csNegZeroWriteRun(t *testing.T) ([]byte, error) {
 		sources = append(sources, path)
 	}
 	main := filepath.Join(dir, "NegZeroWrite.cs")
-	if err := os.WriteFile(main, []byte(csNegZeroWriteMain), 0o600); err != nil {
+	if err := os.WriteFile(main, []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	csc, refs, runtime := csDotnetToolchain(t)
