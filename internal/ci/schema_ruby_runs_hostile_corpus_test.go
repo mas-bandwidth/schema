@@ -204,6 +204,10 @@ def refuse_reason(carrier, exc)
 
     return 'damaged'
   end
+  # wire_damaged is this port's name for a damaged read on every carrier, and
+  # the corpus's word for it is damaged (docs/HOSTILE-CORPUS.md, Reasons)
+  return 'damaged' if reason == 'wire_damaged'
+
   reason.empty? ? 'damaged' : reason
 end
 

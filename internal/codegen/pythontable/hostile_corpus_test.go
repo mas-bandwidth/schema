@@ -249,6 +249,10 @@ def refuse_reason(carrier, exc):
         if reason in ("message_form_as_file", "newer_form", "non_finite_float"):
             return reason
         return "damaged"
+    # wire_damaged is this port's name for a damaged read on every carrier, and
+    # the corpus's word for it is damaged (docs/HOSTILE-CORPUS.md, Reasons)
+    if reason == "wire_damaged":
+        return "damaged"
     return reason if reason else "damaged"
 
 
