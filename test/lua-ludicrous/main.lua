@@ -215,9 +215,12 @@ do
   local out = lud.NewUnsignedProbe()
   check(read(lud.ReadUnsignedProbe, uWire, out), "read UnsignedProbe")
   check(deepEqual(out, inp), "UnsignedProbe round-trips, the uint64 high half bit-exact")
-  -- the write-side degenerate refusal: any raw but 3 * 2^16 is refused
+  -- the write-side degenerate refusal: any raw but 3 * 2^16 is write misuse,
+  -- which this port traps in every run (IMPLEMENTING.md U9)
   inp.Locked = 196609
-  check(not lud.WriteUnsignedProbe(serialize.WriteStream.new(256), inp), "a wrong degenerate ufixed raw is REFUSED on write")
+  local wrote, trap = pcall(lud.WriteUnsignedProbe, serialize.WriteStream.new(256), inp)
+  check(not wrote and string.find(tostring(trap), "write misuse", 1, true) ~= nil,
+    "a wrong degenerate ufixed raw is REFUSED on write (the misuse trap)")
   -- hostile: span's 64 offset bits from bit 25, all ones, above the raw
   -- range in the UNSIGNED domain
   local hostile = setBits(uWire, 25, 64)

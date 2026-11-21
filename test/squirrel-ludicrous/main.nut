@@ -219,9 +219,17 @@ local takenWire = null;
   check(out.Angle == inp.Angle && out.Span == inp.Span && eq128(out.Reach, inp.Reach) &&
     out.Ticks == inp.Ticks && samplesEqual(out.Samples, inp.Samples) && out.Locked == inp.Locked &&
     out.Tail == inp.Tail, "UnsignedProbe round-trips, the uint64 high half bit-exact");
-  // the write-side degenerate refusal: any raw but 3 * 2^16 is refused
+  // the write-side degenerate refusal: any raw but 3 * 2^16 is write misuse,
+  // which this port traps in every run (IMPLEMENTING.md U9)
   inp.Locked = 196609;
-  check(!lud.WriteUnsignedProbe(serialize.WriteStream(blob(256)), inp), "a wrong degenerate ufixed raw is REFUSED on write");
+  local trapped = null;
+  try {
+    lud.WriteUnsignedProbe(serialize.WriteStream(blob(256)), inp);
+  } catch (e) {
+    trapped = e;
+  }
+  check(typeof trapped == "string" && trapped.find("write misuse") != null,
+    "a wrong degenerate ufixed raw is REFUSED on write (the misuse trap)");
   // hostile: span's 64 offset bits from bit 25, all ones, above the raw
   // range in the UNSIGNED domain
   check(!read(lud.ReadUnsignedProbe, setBits(uWire, 25, 64), lud.UnsignedProbe()), "a smuggled ufixed high-half offset is REJECTED");
