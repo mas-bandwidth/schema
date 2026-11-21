@@ -23,8 +23,73 @@ func writePinPkg(t *testing.T, root, pkg, content string) string {
 
 // pinDirective is assembled here so no line of THIS source file starts with
 // the directive: `go generate ./...` scans test files too, and a fixture
-// written as a column-0 raw-string line would be run as a real command.
-const pinDirective = "//go:generate go run github.com/mas-bandwidth/schema/v2/cmd/schema@"
+// written as a column-0 raw-string line would be run as a real command. The
+// module path is split at its major suffix so the module-path move program
+// (tools/modpath) leaves these fixtures alone: they name a major on purpose.
+const (
+	pinDirectiveBase = "//go:generate go run github.com/mas-bandwidth/schema"
+	pinDirective     = pinDirectiveBase + "/v" + "2/cmd/schema@"
+	pinDirectiveV1   = pinDirectiveBase + "/cmd/schema@"
+	pinDirectiveV3   = pinDirectiveBase + "/v" + "3/cmd/schema@"
+)
+
+// TestPinWritesAPathGoCanResolve: the pin line's module path always carries
+// the major of the version it names, as Go's semantic import versioning
+// requires, and a tag Go cannot resolve under any path is refused by name
+// with every file unchanged.
+func TestPinWritesAPathGoCanResolve(t *testing.T) {
+	t.Parallel()
+	bin := buildCLI(t)
+	root := t.TempDir()
+	gen := func(dir string) string { return mustRead(t, filepath.Join(dir, "generate.go")) }
+
+	// v2 to v3: the path moves to /v3 with the version, tails kept
+	p := writePinPkg(t, root, "major", pinPkg1)
+	run(t, bin, "pin", "v3.0.2", p)
+	want := strings.ReplaceAll(pinPkg1, pinDirective+"v2.5.0", pinDirectiveV3+"v3.0.2")
+	if got := gen(p); got != want {
+		t.Errorf("v2 to v3 pin:\n%q\nwant\n%q", got, want)
+	}
+
+	// a pseudo-version takes its major's path the same way
+	run(t, bin, "pin", "v3.0.3-0.20261121000000-abcdef123456", p)
+	if got := gen(p); !strings.Contains(got, pinDirectiveV3+"v3.0.3-0.20261121000000-abcdef123456 generate --lang go --out .") {
+		t.Errorf("v3 pseudo-version pin: %q", got)
+	}
+
+	// back to v1: the path loses its suffix
+	run(t, bin, "pin", "v1.16.0", p)
+	if got := gen(p); !strings.Contains(got, pinDirectiveV1+"v1.16.0 generate --lang cpp --out generated") || strings.Contains(got, "/v3/") {
+		t.Errorf("v1 pin: %q", got)
+	}
+
+	// and to v2 again from a suffix-less line
+	run(t, bin, "pin", "v2.5.0", p)
+	if got := gen(p); got != pinPkg1 {
+		t.Errorf("v1 to v2 pin did not restore the original:\n%q", got)
+	}
+
+	// v3.0.0 and v3.0.1 carry a go.mod naming /v2: no path resolves them
+	for _, v := range []string{"v3.0.0", "v3.0.1"} {
+		msg, status := runFail(t, bin, "pin", v, p)
+		if status != 1 {
+			t.Fatalf("pin %s exit %d, want 1\n%s", v, status, msg)
+		}
+		if !strings.Contains(msg, v) || !strings.Contains(msg, "cannot resolve") {
+			t.Errorf("pin %s refusal does not name the version and the reason: %q", v, msg)
+		}
+		if got := gen(p); got != pinPkg1 {
+			t.Errorf("pin %s refusal changed the file:\n%q", v, got)
+		}
+	}
+
+	// a tree that already disagrees on the major is mixed, even at one version
+	q := writePinPkg(t, root, "split", "package q\n\n"+pinDirective+"v2.5.0\n"+pinDirectiveV3+"v2.5.0\n")
+	msg, status := runFail(t, bin, "pin", "v2.6.0", q)
+	if status != 1 || !strings.Contains(msg, "differ") {
+		t.Errorf("a tree mixed on the major path was not refused as mixed (exit %d): %q", status, msg)
+	}
+}
 
 var (
 	pinPkg1 = "package p1\n\n" +
@@ -74,16 +139,16 @@ func TestPinMovesEveryGenerateLine(t *testing.T) {
 	// a CRLF generate.go: the bare pin line keeps its CR and the tree is
 	// not refused as mixed
 	p6 := writePinPkg(t, root, "p6", pinPkgCRLF)
-	run(t, bin, "pin", "v9.9.9", p6)
-	if got := mustRead(t, filepath.Join(p6, "generate.go")); got != strings.ReplaceAll(pinPkgCRLF, "v2.5.0", "v9.9.9") {
-		t.Errorf("CRLF generate.go changed unexpectedly after pin:\n%q\nexpect\n%q", got, strings.ReplaceAll(pinPkgCRLF, "v2.5.0", "v9.9.9"))
+	run(t, bin, "pin", "v2.9.9", p6)
+	if got := mustRead(t, filepath.Join(p6, "generate.go")); got != strings.ReplaceAll(pinPkgCRLF, "v2.5.0", "v2.9.9") {
+		t.Errorf("CRLF generate.go changed unexpectedly after pin:\n%q\nexpect\n%q", got, strings.ReplaceAll(pinPkgCRLF, "v2.5.0", "v2.9.9"))
 	}
 	if !strings.HasSuffix(mustRead(t, filepath.Join(p6, "generate.go")), "func CRLF() {}\r\n") {
 		t.Errorf("CRLF file lost its CRLF endings")
 	}
 
-	out := run(t, bin, "pin", "v9.9.9", p1, p2, p3)
-	want := "v9.9.9"
+	out := run(t, bin, "pin", "v2.9.9", p1, p2, p3)
+	want := "v2.9.9"
 	for _, f := range []struct{ path, orig, exp string }{
 		{filepath.Join(p1, "generate.go"), pinPkg1, strings.ReplaceAll(pinPkg1, "v2.5.0", want)},
 		{filepath.Join(p2, "generate.go"), pinPkg2, strings.ReplaceAll(pinPkg2, "v2.5.0", want)},
@@ -113,8 +178,8 @@ func TestPinMovesEveryGenerateLine(t *testing.T) {
 	}
 
 	// a Go pseudo-version is a valid target too
-	run(t, bin, "pin", "v0.0.0-20250101000000-abcdef123456", p3)
-	if got := mustRead(t, filepath.Join(p3, "generate.go")); !strings.Contains(got, "@v0.0.0-20250101000000-abcdef123456 generate") {
+	run(t, bin, "pin", "v2.0.0-20250101000000-abcdef123456", p3)
+	if got := mustRead(t, filepath.Join(p3, "generate.go")); !strings.Contains(got, "@v2.0.0-20250101000000-abcdef123456 generate") {
 		t.Errorf("pseudo-version target not honored: %q", got)
 	}
 
@@ -123,7 +188,7 @@ func TestPinMovesEveryGenerateLine(t *testing.T) {
 	if err := os.Chmod(filepath.Join(p3, "generate.go"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	run(t, bin, "pin", "v7.0.0", p3)
+	run(t, bin, "pin", "v2.7.0", p3)
 	info, err := os.Stat(filepath.Join(p3, "generate.go"))
 	if err != nil {
 		t.Fatal(err)
@@ -162,7 +227,7 @@ func TestPinMovesEveryGenerateLine(t *testing.T) {
 
 	// 2. a directory that does not exist
 	before = assertTree()
-	msg, status = runFail(t, bin, "pin", "v9.9.9", filepath.Join(root, "nope"))
+	msg, status = runFail(t, bin, "pin", "v2.9.9", filepath.Join(root, "nope"))
 	if status != 1 {
 		t.Fatalf("missing-dir refusal exit %d, want 1\n%s", status, msg)
 	}
@@ -184,14 +249,14 @@ func TestPinMovesEveryGenerateLine(t *testing.T) {
 	}
 	before = assertTree()
 	before[filepath.Join(unpinned, "generate.go")] = pinPkgNoPin
-	msg, status = runFail(t, bin, "pin", "v9.9.9", unpinned)
+	msg, status = runFail(t, bin, "pin", "v2.9.9", unpinned)
 	if status != 1 {
 		t.Fatalf("no-pin refusal exit %d, want 1\n%s", status, msg)
 	}
 	if !strings.Contains(msg, "unpinned") || !strings.Contains(msg, "no go:generate pin") {
 		t.Fatalf("no-pin refusal does not name the directory: %q", msg)
 	}
-	msg, status = runFail(t, bin, "pin", "v9.9.9", empty)
+	msg, status = runFail(t, bin, "pin", "v2.9.9", empty)
 	if status != 1 {
 		t.Fatalf("empty-dir refusal exit %d, want 1\n%s", status, msg)
 	}
@@ -208,7 +273,7 @@ func TestPinMovesEveryGenerateLine(t *testing.T) {
 	p4 := writePinPkg(t, root, "p4", pinPkg4)
 	before = assertTree()
 	before[filepath.Join(p4, "generate.go")] = pinPkg4
-	msg, status = runFail(t, bin, "pin", "v9.9.9", p1, p4)
+	msg, status = runFail(t, bin, "pin", "v2.9.9", p1, p4)
 	if status != 1 {
 		t.Fatalf("mixed-pins refusal exit %d, want 1\n%s", status, msg)
 	}
@@ -222,27 +287,27 @@ func TestPinMovesEveryGenerateLine(t *testing.T) {
 	}
 
 	// --mixed-ok accepts the same tree and moves both pins
-	run(t, bin, "pin", "--mixed-ok", "v8.8.8", p1, p4)
+	run(t, bin, "pin", "--mixed-ok", "v2.8.8", p1, p4)
 	for f, data := range before {
 		got := mustRead(t, f)
-		if strings.Contains(got, "v9.9.9") || strings.Contains(got, "v8.8.8") {
+		if strings.Contains(got, "v2.9.9") || strings.Contains(got, "v2.8.8") {
 			continue // moved to a pin we set; fine
 		}
 		if got != data {
 			t.Errorf("--mixed-ok changed %s unexpectedly", f)
 		}
 	}
-	if got := mustRead(t, filepath.Join(p4, "generate.go")); !strings.Contains(got, "v8.8.8 generate --lang go --out .") {
+	if got := mustRead(t, filepath.Join(p4, "generate.go")); !strings.Contains(got, "v2.8.8 generate --lang go --out .") {
 		t.Errorf("--mixed-ok did not move p4's pin: %q", got)
 	}
-	if got := mustRead(t, filepath.Join(p1, "generate.go")); !strings.Contains(got, "v8.8.8 generate --lang go --out .") {
+	if got := mustRead(t, filepath.Join(p1, "generate.go")); !strings.Contains(got, "v2.8.8 generate --lang go --out .") {
 		t.Errorf("--mixed-ok did not move p1's pin: %q", got)
 	}
 
 	// the flag may sit after the directories, as the usage line invites
-	run(t, bin, "pin", "v7.7.7", p1, p2, p4, "--mixed-ok")
+	run(t, bin, "pin", "v2.7.7", p1, p2, p4, "--mixed-ok")
 	for _, dir := range []string{p1, p2, p4} {
-		if got := mustRead(t, filepath.Join(dir, "generate.go")); !strings.Contains(got, "@v7.7.7 ") {
+		if got := mustRead(t, filepath.Join(dir, "generate.go")); !strings.Contains(got, "@v2.7.7 ") {
 			t.Errorf("trailing --mixed-ok did not move %s's pin: %q", dir, got)
 		}
 	}
