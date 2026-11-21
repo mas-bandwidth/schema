@@ -22,15 +22,28 @@ import (
 // field, so no read lands a value Save or ReadStrict refuses (§2.13, §4.2).
 // Each row plants \u0000 at the front, the middle and the end of a string(8),
 // a nested table's string(8) and a [..4]string(8) element; every row is
-// compared with the reason internal/tabletext reports for the same text. A
-// \u0001 in the same place reads clean and round-trips through ToJson to the
-// same text. A zero the read only skips (an unknown key's value, an object
-// key) refuses too, plain malformed with no field named, on the skipped-value
-// ruling.
+// held to the VERDICT internal/tabletext reaches for the same text: refused
+// (docs/rulings.json refusal-verdict-only; the reasons are printed, never
+// compared). A \u0001 in the same place reads clean and round-trips through
+// ToJson to the same text. A zero the read only skips (an unknown key's
+// value, an object key) refuses too, on the skipped-value ruling.
 // Red at BASE: FromJson accepted every zero row silently, and Save or
 // ReadStrict then refused what the read produced.
 func TestSquirrelJsonTextZeroByteTakesOneRule(t *testing.T) {
 	t.Parallel()
+	runSquirrelTextZero(t, false)
+}
+
+// TestSquirrelJsonTextZeroReasonIsDiagnostic runs the rows with the Squirrel
+// runtime's text_holds_zero reason renamed: why a read refused is
+// per-language diagnostic detail and moves no verdict.
+func TestSquirrelJsonTextZeroReasonIsDiagnostic(t *testing.T) {
+	t.Parallel()
+	runSquirrelTextZero(t, true)
+}
+
+func runSquirrelTextZero(t *testing.T, reasonPlant bool) {
+	t.Helper()
 	src := `package textzero
 
 type Inner
@@ -73,8 +86,16 @@ table Root
 	for name, data := range files {
 		writeFile(t, filepath.Join(out, name), data)
 	}
+	planted := 0
 	for name, data := range tables {
+		if reasonPlant {
+			planted += strings.Count(string(data), "\"text_holds_zero: \"")
+			data = []byte(strings.ReplaceAll(string(data), "\"text_holds_zero: \"", "\"renamed_by_the_plant: \""))
+		}
 		writeFile(t, filepath.Join(out, name), data)
+	}
+	if reasonPlant && planted == 0 {
+		t.Fatal("the reason plant found no text_holds_zero reason in the Squirrel table runtime")
 	}
 	mod := squirreltable.ModuleName(u)
 	m := tabletext.NewModel(u)
@@ -107,7 +128,6 @@ table Root
 	type row struct {
 		key, text string
 		zero      bool
-		skipped   bool
 		reason    string
 		control   string
 	}
@@ -120,9 +140,6 @@ table Root
 			var report tabletext.Report
 			if m.Read(inst, []byte(text), &report) || !report.Refused {
 				t.Fatalf("%s zero at %d: the Go oracle did not refuse %s (%+v)", f.name, i, text, report)
-			}
-			if !strings.HasPrefix(report.Reason, "text_holds_zero: ") {
-				t.Fatalf("%s zero at %d: the Go oracle's reason is %q, not text_holds_zero", f.name, i, report.Reason)
 			}
 			key := fmt.Sprintf("%s_zero_%d", f.name, i)
 			rows = append(rows, row{key: key, text: text, zero: true, reason: report.Reason})
@@ -151,11 +168,8 @@ table Root
 		if m.Read(inst, []byte(text), &report) || !report.Refused {
 			t.Fatalf("skipped zero %d: the Go oracle did not refuse %s (%+v)", i, text, report)
 		}
-		if strings.HasPrefix(report.Reason, "text_holds_zero: ") {
-			t.Fatalf("skipped zero %d: the Go oracle named a field for %s (%+v)", i, text, report)
-		}
 		key := fmt.Sprintf("skipped_%d", i)
-		rows = append(rows, row{key: key, text: text, zero: true, skipped: true})
+		rows = append(rows, row{key: key, text: text, zero: true, reason: report.Reason})
 		inputs[key] = []byte(text)
 
 		controlText := strings.Replace(text, `\u0000`, `\u0001`, 1)
@@ -196,13 +210,11 @@ table Root
 			continue
 		}
 		switch {
-		case r.skipped:
-			if len(g) < 2 || g[0] != "refused" || strings.HasPrefix(g[1], "text_holds_zero: ") {
-				t.Errorf("%s: FromJson gave %s, want refused with no field named (%s)", r.key, strings.Join(g, "|"), r.text)
-			}
 		case r.zero:
-			if len(g) < 2 || g[0] != "refused" || g[1] != r.reason {
-				t.Errorf("%s: FromJson gave %s, want refused with reason %s (%s)", r.key, strings.Join(g, "|"), r.reason, r.text)
+			// the VERDICT only: refused, as the oracle refused (its reason
+			// and Squirrel's are printed, never compared)
+			if len(g) < 2 || g[0] != "refused" {
+				t.Errorf("%s: FromJson gave %s, want refused as the Go oracle refused (%s) (%s)", r.key, strings.Join(g, "|"), r.reason, r.text)
 			}
 		case r.control != "":
 			if len(g) < 4 || g[0] != "read" {
