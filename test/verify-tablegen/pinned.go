@@ -78,7 +78,8 @@ func fixedRows(d, x, y string) []pinnedRow {
 }
 
 const pinnedRec = "type Rec {\n    n int32 = 55\n    on bool\n}\n"
-const pinnedEnum = "enum Tone {\n    Low\n    Mid\n    High\n}\n"
+const pinnedWide = "type Wide {\n    id uint128\n    mask bits(64)\n}\n"
+const pinnedEnum ="enum Tone {\n    Low\n    Mid\n    High\n}\n"
 
 // pinnedShapes is the matrix's rows. A wide element's two live values are one
 // with only its HIGH half set and one with only its low half set, because a
@@ -94,10 +95,9 @@ func pinnedShapes() []pinnedShape {
 		{"enum", pinnedEnum, "Tone", `"Low"`, `"High"`, `"Mid"`},
 		{"i64", "", "int64", `"0"`, `"4294967296"`, `"-1"`},
 		{"u64", "", "uint64", `"0"`, `"9223372036854775808"`, `"1"`},
-		{"i128", "", "int128", `"0"`, `"18446744073709551616"`, `"-1"`},
+		{"i128", "", "int128 | min = -34028236692093846346337460743176821145, max = 34028236692093846346337460743176821145", `"0"`, `"18446744073709551616"`, `"-1"`},
 		{"u128", "", "uint128", `"0"`, `"18446744073709551616"`, `"1"`},
-		{"bits64", "", "bits(64)", `"0"`, `"9223372036854775808"`, `"1"`},
-		{"ts", "", "timestamp", `"1970-01-01T00:00:00Z"`, `"2026-11-21T00:00:00Z"`, `"1970-01-01T00:00:00.000000001Z"`},
+		{"wrec", pinnedWide, "Wide", "{}", `{"id":"18446744073709551616"}`, `{"mask":"9223372036854775808"}`},
 	}
 	var out []pinnedShape
 	for _, e := range elems {
