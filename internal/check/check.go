@@ -201,6 +201,7 @@ func (c *checker) collectPackage() {
 	}
 	c.checkViewFileName()
 	c.checkCHeaderFileName()
+	c.checkFileBaseName()
 }
 
 // checkCHeaderFileName refuses a unit base name that spells a C standard
@@ -234,6 +235,41 @@ func (c *checker) checkCHeaderFileName() {
 		c.errf(f.AST.PkgPos, "schema file %s generates %s.h, which spells the C standard header <%s.h> and shadows it in the #include search (case-insensitively, so the collision does not need the exact spelling); rename the file (SPEC §4.6)",
 			f.Name, f.Base, strings.ToLower(f.Base))
 	}
+}
+
+// checkFileBaseName refuses a schema file whose basename no target can carry
+// as a name (SPEC §4.6, ruling target-name-safety): the basename becomes
+// generated identifiers — Rust's `mod <base lowercased>;`, the C include
+// guard, a module or class name — so it is an identifier, and neither it nor
+// (for Rust's module) its lowercased form is a reserved word of a target.
+func (c *checker) checkFileBaseName() {
+	for _, f := range c.files {
+		if !isIdentifier(f.Base) {
+			c.errf(f.AST.PkgPos, "schema file %s: the basename %q becomes generated identifiers and must be one, [A-Za-z_][A-Za-z0-9_]*; rename the file (SPEC §4.6)", f.Name, f.Base)
+			continue
+		}
+		langs := slices.Clone(targetReserved[f.Base])
+		if lower := strings.ToLower(f.Base); lower != f.Base && slices.Contains(targetReserved[lower], "Rust") && !slices.Contains(langs, "Rust") {
+			langs = append(langs, "Rust")
+		}
+		if len(langs) > 0 {
+			c.errf(f.AST.PkgPos, "schema file %s: the basename %s is a reserved word in %s, where it becomes a generated name (Rust's module is the basename lowercased); rename the file (SPEC §4.6)", f.Name, f.Base, strings.Join(langs, ", "))
+		}
+	}
+}
+
+func isIdentifier(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		ok := c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (i > 0 && c >= '0' && c <= '9')
+		if !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // cStandardHeaders is the C standard library's header set, C11 plus C99's
