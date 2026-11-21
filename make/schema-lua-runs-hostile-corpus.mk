@@ -21,8 +21,9 @@ schema-lua-runs-hostile-corpus: toolchain-lua
 		./internal/ci -run '^(TestSchemaLuaRunsHostileCorpus|TestSchemaLuaHostileCorpusPlantedReader|TestSchemaLuaHostileCorpusLane|TestSchemaLuaHostileScorerOutcomes)$$' -count=1 -timeout 600s
 
 # THE PLANTED-BAD-PATTERN CONTROL: a wire reader bug goes into a scratch copy of
-# the emitted load.lua (the form gate admits the byte past the carried forms),
-# and the corpus comparison must go red. Red with the plant in, green with it
+# the emitted fixed.lua (the form gate refuses the form it carries, so the
+# accepted form-3 wire is refused: a changed verdict, since a refusal conforms on
+# its verdict alone), and the corpus comparison must go red. Red with the plant in, green with it
 # out; the heavy corpus replay stays nightly, this control rides every push.
 .PHONY: schema-lua-runs-hostile-corpus-planted
 schema-lua-runs-hostile-corpus-planted: toolchain-lua
