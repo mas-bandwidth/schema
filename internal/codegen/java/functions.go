@@ -1736,7 +1736,7 @@ func (g *gen) emitInitializeField(f *ir.Field, path, ind string, defaults bool) 
 	switch {
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.usesArrays = true
-		g.pf("%sArrays.fill(%s, (byte) 0);\n", ind, name)
+		g.pf("%s%s(%s, (byte) 0);\n", ind, g.arraysFill(), name)
 		g.pf("%s%sLength = 0;\n", ind, name)
 		if defaults {
 			for _, line := range byteDefaultLines(f, name, ind) {
@@ -1763,7 +1763,7 @@ func (g *gen) emitInitializeField(f *ir.Field, path, ind string, defaults bool) 
 			g.loopDepth--
 		default:
 			g.usesArrays = true
-			g.pf("%sArrays.fill(%s, %s);\n", ind, name, zeroElem(f.Type))
+			g.pf("%s%s(%s, %s);\n", ind, g.arraysFill(), name, zeroElem(f.Type))
 		}
 		if f.Array == ir.ArrayCounted {
 			count := int64(0)
