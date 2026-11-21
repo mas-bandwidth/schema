@@ -2,6 +2,7 @@ package tablewire
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -293,8 +294,8 @@ func TestMessageAnnounceEntryBoundBeforeTheRest(t *testing.T) {
 	v := &Vocabulary{MaxEntries: 2}
 	var report tabletext.Report
 	err := v.AnnounceRead(announcementOf(7, entries), &report)
-	refusal, ok := err.(*MessageRefusal)
-	if !ok || refusal.Reason != ReasonVocabularyTooLarge {
+	var refusal *MessageRefusal
+	if !errors.As(err, &refusal) || refusal.Reason != ReasonVocabularyTooLarge {
 		t.Fatalf("an announcement past the entry bound was answered %v, want vocabulary_too_large", err)
 	}
 	if v.Announced() {
