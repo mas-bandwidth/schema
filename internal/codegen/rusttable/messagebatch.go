@@ -1362,38 +1362,32 @@ pub fn table_message_write_scalar(w: &mut TableBitWriter, s: &TableMessageShape,
 /// THE KEYS A BODY HAS NAMED (§3.3): one bit per id ordinal up to
 /// TABLE_MESSAGE_SEEN_KEYS (the conforming default vocabulary, 4096), on the
 /// stack, so a body's repeat test is constant work per reference and
-/// allocates nothing. A vocabulary the caller declared larger keeps up to
-/// TABLE_MESSAGE_SEEN_PAST keys past the bitset in a short list beside it; a
-/// body naming more distinct ids than that past 4096 is refused as past this
-/// receiver's bound.
+/// allocates nothing. THE CALLER-DECLARED CAPACITY IS THE BOUND (§3.3), so a
+/// vocabulary declared larger admits every distinct id it holds: a key past
+/// the bitset goes to an ordered set beside it, which holds only the keys
+/// this body named past 4096, is built only when the first such key arrives,
+/// and costs logarithmic work per reference, with no cap of its own.
 pub const TABLE_MESSAGE_SEEN_KEYS: u64 = 4096;
-pub const TABLE_MESSAGE_SEEN_PAST: usize = 64;
 
 pub struct TableMessageSeen {
     bits: [u64; 64],
-    past: [u64; TABLE_MESSAGE_SEEN_PAST],
-    past_count: usize,
+    past: std::collections::BTreeSet<u64>,
 }
 
 impl Default for TableMessageSeen {
     fn default() -> Self {
-        TableMessageSeen { bits: [0u64; 64], past: [0u64; TABLE_MESSAGE_SEEN_PAST], past_count: 0 }
+        TableMessageSeen { bits: [0u64; 64], past: std::collections::BTreeSet::new() }
     }
 }
 
 impl TableMessageSeen {
-    /// Marks a key: false when the key was named before or is out of bounds.
+    /// Marks a key: false when the key was named before, or is zero.
     pub fn once(&mut self, key: u64) -> bool {
         if key == 0 {
             return false;
         }
         if key > TABLE_MESSAGE_SEEN_KEYS {
-            if self.past[..self.past_count].contains(&key) || self.past_count == TABLE_MESSAGE_SEEN_PAST {
-                return false;
-            }
-            self.past[self.past_count] = key;
-            self.past_count += 1;
-            return true;
+            return self.past.insert(key);
         }
         let i = (key - 1) as usize;
         let bit = 1u64 << (i & 63);

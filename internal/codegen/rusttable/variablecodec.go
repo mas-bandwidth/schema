@@ -814,10 +814,10 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		count := x + ".len()"
 		if f.Array == ir.ArrayCounted {
 			count = fmt.Sprintf("%s.len().min(%d)", x, f.ArrayBound)
-			// a count past the declared maximum is refused in EVERY build
-			// (docs/SPEC.md §5.1, row 3): it guards the storage the writer
-			// indexes, not a value, so the debug-only allowance does not reach it
-			fmt.Fprintf(b, "%sif %s.len() > %d { ids.refused = Some(String::from(\"invalid_value: count past max\")); }\n", inner, x, f.ArrayBound)
+			// a count past the declared maximum is a debug assert (docs/SPEC.md
+			// §5.1, row 3; Rust write checks are debug asserts only); the
+			// writer's storage is held by the clamp to Max above in every build
+			fmt.Fprintf(b, "%sdebug_assert!(%s.len() <= %d, \"%s count past %d\");\n", inner, x, f.ArrayBound, f.Name, f.ArrayBound)
 		}
 		fmt.Fprintf(b, "%slet r = ids.id_ref(0x%016x);\n", inner, id)
 		fmt.Fprintf(b, "%slet count = %s;\n", inner, count)
