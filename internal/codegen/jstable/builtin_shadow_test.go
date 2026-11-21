@@ -1,6 +1,7 @@
 package jstable
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -79,9 +80,7 @@ func generateBoth(t *testing.T, src string) map[string][]byte {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, data := range tables {
-		out[name] = data
-	}
+	maps.Copy(out, tables)
 	return out
 }
 

@@ -77,9 +77,10 @@ func scanJsGlobals(file, text string, known map[string]bool) []jsGlobalUse {
 	scanString := func(q byte) {
 		i++
 		for i < n && text[i] != q {
-			if text[i] == '\\' {
+			switch text[i] {
+			case '\\':
 				i++
-			} else if text[i] == '\n' {
+			case '\n':
 				line++
 			}
 			i++
@@ -127,7 +128,7 @@ func scanJsGlobals(file, text string, known map[string]bool) []jsGlobalUse {
 			continue
 		case c == '/' && i+1 < n && text[i+1] == '*':
 			i += 2
-			for i+1 < n && !(text[i] == '*' && text[i+1] == '/') {
+			for i+1 < n && (text[i] != '*' || text[i+1] != '/') {
 				if text[i] == '\n' {
 					line++
 				}
@@ -154,7 +155,7 @@ func scanJsGlobals(file, text string, known map[string]bool) []jsGlobalUse {
 				continue
 			}
 			templates[len(templates)-1]--
-		case isIdent(c) && !(c >= '0' && c <= '9'):
+		case isIdent(c) && (c < '0' || c > '9'):
 			start := i
 			for i < n && isIdent(text[i]) {
 				i++
@@ -164,7 +165,7 @@ func scanJsGlobals(file, text string, known map[string]bool) []jsGlobalUse {
 			for j < n && (text[j] == ' ' || text[j] == '\t') {
 				j++
 			}
-			key := j < n && text[j] == ':' && !(j+1 < n && text[j+1] == ':') &&
+			key := j < n && text[j] == ':' && (j+1 >= n || text[j+1] != ':') &&
 				(prevSig == '{' || prevSig == ',' || prevSig == '\n' || prevSig == ';' || prevSig == '(')
 			optKey := j+1 < n && text[j] == '?' && text[j+1] == ':'
 			member := prevSig == '.'
