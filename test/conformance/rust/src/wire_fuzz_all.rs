@@ -50,6 +50,7 @@ mod tblvarevo2;
 mod tblvarevo3;
 mod cooktorture;
 mod cooktorturewide;
+mod packetunions;
 mod tblv1;
 mod tblv2;
 mod tblw1;
@@ -249,6 +250,7 @@ const MESSAGE_ROOTS: &[(&str, &str)] = &[
     ("vocabdemo", "Wide00"), ("vocabdemo", "Wide09"),
     ("vocab9demo", "Wide00"), ("vocab9demo", "Wide19"),
     ("tblvarevo1", "EvoMsg"), ("tblvarevo3", "EvoMsg"),
+    ("packetunions", "ShapeMsg"),
 ];
 
 const MESSAGE_FUZZ_ROOTS: &[(&str, &str)] = &[
@@ -258,6 +260,7 @@ const MESSAGE_FUZZ_ROOTS: &[(&str, &str)] = &[
     ("vocab9demo", "Wide00"), ("vocab9demo", "Wide19"),
     ("messagedemo", "ToolMessage"),
     ("tblvarevo1", "EvoMsg"), ("tblvarevo2", "EvoMsg"), ("tblvarevo3", "EvoMsg"),
+    ("packetunions", "ShapeMsg"),
     ("tblfixedevo", "EvoRoot"),
     ("tabledemo", "RootConfig"), ("tabledemo", "ProfileConfig"), ("tabledemo", "KeyedConfig"),
     ("tblv1", "Cfg"), ("tblv2", "Cfg"),
@@ -280,6 +283,7 @@ fn drive_message_framed(unit: &str, root: &str, frame: &[u8]) -> Option<Reply> {
         ("tblvarevo1", "EvoMsg") => message_framed_arm!(tblvarevo1, evo_msg_message_default, evo_msg_load_messages, evo_msg_measure_messages, evo_msg_save_messages, frame),
         ("tblvarevo2", "EvoMsg") => message_framed_arm!(tblvarevo2, evo_msg_message_default, evo_msg_load_messages, evo_msg_measure_messages, evo_msg_save_messages, frame),
         ("tblvarevo3", "EvoMsg") => message_framed_arm!(tblvarevo3, evo_msg_message_default, evo_msg_load_messages, evo_msg_measure_messages, evo_msg_save_messages, frame),
+        ("packetunions", "ShapeMsg") => message_framed_arm!(packetunions, shape_msg_message_default, shape_msg_load_messages, shape_msg_measure_messages, shape_msg_save_messages, frame),
         ("tblfixedevo", "EvoRoot") => message_framed_arm!(tblfixedevo, evo_root_message_default, evo_root_load_messages, evo_root_measure_messages, evo_root_save_messages, frame),
         ("tabledemo", "RootConfig") => message_framed_arm!(tabledemo, root_config_message_default, root_config_load_messages, root_config_measure_messages, root_config_save_messages, frame),
         ("tabledemo", "ProfileConfig") => message_framed_arm!(tabledemo, profile_config_message_default, profile_config_load_messages, profile_config_measure_messages, profile_config_save_messages, frame),
@@ -309,6 +313,7 @@ fn drive_message(unit: &str, root: &str, wire: &[u8]) -> Option<Reply> {
         ("vocab9demo", "Wide19") => message_arm!(vocab9demo, wide19_message_default, wide19_load_messages, wide19_measure_messages, wide19_save_messages, wire),
         ("tblvarevo1", "EvoMsg") => message_arm!(tblvarevo1, evo_msg_message_default, evo_msg_load_messages, evo_msg_measure_messages, evo_msg_save_messages, wire),
         ("tblvarevo3", "EvoMsg") => message_arm!(tblvarevo3, evo_msg_message_default, evo_msg_load_messages, evo_msg_measure_messages, evo_msg_save_messages, wire),
+        ("packetunions", "ShapeMsg") => message_arm!(packetunions, shape_msg_message_default, shape_msg_load_messages, shape_msg_measure_messages, shape_msg_save_messages, wire),
         _ => None,
     }
 }
@@ -372,6 +377,8 @@ const ROOTS: &[(&str, &str)] = &[
     ("tblvarevo3", "EvoMsg"),
     ("cooktorture", "TortureCook"),
     ("cooktorturewide", "TortureWideCook"),
+    ("packetunions", "ShapeDoc"),
+    ("packetunions", "ShapeMsg"),
     ("tblv1", "Cfg"),
     ("tblv2", "Cfg"),
     ("tblw1", "Fleet"),
@@ -414,6 +421,7 @@ const FIXED_ROOTS: &[(&str, &str)] = &[
     ("tblvarevo1", "EvoMsg"),
     ("tblvarevo2", "EvoMsg"),
     ("tblvarevo3", "EvoMsg"),
+    ("packetunions", "ShapeMsg"),
     ("tblv1", "Cfg"),
     ("tblv2", "Cfg"),
     ("vocab9demo", "Wide00"),
@@ -511,6 +519,7 @@ fn drive_fixed(unit: &str, root: &str, wire: &[u8]) -> Option<Reply> {
         ("tblvarevo1", "EvoMsg") => fixed_arm!(tblvarevo1, evo_msg_fixed_load, evo_msg_fixed_save, evo_msg_fixed_measure, EvoMsgRow, wire),
         ("tblvarevo2", "EvoMsg") => fixed_arm!(tblvarevo2, evo_msg_fixed_load, evo_msg_fixed_save, evo_msg_fixed_measure, EvoMsgRow, wire),
         ("tblvarevo3", "EvoMsg") => fixed_arm!(tblvarevo3, evo_msg_fixed_load, evo_msg_fixed_save, evo_msg_fixed_measure, EvoMsgRow, wire),
+        ("packetunions", "ShapeMsg") => fixed_arm!(packetunions, shape_msg_fixed_load, shape_msg_fixed_save, shape_msg_fixed_measure, ShapeMsgRow, wire),
         ("tabledemo", "ArchiveConfig") => fixed_arm!(tabledemo, archive_config_fixed_load, archive_config_fixed_save, archive_config_fixed_measure, ArchiveConfigRow, wire),
         ("tabledemo", "KeyedConfig") => fixed_arm!(tabledemo, keyed_config_fixed_load, keyed_config_fixed_save, keyed_config_fixed_measure, KeyedConfigRow, wire),
         ("tabledemo", "LoadoutConfig") => fixed_arm!(tabledemo, loadout_config_fixed_load, loadout_config_fixed_save, loadout_config_fixed_measure, LoadoutConfigRow, wire),
@@ -598,6 +607,8 @@ fn drive(unit: &str, root: &str, wire: &[u8], retain: bool) -> Option<Reply> {
         ("tblvarevo3", "EvoMsg") => arm!(tblvarevo3, evo_msg_load, evo_msg_load_retain, evo_msg_save, evo_msg_save_checked, evo_msg_save_retain, evo_msg_load_measure, wire, retain),
         ("cooktorture", "TortureCook") => arm!(cooktorture, torture_cook_load, torture_cook_load_retain, torture_cook_save, torture_cook_save_checked, torture_cook_save_retain, torture_cook_load_measure, wire, retain),
         ("cooktorturewide", "TortureWideCook") => arm!(cooktorturewide, torture_wide_cook_load, torture_wide_cook_load_retain, torture_wide_cook_save, torture_wide_cook_save_checked, torture_wide_cook_save_retain, torture_wide_cook_load_measure, wire, retain),
+        ("packetunions", "ShapeDoc") => arm!(packetunions, shape_doc_load, shape_doc_load_retain, shape_doc_save, shape_doc_save_checked, shape_doc_save_retain, shape_doc_load_measure, wire, retain),
+        ("packetunions", "ShapeMsg") => arm!(packetunions, shape_msg_load, shape_msg_load_retain, shape_msg_save, shape_msg_save_checked, shape_msg_save_retain, shape_msg_load_measure, wire, retain),
         ("tblv1", "Cfg") => arm!(tblv1, cfg_load, cfg_load_retain, cfg_save, cfg_save_checked, cfg_save_retain, cfg_load_measure, wire, retain),
         ("tblv2", "Cfg") => arm!(tblv2, cfg_load, cfg_load_retain, cfg_save, cfg_save_checked, cfg_save_retain, cfg_load_measure, wire, retain),
         ("tblw1", "Fleet") => arm!(tblw1, fleet_load, fleet_load_retain, fleet_save, fleet_save_checked, fleet_save_retain, fleet_load_measure, wire, retain),

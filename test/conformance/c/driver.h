@@ -188,6 +188,7 @@ const ConformanceCodec * conformance_codecs_tblvarevo3( int * count );
 const ConformanceCodec * conformance_codecs_cooktorture( int * count );
 const ConformanceCodec * conformance_codecs_cooktorturewide( int * count );
 const ConformanceCodec * conformance_codecs_tblvaluedefaults( int * count );
+const ConformanceCodec * conformance_codecs_packetunions( int * count );
 
 /* the BLOCK unit (blockdemo): open one image at the extent and pointer the
  * caller claims, and read every row out of the descriptors */

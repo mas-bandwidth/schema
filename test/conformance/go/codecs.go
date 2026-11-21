@@ -21,6 +21,7 @@ import (
 	"scalardemo"
 	"streamdemo"
 	"tblfixedevo"
+	"tblpacketunions"
 	tblscalars2 "tblscalars2"
 	"tblvaluedefaults"
 	"tblvarevo1"
@@ -859,6 +860,25 @@ var codecTable = []codec{
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),
 	row("tblvaluedefaults", "FixedDefaults", tblvaluedefaults.FixedDefaultsReset, tblvaluedefaults.FixedDefaultsLoad, tblvaluedefaults.FixedDefaultsMeasure, tblvaluedefaults.FixedDefaultsSave, tblvaluedefaults.FixedDefaultsFromJSON, tblvaluedefaults.FixedDefaultsToJSONMeasure, tblvaluedefaults.FixedDefaultsToJSON, tblvaluedefaults.FixedDefaultsCookMeasure, tblvaluedefaults.FixedDefaultsCookFrom, func(r *tblvaluedefaults.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}),
+	// an ARRAY OF PACKET UNIONS (docs/SPEC-TABLES.md §2.6): the variable
+	// class and the fixed class
+	regionRow("packetunions", "ShapeDoc", tblpacketunions.ShapeDocLoadMeasure, tblpacketunions.ShapeDocLoad, tblpacketunions.ShapeDocMeasure, tblpacketunions.ShapeDocSave, func(text []byte, r *tblpacketunions.TableReport) (*tblpacketunions.ShapeDoc, []byte, bool) {
+		var b tblpacketunions.ShapeDocBuilder
+		if !b.Init() {
+			return nil, nil, false
+		}
+		defer b.Shutdown()
+		ok := tblpacketunions.ShapeDocFromJSON(&b, text, r)
+		if !b.Lock() {
+			return nil, nil, false
+		}
+		return b.AsConst(), b.Region(), ok
+	}, tblpacketunions.ShapeDocToJSONMeasure, tblpacketunions.ShapeDocToJSON, tblpacketunions.ShapeDocCookMeasure, tblpacketunions.ShapeDocCookFrom, func(r *tblpacketunions.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}),
+	row("packetunions", "ShapeMsg", tblpacketunions.ShapeMsgReset, tblpacketunions.ShapeMsgLoad, tblpacketunions.ShapeMsgMeasure, tblpacketunions.ShapeMsgSave, tblpacketunions.ShapeMsgFromJSON, tblpacketunions.ShapeMsgToJSONMeasure, tblpacketunions.ShapeMsgToJSON, tblpacketunions.ShapeMsgCookMeasure, tblpacketunions.ShapeMsgCookFrom, func(r *tblpacketunions.TableReport) report {
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),
 

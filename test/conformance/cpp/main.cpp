@@ -56,6 +56,8 @@
 #include "CookTortureTable.h"
 #include "CookTortureBlock.h"
 #include "CookTortureWideTable.h"
+// an ARRAY OF PACKET UNIONS in a variable and a fixed table (docs/SPEC-TABLES.md §2.6)
+#include "PacketUnionsTable.h"
 // the MESSAGE FORM's units (docs/SPEC-TABLES.md §3.3): the three backend
 // messages the ruling measured, and the WIDE-VOCABULARY unit whose slots fall
 // on both sides of the one-byte boundary
@@ -390,6 +392,7 @@ static const Codec codecs[] = {
     CODEC( "tblvarevo3", tblvarevo3, EvoMsg ),
     CODEC( "cooktorture", cooktorture, TortureFixedWref ),
     CODEC( "tblvaluedefaults", tblvaluedefaults, FixedDefaults ),
+    CODEC( "packetunions", tblpacketunions, ShapeMsg ),
 };
 
 // ---------------------------------------------------------------------------
@@ -497,6 +500,7 @@ static const VarCodec var_codecs[] = {
     VARCODEC( "tblvarevo3", tblvarevo3, EvoDoc ),
     VARCODEC( "cooktorture", cooktorture, TortureCook ),
     VARCODEC( "cooktorturewide", cooktorturewide, TortureWideCook ),
+    VARCODEC( "packetunions", tblpacketunions, ShapeDoc ),
 
     VARCODEC( "graphdemo", graphdemo, Scene ),
     VARCODEC( "graphdemo", graphdemo, ListNode ),
@@ -563,6 +567,7 @@ static const MsgCodec msg_codecs[] = {
     MSGCODEC( "vocab9demo", vocab9demo, Wide19 ),
     MSGCODEC( "tblvarevo1", tblvarevo1, EvoMsg ),
     MSGCODEC( "tblvarevo3", tblvarevo3, EvoMsg ),
+    MSGCODEC( "packetunions", tblpacketunions, ShapeMsg ),
 };
 
 // ---------------------------------------------------------------------------

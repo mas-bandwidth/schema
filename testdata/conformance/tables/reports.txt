@@ -58,6 +58,12 @@ p2_empty_as_p3     refused
 p3_as_p1           refused
 p3_as_p2           refused
 p3_empty_as_p1     refused
+packetunions_doc_count_past_bound refused
+packetunions_doc_unknown_arm read
+packetunions_msg_count_past_bound refused
+packetunions_msg_none_payload refused
+packetunions_msg_tag_past_max refused
+packetunions_msg_unused_slot refused
 parts_count_past_bound refused
 parts_elem_kind    refused
 parts_index_out_of_range refused
