@@ -1,5 +1,6 @@
 finding F-009
-verdict refuse
+verdict warn
 read reads
 unknown 1
 roots Root Root
+names reads null and counts unknown

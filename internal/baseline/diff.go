@@ -863,6 +863,17 @@ func (d *differ) refsFindings(where string, bf Field, key, was, now string, pres
 		return nil
 	}
 	if key == "type" && pointerSlot(bf) && !blobReferent(was) && !blobReferent(now) && d.policy["pointer-target"] == RuleFixed {
+		if d.pairedRename(key, was) == now {
+			// A BARE RENAME is an edit in place (§18.3), judged as the read
+			// reports it: no table declares the old type id any more, so each
+			// stored pointer reads null and counts unknown — data survives in
+			// the file and the read says what it cannot take, so it warns
+			return []Finding{{Warn, where, fmt.Sprintf(
+				"pointer target %s renamed to %s without `was` — every stored pointer's node carries %s's type id, which no table declares now: each one reads null and counts unknown; was = %q keeps the type id (docs/SPEC-TABLES.md §3.1, §5)",
+				was, now, was, was)}}
+		}
+		// A SUBSTITUTION claims the new table stands in for the old one, and
+		// for a pointer no other table can
 		return []Finding{{Refuse, where, fmt.Sprintf(
 			"pointer target %s -> %s — every stored pointer's node carries %s's type id, and %s is a different type id: where the reader still declares %s the whole load refuses wire_damaged, and where it does not the pointer reads null and counts unknown; only a rename under was = %q keeps the type id (docs/SPEC-TABLES.md §3.1, §5)",
 			was, now, was, now, was, was)}}

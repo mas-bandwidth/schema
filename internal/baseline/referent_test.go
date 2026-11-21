@@ -9,15 +9,19 @@ package baseline_test
 //	old.json       the old author's value, in the text form
 //	old.save       the committed table-wire bytes the OLD writer made of it
 //	new.json       what the NEW reader makes of old.save (cases that read)
-//	case           finding, verdict, read (reads|refuses), unknown, roots, cook
+//	case           finding, verdict, read (reads|refuses), unknown, roots, cook,
+//	               and `names` lines: words a finding must say about the read
 //
 // The test holds three things to each other: the old writer still makes
 // old.save byte for byte; the new reader does exactly what the case says it
 // does; and the baseline's verdict PREDICTS that read — a pass is a read that
-// refuses nothing and counts nothing unknown, and a refusal is a read that
-// refuses or loses a stored value as unknown. Each defect case sits beside a
-// control that differs in the one fact the defect turns on. `cook same` holds
-// the cook projection still across the edit: an old cook keeps opening.
+// refuses nothing and counts nothing unknown, and a read that refuses or
+// loses a stored value as unknown is never a pass: a substitution refuses, and
+// an edit in place the read reports warns (docs/SPEC-TABLES.md §18.3). A
+// `names` line holds the finding to the words that describe that read. Each
+// defect case sits beside a control that differs in the one fact the defect
+// turns on. `cook same` holds the cook projection still across the edit: an
+// old cook keeps opening.
 //
 // Regenerate old.save and new.json after a deliberate wire change with
 // go test ./internal/baseline -run TestReferentCorpus -update-referents, and
@@ -45,6 +49,7 @@ type referentCase struct {
 	finding, verdict, read, cook string
 	unknown                      int
 	roots                        [2]string
+	names                        []string
 }
 
 func readReferentCase(t *testing.T, dir string) referentCase {
@@ -74,6 +79,8 @@ func readReferentCase(t *testing.T, dir string) referentCase {
 				t.Fatalf("%s: unknown %q", dir, f[1])
 			}
 			c.unknown = n
+		case "names":
+			c.names = append(c.names, strings.TrimSpace(strings.TrimPrefix(line, "names")))
 		case "roots":
 			if len(f) != 3 {
 				t.Fatalf("%s: roots takes two names", dir)
@@ -208,15 +215,20 @@ func TestReferentCorpus(t *testing.T) {
 			}
 
 			// THE CHECK'S VERDICT, and that it predicts the read: a pass is a
-			// read that loses nothing, and anything that loses is refused
+			// read that loses nothing, and nothing that loses passes
 			got := baseline.Diff(committed(t, beforeSrc), baseline.Render(after), baseline.DefaultTokenPolicy)
 			want := map[string]baseline.Verdict{"pass": baseline.Pass, "warn": baseline.Warn, "refuse": baseline.Refuse}[c.verdict]
 			if v := strongest(got); v != want {
 				t.Errorf("the check says %s, the case says %s:%s", v, c.verdict, summary(got))
 			}
 			loses := refused || report.Unknown > 0
-			if loses != (want == baseline.Refuse) {
+			if loses != (want != baseline.Pass) {
 				t.Errorf("the verdict %s does not predict the read (refused=%v, unknown=%d):%s", c.verdict, refused, report.Unknown, summary(got))
+			}
+			for _, words := range c.names {
+				if !find(got, want, "", words) {
+					t.Errorf("no %s finding says %q about the read:%s", c.verdict, words, summary(got))
+				}
 			}
 
 			// THE COOK: an edit that moves no byte moves no cook
