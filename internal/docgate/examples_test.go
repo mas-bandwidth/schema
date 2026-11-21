@@ -157,15 +157,15 @@ func TestExamplesGateGoesRed(t *testing.T) {
 		got[p.File+" "+reason]++
 	}
 	want := map[string]int{
-		"docs/BAD.md example-unmarked":       2, // the rust block, and the compile marker with no unit
-		"docs/BAD.md example-language":       1,
-		"docs/BAD.md example-unit":           1,
-		"docs/BAD.md example-harness":        1,
-		"docs/BAD.md example-marker":         2, // no unit; no fence
-		"docs/BAD.md example-schema":         1,
-		"docs/BAD.md example-leg":            1, // the unregistered marker
-		"make/c.mk example-leg":              1, // the registered gate that no longer reads it
-		"skills/s/SKILL.md example-unmarked": 1,
+		"docs/BAD.md example-unmarked":              2, // the rust block, and the compile marker with no unit
+		"docs/BAD.md example-language":              1,
+		"docs/BAD.md example-unit":                  1,
+		"docs/BAD.md example-harness":               1,
+		"docs/BAD.md example-marker":                2, // no unit; no fence
+		"docs/BAD.md example-schema":                1,
+		"docs/BAD.md example-leg":                   1, // the unregistered marker
+		"make/c.mk example-leg":                     1, // the registered gate that no longer reads it
+		"skills/s/SKILL.md example-unmarked":        1,
 		"internal/docgate/examples.go example-owed": 1, // two owed under a ceiling of one
 	}
 	for key, n := range want {
