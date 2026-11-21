@@ -396,8 +396,12 @@ public final class Runner {
             if (reportType.getField("refused").getBoolean(report)) {
                 return refusal(snake(String.valueOf(reportType.getField("reason").get(report))));
             }
-            if (reportType.getField("damaged").getBoolean(report) || n != 1) {
+            if (reportType.getField("damaged").getBoolean(report) || n < 0) {
                 return refuse("damaged");
+            }
+            if (n != 1) {
+                // neither one value nor a refusal: an error, never damaged
+                return "error: the fixed read into one value returned " + n + " without refusing";
             }
             Object record = java.lang.reflect.Array.get(values, 0);
             Object value;
@@ -567,8 +571,12 @@ public final class Runner {
         if (vocabulary.flag(report, "refused")) {
             return vocabulary.refusal(report);
         }
-        if (vocabulary.flag(report, "damaged") || n != 1) {
+        if (vocabulary.flag(report, "damaged") || n < 0) {
             return refuse("damaged");
+        }
+        if (n != 1) {
+            // neither one value nor a refusal: an error, never damaged
+            return "error: the batch read into one value returned " + n + " without refusing";
         }
         // The batch's one body is a fixed-class value; the port's text writer
         // takes the variable value. A body that sets no field decodes to the

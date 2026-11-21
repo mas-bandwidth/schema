@@ -62,4 +62,20 @@ schema-js-runs-hostile-corpus-negative-control: schema-js-runs-hostile-corpus
 		echo 'NEGATIVE CONTROL FAILED: the plant turned another row red'; \
 		cat $(JS_HOSTILE_BUILD)/plant/log; exit 1; fi
 	@tail -1 $(JS_HOSTILE_BUILD)/plant/log
-	@echo 'js hostile-corpus negative control: a changed verdict reds the corpus on exactly its row; unplanted it is green'
+	@cp -R $(JS_HOSTILE_BUILD)/generated $(JS_HOSTILE_BUILD)/plant/generated
+	@sed -i.orig 's|^  if (bytes === null \|\| byteLength < 1) { report.damaged = true; return -1; }|&\n  if (byteLength >= 1) { return 0; } // PLANTED: lands nothing, refuses nothing|' \
+		$(JS_HOSTILE_BUILD)/plant/generated/*/*.js
+	@sed -i.orig 's|^  if (count < 0) { return -1; }|&\n  if (count >= 0) { return 0; } // PLANTED: lands nothing, refuses nothing|' \
+		$(JS_HOSTILE_BUILD)/plant/generated/*/*.js
+	@if [ $$(cat $(JS_HOSTILE_BUILD)/plant/generated/*/*.js | grep -c PLANTED) -lt 2 ]; then \
+		echo 'NEGATIVE CONTROL FAILED: the planted empty reads did not apply'; exit 1; fi
+	@if $(NODE) test/js-hostile/runner.mjs run "$(JS_HOSTILE_CORPUS)" $(JS_HOSTILE_BUILD)/plant/generated \
+			"$(JS_HOSTILE_SERIALIZE)" "$(JS_HOSTILE_FINDINGS)" > $(JS_HOSTILE_BUILD)/plant/empty.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: reads that land nothing and refuse nothing left the corpus green'; \
+		cat $(JS_HOSTILE_BUILD)/plant/empty.log; exit 1; fi
+	@grep -q '^FAIL .* carrier=wire got=error .* want=refuse ' $(JS_HOSTILE_BUILD)/plant/empty.log && \
+		grep -q '^FAIL .* carrier=message got=error .* want=refuse ' $(JS_HOSTILE_BUILD)/plant/empty.log || \
+		{ echo 'NEGATIVE CONTROL FAILED: a fixed or batch read that landed nothing and refused nothing passed as a refusal'; \
+		  cat $(JS_HOSTILE_BUILD)/plant/empty.log; exit 1; }
+	@tail -1 $(JS_HOSTILE_BUILD)/plant/empty.log
+	@echo 'js hostile-corpus negative control: a changed verdict reds the corpus on exactly its row, a read that lands nothing and refuses nothing reds a refused wire and message case; unplanted it is green'

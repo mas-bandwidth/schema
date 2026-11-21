@@ -97,5 +97,27 @@ schema-java-runs-hostile-corpus-negative-control: $(JAVA_HOSTILE_BUILD)/classes/
 	@grep -q '^FAIL .* got=over budget' $(JAVA_HOSTILE_BUILD)/plant/budget.log || \
 		{ echo 'NEGATIVE CONTROL FAILED: a 1 ms case budget went red without naming a case over budget'; \
 		  cat $(JAVA_HOSTILE_BUILD)/plant/budget.log; exit 1; }
+	@rm -rf $(JAVA_HOSTILE_BUILD)/plant/generated $(JAVA_HOSTILE_BUILD)/plant/classes && \
+		mkdir -p $(JAVA_HOSTILE_BUILD)/plant/generated $(JAVA_HOSTILE_BUILD)/plant/classes
+	@cp -R $(JAVA_HOSTILE_BUILD)/generated/* $(JAVA_HOSTILE_BUILD)/plant/generated/
+	@sed -i.orig 's|^        final TableFixed.Header head = TableFixed.header();|        if (data != null \&\& data.length > 0) { return 0; } // PLANTED: lands nothing, refuses nothing\n&|' \
+		$(JAVA_HOSTILE_BUILD)/plant/generated/tabledemo/ShipEntryFixed.java
+	@sed -i.orig 's|^        if (data == null \|\| data.length == 0) {|        if (data != null \&\& data.length > 0) { return 0; } // PLANTED: lands nothing, refuses nothing\n&|' \
+		$(JAVA_HOSTILE_BUILD)/plant/generated/messagedemo/ToolMessageMessage.java
+	@rm -f $(JAVA_HOSTILE_BUILD)/plant/generated/*/*.orig
+	@if ! grep -q PLANTED $(JAVA_HOSTILE_BUILD)/plant/generated/tabledemo/ShipEntryFixed.java || \
+		! grep -q PLANTED $(JAVA_HOSTILE_BUILD)/plant/generated/messagedemo/ToolMessageMessage.java; then \
+		echo 'NEGATIVE CONTROL FAILED: the planted empty reads did not apply'; exit 1; fi
+	$(JAVAC) --release 17 -Xlint:all -Werror -d $(JAVA_HOSTILE_BUILD)/plant/classes \
+		$(JAVA_HOSTILE_BUILD)/plant/generated/*/*.java test/java-hostile/Runner.java
+	@if $(JAVA) -cp $(JAVA_HOSTILE_BUILD)/plant/classes Runner "$(JAVA_HOSTILE_CORPUS)" "$(JAVA_HOSTILE_FINDINGS)" \
+			"$(JAVA_HOSTILE_BUILD)/packet" > $(JAVA_HOSTILE_BUILD)/plant/empty.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: reads that land nothing and refuse nothing left the corpus green'; \
+		cat $(JAVA_HOSTILE_BUILD)/plant/empty.log; exit 1; fi
+	@grep -q '^FAIL .* carrier=wire got=error: .* want=refuse ' $(JAVA_HOSTILE_BUILD)/plant/empty.log && \
+		grep -q '^FAIL .* carrier=message got=error: .* want=refuse ' $(JAVA_HOSTILE_BUILD)/plant/empty.log || \
+		{ echo 'NEGATIVE CONTROL FAILED: a fixed or batch read that landed nothing and refused nothing passed as a refusal'; \
+		  cat $(JAVA_HOSTILE_BUILD)/plant/empty.log; exit 1; }
+	@tail -1 $(JAVA_HOSTILE_BUILD)/plant/empty.log
 	@$(MAKE) --no-print-directory schema-java-runs-hostile-corpus
-	@echo 'java hostile-corpus negative control: a text reader that refuses accepted inputs reds the corpus, so does a 1 ms budget; unplanted it is green'
+	@echo 'java hostile-corpus negative control: a text reader that refuses accepted inputs reds the corpus, a read that lands nothing and refuses nothing reds a refused wire and message case, so does a 1 ms budget; unplanted it is green'

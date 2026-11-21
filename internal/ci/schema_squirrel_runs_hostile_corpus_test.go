@@ -469,6 +469,11 @@ func squirrelRunHostileCorpus(t *testing.T, plant func(files map[string][]byte))
 const (
 	squirrelHostilePlantFrom = `if (b[0] != 3) { _M.FixedReason = "newer_form"; return -1; }`
 	squirrelHostilePlantTo   = `if (true) { _M.FixedReason = "newer_form"; return -1; } // PLANTED: the form gate refuses the form it carries`
+
+	// squirrelHostileEmptyMessageFrom is the batch read's last refusal before
+	// it decodes (runtime/message.nut, LoadMessages): the empty plant returns
+	// 0 right after it, landing nothing and refusing nothing.
+	squirrelHostileEmptyMessageFrom = `  if(count>storage.len())return refuse(report,"batch_too_large");`
 )
 
 // TestSquirrelRunsHostileCorpusPlant is the planted-bad-pattern control: the
@@ -497,6 +502,41 @@ func TestSquirrelRunsHostileCorpusPlant(t *testing.T) {
 	for _, f := range findingLines {
 		if strings.Contains(f, `manifest "accept"`) {
 			t.Logf("plant caught: %s", f)
+		}
+	}
+
+	// THE EMPTY PLANT: the fixed read and the batch read land nothing and
+	// refuse nothing. That is no refusal, so a refused wire case and a refused
+	// message case must go red as errors, never pass as damaged.
+	emptied := 0
+	_, _, emptyLines := squirrelRunHostileCorpus(t, func(files map[string][]byte) {
+		for name, src := range files {
+			s := string(src)
+			if strings.Contains(s, squirrelHostilePlantFrom) {
+				s = strings.ReplaceAll(s, squirrelHostilePlantFrom, squirrelHostilePlantFrom+" if (b.len() > 0) return 0; // PLANTED: lands nothing, refuses nothing")
+				emptied++
+			}
+			if strings.Contains(s, squirrelHostileEmptyMessageFrom) {
+				s = strings.ReplaceAll(s, squirrelHostileEmptyMessageFrom, squirrelHostileEmptyMessageFrom+"\n  if(count>=0)return 0; // PLANTED: lands nothing, refuses nothing")
+				emptied++
+			}
+			files[name] = []byte(s)
+		}
+	})
+	if emptied < 2 {
+		t.Fatalf("the empty plant did not land in both the fixed and the batch read (%d)", emptied)
+	}
+	for _, prefix := range []string{"wire-", "message-"} {
+		found := false
+		for _, f := range emptyLines {
+			if strings.Contains(f, ": "+prefix) && strings.Contains(f, `verdict "error", manifest "refuse"`) {
+				found = true
+				t.Logf("empty plant caught: %s", f)
+				break
+			}
+		}
+		if !found {
+			t.Errorf("a %s read that landed nothing and refused nothing passed as a refusal: no refused %scase went red as an error", strings.TrimSuffix(prefix, "-"), prefix)
 		}
 	}
 
@@ -605,7 +645,9 @@ local run = function(name, carrier, dir, mod, root, annkey) {
       local out = [T.Descriptors[root].make()];
       local n = T[root + "FixedLoad"](bytes, out, 1);
       if (n == 1) v = out[0];
-      else rr.reason <- n < 0 ? T.FixedReason : "wire_damaged";
+      else if (n < 0) rr.reason <- T.FixedReason;
+      // neither one value nor a refusal: an error, never damaged
+      else { emit(name, "error", "the fixed read into one value returned " + n + " without refusing", null); return; }
     } else {
       v = schema.require("schema_table_refusal").ReadStrict(T, root, bytes, rr);
     }
@@ -638,7 +680,9 @@ local run = function(name, carrier, dir, mod, root, annkey) {
     local rr = {};
     local loadMessages = T[root + "LoadMessages"];
     local n = loadMessages(storage, V, inputs[name], rr);
-    if (n < 1) { emit(name, "refuse", verdictOf(named(rr, null)), null); return; }
+    if (n < 0 || (("refused" in rr) && rr.refused == true)) { emit(name, "refuse", verdictOf(named(rr, null)), null); return; }
+    // neither one value nor a refusal: an error, never damaged
+    if (n != 1) { emit(name, "error", "the batch read into one value returned " + n + " without refusing", null); return; }
     v = storage[0];
   } else {
     emit(name, "unknown", carrier, null);
