@@ -369,36 +369,7 @@ func expectedFieldValue(t *testing.T, u *ir.Unit, slots map[string]uint64, f *ir
 			if !ok || len(obj) != 1 {
 				t.Fatalf("union field %s holds %T, want a 1-key arm object", f.Name, raw)
 			}
-			for armName, armRaw := range obj {
-				for _, v := range un.Variants {
-					if v.Name == armName {
-						slot, ok := slots[ir.TableArmEntry(v).Key()]
-						if !ok {
-							t.Fatalf("union %s arm %s has no announced slot", un.Name, armName)
-						}
-						if v.Void() {
-							return fmt.Sprintf("{%d, :none}", slot), true
-						}
-						lit, present := expectedFieldValue(t, u, slots, v.F, armRaw)
-						if !present {
-							switch v.F.Type.Kind {
-							case ir.TBool:
-								lit = "0"
-							case ir.TInt:
-								lit = "0"
-							case ir.TString:
-								lit = `""`
-							case ir.TNamed:
-								if _, isEnum := v.F.Type.Ref.(*ir.Enum); isEnum {
-									lit = "0"
-								}
-							}
-						}
-						return fmt.Sprintf("{%d, %s}", slot, lit), true
-					}
-				}
-			}
-			t.Fatalf("union field %s arm not found in %s", f.Name, un.Name)
+			return expectedUnionArm(t, u, slots, f, un, obj), true
 		}
 		t.Fatalf("named field %s refers to %T, which this card's fixed roots do not carry", f.Name, f.Type.Ref)
 	case f.Type.Kind == ir.TBytes:
@@ -514,11 +485,71 @@ func expectedKeyedElement(t *testing.T, u *ir.Unit, slots map[string]uint64, f *
 	return ""
 }
 
+// expectedUnionArm renders one selected union arm as LoadMessages decodes it:
+// `{arm_slot, value}`, the value the arm's own field decodes to, a field at its
+// default spelled as that default, and a void arm's value `:none`.
+func expectedUnionArm(t *testing.T, u *ir.Unit, slots map[string]uint64, f *ir.Field, un *ir.Union, obj map[string]any) string {
+	t.Helper()
+	for armName, armRaw := range obj {
+		for _, v := range un.Variants {
+			if v.Name != armName {
+				continue
+			}
+			slot, ok := slots[ir.TableArmEntry(v).Key()]
+			if !ok {
+				t.Fatalf("union %s arm %s has no announced slot", un.Name, armName)
+			}
+			if v.Void() {
+				return fmt.Sprintf("{%d, :none}", slot)
+			}
+			lit, present := expectedFieldValue(t, u, slots, v.F, armRaw)
+			if !present {
+				switch v.F.Type.Kind {
+				case ir.TBool:
+					lit = "0"
+				case ir.TInt:
+					lit = "0"
+				case ir.TString:
+					lit = `""`
+				case ir.TNamed:
+					if _, isEnum := v.F.Type.Ref.(*ir.Enum); isEnum {
+						lit = "0"
+					}
+				}
+			}
+			return fmt.Sprintf("{%d, %s}", slot, lit)
+		}
+	}
+	t.Fatalf("union field %s arm not found in %s", f.Name, un.Name)
+	return ""
+}
+
 // expectedArrayValue renders one fixed array's decoded elements: the element is
-// the field's named type with the array shape stripped, a table for every
-// array this card's roots carry.
+// the field's named type with the array shape stripped. A table element is its
+// body. A union element (an array of unions, §2.6) is its arm as a union field
+// decodes one, and a None element, `{}` or `null` in the text, is `:none`,
+// which is how the reader returns an array element at arm 0 (§3.3 (c)).
 func expectedArrayValue(t *testing.T, u *ir.Unit, slots map[string]uint64, f *ir.Field, arr []any) string {
 	t.Helper()
+	if un, ok := f.Type.Ref.(*ir.Union); ok {
+		var elems []string
+		for _, e := range arr {
+			if e == nil {
+				elems = append(elems, ":none")
+				continue
+			}
+			obj, ok := e.(map[string]any)
+			if !ok || len(obj) > 1 {
+				t.Fatalf("array field %s holds union element %T, want an arm object or {}", f.Name, e)
+			}
+			if len(obj) == 0 {
+				elems = append(elems, ":none")
+				continue
+			}
+			elems = append(elems, expectedUnionArm(t, u, slots, f, un, obj))
+		}
+		return "[" + strings.Join(elems, ", ") + "]"
+	}
 	st, ok := f.Type.Ref.(*ir.Struct)
 	if !ok {
 		t.Fatalf("array field %s holds element type %T, which this card's fixed roots do not carry", f.Name, f.Type.Ref)

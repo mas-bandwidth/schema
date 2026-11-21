@@ -671,10 +671,35 @@ func emitFieldCheck(b *strings.Builder, f *ir.Field, val any, member, ind string
 		for i, elem := range arr {
 			emitFieldCheck(b, messageElementField(f), elem, member+"["+strconv.Itoa(i)+"]", ind)
 		}
+	case isUnionRef(f.Type):
+		emitUnionCheck(b, f.Type.Ref.(*ir.Union), val, member, ind)
 	default:
 		lit := jsonScalarLit(f, val)
 		if lit != "" {
 			fmt.Fprintf(b, "%sif (%s !== %s) { fail(%q + \" = \" + %s); }\n", ind, member, lit, member, member)
+		}
+	}
+}
+
+// emitUnionCheck checks one union value, a union field or one element of an
+// array of unions (§2.6): the text's `null` or `{}` is None, `.type === 0`,
+// and a one-key arm object is that arm's ordinal (1-based, as the fixed form
+// stores it) with the arm's own value checked at the arm's member.
+func emitUnionCheck(b *strings.Builder, un *ir.Union, val any, member, ind string) {
+	obj, _ := val.(map[string]any)
+	if len(obj) == 0 {
+		fmt.Fprintf(b, "%sif (%s.type !== 0) { fail(%q + \" = \" + %s.type); }\n", ind, member, member+".type", member)
+		return
+	}
+	for armName, armVal := range obj {
+		for i, v := range un.Variants {
+			if v.Name != armName {
+				continue
+			}
+			fmt.Fprintf(b, "%sif (%s.type !== %d) { fail(%q + \" = \" + %s.type); }\n", ind, member, i+1, member+".type", member)
+			if !v.Void() {
+				emitFieldCheck(b, v.F, armVal, member+"."+js.MemberName(v.Name), ind)
+			}
 		}
 	}
 }
