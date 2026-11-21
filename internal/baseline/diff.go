@@ -43,6 +43,7 @@ package baseline
 import (
 	"fmt"
 	"math/big"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -187,6 +188,9 @@ var DefaultTokenPolicy = map[string]TokenRule{
 	// the field's declared default, and nothing is counted
 	"enum-deprecated": RuleLoss,
 	"union-arm":       RuleLoss, // stored bodies naming a dropped arm are skipped
+	// a PACKET-WIRE keyed array's key enum swapped under one layout: the
+	// protocol id does not move and every slot is renamed (SPEC §4 item 4)
+	"packet-key": RuleFixed,
 	// `was` NAMES THE FIRST WIRE NAME, FOREVER (docs/SPEC-TABLES.md §5). A
 	// second rename that names the field's own CURRENT spelling hashes a name
 	// no byte was ever written under, and every stored value orphans in
@@ -246,7 +250,58 @@ func Diff(base, live *Unit, policy map[string]TokenRule) []Finding {
 	out = append(out, d.diffEnums()...)
 	out = append(out, d.diffFlags()...)
 	out = append(out, d.diffUnions()...)
+	out = append(out, d.diffPackets()...)
 	return out
+}
+
+// diffPackets refuses an enum-keyed array on the PACKET wire whose key enum
+// was swapped for another under the same layout (SPEC §4 item 4,
+// docs/SPEC-TABLES.md §18.2). There the slots are positions: the protocol id
+// does not move, and bytes written as the old enum's slots read as the new
+// enum's slots in the same places. A swap whose slot names line up passes,
+// and so does one that moves the slot count, because that moves the layout
+// and the protocol id reports it. A keyed array added or removed is the
+// layout's business too, and is judged on nothing here.
+func (d *differ) diffPackets() []Finding {
+	if d.policy["packet-key"] != RuleFixed {
+		return nil
+	}
+	live := map[string]PacketKey{}
+	for _, p := range d.live.Packets {
+		for _, k := range p.Keys {
+			live[p.Name+"."+k.Member] = k
+		}
+	}
+	var out []Finding
+	for _, p := range d.base.Packets {
+		for _, was := range p.Keys {
+			where := p.Name + "." + was.Member
+			now, ok := live[where]
+			if !ok || now.Key == was.Key || now.Bound != was.Bound || slices.Equal(now.Slots, was.Slots) {
+				continue
+			}
+			var moved []string
+			for i := range max(len(was.Slots), len(now.Slots)) {
+				a, b := slotName(was.Slots, i), slotName(now.Slots, i)
+				if a != b {
+					moved = append(moved, fmt.Sprintf("slot %d %s -> %s", i+1, a, b))
+				}
+			}
+			out = append(out, Finding{Refuse, where, fmt.Sprintf(
+				"packet array key enum %s -> %s under the same layout — the protocol id does not move and the slots are positions, so bytes written under %s's names read under %s's: %s (SPEC §4 item 4, docs/SPEC-TABLES.md §18.2)",
+				was.Key, now.Key, was.Key, now.Key, strings.Join(moved, ", "))})
+		}
+	}
+	return out
+}
+
+// slotName is the variant that names slot i, or "(unnamed)" for a slot past
+// the named variants of an enum widened with `| max`.
+func slotName(slots []string, i int) string {
+	if i < len(slots) {
+		return slots[i]
+	}
+	return "(unnamed)"
 }
 
 // diffRetired refuses a live declaration that re-adds a name or wire id the

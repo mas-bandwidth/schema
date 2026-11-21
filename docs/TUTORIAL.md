@@ -3747,7 +3747,7 @@ fact per line, made to be read in a diff. Here is the part of it that covers
 `ShipConfig` and the flags it now carries:
 
 ```
-schema-tables-baseline 9
+schema-tables-baseline 10
 package starlight
 
 table ShipConfig

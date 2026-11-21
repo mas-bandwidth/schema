@@ -3,6 +3,7 @@ package baseline_test
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -208,8 +209,9 @@ func TestOlderRenderingWithoutCountMinimumIsDiagnosed(t *testing.T) {
 	// first line, with a history entry to keep
 	text := baseline.Render(unit(t, older)).Text()
 	head, rest, _ := strings.Cut(text, "\n")
-	if head != "schema-tables-baseline 9" {
-		t.Fatalf("this test is written against rendering 9, and the file opens %q: restate which rendering first recorded the minimum", head)
+	// rendering 9 first recorded the minimum; every later rendering keeps it
+	if head != "schema-tables-baseline "+strconv.Itoa(baseline.Version) || baseline.Version < 9 {
+		t.Fatalf("the file opens %q under rendering %d: the minimum is recorded from rendering 9 on", head, baseline.Version)
 	}
 	if strings.Contains(rest, "mincount") {
 		t.Fatalf("a [..N] array must render no mincount=, or an older file cannot be spelled:\n%s", text)
@@ -226,7 +228,7 @@ func TestOlderRenderingWithoutCountMinimumIsDiagnosed(t *testing.T) {
 		t.Fatalf("an older rendering must draw exactly one refusal and no warning, got errs=%v warnings=%v", errs, warnings)
 	}
 	msg := errs[0].Error()
-	for _, want := range []string{"baseline version 7", "this compiler writes 9", "schema tables-baseline --update --reason"} {
+	for _, want := range []string{"baseline version 7", "this compiler writes " + strconv.Itoa(baseline.Version), "schema tables-baseline --update --reason"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("the refusal does not say %q:\n  %s", want, msg)
 		}
@@ -250,7 +252,7 @@ func TestOlderRenderingWithoutCountMinimumIsDiagnosed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"schema-tables-baseline 9\n", "mincount=2", "first baseline", "REGENERATED over an unreadable one"} {
+	for _, want := range []string{"schema-tables-baseline " + strconv.Itoa(baseline.Version) + "\n", "mincount=2", "first baseline", "REGENERATED over an unreadable one"} {
 		if !strings.Contains(string(fixed), want) {
 			t.Errorf("the regenerated file lacks %q:\n%s", want, fixed)
 		}

@@ -233,8 +233,11 @@ these, and the list is exhaustive rather than illustrative:
    one layout and one protocol id. A keyed array on this wire carries
    positions, not names, and a rekey renames them exactly as renaming a
    field does: bytes written as `Red = 11, Blue = 22` read as `East = 11,
-   West = 22`. For SAVED data the rekey is not silent, because the table
-   wire keys a slot by its variant's name: a tables baseline refuses it
+   West = 22`. The id stays, by ruling, and `schema check` is what reports
+   the rekey: a tables baseline records every packet keyed array's key enum
+   and slot names, and refuses a swap that renames a slot under the same
+   layout (SPEC-TABLES.md §18.1). For SAVED data the table wire keys a slot
+   by its variant's name, and a tables baseline refuses the rekey there too
    (SPEC-TABLES.md §18.2).
 5. **A CONSTANT's value expression, where a BOUND names the constant**,
    followed through to what it names. A `const` declaration does not

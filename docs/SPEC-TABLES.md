@@ -18044,7 +18044,7 @@ token, and its absence is a minimum of zero. The token is judged, so it takes
 the rendering version: a file written before it refuses on check and names
 `--update` as the remedy (§18.4), and is never read as "no minimum".
 
-**THE RENDERING VERSION IS `9`, AND `8` IS REFUSED WHATEVER IT HOLDS.** Two
+**RENDERING `9` RECORDS ALL THREE, AND `8` IS REFUSED WHATEVER IT HOLDS.** Two
 unreleased renderings were both numbered `8`: one added `bits=` alone, the
 other `mincount=` and `deprecated=true` alone. A file opening with `8` may
 lack either fact, so the check reads no `8` at all; it refuses the file by its
@@ -18092,11 +18092,27 @@ is a kind change and is refused (§4.1). This restores the pre-existing
 presence evolution contract rather than adding a ban to justify read-side
 elision.
 
-It carries no protocol id and no packet fact: the type wire, the wire-shape
-projection and the protocol id are untouched by all of it (§10).
+It carries no protocol id, and ONE packet fact: the type wire, the
+wire-shape projection and the protocol id are untouched by all of it (§10).
+
+**A PACKET'S KEYED ARRAY IS RECORDED, because the protocol id cannot see its
+key enum swapped.** On the packet wire an enum-keyed array's slots are
+POSITIONS, and `[Team]T`, `[Axis]T` and `[2]T` are one layout and one
+protocol id (SPEC §4 item 4), so a key enum swapped for another of the same
+size reads every stored or sent slot under the new enum's name in the same
+place: bytes written as `Red = 11, Blue = 22` read as `East = 11,
+West = 22`, and no id moves. So the file renders, after the closure, a
+`packet <Name>` section for each `type` or packet union that holds an
+enum-keyed array, one line per array: `keyed <member> key=<Enum> bound=<N>
+slots=<names in slot order>`. The check REFUSES a key enum swapped under the
+same bound when the slot names differ, naming each renamed slot. A swap whose
+slot names line up, a move to the positional spelling, and an edit that moves
+the bound pass here: the first two rename nothing, and the last moves the
+layout, which the protocol id reports. Nothing else of the packet wire is
+recorded. The section takes the rendering version: `10`.
 
 ```
-schema-tables-baseline 9
+schema-tables-baseline 10
 package shipdemo
 
 table ShipConfig

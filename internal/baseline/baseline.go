@@ -69,7 +69,11 @@ import (
 // by its version, and `--update` regenerates it. A NUMBER IS NEVER REUSED for
 // a different set of facts; a rendering that changes the facts takes the next
 // unissued number.
-const Version = 9
+//
+// Version 10 adds the `packet` sections: the key enum and slot names of every
+// enum-keyed array on the PACKET wire, so a key enum swapped under one
+// protocol id is reported (docs/SPEC-TABLES.md §18.1, SPEC §4 item 4).
+const Version = 10
 
 // FileName is the baseline's name in the unit directory. Its presence is what
 // turns the check on: no file, no check.
@@ -102,6 +106,12 @@ type Unit struct {
 	Flags   []Flags
 	Unions  []Union
 
+	// Packets is the one PACKET-WIRE fact the file records (SPEC §4 item 4,
+	// docs/SPEC-TABLES.md §18.1): each `type` or packet union that holds an
+	// enum-keyed array, with the key enum and its slot names. Nothing else of
+	// the packet wire is here; the protocol id is its version.
+	Packets []Packet
+
 	// History is the `## history` section's lines, verbatim and in file
 	// order. Rendering writes them back untouched; an update appends.
 	History []string
@@ -124,6 +134,26 @@ type Retired struct {
 	// Revived is the day a `--update --reason` acknowledged a re-added name
 	// or id, and "" while the retirement still refuses the reuse.
 	Revived string
+}
+
+// A Packet is one packet-wire declaration, a `type` or a union, that holds an
+// enum-keyed array (SPEC §4 item 4). On the packet wire `[Team]T`, `[Axis]T`
+// and `[2]T` are one layout and one protocol id: a keyed array's slots are
+// POSITIONS, so a key enum swapped for another of the same size renames every
+// stored slot and nothing on the wire or in the id moves. This is the record
+// the check compares that swap against.
+type Packet struct {
+	Name string
+	Keys []PacketKey
+}
+
+// A PacketKey is one enum-keyed array of a packet declaration: the field or
+// arm, the enum that keys it, and that enum's variant names in slot order.
+type PacketKey struct {
+	Member string
+	Key    string
+	Bound  int64 // the slot count, the key enum's Max: the array's layout
+	Slots  []string
 }
 
 // A Table is one member of the table closure: a `table` declaration, or a
@@ -299,6 +329,45 @@ func Render(u *ir.Unit) *Unit {
 	sort.Slice(out.Enums, func(i, j int) bool { return out.Enums[i].Name < out.Enums[j].Name })
 	sort.Slice(out.Flags, func(i, j int) bool { return out.Flags[i].Name < out.Flags[j].Name })
 	sort.Slice(out.Unions, func(i, j int) bool { return out.Unions[i].Name < out.Unions[j].Name })
+	out.Packets = renderPackets(u)
+	return out
+}
+
+// renderPackets records every enum-keyed array on the PACKET wire: the
+// fields of each `type` and the arms of each packet union, in declaration
+// order, under declarations sorted by name. A declaration with no keyed
+// array renders nothing, so a unit with none adds no line to the file.
+func renderPackets(u *ir.Unit) []Packet {
+	var out []Packet
+	key := func(member string, f *ir.Field) (PacketKey, bool) {
+		if f == nil || f.KeyEnumRef == nil {
+			return PacketKey{}, false
+		}
+		return PacketKey{Member: member, Key: f.KeyEnumRef.Name, Bound: f.ArrayBound, Slots: append([]string(nil), f.KeyEnumRef.Variants...)}, true
+	}
+	for name, st := range u.Structs {
+		p := Packet{Name: name}
+		for _, f := range st.Fields {
+			if k, ok := key(f.Name, f); ok {
+				p.Keys = append(p.Keys, k)
+			}
+		}
+		if len(p.Keys) > 0 {
+			out = append(out, p)
+		}
+	}
+	for name, un := range u.Unions {
+		p := Packet{Name: name}
+		for _, v := range un.Variants {
+			if k, ok := key(v.Name, v.F); ok {
+				p.Keys = append(p.Keys, k)
+			}
+		}
+		if len(p.Keys) > 0 {
+			out = append(out, p)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
 }
 
@@ -582,6 +651,12 @@ func (u *Unit) Text() string {
 			b.WriteString("\n")
 		}
 	}
+	for _, p := range u.Packets {
+		fmt.Fprintf(&b, "\npacket %s\n", p.Name)
+		for _, k := range p.Keys {
+			fmt.Fprintf(&b, "    keyed %s key=%s bound=%d slots=%s\n", k.Member, k.Key, k.Bound, strings.Join(k.Slots, ","))
+		}
+	}
 	if len(u.Retired) > 0 {
 		fmt.Fprintf(&b, "\n%s\n", RetiredHeading)
 		for _, r := range u.Retired {
@@ -668,6 +743,8 @@ func Parse(path string, data []byte) (*Unit, error) {
 				u.Flags = append(u.Flags, Flags{Name: fields[1]})
 			case "union":
 				u.Unions = append(u.Unions, Union{Name: fields[1]})
+			case "packet":
+				u.Packets = append(u.Packets, Packet{Name: fields[1]})
 			default:
 				return nil, fmt.Errorf("%s:%d: unknown section %q", path, i+1, fields[0])
 			}
@@ -687,6 +764,27 @@ func (u *Unit) parseMemberLine(path string, lineno int, section string, fields [
 		return bad()
 	}
 	switch section {
+	case "packet":
+		// `    keyed <member> key=<Enum> bound=<N> slots=<a,b,...>`, exactly:
+		// these are the facts the check compares, so a line missing any of
+		// them is reported rather than read as "no key"
+		if fields[0] != "keyed" || len(u.Packets) == 0 || len(fields) != 5 {
+			return bad()
+		}
+		k := PacketKey{Member: fields[1]}
+		ek, ev, ok1 := strings.Cut(fields[2], "=")
+		bk, bv, ok2 := strings.Cut(fields[3], "=")
+		sk, sv, ok3 := strings.Cut(fields[4], "=")
+		if !ok1 || !ok2 || !ok3 || ek != "key" || bk != "bound" || sk != "slots" || ev == "" || sv == "" {
+			return bad()
+		}
+		n, err := strconv.ParseInt(bv, 10, 64)
+		if err != nil || n < 1 {
+			return bad()
+		}
+		k.Key, k.Bound, k.Slots = ev, n, strings.Split(sv, ",")
+		p := &u.Packets[len(u.Packets)-1]
+		p.Keys = append(p.Keys, k)
 	case "table":
 		if fields[0] != "field" || len(u.Tables) == 0 {
 			return bad()
