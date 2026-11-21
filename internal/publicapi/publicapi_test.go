@@ -5,8 +5,9 @@
 //
 // Two legs, because the claim has two halves.
 //
-// TestExternalModuleBuildsTheCLI takes cmd/schema/main.go VERBATIM into a
-// throwaway module and builds it there. The build is the assertion: Go
+// TestExternalModuleBuildsTheCLI takes cmd/schema VERBATIM (every non-test
+// file: the Go sources and the files they embed) into a throwaway module and
+// builds it there. The build is the assertion: Go
 // refuses an internal import from outside the module, so the day cmd/schema
 // reaches past the public API this test fails with the compiler's own error
 // and names the package. Then both binaries run the full command matrix over
@@ -82,30 +83,111 @@ func goSourceFiles(t *testing.T, dir string) []string {
 	return names
 }
 
-// cliSourceFiles lists cmd/schema's non-test Go files — the sources the
-// external module must carry for the CLI to build.
-func cliSourceFiles(t *testing.T, root string) []string {
+// packageFiles lists every non-test file under dir — the Go sources and the
+// files a //go:embed directive reads (cmd/schema/help/ai.md) — as slash paths
+// relative to dir, sorted. A testdata tree is not part of the package.
+func packageFiles(t *testing.T, dir string) []string {
 	t.Helper()
-	return goSourceFiles(t, filepath.Join(root, "cmd", "schema"))
+	var names []string
+	err := filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if p != dir && d.Name() == "testdata" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if strings.HasSuffix(d.Name(), "_test.go") {
+			return nil
+		}
+		rel, err := filepath.Rel(dir, p)
+		if err != nil {
+			return err
+		}
+		names = append(names, filepath.ToSlash(rel))
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(names)
+	return names
 }
 
-// carryCLISources copies cmd/schema's non-test Go files into dir and returns
-// their names. It lists the directory rather than naming the files, so a new
-// CLI source file is carried without an edit here.
+// cliSourceFiles lists every non-test file of cmd/schema — what the external
+// module must carry for the CLI to build, its embedded files included.
+func cliSourceFiles(t *testing.T, root string) []string {
+	t.Helper()
+	return packageFiles(t, filepath.Join(root, "cmd", "schema"))
+}
+
+// carryCLISources copies cmd/schema's non-test files into dir and returns
+// their names. It walks the directory rather than naming the files, so a new
+// CLI source file, or a file one embeds, is carried without an edit here.
 func carryCLISources(t *testing.T, root, dir string) []string {
 	t.Helper()
 	srcDir := filepath.Join(root, "cmd", "schema")
 	names := cliSourceFiles(t, root)
 	for _, name := range names {
-		data, err := os.ReadFile(filepath.Join(srcDir, name))
+		data, err := os.ReadFile(filepath.Join(srcDir, filepath.FromSlash(name)))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
+		out := filepath.Join(dir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(out, data, 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
 	return names
+}
+
+// internalImports names, per carried Go source, every import of a package
+// under this module's internal/ tree: the imports Go refuses from outside the
+// module, so the CLI, a client of the public API, carries none.
+func internalImports(t *testing.T, dir string, names []string) []string {
+	t.Helper()
+	var found []string
+	for _, name := range names {
+		if !strings.HasSuffix(name, ".go") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(name)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for line := range strings.SplitSeq(string(data), "\n") {
+			if strings.Contains(line, `"github.com/mas-bandwidth/schema/v2/internal/`) {
+				found = append(found, name+": "+strings.TrimSpace(line))
+			}
+		}
+	}
+	return found
+}
+
+// embedPatterns lists every //go:embed pattern in the carried Go sources.
+func embedPatterns(t *testing.T, dir string, names []string) []string {
+	t.Helper()
+	var patterns []string
+	for _, name := range names {
+		if !strings.HasSuffix(name, ".go") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(name)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for line := range strings.SplitSeq(string(data), "\n") {
+			if rest, ok := strings.CutPrefix(strings.TrimSpace(line), "//go:embed "); ok {
+				patterns = append(patterns, strings.Fields(rest)...)
+			}
+		}
+	}
+	return patterns
 }
 
 // goBuild builds one main package into binPath, failing the test with the
@@ -136,17 +218,40 @@ func run(t *testing.T, binPath string, args ...string) string {
 }
 
 // TestExternalModuleCarriesEveryCLISource guards the copy the build test makes:
-// the file set the external module receives is exactly cmd/schema's non-test Go
-// files, so a new CLI source file cannot silently be left behind.
+// the file set the external module receives is exactly cmd/schema's non-test
+// files, and every //go:embed pattern in them names a carried file, so neither
+// a new CLI source file nor a file one embeds (help/ai.md, #4427) can silently
+// be left behind. It is pure Go and runs in the default `go test`.
 func TestExternalModuleCarriesEveryCLISource(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 	dir := t.TempDir()
 	carryCLISources(t, root, dir)
-	carried := goSourceFiles(t, dir)
+	carried := packageFiles(t, dir)
 	want := cliSourceFiles(t, root)
 	if !slices.Equal(carried, want) {
-		t.Fatalf("the external module carries %v, want cmd/schema's non-test Go files %v", carried, want)
+		t.Fatalf("the external module carries %v, want cmd/schema's non-test files %v", carried, want)
+	}
+	patterns := embedPatterns(t, dir, carried)
+	if len(patterns) == 0 {
+		t.Fatal("cmd/schema embeds nothing: the embed check below is vacuous")
+	}
+	for _, pattern := range patterns {
+		if matches, err := filepath.Glob(filepath.Join(dir, filepath.FromSlash(pattern))); err != nil || len(matches) == 0 {
+			t.Errorf("//go:embed %s names no file the external module carries (%v)", pattern, err)
+		}
+	}
+}
+
+// TestCLIImportsNoInternalPackage is the boundary itself, checked without a
+// build: no non-test source of cmd/schema imports a package under internal/.
+// The external build below would refuse such an import by name too, but it is
+// slow-gated; this runs in the default `go test`.
+func TestCLIImportsNoInternalPackage(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+	if found := internalImports(t, filepath.Join(root, "cmd", "schema"), cliSourceFiles(t, root)); len(found) > 0 {
+		t.Fatalf("cmd/schema imports an internal package — the CLI is supposed to be a client of the public API:\n%s", strings.Join(found, "\n"))
 	}
 }
 
@@ -166,14 +271,10 @@ func TestExternalModuleBuildsTheCLI(t *testing.T) {
 	if err := os.MkdirAll(clientDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	main, err := os.ReadFile(filepath.Join(root, "cmd", "schema", "main.go"))
-	if err != nil {
-		t.Fatal(err)
+	carried := carryCLISources(t, root, clientDir)
+	if found := internalImports(t, clientDir, carried); len(found) > 0 {
+		t.Fatalf("cmd/schema imports an internal package — the CLI is supposed to be a client of the public API:\n%s", strings.Join(found, "\n"))
 	}
-	if bytes.Contains(main, []byte("mas-bandwidth/schema/v2/internal/")) {
-		t.Fatal("cmd/schema imports an internal package — the CLI is supposed to be a client of the public API")
-	}
-	carryCLISources(t, root, clientDir)
 	gomod := fmt.Sprintf("module schemacli\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/schema/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/schema/v2 => %q\n", root)
 	if err := os.WriteFile(filepath.Join(clientDir, "go.mod"), []byte(gomod), 0o644); err != nil {
 		t.Fatal(err)
