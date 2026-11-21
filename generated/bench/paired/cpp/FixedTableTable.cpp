@@ -54,7 +54,9 @@ inline bool TableJsonWritePointer( TableJsonOut & out, const void * slot, const 
 // the FIRST key of an object the walk is skipping begins with `&`: the cursor is
 // on its value. A dropped definition still takes its label (§16.7); a fixed reader
 // skips the value whole, as it skips everything else it does not place.
-inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32_t key_length, int32_t depth );
+inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32_t key_length, int32_t depth, bool & reference, uint64_t & opened );
+// the skipped object that opened a definition (opened, from the call above) closes
+inline void TableJsonSkippedClose( TableJsonIn & in, uint64_t opened );
 
 // ---- the map and list adapters (docs/SPEC-TABLES.md §2.8, §2.9, §16) ----
 //
@@ -3071,12 +3073,14 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
     in.pos++; // the opening bracket
     TableJsonKeyScope keys( in ); // this object's keys, bounded by the text's own length
     bool first = true;
+    uint64_t opened = 0; // the label a definition this skipped object opened
     for ( ;; )
     {
         char c = TableJsonPeek( in );
         if ( c == close )
         {
             in.pos++;
+            TableJsonSkippedClose( in, opened );
             return true;
         }
         if ( c == 0 )
@@ -3110,7 +3114,9 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
                     in.bad = true;
                     return false;
                 }
-                if ( !TableJsonSkippedAmpersand( in, key, key_length, depth ) ) { return false; }
+                bool reference = false;
+                if ( !TableJsonSkippedAmpersand( in, key, key_length, depth, reference, opened ) ) { return false; }
+                if ( reference ) { return true; } // consumed whole, its } included
                 first = false;
                 c = TableJsonPeek( in );
                 if ( c == ',' )
@@ -3121,6 +3127,7 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
                 if ( c == close )
                 {
                     in.pos++;
+                    TableJsonSkippedClose( in, opened );
                     return true;
                 }
                 in.bad = true;
@@ -3138,6 +3145,7 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
         if ( c == close )
         {
             in.pos++;
+            TableJsonSkippedClose( in, opened );
             return true;
         }
         in.bad = true;
@@ -3436,10 +3444,14 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
                 break;
             }
         }
+        // DEPTH (§16.2): the union's holder is at depth, the union object at
+        // depth+1, and the arm's value at depth+2, where it is read or
+        // skipped; a field or pointer arm reads at depth+1, whose own walk
+        // adds the level, as a by-value field's does
         if ( tag == 0 )
         {
             in.report->unknown++;
-            if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+            if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
         }
         else
         {
@@ -3464,7 +3476,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
                 {
                     in.report->refused = true;
                     in.report->refuse_reason = kind_mismatch;
-                    if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                    if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
                     placed = false;
                 }
                 else if ( arm->kind == 17 && !arm->is_array )
@@ -3489,13 +3501,13 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
                 {
                     in.report->refused = true;
                     in.report->refuse_reason = kind_mismatch;
-                    if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                    if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
                     placed = false;
                 }
                 else
                 {
                     arms->arms[tag].table->reset( payload );
-                    if ( !TableJsonReadTable( in, payload, arms->arms[tag].table, depth + 1 ) ) { return false; }
+                    if ( !TableJsonReadTable( in, payload, arms->arms[tag].table, depth + 2 ) ) { return false; }
                 }
             }
             else
@@ -3506,7 +3518,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
                 {
                     in.report->refused = true;
                     in.report->refuse_reason = kind_mismatch;
-                    if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                    if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
                     placed = false;
                 }
                 else if ( !TableJsonLiteral( in, "null" ) )
@@ -3981,6 +3993,13 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             in.bad = true;
             return false;
         }
+        // A COUNT BELOW ITS DECLARED MIN IS REFUSED (docs/SPEC.md §5.1 row 3),
+        // in the text form as on the wire
+        if ( f->array_min > 0 && placed < f->array_min )
+        {
+            in.report->refused = true;
+            in.report->refuse_reason = out_of_range;
+        }
         TableJsonSetCount( base, f, placed );
         return true;
     }
@@ -4228,6 +4247,13 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             }
             in.bad = true;
             return false;
+        }
+        // A COUNT BELOW ITS DECLARED MIN IS REFUSED (docs/SPEC.md §5.1 row 3),
+        // in the text form as on the wire
+        if ( f->array_min > 0 && placed < f->array_min )
+        {
+            in.report->refused = true;
+            in.report->refuse_reason = out_of_range;
         }
         // a fixed array's tail keeps the defaults the prefill left there,
         // exactly as a short wire count does
@@ -4516,9 +4542,14 @@ inline bool TableJsonWritePointer( TableJsonOut &, const void *, const TableFiel
     return false;
 }
 
-inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char *, int32_t, int32_t depth )
+inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char *, int32_t, int32_t depth, bool & reference, uint64_t & )
 {
+    reference = false;
     return TableJsonSkipValue( in, depth + 1 );
+}
+
+inline void TableJsonSkippedClose( TableJsonIn &, uint64_t )
+{
 }
 
 inline bool schema_table_json_read_unbounded_text_( TableJsonIn & in, void *, int32_t * )
