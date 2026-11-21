@@ -45,6 +45,14 @@ def _element_default(node, name):
     raise ValueError("count mutation: no element default for " + name + " (" + field.elem_codec + ")")
 
 
+def _with_tag(current, token):
+    """A fresh union of current's class whose tag is token: a field or a list
+    element alike (bounded_steps[0], hits[0])."""
+    union = type(current)()
+    union.type = int(token)
+    return union
+
+
 def _set(value, path, rule, token):
     parts = path.replace("[", ".").replace("]", "").split(".")
     node = value
@@ -80,7 +88,7 @@ def _set(value, path, rule, token):
         idx = int(name)
         slots = node._values if hasattr(node, "_values") else node
         current = slots[idx]
-        slots[idx] = _convert_scalar(current, rule, token)
+        slots[idx] = _with_tag(current, token) if rule == "tag" else _convert_scalar(current, rule, token)
         return
     current = getattr(node, name)
     if rule == "count":
@@ -94,9 +102,7 @@ def _set(value, path, rule, token):
         resized.extend(deepcopy(seed) for _ in range(count - len(resized)))
         setattr(node, name, resized)
     elif rule == "tag":
-        union = type(current)()
-        union.type = int(token)
-        setattr(node, name, union)
+        setattr(node, name, _with_tag(current, token))
     else:
         setattr(node, name, _convert_scalar(current, rule, token))
 
