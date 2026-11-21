@@ -888,6 +888,13 @@ no lock, and two runs writing the same output at once can leave one run's
 file beside the other's. Give concurrent runs their own outputs, or run them
 one after the other.
 
+pack, cook and uncook refuse an output that names what the command reads: its
+input file, any path inside a tree it reads (the tree argument, a --batch
+tree, cook --in as a tree) or a schema source of the unit. generate and
+testgen refuse a file that resolves to a schema source. The answer is the
+file system's, so a symlink or another spelling of the same entry is refused
+too, and nothing is written.
+
 testgen writes the round-trip and damage tests of every table beside the code
 generate wrote: Go emits one <Base>Table_gen_test.go, Lua one
 <Base>Table_gen_test.lua and Squirrel one <Base>Table_gen_test.nut per schema
