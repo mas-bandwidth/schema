@@ -5,13 +5,21 @@
 #include "hostile_c.h"
 
 HC_FIXED( fixed_loose_count )
+HC_MESSAGE( fixed_loose_count )
 HC_FIXED( fixed_tight_count )
+HC_MESSAGE( fixed_tight_count )
 HC_FIXED( fixed_loose_range )
+HC_MESSAGE( fixed_loose_range )
 HC_FIXED( fixed_tight_range )
+HC_MESSAGE( fixed_tight_range )
 HC_FIXED( fixed_loose_text )
+HC_MESSAGE( fixed_loose_text )
 HC_FIXED( fixed_tight_text )
+HC_MESSAGE( fixed_tight_text )
 HC_FIXED( fixed_loose_bytes )
+HC_MESSAGE( fixed_loose_bytes )
 HC_FIXED( fixed_tight_bytes )
+HC_MESSAGE( fixed_tight_bytes )
 HC_VAR( var_loose_count )
 HC_VAR( var_tight_count )
 HC_VAR( var_loose_range )
@@ -22,14 +30,14 @@ HC_VAR( var_loose_bytes )
 HC_VAR( var_tight_bytes )
 
 static const hc_binding_t rows[] = {
-    { HC_FIXED_FIELDS( "test/tables/inner", "FixedLooseCount", fixed_loose_count ) },
-    { HC_FIXED_FIELDS( "test/tables/inner", "FixedTightCount", fixed_tight_count ) },
-    { HC_FIXED_FIELDS( "test/tables/inner", "FixedLooseRange", fixed_loose_range ) },
-    { HC_FIXED_FIELDS( "test/tables/inner", "FixedTightRange", fixed_tight_range ) },
-    { HC_FIXED_FIELDS( "test/tables/inner", "FixedLooseText", fixed_loose_text ) },
-    { HC_FIXED_FIELDS( "test/tables/inner", "FixedTightText", fixed_tight_text ) },
-    { HC_FIXED_FIELDS( "test/tables/inner", "FixedLooseBytes", fixed_loose_bytes ) },
-    { HC_FIXED_FIELDS( "test/tables/inner", "FixedTightBytes", fixed_tight_bytes ) },
+    { HC_FIXED_FIELDS( "test/tables/inner", "FixedLooseCount", fixed_loose_count ), .message = hc_message_fixed_loose_count },
+    { HC_FIXED_FIELDS( "test/tables/inner", "FixedTightCount", fixed_tight_count ), .message = hc_message_fixed_tight_count },
+    { HC_FIXED_FIELDS( "test/tables/inner", "FixedLooseRange", fixed_loose_range ), .message = hc_message_fixed_loose_range },
+    { HC_FIXED_FIELDS( "test/tables/inner", "FixedTightRange", fixed_tight_range ), .message = hc_message_fixed_tight_range },
+    { HC_FIXED_FIELDS( "test/tables/inner", "FixedLooseText", fixed_loose_text ), .message = hc_message_fixed_loose_text },
+    { HC_FIXED_FIELDS( "test/tables/inner", "FixedTightText", fixed_tight_text ), .message = hc_message_fixed_tight_text },
+    { HC_FIXED_FIELDS( "test/tables/inner", "FixedLooseBytes", fixed_loose_bytes ), .message = hc_message_fixed_loose_bytes },
+    { HC_FIXED_FIELDS( "test/tables/inner", "FixedTightBytes", fixed_tight_bytes ), .message = hc_message_fixed_tight_bytes },
     { HC_VAR_FIELDS( "test/tables/inner", "VarLooseCount", var_loose_count ) },
     { HC_VAR_FIELDS( "test/tables/inner", "VarTightCount", var_tight_count ) },
     { HC_VAR_FIELDS( "test/tables/inner", "VarLooseRange", var_loose_range ) },
