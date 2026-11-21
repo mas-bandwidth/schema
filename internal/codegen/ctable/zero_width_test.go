@@ -96,7 +96,7 @@ func TestCTableNeverEmitsZeroWidthInteger(t *testing.T) {
 		for name, data := range files {
 			for i, line := range strings.Split(string(data), "\n") {
 				for _, b := range banned {
-					if strings.Contains(line, b) {
+					if cCarries(line, b) {
 						t.Errorf("%s: %s:%d prints a zero-width integer (%s): %s", rel, name, i+1, b, strings.TrimSpace(line))
 						break
 					}
@@ -125,7 +125,7 @@ func TestCTableTextArmFixedStore(t *testing.T) {
 		"table_fixed_put32( b + 5, (uint32_t) value->value.as.c.value_length );",
 		"memcpy( b + 9, value->value.as.c.value, (size_t) ( value->value.as.c.value_length ) );",
 	} {
-		if !strings.Contains(header, want) {
+		if !cCarries(header, want) {
 			t.Errorf("A2's text arm `c` is not stored as length then bytes; missing:\n%s", want)
 		}
 	}
@@ -150,7 +150,7 @@ func TestCTableRefusesAPlantedZeroWidth(t *testing.T) {
 			continue
 		}
 		for _, name := range []string{"Cfg", "grade", strconv.FormatInt(bad, 10) + "-byte"} {
-			if !strings.Contains(err.Error(), name) {
+			if !cCarries(err.Error(), name) {
 				t.Errorf("width %d refusal does not name %q: %v", bad, name, err)
 			}
 		}
@@ -166,7 +166,7 @@ func TestCTableRefusesAPlantedZeroWidth(t *testing.T) {
 		t.Fatal("a planted zero-width integer was emitted without a refusal")
 	}
 	for _, name := range []string{"Planted", "nothing", "0-byte"} {
-		if !strings.Contains(g.widthErr.Error(), name) {
+		if !cCarries(g.widthErr.Error(), name) {
 			t.Errorf("the planted refusal does not name %q: %v", name, g.widthErr)
 		}
 	}

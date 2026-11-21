@@ -291,7 +291,7 @@ void mutate(const RootBlockConst * block) { root_rows_span_const(block)[0].value
 		t.Fatal(err)
 	}
 	output, err := exec.Command("cc", "-std=c99", "-I", dir, "-c", path, "-o", filepath.Join(dir, "const-negative.o")).CombinedOutput()
-	if err == nil || (!strings.Contains(string(output), "const") && !strings.Contains(string(output), "read-only")) {
+	if err == nil || (!cCarries(string(output), "const") && !cCarries(string(output), "read-only")) {
 		t.Fatalf("const block write did not fail for constness: %v\n%s", err, output)
 	}
 

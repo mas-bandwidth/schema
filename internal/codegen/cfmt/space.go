@@ -2,10 +2,10 @@ package cfmt
 
 var ctrlKeywords = map[string]bool{"if": true, "for": true, "while": true, "switch": true}
 
-// keywords after which a `(` is not a call and a `*`/`&`/`-` is unary
+// Keywords after which a `(` is not a call and a `*`/`&`/`-` is unary.
 var operandKeywords = map[string]bool{"return": true, "case": true, "else": true, "do": true, "goto": true}
 
-// words that name a type on their own, so `(word) x` is a cast
+// Words that name a type on their own, so `(word) x` is a cast.
 var typeKeywords = map[string]bool{
 	"void": true, "char": true, "short": true, "int": true, "long": true, "float": true, "double": true,
 	"signed": true, "unsigned": true, "const": true, "volatile": true, "struct": true, "union": true,

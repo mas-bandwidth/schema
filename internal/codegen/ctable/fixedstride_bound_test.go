@@ -11,7 +11,6 @@ package ctable
 // pins the sizing walk's answer to the same number the C runtime holds.
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -23,7 +22,7 @@ func TestCFixedStrideBoundAgrees(t *testing.T) {
 	if ir.TableFixedRecordMaxBytes != 65536 {
 		t.Fatalf("the fixed record bound is %d, want the spec's 65536", ir.TableFixedRecordMaxBytes)
 	}
-	if !strings.Contains(tableFixedRuntime, "kTableFixedRecordMaxBytes = 65536") {
+	if !cCarries(tableFixedRuntime, "kTableFixedRecordMaxBytes = 65536") {
 		t.Fatal("the C runtime does not hold a record to the spec's 65536-byte bound")
 	}
 

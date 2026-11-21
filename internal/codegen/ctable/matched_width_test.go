@@ -77,21 +77,21 @@ func TestMatchedScalarWidthShape(t *testing.T) {
 		"(uint8_t) table_reader_get8( &(*r) )",
 		"(int8_t) table_reader_get8( &(*r) )",
 	} {
-		if !strings.Contains(load, want) {
+		if !cCarries(load, want) {
 			t.Fatalf("matched-width load_body is missing %q", want)
 		}
 	}
 	rest := stripWidenArms(load)
-	if strings.Contains(rest, "(uint8_t) table_reader_get8( &(*r) )") {
+	if cCarries(rest, "(uint8_t) table_reader_get8( &(*r) )") {
 		t.Fatal("unsigned source-width get8 escaped the widen arm")
 	}
-	if strings.Contains(rest, "(int8_t) table_reader_get8( &(*r) )") {
+	if cCarries(rest, "(int8_t) table_reader_get8( &(*r) )") {
 		t.Fatal("signed source-width get8 escaped the widen arm")
 	}
-	if strings.Contains(rest, "table_kind_bytes") {
+	if cCarries(rest, "table_kind_bytes") {
 		t.Fatal("matched arm still sizes the payload through table_kind_bytes")
 	}
-	if strings.Contains(rest, "switch ( kind )") {
+	if cCarries(rest, "switch ( kind )") {
 		t.Fatal("matched arm still switches on the runtime kind")
 	}
 }
@@ -210,14 +210,14 @@ func gnuCC(cc string) bool {
 	out, err := cmd.CombinedOutput()
 	if err == nil {
 		defs := string(out)
-		return strings.Contains(defs, "#define __GNUC__") && !strings.Contains(defs, "#define __clang__")
+		return cCarries(defs, "#define __GNUC__") && !cCarries(defs, "#define __clang__")
 	}
 	vout, verr := exec.Command(cc, "--version").CombinedOutput()
 	if verr != nil {
 		return false
 	}
 	s := strings.ToLower(string(vout))
-	return !strings.Contains(s, "clang") && !strings.Contains(s, "apple llvm")
+	return !cCarries(s, "clang") && !cCarries(s, "apple llvm")
 }
 
 func TestGccFortifySilenceFollowsGNUNotTheWordGcc(t *testing.T) {

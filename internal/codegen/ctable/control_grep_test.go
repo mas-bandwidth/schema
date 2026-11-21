@@ -44,7 +44,7 @@ func TestCNegativeControlGrepDialects(t *testing.T) {
 			var flags, pattern string
 			for _, guard := range guards {
 				p := guard[2][1 : len(guard[2])-1]
-				if p == tc.pattern && strings.Contains(guard[1], "q") {
+				if p == tc.pattern && cCarries(guard[1], "q") {
 					flags, pattern = guard[1], p
 					break
 				}

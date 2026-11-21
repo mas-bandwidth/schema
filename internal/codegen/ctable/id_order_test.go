@@ -73,7 +73,7 @@ func TestCWireIdOrder(t *testing.T) {
 		files[name] = []byte(strings.Replace(s, anchor, "if ( end < -1 )", 1))
 		return nil
 	})
-	if err == nil || !strings.Contains(out, "id-order unused-empty") {
+	if err == nil || !cCarries(out, "id-order unused-empty") {
 		t.Fatalf("identity control did not fail by name: %v\n%s", err, out)
 	}
 }

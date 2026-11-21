@@ -38,14 +38,14 @@ func cCardsCheck(files map[string]string) []string {
 	var bad []string
 	for name, src := range files {
 		for _, retired := range cCardsRetired {
-			if strings.Contains(src, retired) {
+			if cCarries(src, retired) {
 				bad = append(bad, name+": retired tolerant surface "+retired)
 			}
 		}
 	}
 	if src, ok := files["cards.c"]; ok {
 		for _, call := range cCardsStrictCalls {
-			if !strings.Contains(src, call) {
+			if !cCarries(src, call) {
 				bad = append(bad, "cards.c: missing strict call "+call)
 			}
 		}
@@ -104,7 +104,7 @@ func TestCCardsStrictApiNegativeControl(t *testing.T) {
 			t.Parallel()
 			files := cCardsSources(t)
 			src, ok := files["cards.c"]
-			if !ok || !strings.Contains(src, s.from) {
+			if !ok || !cCarries(src, s.from) {
 				t.Fatalf("the %s sabotage plants nothing: %q not in the real cards.c", s.name, s.from)
 			}
 			files["cards.c"] = strings.Replace(src, s.from, s.to, 1)

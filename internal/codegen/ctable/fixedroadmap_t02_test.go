@@ -210,7 +210,7 @@ func t02R1(t *testing.T) {
 
 	// STATIC DATA AT BUILD TIME: the lineage is a const array, no file parsed
 	// at load for it.
-	if !strings.Contains(text, "static SCHEMA_UNUSED const TableFixedKnownLayout "+snake+"_fixed_known[]") {
+	if !cCarries(text, "static SCHEMA_UNUSED const TableFixedKnownLayout "+snake+"_fixed_known[]") {
 		t.Errorf("R1: the lineage is not laid down as static data — no const %s_fixed_known[] (§5.2 COMPILE)", snake)
 	}
 
@@ -262,12 +262,12 @@ func t02R2(t *testing.T) {
 	if rows[1].record != wantOwn {
 		t.Errorf("R2: the current entry is emitted with record_bytes %d, want 8 + body = %d", rows[1].record, wantOwn)
 	}
-	if !strings.Contains(text, "static SCHEMA_UNUSED const int64_t "+snake+"_fixed_record_bytes = 8 + ") {
+	if !cCarries(text, "static SCHEMA_UNUSED const int64_t "+snake+"_fixed_record_bytes = 8 + ") {
 		t.Errorf("R2: the current record size is not spelled 8 + body")
 	}
 	// THE READ TAKES THE RECORD SIZE FROM THE LOCK'S ENTRY, never recomputed
 	// from the file (§5.2: "Never read off the file").
-	if !strings.Contains(text, "record_bytes = "+snake+"_fixed_known[pick].record_bytes;") {
+	if !cCarries(text, "record_bytes = "+snake+"_fixed_known[pick].record_bytes;") {
 		t.Errorf("R2: the read does not take record_bytes from the selected lock entry — it must never read it off the file")
 	}
 }
@@ -317,12 +317,12 @@ func t02R23(t *testing.T) {
 	} else {
 		t.Fatalf("R23: the TableReport declaration does not close")
 	}
-	if !strings.Contains(rbody, "uint64_t layout_hash;") {
+	if !cCarries(rbody, "uint64_t layout_hash;") {
 		t.Errorf("R23: the report carries no layout_hash member")
 	}
 	// it is LAST: no other member after it
 	tail := rbody[strings.Index(rbody, "uint64_t layout_hash;")+len("uint64_t layout_hash;"):]
-	if strings.Contains(tail, ";") {
+	if cCarries(tail, ";") {
 		t.Errorf("R23: layout_hash is not the LAST member of the report")
 	}
 
@@ -336,7 +336,7 @@ func t02R23(t *testing.T) {
 		t.Fatal("R23: the runtime has no table_fixed_refuse_hash")
 	}
 	refuse := tableFixedRuntime[refuseAt:]
-	if !strings.Contains(refuse, "report->layout_hash = hash;") {
+	if !cCarries(refuse, "report->layout_hash = hash;") {
 		t.Errorf("R23: the one layout_hash store is not the file-hash refusal — zero on every other path (§5.9 #7)")
 	}
 }
@@ -349,17 +349,17 @@ func t02R23(t *testing.T) {
 func t02R25(t *testing.T) {
 	text, _, st := t02NewerWithOlder(t)
 	snake := ir.RustSnake(st.Name)
-	if !strings.Contains(text, snake+"_fixed_lineage[pick].count > plan_capacity") {
+	if !cCarries(text, snake+"_fixed_lineage[pick].count > plan_capacity") {
 		t.Errorf("R25: the load does not compare the selected plan's length against the caller's capacity")
 	}
-	if !strings.Contains(text, "report->reason = SCHEMA_TABLE_PLAN_TOO_LARGE;") {
+	if !cCarries(text, "report->reason = SCHEMA_TABLE_PLAN_TOO_LARGE;") {
 		t.Errorf("R25: the over-capacity lane does not refuse plan_too_large BY NAME")
 	}
 	// AND IT IS A REFUSAL, NOT A MALFORMED READ: refused set, no malformed.
-	if !strings.Contains(text, "SCHEMA_TABLE_PLAN_TOO_LARGE") {
+	if !cCarries(text, "SCHEMA_TABLE_PLAN_TOO_LARGE") {
 		t.Errorf("R25: the emitted unit names no plan_too_large")
 	}
-	if !strings.Contains(tableFixedRuntime, "SCHEMA_TABLE_PLAN_TOO_LARGE = 9") {
+	if !cCarries(tableFixedRuntime, "SCHEMA_TABLE_PLAN_TOO_LARGE = 9") {
 		t.Errorf("R25: the runtime carries no plan_too_large reason")
 	}
 }
@@ -377,14 +377,14 @@ func t02R26(t *testing.T) {
 	text, _, st := t02NewerWithOlder(t)
 	snake := ir.RustSnake(st.Name)
 	// THE TWO LANES, EACH BY ITS OWN NAME, ON THE ENTRY.
-	if !strings.Contains(text, snake+"_fixed_lineage[i].reason = SCHEMA_TABLE_LAYOUT_MALFORMED; continue;") {
+	if !cCarries(text, snake+"_fixed_lineage[i].reason = SCHEMA_TABLE_LAYOUT_MALFORMED; continue;") {
 		t.Errorf("R26: a lineage entry that does not parse carries no layout_malformed lane of its own")
 	}
-	if !strings.Contains(text, "( made == -2 ) ? SCHEMA_TABLE_LAYOUT_RECORD_TOO_LARGE : SCHEMA_TABLE_PLAN_TOO_LARGE") {
+	if !cCarries(text, "( made == -2 ) ? SCHEMA_TABLE_LAYOUT_RECORD_TOO_LARGE : SCHEMA_TABLE_PLAN_TOO_LARGE") {
 		t.Errorf("R26: a lineage entry that will not build does not pick its own lane (layout_record_too_large vs plan_too_large)")
 	}
 	// AND LOAD REFUSES BY THAT ENTRY'S OWN LANE.
-	if !strings.Contains(text, snake+"_fixed_lineage[pick].reason != 0") {
+	if !cCarries(text, snake+"_fixed_lineage[pick].reason != 0") {
 		t.Errorf("R26: the load does not refuse a file by the selected entry's own recorded reason")
 	}
 	// NEVER A THROW: no C `throw` statement anywhere in the emitted unit.

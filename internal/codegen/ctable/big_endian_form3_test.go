@@ -158,7 +158,7 @@ func bigEndianForm3Run(t *testing.T, sabotage [2]string) ([]string, string) {
 	if sabotage[0] != "" {
 		patched := false
 		for name, data := range files {
-			if src := string(data); strings.Contains(src, sabotage[0]) {
+			if src := string(data); cCarries(src, sabotage[0]) {
 				files[name] = []byte(strings.ReplaceAll(src, sabotage[0], sabotage[1]))
 				patched = true
 			}

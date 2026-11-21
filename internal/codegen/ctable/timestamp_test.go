@@ -152,7 +152,7 @@ func TestCTimestampBinaryForms(t *testing.T) {
 	}
 	source := string(files["ProbeTable.c"]) + "\n" + string(files["ProbeTable.h"])
 	for _, want := range []string{`"at", "at", "timestamp", 0x`, `if ( kind != 36 )`, `!( value->at == 0 )`} {
-		if !strings.Contains(source, want) {
+		if !cCarries(source, want) {
 			t.Fatalf("the generated C does not carry %q — the descriptor or the wire kind is not the timestamp's", want)
 		}
 	}

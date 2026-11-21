@@ -2,7 +2,6 @@ package ctable
 
 import (
 	"os"
-	"strings"
 	"testing"
 )
 
@@ -47,7 +46,7 @@ func TestStrictOnlyCNoTolerantEntry(t *testing.T) {
 	}
 	for name, data := range files {
 		for _, bad := range retired {
-			if strings.Contains(string(data), bad) {
+			if cCarries(string(data), bad) {
 				t.Errorf("generated %s retains retired tolerant name %q", name, bad)
 			}
 		}
@@ -57,7 +56,7 @@ func TestStrictOnlyCNoTolerantEntry(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, bad := range retired {
-		if strings.Contains(string(names), bad) {
+		if cCarries(string(names), bad) {
 			t.Errorf("internal/tablenames/c.go retains retired tolerant name %q", bad)
 		}
 	}

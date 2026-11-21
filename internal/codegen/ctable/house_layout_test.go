@@ -1,6 +1,7 @@
 package ctable
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cfmt"
@@ -66,4 +67,24 @@ func TestGeneratedCLeavesThroughTheHouseLayout(t *testing.T) {
 			t.Errorf("%s: the layout pass is not idempotent on its own output", name)
 		}
 	}
+}
+
+// cCarries reports whether emitted C carries needle, read as TOKENS: the
+// layout is the house layout pass's and moves with .clang-format, so a
+// needle is matched with all whitespace taken out of both sides. Every
+// presence AND absence check on emitted text in this package goes through
+// it: an absence check spelled in a layout the emitter no longer writes
+// would pass on anything.
+func cCarries(text, needle string) bool {
+	return strings.Contains(cSquash(text), cSquash(needle))
+}
+
+func cSquash(s string) string {
+	return strings.Map(func(r rune) rune {
+		switch r {
+		case ' ', '\t', '\n', '\r':
+			return -1
+		}
+		return r
+	}, s)
 }

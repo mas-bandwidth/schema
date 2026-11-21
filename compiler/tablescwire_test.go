@@ -582,7 +582,7 @@ table Root {
 	blob := &tabletext.Blob{Data: []byte{0, 255, 42}}
 	shared.Fields[0].Cell.Blob = blob
 	shared.Fields[1].Cell.Blob = blob
-	if _, err := tablewire.Encode(model, shared); err == nil || !strings.Contains(err.Error(), "blob_shared") || !strings.Contains(err.Error(), "Root.alias") {
+	if _, err := tablewire.Encode(model, shared); err == nil || !cCarries(err.Error(), "blob_shared") || !cCarries(err.Error(), "Root.alias") {
 		t.Fatalf("Encode of a shared blob = %v, want the named refusal blob_shared naming Root.alias", err)
 	}
 
@@ -922,14 +922,14 @@ func TestCTableMapEntryNotRoot(t *testing.T) {
 		{"FleetShipsEntry", "fleet_ships_entry"}, {"FleetByIdEntry", "fleet_by_id_entry"},
 		{"FleetLoadoutsEntry", "fleet_loadouts_entry"}, {"FleetLoadoutsEntryValueEntry", "fleet_loadouts_entry_value_entry"},
 	} {
-		if !strings.Contains(text, "struct "+entry.typ) {
+		if !cCarries(text, "struct "+entry.typ) {
 			t.Errorf("entry storage %s missing", entry.typ)
 		}
-		if strings.Contains(text, "struct "+entry.typ+"Builder") {
+		if cCarries(text, "struct "+entry.typ+"Builder") {
 			t.Errorf("map entry %s has a builder", entry.typ)
 		}
 		for _, verb := range []string{"open", "cook", "save", "load", "measure", "from_json", "to_json"} {
-			if strings.Contains(text, entry.api+"_"+verb+"(") || strings.Contains(text, entry.api+"_"+verb+" (") {
+			if cCarries(text, entry.api+"_"+verb+"(") || cCarries(text, entry.api+"_"+verb+" (") {
 				t.Errorf("map entry %s has root API %s", entry.typ, verb)
 			}
 		}

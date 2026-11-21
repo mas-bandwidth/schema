@@ -58,10 +58,10 @@ func TestGenerateR2DoesNotPanic(t *testing.T) {
 	if !ok {
 		t.Fatal("the fixed-form writer has no case for the pong arm")
 	}
-	if strings.Contains(arm, "table_fixed_put") || strings.Contains(arm, "memcpy(") {
+	if cCarries(arm, "table_fixed_put") || cCarries(arm, "memcpy(") {
 		t.Fatalf("the pong arm writes a payload, not only the tag:\n%s", arm)
 	}
-	if !strings.Contains(arm, "break;") {
+	if !cCarries(arm, "break;") {
 		t.Fatalf("the pong arm's case is not closed by break:\n%s", arm)
 	}
 }

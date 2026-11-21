@@ -1,7 +1,6 @@
 package ctable
 
 import (
-	"strings"
 	"testing"
 )
 
@@ -14,7 +13,7 @@ func TestCJsonScanSkippedStringPlacedCap(t *testing.T) {
 	for _, want := range []string{
 		"if ( out == NULL ) { if ( placed > INT32_MAX - unit_length ) { in->bad = 1; return 0; } placed += unit_length; }",
 	} {
-		if !strings.Contains(body, want) {
+		if !cCarries(body, want) {
 			t.Fatalf("tableJsonWalk is missing overflow guard %q", want)
 		}
 	}

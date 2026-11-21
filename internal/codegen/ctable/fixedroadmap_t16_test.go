@@ -73,7 +73,7 @@ func t16CR31(t *testing.T) {
 	// THE HEADER CARRIES THE FULL-WIDTH LANES (§4.1) AND ARM 300 WHOLE.
 	header := cT08Header(t, t16CWriterSchema())
 	for _, want := range []string{"uint64_t arg;", "uint64_t arg2;"} {
-		if !strings.Contains(header, want) {
+		if !cCarries(header, want) {
 			t.Errorf("R31: the emitted plan does not carry %q (FIXED-FORM-ALGORITHM.md §4.1)", want)
 		}
 	}
@@ -126,7 +126,7 @@ func t16CProbe(t *testing.T, cc, writerArray string, writerLen int) {
 	dir := t.TempDir()
 	var header string
 	for name, data := range files {
-		if strings.Contains(name, "/") {
+		if cCarries(name, "/") {
 			continue
 		}
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {

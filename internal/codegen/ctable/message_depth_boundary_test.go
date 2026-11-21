@@ -248,7 +248,7 @@ func assertDepthBoundaryOutput(t *testing.T, runtimeName string, cases []depthBo
 		t.Fatalf("%s message depth boundary failed:\n%s\n%v", runtimeName, out, err)
 	}
 	for _, tc := range cases {
-		if !strings.Contains(out, "PASS "+tc.name) {
+		if !cCarries(out, "PASS "+tc.name) {
 			t.Fatalf("%s missing PASS for %s in:\n%s", runtimeName, tc.name, out)
 		}
 	}
@@ -256,7 +256,7 @@ func assertDepthBoundaryOutput(t *testing.T, runtimeName string, cases []depthBo
 		t.Fatalf("%s guard shift control (128 -> 256) unexpectedly passed:\n%s", runtimeName, shiftedOut)
 	}
 	for _, name := range []string{"body_129", "union_129", "array_129"} {
-		if !strings.Contains(shiftedOut, "FAIL "+name) {
+		if !cCarries(shiftedOut, "FAIL "+name) {
 			t.Fatalf("%s guard shift control (128 -> 256) did not fail %s:\n%s", runtimeName, name, shiftedOut)
 		}
 	}
@@ -391,7 +391,7 @@ func runAllRuntimesCpp(t *testing.T, u *ir.Unit, ann []byte, cases []depthBounda
 	dir := t.TempDir()
 	var sources []string
 	for name, data := range files {
-		if strings.Contains(name, "/") {
+		if cCarries(name, "/") {
 			continue
 		}
 		p := filepath.Join(dir, name)
@@ -621,7 +621,7 @@ func runAllRuntimesDart(t *testing.T, u *ir.Unit, ann []byte, cases []depthBound
 	}
 	dir := t.TempDir()
 	for name, data := range files {
-		if strings.Contains(name, "/") {
+		if cCarries(name, "/") {
 			continue
 		}
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
@@ -940,7 +940,7 @@ func runAllRuntimesJS(t *testing.T, u *ir.Unit, ann []byte, cases []depthBoundar
 	}
 	dir := t.TempDir()
 	for name, data := range files {
-		if strings.Contains(name, "/") {
+		if cCarries(name, "/") {
 			continue
 		}
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
@@ -1076,7 +1076,7 @@ func shiftCGuard(t *testing.T, files map[string][]byte) {
 	replaced := false
 	for name, data := range files {
 		s := string(data)
-		if strings.Contains(s, "skip_depth>128") || strings.Contains(s, "depth>128") {
+		if cCarries(s, "skip_depth>128") || cCarries(s, "depth>128") {
 			s = strings.ReplaceAll(s, "skip_depth>128", "skip_depth>256")
 			s = strings.ReplaceAll(s, "depth>128", "depth>256")
 			files[name] = []byte(s)

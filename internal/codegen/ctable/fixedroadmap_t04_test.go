@@ -61,7 +61,7 @@ func cT04Fn(text, name string) string {
 // cT04Has is a required substring of the emitted source, named by rule.
 func cT04Has(t *testing.T, src, want, what string) {
 	t.Helper()
-	if !strings.Contains(src, want) {
+	if !cCarries(src, want) {
 		t.Errorf("%s: the emitted source does not carry %q", what, want)
 	}
 }
@@ -161,7 +161,7 @@ func cT04R3(t *testing.T) {
 	}
 	cT04Has(t, load, "if ( pick < lineage_fixed_floor )", "R3 the floor check")
 	cT04Has(t, load, "table_fixed_refuse_hash( report, SCHEMA_TABLE_LAYOUT_UNSUPPORTED, hash )", "R3 below the floor is layout_unsupported")
-	if !strings.Contains(string(tableFixedRuntime), "report->layout_hash = hash;") {
+	if !cCarries(string(tableFixedRuntime), "report->layout_hash = hash;") {
 		t.Error("R3: refuse_hash does not report the file's hash")
 	}
 
@@ -210,7 +210,7 @@ func cT04R32(t *testing.T) {
 	if end := strings.Index(body, "\n"); end >= 0 {
 		body = body[:end]
 	}
-	if strings.Contains(body, "unknown") || strings.Contains(body, "values[") {
+	if cCarries(body, "unknown") || cCarries(body, "values[") {
 		t.Errorf("R32: the floor refusal is not a pure named refusal:\n%s", body)
 	}
 	cT04Has(t, load, "memset( &local, 0, sizeof( local ) );", "R32 REFUSE is TOTAL: the report starts zeroed")
@@ -233,13 +233,13 @@ func cT04R10(t *testing.T) {
 	}
 	cT04Has(t, load, "memcmp( layout, lineage_fixed_known[pick].layout", "R10 the layout is a byte comparison")
 	cT04Has(t, load, "report->reason = SCHEMA_TABLE_LAYOUT_MALFORMED;", "R10 a lie about a known version is layout_malformed")
-	if strings.Contains(load, "table_fixed_parse_layout") {
+	if cCarries(load, "table_fixed_parse_layout") {
 		t.Error("R10: the load walks a stranger's layout; the walk belongs to the lock's bytes")
 	}
-	if strings.Contains(load, "table_fixed_hash_of") {
+	if cCarries(load, "table_fixed_hash_of") {
 		t.Error("R10: the load recomputes the header's hash")
 	}
-	if strings.Contains(load, "table_fixed_check_entry") || strings.Contains(load, "table_fixed_leaf_size") {
+	if cCarries(load, "table_fixed_check_entry") || cCarries(load, "table_fixed_leaf_size") {
 		t.Error("R10: the load carries §1.1's layout rules into the run time")
 	}
 	// THE HASH IS STILL A WIRE IDENTITY: the function survives for the build side,
@@ -396,7 +396,7 @@ func cT04R20(t *testing.T) {
 func cT04R21(t *testing.T) {
 	runtime := string(tableFixedRuntime)
 	cT04Has(t, runtime, "const double d = (double) f;", "R21 the float rung widens through the hardware conversion")
-	if strings.Contains(runtime, "0x7ff0000000000000ull") && strings.Contains(runtime, "<< 29") {
+	if cCarries(runtime, "0x7ff0000000000000ull") && cCarries(runtime, "<< 29") {
 		t.Error("R21: the float rung still assembles every all-ones exponent by hand")
 	}
 }
@@ -439,7 +439,7 @@ func cT04R29(t *testing.T) {
 	if len(errs) != 0 {
 		t.Errorf("R29: a body at the ceiling is a warning and not a refusal: %v", errs)
 	}
-	if joined := strings.Join(warnings, "\n"); !strings.Contains(joined, "Lineage") {
+	if joined := strings.Join(warnings, "\n"); !cCarries(joined, "Lineage") {
 		t.Errorf("R29: the warning does not name the table: %s", joined)
 	}
 	runtime := string(tableFixedRuntime)
@@ -499,7 +499,7 @@ func cT04W2(t *testing.T) {
 	if end := strings.Index(rest, "\n    }"); end >= 0 {
 		rest = rest[:end]
 	}
-	if !strings.Contains(rest, "table_fixed_put32") && !strings.Contains(rest, "memcpy") {
+	if !cCarries(rest, "table_fixed_put32") && !cCarries(rest, "memcpy") {
 		t.Errorf("W2: the guard does not wrap the payload's store:\n%s", write)
 	}
 	if n := strings.Count(write, "if ( value->link_present )"); n != 1 {

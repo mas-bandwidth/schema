@@ -179,7 +179,7 @@ int main( void )
 func bigEndianLineageWriteFiles(t *testing.T, dir string, files map[string][]byte) {
 	t.Helper()
 	for name, data := range files {
-		if strings.Contains(name, "/") {
+		if cCarries(name, "/") {
 			continue
 		}
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
@@ -194,7 +194,7 @@ func bigEndianLineageCArgs(cc, dir, source string, files map[string][]byte, extr
 	args = append(args, extra...)
 	args = append(args, "-I", dir, filepath.Join(dir, source))
 	for name := range files {
-		if strings.HasSuffix(name, ".c") && !strings.Contains(name, "/") {
+		if strings.HasSuffix(name, ".c") && !cCarries(name, "/") {
 			args = append(args, filepath.Join(dir, name))
 		}
 	}
@@ -289,7 +289,7 @@ func TestCBigEndianFormThreeLineageStores(t *testing.T) {
 			if err != nil {
 				t.Fatalf("the %s reader does not hold:\n%s", tc.name, output)
 			}
-			if fails := strings.Contains(string(output), "FAIL: "); fails {
+			if fails := cCarries(string(output), "FAIL: "); fails {
 				t.Fatalf("the %s reader does not hold:\n%s", tc.name, output)
 			}
 		})

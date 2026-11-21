@@ -251,7 +251,7 @@ func discardProbeRun(t *testing.T, sabotage *discardSabotage) ([]string, string)
 		for _, pair := range sabotage.pairs {
 			patched := false
 			for name, data := range files {
-				if src := string(data); strings.Contains(src, pair[0]) {
+				if src := string(data); cCarries(src, pair[0]) {
 					files[name] = []byte(strings.ReplaceAll(src, pair[0], pair[1]))
 					patched = true
 				}
@@ -260,7 +260,7 @@ func discardProbeRun(t *testing.T, sabotage *discardSabotage) ([]string, string)
 				var near []string
 				for _, data := range files {
 					for line := range strings.SplitSeq(string(data), "\n") {
-						if strings.Contains(line, "discards the whole load") {
+						if cCarries(line, "discards the whole load") {
 							near = append(near, strings.TrimSpace(line))
 						}
 					}
@@ -305,7 +305,7 @@ func discardProbeRun(t *testing.T, sabotage *discardSabotage) ([]string, string)
 			fails = append(fails, rest)
 		}
 	}
-	if strings.Contains(string(output), "ERROR: AddressSanitizer") || strings.Contains(string(output), "runtime error:") {
+	if cCarries(string(output), "ERROR: AddressSanitizer") || cCarries(string(output), "runtime error:") {
 		t.Fatalf("the probe tripped a sanitizer:\n%s", output)
 	}
 	return fails, string(output)

@@ -188,7 +188,7 @@ func TestCPointerTargetBlobKindRefused(t *testing.T) {
 		if err == nil {
 			t.Fatalf("the planted root-closure rule was not red: the probe read text-names-bytes\n%s", output)
 		}
-		if !strings.Contains(output, "FAIL: text-names-bytes") {
+		if !cCarries(output, "FAIL: text-names-bytes") {
 			t.Fatalf("the planted rule went red without naming text-names-bytes:\n%s", output)
 		}
 	})
@@ -402,7 +402,7 @@ func cBlobKindPlantRootClosure(files map[string][]byte, root string) error {
 		}
 		fnEnd += at + len("\n}\n")
 		fn := header[fnStart:fnEnd]
-		if !strings.Contains(fn, bytesCase) {
+		if !cCarries(fn, bytesCase) {
 			return fmt.Errorf("the planted rule found no reserved bytes id in %s", needle)
 		}
 		files[name] = []byte(header[:fnStart] + strings.Replace(fn, bytesCase, "", 1) + header[fnEnd:])

@@ -487,7 +487,7 @@ fixed table Huge
 		t.Errorf("R6: past the ceiling is a warning, not a refusal: %v", errs)
 	}
 	joined := strings.Join(warnings, "\n")
-	if !strings.Contains(joined, "Huge") || !strings.Contains(joined, "65536") {
+	if !cCarries(joined, "Huge") || !cCarries(joined, "65536") {
 		t.Errorf("R6: the warning does not name the table and the ceiling: %s", joined)
 	}
 	// (3) NO FORM IS EMITTED, AND NO LINEAGE ENTRY IS PARSED, even when the
@@ -516,11 +516,11 @@ fixed table Huge
 			"huge_fixed_hash", "huge_fixed_layout", "huge_fixed_body_bytes",
 			fmt.Sprintf("0x%016x", overCeiling.Wire),
 		} {
-			if strings.Contains(s, bad) {
+			if cCarries(s, bad) {
 				t.Errorf("R6: %s names %q — a table with no fixed form has no fixed surface and no known layout", name, bad)
 			}
 		}
-		sawSmall = sawSmall || strings.Contains(s, "small_fixed_hash")
+		sawSmall = sawSmall || cCarries(s, "small_fixed_hash")
 	}
 	if !sawSmall {
 		t.Error("R6: the ceiling refuses the past-bound table alone; Small keeps its form")
@@ -545,7 +545,7 @@ func t03R14(t *testing.T) {
 		{"if ( c.overflow || c.hostile )", "R14 the plan is refused WHOLE"},
 		{"report->reason = SCHEMA_TABLE_LAYOUT_RECORD_TOO_LARGE;", "R14 the refusal is named layout_record_too_large"},
 	} {
-		if !strings.Contains(runtime, want.text) {
+		if !cCarries(runtime, want.text) {
 			t.Errorf("%s: the emitted runtime does not carry %q", want.what, want.text)
 		}
 	}
@@ -597,7 +597,7 @@ fixed table T { inner Inner }
 			for _, e := range errs {
 				fmt.Fprintf(&got, "%s", e)
 			}
-			if !strings.Contains(got.String(), tc.want) {
+			if !cCarries(got.String(), tc.want) {
 				t.Errorf("R22 %s: the refusal must name %q: %s", tc.name, tc.want, got.String())
 			}
 		})
@@ -623,7 +623,7 @@ fixed table T
 	}
 	saw := false
 	for _, body := range files {
-		saw = saw || strings.Contains(string(body), "t_fixed_hash")
+		saw = saw || cCarries(string(body), "t_fixed_hash")
 	}
 	if !saw {
 		t.Error("R22: the legal closure keeps its form")

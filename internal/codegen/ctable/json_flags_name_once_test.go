@@ -133,7 +133,7 @@ func TestCJsonFlagsNameOnce(t *testing.T) {
 	header := ""
 	fn := cSnake(root) + "_from_json("
 	for name, src := range tables {
-		if strings.HasSuffix(name, "Table.h") && strings.Contains(string(src), fn) {
+		if strings.HasSuffix(name, "Table.h") && cCarries(string(src), fn) {
 			header = name
 		}
 	}

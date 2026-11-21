@@ -273,7 +273,7 @@ func base64CVerdicts(t *testing.T, u *ir.Unit, p base64Probe, rows []base64Row) 
 	dir := t.TempDir()
 	var sources []string
 	for name, data := range files {
-		if strings.Contains(name, "/") {
+		if cCarries(name, "/") {
 			continue
 		}
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {

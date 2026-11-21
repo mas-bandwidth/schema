@@ -294,11 +294,11 @@ class Program {
 			}
 			all := combined.String()
 			// Verify padding strictness: pad > 2 must trigger malformed
-			if !strings.Contains(all, "pad > 2") {
+			if !cCarries(all, "pad > 2") {
 				t.Errorf("%s: emitted reader missing pad > 2 strictness check", lang)
 			}
 			// Verify lone symbol check
-			if !strings.Contains(all, "% 4 == 1") && !strings.Contains(all, "%4 == 1") && !strings.Contains(all, "% 4 === 1") && !strings.Contains(all, "% 4 != 0") && !strings.Contains(all, "rem(symbols, 4) == 1") {
+			if !cCarries(all, "% 4 == 1") && !cCarries(all, "%4 == 1") && !cCarries(all, "% 4 === 1") && !cCarries(all, "% 4 != 0") && !cCarries(all, "rem(symbols, 4) == 1") {
 				t.Errorf("%s: emitted reader missing symbols %% 4 == 1 lone symbol check", lang)
 			}
 		}

@@ -172,28 +172,28 @@ func TestIdentityCoverageIsThePlanAndHolesAreEmpty(t *testing.T) {
 func TestIdentityLoadIsOneLoop(t *testing.T) {
 	h := tableH(t, identityHeldSchema)
 	load := identityLoad(t, h, "held")
-	if strings.Contains(load, "if ( identity )") {
+	if cCarries(load, "if ( identity )") {
 		t.Fatal("identity is a second record loop")
 	}
-	if strings.Contains(load, "fixed_scatter") {
+	if cCarries(load, "fixed_scatter") {
 		t.Fatal("identity still has a Scatter function")
 	}
-	if strings.Contains(load, "memcpy( image, at + 8") {
+	if cCarries(load, "memcpy( image, at + 8") {
 		t.Fatal("identity still copies the body then scatters")
 	}
-	if strings.Contains(load, "memcpy( (void *) ( values + k ), at + 8") {
+	if cCarries(load, "memcpy( (void *) ( values + k ), at + 8") {
 		t.Fatal("identity is a whole-body memcpy; that is cook's job")
 	}
-	if !strings.Contains(load, "table_fixed_run") {
+	if !cCarries(load, "table_fixed_run") {
 		t.Fatal("the one loop dropped table_fixed_run")
 	}
-	if !strings.Contains(load, "table_fixed_fill_run") {
+	if !cCarries(load, "table_fixed_fill_run") {
 		t.Fatal("the one loop dropped the hole prefill")
 	}
-	if !strings.Contains(load, "fill_count = 0") {
+	if !cCarries(load, "fill_count = 0") {
 		t.Fatal("identity hole list is not the empty skip")
 	}
-	if !strings.Contains(load, "fill_count > 0") {
+	if !cCarries(load, "fill_count > 0") {
 		t.Fatal("default image is not gated on the hole list")
 	}
 }
@@ -210,16 +210,16 @@ func TestIdentityFlatIsThePlanNotMemcpy(t *testing.T) {
 	}
 	h := tableH(t, identityFlatSchema)
 	load := identityLoad(t, h, "flat")
-	if strings.Contains(load, "memcpy( (void *) ( values + k ), at + 8") {
+	if cCarries(load, "memcpy( (void *) ( values + k ), at + 8") {
 		t.Fatal("flat identity is a whole-body memcpy; that is cook's job")
 	}
-	if strings.Contains(load, "fixed_scatter") {
+	if cCarries(load, "fixed_scatter") {
 		t.Fatal("flat identity still calls a scatter")
 	}
-	if !strings.Contains(load, "table_fixed_run") {
+	if !cCarries(load, "table_fixed_run") {
 		t.Fatal("flat identity is not the one loop")
 	}
-	if strings.Contains(h, "schema_probe_flat_fixed_scatter_") {
+	if cCarries(h, "schema_probe_flat_fixed_scatter_") {
 		t.Fatal("flat identity still emitted a scatter")
 	}
 }
@@ -274,13 +274,13 @@ func TestIdentityPaddedDoesNotMemcpyTheStruct(t *testing.T) {
 	}
 	h := tableH(t, identityPadSchema)
 	load := identityLoad(t, h, "pad")
-	if strings.Contains(load, "memcpy( (void *) ( values + k ), at + 8") {
+	if cCarries(load, "memcpy( (void *) ( values + k ), at + 8") {
 		t.Fatal("padded identity memcpy'd the struct; that is a wire-byte move")
 	}
-	if strings.Contains(h, "fixed_scatter") {
+	if cCarries(h, "fixed_scatter") {
 		t.Fatal("padded identity still emitted a scatter")
 	}
-	if !strings.Contains(load, "table_fixed_run") {
+	if !cCarries(load, "table_fixed_run") {
 		t.Fatal("padded identity is not the one loop")
 	}
 }

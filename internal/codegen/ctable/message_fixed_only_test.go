@@ -45,7 +45,7 @@ table Varplain { v int32 }
 		"inner_save_message_body(", "schema_probe_held_wire_message_save_(",
 		"#define fixedroot_load_retain_messages(", "#define fixedroot_save_retain_messages(",
 	} {
-		if !strings.Contains(text, want) {
+		if !cCarries(text, want) {
 			t.Errorf("the fixed root's message surface lacks %q", want)
 		}
 	}

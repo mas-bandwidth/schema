@@ -102,7 +102,7 @@ func cT08Probe(t *testing.T, schema, root, source string, extraCC ...string) {
 	maps.Copy(files, tables)
 	dir := t.TempDir()
 	for name, data := range files {
-		if strings.Contains(name, "/") {
+		if cCarries(name, "/") {
 			continue
 		}
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
@@ -128,7 +128,7 @@ func cT08Probe(t *testing.T, schema, root, source string, extraCC ...string) {
 	args = append(args, extraCC...)
 	args = append(args, "-I", dir, filepath.Join(dir, "main.c"))
 	for name := range files {
-		if strings.HasSuffix(name, ".c") && !strings.Contains(name, "/") {
+		if strings.HasSuffix(name, ".c") && !cCarries(name, "/") {
 			args = append(args, filepath.Join(dir, name))
 		}
 	}
@@ -586,11 +586,11 @@ func cT08GuardChain(t *testing.T) {
 		}
 	}
 	header := cT08Header(t, cT08TripleUnionSchema)
-	if !strings.Contains(header, fmt.Sprintf("    { %du, %du, %d },\n", links[0].Guard, links[0].Arg, links[0].ArgW)) ||
-		!strings.Contains(header, "root_fixed_guards[] = {") {
+	if !cCarries(header, fmt.Sprintf("    { %du, %du, %d },\n", links[0].Guard, links[0].Arg, links[0].ArgW)) ||
+		!cCarries(header, "root_fixed_guards[] = {") {
 		t.Fatal("the header does not publish the pool with the outermost link")
 	}
-	if !strings.Contains(header, fmt.Sprintf(", 3, %d * (int) sizeof( TableFixedGuardLink ),", leaf.GuardIndex)) {
+	if !cCarries(header, fmt.Sprintf(", 3, %d * (int) sizeof( TableFixedGuardLink ),", leaf.GuardIndex)) {
 		t.Fatal("no published plan entry carries count 3 at the chain's offset")
 	}
 	// The C++ reference now carries the same identity-plan guard chain rather
@@ -603,10 +603,10 @@ func cT08GuardChain(t *testing.T) {
 		t.Fatal(err)
 	}
 	cppHeader := string(cpp["ProbeTable.h"])
-	if !strings.Contains(cppHeader, "constexpr TableFixedGuardLink RootFixedGuards[] = {") ||
-		!strings.Contains(cppHeader, fmt.Sprintf("    { %du, %du, %d },\n", links[0].Guard, links[0].Arg, links[0].ArgW)) ||
-		!strings.Contains(cppHeader, fmt.Sprintf(", 3, %d * (int) sizeof( TableFixedGuardLink ),", leaf.GuardIndex)) ||
-		!strings.Contains(cppHeader, "(uint8_t *) &values[k], report, RootFixedGuards, ") {
+	if !cCarries(cppHeader, "constexpr TableFixedGuardLink RootFixedGuards[] = {") ||
+		!cCarries(cppHeader, fmt.Sprintf("    { %du, %du, %d },\n", links[0].Guard, links[0].Arg, links[0].ArgW)) ||
+		!cCarries(cppHeader, fmt.Sprintf(", 3, %d * (int) sizeof( TableFixedGuardLink ),", leaf.GuardIndex)) ||
+		!cCarries(cppHeader, "(uint8_t *) &values[k], report, RootFixedGuards, ") {
 		t.Fatal("the C++ reference does not pass the three-link identity plan through its guard pool")
 	}
 	cT08Probe(t, cT08TripleUnionSchema, "Root", cT08ChainProbe(`    value.oo.type = 1;
@@ -701,12 +701,12 @@ func cT08GuardChain(t *testing.T) {
 	if ir.TableFixedWithinDepth(past.Tables["Root"]) {
 		t.Fatalf("%d nested unions are past the 64-entry depth bound", deepest+1)
 	}
-	if strings.Contains(t03Header(t, past), "root_fixed_load(") {
+	if cCarries(t03Header(t, past), "root_fixed_load(") {
 		t.Fatalf("%d nested unions: the fixed form is emitted past the depth bound", deepest+1)
 	}
 	named := false
 	for _, w := range ir.TableFixedDepthBounds(past) {
-		named = named || strings.Contains(w, "table Root:")
+		named = named || cCarries(w, "table Root:")
 	}
 	if !named {
 		t.Fatalf("%d nested unions: the depth bound turned the table away without naming it", deepest+1)
@@ -772,7 +772,7 @@ int main(void)
 // reach: a stranger's compiled plan refuses it by name, which c/R28 asserts.)
 func cT08IdentityEqualsCompiled(t *testing.T) {
 	header := cT08Header(t, cT08UnionSchema)
-	if !strings.Contains(header, "table_fixed_run( entries, entry_count, entry_guarded,") {
+	if !cCarries(header, "table_fixed_run( entries, entry_count, entry_guarded,") {
 		t.Fatal("the load is not the one loop over whichever plan the hash selected")
 	}
 	same := `    for (k = 0; k < cases; ++k)

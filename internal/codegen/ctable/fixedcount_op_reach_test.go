@@ -23,12 +23,12 @@ func TestFixedCountOpReachCoversItsHeader(t *testing.T) {
 
 	// A kTableFixedCount entry reads four bytes at src whatever its size, so
 	// the reach bound must add the header for a count exactly as for a text.
-	if !strings.Contains(tableFixedRuntime, "( e.op == kTableFixedText || e.op == kTableFixedCount )") {
+	if !cCarries(tableFixedRuntime, "( e.op == kTableFixedText || e.op == kTableFixedCount )") {
 		t.Error("the reach check does not bound a kTableFixedCount entry at src + 4")
 	}
 	// The kind-14 compile step refuses a counted local against an endpoint array too
 	// small to carry the four-byte count, before the head subtraction underflows.
-	if !strings.Contains(tableFixedRuntime, "if ( d->counted && te.size < 4u ) { c->hostile = 1; break; }") {
+	if !cCarries(tableFixedRuntime, "if ( d->counted && te.size < 4u ) { c->hostile = 1; break; }") {
 		t.Error("kind-14 does not refuse a counted local field against an endpoint array smaller than the count")
 	}
 	// The refusal must run before the head subtraction, not after: once
@@ -63,7 +63,7 @@ func TestFixedCountOpReachCoversItsHeaderASan(t *testing.T) {
 	dir := t.TempDir()
 	var header string
 	for name, data := range files {
-		if strings.Contains(name, "/") {
+		if cCarries(name, "/") {
 			continue
 		}
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
@@ -132,7 +132,7 @@ int main(void)
 	if err != nil {
 		t.Fatalf("execute: %v\n%s", err, output)
 	}
-	if !strings.Contains(string(output), "count-op refused by name") {
+	if !cCarries(string(output), "count-op refused by name") {
 		t.Fatalf("the probe said %q", output)
 	}
 }

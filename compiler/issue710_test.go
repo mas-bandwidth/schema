@@ -37,7 +37,7 @@ func TestIssue710DirectoryList(t *testing.T) {
 		t.Fatalf("flat: %+v %v", r, err)
 	}
 	_, _, _, err = c.Pack(u, "Root", expanded)
-	if err == nil || !strings.Contains(err.Error(), "holds a pointer") {
+	if err == nil || !cCarries(err.Error(), "holds a pointer") {
 		t.Fatalf("directory list must refuse before reading elements: %v", err)
 	}
 	m := tabletext.NewModel(u)
@@ -58,7 +58,7 @@ func TestIssue710UnpackPaths(t *testing.T) {
 				if err := os.WriteFile(path, []byte(src), 0644); err != nil {
 					t.Fatal(err)
 				}
-				if _, err := c.Load([]string{path}); err == nil || !strings.Contains(err.Error(), "U+0000") {
+				if _, err := c.Load([]string{path}); err == nil || !cCarries(err.Error(), "U+0000") {
 					t.Fatalf("json key with U+0000 must refuse at compile time: %v", err)
 				}
 				return
@@ -269,7 +269,7 @@ func TestIssue710PacketStringBounds(t *testing.T) {
 			}
 			var source string
 			for _, data := range files {
-				if strings.Contains(string(data), "int schema_utf8_valid_(") || strings.Contains(string(data), "bool schema_utf8_valid(") {
+				if cCarries(string(data), "int schema_utf8_valid_(") || cCarries(string(data), "bool schema_utf8_valid(") {
 					source = string(data)
 					break
 				}

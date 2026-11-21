@@ -137,7 +137,7 @@ func cFixedBatchProbeRun(t *testing.T, mode string, args ...string) ([]byte, err
 	var srcs []string
 	header := ""
 	for name, data := range files {
-		if strings.Contains(name, "/") {
+		if cCarries(name, "/") {
 			continue
 		}
 		if strings.HasSuffix(name, "Table.h") {
@@ -181,7 +181,7 @@ func TestCFixedBatchHoldsARecord(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the empty-batch vector did not hold the rule: %v\n%s", err, out)
 	}
-	if !strings.Contains(string(out), "the fixed form holds a record") {
+	if !cCarries(string(out), "the fixed form holds a record") {
 		t.Fatalf("missing completion banner:\n%s", out)
 	}
 
@@ -189,7 +189,7 @@ func TestCFixedBatchHoldsARecord(t *testing.T) {
 	if err == nil {
 		t.Fatalf("a save of zero records succeeded:\n%s", out)
 	}
-	if strings.Contains(string(out), "SAVED") {
+	if cCarries(string(out), "SAVED") {
 		t.Fatalf("a save of zero records returned instead of refusing: %v\n%s", err, out)
 	}
 }

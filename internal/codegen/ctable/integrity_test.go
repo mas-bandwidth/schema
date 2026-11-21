@@ -367,7 +367,7 @@ func writeAndCompileCIntegrity(t *testing.T, files map[string][]byte, driver str
 	dir := t.TempDir()
 	var cFiles []string
 	for name, data := range files {
-		if strings.Contains(name, "/") {
+		if cCarries(name, "/") {
 			continue
 		}
 		p := filepath.Join(dir, name)

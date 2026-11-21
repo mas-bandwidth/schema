@@ -81,7 +81,7 @@ table Root { value Outer }
 	if err != nil {
 		t.Fatalf("nested union frames: %v\n%s", err, out)
 	}
-	if strings.Contains(out, "MEASURE") {
+	if cCarries(out, "MEASURE") {
 		t.Fatalf("nested union framing measure: %s", out)
 	}
 	// Removing only the prepass verdict leaves semantic loads protected by
@@ -96,7 +96,7 @@ table Root { value Outer }
 		files[header] = []byte(strings.Replace(source, anchor, "/* SABOTAGED framing verdict */", 1))
 		return nil
 	})
-	if err != nil || !strings.Contains(out, "MEASURE accepted kind2/tail0") {
+	if err != nil || !cCarries(out, "MEASURE accepted kind2/tail0") {
 		t.Fatalf("framed prepass negative control did not expose the measure: %v\n%s", err, out)
 	}
 }

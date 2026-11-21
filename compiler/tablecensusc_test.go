@@ -43,7 +43,6 @@ package compiler
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -151,7 +150,7 @@ func deadCHeader(t *testing.T, src string) (string, map[string][]byte) {
 func TestCTableFloatRungIsTheFiniteTestAndTheConversion(t *testing.T) {
 	t.Parallel()
 	with, files := deadCHeader(t, deadCF64Src)
-	if strings.Contains(with, "table_wire_widen_f32") {
+	if cCarries(with, "table_wire_widen_f32") {
 		t.Error("the NaN-payload surgery table_wire_widen_f32 is still emitted")
 	}
 	// the file wire's widened scalar and the message form's f32-shaped entry
@@ -161,19 +160,19 @@ func TestCTableFloatRungIsTheFiniteTestAndTheConversion(t *testing.T) {
 		"double decoded_wide = (double) table_bits_to_float( widened_bits );",
 		"decoded=(double)narrow;",
 	} {
-		if !strings.Contains(with, want) {
+		if !cCarries(with, want) {
 			t.Errorf("the f64 field's float rung must read %q", want)
 		}
 	}
 	deadCCompile(t, files)
 
 	without, files := deadCHeader(t, deadCF32Src)
-	if strings.Contains(without, "decoded_wide = (double)") {
+	if cCarries(without, "decoded_wide = (double)") {
 		t.Error("a unit that declares no float64 has no float rung to emit")
 	}
 	// the ladder PREDICATE stays in every unit: a kind comparison is what
 	// every reader does, and it is named on the absent side on purpose
-	if !strings.Contains(without, "static SCHEMA_UNUSED int table_kind_widens") {
+	if !cCarries(without, "static SCHEMA_UNUSED int table_kind_widens") {
 		t.Error("table_kind_widens is every unit's and the f32 gate took it")
 	}
 	deadCCompile(t, files)
@@ -183,34 +182,34 @@ func TestCTableBlobRuntimeFollowsTheCensus(t *testing.T) {
 	t.Parallel()
 	with, files := deadCHeader(t, deadCBlobSrc)
 	for _, sym := range append(append([]string{}, deadCBlobSymbols...), deadCBlobFloor...) {
-		if !strings.Contains(with, sym) {
+		if !cCarries(with, sym) {
 			t.Errorf("a unit that declares *bytes must carry %s", sym)
 		}
 	}
 	// the node-type switch is the one site that names the two records, and it
 	// is what makes the definitions REACHED rather than merely present
-	if !strings.Contains(with, "case kTableBytesTypeId: return &table_bytes_node_type;") {
+	if !cCarries(with, "case kTableBytesTypeId: return &table_bytes_node_type;") {
 		t.Error("the graph's node-type switch must name table_bytes_node_type")
 	}
-	if !strings.Contains(with, "case kTableStringTypeId: return &table_string_node_type;") {
+	if !cCarries(with, "case kTableStringTypeId: return &table_string_node_type;") {
 		t.Error("the graph's node-type switch must name table_string_node_type")
 	}
 	deadCCompile(t, files)
 
 	without, files := deadCHeader(t, deadCNodeSrc)
 	for _, sym := range deadCBlobSymbols {
-		if strings.Contains(without, sym) {
+		if cCarries(without, sym) {
 			t.Errorf("a pointered unit with no byte buffer must carry no %s", sym)
 		}
 	}
 	for _, sym := range deadCBlobFloor {
-		if !strings.Contains(without, sym) {
+		if !cCarries(without, sym) {
 			t.Errorf("a pointered unit keeps %s whether or not it declares a byte buffer", sym)
 		}
 	}
 	// the unit is still pointered, so the numbering and the node walk are its
 	for _, sym := range []string{"table_node_storage", "table_number_build"} {
-		if !strings.Contains(without, sym) {
+		if !cCarries(without, sym) {
 			t.Errorf("a pointered unit keeps %s", sym)
 		}
 	}
