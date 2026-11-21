@@ -181,6 +181,9 @@ func runControls(tlaDir string, tlc checker, out io.Writer) error {
 	if err != nil {
 		return err
 	}
+	// the donor's faults, still checking the invariant the row names, so the
+	// refusal comes from what TLC found and not from reading the config
+	donor = append(donor, []byte("\nINVARIANT ImplementationsAgree\n")...)
 	if err := os.WriteFile(filepath.Join(dir, controlWitness), donor, 0o644); err != nil {
 		return err
 	}

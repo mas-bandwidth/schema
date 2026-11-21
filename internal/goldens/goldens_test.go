@@ -281,38 +281,166 @@ func TestGoldenLudicrousSource(t *testing.T) {
 	}
 }
 
-// pinDir compares (or, under -update, rewrites) one directory of goldens.
+// pinDir compares (or, under -update, rewrites) one directory of goldens,
+// BOTH WAYS: every emitted file has its golden with the same bytes, and every
+// golden on disk is claimed by an emitted file. A golden nothing emits is a
+// file the gate would otherwise never read again, so it is red, and -update
+// removes it. An emission of no files is red too: it would pin nothing.
 func pinDir(t *testing.T, dir string, files map[string][]byte) {
 	t.Helper()
 	if *update {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+		if err := rewritePins(dir, files); err != nil {
 			t.Fatal(err)
 		}
+		return
+	}
+	for _, problem := range pinProblems(dir, files) {
+		t.Error(problem)
+	}
+}
+
+func rewritePins(dir string, files map[string][]byte) error {
+	if len(files) == 0 {
+		return fmt.Errorf("%s: nothing was emitted, so there is nothing to pin", dir)
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	for n, data := range files {
+		path := filepath.Join(dir, filepath.FromSlash(n))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(path, data, 0o644); err != nil {
+			return err
+		}
+	}
+	onDisk, err := goldenFiles(dir)
+	if err != nil {
+		return err
+	}
+	for _, n := range onDisk {
+		if _, ok := files[n]; !ok {
+			if err := os.Remove(filepath.Join(dir, filepath.FromSlash(n))); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// pinProblems is pinDir's comparison: one line per missing golden, per golden
+// whose bytes differ, and per golden on disk that no emitted file claims.
+func pinProblems(dir string, files map[string][]byte) []string {
+	if len(files) == 0 {
+		return []string{fmt.Sprintf("%s: nothing was emitted, so nothing was compared", dir)}
 	}
 	names := make([]string, 0, len(files))
 	for n := range files {
 		names = append(names, n)
 	}
 	sort.Strings(names)
+	var problems []string
 	for _, n := range names {
-		path := filepath.Join(dir, n)
-		if *update {
-			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(path, files[n], 0o644); err != nil {
-				t.Fatal(err)
-			}
-			continue
-		}
+		path := filepath.Join(dir, filepath.FromSlash(n))
 		want, err := os.ReadFile(path)
 		if err != nil {
-			t.Fatalf("missing golden %s (run: make update-goldens): %v", path, err)
+			problems = append(problems, fmt.Sprintf("missing golden %s (run: make update-goldens): %v", path, err))
+			continue
 		}
 		if string(files[n]) != string(want) {
-			t.Errorf("%s: generated source diverged from its golden — deliberate emitter change? re-pin with make update-goldens; if the WIRE moved under an unchanged schema, that is stop-the-line (SPEC §3.1)", path)
+			problems = append(problems, fmt.Sprintf("%s: generated source diverged from its golden — deliberate emitter change? re-pin with make update-goldens; if the WIRE moved under an unchanged schema, that is stop-the-line (SPEC §3.1)", path))
 		}
 	}
+	onDisk, err := goldenFiles(dir)
+	if err != nil {
+		return append(problems, fmt.Sprintf("%s: %v", dir, err))
+	}
+	for _, n := range onDisk {
+		if _, ok := files[n]; !ok {
+			problems = append(problems, fmt.Sprintf("%s: a golden no emitted file claims — the emitter no longer writes it, so nothing compares it; remove it with make update-goldens", filepath.Join(dir, filepath.FromSlash(n))))
+		}
+	}
+	return problems
+}
+
+// goldenFiles is every file under dir, as slash-separated paths relative to it.
+func goldenFiles(dir string) ([]string, error) {
+	var out []string
+	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		out = append(out, filepath.ToSlash(rel))
+		return nil
+	})
+	sort.Strings(out)
+	return out, err
+}
+
+// taggedTargets are the targets a build tag registers. A build without the tag
+// cannot emit them, so it only knows their golden directories by name; a build
+// with the tag compares them like any other (TestGoldenSourceEveryTarget).
+var taggedTargets = map[string]string{"moo": "schema_leg_moo"}
+
+// TestGoldenSourceEveryTarget pins the main corpus for EVERY registered
+// target — the list is the compiler's own — and holds the directory listing to
+// that list both ways: a target with no golden directory is a missing golden,
+// and a directory that is no target's is a set of goldens nothing compares.
+// The per-language tests above name twelve targets by hand; goose, lobster,
+// ruby, squirrel and unity emitted this corpus with nothing pinning it until
+// this test read the list.
+func TestGoldenSourceEveryTarget(t *testing.T) {
+	u := loadCorpus(t)
+	targets := compiler.New().Targets()
+	if len(targets) < 17 {
+		t.Fatalf("the compiler registers %d targets (%v), want at least 17", len(targets), targets)
+	}
+	for _, target := range targets {
+		pinDir(t, filepath.Join(goldenDir, target), generate(t, u, target, nil))
+	}
+	if *update {
+		return
+	}
+	for _, problem := range dirProblems(goldenDir, targets, []string{"build-version", "ludicrous", "tables"}) {
+		t.Error(problem)
+	}
+	for _, problem := range dirProblems(filepath.Join(goldenDir, "ludicrous"), targets, nil) {
+		t.Error(problem)
+	}
+}
+
+// dirProblems names every directory under dir that is neither a registered
+// target, a tagged target this build leaves out, nor one of the others named.
+func dirProblems(dir string, targets, others []string) []string {
+	known := map[string]bool{}
+	for _, name := range targets {
+		known[name] = true
+	}
+	for name := range taggedTargets {
+		known[name] = true
+	}
+	for _, name := range others {
+		known[name] = true
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return []string{err.Error()}
+	}
+	var problems []string
+	for _, e := range entries {
+		if e.IsDir() && !known[e.Name()] {
+			problems = append(problems, fmt.Sprintf("%s is a directory of goldens for no registered target — nothing compares it", filepath.Join(dir, e.Name())))
+		}
+	}
+	return problems
 }
 
 // tableGoldenDir is the tables units' Table-source pins: one directory per
