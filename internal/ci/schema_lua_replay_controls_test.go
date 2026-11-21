@@ -38,11 +38,16 @@ func decodeLuaSavedCase(text string) (luaSavedCase, bool) {
 	if m == nil {
 		return luaSavedCase{}, false
 	}
-	if _, err := base64.StdEncoding.DecodeString(m[4]); err != nil {
+	// canonical base64 only, as the harness now requires (it re-encodes and
+	// compares): a tail past the padding is not a saved case
+	if _, err := base64.StdEncoding.Strict().DecodeString(m[4]); err != nil {
 		return luaSavedCase{}, false
 	}
 	return luaSavedCase{m[1], m[2], m[3], m[4]}, true
 }
+
+// luaGoodCase is the healthy control every broken one is built from.
+const luaGoodCase = "ordinary.case"
 
 // luaReplayControlProblems checks the committed control directories (name ->
 // file name -> contents) against the recipe's refused list and the corpus
@@ -54,18 +59,22 @@ func luaReplayControlProblems(dirs map[string]map[string]string, refused []strin
 	switch {
 	case !ok:
 		problems = append(problems, "no good/ control: nothing shows the replay takes a healthy case")
-	case len(good) != 1:
-		problems = append(problems, fmt.Sprintf("good/ holds %d files; the recipe requires it to replay as exactly one case", len(good)))
+	case len(good) != 2 || good[luaGoodCase] == "":
+		// two, so a find that lists one of them and fails (partial-find) is a
+		// listing that is short by one
+		problems = append(problems, fmt.Sprintf("good/ holds %d files; the recipe requires %s and one more, replayed as 2 cases", len(good), luaGoodCase))
 	default:
-		for _, text := range good {
+		for name, text := range good {
 			c, ok := decodeLuaSavedCase(text)
 			if !ok {
-				problems = append(problems, "good/ holds a case that does not decode")
+				problems = append(problems, fmt.Sprintf("good/%s does not decode", name))
 			}
-			base = c
-		}
-		if !slices.Contains(units, base.unit) {
-			problems = append(problems, fmt.Sprintf("good/ names unit %q, which the Makefile's tables_generate block does not generate", base.unit))
+			if !slices.Contains(units, c.unit) {
+				problems = append(problems, fmt.Sprintf("good/%s names unit %q, which the Makefile's tables_generate block does not generate", name, c.unit))
+			}
+			if name == luaGoodCase {
+				base = c
+			}
 		}
 	}
 	want := map[string]bool{"good": true}
@@ -117,6 +126,20 @@ func luaReplayControlProblems(dirs map[string]map[string]string, refused []strin
 			problems = append(problems, fmt.Sprintf("unreadable-beside-good/ holds %d good and %d undecodable of %d files, want 1 and 1 of 2", decoded, undecoded, len(files)))
 		}
 	}
+	// the good line with a tail after the padding: undecodable, and nothing
+	// else changed
+	if files, ok := dirs["malformed-base64"]; !ok || len(files) != 1 {
+		problems = append(problems, fmt.Sprintf("malformed-base64/ holds %d files, want 1", len(files)))
+	} else {
+		for _, text := range files {
+			f := strings.Fields(text)
+			_, decoded := decodeLuaSavedCase(text)
+			if decoded || len(f) != 4 || f[0] != base.kind || f[1] != base.unit || f[2] != base.table ||
+				!strings.HasPrefix(f[3], base.payload) || len(f[3]) == len(base.payload) {
+				problems = append(problems, fmt.Sprintf("malformed-base64/ is not the good case with a tail after its padding: %q", strings.TrimSpace(text)))
+			}
+		}
+	}
 	sort.Strings(problems)
 	return problems
 }
@@ -163,30 +186,42 @@ func TestLuaFuzzReplayControls(t *testing.T) {
 		`the saved case does not decode`,
 		`holds no saved case; nothing was replayed`,
 		`is not a directory; nothing was replayed`,
+		`b64(bytes) ~= payload`,
+		`echo \"find-exit=$?\"`,
+		`so the listing may be partial`,
 	} {
 		if !strings.Contains(harness, want) {
 			t.Errorf("the embedded Lua fuzz harness no longer refuses with %q", want)
 		}
 	}
+	if strings.Contains(harness, "| sort") {
+		t.Error("the embedded Lua fuzz harness pipes a listing to sort again: the pipe reports sort's status, not find's")
+	}
 	// the controls run before every replay, and count what they ran
 	for _, want := range []string{
 		`schema-lua-fuzz-replay: schema-lua-fuzz-toolchain schema-lua-fuzz-negative-control schema-lua-fuzz-replay-controls`,
 		`LUA_FUZZ_REPLAY_CONTROLS := ` + luaReplayControlsDir,
-		`grep -qx 'lua fuzz replay: 1 cases, 0 failed' $$w/good.log`,
-		`[ $$dirs -eq 5 ]`,
-		`[ $$refused -eq 6 ]`,
+		`grep -qx 'lua fuzz replay: 2 cases, 0 failed' $$w/good.log`,
+		`[ $$dirs -eq 6 ]`,
+		`$$w/empty $$w/missing partial-find; do`,
+		`cp testdata/lua-nightly-fuzz/partial-find.sh $$w/shim/find`,
+		`*"find exited 7"*`,
+		`[ $$refused -eq 8 ]`,
 	} {
 		if !strings.Contains(mk, want) {
 			t.Errorf("make/schema-lua-nightly-fuzz.mk no longer holds %q", want)
 		}
+	}
+	if shim := readCI(t, root, "testdata/lua-nightly-fuzz/partial-find.sh"); !strings.Contains(shim, "| head -n 1\nexit 7\n") {
+		t.Errorf("testdata/lua-nightly-fuzz/partial-find.sh no longer lists one file and fails with 7: %q", shim)
 	}
 	m := regexp.MustCompile(`(?m)^LUA_FUZZ_REPLAY_REFUSED\s*:=\s*(.*)$`).FindStringSubmatch(mk)
 	if m == nil {
 		t.Fatal("make/schema-lua-nightly-fuzz.mk does not list LUA_FUZZ_REPLAY_REFUSED")
 	}
 	refused := strings.Fields(m[1])
-	if len(refused) != 4 {
-		t.Errorf("LUA_FUZZ_REPLAY_REFUSED lists %d controls; the recipe's counts are for 4", len(refused))
+	if len(refused) != 5 {
+		t.Errorf("LUA_FUZZ_REPLAY_REFUSED lists %d controls; the recipe's counts are for 5", len(refused))
 	}
 	var units []string
 	for _, dir := range tablesGenerateDirs(t, readCI(t, root, "Makefile")) {
@@ -227,9 +262,17 @@ func TestLuaFuzzReplayControls(t *testing.T) {
 			return refused
 		}, "no good/ control"},
 		{"a good case for a unit nobody generates", func(d map[string]map[string]string) []string {
-			d["good"] = map[string]string{"ordinary.case": "json nowhere RootConfig e30=\n"}
+			d["good"]["second.case"] = "json nowhere ShipEntry e30=\n"
 			return refused
-		}, `good/ names unit "nowhere"`},
+		}, `good/second.case names unit "nowhere"`},
+		{"a good directory of one case", func(d map[string]map[string]string) []string {
+			delete(d["good"], "second.case")
+			return refused
+		}, "good/ holds 1 files"},
+		{"a malformed control that decodes", func(d map[string]map[string]string) []string {
+			d["malformed-base64"]["ordinary.case"] = d["good"]["ordinary.case"]
+			return refused
+		}, "malformed-base64/ is not the good case with a tail after its padding"},
 		{"an unreadable control with no undecodable file", func(d map[string]map[string]string) []string {
 			d["unreadable-beside-good"]["unreadable.case"] = d["good"]["ordinary.case"]
 			return refused
