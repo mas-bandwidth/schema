@@ -1,5 +1,8 @@
 version: "2"
 
+run:
+  allow-parallel-runners: true
+
 # Ported from serialize.go's config (the lint job itself is lifted verbatim
 # per issue #31); the exclusions are this repo's own.
 linters:

@@ -387,9 +387,22 @@ build/schema_test_c_soak: build/tables-generated-c/.stamp test/c-tables/soak_mai
 		build/tables-generated-c/p1/P1Table.c build/tables-generated-c/p3/P3Table.c -o $@ -lm
 
 # The file-wire corpus and allocation counters run together.
-.PHONY: tables-c-soak
+.PHONY: tables-c-soak tables-c-soak-compile-modes
 tables-c-soak: build/schema_test_c_soak
 	./build/schema_test_c_soak $(TABLES_C_SOAK_ITERATIONS)
+
+tables-c-soak-compile-modes: test/c-tables/soak_main.c $(wildcard test/conformance/c/*.h)
+	@mkdir -p build/c-soak-modes
+	$(CC) -std=c99 -Wall -Wextra -Werror -Wshadow -Wtype-limits $(C_TAUTOLOGICAL) -O2 -ffp-contract=off \
+		-DCONFORMANCE_NO_WREF_CASE -Itest/conformance/c -c test/c-tables/soak_main.c -o build/c-soak-modes/default.o
+	$(CC) -std=c99 -Wall -Wextra -Werror -Wshadow -Wtype-limits $(C_TAUTOLOGICAL) -O2 -ffp-contract=off \
+		-DSCHEMA_SOAK_NO_INTERPOSE -DCONFORMANCE_NO_WREF_CASE -Itest/conformance/c -c test/c-tables/soak_main.c -o build/c-soak-modes/no_interpose.o
+	$(CC) -std=c99 -Wall -Wextra -Werror -Wshadow -Wtype-limits $(C_TAUTOLOGICAL) -O2 -ffp-contract=off \
+		-U__unix__ -U__APPLE__ -DCONFORMANCE_NO_WREF_CASE -Itest/conformance/c -c test/c-tables/soak_main.c -o build/c-soak-modes/no_fork.o
+	$(CC) -std=c99 -Wall -Wextra -Werror -Wshadow -Wtype-limits $(C_TAUTOLOGICAL) -O2 -ffp-contract=off \
+		-DSCHEMA_SOAK_NO_INTERPOSE -U__unix__ -U__APPLE__ -DCONFORMANCE_NO_WREF_CASE -Itest/conformance/c -c test/c-tables/soak_main.c -o build/c-soak-modes/no_interpose_no_fork.o
+
+test-c: tables-c-soak-compile-modes
 
 .PHONY: tables-c-fuzz
 tables-c-fuzz: build/schema_test_c_fuzz

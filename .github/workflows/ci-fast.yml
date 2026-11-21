@@ -753,7 +753,7 @@ jobs:
         with:
           version: v2.12.2
           skip-cache: true
-          args: ${{ needs.plan.outputs.packages }}
+          args: --allow-parallel-runners ${{ needs.plan.outputs.packages }}
       - name: golangci-lint on touched Go packages
         if: runner.environment != 'github-hosted'
         env:
@@ -773,7 +773,7 @@ jobs:
             exit 1
           }
           # shellcheck disable=SC2086
-          GOLANGCI_LINT_CACHE="$RUNNER_TEMP/golangci-lint-cache" golangci-lint run $PACKAGES
+          GOLANGCI_LINT_CACHE="$RUNNER_TEMP/golangci-lint-cache" golangci-lint run --allow-parallel-runners $PACKAGES
 
   # FAST GENERATED-TREE DRIFT GATE (~5-12 s, pure Go compiler + diff).
   # Runs whenever codegen, IR, compiler, tables, .schema, or generated/ paths
@@ -875,7 +875,7 @@ jobs:
                 cf="$RUNNER_TEMP/clang-format/bin/clang-format"
               fi
               "$cf" --version
-              make -j"$(nproc)" tables-c-zero-cost tables-c-clean SCHEMA_REQUIRE_CLANG_FORMAT=1 CLANG_FORMAT="$cf"
+              make -j"$(nproc)" tables-c-zero-cost tables-c-clean tables-c-soak-compile-modes SCHEMA_REQUIRE_CLANG_FORMAT=1 CLANG_FORMAT="$cf"
               ;;
             js)
               if ! command -v eslint >/dev/null 2>&1 || ! eslint --version | grep -qx "v9.39.5"; then

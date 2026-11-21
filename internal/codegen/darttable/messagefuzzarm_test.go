@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
@@ -27,6 +28,11 @@ import (
 // testdata/messagefuzzarm/go-replies.bin, and re-checked against
 // build/conformance-go wherever the serialize.go sibling it links is present). It runs the Dart toolchain, so it is a functional test: it reaches the
 // SDK through dartBinary(t) and skips by name without one.
+// dartMakeMu serializes repo-root `make` builds in darttable so a parallel test
+// never observes a half-generated build/tables-generated-dart tree while
+// build/conformance-dart is populating it.
+var dartMakeMu sync.Mutex
+
 func TestMessageFuzzArmHonoursLoadResultDart(t *testing.T) {
 	slowtest.Gate(t, "an external toolchain")
 
@@ -41,6 +47,8 @@ func TestMessageFuzzArmHonoursLoadResultDart(t *testing.T) {
 	// build/conformance-dart).
 	mk := func(target string, vars ...string) {
 		t.Helper()
+		dartMakeMu.Lock()
+		defer dartMakeMu.Unlock()
 		cmd := exec.Command("make", append(append([]string{"-C", root}, vars...), target)...)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("make %s: %v\n%s", target, err, out)
@@ -171,15 +179,8 @@ func TestMessageFuzzArmHonoursLoadResultDart(t *testing.T) {
 		t.Fatalf("main.dart binds %q %d times, want once: the plant below has nothing to replace", bound, bytes.Count(src, []byte(bound)))
 	}
 	planted := bytes.Replace(src, []byte(bound), []byte("load: (values, bytes, vocabulary, report) => -1,"), 1)
-	scratch, err := os.MkdirTemp(filepath.Join(root, "build"), "messagefuzzarm-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.RemoveAll(scratch) })
-	dir := filepath.Join(scratch, "dart")
-	if err := os.Mkdir(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	planted = bytes.ReplaceAll(planted, []byte("'../../../build/"), []byte("'"+filepath.ToSlash(filepath.Join(root, "build"))+"/"))
+	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "main.dart"), planted, 0o644); err != nil {
 		t.Fatal(err)
 	}

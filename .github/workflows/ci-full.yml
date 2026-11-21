@@ -258,7 +258,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [ unit-codegen, unit-codegen-java-1, unit-codegen-java-2, unit-codegen-python-1, unit-codegen-python-2, unit-codegen-rust-1, unit-codegen-rust-2, unit-codegen-go-1, unit-codegen-go-2, unit-codegen-c-cs-ruby, unit-codegen-dart-goose, unit-codegen-script, unit-codegen-cpp-1, unit-codegen-cpp-2, unit-codegen-cpp-3, unit-compiler-1, unit-compiler-2, unit-compiler-3, unit-compiler-4, unit-compiler-5, unit-compiler-6, unit-compiler-7, unit-compiler-8, unit-compiler-9, unit-compiler-10, unit-compiler-11, unit-compiler-12, unit-compiler-13, unit-compiler-14, unit-compiler-15, unit-compiler-16, unit-compiler-17, unit-compiler-18, unit-compiler-19, unit-rest, unit-vet, unit-rest-fuzz-1, unit-rest-fuzz-2, unit-rest-fuzz-3, unit-rest-cmd-1, unit-rest-cmd-2, unit-rest-goldens, unit-rest-ci, unit-rest-tools, unit-rest-check, unit-elixir-1, unit-elixir-2, unit-elixir-3, unit-elixir-4, unit-elixir-5, unit-elixir-6, unit-elixir-7, unit-elixir-8, unit-elixir-9, unit-elixir-10, unit-elixir-11, unit-elixir-12, unit-elixir-13, unit-elixir-14, unit-elixir-15, slow-gate-codegen-0, slow-gate-codegen-1, slow-gate-codegen-2, slow-gate-codegen-3, slow-gate-codegen-4, slow-gate-codegen-5, slow-gate-codegen-6, slow-gate-codegen-7, slow-gate-codegen-8, slow-gate-codegen-9, slow-gate-codegen-10, slow-gate-codegen-11, slow-gate-codegen-12, slow-gate-codegen-13, slow-gate-codegen-14, slow-gate-codegen-15, slow-gate-codegen-16, slow-gate-codegen-17, slow-gate-codegen-18, slow-gate-codegen-19, slow-gate-codegen-20, slow-gate-codegen-21, slow-gate-codegen-22, slow-gate-codegen-23, slow-gate-codegen-24, slow-gate-codegen-25, slow-gate-rest-0, slow-gate-rest-1, slow-gate-rest-2, slow-gate-rest-3, slow-gate-rest-4, slow-gate-rest-5, slow-gate-rest-6, slow-gate-rest-7, slow-gate-rest-8, slow-gate-rest-9, versioning-conformance-a, versioning-conformance-b, versioning-go, versioning-c, versioning-rust, versioning-java, versioning-js, versioning-dart, versioning-cs, versioning-elixir, versioning-luau, versioning-goose ]
+        group: [ unit-codegen, unit-codegen-java-1, unit-codegen-java-2, unit-codegen-java-3, unit-codegen-python-1, unit-codegen-python-2, unit-codegen-python-3, unit-codegen-python-4, unit-codegen-python-5, unit-codegen-python-6, unit-codegen-python-7, unit-codegen-rust-1, unit-codegen-rust-2, unit-codegen-rust-3, unit-codegen-go-1, unit-codegen-go-2, unit-codegen-c-1, unit-codegen-c-2, unit-codegen-c-3, unit-codegen-cs-1, unit-codegen-cs-2, unit-codegen-cs-3, unit-codegen-ruby-1, unit-codegen-ruby-2, unit-codegen-ruby-3, unit-codegen-dart-1, unit-codegen-dart-2, unit-codegen-dart-3, unit-codegen-goose-1, unit-codegen-goose-2, unit-codegen-unity-1, unit-codegen-unity-2, unit-codegen-js-1, unit-codegen-js-2, unit-codegen-lua-1, unit-codegen-lua-2, unit-codegen-lua-3, unit-codegen-luau-1, unit-codegen-luau-2, unit-codegen-moo-1, unit-codegen-moo-2, unit-codegen-squirrel-1, unit-codegen-squirrel-2, unit-codegen-cpp-1, unit-codegen-cpp-2, unit-codegen-cpp-3, unit-compiler-1, unit-compiler-2, unit-compiler-3, unit-compiler-4, unit-compiler-5, unit-compiler-6, unit-compiler-7, unit-compiler-8, unit-compiler-9, unit-compiler-10, unit-compiler-11, unit-compiler-12, unit-compiler-13, unit-compiler-14, unit-compiler-15, unit-compiler-16, unit-compiler-17, unit-compiler-18, unit-compiler-19, unit-rest, unit-vet, unit-rest-fuzz-1, unit-rest-fuzz-2, unit-rest-fuzz-3, unit-rest-cmd-1, unit-rest-cmd-2, unit-rest-goldens, unit-rest-ci, unit-rest-ci-2, unit-rest-tools, unit-rest-check, unit-elixir-1, unit-elixir-2, unit-elixir-3, unit-elixir-4, unit-elixir-5, unit-elixir-6, unit-elixir-7, unit-elixir-8, unit-elixir-9, unit-elixir-10, unit-elixir-11, unit-elixir-12, unit-elixir-13, unit-elixir-14, unit-elixir-15, slow-gate-codegen-0, slow-gate-codegen-1, slow-gate-codegen-2, slow-gate-codegen-3, slow-gate-codegen-4, slow-gate-codegen-5, slow-gate-codegen-6, slow-gate-codegen-7, slow-gate-codegen-8, slow-gate-codegen-9, slow-gate-codegen-10, slow-gate-codegen-11, slow-gate-codegen-12, slow-gate-codegen-13, slow-gate-codegen-14, slow-gate-codegen-15, slow-gate-codegen-16, slow-gate-codegen-17, slow-gate-codegen-18, slow-gate-codegen-19, slow-gate-codegen-20, slow-gate-codegen-21, slow-gate-codegen-22, slow-gate-codegen-23, slow-gate-codegen-24, slow-gate-codegen-25, slow-gate-rest-0, slow-gate-rest-1, slow-gate-rest-2, slow-gate-rest-3, slow-gate-rest-4, slow-gate-rest-5, slow-gate-rest-6, slow-gate-rest-7, slow-gate-rest-8, slow-gate-rest-9, versioning-conformance-a, versioning-conformance-b, versioning-go, versioning-c, versioning-rust, versioning-java, versioning-js, versioning-dart, versioning-cs, versioning-elixir, versioning-luau, versioning-goose ]
         # RELAXED 2026-11-14 (maintainer: get main green): on a push and a pull
         # request (the events the 110 s PGROUP_WALL applies to) these rows are
         # excluded, because their median job wall over four CI full runs on
@@ -314,11 +314,11 @@ jobs:
       # same .github/dotnet-version every other C# job reads, so a runner image
       # that ships a different SDK cannot change what this gate compiles.
       - name: read the .NET SDK pin
-        if: matrix.group == 'versioning-cs' || matrix.group == 'unit-codegen' || matrix.group == 'unit-codegen-c-cs-ruby' || matrix.group == 'unit-codegen-dart-goose'
+        if: matrix.group == 'versioning-cs' || matrix.group == 'unit-codegen' || startsWith(matrix.group, 'unit-codegen-cs-') || startsWith(matrix.group, 'unit-codegen-unity-')
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
-        if: (matrix.group == 'versioning-cs' || matrix.group == 'unit-codegen' || matrix.group == 'unit-codegen-c-cs-ruby' || matrix.group == 'unit-codegen-dart-goose') && runner.environment == 'github-hosted'
+        if: (matrix.group == 'versioning-cs' || matrix.group == 'unit-codegen' || startsWith(matrix.group, 'unit-codegen-cs-') || startsWith(matrix.group, 'unit-codegen-unity-')) && runner.environment == 'github-hosted'
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
 
@@ -414,7 +414,7 @@ jobs:
       # (internal/codegen/luau/luaurun). Installed as make/luau.mk's dist-luau
       # does, the sha256 refused before anything is unpacked.
       - name: install the Luau pin
-        if: matrix.group == 'unit-codegen-script' || matrix.group == 'unit-compiler-1' || matrix.group == 'unit-rest' || matrix.group == 'unit-rest-ci' || matrix.group == 'unit-rest-tools'
+        if: startsWith(matrix.group, 'unit-codegen-luau-') || matrix.group == 'unit-compiler-1' || matrix.group == 'unit-rest' || startsWith(matrix.group, 'unit-rest-ci') || matrix.group == 'unit-rest-tools'
         run: make dist-luau
 
       # go vet over the module is a row of its own: it compiles every
@@ -429,24 +429,24 @@ jobs:
       # skip, without it. make/lua.mk's dist-lua builds it from source at the
       # sha256 it names, into dist/lua-<version>/, which is the LUA default.
       - name: install the Lua pin
-        if: matrix.group == 'unit-codegen-script' || matrix.group == 'unit-rest' || matrix.group == 'unit-rest-ci' || matrix.group == 'unit-rest-tools'
+        if: startsWith(matrix.group, 'unit-codegen-lua-') || matrix.group == 'unit-rest' || startsWith(matrix.group, 'unit-rest-ci') || matrix.group == 'unit-rest-tools'
         run: make dist-lua
 
       # THE PYTHON PINS for unit-rest-ci: internal/ci/python_usage_fragments_test.go
       # runs the tutorial fragments under both pinned CPython interpreters
       # (internal/codegen/python/pyrun) and fails, never skips, without them.
       - uses: ./.github/actions/python
-        if: matrix.group == 'unit-codegen-python-1' || matrix.group == 'unit-codegen-python-2' || matrix.group == 'unit-rest-ci' || matrix.group == 'unit-rest-cmd-2' || matrix.group == 'unit-compiler-18'
+        if: startsWith(matrix.group, 'unit-codegen-python-') || startsWith(matrix.group, 'unit-rest-ci') || matrix.group == 'unit-rest-cmd-2' || matrix.group == 'unit-compiler-18'
 
       - uses: ./.github/actions/ruby
-        if: matrix.group == 'unit-codegen-c-cs-ruby' || matrix.group == 'unit-rest-ci' || matrix.group == 'unit-compiler-18'
+        if: startsWith(matrix.group, 'unit-codegen-ruby-') || startsWith(matrix.group, 'unit-rest-ci') || matrix.group == 'unit-compiler-18'
 
       # THE Goose PIN for the test steps below: internal/codegen/goose and
       # internal/codegen/goosetable run generated Goose under the pinned compiler
       # and fail, never skip, without it. make/goose.mk's dist-goose installs it
       # at the sha256 it names, into the dist/ path the leg's default names.
       - name: install the Goose pin
-        if: matrix.group == 'unit-codegen-dart-goose' || matrix.group == 'unit-rest' || matrix.group == 'unit-rest-ci' || matrix.group == 'unit-rest-tools'
+        if: startsWith(matrix.group, 'unit-codegen-goose-') || matrix.group == 'unit-rest' || startsWith(matrix.group, 'unit-rest-ci') || matrix.group == 'unit-rest-tools'
         run: make dist-goose
 
       # THE SQUIRREL PIN, on the three rows that run generated Squirrel and on
@@ -459,7 +459,7 @@ jobs:
       # nothing. make/squirrel.mk's dist-squirrel builds sq at the sha256 it
       # names, into the dist/ path the leg's default names.
       - name: install the Squirrel pin
-        if: matrix.group == 'unit-codegen-script' || matrix.group == 'unit-compiler-1' || matrix.group == 'unit-rest' || matrix.group == 'unit-rest-ci' || matrix.group == 'unit-rest-tools'
+        if: startsWith(matrix.group, 'unit-codegen-squirrel-') || matrix.group == 'unit-compiler-1' || matrix.group == 'unit-rest' || startsWith(matrix.group, 'unit-rest-ci') || matrix.group == 'unit-rest-tools'
         run: make dist-squirrel
 
       # THE EMITTERS' OWN TESTS, which are the slow half of `go test ./...`:
@@ -480,7 +480,7 @@ jobs:
       # under SCHEMA_SLOW=1 fails, never skips, without them (make/moo.mk;
       # .github/actions/moo builds the pin once per runner image and caches it).
       - uses: ./.github/actions/moo
-        if: matrix.group == 'unit-codegen-script'
+        if: startsWith(matrix.group, 'unit-codegen-moo-')
 
       # THE LOBSTER PIN for the emitter row: internal/codegen/lobster and
       # internal/codegen/lobstertable run generated Lobster under the pinned
@@ -504,52 +504,94 @@ jobs:
         run: make -j"$(getconf _NPROCESSORS_ONLN)" tables-fixedform-corpus
 
       - name: build the C++ fixed-form byte oracle and Python conformance corpus
-        if: matrix.group == 'unit-codegen-python-1' || matrix.group == 'unit-codegen-python-2'
+        if: startsWith(matrix.group, 'unit-codegen-python-')
         run: make -j"$(getconf _NPROCESSORS_ONLN)" tables-fixedform-corpus build/conformance-python
 
       - name: go test the emitter packages (complement and Lobster)
         if: matrix.group == 'unit-codegen'
         env:
           SCHEMA_SLOW: '1'
-        run: go test -timeout 0 $(go list ./internal/codegen/... | grep -v '/elixirtable$' | grep -v '/cpptable$' | grep -v '/javatable$' | grep -v '/pythontable$' | grep -v '/python$' | grep -v '/rusttable$' | grep -v '/gotable$' | grep -v '/gotable/fuzzunit$' | grep -v '/darttable$' | grep -v '/goosetable$' | grep -v '/goose$' | grep -v '/ctable$' | grep -v '/cstable$' | grep -v '/rubytable$' | grep -v '/ruby$' | grep -v '/luatable$' | grep -v '/lua$' | grep -v '/luautable$' | grep -v '/luau$' | grep -v '/mootable$' | grep -v '/moo$' | grep -v '/unitytable$' | grep -v '/squirreltable$' | grep -v '/squirrel$' | grep -v '/jstable$')
+        run: go test -timeout 0 $(go list ./internal/codegen/... | grep -v '/elixirtable$' | grep -v '/cpptable$' | grep -v '/javatable$' | grep -v '/pythontable$' | grep -v '/python$' | grep -v '/rusttable$' | grep -v '/gotable$' | grep -v '/gotable/fuzzunit$' | grep -v '/darttable$' | grep -v '/dart$' | grep -v '/goosetable$' | grep -v '/goose$' | grep -v '/ctable$' | grep -v '/cstable$' | grep -v '/rubytable$' | grep -v '/ruby$' | grep -v '/luatable$' | grep -v '/lua$' | grep -v '/luautable$' | grep -v '/luau$' | grep -v '/mootable$' | grep -v '/moo$' | grep -v '/unitytable$' | grep -v '/unity$' | grep -v '/squirreltable$' | grep -v '/squirrel$' | grep -v '/jstable$' | grep -v '/js$')
 
-      - name: go test the Java table emitter package, row 1 of 2
+      - name: go test the Java table emitter package, row 1 of 3
         if: matrix.group == 'unit-codegen-java-1'
         env:
           SCHEMA_SLOW: '1'
-        run: go test -v ./internal/codegen/javatable -run '^TestJava'
+        run: go test -v ./internal/codegen/javatable -run '^TestJava[A-L]'
 
-      - name: go test the Java table emitter package, row 2 of 2
+      - name: go test the Java table emitter package, row 2 of 3
         if: matrix.group == 'unit-codegen-java-2'
         env:
           SCHEMA_SLOW: '1'
-        run: go test -v ./internal/codegen/javatable -skip '^TestJava'
+        run: go test -v ./internal/codegen/javatable -run '^TestJava[M-Z0-9_]'
 
-      - name: go test the Python emitter packages, row 1 of 2
+      - name: go test the Java table emitter package, row 3 of 3
+        if: matrix.group == 'unit-codegen-java-3'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/javatable -skip '^TestJava[A-L]|^TestJava[M-Z0-9_]'
+
+      - name: go test the Python emitter packages, row 1 of 7
         if: matrix.group == 'unit-codegen-python-1'
         env:
           SCHEMA_SLOW: '1'
         run: |
           go test -v ./internal/codegen/python
-          go test -v ./internal/codegen/pythontable -run '^TestPython[A-M]'
+          go test -v ./internal/codegen/pythontable -run '^TestPythonReflectionStrictTypes$'
 
-      - name: go test the Python emitter packages, row 2 of 2
+      - name: go test the Python emitter packages, row 2 of 7
         if: matrix.group == 'unit-codegen-python-2'
         env:
           SCHEMA_SLOW: '1'
-        run: go test -v ./internal/codegen/pythontable -skip '^TestPython[A-M]'
+        run: go test -v ./internal/codegen/pythontable -run '^(TestPythonWireFuzzVerdictPipe|TestPythonVtPointerArrays)$'
 
-      - name: go test the Rust table emitter package, row 1 of 2
+      - name: go test the Python emitter packages, row 3 of 7
+        if: matrix.group == 'unit-codegen-python-3'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/pythontable -run '^TestPythonFixedProofShapes$'
+
+      - name: go test the Python emitter packages, row 4 of 7
+        if: matrix.group == 'unit-codegen-python-4'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/pythontable -run '^(TestPythonFixedProofUnionsOptionals|TestPythonFixedProofEvolutionKindPairs)$'
+
+      - name: go test the Python emitter packages, row 5 of 7
+        if: matrix.group == 'unit-codegen-python-5'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/pythontable -run '^TestPython[A-E]|^TestPython[G-M]'
+
+      - name: go test the Python emitter packages, row 6 of 7
+        if: matrix.group == 'unit-codegen-python-6'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/pythontable -run '^TestPython[N-Q]|^TestPython[S-U]'
+
+      - name: go test the Python emitter packages, row 7 of 7
+        if: matrix.group == 'unit-codegen-python-7'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/pythontable -skip '^TestPythonReflectionStrictTypes$|^TestPythonWireFuzzVerdictPipe$|^TestPythonVtPointerArrays$|^TestPythonFixedProofShapes$|^TestPythonFixedProofUnionsOptionals$|^TestPythonFixedProofEvolutionKindPairs$|^TestPython[A-E]|^TestPython[G-M]|^TestPython[N-Q]|^TestPython[S-U]'
+
+      - name: go test the Rust table emitter package, row 1 of 3
         if: matrix.group == 'unit-codegen-rust-1'
         env:
           SCHEMA_SLOW: '1'
-        run: go test -v ./internal/codegen/rusttable -run '^TestRust'
+        run: go test -v ./internal/codegen/rusttable -run '^TestRust[A-L]'
 
-      - name: go test the Rust table emitter package, row 2 of 2
+      - name: go test the Rust table emitter package, row 2 of 3
         if: matrix.group == 'unit-codegen-rust-2'
         env:
           SCHEMA_SLOW: '1'
-        run: go test -v ./internal/codegen/rusttable -skip '^TestRust'
+        run: go test -v ./internal/codegen/rusttable -run '^TestRust[M-Z0-9_]'
+
+      - name: go test the Rust table emitter package, row 3 of 3
+        if: matrix.group == 'unit-codegen-rust-3'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/rusttable -skip '^TestRust[A-L]|^TestRust[M-Z0-9_]'
 
       - name: go test the Go table emitter packages, row 1 of 2
         if: matrix.group == 'unit-codegen-go-1'
@@ -565,24 +607,187 @@ jobs:
           SCHEMA_SLOW: '1'
         run: go test -v ./internal/codegen/gotable -skip '^TestGo'
 
-      - name: go test the C, C# and Ruby table emitter packages
-        if: matrix.group == 'unit-codegen-c-cs-ruby'
+      - name: go test the C table emitter package, row 1 of 3
+        if: matrix.group == 'unit-codegen-c-1'
         env:
           SCHEMA_SLOW: '1'
-        run: go test -v ./internal/codegen/ctable ./internal/codegen/cstable ./internal/codegen/ruby ./internal/codegen/rubytable
+        run: go test -v ./internal/codegen/ctable -run '^TestC'
 
-      - name: go test the Dart, Goose, Unity and JS table emitter packages
-        if: matrix.group == 'unit-codegen-dart-goose'
+      - name: go test the C table emitter package, row 2 of 3
+        if: matrix.group == 'unit-codegen-c-2'
         env:
           SCHEMA_SLOW: '1'
-        run: go test -v ./internal/codegen/darttable ./internal/codegen/goose ./internal/codegen/goosetable ./internal/codegen/unitytable ./internal/codegen/jstable
+        run: go test -v ./internal/codegen/ctable -run '^TestFixe'
 
-      - name: go test the Lua, Luau, Moo and Squirrel emitter packages
-        if: matrix.group == 'unit-codegen-script'
+      - name: go test the C table emitter package, row 3 of 3
+        if: matrix.group == 'unit-codegen-c-3'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/ctable -skip '^TestC|^TestFixe'
+
+      - name: go test the C# table emitter package, row 1 of 3
+        if: matrix.group == 'unit-codegen-cs-1'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/cstable -run '^Test[Cc][Ss]'
+
+      - name: go test the C# table emitter package, row 2 of 3
+        if: matrix.group == 'unit-codegen-cs-2'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/cstable -run '^TestFixe'
+
+      - name: go test the C# table emitter package, row 3 of 3
+        if: matrix.group == 'unit-codegen-cs-3'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/cstable -skip '^Test[Cc][Ss]|^TestFixe'
+
+      - name: go test the Ruby emitter packages, row 1 of 3
+        if: matrix.group == 'unit-codegen-ruby-1'
+        env:
+          SCHEMA_SLOW: '1'
+        run: |
+          go test -v ./internal/codegen/ruby
+          go test -v ./internal/codegen/rubytable -run '^TestRubyFixedProof(UnionsOptionals|EvolutionNumeric)$'
+
+      - name: go test the Ruby emitter packages, row 2 of 3
+        if: matrix.group == 'unit-codegen-ruby-2'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/rubytable -run '^TestRubyFixedProof(Shapes|EvolutionKindPairs)$'
+
+      - name: go test the Ruby emitter packages, row 3 of 3
+        if: matrix.group == 'unit-codegen-ruby-3'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/rubytable -skip '^TestRubyFixedProof(UnionsOptionals|EvolutionNumeric|Shapes|EvolutionKindPairs)$'
+
+      - name: go test the Dart emitter packages, row 1 of 3
+        if: matrix.group == 'unit-codegen-dart-1'
+        env:
+          SCHEMA_SLOW: '1'
+        run: |
+          go test -v ./internal/codegen/dart
+          go test -v ./internal/codegen/darttable -run '^TestDart'
+
+      - name: go test the Dart emitter packages, row 2 of 3
+        if: matrix.group == 'unit-codegen-dart-2'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/darttable -run '^TestFixe'
+
+      - name: go test the Dart emitter packages, row 3 of 3
+        if: matrix.group == 'unit-codegen-dart-3'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/darttable -skip '^TestDart|^TestFixe'
+
+      - name: go test the Goose emitter packages, row 1 of 2
+        if: matrix.group == 'unit-codegen-goose-1'
+        env:
+          SCHEMA_SLOW: '1'
+        run: |
+          go test -v ./internal/codegen/goose
+          go test -v ./internal/codegen/goosetable -run '^TestGoose[A-F]'
+
+      - name: go test the Goose emitter packages, row 2 of 2
+        if: matrix.group == 'unit-codegen-goose-2'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/goosetable -skip '^TestGoose[A-F]'
+
+      - name: go test the Unity emitter packages, row 1 of 2
+        if: matrix.group == 'unit-codegen-unity-1'
+        env:
+          SCHEMA_SLOW: '1'
+        run: |
+          go test -v ./internal/codegen/unity
+          go test -v ./internal/codegen/unitytable -run '^TestUnityFixedRow'
+
+      - name: go test the Unity emitter packages, row 2 of 2
+        if: matrix.group == 'unit-codegen-unity-2'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/unitytable -skip '^TestUnityFixedRow'
+
+      - name: go test the JavaScript emitter packages, row 1 of 2
+        if: matrix.group == 'unit-codegen-js-1'
+        env:
+          SCHEMA_SLOW: '1'
+        run: |
+          go test -v ./internal/codegen/js
+          go test -v ./internal/codegen/jstable -run '^Test[Jj][Ss]|^TestJava'
+
+      - name: go test the JavaScript emitter packages, row 2 of 2
+        if: matrix.group == 'unit-codegen-js-2'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/jstable -skip '^Test[Jj][Ss]|^TestJava'
+
+      - name: go test the Lua emitter packages, row 1 of 3
+        if: matrix.group == 'unit-codegen-lua-1'
+        env:
+          SCHEMA_SLOW: '1'
+        run: |
+          go test -v ./internal/codegen/lua
+          go test -v ./internal/codegen/luatable -run '^TestLuaStrictReadRefusesWhatGoRefuses$'
+
+      - name: go test the Lua emitter packages, row 2 of 3
+        if: matrix.group == 'unit-codegen-lua-2'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/luatable -run '^TestLuaFromJsonIsStrict$'
+
+      - name: go test the Lua emitter packages, row 3 of 3
+        if: matrix.group == 'unit-codegen-lua-3'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/luatable -skip '^TestLuaStrictReadRefusesWhatGoRefuses$|^TestLuaFromJsonIsStrict$'
+
+      - name: go test the Luau emitter packages, row 1 of 2
+        if: matrix.group == 'unit-codegen-luau-1'
+        env:
+          SCHEMA_SLOW: '1'
+        run: |
+          go test -v ./internal/codegen/luau
+          go test -v ./internal/codegen/luautable -run '^TestLuauFixedHotPathBenchEvidence$'
+
+      - name: go test the Luau emitter packages, row 2 of 2
+        if: matrix.group == 'unit-codegen-luau-2'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/luautable -skip '^TestLuauFixedHotPathBenchEvidence$'
+
+      - name: go test the Moo emitter packages, row 1 of 2
+        if: matrix.group == 'unit-codegen-moo-1'
         env:
           SCHEMA_SLOW: '1'
           MOO_CHECKED: ${{ github.workspace }}/dist/moo-checked/moo
-        run: go test -v ./internal/codegen/lua ./internal/codegen/luatable ./internal/codegen/luau ./internal/codegen/luautable ./internal/codegen/moo ./internal/codegen/mootable ./internal/codegen/squirrel ./internal/codegen/squirreltable
+        run: |
+          go test -v ./internal/codegen/moo
+          go test -v ./internal/codegen/mootable -run '^TestMoo[A-L]'
+
+      - name: go test the Moo emitter packages, row 2 of 2
+        if: matrix.group == 'unit-codegen-moo-2'
+        env:
+          SCHEMA_SLOW: '1'
+          MOO_CHECKED: ${{ github.workspace }}/dist/moo-checked/moo
+        run: go test -v ./internal/codegen/mootable -skip '^TestMoo[A-L]'
+
+      - name: go test the Squirrel emitter packages, row 1 of 2
+        if: matrix.group == 'unit-codegen-squirrel-1'
+        env:
+          SCHEMA_SLOW: '1'
+        run: |
+          go test -v ./internal/codegen/squirrel
+          go test -v ./internal/codegen/squirreltable -run '^TestSquirrelViewMatchesTheGoView$'
+
+      - name: go test the Squirrel emitter packages, row 2 of 2
+        if: matrix.group == 'unit-codegen-squirrel-2'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/squirreltable -skip '^TestSquirrelViewMatchesTheGoView$'
 
       # internal/codegen/cpptable has rows of its own (2026-11-14). It is the
       # heaviest emitter package (about 220 s of CPU on the Studio: some sixty
@@ -802,11 +1007,17 @@ jobs:
       # are rows of their own: internal/ci alone, the bench tools and the two
       # conformance harness packages (these three rows install the pins), and
       # five Go-only packages on a row with no pins.
-      - name: go test internal/ci
+      - name: go test internal/ci, row 1 of 2
         if: matrix.group == 'unit-rest-ci'
         env:
           SCHEMA_SLOW: '1'
-        run: go test ./internal/ci
+        run: go test ./internal/ci -run '^Test[A-P]'
+
+      - name: go test internal/ci, row 2 of 2
+        if: matrix.group == 'unit-rest-ci-2'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test ./internal/ci -skip '^Test[A-P]'
 
       - name: go test the bench tools and the conformance harnesses
         if: matrix.group == 'unit-rest-tools'
@@ -2855,6 +3066,7 @@ jobs:
           # randomly; bump by hand
           version: v2.12.2
           skip-cache: true
+          args: --allow-parallel-runners
       # PINNED for the same reason as golangci-lint above: a release with new
       # rules breaks CI deliberately, not overnight. The version is gopls's own
       # module tag; bump by hand.

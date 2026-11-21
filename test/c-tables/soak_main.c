@@ -321,8 +321,8 @@ int main( int argc, char ** argv )
     }
 
     {
-        unsigned int workers = 1u;
 #if SCHEMA_SOAK_HAS_FORK
+        unsigned int workers = 1u;
         const char * workers_env = getenv( "SCHEMA_SOAK_WORKERS" );
         if ( workers_env != NULL && workers_env[0] != '\0' )
         {
@@ -364,7 +364,9 @@ int main( int argc, char ** argv )
                 {
                     int64_t w_before = live_bytes(), w_settled = 0, w_after = 0;
                     uint64_t w_iters = 0;
+#if SCHEMA_SOAK_COUNTS
                     schema_soak_calls = 0;
+#endif
                     schema_soak_counting = 1;
                     for ( ;; )
                     {
@@ -450,7 +452,9 @@ int main( int argc, char ** argv )
             iterations = target;
             settled = before;
             after = before;
+#if SCHEMA_SOAK_COUNTS
             schema_soak_calls = 0;
+#endif
         }
         else
 #endif

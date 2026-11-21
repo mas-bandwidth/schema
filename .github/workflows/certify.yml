@@ -97,7 +97,10 @@ jobs:
           - { os: fleet, shard: core-go, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: generated, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: fuzz-tables-go, runner: [self-hosted, Linux, X64, fleet, schema] }
-          - { os: fleet, shard: fuzz-tables-diff, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: fuzz-tables-diff-1, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: fuzz-tables-diff-2, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: fuzz-tables-diff-3, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: fuzz-tables-diff-4, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: fuzz-tables-props, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: c-1, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: c-2, runner: [self-hosted, Linux, X64, fleet, schema] }
@@ -135,7 +138,10 @@ jobs:
           - { os: macos-fleet, shard: core-go, runner: [self-hosted, macOS, ARM64, fleet, schema] }
           - { os: macos-fleet, shard: generated, runner: [self-hosted, macOS, ARM64, fleet, schema] }
           - { os: macos-fleet, shard: fuzz-tables-go, runner: [self-hosted, macOS, ARM64, fleet, schema] }
-          - { os: macos-fleet, shard: fuzz-tables-diff, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: fuzz-tables-diff-1, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: fuzz-tables-diff-2, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: fuzz-tables-diff-3, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: fuzz-tables-diff-4, runner: [self-hosted, macOS, ARM64, fleet, schema] }
           - { os: macos-fleet, shard: fuzz-tables-props, runner: [self-hosted, macOS, ARM64, fleet, schema] }
           - { os: macos-fleet, shard: c-1, runner: [self-hosted, macOS, ARM64, fleet, schema] }
           - { os: macos-fleet, shard: c-2, runner: [self-hosted, macOS, ARM64, fleet, schema] }
@@ -405,9 +411,21 @@ jobs:
         if: matrix.shard == 'fuzz-tables-go'
         run: make fuzz-tables-go FUZZTIME=10m
 
-      - name: random-schema table differential (200 seeds)
-        if: matrix.shard == 'fuzz-tables-diff'
-        run: make fuzz-tables-diff
+      - name: random-schema table differential, seeds 0..49
+        if: matrix.shard == 'fuzz-tables-diff-1'
+        run: make fuzz-tables-diff TABLE_DIFF_FROM=0 TABLE_DIFF_TO=49
+
+      - name: random-schema table differential, seeds 50..99
+        if: matrix.shard == 'fuzz-tables-diff-2'
+        run: make fuzz-tables-diff TABLE_DIFF_FROM=50 TABLE_DIFF_TO=99
+
+      - name: random-schema table differential, seeds 100..149
+        if: matrix.shard == 'fuzz-tables-diff-3'
+        run: make fuzz-tables-diff TABLE_DIFF_FROM=100 TABLE_DIFF_TO=149
+
+      - name: random-schema table differential, seeds 150..200
+        if: matrix.shard == 'fuzz-tables-diff-4'
+        run: make fuzz-tables-diff TABLE_DIFF_FROM=150 TABLE_DIFF_TO=200
 
       - name: random-schema property tests (shrinking)
         if: matrix.shard == 'fuzz-tables-props'
