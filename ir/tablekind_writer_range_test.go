@@ -64,3 +64,41 @@ func TestTableFixedWriterField(t *testing.T) {
 		t.Fatalf("fixed-point writer field: ok=%v %+v", ok, wf)
 	}
 }
+
+// A compressed float's writer range is carried like any ranged leaf
+// (FIXED-FORM-ALGORITHM §4.6, docs/rulings.json strict-only-read): it resolves
+// onto the reader's float of the same name as a copy whose declared range is
+// the writer's, and not at all where the writer's range holds the reader's.
+func TestTableFixedWriterFloatField(t *testing.T) {
+	cf := func(name string, kind FieldTypeKind, lo, hi float64) *Field {
+		return &Field{Name: name, Type: FieldType{Kind: kind}, HasFloatRange: true, FMin: lo, FMax: hi, Resolution: 0.01}
+	}
+	writer := &Struct{Fields: []*Field{cf("aim", TFloat32, -1, 1), {Name: "plain", Type: FieldType{Kind: TFloat32}}}}
+	ranges := TableFixedWriterRanges(writer)
+	if len(ranges) != 1 || !ranges[0].Float || ranges[0].FLo != -1 || ranges[0].FHi != 1 || ranges[0].Kind != TableKindF32 {
+		t.Fatalf("writer ranges: %+v", ranges)
+	}
+	reader := cf("aim", TFloat32, -2, 2)
+	w, ok := TableFixedWriterField(reader, ranges[0])
+	if !ok || !w.HasFloatRange || w.FMin != -1 || w.FMax != 1 || w.HasIntRange {
+		t.Fatalf("widened reader: ok=%v %+v", ok, w)
+	}
+	if reader.FMin != -2 || reader.FMax != 2 {
+		t.Fatal("the reader's own field moved")
+	}
+	if w64, ok := TableFixedWriterField(cf("aim", TFloat64, -2, 2), ranges[0]); !ok || w64.FMax != 1 {
+		t.Fatalf("widened kind f32->f64 did not resolve: ok=%v %+v", ok, w64)
+	}
+	if _, ok := TableFixedWriterField(&Field{Name: "aim", Type: FieldType{Kind: TFloat32}}, ranges[0]); !ok {
+		t.Fatal("an unranged reader float is held to nothing but the writer's range, and did not resolve")
+	}
+	if _, ok := TableFixedWriterField(cf("aim", TFloat32, -1, 1), ranges[0]); ok {
+		t.Fatal("a writer's range equal to the reader's resolved: it bounds nothing the reader's pass does not")
+	}
+	if _, ok := TableFixedWriterField(cf("aim", TFloat32, -0.5, 0.5), ranges[0]); ok {
+		t.Fatal("a writer's range wider than the reader's resolved: the reader's own pass is the tighter one")
+	}
+	if _, ok := TableFixedWriterField(rangedField("aim", FieldType{Kind: TInt, Width: 32, Signed: true}, 0, 9), ranges[0]); ok {
+		t.Fatal("a float range resolved onto an integer")
+	}
+}

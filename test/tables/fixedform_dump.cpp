@@ -1437,26 +1437,80 @@ static bool versioning_numbers_files( const char * dir )
     VROW( vnew_cfloat_range_widen, CfloatRangeWiden, "new_cfloat_range_widen.bin",
           MS( v[0].lead, 1u ); MS( v[0].aim, 1.5f ); MS( v[0].trail, 2u ); );
 
-    // THE HOSTILE PASS (docs "## Hostile rows"), and for a compressed float it
-    // is NOT the pass the bounded rows above take. schema#1164, ruled
-    // 2026-09-19 as statement B: THE BOUNDS PASS IS THE READER'S. A compressed
-    // float is the one bounded kind whose bound the plan does NOT carry —
-    // `emitFixedClamp` emits one pass over the reader's own FMin/FMax and the
-    // compiled plan carries no range at all — so the OLD writer's bound has
-    // nowhere to live once the record is resolved. Two forged files, and the
-    // PAIR is the point:
+    // THE HOSTILE PASS (docs "## Hostile rows"): a compressed float takes the
+    // same pass as every bounded row above. The plan carries the WRITER's range
+    // for it (FIXED-FORM-ALGORITHM §4.6, ir.TableFixedWriterRanges), and the
+    // read refuses past it (docs/rulings.json strict-only-read, which overturned
+    // schema#1164 statement B, under which the pass was the READER's). Two
+    // forged files, and the PAIR is the point:
     //
     //   hostile_cfloat_range_widen.bin — `aim` forged to 1.5: outside the old
-    //     writer's [-1, 1], INSIDE the new reader's [-2, 2]. It lands WHOLE and
-    //     UNCOUNTED (aim == 1.5, clamped == 0). This is the file that tells the
-    //     two readings apart: a plan carrying the WRITER's range would land 1.0
-    //     and count 1.
+    //     writer's [-1, 1], INSIDE the new reader's [-2, 2]. The NEW reader
+    //     REFUSES THE WHOLE LOAD out_of_range: the writer could not have written
+    //     it. A reader that holds only its own range lands 1.5.
     //   past_cfloat_range_widen.bin — `aim` forged to 5.0, outside the NEW
-    //     READER's [-2, 2] as well. It clamps to the READER's bound and COUNTS
-    //     (aim == 2.0, clamped == 1 exactly). Without it, "lands whole,
-    //     uncounted" cannot be told from no bounds pass at all.
+    //     READER's [-2, 2] as well. It refuses too, under either reading.
     //
-    // `values=` below is what the OLD writer wrote, before the forge.
+    // THE CONTROLS, both directions of the row: the OLD writer's own 0.5 (a
+    // writer range NARROWER than the reader's) lands whole through the same
+    // plan, so the refusal above is the forge's; and the NEW writer's 1.5 (a
+    // writer range WIDER than the OLD reader's) is refused by the OLD reader
+    // `layout_unknown`, since the lock refuses "range narrowed" and no lineage
+    // holds the wider writer under the narrower reader.
+    //
+    // `values=` below is what the OLD writer wrote, before the forge. Neither
+    // forged line carries `expect=`: the reference's own NEW reader refuses
+    // the bytes, and the dump refuses to write the row unless it does.
+    {
+        std::vector<vold_cfloat_range_widen::CfloatRangeWiden> v( 1 );
+        vold_cfloat_range_widen::CfloatRangeWidenReset( v[0] );
+        v[0].lead = 1u;
+        v[0].aim = 0.5f;
+        v[0].trail = 2u;
+        std::vector<uint8_t> out( (size_t) vold_cfloat_range_widen::CfloatRangeWidenFixedMeasure( 1 ) );
+        if ( vold_cfloat_range_widen::CfloatRangeWidenFixedSave( v.data(), 1, out.data(), (int64_t) out.size() ) != (int64_t) out.size() )
+        {
+            std::fprintf( stderr, "cfloat_range_widen control: the old save refused\n" );
+            return false;
+        }
+        vnew_cfloat_range_widen::CfloatRangeWiden back;
+        vnew_cfloat_range_widen::CfloatRangeWidenReset( back );
+        vnew_cfloat_range_widen::TableReport r;
+        std::vector<vnew_cfloat_range_widen::TableFixedEntry> plan( 4096 );
+        const int64_t n = vnew_cfloat_range_widen::CfloatRangeWidenFixedLoad( &back, 1, out.data(), (int64_t) out.size(),
+                                                                              plan.data(), 4096, NULL, &r );
+        if ( n != 1 || r.refused || back.aim != 0.5f || back.lead != 1u || back.trail != 2u )
+        {
+            std::fprintf( stderr, "cfloat_range_widen control: the NEW reader did not land the OLD writer's 0.5 whole: n=%lld reason=%d\n",
+                          (long long) n, (int) r.refuse_reason );
+            return false;
+        }
+    }
+    {
+        std::vector<vnew_cfloat_range_widen::CfloatRangeWiden> v( 1 );
+        vnew_cfloat_range_widen::CfloatRangeWidenReset( v[0] );
+        v[0].lead = 1u;
+        v[0].aim = 1.5f;
+        v[0].trail = 2u;
+        std::vector<uint8_t> out( (size_t) vnew_cfloat_range_widen::CfloatRangeWidenFixedMeasure( 1 ) );
+        if ( vnew_cfloat_range_widen::CfloatRangeWidenFixedSave( v.data(), 1, out.data(), (int64_t) out.size() ) != (int64_t) out.size() )
+        {
+            std::fprintf( stderr, "cfloat_range_widen control: the new save refused\n" );
+            return false;
+        }
+        vold_cfloat_range_widen::CfloatRangeWiden back;
+        vold_cfloat_range_widen::CfloatRangeWidenReset( back );
+        vold_cfloat_range_widen::TableReport r;
+        std::vector<vold_cfloat_range_widen::TableFixedEntry> plan( 4096 );
+        const int64_t n = vold_cfloat_range_widen::CfloatRangeWidenFixedLoad( &back, 1, out.data(), (int64_t) out.size(),
+                                                                              plan.data(), 4096, NULL, &r );
+        if ( n != -1 || !r.refused || r.reason != vold_cfloat_range_widen::TableFixedReason::layout_unknown )
+        {
+            std::fprintf( stderr, "cfloat_range_widen control: the OLD reader answered the wider NEW writer n=%lld reason=%d, want layout_unknown\n",
+                          (long long) n, (int) r.reason );
+            return false;
+        }
+    }
     {
         std::vector<vold_cfloat_range_widen::CfloatRangeWiden> v( 1 );
         vold_cfloat_range_widen::CfloatRangeWidenReset( v[0] );
@@ -1474,16 +1528,32 @@ static bool versioning_numbers_files( const char * dir )
         const float forged = 1.5f;
         uint32_t fb; std::memcpy( (void *) &fb, &forged, 4 );
         for ( int i = 0; i < 4; ++i ) { out[ (size_t) aim_at + (size_t) i ] = (uint8_t)( fb >> ( 8 * i ) ); }
+#define FILE_NAME "hostile_cfloat_range_widen.bin"
+        {
+            vnew_cfloat_range_widen::CfloatRangeWiden back;
+            vnew_cfloat_range_widen::CfloatRangeWidenReset( back );
+            vnew_cfloat_range_widen::TableReport r;
+            std::vector<vnew_cfloat_range_widen::TableFixedEntry> plan( 4096 );
+            const int64_t n = vnew_cfloat_range_widen::CfloatRangeWidenFixedLoad( &back, 1, out.data(), (int64_t) out.size(),
+                                                                                  plan.data(), 4096, NULL, &r );
+            if ( n != -1 || r.refuse_reason != vnew_cfloat_range_widen::out_of_range )
+            {
+                std::fprintf( stderr, "%s: the reference's NEW reader answered n=%lld reason=%d, want the whole load refused out_of_range\n",
+                              FILE_NAME, (long long) n, (int) r.refuse_reason );
+                g_values.clear();
+                return false;
+            }
+        }
+#undef FILE_NAME
         char forge[96];
         std::snprintf( forge, sizeof( forge ), "r0.aim@%lld=%s", (long long) aim_at, man_text( forged ).c_str() );
         g_forged = forge;
         man_finish( "hostile_cfloat_range_widen.bin", "CfloatRangeWiden", 1 );
         if ( !spill( dir, "hostile_cfloat_range_widen.bin", out ) ) { return false; }
     }
-    // The second forged file: PAST THE READER'S OWN BOUND (schema#1164, B).
-    // Same old-generation bytes, `aim` forged to 5.0 — outside [-2, 2] as well
-    // as [-1, 1] — so the reader's pass clamps it to the READER's max 2.0 and
-    // counts exactly one. This is the file that proves the pass runs.
+    // The second forged file: PAST THE READER'S OWN BOUND as well. Same
+    // old-generation bytes, `aim` forged to 5.0 — outside [-2, 2] as well as
+    // [-1, 1] — so the NEW reader refuses the whole load out_of_range.
     {
         std::vector<vold_cfloat_range_widen::CfloatRangeWiden> v( 1 );
         vold_cfloat_range_widen::CfloatRangeWidenReset( v[0] );
@@ -1501,6 +1571,23 @@ static bool versioning_numbers_files( const char * dir )
         const float forged = 5.0f;
         uint32_t fb; std::memcpy( (void *) &fb, &forged, 4 );
         for ( int i = 0; i < 4; ++i ) { out[ (size_t) aim_at + (size_t) i ] = (uint8_t)( fb >> ( 8 * i ) ); }
+#define FILE_NAME "past_cfloat_range_widen.bin"
+        {
+            vnew_cfloat_range_widen::CfloatRangeWiden back;
+            vnew_cfloat_range_widen::CfloatRangeWidenReset( back );
+            vnew_cfloat_range_widen::TableReport r;
+            std::vector<vnew_cfloat_range_widen::TableFixedEntry> plan( 4096 );
+            const int64_t n = vnew_cfloat_range_widen::CfloatRangeWidenFixedLoad( &back, 1, out.data(), (int64_t) out.size(),
+                                                                                  plan.data(), 4096, NULL, &r );
+            if ( n != -1 || r.refuse_reason != vnew_cfloat_range_widen::out_of_range )
+            {
+                std::fprintf( stderr, "%s: the reference's NEW reader answered n=%lld reason=%d, want the whole load refused out_of_range\n",
+                              FILE_NAME, (long long) n, (int) r.refuse_reason );
+                g_values.clear();
+                return false;
+            }
+        }
+#undef FILE_NAME
         char forge[96];
         std::snprintf( forge, sizeof( forge ), "r0.aim@%lld=%s", (long long) aim_at, man_text( forged ).c_str() );
         g_forged = forge;

@@ -39,6 +39,19 @@ const RangeWidenArrayHostile = "hostile_range_widen_array.bin"
 // number, inside the range, and lands it.
 const RangeWidenU64Hostile = "hostile_range_widen_u64.bin"
 
+// CfloatRangeWidenHostile is the writer's-range vector for a COMPRESSED FLOAT
+// (docs/FIXED-FORM-ALGORITHM.md §4.6, docs/FIXED-FORM-VERSIONING-TESTS.md):
+// old_cfloat_range_widen.bin (`aim float32 | min = -1, max = 1`) with `aim`
+// forged to 1.5, inside the NEW reader's [-2, 2]. The plan carries the
+// writer's range for a compressed float as for every ranged kind, so the NEW
+// reader refuses the whole load; a reader holding only its own range lands 1.5.
+const CfloatRangeWidenHostile = "hostile_cfloat_range_widen.bin"
+
+// CfloatRangeWidenPast is the same old file with `aim` forged to 5.0, past
+// the NEW reader's own [-2, 2] as well: it refuses under either reading, so it
+// is the vector that proves a bounds pass runs at all.
+const CfloatRangeWidenPast = "past_cfloat_range_widen.bin"
+
 // NegativeZeroFile is the compressed float's negative-zero vector
 // (docs/SPEC-TABLES.md §3.3): the reference writer's file holding -0's bits in
 // its compressed float field. The rule reads it as +0, uncounted, and writes
@@ -64,6 +77,8 @@ var WriterRange = []Vector{
 	{File: RangeWidenHostile, Name: "range_widen", Row: "range_widen", Root: "RangeWiden"},
 	{File: RangeWidenArrayHostile, Name: "range_widen_array", Row: "range_widen", Root: "RangeWiden"},
 	{File: RangeWidenU64Hostile, Name: "range_widen_u64", Row: "range_widen", Root: "RangeWiden"},
+	{File: CfloatRangeWidenHostile, Name: "cfloat_range_widen", Row: "cfloat_range_widen", Root: "CfloatRangeWiden"},
+	{File: CfloatRangeWidenPast, Name: "cfloat_range_widen_past", Row: "cfloat_range_widen", Root: "CfloatRangeWiden"},
 }
 
 // NegativeZero is every compressed-float negative-zero vector

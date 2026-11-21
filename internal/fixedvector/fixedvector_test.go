@@ -74,7 +74,7 @@ func TestWriterRangeNamesEveryVector(t *testing.T) {
 		seen[v.File] = true
 		seen[v.Name] = true
 	}
-	for _, f := range []string{RangeWidenHostile, RangeWidenArrayHostile, RangeWidenU64Hostile} {
+	for _, f := range []string{RangeWidenHostile, RangeWidenArrayHostile, RangeWidenU64Hostile, CfloatRangeWidenHostile, CfloatRangeWidenPast} {
 		if !seen[f] {
 			t.Errorf("%s is not in WriterRange", f)
 		}
