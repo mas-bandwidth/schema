@@ -27,6 +27,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 var fixedFormHarnessUnits = []struct {
@@ -155,7 +157,7 @@ func buildFixedFormHarnessUnits(t *testing.T, root, elixircBin, otpPath string) 
 			go func(j unitJob) {
 				defer wg.Done()
 				args := append([]string{"--ignore-module-conflict", "-o", j.outDir}, j.names...)
-				cmd := exec.Command(elixircBin, args...)
+				cmd := testproc.Command(t, elixircBin, args...)
 				cmd.Dir = j.srcDir
 				cmd.Env = append(os.Environ(), "PATH="+otpPath+string(os.PathListSeparator)+os.Getenv("PATH"))
 				if out, err := cmd.CombinedOutput(); err != nil {
@@ -203,7 +205,7 @@ func runFixedFormHarnessScript(t *testing.T, root, elixirBin, otpPath, ebin, cor
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
 	script := filepath.Join(root, "test", "elixir-fixedform", "main.exs")
-	cmd := exec.CommandContext(ctx, elixirBin, "-pa", ebin, script, corpus)
+	cmd := testproc.CommandContext(t, ctx, elixirBin, "-pa", ebin, script, corpus)
 	cmd.Dir = root
 	cmd.Env = append(os.Environ(), "PATH="+otpPath+string(os.PathListSeparator)+os.Getenv("PATH"))
 	out, err := cmd.CombinedOutput()
@@ -280,7 +282,7 @@ func TestElixirFixedFormHarnessStrictNegativeControl(t *testing.T) {
 		if err := os.WriteFile(sabFile, sabotaged, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		cmd := exec.Command(elixircBin, "--ignore-module-conflict", "-o", scratchEbin, sabFile)
+		cmd := testproc.Command(t, elixircBin, "--ignore-module-conflict", "-o", scratchEbin, sabFile)
 		cmd.Env = append(os.Environ(), "PATH="+otpPath+string(os.PathListSeparator)+os.Getenv("PATH"))
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("elixirc sabotaged %s: %v\n%s", unit, err, out)

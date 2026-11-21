@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 type cookWriteManifestRow struct {
@@ -235,7 +236,7 @@ for (const c of cases) {
 	if err := os.WriteFile(scriptPath, []byte(script.String()), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, scriptPath)
+	cmd := testproc.Command(t, node, scriptPath)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

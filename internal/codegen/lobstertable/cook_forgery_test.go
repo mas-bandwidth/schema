@@ -3,7 +3,6 @@ package lobstertable_test
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -11,6 +10,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // cookShapes is the chain each cook case's fixture is generated with
@@ -32,7 +33,7 @@ func cookgen(t *testing.T, cases ...string) map[string][]byte {
 	slowtest.Gate(t, "the Lobster toolchain and the Go cook")
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "cookgen")
-	build := exec.Command("go", "build", "-o", bin, "./test/cookgen")
+	build := testproc.Command(t, "go", "build", "-o", bin, "./test/cookgen")
 	build.Dir = root
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("building cookgen: %v\n%s", err, out)
@@ -45,7 +46,7 @@ func cookgen(t *testing.T, cases ...string) map[string][]byte {
 		}
 		file := filepath.Join(dir, c+".cook")
 		args := append([]string{"--bytes", "4096", "--root", shape[0], "--out", file}, shape[1:]...)
-		cmd := exec.Command(bin, args...)
+		cmd := testproc.Command(t, bin, args...)
 		cmd.Dir = root
 		if msg, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("cookgen %s: %v\n%s", c, err, msg)

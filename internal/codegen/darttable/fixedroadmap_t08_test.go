@@ -31,6 +31,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // t08DartBinary is THE LEG'S OWN TOOLCHAIN, the same chain dartBinary holds,
@@ -115,7 +117,7 @@ void main() {
 	if err := os.WriteFile(filepath.Join(dir, "main_probe.dart"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dartBin, "--enable-asserts", "main_probe.dart")
+	cmd := testproc.Command(t, dartBin, "--enable-asserts", "main_probe.dart")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -546,7 +548,7 @@ fixed table Rec {
 		if err := os.WriteFile(path, []byte(schema), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		cmd := exec.Command("go", "run", "../../../cmd/schema", "generate", "--lang", "dart", "--out", filepath.Join(dir, "generated"), path)
+		cmd := testproc.Command(t, "go", "run", "../../../cmd/schema", "generate", "--lang", "dart", "--out", filepath.Join(dir, "generated"), path)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("payload-free arm compiler target: %v\n%s", err, out)
 		}
@@ -557,7 +559,7 @@ fixed table Rec {
 		if err := os.WriteFile(variable, []byte(strings.Replace(schema, "fixed table Rec", "table Rec", 1)), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		cmd = exec.Command("go", "run", "../../../cmd/schema", "generate", "--lang", "dart", "--out", filepath.Join(dir, "variable"), variable)
+		cmd = testproc.Command(t, "go", "run", "../../../cmd/schema", "generate", "--lang", "dart", "--out", filepath.Join(dir, "variable"), variable)
 		// maps-and-arms: a payload-free arm rides form 1 too (kind 32, L = 0,
 		// docs/SPEC-TABLES.md §2.6, §3), so the variable closure that was
 		// refused by name now generates its form-1 library.

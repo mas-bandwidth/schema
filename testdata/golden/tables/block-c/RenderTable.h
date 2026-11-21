@@ -3851,7 +3851,8 @@ enum
     BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE = 7,
     BLOCKDEMO_K_TABLE_MESSAGE_ENTRIES_HERE = 72,
     BLOCKDEMO_K_TABLE_ANNOUNCE_BYTES = 768,
-    BLOCKDEMO_K_TABLE_MESSAGE_BATCH_MAX = 256
+    BLOCKDEMO_K_TABLE_MESSAGE_BATCH_MAX = 256,
+    BLOCKDEMO_K_TABLE_MESSAGE_SEEN_REFS = 8192
 };
 static const uint8_t BLOCKDEMO_K_TABLE_ANNOUNCE[BLOCKDEMO_K_TABLE_ANNOUNCE_BYTES] = { 0x01, 0x01, 0x09, 0xbc, 0x25, 0x30, 0x1c, 0x18, 0x28, 0x71, 0xbf, 0x02, 0x0e, 0xd8, 0x05, 0x06, 0xd5, 0x05, 0x77, 0x6e, 0x48, 0x15, 0x2b, 0xb7, 0xdc, 0xed, 0x06, 0x00, 0x44, 0x41, 0xc6, 0x45, 0xad, 0xa9, 0x7b, 0xee, 0x09, 0x00, 0x38, 0x81, 0x0a, 0xf1, 0x1f, 0x06, 0xa7, 0xa3, 0x0e, 0x00, 0x40, 0x0d, 0xca, 0x48, 0x91, 0xc2, 0x9b, 0xb3, 0x73, 0xc5, 0x0e, 0x00, 0x0c, 0x06, 0x00, 0xf3, 0xa4, 0x48, 0x44, 0x19, 0xab, 0xd7, 0x56, 0x06, 0x00, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0b, 0x17, 0x0b, 0x8c, 0x08, 0x79, 0xd0, 0xf2, 0xd5, 0x01, 0xc0, 0x3a, 0x5c, 0xb5, 0x07, 0x2e, 0xb7, 0x08, 0x08, 0x00, 0x3d, 0x62, 0xcb, 0x8f, 0xec, 0xfc, 0xf7, 0x39, 0x0c, 0x0f, 0x46, 0x56, 0xee, 0xb1, 0x6b, 0x2e, 0x8c, 0xe6, 0x0e, 0x04, 0x04, 0x07, 0x00, 0x6d, 0xfa, 0xa8, 0xa5, 0x48, 0xb0, 0xae, 0xba, 0x10, 0x04, 0x06, 0x00, 0x63, 0x7c, 0x51, 0x16, 0x74, 0x6c, 0x97, 0x77, 0x04, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x9f, 0x70, 0x34, 0xcd, 0x05, 0xfb, 0x1a, 0xb5, 0x0d, 0x2e, 0xb9, 0x4a, 0x08, 0x0f, 0x70, 0x61, 0x9f, 0x08, 0x00, 0x9b, 0x0c, 0xfd, 0xff, 0xc7, 0x3d, 0x6d, 0x33, 0x08, 0x00, 0xc2, 0xb9, 0x52, 0x69, 0x15, 0x6a, 0x0c, 0x6a, 0x08, 0x00, 0x5c, 0xe1, 0xd9, 0xfe, 0x18, 0x7c, 0xb2, 0xdc, 0x0a, 0x00, 0x91, 0x1d, 0x1a, 0xb7, 0xfb, 0xb9, 0xac, 0x6a, 0x0b, 0xec, 0x5a, 0xf7, 0x85, 0xa9, 0xa1, 0xa3, 0x17, 0x09, 0x00, 0x26, 0x2e, 0x6b, 0xe5, 0x49, 0x44, 0x6e, 0xb6, 0x08, 0x00, 0x28, 0xc2, 0xdd, 0xcb, 0x3b, 0xf7, 0x7b, 0x4d, 0x06, 0x00, 0xad, 0x5d, 0x4c, 0x5e, 0x15, 0x6f, 0x62, 0xe5, 0x1e, 0x2c, 0xc3, 0xaf, 0x19, 0xef, 0xd9, 0x23, 0xfa, 0x1e, 0x12, 0x98, 0xf1, 0x07, 0x2c, 0xb4, 0xda, 0x0b, 0x08, 0x00, 0x46, 0x3c, 0x76, 0x85, 0x52, 0x01, 0xe0, 0x5d, 0x06, 0x00, 0xa3, 0x02, 0x02, 0x86, 0x4c, 0xe9, 0x63, 0xaf, 0x0b, 0x78, 0xd7, 0x6e, 0xb1, 0xa0, 0x3f, 0x7f, 0xfd, 0x08, 0x00, 0x93, 0x6c, 0x04, 0xb4, 0x3c, 0x7b, 0xee, 0x0b, 0x08, 0x00, 0xe5, 0x3b, 0x39, 0xd3, 0x9c, 0xeb, 0x89, 0xdc, 0x1e, 0x37, 0xea, 0x08, 0x98, 0x2c, 0xc6, 0x62, 0xbb, 0x09, 0x00, 0xa7, 0xa2, 0x7a, 0xba, 0xd2, 0x22, 0x92, 0x0f, 0x0e, 0x00, 0x01, 0x0d, 0x44, 0xad, 0xe1, 0x13, 0x49, 0x5c, 0x4a, 0x29, 0x0e, 0x00, 0x80, 0x20, 0x0d, 0x8c, 0x60, 0x83, 0xc2, 0x0b, 0x26, 0xf8, 0x84, 0x0e, 0x00, 0x80, 0x08, 0x0d, 0xd0, 0xa4, 0x1b, 0x4b, 0x19, 0x27, 0x30, 0x1c, 0x0e, 0x00, 0x80, 0x20, 0x0d, 0x27, 0x3d, 0x90, 0xa9, 0x98, 0x53, 0x12, 0x43, 0x0e, 0x00, 0x80, 0x20, 0x0d, 0xd2, 0xcf, 0x7f, 0xff, 0xed, 0xd7, 0xf8, 0xc1, 0x0e, 0x00, 0xa0, 0x9c, 0x01, 0x0d, 0xff, 0x80, 0xf4, 0xf5, 0x39, 0x8e, 0x40, 0x33, 0x0e, 0x00, 0x80, 0x40, 0x0d, 0x6d, 0xd1, 0x92, 0x3e, 0x7b, 0xb7, 0x82, 0xd9, 0x0e, 0x00, 0x80, 0xfa, 0x01, 0x0d, 0x69, 0x6a, 0x80, 0x85, 0x1a, 0x8c, 0x6a, 0x87, 0x0e, 0x00, 0x80, 0xfa, 0x01, 0x0d, 0x1f, 0x25, 0xad, 0x45, 0xad, 0x97, 0x5d, 0xee, 0x0d, 0xf2, 0x40, 0x15, 0xb9, 0xba, 0xa5, 0x17, 0x69, 0x0d, 0xec, 0x94, 0x02, 0x39, 0x5f, 0xc0, 0x29, 0xcd, 0x08, 0x00, 0x41, 0x38, 0x13, 0x42, 0xc2, 0x93, 0xb5, 0x96, 0x1e, 0xbc, 0xb4, 0x07, 0x2c, 0x0e, 0x2a, 0x1b, 0x15, 0x1e, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x0b, 0x6d, 0x1a, 0x02, 0x86, 0x4c, 0xf7, 0x63, 0xaf, 0x0b, 0x56, 0x04, 0x02, 0x86, 0x4c, 0xea, 0x63, 0xaf, 0x0b, 0xec, 0x5a, 0xf7, 0x85, 0xa9, 0xa1, 0xa3, 0x17, 0x09, 0x01, 0x04, 0x00, 0x73, 0xcd, 0x00, 0x31, 0xcb, 0x87, 0xd5, 0xcf, 0x0a, 0x00, 0x68, 0x72, 0xe7, 0xa2, 0x86, 0x2e, 0x7d, 0x1f, 0x1e, 0x71, 0x01, 0x22, 0xa1, 0x45, 0xfa, 0x54, 0x15, 0x01, 0x81, 0xcb, 0xb9, 0xa1, 0x7b, 0xe9, 0x5b, 0x4d, 0x01, 0xc3, 0x95, 0x4b, 0x57, 0xab, 0xa7, 0x3d, 0xd2, 0x08, 0x00, 0x54, 0x1f, 0x54, 0xed, 0x6a, 0x1a, 0xa1, 0x88, 0x08, 0x00, 0xec, 0xeb, 0xad, 0x52, 0xd9, 0xc8, 0x2c, 0x3d, 0x00, 0x34, 0xe6, 0x80, 0x93, 0xf7, 0x6e, 0x73, 0xc8, 0x00, 0x5e, 0x80, 0xf4, 0xd8, 0x72, 0xa1, 0xe8, 0x94, 0x00, 0xfa, 0xef, 0x7e, 0x96, 0xa7, 0x5a, 0x74, 0xa0, 0x00, 0xca, 0xaf, 0x76, 0x5a, 0xd2, 0xa4, 0xd0, 0xf5, 0x00, 0x5d, 0x07, 0xd9, 0xf6, 0x72, 0x79, 0x8d, 0x47, 0x00, 0x34, 0xe2, 0x74, 0xef, 0x2b, 0x17, 0xa6, 0xca, 0x00, 0x53, 0xd6, 0x52, 0x28, 0xac, 0xac, 0x98, 0x4f, 0x00, 0x19, 0x30, 0xea, 0x44, 0x47, 0x7e, 0x3a, 0x7f, 0x00, 0xc2, 0x85, 0x52, 0xc1, 0xc3, 0xf7, 0x11, 0xd0, 0x00, 0x8a, 0xcb, 0x54, 0xc5, 0xa1, 0x6a, 0x21, 0xa8, 0x00, 0xdb, 0x23, 0x0e, 0xd0, 0xa3, 0x21, 0x23, 0x6c, 0x00, 0x7c, 0x1b, 0xac, 0xfe, 0x19, 0xde, 0xf1, 0x9f, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x00, 0x00, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfd, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 static const uint8_t BLOCKDEMO_K_TABLE_MESSAGE_ENTRY_KEY_BYTES[] = { 0x77, 0x6e, 0x48, 0x15, 0x2b, 0xb7, 0xdc, 0xed, 0x06, 0x00, 0x44, 0x41, 0xc6, 0x45, 0xad, 0xa9, 0x7b, 0xee, 0x09, 0x00, 0x38, 0x81, 0x0a, 0xf1, 0x1f, 0x06, 0xa7, 0xa3, 0x0e, 0x00, 0x40, 0x0d, 0xca, 0x48, 0x91, 0xc2, 0x9b, 0xb3, 0x73, 0xc5, 0x0e, 0x00, 0x0c, 0x06, 0x00, 0xf3, 0xa4, 0x48, 0x44, 0x19, 0xab, 0xd7, 0x56, 0x06, 0x00, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0b, 0x17, 0x0b, 0x8c, 0x08, 0x79, 0xd0, 0xf2, 0xd5, 0x01, 0xc0, 0x3a, 0x5c, 0xb5, 0x07, 0x2e, 0xb7, 0x08, 0x08, 0x00, 0x3d, 0x62, 0xcb, 0x8f, 0xec, 0xfc, 0xf7, 0x39, 0x0c, 0x0f, 0x46, 0x56, 0xee, 0xb1, 0x6b, 0x2e, 0x8c, 0xe6, 0x0e, 0x04, 0x04, 0x07, 0x00, 0x6d, 0xfa, 0xa8, 0xa5, 0x48, 0xb0, 0xae, 0xba, 0x10, 0x04, 0x06, 0x00, 0x63, 0x7c, 0x51, 0x16, 0x74, 0x6c, 0x97, 0x77, 0x04, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x9f, 0x70, 0x34, 0xcd, 0x05, 0xfb, 0x1a, 0xb5, 0x0d, 0x2e, 0xb9, 0x4a, 0x08, 0x0f, 0x70, 0x61, 0x9f, 0x08, 0x00, 0x9b, 0x0c, 0xfd, 0xff, 0xc7, 0x3d, 0x6d, 0x33, 0x08, 0x00, 0xc2, 0xb9, 0x52, 0x69, 0x15, 0x6a, 0x0c, 0x6a, 0x08, 0x00, 0x5c, 0xe1, 0xd9, 0xfe, 0x18, 0x7c, 0xb2, 0xdc, 0x0a, 0x00, 0x91, 0x1d, 0x1a, 0xb7, 0xfb, 0xb9, 0xac, 0x6a, 0x0b, 0xec, 0x5a, 0xf7, 0x85, 0xa9, 0xa1, 0xa3, 0x17, 0x09, 0x00, 0x26, 0x2e, 0x6b, 0xe5, 0x49, 0x44, 0x6e, 0xb6, 0x08, 0x00, 0x28, 0xc2, 0xdd, 0xcb, 0x3b, 0xf7, 0x7b, 0x4d, 0x06, 0x00, 0xad, 0x5d, 0x4c, 0x5e, 0x15, 0x6f, 0x62, 0xe5, 0x1e, 0x2c, 0xc3, 0xaf, 0x19, 0xef, 0xd9, 0x23, 0xfa, 0x1e, 0x12, 0x98, 0xf1, 0x07, 0x2c, 0xb4, 0xda, 0x0b, 0x08, 0x00, 0x46, 0x3c, 0x76, 0x85, 0x52, 0x01, 0xe0, 0x5d, 0x06, 0x00, 0xa3, 0x02, 0x02, 0x86, 0x4c, 0xe9, 0x63, 0xaf, 0x0b, 0x78, 0xd7, 0x6e, 0xb1, 0xa0, 0x3f, 0x7f, 0xfd, 0x08, 0x00, 0x93, 0x6c, 0x04, 0xb4, 0x3c, 0x7b, 0xee, 0x0b, 0x08, 0x00, 0xe5, 0x3b, 0x39, 0xd3, 0x9c, 0xeb, 0x89, 0xdc, 0x1e, 0x37, 0xea, 0x08, 0x98, 0x2c, 0xc6, 0x62, 0xbb, 0x09, 0x00, 0xa7, 0xa2, 0x7a, 0xba, 0xd2, 0x22, 0x92, 0x0f, 0x0e, 0x00, 0x01, 0x0d, 0x44, 0xad, 0xe1, 0x13, 0x49, 0x5c, 0x4a, 0x29, 0x0e, 0x00, 0x80, 0x20, 0x0d, 0x8c, 0x60, 0x83, 0xc2, 0x0b, 0x26, 0xf8, 0x84, 0x0e, 0x00, 0x80, 0x08, 0x0d, 0xd0, 0xa4, 0x1b, 0x4b, 0x19, 0x27, 0x30, 0x1c, 0x0e, 0x00, 0x80, 0x20, 0x0d, 0x27, 0x3d, 0x90, 0xa9, 0x98, 0x53, 0x12, 0x43, 0x0e, 0x00, 0x80, 0x20, 0x0d, 0xd2, 0xcf, 0x7f, 0xff, 0xed, 0xd7, 0xf8, 0xc1, 0x0e, 0x00, 0xa0, 0x9c, 0x01, 0x0d, 0xff, 0x80, 0xf4, 0xf5, 0x39, 0x8e, 0x40, 0x33, 0x0e, 0x00, 0x80, 0x40, 0x0d, 0x6d, 0xd1, 0x92, 0x3e, 0x7b, 0xb7, 0x82, 0xd9, 0x0e, 0x00, 0x80, 0xfa, 0x01, 0x0d, 0x69, 0x6a, 0x80, 0x85, 0x1a, 0x8c, 0x6a, 0x87, 0x0e, 0x00, 0x80, 0xfa, 0x01, 0x0d, 0x1f, 0x25, 0xad, 0x45, 0xad, 0x97, 0x5d, 0xee, 0x0d, 0xf2, 0x40, 0x15, 0xb9, 0xba, 0xa5, 0x17, 0x69, 0x0d, 0xec, 0x94, 0x02, 0x39, 0x5f, 0xc0, 0x29, 0xcd, 0x08, 0x00, 0x41, 0x38, 0x13, 0x42, 0xc2, 0x93, 0xb5, 0x96, 0x1e, 0xbc, 0xb4, 0x07, 0x2c, 0x0e, 0x2a, 0x1b, 0x15, 0x1e, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x0b, 0x6d, 0x1a, 0x02, 0x86, 0x4c, 0xf7, 0x63, 0xaf, 0x0b, 0x56, 0x04, 0x02, 0x86, 0x4c, 0xea, 0x63, 0xaf, 0x0b, 0xec, 0x5a, 0xf7, 0x85, 0xa9, 0xa1, 0xa3, 0x17, 0x09, 0x01, 0x04, 0x00, 0x73, 0xcd, 0x00, 0x31, 0xcb, 0x87, 0xd5, 0xcf, 0x0a, 0x00, 0x68, 0x72, 0xe7, 0xa2, 0x86, 0x2e, 0x7d, 0x1f, 0x1e, 0x71, 0x01, 0x22, 0xa1, 0x45, 0xfa, 0x54, 0x15, 0x01, 0x81, 0xcb, 0xb9, 0xa1, 0x7b, 0xe9, 0x5b, 0x4d, 0x01, 0xc3, 0x95, 0x4b, 0x57, 0xab, 0xa7, 0x3d, 0xd2, 0x08, 0x00, 0x54, 0x1f, 0x54, 0xed, 0x6a, 0x1a, 0xa1, 0x88, 0x08, 0x00, 0xec, 0xeb, 0xad, 0x52, 0xd9, 0xc8, 0x2c, 0x3d, 0x00, 0x34, 0xe6, 0x80, 0x93, 0xf7, 0x6e, 0x73, 0xc8, 0x00, 0x5e, 0x80, 0xf4, 0xd8, 0x72, 0xa1, 0xe8, 0x94, 0x00, 0xfa, 0xef, 0x7e, 0x96, 0xa7, 0x5a, 0x74, 0xa0, 0x00, 0xca, 0xaf, 0x76, 0x5a, 0xd2, 0xa4, 0xd0, 0xf5, 0x00, 0x5d, 0x07, 0xd9, 0xf6, 0x72, 0x79, 0x8d, 0x47, 0x00, 0x34, 0xe2, 0x74, 0xef, 0x2b, 0x17, 0xa6, 0xca, 0x00, 0x53, 0xd6, 0x52, 0x28, 0xac, 0xac, 0x98, 0x4f, 0x00, 0x19, 0x30, 0xea, 0x44, 0x47, 0x7e, 0x3a, 0x7f, 0x00, 0xc2, 0x85, 0x52, 0xc1, 0xc3, 0xf7, 0x11, 0xd0, 0x00, 0x8a, 0xcb, 0x54, 0xc5, 0xa1, 0x6a, 0x21, 0xa8, 0x00, 0xdb, 0x23, 0x0e, 0xd0, 0xa3, 0x21, 0x23, 0x6c, 0x00, 0x7c, 0x1b, 0xac, 0xfe, 0x19, 0xde, 0xf1, 0x9f, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x00 };
@@ -4149,6 +4150,7 @@ typedef struct blockdemo_table_message_entry_t
     int16_t value_bits, elem_value_bits;
     uint8_t kind, packing, elem_kind, elem_packing;
     uint16_t own_slot; /* exact compiled encoded-entry identity, zero for another shape */
+    uint16_t id_slot; /* the first slot announcing this entry's id: a body's repeat check keys on it */
 } blockdemo_table_message_entry_t;
 typedef struct blockdemo_table_message_shape_facts_t
 {
@@ -4184,6 +4186,11 @@ static SCHEMA_UNUSED blockdemo_table_vocabulary_t blockdemo_table_vocabulary( bl
     v.max_bytes = 65536;
     return v;
 }
+/* max_bytes is the announcement's byte bound, 64 KiB by the protocol (§3.3).
+   A caller may raise it, but the entry count stays held below
+   kTableMessageSeenRefs (8192): announce_read refuses a larger vocabulary as
+   vocabulary_too_large, whatever max_bytes and the capacity allow, so every
+   resolved reference stays inside a body's seen set. */
 static SCHEMA_UNUSED int blockdemo_table_message_leb( const uint8_t * in, int64_t size, int64_t * at, uint64_t * value )
 {
     blockdemo_table_reader_t r = blockdemo_table_reader_make( in, size, NULL );
@@ -4393,7 +4400,12 @@ static SCHEMA_UNUSED int blockdemo_table_announce_once( blockdemo_table_vocabula
             report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_VOCABULARY;
             goto refused;
         }
-        if ( count >= v->max_entries )
+        /* THE ENTRY BOUND IS THE CALLER'S CAPACITY (§3.3), and a body's seen set
+     covers every reference up to kTableMessageSeenRefs. An entry is at least
+     nine bytes, so the 64 KiB byte bound holds at most 7281 and the second
+     test never binds a conforming announcement; it keeps every resolved
+     reference tracked even where a caller raised max_bytes. */
+        if ( count >= v->max_entries || count >= BLOCKDEMO_K_TABLE_MESSAGE_SEEN_REFS )
         {
             report->refused = 1;
             report->reason = SCHEMA_BLOCKDEMO_TABLE_VOCABULARY_TOO_LARGE;
@@ -4425,6 +4437,19 @@ static SCHEMA_UNUSED int blockdemo_table_announce_once( blockdemo_table_vocabula
             int64_t began = at;
             if ( !blockdemo_table_message_entry_read( words, words_bytes, &at, v->entries + i ) ) goto damaged;
             v->entries[i].own_slot = blockdemo_table_message_own_slot( words + began, at - began );
+            /* ONE ID, ONE NAME (§3.2, §3.3): an id announced at two shapes is one
+     field, so every slot carrying it shares the first slot's ordinal and a
+     body naming it through both repeats it. */
+            {
+                int64_t j;
+                v->entries[i].id_slot = (uint16_t) ( i + 1 );
+                for ( j = 0; j < i; j++ )
+                    if ( v->entries[j].id == v->entries[i].id )
+                    {
+                        v->entries[i].id_slot = v->entries[j].id_slot;
+                        break;
+                    }
+            }
         }
     }
     v->count = count;
@@ -4475,6 +4500,21 @@ static SCHEMA_UNUSED int blockdemo_table_message_ref( blockdemo_table_message_re
     if ( name ) return ( *entry )->id < UINT64_C( 0xfffffffffffffffd ) && ( *entry )->kind == 0;
     return 1;
 }
+/* THE BODY'S SEEN SET (§3.3): one bit an ID, keyed on the first slot that
+   announced it (id_slot), so an id named through two slots of different
+   shapes is the repeat §3.3 forbids. It is sized for every reference an
+   accepted announcement can resolve, so the caller's declared capacity is the
+   bound and 4096 (the default, and the form-1 id table's own cap) is not. A
+   vocabulary filled by hand leaves id_slot zero and keys on the slot itself.
+   An ordinal outside the set, or an id named twice, answers 0. */
+static SCHEMA_UNUSED int blockdemo_table_message_seen_once( uint8_t * seen, const blockdemo_table_vocabulary_t * v, const blockdemo_table_message_entry_t * e )
+{
+    int64_t ref = e->id_slot ? (int64_t) e->id_slot : (int64_t) ( e - v->entries + 1 );
+    if ( ref < 1 || ref > BLOCKDEMO_K_TABLE_MESSAGE_SEEN_REFS ) return 0;
+    if ( seen[( ref - 1 ) >> 3] & (uint8_t) ( 1u << ( ( ref - 1 ) & 7 ) ) ) return 0;
+    seen[( ref - 1 ) >> 3] |= (uint8_t) ( 1u << ( ( ref - 1 ) & 7 ) );
+    return 1;
+}
 static SCHEMA_UNUSED blockdemo_table_message_entry_t blockdemo_table_message_element( const blockdemo_table_message_entry_t * e )
 {
     blockdemo_table_message_entry_t v;
@@ -4512,23 +4552,19 @@ static SCHEMA_UNUSED int blockdemo_table_message_skip( blockdemo_table_message_r
    path. Past 128 is damaged, and 128 itself still skips. */
 static SCHEMA_UNUSED int blockdemo_table_message_skip_body( blockdemo_table_message_reader_t * r )
 {
-    uint8_t seen[512];
-    /* one bit a reference, as the file form's body skip keeps */
+    uint8_t seen[BLOCKDEMO_K_TABLE_MESSAGE_SEEN_REFS / 8];
+    /* one bit a vocabulary reference */
     if ( r->skip_depth > 128 ) return 0;
     memset( seen, 0, sizeof( seen ) );
     for ( ;; )
     {
         const blockdemo_table_message_entry_t * entry;
-        int64_t ref;
         if ( !blockdemo_table_message_ref( r, &entry, 0 ) ) return 0;
         if ( entry == NULL ) return 1;
         if ( entry->id >= UINT64_C( 0xfffffffffffffffd ) ) return 0;
-        /* A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or skipped. The
-     reference is bounded where the file form bounds it, so the bitset fits. */
-        ref = entry - r->vocabulary->entries + 1;
-        if ( ref < 1 || ref > 4096 ) return 0;
-        if ( seen[( ref - 1 ) >> 3] & (uint8_t) ( 1u << ( ( ref - 1 ) & 7 ) ) ) return 0;
-        seen[( ref - 1 ) >> 3] |= (uint8_t) ( 1u << ( ( ref - 1 ) & 7 ) );
+        /* A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or skipped, through
+     one slot or two. */
+        if ( !blockdemo_table_message_seen_once( seen, r->vocabulary, entry ) ) return 0;
         if ( !blockdemo_table_message_skip( r, entry ) ) return 0;
     }
 }
@@ -4603,7 +4639,7 @@ static SCHEMA_UNUSED int blockdemo_table_message_skip( blockdemo_table_message_r
                     return blockdemo_table_message_skip_run( r, n, (int64_t) elem.value_bits );
             }
             {
-                uint8_t seen[512];
+                uint8_t seen[BLOCKDEMO_K_TABLE_MESSAGE_SEEN_REFS / 8];
                 int64_t before;
                 /* A KEYED ARRAY'S KEY NAMES A DECLARED NO-PAYLOAD ENTRY AND NO KEY
       REPEATS (§3.2, §3.3): the name reference and the bitset hold it. */
@@ -4612,12 +4648,8 @@ static SCHEMA_UNUSED int blockdemo_table_message_skip( blockdemo_table_message_r
                 {
                     if ( e->kind == 16 )
                     {
-                        int64_t key;
                         if ( !blockdemo_table_message_ref( r, &entry, 1 ) || entry == NULL ) return 0;
-                        key = entry - r->vocabulary->entries + 1;
-                        if ( key < 1 || key > 4096 ) return 0;
-                        if ( seen[( key - 1 ) >> 3] & (uint8_t) ( 1u << ( ( key - 1 ) & 7 ) ) ) return 0;
-                        seen[( key - 1 ) >> 3] |= (uint8_t) ( 1u << ( ( key - 1 ) & 7 ) );
+                        if ( !blockdemo_table_message_seen_once( seen, r->vocabulary, entry ) ) return 0;
                     }
                     before = r->bits.offset;
                     /* A SCALAR ELEMENT IS NOT A STRUCTURAL PAYLOAD (§3.3), so it is held to
@@ -5760,7 +5792,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_camera_save_messages( const blockd
 }
 static SCHEMA_UNUSED int blockdemo_render_camera_load_message_body( blockdemo_table_message_reader_t * r, blockdemo_render_camera_t * value )
 {
-    uint8_t seen[512];
+    uint8_t seen[BLOCKDEMO_K_TABLE_MESSAGE_SEEN_REFS / 8];
     int same_build = r->vocabulary->build_version == SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE;
     int32_t last_field_ord = 0;
     (void) last_field_ord;
@@ -5769,14 +5801,10 @@ static SCHEMA_UNUSED int blockdemo_render_camera_load_message_body( blockdemo_ta
     for ( ;; )
     {
         const blockdemo_table_message_entry_t * entry;
-        int64_t ref;
         if ( !blockdemo_table_message_ref( r, &entry, 0 ) ) goto damaged;
         if ( entry == NULL ) return 1;
         if ( entry->id >= UINT64_C( 0xfffffffffffffffd ) ) goto damaged;
-        ref = entry - r->vocabulary->entries + 1;
-        if ( ref < 1 || ref > 4096 ) goto damaged;
-        if ( seen[( ref - 1 ) >> 3] & (uint8_t) ( 1u << ( ( ref - 1 ) & 7 ) ) ) goto damaged;
-        seen[( ref - 1 ) >> 3] |= (uint8_t) ( 1u << ( ( ref - 1 ) & 7 ) );
+        if ( !blockdemo_table_message_seen_once( seen, r->vocabulary, entry ) ) goto damaged;
         switch ( entry->id )
         {
             case UINT64_C( 0x4cbf3a26fca1d74a ):
@@ -6929,7 +6957,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_save_messages( const blockdem
 }
 static SCHEMA_UNUSED int blockdemo_render_ship_load_message_body( blockdemo_table_message_reader_t * r, blockdemo_render_ship_t * value )
 {
-    uint8_t seen[512];
+    uint8_t seen[BLOCKDEMO_K_TABLE_MESSAGE_SEEN_REFS / 8];
     int same_build = r->vocabulary->build_version == SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE;
     int32_t last_field_ord = 0;
     (void) last_field_ord;
@@ -6938,14 +6966,10 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_message_body( blockdemo_tabl
     for ( ;; )
     {
         const blockdemo_table_message_entry_t * entry;
-        int64_t ref;
         if ( !blockdemo_table_message_ref( r, &entry, 0 ) ) goto damaged;
         if ( entry == NULL ) return 1;
         if ( entry->id >= UINT64_C( 0xfffffffffffffffd ) ) goto damaged;
-        ref = entry - r->vocabulary->entries + 1;
-        if ( ref < 1 || ref > 4096 ) goto damaged;
-        if ( seen[( ref - 1 ) >> 3] & (uint8_t) ( 1u << ( ( ref - 1 ) & 7 ) ) ) goto damaged;
-        seen[( ref - 1 ) >> 3] |= (uint8_t) ( 1u << ( ( ref - 1 ) & 7 ) );
+        if ( !blockdemo_table_message_seen_once( seen, r->vocabulary, entry ) ) goto damaged;
         switch ( entry->id )
         {
             case UINT64_C( 0x4cbf3a26fca1d74a ):
@@ -8249,7 +8273,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_save_messages( const blockd
 }
 static SCHEMA_UNUSED int blockdemo_render_turret_load_message_body( blockdemo_table_message_reader_t * r, blockdemo_render_turret_t * value )
 {
-    uint8_t seen[512];
+    uint8_t seen[BLOCKDEMO_K_TABLE_MESSAGE_SEEN_REFS / 8];
     int same_build = r->vocabulary->build_version == SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE;
     int32_t last_field_ord = 0;
     (void) last_field_ord;
@@ -8258,14 +8282,10 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_message_body( blockdemo_ta
     for ( ;; )
     {
         const blockdemo_table_message_entry_t * entry;
-        int64_t ref;
         if ( !blockdemo_table_message_ref( r, &entry, 0 ) ) goto damaged;
         if ( entry == NULL ) return 1;
         if ( entry->id >= UINT64_C( 0xfffffffffffffffd ) ) goto damaged;
-        ref = entry - r->vocabulary->entries + 1;
-        if ( ref < 1 || ref > 4096 ) goto damaged;
-        if ( seen[( ref - 1 ) >> 3] & (uint8_t) ( 1u << ( ( ref - 1 ) & 7 ) ) ) goto damaged;
-        seen[( ref - 1 ) >> 3] |= (uint8_t) ( 1u << ( ( ref - 1 ) & 7 ) );
+        if ( !blockdemo_table_message_seen_once( seen, r->vocabulary, entry ) ) goto damaged;
         switch ( entry->id )
         {
             case UINT64_C( 0xb51afb05cd34709f ):
@@ -9336,7 +9356,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_save_messages( const block
 }
 static SCHEMA_UNUSED int blockdemo_render_missile_load_message_body( blockdemo_table_message_reader_t * r, blockdemo_render_missile_t * value )
 {
-    uint8_t seen[512];
+    uint8_t seen[BLOCKDEMO_K_TABLE_MESSAGE_SEEN_REFS / 8];
     int same_build = r->vocabulary->build_version == SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE;
     int32_t last_field_ord = 0;
     (void) last_field_ord;
@@ -9345,14 +9365,10 @@ static SCHEMA_UNUSED int blockdemo_render_missile_load_message_body( blockdemo_t
     for ( ;; )
     {
         const blockdemo_table_message_entry_t * entry;
-        int64_t ref;
         if ( !blockdemo_table_message_ref( r, &entry, 0 ) ) goto damaged;
         if ( entry == NULL ) return 1;
         if ( entry->id >= UINT64_C( 0xfffffffffffffffd ) ) goto damaged;
-        ref = entry - r->vocabulary->entries + 1;
-        if ( ref < 1 || ref > 4096 ) goto damaged;
-        if ( seen[( ref - 1 ) >> 3] & (uint8_t) ( 1u << ( ( ref - 1 ) & 7 ) ) ) goto damaged;
-        seen[( ref - 1 ) >> 3] |= (uint8_t) ( 1u << ( ( ref - 1 ) & 7 ) );
+        if ( !blockdemo_table_message_seen_once( seen, r->vocabulary, entry ) ) goto damaged;
         switch ( entry->id )
         {
             case UINT64_C( 0x4cbf3a26fca1d74a ):
@@ -10346,7 +10362,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_save_messages( const 
 }
 static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_message_body( blockdemo_table_message_reader_t * r, blockdemo_render_dynamic_prop_t * value )
 {
-    uint8_t seen[512];
+    uint8_t seen[BLOCKDEMO_K_TABLE_MESSAGE_SEEN_REFS / 8];
     int same_build = r->vocabulary->build_version == SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE;
     int32_t last_field_ord = 0;
     (void) last_field_ord;
@@ -10355,14 +10371,10 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_message_body( blockd
     for ( ;; )
     {
         const blockdemo_table_message_entry_t * entry;
-        int64_t ref;
         if ( !blockdemo_table_message_ref( r, &entry, 0 ) ) goto damaged;
         if ( entry == NULL ) return 1;
         if ( entry->id >= UINT64_C( 0xfffffffffffffffd ) ) goto damaged;
-        ref = entry - r->vocabulary->entries + 1;
-        if ( ref < 1 || ref > 4096 ) goto damaged;
-        if ( seen[( ref - 1 ) >> 3] & (uint8_t) ( 1u << ( ( ref - 1 ) & 7 ) ) ) goto damaged;
-        seen[( ref - 1 ) >> 3] |= (uint8_t) ( 1u << ( ( ref - 1 ) & 7 ) );
+        if ( !blockdemo_table_message_seen_once( seen, r->vocabulary, entry ) ) goto damaged;
         switch ( entry->id )
         {
             case UINT64_C( 0x4cbf3a26fca1d74a ):
@@ -11409,7 +11421,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_save_messages( const b
 }
 static SCHEMA_UNUSED int blockdemo_render_static_prop_load_message_body( blockdemo_table_message_reader_t * r, blockdemo_render_static_prop_t * value )
 {
-    uint8_t seen[512];
+    uint8_t seen[BLOCKDEMO_K_TABLE_MESSAGE_SEEN_REFS / 8];
     int same_build = r->vocabulary->build_version == SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE;
     int32_t last_field_ord = 0;
     (void) last_field_ord;
@@ -11418,14 +11430,10 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_message_body( blockde
     for ( ;; )
     {
         const blockdemo_table_message_entry_t * entry;
-        int64_t ref;
         if ( !blockdemo_table_message_ref( r, &entry, 0 ) ) goto damaged;
         if ( entry == NULL ) return 1;
         if ( entry->id >= UINT64_C( 0xfffffffffffffffd ) ) goto damaged;
-        ref = entry - r->vocabulary->entries + 1;
-        if ( ref < 1 || ref > 4096 ) goto damaged;
-        if ( seen[( ref - 1 ) >> 3] & (uint8_t) ( 1u << ( ( ref - 1 ) & 7 ) ) ) goto damaged;
-        seen[( ref - 1 ) >> 3] |= (uint8_t) ( 1u << ( ( ref - 1 ) & 7 ) );
+        if ( !blockdemo_table_message_seen_once( seen, r->vocabulary, entry ) ) goto damaged;
         switch ( entry->id )
         {
             case UINT64_C( 0x4cbf3a26fca1d74a ):
@@ -12521,7 +12529,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_save_messages( const
 }
 static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_message_body( blockdemo_table_message_reader_t * r, blockdemo_render_cosmetic_prop_t * value )
 {
-    uint8_t seen[512];
+    uint8_t seen[BLOCKDEMO_K_TABLE_MESSAGE_SEEN_REFS / 8];
     int same_build = r->vocabulary->build_version == SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE;
     int32_t last_field_ord = 0;
     (void) last_field_ord;
@@ -12530,14 +12538,10 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_message_body( block
     for ( ;; )
     {
         const blockdemo_table_message_entry_t * entry;
-        int64_t ref;
         if ( !blockdemo_table_message_ref( r, &entry, 0 ) ) goto damaged;
         if ( entry == NULL ) return 1;
         if ( entry->id >= UINT64_C( 0xfffffffffffffffd ) ) goto damaged;
-        ref = entry - r->vocabulary->entries + 1;
-        if ( ref < 1 || ref > 4096 ) goto damaged;
-        if ( seen[( ref - 1 ) >> 3] & (uint8_t) ( 1u << ( ( ref - 1 ) & 7 ) ) ) goto damaged;
-        seen[( ref - 1 ) >> 3] |= (uint8_t) ( 1u << ( ( ref - 1 ) & 7 ) );
+        if ( !blockdemo_table_message_seen_once( seen, r->vocabulary, entry ) ) goto damaged;
         switch ( entry->id )
         {
             case UINT64_C( 0x4cbf3a26fca1d74a ):
@@ -13540,7 +13544,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_save_messages( const blockde
 }
 static SCHEMA_UNUSED int blockdemo_render_laser_load_message_body( blockdemo_table_message_reader_t * r, blockdemo_render_laser_t * value )
 {
-    uint8_t seen[512];
+    uint8_t seen[BLOCKDEMO_K_TABLE_MESSAGE_SEEN_REFS / 8];
     int same_build = r->vocabulary->build_version == SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE;
     int32_t last_field_ord = 0;
     (void) last_field_ord;
@@ -13549,14 +13553,10 @@ static SCHEMA_UNUSED int blockdemo_render_laser_load_message_body( blockdemo_tab
     for ( ;; )
     {
         const blockdemo_table_message_entry_t * entry;
-        int64_t ref;
         if ( !blockdemo_table_message_ref( r, &entry, 0 ) ) goto damaged;
         if ( entry == NULL ) return 1;
         if ( entry->id >= UINT64_C( 0xfffffffffffffffd ) ) goto damaged;
-        ref = entry - r->vocabulary->entries + 1;
-        if ( ref < 1 || ref > 4096 ) goto damaged;
-        if ( seen[( ref - 1 ) >> 3] & (uint8_t) ( 1u << ( ( ref - 1 ) & 7 ) ) ) goto damaged;
-        seen[( ref - 1 ) >> 3] |= (uint8_t) ( 1u << ( ( ref - 1 ) & 7 ) );
+        if ( !blockdemo_table_message_seen_once( seen, r->vocabulary, entry ) ) goto damaged;
         switch ( entry->id )
         {
             case UINT64_C( 0xee5d97ad45ad251f ):
@@ -14560,7 +14560,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_save_messages( const blo
 }
 static SCHEMA_UNUSED int blockdemo_render_explosion_load_message_body( blockdemo_table_message_reader_t * r, blockdemo_render_explosion_t * value )
 {
-    uint8_t seen[512];
+    uint8_t seen[BLOCKDEMO_K_TABLE_MESSAGE_SEEN_REFS / 8];
     int same_build = r->vocabulary->build_version == SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE;
     int32_t last_field_ord = 0;
     (void) last_field_ord;
@@ -14569,14 +14569,10 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_message_body( blockdemo
     for ( ;; )
     {
         const blockdemo_table_message_entry_t * entry;
-        int64_t ref;
         if ( !blockdemo_table_message_ref( r, &entry, 0 ) ) goto damaged;
         if ( entry == NULL ) return 1;
         if ( entry->id >= UINT64_C( 0xfffffffffffffffd ) ) goto damaged;
-        ref = entry - r->vocabulary->entries + 1;
-        if ( ref < 1 || ref > 4096 ) goto damaged;
-        if ( seen[( ref - 1 ) >> 3] & (uint8_t) ( 1u << ( ( ref - 1 ) & 7 ) ) ) goto damaged;
-        seen[( ref - 1 ) >> 3] |= (uint8_t) ( 1u << ( ( ref - 1 ) & 7 ) );
+        if ( !blockdemo_table_message_seen_once( seen, r->vocabulary, entry ) ) goto damaged;
         switch ( entry->id )
         {
             case UINT64_C( 0x4cbf3a26fca1d74a ):
@@ -16641,7 +16637,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_frame_save_messages( const blockde
 }
 static SCHEMA_UNUSED int blockdemo_render_frame_load_message_body( blockdemo_table_message_reader_t * r, blockdemo_render_frame_t * value )
 {
-    uint8_t seen[512];
+    uint8_t seen[BLOCKDEMO_K_TABLE_MESSAGE_SEEN_REFS / 8];
     int same_build = r->vocabulary->build_version == SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE;
     int32_t last_field_ord = 0;
     (void) last_field_ord;
@@ -16650,14 +16646,10 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_message_body( blockdemo_tab
     for ( ;; )
     {
         const blockdemo_table_message_entry_t * entry;
-        int64_t ref;
         if ( !blockdemo_table_message_ref( r, &entry, 0 ) ) goto damaged;
         if ( entry == NULL ) return 1;
         if ( entry->id >= UINT64_C( 0xfffffffffffffffd ) ) goto damaged;
-        ref = entry - r->vocabulary->entries + 1;
-        if ( ref < 1 || ref > 4096 ) goto damaged;
-        if ( seen[( ref - 1 ) >> 3] & (uint8_t) ( 1u << ( ( ref - 1 ) & 7 ) ) ) goto damaged;
-        seen[( ref - 1 ) >> 3] |= (uint8_t) ( 1u << ( ( ref - 1 ) & 7 ) );
+        if ( !blockdemo_table_message_seen_once( seen, r->vocabulary, entry ) ) goto damaged;
         switch ( entry->id )
         {
             case UINT64_C( 0xbb62c62c9808ea37 ):
@@ -17668,7 +17660,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_vector3_save_messages( const block
 }
 static SCHEMA_UNUSED int blockdemo_render_vector3_load_message_body( blockdemo_table_message_reader_t * r, blockdemo_render_vector3_t * value )
 {
-    uint8_t seen[512];
+    uint8_t seen[BLOCKDEMO_K_TABLE_MESSAGE_SEEN_REFS / 8];
     int same_build = r->vocabulary->build_version == SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE;
     int32_t last_field_ord = 0;
     (void) last_field_ord;
@@ -17677,14 +17669,10 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_message_body( blockdemo_t
     for ( ;; )
     {
         const blockdemo_table_message_entry_t * entry;
-        int64_t ref;
         if ( !blockdemo_table_message_ref( r, &entry, 0 ) ) goto damaged;
         if ( entry == NULL ) return 1;
         if ( entry->id >= UINT64_C( 0xfffffffffffffffd ) ) goto damaged;
-        ref = entry - r->vocabulary->entries + 1;
-        if ( ref < 1 || ref > 4096 ) goto damaged;
-        if ( seen[( ref - 1 ) >> 3] & (uint8_t) ( 1u << ( ( ref - 1 ) & 7 ) ) ) goto damaged;
-        seen[( ref - 1 ) >> 3] |= (uint8_t) ( 1u << ( ( ref - 1 ) & 7 ) );
+        if ( !blockdemo_table_message_seen_once( seen, r->vocabulary, entry ) ) goto damaged;
         switch ( entry->id )
         {
             case UINT64_C( 0xaf63f54c86021707 ):
@@ -18489,7 +18477,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_quaternion_save_messages( const bl
 }
 static SCHEMA_UNUSED int blockdemo_render_quaternion_load_message_body( blockdemo_table_message_reader_t * r, blockdemo_render_quaternion_t * value )
 {
-    uint8_t seen[512];
+    uint8_t seen[BLOCKDEMO_K_TABLE_MESSAGE_SEEN_REFS / 8];
     int same_build = r->vocabulary->build_version == SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE;
     int32_t last_field_ord = 0;
     (void) last_field_ord;
@@ -18498,14 +18486,10 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_message_body( blockdem
     for ( ;; )
     {
         const blockdemo_table_message_entry_t * entry;
-        int64_t ref;
         if ( !blockdemo_table_message_ref( r, &entry, 0 ) ) goto damaged;
         if ( entry == NULL ) return 1;
         if ( entry->id >= UINT64_C( 0xfffffffffffffffd ) ) goto damaged;
-        ref = entry - r->vocabulary->entries + 1;
-        if ( ref < 1 || ref > 4096 ) goto damaged;
-        if ( seen[( ref - 1 ) >> 3] & (uint8_t) ( 1u << ( ( ref - 1 ) & 7 ) ) ) goto damaged;
-        seen[( ref - 1 ) >> 3] |= (uint8_t) ( 1u << ( ( ref - 1 ) & 7 ) );
+        if ( !blockdemo_table_message_seen_once( seen, r->vocabulary, entry ) ) goto damaged;
         switch ( entry->id )
         {
             case UINT64_C( 0xaf63f54c86021707 ):

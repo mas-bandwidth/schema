@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,6 +12,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const feffTableSchema = `package probe
@@ -76,7 +77,7 @@ func runFeffProbe(t *testing.T, files map[string][]byte, source string) error {
 		return err
 	}
 	for _, args := range [][]string{{"--enable-asserts", "probe.dart"}, {"probe.dart"}} {
-		cmd := exec.Command(dartBinary(t), args...)
+		cmd := testproc.Command(t, dartBinary(t), args...)
 		cmd.Dir = dir
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("feff probe %v: %w\n%s", args, err, out)

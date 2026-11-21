@@ -91,12 +91,7 @@ func fixedTable(m *Module, st *ir.Struct) {
 	// lock reads its own entry only, so a header whose hash is not this
 	// table's, or whose layout is not this table's byte for byte, refuses
 	// rather than being parsed loosely.
-	lineage := lineageOf(m.Unit)
-	var handed []FixedLineageEntry
-	if lineage != nil {
-		handed = lineage[st.Name]
-	}
-	entries, floor := generateLineage(handed, FixedLineageEntry{
+	entries, floor := generateLineage(m.lineage[st.Name], FixedLineageEntry{
 		Wire: hash, Layout: layout, Record: rec,
 	})
 	emitFixedPlans(m, st, entries, hash)

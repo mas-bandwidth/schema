@@ -20,6 +20,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // Pin is the interpreter's path below the repository root, the one
@@ -106,7 +108,7 @@ func Run(t testing.TB, dir, main string, inputs map[string][]byte) []byte {
 	if err := os.WriteFile(filepath.Join(dir, "inputs.nut"), InputsModule(inputs), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(sq, main)
+	cmd := testproc.Command(t, sq, main)
 	cmd.Dir = dir
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr

@@ -19,7 +19,6 @@ package luatable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -28,6 +27,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // luaFuzzPipeUnits is the subset of the corpus the verdict-pipe tests stage:
@@ -99,7 +100,7 @@ func luaFuzzHarness(t *testing.T) string {
 	t.Helper()
 	root := filepath.Join("..", "..", "..")
 	harness := filepath.Join(t.TempDir(), "conformance-harness")
-	build := exec.Command("go", "build", "-o", harness, "./test/conformance/harness")
+	build := testproc.Command(t, "go", "build", "-o", harness, "./test/conformance/harness")
 	build.Dir = root
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build conformance-harness: %v\n%s", err, out)
@@ -119,7 +120,7 @@ func runLuaWireFuzzVerdictPipe(t *testing.T, generated string, n int, expectGree
 		luarun.Interpreter(t),
 		filepath.Join("test", "conformance", "lua", "wirefuzz.lua"),
 		generated)
-	cmd := exec.Command(harness, "wire-fuzz",
+	cmd := testproc.Command(t, harness, "wire-fuzz",
 		"--driver", driver,
 		"--seed", "1",
 		"--n", fmt.Sprintf("%d", n),
