@@ -823,7 +823,7 @@ FloatExpr   = float expression over float literals, int literals and const names
   `const name =` declaration); `if` / `switch` / `align` / `reserved` are
   keywords; any other identifier begins a field. The grammar is LL(2), and
   hand-written recursive descent is the intended implementation.
-- **Enum variants** are comma-separated identifiers, trailing comma allowed.
+- **Enum variants** are identifiers separated by a comma or a newline (§4.1), trailing comma allowed.
   **Every enum has `None = 0` implicitly — universal, never declared.**
   Declared variants pack tightly from 1; max derives as the count. An enum
   takes no `| max` attribute: its wire width derives from its variant count
@@ -992,8 +992,9 @@ sequence    uint16
   writer always writes the field and a reader refuses a record missing it
   (`missing_required`, the missing field named). It is refused on a packet
   `type` field, on an optional `?T` and on a `fixed table`'s field, and it
-  moves neither the protocol id nor the build version. Every other language
-  refuses the construct at generation until its turn (compiler/generate.go).
+  moves neither the protocol id nor the build version. Every target in the
+  default build generates it; the central refusal in compiler/generate.go
+  remains for a target that does not register the construct.
 - **`was = "old_name"`, the rename attribute, table closures only**
   (SPEC-TABLES.md §5). A table field's wire id is the hash of its name, so a
   bare rename would orphan every byte ever written under the old one; `was`
@@ -1075,7 +1076,7 @@ type Quat | quat4
   table ShipConfig | designer_facing
   {
       /// The hull's structural health. A hull at zero is destroyed.
-      health   float32 = 100.0 | ui_slider, min = 0.0, max = 1000.0
+      health   float32 = 100.0 | ui_slider, min = 0.0, max = 1000.0, resolution = 0.1
       texture  uint64          | asset_ref
       nickname string(32)      | localized
   }
@@ -1753,15 +1754,20 @@ makes illegal states representable — zero payloads, or several at once.
 ```
 union ColliderShape
 {
-    box     BoxCollider
+    cube    BoxCollider
     sphere  SphereCollider
     capsule CapsuleCollider
     hull    HullCollider
 }
 ```
 
+(The arm is `cube`, not `box`: `box` is a reserved word in Rust, and §4.6's
+target-name safety refuses a name that is reserved in any target.)
+
 An arm is a FIELD LINE, so an arm's type is any type a field's is, and an arm
-may name no type at all:
+may name no type at all. An arm whose payload is not a declared `type` makes
+the union a table-closure construct (below), so this union is held by a
+table:
 
 ```
 union Value
@@ -1770,6 +1776,11 @@ union Value
     label  string(64)
     offset Vec3
     ping
+}
+
+table Setting
+{
+    value Value
 }
 ```
 
@@ -1963,7 +1974,7 @@ union Value
   nothing heap-allocates per value. Elixir, where no term is mutable and
   pre-allocated storage buys nothing, holds the value as `nil` (None),
   `{:arm, payload}`, or a payload-free arm's bare atom. Rust holds the value as a real
-  `enum <Union> { None, Box(BoxCollider), ... }`, `None` the default — and
+  `enum <Union> { None, Cube(BoxCollider), ... }`, `None` the default — and
   STILL emits the `<Union>Type` tag newtype beside it: the tag surface
   (constants, `Max`) is uniform across targets whatever the value
   representation. Every union also gets `Write<Union>`/`Read<Union>` wire
@@ -2187,17 +2198,20 @@ layout as kind `5` (SPEC-TABLES.md §2.11, §3.4), because the fixed layout's
 kind set is closed and gains no member in this card; the fixed form therefore
 does not tell the two spellings apart, and says so.
 
-**The value in each language is that language's own time type, and Go carries
-it first.** In Go the field is the `int64` count and the `time.Time` is the
-accessor pair generated beside it, `<Field>Time()` in UTC and
+**Every target in the default build generates it, and the field is the
+nanosecond count.** In every target the field holds the signed 64-bit count
+itself (`int64_t` in C and C++, for example). Go also generates a `time.Time`
+accessor pair beside the field, `<Field>Time()` in UTC and
 `Set<Field>Time(t)`; the setter refuses BY NAME a `t` whose nanosecond count
 is outside `Time.UnixNano`'s domain — the years 1678 through 2262 — rather
 than storing a wrapped number, because an undefined conversion has no wire
-value at all, and Go's zero `time.Time{}` is the zero time. Every other target
-REFUSES the construct BY NAME until its own turn, the diagnostic naming the
-construct, the target and that Go carries it first (SPEC-TABLES.md §11). **No
-target converts through a float and none loses the count**: the nanoseconds
-ride the wire as an integer and are placed into the host type as an integer.
+value at all, and Go's zero `time.Time{}` is the zero time. The compiler
+keeps a central refusal for a target that does not register the construct
+(compiler/generate.go), the diagnostic naming the construct, the target and
+the rule (SPEC-TABLES.md §11); no target in the default build is refused by
+it. **No target converts through a float and none loses the count**: the
+nanoseconds ride the wire as an integer and are placed into the host type as
+an integer.
 
 **The text form is RFC 3339.** A timestamp's JSON is a STRING, RFC 3339 with
 nanosecond precision and a `Z` offset — `"2026-10-15T12:34:05.123456789Z"`,
@@ -3413,7 +3427,8 @@ Every row to date is settled, deferred with its design banked, or discarded.
    code.
 9. ~~Explicit enum variant values, flag enums, the separator~~ — settled:
    canonical enums only (§4.2) — explicit and sparse values are declined
-   permanently; `flags` is supported (§4.2); variants are comma-separated.
+   permanently; `flags` is supported (§4.2); variants are separated by a comma or a
+   newline (§4.1).
 10. ~~Sentinel-terminated collections~~ — deferred to the delta pass,
     which designs all three measured terminator idioms at once
     (bool-continuation, sentinel value, stop action). Readers are

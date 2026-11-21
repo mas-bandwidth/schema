@@ -69,26 +69,35 @@ func TestSpecGoUsageFirstHalfStaleStatus(t *testing.T) {
 	has("Payload-free arms in a table closure are carried by every\ntarget too")
 	notHas("Payload-free arms in a table closure are C++ only")
 	notHas("other six targets refuse that table-side use")
-	notHas("the other five targets refuse that table-side use")
+	notHasFlat("the other five targets refuse that table-side use")
 
 	// wide text: there is no wstring type; text is UTF-8 string.
 	has("There is no wide string type")
 	notHas("table kind `33`")
 
 	// defaults: every target carries string, bytes and flags defaults on the
-	// table wire, and every target but Python on the packet wire.
+	// table wire, and every target but Python on the packet wire, where
+	// --lang python refuses a packet type that declares one
+	// (compiler/valuedefaults.go).
 	has("Every target carries all three\non the table wire")
+	hasFlat("every target but Python on the packet wire")
+	hasFlat("refuses a packet `type` that declares one")
+	hasFlat("the python form is a named follow-on")
 	notHas("C and Go carry them on the packet wire")
-	notHas("the other six targets refuse a unit declaring these defaults")
+	notHas("C++ and Go carry all three on")
+	notHasFlat("the other six targets refuse a unit declaring these defaults")
+	notHasFlat("Python on a table's scalar fields")
 
 	// Tables intro: Go carries the pointer surface with RootBuilder/LoadBuilder.
 	has("`RootBuilder` and `LoadBuilder`")
 	notHas("is a follow-on in those six")
 
-	// form byte: every backend writes the current form.
+	// form byte: every backend writes the current form (the conformance
+	// rewrite surface holds every leg to the same bytes).
 	has("reference, by the tool, and by every other backend")
+	hasFlat("holds each leg's rewrite to the same bytes (SPEC-TABLES.md §22.7)")
 	notHas("the eight other backends still write its previous")
-	notHas("the seven other backends still write its")
+	notHasFlat("the seven other backends still write its")
 
 	// message form: one list, SPEC-TABLES.md "WHERE THE FORM IS CARRIED".
 	// A supported carrier missing from that section, or a false exclusion
@@ -171,6 +180,7 @@ func TestSpecGoUsageFirstHalfStaleStatus(t *testing.T) {
 
 	// messages, table arms: the tool and every backend carry table-armed unions.
 	has("The tool and every backend carry the\nform")
+	notHasFlat("every other backend refuses a unit that declares one, by name, and the ports are a named follow-on ([#392]")
 	notHas("The C++ reference and the tool carry the")
 	notHas("The C++ reference, the tool and Go carry")
 	notHas("The C++ reference, the tool, C, C# and Go carry")
@@ -183,16 +193,20 @@ func TestSpecGoUsageFirstHalfStaleStatus(t *testing.T) {
 	has("carried by the C++ reference, the tool and every other\nbackend")
 	notHas("carried by the C++ reference and the tool.")
 	notHas("carried by the C++ reference, the tool and Go. Every other")
+	notHasFlat("Every other backend refuses a unit that declares one, by name, because a map makes its holder variable")
 
 	// ranged integers: cite SPEC-TABLES.md §4, not §4.3.
 	has("(SPEC-TABLES.md §4). The one-sided spelling")
 	notHas("(SPEC-TABLES.md §4.3)")
+	// one-sided range: every target registers carryOneSidedRange now.
 	has("Every target carries it\n(SPEC §4.6, docs/SPEC-TABLES.md §4)")
 	notHas("Go carries it first, and\nevery other target refuses it by name")
+	notHasFlat("the same wire and generated code, byte for byte. Go carries it first")
 
-	// | required: every target carries it.
+	// | required: every target carries it (required_test.go holds the
+	// registry side; the Go-first refusal no longer fires for any).
 	has("Every target carries `| required`")
-	notHas("Go carries `| required` first; every other target")
+	notHasFlat("Go carries `| required` first; every other target")
 
 	// --surface: every surface implies wire; unknown surface refused by name.
 	has("Every surface implies `wire`")

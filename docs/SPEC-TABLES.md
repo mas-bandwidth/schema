@@ -834,14 +834,14 @@ refuses a table today is a gap, named in §15, not a design.
 ```
 fixed table Physics
 {
-    mass float32 | min = 0.1, max = 100000.0
+    mass float32 = 1.0 | min = 0.1, max = 100000.0, resolution = 0.1
     drag float32
 }
 
 fixed table ShipConfig
 {
     name        string(64)
-    class       ShipClass
+    ship_class  ShipClass
     health      int32 | min = 0, max = MaxHealth
     hardpoints  [..8]Hardpoint
     physics     Physics
@@ -1226,7 +1226,8 @@ is not this rule's: the extent walk that `PackMeasure`, `CookMeasure` and
 also holds a list or a map, cleared after that container was filled, is
 refused by those three (`Measure` and `Save` write it as absent) until the
 container is emptied; an absent T's pointer edges never meet that walk.
-Every target carries the construct.
+Every target carries the construct; the central refusal by name (§11) remains
+for a target that does not register it.
 
 `?` applies to a nested table, a nested `type`, an enum, a `flags` mask,
 any scalar, a bounded array of those, and a MAP in a variable table (§2.8,
@@ -1811,7 +1812,15 @@ union Value
     origin  Origin
     ping
 }
+
+table Setting
+{
+    value Value
+}
 ```
+
+(A union with such arms is a table-closure construct, so a table holds it;
+outside one the checker refuses the union, naming the arm — SPEC §4.8.)
 
 **The admitted set is the field grammar's**, with nothing added and one thing
 held back: a type a field of this table may have is a type an arm may have, a
@@ -2153,7 +2162,8 @@ by §2.3's rule that a required marker would forbid the absence that makes a
 field optional. An optional map as a map's VALUE, `map[K]?map[K2]V`, is
 refused by name as a named follow-on (§15): the optional map is a FIELD's
 presence, and a table wrapping the inner map, made optional, serves. Every
-target carries the optional map.
+target carries the optional map; a target that does not register it refuses
+a unit that declares one, by name (§15).
 
 **A VALUE is anything a table field can hold**: a scalar, an enum, a `flags`
 mask, `string(N)`, `bytes(N)`, a declared `type`, a table by value, `*T`,
@@ -3915,7 +3925,9 @@ leap repeats has no distinct nanosecond count in that model, so no spelling of
 one lands a value. A text outside `Time.UnixNano`'s domain — the years 1678
 through 2262 — names no count and is refused with it.
 
-**EVERY TARGET CARRIES IT.** Go's other storage forms — the cook and
+**EVERY TARGET CARRIES IT.** The compiler keeps a central refusal, naming the
+construct, the target and the rule (§11), for a target that does not register
+the kind; no built-in target is refused by it. Go's other storage forms — the cook and
 the block — hold the field as its `int64` count and are not yet tested with
 it; the message form's entry is §3.3's kind-`36` row. **A kind-`36` field a
 reader does not name skips by §3's first skip row, a fixed width of eight:**
@@ -4161,7 +4173,9 @@ emits, beside the storage above:
 `Text`, `TextAt`, `Append` or `AppendAbsent`; an unbounded one claims §2.9's
 four as well. A declaration under any of them is refused naming the field.
 
-**Every target carries the construct.**
+**Every target carries the construct.** The central refusal at generation
+(§2.12's rule), naming the construct, the field and the target, remains for a
+target that does not register it.
 
 #### 2.13.1 Unbounded text: `[]string` and `map[string]V`
 
@@ -4299,7 +4313,9 @@ element or key they refused, as every field-naming reason does (§6.5). The clai
 names are §2.13's and §2.8's, unchanged; an unbounded text list claims its
 element record and its accessors on the same rule.
 
-**Every target carries the construct.** A unit that uses neither spelling generates byte-identical output
+**Every target carries the construct.** The central refusal at generation
+(§2.12's rule), naming the construct, the field and the target, remains for a
+target that does not register it. A unit that uses neither spelling generates byte-identical output
 to what it did before this section, for every target.
 
 ### 2.14 The integrity check: `integrity`
@@ -4489,7 +4505,9 @@ of the binary file (§16.8), trailer included, and `LoadText` decodes it and
 reads the binary file, so a flipped character that still decodes is a flipped
 byte and is refused `integrity_mismatch`.
 
-**Every target carries the construct.**
+**Every target carries the construct.** The central refusal at generation
+(§2.12's rule), naming the construct, the table and the target, remains for a
+target that does not register it.
 
 ### 2.15 Enum variants: `| deprecated` in place
 
@@ -7373,7 +7391,7 @@ and the answer the batch rule gives a peer that mixes roots. A root is a table
 union Payload
 {
     login    LoginRequest
-    match    MatchResult
+    result   MatchResult
     purchase StorePurchase
 }
 
@@ -7403,8 +7421,8 @@ from where the batch puts it:
   terminator     reference 0                   6                   430
   envelope 2
   payload        reference                     6                   436
-                 arm reference, match          6                   442
-  match          match_id to terminator      1162                 1604
+                 arm reference, result         6                   442
+  result         match_id to terminator      1162                 1604
                  (1162 above, no align in it)
   terminator     reference 0                   6                  1610
   envelope 3
@@ -7730,7 +7748,7 @@ fixed table StorePurchase
 union Payload
 {
     login    LoginRequest
-    match    MatchResult
+    result   MatchResult
     purchase StorePurchase
 }
 
@@ -9414,7 +9432,9 @@ a field of a `type` body or a packet (SPEC §4.6). A one-sided range whose
 given side excludes zero needs a default in range exactly as a two-sided one
 does (SPEC §4.6). The compiler fills the missing side from the type's limit
 before the two-sided path runs and carries the field a `RangeOneSided`
-flag that is not in the projection. Every target carries the construct.
+flag that is not in the projection. Every target carries the construct; the
+by-name refusal at generation remains for a target that does not register it
+(SPEC §4.6).
 
 ## 5. Identity: the name hash, `was`, and the collision refusal
 
@@ -13645,7 +13665,8 @@ in build version (§20.5).
   variable closure (one named follow-on, §15 — an absent field is not an
   edge, and the authoring walks gate on presence when it lands). **A scalar
   `?T` and a by-value `?[N]T` over a variable closure are legal on every
-  target** (§2.3). The bounded arrays `?[..N]T` and
+  target**; the central by-name refusal remains for a target that does not
+  register them (§2.3, §15). The bounded arrays `?[..N]T` and
   `?[N]T` of everything else are legal (§2.3). Also refused: a specified
   default on an optional; and a field whose name collides with an
   optional's `<field>_present` companion.
@@ -13743,40 +13764,48 @@ in build version (§20.5).
   `[N]string(M)` and `[E]string(M)`, naming `[..N]string(M)`; `?[..N]string(M)`
   and `?[]string(M)`; an array of `bytes(N)`, `bits(N)`,
   `*string` or `*bytes`, each a named follow-on (§15); `[..N]?T` and `[]?T`
-  for any `T` but `string(M)`; and a declaration under any name the construct
-  claims. Its `| total = N` on any other field, on a list of unbounded
-  elements (§2.13.1), and with `N` below 1 or not an integer.
+  for any `T` but `string(M)`; a declaration under any name the construct
+  claims; and the construct under a target that does not register it,
+  centrally (every built-in target registers it). Its
+  `| total = N` on any other field, on a list of unbounded elements
+  (§2.13.1), with `N` below 1 or not an integer, and under a target that does
+  not register it, centrally, naming the total.
 - **Unbounded text** (§2.13.1): a bare `string` as a plain field (naming
   `string(N)` and `*string`), in `[N]string` and `[E]string` (naming
   `[..N]string`), in `?[]string` and `?[..N]string`, in a `type` body, a
   packet, a union arm, a map VALUE and a `fixed table` (naming the plain
-  `table` spelling), and as `map[?string]V`.
+  `table` spelling), and as `map[?string]V`; and both constructs under a
+  target that does not register them, centrally (every built-in target
+  registers both).
 - **The array root** (§16.10): `json` on a table line with any value but
   `"array"`, bare, or not a string; on a `fixed table`; on a table without
   exactly ONE field, or whose one field is not `[..N]T` or `[]T` (`?[..N]T`,
   `[N]T` and `[E]T` included), is guarded (`if`) or carries its own `json`
   key; on a table any pointer targets (`*T`, `[]*T`, `[..N]*T`, a pointer
-  arm), naming the pointer field.
+  arm), naming the pointer field; and under a target that does not register
+  it, centrally (every built-in target registers it).
 - **Byte buffers** (§2.5): `*bytes` or `*string` outside a table body; a
   bound on one, `*bytes(N)` (a buffer at its used size has no bound to
   declare); a specified default on one; `?` on one (already optional); and an
   array of them, `[..N]*bytes` and `[N]*bytes`, which is the array-of-pointers
-  follow-on (§15). **Every target carries `*bytes` and `*string`.**
+  follow-on (§15). **Every target carries `*bytes` and `*string`.** The
+  by-name refusal of a spelling a target does not carry remains for a target
+  that does not register it.
 - **This section is not exhaustive**: the refusals of a `forms` or
   `integrity` declaration's own spelling (§2.12, §2.14), of `| required` on a
   `type` field, with `?`, or on a fixed field (§2.3), of an `if` naming a
   field marked `| deprecated` (§2.10), and of a `timestamp` outside a bare
   table field body (§2.11) are stated in those sections.
-- **The central Go-first refusal** is one rule in the compiler: a target
-  whose carrier is not Go refuses a unit that uses a construct Go carries
-  first, once and by name, naming the construct, the field or table, and the
-  target. It covers `| required` (§2.3), `forms` (§2.12), `integrity` (§2.14),
-  a one-sided integer range (§4.3), an optional scalar over a variable closure
-  (§2.3), `?map` (§2.8), `timestamp` (§2.11) and testgen (§16.11), as well as
-  the text lists, unbounded text and array root named above. Every target
-  carries each of these but testgen today, so the rule refuses none of them;
-  testgen is carried by Go, Lua and Squirrel and refused by every other
-  `--lang` (§16.11).
+- **The central carrier refusal** is one rule in the compiler: a target that
+  has not registered a construct refuses a unit that uses it, once and by
+  name, naming the construct, the field or table, and the target. It covers
+  `| required` (§2.3), `forms` (§2.12), `integrity` (§2.14),
+  a one-sided integer range (§4.3), an optional scalar over a variable
+  closure (§2.3), `?map` (§2.8), `timestamp` (§2.11), and the text lists,
+  unbounded text and array root named above. Go carried each of them first;
+  **every built-in target now registers all of them**, so the rule refuses
+  none of them. testgen (§16.11) has its own refusal: Go, Lua and Squirrel
+  carry it and every other `--lang` is refused by name.
 - **The block form** (§2.7), each refusal naming the table and the field or
   declaration at fault. **Nothing declares the form, so nothing is refused
   FOR it** — a table that cannot have one simply has none (§19) — and there
@@ -16004,7 +16033,7 @@ Per kind:
 | `map[string]V` unbounded key | object keyed by the KEY | the map row with NO key bound: no key is refused for its length; a repeated key refuses `malformed` (§2.13.1) |
 | text list `[..N]?string(M)`, `[]?string(M)` | array of strings and `null` | `["a",null,"b"]`: a present element is its string, `""` included, and an absent element is `null`; any other JSON type refuses `kind_mismatch`; the bounds as above |
 | a table declared `json = "array"` | array | the table's text IS its one field's array, wherever the table appears (§16.10) |
-| a table declared `json = "value"` | any JSON value | the table's text IS the raw value its tape holds, wherever the table appears; zero nodes is `null` (§16.13) |
+| a table declared `json = "value"` | any JSON value | the table's text IS the raw value its tape holds, wherever the table appears; zero nodes is `null` (§16.13; specified, and refused by the compiler today) |
 | `[]T`, `[]*T` unbounded array | array | the bounded array's row with NO bound, so no count is refused (§2.9); `[]` is an empty list and `null` refuses `kind_mismatch`; a `[]*T`'s elements take the pointer row above, `&node` and all; written in INDEX order, which is the only order there is |
 
 **A `bytes(N)` body's base64 grammar is §16.8's canonical base64, and both Go
@@ -17058,7 +17087,8 @@ mismatch is §16.2's ordinary `kind_mismatch`, and refuses by that name.
 **The key changes no wire byte.** It is the text's business, as a field's `json`
 key is (§16.4): it is not in the projection, the build version (§20), the lock
 or the tables baseline (§18), and adding or removing it costs a stored file
-nothing. Every target carries it.
+nothing. Every target carries it; the central by-name refusal remains for a
+target that does not register it.
 
 ### 16.11 Generated round-trip and damage tests: `schema testgen`
 
@@ -17203,8 +17233,8 @@ no sockets and no network, and reads and writes no file: it is a unit test
 under the house rule. The file is GENERATED, so a schema edit is followed by
 `testgen` as it is by `generate`, and the file is never edited by hand.
 
-Go, Lua and Squirrel carry `testgen`; every other `--lang` is refused by name,
-in the compiler, until its own turn.
+Go, Lua and Squirrel carry `testgen` (`schema testgen --lang go|lua|squirrel`);
+every other `--lang` is refused by name, in the compiler, until its own turn.
 
 **A SAME-LENGTH VARIANT SWAP IS OUTSIDE THE TARGET'S ASSERTION.** A fuzz
 target can require a refused read, a re-encoding equal to its input, or — when
@@ -17380,6 +17410,14 @@ table JsonValue | json = "value", integrity = "crc32c"
 }
 ```
 
+**STATUS: SPECIFIED, NOT YET IN THE COMPILER.** `bin/schema check` refuses
+this declaration today, for every target, with `table JsonValue: json =
+"value" names no text shape — on a table line json takes the one value
+"array"`. It also refuses the enum as written, because the variant names
+`False` and `True` are reserved in Python and `String` and `Object` in Dart
+(SPEC.md §4.6). Read this section as the design the construct will land
+under, not as something a schema can declare now.
+
 A container's node comes before its children, and its `count` says how many
 children follow. **Zero nodes is the value `null`**, and it is the table's
 declared default, so a field of this table that a text or a wire never
@@ -17436,9 +17474,10 @@ defined under `&node` (§16.7), and a raw value has no object for that key.
 By value, the table may appear anywhere a table may appear: as the root, as
 a field, as a map value, as a union arm or as a list element. Wherever it
 appears, its text is the raw value. Inside a raw value the `&` prefix is
-ordinary data, as it is in a map's keys. Go carries the key first. Every
-other target refuses a unit that uses it, centrally in the compiler, by name,
-in the sentence it gives `"array"` (§16.10): `target "<target>" refuses the construct json = "value" on table <Table>`, until its port lands and the
+ordinary data, as it is in a map's keys. When the construct lands (see the
+STATUS note above), Go carries the key first, and every other target refuses
+a unit that uses it, centrally in the compiler, by name, in the sentence it
+gives `"array"` (§16.10): `target "<target>" refuses the construct json = "value" on table <Table>`, until its port lands and the
 refusal is removed for that target alone.
 
 **EXACTNESS: what is kept, and what EQUAL means.** The tape keeps every

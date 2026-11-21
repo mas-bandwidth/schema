@@ -78,8 +78,9 @@ func TestSpecGoS11RefusedByName(t *testing.T) {
 			want: []string{"This section is not exhaustive", "`timestamp` outside a bare\n  table field body"},
 		},
 		{
-			name: "central Go-first refusal",
-			want: []string{"The central Go-first refusal", "a one-sided integer range (§4.3)", "testgen (§16.11)"},
+			name:  "central carrier refusal",
+			want:  []string{"The central carrier refusal", "a one-sided integer range (§4.3)", "testgen (§16.11)", "every built-in target now registers all of them"},
+			stale: []string{"The central Go-first refusal"},
 		},
 	}
 
