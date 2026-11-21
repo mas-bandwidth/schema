@@ -1622,50 +1622,50 @@ message-drift varevo_msg_v3_to_v1_batch tblvarevo1 varevo3_conn EvoMsg testdata/
 # message with a counter moved.
 unit tblprior test/tables/prior/PriorNarrow.schema
 # a ranged int32
-message-prior prior_scalar_inside tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"scalar":40} read
-message-prior prior_scalar_past   tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"scalar":75} refused
+message-prior prior_scalar_inside tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"scalar":40} read
+message-prior prior_scalar_past   tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"scalar":75} refused
 # a ranged uint8
-message-prior prior_small_inside tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"small":40} read
-message-prior prior_small_past   tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"small":75} refused
+message-prior prior_small_inside tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"small":40} read
+message-prior prior_small_past   tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"small":75} refused
 # a ranged int64
-message-prior prior_wide_inside tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"wide":"40"} read
-message-prior prior_wide_past   tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"wide":"75"} refused
+message-prior prior_wide_inside tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"wide":"40"} read
+message-prior prior_wide_past   tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"wide":"75"} refused
 # bits(7) read as bits(5)
-message-prior prior_mask_inside tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"mask":25} read
-message-prior prior_mask_past   tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"mask":75} refused
+message-prior prior_mask_inside tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"mask":25} read
+message-prior prior_mask_past   tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"mask":75} refused
 # a fixed array element
-message-prior prior_pair_inside tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"pair":[40,10]} read
-message-prior prior_pair_past   tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"pair":[75,10]} refused
+message-prior prior_pair_inside tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"pair":[40,10]} read
+message-prior prior_pair_past   tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"pair":[75,10]} refused
 # a counted array element
-message-prior prior_list_inside tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"list":[40,10]} read
-message-prior prior_list_past   tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"list":[10,75]} refused
+message-prior prior_list_inside tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"list":[40,10]} read
+message-prior prior_list_past   tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"list":[10,75]} refused
 # an enum-keyed array element
-message-prior prior_keyed_inside tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"keyed":{"X":40,"Y":10}} read
-message-prior prior_keyed_past   tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"keyed":{"X":10,"Y":75}} refused
+message-prior prior_keyed_inside tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"keyed":{"X":40,"Y":10}} read
+message-prior prior_keyed_past   tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"keyed":{"X":10,"Y":75}} refused
 # a union arm scalar payload
-message-prior prior_arm_inside tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"arm":{"amount":40}} read
-message-prior prior_arm_past   tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"arm":{"amount":75}} refused
+message-prior prior_arm_inside tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"arm":{"amount":40}} read
+message-prior prior_arm_past   tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"arm":{"amount":75}} refused
 # a union arm record payload
-message-prior prior_arm_record_inside tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"arm":{"inner":{"level":40}}} read
-message-prior prior_arm_record_past   tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"arm":{"inner":{"level":75}}} refused
+message-prior prior_arm_record_inside tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"arm":{"inner":{"level":40}}} read
+message-prior prior_arm_record_past   tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"arm":{"inner":{"level":75}}} refused
 # a nested record field
-message-prior prior_nested_inside tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"nested":{"level":40}} read
-message-prior prior_nested_past   tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"nested":{"level":75}} refused
+message-prior prior_nested_inside tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"nested":{"level":40}} read
+message-prior prior_nested_past   tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"nested":{"level":75}} refused
 # a field of a nested table in an array
-message-prior prior_cells_inside tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"cells":[{"depth":40},{"depth":10}]} read
-message-prior prior_cells_past   tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"cells":[{"depth":10},{"depth":75}]} refused
+message-prior prior_cells_inside tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"cells":[{"depth":40},{"depth":10}]} read
+message-prior prior_cells_past   tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"cells":[{"depth":10},{"depth":75}]} refused
 # a ranged float32
-message-prior prior_ratio_inside tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"ratio":40.5} read
-message-prior prior_ratio_past   tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"ratio":75.5} refused
+message-prior prior_ratio_inside tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"ratio":40.5} read
+message-prior prior_ratio_past   tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"ratio":75.5} refused
 # a ranged float64
-message-prior prior_real_inside tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"real":40.5} read
-message-prior prior_real_past   tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"real":75.5} refused
+message-prior prior_real_inside tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"real":40.5} read
+message-prior prior_real_past   tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"real":75.5} refused
 # a quantized float
-message-prior prior_quant_inside tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"quant":40.5} read
-message-prior prior_quant_past   tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"quant":75.5} refused
+message-prior prior_quant_inside tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"quant":40.5} read
+message-prior prior_quant_past   tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"quant":75.5} refused
 # a ranged fixed-point value
-message-prior prior_fx_inside tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"fx":40.5} read
-message-prior prior_fx_past   tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"fx":75.5} refused
+message-prior prior_fx_inside tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"fx":40.5} read
+message-prior prior_fx_past   tblprior Prior test/tables/prior/PriorWide.schema 0xc0f975455cd73dd8 {"fx":75.5} refused
 
 rewrite varevo_v1_as_v2                 tblvarevo2 EvoDoc testdata/conformance/tables/wire/varevo_v1_full.bin
 rewrite varevo_v1_as_v3                 tblvarevo3 EvoDoc testdata/conformance/tables/wire/varevo_v1_full.bin
