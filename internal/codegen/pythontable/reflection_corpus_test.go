@@ -132,6 +132,7 @@ func TestPythonReflectionCorpus(t *testing.T) {
 	units := reflectionUnits(t)
 	for _, row := range units {
 		t.Run(row.name, func(t *testing.T) {
+			t.Parallel()
 			u := loadUnitPaths(t, row.paths...)
 			files, err := reflectionGenerate(u)
 			if err != nil {
@@ -370,6 +371,7 @@ func TestPythonReflectionStrictTypes(t *testing.T) {
 			continue
 		}
 		t.Run(row.name, func(t *testing.T) {
+			t.Parallel()
 			u := loadUnitPaths(t, row.paths...)
 			files, err := reflectionGenerate(u)
 			if err != nil {

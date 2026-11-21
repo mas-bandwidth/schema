@@ -65,9 +65,16 @@ build/conformance-harness-goose: $(wildcard test/conformance/harness/*.go) $(GO_
 # build/fixedform-corpus and must save it back byte for byte, so the corpus is
 # a prerequisite, and SCHEMA_REQUIRE_CORPUS=1 makes a missing oracle a failure
 # rather than the skip a bare `go test` takes.
-.PHONY: test-goose update-goldens-goose
+.PHONY: test-goose test-goose-recipe update-goldens-goose
 test-goose: toolchain-goose build/fixedform-corpus/.stamp
-	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/goose/... ./internal/codegen/goosetable/...
+	$(MAKE) test-goose-recipe
+test-goose-recipe: toolchain-goose build/fixedform-corpus/.stamp
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/goose/...
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/goosetable -run '^TestGoose[A-C]'
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/goosetable -run '^TestGoose[D-E]'
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/goosetable -run '^TestGooseF'
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/goosetable -run '^TestGoose[G-P]'
+	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/goosetable -skip '^TestGoose[A-C]|^TestGoose[D-E]|^TestGooseF|^TestGoose[G-P]'
 update-goldens-goose: ;
 
 # THE FIXED FORM'S NEGATIVE CONTROL (make/negative-controls.json, group

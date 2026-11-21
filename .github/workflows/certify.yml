@@ -112,7 +112,9 @@ jobs:
           - { os: fleet, shard: elixir-3, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: elixir-4, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: go, runner: [self-hosted, Linux, X64, fleet, schema] }
-          - { os: fleet, shard: goose, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: goose-1, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: goose-2, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: goose-3, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: java, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: js, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: lobster, runner: [self-hosted, Linux, X64, fleet, schema] }
@@ -124,7 +126,10 @@ jobs:
           - { os: fleet, shard: python-3, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: python-4, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: python-5, runner: [self-hosted, Linux, X64, fleet, schema] }
-          - { os: fleet, shard: ruby, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: ruby-1, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: ruby-2, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: ruby-3, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: ruby-4, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: rust, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: squirrel, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: unity, runner: [self-hosted, Linux, X64, fleet, schema] }
@@ -163,7 +168,10 @@ jobs:
           - { os: macos-fleet, shard: python-3, runner: [self-hosted, macOS, ARM64, fleet, schema] }
           - { os: macos-fleet, shard: python-4, runner: [self-hosted, macOS, ARM64, fleet, schema] }
           - { os: macos-fleet, shard: python-5, runner: [self-hosted, macOS, ARM64, fleet, schema] }
-          - { os: macos-fleet, shard: ruby, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: ruby-1, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: ruby-2, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: ruby-3, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: ruby-4, runner: [self-hosted, macOS, ARM64, fleet, schema] }
           - { os: macos-fleet, shard: rust, runner: [self-hosted, macOS, ARM64, fleet, schema] }
           - { os: macos-fleet, shard: squirrel, runner: [self-hosted, macOS, ARM64, fleet, schema] }
           - { os: macos-fleet, shard: unity, runner: [self-hosted, macOS, ARM64, fleet, schema] }
@@ -244,7 +252,7 @@ jobs:
         if: matrix.shard == 'java'
 
       - uses: ./.github/actions/ruby
-        if: matrix.shard == 'ruby'
+        if: startsWith(matrix.shard, 'ruby-')
 
       - uses: ./.github/actions/moo
         if: matrix.shard == 'moo'
@@ -265,9 +273,9 @@ jobs:
           sudo apt-get install -y --no-install-recommends libopengl0 libglx0
 
       - uses: ./.github/actions/dist-pins
-        if: matrix.shard == 'lobster' || matrix.shard == 'lua' || matrix.shard == 'goose' || matrix.shard == 'luau'
+        if: matrix.shard == 'lobster' || matrix.shard == 'lua' || startsWith(matrix.shard, 'goose-') || matrix.shard == 'luau'
         with:
-          pins: ${{ matrix.shard }}
+          pins: ${{ startsWith(matrix.shard, 'goose-') && 'goose' || matrix.shard }}
 
       - name: install the Squirrel pin
         if: matrix.shard == 'squirrel'
@@ -459,6 +467,10 @@ jobs:
             EXTRA_BUILDS+=(build/conformance-python build/fixedform-corpus/.stamp)
           elif [ "$BASE_LEG" = "elixir" ]; then
             EXTRA_BUILDS+=(generated/elixir/.stamp generated/elixir-ludicrous/.stamp generated/bench/elixir/.stamp build/tables-generated-elixir/.stamp build/fixedform-corpus/.stamp)
+          elif [ "$BASE_LEG" = "goose" ]; then
+            EXTRA_BUILDS+=(build/fixedform-corpus/.stamp build/conformance-harness-goose)
+          elif [ "$BASE_LEG" = "ruby" ]; then
+            EXTRA_BUILDS+=(build/schema-ruby build/conformance-ruby build/fixedform-corpus/.stamp)
           fi
           make -j"$JOBS" "${EXTRA_BUILDS[@]}" "${MAKE_VARS[@]}"
           unset MAKEFLAGS
@@ -482,6 +494,7 @@ jobs:
                   x = $i
                   if (x == "" || seen[x]++) continue
                   if (mode == "no-py-wf" && x ~ /^python-wirefuzz-.*-shard-[0-9]+$/) continue
+                  if (mode == "no-rb-wf" && x ~ /^ruby-wirefuzz-.*-shard-[0-9]+$/) continue
                   items[++m] = x
                 }
               }
@@ -546,6 +559,29 @@ jobs:
               unset MAKEFLAGS
             else
               run_prereq_slice "test-python" "$((SHARD_IDX - 2))" 3 "no-py-wf"
+            fi
+          elif [ "$BASE_LEG" = "goose" ]; then
+            if [ "$SHARD_IDX" = "1" ]; then
+              make conformance SCHEMA_SKIP_LEGS="$OTHER_LEGS" "${MAKE_VARS[@]}"
+              make test-goose-recipe "${MAKE_VARS[@]}"
+            else
+              run_prereq_slice "test-goose" "$((SHARD_IDX - 1))" 2 "all"
+            fi
+          elif [ "$BASE_LEG" = "ruby" ]; then
+            if [ "$SHARD_IDX" = "1" ]; then
+              make conformance SCHEMA_SKIP_LEGS="$OTHER_LEGS" "${MAKE_VARS[@]}"
+              make test-ruby-recipe "${MAKE_VARS[@]}"
+            elif [ "$SHARD_IDX" = "2" ]; then
+              WF_SHARDS=$({ make -qp "${MAKE_VARS[@]}" 2>/dev/null || true; } | awk '$1 == "test-ruby:" {for(i=2;i<=NF;i++) if($i ~ /^ruby-wirefuzz-.*-shard-[0-9]+$/) print $i; exit}')
+              if [ -z "$WF_SHARDS" ]; then
+                echo "::error::no ruby-wirefuzz-*-shard-* targets found on test-ruby:"
+                exit 1
+              fi
+              # shellcheck disable=SC2086
+              make -j"$JOBS" $WF_SHARDS "${MAKE_VARS[@]}"
+              unset MAKEFLAGS
+            else
+              run_prereq_slice "test-ruby" "$((SHARD_IDX - 2))" 2 "no-rb-wf"
             fi
           else
             echo "::error::unexpected sharded leg $SHARD"
