@@ -50,7 +50,8 @@ func tableJSONReadPointer(in *tableJSONIn,slot *int64,f *TableFieldInfo,depth in
  if in.peek()!='{'{in.bad=true;return false}
  start:=in.pos;probe:=*in;probe.pos++;label:=uint64(0);hasLabel:=false
  if probe.peek()!='}' {var key [tableJSONMaxKey]byte;length,ok:=probe.scanKey(key[:]);if !ok {in.bad=true;return false};if length>0&&key[0]=='&'{if string(key[:length])!="&node"||probe.peek()!=':'{in.bad=true;return false};probe.pos++;label,ok=tableJSONReadLabel(&probe);if !ok{in.bad=true;return false};hasLabel=true}}
- if hasLabel {entry,exists:=in.graph.getLabel(label);if exists&&entry.open{in.bad=true;return false};if probe.peek()=='}'{if !exists{in.bad=true;return false};probe.pos++;in.pos=probe.pos;if entry.ref!=0 {if entry.target!=f.TargetId{in.report.Refuse(TableRefuseKindMismatch,"")}else{*slot=entry.ref}};return true};if exists {in.bad=true;return false};probe.pos++;if probe.peek()=='}'{in.bad=true;return false}}
+ // after the label, "," then fields DEFINES it, and "}" alone, a trailing "," allowed (§16.2), REFERS to it
+ if hasLabel {entry,exists:=in.graph.getLabel(label);if exists&&entry.open{in.bad=true;return false};if probe.peek()==','{probe.pos++};if probe.peek()=='}'{if !exists{in.bad=true;return false};probe.pos++;in.pos=probe.pos;if entry.ref!=0 {if entry.target!=f.TargetId{in.report.Refuse(TableRefuseKindMismatch,"")}else{*slot=entry.ref}};return true};if exists {in.bad=true;return false}}
  p,ref:=in.graph.alloc(int64(f.Table().Size));if p==nil{in.bad=true;return false};*slot=ref;f.Table().Reset(p)
  if hasLabel {if !in.graph.setLabel(label,tableJSONLabel{ref:ref,target:f.TargetId,open:true}){in.bad=true;return false};in.pos=probe.pos;ok:=tableJSONReadTableFields(in,p,f.Table(),depth,false);if ok {entry,_:=in.graph.getLabel(label);entry.open=false;if !in.graph.setLabel(label,entry){in.bad=true;return false}};return ok}
  in.pos=start;return tableJSONReadTable(in,p,f.Table(),depth)
@@ -66,21 +67,21 @@ func tableJSONReadBlob(in *tableJSONIn,slot *int64,f *TableFieldInfo) bool {
  p,ref:=in.graph.alloc(8+int64(size)+1);if p==nil{in.bad=true;return false};data:=unsafe.Slice((*byte)(unsafe.Add(p,8)),int(size));length,ok:=in.scanString(data);if !ok{return false};*(*uint32)(p)=uint32(length);*(*uint32)(unsafe.Add(p,4))=0;*slot=ref;return true
 }
 
-// A skipped definition keeps its label, without imposing graph syntax on a
-// value this reader is skipping. The ordinary JSON scanner still validates it.
-func tableJSONDropLabel(in *tableJSONIn) {
- if in.graph==nil||in.peek()!='{' {return}
- probe:=*in;probe.pos++
- keyStart:=probe.pos
- length,ok:=probe.scanString(nil)
- if !ok||length!=int32(len("&node")) {return}
- probe.pos=keyStart
- var key [16]byte
- n,ok:=probe.scanKey(key[:])
- if !ok||string(key[:n])!="&node"||probe.peek()!=':' {return}
- probe.pos++
- label,ok:=tableJSONReadLabel(&probe)
- if !ok||probe.peek()!=',' {return}
- if _,exists:=in.graph.getLabel(label);!exists{if !in.graph.setLabel(label,tableJSONLabel{}){in.bad=true}}
+// tableJSONDropLabel reads the label of an "&node" key that opens an object
+// the walk is SKIPPING, the key and its colon already consumed. The label
+// rules apply there as everywhere (docs/SPEC-TABLES.md §16.7): the grammar,
+// then a label alone (a trailing "," allowed) REFERS and refuses unless the
+// text defined it and the definition closed, its "}" consumed here; a label
+// with fields after it DEFINES and refuses if already defined. A skipped
+// definition keeps its label, with no node, OPEN until the skipping walk
+// closes its object, so a reference to it after that reads null.
+func tableJSONDropLabel(in *tableJSONIn) (reference bool, label uint64, ok bool) {
+ label,ok=tableJSONReadLabel(in);if !ok{return false,0,false}
+ entry,exists:=in.graph.getLabel(label)
+ if in.peek()==','{in.pos++}
+ if in.peek()=='}' {in.pos++;if !exists||entry.open{in.bad=true;return false,0,false};return true,0,true}
+ if exists{in.bad=true;return false,0,false}
+ if !in.graph.setLabel(label,tableJSONLabel{open:true}){in.bad=true;return false,0,false}
+ return false,label,true
 }
 `

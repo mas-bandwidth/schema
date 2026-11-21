@@ -21,11 +21,23 @@ type tableFixedSrcInterval struct {
 	lo, hi, elem int64
 }
 
+// tableFixedKindElem is one leaf's element width. A 1- or 2-byte integer kind
+// stored at 4 bytes is a `bits(N)` with N <= 16, which rides at its declared
+// storage width (TableFixedStorageBytes; docs/FIXED-FORM-ALGORITHM.md §1.2
+// admits kinds 6 and 7 at size 4). A big-endian copy reverses that whole
+// storage word, so the element is the storage width and not the kind's, which
+// is the compiled plan's `elem = size` rule for the same leaf.
 func tableFixedKindElem(kind int, size int64) int64 {
 	switch kind {
 	case TableKindBool, TableKindI8, TableKindU8, TableKindFixed8, TableKindUFixed8:
+		if size == 4 {
+			return size
+		}
 		return 1
 	case TableKindI16, TableKindU16, TableKindFixed16, TableKindUFixed16:
+		if size == 4 {
+			return size
+		}
 		return 2
 	case TableKindI32, TableKindU32, TableKindF32, TableKindFixed32, TableKindUFixed32:
 		return 4
