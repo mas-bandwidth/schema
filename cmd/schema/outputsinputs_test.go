@@ -396,3 +396,113 @@ func TestPublishThatCannotPutAnEntryBackNamesBothPaths(t *testing.T) {
 		t.Errorf("%s holds %v; want the new side file and the two kept originals, nothing staged", dir, entries)
 	}
 }
+
+// copyTree copies a directory of regular files, so an end-to-end test never
+// hands a command the repository's own sources as a place it might write.
+func copyTree(t *testing.T, from, to string) {
+	t.Helper()
+	entries, err := os.ReadDir(from)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(to, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			copyTree(t, filepath.Join(from, e.Name()), filepath.Join(to, e.Name()))
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(from, e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		writeTestFile(t, filepath.Join(to, e.Name()), string(data))
+	}
+}
+
+// The commands themselves, end to end: the reviewer's reproductions of F-010
+// and F-011. Each command named an input of its own as an output, exited 0
+// and replaced it; now each exits nonzero naming the flag, the input is byte
+// for byte what it was, and the unit still checks. The control runs the same
+// commands with destinations of their own.
+func TestCommandsRefuseOutputsOverWhatTheyRead(t *testing.T) {
+	bin := buildCLI(t)
+	work, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	unit := filepath.Join(work, "unit")
+	tree := filepath.Join(work, "tree")
+	copyTree(t, cookUnit, unit)
+	copyTree(t, cookTree, tree)
+	source := filepath.Join(unit, "Pack.schema")
+	field := filepath.Join(tree, "settings.json")
+	version := filepath.Join(tree, "version.json")
+	read := func(path string) string {
+		t.Helper()
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(data)
+	}
+	wantSource, wantField, wantVersion := read(source), read(field), read(version)
+	out := filepath.Join(work, "out")
+	if err := os.Mkdir(out, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// the controls, which also make the files the refused runs would read
+	wire := filepath.Join(out, "config.bin")
+	cook := filepath.Join(out, "config.cook")
+	run(t, bin, "pack", "--root", cookRoot, "--out", wire, tree, unit)
+	run(t, bin, "cook", "--root", cookRoot, "--in", tree, "--attribution", filepath.Join(out, "config.attr"), "--out", filepath.Join(out, "split.cook"), unit)
+	run(t, bin, "cook", "--root", cookRoot, "--in", wire, "--out", cook, unit)
+	run(t, bin, "uncook", "--root", cookRoot, "--in", cook, "--out", filepath.Join(out, "back.bin"), unit)
+	wantOut := []string{"back.bin", "config.attr", "config.bin", "config.cook", "split.cook"}
+
+	spare := filepath.Join(out, "spare.bin")
+	for _, tc := range []struct {
+		name string
+		flag string // the output flag the refusal names
+		args []string
+	}{
+		{"pack --out over a schema source", "--out",
+			[]string{"pack", "--root", cookRoot, "--out", source, tree, unit}},
+		{"cook --attribution over a schema source", "--attribution",
+			[]string{"cook", "--root", cookRoot, "--in", tree, "--attribution", source, "--out", spare, unit}},
+		{"cook --out over a schema source", "--out",
+			[]string{"cook", "--root", cookRoot, "--in", wire, "--out", source, unit}},
+		{"uncook --out over a schema source", "--out",
+			[]string{"uncook", "--root", cookRoot, "--in", cook, "--out", source, unit}},
+		{"uncook --out over its own cook", "--out",
+			[]string{"uncook", "--root", cookRoot, "--in", cook, "--out", cook, unit}},
+		{"pack --out over a field file of its tree", "--out",
+			[]string{"pack", "--root", cookRoot, "--out", field, tree, unit}},
+		{"pack --out as a fresh file in its tree", "--out",
+			[]string{"pack", "--root", cookRoot, "--out", filepath.Join(tree, "fresh.bin"), tree, unit}},
+		{"cook --attribution over a field file of its tree", "--attribution",
+			[]string{"cook", "--root", cookRoot, "--in", tree, "--attribution", field, "--out", spare, unit}},
+		{"cook --out over the version file of its tree", "--out",
+			[]string{"cook", "--root", cookRoot, "--in", tree, "--out", version, unit}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			wantCook := read(cook)
+			code, text := runExit(t, bin, tc.args...)
+			if code == 0 {
+				t.Errorf("exited 0:\n%s", text)
+			}
+			if !strings.Contains(text, tc.flag) {
+				t.Errorf("the refusal does not name %s:\n%s", tc.flag, text)
+			}
+			if read(source) != wantSource || read(field) != wantField || read(version) != wantVersion || read(cook) != wantCook {
+				t.Errorf("an input was rewritten:\n%s", text)
+			}
+			wantEntries(t, out, wantOut...)
+			wantEntries(t, tree, "reserves.json", "settings.json", "ships", "thresholds", "version.json")
+			// the next run still works: the unit checks and the tree packs
+			run(t, bin, "check", unit)
+			run(t, bin, "pack", "--root", cookRoot, "--out", wire, tree, unit)
+		})
+	}
+}
