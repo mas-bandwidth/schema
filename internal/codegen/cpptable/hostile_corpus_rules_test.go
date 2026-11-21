@@ -219,6 +219,15 @@ func TestCppCountedArrayBelowItsMinimumIsRefused(t *testing.T) {
 	}
 }
 
+func TestCppTextWriteRefusesACountBelowItsMinimum(t *testing.T) {
+	t.Parallel()
+	src := hostileRulesEmitted(t, hostileRulesBirthSchema)
+	body := hostileFunction(t, src, "inline bool TableJsonCountInContract(")
+	if !strings.Contains(body, "count >= f->array_min && count <= f->array_bound") {
+		t.Fatalf("the text write does not hold a stored count to its declared Min (§5.1 row 3):\n%s", body)
+	}
+}
+
 // hostileFunction is the text of the first DEFINITION whose head contains
 // head, up to the closing brace in column one: these runtime functions carry
 // '{' and '}' as character literals, which a brace count would misread.
