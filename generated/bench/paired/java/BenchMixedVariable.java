@@ -881,6 +881,8 @@ public final class BenchMixedVariable {
                                 if (n < 0 || n > 8) {
                                     n = 8;
                                     report.refuse("count_over_bound");
+                                } else if (n < 1) {
+                                    report.refuse("count_over_bound");
                                 }
                                 v.entities.clear();
                                 for (long i = 0; i < n; i++) {
