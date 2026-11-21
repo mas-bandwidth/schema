@@ -1,6 +1,9 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -179,6 +182,127 @@ func TestManyRedSkipsAreCountedPastTheFirstLines(t *testing.T) {
 	for _, want := range []string{"SKIP WITH NO REASON  and 5 more", "RED, 45 skip(s)"} {
 		if !strings.Contains(f.text, want) {
 			t.Errorf("report lacks %q:\n%s", want, f.text)
+		}
+	}
+}
+
+// F-175: with -count=2 a test skips on its first run and passes on its
+// second. The skip happened: the second run's pass does not take it back.
+func TestASkipIsKeptWhenALaterRunOfTheTestPasses(t *testing.T) {
+	t.Parallel()
+	const stream = `{"Action":"start","Package":"r"}
+{"Action":"run","Package":"r","Test":"TestRepeat"}
+{"Action":"output","Package":"r","Test":"TestRepeat","Output":"    r_test.go:9: no Elixir on PATH\n"}
+{"Action":"output","Package":"r","Test":"TestRepeat","Output":"--- SKIP: TestRepeat (0.00s)\n"}
+{"Action":"skip","Package":"r","Test":"TestRepeat","Elapsed":0}
+{"Action":"run","Package":"r","Test":"TestRepeat"}
+{"Action":"output","Package":"r","Test":"TestRepeat","Output":"--- PASS: TestRepeat (0.00s)\n"}
+{"Action":"pass","Package":"r","Test":"TestRepeat","Elapsed":0}
+{"Action":"pass","Package":"r","Elapsed":0.1}
+`
+	f := reportOf(t, 10*time.Minute, stream).skipFindings(ledgerOf(t, "tool:elixir"))
+	if !f.red || !strings.Contains(f.text, "skip ledger: 1 skip(s)") || !strings.Contains(f.text, "UNEXPECTED SKIP      r TestRepeat") {
+		t.Errorf("the first run's required skip was lost:\n%s", f.text)
+	}
+}
+
+// F-176: a cleanup registered before the skip logs after it, so the skip's
+// own reason is not the last line the test logged. Every entry is read: one
+// of a class the lane provides is red whatever was logged around it.
+func TestACleanupLogDoesNotReclassifyASkip(t *testing.T) {
+	t.Parallel()
+	const stream = `{"Action":"start","Package":"c"}
+{"Action":"run","Package":"c","Test":"TestCleanup"}
+{"Action":"output","Package":"c","Test":"TestCleanup","Output":"    c_test.go:9: no Elixir on PATH\n"}
+{"Action":"output","Package":"c","Test":"TestCleanup","Output":"    c_test.go:7: SCHEMA_SLOW: auxiliary log\n"}
+{"Action":"output","Package":"c","Test":"TestCleanup","Output":"--- SKIP: TestCleanup (0.00s)\n"}
+{"Action":"skip","Package":"c","Test":"TestCleanup","Elapsed":0}
+{"Action":"run","Package":"c","Test":"TestSlow"}
+{"Action":"output","Package":"c","Test":"TestSlow","Output":"    c_test.go:20: SCHEMA_SLOW: gated\n"}
+{"Action":"skip","Package":"c","Test":"TestSlow","Elapsed":0}
+{"Action":"pass","Package":"c","Elapsed":0.1}
+`
+	f := reportOf(t, 10*time.Minute, stream).skipFindings(ledgerOf(t, "tool:elixir"))
+	if !f.red || !strings.Contains(f.text, `UNEXPECTED SKIP      c TestCleanup: "no Elixir on PATH" is class tool:elixir`) {
+		t.Errorf("a cleanup's log line reclassified a required skip:\n%s", f.text)
+	}
+	if strings.Contains(f.text, "TestSlow:") || !strings.Contains(f.text, "RED, 1 skip(s)") {
+		t.Errorf("the ordinary slow skip is accepted, and only the one skip is red:\n%s", f.text)
+	}
+}
+
+// F-176: t.Skip prints its reason at the end of what the test logged. A test
+// that logs more than the kept output before it skips (one 70 KB line, or a
+// thousand short ones) keeps the reason: an ordinary slow skip is accepted,
+// and a skip for a toolchain the lane provides is red.
+func TestASkipAfterLongOutputKeepsItsReason(t *testing.T) {
+	t.Parallel()
+	esc := func(s string) string { b, _ := json.Marshal(s); return string(b) }
+	for name, log := range map[string][]string{
+		"one long line":    {"    l_test.go:5: " + strings.Repeat("A", 70_000) + "\n"},
+		"many short lines": slices.Repeat([]string{"    l_test.go:5: " + strings.Repeat("B", 99) + "\n"}, 1000),
+	} {
+		var b strings.Builder
+		b.WriteString(`{"Action":"start","Package":"l"}` + "\n")
+		for _, test := range []string{"TestSlow", "TestTool"} {
+			fmt.Fprintf(&b, `{"Action":"run","Package":"l","Test":%q}`+"\n", test)
+			for _, line := range log {
+				fmt.Fprintf(&b, `{"Action":"output","Package":"l","Test":%q,"Output":%s}`+"\n", test, esc(line))
+			}
+			why := map[string]string{"TestSlow": "SCHEMA_SLOW: trace collection finished", "TestTool": "no Elixir on PATH"}[test]
+			fmt.Fprintf(&b, `{"Action":"output","Package":"l","Test":%q,"Output":%s}`+"\n", test, esc("    l_test.go:9: "+why+"\n"))
+			fmt.Fprintf(&b, `{"Action":"output","Package":"l","Test":%q,"Output":%s}`+"\n", test, esc("--- SKIP: "+test+" (0.00s)\n"))
+			fmt.Fprintf(&b, `{"Action":"skip","Package":"l","Test":%q,"Elapsed":0}`+"\n", test)
+		}
+		b.WriteString(`{"Action":"pass","Package":"l","Elapsed":0.1}` + "\n")
+		f := reportOf(t, 10*time.Minute, b.String()).skipFindings(ledgerOf(t, "tool:elixir"))
+		if !strings.Contains(f.text, `UNEXPECTED SKIP      l TestTool: "no Elixir on PATH" is class tool:elixir`) {
+			t.Errorf("%s: the required skip after long output was not read:\n%.2000s", name, f.text)
+		}
+		if strings.Contains(f.text, "TestSlow:") || !strings.Contains(f.text, "RED, 1 skip(s)") {
+			t.Errorf("%s: the slow skip after long output is accepted, and only the toolchain skip is red:\n%.2000s", name, f.text)
+		}
+	}
+}
+
+// tail keeps whole lines: a line cut in the middle is dropped, never read as
+// an entry of its own.
+func TestTailKeepsWholeLines(t *testing.T) {
+	t.Parallel()
+	short := []byte("    a_test.go:1: x\n")
+	if got := tail(short); string(got) != string(short) {
+		t.Errorf("output under the bound is kept whole, got %q", got)
+	}
+	head := strings.Repeat("H", maxSkipOutput) + "\n"
+	last := "    a_test.go:9: no Elixir on PATH\n"
+	if got := string(tail([]byte(head + last))); got != last {
+		t.Errorf("the cut head line is dropped and the last line kept, got %.80q", got)
+	}
+	exact := strings.Repeat("H", 10) + "\n" + strings.Repeat("L", maxSkipOutput-1) + "\n"
+	if got := string(tail([]byte(exact))); got != exact[11:] {
+		t.Errorf("a cut on a line boundary keeps the line after it, got %d bytes", len(got))
+	}
+}
+
+// F-177: a record that holds no package event (empty, or the recorder's
+// budget line alone) is not a record of a run.
+func TestARecordWithNoPackageEventIsNotARecord(t *testing.T) {
+	t.Parallel()
+	for name, c := range map[string]struct {
+		stream string
+		want   bool
+	}{
+		"empty":        {"", false},
+		"budget only":  {`{"Action":"budget","Budget":"10m"}` + "\n", false},
+		"cut mid-line": {`{"Action":"budget","Budget":"10m"}` + "\n" + `{"Action":"sta`, false},
+		"a run":        {finished, true},
+	} {
+		r := newReport()
+		if err := r.add(strings.NewReader(c.stream), 10*time.Minute); err != nil {
+			t.Fatal(err)
+		}
+		if got := len(r.emptyRecords()) == 0; got != c.want {
+			t.Errorf("%s: the record counts as a run: %v, want %v", name, got, c.want)
 		}
 	}
 }

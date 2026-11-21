@@ -18,11 +18,14 @@
 // the run short. A test failure is the test step's verdict, not this
 // report's, so it is listed and not counted twice. A directory with no record
 // says so and is not an error: a row whose steps ran no `go test` has nothing
-// to report.
+// to report. With -require-record it is red, and so is a record file that
+// holds no go test event (empty, or the budget line alone): a recorder that
+// started and recorded no run is never read as "no failures, no skips".
 package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -65,6 +68,12 @@ type report struct {
 	packages map[key]*result
 	tests    map[key]*result
 	records  int
+	// skips is every skip a test reported, in order: a later run of the same
+	// test (-count=2) replaces its result and never its earlier skip
+	skips []skipped
+	// events counts each record's package events: a record with none (an
+	// empty file, the recorder's budget line alone) recorded no run
+	events []int
 }
 
 func newReport() *report {
@@ -88,6 +97,7 @@ func parseBudget(s string) time.Duration {
 // last line, a stray print) is skipped.
 func (r *report) add(rd io.Reader, budget time.Duration) error {
 	r.records++
+	r.events = append(r.events, 0)
 	br := bufio.NewReader(rd)
 	for {
 		line, err := br.ReadBytes('\n')
@@ -115,11 +125,18 @@ func (r *report) event(ev event, budget time.Duration) {
 	k := key{r.records, ev.Package, ev.Test}
 	switch ev.Action {
 	case "start", "run", "pass", "fail", "skip":
+		r.events[len(r.events)-1]++
 	case "output":
 		// a test's own lines are where a skip says why (skips.go); a line is
-		// kept only for a test that is running, and only up to maxSkipOutput
-		if res := r.tests[k]; ev.Test != "" && res != nil && !res.finished && len(res.out) < maxSkipOutput {
+		// kept only for a test that is running, and only its last
+		// maxSkipOutput bytes: t.Skip prints its reason at the END of what
+		// the test logged, so a test that logs 70 KB and then skips keeps
+		// the reason, not the head of its log
+		if res := r.tests[k]; ev.Test != "" && res != nil && !res.finished {
 			res.out = append(res.out, ev.Output...)
+			if len(res.out) > 2*maxSkipOutput {
+				res.out = append([]byte(nil), tail(res.out)...)
+			}
 		}
 		return
 	default:
@@ -150,9 +167,10 @@ func (r *report) event(ev event, budget time.Duration) {
 		if ev.Action == "fail" {
 			res.failed = true
 		}
-		if ev.Action != "skip" {
-			res.out = nil // only a skip's reason is read
+		if ev.Action == "skip" && ev.Test != "" {
+			r.skips = append(r.skips, skipped{k, tail(res.out)})
 		}
+		res.out = nil // a skip's output is kept with the skip; nothing else is read
 	}
 }
 
@@ -277,83 +295,132 @@ func (r *report) findings(slowest int) findings {
 }
 
 func main() {
-	budget := flag.Duration("budget", 10*time.Minute, "the package budget for a record that names none (0: no budget)")
-	slowest := flag.Int("slowest", 15, "how many of the slowest tests to list")
-	skips := flag.String("skips", "", "the skip ledger (.github/skip-ledger.txt): every skip is read against it, and a skip with no reason, a reason no line names, or a reason this lane satisfies is red")
-	provides := flag.String("provides", "", "with -skips: the ledger classes this lane satisfies, space-separated (a lane with elixir installed provides tool:elixir)")
-	requireRecord := flag.Bool("require-record", false, "a row with no go test record is red (a lane whose step always runs go test)")
-	flag.Parse()
-	if flag.NArg() == 0 {
-		fmt.Fprintln(os.Stderr, "usage: gotestreport [-budget 10m] [-slowest 15] [-skips <ledger> [-provides \"<class>...\"]] [-require-record] <dir>...")
-		os.Exit(2)
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr, os.Getenv("GITHUB_STEP_SUMMARY")))
+}
+
+// run is the command: its exit status (0 green, 1 red, 2 a usage or read
+// error) from its arguments, what it prints, and the step summary file it
+// appends the report to ("" for none). The record corpus (records_test.go)
+// runs it as CI does.
+func run(args []string, stdout, stderr io.Writer, summary string) int {
+	fs := flag.NewFlagSet("gotestreport", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	budget := fs.Duration("budget", 10*time.Minute, "the package budget for a record that names none (0: no budget)")
+	slowest := fs.Int("slowest", 15, "how many of the slowest tests to list")
+	skips := fs.String("skips", "", "the skip ledger (.github/skip-ledger.txt): every skip is read against it, and a skip with no reason, a reason no line names, or a reason this lane satisfies is red")
+	provides := fs.String("provides", "", "with -skips: the ledger classes this lane satisfies, space-separated (a lane with elixir installed provides tool:elixir)")
+	requireRecord := fs.Bool("require-record", false, "a row with no go test record is red, and so is a record file that holds no go test event (a lane whose step always runs go test)")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if fs.NArg() == 0 {
+		fmt.Fprintln(stderr, "usage: gotestreport [-budget 10m] [-slowest 15] [-skips <ledger> [-provides \"<class>...\"]] [-require-record] <dir>...")
+		return 2
 	}
 	var led *ledger
 	if *skips != "" {
 		f, err := os.Open(*skips)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "gotestreport: %v\n", err)
-			os.Exit(2)
+			fmt.Fprintf(stderr, "gotestreport: %v\n", err)
+			return 2
 		}
 		led, err = readLedger(f, *skips, strings.Fields(*provides))
 		_ = f.Close()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "gotestreport: %v\n", err)
-			os.Exit(2)
+			fmt.Fprintf(stderr, "gotestreport: %v\n", err)
+			return 2
 		}
 	} else if *provides != "" {
-		fmt.Fprintln(os.Stderr, "gotestreport: -provides needs -skips")
-		os.Exit(2)
+		fmt.Fprintln(stderr, "gotestreport: -provides needs -skips")
+		return 2
 	}
 	r := newReport()
 	files := 0
-	for _, dir := range flag.Args() {
+	for _, dir := range fs.Args() {
 		if dir == "" {
 			// an unset PGROUP_GO_TEST_JSON: no record could have been written,
 			// and "no go test ran" would read green
-			fmt.Fprintln(os.Stderr, "gotestreport: an empty directory was named (is PGROUP_GO_TEST_JSON set?)")
-			os.Exit(2)
+			fmt.Fprintln(stderr, "gotestreport: an empty directory was named (is PGROUP_GO_TEST_JSON set?)")
+			return 2
 		}
 		matches, _ := filepath.Glob(filepath.Join(dir, "*.jsonl"))
 		sort.Strings(matches)
 		for _, m := range matches {
 			f, err := os.Open(m)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "gotestreport: %v\n", err)
-				os.Exit(2)
+				fmt.Fprintf(stderr, "gotestreport: %v\n", err)
+				return 2
 			}
 			err = r.add(f, *budget)
 			_ = f.Close()
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "gotestreport: %s: %v\n", m, err)
-				os.Exit(2)
+				fmt.Fprintf(stderr, "gotestreport: %s: %v\n", m, err)
+				return 2
 			}
 			files++
 		}
 	}
 	if files == 0 {
-		fmt.Printf("go test report: no go test ran on this row (%s holds no record)\n", strings.Join(flag.Args(), " "))
+		fmt.Fprintf(stdout, "go test report: no go test ran on this row (%s holds no record)\n", strings.Join(fs.Args(), " "))
 		if *requireRecord {
 			// the step this report follows always runs go test: no record is
 			// a recorder that did not record, and nothing was read
-			fmt.Println("  NO RECORD       this lane's go test left no record, so no test and no skip was read")
-			os.Exit(1)
+			fmt.Fprintln(stdout, "  NO RECORD       this lane's go test left no record, so no test and no skip was read")
+			return 1
 		}
-		return
+		return 0
 	}
 	f := r.findings(*slowest)
+	if empty := r.emptyRecords(); *requireRecord && len(empty) > 0 {
+		// a file is not a record: an empty file, or the recorder's budget
+		// line alone, is a recorder that was cut before go test reported
+		// one package, and nothing in it can be read as "no skips"
+		f.text += fmt.Sprintf("  NO RECORD       %d of %d record file(s) hold no go test event (record #%v): the recorder started and recorded no run\n", len(empty), r.records, empty)
+		f.red = true
+	}
 	if led != nil {
 		sf := r.skipFindings(led)
 		f.text += sf.text
 		f.red = f.red || sf.red
 	}
-	fmt.Print(f.text)
-	if s := os.Getenv("GITHUB_STEP_SUMMARY"); s != "" {
-		if out, err := os.OpenFile(s, os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
+	fmt.Fprint(stdout, f.text)
+	if summary != "" {
+		if out, err := os.OpenFile(summary, os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
 			_, _ = fmt.Fprintf(out, "```\n%s```\n", f.text)
 			_ = out.Close()
 		}
 	}
 	if f.red {
-		os.Exit(1)
+		return 1
 	}
+	return 0
+}
+
+// tail is the last maxSkipOutput bytes of a test's output, from the start of
+// a line: a line cut in the middle is dropped, so its end is never read as an
+// entry of its own.
+func tail(out []byte) []byte {
+	if len(out) <= maxSkipOutput {
+		return out
+	}
+	cut := len(out) - maxSkipOutput
+	if out[cut-1] == '\n' {
+		return out[cut:]
+	}
+	if i := bytes.IndexByte(out[cut:], '\n'); i >= 0 {
+		return out[cut+i+1:]
+	}
+	return out[cut:]
+}
+
+// emptyRecords are the records (1-based, in the order read) that hold no
+// package or test event.
+func (r *report) emptyRecords() []int {
+	var out []int
+	for i, n := range r.events {
+		if n == 0 {
+			out = append(out, i+1)
+		}
+	}
+	return out
 }

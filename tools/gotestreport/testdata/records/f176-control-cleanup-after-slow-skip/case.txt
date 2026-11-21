@@ -1,0 +1,6 @@
+# F-176 control: an ordinary SCHEMA_SLOW skip whose cleanup logs a line the
+# ledger does not name after it. Counted as slow and accepted.
+args: -require-record -provides tool:rust
+exit: 0
+want: skip ledger: 1 skip(s)
+want: 1  slow

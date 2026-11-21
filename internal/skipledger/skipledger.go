@@ -101,20 +101,31 @@ var (
 	framing = regexp.MustCompile(`^\s*(=== |--- )`)
 )
 
-// Reason is why a skipped test says it skipped: the last entry it logged,
-// which is the one t.Skip and t.Skipf print. out is the test's own output as
-// `go test -json` attributes it (what `go test -v` prints for the test). The
-// reason is the text after the entry's file:line, with the continuation
-// lines of a message that spanned several; "" when the test logged nothing
-// before it skipped (t.SkipNow, t.Skip with no argument).
-func Reason(out []byte) string {
+// Entries are the things a skipped test logged, in order, one of which is
+// the reason t.Skip or t.Skipf printed. out is the test's own output as
+// `go test -json` attributes it (what `go test -v` prints for the test).
+// Each entry is the text after its file:line, with the continuation lines of
+// a message that spanned several; an empty entry is dropped. No entry at all
+// is a skip with no reason (t.SkipNow, t.Skip with no argument).
+//
+// The reason is not always the last entry: a t.Cleanup registered before the
+// skip logs after it. A reader therefore classifies every entry.
+func Entries(out []byte) []string {
+	var entries []string
 	var entry []string
+	flush := func() {
+		if s := strings.TrimSpace(strings.Join(entry, " ")); s != "" {
+			entries = append(entries, s)
+		}
+		entry = nil
+	}
 	for line := range strings.Lines(string(out)) {
 		line = strings.TrimRight(line, "\r\n")
 		if framing.MatchString(line) {
 			continue
 		}
 		if m := logLine.FindStringSubmatch(line); m != nil {
+			flush()
 			entry = []string{m[1]}
 			continue
 		}
@@ -122,5 +133,15 @@ func Reason(out []byte) string {
 			entry = append(entry, strings.TrimSpace(line))
 		}
 	}
-	return strings.TrimSpace(strings.Join(entry, " "))
+	flush()
+	return entries
+}
+
+// Reason is the last entry a skipped test logged, "" when it logged none.
+func Reason(out []byte) string {
+	entries := Entries(out)
+	if len(entries) == 0 {
+		return ""
+	}
+	return entries[len(entries)-1]
 }

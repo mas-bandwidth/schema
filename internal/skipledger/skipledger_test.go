@@ -23,6 +23,21 @@ func TestReasonIsTheLastEntryATestLogged(t *testing.T) {
 	}
 }
 
+// F-176: a t.Cleanup registered before the skip logs after it, so the line
+// t.Skip printed is not the last entry. Entries keeps every one, in order,
+// for the reader to classify.
+func TestEntriesKeepsTheSkipReasonACleanupLoggedAfter(t *testing.T) {
+	t.Parallel()
+	out := "=== RUN   TestA\n    a_test.go:7: probing\n    a_test.go:9: no cargo on PATH\n    a_test.go:5: SCHEMA_SLOW: auxiliary log\n--- SKIP: TestA (0.00s)\n"
+	got := strings.Join(Entries([]byte(out)), "|")
+	if want := "probing|no cargo on PATH|SCHEMA_SLOW: auxiliary log"; got != want {
+		t.Errorf("Entries = %q, want %q", got, want)
+	}
+	if got := Entries([]byte("=== RUN   TestA\n    a_test.go:9: \n--- SKIP: TestA (0.00s)\n")); len(got) != 0 {
+		t.Errorf("an empty t.Skip logged no entry, got %q", got)
+	}
+}
+
 func TestTheFirstMatchingLineGivesTheClass(t *testing.T) {
 	t.Parallel()
 	l, err := Read(strings.NewReader("# narrow above broad\n\nskip tool:rust ^rustc is not on PATH\nskip tool:other is not on PATH\n"), "ledger")
