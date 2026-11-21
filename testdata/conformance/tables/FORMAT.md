@@ -230,6 +230,12 @@ input selects the `no-text` instance's wire; otherwise the input is JSON.
 Source and alias are both `-` unless the cook recipe requests shared blob
 identity. Expected cook output files never travel to the driver.
 
+An `instance` line keeps its `no-text` and `wire-refused` markers, in that
+order and nothing else: a text surface skips a `no-text` instance, and the
+wire surface answers a `wire-refused` instance's refused load as
+`<case>.absent` holding the read's reason. Any other refused load of an
+instance stays a failure.
+
 ## reports.txt
 
 ```
