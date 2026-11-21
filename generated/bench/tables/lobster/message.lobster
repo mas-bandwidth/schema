@@ -1190,7 +1190,10 @@ def message_body(m:MessageRead, rec:Record) -> bool:
         // same announced shape and the same build version; a quantized field
         // or a field whose read substituted a value is not judged.
         let quantized = e.shape.packing == 2 or (e.element.packing == 2 and (f.array == "fixed" or sl.count > 0))
-        if exact and not quantized and not f.required and f.present == "" and m.substituted == sub_before and f.s != "union" and f.s != "tab" and load_field_elides(f, sl):
+        // a counted array at its BIRTH, its minimum count of element zeros,
+        // is elided like any default, so stored it is non-canonical too
+        let born = f.s == "arr" and f.array == "counted" and f.min > 0 and sl.count == f.min and save_at_birth(elem_of(f), f.ek, sl)
+        if exact and not quantized and not f.required and f.present == "" and m.substituted == sub_before and f.s != "union" and f.s != "tab" and (born or load_field_elides(f, sl)):
             return message_refuse(rep, "wire_damaged")
         if widened:
             rep.widened++
@@ -1300,8 +1303,12 @@ def mw_cell_rides(w:MessageWriter, d:FieldDescriptor, kind:int, v:Value, element
 
 // mw_rides is a field's elision, the variable form's rule (§3.3, "ELISION,
 // DEFAULTS AND THE READ REPORT ARE UNCHANGED"): a keyed array rides when a
-// slot does, a counted array when it holds one, a fixed array of bodies
-// always, any other fixed array when one element is not its zero.
+// slot does, a list when it holds one, a fixed array of bodies always, any
+// other fixed array when one element is not its zero. A counted array's count
+// is held to its declaration FIRST, so a count outside [min, max] is refused
+// and never read as an omitted field; then it rides unless it is empty or
+// still at its birth, its minimum count of element zeros (Go's encodeBitField
+// and messageElides).
 def mw_rides(w:MessageWriter, sl:Slot) -> bool, bool:
     let f = sl.fd
     if f.present != "":
@@ -1311,7 +1318,17 @@ def mw_rides(w:MessageWriter, sl:Slot) -> bool, bool:
         if f.array == "keyed":
             let pairs, ok = mw_keyed_pairs(w, sl)
             return pairs > 0, ok
-        if f.array == "counted" or f.array == "list":
+        if f.array == "counted":
+            if sl.count < f.min or sl.count > f.bound or sl.count > length(sl.elems):
+                return false, false
+            if sl.count == 0:
+                return false, true
+            if f.min > 0 and sl.count == f.min and not f.required and save_at_birth(elem_of(f), f.ek, sl):
+                return false, true
+            return true, true
+        if f.array == "list":
+            if sl.count < 0 or sl.count > length(sl.elems):
+                return false, false
             return sl.count > 0, true
         if f.ek == 13:
             return true, true

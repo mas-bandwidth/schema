@@ -2,11 +2,14 @@ package lobstertable_test
 
 import (
 	"encoding/hex"
+	"maps"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 // THE ACROSS-LEGS VALUE RULES ON THE PATHS NO OTHER LOBSTER TEST WALKS
@@ -141,6 +144,72 @@ def ends(name:string, bits:int):
 ends("at_end", 0x3DCCCCCD)
 ends("past_end", 0x3DCCCCCE)
 
+// every writer at one count: refused outside [2, 4], and inside it the bytes
+// the Go side holds against the reference's own (elided at the birth value)
+def counted(name:string, count:int, set:bool) -> schema_rt.Record:
+    let rec = schema_rt.new_record(schema_rt.table_of(name))
+    let sl = fslot(rec, "few")
+    while length(sl.elems) < max(4, count):
+        push(sl.elems, schema_rt.Value {})
+    for(max(0, count)) i:
+        sl.elems[i].i = if set: i + 1 else: 0
+    sl.count = count
+    return rec
+def at_count(count:int, set:bool):
+    let tag = "count_" + (if count < 0: "m1" else: string(count)) + (if set: "_set" else: "_zero")
+    let vw, vwhy = schema_rt.save_reasoned(counted("Probe", count, set))
+    print(tag + "_variable " + (if vwhy != "": "refused" else: fhex(vw)))
+    let mw, size = schema_rt.save_messages([counted("Root", count, set)], schema_rt.LoadReport {})
+    print(tag + "_message " + (if size < 0: "refused" else: fhex(substring(mw, 0, size))))
+    let measured = schema_rt.measure_messages([counted("Root", count, set)], schema_rt.LoadReport {})
+    print(tag + "_measure " + (if measured < 0: "refused" else: (if measured == size: "agrees" else: "differs")))
+    let row = crosscells.NewRoot()
+    if count <= 4:
+        for(max(0, count)) i:
+            row.Few[i] = if set: i + 1 else: 0
+    row.FewCount = count
+    let n, fw, why = crosscells.RootFixedSaveChecked([row], schema_rt.zeros(crosscells.RootFixedMeasure(1)))
+    print(tag + "_fixed " + (if n < 0: "refused" else: fhex(substring(fw, 0, n))))
+at_count(-1, false)
+at_count(0, false)
+at_count(1, true)
+at_count(5, true)
+at_count(2, false)
+at_count(2, true)
+at_count(3, false)
+at_count(3, true)
+at_count(4, true)
+
+// the message read refuses the birth value spelled out by a same-build writer
+def spelled():
+    let v = schema_rt.new_vocabulary(4096)
+    assert schema_rt.announce_read(v, schema_rt.announce(), schema_rt.LoadReport {})
+    let slots = schema_rt.message_slots_of(schema_rt.message_facts.fields, "Root")
+    let e = schema_rt.message_entry(v, slots[0])
+    assert e
+    let w = schema_rt.MessageWriter { ref_bits: v.ref_bits }
+    schema_rt.mw_put(w, slots[0], v.ref_bits)
+    schema_rt.mw_put(w, 0, schema_rt.message_bits(e.shape.max - e.shape.min))
+    for(2):
+        schema_rt.mw_put(w, 0, e.element.bits)
+    schema_rt.mw_put(w, 0, w.ref_bits)
+    schema_rt.mw_align(w)
+    var header = schema_rt.zeros(2)
+    header = write_int8_le(header, 0, 2)
+    header = write_int8_le(header, 1, 0)
+    let rep = schema_rt.LoadReport {}
+    let vals, used, ok = schema_rt.load_messages("Root", v, header + w.b, rep, 2)
+    print("message_read_birth_spelled_out" + (if ok and used > 0 and length(vals) == 1: " read" else: " refused " + schema_rt.strict_reason(rep)))
+spelled()
+
+// the hand-editable text form holds the minimum too
+def tread(name:string):
+    let text = read_file(name + ".txt")
+    assert text
+    print(name + (if schema_rt.text_load("Probe", text): " read" else: " refused"))
+tread("text_read_below_min")
+tread("text_read_at_min")
+
 // the clean images the Go side patches for the binary reads
 def images():
     let w, why = schema_rt.save_reasoned(full("Probe"))
@@ -185,8 +254,14 @@ func TestLobsterCrossLegCells(t *testing.T) {
 		"json_read_at_min.json":    []byte(`{"few":[1,2]}`),
 		"json_read_negzero.json":   []byte(`{"r":-0.0}`),
 	}
+	textInputs := map[string][]byte{
+		"text_read_below_min.txt": []byte(`(:few (1))`),
+		"text_read_at_min.txt":    []byte(`(:few (1 2))`),
+	}
+	inputs := maps.Clone(jsonInputs)
+	maps.Copy(inputs, textInputs)
 	g := finiteGenerate(t, crossLegCellsSchema)
-	out := finiteRun(t, g, "import .json\n"+crossLegCellsBody, jsonInputs)
+	out := finiteRun(t, g, "import .json\n"+crossLegCellsBody, inputs)
 	rows := map[string]string{}
 	for _, line := range out {
 		name, rest, _ := strings.Cut(line, " ")
@@ -225,6 +300,67 @@ func TestLobsterCrossLegCells(t *testing.T) {
 			t.Errorf("the reference reads %s: %t (%s)", name, got, rep.Reason)
 		}
 	}
+	// EVERY WRITER AT EVERY COUNT, AGAINST THE REFERENCE: outside [2, 4] both
+	// refuse; inside it the bytes are the reference's own, so a count at the
+	// minimum with every element at its zero is elided as the birth value
+	// and never read by Go as an explicitly stored default.
+	for _, c := range []struct {
+		tag   string
+		count int
+		set   bool
+	}{
+		{"count_m1_zero", -1, false}, {"count_0_zero", 0, false}, {"count_1_set", 1, true}, {"count_5_set", 5, true},
+		{"count_2_zero", 2, false}, {"count_2_set", 2, true}, {"count_3_zero", 3, false}, {"count_3_set", 3, true}, {"count_4_set", 4, true},
+	} {
+		// a count inside the range is read from text; one outside it no
+		// text spells, so it is set on a fresh instance
+		value := func(root string) *tabletext.Instance {
+			inst := want.New(want.Lookup(root))
+			if c.count < 2 || c.count > 4 {
+				inst.Fields[0].Count = c.count
+				return inst
+			}
+			elems := make([]string, c.count)
+			for i := range elems {
+				elems[i] = "0"
+				if c.set {
+					elems[i] = strconv.Itoa(i + 1)
+				}
+			}
+			var rep tabletext.Report
+			if !want.Read(inst, []byte(`{"few":[`+strings.Join(elems, ",")+`]}`), &rep) {
+				t.Fatalf("%s: the reference refuses the value: %+v", c.tag, rep)
+			}
+			return inst
+		}
+		variable, verr := tablewire.Encode(want, value("Probe"))
+		message, merr := tablewire.EncodeMessages(want, []*tabletext.Instance{value("Root")})
+		fixedBytes, ferr := tablewire.EncodeFixed(want, value("Root"))
+		inside := c.count >= 2 && c.count <= 4
+		for form, ref := range map[string]struct {
+			data []byte
+			err  error
+		}{"variable": {variable, verr}, "message": {message, merr}, "fixed": {fixedBytes, ferr}} {
+			if (ref.err == nil) != inside {
+				t.Errorf("%s_%s: the reference's verdict %v, want written: %t", c.tag, form, ref.err, inside)
+				continue
+			}
+			wantRow := "refused"
+			if inside {
+				wantRow = hex.EncodeToString(ref.data)
+			}
+			if got := rows[c.tag+"_"+form]; got != wantRow {
+				t.Errorf("%s_%s: %q, want the reference's %q", c.tag, form, got, wantRow)
+			}
+		}
+		wantMeasure := "refused"
+		if inside {
+			wantMeasure = "agrees"
+		}
+		if got := rows[c.tag+"_measure"]; got != wantMeasure {
+			t.Errorf("%s_measure: %q, want %q", c.tag, got, wantMeasure)
+		}
+	}
 	for _, row := range []struct{ name, want string }{
 		{"variable_write_below_min", "refused"},
 		{"json_write_below_min", "refused"},
@@ -242,6 +378,9 @@ func TestLobsterCrossLegCells(t *testing.T) {
 		{"fixed_float32_past_end", "refused invalid_value"},
 		{"message_float32_at_end", "read 3DCCCCCD"},
 		{"message_float32_past_end", "refused"},
+		{"message_read_birth_spelled_out", "refused wire_damaged"},
+		{"text_read_below_min", "refused"},
+		{"text_read_at_min", "read"},
 	} {
 		t.Run(row.name, func(t *testing.T) {
 			got, ran := rows[row.name]

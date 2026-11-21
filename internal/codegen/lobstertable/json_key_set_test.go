@@ -34,8 +34,8 @@ func TestLobsterJsonKeysUseTheSet(t *testing.T) {
 			t.Errorf("json.lobster collects object keys for a later pass: %q", src[loc[0]:loc[1]])
 		}
 	}
-	if n := strings.Count(src, "if not j_key_new(r, "); n != 3 {
-		t.Errorf("json.lobster tests object keys with the set in %d readers, want 3 (table keys, keyed array, skipped object)", n)
+	if n := strings.Count(src, "if not j_key_new(r, "); n != 4 {
+		t.Errorf("json.lobster tests object keys with the set in %d readers, want 4 (table keys, keyed array, skipped object, map entries)", n)
 	}
 }
 
@@ -127,6 +127,90 @@ row%d()
 		}
 		if out[i] != want {
 			t.Errorf("%s: %q, want %q", row.name, out[i], want)
+		}
+	}
+}
+
+const jsonMapOrderSchema = `package probe
+
+table Root
+{
+    m map[string(8)]uint8
+    n map[uint8]uint8
+}
+`
+
+// A MAP'S REPEATED KEY IS REFUSED IN TEXT ORDER: the repeat is tested once
+// its value is read and before the next entry is, as Go's readMap tests it,
+// so a later entry's damage never changes the verdict. A valid map still
+// lands in canonical key order whatever order the text spells.
+func TestLobsterJsonMapRepeatRefusedInTextOrder(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the Lobster toolchain")
+	path := writeSchema(t, "Probe", jsonMapOrderSchema)
+	g, err := generateLoadUnit(t, []string{path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := tabletext.NewModel(g.u)
+	rows := []struct {
+		name, text, want string
+		goRepeat         bool
+	}{
+		{"distinct", `{"m":{"b":2,"a":1,"c":3},"n":{"9":1,"2":2}}`, "read a,b,c 2,9", false},
+		{"repeat", `{"m":{"a":1,"a":2}}`, "refused duplicate_key", true},
+		{"wrong_value", `{"m":{"a":1,"b":"x"}}`, "refused kind_mismatch", false},
+		{"repeat_then_wrong_value", `{"m":{"a":1,"a":2,"b":"x"}}`, "refused duplicate_key", true},
+		{"repeat_then_true", `{"m":{"one":1,"one":2,"two":true}}`, "refused duplicate_key", true},
+		{"wrong_value_then_repeat", `{"m":{"b":"x","a":1,"a":2}}`, "refused kind_mismatch", false},
+		{"integer_repeat_then_wrong_value", `{"n":{"1":1,"1":2,"3":"x"}}`, "refused duplicate_key", true},
+		{"repeat_then_damage", `{"m":{"a":1,"a":2,`, "refused duplicate_key", true},
+	}
+	var program strings.Builder
+	for _, mod := range g.mods {
+		fmt.Fprintf(&program, "import .%s\n", mod)
+	}
+	program.WriteString(`import .json
+def keys(rec:schema_rt.Record, at:int, text:bool) -> string:
+    var out = ""
+    for(rec.fields[at].entries) v, i:
+        let t = v.tab
+        assert t
+        if i > 0: out += ","
+        out += if text: t.fields[0].cell.s else: string(t.fields[0].cell.i)
+    return out
+`)
+	inputs := map[string][]byte{}
+	for i, row := range rows {
+		var report tabletext.Report
+		read := m.Read(m.New(m.Lookup("Root")), []byte(row.text), &report) && !report.Refused
+		if read != strings.HasPrefix(row.want, "read") {
+			t.Fatalf("%s: Go read %t (%s)", row.name, read, report.Reason)
+		}
+		if repeat := strings.Contains(report.Reason, "repeated map key"); repeat != row.goRepeat {
+			t.Fatalf("%s: Go's reason %q, want a repeated map key: %t", row.name, report.Reason, row.goRepeat)
+		}
+		name := fmt.Sprintf("in%d.json", i)
+		inputs[name] = []byte(row.text)
+		fmt.Fprintf(&program, `def row%d():
+    let data = read_file(%q)
+    assert data
+    let report = schema_rt.LoadReport {}
+    let value = schema_rt.json_read("Root", data, report)
+    print(if value: "read " + keys(value, 0, true) + " " + keys(value, 1, false) else: "refused " + report.reason)
+row%d()
+`, i, name, i)
+	}
+	if err := os.WriteFile(filepath.Join(g.dir, "maps.lobster"), []byte(program.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := strings.Split(strings.TrimSpace(string(lobsterrun.Run(t, g.dir, "maps.lobster", inputs))), "\n")
+	if len(out) != len(rows) {
+		t.Fatalf("got %d lines, want %d: %q", len(out), len(rows), out)
+	}
+	for i, row := range rows {
+		if out[i] != row.want {
+			t.Errorf("%s: %q, want %q", row.name, out[i], row.want)
 		}
 	}
 }

@@ -2365,8 +2365,10 @@ def j_read_pointer_cell(r:JsonReader, cell:Value, tname:string, depth:int) -> bo
     opened.open = false
     return true
 
-// Map keys preserve their whole decoded value. A repeat refuses; accepted
-// entries are ordered canonically before publication (§2.8, §16).
+// Map keys preserve their whole decoded value. A repeat refuses once its
+// value is read, before the next entry is, so the first error in text order
+// is the verdict (Go's readMap); accepted entries are ordered canonically
+// before publication (§2.8, §16).
 def j_read_map(r:JsonReader, sl:Slot, depth:int) -> bool:
     if j_peek(r) != '{':
         return j_refuse(r, "kind_mismatch")
@@ -2375,6 +2377,7 @@ def j_read_map(r:JsonReader, sl:Slot, depth:int) -> bool:
     let ed = table_of(sl.fd.t)
     let kf = ed.fields[0]
     let string_key = key_is_string(kf)
+    let seen = JsonKeys {}
     while true:
         var c = j_peek(r)
         if c == '}':
@@ -2396,6 +2399,10 @@ def j_read_map(r:JsonReader, sl:Slot, depth:int) -> bool:
         push(sl.entries, Value { tab: entry })
         if not j_read_map_value(r, entry.fields[1], depth):
             return false
+        // the key's identity is what map_key_order compares equal
+        let kc = entry.fields[0].cell
+        if not j_key_new(r, seen, if string_key: kc.s else: string(kc.i)):
+            return false
         c = j_peek(r)
         if c == ',':
             r.pos++
@@ -2405,9 +2412,6 @@ def j_read_map(r:JsonReader, sl:Slot, depth:int) -> bool:
             break
         return j_refuse(r, "malformed")
     sl.entries = j_sorted_entries(kf, sl.entries)
-    for(sl.entries) v, i:
-        if i > 0 and j_entry_order(kf, sl.entries[i - 1], v) == 0:
-            return j_refuse(r, "duplicate_key")
     return true
 
 
