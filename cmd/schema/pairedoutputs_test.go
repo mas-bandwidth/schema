@@ -9,6 +9,8 @@
 package main
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -283,6 +285,66 @@ func TestCookRefusesOutputOverSymlinkedInput(t *testing.T) {
 		}
 		wantFile(t, real, oldPayload)
 		wantEntries(t, dir, "link.bin", "real.bin")
+	}
+}
+
+// A DESTINATION ONLY EVER HOLDS FINISHED BYTES: a reader that opens it at any
+// point of a publish finds it absent, the earlier file whole, or the new file
+// whole — never an empty or partial file. The seam between publish steps
+// stands in for that reader, so the test needs no timing.
+func TestPublishedPathsHoldOnlyFinishedBytes(t *testing.T) {
+	cases := []struct {
+		name     string
+		existing bool
+		outs     int
+	}{
+		{"single fresh", false, 1},
+		{"single existing", true, 1},
+		{"pair fresh", false, 2},
+		{"pair existing", true, 2},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			var outs []pairOutput
+			olds := map[string]string{}
+			for i := range tc.outs {
+				p := filepath.Join(dir, fmt.Sprintf("out%d.bin", i))
+				if tc.existing {
+					olds[p] = fmt.Sprintf("earlier bytes of output %d", i)
+					writeTestFile(t, p, olds[p])
+				}
+				outs = append(outs, pairOutput{outputPath{fmt.Sprintf("--out%d", i), p}, []byte(fmt.Sprintf("the finished bytes of output %d", i))})
+			}
+			steps := 0
+			saved := publishStep
+			t.Cleanup(func() { publishStep = saved })
+			publishStep = func(step string) {
+				steps++
+				for _, o := range outs {
+					got, err := os.ReadFile(o.path)
+					if errors.Is(err, os.ErrNotExist) {
+						continue
+					}
+					if err != nil {
+						t.Errorf("after %s: %s: %v", step, o.path, err)
+						continue
+					}
+					if string(got) != string(o.data) && (!tc.existing || string(got) != olds[o.path]) {
+						t.Errorf("after %s: %s holds %d bytes %q: neither absent, the earlier file nor the finished one", step, o.path, len(got), got)
+					}
+				}
+			}
+			if err := publishOutputs("test", outs, nil); err != nil {
+				t.Fatal(err)
+			}
+			if steps == 0 {
+				t.Fatal("the publish passed no step to look between")
+			}
+			for _, o := range outs {
+				wantFile(t, o.path, string(o.data))
+			}
+		})
 	}
 }
 

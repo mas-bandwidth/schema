@@ -31,8 +31,9 @@ type pairOutput struct {
 
 // refuseAliasedPaths is the check a command runs before any work: it refuses
 // two outputs that are one existing file, and an output that is the command's
-// input file. A destination that does not exist yet has no identity to compare;
-// publishOutputs creates it exclusively and checks again before publishing.
+// input file. A destination that does not exist yet has no identity to compare
+// and cannot be an input; publishOutputs checks again, and finds two fresh
+// spellings of one entry before the second rename.
 func refuseAliasedPaths(verb string, outs []outputPath, ins []outputPath) error {
 	return aliasError(verb, outs, ins)
 }
@@ -92,20 +93,22 @@ func aliasError(verb string, outs []outputPath, ins []outputPath) error {
 }
 
 // publishOutputs writes every output to a temporary beside its destination and
-// renames them into place, in order, only once every temporary is written. A
-// destination that does not exist is first created exclusively, so it has an
-// identity, and the outputs are checked against each other and the inputs
-// again before anything is published; a refusal removes what it created. A
-// rename that fails undoes the renames before it — each destination that
-// existed gets its earlier file back, each that did not is removed — so a
-// failed publish leaves every destination as it found it. No temporary,
-// placeholder or backup outlives the call.
+// renames them into place, in order, only once every temporary is written: a
+// destination only ever holds the earlier file whole or the new file whole,
+// never an empty or partial one. Existing destinations are checked against
+// each other and the inputs before anything is written (a destination that
+// does not exist cannot be an input). Two fresh destinations can still be one
+// entry under two spellings, which only exists once the first is renamed, so
+// before each rename the destination is looked up and compared with every
+// output already published; a match refuses and undoes them. A rename that
+// fails undoes the renames before it too — each destination that existed gets
+// its earlier file back, each that did not is removed — so a failed publish
+// leaves every destination as it found it. No temporary or backup outlives the
+// call.
 func publishOutputs(verb string, outs []pairOutput, ins []outputPath) (err error) {
 	temps := make([]string, len(outs))
 	backups := make([]string, len(outs))
 	existed := make([]bool, len(outs))
-	created := make([]bool, len(outs))
-	published := false
 	defer func() {
 		for _, name := range temps {
 			if name != "" {
@@ -117,44 +120,27 @@ func publishOutputs(verb string, outs []pairOutput, ins []outputPath) (err error
 				_ = os.Remove(name)
 			}
 		}
-		if !published {
-			for i, made := range created {
-				if made {
-					_ = os.Remove(outs[i].path)
-				}
-			}
-		}
 	}()
-	for i, o := range outs {
-		if temps[i], err = stageOutput(o.path, o.data); err != nil {
-			return err
-		}
-	}
 	paths := make([]outputPath, len(outs))
 	for i, o := range outs {
 		paths[i] = o.outputPath
-		f, cerr := os.OpenFile(o.path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-		switch {
-		case cerr == nil:
-			_ = f.Close()
-			created[i] = true
-		case errors.Is(cerr, os.ErrExist):
-			// it exists: an earlier file, or an entry this call just created
-			// under another spelling, which the check below refuses
-		default:
-			return cerr
-		}
 	}
 	if err := aliasError(verb, paths, ins); err != nil {
 		return err
 	}
 	for i, o := range outs {
-		if created[i] {
-			continue
+		if temps[i], err = stageOutput(o.path, o.data); err != nil {
+			return err
 		}
+	}
+	publishStep("staged")
+	for i, o := range outs {
 		info, lerr := os.Lstat(o.path)
 		if lerr != nil {
-			return lerr
+			if !errors.Is(lerr, os.ErrNotExist) {
+				return lerr
+			}
+			continue
 		}
 		if info.IsDir() {
 			// the rename below fails and reports it; there is nothing to keep
@@ -165,22 +151,35 @@ func publishOutputs(verb string, outs []pairOutput, ins []outputPath) (err error
 			return err
 		}
 	}
+	publishStep("backed-up")
+	// undo puts back every destination published before i
+	undo := func(i int) {
+		for j := i - 1; j >= 0; j-- {
+			if existed[j] {
+				if os.Rename(backups[j], outs[j].path) == nil {
+					backups[j] = ""
+				}
+			} else {
+				_ = os.Remove(outs[j].path)
+			}
+		}
+	}
 	for i, o := range outs {
-		if rerr := os.Rename(temps[i], o.path); rerr != nil {
-			for j := i - 1; j >= 0; j-- {
-				if existed[j] {
-					if os.Rename(backups[j], outs[j].path) == nil {
-						backups[j] = ""
-					}
-				} else {
-					_ = os.Remove(outs[j].path)
+		if now, lerr := os.Lstat(o.path); lerr == nil {
+			for j := range i {
+				if done, derr := os.Lstat(outs[j].path); derr == nil && os.SameFile(now, done) {
+					undo(i)
+					return fmt.Errorf("%s: %s %s and %s %s name the same file: the pair needs two files, and writing both to one would leave only the second", verb, outs[j].flag, outs[j].path, o.flag, o.path)
 				}
 			}
+		}
+		if rerr := os.Rename(temps[i], o.path); rerr != nil {
+			undo(i)
 			return rerr
 		}
 		temps[i] = ""
+		publishStep("renamed")
 	}
-	published = true
 	return nil
 }
 
@@ -250,3 +249,7 @@ func backupOutput(path string, info os.FileInfo) (string, error) {
 	}
 	return name, nil
 }
+
+// publishStep is a seam between the steps of publishOutputs; tests set it to
+// look at the destinations while a publish is part done.
+var publishStep = func(step string) {}
