@@ -874,10 +874,9 @@ func jsNode(t *testing.T) string {
 	if n, err := exec.LookPath("node"); err == nil {
 		return n
 	}
-	if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-		t.Fatal("SCHEMA_REQUIRE_CORPUS is set and no node is on this bench: make dist, or NODE=node")
-	}
-	t.Skip("no node toolchain: see make/js.mk's NODE")
+	// a failure under SCHEMA_REQUIRE_NODE=1 or SCHEMA_REQUIRE_CORPUS: make
+	// dist, or NODE=node
+	slowtest.Require(t, "SCHEMA_REQUIRE_NODE", "no node toolchain: see make/js.mk's NODE")
 	return ""
 }
 
