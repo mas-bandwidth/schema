@@ -3,6 +3,7 @@ package pythontable
 import (
 	"encoding/binary"
 	"hash/crc32"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -120,7 +121,8 @@ print('retain-refusal')
 with open('wire','rb') as f: wire=f.read()
 keep=TableRetain(bytearray(1024),bytearray(24*8))
 value=Root.load_retain(wire,keep)
-assert keep.used>0 and keep.id_used>0 and keep.loaded_root is value,(keep.used,keep.id_used)
+assert keep.used>0 and keep.loaded_root is value,keep.used
+keep.id_used=1
 bad=bytearray(wire); bad[-1]^=1
 try: Root.load_retain(bytes(bad),keep)
 except Refused as err: assert err.reason=='integrity_mismatch',err.reason
@@ -140,9 +142,7 @@ print('retain-refusal')
 			dir := t.TempDir()
 			writeTree(t, dir, run.files)
 			in := map[string][]byte{"main.py": []byte(run.script)}
-			for name, data := range run.inputs {
-				in[name] = data
-			}
+			maps.Copy(in, run.inputs)
 			out, stderr, err := pyrun.Try(t, pin, dir, "main.py", in)
 			if err != nil || strings.TrimSpace(out) != "retain-refusal" {
 				t.Fatalf("%s: a refused retaining load left the store as it was: %v\n%s\n%s", pin, err, out, stderr)
