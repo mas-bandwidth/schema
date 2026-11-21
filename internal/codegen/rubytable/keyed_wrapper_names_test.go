@@ -2,9 +2,11 @@ package rubytable
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -105,38 +107,74 @@ end
 `
 
 // rubyUnitConstant matches a class or module the generated unit module opens
-// at its own level: two spaces in, inside "module <Unit>".
-var rubyUnitConstant = regexp.MustCompile(`(?m)^  (?:class|module) ([A-Z][A-Za-z0-9_:]*)`)
+// at its own level, two spaces in inside "module <Unit>": its name and, for a
+// class, its superclass.
+var rubyUnitConstant = regexp.MustCompile(`(?m)^  (class|module) ([A-Z][A-Za-z0-9_:]*)(?: < (\S+))?`)
 
-// rubyUnitConstantsOpenedTwice scans the declaration files of one generated
-// Ruby table unit (<package>/<Base>.rb, one per schema file: the files that
-// hold the declarations and every class the emitter invents beside them) and
-// answers each unit-level constant opened more than once, and each one that
-// spells a name the Ruby table runtime defines (internal/tablenames, Ruby).
-// The runtime's own files (_table/, _schema.rb, _fixed.rb, _view.rb, ...)
-// reopen the runtime's modules on purpose and are not scanned.
-func rubyUnitConstantsOpenedTwice(u *ir.Unit, files map[string][]byte) []string {
+// rubyInventedRoot is where every constant the Ruby table emitter invents
+// beside the declarations lives (keyedRoot): a namespace no declaration
+// reaches.
+const rubyInventedRoot = "SchemaTable::Keyed::"
+
+// rubyGeneratedNameClashes scans the declaration files of one generated Ruby
+// table unit (<package>/<Base>.rb, one per schema file: the files holding the
+// declarations and every class the emitter invents beside them) and answers
+// each opening that can rebind a name. The emitter opens a declaration's
+// class more than once on purpose (a type's packet surface, then its table
+// descriptor), so a declared name may be reopened, but only bare: an opening
+// with a superclass is an invented class, and one spelling a declaration
+// reopens the user's class (F-083). Every other name is an invention: it must
+// live under the invented root, so no declaration can spell it, must not be a
+// runtime name, and must be opened once, so no two inventions share it
+// (F-084). The runtime's own files (_table/, _schema.rb, _fixed.rb, _view.rb,
+// ...) reopen the runtime's modules on purpose and are not scanned.
+func rubyGeneratedNameClashes(u *ir.Unit, files map[string][]byte) []string {
 	runtime := map[string]bool{}
 	for _, n := range tablenames.DefinedBy(tablenames.Ruby) {
 		runtime[n] = true
 	}
+	declared := map[string]bool{}
+	for _, names := range [][]string{
+		slices.Collect(maps.Keys(u.Consts)), slices.Collect(maps.Keys(u.Enums)),
+		slices.Collect(maps.Keys(u.Flags)), slices.Collect(maps.Keys(u.Structs)),
+		slices.Collect(maps.Keys(u.Tables)),
+	} {
+		for _, n := range names {
+			declared[n] = true
+		}
+	}
+	for _, unions := range []map[string]*ir.Union{u.Unions, u.TableUnions} {
+		for n := range unions {
+			declared[n] = true
+			declared[n+"Type"] = true // its tag module, which the checker claims (SPEC §4.6)
+		}
+	}
 	opened := map[string]int{}
+	var bad []string
 	for _, f := range u.Files {
 		data, ok := files[filepath.ToSlash(filepath.Join(u.Package, f.Base+".rb"))]
 		if !ok {
 			continue
 		}
 		for _, m := range rubyUnitConstant.FindAllStringSubmatch(string(data), -1) {
-			opened[m[1]]++
+			name, super := m[2], m[3]
+			switch {
+			case declared[name]:
+				if super != "" {
+					bad = append(bad, fmt.Sprintf("%s.rb opens the declared %s with the superclass %s: an invented class spells a declaration", f.Base, name, super))
+				}
+			case runtime[name]:
+				bad = append(bad, fmt.Sprintf("%s.rb opens %s, a runtime name", f.Base, name))
+			case !strings.HasPrefix(name, rubyInventedRoot):
+				bad = append(bad, fmt.Sprintf("%s.rb opens %s, an invented name outside %s, which a declaration can spell", f.Base, name, rubyInventedRoot))
+			default:
+				opened[name]++
+			}
 		}
 	}
-	var bad []string
 	for name, n := range opened {
 		if n > 1 {
-			bad = append(bad, fmt.Sprintf("%s opened %d times", name, n))
-		}
-		if runtime[name] {
-			bad = append(bad, name+" is a runtime name")
+			bad = append(bad, fmt.Sprintf("the invented %s is opened %d times", name, n))
 		}
 	}
 	sort.Strings(bad)
@@ -144,13 +182,11 @@ func rubyUnitConstantsOpenedTwice(u *ir.Unit, files map[string][]byte) []string 
 }
 
 // TestRubyGeneratedConstantsAreBoundOnce is the generated-output scan behind
-// F-083 and F-084: no unit-level constant of a generated Ruby table unit is
-// opened twice in its declaration files, and none spells a runtime name. A
-// class the emitter invents that shares a spelling with a declaration or with
-// another invented class is opened twice, and Ruby reopens it silently. It
-// scans the keyed-wrapper corpus and every unit of the table conformance
-// MANIFEST.txt the Ruby leg generates. A pure Go test: no interpreter, no
-// clock.
+// F-083 and F-084 (rubyGeneratedNameClashes): no class the Ruby table emitter
+// invents spells a declaration, a runtime name or another invention, so Ruby
+// never silently reopens one class as another. It scans the keyed-wrapper
+// corpus and every unit of the table conformance MANIFEST.txt the Ruby leg
+// generates. A pure Go test: no interpreter, no clock.
 func TestRubyGeneratedConstantsAreBoundOnce(t *testing.T) {
 	t.Parallel()
 	type unit struct {
@@ -185,7 +221,7 @@ func TestRubyGeneratedConstantsAreBoundOnce(t *testing.T) {
 			continue // a unit the Ruby leg refuses by name is the refusal's test, not this one
 		}
 		generated++
-		for _, bad := range rubyUnitConstantsOpenedTwice(u, files) {
+		for _, bad := range rubyGeneratedNameClashes(u, files) {
 			t.Errorf("%s: %s", un.key, bad)
 		}
 	}
