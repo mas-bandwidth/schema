@@ -44,7 +44,17 @@ func TestCheckReportsTheFormByteFirst(t *testing.T) {
 		{0xFF, "REFUSED: form 255 is assigned by no form"},
 	} {
 		p := formFile(t, "saved.bin", row.byte, 0, 0, 0)
-		out := run(t, bin, "check", p)
+		var out string
+		if strings.HasPrefix(row.want, "REFUSED") {
+			// a refused byte is a failing check: the exit is nonzero
+			code, got := runExit(t, bin, "check", p)
+			if code == 0 {
+				t.Errorf("check over a form-%d file printed a refusal and exited 0", row.byte)
+			}
+			out = got
+		} else {
+			out = run(t, bin, "check", p)
+		}
 		first, _, _ := strings.Cut(strings.TrimSpace(out), "\n")
 		if !strings.Contains(first, row.want) {
 			t.Errorf("check over a form-%d file printed %q first, want a line carrying %q", row.byte, first, row.want)
@@ -59,7 +69,10 @@ func TestCheckReportsTheFormByteFirst(t *testing.T) {
 // form it does not carry.
 func TestCheckRefusesAFileWithNoFormByte(t *testing.T) {
 	bin := buildCLI(t)
-	out := run(t, bin, "check", formFile(t, "empty.bin"))
+	code, out := runExit(t, bin, "check", formFile(t, "empty.bin"))
+	if code == 0 {
+		t.Errorf("a refused empty file must exit nonzero: %q", out)
+	}
 	if !strings.Contains(out, "REFUSED: an empty file carries no form byte") {
 		t.Errorf("an empty file must be refused by name: %q", out)
 	}

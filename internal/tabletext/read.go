@@ -435,9 +435,9 @@ func (in *reader) scanUnit() (unit []byte, done bool, ok bool) {
 		default:
 			// a UTF-8 sequence read WHOLE, so the clamp can only land between
 			// code points. Only bytes that ACTUALLY look like continuations
-			// are taken: the wire imposes no encoding (§3), so a string may
-			// legitimately hold a stray lead byte, and one at the end of a
-			// text must not swallow the closing quote.
+			// are taken, so a stray lead byte at the end of a text does not
+			// swallow the closing quote; the sequence taken is then refused
+			// below unless it is one code point.
 			lead := c
 			want := 1
 			switch {
@@ -667,10 +667,15 @@ func (in *reader) skipContainer(close byte, depth int) bool {
 	// a skipped object's keys are held to the layer's rule too: a repeated
 	// key refuses in every object of the text (§16.2, §16.12)
 	var keys map[string]struct{}
+	// a definition this skipped object opened: its label closes with it
+	var opened uint64
 	for {
 		c := in.peek()
 		if c == close {
 			in.pos++
+			if opened != 0 {
+				in.graph[opened] = labelEntry{}
+			}
 			return true
 		}
 		if c == 0 {
@@ -703,22 +708,20 @@ func (in *reader) skipContainer(close byte, depth int) bool {
 			}
 			keys[string(key)] = struct{}{}
 			if len(key) > 0 && key[0] == '&' && in.graph != nil {
-				if !first || !in.skippedAmpersand(string(key)) {
+				if !first {
 					in.bad = true
 					return false
 				}
-				first = false
-				c = in.peek()
-				if c == ',' {
-					in.pos++
-					continue
+				reference, label, ok := in.skippedAmpersand(string(key))
+				if !ok {
+					return false
 				}
-				if c == close {
-					in.pos++
+				if reference {
 					return true
 				}
-				in.bad = true
-				return false
+				first = false
+				opened = label
+				continue
 			}
 		}
 		first = false
@@ -732,6 +735,9 @@ func (in *reader) skipContainer(close byte, depth int) bool {
 		}
 		if c == close {
 			in.pos++
+			if opened != 0 {
+				in.graph[opened] = labelEntry{}
+			}
 			return true
 		}
 		in.bad = true
@@ -951,7 +957,9 @@ func (in *reader) readField(fv *Field, depth int) bool {
 
 // scanLabel reads `&node`'s value, the label: a positive integer spelled as one —
 // digits, no sign, no fraction, no exponent, no leading zero (§16.7). Anything
-// else is malformed.
+// else is malformed, and so is a label followed by anything but the object's
+// `,` or `}`: `{"&node": 1 "x": 2}` is not JSON (RFC 8259's value-separator).
+// The separator is left for the caller.
 func (in *reader) scanLabel() (uint64, bool) {
 	in.space()
 	if in.pos >= len(in.text) || in.text[in.pos] < '1' || in.text[in.pos] > '9' {
@@ -967,6 +975,10 @@ func (in *reader) scanLabel() (uint64, bool) {
 		}
 		value = value*10 + digit
 		in.pos++
+	}
+	if c := in.peek(); c != ',' && c != '}' {
+		in.bad = true
+		return 0, false
 	}
 	return value, true
 }
@@ -1069,9 +1081,9 @@ func (in *reader) readPointerCell(cell *Cell, st *ir.Struct, depth int) bool {
 	// default node under a silent report, and a field after a label already
 	// defined, which would be a second definition. That is what keeps a typo
 	// loud.
-	c = in.peek()
+	c = in.peek() // `,` or `}`: scanLabel refused anything else
 	if c == ',' {
-		in.pos++
+		in.pos++ // a trailing comma after a reference's label is accepted (§16.2)
 		c = in.peek()
 	}
 	bare := c == '}'
@@ -1118,23 +1130,47 @@ func (in *reader) readPointerCell(cell *Cell, st *ir.Struct, depth int) bool {
 
 // skippedAmpersand handles an `&`-prefixed key opening an object the walk is
 // SKIPPING — a value past an array's bound, an unknown key's value, a value of
-// the wrong shape. A definition in there still takes its label, so the numbering
-// survives whatever the storage could not hold (§16.7): the label is registered
-// with no node, and a reference to it reads null. Any other prefixed key is
-// the reserved prefix out of place. A FIXED root never reaches this: what a
-// reader does not place it does not police, and the value is skipped whole.
-func (in *reader) skippedAmpersand(key string) bool {
+// the wrong shape. THE LABEL RULES APPLY THERE AS EVERYWHERE (§16.7): the
+// grammar, and what follows the label says which half it is. A label alone
+// (a trailing comma allowed) REFERS, and refuses unless the text has defined
+// it and its definition has closed; a label with fields after it DEFINES, and
+// refuses if the text has defined it already. A definition in a skipped value
+// still takes its label, so the numbering survives whatever the storage could
+// not hold: the label is registered with no node and stays OPEN until the
+// skipped object closes, and a reference to it after that reads null. Any
+// other prefixed key is the reserved prefix out of place. A FIXED root never
+// reaches this: what a reader does not place it does not police, and the
+// value is skipped whole.
+//
+// It answers whether the object was a reference (and is now closed, its `}`
+// consumed), the label a definition opened, and whether the walk goes on.
+func (in *reader) skippedAmpersand(key string) (reference bool, label uint64, ok bool) {
 	if in.graph == nil || key != "&node" {
-		return false
+		in.bad = true
+		return false, 0, false
 	}
-	label, ok := in.scanLabel()
+	label, ok = in.scanLabel()
 	if !ok {
-		return false
+		return false, 0, false
 	}
-	if _, defined := in.graph[label]; !defined {
-		in.graph[label] = labelEntry{}
+	entry, defined := in.graph[label]
+	if in.peek() == ',' {
+		in.pos++
 	}
-	return true
+	if in.peek() == '}' {
+		in.pos++
+		if !defined || entry.open {
+			in.bad = true
+			return false, 0, false
+		}
+		return true, 0, true
+	}
+	if defined {
+		in.bad = true
+		return false, 0, false
+	}
+	in.graph[label] = labelEntry{open: true}
+	return false, label, true
 }
 
 // readBase64 decodes a `bytes(N)` body six bits at a time with the padding
@@ -1424,12 +1460,11 @@ func (in *reader) readTextList(fv *Field, depth int) bool {
 // unknown key is skipped and counted, and `"None"` is such a key because None
 // keys no slot (§2.4).
 //
-// A KEYED OBJECT'S KEYS ARE KEYS: a variant named twice is a duplicate key
-// like any other, last-wins and counted (§16.2). The count is taken on the
-// RESOLVED SLOT and before the shape check, so a repeat the walk then refuses
-// is still a repeat; a key that names no slot — an unknown variant, or `"None"`
-// — is `unknown` EACH TIME and is never a duplicate, because there is no slot
-// for it to be a repeat of.
+// A KEYED OBJECT'S KEYS ARE KEYS: a key repeated once decoded is a repeated
+// key like any other and refuses the read `malformed` (§16.2), a variant named
+// twice, None twice and an unknown variant twice alike. The repeat is found on
+// the decoded key and before the shape check, so a repeat whose value has the
+// wrong shape is still a repeat.
 func (in *reader) readKeyed(fv *Field, depth int) bool {
 	f := fv.Def
 	if in.peek() != '{' {
@@ -1776,7 +1811,7 @@ func (in *reader) placeFloat(cell *Cell, f *ir.Field, token string, single bool)
 		return in.fail("out_of_range: " + f.Name)
 	}
 	if f.HasFloatRange {
-		if value < f.FMin || value > f.FMax {
+		if !FloatInRange(f, value) {
 			return in.fail("out_of_range: " + f.Name)
 		}
 		if value == 0 {
@@ -1872,9 +1907,13 @@ func (in *reader) readUnion(cell *Cell, un *ir.Union, depth int) bool {
 			break
 		}
 	}
+	// DEPTH (§16.2): the union's holder is at depth, the union object at
+	// depth+1, and the arm's value at depth+2, which is where it is read or
+	// skipped. A field arm reads through readField(depth+1), whose own
+	// scalar walk adds the level, as a by-value field's does.
 	if tag == 0 {
 		in.report.Unknown++
-		if !in.skipValue(depth + 1) {
+		if !in.skipValue(depth + 2) {
 			return false
 		}
 	} else if arm := un.Variants[tag-1]; arm.Void() {
@@ -1893,12 +1932,12 @@ func (in *reader) readUnion(cell *Cell, un *ir.Union, depth int) bool {
 			shape = 'a'
 		}
 		if in.valueShape() != shape {
-			// the wrong JSON type for the arm's row: the union reads None,
-			// the event is counted, and the enclosing object continues (§16.2)
+			// the wrong JSON type for the arm's row refuses the read
+			// kind_mismatch (§16.2, strict read)
 			return in.fail("kind_mismatch: " + un.Name)
 		} else {
 			payload := in.m.New(arm.Ref)
-			if !in.readTable(payload, depth+1) {
+			if !in.readTable(payload, depth+2) {
 				return false
 			}
 			cell.U = uint64(tag)
@@ -1907,8 +1946,8 @@ func (in *reader) readUnion(cell *Cell, un *ir.Union, depth int) bool {
 	} else {
 		// THE ARM'S VALUE TAKES THE ARM'S OWN ROW (§16.2): an arm is a field
 		// line, so its value reads through the field walk one key down, and a
-		// value of the wrong shape for that row is a KIND MISMATCH — the
-		// union reads None and the enclosing object continues
+		// value of the wrong shape for that row is a KIND MISMATCH, which
+		// refuses the read
 		fv := in.m.NewArm(arm)
 		shape := in.valueShape()
 		switch {
@@ -2001,9 +2040,6 @@ func (in *reader) readFlags(cell *Cell, fl *ir.Flags, depth int) bool {
 	return true
 }
 
-// tokenInteger converts a token digit by digit so no width and no locale can
-// move it. Saturation is reported as a clamp, the wire's rule for a value
-// outside what the reader can hold (§4).
 // ---- ONE CHECKED NUMERIC INTERPRETATION (docs/SPEC-TABLES.md §16.2) ----
 //
 // AN INTEGER FIELD TAKES AN INTEGER TOKEN ONLY — digits with an optional minus,
@@ -2383,8 +2419,8 @@ func (in *reader) placeWide(cell *Cell, f *ir.Field, token string, kind int) boo
 // readMap places a MAP's entries from a JSON object (docs/SPEC-TABLES.md §2.8,
 // §16): the object's KEY is the map's key and its value is the entry's value.
 // JSON has no integer keys, so an INTEGER-keyed map spells its keys as strings
-// of digits, and a key that is not one is the wrong shape for the kind —
-// counted, the entry skipped, never coerced.
+// of digits, and a key that is not one is the wrong shape for the kind and
+// refuses the read, never coerced.
 //
 // A key past the declaration's capacity refuses `length_over_bound`, and a
 // repeated key refuses: the text form spells no value the wire cannot.
@@ -2397,9 +2433,15 @@ func (in *reader) readMap(fv *Field, depth int) bool {
 	in.pos++
 	fv.Entries = nil
 	keyField := ir.MapKeyField(f)
+	// A KEY IS DATA, NOT A NAME (§16.2: "The cap never reaches a map key or a
+	// string value"): a `string(N)` key is held to its declared N (§2.8). An
+	// integer key keeps the name cap, which holds any integer token.
 	keyCapacity := maxJsonKey
-	if keyField.Type.TextUnbounded() {
+	switch {
+	case keyField.Type.TextUnbounded():
 		keyCapacity = -1 // map identity uses the whole unbounded key (§2.13.1)
+	case MapKeyIsString(f):
+		keyCapacity = int(keyField.Type.Size)
 	}
 	// THE DUPLICATE TEST IS A HASH LOOKUP, never a scan of the entries placed
 	// so far: a scan is quadratic in the entry count, so a large map in text
@@ -2443,7 +2485,7 @@ func (in *reader) readMap(fv *Field, depth int) bool {
 			return in.fail("kind_mismatch: " + f.Name)
 		case !MapKeyFits(f, MapKeyOf(f, entry)):
 			return in.fail("length_over_bound: " + f.Name)
-		case !in.readMapValue(&entry.Fields[1], depth):
+		case !in.readMapValue(&entry.Fields[1], depth+1): // the map object is a level (§16.2)
 			return false
 		default:
 			id := identityOf(f, MapKeyOf(f, entry))

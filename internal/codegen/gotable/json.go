@@ -1577,7 +1577,11 @@ func (in *tableJSONIn) scanText(out []byte, zero bool) (int32, bool) {
             }
             in.pos += n
 		}
-        if out==nil { placed+=unitLength;continue }
+        // A MEASURED LENGTH SATURATES at the int32 top rather than wrapping
+        // negative: a string of 2 GiB or more is then longer than every
+        // bound a caller holds it to (the 255-byte name cap, a scratch
+        // buffer), and never a negative length a slice would panic on
+        if out==nil { if placed>0x7fffffff-unitLength {placed=0x7fffffff} else {placed+=unitLength};continue }
 		if !clamped && placed+unitLength <= int32(len(out)) {
 			copy(out[placed:], unit[:unitLength])
 			placed += unitLength
@@ -1841,17 +1845,35 @@ func (in *tableJSONIn) skipContainer(closing byte, depth int32) bool {
 	var keyLen [64]int
 	keyCount := 0
 	var overflow map[string]struct{}
+	// THE LABEL RULES APPLY IN A SKIPPED VALUE TOO (docs/SPEC-TABLES.md
+	// §16.7): in a graph read, an ampersand-prefixed key is "&node" and the first
+	// key, or the text is malformed; tableJSONDropLabel holds the label's
+	// grammar and its definition rules. A definition this object opened keeps
+	// its label open until the object closes.
+	first := true
+	opened := uint64(0)
+	closeLabel := func() bool {
+		if opened == 0 {
+			return true
+		}
+		if !in.graph.setLabel(opened, tableJSONLabel{}) {
+			in.bad = true
+			return false
+		}
+		return true
+	}
 	for {
 		c := in.peek()
 		if c == closing {
 			in.pos++
-			return true
+			return closeLabel()
 		}
 		if c == 0 {
 			in.bad = true
 			return false
 		}
 		if closing == '}' {
+			ampersand, labelKey := false, false
 			_ = in.peek()
 			keyStart := in.pos
 			decodedLen, ok := in.scanSkipped(nil)
@@ -1875,6 +1897,7 @@ func (in *tableJSONIn) skipContainer(closing byte, depth int32) bool {
 					return false
 				}
 				key := keyArena[arenaLen : arenaLen+int(n)]
+				ampersand, labelKey = len(key) > 0 && key[0] == '&', string(key) == "&node"
 				dup := false
 				for i := 0; i < keyCount; i++ {
 					if keyLen[i] != len(key) {
@@ -1916,6 +1939,7 @@ func (in *tableJSONIn) skipContainer(closing byte, depth int32) bool {
 					return false
 				}
 				key := string(buf[:n])
+				ampersand, labelKey = len(key) > 0 && key[0] == '&', key == "&node"
 				if _, dup := overflow[key]; dup {
 					if in.report != nil {
 						in.report.Refuse(TableRefuseMalformed, "")
@@ -1930,7 +1954,24 @@ func (in *tableJSONIn) skipContainer(closing byte, depth int32) bool {
 				return false
 			}
 			in.pos++
+			if ampersand && in.graph != nil {
+				if !first || !labelKey {
+					in.bad = true
+					return false
+				}
+				reference, label, ok := tableJSONDropLabel(in)
+				if !ok {
+					return false
+				}
+				if reference {
+					return true
+				}
+				first = false
+				opened = label
+				continue
+			}
 		}
+		first = false
 		if !in.skipValue(depth + 1) {
 			return false
 		}
@@ -1941,7 +1982,7 @@ func (in *tableJSONIn) skipContainer(closing byte, depth int32) bool {
 		}
 		if c == closing {
 			in.pos++
-			return true
+			return closeLabel()
 		}
 		in.bad = true
 		return false
@@ -1949,7 +1990,6 @@ func (in *tableJSONIn) skipContainer(closing byte, depth int32) bool {
 }
 
 func (in *tableJSONIn) skipValue(depth int32) bool {
- tableJSONDropLabel(in)
 	switch in.peek() {
 	case '{':
 		return in.skipContainer('}', depth)
@@ -2027,9 +2067,12 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
 				break
 			}
 		}
+		// DEPTH (docs/SPEC-TABLES.md §16.2): the holder is at depth, the
+		// union object at depth+1 and the arm's value at depth+2, where an
+		// unknown or mismatched arm's value is skipped
 		if tag == 0 {
 			in.report.Unknown++
-			if !in.skipValue(depth + 1) {
+			if !in.skipValue(depth + 2) {
 				return false
 			}
 		} else {
@@ -2037,7 +2080,7 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
             want := byte('z'); if !arm.Void { want = tableJSONShape(&arm.Field) }
             if !tableJSONShapeMatches(want, in.valueShape()) && !(arm.Field.Pointer && !arm.Field.IsArray && in.valueShape()=='z') {
                 in.report.Refuse(TableRefuseKindMismatch, "")
-                if !in.skipValue(depth+1) { return false }
+                if !in.skipValue(depth+2) { return false }
             } else {
                 if arm.Void { if !in.literal("null") { return false } } else {
                     arm.Reset(storage)

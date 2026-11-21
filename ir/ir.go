@@ -96,7 +96,7 @@ type Enum struct {
 	// variant's table-wire id derives from it instead of the name. See
 	// [Enum.VariantWireName].
 	Was         []string
-	Max         int64    // top wire value: variant count, or the | max = K widening
+	Max         int64    // top wire value: the variant count (an enum takes no `| max`)
 	StorageBits int      // 8 / 16 / 32 / 64, the smallest unsigned fitting Max
 	Doc         string   // the declaration's `///` block (SPEC §4.1), "" when none
 	Tags        []string // the declaration's tags, in declared order (SPEC §4.2)
