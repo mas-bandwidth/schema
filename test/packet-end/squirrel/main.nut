@@ -16,9 +16,9 @@
 local argv = [];
 local listed = null;
 foreach (a in vargv) {
-  if (listed != null) listed[a] <- false;
-  else if (a == "--vectors") listed = {};
-  else argv.append(a);
+  if (listed != null) { listed[a] <- false; }
+  else if (a == "--vectors") { listed = {}; }
+  else { argv.append(a); }
 }
 local goldenDir = argv.len() >= 1 ? argv[0] : "testdata/wire/packet-end";
 local generatedDir = argv.len() >= 2 ? argv[1] : "build/packet-end/squirrel";
@@ -66,8 +66,11 @@ check(!trailing.ok, "trailing packet accepted with a whole byte left after the o
 local padding = readPacket("padding.bin");
 check(!padding.ok, "padding packet accepted with non-zero unused bits in the final byte");
 
-if (listed == null || listed.len() == 0) check(false, "the vector directory listing is empty");
-else foreach (name, wasRead in listed) check(wasRead, "vector " + name + " is in the directory and this driver does not read it");
+if (listed == null || listed.len() == 0) {
+  check(false, "the vector directory listing is empty");
+} else {
+  foreach (name, wasRead in listed) check(wasRead, "vector " + name + " is in the directory and this driver does not read it");
+}
 print("packet end Squirrel: ran " + ran + ", failed " + failed + "\n");
 if (failed > 0) throw "packet end squirrel: " + failed + " check(s) failed";
 print("packet end Squirrel: exact packet reads 3; trailing byte and padding refused\n");

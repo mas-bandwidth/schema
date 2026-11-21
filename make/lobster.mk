@@ -140,7 +140,7 @@ $(CARDS_LOBSTER_GENERATED)/.stamp: bin/schema tables/cards/Card.schema tables/ca
 cards-lobster-test: lobster-dist-present cards-lobster-generate tables/cards/lobster/cards.lobster tables/cards/lobster/cards_test.lobster build/mustrun
 	@cp tables/cards/lobster/cards.lobster $(CARDS_LOBSTER_GENERATED)/.cards.lobster.test && mv -f $(CARDS_LOBSTER_GENERATED)/.cards.lobster.test $(CARDS_LOBSTER_GENERATED)/cards.lobster
 	@cp tables/cards/lobster/cards_test.lobster $(CARDS_LOBSTER_GENERATED)/cards_test.lobster
-	$(MUSTRUN) -name cards-lobster-test -count 1 -- $(LOBSTER) $(CARDS_LOBSTER_GENERATED)/cards_test.lobster -- $(CURDIR)
+	$(MUSTRUN) -name cards-lobster-test -count 9 -- $(LOBSTER) $(CARDS_LOBSTER_GENERATED)/cards_test.lobster -- $(CURDIR)
 
 cards-lobster-conformance: lobster-dist-present build/conformance-harness cards-lobster-generate
 	./build/conformance-harness cards --work build/cards-lobster-conformance --corpus tables/cards/conformance --driver 'tables/cards/lobster/driver' --require $(CARDS_REQUIRE_LOBSTER)

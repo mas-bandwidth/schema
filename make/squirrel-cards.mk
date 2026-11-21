@@ -45,7 +45,7 @@ $(CARDS_SQUIRREL_GENERATED)/.stamp: bin/schema tables/cards/Card.schema tables/c
 # the summary line must say none failed.
 cards-squirrel-test: cards-squirrel-generate tables/cards/squirrel/cards.nut tables/cards/squirrel/cards_test.nut build/mustrun
 	@test -x "$(SQ)" || $(MAKE) dist-squirrel
-	CARDS_SQUIRREL_GENERATED=$(CARDS_SQUIRREL_GENERATED) $(MUSTRUN) -name cards-squirrel-test -count 1 -- "$(SQ)" tables/cards/squirrel/cards_test.nut
+	CARDS_SQUIRREL_GENERATED=$(CARDS_SQUIRREL_GENERATED) $(MUSTRUN) -name cards-squirrel-test -count 9 -- "$(SQ)" tables/cards/squirrel/cards_test.nut
 
 cards-squirrel-conformance: build/conformance-harness cards-squirrel-generate
 	@test -x "$(SQ)" || $(MAKE) dist-squirrel

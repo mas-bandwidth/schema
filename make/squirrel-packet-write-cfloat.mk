@@ -10,7 +10,7 @@ SQUIRREL_CFLOAT_DIR ?= build/packet-write-cfloat/squirrel
 
 .PHONY: packet-write-cfloat-squirrel packet-write-cfloat-squirrel-negative-control
 packet-write-cfloat-squirrel: build/packet-write-cfloat/squirrel/.stamp toolchain-squirrel build/mustrun
-	$(MUSTRUN) -name packet-write-cfloat-squirrel -count 1 -- "$(SQ)" test/packet-write-cfloat/squirrel/main.nut test/packet-write-cfloat/cases.txt $(SQUIRREL_CFLOAT_DIR)
+	$(MUSTRUN) -name packet-write-cfloat-squirrel -count 10 -- "$(SQ)" test/packet-write-cfloat/squirrel/main.nut test/packet-write-cfloat/cases.txt $(SQUIRREL_CFLOAT_DIR)
 
 packet-write-cfloat-squirrel-negative-control: packet-write-cfloat-squirrel
 	@rm -rf build/packet-write-cfloat/squirrel-negative

@@ -94,7 +94,7 @@ build/packet-write-bareint/squirrel/.stamp: bin/schema test/packet-write-bareint
 
 .PHONY: packet-write-bareint-squirrel packet-write-bareint-squirrel-negative-control
 packet-write-bareint-squirrel: build/packet-write-bareint/squirrel/.stamp toolchain-squirrel build/mustrun
-	$(MUSTRUN) -name packet-write-bareint-squirrel -count 1 -- "$(SQ)" test/packet-write-bareint/squirrel/main.nut test/packet-write-bareint/cases.txt build/packet-write-bareint/squirrel/bareint build/packet-write-bareint/squirrel/carriers
+	$(MUSTRUN) -name packet-write-bareint-squirrel -count 83 -- "$(SQ)" test/packet-write-bareint/squirrel/main.nut test/packet-write-bareint/cases.txt build/packet-write-bareint/squirrel/bareint build/packet-write-bareint/squirrel/carriers
 
 # THE WIDTH CONTROL: the writer keeps only its integer check, so an
 # out-of-width bare value reaches the wire and the driver must fail by name.

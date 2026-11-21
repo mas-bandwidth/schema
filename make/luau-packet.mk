@@ -165,7 +165,7 @@ build/packet-end/luau/.stamp: $(LUAU_PACKET_SCHEMA) test/packet-end/End.schema \
 
 .PHONY: packet-end-luau packet-end-luau-negative-control
 packet-end-luau: toolchain-luau build/packet-end/luau/.stamp build/mustrun
-	cd build/packet-end/luau && $(CURDIR)/$(MUSTRUN) -name packet-end-luau -count 1 -- $(LUAU) main.luau
+	cd build/packet-end/luau && $(CURDIR)/$(MUSTRUN) -name packet-end-luau -count 9 -- $(LUAU) main.luau
 	cd build/packet-end/luau && $(LUAU_ANALYZE) *.luau
 
 packet-end-luau-negative-control: packet-end-luau
