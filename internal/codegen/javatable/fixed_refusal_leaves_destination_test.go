@@ -10,12 +10,13 @@ package javatable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const refusalUntouchedSchema = `package probe
@@ -129,10 +130,10 @@ func TestFixedRefusalLeavesDestination(t *testing.T) {
 	}
 	args := append([]string{"--release", "17", "-d", classes}, pkgSrc...)
 	args = append(args, filepath.Join(src, "Untouched.java"))
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "Untouched").CombinedOutput()
+	out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, "Untouched").CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
 	}

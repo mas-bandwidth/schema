@@ -11,12 +11,13 @@ package javatable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const javaJsonNameCapSchema = `package closed
@@ -163,7 +164,7 @@ func TestJavaJsonNameCap(t *testing.T) {
 		t.Fatal(err)
 	}
 	args := append([]string{"--release", "17", "-d", classes}, sources...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 
@@ -180,7 +181,7 @@ func TestJavaJsonNameCap(t *testing.T) {
 		}
 		args = append(args, name, row.root, p)
 	}
-	cmd := exec.Command(javaBin, "-ea", "-cp", classes, "closed.NameCapProbe")
+	cmd := testproc.Command(t, javaBin, "-ea", "-cp", classes, "closed.NameCapProbe")
 	cmd.Args = append(cmd.Args, args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {

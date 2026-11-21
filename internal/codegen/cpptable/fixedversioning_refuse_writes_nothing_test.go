@@ -15,13 +15,14 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestFixedVersioningRefuseWritesNothing(t *testing.T) {
@@ -160,11 +161,11 @@ int main( void )
 		t.Fatal(err)
 	}
 	args := []string{"-std=c++17", "-O1", "-I" + outDir, "-I" + serialize, filepath.Join(outDir, "probe.cpp"), "-o", filepath.Join(outDir, "probe")}
-	build := exec.Command(cxx, args...)
+	build := testproc.Command(t, cxx, args...)
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("refuse_writes_nothing: the probe did not compile: %v\n%s", err, out)
 	}
-	out, err := exec.Command(filepath.Join(outDir, "probe")).CombinedOutput()
+	out, err := testproc.Command(t, filepath.Join(outDir, "probe")).CombinedOutput()
 	if err != nil {
 		t.Fatalf("refuse_writes_nothing: %v\n%s", err, out)
 	}

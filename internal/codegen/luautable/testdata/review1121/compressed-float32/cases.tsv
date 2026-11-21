@@ -1,0 +1,50 @@
+# Two cross-leg rules on the Luau table runtime (review 2026-11-21), read by
+# TestLuauCompressedFloatF32Range. A compressed float's declared range is
+# compared at float32 (docs/SPEC.md §4.6: every runtime evaluates the triple
+# at float32), so 0.1f under max = 0.1 is written and read in every form, a
+# double that rounds to 0.1f is held as 0.1f, and a value past the float32 end
+# is still refused. A compressed float holding -0 is +0 (docs/SPEC-TABLES.md
+# §3.3, ruling fixed-compressed-negzero).
+# id	form	input	want
+#
+# form, and what the probe does with input:
+#   var              save the number in V, read it back strictly
+#   var-save-same    save the two numbers; as_plus when the bytes are equal
+#   json             read the JSON text as V
+#   json-write-sign  write the number as JSON; minus when the text holds -0
+#   json-roundtrip   write the number as JSON and read that text back
+#   json-write       write the number as JSON
+#   text             read the text form as V
+#   fixed            save the number as a fixed F row, load it back
+#   message          save the number in an F message, load it back
+# input numbers: 0.10000000149011612 is 0.1f; 0.1000000024214387 is a double
+# above 0.1f that rounds to it; -0 is negative zero.
+# want: read:<value at %.9g>, read, refused, refused:<reason>, as_plus, plus,
+#       written. A refusal is compared by verdict and, where this Luau test
+#       pinned it, by the reason the Luau runtime names.
+#
+# the variable form
+var_max_f32	var	0.10000000149011612	read:0.100000001
+var_max_near	var	0.1000000024214387	read:0.100000001
+var_over	var	0.1001	refused
+var_save_negzero	var-save-same	-0 0	as_plus
+# the JSON read and write, and the text form
+json_max	json	{ "cf": 0.1 }	read:0.100000001
+json_max_f32	json	{ "cf": 0.100000001490116119384765625 }	read:0.100000001
+json_over	json	{ "cf": 0.1001 }	refused:clamped
+json_negzero	json	{ "cf": -0 }	read:+0
+json_write_negzero	json-write-sign	-0	plus
+json_rt_max	json-roundtrip	0.10000000149011612	read:0.100000001
+json_write_near	json-write	0.1000000024214387	written
+text_max	text	(:cf 0.1)	read:0.100000001
+text_max_f32	text	(:cf 0.100000001)	read:0.100000001
+text_over	text	(:cf 0.1001)	refused:text_bound
+# the fixed form
+fixed_max_f32	fixed	0.10000000149011612	read:0.100000001
+fixed_max_near	fixed	0.1000000024214387	read:0.100000001
+fixed_over	fixed	0.1001	refused
+fixed_negzero	fixed	-0	read:+0
+# the message form
+msg_max_f32	message	0.10000000149011612	read
+msg_max_near	message	0.1000000024214387	read
+msg_over	message	0.1001	refused:invalid_value

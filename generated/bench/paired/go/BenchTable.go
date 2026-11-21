@@ -1021,6 +1021,11 @@ func (w *TableWriter) Put64(v uint64) {
 	}
 }
 
+// putI64 and getI8..getI64: same-width two's-complement lanes, lossless both ways.
+func (w *TableWriter) putI64(v int64) {
+	w.Put64(uint64(v)) /* #nosec G115 -- same-width two's-complement */
+}
+
 // Put128 writes two little-endian lanes, low first, under one Advance.
 func (w *TableWriter) Put128(lo, hi uint64) {
 	at := w.Offset
@@ -1173,6 +1178,13 @@ func (r *TableReader) Get64() uint64 {
 	v := binary.LittleEndian.Uint64(r.Buffer[r.Offset:])
 	r.Offset += 8
 	return v
+}
+
+func (r *TableReader) getI32() int32 {
+	return int32(r.Get32()) /* #nosec G115 -- same-width two's-complement */
+}
+func (r *TableReader) getI64() int64 {
+	return int64(r.Get64()) /* #nosec G115 -- same-width two's-complement */
 }
 
 // lebPair reads a one-byte canonical LEB. False means EOF or a multi-byte
@@ -3722,6 +3734,10 @@ func tableFixedOverlay(ptr unsafe.Pointer, n uintptr) []byte {
 	return unsafe.Slice((*byte)(ptr), n)
 }
 
+func tableFixedOverlayOf[T any](p *T) []byte {
+	return tableFixedOverlay(unsafe.Pointer(p), unsafe.Sizeof(*p))
+}
+
 // One descriptor per union declaration, initialized after package data.
 var tableUnionArms = make([]TableUnionInfo, 1)
 
@@ -4021,7 +4037,7 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 			if value.PosX < -16383 || value.PosX > 16383 {
 				return false
 			}
-			w.Put32(uint32(value.PosX))
+			w.Put32(uint32(int64(value.PosX) & 0xffffffff))
 		}
 	}
 	{
@@ -4032,7 +4048,7 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 			if value.PosY < -16383 || value.PosY > 16383 {
 				return false
 			}
-			w.Put32(uint32(value.PosY))
+			w.Put32(uint32(int64(value.PosY) & 0xffffffff))
 		}
 	}
 	{
@@ -4043,7 +4059,7 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 			if value.PosZ < -16383 || value.PosZ > 16383 {
 				return false
 			}
-			w.Put32(uint32(value.PosZ))
+			w.Put32(uint32(int64(value.PosZ) & 0xffffffff))
 		}
 	}
 	{
@@ -4076,7 +4092,7 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 			if value.VelX < -2048 || value.VelX > 2047 {
 				return false
 			}
-			w.Put32(uint32(value.VelX))
+			w.Put32(uint32(int64(value.VelX) & 0xffffffff))
 		}
 	}
 	{
@@ -4087,7 +4103,7 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 			if value.VelY < -2048 || value.VelY > 2047 {
 				return false
 			}
-			w.Put32(uint32(value.VelY))
+			w.Put32(uint32(int64(value.VelY) & 0xffffffff))
 		}
 	}
 	{
@@ -4098,7 +4114,7 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 			if value.VelZ < -2048 || value.VelZ > 2047 {
 				return false
 			}
-			w.Put32(uint32(value.VelZ))
+			w.Put32(uint32(int64(value.VelZ) & 0xffffffff))
 		}
 	}
 	{
@@ -4109,7 +4125,7 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 			if value.Health < 0 || value.Health > 1000 {
 				return false
 			}
-			w.Put32(uint32(value.Health))
+			w.Put32(uint32(int64(value.Health) & 0xffffffff))
 		}
 	}
 	{
@@ -4268,7 +4284,7 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.EntityID = uint32(v)
+						value.EntityID = uint32(v & 0xffffffff)
 					}
 					r.Report.Widened++
 					break
@@ -4303,7 +4319,7 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.PosX = int32(v)
+						value.PosX = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 					r.Report.Widened++
 					break
@@ -4316,7 +4332,7 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := r.getI32()
 				if v < -16383 || v > 16383 {
 					r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.pos_x")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -4338,7 +4354,7 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.PosY = int32(v)
+						value.PosY = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 					r.Report.Widened++
 					break
@@ -4351,7 +4367,7 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := r.getI32()
 				if v < -16383 || v > 16383 {
 					r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.pos_y")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -4373,7 +4389,7 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.PosZ = int32(v)
+						value.PosZ = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 					r.Report.Widened++
 					break
@@ -4386,7 +4402,7 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := r.getI32()
 				if v < -16383 || v > 16383 {
 					r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.pos_z")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -4408,7 +4424,7 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Yaw = uint32(v)
+						value.Yaw = uint32(v & 0xffffffff)
 					}
 					r.Report.Widened++
 					break
@@ -4443,7 +4459,7 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Pitch = uint32(v)
+						value.Pitch = uint32(v & 0xffffffff)
 					}
 					r.Report.Widened++
 					break
@@ -4478,7 +4494,7 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.VelX = int32(v)
+						value.VelX = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 					r.Report.Widened++
 					break
@@ -4491,7 +4507,7 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := r.getI32()
 				if v < -2048 || v > 2047 {
 					r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.vel_x")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -4513,7 +4529,7 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.VelY = int32(v)
+						value.VelY = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 					r.Report.Widened++
 					break
@@ -4526,7 +4542,7 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := r.getI32()
 				if v < -2048 || v > 2047 {
 					r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.vel_y")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -4548,7 +4564,7 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.VelZ = int32(v)
+						value.VelZ = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 					r.Report.Widened++
 					break
@@ -4561,7 +4577,7 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := r.getI32()
 				if v < -2048 || v > 2047 {
 					r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.vel_z")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -4583,7 +4599,7 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Health = int32(v)
+						value.Health = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 					r.Report.Widened++
 					break
@@ -4596,7 +4612,7 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := r.getI32()
 				if v < 0 || v > 1000 {
 					r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.health")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -4795,7 +4811,7 @@ func MixedStatSaveBody(w *TableWriter, value *MixedStat) bool {
 			if value.Delta < -512 || value.Delta > 511 {
 				return false
 			}
-			w.Put32(uint32(value.Delta))
+			w.Put32(uint32(int64(value.Delta) & 0xffffffff))
 		}
 	}
 	w.Put8(0)
@@ -4895,7 +4911,7 @@ func MixedStatLoadBody(r *TableReader, value *MixedStat) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Delta = int32(v)
+						value.Delta = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 					r.Report.Widened++
 					break
@@ -4908,7 +4924,7 @@ func MixedStatLoadBody(r *TableReader, value *MixedStat) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := r.getI32()
 				if v < -512 || v > 511 {
 					r.Report.Refuse(TableRefuseOutOfRange, "MixedStat.delta")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -5035,7 +5051,7 @@ func MixedHitEventSaveBody(w *TableWriter, value *MixedHitEvent) bool {
 			if value.Damage < 0 || value.Damage > 4095 {
 				return false
 			}
-			w.Put32(uint32(value.Damage))
+			w.Put32(uint32(int64(value.Damage) & 0xffffffff))
 		}
 	}
 	{
@@ -5046,7 +5062,7 @@ func MixedHitEventSaveBody(w *TableWriter, value *MixedHitEvent) bool {
 			if value.HitKind < 0 || value.HitKind > 7 {
 				return false
 			}
-			w.Put32(uint32(value.HitKind))
+			w.Put32(uint32(int64(value.HitKind) & 0xffffffff))
 		}
 	}
 	{
@@ -5140,7 +5156,7 @@ func MixedHitEventLoadBody(r *TableReader, value *MixedHitEvent) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.TargetID = uint32(v)
+						value.TargetID = uint32(v & 0xffffffff)
 					}
 					r.Report.Widened++
 					break
@@ -5175,7 +5191,7 @@ func MixedHitEventLoadBody(r *TableReader, value *MixedHitEvent) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Damage = int32(v)
+						value.Damage = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 					r.Report.Widened++
 					break
@@ -5188,7 +5204,7 @@ func MixedHitEventLoadBody(r *TableReader, value *MixedHitEvent) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := r.getI32()
 				if v < 0 || v > 4095 {
 					r.Report.Refuse(TableRefuseOutOfRange, "MixedHitEvent.damage")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -5210,7 +5226,7 @@ func MixedHitEventLoadBody(r *TableReader, value *MixedHitEvent) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.HitKind = int32(v)
+						value.HitKind = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 					r.Report.Widened++
 					break
@@ -5223,7 +5239,7 @@ func MixedHitEventLoadBody(r *TableReader, value *MixedHitEvent) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := r.getI32()
 				if v < 0 || v > 7 {
 					r.Report.Refuse(TableRefuseOutOfRange, "MixedHitEvent.hit_kind")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -5345,7 +5361,7 @@ func MixedChatEventSaveBody(w *TableWriter, value *MixedChatEvent) bool {
 			if value.Channel < 0 || value.Channel > 3 {
 				return false
 			}
-			w.Put32(uint32(value.Channel))
+			w.Put32(uint32(int64(value.Channel) & 0xffffffff))
 		}
 	}
 	{
@@ -5438,7 +5454,7 @@ func MixedChatEventLoadBody(r *TableReader, value *MixedChatEvent) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Channel = int32(v)
+						value.Channel = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 					r.Report.Widened++
 					break
@@ -5451,7 +5467,7 @@ func MixedChatEventLoadBody(r *TableReader, value *MixedChatEvent) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := r.getI32()
 				if v < 0 || v > 3 {
 					r.Report.Refuse(TableRefuseOutOfRange, "MixedChatEvent.channel")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -5473,7 +5489,7 @@ func MixedChatEventLoadBody(r *TableReader, value *MixedChatEvent) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Speaker = uint32(v)
+						value.Speaker = uint32(v & 0xffffffff)
 					}
 					r.Report.Widened++
 					break
@@ -5602,7 +5618,7 @@ func MixedPickupEventSaveBody(w *TableWriter, value *MixedPickupEvent) bool {
 			if value.Amount < 0 || value.Amount > 255 {
 				return false
 			}
-			w.Put32(uint32(value.Amount))
+			w.Put32(uint32(int64(value.Amount) & 0xffffffff))
 		}
 	}
 	w.Put8(0)
@@ -5684,7 +5700,7 @@ func MixedPickupEventLoadBody(r *TableReader, value *MixedPickupEvent) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.ItemID = uint32(v)
+						value.ItemID = uint32(v & 0xffffffff)
 					}
 					r.Report.Widened++
 					break
@@ -5719,7 +5735,7 @@ func MixedPickupEventLoadBody(r *TableReader, value *MixedPickupEvent) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Amount = int32(v)
+						value.Amount = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 					r.Report.Widened++
 					break
@@ -5732,7 +5748,7 @@ func MixedPickupEventLoadBody(r *TableReader, value *MixedPickupEvent) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := r.getI32()
 				if v < 0 || v > 255 {
 					r.Report.Refuse(TableRefuseOutOfRange, "MixedPickupEvent.amount")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -5881,7 +5897,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 			if value.AckSequence < 0 || value.AckSequence > 65535 {
 				return false
 			}
-			w.Put32(uint32(value.AckSequence))
+			w.Put32(uint32(int64(value.AckSequence) & 0xffffffff))
 		}
 	}
 	{
@@ -5924,7 +5940,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 			if value.WorldTime < -1000000000000 || value.WorldTime > 1000000000000 {
 				return false
 			}
-			w.Put64(uint64(value.WorldTime))
+			w.putI64(value.WorldTime)
 		}
 	}
 	{
@@ -5946,7 +5962,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 			if value.ServerTime < 0 || value.ServerTime > 16776960 {
 				return false
 			}
-			w.Put32(uint32(value.ServerTime))
+			w.Put32(uint32(int64(value.ServerTime) & 0xffffffff))
 		}
 	}
 	{
@@ -5991,10 +6007,10 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 					payload24.Advance(n)
 					pairs++
 				}
-				if payload24.Overflow {
+				n := int64(1) + tableLebBytes(pairs) + payload24.Offset
+				if payload24.Overflow || n < 0 {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload24.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -6045,10 +6061,10 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 					payload27.Advance(n)
 					pairs++
 				}
-				if payload27.Overflow {
+				n := int64(1) + tableLebBytes(pairs) + payload27.Offset
+				if payload27.Overflow || n < 0 {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload27.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -6179,10 +6195,10 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 					payload31.Put8(uint8(value.Loadout[i]))
 					pairs++
 				}
-				if payload31.Overflow {
+				n := int64(1) + tableLebBytes(pairs) + payload31.Offset
+				if payload31.Overflow || n < 0 {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload31.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -6264,10 +6280,10 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 					payload34.Put8(uint8(value.Payload[i]))
 					pairs++
 				}
-				if payload34.Overflow {
+				n := int64(1) + tableLebBytes(pairs) + payload34.Offset
+				if payload34.Overflow || n < 0 {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload34.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -6414,7 +6430,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 			if value.Extra < 0 || value.Extra > 255 {
 				return false
 			}
-			w.Put32(uint32(value.Extra))
+			w.Put32(uint32(int64(value.Extra) & 0xffffffff))
 		}
 	}
 	{
@@ -6425,7 +6441,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 			if value.IdleTicks < 0 || value.IdleTicks > 15 {
 				return false
 			}
-			w.Put32(uint32(value.IdleTicks))
+			w.Put32(uint32(int64(value.IdleTicks) & 0xffffffff))
 		}
 	}
 	w.Put8(0)
@@ -6507,7 +6523,7 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Sequence = uint32(v)
+						value.Sequence = uint32(v & 0xffffffff)
 					}
 					r.Report.Widened++
 					break
@@ -6542,7 +6558,7 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.AckSequence = int32(v)
+						value.AckSequence = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 					r.Report.Widened++
 					break
@@ -6555,7 +6571,7 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := r.getI32()
 				if v < 0 || v > 65535 {
 					r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.ack_sequence")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -6577,7 +6593,7 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.AckBits = uint32(v)
+						value.AckBits = uint32(v & 0xffffffff)
 					}
 					r.Report.Widened++
 					break
@@ -6632,7 +6648,7 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 					}
 					{
 						v := r.Unsigned(kind)
-						value.ClientID = uint32(v)
+						value.ClientID = uint32(v & 0xffffffff)
 					}
 					r.Report.Widened++
 					break
@@ -6710,7 +6726,7 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 				return false
 			}
 			{
-				v := int64(r.Get64())
+				v := r.getI64()
 				if v < -1000000000000 || v > 1000000000000 {
 					r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.world_time")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -6763,7 +6779,7 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := r.getI32()
 				if v < 0 || v > 16776960 {
 					r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.server_time")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -7004,7 +7020,7 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 					}
 					{
 						v := sub.Unsigned(elemKind)
-						value.Loadout[i] = uint8(v)
+						value.Loadout[i] = uint8(v & 0xff)
 					}
 				}
 				if sub.Offset != int64(len(sub.Buffer)) {
@@ -7066,7 +7082,7 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 					}
 					{
 						v := sub.Unsigned(elemKind)
-						value.Payload[i] = byte(v)
+						value.Payload[i] = byte(v & 0xff)
 					}
 				}
 				value.PayloadLength = int32(count)
@@ -7329,7 +7345,7 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.CrcHint = uint32(v)
+						value.CrcHint = uint32(v & 0xffffffff)
 					}
 					r.Report.Widened++
 					break
@@ -7381,7 +7397,7 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Extra = int32(v)
+						value.Extra = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 					r.Report.Widened++
 					break
@@ -7394,7 +7410,7 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := r.getI32()
 				if v < 0 || v > 255 {
 					r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.extra")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -7416,7 +7432,7 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.IdleTicks = int32(v)
+						value.IdleTicks = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 					r.Report.Widened++
 					break
@@ -7429,7 +7445,7 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := r.getI32()
 				if v < 0 || v > 15 {
 					r.Report.Refuse(TableRefuseOutOfRange, "BenchMixed.idle_ticks")
 					r.Report.Refuse(TableRefuseWireDamaged, "")

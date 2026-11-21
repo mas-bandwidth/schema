@@ -185,7 +185,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 4095 { x = 4095; report.damaged = true; }
+                        if x > 4095 { x = 4095; report.out_of_range("MixedEntity.entity_id"); }
                         value.entity_id = x as u32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -213,7 +213,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < -16383i128 { x = -16383i128; report.damaged = true; } else if x > 16383i128 { x = 16383i128; report.damaged = true; }
+                        if x < -16383i128 { x = -16383i128; report.out_of_range("MixedEntity.pos_x"); } else if x > 16383i128 { x = 16383i128; report.out_of_range("MixedEntity.pos_x"); }
                         value.pos_x = x as i32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -241,7 +241,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < -16383i128 { x = -16383i128; report.damaged = true; } else if x > 16383i128 { x = 16383i128; report.damaged = true; }
+                        if x < -16383i128 { x = -16383i128; report.out_of_range("MixedEntity.pos_y"); } else if x > 16383i128 { x = 16383i128; report.out_of_range("MixedEntity.pos_y"); }
                         value.pos_y = x as i32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -269,7 +269,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < -16383i128 { x = -16383i128; report.damaged = true; } else if x > 16383i128 { x = 16383i128; report.damaged = true; }
+                        if x < -16383i128 { x = -16383i128; report.out_of_range("MixedEntity.pos_z"); } else if x > 16383i128 { x = 16383i128; report.out_of_range("MixedEntity.pos_z"); }
                         value.pos_z = x as i32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -297,7 +297,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 511 { x = 511; report.damaged = true; }
+                        if x > 511 { x = 511; report.out_of_range("MixedEntity.yaw"); }
                         value.yaw = x as u32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -325,7 +325,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 511 { x = 511; report.damaged = true; }
+                        if x > 511 { x = 511; report.out_of_range("MixedEntity.pitch"); }
                         value.pitch = x as u32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -353,7 +353,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < -2048i128 { x = -2048i128; report.damaged = true; } else if x > 2047i128 { x = 2047i128; report.damaged = true; }
+                        if x < -2048i128 { x = -2048i128; report.out_of_range("MixedEntity.vel_x"); } else if x > 2047i128 { x = 2047i128; report.out_of_range("MixedEntity.vel_x"); }
                         value.vel_x = x as i32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -381,7 +381,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < -2048i128 { x = -2048i128; report.damaged = true; } else if x > 2047i128 { x = 2047i128; report.damaged = true; }
+                        if x < -2048i128 { x = -2048i128; report.out_of_range("MixedEntity.vel_y"); } else if x > 2047i128 { x = 2047i128; report.out_of_range("MixedEntity.vel_y"); }
                         value.vel_y = x as i32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -409,7 +409,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < -2048i128 { x = -2048i128; report.damaged = true; } else if x > 2047i128 { x = 2047i128; report.damaged = true; }
+                        if x < -2048i128 { x = -2048i128; report.out_of_range("MixedEntity.vel_z"); } else if x > 2047i128 { x = 2047i128; report.out_of_range("MixedEntity.vel_z"); }
                         value.vel_z = x as i32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -437,7 +437,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < 0i128 { x = 0i128; report.damaged = true; } else if x > 1000i128 { x = 1000i128; report.damaged = true; }
+                        if x < 0i128 { x = 0i128; report.out_of_range("MixedEntity.health"); } else if x > 1000i128 { x = 1000i128; report.out_of_range("MixedEntity.health"); }
                         value.health = x as i32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -628,7 +628,7 @@ pub fn mixed_stat_load_message_body(r: &mut TableBitReader, v: &TableVocabulary,
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 255 { x = 255; report.damaged = true; }
+                        if x > 255 { x = 255; report.out_of_range("MixedStat.stat_id"); }
                         value.stat_id = x as u32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -655,7 +655,7 @@ pub fn mixed_stat_load_message_body(r: &mut TableBitReader, v: &TableVocabulary,
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < -512i128 { x = -512i128; report.damaged = true; } else if x > 511i128 { x = 511i128; report.damaged = true; }
+                        if x < -512i128 { x = -512i128; report.out_of_range("MixedStat.delta"); } else if x > 511i128 { x = 511i128; report.out_of_range("MixedStat.delta"); }
                         value.delta = x as i32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -756,7 +756,7 @@ pub fn mixed_hit_event_load_message_body(r: &mut TableBitReader, v: &TableVocabu
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 4095 { x = 4095; report.damaged = true; }
+                        if x > 4095 { x = 4095; report.out_of_range("MixedHitEvent.target_id"); }
                         value.target_id = x as u32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -784,7 +784,7 @@ pub fn mixed_hit_event_load_message_body(r: &mut TableBitReader, v: &TableVocabu
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < 0i128 { x = 0i128; report.damaged = true; } else if x > 4095i128 { x = 4095i128; report.damaged = true; }
+                        if x < 0i128 { x = 0i128; report.out_of_range("MixedHitEvent.damage"); } else if x > 4095i128 { x = 4095i128; report.out_of_range("MixedHitEvent.damage"); }
                         value.damage = x as i32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -812,7 +812,7 @@ pub fn mixed_hit_event_load_message_body(r: &mut TableBitReader, v: &TableVocabu
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < 0i128 { x = 0i128; report.damaged = true; } else if x > 7i128 { x = 7i128; report.damaged = true; }
+                        if x < 0i128 { x = 0i128; report.out_of_range("MixedHitEvent.hit_kind"); } else if x > 7i128 { x = 7i128; report.out_of_range("MixedHitEvent.hit_kind"); }
                         value.hit_kind = x as i32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -920,7 +920,7 @@ pub fn mixed_chat_event_load_message_body(r: &mut TableBitReader, v: &TableVocab
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < 0i128 { x = 0i128; report.damaged = true; } else if x > 3i128 { x = 3i128; report.damaged = true; }
+                        if x < 0i128 { x = 0i128; report.out_of_range("MixedChatEvent.channel"); } else if x > 3i128 { x = 3i128; report.out_of_range("MixedChatEvent.channel"); }
                         value.channel = x as i32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -948,7 +948,7 @@ pub fn mixed_chat_event_load_message_body(r: &mut TableBitReader, v: &TableVocab
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 4095 { x = 4095; report.damaged = true; }
+                        if x > 4095 { x = 4095; report.out_of_range("MixedChatEvent.speaker"); }
                         value.speaker = x as u32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -1036,7 +1036,7 @@ pub fn mixed_pickup_event_load_message_body(r: &mut TableBitReader, v: &TableVoc
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 1023 { x = 1023; report.damaged = true; }
+                        if x > 1023 { x = 1023; report.out_of_range("MixedPickupEvent.item_id"); }
                         value.item_id = x as u32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -1064,7 +1064,7 @@ pub fn mixed_pickup_event_load_message_body(r: &mut TableBitReader, v: &TableVoc
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < 0i128 { x = 0i128; report.damaged = true; } else if x > 255i128 { x = 255i128; report.damaged = true; }
+                        if x < 0i128 { x = 0i128; report.out_of_range("MixedPickupEvent.amount"); } else if x > 255i128 { x = 255i128; report.out_of_range("MixedPickupEvent.amount"); }
                         value.amount = x as i32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -1239,7 +1239,15 @@ pub fn bench_mixed_save_message_body(w: &mut TableBitWriter, value: &BenchMixedR
     }
     {
         debug_assert!(value.entities_count >= 1 && value.entities_count <= 8, "the declared count is the bound (docs/SPEC-TABLES.md §3.4)");
-        if value.entities_count > 0 {
+        let mut live25 = false;
+        if value.entities_count == 1 {
+            for e in value.entities.iter().take(1) {
+                let mut probe26 = TableBitWriter::measure();
+                if !mixed_entity_save_message_body(&mut probe26, e) { return false; }
+                if probe26.bits > TABLE_MESSAGE_REF_BITS as u64 { live25 = true; break; }
+            }
+        }
+        if value.entities_count > 0 && (value.entities_count != 1 || live25) {
             w.put(10, TABLE_MESSAGE_REF_BITS);
             w.put((value.entities_count as u64).wrapping_sub(1), 3);
             for i in 0..(value.entities_count as usize) {
@@ -1264,18 +1272,18 @@ pub fn bench_mixed_save_message_body(w: &mut TableBitWriter, value: &BenchMixedR
                 0 => w.put(0, TABLE_MESSAGE_REF_BITS),
                 1 => {
                     w.put(68, TABLE_MESSAGE_REF_BITS);
-                    let Some(arm25) = value.game_event.hit() else { return false; };
-                    if !mixed_hit_event_save_message_body(w, &arm25) { return false; }
+                    let Some(arm27) = value.game_event.hit() else { return false; };
+                    if !mixed_hit_event_save_message_body(w, &arm27) { return false; }
                 }
                 2 => {
                     w.put(69, TABLE_MESSAGE_REF_BITS);
-                    let Some(arm26) = value.game_event.chat() else { return false; };
-                    if !mixed_chat_event_save_message_body(w, &arm26) { return false; }
+                    let Some(arm28) = value.game_event.chat() else { return false; };
+                    if !mixed_chat_event_save_message_body(w, &arm28) { return false; }
                 }
                 3 => {
                     w.put(70, TABLE_MESSAGE_REF_BITS);
-                    let Some(arm27) = value.game_event.pickup() else { return false; };
-                    if !mixed_pickup_event_save_message_body(w, &arm27) { return false; }
+                    let Some(arm29) = value.game_event.pickup() else { return false; };
+                    if !mixed_pickup_event_save_message_body(w, &arm29) { return false; }
                 }
                 _ => return false,
             }
@@ -1423,20 +1431,20 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 next_field = 1;
                 let mut widened = false;
                 let unknown_before = report.unknown;
-                'f28: {
+                'f30: {
                     if entry.kind != 7 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 7) {
                             widened = true;
                         } else {
                             report.damaged = true;
                             if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
-                            break 'f28;
+                            break 'f30;
                         }
                     }
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 65535 { x = 65535; report.damaged = true; }
+                        if x > 65535 { x = 65535; report.out_of_range("BenchMixed.sequence"); }
                         value.sequence = x as u32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -1451,20 +1459,20 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 next_field = 2;
                 let mut widened = false;
                 let unknown_before = report.unknown;
-                'f29: {
+                'f31: {
                     if entry.kind != 4 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
                             widened = true;
                         } else {
                             report.damaged = true;
                             if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
-                            break 'f29;
+                            break 'f31;
                         }
                     }
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < 0i128 { x = 0i128; report.damaged = true; } else if x > 65535i128 { x = 65535i128; report.damaged = true; }
+                        if x < 0i128 { x = 0i128; report.out_of_range("BenchMixed.ack_sequence"); } else if x > 65535i128 { x = 65535i128; report.out_of_range("BenchMixed.ack_sequence"); }
                         value.ack_sequence = x as i32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -1479,20 +1487,20 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 next_field = 3;
                 let mut widened = false;
                 let unknown_before = report.unknown;
-                'f30: {
+                'f32: {
                     if entry.kind != 8 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 8) {
                             widened = true;
                         } else {
                             report.damaged = true;
                             if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
-                            break 'f30;
+                            break 'f32;
                         }
                     }
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 4294967295 { x = 4294967295; report.damaged = true; }
+                        if x > 4294967295 { x = 4294967295; report.out_of_range("BenchMixed.ack_bits"); }
                         value.ack_bits = x as u32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -1507,14 +1515,14 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 next_field = 4;
                 let mut widened = false;
                 let unknown_before = report.unknown;
-                'f31: {
+                'f33: {
                     if entry.kind != 9 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 9) {
                             widened = true;
                         } else {
                             report.damaged = true;
                             if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
-                            break 'f31;
+                            break 'f33;
                         }
                     }
                     {
@@ -1534,14 +1542,14 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 next_field = 5;
                 let mut widened = false;
                 let unknown_before = report.unknown;
-                'f32: {
+                'f34: {
                     if entry.kind != 8 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 8) {
                             widened = true;
                         } else {
                             report.damaged = true;
                             if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
-                            break 'f32;
+                            break 'f34;
                         }
                     }
                     {
@@ -1561,20 +1569,20 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 next_field = 6;
                 let mut widened = false;
                 let unknown_before = report.unknown;
-                'f33: {
+                'f35: {
                     if entry.kind != 9 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 9) {
                             widened = true;
                         } else {
                             report.damaged = true;
                             if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
-                            break 'f33;
+                            break 'f35;
                         }
                     }
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 18446744073709551615u128 { x = 18446744073709551615u128; report.damaged = true; }
+                        if x > 18446744073709551615u128 { x = 18446744073709551615u128; report.out_of_range("BenchMixed.nonce"); }
                         value.nonce = x as u64;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -1589,20 +1597,20 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 next_field = 7;
                 let mut widened = false;
                 let unknown_before = report.unknown;
-                'f34: {
+                'f36: {
                     if entry.kind != 5 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 5) {
                             widened = true;
                         } else {
                             report.damaged = true;
                             if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
-                            break 'f34;
+                            break 'f36;
                         }
                     }
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < -1000000000000i128 { x = -1000000000000i128; report.damaged = true; } else if x > 1000000000000i128 { x = 1000000000000i128; report.damaged = true; }
+                        if x < -1000000000000i128 { x = -1000000000000i128; report.out_of_range("BenchMixed.world_time"); } else if x > 1000000000000i128 { x = 1000000000000i128; report.out_of_range("BenchMixed.world_time"); }
                         value.world_time = x as i64;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -1617,20 +1625,20 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 next_field = 8;
                 let mut widened = false;
                 let unknown_before = report.unknown;
-                'f35: {
+                'f37: {
                     if entry.kind != 9 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 9) {
                             widened = true;
                         } else {
                             report.damaged = true;
                             if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
-                            break 'f35;
+                            break 'f37;
                         }
                     }
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 281474976710655 { x = 281474976710655; report.damaged = true; }
+                        if x > 281474976710655 { x = 281474976710655; report.out_of_range("BenchMixed.frame_tick"); }
                         value.frame_tick = x as u64;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -1644,16 +1652,16 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 if same_build && next_field > 8 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
                 next_field = 9;
                 let unknown_before = report.unknown;
-                'f36: {
+                'f38: {
                     if entry.kind != 22 || entry.shape.elem != 0 {
                         report.damaged = true;
                         if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
-                        break 'f36;
+                        break 'f38;
                     }
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < 0i128 { x = 0i128; report.damaged = true; } else if x > 16776960i128 { x = 16776960i128; report.damaged = true; }
+                        if x < 0i128 { x = 0i128; report.out_of_range("BenchMixed.server_time"); } else if x > 16776960i128 { x = 16776960i128; report.out_of_range("BenchMixed.server_time"); }
                         value.server_time = x as i32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -1666,39 +1674,6 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 if same_build && next_field > 9 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
                 next_field = 10;
                 let unknown_before = report.unknown;
-                'f37: {
-                    if entry.kind != 14 || entry.shape.elem != 13 {
-                        report.damaged = true;
-                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
-                        break 'f37;
-                    }
-                    {
-                        let Some(n) = table_message_count(r, &entry.shape) else { report.damaged = true; return false; };
-                        if entry.shape.elem == 6 && !r.align() { report.damaged = true; return false; }
-                        let element38 = TableMessageEntry { id: 0, kind: entry.shape.elem, shape: entry.element, element: TableMessageShape::default(), first: 0 };
-                        if n < 1 { report.damaged = true; return false; }
-                        let keep = core::cmp::min(n, 8);
-                        if keep < n { report.damaged = true; }
-                        let width = table_message_value_bits(element38.kind, &element38.shape);
-                        let walk = if width >= 0 { keep } else { n };
-                        for i in 0..walk {
-                            let mut scratch: MixedEntityRow = Default::default();
-                            let p: &mut MixedEntityRow = if i < keep { &mut value.entities[i as usize] } else { &mut scratch };
-                            if !mixed_entity_load_message_body(r, v, report, &mut (*p)) { return false; }
-                        }
-                        if walk < n && !r.skip((n - walk) * width as u64) { report.damaged = true; return false; }
-                        value.entities_count = keep as i32;
-                    }
-                    if same_build && report.unknown == unknown_before {
-                        let rides = value.entities_count > 0;
-                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
-                    }
-                }
-            }
-            0xee639cad45b1994c => {
-                if same_build && next_field > 10 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
-                next_field = 11;
-                let unknown_before = report.unknown;
                 'f39: {
                     if entry.kind != 14 || entry.shape.elem != 13 {
                         report.damaged = true;
@@ -1709,9 +1684,50 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         let Some(n) = table_message_count(r, &entry.shape) else { report.damaged = true; return false; };
                         if entry.shape.elem == 6 && !r.align() { report.damaged = true; return false; }
                         let element40 = TableMessageEntry { id: 0, kind: entry.shape.elem, shape: entry.element, element: TableMessageShape::default(), first: 0 };
-                        let keep = core::cmp::min(n, 80);
+                        if n < 1 { report.damaged = true; return false; }
+                        let keep = core::cmp::min(n, 8);
                         if keep < n { report.damaged = true; }
                         let width = table_message_value_bits(element40.kind, &element40.shape);
+                        let walk = if width >= 0 { keep } else { n };
+                        for i in 0..walk {
+                            let mut scratch: MixedEntityRow = Default::default();
+                            let p: &mut MixedEntityRow = if i < keep { &mut value.entities[i as usize] } else { &mut scratch };
+                            if !mixed_entity_load_message_body(r, v, report, &mut (*p)) { return false; }
+                        }
+                        if walk < n && !r.skip((n - walk) * width as u64) { report.damaged = true; return false; }
+                        value.entities_count = keep as i32;
+                    }
+                    if same_build && report.unknown == unknown_before {
+                        let mut live41 = false;
+                        if value.entities_count == 1 {
+                            for e in value.entities.iter().take(1) {
+                                let mut probe42 = TableBitWriter::measure();
+                                if !mixed_entity_save_message_body(&mut probe42, e) { return false; }
+                                if probe42.bits > TABLE_MESSAGE_REF_BITS as u64 { live41 = true; break; }
+                            }
+                        }
+                        let rides = value.entities_count > 0 && (value.entities_count != 1 || live41);
+                        if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
+                    }
+                }
+            }
+            0xee639cad45b1994c => {
+                if same_build && next_field > 10 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
+                next_field = 11;
+                let unknown_before = report.unknown;
+                'f43: {
+                    if entry.kind != 14 || entry.shape.elem != 13 {
+                        report.damaged = true;
+                        if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
+                        break 'f43;
+                    }
+                    {
+                        let Some(n) = table_message_count(r, &entry.shape) else { report.damaged = true; return false; };
+                        if entry.shape.elem == 6 && !r.align() { report.damaged = true; return false; }
+                        let element44 = TableMessageEntry { id: 0, kind: entry.shape.elem, shape: entry.element, element: TableMessageShape::default(), first: 0 };
+                        let keep = core::cmp::min(n, 80);
+                        if keep < n { report.damaged = true; }
+                        let width = table_message_value_bits(element44.kind, &element44.shape);
                         let walk = if width >= 0 { keep } else { n };
                         for i in 0..walk {
                             let mut scratch: MixedStatRow = Default::default();
@@ -1731,63 +1747,63 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 if same_build && next_field > 11 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
                 next_field = 12;
                 let unknown_before = report.unknown;
-                'f41: {
+                'f45: {
                     if entry.kind != 15 || entry.shape.elem != 0 {
                         report.damaged = true;
                         if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
-                        break 'f41;
+                        break 'f45;
                     }
                     {
                         let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
                         if reference == 0 {
                             value.game_event.set_none();
                         } else {
-                            let Some(arm_entry42) = v.entry(reference).copied() else { report.damaged = true; return false; };
-                            if arm_entry42.id >= 0xffff_ffff_ffff_fffd || arm_entry42.kind == 0 { report.damaged = true; return false; }
-                            match arm_entry42.id {
+                            let Some(arm_entry46) = v.entry(reference).copied() else { report.damaged = true; return false; };
+                            if arm_entry46.id >= 0xffff_ffff_ffff_fffd || arm_entry46.kind == 0 { report.damaged = true; return false; }
+                            match arm_entry46.id {
                                 0x33732819300680aa => {
-                                    'a43: {
-                                        if arm_entry42.kind != 13 || arm_entry42.shape.elem != 0 {
+                                    'a47: {
+                                        if arm_entry46.kind != 13 || arm_entry46.shape.elem != 0 {
                                             value.game_event.set_none();
                                             report.damaged = true;
-                                            if !table_message_skip(r, v, &arm_entry42, 0) { report.damaged = true; return false; }
-                                            break 'a43;
+                                            if !table_message_skip(r, v, &arm_entry46, 0) { report.damaged = true; return false; }
+                                            break 'a47;
                                         }
-                                        let mut arm44: MixedHitEventRow = Default::default();
-                                        if !mixed_hit_event_load_message_body(r, v, report, &mut arm44) { return false; }
-                                        value.game_event.set_hit(arm44);
+                                        let mut arm48: MixedHitEventRow = Default::default();
+                                        if !mixed_hit_event_load_message_body(r, v, report, &mut arm48) { return false; }
+                                        value.game_event.set_hit(arm48);
                                     }
                                 }
                                 0xf2a38d910b5b348b => {
-                                    'a45: {
-                                        if arm_entry42.kind != 13 || arm_entry42.shape.elem != 0 {
+                                    'a49: {
+                                        if arm_entry46.kind != 13 || arm_entry46.shape.elem != 0 {
                                             value.game_event.set_none();
                                             report.damaged = true;
-                                            if !table_message_skip(r, v, &arm_entry42, 0) { report.damaged = true; return false; }
-                                            break 'a45;
+                                            if !table_message_skip(r, v, &arm_entry46, 0) { report.damaged = true; return false; }
+                                            break 'a49;
                                         }
-                                        let mut arm46: MixedChatEventRow = Default::default();
-                                        if !mixed_chat_event_load_message_body(r, v, report, &mut arm46) { return false; }
-                                        value.game_event.set_chat(arm46);
+                                        let mut arm50: MixedChatEventRow = Default::default();
+                                        if !mixed_chat_event_load_message_body(r, v, report, &mut arm50) { return false; }
+                                        value.game_event.set_chat(arm50);
                                     }
                                 }
                                 0x9fa3a41c86ecb765 => {
-                                    'a47: {
-                                        if arm_entry42.kind != 13 || arm_entry42.shape.elem != 0 {
+                                    'a51: {
+                                        if arm_entry46.kind != 13 || arm_entry46.shape.elem != 0 {
                                             value.game_event.set_none();
                                             report.damaged = true;
-                                            if !table_message_skip(r, v, &arm_entry42, 0) { report.damaged = true; return false; }
-                                            break 'a47;
+                                            if !table_message_skip(r, v, &arm_entry46, 0) { report.damaged = true; return false; }
+                                            break 'a51;
                                         }
-                                        let mut arm48: MixedPickupEventRow = Default::default();
-                                        if !mixed_pickup_event_load_message_body(r, v, report, &mut arm48) { return false; }
-                                        value.game_event.set_pickup(arm48);
+                                        let mut arm52: MixedPickupEventRow = Default::default();
+                                        if !mixed_pickup_event_load_message_body(r, v, report, &mut arm52) { return false; }
+                                        value.game_event.set_pickup(arm52);
                                     }
                                 }
                                 _ => {
                                     value.game_event.set_none();
                                     report.unknown += 1;
-                                    if !table_message_skip(r, v, &arm_entry42, 0) { report.damaged = true; return false; }
+                                    if !table_message_skip(r, v, &arm_entry46, 0) { report.damaged = true; return false; }
                                 }
                             }
                         }
@@ -1803,26 +1819,26 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 if same_build && next_field > 12 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
                 next_field = 13;
                 let unknown_before = report.unknown;
-                'f49: {
+                'f53: {
                     if entry.kind != 14 || entry.shape.elem != 6 {
                         report.damaged = true;
                         if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
-                        break 'f49;
+                        break 'f53;
                     }
                     {
                         let Some(n) = table_message_count(r, &entry.shape) else { report.damaged = true; return false; };
                         if entry.shape.elem == 6 && !r.align() { report.damaged = true; return false; }
-                        let element50 = TableMessageEntry { id: 0, kind: entry.shape.elem, shape: entry.element, element: TableMessageShape::default(), first: 0 };
+                        let element54 = TableMessageEntry { id: 0, kind: entry.shape.elem, shape: entry.element, element: TableMessageShape::default(), first: 0 };
                         let keep = core::cmp::min(n, 4);
                         if keep < n { report.damaged = true; }
-                        let width = table_message_value_bits(element50.kind, &element50.shape);
+                        let width = table_message_value_bits(element54.kind, &element54.shape);
                         let walk = if width >= 0 { keep } else { n };
                         for i in 0..walk {
                             let mut scratch: u8 = Default::default();
                             let p: &mut u8 = if i < keep { &mut value.loadout[i as usize] } else { &mut scratch };
                             {
-                                let Some((lo, hi)) = table_message_read_scalar(r, element50.kind, &element50.shape) else { report.damaged = true; return false; };
-                                let x = table_message_unsigned(element50.kind, lo, hi);
+                                let Some((lo, hi)) = table_message_read_scalar(r, element54.kind, &element54.shape) else { report.damaged = true; return false; };
+                                let x = table_message_unsigned(element54.kind, lo, hi);
                                 (*p) = x as u8;
                             }
                         }
@@ -1838,11 +1854,11 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 if same_build && next_field > 13 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
                 next_field = 14;
                 let unknown_before = report.unknown;
-                'f51: {
+                'f55: {
                     if entry.kind != 12 || entry.shape.elem != 0 {
                         report.damaged = true;
                         if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
-                        break 'f51;
+                        break 'f55;
                     }
                     {
                         let Some(n) = table_message_count(r, &entry.shape) else { report.damaged = true; return false; };
@@ -1868,11 +1884,11 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 if same_build && next_field > 14 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
                 next_field = 15;
                 let unknown_before = report.unknown;
-                'f52: {
+                'f56: {
                     if entry.kind != 14 || entry.shape.elem != 6 {
                         report.damaged = true;
                         if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
-                        break 'f52;
+                        break 'f56;
                     }
                     {
                         let Some(n) = table_message_count(r, &entry.shape) else { report.damaged = true; return false; };
@@ -1895,16 +1911,16 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
             0xdbaf7be5e24296c9 => {
                 if same_build && next_field > 15 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
                 next_field = 16;
-                'f53: {
+                'f57: {
                     if entry.kind != 10 || entry.shape.elem != 0 {
                         report.damaged = true;
                         if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
-                        break 'f53;
+                        break 'f57;
                     }
                     {
                         let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = if table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.aim_x"); 0.0 };
-                        if x < f32::from_bits(0xbf800000) { x = f32::from_bits(0xbf800000); report.damaged = true; } else if x > f32::from_bits(0x3f800000) { x = f32::from_bits(0x3f800000); report.damaged = true; }
+                        if x < f32::from_bits(0xbf800000) { x = f32::from_bits(0xbf800000); report.out_of_range("BenchMixed.aim_x"); } else if x > f32::from_bits(0x3f800000) { x = f32::from_bits(0x3f800000); report.out_of_range("BenchMixed.aim_x"); }
                         if x == 0.0 { x = 0.0; }
                         value.aim_x = x;
                     }
@@ -1913,16 +1929,16 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
             0xdbaf7ae5e2429516 => {
                 if same_build && next_field > 16 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
                 next_field = 17;
-                'f54: {
+                'f58: {
                     if entry.kind != 10 || entry.shape.elem != 0 {
                         report.damaged = true;
                         if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
-                        break 'f54;
+                        break 'f58;
                     }
                     {
                         let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = if table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.aim_y"); 0.0 };
-                        if x < f32::from_bits(0xbf800000) { x = f32::from_bits(0xbf800000); report.damaged = true; } else if x > f32::from_bits(0x3f800000) { x = f32::from_bits(0x3f800000); report.damaged = true; }
+                        if x < f32::from_bits(0xbf800000) { x = f32::from_bits(0xbf800000); report.out_of_range("BenchMixed.aim_y"); } else if x > f32::from_bits(0x3f800000) { x = f32::from_bits(0x3f800000); report.out_of_range("BenchMixed.aim_y"); }
                         if x == 0.0 { x = 0.0; }
                         value.aim_y = x;
                     }
@@ -1931,16 +1947,16 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
             0xdbaf79e5e2429363 => {
                 if same_build && next_field > 17 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
                 next_field = 18;
-                'f55: {
+                'f59: {
                     if entry.kind != 10 || entry.shape.elem != 0 {
                         report.damaged = true;
                         if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
-                        break 'f55;
+                        break 'f59;
                     }
                     {
                         let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = if table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.aim_z"); 0.0 };
-                        if x < f32::from_bits(0xbf800000) { x = f32::from_bits(0xbf800000); report.damaged = true; } else if x > f32::from_bits(0x3f800000) { x = f32::from_bits(0x3f800000); report.damaged = true; }
+                        if x < f32::from_bits(0xbf800000) { x = f32::from_bits(0xbf800000); report.out_of_range("BenchMixed.aim_z"); } else if x > f32::from_bits(0x3f800000) { x = f32::from_bits(0x3f800000); report.out_of_range("BenchMixed.aim_z"); }
                         if x == 0.0 { x = 0.0; }
                         value.aim_z = x;
                     }
@@ -1950,11 +1966,11 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 if same_build && next_field > 18 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
                 next_field = 19;
                 let unknown_before = report.unknown;
-                'f56: {
+                'f60: {
                     if entry.kind != 10 || entry.shape.elem != 0 {
                         report.damaged = true;
                         if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
-                        break 'f56;
+                        break 'f60;
                     }
                     {
                         let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
@@ -1972,14 +1988,14 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 next_field = 20;
                 let mut widened = false;
                 let unknown_before = report.unknown;
-                'f57: {
+                'f61: {
                     if entry.kind != 11 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 11) {
                             widened = true;
                         } else {
                             report.damaged = true;
                             if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
-                            break 'f57;
+                            break 'f61;
                         }
                     }
                     {
@@ -1999,14 +2015,14 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 next_field = 21;
                 let mut widened = false;
                 let unknown_before = report.unknown;
-                'f58: {
+                'f62: {
                     if entry.kind != 19 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 19) {
                             widened = true;
                         } else {
                             report.damaged = true;
                             if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
-                            break 'f58;
+                            break 'f62;
                         }
                     }
                     {
@@ -2026,20 +2042,20 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 next_field = 22;
                 let mut widened = false;
                 let unknown_before = report.unknown;
-                'f59: {
+                'f63: {
                     if entry.kind != 18 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 18) {
                             widened = true;
                         } else {
                             report.damaged = true;
                             if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
-                            break 'f59;
+                            break 'f63;
                         }
                     }
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < -1267650600228229401496703205376i128 { x = -1267650600228229401496703205376i128; report.damaged = true; } else if x > 1267650600228229401496703205376i128 { x = 1267650600228229401496703205376i128; report.damaged = true; }
+                        if x < -1267650600228229401496703205376i128 { x = -1267650600228229401496703205376i128; report.out_of_range("BenchMixed.flux"); } else if x > 1267650600228229401496703205376i128 { x = 1267650600228229401496703205376i128; report.out_of_range("BenchMixed.flux"); }
                         value.flux = TableI128(x);
                     }
                     if same_build && report.unknown == unknown_before {
@@ -2053,16 +2069,16 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 if same_build && next_field > 22 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
                 next_field = 23;
                 let unknown_before = report.unknown;
-                'f60: {
+                'f64: {
                     if entry.kind != 26 || entry.shape.elem != 0 {
                         report.damaged = true;
                         if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
-                        break 'f60;
+                        break 'f64;
                     }
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 64000u128 { x = 64000u128; report.damaged = true; }
+                        if x > 64000u128 { x = 64000u128; report.out_of_range("BenchMixed.ping"); }
                         value.ping = x as u16;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -2076,20 +2092,20 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 next_field = 24;
                 let mut widened = false;
                 let unknown_before = report.unknown;
-                'f61: {
+                'f65: {
                     if entry.kind != 8 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 8) {
                             widened = true;
                         } else {
                             report.damaged = true;
                             if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
-                            break 'f61;
+                            break 'f65;
                         }
                     }
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 16777215 { x = 16777215; report.damaged = true; }
+                        if x > 16777215 { x = 16777215; report.out_of_range("BenchMixed.crc_hint"); }
                         value.crc_hint = x as u32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -2103,11 +2119,11 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 if same_build && next_field > 24 { report.damaged = true; return false; } // out of the writer's order (§3.3 (b))
                 next_field = 25;
                 let unknown_before = report.unknown;
-                'f62: {
+                'f66: {
                     if entry.kind != 1 || entry.shape.elem != 0 {
                         report.damaged = true;
                         if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
-                        break 'f62;
+                        break 'f66;
                     }
                     {
                         let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
@@ -2124,20 +2140,20 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 next_field = 26;
                 let mut widened = false;
                 let unknown_before = report.unknown;
-                'f63: {
+                'f67: {
                     if entry.kind != 4 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
                             widened = true;
                         } else {
                             report.damaged = true;
                             if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
-                            break 'f63;
+                            break 'f67;
                         }
                     }
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < 0i128 { x = 0i128; report.damaged = true; } else if x > 255i128 { x = 255i128; report.damaged = true; }
+                        if x < 0i128 { x = 0i128; report.out_of_range("BenchMixed.extra"); } else if x > 255i128 { x = 255i128; report.out_of_range("BenchMixed.extra"); }
                         value.extra = x as i32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -2152,20 +2168,20 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                 next_field = 27;
                 let mut widened = false;
                 let unknown_before = report.unknown;
-                'f64: {
+                'f68: {
                     if entry.kind != 4 || entry.shape.elem != 0 {
                         if entry.shape.elem == 0 && table_message_widens(entry.kind, 4) {
                             widened = true;
                         } else {
                             report.damaged = true;
                             if !table_message_skip_field(r, v, &entry, 0) { report.damaged = true; return false; }
-                            break 'f64;
+                            break 'f68;
                         }
                     }
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < 0i128 { x = 0i128; report.damaged = true; } else if x > 15i128 { x = 15i128; report.damaged = true; }
+                        if x < 0i128 { x = 0i128; report.out_of_range("BenchMixed.idle_ticks"); } else if x > 15i128 { x = 15i128; report.out_of_range("BenchMixed.idle_ticks"); }
                         value.idle_ticks = x as i32;
                     }
                     if same_build && report.unknown == unknown_before {
