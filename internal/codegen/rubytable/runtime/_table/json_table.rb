@@ -119,7 +119,7 @@ module SchemaRuntimeUnit
       raise Refused.new('out_of_range', field.name) unless val.finite?
 
       if field.float_range
-        raise Refused.new('out_of_range', field.name) unless val.between?(field.fmin, field.fmax)
+        raise Refused.new('out_of_range', field.name) unless float_in_range?(field, val)
 
         val = 0.0 if val.zero?
       end
@@ -139,8 +139,7 @@ module SchemaRuntimeUnit
         value = rounded
       end
       if field.float_range
-        raise InvalidValue.new(field.name, 'float is outside its declared range') unless value.between?(field.fmin,
-                                                                                                        field.fmax)
+        raise InvalidValue.new(field.name, 'float is outside its declared range') unless float_in_range?(field, value)
 
         value = 0.0 if value.zero?
       end
@@ -765,9 +764,12 @@ module SchemaRuntimeUnit
     end
 
     def self.render_json_value(field, item, depth, counts, labels)
-      structural = %w[pointer table array pointer_array union_array map keyed
-                      union].include?(field.codec) || field.json_flags
-      if depth > MAX_DEPTH && !(field.codec == 'pointer' && item.nil?) && structural
+      # THE CAP IS HELD AT A TABLE, as the engine's writer holds it
+      # (internal/tabletext/write.go writeValue, writePointer): a pointer or a
+      # by-value table past 128 is refused, and a list, map, union or flags
+      # value inside a table AT the cap is written, because the reader takes
+      # the same structure (an empty `links` at the bottom of a 128-deep chain).
+      if depth > MAX_DEPTH && %w[pointer table].include?(field.codec) && !item.nil?
         raise InvalidValue.new(field.name, 'nested past the depth cap')
       end
       if field.codec == 'optional'

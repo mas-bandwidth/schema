@@ -322,7 +322,7 @@ def _widened_scalar(reader: Reader, kind: int, field: FieldDesc) -> Any:
     from .kind_array import _read_widened
 
     value = _read_widened(reader, kind, field, 1)[0]
-    if field.float_range and (value < field.fmin or value > field.fmax):
+    if field.float_range and not descriptor.float_in_range(field, value):
         raise Refused("out_of_range", field.name)
     return value
 

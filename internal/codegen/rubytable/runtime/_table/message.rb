@@ -621,7 +621,7 @@ module SchemaRuntimeUnit
         val = msg_read_value(reader, field, entry.shape, vocab, own_version, keys, stats, depth,
                              in_field: true, existing: field.get(obj), same_shape: same_shape)
         raise Refused.new('out_of_range', field.name) if val.instance_of?(Integer) && !val.between?(field.lo, field.hi)
-        if val.instance_of?(Float) && field.float_range && !val.between?(field.fmin, field.fmax)
+        if val.instance_of?(Float) && field.float_range && !float_in_range?(field, val)
           raise Refused.new('out_of_range', field.name)
         end
         if same_shape && stats[2] == substituted && field.default?(val) && !field.required
@@ -772,7 +772,7 @@ module SchemaRuntimeUnit
       if val.instance_of?(Integer) && fd.codec != 'bytes' && !val.between?(fd.lo, fd.hi)
         raise Refused.new('out_of_range', fd.name)
       end
-      if val.instance_of?(Float) && fd.float_range && !val.between?(fd.fmin, fd.fmax)
+      if val.instance_of?(Float) && fd.float_range && !float_in_range?(fd, val)
         raise Refused.new('out_of_range', fd.name)
       end
 

@@ -12,7 +12,7 @@ from typing import Any
 
 from . import InvalidValue, Refused
 from . import kinds
-from .descriptor import FieldDesc
+from .descriptor import FieldDesc, float_in_range
 
 # Kind 10 is float32 even when an optional descriptor owns the codec name.
 def _pack(fd: FieldDesc, value: float) -> bytes:
@@ -39,11 +39,12 @@ class _Float:
         stored = value
         if fd.kind == 10:
             # THE RANGE IS HELD ON THE VALUE THE WIRE CARRIES: a float32 is
-            # rounded first, so a value inside the range whose float32 lies
-            # outside it (0.1 under max = 0.1) is refused here rather than
+            # rounded first, and held against ends narrowed to float32 too
+            # (float_in_range), so the float32 nearest min = 0.7 is in range
+            # and one float32 step below it is refused here rather than
             # written as bytes every reader refuses.
             stored = _unpack(fd, _pack(fd, value))
-        if fd.float_range and (stored < fd.fmin or stored > fd.fmax):
+        if fd.float_range and not float_in_range(fd, stored):
             raise InvalidValue(path, f"{value} is outside [{fd.fmin}, {fd.fmax}]")
 
     def read(self, r: Any, fd: FieldDesc, ctx: Any) -> Any:
@@ -54,7 +55,7 @@ class _Float:
         if not math.isfinite(value):
             raise Refused("non_finite_float", f"{fd.name} is not a finite float")
         if fd.float_range:
-            if value < fd.fmin or value > fd.fmax:
+            if not float_in_range(fd, value):
                 raise Refused("out_of_range", f"{value} is outside [{fd.fmin}, {fd.fmax}]")
             if value == 0.0:
                 return 0.0

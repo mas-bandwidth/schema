@@ -357,7 +357,7 @@ module SchemaRuntimeUnit
         end
       when 'float64'
         validate_float64(value, path)
-        if fd.float_range && (value < fd.fmin || value > fd.fmax)
+        if fd.float_range && !float_in_range?(fd, value)
           raise InvalidValue.new(path, "#{value} is outside [#{fd.fmin}, #{fd.fmax}]")
         end
       when 'string'

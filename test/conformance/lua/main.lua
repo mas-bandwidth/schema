@@ -594,9 +594,9 @@ local function blockNamed(all, name)
     if b[2] == name then
       for prefix, root in pairs(BLOCK_ROOTS) do
         if name:sub(1, #prefix) == prefix then
-          local u = unit(b[3])
-          if not u then fail(name .. ": " .. NOT_GENERATED) end
-          return u, root, b
+          -- nil when the unit is not generated: the caller answers an
+          -- EMPTY <case>.absent for it (noCodec), never an abort
+          return unit(b[3]), root, b
         end
       end
     end
@@ -611,7 +611,11 @@ end
 
 local function surfaceBlock(all, outdir, transform)
   for _, b in ipairs(kind(all, "block")) do
-    writeBytes(outdir .. "/" .. b[2], verdict(blockOpen(all, b[2], transform(mustRead(b[4])), 0)))
+    if not blockNamed(all, b[2]) then
+      noCodec(outdir, b[2])
+    else
+      writeBytes(outdir .. "/" .. b[2], verdict(blockOpen(all, b[2], transform(mustRead(b[4])), 0)))
+    end
   end
 end
 
@@ -620,9 +624,13 @@ end
 local function surfaceBlockDump(all, outdir)
   for _, b in ipairs(kind(all, "block")) do
     local u = blockNamed(all, b[2])
-    local h, why = blockOpen(all, b[2], mustRead(b[4]), 0)
-    if h == nil then fail(b[2] .. " does not open: " .. tostring(why)) end
-    writeBytes(outdir .. "/" .. b[2], u.block.Dump(h))
+    if not u then
+      noCodec(outdir, b[2])
+    else
+      local h, why = blockOpen(all, b[2], mustRead(b[4]), 0)
+      if h == nil then fail(b[2] .. " does not open: " .. tostring(why)) end
+      writeBytes(outdir .. "/" .. b[2], u.block.Dump(h))
+    end
   end
 end
 
@@ -633,9 +641,9 @@ end
 local function cookNamed(all, name)
   for _, c in ipairs(kind(all, "cook")) do
     if c[2] == name then
-      local u = unit(c[3])
-      if not u then fail(name .. ": " .. NOT_GENERATED) end
-      return u, c[4], c
+      -- nil when the unit is not generated: the caller answers an EMPTY
+      -- <case>.absent for it (noCodec), never an abort
+      return unit(c[3]), c[4], c
     end
   end
   fail("no cook named " .. name)
@@ -833,16 +841,24 @@ end
 
 local function surfaceCook(all, outdir)
   for _, c in ipairs(kind(all, "cook")) do
-    local _, root = cookNamed(all, c[2])
-    local h, why = cookOpen(all, c[2], mustRead(c[5]), 0)
-    if h == nil then fail(c[2] .. " does not open: " .. tostring(why)) end
-    writeBytes(outdir .. "/" .. c[2], cookDump(h, root))
+    local u, root = cookNamed(all, c[2])
+    if not u then
+      noCodec(outdir, c[2])
+    else
+      local h, why = cookOpen(all, c[2], mustRead(c[5]), 0)
+      if h == nil then fail(c[2] .. " does not open: " .. tostring(why)) end
+      writeBytes(outdir .. "/" .. c[2], cookDump(h, root))
+    end
   end
 end
 
 local function surfaceCookForeign(all, outdir)
   for _, c in ipairs(kind(all, "cook")) do
-    writeBytes(outdir .. "/" .. c[2], verdict(cookOpen(all, c[2], foreign(mustRead(c[5])), 0)))
+    if not cookNamed(all, c[2]) then
+      noCodec(outdir, c[2])
+    else
+      writeBytes(outdir .. "/" .. c[2], verdict(cookOpen(all, c[2], foreign(mustRead(c[5])), 0)))
+    end
   end
 end
 
@@ -852,7 +868,10 @@ end
 -- driver places bytes and prints what it is told, and judges nothing.
 local function surfaceForgery(all, outdir, forgeryKind, reasons)
   for _, f in ipairs(kind(all, "forgery")) do
-    if f[3] == forgeryKind then
+    local named = forgeryKind == "cook" and cookNamed or blockNamed
+    if f[3] == forgeryKind and not named(all, f[4]) then
+      noCodec(outdir, f[2])
+    elseif f[3] == forgeryKind then
       local bytes, lead = forged(f)
       local h, why
       if forgeryKind == "cook" then
@@ -1056,6 +1075,22 @@ end
 
 local UNREPRESENTABLE = "unrepresentable\n"
 
+-- one element of the list field fd at its declared kind's default, for a
+-- count that grows an empty list (the Ruby and Python drivers grow it the
+-- same way)
+local function wrefElementDefault(u, fd, path)
+  local e = fd.elem
+  if e == nil then fail(path .. ": count mutation: " .. fd.name .. " has no element descriptor") end
+  if e.shape == "table" then return u.T["New" .. e.target]() end
+  if e.shape == "union" then return { tag = 0 } end
+  if e.default ~= nil then return e.default end
+  if e.shape == "int" or e.shape == "flags" then return 0 end
+  if e.shape == "float" then return 0.0 end
+  if e.shape == "bool" then return false end
+  if e.shape == "string" or e.shape == "bytes" then return "" end
+  fail(path .. ": count mutation: no element default for " .. fd.name .. " (" .. tostring(e.shape) .. ")")
+end
+
 -- set the one field; answers UNREPRESENTABLE, and sets nothing, when the
 -- value is one this leg's storage cannot hold
 local function wrefSet(u, root, v, path, what, text)
@@ -1109,7 +1144,13 @@ local function wrefSet(u, root, v, path, what, text)
     local n = wrefInteger(text, false)
     if n == nil then return UNREPRESENTABLE end
     local arr = holder[key] or {}
-    for i = #arr + 1, n do arr[i] = deepCopy(arr[1]) end
+    -- an EMPTY list grows by its DECLARED element's default, never by copying
+    -- an element it does not have: copying arr[1] of an empty list grew
+    -- nothing, so Scene.layers at count 5 (bound 4) was written as the empty
+    -- list it still was and the row answered `wrote` (wref_var_layers_count)
+    local grown = arr[1]
+    if grown == nil and n > 0 then grown = wrefElementDefault(u, fd, path) end
+    for i = #arr + 1, n do arr[i] = deepCopy(grown) end
     for i = #arr, n + 1, -1 do arr[i] = nil end
     holder[key] = arr
   elseif what == "length" then

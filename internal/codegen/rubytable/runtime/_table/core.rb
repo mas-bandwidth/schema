@@ -174,9 +174,25 @@ module SchemaRuntimeUnit
 
     def self.validate_compressed_float(value, path, min_v, max_v)
       rounded = finite_float32(value, path)
-      return if rounded.between?(min_v, max_v)
+      return if rounded >= float32_round(min_v) && rounded <= float32_round(max_v)
 
       raise InvalidValue.new(path, "#{value.inspect} is outside [#{min_v.inspect}, #{max_v.inspect}]")
+    end
+
+    # THE RANGE AT FLOAT32 (docs/SPEC-TABLES.md §3.3; the Go engine's
+    # tabletext.FloatInRange): a float32's value and both ends are narrowed to
+    # float32 before they are compared, so the float32 nearest an end float32
+    # cannot spell (min = 0.7, max = 0.1) is in range and one step past it is
+    # not. A float64 is compared as it is.
+    def self.float_in_range?(field, value)
+      low = field.fmin
+      high = field.fmax
+      if field.f32 || field.kind == 10
+        value = float32_round(value)
+        low = float32_round(low)
+        high = float32_round(high)
+      end
+      value >= low && value <= high
     end
 
     def self.validate_text(value, path, size)

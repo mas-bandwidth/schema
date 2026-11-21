@@ -76,7 +76,10 @@ for s in $(awk -F'\t' '!/^#/ && NF >= 9 { print $3 }' "$manifest" | LC_ALL=C sor
 		continue
 	fi
 	if ! "$schema" generate --lang goose --out "$u" "$src" >"$work/$slug.gen.log" 2>&1 || ! ls "$u"/*Table.goose >/dev/null 2>&1; then
-		awk -F'\t' -v s="$s" '!/^#/ && $3 == s { print $1 " absent target-refuses-schema" }' "$manifest" >>"$work/lines"
+		# a schema the goose target does not generate is a MISSING CODEC: an
+		# EMPTY absence, never a reason, which would read as the port's
+		# refusal of each row (test/conformance/README.md)
+		awk -F'\t' -v s="$s" '!/^#/ && $3 == s { print $1 " absent" }' "$manifest" >>"$work/lines"
 		continue
 	fi
 	# THE CONTROL'S SEAM (make/goose-hostile-corpus.mk): a sed the negative

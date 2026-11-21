@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from . import LoadReport, Refused
+from .descriptor import float_in_range
 from .load import Reader
 from typing import Any, Callable
 
@@ -468,7 +469,7 @@ def _read_body(reader: BitReader, cls: type[object], vocab: MessageVocabulary, o
         if type(value) is int and (value < field.lo or value > field.hi):
             raise Refused("out_of_range", field.name)
         if type(value) is float and getattr(field, "float_range", False):
-            if value < field.fmin or value > field.fmax:
+            if not float_in_range(field, value):
                 raise Refused("out_of_range", field.name)
         if same_shape and stats[2] == substituted and field.is_default(value) and not getattr(field, "required", False):
             raise Refused("wire_damaged", "message field is explicitly at its default")
@@ -736,7 +737,7 @@ def _read_value(reader: BitReader, field: object, shape: Shape, vocab: MessageVo
     if type(value) is int and fd.codec != "bytes" and (value < fd.lo or value > fd.hi):
         raise Refused("out_of_range", fd.name)
     if type(value) is float and getattr(fd, "float_range", False):
-        if value < fd.fmin or value > fd.fmax:
+        if not float_in_range(fd, value):
             raise Refused("out_of_range", fd.name)
     return value
 

@@ -1029,8 +1029,14 @@ list)
 		[ "$status" -eq 0 ] || cat "$dir/list.err" >&2
 		exit "$status"
 	done
-	echo "driver: no unit generated under $units (make build/conformance-goose)" >&2
-	exit 1
+	# AN ENTIRELY EMPTY TREE is a leg with no codec for any case, not a
+	# broken driver: it lists the same surfaces (main.goose's list, then
+	# accel.goose's; make conformance-goose-empty-tree holds the two answers
+	# equal) and every case on them answers an EMPTY <case>.absent
+	printf '%s\n' wire message report framing retain retain-save json-read json-write json-hostile \
+		write-refusal write-refusal-fixed write-refusal-message write-refusal-json \
+		cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason
+	exit 0
 	;;
 esac
 mkdir -p "$3" || exit 1
@@ -1052,9 +1058,23 @@ for key in $(awk '$1 == "unit" { print $2 }' "$1"); do
 	: >"$dir/$2.$key.out"
 	if [ "$prog" = accel ]; then
 		if [ ! -d "$u" ]; then
-			awk -v k="$key" '
-				NR == FNR { if ($1 == "cook-write") w[$2] = 1; next }
-				$1 == "instance" && $3 == k && ($2 in w) { print $2 " absent"; print $2 "-be absent" }' "$1" "$1" >"$dir/$2.$key.out"
+			# A UNIT NOT GENERATED answers every case it owns on this surface
+			# with an EMPTY <case>.absent: the block and cook lines it names,
+			# the forgeries over those, and the cook writes of its instances.
+			# Before, only cook-write did, and the block and cook surfaces
+			# wrote nothing for it.
+			awk -v k="$key" -v s="$2" '
+				NR == FNR {
+					if ($1 == "cook-write") w[$2] = 1
+					if ($1 == "block") bunit[$2] = $3
+					if ($1 == "cook") cunit[$2] = $3
+					next
+				}
+				s == "cook-write" && $1 == "instance" && $3 == k && ($2 in w) { print $2 " absent"; print $2 "-be absent"; next }
+				(s == "block" || s == "block-foreign" || s == "block-dump") && $1 == "block" && $3 == k { print $2 " absent"; next }
+				(s == "cook" || s == "cook-foreign") && $1 == "cook" && $3 == k { print $2 " absent"; next }
+				(s == "forgery" || s == "block-reason") && $1 == "forgery" && $3 == "block" && bunit[$4] == k { print $2 " absent"; next }
+				(s == "cook-forgery" || s == "cook-reason") && $1 == "forgery" && $3 == "cook" && cunit[$4] == k { print $2 " absent"; next }' "$1" "$1" >"$dir/$2.$key.out"
 			echo 0 >"$dir/$2.$key.rc"
 			continue
 		fi

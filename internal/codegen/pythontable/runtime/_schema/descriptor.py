@@ -538,6 +538,22 @@ def _float32_is_default(fd: FieldDesc, value: Any) -> bool:
     return struct.pack("<f", value) == struct.pack("<f", fd.default)
 
 
+def float_in_range(fd: Any, value: float) -> bool:
+    """Whether a compressed float lies inside its declared range AS EVERY
+    RUNTIME HOLDS IT (docs/SPEC-TABLES.md §3.3; the Go engine's
+    tabletext.FloatInRange): for a float32 the value and both ends are narrowed
+    to float32 first. An end float32 cannot spell exactly (min = 0.7, max = 0.1)
+    is the float32 nearest it, so the value AT that end is in range and one
+    float32 step past it is not. A value float32 cannot hold is out of range."""
+    low, high = fd.fmin, fd.fmax
+    if getattr(fd, "f32", False) or getattr(fd, "kind", 0) == 10:
+        try:
+            value, low, high = struct.unpack("<3f", struct.pack("<3f", value, low, high))
+        except (OverflowError, struct.error):
+            return False
+    return bool(low <= value <= high)
+
+
 def _float64_is_default(fd: FieldDesc, value: Any) -> bool:
     """A float64 at its default, by its bits."""
     if type(value) is not float:

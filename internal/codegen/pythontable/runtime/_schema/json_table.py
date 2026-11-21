@@ -12,7 +12,7 @@ import struct
 from typing import Any, Callable, TypeVar
 
 from . import BlobRef, InvalidValue, LoadReport, Refused
-from .descriptor import FieldDesc, by_name, new_union_by_name
+from .descriptor import FieldDesc, by_name, float_in_range, new_union_by_name
 from .json_scan import Number, parse
 from .kind_map import _entry_fields
 
@@ -93,7 +93,7 @@ def _read_float(field: FieldDesc, token: Any) -> float:
     if not math.isfinite(value):
         raise Refused("out_of_range", field.name)
     if getattr(field, "float_range", False):
-        if value < getattr(field, "fmin") or value > getattr(field, "fmax"):
+        if not float_in_range(field, value):
             raise Refused("out_of_range", field.name)
         if value == 0:
             value = 0.0
@@ -112,7 +112,7 @@ def _write_float(field: FieldDesc, value: Any) -> str:
         if not math.isfinite(value):
             raise InvalidValue(field.name, "float32 overflow")
     if getattr(field, "float_range", False):
-        if value < getattr(field, "fmin") or value > getattr(field, "fmax"):
+        if not float_in_range(field, value):
             raise InvalidValue(field.name, "float is outside its declared range")
         if value == 0:
             value = 0.0
@@ -700,7 +700,12 @@ def _write_table(value: Any, depth: int, counts: dict[int, int], labels: dict[in
 
 
 def _render(field: FieldDesc, item: Any, depth: int, counts: dict[int, int], labels: dict[int, int]) -> str:
-    if depth > 128 and not (field.codec == "pointer" and item is None) and (field.codec in ("pointer", "table", "array", "pointer_array", "union_array", "map", "keyed", "union") or field.json_flags):
+    # THE CAP IS HELD AT A TABLE, as the engine's writer holds it
+    # (internal/tabletext/write.go writeValue, writePointer): a pointer or a
+    # by-value table past 128 is refused, and a list, map, union or flags value
+    # inside a table AT the cap is written, because the reader takes the same
+    # structure (an empty `links` at the bottom of a 128-deep chain).
+    if depth > 128 and field.codec in ("pointer", "table") and item is not None:
         raise InvalidValue(field.name, "nested past the depth cap")
     if field.codec == "optional":
         return "null" if item is None else _render(_inner(field), item, depth, counts, labels)

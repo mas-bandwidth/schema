@@ -199,7 +199,7 @@ module SchemaRuntimeUnit
 
     def self.read_widened_scalar(reader, kind, field)
       val = read_widened_elements(reader, kind, field, 1)[0]
-      raise Refused.new('out_of_range', field.name) if field.float_range && (val < field.fmin || val > field.fmax)
+      raise Refused.new('out_of_range', field.name) if field.float_range && !float_in_range?(field, val)
 
       val
     end
@@ -698,7 +698,7 @@ module SchemaRuntimeUnit
         val = raw.unpack1('E')
       end
       if fd.float_range
-        if val < fd.fmin || val > fd.fmax
+        unless float_in_range?(fd, val)
           raise Refused.new('out_of_range',
                             "#{val} is outside [#{fd.fmin}, #{fd.fmax}]")
         end

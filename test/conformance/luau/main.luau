@@ -1213,6 +1213,37 @@ end
 		return n
 	end
 
+	-- AN INT ROW INTO A 64-BIT FIELD (a descriptor's dom "integer"): the field
+	-- holds Luau's 64-bit integer, an unsigned one as the word's two's-
+	-- complement wrap, so the token is parsed into that integer exactly. A
+	-- double held it before, and tonumber rounded 18446744073709551615 to
+	-- 2^64, which the writer refused: the row owed `wrote` (wref_var_u64_ok).
+	-- A token the field's 64 bits cannot hold distinctly (past int64, or for
+	-- an unsigned field below 0 or past 2^64 - 1) is unrepresentable: nil.
+	local function wrefInteger64(text: string, signed: boolean): integer?
+		local neg = string.sub(text, 1, 1) == "-"
+		local digits = if neg then string.sub(text, 2) else text
+		if digits == "" or string.find(digits, "^%d+$") == nil then
+			return nil
+		end
+		if neg and not signed then
+			return if string.find(digits, "^0+$") ~= nil then 0i else nil
+		end
+		digits = (string.gsub(digits, "^0+", ""))
+		if digits == "" then
+			return 0i
+		end
+		local limit = if not signed then "18446744073709551615" elseif neg then "9223372036854775808" else "9223372036854775807"
+		if #digits > #limit or (#digits == #limit and digits > limit) then
+			return nil
+		end
+		local v = 0i
+		for i = 1, #digits do
+			v = integer.add(integer.mul(v, 10i), integer.create(string.byte(digits, i) - 48))
+		end
+		return if neg then integer.sub(0i, v) else v
+	end
+
 local function wrefSet(u: any, root: string, v: any, path: string, what: string, text: string)
 	local owner, fd, idx = wrefWalk(u, root, v, path)
 	local holder: any = owner
@@ -1227,7 +1258,13 @@ local function wrefSet(u: any, root: string, v: any, path: string, what: string,
 		if n == nil then return true end
 		holder[key] = n
 	elseif what == "int" then
-		holder[key] = tonumber(text) :: number
+		if d.dom == "integer" then
+			local n = wrefInteger64(text, d.signed ~= false)
+			if n == nil then return true end
+			holder[key] = n
+		else
+			holder[key] = tonumber(text) :: number
+		end
 	elseif what == "float" or what == "real" then
 		holder[key] = wrefFloat(text)
 	elseif what == "count" then
