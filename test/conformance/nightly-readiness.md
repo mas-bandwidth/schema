@@ -1,9 +1,15 @@
-# Original-nine nightly readiness
+# Nightly readiness
 
-Run `test/conformance/nightly-readiness <lang>` for exactly one of
-`cpp c cs go rust java js dart elixir goose ruby moo python`. Goose, MOO and
-Python, languages past the original nine, run the same expanded shape (below);
-the script accepts Ruby as well. The nightly workflow must preserve
+Every target owes a readiness receipt: the nightly's
+`coverage --require-every-target` gate requires one from each of the eighteen
+(README.md, "The nightly"). Run `test/conformance/nightly-readiness <lang>`
+for exactly one of `cpp c cs go rust java js dart elixir goose ruby moo
+python`: the script has acceptance programs for those thirteen targets.
+**It refuses `lobster`, `lua`, `luau`, `squirrel` and `unity` by name.** That
+is a gap, not a scope: those five have no acceptance program here yet, so the
+nightly cannot write their receipts and the every-target gate fails on each
+of them until the programs are added. Goose, Moo and Python run the same
+expanded shape as the others (below). The nightly workflow must preserve
 stdout and `build/nightly-readiness/<lang>/`, and write a passing readiness
 receipt only after exit zero. Every phase is attempted; one failed phase keeps
 the final result incomplete. A green conformance report or a manually completed
@@ -222,7 +228,7 @@ runs may use N=0; they never stand in for the six positive release runs.
 
 ## Known incomplete acceptance exposed by this entrypoint
 
-This is intentionally not a retrospective claim that the original nine ports are
+This is intentionally not a retrospective claim that the ports are
 complete. Existing defaults let Java run no random mutants; Java, Dart and
 several other release targets permit finite-value exemptions; JavaScript and
 Elixir drivers acknowledge absent roots. Some native packages have live owed
@@ -245,5 +251,5 @@ regressions therefore enter nightly automatically without repeating the referenc
 work for each language.
 
 The C negative-control grep regression belongs to the C native package and runs
-with that language. The original-nine gate does not require expansion-language
-CI corpora through the repository-wide `internal/ci` package.
+with that language. This entrypoint does not run the repository-wide
+`internal/ci` package for any target.

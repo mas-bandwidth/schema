@@ -73,5 +73,5 @@ with its 600-second cap lifted, as Goose's are. The contract tests in
 copied recipes for Python as for every other language.
 
 The nightly workflow (`nightly-conformance.yml`) runs its readiness step for
-the original nine only, as it does for Goose and MOO, and its port job has no
-Python pin step; adding Python there is a change to that workflow.
+every port leg, Python included, and its port job installs the Python pins
+for a leg whose `ci.json` names them (`test/conformance/python/ci.json`).

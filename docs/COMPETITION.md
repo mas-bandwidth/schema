@@ -201,7 +201,7 @@ being carried, and whether source order is free.
 - **The conformance matrix is the completion tracker**
   ([the conformance contract](../test/conformance/README.md),
   [#349](https://github.com/mas-bandwidth/schema/issues/349)), and its
-  original-nine gate counts a case answered ABSENT as incomplete. A reader who
+  every-target gate counts a case answered ABSENT as incomplete. A reader who
   wants the per-language state today reads [PORTING.md](PORTING.md) and that
   matrix instead of this page.
 - **Where a feature is wire-specific**, meaning schema has it on one wire and

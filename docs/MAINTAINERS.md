@@ -35,9 +35,12 @@ proves in full.*
   needs or it stays internal. The per-language emitters are implementations, not API.
 
 - **What `make` proves, in full** (moved here from README 2026-08-06 — too dense for the
-  human front page, load-bearing for a working session; it covers the first nine backends,
-  and the other nine targets — C# (unity), Goose, Lobster, Lua, Luau, Moo, Python, Ruby and
-  Squirrel — are not described here): all nine of those backends live (the JS
+  human front page, load-bearing for a working session). `make test` runs every registered
+  leg, all eighteen targets: the C++ reference in its core and one `test-<lang>` leg for each
+  of the other seventeen (`TEST_LEGS`, make/<lang>.mk). This paragraph describes the legs of
+  C, C++, C# (modern), Dart, Elixir, Go, Java, JavaScript and Rust; the C# (unity), Goose,
+  Lobster, Lua, Luau, Moo, Python, Ruby and Squirrel legs run too and are not described
+  here. Of the nine described, all are live (the JS
   legs — `test/js`, `test/js-ludicrous` — joined 2026-08-16 with the sixth backend; the
   Dart legs — `test/dart`, `test/dart-ludicrous`, each run twice: JIT --enable-asserts
   and AOT release — joined 2026-08-30 with the seventh, whose generated output is

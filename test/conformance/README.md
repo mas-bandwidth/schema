@@ -412,9 +412,10 @@ every night at 05:41 UTC, on the fleet's runners and never on the host named
 space, and on `gh workflow run nightly-conformance.yml --ref <branch>`.
 Every registered port joins through `harness matrix --ports`.
 
-The current completion target is the original nine: C++, C, C# (modern), Go, Rust,
-Java, JavaScript, Dart and Elixir. Required gaps in any of these remain open;
-results for other registered ports do not substitute for them.
+The completion target is every target, all eighteen: C, C++, C# (modern),
+C# (unity), Dart, Elixir, Go, Goose, Java, JavaScript, Lobster, Lua, Luau,
+Moo, Python, Ruby, Rust and Squirrel. A required gap in any of them remains
+open, and no subset of them is ever the acceptance set.
 
 1. **C++ writes and validates one canonical corpus.** `cpp-writes` produces
    the wire, text, message, block, cook and fixed-form corpus, checks it against
@@ -432,45 +433,50 @@ bytes and every reader accepts those bytes, every writer's output is
 interoperable with every reader on the covered corpus. The reference need
 not read a separate identical copy from each writer. The `coverage` job
 records the reference and port results together. Its
-`coverage --require-original-nine` gate requires C++, C, C# (modern), Go, Rust, Java,
-JavaScript, Dart and Elixir to cover every manifest-defined surface/class and
-case count. The reference rows are checked independently against that shape,
+`coverage --require-every-target` gate requires all eighteen targets to cover
+every manifest-defined surface/class and case count. The reference rows are
+checked independently against that shape,
 so a missing reference row cannot shrink the denominator. Accepted and refused observations both count as answered cases. Missing
-features, named absences, failures and uncarried cases do not count as complete. Each of the eight ports must also record a passing
+features, named absences, failures and uncarried cases do not count as complete. Each of the seventeen targets
+other than the C++ reference must also record a passing
 fixed-form gate. These corpus results are necessary, but they cannot by
 themselves certify a full implementation.
 
-`coverage --require-original-nine` is the unified full-implementation gate. It
+`coverage --require-every-target` is the unified full-implementation gate. It
 also requires all of the following, independently of what a port chooses to
 claim:
 
 - Every required construct in `compiler.CarryConstructs()` must be supported
-  by every original-nine backend. Missing features remain failures even when
+  by every target's backend. Missing features remain failures even when
   the current corpus contains no example of them.
 - Required features must have executable corpus witnesses and successful
   code generation. Declaring an unrelated feature in an unused table does
   not cover it. The `implementation --lang <lang>` command checks these
   prerequisites; it is not a substitute for native execution.
-- Every original-nine language, including C++, must pass
+- Every target, including C++, must pass
   `test/conformance/nightly-readiness`. This runs the mandatory native,
   packet, fixed-form, strict fuzz and retention acceptance gates. Unsupported
   valid roots/forms, omitted comparisons, live skipped obligations and failed
   controls cannot count as completion. Named retired tests are reported
-  explicitly; their replacement obligations still have to pass.
+  explicitly; their replacement obligations still have to pass. The script
+  has acceptance programs for thirteen targets today and refuses `lobster`,
+  `lua`, `luau`, `squirrel` and `unity` by name, so those five have no
+  receipt and the gate fails on each of them until their programs land
+  ([nightly-readiness.md](nightly-readiness.md)).
 - Each language must supply exactly one passing `readiness-<lang>.txt` and
   an adjacent `readiness-<lang>.revision` matching the current Git checkout.
   Missing, failed, duplicate or stale receipts fail. Nightly writes these
   only from the actual acceptance command and uploads the complete logs.
 - The roadmap renderer must validate the current graph and evidence overlays,
-  find all three sections and all nine columns complete, and confirm that
+  find all three sections and all eighteen columns complete, and confirm that
   `ROADMAP.md` matches the data. A manually completed task cannot override a
   failed implementation or runtime check. SBCL and a Git checkout are required;
   absence of either fails closed.
 
 Full implementation is the prerequisite for success. Neither a smaller
-passing corpus nor a green roadmap can substitute for it. The nine registered
-ports beyond the original nine (Goose, Lobster, Lua, Luau, Moo, Python, Ruby,
-Squirrel and C# (unity)) remain visible but are not part of this completion obligation. The
+passing corpus nor a green roadmap can substitute for it. No target is outside
+this completion obligation: a target without a coverage row, a fixed-form
+receipt, a runtime receipt or a registration is a finding, never a skip. The
 table and all failure diagnostics are printed and uploaded even when the gate
 fails; ordinary `coverage` remains an informational report.
 Every confirmed defect found by these gates must leave a permanent regression.
@@ -496,10 +502,10 @@ registered as one. Under
 runs, fails the night by name (the reversed witness is
 `harness/claims_test.go`); a case the port does not claim, and a whole
 surface it does not run, remain informational in `run --claims`. The final
-original-nine completion gate is stricter: those gaps fail completion even
-when no individual feature was claimed. Expansion-language gaps remain
-visible in the per-port table of answered, failed, claimed-absent and
-not-carried cases per surface and class. The harness is built with every `schema_leg_<lang>` tag there, because
+every-target completion gate is stricter: those gaps fail completion, for
+every target, even when no individual feature was claimed. The per-port table
+shows the answered, failed, claimed-absent and not-carried cases per surface
+and class. The harness is built with every `schema_leg_<lang>` tag there, because
 a target behind a tag registers only under it, and a leg with no
 registration is refused rather than read as claiming nothing.
 
