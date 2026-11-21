@@ -83,7 +83,7 @@ var catalog = []Entry{
 	e("internal/baseline", "tables baseline pins", "go test ./internal/baseline", "go test ./internal/baseline"),
 	e("internal/check", "resolve, check, lower to IR", "go test ./internal/check", "go test ./internal/check"),
 	e("internal/ci", "workflow pin and SDK gates", "go test ./internal/ci", "go test ./internal/ci"),
-	page("internal/codegen", "nine language emitters", "go test ./internal/codegen/...", "go test ./internal/codegen/..."),
+	page("internal/codegen", "emitters for eighteen targets", "go test ./internal/codegen/...", "go test ./internal/codegen/..."),
 	e("internal/docgate", "link-and-citation gate over the pages", "go test ./internal/docgate", "make docs-check"),
 	e("internal/fixedproof", "leg-independent fixed-table proof suite", "go test ./internal/fixedproof", "go test ./internal/fixedproof"),
 	e("internal/fixedvector", "fixed form's shared cross-version vectors", "go test ./internal/fixedvector", "go test ./internal/fixedvector"),

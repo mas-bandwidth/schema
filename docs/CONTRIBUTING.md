@@ -35,8 +35,9 @@ of 2026-09-18 is AGENTS.md alone. The maintainer context behind these rules is
 
 **Who this repo is for.** Schema is the data language for games: you declare
 constants, enums, flags, types and tables once, and the compiler generates
-bit-packed serialization code in **ten languages** — C, C++, C#, Dart, Elixir,
-Go, Java, JavaScript, Lua and Rust. The compiler is Go (`cmd/` + `internal/`, public
+bit-packed serialization code for **eighteen targets** — C, C++, C# (modern),
+C# (unity), Dart, Elixir, Go, Goose, Java, JavaScript, Lobster, Lua, Luau,
+Moo, Python, Ruby, Rust and Squirrel. The compiler is Go (`cmd/` + `internal/`, public
 API `compiler/` and `ir/`). The compiler is AGPL-3.0; **the code it generates is
 yours**, by an explicit permanent grant in [LICENSE](../LICENSE).
 
@@ -45,7 +46,7 @@ yours**, by an explicit permanent grant in [LICENSE](../LICENSE).
    the table wire. Where the code and a spec disagree, one of them has a bug and
    the tests decide which. **Read the spec before the code.**
 2. **C++ is the reference.** C++ writes the pins in `testdata/wire/` and
-   `testdata/golden/`; every one of the other eight legs byte-compares against
+   `testdata/golden/`; every one of the other seventeen legs byte-compares against
    them. Cross-language wire identity is a standing gate, and so is
    fixed(I, F)/int128/uint128 identity in the ludicrous legs.
 3. **The wire is law.** A change that moves shipped bytes is a deliberate,
@@ -150,7 +151,10 @@ cross-language test — the Rust, Go, Node.js, .NET, Dart, Java and Erlang/Elixi
 toolchains (the Makefile pins Dart SDK 3.13.2, Temurin JDK 21.0.12.1 and
 Erlang/OTP 29.0.5 + Elixir 1.20.4; unpack them under `dist/` per the Makefile's
 `DART`, `JAVA`/`JAVAC` and `ELIXIR`/`MIX` notes, or set `DART=dart JAVA=java
-JAVAC=javac ELIXIR=elixir MIX=mix` if compatible versions are on your PATH).
+JAVAC=javac ELIXIR=elixir MIX=mix` if compatible versions are on your PATH),
+and the Goose, Lobster, Lua, Luau, Moo, Python, Ruby and Squirrel toolchains,
+which `make dist-goose`, `dist-lobster`, `dist-lua`, `dist-luau`, `dist-moo`,
+`dist-python`, `dist-ruby` and `dist-squirrel` stage at their pins.
 
 The serialize runtimes must be checked out as **siblings** of this
 repository:
@@ -174,7 +178,10 @@ provide, so a change that breaks it is wrong until proven otherwise.
 
 **`make test` refuses a missing pinned toolchain by name, and runs without a
 leg only when you name the skip on purpose.** A pin the Makefile names
-(`NODE`, `DART`, `JAVA`/`JAVAC`, `ELIXIR`/`MIX`/`ELIXIRC`, `DOTNET`) that does
+(`NODE`/`ESLINT`, `DART`, `JAVA`/`JAVAC`, `ELIXIR`/`MIX`/`ELIXIRC`, `DOTNET`,
+`GOOSE`, `LOBSTER`, `LUA`, `LUAU`, `MOO`/`MOO_ANALYZE`,
+`PYTHON`/`PYTHON_FLOOR`/`MYPY`, `RUBY`/`RUBY_FLOOR`/`RUBOCOP`/`STEEP`/`RBS`,
+`SQ`) that does
 not resolve stops the run before it starts. Every registered leg is probed, so
 one run names every leg it would have skipped and the path each pin looked in
 rather than sending you back for the next name; to run the chain without those
@@ -440,7 +447,7 @@ the packet surface has claims and the port joins the builtins (Lua was
 scaffolded this way and joined them).
 
 A backend is a Go package under `internal/codegen/` that walks the same IR the
-existing ten consume, plus one file in `compiler/` — `target_<lang>.go` —
+existing eighteen consume, plus one file in `compiler/` — `target_<lang>.go` —
 that registers it as a `compiler.Generator`, the public registration interface
 and the only way any target reaches the driver. The cross-language harness is
 what makes this tractable: generate the corpus in your language, encode the

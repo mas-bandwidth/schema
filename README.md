@@ -7,7 +7,7 @@
 
 ![Schema — architectural pieces sharing one design](images/schema.png)
 
-Schema is a data language where you define your constants, enums, flags, types and tables for your game, then from this one definition, it generates code in multiple languages: C, C++, C#, Dart, Elixir, Go, Goose, Java, JavaScript, Lobster, Lua, Luau, Moo, Python, Ruby, Rust, Squirrel and Unity.
+Schema is a data language where you define your constants, enums, flags, types and tables for your game, then from this one definition, it generates code in multiple languages: C, C++, C# (modern), C# (unity), Dart, Elixir, Go, Goose, Java, JavaScript, Lobster, Lua, Luau, Moo, Python, Ruby, Rust and Squirrel.
 
 Schema is currently under active development. See **[ROADMAP.md](ROADMAP.md)** for details.
 

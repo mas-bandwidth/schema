@@ -2,7 +2,7 @@
 
 Do not edit. `make map` regenerates this file. Rules: [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md). Ruling 2026-09-18 (`docs/rulings.json`, `agents-md-alone`): AGENTS.md alone — no `CLAUDE.md`, no pointer, no symlink.
 
-Schema is the data language for games. One definition compiles to bit-packed codecs in C, C++, C#, Dart, Elixir, Go, Java, JavaScript, Lua and Rust. The compiler is AGPL-3.0; generated code is yours ([LICENSE](LICENSE)). Public Go API: `compiler/`, `ir/`.
+Schema is the data language for games. One definition compiles to bit-packed codecs in C, C++, C# (modern), C# (unity), Dart, Elixir, Go, Goose, Java, JavaScript, Lobster, Lua, Luau, Moo, Python, Ruby, Rust and Squirrel. The compiler is AGPL-3.0; generated code is yours ([LICENSE](LICENSE)). Public Go API: `compiler/`, `ir/`.
 
 ```
 make
