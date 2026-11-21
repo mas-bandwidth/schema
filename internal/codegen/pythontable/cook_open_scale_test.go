@@ -110,12 +110,14 @@ func TestPythonCookOpenFunctionalScale(t *testing.T) {
 	if lo, hi := cookScaleRange(t, "fault control", out, 1); hi <= 5*lo {
 		t.Fatalf("fault negative control did not expose a whole-file read: %s", out)
 	}
+	t.Logf("fault control faults/open: %s", strings.ReplaceAll(strings.TrimSpace(out), "\n", "; "))
 	// Reversed witness, time: an open whose work grows with the file's
 	// length but touches no page beyond the header.
 	out = run(pyrun.Run, plantCookOpen(t, files, "    sum(range((len(view) // 1048576) * 10))\n"), cookOpenTimeProbe)
 	if lo, hi := cookScaleRange(t, "time control", out, 0); hi <= 5*lo {
 		t.Fatalf("time negative control did not expose file-size work: %s", out)
 	}
+	t.Logf("time control cpu ns/open: %s", strings.ReplaceAll(strings.TrimSpace(out), "\n", "; "))
 }
 
 // plantCookOpen returns files with line inserted into the open path, after the
