@@ -315,13 +315,14 @@ func testPythonHandtextCorpus(t *testing.T, fixed bool) {
 	names := make([]string, 0, len(paths))
 	for _, path := range paths {
 		stem := strings.TrimSuffix(filepath.Base(path), ".sexp")
-		for _, ext := range []string{"sexp", "reason"} {
-			b, err := os.ReadFile(filepath.Join(root, "refusals", stem+"."+ext))
-			if err != nil {
-				t.Fatal(err)
-			}
-			inputs[stem+"."+ext] = b
+		// The .sexp only: a refusal vector holds the VERDICT (docs/rulings.json
+		// refusal-verdict-only). The .reason beside it is recommended,
+		// non-normative vocabulary and is never compared across targets.
+		b, err := os.ReadFile(filepath.Join(root, "refusals", stem+".sexp"))
+		if err != nil {
+			t.Fatal(err)
 		}
+		inputs[stem+".sexp"] = b
 		names = append(names, stem)
 	}
 	src := pyrun.ImportPrelude + `
@@ -370,13 +371,14 @@ for stem in ("roadmap", "layout", "kinds", "variable"):
 print("positive", 4)
 for stem in ` + fmt.Sprintf("%#v", names) + `:
     data = Path(stem + ".sexp").read_bytes()
-    want = Path(stem + ".reason").read_text().strip()
+    # the verdict: refused by the text form's own TextError, nothing returned;
+    # any other exception propagates and fails the run, never a refusal
     try:
         (Graph if stem in ("duplicate-map", "forward-reference") else Document).from_text_form(data)
-    except TextError as e:
-        assert e.reason == want, (stem, e.reason, want)
+    except TextError:
+        pass
     else:
-        raise AssertionError((stem, "accepted", want))
+        raise AssertionError((stem, "accepted", "want refused"))
 print("refusals", 24)
 `
 	// Use a Python tuple literal rather than Go's slice formatting.
