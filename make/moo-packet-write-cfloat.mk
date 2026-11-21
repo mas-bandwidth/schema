@@ -7,7 +7,7 @@ MOO_PACKET_CFLOAT_RUN = -analyze -schema test/packet-write-cfloat/CFloat.schema 
 
 .PHONY: packet-write-cfloat-moo
 packet-write-cfloat-moo: toolchain-moo moo-packet-driver build/mustrun
-	$(MUSTRUN) -name packet-write-cfloat-moo -count 1 -- $(MOO_PACKET_DRIVER) $(MOO_PACKET_CFLOAT_RUN)
+	$(MUSTRUN) -name packet-write-cfloat-moo -count 10 -- $(MOO_PACKET_DRIVER) $(MOO_PACKET_CFLOAT_RUN)
 
 .PHONY: packet-write-cfloat-moo-negative-control
 packet-write-cfloat-moo-negative-control: packet-write-cfloat-moo
