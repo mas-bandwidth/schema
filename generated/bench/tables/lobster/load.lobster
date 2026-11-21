@@ -26,12 +26,8 @@ namespace schema_rt
 // whole-load refusal; counters never select a recovery path.
 class LoadReport:
     unknown:int = 0
-    kind_mismatch:int = 0
     widened:int = 0
-    clamped:int = 0
-    duplicate:int = 0
     malformed:bool = false
-    blob_shared:int = 0
     // missing_required is a record's `| required` refusal (docs/SPEC-TABLES.md
     // §2.3): one per body that ends without a required field, named in reason.
     missing_required:int = 0
@@ -64,12 +60,8 @@ def read_refuse(rep:LoadReport, reason:string) -> bool:
 // Diagnostics belong to this invocation and cannot veto a later valid read.
 def read_reset(rep:LoadReport):
     rep.unknown = 0
-    rep.kind_mismatch = 0
     rep.widened = 0
-    rep.clamped = 0
-    rep.duplicate = 0
     rep.malformed = false
-    rep.blob_shared = 0
     rep.missing_required = 0
     rep.non_finite_float = ""
     rep.retained = 0

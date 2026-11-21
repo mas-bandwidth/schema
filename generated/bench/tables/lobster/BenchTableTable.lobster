@@ -3285,7 +3285,6 @@ def TableEntityFixedLoad(values·:[TableEntity], data_in·:string, plan·:[schem
     var holes· = TableEntityFixedHoles
     let record_bytes· = known·.record
     var census_unknown· = 0
-    var census_kind· = 0
     if hash· != TableEntityFixedHash:
         let lane· = TableEntityFixedLineagePlans[pick·]
         if lane·.why != "":
@@ -3294,9 +3293,6 @@ def TableEntityFixedLoad(values·:[TableEntity], data_in·:string, plan·:[schem
         entry_count· = lane·.count
         holes· = TableEntityFixedLineageHoles[pick·]
         census_unknown· = lane·.unknown
-        census_kind· = lane·.kind_mismatch
-    if census_kind· != 0:
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseKindMismatch)
     if entry_count· > length(plan·):
         return schema_rt.fixed_refuse(report·, schema_rt.TableRefusePlanTooLarge)
     let records_start· = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes·
@@ -3328,7 +3324,6 @@ def TableEntityFixedLoad(values·:[TableEntity], data_in·:string, plan·:[schem
             for(values·) failed·: TableEntityReset(failed·)
             return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseOutOfRange)
     report·.unknown += census_unknown·
-    report·.kind_mismatch += census_kind·
     return n·
 
 // TableStatReset restores v to its declared defaults in place (docs/SPEC-TABLES.md §3.4).
@@ -3455,7 +3450,6 @@ def TableStatFixedLoad(values·:[TableStat], data_in·:string, plan·:[schema_rt
     var holes· = TableStatFixedHoles
     let record_bytes· = known·.record
     var census_unknown· = 0
-    var census_kind· = 0
     if hash· != TableStatFixedHash:
         let lane· = TableStatFixedLineagePlans[pick·]
         if lane·.why != "":
@@ -3464,9 +3458,6 @@ def TableStatFixedLoad(values·:[TableStat], data_in·:string, plan·:[schema_rt
         entry_count· = lane·.count
         holes· = TableStatFixedLineageHoles[pick·]
         census_unknown· = lane·.unknown
-        census_kind· = lane·.kind_mismatch
-    if census_kind· != 0:
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseKindMismatch)
     if entry_count· > length(plan·):
         return schema_rt.fixed_refuse(report·, schema_rt.TableRefusePlanTooLarge)
     let records_start· = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes·
@@ -3498,7 +3489,6 @@ def TableStatFixedLoad(values·:[TableStat], data_in·:string, plan·:[schema_rt
             for(values·) failed·: TableStatReset(failed·)
             return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseOutOfRange)
     report·.unknown += census_unknown·
-    report·.kind_mismatch += census_kind·
     return n·
 
 // TableHitEventReset restores v to its declared defaults in place (docs/SPEC-TABLES.md §3.4).
@@ -3641,7 +3631,6 @@ def TableHitEventFixedLoad(values·:[TableHitEvent], data_in·:string, plan·:[s
     var holes· = TableHitEventFixedHoles
     let record_bytes· = known·.record
     var census_unknown· = 0
-    var census_kind· = 0
     if hash· != TableHitEventFixedHash:
         let lane· = TableHitEventFixedLineagePlans[pick·]
         if lane·.why != "":
@@ -3650,9 +3639,6 @@ def TableHitEventFixedLoad(values·:[TableHitEvent], data_in·:string, plan·:[s
         entry_count· = lane·.count
         holes· = TableHitEventFixedLineageHoles[pick·]
         census_unknown· = lane·.unknown
-        census_kind· = lane·.kind_mismatch
-    if census_kind· != 0:
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseKindMismatch)
     if entry_count· > length(plan·):
         return schema_rt.fixed_refuse(report·, schema_rt.TableRefusePlanTooLarge)
     let records_start· = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes·
@@ -3684,7 +3670,6 @@ def TableHitEventFixedLoad(values·:[TableHitEvent], data_in·:string, plan·:[s
             for(values·) failed·: TableHitEventReset(failed·)
             return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseOutOfRange)
     report·.unknown += census_unknown·
-    report·.kind_mismatch += census_kind·
     return n·
 
 // TableChatEventReset restores v to its declared defaults in place (docs/SPEC-TABLES.md §3.4).
@@ -3811,7 +3796,6 @@ def TableChatEventFixedLoad(values·:[TableChatEvent], data_in·:string, plan·:
     var holes· = TableChatEventFixedHoles
     let record_bytes· = known·.record
     var census_unknown· = 0
-    var census_kind· = 0
     if hash· != TableChatEventFixedHash:
         let lane· = TableChatEventFixedLineagePlans[pick·]
         if lane·.why != "":
@@ -3820,9 +3804,6 @@ def TableChatEventFixedLoad(values·:[TableChatEvent], data_in·:string, plan·:
         entry_count· = lane·.count
         holes· = TableChatEventFixedLineageHoles[pick·]
         census_unknown· = lane·.unknown
-        census_kind· = lane·.kind_mismatch
-    if census_kind· != 0:
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseKindMismatch)
     if entry_count· > length(plan·):
         return schema_rt.fixed_refuse(report·, schema_rt.TableRefusePlanTooLarge)
     let records_start· = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes·
@@ -3854,7 +3835,6 @@ def TableChatEventFixedLoad(values·:[TableChatEvent], data_in·:string, plan·:
             for(values·) failed·: TableChatEventReset(failed·)
             return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseOutOfRange)
     report·.unknown += census_unknown·
-    report·.kind_mismatch += census_kind·
     return n·
 
 // TablePickupEventReset restores v to its declared defaults in place (docs/SPEC-TABLES.md §3.4).
@@ -3981,7 +3961,6 @@ def TablePickupEventFixedLoad(values·:[TablePickupEvent], data_in·:string, pla
     var holes· = TablePickupEventFixedHoles
     let record_bytes· = known·.record
     var census_unknown· = 0
-    var census_kind· = 0
     if hash· != TablePickupEventFixedHash:
         let lane· = TablePickupEventFixedLineagePlans[pick·]
         if lane·.why != "":
@@ -3990,9 +3969,6 @@ def TablePickupEventFixedLoad(values·:[TablePickupEvent], data_in·:string, pla
         entry_count· = lane·.count
         holes· = TablePickupEventFixedLineageHoles[pick·]
         census_unknown· = lane·.unknown
-        census_kind· = lane·.kind_mismatch
-    if census_kind· != 0:
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseKindMismatch)
     if entry_count· > length(plan·):
         return schema_rt.fixed_refuse(report·, schema_rt.TableRefusePlanTooLarge)
     let records_start· = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes·
@@ -4024,7 +4000,6 @@ def TablePickupEventFixedLoad(values·:[TablePickupEvent], data_in·:string, pla
             for(values·) failed·: TablePickupEventReset(failed·)
             return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseOutOfRange)
     report·.unknown += census_unknown·
-    report·.kind_mismatch += census_kind·
     return n·
 
 // TableMixedReset restores v to its declared defaults in place (docs/SPEC-TABLES.md §3.4).
@@ -4547,7 +4522,6 @@ def TableMixedFixedLoad(values·:[TableMixed], data_in·:string, plan·:[schema_
     var holes· = TableMixedFixedHoles
     let record_bytes· = known·.record
     var census_unknown· = 0
-    var census_kind· = 0
     if hash· != TableMixedFixedHash:
         let lane· = TableMixedFixedLineagePlans[pick·]
         if lane·.why != "":
@@ -4556,9 +4530,6 @@ def TableMixedFixedLoad(values·:[TableMixed], data_in·:string, plan·:[schema_
         entry_count· = lane·.count
         holes· = TableMixedFixedLineageHoles[pick·]
         census_unknown· = lane·.unknown
-        census_kind· = lane·.kind_mismatch
-    if census_kind· != 0:
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseKindMismatch)
     if entry_count· > length(plan·):
         return schema_rt.fixed_refuse(report·, schema_rt.TableRefusePlanTooLarge)
     let records_start· = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes·
@@ -4594,7 +4565,6 @@ def TableMixedFixedLoad(values·:[TableMixed], data_in·:string, plan·:[schema_
             for(values·) failed·: TableMixedReset(failed·)
             return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseOutOfRange)
     report·.unknown += census_unknown·
-    report·.kind_mismatch += census_kind·
     return n·
 
 class TableEntityFixedRecordCodec : schema_rt.FixedRecordCodec

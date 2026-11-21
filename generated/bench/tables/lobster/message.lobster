@@ -576,7 +576,6 @@ class MessageWriter:
     bits:int = 0
     measuring:bool = false
     overflow:bool = false
-    clamped:int = 0
     ref_bits:int = 1
 
 def mw_put(w:MessageWriter, value:int, n:int):
@@ -1137,12 +1136,8 @@ def message_body(m:MessageRead, rec:Record) -> bool:
 // message_reset_report clears a report for one read (Go's *read = TableReport{}).
 def message_reset_report(rep:LoadReport):
     rep.unknown = 0
-    rep.kind_mismatch = 0
     rep.widened = 0
-    rep.clamped = 0
-    rep.duplicate = 0
     rep.malformed = false
-    rep.blob_shared = 0
     rep.retained = 0
     rep.retain_lost = 0
     rep.refused = false
@@ -1529,7 +1524,6 @@ def save_messages(values:[Record], rep:LoadReport) -> string, int:
     mw_align(w)
     if w.overflow:
         return "", -1
-    rep.clamped += w.clamped
     var out = zeros(2)
     out = write_int8_le(out, 0, 2)
     out = write_int8_le(out, 1, length(values) - 1)
