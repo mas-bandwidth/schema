@@ -1,0 +1,17 @@
+{
+  "name": "schema",
+  "owner": {
+    "name": "Mas Bandwidth",
+    "url": "https://github.com/mas-bandwidth"
+  },
+  "metadata": {
+    "description": "The schema compiler's Agent Skill as a Claude Code plugin."
+  },
+  "plugins": [
+    {
+      "name": "schema",
+      "source": "./skills",
+      "description": "Write and change .schema files and generate bit-packed serialization code for games, for 18 targets in 17 languages."
+    }
+  ]
+}

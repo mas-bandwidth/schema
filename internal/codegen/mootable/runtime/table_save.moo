@@ -490,6 +490,8 @@ end
 -- one float as its bits (§3): binary32 a number, binary64 a Uint64; a NaN or
 -- an infinity is refused on write (§3.3)
 local function write_float(c: any, w: any, e: any, val: any, named: any): boolean
+	-- a compressed float's -0 is stored as +0 (§3.3)
+	val = V.storedFloat(e, val)
 	if e.f32 then
 		if type(val) ~= "number" or val ~= math.floor(val) or val < 0 or val > 0xFFFFFFFF then
 			return refuse(c, "invalid_value", named)
@@ -639,7 +641,11 @@ local function elem_is_default(e: any, val: any, len: number?): boolean
 	if s == "bool" then
 		return val == false or val == nil
 	end
-	if s == "int" or s == "float" then
+	if s == "float" then
+		-- a compressed float's -0 is +0, at its default by value (§3.3)
+		return V.sameStorage(e, V.storedFloat(e, val), V.storedFloat(e, e.def))
+	end
+	if s == "int" then
 		return V.sameStorage(e, val, e.def)
 	end
 	if s == "enum" then
@@ -748,7 +754,7 @@ local function arm_payload(c: any, arm: any, w: any, u: any): boolean
 	local val = u[arm.slot]
 	if s == "arr" and arm.array == "counted" then
 		local n = u[arm.slot .. "Count"]
-		if type(n) ~= "number" or n ~= math.floor(n) or n < 0 or n > arm.bound then return refuse(c, "invalid_value", arm) end
+		if type(n) ~= "number" or n ~= math.floor(n) or n < (arm.min or 0) or n > arm.bound then return refuse(c, "invalid_value", arm) end
 	elseif s == "bytes" then
 		local n = u[arm.slot .. "Length"]
 		if type(val) ~= "buffer" or type(n) ~= "number" or n ~= math.floor(n) or n < 0 or n > arm.bound or n > buffer.len(val) then return refuse(c, "invalid_value", arm) end
@@ -830,6 +836,10 @@ local function at_default(fd: any, val: any): boolean
 	if s == "enum" then
 		return val == fd.def
 	end
+	if s == "float" then
+		-- a compressed float's -0 is +0, at its default by value (§3.3)
+		return V.sameStorage(fd, V.storedFloat(fd, val), V.storedFloat(fd, fd.def))
+	end
 	return V.sameStorage(fd, val, fd.def)
 end
 
@@ -847,7 +857,9 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 	local val = v[fd.slot]
 	if s == "arr" and fd.array == "counted" and (fd.present == nil or v[fd.present]) then
 		local n = v[fd.slot .. "Count"]
-		if type(n) ~= "number" or n ~= math.floor(n) or n < 0 or n > fd.bound then return refuse(c, "invalid_value", fd) end
+		-- a [Min..Max] count below its Min is refused, as one past its Max
+		-- (SPEC.md §5.1 row 3)
+		if type(n) ~= "number" or n ~= math.floor(n) or n < (fd.min or 0) or n > fd.bound then return refuse(c, "invalid_value", fd) end
 	elseif s == "bytes" and (fd.present == nil or v[fd.present]) then
 		local n = v[fd.slot .. "Length"]
 		if type(val) ~= "buffer" or type(n) ~= "number" or n ~= math.floor(n) or n < 0 or n > fd.bound or n > buffer.len(val) then return refuse(c, "invalid_value", fd) end

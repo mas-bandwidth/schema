@@ -886,10 +886,8 @@ local function atDefault(fd: any, val: any): boolean
 	if s == "enum" then
 		return val == (fd.def or 0)
 	end
-	if s == "float" and fd.f32 and fd.flo ~= nil and type(val) == "number" and type(fd.def) == "number" then
-		local a = if val == 0x80000000 then 0 else val
-		local b = if fd.def == 0x80000000 then 0 else fd.def
-		return a == b
+	if s == "float" and fd.flo ~= nil then
+		return V.sameStorage(fd, V.storedFloat(fd, val), V.storedFloat(fd, fd.def))
 	end
 	return V.sameStorage(fd, val, fd.def)
 end
@@ -934,6 +932,10 @@ end
 -- an integer raw or as value - base (encodeBitValue)
 local function encodeValue(c: any, e: any, kind: number, shape: any, val: any, named: any): boolean
 	local w = c.w
+	if kind == 10 or kind == 11 then
+		-- a compressed float's -0 is stored as +0 (docs/SPEC-TABLES.md §3.3)
+		val = V.storedFloat(e, val)
+	end
 	if kind == 1 then
 		put(w, if val == true then 1 else 0, 1)
 		return true
@@ -1158,7 +1160,8 @@ local function encodeField(c: any, d: any, k: number, fd: any, v: any): boolean
 	if s == "arr" and fd.array == "fixed" and type(val) == "buffer" and buffer.len(val) < fd.bound and (fd.present == nil or v[fd.present]) then return fail(c, "invalid_value", fd) end
 	if s == "arr" and fd.array == "counted" and (fd.present == nil or v[fd.present]) then
 		local n = v[fd.slot .. "Count"]
-		if type(n) ~= "number" or n ~= math.floor(n) or n < 0 or n > fd.bound then return fail(c, "invalid_value", fd) end
+		-- below its Min is refused as past its Max is (SPEC.md §5.1 row 3)
+		if type(n) ~= "number" or n ~= math.floor(n) or n < (fd.min or 0) or n > fd.bound then return fail(c, "invalid_value", fd) end
 	end
 	local w = c.w
 	if fd.present ~= nil then
@@ -1286,7 +1289,7 @@ encodeArm = function(c: any, un: any, u: any, named: any): boolean
 	local val = u[arm.slot]
 	if s == "arr" and arm.array == "counted" then
 		local n = u[arm.slot .. "Count"]
-		if type(n) ~= "number" or n ~= math.floor(n) or n < 0 or n > arm.bound then return fail(c, "invalid_value", arm) end
+		if type(n) ~= "number" or n ~= math.floor(n) or n < (arm.min or 0) or n > arm.bound then return fail(c, "invalid_value", arm) end
 	end
 	local shape = entry.shape
 	if s == "tab" then
@@ -1463,10 +1466,66 @@ local function index(t: any): (number, boolean)
 	return get(t.r, t.indexBits)
 end
 
+-- inAnnouncedKind(kind, shape, x): whether a ranged integer's base plus its
+-- offset x (four limbs), added WHOLE in five limbs and never wrapped, lies in
+-- the announced kind's domain (docs/SPEC-TABLES.md §3.3): every bit from the
+-- domain's top up is zero for an unsigned kind, and equal to the sign bit for
+-- a signed one. The named read and the skip path both ask it, so a field
+-- gets one verdict whether this build keeps it or not.
+local function inAnnouncedKind(kind: number, shape: any, x: { number }): boolean
+	local base = shape.base or { 0, 0, 0, 0 }
+	local signed = V.signedKind(kind)
+	local fill = if signed and base[4] >= 2147483648 then 4294967295 else 0
+	local sum = table.create(5, 0)
+	local carry = 0
+	for i = 1, 5 do
+		local a = if i <= 4 then x[i] else 0
+		local b = if i <= 4 then base[i] else fill
+		local v = a + b + carry
+		sum[i] = v % TWO32
+		carry = v // TWO32
+	end
+	local w = kindWidth(kind) * 8
+	local top = 0
+	if signed then
+		local li, k = (w - 1) // 32 + 1, (w - 1) % 32
+		top = (sum[li] // POW2[k]) % 2
+		w -= 1
+	end
+	for i = 1, 5 do
+		local lo = (i - 1) * 32
+		if lo + 32 > w then
+			local k = if w > lo then w - lo else 0
+			local high = sum[i] // POW2[k]
+			if high ~= (if top == 1 then POW2[32 - k] - 1 else 0) then
+				return false
+			end
+		end
+	end
+	return true
+end
+
+-- a ranged integer's offset read and held to the announced kind (above);
+-- false and out_of_range when the sum leaves it
+local function rangedOffset(t: any, kind: number, shape: any, width: number): ({ number }?, boolean)
+	local x, ok = getLimbs(t.r, width)
+	if not ok then
+		return nil, false
+	end
+	if not inAnnouncedKind(kind, shape, x) then
+		return nil, refuseRead(t, "out_of_range")
+	end
+	return x, true
+end
+
 -- the bits one element of an array occupies where that is one number, -1
--- where each must be walked (elementRunBits)
+-- where each must be walked (elementRunBits): a ranged integer element is
+-- walked, so each one is held to the announced kind as a named read holds it
 local function runBits(kind: number, elem: number, inner: any): number
 	if kind ~= 14 then
+		return -1
+	end
+	if integerKind(elem) and inner ~= nil and inner.packing == 1 then
 		return -1
 	end
 	if elem == 13 or elem == 15 or elem == 30 or elem == 17 then
@@ -1653,6 +1712,11 @@ skipEntry = function(t: any, kind: number, shape: any, depth: number?, field: bo
 	if width < 0 then
 		return false
 	end
+	if integerKind(kind) and shape.packing == 1 then
+		-- base + offset held to the announced kind, as a named read holds it
+		local _, ok = rangedOffset(t, kind, shape, width)
+		return ok
+	end
 	return skipBits(r, width)
 end
 
@@ -1677,9 +1741,21 @@ local function decodeInteger(t: any, fd: any, kind: number, shape: any): (any, b
 	if width < 0 then
 		return nil, true
 	end
-	local x, ok = getLimbs(t.r, width)
-	if not ok then
-		return nil, false
+	local x: { number }
+	if integerKind(kind) and shape.packing == 1 then
+		-- base + offset outside the ANNOUNCED kind refuses before any check
+		-- of this build's own (§3.3): never wrapped into range
+		local held, ok = rangedOffset(t, kind, shape, width)
+		if held == nil then
+			return nil, ok
+		end
+		x = held
+	else
+		local got, ok = getLimbs(t.r, width)
+		if not ok then
+			return nil, false
+		end
+		x = got
 	end
 	local mykw = fd.kw or kindWidth(kind)
 	local signed = fd.signed == true
@@ -1955,7 +2031,9 @@ local function decodeArray(t: any, fd: any, entry: any, holder: any): boolean
 	if aligns(entry.kind, shape) and not ralign(r) then
 		return dmal(t)
 	end
-	if n > fd.bound then
+	if n > fd.bound or (fd.array == "counted" and n < (fd.min or 0)) then
+		-- below this build's Min refuses as past its bound does (SPEC.md
+		-- §5.1 row 3)
 		return refuseRead(t, "count_over_bound")
 	end
 	local dst = holder[fd.slot]

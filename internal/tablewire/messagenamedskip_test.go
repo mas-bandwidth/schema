@@ -172,6 +172,21 @@ func namedSkipCases() []namedSkipCase {
 				w.align()
 				w.bytes([]byte{1, 2, 3, 4, 5})
 			}},
+		// a string's length rides at bits_required(0, max), so its bits can
+		// spell more than the announced max: a `string(5)` writer's three
+		// bits spell 7, which a `string(16)` reader's own bound would admit
+		{name: "string length above the announced max", reader: "x string(16)", entry: entry(ir.TableKindString, ir.TableMessageShape{Max: 5}),
+			write: func(w *bitWriter, _ int) {
+				w.put(7, 3)
+				w.align()
+				w.bytes([]byte("abcdefg"))
+			}, bad: true},
+		{name: "string length at the announced max", reader: "x string(16)", entry: entry(ir.TableKindString, ir.TableMessageShape{Max: 5}),
+			write: func(w *bitWriter, _ int) {
+				w.put(5, 3)
+				w.align()
+				w.bytes([]byte("abcde"))
+			}},
 	}
 }
 
@@ -369,6 +384,55 @@ func TestMessageBodyDuplicateTestIsLinear(t *testing.T) {
 			if ops != n+1 {
 				t.Fatalf("n=%d skip=%v: the duplicate tests made %d probes, want %d", n, skip, ops, n+1)
 			}
+		}
+	}
+}
+
+// TestMessageKeyedReadFindsAKeyWithoutAScan counts the variant ids the named
+// keyed read computes over an enum of n variants and a keyed array naming
+// every one: the enum's ids are derived once for the read, and each key is one
+// lookup, never a scan of the variants. A count, not a clock.
+func TestMessageKeyedReadFindsAKeyWithoutAScan(t *testing.T) {
+	t.Parallel()
+	for _, n := range []int{16, 128, 512} {
+		var variants strings.Builder
+		for i := range n {
+			if i > 0 {
+				variants.WriteString(", ")
+			}
+			fmt.Fprintf(&variants, "V%d", i)
+		}
+		m := covModel(t, "package keyops\nenum Big { "+variants.String()+" }\nfixed table R { x [Big]bool }\n")
+		root := m.Lookup("R")
+		f := root.Fields[0]
+		entries := []ir.TableVocabularyEntry{{Id: ir.TableFieldWireId(f), Kind: ir.TableKindKeyed, Shape: ir.TableMessageShape{Max: int64(n), Elem: ir.TableKindBool, Inner: &ir.TableMessageShape{}}}}
+		for i := range n {
+			entries = append(entries, ir.TableVocabularyEntry{Id: ir.TableWireId(f.KeyEnumRef.VariantWireName(i))})
+		}
+		v := &Vocabulary{entries: entries, announced: true}
+		refBits := v.RefBits()
+		var w bitWriter
+		w.put(1, refBits)
+		w.put(uint64(n), ir.TableMessageBitsRequired(0, int64(n)))
+		for i := range n {
+			w.put(uint64(i+2), refBits)
+			w.put(1, 1)
+		}
+		w.put(0, refBits)
+		w.align()
+		var ops int
+		d := &bitDecoder{m: m, v: v, report: &tabletext.Report{}, r: newBitReader(w.b), refBits: refBits, fail: &readFail{}, enumOps: &ops}
+		inst := m.New(root)
+		if !d.body(inst) || d.fail.err != nil {
+			t.Fatalf("n=%d: the lawful body was refused: %v", n, d.fail.err)
+		}
+		for i := range n {
+			if !inst.Fields[0].Elems[i].B {
+				t.Fatalf("n=%d: slot %d did not land", n, i)
+			}
+		}
+		if ops != n {
+			t.Fatalf("n=%d: the keyed read derived %d variant ids, want %d (each once)", n, ops, n)
 		}
 	}
 }

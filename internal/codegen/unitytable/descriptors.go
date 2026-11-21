@@ -691,6 +691,9 @@ func (c *descCtx) wireColumns(f *ir.Field) string {
 			lit = formatFloat32Lit
 		}
 		fmt.Fprintf(&rc, "if (v < %s || v > %s) { if (!r.Refused) { r.Refused = true; r.Reason = \"out_of_range\"; } } ", lit(f.FMin), lit(f.FMax))
+		// A COMPRESSED FLOAT'S -0 LANDS AS +0 (docs/SPEC-TABLES.md §3.3): -0
+		// + +0 is +0, and every other value is itself
+		rc.WriteString("v = v + 0; ")
 	}
 	fmt.Fprintf(&rc, "return %s;", csRawGet("v", f.Type))
 	fmt.Fprintf(&b, ", RangeRaw = delegate (ulong raw, _R r) { %s }", rc.String())

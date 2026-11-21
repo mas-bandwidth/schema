@@ -310,6 +310,10 @@ defmodule Ludicrous.Ludicrous do
       samples: value_samples
     } = value
 
+    if not is_integer(value_angle) do
+      raise ArgumentError, "value.angle is not an integer"
+    end
+
     if value_angle < -11_796_480 do
       raise ArgumentError, "value.angle is below the wire minimum"
     end
@@ -320,6 +324,10 @@ defmodule Ludicrous.Ludicrous do
 
     v = value_angle + 11_796_480
     scratch = v
+
+    if not is_integer(value_position) do
+      raise ArgumentError, "value.position is not an integer"
+    end
 
     if value_position < -1_966_080_000 do
       raise ArgumentError, "value.position is below the wire minimum"
@@ -333,6 +341,10 @@ defmodule Ludicrous.Ludicrous do
     sc0 = scratch
     scratch = scratch >>> 24
     scratch = scratch ||| v <<< 1
+
+    if not is_integer(value_reach) do
+      raise ArgumentError, "value.reach is not an integer"
+    end
 
     if value_reach < -65_536_000_000 do
       raise ArgumentError, "value.reach is below the wire minimum"
@@ -349,6 +361,10 @@ defmodule Ludicrous.Ludicrous do
     scratch = scratch ||| v <<< 1
     v = w >>> 32
     scratch = scratch ||| v <<< 33
+
+    if not is_integer(value_ticks) do
+      raise ArgumentError, "value.ticks is not an integer"
+    end
 
     if value_ticks < 0 do
       raise ArgumentError, "value.ticks is below the wire minimum"
@@ -515,6 +531,10 @@ defmodule Ludicrous.Ludicrous do
       tail: value_tail
     } = value
 
+    if not is_integer(value_angle) do
+      raise ArgumentError, "value.angle is not an integer"
+    end
+
     if value_angle < 0 do
       raise ArgumentError, "value.angle is below the wire minimum"
     end
@@ -525,6 +545,10 @@ defmodule Ludicrous.Ludicrous do
 
     v = value_angle
     scratch = v
+
+    if not is_integer(value_span) do
+      raise ArgumentError, "value.span is not an integer"
+    end
 
     if value_span < 0 do
       raise ArgumentError, "value.span is below the wire minimum"
@@ -543,6 +567,10 @@ defmodule Ludicrous.Ludicrous do
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 1
 
+    if not is_integer(value_reach) do
+      raise ArgumentError, "value.reach is not an integer"
+    end
+
     if value_reach < 0 do
       raise ArgumentError, "value.reach is below the wire minimum"
     end
@@ -557,6 +585,10 @@ defmodule Ludicrous.Ludicrous do
     scratch = scratch ||| v <<< 1
     v = value_reach >>> 32
     scratch = scratch ||| v <<< 33
+
+    if not is_integer(value_ticks) do
+      raise ArgumentError, "value.ticks is not an integer"
+    end
 
     if value_ticks < 0 do
       raise ArgumentError, "value.ticks is below the wire minimum"
@@ -585,7 +617,7 @@ defmodule Ludicrous.Ludicrous do
     {data, scratch, scratch_bits} =
       wZunsigned_probeZsamples(value_samples, data, scratch, scratch_bits)
 
-    if value_locked != 196_608 do
+    if value_locked !== 196_608 do
       raise ArgumentError, "value.locked must hold the locked value 196608"
     end
 
@@ -772,6 +804,10 @@ defmodule Ludicrous.Ludicrous do
     sc2 = scratch
     scratch = v
 
+    if not is_integer(value_energy) do
+      raise ArgumentError, "value.energy is not an integer"
+    end
+
     if value_energy < -5_000_000_000 do
       raise ArgumentError, "value.energy is below the wire minimum"
     end
@@ -786,6 +822,10 @@ defmodule Ludicrous.Ludicrous do
     scratch = v
     v = w >>> 32
     scratch = scratch ||| v <<< 32
+
+    if not is_integer(value_flux) do
+      raise ArgumentError, "value.flux is not an integer"
+    end
 
     if value_flux < -1_267_650_600_228_229_401_496_703_205_376 do
       raise ArgumentError, "value.flux is below the wire minimum"
@@ -810,6 +850,10 @@ defmodule Ludicrous.Ludicrous do
     scratch = scratch ||| v <<< 2
     v = w >>> 96
     scratch = scratch ||| v <<< 34
+
+    if not is_integer(value_bias) do
+      raise ArgumentError, "value.bias is not an integer"
+    end
 
     if value_bias < -1000 do
       raise ArgumentError, "value.bias is below the wire minimum"
@@ -1034,6 +1078,10 @@ defmodule Ludicrous.Ludicrous do
       samples: value_probe_samples
     } = value_probe
 
+    if not is_integer(value_probe_angle) do
+      raise ArgumentError, "value.probe.angle is not an integer"
+    end
+
     if value_probe_angle < -11_796_480 do
       raise ArgumentError, "value.probe.angle is below the wire minimum"
     end
@@ -1044,6 +1092,10 @@ defmodule Ludicrous.Ludicrous do
 
     v = value_probe_angle + 11_796_480
     scratch = scratch ||| v <<< 2
+
+    if not is_integer(value_probe_position) do
+      raise ArgumentError, "value.probe.position is not an integer"
+    end
 
     if value_probe_position < -1_966_080_000 do
       raise ArgumentError, "value.probe.position is below the wire minimum"
@@ -1057,6 +1109,10 @@ defmodule Ludicrous.Ludicrous do
     sc0 = scratch
     scratch = scratch >>> 24
     scratch = scratch ||| v <<< 3
+
+    if not is_integer(value_probe_reach) do
+      raise ArgumentError, "value.probe.reach is not an integer"
+    end
 
     if value_probe_reach < -65_536_000_000 do
       raise ArgumentError, "value.probe.reach is below the wire minimum"
@@ -1073,6 +1129,10 @@ defmodule Ludicrous.Ludicrous do
     scratch = scratch ||| v <<< 3
     v = w >>> 32
     scratch = scratch ||| v <<< 35
+
+    if not is_integer(value_probe_ticks) do
+      raise ArgumentError, "value.probe.ticks is not an integer"
+    end
 
     if value_probe_ticks < 0 do
       raise ArgumentError, "value.probe.ticks is below the wire minimum"
@@ -1145,6 +1205,10 @@ defmodule Ludicrous.Ludicrous do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
 
+    if not is_integer(value_wide_energy) do
+      raise ArgumentError, "value.wide.energy is not an integer"
+    end
+
     if value_wide_energy < -5_000_000_000 do
       raise ArgumentError, "value.wide.energy is below the wire minimum"
     end
@@ -1164,6 +1228,10 @@ defmodule Ludicrous.Ludicrous do
     v = w >>> 32
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 2
+
+    if not is_integer(value_wide_flux) do
+      raise ArgumentError, "value.wide.flux is not an integer"
+    end
 
     if value_wide_flux < -1_267_650_600_228_229_401_496_703_205_376 do
       raise ArgumentError, "value.wide.flux is below the wire minimum"
@@ -1198,6 +1266,10 @@ defmodule Ludicrous.Ludicrous do
     v = w >>> 96
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 6
+
+    if not is_integer(value_wide_bias) do
+      raise ArgumentError, "value.wide.bias is not an integer"
+    end
 
     if value_wide_bias < -1000 do
       raise ArgumentError, "value.wide.bias is below the wire minimum"
@@ -1573,15 +1645,15 @@ defmodule Ludicrous.Ludicrous do
       tail: value_tail
     } = value
 
-    if value_locked_fixed != -196_608 do
+    if value_locked_fixed !== -196_608 do
       raise ArgumentError, "value.locked_fixed must hold the locked value -196608"
     end
 
-    if value_locked_int != 7 do
+    if value_locked_int !== 7 do
       raise ArgumentError, "value.locked_int must hold the locked value 7"
     end
 
-    if value_locked_wide != -12_345_678_901_234 do
+    if value_locked_wide !== -12_345_678_901_234 do
       raise ArgumentError, "value.locked_wide must hold the locked value -12345678901234"
     end
 
@@ -1702,6 +1774,10 @@ defmodule Ludicrous.Ludicrous do
   def write_fixed_vec!(value) do
     %{x: value_x, y: value_y, z: value_z} = value
 
+    if not is_integer(value_x) do
+      raise ArgumentError, "value.x is not an integer"
+    end
+
     if value_x < -6_553_600_000 do
       raise ArgumentError, "value.x is below the wire minimum"
     end
@@ -1715,6 +1791,10 @@ defmodule Ludicrous.Ludicrous do
     scratch = v
     v = w >>> 32
     scratch = scratch ||| v <<< 32
+
+    if not is_integer(value_y) do
+      raise ArgumentError, "value.y is not an integer"
+    end
 
     if value_y < -6_553_600_000 do
       raise ArgumentError, "value.y is below the wire minimum"
@@ -1731,6 +1811,10 @@ defmodule Ludicrous.Ludicrous do
     scratch = scratch ||| v <<< 2
     v = w >>> 32
     scratch = scratch ||| v <<< 34
+
+    if not is_integer(value_z) do
+      raise ArgumentError, "value.z is not an integer"
+    end
 
     if value_z < -6_553_600_000 do
       raise ArgumentError, "value.z is below the wire minimum"
@@ -1866,6 +1950,10 @@ defmodule Ludicrous.Ludicrous do
   def write_fixed_quat!(value) do
     %{x: value_x, y: value_y, z: value_z, w: value_w} = value
 
+    if not is_integer(value_x) do
+      raise ArgumentError, "value.x is not an integer"
+    end
+
     if value_x < -1_073_741_824 do
       raise ArgumentError, "value.x is below the wire minimum"
     end
@@ -1876,6 +1964,10 @@ defmodule Ludicrous.Ludicrous do
 
     v = value_x + 1_073_741_824
     scratch = v
+
+    if not is_integer(value_y) do
+      raise ArgumentError, "value.y is not an integer"
+    end
 
     if value_y < -1_073_741_824 do
       raise ArgumentError, "value.y is below the wire minimum"
@@ -1889,6 +1981,10 @@ defmodule Ludicrous.Ludicrous do
     sc0 = scratch
     scratch = v
 
+    if not is_integer(value_z) do
+      raise ArgumentError, "value.z is not an integer"
+    end
+
     if value_z < -1_073_741_824 do
       raise ArgumentError, "value.z is below the wire minimum"
     end
@@ -1900,6 +1996,10 @@ defmodule Ludicrous.Ludicrous do
     v = value_z + 1_073_741_824
     sc1 = scratch
     scratch = v
+
+    if not is_integer(value_w) do
+      raise ArgumentError, "value.w is not an integer"
+    end
 
     if value_w < -1_073_741_824 do
       raise ArgumentError, "value.w is below the wire minimum"
@@ -1996,6 +2096,10 @@ defmodule Ludicrous.Ludicrous do
   defp wZfixed_probeZsamples([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp wZfixed_probeZsamples([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+    if not is_integer(e1) do
+      raise ArgumentError, "e is not an integer"
+    end
+
     if e1 < -524_288 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -2008,6 +2112,10 @@ defmodule Ludicrous.Ludicrous do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 21
 
+    if not is_integer(e2) do
+      raise ArgumentError, "e is not an integer"
+    end
+
     if e2 < -524_288 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -2019,6 +2127,10 @@ defmodule Ludicrous.Ludicrous do
     v = e2 + 524_288
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 21
+
+    if not is_integer(e3) do
+      raise ArgumentError, "e is not an integer"
+    end
 
     if e3 < -524_288 do
       raise ArgumentError, "e is below the wire minimum"
@@ -2035,6 +2147,10 @@ defmodule Ludicrous.Ludicrous do
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 21
+
+    if not is_integer(e4) do
+      raise ArgumentError, "e is not an integer"
+    end
 
     if e4 < -524_288 do
       raise ArgumentError, "e is below the wire minimum"
@@ -2055,6 +2171,10 @@ defmodule Ludicrous.Ludicrous do
   end
 
   defp wZfixed_probeZsamples([e | rest], data, scratch, scratch_bits) do
+    if not is_integer(e) do
+      raise ArgumentError, "e is not an integer"
+    end
+
     if e < -524_288 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -2103,6 +2223,10 @@ defmodule Ludicrous.Ludicrous do
     do: {data, scratch, scratch_bits}
 
   defp wZunsigned_probeZsamples([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+    if not is_integer(e1) do
+      raise ArgumentError, "e is not an integer"
+    end
+
     if e1 < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -2115,6 +2239,10 @@ defmodule Ludicrous.Ludicrous do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 21
 
+    if not is_integer(e2) do
+      raise ArgumentError, "e is not an integer"
+    end
+
     if e2 < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -2126,6 +2254,10 @@ defmodule Ludicrous.Ludicrous do
     v = e2
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 21
+
+    if not is_integer(e3) do
+      raise ArgumentError, "e is not an integer"
+    end
 
     if e3 < 0 do
       raise ArgumentError, "e is below the wire minimum"
@@ -2142,6 +2274,10 @@ defmodule Ludicrous.Ludicrous do
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 21
+
+    if not is_integer(e4) do
+      raise ArgumentError, "e is not an integer"
+    end
 
     if e4 < 0 do
       raise ArgumentError, "e is below the wire minimum"
@@ -2162,6 +2298,10 @@ defmodule Ludicrous.Ludicrous do
   end
 
   defp wZunsigned_probeZsamples([e | rest], data, scratch, scratch_bits) do
+    if not is_integer(e) do
+      raise ArgumentError, "e is not an integer"
+    end
+
     if e < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end

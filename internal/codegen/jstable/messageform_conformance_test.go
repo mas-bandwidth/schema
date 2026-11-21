@@ -20,12 +20,13 @@ package jstable
 import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestMessageFormConformanceJavaScript holds the JavaScript conformance
@@ -283,7 +284,7 @@ func assertDriverAnswersMessages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, filepath.Join(absRepo, "test", "conformance", "js", "main.mjs"), manifest, "message", out)
+	cmd := testproc.Command(t, node, filepath.Join(absRepo, "test", "conformance", "js", "main.mjs"), manifest, "message", out)
 	cmd.Dir = absRepo
 	cmd.Env = append(os.Environ(), "SCHEMA_JS_GENERATED="+tree)
 	if data, err := cmd.CombinedOutput(); err != nil {
@@ -387,7 +388,7 @@ func writeConformanceTree(t *testing.T, root string, units [][2]string) {
 		if err := os.MkdirAll(out, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		cmd := exec.Command("go", "run", "./cmd/schema", "generate", "--lang", "js", "--out", out, u[1])
+		cmd := testproc.Command(t, "go", "run", "./cmd/schema", "generate", "--lang", "js", "--out", out, u[1])
 		cmd.Dir = repo
 		if data, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("the shipped target refused the `%s` unit its message driver reads: %v\n%s", u[1], err, data)

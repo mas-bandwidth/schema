@@ -51,7 +51,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -61,6 +60,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // t08Scalars is one fixed table carrying every construct this card's capability
@@ -366,7 +367,7 @@ Probe.run()
 		args = append(args, "-r", n)
 	}
 	args = append(args, "probe.exs")
-	cmd := exec.Command(elixirBinary(t), args...)
+	cmd := testproc.Command(t, elixirBinary(t), args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	out, err := cmd.CombinedOutput()

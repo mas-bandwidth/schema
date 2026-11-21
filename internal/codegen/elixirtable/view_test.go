@@ -2,7 +2,6 @@ package elixirtable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -11,6 +10,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/viewlisting"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func loadDirUnit(t *testing.T, dir string) *ir.Unit {
@@ -71,7 +72,7 @@ func TestUnitViewDescriptorsElixir(t *testing.T) {
 	}
 	run := func(viewFile string, args ...string) string {
 		t.Helper()
-		cmd := exec.Command(elixirBin, append([]string{"-r", viewFile, driverPath}, args...)...)
+		cmd := testproc.Command(t, elixirBin, append([]string{"-r", viewFile, driverPath}, args...)...)
 		cmd.Env = append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
 		out, err := cmd.CombinedOutput()
 		if err != nil {

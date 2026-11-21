@@ -108,6 +108,33 @@ local i128cmp = function(a, b) {
   if (a[1] > b[1]) return 1;
   return ucmp64(a[0], b[0]);
 };
+// THE ANNOUNCED KIND HOLDS A RANGED VALUE (docs/SPEC-TABLES.md §3.3): base
+// plus offset is reconstructed exactly and must lie in the domain the
+// sender's kind can store, judged before this reader's own range and on the
+// skip path alike (tablewire messagedecode.go rangedValue), so one body gets
+// one verdict whether this reader names the field or not, and the sum never
+// wraps. The test is the offset against the room above the base, as unsigned.
+local announcedSigned = function(k) { return (k >= 2 && k <= 5) || k == 18 || (k >= 20 && k <= 24); };
+local announcedWidth = function(k) {
+  if (k >= 2 && k <= 5) return 8 << (k - 2);
+  if (k >= 6 && k <= 9) return 8 << (k - 6);
+  if (k == 18 || k == 19 || k == 24 || k == 29) return 128;
+  if (k == 20 || k == 25) return 8;
+  if (k == 21 || k == 26) return 16;
+  if (k == 22 || k == 27) return 32;
+  return 64;
+};
+local rangedHeld = function(sh, x) {
+  local k = sh.Kind, signed = announcedSigned(k), sw = announcedWidth(k);
+  if (sw == 128) {
+    local lowBase = typeof sh.Base == "array" ? sh.Base : [sh.Base, (sh.Base < 0 && signed) ? -1 : 0];
+    local room = u128sub(signed ? [-1, 0x7fffffffffffffff] : [-1, -1], lowBase);
+    return u128cmp(typeof x == "array" ? x : [x, 0], room) <= 0;
+  }
+  if (typeof x == "array") { if (x[1] != 0) return false; x = x[0]; }
+  local max = sw == 64 ? (signed ? 0x7fffffffffffffff : -1) : (signed ? (1 << (sw - 1)) - 1 : (1 << sw) - 1);
+  return ucmp64(x, sub64(max, sh.Base)) <= 0;
+};
 local bitLen64 = function(x) {
   if (x == 0) return 0;
   if (x < 0) return 64;
@@ -522,13 +549,17 @@ local skipRemoteBody;
 // a reference, ill-formed text, a non-finite float, a quantized index above its
 // step count, a repeated field id in a body and a repeated keyed slot each
 // refuse the batch whether or not this reader declares the field.
-skipRemoteEntry = function(T,v,r,e,depth) {
+// atField is true for a body's own field, false for an element or an arm's
+// value: a union FIELD at arm reference 0 is damage here as on the named read
+// (a writer elides a union field with no arm), while an element or an arm
+// value keeps its positional None.
+skipRemoteEntry = function(T,v,r,e,depth,atField=false) {
   if(depth>128){r.bad=true;return;}
   local sh=e.Shape,k=sh.Kind;
   if(k==0||k==32)return;
   if(k==30){local ref=get(r,v.RefBits);if(r.bad||ref==0)return;if(ref>v.Count){r.bad=true;return;}local en=v.Entries[ref-1];if(en.Shape.Kind!=0||reservedId(en.Id))r.bad=true;return;}
   if(k==13){skipRemoteBody(T,v,r,depth+1);return;}
-  if(k==15){local ref=get(r,v.RefBits);if(r.bad||ref==0)return;if(ref>v.Count){r.bad=true;return;}local arm=v.Entries[ref-1];if(arm.Shape.Kind==0||reservedId(arm.Id)){r.bad=true;return;}skipRemoteEntry(T,v,r,arm,depth+1);return;}
+  if(k==15){local ref=get(r,v.RefBits);if(r.bad)return;if(ref==0){if(atField)r.bad=true;return;}if(ref>v.Count){r.bad=true;return;}local arm=v.Entries[ref-1];if(arm.Shape.Kind==0||reservedId(arm.Id)){r.bad=true;return;}skipRemoteEntry(T,v,r,arm,depth+1);return;}
   if(k==12){local n=get(r,sh.Bits);if(r.bad||n>sh.Max||!alignRead(r)||r.bits+n*8>r.b.len()*8){r.bad=true;return;}if(!messageTextOk(r.b,r.bits/8,n)){r.bad=true;return;}r.bits+=n*8;return;}
   if(k==31){if(!alignRead(r)){r.bad=true;return;}local n=get(r,32);if(r.bad)return;skip(r,n*8);return;}
   if(k==11){local raw=get(r,64);if(!r.bad&&(raw&0x7ff0000000000000)==0x7ff0000000000000)refuseRead(r,"non_finite_float");return;}
@@ -540,7 +571,8 @@ skipRemoteEntry = function(T,v,r,e,depth) {
     if(k==14&&ek==6&&!alignRead(r)){r.bad=true;return;}
     // A RUN OF FIXED-WIDTH ELEMENTS NO RULE LOOKS INSIDE IS ARITHMETIC, so a
     // hostile count over a zero-width element buys no loop
-    if(k==14&&ek!=10&&ek!=11&&ek!=12&&ek!=13&&ek!=14&&ek!=15&&ek!=16&&ek!=17&&ek!=30&&ek!=31){
+    // (a ranged element with bits is walked: its base plus offset is held)
+    if(k==14&&ek!=10&&ek!=11&&ek!=12&&ek!=13&&ek!=14&&ek!=15&&ek!=16&&ek!=17&&ek!=30&&ek!=31&&!(e.Element.Shape.Packing==1&&e.Element.Shape.Bits>0)){
       if(ek==0||ek==32)return;
       local width=e.Element.Shape.Bits;if(width<0){r.bad=true;return;}
       skip(r,n*width);return;
@@ -557,12 +589,15 @@ skipRemoteEntry = function(T,v,r,e,depth) {
     return;
   }
   if(k==17){r.bad=true;return;}
+  // a RANGED value's base plus offset is held to the announced kind on the
+  // skip path too, the verdict the named read gives (rangedHeld)
+  if(sh.Packing==1&&k!=10){local x=get(r,sh.Bits);if(r.bad)return;if(!rangedHeld(sh,x))refuseRead(r,"out_of_range");return;}
   if(sh.Bits<0){r.bad=true;return;}skip(r,sh.Bits);
 };
 skipRemoteBody = function(T,v,r,depth) {
   if(depth>128){r.bad=true;return;}
   local seen=[];
-  for(;;){local ref=get(r,v.RefBits);if(r.bad||ref==0)return;if(ref>v.Count){r.bad=true;return;}local entry=v.Entries[ref-1];if(reservedId(entry.Id)||seen.find(entry.Id)!=null){r.bad=true;return;}seen.append(entry.Id);skipRemoteEntry(T,v,r,entry,depth);if(r.bad)return;}
+  for(;;){local ref=get(r,v.RefBits);if(r.bad||ref==0)return;if(ref>v.Count){r.bad=true;return;}local entry=v.Entries[ref-1];if(reservedId(entry.Id)||seen.find(entry.Id)!=null){r.bad=true;return;}seen.append(entry.Id);skipRemoteEntry(T,v,r,entry,depth,true);if(r.bad)return;}
 };
 local ownVocab;
 local findSlot = function(T, id) {
@@ -701,7 +736,14 @@ local writeScalar = function(T, w, fd, value) {
     if (!finite) { w.reason = "non_finite_float: " + fd.nf; w.bad = true; return; }
     // a finite value off a compressed or ranged float's declared range is
     // refused before the quantizer runs (docs/SPEC-TABLES.md §3.3)
-    if (fd.fmin != null && (value < fd.fmin || value > fd.fmax)) { refuseValue(w); return; }
+    // a float32's range is held at float32 (SPEC.md §4.6): the value
+    // narrowed, against ends the descriptor carries narrowed
+    if (fd.fmin != null) {
+      local x = fd.f32 ? f32(value) : value;
+      if (x < fd.fmin || x > fd.fmax) { refuseValue(w); return; }
+      // a compressed float's -0 is +0 (docs/SPEC-TABLES.md §3.3)
+      if (x == 0) value = 0.0;
+    }
     if (fd.f32 && fd.qcount > 0) {
       // ir.TableMessageQuantize, BIT FOR BIT: every operation rounds to
       // float32 as Go's explicit conversions do; a float32 add, subtract,
@@ -769,6 +811,9 @@ local readScalar = function(r, T, v, fd, shape) {
   // A RANGED 128-BIT OFFSET THAT FITS 64 BITS STILL ARRIVES AS THE PAIR
   if (wideField && typeof x != "array") x = [x, 0];
   if (shape.Packing == 1) {
+    // base plus offset is held to the ANNOUNCED kind's domain first, never
+    // wrapped, before this reader's own range (rangedHeld)
+    if (!rangedHeld(shape, x)) { refuseRead(r, "out_of_range"); return wideField ? [0, 0] : 0; }
     if (typeof shape.Base == "array") {
       if (typeof x != "array") x = [x, 0];
       x = u128add(x, shape.Base);
@@ -963,6 +1008,9 @@ readPayload = function(T, v, r, fd, owner, member, depth, entry, atField = false
     if(fd.keyvariants==null){
       if(element.Kind==6&&!alignRead(r)){r.bad=true;return;}
       if(n>fd.bound){refuseRead(r,"count_over_bound");return;}
+      // a count below a counted array's declared Min refuses as the count
+      // past Max does (docs/SPEC.md §5.1 row 3; tablewire messagedecode.go)
+      if(fd.counted&&n<fd.min){refuseRead(r,"count_over_bound");return;}
       local size=((fd.list||fd.counted)?n:fd.bound),a=array(size,fd.elem.def);
       for(local i=0;i<n;i++){readPayload(T,v,r,fd.elem,holder,"value",depth+1,element);if(r.bad)return;a[i]=holder.value;}
       owner[member]=a;return;
@@ -1056,7 +1104,7 @@ readBody = function(T, v, r, d, value, depth) {
     local fd=(id in d.byId)?d.byId[id]:null;
     if(fd==null){
       if(ordered){r.bad=true;return;}
-      r.unknown++;skipRemoteEntry(T,v,r,entry,0);if(r.bad)return;continue;
+      r.unknown++;skipRemoteEntry(T,v,r,entry,0,true);if(r.bad)return;continue;
     }
     if(ordered&&fd.ordinal<lastOrdinal){r.bad=true;return;}
     lastOrdinal=fd.ordinal;

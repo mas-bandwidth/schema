@@ -10,11 +10,12 @@ import (
 	"fmt"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // cookWriteAbsentDart is every unit whose cook-write rows the Dart leg answers
@@ -138,7 +139,7 @@ func TestCookWriteAnswersEveryCookWriteRowDart(t *testing.T) {
 	if err := os.WriteFile(driverPath, []byte(driverManifest.String()), 0600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dart, "--enable-asserts", driverMain, driverPath, "cook-write", outDir)
+	cmd := testproc.Command(t, dart, "--enable-asserts", driverMain, driverPath, "cook-write", outDir)
 	cmd.Dir = repo
 	output, runErr := cmd.CombinedOutput()
 	if runErr != nil {
@@ -195,7 +196,7 @@ func TestCookWriteAnswersEveryCookWriteRowDart(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "cook_refusal_probe.dart"), []byte(probe), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		cmd := exec.Command(dart, "--enable-asserts", "cook_refusal_probe.dart")
+		cmd := testproc.Command(t, dart, "--enable-asserts", "cook_refusal_probe.dart")
 		cmd.Dir = dir
 		if out, err := cmd.CombinedOutput(); err != nil || !strings.Contains(string(out), "ok") {
 			t.Fatalf("the variable cook refusal probe: %v\n%s", err, out)
