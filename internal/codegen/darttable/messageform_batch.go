@@ -297,7 +297,12 @@ func (g *fixedModule) emitLoadMessageBody(st *ir.Struct) {
 				g.pf("        final bitsAt = r.bits.offset;\n")
 			}
 		}
-		g.emitMessageReadValue(f, entry, expr, "        ", "shape", "entry.kind")
+		if un, ok := f.Type.Ref.(*ir.Union); ok && f.Type.Kind == ir.TNamed && f.Array == ir.ArrayNone && f.KeyEnum == "" {
+			// a union FIELD: its explicit arm reference 0 is refused
+			g.emitMessageReadUnion(un, expr, "        ", true)
+		} else {
+			g.emitMessageReadValue(f, entry, expr, "        ", "shape", "entry.kind")
+		}
 		if held {
 			g.emitMessageElidedCheck(f, expr, "        ")
 		}
@@ -316,7 +321,7 @@ func (g *fixedModule) emitLoadMessageBody(st *ir.Struct) {
 	// above, so an unknown entry met twice is the same damage as a known one.
 	g.pf("        if (sameBuild) { r.report.Damage(); return false; } // a field the record does not declare (§3.3)\n")
 	g.pf("        r.report.unknown++;\n")
-	g.pf("        if (!tableMessageSkipEntry(r, entry)) {\n")
+	g.pf("        if (!tableMessageSkipEntry(r, entry, 0, true)) {\n")
 	g.pf("          r.report.Damage();\n          return false;\n        }\n")
 	g.pf("        break;\n")
 	g.pf("    }\n  }\n}\n\n")
@@ -776,8 +781,20 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, entry ir.TableVocabulary
 	switch {
 	case f.Type.Kind == ir.TString || (f.Type.Kind == ir.TBytes && !f.Type.Pointer):
 		g.pf("%s{\n", ind)
-		g.pf("%s  final n = r.bits.get(TableMessageShape.bitsRequired(%s.min, %s.max));\n", ind, shapeExpr, shapeExpr)
-		g.pf("%s  if (r.bits.failed || !r.bits.align()) { %s; }\n", ind, bad)
+		if f.Type.Kind == ir.TBytes {
+			// A bytes(N) IS AN ARRAY OF ELEMENT KIND 6 (SPEC-TABLES §3.3): its
+			// count rides as count - min at bits_required(min, max), so the
+			// announced min is added back, and a count above the announced
+			// max refuses as an array's does (the reference's `text`,
+			// internal/tablewire/messagedecode.go).
+			g.pf("%s  final low = r.bits.get(TableMessageShape.bitsRequired(%s.min, %s.max));\n", ind, shapeExpr, shapeExpr)
+			g.pf("%s  if (r.bits.failed || !r.bits.align()) { %s; }\n", ind, bad)
+			g.pf("%s  final n = low + %s.min;\n", ind, shapeExpr)
+			g.pf("%s  if (n > %s.max) { r.report.Refuse('count_over_bound'); return false; }\n", ind, shapeExpr)
+		} else {
+			g.pf("%s  final n = r.bits.get(TableMessageShape.bitsRequired(%s.min, %s.max));\n", ind, shapeExpr, shapeExpr)
+			g.pf("%s  if (r.bits.failed || !r.bits.align()) { %s; }\n", ind, bad)
+		}
 		g.pf("%s  final start = r.bits.offset >> 3;\n", ind)
 		g.pf("%s  if (!r.bits.skip(n * 8)) { %s; }\n", ind, bad)
 		if f.Type.Kind == ir.TString {
@@ -825,7 +842,7 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, entry ir.TableVocabulary
 		case *ir.Struct:
 			g.emitMessageReadNested(r, expr, ind)
 		case *ir.Union:
-			g.emitMessageReadUnion(r, expr, ind)
+			g.emitMessageReadUnion(r, expr, ind, false)
 		case *ir.Enum:
 			g.emitMessageReadEnum(f, r, expr, ind)
 		case *ir.Flags:
@@ -1047,7 +1064,14 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 	g.pf("%s  final v = r.bits.get(bits);\n", ind)
 	g.pf("%s  if (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
 	g.pf("%s  %s = v;\n", ind, expr)
-	g.pf("%s  if (%s.packing == 1) { %s += %s.base; }\n", ind, shapeExpr, expr, shapeExpr)
+	// A RANGED VALUE IS BASE PLUS OFFSET EXACTLY, HELD TO THE ANNOUNCED
+	// KIND'S DOMAIN before this reader's own checks, never wrapped: the one
+	// verdict the skip path gives the same bits (tableMessageRangedFits;
+	// internal/tablewire/messagedecode.go rangedValue; SPEC-TABLES §3.3).
+	g.pf("%s  if (%s.packing == 1) {\n", ind, shapeExpr)
+	g.pf("%s    %s += %s.base;\n", ind, expr, shapeExpr)
+	g.pf("%s    if (!tableMessageRangedHolds(%s, %s.base, %s)) { r.report.Refuse('out_of_range'); return false; }\n", ind, kindExpr, shapeExpr, expr)
+	g.pf("%s  }\n", ind)
 	// THE VALUE IS RECONSTRUCTED AT THE ANNOUNCED STORAGE WIDTH (the
 	// reference's tableMessageReadScalar writes the lane into the field's own
 	// bytes): a signed int8/int16/int32 read back from its bits is that
@@ -1124,6 +1148,9 @@ func (g *fixedModule) emitMessageReadScalar128(f *ir.Field, entry ir.TableVocabu
 		g.pf("%s  if (%s.packing == 0 && lowBits < 64 && lowBits > 0 && ((lo >> (lowBits - 1)) & 1) != 0) { hi = -1; }\n", ind, shapeExpr)
 	}
 	g.pf("%s  if (%s.packing == 1) {\n", ind, shapeExpr)
+	// THE EXACT SUM HELD TO THE ANNOUNCED KIND first, the skip path's own
+	// verdict (tableMessageRangedFits): a bare uint128 never lands 2^128
+	g.pf("%s    if (!tableMessageRangedFits(%s, %s, (BigInt.from(hi).toUnsigned(64) << 64) | BigInt.from(lo).toUnsigned(64))) { r.report.Refuse('out_of_range'); return false; }\n", ind, kindExpr, shapeExpr)
 	g.pf("%s    final sumLo = lo + %s.baseLo;\n", ind, shapeExpr)
 	g.pf("%s    final carry = (sumLo ^ 0x8000000000000000) < (lo ^ 0x8000000000000000) ? 1 : 0;\n", ind)
 	g.pf("%s    hi = hi + %s.baseHi + carry;\n", ind, shapeExpr)
@@ -1164,10 +1191,17 @@ func (g *fixedModule) emitMessageReadEnum(f *ir.Field, e *ir.Enum, expr, ind str
 	g.pf("%s    }\n%s  }\n%s}\n", ind, ind, ind)
 }
 
-func (g *fixedModule) emitMessageReadUnion(un *ir.Union, expr, ind string) {
+// field is true where the union is a FIELD's own payload: a conforming writer
+// elides a None field, so an explicit arm reference 0 there is damage
+// (docs/rulings.json reads-refuse-non-canonical; the reference's unionCell).
+// A None element of an array of unions stays positional and lawful.
+func (g *fixedModule) emitMessageReadUnion(un *ir.Union, expr, ind string, field bool) {
 	g.pf("%s{\n", ind)
 	g.pf("%s  final ref = r.bits.get(r.vocabulary.refBits);\n", ind)
 	g.pf("%s  if (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
+	if field {
+		g.pf("%s  if (ref == 0) { r.report.Damage(); return false; }\n", ind)
+	}
 	tagType, tagNone := g.gen.unionTagType(un)
 	g.pf("%s  if (ref == 0) { %s.type = %s; } else {\n", ind, expr, tagNone)
 	// A reference that names no union arm's kind — one above the
@@ -1422,11 +1456,15 @@ bool tableMessageBatchClose(TableMessageReader r) {
 /// [depth] is the unknown-skip walk (docs/SPEC-TABLES.md message_skip_depth):
 /// callers that omit it start at 0, and a nested body, a union arm or a
 /// walked element passes depth + 1. depth > 128 is malformed; 128 still skips.
-bool tableMessageSkipEntry(TableMessageReader r, TableMessageEntry e, [int depth = 0]) {
+/// [field] is true where the entry is a body FIELD (the reference's
+/// skipField): a conforming writer elides a None union field, so an explicit
+/// arm reference 0 there is damage; an element or an arm payload keeps its
+/// positional None.
+bool tableMessageSkipEntry(TableMessageReader r, TableMessageEntry e, [int depth = 0, bool field = false]) {
   if (depth > 128) return false;
   final shape = e.shape;
   if (shape == null) return false;
-  return tableMessageSkip(r, e.kind, shape, depth);
+  return tableMessageSkip(r, e.kind, shape, depth, field);
 }
 
 /// The widening ladder of §4 (ir.TableKindWidens): an integer kind into a
@@ -1459,11 +1497,11 @@ bool tableMessageSkipBody(TableMessageReader r, int depth) {
     final entry = r.vocabulary.entries[ref - 1];
     if (tableMessageReservedId(entry.id)) return false;
     if (!seen.add(entry.id)) return false;
-    if (!tableMessageSkipEntry(r, entry, depth)) return false;
+    if (!tableMessageSkipEntry(r, entry, depth, true)) return false;
   }
 }
 
-bool tableMessageSkip(TableMessageReader r, int kind, TableMessageShape s, [int depth = 0]) {
+bool tableMessageSkip(TableMessageReader r, int kind, TableMessageShape s, [int depth = 0, bool field = false]) {
   if (depth > 128) return false;
   switch (kind) {
     case 0:
@@ -1480,7 +1518,7 @@ bool tableMessageSkip(TableMessageReader r, int kind, TableMessageShape s, [int 
     case 15:
       final ref = r.bits.get(r.vocabulary.refBits);
       if (r.bits.failed) return false;
-      if (ref == 0) return true;
+      if (ref == 0) return !field;
       if (ref > r.vocabulary.count) return false;
       final arm = r.vocabulary.entries[ref - 1];
       // bitDecoder.arm: a reserved id or a kind-0 entry is damage
@@ -1650,12 +1688,27 @@ bool tableMessageSkipRanged(
   if (r.bits.failed) return false;
   final offset = (BigInt.from(hi).toUnsigned(64) << 64) |
       BigInt.from(lo).toUnsigned(64);
+  if (!tableMessageRangedFits(kind, s, offset)) {
+    r.report.Refuse('out_of_range');
+    return false;
+  }
+  return true;
+}
+
+/// THE ONE RECONSTRUCTION a ranged integer gets, named or skipped (the
+/// reference's rangedValue and kindHolds, internal/tablewire/messagedecode.go;
+/// docs/SPEC-TABLES.md §3.3): the sender's base plus the offset, EXACTLY, and
+/// whether the announced kind can hold the sum. Never wrapped.
+bool tableMessageRangedFits(int kind, TableMessageShape s, BigInt offset) {
   // The base as ir.DecodeShape holds it: a 16-byte two's complement for the
   // 128-bit and fixed-point kinds, a zigzag for a signed integer, and an
-  // unsigned 64-bit value otherwise.
+  // unsigned 64-bit value otherwise. An unsigned kind's 16-byte base is read
+  // unsigned: a uint128 base at or above 2^127 is never negative.
+  final signed = (kind >= 2 && kind <= 5) || kind == 18 || (kind >= 20 && kind <= 24);
   BigInt base;
   if (kind >= 18) {
     base = (BigInt.from(s.baseHi) << 64) | BigInt.from(s.baseLo).toUnsigned(64);
+    if (!signed) base = base.toUnsigned(128);
   } else if (kind >= 2 && kind <= 5) {
     base = BigInt.from(s.base);
   } else {
@@ -1664,20 +1717,34 @@ bool tableMessageSkipRanged(
   final value = offset + base;
   final bits = tableMessageKindWidth(kind) * 8;
   if (bits == 0) return true;
-  final signed = (kind >= 2 && kind <= 5) || kind == 18 || (kind >= 20 && kind <= 24);
   if (signed) {
     final top = BigInt.one << (bits - 1);
-    if (value < -top || value >= top) {
-      r.report.Refuse('out_of_range');
-      return false;
+    return value >= -top && value < top;
+  }
+  return !value.isNegative && value < (BigInt.one << bits);
+}
+
+/// THE NAMED READ'S HOLD on a ranged integer of an announced kind no wider
+/// than 64 bits, the verdict tableMessageRangedFits gives the same bits
+/// without a BigInt: value is base plus the offset in a Dart int, which wraps
+/// at 2^64, and the answer is whether the EXACT sum is in the announced
+/// kind's domain. Below 64 bits the sum cannot wrap. At 64 bits the offset is
+/// unsigned, so the exact sum left the domain exactly when the wrapped one
+/// fell below the base, or (a signed kind, an offset of 2^63 or more) did not
+/// pass it.
+bool tableMessageRangedHolds(int kind, int base, int value) {
+  final bytes = tableMessageKindWidth(kind);
+  if (bytes == 0) return true;
+  final signed = (kind >= 2 && kind <= 5) || (kind >= 20 && kind <= 24);
+  if (bytes >= 8) {
+    if (!signed) {
+      return (value ^ 0x8000000000000000) >= (base ^ 0x8000000000000000);
     }
-    return true;
+    return value - base >= 0 ? value >= base : value > base;
   }
-  if (value.isNegative || value >= (BigInt.one << bits)) {
-    r.report.Refuse('out_of_range');
-    return false;
-  }
-  return true;
+  final bits = bytes * 8;
+  if (signed) return value >= -(1 << (bits - 1)) && value < (1 << (bits - 1));
+  return value >= 0 && value < (1 << bits);
 }
 
 /// A string(N) payload must be well-formed UTF-8 with no zero byte among its
