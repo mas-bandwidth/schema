@@ -947,6 +947,15 @@ func (g *fixedGen) emitDecodeValue(f *ir.Field, base string, at int64, expr, ind
 		count := fixedDartSibling(expr, "Count")
 		g.call(ind, count+" = ", "view.getInt32",
 			[]string{fixedOff(base, at), "Endian.little"}, ";")
+		if f.ArrayMin > 0 {
+			// A COUNT BELOW THIS READER'S DECLARED MIN REFUSES THE READ
+			// count_over_bound (docs/SPEC.md §5.1 row 3; internal/tablewire
+			// fixed.go and fixedlineage.go), on either plan: the plan held
+			// the count to the bound, and this pass is the reader's own.
+			g.pf("%sif (%s < %d) {\n", ind, count, f.ArrayMin)
+			g.pf("%s  report.refused = TableFixedRefusal.countOverBound;\n", ind)
+			g.pf("%s}\n", ind)
+		}
 		g.emitDecodeLoop(f, base, at+fixedCountBytes, count, expr, ind)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		length := fixedDartSibling(expr, "Length")

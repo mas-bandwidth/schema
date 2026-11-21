@@ -77,6 +77,83 @@ func (g *wireGen) elemDefault(f *ir.Field) string {
 	return "0"
 }
 
+// countedBirthElem is one birth slot of a [Min..N]T (docs/SPEC.md §4.2): the
+// element at its default, a text list's element its own empty value.
+func (g *wireGen) countedBirthElem(f *ir.Field) string {
+	if f.IsTextList() {
+		return f.Type.Name + "()"
+	}
+	return g.elemDefault(f)
+}
+
+// birthElemDiffers is the Dart condition under which one element e of a
+// counted array is not at the element's default, the reference's
+// cellIsDefault (internal/tablewire encode.go): a float32 compared at its
+// stored bits (a compressed float's -0 is its +0), a table element by its
+// measured body (emitCountedBirthRides), every other kind by value.
+func (g *wireGen) birthElemDiffers(f *ir.Field, e string) string {
+	s := singleOf(f)
+	switch {
+	case f.IsTextList():
+		if ir.TextListOptional(f) {
+			return e + ".hasValue"
+		}
+		return e + ".value != ''"
+	case isPointerTable(s):
+		return e + " != null"
+	case unionRef(s) != nil:
+		return e + ".armTag != 0"
+	case isWide(s):
+		return e + " != " + g.wideDefault(s)
+	case s.Type.Kind == ir.TBool:
+		return fmt.Sprintf("%s != %v", e, s.HasDefault && s.DefBool)
+	case s.Type.Kind == ir.TInt || s.Type.Kind == ir.TBits || isFlags(s):
+		return e + " != " + g.intDefault(s)
+	case s.Type.Kind == ir.TFloat32 || s.Type.Kind == ir.TFloat64:
+		return wireFloatRides(s, cfloatStored(s, e), g.floatDefault(s))
+	case s.Type.Kind == ir.TString || s.Type.Kind == ir.TBytes:
+		return e + " != " + g.stringDefault(s)
+	case enumRef(s) != nil:
+		return e + " != " + g.enumDefault(s)
+	}
+	return e + " != " + g.elemDefault(f)
+}
+
+// countedRides is the condition under which a counted or unbounded array
+// rides, emitting the statements it needs first. An empty one elides (§2.9).
+// A [Min..N]T that is not required also ELIDES ITS BIRTH VALUE, Min elements
+// each at its default, exactly as the reference's encodeArray does
+// (internal/tablewire encode.go, allBirth; docs/SPEC.md §4.2), so a fresh
+// value saves as Go saves it and reads back at its birth. ordinal is the
+// field's position, the path a table element's body is measured under.
+func (g *wireGen) countedRides(f *ir.Field, expr, ind string, ordinal int) string {
+	n := f.BornCount()
+	if n == 0 || f.Required || f.Type.Optional {
+		return expr + ".isNotEmpty"
+	}
+	birth := "birth" + capitalize(fieldMember(f))
+	g.pf("%svar %s = %s.length == %d;\n", ind, birth, expr, n)
+	g.pf("%sif (%s) {\n", ind, birth)
+	g.pf("%s\tfor (var bi = 0; bi < %d; bi++) {\n", ind, n)
+	if listElementKind(f) == wireKindTable && !f.IsTextList() {
+		// A TABLE ELEMENT IS AT ITS DEFAULT WHEN ITS BODY IS ITS TERMINATOR
+		// ALONE (encodeArray's allBirth): measured, then the ids it interned
+		// rolled back, as a by-value field's elision does (emitSaveByValue).
+		g.pf("%s\t\tfinal mark = w.state.mark();\n", ind)
+		g.pf("%s\t\tfinal b = w.sub();\n", ind)
+		g.pf("%s\t\tb.path = [...w.path, %d, bi];\n", ind, ordinal)
+		g.pf("%s\t\t%sWireSaveBody(b, %s[bi]);\n", ind, dartName(f.Type.Name), expr)
+		g.pf("%s\t\tw.state.rollback(mark);\n", ind)
+		g.pf("%s\t\tif (b.buf.length > 1) { %s = false; break; }\n", ind, birth)
+	} else {
+		g.pf("%s\t\tfinal e = %s[bi];\n", ind, expr)
+		g.pf("%s\t\tif (%s) { %s = false; break; }\n", ind, g.birthElemDiffers(f, "e"), birth)
+	}
+	g.pf("%s\t}\n", ind)
+	g.pf("%s}\n", ind)
+	return expr + ".isNotEmpty && !" + birth
+}
+
 // fixedStorageDecl is the member of a `[N]T` or `[E]T`: a list of exactly the
 // declared slot count, every slot at the element's default (§2.4, §5).
 func (g *wireGen) fixedStorageDecl(f *ir.Field, name string) string {

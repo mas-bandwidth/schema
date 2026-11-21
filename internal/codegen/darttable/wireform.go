@@ -2748,7 +2748,8 @@ func (g *wireGen) emitSaveByValue(f *ir.Field, expr, ind string, id uint64) {
 // the count the value decides, then one node index a slot, and a null slot
 // rides as 0. The field id is interned before the body.
 func (g *wireGen) emitSavePointerList(f *ir.Field, expr, ind string, id uint64) {
-	g.pf("%s", rideOpen(ind, f, expr+".isNotEmpty"))
+	rides := g.countedRides(f, expr, ind, 0)
+	g.pf("%s", rideOpen(ind, f, rides))
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal s = w.sub();\n", ind)
 	g.pf("%s\ts.putByte(%d);\n", ind, wireKindPtr)
@@ -2768,7 +2769,8 @@ func (g *wireGen) emitSavePointerList(f *ir.Field, expr, ind string, id uint64) 
 // field's reference is interned BEFORE the element bodies so the id table
 // stays in first-use order (§3).
 func (g *wireGen) emitSaveTableList(f *ir.Field, expr, ind string, id uint64, ordinal int) {
-	g.pf("%s", rideOpen(ind, f, expr+".isNotEmpty"))
+	rides := g.countedRides(f, expr, ind, ordinal)
+	g.pf("%s", rideOpen(ind, f, rides))
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal s = w.sub();\n", ind)
 	g.pf("%s\ts.putByte(%d);\n", ind, wireKindTable)
@@ -2794,7 +2796,8 @@ func (g *wireGen) emitSaveTableList(f *ir.Field, expr, ind string, id uint64, or
 // its variant id's reference. The count the value decides, then the payloads.
 func (g *wireGen) emitSaveScalarList(f *ir.Field, expr, ind string, id uint64) {
 	elemKind := listElementKind(f)
-	g.pf("%s", rideOpen(ind, f, expr+".isNotEmpty"))
+	rides := g.countedRides(f, expr, ind, 0)
+	g.pf("%s", rideOpen(ind, f, rides))
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal s = w.sub();\n", ind)
 	g.pf("%s\ts.putByte(%d);\n", ind, elemKind)
@@ -3101,7 +3104,9 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		loop := "count"
 		if f.Array == ir.ArrayCounted {
 			g.pf("%s\t\tvar keep = count;\n", ind)
-			g.pf("%s\t\tif (keep < 0 || keep > %d) { r.report.refuse('count_over_bound'); return; }\n", ind, f.ArrayBound)
+			// A COUNT BELOW ITS DECLARED MIN IS REFUSED as one past its Max
+			// is (docs/SPEC.md §5.1 row 3; internal/tablewire arrayBody)
+			g.pf("%s\t\tif (keep < %d || keep > %d) { r.report.refuse('count_over_bound'); return; }\n", ind, max(f.ArrayMin, 0), f.ArrayBound)
 			loop = "keep"
 		} else {
 			g.pf("%s\t\tif (count < 0 || count > 0x7FFFFFFF) throw const _TableWireCountRefusal();\n", ind)
