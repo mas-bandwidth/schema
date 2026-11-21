@@ -2913,6 +2913,13 @@ static SCHEMA_UNUSED int bench_table_bits_finite32( uint32_t bits ) { return ( b
 static SCHEMA_UNUSED int bench_table_bits_finite64( uint64_t bits ) { return ( bits & 0x7ff0000000000000ull ) != 0x7ff0000000000000ull; }
 static SCHEMA_UNUSED int bench_table_float_finite( float f ) { return bench_table_bits_finite32( bench_table_float_to_bits( f ) ); }
 static SCHEMA_UNUSED int bench_table_double_finite( double d ) { return bench_table_bits_finite64( bench_table_double_to_bits( d ) ); }
+/* A COMPRESSED FLOAT'S -0 IS WRITTEN AS +0 (docs/SPEC-TABLES.md §3.3;
+   docs/rulings.json fixed-compressed-negzero): the bits every writer stores
+   for a compressed float, the +0 bits for its -0 and the bits as held for any
+   other value. A plain float never comes here: its -0 is a value and rides
+   bit-exact. The Go oracle is internal/tabletext's StoredFloat. */
+static SCHEMA_UNUSED uint32_t bench_table_stored_float_bits( float f ) { uint32_t b = bench_table_float_to_bits( f ); return b == 0x80000000u ? 0u : b; }
+static SCHEMA_UNUSED uint64_t bench_table_stored_double_bits( double d ) { uint64_t b = bench_table_double_to_bits( d ); return b == 0x8000000000000000ull ? 0u : b; }
 /* table_non_finite_float is a read meeting one: the read is REFUSED by name,
    non_finite_float, and the walk goes on so the framing verdict is the one a
    finite wire gets; the load that started it answers the refusal at its end
@@ -7614,7 +7621,7 @@ static SCHEMA_UNUSED int bench_bench_mixed_save_body( bench_table_writer_t * w, 
             if ( w->check_default ) { w->offset = 2; return 1; }
             bench_table_writer_header_at( w, 72, 0xdbaf7be5e24296c9ull, 10 );
             if ( !bench_table_float_finite( value->aim_x ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
-            bench_table_writer_put32( w, bench_table_float_to_bits( value->aim_x ) );
+            bench_table_writer_put32( w, bench_table_stored_float_bits( value->aim_x ) );
         }
     }
     { /* aim_y */
@@ -7623,7 +7630,7 @@ static SCHEMA_UNUSED int bench_bench_mixed_save_body( bench_table_writer_t * w, 
             if ( w->check_default ) { w->offset = 2; return 1; }
             bench_table_writer_header_at( w, 71, 0xdbaf7ae5e2429516ull, 10 );
             if ( !bench_table_float_finite( value->aim_y ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
-            bench_table_writer_put32( w, bench_table_float_to_bits( value->aim_y ) );
+            bench_table_writer_put32( w, bench_table_stored_float_bits( value->aim_y ) );
         }
     }
     { /* aim_z */
@@ -7632,7 +7639,7 @@ static SCHEMA_UNUSED int bench_bench_mixed_save_body( bench_table_writer_t * w, 
             if ( w->check_default ) { w->offset = 2; return 1; }
             bench_table_writer_header_at( w, 70, 0xdbaf79e5e2429363ull, 10 );
             if ( !bench_table_float_finite( value->aim_z ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
-            bench_table_writer_put32( w, bench_table_float_to_bits( value->aim_z ) );
+            bench_table_writer_put32( w, bench_table_stored_float_bits( value->aim_z ) );
         }
     }
     { /* recoil */
@@ -10336,9 +10343,9 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_bench_mixed_fix
     schema_assert( value->payload_length >= 0 && value->payload_length <= 16 ); /* the declared length is the bound (§3.4) */
     bench_table_fixed_put32( b + 1145, (uint32_t) value->payload_length );
     memcpy( b + 1149, value->payload, (size_t) ( value->payload_length ) );
-    bench_table_fixed_putf32( b + 1165, value->aim_x );
-    bench_table_fixed_putf32( b + 1169, value->aim_y );
-    bench_table_fixed_putf32( b + 1173, value->aim_z );
+    bench_table_fixed_put32( b + 1165, bench_table_stored_float_bits( value->aim_x ) );
+    bench_table_fixed_put32( b + 1169, bench_table_stored_float_bits( value->aim_y ) );
+    bench_table_fixed_put32( b + 1173, bench_table_stored_float_bits( value->aim_z ) );
     bench_table_fixed_putf32( b + 1177, value->recoil );
     bench_table_fixed_putf64( b + 1181, value->drift );
     bench_table_fixed_put128_u( b + 1189, value->wide_key );
@@ -10750,9 +10757,9 @@ static SCHEMA_UNUSED int schema_bench_bench_mixed_body_pack_(struct bench_table_
     bench_table_cook_put(at+1248+16,(uint32_t)value->player_name_length,4,order);
     bench_table_cook_bytes(at+1268,value->payload,value->payload_length,16);
     bench_table_cook_put(at+1268+16,(uint32_t)value->payload_length,4,order);
-    { uint32_t bits; memcpy(&bits,&value->aim_x,4); if(!bench_table_bits_finite32(bits)) { return 0; } bench_table_cook_put(at+1288,bits,4,order); }
-    { uint32_t bits; memcpy(&bits,&value->aim_y,4); if(!bench_table_bits_finite32(bits)) { return 0; } bench_table_cook_put(at+1292,bits,4,order); }
-    { uint32_t bits; memcpy(&bits,&value->aim_z,4); if(!bench_table_bits_finite32(bits)) { return 0; } bench_table_cook_put(at+1296,bits,4,order); }
+    if(!bench_table_bits_finite32(bench_table_stored_float_bits(value->aim_x))) { return 0; } bench_table_cook_put(at+1288,bench_table_stored_float_bits(value->aim_x),4,order);
+    if(!bench_table_bits_finite32(bench_table_stored_float_bits(value->aim_y))) { return 0; } bench_table_cook_put(at+1292,bench_table_stored_float_bits(value->aim_y),4,order);
+    if(!bench_table_bits_finite32(bench_table_stored_float_bits(value->aim_z))) { return 0; } bench_table_cook_put(at+1296,bench_table_stored_float_bits(value->aim_z),4,order);
     { uint32_t bits; memcpy(&bits,&value->recoil,4); if(!bench_table_bits_finite32(bits)) { return 0; } bench_table_cook_put(at+1300,bits,4,order); }
     { uint64_t bits; memcpy(&bits,&value->drift,8); if(!bench_table_bits_finite64(bits)) { return 0; } bench_table_cook_put(at+1304,bits,8,order); }
     bench_table_cook_put128(at+1312,value->wide_key.lo,value->wide_key.hi,order);
