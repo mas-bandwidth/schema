@@ -153,3 +153,38 @@ func TestSlowGateScanCorpus(t *testing.T) {
 		t.Errorf("the corpus holds %d refused and %d clean rows: a refusal is only proven beside a clean control", red, green)
 	}
 }
+
+// TestWorkflowRefusalIsScopedToTheStepThatSetsIt: a working directory or a Go
+// environment variable this scanner does not resolve voids the step that sets
+// it, not the whole file. One GOFLAGS on ci-full.yml's big-endian row used to
+// void every step of the file, and the 1320 gated codegen tests its
+// unit-codegen rows run were credited only through a recipe that ran another
+// module's `./...`. Set at the workflow's or a job's level, every step
+// inherits it, and the file still earns nothing. A job's own env is not the
+// previous job's last step's.
+func TestWorkflowRefusalIsScopedToTheStepThatSetsIt(t *testing.T) {
+	t.Parallel()
+	slowStep := "      - name: slow\n        env:\n          SCHEMA_SLOW: '1'\n        run: go test ./pkg -run '^TestSlow$'\n"
+	for _, tc := range []struct {
+		name, workflow string
+		want           bool
+	}{
+		{"a step sets GOFLAGS, another step runs the test", "name: w\njobs:\n  a:\n    runs-on: x\n    steps:\n      - name: big-endian\n        env:\n          GOFLAGS: -gcflags=all=-l\n        run: make conformance\n" + slowStep, true},
+		{"the step that runs the test sets GOFLAGS", "name: w\njobs:\n  a:\n    runs-on: x\n    steps:\n      - name: slow\n        env:\n          SCHEMA_SLOW: '1'\n          GOFLAGS: -count=0\n        run: go test ./pkg -run '^TestSlow$'\n", false},
+		{"the step that runs the test sets a working directory", "name: w\njobs:\n  a:\n    runs-on: x\n    steps:\n" + slowStep + "        working-directory: sub\n", false},
+		{"the step sets GOTOOLCHAIN after its run", "name: w\njobs:\n  a:\n    runs-on: x\n    steps:\n" + slowStep + "        env:\n          GOTOOLCHAIN: go1.20.0\n", false},
+		{"the workflow sets GOFLAGS", "name: w\nenv:\n  GOFLAGS: -count=0\njobs:\n  a:\n    runs-on: x\n    steps:\n" + slowStep, false},
+		{"the job sets GOFLAGS", "name: w\njobs:\n  a:\n    runs-on: x\n    env:\n      GOFLAGS: -count=0\n    steps:\n" + slowStep, false},
+		{"the job's defaults set a working directory", "name: w\njobs:\n  a:\n    runs-on: x\n    defaults:\n      run:\n        working-directory: sub\n    steps:\n" + slowStep, false},
+		{"a job's env after another job's last step", "name: w\njobs:\n  a:\n    runs-on: x\n    steps:\n      - name: plain\n        run: go test ./pkg -run '^TestSlow$'\n  b:\n    runs-on: x\n    env:\n      SCHEMA_SLOW: '1'\n    steps:\n      - run: echo b\n", false},
+		{"GOFLAGS named inside a run script is the script's", "name: w\njobs:\n  a:\n    runs-on: x\n    steps:\n      - name: note\n        run: |\n          echo GOFLAGS: none\n" + slowStep, true},
+	} {
+		steps, err := parseWorkflowContent("w.yml", tc.workflow)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		if got := coveredByCI(steps, gatedTest{pkg: "./pkg", name: "TestSlow"}) != ""; got != tc.want {
+			t.Errorf("%s: TestSlow credited = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}

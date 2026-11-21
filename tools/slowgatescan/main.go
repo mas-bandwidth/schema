@@ -380,27 +380,36 @@ func workflowSteps(root string) ([]ciStep, error) {
 	return steps, nil
 }
 
-func parseWorkflowContent(file, content string) ([]ciStep, error) {
-	// These settings can affect package resolution or test execution outside the
-	// command itself. This scanner does not resolve inherited workflow/job state.
-	for line := range strings.SplitSeq(content, "\n") {
-		key, _, _ := strings.Cut(strings.TrimSpace(line), ":")
-		switch key {
-		case "working-directory", "GOFLAGS", "GOWORK", "GOOS", "GOARCH", "GOEXPERIMENT":
-			return nil, nil // no coverage credit from an unsupported workflow shape
-		}
+// unreadContext reports whether a workflow line sets something that changes
+// package resolution or test execution outside the command itself.
+func unreadContext(trimmed string) bool {
+	key, _, _ := strings.Cut(trimmed, ":")
+	switch strings.TrimSpace(key) {
+	case "working-directory", "GOFLAGS", "GOWORK", "GOOS", "GOARCH", "GOEXPERIMENT", "GOTOOLCHAIN", "CGO_ENABLED":
+		return true
 	}
+	return false
+}
+
+func parseWorkflowContent(file, content string) ([]ciStep, error) {
 	lines := strings.Split(content, "\n")
 	var steps []ciStep
 	groups := matrixGroups(lines)
 
 	type rawStep struct {
-		startLine int
-		runLine   int
-		name      string
-		ifCond    string
-		envLines  []string
-		runLines  []string
+		startLine  int
+		runLine    int
+		dashIndent int
+		name       string
+		ifCond     string
+		envLines   []string
+		runLines   []string
+		// refused: the step itself sets a working directory or a Go
+		// environment variable this scanner does not resolve, so it earns no
+		// credit. One such step used to void the whole file: ci-full.yml's
+		// big-endian row sets GOFLAGS, and every unit-codegen row of the same
+		// file went uncredited.
+		refused bool
 	}
 
 	var rawSteps []rawStep
@@ -413,15 +422,40 @@ func parseWorkflowContent(file, content string) ([]ciStep, error) {
 	for idx, line := range lines {
 		lineNo := idx + 1
 		trimmed := strings.TrimSpace(line)
+		indent := len(line) - len(strings.TrimLeft(line, " "))
+
+		// A line at or left of the current item's dash, that is not a new
+		// item, ends the item: it is a job's or the workflow's own property.
+		if cur != nil && trimmed != "" && !strings.HasPrefix(trimmed, "#") && indent <= cur.dashIndent && !strings.HasPrefix(trimmed, "- ") {
+			rawSteps = append(rawSteps, *cur)
+			cur = nil
+			inRun, inEnv = false, false
+		}
+
+		// These settings change package resolution or test execution outside
+		// the command. Set by a step, they void that step; set anywhere else
+		// (the workflow's or a job's env or defaults, which every step
+		// inherits), this scanner does not resolve them and the file earns no
+		// credit.
+		if !strings.HasPrefix(trimmed, "- ") && !(inRun && indent > runIndent) && unreadContext(trimmed) {
+			if cur == nil {
+				return nil, nil // no coverage credit from an unsupported workflow shape
+			}
+			cur.refused = true
+			continue
+		}
 
 		if strings.HasPrefix(trimmed, "- ") {
 			if cur != nil {
 				rawSteps = append(rawSteps, *cur)
 			}
-			cur = &rawStep{startLine: lineNo, runLine: lineNo}
+			cur = &rawStep{startLine: lineNo, runLine: lineNo, dashIndent: indent}
 			inRun = false
 			inEnv = false
 			lineAfterDash := strings.TrimSpace(trimmed[2:])
+			if unreadContext(lineAfterDash) {
+				cur.refused = true
+			}
 			switch {
 			case strings.HasPrefix(lineAfterDash, "name:"):
 				cur.name = strings.TrimSpace(strings.TrimPrefix(lineAfterDash, "name:"))
@@ -443,7 +477,6 @@ func parseWorkflowContent(file, content string) ([]ciStep, error) {
 			continue
 		}
 
-		indent := len(line) - len(strings.TrimLeft(line, " "))
 		// End a block before interpreting a sibling property such as if: false.
 		if trimmed != "" && !strings.HasPrefix(trimmed, "#") {
 			if inEnv && indent <= envIndent {
@@ -524,7 +557,7 @@ func parseWorkflowContent(file, content string) ([]ciStep, error) {
 
 		// Step condition: explicitly disabled steps must not count as enabled;
 		// unresolved execution conditions cannot certify coverage.
-		if !isStepConditionEnabled(rs.ifCond, groups) {
+		if rs.refused || !isStepConditionEnabled(rs.ifCond, groups) {
 			steps = append(steps, ciStep{
 				file:     file,
 				line:     rs.runLine,
