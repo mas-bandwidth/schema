@@ -13861,7 +13861,10 @@ in build version (§20.5).
   enum. `None` and `Max` keep the reservation the generated members carry.
 - **An array of unions** (§2.6): the enum-KEYED spelling `[E]Body`, a named
   follow-on (§15) where the bounded `[..N]Body` and `[N]Body` are not, which
-  **every target carries in a table closure**.
+  **every target carries in a table closure**, with one exception:
+  `--lang python` refuses such an array when the union's arms are all packet
+  types ("the python form is the packet layer's named follow-on"), and
+  carries it when the union has a table-side arm.
 - **The text form's key** (§16): `json = "..."` on a field no table closure
   reaches — keys are a table-wire construct; two fields of one table whose
   JSON keys collide, naming both, as wire ids do (§5); and a key beginning
@@ -15632,7 +15635,9 @@ inspects everything in the schema built:
 - Keyed lookup conveniences over loaded collections (library-side, never
   stored semantics).
 - **AN ARRAY OF UNIONS in every ported backend** (§2.6) is CLOSED: C, C++, C#
-  and Go carry `[..N]Body` and `[N]Body`, as does every other backend. What
+  and Go carry `[..N]Body` and `[N]Body`, as does every other backend, except
+  that `--lang python` refuses the array when the union's arms are all packet
+  types ("the python form is the packet layer's named follow-on"). What
   each carries is the union element in its fixed-class walks — measure, save, load, the
   descriptors' arms column on an array field, and the text form's one-key
   object per element — held to the `message_batch` instance and the hostile

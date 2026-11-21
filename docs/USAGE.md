@@ -4350,7 +4350,7 @@ c := compiler.New()
 if err := c.Register(docs{}); err != nil { // refuses a name a target already holds
 	return err
 }
-fmt.Println(c.Targets()) // [c cpp cs dart docs elixir go goose java js lobster lua luau moo python ruby rust squirrel unity]
+fmt.Println(c.Targets()) // [c cpp cs dart docs elixir go goose java js lobster lua luau python ruby rust squirrel unity]
 files, err := c.Generate(unit, "docs", nil)
 ```
 

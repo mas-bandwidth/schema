@@ -98,7 +98,8 @@ words (2026-08-25): *"schema is types and bitpacking and enums and constants."*
   and refused by name in a `type` (SPEC.md §1, SPEC-TABLES.md §2.8, §2.9). The data
   path is schema's too, as `schema pack`, `unpack`, `cook`, `cook-check` and `uncook`
   over a JSON tree. ROADMAP.md's table-wire rows carry each backend's state, C++ the
-  reference and the other seventeen targets beside it, each complete on every row.
+  reference and the other seventeen targets beside it. Every row is complete in every
+  column but "no allocation on read", which ten targets still owe.
 - **The protocol layer stays out of the language.** Messages, objects, the view
   markers, quantize, round and contexts are not part of schema: the offering is
   types, enums, flags, unions, constants and bitpacking on the type wire, and tables

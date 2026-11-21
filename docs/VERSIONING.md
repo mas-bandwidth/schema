@@ -1208,44 +1208,22 @@ Protocol Buffers, FlatBuffers, Avro and Cap'n Proto, was mapped mechanism by
 mechanism onto this design. The record, all three documents verbatim with the
 tally, is #464; the gaps it found are the issues in the list below.
 
-## Owed before 3.0.0
+## Owed
 
 Each of these is a claim this page makes in the present tense with the
-repository not yet behind it. The 3.0.0 release holds the list at zero.
+repository not yet behind it. The list was to stand at zero for 3.0.0; that
+release and 3.0.1 are out with these four still open.
 
-- #435: the uniform 64-bit wire, the form byte, the id table, the enum kind,
-  flags bit positions in the build version, the reserved-id refusals. The C++
-  reference and `internal/tablewire` carry all of it, held by the conformance
-  lock. Every port carries it too (ROADMAP.md, the 64-bit id-table wire
-  row).
-- #523: the message form, form byte `2`, the batch primitive and the bitpacked
-  body, the announcement and its two reserved ids, the announced unit vocabulary
-  of id, kind and shape triples in its compiler-settled order, the two
-  announcement bounds, the batch bound, the mask's declared width, and the names §11 owes it. The C++ reference
-  carries the form and `internal/tablenames` claims §11's names, and every port
-  carries the form too (ROADMAP.md, the message form row). What is owed
-  is the form's `LoadRetain` (SPEC-TABLES.md §3.3), whose
+- #523: the message form's retaining read. The form itself is carried by the
+  C++ reference and every port (ROADMAP.md, the message form row). What is
+  owed is the form's `LoadRetain` (SPEC-TABLES.md §3.3), whose
   form 2 write refuses by name and whose form 2 read is not built.
 - #554: the `column` projection token, reserved by name on the packet wire and
   emitted nowhere.
-- #434: the reserved escape kind. The C++ reference and `internal/tablewire`
-  carry it, and so does every port (ROADMAP.md, the id-table wire row's
-  escape kinds).
 - #432: the cook triple, and the byte-order sentences in five places.
-- #525: retain-unknown, which every port now carries (ROADMAP.md, the
-  retain-unknown row). The C++ reference, the two report
-  counters, `internal/tablewire`'s own retention, the wire fuzzer's retention
-  leg, which needed it, and the conformance manifest's retain rows are built.
-  The message form carries no retention: it is fixed tables only (SPEC-TABLES
-  §3.3).
-- #523: the unbounded array, `[]T` and `[]*T`, its refusals and the
-  `list_migrates` golden that pins "the same bytes" as `[..N]T`
-  (SPEC-TABLES.md §2.9). The C++ reference carries the construct and the
-  golden is pinned, and every port carries the construct too (ROADMAP.md, the
-  unbounded arrays row). What is owed is the tool's cook and uncook halves (SPEC-TABLES.md §7.4).
 - #439 and #460: the standard's own contradictions on `T`→`*T`, the flags
-  row, writer misuse, the declaration-rename row, the count of silent edits,
-  and the pages that still say schema is not an evolution system.
+  row, writer misuse, the declaration-rename row and the count of silent
+  edits.
 
 When two sentences in the repository disagree, the one with the golden wins,
 and the other is a bug in prose. A full read of the standard, front to back,

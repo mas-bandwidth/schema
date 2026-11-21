@@ -301,7 +301,8 @@ counts at their minimum) unless a field gives `= value`. The default goes
 before the `|`. A range that excludes zero needs a default inside it. A
 `string(N)` or `bytes(N)` field takes a quoted default (`name string(16) =
 "player"`) and a flags field a list of variants (`caps Caps = { Jump }`);
-`--lang python` refuses those three default kinds by name today. Arrays,
+`--lang python` carries those three default kinds on a table and refuses them
+on a packet `type` by name today (the python form is a named follow-on). Arrays,
 nested types and unions take no field default. On a
 table, a field equal to its default is left off the wire and an absent field
 reads as its default, so changing a table default changes what stored files
