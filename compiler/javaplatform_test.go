@@ -281,7 +281,8 @@ func TestJavaNamesNoPlatformTypeUnqualified(t *testing.T) {
 		u, files, err := generateJavaUnit(units[label])
 		if err != nil {
 			if label == "nested" || label == "siblings" || label == "bench" || label == "examples" {
-				t.Fatalf("%s: %v", label, err)
+				t.Errorf("%s: %v", label, err)
+				continue
 			}
 			t.Logf("%s: java does not generate the unit (%v); not scanned", label, err)
 			continue
@@ -310,7 +311,11 @@ func TestJavaNamesNoPlatformTypeUnqualified(t *testing.T) {
 	for _, p := range javaSiblingPaths(t) {
 		siblings[strings.TrimSuffix(filepath.Base(p), ".schema")] = true
 	}
-	nestedU, _, err := generateJavaUnit([]string{filepath.Join(javaPlatformDir, "nested")})
+	nestedPaths, err := GatherPaths([]string{filepath.Join(javaPlatformDir, "nested")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	nestedU, err := New().Load(nestedPaths)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -454,7 +459,10 @@ func TestJavaUnitsNamedLikePlatformTypesCompile(t *testing.T) {
 	} {
 		_, files, err := generateJavaUnit(unit.paths)
 		if err != nil {
-			t.Fatalf("%s: %v", unit.pkg, err)
+			// named, and the other units still compile: a refusal must not
+			// hide what javac says about them
+			t.Errorf("%s: %v", unit.pkg, err)
+			continue
 		}
 		pkg := filepath.Join(dir, "src", unit.pkg)
 		if err := os.MkdirAll(pkg, 0o755); err != nil {
