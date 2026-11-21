@@ -113,7 +113,7 @@ const tableRegionCookSource = `
     }
     static long RegionPlace(NativeValue value, TableTypeInfo type, ref RegionGraph graph, out int alignment, bool finite = false)
     {
-        alignment = Math.Max(8, type.StorageAlign); long extent = 0;
+        alignment = global::System.Math.Max(8, type.StorageAlign); long extent = 0;
         if (!RegionExtentSize(value, type, ref extent)) { return -1; }
         long rootExtent = extent;
         long at = checked(NativeRecordBytes(type) + extent);
@@ -121,7 +121,7 @@ const tableRegionCookSource = `
         {
             ref RegionNode node = ref graph.Entries[i]; TableTypeInfo child = node.BlobKind == 0 ? type.PointerType(node.TypeId) : null;
             int align = child == null ? 8 : child.StorageAlign;
-            alignment = Math.Max(alignment, align); at = Align(at, align); node.NativeOffset = at;
+            alignment = global::System.Math.Max(alignment, align); at = Align(at, align); node.NativeOffset = at;
             if (child == null) { at = checked(at + 8 + node.Blob.Length + (node.BlobKind == 12 ? 1 : 0)); }
             else
             {

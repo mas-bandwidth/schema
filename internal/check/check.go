@@ -18,6 +18,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/mas-bandwidth/schema/v2/internal/ast"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/ccommon"
 	"github.com/mas-bandwidth/schema/v2/internal/goname"
 	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -5014,9 +5015,8 @@ func (c *checker) cReservedMacros() map[string]bool {
 		out["SCHEMA_"+pkg+per] = true
 	}
 	for _, f := range c.files {
-		base := strings.ToUpper(f.Base)
-		for _, suffix := range []string{"_H", "WIRE_H", "TABLE_H", "BLOCK_H"} {
-			out["SCHEMA_"+pkg+"_"+base+suffix] = true
+		for _, part := range []string{"", "wire", "table", "block"} {
+			out[ccommon.HeaderGuard(c.unit.Package, f.Base, part)] = true
 		}
 	}
 	return out

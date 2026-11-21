@@ -5,8 +5,8 @@
    AGPL-3.0, its output is not.
    package bench — protocol id 0xc52a41defad6ebb0 */
 
-#ifndef SCHEMA_BENCH_BENCHWIRE_H
-#define SCHEMA_BENCH_BENCHWIRE_H
+#ifndef SCHEMA_BENCH_Bench_wire_h
+#define SCHEMA_BENCH_Bench_wire_h
 
 #include "Bench.h"
 #include <string.h>   /* memset, strlen */
@@ -1572,4 +1572,4 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_bench_mixed( serialize_
 }
 #endif
 
-#endif /* SCHEMA_BENCH_BENCHWIRE_H */
+#endif /* SCHEMA_BENCH_Bench_wire_h */

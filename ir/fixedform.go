@@ -505,7 +505,7 @@ func tableFixedWalkPayload(w *tableFixedWalk, owner string, f *Field, id uint64,
 		// own offset is the slot base (§2.4's keyed wrapper)
 		w.push(TableFixedLayoutEntry{ID: id, Kind: TableKindKeyed, Size: size, Children: 2, Note: f.Name},
 			TableFixedDstSpec{Dst: tableFixedTerm1(owner, f.Name), Stride: f})
-		tableFixedWalkEnum(w, f.KeyEnumRef, TableWireId(f.KeyEnum), f.KeyEnum, nil)
+		tableFixedWalkEnum(w, f.KeyEnumRef, TableWireId(keyEnumDeclared(f)), f.KeyEnum, nil)
 		tableFixedWalkElement(w, f, 0, "element", nil)
 	case f.Array != ArrayNone:
 		spec := TableFixedDstSpec{Dst: tableFixedTerm1(owner, f.Name), Stride: f}
