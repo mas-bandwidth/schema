@@ -53,6 +53,7 @@
 #include "VarEvo1Table.h"
 #include "VarEvo2Table.h"
 #include "VarEvo3Table.h"
+#include "PriorNarrowTable.h"
 #include "CookTortureTable.h"
 #include "CookTortureBlock.h"
 #include "CookTortureWideTable.h"
@@ -558,6 +559,9 @@ static const MsgCodec msg_codecs[] = {
     MSGCODEC( "vocab9demo", vocab9demo, Wide19 ),
     MSGCODEC( "tblvarevo1", tblvarevo1, EvoMsg ),
     MSGCODEC( "tblvarevo3", tblvarevo3, EvoMsg ),
+    // the prior-writer rows (FORMAT.md `message-prior`): one field per shape a
+    // ranged value takes, read against an earlier release's announcement
+    MSGCODEC( "tblprior", tblprior, Prior ),
 };
 
 // ---------------------------------------------------------------------------
@@ -1109,7 +1113,16 @@ static int surface_message( const std::string & out )
         std::vector<uint8_t> answer;
         Report report;
         if ( !codec->round_trip( announcement.data(), (int64_t) announcement.size(),
-                                 message.data(), (int64_t) message.size(), answer, &report ) ) { return 1; }
+                                 message.data(), (int64_t) message.size(), answer, &report ) )
+        {
+            // THE ANSWER IS WHAT THE PUBLIC READ RETURNED: a batch the read
+            // refuses delivers no body, so the row is answered refused and
+            // nothing is saved. Whether the row owed a refusal is the
+            // harness's to say; a row that owed bytes is failed by it.
+            static const char refused[] = "refused";
+            if ( !spill( out, f[1] + ".absent", (const uint8_t *) refused, sizeof( refused ) - 1 ) ) return 1;
+            continue;
+        }
         if ( !spill( out, f[1], answer.data(), answer.size() ) ) return 1;
     }
     return 0;

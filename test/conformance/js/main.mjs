@@ -579,6 +579,7 @@ const messageRows = [
   ["vocab9demo", "Wide00", "vocab9/Vocab9demoTable.js", "vocab9/Vocab9Table.js"],
   ["tblvarevo1", "EvoMsg", "varevo1/Tblvarevo1Table.js", "varevo1/VarEvo1Table.js"],
   ["tblvarevo3", "EvoMsg", "varevo3/Tblvarevo3Table.js", "varevo3/VarEvo3Table.js"],
+  ["tblprior", "Prior", "prior/TblpriorTable.js", "prior/PriorNarrowTable.js"],
 ];
 
 const messageFuzzRows = [
@@ -659,7 +660,15 @@ async function surfaceMessage(lines, outDir) {
     }
     const values = Array.from({ length: runtime.TableMessageBatchMax }, () => new runtime[f[3]]());
     const count = loadMessages(values, vocabulary, new Uint8Array(readFileSync(f[5])), report);
-    if (count < 1) { fail(f[1] + ": message load " + JSON.stringify(report)); }
+    // THE ANSWER IS WHAT THE PUBLIC READ RETURNED. A batch the read refuses,
+    // by a named verdict or as damage, delivers no body: the row is answered
+    // refused, with the read's own reason, and nothing is saved. Whether the
+    // row owed a refusal is the harness's to say (README, "Every read has one
+    // outcome").
+    if (count < 1) {
+      messageAbsent(outDir, f[1], "refused: " + (report.Reason || (report.Damaged ? "malformed" : "no body")));
+      continue;
+    }
     const body = values.slice(0, count);
     const size = measureMessages(body, report);
     if (size < 0) { fail(f[1] + ": message measure " + JSON.stringify(report)); }
@@ -1392,7 +1401,7 @@ async function wireFuzz() {
               for (let j = 0; j < initLim; j++) { initRoot(values[j]); }
               const rep = {};
               const n = loadMessages(values, vocab, batchWire, rep);
-              const refused = rep.Verdict === runtime.TableMessageOpenRefused || Boolean(rep.NonFiniteFloat) || ((rep.Mismatch | 0) + (rep.Oor | 0) > 0 && !rep.Damaged);
+              const refused = rep.Verdict === runtime.TableMessageOpenRefused || Boolean(rep.NonFiniteFloat);
               const malformed = Boolean(rep.Damaged) || (n < 1 && !refused);
               const delivered = n >= 1 && !malformed && !refused;
               let out = null;
@@ -1465,7 +1474,7 @@ async function wireFuzz() {
             for (let j = 0; j < values.length; j++) { initRoot(values[j]); }
             const rep = {};
             const n = loadMessages(values, vocabulary, wire, rep);
-            const refused = rep.Verdict === runtime.TableMessageOpenRefused || Boolean(rep.NonFiniteFloat) || ((rep.Mismatch | 0) + (rep.Oor | 0) > 0 && !rep.Damaged);
+            const refused = rep.Verdict === runtime.TableMessageOpenRefused || Boolean(rep.NonFiniteFloat);
             // A batch that delivers no body is damage: no form byte, a short
             // count, or a body the reader discards. A named verdict is a
             // refusal. The pipe reads damaged, not malformed, and a default

@@ -291,6 +291,18 @@ const priorWireDir = "testdata/wire/tables/prior"
 // Refused says every reader owes this row a refusal.
 func (md MessageDrift) Refused() bool { return md.SaveWire == "-" }
 
+// driftCodecWitness names a drift row of md's unit and root that every reader
+// reads, or "" when the manifest carries none: the row whose bytes show that a
+// leg refusing md ran the read at all.
+func (m *Manifest) driftCodecWitness(md MessageDrift) string {
+	for _, other := range m.MessageDrifts {
+		if !other.Refused() && other.Unit == md.Unit && other.Root == md.Root {
+			return other.Name
+		}
+	}
+	return ""
+}
+
 // DriftPeer answers the peer's announcement wire and build version: the named
 // connection's, or a prior-writer row's own.
 func (m *Manifest) DriftPeer(md MessageDrift) (string, uint64, error) {
