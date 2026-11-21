@@ -245,13 +245,25 @@ func compareTrees(t *testing.T, target, wantDir, gotDir string) {
 
 func treeNames(t *testing.T, dir string) []string {
 	t.Helper()
-	entries, err := os.ReadDir(dir)
+	// every regular file under dir, by its slash path: a target that emits
+	// a package directory (python, ruby) is compared file for file too
+	var names []string
+	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		names = append(names, filepath.ToSlash(rel))
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
-	}
-	names := make([]string, 0, len(entries))
-	for _, e := range entries {
-		names = append(names, e.Name())
 	}
 	sort.Strings(names)
 	return names
