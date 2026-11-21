@@ -1184,7 +1184,7 @@ export function ReadTrioFirstFlatBits(view, numBits, value) {
 // must hold TrioStraddleMaxBytes.
 export function WriteTrioStraddleFlat(view, value) {
   let v = 0, lo = 0;
-  if (value.pad0 < 0n || value.pad0 > 18446744073709551615n) {
+  if (typeof value.pad0 !== "bigint" || value.pad0 < 0n || value.pad0 > 18446744073709551615n) {
     return -1;
   }
   SC.setBigUint64(0, value.pad0, true);
@@ -1192,7 +1192,7 @@ export function WriteTrioStraddleFlat(view, value) {
   view.setUint32(0, v, true);
   v = SC.getUint32(4, true);
   view.setUint32(4, v, true);
-  if (value.pad1 < 0n || value.pad1 > 18446744073709551615n) {
+  if (typeof value.pad1 !== "bigint" || value.pad1 < 0n || value.pad1 > 18446744073709551615n) {
     return -1;
   }
   SC.setBigUint64(0, value.pad1, true);
@@ -1200,7 +1200,7 @@ export function WriteTrioStraddleFlat(view, value) {
   view.setUint32(8, v, true);
   v = SC.getUint32(4, true);
   view.setUint32(12, v, true);
-  if (value.pad2 < 0n || value.pad2 > 18446744073709551615n) {
+  if (typeof value.pad2 !== "bigint" || value.pad2 < 0n || value.pad2 > 18446744073709551615n) {
     return -1;
   }
   SC.setBigUint64(0, value.pad2, true);
@@ -1208,7 +1208,7 @@ export function WriteTrioStraddleFlat(view, value) {
   view.setUint32(16, v, true);
   v = SC.getUint32(4, true);
   view.setUint32(20, v, true);
-  if (value.pad3 < 0n || value.pad3 > 18446744073709551615n) {
+  if (typeof value.pad3 !== "bigint" || value.pad3 < 0n || value.pad3 > 18446744073709551615n) {
     return -1;
   }
   SC.setBigUint64(0, value.pad3, true);
@@ -1216,7 +1216,7 @@ export function WriteTrioStraddleFlat(view, value) {
   view.setUint32(24, v, true);
   v = SC.getUint32(4, true);
   view.setUint32(28, v, true);
-  if (value.pad4 < 0n || value.pad4 > 18446744073709551615n) {
+  if (typeof value.pad4 !== "bigint" || value.pad4 < 0n || value.pad4 > 18446744073709551615n) {
     return -1;
   }
   SC.setBigUint64(0, value.pad4, true);

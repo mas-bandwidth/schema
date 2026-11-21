@@ -167,7 +167,7 @@ export function WriteProbeBitsFlat(view, value) {
   if (!Number.isInteger(value.small) || value.small < 0 || value.small > 511) {
     return -1;
   }
-  if (value.boundary < 0n || value.boundary > 8589934591n) {
+  if (typeof value.boundary !== "bigint" || value.boundary < 0n || value.boundary > 8589934591n) {
     return -1;
   }
   lo = ((value.small & 0x1ff));
@@ -177,7 +177,7 @@ export function WriteProbeBitsFlat(view, value) {
   lo = v >>> 23;
   v = SC.getUint32(4, true) & 0x1;
   lo = (lo | (v << 9)) >>> 0;
-  if (value.wide < 0n || value.wide > 18446744073709551615n) {
+  if (typeof value.wide !== "bigint" || value.wide < 0n || value.wide > 18446744073709551615n) {
     return -1;
   }
   SC.setBigUint64(0, value.wide, true);
@@ -190,7 +190,7 @@ export function WriteProbeBitsFlat(view, value) {
   if (!Number.isInteger(value.sensor) || value.sensor < 0 || value.sensor > 4294967295) {
     return -1;
   }
-  if (value.nonce < 0n || value.nonce > 18446744073709551615n) {
+  if (typeof value.nonce !== "bigint" || value.nonce < 0n || value.nonce > 18446744073709551615n) {
     return -1;
   }
   v = (((value.sensor) >>> 0)) >>> 0;
@@ -2703,7 +2703,7 @@ export function WriteTestDataFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  if (value.int64Range < -1000000000000n || value.int64Range > 1000000000000n) {
+  if (typeof value.int64Range !== "bigint" || value.int64Range < -1000000000000n || value.int64Range > 1000000000000n) {
     return -1;
   }
   SC.setBigUint64(0, value.int64Range - -1000000000000n, true);

@@ -577,7 +577,7 @@ export function WriteBenchBitsFlat(view, value) {
   if (!Number.isInteger(value.b19) || value.b19 < 0 || value.b19 > 524287) {
     return -1;
   }
-  if (value.b48 < 0n || value.b48 > 281474976710655n) {
+  if (typeof value.b48 !== "bigint" || value.b48 < 0n || value.b48 > 281474976710655n) {
     return -1;
   }
   v = ((value.b11 & 0x7ff) | ((value.b19 & 0x7ffff) << 11)) >>> 0;
@@ -1364,7 +1364,7 @@ export function WriteBenchMixedFlat(view, value) {
   if (!Number.isInteger(value.clientId) || value.clientId < 0 || value.clientId > 4294967295) { // a bare integer must fit its width
     return -1;
   }
-  if (value.nonce < 0n || value.nonce > 18446744073709551615n) {
+  if (typeof value.nonce !== "bigint" || value.nonce < 0n || value.nonce > 18446744073709551615n) {
     return -1;
   }
   v = (((value.clientId) >>> 0)) >>> 0;
@@ -1377,7 +1377,7 @@ export function WriteBenchMixedFlat(view, value) {
   v = SC.getUint32(4, true);
   view.setUint32(24, (lo | (v << 16)) >>> 0, true);
   lo = v >>> 16;
-  if (value.worldTime < -1000000000000n || value.worldTime > 1000000000000n) {
+  if (typeof value.worldTime !== "bigint" || value.worldTime < -1000000000000n || value.worldTime > 1000000000000n) {
     return -1;
   }
   SC.setBigUint64(0, value.worldTime - -1000000000000n, true);
@@ -1386,7 +1386,7 @@ export function WriteBenchMixedFlat(view, value) {
   lo = v >>> 16;
   v = SC.getUint32(4, true) & 0x1ff;
   lo = (lo | (v << 16)) >>> 0;
-  if (value.frameTick < 0n || value.frameTick > 281474976710655n) {
+  if (typeof value.frameTick !== "bigint" || value.frameTick < 0n || value.frameTick > 281474976710655n) {
     return -1;
   }
   SC.setBigUint64(0, value.frameTick, true);
@@ -1851,7 +1851,7 @@ export function WriteBenchMixedFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  if (value.flux < -1267650600228229401496703205376n || value.flux > 1267650600228229401496703205376n) {
+  if (typeof value.flux !== "bigint" || value.flux < -1267650600228229401496703205376n || value.flux > 1267650600228229401496703205376n) {
     return -1;
   }
   bg = value.flux - -1267650600228229401496703205376n;
