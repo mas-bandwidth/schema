@@ -1545,13 +1545,24 @@ func verifyJava(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec,
                     checkBytes(c.id, out, c.w1);
                     return;
                 }
-                if (c.op == 6) {
+                if (c.op == 6 || c.op == 7) {
                     var rep = new %s.TableVariable.Report();
                     var v = %s.%sVariable.fromJson(c.in, rep);
                     if (v == null || rep.damaged || rep.refused) die(c.id, "fromJson fix");
                     byte[] jout = %s.%sVariable.toJson(v);
                     if (jout == null) die(c.id, "toJson fix");
                     checkBytes(c.id, jout, c.w1);
+                    if (c.op == 7) {
+                        var fv = new %s.%sFixed.Value();
+                        carry(v, fv);
+                        var vals = new %s.%sFixed.Value[] { fv };
+                        var srep = new %s.TableVocabulary.Report();
+                        int msz = %s.%sMessage.measureMessages(vals, 1, srep);
+                        if (msz < 1 || srep.refused) die(c.id, "measureMessages after fromJson");
+                        byte[] mout = new byte[msz];
+                        if (%s.%sMessage.saveMessages(vals, 1, mout, srep) != msz) die(c.id, "saveMessages after fromJson");
+                        checkBytes(c.id, mout, c.w2);
+                    }
                     return;
                 }
             }
@@ -1560,6 +1571,7 @@ func verifyJava(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec,
 				u.Pkg, fr, u.Pkg, fr, u.Pkg, u.Pkg, u.Pkg, u.Pkg, fr, u.Pkg, fr, u.Pkg, fr,
 				u.Pkg, u.Pkg, u.Pkg, u.Pkg, u.Pkg, u.Pkg, u.Pkg, fr, u.Pkg, fr, u.Pkg, u.Pkg, fr, u.Pkg, u.Pkg, fr, u.Pkg, fr,
 				u.Pkg, u.Pkg, fr, u.Pkg, fr,
+				u.Pkg, fr, u.Pkg, fr, u.Pkg, u.Pkg, fr, u.Pkg, fr,
 			)
 		}
 		disp.WriteString("        }\n")
@@ -1592,6 +1604,53 @@ public final class Main {
 
     static void runCase(Case c) {
 %s        die(c.id, "unhandled pkg/root/op");
+    }
+
+    // carry moves a text-placed value (a fixed root's text form reads into
+    // its Variable.Value, docs/SPEC-TABLES.md §16) into the root's
+    // Fixed.Value, so op 7 hands the MESSAGE writer the value the text names
+    // rather than a value its own reader landed. It is fromFixed's reverse,
+    // by reflection: the two classes carry the same fields under the same
+    // names, a counted list sets its <name>Count, and a narrow kind narrows
+    // the way the fixed form stores it (bit-transparent).
+    static void carry(Object src, Object dst) {
+        try {
+            for (java.lang.reflect.Field sf : src.getClass().getFields()) {
+                if (java.lang.reflect.Modifier.isStatic(sf.getModifiers())) continue;
+                java.lang.reflect.Field df = dst.getClass().getField(sf.getName());
+                Object sv = sf.get(src);
+                if (sv instanceof java.util.List<?> list) {
+                    Object arr = df.get(dst);
+                    Class<?> et = arr.getClass().getComponentType();
+                    for (int i = 0; i < list.size(); i++) {
+                        java.lang.reflect.Array.set(arr, i, carried(list.get(i), et, java.lang.reflect.Array.get(arr, i)));
+                    }
+                    for (java.lang.reflect.Field cf : dst.getClass().getFields()) {
+                        if (cf.getName().equals(sf.getName() + "Count")) cf.setInt(dst, list.size());
+                    }
+                } else if (!java.lang.reflect.Modifier.isFinal(df.getModifiers())) {
+                    df.set(dst, carried(sv, df.getType(), df.get(dst)));
+                } else {
+                    carry(sv, df.get(dst));
+                }
+            }
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    static Object carried(Object v, Class<?> t, Object cur) {
+        if (t == byte.class) return ((Number) v).byteValue();
+        if (t == short.class) return ((Number) v).shortValue();
+        if (t == int.class) return ((Number) v).intValue();
+        if (t == long.class) return ((Number) v).longValue();
+        if (t == float.class) return ((Number) v).floatValue();
+        if (t == double.class) return ((Number) v).doubleValue();
+        if (cur != null && v != null && v.getClass().getSimpleName().equals("Value")) {
+            carry(v, cur);
+            return cur;
+        }
+        return v;
     }
 
     static String readStr(ByteBuffer bb) {
@@ -1668,6 +1727,9 @@ func verifyDart(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec,
 		}
 		if fileExists(filepath.Join(genRoot, u.Pkg, u.FileBase+"Cook.dart")) {
 			fmt.Fprintf(&imp, "// ignore: unused_import\nimport './gen/%s/%sCook.dart' as %s_c;\n", u.Pkg, u.FileBase, u.Pkg)
+		}
+		if fileExists(filepath.Join(genRoot, u.Pkg, "Int128.dart")) {
+			fmt.Fprintf(&imp, "// ignore: unused_import\nimport './gen/%s/Int128.dart' as %s_i;\n", u.Pkg, u.Pkg)
 		}
 
 		vLc := toLowerFirst(u.VarRoot)
@@ -1751,12 +1813,22 @@ func verifyDart(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec,
         checkBytes(c.id, out, c.w1);
         return;
       }
-      if (c.op == 6) {
+      if (c.op == 6 || c.op == 7) {
         final rep = %s_w.TableTextReport();
         final v = %s_w.%sFromJson(utf8.decode(c.inp), rep);
         if (rep.refused) die(c.id, 'FromJson fix');
         final jout = Uint8List.fromList(utf8.encode(%s_w.%sToJson(v)));
         checkBytes(c.id, jout, c.w1);
+        if (c.op == 7) {
+          final fv = %s_fr.%s();
+%s          final slice = <%s_fr.%s>[fv];
+          final srep = %s_fr.TableReport();
+          final msz = %s_f.%sMeasureMessages(slice, srep);
+          if (msz < 0 || srep.refused) die(c.id, 'MeasureMessages after FromJson');
+          final mout = Uint8List(msz);
+          if (%s_f.%sSaveMessages(slice, mout, srep) != msz) die(c.id, 'SaveMessages after FromJson');
+          checkBytes(c.id, mout, c.w2);
+        }
         return;
       }
     }
@@ -1765,6 +1837,7 @@ func verifyDart(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec,
 				u.Pkg, fr, u.Pkg, fr, u.Pkg, fLc, u.Pkg, u.Pkg, fLc, u.Pkg, fLc, u.Pkg, fLc,
 				u.Pkg, u.Pkg, u.Pkg, u.Pkg, u.Pkg, u.Pkg, u.Pkg, u.Pkg, u.Pkg, fr, u.Pkg, fr, u.Pkg, u.Pkg, fLc, u.Pkg, u.Pkg, fLc, u.Pkg, fLc,
 				u.Pkg, u.Pkg, fLc, u.Pkg, fLc,
+				u.Pkg, fr, dartPinnedCarry(u.Pkg, fr), u.Pkg, fr, u.Pkg, u.Pkg, fLc, u.Pkg, fLc,
 			)
 		}
 		disp.WriteString("  }\n")
@@ -1874,6 +1947,10 @@ func verifyElixir(repoRoot, schemaBin, packFile, workDir string, units []UnitSpe
     end
   end
 
+  # the unit's schema file base, which names its <Base>Fixed module (a pinned
+  # unit's is "Pin", not its package's first four letters)
+#FILE_BASES#
+
   def run_case(id, pkg, root, op, aux, inp, w1, w2) do
     ns = Macro.camelize(pkg)
     tmod = Module.concat([ns, "Table"])
@@ -1899,8 +1976,7 @@ func verifyElixir(repoRoot, schemaBin, packFile, workDir string, units []UnitSpe
         end
 
       4 ->
-        fb = String.slice(ns, 0, 4)
-        fmod = Module.concat([ns, "#{fb}Fixed"])
+        fmod = Module.concat([ns, "#{file_base(pkg)}Fixed"])
         sn = Macro.underscore(root)
         case apply(fmod, :"#{sn}_fixed_load", [inp]) do
           {:ok, [row], _rep} ->
@@ -1910,8 +1986,7 @@ func verifyElixir(repoRoot, schemaBin, packFile, workDir string, units []UnitSpe
         end
 
       5 ->
-        fb = String.slice(ns, 0, 4)
-        fmod = Module.concat([ns, "#{fb}Fixed"])
+        fmod = Module.concat([ns, "#{file_base(pkg)}Fixed"])
         sn = Macro.underscore(root)
         case apply(fmod, :"#{sn}_fixed_load", [inp]) do
           {:ok, [_row], _rep} -> die(id, "expected historical writer-bound refusal")
@@ -1959,6 +2034,34 @@ func verifyElixir(repoRoot, schemaBin, packFile, workDir string, units []UnitSpe
             end
           other -> die(id, "from_json: #{inspect(other)}")
         end
+
+      # A FIXED ROOT'S TEXT, THEN ITS MESSAGE. Elixir's message writer takes
+      # bodies ({ref, value} lists), not a table's value, and the unit has no
+      # path from a value to a body (its encode_fields refuses a body that
+      # stores a field at the default it elides). The text half is native;
+      # the message half writes the engine's batch back through the body
+      # writer.
+      7 ->
+        case tmod.from_json(root, inp) do
+          {:ok, v, _rep} ->
+            {:ok, jout} = tmod.to_json(root, v)
+            check_bytes(id, jout, w1)
+          other -> die(id, "from_json fix: #{inspect(other)}")
+        end
+        mmod = Module.concat([ns, "TableMessage"])
+        {:ok, own_ann} = mmod.announce_read(mmod.announce())
+        {:ok, own_voc} = mmod.for_root(own_ann, root)
+        bodies =
+          case mmod.load_messages(own_voc, w2) do
+            {:ok, b, _rep} -> b
+            {:ok, b} -> b
+            other -> die(id, "load_messages fix: #{inspect(other)}")
+          end
+        case mmod.save_messages(own_voc, bodies) do
+          {:ok, ob, _rep} -> check_bytes(id, ob, w2)
+          {:ok, ob} -> check_bytes(id, ob, w2)
+          other -> die(id, "save_messages fix: #{inspect(other)}")
+        end
     end
   end
 
@@ -1983,6 +2086,11 @@ func verifyElixir(repoRoot, schemaBin, packFile, workDir string, units []UnitSpe
   end
 end
 `
+	var bases strings.Builder
+	for _, u := range units {
+		fmt.Fprintf(&bases, "  def file_base(%q), do: %q\n", u.Pkg, toUpperFirst(u.FileBase))
+	}
+	exRunner = strings.Replace(exRunner, "#FILE_BASES#\n", bases.String(), 1)
 	runnerEx := filepath.Join(workDir, "runner.ex")
 	if err := os.WriteFile(runnerEx, []byte(exRunner), 0o644); err != nil {
 		return err
