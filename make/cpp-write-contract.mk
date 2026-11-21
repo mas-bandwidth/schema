@@ -1,8 +1,10 @@
 # THE VARIABLE SAVE'S WRITE CONTRACT, DEBUG BUILD (test/cpp-hostile/contract/):
 # docs/SPEC.md §5.1 rows 1 (ranged integer), 2 (bits(N)) and 5 (enum outside
 # its set) on a field, an array element and a union arm's payload, each with a
-# twin at its edge that writes. Built WITHOUT NDEBUG, where schema_assert is
-# live; a release build asserts nothing, by the assert-leg rule.
+# twin at its edge that writes; row 10 (a ranged float off its range) on every
+# writer; and row 3 one record down (a child's count below its own minimum) on
+# the fixed and message writers and the fixed load. Built WITHOUT NDEBUG, where
+# schema_assert is live; a release build asserts nothing, by the assert-leg rule.
 CPP_CONTRACT_BUILD := build/cpp-write-contract
 CPP_CONTRACT_SRC   := test/cpp-hostile/contract
 

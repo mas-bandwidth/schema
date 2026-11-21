@@ -1387,7 +1387,7 @@ func (g *tableGen) emitFixedClampPayload(f *ir.Field, val string, indent int) {
 		g.pf("%s}\n", ind)
 	case f.Array == ir.ArrayCounted:
 		g.emitFixedCountMin(f, val+"."+f.Name+"_count", ind)
-		if !ir.TableFixedClampNeededField(f) {
+		if !fixedElementClampNeeded(f) {
 			return
 		}
 		// THE LIVE COUNT AND NOT THE BOUND: the slack is the template's zeros
@@ -1434,7 +1434,7 @@ func (g *tableGen) emitFixedClampArm(v ir.UnionVariant, expr string, indent int)
 		g.pf("%s}\n", ind)
 	case f.Array == ir.ArrayCounted:
 		g.emitFixedCountMin(f, cnt, ind)
-		if !ir.TableFixedClampNeededField(f) {
+		if !fixedElementClampNeeded(f) {
 			return
 		}
 		idx := fmt.Sprintf("ai_%d", indent)
@@ -1845,10 +1845,25 @@ func fixedMinCountIn(st *ir.Struct, seen map[string]bool) bool {
 	return false
 }
 
+// fixedElementClampNeeded is whether a counted array's ELEMENTS are walked:
+// a bound on the element itself, or a counted array with a positive minimum
+// anywhere beneath it (a [..4]Child whose Child holds [2..4]uint8). The
+// array's own count minimum is not an element's bound: emitFixedCountMin
+// holds it before the walk.
+func fixedElementClampNeeded(f *ir.Field) bool {
+	return ir.TableFixedClampNeededField(f) || fixedMinCountElement(f, map[string]bool{})
+}
+
 func fixedMinCountField(f *ir.Field, seen map[string]bool) bool {
 	if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
 		return true
 	}
+	return fixedMinCountElement(f, seen)
+}
+
+// fixedMinCountElement is whether f's element type, a table or a union arm's
+// payload at any depth, holds a counted array with a positive minimum.
+func fixedMinCountElement(f *ir.Field, seen map[string]bool) bool {
 	if f.Type.Kind != ir.TNamed || f.Type.Pointer {
 		return false
 	}
