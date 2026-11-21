@@ -46,6 +46,7 @@ var catalog = []Entry{
 	e("ir", "public IR", "go test ./ir", "go test ./ir"),
 	e("make", "per-language make fragments", "go test ./tools/negativecontrols", "make registry"),
 	e("notes", "non-normative history", "none", "none"),
+	e("skills", "Agent Skill for using schema", "go test ./cmd/schema", "go test ./cmd/schema"),
 	page("tables", "table-wire corpora", "make check", "make check"),
 	page("test", "language test harnesses", "make test", "make test"),
 	page("testdata", "goldens, wire pins, conformance", "go test ./internal/goldens", "make update-goldens"),

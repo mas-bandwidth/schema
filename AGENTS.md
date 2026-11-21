@@ -26,6 +26,7 @@ bin/schema check <dir>
 | `ir/` | public IR | `go test ./ir` | `go test ./ir` |
 | `make/` | per-language make fragments | `go test ./tools/negativecontrols` | `make registry` |
 | `notes/` | non-normative history | `none` | `none` |
+| `skills/` | Agent Skill for using schema | `go test ./cmd/schema` | `go test ./cmd/schema` |
 | [tables/](tables/AGENTS.md) | table-wire corpora | `make check` | `make check` |
 | [test/](test/AGENTS.md) | language test harnesses | `make test` | `make test` |
 | [testdata/](testdata/AGENTS.md) | goldens, wire pins, conformance | `go test ./internal/goldens` | `make update-goldens` |

@@ -81,10 +81,11 @@ toolchain_probe = $(if $(4),$(4),command -v $(3)) >/dev/null 2>&1 || { \
 # gate below then measures.
 GO_SOURCES   := $(shell find cmd internal ir compiler -name '*.go') go.mod
 # and every file the compiler embeds (go:embed): the runtimes the scripting
-# targets copy beside their output. Without them an edit to a runtime left
+# targets copy beside their output, and the help topics `schema help <topic>`
+# prints (cmd/schema/help/). Without them an edit to a runtime left
 # bin/schema stale and every generate re-emitted the old runtime.
 # bin-schema-embeds checks it against `go list`'s own EmbedFiles.
-EMBED_SOURCES := $(shell find internal/codegen -type f \( -path '*/runtime/*' -o -path '*/serialize/*' \) -not -name '*.go')
+EMBED_SOURCES := $(shell find internal/codegen -type f \( -path '*/runtime/*' -o -path '*/serialize/*' \) -not -name '*.go') $(wildcard cmd/schema/help/*)
 # every .schema file the tables conformance manifest's units name (a unit path
 # is a file or a directory of them): the input of each build/conformance-<leg>
 # that generates the units itself, beside the compiler and the runtimes it
