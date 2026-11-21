@@ -285,3 +285,90 @@ func (f failRun) Packet(d PacketDriver, tree, out string) (bool, error) {
 	}
 	return true, errors.New("FAILED: buffer[0] == 0x51 (test/main.cpp:194)")
 }
+
+// TestJudgeRefusesARunThatComparedNothing: a run that compared no encoding of
+// a wire proves nothing about it, and must not read as a clean pass (the
+// finding CI-TOOLS-4). The packet wire is owed against every previous
+// release; the table forms against 3.0.0 and later.
+func TestJudgeRefusesARunThatComparedNothing(t *testing.T) {
+	t.Parallel()
+	m := &Manifest{
+		Units:     map[string][]string{"same": {"tables/same"}},
+		Keys:      []string{"same"},
+		Instances: []Instance{{"s1", "same", "Root"}},
+	}
+	ids := map[string]string{"examples": "0x1", "examples128": "0x2", "bench/corpus/Bench.schema": "0x6", "bench/corpus/RealWorld.schema": "0x7", "tables/same": "0x3"}
+	both := fake{
+		ids:    ids,
+		packet: map[string]string{"examples": "\x01", "examples128": "\x02", "bench": "\x03"},
+		pack:   map[string]string{"s1/v": "\x01", "s1/m": "\x02"},
+	}
+	tree := writeTree(t, map[string]string{"test/main.cpp": "", "test/ludicrous_main.cpp": "", "test/bench/main.cpp": ""})
+	for _, c := range []struct {
+		name     string
+		old, new fake
+		refused  bool
+		nothing  []string // a prefix of each r.Nothing line, in order
+	}{
+		{
+			name:    "both wires compared",
+			old:     fake{name: "v3.0.1", ids: both.ids, packet: both.packet, pack: both.pack},
+			new:     fake{name: "HEAD", ids: both.ids, packet: both.packet, pack: both.pack},
+			refused: false,
+		},
+		{
+			name:    "the new compiler reads no unit's id",
+			old:     fake{name: "v3.0.1", ids: both.ids, packet: both.packet, pack: both.pack},
+			new:     fake{name: "HEAD", packet: both.packet, pack: both.pack},
+			refused: true,
+			nothing: []string{"table forms:", "packet wire:"},
+		},
+		{
+			name:    "no packet driver builds against the new C++",
+			old:     fake{name: "v3.0.1", ids: both.ids, packet: both.packet, pack: both.pack},
+			new:     fake{name: "HEAD", ids: both.ids, pack: both.pack},
+			refused: true,
+			nothing: []string{"packet wire:"},
+		},
+		{
+			name:    "the new compiler packs no table instance",
+			old:     fake{name: "v3.0.1", ids: both.ids, packet: both.packet, pack: both.pack},
+			new:     fake{name: "HEAD", ids: both.ids, packet: both.packet},
+			refused: true,
+			nothing: []string{"table forms:"},
+		},
+		{
+			name:    "no table forms against a 2.x release, which owes none",
+			old:     fake{name: "v2.9.0", ids: both.ids, packet: both.packet},
+			new:     fake{name: "HEAD", ids: both.ids, packet: both.packet, pack: both.pack},
+			refused: false,
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			r, err := Judge(c.old, c.new, []string{tree}, m, "json", t.TempDir(), 3)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var out bytes.Buffer
+			r.Print(&out, c.old.name, c.new.name)
+			printedRefusal := strings.Contains(out.String(), "release-differential: REFUSED")
+			if printedRefusal != c.refused || r.Refused() != c.refused {
+				t.Fatalf("refused=%v printed refusal=%v, want %v:\n%s", r.Refused(), printedRefusal, c.refused, out.String())
+			}
+			if len(r.Nothing) != len(c.nothing) {
+				t.Fatalf("nothing compared %q, want lines starting %q", r.Nothing, c.nothing)
+			}
+			for i, p := range c.nothing {
+				if !strings.HasPrefix(r.Nothing[i], p) || !strings.Contains(out.String(), "NOTHING COMPARED: "+r.Nothing[i]) {
+					t.Errorf("nothing line %d is %q, want it to start %q and be printed:\n%s", i, r.Nothing[i], p, out.String())
+				}
+			}
+		})
+	}
+	for prev, want := range map[string]bool{"v2.10.0": false, "v3.0.0": true, "v3.0.2": true, "v10.1.0": true, "clean": true} {
+		if got := TablesOwed(prev); got != want {
+			t.Errorf("TablesOwed(%q) = %v, want %v", prev, got, want)
+		}
+	}
+}

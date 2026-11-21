@@ -7352,8 +7352,9 @@ promotion-tag:
 # tag is made, unless PROOF names the proof report the ci-full `proof` job
 # wrote AT THE COMMIT BEING RELEASED and that report is green: no red cell and
 # test/proof/proof.json in step with the results (tools/matrix VerifyRelease). The
-# refusal names the red cells. release.yml downloads the report from the
-# ci-full run on the commit; a release with no report refuses by name. The
+# refusal names the red cells. release.yml downloads the report only from a
+# ci-full run on the commit whose conclusion is success, and refuses by name
+# when there is none; a release with no report refuses by name. The
 # lock runs first, so a red proof refuses before the previous-release
 # differential's build; the differential then runs, and the tagger last.
 #
