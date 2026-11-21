@@ -134,7 +134,7 @@ func TestPublicRegistrationCorpus(t *testing.T) {
 			if tc.CarryAfterRegister != "" {
 				tc.First.Carries[0] = tc.CarryAfterRegister
 			}
-			wantTargets := append(before, tc.Targets...)
+			wantTargets := slices.Concat(before, tc.Targets)
 			slices.Sort(wantTargets)
 			if got := c.Targets(); !slices.Equal(got, wantTargets) {
 				t.Errorf("Targets() = %v, want %v", got, wantTargets)
