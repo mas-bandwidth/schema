@@ -1,4 +1,4 @@
-schema-tables-baseline 7
+schema-tables-baseline 8
 package armdemo
 
 table Chain
@@ -87,3 +87,6 @@ union Slots
 - Rack.past: renamed under was = "after", which keeps the wire id and NOT the text key — the JSON key is now "past"; pair json = "after" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]
 - Ring.past: renamed under was = "after", which keeps the wire id and NOT the text key — the JSON key is now "past"; pair json = "after" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]
 - Tray.past: renamed under was = "after", which keeps the wire id and NOT the text key — the JSON key is now "past"; pair json = "after" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]
+
+### 2026-11-21 (UTC) — rendering version 8: a bits(N) field records bits=N, so N narrowed inside one storage bucket warns (docs/SPEC-TABLES.md §18.1)
+- baseline REGENERATED over an unreadable one (baseline version 7, this compiler writes 8); the projection is this unit as it stands and the history above is preserved, but the previous projection could not be diffed, so no per-edit lines follow

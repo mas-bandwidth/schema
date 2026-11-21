@@ -523,7 +523,7 @@ WIDENS(a, b):                            -- b may replace a
                    range(b) ⊇ range(a) by the `ranged` row above, and resolution(b) <= resolution(a) — FINER
                    or equal, because a writer quantized to ITS step and those values sit on a grid a finer
                    reader lands exactly                            or FAIL "resolution coarsened (0.01 -> 0.1)"
-    bits(N):       N(a) <= N(b)                                     or FAIL "bits narrowed"
+    bits(N):       N(a) <= N(b)                                     or FAIL "bits narrowed"  -- a plain uintW is N = W
     fixed(I,F):    I(a) <= I(b) and F(a) == F(b)                     or FAIL "F changed"
     ?T vs T:       optional(a) implies optional(b)                     or FAIL "optional removed"
     default:       default(a) == default(b)                            or FAIL "default changed"   -- SPEC §18
