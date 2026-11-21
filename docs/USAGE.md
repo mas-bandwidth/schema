@@ -3925,7 +3925,7 @@ the version in every `go:generate` line under the given directories and prints
 one line per file it changed:
 
 ```
-schema pin v2.6.0 .
+schema pin vX.Y.Z .
 ```
 
 The module path in the line moves with the version's major, as Go requires

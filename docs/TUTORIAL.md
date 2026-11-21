@@ -55,7 +55,7 @@ your path, because every command on this page is spelled `schema`:
 ```
 $ go install github.com/mas-bandwidth/schema/v2/cmd/schema@main
 $ schema version
-schema v2.5.1-0.20261121091243-8c356aa9b51e (go1.26.10)
+schema v3.0.7-0.20261122130757-23d3849a7301 (go1.26.10)
 ```
 
 That builds the head of `main`, where every release is tagged, and needs no
@@ -72,10 +72,10 @@ Or clone the repository and build, for a binary stamped with `git describe`:
 $ git clone https://github.com/mas-bandwidth/schema.git
 $ cd schema
 $ make
-go build -ldflags "-X github.com/mas-bandwidth/schema/v2/internal/version.version=v2.4.0-148-gbafdb69" -o bin/schema ./cmd/schema
+go build -ldflags "-X github.com/mas-bandwidth/schema/v3/internal/version.version=v3.0.6-27-g23d3849a73" -o bin/schema ./cmd/schema
 $ export PATH="$PWD/bin:$PATH"
 $ schema version
-schema v2.4.0-148-gbafdb69 (go1.27.0)
+schema v3.0.6-27-g23d3849a73 (go1.26.10)
 ```
 
 Write that number down. The language moves, and a diagnostic that cites a
@@ -4793,7 +4793,9 @@ require github.com/mas-bandwidth/schema/v2 v2.4.0
 replace github.com/mas-bandwidth/schema/v2 => ../schema
 ```
 
-`main.go`, entire:
+The `replace` points the module at your checkout, and Go does not use a
+required version when a replace is present, which is why it is the zero
+version. `main.go`, entire:
 
 ```go
 package main
