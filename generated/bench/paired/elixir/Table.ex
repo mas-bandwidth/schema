@@ -6995,15 +6995,16 @@ defmodule Bench.Table do
   end
 
   # A map key is an identity: reject, never clamp it into another key.
-  # A bare string key has no declared byte bound; bounded keys retain their
-  # declaration's token limit.
+  # A bare string key has no declared byte bound; a bounded key is held to its
+  # declared string(N) and nothing else: the 255-byte schema-name cap never
+  # reaches a map key (§16.2), so a string(300) key of 280 bytes is a key.
   defp json_map_key(field, key) do
     cond do
       field.t == :string and Map.get(field, :unbounded, false) ->
         {:ok, key}
 
       field.t == :string ->
-        if byte_size(key) > min(field.size, 255), do: throw(:wire_damaged), else: {:ok, key}
+        if byte_size(key) > field.size, do: throw(:wire_damaged), else: {:ok, key}
 
       byte_size(key) > 255 ->
         throw(:wire_damaged)

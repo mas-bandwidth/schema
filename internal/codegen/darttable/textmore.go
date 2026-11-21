@@ -649,10 +649,13 @@ List<T> _jsonMap<T, K>(dynamic val, TableTextReport r, Object Function(T) keyOf,
   return _stableSortedBy<T, K>(out, sortKey, cmp);
 }
 
+// A MAP KEY is held to its declared string(N) bound and nothing else: the
+// 255-byte schema-name cap (_jsonName) never reaches a map key (§16.2), so a
+// string(300) key of 280 bytes is a key.
 String? _jsonStringKey(String k, int bound, TableTextReport r) {
   k = _jsonText(k);
   final len = utf8.encode(k).length;
-  if (bound >= 0 && (len > bound || len > 255)) {
+  if (bound >= 0 && len > bound) {
     r.refuse('length_over_bound');
     return null;
   }
