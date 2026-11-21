@@ -1548,7 +1548,7 @@ jobs:
       # corpus it reads is the one the step above already built, and
       # SCHEMA_REQUIRE_CORPUS=1 makes a missing corpus or a missing SDK a
       # failure rather than a silent skip.
-      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+      - uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1.8.2
         if: matrix.group == 'versioning-dart' && runner.environment == 'github-hosted'
         with:
           sdk: 3.13.2
@@ -2327,7 +2327,7 @@ jobs:
           components: clippy, rustfmt
         if: matrix.rust != '' && runner.environment == 'github-hosted'
 
-      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+      - uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1.8.2
         if: matrix.dart != ''
         with:
           sdk: ${{ matrix.dart }}
@@ -2775,7 +2775,7 @@ jobs:
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
-      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+      - uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1.8.2
         with:
           sdk: '3.13.2'
 
@@ -3865,7 +3865,7 @@ jobs:
       - uses: ./.github/actions/eslint
         if: matrix.node != ''
 
-      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+      - uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1.8.2
         if: matrix.dart != ''
         with:
           sdk: ${{ matrix.dart }}
