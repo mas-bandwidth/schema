@@ -13,7 +13,7 @@ const char * text="load_body(r,v)";
 `
 	got := retainedCode(source, names, "load_body", "table_writer_id")
 	for _, want := range []string{`/* load_body(r,v) */`, `"load_body(r,v)"`, `load_body_retain (TableReader * r, Value * v, TableRetainWalk retention)`, `table_retain_writer_id (w, nested(1,2), retention)`} {
-		if !strings.Contains(got, want) {
+		if !cCarries(got, want) {
 			t.Fatalf("missing %q in %s", want, got)
 		}
 	}

@@ -1,6 +1,9 @@
 package cfmt
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 const indentWidth = 4
 
@@ -35,18 +38,12 @@ func render(lines []*line) string {
 		}
 		renderLine(&b, ln)
 		b.WriteByte('\n')
-		last := ln.toks[len(ln.toks)-1]
-		for k := len(ln.toks) - 1; k >= 0 && isComment(ln.toks[k]); k-- {
-			last = ln.toks[k]
-		}
-		if isComment(last) && len(ln.toks) > 0 {
-			// the last code token
-			last = nil
-			for k := len(ln.toks) - 1; k >= 0; k-- {
-				if !isComment(ln.toks[k]) {
-					last = ln.toks[k]
-					break
-				}
+		// the last code token
+		var last *tok
+		for _, t := range slices.Backward(ln.toks) {
+			if !isComment(t) {
+				last = t
+				break
 			}
 		}
 		prevOpens = last != nil && isPunct(last, "{")

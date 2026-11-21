@@ -123,7 +123,7 @@ func TestCVariableTestsStrictApi(t *testing.T) {
 		}
 	}
 	for _, want := range []string{"graph_load(", "graph_load_builder(", "graph_load_retain(", "graph_from_json("} {
-		if !strings.Contains(header.String(), want) {
+		if !cCarries(header.String(), want) {
 			t.Errorf("generated variable header is missing the plain read %q", want)
 		}
 	}

@@ -87,13 +87,11 @@ func format(src string) (string, string) {
 	p := &parser{toks: toks}
 	p.items(0, false, true)
 	if p.bad || p.i != len(toks) {
-		at := ""
-		if p.i < len(toks) {
-			for j := p.i; j < len(toks) && j < p.i+12; j++ {
-				at += toks[j].s + " "
-			}
+		var at []string
+		for j := p.i; j < len(toks) && j < p.i+12; j++ {
+			at = append(at, toks[j].s)
 		}
-		return src, "parse at token " + at
+		return src, "parse at token " + strings.Join(at, " ")
 	}
 	out := render(p.lines)
 	if why := sameTokens(toks, out); why != "" {
@@ -376,10 +374,7 @@ func (p *parser) statement(level int, ln *line) {
 	if ln == nil && t.k == kWord && t.s != "default" && t.s != "case" && isPunct(p.peekAt(1), ":") {
 		// a goto label sits one level out, alone on its line (`name:;`
 		// keeps its empty statement)
-		lv := level - 1
-		if lv < 0 {
-			lv = 0
-		}
+		lv := max(level-1, 0)
 		ll := p.newLine(lv)
 		p.take(ll)
 		p.take(ll).role = rLabelColon
@@ -477,7 +472,8 @@ func (p *parser) body(level int, ln *line, isElse bool) {
 	}
 	// a simple statement stays on the head's line; a control statement
 	// never does
-	if n.nl == 0 && !isComment(n) && !(n.k == kWord && (ctrlKeywords[n.s] || n.s == "do")) {
+	control := n.k == kWord && (ctrlKeywords[n.s] || n.s == "do")
+	if n.nl == 0 && !isComment(n) && !control {
 		p.statement(level, ln)
 		return
 	}

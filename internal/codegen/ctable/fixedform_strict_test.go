@@ -66,14 +66,14 @@ func checkCFixedFormSourcesStrict(sources map[string]string) error {
 			return fmt.Errorf("missing or empty C fixed-form source %s", name)
 		}
 		for _, bad := range cFixedFormForbiddenTokens {
-			if strings.Contains(src, bad) {
+			if cCarries(src, bad) {
 				return fmt.Errorf("%s still contains retired tolerant token %q", name, bad)
 			}
 		}
 	}
 	for _, name := range cFixedFormReaderUnits {
 		src := sources[name]
-		if !strings.Contains(src, "_fixed_load(") && !strings.Contains(src, "_fixed_load (") {
+		if !cCarries(src, "_fixed_load(") && !cCarries(src, "_fixed_load (") {
 			return fmt.Errorf("%s never calls strict *_fixed_load", name)
 		}
 	}
@@ -197,13 +197,13 @@ func buildAndRunCFixedFormHarness(t *testing.T, mut *cHarnessMutation) ([]byte, 
 			t.Fatalf("cqualify.Qualify(%s): %v", s, err)
 		}
 		for name, data := range files {
-			if strings.Contains(name, "/") {
+			if cCarries(name, "/") {
 				continue
 			}
 			rel := lower + "/" + name
 			if mut != nil && rel == mut.unitFile {
 				text := string(data)
-				if !strings.Contains(text, mut.target) {
+				if !cCarries(text, mut.target) {
 					t.Fatalf("mutation target %q not found in %s", mut.target, rel)
 				}
 				data = []byte(strings.ReplaceAll(text, mut.target, mut.replace))
@@ -232,7 +232,7 @@ func buildAndRunCFixedFormHarness(t *testing.T, mut *cHarnessMutation) ([]byte, 
 		}
 		if mut != nil && name == mut.unitFile {
 			text := string(b)
-			if !strings.Contains(text, mut.target) {
+			if !cCarries(text, mut.target) {
 				t.Fatalf("mutation target %q not found in %s", mut.target, name)
 			}
 			b = []byte(strings.Replace(text, mut.target, mut.replace, 1))
@@ -782,7 +782,7 @@ func TestCFixedFormSourcesStrict(t *testing.T) {
 		}
 		t14CiteCoarser(t)
 		src := t14Emit(t, t14Old, nil)
-		if !strings.Contains(src, "table_fixed_putf32(") || !strings.Contains(src, "SCHEMA_TABLE_FLOAT_FORCE_ROUND") {
+		if !cCarries(src, "table_fixed_putf32(") || !cCarries(src, "SCHEMA_TABLE_FLOAT_FORCE_ROUND") {
 			t.Fatal("missing table_fixed_putf32 or SCHEMA_TABLE_FLOAT_FORCE_ROUND")
 		}
 		dir := t.TempDir()

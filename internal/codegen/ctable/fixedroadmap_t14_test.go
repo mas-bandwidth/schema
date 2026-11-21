@@ -63,10 +63,10 @@ func TestFixedRoadmapCT14CompressedFloats(t *testing.T) {
 		}
 		t14CiteCoarser(t)
 		src := t14Emit(t, t14Old, nil)
-		if !strings.Contains(src, "table_fixed_putf32(") {
+		if !cCarries(src, "table_fixed_putf32(") {
 			t.Fatal("the fixed write does not store the float32 with table_fixed_putf32")
 		}
-		if !strings.Contains(src, "SCHEMA_TABLE_FLOAT_FORCE_ROUND") {
+		if !cCarries(src, "SCHEMA_TABLE_FLOAT_FORCE_ROUND") {
 			t.Fatal("the emitted quantize does not force the product to round before the add")
 		}
 		dir := t.TempDir()
@@ -90,7 +90,7 @@ func t14CiteCoarser(t *testing.T) {
 		"func TestLockCFloatResolutionCoarsenedRefuses",
 		"resolution coarsened",
 	} {
-		if !strings.Contains(s, needle) {
+		if !cCarries(s, needle) {
 			t.Fatalf("the lockfile citation is gone: %s", needle)
 		}
 	}
@@ -152,7 +152,7 @@ func t14Run(t *testing.T, cc, schema string, older []string, probe, extra string
 	dir := t.TempDir()
 	var header string
 	for name, data := range files {
-		if strings.Contains(name, "/") {
+		if cCarries(name, "/") {
 			continue
 		}
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {

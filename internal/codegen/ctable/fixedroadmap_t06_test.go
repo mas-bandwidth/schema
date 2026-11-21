@@ -74,7 +74,7 @@ func cRunSelfBuilt(t *testing.T, reader string, older []string, retire int, setu
 	dir := t.TempDir()
 	var header string
 	for name, data := range files {
-		if strings.Contains(name, "/") {
+		if cCarries(name, "/") {
 			continue
 		}
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
@@ -163,7 +163,7 @@ func cT06Header(t *testing.T, base string) string {
 	}
 	maps.Copy(files, tables)
 	for name, data := range files {
-		if strings.HasSuffix(name, "Table.h") && !strings.Contains(name, "/") {
+		if strings.HasSuffix(name, "Table.h") && !cCarries(name, "/") {
 			return string(data)
 		}
 	}
@@ -246,10 +246,10 @@ func cT06CompressedFloat(t *testing.T) {
 	// THE FIXED FORM STORES THE FLOAT'S BITS, the variable form beside it
 	// quantizes the same field into an index — one unit, two encodings, and the
 	// fixed form's is the raw float (SPEC-TABLES §3.4: "it rides as the float").
-	if !strings.Contains(h, "table_fixed_putf32( b + 4, value->aim )") {
+	if !cCarries(h, "table_fixed_putf32( b + 4, value->aim )") {
 		t.Fatal("R30: the fixed form's write body no longer stores aim's float32 bits with putf32")
 	}
-	if !strings.Contains(h, "table_message_quantize(value->aim") {
+	if !cCarries(h, "table_message_quantize(value->aim") {
 		t.Fatal("R30: the contrast is gone — the variable form no longer quantizes aim, so 'rides as the float' is untestable")
 	}
 	// min, max and resolution are DEFINITIONS: the step is in the digest under
@@ -328,11 +328,11 @@ func cT06FullWidthLanes(t *testing.T) {
 		"uint64_t raw = 0;", /* an ordinal decodes through a 64-bit temporary */
 	}
 	for _, s := range need {
-		if !strings.Contains(h, s) {
+		if !cCarries(h, s) {
 			t.Fatalf("R31: the emitted plan no longer spells %q", s)
 		}
 	}
-	if !strings.Contains(h, "raw <= (uint64_t) table[0]") {
+	if !cCarries(h, "raw <= (uint64_t) table[0]") {
 		t.Fatal("R31: the remap table's length word is not the ordinal's bound")
 	}
 }

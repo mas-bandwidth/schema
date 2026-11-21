@@ -74,14 +74,14 @@ func t05All(files map[string][]byte) string {
 
 func t05Want(t *testing.T, body, needle string) {
 	t.Helper()
-	if !strings.Contains(body, needle) {
+	if !cCarries(body, needle) {
 		t.Fatalf("the emitted C does not carry %q", needle)
 	}
 }
 
 func t05WantNot(t *testing.T, body, needle string) {
 	t.Helper()
-	if strings.Contains(body, needle) {
+	if cCarries(body, needle) {
 		t.Fatalf("the emitted C carries %q, which it must not", needle)
 	}
 }
@@ -183,7 +183,7 @@ func TestFixedRoadmapCT05Evolution(t *testing.T) {
 	// `duplicate`").
 	t.Run("c/E9", func(t *testing.T) {
 		t.Parallel()
-		if strings.Contains(tableFixedRuntime, "duplicate") {
+		if cCarries(tableFixedRuntime, "duplicate") {
 			t.Fatal("the fixed form's runtime names a duplicate counter; §5.4's fixed report never raises one")
 		}
 	})
@@ -235,13 +235,13 @@ int main(void)
 		t.Parallel()
 		// the runtime's own text carries each clause, so a planted edit to the
 		// guarded site turns this red naming the rule
-		if !strings.Contains(tableFixedRuntime, "else if ( raw != 0 ) { (*out_of_range)++; }") {
+		if !cCarries(tableFixedRuntime, "else if ( raw != 0 ) { (*out_of_range)++; }") {
 			t.Fatal("§5.8 row 12: the ordinal op must refuse a forged ordinal past the writer's set")
 		}
-		if !strings.Contains(tableFixedRuntime, "if ( raw > (uint64_t) p->dstsize ) { (*out_of_range)++; }") {
+		if !cCarries(tableFixedRuntime, "if ( raw > (uint64_t) p->dstsize ) { (*out_of_range)++; }") {
 			t.Fatal("§5.8 row 12: the unguarded None const must refuse a forged ordinal past the arm count")
 		}
-		if !strings.Contains(tableFixedRuntime, "(*widened)++") {
+		if !cCarries(tableFixedRuntime, "(*widened)++") {
 			t.Fatal("§5.4: a widen must count one widened per entry")
 		}
 		// widened, and the compile census, on a real compiled plan: the NEW

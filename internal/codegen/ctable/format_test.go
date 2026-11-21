@@ -1,7 +1,6 @@
 package ctable
 
 import (
-	"strings"
 	"testing"
 )
 
@@ -18,7 +17,7 @@ int f(int x) {
 `
 	got := separateCStatements(source)
 	for _, want := range []string{`#define STEPS(x) do { x++; x++; } while (0)`, "#define MORE(x) do { x++; \\\n x++; } while (0)", `"literal;still literal"`, `for(int i=0;i<3;i++)`, "if(x)return 1;\n return 0;", "x++;\n else x--;"} {
-		if !strings.Contains(got, want) {
+		if !cCarries(got, want) {
 			t.Fatalf("missing %q in %s", want, got)
 		}
 	}

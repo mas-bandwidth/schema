@@ -40,10 +40,11 @@ package ctable
 // SCHEMA_REQUIRE_CORPUS says the corpus was built and means to prove it.
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // cSerializeDir resolves the sibling serialize.c checkout whose serialize.h

@@ -90,7 +90,7 @@ int main( int argc, char ** argv )
 			t.Errorf("%s exited 0 with %q; the debug count check did not fire", name, out)
 			continue
 		}
-		if !strings.Contains(out, "root_fixed_measure") {
+		if !cCarries(out, "root_fixed_measure") {
 			t.Errorf("%s stopped without naming the measure: %s", name, out)
 		}
 	}

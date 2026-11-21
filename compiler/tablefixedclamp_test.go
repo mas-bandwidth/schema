@@ -78,20 +78,20 @@ func TestCppTableFixedClampOmitsEmptyUnionSwitch(t *testing.T) {
 	t.Parallel()
 	without, files := deadCppHeader(t, clampTagOnlySrc)
 	body := extractFn(without, "CfgFixedClampBody")
-	if !strings.Contains(body, "value.effect.type = EffectType::None") {
+	if !cCarries(body, "value.effect.type = EffectType::None") {
 		t.Error("a union tag past the arm count must still remap to None")
 	}
-	if strings.Contains(body, "switch") {
+	if cCarries(body, "switch") {
 		t.Error("a union whose arms declare nothing bounded must not emit a switch with nothing to switch on")
 	}
 	deadCppCompile(t, files)
 
 	with, files := deadCppHeader(t, clampRangedArmSrc)
 	body = extractFn(with, "CfgFixedClampBody")
-	if !strings.Contains(body, "switch ( value.effect.type )") {
+	if !cCarries(body, "switch ( value.effect.type )") {
 		t.Error("a union with a bounded arm must still switch over the set arm")
 	}
-	if !strings.Contains(body, "case EffectType::Boost:") {
+	if !cCarries(body, "case EffectType::Boost:") {
 		t.Error("the bounded arm must be a case")
 	}
 	deadCppCompile(t, files)
@@ -102,19 +102,19 @@ func TestCTableFixedClampOmitsEmptyUnionSwitch(t *testing.T) {
 	body := extractFn(without, "cfg_fixed_clamp_body_")
 	// strict-only: a tag past the arm count is out_of_range and the read
 	// refuses; nothing is remapped to None
-	if !strings.Contains(body, "if ( (uint32_t) value->effect.type > 2u ) { (*out_of_range)++; }") {
+	if !cCarries(body, "if ( (uint32_t) value->effect.type > 2u ) { (*out_of_range)++; }") {
 		t.Error("a union tag past the arm count must count out_of_range, so the read refuses")
 	}
-	if strings.Contains(body, "EFFECT_TYPE_NONE") {
+	if cCarries(body, "EFFECT_TYPE_NONE") {
 		t.Error("strict-only: a union tag past the arm count refuses; it must not be remapped to None")
 	}
-	if strings.Contains(body, "switch") {
+	if cCarries(body, "switch") {
 		t.Error("a union whose arms declare nothing bounded must not emit a switch with nothing to switch on")
 	}
 
 	with, _ := deadCHeader(t, clampRangedArmSrc)
 	body = extractFn(with, "cfg_fixed_clamp_body_")
-	if !strings.Contains(body, "switch ( value->effect.type )") {
+	if !cCarries(body, "switch ( value->effect.type )") {
 		t.Error("a union with a bounded arm must still switch over the set arm")
 	}
 }
@@ -126,13 +126,13 @@ func TestCTableFixedClampOmitsEmptyUnionSwitch(t *testing.T) {
 // carry destinations and nothing about a range.
 func TestCppNoPlanClamps(t *testing.T) {
 	src, _ := deadCppHeader(t, clampTagOnlySrc)
-	if strings.Contains(src, "kTableFixedClamp") {
+	if cCarries(src, "kTableFixedClamp") {
 		t.Error("no plan op clamps: the clamp op must not exist")
 	}
-	if !strings.Contains(strings.Join(strings.Fields(src), " "), "kTableFixedWidenF = 6") {
+	if !cCarries(strings.Join(strings.Fields(src), " "), "kTableFixedWidenF = 6") {
 		t.Error("the op set is the seven, and widenf is the last of them")
 	}
-	if !strings.Contains(src, "CfgFixedClampBody") {
+	if !cCarries(src, "CfgFixedClampBody") {
 		t.Error("the bounds pass is the clamp, and it must still be emitted")
 	}
 	i := strings.Index(src, "constexpr TableFixedDst CfgFixedDst[]")
@@ -143,20 +143,20 @@ func TestCppNoPlanClamps(t *testing.T) {
 	if end := strings.Index(rows, "\n};"); end > 0 {
 		rows = rows[:end]
 	}
-	if strings.Contains(rows, "ull") {
+	if cCarries(rows, "ull") {
 		t.Error("a destination row must carry no clamp ends: the pass holds the range, not the plan")
 	}
 }
 
 func TestCNoPlanClamps(t *testing.T) {
 	src, _ := deadCHeader(t, clampTagOnlySrc)
-	if strings.Contains(src, "kTableFixedClamp") {
+	if cCarries(src, "kTableFixedClamp") {
 		t.Error("no plan op clamps: the clamp op must not exist")
 	}
-	if !strings.Contains(src, "kTableFixedWidenF  = 6") {
+	if !cCarries(src, "kTableFixedWidenF  = 6") {
 		t.Error("the op set is the seven, and widenf is the last of them")
 	}
-	if !strings.Contains(src, "cfg_fixed_clamp_body_") {
+	if !cCarries(src, "cfg_fixed_clamp_body_") {
 		t.Error("the bounds pass is the clamp, and it must still be emitted")
 	}
 	i := strings.Index(src, "TableFixedDst cfg_fixed_dst[]")
@@ -167,7 +167,7 @@ func TestCNoPlanClamps(t *testing.T) {
 	if end := strings.Index(rows, "\n};"); end > 0 {
 		rows = rows[:end]
 	}
-	if strings.Contains(rows, "ull") {
+	if cCarries(rows, "ull") {
 		t.Error("a destination row must carry no clamp ends: the pass holds the range, not the plan")
 	}
 }

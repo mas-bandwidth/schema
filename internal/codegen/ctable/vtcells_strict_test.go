@@ -292,7 +292,7 @@ func TestCVariableCellsStrict(t *testing.T) {
 		"graph_from_json(",
 		"table_report_finish(",
 	} {
-		if !strings.Contains(header.String(), want) {
+		if !cCarries(header.String(), want) {
 			t.Errorf("generated variable header is missing strict symbol %q", want)
 		}
 	}
@@ -306,7 +306,7 @@ func TestCVariableCellsStrict(t *testing.T) {
 		}
 		src := string(data)
 		for _, anchor := range group.anchors {
-			if !strings.Contains(src, anchor) {
+			if !cCarries(src, anchor) {
 				t.Errorf("%s: missing strict-read anchor %q", group.file, anchor)
 			}
 		}
@@ -339,7 +339,7 @@ func TestCVariableCellsStrict(t *testing.T) {
 	// and A2.schema's direct string arm used to emit table_fixed_put0.
 	r2Files := vtFixedArtifact(t, filepath.Join("..", "..", "..", "test", "tables", "R2.schema"))
 	a2Files := vtFixedArtifact(t, filepath.Join("..", "..", "..", "test", "tables", "A2.schema"))
-	if strings.Contains(string(r2Files["ProbeTable.h"]), "table_fixed_put0") || strings.Contains(string(a2Files["ProbeTable.h"]), "table_fixed_put0") {
+	if cCarries(string(r2Files["ProbeTable.h"]), "table_fixed_put0") || cCarries(string(a2Files["ProbeTable.h"]), "table_fixed_put0") {
 		t.Fatal("fixed-form header emits table_fixed_put0")
 	}
 
@@ -446,7 +446,7 @@ func TestCVariableCellsStrictNegativeControl(t *testing.T) {
 	const target = "return report->refuse_reason != SCHEMA_TABLE_REFUSE_OK;"
 	const replacement = "return report->refuse_reason != SCHEMA_TABLE_REFUSE_OK && report->refuse_reason != SCHEMA_TABLE_REFUSE_OUT_OF_RANGE;"
 	headerStr := string(allFiles["ProbeTable.h"])
-	if !strings.Contains(headerStr, target) {
+	if !cCarries(headerStr, target) {
 		t.Fatalf("ProbeTable.h missing target anchor %q", target)
 	}
 	allFiles["ProbeTable.h"] = []byte(strings.Replace(headerStr, target, replacement, 1))
@@ -454,7 +454,7 @@ func TestCVariableCellsStrictNegativeControl(t *testing.T) {
 	if err == nil {
 		t.Fatalf("functional negative control passed with the out-of-range guard turned off:\n%s", out)
 	}
-	if strings.Contains(err.Error(), "compile:") {
+	if cCarries(err.Error(), "compile:") {
 		t.Fatalf("negative control did not run the probe (the planted header failed to compile): %v\n%s", err, out)
 	}
 
@@ -471,7 +471,7 @@ func TestCVariableCellsStrictNegativeControl(t *testing.T) {
 	if err == nil {
 		t.Fatalf("generator-panic pong plant passed; the probe did not go red:\n%s", out)
 	}
-	if strings.Contains(err.Error(), "compile:") {
+	if cCarries(err.Error(), "compile:") {
 		t.Fatalf("pong plant did not run the probe (the planted header failed to compile): %v\n%s", err, out)
 	}
 
@@ -486,7 +486,7 @@ func TestCVariableCellsStrictNegativeControl(t *testing.T) {
 	if err == nil {
 		t.Fatalf("generator-panic string plant passed; the probe did not go red:\n%s", out)
 	}
-	if strings.Contains(err.Error(), "compile:") {
+	if cCarries(err.Error(), "compile:") {
 		t.Fatalf("string plant did not run the probe (the planted header failed to compile): %v\n%s", err, out)
 	}
 }
@@ -612,7 +612,7 @@ func plantPongWritesBoost(header string) (string, bool) {
 		return "", false
 	}
 	call := strings.TrimSpace(header[lineStart : i+relEnd])
-	if strings.HasPrefix(call, "static ") || !strings.Contains(call, "&value->effect.as.boost") {
+	if strings.HasPrefix(call, "static ") || !cCarries(call, "&value->effect.as.boost") {
 		return "", false
 	}
 	planted := "        case EFFECT_TYPE_PONG:\n        {\n            " + call + "\n            break;\n        }"
@@ -636,7 +636,7 @@ func runFixedHeaderProbe(t *testing.T, files map[string][]byte, body string) (st
 	}
 	dir := t.TempDir()
 	for name, data := range files {
-		if strings.Contains(name, "/") {
+		if cCarries(name, "/") {
 			continue
 		}
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {

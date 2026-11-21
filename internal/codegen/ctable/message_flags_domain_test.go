@@ -86,7 +86,7 @@ func cMessageFlagsDomainRun(t *testing.T, plant bool) (string, error) {
 	var sources []string
 	header := ""
 	for name, data := range files {
-		if strings.Contains(name, "/") {
+		if cCarries(name, "/") {
 			continue
 		}
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0600); err != nil {
@@ -185,7 +185,7 @@ func TestCMessageFlagsWriteDomain(t *testing.T) {
 func TestCMessageFlagsWriteDomainNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "C compiler: flags writer assertion omission")
 	out, err := cMessageFlagsDomainRun(t, true)
-	if err == nil || !strings.Contains(out, "MISSING FLAGS ASSERT direct measure") {
+	if err == nil || !cCarries(out, "MISSING FLAGS ASSERT direct measure") {
 		t.Fatalf("assert omission did not fail named witness: %v\n%s", err, out)
 	}
 }

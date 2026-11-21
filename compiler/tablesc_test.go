@@ -203,7 +203,7 @@ func TestCExternalsCarryThePackage(t *testing.T) {
 			!strings.HasPrefix(line, "int64_t ") {
 			continue
 		}
-		if !strings.Contains(line, "schema_probe_") {
+		if !cCarries(line, "schema_probe_") {
 			t.Errorf("a definition with external linkage does not carry the package, so two units "+
 				"could not link together: %s", strings.TrimSpace(line))
 		}
@@ -274,7 +274,7 @@ func TestCForceInlineStopsAtTheVariableClass(t *testing.T) {
 		"static SCHEMA_UNUSED SCHEMA_PROBE_TABLE_INLINE void table_writer_put32( TableWriter * w, uint32_t v )",
 		"static SCHEMA_UNUSED SCHEMA_PROBE_TABLE_INLINE uint32_t table_reader_get32( TableReader * r )",
 	} {
-		if !strings.Contains(header, want) {
+		if !cCarries(header, want) {
 			t.Errorf("the fixed class did not carry the force-inline qualifier: %q", want)
 		}
 	}
@@ -286,17 +286,17 @@ func TestCForceInlineStopsAtTheVariableClass(t *testing.T) {
 		"SCHEMA_PROBE_TABLE_INLINE int64_t node_pack_measure",
 		"SCHEMA_PROBE_TABLE_INLINE int node_pack",
 	} {
-		if strings.Contains(header, forbidden) {
+		if cCarries(header, forbidden) {
 			t.Errorf("a variable-length table's body was force-inlined; its pointer walk can recurse: %q", forbidden)
 		}
 	}
 	// MEASURE stays plain in both classes, as it does in the reference
-	if strings.Contains(header, "SCHEMA_PROBE_TABLE_INLINE int64_t config_measure") {
+	if cCarries(header, "SCHEMA_PROBE_TABLE_INLINE int64_t config_measure") {
 		t.Error("Measure was force-inlined; it holds no cursor and merges no stores")
 	}
 	// and the macro is PACKAGE-SCOPED, so several units' headers can meet in
 	// one translation unit without a redefinition
-	if !strings.Contains(header, "#ifndef SCHEMA_PROBE_TABLE_INLINE") {
+	if !cCarries(header, "#ifndef SCHEMA_PROBE_TABLE_INLINE") {
 		t.Error("the force-inline macro is not package-scoped behind its own guard")
 	}
 }
@@ -326,11 +326,11 @@ func TestCTableOpenDistinctnessIsBounded(t *testing.T) {
 		"uint8_t used[8192]",
 		"seen[slot] == id",
 	} {
-		if !strings.Contains(header, want) {
+		if !cCarries(header, want) {
 			t.Errorf("table_wire_open is missing %q", want)
 		}
 	}
-	if strings.Contains(header, "for ( i = 1; i < count; i++ ) { for ( j = 0; j < i; j++ ) {") {
+	if cCarries(header, "for ( i = 1; i < count; i++ ) { for ( j = 0; j < i; j++ ) {") {
 		t.Error("table_wire_open still carries the unbounded pairwise fallback")
 	}
 }
@@ -402,7 +402,7 @@ func TestCGeneratorMacrosAreOwned(t *testing.T) {
 			}
 			// anything carrying the schema's own prefix is a macro the
 			// DECLARATIONS asked for, in the upper, Pascal and C snake spellings the emitter uses
-			if strings.Contains(m[1], "ZQQ") || strings.Contains(m[1], "Zqq") || strings.HasPrefix(m[1], "zqq_") {
+			if cCarries(m[1], "ZQQ") || cCarries(m[1], "Zqq") || strings.HasPrefix(m[1], "zqq_") {
 				continue
 			}
 			owned[m[1]] = true
@@ -473,13 +473,13 @@ fixed table RenderFrame
 		"TableBlockRows render_frame_dynamic_props_rows( const RenderFrameBlock * block )",
 		"RenderShip * render_frame_dynamic_props_span( const RenderFrameBlock * block )",
 	} {
-		if !strings.Contains(header, want) {
+		if !cCarries(header, want) {
 			t.Errorf("the block header does not declare %q", want)
 		}
 	}
 	// and the spellings that mixed the two conventions are gone
 	for _, gone := range []string{"RenderFrameShips(", "RenderFrameships_span", "RenderFramedynamic_props_span"} {
-		if strings.Contains(header, gone) {
+		if cCarries(header, gone) {
 			t.Errorf("the block header still spells %q", gone)
 		}
 	}

@@ -71,7 +71,7 @@ func TestCTableRetainKeepsDepth128(t *testing.T) {
 	}
 	header := ""
 	for name, data := range files {
-		if strings.HasSuffix(name, ".h") && strings.Contains(string(data), "scene_load_retain(") {
+		if strings.HasSuffix(name, ".h") && cCarries(string(data), "scene_load_retain(") {
 			header = name
 		}
 	}

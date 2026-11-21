@@ -84,28 +84,28 @@ func TestFixedCT18DirectArmLines(t *testing.T) {
 	if header == "" {
 		t.Fatal("no *Table.h was emitted for the DIRECTARMS unit")
 	}
-	if strings.Contains(header, "table_fixed_put0") {
+	if cCarries(header, "table_fixed_put0") {
 		t.Fatalf("a direct arm was sized as zero storage: the header emits table_fixed_put0:\n%s", header)
 	}
 
 	body := fixedWriteBody(t, header, "schema_probe_root_fixed_write_body_")
 	// The string arm and the bytes arm are used-length stores: the length
 	// companion is read and that many units copied (§3.4).
-	if !strings.Contains(body, "value->pick.as.label.value_length") {
+	if !cCarries(body, "value->pick.as.label.value_length") {
 		t.Fatalf("the string arm's used length is not stored:\n%s", body)
 	}
-	if !strings.Contains(body, "value->pick.as.blob.value_length") {
+	if !cCarries(body, "value->pick.as.blob.value_length") {
 		t.Fatalf("the bytes arm's used length is not stored:\n%s", body)
 	}
 	// The counted array arm is a live-count store then that many elements.
-	if !strings.Contains(body, "value->pick.as.span.value_count") {
+	if !cCarries(body, "value->pick.as.span.value_count") {
 		t.Fatalf("the counted array arm's live count is not stored:\n%s", body)
 	}
-	if !strings.Contains(body, "value->pick.as.span.value[i]") {
+	if !cCarries(body, "value->pick.as.span.value[i]") {
 		t.Fatalf("the counted array arm's elements are not stored:\n%s", body)
 	}
 	// The fixed array arm is one element store per slot, no count (§3.4).
-	if !strings.Contains(body, "value->pick.as.cells[i]") {
+	if !cCarries(body, "value->pick.as.cells[i]") {
 		t.Fatalf("the fixed array arm's elements are not stored:\n%s", body)
 	}
 
@@ -129,7 +129,7 @@ func TestFixedCT18DirectArmLines(t *testing.T) {
 	if a2header == "" {
 		t.Fatal("no *Table.h was emitted for A2.schema")
 	}
-	if strings.Contains(a2header, "table_fixed_put0") {
+	if cCarries(a2header, "table_fixed_put0") {
 		t.Fatalf("A2.schema's direct string arm was sized as zero storage: table_fixed_put0:\n%s", a2header)
 	}
 }
@@ -296,7 +296,7 @@ func TestFixedRoadmapCT18DirectArms(t *testing.T) {
 		dir := t.TempDir()
 		var header string
 		for name, out := range files {
-			if strings.Contains(name, "/") {
+			if cCarries(name, "/") {
 				continue
 			}
 			if err := os.WriteFile(filepath.Join(dir, name), out, 0o600); err != nil {
@@ -323,7 +323,7 @@ func TestFixedRoadmapCT18DirectArms(t *testing.T) {
 			t.Fatalf("the generated A2 header did not compile: %v\n%s", err, out)
 		}
 		for _, f := range files {
-			if strings.Contains(string(f), "table_fixed_put0") {
+			if cCarries(string(f), "table_fixed_put0") {
 				t.Fatalf("A2.schema's header emits table_fixed_put0:\n%s", f)
 			}
 		}

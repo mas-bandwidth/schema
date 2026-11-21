@@ -79,10 +79,10 @@ func TestFixedCT19PayloadFreeLines(t *testing.T) {
 
 	// The bounds pass refuses a tag past the arm set
 	// (internal/codegen/ctable/fixedform.go; ALGORITHM §4.6).
-	if !strings.Contains(header, "(uint32_t) value->pick.type > 3u") {
+	if !cCarries(header, "(uint32_t) value->pick.type > 3u") {
 		t.Fatalf("the fixed clamp does not compare Pick's tag to the arm set:\n%s", header)
 	}
-	if !strings.Contains(header, "(*out_of_range)++") {
+	if !cCarries(header, "(*out_of_range)++") {
 		t.Fatalf("the fixed bounds pass does not refuse a tag past the arm set:\n%s", header)
 	}
 
@@ -104,7 +104,7 @@ func TestFixedCT19PayloadFreeLines(t *testing.T) {
 // union tag and both payload-free arms' cases write nothing under it, and an
 // error naming the first arm that writes a payload otherwise.
 func payloadFreeArmsWriteNothing(body string) error {
-	if !strings.Contains(body, "value->pick.type") {
+	if !cCarries(body, "value->pick.type") {
 		return fmt.Errorf("the fixed writer stores no Pick tag")
 	}
 	for _, name := range []string{"PICK_TYPE_QUIET", "PICK_TYPE_SIGNAL"} {
@@ -112,10 +112,10 @@ func payloadFreeArmsWriteNothing(body string) error {
 		if !ok {
 			return fmt.Errorf("the fixed writer has no case for the %s arm", name)
 		}
-		if strings.Contains(arm, "table_fixed_put") || strings.Contains(arm, "memcpy(") {
+		if cCarries(arm, "table_fixed_put") || cCarries(arm, "memcpy(") {
 			return fmt.Errorf("the %s arm writes a payload, not only the tag:\n%s", name, arm)
 		}
-		if !strings.Contains(arm, "break;") {
+		if !cCarries(arm, "break;") {
 			return fmt.Errorf("the %s arm's case is not closed by break:\n%s", name, arm)
 		}
 	}

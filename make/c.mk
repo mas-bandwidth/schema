@@ -1630,6 +1630,11 @@ REGISTRY_NA_WHY.toolchain.c := builds with the host C compiler (CC), which nothi
 CLANG_FORMAT_PIN   ?= 23.1.3
 CLANG_FORMAT_MAJOR := $(firstword $(subst ., ,$(CLANG_FORMAT_PIN)))
 C_FORMAT_TREES     := build/tables-generated-c generated/c generated/c-ludicrous generated/bench/c generated/bench/tables/c generated/bench/paired/c
+# THE UNITS THE GATE MUST FIND, read off the generation registries themselves
+# (tables_generate_c, tables_generate_c_collections, the cards stamp): a unit
+# directory that is missing or empty turns the gate red, and so does a tree
+# above that holds no C. Deferred (=): the registries are defined further down.
+C_FORMAT_EXPECT_DIRS = $(sort $(filter build/tables-generated-c/%,$(call tables_generate_c,x,build/tables-generated-c) $(call tables_generate_c_collections,x,build/tables-generated-c)) build/tables-generated-c/cards)
 .PHONY: tables-c-clean
 tables-c-clean: build/tables-generated-c/.stamp cards-c-generate generated/c/.stamp generated/c-ludicrous/.stamp generated/bench/c/.stamp generated/bench/tables/c/.stamp generated/bench/paired/c/.stamp
 	@if ! command -v $(CLANG_FORMAT) >/dev/null 2>&1; then \
@@ -1640,7 +1645,7 @@ tables-c-clean: build/tables-generated-c/.stamp cards-c-generate generated/c/.st
 	if [ "$$v" != "$(CLANG_FORMAT_MAJOR)" ]; then \
 		echo "tables-c-clean: $(CLANG_FORMAT) is major $$v; the gate is pinned to $(CLANG_FORMAT_PIN) (major $(CLANG_FORMAT_MAJOR)) — install it, or pass CLANG_FORMAT=<that binary>"; exit 1; \
 	fi; \
-	CLANG_FORMAT=$(CLANG_FORMAT) OUT=build sh make/checks/c-clean-format.sh make/c-format-allow.txt $(C_FORMAT_TREES)
+	CLANG_FORMAT=$(CLANG_FORMAT) OUT=build EXPECT_DIRS="$(C_FORMAT_EXPECT_DIRS)" sh make/checks/c-clean-format.sh make/c-format-allow.txt $(C_FORMAT_TREES)
 test-c: tables-c-clean
 
 # ITS NEGATIVE CONTROL: one struct typedef brace written K&R in the C PACKET
@@ -1654,13 +1659,13 @@ test-c: tables-c-clean
 # pinned clang-format, and refuses by name where that does not resolve.
 C_CLEAN_CONTROL := build/c-clean-control
 .PHONY: tables-c-format-negative-control
-tables-c-format-negative-control: bin/schema tools/sabotage/c_clean.go make/checks/c-clean-format.sh
+tables-c-format-negative-control: bin/schema tools/sabotage/c_clean.go make/checks/c-clean-format.sh make/checks/clean-format-controls.sh
 	@command -v $(CLANG_FORMAT) >/dev/null 2>&1 && [ "$$($(CLANG_FORMAT) --version | sed -n 's/.*version \([0-9][0-9]*\)\..*/\1/p')" = "$(CLANG_FORMAT_MAJOR)" ] || \
 		{ echo "NEGATIVE CONTROL CANNOT RUN: clang-format $(CLANG_FORMAT_PIN) does not resolve (CLANG_FORMAT = $(CLANG_FORMAT)), and a drift control without the formatter proves nothing"; exit 1; }
 	@rm -rf $(C_CLEAN_CONTROL) && mkdir -p $(C_CLEAN_CONTROL) && : > $(C_CLEAN_CONTROL)/empty.txt
 	./bin/schema generate --lang c --out $(C_CLEAN_CONTROL)/clean-all examples
 	@mkdir -p $(C_CLEAN_CONTROL)/clean && cp $(C_CLEAN_CONTROL)/clean-all/Types.h $(C_CLEAN_CONTROL)/clean/
-	@CLANG_FORMAT=$(CLANG_FORMAT) OUT=$(C_CLEAN_CONTROL)/guard sh make/checks/c-clean-format.sh $(C_CLEAN_CONTROL)/empty.txt $(C_CLEAN_CONTROL)/clean > $(C_CLEAN_CONTROL)/guard.out 2>&1 || \
+	@CLANG_FORMAT=$(CLANG_FORMAT) OUT=$(C_CLEAN_CONTROL)/guard EXPECT_DIRS= sh make/checks/c-clean-format.sh $(C_CLEAN_CONTROL)/empty.txt $(C_CLEAN_CONTROL)/clean > $(C_CLEAN_CONTROL)/guard.out 2>&1 || \
 		{ echo "NEGATIVE CONTROL FAILED: the unsabotaged C packet emitter's output is not format-clean, so this control would watch a tree that was red anyway"; cat $(C_CLEAN_CONTROL)/guard.out; exit 1; }
 	go run ./tools/sabotage -name c-clean-format-drift -out $(C_CLEAN_CONTROL)/c.gotext internal/codegen/c/c.go
 	@printf '{"Replace":{"%s/internal/codegen/c/c.go":"%s/$(C_CLEAN_CONTROL)/c.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > $(C_CLEAN_CONTROL)/overlay.json
@@ -1669,12 +1674,13 @@ tables-c-format-negative-control: bin/schema tools/sabotage/c_clean.go make/chec
 	@mkdir -p $(C_CLEAN_CONTROL)/sabotaged && cp $(C_CLEAN_CONTROL)/sabotaged-all/Types.h $(C_CLEAN_CONTROL)/sabotaged/
 	@grep -q '^typedef struct [A-Za-z0-9_]* {$$' $(C_CLEAN_CONTROL)/sabotaged/Types.h || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter wrote no K&R brace"; exit 1; }
-	@if CLANG_FORMAT=$(CLANG_FORMAT) OUT=$(C_CLEAN_CONTROL)/red sh make/checks/c-clean-format.sh $(C_CLEAN_CONTROL)/empty.txt $(C_CLEAN_CONTROL)/sabotaged > $(C_CLEAN_CONTROL)/red.out 2>&1; then \
+	@if CLANG_FORMAT=$(CLANG_FORMAT) OUT=$(C_CLEAN_CONTROL)/red EXPECT_DIRS= sh make/checks/c-clean-format.sh $(C_CLEAN_CONTROL)/empty.txt $(C_CLEAN_CONTROL)/sabotaged > $(C_CLEAN_CONTROL)/red.out 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a K&R struct brace in the emitted C left the format gate green"; cat $(C_CLEAN_CONTROL)/red.out; exit 1; \
 	fi
 	@grep -q 'clang-format drift in .*/sabotaged/Types\.h' $(C_CLEAN_CONTROL)/red.out || \
 		{ echo "NEGATIVE CONTROL FAILED: the format gate went red, but not on Types.h"; cat $(C_CLEAN_CONTROL)/red.out; exit 1; }
 	@echo "negative control: one K&R struct brace in the emitted C turns the format gate (clang-format) RED naming the file"
+	@CLANG_FORMAT=$(CLANG_FORMAT) sh make/checks/clean-format-controls.sh c $(C_CLEAN_CONTROL)/clean $(C_CLEAN_CONTROL)/inputs
 
 # The file-wire differential: the compiler's independent engine owns every
 # expected byte and report. Unsupported roster entries are named absent.

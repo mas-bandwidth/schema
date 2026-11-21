@@ -809,7 +809,7 @@ func cRunVersionProbeRoot(t *testing.T, reader string, older []string, retire in
 	dir := t.TempDir()
 	var header string
 	for name, data := range files {
-		if strings.Contains(name, "/") {
+		if cCarries(name, "/") {
 			continue
 		}
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
@@ -948,7 +948,7 @@ func TestFixedLineageOnceFlagPublishedLast(t *testing.T) {
 	}
 	header := ""
 	for name, data := range files {
-		if strings.HasSuffix(name, "Table.h") && !strings.Contains(name, "/") {
+		if strings.HasSuffix(name, "Table.h") && !cCarries(name, "/") {
 			header = string(data)
 		}
 	}
@@ -983,13 +983,13 @@ func TestFixedLineageOnceFlagPublishedLast(t *testing.T) {
 		t.Fatalf("the once-flag is published %d times; the order is only a claim if there is one store", n)
 	}
 	// nothing else writes the flag: no plain assignment anywhere in the body
-	if strings.Contains(body, "_fixed_lineage_ready = ") {
+	if cCarries(body, "_fixed_lineage_ready = ") {
 		t.Fatalf("the once-flag is assigned directly inside the build — the publish is the only store that may\n%s", body)
 	}
 	// a load that arrives before the publication WAITS for it rather than
 	// reading what is not there (the refuse-or-wait obligation, discharged by
 	// waiting: the build is a bounded walk over the lock's own bytes)
-	if !strings.Contains(body, "table_fixed_once_claim(") || !strings.Contains(body, "table_fixed_once_wait(") {
+	if !cCarries(body, "table_fixed_once_claim(") || !cCarries(body, "table_fixed_once_wait(") {
 		t.Fatalf("a racing load must claim the build or wait for it, never read the zeroed plan\n%s", body)
 	}
 	if claim, wait := strings.Index(body, "table_fixed_once_claim("), strings.Index(body, "table_fixed_once_wait("); claim > wait || wait > loop {

@@ -125,14 +125,14 @@ func cNormDamageRun(t *testing.T, sabotage [2]string) ([]byte, error) {
 	header := ""
 	var srcs []string
 	for name, data := range files {
-		if strings.Contains(name, "/") {
+		if cCarries(name, "/") {
 			continue
 		}
 		if strings.HasSuffix(name, "Table.h") {
 			header = name
 		}
 		if sabotage[0] != "" {
-			if text := string(data); strings.Contains(text, sabotage[0]) {
+			if text := string(data); cCarries(text, sabotage[0]) {
 				data = []byte(strings.ReplaceAll(text, sabotage[0], sabotage[1]))
 				mutApplied = true
 			}
@@ -172,7 +172,7 @@ func TestCFixedNormalizationIsDamage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("c/R17+C12+C13 wire_damaged probe failed: %v\n%s", err, out)
 	}
-	if !strings.Contains(string(out), "c normalization is damage") {
+	if !cCarries(string(out), "c normalization is damage") {
 		t.Fatalf("missing completion banner:\n%s", out)
 	}
 	// c/C13 on its own optional schema, through the self-built helper.
@@ -205,7 +205,7 @@ func TestCFixedNormalizationIsDamageNegativeControl(t *testing.T) {
 	if err == nil {
 		t.Fatalf("negative control failed: probe exited 0 when wire_damaged was planted back to out_of_range:\n%s", out)
 	}
-	if !strings.Contains(string(out), "not wire_damaged") {
+	if !cCarries(string(out), "not wire_damaged") {
 		t.Fatalf("negative control failed for the wrong reason (want a wire_damaged refusal check):\n%s", out)
 	}
 }

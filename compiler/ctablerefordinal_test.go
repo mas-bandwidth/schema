@@ -318,13 +318,13 @@ func TestCTableRefOrdinalBytes(t *testing.T) {
 			"void table_writer_id_at( TableWriter * w, int32_t ordinal, uint64_t id )",
 			"table_writer_header_at( w, ",
 		} {
-			if !strings.Contains(header, want) {
+			if !cCarries(header, want) {
 				t.Fatalf("the generated save path does not carry %q — this test would prove nothing", want)
 			}
 		}
 		// and the RUNTIME ids must still reach the general path: an enum's
 		// variant is a value, not a compile-time constant of the header
-		if !strings.Contains(header, "table_writer_id( w, 0x") {
+		if !cCarries(header, "table_writer_id( w, 0x") {
 			t.Fatal("no general-path table_writer_id survives: the enum identity's variant ids must not be cached by ordinal")
 		}
 	}
@@ -473,7 +473,7 @@ func TestCTableRefOrdinalSharedId(t *testing.T) {
 	// exists for is not in the sources at all
 	header := string(files["ProbeTable.h"])
 	const shared = "0x8ac625bb85ed202bull" // TableWireId( "alpha" )
-	if !strings.Contains(header, "table_writer_header_at( w, 5, "+shared+", ") || !strings.Contains(header, "table_writer_id( w, "+shared+" )") {
+	if !cCarries(header, "table_writer_header_at( w, 5, "+shared+", ") || !cCarries(header, "table_writer_id( w, "+shared+" )") {
 		t.Fatalf("the schema no longer gives one id both a field header and an enum variant: this test would prove nothing")
 	}
 	out := runCRefOrdinal(t, files, cRefOrdinalCollisionDriver, "ccollide",

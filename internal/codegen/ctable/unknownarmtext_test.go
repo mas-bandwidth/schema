@@ -62,7 +62,7 @@ func TestPinnedUnknownArmTextC(t *testing.T) {
 		"static const uint8_t wire[] = {" + cMessageBytes(wire) + "};\n" + unknownArmTextProbe
 
 	out, err := runUnknownArmTextProbe(t, cc, files, src)
-	if err != nil || !strings.Contains(out, "UNKNOWN_ARM_TEXT_OK") {
+	if err != nil || !cCarries(out, "UNKNOWN_ARM_TEXT_OK") {
 		t.Fatalf("unknown arm text: %v\n%s", err, out)
 	}
 
@@ -78,7 +78,7 @@ func TestPinnedUnknownArmTextC(t *testing.T) {
 		t.Fatalf("REVERSED WITNESS: the emitted union read holds no unknown-arm walk to remove")
 	}
 	out, err = runUnknownArmTextProbe(t, cc, files, src)
-	if err == nil && strings.Contains(out, "UNKNOWN_ARM_TEXT_OK") {
+	if err == nil && cCarries(out, "UNKNOWN_ARM_TEXT_OK") {
 		t.Fatalf("REVERSED WITNESS FAILED: without the unknown-arm walk the probe stayed green\n%s", out)
 	}
 	t.Logf("reversed witness (%d walks dropped): %v\n%s", patched, err, out)

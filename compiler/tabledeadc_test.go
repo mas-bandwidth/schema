@@ -116,26 +116,26 @@ func TestCTableDeadCheckDefault_Unprobed(t *testing.T) {
 	source := string(files["ProbeTable.c"])
 
 	// 1. check_default must NOT appear anywhere in the generated header or source.
-	if strings.Contains(header, "check_default") {
+	if cCarries(header, "check_default") {
 		t.Errorf("unprobed unit header contains dead check_default symbol")
 	}
-	if strings.Contains(source, "check_default") {
+	if cCarries(source, "check_default") {
 		t.Errorf("unprobed unit source contains dead check_default symbol")
 	}
 
 	// 2. TableWriter and TableBitWriter must omit check_default.
-	if !strings.Contains(header, "int overflow, id_checkpoint;") {
+	if !cCarries(header, "int overflow, id_checkpoint;") {
 		t.Errorf("expected TableWriter without check_default, got header:\n%s", header)
 	}
-	if !strings.Contains(header, "int overflow;") {
+	if !cCarries(header, "int overflow;") {
 		t.Errorf("expected TableBitWriter without check_default, got header:\n%s", header)
 	}
 
 	// 3. Scalar leaf measure must not have && !w->check_default.
-	if strings.Contains(header, "!w->check_default") {
+	if cCarries(header, "!w->check_default") {
 		t.Errorf("scalar leaf measure still contains dead !w->check_default")
 	}
-	if !strings.Contains(header, "if ( w->buffer == NULL )") {
+	if !cCarries(header, "if ( w->buffer == NULL )") {
 		t.Errorf("expected scalar leaf measure with 'if ( w->buffer == NULL )'")
 	}
 
@@ -212,10 +212,10 @@ func TestCTableDeadCheckDefault_Probed(t *testing.T) {
 	header := string(files["ProbeTable.h"])
 
 	// 1. TableWriter and TableBitWriter must carry check_default.
-	if !strings.Contains(header, "int overflow, id_checkpoint, check_default;") {
+	if !cCarries(header, "int overflow, id_checkpoint, check_default;") {
 		t.Errorf("expected TableWriter with check_default")
 	}
-	if !strings.Contains(header, "int overflow,check_default;") {
+	if !cCarries(header, "int overflow,check_default;") {
 		t.Errorf("expected TableBitWriter with check_default")
 	}
 
@@ -239,21 +239,21 @@ func TestCTableDeadCheckDefault_Probed(t *testing.T) {
 	}
 
 	// leaf_save_body CAN be reached by a probe: it MUST have check_default early exit.
-	if !strings.Contains(leafBody, "if ( w->check_default ) { w->offset = 2; return 1; }") {
+	if !cCarries(leafBody, "if ( w->check_default ) { w->offset = 2; return 1; }") {
 		t.Errorf("leaf_save_body is probed but missing check_default check:\n%s", leafBody)
 	}
-	if !strings.Contains(leafBody, "if ( w->buffer == NULL && !w->check_default )") {
+	if !cCarries(leafBody, "if ( w->buffer == NULL && !w->check_default )") {
 		t.Errorf("leaf_save_body is probed but missing !w->check_default in scalar leaf measure:\n%s", leafBody)
 	}
 
 	// outer_save_body is NOT probed by anything: it MUST NOT have check_default early exit!
-	if strings.Contains(outerBody, "if ( w->check_default )") {
+	if cCarries(outerBody, "if ( w->check_default )") {
 		t.Errorf("outer_save_body is not probed but contains dead if ( w->check_default ):\n%s", outerBody)
 	}
 
 	// 3. Message save: leaf_save_message_body must have check_default; outer must not.
-	defMsgLeaf := "int leaf_save_message_body(TableBitWriter * w,const Leaf * value)\n{"
-	defMsgOuter := "int outer_save_message_body(TableBitWriter * w,const Outer * value)\n{"
+	defMsgLeaf := "int leaf_save_message_body( TableBitWriter * w, const Leaf * value )\n{"
+	defMsgOuter := "int outer_save_message_body( TableBitWriter * w, const Outer * value )\n{"
 	leafMsgIdx := strings.Index(header, defMsgLeaf)
 	outerMsgIdx := strings.Index(header, defMsgOuter)
 	if leafMsgIdx < 0 || outerMsgIdx < 0 {
@@ -269,10 +269,10 @@ func TestCTableDeadCheckDefault_Probed(t *testing.T) {
 		outerMsgBody = outerMsgBody[:end]
 	}
 
-	if !strings.Contains(leafMsgBody, "if(w->check_default)") {
+	if !cCarries(leafMsgBody, "if(w->check_default)") {
 		t.Errorf("leaf_save_message_body is probed but missing check_default check:\n%s", leafMsgBody)
 	}
-	if strings.Contains(outerMsgBody, "if(w->check_default)") {
+	if cCarries(outerMsgBody, "if(w->check_default)") {
 		t.Errorf("outer_save_message_body is not probed but contains dead if(w->check_default):\n%s", outerMsgBody)
 	}
 

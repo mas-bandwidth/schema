@@ -2,13 +2,14 @@ package compiler
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
@@ -140,7 +141,7 @@ func TestCTableRetainRefusedByName(t *testing.T) {
 				t.Fatal(err)
 			}
 			out, err := exec.Command(cc, "-std=c99", "-fsyntax-only", "-I", dir, path).CombinedOutput()
-			if err == nil || !strings.Contains(string(out), "retention_") {
+			if err == nil || !cCarries(string(out), "retention_") {
 				t.Fatalf("expected named refusal: %v\n%s", err, out)
 			}
 		})

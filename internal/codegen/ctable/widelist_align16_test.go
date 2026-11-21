@@ -3,11 +3,12 @@ package ctable
 import (
 	"encoding/hex"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestWidelistExtentAlign16C pins the two wire-fuzz failures found on

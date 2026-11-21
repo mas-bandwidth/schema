@@ -72,7 +72,7 @@ fixed table Fox { x int32 }
 			"pong_cook", "pong_open",
 			"pong_from_json", "pong_to_json",
 		} {
-			if strings.Contains(src, forbidden) {
+			if cCarries(src, forbidden) {
 				t.Errorf("%s leaked omitted form member %q although Pong declares only wire", name, forbidden)
 			}
 		}
@@ -106,7 +106,7 @@ fixed table FoxAll
 		"pong_measure", "pong_save", "pong_load",
 		"fox_wire_measure", "fox_wire_save", "fox_wire_load",
 	} {
-		if !strings.Contains(mixedSrc, want) {
+		if !cCarries(mixedSrc, want) {
 			t.Errorf("mixed unit lost %q", want)
 		}
 	}
@@ -114,7 +114,7 @@ fixed table FoxAll
 		"pong_cook", "pong_open", "pong_from_json", "pong_to_json",
 		"fox_wire_block_open", "fox_wire_cook", "fox_wire_open", "fox_wire_from_json", "fox_wire_to_json",
 	} {
-		if strings.Contains(mixedSrc, forbidden) {
+		if cCarries(mixedSrc, forbidden) {
 			t.Errorf("mixed unit leaked omitted form member %q", forbidden)
 		}
 	}

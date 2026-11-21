@@ -274,7 +274,7 @@ func TestCMessageSkipElementConsumesBits(t *testing.T) {
 		t.Fatalf("the message skip probe failed: %v\n%s", err, out)
 	}
 	for _, tc := range cases {
-		if !strings.Contains(out, "PASS "+tc.name) {
+		if !cCarries(out, "PASS "+tc.name) {
 			t.Fatalf("missing PASS for %s in:\n%s", tc.name, out)
 		}
 	}

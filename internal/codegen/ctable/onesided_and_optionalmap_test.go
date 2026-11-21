@@ -224,7 +224,7 @@ func cMapJsonNullRun(t *testing.T, cc string, revert bool) (string, error) {
 		old := "if ( f->sequence == 2 ) { memset( (uint8_t *) base + f->offset, 0, 16 ); }\n                else if ( f->table != NULL )"
 		planted := false
 		for file, data := range files {
-			if strings.Contains(string(data), old) {
+			if cCarries(string(data), old) {
 				files[file] = []byte(strings.Replace(string(data), old, "if ( f->table != NULL )", 1))
 				planted = true
 			}
@@ -275,7 +275,7 @@ func TestCOptionalMapJsonNullResetsToEmpty(t *testing.T) {
 		if err == nil {
 			t.Fatalf("the probe passed with the map branch reverted, so it does not pin the branch:\n%s", out)
 		}
-		if !strings.Contains(out, "tags") {
+		if !cCarries(out, "tags") {
 			t.Fatalf("the reverted probe failed without naming the field tags:\n%s", out)
 		}
 		t.Logf("reverted branch red: %s", strings.TrimSpace(out))

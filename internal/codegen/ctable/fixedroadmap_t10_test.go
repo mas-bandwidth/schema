@@ -60,7 +60,7 @@ func cT10Run(t *testing.T, src, root, body string) {
 	dir := t.TempDir()
 	var header string
 	for name, data := range files {
-		if strings.Contains(name, "/") {
+		if cCarries(name, "/") {
 			continue
 		}
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {

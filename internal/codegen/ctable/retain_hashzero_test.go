@@ -117,7 +117,7 @@ func TestCRetainNestedHashZeroNegativeControl(t *testing.T) {
 		t.Fatalf("hash-zero sabotage passed: %s", out)
 	}
 	for _, name := range []string{"enum", "union", "body-field", "keyed-slot", "enum-array-and-None", "union-array-and-None"} {
-		if !strings.Contains(out, "FAIL "+name+"/hash-zero") || strings.Contains(out, "FAIL "+name+"/nonzero") {
+		if !cCarries(out, "FAIL "+name+"/hash-zero") || cCarries(out, "FAIL "+name+"/nonzero") {
 			t.Errorf("control did not isolate %s: %s", name, out)
 		}
 	}

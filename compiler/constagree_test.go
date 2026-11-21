@@ -307,7 +307,7 @@ func compareAgree(t *testing.T, target string, want map[string]*big.Int, got map
 	for _, name := range sortedKeys(want) {
 		g, ok := got[name]
 		if !ok {
-			if strings.Contains(name, ".") {
+			if cCarries(name, ".") {
 				t.Errorf("%s: default %s was not found in the generated text", target, name)
 			}
 			continue // an evaluation error was already reported
@@ -341,13 +341,13 @@ func TestGeneratedLiteralExpressionsFoldWhereTheTargetWouldNot(t *testing.T) {
 	u := unitFromSource(t, constAgreeConsts+constAgreeTypes)
 	rust := agreeText(t, u, "rust", ".rs")
 	for _, want := range []string{"pub const NARROW: u8 = 200;", "h: 200,"} {
-		if !strings.Contains(rust, want) {
+		if !cCarries(rust, want) {
 			t.Errorf("Rust: want %q (the u8 literal 300 is out of range)", want)
 		}
 	}
 	cs := agreeText(t, u, "cs", ".cs")
 	for _, want := range []string{"public const long HighGap = -1;", "value.I = -1;"} {
-		if !strings.Contains(cs, want) {
+		if !cCarries(cs, want) {
 			t.Errorf("C#: want %q (uint arithmetic would refuse it)", want)
 		}
 	}

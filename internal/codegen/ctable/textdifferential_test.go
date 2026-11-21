@@ -32,13 +32,14 @@ import (
 	"strings"
 	"testing"
 
+	"maps"
+
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablepack"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
-	"maps"
 )
 
 const cTextDifferentialSchema = `package probe
@@ -185,7 +186,7 @@ func runCTextDifferential(t *testing.T, edit func(map[string][]byte)) ([]byte, e
 	var header string
 	var sources []string
 	for name, data := range files {
-		if strings.Contains(name, "/") {
+		if cCarries(name, "/") {
 			continue
 		}
 		if err := os.WriteFile(filepath.Join(src, name), data, 0o600); err != nil {

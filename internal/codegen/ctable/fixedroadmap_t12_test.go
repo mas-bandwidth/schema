@@ -184,7 +184,7 @@ func cT12W4(t *testing.T) {
 	cT04Has(t, clamp,
 		"table_wire_utf8( (const uint8_t *) value->s, (uint64_t) value->s_length )",
 		"W4 a string's content rule is checked over its stated length, not its capacity")
-	if strings.Contains(clamp, "value->s[ 8 ]") || strings.Contains(clamp, "value->s[8]") {
+	if cCarries(clamp, "value->s[ 8 ]") || cCarries(clamp, "value->s[8]") {
 		t.Error("W4: the content rule walks the declared capacity and not the used units")
 	}
 	cT04Has(t, cT04Fn(header, "lineage_fixed_load"),
