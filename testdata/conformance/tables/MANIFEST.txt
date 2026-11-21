@@ -1915,3 +1915,4 @@ json-hostile timestamp-below-int64-min   featurewitnesses Root    testdata/confo
 framing union_chain_unknown_at_bound   tblr1 Cfg testdata/wire/tables/framing/union_chain_unknown_at_bound.bin   read    testdata/conformance/tables/framing/cfg_silver.json
 framing union_chain_unknown_past_bound tblr1 Cfg testdata/wire/tables/framing/union_chain_unknown_past_bound.bin refused -
 framing union_chain_unknown_deep       tblr1 Cfg testdata/wire/tables/framing/union_chain_unknown_deep.bin       refused -
+rewrite union_chain_unknown_at_bound   tblr1 Cfg testdata/wire/tables/framing/union_chain_unknown_at_bound.bin
