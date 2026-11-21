@@ -53,7 +53,7 @@ func readRecordCase(path string) (recordCase, error) {
 			c.args = strings.Fields(val)
 		case key == "exit":
 			if c.exit, err = strconv.Atoi(val); err != nil {
-				return c, fmt.Errorf("%s:%d: %v", path, n, err)
+				return c, fmt.Errorf("%s:%d: %w", path, n, err)
 			}
 		case key == "want":
 			c.want = append(c.want, val)

@@ -314,24 +314,24 @@ func run(args []string, stdout, stderr io.Writer, summary string) int {
 		return 2
 	}
 	if fs.NArg() == 0 {
-		fmt.Fprintln(stderr, "usage: gotestreport [-budget 10m] [-slowest 15] [-skips <ledger> [-provides \"<class>...\"]] [-require-record] <dir>...")
+		_, _ = fmt.Fprintln(stderr, "usage: gotestreport [-budget 10m] [-slowest 15] [-skips <ledger> [-provides \"<class>...\"]] [-require-record] <dir>...")
 		return 2
 	}
 	var led *ledger
 	if *skips != "" {
 		f, err := os.Open(*skips)
 		if err != nil {
-			fmt.Fprintf(stderr, "gotestreport: %v\n", err)
+			_, _ = fmt.Fprintf(stderr, "gotestreport: %v\n", err)
 			return 2
 		}
 		led, err = readLedger(f, *skips, strings.Fields(*provides))
 		_ = f.Close()
 		if err != nil {
-			fmt.Fprintf(stderr, "gotestreport: %v\n", err)
+			_, _ = fmt.Fprintf(stderr, "gotestreport: %v\n", err)
 			return 2
 		}
 	} else if *provides != "" {
-		fmt.Fprintln(stderr, "gotestreport: -provides needs -skips")
+		_, _ = fmt.Fprintln(stderr, "gotestreport: -provides needs -skips")
 		return 2
 	}
 	r := newReport()
@@ -340,7 +340,7 @@ func run(args []string, stdout, stderr io.Writer, summary string) int {
 		if dir == "" {
 			// an unset PGROUP_GO_TEST_JSON: no record could have been written,
 			// and "no go test ran" would read green
-			fmt.Fprintln(stderr, "gotestreport: an empty directory was named (is PGROUP_GO_TEST_JSON set?)")
+			_, _ = fmt.Fprintln(stderr, "gotestreport: an empty directory was named (is PGROUP_GO_TEST_JSON set?)")
 			return 2
 		}
 		matches, _ := filepath.Glob(filepath.Join(dir, "*.jsonl"))
@@ -348,24 +348,24 @@ func run(args []string, stdout, stderr io.Writer, summary string) int {
 		for _, m := range matches {
 			f, err := os.Open(m)
 			if err != nil {
-				fmt.Fprintf(stderr, "gotestreport: %v\n", err)
+				_, _ = fmt.Fprintf(stderr, "gotestreport: %v\n", err)
 				return 2
 			}
 			err = r.add(f, *budget)
 			_ = f.Close()
 			if err != nil {
-				fmt.Fprintf(stderr, "gotestreport: %s: %v\n", m, err)
+				_, _ = fmt.Fprintf(stderr, "gotestreport: %s: %v\n", m, err)
 				return 2
 			}
 			files++
 		}
 	}
 	if files == 0 {
-		fmt.Fprintf(stdout, "go test report: no go test ran on this row (%s holds no record)\n", strings.Join(fs.Args(), " "))
+		_, _ = fmt.Fprintf(stdout, "go test report: no go test ran on this row (%s holds no record)\n", strings.Join(fs.Args(), " "))
 		if *requireRecord {
 			// the step this report follows always runs go test: no record is
 			// a recorder that did not record, and nothing was read
-			fmt.Fprintln(stdout, "  NO RECORD       this lane's go test left no record, so no test and no skip was read")
+			_, _ = fmt.Fprintln(stdout, "  NO RECORD       this lane's go test left no record, so no test and no skip was read")
 			return 1
 		}
 		return 0
@@ -383,7 +383,7 @@ func run(args []string, stdout, stderr io.Writer, summary string) int {
 		f.text += sf.text
 		f.red = f.red || sf.red
 	}
-	fmt.Fprint(stdout, f.text)
+	_, _ = fmt.Fprint(stdout, f.text)
 	if summary != "" {
 		if out, err := os.OpenFile(summary, os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
 			_, _ = fmt.Fprintf(out, "```\n%s```\n", f.text)
