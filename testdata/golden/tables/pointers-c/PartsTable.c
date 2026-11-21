@@ -2599,10 +2599,25 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_scalar( graphdemo_table_json_
             in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH;
             return 1;
         }
-        if ( f->has_range )
+        /* A float32 field's range is held at float32, the bounds as every
+           runtime holds them (SPEC.md §4.6 "every runtime evaluates the
+           triple" at float32; SPEC-TABLES §3.3 "a decoded value never leaves
+           [min, max]"), so the text "0.1" that the JSON writer emits for 0.1f
+           under max = 0.1 reads back. A compressed float's -0 lands as +0
+           (§3.3, the special values). */
+        if ( f->has_range && single )
+        {
+            float nv = (float) fvalue;
+            if ( nv < (float) f->range_min ) { nv = (float) f->range_min; in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
+            else if ( nv > (float) f->range_max ) { nv = (float) f->range_max; in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
+            nv = nv + 0.0f; /* -0 + +0 is +0 */
+            fvalue = (double) nv;
+        }
+        else if ( f->has_range )
         {
             if ( fvalue < f->range_min ) { fvalue = f->range_min; in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
             else if ( fvalue > f->range_max ) { fvalue = f->range_max; in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
+            fvalue = fvalue + 0.0;
         }
         if ( single )
         {
@@ -2872,6 +2887,9 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_field( graphdemo_table_json_i
             in->bad = 1;
             return 0;
         }
+        /* A COUNT BELOW ITS DECLARED MIN IS REFUSED (docs/SPEC.md §5.1 row 3),
+           in the text form as on the wire */
+        if ( f->array_min > 0 && placed < f->array_min ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
         /* a fixed array's tail keeps the defaults the prefill left there,
            exactly as a short wire count does */
         graphdemo_table_json_set_count( base, f, placed );
@@ -3597,16 +3615,16 @@ static SCHEMA_UNUSED int schema_graphdemo_table_json_read_unbounded_text_(graphd
 }
 #endif
 static const graphdemo_table_field_info_t schema_graphdemo_stamp_fields_[] = {
-    { "tag", "tag", "string", 0x56d7ab194448a4f3ull, 12, 0, 0, 1, 0, 0, 8, (uint32_t) offsetof( graphdemo_stamp_t, tag ), (uint32_t) sizeof( ( (graphdemo_stamp_t *) 0 )->tag ), (uint32_t) offsetof( graphdemo_stamp_t, tag_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "seq", "seq", "int32", 0x823b8a195ce2133cull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_stamp_t, seq ), (uint32_t) sizeof( ( (graphdemo_stamp_t *) 0 )->seq ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1000.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "tag", "tag", "string", 0x56d7ab194448a4f3ull, 12, 0, 0, 1, 0, 0, 8, (uint32_t) offsetof( graphdemo_stamp_t, tag ), (uint32_t) sizeof( ( (graphdemo_stamp_t *) 0 )->tag ), (uint32_t) offsetof( graphdemo_stamp_t, tag_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "seq", "seq", "int32", 0x823b8a195ce2133cull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_stamp_t, seq ), (uint32_t) sizeof( ( (graphdemo_stamp_t *) 0 )->seq ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1000.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
 };
 
 const graphdemo_table_type_info_t schema_graphdemo_stamp_info_ = { "Stamp", (uint32_t) sizeof( graphdemo_stamp_t ), 2, schema_graphdemo_stamp_fields_, schema_graphdemo_stamp_reset_raw_, 0, GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
 static const graphdemo_table_field_info_t schema_graphdemo_colour_fields_[] = {
-    { "r", "r", "uint8", 0xaf63ef4c86020cd5ull, 6, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_colour_t, r ), (uint32_t) sizeof( ( (graphdemo_colour_t *) 0 )->r ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "g", "g", "uint8", 0xaf63da4c8601e926ull, 6, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_colour_t, g ), (uint32_t) sizeof( ( (graphdemo_colour_t *) 0 )->g ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "b", "b", "uint8", 0xaf63df4c8601f1a5ull, 6, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_colour_t, b ), (uint32_t) sizeof( ( (graphdemo_colour_t *) 0 )->b ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "r", "r", "uint8", 0xaf63ef4c86020cd5ull, 6, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_colour_t, r ), (uint32_t) sizeof( ( (graphdemo_colour_t *) 0 )->r ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "g", "g", "uint8", 0xaf63da4c8601e926ull, 6, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_colour_t, g ), (uint32_t) sizeof( ( (graphdemo_colour_t *) 0 )->g ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "b", "b", "uint8", 0xaf63df4c8601f1a5ull, 6, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_colour_t, b ), (uint32_t) sizeof( ( (graphdemo_colour_t *) 0 )->b ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
 };
 
 const graphdemo_table_type_info_t schema_graphdemo_colour_info_ = { "Colour", (uint32_t) sizeof( graphdemo_colour_t ), 3, schema_graphdemo_colour_fields_, schema_graphdemo_colour_reset_raw_, 0, GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
