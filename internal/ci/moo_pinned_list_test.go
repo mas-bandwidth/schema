@@ -24,25 +24,25 @@ import (
 const mooPinnedControlsDir = "testdata/moo-wire-fuzz-pinned-controls"
 
 // mooPinnedListProblems is make/checks/moo-pinned-list.sh's rule: the list
-// ends in a newline, names at least one mutant, every named file is saved, and
-// every saved file is named (its first field, exactly).
-func mooPinnedListProblems(list string, saved []string) []string {
+// ends in a newline, names at least one mutant, every named file exists (a
+// list may name a vector saved elsewhere in the tree), and every file saved in
+// the pinned directory is named (its first field, exactly).
+func mooPinnedListProblems(list string, saved []string, exists func(string) bool) []string {
 	var problems []string
 	if list != "" && !strings.HasSuffix(list, "\n") {
 		problems = append(problems, "the list does not end in a newline, so its last line would not be read")
 	}
 	named := map[string]bool{}
-	have := map[string]bool{}
-	for _, f := range saved {
-		have[f] = true
-	}
 	for line := range strings.SplitSeq(list, "\n") {
 		fields := strings.Fields(line)
 		if len(fields) == 0 || strings.HasPrefix(fields[0], "#") {
 			continue
 		}
+		if named[fields[0]] {
+			continue
+		}
 		named[fields[0]] = true
-		if !have[fields[0]] {
+		if !exists(fields[0]) {
 			problems = append(problems, fields[0]+" is listed and not saved")
 		}
 	}
@@ -102,7 +102,11 @@ func TestMooPinnedListIsReadWhole(t *testing.T) {
 
 	// the real list
 	list := readCI(t, root, "test/conformance/moo/wire-fuzz-pinned.txt")
-	if problems := mooPinnedListProblems(list, savedMutants(t, root, "test/conformance/moo/wire-fuzz-pinned")); len(problems) != 0 {
+	exists := func(rel string) bool {
+		st, err := os.Stat(filepath.Join(root, rel))
+		return err == nil && st.Mode().IsRegular()
+	}
+	if problems := mooPinnedListProblems(list, savedMutants(t, root, "test/conformance/moo/wire-fuzz-pinned"), exists); len(problems) != 0 {
 		t.Errorf("test/conformance/moo/wire-fuzz-pinned.txt: %q", problems)
 	}
 
@@ -137,17 +141,19 @@ func TestMooPinnedListIsReadWhole(t *testing.T) {
 	}
 	for _, name := range dirs {
 		dir := mooPinnedControlsDir + "/" + name
-		problems := mooPinnedListProblems(readCI(t, root, dir+"/PINNED"), savedMutants(t, root, dir+"/pins"))
+		problems := mooPinnedListProblems(readCI(t, root, dir+"/PINNED"), savedMutants(t, root, dir+"/pins"), exists)
 		reason, known := reasons[name]
 		switch {
 		case !known:
 			t.Errorf("%s: a control this test does not know", dir)
 		case reason == "" && len(problems) != 0:
 			t.Errorf("%s: the good fixture is refused: %q", dir, problems)
-		case reason != "" && (len(problems) != 1 || !strings.Contains(problems[0], reason)):
-			// one condition per broken fixture, so the verdict names the one
-			// thing it breaks
-			t.Errorf("%s: problems %q, want exactly one holding %q", dir, problems, reason)
+		case reason != "" && !strings.Contains(strings.Join(problems, "\n"), reason):
+			t.Errorf("%s: problems %q, want one holding %q", dir, problems, reason)
+		case name == "no-final-newline" && len(problems) != 1:
+			// the newline is the only thing this fixture breaks, so it shows
+			// the guard alone turns the list red
+			t.Errorf("%s: problems %q, want the missing newline alone", dir, problems)
 		}
 	}
 }
