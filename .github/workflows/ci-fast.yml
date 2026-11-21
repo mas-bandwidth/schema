@@ -409,6 +409,15 @@ jobs:
             if echo "$files" | grep -qE '^(internal/codegen/|testdata/golden/|examples/|examples128/|docs/USAGE\.md$)'; then
               case " $packages " in *" ./internal/goldens "*) ;; *) packages="$packages ./internal/goldens" ;; esac
             fi
+            # THE LANGUAGE LIST. ./internal/languages holds every page that
+            # states the supported languages to the generator registry and the
+            # reserved-word table, so a diff to either side re-checks it: a
+            # page that states the list, a target file, or the checker's table.
+            # Without this a docs-only diff selected nothing and a list could
+            # drift until the nightly run.
+            if echo "$files" | grep -qE '^(README\.md|docs/(SPEC|CONTRIBUTING|FAQ|USAGE)\.md|compiler/target_[a-z0-9]+\.go|internal/check/check\.go)$'; then
+              case " $packages " in *" ./internal/languages "*) ;; *) packages="$packages ./internal/languages" ;; esac
+            fi
             # THE FUZZ SEED CORPORA & FRONT-END INVARIANTS. ./internal/fuzz
             # replays every checked-in fuzz seed corpus (FuzzPipeline,
             # FuzzPipelineTwoFiles, FuzzFormatIdempotent, FuzzGeneratedCompiles,
