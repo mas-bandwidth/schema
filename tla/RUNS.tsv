@@ -52,3 +52,5 @@ MCFixedBatchStrideOff.cfg	FixedBatch	counterexample	ReadsValueBytes	248	204	4	12
 MCFixedBatchNoTailCheck.cfg	FixedBatch	counterexample	OneVerdict	242	242	4	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)	49285a778ba97d52f943e355e8cacec6a3e45d2fd942bef1a8c98c03850590a7
 MCWireAlign.cfg	WireAlign	exhaustive	-	917546	677886	6	0	21.0.12.1	2.19 (2024-08-08, rev 5a47802)	fd1bb319223d06259f725267404e48548c8d55ef4e58de0263427c9552fee684
 MCWireAlignVariableAsFixed.cfg	WireAlign	counterexample	AlignedWhereMarked	153801	144277	3	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)	8349d2e71f0bc9f03abea228d606b60ecbc0cf393e192877d787f80b881382bf
+MCCsReadReportIso.cfg	CsReadReportIso	exhaustive	-	337	68	7	0	21.0.12.1	2.19 (2024-08-08, rev 5a47802)	TODO
+MCCsReadReportIsoBroken.cfg	CsReadReportIso	counterexample	CursorBounded	36	36	4	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)	TODO

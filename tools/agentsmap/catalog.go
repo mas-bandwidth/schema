@@ -52,7 +52,7 @@ var catalog = []Entry{
 	page("test", "language test harnesses", "make test", "make test"),
 	page("testdata", "goldens, wire pins, conformance", "go test ./internal/goldens", "make update-goldens"),
 	e("third_party", "staged sibling libraries: serialize.py (docs/PORT-PYTHON.md)", "make python-serialize-test", "make python-serialize-test"),
-	e("tla", "bounded TLA models", "Step 4 TLC via tla/README.md", "Step 4 TLC via tla/README.md"),
+	e("tla", "bounded TLA models", "go test ./tools/tlcrun", "bash tla/run-tlc.sh"),
 	page("tools", "maintainer tools", "go test ./tools/...", "go test ./tools/..."),
 	e("working", "scratch; not normative", "none", "none"),
 
@@ -200,6 +200,7 @@ var catalog = []Entry{
 	e("tools/roadmap", "ROADMAP.md table honesty", "go test ./tools/roadmap", "go test ./tools/roadmap"),
 	e("tools/sabotage", "negative-control sabotages", "go test ./tools/negativecontrols", "go run ./tools/sabotage"),
 	e("tools/slowgatescan", "SCHEMA_SLOW recipe scan", "make slow-gate-scan", "make slow-gate-scan"),
+	e("tools/tlcrun", "TLC runner held to tla/RUNS.tsv", "go test ./tools/tlcrun", "bash tla/run-tlc.sh"),
 	e("tools/treelock", "generated-tree lock", "go test ./tools/treelock", "go test ./tools/treelock"),
 	e("tools/vuln", "govulncheck wrapper", "make vuln-selftest", "make vuln-selftest"),
 
