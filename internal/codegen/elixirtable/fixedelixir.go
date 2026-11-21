@@ -840,11 +840,13 @@ func (g *fixedGen) readPayload(out *rseg, f *ir.Field, v string, present node) {
 	case f.Array == ir.ArrayFixed:
 		g.readElements(out, f, v, rawf("%d", f.ArrayBound))
 	case f.Array == ir.ArrayCounted:
-		// THE COUNT IS HELD HERE, to this reader's own bound, counting one
+		// THE COUNT IS HELD HERE, to this reader's own [Min, Max], counting one
 		// `out_of_range` if it moved (§4), and ONLY THE LIVE ELEMENTS ARE WALKED.
+		// A count below Min is refused like one past Max (docs/SPEC.md §5.1
+		// row 3, §4.2): no writer sends it.
 		seg := "n_" + v + "::little-signed-32"
 		out.match = append(out.match, seg)
-		out.stmt("c", rawf("R.clamps(c, n_%s, 0, %d)", v, f.ArrayBound))
+		out.stmt("c", rawf("R.clamps(c, n_%s, %d, %d)", v, f.ArrayMin, f.ArrayBound))
 		g.readElements(out, f, v, rawf("min(max(n_%s, 0), %d)", v, f.ArrayBound))
 	case f.Type.Kind == ir.TString:
 		g.readText(out, f, v, present)
