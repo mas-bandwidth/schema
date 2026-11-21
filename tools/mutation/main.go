@@ -30,6 +30,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -42,28 +43,38 @@ const usage = `usage: go run ./tools/mutation <command> [flags]
 
   scopes                      every scope, its stages, and what it cannot run
   matrix                      the core scopes as one line of JSON, for a CI matrix
+  shard  -parts N             a CI matrix on stdin (a list of scopes, or
+                              {"include": rows}) as {"include": rows}, each
+                              row once per part with "shard" (K/N, for
+                              run -shard) and "part" (K-of-N, for a name)
   list   -scope S [-n N -seed K]
                               the mutants of a scope, or the sample a seed picks
-  run    -scope S -work DIR [-n N -seed K] [-deep] [-stages a,b] [-ids x,y]
-         [-retry FILE] [-out FILE] [-enforce]
+  run    -scope S -work DIR [-n N -seed K [-shard K/N]] [-deep] [-stages a,b]
+         [-ids x,y] [-retry FILE] [-out FILE] [-enforce]
                               apply each mutant to a scratch copy, made new
                               under DIR for this run and removed after it, and
                               run the stages. -out appends one JSON line per
-                              mutant. -enforce exits 1 on an unproven mutant,
-                              and on a survivor that is not on the reviewed
-                              list, equivalents/<scope>.json
+                              mutant. A mutant green through every stage run
+                              is a survivor only when every stage of its scope
+                              ran: without -deep, or with -stages, it is
+                              not-run. -enforce exits 1 on an unproven or
+                              not-run mutant, and on a survivor that is not on
+                              the reviewed list, equivalents/<scope>.json.
+                              -shard K/N takes every N-th mutant of the
+                              sample from the K-th, so N jobs share it
   smoke  -work DIR            the fixed smoke set, smoke.json: every one must
                               be killed. This is the fast-CI check that the
                               driver itself still works
   corpus -work DIR            the sweep's own corpus, testdata/: the real sweep
                               and shell over a Go module and a C program whose
                               mutants have recorded verdicts (killed, survived,
-                              build-broken, unproven, timeout, a stage refused),
+                              build-broken, unproven, not-run, timeout, a stage
+                              refused),
                               and a work directory of files the tool must not
                               remove. Every verdict must be the recorded one
   report [-survivors] FILE... the table of one or more -out files, each
                               mutant by its last result; -survivors also lists
-                              every survivor and unproven mutant
+                              every survivor, unproven and not-run mutant
 
 A scope is a core package (check, tablewire, tabletext, baseline, tablepack,
 tablecook, ir, cmd-schema) or a target (target-c ... target-squirrel).
@@ -118,10 +129,12 @@ func command(name string, args []string) error {
 	deep := fs.Bool("deep", false, "also run the stages that cost minutes each")
 	stageList := fs.String("stages", "", "run only these stages, comma separated")
 	ids := fs.String("ids", "", "run only these mutants, comma separated ids")
-	retry := fs.String("retry", "", "run only the mutants that survived in this earlier -out file")
+	retry := fs.String("retry", "", "run only the mutants this earlier -out file left survived, unproven or not-run")
 	out := fs.String("out", "", "append one JSON line per mutant to this file")
-	enforce := fs.Bool("enforce", false, "exit 1 on a survivor that is not on the reviewed list")
+	enforce := fs.Bool("enforce", false, "exit 1 on an unproven or not-run mutant, and on a survivor that is not on the reviewed list")
 	survivors := fs.Bool("survivors", false, "report: also list every survivor")
+	parts := fs.Int("parts", 0, "shard: how many parts each scope's sample is split into")
+	shard := fs.String("shard", "", "K/N: run the K-th of N equal parts of the seeded sample, so a scope's sweep can be split across jobs")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -143,6 +156,8 @@ func command(name string, args []string) error {
 		}
 		fmt.Println(string(out))
 		return nil
+	case "shard":
+		return shardMatrix(os.Stdin, os.Stdout, *parts)
 	case "scopes":
 		all, err := scopes(root)
 		if err != nil {
@@ -197,7 +212,7 @@ func command(name string, args []string) error {
 				return err
 			}
 			for _, r := range latest(earlier) {
-				if r.Scope == *scopeName && (r.Outcome == outcomeSurvived || r.Outcome == outcomeUnproven) {
+				if r.Scope == *scopeName && undecided(r.Outcome) {
 					only = append(only, r.ID)
 				}
 			}
@@ -206,7 +221,14 @@ func command(name string, args []string) error {
 				return nil
 			}
 		}
-		results, err := runScope(root, *work, *scopeName, *n, *seed, only, opt, *out)
+		part, err := parseShard(*shard)
+		if err != nil {
+			return err
+		}
+		if part.of > 1 && len(only) > 0 {
+			return fmt.Errorf("-shard splits the seeded sample, and -ids and -retry name their mutants")
+		}
+		results, err := runScope(root, *work, *scopeName, *n, *seed, only, part, opt, *out)
 		if err != nil {
 			return err
 		}
@@ -241,7 +263,7 @@ func command(name string, args []string) error {
 		printTable(results)
 		if *survivors {
 			for _, r := range results {
-				if r.Outcome == outcomeSurvived || r.Outcome == outcomeUnproven {
+				if undecided(r.Outcome) {
 					fmt.Printf("%s\t%s\t%s\t%s:%d\t%s\t%q -> %q\t| %s\n", r.Outcome, r.Scope, r.ID, r.File, r.Line, r.Op, clip(r.Old), clip(r.New), clip(r.Context))
 				}
 			}
@@ -250,6 +272,13 @@ func command(name string, args []string) error {
 	}
 	fmt.Fprint(os.Stderr, usage)
 	return fmt.Errorf("no command %q", name)
+}
+
+// undecided is an outcome no test settled: a survivor, a mutant no stage
+// tested, or one a stage that could still kill it never saw. -retry runs
+// them again, and report -survivors lists them.
+func undecided(outcome string) bool {
+	return outcome == outcomeSurvived || outcome == outcomeUnproven || outcome == outcomeNotRun
 }
 
 func findScope(root, name string) (*Scope, error) {
@@ -267,8 +296,90 @@ func findScope(root, name string) (*Scope, error) {
 	return nil, fmt.Errorf("no scope %q; the scopes are %s", name, strings.Join(names, " "))
 }
 
+// shardMatrix reads a CI matrix, a JSON list of scopes or a {"include": rows}
+// matrix, and writes it as {"include": rows} with each row once per part of
+// its scope's sample: "shard" is the K/N the run's -shard takes, and "part"
+// the same as K-of-N, for a name that may hold no slash.
+func shardMatrix(in io.Reader, out io.Writer, parts int) error {
+	if parts < 1 {
+		return fmt.Errorf("shard needs -parts N, N at least 1")
+	}
+	b, err := io.ReadAll(in)
+	if err != nil {
+		return err
+	}
+	var rows []map[string]any
+	var list []string
+	if json.Unmarshal(b, &list) == nil {
+		for _, s := range list {
+			rows = append(rows, map[string]any{"scope": s})
+		}
+	} else {
+		var m struct {
+			Include []map[string]any `json:"include"`
+		}
+		if err := json.Unmarshal(b, &m); err != nil || m.Include == nil {
+			return fmt.Errorf("shard: the input is neither a list of scopes nor a matrix of include rows: %q", clip(string(b)))
+		}
+		rows = m.Include
+	}
+	if len(rows) == 0 {
+		// the workflow skips a job whose matrix is empty
+		_, err := fmt.Fprintln(out, "[]")
+		return err
+	}
+	var sharded []map[string]any
+	for _, r := range rows {
+		for _, key := range []string{"shard", "part"} {
+			if _, taken := r[key]; taken {
+				return fmt.Errorf("shard: a row already has %q: %v", key, r)
+			}
+		}
+		for k := 1; k <= parts; k++ {
+			row := maps.Clone(r)
+			row["shard"], row["part"] = fmt.Sprintf("%d/%d", k, parts), fmt.Sprintf("%d-of-%d", k, parts)
+			sharded = append(sharded, row)
+		}
+	}
+	j, err := json.Marshal(map[string]any{"include": sharded})
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(out, string(j))
+	return err
+}
+
+// shardOf is the part of a seeded sample one run takes: the k-th of of.
+type shardOf struct{ k, of int }
+
+var whole = shardOf{1, 1}
+
+// parseShard reads -shard K/N; empty is the whole sample.
+func parseShard(s string) (shardOf, error) {
+	if s == "" {
+		return whole, nil
+	}
+	var p shardOf
+	if _, err := fmt.Sscanf(s, "%d/%d", &p.k, &p.of); err != nil || fmt.Sprintf("%d/%d", p.k, p.of) != s || p.of < 1 || p.k < 1 || p.k > p.of {
+		return p, fmt.Errorf("-shard %q: want K/N with 1 <= K <= N", s)
+	}
+	return p, nil
+}
+
+// take is the shard's part of the sample: every N-th mutant from the K-th,
+// so the N parts are disjoint and together the whole sample.
+func (p shardOf) take(muts []Mutant) []Mutant {
+	var out []Mutant
+	for i, m := range muts {
+		if i%p.of == p.k-1 {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
 // runScope makes the scratch copy, picks the mutants and sweeps them.
-func runScope(root, work, scopeName string, n int, seed uint64, only []string, opt sweepOptions, out string) ([]Result, error) {
+func runScope(root, work, scopeName string, n int, seed uint64, only []string, part shardOf, opt sweepOptions, out string) ([]Result, error) {
 	s, err := findScope(root, scopeName)
 	if err != nil {
 		return nil, err
@@ -303,8 +414,9 @@ func runScope(root, work, scopeName string, n int, seed uint64, only []string, o
 		if len(muts) < s.Min && total >= s.Min {
 			return nil, fmt.Errorf("scope %s: %d mutants asked for and the floor is %d", s.Name, len(muts), s.Min)
 		}
+		muts = part.take(muts)
 	}
-	fmt.Fprintf(os.Stderr, "scope %s: %d of %d mutants, seed %d, in %s\n", s.Name, len(muts), total, seed, tree)
+	fmt.Fprintf(os.Stderr, "scope %s: %d of %d mutants, seed %d, shard %d/%d, in %s\n", s.Name, len(muts), total, seed, part.k, part.of, tree)
 	return sweepToOutput(*s, tree, muts, opt, shell, os.Stderr, out)
 }
 
@@ -427,7 +539,7 @@ func runSmoke(root, work string) error {
 	}
 	killed := 0
 	for _, scope := range order {
-		results, err := runScope(root, work, scope, 0, 0, byScope[scope], sweepOptions{Only: []string{"fast"}, BaselineLimit: 10 * time.Minute}, "")
+		results, err := runScope(root, work, scope, 0, 0, byScope[scope], whole, sweepOptions{Only: []string{"fast"}, BaselineLimit: 10 * time.Minute}, "")
 		if err != nil {
 			return err
 		}
@@ -461,6 +573,13 @@ func enforceEquivalents(results []Result) error {
 				r.Scope, r.ID, r.File, r.Line, r.Op, clip(r.Old), clip(r.New), r.Stage, firstLine(r.Tail), r.Scope, r.ID)
 			continue
 		}
+		if r.Outcome == outcomeNotRun {
+			// a stage that could kill it never ran: it has no verdict to review
+			bad++
+			fmt.Fprintf(os.Stderr, "NOT RUN %s %s %s:%d %s %q -> %q: %s\nReproduce: go run ./tools/mutation run -scope %s -ids %s -deep -work build/mutation\n",
+				r.Scope, r.ID, r.File, r.Line, r.Op, clip(r.Old), clip(r.New), firstLine(r.Tail), r.Scope, r.ID)
+			continue
+		}
 		if r.Outcome != outcomeSurvived {
 			continue
 		}
@@ -472,7 +591,7 @@ func enforceEquivalents(results []Result) error {
 			r.Scope, r.ID, r.File, r.Line, r.Op, clip(r.Old), clip(r.New), r.Scope, r.Scope, r.ID)
 	}
 	if bad > 0 {
-		return fmt.Errorf("%d surviving or unproven mutants are not on the reviewed list", bad)
+		return fmt.Errorf("%d surviving, unproven or not-run mutants are not on the reviewed list", bad)
 	}
 	return nil
 }
@@ -563,8 +682,8 @@ func latest(results []Result) []Result {
 // them, the killed split by the stage that did it.
 func printTable(results []Result) {
 	type row struct {
-		total, killed, survived, unproven, broken, timeout int
-		byStage                                            map[string]int
+		total, killed, survived, unproven, notRun, broken, timeout int
+		byStage                                                    map[string]int
 	}
 	rows := map[string]*row{}
 	var names []string
@@ -586,11 +705,13 @@ func printTable(results []Result) {
 			w.broken++
 		case outcomeUnproven:
 			w.unproven++
+		case outcomeNotRun:
+			w.notRun++
 		default:
 			w.survived++
 		}
 	}
-	fmt.Printf("%-18s %7s %7s %8s %8s %7s %8s  %s\n", "scope", "mutants", "killed", "survived", "unproven", "broken", "timeout", "killed by stage")
+	fmt.Printf("%-18s %7s %7s %8s %8s %7s %7s %8s  %s\n", "scope", "mutants", "killed", "survived", "unproven", "not-run", "broken", "timeout", "killed by stage")
 	for _, name := range names {
 		w := rows[name]
 		var stages []string
@@ -598,7 +719,7 @@ func printTable(results []Result) {
 			stages = append(stages, fmt.Sprintf("%s=%d", st, c))
 		}
 		sort.Strings(stages)
-		fmt.Printf("%-18s %7d %7d %8d %8d %7d %8d  %s\n", name, w.total, w.killed, w.survived, w.unproven, w.broken, w.timeout, strings.Join(stages, " "))
+		fmt.Printf("%-18s %7d %7d %8d %8d %7d %7d %8d  %s\n", name, w.total, w.killed, w.survived, w.unproven, w.notRun, w.broken, w.timeout, strings.Join(stages, " "))
 	}
 }
 

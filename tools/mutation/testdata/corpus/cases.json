@@ -63,6 +63,26 @@
         {"id": "native-unbuildable", "file": "native/sum.c", "old": "2 + 3", "new": "2 + missing_value", "want": "build-broken", "case": "F-226: the C compiler refuses the mutant before the program runs; it was a kill"},
         {"id": "native-no-proof", "file": "native/sum.c", "old": "puts(\"CORPUS_SUM_PASSED\");", "new": ";", "want": "unproven", "case": "F-051: the stage exits green without its proof under the mutant; it was a survivor"}
       ]
+    },
+    {
+      "name": "deep-asked",
+      "sh": "mkdir -p build && ${CC:-cc} -std=c11 -o build/sum native/sum.c && ./build/sum",
+      "proof": "CORPUS_SUM_PASSED",
+      "deep": {"sh": "go test -count=1 -v -timeout=1s ./sum", "proof": "(?m)^ok\\s+\\S+", "counted": true},
+      "run_deep": true,
+      "mutants": [
+        {"id": "deep-kill", "file": "sum/sum.go", "old": "2 + 3", "new": "2 + 2", "want": "killed", "case": "control: the C stage passes and tests, and the deep Go stage, run, kills the mutant"},
+        {"id": "deep-equivalent", "file": "sum/sum.go", "old": "2 + 3", "new": "3 + 2", "want": "survived", "case": "control: every stage of the scope ran, tested and passed"}
+      ]
+    },
+    {
+      "name": "deep-not-asked",
+      "sh": "mkdir -p build && ${CC:-cc} -std=c11 -o build/sum native/sum.c && ./build/sum",
+      "proof": "CORPUS_SUM_PASSED",
+      "deep": {"sh": "go test -count=1 -v -timeout=1s ./sum", "proof": "(?m)^ok\\s+\\S+", "counted": true},
+      "mutants": [
+        {"id": "deep-not-run", "file": "sum/sum.go", "old": "2 + 3", "new": "2 + 2", "want": "not-run", "case": "the only stage that kills it is deep and the run did not ask for it; it was a survivor"}
+      ]
     }
   ]
 }

@@ -1,0 +1,2 @@
+go build -tags schema_leg_goose -o build/schema-goose-fuzz ./cmd/schema
+goose hostile corpus: 17 agree with the engine, 0 carried by name, 175 absent (carriers or schemas the port does not read yet)

@@ -25,8 +25,18 @@ type corpusCase struct {
 	Counted bool   `json:"counted"`
 	// Refused, when set, is what the sweep must say when it refuses to start
 	// on this stage; no mutant of it gets a verdict.
-	Refused string         `json:"refused"`
+	Refused string `json:"refused"`
+	// Deep, when set, is a second stage of the scope that costs minutes in a
+	// real scope, and RunDeep is whether this case's run asks for it.
+	Deep    *corpusDeep    `json:"deep"`
+	RunDeep bool           `json:"run_deep"`
 	Mutants []corpusMutant `json:"mutants"`
+}
+
+type corpusDeep struct {
+	Sh      string `json:"sh"`
+	Proof   string `json:"proof"`
+	Counted bool   `json:"counted"`
 }
 
 type corpusMutant struct {
@@ -114,8 +124,11 @@ func corpusStage(root, dir string, goDirs []string, c corpusCase) (checked, wron
 		muts = append(muts, m)
 	}
 	scope := Scope{Name: "corpus", Go: goDirs, Stages: []Stage{{Name: c.Name, Sh: c.Sh, Proof: c.Proof, Counted: c.Counted}}}
+	if c.Deep != nil {
+		scope.Stages = append(scope.Stages, Stage{Name: c.Name + "-deep", Sh: c.Deep.Sh, Proof: c.Deep.Proof, Counted: c.Deep.Counted, Deep: true})
+	}
 	got := map[string]Result{}
-	swept := sweep(scope, tree, muts, sweepOptions{BaselineLimit: time.Minute}, shell, io.Discard, func(r Result) { got[r.ID] = r })
+	swept := sweep(scope, tree, muts, sweepOptions{Deep: c.RunDeep, BaselineLimit: time.Minute}, shell, io.Discard, func(r Result) { got[r.ID] = r })
 	if c.Refused != "" {
 		if swept == nil || !strings.Contains(swept.Error(), c.Refused) || len(got) != 0 {
 			fmt.Printf("  WRONG %-14s the sweep must refuse this stage saying %q, and it said %v with verdicts %v\n", c.Name, c.Refused, swept, outcomes(got))

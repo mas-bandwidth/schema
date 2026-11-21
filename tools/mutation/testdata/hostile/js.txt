@@ -1,0 +1,3 @@
+node test/js-hostile/runner.mjs run "internal/ci/hostilecorpus/corpus" build/js-hostile/generated \
+	"../serialize.js" "test/js-hostile/known-findings.tsv"
+192 cases, 216 rows: 216 pass, 0 carried as FIX-CARD, 0 unexplained, 0 stale, 0 skipped, 0 unbound

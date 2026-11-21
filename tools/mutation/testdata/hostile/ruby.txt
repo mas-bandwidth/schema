@@ -1,0 +1,8 @@
+ruby-toolchain-check: RUBY is Ruby 4.0.9, RUBY_FLOOR is Ruby 3.4.12, RUBOCOP is RuboCop 1.92.2, STEEP is Steep 2.1.0, RBS is RBS 4.2.0; 105 leg files run no interpreter from PATH
+SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_ruby -run '^TestSchemaRubyRunsHostileCorpus$' ./internal/ci/
+=== RUN   TestSchemaRubyRunsHostileCorpus
+=== PAUSE TestSchemaRubyRunsHostileCorpus
+=== CONT  TestSchemaRubyRunsHostileCorpus
+--- PASS: TestSchemaRubyRunsHostileCorpus (6.89s)
+PASS
+ok  	github.com/mas-bandwidth/schema/v2/internal/ci	6.917s

@@ -216,10 +216,8 @@ func TestEveryStageProvesItTested(t *testing.T) {
 	}{
 		{"conformance", conformanceProof("go"), "TABLES CONFORMANCE — surface x language\n\nsurface       go                     \n-------------------------------------\nwire          pass 139/139           \nwrite-refusal-message pass 27/27             \n\ntables conformance: every registered surface passes\n",
 			"TABLES CONFORMANCE — surface x language\n\nsurface       go                     \n-------------------------------------\nwire          absent                 \n"},
-		{"hostile, summary", hostileStage("c", "schema-c-runs-hostile-corpus").Proof, "c: 412 cases: 400 pass, 12 carried as FIX-CARD, 0 skipped, 0 unexplained, 0 stale\n", "make: Nothing to be done for 'schema-c-runs-hostile-corpus'.\nc: 0 cases: 0 pass, 0 carried as FIX-CARD, 0 skipped, 0 unexplained, 0 stale\n"},
-		{"hostile, js summary", hostileStage("js", "schema-js-runs-hostile-corpus").Proof, "412 cases, 980 rows: 960 pass, 20 carried as FIX-CARD, 0 unexplained\n", "0 cases, 0 rows: 0 pass, 0 carried as FIX-CARD, 0 unexplained\n"},
-		{"hostile, PASS lines", hostileStage("java", "schema-java-runs-hostile-corpus").Proof, "PASS empty-root\nPASS long-text\n", "java -cp build/java-hostile/classes Runner corpus findings packet\n"},
-		{"hostile, slow gate", hostileStage("lua", "schema-lua-runs-hostile-corpus").Proof, "SLOW GATE schema-lua-runs-hostile-corpus: 3 named gate(s) ran and PASS under SCHEMA_SLOW=1 (build/slowgate/schema-lua-runs-hostile-corpus.log)\n", "lua hostile corpus: every verdict, named reason and decoded-value digest (Lua 5.4.8)\n"},
+		// each target's hostile proof is held to its runner's real output in
+		// TestEveryHostileProofMeetsItsRunnersOutput
 	} {
 		p := regexp.MustCompile(c.proof)
 		if !p.MatchString(c.ran) {

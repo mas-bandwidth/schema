@@ -1,0 +1,7 @@
+cpp-hostile: compiling with 64 jobs through ccache
+CCACHE_NOHASHDIR=1 CCACHE_BASEDIR=/work/schema /usr/bin/ccache cc -std=c99 -Wall -Wextra -Werror -O1 -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g1 -ffile-prefix-map=/work/schema=. -Itest/c-hostile -c test/c-hostile/main.c -o build/cpp-hostile/obj/main.o
+g++ -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g1 -pthread build/cpp-hostile/obj/*.o -o build/cpp-hostile/case
+go build -o build/cpp-hostile/hostilecorpusexec ./tools/hostilecorpusexec
+build/cpp-hostile/hostilecorpusexec run -port cpp -exec build/cpp-hostile/case \
+	-corpus "internal/ci/hostilecorpus/corpus" -findings "test/cpp-hostile/known-findings.tsv" -skips "test/cpp-hostile/known-skips.tsv"
+cpp: 192 cases: 192 pass, 0 carried as FIX-CARD, 0 skipped, 0 unexplained, 0 stale

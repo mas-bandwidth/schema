@@ -160,7 +160,11 @@ func scopes(root string) ([]Scope, error) {
 			return nil, err
 		}
 		if has {
-			s.Stages = append(s.Stages, hostileStage(t.lang, hostile))
+			st, err := hostileStage(t.lang, hostile)
+			if err != nil {
+				return nil, err
+			}
+			s.Stages = append(s.Stages, st)
 		} else {
 			s.Notes = append(s.Notes, "no make target "+hostile+": this target has no hostile runner to run")
 		}
@@ -180,23 +184,47 @@ func conformanceProof(lang string) string {
 	return `(?m)^TABLES CONFORMANCE — surface x language$[\s\S]*^surface +` + regexp.QuoteMeta(lang) + ` *$[\s\S]*^\S+ +pass [1-9]`
 }
 
+// hostileProofs is the line each target's hostile runner prints when it ran
+// cases and passed some, read off the runner's own output:
+// testdata/hostile/<lang>.txt is the whole of it, and a test holds each proof
+// to it. The runners print their summaries in their own words, so there is no
+// default: a target with a hostile make target and no line here is refused.
+var hostileProofs = map[string]string{
+	"c":        `(?m)^c: [1-9]\d* cases: [1-9]\d* pass,`,
+	"cpp":      `(?m)^cpp: [1-9]\d* cases: [1-9]\d* pass,`,
+	"cs":       `(?m)^[1-9]\d* cases: [1-9]\d* pass,`,
+	"unity":    `(?m)^[1-9]\d* cases: [1-9]\d* pass,`,
+	"dart":     `(?m)^[1-9]\d* cases: [1-9]\d* pass,`,
+	"elixir":   `(?m)^[1-9]\d* cases: [1-9]\d* pass,`,
+	"java":     `(?m)^[1-9]\d* cases: [1-9]\d* pass,`,
+	"go":       `(?m)^generated go: [1-9]\d* cases: [1-9]\d* pass,`,
+	"rust":     `(?m)^rust \((?:release|debug)\): [1-9]\d* cases: [1-9]\d* pass,`,
+	"js":       `(?m)^[1-9]\d* cases, [1-9]\d* rows: [1-9]\d* pass,`,
+	"lobster":  `(?m)^lobster hostile corpus: [1-9]\d* pass, .* of [1-9]\d* cases$`,
+	"goose":    `(?m)^goose hostile corpus: [1-9]\d* agree with the engine,`,
+	"lua":      `(?m)^SLOW GATE schema-lua-runs-hostile-corpus: [1-9]\d* named gate\(s\) ran and PASS`,
+	"luau":     `(?m)^SLOW GATE schema-luau-runs-hostile-corpus: [1-9]\d* named gate\(s\) ran and PASS`,
+	"squirrel": `(?m)^SLOW GATE schema-squirrel-runs-hostile-corpus: [1-9]\d* named gate\(s\) ran and PASS`,
+}
+
+// hostileGoTests are the targets whose hostile make target is a bare go test,
+// which prints only `ok <package>` without -v: they run verbose and counted.
+var hostileGoTests = map[string]bool{"python": true, "ruby": true}
+
 // hostileStage runs a target's hostile corpus, with what its runner prints
-// only when it ran cases and passed some. The runners print three ways:
-// most a summary, `N cases: P pass`; the Java and Rust runners a `PASS
-// <case>` line per case; the Lua, Luau and Squirrel targets go through
-// test/slowgate/proof, which names the gates that ran. Ruby's target is a
-// bare go test, so it runs verbose and is counted.
-func hostileStage(lang, target string) Stage {
-	st := Stage{Name: "hostile", Sh: "make " + target + " ${MUTATION_MAKE_ARGS:-}", Proof: `(?m)\b[1-9]\d* cases[:,][^\n]*\b[1-9]\d* pass\b`}
-	switch lang {
-	case "java", "rust":
-		st.Proof = `(?m)^PASS \S+`
-	case "lua", "luau", "squirrel":
-		st.Proof = `(?m)^SLOW GATE \S+: [1-9]\d* named gate\(s\) ran and PASS`
-	case "ruby":
+// only when it ran cases and passed some.
+func hostileStage(lang, target string) (Stage, error) {
+	st := Stage{Name: "hostile", Sh: "make " + target + " ${MUTATION_MAKE_ARGS:-}"}
+	if hostileGoTests[lang] {
 		st.Sh, st.Proof, st.Counted = "GOFLAGS=-v "+st.Sh, goTestProof, true
+		return st, nil
 	}
-	return st
+	proof, ok := hostileProofs[lang]
+	if !ok {
+		return st, fmt.Errorf("target %s has a make target %s and the sweep does not know what its runner prints when it ran: add its summary line to hostileProofs and its output to tools/mutation/testdata/hostile/%s.txt", lang, target, lang)
+	}
+	st.Proof = proof
+	return st, nil
 }
 
 type registry struct {

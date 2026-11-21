@@ -13,6 +13,24 @@ name: Mutation nightly
 # mutation, ran no test, or if a stage is red or shows no proof of testing on
 # the unmutated tree, so this job cannot go green by doing nothing.
 #
+# EVERY STAGE RUNS HERE, THE DEEP ONES TOO (-deep): a scope's SCHEMA_SLOW
+# tests, and for a core package the product's own test suite. A mutant stops
+# at its first red stage, so a deep stage runs once per mutant every cheaper
+# stage left green, not once per mutant. Without -deep a mutant only a slow
+# test kills gets no verdict: the driver reports it not-run, never survived,
+# and -enforce fails on it. tools/mutation TestTheNightlyRunsEveryStage holds
+# the flag on both runs below.
+#
+# THE SUMS THAT SPLIT EACH SCOPE IN MUTATION_SHARDS JOBS, measured on vision
+# under load (2026-11-21, MUTATION_JOBS=2): a core package's repo stage 954 s,
+# its slow stage up to 343 s (cmd-schema); a target's slow stage up to 1107 s
+# (luau), most a minute or a few. About two in five mutants pass every cheap
+# stage. Whole, a core scope's 60 mutants are ~24 deep runs of ~22 minutes,
+# ~520 minutes: past a job's 360. In four parts a job runs both baselines
+# (~46 minutes with the deep stages), ~15 mutants and ~6 deep runs: ~190
+# minutes, and ~280 if ten of its fifteen reach the deep stages. Every part
+# pays the baselines, so the parts are as few as fit.
+#
 # The fast lane's share is ci-fast.yml's `mutation-smoke`: five mutants known
 # to be killed in seconds, which keeps the driver from rotting between nights.
 #
@@ -45,6 +63,9 @@ env:
   MUTATION_SEED: '1121'
   MUTATION_CORE_N: '60'
   MUTATION_TARGET_N: '25'
+  # each scope's sample split across this many jobs, so the deep stages fit
+  # one job's 360 minutes (the header's sums)
+  MUTATION_SHARDS: '4'
   # a shared runner: two jobs wide inside each stage
   MUTATION_JOBS: '2'
 
@@ -71,8 +92,8 @@ jobs:
         name: the scopes, as two matrices
         run: |
           set -euo pipefail
-          core=$(go run ./tools/mutation matrix)
-          targets=$(go run ./test/conformance/harness matrix)
+          core=$(go run ./tools/mutation matrix | go run ./tools/mutation shard -parts "$MUTATION_SHARDS")
+          targets=$(go run ./test/conformance/harness matrix | go run ./tools/mutation shard -parts "$MUTATION_SHARDS")
           echo "$core"
           echo "$targets"
           echo "core=$core" >> "$GITHUB_OUTPUT"
@@ -80,15 +101,14 @@ jobs:
 
   core:
     needs: plan
-    name: mutation (${{ matrix.scope }})
+    name: mutation (${{ matrix.scope }} ${{ matrix.shard }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
     strategy:
       fail-fast: false
-      matrix:
-        scope: ${{ fromJSON(needs.plan.outputs.core) }}
+      matrix: ${{ fromJSON(needs.plan.outputs.core) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
@@ -102,19 +122,19 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build/mutation-results
-          go run ./tools/mutation run -scope "${{ matrix.scope }}" -n "$MUTATION_CORE_N" -seed "$MUTATION_SEED" \
-            -work "$RUNNER_TEMP/mutation" -out "build/mutation-results/${{ matrix.scope }}.jsonl" -enforce
+          go run ./tools/mutation run -scope "${{ matrix.scope }}" -n "$MUTATION_CORE_N" -seed "$MUTATION_SEED" -shard "${{ matrix.shard }}" -deep \
+            -work "$RUNNER_TEMP/mutation" -out "build/mutation-results/${{ matrix.scope }}-${{ matrix.part }}.jsonl" -enforce
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
-          name: mutation-${{ matrix.scope }}
+          name: mutation-${{ matrix.scope }}-${{ matrix.part }}
           path: build/mutation-results/
           if-no-files-found: error
 
   targets:
     needs: plan
     if: needs.plan.outputs.targets != '[]'
-    name: mutation (target-${{ matrix.lang }})
+    name: mutation (target-${{ matrix.lang }} ${{ matrix.shard }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
@@ -210,11 +230,11 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build/mutation-results
-          go run ./tools/mutation run -scope "target-${{ matrix.lang }}" -n "$MUTATION_TARGET_N" -seed "$MUTATION_SEED" \
-            -work "$RUNNER_TEMP/mutation" -out "build/mutation-results/target-${{ matrix.lang }}.jsonl" -enforce
+          go run ./tools/mutation run -scope "target-${{ matrix.lang }}" -n "$MUTATION_TARGET_N" -seed "$MUTATION_SEED" -shard "${{ matrix.shard }}" -deep \
+            -work "$RUNNER_TEMP/mutation" -out "build/mutation-results/target-${{ matrix.lang }}-${{ matrix.part }}.jsonl" -enforce
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
-          name: mutation-target-${{ matrix.lang }}
+          name: mutation-target-${{ matrix.lang }}-${{ matrix.part }}
           path: build/mutation-results/
           if-no-files-found: error

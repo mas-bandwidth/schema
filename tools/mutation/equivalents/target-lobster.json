@@ -1,1 +1,29 @@
-[]
+[
+  {
+    "scope": "target-lobster",
+    "id": "7e8b5fb655ab",
+    "file": "internal/codegen/lobstertable/fixedevolve.go",
+    "op": "drop-operand",
+    "old": "f.HasDefault && f.DefVariant != \"\"",
+    "new": "f.DefVariant != \"\"",
+    "reason": "the checker sets DefVariant only together with HasDefault = true (internal/check/check.go:2102-2103), and the only HasDefault = false copies fixedWriteResetPayload makes are array elements, which the checker refuses a default (\"an array takes no specified default\"), so DefVariant != \"\" implies HasDefault (#4550)"
+  },
+  {
+    "scope": "target-lobster",
+    "id": "79f9b21dbf49",
+    "file": "internal/codegen/lobstertable/collections.go",
+    "op": "nil-error",
+    "old": "err",
+    "new": "nil",
+    "reason": "visitField's only error is collections.go:32, inside if f.IsMap(), and IsMap is f.MapEntry != nil (ir/tablemap.go:45), so f.MapEntry == nil there never holds and every error visitField returns is nil (#4550)"
+  },
+  {
+    "scope": "target-lobster",
+    "id": "97a350b3a32b",
+    "file": "internal/codegen/lobstertable/runtime/message.lobster",
+    "op": "text-accept",
+    "old": "false",
+    "new": "true",
+    "reason": "mw_rides' one caller (message.lobster:1480, mw_body) returns false on not ok before it reads rides, so the first value of a not-ok return (message.lobster:1262) is never read (#4550)"
+  }
+]

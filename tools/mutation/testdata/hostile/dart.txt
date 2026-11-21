@@ -1,0 +1,8 @@
+warning: table WideBlob: a fixed table's record body is 280012 bytes, past the 65536-byte fixed-form ceiling (docs/SPEC-TABLES.md §3.4) — THE FIXED FORM IS NOT EMITTED FOR IT, because no conforming reader decodes a record that size; it has NO FILE FORM: its file save refuses and its read refuses form 1; the `fixed` keyword still buys it the CLASS (a by-value storage, a cook, a block form)
+warning: table ToolMessage: a fixed table's record body is 4594 bytes, past the 4096-byte advisory bound (docs/SPEC-TABLES.md §3.4) — every read and write copies all of it and zero-fills the slack, and fixed tables are for small things; the fixed form stops being emitted at 65536
+sh make/hostile-packet-units.sh dart build/dart-hostile/packet internal/ci/hostilecorpus/corpus/manifest.tsv
+dart run test/dart-hostile/dispatch_gen.dart "internal/ci/hostilecorpus/corpus" build/dart-hostile
+dart run test/dart-hostile/reasons_test.dart
+wire refusal vocabulary controls pass
+dart run test/dart-hostile/runner.dart "internal/ci/hostilecorpus/corpus" "test/dart-hostile/known-findings.tsv"
+192 cases: 192 pass, 0 carried as FIX-CARD, 0 unexplained, 0 stale

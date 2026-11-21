@@ -1,0 +1,5 @@
+lua hostile corpus: every verdict, named reason and decoded-value digest (Lua 5.4.8)
+GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 SCHEMA_REQUIRE_CORPUS=1 nice -n 19 sh test/slowgate/proof schema-lua-runs-hostile-corpus \
+	'TestSchemaLuaRunsHostileCorpus TestSchemaLuaHostileCorpusPlantedReader TestSchemaLuaHostileCorpusLane' \
+	./internal/ci -run '^(TestSchemaLuaRunsHostileCorpus|TestSchemaLuaHostileCorpusPlantedReader|TestSchemaLuaHostileCorpusLane)$' -count=1 -timeout 600s
+SLOW GATE schema-lua-runs-hostile-corpus: 3 named gate(s) ran and PASS under SCHEMA_SLOW=1 (build/slowgate/schema-lua-runs-hostile-corpus.log)

@@ -1,0 +1,7 @@
+squirrel 3.2 https://github.com/albertodemichelis/squirrel/archive/refs/tags/v3.2.tar.gz
+sha256 02805414cfadd5bbb921891d3599b83375a40650abd6404a8ab407dc5e86a996
+sq /work/schema/dist/squirrel-3.2/bin/sq
+sh test/slowgate/proof schema-squirrel-runs-hostile-corpus \
+	'TestSquirrelRunsHostileCorpus TestSquirrelRunsHostileCorpusPlant TestSquirrelRunsHostileCorpusWorkflowIsFleetOnly' \
+	./internal/ci -run '^TestSquirrelRunsHostileCorpus' -count=1 -timeout 600s
+SLOW GATE schema-squirrel-runs-hostile-corpus: 3 named gate(s) ran and PASS under SCHEMA_SLOW=1 (build/slowgate/schema-squirrel-runs-hostile-corpus.log)

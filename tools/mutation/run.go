@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// The five things that can happen to a mutant.
+// The six things that can happen to a mutant.
 const (
 	outcomeKilled   = "killed"       // a test ran and went red: the tests noticed
 	outcomeSurvived = "survived"     // every stage ran its tests and stayed green: nothing noticed
@@ -24,6 +24,11 @@ const (
 	// under the mutant, or the stage's output lost its proof that it tested.
 	// It is no survivor and no kill: the coverage was not there to ask.
 	outcomeUnproven = "unproven"
+	// outcomeNotRun is a mutant every stage it was run through passed and
+	// tested, while a stage of its scope that could still have killed it was
+	// not run at this depth: a deep stage of a run without -deep, or a stage
+	// -stages left out. It is no survivor: nothing was asked that could say so.
+	outcomeNotRun = "not-run"
 )
 
 // Result is one mutant's outcome.
@@ -150,6 +155,7 @@ func sweep(scope Scope, tree string, muts []Mutant, opt sweepOptions, run Exec, 
 	if err != nil {
 		return err
 	}
+	notRun := scope.notRun(stages)
 	if len(muts) == 0 {
 		return fmt.Errorf("scope %s: no mutant to apply: a sweep that mutates nothing proves nothing", scope.Name)
 	}
@@ -229,8 +235,12 @@ func sweep(scope Scope, tree string, muts []Mutant, opt sweepOptions, run Exec, 
 					}
 				}
 			}
-			if res.Outcome == outcomeSurvived && unproven != nil {
+			switch {
+			case res.Outcome == outcomeSurvived && unproven != nil:
 				res.Outcome, res.Stage, res.Tail = outcomeUnproven, unproven.Stage, unproven.Tail
+			case res.Outcome == outcomeSurvived && len(notRun) > 0:
+				// a survivor is a mutant every stage of its scope was asked about
+				res.Outcome, res.Tail = outcomeNotRun, fmt.Sprintf("not run at this depth: every stage it was run through passed and tested it, and %s, which could still kill it, did not run; run it with -deep and without -stages for a verdict", strings.Join(notRun, ", "))
 			}
 		}
 		res.Seconds = seconds
@@ -335,6 +345,22 @@ func (s *Scope) stagesFor(opt sweepOptions) ([]Stage, error) {
 		return nil, errors.New("scope " + s.Name + " has no stage to run")
 	}
 	return out, nil
+}
+
+// notRun names the scope's stages a run of these stages leaves out, in the
+// scope's order.
+func (s *Scope) notRun(stages []Stage) []string {
+	ran := map[string]bool{}
+	for _, st := range stages {
+		ran[st.Name] = true
+	}
+	var out []string
+	for _, st := range s.Stages {
+		if !ran[st.Name] {
+			out = append(out, st.Name)
+		}
+	}
+	return out
 }
 
 func (s *Scope) goPackages() []string {

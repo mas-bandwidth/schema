@@ -1,0 +1,4 @@
+sh test/slowgate/proof schema-luau-runs-hostile-corpus \
+	'TestLuauRunsHostileCorpus TestLuauVocabularyDefaultEntryBound' \
+	./internal/ci -run '^(TestLuauRunsHostileCorpus|TestLuauVocabularyDefaultEntryBound)$' -count=1 -timeout 600s
+SLOW GATE schema-luau-runs-hostile-corpus: 2 named gate(s) ran and PASS under SCHEMA_SLOW=1 (build/slowgate/schema-luau-runs-hostile-corpus.log)

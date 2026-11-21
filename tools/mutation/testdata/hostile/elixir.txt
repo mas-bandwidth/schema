@@ -1,0 +1,17 @@
+warning: table WideBlob: a fixed table's record body is 280012 bytes, past the 65536-byte fixed-form ceiling (docs/SPEC-TABLES.md §3.4) — THE FIXED FORM IS NOT EMITTED FOR IT, because no conforming reader decodes a record that size; it has NO FILE FORM: its file save refuses and its read refuses form 1; the `fixed` keyword still buys it the CLASS (a by-value storage, a cook, a block form)
+warning: table ToolMessage: a fixed table's record body is 4594 bytes, past the 4096-byte advisory bound (docs/SPEC-TABLES.md §3.4) — every read and write copies all of it and zero-fills the slack, and fixed tables are for small things; the fixed form stops being emitted at 65536
+PATH="/work/schema/dist/otp-29.0.5/bin:/work/schema/dist/elixir-1.20.4/bin:$PATH" elixirc -o build/elixir-hostile/ebin build/elixir-hostile/generated/*/*.ex
+Compiling build/elixir-hostile/generated/blobdemo/Table.ex (it's taking more than 10s)
+Compiling build/elixir-hostile/generated/listdemo/Table.ex (it's taking more than 10s)
+Compiling build/elixir-hostile/generated/graphdemo/Table.ex (it's taking more than 10s)
+Compiling build/elixir-hostile/generated/featurewitnesses/Table.ex (it's taking more than 10s)
+Compiling build/elixir-hostile/generated/mapdemo/Table.ex (it's taking more than 10s)
+Compiling build/elixir-hostile/generated/messagedemo/Table.ex (it's taking more than 10s)
+Compiling build/elixir-hostile/generated/scalardemo/Table.ex (it's taking more than 10s)
+Compiling build/elixir-hostile/generated/streamdemo/Table.ex (it's taking more than 10s)
+Compiling build/elixir-hostile/generated/tabledemo/Table.ex (it's taking more than 10s)
+sh make/hostile-packet-units.sh elixir build/elixir-hostile/packet internal/ci/hostilecorpus/corpus/manifest.tsv
+SCHEMA_ELIXIR_HOSTILE_FINDINGS=test/elixir-hostile/known-findings.tsv \
+	elixir test/elixir-hostile/runner.exs "internal/ci/hostilecorpus/corpus" \
+	"/work/schema/build/elixir-hostile/ebin" "/work/schema/build/elixir-hostile/packet"
+192 cases: 192 pass, 0 carried as FIX-CARD, 0 unexplained, 0 stale

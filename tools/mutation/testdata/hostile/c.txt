@@ -1,0 +1,7 @@
+go build -ldflags "-X github.com/mas-bandwidth/schema/v2/internal/version.version=v3.0.5-15-g505b797" -o bin/schema ./cmd/schema
+cc -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g build/c-hostile/obj/*.o -o build/c-hostile/case -lpthread -lm
+go build -o build/c-hostile/hostilecorpusexec ./tools/hostilecorpusexec
+build/c-hostile/hostilecorpusexec run -port c -exec build/c-hostile/case \
+	-jobs 2 \
+	-corpus "internal/ci/hostilecorpus/corpus" -findings "test/c-hostile/known-findings.tsv" -skips "test/c-hostile/known-skips.tsv"
+c: 192 cases: 192 pass, 0 carried as FIX-CARD, 0 skipped, 0 unexplained, 0 stale
