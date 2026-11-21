@@ -1002,6 +1002,10 @@ defmodule Example.Degenerate do
   def write_trio!(value) do
     %{a: value_a, b: value_b, c: value_c} = value
 
+    if not is_integer(value_a) do
+      raise ArgumentError, "value.a is not an integer"
+    end
+
     if value_a < 0 do
       raise ArgumentError, "value.a is below the wire minimum"
     end
@@ -1013,6 +1017,10 @@ defmodule Example.Degenerate do
     v = value_a &&& 0xFFFFF
     scratch = v
 
+    if not is_integer(value_b) do
+      raise ArgumentError, "value.b is not an integer"
+    end
+
     if value_b < 0 do
       raise ArgumentError, "value.b is below the wire minimum"
     end
@@ -1023,6 +1031,10 @@ defmodule Example.Degenerate do
 
     v = value_b &&& 0xFFFFF
     scratch = scratch ||| v <<< 20
+
+    if not is_integer(value_c) do
+      raise ArgumentError, "value.c is not an integer"
+    end
 
     if value_c < 0 do
       raise ArgumentError, "value.c is below the wire minimum"
@@ -1131,6 +1143,10 @@ defmodule Example.Degenerate do
   def write_trio_sole!(value) do
     %{a: value_inner_a, b: value_inner_b, c: value_inner_c} = value.inner
 
+    if not is_integer(value_inner_a) do
+      raise ArgumentError, "value.inner.a is not an integer"
+    end
+
     if value_inner_a < 0 do
       raise ArgumentError, "value.inner.a is below the wire minimum"
     end
@@ -1142,6 +1158,10 @@ defmodule Example.Degenerate do
     v = value_inner_a &&& 0xFFFFF
     scratch = v
 
+    if not is_integer(value_inner_b) do
+      raise ArgumentError, "value.inner.b is not an integer"
+    end
+
     if value_inner_b < 0 do
       raise ArgumentError, "value.inner.b is below the wire minimum"
     end
@@ -1152,6 +1172,10 @@ defmodule Example.Degenerate do
 
     v = value_inner_b &&& 0xFFFFF
     scratch = scratch ||| v <<< 20
+
+    if not is_integer(value_inner_c) do
+      raise ArgumentError, "value.inner.c is not an integer"
+    end
 
     if value_inner_c < 0 do
       raise ArgumentError, "value.inner.c is below the wire minimum"
@@ -1355,6 +1379,10 @@ defmodule Example.Degenerate do
     %{inner: value_inner, trailer: value_trailer} = value
     %{a: value_inner_a, b: value_inner_b, c: value_inner_c} = value_inner
 
+    if not is_integer(value_inner_a) do
+      raise ArgumentError, "value.inner.a is not an integer"
+    end
+
     if value_inner_a < 0 do
       raise ArgumentError, "value.inner.a is below the wire minimum"
     end
@@ -1365,6 +1393,10 @@ defmodule Example.Degenerate do
 
     v = value_inner_a &&& 0xFFFFF
     scratch = v
+
+    if not is_integer(value_inner_b) do
+      raise ArgumentError, "value.inner.b is not an integer"
+    end
 
     if value_inner_b < 0 do
       raise ArgumentError, "value.inner.b is below the wire minimum"
@@ -1377,6 +1409,10 @@ defmodule Example.Degenerate do
     v = value_inner_b &&& 0xFFFFF
     scratch = scratch ||| v <<< 20
 
+    if not is_integer(value_inner_c) do
+      raise ArgumentError, "value.inner.c is not an integer"
+    end
+
     if value_inner_c < 0 do
       raise ArgumentError, "value.inner.c is below the wire minimum"
     end
@@ -1388,6 +1424,10 @@ defmodule Example.Degenerate do
     v = value_inner_c &&& 0xFFFFFF
     sc0 = scratch
     scratch = v
+
+    if not is_integer(value_trailer) do
+      raise ArgumentError, "value.trailer is not an integer"
+    end
 
     if value_trailer < 0 do
       raise ArgumentError, "value.trailer is below the wire minimum"
@@ -1516,6 +1556,10 @@ defmodule Example.Degenerate do
       inner: value_inner
     } = value
 
+    if not is_integer(value_pad0) do
+      raise ArgumentError, "value.pad0 is not an integer"
+    end
+
     if value_pad0 < 0 do
       raise ArgumentError, "value.pad0 is below the wire minimum"
     end
@@ -1529,6 +1573,10 @@ defmodule Example.Degenerate do
     v = value_pad0 >>> 32 &&& 0xFFFFFFFF
     sc0 = scratch
     scratch = v
+
+    if not is_integer(value_pad1) do
+      raise ArgumentError, "value.pad1 is not an integer"
+    end
 
     if value_pad1 < 0 do
       raise ArgumentError, "value.pad1 is below the wire minimum"
@@ -1545,6 +1593,10 @@ defmodule Example.Degenerate do
     sc2 = scratch
     scratch = v
 
+    if not is_integer(value_pad2) do
+      raise ArgumentError, "value.pad2 is not an integer"
+    end
+
     if value_pad2 < 0 do
       raise ArgumentError, "value.pad2 is below the wire minimum"
     end
@@ -1559,6 +1611,10 @@ defmodule Example.Degenerate do
     v = value_pad2 >>> 32 &&& 0xFFFFFFFF
     sc4 = scratch
     scratch = v
+
+    if not is_integer(value_pad3) do
+      raise ArgumentError, "value.pad3 is not an integer"
+    end
 
     if value_pad3 < 0 do
       raise ArgumentError, "value.pad3 is below the wire minimum"
@@ -1575,6 +1631,10 @@ defmodule Example.Degenerate do
     sc6 = scratch
     scratch = v
 
+    if not is_integer(value_pad4) do
+      raise ArgumentError, "value.pad4 is not an integer"
+    end
+
     if value_pad4 < 0 do
       raise ArgumentError, "value.pad4 is below the wire minimum"
     end
@@ -1590,6 +1650,10 @@ defmodule Example.Degenerate do
     sc8 = scratch
     scratch = v
 
+    if not is_integer(value_pad5) do
+      raise ArgumentError, "value.pad5 is not an integer"
+    end
+
     if value_pad5 < 0 do
       raise ArgumentError, "value.pad5 is below the wire minimum"
     end
@@ -1603,6 +1667,10 @@ defmodule Example.Degenerate do
     scratch = v
     %{a: value_inner_a, b: value_inner_b, c: value_inner_c} = value_inner
 
+    if not is_integer(value_inner_a) do
+      raise ArgumentError, "value.inner.a is not an integer"
+    end
+
     if value_inner_a < 0 do
       raise ArgumentError, "value.inner.a is below the wire minimum"
     end
@@ -1613,6 +1681,10 @@ defmodule Example.Degenerate do
 
     v = value_inner_a &&& 0xFFFFF
     scratch = scratch ||| v <<< 24
+
+    if not is_integer(value_inner_b) do
+      raise ArgumentError, "value.inner.b is not an integer"
+    end
 
     if value_inner_b < 0 do
       raise ArgumentError, "value.inner.b is below the wire minimum"
@@ -1626,6 +1698,10 @@ defmodule Example.Degenerate do
     sc10 = scratch
     scratch = scratch >>> 40
     scratch = scratch ||| v <<< 4
+
+    if not is_integer(value_inner_c) do
+      raise ArgumentError, "value.inner.c is not an integer"
+    end
 
     if value_inner_c < 0 do
       raise ArgumentError, "value.inner.c is below the wire minimum"
