@@ -21,7 +21,7 @@ func commandStart(cmd string, at int) int {
 		if before[i] != '(' && before[i] != '{' {
 			continue
 		}
-		if i > 0 && before[i-1] == '$' && !(i > 1 && before[i-2] == '$' && before[i] == '(') {
+		if i > 0 && before[i-1] == '$' && (i == 1 || before[i-2] != '$' || before[i] != '(') {
 			continue // `$(NAME)`, `${NAME}` and the shell's `$${name}`
 		}
 		return i + 1

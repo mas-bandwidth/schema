@@ -275,7 +275,8 @@ func parseGoTestLine(cmd string) goTestLine {
 			afterArgs = true
 			continue
 		}
-		if strings.HasPrefix(w, "-") && len(w) > 1 {
+		switch {
+		case strings.HasPrefix(w, "-") && len(w) > 1:
 			name, val, hasVal := strings.Cut(strings.TrimPrefix(strings.TrimPrefix(w, "-"), "-"), "=")
 			testForm := strings.HasPrefix(name, "test.")
 			name = strings.TrimPrefix(name, "test.")
@@ -338,11 +339,11 @@ func parseGoTestLine(cmd string) goTestLine {
 				// an argument that could be anything
 				next()
 			}
-		} else if strings.HasPrefix(w, "$") && !strings.HasPrefix(w, "$$") {
+		case strings.HasPrefix(w, "$") && !strings.HasPrefix(w, "$$"):
 			// a whole word that is a make expansion this scan could not
 			// resolve: it may hold packages, or flags
 			l.unreadArg = "an argument of the test command cannot be read (" + w + ")"
-		} else if strings.HasPrefix(w, "$$") && !afterArgs {
+		case strings.HasPrefix(w, "$$") && !afterArgs:
 			l.unreadArg = "an argument of the test command is a shell expansion (" + w + ")"
 		}
 		if ended {
