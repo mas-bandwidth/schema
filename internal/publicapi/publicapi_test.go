@@ -64,25 +64,6 @@ func repoRoot(t *testing.T) string {
 	return root
 }
 
-// goSourceFiles lists dir's non-test Go files, sorted.
-func goSourceFiles(t *testing.T, dir string) []string {
-	t.Helper()
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var names []string
-	for _, entry := range entries {
-		name := entry.Name()
-		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
-			continue
-		}
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
-}
-
 // packageFiles lists every non-test file under dir — the Go sources and the
 // files a //go:embed directive reads (cmd/schema/help/ai.md) — as slash paths
 // relative to dir, sorted. A testdata tree is not part of the package.
