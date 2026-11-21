@@ -10,6 +10,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `ci/` | workflow pin and SDK gates | `go test ./internal/ci` | `go test ./internal/ci` |
 | [codegen/](codegen/AGENTS.md) | per-language emitters | `go test ./internal/codegen/...` | `go test ./internal/codegen/...` |
 | `docgate/` | link-and-citation gate over the pages | `go test ./internal/docgate` | `make docs-check` |
+| `execref/` | os/exec references resolved by binding, for the child-process policies | `go test ./internal/execref` | `go test ./internal/execref` |
 | `fixedproof/` | leg-independent fixed-table proof suite | `go test ./internal/fixedproof` | `go test ./internal/fixedproof` |
 | `fixedvector/` | fixed form's shared cross-version vectors | `go test ./internal/fixedvector` | `go test ./internal/fixedvector` |
 | `format/` | schemafmt | `go test ./internal/format` | `go test ./internal/format` |
