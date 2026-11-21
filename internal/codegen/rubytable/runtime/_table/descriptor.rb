@@ -346,7 +346,16 @@ module SchemaRuntimeUnit
 
             return value.all? { |item| @element.default?(item) }
           end
-          value.empty?
+          # A counted array with a positive minimum is born holding that many
+          # default elements and elides at exactly that birth value (every
+          # element at its default; a table element whose body is its
+          # terminator alone), as the engine's writer does (internal/tablewire
+          # encodeArray and messageElides, docs/SPEC-TABLES.md §22.2). A count
+          # below the minimum is never a default: the writer refuses it.
+          return value.empty? if @array_kind != 2 || @array_min <= 0
+          return false if value.length != @array_min
+
+          !@element.nil? && value.all? { |item| @element.default?(item) }
         when 'union_array'
           return value.all? { |el| el.type.zero? } if @array_kind == 1
 

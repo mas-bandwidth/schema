@@ -753,7 +753,7 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct, surfaces Surfaces)
 		b.WriteString("        pass\n")
 	} else {
 		for _, f := range st.Fields {
-			fmt.Fprintf(b, "        self.%s = %s\n", f.Name, defaultExprForClass(st.Name, f, st.FixedDeclared))
+			fmt.Fprintf(b, "        self.%s = %s\n", f.Name, defaultExpr(st.Name, f))
 		}
 	}
 	emitGraphEqRepr(b, name)
@@ -2245,10 +2245,6 @@ func pythonType(st *ir.Struct, f *ir.Field) string {
 // VALUE MAPPING): a container before its element's kind, so an array is never
 // one element and a map is never a scalar.
 func defaultExpr(owner string, f *ir.Field) string {
-	return defaultExprForClass(owner, f, false)
-}
-
-func defaultExprForClass(owner string, f *ir.Field, fixed bool) string {
 	if f.Array != ir.ArrayNone && f.Type.Pointer && !f.IsMap() && f.KeyEnum == "" && !f.Type.Optional {
 		count := int64(0)
 		switch f.Array {
@@ -2278,17 +2274,14 @@ func defaultExprForClass(owner string, f *ir.Field, fixed bool) string {
 		if f.KeyEnum != "" {
 			return keyedClassName(owner, f) + "()"
 		}
-		// Fixed files and variable union arrays start at their declared
-		// minimum. Other variable counted arrays preserve their existing
-		// absent-field reset. Every constructed element is distinct.
-		count := int64(0)
-		if fixed {
-			count = f.BornCount()
-		}
+		// Every counted array, on a fixed or a variable table, is born holding
+		// its declared minimum of default elements (ir.Field.BornCount,
+		// docs/SPEC-TABLES.md §22.2): a range that starts above zero has no
+		// legal count at zero, and the reader lands the same value for an
+		// absent field. Every constructed element is distinct.
+		count := f.BornCount()
 		if f.Array == ir.ArrayFixed {
 			count = f.ArrayBound
-		} else if f.Array == ir.ArrayCounted && codecOf(f) == "union_array" {
-			count = f.ArrayMin
 		}
 		if count <= 0 {
 			return "[]"

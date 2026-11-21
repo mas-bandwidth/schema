@@ -790,9 +790,15 @@ func verifyLuau(repoRoot, schemaBin, workDir string, units []UnitSpec, cases []C
 			if fileExists(filepath.Join(udir, u.FileBase+"Block.luau")) {
 				blockReq = fmt.Sprintf("local _RB = require(\"./%sBlock\")\n", u.FileBase)
 			}
+			// the unit's type module is emitted only when the unit declares a
+			// type (a pinned unit of a scalar array declares none), so the
+			// probe loads it only where it exists, as it does the block module
+			typesReq := ""
+			if fileExists(filepath.Join(udir, u.FileBase+".luau")) {
+				typesReq = fmt.Sprintf("local _P = require(\"./%s\")\n", u.FileBase)
+			}
 			src := fmt.Sprintf(`--!strict
-local P = require("./%s")
-local T = require("./%sTable")
+%slocal T = require("./%sTable")
 %slocal L = require("./schema_load")
 local S = require("./schema_save")
 local R = require("./schema_retain")
@@ -800,7 +806,6 @@ local M = require("./schema_message")
 local FX = require("./schema_fixed")
 local J = require("./schema_json")
 local F = require("./cases_fix")
-local _ = P
 
 local function die(cid: string, why: string)
 	error("FAILED: " .. cid .. ": " .. why)
@@ -910,7 +915,7 @@ for _, c in ipairs(F.cases) do
 	end
 end
 print("UNIT_OK " .. tostring(#F.cases))
-`, u.FileBase, u.FileBase, blockReq)
+`, typesReq, u.FileBase, blockReq)
 			if err := os.WriteFile(filepath.Join(udir, "probe.luau"), []byte(src), 0o644); err != nil {
 				errs <- err
 				return
