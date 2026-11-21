@@ -47,6 +47,24 @@ public final class TableVariable {
         report.refused = true;
     }
 
+    // A COMPRESSED FLOAT IS HELD TO ITS FLOAT32 ENDS ON READ (docs/SPEC-TABLES.md
+    // §3.3; SPEC.md §4.6, the triple is evaluated at float32): a finite value
+    // past an end refuses out_of_range, naming the field, and lands the end;
+    // the value at an end float32 cannot spell exactly (max = 0.1) is the
+    // float32 nearest it and in range. Its -0 IS +0: it lands as +0, uncounted
+    // (ruling fixed-compressed-negzero). The variable and JSON reads share it.
+    public static float compressedF32(float v, float lo, float hi, Report report, String field) {
+        if (v < lo) {
+            report.refuse("out_of_range", field);
+            return lo;
+        }
+        if (v > hi) {
+            report.refuse("out_of_range", field);
+            return hi;
+        }
+        return v == 0.0f ? 0.0f : v;
+    }
+
     // a retained unknown float is named by the table that holds it and the
     // id it cannot name (§6.6): <Table>.0x<id, sixteen hex digits>
     public static String retainedFloatName(String owner, long id) {
@@ -691,12 +709,17 @@ public final class TableVariable {
 
         // putF32In and putF64In write a ranged float: its raw bits as putF32
         // and putF64 do, and a value off [lo, hi] refuses the whole save in
-        // every build (docs/SPEC.md §5.1 row 10), on every field shape.
-        public void putF32In(float v, double lo, double hi) {
-            if ((double) v < lo || (double) v > hi) {
+        // every build (docs/SPEC.md §5.1 row 10), on every field shape. A
+        // float32's range is held at float32 (SPEC.md §4.6): lo and hi are the
+        // float32 ends, so the value at an end float32 cannot spell exactly
+        // (max = 0.1) is in range. A compressed float's -0 is stored as +0,
+        // the bits +0 stores (docs/SPEC-TABLES.md §3.3, ruling
+        // fixed-compressed-negzero).
+        public void putF32In(float v, float lo, float hi) {
+            if (v < lo || v > hi) {
                 ids.offRange = true;
             }
-            putF32(v);
+            putF32(v == 0.0f ? 0.0f : v);
         }
 
         public void putF64In(double v, double lo, double hi) {
@@ -3369,6 +3392,10 @@ public final class TableJson {
         // refused rather than read.
         static final int MAX_JSON_DEPTH = 128;
         public final java.util.Map<Long, LabelEntry> labels = new java.util.HashMap<>();
+        // graph: the root is variable, so its text carries labels (§16.7) and
+        // a skipped object's & key is held to the label rules; a fixed root's
+        // reader skips such a value whole (internal/tabletext Read).
+        boolean graph = true;
 
         final byte[] t;
         int p;
@@ -3970,10 +3997,15 @@ public final class TableJson {
             }
             p++; // the opening bracket
             java.util.Set<String> seenKey = null;
+            // the label a definition in this skipped object opened: it stays
+            // open until the object closes (§16.7)
+            boolean first = true;
+            long opened = 0;
             while (true) {
                 int c = peek();
                 if (c == closing) {
                     p++;
+                    closeSkipped(opened);
                     return;
                 }
                 if (c == 0) {
@@ -4000,30 +4032,51 @@ public final class TableJson {
                         return;
                     }
                     p++;
-                    // A DEFINITION IN A SKIPPED VALUE STILL TAKES ITS LABEL, with no
-                    // node, so a later reference reads null rather than refusing
-                    // (docs/SPEC-TABLES.md §16.7, §17.5; read.go's skippedAmpersand).
-                    if ("&node".equals(key)) {
+                    // THE LABEL RULES APPLY IN A SKIPPED VALUE AS EVERYWHERE
+                    // (docs/SPEC-TABLES.md §16.7; read.go's skippedAmpersand), in
+                    // a variable root: the label is the object's first key and
+                    // is spelled &node; a label alone (a trailing comma allowed)
+                    // REFERS and must name a closed definition; a label with
+                    // fields DEFINES, must be new, and takes its label with no
+                    // node, so a later reference reads null. A fixed root skips
+                    // the value whole.
+                    if (graph && key != null && key.startsWith("&")) {
+                        if (!first || !"&node".equals(key)) {
+                            bad = true;
+                            return;
+                        }
                         long labelId = scanLabel();
                         if (bad) {
                             return;
                         }
-                        if (!labels.containsKey(labelId)) {
-                            labels.put(labelId, new LabelEntry(null, 0L, false));
-                        }
                         c = peek();
+                        if (c != ',' && c != closing) {
+                            bad = true;
+                            return;
+                        }
+                        LabelEntry entry = labels.get(labelId);
                         if (c == ',') {
                             p++;
-                            continue;
+                            c = peek();
                         }
                         if (c == closing) {
                             p++;
+                            if (entry == null || entry.open) {
+                                bad = true;
+                            }
                             return;
                         }
-                        bad = true;
-                        return;
+                        if (entry != null) {
+                            bad = true;
+                            return;
+                        }
+                        labels.put(labelId, new LabelEntry(null, 0L, true));
+                        first = false;
+                        opened = labelId;
+                        continue;
                     }
                 }
+                first = false;
                 skipValue(depth + 1);
                 if (bad) {
                     return;
@@ -4035,10 +4088,19 @@ public final class TableJson {
                 }
                 if (c == closing) {
                     p++;
+                    closeSkipped(opened);
                     return;
                 }
                 bad = true;
                 return;
+            }
+        }
+
+        // closeSkipped closes the label a skipped object's definition opened:
+        // a reference after it reads null (§16.7).
+        private void closeSkipped(long opened) {
+            if (opened != 0) {
+                labels.put(opened, new LabelEntry(null, 0L, false));
             }
         }
     }
@@ -4368,6 +4430,12 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct, fixed fixedClosure) (strin
 				fmt.Fprintf(&b, "                %sIdx.add(0L);\n", varMember(f))
 			}
 			b.WriteString("            }\n")
+		}
+		if n := variableBornCount(f); n > 0 {
+			// A [A..B]T COUNT IS BORN AT A, its declared minimum, each slot
+			// value-initialized (docs/SPEC.md §4.2; ir.Field.BornCount): the
+			// value fromJson("{}") and an absent field land on, as Go's does.
+			fmt.Fprintf(&b, "            for (int i = 0; i < %d; i++) {\n                %s.add(%s);\n            }\n", n, varMember(f), variableDefault(variableBornElement(f)))
 		}
 	}
 	b.WriteString("        }\n")
@@ -5154,6 +5222,11 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 
 		fmt.Fprintf(b, "    public static Value fromJson(byte[] text, TableVariable.Report report) {\n")
 		fmt.Fprintf(b, "        TableJson.In in = new TableJson.In(text, report);\n")
+		if !ir.VariableTables(u)[st.Name] {
+			// A FIXED ROOT'S TEXT CARRIES NO LABELS (§16.7): a skipped value
+			// is skipped whole, as the Go reader's nil graph skips it.
+			fmt.Fprintf(b, "        in.graph = false;\n")
+		}
 		fmt.Fprintf(b, "        in.byteOrderMark();\n")
 		fmt.Fprintf(b, "        Value v = new Value();\n")
 		fmt.Fprintf(b, "        jsonReadFields(in, v, 0);\n")
@@ -5242,7 +5315,12 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("        in.p++;\n")
 	b.WriteString("        long labelId = in.scanLabel();\n")
 	b.WriteString("        if (in.bad || labelId <= 0) return null;\n")
+	// A LABEL IS FOLLOWED BY ITS OBJECT'S , OR } AND NOTHING ELSE, and what
+	// follows says which half it is (§16.7): a label alone, a trailing comma
+	// allowed (§16.2), REFERS; a label with fields after it DEFINES.
 	b.WriteString("        int c = in.peek();\n")
+	b.WriteString("        if (c != '}' && c != ',') { in.bad = true; return null; }\n")
+	b.WriteString("        if (c == ',') { in.p++; c = in.peek(); }\n")
 	b.WriteString("        if (c == '}') {\n")
 	b.WriteString("            in.p++;\n")
 	b.WriteString("            TableJson.LabelEntry entry = in.labels.get(labelId);\n")
@@ -5250,9 +5328,7 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("            if (entry.typeId == 0) { return null; }\n")
 	b.WriteString("            if (entry.typeId != targetTypeId) { in.rep.refuse(\"kind_mismatch\"); return null; }\n")
 	b.WriteString("            return (Value) entry.value;\n")
-	b.WriteString("        } else if (c == ',') {\n")
-	b.WriteString("            in.p++;\n")
-	b.WriteString("            if (in.peek() == '}') { in.bad = true; return null; }\n")
+	b.WriteString("        } else {\n")
 	b.WriteString("            if (in.labels.containsKey(labelId)) { in.bad = true; return null; }\n")
 	b.WriteString("            Value child = new Value();\n")
 	b.WriteString("            TableJson.LabelEntry entry = new TableJson.LabelEntry(child, targetTypeId, true);\n")
@@ -5260,8 +5336,6 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	fmt.Fprintf(b, "            jsonReadFieldsBody(in, child, depth + 1);\n")
 	b.WriteString("            entry.open = false;\n")
 	b.WriteString("            return child;\n")
-	b.WriteString("        } else {\n")
-	b.WriteString("            in.bad = true; return null;\n")
 	b.WriteString("        }\n")
 	b.WriteString("    }\n\n")
 
@@ -5327,7 +5401,13 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 			if f.Type.Optional || f.Type.Pointer {
 				takesNull = "true"
 			}
-			fmt.Fprintf(b, "                if (repeated && %s) { v.%s = %s; }\n", takesNull, varMember(f), variableDefault(f))
+			if variableBornCount(f) > 0 {
+				// A LIST BORN AT A (variableBornCount) is replaced whole by
+				// the list the text places, never appended to.
+				fmt.Fprintf(b, "                if (in.peek() != 'n' || (repeated && %s)) { v.%s = %s; }\n", takesNull, varMember(f), variableDefault(f))
+			} else {
+				fmt.Fprintf(b, "                if (repeated && %s) { v.%s = %s; }\n", takesNull, varMember(f), variableDefault(f))
+			}
 		}
 		readJsonFieldValue(b, u, st, f, "depth")
 		b.WriteString("                }\n")
@@ -5567,7 +5647,7 @@ func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 			fmt.Fprintf(b, "                        if (%s) { v.%s.add(%sin.integer(false, %t, %s, %s)); }\n", peek, m, cast, wide, min, max)
 			b.WriteString("                        else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 		case ir.TFloat32:
-			fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add(in.number32()); }\n", m)
+			fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { float placed = in.number32(); v.%s.add(in.rejected ? placed : %s); }\n", m, variableCompressedRead(f, "placed", "in.rep", f.Name))
 			b.WriteString("                        else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 		case ir.TFloat64:
 			fmt.Fprintf(b, "                        if (ec == '-' || (ec >= '0' && ec <= '9')) { v.%s.add(in.number()); }\n", m)
@@ -5837,6 +5917,9 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 }
 
 func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, depth string) {
+	if check := countMinCheck(f, "in.rep"); check != "" {
+		defer b.WriteString(check)
+	}
 	if variableWide(f) && f.Array == ir.ArrayNone && !f.Type.Optional {
 		writeVariableWideJsonRead(b, f, "v."+varMember(f), false)
 		return
@@ -6040,7 +6123,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		b.WriteString("                else if (in.peek() == 'f') { in.lit(\"false\"); v." + m + " = false; }\n")
 		b.WriteString("                else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 	case f.Type.Kind == ir.TFloat32:
-		fmt.Fprintf(b, "                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { float placed = in.number32(); if (!in.rejected) { v.%s = placed; } }\n", m)
+		fmt.Fprintf(b, "                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { float placed = in.number32(); if (!in.rejected) { v.%s = %s; } }\n", m, variableCompressedRead(f, "placed", "in.rep", f.Name))
 		b.WriteString("                else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 	case f.Type.Kind == ir.TFloat64:
 		fmt.Fprintf(b, "                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { double placed = in.number(); if (!in.rejected) { v.%s = placed; } }\n", m)
@@ -6082,7 +6165,21 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 	}
 }
 
+// countMinCheck is the refusal of a counted array [Min..Max]T read with fewer
+// than Min elements (docs/SPEC.md §5.1 row 3, docs/SPEC-TABLES.md §3.3): the
+// count is refused count_over_bound as one past the bound is, whatever path
+// the elements took. "" for any other field.
+func countMinCheck(f *ir.Field, report string) string {
+	if f.Array != ir.ArrayCounted || f.ArrayMin <= 0 || f.Type.Optional || f.KeyEnum != "" || f.IsMap() {
+		return ""
+	}
+	return fmt.Sprintf("                if (v.%s.size() < %d) { %s.refuse(\"count_over_bound\"); }\n", varMember(f), f.ArrayMin, report)
+}
+
 func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, retain bool, ordinal int, overlongNone bool) {
+	if check := countMinCheck(f, "report"); check != "" {
+		defer b.WriteString(check)
+	}
 	if variableWide(f) && f.Array == ir.ArrayNone && !f.Type.Optional {
 		writeVariableWideRead(b, f)
 		return
@@ -6328,7 +6425,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 	// (kind 10 into a float64) is the ordinary conversion, exact for every
 	// finite float32.
 	case f.Type.Kind == ir.TFloat32:
-		fmt.Fprintf(b, "                if (kind == 10) { if (r.has(4)) { int fbits = r.get32(); if ((fbits & 0x7f800000) == 0x7f800000) { TableVariable.nonFiniteFloat(report, %q); } else { v.%s = Float.intBitsToFloat(fbits); } } else { report.damaged = true; r.fail = true; } }\n", floatOwnerName(st, f), m)
+		fmt.Fprintf(b, "                if (kind == 10) { if (r.has(4)) { int fbits = r.get32(); if ((fbits & 0x7f800000) == 0x7f800000) { TableVariable.nonFiniteFloat(report, %q); } else { v.%s = %s; } } else { report.damaged = true; r.fail = true; } }\n", floatOwnerName(st, f), m, variableCompressedRead(f, "Float.intBitsToFloat(fbits)", "report", floatOwnerName(st, f)))
 		fmt.Fprintf(b, "                else { r.skip(kind); report.refuse(\"kind_mismatch\"); }\n")
 	case f.Type.Kind == ir.TFloat64:
 		fmt.Fprintf(b, "                if (kind == 11) { if (r.has(8)) { long fbits = r.get64(); if ((fbits & 0x7ff0000000000000L) == 0x7ff0000000000000L) { TableVariable.nonFiniteFloat(report, %q); } else { v.%s = Double.longBitsToDouble(fbits); } } else { report.damaged = true; r.fail = true; } }\n", floatOwnerName(st, f), m)
@@ -6417,7 +6514,7 @@ func writeArrayElemRead(b *strings.Builder, f *ir.Field, m, owner string) {
 	// scalar's does (docs/SPEC-TABLES.md §3.3); the walk goes on, landing the
 	// element's place with zero so the count the body carries is kept
 	case ir.TFloat32:
-		fmt.Fprintf(b, "%s{ for (long i = 0; i < n; i++) { if (ar.has(4)) { int fbits = ar.get32(); if ((fbits & 0x7f800000) == 0x7f800000) { TableVariable.nonFiniteFloat(report, %q); fbits = 0; } %s; } else { report.damaged = true; ar.fail = true; break; } } }", refusePrefix("4"), owner, place("Float.intBitsToFloat(fbits)"))
+		fmt.Fprintf(b, "%s{ for (long i = 0; i < n; i++) { if (ar.has(4)) { int fbits = ar.get32(); if ((fbits & 0x7f800000) == 0x7f800000) { TableVariable.nonFiniteFloat(report, %q); fbits = 0; } %s; } else { report.damaged = true; ar.fail = true; break; } } }", refusePrefix("4"), owner, place(variableCompressedRead(f, "Float.intBitsToFloat(fbits)", "report", owner)))
 	case ir.TFloat64:
 		fmt.Fprintf(b, "%s{ for (long i = 0; i < n; i++) { if (ek == 10) { if (ar.has(4)) { int fbits = ar.get32(); if ((fbits & 0x7f800000) == 0x7f800000) { TableVariable.nonFiniteFloat(report, %q); fbits = 0; } %s; } else { report.damaged = true; ar.fail = true; break; } } else { if (ar.has(8)) { long fbits = ar.get64(); if ((fbits & 0x7ff0000000000000L) == 0x7ff0000000000000L) { TableVariable.nonFiniteFloat(report, %q); fbits = 0L; } %s; } else { report.damaged = true; ar.fail = true; break; } } } }", refusePrefix("ek == 10 ? 4 : 8"), owner, place("(double) Float.intBitsToFloat(fbits)"), owner, place("Double.longBitsToDouble(fbits)"))
 	case ir.TString:
@@ -6545,7 +6642,7 @@ func writeArrayFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 func writeArrayFieldSaveRef(b *strings.Builder, f *ir.Field, fieldRef string) {
 	m := varMember(f)
 	ek := variableElemWireKind(f)
-	fmt.Fprintf(b, "        if (!v.%s.isEmpty()) {\n", m)
+	fmt.Fprintf(b, "        if (%s) {\n", variableArrayRides(b, f, m))
 	fmt.Fprintf(b, "            w.putLeb(w.ref(%s)); w.put8(14);\n", fieldRef)
 	fmt.Fprintf(b, "            int list = w.off;\n")
 	fmt.Fprintf(b, "            w.put8(%d); w.putLeb(v.%s.size());\n", ek, m)
@@ -6659,7 +6756,7 @@ func writeFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) 
 	switch {
 	case isPointerArray(f):
 		target := f.Type.Ref.(*ir.Struct)
-		fmt.Fprintf(b, "        if (!v.%s.isEmpty()) {\n", m)
+		fmt.Fprintf(b, "        if (%s) {\n", variableArrayRides(b, f, m))
 		fmt.Fprintf(b, "            w.putLeb(w.ref(F_%s)); w.put8(14);\n", m)
 		fmt.Fprintf(b, "            int list = w.off;\n")
 		fmt.Fprintf(b, "            w.put8(17); w.putLeb(v.%s.size());\n", m)
@@ -6671,7 +6768,7 @@ func writeFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) 
 		fmt.Fprintf(b, "        }\n")
 	case isStructArray(f):
 		target := f.Type.Ref.(*ir.Struct)
-		fmt.Fprintf(b, "        if (!v.%s.isEmpty()) {\n", m)
+		fmt.Fprintf(b, "        if (%s) {\n", variableArrayRides(b, f, m))
 		fmt.Fprintf(b, "            w.putLeb(w.ref(F_%s)); w.put8(14);\n", m)
 		fmt.Fprintf(b, "            int list = w.off;\n")
 		if ir.TextListPlain(f) {
@@ -6727,6 +6824,11 @@ func writeFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) 
 		fmt.Fprintf(b, "        if (v.%s != %s) { w.putLeb(w.ref(F_%s)); w.put8(1); w.put8(v.%s ? 1 : 0); }\n", m, def, m, m)
 	// A FLOAT ELIDES BY ITS BITS (docs/SPEC-TABLES.md §3.3, the 10-15 rule):
 	// a -0 under a +0 default rides, and the raw bits are what is written.
+	// A COMPRESSED float's -0 IS +0 (§3.3, ruling fixed-compressed-negzero):
+	// it compares by value, so a -0 under a +0 default elides; a NaN still
+	// differs from every default and reaches the writer's refusal.
+	case f.Type.Kind == ir.TFloat32 && f.HasFloatRange:
+		fmt.Fprintf(b, "        if (v.%s != %s) { w.putLeb(w.ref(F_%s)); w.put8(%d); %s }\n", m, variableDefault(f), m, variableWireKind(f), variableFloatPut(f, "w", "v."+m))
 	case f.Type.Kind == ir.TFloat32, f.Type.Kind == ir.TFloat64:
 		bits := "Float.floatToRawIntBits"
 		if f.Type.Kind == ir.TFloat64 {
@@ -6871,7 +6973,9 @@ func writeVariableGraphWalk(b *strings.Builder, st *ir.Struct, graphTypes []vari
 func writeVariableGraphFieldOnce(b *strings.Builder, f *ir.Field, pad string) {
 	m := varMember(f)
 	if f.Required && f.Array == ir.ArrayNone && f.KeyEnum == "" && f.HasFloatRange {
-		fmt.Fprintf(b, "%sif ((double) v.%s < %s || (double) v.%s > %s) return false;\n", pad, m, fixedDoubleLit(f.FMin), m, fixedDoubleLit(f.FMax))
+		// held at float32 against the float32 ends for a float32 (SPEC §4.6)
+		lo, hi, _ := fixedFloatRange(f)
+		fmt.Fprintf(b, "%sif (v.%s < %s || v.%s > %s) return false;\n", pad, m, lo, m, hi)
 	}
 	if f.IsMap() {
 		fmt.Fprintf(b, "%sv.%s = order_%s(v.%s);\n", pad, m, m, m)

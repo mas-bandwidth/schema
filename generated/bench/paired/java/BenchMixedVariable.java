@@ -45,7 +45,11 @@ public final class BenchMixedVariable {
         public int extra = 0;
         public int idleTicks = 0;
 
-        public Value() {}
+        public Value() {
+            for (int i = 0; i < 1; i++) {
+                entities.add(new MixedEntityVariable.Value());
+            }
+        }
     }
 
     public static final long TYPE_ID = 0xeb80cfd516eb3d5cL;
@@ -902,6 +906,9 @@ public final class BenchMixedVariable {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
                 }
+                if (v.entities.size() < 1) {
+                    report.refuse("count_over_bound");
+                }
             } else if (id == F_stats) {
                 if (kind == 14) {
                     TableVariable.Reader ar = r.body();
@@ -1055,7 +1062,13 @@ public final class BenchMixedVariable {
                         if ((fbits & 0x7f800000) == 0x7f800000) {
                             TableVariable.nonFiniteFloat(report, "BenchMixed.aim_x");
                         } else {
-                            v.aimX = Float.intBitsToFloat(fbits);
+                            v.aimX =
+                                    TableVariable.compressedF32(
+                                            Float.intBitsToFloat(fbits),
+                                            Float.intBitsToFloat(0xbf800000),
+                                            Float.intBitsToFloat(0x3f800000),
+                                            report,
+                                            "BenchMixed.aim_x");
                         }
                     } else {
                         report.damaged = true;
@@ -1072,7 +1085,13 @@ public final class BenchMixedVariable {
                         if ((fbits & 0x7f800000) == 0x7f800000) {
                             TableVariable.nonFiniteFloat(report, "BenchMixed.aim_y");
                         } else {
-                            v.aimY = Float.intBitsToFloat(fbits);
+                            v.aimY =
+                                    TableVariable.compressedF32(
+                                            Float.intBitsToFloat(fbits),
+                                            Float.intBitsToFloat(0xbf800000),
+                                            Float.intBitsToFloat(0x3f800000),
+                                            report,
+                                            "BenchMixed.aim_y");
                         }
                     } else {
                         report.damaged = true;
@@ -1089,7 +1108,13 @@ public final class BenchMixedVariable {
                         if ((fbits & 0x7f800000) == 0x7f800000) {
                             TableVariable.nonFiniteFloat(report, "BenchMixed.aim_z");
                         } else {
-                            v.aimZ = Float.intBitsToFloat(fbits);
+                            v.aimZ =
+                                    TableVariable.compressedF32(
+                                            Float.intBitsToFloat(fbits),
+                                            Float.intBitsToFloat(0xbf800000),
+                                            Float.intBitsToFloat(0x3f800000),
+                                            report,
+                                            "BenchMixed.aim_z");
                         }
                     } else {
                         report.damaged = true;
@@ -1427,7 +1452,13 @@ public final class BenchMixedVariable {
             w.put8(22);
             w.put32(v.serverTime);
         }
-        if (!v.entities.isEmpty()) {
+        boolean rides_entities = v.entities.size() != 1;
+        for (int i = 0; !rides_entities && i < 1; i++) {
+            if (!(MixedEntityVariable.isDefault(v.entities.get(i), w, graph))) {
+                rides_entities = true;
+            }
+        }
+        if (rides_entities) {
             w.putLeb(w.ref(F_entities));
             w.put8(14);
             int list = w.off;
@@ -1498,29 +1529,20 @@ public final class BenchMixedVariable {
             w.putBytes(v.payload, 0, v.payload.length);
             w.frame(list);
         }
-        if (Float.floatToRawIntBits(v.aimX) != Float.floatToRawIntBits(0.0f)) {
+        if (v.aimX != 0.0f) {
             w.putLeb(w.ref(F_aimX));
             w.put8(10);
-            w.putF32In(
-                    v.aimX,
-                    Double.longBitsToDouble(0xbff0000000000000L),
-                    Double.longBitsToDouble(0x3ff0000000000000L));
+            w.putF32In(v.aimX, Float.intBitsToFloat(0xbf800000), Float.intBitsToFloat(0x3f800000));
         }
-        if (Float.floatToRawIntBits(v.aimY) != Float.floatToRawIntBits(0.0f)) {
+        if (v.aimY != 0.0f) {
             w.putLeb(w.ref(F_aimY));
             w.put8(10);
-            w.putF32In(
-                    v.aimY,
-                    Double.longBitsToDouble(0xbff0000000000000L),
-                    Double.longBitsToDouble(0x3ff0000000000000L));
+            w.putF32In(v.aimY, Float.intBitsToFloat(0xbf800000), Float.intBitsToFloat(0x3f800000));
         }
-        if (Float.floatToRawIntBits(v.aimZ) != Float.floatToRawIntBits(0.0f)) {
+        if (v.aimZ != 0.0f) {
             w.putLeb(w.ref(F_aimZ));
             w.put8(10);
-            w.putF32In(
-                    v.aimZ,
-                    Double.longBitsToDouble(0xbff0000000000000L),
-                    Double.longBitsToDouble(0x3ff0000000000000L));
+            w.putF32In(v.aimZ, Float.intBitsToFloat(0xbf800000), Float.intBitsToFloat(0x3f800000));
         }
         if (Float.floatToRawIntBits(v.recoil) != Float.floatToRawIntBits(0.0f)) {
             w.putLeb(w.ref(F_recoil));
@@ -2121,6 +2143,7 @@ public final class BenchMixedVariable {
 
     public static Value fromJson(byte[] text, TableVariable.Report report) {
         TableJson.In in = new TableJson.In(text, report);
+        in.graph = false;
         in.byteOrderMark();
         Value v = new Value();
         jsonReadFields(in, v, 0);
@@ -2562,6 +2585,14 @@ public final class BenchMixedVariable {
         long labelId = in.scanLabel();
         if (in.bad || labelId <= 0) return null;
         int c = in.peek();
+        if (c != '}' && c != ',') {
+            in.bad = true;
+            return null;
+        }
+        if (c == ',') {
+            in.p++;
+            c = in.peek();
+        }
         if (c == '}') {
             in.p++;
             TableJson.LabelEntry entry = in.labels.get(labelId);
@@ -2577,12 +2608,7 @@ public final class BenchMixedVariable {
                 return null;
             }
             return (Value) entry.value;
-        } else if (c == ',') {
-            in.p++;
-            if (in.peek() == '}') {
-                in.bad = true;
-                return null;
-            }
+        } else {
             if (in.labels.containsKey(labelId)) {
                 in.bad = true;
                 return null;
@@ -2593,9 +2619,6 @@ public final class BenchMixedVariable {
             jsonReadFieldsBody(in, child, depth + 1);
             entry.open = false;
             return child;
-        } else {
-            in.bad = true;
-            return null;
         }
     }
 
@@ -2862,7 +2885,7 @@ public final class BenchMixedVariable {
                     in.skipValue();
                     in.rep.refuse("kind_mismatch");
                 } else {
-                    if (repeated && in.peek() != 'n') {
+                    if (in.peek() != 'n' || (repeated && in.peek() != 'n')) {
                         v.entities = new ArrayList<>();
                     }
                     if (in.peek() == '[') {
@@ -2911,6 +2934,9 @@ public final class BenchMixedVariable {
                     } else {
                         in.skipValue();
                         in.rep.refuse("kind_mismatch");
+                    }
+                    if (v.entities.size() < 1) {
+                        in.rep.refuse("count_over_bound");
                     }
                 }
             } else if ("stats".equals(key)) {
@@ -3106,7 +3132,13 @@ public final class BenchMixedVariable {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
                         float placed = in.number32();
                         if (!in.rejected) {
-                            v.aimX = placed;
+                            v.aimX =
+                                    TableVariable.compressedF32(
+                                            placed,
+                                            Float.intBitsToFloat(0xbf800000),
+                                            Float.intBitsToFloat(0x3f800000),
+                                            in.rep,
+                                            "aim_x");
                         }
                     } else {
                         in.skipValue();
@@ -3127,7 +3159,13 @@ public final class BenchMixedVariable {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
                         float placed = in.number32();
                         if (!in.rejected) {
-                            v.aimY = placed;
+                            v.aimY =
+                                    TableVariable.compressedF32(
+                                            placed,
+                                            Float.intBitsToFloat(0xbf800000),
+                                            Float.intBitsToFloat(0x3f800000),
+                                            in.rep,
+                                            "aim_y");
                         }
                     } else {
                         in.skipValue();
@@ -3148,7 +3186,13 @@ public final class BenchMixedVariable {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
                         float placed = in.number32();
                         if (!in.rejected) {
-                            v.aimZ = placed;
+                            v.aimZ =
+                                    TableVariable.compressedF32(
+                                            placed,
+                                            Float.intBitsToFloat(0xbf800000),
+                                            Float.intBitsToFloat(0x3f800000),
+                                            in.rep,
+                                            "aim_z");
                         }
                     } else {
                         in.skipValue();
