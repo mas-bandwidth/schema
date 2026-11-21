@@ -36,6 +36,11 @@ import (
 // and the Go reader's landed cells and report, or its refusal, are what the
 // Luau load must answer. A wire no conforming writer emits is the Go writer's
 // bytes for a finite twin with the float bytes replaced by the pattern.
+//
+// A read is held to the engine's VERDICT and, on an accept, its landed bits:
+// the reason a refusal names and the read counters are per-language
+// diagnostic detail, printed after " | " and never compared across targets
+// (docs/rulings.json refusal-verdict-only, conformance-is-read-then-write).
 const floatSpecialSchema = `package fs
 
 table Var
@@ -76,10 +81,9 @@ end
 local report: any = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
 local got = load.loadWalk("Var", inputs.wire, report)
 if got == nil then
-	print("tol=refused reason=" .. tostring(report.reason))
+	print("tol=refused | reason=" .. tostring(report.reason))
 else
-	print(string.format("tol=%d,%d,%d,%d,%d,%d,%d", report.malformed and 1 or 0, report.refused, report.unknown,
-		report.kindMismatch, report.clamped, report.widened, report.duplicate))
+	print("tol=loaded")
 	print(string.format("bits=%08x,%08x,%08x", bits32(got.A), hi64(got.B), lo64(got.B)))
 end
 local d = St.lookup("Var")
@@ -95,8 +99,11 @@ else
 	print("save=" .. hex(out) .. " measure=" .. tostring(measure))
 end
 local r2: any = {}
-R.ReadStrict(nil, "Var", inputs.wire, r2)
-print("strict=" .. (r2.reason or "ok") .. " field=" .. (r2.field or "-"))
+if R.ReadStrict(nil, "Var", inputs.wire, r2) == nil then
+	print("strict=refused | reason=" .. tostring(r2.reason) .. " field=" .. tostring(r2.field))
+else
+	print("strict=ok")
+end
 `
 
 type floatCase struct {
@@ -128,13 +135,6 @@ func goFloatField(t *testing.T, inst *tabletext.Instance, name string) *tabletex
 	return nil
 }
 
-func boolInt(b bool) int {
-	if b {
-		return 1
-	}
-	return 0
-}
-
 // The finite twin whose bytes a non-finite wire is cut from: neither pattern
 // occurs anywhere else in the file.
 const (
@@ -154,8 +154,48 @@ func patchPattern(t *testing.T, wire, old, new []byte) []byte {
 
 func TestLuauPlainFloatSpecialValues(t *testing.T) {
 	t.Parallel()
+	luauPlainFloatSpecialValues(t, nil)
+}
+
+// TestLuauPlainFloatSpecialValuesReasonIsDiagnostic renames the reason the
+// Luau reads name for a non-finite float: the verdicts are unchanged, so the
+// test must stay green (docs/rulings.json refusal-verdict-only).
+func TestLuauPlainFloatSpecialValuesReasonIsDiagnostic(t *testing.T) {
+	t.Parallel()
+	outs := luauPlainFloatSpecialValues(t, func(t *testing.T, dir string) {
+		path := filepath.Join(dir, "schema_load.luau")
+		src, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Contains(src, []byte(`"non_finite_float`)) {
+			t.Fatal("NEGATIVE CONTROL FAILED: schema_load.luau no longer names \"non_finite_float\"")
+		}
+		if err := os.WriteFile(path, bytes.ReplaceAll(src, []byte(`"non_finite_float`), []byte(`"renamed_by_the_plant`)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if !strings.Contains(strings.Join(outs, "\n"), "reason=renamed_by_the_plant") {
+		t.Errorf("NEGATIVE CONTROL FAILED: the rename reached no read's reason:\n%s", strings.Join(outs, "\n"))
+	}
+}
+
+// floatVerdict is a probe line with its per-language diagnostic (after " | ")
+// cut off.
+func floatVerdict(line string) string {
+	verdict, _, _ := strings.Cut(line, " | ")
+	return verdict
+}
+
+// luauPlainFloatSpecialValues runs every case, the generated unit edited by
+// plant first when it is not nil, and returns the probe's raw output per case.
+func luauPlainFloatSpecialValues(t *testing.T, plant func(*testing.T, string)) []string {
+	t.Helper()
 	slowtest.Gate(t, "the pinned Luau interpreter")
 	g := generateFiles(t, map[string]string{"Var.schema": floatSpecialSchema})
+	if plant != nil {
+		plant(t, g.dir)
+	}
 
 	// the same source through schema-go's engine: the unit, its instance model
 	// and the wire walks the emitted code mirrors (§3)
@@ -199,6 +239,7 @@ func TestLuauPlainFloatSpecialValues(t *testing.T) {
 	}
 
 	refusals := 0
+	var outs []string
 	for _, c := range floatCases {
 		a32 := binary.LittleEndian.AppendUint32(nil, c.b32)
 		b64 := binary.LittleEndian.AppendUint64(nil, c.b64)
@@ -221,14 +262,14 @@ func TestLuauPlainFloatSpecialValues(t *testing.T) {
 			decoded := model.New(st)
 			var rep tabletext.Report
 			_, derr := tablewire.Decode(model, decoded, wire, &rep)
-			var rf *tablewire.NonFiniteRefusal
-			if !errors.As(derr, &rf) {
-				t.Fatalf("%s: the Go reader answered %v over the patched wire, want a NonFiniteRefusal", c.name, derr)
+			if !tablewire.ReadRefusal(derr) {
+				t.Fatalf("%s: the Go reader answered %v over the patched wire, want a refusal", c.name, derr)
 			}
+			// the engine's read verdict only: its reason is its own diagnostic
 			want = []string{
-				"tol=refused reason=" + rep.Reason,
+				"tol=refused",
 				"save=refused non_finite_float " + nf.Field + " measure=nil non_finite_float",
-				"strict=non_finite_float field=" + rf.Field,
+				"strict=refused",
 			}
 			refusals++
 		} else {
@@ -243,26 +284,31 @@ func TestLuauPlainFloatSpecialValues(t *testing.T) {
 			if a != c.b32 || b != c.b64 {
 				t.Fatalf("%s: the Go reader landed 0x%08X/0x%016X, want 0x%08X/0x%016X", c.name, a, b, c.b32, c.b64)
 			}
+			// the verdict and the landed bits; the read counters (refused,
+			// unknown, widened) are per-language detail, never compared
+			// (docs/rulings.json conformance-is-read-then-write)
 			want = []string{
-				fmt.Sprintf("tol=%d,%d,%d,%d,%d,%d,%d", boolInt(rep.Refused), boolInt(rep.Refused), rep.Unknown, 0, 0, rep.Widened, 0),
+				"tol=loaded",
 				fmt.Sprintf("bits=%08x,%08x,%08x", a, uint32(b>>32), uint32(b)),
 				"save=" + hex.EncodeToString(wire) + " measure=" + strconv.Itoa(len(wire)),
-				"strict=ok field=-",
+				"strict=ok",
 			}
 		}
 
 		out := string(luaurun.Run(t, g.dir, "main.luau", map[string][]byte{"wire": wire, "a32": a32, "b64": b64}))
+		outs = append(outs, out)
 		got := strings.Split(strings.TrimRight(out, "\n"), "\n")
 		if len(got) != len(want) {
 			t.Fatalf("%s: the probe wrote %d lines, want %d:\n%s\nwant:\n%s", c.name, len(got), len(want), out, strings.Join(want, "\n"))
 		}
 		for i := range want {
-			if got[i] != want[i] {
-				t.Errorf("%s: line %d is %q, want %q", c.name, i+1, got[i], want[i])
+			if floatVerdict(got[i]) != want[i] {
+				t.Errorf("%s: line %d is %q, want %q (a read compares the verdict only)", c.name, i+1, got[i], want[i])
 			}
 		}
 	}
 	if refusals != 5 {
 		t.Fatalf("%d cases were refused by the Go engine, want the 5 non-finite ones", refusals)
 	}
+	return outs
 }
