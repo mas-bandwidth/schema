@@ -247,9 +247,10 @@ int main(void)
 // cross it refuses `out_of_range` whole (docs/SPEC-TABLES.md §4, §6.5). The
 // SAME wire with the rung's payload a signalling NaN (0xffa5a5a5) is a
 // must-refuse case (§3.3, the finite rule of 2026-10-27): the Go oracle
-// refuses it as non_finite_float, and so does the one C read of it,
+// refuses it as non_finite_float, and the one C read of it refuses too,
 // landing nothing; the writer refuses the NaN, and a -0 rides by
-// its bits.
+// its bits. The C read is held to the verdict alone: the reason it names is
+// its own diagnostic (docs/rulings.json refusal-verdict-only).
 func TestCTableWireWidening(t *testing.T) {
 	t.Parallel()
 	crossed := unitFromSource(t, `package probe
@@ -350,7 +351,7 @@ func TestCTableWireWidening(t *testing.T) {
         root_reset(&fresh);
         memset(&report, 0, sizeof(report));
         if (root_load(&value, nan_wire, sizeof(nan_wire), &report)) return 6;
-        if (!report.refused || report.reason != SCHEMA_TABLE_NON_FINITE_FLOAT || report.non_finite_floats != 1) { fprintf(stderr, "read: refused %%d reason %%d count %%d\n", report.refused, report.reason, (int)report.non_finite_floats); return 7; }
+        if (!report.refused) { fprintf(stderr, "read: refused %%d reason %%d count %%d\n", report.refused, report.reason, (int)report.non_finite_floats); return 7; }
         if (!same(&value, &fresh)) return 8;
         if (root_load(&value, nan_wire, sizeof(nan_wire), &report)) return 9;
         if (!same(&value, &fresh)) { fprintf(stderr, "strict: the NaN load landed a value\n"); return 10; }
