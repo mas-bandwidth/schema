@@ -52,13 +52,15 @@ const (
 		"package probe\n\n" +
 		"table Root\n{\n    entries map[int32]int32\n}\n"
 
-	// luaHostilePlantFrom is the wire reader's form gate; the planted reader
-	// bug refuses the form it carries, so every clean variable wire the
-	// corpus accepts is refused. The plant changes a verdict: a refusal
-	// conforms on its verdict alone (refusal-verdict-only), so a plant that
-	// only renamed a refusal would leave the corpus green.
-	luaHostilePlantFrom = "  if bytes:byte(1) ~= 1 then\n    report.refused = 1\n"
-	luaHostilePlantTo   = "  if true then -- PLANTED: the form gate refuses the form it carries\n    report.refused = 1\n"
+	// luaHostilePlantFile and luaHostilePlantFrom are the fixed-form reader's
+	// form gate (the wire the corpus accepts, wire-valid, is form 3); the
+	// planted reader bug refuses the form it carries, so that accept is
+	// refused. The plant changes a verdict: a refusal conforms on its verdict
+	// alone (refusal-verdict-only), so a plant that only renamed a refusal
+	// would leave the corpus green.
+	luaHostilePlantFile = "fixed.lua"
+	luaHostilePlantFrom = "  if form ~= formByte then\n    if form == 1 then error(\"previous_form\", 0) end\n"
+	luaHostilePlantTo   = "  if true then -- PLANTED: the form gate refuses the form it carries\n    if form == 1 then error(\"previous_form\", 0) end\n"
 )
 
 // luaHostileCase is one manifest row.
@@ -133,6 +135,7 @@ func luaHostileGenerate(t *testing.T, root, dir string, cases []luaHostileCase, 
 	t.Helper()
 	seen := map[string]bool{}
 	var units []luaHostileUnit
+	planted := 0
 	for _, c := range cases {
 		if seen[c.Schema] {
 			continue
@@ -172,11 +175,13 @@ func luaHostileGenerate(t *testing.T, root, dir string, cases []luaHostileCase, 
 			entry.unavailable = err.Error()
 		} else {
 			if plant && !packet {
-				rt := string(files["load.lua"])
-				if !strings.Contains(rt, luaHostilePlantFrom) {
-					t.Fatalf("the emitted load.lua does not carry the planted pattern %q", luaHostilePlantFrom)
+				if rt, ok := files[luaHostilePlantFile]; ok {
+					if !strings.Contains(string(rt), luaHostilePlantFrom) {
+						t.Fatalf("the emitted %s does not carry the planted pattern %q", luaHostilePlantFile, luaHostilePlantFrom)
+					}
+					files[luaHostilePlantFile] = []byte(strings.ReplaceAll(string(rt), luaHostilePlantFrom, luaHostilePlantTo))
+					planted++
 				}
-				files["load.lua"] = []byte(strings.ReplaceAll(rt, luaHostilePlantFrom, luaHostilePlantTo))
 			}
 			for name, data := range files {
 				if strings.Contains(name, "/") {
@@ -188,6 +193,9 @@ func luaHostileGenerate(t *testing.T, root, dir string, cases []luaHostileCase, 
 			}
 		}
 		units = append(units, entry)
+	}
+	if plant && planted == 0 {
+		t.Fatalf("no emitted table unit carries %s, so the planted reader bug went nowhere", luaHostilePlantFile)
 	}
 	var index strings.Builder
 	for _, unit := range units {
@@ -549,7 +557,7 @@ func TestSchemaLuaRunsHostileCorpus(t *testing.T) {
 }
 
 // TestSchemaLuaHostileCorpusPlantedReader plants a wire-reader bug in a
-// scratch copy of the generated reader (the form gate refuses form 1) and
+// scratch copy of the generated reader (the fixed form gate refuses form 3) and
 // requires the corpus comparison to go red: red with the plant in, green with
 // it out. The red line is kept in the failure message.
 func TestSchemaLuaHostileCorpusPlantedReader(t *testing.T) {
@@ -565,7 +573,7 @@ func TestSchemaLuaHostileCorpusPlantedReader(t *testing.T) {
 	planted := luaHostileRun(t, root, corpusDir, cases, true)
 	bad := luaHostileCompare(t, cases, planted)
 	if len(bad) == 0 {
-		t.Fatalf("the planted reader bug (the form gate refuses form 1) was not observed: the corpus stayed green")
+		t.Fatalf("the planted reader bug (the fixed form gate refuses form 3) was not observed: the corpus stayed green")
 	}
 	t.Logf("the planted reader bug is red: %s", bad[0])
 }
