@@ -2570,6 +2570,11 @@ func (g *messageGen) emitLoadPayload(f *ir.Field, owner, entryVar string, indent
 		g.pf("%sif (%s.element.kind == 6 && !r.align()) { r.report.damaged = true; return false; }\n", ind, entryVar)
 		g.pf("%slong %s = Math.min(%s, %dL);\n", ind, keepVar, nVar, f.ArrayBound)
 		g.pf("%sif (%s < %s) { r.report.refuse(\"count_over_bound\"); }\n", ind, keepVar, nVar)
+		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+			// a count below the reader's own minimum is refused as one past
+			// its bound is (docs/SPEC.md §5.1 row 3, docs/SPEC-TABLES.md §3.3)
+			g.pf("%sif (%s < %dL) { r.report.refuse(\"count_over_bound\"); }\n", ind, nVar, f.ArrayMin)
+		}
 		g.pf("%slong %s = TableMessage.elementRunBits(14, %s.element);\n", ind, runVar, entryVar)
 		g.pf("%slong %s = (%s >= 0L && %s > %s) ? %s : %s;\n", ind, walkVar, runVar, nVar, keepVar, keepVar, nVar)
 		g.pf("%sfor (long %s = 0; %s < %s; %s++) {\n", ind, idxVar, idxVar, walkVar, idxVar)

@@ -5860,6 +5860,9 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 }
 
 func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, depth string) {
+	if check := countMinCheck(f, "in.rep"); check != "" {
+		defer b.WriteString(check)
+	}
 	if variableWide(f) && f.Array == ir.ArrayNone && !f.Type.Optional {
 		writeVariableWideJsonRead(b, f, "v."+varMember(f), false)
 		return
@@ -6105,7 +6108,21 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 	}
 }
 
+// countMinCheck is the refusal of a counted array [Min..Max]T read with fewer
+// than Min elements (docs/SPEC.md §5.1 row 3, docs/SPEC-TABLES.md §3.3): the
+// count is refused count_over_bound as one past the bound is, whatever path
+// the elements took. "" for any other field.
+func countMinCheck(f *ir.Field, report string) string {
+	if f.Array != ir.ArrayCounted || f.ArrayMin <= 0 || f.Type.Optional || f.KeyEnum != "" || f.IsMap() {
+		return ""
+	}
+	return fmt.Sprintf("                if (v.%s.size() < %d) { %s.refuse(\"count_over_bound\"); }\n", varMember(f), f.ArrayMin, report)
+}
+
 func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, retain bool, ordinal int, overlongNone bool) {
+	if check := countMinCheck(f, "report"); check != "" {
+		defer b.WriteString(check)
+	}
 	if variableWide(f) && f.Array == ir.ArrayNone && !f.Type.Optional {
 		writeVariableWideRead(b, f)
 		return
