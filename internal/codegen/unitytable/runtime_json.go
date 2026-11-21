@@ -850,7 +850,15 @@ internal static class TableJson
                 o.Text(f.GetRaw(owner, index) != 0 ? "true" : "false");
                 return true;
             case 10:
-                return WriteFloat(ref o, TableBitsToFloat(unchecked((uint)f.GetRaw(owner, index))), true);
+                // THE WRITER STORES +0 FOR A COMPRESSED FLOAT'S -0
+                // (docs/SPEC-TABLES.md §3.3, ruled 2026-11-10
+                // fixed-compressed-negzero): it writes 0, never -0. A plain
+                // float's -0 is a value and is written as one.
+                {
+                    uint bits = unchecked((uint)f.GetRaw(owner, index));
+                    if (f.HasFloatRange && bits == 0x80000000u) { bits = 0; }
+                    return WriteFloat(ref o, TableBitsToFloat(bits), true);
+                }
             case 11:
                 return WriteFloat(ref o, TableBitsToDouble(f.GetRaw(owner, index)), false);
             case 2:
