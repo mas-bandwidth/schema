@@ -398,14 +398,14 @@ func main() {
 		// and the output is §3's — no envelope of schema's own.
 		fs := flag.NewFlagSet("pack", flag.ExitOnError)
 		root := fs.String("root", "", "the root `table` the tree mirrors")
-		out := fs.String("out", "", "file to write the root's wire bytes to")
+		out := fs.String("out", "", "file to write the root's wire bytes to; one run writes to an output at a time")
 		// THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the same tree and the
 		// same text, written as the form byte and the root body alone. Its ids
 		// live in the CONNECTION's announced table, so `--announce <file>`
 		// writes that announcement beside the message — a receiver that has
 		// not read one holds no table and refuses every message on the wire.
 		message := fs.Bool("message", false, "write the `message` form (docs/SPEC-TABLES.md §3.3) instead of the variable form")
-		announce := fs.String("announce", "", "with --message, also write the unit's announcement to this `file`")
+		announce := fs.String("announce", "", "with --message, also write the unit's announcement to this `file`; it and --out land together or not at all when one run writes to them")
 		// THE PRIMITIVE IS A BATCH (docs/SPEC-TABLES.md §3.3): a number of
 		// messages in one buffer, one count and one bit stream. --root and its
 		// tree are the first message; each --batch names another, in order.
@@ -422,6 +422,13 @@ func main() {
 		}
 		if len(batch) > 0 && !*message {
 			fatalf("--batch is the message form's own: pass --message beside it (docs/SPEC-TABLES.md §3.3)")
+		}
+		outs := []outputPath{{"--out", *out}}
+		if *announce != "" {
+			outs = []outputPath{{"--announce", *announce}, {"--out", *out}}
+		}
+		if err := refuseAliasedPaths("pack", outs, nil); err != nil {
+			fatalf("%v", err)
 		}
 		unit := loadUnit(c, rest)
 		var bytes []byte
@@ -441,21 +448,23 @@ func main() {
 		// the next `make` skip the rule and the failure vanish, and writing
 		// `--announce` before the gate would replace a prior announcement
 		// while leaving the prior message beside it. The gate runs first, and
-		// both files land atomically after it.
+		// the pair publishes after it, both files or neither: a failure writing
+		// either keeps the earlier pair byte-for-byte. That holds when this run
+		// is the only one writing to these outputs (publish.go).
 		reportLine(report, verbose)
+		var announcement []byte
+		pub := []pairOutput{{outputPath{"--out", *out}, bytes}}
 		if *announce != "" {
-			announcement := c.Announce(unit)
-			if err := writeAtomic(*announce, announcement); err != nil {
-				fatalf("%v", err)
-			}
-			if verbose {
-				fmt.Printf("announced %s: %d bytes\n", *announce, len(announcement))
-			}
+			announcement = c.Announce(unit)
+			pub = []pairOutput{{outputPath{"--announce", *announce}, announcement}, pub[0]}
 		}
-		if err := writeAtomic(*out, bytes); err != nil {
+		if err := publishOutputs("pack", pub, nil); err != nil {
 			fatalf("%v", err)
 		}
 		if verbose {
+			if *announce != "" {
+				fmt.Printf("announced %s: %d bytes\n", *announce, len(announcement))
+			}
 			fmt.Printf("packed %s: %d bytes\n", *out, len(bytes))
 			for _, name := range skipped {
 				fmt.Printf("passed over %s: a hidden file that is not JSON\n", name)
@@ -528,9 +537,9 @@ func main() {
 		fs := flag.NewFlagSet("cook", flag.ExitOnError)
 		root := fs.String("root", "", "the root `table` the bytes carry")
 		in := fs.String("in", "", "the wire file to cook, or a directory tree to pack and then cook")
-		out := fs.String("out", "", "file to write the cook to")
+		out := fs.String("out", "", "file to write the cook to; one run writes to an output at a time")
 		byteOrder := fs.String("byte-order", "little", "the byte order the cook is produced in: little or big")
-		attribution := fs.String("attribution", "", "write the attribution part to this file instead of into the cook, which then carries data alone")
+		attribution := fs.String("attribution", "", "write the attribution part to this file instead of into the cook, which then carries data alone; it and --out land together or not at all when one run writes to them")
 		fs.BoolVar(&verbose, "verbose", false, "print the cook's header facts and the wire report")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
 		if *root == "" || *in == "" || *out == "" {
@@ -543,6 +552,13 @@ func main() {
 			opts.Big = true
 		default:
 			fatalf("--byte-order takes little or big, not %q", *byteOrder)
+		}
+		outs := []outputPath{{"--out", *out}}
+		if *attribution != "" {
+			outs = []outputPath{{"--attribution", *attribution}, {"--out", *out}}
+		}
+		if err := refuseAliasedPaths("cook", outs, []outputPath{{"--in", *in}}); err != nil {
+			fatalf("%v", err)
 		}
 		unit := loadUnit(c, fs.Args())
 		wire, packed := cookInput(c, unit, *root, *in, verbose)
@@ -560,6 +576,10 @@ func main() {
 			stage = "cook"
 		}
 		reportLineStage(report, verbose, stage)
+		// the cook and its attribution publish together or not at all, so a
+		// failure writing either keeps the earlier pair byte-for-byte, when
+		// this run is the only one writing to these outputs (publish.go)
+		pub := []pairOutput{{outputPath{"--out", *out}, bytes}}
 		if *attribution != "" {
 			// the attribution is SEPARABLE (§6.3): a caller may place the two
 			// parts together or apart, and a build that ships no tooling need
@@ -569,12 +589,10 @@ func main() {
 			if err != nil {
 				fail(err)
 			}
-			if err := writeAtomic(*attribution, side); err != nil {
-				fatalf("%v", err)
-			}
 			bytes = data
+			pub = []pairOutput{{outputPath{"--attribution", *attribution}, side}, {outputPath{"--out", *out}, bytes}}
 		}
-		if err := writeAtomic(*out, bytes); err != nil {
+		if err := publishOutputs("cook", pub, []outputPath{{"--in", *in}}); err != nil {
 			fatalf("%v", err)
 		}
 		if verbose {
@@ -813,6 +831,14 @@ a check never edits what it checked. Success is silent: --verbose lists the
 files a command wrote. pack, unpack and cook exit nonzero when their read
 refuses the input; a report that counts only lawful evolution prints its line
 and exits 0.
+
+pack --message --announce and cook --attribution write one artifact in two
+files, and a run publishes both or neither: a failure leaves the earlier pair
+as it was. That holds when one run writes to an output at a time. One
+publisher per destination is the contract, as with any compiler: schema takes
+no lock, and two runs writing the same output at once can leave one run's
+file beside the other's. Give concurrent runs their own outputs, or run them
+one after the other.
 
 testgen writes the round-trip and damage tests of every table beside the code
 generate wrote: Go emits one <Base>Table_gen_test.go, Lua one
