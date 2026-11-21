@@ -336,6 +336,9 @@ defmodule Driver do
   def main([manifest, "list"]) do
     _ = manifest
     Enum.each(@surfaces, &IO.puts/1)
+    # the opt-in units this leg answers (MANIFEST.txt `opt-in`): make/elixir.mk
+    # compiles the shapes unit into the ebin with the rest of the corpus
+    IO.puts("unit shapes")
   end
 
   def main([manifest, "block-lead"]) do
@@ -353,6 +356,7 @@ defmodule Driver do
   def main([manifest, surface, outdir]) do
     rows = parse(File.read!(manifest))
     run(surface, rows, outdir)
+    finish(surface)
   end
 
   def main(_), do: usage()
@@ -416,10 +420,12 @@ defmodule Driver do
 
   # ---- the surfaces ----
 
+  # EVERY SURFACE RUNS ITS CASES THROUGH each_case/3, so one case's crash is
+  # that case's driver error and never another's silence (see each_case/3).
   defp run("block", rows, outdir) do
-    for [name, unit, image] <- rows(rows, "block") do
+    each_case("block", rows(rows, "block"), fn [name, unit, image] ->
       write(outdir, name, block_verdict(unit, block_table(name), File.read!(image)))
-    end
+    end)
   end
 
   # THE FOREIGN-ORDER REFUSAL (test/conformance/README.md): the driver makes the
@@ -427,13 +433,13 @@ defmodule Driver do
   # so whatever this build's order is, the magic it now reads is not this
   # build's. It is the check §19.1 and §7.1 put FIRST, for exactly this.
   defp run("block-foreign", rows, outdir) do
-    for [name, unit, image] <- rows(rows, "block") do
+    each_case("block-foreign", rows(rows, "block"), fn [name, unit, image] ->
       write(outdir, name, block_verdict(unit, block_table(name), foreign(File.read!(image))))
-    end
+    end)
   end
 
   defp run("cook-foreign", rows, outdir) do
-    for [name, unit, root, file] <- rows(rows, "cook") do
+    each_case("cook-foreign", rows(rows, "cook"), fn [name, unit, root, file] ->
       {mod, open} = accessor(unit, root, "cook_open", 1)
 
       verdict =
@@ -443,11 +449,11 @@ defmodule Driver do
         end
 
       write(outdir, name, verdict)
-    end
+    end)
   end
 
   defp run("block-dump", rows, outdir) do
-    for [name, unit, image] <- rows(rows, "block") do
+    each_case("block-dump", rows(rows, "block"), fn [name, unit, image] ->
       root = block_table(name)
       mod = block_module(unit, root)
       lo = Macro.underscore(root)
@@ -460,11 +466,13 @@ defmodule Driver do
         :error ->
           write(outdir, name, "refuse\n")
       end
-    end
+    end)
   end
 
   defp run("forgery", rows, outdir) do
-    for [name, kind, subject, file, extent, pointer] <- rows(rows, "forgery"), kind == "block" do
+    cases = forgeries(rows, "block")
+
+    each_case("forgery", cases, fn [name, subject, file, extent, pointer] ->
       verdict =
         case claim(file, extent, pointer) do
           :no_buffer ->
@@ -485,11 +493,11 @@ defmodule Driver do
         end
 
       write(outdir, name, verdict)
-    end
+    end)
   end
 
   defp run("cook", rows, outdir) do
-    for [name, unit, root, file] <- rows(rows, "cook") do
+    each_case("cook", rows(rows, "cook"), fn [name, unit, root, file] ->
       {mod, open} = accessor(unit, root, "cook_open", 1)
 
       case apply(mod, open, [File.read!(file)]) do
@@ -499,11 +507,13 @@ defmodule Driver do
         :error ->
           raise "the cook #{root} did not open — the tool wrote it and this build cannot point at it"
       end
-    end
+    end)
   end
 
   defp run("cook-forgery", rows, outdir) do
-    for [name, kind, subject, file, extent, pointer] <- rows(rows, "forgery"), kind == "cook" do
+    cases = forgeries(rows, "cook")
+
+    each_case("cook-forgery", cases, fn [name, subject, file, extent, pointer] ->
       unit = cook_unit(rows, subject)
       {mod, open} = accessor(unit, subject, "cook_open", 2)
 
@@ -523,7 +533,7 @@ defmodule Driver do
         end
 
       write(outdir, name, verdict)
-    end
+    end)
   end
 
   # THE REASON BESIDE THE REFUSAL (test/conformance/README.md, docs/SPEC-TABLES.md
@@ -534,25 +544,33 @@ defmodule Driver do
   # never one this driver derives. A `null` pointer is no buffer at all, which
   # the reader takes as nil and names an unaligned base, as the reference does.
   defp run("cook-reason", rows, outdir) do
-    for [name, kind, subject, file, extent, pointer] <- rows(rows, "forgery"), kind == "cook" do
+    cases = forgeries(rows, "cook")
+
+    each_case("cook-reason", cases, fn [name, subject, file, extent, pointer] ->
       {mod, reason} = accessor(cook_unit(rows, subject), subject, "cook_open_reason", 2)
       write(outdir, name, reason_line(mod, reason, file, extent, pointer))
-    end
+    end)
   end
 
   defp run("block-reason", rows, outdir) do
-    for [name, kind, subject, file, extent, pointer] <- rows(rows, "forgery"), kind == "block" do
+    cases = forgeries(rows, "block")
+
+    each_case("block-reason", cases, fn [name, subject, file, extent, pointer] ->
       {mod, reason} =
         accessor(block_unit(subject), block_table(subject), "block_open_reason", 2)
 
       write(outdir, name, reason_line(mod, reason, file, extent, pointer))
-    end
+    end)
   end
 
+  # A REFUSED LOAD IS THE CODEC'S ANSWER, NOT ITS ABSENCE (FORMAT.md, the
+  # `instance` line): the wire surface answers it as <case>.absent HOLDING THE
+  # READ'S REASON, which the harness scores against a `wire-refused` row; an
+  # EMPTY <case>.absent is only for a unit or root this leg has no codec for.
   defp run("wire", rows, outdir) do
-    for [name, unit, root, wire | _] <- rows(rows, "instance") do
-      answer_load_save(table_module(unit), root, wire, outdir, name)
-    end
+    each_case("wire", rows(rows, "instance"), fn [name, unit, root, wire | _] ->
+      answer_load_save(codec(unit, root), root, wire, outdir, name)
+    end)
   end
 
   # ---- retain and retain-save (docs/SPEC-TABLES.md §6.6): RT1's Node loaded
@@ -564,104 +582,96 @@ defmodule Driver do
   defp run(surface, rows, outdir) when surface in ["retain", "retain-save"] do
     saves = surface == "retain-save"
 
-    for row <- rows(rows, "retain"), not (saves and List.last(row) == "-") do
-      retain_row(row, saves, outdir)
-    end
+    cases = Enum.reject(rows(rows, "retain"), fn row -> saves and List.last(row) == "-" end)
+    each_case(surface, cases, fn row -> retain_row(row, saves, outdir) end)
   end
 
+  # A text surface skips a `no-text` instance (FORMAT.md), so it reads only
+  # the instance lines that carry no marker.
   defp run("json-read", rows, outdir) do
-    for [name, unit, root, _wire | rest] <- rows(rows, "instance"), rest == [] do
+    each_case("json-read", text_instances(rows), fn [name, unit, root, _wire] ->
       json = Path.join("testdata/conformance/tables/json", name <> ".json")
-      mod = table_module(unit)
 
-      case mod do
+      case codec(unit, root) do
         nil ->
           write_absent(outdir, name)
 
-        _ ->
+        mod ->
           case mod.from_json(root, File.read!(json)) do
             {:ok, value, _report} ->
               case mod.save(root, value) do
-                {:ok, bytes} -> write(outdir, name, bytes)
-                _ -> write_absent(outdir, name)
+                {:ok, bytes} when is_binary(bytes) -> write(outdir, name, bytes)
+                {:error, reason} -> write_refused(outdir, name, reason)
               end
 
-            _ ->
-              write_absent(outdir, name)
+            {:error, refusal, report} ->
+              write_refused(outdir, name, load_reason(refusal, report))
           end
       end
-    end
+    end)
   end
 
   defp run("json-write", rows, outdir) do
-    for [name, unit, root, wire | rest] <- rows(rows, "instance"), rest == [] do
-      mod = table_module(unit)
-
-      case mod do
+    each_case("json-write", text_instances(rows), fn [name, unit, root, wire] ->
+      case codec(unit, root) do
         nil ->
           write_absent(outdir, name <> ".json")
 
-        _ ->
+        mod ->
           case mod.load(root, File.read!(wire)) do
             {:ok, value, _report} ->
               case mod.to_json(root, value) do
-                {:ok, text} -> write(outdir, name <> ".json", text)
-                _ -> write_absent(outdir, name <> ".json")
+                {:ok, text} -> write(outdir, name <> ".json", IO.iodata_to_binary(text))
+                {:error, reason} -> write_refused(outdir, name <> ".json", reason)
               end
 
-            _ ->
-              write_absent(outdir, name <> ".json")
+            {:error, refusal, report} ->
+              write_refused(outdir, name <> ".json", load_reason(refusal, report))
           end
       end
-    end
+    end)
 
-    for [name, unit, root, wire | rest] <- rows(rows, "json-write-refusal") do
-      mod = table_module(unit)
-
-      case mod do
+    # the text writer's refusal rows: the instance LOADS (it is a legal file)
+    # and the damage is planted in the loaded value, so a load that refuses
+    # is no answer of the writer's and is a driver error, never `refused`
+    each_case("json-write", rows(rows, "json-write-refusal"), fn [name, unit, root, wire | rest] ->
+      case codec(unit, root) do
         nil ->
           write_absent(outdir, name <> ".json")
 
-        _ ->
-          case mod.load(root, File.read!(wire)) do
-            {:ok, value, _report} ->
-              value = damage_text(value, List.first(rest))
+        mod ->
+          {:ok, value, _report} = mod.load(root, File.read!(wire))
+          value = damage_text(value, List.first(rest))
 
-              case mod.to_json(root, value) do
-                {:ok, text} -> write(outdir, name <> ".json", text)
-                _ -> write(outdir, name <> ".json", "refused\n")
-              end
-
-            _ ->
-              write(outdir, name <> ".json", "refused\n")
+          case mod.to_json(root, value) do
+            {:ok, text} -> write(outdir, name <> ".json", IO.iodata_to_binary(text))
+            {:error, reason} when is_atom(reason) -> write(outdir, name <> ".json", "refused\n")
           end
       end
-    end
+    end)
   end
 
   defp run("cook-write", rows, outdir) do
     instances =
       Map.new(rows(rows, "instance"), fn [name | rest] -> {name, rest} end)
 
-    for row <- rows(rows, "cook-write") do
-      [name, input, source, alias_name] = row
-
+    each_case("cook-write", rows(rows, "cook-write"), fn [name, input, source, alias_name] ->
       case Map.get(instances, name) do
         [unit, root, wire | _] ->
-          cook_one(table_module(unit), root, wire, input, source, alias_name, outdir, name)
+          cook_one(codec(unit, root), root, wire, input, source, alias_name, outdir, name)
 
         _ ->
           raise "unknown cook-write instance #{name}"
       end
-    end
+    end)
   end
 
   # The report line, then the §16 text of the value the read left when the
   # read reads (test/conformance/README.md), as `framing` answers a row that
   # owes its value.
   defp run("report", rows, outdir) do
-    for [name, unit, root, wire] <- rows(rows, "report") do
-      mod = table_module(unit)
+    each_case("report", rows(rows, "report"), fn [name, unit, root, wire] ->
+      mod = codec(unit, root)
 
       case report_line(mod, root, wire) do
         :absent ->
@@ -674,7 +684,7 @@ defmodule Driver do
         line ->
           write(outdir, name, line)
       end
-    end
+    end)
   end
 
   # THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the read report as the
@@ -684,8 +694,8 @@ defmodule Driver do
   # refusal alone (§4, DAMAGE DISCARDS THE WHOLE LOAD), so its value is not
   # written.
   defp run("framing", rows, outdir) do
-    for [name, unit, root, wire | rest] <- rows(rows, "framing") do
-      case table_module(unit) do
+    each_case("framing", rows(rows, "framing"), fn [name, unit, root, wire | rest] ->
+      case codec(unit, root) do
         nil ->
           write_absent(outdir, name)
 
@@ -714,26 +724,20 @@ defmodule Driver do
                   end
               end
 
-            {:error, _refusal, %{reason: "unknown_form"}} ->
-              write(outdir, name, "refused\n")
-
-            {:error, _refusal, %{reason: "wire_damaged"}} ->
-              write(outdir, name, "refused\n")
-
+            # every named refusal (unknown_form, wire_damaged, ...) is the
+            # verdict `refused`; any other answer is no contract's, and is a
+            # driver error
             {:error, _refusal, _report} ->
               write(outdir, name, "refused\n")
-
-            _ ->
-              write_absent(outdir, name)
           end
       end
-    end
+    end)
   end
 
   defp run("json-hostile", rows, outdir) do
-    for [name, unit, root, tree | _] <- rows(rows, "json-hostile") do
+    each_case("json-hostile", rows(rows, "json-hostile"), fn [name, unit, root, tree | _] ->
       json = Path.join(tree, root <> ".json")
-      mod = table_module(unit)
+      mod = codec(unit, root)
 
       if mod == nil do
         write_absent(outdir, name)
@@ -756,11 +760,11 @@ defmodule Driver do
               end
             end
 
-          _ ->
+          {:error, _refusal, _report} ->
             write(outdir, name, "refused\n")
         end
       end
-    end
+    end)
   end
 
   # ---- the MESSAGE FORM's surface (docs/SPEC-TABLES.md §3.3) ----
@@ -768,27 +772,28 @@ defmodule Driver do
   # THE ONE SURFACE THAT READS TWO FILES (test/conformance/README.md): each
   # `message` row is joined BY KEY to the `connection` line naming its unit and
   # announcement; the announcement read gives the vocabulary, the batch loads
-  # against it, and the saved bytes are the answer. A row the leg cannot answer
-  # writes <case>.absent and says why on stderr.
+  # against it, and the saved bytes are the answer. A unit with no message
+  # codec writes an EMPTY <case>.absent; a refusal of the present codec's
+  # writes <case>.absent holding its reason; a row naming no connection the
+  # manifest defines is a driver error.
   defp run("message", rows, outdir) do
     connections =
       Map.new(rows(rows, "connection"), fn [key, unit, _hash, announcement | _] ->
         {key, {unit, announcement}}
       end)
 
-    for [name, connection, root, _file, batch | _] <- rows(rows, "message") do
+    each_case("message", rows(rows, "message"), fn [name, connection, root, _file, batch | _] ->
       case message_answer(Map.get(connections, connection), root, batch) do
         {:refused, why} ->
-          File.write!(Path.join(outdir, name <> ".absent"), why)
+          write_refused(outdir, name, why)
 
         {:ok, bytes} ->
           write(outdir, name, bytes)
 
-        {:absent, why} ->
-          IO.puts(:stderr, "message #{name}: absent: #{why}")
+        :absent ->
           write_absent(outdir, name)
       end
-    end
+    end)
   end
 
   # THE WRITE-REFUSAL SURFACES (docs/SPEC.md §5.1, test/conformance/README.md).
@@ -809,9 +814,9 @@ defmodule Driver do
   defp run(surface, rows, outdir)
        when surface in ["write-refusal", "write-refusal-fixed", "write-refusal-json"] do
     each_case(surface, rows(rows, surface), fn [name, unit, root, wire, path, kind, text | _] ->
-      mod = table_module(unit)
+      mod = codec(unit, root)
 
-      if mod == nil or not is_map_key(mod.descriptors(), root) do
+      if mod == nil do
         write_absent(outdir, name)
       else
         ns = namespace(unit_package(unit))
@@ -911,10 +916,10 @@ defmodule Driver do
     System.halt(2)
   end
 
-  # THE PER-CASE LOOP of the write-refusal surfaces. A case that raises, throws
-  # or exits is that case's driver error and no other's: its name and the error
-  # go to stderr, it leaves no answer, the cases after it still run, and the
-  # surface exits non-zero once the last case is done, so the run is red and
+  # THE PER-CASE LOOP of every surface. A case that raises, throws or exits is
+  # that case's driver error and no other's: its name and the error go to
+  # stderr, it leaves no answer, the cases after it still run, and the surface
+  # exits non-zero once the last case is done (main/1), so the run is red and
   # every other case's answer is still there to read.
   defp each_case(surface, cases, fun) do
     errors =
@@ -925,9 +930,17 @@ defmodule Driver do
         rescue
           e -> case_error(surface, row, Exception.format(:error, e, __STACKTRACE__))
         catch
-          kind, payload -> case_error(surface, row, Exception.format(kind, payload, __STACKTRACE__))
+          kind, payload ->
+            case_error(surface, row, Exception.format(kind, payload, __STACKTRACE__))
         end
       end)
+
+    Process.put(:driver_errors, Process.get(:driver_errors, 0) + errors)
+  end
+
+  # the end of a surface: red when any case ended in a driver error
+  defp finish(surface) do
+    errors = Process.get(:driver_errors, 0)
 
     if errors > 0 do
       IO.puts(:stderr, "#{surface}: #{errors} case(s) ended in a driver error")
@@ -963,6 +976,49 @@ defmodule Driver do
          function_exported?(mod, :save, 2),
        do: mod,
        else: nil
+  end
+
+  # THE CODEC FOR ONE CASE, or nil when it is ABSENT for that case: the unit
+  # has no codec module, or the codec's own descriptors carry no such root.
+  # Absence is decided here, by what the build holds, and never by a case's
+  # name; a nil answers an EMPTY <case>.absent on every surface.
+  defp codec(unit, root) do
+    case table_module(unit) do
+      nil -> nil
+      mod -> if is_map_key(mod.descriptors(), root), do: mod, else: nil
+    end
+  end
+
+  # the instance lines a text surface reads: those with no `no-text` or
+  # `wire-refused` marker (FORMAT.md)
+  defp text_instances(rows), do: Enum.filter(rows(rows, "instance"), &(length(&1) == 4))
+
+  # the forgery lines of one kind, `block` or `cook`, without the kind column:
+  # [case, subject, file, extent, pointer]
+  defp forgeries(rows, kind) do
+    for [name, ^kind | rest] <- rows(rows, "forgery"), do: [name | rest]
+  end
+
+  # A PRESENT CODEC'S REFUSAL, as the surfaces that owe a value spell it
+  # (FORMAT.md, the `instance` line): <case>.absent HOLDING THE REASON. It is
+  # never empty, so the harness can tell it from a codec that is absent.
+  defp write_refused(outdir, name, reason) do
+    why =
+      case reason do
+        r when is_binary(r) and r != "" -> r
+        r when is_atom(r) -> Atom.to_string(r)
+        r -> inspect(r)
+      end
+
+    File.write!(Path.join(outdir, name <> ".absent"), why)
+  end
+
+  # a load's refusal reason: the report's, else the refusal's own name
+  defp load_reason(refusal, report) do
+    case Map.get(report || %{}, :reason, "") do
+      r when is_binary(r) and r != "" -> r
+      _ -> refusal
+    end
   end
 
   defp retain_row([name, unit, root, wire, capacity, ids | _], saves, outdir) do
@@ -1037,13 +1093,20 @@ defmodule Driver do
           mod.from_json(root, File.read!(input))
         end
 
+      # a refusal of the present codec's (a damaged read, a refused read, a
+      # measure that refuses the value) is that case's answer, its reason in
+      # <case>.absent; only a codec with no cook writer is an empty absence
+      refuse = fn why ->
+        write_refused(outdir, name, why)
+        write_refused(outdir, name <> "-be", why)
+      end
+
       case value_result do
         {:ok, value, report} ->
           value = cook_share(value, source, alias_name)
 
           if damaged?(report) do
-            write_absent(outdir, name)
-            write_absent(outdir, name <> "-be")
+            refuse.("wire_damaged")
           else
             case mod.cook_measure_reason(root, value) do
               {size, :ok} when is_integer(size) and size > 0 ->
@@ -1061,15 +1124,13 @@ defmodule Driver do
                   end
                 end
 
-              _ ->
-                write_absent(outdir, name)
-                write_absent(outdir, name <> "-be")
+              {-1, reason} when reason != :ok ->
+                refuse.(reason)
             end
           end
 
-        _ ->
-          write_absent(outdir, name)
-          write_absent(outdir, name <> "-be")
+        {:error, refusal, report} ->
+          refuse.(load_reason(refusal, report))
       end
     end
   end
@@ -1101,21 +1162,21 @@ defmodule Driver do
         case mod.load(root, File.read!(wire)) do
           {:ok, value, _report} ->
             case mod.save(root, value) do
-              {:ok, bytes} ->
+              {:ok, bytes} when is_binary(bytes) ->
                 write(outdir, name, bytes)
 
               # THE NAMED WRITER REFUSAL (docs/SPEC-TABLES.md §2.5): a blob the
               # tolerant read found named from two slots refuses the save by
-              # name, and the case answers that name beside its absence
-              {:error, :blob_shared} ->
-                File.write!(Path.join(outdir, name <> ".absent"), "blob_shared")
-
-              _ ->
-                write_absent(outdir, name)
+              # name, and the case answers that name beside its absence; any
+              # other refusal of the writer's is answered the same way
+              {:error, reason} ->
+                write_refused(outdir, name, reason)
             end
 
-          _ ->
-            write_absent(outdir, name)
+          # the read's refusal is the case's answer: its reason, never the
+          # empty absence of a codec this leg does not have
+          {:error, refusal, report} ->
+            write_refused(outdir, name, load_reason(refusal, report))
         end
     end
   end
@@ -1167,17 +1228,8 @@ defmodule Driver do
       {:ok, value, _report} ->
         {"read\n", value}
 
-      {:error, _refusal, %{reason: "unknown_form"}} ->
-        "refused\n"
-
-      {:error, _refusal, %{reason: "wire_damaged"}} ->
-        "refused\n"
-
       {:error, _refusal, _report} ->
         "refused\n"
-
-      _ ->
-        :absent
     end
   end
 
@@ -1267,12 +1319,12 @@ defmodule Driver do
     do: {:refused, "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)"}
 
   defp message_answer(nil, _root, _batch),
-    do: {:absent, "the row names no connection the manifest defines"}
+    do: raise("the row names no connection the manifest defines")
 
   defp message_answer({unit, announcement}, root, batch) do
     case message_module(unit) do
       nil ->
-        {:absent, "unit #{unit} has no TableMessage module"}
+        :absent
 
       mod ->
         with {:announce_read, {:ok, announced}} <-
@@ -1295,7 +1347,10 @@ defmodule Driver do
                {:save_messages, mod.save_messages(save_vocab, save_values)} do
           {:ok, bytes}
         else
-          {verb, answer} -> {:absent, "#{root}: #{verb} answered #{inspect(answer)}"}
+          # a step's {:error, ...} is the present codec's refusal, and the case
+          # answers it; any other answer is no contract's, and raises
+          {verb, answer} when elem(answer, 0) == :error ->
+            {:refused, "#{root}: #{verb} answered #{inspect(answer)}"}
         end
     end
   end
@@ -1506,9 +1561,11 @@ defmodule WriteRefusal do
     {:ok, member_name(f, k) || if(k == 0, do: nil, else: k)}
   end
 
-  # a union by its raw tag: a declared tag takes its arm at the arm's declared
-  # defaults (an empty payload the codec fills); a tag past the arms stays the
-  # bare integer beside an empty payload, which the writer must refuse
+  # a union by its raw tag: a declared tag takes its arm at the arm's DECLARED
+  # DEFAULT, read off the codec's own union descriptors (an int arm's 0, a
+  # table arm's record at its field defaults); a tag past the arms stays the
+  # bare integer the row spells, never narrowed to a tag width the BEAM does
+  # not have, beside an empty payload, which the writer must refuse
   defp leaf(ctx, f, _current, "tag", text) do
     if f.t != :union and Map.get(f, :elem_t) != :union,
       do: raise("write-refusal: tag on #{f.name}, which declares no union")
@@ -1517,7 +1574,7 @@ defmodule WriteRefusal do
 
     case Module.concat(ctx.ns, f.type_name <> "Type").from_int(t) do
       {:ok, :none} -> {:ok, nil}
-      {:ok, arm} -> {:ok, {Atom.to_string(arm), %{}}}
+      {:ok, arm} -> {:ok, {Atom.to_string(arm), arm_default(ctx, f, Atom.to_string(arm))}}
       :error -> {:ok, {t, %{}}}
     end
   end
@@ -1529,6 +1586,18 @@ defmodule WriteRefusal do
     do: {:ok, resize(current || [], String.to_integer(text), fn -> default_element(ctx, f) end)}
 
   defp leaf(_ctx, _f, current, kind, text), do: scalar(current, kind, text)
+
+  # The declared default of one union arm's payload, from the codec's union
+  # descriptors (docs/SPEC-TABLES.md §2.6): a table arm is its record's fields
+  # at their declared defaults, any other arm its descriptor's own default.
+  defp arm_default(ctx, f, arm) do
+    union = Map.get(f, :elem) || f.type_name
+    a = Map.fetch!(Map.fetch!(ctx.mod.union_descriptors(), union).by_name, arm)
+
+    if a.t == :table and is_map_key(ctx.descs, a.elem),
+      do: Map.new(Map.fetch!(ctx.descs, a.elem).fields, &{&1.name, &1.default}),
+      else: a.default
+  end
 
   # The default element of an array field's declared element kind, in the
   # table value's terms: the descriptor's own elem_default where it carries
@@ -1679,12 +1748,23 @@ defmodule WriteRefusal do
   defp message_leaf(_ctx, f, current, "count", text) do
     default = fn ->
       cond do
-        f.t != :list -> raise "write-refusal: count on #{f.name}, which declares no array"
-        f.elem_t == :record -> []
-        f.elem_t == :union -> :none
-        f.elem_t in [:int, :enum] -> 0
-        f.elem_t == :float -> 0.0
-        true -> raise "write-refusal: no default element of kind #{inspect(f.elem_t)} for #{f.name}"
+        f.t != :list ->
+          raise "write-refusal: count on #{f.name}, which declares no array"
+
+        f.elem_t == :record ->
+          []
+
+        f.elem_t == :union ->
+          :none
+
+        f.elem_t in [:int, :enum] ->
+          0
+
+        f.elem_t == :float ->
+          0.0
+
+        true ->
+          raise "write-refusal: no default element of kind #{inspect(f.elem_t)} for #{f.name}"
       end
     end
 
@@ -1718,6 +1798,13 @@ defmodule WriteRefusal do
   defp scalar(_current, "float", text) do
     {v, ""} = Float.parse(text)
     {:ok, v}
+  end
+
+  # a finite decimal, `-0` included (test/conformance/README.md): the nearest
+  # BEAM float, its sign kept on a zero
+  defp scalar(_current, "real", text) do
+    {v, ""} = Float.parse(text)
+    {:ok, if(v == 0 and String.starts_with?(text, "-"), do: -0.0, else: v)}
   end
 
   defp scalar(_current, kind, _text), do: raise("write-refusal: no value of kind #{kind}")
