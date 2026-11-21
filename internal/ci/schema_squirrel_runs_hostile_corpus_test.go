@@ -470,9 +470,10 @@ const (
 	squirrelHostilePlantFrom = `if (b[0] != 3) { _M.FixedReason = "newer_form"; return -1; }`
 	squirrelHostilePlantTo   = `if (true) { _M.FixedReason = "newer_form"; return -1; } // PLANTED: the form gate refuses the form it carries`
 
-	// squirrelHostileEmptyMessageFrom is the batch read's last refusal before
-	// it decodes (runtime/message.nut, LoadMessages): the empty plant returns
-	// 0 right after it, landing nothing and refusing nothing.
+	// squirrelHostileEmptyMessageFrom is the batch read's capacity refusal
+	// (runtime/message.nut, LoadMessages): the empty plant returns 0 right
+	// before it, landing nothing and refusing nothing, so the batch the
+	// manifest refuses for its size (message-batch-too-large) must go red.
 	squirrelHostileEmptyMessageFrom = `  if(count>storage.len())return refuse(report,"batch_too_large");`
 )
 
@@ -517,7 +518,7 @@ func TestSquirrelRunsHostileCorpusPlant(t *testing.T) {
 				emptied++
 			}
 			if strings.Contains(s, squirrelHostileEmptyMessageFrom) {
-				s = strings.ReplaceAll(s, squirrelHostileEmptyMessageFrom, squirrelHostileEmptyMessageFrom+"\n  if(count>=0)return 0; // PLANTED: lands nothing, refuses nothing")
+				s = strings.ReplaceAll(s, squirrelHostileEmptyMessageFrom, "  if(count>=0)return 0; // PLANTED: lands nothing, refuses nothing\n"+squirrelHostileEmptyMessageFrom)
 				emptied++
 			}
 			files[name] = []byte(s)
