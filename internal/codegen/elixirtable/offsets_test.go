@@ -179,6 +179,12 @@ end
 `
 		t.Log(runProbe(t, elixirBin, dir, names, probe))
 	})
+	// The variant runner the two ordinary subtests share, held to a count over
+	// the committed unit in testdata/offsets-compile-once.
+	t.Run("compile-once", func(t *testing.T) {
+		t.Parallel()
+		checkOffsetsCompileOnce(t, elixirBin, filepath.Join("testdata", "offsets-compile-once"))
+	})
 	// (a) THE ORDINARY BLOCK: the corpus image opened, then every row of every
 	// array read through its generated _at accessor and every array through its
 	// bulk accessor. The composition is u64halves' last expression.
@@ -393,6 +399,61 @@ defmodule Meter do
 end
 `
 
+// ordinaryVariant is one of measureOrdinary's runs: the runtime file with its
+// composition line replaced by text.
+type ordinaryVariant struct{ name, text string }
+
+// runOrdinaryVariants runs probe once per variant over the unit in files and
+// returns each variant's combined output by name. The runtime file holds the
+// composition `real` exactly once; each variant replaces it with its text.
+//
+// THE UNIT IS COMPILED ONCE. Every module but the runtime goes through elixirc
+// into one ebin; each variant then compiles only its own runtime file (`-r`)
+// beside that ebin, so the runs differ in the composition line alone.
+// Compiling the whole unit per variant was nearly all of the ordinary
+// subtests' time (10-24 s a run against a few seconds of measuring, amd-3,
+// 2026-11-21) and put lang-clean (elixir) past ci-fast's two-minute cap on
+// loaded runners. The real variant goes through the same `-r` path as the
+// controls, so no variant is compiled differently from another. The
+// compile-once subtest holds this to a count over the committed unit in
+// testdata/offsets-compile-once (PR #4484).
+func runOrdinaryVariants(t *testing.T, elixirBin string, files map[string][]byte, runtime, real string, variants []ordinaryVariant, probe string) map[string]string {
+	t.Helper()
+	src, ok := files[runtime]
+	if !ok {
+		t.Fatalf("no %s in the generated Elixir", runtime)
+	}
+	// the composition is matched as a WHOLE LINE, so an edit anywhere in it
+	// (a sabotage that boxes the result) is caught here and not compared as if
+	// the line were intact
+	if n := strings.Count(string(src), real); n != 1 {
+		t.Fatalf("%s holds the half composition %q %d times, want once: the reader no longer composes from halves", runtime, real, n)
+	}
+	shared := map[string][]byte{}
+	maps.Copy(shared, files)
+	delete(shared, runtime)
+	ebin := compileEbin(t, elixirBin, shared)
+	env := append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	outs := map[string]string{}
+	for _, v := range variants {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, runtime), []byte(strings.Replace(string(src), real, v.text, 1)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "probe.exs"), []byte(probe), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		cmd := testproc.Command(t, elixirBin, "-pa", ebin, "-r", runtime, "probe.exs")
+		cmd.Dir, cmd.Env = dir, env
+		raw, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("%s: probe failed: %v\n%s", v.name, err, raw)
+		}
+		outs[v.name] = string(raw)
+	}
+	return outs
+}
+
 // callSite pins one kind of generated call that reaches the composition:
 // every line containing marker must match shape.
 type callSite struct {
@@ -443,45 +504,11 @@ func measureOrdinary(t *testing.T, elixirBin string, unit *ir.Unit, runtime, rea
 			t.Errorf("no generated line names %q: the call-site pin holds nothing", c.marker)
 		}
 	}
-	src, ok := files[runtime]
-	if !ok {
-		t.Fatalf("no %s in the generated Elixir", runtime)
-	}
-	// the composition is matched as a WHOLE LINE, so an edit anywhere in it
-	// (a sabotage that boxes the result) is caught here and not compared as if
-	// the line were intact
-	if n := strings.Count(string(src), real); n != 1 {
-		t.Fatalf("%s holds the half composition %q %d times, want once: the reader no longer composes from halves", runtime, real, n)
-	}
-	// THE UNIT IS COMPILED ONCE. Every module but the runtime goes through
-	// elixirc into one ebin; each variant then compiles only its own runtime
-	// file (`-r`) beside that ebin, so the three runs differ in the composition
-	// line alone. Compiling the whole unit per variant was nearly all of this
-	// subtest's time (10-24 s a run against a few seconds of measuring, amd-3,
-	// 2026-11-21) and put lang-clean (elixir) past ci-fast's two-minute cap on
-	// loaded runners. The real variant goes through the same `-r` path as the
-	// controls, so no variant is compiled differently from another.
-	shared := map[string][]byte{}
-	maps.Copy(shared, files)
-	delete(shared, runtime)
-	ebin := compileEbin(t, elixirBin, shared)
-	env := append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	variants := []ordinaryVariant{{"real", real}, {"control", control}, {"boxed", boxed}}
+	outs := runOrdinaryVariants(t, elixirBin, files, runtime, real, variants, ordinaryMeter+probe)
 	figures := map[string]map[string]float64{}
-	for _, v := range []struct{ name, text string }{{"real", real}, {"control", control}, {"boxed", boxed}} {
-		dir := t.TempDir()
-		if err := os.WriteFile(filepath.Join(dir, runtime), []byte(strings.Replace(string(src), real, v.text, 1)), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(dir, "probe.exs"), []byte(ordinaryMeter+probe), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		cmd := testproc.Command(t, elixirBin, "-pa", ebin, "-r", runtime, "probe.exs")
-		cmd.Dir, cmd.Env = dir, env
-		raw, err := cmd.CombinedOutput()
-		if err != nil {
-			t.Fatalf("%s: probe failed: %v\n%s", v.name, err, raw)
-		}
-		out := string(raw)
+	for _, v := range variants {
+		out := outs[v.name]
 		figures[v.name] = map[string]float64{}
 		for line := range strings.SplitSeq(out, "\n") {
 			f := strings.Fields(line)
