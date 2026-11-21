@@ -243,9 +243,28 @@ var platformNames = func() map[string]string {
 // declaration name the checker refuses for every target because some
 // target's generated code spells it unqualified, mapped to the targets and
 // the mechanism. A test that declares names taken from generated code skips
-// these as it skips ReservedWords.
+// these as it skips ReservedWords. The C# InlineBuffer<N> family is a
+// pattern, refused beside this table and not listed in it.
 func PlatformNames() map[string]string {
 	return maps.Clone(platformNames)
+}
+
+// isInlineBufferName reports whether name spells InlineBuffer<N> for a
+// length N >= 1, the inline buffer struct the C# packet emitter declares for
+// each fixed length a unit's arrays, strings and bytes use
+// (internal/codegen/csharp, emitBuffers). Which lengths a unit uses changes
+// with its fields, so every N is refused, not only the ones used today.
+func isInlineBufferName(name string) bool {
+	n, ok := strings.CutPrefix(name, "InlineBuffer")
+	if !ok || n == "" || n[0] == '0' {
+		return false
+	}
+	for _, r := range n {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // checkPlatformNames refuses a declaration named like a platformNames entry
@@ -254,6 +273,9 @@ func PlatformNames() map[string]string {
 func (c *checker) checkPlatformNames() {
 	for _, name := range slices.Sorted(maps.Keys(c.astDecls)) {
 		why, ok := platformNames[name]
+		if !ok && isInlineBufferName(name) {
+			why, ok = "InlineBuffer<N>, the inline buffer type the generated C# declares for a fixed length N (C#)", true
+		}
 		if !ok || len(targetReserved[name]) > 0 {
 			continue
 		}

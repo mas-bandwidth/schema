@@ -1696,7 +1696,8 @@ All compile errors with positions:
   imports unprefixed (`Uint8List` and the rest), the packages the Go output
   imports (`atomic`, `base64`, `binary`, `errors`, `fmt`, `goruntime`,
   `math`, `slices`, `strconv`, `sync`, `time`, `utf8`), Luau's and moo's
-  `buffer` library, C#'s `Debug`, the 128-bit support classes `Int128` and
+  `buffer` library, C#'s `Debug` and `InlineBuffer<N>` (`InlineBuffer4`,
+  any length N), the 128-bit support classes `Int128` and
   `UInt128` (Dart, Java), and Elixir's support module `PacketRuntime`. A
   reserved word or a claimed name above takes its own diagnostic instead.
 

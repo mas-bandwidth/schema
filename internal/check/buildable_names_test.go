@@ -39,3 +39,19 @@ func TestBasenameCaseFolding(t *testing.T) {
 		}
 	}
 }
+
+// TestInlineBufferNames: the C# packet emitter declares InlineBuffer<N> for
+// each fixed length N >= 1 a unit uses, so every such spelling is refused as
+// a declaration name (SPEC §4.6, Platform-name safety), and the spellings
+// that are not one stay legal.
+func TestInlineBufferNames(t *testing.T) {
+	for name, want := range map[string]bool{
+		"InlineBuffer4": true, "InlineBuffer12": true, "InlineBuffer1": true,
+		"InlineBuffer": false, "InlineBuffer0": false, "InlineBuffer04": false,
+		"InlineBuffer4x": false, "InlineBufferX": false, "inlineBuffer4": false,
+	} {
+		if got := isInlineBufferName(name); got != want {
+			t.Errorf("isInlineBufferName(%q) = %v, want %v", name, got, want)
+		}
+	}
+}

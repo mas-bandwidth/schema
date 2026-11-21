@@ -209,7 +209,7 @@ t_Formatter	builds	-	-
 t_From	refuse-at-check	Rust	refused on main (survey control)
 t_Hash	refuse-at-generate	ruby	an emitter refuses it at generate (a rule outside the checker today)
 t_InlineArray	builds	-	-
-t_InlineBuffer4	builds	-	-
+t_InlineBuffer4	refuse-at-check	C#	rule 4: type name shadows a platform name
 t_Int128	refuse-at-check	Dart	rule 4: type name shadows a platform name
 t_Integer	refuse-at-generate	ruby	an emitter refuses it at generate (a rule outside the checker today)
 t_Kernel	refuse-at-generate	ruby	an emitter refuses it at generate (a rule outside the checker today)
