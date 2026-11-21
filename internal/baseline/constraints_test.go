@@ -55,6 +55,9 @@ type constraintRow struct {
 	// only restricts the row to the holders named, with why.
 	only    []string
 	onlyWhy string
+	// must names the holders the row has to be proved in: a holder the compiler
+	// stops admitting it in fails the test rather than thinning it.
+	must []string
 	// owner is set where the check is still SILENT on the edit and the fix is
 	// another change's: the projection must move here, and the silence is
 	// reported rather than failed, so the two changes can land in either
@@ -126,7 +129,7 @@ func constraintRows() []constraintRow {
 		{name: "integer minimum raised", decl0: "int32 | min = -100, max = 100", decl1: "int32 | min = -50, max = 100", value: "-75", reason: "out_of_range", names: true},
 		{name: "integer range declared", decl0: "int32", decl1: "int32 | min = 0, max = 50", value: "75", reason: "out_of_range", names: true},
 		{name: "compressed float maximum lowered", decl0: "float32 | min = 0.0, max = 100.0, resolution = 0.5", decl1: "float32 | min = 0.0, max = 50.0, resolution = 0.5", value: "75.0", reason: "out_of_range", names: true},
-		{name: "compressed float minimum raised", decl0: "float32 | min = 0.0, max = 100.0, resolution = 0.5", decl1: "float32 | min = 10.0, max = 100.0, resolution = 0.5", value: "5.0", reason: "out_of_range", names: true},
+		{name: "compressed float minimum raised", decl0: "float32 | min = -100.0, max = 100.0, resolution = 0.5", decl1: "float32 | min = -50.0, max = 100.0, resolution = 0.5", value: "-75.0", reason: "out_of_range", names: true},
 		{name: "fixed maximum lowered", decl0: "fixed(8, 8) | min = -100, max = 100", decl1: "fixed(8, 8) | min = -100, max = 50", value: "75.5", reason: "out_of_range", names: true},
 		{name: "bits width narrowed", decl0: "bits(7)", decl1: "bits(5)", value: "95", reason: "out_of_range", names: true,
 			unrecorded: "#4436 on the review stream (#4501) records bits=N; main does not yet"},
@@ -147,7 +150,8 @@ func constraintRows() []constraintRow {
 		{name: "text list element capacity lowered", decl0: "[..4]string(8)", decl1: "[..4]string(2)", value: `["abcdef"]`, reason: "length_over_bound", names: true},
 		// ---- count_over_bound ----
 		{name: "array bound lowered", decl0: "[..4]int32", decl1: "[..2]int32", value: "[1,2,3,4]", reason: "count_over_bound", names: true},
-		{name: "array minimum raised", decl0: "[..4]int32", decl1: "[2..4]int32", value: "[7]", reason: "count_over_bound", names: true},
+		{name: "array minimum raised", decl0: "[..4]int32", decl1: "[2..4]int32", value: "[7]", reason: "count_over_bound", names: true,
+			must: []string{"field", "nested record field", "union arm", "map value"}},
 		{name: "fixed length lowered", decl0: "[4]int32", decl1: "[2]int32", value: "[1,2,3,4]", reason: "count_over_bound", names: true},
 		{name: "unbounded array given a bound", decl0: "[]int32", decl1: "[..2]int32", value: "[1,2,3]", reason: "count_over_bound", names: true},
 		// ---- missing_required ----
@@ -356,6 +360,7 @@ func TestEveryReaderConstraintMovesTheProjection(t *testing.T) {
 	for _, row := range all {
 		t.Run(row.name, func(t *testing.T) {
 			proved := 0
+			provedIn := map[string]bool{}
 			for _, h := range holders() {
 				if len(row.only) > 0 && !slices.Contains(row.only, h.name) {
 					continue
@@ -392,6 +397,7 @@ func TestEveryReaderConstraintMovesTheProjection(t *testing.T) {
 					continue
 				}
 				proved++
+				provedIn[h.name] = true
 				ran[h.name]++
 
 				// 2. THE PROJECTION MOVED
@@ -425,6 +431,11 @@ func TestEveryReaderConstraintMovesTheProjection(t *testing.T) {
 					if !named {
 						t.Errorf("%s: no finding names the refusal the read gave (%s), got:%s", h.name, row.reason, summary(got))
 					}
+				}
+			}
+			for _, h := range row.must {
+				if !provedIn[h] {
+					t.Errorf("the row must be proved in the %s holder, and it was not", h)
 				}
 			}
 			if proved == 0 {

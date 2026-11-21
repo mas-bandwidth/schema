@@ -387,8 +387,11 @@ func frameRows(t *testing.T) []frameRow {
 		{
 			name:     "an enum variant deprecated in place",
 			row:      "an enum VARIANT deprecated in place",
-			base:     framesRichSrc,
-			edited:   richEdit(t, framesRichSrc, "enum Grade { Bronze, Silver, Gold }", "enum Grade\n{\n    Bronze\n    Silver\n    Gold | deprecated\n}"),
+			// a keyed array may not be keyed by an enum with a deprecated
+			// variant (§2.15), so the row's base drops the keyed field
+			base: richEdit(t, framesRichSrc, "    tally   [Grade]int32\n", ""),
+			edited: richEdit(t, framesRichSrc, "    tally   [Grade]int32\n", "",
+				"enum Grade { Bronze, Silver, Gold }", "enum Grade\n{\n    Bronze\n    Silver\n    Gold | deprecated\n}"),
 			instance: `{"grade":"Gold"}`,
 			read:     "0,0",
 			baseline: "warn",
