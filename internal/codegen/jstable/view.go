@@ -106,7 +106,7 @@ func viewTags(tags []string) string {
 	for i, t := range tags {
 		parts[i] = jsStr(t)
 	}
-	return "Object.freeze([" + strings.Join(parts, ", ") + "])"
+	return "globalThis.Object.freeze([" + strings.Join(parts, ", ") + "])"
 }
 
 // viewKind is a field descriptor's KIND (docs/SPEC-TABLES.md §8.1): the
@@ -455,7 +455,7 @@ func (v *viewGen) armFieldDescriptor(f *ir.Field, armOffset int64) string {
 			table = "types[" + jsStr(ref.Name) + "]"
 		}
 	}
-	return fmt.Sprintf("Object.freeze({ name: %s, json: %s, id: %s, typeName: %s, kind: %d, shape: %s, bound: %d, arrayBound: %d, "+
+	return fmt.Sprintf("globalThis.Object.freeze({ name: %s, json: %s, id: %s, typeName: %s, kind: %d, shape: %s, bound: %d, arrayBound: %d, "+
 		"isArray: %v, counted: %v, optional: %v, isPointer: %v, offset: %d, elementSize: %d, countOffset: %d, presentOffset: %d, "+
 		"vocabulary: %s, key: %s, table: %s, doc: %s, tags: %s })",
 		jsStr(f.Name), jsStr(ir.TableFieldJsonKey(f)), jsId(ir.TableFieldWireId(f)), jsStr(ir.TableTypeSpelling(f)), viewKind(f),

@@ -471,9 +471,9 @@ func (g *gen) emitWriteFoldedBig(expr, lo, hi string, min, max *big.Int, comment
 		// degenerate range: ZERO bits — the refusal above is the whole write
 		return
 	}
-	offset := fmt.Sprintf("BigInt.asUintN(64, %s)", expr)
+	offset := fmt.Sprintf("globalThis.BigInt.asUintN(64, %s)", expr)
 	if min.Sign() != 0 {
-		offset = fmt.Sprintf("BigInt.asUintN(64, %s - %s)", expr, lo)
+		offset = fmt.Sprintf("globalThis.BigInt.asUintN(64, %s - %s)", expr, lo)
 	}
 	if bits <= 32 {
 		scratch := g.numScratch()
@@ -715,7 +715,7 @@ func (g *gen) emitWriteBareInt(f *ir.Field, name, ind string) {
 		scratch := g.bigScratch()
 		bits := name
 		if f.Type.Signed {
-			bits = "BigInt.asUintN(64, " + name + ")"
+			bits = "globalThis.BigInt.asUintN(64, " + name + ")"
 		}
 		g.pf("%s%s.value = %s;\n", ind, scratch, bits)
 		g.call(ind, fmt.Sprintf("stream.serializeBits64(%s, 64)", scratch), "")

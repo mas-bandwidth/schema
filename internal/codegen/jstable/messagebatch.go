@@ -466,7 +466,7 @@ func messageScalarBig(f *ir.Field, mem string) string {
 	if fixedIsBig(f.Type) {
 		return mem
 	}
-	return "BigInt(" + mem + ")"
+	return "globalThis.BigInt(" + mem + ")"
 }
 
 func baseBigLit(base *big.Int) string {
@@ -1013,7 +1013,7 @@ func messageStoredDefaultCond(f *ir.Field, mem string) string {
 	}
 	def := fixedZeroFor(f)
 	if fixedIsFloat(f.Type) {
-		return "Object.is(" + mem + ", " + def + ")"
+		return "globalThis.Object.is(" + mem + ", " + def + ")"
 	}
 	return mem + " === " + def
 }
@@ -1208,16 +1208,16 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, mem, ind, shape string)
 
 func narrowInt(x string, signed bool, width int64) string {
 	if signed {
-		return fmt.Sprintf("BigInt.asIntN(%d, %s)", width, x)
+		return fmt.Sprintf("globalThis.BigInt.asIntN(%d, %s)", width, x)
 	}
-	return fmt.Sprintf("BigInt.asUintN(%d, %s)", width, x)
+	return fmt.Sprintf("globalThis.BigInt.asUintN(%d, %s)", width, x)
 }
 
 func numOrBig(x string, big bool) string {
 	if big {
 		return x
 	}
-	return "Number(" + x + ")"
+	return "globalThis.Number(" + x + ")"
 }
 
 func (g *fixedModule) emitMessageIntClamp(f *ir.Field, x, ind string) {

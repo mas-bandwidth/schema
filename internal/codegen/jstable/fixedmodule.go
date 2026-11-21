@@ -319,7 +319,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("// THE OBJECT TABLE IS FROZEN, descriptors included: an importer can hold\n")
 	g.pf("// the module's own entries to their values but cannot replace one.\n")
 	g.pf("for (const entry of %sFixedKnown) { globalThis.Object.freeze(entry); }\n", st.Name)
-	g.pf("Object.freeze(%sFixedKnown);\n\n", st.Name)
+	g.pf("globalThis.Object.freeze(%sFixedKnown);\n\n", st.Name)
 	g.pf("// THE FLOOR is one number and the lineage is one array, so \"retired\" is an\n")
 	g.pf("// index cut and the operator's two answers stay distinct: below it a layout\n")
 	g.pf("// this build once served is layout_unsupported (upgrade the client), outside\n")
@@ -334,7 +334,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("// THE PLAN TABLE IS FROZEN, its descriptors included, so an importer that\n")
 	g.pf("// reaches it cannot replace a lane with one of its own.\n")
 	g.pf("for (const lane of %sFixedLineagePlans) { if (lane !== null) { globalThis.Object.freeze(lane); } }\n", st.Name)
-	g.pf("Object.freeze(%sFixedLineagePlans);\n\n", st.Name)
+	g.pf("globalThis.Object.freeze(%sFixedLineagePlans);\n\n", st.Name)
 	writerBounds := g.emitWriterBounds(st, entries, hash)
 
 	// ---- the caller's plan storage ----

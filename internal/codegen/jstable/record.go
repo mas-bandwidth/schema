@@ -369,7 +369,7 @@ func emitRowHolder(pf func(string, ...any), u *ir.Unit, owner string, f *ir.Fiel
 		return
 	}
 	width := pieces[0].Size
-	want := "Number(key)"
+	want := "globalThis.Number(key)"
 	if width == 8 {
 		want = `typeof key === "bigint" ? key : globalThis.BigInt(key)`
 	}

@@ -2361,7 +2361,7 @@ class TableVariableTextIn {
     const s = this.t.substr(this.p, 4);
     if (!/^[0-9a-fA-F]{4}$/.test(s)) { return -1; }
     this.p += 4;
-    return parseInt(s, 16);
+    return globalThis.parseInt(s, 16);
   }
   str() {
     if (this.peek() !== "\"") { this.bad = true; return null; }

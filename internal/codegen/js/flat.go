@@ -1335,7 +1335,7 @@ func (g *fgen) emitWriteFlags(ref *ir.Flags, name, ind string) {
 	wb := int64(ref.WireBits)
 	if wb < 64 {
 		lim := new(big.Int).Lsh(big.NewInt(1), uint(wb))
-		g.guard(fmt.Sprintf("BigInt.asUintN(64, %s) >= %sn", name, lim.String()),
+		g.guard(fmt.Sprintf("globalThis.BigInt.asUintN(64, %s) >= %sn", name, lim.String()),
 			" // a mask bit above the wire width cannot ride", ind)
 	}
 	if wb <= 32 {

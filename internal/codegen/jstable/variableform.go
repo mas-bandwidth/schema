@@ -670,11 +670,11 @@ func (g *variableGen) defaultExpr(f *ir.Field) string {
 		return "null"
 	case f.KeyEnum != "" || f.Array == ir.ArrayFixed:
 		// one slot per keyed variant or fixed bound, each at the element's default (§2.4, §2.9)
-		return fmt.Sprintf("Array.from({ length: %d }, () => %s)", f.ArrayBound, g.elemDefaultExpr(f))
+		return fmt.Sprintf("globalThis.Array.from({ length: %d }, () => %s)", f.ArrayBound, g.elemDefaultExpr(f))
 	case f.Array == ir.ArrayCounted && f.ArrayMin > 0:
 		// a counted array is BORN AT ITS MINIMUM count (docs/SPEC.md §5), each
 		// slot at the element's default
-		return fmt.Sprintf("Array.from({ length: %d }, () => %s)", f.ArrayMin, g.elemDefaultExpr(f))
+		return fmt.Sprintf("globalThis.Array.from({ length: %d }, () => %s)", f.ArrayMin, g.elemDefaultExpr(f))
 	case f.Array != ir.ArrayNone:
 		return "[]"
 	case f.Type.Pointer:

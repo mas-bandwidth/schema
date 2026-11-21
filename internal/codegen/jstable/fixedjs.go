@@ -1779,7 +1779,7 @@ func fixedDefaultTextLength(f *ir.Field) int64 {
 
 func fixedArrayLiteral(f *ir.Field, count int64) string {
 	if cls := fixedElementClass(f.Type); cls != "" {
-		return fmt.Sprintf("Array.from({ length: %d }, () => new %s())", count, cls)
+		return fmt.Sprintf("globalThis.Array.from({ length: %d }, () => new %s())", count, cls)
 	}
 	if fixedStorageBytes(f.Type) == 1 && f.Type.Kind == ir.TInt && !f.Type.Signed {
 		return fmt.Sprintf("new globalThis.Uint8Array(%d)", count)
