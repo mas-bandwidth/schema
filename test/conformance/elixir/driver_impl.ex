@@ -1618,6 +1618,13 @@ defmodule Fuzz do
     :rand.seed(:exsss, {seed, seed + 369, seed + 7})
     total = Enum.reduce(1..iterations, 0, fn i, opened -> opened + one(subjects, i) end)
 
+    # A campaign in which NO mutant opened walked nothing: a module lookup that
+    # raises (a wrong ebin, a renamed accessor) is a RuntimeError too, and one
+    # reads it as a refusal. Zero opened is a red run, never "no read left it".
+    if total == 0 do
+      raise "elixir fuzz: none of #{iterations} mutants opened — the walk under test never ran"
+    end
+
     IO.puts(
       "elixir fuzz: #{iterations} mutants over #{length(subjects)} fixtures at seed #{seed} — " <>
         "#{total} opened and walked inside the buffer, the rest refused — no read left it"
