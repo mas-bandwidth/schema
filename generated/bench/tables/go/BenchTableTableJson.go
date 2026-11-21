@@ -1208,8 +1208,16 @@ func (in *tableJSONIn) scanText(out []byte, zero bool) (int32, bool) {
 			}
 			in.pos += n
 		}
+		// A MEASURED LENGTH SATURATES at the int32 top rather than wrapping
+		// negative: a string of 2 GiB or more is then longer than every
+		// bound a caller holds it to (the 255-byte name cap, a scratch
+		// buffer), and never a negative length a slice would panic on
 		if out == nil {
-			placed += unitLength
+			if placed > 0x7fffffff-unitLength {
+				placed = 0x7fffffff
+			} else {
+				placed += unitLength
+			}
 			continue
 		}
 		if !clamped && placed+unitLength <= int32(len(out)) {

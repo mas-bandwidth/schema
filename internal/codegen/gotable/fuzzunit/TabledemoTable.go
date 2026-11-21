@@ -28,8 +28,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0xb9f6e38dc91be5cf)
-const _ = uint64(0xb9f6e38dc91be5cf - goruntime.Version)
+const _ = uint64(goruntime.Version - 0x57286505453943e0)
+const _ = uint64(0x57286505453943e0 - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -299,6 +299,14 @@ func tableMessageSeenRepeat(a0 *TableVocabulary, a1 []uint64, a2 int, a3 uint64)
 	return goruntime.TableMessageSeenRepeat(a0, a1, a2, a3)
 }
 
+func tableMessageSetOpen(a0 *TableVocabulary) int { return goruntime.TableMessageSetOpen(a0) }
+
+func tableMessageSetClose(a0 *TableVocabulary) { goruntime.TableMessageSetClose(a0) }
+
+func tableMessageSetRepeat(a0 *TableVocabulary, a1 int, a2 uint64) bool {
+	return goruntime.TableMessageSetRepeat(a0, a1, a2)
+}
+
 func tableMessageRefuse(a0 *TableReport, a1 string) bool { return goruntime.TableMessageRefuse(a0, a1) }
 
 func tableMessageKnownKind(a0 uint8) bool { return goruntime.TableMessageKnownKind(a0) }
@@ -313,8 +321,8 @@ func tableMessageCount(a0 *TableBitReader, a1 TableMessageShape) (uint64, bool) 
 	return goruntime.TableMessageCount(a0, a1)
 }
 
-func tableMessageSkip(a0 *TableBitReader, a1 *TableVocabulary, a2 int64, a3 TableMessageEntry, a4 int) bool {
-	return goruntime.TableMessageSkip(a0, a1, a2, a3, a4)
+func tableMessageSkip(a0 *TableBitReader, a1 *TableVocabulary, a2 int64, a3 TableMessageEntry, a4 int, a5 bool) bool {
+	return goruntime.TableMessageSkip(a0, a1, a2, a3, a4, a5)
 }
 
 func tableMessageReadScalar(a0 *TableBitReader, a1 TableMessageShape, a2 *[16]byte) (bool, bool) {
