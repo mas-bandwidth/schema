@@ -498,7 +498,7 @@ func (g *gen) call(ind, expr, comment string) {
 // builds and not at all in release builds".
 func (g *gen) writeAssert(ind, cond, message, comment string) {
 	g.needsDiag = true
-	g.sf("%sDebug.Assert(%s, \"%s\");%s\n", ind, cond, message, comment)
+	g.sf("%sglobal::System.Diagnostics.Debug.Assert(%s, \"%s\");%s\n", ind, cond, message, comment)
 }
 
 // emitConstItem writes const(value, bits) on the wire; a read rejects any

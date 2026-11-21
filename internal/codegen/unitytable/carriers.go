@@ -97,11 +97,11 @@ func emitCarrierCtor(b *strings.Builder, pkg, carrierName string, fields []*ir.F
 func emitCarrierResetField(b *strings.Builder, pkg string, f *ir.Field, m, ind string) {
 	switch {
 	case f.IsMap(), f.IsList():
-		fmt.Fprintf(b, "%sArray.Clear(value.%s, 0, value.%s.Length); value.%sCount = 0;\n", ind, m, m, m)
+		fmt.Fprintf(b, "%sglobal::System.Array.Clear(value.%s, 0, value.%s.Length); value.%sCount = 0;\n", ind, m, m, m)
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		fmt.Fprintf(b, "%svalue.%s = null;\n", ind, m)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
-		fmt.Fprintf(b, "%sArray.Clear(value.%s, 0, value.%s.Length);\n%svalue.%sLength = 0;\n", ind, m, m, ind, m)
+		fmt.Fprintf(b, "%sglobal::System.Array.Clear(value.%s, 0, value.%s.Length);\n%svalue.%sLength = 0;\n", ind, m, m, ind, m)
 		if !f.Type.TextUnbounded() && len(f.DefBytes) > 0 && !f.Type.Optional {
 			for i, by := range f.DefBytes {
 				fmt.Fprintf(b, "%svalue.%s[%d] = 0x%02x;\n", ind, m, i, by)
@@ -118,7 +118,7 @@ func emitCarrierResetField(b *strings.Builder, pkg string, f *ir.Field, m, ind s
 			fmt.Fprintf(b, "%svalue.%sCount = %d;\n", ind, m, cnt)
 		}
 	case f.Array != ir.ArrayNone:
-		fmt.Fprintf(b, "%sArray.Clear(value.%s, 0, value.%s.Length);\n", ind, m, m)
+		fmt.Fprintf(b, "%sglobal::System.Array.Clear(value.%s, 0, value.%s.Length);\n", ind, m, m)
 		if f.Array == ir.ArrayCounted {
 			cnt := int64(0)
 			if !f.Type.Optional {

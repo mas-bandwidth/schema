@@ -1584,17 +1584,17 @@ func (g *tableGen) emitFixedWritePayloadAs(owner *ir.Struct, f *ir.Field, base i
 		// slots' STORAGE on the wire.
 		g.pf("%sint count_%s = %s.%sCount;\n", ind, stem, val, prop)
 		g.pf("%sSystem.Diagnostics.Debug.Assert(count_%s >= 0 && count_%s <= %d); // the declared count is the bound (§3.4)\n", ind, stem, stem, f.ArrayBound)
-		g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s.Slice(%d), count_%s);\n", ind, buf, base, stem)
+		g.pf("%sglobal::System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(%s.Slice(%d), count_%s);\n", ind, buf, base, stem)
 		g.emitFixedWriteLoop(f, base+fixedCountBytes, f.ArrayBound, "count_"+stem, buf, val+"."+prop, indent)
 	case f.Type.Kind == ir.TString:
 		g.pf("%sint len_%s = %s.%s != null ? %s.%sLength : 0;\n", ind, stem, val, prop, val, prop)
 		g.pf("%sSystem.Diagnostics.Debug.Assert(len_%s <= %d);\n", ind, stem, f.Type.Size)
-		g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s.Slice(%d), len_%s);\n", ind, buf, base, stem)
+		g.pf("%sglobal::System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(%s.Slice(%d), len_%s);\n", ind, buf, base, stem)
 		g.pf("%sif (len_%s > 0) { %s.%s.AsSpan(0, len_%s).CopyTo(%s.Slice(%d)); }\n", ind, stem, val, prop, stem, buf, base+4)
 	case f.Type.Kind == ir.TBytes:
 		g.pf("%sint len_%s = %s.%s != null ? %s.%sLength : 0;\n", ind, stem, val, prop, val, prop)
 		g.pf("%sSystem.Diagnostics.Debug.Assert(len_%s <= %d);\n", ind, stem, f.Type.Size)
-		g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s.Slice(%d), len_%s);\n", ind, buf, base, stem)
+		g.pf("%sglobal::System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(%s.Slice(%d), len_%s);\n", ind, buf, base, stem)
 		g.pf("%sif (len_%s > 0) { %s.%s.AsSpan(0, len_%s).CopyTo(%s.Slice(%d)); }\n", ind, stem, val, prop, stem, buf, base+4)
 	default:
 		g.emitFixedWriteElement(f, base, buf, val+"."+prop, indent)
@@ -1723,13 +1723,13 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 			case 1:
 				g.pf("%s%s[0] = (byte)%s;\n", ind, slice, expr)
 			case 2:
-				g.pf("%sBinaryPrimitives.WriteUInt16LittleEndian(%s, (ushort)%s);\n", ind, slice, expr)
+				g.pf("%sglobal::System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(%s, (ushort)%s);\n", ind, slice, expr)
 			case 4:
-				g.pf("%sBinaryPrimitives.WriteUInt32LittleEndian(%s, (uint)%s);\n", ind, slice, expr)
+				g.pf("%sglobal::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(%s, (uint)%s);\n", ind, slice, expr)
 			}
 			return
 		case *ir.Flags:
-			g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, (ulong)%s);\n", ind, slice, expr)
+			g.pf("%sglobal::System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(%s, (ulong)%s);\n", ind, slice, expr)
 			return
 		}
 	}
@@ -1742,15 +1742,15 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 			// THE WRITER STORES +0 FOR A COMPRESSED FLOAT'S -0
 			// (docs/SPEC-TABLES.md §3.3; ruling fixed-compressed-negzero):
 			// -0 + +0 is +0, and every other value is itself
-			g.pf("%sBinaryPrimitives.WriteSingleLittleEndian(%s, %s + 0.0f);\n", ind, slice, expr)
+			g.pf("%sglobal::System.Buffers.Binary.BinaryPrimitives.WriteSingleLittleEndian(%s, %s + 0.0f);\n", ind, slice, expr)
 		} else {
-			g.pf("%sBinaryPrimitives.WriteSingleLittleEndian(%s, %s);\n", ind, slice, expr)
+			g.pf("%sglobal::System.Buffers.Binary.BinaryPrimitives.WriteSingleLittleEndian(%s, %s);\n", ind, slice, expr)
 		}
 	case ir.TFloat64:
 		if f.HasFloatRange {
-			g.pf("%sBinaryPrimitives.WriteDoubleLittleEndian(%s, %s + 0.0);\n", ind, slice, expr)
+			g.pf("%sglobal::System.Buffers.Binary.BinaryPrimitives.WriteDoubleLittleEndian(%s, %s + 0.0);\n", ind, slice, expr)
 		} else {
-			g.pf("%sBinaryPrimitives.WriteDoubleLittleEndian(%s, %s);\n", ind, slice, expr)
+			g.pf("%sglobal::System.Buffers.Binary.BinaryPrimitives.WriteDoubleLittleEndian(%s, %s);\n", ind, slice, expr)
 		}
 	case ir.TInt:
 		switch w {
@@ -1758,29 +1758,29 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 			g.pf("%s%s[0] = unchecked((byte)%s);\n", ind, slice, expr)
 		case 2:
 			if f.Type.Signed {
-				g.pf("%sBinaryPrimitives.WriteInt16LittleEndian(%s, (short)%s);\n", ind, slice, expr)
+				g.pf("%sglobal::System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(%s, (short)%s);\n", ind, slice, expr)
 			} else {
-				g.pf("%sBinaryPrimitives.WriteInt16LittleEndian(%s, unchecked((short)%s));\n", ind, slice, expr)
+				g.pf("%sglobal::System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(%s, unchecked((short)%s));\n", ind, slice, expr)
 			}
 		case 4:
 			if f.Type.Signed {
-				g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s, (int)%s);\n", ind, slice, expr)
+				g.pf("%sglobal::System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(%s, (int)%s);\n", ind, slice, expr)
 			} else {
-				g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s, unchecked((int)%s));\n", ind, slice, expr)
+				g.pf("%sglobal::System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(%s, unchecked((int)%s));\n", ind, slice, expr)
 			}
 		case 8:
 			if f.Type.Signed {
-				g.pf("%sBinaryPrimitives.WriteInt64LittleEndian(%s, (long)%s);\n", ind, slice, expr)
+				g.pf("%sglobal::System.Buffers.Binary.BinaryPrimitives.WriteInt64LittleEndian(%s, (long)%s);\n", ind, slice, expr)
 			} else {
-				g.pf("%sBinaryPrimitives.WriteInt64LittleEndian(%s, unchecked((long)%s));\n", ind, slice, expr)
+				g.pf("%sglobal::System.Buffers.Binary.BinaryPrimitives.WriteInt64LittleEndian(%s, unchecked((long)%s));\n", ind, slice, expr)
 			}
 		case 16:
 			if f.Type.Signed {
-				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, unchecked((ulong)(global::System.UInt128)(global::System.Int128)%s));\n", ind, slice, expr)
-				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), unchecked((ulong)((global::System.UInt128)(global::System.Int128)%s >> 64)));\n", ind, slice, expr)
+				g.pf("%sglobal::System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(%s, unchecked((ulong)(global::System.UInt128)(global::System.Int128)%s));\n", ind, slice, expr)
+				g.pf("%sglobal::System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), unchecked((ulong)((global::System.UInt128)(global::System.Int128)%s >> 64)));\n", ind, slice, expr)
 			} else {
-				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, unchecked((ulong)(global::System.UInt128)%s));\n", ind, slice, expr)
-				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), unchecked((ulong)((global::System.UInt128)%s >> 64)));\n", ind, slice, expr)
+				g.pf("%sglobal::System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(%s, unchecked((ulong)(global::System.UInt128)%s));\n", ind, slice, expr)
+				g.pf("%sglobal::System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), unchecked((ulong)((global::System.UInt128)%s >> 64)));\n", ind, slice, expr)
 			}
 		}
 	default:
@@ -1793,29 +1793,29 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 			}
 		case 2:
 			if f.Type.Signed {
-				g.pf("%sBinaryPrimitives.WriteUInt16LittleEndian(%s, unchecked((ushort)%s));\n", ind, slice, expr)
+				g.pf("%sglobal::System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(%s, unchecked((ushort)%s));\n", ind, slice, expr)
 			} else {
-				g.pf("%sBinaryPrimitives.WriteUInt16LittleEndian(%s, (ushort)%s);\n", ind, slice, expr)
+				g.pf("%sglobal::System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(%s, (ushort)%s);\n", ind, slice, expr)
 			}
 		case 4:
 			if f.Type.Signed {
-				g.pf("%sBinaryPrimitives.WriteUInt32LittleEndian(%s, unchecked((uint)%s));\n", ind, slice, expr)
+				g.pf("%sglobal::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(%s, unchecked((uint)%s));\n", ind, slice, expr)
 			} else {
-				g.pf("%sBinaryPrimitives.WriteUInt32LittleEndian(%s, (uint)%s);\n", ind, slice, expr)
+				g.pf("%sglobal::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(%s, (uint)%s);\n", ind, slice, expr)
 			}
 		case 8:
 			if f.Type.Signed {
-				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, unchecked((ulong)%s));\n", ind, slice, expr)
+				g.pf("%sglobal::System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(%s, unchecked((ulong)%s));\n", ind, slice, expr)
 			} else {
-				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, (ulong)%s);\n", ind, slice, expr)
+				g.pf("%sglobal::System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(%s, (ulong)%s);\n", ind, slice, expr)
 			}
 		case 16:
 			if f.Type.Signed {
-				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, unchecked((ulong)(global::System.UInt128)(global::System.Int128)%s));\n", ind, slice, expr)
-				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), unchecked((ulong)((global::System.UInt128)(global::System.Int128)%s >> 64)));\n", ind, slice, expr)
+				g.pf("%sglobal::System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(%s, unchecked((ulong)(global::System.UInt128)(global::System.Int128)%s));\n", ind, slice, expr)
+				g.pf("%sglobal::System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), unchecked((ulong)((global::System.UInt128)(global::System.Int128)%s >> 64)));\n", ind, slice, expr)
 			} else {
-				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, unchecked((ulong)(global::System.UInt128)%s));\n", ind, slice, expr)
-				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), unchecked((ulong)((global::System.UInt128)%s >> 64)));\n", ind, slice, expr)
+				g.pf("%sglobal::System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(%s, unchecked((ulong)(global::System.UInt128)%s));\n", ind, slice, expr)
+				g.pf("%sglobal::System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), unchecked((ulong)((global::System.UInt128)%s >> 64)));\n", ind, slice, expr)
 			}
 		}
 	}

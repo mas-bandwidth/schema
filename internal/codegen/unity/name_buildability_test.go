@@ -45,7 +45,7 @@ func TestNameCorpusBuildsUnity(t *testing.T) {
 	// the runtime once, as its own netstandard2.1 assembly
 	rtDir := t.TempDir()
 	serializeDll := filepath.Join(rtDir, "Serialize.dll")
-	args := append(cscArgs(csc, refs, serializeDll), "-nullable:enable")
+	args := append(cscArgs(csc, refs, serializeDll), "-nullable:enable", "-define:NETSTANDARD;NETSTANDARD2_1")
 	args = append(args, runtime...)
 	if out, err := run(t, rtDir, args); err != nil {
 		t.Fatalf("the serialize.cs runtime at %s does not build in the Unity dialect: %v\n%s", runtimeDir, err, out)
@@ -57,7 +57,7 @@ func TestNameCorpusBuildsUnity(t *testing.T) {
 			files := nameemit.Generate(t, c, "unity")
 			dir := t.TempDir()
 			sources := nameemit.Write(t, files, dir, ".cs")
-			args := append(cscArgs(csc, refs, filepath.Join(dir, "probe.dll")), "-nullable:disable", "-r:"+serializeDll)
+			args := append(cscArgs(csc, refs, filepath.Join(dir, "probe.dll")), "-nullable:disable", "-define:NETSTANDARD;NETSTANDARD2_1", "-r:"+serializeDll)
 			for _, s := range sources {
 				args = append(args, filepath.Join(dir, s))
 			}

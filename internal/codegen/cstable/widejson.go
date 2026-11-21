@@ -22,9 +22,9 @@ const tableWideJsonSource = `
         // 32-bit fixed kind stays a bare number
         bool quoted = TableWideJson(f);
         if (quoted) { o.Put((byte)'"'); }
-        if (f.WideSigned && unchecked((Int128)raw) < 0) { o.Put((byte)'-'); raw = unchecked(0 - raw); }
+        if (f.WideSigned && unchecked((global::System.Int128)raw) < 0) { o.Put((byte)'-'); raw = unchecked(0 - raw); }
         int frac = f.FracBits;
-        UInt128 whole = raw >> frac;
+        global::System.UInt128 whole = raw >> frac;
         Span<char> digits = stackalloc char[40];
         whole.TryFormat(digits, out int used);
         for (int i = 0; i < used; i++) { o.Put((byte)digits[i]); }
@@ -35,8 +35,8 @@ const tableWideJsonSource = `
         if (fraction == 0) { o.Put((byte)'0'); if (quoted) { o.Put((byte)'"'); } return; }
         while (fraction != 0)
         {
-            UInt128 low = (UInt128)unchecked((ulong)fraction) * 10;
-            UInt128 high = (fraction >> 64) * 10 + (low >> 64);
+            global::System.UInt128 low = (global::System.UInt128)unchecked((ulong)fraction) * 10;
+            global::System.UInt128 high = (fraction >> 64) * 10 + (low >> 64);
             uint carry = (uint)(high >> 64);
             fraction = (high << 64) | unchecked((ulong)low);
             ulong digit = (ulong)(fraction >> frac);

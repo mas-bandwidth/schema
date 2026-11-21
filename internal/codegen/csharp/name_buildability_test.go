@@ -70,6 +70,10 @@ func TestNameCorpusBuildsCs(t *testing.T) {
 			sources := nameemit.Write(t, files, dir, ".cs")
 			args := []string{"exec", csc, "-nologo", "-noconfig", "-target:library", "-unsafe",
 				"-nullable:annotations", "-langversion:latest", "-nostdlib+", "-warn:9999", "-warnaserror+",
+				// the symbols the SDK defines for the newest net* reference
+				// pack the compile takes, which the runtime's 128-bit
+				// conversions are conditioned on
+				"-define:NET;NETCOREAPP;NET5_0_OR_GREATER;NET6_0_OR_GREATER;NET7_0_OR_GREATER;NET8_0_OR_GREATER;NET9_0_OR_GREATER;NET10_0_OR_GREATER",
 				"-out:" + filepath.Join(dir, "probe.dll")}
 			for _, ref := range refs {
 				args = append(args, "-r:"+ref)

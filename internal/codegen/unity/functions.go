@@ -214,7 +214,7 @@ func (g *gen) reject(ind, cond, comment string) {
 // writeAssert emits one write-side contract; cond is the positive form.
 func (g *gen) writeAssert(ind, cond, message string) {
 	g.needsDiag = true
-	g.sf("%sDebug.Assert(%s, %q);\n", ind, cond, message)
+	g.sf("%sglobal::System.Diagnostics.Debug.Assert(%s, %q);\n", ind, cond, message)
 }
 
 func bitsCall(bits int64) (typ, fn string) {
