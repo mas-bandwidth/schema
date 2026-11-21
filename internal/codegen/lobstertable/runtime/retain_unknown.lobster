@@ -448,12 +448,12 @@ def em_framed(em:Emitter, w:SaveOut, c:Cursor, kind:int) -> void:
     let content = em_framed_in(em, c)
     if em.bad:
         return
-    let inner = SaveOut {}
-    em_content(em, inner, content, kind)
+    let sub_out = SaveOut {}
+    em_content(em, sub_out, content, kind)
     if em.bad:
         return
-    so_leb(w, inner.n)
-    so_bytes(w, so_take(inner))
+    so_leb(w, sub_out.n)
+    so_bytes(w, so_take(sub_out))
 
 def em_payload(em:Emitter, w:SaveOut, c:Cursor, kind:int) -> void:
     if em.bad:
@@ -504,16 +504,16 @@ class RetainTailImpl : RetainTail
         for(rec.retained) rf:
             let mark = sid_mark(e.ids)
             let id_mark = length(retain.ids)
-            let inner = SaveOut {}
+            let sub_out = SaveOut {}
             let em = Emitter { e: e, retain: retain, report: report, bad: false }
-            em_record(em, inner, rf)
+            em_record(em, sub_out, rf)
             rf.placed = true
             if em.bad:
                 sid_rollback(e.ids, mark)
                 truncate(retain.ids, id_mark)
                 report.retain_lost++
             else:
-                so_bytes(w, so_take(inner))
+                so_bytes(w, so_take(sub_out))
 
 // save_retain is save with the retained fields written back (docs/SPEC-TABLES.md
 // §6.6): the save walk reaches every body it writes, and the report accumulates

@@ -614,6 +614,11 @@ local function write_array(c: any, fd: any, w: any, holder: any, val: any, count
 	if fd.bound ~= nil and fd.bound > 0 and fd.array ~= "list" and count > fd.bound then
 		return refuse(c, "invalid_value", fd)
 	end
+	-- a counted array under its declared minimum is refused in every build,
+	-- as one past its bound is (docs/SPEC.md §5.1 row 3)
+	if fd.array == "counted" and fd.min ~= nil and count < fd.min then
+		return refuse(c, "invalid_value", fd)
+	end
 	header(c, w, fd.id, 14)
 	local b = new_writer(c.count)
 	w_u8(b, fd.ek)
@@ -977,7 +982,9 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 	if s == "arr" then
 		if fd.array == "list" or fd.array == "counted" then
 			local n = live_count(fd, v, val)
-			if n == 0 and not required then
+			-- an empty array elides, unless its minimum makes empty a value
+			-- write_array refuses
+			if n == 0 and not required and (fd.array ~= "counted" or fd.min == nil or fd.min == 0) then
 				return true
 			end
 			return write_array(c, fd, w, v, val, n)

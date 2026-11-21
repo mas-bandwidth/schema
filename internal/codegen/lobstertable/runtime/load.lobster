@@ -1192,6 +1192,11 @@ def array_body(r:Reader, sl:Slot, framed:int) -> bool, bool:
         return collection_cap(r), false
     if f.array != "list" and count > f.bound:
         return read_refuse(rep, if is_bytes: "length_over_bound" else: "count_over_bound"), false
+    // THE COUNT MINIMUM (docs/SPEC.md §5.1 row 3): a counted array under its
+    // declared least count refuses the read as one past its bound does, at
+    // any depth, as the engine's read refuses it (internal/tablewire/decode.go)
+    if f.array == "counted" and count < f.min:
+        return read_refuse(rep, "count_over_bound"), false
     if ek != f.ek:
         rep.widened++
     if is_bytes:
