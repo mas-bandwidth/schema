@@ -43,6 +43,9 @@ type PinnedUnit struct {
 }
 
 const (
+	// pinnedVersion is the case layout below: 2 since fix_json became
+	// opJSONMsg (the fixed root's native message writer)
+	pinnedVersion  = 2
 	pinnedFileBase = "Pin"
 	pinnedFixRoot  = "FixRoot"
 	pinnedVarRoot  = "VarRoot"
@@ -195,7 +198,7 @@ func BuildPinned(schemasDir string) ([]PinnedUnit, []CorpusCase, error) {
 				CorpusCase{ID: id + ":var_json", Pkg: pkg, Root: pinnedVarRoot, Op: opJSON, Input: j1, Want1: j1, Want2: w1},
 				CorpusCase{ID: id + ":msg", Pkg: pkg, Root: pinnedFixRoot, Op: opMsg, Input: w2, Want1: w2},
 				CorpusCase{ID: id + ":fixed", Pkg: pkg, Root: pinnedFixRoot, Op: opFixed, Input: w3, Want1: w3},
-				CorpusCase{ID: id + ":fix_json", Pkg: pkg, Root: pinnedFixRoot, Op: opJSON, Input: j3, Want1: j3},
+				CorpusCase{ID: id + ":fix_json", Pkg: pkg, Root: pinnedFixRoot, Op: opJSONMsg, Input: j3, Want1: j3, Want2: w2},
 			)
 		}
 	}

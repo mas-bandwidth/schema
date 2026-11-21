@@ -1105,7 +1105,7 @@ func verifyGo(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec, c
 				checkBytes(c.id, out, c.w1)
 				return
 			}
-			if c.op == 6 {
+			if c.op == 6 || c.op == 7 {
 				var val %s.%s
 				%s.%sReset(&val)
 				var rep %s.TableReport
@@ -1115,6 +1115,15 @@ func verifyGo(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec, c
 				jout := make([]byte, jsz)
 				if %s.%sToJSON(&val, jout) != jsz { die(c.id, "ToJSON fix") }
 				checkBytes(c.id, jout, c.w1)
+				if c.op == 7 {
+					var srep %s.TableReport
+					ptrs := ptrSlice([]%s.%s{val})
+					msz := %s.%sMeasureMessages(ptrs, &srep)
+					if msz < 0 { die(c.id, "MeasureMessages after FromJSON") }
+					mout := make([]byte, msz)
+					if %s.%sSaveMessages(ptrs, mout, &srep) != msz { die(c.id, "SaveMessages after FromJSON") }
+					checkBytes(c.id, mout, c.w2)
+				}
 				return
 			}
 		}
@@ -1123,6 +1132,7 @@ func verifyGo(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec, c
 				u.Pkg, gf, u.Pkg, gf, u.Pkg, u.Pkg, u.Pkg, gf, u.Pkg, gf, u.Pkg, gf,
 				u.Pkg, u.Pkg, u.Pkg, u.Pkg, u.Pkg, u.Pkg, u.Pkg, u.Pkg, gf, u.Pkg, gf, u.Pkg, u.Pkg, gf, u.Pkg, u.Pkg, gf, u.Pkg, gf,
 				u.Pkg, gf, u.Pkg, gf, u.Pkg, u.Pkg, gf, u.Pkg, gf, u.Pkg, gf,
+				u.Pkg, u.Pkg, gf, u.Pkg, gf, u.Pkg, gf,
 			)
 		}
 		disp.WriteString("\t}\n")

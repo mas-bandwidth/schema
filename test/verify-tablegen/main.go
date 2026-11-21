@@ -27,6 +27,23 @@ var allLangs = []string{
 	"js", "python", "ruby", "lua", "luau", "squirrel", "moo", "goose", "lobster",
 }
 
+// parseTargets is --lang as the target names every later step keys on: "all",
+// or a comma list whose names are trimmed and whose empty entries are dropped,
+// so `lobster, js` and `lobster,js` name the same two targets everywhere (the
+// run, the matrix's bookkeeping and its printout: one spelling, one key).
+func parseTargets(flag string) []string {
+	if strings.TrimSpace(flag) == "all" {
+		return slices.Clone(allLangs)
+	}
+	var out []string
+	for name := range strings.SplitSeq(flag, ",") {
+		if name = strings.TrimSpace(name); name != "" {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
 type PairMeta struct {
 	Index     int    `json:"index"`
 	Name      string `json:"name"`
@@ -50,6 +67,9 @@ type CorpusMeta struct {
 	Pairs     []PairMeta `json:"pairs"`
 	// Pinned is the hand-written array-default matrix's units (pinned.go)
 	Pinned []PinnedUnit `json:"pinned"`
+	// PinnedVersion is pinned.go's case layout; a cached corpus of another
+	// layout is generated again
+	PinnedVersion int `json:"pinned_version"`
 	// only, when set by --only, is the packages the kept cases name
 	only map[string]bool
 }
@@ -314,7 +334,7 @@ func ensureTablegenCorpus(corpusDir string, seed uint64, schemas int, forceGen b
 		praw, err2 := os.ReadFile(packPath)
 		if err1 == nil && err2 == nil {
 			var meta CorpusMeta
-			if json.Unmarshal(mraw, &meta) == nil && meta.Seed == seed && meta.Schemas == schemas && len(meta.Pairs) == schemas && len(meta.Pinned) == len(pinnedShapes()) {
+			if json.Unmarshal(mraw, &meta) == nil && meta.Seed == seed && meta.Schemas == schemas && len(meta.Pairs) == schemas && len(meta.Pinned) == len(pinnedShapes()) && meta.PinnedVersion == pinnedVersion {
 				allExist := true
 				for _, pu := range meta.Pinned {
 					if !fileExists(pu.Dir) {
@@ -364,6 +384,7 @@ func ensureTablegenCorpus(corpusDir string, seed uint64, schemas int, forceGen b
 		CaseCount: len(cases),
 		Pairs:     make([]PairMeta, len(pairs)),
 		Pinned:    pinned,
+		PinnedVersion: pinnedVersion,
 	}
 	for i, p := range pairs {
 		meta.Pairs[i] = PairMeta{
@@ -506,13 +527,8 @@ func main() {
 		}
 	}
 
-	var targets []string
-	switch {
-	case *langFlag == "all":
-		targets = allLangs
-	case *langFlag != "":
-		targets = strings.Split(*langFlag, ",")
-	default:
+	targets := parseTargets(*langFlag)
+	if len(targets) == 0 {
 		fmt.Fprintln(os.Stderr, "--lang is required")
 		os.Exit(2)
 	}
@@ -521,7 +537,6 @@ func main() {
 		matrix = newMatrix()
 		var mwg sync.WaitGroup
 		for _, lang := range targets {
-			lang := strings.TrimSpace(lang)
 			mwg.Go(func() {
 				runMatrix(repoRoot, schemaBin, schemaMooBin, workRoot, lang, meta, cases)
 			})
@@ -534,7 +549,6 @@ func main() {
 	var wg sync.WaitGroup
 	errs := make(chan error, len(targets))
 	for _, lang := range targets {
-		lang := strings.TrimSpace(lang)
 		wg.Go(func() {
 			if err := verifyLang(repoRoot, schemaBin, schemaMooBin, corpusDir, filepath.Join(workRoot, "runs"), lang, meta, cases, packed); err != nil {
 				errs <- err

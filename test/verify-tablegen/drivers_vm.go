@@ -1649,6 +1649,17 @@ def run_one(c_id:string, c_rt:string, op:int, c_ax:string, c_in:string, c_w1:str
                 let wout, wwhy = schema_rt.save_reasoned(rec)
                 if wwhy != "" or wout != c_w2: die(c_id, "save after json_read: " + wwhy)
         return
+    if op == 7:
+        let rep = schema_rt.LoadReport {}
+        let rec = schema_rt.json_read(c_rt, c_in, rep)
+        if rec == nil or rep.damaged or rep.refused: die(c_id, "json_read fix")
+        if rec:
+            let jtxt, jwhy = schema_rt.json_write(rec)
+            if jwhy != "" or jtxt != c_w1: die(c_id, "json_write fix: " + jwhy)
+            let srep = schema_rt.LoadReport {}
+            let out, sn = schema_rt.save_messages([rec], srep)
+            if srep.damaged or srep.refused or sn != length(c_w2) or out != c_w2: die(c_id, "save_messages after json_read")
+        return
     die(c_id, "unknown op")
 
 let total = ru32()

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -193,6 +194,12 @@ func runMatrix(repoRoot, schemaBin, schemaMooBin, workRoot, lang string, meta *C
 
 // printMatrix writes one line per failing case, sorted, and a count per target.
 func printMatrix(langs []string, total int) {
+	writeMatrix(os.Stdout, matrix, langs, total)
+}
+
+// writeMatrix is printMatrix over a given state and writer, so the printout
+// is tested as text (matrix_test.go) rather than read off a run.
+func writeMatrix(w io.Writer, matrix *matrixState, langs []string, total int) {
 	for _, lang := range langs {
 		ids := make([]string, 0, len(matrix.failed[lang]))
 		for id := range matrix.failed[lang] {
@@ -200,7 +207,7 @@ func printMatrix(langs []string, total int) {
 		}
 		sort.Strings(ids)
 		for _, id := range ids {
-			fmt.Printf("MATRIX_FAIL\t%s\t%s\t%s\n", lang, id, matrix.failed[lang][id])
+			fmt.Fprintf(w, "MATRIX_FAIL\t%s\t%s\t%s\n", lang, id, matrix.failed[lang][id])
 		}
 	}
 	for _, lang := range langs {
@@ -208,9 +215,9 @@ func printMatrix(langs []string, total int) {
 			if len(why) > 2000 {
 				why = why[:2000]
 			}
-			fmt.Printf("MATRIX_BROKEN\t%s\t%s\n", lang, strings.ReplaceAll(why, "\n", " | "))
+			fmt.Fprintf(w, "MATRIX_BROKEN\t%s\t%s\n", lang, strings.ReplaceAll(why, "\n", " | "))
 			continue
 		}
-		fmt.Printf("MATRIX\t%s\tpass %d\tfail %d\n", lang, total-len(matrix.failed[lang]), len(matrix.failed[lang]))
+		fmt.Fprintf(w, "MATRIX\t%s\tpass %d\tfail %d\n", lang, total-len(matrix.failed[lang]), len(matrix.failed[lang]))
 	}
 }
