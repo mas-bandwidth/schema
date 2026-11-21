@@ -121,7 +121,9 @@ func TestMooCookReadAgreesWithTheLoad(t *testing.T) {
 		}
 		cooked, err := tablecook.Cook(m, inst, tablecook.Options{})
 		if err != nil {
-			continue // the tool writes no cook for this one (§7.6's own refusals)
+			// the strict read accepted this instance, so it has a cook: an
+			// error here is a failure, never a row to pass over
+			t.Fatalf("the tool wrote no cook for %s, which the strict read accepts: %v", row.caseName, err)
 		}
 		out := g.run(t, cookProbe(g, row.root, 0, len(cooked), false, true), map[string][]byte{"wire": wire, "cook": cooked})
 		if out != "ok" {
