@@ -478,10 +478,16 @@ from this projection rather than carried in it.
   documentation. **Elixir carries the descriptor column alone for a field and
   for a variant** — a struct field and an enum variant have no attribute to
   hang a doc on — and emits `@moduledoc` for a declaration. A `///` line is
-  refused by name when its last byte, after trailing spaces, tabs and a CRLF's
-  carriage return are dropped, is a backslash: in C-family compilers a line
-  comment ending in a backslash continues onto the next line and hides the
-  declaration under it.
+  refused by name when its last byte, after trailing spaces, tabs, form
+  feeds, vertical tabs and a CRLF's carriage return are dropped, is a
+  backslash: in C-family compilers a line comment ending in a backslash
+  continues onto the next line and hides the declaration under it, and GCC
+  and Clang still splice the line with a form feed or vertical tab between the
+  backslash and the newline. A `///` line is refused by name, too, when it
+  holds a character some target compiler takes as a line end — a carriage
+  return not followed by a newline, U+2028, U+2029 or U+0085 (C# ends a line
+  at all four) — or when it is not well-formed UTF-8, because the text reaches
+  generated sources that must be.
 - **A doc comment moves nothing.** It is excluded from the wire shape
   projection (§3.1) and from the cook projection (SPEC-TABLES.md §20.2), so
   it moves neither the protocol id nor the build version; it enters no
@@ -576,11 +582,13 @@ placement and the formatter normalizes to it:
 File        = { Declaration } .
 Declaration = Package | Const | Enum | Flags | TypeDecl | TableDecl | Union .
 Flags       = "flags" ident ( VariantList
-            | AttrSection NL VariantList ) NL .                // "flags" contextual, §4.2;
+            | AttrSection [ NL ] VariantList ) NL .            // "flags" contextual, §4.2;
                                                                    // a qualified declaration's
-                                                                   // body opens on the NEXT line
+                                                                   // body opens on the next line
+                                                                   // or ends the qualification
+                                                                   // line, for every kind
 Union       = "union" ident ( UnionBlock
-            | AttrSection NL UnionBlock ) NL .                     // "union" contextual, §4.8;
+            | AttrSection [ NL ] UnionBlock ) NL .                 // "union" contextual, §4.8;
                                                                    // the qualification carries TAGS
                                                                    // and nothing else (§4.2)
 UnionBlock  = "{" { UnionVariant } "}" .
@@ -605,7 +613,7 @@ Const       = "const" ident [ ConstType ] "=" ConstExpr [ AttrSection ] NL .
 ConstType   = IntType | "float32" | "float64" .
 ConstExpr   = IntExpr | FloatExpr .
 Enum        = "enum" ident ( VariantList
-            | AttrSection NL VariantList ) NL .
+            | AttrSection [ NL ] VariantList ) NL .
 VariantList = "{" [ Variant { VariantSep Variant } [ VariantSep ] ] "}" .
 Variant     = ident [ AttrSection ] .                              // the qualification carries TAGS,
                                                                     // and on an enum variant `was`,
@@ -620,10 +628,10 @@ VariantSep  = "," | NL .                                           // a comma, o
                                                                    // ends a qualified variant's line;
                                                                    // a trailing separator is OK
 TypeDecl    = "type" ident ( Block
-            | AttrSection NL Block ) NL .               // qualifiers = the type TAG and the
+            | AttrSection [ NL ] Block ) NL .           // qualifiers = the type TAG and the
                                                         // cpp_* pair, §4.2
 TableDecl   = "table" ident ( Block
-            | AttrSection NL Block ) NL .               // the TABLE wire, SPEC-TABLES.md —
+            | AttrSection [ NL ] Block ) NL .           // the TABLE wire, SPEC-TABLES.md —
                                                         // a type body, plus pointers and `was`.
                                                         // A table declaration's qualification
                                                         // carries TAGS, `was` and `forms`
@@ -914,9 +922,10 @@ sequence    uint16
 - **Declaration lines take the same section**: a tag or a native-type
   binding, a flags declaration's `max` headroom —
   `type Quat | quat4`, `flags Damage | max = 8` —
-  and the body brace opens on the next line — with a qualification section
-  that is forced (the section runs to the end of the line), and everywhere
-  else it is the Allman house style (§4.1):
+  and the body brace opens on the next line, which is the Allman house style
+  (§4.1) and what the formatter writes. A brace that ENDS the qualification
+  line, `table Root | designer {`, is accepted for every declaration kind
+  alike — type, table, union, enum and flags — and the section stops at it:
 
   ```
   type Quat | quat4, cpp_native = quat_t, cpp_include = "core_math.h"
