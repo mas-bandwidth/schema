@@ -1274,6 +1274,9 @@ public final class BenchMixedRetain {
             w.put32(v.serverTime);
         }
         if (!v.entities.isEmpty()) {
+            int bornAt = w.off;
+            int bornMark = w.ids.count;
+            boolean born = v.entities.size() == 1;
             w.putLeb(w.ref(BenchMixedVariable.F_entities));
             w.put8(14);
             int list = w.off;
@@ -1285,9 +1288,16 @@ public final class BenchMixedRetain {
                 path[2 * depth] = 9;
                 path[2 * depth + 1] = i;
                 MixedEntityRetain.writeBodyRetain(w, nodes, e, retain, report, path, depth + 1);
+                if (w.off - body != 1) {
+                    born = false;
+                }
                 w.frame(body);
             }
             w.frame(list);
+            if (born) {
+                w.off = bornAt;
+                w.ids.count = bornMark;
+            }
         }
         if (!v.stats.isEmpty()) {
             w.putLeb(w.ref(BenchMixedVariable.F_stats));

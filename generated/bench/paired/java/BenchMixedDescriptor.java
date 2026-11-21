@@ -483,6 +483,9 @@ public final class BenchMixedDescriptor {
         v.frameTick = 0L;
         v.serverTime = 0x00000000;
         v.entities.clear();
+        for (int i = 0; i < 1; i++) {
+            v.entities.add(new MixedEntityVariable.Value());
+        }
         v.stats.clear();
         v.gameEvent = new MixedEventVariable.Value();
         v.loadout.clear();
