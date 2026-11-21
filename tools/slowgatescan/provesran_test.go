@@ -353,6 +353,11 @@ func TestUnarmedLineVerdictFollowsGoSelection(t *testing.T) {
 		{"CGO_ENABLED=0 go test -run TestCgoOnly ./pkg", 1, "with cgo off the cgo-only file is not built"},
 		{"CGO_ENABLED=1 go test -run TestCgoOnly ./pkg", 0, "with cgo on it runs TestCgoOnly"},
 		{"GOEXPERIMENT=nosuch go test -run TestFast ./pkg", 1, "GOEXPERIMENT changes tags this scan does not model"},
+		// a pinned toolchain's release tags are build tags too
+		{"GOTOOLCHAIN=go1.20.0 go test -run TestNewGo ./pkg", 1, "go1.20 does not build a file behind go1.21: no tests to run"},
+		{"GOTOOLCHAIN=go1.26.0 go test -run TestNewGo ./pkg", 0, "go1.26 builds it"},
+		{"GOTOOLCHAIN=local go test -run TestNewGo ./pkg", 0, "the lane's own toolchain"},
+		{"GOTOOLCHAIN=go1.26.0+auto go test -run TestFast ./pkg", 1, "+auto leaves the toolchain to the module: unread"},
 		{"go test -toolexec $(WRAP) -run TestFast ./pkg", 1, "-toolexec is not modelled"},
 	} {
 		root := t.TempDir()
@@ -363,6 +368,7 @@ func TestUnarmedLineVerdictFollowsGoSelection(t *testing.T) {
 			"pkg/only_windows_test.go": "package pkg\n\nimport \"testing\"\n\nfunc TestWindowsOnly(t *testing.T) {}\n",
 			"pkg/norace_test.go":       "//go:build !race\n\npackage pkg\n\nimport \"testing\"\n\nfunc TestNoRace(t *testing.T) {}\n",
 			"pkg/cgo_test.go":          "//go:build cgo\n\npackage pkg\n\nimport \"testing\"\n\nfunc TestCgoOnly(t *testing.T) {}\n",
+			"pkg/newgo_test.go":        "//go:build go1.21\n\npackage pkg\n\nimport \"testing\"\n\nfunc TestNewGo(t *testing.T) {}\n",
 			"Makefile":                 "check:\n\t" + tc.recipe + "\n",
 		})
 		gatedTests, err := gatedTestPackages(root)

@@ -12,15 +12,18 @@ import (
 // reviewer's F-030: an armed line that builds under a context other than the
 // lane's is credited only with the tests that context builds. `go test -race`
 // does not build a test behind `//go:build !race`, so a race recipe selecting
-// it runs nothing of it; the control, TestBoth, is built either way and stays
-// credited.
+// it runs nothing of it, and TestNoRace falls through to the later recipe that
+// does build it (a pinned toolchain, whose release tags build both files). The
+// control, TestBoth, is built either way and stays credited to the race line.
 func TestCreditFollowsTheLinesBuildContext(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	writeTree(t, root, map[string]string{
 		"pkg/both_test.go":   "package pkg\n\nimport \"testing\"\n\nfunc TestBoth(t *testing.T) { slowtest.Gate(t, \"x\") }\n",
 		"pkg/norace_test.go": "//go:build !race\n\npackage pkg\n\nimport \"testing\"\n\nfunc TestNoRace(t *testing.T) { slowtest.Gate(t, \"x\") }\n",
-		"Makefile":           "race:\n\tSCHEMA_SLOW=1 go test -race -count=1 -run '^Test(NoRace|Both)$$' ./pkg/\n",
+		"Makefile": "race:\n\tSCHEMA_SLOW=1 go test -race -count=1 -run '^Test(NoRace|Both)$$' ./pkg/\n" +
+			// a pinned toolchain whose release tags build both: credited
+			"pinned:\n\tGOTOOLCHAIN=go1.26.0 sh test/slowgate/proof pinned 'TestNoRace' ./pkg -run '^TestNoRace$$' -count=1\n",
 	})
 	gated, err := gatedPackages(root)
 	if err != nil {
@@ -31,7 +34,7 @@ func TestCreditFollowsTheLinesBuildContext(t *testing.T) {
 		t.Fatal(err)
 	}
 	decls := newDeclCache(root)
-	for name, want := range map[string]string{"TestNoRace": "", "TestBoth": "race"} {
+	for name, want := range map[string]string{"TestNoRace": "pinned", "TestBoth": "race"} {
 		if got := coveredBy(decls, recipes, gatedTest{pkg: "./pkg", name: name}); got != want {
 			t.Errorf("%s is credited to %q, want %q (-race builds under the race tag)", name, got, want)
 		}

@@ -40,22 +40,39 @@ type goTestLine struct {
 	slow, requireCorpus string // SCHEMA_SLOW and SCHEMA_REQUIRE_CORPUS as the test binary sees them
 	goos, goarch        string // GOOS and GOARCH the line sets for the command, or ""
 	cgo                 string // CGO_ENABLED the line sets for the command, or ""
+	// releaseMinor is N of the go1.N toolchain GOTOOLCHAIN names on the line,
+	// or 0: the toolchain's release tags (go1.1 … go1.N) are build tags too
+	releaseMinor int
 }
 
 // untrackedContext are the environment variables that change a build's tags
-// in ways this scan does not model (experiment tags, the toolchain's release
-// tags, architecture feature levels). A line that sets one proves nothing
-// about which tests it builds.
-var untrackedContext = []string{"GOEXPERIMENT", "GOTOOLCHAIN", "GOAMD64", "GOARM", "GOARM64", "GO386", "GOMIPS", "GOMIPS64", "GOPPC64", "GORISCV64", "GOWASM"}
+// in ways this scan does not model (experiment tags, architecture feature
+// levels). A line that sets one proves nothing about which tests it builds.
+var untrackedContext = []string{"GOEXPERIMENT", "GOAMD64", "GOARM", "GOARM64", "GO386", "GOMIPS", "GOMIPS64", "GOPPC64", "GORISCV64", "GOWASM"}
+
+// pinnedToolchain is a GOTOOLCHAIN value naming one release: go1.N, go1.N.P
+// or go1.NrcK. `local` is the lane's own; anything else (+auto, +path, a
+// path) leaves the toolchain to the module and is not read.
+var pinnedToolchain = regexp.MustCompile(`^go1\.([0-9]+)(\.[0-9]+|rc[0-9]+)?$`)
 
 // buildContext is the build context the test command builds in: the lane's
 // (build.Default, the host the scan runs on), with what the line sets — its
-// -tags, the tags -race, -msan and -asan imply, CGO_ENABLED, GOOS and GOARCH.
-// custom reports whether any of that differs from the lane's own.
+// -tags, the tags -race, -msan and -asan imply, the release tags of the
+// toolchain GOTOOLCHAIN pins, CGO_ENABLED, GOOS and GOARCH. custom reports
+// whether any of that differs from the lane's own.
 func (l goTestLine) buildContext() (ctx build.Context, custom bool) {
 	ctx = build.Default
 	ctx.BuildTags = append(append([]string{}, l.tags...), l.impliedTags...)
 	custom = len(ctx.BuildTags) > 0
+	if l.releaseMinor > 0 {
+		var tags []string
+		for minor := 1; minor <= l.releaseMinor; minor++ {
+			tags = append(tags, "go1."+strconv.Itoa(minor))
+		}
+		if !slices.Equal(tags, build.Default.ReleaseTags) {
+			ctx.ReleaseTags, custom = tags, true
+		}
+	}
 	if l.goos != "" && l.goos != ctx.GOOS {
 		ctx.GOOS, custom = l.goos, true
 	}
@@ -159,7 +176,7 @@ func parseGoTestLine(cmd string) goTestLine {
 	}
 	start := commandStart(cmd, invocations[0])
 	words := shellWords(cmd[start:])
-	for _, name := range append([]string{"SCHEMA_SLOW", "SCHEMA_REQUIRE_CORPUS", "GOOS", "GOARCH", "GOFLAGS", "CGO_ENABLED"}, untrackedContext...) {
+	for _, name := range append([]string{"SCHEMA_SLOW", "SCHEMA_REQUIRE_CORPUS", "GOOS", "GOARCH", "GOFLAGS", "CGO_ENABLED", "GOTOOLCHAIN"}, untrackedContext...) {
 		if strings.Contains(cmd[:start], name) {
 			words = append(shellWords(cmd[:start]), words...)
 			break
@@ -285,6 +302,14 @@ func parseGoTestLine(cmd string) goTestLine {
 	l.goos, l.goarch, l.cgo = value("GOOS"), value("GOARCH"), value("CGO_ENABLED")
 	if l.cgo != "" && l.cgo != "0" && l.cgo != "1" {
 		l.unreadEnv = "CGO_ENABLED=" + l.cgo + " is not a value the go tool reads"
+	}
+	if tc := value("GOTOOLCHAIN"); tc != "" && tc != "local" {
+		m := pinnedToolchain.FindStringSubmatch(tc)
+		if m == nil {
+			l.unreadEnv = "GOTOOLCHAIN=" + tc + " does not pin one toolchain, so its release tags cannot be read"
+		} else {
+			l.releaseMinor, _ = strconv.Atoi(m[1])
+		}
 	}
 	for _, name := range untrackedContext {
 		if value(name) != "" {
