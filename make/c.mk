@@ -337,10 +337,18 @@ tables-c-json-walk: build/tables-generated-c/.stamp
 # over-read lands in a redzone.
 C_SANITIZE := -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g
 
-build/conformance-c-asan: build/tables-generated-c/.stamp $(wildcard test/conformance/c/*.c) $(wildcard test/conformance/c/*.h)
+C_CONFORMANCE_ASAN_OBJDIR := build/conformance-c-asan-objs
+C_CONFORMANCE_ASAN_OBJECTS = $(addprefix $(C_CONFORMANCE_ASAN_OBJDIR)/,$(C_CONFORMANCE_SOURCES:.c=.o))
+
+$(C_CONFORMANCE_ASAN_OBJDIR)/%.o: %.c build/tables-generated-c/.stamp $(wildcard test/conformance/c/*.h)
+	@mkdir -p $(@D)
+	$(CC) -std=c99 -Wall -Wextra -Werror -Wshadow -Wtype-limits $(C_TAUTOLOGICAL) \
+		-O1 -ffp-contract=off $(C_SANITIZE) $(C_CONFORMANCE_INCLUDES) -c $< -o $@
+
+build/conformance-c-asan: $(C_CONFORMANCE_ASAN_OBJECTS) build/tables-generated-c/.stamp $(wildcard test/conformance/c/*.c) $(wildcard test/conformance/c/*.h)
 	@mkdir -p build
 	$(CC) -std=c99 -Wall -Wextra -Werror -Wshadow -Wtype-limits $(C_TAUTOLOGICAL) \
-		-O1 -ffp-contract=off $(C_SANITIZE) $(C_CONFORMANCE_INCLUDES) $(C_CONFORMANCE_SOURCES) -o $@ -lm
+		-O1 -ffp-contract=off $(C_SANITIZE) $(C_CONFORMANCE_ASAN_OBJECTS) -o $@ -lm
 
 # THE FORGERY FUZZER, C side. The conformance batteries are the PINNED damage —
 # 11 block rows and 111 cook rows a person reviewed; this is the unpinned half:
@@ -392,13 +400,24 @@ tables-c-fuzz: build/schema_test_c_fuzz
 # else: the hour-long soak (the TABLES_C_SOAK_ITERATIONS default) that `make
 # test` runs at 512 passes, the forged-block fuzzer at five times the PR scale
 # under a second seed, and each one's planted control.
+C_RELEASE_JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 .PHONY: tables-c-release
 tables-c-release:
-	$(MAKE) tables-c-soak
-	$(MAKE) tables-c-soak-negative-control
-	$(MAKE) tables-c-fuzz N=500000
-	$(MAKE) tables-c-fuzz SEED=2 N=500000
-	$(MAKE) tables-c-fuzz-negative-control
+	$(MAKE) -j$(C_RELEASE_JOBS) build/schema_test_c_soak build/schema_test_c_fuzz
+	@set -e; \
+	mkdir -p build/c-release-logs; \
+	( $(MAKE) --no-print-directory tables-c-soak-negative-control > build/c-release-logs/soak-nc.log 2>&1 ) & p1=$$!; \
+	( SEED=$(SEED) N=500000 ./build/schema_test_c_fuzz > build/c-release-logs/fuzz-seed1.log 2>&1 ) & p2=$$!; \
+	( SEED=2 N=500000 ./build/schema_test_c_fuzz > build/c-release-logs/fuzz-seed2.log 2>&1 ) & p3=$$!; \
+	( $(MAKE) --no-print-directory tables-c-fuzz-negative-control > build/c-release-logs/fuzz-nc.log 2>&1 ) & p4=$$!; \
+	rc=0; \
+	for item in "$$p1:soak-nc" "$$p2:fuzz-seed1" "$$p3:fuzz-seed2" "$$p4:fuzz-nc"; do \
+		pid=$${item%%:*}; name=$${item#*:}; \
+		if ! wait "$$pid"; then rc=1; fi; \
+		cat "build/c-release-logs/$$name.log"; \
+	done; \
+	test "$$rc" -eq 0
+	./build/schema_test_c_soak $(TABLES_C_SOAK_ITERATIONS)
 
 # THE C TABLES LEG, whole. Everything above, plus the conformance driver under
 # the sanitizers over every surface it answers.
@@ -1531,8 +1550,11 @@ tables-c-versioning: tables-fixedform-corpus
 	SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/ctable/ -count=1
 	@echo 'tables C corpus: ctable checks the C++ reference bytes, including §5 and fixed roadmap framing'
 
-.PHONY: test-c
+.PHONY: test-c test-c-recipe
 test-c: build/schema_test_c build/schema_test_c_asan build/schema_test_c_ludicrous build/schema_test_bench_c build/conformance-harness build/conformance-c build/conformance-c-asan build/schema_test_c_fuzz build/schema_test_c_soak build/schema_test_c_variable build/schema_test_c_variable_asan
+	$(MAKE) test-c-recipe
+
+test-c-recipe: build/schema_test_c build/schema_test_c_asan build/schema_test_c_ludicrous build/schema_test_bench_c build/conformance-harness build/conformance-c build/conformance-c-asan build/schema_test_c_fuzz build/schema_test_c_soak build/schema_test_c_variable build/schema_test_c_variable_asan
 	$(MAKE) tables-c-wire-fuzz SEED=1 N=20000
 	$(MAKE) tables-c-zero-cost
 	$(MAKE) tables-c-json-walk
@@ -1639,8 +1661,16 @@ build/wire-fuzz-c: $(filter-out $(C_CONFORMANCE_OBJDIR)/test/conformance/c/main.
 	@mkdir -p build
 	$(CC) $(TABLES_CFLAGS) $(filter-out $(C_CONFORMANCE_OBJDIR)/test/conformance/c/main.o,$(C_CONFORMANCE_OBJECTS)) $(C_CONFORMANCE_OBJDIR)/test/c-tables/wire_fuzz_main.o -o $@ -lm
 
-build/wire-fuzz-c-asan: build/tables-generated-c/.stamp test/c-tables/wire_fuzz_main.c $(wildcard test/conformance/c/*.h) $(wildcard test/conformance/c/*.c)
-	$(CC) $(TABLES_CFLAGS_CONTROL) $(C_SANITIZE) $(C_CONFORMANCE_INCLUDES) test/c-tables/wire_fuzz_main.c $(filter-out test/conformance/c/main.c,$(C_CONFORMANCE_SOURCES)) -o $@ -lm
+C_WIRE_FUZZ_ASAN_OBJDIR := build/wire-fuzz-c-asan-objs
+C_WIRE_FUZZ_ASAN_OBJECTS = $(addprefix $(C_WIRE_FUZZ_ASAN_OBJDIR)/,$(filter-out test/conformance/c/main.o,$(C_CONFORMANCE_SOURCES:.c=.o)) test/c-tables/wire_fuzz_main.o)
+
+$(C_WIRE_FUZZ_ASAN_OBJDIR)/%.o: %.c build/tables-generated-c/.stamp $(wildcard test/conformance/c/*.h)
+	@mkdir -p $(@D)
+	$(CC) $(TABLES_CFLAGS_CONTROL) $(C_SANITIZE) $(C_CONFORMANCE_INCLUDES) -c $< -o $@
+
+build/wire-fuzz-c-asan: $(C_WIRE_FUZZ_ASAN_OBJECTS) build/tables-generated-c/.stamp test/c-tables/wire_fuzz_main.c $(wildcard test/conformance/c/*.h) $(wildcard test/conformance/c/*.c)
+	@mkdir -p build
+	$(CC) $(TABLES_CFLAGS_CONTROL) $(C_SANITIZE) $(C_WIRE_FUZZ_ASAN_OBJECTS) -o $@ -lm
 
 # The ASan leg turns leak detection off: LeakSanitizer suspends threads with
 # ptrace to walk the still-reachable set, and a sandbox that denies ptrace

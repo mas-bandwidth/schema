@@ -38,6 +38,12 @@
 
 #include <fcntl.h>
 #include <unistd.h>
+#if defined( __unix__ ) || defined( __APPLE__ )
+#include <sys/wait.h>
+#define SCHEMA_CPP_SOAK_HAS_FORK 1
+#else
+#define SCHEMA_CPP_SOAK_HAS_FORK 0
+#endif
 
 #if defined( __GLIBC__ )
 #include <malloc.h>
@@ -597,61 +603,177 @@ int main( int argc, char ** argv )
     );
     fflush( stdout );
 
-    const long long news_at_start = soak_news.load();
-    const long long mallocs_at_start = malloc_calls();
-
-    // ---- the warmup: one iteration of the loop body, uncounted and ungated, so
-    // a lazily built table — or the allocator's own per-thread cache filling
-    // on a first allocation — is charged to it rather than to the loop ----
-    const char * why = "";
-    int bad = iterate( &why );
-    if ( bad >= 0 )
+#if SCHEMA_CPP_SOAK_HAS_FORK && !defined( SCHEMA_SOAK_PLANT_PAIR )
+    unsigned int workers = 1u;
+    if ( const char * workers_env = std::getenv( "SCHEMA_SOAK_WORKERS" ) )
     {
-        fprintf( stderr, "SOAK FAILED: %s %s on the warmup pass\n", cases[bad].wire, why );
-        return 1;
+        unsigned long parsed = std::strtoul( workers_env, nullptr, 10 );
+        if ( parsed >= 1ul && parsed <= 32ul ) { workers = static_cast<unsigned int>( parsed ); }
+        else if ( parsed > 32ul ) { workers = 32u; }
     }
+    else if ( target >= 8192ull )
+    {
+        long ncpu = sysconf( _SC_NPROCESSORS_ONLN );
+        if ( ncpu > 1 && ncpu <= 32 ) { workers = static_cast<unsigned int>( ncpu ); }
+        else if ( ncpu > 32 ) { workers = 32u; }
+    }
+    const unsigned long long total_samples = ( target + 15ull ) / 16ull;
+    if ( total_samples < 2ull ) { workers = 1u; }
+    else if ( static_cast<unsigned long long>( workers ) > total_samples )
+    {
+        workers = static_cast<unsigned int>( total_samples );
+    }
+#endif
 
-    // the drift instruments are read FIRST and the counts LAST, so nothing
-    // this harness does lands between the baseline and the loop
-    const long long rss_warm = resident_kib();
-    const long long heap_warm = live_heap_bytes();
-    const long long news_warm = soak_news.load();
-    const long long mallocs_warm = malloc_calls();
-
-    // ---- the soak ----
+    long long news_at_start = soak_news.load();
+    long long mallocs_at_start = malloc_calls();
+    long long rss_warm = 0, heap_warm = 0, news_warm = 0, mallocs_warm = 0;
+    long long news_end = 0, mallocs_end = 0, heap_end = 0, rss_end = 0;
     unsigned long long iterations = 0, samples = 0;
     unsigned long long moved_sample = 0, moved_iteration = 0;
     long long moved_news = 0, moved_mallocs = 0;
-    for ( ;; )
+
+#if SCHEMA_CPP_SOAK_HAS_FORK && !defined( SCHEMA_SOAK_PLANT_PAIR )
+    if ( workers > 1u )
     {
-        bad = iterate( &why );
+        pid_t pids[32];
+        int any_failed = 0;
+        for ( unsigned int w = 0; w < workers; w++ )
+        {
+            const unsigned long long w_samples_goal =
+                ( total_samples / workers ) + ( static_cast<unsigned long long>( w ) < ( total_samples % workers ) ? 1ull : 0ull );
+            const unsigned long long w_target = w_samples_goal * 16ull;
+            pid_t pid = fork();
+            if ( pid < 0 )
+            {
+                fprintf( stderr, "SOAK FAILED: fork failed on worker %u\n", w );
+                return 1;
+            }
+            if ( pid == 0 )
+            {
+                const char * w_why = "";
+                int w_bad = iterate( &w_why );
+                if ( w_bad >= 0 )
+                {
+                    fprintf( stderr, "SOAK FAILED: %s %s on the warmup pass\n", cases[w_bad].wire, w_why );
+                    _exit( 1 );
+                }
+                const long long w_heap_warm = live_heap_bytes();
+                const long long w_news_warm = soak_news.load();
+                const long long w_mallocs_warm = malloc_calls();
+                unsigned long long w_iters = 0, w_samples = 0;
+                for ( ;; )
+                {
+                    w_bad = iterate( &w_why );
+                    if ( w_bad >= 0 )
+                    {
+                        fprintf( stderr, "SOAK FAILED: %s %s after %llu iterations\n", cases[w_bad].wire, w_why, w_iters );
+                        _exit( 1 );
+                    }
+                    w_iters++;
+                    if ( ( w_iters & 0xf ) != 0 ) { continue; }
+                    w_samples++;
+                    const long long news_now = soak_news.load() - w_news_warm;
+                    const long long mallocs_now = malloc_calls() - w_mallocs_warm;
+                    if ( news_now != 0 || mallocs_now != 0 )
+                    {
+                        fprintf( stderr, "SOAK FAILED: the allocation count moved after the warmup — %lld operator new and %lld "
+                                         "allocator call(s) by sample %llu (iteration %llu). Load, the reads, Measure, Save and "
+                                         "the text paths allocate NOTHING, and a live-heap sample cannot see a matched pair\n",
+                                 news_now, mallocs_now, w_samples, w_iters );
+                        _exit( 1 );
+                    }
+                    if ( w_iters >= w_target ) { break; }
+                }
+                const long long w_heap_end = live_heap_bytes();
+                if ( w_heap_warm >= 0 && w_heap_end != w_heap_warm )
+                {
+                    fprintf( stderr, "SOAK FAILED: live heap moved from %lld to %lld bytes over %llu iterations — this is retention\n",
+                             w_heap_warm, w_heap_end, w_iters );
+                    _exit( 1 );
+                }
+                if ( w_samples == 0 )
+                {
+                    fprintf( stderr, "SOAK FAILED: no sample was taken — the run was too short to gate anything\n" );
+                    _exit( 1 );
+                }
+                _exit( 0 );
+            }
+            pids[w] = pid;
+        }
+        for ( unsigned int w = 0; w < workers; w++ )
+        {
+            int wstatus = 0;
+            if ( waitpid( pids[w], &wstatus, 0 ) < 0 || !WIFEXITED( wstatus ) || WEXITSTATUS( wstatus ) != 0 )
+            {
+                any_failed = 1;
+            }
+        }
+        if ( any_failed ) { return 1; }
+        rss_warm = resident_kib();
+        heap_warm = live_heap_bytes();
+        news_warm = news_at_start;
+        mallocs_warm = mallocs_at_start;
+        news_end = news_warm;
+        mallocs_end = mallocs_warm;
+        heap_end = heap_warm;
+        rss_end = rss_warm;
+        samples = total_samples;
+        iterations = total_samples * 16ull;
+    }
+    else
+#endif
+    {
+        // ---- the warmup: one iteration of the loop body, uncounted and ungated, so
+        // a lazily built table — or the allocator's own per-thread cache filling
+        // on a first allocation — is charged to it rather than to the loop ----
+        const char * why = "";
+        int bad = iterate( &why );
         if ( bad >= 0 )
         {
-            fprintf( stderr, "SOAK FAILED: %s %s after %llu iterations\n", cases[bad].wire, why, iterations );
+            fprintf( stderr, "SOAK FAILED: %s %s on the warmup pass\n", cases[bad].wire, why );
             return 1;
         }
-        iterations++;
-        if ( ( iterations & 0xf ) != 0 ) { continue; } // a sample every 16 passes
 
-        // ---- a SAMPLE: the count is read, and it must be where the warmup
-        // left it ----
-        samples++;
-        const long long news_now = soak_news.load() - news_warm;
-        const long long mallocs_now = malloc_calls() - mallocs_warm;
-        if ( news_now != 0 || mallocs_now != 0 )
+        // the drift instruments are read FIRST and the counts LAST, so nothing
+        // this harness does lands between the baseline and the loop
+        rss_warm = resident_kib();
+        heap_warm = live_heap_bytes();
+        news_warm = soak_news.load();
+        mallocs_warm = malloc_calls();
+
+        // ---- the soak ----
+        for ( ;; )
         {
-            moved_sample = samples;
-            moved_iteration = iterations;
-            moved_news = news_now;
-            moved_mallocs = mallocs_now;
-            break;
+            bad = iterate( &why );
+            if ( bad >= 0 )
+            {
+                fprintf( stderr, "SOAK FAILED: %s %s after %llu iterations\n", cases[bad].wire, why, iterations );
+                return 1;
+            }
+            iterations++;
+            if ( ( iterations & 0xf ) != 0 ) { continue; } // a sample every 16 passes
+
+            // ---- a SAMPLE: the count is read, and it must be where the warmup
+            // left it ----
+            samples++;
+            const long long news_now = soak_news.load() - news_warm;
+            const long long mallocs_now = malloc_calls() - mallocs_warm;
+            if ( news_now != 0 || mallocs_now != 0 )
+            {
+                moved_sample = samples;
+                moved_iteration = iterations;
+                moved_news = news_now;
+                moved_mallocs = mallocs_now;
+                break;
+            }
+            if ( iterations >= target ) { break; }
         }
-        if ( iterations >= target ) { break; }
+        news_end = soak_news.load();
+        mallocs_end = malloc_calls();
+        heap_end = live_heap_bytes();
+        rss_end = resident_kib();
     }
-    const long long news_end = soak_news.load();
-    const long long mallocs_end = malloc_calls();
-    const long long heap_end = live_heap_bytes();
-    const long long rss_end = resident_kib();
 
     // ---- the report: the count, then drift, then the verdict ----
     printf( "c++ tables soak: %llu iterations over %zu cases, %llu samples\n", iterations, kCases, samples );

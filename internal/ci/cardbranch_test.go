@@ -94,7 +94,7 @@ func TestCardBranchPullRequestsSkipCI(t *testing.T) {
 	if len(wfs) == 0 {
 		t.Fatal("no workflows read: this gate would pass over an empty set")
 	}
-	for _, name := range []string{"ci-fast.yml", "python-leg.yml", "roadmap.yml", "caa-self-test.yml", "cla.yml"} {
+	for _, name := range []string{"ci-fast.yml", "roadmap.yml", "caa-self-test.yml", "cla.yml"} {
 		if !strings.Contains(wfs[name], "    if: "+cardBranchSkip) {
 			t.Errorf("%s carries no card-branch skip: the gate below would pass over it", name)
 		}
@@ -135,7 +135,7 @@ func TestCardBranchPullRequestsSkipCI(t *testing.T) {
 		{"a job without the skip", plant("cla.yml", "    if: "+cardBranchSkip+"\n", "")},
 		{"a skip dropped from a combined if", plant("ci-fast.yml", "    if: "+cardBranchSkip+" && (", "    if: (")},
 		{"a prefix that also skips the group branch", plant("roadmap.yml", "'sprint/'", "'sprint'")},
-		{"a prefix that skips no card branch", plant("python-leg.yml", "'sprint/'", "'sprint-group/'")},
+		{"a prefix that skips no card branch", plant("ci-fast.yml", "'sprint/'", "'sprint-group/'")},
 		{"the skip joined by ||", plant("caa-self-test.yml", cardBranchSkip+" && (", cardBranchSkip+" || (")},
 	} {
 		if len(cardBranchSkipErrors(c.wfs)) == 0 {

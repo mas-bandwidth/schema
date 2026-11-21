@@ -28,7 +28,6 @@ import (
 // held to two minutes.
 var fastLaneWorkflows = map[string]bool{
 	"ci-fast.yml":       true, // the path-selected fast lane
-	"python-leg.yml":    true, // the Python leg's fast tests, by path
 	"roadmap.yml":       true, // the roadmap lint, by path
 	"caa-self-test.yml": true, // the agreement check's self-test
 	"cla.yml":           true, // the contributor agreement check
@@ -36,10 +35,10 @@ var fastLaneWorkflows = map[string]bool{
 }
 
 // nightlyWorkflow reports whether name is a nightly workflow: everything
-// outside the fast lane except release.yml, which runs on dispatch only to
-// cut a release and keeps its bounded timeout.
+// outside the fast lane except dispatch-only bounded workflows (release.yml
+// and python-leg.yml), which keep their explicit per-job timeouts.
 func nightlyWorkflow(name string) bool {
-	return !fastLaneWorkflows[name] && name != "release.yml"
+	return !fastLaneWorkflows[name] && name != "release.yml" && name != "python-leg.yml"
 }
 
 // NIGHTLY RUNS HAVE NO TIMEOUT. The owner, 2026-11-16: "Nightly runs don't
@@ -297,6 +296,8 @@ func TestOnlyTheFastLaneRunsOnPushOrPullRequest(t *testing.T) {
 	}{
 		{"a hostile corpus back on push to main", nightlyOnlyErrors, plant("schema-c-runs-hostile-corpus.yml", "\non:\n", "\non:\n  push:\n    branches: [ main ]\n")},
 		{"ci-full back on pull requests", nightlyOnlyErrors, plant("ci-full.yml", "\non:\n", "\non:\n  pull_request:\n")},
+		{"python-leg back on pull requests", nightlyOnlyErrors, plant("python-leg.yml", "\non:\n", "\non:\n  pull_request:\n")},
+		{"python-leg back on push to main", nightlyOnlyErrors, plant("python-leg.yml", "\non:\n", "\non:\n  push:\n    branches: [ main ]\n")},
 		{"a fast-lane job given five minutes", twoMinuteErrors, plant("ci-fast.yml", "    timeout-minutes: 2\n", "    timeout-minutes: 5\n")},
 		{"a fast-lane job with no timeout", twoMinuteErrors, plant("roadmap.yml", "    timeout-minutes: 2\n", "")},
 	} {

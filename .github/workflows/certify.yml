@@ -88,7 +88,10 @@ jobs:
       matrix:
         include:
           - { os: fleet, shard: core-prereqs, runner: [self-hosted, Linux, X64, fleet, schema] }
-          - { os: fleet, shard: core-tables-1, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: core-tables-1a, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: core-tables-1b, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: core-tables-1c, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: core-tables-1d, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: core-tables-2, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: core-tables-3, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: core-go, runner: [self-hosted, Linux, X64, fleet, schema] }
@@ -96,10 +99,15 @@ jobs:
           - { os: fleet, shard: fuzz-tables-go, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: fuzz-tables-diff, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: fuzz-tables-props, runner: [self-hosted, Linux, X64, fleet, schema] }
-          - { os: fleet, shard: c, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: c-1, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: c-2, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: c-3, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: cs, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: dart, runner: [self-hosted, Linux, X64, fleet, schema] }
-          - { os: fleet, shard: elixir, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: elixir-1, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: elixir-2, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: elixir-3, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: elixir-4, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: go, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: goose, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: java, runner: [self-hosted, Linux, X64, fleet, schema] }
@@ -108,13 +116,20 @@ jobs:
           - { os: fleet, shard: lua, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: luau, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: moo, runner: [self-hosted, Linux, X64, fleet, schema] }
-          - { os: fleet, shard: python, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: python-1, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: python-2, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: python-3, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: python-4, runner: [self-hosted, Linux, X64, fleet, schema] }
+          - { os: fleet, shard: python-5, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: ruby, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: rust, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: squirrel, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: fleet, shard: unity, runner: [self-hosted, Linux, X64, fleet, schema] }
           - { os: macos-fleet, shard: core-prereqs, runner: [self-hosted, macOS, ARM64, fleet, schema] }
-          - { os: macos-fleet, shard: core-tables-1, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: core-tables-1a, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: core-tables-1b, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: core-tables-1c, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: core-tables-1d, runner: [self-hosted, macOS, ARM64, fleet, schema] }
           - { os: macos-fleet, shard: core-tables-2, runner: [self-hosted, macOS, ARM64, fleet, schema] }
           - { os: macos-fleet, shard: core-tables-3, runner: [self-hosted, macOS, ARM64, fleet, schema] }
           - { os: macos-fleet, shard: core-go, runner: [self-hosted, macOS, ARM64, fleet, schema] }
@@ -122,17 +137,26 @@ jobs:
           - { os: macos-fleet, shard: fuzz-tables-go, runner: [self-hosted, macOS, ARM64, fleet, schema] }
           - { os: macos-fleet, shard: fuzz-tables-diff, runner: [self-hosted, macOS, ARM64, fleet, schema] }
           - { os: macos-fleet, shard: fuzz-tables-props, runner: [self-hosted, macOS, ARM64, fleet, schema] }
-          - { os: macos-fleet, shard: c, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: c-1, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: c-2, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: c-3, runner: [self-hosted, macOS, ARM64, fleet, schema] }
           - { os: macos-fleet, shard: cs, runner: [self-hosted, macOS, ARM64, fleet, schema] }
           - { os: macos-fleet, shard: dart, runner: [self-hosted, macOS, ARM64, fleet, schema] }
-          - { os: macos-fleet, shard: elixir, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: elixir-1, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: elixir-2, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: elixir-3, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: elixir-4, runner: [self-hosted, macOS, ARM64, fleet, schema] }
           - { os: macos-fleet, shard: go, runner: [self-hosted, macOS, ARM64, fleet, schema] }
           - { os: macos-fleet, shard: java, runner: [self-hosted, macOS, ARM64, fleet, schema] }
           - { os: macos-fleet, shard: js, runner: [self-hosted, macOS, ARM64, fleet, schema] }
           - { os: macos-fleet, shard: lobster, runner: [self-hosted, macOS, ARM64, fleet, schema] }
           - { os: macos-fleet, shard: lua, runner: [self-hosted, macOS, ARM64, fleet, schema] }
           - { os: macos-fleet, shard: moo, runner: [self-hosted, macOS, ARM64, fleet, schema] }
-          - { os: macos-fleet, shard: python, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: python-1, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: python-2, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: python-3, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: python-4, runner: [self-hosted, macOS, ARM64, fleet, schema] }
+          - { os: macos-fleet, shard: python-5, runner: [self-hosted, macOS, ARM64, fleet, schema] }
           - { os: macos-fleet, shard: ruby, runner: [self-hosted, macOS, ARM64, fleet, schema] }
           - { os: macos-fleet, shard: rust, runner: [self-hosted, macOS, ARM64, fleet, schema] }
           - { os: macos-fleet, shard: squirrel, runner: [self-hosted, macOS, ARM64, fleet, schema] }
@@ -220,10 +244,10 @@ jobs:
         if: matrix.shard == 'moo'
 
       - uses: ./.github/actions/python
-        if: matrix.shard == 'python'
+        if: startsWith(matrix.shard, 'python-')
 
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
-        if: matrix.shard == 'elixir' && runner.environment == 'github-hosted'
+        if: startsWith(matrix.shard, 'elixir-') && runner.environment == 'github-hosted'
         with:
           otp-version: '29.0.5'
           elixir-version: '1.20.4'
@@ -244,7 +268,7 @@ jobs:
         run: make dist-squirrel
 
       - name: the pinned clang-format (C and C++ format gates)
-        if: matrix.shard == 'core-prereqs' || matrix.shard == 'c'
+        if: matrix.shard == 'core-prereqs' || startsWith(matrix.shard, 'c-')
         run: |
           set -euo pipefail
           pin="$(sed -n 's/^CLANG_FORMAT_PIN *?= *//p' make/c.mk)"
@@ -292,8 +316,8 @@ jobs:
             make "$g" "${MAKE_VARS[@]}"
           done
 
-      - name: core-tables-1 — core packet, distinctness, wire-fuzz, message and map gates
-        if: matrix.shard == 'core-tables-1'
+      - name: core-tables-1 shards — core packet, distinctness, wire-fuzz, message and map gates
+        if: startsWith(matrix.shard, 'core-tables-1')
         run: |
           set -euo pipefail
           JOBS="$(getconf _NPROCESSORS_ONLN)"
@@ -306,9 +330,22 @@ jobs:
             "MIX=mix"
             "NODE=node"
           )
-          make -j"$JOBS" bin/schema build/tables-generated/.stamp build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_tables_asan build/conformance-harness "${MAKE_VARS[@]}"
+          case "${{ matrix.shard }}" in
+            core-tables-1a)
+              make -j"$JOBS" bin/schema build/tables-generated/.stamp build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_tables_asan "${MAKE_VARS[@]}"
+              ;;
+            core-tables-1b)
+              make -j"$JOBS" bin/schema build/tables-generated/.stamp "${MAKE_VARS[@]}"
+              ;;
+            core-tables-1c)
+              make -j"$JOBS" bin/schema build/tables-generated/.stamp build/conformance-harness build/wire-fuzz-cpp build/wire-fuzz-cpp-asan "${MAKE_VARS[@]}"
+              ;;
+            core-tables-1d)
+              make -j"$JOBS" bin/schema build/tables-generated/.stamp build/conformance-harness "${MAKE_VARS[@]}"
+              ;;
+          esac
           unset MAKEFLAGS
-          make test-core-tables-1 "${MAKE_VARS[@]}"
+          make "test-${{ matrix.shard }}" "${MAKE_VARS[@]}"
 
       - name: core-tables-2 — core list, arm, retain, json, view and C++ conformance gates
         if: matrix.shard == 'core-tables-2'
@@ -390,12 +427,112 @@ jobs:
             "MIX=mix"
             "NODE=node"
           )
-          OTHER_LEGS=$(make -s registry "${MAKE_VARS[@]}" | awk -v keep="${{ matrix.shard }}" '/^test:/{sep=""; for(i=2;i<=NF;i++){sub(/^test-/,"",$i); if($i!=keep){printf "%s%s",sep,$i; sep=","}}}')
-          make -j"$JOBS" bin/schema build/tables-generated/.stamp build/conformance-harness build/conformance-cpp build/schema_test_cook "${MAKE_VARS[@]}"
+          SHARD="${{ matrix.shard }}"
+          BASE_LEG="${SHARD%%-[0-9]*}"
+          SHARD_IDX=""
+          if [ "$BASE_LEG" != "$SHARD" ]; then
+            SHARD_IDX="${SHARD#${BASE_LEG}-}"
+          fi
+          OTHER_LEGS=$(make -s registry "${MAKE_VARS[@]}" | awk -v keep="$BASE_LEG" '/^test:/{sep=""; for(i=2;i<=NF;i++){sub(/^test-/,"",$i); if($i!=keep){printf "%s%s",sep,$i; sep=","}}}')
+          EXTRA_BUILDS=(bin/schema build/tables-generated/.stamp build/conformance-harness build/conformance-cpp build/schema_test_cook)
+          if [ "$BASE_LEG" = "c" ]; then
+            EXTRA_BUILDS+=(build/schema_test_c build/schema_test_c_asan build/schema_test_c_ludicrous build/schema_test_bench_c build/conformance-c build/conformance-c-asan build/wire-fuzz-c build/wire-fuzz-c-asan build/schema_test_c_fuzz build/schema_test_c_soak build/schema_test_c_variable build/schema_test_c_variable_asan build/fixedform-corpus/.stamp)
+          elif [ "$BASE_LEG" = "python" ]; then
+            EXTRA_BUILDS+=(build/conformance-python build/fixedform-corpus/.stamp)
+          elif [ "$BASE_LEG" = "elixir" ]; then
+            EXTRA_BUILDS+=(generated/elixir/.stamp generated/elixir-ludicrous/.stamp generated/bench/elixir/.stamp build/tables-generated-elixir/.stamp build/fixedform-corpus/.stamp)
+          fi
+          make -j"$JOBS" "${EXTRA_BUILDS[@]}" "${MAKE_VARS[@]}"
           unset MAKEFLAGS
           make toolchain SCHEMA_SKIP_LEGS="$OTHER_LEGS" "${MAKE_VARS[@]}"
-          make conformance SCHEMA_SKIP_LEGS="$OTHER_LEGS" "${MAKE_VARS[@]}"
-          make "test-${{ matrix.shard }}" "${MAKE_VARS[@]}"
+          run_prereq_slice() {
+            local leg_target="$1" idx="$2" total="$3" filter_mode="$4"
+            local all_prereqs
+            if [ "$leg_target" = "test-python" ]; then
+              all_prereqs=$({ make -qp "${MAKE_VARS[@]}" 2>/dev/null || true; } | awk '$1 == "test-python:" || $1 == "python-ci-support:" {for(i=2;i<=NF;i++) if($i != "python-ci-support") print $i}')
+            else
+              all_prereqs=$({ make -qp "${MAKE_VARS[@]}" 2>/dev/null || true; } | awk -v tgt="${leg_target}:" '$1 == tgt {for(i=2;i<=NF;i++) print $i; exit}')
+            fi
+            if [ -z "$all_prereqs" ]; then
+              echo "::error::make -qp printed no prerequisites for ${leg_target}:"
+              exit 1
+            fi
+            local slice
+            slice=$(awk -v idx="$idx" -v total="$total" -v mode="$filter_mode" '
+              {
+                for (i = 1; i <= NF; i++) {
+                  x = $i
+                  if (x == "" || seen[x]++) continue
+                  if (mode == "no-py-wf" && x ~ /^python-wirefuzz-.*-shard-[0-9]+$/) continue
+                  items[++m] = x
+                }
+              }
+              END {
+                g = 0
+                for (i = 1; i <= m; i++) {
+                  x = items[i]
+                  if (g > 0 && x ~ /-negative-control$/ && substr(x, 1, length(x) - 17) == last[g]) {
+                    grp[g] = grp[g] " " x
+                    last[g] = x
+                  } else if (g > 0 && x ~ /-negative-controls$/ && substr(x, 1, length(x) - 18) == last[g]) {
+                    grp[g] = grp[g] " " x
+                    last[g] = x
+                  } else {
+                    g++
+                    grp[g] = x
+                    last[g] = x
+                  }
+                }
+                lo = int(((idx - 1) * g) / total) + 1
+                hi = int((idx * g) / total)
+                for (k = lo; k <= hi; k++) {
+                  n = split(grp[k], parts, " ")
+                  for (j = 1; j <= n; j++) print parts[j]
+                }
+              }
+            ' <<<"$all_prereqs")
+            for p in $slice; do
+              echo "=== make $p ==="
+              make "$p" "${MAKE_VARS[@]}"
+            done
+          }
+          if [ -z "$SHARD_IDX" ]; then
+            make conformance SCHEMA_SKIP_LEGS="$OTHER_LEGS" "${MAKE_VARS[@]}"
+            make "test-${SHARD}" "${MAKE_VARS[@]}"
+          elif [ "$BASE_LEG" = "c" ]; then
+            if [ "$SHARD_IDX" = "1" ]; then
+              make conformance SCHEMA_SKIP_LEGS="$OTHER_LEGS" "${MAKE_VARS[@]}"
+              make test-c-recipe "${MAKE_VARS[@]}"
+            else
+              run_prereq_slice "test-c" "$((SHARD_IDX - 1))" 2 "all"
+            fi
+          elif [ "$BASE_LEG" = "elixir" ]; then
+            if [ "$SHARD_IDX" = "1" ]; then
+              make conformance SCHEMA_SKIP_LEGS="$OTHER_LEGS" "${MAKE_VARS[@]}"
+              make test-elixir-recipe "${MAKE_VARS[@]}"
+            fi
+            run_prereq_slice "test-elixir" "$SHARD_IDX" 4 "all"
+          elif [ "$BASE_LEG" = "python" ]; then
+            if [ "$SHARD_IDX" = "1" ]; then
+              make conformance SCHEMA_SKIP_LEGS="$OTHER_LEGS" "${MAKE_VARS[@]}"
+              make python-ci-packages "${MAKE_VARS[@]}"
+              make python-ci-compiler "${MAKE_VARS[@]}"
+            elif [ "$SHARD_IDX" = "2" ]; then
+              WF_SHARDS=$({ make -qp "${MAKE_VARS[@]}" 2>/dev/null || true; } | awk '$1 == "test-python:" {for(i=2;i<=NF;i++) if($i ~ /^python-wirefuzz-.*-shard-[0-9]+$/) print $i; exit}')
+              if [ -z "$WF_SHARDS" ]; then
+                echo "::error::no python-wirefuzz-*-shard-* targets found on test-python:"
+                exit 1
+              fi
+              # shellcheck disable=SC2086
+              make -j"$JOBS" $WF_SHARDS "${MAKE_VARS[@]}"
+              unset MAKEFLAGS
+            else
+              run_prereq_slice "test-python" "$((SHARD_IDX - 2))" 3 "no-py-wf"
+            fi
+          else
+            echo "::error::unexpected sharded leg $SHARD"
+            exit 1
+          fi
           git diff --exit-code -- generated/
 
       - name: report each go test package against its named budget
