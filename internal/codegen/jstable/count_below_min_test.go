@@ -59,7 +59,7 @@ func TestJsCountBelowMinRefused(t *testing.T) {
 	if !strings.Contains(fsrc, "value.itemsCount < 2 || value.itemsCount > 4) { return false; }") {
 		t.Errorf("the fixed write must refuse a count below the declared Min")
 	}
-	if !strings.Contains(jsFn(fsrc, "MsgLoadMessageBody"), "if (n < 2n) { r.Report.Oor++; }") {
+	if !strings.Contains(jsFn(fsrc, "MsgLoadMessageBody"), `if (keep > 4 || keep < 2) { TableMessageRefuse(r.Report, "count_over_bound"); return false; }`) {
 		t.Errorf("the message read must refuse a count below the declared Min")
 	}
 
