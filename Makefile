@@ -29,6 +29,17 @@
 # leg in SCHEMA_SKIP_LEGS and requires the same gate to go green with each
 # skip printed by name.
 
+# EVERY RECIPE RUNS UNDER bash -o pipefail. Under plain sh a pipeline's status
+# is its LAST command's, so `go test ... | tee log` was green whatever go test
+# said (make/rust.mk did exactly that: go test printed FAIL and exited 1, and
+# the target printed its success line). With pipefail a pipeline fails when any
+# stage fails. These two lines are set once, here; no included makefile may set
+# them, and internal/ci (TestRecipesCannotSwallowAFailure) refuses a makefile
+# without them along with every other way a recipe can lose an exit status
+# (internal/recipescan names the rules).
+SHELL := bash
+.SHELLFLAGS := -o pipefail -c
+
 CXX      ?= c++
 CXXFLAGS ?= -std=c++17 -Wall -Wextra -Werror -ffp-contract=off
 
@@ -145,6 +156,14 @@ LDFLAGS := $(if $(VERSION),-X github.com/mas-bandwidth/schema/v2/internal/versio
 
 bin/schema: $(GO_SOURCES) $(EMBED_SOURCES)
 	go build -ldflags "$(LDFLAGS)" -o $@ ./cmd/schema
+
+# tools/mustrun is the wrapper a language harness runs under: it fails on a
+# non-zero exit, on a harness that printed no "ran N, failed M" line, on zero
+# ran, on any failed, and on a count that differs from the recipe's -count.
+MUSTRUN := build/mustrun
+build/mustrun: $(wildcard tools/mustrun/*.go)
+	@mkdir -p build
+	go build -o $@ ./tools/mustrun
 
 # bin-schema-embeds: for one embedded file of every package that embeds
 # (go list's EmbedFiles, so the list cannot drift from the go:embed lines), a
