@@ -1181,8 +1181,10 @@ def load_messages_into(root:string, v:MessageVocabulary, data:string, rep:LoadRe
         return 0, false
     let count = wire[1] + 1
     if count > capacity:
+        // "A refused batch returns a count of `0`, as every refused batch
+        // does; a caller that needs room reads the wire's `M` itself" (§3.3)
         message_refuse(rep, "batch_too_large")
-        return count, false
+        return 0, false
     let bits = MessageBits { b: wire, lo: 2, n: (length(wire) - 2) * 8 }
     let m = MessageRead { bits: bits, v: v, rep: rep }
     var i = 0

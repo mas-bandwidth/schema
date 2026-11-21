@@ -40,7 +40,7 @@ local n, values = MS.LoadMessages(v, "LoginRequest", inputs.wire, 1, rep)
 print(string.format("one %d %d %s", n, #values, tostring(rep.reason)))
 local rep2: any = {}
 local m, two = MS.LoadMessages(v, "LoginRequest", inputs.wire, 2, rep2)
-print(string.format("two %d %d %s %s", m, #two, tostring(two[1] and two[1].client_build), tostring(two[2] and two[2].client_build)))
+print(string.format("two %d %d %s %s", m, #two, tostring(two[1] and two[1].ClientBuild), tostring(two[2] and two[2].ClientBuild)))
 `
 	out := g.run(t, main, map[string][]byte{"conn": readRoot(t, "testdata/wire/tables/backend_conn.bin"), "wire": fixture})
 	lines := strings.Split(out, "\n")

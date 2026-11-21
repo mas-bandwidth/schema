@@ -51,6 +51,7 @@ func TestLuauMessageLoadCapacityFixture(t *testing.T) {
 		}
 	}
 	main := `local M = require("./schema_message")
+require("./BackendTable")
 local inputs = require("./inputs")
 local v = M.NewVocabulary()
 assert(M.AnnounceRead(v, inputs.conn, { malformed = false, verdict = 0, reason = "", unknown = 0 }), "announce")
