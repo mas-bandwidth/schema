@@ -322,8 +322,10 @@ func TestCommitIsAllOrNothing(t *testing.T) {
 	}
 	watch.Remove()
 	renames := watch.Renames()
-	if renames < 8 {
-		t.Fatalf("the commit made %d renames; the fixture should need at least 8", renames)
+	// one per write (the original is linked, not renamed aside), two per
+	// respell, one per removal
+	if renames < 7 {
+		t.Fatalf("the commit made %d renames; the fixture should need at least 7", renames)
 	}
 	check := func(what string, plant func(dir string) *Fault) {
 		t.Helper()
@@ -477,6 +479,9 @@ func folding() Files {
 	f.Lstat = func(name string) (fs.FileInfo, error) { return lstat(fold(name)) }
 	f.Mkdir = func(name string, mode fs.FileMode) error { return mkdir(fold(name), mode) }
 	f.Probe = func(name string) error { return probe(fold(name)) }
+	link, open := f.Link, f.Open
+	f.Link = func(oldname, newname string) error { return link(fold(oldname), fold(newname)) }
+	f.Open = func(name string) (*os.File, error) { return open(fold(name)) }
 	return f
 }
 
