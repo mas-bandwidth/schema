@@ -420,6 +420,11 @@ build/tables-generated/v2/V2Block.h cast-align,old-style-cast,padded
 build/tables-generated/v2/V2Table.cpp float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
 build/tables-generated/v2/V2Table.h cast-align,comma,covered-switch-default,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,sign-conversion,switch-default,switch-enum
 build/tables-generated/v2/V2Wire.h covered-switch-default,switch-default
+build/tables-generated/valuedefaults/TblvaluedefaultsView.cpp old-style-cast
+build/tables-generated/valuedefaults/TblvaluedefaultsView.h padded
+build/tables-generated/valuedefaults/ValueDefaults.h covered-switch-default,padded
+build/tables-generated/valuedefaults/ValueDefaultsTable.cpp cast-align,float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
+build/tables-generated/valuedefaults/ValueDefaultsTable.h cast-align,comma,covered-switch-default,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default,switch-enum
 build/tables-generated/varevo1/Tblvarevo1View.cpp old-style-cast
 build/tables-generated/varevo1/Tblvarevo1View.h padded
 build/tables-generated/varevo1/VarEvo1.h covered-switch-default,padded

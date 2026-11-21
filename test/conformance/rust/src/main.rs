@@ -913,6 +913,18 @@ macro_rules! with_root {
                 use cooktorturewide::{torture_wide_cook_from_json_bytes as $from_json, torture_wide_cook_load as $load, torture_wide_cook_save_checked as $save, torture_wide_cook_to_json_checked as $to_json};
                 Some($body)
             }
+            ("tblvaluedefaults", "VarDefaults") => {
+                #[allow(unused_imports)]
+                use tblvaluedefaults::{var_defaults_from_json_bytes as $from_json, var_defaults_load as $load, var_defaults_save_checked as $save, var_defaults_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tblvaluedefaults", "FixedDefaults") => {
+                #[allow(unused_imports, unused_variables)]
+                use tblvaluedefaults::{fixed_defaults_from_json_bytes as $from_json, fixed_defaults_load as $load, fixed_defaults_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(tblvaluedefaults, FixedDefaults, FixedDefaultsRow, fixed_defaults_cook_write, fixed_defaults_fixed_save, fixed_defaults_fixed_measure);
+                Some($body)
+            }
             ("graphdemo", "Scene") => {
                 #[allow(unused_imports)]
                 use graphdemo::{scene_from_json_bytes as $from_json, scene_load as $load, scene_save_checked as $save, scene_to_json_checked as $to_json};
@@ -1337,6 +1349,7 @@ fn fixed_read(unit: &str, root: &str, data: &[u8]) -> Option<FixedRead> {
         ("tblvarevo1", "EvoMsg") => fixed_read!(tblvarevo1, evo_msg_fixed_load, evo_msg_fixed_save, evo_msg_fixed_measure, EvoMsgRow, data),
         ("tblvarevo2", "EvoMsg") => fixed_read!(tblvarevo2, evo_msg_fixed_load, evo_msg_fixed_save, evo_msg_fixed_measure, EvoMsgRow, data),
         ("tblvarevo3", "EvoMsg") => fixed_read!(tblvarevo3, evo_msg_fixed_load, evo_msg_fixed_save, evo_msg_fixed_measure, EvoMsgRow, data),
+        ("tblvaluedefaults", "FixedDefaults") => fixed_read!(tblvaluedefaults, fixed_defaults_fixed_load, fixed_defaults_fixed_save, fixed_defaults_fixed_measure, FixedDefaultsRow, data),
         ("tabledemo", "ArchiveConfig") => fixed_read!(tabledemo, archive_config_fixed_load, archive_config_fixed_save, archive_config_fixed_measure, ArchiveConfigRow, data),
         ("tabledemo", "KeyedConfig") => fixed_read!(tabledemo, keyed_config_fixed_load, keyed_config_fixed_save, keyed_config_fixed_measure, KeyedConfigRow, data),
         ("tabledemo", "LoadoutConfig") => fixed_read!(tabledemo, loadout_config_fixed_load, loadout_config_fixed_save, loadout_config_fixed_measure, LoadoutConfigRow, data),
@@ -1439,6 +1452,12 @@ macro_rules! with_fixed_value_root {
                 use tblvarevo3 as $k;
                 #[allow(unused_imports)]
                 use $k::{EvoMsgRow as $row, EvoMsg as $value, evo_msg_fixed_load as $load, evo_msg_fixed_save as $save, evo_msg_fixed_measure as $measure, evo_msg_to_json_checked as $to, evo_msg_from_json_bytes as $from, evo_msg_cook_write as $cook};
+                Some($body)
+            }
+            ("tblvaluedefaults", "FixedDefaults") => {
+                use tblvaluedefaults as $k;
+                #[allow(unused_imports)]
+                use $k::{FixedDefaultsRow as $row, FixedDefaults as $value, fixed_defaults_fixed_load as $load, fixed_defaults_fixed_save as $save, fixed_defaults_fixed_measure as $measure, fixed_defaults_to_json_checked as $to, fixed_defaults_from_json_bytes as $from, fixed_defaults_cook_write as $cook};
                 Some($body)
             }
             ("tabledemo", "ArchiveConfig") => {

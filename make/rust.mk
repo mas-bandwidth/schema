@@ -342,6 +342,7 @@ RUST_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	tblfe1:test/tables/FE1.schema tblfe2:test/tables/FE2.schema \
 	tblfu1:test/tables/FU1.schema tblfu2:test/tables/FU2.schema \
 	tblw1:test/tables/W1.schema tblw2:test/tables/W2.schema \
+	tblvaluedefaults:test/tables/ValueDefaults.schema \
 	tblr1:test/tables/R1.schema tblr2:test/tables/R2.schema \
 	tblg1:test/tables/G1.schema \
 	backenddemo:tables/backend vocabdemo:tables/vocab vocab9demo:tables/vocab9

@@ -89,6 +89,9 @@
 #include "W2Table.h"
 #include "R1Table.h"
 #include "R2Table.h"
+// the VALUE-DEFAULTS unit (docs/SPEC.md §4.2): string, bytes and flags
+// defaults in every carried field shape, a variable root and a fixed root
+#include "ValueDefaultsTable.h"
 // the BYTE BUFFER unit (docs/SPEC-TABLES.md §2.5): a blob at its used size,
 // pointed at — a variable root like any pointered one
 #include "AssetsTable.h"
@@ -386,6 +389,7 @@ static const Codec codecs[] = {
     CODEC( "tblvarevo1", tblvarevo1, EvoMsg ),
     CODEC( "tblvarevo3", tblvarevo3, EvoMsg ),
     CODEC( "cooktorture", cooktorture, TortureFixedWref ),
+    CODEC( "tblvaluedefaults", tblvaluedefaults, FixedDefaults ),
 };
 
 // ---------------------------------------------------------------------------
@@ -502,6 +506,7 @@ static const VarCodec var_codecs[] = {
     VARCODEC( "tblg1", tblg1, Guarded ),
     VARCODEC( "tblw1", tblw1, Fleet ),
     VARCODEC( "tblw2", tblw2, Fleet ),
+    VARCODEC( "tblvaluedefaults", tblvaluedefaults, VarDefaults ),
     VARCODEC( "messagedemo", messagedemo, ToolEnvelope ),
     VARCODEC( "featurewitnesses", featurewitnesses, Root ),
     VARCODEC( "featurewitnesses", featurewitnesses, ArrayRoot ),

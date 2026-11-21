@@ -24,6 +24,7 @@ import (
 	tblscalars2 "tblscalars2"
 	"tblvarevo1"
 	"tblvarevo2"
+	"tblvaluedefaults"
 	"tblvarevo3"
 	"vocab9demo"
 	"vocabdemo"
@@ -839,6 +840,25 @@ var codecTable = []codec{
 		}
 		return b.AsConst(), b.Region(), ok
 	}, cooktorturewide.TortureWideCookToJSONMeasure, cooktorturewide.TortureWideCookToJSON, cooktorturewide.TortureWideCookCookMeasure, cooktorturewide.TortureWideCookCookFrom, func(r *cooktorturewide.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}),
+	// the VALUE-DEFAULTS unit (docs/SPEC.md §4.2): string, bytes and flags
+	// defaults in every carried field shape, a variable root and a fixed root
+	regionRow("tblvaluedefaults", "VarDefaults", tblvaluedefaults.VarDefaultsLoadMeasure, tblvaluedefaults.VarDefaultsLoad, tblvaluedefaults.VarDefaultsMeasure, tblvaluedefaults.VarDefaultsSave, func(text []byte, r *tblvaluedefaults.TableReport) (*tblvaluedefaults.VarDefaults, []byte, bool) {
+		var b tblvaluedefaults.VarDefaultsBuilder
+		if !b.Init() {
+			return nil, nil, false
+		}
+		defer b.Shutdown()
+		ok := tblvaluedefaults.VarDefaultsFromJSON(&b, text, r)
+		if !b.Lock() {
+			return nil, nil, false
+		}
+		return b.AsConst(), b.Region(), ok
+	}, tblvaluedefaults.VarDefaultsToJSONMeasure, tblvaluedefaults.VarDefaultsToJSON, tblvaluedefaults.VarDefaultsCookMeasure, tblvaluedefaults.VarDefaultsCookFrom, func(r *tblvaluedefaults.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}),
+	row("tblvaluedefaults", "FixedDefaults", tblvaluedefaults.FixedDefaultsReset, tblvaluedefaults.FixedDefaultsLoad, tblvaluedefaults.FixedDefaultsMeasure, tblvaluedefaults.FixedDefaultsSave, tblvaluedefaults.FixedDefaultsFromJSON, tblvaluedefaults.FixedDefaultsToJSONMeasure, tblvaluedefaults.FixedDefaultsToJSON, tblvaluedefaults.FixedDefaultsCookMeasure, tblvaluedefaults.FixedDefaultsCookFrom, func(r *tblvaluedefaults.TableReport) report {
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),
 

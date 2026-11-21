@@ -159,6 +159,10 @@ static partial class Program
     {
         return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
     }
+    static Report Copy(Tblvaluedefaults.TableReport r)
+    {
+        return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
+    }
     static Report Copy(Tblvarevo1.TableReport r)
     {
         return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
@@ -417,6 +421,12 @@ static partial class Program
         Row<Tblfixedevo.EvoRoot, Tblfixedevo.TableReport>("tblfixedevo", "EvoRoot", () => new Tblfixedevo.TableReport(), Copy,
             Tblfixedevo.Schema.EvoRootLoad, Tblfixedevo.Schema.EvoRootMeasure, Tblfixedevo.Schema.EvoRootSave,
             Tblfixedevo.Schema.EvoRootFromJson, Tblfixedevo.Schema.EvoRootToJsonMeasure, Tblfixedevo.Schema.EvoRootToJson),
+        Row<Tblvaluedefaults.VarDefaults, Tblvaluedefaults.TableReport>("tblvaluedefaults", "VarDefaults", () => new Tblvaluedefaults.TableReport(), Copy,
+            Tblvaluedefaults.Schema.VarDefaultsLoad, Tblvaluedefaults.Schema.VarDefaultsMeasure, Tblvaluedefaults.Schema.VarDefaultsSave,
+            Tblvaluedefaults.Schema.VarDefaultsFromJson, Tblvaluedefaults.Schema.VarDefaultsToJsonMeasure, Tblvaluedefaults.Schema.VarDefaultsToJson, Tblvaluedefaults.Schema.VarDefaultsLoadMeasure),
+        Row<Tblvaluedefaults.FixedDefaults, Tblvaluedefaults.TableReport>("tblvaluedefaults", "FixedDefaults", () => new Tblvaluedefaults.TableReport(), Copy,
+            Tblvaluedefaults.Schema.FixedDefaultsLoad, Tblvaluedefaults.Schema.FixedDefaultsMeasure, Tblvaluedefaults.Schema.FixedDefaultsSave,
+            Tblvaluedefaults.Schema.FixedDefaultsFromJson, Tblvaluedefaults.Schema.FixedDefaultsToJsonMeasure, Tblvaluedefaults.Schema.FixedDefaultsToJson),
         Row<Tblvarevo1.EvoDoc, Tblvarevo1.TableReport>("tblvarevo1", "EvoDoc", () => new Tblvarevo1.TableReport(), Copy,
             Tblvarevo1.Schema.EvoDocLoad, Tblvarevo1.Schema.EvoDocMeasure, Tblvarevo1.Schema.EvoDocSave,
             Tblvarevo1.Schema.EvoDocFromJson, Tblvarevo1.Schema.EvoDocToJsonMeasure, Tblvarevo1.Schema.EvoDocToJson, Tblvarevo1.Schema.EvoDocLoadMeasure),
@@ -1995,6 +2005,16 @@ static partial class Program
             Codec c = Find("tblw1", "Fleet");
             c.CookMeasure = value => Tblw1.Schema.FleetCookMeasure((Tblw1.Fleet)value);
             c.Cook = (value, bytes, big) => Tblw1.Schema.FleetCook((Tblw1.Fleet)value, bytes, big ? Tblw1.TableByteOrder.Big : Tblw1.TableByteOrder.Little);
+        }
+        {
+            Codec c = Find("tblvaluedefaults", "VarDefaults");
+            c.CookMeasure = value => Tblvaluedefaults.Schema.VarDefaultsCookMeasure((Tblvaluedefaults.VarDefaults)value);
+            c.Cook = (value, bytes, big) => Tblvaluedefaults.Schema.VarDefaultsCook((Tblvaluedefaults.VarDefaults)value, bytes, big ? Tblvaluedefaults.TableByteOrder.Big : Tblvaluedefaults.TableByteOrder.Little);
+        }
+        {
+            Codec c = Find("tblvaluedefaults", "FixedDefaults");
+            c.CookMeasure = value => Tblvaluedefaults.Schema.FixedDefaultsCookMeasure((Tblvaluedefaults.FixedDefaults)value);
+            c.Cook = (value, bytes, big) => Tblvaluedefaults.Schema.FixedDefaultsCook((Tblvaluedefaults.FixedDefaults)value, bytes, big ? Tblvaluedefaults.TableByteOrder.Big : Tblvaluedefaults.TableByteOrder.Little);
         }
         {
             Codec c = Find("tblp2", "Chain");

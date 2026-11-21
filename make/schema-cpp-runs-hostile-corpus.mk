@@ -58,13 +58,14 @@ CPP_HOSTILE_UNITS := tabledemo:tables/examples \
 	graphdemo:tables/pointers scalardemo:tables/scalars \
 	streamdemo:tables/stream mapdemo:tables/maps listdemo:tables/lists probe:$(CPP_HOSTILE_BUILD)/probe.schema \
 	featurewitnesses:testdata/conformance/feature-witnesses/full/Features.schema \
-	hostilepacket:internal/ci/hostilecorpus/corpus/packet/hostile.schema
+	hostilepacket:internal/ci/hostilecorpus/corpus/packet/hostile.schema \
+	tblvaluedefaults:test/tables/ValueDefaults.schema
 
 $(CPP_HOSTILE_BUILD)/generated/.stamp: bin/schema make/schema-cpp-runs-hostile-corpus.mk internal/ci/hostilecorpus/corpus.go \
 		$(wildcard tables/examples/*.schema tables/messages/*.schema tables/blobs/*.schema \
 			tables/pointers/*.schema tables/scalars/*.schema tables/stream/*.schema \
 			tables/maps/*.schema tables/lists/*.schema) testdata/conformance/feature-witnesses/full/Features.schema \
-		internal/ci/hostilecorpus/corpus/packet/hostile.schema
+		internal/ci/hostilecorpus/corpus/packet/hostile.schema test/tables/ValueDefaults.schema
 	@rm -rf $(CPP_HOSTILE_BUILD)/generated && mkdir -p $(CPP_HOSTILE_BUILD)/generated
 	@go run ./tools/hostilecorpusexec probe-schema $(CPP_HOSTILE_BUILD)/probe.schema
 	@for unit in $(CPP_HOSTILE_UNITS); do \
