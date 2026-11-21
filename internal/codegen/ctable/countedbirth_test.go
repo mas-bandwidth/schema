@@ -93,11 +93,11 @@ int main( int argc, char ** argv )
 
     memset( &fixed, 0xff, sizeof( fixed ) );
     fix_root_reset( &fixed );
-    if ( argc > 1 && strcmp( argv[1], "below" ) == 0 )
+    if ( argc > 2 && strcmp( argv[1], "below" ) == 0 )
     {
         TableReport report;
         memset( &report, 0, sizeof( report ) );
-        fixed.few_count = 1;
+        fixed.few_count = atoi( argv[2] );
         (void) fix_root_measure_messages( &fixed, 1, &report );
         return 0; /* the write check did not stop a count under Min */
     }
@@ -163,13 +163,15 @@ func TestCCountedArrayBirthValue(t *testing.T) {
 		t.Fatalf("compile failed: %v\n%s", err, out)
 	}
 	if out, err := exec.Command(bin).CombinedOutput(); err != nil {
-		t.Fatalf("probe failed: %v\n%s", err, out)
+		t.Errorf("probe failed: %v\n%s", err, out)
 	}
 	// F-121: the message measure holds the count to [Min, N] before the
-	// elide test, so a count of one stops the debug build
-	out, err := exec.Command(bin, "below").CombinedOutput()
-	var exit *exec.ExitError
-	if !errors.As(err, &exit) || exit.ExitCode() != 3 {
-		t.Fatalf("a count under Min was measured: err=%v\n%s", err, out)
+	// elide test, so a count of zero or one stops the debug build
+	for _, count := range []string{"0", "1"} {
+		out, err := exec.Command(bin, "below", count).CombinedOutput()
+		var exit *exec.ExitError
+		if !errors.As(err, &exit) || exit.ExitCode() != 3 {
+			t.Errorf("a count of %s under Min was measured: err=%v\n%s", count, err, out)
+		}
 	}
 }

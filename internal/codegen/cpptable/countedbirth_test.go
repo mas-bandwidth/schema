@@ -82,10 +82,10 @@ int main( int argc, char ** argv )
 {
     std::signal( SIGABRT, on_abort );
     FixRoot fixed;
-    if ( argc > 1 && std::strcmp( argv[1], "below" ) == 0 )
+    if ( argc > 2 && std::strcmp( argv[1], "below" ) == 0 )
     {
         TableReport report;
-        fixed.few_count = 1;
+        fixed.few_count = std::atoi( argv[2] );
         (void) FixRootMeasureMessages( &fixed, 1, &report );
         return 0; // the write check did not stop a count under Min
     }
@@ -160,13 +160,15 @@ func TestCPPCountedArrayBirthValue(t *testing.T) {
 		t.Fatalf("compile: %v\n%s", err, out)
 	}
 	if out, err := exec.Command(exe).CombinedOutput(); err != nil {
-		t.Fatalf("probe failed: %v\n%s", err, out)
+		t.Errorf("probe failed: %v\n%s", err, out)
 	}
 	// F-121: the message measure holds the count to [Min, N] before the
-	// elide test, so a count of one stops the debug build
-	out, err := exec.Command(exe, "below").CombinedOutput()
-	var exit *exec.ExitError
-	if !errors.As(err, &exit) || exit.ExitCode() != 3 {
-		t.Fatalf("a count under Min was measured: err=%v\n%s", err, out)
+	// elide test, so a count of zero or one stops the debug build
+	for _, count := range []string{"0", "1"} {
+		out, err := exec.Command(exe, "below", count).CombinedOutput()
+		var exit *exec.ExitError
+		if !errors.As(err, &exit) || exit.ExitCode() != 3 {
+			t.Errorf("a count of %s under Min was measured: err=%v\n%s", count, err, out)
+		}
 	}
 }
