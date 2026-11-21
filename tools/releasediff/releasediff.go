@@ -407,7 +407,14 @@ func Judge(old, new Compiler, trees []string, m *Manifest, jsonDir, work string,
 	}
 
 	// THE PACKET WIRE: one driver source on both sides, the first tree whose
-	// copy builds against both compilers' C++
+	// copy builds against both compilers' C++. Every file under a side's
+	// output is read as what its driver wrote, so a packet tree an earlier
+	// run left in work would be credited to this one (F-216): refuse it.
+	if _, err := os.Lstat(filepath.Join(work, "packet")); err == nil {
+		return nil, fmt.Errorf("%s already holds packet output from an earlier run: a driver would be credited with files it did not write; judge in an empty work folder", work)
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return nil, err
+	}
 	packetCompared := 0
 	for _, d := range drivers {
 		wg.Go(func() {
@@ -824,16 +831,18 @@ func main() {
 	serialize := flag.String("serialize", "../serialize", "the serialize C++ runtime the packet drivers include")
 	work := flag.String("work", "build/release-differential", "the scratch directory, emptied first")
 	jobs := flag.Int("j", runtime.NumCPU(), "encodings at once")
-	judgeCorpus := flag.String("judge-corpus", "", "replay this committed corpus of Judge cases and exit (testdata/judge-corpus)")
+	judgeCorpus := flag.String("judge-corpus", "", "replay these committed corpora of Judge cases, comma-separated, in order under one work path, and exit (testdata/judge-corpus)")
 	flag.Parse()
 	if *judgeCorpus != "" {
-		lines, err := RunJudgeCorpus(*judgeCorpus, filepath.Join(*work, "judge-corpus"))
-		for _, line := range lines {
-			fmt.Println(line)
-		}
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "release-differential: %v\n", err)
-			os.Exit(1)
+		for corpus := range strings.SplitSeq(*judgeCorpus, ",") {
+			lines, err := RunJudgeCorpus(corpus, filepath.Join(*work, "judge-corpus"))
+			for _, line := range lines {
+				fmt.Println(line)
+			}
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "release-differential: %v\n", err)
+				os.Exit(1)
+			}
 		}
 		return
 	}

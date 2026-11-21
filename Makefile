@@ -7452,10 +7452,16 @@ RELEASE_DIFFERENTIAL_JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || ec
 # its own regressions (F-142: a pin on one side only, no file name in common)
 # on every release and every night. It reads files only and takes under a
 # second; it is red on an empty corpus and on a case folder its index does
-# not name.
+# not name. After it, THE JUDGE REVISIONS (testdata/judge-revisions, every
+# folder there, in name order): one case id in successive states, replayed
+# under the same work path, each owing the verdict a fresh scratch gives it
+# (F-216: a pin an earlier state wrote was still in the scratch for the next).
+RELEASE_JUDGE_REVISIONS := $(sort $(patsubst %/,%,$(wildcard tools/releasediff/testdata/judge-revisions/*/)))
+RELEASE_JUDGE_CORPORA := $(subst $() $(),$(comma),$(strip tools/releasediff/testdata/judge-corpus $(RELEASE_JUDGE_REVISIONS)))
 .PHONY: release-differential-judge-corpus
 release-differential-judge-corpus:
-	go run ./tools/releasediff -judge-corpus tools/releasediff/testdata/judge-corpus -work build/release-differential-judge-corpus
+	@test -n "$(word 2,$(RELEASE_JUDGE_REVISIONS))" || { echo "release-differential-judge-corpus: tools/releasediff/testdata/judge-revisions holds fewer than two revisions: successive states need two" >&2; exit 1; }
+	go run ./tools/releasediff -judge-corpus $(RELEASE_JUDGE_CORPORA) -work build/release-differential-judge-corpus
 
 .PHONY: release-differential release-differential-negative-control
 release-differential: $(SERIALIZE_RUNTIME)/serialize.h release-differential-judge-corpus

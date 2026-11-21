@@ -203,15 +203,25 @@ func RunJudgeCase(dir string, c JudgeCase, work string) error {
 }
 
 // RunJudgeCorpus replays every case and returns one line per case; the error
-// names every case whose verdict is not the one it owes.
+// names every case whose verdict is not the one it owes. Each replay judges in
+// a scratch folder of its own under work, made empty and removed after, so a
+// run never reads what an earlier run under the same work path left (F-216).
 func RunJudgeCorpus(dir, work string) ([]string, error) {
 	cases, err := ReadJudgeCorpus(dir)
 	if err != nil {
 		return nil, err
 	}
+	if err := os.MkdirAll(work, 0o755); err != nil {
+		return nil, err
+	}
+	run, err := os.MkdirTemp(work, "run-")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = os.RemoveAll(run) }()
 	var lines, bad []string
 	for _, c := range cases {
-		if err := RunJudgeCase(dir, c, filepath.Join(work, c.ID)); err != nil {
+		if err := RunJudgeCase(dir, c, filepath.Join(run, c.ID)); err != nil {
 			bad = append(bad, fmt.Sprintf("%s: %v", c.ID, err))
 			lines = append(lines, fmt.Sprintf("judge-corpus FAIL %s (%s): %v", c.ID, c.What, err))
 			continue
