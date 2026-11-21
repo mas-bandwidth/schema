@@ -64,10 +64,13 @@ type TableBitWriter struct { Buffer []byte; Bits int64; Measuring, Overflow bool
 type TableBitReader struct { Buffer []byte; Offset int64 }
 type TableMessageShape struct { Kind, Packing uint8; Bits int64; Base [2]uint64; Min,Max int64; QMin,QDelta float32; QCount uint32 }
 // An entry keeps its matching own encoded-entry slot, if any, and in the
-// caller's storage the first slot for its id and the body-read duplicate marks.
-type TableMessageEntry struct { Id uint64; Shape,Element TableMessageShape; OwnSlot,bodyFirst,bodySeenAt uint64; bodySeenBelow [2]uint64 }
+// caller's storage the first slot for its id, the body-read duplicate marks
+// and the marks of the keyed arrays and skipped bodies that named it.
+type TableMessageEntry struct { Id uint64; Shape,Element TableMessageShape; OwnSlot,bodyFirst,bodySeenAt uint64; bodySeenBelow [2]uint64; setSeenAt uint64; setSeenBelow [5]uint64 }
 // Storage belongs to the caller and is resolved once for one connection direction.
-type TableVocabulary struct { Entries []TableMessageEntry; Count,RefBits int64; BuildVersion uint64; Announced,Refused bool; MaxBytes int64; Strict bool; bodyClock uint64 }
+// setProbes counts the looks the key and skipped-id duplicate tests take, so a
+// test pins their work by a count and never a clock.
+type TableVocabulary struct { Entries []TableMessageEntry; Count,RefBits int64; BuildVersion uint64; Announced,Refused bool; MaxBytes int64; Strict bool; bodyClock uint64; setTop int; setStarts [320]uint64; setProbes uint64 }
 type TableMessageReader struct { Bits TableBitReader; Vocabulary *TableVocabulary; Report TableReport; IndexBits int64 }
 `
 
@@ -201,9 +204,22 @@ func (v *TableVocabulary) Init(storage []TableMessageEntry){*v=TableVocabulary{E
 // still stands when that level's open body began at or before the last naming,
 // and the levels whose bodies were opened since are dropped as the entry is
 // named again. Two slots announcing one id are one entry, the first.
-func tableMessageSeenOpen(v *TableVocabulary,starts []uint64,depth int){v.bodyClock++;starts[depth]=v.bodyClock}
+func tableMessageSeenOpen(v *TableVocabulary,starts []uint64,depth int){v.bodyClock++;starts[depth]=v.bodyClock;if depth==0{v.setTop=0}}
 func tableMessageSeenFirst(v *TableVocabulary){for i := range v.Count {for j := range i {if v.Entries[j].ID==v.Entries[i].ID{v.Entries[i].bodyFirst=uint64(j+1);break}}}}
 func tableMessageSeenRepeat(v *TableVocabulary,starts []uint64,depth int,ref uint64)bool{e:=&v.Entries[ref-1];if e.bodyFirst!=0{e=&v.Entries[e.bodyFirst-1]};at,last:=e.bodySeenAt>>8,int(e.bodySeenAt&255);if starts[depth]<=at {if last==depth||depth<128&&e.bodySeenBelow[depth>>6]>>uint(depth&63)&1!=0{return true};if depth<64 {e.bodySeenBelow[0]&=1<<uint(depth)-1;e.bodySeenBelow[1]=0}else if depth<128 {e.bodySeenBelow[1]&=1<<uint(depth-64)-1}}else{kept,hi:=0,depth;for kept<hi {mid:=(kept+hi)/2;if starts[mid]<=at{kept=mid+1}else{hi=mid}};if last<kept {e.bodySeenBelow[last>>6]|=1<<uint(last&63)};if kept<64 {e.bodySeenBelow[0]&=1<<uint(kept)-1;e.bodySeenBelow[1]=0}else if kept<128 {e.bodySeenBelow[1]&=1<<uint(kept-64)-1}};e.bodySeenAt=v.bodyClock<<8|uint64(depth);return false}
+// A KEY TWICE IN ONE KEYED ARRAY AND A FIELD ID TWICE IN ONE SKIPPED BODY ARE
+// DAMAGE (docs/SPEC-TABLES.md §3.2, §3.3), and each test is one look at the
+// named entry, as the body's is: no scan of the keys seen so far, and nothing
+// allocated. Every keyed array and every skipped body is a SET on one stack in
+// the vocabulary, opened at the next clock tick; an entry keeps the tick and
+// level of its last naming and a bit for each shallower set that had named it
+// and is still open, so a set's marks survive the sets nested inside it. Two
+// slots announcing one id are one entry, the first. The root body's open
+// empties the stack, so a refused read leaves nothing behind.
+func tableMessageSetOpen(v *TableVocabulary)int{if v.setTop>=len(v.setStarts)-1{return -1};v.setTop++;v.bodyClock++;v.setStarts[v.setTop]=v.bodyClock;return v.setTop}
+func tableMessageSetClose(v *TableVocabulary){if v.setTop>0{v.setTop--}}
+func tableMessageSetRepeat(v *TableVocabulary,level int,ref uint64)bool{v.setProbes++;e:=&v.Entries[ref-1];if e.bodyFirst!=0{e=&v.Entries[e.bodyFirst-1]};at,last:=e.setSeenAt>>9,int(e.setSeenAt&511);starts:=v.setStarts[:level+1];if starts[level]<=at {if last==level||e.setSeenBelow[level>>6]>>uint(level&63)&1!=0{return true};tableMessageSetTrim(&e.setSeenBelow,level)}else{kept,hi:=0,level;for kept<hi {mid:=(kept+hi)/2;v.setProbes++;if starts[mid]<=at{kept=mid+1}else{hi=mid}};if last<kept {e.setSeenBelow[last>>6]|=1<<uint(last&63)};tableMessageSetTrim(&e.setSeenBelow,kept)};e.setSeenAt=v.bodyClock<<9|uint64(level);return false}
+func tableMessageSetTrim(b *[5]uint64,k int){for i:=range b {lo:=i*64;if k<=lo{b[i]=0}else if k<lo+64{b[i]&=1<<uint(k-lo)-1}}}
 func (v *TableVocabulary) Entry(ref uint64)(TableMessageEntry,bool){if ref==0||ref>uint64(v.Count){return TableMessageEntry{},false};return v.Entries[ref-1],true}
 func (v *TableVocabulary) Name(ref uint64)(uint64,bool){e,ok:=v.Entry(ref);return e.ID,ok&&e.Shape.Kind==0&&e.ID<0xfffffffffffffffd}
 func tableMessageNameSlot(id uint64)uint64 {for i:=range tableMessageEntries {e:=&tableMessageEntries[i];if e.ID==id&&e.Shape.Kind==0{return uint64(i+1)}};return 0}
@@ -272,30 +288,41 @@ func tableMessageShapeRead(r *TableReader,k uint8)(s TableMessageShape,ok bool) 
 }
 func tableMessageEntryRead(r *TableReader)(e TableMessageEntry,ok bool){if !r.Has(9){return e,false};e.ID=r.Get64();kind:=r.Get8();if !tableMessageKnownKind(kind){return e,false};e.Shape,ok=tableMessageShapeRead(r,kind);if !ok{return e,false};if kind==14||kind==16 {if !r.Has(1){return e,false};elem:=r.Get8();if !tableMessageKnownKind(elem)||elem==14||elem==16{return e,false};e.Element,ok=tableMessageShapeRead(r,elem);if !ok{return e,false}};return e,true}
 func tableMessageCount(r *TableBitReader,s TableMessageShape)(uint64,bool){raw,ok:=r.Get(tableMessageBits(uint64(s.Max-s.Min)));return raw+uint64(s.Min),ok}
-func tableMessageSkip(r *TableBitReader,v *TableVocabulary,indexBits int64,e TableMessageEntry,depth int)bool {
+// field is set where the payload is a FIELD's own, an unknown field of a body:
+// a conforming writer elides a None union field, so an explicit arm reference
+// 0 there is refused (docs/SPEC-TABLES.md §3.3), while an array element's and a
+// union arm value's None stay positional and lawful.
+func tableMessageSkip(r *TableBitReader,v *TableVocabulary,indexBits int64,e TableMessageEntry,depth int,field bool)bool {
  if depth>128{return false};s:=e.Shape;switch s.Kind {
  case 0,32:return true
  case 30:ref,ok:=r.Get(v.RefBits);if !ok||ref==0{return ok};_,ok=v.Name(ref);return ok
  case 13:return tableMessageSkipBody(r,v,indexBits,depth+1)
  case 17:return indexBits>0&&r.Skip(indexBits)
- case 15:ref,ok:=r.Get(v.RefBits);if !ok||ref==0{return ok};arm,ok:=v.Entry(ref);return ok&&arm.ID<0xfffffffffffffffd&&arm.Shape.Kind!=0&&tableMessageSkip(r,v,indexBits,arm,depth+1)
+ case 15:ref,ok:=r.Get(v.RefBits);if !ok||ref==0{return ok&&!field};arm,ok:=v.Entry(ref);return ok&&arm.ID<0xfffffffffffffffd&&arm.Shape.Kind!=0&&tableMessageSkip(r,v,indexBits,arm,depth+1,false)
  case 12:n,ok:=tableMessageCount(r,s);if !ok||n>uint64(s.Max)||!r.Align(){return false};start:=r.Offset/8;if !r.Skip(int64(n)*8){return false};return tableUTF8Valid(r.Buffer[start:start+int64(n)])
  case 31:if !r.Align(){return false};n,ok:=r.Get(32);return ok&&r.Skip(int64(n)*8)
  case 14,16:
   n,ok:=tableMessageCount(r,s);if !ok||n>uint64(s.Max){return false}
   if s.Kind==14&&e.Element.Kind==6&&!r.Align(){return false}
-  if s.Kind==14&&(e.Element.Bits>=0&&e.Element.Kind!=10&&e.Element.Kind!=11||e.Element.Kind==0||e.Element.Kind==32) {width:=max(e.Element.Bits,int64(0));return r.Skip(int64(n)*width)}
-  if s.Kind==16 {var seen [64]uint64;keys:=seen[:0];for range n {ref,ok:=r.Get(v.RefBits);if !ok{return false};id,ok:=v.Name(ref);if !ok{return false};if slices.Contains(keys,id){return false};keys=append(keys,id);if !tableMessageSkip(r,v,indexBits,TableMessageEntry{Shape:e.Element},depth+1){return false}};return true}
-  for range n {before:=r.Offset;if !tableMessageSkip(r,v,indexBits,TableMessageEntry{Shape:e.Element},depth+1)||r.Offset==before{return false}};return true
+  // a RANGED element carries a value condition, base plus offset inside its
+  // announced kind, so it is walked as a float is, unless it rides no bits
+  if s.Kind==14&&(e.Element.Bits>=0&&e.Element.Kind!=10&&e.Element.Kind!=11&&(e.Element.Packing!=1||e.Element.Bits==0)||e.Element.Kind==0||e.Element.Kind==32) {width:=max(e.Element.Bits,int64(0));return r.Skip(int64(n)*width)}
+  if s.Kind==16 {level:=tableMessageSetOpen(v);if level<0{return false};for range n {ref,ok:=r.Get(v.RefBits);if !ok{return false};if _,ok=v.Name(ref);!ok||tableMessageSetRepeat(v,level,ref){return false};if !tableMessageSkip(r,v,indexBits,TableMessageEntry{Shape:e.Element},depth+1,false){return false}};tableMessageSetClose(v);return true}
+  for range n {before:=r.Offset;if !tableMessageSkip(r,v,indexBits,TableMessageEntry{Shape:e.Element},depth+1,false)||r.Offset==before{return false}};return true
  case 10:
   if s.Packing==2 {index,ok:=r.Get(s.Bits);return ok&&index<=uint64(s.QCount)}
   raw,ok:=r.Get(32);if !ok{return false};f:=math.Float32frombits(uint32(raw));return f==f&&!math.IsInf(float64(f),0)
  case 11:
   raw,ok:=r.Get(64);if !ok{return false};f:=math.Float64frombits(raw);return !math.IsNaN(f)&&!math.IsInf(f,0)
- };return s.Bits>=0&&r.Skip(s.Bits)
+ }
+ // A RANGED INTEGER IS RECONSTRUCTED AND HELD TO ITS ANNOUNCED KIND on the
+ // skip path too (docs/SPEC-TABLES.md §3.3), by the one reconstruction the
+ // typed read uses, so a body gets one verdict named or skipped
+ if s.Packing==1 {var raw [16]byte;ok,over:=tableMessageReadScalar(r,s,&raw);return ok&&!over}
+ return s.Bits>=0&&r.Skip(s.Bits)
 }
 // Framing scans follow announced shapes; typed body reads diagnose reserved ids.
-func tableMessageSkipBody(r *TableBitReader,v *TableVocabulary,indexBits int64,depth int)bool {if depth>128{return false};var seen [64]uint64;ids:=seen[:0];for {ref,ok:=r.Get(v.RefBits);if !ok{return false};if ref==0{return true};e,ok:=v.Entry(ref);if !ok||e.ID>=0xfffffffffffffffd{return false};if slices.Contains(ids,e.ID){return false};ids=append(ids,e.ID);if !tableMessageSkip(r,v,indexBits,e,depth){return false}}}
+func tableMessageSkipBody(r *TableBitReader,v *TableVocabulary,indexBits int64,depth int)bool {if depth>128{return false};level:=tableMessageSetOpen(v);if level<0{return false};for {ref,ok:=r.Get(v.RefBits);if !ok{return false};if ref==0{tableMessageSetClose(v);return true};e,ok:=v.Entry(ref);if !ok||e.ID>=0xfffffffffffffffd||tableMessageSetRepeat(v,level,ref){return false};if !tableMessageSkip(r,v,indexBits,e,depth,true){return false}}}
 // Numeric values are reconstructed at the announced storage width. Typed
 // readers then hold these lanes to the declared ranges, as the file read does.
 // The reconstruction is canonical: a signed kind is sign-extended to 128 bits,
@@ -329,6 +356,10 @@ func tableMessageReadScalar(r *TableBitReader,s TableMessageShape,out *[16]byte)
    } else if carryHi!=0 {return true,true}
   }
   lo=loSum;hi=hiSum
+  // THE ANNOUNCED KIND HOLDS THE SUM OR THE READ REFUSES (docs/SPEC-TABLES.md
+  // §3.3), whatever the reader's own kind: uint8 | min = 200, max = 250
+  // spells 200 + 63 in six bits, and a widened uint16 reader must not land it
+  if integer {if w:=tableMessageKindBits(s.Kind);w<128 {if signed {if int64(hi)!=int64(lo)>>63||w<64&&(int64(lo)< -(int64(1)<<uint(w-1))||int64(lo)>(int64(1)<<uint(w-1))-1){return true,true}}else if hi!=0||w<64&&lo>>uint(w)!=0{return true,true}}}
  } else if signed {
   if s.Bits<64 {
    if s.Bits>0 {shift:=uint(64-s.Bits);lo=uint64(int64(lo<<shift)>>shift)}
