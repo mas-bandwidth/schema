@@ -6840,7 +6840,12 @@ message, fixed, variable and text forms:
 - **A FINITE VALUE PAST AN END IS REFUSED**: every writer refuses it
   `invalid_value`, as it refuses any value off its declared range, and a read
   that meets one where the form carries the float whole refuses it
-  `out_of_range`, naming the field.
+  `out_of_range`, naming the field. The ends are held AT FLOAT32, where every
+  runtime evaluates the triple (SPEC.md §4.6): the value, narrowed to float32,
+  is compared with `float32(min)` and `float32(max)`, on every write and every
+  read in every form. An end float32 cannot spell exactly (`max = 0.1`,
+  `min = 0.7`) is the float32 nearest it, so the value at that end is in range
+  and one float32 step past it is not.
 - **`-0` IS `+0`.** It lands as exactly what `+0` lands as in that form: the
   value `0` itself where the form carries the float, and the INDEX OF 0 FOR
   THAT RANGE where the form quantizes, which decodes to the grid point the
