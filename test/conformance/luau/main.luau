@@ -1175,15 +1175,22 @@ local function wrefWalk(u: any, root: string, v: any, path: string): (any, any, 
 			return owner, fd, idx
 		end
 		local child = owner[fd.slot]
-		if fd.s == "union" and idx == nil and i == #segments - 1 then
-			local ud = u.S.lookup(fd.t)
+		-- a union's arm, held by the field itself or by one element of an array
+		-- of unions (bounded_steps[3].label): the element IS the union value
+		local unionType: string? = nil
+		if fd.s == "union" and idx == nil then unionType = fd.t end
+		if fd.s == "arr" and idx ~= nil and fd.e ~= nil and fd.e.s == "union" then unionType = fd.e.t end
+		if unionType ~= nil and i == #segments - 1 then
+			if idx ~= nil then child = child[idx] end
+			if child == nil then error(path .. ": " .. seg .. " holds no union") end
+			local ud = u.S.lookup(unionType)
 			local armName = segments[#segments]
 			for _, arm in ud.arms do
 				if arm.name == armName then
 					return child, arm, nil
 				end
 			end
-			error("no arm " .. armName .. " in union " .. fd.t)
+			error("no arm " .. armName .. " in union " .. unionType)
 		end
 		if idx ~= nil then
 			child = child[idx]
@@ -1205,7 +1212,7 @@ local function wrefSet(u: any, root: string, v: any, path: string, what: string,
 	local d: any = if idx ~= nil and fd.s == "arr" then fd.e else fd
 	if what == "int" or what == "ordinal" then
 		holder[key] = tonumber(text) :: number
-	elseif what == "float" then
+	elseif what == "float" or what == "real" then
 		holder[key] = wrefFloat(text)
 	elseif what == "count" then
 		local n = tonumber(text) :: number
