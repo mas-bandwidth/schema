@@ -1,0 +1,25 @@
+# THE SHARD SPECS make/shard.sh is held to (internal/ci TestShardSpecCorpus;
+# #4530, F-218). A row that ran a shard that does not exist must not pass on
+# no work, so every spec but two whole numbers with 1 <= K <= N is refused:
+# exit 2 and no line printed. The list fed in is the five lines a..e.
+#
+# spec	expect (the lines printed, comma separated; "(none)" for none; or "refused")
+1/1	a,b,c,d,e
+1/2	a,c,e
+2/2	b,d
+3/4	c
+4/4	d
+2/7	b
+7/7	(none)
+0/3	refused
+4/3	refused
+x/2	refused
+1/x	refused
+1/0	refused
+1/2/3	refused
+	refused
+3	refused
+-1/2	refused
+01/2	refused
+1/02	refused
+ 1/2	refused

@@ -143,6 +143,33 @@ build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk testdata/conform
 
 ELIXIR_TABLE_UNIT_SOURCES = $(foreach u,$(sort $(ELIXIR_TABLE_UNITS)),build/tables-generated-elixir/$(firstword $(subst :, ,$(u)))/*.ex)
 
+# ELIXIR_TABLE_SHARD, empty by default, is K/N: build/elixir-tables-ebin then
+# holds the strict compile of the units make/shard.sh deals shard K of N from
+# the sorted unit list, beside the conformance driver, and nothing else. The
+# per-commit lane (ci-fast.yml lang-clean, the elixir rows) runs the strict
+# compile and the accessor/descriptor agreement gate as N rows, one shard each:
+# the corpus is 42 units and about 200 s of compile CPU, past what one runner
+# gives a row in two minutes, and no row keeps an ebin between runs. Shards
+# 1/N .. N/N are the whole corpus, each unit once (internal/ci
+# TestShardSplitIsAPartition, TestElixirTableShardsAreTheCorpus). Everything
+# else that reads this ebin wants the whole corpus and leaves it empty.
+ELIXIR_TABLE_SHARD ?=
+ELIXIR_EBIN_UNITS := $(sort $(ELIXIR_TABLE_UNITS))
+ifneq ($(ELIXIR_TABLE_SHARD),)
+ELIXIR_EBIN_UNITS := $(shell printf '%s\n' $(sort $(ELIXIR_TABLE_UNITS)) | sh make/shard.sh '$(ELIXIR_TABLE_SHARD)')
+ifneq ($(.SHELLSTATUS),0)
+$(error ELIXIR_TABLE_SHARD=$(ELIXIR_TABLE_SHARD) is not a shard K/N of the $(words $(sort $(ELIXIR_TABLE_UNITS))) table units)
+endif
+ifeq ($(strip $(ELIXIR_EBIN_UNITS)),)
+$(error ELIXIR_TABLE_SHARD=$(ELIXIR_TABLE_SHARD) deals no unit: there are $(words $(sort $(ELIXIR_TABLE_UNITS))) table units)
+endif
+endif
+ELIXIR_EBIN_UNIT_SOURCES = $(foreach u,$(ELIXIR_EBIN_UNITS),build/tables-generated-elixir/$(firstword $(subst :, ,$(u)))/*.ex)
+
+.PHONY: elixir-table-shard-units
+elixir-table-shard-units:
+	@printf '%s\n' $(foreach u,$(ELIXIR_EBIN_UNITS),$(firstword $(subst :, ,$(u))))
+
 # ELIXIR_EBIN_ERL_COMPILER_OPTIONS, empty by default, is handed to the Erlang
 # compiler as ERL_COMPILER_OPTIONS for this one compile. The per-commit lane
 # (ci-fast.yml lang-clean, elixir row) sets it to [no_ssa_opt]: the SSA
@@ -166,11 +193,29 @@ ELIXIR_EBIN_ERL_COMPILER_OPTIONS ?=
 # options having passed the strict wrapper before, never a name or an age. The
 # nightly lanes leave it empty and compile.
 ELIXIR_EBIN_CACHE ?=
-ELIXIR_EBIN_CACHED = $(if $(ELIXIR_EBIN_CACHE),ELIXIR_EBIN_TOOLCHAIN="$$($(ELIXIR) --version 2>&1)" sh $(CURDIR)/make/elixir-ebin-cache.sh '$(ELIXIR_EBIN_CACHE)' build/elixir-tables-ebin $(ELIXIR_TABLE_UNIT_SOURCES) test/conformance/elixir/driver_impl.ex make/elixir-strict.sh make/elixir-ebin-cache.sh -- env)
+ELIXIR_EBIN_CACHED = $(if $(ELIXIR_EBIN_CACHE),ELIXIR_EBIN_TOOLCHAIN="$$($(ELIXIR) --version 2>&1)" sh $(CURDIR)/make/elixir-ebin-cache.sh '$(ELIXIR_EBIN_CACHE)' build/elixir-tables-ebin $(ELIXIR_EBIN_UNIT_SOURCES) test/conformance/elixir/driver_impl.ex make/elixir-strict.sh make/elixir-ebin-cache.sh -- env)
 
-build/elixir-tables-ebin/.stamp: build/tables-generated-elixir/.stamp test/conformance/elixir/driver_impl.ex
+# THE EBIN'S BUILD RECORD. What the compile was asked for besides its sources
+# (the shard, and the Erlang compiler options it ran under: this compile's own
+# ELIXIR_EBIN_ERL_COMPILER_OPTIONS, else an ERL_COMPILER_OPTIONS in the
+# environment, which the verify-leg Elixir rows set) is written to
+# build/elixir-tables-ebin.config, and the file is rewritten only when that
+# changes. The ebin depends on it, so an ebin built one way is never taken as
+# current by a make asked for it another way in the same checkout: a stamp
+# from a [no_ssa_opt] build would otherwise hand the allocation audit and the
+# soak (which measure this ebin) the unoptimized BEAM (F-225), and a shard's
+# ebin would stand for the whole corpus.
+ELIXIR_EBIN_EFFECTIVE_ERL_OPTIONS = $(if $(ELIXIR_EBIN_ERL_COMPILER_OPTIONS),$(ELIXIR_EBIN_ERL_COMPILER_OPTIONS),$(ERL_COMPILER_OPTIONS))
+ELIXIR_EBIN_CONFIG = shard=$(ELIXIR_TABLE_SHARD) units=$(words $(ELIXIR_EBIN_UNITS)) erl_compiler_options=$(ELIXIR_EBIN_EFFECTIVE_ERL_OPTIONS)
+.PHONY: elixir-tables-ebin-config-check
+build/elixir-tables-ebin.config: elixir-tables-ebin-config-check
+	@mkdir -p build
+	@printf '%s\n' '$(ELIXIR_EBIN_CONFIG)' > $@.tmp
+	@if cmp -s $@.tmp $@; then rm -f $@.tmp; else echo "build/elixir-tables-ebin: built for $(ELIXIR_EBIN_CONFIG)"; mv $@.tmp $@; fi
+
+build/elixir-tables-ebin/.stamp: build/tables-generated-elixir/.stamp test/conformance/elixir/driver_impl.ex build/elixir-tables-ebin.config
 	@rm -rf build/elixir-tables-ebin && mkdir -p build/elixir-tables-ebin
-	$(if $(ELIXIR_EBIN_ERL_COMPILER_OPTIONS),ERL_COMPILER_OPTIONS='$(ELIXIR_EBIN_ERL_COMPILER_OPTIONS)') $(ELIXIR_EBIN_CACHED) $(ELIXIRC_STRICT) -o build/elixir-tables-ebin $(ELIXIR_TABLE_UNIT_SOURCES) \
+	$(if $(ELIXIR_EBIN_ERL_COMPILER_OPTIONS),ERL_COMPILER_OPTIONS='$(ELIXIR_EBIN_ERL_COMPILER_OPTIONS)') $(ELIXIR_EBIN_CACHED) $(ELIXIRC_STRICT) -o build/elixir-tables-ebin $(ELIXIR_EBIN_UNIT_SOURCES) \
 		test/conformance/elixir/driver_impl.ex
 	@touch $@
 

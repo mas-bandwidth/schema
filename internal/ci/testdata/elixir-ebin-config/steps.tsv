@@ -1,0 +1,20 @@
+# THE EBIN BUILD STEPS (F-225; make/elixir.mk build/elixir-tables-ebin.config,
+# internal/ci TestElixirEbinRebuildsWhenItsBuildChanges). One working tree,
+# one make after another, in order, each asking for build/elixir-tables-ebin/.stamp
+# with a stand-in compile. "compile <options>" means the compile ran and saw
+# ERL_COMPILER_OPTIONS=<options> ("-" for none) over <units> table units;
+# "current" means make took the ebin as built. At c7852e0047 the stamp did not
+# depend on the options: the "default" step after "fast" was "current" and the
+# allocation audit and soak would have measured the [no_ssa_opt] BEAM.
+#
+# step	make variables (or -)	ERL_COMPILER_OPTIONS in the environment (or -)	expect
+first-fast	ELIXIR_EBIN_ERL_COMPILER_OPTIONS=[no_ssa_opt]	-	compile [no_ssa_opt] 42
+fast-again	ELIXIR_EBIN_ERL_COMPILER_OPTIONS=[no_ssa_opt]	-	current
+default	-	-	compile - 42
+default-again	-	-	current
+fast-from-env	-	[no_ssa_opt]	compile [no_ssa_opt] 42
+fast-from-env-again	-	[no_ssa_opt]	current
+make-variable-wins	ELIXIR_EBIN_ERL_COMPILER_OPTIONS=[no_ssa_opt]	[]	current
+shard	ELIXIR_TABLE_SHARD=2/4 ELIXIR_EBIN_ERL_COMPILER_OPTIONS=[no_ssa_opt]	-	compile [no_ssa_opt] 11
+shard-again	ELIXIR_TABLE_SHARD=2/4 ELIXIR_EBIN_ERL_COMPILER_OPTIONS=[no_ssa_opt]	-	current
+whole-after-shard	ELIXIR_EBIN_ERL_COMPILER_OPTIONS=[no_ssa_opt]	-	compile [no_ssa_opt] 42

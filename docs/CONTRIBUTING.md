@@ -275,6 +275,22 @@ The same split is in [SECURITY.md](SECURITY.md).
   it does not run on macOS. Its merge gate (`plan`, `lint-fast`, `block-gate`
   and `go-test-touched`) runs on GitHub's hosted `ubuntu-latest`, so a merge
   never waits on the fleet; the per-leg `leg-gate` matrix runs on the fleet.
+- Two of its gates are past one runner's two minutes when nothing is warm, so
+  each runs as shards side by side, a `lang-clean` row per shard K/N that
+  [`make/shard.sh`](../make/shard.sh) deals from the sorted list: the C format
+  gate (`lang-clean (c K/3)`, its share of the 580 generated files) and the
+  strict compile of the Elixir table corpus with the agreement gate over it
+  (`lang-clean (elixir K/4)`, its share of the 42 units). Neither keeps a
+  verdict or an ebin between runs. The Elixir rows of `lang-clean` and
+  `verify-leg` compile their BEAM fixtures without the Erlang SSA optimizer
+  (`[no_ssa_opt]`, which reports no warning, so a strict compile's verdict is
+  the same), and the `verify-leg` rows may take the corpus ebin from the
+  runner host's store ([`make/elixir-ebin-cache.sh`](../make/elixir-ebin-cache.sh),
+  each file checked against the entry's manifest on every hit). The BEAM a
+  user's `elixirc` writes is covered by `ci-full.yml`'s nightly
+  `elixir-verify`, the same three verify gates with no compiler option and no
+  store; `internal/ci` holds that job in place, so the per-commit trade is
+  never the only coverage.
 - Every self-hosted job runs its steps through
   [`tools/pgroup`](../tools/pgroup/main.go), which kills each step's whole process
   group when the step ends, so a child a test left running cannot hold a

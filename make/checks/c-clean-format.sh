@@ -7,7 +7,7 @@
 # longer generated) fails until its line is deleted.
 #
 # usage: c-clean-format.sh <ratchet-file> <tree>...
-# env:   CLANG_FORMAT, OUT (scratch dir), C_FORMAT_CACHE (the verdict store, below)
+# env:   CLANG_FORMAT, OUT (scratch dir), C_FORMAT_SHARD (K/N, below)
 set -eu
 allow=$1
 shift
@@ -21,62 +21,36 @@ jobs=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 work=$OUT/c-format-workers
 rm -rf "$work" && mkdir -p "$work"
 
-# THE VERDICT STORE ($C_FORMAT_CACHE, unset by default; the per-commit lane
-# sets it on a fleet runner, to a directory every runner of the host shares).
-# The gate is clang-format over 580 generated files, 66 MB, about 250 s of CPU
-# every run (84 s of a 16-thread runner's two minutes, 2026-11-21), and almost
-# every file is the one the last run formatted. A file's verdict is a function
-# of its bytes, the formatter and the style file, so the store keeps it under
-# exactly that: <SHA-256 of `clang-format --version` and .clang-format>/<SHA-256
-# of the file>. A verdict is stored only when clang-format itself exited 0;
-# a file whose bytes, formatter or style changed has no entry and is formatted.
-# Verdicts not read for 30 days are dropped.
-store=
-if [ -n "${C_FORMAT_CACHE:-}" ] && command -v sha256sum >/dev/null 2>&1; then
-	tool=$({ "$CLANG_FORMAT" --version; cat .clang-format; echo "c-clean-format v1"; } | sha256sum | cut -d' ' -f1)
-	if mkdir -p "$C_FORMAT_CACHE/$tool" 2>/dev/null; then
-		store=$C_FORMAT_CACHE/$tool
-	fi
-fi
-
 find "$@" \( -name '*.h' -o -name '*.c' \) | sort > "$OUT/c-format-files.txt"
+# THE SHARD (C_FORMAT_SHARD=K/N, unset by default: every file). The per-commit
+# lane (ci-fast.yml lang-clean, the c rows) runs the gate as N rows side by
+# side, each formatting the files make/shard.sh deals it from the sorted list:
+# the gate is about 250 s of clang-format CPU over 580 files, past what one
+# runner gives a row in two minutes, and no row keeps a verdict between runs.
+# A ratchet line is judged in the row that formats its file; the "no longer
+# generated" check reads the tree and runs in every row.
+shard=
+if [ -n "${C_FORMAT_SHARD:-}" ]; then
+	mv "$OUT/c-format-files.txt" "$OUT/c-format-all.txt"
+	sh "$(dirname "$0")/../shard.sh" "$C_FORMAT_SHARD" < "$OUT/c-format-all.txt" > "$OUT/c-format-files.txt" || {
+		echo "tables-c-clean: C_FORMAT_SHARD=$C_FORMAT_SHARD is not a shard"
+		exit 1
+	}
+	shard=" (shard $C_FORMAT_SHARD: $(wc -l < "$OUT/c-format-files.txt" | tr -d ' ') of $(wc -l < "$OUT/c-format-all.txt" | tr -d ' ') files)"
+	rm -f "$OUT/c-format-all.txt"
+fi
 if [ -s "$OUT/c-format-files.txt" ]; then
-	# One file per worker call: fifteen *Table.h files are almost half of the
-	# formatter's time (the longest alone is a ninth of it), and neighbours
-	# in the sorted list (lists/MigrateTable.h, ReportTable.h, SaveTable.h)
-	# landed in one batch of sixteen and ran one after another.
-	xargs -P "$jobs" -n 1 sh -c '
-		cf=$1; st=$2; wk=$3; store=$4; shift 4
+	xargs -P "$jobs" -n 16 sh -c '
+		cf=$1; st=$2; wk=$3; shift 3
 		out="$wk/res.$$"
 		for f in "$@"; do
-			v=
-			if [ -n "$store" ]; then
-				h=$(sha256sum "$f" | cut -d" " -f1)
-				if [ -f "$store/$h" ]; then
-					v=$(cat "$store/$h")
-					touch "$store/$h"
-					echo "$f" >> "$wk/hit.$$"
-				fi
-			fi
-			if [ "$v" != CLEAN ] && [ "$v" != DRIFT ]; then
-				if "$cf" --style="$st" "$f" > "$wk/fmt.$$"; then
-					if cmp -s "$f" "$wk/fmt.$$"; then v=CLEAN; else v=DRIFT; fi
-					if [ -n "$store" ]; then
-						printf "%s\n" "$v" > "$store/.tmp.$$" && mv "$store/.tmp.$$" "$store/$h"
+			if "$cf" --style="$st" "$f" | cmp -s "$f" -; then
+				printf "CLEAN\t%s\n" "$f" >> "$out"
+			else
+				printf "DRIFT\t%s\n" "$f" >> "$out"
 					fi
-				else
-					v=DRIFT
-				fi
-			fi
-			printf "%s\t%s\n" "$v" "$f" >> "$out"
 		done
-		rm -f "$wk/fmt.$$"
-	' _ "$CLANG_FORMAT" "$style" "$work" "$store" < "$OUT/c-format-files.txt"
-fi
-if [ -n "$store" ]; then
-	echo "C format store: $(cat "$work"/hit.* 2>/dev/null | wc -l | tr -d ' ') of $(wc -l < "$OUT/c-format-files.txt" | tr -d ' ') verdicts were already held for these bytes, this formatter and this style"
-	find "$C_FORMAT_CACHE" -type f -mtime +30 -delete 2>/dev/null || true
-	find "$C_FORMAT_CACHE" -mindepth 1 -type d -empty -delete 2>/dev/null || true
+	' _ "$CLANG_FORMAT" "$style" "$work" < "$OUT/c-format-files.txt"
 fi
 
 bad=0
@@ -97,4 +71,4 @@ for f in $(grep -v '^#' "$allow" | grep . || true); do
 	[ -f "$f" ] || { echo "tables-c-clean: $f is listed in $allow but no longer generated — remove its line"; bad=1; }
 done
 [ $bad -eq 0 ] || exit 1
-echo "C: clang-format clean over $*, $(wc -l < "$seen" | tr -d ' ') table-emitter files still on the ratchet"
+echo "C: clang-format clean over $*$shard, $(wc -l < "$seen" | tr -d ' ') table-emitter files still on the ratchet"

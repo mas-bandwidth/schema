@@ -370,6 +370,8 @@ func TestFastPlanSelectsCodegenAndLanguageCleanGates(t *testing.T) {
 		{"docs only", "README.md", `no|[]`},
 		{"c format allowlist", "make/c-format-allow.txt", `no|["c"]`},
 		{"eslint config", "eslint.config.mjs", `no|["js"]`},
+		{"shard splitter", "make/shard.sh", `no|["c","elixir"]`},
+		{"c same-bytes fixture", "make/checks/testdata/c-format-same-bytes/pair/a.h", `no|["c"]`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel() // each case is its own bash over a read-only script

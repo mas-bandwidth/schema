@@ -1637,6 +1637,31 @@ tables-c-clean: build/tables-generated-c/.stamp cards-c-generate generated/c/.st
 	CLANG_FORMAT=$(CLANG_FORMAT) OUT=build sh make/checks/c-clean-format.sh make/c-format-allow.txt $(C_FORMAT_TREES)
 test-c: tables-c-clean
 
+# THE SAME-BYTES CONTROL (F-221), with the pinned formatter: clang-format
+# reads a file's language from its name, and `int operator = 1;` is clean C in
+# a .c file and drifts in a .h (C++ to clang-format: `int operator= 1;`). The
+# committed pair make/checks/testdata/c-format-same-bytes/pair holds one
+# content under both names; the gate must be red naming a.h and not a.c, and
+# green over the .c alone (source/), so a verdict is never carried from one
+# name to another. A verdict store keyed on the bytes alone did exactly that
+# (#4530 at c7852e0047, since removed): the warm gate passed the header.
+C_SAME_BYTES := make/checks/testdata/c-format-same-bytes
+C_SAME_BYTES_OUT := build/c-clean-same-bytes
+.PHONY: tables-c-clean-same-bytes-control
+tables-c-clean-same-bytes-control: make/checks/c-clean-format.sh
+	@command -v $(CLANG_FORMAT) >/dev/null 2>&1 && [ "$$($(CLANG_FORMAT) --version | sed -n 's/.*version \([0-9][0-9]*\)\..*/\1/p')" = "$(CLANG_FORMAT_MAJOR)" ] || \
+		{ echo "SAME-BYTES CONTROL CANNOT RUN: clang-format $(CLANG_FORMAT_PIN) does not resolve (CLANG_FORMAT = $(CLANG_FORMAT))"; exit 1; }
+	@rm -rf $(C_SAME_BYTES_OUT) && mkdir -p $(C_SAME_BYTES_OUT) && : > $(C_SAME_BYTES_OUT)/empty.txt
+	@cmp -s $(C_SAME_BYTES)/pair/a.c $(C_SAME_BYTES)/pair/a.h || { echo "SAME-BYTES CONTROL: the committed pair is not one content under two names"; exit 1; }
+	@C_FORMAT_SHARD= CLANG_FORMAT=$(CLANG_FORMAT) OUT=$(C_SAME_BYTES_OUT)/source sh make/checks/c-clean-format.sh $(C_SAME_BYTES_OUT)/empty.txt $(C_SAME_BYTES)/source > $(C_SAME_BYTES_OUT)/source.out 2>&1 || \
+		{ echo "SAME-BYTES CONTROL FAILED: the .c alone is not format-clean, so the pair below would prove nothing"; cat $(C_SAME_BYTES_OUT)/source.out; exit 1; }
+	@if C_FORMAT_SHARD= CLANG_FORMAT=$(CLANG_FORMAT) OUT=$(C_SAME_BYTES_OUT)/pair sh make/checks/c-clean-format.sh $(C_SAME_BYTES_OUT)/empty.txt $(C_SAME_BYTES)/pair > $(C_SAME_BYTES_OUT)/pair.out 2>&1; then \
+		echo "SAME-BYTES CONTROL FAILED: a header holding a clean .c file's bytes passed the format gate"; cat $(C_SAME_BYTES_OUT)/pair.out; exit 1; \
+	fi
+	@grep -q 'clang-format drift in $(C_SAME_BYTES)/pair/a\.h' $(C_SAME_BYTES_OUT)/pair.out && ! grep -q 'pair/a\.c' $(C_SAME_BYTES_OUT)/pair.out || \
+		{ echo "SAME-BYTES CONTROL FAILED: the gate was red, but not on a.h alone"; cat $(C_SAME_BYTES_OUT)/pair.out; exit 1; }
+	@echo "same-bytes control: one content is clean as a.c and drifts as a.h, and the gate judges each by its own name"
+
 # ITS NEGATIVE CONTROL: one struct typedef brace written K&R in the C PACKET
 # emitter (tools/sabotage c-clean-format-drift), whose output the gate holds to
 # zero drift, built under `go build -overlay`; the examples corpus generated

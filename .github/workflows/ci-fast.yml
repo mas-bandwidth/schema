@@ -219,6 +219,7 @@ jobs:
       legs: ${{ steps.pick.outputs.legs }}
       verify_legs: ${{ steps.pick.outputs.verify_legs }}
       clean_legs: ${{ steps.pick.outputs.clean_legs }}
+      clean_rows: ${{ steps.pick.outputs.clean_rows }}
       codegen_touched: ${{ steps.pick.outputs.codegen_touched }}
       broad: ${{ steps.pick.outputs.broad }}
       lints: ${{ steps.pick.outputs.lints }}
@@ -293,7 +294,7 @@ jobs:
               internal/codegen/gotable/*|internal/codegen/golang/*|generated/go/*|test/go-tables/*|test/conformance/go/*|make/go.mk|make/go-*.mk) add_leg go ;;
             esac
             case "$f" in
-              internal/codegen/ctable/*|internal/codegen/c/*|generated/c/*|test/c-tables/*|make/c.mk|make/c-*.mk|make/checks/c-clean-*|tools/sabotage/c_clean.go) add_leg c ;;
+              internal/codegen/ctable/*|internal/codegen/c/*|generated/c/*|test/c-tables/*|make/c.mk|make/c-*.mk|make/checks/c-clean-*|make/checks/testdata/c-format-*|tools/sabotage/c_clean.go) add_leg c ;;
             esac
             case "$f" in
               internal/codegen/cpptable/*|internal/codegen/cpp/*|generated/cpp/*|generated/bench/cpp/*|generated/bench/tables/cpp/*|generated/bench/paired/cpp/*|test/cpp-tables/*|test/tables/*.cpp|test/tables/*.h|make/cpp.mk|make/cpp-*.mk|make/cpp-*-allow.txt|make/checks/cpp-clean-*|.clang-format) add_leg cpp ;;
@@ -314,7 +315,7 @@ jobs:
               internal/codegen/darttable/*|internal/codegen/dart/*|generated/dart/*|test/dart-tables/*|make/dart.mk|make/dart-*.mk) add_leg dart ;;
             esac
             case "$f" in
-              internal/codegen/elixirtable/*|internal/codegen/elixir/*|generated/elixir/*|test/elixir-tables/*|test/elixir-fixedform/*|make/elixir.mk|make/elixir-*.mk) add_leg elixir ;;
+              internal/codegen/elixirtable/*|internal/codegen/elixir/*|generated/elixir/*|test/elixir-tables/*|test/elixir-fixedform/*|make/elixir.mk|make/elixir-*.mk|make/elixir-*.sh) add_leg elixir ;;
             esac
             case "$f" in
               internal/codegen/luautable/*|internal/codegen/luau/*|test/conformance/luau/*|make/luau.mk|make/luau-*.mk|bench/luau/*|bench/tables/luau/*) add_leg luau ;;
@@ -541,16 +542,16 @@ jobs:
 
           # THE PER-LANGUAGE OPTIMIZATION VERIFICATION MATRIX (verify-leg).
           # Runs conformance, bench, and fuzz (< 2m each) for the languages the
-          # diff touches (including C++ and ccommon optimizations, which set
-          # broad=yes for leg-gate's oracle rule), while keeping shared root
-          # edits (ir/, compiler/, Makefile, ci-fast.yml) and > 4 language
-          # sweeps bounded so a single push never dispatches 18 * 3 = 54 jobs.
-          shared_broad=no
-          if grep -qE '^(ir/|compiler/|tables/|Makefile$|go\.mod$|docs/FIXED-FORM-|test/tables/.*\.schema$|\.github/workflows/ci-fast\.yml$)' <<<"$files"; then
-            shared_broad=yes
-          fi
+          # diff touches by their own paths (touched_legs, before the broad
+          # rule widens `legs`), and for no more than four of them, so a single
+          # push never dispatches 18 * 3 = 54 jobs. A shared root edit (ir/,
+          # compiler/, Makefile, this file) touches no leg's own path and so
+          # selects no row by itself; beside a leg's own files it no longer
+          # drops that leg's rows. It did until 2026-11-21, and a diff to the
+          # Elixir rows' make files and to their step here ran none of them
+          # (#4530, F-218): a change to a job's own definition selects it.
           verify_count=$(printf '%s' "$touched_legs" | xargs -n1 2>/dev/null | sort -u | wc -l | tr -d ' ')
-          if [ "$shared_broad" = yes ] || [ "$verify_count" -gt 4 ]; then
+          if [ "$verify_count" -gt 4 ]; then
             verify_legs_json='[]'
           else
             verify_legs_json=$(printf '%s' "$touched_legs" | xargs -n1 2>/dev/null | sort -u | awk 'BEGIN{printf "["} NF{printf "%s\"%s\"", (n++?",":""), $1} END{printf "]"}')
@@ -587,8 +588,33 @@ jobs:
           if [ "$schema_corpus" = yes ] || case " $touched_legs " in *" rust "*) true ;; *) false ;; esac; then
             clean_legs="$clean_legs rust"
           fi
+          # make/shard.sh deals the C format gate's files and the Elixir corpus
+          # units to the sharded rows below
+          if grep -qE '^make/shard\.sh$' <<<"$files"; then
+            clean_legs="$clean_legs c elixir"
+          fi
           clean_legs_json=$(printf '%s' "$clean_legs" | xargs -n1 2>/dev/null | sort -u | awk 'BEGIN{printf "["} NF{printf "%s\"%s\"", (n++?",":""), $1} END{printf "]"}')
           [ -n "$clean_legs_json" ] || clean_legs_json='[]'
+          # THE LANG-CLEAN ROWS. Two of these gates are past what one runner
+          # gives a job in two minutes when nothing is warm: clang-format over
+          # the 580 generated C files (about 250 s of CPU) and the strict
+          # compile of the 42-unit Elixir table corpus (about 200 s of CPU
+          # without the SSA optimizer). Each runs as shards side by side, a
+          # row per shard K/N; make/shard.sh deals the files or the units from
+          # the sorted list, and internal/ci TestShardSplitIsAPartition holds
+          # that shards 1/N .. N/N are the whole gate, each part once. No row
+          # keeps a verdict or an ebin from another run, so a row's time is
+          # its cold time (#4530, F-218, F-221).
+          c_clean_shards=3
+          elixir_clean_shards=4
+          clean_rows_json=$(printf '%s' "$clean_legs" | xargs -n1 2>/dev/null | sort -u | awk -v c="$c_clean_shards" -v e="$elixir_clean_shards" '
+            NF {
+              n = ($1 == "c") ? c : ($1 == "elixir") ? e : 0
+              if (n == 0) { printf "%s{\"lang\":\"%s\",\"shard\":\"\"}", (k++ ? "," : ""), $1; next }
+              for (i = 1; i <= n; i++) printf "%s{\"lang\":\"%s\",\"shard\":\"%d/%d\"}", (k++ ? "," : ""), $1, i, n
+            }
+            BEGIN { printf "[" } END { printf "]" }')
+          [ -n "$clean_rows_json" ] || clean_rows_json='[]'
 
           echo "broad=$broad"               >> "$GITHUB_OUTPUT"
           echo "packages=$packages"         >> "$GITHUB_OUTPUT"
@@ -596,6 +622,7 @@ jobs:
           echo "legs=$json"                 >> "$GITHUB_OUTPUT"
           echo "verify_legs=$verify_legs_json" >> "$GITHUB_OUTPUT"
           echo "clean_legs=$clean_legs_json"   >> "$GITHUB_OUTPUT"
+          echo "clean_rows=$clean_rows_json"   >> "$GITHUB_OUTPUT"
           echo "codegen_touched=$codegen_touched" >> "$GITHUB_OUTPUT"
           echo "lints=$lints_json"          >> "$GITHUB_OUTPUT"
           {
@@ -607,6 +634,7 @@ jobs:
             echo "* legs: \`$json\`"
             echo "* verify-legs: \`$verify_legs_json\`"
             echo "* clean-legs: \`$clean_legs_json\`"
+            echo "* clean-rows: \`$clean_rows_json\`"
             echo "* codegen-touched: **$codegen_touched**"
             echo "* language lints: \`$lints_json\`"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -917,7 +945,7 @@ jobs:
   lang-clean:
     needs: plan
     if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.clean_legs != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
-    name: lang-clean (${{ matrix.lang }})
+    name: lang-clean (${{ matrix.lang }}${{ matrix.shard != '' && format(' {0}', matrix.shard) || '' }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
     defaults:
@@ -926,7 +954,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        lang: ${{ fromJSON(needs.plan.outputs.clean_legs) }}
+        # one row per language, and the C and Elixir gates as shards K/N
+        # (plan, THE LANG-CLEAN ROWS)
+        include: ${{ fromJSON(needs.plan.outputs.clean_rows) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Check out the Rust runtime sibling (rust clippy)
@@ -956,9 +986,10 @@ jobs:
           elixir-version: '1.20'
       - uses: ./.github/actions/eslint
         if: matrix.lang == 'js' && runner.environment == 'github-hosted'
-      - name: emitted-code gate (${{ matrix.lang }})
+      - name: emitted-code gate (${{ matrix.lang }}${{ matrix.shard != '' && format(' {0}', matrix.shard) || '' }})
         env:
           LANG_ROW: ${{ matrix.lang }}
+          SHARD: ${{ matrix.shard }}
         run: |
           set -euo pipefail
           if [ -f /opt/nova/sdk/env.sh ]; then
@@ -986,16 +1017,17 @@ jobs:
                 cf="$RUNNER_TEMP/clang-format/bin/clang-format"
               fi
               "$cf" --version
-              # On a fleet runner the format gate reads each file's verdict
-              # from the host's store when these exact bytes were already
-              # judged by this formatter under this style
-              # (make/checks/c-clean-format.sh): the gate is 250 s of
-              # clang-format CPU over 580 generated files, and a commit
-              # changes few of them.
-              if [ "${RUNNER_ENVIRONMENT:-}" = self-hosted ]; then
-                export C_FORMAT_CACHE="$HOME/.cache/schema-ci/c-format-verdicts"
-              fi
-              make -j"$(nproc)" tables-c-zero-cost tables-c-clean tables-c-soak-compile-modes SCHEMA_REQUIRE_CLANG_FORMAT=1 CLANG_FORMAT="$cf"
+              # The format gate formats this row's shard of the generated
+              # files (make/checks/c-clean-format.sh C_FORMAT_SHARD); the first
+              # row also runs the zero-cost and soak-compile gates and the
+              # same-bytes control (a .c and a .h of one content are judged
+              # each by its own name, F-221).
+              case "$SHARD" in
+                1/*) c_targets="tables-c-zero-cost tables-c-clean tables-c-soak-compile-modes tables-c-clean-same-bytes-control" ;;
+                *)   c_targets="tables-c-clean" ;;
+              esac
+              # shellcheck disable=SC2086
+              C_FORMAT_SHARD="$SHARD" make -j"$(nproc)" $c_targets SCHEMA_REQUIRE_CLANG_FORMAT=1 CLANG_FORMAT="$cf"
               ;;
             js)
               if ! command -v eslint >/dev/null 2>&1 || ! eslint --version | grep -qx "v9.39.5"; then
@@ -1010,22 +1042,24 @@ jobs:
               make -j"$(nproc)" tables-rust-clippy RUSTUP_BIN="$(dirname "$(command -v cargo)")"
               ;;
             elixir)
-              # The agreement gate's corpus ebin compiles without the Erlang
-              # SSA optimizer (make/elixir.mk ELIXIR_EBIN_ERL_COMPILER_OPTIONS:
-              # no warning comes from those passes, so the strict verdict is
-              # the same; 477 s of CPU becomes 197 s). The offsets gate
+              # This row strictly compiles its shard of the table corpus
+              # (make/elixir.mk ELIXIR_TABLE_SHARD) and runs the agreement gate
+              # over it; the first row also runs the offsets gate. The ebin
+              # compiles without the Erlang SSA optimizer
+              # (ELIXIR_EBIN_ERL_COMPILER_OPTIONS: no warning comes from those
+              # passes, so the strict verdict is the same; 477 s of CPU becomes
+              # 197 s for the whole corpus); the nightly ci-full.yml
+              # elixir-verify runs the optimized compile. The offsets gate
               # measures heap words, so it compiles its own units as shipped.
-              # On a fleet runner the corpus ebin comes from the host's store
-              # when these exact sources already passed the strict compile
-              # (make/elixir-ebin-cache.sh): the verify-leg Elixir rows want
-              # the same ebin at the same moment, and one job compiles it.
-              ebin_cache=
-              if [ "${RUNNER_ENVIRONMENT:-}" = self-hosted ]; then
-                ebin_cache="$HOME/.cache/schema-ci/elixir-tables-ebin"
-              fi
+              # No store: every row compiles its shard.
+              case "$SHARD" in
+                1/*) elixir_targets="tables-elixir-accessor-descriptor-agreement tables-elixir-offsets" ;;
+                *)   elixir_targets="tables-elixir-accessor-descriptor-agreement" ;;
+              esac
+              # shellcheck disable=SC2086
               MIX_HOME="$RUNNER_TEMP/.mix" HEX_HOME="$RUNNER_TEMP/.hex" \
-                make -j"$(nproc)" tables-elixir-accessor-descriptor-agreement tables-elixir-offsets \
-                ELIXIR_EBIN_ERL_COMPILER_OPTIONS='[no_ssa_opt]' ELIXIR_EBIN_CACHE="$ebin_cache" \
+                make -j"$(nproc)" $elixir_targets \
+                ELIXIR_TABLE_SHARD="$SHARD" ELIXIR_EBIN_ERL_COMPILER_OPTIONS='[no_ssa_opt]' \
                 BEAM_PATH="$(dirname "$(command -v erl)"):$(dirname "$(command -v elixir)")" \
                 ELIXIR_BIN="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" \
                 ELIXIR=elixir ELIXIRC=elixirc MIX=mix \
@@ -1223,7 +1257,9 @@ jobs:
             # Certify fuzzes it (tables-wire-fuzz-release-elixir, test-elixir).
             # On a fleet runner the table corpus ebin comes from the host's
             # store when these exact sources already passed the strict compile
-            # under these options (make/elixir-ebin-cache.sh).
+            # under these options (make/elixir-ebin-cache.sh); every file of a
+            # hit is checked against the entry's manifest, and an entry that
+            # does not match is discarded, said, and compiled again (F-217).
             elixir)
               ebin_cache=
               if [ "${RUNNER_ENVIRONMENT:-}" = self-hosted ]; then

@@ -1,0 +1,18 @@
+# THE DAMAGE SHAPES a stored Elixir ebin entry is held against (F-217;
+# make/elixir-ebin-cache.sh, internal/ci TestElixirEbinCacheDamageCorpus).
+# The rig stores the ebin of a stand-in compile (A.beam "alpha\n", B.beam
+# "beta\n"), applies one row's damage to the stored entry, and runs again:
+# a row with expect "hit" must be handed back with no compile; every other
+# row must be DISCARDED (its reason named), compiled, and the ebin the job
+# gets must be the compile's own bytes. A row's file is relative to the entry.
+#
+# case	file	damage	expect
+valid-control	-	none	hit
+truncated-beam	B.beam	truncate	B.beam has other bytes
+same-size-byte	A.beam	flip-last-byte	A.beam has other bytes
+replaced-beam	A.beam	write:beta\n	A.beam has other bytes
+missing-beam	B.beam	remove	B.beam is missing
+extra-beam	C.beam	write:gamma\n	C.beam is not in it
+manifest-removed	.manifest	remove	it has no manifest
+manifest-empty	.manifest	truncate	it has no manifest
+manifest-forged	.manifest	write:0000000000000000000000000000000000000000000000000000000000000000  ./A.beam\n	B.beam is not in it
