@@ -302,7 +302,7 @@ jobs:
           git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
 
       # the runner's own pinned go already satisfies go.mod; hosted fallback only
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
@@ -1768,7 +1768,7 @@ jobs:
           git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
           git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
@@ -1868,18 +1868,21 @@ jobs:
             files="ir/"
           fi
 
-          # THE PR SELECTION.
+          # THE PR SELECTION. Each test reads a here-string, never `echo
+          # "$files" | grep`: on a list larger than the pipe buffer grep stops
+          # at its first match, echo dies of SIGPIPE and pipefail turns the
+          # match into the false branch (ci-fast.yml plan, run 44914934707).
           broad=no
-          if echo "$files" | grep -E '^(ir/|compiler/|tables/|Makefile$|go\.mod$|docs/FIXED-FORM-|internal/codegen/cpp|internal/codegen/ccommon|test/cpp|test/tables/.*\.schema$|\.github/workflows/ci-full\.yml$)' >/dev/null; then
+          if grep -qE '^(ir/|compiler/|tables/|Makefile$|go\.mod$|docs/FIXED-FORM-|internal/codegen/cpp|internal/codegen/ccommon|test/cpp|test/tables/.*\.schema$|\.github/workflows/ci-full\.yml$)' <<<"$files"; then
             broad=yes
           fi
           pins=no
           pin_files=$(echo "$files" | grep -vE '^internal/(ci|fuzz|slowtest|docgate|jsontestsuite|memceiling|publicapi)/|^internal/codegen/(dart|darttable|elixir|elixirtable|golang|gotable|goose|goosetable|java|javatable|js|jstable|lobster|lobstertable|lua|luatable|luau|luautable|moo|mootable|python|rust|rusttable|squirrel|squirreltable)/|^testdata/golden/(build-version|dart|elixir|go|java|js|lua|luau|ludicrous|rust)/' || true)
-          if [ "$broad" = yes ] || echo "$pin_files" | grep -E '^(cmd/|internal/|examples/|examples128/|bench/corpus/|test/(main|second|ludicrous_main)\.cpp$|test/(bench|tables|packet-defaults|conformance/harness|conformance/cpp)/|testdata/|go\.sum$|make/(c|cpp|cs)[.-])' >/dev/null; then
+          if [ "$broad" = yes ] || grep -qE '^(cmd/|internal/|examples/|examples128/|bench/corpus/|test/(main|second|ludicrous_main)\.cpp$|test/(bench|tables|packet-defaults|conformance/harness|conformance/cpp)/|testdata/|go\.sum$|make/(c|cpp|cs)[.-])' <<<"$pin_files"; then
             pins=yes
           fi
           cs=no
-          if [ "$broad" = yes ] || echo "$files" | grep -E '^(internal/codegen/cstable/|internal/codegen/csharp/|generated/cs/|test/cs-tables/|make/cs\.mk$|make/cs-[^/]*\.mk$)' >/dev/null; then
+          if [ "$broad" = yes ] || grep -qE '^(internal/codegen/cstable/|internal/codegen/csharp/|generated/cs/|test/cs-tables/|make/cs\.mk$|make/cs-[^/]*\.mk$)' <<<"$files"; then
             cs=yes
           fi
           printf 'pins=%s\ncs=%s\n' "$pins" "$cs" >> "$GITHUB_OUTPUT"
@@ -1950,7 +1953,7 @@ jobs:
         shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
@@ -2086,7 +2089,7 @@ jobs:
           git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
 
       # the runner's own pinned go already satisfies go.mod; hosted fallback only
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
@@ -2170,7 +2173,7 @@ jobs:
       matrix: ${{ steps.discover.outputs.matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
@@ -2248,7 +2251,7 @@ jobs:
           git clone --quiet --depth 1 --branch "$tag" "https://github.com/mas-bandwidth/${{ matrix.runtime }}.git" "../${{ matrix.runtime }}"
 
       # bin/schema and the generated table units come out of Go in every leg.
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
@@ -2498,7 +2501,7 @@ jobs:
       actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
@@ -2561,7 +2564,7 @@ jobs:
           rm -rf "../serialize.cs"
           git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git ../serialize.cs
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
@@ -2683,7 +2686,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
@@ -2753,7 +2756,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
@@ -2866,7 +2869,7 @@ jobs:
           rm -rf "../serialize.cs"
           git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git ../serialize.cs
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
@@ -2933,7 +2936,7 @@ jobs:
           git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git ../serialize
           git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git ../serialize.cs
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
@@ -3055,7 +3058,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: '1.26'
           cache: false
@@ -3149,7 +3152,7 @@ jobs:
       # that goes red on its own, with no commit, the day Go releases.
       # Bumping the linter is a two-line, deliberate act: this version and
       # that one, together.
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
@@ -3241,7 +3244,7 @@ jobs:
           csv=$(ls bench/results/*.csv | grep -v -- '-plan-read-' | tail -1)
           out=$(./bench/run.sh --render "$csv" 2>&1)
           echo "$out"
-          echo "$out" | grep -q "language        %" || { echo "::error::render printed no table header"; exit 1; }
+          grep -q "language        %" <<<"$out" || { echo "::error::render printed no table header"; exit 1; }
           rows=$(echo "$out" | grep -cE "^  [a-z]+ ")
           [ "$rows" -ge 1 ] || { echo "::error::render printed zero language rows"; exit 1; }
 
@@ -3260,7 +3263,7 @@ jobs:
         shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
           go-version: stable
@@ -3317,7 +3320,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: stable
           cache: false
@@ -3401,7 +3404,7 @@ jobs:
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: stable
           cache: false
@@ -3553,7 +3556,7 @@ jobs:
         shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
@@ -3742,7 +3745,7 @@ jobs:
       matrix: ${{ steps.plan.outputs.matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
@@ -3815,7 +3818,7 @@ jobs:
           git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
           git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
