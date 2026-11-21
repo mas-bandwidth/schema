@@ -918,6 +918,9 @@ func (g *gen) renderArg(e ast.Expr, folded *big.Int, typ string) string {
 		return folded.String()
 	}
 	if !containsIdent(e) {
+		if !literalFits(e, typ) {
+			return folded.String()
+		}
 		return renderExpr(e)
 	}
 	s := renderExpr(e)
