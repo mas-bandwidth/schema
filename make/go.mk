@@ -813,7 +813,6 @@ test-go: generated/bench/tables/go/.stamp generated/bench/paired/go/.stamp gener
 	$(MAKE) tables-go-json-walk
 	$(MAKE) tables-go-standalone
 	$(MAKE) tables-go-fuzz
-	cd test/go-tables && go test -count 1 .
 	$(MAKE) tables-go-fuzz-extent-negative-control
 	$(MAKE) tables-go-fuzz-maximum-negative-control
 	bench/tables/go/leg build
@@ -1165,6 +1164,20 @@ tables-go-fixed-form-negative-control: bin/schema build/schema_test_bench_paired
 	@grep -Fq 'round-trip bytes differ' build/go-fixed-sabotage/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the fixed form went red for another reason"; cat build/go-fixed-sabotage/log; exit 1; }
 	@echo 'tables Go fixed form negative control: one byte off the write template reds the reference byte match'
+
+# EVERY TEST OF THE test/go-tables MODULE, ON ONE LINE A GATE CAN READ. The
+# module is a nested one, so no `go test ./...` from the root reaches it, and
+# until 2026-11-21 its whole-package run was one line inside test-go's recipe,
+# which certify.yml reaches only through shell it decides at run time. This
+# target is that same run with its own prerequisites: the generated units, the
+# sibling runtime and the conformance fixtures the cook forgery fuzz reads.
+# ci-full.yml's go-test row module-go-tables runs it by name, and internal/ci's
+# TestEveryGoTestIsAssignedToALane is red for a test here that no such line runs.
+.PHONY: tables-go-module
+tables-go-module: build/tables-generated-go/.stamp build/conformance-harness tables-go-sibling-runtime
+	./build/conformance-harness run --drivers /dev/null --work build/conformance-go-module-work > /dev/null 2>&1 || true
+	cd test/go-tables && GO_TABLES_FIXTURES="$(CURDIR)/build/conformance-go-module-work/fixtures" go test -count 1 .
+test-go: tables-go-module
 
 .PHONY: tables-go-usage
 tables-go-usage: build/tables-generated-go/.stamp

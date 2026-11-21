@@ -25,9 +25,13 @@ package ci
 // can turn one green.
 
 import (
+	"go/build"
+	"strconv"
+
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/gotestmatch"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -68,6 +72,7 @@ type laneCmd struct {
 	run      string
 	skip     string
 	unread   string // why this command is credited with nothing, or ""
+	match    *gotestmatch.Matcher
 	workflow string // the counted workflow that reaches it, or ""
 	tier     string // "per-commit" or "nightly"
 	goos     map[string]bool
@@ -92,108 +97,167 @@ type laneGrep struct {
 
 // ---------------------------------------------------------------- shell
 
-// laneSplit cuts one shell line into simple commands. It splits on && || ; |
-// and on parentheses and braces, outside quotes and outside $( ), and reports
-// for each command whether it sits under `if`, `while`, `until` or `!`, where
-// its exit status is a condition and not a verdict.
-func laneSplit(line string) []laneSimple {
-	var out []laneSimple
+// laneTok is one simple command of a script and what ended it: a newline,
+// `;`, `;;`, `&&`, `||`, `|`, `&`, an opening or closing parenthesis or
+// brace, or "" at the end of the script.
+type laneTok struct {
+	text string
+	term string
+}
+
+// laneSplit cuts a whole script into simple commands. Quotes, $( ), ${ },
+// array literals, comments and here-documents are read as the shell reads
+// them, so a `make` inside an awk program or a here-document is not a command.
+func laneSplit(script string) []laneTok {
+	var out []laneTok
 	var cur strings.Builder
 	depth := 0
 	var quote byte
-	flush := func() {
-		s := strings.TrimSpace(cur.String())
+	var heredocs []string
+	emit := func(term string) {
+		out = append(out, laneTok{text: strings.TrimSpace(cur.String()), term: term})
 		cur.Reset()
-		if s != "" {
-			out = append(out, laneSimple{text: s})
-		}
 	}
-	for i := 0; i < len(line); i++ {
-		c := line[i]
+	blank := func() bool { return strings.TrimSpace(cur.String()) == "" }
+	for i := 0; i < len(script); i++ {
+		c := script[i]
 		if quote != 0 {
 			cur.WriteByte(c)
 			if c == quote {
 				quote = 0
-			} else if c == '\\' && quote == '"' && i+1 < len(line) {
+			} else if c == '\\' && quote == '"' && i+1 < len(script) {
 				i++
-				cur.WriteByte(line[i])
+				cur.WriteByte(script[i])
 			}
 			continue
+		}
+		next := byte(0)
+		if i+1 < len(script) {
+			next = script[i+1]
 		}
 		switch {
 		case c == '\'' || c == '"':
 			quote = c
 			cur.WriteByte(c)
-		case c == '\\' && i+1 < len(line):
+		case c == '\\' && next != 0:
 			cur.WriteByte(c)
 			i++
-			cur.WriteByte(line[i])
-		case c == '$' && i+1 < len(line) && line[i+1] == '(':
+			cur.WriteByte(script[i])
+		case c == '$' && next == '(':
 			depth++
 			cur.WriteString("$(")
 			i++
-		case c == '(' && depth > 0:
-			depth++
+		case c == '$' && next == '{':
+			// ${...}: one word, to its closing brace
+			j := strings.IndexByte(script[i:], '}')
+			if j < 0 {
+				j = len(script) - i - 1
+			}
+			cur.WriteString(script[i : i+j+1])
+			i += j
+		case depth > 0:
+			switch c {
+			case '(':
+				depth++
+			case ')':
+				depth--
+			}
 			cur.WriteByte(c)
-		case c == ')' && depth > 0:
-			depth--
+		case c == '#' && (i == 0 || script[i-1] == ' ' || script[i-1] == '\t' || script[i-1] == '\n'):
+			for i+1 < len(script) && script[i+1] != '\n' {
+				i++
+			}
+		case c == '<' && next == '<' && i+2 < len(script) && script[i+2] != '<' && (i == 0 || script[i-1] != '<'):
+			// a here-document: its body, up to the delimiter line, is data
+			j := i + 2
+			if j < len(script) && script[j] == '-' {
+				j++
+			}
+			for j < len(script) && (script[j] == ' ' || script[j] == '\t') {
+				j++
+			}
+			k := j
+			for k < len(script) && !strings.ContainsRune(" \t\n;|&)", rune(script[k])) {
+				k++
+			}
+			heredocs = append(heredocs, strings.Trim(script[j:k], `'"\`))
+			cur.WriteString(script[i:k])
+			i = k - 1
+		case c == '\n':
+			emit("\n")
+			for _, word := range heredocs {
+				for i+1 < len(script) {
+					end := strings.IndexByte(script[i+1:], '\n')
+					line := script[i+1:]
+					if end >= 0 {
+						line = script[i+1 : i+1+end]
+					}
+					i += len(line) + 1
+					if strings.TrimSpace(line) == word {
+						break
+					}
+				}
+			}
+			heredocs = nil
+		case c == ';' && next == ';':
+			emit(";;")
+			i++
+		case c == ';':
+			emit(";")
+		case c == '&' && next == '&':
+			emit("&&")
+			i++
+		case c == '|' && next == '|':
+			emit("||")
+			i++
+		case c == '|':
+			emit("|")
+		case c == '&' && next == '>':
 			cur.WriteByte(c)
-		case c == '#' && depth == 0 && (i == 0 || line[i-1] == ' ' || line[i-1] == '\t'):
-			flush()
-			return laneMarkConditions(out)
-		case depth == 0 && (c == ';' || c == '|' || c == '&' || c == '(' || c == ')' || c == '{' || c == '}' || c == '\n'):
-			if c == '{' && cur.Len() > 0 && !strings.HasSuffix(cur.String(), " ") {
-				cur.WriteByte(c) // ${var} and brace words stay whole
+		case c == '&' && i > 0 && (script[i-1] == '>' || script[i-1] == '<'):
+			cur.WriteByte(c)
+		case c == '&':
+			emit("&")
+		case c == '(':
+			if s := cur.String(); strings.HasSuffix(s, "=") {
+				// an array literal: words, not commands, to its closing parenthesis
+				level := 1
+				j := i + 1
+				var q byte
+				for ; j < len(script) && level > 0; j++ {
+					switch {
+					case q != 0:
+						if script[j] == q {
+							q = 0
+						}
+					case script[j] == '\'' || script[j] == '"':
+						q = script[j]
+					case script[j] == '(':
+						level++
+					case script[j] == ')':
+						level--
+					}
+				}
+				cur.WriteString("(array)")
+				i = j - 1
 				continue
 			}
-			if c == '}' && strings.Contains(cur.String(), "{") {
-				cur.WriteByte(c)
-				continue
-			}
-			flush()
+			emit("(")
+		case c == ')':
+			emit(")")
+		case c == '{' && blank() && (next == ' ' || next == '\n' || next == '\t'):
+			emit("{")
+		case c == '}' && blank():
+			emit("}")
 		default:
 			cur.WriteByte(c)
 		}
 	}
-	flush()
-	return laneMarkConditions(out)
+	emit("")
+	return out
 }
 
-type laneSimple struct {
-	text      string
-	words     []string
-	condition bool
-}
-
-func laneMarkConditions(cmds []laneSimple) []laneSimple {
-	for i := range cmds {
-		words := laneWords(cmds[i].text)
-		cond := false
-	strip:
-		for len(words) > 0 {
-			w := strings.TrimLeft(words[0], "@-+")
-			switch {
-			case w == "":
-				words = words[1:]
-			case w == "if" || w == "elif" || w == "while" || w == "until" || w == "!":
-				cond = true
-				words = words[1:]
-			case w == "then" || w == "else" || w == "do" || w == "time" || w == "exec" || w == "env" || w == "command":
-				words = words[1:]
-			case laneAssign.MatchString(w):
-				words = words[1:]
-			default:
-				words[0] = w
-				break strip
-			}
-		}
-		cmds[i].words = words
-		cmds[i].condition = cond
-	}
-	return cmds
-}
-
-var laneAssign = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=`)
+var laneAssign = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*\+?=`)
 
 // laneWords cuts a simple command into words, removing one level of quotes. A
 // $( ) substitution stays one word.
@@ -234,7 +298,7 @@ func laneWords(s string) []string {
 		case c == ')' && depth > 0:
 			depth--
 			cur.WriteByte(c)
-		case (c == ' ' || c == '\t') && depth == 0:
+		case (c == ' ' || c == '\t' || c == '\n') && depth == 0:
 			if in {
 				words = append(words, cur.String())
 				cur.Reset()
@@ -255,60 +319,233 @@ func laneWords(s string) []string {
 	return words
 }
 
+// laneFrame is one open shell construct while a script is read.
+type laneFrame struct {
+	kind string // "if", "loop", "case", "group"
+	// cond: whether the commands inside run is decided at run time (the body
+	// of an if or a loop, a function, a group after ||)
+	cond bool
+	// a case over a literal word is decided here: only the branch it takes
+	// is read, and the others are not commands at all
+	literal, taken, active, inBody bool
+	subject                        string
+	pattern                        []string
+	dir                            string
+	dirKnown                       bool
+}
+
+const laneFlowWhy = "runs inside shell control flow (if, a loop, a function, ||) that this reader does not evaluate"
+
 // laneScript reads a run block or one joined recipe line: the `go test`
-// commands in it and the make targets it runs. startDir is where it starts.
+// commands in it, the make goals it runs and the test files it copies.
+// startDir is where it starts.
+//
+// Only a command the script certainly reaches is credited. One inside an
+// `if`, a loop, a function body or after `||` is reached or not at run time,
+// so its go test is credited with nothing and its make goals and copies are
+// not read. A `case` over a literal word (as a workflow writes
+// `case "${{ matrix.leg }}" in`, once the row's value is in) is the
+// exception: its one matching branch is read as plain commands.
 func laneScript(src, text, startDir string) (cmds []laneCmd, makes []string, copies []laneCopy) {
 	text = strings.ReplaceAll(text, "\\\n", " ")
-	text = laneExpr.ReplaceAllString(text, "\x01") // a workflow expression is one opaque word
-	dir := startDir
-	dirKnown := true
-	for line := range strings.SplitSeq(text, "\n") {
-		lineDir, lineKnown := dir, dirKnown
-		simples := laneSplit(line)
-		for _, sc := range simples {
-			w := sc.words
-			if len(w) == 0 {
+	text = laneExpr.ReplaceAllString(text, "\x01") // an unresolved workflow expression is one opaque word
+	dir, dirKnown := startDir, true
+	chainDir, chainKnown, inChain := "", true, false
+	var stack []laneFrame
+	pendingFunc := false
+	prevTerm := "\n"
+	toks := laneSplit(text)
+	for ti, tok := range toks {
+		before := prevTerm
+		prevTerm = tok.term
+		// a case frame waiting for a pattern takes this piece as one
+		if n := len(stack); n > 0 && stack[n-1].kind == "case" && !stack[n-1].inBody {
+			f := &stack[n-1]
+			if tok.text == "esac" {
+				stack = stack[:n-1]
 				continue
 			}
+			if tok.text != "" {
+				f.pattern = append(f.pattern, strings.Join(laneWords(tok.text), " "))
+			}
+			if tok.term == ")" {
+				f.active = false
+				if f.literal && !f.taken {
+					for _, p := range f.pattern {
+						if ok, err := path.Match(p, f.subject); err == nil && ok {
+							f.active, f.taken = true, true
+						}
+					}
+				}
+				f.pattern = nil
+				f.inBody = true
+			}
+			continue
+		}
+		words := laneWords(tok.text)
+		condition := false
+		var assigns []string
+	strip:
+		for len(words) > 0 {
+			w := strings.TrimLeft(words[0], "@-+")
 			switch {
+			case w == "":
+				words = words[1:]
+			case w == "if" || w == "while" || w == "until":
+				kind := "loop"
+				if w == "if" {
+					kind = "if"
+				}
+				stack = append(stack, laneFrame{kind: kind, cond: true})
+				condition = true
+				words = words[1:]
+			case w == "elif" || w == "!":
+				condition = true
+				words = words[1:]
+			case w == "then" || w == "else" || w == "do" || w == "time" || w == "exec" || w == "env" || w == "command":
+				words = words[1:]
+			case laneAssign.MatchString(w):
+				name, _, _ := strings.Cut(w, "=")
+				assigns = append(assigns, strings.TrimSuffix(name, "+"))
+				words = words[1:]
+			default:
+				words[0] = w
+				break strip
+			}
+		}
+		// where this command runs, and whether it certainly runs
+		if !inChain {
+			chainDir, chainKnown = dir, dirKnown
+		}
+		inChain = tok.term == "&&" || tok.term == "|"
+		uncertain := before == "||" || condition
+		skip := false
+		for _, f := range stack {
+			if f.cond {
+				uncertain = true
+			}
+			if f.kind == "case" && f.inBody {
+				if !f.literal {
+					uncertain = true
+				} else if !f.active {
+					skip = true
+				}
+			}
+		}
+		if len(words) > 0 && !skip {
+			w := words
+			switch {
+			case w[0] == "fi" || w[0] == "done":
+				for n := len(stack); n > 0; n-- {
+					if k := stack[n-1].kind; k == "if" || k == "loop" {
+						stack = append(stack[:n-1], stack[n:]...)
+						break
+					}
+				}
+			case w[0] == "for" || w[0] == "select":
+				stack = append(stack, laneFrame{kind: "loop", cond: true})
+			case w[0] == "function":
+				pendingFunc = true
+			case w[0] == "case" && len(w) >= 3 && w[2] == "in":
+				f := laneFrame{kind: "case", subject: w[1], literal: !laneUnreadable(w[1]) && !uncertain, cond: uncertain}
+				if len(w) > 3 {
+					f.pattern = append(f.pattern, strings.Join(w[3:], " "))
+					if tok.term == ")" {
+						if ok, err := path.Match(f.pattern[0], f.subject); f.literal && err == nil && ok {
+							f.active, f.taken = true, true
+						}
+						f.pattern = nil
+						f.inBody = true
+					}
+				}
+				stack = append(stack, f)
+			case tok.term == "(" && ti+1 < len(toks) && toks[ti+1].text == "" && toks[ti+1].term == ")" && len(w) == 1:
+				pendingFunc = true // name() { ... }
 			case w[0] == "cd":
+				known := chainKnown
+				target := chainDir
 				switch {
-				case len(w) == 2 && !laneUnreadable(w[1]) && !strings.Contains(w[1], "*") && !strings.HasPrefix(w[1], "/") && !strings.HasPrefix(w[1], "~"):
-					lineDir = path.Join(lineDir, w[1])
+				case len(w) == 2 && !laneUnreadable(w[1]) && !strings.Contains(w[1], "*") && !strings.HasPrefix(w[1], "/") && !strings.HasPrefix(w[1], "~") && w[1] != "-":
+					target = path.Join(target, w[1])
 				case len(w) == 2 && (strings.HasPrefix(w[1], "$GITHUB_WORKSPACE") || strings.HasPrefix(w[1], "${GITHUB_WORKSPACE}")):
-					lineDir = path.Join(".", strings.TrimPrefix(strings.TrimPrefix(w[1], "$GITHUB_WORKSPACE"), "${GITHUB_WORKSPACE}"))
-					lineKnown = true
+					target = path.Join(".", strings.TrimPrefix(strings.TrimPrefix(w[1], "$GITHUB_WORKSPACE"), "${GITHUB_WORKSPACE}"))
+					known = true
 				default:
-					lineKnown = false
+					known = false
 				}
-				// a bare `cd x` line moves every later line; `cd x && cmd`
-				// in a recipe or a subshell moves only its own line, and
-				// reading it as the former can only lose credit.
-				if len(simples) == 1 {
-					dir, dirKnown = lineDir, lineKnown
+				if uncertain {
+					known = false // a cd that may not happen leaves the directory unknown
 				}
+				chainDir, chainKnown = target, known
+				if !inChain {
+					// a `cd x` on its own moves everything after it in this group
+					dir, dirKnown = target, known
+				}
+			case w[0] == "pushd" || w[0] == "popd":
+				chainKnown, dirKnown = false, false
 			case w[0] == "make" || w[0] == "$(MAKE)" || w[0] == "${MAKE}" || w[0] == "gmake":
-				makes = append(makes, laneMakeTargets(w[1:], lineDir)...)
-			case w[0] == "cp" && len(w) == 3 && strings.HasSuffix(w[1], "_test.go") && !laneUnreadable(w[1]) && !laneUnreadable(w[2]) && lineKnown:
-				dst := path.Join(lineDir, w[2])
+				if !uncertain && chainKnown {
+					makes = append(makes, laneMakeTargets(w[1:], chainDir)...)
+				}
+			case w[0] == "cp" && len(w) == 3 && strings.HasSuffix(w[1], "_test.go") && !laneUnreadable(w[1]) && !laneUnreadable(w[2]):
+				if uncertain || !chainKnown {
+					break
+				}
+				dst := path.Join(chainDir, w[2])
 				if strings.HasSuffix(dst, "_test.go") {
 					if path.Base(dst) != path.Base(w[1]) {
-						continue // renamed: not the file the inventory holds
+						break // renamed: not the file the inventory holds
 					}
 					dst = path.Dir(dst)
 				}
-				copies = append(copies, laneCopy{src: path.Join(lineDir, w[1]), dstDir: dst})
+				copies = append(copies, laneCopy{src: path.Join(chainDir, w[1]), dstDir: dst})
 			case laneIsGoTest(w) > 0:
-				c := laneParseGoTest(w[laneIsGoTest(w):], lineDir)
+				c := laneParseGoTest(w[laneIsGoTest(w):], chainDir)
 				c.src = src
-				c.text = strings.Join(strings.Fields(sc.text), " ")
-				if !lineKnown && c.unread == "" {
-					c.unread = "runs in a directory this reader cannot follow"
+				c.text = strings.Join(strings.Fields(tok.text), " ")
+				note := func(why string) {
+					if c.unread == "" {
+						c.unread = why
+					}
 				}
-				if sc.condition && c.unread == "" {
-					c.unread = "runs under if/while/!, where its failure is a condition and not a verdict"
+				if !chainKnown {
+					note("runs in a directory this reader cannot follow")
+				}
+				for _, name := range assigns {
+					if name == "GOFLAGS" || name == "GOOS" || name == "GOARCH" || name == "GOEXPERIMENT" || name == "GOTOOLCHAIN" {
+						note(name + " is set for this command, which changes what it builds or runs")
+					}
+				}
+				if condition {
+					note("runs under if/while/!, where its failure is a condition and not a verdict")
+				}
+				if uncertain {
+					note(laneFlowWhy)
 				}
 				cmds = append(cmds, c)
+			}
+		}
+		// what the terminator opens or closes
+		switch tok.term {
+		case "{", "(":
+			if tok.term == "(" && len(words) > 0 {
+				break // name( of a function definition
+			}
+			stack = append(stack, laneFrame{kind: "group", cond: pendingFunc || before == "||" && tok.text == "", dir: dir, dirKnown: dirKnown})
+			if tok.term == "{" {
+				pendingFunc = false
+			}
+		case "}", ")":
+			if tok.term == ")" && ti > 0 && toks[ti-1].term == "(" && tok.text == "" && len(laneWords(toks[ti-1].text)) > 0 {
+				break // the () of a function definition
+			}
+			if n := len(stack); n > 0 && stack[n-1].kind == "group" {
+				dir, dirKnown = stack[n-1].dir, stack[n-1].dirKnown
+				stack = stack[:n-1]
+			}
+		case ";;":
+			if n := len(stack); n > 0 && stack[n-1].kind == "case" {
+				stack[n-1].inBody = false
 			}
 		}
 	}
@@ -356,17 +593,14 @@ func laneMakeTargets(words []string, dir string) []string {
 		case w == ">" || w == "2>&1" || strings.HasPrefix(w, ">") || strings.HasPrefix(w, "2>"):
 			return goals
 		default:
-			g := strings.ReplaceAll(w, "\x01", "*")
-			if laneUnreadable(g) {
-				continue // a shell variable: goals nobody can read here
+			if laneUnreadable(w) {
+				continue // a shell variable or an unresolved expression: no goal anybody can read
 			}
-			goals = append(goals, g)
+			goals = append(goals, w)
 		}
 	}
 	return goals
 }
-
-var laneExpr = regexp.MustCompile(`\$\{\{[^}]*\}\}`)
 
 // laneValueFlags are the go test flags that take a value in the next word
 // when written without `=`.
@@ -412,6 +646,9 @@ func laneParseGoTest(words []string, dir string) laneCmd {
 		if strings.HasPrefix(w, "-") && w != "-" {
 			name, val, hasVal := strings.Cut(strings.TrimLeft(w, "-"), "=")
 			if name == "args" {
+				if i+1 < len(words) {
+					note("-args passes arguments to the test binary, which can change what it runs")
+				}
 				break
 			}
 			if after, ok := strings.CutPrefix(name, "test."); ok {
@@ -421,8 +658,10 @@ func laneParseGoTest(words []string, dir string) laneCmd {
 				continue
 			}
 			if !laneValueFlags[name] {
-				// a flag for the test binary: the package list ended before it
+				// a flag for the test binary: the package list ended before
+				// it, and what it makes the binary do is not known here
 				sawUnknownFlag = true
+				note("-" + name + " is a flag this reader does not know")
 				continue
 			}
 			if !hasVal {
@@ -450,6 +689,10 @@ func laneParseGoTest(words []string, dir string) laneCmd {
 				}
 				c.tags = strings.FieldsFunc(val, func(r rune) bool { return r == ',' || r == ' ' })
 				sort.Strings(c.tags)
+			case "count":
+				if n, err := strconv.Atoi(val); err != nil || n < 1 {
+					note("-count=" + val + " runs no test")
+				}
 			case "list":
 				note("-list prints tests and runs none")
 			case "c", "o":
@@ -485,6 +728,13 @@ func laneParseGoTest(words []string, dir string) laneCmd {
 	}
 	if len(c.pkgs) == 0 && c.list == nil {
 		c.pkgs = []lanePkgPattern{{dir: c.dir}}
+	}
+	if c.unread == "" {
+		m, err := gotestmatch.New(c.run, c.skip)
+		if err != nil {
+			note(err.Error())
+		}
+		c.match = m
 	}
 	return c
 }
@@ -609,42 +859,6 @@ func (c *laneCmd) selectsPackage(moduleDir, dir string) bool {
 	return false
 }
 
-// laneSplitRegexp is the testing package's own split of a -run or -skip value
-// on the slashes that separate subtest levels.
-func laneSplitRegexp(s string) []string {
-	a := make([]string, 0, strings.Count(s, "/")+1)
-	cs, cp := 0, 0
-	for i := 0; i < len(s); {
-		switch s[i] {
-		case '[':
-			cs++
-		case ']':
-			if cs--; cs < 0 {
-				cs = 0
-			}
-		case '(':
-			if cs == 0 {
-				cp++
-			}
-		case ')':
-			if cs == 0 {
-				cp--
-			}
-		case '\\':
-			i++
-		case '/':
-			if cs == 0 && cp == 0 {
-				a = append(a, s[:i])
-				s = s[i+1:]
-				i = 0
-				continue
-			}
-		}
-		i++
-	}
-	return append(a, s)
-}
-
 var laneRegexps sync.Map
 
 func laneMatch(pattern, name string) bool {
@@ -660,27 +874,19 @@ func laneMatch(pattern, name string) bool {
 	return re != nil && re.MatchString(name)
 }
 
-// selectsName reports whether -run and -skip leave the top-level test in.
+// selectsName reports whether -run and -skip leave the top-level test in, by
+// the testing package's own rule (internal/gotestmatch).
 func (c *laneCmd) selectsName(name string) bool {
-	if c.run != "" {
-		if first := laneSplitRegexp(c.run)[0]; first != "" && !laneMatch(first, name) {
-			return false
-		}
-	}
-	if c.skip != "" {
-		if parts := laneSplitRegexp(c.skip); len(parts) == 1 && laneMatch(parts[0], name) {
-			return false
-		}
-	}
-	return true
+	return c.match != nil && c.match.Runs(name)
 }
 
 // ---------------------------------------------------------------- make
 
 type laneRule struct {
-	targets []string
-	prereqs []string
-	recipe  []laneRecipeLine
+	conditional bool // declared inside ifeq/ifdef: whether it exists is not known here
+	targets     []string
+	prereqs     []string
+	recipe      []laneRecipeLine
 }
 
 type laneRecipeLine struct {
@@ -726,6 +932,7 @@ func laneReadMake(root string) (*laneMake, error) {
 func (mk *laneMake) read(file, body string) {
 	lines := strings.Split(body, "\n")
 	var cur *laneRule
+	depth := 0
 	for i := 0; i < len(lines); i++ {
 		start := i
 		line := lines[i]
@@ -759,6 +966,12 @@ func (mk *laneMake) read(file, body string) {
 			continue
 		}
 		first := strings.Fields(flat)[0]
+		switch first {
+		case "ifeq", "ifneq", "ifdef", "ifndef":
+			depth++
+		case "endif":
+			depth--
+		}
 		if first == "define" || first == "endef" || first == "ifeq" || first == "ifneq" || first == "ifdef" || first == "ifndef" || first == "else" || first == "endif" || first == "include" || first == "-include" || first == "export" || first == "unexport" || first == "vpath" {
 			continue
 		}
@@ -775,7 +988,7 @@ func (mk *laneMake) read(file, body string) {
 		if before, after, found := strings.Cut(rest, ";"); found {
 			rest, recipe = before, after
 		}
-		cur = &laneRule{targets: strings.Fields(head), prereqs: strings.Fields(strings.ReplaceAll(rest, "|", " "))}
+		cur = &laneRule{conditional: depth > 0, targets: strings.Fields(head), prereqs: strings.Fields(strings.ReplaceAll(rest, "|", " "))}
 		if recipe != "" {
 			cur.recipe = append(cur.recipe, laneRecipeLine{src: fmt.Sprintf("%s:%d", file, start+1), text: recipe})
 		}
@@ -818,250 +1031,6 @@ func laneGlob(pattern, name string) bool {
 	return laneMatch(re, name)
 }
 
-// ---------------------------------------------------------------- workflows
-
-type laneStep struct {
-	src  string
-	run  string
-	dir  string
-	off  bool   // `if: false`, or an `if:` only a dispatch satisfies
-	cond string // the step's `if:`
-	goos map[string]bool
-}
-
-type laneWorkflow struct {
-	file    string
-	tier    string // "per-commit", "nightly" or ""
-	steps   []laneStep
-	callers []string // reusable workflows this one calls
-}
-
-var (
-	laneJobLine  = regexp.MustCompile(`^  ([A-Za-z0-9_-]+):\s*(#.*)?$`)
-	laneStepLine = regexp.MustCompile(`^(\s+)- `)
-	laneKeyLine  = regexp.MustCompile(`^(\s+)(?:- )?([A-Za-z0-9_-]+):\s*(.*)$`)
-)
-
-func laneReadWorkflow(file, body string) laneWorkflow {
-	wf := laneWorkflow{file: file}
-	lines := strings.Split(body, "\n")
-	on := ""
-	section := ""
-	var jobOff bool
-	var jobGOOS map[string]bool
-	var jobRows []map[string]string
-	inSteps := false
-	for i := 0; i < len(lines); i++ {
-		line := lines[i]
-		if len(line) > 0 && line[0] != ' ' && line[0] != '#' {
-			section, _, _ = strings.Cut(line, ":")
-			section = strings.Trim(section, `"'`)
-			if section == "on" {
-				on += line + "\n"
-			}
-			continue
-		}
-		if section == "on" {
-			if !strings.HasPrefix(strings.TrimSpace(line), "#") {
-				on += line + "\n"
-			}
-			continue
-		}
-		if section != "jobs" {
-			continue
-		}
-		if laneJobLine.MatchString(line) {
-			jobOff, inSteps = false, false
-			jobGOOS = map[string]bool{}
-			// the job's header, up to its steps, says where it runs
-			header := ""
-			for j := i + 1; j < len(lines) && !strings.HasPrefix(lines[j], "    steps:") && !laneJobLine.MatchString(lines[j]); j++ {
-				if t := strings.TrimSpace(lines[j]); !strings.HasPrefix(t, "#") {
-					header += lines[j] + "\n"
-				}
-			}
-			low := strings.ToLower(header)
-			runsOn := ""
-			if m := regexp.MustCompile(`(?m)^    runs-on:\s*(.*)$`).FindStringSubmatch(low); m != nil {
-				runsOn = m[1]
-			}
-			where := runsOn
-			if strings.Contains(runsOn, "matrix.") {
-				where = low
-			}
-			if strings.Contains(where, "windows") {
-				jobGOOS["windows"] = true
-			}
-			if strings.Contains(where, "macos") {
-				jobGOOS["darwin"] = true
-			}
-			if strings.Contains(where, "ubuntu") || strings.Contains(where, "linux") {
-				jobGOOS["linux"] = true
-			}
-			if m := regexp.MustCompile(`(?m)^    if:\s*(.*)$`).FindStringSubmatch(header); m != nil && laneIfOff(m[1]) {
-				jobOff = true
-			}
-			jobRows = laneMatrixRows(header)
-			if m := regexp.MustCompile(`(?m)^    uses:\s*\./\.github/workflows/([A-Za-z0-9_.-]+)`).FindStringSubmatch(header); m != nil && !jobOff {
-				wf.callers = append(wf.callers, m[1])
-			}
-			continue
-		}
-		if strings.HasPrefix(line, "    steps:") {
-			inSteps = true
-			continue
-		}
-		if !inSteps || !laneStepLine.MatchString(line) {
-			continue
-		}
-		// one step: from this `- ` to the next at the same indent
-		indent := len(laneStepLine.FindStringSubmatch(line)[1])
-		end := i + 1
-		for end < len(lines) {
-			l := lines[end]
-			if strings.TrimSpace(l) != "" && len(l)-len(strings.TrimLeft(l, " ")) <= indent && !strings.HasPrefix(strings.TrimSpace(l), "#") {
-				break
-			}
-			end++
-		}
-		st := laneStep{goos: jobGOOS, off: jobOff, dir: "."}
-		for j := i; j < end; j++ {
-			m := laneKeyLine.FindStringSubmatch(lines[j])
-			if m == nil || (len(m[1]) != indent+2 && j != i) {
-				continue
-			}
-			val := strings.TrimSpace(m[3])
-			switch m[2] {
-			case "if":
-				st.cond = val
-				if laneIfOff(val) {
-					st.off = true
-				}
-			case "working-directory":
-				st.dir = strings.Trim(val, `"'`)
-				if laneUnreadable(st.dir) || strings.HasPrefix(st.dir, "/") {
-					st.dir = "\x00"
-				}
-			case "run":
-				st.src = fmt.Sprintf("%s:%d", file, j+1)
-				if val == "" || val[0] == '|' || val[0] == '>' {
-					folded := val != "" && val[0] == '>'
-					var block []string
-					for k := j + 1; k < end; k++ {
-						l := lines[k]
-						if strings.TrimSpace(l) != "" && len(l)-len(strings.TrimLeft(l, " ")) <= indent+2 {
-							break
-						}
-						block = append(block, strings.TrimSpace(l))
-					}
-					if folded {
-						st.run = strings.Join(block, " ")
-					} else {
-						st.run = strings.Join(block, "\n")
-					}
-				} else {
-					st.run = val
-				}
-			}
-		}
-		if st.run != "" {
-			wf.steps = append(wf.steps, laneExpandRows(st, jobRows)...)
-		}
-		i = end - 1
-	}
-	switch {
-	case strings.Contains(on, "schedule:"):
-		wf.tier = "nightly"
-	case regexp.MustCompile(`(?m)^  push:`).MatchString(on) && !strings.Contains(on, "paths:"):
-		wf.tier = "per-commit"
-	}
-	return wf
-}
-
-// laneIfOff reports an `if:` that no push and no schedule satisfies: the
-// literal false, or a condition on the event being a dispatch.
-func laneIfOff(cond string) bool {
-	v := strings.TrimSpace(cond)
-	if len(v) >= 2 && (v[0] == '"' || v[0] == '\'') && v[len(v)-1] == v[0] {
-		v = v[1 : len(v)-1]
-	}
-	v = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(v, "${{"), "}}"))
-	if v == "false" {
-		return true
-	}
-	return strings.Contains(v, "== 'workflow_dispatch'") && !strings.Contains(v, "'schedule'") && !strings.Contains(v, "'push'")
-}
-
-var (
-	laneIncludeRow = regexp.MustCompile(`^(\s+)- ([A-Za-z0-9_-]+):\s*(.*)$`)
-	laneIncludeKey = regexp.MustCompile(`^(\s+)([A-Za-z0-9_-]+):\s*(.*)$`)
-	laneRowCond    = regexp.MustCompile(`^matrix\.([A-Za-z0-9_-]+)\s*(==|!=)\s*'([^']*)'$`)
-	laneMatrixRef  = regexp.MustCompile(`\$\{\{\s*matrix\.([A-Za-z0-9_-]+)\s*\}\}`)
-)
-
-// laneMatrixRows reads a job's literal `matrix: include:` rows.
-func laneMatrixRows(header string) []map[string]string {
-	var rows []map[string]string
-	in := false
-	for line := range strings.SplitSeq(header, "\n") {
-		if strings.TrimSpace(line) == "include:" {
-			in = true
-			continue
-		}
-		if !in {
-			continue
-		}
-		unq := func(s string) string {
-			s = strings.TrimSpace(s)
-			if len(s) >= 2 && (s[0] == '"' || s[0] == '\'') && s[len(s)-1] == s[0] {
-				return s[1 : len(s)-1]
-			}
-			return s
-		}
-		if m := laneIncludeRow.FindStringSubmatch(line); m != nil {
-			rows = append(rows, map[string]string{m[2]: unq(m[3])})
-		} else if m := laneIncludeKey.FindStringSubmatch(line); m != nil && len(rows) > 0 && len(m[1]) > 8 {
-			rows[len(rows)-1][m[2]] = unq(m[3])
-		} else if strings.TrimSpace(line) != "" {
-			in = false
-		}
-	}
-	return rows
-}
-
-// laneExpandRows writes a step once per literal matrix row when its script
-// names matrix values every row gives; otherwise the step stays as written
-// and its expressions read as opaque words.
-func laneExpandRows(st laneStep, rows []map[string]string) []laneStep {
-	refs := laneMatrixRef.FindAllStringSubmatch(st.run, -1)
-	if len(refs) == 0 || len(rows) == 0 {
-		return []laneStep{st}
-	}
-	for _, r := range refs {
-		for _, row := range rows {
-			if _, ok := row[r[1]]; !ok {
-				return []laneStep{st}
-			}
-		}
-	}
-	var out []laneStep
-	cond := laneRowCond.FindStringSubmatch(strings.TrimSpace(st.cond))
-	for _, row := range rows {
-		// a step under `if: matrix.k == 'v'` runs on the rows that say so
-		if cond != nil {
-			if got, ok := row[cond[1]]; ok && (got == cond[3]) != (cond[2] == "==") {
-				continue
-			}
-		}
-		v := st
-		v.run = laneMatrixRef.ReplaceAllStringFunc(st.run, func(m string) string {
-			return row[laneMatrixRef.FindStringSubmatch(m)[1]]
-		})
-		out = append(out, v)
-	}
-	return out
-}
-
 // ---------------------------------------------------------------- lanes
 
 type laneSet struct {
@@ -1076,23 +1045,6 @@ type laneSet struct {
 
 // laneBuild reads every counted workflow and the make rules they reach.
 func laneBuild(mk *laneMake, wfs map[string]laneWorkflow) *laneSet {
-	// a reusable workflow counts as its caller does
-	for changed := true; changed; {
-		changed = false
-		for _, wf := range wfs {
-			if wf.tier == "" {
-				continue
-			}
-			for _, callee := range wf.callers {
-				c, ok := wfs[callee]
-				if ok && (c.tier == "" || (c.tier == "nightly" && wf.tier == "per-commit")) {
-					c.tier = wf.tier
-					wfs[callee] = c
-					changed = true
-				}
-			}
-		}
-	}
 	byTarget := map[string][]*laneRule{}
 	var globRules []*laneRule
 	for _, r := range mk.rules {
@@ -1156,22 +1108,11 @@ func laneBuild(mk *laneMake, wfs map[string]laneWorkflow) *laneSet {
 	}
 	visit = func(goal string, from reachVal, top bool) {
 		found := false
-		if strings.Contains(goal, "*") {
-			for t, rules := range byTarget {
-				if laneGlob(goal, t) {
-					found = true
-					for _, r := range rules {
-						visitRule(r, from)
-					}
-				}
-			}
-		} else {
-			for _, r := range byTarget[goal] {
-				found = true
-				visitRule(r, from)
-			}
+		for _, r := range byTarget[goal] {
+			found = true
+			visitRule(r, from)
 		}
-		if !found && top && !strings.Contains(goal, "*") && !strings.Contains(goal, "/") && !strings.Contains(goal, ".") {
+		if !found && top && !strings.Contains(goal, "/") && !strings.Contains(goal, ".") {
 			stamped := false
 			for _, r := range globRules {
 				for _, t := range r.targets {
@@ -1185,43 +1126,26 @@ func laneBuild(mk *laneMake, wfs map[string]laneWorkflow) *laneSet {
 			}
 		}
 	}
-	names := make([]string, 0, len(wfs))
-	for n := range wfs {
-		names = append(names, n)
-	}
-	sort.Slice(names, func(i, j int) bool {
-		// per-commit workflows first, so a rule both tiers reach reads per-commit
-		a, b := wfs[names[i]], wfs[names[j]]
-		if a.tier != b.tier {
-			return a.tier == "per-commit"
+	steps, counted := laneSteps(wfs)
+	set.workflows = counted
+	// per-commit steps first, so a rule both tiers reach reads per-commit
+	sort.SliceStable(steps, func(i, j int) bool { return steps[i].tier == "per-commit" && steps[j].tier != "per-commit" })
+	for _, st := range steps {
+		file, _, _ := strings.Cut(st.src, ":")
+		goos := map[string]bool{st.goos: true}
+		cmds, makes, _ := laneScript(st.src, st.run, st.dir)
+		for _, c := range cmds {
+			c.workflow, c.tier, c.goos = file, st.tier, goos
+			if st.unread != "" && c.unread == "" {
+				c.unread = st.unread
+			}
+			set.cmds = append(set.cmds, c)
 		}
-		return names[i] < names[j]
-	})
-	for _, n := range names {
-		wf := wfs[n]
-		if wf.tier == "" {
-			continue
+		if st.unread != "" {
+			continue // a step this reader cannot place reaches no make goal
 		}
-		set.workflows++
-		for _, st := range wf.steps {
-			if st.off {
-				continue
-			}
-			goos := st.goos
-			if len(goos) == 0 {
-				goos = map[string]bool{"linux": true}
-			}
-			cmds, makes, _ := laneScript(st.src, st.run, st.dir)
-			for _, c := range cmds {
-				c.workflow, c.tier, c.goos = wf.file, wf.tier, goos
-				if st.dir == "\x00" && c.unread == "" {
-					c.unread = "the step's working-directory is not a literal"
-				}
-				set.cmds = append(set.cmds, c)
-			}
-			for _, g := range makes {
-				visit(g, reachVal{workflow: wf.file, tier: wf.tier, goos: goos, src: st.src}, true)
-			}
+		for _, g := range makes {
+			visit(g, reachVal{workflow: file, tier: st.tier, goos: goos, src: st.src}, true)
 		}
 	}
 	for _, r := range mk.rules {
@@ -1236,6 +1160,9 @@ func laneBuild(mk *laneMake, wfs map[string]laneWorkflow) *laneSet {
 			}
 			for _, c := range cmds {
 				c.workflow, c.tier, c.goos, c.target = v.workflow, v.tier, v.goos, r.targets[0]
+				if r.conditional && c.unread == "" {
+					c.unread = "its make rule is declared inside a conditional"
+				}
 				set.cmds = append(set.cmds, c)
 			}
 		}
@@ -1352,13 +1279,29 @@ func laneCompiled(root string, ctx laneContext) (map[string]map[string]bool, err
 	return got, nil
 }
 
+// laneBuilds reports whether a build under ctx compiles the file: its
+// //go:build line and its name's GOOS and GOARCH suffix, by go/build's own
+// rule. It is how a nested module's files are placed, where `go list` from the
+// root does not reach.
+func laneBuilds(file string, ctx laneContext) bool {
+	bc := build.Default
+	bc.GOOS, bc.GOARCH, bc.CgoEnabled = ctx.goos, "amd64", false
+	bc.BuildTags = nil
+	if ctx.tags != "" {
+		bc.BuildTags = strings.Split(ctx.tags, ",")
+	}
+	ok, err := bc.MatchFile(filepath.Dir(file), filepath.Base(file))
+	return err == nil && ok
+}
+
 // laneFile is one _test.go file on disk.
 type laneFile struct {
 	module  string // "" for the main module, else the nested module's directory
 	dir     string // relative to the repository root
 	name    string
 	tests   []string
-	fixture bool // under testdata, or a directory the go tool does not walk
+	abs     string // the file's path on disk
+	fixture bool   // under testdata, or a directory the go tool does not walk
 }
 
 // laneInventory walks the tree for every _test.go file and parses each one.
@@ -1394,7 +1337,7 @@ func laneInventory(root string) ([]laneFile, error) {
 			return err
 		}
 		rel = filepath.ToSlash(rel)
-		f := laneFile{dir: rel, name: d.Name()}
+		f := laneFile{dir: rel, name: d.Name(), abs: p}
 		for dir := rel; dir != "."; dir = path.Dir(dir) {
 			base := path.Base(dir)
 			if base == "testdata" || base == "vendor" || strings.HasPrefix(base, "_") || strings.HasPrefix(base, ".") {
@@ -1508,6 +1451,16 @@ func laneAssignAll(files []laneFile, set *laneSet, compiled func(laneContext) (m
 			if !any {
 				res.stranded = append(res.stranded, fmt.Sprintf("%s/%s (%d tests)", f.dir, f.name, len(f.tests)))
 			}
+		} else {
+			any := false
+			for ctx := range ctxs {
+				if laneBuilds(f.abs, ctx) {
+					any = true
+				}
+			}
+			if !any {
+				res.stranded = append(res.stranded, fmt.Sprintf("%s/%s (%d tests)", f.dir, f.name, len(f.tests)))
+			}
 		}
 		for _, name := range f.tests {
 			res.tests++
@@ -1533,7 +1486,17 @@ func laneAssignAll(files []laneFile, set *laneSet, compiled func(laneContext) (m
 					}
 				} else {
 					// a nested module is run from inside it, or from a
-					// directory a reached recipe copies the file into
+					// directory a reached recipe copies the file into, and
+					// only by a build that compiles the file
+					builds := false
+					for g := range c.goos {
+						if laneBuilds(f.abs, laneContext{goos: g, tags: strings.Join(c.tags, ",")}) {
+							builds = true
+						}
+					}
+					if !builds {
+						continue
+					}
 					ok := (c.dir == f.module || strings.HasPrefix(c.dir, f.module+"/")) && c.selectsPackage(f.module, f.dir)
 					for _, d := range set.copies[path.Join(f.dir, f.name)] {
 						if c.dir != "." && (c.dir == d || strings.HasPrefix(d, c.dir+"/")) && c.selectsPackage(f.module, d) {

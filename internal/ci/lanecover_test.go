@@ -16,8 +16,7 @@ import (
 // person, per-commit or nightly, and this test proves it for each one by name.
 //
 // WHAT IT CLOSED (measured on main at f397f5f77, 2026-11-21): 6638 tests in
-// 3323 _test.go files. Two were run by no lane, and 83 more were run by lanes
-// that no gate watched:
+// 3323 _test.go files, 57 of them with no lane this gate can prove:
 //
 //   - tools/treelock/treelock_windows_test.go (1 test) is `//go:build
 //     windows`. No Linux row compiles it, and ci-full.yml's windows job ran
@@ -25,23 +24,40 @@ import (
 //   - test/conformance/go/rows: TestRowR20FloatWidensExactly was in neither
 //     half of conformance-go-rows-a / -b, whose -run lists are written out
 //     by hand. It ran only as a subtest of TestRowR20.
-//   - 83 tests live in the nested modules under tables/cards and
-//     test/conformance/go. They do run (cards-test and conformance-go-rows),
-//     and nothing checked that: `go list ./...` from the root stops at a
-//     nested go.mod, so every existing gate (tools/slowgatescan's
-//     TestCIFullGoTestRunsEveryTestExactlyOnce, tools/gotestrows) counts only
-//     the main module and would stay green if those recipes were deleted.
+//   - 55 tests in the nested modules tables/cards (36), tables/cards/example
+//     (1) and test/go-tables (18) had one lane: certify.yml's leg step, which
+//     chooses its make goals in shell at run time (`make "test-${SHARD}"`
+//     inside an if on a variable it computes). Nothing in the files says
+//     that step runs test-go, and `go list ./...` from the root stops at a
+//     nested go.mod, so no other gate counted these tests at all. ci-full's
+//     go-test rows module-cards-go and module-go-tables run them by name now.
 //
-// HOW IT DECIDES. lanecover_engine_test.go reads every workflow and every make
-// rule. A workflow counts when it has a schedule (nightly) or runs on a push
-// with no path filter (per-commit); one only a person can dispatch does not,
-// and neither does a job or a step under `if: false` or under a condition on
-// the event being a dispatch. A nightly lane therefore counts exactly when
-// its workflow file exists, is scheduled, and runs the test. A make recipe
-// counts when a counted step runs its target, directly or through
-// prerequisites. For each `go test` it finds, the toolchain (`go list` under
-// the job's GOOS and the command's -tags) says which test files the command
-// compiles; -run and -skip say which tests in them it keeps.
+// HOW IT DECIDES. The rule everywhere is: credit only what is certain.
+//
+//   - Workflows (lanecover_workflow_test.go). A workflow counts for its
+//     automatic triggers: a schedule (nightly), a push with no path filter
+//     (per-commit). A job's matrix is expanded to the rows GitHub builds
+//     (lists multiplied, exclude applied, include merged or appended), each
+//     `if:` is evaluated per trigger and per row, and a step runs only where
+//     its job's and its own `if:` are certainly true. `${{ }}` in a script is
+//     replaced by its value for that row. Whatever cannot be resolved (a
+//     matrix another job computes, runner.*, needs.*, env.*) is unknown, and
+//     unknown is not a run. So a nightly lane counts exactly when its
+//     workflow file exists, is scheduled, and certainly runs the test.
+//   - Scripts (lanecover_engine_test.go). Only a command the script certainly
+//     reaches counts: not one inside an if, a loop, a function or after ||.
+//     A case over a literal word is read through its one matching branch. A
+//     make goal must be spelled out; a shell variable or an unresolved
+//     expression names no goal. Make rules are followed through prerequisites
+//     and recursive make, and a rule inside a make conditional earns nothing.
+//   - Commands. `go test` is read into directory, packages, -tags, -run and
+//     -skip. -run and -skip are matched by the testing package's own rule
+//     (internal/gotestmatch). -count=0, -list, -c, -overlay, -args with
+//     arguments, a flag this reader does not know, GOFLAGS or GOOS set for
+//     the command, a package list in a variable: credited with nothing.
+//   - Files. `go list` under the job's GOOS and the command's -tags says which
+//     test files a command compiles in the main module; go/build's own file
+//     matching says it for a nested module.
 //
 // WHAT IS RED:
 //   - a test no command selects, by file and name;
@@ -53,19 +69,14 @@ import (
 //     an empty inventory, or no command at all: the gate looked at less than
 //     it should.
 //
-// A command the reader cannot read (a package list in a shell variable, an
-// -overlay sabotage build, a command under `if`) is credited with nothing.
-// So is the per-commit `go test $PACKAGES` of go-test-touched, by design: it
-// runs what a diff touches, which is no promise about any one test. The
-// count of such commands is logged on every run.
+// The fix for a red is always a lane a reader can see: a step or a make rule
+// that names the goal. There is no list of exceptions here to add to.
 //
 // IT DOES NOT ASK whether a selected test then skips itself (the SCHEMA_SLOW
 // accounting in tools/slowgatescan and the skip ledgers own that), and it
 // does not require exactly once: the per-row exactly-once rule for ci-full's
 // go-test job stays in tools/slowgatescan. It logs how many tests more than
-// one command selects (6546 of them on the day it was written: certify.yml's
-// plain `go test ./...` and the per-target make gates select again what the
-// ci-full rows already ran).
+// one command selects (6537 of 6648 on the day it was written).
 func TestEveryGoTestIsAssignedToALane(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
@@ -291,6 +302,57 @@ func TestLaneCoverageGoesRedOnTheRealLanes(t *testing.T) {
 		}
 		has(t, nowhere(t, mk2, wfs), "test/conformance/go/rows/R20_test.go: TestRowR20FloatWidensExactly is run by no CI lane")
 	})
+	t.Run("F-023 an unreferenced make rule earns nothing on the real certify.yml", func(t *testing.T) {
+		t.Parallel()
+		mk2, err := laneReadMake(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		edited := 0
+		for _, r := range mk2.rules {
+			for i := range r.recipe {
+				if strings.Contains(r.recipe[i].text, "proof conformance-go-rows-b") {
+					r.recipe[i].text = strings.ReplaceAll(r.recipe[i].text, "|TestRowR20FloatWidensExactly|", "|")
+					edited++
+				}
+			}
+		}
+		if edited != 1 {
+			t.Fatalf("edited %d conformance-go-rows-b recipes, want 1", edited)
+		}
+		// her rule: named like certify.yml's `test-${{ matrix.shard }}` goals, on no row
+		mk2.read("planted.mk", "test-stella-never-on-any-matrix:\n\tcd test/conformance/go && go test ./rows/ -count=1 -run '^TestRowR20FloatWidensExactly$$'\n")
+		has(t, nowhere(t, mk2, wfs), "test/conformance/go/rows/R20_test.go: TestRowR20FloatWidensExactly is run by no CI lane")
+	})
+	t.Run("F-022 ci-full's smoke steps are off on its only automatic event", func(t *testing.T) {
+		t.Parallel()
+		_, set, err := laneVerdict(root, mk, wfs, realCompiled(root))
+		if err != nil {
+			t.Fatal(err)
+		}
+		full := 0
+		for _, c := range set.cmds {
+			switch c.target {
+			case "test-moo-tagged-compiler-smoke", "test-moo-tagged-table-smoke", "test-goose-tagged-harness-smoke":
+				t.Errorf("%s (%s) is credited through %s: its steps run on every event but schedule, and schedule is ci-full.yml's one automatic trigger", c.src, c.target, c.workflow)
+			case "test-moo-tagged-compiler", "test-moo-tagged-table", "test-goose-tagged-harness":
+				full++
+			}
+		}
+		if full == 0 {
+			t.Error("the scheduled moo and goose tagged targets are credited to nobody: this control is reading the wrong names")
+		}
+		// and with the scheduled step moved to the other events, the tests it alone ran are red
+		errs := nowhere(t, mk, edit("ci-full.yml", "        if: matrix.group == 'moo-compiler' && github.event_name == 'schedule'", "        if: matrix.group == 'moo-compiler' && github.event_name != 'schedule'"))
+		has(t, errs, "compiler/tablesmoo_test.go: ")
+	})
+	t.Run("a nested module's lane row leaves the matrix", func(t *testing.T) {
+		t.Parallel()
+		errs := nowhere(t, mk, edit("ci-full.yml", "module-cards-go, module-go-tables, ", ""))
+		has(t, errs, "tables/cards/cards_test.go: ")
+		has(t, errs, "tables/cards/example/example_test.go: ")
+		has(t, errs, "test/go-tables/usage_test.go: TestUsage is run by no CI lane")
+	})
 	t.Run("the cards module's recipe gone", func(t *testing.T) {
 		t.Parallel()
 		mk2, err := laneReadMake(root)
@@ -318,7 +380,7 @@ func TestLaneCoverageGoesRedOnTheRealLanes(t *testing.T) {
 // laneFixture writes a small repository into a temporary directory: two
 // packages, a tagged test file, a Windows-only one, a nested module, a
 // Makefile and the workflows a case names.
-func laneFixture(t *testing.T, makefile string, workflows map[string]string) string {
+func laneFixture(t *testing.T, makefile string, workflows, files map[string]string) string {
 	t.Helper()
 	root := t.TempDir()
 	write := func(name, body string) {
@@ -343,6 +405,15 @@ func laneFixture(t *testing.T, makefile string, workflows map[string]string) str
 	write("nested/n_test.go", "package nested\n\nimport \"testing\"\n\nfunc TestNested(t *testing.T) {}\n")
 	write("a/testdata/fixture_test.go", "this is a fixture, not Go\n")
 	write("Makefile", makefile)
+	for name, body := range files {
+		if body == "" {
+			if err := os.Remove(filepath.Join(root, filepath.FromSlash(name))); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
+		write(name, body)
+	}
 	for name, body := range workflows {
 		write(".github/workflows/"+name, body)
 	}
@@ -391,9 +462,13 @@ jobs:
       - run: go test ./w/
 `
 
-func laneFixtureErrors(t *testing.T, makefile string, workflows map[string]string) []string {
+func laneFixtureErrors(t *testing.T, makefile string, workflows map[string]string, files ...map[string]string) []string {
 	t.Helper()
-	root := laneFixture(t, makefile, workflows)
+	var extra map[string]string
+	if len(files) > 0 {
+		extra = files[0]
+	}
+	root := laneFixture(t, makefile, workflows, extra)
 	mk, wfs, err := laneLoad(root)
 	if err != nil {
 		t.Fatal(err)
@@ -426,6 +501,7 @@ func TestLaneCoverageControls(t *testing.T) {
 		makefile string
 		nightly  string
 		want     []string // each must appear in one error; the count must match
+		files    map[string]string
 	}{
 		{name: "every test has a lane", makefile: laneGoodMakefile, nightly: laneGoodNightly},
 		{
@@ -503,6 +579,103 @@ func TestLaneCoverageControls(t *testing.T) {
 			nightly: edit(laneGoodNightly, "run: go test ./a -run '^TestA$'", "run: echo go test ./a -run '^TestA$'"),
 			want:    []string{"a/a_test.go: TestA" + none},
 		},
+		// the reviewer's rows F-020 to F-026, each her repro on this fixture
+		{
+			name: "F-020 -count=0 runs nothing", makefile: laneGoodMakefile,
+			nightly: edit(laneGoodNightly, "run: go test ./w/", "run: go test ./w/ -count=0"),
+			want:    []string{"w/only_windows_test.go (1 tests): no CI lane's build compiles this file", "w/only_windows_test.go: TestWin" + none},
+		},
+		{
+			name: "F-021 a -skip alternative after a deeper one skips the test", makefile: laneGoodMakefile,
+			nightly: edit(laneGoodNightly, "run: go test ./w/", "run: go test ./w/ -skip 'TestMissing/child|TestWin'"),
+			want:    []string{"w/only_windows_test.go: TestWin" + none},
+		},
+		{
+			name: "F-021 control: -skip of another test keeps it", makefile: laneGoodMakefile,
+			nightly: edit(laneGoodNightly, "run: go test ./w/", "run: go test ./w/ -skip 'TestWin/child|TestMissing'"),
+		},
+		{
+			name: "F-022 the job waits for an event the workflow never receives", makefile: laneGoodMakefile,
+			nightly: edit(laneGoodNightly, "  windows:\n", "  windows:\n    if: github.event_name == 'pull_request'\n"),
+			want:    []string{"w/only_windows_test.go (1 tests): no CI lane's build compiles this file", "w/only_windows_test.go: TestWin" + none},
+		},
+		{
+			name: "F-022 control: the job's event is the workflow's own", makefile: laneGoodMakefile,
+			nightly: edit(laneGoodNightly, "  windows:\n", "  windows:\n    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'\n"),
+		},
+		{
+			name: "F-022 a step excluded from the only automatic event", makefile: laneGoodMakefile,
+			nightly: edit(laneGoodNightly, "        if: matrix.group == 'two'", "        if: matrix.group == 'two' && github.event_name != 'schedule'"),
+			want:    []string{"a/a_test.go: FuzzC" + none, "a/a_test.go: TestB" + none},
+		},
+		{
+			name: "F-022 an if this reader cannot decide", makefile: laneGoodMakefile,
+			nightly: edit(laneGoodNightly, "        if: matrix.group == 'two'", "        if: matrix.group == 'two' && runner.environment == 'self-hosted'"),
+			want:    []string{"a/a_test.go: FuzzC" + none, "a/a_test.go: TestB" + none},
+		},
+		{
+			name:     "F-023 control: a matrix goal the rows name is credited",
+			makefile: laneGoodMakefile + "test-one: test-all\ntest-two:\ntest-rest:\n",
+			nightly:  edit(laneGoodNightly, "make -j4 test-all V=1", "make -j4 \"test-${{ matrix.group }}\" V=1"),
+		},
+		{
+			name:     "F-023 a make rule no matrix row names is credited with nothing",
+			makefile: edit(laneGoodMakefile, "test-all: test-tagged test-nested", "test-all: test-nested\ntest-stella-never-on-any-matrix: test-tagged") + "test-one: test-all\ntest-two:\ntest-rest:\n",
+			nightly:  edit(laneGoodNightly, "make -j4 test-all V=1", "make -j4 \"test-${{ matrix.group }}\" V=1"),
+			want:     []string{"b/tagged_test.go (1 tests): no CI lane's build compiles this file", "b/tagged_test.go: TestTagged" + none},
+		},
+		{
+			name: "F-024 the matrix loses the one value a guarded step waits for", makefile: laneGoodMakefile,
+			nightly: edit(laneGoodNightly, "group: [ one, two, rest ]", "group: [ one, rest ]"),
+			want:    []string{"a/a_test.go: FuzzC" + none, "a/a_test.go: TestB" + none},
+		},
+		{
+			name: "F-024 the value is excluded", makefile: laneGoodMakefile,
+			nightly: edit(laneGoodNightly, "group: [ one, two, rest ]\n", "group: [ one, two, rest ]\n        exclude:\n          - group: two\n"),
+			want:    []string{"a/a_test.go: FuzzC" + none, "a/a_test.go: TestB" + none},
+		},
+		{
+			name: "F-024 the matrix is computed by another job", makefile: laneGoodMakefile,
+			nightly: edit(laneGoodNightly, "group: [ one, two, rest ]", "group: ${{ fromJSON(needs.plan.outputs.groups) }}"),
+			want:    []string{"a/a_test.go: FuzzC" + none, "a/a_test.go: TestA" + none, "a/a_test.go: TestB" + none, "b/b_test.go: TestPlain" + none},
+		},
+		{
+			name: "F-025 -args hands the test binary its own selector", makefile: laneGoodMakefile,
+			nightly: edit(laneGoodNightly, "run: go test ./w/", "run: go test ./w/ -args -test.run TestNotFound"),
+			want:    []string{"w/only_windows_test.go (1 tests): no CI lane's build compiles this file", "w/only_windows_test.go: TestWin" + none},
+		},
+		{
+			name: "F-026 a nested module's Windows-only file on a Linux lane", makefile: laneGoodMakefile,
+			nightly: laneGoodNightly,
+			files:   map[string]string{"nested/n_test.go": "", "nested/n_windows_test.go": "package nested\n\nimport \"testing\"\n\nfunc TestNested(t *testing.T) {}\n"},
+			want:    []string{"nested/n_windows_test.go: TestNested" + none},
+		},
+		{
+			name: "F-026 a nested module's tagged file with no tag lane", makefile: laneGoodMakefile,
+			nightly: laneGoodNightly,
+			files:   map[string]string{"nested/n_test.go": "//go:build never\n\npackage nested\n\nimport \"testing\"\n\nfunc TestNested(t *testing.T) {}\n"},
+			want:    []string{"nested/n_test.go (1 tests): no CI lane's build compiles this file", "nested/n_test.go: TestNested" + none},
+		},
+		{
+			name: "the command sits in a shell if", makefile: laneGoodMakefile,
+			nightly: edit(laneGoodNightly, "run: go test ./a -run '^TestA$'", "run: if [ -n \"$X\" ]; then go test ./a -run '^TestA$'; fi"),
+			want:    []string{"a/a_test.go: TestA" + none},
+		},
+		{
+			name: "the make goal sits in a shell if", makefile: laneGoodMakefile,
+			nightly: edit(laneGoodNightly, "make -j4 test-all V=1", "if [ -z \"$IDX\" ]; then make -j4 test-all V=1; fi"),
+			want:    []string{"b/tagged_test.go (1 tests): no CI lane's build compiles this file", "b/tagged_test.go: TestTagged" + none, "nested/n_test.go: TestNested" + none},
+		},
+		{
+			name: "the command runs only when another fails", makefile: laneGoodMakefile,
+			nightly: edit(laneGoodNightly, "run: go test ./a -run '^TestA$'", "run: true || go test ./a -run '^TestA$'"),
+			want:    []string{"a/a_test.go: TestA" + none},
+		},
+		{
+			name: "GOFLAGS is set over the step", makefile: laneGoodMakefile,
+			nightly: edit(laneGoodNightly, "        run: go test ./a -run '^TestA$'", "        env:\n          GOFLAGS: -run=TestNope\n        run: go test ./a -run '^TestA$'"),
+			want:    []string{"a/a_test.go: TestA" + none},
+		},
 		{
 			name: "the command runs in another directory", makefile: laneGoodMakefile,
 			nightly: edit(laneGoodNightly, "run: go test ./a -run '^TestA$'", "run: cd b && go test ./a -run '^TestA$'"),
@@ -511,7 +684,7 @@ func TestLaneCoverageControls(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			errs := laneFixtureErrors(t, c.makefile, map[string]string{"nightly.yml": c.nightly})
+			errs := laneFixtureErrors(t, c.makefile, map[string]string{"nightly.yml": c.nightly}, c.files)
 			if len(errs) != len(c.want) {
 				t.Errorf("got %d errors, want %d:\n%s", len(errs), len(c.want), strings.Join(errs, "\n"))
 			}
@@ -634,6 +807,25 @@ func TestLaneCommandReader(t *testing.T) {
 		{"cd \"$dir\" && go test ./a", "a", "TestA", false},
 		{"go test $(go list ./... | sed s/x/y/)", "a", "TestA", false},
 		{"go test $(go list -f '{{.Dir}}' ./...)", "a", "TestA", false},
+		{"go test ./a -count=0", "a", "TestA", false},
+		{"go test ./a -count 0", "a", "TestA", false},
+		{"go test ./a -count \"$N\"", "a", "TestA", false},
+		{"go test ./a -count=2", "a", "TestA", true},
+		{"go test ./a -args -test.run TestNotFound", "a", "TestA", false},
+		{"go test ./a -args", "a", "TestA", true},
+		{"go test ./a -run 'Test('", "a", "TestA", false},
+		{"go test ./a -skip 'TestMissing/child|TestA'", "a", "TestA", false},
+		{"go test ./a -skip 'TestA/child|TestMissing'", "a", "TestA", true},
+		{"go test ./a -run 'TestMissing/child|TestA'", "a", "TestA", true},
+		{"GOFLAGS=-run=TestB go test ./a", "a", "TestA", false},
+		{"GOOS=windows go test ./a", "a", "TestA", false},
+		{"if [ -n \"$x\" ]; then go test ./a; fi", "a", "TestA", false},
+		{"true || go test ./a", "a", "TestA", false},
+		{"for p in a; do go test ./a; done", "a", "TestA", false},
+		{"run() { go test ./a; }", "a", "TestA", false},
+		{"case y in y) go test ./a ;; esac", "a", "TestA", true},
+		{"case z in y) go test ./a ;; *) go test ./b ;; esac", "b", "TestA", true},
+		{"go test ./a -unknown-flag", "a", "TestA", false},
 	} {
 		cmd := one(t, c.script)
 		got := cmd.unread == "" && cmd.selectsPackage("", c.pkg) && cmd.selectsName(c.name)
@@ -649,17 +841,171 @@ func TestLaneCommandReader(t *testing.T) {
 	}
 	// make goals: flags, variables and a dry run
 	for script, want := range map[string]string{
-		"make -j4 a b V=1":                         "a b",
-		"make -o skipped a":                        "a",
-		"make -C sub a":                            "",
-		"make -pq a":                               "",
-		"make \"verify-${{ matrix.leg }}-x\"":      "verify-*-x",
-		"make $goals a":                            "a",
-		"case x in y) make a ;; z) make b ;; esac": "a b",
+		"make -j4 a b V=1":                           "a b",
+		"make -o skipped a":                          "a",
+		"make -C sub a":                              "",
+		"make -pq a":                                 "",
+		"make \"verify-${{ matrix.leg }}-x\"":        "",
+		"case y in y) make a ;; z) make b ;; esac":   "a",
+		"case \"$v\" in y) make a ;; esac":           "",
+		"if [ -n \"$x\" ]; then make a; fi; make b":  "b",
+		"for g in a b; do make $g c; done; make d":   "d",
+		"run() { make a; }; make b":                  "b",
+		"true || make a":                             "",
+		"cat <<EOF\nmake a\nEOF\nmake b":             "b",
+		"awk '\n  END { make a }\n' x\nmake b":       "b",
+		"VARS=(\n  make a\n)\nmake b \"${VARS[@]}\"": "b",
+		"( cd sub && make a ); make b":               "b",
+		"make $goals a":                              "a",
+		"case x in y) make a ;; z) make b ;; esac":   "",
+		"case x in y) make a ;; *) make b ;; esac":   "b",
 	} {
 		_, makes, _ := laneScript("x:1", script, ".")
 		if got := strings.Join(makes, " "); got != want {
 			t.Errorf("%q: goals %q, want %q", script, got, want)
 		}
+	}
+}
+
+// TestLaneExpressions holds the expression reader to GitHub's rules where it
+// answers, and to "unknown" everywhere else: an `if:` is a run only when it
+// is certainly true.
+func TestLaneExpressions(t *testing.T) {
+	t.Parallel()
+	row := map[string]laneVal{"group": laneS("unit-a"), "os": laneS("fleet"), "flag": laneB(true), "runner": {kind: laneList, raw: "[self-hosted, macOS]"}}
+	sched := laneEnv{event: "schedule", row: row, rowKnown: true}
+	push := laneEnv{event: "push", row: row, rowKnown: true}
+	noRow := laneEnv{event: "schedule"}
+	for _, c := range []struct {
+		cond string
+		env  laneEnv
+		want bool
+	}{
+		{"", sched, true},
+		{"true", sched, true},
+		{"false", sched, false},
+		{"${{ false }}", sched, false},
+		{"github.event_name == 'schedule'", sched, true},
+		{"github.event_name == 'SCHEDULE'", sched, true}, // == ignores case
+		{"github.event_name == 'schedule'", push, false},
+		{"github.event_name == 'pull_request'", sched, false},
+		{"github.event_name == 'workflow_dispatch'", sched, false},
+		{"github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'", sched, true},
+		{"github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository", sched, true},
+		{"github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))", sched, true},
+		{"github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository", sched, false},
+		{"startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)", push, true},
+		{"startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.legs != '[]' && github.event_name == 'workflow_dispatch')", push, false},
+		{"needs.plan.outputs.legs != '[]'", push, false}, // unknown is not a run
+		{"runner.environment == 'github-hosted'", sched, false},
+		{"!(runner.environment == 'github-hosted')", sched, false},
+		{"matrix.group == 'unit-a'", sched, true},
+		{"matrix.group == 'unit-b'", sched, false},
+		{"matrix.group != 'unit-b'", sched, true},
+		{"matrix.group == 'unit-a' && runner.environment == 'github-hosted'", sched, false},
+		{"matrix.group == 'unit-b' && runner.environment == 'github-hosted'", sched, false},
+		{"matrix.group == 'unit-a' || runner.environment == 'github-hosted'", sched, true},
+		{"matrix.group == 'unit-a' && github.event_name != 'schedule'", sched, false},
+		{"matrix.group == 'unit-a' && github.event_name != 'schedule'", push, true},
+		{"startsWith(matrix.group, 'unit-')", sched, true},
+		{"startsWith(matrix.group, 'core-')", sched, false},
+		{"'!startsWith(matrix.group, ''core-'') && matrix.group != ''generated'''", sched, true},
+		{"matrix.absent != ''", sched, false}, // a key the row lacks is empty
+		{"matrix.absent == ''", sched, true},
+		{"matrix.flag", sched, true},
+		{"matrix.runner", sched, true},
+		{"matrix.group == 'unit-a'", noRow, false}, // an unresolved matrix answers nothing
+		{"matrix.group != 'unit-b'", noRow, false},
+		{"always()", sched, true},
+		{"always() && !cancelled()", sched, true},
+		{"failure()", sched, false},
+		{"hashFiles('x') != ''", sched, false},
+		{"github.event_name == ", sched, false}, // does not parse
+		{"github.event_name === 'schedule'", sched, false},
+	} {
+		if got := laneCertain(c.cond, c.env); got != c.want {
+			t.Errorf("if: %s under %s = %v, want %v", c.cond, c.env.event, got, c.want)
+		}
+	}
+	if got := laneSubst("make \"test-${{ matrix.group }}\" ${{ matrix.runner }} ${{ needs.x.outputs.y }} ${{ github.event_name == 'schedule' && 'full' || 'smoke' }}", sched); got != "make \"test-unit-a\" ${{ matrix.runner }} ${{ needs.x.outputs.y }} full" {
+		t.Errorf("substitution = %q", got)
+	}
+	if got := laneRunsOn("${{ matrix.runner }}", sched); got != "darwin" {
+		t.Errorf("runs-on from a row's list = %q, want darwin", got)
+	}
+	if got := laneRunsOn("${{ needs.x.outputs.runner }}", sched); got != "" {
+		t.Errorf("an unresolved runs-on = %q, want none", got)
+	}
+}
+
+// TestLaneMatrixRows holds the matrix to the rows GitHub builds: the product
+// of the lists, less exclude, with include merged into the rows it does not
+// contradict or appended; and to "not known" when any part is computed.
+func TestLaneMatrixRows(t *testing.T) {
+	t.Parallel()
+	read := func(body string) laneMatrix {
+		t.Helper()
+		wf := laneReadWorkflow("x.yml", "on:\n  schedule:\n    - cron: '1 2 * * *'\njobs:\n  j:\n    runs-on: ubuntu-24.04\n    strategy:\n      fail-fast: false\n      matrix:"+body+"\n    steps:\n      - run: true\n")
+		if len(wf.jobs) != 1 {
+			t.Fatalf("read %d jobs", len(wf.jobs))
+		}
+		return wf.jobs[0].matrix
+	}
+	show := func(rows []map[string]laneVal) string {
+		var out []string
+		for _, r := range rows {
+			var keys []string
+			for k := range r {
+				keys = append(keys, k)
+			}
+			slices.Sort(keys)
+			var parts []string
+			for _, k := range keys {
+				v, _ := r[k].text()
+				if r[k].kind == laneList {
+					v = r[k].raw
+				}
+				parts = append(parts, k+"="+v)
+			}
+			out = append(out, strings.Join(parts, ","))
+		}
+		slices.Sort(out)
+		return strings.Join(out, " | ")
+	}
+	for _, c := range []struct {
+		name, body, event string
+		want              string
+		unknown           bool
+	}{
+		{name: "one list", body: "\n        g: [ a, b ]", want: "g=a | g=b"},
+		{name: "a block list", body: "\n        g:\n          - a\n          - b # the second", want: "g=a | g=b"},
+		{name: "a product", body: "\n        g: [a, b]\n        os: [x, y]", want: "g=a,os=x | g=a,os=y | g=b,os=x | g=b,os=y"},
+		{name: "exclude", body: "\n        g: [a, b]\n        os: [x, y]\n        exclude:\n          - g: a\n            os: y", want: "g=a,os=x | g=b,os=x | g=b,os=y"},
+		{name: "include alone is the rows", body: "\n        include:\n          - shard: s1\n            select: -run '^(TestA|TestB)'\n          - shard: s2\n            select: -skip '^(TestA|TestB)'", want: "select=-run '^(TestA|TestB)',shard=s1 | select=-skip '^(TestA|TestB)',shard=s2"},
+		{name: "include as flow maps", body: "\n        include:\n          - { os: fleet, shard: go, runner: [self-hosted, Linux] }\n          - { os: mac, shard: go, runner: [self-hosted, macOS] }", want: "os=fleet,runner=[self-hosted, Linux],shard=go | os=mac,runner=[self-hosted, macOS],shard=go"},
+		{name: "include merges into the rows it fits", body: "\n        g: [a, b]\n        include:\n          - g: a\n            extra: 1\n          - g: c", want: "extra=1,g=a | g=b | g=c"},
+		{name: "include with only new keys joins every row", body: "\n        g: [a, b]\n        include:\n          - extra: 1", want: "extra=1,g=a | extra=1,g=b"},
+		{name: "exclude by an expression the event decides (schedule)", event: "schedule", body: "\n        g: [a, b]\n        exclude: ${{ fromJSON((github.event_name == 'push' || github.event_name == 'pull_request') && '[{\"g\":\"a\"}]' || '[]') }}", want: "g=a | g=b"},
+		{name: "exclude by an expression the event decides (push)", event: "push", body: "\n        g: [a, b]\n        exclude: ${{ fromJSON((github.event_name == 'push' || github.event_name == 'pull_request') && '[{\"g\":\"a\"}]' || '[]') }}", want: "g=b"},
+		{name: "a list another job computes", body: "\n        g: ${{ fromJSON(needs.plan.outputs.legs) }}\n        gate: [x, y]", unknown: true},
+		{name: "an include another job computes", body: "\n        include: ${{ fromJSON(needs.plan.outputs.rows) }}", unknown: true},
+		{name: "a whole matrix another job computes", body: " ${{ fromJSON(needs.m.outputs.matrix) }}", unknown: true},
+		{name: "an exclude another job computes", body: "\n        g: [a, b]\n        exclude: ${{ fromJSON(needs.m.outputs.x) }}", unknown: true},
+	} {
+		event := c.event
+		if event == "" {
+			event = "schedule"
+		}
+		rows, known := read(c.body).rows(event)
+		if known == c.unknown {
+			t.Errorf("%s: known = %v, want %v", c.name, known, !c.unknown)
+			continue
+		}
+		if got := show(rows); known && got != c.want {
+			t.Errorf("%s: rows %s, want %s", c.name, got, c.want)
+		}
+	}
+	if rows, known := (laneMatrix{}).rows("schedule"); !known || len(rows) != 1 {
+		t.Errorf("a job with no matrix: %d rows, known %v; want its one run", len(rows), known)
 	}
 }

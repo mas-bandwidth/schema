@@ -91,6 +91,7 @@ var catalog = []Entry{
 	e("internal/fixedvector", "fixed form's shared cross-version vectors", "go test ./internal/fixedvector", "go test ./internal/fixedvector"),
 	e("internal/format", "schemafmt", "go test ./internal/format", "go test ./internal/format"),
 	e("internal/fuzz", "seeded fuzz corpus", "go test ./internal/fuzz", "go test ./internal/fuzz"),
+	e("internal/gotestmatch", "which tests a -run and -skip pair runs, by the testing package's rule", "go test ./internal/gotestmatch", "go test ./internal/gotestmatch"),
 	e("internal/goname", "Go member spelling (initialisms)", "go test ./internal/goname", "go test ./internal/goname"),
 	e("internal/goldens", "source, id, and wire pins", "go test ./internal/goldens", "make update-goldens"),
 	e("internal/jsontestsuite", "JSONTestSuite oracle harness", "go test ./internal/tabletext", "go test ./internal/tabletext -run JSONTestSuite"),
