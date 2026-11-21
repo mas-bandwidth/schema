@@ -126,5 +126,5 @@ func Sprintf(format string, args ...any) string {
 // Fprintf is fmt.Fprintf with %q spelled as a Luau string literal.
 func Fprintf(w io.Writer, format string, args ...any) {
 	format, args = luauVerbs(format, args)
-	fmt.Fprintf(w, format, args...)
+	_, _ = fmt.Fprintf(w, format, args...) // every caller writes to an in-memory buffer, which cannot fail
 }
