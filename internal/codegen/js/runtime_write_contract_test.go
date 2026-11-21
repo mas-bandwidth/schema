@@ -59,11 +59,7 @@ type RuntimeProbe
 	t.Run("wire", func(t *testing.T) {
 		slowtest.Gate(t, "node (runs runtime-tier WriteRuntimeProbe under checked and production)")
 		node := jsFlatNode(t)
-		root := repoRootForRuntimeProbe(t)
-		serializeDir := filepath.Join(filepath.Dir(root), "serialize.js")
-		if _, statErr := os.Stat(filepath.Join(serializeDir, "src", "index.js")); statErr != nil {
-			t.Skipf("serialize.js sibling not staged at %s: %v", serializeDir, statErr)
-		}
+		serializeDir := serializeJSDir(t)
 
 		for _, prod := range []bool{false, true} {
 			mode := "checked"
@@ -137,13 +133,4 @@ console.log("ok");
 			})
 		}
 	})
-}
-
-func repoRootForRuntimeProbe(t *testing.T) string {
-	t.Helper()
-	wd, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return filepath.Clean(filepath.Join(wd, "..", "..", ".."))
 }
