@@ -22,9 +22,8 @@ package rusttable
 // THE USE CASE IS A CARD WRITTEN IN ONE LANGUAGE AND READ AND UPGRADED IN
 // ANOTHER (Glenn, 2026-10-12), so the versioning clause is the one that
 // matters most: an older writer's batch read under its own announcement by a
-// newer reader, every field kept, the counters §4 names moving exactly as the
-// oracle's, and the upgraded value written back byte for byte as the oracle
-// writes it.
+// newer reader, the verdict the oracle's (refused, or every field kept), and
+// the upgraded value written back byte for byte as the oracle writes it.
 //
 // A FUNCTIONAL TEST: it compiles and runs Rust with rustc. It skips by name
 // when rustc is absent and SCHEMA_REQUIRE_CORPUS is unset, and fails by name
@@ -202,9 +201,15 @@ func TestMessageFormBatchRust(t *testing.T) {
 		// per-language diagnostics.
 		var rep tabletext.Report
 		count, ok, err := tablewire.DecodeMessages(mn, news, wire, v, &rep)
-		// A value the newer range cannot hold is refused BY NAME as
-		// out_of_range (§3.3); any other refusal is damage.
-		wantOOR := !ok && tablewire.RefusalReason(err) == tablewire.ReasonOutOfRange
+		// Only the oracle's VERDICT is held (docs/rulings.json
+		// refusal-verdict-only): why it refused is per-language detail and
+		// never compared. An error that is not a read's refusal is a failure.
+		if err != nil && !tablewire.ReadRefusal(err) {
+			t.Fatalf("the oracle failed rather than refused: %v", err)
+		}
+		if !ok {
+			t.Logf("the oracle refused the older batch: %s", tablewire.RefusalReason(err))
+		}
 		var upgraded []byte
 		if ok {
 			if err != nil || count != len(olds) {
@@ -236,14 +241,15 @@ func TestMessageFormBatchRust(t *testing.T) {
             let measured = card_measure_messages(&values[..count], &mut mrep);
             same = wrote == WANT.len() as i64 && measured == WANT.len() as i64 && buf == WANT;
         }
-        let want_oor = %t;
-        let refusal = if want_oor { lrep.refused && !lrep.damaged && matches!(lrep.reason, TableReason::OutOfRange) } else { lrep.damaged };
+        // the verdict alone: the report says the read refused (by a reason
+        // or as damage, which is this leg's own diagnostic), never which
+        let refusal = lrep.refused || lrep.damaged;
         let verdict = if want_ok { ok && count == %d } else { !ok && count == 0 && refusal };
         say("upgrade", announced && verdict && same,
-            format!("announced={announced} ok={ok} want_ok={want_ok} want_oor={want_oor} count={count} same={same} report={lrep:?}"));
+            format!("announced={announced} ok={ok} want_ok={want_ok} count={count} same={same} report={lrep:?}"));
     }
 `, len(announce), rustBytes(announce), len(wire), rustBytes(wire), len(upgraded), rustBytes(upgraded),
-			len(olds), ok, wantOOR, len(olds))
+			len(olds), ok, len(olds))
 		out := runMessageBatchProbe(t, newer, main)
 		if line := messageBatchLine(out, "upgrade"); line != "BATCH upgrade ok" {
 			t.Fatalf("the newer Rust reader does not upgrade the older batch as the oracle does: %s", line)

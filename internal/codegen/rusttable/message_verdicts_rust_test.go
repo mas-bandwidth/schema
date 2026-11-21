@@ -2,9 +2,10 @@ package rusttable
 
 // Two Rust message-form verdicts, held to the Go oracle (internal/tablewire):
 //
-//   - A value read by name outside its declared range, a bits(N) value past
-//     its width is refused BY
-//     NAME as out_of_range (docs/SPEC-TABLES.md §3.3), not as wire damage.
+//   - A value outside its declared range, a bits(N) value past its width,
+//     is refused whole with no value landed (docs/SPEC-TABLES.md §3.3). Only
+//     the verdict is held to the oracle; which reason each names is
+//     per-language detail (docs/rulings.json refusal-verdict-only).
 //   - A counted array [Min..N]T of struct or union elements elides exactly
 //     when the oracle's messageElides does: count 0, or count Min with every
 //     element at its default (a struct whose body is its terminator alone, a
@@ -75,9 +76,13 @@ func TestRustMessageOutOfRangeRefusedByName(t *testing.T) {
 		inst := m.New(m.Lookup("Root"))
 		vv := wvoc
 		var rep tabletext.Report
-		if _, ok, err := tablewire.DecodeMessages(m, []*tabletext.Instance{inst}, wire, &vv, &rep); ok || tablewire.RefusalReason(err) != tablewire.ReasonOutOfRange {
-			t.Fatalf("%s: the oracle answered ok=%v err=%v, want the out_of_range refusal", c.id, ok, err)
+		// the oracle's VERDICT (docs/rulings.json refusal-verdict-only):
+		// refused; why is its own diagnostic, never Rust's
+		_, ok, err := tablewire.DecodeMessages(m, []*tabletext.Instance{inst}, wire, &vv, &rep)
+		if ok || !tablewire.ReadRefusal(err) {
+			t.Fatalf("%s: the oracle answered ok=%v err=%v, want a refusal", c.id, ok, err)
 		}
+		t.Logf("%s: the oracle refused %s", c.id, tablewire.RefusalReason(err))
 		name := fmt.Sprintf("W%d", i)
 		head += fmt.Sprintf("    const %s: [u8; %d] = [%s];\n", name, len(wire), rustBytes(wire))
 		body += fmt.Sprintf(`
@@ -89,8 +94,8 @@ func TestRustMessageOutOfRangeRefusedByName(t *testing.T) {
         values[0].ticks = 9;
         let mut lrep = TableReport::default();
         let (count, ok) = root_load_messages(&mut values, &vocab, &%s, &mut lrep);
-        say(%q, announced && !ok && count == 0 && lrep.refused && !lrep.damaged
-            && matches!(lrep.reason, TableReason::OutOfRange) && values[0].ticks == root_message_default().ticks,
+        say(%q, announced && !ok && count == 0 && (lrep.refused || lrep.damaged)
+            && values[0].ticks == root_message_default().ticks,
             format!("announced={announced} ok={ok} count={count} ticks={} report={lrep:?}", values[0].ticks));
     }
 `, name, c.id)
@@ -101,7 +106,7 @@ func TestRustMessageOutOfRangeRefusedByName(t *testing.T) {
 	}
 	for _, c := range cases {
 		if line := messageBatchLine(out, c.id); line != "BATCH "+c.id+" ok" {
-			t.Errorf("%s: the Rust message read does not refuse out_of_range by name: %s", c.id, line)
+			t.Errorf("%s: the Rust message read does not refuse the out-of-range value: %s", c.id, line)
 		}
 	}
 }
