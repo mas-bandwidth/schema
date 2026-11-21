@@ -7,7 +7,6 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -21,34 +20,27 @@ import (
 )
 
 // TestWideningReasonsDart pins the Dart leg's half of "widening on read, and
-// the refusal reasons" (docs/SPEC-TABLES.md §3, §4, §7, §19.2) against the
+// the refusal verdicts" (docs/SPEC-TABLES.md §3, §4, §7, §19.2) against the
 // reference leg:
 //
 //   - a DIRECT WIDENING of every narrower kind into every wider field on its
 //     own ladder (i8..i32 into int16..int64, u8..u32 into uint16..uint64, f32
 //     into float64), each value and its widened count equal to the Go engine's
 //     read of the same bytes (internal/tablewire);
-//   - the wire report's REASON: unknown_form for a form byte this reader does
-//     not carry, wire_damaged for framing it cannot follow, ok for a read that
-//     kept its verdict (widened or not);
-//   - the cook's and the block's Open REASON, one forgery per clause, each the
-//     first failing clause;
-//   - and the vocabulary itself: the generated TableRefuseReason words, in
-//     order, are internal/codegen/gotable/refusal.go's TableRefuse* Error()
-//     strings, so no leg invents a word.
+//   - the wire report's VERDICT: refused for a form byte this reader does not
+//     carry and for framing it cannot follow, read for a read that kept its
+//     verdict (widened or not), each the Go engine's verdict on the same bytes;
+//   - the cook's and the block's Open VERDICT, one forgery per clause: every
+//     forgery refuses, the unforged cook and block open;
+//   - and the reason enum's home: one generated library defines
+//     TableRefuseReason.
 //
-// Every expected word is read out of the Go leg's refusal.go, never typed here.
+// Why a read refused is per-language diagnostic detail (docs/rulings.json
+// refusal-verdict-only): the probes print Dart's reason beside each verdict
+// for the failure message, and no Dart reason or word list is compared with
+// the reference leg's.
 func TestWideningReasonsDart(t *testing.T) {
 	t.Parallel()
-	words := goRefuseWords(t)
-	word := func(name string) string {
-		t.Helper()
-		w, ok := words[name]
-		if !ok {
-			t.Fatalf("refusal.go has no TableRefuse%s", name)
-		}
-		return w
-	}
 
 	t.Run("vocabulary", func(t *testing.T) {
 		t.Parallel()
@@ -63,25 +55,6 @@ func TestWideningReasonsDart(t *testing.T) {
 					t.Fatalf("TableRefuseReason is defined twice in one unit (%s and %s): one accelerator home carries it (§20.7)", runtime, name)
 				}
 				runtime = name
-				got := dartRefuseWords(string(src))
-				// Dart's strict spellings (docs/plans/strict-only.md): the
-				// retired names never appear in generated Dart, so damage is
-				// wire_damaged and a damaged layout is layout_damaged; the Go
-				// leg's report-only missing_required member (ordinal 255) is
-				// not an enum case here and is carried on the reason string.
-				want := goRefuseOrder(t)
-				for i, w := range want {
-					switch w {
-					case "malformed":
-						want[i] = "wire_damaged"
-					case "layout_malformed":
-						want[i] = "layout_damaged"
-					}
-				}
-				want = want[:len(want)-1] // missing_required, report-only in Go
-				if strings.Join(got, ",") != strings.Join(want, ",") {
-					t.Fatalf("the Dart TableRefuseReason words are not the reference leg's, in order:\n dart %v\n   go %v", got, want)
-				}
 			}
 		}
 		if runtime == "" {
@@ -114,7 +87,7 @@ func TestWideningReasonsDart(t *testing.T) {
 		type wcase struct {
 			name, field string
 			wire        []byte
-			want        string // value widened reason, as the probe prints it
+			want        string // value widened verdict, as the probe prints it
 		}
 		var cases []wcase
 		ladders := []struct {
@@ -157,23 +130,30 @@ func TestWideningReasonsDart(t *testing.T) {
 		f32wire := oneFieldWire(wideField(t, root, "f64"), ir.TableKindF32, f32)
 		cases = append(cases, wcase{"kind 10 into f64", "f64", f32wire, engineLine(t, model, root, f32wire, "f64")})
 		for _, c := range cases {
-			if !strings.HasSuffix(c.want, " "+word("Ok")) || strings.Fields(c.want)[1] != "1" {
+			if !strings.HasSuffix(c.want, " read") || strings.Fields(c.want)[1] != "1" {
 				t.Fatalf("%s: the Go engine's own read is not one widening: %q", c.name, c.want)
 			}
 		}
 
-		// THE WIRE REASON: the form byte refusals, framing damage, and ok
+		// THE WIRE VERDICT: the form byte refusals, framing damage, and a
+		// read. The want is the Go engine's verdict on the same bytes, held
+		// to the verdict this row exists for so the oracle cannot drift.
 		truncated := oneFieldWire(wideField(t, root, "i64"), ir.TableKindI16, []byte{0xFE, 0xFF})[:4]
 		reasons := []struct {
 			name string
 			wire []byte
 			want string
 		}{
-			{"form byte 0", []byte{0}, word("UnknownForm")},
-			{"form byte 6", []byte{6, 0, 0, 0, 0, 0, 0, 0, 0}, word("UnknownForm")},
-			{"form byte 0xff", []byte{0xff}, word("UnknownForm")},
-			{"a body cut inside its payload", truncated, word("WireDamaged")},
-			{"a widened read", cases[0].wire, word("Ok")},
+			{"form byte 0", []byte{0}, "refused"},
+			{"form byte 6", []byte{6, 0, 0, 0, 0, 0, 0, 0, 0}, "refused"},
+			{"form byte 0xff", []byte{0xff}, "refused"},
+			{"a body cut inside its payload", truncated, "refused"},
+			{"a widened read", cases[0].wire, "read"},
+		}
+		for _, r := range reasons {
+			if got := engineVerdict(t, model, root, r.wire); got != r.want {
+				t.Fatalf("%s: the Go engine's verdict is %s, the row exists for %s", r.name, got, r.want)
+			}
 		}
 
 		dir := t.TempDir()
@@ -213,7 +193,7 @@ void main(List<String> args) {
       'f64' => v.f64,
       _ => '-',
     };
-    stdout.writeln('$value ${r.widened} ${r.reason}');
+    stdout.writeln('$value ${r.widened} ${r.refused ? 'refused' : 'read'} ${r.reason}');
   }
 }
 `
@@ -227,15 +207,16 @@ void main(List<String> args) {
 		if len(got) != len(cases)+len(reasons) {
 			t.Fatalf("probe answered %d lines for %d cases:\n%s", len(got), len(cases)+len(reasons), strings.Join(got, "\n"))
 		}
+		// Each line is value, widened count, verdict and Dart's own reason:
+		// the reason is diagnostic and is never compared.
 		for i, c := range cases {
-			if got[i] != c.want {
+			if f := strings.Fields(got[i]); len(f) < 3 || strings.Join(f[:3], " ") != c.want {
 				t.Errorf("%s: Dart read %q, the Go engine %q", c.name, got[i], c.want)
 			}
 		}
 		for i, r := range reasons {
-			fields := strings.Fields(got[len(cases)+i])
-			if reason := fields[len(fields)-1]; reason != r.want {
-				t.Errorf("%s: the report's reason is %q, the reference leg's is %q", r.name, reason, r.want)
+			if f := strings.Fields(got[len(cases)+i]); len(f) < 3 || f[2] != r.want {
+				t.Errorf("%s: Dart's verdict is %q, the Go engine's is %s", r.name, got[len(cases)+i], r.want)
 			}
 		}
 	})
@@ -285,7 +266,7 @@ void main(List<String> args) {
 		}
 	})
 
-	t.Run("cook and block open reasons", func(t *testing.T) {
+	t.Run("cook and block open verdicts", func(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()
 		for _, unit := range []string{"tables/pointers", "tables/block"} {
@@ -308,39 +289,44 @@ void main(List<String> args) {
 		if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(openReasonProbe), 0o600); err != nil {
 			t.Fatal(err)
 		}
+		// Each line is the forgery, Open's verdict and Dart's own reason;
+		// the reason is diagnostic and is never compared.
 		got := map[string]string{}
+		lines := map[string]string{}
 		for _, line := range runProbe(t, dart, dir, graph, block) {
-			name, reason, _ := strings.Cut(line, " ")
-			got[name] = reason
+			name, rest, _ := strings.Cut(line, " ")
+			verdict, _, _ := strings.Cut(rest, " ")
+			got[name] = verdict
+			lines[name] = line
 		}
 		want := map[string]string{
-			"cook_ok":              word("Ok"),
-			"cook_null":            word("UnalignedBase"),
-			"cook_short_header":    word("Truncated"),
-			"cook_magic_byte":      word("NotACook"),
-			"cook_magic_reversed":  word("ForeignOrder"),
-			"cook_byte_order":      word("NotACook"),
-			"cook_build":           word("WrongBuildVersion"),
-			"cook_reserved":        word("ReservedNotZero"),
-			"cook_alignment":       word("BadAlignment"),
-			"cook_data_long":       word("Truncated"),
-			"cook_one_short":       word("Truncated"),
-			"cook_build_and_short": word("WrongBuildVersion"),
-			"cook_lead":            word("UnalignedBase"),
-			"block_ok":             word("Ok"),
-			"block_null":           word("UnalignedBase"),
-			"block_short":          word("Truncated"),
-			"block_magic_byte":     word("NotACook"),
-			"block_magic_swapped":  word("ForeignOrder"),
-			"block_byte_order":     word("NotACook"),
-			"block_build":          word("WrongBuildVersion"),
-			"block_pitch":          word("BadLayout"),
-			"block_padding":        word("Truncated"),
-			"block_lead":           word("UnalignedBase"),
+			"cook_ok":              "open",
+			"cook_null":            "refused",
+			"cook_short_header":    "refused",
+			"cook_magic_byte":      "refused",
+			"cook_magic_reversed":  "refused",
+			"cook_byte_order":      "refused",
+			"cook_build":           "refused",
+			"cook_reserved":        "refused",
+			"cook_alignment":       "refused",
+			"cook_data_long":       "refused",
+			"cook_one_short":       "refused",
+			"cook_build_and_short": "refused",
+			"cook_lead":            "refused",
+			"block_ok":             "open",
+			"block_null":           "refused",
+			"block_short":          "refused",
+			"block_magic_byte":     "refused",
+			"block_magic_swapped":  "refused",
+			"block_byte_order":     "refused",
+			"block_build":          "refused",
+			"block_pitch":          "refused",
+			"block_padding":        "refused",
+			"block_lead":           "refused",
 		}
 		for name, w := range want {
 			if got[name] != w {
-				t.Errorf("%s: Open's reason is %q, the reference leg's is %q", name, got[name], w)
+				t.Errorf("%s: Open's verdict is %q (%q), want %s", name, got[name], lines[name], w)
 			}
 		}
 		if len(got) != len(want) {
@@ -388,12 +374,12 @@ Uint8List lead(Uint8List base, int n) {
 
 void cook(String name, Uint8List? bytes, [int at = 0, int? length]) {
   final r = ck.SceneCook.openWithReason(bytes, at, length ?? (bytes == null ? 0 : bytes.length - at));
-  stdout.writeln('$name ${r.$2}');
+  stdout.writeln('$name ${r.$1 == null ? 'refused' : 'open'} ${r.$2}');
 }
 
 void block(String name, Uint8List? bytes, [int base = 0, int? extent]) {
   final r = blk.RenderFrameBlock.openWithReason(bytes, base, extent ?? (bytes == null ? 0 : bytes.length - base));
-  stdout.writeln('$name ${r.$2}');
+  stdout.writeln('$name ${r.$1 == null ? 'refused' : 'open'} ${r.$2}');
 }
 
 void main(List<String> args) {
@@ -456,9 +442,25 @@ func wideField(t *testing.T, st *ir.Struct, name string) *ir.Field {
 	return nil
 }
 
+// engineVerdict is the Go engine's verdict on one wire: refused for a read's
+// refusal, read otherwise. An error that is not a read's refusal is the
+// oracle failing, never a verdict.
+func engineVerdict(t *testing.T, m *tabletext.Model, st *ir.Struct, wire []byte) string {
+	t.Helper()
+	var report tabletext.Report
+	ok, err := tablewire.Decode(m, m.New(st), wire, &report)
+	if err != nil && !tablewire.ReadRefusal(err) {
+		t.Fatalf("the Go engine failed without a refusal: %v", err)
+	}
+	if !ok || report.Refused {
+		return "refused"
+	}
+	return "read"
+}
+
 // engineLine is the Go engine's read of one wire, spelled as the probe spells
 // the Dart read: the field's value as a Dart int or double, the widened count,
-// and the reason the verdict maps to.
+// and the verdict.
 func engineLine(t *testing.T, m *tabletext.Model, st *ir.Struct, wire []byte, field string) string {
 	t.Helper()
 	inst := m.New(st)
@@ -466,9 +468,9 @@ func engineLine(t *testing.T, m *tabletext.Model, st *ir.Struct, wire []byte, fi
 	if _, err := tablewire.Decode(m, inst, wire, &report); err != nil {
 		t.Fatalf("the Go engine refused the widening wire: %v", err)
 	}
-	reason := "ok"
+	verdict := "read"
 	if report.Refused {
-		reason = "unknown_form"
+		verdict = "refused"
 	}
 	for i := range inst.Fields {
 		f := &inst.Fields[i]
@@ -489,7 +491,7 @@ func engineLine(t *testing.T, m *tabletext.Model, st *ir.Struct, wire []byte, fi
 				value = strconv.FormatInt(int64(f.Cell.U), 10)
 			}
 		}
-		return fmt.Sprintf("%s %d %s", value, report.Widened, reason)
+		return fmt.Sprintf("%s %d %s", value, report.Widened, verdict)
 	}
 	t.Fatalf("the engine's instance has no field %s", field)
 	return ""
@@ -517,41 +519,6 @@ func unitSchemas(t *testing.T, unit string) []string {
 	return schemas
 }
 
-var goRefuseCase = regexp.MustCompile(`case TableRefuse(\w+):return "(\w+)"`)
-
-// goRefuseWords reads the reference leg's vocabulary out of its own source:
-// each TableRefuse* constant's Error() string, keyed by the constant's name.
-func goRefuseWords(t *testing.T) map[string]string {
-	t.Helper()
-	out := map[string]string{}
-	for _, m := range goRefuseCase.FindAllStringSubmatch(goRefusalSource(t), -1) {
-		out[m[1]] = m[2]
-	}
-	if len(out) == 0 {
-		t.Fatal("no TableRefuse* Error() strings in internal/codegen/gotable/refusal.go")
-	}
-	return out
-}
-
-// goRefuseOrder is the same vocabulary in declaration order.
-func goRefuseOrder(t *testing.T) []string {
-	t.Helper()
-	var out []string
-	for _, m := range goRefuseCase.FindAllStringSubmatch(goRefusalSource(t), -1) {
-		out = append(out, m[2])
-	}
-	return out
-}
-
-func goRefusalSource(t *testing.T) string {
-	t.Helper()
-	src, err := os.ReadFile(filepath.Join("..", "gotable", "refusal.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(src)
-}
-
 // dartFunctionSpan is one function's text, from its signature to the brace
 // that closes its body.
 func dartFunctionSpan(src, sig string) (string, bool) {
@@ -577,17 +544,4 @@ func dartFunctionSpan(src, sig string) (string, bool) {
 		}
 	}
 	return "", false
-}
-
-var dartRefuseCase = regexp.MustCompile(`(?m)^  \w+\('(\w+)'\)[,;]$`)
-
-// dartRefuseWords is the generated enum's words, in declaration order.
-func dartRefuseWords(src string) []string {
-	start := strings.Index(src, "enum TableRefuseReason {")
-	end := strings.Index(src[start:], "\n}\n")
-	var out []string
-	for _, m := range dartRefuseCase.FindAllStringSubmatch(src[start:start+end], -1) {
-		out = append(out, m[1])
-	}
-	return out
 }
