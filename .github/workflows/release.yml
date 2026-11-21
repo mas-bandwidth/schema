@@ -14,7 +14,9 @@ name: Release
 # including a certify.yml run on the commit, must be green first.
 # And the proof table must be green AT THAT COMMIT: `make release` refuses
 # unless ci-full's `proof` job left a green report for it (tools/matrix
-# VerifyRelease), naming the red cells when it is not.
+# VerifyRelease), naming the red cells when it is not. That is the `full`
+# lane. The default `fast` lane (patch releases only, Glenn, 2026-11-21) is
+# locked instead on a green CI fast run at the commit; ci-full runs after.
 #
 # THE BINARIES come after the tag, in the `assets` job, which runs only when
 # the `release` job, and so every refusal above, passed. It is a job here and
@@ -38,6 +40,15 @@ on:
         description: 'the release version, vMAJOR.MINOR.PATCH, greater than the newest v tag'
         required: true
         type: string
+      lane:
+        # fast: a patch release gated on a green CI fast run at the commit
+        # (Glenn, 2026-11-21: "Only run fast CI checks for the point
+        # releases."); full: the ci-full proof report, for any release
+        description: 'fast (patch releases: green CI fast at the commit) or full (the ci-full proof report)'
+        required: true
+        default: fast
+        type: choice
+        options: [fast, full]
 
 # Releases are serial: two dispatches must not both read the same newest tag.
 concurrency:
@@ -73,6 +84,7 @@ jobs:
       # (tools/matrix VerifyRelease), naming the red cells; a commit with no
       # completed ci-full run has no report, and the release refuses on that.
       - name: the proof report at this commit
+        if: inputs.lane == 'full'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -85,6 +97,9 @@ jobs:
           GOFLAGS: -mod=readonly
           # passed through the environment, never interpolated into the script
           VERSION: ${{ inputs.version }}
+          # the fast lane's lock asks gh for the CI fast run at the commit
+          RELEASE_LANE: ${{ inputs.lane }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           git fetch --quiet origin main
