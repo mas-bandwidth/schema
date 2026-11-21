@@ -78,7 +78,7 @@ func TestMessagePriorWriterRows(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wants, err := expectations(m, "message", nil, defaultJSONDir)
+	wants, err := expectations(m, "message-prior", nil, defaultJSONDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,8 +195,8 @@ func TestMessagePriorWriterRows(t *testing.T) {
 
 		// what a leg is handed: the same two lines, whatever the answer
 		for _, line := range []string{
-			fmt.Sprintf("connection %s %s 0x%016x %s\n", name, row.Unit, row.PeerBuildVersion, row.PeerAnnounce),
-			"message " + name + " " + name + " " + row.Root + " " + row.FileWire + " " + row.PeerWire + "\n",
+			fmt.Sprintf("prior-connection %s %s 0x%016x %s\n", name, row.Unit, row.PeerBuildVersion, row.PeerAnnounce),
+			"prior-message " + name + " " + name + " " + row.Root + " " + row.FileWire + " " + row.PeerWire + "\n",
 		} {
 			if !strings.Contains(string(handed), line) {
 				t.Errorf("the driver manifest lacks %q", line)
@@ -212,4 +212,44 @@ func cutLast(s, sep string) (string, string, bool) {
 		return s, "", false
 	}
 	return s[:i], s[i+len(sep):], true
+}
+
+// TestMessagePriorScoring holds the three answers apart: a refusal is its own
+// file, so a leg with no codec for the root (absent, a missing feature) is
+// never scored as having refused, and a leg that refused a batch it should
+// read, or delivered one it should refuse, fails.
+func TestMessagePriorScoring(t *testing.T) {
+	bytesWant := []byte{2, 0, 7}
+	for _, tc := range []struct {
+		name    string
+		want    []byte
+		files   map[string]string
+		outcome string
+	}{
+		{"read answered with the bytes", bytesWant, map[string]string{"row": string(bytesWant)}, outcomePass},
+		{"read answered with other bytes", bytesWant, map[string]string{"row": "\x02\x00\x08"}, outcomeFail},
+		{"read answered refused", bytesWant, map[string]string{"row.refused": "out_of_range"}, outcomeFail},
+		{"read with no codec", bytesWant, map[string]string{"row.absent": "no generated unit"}, outcomeAbsent},
+		{"read with no answer", bytesWant, nil, outcomeFail},
+		{"refusal answered refused", nil, map[string]string{"row.refused": "any diagnostic"}, outcomePass},
+		{"refusal answered refused, no diagnostic", nil, map[string]string{"row.refused": ""}, outcomePass},
+		{"refusal answered with bytes", nil, map[string]string{"row": string(bytesWant)}, outcomeFail},
+		{"refusal with no codec", nil, map[string]string{"row.absent": "no generated unit"}, outcomeAbsent},
+		{"refusal with no answer", nil, nil, outcomeFail},
+		{"both bytes and a refusal", nil, map[string]string{"row": "x", "row.refused": ""}, outcomeFail},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out := t.TempDir()
+			for name, text := range tc.files {
+				if err := os.WriteFile(filepath.Join(out, name), []byte(text), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			r := &result{}
+			scoreAnswer("zz", "message-prior", out, expectation{name: "row", want: tc.want}, Instance{}, r)
+			if got := r.outcome["row"]; got != tc.outcome {
+				t.Errorf("outcome %q, want %q (failures %v)", got, tc.outcome, r.failures)
+			}
+		})
+	}
 }
