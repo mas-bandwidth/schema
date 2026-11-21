@@ -31,6 +31,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -263,6 +264,7 @@ func wideNarrowWire(t *testing.T, u *ir.Unit, root, field string) []byte {
 // returns the findings and the number of probe runs that held.
 func wideCellFailures(t *testing.T, mutate func(map[string][]byte)) (fails []string, held int) {
 	t.Helper()
+	slowtest.Gate(t, "both pinned Python interpreters and strict mypy")
 	currentPy := pyrun.Interpreter(t)
 	floorPy := pyrun.Floor(t)
 	var mypyBin string
@@ -384,6 +386,7 @@ func TestPythonVtWide(t *testing.T) {
 // Functional (pyrun): run with SCHEMA_SLOW=1.
 func TestPythonVtWideRefused(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters")
 	const schema = `package wide
 
 table Narrow

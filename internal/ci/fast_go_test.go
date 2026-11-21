@@ -431,3 +431,32 @@ func splitShell(s string) []string {
 	}
 	return out
 }
+
+// TestCIFastPolicyRunsSlowtestGateScan ensures ci-fast.yml's ci-policy job
+// runs ./internal/slowtest/... on every PR/push so any test file under
+// compiler/ or internal/codegen/ reaching os/exec without slowtest.Gate(t) is
+// caught in < 2m on the PR rather than waiting for certify.yml's core-go.
+func TestCIFastPolicyRunsSlowtestGateScan(t *testing.T) {
+	t.Parallel()
+	wf, ok := workflows(t, repoRoot(t))["ci-fast.yml"]
+	if !ok {
+		t.Fatal("ci-fast.yml is missing")
+	}
+	check := func(wfText string) bool {
+		policy, ok := yamlJobs(wfText)["ci-policy"]
+		if !ok {
+			return false
+		}
+		return strings.Contains(policy, "go test ./internal/slowtest/...")
+	}
+	if !check(wf) {
+		t.Fatal("ci-fast.yml ci-policy does not run `go test ./internal/slowtest/...`")
+	}
+	mutated := strings.Replace(wf, "go test ./internal/slowtest/...", "true", 1)
+	if mutated == wf {
+		t.Fatal("negative control did not mutate ci-fast.yml")
+	}
+	if check(mutated) {
+		t.Fatal("NEGATIVE CONTROL FAILED: dropping `go test ./internal/slowtest/...` from ci-policy stayed green")
+	}
+}

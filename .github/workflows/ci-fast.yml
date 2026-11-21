@@ -697,6 +697,9 @@ jobs:
       # because the regression it catches is somebody adding the fifteenth.
       - name: the positive gate targets still set SCHEMA_SLOW (schema#988)
         run: make slow-gate-scan
+
+      - name: every toolchain test source calls slowtest.Gate (issue #1025)
+        run: go test ./internal/slowtest/...
       # CI LINTS ITSELF (issues #470, #472), over every workflow file in the
       # tree — this one included: every `uses:` names a full commit SHA with the
       # tag in a trailing comment, nothing runs @latest, and every csproj
