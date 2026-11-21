@@ -5569,7 +5569,10 @@ final class TableTextReport {
   String refusal = '';
   String missingFields = '';
   bool variableRoot = false;
-  final Set<int> textLabels = <int>{};
+  // every &node label the text has defined so far, in document order, placed
+  // or in a skipped value alike (§16.7): true while its definition is open,
+  // false once it has closed.
+  final Map<int, bool> textLabels = <int, bool>{};
 
   // refuse records the read's whole-load refusal by name (a per-language
   // diagnostic, never compared across legs): the first refusal stands.
@@ -5972,7 +5975,6 @@ final class _Share {
   final Map<Object, int> count = <Object, int>{};
   final Map<Object, int> label = <Object, int>{};
   final Map<int, Object> defined = <int, Object>{};
-  final Set<int> pending = <int>{};
   int next = 0;
 
   void see(Object obj) {
@@ -6039,21 +6041,21 @@ Object? _readPtr(dynamic val, _Share sh, TableTextReport r, Object Function() ma
     if (raw is! int || raw < 1) {
       throw const FormatException('invalid node label');
     }
+    // a label alone REFERS: the text must have defined it before this point
+    // and closed that definition; one a skipped value defined reads null
     if (entries.length == 1) {
+      if (r.textLabels[raw] != false) throw const FormatException('undefined node label');
       final have = sh.defined[raw];
-      if (have == null) {
-        if (!sh.pending.contains(raw) && r.textLabels.contains(raw)) return null;
-        throw const FormatException('undefined node label');
-      }
+      if (have == null) return null;
       if (have.runtimeType != make().runtimeType) { r.refuse('kind_mismatch'); return null; }
       return have;
     }
-    final have = sh.defined[raw];
-    if (have != null) throw const FormatException('node label defined twice');
+    // a label with fields DEFINES, and only once in the whole text
+    if (r.textLabels.containsKey(raw)) throw const FormatException('node label defined twice');
     final made = make();
-    sh.pending.add(raw);
+    r.textLabels[raw] = true;
     fill(made, entries);
-    sh.pending.remove(raw);
+    r.textLabels[raw] = false;
     sh.defined[raw] = made;
     return made;
   }
@@ -6179,7 +6181,7 @@ double _jsonCompressedFloat(double d, TableTextReport r, double lo, double hi, [
 // §16.2: comments and trailing commas are layout, not values. The
 // a repeated key is judged before jsonDecode folds an object's repeated key.
 // String tokens are copied byte-for-byte so comment marks inside them stay text.
-String _jsonPrepare(String text, TableTextReport r) {
+String _jsonPrepare(String text) {
   final source = text.codeUnits;
   final stripped = <int>[];
   var quoted = false;
@@ -6257,39 +6259,7 @@ String _jsonPrepare(String text, TableTextReport r) {
     }
     clean.add(c);
   }
-  final result = String.fromCharCodes(clean);
-  final stack = <Set<String>?>[];
-  final firstLabels = <int>{};
-  for (var i = 0; i < clean.length; i++) {
-    final c = clean[i];
-    if (c == 0x7b) { stack.add(<String>{}); continue; }
-    if (c == 0x5b) { stack.add(null); continue; }
-    if (c == 0x7d || c == 0x5d) { if (stack.isNotEmpty) stack.removeLast(); continue; }
-    if (c != 0x22) continue;
-    final begin = i;
-    i++;
-    for (; i < clean.length; i++) {
-      if (clean[i] == 0x5c) { i++; continue; }
-      if (clean[i] == 0x22) break;
-    }
-    if (i >= clean.length) throw const FormatException('unclosed JSON string');
-    var j = i + 1;
-    while (j < clean.length && clean[j] <= 0x20) j++;
-    if (j >= clean.length || clean[j] != 0x3a || stack.isEmpty || stack.last == null) continue;
-    final key = jsonDecode(result.substring(begin, i + 1)) as String;
-    if (key == '&node') {
-      var at = j + 1;
-      while (at < clean.length && clean[at] <= 0x20) at++;
-      final start = at;
-      while (at < clean.length && clean[at] >= 0x30 && clean[at] <= 0x39) at++;
-      final label = int.tryParse(result.substring(start, at));
-      while (at < clean.length && clean[at] <= 0x20) at++;
-      if (label != null && label > 0 && firstLabels.add(label) && at < clean.length && clean[at] == 0x2c) {
-        r.textLabels.add(label);
-      }
-    }
-  }
-  return result;
+  return String.fromCharCodes(clean);
 }
 
 // _JNum is a JSON number the int type cannot hold exactly, kept as its
@@ -6353,18 +6323,37 @@ int? _jsonSkippedLabel(dynamic raw) {
   return null;
 }
 
-void _jsonSkipEntry(int idx, String key, dynamic val, TableTextReport r) {
-  _jsonText(key);
-  _jsonName(key, r);
-  if (r.variableRoot && key.startsWith('&')) {
-    final label = idx == 0 && key == '&node' ? _jsonSkippedLabel(val) : null;
-    if (label == null) {
-      throw const FormatException('reserved ampersand prefix');
+// _jsonSkipObject walks one skipped object's entries in text order. In a
+// pointered root the label rules apply here as everywhere (§16.7): an &node key
+// is first or it is the reserved prefix out of place; a label alone REFERS, and
+// the text must have defined it and closed that definition; a label with fields
+// DEFINES, must be new to the text, and stays open until this object closes, so
+// a later reference reads null and a second definition refuses.
+void _jsonSkipObject(List<MapEntry<dynamic, dynamic>> entries, TableTextReport r) {
+  int? opened;
+  for (var idx = 0; idx < entries.length; idx++) {
+    final key = entries[idx].key;
+    if (key is! String) throw const FormatException('kind_mismatch');
+    final val = entries[idx].value;
+    _jsonText(key);
+    _jsonName(key, r);
+    if (r.variableRoot && key.startsWith('&')) {
+      final label = idx == 0 && key == '&node' ? _jsonSkippedLabel(val) : null;
+      if (label == null) {
+        throw const FormatException('reserved ampersand prefix');
+      }
+      if (entries.length == 1) {
+        if (r.textLabels[label] != false) throw const FormatException('undefined node label');
+        return;
+      }
+      if (r.textLabels.containsKey(label)) throw const FormatException('node label defined twice');
+      r.textLabels[label] = true;
+      opened = label;
+    } else {
+      _jsonSkipValue(val, r);
     }
-    r.textLabels.add(label);
-  } else {
-    _jsonSkipValue(val, r);
   }
+  if (opened != null) r.textLabels[opened] = false;
 }
 
 void _jsonSkipValue(dynamic val, TableTextReport r) {
@@ -6373,10 +6362,7 @@ void _jsonSkipValue(dynamic val, TableTextReport r) {
     return;
   }
   if (val is _JObj) {
-    for (var idx = 0; idx < val.entries.length; idx++) {
-      final entry = val.entries[idx];
-      _jsonSkipEntry(idx, entry.key, entry.value, r);
-    }
+    _jsonSkipObject(val.entries, r);
     return;
   }
   if (val is List) {
@@ -6386,13 +6372,7 @@ void _jsonSkipValue(dynamic val, TableTextReport r) {
     return;
   }
   if (val is Map) {
-    var idx = 0;
-    for (final entry in val.entries) {
-      final key = entry.key;
-      if (key is! String) throw const FormatException('kind_mismatch');
-      _jsonSkipEntry(idx, key, entry.value, r);
-      idx++;
-    }
+    _jsonSkipObject(val.entries.toList(), r);
   }
 }
 
@@ -8032,9 +8012,10 @@ String tableEntityToJson(TableEntity v) {
 TableEntity tableEntityFromJson(String text, [TableTextReport? report]) {
   final r = report ?? TableTextReport();
   r.missingFields = '';
+  r.textLabels.clear();
   r.variableRoot = false;
   final v = TableEntity();
-  final root = _jsonDecodeExact(_jsonPrepare(text, r));
+  final root = _jsonDecodeExact(_jsonPrepare(text));
   if (_jsonEntries(root) == null) throw const FormatException('json_root_not_object: TableEntity');
   if (_jsonEntries(root) != null) {
     tableEntityFromJsonFields(v, root, r, _Share());
@@ -8060,9 +8041,10 @@ String tableStatToJson(TableStat v) {
 TableStat tableStatFromJson(String text, [TableTextReport? report]) {
   final r = report ?? TableTextReport();
   r.missingFields = '';
+  r.textLabels.clear();
   r.variableRoot = false;
   final v = TableStat();
-  final root = _jsonDecodeExact(_jsonPrepare(text, r));
+  final root = _jsonDecodeExact(_jsonPrepare(text));
   if (_jsonEntries(root) == null) throw const FormatException('json_root_not_object: TableStat');
   if (_jsonEntries(root) != null) {
     tableStatFromJsonFields(v, root, r, _Share());
@@ -8088,9 +8070,10 @@ String tableMixedToJson(TableMixed v) {
 TableMixed tableMixedFromJson(String text, [TableTextReport? report]) {
   final r = report ?? TableTextReport();
   r.missingFields = '';
+  r.textLabels.clear();
   r.variableRoot = false;
   final v = TableMixed();
-  final root = _jsonDecodeExact(_jsonPrepare(text, r));
+  final root = _jsonDecodeExact(_jsonPrepare(text));
   if (_jsonEntries(root) == null) throw const FormatException('json_root_not_object: TableMixed');
   if (_jsonEntries(root) != null) {
     tableMixedFromJsonFields(v, root, r, _Share());
