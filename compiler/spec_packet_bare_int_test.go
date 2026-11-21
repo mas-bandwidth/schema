@@ -49,8 +49,8 @@ func TestSpecPacketWriteBareIntWidth(t *testing.T) {
 	row = "PACKET-WIRE-ALGORITHM §2.4 the bare-integer row"
 	for _, want := range []string{
 		"The value must fit its declared width (SPEC §5.1 row 11)",
-		"a debug assert in C, C++, C#, Rust, Java and Dart",
-		"a refusal in every build in Go, JavaScript, Elixir, Lua, Luau, Squirrel, MOO and Goose",
+		"a debug assert in C, C++, C#, Rust, Java, Dart and Lobster",
+		"a refusal in every build in Go, JavaScript, Elixir, Lua, Luau, Squirrel, Moo, Goose, Python and Ruby",
 		"cast to the **same-width unsigned** first",
 	} {
 		mustState(t, row, scalar, want)

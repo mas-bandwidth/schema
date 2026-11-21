@@ -1,6 +1,7 @@
-# C# tables
+# C# (modern) tables
 
-Generate with `schema generate --lang cs --out generated <schema-directory>`.
+This page is the C# (modern) generator's table surface; C# (unity) is
+[UNITY.md](UNITY.md). Generate with `schema generate --lang cs --out generated <schema-directory>`.
 The generated unit targets the pinned .NET SDK in `.github/dotnet-version` and
 uses `unsafe` for native rows, regions, cooks and builders. The packet surface
 continues to use the same generated files.
@@ -90,7 +91,7 @@ pairing check, not a release performance claim.
 
 ## The generated C# dialect
 
-The generator writes C# that reads as the language's own, at the SDK's default
+The C# (modern) generator writes C# that reads as the language's own, at the SDK's default
 strictness: `dotnet format` with no `.editorconfig` beside the generated units,
 and the Roslyn analyzers the SDK ships with `EnableNETAnalyzers=true`,
 `AnalysisLevel=latest` and `AnalysisMode=Default`, no stricter mode and no

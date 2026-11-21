@@ -34,8 +34,8 @@ func TestSpecPacketWriteRefusesOffRangeCompressedFloat(t *testing.T) {
 	for _, want := range []string{
 		"CHECK value is finite and min <= value <= max",
 		"`write-refusal`",
-		"a debug assert in C, C++, C#, Rust, Java and Dart",
-		"a refusal in every build in Go, JavaScript, Elixir, Lua, Luau, Squirrel, MOO and Goose",
+		"a debug assert in C, C++, C#, Rust, Java, Dart and Lobster",
+		"a refusal in every build in Go, JavaScript, Elixir, Lua, Luau, Squirrel, Moo, Goose, Python and Ruby",
 		"before quantizing",
 		"unspecified (SPEC §5)",
 		"if integer > steps: integer := steps",

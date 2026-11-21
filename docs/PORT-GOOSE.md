@@ -337,7 +337,7 @@ every packet field kind except a string, bytes or flags default (refused
 above), enums, flags, unions (the
 payload-free arm included, which the packet surface carries in every
 target), and a `[A..B]` count born at `A`. Its claims sit in
-`compiler/*_test.go` beside the other nine targets' (`bornAtMinimum`,
+`compiler/*_test.go` beside the other targets' (`bornAtMinimum`,
 `guardComment`, `tagEnumSurface`, the payload-free arm's `carried`). The
 packet wire has landed since (THE PACKET WIRE): goose left
 `packetWriterOwed` and carries its write-side claims in `refusesEveryBuild`
