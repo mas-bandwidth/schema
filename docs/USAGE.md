@@ -79,6 +79,7 @@ in canonical form.
 
 You get a struct and a pair of wire functions:
 
+<!-- example: fragment -->
 ```cpp
 struct ShipCreate {
     ShipType ship_type = ShipType::None;
@@ -182,6 +183,7 @@ enum ShipType { Fighter, Corvette, Bomber }
 zero-initialized enum field is therefore the null, in band, and you never
 need a separate has-flag beside it:
 
+<!-- example: fragment -->
 ```cpp
 enum class ShipType : uint8_t { None = 0, Fighter = 1, Corvette = 2, Bomber = 3, Max = 3 };
 ```
@@ -274,6 +276,7 @@ One bit per variant, consumed as a mask. Storage is `uint64` in every
 language (more than 64 variants is a compile error); the wire is exactly as
 many bits as there are variants:
 
+<!-- example: fragment -->
 ```cpp
 using Capabilities = uint64_t;
 inline constexpr Capabilities Capabilities_Cloak  = 1ull << 0;
@@ -338,6 +341,7 @@ compiler generates the tag enum `ColliderShapeType` (`None = 0`, variants in
 declared order, then `Max`), and the wire is the tag in minimal
 bits for `[0, variant count]` followed by **the selected payload only**:
 
+<!-- example: fragment -->
 ```cpp
 enum class ColliderShapeType : uint8_t { None = 0, Box = 1, Sphere = 2, Capsule = 3, Hull = 4, Max = 4 };
 
@@ -378,6 +382,7 @@ sets the tag, constructs the arm in place with its declared defaults, and
 returns a reference to the fresh arm; for a payload-free arm it returns `void`
 and sets the tag alone:
 
+<!-- example: fragment -->
 ```cpp
 Collider collider;
 SphereCollider & sphere = collider.shape.SelectSphere(); // tag and arm together
@@ -406,6 +411,7 @@ returns the fresh arm to populate. A payload-free arm's selector sets the tag
 alone. Assigning `type` and the arm separately still works, but a forgotten
 tag leaves `None`, and the payload is then absent from the wire with no assert:
 
+<!-- example: fragment -->
 ```c
 SphereCollider * sphere = collider_shape_select_sphere( &collider.shape );
 /* populate *sphere; collider.shape.type is already COLLIDER_SHAPE_TYPE_SPHERE */
@@ -584,6 +590,7 @@ The range is **part of the type**, and the wire cost follows from it. This
 is the single most useful feature in the language: 1001 values need 10 bits,
 so that is what it writes.
 
+<!-- example: fragment -->
 ```cpp
 serialize_assert( value.health >= 0 && value.health <= MaxHealth );
 write_bits( stream, uint32_t( value.health ), 10 );
@@ -685,6 +692,7 @@ blob bytes(1024)
 Both are length-prefixed with a maximum. Storage carries the buffer and the
 used length beside it:
 
+<!-- example: fragment -->
 ```cpp
 char name[MaxName + 1] = {};
 int32_t name_length = 0;
@@ -764,6 +772,7 @@ record is refused, never clamped.
 Types nest freely. A composed field writes its parts inline — no pointers,
 no offsets, no indirection:
 
+<!-- example: fragment -->
 ```cpp
 schema_write_object( stream, WriteVector3, value.position );
 ```
@@ -787,6 +796,7 @@ The condition must be a `bool` field **already written** — the reader has to
 know it before it can decide what comes next. Storage holds both sides; the
 wire carries only the taken one:
 
+<!-- example: fragment -->
 ```cpp
 write_bool( stream, value.at_rest );
 if ( !value.at_rest )
@@ -875,6 +885,7 @@ Generated readers are written on the assumption that the bytes are hostile.
 A value outside its declared range is **refused, not clamped** — the read
 returns failure and you drop the packet:
 
+<!-- example: fragment -->
 ```cpp
 // NOTE the buffer contract: in C++ and C the ALLOCATION must extend at least
 // 8 bytes past the packet data. The reader pulls a 64-bit word at a time, so a
@@ -1120,6 +1131,7 @@ code with **no serialize dependency**, includable from any translation unit
 The encode surface is a measure/save split, and the caller owns every buffer
 (generated code allocates nothing):
 
+<!-- example: fragment -->
 ```cpp
 #include "ConfigTable.h"
 
@@ -1160,6 +1172,7 @@ class, over spans the caller owns. Storage is a sealed class with public
 fields — every buffer allocated at construction, so `Load` allocates nothing
 and overlays in place after restoring the declared defaults:
 
+<!-- example: fragment -->
 ```csharp
 using Example;
 
@@ -1199,6 +1212,7 @@ exception. Storage is a class with public fields, every buffer allocated at
 construction, so `Load` allocates nothing and overlays in place after restoring
 the declared defaults. Buffers are caller-owned `Uint8Array`s:
 
+<!-- example: compile -->
 ```js
 import { ShipConfig, ShipConfigMeasure, ShipConfigSave, ShipConfigSaveInto, ShipConfigLoad, TableReport }
   from "./ConfigTable.js";
@@ -1244,6 +1258,7 @@ floor. On a per-frame path, hoist the pair
 out of the loop and call the `Body` half directly — the same code, with the two
 objects reused:
 
+<!-- example: compile -->
 ```js
 const reader = new TableReader(buffer, report);
 const writer = new TableWriter(out);
@@ -1262,6 +1277,7 @@ into those very classes, and one unit is one spelling. The codec never builds a
 JavaScript string, so a read allocates nothing for one. Decode at the boundary,
 where the allocation is your own choice:
 
+<!-- example: compile -->
 ```js
 const name = new TextDecoder().decode(loaded.name.subarray(0, loaded.nameLength));
 loaded.nameLength = new TextEncoder().encodeInto("Rowan", loaded.name).written;
@@ -1290,6 +1306,7 @@ element — the same currency the indexer takes, so a site that wants the key
 as its enum writes `(ShipType)ship_type` there. The enumerator is a struct, so
 the walk allocates nothing:
 
+<!-- example: fragment -->
 ```csharp
 foreach (var (ship_type, ship) in fleet.Ships)
 {
@@ -1316,6 +1333,7 @@ the KEY — `KeyId(0)` is `0`, the id that says `None` names no slot.
 caller owns** — the same spelling as C++ with a pointer where C++ takes a
 reference:
 
+<!-- example: fragment -->
 ```c
 #include "ConfigTable.h"
 
@@ -1441,6 +1459,7 @@ emitter's own spelling, because a table's closure decodes into the structs that
 emitter already wrote — so a value costs one declaration and `Load` overlays it
 in place after restoring the declared defaults:
 
+<!-- example: fragment -->
 ```go
 import "example"
 
@@ -1503,6 +1522,7 @@ slots — one per named variant, nothing for `None`, the key `k` at index
 enum's own `Max`, so there is no constant a consumer could put out of step with
 it. **Rust indexes it by the KEY**, as every port does:
 
+<!-- example: fragment -->
 ```rust
 fleet.ships[ShipType::BOMBER.0 as u64].health *= 2.0;
 
@@ -1583,6 +1603,7 @@ type and the extent is the generated `E.Max` constant and no other number. The
 shift and BOTH refusals live in one helper, so no call site spells any of them
 — `None` keys no slot, and neither does a value past `E.Max`:
 
+<!-- example: fragment -->
 ```go
 *example.TableKeyed(fleet.Ships[:], int(example.ShipTypeBomber)) = ship
 ```
@@ -1657,6 +1678,7 @@ arithmetic, so the same refusals.
 loop allocates nothing; `<field>()` carries the three numbers together in a
 `TableBlockRows` record and costs one per call, which is the convenience:
 
+<!-- example: fragment -->
 ```java
 for (int i = 0, n = frame.shipsCount(); i < n; i++) {
     int row = frame.shipsAt(i);                    // the pitch is inside, not here
@@ -1750,6 +1772,7 @@ width and a reader steps over what it cannot name exactly.
 batch of one.** There is no singular verb, because the bandwidth is in the
 batch.
 
+<!-- example: fragment -->
 ```cpp
 #include "BackendTable.h"
 
@@ -1775,6 +1798,7 @@ backenddemo::LoginRequestSaveMessages( logins, 3, buffer.data(), size, &report )
 send( buffer );
 ```
 
+<!-- example: fragment -->
 ```cpp
 // the RECEIVER holds ONE vocabulary a direction for the life of the connection.
 // The vocabulary BORROWS the announcement's bytes rather than copying them, so
@@ -1966,6 +1990,7 @@ table ShipConfig
 }
 ```
 
+<!-- example: fragment -->
 ```cpp
 ShipConfig ship;
 ship.settings_present = true;          // absent until you say so
@@ -1990,6 +2015,7 @@ arrays of those — `?[..N]T` and `?[N]T`. An optional array rides whole when
 present, its live count included even at zero, so "present and empty" and
 "absent" stay two values — the thing a bare count cannot spell:
 
+<!-- example: fragment -->
 ```cpp
 ShipConfig ship;
 ship.loadouts_present = true;   // present, and empty: rides as count 0
@@ -2013,6 +2039,7 @@ cook, the JSON writer and reader — follows `T`'s pointers only while the
 field is present, so an absent value, or one made absent after it was set,
 writes no node for whatever its pointers still hold:
 
+<!-- example: fragment -->
 ```go
 outer.InnerPresent = true
 TableStringEmplace(&b.Main, &outer.Inner.Text, []byte("hi")) // rides, one node
@@ -2033,6 +2060,7 @@ table Fleet
 }
 ```
 
+<!-- example: fragment -->
 ```cpp
 Fleet fleet;
 
@@ -2241,6 +2269,7 @@ the three functions above, and it pays nothing at all for what follows. A
 table with a pointer in that closure is VARIABLE-LENGTH, and it is never held
 by value: you build it, lock it, and read it through a root pointer.
 
+<!-- example: fragment -->
 ```cpp
 SceneBuilder builder;                       // MUTABLE
 Scene * root = builder.GetRoot();
@@ -2261,6 +2290,7 @@ There is no unlock: to edit again, load the const form into a fresh builder.
 Building goes wide with no lock and no per-node atomic — one worker per
 thread, each allocating on its own front:
 
+<!-- example: fragment -->
 ```cpp
 SceneBuilder builder;
 std::thread workers[4];
@@ -2285,6 +2315,7 @@ an array of thousands.
 
 Reading from the wire, the caller owns the allocation as always:
 
+<!-- example: fragment -->
 ```cpp
 int64_t attribution = 0;
 int64_t need = SceneLoadMeasure( wire, wire_size, &attribution ); // exact, reads no values
@@ -2318,6 +2349,7 @@ free functions under the root's name, and the two things C++ distinguishes by
 TYPE — which sink a node comes from, which encoding a walk is reading — are
 distinguished by a nullable member:
 
+<!-- example: fragment -->
 ```c
 SceneBuilder builder;
 TableSink sink;
@@ -2351,6 +2383,7 @@ scene_builder_shutdown( &builder );
 
 Reading from the wire is the same three steps, and the caller owns the region:
 
+<!-- example: fragment -->
 ```c
 region_bytes = scene_load_measure( wire, wire_size );   /* exact, reads no values */
 uint8_t * region = your_allocator( region_bytes );
@@ -2391,6 +2424,7 @@ and 110 KB once you define the hooks; a packet header is 36 headers. Define
 them once, before the first generated header, and every unit in the program
 picks them up:
 
+<!-- example: fragment -->
 ```cpp
 #define schema_assert( condition ) my_assert( condition )
 #define schema_fatal() my_fatal()                      // must not return
@@ -2424,6 +2458,7 @@ return value or a `TableReport` field.
 `TableBlockAllocator` already has — an alloc/free pair and a context — plus
 the zeroed-bytes contract on `alloc`:
 
+<!-- example: fragment -->
 ```cpp
 static void * heap_alloc( void * context, int64_t bytes ) { return ((Heap *) context)->Calloc( bytes ); }
 static void heap_free( void * context, void * pointer ) { ((Heap *) context)->Free( pointer ); }
@@ -2509,6 +2544,7 @@ empty map. `?map` is refused in a `fixed table`, a `type`, and beside
 
 The surface is a builder and a reader:
 
+<!-- example: fragment -->
 ```cpp
 FleetBuilder builder;
 Fleet * fleet = builder.GetRoot();
@@ -2617,6 +2653,7 @@ in a region and in a cook, so position is identity the way it is in a fixed
 array, and there is no sort for a writer to hold and no order check for a
 reader to run.
 
+<!-- example: fragment -->
 ```cpp
 SaveBuilder builder;
 Save * save = builder.GetRoot();
@@ -2689,6 +2726,7 @@ table Asset
 }
 ```
 
+<!-- example: fragment -->
 ```cpp
 AssetBuilder builder;
 TableBytesSlot data = builder.AllocBytes( size );   // the node, and the bytes to write through
@@ -2700,6 +2738,7 @@ TableStringEmplace( builder.main, builder.GetRoot()->caption, text, length );
 Reading is a VIEW — one add from the slot, no copy, off a loaded region, a
 locked builder or an opened cook alike:
 
+<!-- example: fragment -->
 ```cpp
 TableBytesView data = TableBytesAt( asset->data );       // NULL/0 for a null reference
 TableStringView caption = TableStringAt( asset->caption ); // .data is zero-terminated
@@ -2742,6 +2781,7 @@ fixed table Session
 In Go the field holds the count, and the `time.Time` is a pair of methods
 generated beside it, UTC on read:
 
+<!-- example: fragment -->
 ```go
 var s Session
 err := s.SetOpenedAtTime(time.Unix(0, 1760531645123456789)) // stores the count
@@ -2794,6 +2834,7 @@ in `<base>_block.rs` beside `block_runtime.rs` for Rust, and in
 `<Base>Block.go` for Go — so a project that never blocks a table compiles none
 of it, and the table sources are the same bytes either way:
 
+<!-- example: fragment -->
 ```cpp
 #include "RenderTable.h"                      // the ordinary table surface
 #include "RenderBlock.h"                      // the block form, only if you use it
@@ -2812,6 +2853,7 @@ table has no block form at all: a pointer means no fixed pitch.
 **Building it goes wide, and that is required, not merely allowed.** Declare
 the counts, lay the block out once, then let N workers fill disjoint ranges:
 
+<!-- example: fragment -->
 ```cpp
 // the storage: one extent, sized from the declared maxima, allocated ONCE
 // through YOUR allocator — an alloc/free pair and a context, malloc semantics.
@@ -2845,6 +2887,7 @@ yours to own.
 
 **Reading it is one check and then pointers:**
 
+<!-- example: fragment -->
 ```csharp
 if ( !RenderFrameBlock.Open( out RenderFrameBlock block, pointer, bytes ) )
     return;
@@ -2862,6 +2905,7 @@ ReadOnlySpan<RenderShipRow> ships = block.ShipsSpan;
 Rust reads it the same way, and its rows come back as a plain slice, because
 the pitch IS the element's size and a slice is the honest view:
 
+<!-- example: fragment -->
 ```rust
 let Some(block) = (unsafe { RenderFrameBlock::open(pointer, bytes) }) else {
     return;
@@ -2958,6 +3002,7 @@ schema cook --root Scene --in config/ --out Scene.cook .
 ```
 
 <!-- cpp-cook-usage-read -->
+<!-- example: fragment -->
 ```cpp
 #include "GraphTable.h"
 
@@ -3043,6 +3088,7 @@ where the layout is checked: Rust asserts it AT COMPILE TIME, with a const
 assert per size and per offset, so a runtime that disagreed with the model
 would not build rather than throw at start-up:
 
+<!-- example: fragment -->
 ```rust
 use graphdemo::*;
 
@@ -3099,6 +3145,7 @@ bound its string lengths and array counts, which are as forgeable in one
 struct as in a graph. **A root is any table**, so a fixed table has an `Open`
 like every other, and it is the same call:
 
+<!-- example: fragment -->
 ```cpp
 const Settings * settings = graphdemo::SettingsOpen( bytes, length );
 ```
@@ -3113,6 +3160,7 @@ instance it carries — so a cook your editor wrote and a cook your build farm
 ran the tool for are the same artifact.
 
 <!-- cpp-cook-usage-write -->
+<!-- example: fragment -->
 ```cpp
 // measure, then write: the buffer is yours and nothing here allocates
 const int64_t bytes = graphdemo::SettingsCookMeasure( settings );
@@ -3132,6 +3180,7 @@ the numbering: a node named from three places is written once, and a data cycle
 is refused as it is everywhere else.
 
 <!-- cpp-cook-usage-write-pointered -->
+<!-- example: fragment -->
 ```cpp
 // a pointered root is a region and a root pointer, so its Cook takes the
 // builder — locked or not — or a region root, and never a value. What it
@@ -3215,6 +3264,7 @@ $ schema build-version tables/block/
 0xbf7128181c3025bc
 ```
 
+<!-- example: fragment -->
 ```cpp
 // generated into <Base>Block.h, and stamped into every block's prologue
 printf( "%016llx\n", (unsigned long long) blockdemo::BuildVersion );
@@ -3468,6 +3518,7 @@ Every nested table on the wire is length-prefixed, so building a large file
 parallelizes: measure the subtables on N workers, prefix-sum the offsets,
 and scatter-write disjoint ranges — no worker touches another's bytes.
 
+<!-- example: fragment -->
 ```cpp
 // one worker per profile; shown serially
 int64_t sizes[kProfiles], total = 0;
@@ -3500,6 +3551,7 @@ enum-keyed array carries `key_type_name`, `key_name` and `key_id`, so it can
 print `ships[Bomber]` instead of `ships[2]`. Enough to write a generic
 editor, printer or differ with no RTTI and no schema files at runtime:
 
+<!-- example: fragment -->
 ```cpp
 const TableTypeInfo * type = ShipConfigTableType();
 for ( int32_t i = 0; i < type->num_fields; i++ )
@@ -3556,6 +3608,7 @@ the source; a game does neither and carries none of it. There is no flag and
 no marker on a declaration — a tool that inspects a build wants everything
 in it, and the one declaration it needs is the one nobody would have marked.
 
+<!-- example: fragment -->
 ```cpp
 #include "TabledemoView.h"
 
@@ -3620,6 +3673,7 @@ the text form read and write it without a double on the path (SPEC-TABLES.md
 The same descriptors drive a JSON text form, so every table reads from and
 writes to text with no per-table codec:
 
+<!-- example: fragment -->
 ```cpp
 #include "ShipTable.h"
 
@@ -3645,6 +3699,7 @@ never reads or writes a text does not compile that file, and including
 The same three in C#, where they are members of the unit's `Schema` class and
 the buffers are spans you own:
 
+<!-- example: fragment -->
 ```csharp
 TableReport report = new TableReport();
 ShipConfig ship = new ShipConfig();
@@ -3663,6 +3718,7 @@ tokens are handled in stack buffers.
 
 The same three in Rust, as free functions over slices you own:
 
+<!-- example: fragment -->
 ```rust
 let mut report = TableReport::default();
 let mut ship = ShipConfig::default();
@@ -3684,6 +3740,7 @@ path of every instance in the corpus.
 
 And the same three in Go, package-level over a `*T` and a `[]byte`:
 
+<!-- example: fragment -->
 ```go
 var report example.TableReport
 var ship example.ShipConfig
@@ -3703,6 +3760,7 @@ Go read and write paths allocate NOTHING at all, measured rather than asserted.
 Go also takes a text `encoding/json` wrote, and writes one back in its
 habits, through three options passed to the `With` calls (SPEC-TABLES §16.2):
 
+<!-- example: fragment -->
 ```go
 legacy := example.TableJSONOptions{NullAsEmpty: true, OmitDefaults: true, Compact: true}
 example.ShipConfigFromJSONWith(&ship, text, &report, legacy) // "tags": null reads as []
@@ -3725,6 +3783,7 @@ takes it (or the `Uint8Array` of one read straight off a file) and hands the
 value back, and anything that is not text is a `TypeError`, not a malformed
 report:
 
+<!-- example: compile -->
 ```js
 import { ShipConfigFromJson, ShipConfigToJson, TableReport } from "./ConfigTable.js";
 
@@ -3740,6 +3799,7 @@ option, which writes none — and every reader accepts a text with or without on
 **A pointered table has the same text**, read into its builder and written
 from a region's const root, in C++:
 
+<!-- example: fragment -->
 ```cpp
 SceneBuilder builder;
 TableReport report;
@@ -3844,6 +3904,7 @@ the locked root, as `<Name>ReadStrict` does. Either carrier is byte for byte:
 what it reads back saves to the same wire bytes the original saved to
 (docs/SPEC-TABLES.md §16.8).
 
+<!-- example: fragment -->
 ```go
 // Machines: base64 of the wire — lossless, opaque, keeps the form byte and
 // every versioning guarantee; pick it when the wire itself would be ideal.
@@ -3981,6 +4042,7 @@ table Config
 }
 ```
 
+<!-- example: compile -->
 ```go
 package demo
 
@@ -4054,6 +4116,7 @@ fixed table Marker
 }
 ```
 
+<!-- example: compile -->
 ```go
 package demo
 
@@ -4273,6 +4336,7 @@ go get github.com/mas-bandwidth/schema/v2@main-0123456789ab  # a promotion
 
 names one commit either way; never pin a bare branch.
 
+<!-- example: fragment -->
 ```go
 import (
 	"github.com/mas-bandwidth/schema/v2/compiler"
@@ -4301,6 +4365,7 @@ none (SPEC-TABLES.md §8.4, §8.8).
 A unit that does not compile comes back as `compiler.Diagnostics`, the whole
 error list rather than the first one:
 
+<!-- example: fragment -->
 ```go
 unit, err := c.Load(paths)
 if diags, ok := errors.AsType[compiler.Diagnostics](err); ok {
@@ -4314,6 +4379,7 @@ if diags, ok := errors.AsType[compiler.Diagnostics](err); ok {
 command that writes a schema file. A tool that wants the canonical form on disk
 as a side effect of loading opts into it, and it is two fields:
 
+<!-- example: fragment -->
 ```go
 c.FormatInPlace = true
 c.OnFormat = func(path string) { fmt.Printf("formatted %s\n", path) }
@@ -4329,6 +4395,7 @@ drift check that must not repair what it is measuring.
 A generator is an interface, and the built-in backends have no private path in:
 they are registered exactly the way yours is.
 
+<!-- example: fragment -->
 ```go
 // Markdown docs for every type in the unit.
 type docs struct{}
@@ -4371,6 +4438,7 @@ size, and default keeps its source expression on the IR (`Const.Expr`,
 output can say `MaxObjects - 1` where the resolved field alone could only
 say `9999`:
 
+<!-- example: fragment -->
 ```go
 // object_id int32 | min = 0, max = MaxObjects - 1
 f := handle.Fields[0]
@@ -4468,6 +4536,7 @@ through 64 ride bit-transparently in `int`; the 128-bit widths ride an
 emitted `Int128`/`UInt128` pair (`Int128.dart`, generated beside a unit that
 needs it):
 
+<!-- example: fragment -->
 ```dart
 import 'Wire.dart';
 
@@ -4663,6 +4732,7 @@ exact. Validation is always on: there is no compile-out
 assert on the BEAM, so writer contracts raise `ArgumentError` in every
 build (the O(1) checks only) and readers validate everything:
 
+<!-- example: fragment -->
 ```elixir
 wire = Example.Types.write_ship_create(ship)
 
@@ -4724,6 +4794,7 @@ walked is a data cycle, `{:error, :data_cycle}`; a number that names no table
 node (`1`, the root, included), or one node named by pointers of two table types, is
 `{:error, :invalid_value}`:
 
+<!-- example: fragment -->
 ```elixir
 # head and alias name one node: node 2 is the list's first node, node 3 its
 # second, and both fields hold 2
@@ -4756,6 +4827,7 @@ bit-transparent (the protobuf convention); the 128-bit widths ride an
 emitted immutable `Int128`/`UInt128` pair, generated beside a unit that
 needs it:
 
+<!-- example: fragment -->
 ```java
 import example.Types;
 
@@ -4826,6 +4898,7 @@ we use. The serialize.js bitpacker is inlined at every field with constant
 widths and masks, zero function calls; it imports nothing, runs on caller-owned
 buffers, and measures 8–10x the runtime tier (within a few x of native C):
 
+<!-- example: compile -->
 ```js
 import { ShipCreate } from "./Wire.js";
 import { WriteShipCreateFlat, ReadShipCreateFlat, FlatReadSlack } from "./WireFlat.js";
@@ -4867,6 +4940,7 @@ JavaScript consumer can state, and a `Buffer` under 4 KiB — which is what
 `readFileSync` hands back for a small file — is carved out of a shared pool at
 an arbitrary offset. Copy it into a fresh `Uint8Array` first:
 
+<!-- example: compile -->
 ```js
 import { readFileSync } from "node:fs";
 import { RenderFrameBlock, RenderShipRow, RenderVector3Row } from "./RenderBlock.js";
@@ -5352,6 +5426,7 @@ explicitly (it is not in the default set): `schema generate --lang go --surface 
 the JSON form carries, fixed and plain alike, then gets three functions in
 `<Base>TableTextForm.go`, which imports the standard library only:
 
+<!-- example: fragment -->
 ```go
 doc, ship, err := example.ShipConfigLoadTextForm(text, example.TableTextFormDefaultLimits())
 if err != nil {
