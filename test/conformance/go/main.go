@@ -212,17 +212,20 @@ func surfaceWire(lines []line, out string) error {
 		value := c.fresh()
 		var rep report
 		if !c.load(value, wire, &rep) {
-			// SPEC-TABLES §2.5: a blob belongs to one slot, and the one read
-			// refuses a file whose two slots name one blob. That refusal is
-			// this row's answer (the corpus marks it wire-refused); any other
-			// refusal of a corpus instance is a failure.
-			if errors.Is(rep.err, blobdemo.TableRefuseBlobShared) {
-				if err := spillAbsentReason(out, f[1], rep.err.Error()); err != nil {
-					return err
-				}
-				continue
+			// THE READ'S REFUSAL IS THIS ROW'S ANSWER, whatever its reason
+			// (docs/rulings.json refusal-verdict-only): a .absent holding the
+			// reason, which the harness passes on a row the corpus marks
+			// wire-refused (blob_shared, §2.5; shapes_*_below_min) and fails
+			// on a row that owes the bytes. It never aborts the surface (review
+			// F-089: the other rows went unanswered).
+			reason := "refused"
+			if rep.err != nil {
+				reason = rep.err.Error()
 			}
-			return fmt.Errorf("%s: load refused %s (%v)", f[1], f[4], rep.err)
+			if err := spillAbsentReason(out, f[1], reason); err != nil {
+				return err
+			}
+			continue
 		}
 		size := c.measure(value)
 		if size < 0 {

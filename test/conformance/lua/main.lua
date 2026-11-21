@@ -98,6 +98,13 @@ end
 
 local NOT_GENERATED = "unit not generated for lua: docs/SPEC-TABLES.md §15"
 
+-- A CODEC THAT IS NOT THERE is an EMPTY `<case>.absent` (README.md, "Exit
+-- codes"): a reason beside it would read as the leg's refusal, which on a row
+-- that owes an answer fails (review F-091).
+local function noCodec(outdir, name)
+  writeBytes(outdir .. "/" .. name .. ".absent", "")
+end
+
 ---------------------------------------------------------------------------
 -- the units
 ---------------------------------------------------------------------------
@@ -253,7 +260,7 @@ local function surfaceReport(all, outdir)
   for _, f in ipairs(kind(all, "report")) do
     local u = unit(f[3])
     if not u then
-      absent(outdir, f[2], NOT_GENERATED)
+      noCodec(outdir, f[2])
     else
       local v = strictRead(u, f[4], mustRead(f[5]))
       answerRead(outdir, f[2], u, f[4], v, true)
@@ -267,7 +274,7 @@ local function surfaceFraming(all, outdir)
   for _, f in ipairs(kind(all, "framing")) do
     local u = unit(f[3])
     if not u then
-      absent(outdir, f[2], NOT_GENERATED)
+      noCodec(outdir, f[2])
     else
       local v = loadVariable(u, f[4], mustRead(f[5]))
       answerRead(outdir, f[2], u, f[4], v, f[6] ~= "no-value")
@@ -286,7 +293,7 @@ local function surfaceWire(all, outdir)
   for _, f in ipairs(kind(all, "instance")) do
     local u = unit(f[3])
     if not u then
-      absent(outdir, f[2], NOT_GENERATED)
+      noCodec(outdir, f[2])
     else
       local v, why = strictRead(u, f[4], mustRead(f[5]))
       if v == nil then
@@ -322,7 +329,7 @@ local function surfaceJsonRead(all, outdir)
     if not noText(f) then
       local u = unit(f[3])
       if not u then
-        absent(outdir, f[2], NOT_GENERATED)
+        noCodec(outdir, f[2])
       else
         local text = mustRead("testdata/conformance/tables/json/" .. f[2] .. ".json")
         local v = u.json.FromJson(u.T, f[4], text, newReport())
@@ -363,7 +370,7 @@ local function surfaceJsonWrite(all, outdir)
     if not noText(f) then
       local u = unit(f[3])
       if not u then
-        absent(outdir, f[2] .. ".json", NOT_GENERATED)
+        noCodec(outdir, f[2] .. ".json")
       else
         local v, why = strictRead(u, f[4], mustRead(f[5]))
         if v == nil then
@@ -385,7 +392,7 @@ local function surfaceJsonWrite(all, outdir)
   for _, f in ipairs(kind(all, "json-write-refusal")) do
     local u = unit(f[3])
     if not u then
-      absent(outdir, f[2] .. ".json", NOT_GENERATED)
+      noCodec(outdir, f[2] .. ".json")
     else
       local v, why = strictRead(u, f[4], mustRead(f[5]))
       if v == nil then
@@ -406,7 +413,7 @@ local function surfaceJsonHostile(all, outdir)
   for _, f in ipairs(kind(all, "json-hostile")) do
     local u = unit(f[3])
     if not u then
-      absent(outdir, f[2], NOT_GENERATED)
+      noCodec(outdir, f[2])
     else
       local text = mustRead(f[5] .. "/" .. f[4] .. ".json")
       local v = u.json.FromJson(u.T, f[4], text, newReport())
@@ -444,11 +451,12 @@ local function surfaceMessage(all, outdir)
     -- message <name> <connection> <root> <file-form wire> <message-form wire>
     local conn = connectionNamed(all, f[3])
     local u = unit(conn[3])
-    if f[6] == "-" then
+    if not u then
+      -- no codec at all comes first, whatever the row owes (review F-086)
+      noCodec(outdir, f[2])
+    elseif f[6] == "-" then
       -- a named refusal row: the root is a variable table (§3.3)
       absent(outdir, f[2], "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)")
-    elseif not u then
-      absent(outdir, f[2], NOT_GENERATED)
     elseif u.T.MessageRoots == nil or not u.T.MessageRoots[f[4]] then
       absent(outdir, f[2], "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)")
     else
@@ -528,9 +536,9 @@ end
 local function surfaceRetain(all, outdir, saves)
   for _, f in ipairs(all) do
     if f[1] == "retain" then
-      local answer, why = retainRow(f)
+      local answer = retainRow(f)
       if answer == nil then
-        absent(outdir, f[2], why)
+        noCodec(outdir, f[2]) -- retainRow answers nil only for a unit not generated
       elseif answer.refused then
         if not saves then writeBytes(outdir .. "/" .. f[2], "refused\n") end
       elseif saves then
@@ -877,7 +885,7 @@ local function surfaceCookWrite(all, outdir)
     if inst == nil then fail("cook-write " .. f[2] .. " names no instance") end
     local u = unit(inst[3])
     if not u then
-      for _, o in ipairs(ORDERS) do absent(outdir, f[2] .. o[2], NOT_GENERATED) end
+      for _, o in ipairs(ORDERS) do noCodec(outdir, f[2] .. o[2]) end
     else
       -- THE RECIPE'S VALUE (FORMAT.md): the JSON input, or `-` for the
       -- no-text instance's wire; then the optional shared blob.
@@ -1169,7 +1177,7 @@ local function surfaceWriteRefusal(all, outdir, surface)
     end
     local u = unit(key)
     if not u then
-      absent(outdir, name, NOT_GENERATED)
+      noCodec(outdir, name)
     else
       local v, why = strictRead(u, root, mustRead(wire))
       if v == nil then fail(name .. ": load refused " .. wire .. " (" .. tostring(why) .. ")") end

@@ -119,15 +119,16 @@ test-go: conformance-go-rows
 # checked store, held to every integer kind's range, and the reviewer's repro
 # with her controls (an ordinal or a tag of 256 or 4294967296 is never
 # narrowed into a lawful member and reported `wrote`; 0 and 1 write; 9
-# refuses). They live in package main of the test/conformance/go module, which
+# refuses); and the wire surface's refusal answered as a reasoned .absent,
+# never an abort (F-089's shape in this driver). They live in package main of the test/conformance/go module, which
 # `go test ./...` from the root never sees, and they need the generated Go the
 # driver links, so they are a gate target of their own, a row of their own in
 # ci-fast.yml beside the two rows halves.
 .PHONY: conformance-go-driver-unit
 conformance-go-driver-unit: build/tables-generated-go/.stamp cards-generate
 	cd test/conformance/go && SLOWGATE_LOG_DIR="$(CURDIR)/build/slowgate" sh $(CURDIR)/test/slowgate/proof conformance-go-driver-unit \
-		'TestWriteRefusalNeverNarrowsAnOrdinalOrATag TestWriteRefusalStoreHoldsEveryKindToItsRange TestWriteRefusalCountLengthAndRealAreChecked' \
-		. -count=1 -run '^(TestWriteRefusalNeverNarrowsAnOrdinalOrATag|TestWriteRefusalStoreHoldsEveryKindToItsRange|TestWriteRefusalCountLengthAndRealAreChecked)$$'
+		'TestWriteRefusalNeverNarrowsAnOrdinalOrATag TestWriteRefusalStoreHoldsEveryKindToItsRange TestWriteRefusalCountLengthAndRealAreChecked TestWireRefusalIsAnAnswerNeverAnAbort' \
+		. -count=1 -run '^(TestWriteRefusalNeverNarrowsAnOrdinalOrATag|TestWriteRefusalStoreHoldsEveryKindToItsRange|TestWriteRefusalCountLengthAndRealAreChecked|TestWireRefusalIsAnAnswerNeverAnAbort)$$'
 test-go: conformance-go-driver-unit
 
 # The reversed witness, modelled on projection-variant-order-negative-control:
