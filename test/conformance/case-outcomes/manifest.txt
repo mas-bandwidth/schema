@@ -1,0 +1,57 @@
+# THE THREE WAYS A CASE ENDS, for the Ruby and Python drivers
+# (test/conformance/{ruby,python}; make conformance-ruby-case-outcomes and
+# conformance-python-case-outcomes, beside expected.txt and expected-empty.txt).
+# The rows are in the DERIVED manifest's shape the drivers read
+# (testdata/conformance/tables/FORMAT.md): an `instance` line keeps its
+# markers, and a write-refusal line carries no verdict.
+#
+#   a codec ABSENT for the case (no unit, no such root, no message form): an
+#     EMPTY <case>.absent, whatever the row owes. Review F-086/F-087: a message
+#     row over a variable root (wire `-`) aborted the whole surface when its
+#     codec was missing, and an accepted row's absence named a reason, which
+#     reads as a refusal;
+#   a REFUSAL of a present codec: that surface's refusal answer, which on the
+#     wire and message surfaces is <case>.absent HOLDING THE READ'S REASON,
+#     whatever the reason (docs/rulings.json refusal-verdict-only). Review
+#     F-088/F-089/F-090: the wire drivers turned every refusal but blob_shared
+#     into an abort, and a missing root into an abort too;
+#   a DRIVER ERROR (a wire file that does not exist, a path naming no field):
+#     no answer, the case named on stderr, the cases after it still answered,
+#     and the surface's exit status non-zero.
+#
+# Every refused row sits beside a legal control on the same root. The same
+# manifest run over an EMPTY generated tree (expected-empty.txt) answers every
+# case absent and exits 0.
+
+connection backend_conn      backenddemo 0x2309093a1139c6cc testdata/wire/tables/backend_conn.bin
+connection graph_conn        graphdemo   0x2e0dc8d1c2bff1ae testdata/wire/tables/graph_conn_current.bin
+connection gone_backend_conn nosuchunit  0x2309093a1139c6cc testdata/wire/tables/backend_conn.bin
+connection gone_graph_conn   nosuchunit  0x2e0dc8d1c2bff1ae testdata/wire/tables/graph_conn_current.bin
+
+message msg_read                 backend_conn      LoginRequest testdata/conformance/tables/wire/login_full.bin testdata/wire/tables/login_full_message.bin
+message msg_inapplicable         graph_conn        Scene        testdata/wire/tables/graph_tree.bin            -
+message msg_error                backend_conn      LoginRequest testdata/conformance/tables/wire/login_full.bin test/conformance/case-outcomes/no-such-file.bin
+message msg_no_unit              gone_backend_conn LoginRequest testdata/conformance/tables/wire/login_full.bin testdata/wire/tables/login_full_message.bin
+message msg_inapplicable_no_unit gone_graph_conn   Scene        testdata/wire/tables/graph_tree.bin            -
+message msg_no_root              backend_conn      NoSuchRoot   testdata/conformance/tables/wire/login_full.bin testdata/wire/tables/login_full_message.bin
+
+instance wire_read          shapes     Bounds      testdata/wire/tables/shapes/bounds_octets_at_min.bin
+instance wire_refused       shapes     Bounds      testdata/wire/tables/shapes/bounds_octets_below_min.bin no-text wire-refused
+instance wire_error         shapes     Bounds      test/conformance/case-outcomes/no-such-file.bin
+instance wire_fixed_read    shapes     FixedBounds testdata/wire/tables/shapes/fixed_octets_three.bin
+instance wire_fixed_refused shapes     FixedBounds testdata/wire/tables/shapes/fixed_octets_below_min.bin no-text wire-refused
+instance wire_blob_read     blobdemo   Catalog     testdata/wire/tables/blob_equal_bytes.bin no-text
+instance wire_blob_shared   blobdemo   Catalog     testdata/wire/tables/blob_shared.bin no-text wire-refused
+instance wire_no_unit       nosuchunit Bounds      testdata/wire/tables/shapes/bounds_octets_at_min.bin
+instance wire_no_root       shapes     NoSuchRoot  testdata/wire/tables/shapes/bounds_octets_at_min.bin
+
+write-refusal wr_ord_1          tabledemo  LoadoutConfig testdata/conformance/tables/wire/loadout_full.bin grade             ordinal 1
+write-refusal wr_ord_256        tabledemo  LoadoutConfig testdata/conformance/tables/wire/loadout_full.bin grade             ordinal 256
+write-refusal wr_ord_2p32       tabledemo  LoadoutConfig testdata/conformance/tables/wire/loadout_full.bin grade             ordinal 4294967296
+write-refusal wr_error          tabledemo  LoadoutConfig testdata/conformance/tables/wire/loadout_full.bin nosuchfield       int     1
+write-refusal wr_tag_1          tabledemo  RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].effect tag     1
+write-refusal wr_tag_256        tabledemo  RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].effect tag     256
+write-refusal wr_tag_2p32       tabledemo  RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].effect tag     4294967296
+write-refusal wr_count_ok       graphdemo  Scene         testdata/wire/tables/graph_tree.bin               layers            count   4
+write-refusal wr_count_past     graphdemo  Scene         testdata/wire/tables/graph_tree.bin               layers            count   5
+write-refusal wr_no_unit        nosuchunit LoadoutConfig testdata/conformance/tables/wire/loadout_full.bin grade             ordinal 1

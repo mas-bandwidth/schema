@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 def self.run(manifest, outdir)
-  RubyConformance.entries(manifest, 'instance').each do |row|
+  RubyConformance.cases(manifest, 'instance') do |row|
     case_name, unit, root, wire = row[1, 4]
     next if row.length > 5 && row[5] == 'no-text'
 
@@ -15,7 +15,7 @@ def self.run(manifest, outdir)
     RubyConformance.write_bytes(outdir, "#{case_name}.json", value.to_json.b)
   end
 
-  RubyConformance.entries(manifest, 'json-write-refusal').each do |row|
+  RubyConformance.cases(manifest, 'json-write-refusal') do |row|
     case_name, unit, root, wire, damage = row[1, 5]
     pkg = RubyConformance.unit_package(unit)
     cls = RubyConformance.root_class(unit, root)

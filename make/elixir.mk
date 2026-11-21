@@ -109,8 +109,9 @@ generated/bench/elixir/.stamp: bin/schema $(SCHEMAS_BENCH)
 # tblscalars2 the second scalars version and tblrt1/tblrt2/tblrt3 the retain
 # units (§6.6); widelist (tables/widelist) a 128-bit list whose node aligns
 # sixteen (§2.8, the cook's node alignment rule); shapes (test/tables/shapes),
-# the manifest's opt-in unit, which the driver's `list` names, so its bounds,
-# refusals and refused instances reach this leg. The variable-class surfaces (wire,
+# the manifest's opt-in unit, compiled for the driver's case-outcomes fixture
+# (elixir-case-outcomes); `list` names it once the fixed writer refuses a
+# ranged float32 past its bound. The variable-class surfaces (wire,
 # json-read, json-write, report) answer every carried instance; a construct
 # outside the class writes <case>.absent rather than a wrong answer.
 ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
@@ -443,8 +444,9 @@ build-conformance-elixir: build/elixir-tables-ebin/.stamp
 # Seconds: one BEAM per surface over the ebin build-conformance-elixir built.
 .PHONY: elixir-case-outcomes
 elixir-case-outcomes: build-conformance-elixir
-	BEAM_PATH="$(BEAM_PATH)" sh test/conformance/elixir/case-outcomes/check.sh \
-		test/conformance/elixir/case-outcomes build/elixir-case-outcomes
+	BEAM_PATH="$(BEAM_PATH)" sh test/conformance/case-outcomes/check.sh test/conformance/elixir/driver \
+		test/conformance/elixir/case-outcomes/manifest.txt test/conformance/elixir/case-outcomes/expected.txt \
+		build/elixir-case-outcomes
 test-elixir: elixir-case-outcomes
 
 # THE ELIXIR LEG's own gates, beside the harness's matrix row. They read the

@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 def self.run(manifest, outdir)
-  RubyConformance.entries(manifest, 'write-refusal-json').each do |row|
+  RubyConformance.cases(manifest, 'write-refusal-json') do |row|
     case_name, unit, root, wire, path, rule, token = row[1, 7]
     pkg = RubyConformance.unit_package(unit)
     cls = RubyConformance.root_class(unit, root)

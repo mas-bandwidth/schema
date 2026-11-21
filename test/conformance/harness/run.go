@@ -820,7 +820,7 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 				_, _ = io.WriteString(w, "conformance EXEMPTS "+line+"\n")
 			}
 			for _, e := range legWant {
-				if notAsked[e.name] {
+				if wasNotAsked(notAsked, s, e.name) {
 					r.missing++
 					r.mark(e.name, outcomeAbsent)
 					r.verdict(e.name, "absent")
@@ -879,6 +879,17 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 		}
 	}
 	return report(w, langs, results), nil
+}
+
+// wasNotAsked answers whether the expectation name on surface belongs to a row
+// the leg was not handed (an opt-in unit it does not name, optin.go). The
+// json-write surface names its expectations `<case>.json` after the instance
+// row they come from, so the row is found under the case name.
+func wasNotAsked(notAsked map[string]bool, surface, name string) bool {
+	if notAsked[name] {
+		return true
+	}
+	return surface == "json-write" && notAsked[strings.TrimSuffix(name, ".json")]
 }
 
 // scoreRefusalAbsent scores the `<case>.absent` a leg wrote on a row whose
@@ -957,10 +968,20 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 			r.mark(e.name, outcomeFail)
 			return
 		}
-		if _, absent := os.Stat(answer + ".absent"); absent == nil {
-			// An ordinary per-case absence is a missing feature for this leg.
-			r.missing++
-			r.mark(e.name, outcomeAbsent)
+		if reason, rerr := os.ReadFile(answer + ".absent"); rerr == nil {
+			if len(bytes.TrimSpace(reason)) == 0 {
+				// An ordinary per-case absence (an EMPTY `.absent`) is a
+				// missing feature for this leg.
+				r.missing++
+				r.mark(e.name, outcomeAbsent)
+				return
+			}
+			// A `.absent` NAMING A REASON is the historical spelling of a
+			// REFUSAL (README.md), never of a missing codec: on a row that
+			// owes an answer it is the wrong verdict, and it may not hide in
+			// the absence count.
+			r.failures = append(r.failures, fmt.Sprintf("%s: the leg refused (%s) where the row owes an answer; a missing codec writes an EMPTY .absent", e.name, firstLine(reason)))
+			r.mark(e.name, outcomeFail)
 			return
 		}
 		r.failures = append(r.failures, fmt.Sprintf("%s: the driver wrote nothing", e.name))
