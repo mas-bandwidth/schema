@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"slices"
 )
 
 // failMethods are the testing.TB methods that mark a test failed.
@@ -265,11 +266,9 @@ func (a *analyzer) reach(s *scope, n ast.Node) bool {
 				}
 				return false
 			}
-			for _, d := range s.file.pkg.funcs[n.Name] {
-				if a.declCanFail(d) {
-					found = true
-					return false
-				}
+			if slices.ContainsFunc(s.file.pkg.funcs[n.Name], a.declCanFail) {
+				found = true
+				return false
 			}
 		}
 		return true
@@ -294,12 +293,7 @@ func (a *analyzer) selectorCanFail(s *scope, sel *ast.SelectorExpr, call *ast.Ca
 	if x, ok := sel.X.(*ast.Ident); ok {
 		if _, isPkg := s.file.imports[x.Name]; isPkg {
 			if p := a.t.imported(s.file, x.Name); p != nil {
-				for _, d := range p.funcs[name] {
-					if a.declCanFail(d) {
-						return true
-					}
-				}
-				return false
+				return slices.ContainsFunc(p.funcs[name], a.declCanFail)
 			}
 			// standard library or third party: it can fail the test only if it is given the test
 			return call != nil && a.hasTestingArg(s, call)
@@ -359,7 +353,7 @@ func isTestFunc(d *ast.FuncDecl) (kind string, ok bool) {
 	for _, c := range []struct{ prefix, typ, kind string }{{"Test", "T", "test"}, {"Fuzz", "F", "fuzz"}, {"Benchmark", "B", "benchmark"}} {
 		if len(d.Name.Name) >= len(c.prefix) && d.Name.Name[:len(c.prefix)] == c.prefix && sel.Sel.Name == c.typ {
 			rest := d.Name.Name[len(c.prefix):]
-			if rest == "" || !(rest[0] >= 'a' && rest[0] <= 'z') {
+			if rest == "" || rest[0] < 'a' || rest[0] > 'z' {
 				return c.kind, true
 			}
 		}

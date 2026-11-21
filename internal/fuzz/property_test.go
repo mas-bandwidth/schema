@@ -54,7 +54,7 @@ func corpusUnitsFrom(dirs []string) (map[string][]check.SourceFile, error) {
 			}
 			ast, perrs := parser.Parse(e.Name(), b)
 			if len(perrs) > 0 {
-				return nil, fmt.Errorf("%s/%s does not parse: %v", dir, e.Name(), perrs[0])
+				return nil, fmt.Errorf("%s/%s does not parse: %w", dir, e.Name(), perrs[0])
 			}
 			files = append(files, check.SourceFile{
 				Path: e.Name(), Name: e.Name(),
