@@ -40,6 +40,8 @@ func TestMain(m *testing.M) {
 			fmt.Println("not a case answer")
 		case "skip":
 			fmt.Println("skip no reader")
+		case "accept":
+			fmt.Println("accept -")
 		default:
 			os.Exit(4)
 		}
@@ -55,7 +57,7 @@ func TestKnownFindingCannotHideExecutionFailure(t *testing.T) {
 	}
 	corpus := testCorpus(t, "probe", "answers")
 	findings := filepath.Join(t.TempDir(), "findings.tsv") // beside the corpus, never in it: every .tsv there is a manifest
-	if err := os.WriteFile(findings, []byte("probe\ttest-probe\tinputs/probe.bin\tknown verdict mismatch\n"), 0o600); err != nil {
+	if err := os.WriteFile(findings, []byte("probe\ttest-probe\tinputs/probe.bin\trefuse\tknown verdict mismatch\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	for _, mode := range []string{"mismatch", "match", "exit", "sanitizer", "hang", "error", "unbound", "unreadable", "skip"} {
@@ -73,6 +75,63 @@ func TestKnownFindingCannotHideExecutionFailure(t *testing.T) {
 				t.Fatalf("known finding with %s: success=%v, want %v", mode, ok, want)
 			}
 		})
+	}
+}
+
+// TestAFindingCarriesTheAnswerItRecords is F-079: a finding names the answer
+// the port gives today, and carries that answer and no other. Before, any
+// accept or refusal was carried under any finding, so a port that changed from
+// refusing to accepting (or to another digest) stayed green. The controls are
+// the findings that record the very answer given; a finding with no answer is
+// refused outright.
+func TestAFindingCarriesTheAnswerItRecords(t *testing.T) {
+	binary, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	corpus := testCorpus(t, "probe", "answers")
+	write := func(answer string) string {
+		p := filepath.Join(t.TempDir(), "known-findings.tsv")
+		if err := os.WriteFile(p, []byte("probe\ttest-probe\tinputs/probe.bin\t"+answer+"\tknown disagreement\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	for _, c := range []struct {
+		name, mode, answer string
+		want               bool
+	}{
+		{"CONTROL: an accept under the accept it records", "accept", "accept -", true},
+		{"CONTROL: a refusal under refuse, whatever its reason", "mismatch", "refuse", true},
+		{"an accept under refuse", "accept", "refuse", false},
+		{"an accept under another digest", "accept", "accept " + strings.Repeat("b", 64), false},
+		{"a refusal under an accept", "mismatch", "accept -", false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("SCHEMA_HOSTILE_RUNNER_TEST_ANSWER", c.mode)
+			ok, err := run("test", binary, corpus, write(c.answer), "", "", 1, 5*time.Second)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if ok != c.want {
+				t.Fatalf("success=%v, want %v", ok, c.want)
+			}
+		})
+	}
+	old := filepath.Join(t.TempDir(), "known-findings.tsv")
+	if err := os.WriteFile(old, []byte("probe\ttest-probe\tinputs/probe.bin\tknown disagreement\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := loadFindings(old); err == nil {
+		t.Error("a finding that records no answer was read: it would carry any answer")
+	}
+	for _, carry := range []string{"answer-matches", "answer-refuse", "answer-other-digest"} {
+		if _, _, err := loadFindings(filepath.Join("..", "..", "internal", "ci", "hostilecorpus", "testdata", "carry", "findings", carry+".tsv")); err != nil {
+			t.Errorf("the committed carry control %s does not read: %v", carry, err)
+		}
+	}
+	if _, _, err := loadFindings(filepath.Join("..", "..", "internal", "ci", "hostilecorpus", "testdata", "carry", "findings", "no-answer.tsv")); err == nil {
+		t.Error("the committed no-answer carry control reads: it must be refused")
 	}
 }
 
