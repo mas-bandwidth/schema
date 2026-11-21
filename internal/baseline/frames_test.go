@@ -385,8 +385,8 @@ func frameRows(t *testing.T) []frameRow {
 			build:    "moves",
 		},
 		{
-			name:     "an enum variant deprecated in place",
-			row:      "an enum VARIANT deprecated in place",
+			name: "an enum variant deprecated in place",
+			row:  "an enum VARIANT deprecated in place",
 			// a keyed array may not be keyed by an enum with a deprecated
 			// variant (§2.15), so the row's base drops the keyed field
 			base: richEdit(t, framesRichSrc, "    tally   [Grade]int32\n", ""),
