@@ -95,7 +95,9 @@ func textNumberTexts() []string {
 
 // textNumberRun generates the unit, lets edit plant a reversal in the
 // generated wire module, and answers one line per text:
-// `read <saved bytes>` or `refused <reason>`.
+// `read <saved bytes>` or `refused <reason>`. The reason is Dart's own
+// diagnostic and is never compared (docs/rulings.json refusal-verdict-only):
+// textNumberVerdict strips it before any comparison.
 func textNumberRun(t *testing.T, edit func(string) string) []string {
 	t.Helper()
 	u := unitFrom(t, textNumberSchema)
@@ -153,11 +155,12 @@ func textNumberOracle(t *testing.T) []string {
 		inst := model.New(u.Tables["Root"])
 		var rep tabletext.Report
 		if !model.Read(inst, []byte(text), &rep) {
-			reason, _, _ := strings.Cut(rep.Reason, ":")
-			if reason != "kind_mismatch" && reason != "out_of_range" {
-				t.Fatalf("%s: unexpected Go refusal (%+v)", text, rep)
+			// THE ORACLE'S VERDICT, never its reason: a false read that
+			// is not a refusal is the oracle failing, not a verdict.
+			if !rep.Refused {
+				t.Fatalf("%s: the Go engine failed without a refusal (%+v)", text, rep)
 			}
-			want = append(want, "refused "+reason)
+			want = append(want, "refused")
 			continue
 		}
 		if slices.Contains(textWideRefusal, text) {
@@ -172,12 +175,23 @@ func textNumberOracle(t *testing.T) []string {
 	return want
 }
 
-// textNumberRed is every text whose line differs from the engine's.
+// textNumberVerdict is a probe line with the refusal reason dropped: the
+// value on a read, the verdict alone on a refusal. Why a read refused is
+// per-language diagnostic detail and is never compared across targets
+// (docs/rulings.json refusal-verdict-only).
+func textNumberVerdict(line string) string {
+	if line == "refused" || strings.HasPrefix(line, "refused ") {
+		return "refused"
+	}
+	return line
+}
+
+// textNumberRed is every text whose verdict or value differs from the engine's.
 func textNumberRed(got, want []string) []string {
 	texts := textNumberTexts()
 	var red []string
 	for i := range want {
-		if got[i] != want[i] {
+		if textNumberVerdict(got[i]) != want[i] {
 			red = append(red, texts[i])
 		}
 	}
@@ -190,9 +204,33 @@ func TestDartTextNumberTokensLandAsTheEngine(t *testing.T) {
 	got, want := textNumberRun(t, nil), textNumberOracle(t)
 	texts := textNumberTexts()
 	for i := range want {
-		if got[i] != want[i] {
+		if textNumberVerdict(got[i]) != want[i] {
 			t.Errorf("%s: Dart lands %s, the Go engine %s", texts[i], got[i], want[i])
 		}
+	}
+}
+
+// TestDartTextNumberReasonIsDiagnostic renames every refusal reason the
+// emitted JSON reader can give: the verdicts and values are unchanged, so no
+// row may go red (docs/rulings.json refusal-verdict-only).
+func TestDartTextNumberReasonIsDiagnostic(t *testing.T) {
+	slowtest.Gate(t, "dart")
+	t.Parallel()
+	got := textNumberRun(t, func(src string) string {
+		for _, reason := range []string{"kind_mismatch", "out_of_range"} {
+			anchor := "r.refuse('" + reason + "')"
+			if !strings.Contains(src, anchor) {
+				t.Fatalf("the rename plant's anchor %q is not in ProbeWire.dart", anchor)
+			}
+			src = strings.ReplaceAll(src, anchor, "r.refuse('renamed_by_the_plant')")
+		}
+		return src
+	})
+	if !slices.Contains(got, "refused renamed_by_the_plant") {
+		t.Fatalf("the rename plant reached no refusal: %q", got)
+	}
+	if red := textNumberRed(got, textNumberOracle(t)); len(red) != 0 {
+		t.Fatalf("a renamed reason turned rows red: %q", red)
 	}
 }
 
