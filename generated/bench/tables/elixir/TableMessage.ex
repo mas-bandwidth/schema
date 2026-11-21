@@ -114,75 +114,83 @@ defmodule Benchtable.TableMessage do
   @build_version 0x3E3D2B65756719D6
   @message_records %{
     "TableChatEvent" => %{
-      0xA5013E9AD5CAEDA4 => {0, 0x01A4EDCAD59A3E01A504010200, {:same, 0}, nil},
-      0xFBF1AC4D96EBD022 => {1, 0x0122D0EB964DACF1FB07010C00, {:same, 0}, nil}
+      0xA5013E9AD5CAEDA4 => {0, 0x01A4EDCAD59A3E01A504010200, {:same, 0}, nil, {0, 3}},
+      0xFBF1AC4D96EBD022 => {1, 0x0122D0EB964DACF1FB07010C00, {:same, 0}, nil, nil}
     },
     "TableEntity" => %{
-      0x23FCFD6678E36712 => {0, 0x011267E37866FDFC2307010C00, {:same, 0}, nil},
-      0xCB4B37357667310E => {1, 0x010E31677635374BCB04010FFDFF01, {:same, 0}, nil},
-      0xCB4B3835766732C1 => {2, 0x01C132677635384BCB04010FFDFF01, {:same, 0}, nil},
-      0xCB4B353576672DA8 => {3, 0x01A82D677635354BCB04010FFDFF01, {:same, 0}, nil},
-      0xB54D8E19798E16E8 => {4, 0x01E8168E79198E4DB507010900, {:same, 0}, nil},
-      0x53A9F665A90CC1B1 => {5, 0x01B1C10CA965F6A95307010900, {:same, 0}, nil},
-      0x6CEDE6B6EB60EE67 => {6, 0x0167EE60EBB6E6ED6C04010CFF1F, {:same, 0}, nil},
-      0x6CEDE5B6EB60ECB4 => {7, 0x01B4EC60EBB6E5ED6C04010CFF1F, {:same, 0}, nil},
-      0x6CEDE8B6EB60F1CD => {8, 0x01CDF160EBB6E8ED6C04010CFF1F, {:same, 0}, nil},
-      0x7F69D4B5288BA9CF => {9, 0x01CFA98B28B5D4697F04010A00, {:same, 0}, nil},
-      0xA0B610205F2C6E01 => {10, 0x01016E2C5F2010B6A01E, {:enum, :none}, nil},
-      0x7F6308BE8AB37FC0 => {11, 0x01C07FB38ABE08637F09010800, {:same, 0}, nil},
-      0x11A44FC1D1243DA7 => {12, 0x01A73D24D1C14FA41101, {:same, 0}, nil},
-      0x7674CFD19B9031CA => {13, 0x01CA31909BD1CF747601, {:same, 0}, nil}
+      0x23FCFD6678E36712 => {0, 0x011267E37866FDFC2307010C00, {:same, 0}, nil, nil},
+      0xCB4B37357667310E =>
+        {1, 0x010E31677635374BCB04010FFDFF01, {:same, 0}, nil, {-16383, 16383}},
+      0xCB4B3835766732C1 =>
+        {2, 0x01C132677635384BCB04010FFDFF01, {:same, 0}, nil, {-16383, 16383}},
+      0xCB4B353576672DA8 =>
+        {3, 0x01A82D677635354BCB04010FFDFF01, {:same, 0}, nil, {-16383, 16383}},
+      0xB54D8E19798E16E8 => {4, 0x01E8168E79198E4DB507010900, {:same, 0}, nil, nil},
+      0x53A9F665A90CC1B1 => {5, 0x01B1C10CA965F6A95307010900, {:same, 0}, nil, nil},
+      0x6CEDE6B6EB60EE67 => {6, 0x0167EE60EBB6E6ED6C04010CFF1F, {:same, 0}, nil, {-2048, 2047}},
+      0x6CEDE5B6EB60ECB4 => {7, 0x01B4EC60EBB6E5ED6C04010CFF1F, {:same, 0}, nil, {-2048, 2047}},
+      0x6CEDE8B6EB60F1CD => {8, 0x01CDF160EBB6E8ED6C04010CFF1F, {:same, 0}, nil, {-2048, 2047}},
+      0x7F69D4B5288BA9CF => {9, 0x01CFA98B28B5D4697F04010A00, {:same, 0}, nil, {0, 1000}},
+      0xA0B610205F2C6E01 => {10, 0x01016E2C5F2010B6A01E, {:enum, :none}, nil, nil},
+      0x7F6308BE8AB37FC0 => {11, 0x01C07FB38ABE08637F09010800, {:same, 0}, nil, nil},
+      0x11A44FC1D1243DA7 => {12, 0x01A73D24D1C14FA41101, {:same, 0}, nil, nil},
+      0x7674CFD19B9031CA => {13, 0x01CA31909BD1CF747601, {:same, 0}, nil, nil}
     },
     "TableHitEvent" => %{
-      0xB7BC9AC015A25050 => {0, 0x015050A215C09ABCB707010C00, {:same, 0}, nil},
-      0x7F6308BE8AB37FC0 => {1, 0x01C07FB38ABE08637F04010C00, {:same, 0}, nil},
-      0x01FBC365B059B925 => {2, 0x0125B959B065C3FB0104010300, {:same, 0}, nil},
-      0x126167908C9AA52D => {3, 0x012DA59A8C9067611201, {:same, 0}, nil}
+      0xB7BC9AC015A25050 => {0, 0x015050A215C09ABCB707010C00, {:same, 0}, nil, nil},
+      0x7F6308BE8AB37FC0 => {1, 0x01C07FB38ABE08637F04010C00, {:same, 0}, nil, {0, 4095}},
+      0x01FBC365B059B925 => {2, 0x0125B959B065C3FB0104010300, {:same, 0}, nil, {0, 7}},
+      0x126167908C9AA52D => {3, 0x012DA59A8C9067611201, {:same, 0}, nil, nil}
     },
     "TableMixed" => %{
-      0x6A5A70D91AA115FD => {0, 0x01FD15A11AD9705A6A0700, {:same, 0}, nil},
-      0xAA38ACA481F528A8 => {1, 0x01A828F581A4AC38AA07011000, {:same, 0}, nil},
-      0x0DBE005C56697C3E => {2, 0x013E7C69565C00BE0D04011000, {:same, 0}, nil},
-      0x9BAE0DA8B829EE03 => {3, 0x0103EE29B8A80DAE9B08012000, {:same, 0}, nil},
-      0xB7D7B5650A590B05 => {4, 0x01050B590A65B5D7B70900, {:same, 0}, nil},
-      0x6D7B98E2D095967E => {5, 0x017E9695D0E2987B6D0800, {:same, 0}, nil},
-      0x73A94C71D60DC0D8 => {6, 0x01D8C00DD6714CA97309013F01, {:same, 1}, nil},
-      0x3EEE6B51BE54FC85 => {7, 0x0185FC54BE516BEE3E050129FFBFA8CA9A3A, {:same, 0}, nil},
-      0x7BBC035F7B6D0112 => {8, 0x0112016D7B5F03BC7B09013000, {:same, 0}, nil},
+      0x6A5A70D91AA115FD => {0, 0x01FD15A11AD9705A6A0700, {:same, 0}, nil, nil},
+      0xAA38ACA481F528A8 => {1, 0x01A828F581A4AC38AA07011000, {:same, 0}, nil, nil},
+      0x0DBE005C56697C3E => {2, 0x013E7C69565C00BE0D04011000, {:same, 0}, nil, {0, 65535}},
+      0x9BAE0DA8B829EE03 => {3, 0x0103EE29B8A80DAE9B08012000, {:same, 0}, nil, nil},
+      0xB7D7B5650A590B05 => {4, 0x01050B590A65B5D7B70900, {:same, 0}, nil, nil},
+      0x6D7B98E2D095967E => {5, 0x017E9695D0E2987B6D0800, {:same, 0}, nil, nil},
+      0x73A94C71D60DC0D8 =>
+        {6, 0x01D8C00DD6714CA97309013F01, {:same, 1}, nil, {1, 9_223_372_036_854_775_807}},
+      0x3EEE6B51BE54FC85 =>
+        {7, 0x0185FC54BE516BEE3E050129FFBFA8CA9A3A, {:same, 0}, nil,
+         {-1_000_000_000_000, 1_000_000_000_000}},
+      0x7BBC035F7B6D0112 => {8, 0x0112016D7B5F03BC7B09013000, {:same, 0}, nil, nil},
       0x3C460475F9BE69C6 =>
-        {9, 0x01C669BEF97504463C0A020000000000FF7F470AD7233C, {:f32eq, 0x00000000}, nil},
+        {9, 0x01C669BEF97504463C0A020000000000FF7F470AD7233C, {:f32eq, 0x00000000}, nil, nil},
       0x935D0FB07BB3822A =>
-        {10, 0x012A82B37BB00F5D930E01080D, {:counted, 1, :empty}, "TableEntity"},
+        {10, 0x012A82B37BB00F5D930E01080D, {:counted, 1, :empty}, "TableEntity", nil},
       0xEE639CAD45B1994C =>
-        {11, 0x014C99B145AD9C63EE0E00500D, {:counted, 0, :empty}, "TableStat"},
-      0x2E35DC5321AA5790 => {12, 0x019057AA2153DC352E0F, :never, {:union, "TableEvent"}},
-      0x5759CE7586BBB5A3 => {13, 0x01A3B5BB8675CE59570E04040600, {:fixed, {:same, 0}}, nil},
-      0x13A62F542CF8E86E => {14, 0x016EE8F82C542FA6130C0F, {:same, <<>>}, nil},
-      0xCFB8A9D063B5E9E5 => {15, 0x01E5E9B563D0A9B8CF0E00100600, {:same, []}, nil},
+        {11, 0x014C99B145AD9C63EE0E00500D, {:counted, 0, :empty}, "TableStat", nil},
+      0x2E35DC5321AA5790 => {12, 0x019057AA2153DC352E0F, :never, {:union, "TableEvent"}, nil},
+      0x5759CE7586BBB5A3 => {13, 0x01A3B5BB8675CE59570E04040600, {:fixed, {:same, 0}}, nil, nil},
+      0x13A62F542CF8E86E => {14, 0x016EE8F82C542FA6130C0F, {:same, <<>>}, nil, nil},
+      0xCFB8A9D063B5E9E5 => {15, 0x01E5E9B563D0A9B8CF0E00100600, {:same, []}, nil, nil},
       0xDBAF7BE5E24296C9 =>
-        {16, 0x01C99642E2E57BAFDB0A02000080BF0000803F0AD7233C, {:f32eq, 0x00000000}, nil},
+        {16, 0x01C99642E2E57BAFDB0A02000080BF0000803F0AD7233C, {:f32eq, 0x00000000}, nil, nil},
       0xDBAF7AE5E2429516 =>
-        {17, 0x01169542E2E57AAFDB0A02000080BF0000803F0AD7233C, {:f32eq, 0x00000000}, nil},
+        {17, 0x01169542E2E57AAFDB0A02000080BF0000803F0AD7233C, {:f32eq, 0x00000000}, nil, nil},
       0xDBAF79E5E2429363 =>
-        {18, 0x01639342E2E579AFDB0A02000080BF0000803F0AD7233C, {:f32eq, 0x00000000}, nil},
-      0x9CEF31FFF7E2E457 => {19, 0x0157E4E2F7FF31EF9C0A00, {:f32, 0x00000000}, nil},
-      0x5AB3F9C9341F6C04 => {20, 0x01046C1F34C9F9B35A0B, {:f64, 0x0000000000000000}, nil},
-      0xA3348580461FAF16 => {21, 0x0116AF1F46808534A30900, {:same, 0}, nil},
-      0xD61BDD7908AF2642 => {22, 0x014226AF0879DD1BD605013DFFFF9FF6F4ACDBE01B, {:same, 0}, nil},
+        {18, 0x01639342E2E579AFDB0A02000080BF0000803F0AD7233C, {:f32eq, 0x00000000}, nil, nil},
+      0x9CEF31FFF7E2E457 => {19, 0x0157E4E2F7FF31EF9C0A00, {:f32, 0x00000000}, nil, nil},
+      0x5AB3F9C9341F6C04 => {20, 0x01046C1F34C9F9B35A0B, {:f64, 0x0000000000000000}, nil, nil},
+      0xA3348580461FAF16 => {21, 0x0116AF1F46808534A30900, {:same, 0}, nil, nil},
+      0xD61BDD7908AF2642 =>
+        {22, 0x014226AF0879DD1BD605013DFFFF9FF6F4ACDBE01B, {:same, 0}, nil,
+         {-1_000_000_000_000_000_000, 1_000_000_000_000_000_000}},
       0xBF30E00DC53307A9 =>
-        {23, 0x01A90733C50DE030BF0A020000000000007A430AD7233C, {:f32eq, 0x00000000}, nil},
-      0x560D6527CCD8515F => {24, 0x015F51D8CC27650D5608011800, {:same, 0}, nil},
-      0xC08292176CFD8672 => {25, 0x017286FD6C179282C001, {:same, 0}, nil},
-      0xFD29EE12A979CB69 => {26, 0x0169CB79A912EE29FD04010800, {:same, 0}, nil},
-      0x78101AC0AA8CBCFE => {27, 0x01FEBC8CAAC01A107804010400, {:same, 0}, nil}
+        {23, 0x01A90733C50DE030BF0A020000000000007A430AD7233C, {:f32eq, 0x00000000}, nil, nil},
+      0x560D6527CCD8515F => {24, 0x015F51D8CC27650D5608011800, {:same, 0}, nil, nil},
+      0xC08292176CFD8672 => {25, 0x017286FD6C179282C001, {:same, 0}, nil, nil},
+      0xFD29EE12A979CB69 => {26, 0x0169CB79A912EE29FD04010800, {:same, 0}, nil, {0, 255}},
+      0x78101AC0AA8CBCFE => {27, 0x01FEBC8CAAC01A107804010400, {:same, 0}, nil, {0, 15}}
     },
     "TablePickupEvent" => %{
-      0x9E7FD06D864FBD56 => {0, 0x0156BD4F866DD07F9E07010A00, {:same, 0}, nil},
-      0x8113FE7EA2B16969 => {1, 0x016969B1A27EFE138104010800, {:same, 0}, nil}
+      0x9E7FD06D864FBD56 => {0, 0x0156BD4F866DD07F9E07010A00, {:same, 0}, nil, nil},
+      0x8113FE7EA2B16969 => {1, 0x016969B1A27EFE138104010800, {:same, 0}, nil, {0, 255}}
     },
     "TableStat" => %{
-      0x80AB75F0866DBF65 => {0, 0x0165BF6D86F075AB8006010800, {:same, 0}, nil},
-      0x52076675EC13A0C1 => {1, 0x01C1A013EC7566075204010AFF07, {:same, 0}, nil}
+      0x80AB75F0866DBF65 => {0, 0x0165BF6D86F075AB8006010800, {:same, 0}, nil, nil},
+      0x52076675EC13A0C1 => {1, 0x01C1A013EC7566075204010AFF07, {:same, 0}, nil, {-512, 511}}
     }
   }
   @message_unions %{
@@ -1213,7 +1221,7 @@ defmodule Benchtable.TableMessage do
       end)
 
     rec
-    |> Enum.flat_map(fn {fid, {decl_idx, raw, rule, sub}} ->
+    |> Enum.flat_map(fn {fid, {decl_idx, raw, rule, sub, _range}} ->
       case Map.get(to_lookup.by_raw, raw) do
         {to_ref, te} ->
           case Map.fetch(present, fid) do
@@ -2053,7 +2061,8 @@ defmodule Benchtable.TableMessage do
                            sub_of(decl)
                          ),
                        false <- entry.kind == 15 and value == :none,
-                       false <- stored_at_default?(vocab, decl, value) do
+                       false <- stored_at_default?(vocab, decl, value),
+                       true <- held?(rec, entry.id, value) do
                     seen = MapSet.put(seen, entry.id)
                     last = next_last(decl, last)
 
@@ -2095,7 +2104,7 @@ defmodule Benchtable.TableMessage do
       nil ->
         if own_build?(vocab), do: :undeclared, else: :skip
 
-      {index, raw, rule, sub} ->
+      {index, raw, rule, sub, _range} ->
         if own_build?(vocab) do
           exact = raw == Map.get(entry, :raw)
 
@@ -2105,6 +2114,28 @@ defmodule Benchtable.TableMessage do
         else
           {:ok, {index, false, rule, sub}}
         end
+    end
+  end
+
+  # THE READ HOLDS THIS READER'S OWN DECLARED RANGE (docs/SPEC-TABLES.md §3.3,
+  # §4). A ranged integer rides as its offset from the announced base in the
+  # announced bits, and those bits can spell a value past the bound this
+  # record declares: "min = 1, max = 9" rides in four bits, which spell 1..16.
+  # A value its own declaration does not admit refuses the batch, at any
+  # depth and whatever the record holding this one declares, as it does on a
+  # file (the Go engine's messagedecode.go holds the same; test/tables/inner,
+  # the inner-message-*-range-past-max rows). An integer array's elements are
+  # held the same way.
+  defp held?(rec, id, value) do
+    case Map.get(rec, id) do
+      {_index, _raw, _rule, _sub, {:each, lo, hi}} ->
+        is_list(value) and Enum.all?(value, &(is_integer(&1) and &1 >= lo and &1 <= hi))
+
+      {_index, _raw, _rule, _sub, {lo, hi}} ->
+        is_integer(value) and value >= lo and value <= hi
+
+      _ ->
+        true
     end
   end
 
