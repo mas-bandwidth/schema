@@ -52,15 +52,21 @@ func ParseWide(token string, kind, frac int) (raw *big.Int, exact, saturated boo
 		negative = token[i] == '-'
 		i++
 	}
-	var intDigits, fracDigits strings.Builder
-	for ; i < len(token) && token[i] >= '0' && token[i] <= '9'; i++ {
-		intDigits.WriteByte(token[i])
+	// the two digit runs are slices of the token: nothing is copied before
+	// the counting below has decided the arithmetic is needed
+	start := i
+	for i < len(token) && token[i] >= '0' && token[i] <= '9' {
+		i++
 	}
+	intDigits := token[start:i]
+	fracDigits := ""
 	if i < len(token) && token[i] == '.' {
 		i++
-		for ; i < len(token) && token[i] >= '0' && token[i] <= '9'; i++ {
-			fracDigits.WriteByte(token[i])
+		start = i
+		for i < len(token) && token[i] >= '0' && token[i] <= '9' {
+			i++
 		}
+		fracDigits = token[start:i]
 	}
 	exp := 0
 	if i < len(token) && (token[i] == 'e' || token[i] == 'E') {
@@ -80,20 +86,28 @@ func ParseWide(token string, kind, frac int) (raw *big.Int, exact, saturated boo
 		}
 	}
 	// the digits with the point after `point` of them, leading and trailing
-	// zeros stripped
-	digits := intDigits.String() + fracDigits.String()
-	point := intDigits.Len() + exp
-	for len(digits) > 0 && digits[0] == '0' {
-		digits = digits[1:]
-		point--
+	// zeros stripped: digit k of intDigits+fracDigits, counted in place
+	n := len(intDigits) + len(fracDigits)
+	digitAt := func(k int) byte {
+		if k < len(intDigits) {
+			return intDigits[k]
+		}
+		return fracDigits[k-len(intDigits)]
 	}
-	digits = strings.TrimRight(digits, "0")
-	lo, hi := wideLimits(kind)
-	if len(digits) == 0 {
+	lead, trail := 0, n
+	for lead < n && digitAt(lead) == '0' {
+		lead++
+	}
+	for trail > lead && digitAt(trail-1) == '0' {
+		trail--
+	}
+	point := len(intDigits) + exp - lead
+	if lead == n {
 		return new(big.Int), true, false
 	}
 	if point > wideDecimalBand {
 		// above 2^128 whatever the digits say: the storage domain's end
+		lo, hi := wideLimits(kind)
 		if negative {
 			if lo.Sign() == 0 {
 				return new(big.Int), true, true
@@ -105,6 +119,16 @@ func ParseWide(token string, kind, frac int) (raw *big.Int, exact, saturated boo
 	if point < -wideDecimalBand {
 		return nil, false, false // finer than any F can spell
 	}
+	// EXACTNESS IS DECIDED BY COUNTING: with trailing zeros stripped the value
+	// has exactly (trail-lead) - point fractional decimal digits, and a dyadic
+	// fraction of F bits has at most F of them, so a longer fraction is never
+	// exact. Answering it here keeps a hostile token's long fraction out of the
+	// decimal conversion below, whose cost grows with the square of its digits.
+	if (trail-lead)-point > frac {
+		return nil, false, false
+	}
+	digits := (intDigits + fracDigits)[lead:trail]
+	lo, hi := wideLimits(kind)
 	// value = digits × 10^(point - len(digits)); raw = value × 2^frac
 	mantissa, _ := new(big.Int).SetString(digits, 10)
 	scale := point - len(digits)
