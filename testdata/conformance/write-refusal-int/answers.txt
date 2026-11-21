@@ -1,0 +1,38 @@
+# <case> <answer> for manifest.txt beside this file. `unrepresentable`: the
+# declared kind cannot hold the value in the driver's storage, as the Go
+# reference driver answers (test/conformance/go/writerefusal.go). `refused`:
+# the storage holds it and the writer refuses it. `wrote`: the end of a range.
+i32_past_max      unrepresentable
+i32_max           wrote
+i32_past_min      unrepresentable
+u32_negative      unrepresentable
+u32_max           wrote
+u32_past_max      unrepresentable
+i64_past_max      unrepresentable
+i64_max           wrote
+u64_negative      unrepresentable
+u64_max           wrote
+u64_past_max      unrepresentable
+u8_past_max       refused
+u8_negative       unrepresentable
+u8_max            wrote
+arr_i32_past_max  unrepresentable
+arr_i32_max       wrote
+arr_u32_negative  unrepresentable
+arr_u32_max       wrote
+arr_i64_past_max  unrepresentable
+arr_i64_max       wrote
+arr_u64_negative  unrepresentable
+arr_u64_max       wrote
+chan_i32_past_max unrepresentable
+chan_i32_max      wrote
+chan_u64_negative unrepresentable
+chan_u64_max      wrote
+map32_key_past    unrepresentable
+map32_val_neg     unrepresentable
+map32_val_max     wrote
+map64_key_past    unrepresentable
+map64_val_past    unrepresentable
+map64_val_max     wrote
+nested_past_max   unrepresentable
+nested_max        wrote

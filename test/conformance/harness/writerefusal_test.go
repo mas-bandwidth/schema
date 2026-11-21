@@ -135,6 +135,62 @@ func TestWriteRefusalRowsLoadACurrentFormInstance(t *testing.T) {
 	}
 }
 
+// TestWriteRefusalEngineHoldsTheIntCorpus holds the Go engine to the committed
+// integer-assignment corpus (testdata/conformance/write-refusal-int): a value
+// past a declared integer kind, on a scalar, an array element, a
+// channel-array element, a map key and value and a nested field, beside the
+// value at each end of the range. Every value past its kind is refused in
+// every build (`refused` and `unrepresentable` are one verdict, as run.go
+// scores them), and every end of a range is written. Before the fix 2^63 at
+// an int64 and -1 at a uint64 were stored as other values and written.
+func TestWriteRefusalEngineHoldsTheIntCorpus(t *testing.T) {
+	t.Parallel()
+	root := conformanceRoot(t)
+	corpus := filepath.Join(root, "testdata", "conformance", "write-refusal-int")
+	m, err := ReadManifest(filepath.Join(corpus, "manifest.txt"), filepath.Join(root, defaultJSONDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range m.Units {
+		for j, path := range m.Units[i].Paths {
+			if !filepath.IsAbs(path) {
+				m.Units[i].Paths[j] = filepath.Join(root, path)
+			}
+		}
+	}
+	answers, err := os.ReadFile(filepath.Join(corpus, "answers.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{}
+	for line := range strings.SplitSeq(string(answers), "\n") {
+		if f := strings.Fields(line); len(f) == 2 && !strings.HasPrefix(f[0], "#") {
+			want[f[0]] = f[1]
+		}
+	}
+	if len(m.WriteRefusals) == 0 || len(m.WriteRefusals) != len(want) {
+		t.Fatalf("the corpus has %d rows and %d answers", len(m.WriteRefusals), len(want))
+	}
+	verdict := func(answer string) string {
+		if answer == "unrepresentable" {
+			return "refused"
+		}
+		return answer
+	}
+	u := newUnits(m)
+	for _, wr := range m.WriteRefusals {
+		t.Run(wr.Name, func(t *testing.T) {
+			answer, err := writeRefusalAnswer(root, m, u, wr)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if verdict(answer) != verdict(want[wr.Name]) {
+				t.Errorf("%s = %s: the Go engine answered %q, the corpus owes %q", wr.Path, wr.Value, answer, want[wr.Name])
+			}
+		})
+	}
+}
+
 // writeRefusalAnswer loads one row's wire, applies its one mutation, and runs
 // the writer the row's form names. A writer refusal is `refused`; a complete
 // write is `wrote`; a value the row asks for that the instance cannot hold is
@@ -308,6 +364,9 @@ func setRefusalInt(cell *tabletext.Cell, f *ir.Field, text string) bool {
 	if !ok {
 		return false
 	}
+	if !refusalIntHeld(ir.TableScalarKind(f), n) {
+		return false
+	}
 	cell.Wide = new(big.Int).Set(n)
 	if n.IsInt64() {
 		cell.I = n.Int64()
@@ -315,6 +374,27 @@ func setRefusalInt(cell *tabletext.Cell, f *ir.Field, text string) bool {
 	} else if n.Sign() >= 0 && n.BitLen() <= 64 {
 		cell.U = n.Uint64()
 		cell.I = int64(cell.U)
+	}
+	return true
+}
+
+// refusalIntHeld says whether Go storage for a declared integer kind can hold
+// n at all: an int64 for a signed kind or a timestamp, a uint64 for an unsigned
+// one, the wide value for a 128-bit kind. The instance model's cell is 64 raw
+// bits, so a value past them would be stored as another value (2^63 in an
+// int64 cell reads back as -2^63, which the writer then rightly writes). Such
+// a value is unrepresentable, as the Go reference driver answers it
+// (test/conformance/go/writerefusal.go); a value the storage holds and the
+// declaration does not reaches the writer, which refuses it.
+func refusalIntHeld(kind int, n *big.Int) bool {
+	switch {
+	case kind < 0 || ir.TableKindWide(kind):
+		return true
+	case ir.TableKindSigned(kind) || kind == ir.TableKindTimestamp:
+		return n.IsInt64()
+	case kind >= ir.TableKindU8 && kind <= ir.TableKindU64,
+		kind >= ir.TableKindUFixed8 && kind <= ir.TableKindUFixed64:
+		return n.IsUint64()
 	}
 	return true
 }
