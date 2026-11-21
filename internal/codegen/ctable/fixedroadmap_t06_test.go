@@ -245,8 +245,9 @@ func cT06CompressedFloat(t *testing.T) {
 	h := cT06Header(t, "VNEW_cfloat_range_widen")
 	// THE FIXED FORM STORES THE FLOAT'S BITS, the variable form beside it
 	// quantizes the same field into an index — one unit, two encodings, and the
-	// fixed form's is the raw float (SPEC-TABLES §3.4: "it rides as the float").
-	if !strings.Contains(h, "table_fixed_putf32( b + 4, value->aim )") {
+	// fixed form's is the raw float (SPEC-TABLES §3.4: "it rides as the float"). The sum
+	// with +0 is the writer storing +0 for a compressed -0 (§3.3), still the float.
+	if !strings.Contains(h, "table_fixed_putf32( b + 4, ( value->aim ) + 0.0f )") {
 		t.Fatal("R30: the fixed form's write body no longer stores aim's float32 bits with putf32")
 	}
 	if !strings.Contains(h, "table_message_quantize(value->aim") {
