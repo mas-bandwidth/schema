@@ -343,6 +343,13 @@ type pythonHostileAnswer struct {
 	text    []byte
 }
 
+// pythonHostileUnavailable is the answer for every case of a unit that did not
+// generate: a missing reader is this runner's failure, never a refusal (a
+// refusal conforms on its verdict alone, so one made up here would pass).
+func pythonHostileUnavailable(why string) pythonHostileAnswer {
+	return pythonHostileAnswer{verdict: "crash", reason: "reader_unavailable: " + why}
+}
+
 // pythonHostileRun decodes every case of every unit once under both pinned
 // interpreters and returns the answers keyed by case name.
 func pythonHostileRun(t *testing.T, root, corpusDir string, cases []pythonHostileCase, plant bool) map[string]pythonHostileAnswer {
@@ -357,7 +364,7 @@ func pythonHostileRun(t *testing.T, root, corpusDir string, cases []pythonHostil
 	for _, unit := range units {
 		if unit.unavailable != "" {
 			for _, c := range byUnit[unit.schema] {
-				answers[c.Name] = pythonHostileAnswer{verdict: pythonHostileRefuse, reason: "reader_unavailable"}
+				answers[c.Name] = pythonHostileUnavailable(unit.unavailable)
 			}
 			continue
 		}
@@ -465,6 +472,21 @@ func TestPythonHostileScorerOutcomes(t *testing.T) {
 		}
 		if why := pythonHostileGrade(c, a, true); (why == "") != o.Pass {
 			t.Errorf("%s: graded %q, the fixture says pass=%t", o.Name, why, o.Pass)
+		}
+	}
+}
+
+// TestPythonHostileUnavailableReaderIsNoRefusal: a case whose unit did not
+// generate fails whatever the manifest says, a refusal included. It runs no
+// Python.
+func TestPythonHostileUnavailableReaderIsNoRefusal(t *testing.T) {
+	t.Parallel()
+	for _, c := range []pythonHostileCase{
+		{Name: "refused", Carrier: "wire", Verdict: pythonHostileRefuse, Reason: "damaged", Digest: pythonHostileNoReason},
+		{Name: "accepted", Carrier: "wire", Verdict: pythonHostileAccept, Reason: pythonHostileNoReason, Digest: "00"},
+	} {
+		if why := pythonHostileGrade(c, pythonHostileUnavailable("the unit did not generate"), true); why == "" {
+			t.Errorf("%s: a missing reader graded as conforming", c.Name)
 		}
 	}
 }

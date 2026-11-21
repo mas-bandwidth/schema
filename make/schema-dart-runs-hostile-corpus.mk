@@ -105,9 +105,9 @@ schema-dart-runs-hostile-corpus-negative-control: schema-dart-runs-hostile-corpu
 	@tail -1 $(DART_HOSTILE_BUILD)/plant/crash.log
 	@rm -rf $(DART_HOSTILE_BUILD)/plant/build/dart-hostile/generated && \
 		cp -R $(DART_HOSTILE_BUILD)/generated $(DART_HOSTILE_BUILD)/plant/build/dart-hostile/generated
-	@sed -i.orig "s|^  final view = shipEntryFixedLoadView.of(bytes);|  return 0; // PLANTED: lands nothing, refuses nothing|" \
+	@sed -i.orig "s|^  final view = shipEntryFixedLoadView.of(bytes);|  if (byteLength >= 0) return 0; // PLANTED: lands nothing, refuses nothing\n&|" \
 		$(DART_HOSTILE_BUILD)/plant/build/dart-hostile/generated/tabledemo/PackFixed.dart
-	@sed -i.orig "s|^  if (count < 0) return -1;|  return 0; // PLANTED: lands nothing, refuses nothing|" \
+	@sed -i.orig "s|^  if (count < 0) return -1;|  if (count >= -1) return 0; // PLANTED: lands nothing, refuses nothing\n&|" \
 		$(DART_HOSTILE_BUILD)/plant/build/dart-hostile/generated/messagedemo/MessagesFixed.dart
 	@if ! grep -q PLANTED $(DART_HOSTILE_BUILD)/plant/build/dart-hostile/generated/tabledemo/PackFixed.dart || \
 		! grep -q PLANTED $(DART_HOSTILE_BUILD)/plant/build/dart-hostile/generated/messagedemo/MessagesFixed.dart; then \

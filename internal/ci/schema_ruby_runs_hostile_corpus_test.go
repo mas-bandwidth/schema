@@ -249,10 +249,12 @@ def run_case(carrier, root_name, payload)
     value = root.from_json(text)
     ['accept', '-', canonical_text(value)]
   when 'wire'
+    # a fixed root with no fixed reader is a missing codec: a crash of this
+    # runner, never a refusal (one made up here would pass on its verdict)
     if root.respond_to?(:descriptor) && root.descriptor && root.descriptor.fixed &&
        !PKG.respond_to?(:_s_fixed_load) &&
        (!PKG.const_defined?(:SchemaTable, false) || !PKG::SchemaTable.respond_to?(:fixed_load))
-      return ['refuse', 'reader_unavailable', nil]
+      raise "reader_unavailable: #{root_name} is a fixed root with no fixed reader"
     end
     value = root.load(payload)
     ['accept', '-', canonical_text(value)]
@@ -331,7 +333,7 @@ func rubyHostileRun(t *testing.T, root, corpusDir string, cases []rubyHostileCas
 	for _, unit := range units {
 		if unit.unavailable != "" {
 			for _, c := range byUnit[unit.schema] {
-				answers[c.Name] = rubyHostileAnswer{verdict: rubyHostileRefuse, reason: "reader_unavailable"}
+				answers[c.Name] = rubyHostileUnavailable(unit.unavailable)
 			}
 			continue
 		}
@@ -408,13 +410,36 @@ func rubyHostileGrade(c rubyHostileCase, a rubyHostileAnswer, answered bool) str
 	return ""
 }
 
+// rubyHostileUnavailable is the answer for every case of a unit that did not
+// generate: a crash of this runner, never a refusal.
+func rubyHostileUnavailable(why string) rubyHostileAnswer {
+	return rubyHostileAnswer{verdict: "crash", reason: "reader_unavailable: " + why}
+}
+
+// TestSchemaRubyHostileUnavailableReaderIsNoRefusal: a case with no reader
+// fails whatever the manifest says, a refusal included. It runs no Ruby.
+func TestSchemaRubyHostileUnavailableReaderIsNoRefusal(t *testing.T) {
+	t.Parallel()
+	cases := []rubyHostileCase{
+		{Name: "refused", Carrier: "wire", Verdict: rubyHostileRefuse, Reason: "damaged", Digest: "-"},
+		{Name: "accepted", Carrier: "wire", Verdict: "accept", Reason: "-", Digest: "00"},
+	}
+	answers := map[string]rubyHostileAnswer{}
+	for _, c := range cases {
+		answers[c.Name] = rubyHostileUnavailable("the unit did not generate")
+	}
+	if bad := rubyHostileCompare(cases, answers); len(bad) != len(cases) {
+		t.Errorf("a missing reader must fail every case, refused ones included; failed %d of %d: %v", len(bad), len(cases), bad)
+	}
+}
+
+// rubyHostileCompare returns every disagreement with the manifest. A case with
+// no reader (rubyHostileUnavailable) is graded like any other, so it fails: a
+// missing codec is never skipped and never a refusal.
 func rubyHostileCompare(cases []rubyHostileCase, answers map[string]rubyHostileAnswer) []string {
 	var bad []string
 	for _, c := range cases {
 		a, ok := answers[c.Name]
-		if ok && a.verdict == rubyHostileRefuse && a.reason == "reader_unavailable" {
-			continue
-		}
 		if why := rubyHostileGrade(c, a, ok); why != "" {
 			bad = append(bad, why)
 		}
