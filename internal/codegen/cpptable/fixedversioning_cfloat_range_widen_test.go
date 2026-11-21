@@ -2,16 +2,16 @@ package cpptable
 
 // §5.8 row cfloat_range_widen: `aim float32 | min = -1, max = 1,
 // resolution = 0.01` on the OLD side, `min = -2, max = 2` on the NEW — the
-// range WIDENED. The bounds pass on a read is the READER's, not the writer's:
-// old_cfloat_range_widen.bin lands 0.5 (0x3F000000) exactly, and
-// hostile_cfloat_range_widen.bin — the old bytes with aim FORGED to 1.5,
-// past the OLD writer's max 1.0 but inside the NEW reader's [-2, 2] — lands
-// 1.5 WHOLE with clamp 0. Only past_cfloat_range_widen.bin (aim forged to
-// 5.0, past the reader's own 2.0) clamps, to the READER's max 2.0, and the
-// clamp counter is asserted EXACTLY 1, never >= 1. The hostile_ read alone
-// is not enough: a reader with the emitter's float bounds pass deleted would
-// still land 1.5 and only the past_ read would go red — that is what says
-// there is a pass at all.
+// range WIDENED. The plan carries the WRITER's range for a compressed float as
+// for every ranged kind (docs/FIXED-FORM-ALGORITHM.md §4.6; docs/rulings.json
+// strict-only-read overturned schema#1164 statement B, under which the pass
+// was the READER's): old_cfloat_range_widen.bin lands 0.5 (0x3F000000)
+// exactly, and hostile_cfloat_range_widen.bin — the old bytes with aim FORGED
+// to 1.5, past the OLD writer's max 1.0 but inside the NEW reader's [-2, 2] —
+// REFUSES the whole load out_of_range: the writer could not have written it.
+// past_cfloat_range_widen.bin (aim forged to 5.0, past the reader's own 2.0)
+// refuses too. The hostile_ read is the one that tells the two readings apart:
+// a reader holding only its own range lands 1.5.
 
 import (
 	"fmt"
@@ -22,14 +22,8 @@ import (
 
 func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
 	corpus := cppFixedCorpus(t)
-	// TWO OF THE THREE NUMBERS COME FROM THE CORPUS MANIFEST AND THE THIRD
-	// CANNOT (schema#1164). `old_`'s is `values=r0.aim`, `hostile_`'s is the
-	// manifest's own `forged=r0.aim@104` -- the value the reference wrote into
-	// those bytes. `past_`'s 0x40000000 stays a literal and says why: the file
-	// carries 5.0 and what lands is THIS READER'S OWN DECLARED MAX 2.0, which is
-	// the whole content of that column.
+	// `old_`'s value comes from the corpus manifest (`values=r0.aim`).
 	oldAim := fmt.Sprintf("0x%08X", cppManifestFloatBits(t, corpus, "old_cfloat_range_widen.bin", "values", "r0.aim"))
-	hostileAim := fmt.Sprintf("0x%08X", cppManifestFloatBits(t, corpus, "hostile_cfloat_range_widen.bin", "forged", "r0.aim"))
 
 	oldBody := `
     if ( n != 1 ) { printf( "cfloat_range_widen(old): n == %lld, not 1\n", (long long) n ); return 1; }
@@ -51,22 +45,16 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
 		t.Fatalf("cfloat_range_widen(old): %v\n%s", err, out)
 	}
 
+	// OUTSIDE THE WRITER'S RANGE, INSIDE THIS READER'S: the strict read refuses
+	// the whole load out_of_range; nothing lands.
 	hostileBody := `
-    if ( n != 1 ) { printf( "cfloat_range_widen(hostile): n == %lld, not 1\n", (long long) n ); return 1; }
-    if ( back[0].lead != 1u || back[0].trail != 2u )
-        { printf( "cfloat_range_widen(hostile): a bracket moved: lead=%u trail=%u\n", back[0].lead, back[0].trail ); return 1; }
-    {
-        uint32_t bits = 0;
-        memcpy( &bits, &back[0].aim, sizeof( back[0].aim ) );
-        if ( bits != @AIM@u ) { printf( "cfloat_range_widen(hostile): the manifest's own forged value did not land WHOLE: 0x%08X, want @AIM@\n", (unsigned) bits ); return 1; }
-    }
-    if ( r.refused != 0 ) { printf( "cfloat_range_widen(hostile): out_of_range is not exactly 0: %d\n", r.refused ); return 1; }
-    if ( r.unknown != 0 || r.widened != 0 )
-        { printf( "cfloat_range_widen(hostile): a counter moved on a clean backward read: unknown=%d km=%d w=%d dup=%d\n", r.unknown, r.refused, r.widened, r.refused ); return 1; }
-    if ( r.damaged || r.refused ) { printf( "cfloat_range_widen(hostile): a clean read refused: malformed=%d refused=%d\n", (int) r.damaged, (int) r.refused ); return 1; }
+    if ( n != -1 ) { printf( "cfloat_range_widen(hostile): n == %lld, want -1 (refused against the WRITER's range)\n", (long long) n ); return 1; }
+    if ( !r.refused || r.refuse_reason != out_of_range )
+        { printf( "cfloat_range_widen(hostile): refused=%d reason=%d, want an out_of_range refusal\n", (int) r.refused, (int) r.refuse_reason ); return 1; }
+    if ( r.damaged ) { printf( "cfloat_range_widen(hostile): an out-of-range value is a refusal, not damage\n" ); return 1; }
 `
 	out, err = cppRunVersionProbe(t, "cfloat_range_widen",
-		filepath.Join(corpus, "hostile_cfloat_range_widen.bin"), strings.ReplaceAll(hostileBody, "@AIM@", hostileAim), "")
+		filepath.Join(corpus, "hostile_cfloat_range_widen.bin"), hostileBody, "")
 	if err != nil {
 		t.Fatalf("cfloat_range_widen(hostile): %v\n%s", err, out)
 	}

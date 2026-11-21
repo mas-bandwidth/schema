@@ -2170,8 +2170,11 @@ struct TableFixedKnownLayout
     int64_t record_bytes = 0;
 };
 
-// Writer ranges the hostile pass clamps against (bill §12.5). dst is the
-// READER's storage offset; lo/hi are the WRITER's declared bounds.
+// Writer ranges the hostile pass refuses past (bill §12.5). dst is the
+// READER's storage offset; lo/hi are the WRITER's declared bounds. A
+// COMPRESSED FLOAT's range is carried the same way (FIXED-FORM-ALGORITHM
+// §4.6): flt is 1, width is the reader's float width (4 or 8), and flo/fhi are
+// the writer's declared min and max.
 struct TableFixedKnownRange
 {
     uint32_t dst = 0;
@@ -2179,6 +2182,9 @@ struct TableFixedKnownRange
     uint8_t sgn = 0;
     int64_t lo = 0;
     int64_t hi = 0;
+    uint8_t flt = 0;
+    double flo = 0.0;
+    double fhi = 0.0;
 };
 
 inline void TableFixedClampKnownRanges( const TableFixedKnownRange * ranges, int32_t n,
@@ -2189,6 +2195,29 @@ inline void TableFixedClampKnownRanges( const TableFixedKnownRange * ranges, int
     for ( int32_t i = 0; i < n; ++i )
     {
         const TableFixedKnownRange & b = ranges[i];
+        if ( b.flt != 0 )
+        {
+            // A value outside the WRITER's range refuses: the writer could not
+            // have written it (docs/rulings.json strict-only-read). A NaN is
+            // outside every range. THE COMPARISON IS IN THE FIELD'S OWN TYPE, as
+            // the reader's own pass makes it: a float32 against the bounds
+            // rounded to float32, so the writer's own max (0.3f) is inside.
+            bool outside = false;
+            if ( b.width == 4 )
+            {
+                float f = 0.0f;
+                memcpy( &f, dst + b.dst, 4 );
+                outside = !( f >= (float) b.flo && f <= (float) b.fhi );
+            }
+            else
+            {
+                double v = 0.0;
+                memcpy( &v, dst + b.dst, 8 );
+                outside = !( v >= b.flo && v <= b.fhi );
+            }
+            if ( outside ) { oor_count++; }
+            continue;
+        }
         if ( b.width == 16 )
         {
             const uint64_t lo_lane = TableFixedLoadNative( dst + b.dst, 8u );

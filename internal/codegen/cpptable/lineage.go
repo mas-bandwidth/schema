@@ -30,6 +30,10 @@ type fixedKnownRange struct {
 	width  uint8
 	signed uint8
 	lo, hi int64
+	// flt marks a compressed float's writer range (FIXED-FORM-ALGORITHM
+	// §4.6): flo and fhi are its bounds, and lo and hi are unused.
+	flt      bool
+	flo, fhi float64
 }
 
 type fixedKnown struct {
@@ -319,6 +323,9 @@ func collectKnownRanges(readerU *ir.Unit, reader, writer *ir.Struct) []fixedKnow
 					signed: sgn,
 					lo:     r.Lo,
 					hi:     r.Hi,
+					flt:    r.Float,
+					flo:    r.FLo,
+					fhi:    r.FHi,
 				})
 			}
 			break

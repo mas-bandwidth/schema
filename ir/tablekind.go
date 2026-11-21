@@ -589,19 +589,29 @@ func TableFixedWidens(from, to int) bool {
 // (docs/FIXED-FORM-ALGORITHM.md §4.5): the field's name, its scalar kind, and
 // its declared bounds on the raw scale (a fixed-point's whole-unit bounds
 // shifted by F, TableRawRange).
+//
+// A COMPRESSED FLOAT is a ranged leaf too (FIXED-FORM-ALGORITHM §4.6: "its
+// range carried by the plan like any other"): Float is true, Kind is
+// TableKindF32 or TableKindF64, FLo and FHi are the writer's declared min and
+// max, and Lo and Hi are zero. A value past them refuses `out_of_range`
+// (docs/rulings.json strict-only-read, which overturned schema#1164 statement
+// B, under which the pass was the reader's).
 type TableFixedWriterRange struct {
-	Name   string
-	ID     uint64
-	Kind   int
-	Lo, Hi int64
+	Name     string
+	ID       uint64
+	Kind     int
+	Lo, Hi   int64
+	Float    bool
+	FLo, FHi float64
 }
 
-// TableFixedWriterRanges lists the ranged integer leaves of a fixed table's root
-// that a writer's bounds can hold on a cross-version read: a scalar or a fixed
-// array of an integer, bits or fixed-point kind, at most eight bytes wide,
-// whose raw bounds fit int64 (including a bare bits(N) ceiling below its
-// storage width). A counted array, an optional and a keyed array are left to
-// the reader's own pass, as the C++ reference's collectKnownRanges leaves them.
+// TableFixedWriterRanges lists the ranged leaves of a fixed table's root that a
+// writer's bounds can hold on a cross-version read: a scalar or a fixed array of
+// an integer, bits or fixed-point kind, at most eight bytes wide, whose raw
+// bounds fit int64 (including a bare bits(N) ceiling below its storage width),
+// and a scalar or a fixed array of a compressed float (Float). A counted array,
+// an optional and a keyed array are left to the reader's own pass, as the C++
+// reference's collectKnownRanges leaves them.
 func TableFixedWriterRanges(st *Struct) []TableFixedWriterRange {
 	if st == nil {
 		return nil
@@ -612,6 +622,17 @@ func TableFixedWriterRanges(st *Struct) []TableFixedWriterRange {
 			continue
 		}
 		if f.Array != ArrayNone && f.Array != ArrayFixed {
+			continue
+		}
+		if (f.Type.Kind == TFloat32 || f.Type.Kind == TFloat64) && f.HasFloatRange {
+			out = append(out, TableFixedWriterRange{
+				Name:  f.Name,
+				ID:    TableFieldWireId(f),
+				Kind:  TableScalarKind(f),
+				Float: true,
+				FLo:   f.FMin,
+				FHi:   f.FMax,
+			})
 			continue
 		}
 		switch f.Type.Kind {
@@ -672,6 +693,9 @@ func TableFixedWriterField(f *Field, r TableFixedWriterRange) (*Field, bool) {
 	if f.Array != ArrayNone && f.Array != ArrayFixed {
 		return nil, false
 	}
+	if r.Float {
+		return tableFixedWriterFloatField(f, r)
+	}
 	switch f.Type.Kind {
 	case TInt, TBits, TFixed:
 	default:
@@ -705,5 +729,29 @@ func TableFixedWriterField(f *Field, r TableFixedWriterRange) (*Field, bool) {
 	w.HasIntRange, w.IntMin, w.IntMax = true, lo, hi
 	w.IntMinExpr, w.IntMaxExpr = nil, nil
 	w.HasFloatRange = false
+	return &w, true
+}
+
+// tableFixedWriterFloatField is TableFixedWriterField for a compressed float's
+// range (FIXED-FORM-ALGORITHM §4.6): the reader's field must be a float of the
+// writer's kind or wider, and the copy carries the writer's min and max as its
+// own declared range. A writer's range that already holds the reader's own
+// (every end at or past the reader's) bounds nothing the reader's pass does not,
+// so it carries no writer pass.
+func tableFixedWriterFloatField(f *Field, r TableFixedWriterRange) (*Field, bool) {
+	if f.Type.Kind != TFloat32 && f.Type.Kind != TFloat64 {
+		return nil, false
+	}
+	kind := TableScalarKind(f)
+	if (kind != r.Kind && !TableFixedWidens(r.Kind, kind)) || !(r.FLo <= r.FHi) {
+		return nil, false
+	}
+	if f.HasFloatRange && r.FLo <= f.FMin && r.FHi >= f.FMax {
+		return nil, false
+	}
+	w := *f
+	w.HasIntRange, w.IntMin, w.IntMax = false, nil, nil
+	w.IntMinExpr, w.IntMaxExpr = nil, nil
+	w.HasFloatRange, w.FMin, w.FMax = true, r.FLo, r.FHi
 	return &w, true
 }

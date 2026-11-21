@@ -1110,6 +1110,10 @@ func (g *tableGen) emitFixedLineage(st *ir.Struct, known []fixedKnown, floor int
 			return strconv.FormatInt(v, 10)
 		}
 		for _, r := range k.ranges {
+			if r.flt {
+				g.pf("    { %du, %du, 0u, 0, 0, 1u, %s, %s },\n", r.dst, r.width, formatFloat(r.flo, false), formatFloat(r.fhi, false))
+				continue
+			}
 			g.pf("    { %du, %du, %du, %s, %s },\n", r.dst, r.width, r.signed, fmtBound(r.lo), fmtBound(r.hi))
 		}
 		g.pf("};\n")
