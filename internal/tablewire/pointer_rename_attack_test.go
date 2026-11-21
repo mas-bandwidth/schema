@@ -88,13 +88,13 @@ func renameRead(t *testing.T, m *tabletext.Model, d pointerTargetDecoder, wire [
 }
 
 const (
-	// the file's writer: Holder.p points at Node
+	// the file's writer: Holder.p points at Node.
 	renameWriterSrc = "package p\ntable Node { v int32 }\ntable Holder {\n    p *Node | required\n    c int32\n}\n"
-	// the reader after a BARE rename Node -> Link
+	// the reader after a BARE rename Node -> Link.
 	renameReaderSrc = "package p\ntable Link { v int32 }\ntable Holder {\n    p *Link | required\n    c int32\n}\n"
-	// an older writer that never had the field
+	// an older writer that never had the field.
 	renameNoFieldSrc = "package p\ntable Holder {\n    c int32\n}\n"
-	// a later reader that declares a NEW table under the freed name Node
+	// a later reader that declares a NEW table under the freed name Node.
 	renameReuseSrc = "package p\ntable Link { v int32 }\ntable Node { s string(8) }\ntable Holder {\n    p *Link | required\n    c int32\n    q *Node\n}\n"
 )
 
