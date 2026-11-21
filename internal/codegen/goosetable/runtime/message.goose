@@ -940,11 +940,18 @@ fn msg_kind_signed(k: u8) -> bool {
     return (k >= 2 && k <= 5) || k == 18 || (k >= 20 && k <= 24);
 }
 
-// msg_skip_ranged reads a ranged integer's offset, adds its announced base
-// across both lanes, and refuses out_of_range where the value falls outside
-// its kind (§3.3, §4). A value wider than the kind is out of range, not a
-// wrapped one.
-fn msg_skip_ranged(r: MsgReader&, e: i64, width: i64) -> bool {
+// msg_ranged reads a ranged integer's offset and reconstructs its value from
+// the announced base EXACTLY, across two lanes, holding it to the domain the
+// ANNOUNCED kind can store (§3.3, §4; internal/tablewire rangedValue): the
+// offset's bits can spell a value past the sender's maximum whenever the
+// range is not one less than a power of two, and a base near the kind's edge
+// plus such an offset names a value the kind cannot hold, which no conforming
+// writer emits. Such a value refuses out_of_range; it is never wrapped, at 64
+// bits or at 128. It is the ONE reconstruction the named read (msg_number)
+// and the skip path (msg_skip) share, so a body gets one verdict whether or
+// not this reader names the field. It answers the value's two's-complement
+// lanes; after a refusal or damage r.ok is false and the lanes are zero.
+fn msg_ranged(r: MsgReader&, e: i64, width: i64) -> u64, u64 {
     let kind = r.voc.entries[e].kind;
     let wide = msg_wide_kind(kind);
     var lo: u64 = 0;
@@ -955,7 +962,7 @@ fn msg_skip_ranged(r: MsgReader&, e: i64, width: i64) -> bool {
     } else {
         lo = msg_get(r, width);
     }
-    if !r.ok { return false; }
+    if !r.ok { return 0, 0; }
     let base_lo = r.voc.entries[e].base_lo;
     var base_hi: u64 = 0;
     if wide {
@@ -967,10 +974,34 @@ fn msg_skip_ranged(r: MsgReader&, e: i64, width: i64) -> bool {
     lo = off_lo + base_lo;
     let carry: u64 = if lo < off_lo { 1 } else { 0 };
     hi = hi + base_hi + carry;
-    if !msg_kind_lanes_hold(kind, lo, hi) {
-        return msg_refuse_read(r, MsgRefuseOutOfRange);
+    // THE 128-BIT SUM WRAPS ONLY BELOW ITS BASE: the offset is non-negative
+    // and under 2^128, so a sum that passed the kind's top lands below the
+    // base it was added to, compared as the kind compares
+    if msg_kind_bits(kind) >= 128 && msg_lanes_less(lo, hi, base_lo, base_hi, msg_kind_signed(kind)) {
+        msg_refuse_read(r, MsgRefuseOutOfRange);
+        return 0, 0;
     }
-    return true;
+    if !msg_kind_lanes_hold(kind, lo, hi) {
+        msg_refuse_read(r, MsgRefuseOutOfRange);
+        return 0, 0;
+    }
+    return lo, hi;
+}
+
+// msg_lanes_less is a < b over two 64-bit lanes, signed or not.
+fn msg_lanes_less(alo: u64, ahi: u64, blo: u64, bhi: u64, signed: bool) -> bool {
+    if ahi != bhi {
+        if signed { return (ahi as! i64) < (bhi as! i64); }
+        return ahi < bhi;
+    }
+    return alo < blo;
+}
+
+// msg_skip_ranged steps over a ranged integer by the one reconstruction the
+// named read takes (msg_ranged).
+fn msg_skip_ranged(r: MsgReader&, e: i64, width: i64) -> bool {
+    msg_ranged(r, e, width);
+    return r.ok;
 }
 
 // msg_kind_lanes_hold reports whether a reconstructed value's two's-complement
@@ -1113,6 +1144,12 @@ fn msg_number(r: MsgReader&, e: i64) -> u64, u64 {
         r.ok = false;
         return 0, 0;
     }
+    if r.voc.entries[e].packing == 1 {
+        // A RANGED VALUE IS RECONSTRUCTED BY THE ONE RULE THE SKIP PATH TAKES
+        // (msg_ranged): base plus offset exactly, held to the announced kind,
+        // refusing out_of_range rather than wrapping or truncating (§3.3)
+        return msg_ranged(r, e, width);
+    }
     var lo: u64 = 0;
     var hi: u64 = 0;
     if width > 64 {
@@ -1122,13 +1159,7 @@ fn msg_number(r: MsgReader&, e: i64) -> u64, u64 {
         lo = msg_get(r, width);
     }
     if !r.ok { return 0, 0; }
-    if r.voc.entries[e].packing == 1 {
-        let before = lo;
-        lo += r.voc.entries[e].base_lo;
-        if msg_wide_kind(kind) {
-            hi = hi + r.voc.entries[e].base_hi + (if lo < before { 1 } else { 0 });
-        }
-    } else if msg_signed_kind(kind) && width > 0 && width < 64 && ((lo >> ((width - 1) as! u64)) & 1) == 1 {
+    if msg_signed_kind(kind) && width > 0 && width < 64 && ((lo >> ((width - 1) as! u64)) & 1) == 1 {
         lo |= 0xFFFFFFFFFFFFFFFF << (width as! u64);
     }
     if msg_signed_kind(kind) {

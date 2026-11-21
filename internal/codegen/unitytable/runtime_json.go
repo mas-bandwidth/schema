@@ -1295,8 +1295,17 @@ internal static class TableJson
         else { return false; }
         if (at != s.Length) { return false; }
         long seconds = (new DateTime(year, month, day, hour, minute, second, DateTimeKind.Utc).Ticks - 621355968000000000L) / TimeSpan.TicksPerSecond - offset;
+        // THE WHOLE INT64 NANOSECOND RANGE READS (§16.2), its writer's own
+        // output included: below the epoch the whole seconds carry one second
+        // the fraction gives back, so seconds * 1e9 never leaves int64 where
+        // the sum does not
         long total;
-        try { total = checked(seconds * 1000000000L + fraction); }
+        try
+        {
+            total = seconds < 0 && fraction > 0
+                ? checked((seconds + 1) * 1000000000L + (fraction - 1000000000L))
+                : checked(seconds * 1000000000L + fraction);
+        }
         catch (OverflowException) { return false; }
         nanos = total;
         return true;
@@ -2159,7 +2168,13 @@ internal static class TableJson
             }
             if (f.HasRange)
             {
-                if (value < f.RangeMin || value > f.RangeMax) { return RefuseText(ref input, "out_of_range"); }
+                // A FLOAT32'S RANGE IS HELD AT FLOAT32 (docs/SPEC.md §4.6): the
+                // value and both bounds at the field's own width, so the top grid
+                // step its writer emits reads back
+                if (single ? (float)value < (float)f.RangeMin || (float)value > (float)f.RangeMax : value < f.RangeMin || value > f.RangeMax)
+                { return RefuseText(ref input, "out_of_range"); }
+                // A COMPRESSED FLOAT'S -0 LANDS AS +0 (docs/SPEC-TABLES.md §3.3)
+                value += 0.0;
             }
             if (single)
             {
