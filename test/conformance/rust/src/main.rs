@@ -1963,32 +1963,34 @@ fn damage_text(damage: &str) -> Damage {
 fn surface_json_hostile(manifest: &Manifest, out: &str) {
     for f in manifest.of_kind("json-hostile") {
         let path = format!("{}/{}.json", f[4], f[3]);
+        // EVERY ROW IS ANSWERED, and the driver goes on to the next: a refusal
+        // is a verdict, and a row this driver cannot carry through answers
+        // `driver-error: <why>`, which the harness fails BY NAME. An exit here
+        // would blank every row after it (the leg once scored 0/198 on one).
         let answer = with_root!(f[2].as_str(), f[3].as_str(), |_load, save, to_json, from_json| {
-            let text = match fs::read(&path) {
-                Ok(t) => t,
-                Err(e) => fail(&format!("cannot read {path}: {e}")),
-            };
-            // the RAW bytes: a lossy decode here would hide an ill-formed
-            // byte from the reader that must refuse it (§16.3)
-            let mut report = Default::default();
-            let value = from_json(&text, &mut report);
-            let r = &report;
-            match value {
-                Some(v) if !r.damaged && !r.refused => {
-                    let mut answer = format!("{},0,{},0,0,false,read\n", r.unknown, r.widened);
-                    // the accepted value's canonical write-back, held to the
-                    // bytes the reference writes
-                    match save(&v) {
-                        Ok(bytes) => spill(out, &format!("{}.wire", f[1]), &bytes),
-                        Err(why) => fail(&format!("{}: save refused the value: {why}", f[1])),
+            match fs::read(&path) {
+                Err(e) => format!("driver-error: cannot read {path}: {e}\n"),
+                Ok(text) => {
+                    // the RAW bytes: a lossy decode here would hide an
+                    // ill-formed byte from the reader that must refuse it
+                    // (§16.3)
+                    let mut report = Default::default();
+                    let value = from_json(&text, &mut report);
+                    let r = &report;
+                    match value {
+                        // the accepted value's canonical write-back, held to
+                        // the bytes and the text the reference writes
+                        Some(v) if !r.damaged && !r.refused => match (save(&v), to_json(&v)) {
+                            (Ok(bytes), Some(body)) => {
+                                spill(out, &format!("{}.wire", f[1]), &bytes);
+                                format!("{},0,{},0,0,false,read\n{body}", r.unknown, r.widened)
+                            }
+                            (Err(why), _) => format!("driver-error: save refused the accepted value: {why}\n"),
+                            (_, None) => "driver-error: ToJson refused the accepted value\n".to_string(),
+                        },
+                        _ => "refused\n".to_string(),
                     }
-                    match to_json(&v) {
-                        Some(body) => answer.push_str(&body),
-                        None => fail(&format!("{}: ToJson refused the value", f[1])),
-                    }
-                    answer
                 }
-                _ => "refused\n".to_string(),
             }
         });
         match answer {
