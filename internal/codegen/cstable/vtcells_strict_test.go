@@ -7,6 +7,9 @@ package cstable
 // returns Ok, but it wipes the value on the success path. The clean row must
 // then report that the wire did not read the whole value. Refusal rows stay
 // refusals. The unplanted tree is the tree the positive test runs.
+// TestCSharpVariableCellsStrictReasonIsDiagnostic renames the blob_shared
+// refusal in the emitted C#: every row compares the Go engine's VERDICT, never
+// its reason (docs/rulings.json refusal-verdict-only), so it stays green.
 
 import (
 	"encoding/binary"
@@ -160,7 +163,7 @@ func TestCSharpVariableCellsStrict(t *testing.T) {
 	})
 	t.Run("strict-read", func(t *testing.T) {
 		slowtest.Gate(t, "the .NET SDK (it compiles and runs the generated C#)")
-		out, err := vtCellsRun(t, false)
+		out, err := vtCellsRun(t, nil)
 		t.Logf("probe:\n%s", out)
 		if err != nil || !strings.Contains(out, "VT_CELLS_OK") {
 			t.Fatalf("strict read:\n%s\n%v", out, err)
@@ -170,29 +173,62 @@ func TestCSharpVariableCellsStrict(t *testing.T) {
 
 func TestCSharpVariableCellsStrictNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "the .NET SDK (it compiles and runs the generated C#)")
-	clean, err := vtCellsRun(t, false)
+	clean, err := vtCellsRun(t, nil)
 	if err != nil || !strings.Contains(clean, "VT_CELLS_OK") || !strings.Contains(clean, "ROW vt/variable-class/cs: ok") {
 		t.Fatalf("unplanted tree:\n%s\n%v", clean, err)
 	}
-	planted, err := vtCellsRun(t, true)
+	planted, err := vtCellsRun(t, vtCellsPlantOkReset)
 	t.Logf("planted probe:\n%s", planted)
 	if err == nil || strings.Contains(planted, "VT_CELLS_OK") || !strings.Contains(planted, "ROW vt/variable-class/cs: clean wire did not read the whole value\n") {
 		t.Fatalf("planted success path did not wipe the value:\n%s\n%v", planted, err)
 	}
 }
 
-func vtCellsRun(t *testing.T, plant bool) (string, error) {
+// TestCSharpVariableCellsStrictReasonIsDiagnostic renames every blob_shared
+// refusal the emitted C# can give. The shared-blob row compares the verdict,
+// so the probe stays green.
+func TestCSharpVariableCellsStrictReasonIsDiagnostic(t *testing.T) {
+	slowtest.Gate(t, "the .NET SDK (it compiles and runs the generated C#)")
+	out, err := vtCellsRun(t, vtCellsPlantReasonRename)
+	t.Logf("renamed probe:\n%s", out)
+	if err != nil || !strings.Contains(out, "VT_CELLS_OK") {
+		t.Fatalf("a renamed refusal reason turned the strict read red:\n%s\n%v", out, err)
+	}
+}
+
+// vtCellsRun generates the probe unit, applies plant (nil for the unplanted
+// tree) to the emitted files, and runs the probe over the Go engine's wires.
+func vtCellsRun(t *testing.T, plant func(map[string][]byte) error) (string, error) {
 	t.Helper()
 	wires := vtCellsWires(t)
 	files := generateFiles(t, "Probe", vtCellsReaderSchema)
-	if plant {
-		if err := vtCellsPlantOkReset(files); err != nil {
-			t.Fatal(err)
-		}
-	} else if err := vtCellsCountOk(files); err != nil {
+	if err := vtCellsCountOk(files); err != nil {
 		t.Fatal(err)
 	}
+	if plant != nil {
+		if err := plant(files); err != nil {
+			t.Fatal(err)
+		}
+	}
 	return vtCellsCompileRun(t, files, vtCellsProbe(wires))
+}
+
+// vtCellsPlantReasonRename renames the blob_shared reason string everywhere
+// the emitted C# refuses with it; the verdicts are untouched.
+func vtCellsPlantReasonRename(files map[string][]byte) error {
+	const reason = "\"blob_shared\""
+	n := 0
+	for name, data := range files {
+		s := string(data)
+		if c := strings.Count(s, reason); c > 0 {
+			n += c
+			files[name] = []byte(strings.ReplaceAll(s, reason, "\"renamed_by_the_plant\""))
+		}
+	}
+	if n == 0 {
+		return fmt.Errorf("the rename plant found no %s in the emitted C#", reason)
+	}
+	return nil
 }
 
 func vtCellsCountOk(files map[string][]byte) error {
@@ -216,9 +252,6 @@ func vtCellsCountOk(files map[string][]byte) error {
 }
 
 func vtCellsPlantOkReset(files map[string][]byte) error {
-	if err := vtCellsCountOk(files); err != nil {
-		return err
-	}
 	planted := 0
 	for name, data := range files {
 		s := string(data)
@@ -237,7 +270,7 @@ func vtCellsPlantOkReset(files map[string][]byte) error {
 type vtCellsWireSet struct {
 	dup, trunc, kind, over, unknown, wide, rename string
 	framing                                       []vtCellsVec
-	blobShared                                    bool
+	blobRefused                                   bool
 	blob                                          string
 }
 
@@ -264,15 +297,15 @@ func vtCellsWires(t *testing.T) vtCellsWireSet {
 	vtCellsMustRefuse(t, reader, "kind mismatch", kind)
 	vtCellsMustRefuse(t, reader, "out of range", over)
 
-	unkOK, unkRep := vtCellsDecode(reader, unknown)
+	unkOK, unkRep := vtCellsDecode(t, reader, unknown)
 	if !unkOK || unkRep.Unknown == 0 {
 		t.Fatalf("unknown field: ok=%v report=%+v", unkOK, unkRep)
 	}
-	wideOK, wideRep, wideInst := vtCellsDecodeInst(reader, wide)
+	wideOK, wideRep, wideInst := vtCellsDecodeInst(t, reader, wide)
 	if !wideOK || wideRep.Widened == 0 || vtCellsFieldI(wideInst, "wide32") != 6 {
 		t.Fatalf("widen: ok=%v widened=%d value=%d report=%+v", wideOK, wideRep.Widened, vtCellsFieldI(wideInst, "wide32"), wideRep)
 	}
-	renOK, _, renInst := vtCellsDecodeInst(reader, rename)
+	renOK, _, renInst := vtCellsDecodeInst(t, reader, rename)
 	if !renOK || vtCellsFieldI(renInst, "old") != 9 {
 		t.Fatalf("rename wire did not land old=9: ok=%v %s", renOK, vtCellsDump(renInst))
 	}
@@ -299,7 +332,7 @@ func vtCellsWires(t *testing.T) vtCellsWireSet {
 		if err != nil {
 			t.Fatalf("framing corpus %s: %v", path, err)
 		}
-		ok, rep := vtCellsDecode(reader, data)
+		ok, rep := vtCellsDecode(t, reader, data)
 		t.Logf("framing %s go_ok=%v reason=%q damaged_via_refused=%v", name, ok, rep.Reason, rep.Refused)
 		set.framing = append(set.framing, vtCellsVec{name: name, hex: hex.EncodeToString(data), refused: !ok})
 	}
@@ -308,12 +341,12 @@ func vtCellsWires(t *testing.T) vtCellsWireSet {
 	if err != nil {
 		t.Fatalf("blob corpus: %v", err)
 	}
-	blobInst := reader.New(reader.Lookup("Root"))
-	var blobRep tabletext.Report
-	blobOK, blobErr := tablewire.Decode(reader, blobInst, blob, &blobRep)
+	// THE ORACLE'S VERDICT, never its reason (docs/rulings.json
+	// refusal-verdict-only): the C# row compares refused with refused.
+	blobOK, blobRep := vtCellsDecode(t, reader, blob)
 	set.blob = hex.EncodeToString(blob)
-	set.blobShared = !blobOK && tablewire.RefusalReason(blobErr) == tablewire.ReasonBlobShared
-	t.Logf("blob_shared go_ok=%v reason=%s report=%+v", blobOK, tablewire.RefusalReason(blobErr), blobRep)
+	set.blobRefused = !blobOK
+	t.Logf("blob_shared go_ok=%v reason=%q report=%+v", blobOK, blobRep.Reason, blobRep)
 	return set
 }
 
@@ -332,21 +365,29 @@ func vtCellsEncode(t *testing.T, src, table, text string) []byte {
 	return wire
 }
 
-func vtCellsDecode(m *tabletext.Model, wire []byte) (bool, tabletext.Report) {
-	ok, rep, _ := vtCellsDecodeInst(m, wire)
+func vtCellsDecode(t *testing.T, m *tabletext.Model, wire []byte) (bool, tabletext.Report) {
+	t.Helper()
+	ok, rep, _ := vtCellsDecodeInst(t, m, wire)
 	return ok, rep
 }
 
-func vtCellsDecodeInst(m *tabletext.Model, wire []byte) (bool, tabletext.Report, *tabletext.Instance) {
+// vtCellsDecodeInst is the Go engine's read of one wire. An error that is not
+// a read's refusal is the oracle failing and fails the test: it never counts
+// as a refused verdict.
+func vtCellsDecodeInst(t *testing.T, m *tabletext.Model, wire []byte) (bool, tabletext.Report, *tabletext.Instance) {
+	t.Helper()
 	inst := m.New(m.Lookup("Root"))
 	var rep tabletext.Report
-	ok, _ := tablewire.Decode(m, inst, wire, &rep)
+	ok, err := tablewire.Decode(m, inst, wire, &rep)
+	if err != nil && !tablewire.ReadRefusal(err) {
+		t.Fatalf("the Go engine failed without a refusal: %v", err)
+	}
 	return ok, rep, inst
 }
 
 func vtCellsMustRefuse(t *testing.T, m *tabletext.Model, what string, wire []byte) {
 	t.Helper()
-	ok, rep := vtCellsDecode(m, wire)
+	ok, rep := vtCellsDecode(t, m, wire)
 	if ok {
 		t.Fatalf("%s: Go accepted a wire the strict read must refuse (%+v)", what, rep)
 	}
@@ -425,7 +466,7 @@ func vtCellsProbe(w vtCellsWireSet) string {
 		fmt.Fprintf(&framing, "    Agree(%q, %q, %s);\n", v.name, v.hex, flag)
 	}
 	blobFlag := "false"
-	if w.blobShared {
+	if w.blobRefused {
 		blobFlag = "true"
 	}
 	return fmt.Sprintf(vtCellsProbeSrc, w.dup, w.trunc, w.kind, w.over, w.unknown, w.wide, w.rename, w.blob, blobFlag, framing.String())
@@ -713,18 +754,20 @@ public static class VtCellsProgram
         }
     }
 
-    static void BlobShared(string hex, bool wantShared)
+    // BlobShared holds C# to the Go engine's VERDICT on the shared-blob wire;
+    // the reason is C#'s own diagnostic and is printed, never compared.
+    static void BlobShared(string hex, bool goRefused)
     {
         Root v = Poison();
         TableReport r = new TableReport();
         bool ok = Schema.RootLoad(v, Convert.FromHexString(hex), r);
-        if (wantShared)
+        if (goRefused)
         {
-            Row("vt/blobs/cs", !ok && Defaults(v) && r.Reason == "blob_shared", "blob_shared ok=" + ok + " reason=" + r.Reason);
+            Row("vt/blobs/cs", !ok && Defaults(v), "shared-blob wire " + (ok ? "accepted" : "left a value") + " reason=" + r.Reason);
         }
         else
         {
-            Row("vt/blobs/cs", !ok && Defaults(v), "shared-blob wire was not a refusal reason=" + r.Reason);
+            Row("vt/blobs/cs", ok, "Go accepted the shared-blob wire and C# refused it reason=" + r.Reason);
         }
     }
 
