@@ -163,28 +163,56 @@ func main() {
 }
 
 // selectsNoGatedTest reports whether an unarmed recipe line is PROVEN to run
-// no test the gate can skip: every package it names is one whose gate-reaching
-// tests are known (gatedTests, by directory), and its -run pattern selects none
-// of them. That line cannot go green having run nothing, so it is not bare.
-// Anything short of the proof is bare: no -run pattern, a `./...`, or a
+// no test the gate can skip. The proof has two halves, and both are required:
+//
+//   - the -run pattern SELECTS A TEST in every package the line names. A
+//     pattern that matches no declared test runs nothing (`go test` prints "no
+//     tests to run" and exits 0), and a line that runs nothing proves nothing;
+//   - none of the tests it selects reaches the gate (gatedTests, by directory).
+//
+// Selection is Go's: the pattern is split at `/`, and a top-level test runs
+// when the FIRST element matches its name, whatever the later elements say.
+// `-run TestGated/roundtrip` runs TestGated, which skips at the gate before
+// any subtest is reached, so it selects the gated test exactly as
+// `-run TestGated` does.
+//
+// Anything short of the proof is bare: no -run pattern, a pattern that does
+// not compile, a `./...`, a package whose declarations cannot be read, or a
 // package gated by the marker alone (another module's, whose reach this scan
 // does not compute).
-func selectsNoGatedTest(r recipe, gatedTests map[string][]string) bool {
-	if r.runPat == "" {
+func selectsNoGatedTest(root string, r recipe, gatedTests map[string][]string) bool {
+	if r.runPat == "" || len(r.packages) == 0 {
+		return false
+	}
+	first, err := regexp.Compile(strings.Split(r.runPat, "/")[0])
+	if err != nil {
 		return false
 	}
 	for _, pkg := range r.packages {
 		if strings.HasSuffix(pkg, "/...") {
 			return false
 		}
-		tests, ok := gatedTests[strings.TrimPrefix(pkg, "./")]
+		dir := strings.TrimPrefix(pkg, "./")
+		gatedHere, ok := gatedTests[dir]
 		if !ok {
 			return false
 		}
-		for _, name := range tests {
-			if matchesRun(r.runPat, name) {
+		declared, err := declaredTests(filepath.Join(root, filepath.FromSlash(dir)))
+		if err != nil {
+			return false
+		}
+		selected := 0
+		for name := range declared {
+			if !first.MatchString(name) {
+				continue
+			}
+			selected++
+			if slices.Contains(gatedHere, name) {
 				return false
 			}
+		}
+		if selected == 0 {
+			return false
 		}
 	}
 	return true
@@ -202,7 +230,7 @@ func runStatic(root string, recipes []recipe, exceptions []exception, gated map[
 			usedException[i] = true
 			continue
 		}
-		if selectsNoGatedTest(r, gatedTests) {
+		if selectsNoGatedTest(root, r, gatedTests) {
 			proven++
 			continue
 		}
