@@ -1,0 +1,22 @@
+package funions
+
+type Ring
+{
+    radius uint16
+}
+
+fixed table Slab
+{
+    width uint8
+}
+
+union Shape
+{
+    ring Ring
+    slab Slab
+}
+
+fixed table Record
+{
+    shape Shape
+}

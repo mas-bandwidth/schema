@@ -1,0 +1,16 @@
+package fkeyed
+
+enum Axis { X, Y, Z }
+
+enum Team { Red, Blue }
+
+type Row
+{
+    per_axis [Axis]int32
+}
+
+fixed table Record
+{
+    per_axis [Axis]int32
+    per_team [Team]Row
+}

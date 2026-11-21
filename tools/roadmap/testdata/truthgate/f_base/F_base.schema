@@ -1,0 +1,8 @@
+package fbase
+
+fixed table Record
+{
+    level  int32
+    count  uint16
+    active bool
+}

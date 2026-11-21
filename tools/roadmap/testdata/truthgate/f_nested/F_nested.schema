@@ -1,0 +1,18 @@
+package fnested
+
+type Pose
+{
+    x int32
+    y int32
+}
+
+fixed table Leaf
+{
+    level int32
+}
+
+fixed table Record
+{
+    pose Pose
+    leaf Leaf
+}

@@ -1,0 +1,8 @@
+package palign
+
+type Holder
+{
+    level bits(3)
+    align
+    more  uint16
+}

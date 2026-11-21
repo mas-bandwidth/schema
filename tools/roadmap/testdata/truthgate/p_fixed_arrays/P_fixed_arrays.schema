@@ -1,0 +1,6 @@
+package pfixedarrays
+
+type Holder
+{
+    values [4]uint16
+}

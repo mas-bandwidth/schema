@@ -1,0 +1,9 @@
+package vwide
+
+table Record
+{
+    angle  fixed(16, 16) | min = -180, max = 180
+    span   ufixed(16, 16) | min = 0, max = 360
+    entity uint128
+    energy int128 | min = -1000, max = 1000
+}

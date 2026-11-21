@@ -1,0 +1,22 @@
+package funionarrays
+
+type Ring
+{
+    radius uint16
+}
+
+type Slab
+{
+    width uint8
+}
+
+union Shape
+{
+    ring Ring
+    slab Slab
+}
+
+fixed table Record
+{
+    shapes [..3]Shape
+}

@@ -1,0 +1,12 @@
+package vpointerarrays
+
+table Item
+{
+    level int32
+}
+
+table Record
+{
+    items [..4]*Item
+    pair  [2]*Item
+}

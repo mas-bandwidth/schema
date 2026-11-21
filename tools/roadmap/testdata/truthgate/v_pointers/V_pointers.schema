@@ -1,0 +1,13 @@
+package vpointers
+
+table Node
+{
+    level int32
+    left  *Node
+    right *Node
+}
+
+table Root
+{
+    head *Node
+}

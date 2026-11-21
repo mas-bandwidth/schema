@@ -1,0 +1,7 @@
+package ffixedpoint
+
+fixed table Record
+{
+    angle fixed(16, 16)  | min = -180, max = 180
+    span  ufixed(16, 16) | min = 0, max = 360
+}

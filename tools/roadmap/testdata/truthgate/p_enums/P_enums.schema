@@ -1,0 +1,8 @@
+package penums
+
+enum Mode { Alpha, Beta, Gamma }
+
+type Holder
+{
+    mode Mode
+}

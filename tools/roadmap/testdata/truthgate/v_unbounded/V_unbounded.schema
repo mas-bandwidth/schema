@@ -1,0 +1,13 @@
+package vunbounded
+
+table Item
+{
+    level int32
+}
+
+table Record
+{
+    values []int32
+    items  []Item
+    refs   []*Item
+}

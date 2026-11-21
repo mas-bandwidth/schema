@@ -739,6 +739,32 @@ jobs:
       - name: go vet
         run: go vet ./...
 
+  # THE ROADMAP TRUTH GATE, on every pull request and push whatever the diff
+  # touches: a compiler change can break a ticked cell without touching the
+  # roadmap, and a roadmap change can tick a cell the compiler refuses. Built
+  # with NO tags — the binary `make` ships — it holds the registered targets
+  # to README.md's --lang list and generates a probe unit for every ✅ cell
+  # of ROADMAP.md with that column's target; a refusal is red by section, row,
+  # column and refusal text (tools/roadmap/truthgate_test.go). Generation
+  # only, no language toolchain. Moo behind a build tag and Python's refused
+  # packet defaults shipped in v3.0.1 because nothing ran this.
+  roadmap-truth:
+    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 2
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: every ticked roadmap cell generates in the default build
+        run: go test -count=1 -run '^(TestDefaultBuildTargetsAreTheDocumentedLanguages|TestEveryTickedRoadmapCellGenerates)$' ./tools/roadmap/
+
   # FAST GOLANGCI-LINT OVER TOUCHED GO PACKAGES (~4-10 s on fleet runners).
   # Catches gocritic / staticcheck / errcheck / unused issues in touched Go
   # packages right on the PR instead of waiting for ci-full.yml's lint job.
