@@ -94,10 +94,12 @@ func TestJavaScriptObjectModelNamesRefused(t *testing.T) {
 // binding of its own name in the generated JavaScript and a declaration of it
 // in the .d.ts. Eight names cannot be one: an ES module refuses eval and
 // arguments as a binding, a binding named undefined takes the value the
-// generated modules compare against, and TypeScript refuses a declaration
+// generated modules compare against, and TypeScript refuses a class or type
 // named after a predefined type (unknown, never, symbol, number, bigint,
-// undefined). TypeScript predefined type names may still name a value-only
-// constant. A field name is a property, so every spelling is kept there.
+// undefined). TypeScript predefined type names may still name a const (a
+// value only) or a flags declaration (which binds only its masks, count and
+// name functions, never its own name). A field name is a property, so every
+// spelling is kept there.
 func TestJavaScriptUnbindableNamesRefusedAsDeclarations(t *testing.T) {
 	t.Parallel()
 	compile := func(source string) []error {
@@ -133,9 +135,9 @@ func TestJavaScriptUnbindableNamesRefusedAsDeclarations(t *testing.T) {
 	for _, name := range []string{"eval", "arguments", "undefined", "unknown", "never", "symbol", "number", "bigint"} {
 		for kind, source := range forms(name) {
 			errs := compile(source)
-			if kind == "const" && name != "eval" && name != "arguments" && name != "undefined" {
+			if (kind == "const" || kind == "flags") && name != "eval" && name != "arguments" && name != "undefined" {
 				if len(errs) != 0 {
-					t.Errorf("TypeScript permits const %s as a value binding: %v", name, errs)
+					t.Errorf("TypeScript permits %s %s, which binds no type of that name: %v", kind, name, errs)
 				}
 				continue
 			}

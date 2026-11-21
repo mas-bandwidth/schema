@@ -53,6 +53,9 @@ class BindingNames(unittest.TestCase):
     def test_predefined_types_as_values(self):
         self.run_consumer("Values")
 
+    def test_predefined_types_as_flags(self):
+        self.run_consumer("Flags")
+
     def test_shadowed_platform_name(self):
         self.run_consumer("Control")
 
