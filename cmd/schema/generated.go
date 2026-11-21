@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -187,14 +188,7 @@ func claimSpelling(look outLook, put outChanges, name string, done map[string]bo
 		if err != nil {
 			return err
 		}
-		exact := false
-		for _, e := range entries {
-			if e == comp {
-				exact = true
-				break
-			}
-		}
-		if !exact && !done[at] {
+		if !slices.Contains(entries, comp) && !done[at] {
 			for _, e := range entries {
 				if look.same(path.Join(parent, e), at) {
 					put.Respell(path.Join(parent, e), at)

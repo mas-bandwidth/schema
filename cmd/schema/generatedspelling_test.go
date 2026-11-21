@@ -12,6 +12,7 @@ package main
 
 import (
 	"io/fs"
+	"maps"
 	"path"
 	"slices"
 	"sort"
@@ -122,9 +123,7 @@ func (t *fakeTree) rename(from, to string) error {
 			delete(t.entries, key)
 		}
 	}
-	for key, e := range moved {
-		t.entries[key] = e
-	}
+	maps.Copy(t.entries, moved)
 	return nil
 }
 
@@ -235,9 +234,7 @@ func TestRegenerationAfterACaseOnlySourceRename(t *testing.T) {
 				for name, data := range first {
 					existing[name] = string(data)
 				}
-				for name, data := range bystanders {
-					existing[name] = data
-				}
+				maps.Copy(existing, bystanders)
 				tree := newFakeTree(folds, existing)
 				base := "Player"
 				if renamed {
