@@ -2,6 +2,7 @@ package jstable
 
 import (
 	"fmt"
+	"maps"
 	"strings"
 	"testing"
 
@@ -64,10 +65,7 @@ func TestJavaScriptJSONMapReadIsLinear(t *testing.T) {
 
 	t.Run("count", func(t *testing.T) {
 		slowtest.Gate(t, "node (it runs the generated JSON read)")
-		counted := map[string][]byte{}
-		for name, data := range files {
-			counted[name] = data
-		}
+		counted := maps.Clone(files)
 		s := src
 		for _, anchor := range []struct{ from, counter string }{
 			{"function TableVariableUtf8Encode(s) {\n", "__enc"},
@@ -81,7 +79,7 @@ func TestJavaScriptJSONMapReadIsLinear(t *testing.T) {
 		counted[home] = []byte(s)
 		got := strings.TrimSpace(runJSConstructProbe(t, counted, home, jsJSONMapLinearProbe, []int{jsJSONMapLinearN}))
 		lines := map[string]string{}
-		for _, line := range strings.Split(got, "\n") {
+		for line := range strings.SplitSeq(got, "\n") {
 			k, v, ok := strings.Cut(line, "=")
 			if !ok {
 				t.Fatalf("probe output line %q:\n%s", line, got)
