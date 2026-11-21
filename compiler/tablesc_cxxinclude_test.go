@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestCTablePointerHeaderIncludesFromCxx holds the promise of a generated C
@@ -70,10 +72,10 @@ func TestCTablePointerHeaderIncludesFromCxx(t *testing.T) {
 				// The runtime's aggregate initializers and mixed enumerators
 				// are outside this leg's subject; their diagnostics stay
 				// visible, and every other warning stays an error.
-				if output, err := exec.Command(cxx, "-std=c++17", "-fsyntax-only", "-Wall", "-Wextra", "-Werror", "-Wno-error=missing-field-initializers", "-Wno-error=enum-compare", "-I", dir, cpp).CombinedOutput(); err != nil {
+				if output, err := testproc.Command(t, cxx, "-std=c++17", "-fsyntax-only", "-Wall", "-Wextra", "-Werror", "-Wno-error=missing-field-initializers", "-Wno-error=enum-compare", "-I", dir, cpp).CombinedOutput(); err != nil {
 					t.Errorf("%s included from C++: %v\n%s", header, err, output)
 				}
-				if output, err := exec.Command(cc, "-std=c99", "-fsyntax-only", "-Wall", "-Wextra", "-Werror", "-I", dir, c).CombinedOutput(); err != nil {
+				if output, err := testproc.Command(t, cc, "-std=c99", "-fsyntax-only", "-Wall", "-Wextra", "-Werror", "-I", dir, c).CombinedOutput(); err != nil {
 					t.Errorf("%s included from C: %v\n%s", header, err, output)
 				}
 			}

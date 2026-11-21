@@ -3,10 +3,11 @@ package javatable
 import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestCardDescriptorsNameEveryField (docs/SPEC-TABLES.md §8) holds the generated
@@ -156,10 +157,10 @@ func TestCardConstructsRetainUnknownFields(t *testing.T) {
 	}
 	allSrcs = append(allSrcs, filepath.Join(dir, "RetainDriver.java"))
 	args := append([]string{"--release", "17", "-d", classes}, allSrcs...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac (retain): %v\n%s", err, out)
 	}
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "RetainDriver").CombinedOutput()
+	out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, "RetainDriver").CombinedOutput()
 	if err != nil {
 		t.Fatalf("java (retain): %v\n%s", err, out)
 	}
@@ -255,10 +256,10 @@ func TestRetentionCapacityIsALoss(t *testing.T) {
 	}
 	allSrcs = append(allSrcs, filepath.Join(dir, "LossDriver.java"))
 	args := append([]string{"--release", "17", "-d", classes}, allSrcs...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac (loss): %v\n%s", err, out)
 	}
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "LossDriver").CombinedOutput()
+	out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, "LossDriver").CombinedOutput()
 	if err != nil {
 		t.Fatalf("java (loss): %v\n%s", err, out)
 	}

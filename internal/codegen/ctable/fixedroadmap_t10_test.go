@@ -29,7 +29,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -37,6 +36,8 @@ import (
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // cT10Run generates the packet and table modules for an inline unit, writes a
@@ -101,12 +102,12 @@ int main( void )
 	if cc == "" {
 		cc = "cc"
 	}
-	out, err := exec.Command(cc, "-std=c99", "-O1", "-I"+dir,
+	out, err := testproc.Command(t, cc, "-std=c99", "-O1", "-I"+dir,
 		filepath.Join(dir, "probe.c"), "-o", filepath.Join(dir, "probe"), "-lm").CombinedOutput()
 	if err != nil {
 		t.Fatalf("the probe did not compile: %v\n%s", err, out)
 	}
-	out, err = exec.Command(filepath.Join(dir, "probe")).CombinedOutput()
+	out, err = testproc.Command(t, filepath.Join(dir, "probe")).CombinedOutput()
 	if err != nil {
 		t.Fatalf("the probe failed: %v\n%s", err, out)
 	}

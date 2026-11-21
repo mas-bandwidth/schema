@@ -130,13 +130,28 @@ func writeVariableRetainedPayload(b *strings.Builder, u *ir.Unit, owner string, 
 // infinity refuses the save (docs/SPEC-TABLES.md §3.3). A ranged float goes
 // through the writer's range test too, so one off its range refuses the save
 // in every build, whatever shape holds it (docs/SPEC.md §5.1 row 10).
+// variableCompressedRead is the value a read lands for a float32 field: a
+// compressed float's is held to its float32 ends and its -0 lands as +0
+// (TableVariable.compressedF32, docs/SPEC-TABLES.md §3.3); any other float's
+// is expr as read.
+func variableCompressedRead(f *ir.Field, expr, report, field string) string {
+	if !f.HasFloatRange || f.Type.Kind != ir.TFloat32 {
+		return expr
+	}
+	lo, hi, _ := fixedFloatRange(f)
+	return fmt.Sprintf("TableVariable.compressedF32(%s, %s, %s, %s, %q)", expr, lo, hi, report, field)
+}
+
 func variableFloatPut(f *ir.Field, w, expr string) string {
 	if f.HasFloatRange {
+		// a float32's range is held at float32, against the float32 ends the
+		// declaration names (SPEC §4.6), as the fixed form holds it
+		lo, hi, _ := fixedFloatRange(f)
 		put := ".putF64In("
 		if f.Type.Kind == ir.TFloat32 {
 			put = ".putF32In("
 		}
-		return w + put + expr + ", " + fixedDoubleLit(f.FMin) + ", " + fixedDoubleLit(f.FMax) + ");"
+		return w + put + expr + ", " + lo + ", " + hi + ");"
 	}
 	if f.Type.Kind == ir.TFloat32 {
 		return w + ".putF32(" + expr + ");"

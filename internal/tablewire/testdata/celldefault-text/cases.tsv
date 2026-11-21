@@ -1,0 +1,17 @@
+# The text and bytes cell-default corpus over Root.schema beside this file:
+# TestCellIsDefaultJudgesTextByItsBytes reads every row.
+# case	field	default_hex	held_hex	is_default
+#
+# field: a field of Root; a text list names its element cell.
+# default_hex: the bytes of the field's declared default ("-" for none).
+# held_hex: the bytes the cell holds ("-" for none).
+# is_default: whether the writer's elision test must call the cell default.
+list-element-empty	names	-	-	true
+list-element-holding-text	names	-	6162	false
+text-at-declared-default	title	6162	6162	true
+text-empty-under-a-declared-default	title	6162	-	false
+text-other-bytes-same-length	title	6162	6364	false
+text-prefix-of-the-default	title	6162	61	false
+bytes-empty	blob	-	-	true
+bytes-one-byte	blob	-	01	false
+bytes-one-zero-byte	blob	-	00	false

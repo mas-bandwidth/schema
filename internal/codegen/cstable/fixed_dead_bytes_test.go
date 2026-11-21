@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -12,6 +11,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // EVERY DEAD BYTE IN A FIXED RECORD IS ZERO, AND A NON-ZERO ONE REFUSES THE
@@ -259,7 +260,7 @@ static class ProbeMain
 	if dotnet == "" {
 		dotnet = "dotnet"
 	}
-	cmd := exec.Command(dotnet, "run", "--project", dir, "-v", "q", "--nologo")
+	cmd := testproc.Command(t, dotnet, "run", "--project", dir, "-v", "q", "--nologo")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "SCHEMA_FIXEDFORM_CORPUS="+corpus, "DOTNET_NOLOGO=1")
 	out, runErr := cmd.CombinedOutput()
