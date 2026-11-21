@@ -107,15 +107,15 @@ func scopes(root string) ([]Scope, error) {
 	for _, c := range coreScopes {
 		pkg := "./" + c.dir + "/..."
 		s := Scope{Name: c.name, Go: []string{c.dir}, Min: minCore}
-		s.Stages = append(s.Stages, Stage{Name: "fast", Sh: "go test -count=1 -p 4 " + pkg, Proof: goTestProof})
+		s.Stages = append(s.Stages, Stage{Name: "fast", Sh: "go test -count=1 -p ${MUTATION_JOBS:-4} " + pkg, Proof: goTestProof})
 		gated, err := hasSlowTests(root, s.Go)
 		if err != nil {
 			return nil, err
 		}
 		if gated {
-			s.Stages = append(s.Stages, Stage{Name: "slow", Sh: "SCHEMA_SLOW=1 go test -count=1 -p 4 -timeout 60m " + pkg, Proof: goTestProof, Deep: true})
+			s.Stages = append(s.Stages, Stage{Name: "slow", Sh: "SCHEMA_SLOW=1 go test -count=1 -p ${MUTATION_JOBS:-4} -timeout 60m " + pkg, Proof: goTestProof, Deep: true})
 		}
-		s.Stages = append(s.Stages, Stage{Name: "repo", Sh: "go test -count=1 -p 4 ./...", Proof: goTestProof, Deep: true})
+		s.Stages = append(s.Stages, Stage{Name: "repo", Sh: "go test -count=1 -p ${MUTATION_JOBS:-4} ./...", Proof: goTestProof, Deep: true})
 		out = append(out, s)
 	}
 	for _, t := range targetScopes {
@@ -127,7 +127,7 @@ func scopes(root string) ([]Scope, error) {
 			pkgs = append(pkgs, "./internal/codegen/"+p+"/...")
 		}
 		all := strings.Join(pkgs, " ")
-		s.Stages = append(s.Stages, Stage{Name: "fast", Sh: "go test -count=1 -p 4 " + all, Proof: goTestProof})
+		s.Stages = append(s.Stages, Stage{Name: "fast", Sh: "go test -count=1 -p ${MUTATION_JOBS:-4} " + all, Proof: goTestProof})
 
 		reg, err := readRegistry(root, t.lang)
 		if err != nil {
@@ -135,7 +135,7 @@ func scopes(root string) ([]Scope, error) {
 		}
 		s.Stages = append(s.Stages, Stage{
 			Name:  "conformance",
-			Sh:    fmt.Sprintf("make -j4 %s %s ${MUTATION_MAKE_ARGS:-} && env %s ./build/conformance-harness run --only %s", reg.Targets, reg.Env, reg.Env, t.lang),
+			Sh:    fmt.Sprintf("make -j${MUTATION_JOBS:-4} %s %s ${MUTATION_MAKE_ARGS:-} && env %s ${MUTATION_MAKE_ARGS:-} ./build/conformance-harness run --only %s", reg.Targets, reg.Env, reg.Env, t.lang),
 			Proof: `(?m)\b` + regexp.QuoteMeta(t.lang) + `\b`,
 		})
 		hostile := "schema-" + t.lang + "-runs-hostile-corpus"
@@ -149,8 +149,8 @@ func scopes(root string) ([]Scope, error) {
 			s.Notes = append(s.Notes, "no make target "+hostile+": this target has no hostile runner to run")
 		}
 		s.Stages = append(s.Stages,
-			Stage{Name: "pins", Sh: "go test -count=1 -p 4 ./internal/goldens", Proof: goTestProof},
-			Stage{Name: "slow", Sh: "SCHEMA_SLOW=1 go test -count=1 -p 4 -timeout 120m " + all, Proof: goTestProof, Deep: true},
+			Stage{Name: "pins", Sh: "go test -count=1 -p ${MUTATION_JOBS:-4} ./internal/goldens", Proof: goTestProof},
+			Stage{Name: "slow", Sh: "SCHEMA_SLOW=1 go test -count=1 -p ${MUTATION_JOBS:-4} -timeout 120m " + all, Proof: goTestProof, Deep: true},
 		)
 		out = append(out, s)
 	}

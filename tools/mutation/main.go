@@ -19,7 +19,7 @@
 package main
 
 import (
-	_ "embed"
+	"embed"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -37,15 +37,16 @@ const usage = `usage: go run ./tools/mutation <command> [flags]
   list   -scope S [-n N -seed K]
                               the mutants of a scope, or the sample a seed picks
   run    -scope S -work DIR [-n N -seed K] [-deep] [-stages a,b] [-ids x,y]
-         [-out FILE] [-enforce]
+         [-retry FILE] [-out FILE] [-enforce]
                               apply each mutant to a scratch copy and run the
                               stages. -out appends one JSON line per mutant.
                               -enforce exits 1 on a survivor that is not on
-                              the reviewed list, equivalent-mutants.json
+                              the reviewed list, equivalents/<scope>.json
   smoke  -work DIR            the fixed smoke set, smoke.json: every one must
                               be killed. This is the fast-CI check that the
                               driver itself still works
-  report FILE...              the table of one or more -out files
+  report [-survivors] FILE... the table of one or more -out files, each
+                              mutant by its last result
 
 A scope is a core package (check, tablewire, tabletext, baseline, tablepack,
 tablecook, ir, cmd-schema) or a target (target-c ... target-squirrel).
@@ -71,8 +72,11 @@ type Smoke struct {
 	Why   string `json:"why"`
 }
 
-//go:embed equivalent-mutants.json
-var equivalentsJSON []byte
+// equivalentsFS is the reviewed list, one file per scope,
+// equivalents/<scope>.json, so two people reviewing two scopes edit two files.
+//
+//go:embed equivalents
+var equivalentsFS embed.FS
 
 //go:embed smoke.json
 var smokeJSON []byte
@@ -97,8 +101,10 @@ func command(name string, args []string) error {
 	deep := fs.Bool("deep", false, "also run the stages that cost minutes each")
 	stageList := fs.String("stages", "", "run only these stages, comma separated")
 	ids := fs.String("ids", "", "run only these mutants, comma separated ids")
+	retry := fs.String("retry", "", "run only the mutants that survived in this earlier -out file")
 	out := fs.String("out", "", "append one JSON line per mutant to this file")
 	enforce := fs.Bool("enforce", false, "exit 1 on a survivor that is not on the reviewed list")
+	survivors := fs.Bool("survivors", false, "report: also list every survivor")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -155,6 +161,21 @@ func command(name string, args []string) error {
 		if *ids != "" {
 			only = strings.Split(*ids, ",")
 		}
+		if *retry != "" {
+			earlier, err := readResults(*retry)
+			if err != nil {
+				return err
+			}
+			for _, r := range latest(earlier) {
+				if r.Scope == *scopeName && r.Outcome == outcomeSurvived {
+					only = append(only, r.ID)
+				}
+			}
+			if len(only) == 0 {
+				fmt.Printf("scope %s has no survivor in %s: nothing to run again\n", *scopeName, *retry)
+				return nil
+			}
+		}
 		results, err := runScope(root, *work, *scopeName, *n, *seed, only, opt, *out)
 		if err != nil {
 			return err
@@ -181,7 +202,15 @@ func command(name string, args []string) error {
 		if len(results) == 0 {
 			return fmt.Errorf("report: no result in %v", fs.Args())
 		}
+		results = latest(results)
 		printTable(results)
+		if *survivors {
+			for _, r := range results {
+				if r.Outcome == outcomeSurvived {
+					fmt.Printf("%s\t%s\t%s:%d\t%s\t%q -> %q\t| %s\n", r.Scope, r.ID, r.File, r.Line, r.Op, clip(r.Old), clip(r.New), clip(r.Context))
+				}
+			}
+		}
 		return nil
 	}
 	fmt.Fprint(os.Stderr, usage)
@@ -374,8 +403,8 @@ func enforceEquivalents(results []Result) error {
 			continue
 		}
 		bad++
-		fmt.Fprintf(os.Stderr, "SURVIVOR %s %s %s:%d %s %q -> %q: no test noticed. Write the test that does, or, if the program's behavior cannot change, add it to tools/mutation/equivalent-mutants.json with the one line that says why.\n",
-			r.Scope, r.ID, r.File, r.Line, r.Op, clip(r.Old), clip(r.New))
+		fmt.Fprintf(os.Stderr, "SURVIVOR %s %s %s:%d %s %q -> %q: no test noticed. Write the test that does, or, if the program's behavior cannot change, add it to tools/mutation/equivalents/%s.json with the one line that says why. Reproduce: go run ./tools/mutation run -scope %s -ids %s -work build/mutation\n",
+			r.Scope, r.ID, r.File, r.Line, r.Op, clip(r.Old), clip(r.New), r.Scope, r.Scope, r.ID)
 	}
 	if bad > 0 {
 		return fmt.Errorf("%d surviving mutants are not on the reviewed list", bad)
@@ -384,20 +413,37 @@ func enforceEquivalents(results []Result) error {
 }
 
 func loadEquivalents() (map[string]Equivalent, error) {
-	var list []Equivalent
-	if err := json.Unmarshal(equivalentsJSON, &list); err != nil {
-		return nil, fmt.Errorf("equivalent-mutants.json: %w", err)
+	files, err := equivalentsFS.ReadDir("equivalents")
+	if err != nil {
+		return nil, err
 	}
 	out := map[string]Equivalent{}
-	for _, e := range list {
-		if strings.TrimSpace(e.Reason) == "" {
-			return nil, fmt.Errorf("equivalent-mutants.json: %s/%s has no reason", e.Scope, e.ID)
+	for _, f := range files {
+		scope, isJSON := strings.CutSuffix(f.Name(), ".json")
+		if !isJSON {
+			return nil, fmt.Errorf("equivalents/%s is not a <scope>.json", f.Name())
 		}
-		key := e.Scope + "/" + e.ID
-		if _, dup := out[key]; dup {
-			return nil, fmt.Errorf("equivalent-mutants.json: %s is listed twice", key)
+		b, err := equivalentsFS.ReadFile("equivalents/" + f.Name())
+		if err != nil {
+			return nil, err
 		}
-		out[key] = e
+		var list []Equivalent
+		if err := json.Unmarshal(b, &list); err != nil {
+			return nil, fmt.Errorf("equivalents/%s: %w", f.Name(), err)
+		}
+		for _, e := range list {
+			if e.Scope != scope {
+				return nil, fmt.Errorf("equivalents/%s: entry %s names scope %q", f.Name(), e.ID, e.Scope)
+			}
+			if strings.TrimSpace(e.Reason) == "" {
+				return nil, fmt.Errorf("equivalents/%s: %s has no reason", f.Name(), e.ID)
+			}
+			key := e.Scope + "/" + e.ID
+			if _, dup := out[key]; dup {
+				return nil, fmt.Errorf("equivalents/%s: %s is listed twice", f.Name(), e.ID)
+			}
+			out[key] = e
+		}
 	}
 	return out, nil
 }
@@ -419,6 +465,23 @@ func readResults(path string) ([]Result, error) {
 		out = append(out, r)
 	}
 	return out, nil
+}
+
+// latest keeps each mutant's last result, in first-seen order: a later run of
+// a survivor through more stages replaces the earlier verdict.
+func latest(results []Result) []Result {
+	at := map[string]int{}
+	var out []Result
+	for _, r := range results {
+		key := r.Scope + "/" + r.ID
+		if i, ok := at[key]; ok {
+			out[i] = r
+			continue
+		}
+		at[key] = len(out)
+		out = append(out, r)
+	}
+	return out
 }
 
 // printTable prints one row per scope: how many mutants, and what became of

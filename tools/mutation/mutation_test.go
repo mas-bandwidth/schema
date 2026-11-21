@@ -439,7 +439,7 @@ func TestEveryScopeHasItsFloorOfMutantsAndProvableStages(t *testing.T) {
 	}
 	for key, e := range reviewed {
 		if !known[e.Scope][e.ID] {
-			t.Errorf("equivalent-mutants.json: %s is no mutant of the tree any more; the source moved, so remove the entry or review the mutant again", key)
+			t.Errorf("equivalents/: %s is no mutant of the tree any more; the source moved, so remove the entry or review the mutant again", key)
 		}
 	}
 	var set []Smoke
