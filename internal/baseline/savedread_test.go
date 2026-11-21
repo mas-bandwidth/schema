@@ -64,7 +64,7 @@ func trySavedRead(old, live *ir.Unit, table, json string) (savedRead, error) {
 	back := om.New(om.Lookup(table))
 	var br tabletext.Report
 	if ok, err := tablewire.Decode(om, back, saved, &br); !ok || err != nil {
-		return out, fmt.Errorf("the old schema does not read its own save of %s: %v", json, err)
+		return out, fmt.Errorf("the old schema does not read its own save of %s: %w", json, err)
 	}
 	own, err := om.Write(back)
 	if err != nil {
@@ -79,7 +79,7 @@ func trySavedRead(old, live *ir.Unit, table, json string) (savedRead, error) {
 	if !out.OK {
 		out.Reason = tablewire.RefusalReason(err)
 		if out.Reason == "" {
-			return out, fmt.Errorf("the read of %s failed without a refusal reason: %v", json, err)
+			return out, fmt.Errorf("the read of %s failed without a refusal reason: %w", json, err)
 		}
 		return out, nil
 	}
