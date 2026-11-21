@@ -59,6 +59,7 @@ MOO_WIRE_FUZZ_ABSENT_PIN   := test/conformance/moo/wire-fuzz-absent.txt
 MOO_WIRE_FUZZ_RETAIN_ABSENT_COUNT := 0
 MOO_WIRE_FUZZ_RETAIN_ABSENT_PIN   := test/conformance/moo/wire-fuzz-absent-retain.txt
 MOO_WIRE_FUZZ_PINNED       := test/conformance/moo/wire-fuzz-pinned.txt
+MOO_WIRE_FUZZ_PINNED_DIR   := test/conformance/moo/wire-fuzz-pinned
 MOO_WIRE_FUZZ_LOG          := build/wire-fuzz/moo.log
 MOO_WIRE_FUZZ_ABSENT       := build/wire-fuzz/moo.absent
 
@@ -124,6 +125,11 @@ tables-moo-wire-fuzz-pinned: toolchain-moo build/conformance-harness build/confo
 			cat build/wire-fuzz/moo-pinned.log; echo "tables-moo-wire-fuzz-pinned: $$file diverges again"; exit 1; fi; \
 		n=$$((n + 1)); \
 	done < $(MOO_WIRE_FUZZ_PINNED); \
+	[ $$n -gt 0 ] || { echo "tables-moo-wire-fuzz-pinned: $(MOO_WIRE_FUZZ_PINNED) lists no mutant; nothing was replayed"; exit 1; }; \
+	for f in $(MOO_WIRE_FUZZ_PINNED_DIR)/*; do \
+		[ -e "$$f" ] || { echo "tables-moo-wire-fuzz-pinned: $(MOO_WIRE_FUZZ_PINNED_DIR) holds no saved mutant"; exit 1; }; \
+		grep -q "^$$f " $(MOO_WIRE_FUZZ_PINNED) || { echo "tables-moo-wire-fuzz-pinned: $$f is saved and $(MOO_WIRE_FUZZ_PINNED) does not list it, so nothing replays it"; exit 1; }; \
+	done; \
 	echo "tables-moo-wire-fuzz-pinned: $$n pinned mutants agree with the oracle"
 
 # THE PIPE's CONTROL: a scratch copy of the units with one reader bug planted
