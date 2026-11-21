@@ -153,12 +153,37 @@ func (g *tableGen) fieldDiffers(f *ir.Field, expr string) string {
 			return fmt.Sprintf("table_double_to_bits( %s ) != table_double_to_bits( %s )", expr, g.fieldDefaultExpr(f))
 		}
 	}
+	if g.floatDefaultOrdered(f) {
+		// the same truth table as !=, a NaN included (it differs), spelled
+		// with the ordered comparisons: clang reds a float != against a
+		// literal that is not exact (-Wfloat-equal), and 0.7f is not
+		d := g.fieldDefaultExpr(f)
+		return fmt.Sprintf("!( %s >= %s && %s <= %s )", expr, d, expr, d)
+	}
 	return fmt.Sprintf("%s != %s", expr, g.fieldDefaultExpr(f))
+}
+
+// floatDefaultOrdered is whether a field's default test is spelled with the
+// ordered comparisons: a compressed float whose default is not zero. Zero is
+// an exact literal and keeps the != every other kind has.
+func (g *tableGen) floatDefaultOrdered(f *ir.Field) bool {
+	if !f.HasFloatRange || f.Type.Pointer {
+		return false
+	}
+	if f.Type.Kind != ir.TFloat32 && f.Type.Kind != ir.TFloat64 {
+		return false
+	}
+	d := g.fieldDefaultExpr(f)
+	return d != "0.0f" && d != "0.0"
 }
 
 // fieldIsDefault is fieldDiffers' complement, spelled as an equality: the
 // condition under which a slot elides.
 func (g *tableGen) fieldIsDefault(f *ir.Field, expr string) string {
+	if g.floatDefaultOrdered(f) {
+		d := g.fieldDefaultExpr(f)
+		return fmt.Sprintf("( %s >= %s && %s <= %s )", expr, d, expr, d)
+	}
 	return strings.Replace(g.fieldDiffers(f, expr), " != ", " == ", 1)
 }
 
@@ -1055,10 +1080,14 @@ func (g *tableGen) emitRequiredRangeCheck(f *ir.Field, expr, ind, onBad string) 
 // declared range and a bits(N) value past its width are the caller's bug,
 // held by a DEBUG-ONLY assert exactly as the fixed-form and packet writers
 // hold them, and gone under NDEBUG. Every build's refusal stays the `required`
-// field's (emitRequiredRangeCheck). A float's range is row 10 and is not
-// asserted here, as the fixed writer does not assert it.
+// field's (emitRequiredRangeCheck). A FLOAT'S RANGE IS ROW 10 and is held the
+// same way on every writer (no writer quantizes or clamps an off-range float
+// in the build where its check is active), a float32's ends compared at
+// float32. The test is spelled so a NaN passes it and reaches the finite
+// rule's refusal (§3.3), which every build makes.
 func (g *tableGen) emitWriteContractAssert(f *ir.Field, expr, ind string) {
 	if f.HasFloatRange {
+		g.emitFloatRangeAssert(f, expr, ind)
 		return
 	}
 	kind := tableScalarKind(f)
@@ -1076,6 +1105,14 @@ func (g *tableGen) emitWriteContractAssert(f *ir.Field, expr, ind string) {
 	if f.Type.Kind == ir.TBits && f.Type.Width < width*8 {
 		g.pf("%sschema_assert( %s <= %dull ); // the write contract, debug only (docs/SPEC.md §5.1 row 2, bits(%d))\n", ind, expr, (uint64(1)<<f.Type.Width)-1, f.Type.Width)
 	}
+}
+
+// emitFloatRangeAssert is row 10 of the write contract (docs/SPEC.md §5.1) on
+// one ranged float: a debug-only schema_assert, C++ being an assert leg.
+func (g *tableGen) emitFloatRangeAssert(f *ir.Field, expr, ind string) {
+	isF32 := f.Type.Kind == ir.TFloat32
+	g.pf("%sschema_assert( !( %s < %s ) && !( %s > %s ) ); // the write contract, debug only (docs/SPEC.md §5.1 row 10)\n",
+		ind, expr, formatFloat(f.FMin, isF32), expr, formatFloat(f.FMax, isF32))
 }
 
 // emitFloatElementCheckAt is that rule over a float ARRAY's elements, the twin

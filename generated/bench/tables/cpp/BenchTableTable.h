@@ -10672,6 +10672,7 @@ inline int64_t TableMixedMeasureBody( TableIds & ids, const TableMixed & value )
     schema_assert( value.frame_tick <= 281474976710655ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 2, bits(48))
     if ( value.frame_tick != 0 ) { bytes += TableLebBytes( ids.ref_at( 39, 0x7bbc035f7b6d0112ull ) ) + 1 + 8; } // frame_tick
     if ( !TableFloatFinite( value.server_time ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
+    schema_assert( !( value.server_time < 0.0f ) && !( value.server_time > 65535.0f ) ); // the write contract, debug only (docs/SPEC.md §5.1 row 10)
     if ( value.server_time != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 20, 0x3c460475f9be69c6ull ) ) + 1 + 4; } // server_time
     schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // storage invariant, debug only (§5.1)
     schema_assert( value.entities_count >= 1 ); // a count below the declared Min, debug only (§5.1 row 3)
@@ -10778,10 +10779,13 @@ inline int64_t TableMixedMeasureBody( TableIds & ids, const TableMixed & value )
         bytes += TableLebBytes( ids.ref_at( 67, 0xcfb8a9d063b5e9e5ull ) ) + 1 + TableLebBytes( (uint64_t) ( body_payload ) ) + ( body_payload ); // payload
     }
     if ( !TableFloatFinite( value.aim_x ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
+    schema_assert( !( value.aim_x < -1.0f ) && !( value.aim_x > 1.0f ) ); // the write contract, debug only (docs/SPEC.md §5.1 row 10)
     if ( value.aim_x != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 72, 0xdbaf7be5e24296c9ull ) ) + 1 + 4; } // aim_x
     if ( !TableFloatFinite( value.aim_y ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
+    schema_assert( !( value.aim_y < -1.0f ) && !( value.aim_y > 1.0f ) ); // the write contract, debug only (docs/SPEC.md §5.1 row 10)
     if ( value.aim_y != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 71, 0xdbaf7ae5e2429516ull ) ) + 1 + 4; } // aim_y
     if ( !TableFloatFinite( value.aim_z ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
+    schema_assert( !( value.aim_z < -1.0f ) && !( value.aim_z > 1.0f ) ); // the write contract, debug only (docs/SPEC.md §5.1 row 10)
     if ( value.aim_z != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 70, 0xdbaf79e5e2429363ull ) ) + 1 + 4; } // aim_z
     if ( !TableFloatFinite( value.recoil ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
     if ( table_float_to_bits( value.recoil ) != table_float_to_bits( 0.0f ) ) { bytes += TableLebBytes( ids.ref_at( 50, 0x9cef31fff7e2e457ull ) ) + 1 + 4; } // recoil
@@ -10792,6 +10796,7 @@ inline int64_t TableMixedMeasureBody( TableIds & ids, const TableMixed & value )
     schema_assert( value.flux <= 1000000000000000000ll ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     if ( value.flux != 0 ) { bytes += TableLebBytes( ids.ref_at( 68, 0xd61bdd7908af2642ull ) ) + 1 + 8; } // flux
     if ( !TableFloatFinite( value.ping ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
+    schema_assert( !( value.ping < 0.0f ) && !( value.ping > 250.0f ) ); // the write contract, debug only (docs/SPEC.md §5.1 row 10)
     if ( value.ping != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 62, 0xbf30e00dc53307a9ull ) ) + 1 + 4; } // ping
     schema_assert( value.crc_hint <= 16777215ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 2, bits(24))
     if ( value.crc_hint != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0x560d6527ccd8515full ) ) + 1 + 4; } // crc_hint
@@ -10873,6 +10878,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
     {
         w.header( ids.ref_at( 20, 0x3c460475f9be69c6ull ), 10 ); // server_time
         if ( !TableFloatFinite( value.server_time ) ) { return false; } // a NaN or an infinity is refused (§3.3)
+        schema_assert( !( value.server_time < 0.0f ) && !( value.server_time > 65535.0f ) ); // the write contract, debug only (docs/SPEC.md §5.1 row 10)
         w.put32( ( !( value.server_time < 0.0f ) && !( value.server_time > 0.0f ) ) ? 0u : table_float_to_bits( value.server_time ) ); // -0 is stored as +0
     }
     schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // storage invariant, debug only (§5.1)
@@ -11038,18 +11044,21 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
     {
         w.header( ids.ref_at( 72, 0xdbaf7be5e24296c9ull ), 10 ); // aim_x
         if ( !TableFloatFinite( value.aim_x ) ) { return false; } // a NaN or an infinity is refused (§3.3)
+        schema_assert( !( value.aim_x < -1.0f ) && !( value.aim_x > 1.0f ) ); // the write contract, debug only (docs/SPEC.md §5.1 row 10)
         w.put32( ( !( value.aim_x < 0.0f ) && !( value.aim_x > 0.0f ) ) ? 0u : table_float_to_bits( value.aim_x ) ); // -0 is stored as +0
     }
     if ( value.aim_y != 0.0f )
     {
         w.header( ids.ref_at( 71, 0xdbaf7ae5e2429516ull ), 10 ); // aim_y
         if ( !TableFloatFinite( value.aim_y ) ) { return false; } // a NaN or an infinity is refused (§3.3)
+        schema_assert( !( value.aim_y < -1.0f ) && !( value.aim_y > 1.0f ) ); // the write contract, debug only (docs/SPEC.md §5.1 row 10)
         w.put32( ( !( value.aim_y < 0.0f ) && !( value.aim_y > 0.0f ) ) ? 0u : table_float_to_bits( value.aim_y ) ); // -0 is stored as +0
     }
     if ( value.aim_z != 0.0f )
     {
         w.header( ids.ref_at( 70, 0xdbaf79e5e2429363ull ), 10 ); // aim_z
         if ( !TableFloatFinite( value.aim_z ) ) { return false; } // a NaN or an infinity is refused (§3.3)
+        schema_assert( !( value.aim_z < -1.0f ) && !( value.aim_z > 1.0f ) ); // the write contract, debug only (docs/SPEC.md §5.1 row 10)
         w.put32( ( !( value.aim_z < 0.0f ) && !( value.aim_z > 0.0f ) ) ? 0u : table_float_to_bits( value.aim_z ) ); // -0 is stored as +0
     }
     if ( table_float_to_bits( value.recoil ) != table_float_to_bits( 0.0f ) )
@@ -11080,6 +11089,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
     {
         w.header( ids.ref_at( 62, 0xbf30e00dc53307a9ull ), 10 ); // ping
         if ( !TableFloatFinite( value.ping ) ) { return false; } // a NaN or an infinity is refused (§3.3)
+        schema_assert( !( value.ping < 0.0f ) && !( value.ping > 250.0f ) ); // the write contract, debug only (docs/SPEC.md §5.1 row 10)
         w.put32( ( !( value.ping < 0.0f ) && !( value.ping > 0.0f ) ) ? 0u : table_float_to_bits( value.ping ) ); // -0 is stored as +0
     }
     if ( value.crc_hint != 0 )
@@ -12882,6 +12892,7 @@ inline int64_t TableMixedMeasureMessageBody( int64_t at, const TableMixed & valu
     {
         bits += kTableMessageRefBitsHere;
         if ( !TableFloatFinite( value.server_time ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
+        schema_assert( !( value.server_time < 0.0f ) && !( value.server_time > 65535.0f ) ); // the write contract, debug only (docs/SPEC.md §5.1 row 10)
         bits += 23;
     }
     schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // storage invariant, debug only (§5.1)
@@ -12984,18 +12995,21 @@ inline int64_t TableMixedMeasureMessageBody( int64_t at, const TableMixed & valu
     {
         bits += kTableMessageRefBitsHere;
         if ( !TableFloatFinite( value.aim_x ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
+        schema_assert( !( value.aim_x < -1.0f ) && !( value.aim_x > 1.0f ) ); // the write contract, debug only (docs/SPEC.md §5.1 row 10)
         bits += 8;
     }
     if ( value.aim_y != 0.0f )
     {
         bits += kTableMessageRefBitsHere;
         if ( !TableFloatFinite( value.aim_y ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
+        schema_assert( !( value.aim_y < -1.0f ) && !( value.aim_y > 1.0f ) ); // the write contract, debug only (docs/SPEC.md §5.1 row 10)
         bits += 8;
     }
     if ( value.aim_z != 0.0f )
     {
         bits += kTableMessageRefBitsHere;
         if ( !TableFloatFinite( value.aim_z ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
+        schema_assert( !( value.aim_z < -1.0f ) && !( value.aim_z > 1.0f ) ); // the write contract, debug only (docs/SPEC.md §5.1 row 10)
         bits += 8;
     }
     if ( table_float_to_bits( value.recoil ) != table_float_to_bits( 0.0f ) )
@@ -13024,6 +13038,7 @@ inline int64_t TableMixedMeasureMessageBody( int64_t at, const TableMixed & valu
     {
         bits += kTableMessageRefBitsHere;
         if ( !TableFloatFinite( value.ping ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
+        schema_assert( !( value.ping < 0.0f ) && !( value.ping > 250.0f ) ); // the write contract, debug only (docs/SPEC.md §5.1 row 10)
         bits += 15;
     }
     if ( value.crc_hint != 0 )
@@ -13105,6 +13120,7 @@ inline bool TableMixedSaveMessageBody( TableBitWriter & w, const TableMixed & va
     {
         w.put( 30, kTableMessageRefBitsHere );
         if ( !TableFloatFinite( value.server_time ) ) { return false; } // a NaN or an infinity is refused (§3.3)
+        schema_assert( !( value.server_time < 0.0f ) && !( value.server_time > 65535.0f ) ); // the write contract, debug only (docs/SPEC.md §5.1 row 10)
         w.put( (uint64_t) TableMessageQuantize( float( value.server_time ), 0.0f, 65535.0f, 6553500u ), 23 );
     }
     schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // storage invariant, debug only (§5.1)
@@ -13194,18 +13210,21 @@ inline bool TableMixedSaveMessageBody( TableBitWriter & w, const TableMixed & va
     {
         w.put( 37, kTableMessageRefBitsHere );
         if ( !TableFloatFinite( value.aim_x ) ) { return false; } // a NaN or an infinity is refused (§3.3)
+        schema_assert( !( value.aim_x < -1.0f ) && !( value.aim_x > 1.0f ) ); // the write contract, debug only (docs/SPEC.md §5.1 row 10)
         w.put( (uint64_t) TableMessageQuantize( float( value.aim_x ), -1.0f, 2.0f, 200u ), 8 );
     }
     if ( value.aim_y != 0.0f )
     {
         w.put( 38, kTableMessageRefBitsHere );
         if ( !TableFloatFinite( value.aim_y ) ) { return false; } // a NaN or an infinity is refused (§3.3)
+        schema_assert( !( value.aim_y < -1.0f ) && !( value.aim_y > 1.0f ) ); // the write contract, debug only (docs/SPEC.md §5.1 row 10)
         w.put( (uint64_t) TableMessageQuantize( float( value.aim_y ), -1.0f, 2.0f, 200u ), 8 );
     }
     if ( value.aim_z != 0.0f )
     {
         w.put( 39, kTableMessageRefBitsHere );
         if ( !TableFloatFinite( value.aim_z ) ) { return false; } // a NaN or an infinity is refused (§3.3)
+        schema_assert( !( value.aim_z < -1.0f ) && !( value.aim_z > 1.0f ) ); // the write contract, debug only (docs/SPEC.md §5.1 row 10)
         w.put( (uint64_t) TableMessageQuantize( float( value.aim_z ), -1.0f, 2.0f, 200u ), 8 );
     }
     if ( table_float_to_bits( value.recoil ) != table_float_to_bits( 0.0f ) )
@@ -13234,6 +13253,7 @@ inline bool TableMixedSaveMessageBody( TableBitWriter & w, const TableMixed & va
     {
         w.put( 44, kTableMessageRefBitsHere );
         if ( !TableFloatFinite( value.ping ) ) { return false; } // a NaN or an infinity is refused (§3.3)
+        schema_assert( !( value.ping < 0.0f ) && !( value.ping > 250.0f ) ); // the write contract, debug only (docs/SPEC.md §5.1 row 10)
         w.put( (uint64_t) TableMessageQuantize( float( value.ping ), 0.0f, 250.0f, 25000u ), 15 );
     }
     if ( value.crc_hint != 0 )
@@ -18680,6 +18700,7 @@ inline bool TableMixedFixedWriteAdmits( const TableMixed & value )
     bad |= (int) ( value.world_time < -1000000000000ll ) | (int) ( value.world_time > 1000000000000ll );
     // bits(48) width clamp
     bad |= (int) ( value.frame_tick > 281474976710655ull );
+    bad |= (int) ( value.server_time < 0.0f ) | (int) ( value.server_time > 65535.0f );
     bad |= (int) ( value.entities_count < 1 ); // a count below the declared Min (§5.1 row 3)
     for ( int64_t i = 0; i < ( value.entities_count >= 0 && value.entities_count <= 8 ? (int64_t) value.entities_count : 0 ); ++i )
     {
@@ -18710,7 +18731,11 @@ inline bool TableMixedFixedWriteAdmits( const TableMixed & value )
         default: break;
     }
     bad |= (int) ( value.player_name_length >= 0 && value.player_name_length <= 15 && !TableUtf8Valid( (const uint8_t *) value.player_name, (uint64_t) value.player_name_length ) );
+    bad |= (int) ( value.aim_x < -1.0f ) | (int) ( value.aim_x > 1.0f );
+    bad |= (int) ( value.aim_y < -1.0f ) | (int) ( value.aim_y > 1.0f );
+    bad |= (int) ( value.aim_z < -1.0f ) | (int) ( value.aim_z > 1.0f );
     bad |= (int) ( value.flux < -1000000000000000000ll ) | (int) ( value.flux > 1000000000000000000ll );
+    bad |= (int) ( value.ping < 0.0f ) | (int) ( value.ping > 250.0f );
     // bits(24) width clamp
     bad |= (int) ( value.crc_hint > 16777215ull );
     bad |= (int) ( value.extra < 0 ) | (int) ( value.extra > 255 );
