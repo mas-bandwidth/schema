@@ -126,6 +126,7 @@ define tables_generate_cs
 	$(1) generate --lang cs --out $(2)/varevo3 test/tables/varevo/VarEvo3.schema & pids="$$pids $$!"; \
 	$(1) generate --lang cs --out $(2)/cooktorture test/tables/cooktorture/CookTorture.schema & pids="$$pids $$!"; \
 	$(1) generate --lang cs --out $(2)/cooktorturewide test/tables/cooktorturewide/CookTortureWide.schema & pids="$$pids $$!"; \
+	$(1) generate --lang cs --out $(2)/packetunions test/tables/packetunions/PacketUnions.schema & pids="$$pids $$!"; \
 	$(1) generate --lang cs --out $(2)/blobs tables/blobs & pids="$$pids $$!"; \
 	$(1) generate --lang cs --out $(2)/p2 test/tables/P2.schema & pids="$$pids $$!"; \
 	$(1) generate --lang cs --out $(2)/w1 test/tables/W1.schema & pids="$$pids $$!"; \

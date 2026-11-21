@@ -134,6 +134,7 @@ for pair in \
     k1:test/tables/K1.schema k2:test/tables/K2.schema a2:test/tables/A2.schema \
     features:testdata/conformance/feature-witnesses/full/Features.schema \
     varevo1:test/tables/varevo/VarEvo1.schema varevo2:test/tables/varevo/VarEvo2.schema cooktorture:test/tables/cooktorture/CookTorture.schema \
+    packetunions:test/tables/packetunions/PacketUnions.schema \
     rt1:test/tables/RT1.schema; do
     unit=${pair%%:*}
     input=${pair#*:}

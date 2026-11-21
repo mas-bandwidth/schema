@@ -45,6 +45,7 @@ public final class TablesWireFuzz {
             case "scalars": return "scalardemo";
             case "widelist": return "widelistdemo";
             case "tblscalars2": return "scalardemo2";
+            case "packetunions": return "tblpacketunions";
             default: return unit;
         }
     }

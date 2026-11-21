@@ -35,7 +35,7 @@ fixed table Log
 }
 `
 
-// TestUnionArraysCarriers: C++, C#, Go and Squirrel emit the table sources for
+// TestUnionArraysCarriers: C++, C#, Go, Python and Squirrel emit the table sources for
 // a unit whose closure holds an array of unions; targets without the form
 // refuse the UNIT, naming the fields, the carrier and the flag that selects
 // it — a fixed-class codec that never met the element must not be emitted.
@@ -161,6 +161,24 @@ func TestUnionArraysCarriers(t *testing.T) {
 			}
 			if _, ok := files["Table.ex"]; !ok {
 				t.Fatal("--lang elixir emitted no Table.ex")
+			}
+			continue
+		}
+		if target == "python" {
+			// the table frame carries an array of a packet union through
+			// the same union_array codec as a table-side union's
+			files, err := c.Generate(u, target, Options{})
+			if err != nil {
+				t.Fatalf("--lang python refused the supported shape: %v", err)
+			}
+			code := string(files["probe/Probe.py"])
+			for _, f := range []string{"history", "undo"} {
+				if !strings.Contains(code, `name="`+f+`"`) {
+					t.Errorf("--lang python: no descriptor row for %s", f)
+				}
+			}
+			if strings.Count(code, `codec="union_array"`) != 2 {
+				t.Errorf("--lang python: history and undo are not both union_array rows")
 			}
 			continue
 		}
