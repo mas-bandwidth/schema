@@ -1,12 +1,15 @@
 package main
 
 import (
+	"encoding/csv"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // The child is a deterministic case binary; it does not execute a reader.
@@ -15,8 +18,16 @@ import (
 func TestMain(m *testing.M) {
 	if mode := os.Getenv("SCHEMA_HOSTILE_RUNNER_TEST_ANSWER"); mode != "" {
 		switch mode {
+		case "scorer-corpus":
+			if len(os.Args) > 1 && os.Args[1] == "run" {
+				main()
+			} else if reply := os.Getenv("SCHEMA_HOSTILE_RUNNER_TEST_REPLY"); reply == "exit" {
+				os.Exit(3)
+			} else {
+				fmt.Print(reply)
+			}
 		case "mismatch":
-			fmt.Println("refuse different_reason")
+			fmt.Println("accept -")
 		case "match":
 			fmt.Println("refuse damaged")
 		case "exit":
@@ -162,5 +173,51 @@ func TestSkipsAreHeldByName(t *testing.T) {
 	}
 	if _, _, err := loadSkips(write("bad.tsv", "probe\n")); err == nil {
 		t.Error("a skip line with no reason was accepted")
+	}
+}
+
+// TestScorerReadsVerdictsAndAcceptedValues runs the CLI and its real case
+// subprocess on outcomes only. The worker returns the fixture's response
+// without invoking a codec. Refusal diagnoses may differ across ports.
+func TestScorerReadsVerdictsAndAcceptedValues(t *testing.T) {
+	binary, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.Open("testdata/scorer-outcomes.tsv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	reader := csv.NewReader(file)
+	reader.Comma, reader.Comment, reader.FieldsPerRecord = '\t', '#', 7
+	rows, err := reader.ReadAll()
+	if err != nil || len(rows) == 0 {
+		t.Fatalf("read scorer outcome fixture: %v (%d rows)", err, len(rows))
+	}
+	for _, row := range rows {
+		name, verdict, reason, digest := row[0], row[1], row[2], row[3]
+		reply, body, expectedExit := row[4], row[5], row[6]
+		t.Run(name, func(t *testing.T) {
+			corpus := t.TempDir()
+			manifest := strings.Join([]string{name, "text", "probe.schema", "Probe", "inputs/probe.json",
+				"scorer outcome", verdict, reason, digest}, "\t") + "\n"
+			if err := os.WriteFile(filepath.Join(corpus, "manifest.tsv"), []byte(manifest), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if body != "-" {
+				reply += "\n" + body
+			}
+			t.Setenv("SCHEMA_HOSTILE_RUNNER_TEST_ANSWER", "scorer-corpus")
+			t.Setenv("SCHEMA_HOSTILE_RUNNER_TEST_REPLY", reply)
+			cmd := testproc.Command(t, binary, "run", "-port", "test", "-exec", binary, "-jobs", "1", "-corpus", corpus)
+			output, err := cmd.CombinedOutput()
+			if cmd.ProcessState == nil {
+				t.Fatalf("could not start scorer: %v", err)
+			}
+			if got := cmd.ProcessState.ExitCode(); fmt.Sprint(got) != expectedExit {
+				t.Fatalf("scorer exit %d, want %s\n%s", got, expectedExit, output)
+			}
+		})
 	}
 }
