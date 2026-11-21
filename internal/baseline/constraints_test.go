@@ -305,8 +305,8 @@ func TestEveryReaderConstraintMovesTheProjection(t *testing.T) {
 		reflect.TypeFor[ir.Field](), reflect.TypeFor[ir.FieldType](), reflect.TypeFor[ir.Enum](),
 		reflect.TypeFor[ir.Flags](), reflect.TypeFor[ir.UnionVariant](),
 	} {
-		for i := range typ.NumField() {
-			key := typ.Name() + "." + typ.Field(i).Name
+		for field := range typ.Fields() {
+			key := typ.Name() + "." + field.Name
 			seen[key] = true
 			c, ok := irFacts[key]
 			if !ok {
