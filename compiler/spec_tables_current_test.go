@@ -30,7 +30,7 @@ func TestSpecTablesCurrent(t *testing.T) {
 	s66 := specTablesSection(t, page, "### 6.6 Retain-unknown", "## 7. The cooked form")
 	s161 := specTablesSection(t, page, "### 16.1 The surface", "### 16.2 The mapping")
 	s163 := specTablesSection(t, page, "### 16.3 What the writer refuses", "### 16.4 The key")
-	s1612 := specTablesSection(t, page, "### 16.12 The outside oracle", "### 16.13 Any JSON value")
+	s1612 := specTablesSection(t, page, "### 16.12 The outside oracle", "### 16.13 Withdrawn: `json = \"value\"`")
 	w0 := specTablesSection(t, page, "**W0. The result is the whole text or nothing.**", "**W1. The graph pass**")
 
 	// the page wraps at a fixed width, so a sentence is matched with its line
