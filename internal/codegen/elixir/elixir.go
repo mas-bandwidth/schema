@@ -333,10 +333,18 @@ func (g *gen) mod(name string) string { return g.ns + "." + ModuleName(name) }
 // start with an uppercase letter (`Probe.memcpy` is not a module name), and
 // the schema grammar leaves case a convention (SPEC §4.6), so `type memcpy`
 // lowers to Probe.Memcpy, as a file base already lowers through GoExportName.
-// A name that starts upper case is its own module segment, unchanged.
+// A name that starts with an underscore keeps it behind a raised U (`type
+// _Mode` lowers to Probe.U_Mode, `type _1x` to Probe.U_1x): dropping the
+// underscore would land `_Mode` on a declared `Mode`, which the checker
+// accepts beside it. A name that starts upper case is its own module segment,
+// unchanged. Two declarations that still lower to one module are refused by
+// name (checkNames).
 func ModuleName(name string) string {
-	if name != "" && name[0] >= 'a' && name[0] <= 'z' {
+	switch {
+	case name != "" && name[0] >= 'a' && name[0] <= 'z':
 		return string(name[0]-'a'+'A') + name[1:]
+	case name != "" && name[0] == '_':
+		return "U" + name
 	}
 	return name
 }

@@ -1,0 +1,32 @@
+package probe
+
+enum _Mode
+{ _Alpha, Beta }
+
+enum Mode
+{ Gamma, Delta }
+
+type _Thing
+{
+    _x    int32
+    _mode _Mode
+    other Mode
+}
+
+type _1x
+{
+    a uint8
+}
+
+union _Pick
+{
+    thing _Thing
+    one   _1x
+}
+
+table _Item
+{
+    _x    int32
+    _mode _Mode
+    _keyed [_Mode]uint8
+}

@@ -1,0 +1,8 @@
+package probe
+
+type Holder
+{
+    _t    _Thing
+    _pick _Pick
+    _n    uint8
+}
