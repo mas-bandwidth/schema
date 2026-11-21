@@ -1,0 +1,27 @@
+{
+  "tenth": 0,
+  "seventh": 0.7,
+  "ranged": 0,
+  "zero": 0,
+  "nonzero": 1.5,
+  "plain": 0,
+  "wide": 0,
+  "pinned": "3.0",
+  "octets": [
+    1,
+    2,
+    0
+  ],
+  "shorts": [
+    5
+  ],
+  "recs": [
+    {
+      "a": 1,
+      "b": 2
+    }
+  ],
+  "pick": {},
+  "tones": [],
+  "marks": []
+}
