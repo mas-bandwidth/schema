@@ -237,8 +237,11 @@ func runControls(tlaDir string, tlc checker, out io.Writer) error {
 	}
 	var sink strings.Builder
 	err = runAll(dir, refuseToRun{}, &sink)
-	if err == nil || !strings.Contains(sink.String(), controlUnrecorded+" "+controlUnrecordedMsg) {
-		return fmt.Errorf("control 3: a config with no row was not refused: err=%v output=%q", err, sink.String())
+	if err == nil {
+		return fmt.Errorf("control 3: a config with no row was accepted: output=%q", sink.String())
+	}
+	if !strings.Contains(sink.String(), controlUnrecorded+" "+controlUnrecordedMsg) {
+		return fmt.Errorf("control 3: a config with no row was refused for another reason: %w (output=%q)", err, sink.String())
 	}
 	say(out, "TLC CONTROL OK %s without a row is refused before anything runs\n", controlUnrecorded)
 	say(out, "TLC CONTROLS 3 of 3 refused\n")
@@ -258,7 +261,7 @@ func wantRefusal(err error, want string) error {
 		return errors.New("the broken run was accepted")
 	}
 	if !strings.Contains(err.Error(), want) {
-		return fmt.Errorf("refused for another reason: %q, want %q", err, want)
+		return fmt.Errorf("refused for another reason: %w (want %q)", err, want)
 	}
 	return nil
 }
