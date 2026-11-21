@@ -15,7 +15,7 @@ def self.run(manifest, outdir)
     unit, root = roots[subject]
     pkg = RubyConformance.unit_package(unit)
     if pkg.nil?
-      RubyConformance.absent(outdir, name, 'unit not generated for ruby')
+      RubyConformance.no_codec(outdir, name)
       next
     end
     data = RubyConformance.read_bytes(row[4])
