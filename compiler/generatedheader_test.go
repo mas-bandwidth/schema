@@ -15,11 +15,11 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/genheader"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
-	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // headerCorpora are the committed units the gate generates: packets, the
@@ -73,50 +73,63 @@ func checkGeneratedHeader(t *testing.T, where string, body []byte) bool {
 	return true
 }
 
+// The corpora are independent, so each is a parallel subtest with its own
+// compiler and its own loaded unit (run serially this was 11 s of one
+// go-test-touched row on an idle bench, and the row went past ci-fast's
+// two-minute cap on a loaded runner); the per-target count is summed after
+// every corpus has run.
 func TestGeneratedHeaderNamesTheToolInEveryTarget(t *testing.T) {
-	c := New()
-	var units []*ir.Unit
-	for _, dir := range headerCorpora {
-		paths, err := GatherPaths([]string{dir})
-		if err != nil {
-			t.Fatalf("%s: %v", dir, err)
-		}
-		u, err := c.Load(paths)
-		if err != nil {
-			t.Fatalf("%s: %v", dir, err)
-		}
-		units = append(units, u)
-	}
-	targets := c.Targets()
+	t.Parallel()
+	targets := New().Targets()
 	if len(targets) == 0 {
 		t.Fatal("no target is registered; the gate would pass over nothing")
 	}
+	var mu sync.Mutex
+	headed := map[string]int{}
+	t.Run("corpora", func(t *testing.T) {
+		for _, dir := range headerCorpora {
+			t.Run(strings.TrimPrefix(dir, "../"), func(t *testing.T) {
+				t.Parallel()
+				c := New()
+				paths, err := GatherPaths([]string{dir})
+				if err != nil {
+					t.Fatalf("%s: %v", dir, err)
+				}
+				u, err := c.Load(paths)
+				if err != nil {
+					t.Fatalf("%s: %v", dir, err)
+				}
+				for _, target := range targets {
+					n := 0
+					check := func(kind string, files map[string][]byte) {
+						for _, name := range slices.Sorted(maps.Keys(files)) {
+							if checkGeneratedHeader(t, target+" "+kind+" "+u.Package+" "+name, files[name]) {
+								n++
+							}
+						}
+					}
+					if files, err := c.Generate(u, target, Options{}); err == nil {
+						check("generate", files)
+					} // else the target refuses a construct this corpus holds
+					if testgenCorpus(dir) {
+						if files, err := c.Testgen(u, target); err == nil {
+							check("testgen", files)
+						}
+						if target == "luau" {
+							if files, err := TestgenLuau(u); err == nil {
+								check("testgen", files)
+							}
+						}
+					}
+					mu.Lock()
+					headed[target] += n
+					mu.Unlock()
+				}
+			})
+		}
+	})
 	for _, target := range targets {
-		headed := 0
-		check := func(kind string, u *ir.Unit, files map[string][]byte) {
-			for _, name := range slices.Sorted(maps.Keys(files)) {
-				if checkGeneratedHeader(t, target+" "+kind+" "+u.Package+" "+name, files[name]) {
-					headed++
-				}
-			}
-		}
-		for i, u := range units {
-			if files, err := c.Generate(u, target, Options{}); err == nil {
-				check("generate", u, files)
-			} // else the target refuses a construct this corpus holds
-			if !testgenCorpus(headerCorpora[i]) {
-				continue
-			}
-			if files, err := c.Testgen(u, target); err == nil {
-				check("testgen", u, files)
-			}
-			if target == "luau" {
-				if files, err := TestgenLuau(u); err == nil {
-					check("testgen", u, files)
-				}
-			}
-		}
-		if headed == 0 {
+		if headed[target] == 0 {
 			t.Errorf("%s: no corpus generated a file with the generated header; the gate checked nothing for this target", target)
 		}
 	}

@@ -1,12 +1,16 @@
 // Command gotestrows cuts ci-fast's go-test-touched selection into matrix
 // rows that each finish inside the fleet's two-minute per-commit cap.
 //
-//	go run ./tools/gotestrows [-short] [-budget seconds] [-gotable-extras] <package>...
+//	go run ./tools/gotestrows [-short] [-budget seconds] [-gotable-extras] [-dependents-of "<package>..."] <package>...
 //
 // It prints one line of JSON, a GitHub Actions matrix `include` list: one
 // object per row, {"row": "k/n", "packages": "...", "run": "...", "skip":
 // "...", "make": "..."}. A package argument of ./... is every package of the
-// main module (`go list ./...`).
+// main module (`go list ./...`). -dependents-of names the packages whose
+// non-test source the diff changed; every main-module package whose build or
+// tests depend on one of them (`go list -test`) is selected beside the
+// arguments, so a change cannot go green while it breaks a package it did not
+// touch.
 //
 // EVERY SELECTED TEST RUNS IN EXACTLY ONE ROW, by construction, and no row
 // list is a second home for the package list:
@@ -16,8 +20,10 @@
 //     budget, by the seconds the table measured for them (a package the
 //     table does not name weighs defaultWeight);
 //   - a package with `split` lines gets one row per line, `-run` that
-//     pattern, and one more row that `-skip`s every one of them: the
-//     complement, so a new test lands in that row with no edit anywhere.
+//     pattern and `-skip` every earlier line's, and one more row that
+//     `-skip`s every one of them: the complement, so a new test lands in that
+//     row with no edit anywhere. Because a line skips the lines above it, a
+//     broad line (a name range) placed after narrow ones takes only the rest.
 //   - `subsplit` divides a single parent's children in the same way. Each
 //     child pattern gets a row; its complement keeps future named corpus
 //     seeds, and the package complement excludes the parent altogether.
@@ -72,13 +78,22 @@ func main() {
 	short := flag.Bool("short", false, "weigh packages by their -short time (a broad diff)")
 	budget := flag.Float64("budget", 60, "seconds of test time a packed row may carry")
 	extras := flag.Bool("gotable-extras", false, "add the tables-go-fixedform and conformance-go-rows rows")
+	changed := flag.String("dependents-of", "", "packages whose non-test source changed: every main-module package whose tests build against one of them is selected too")
 	flag.Parse()
 
 	t, err := readTable(tablePath)
 	if err != nil {
 		fail(err)
 	}
-	pkgs, err := expand(flag.Args())
+	args := flag.Args()
+	if strings.TrimSpace(*changed) != "" {
+		list, err := exec.Command("go", "list", "-test", "-f", "{{.ImportPath}}|{{join .Deps \" \"}}", "./...").Output()
+		if err != nil {
+			fail(fmt.Errorf("go list -test ./...: %w", err))
+		}
+		args = append(args, dependents(string(list), strings.Fields(*changed))...)
+	}
+	pkgs, err := expand(args)
 	if err != nil {
 		fail(err)
 	}
@@ -177,6 +192,59 @@ func expand(args []string) ([]string, error) {
 	return out, nil
 }
 
+// dependents reads `go list -test -f '{{.ImportPath}}|{{join .Deps " "}}'
+// ./...` and returns, ./-relative and sorted, every main-module package whose
+// own build or test binary depends on one of changed (./-relative package
+// paths). A change to a package's non-test source can break the tests of a
+// package that imports it, directly or not; the diff's directories alone
+// never name that package (PR #4437 changed the front end and left
+// internal/tablewire red with every selected row green). The test variants
+// ("p [p.test]", "p_test [p.test]", "p.test") count as p, so a package whose
+// tests alone import a changed one is selected too.
+func dependents(list string, changed []string) []string {
+	want := map[string]bool{}
+	for _, c := range changed {
+		c = strings.TrimPrefix(strings.TrimSuffix(c, "/"), "./")
+		if c == "." || c == "" {
+			want[modulePath] = true
+			continue
+		}
+		want[modulePath+"/"+c] = true
+	}
+	seen := map[string]bool{}
+	var out []string
+	for line := range strings.Lines(list) {
+		path, deps, ok := strings.Cut(strings.TrimSpace(line), "|")
+		if !ok {
+			continue
+		}
+		path, _, _ = strings.Cut(path, " ")
+		path = strings.TrimSuffix(path, ".test")
+		path = strings.TrimSuffix(path, "_test")
+		if path != modulePath && !strings.HasPrefix(path, modulePath+"/") {
+			continue
+		}
+		hit := false
+		for d := range strings.FieldsSeq(deps) {
+			if want[d] {
+				hit = true
+				break
+			}
+		}
+		if !hit || seen[path] {
+			continue
+		}
+		seen[path] = true
+		rel := "."
+		if path != modulePath {
+			rel = "./" + strings.TrimPrefix(path, modulePath+"/")
+		}
+		out = append(out, rel)
+	}
+	sort.Strings(out)
+	return out
+}
+
 func plan(t table, pkgs []string, short bool, budget float64) []Row {
 	weights := t.plain
 	if short {
@@ -191,8 +259,11 @@ func plan(t table, pkgs []string, short bool, budget float64) []Row {
 			whole = append(whole, p)
 			continue
 		}
-		for _, pat := range pats {
-			rows = append(rows, Row{Packages: p, Run: pat})
+		// A split row skips every earlier split line's pattern, so a broad
+		// line after narrow ones (a family, a name range) takes only what they
+		// left and no test runs in two rows.
+		for i, pat := range pats {
+			rows = append(rows, Row{Packages: p, Run: pat, Skip: strings.Join(pats[:i], "|")})
 		}
 		// Preserve table order without iterating a map. A slash is Go's
 		// hierarchical matcher separator, so the child skip does not skip

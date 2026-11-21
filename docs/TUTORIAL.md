@@ -3823,7 +3823,7 @@ Shrink a capacity:
 
 ```
 $ schema check .
-warning: tables.baseline: ShipConfig.display_name: capacity 32 -> 16 (a stored value longer than the new capacity is truncated and counts clamped)
+warning: tables.baseline: ShipConfig.display_name: capacity 32 -> 16 (a file holding a value longer than the new capacity no longer reads: the load refuses length_over_bound)
 ```
 
 **Passed in silence**, because the wire absorbs it: fields added, removed or

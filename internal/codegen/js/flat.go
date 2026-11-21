@@ -203,9 +203,14 @@ func generateFlat(u *ir.Unit) map[string][]byte {
 	return out
 }
 
-// brToken matches a bare `br` identifier — the read cursor — anywhere in a
-// line of emitted JavaScript.
-var brToken = regexp.MustCompile(`\bbr\b`)
+// namesReadCursor reports whether emitted JavaScript names `br`, the read
+// cursor, as an identifier. A schema field spelt br is never the cursor: it is
+// only ever reached as a property (value.br), which namesJSIdentifier skips, as
+// it skips comments and string literals. A word-boundary regex here panicked
+// the generator on such a field (and on sb and wi below).
+func namesReadCursor(s string) bool {
+	return namesJSIdentifier(s, "br")
+}
 
 // closesReadWindow reports whether emitting this text must first settle the
 // open read window. Two things force it and nothing else can: naming the
@@ -216,11 +221,15 @@ var brToken = regexp.MustCompile(`\bbr\b`)
 // read the cursor nor let control fall past them with the window stale; they
 // emit through rawf and keep the chunk alive across a guarded field.
 func closesReadWindow(s string) bool {
-	return strings.ContainsAny(s, "{}") || brToken.MatchString(s)
+	return strings.ContainsAny(s, "{}") || namesReadCursor(s)
 }
 
-// writeCursor matches the runtime write cursor's names.
-var writeCursor = regexp.MustCompile(`\b(sb|wi)\b`)
+// namesWriteCursor reports whether emitted JavaScript names the runtime write
+// cursor's locals, sb and wi, as identifiers; a property (value.sb), a comment
+// and a string literal are not the cursor.
+func namesWriteCursor(s string) bool {
+	return namesJSIdentifier(s, "sb", "wi")
+}
 
 func (g *fgen) pf(format string, args ...any) {
 	s := fmt.Sprintf(format, args...)
@@ -230,10 +239,10 @@ func (g *fgen) pf(format string, args ...any) {
 	// the static cursor's lock: while it holds, the runtime cursor variables
 	// are stale, so an emission that names one without materializing first
 	// would read a wrong position — a generator bug, refused here loudly
-	if g.rKnown && brToken.MatchString(s) {
+	if g.rKnown && namesReadCursor(s) {
 		panic("flat emitter: names br while the read cursor is static: " + s)
 	}
-	if g.wKnown && writeCursor.MatchString(s) {
+	if g.wKnown && namesWriteCursor(s) {
 		panic("flat emitter: names the write cursor while it is static: " + s)
 	}
 	g.fn.WriteString(s)
@@ -509,7 +518,7 @@ func (g *fgen) readClose() {
 // cond must test decoded values (v, bg) and never the cursor — the read
 // window's whole safety argument rests on it.
 func (g *fgen) readRefuse(cond, comment, ind string) {
-	if brToken.MatchString(cond) {
+	if namesReadCursor(cond) {
 		panic("readRefuse: condition names the read cursor: " + cond)
 	}
 	g.rawf("%sif (%s) {%s\n%s  return false;\n%s}\n", ind, cond, comment, ind, ind)
@@ -776,7 +785,7 @@ var deadCursorStore = regexp.MustCompile(`(?m)^[ ]*br = \d+;\n`)
 // its type) is a dead store, and is dropped.
 func (g *fgen) readBody(body string) string {
 	if stores := deadCursorStore.FindAllStringIndex(body, -1); len(stores) > 0 &&
-		len(brToken.FindAllStringIndex(body, -1)) == len(stores) {
+		countJSIdentifier(body, "br") == len(stores) {
 		body = deadCursorStore.ReplaceAllString(body, "")
 	}
 	return declareLocals(body, "  ", "v = 0", "bi = 0", "wlo = 0", "whi = 0", "s2 = 0", "out = 0", "nw = 0", "nl = 0", "x = 0", "br = 0", "bg") + body

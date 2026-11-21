@@ -129,7 +129,13 @@ Answer _text(String schema, String table, Uint8List payload) {
     if (loaded == null) return _unbound('text');
     if (loaded.refused) return Answer('refuse', corpusReason(loaded.reason, payload));
     written = loaded.written();
-  } catch (_) {
+  } on FormatException {
+    // The one exception the Dart text read promises as a refusal (the
+    // generated _jsonPrepare and _JParse throw it for grammar damage, and
+    // <T>FromJson for a refused read). Anything else (a RangeError, a
+    // TypeError, a stack overflow, a writer's StateError) is not a refusal:
+    // it reaches _caseMain and answers `error`, as it does on the wire
+    // carriers.
     return _damaged;
   }
   return _after(_accepted(written), 'WireSave/WireMeasure', loaded.exercise);

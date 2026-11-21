@@ -2674,10 +2674,25 @@ static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storag
             in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH;
             return 1;
         }
-        if ( f->has_range )
+        /* A float32 field's range is held at float32, the bounds as every
+           runtime holds them (SPEC.md §4.6 "every runtime evaluates the
+           triple" at float32; SPEC-TABLES §3.3 "a decoded value never leaves
+           [min, max]"), so the text "0.1" that the JSON writer emits for 0.1f
+           under max = 0.1 reads back. A compressed float's -0 lands as +0
+           (§3.3, the special values). */
+        if ( f->has_range && single )
+        {
+            float nv = (float) fvalue;
+            if ( nv < (float) f->range_min ) { nv = (float) f->range_min; in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }
+            else if ( nv > (float) f->range_max ) { nv = (float) f->range_max; in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }
+            nv = nv + 0.0f; /* -0 + +0 is +0 */
+            fvalue = (double) nv;
+        }
+        else if ( f->has_range )
         {
             if ( fvalue < f->range_min ) { fvalue = f->range_min; in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }
             else if ( fvalue > f->range_max ) { fvalue = f->range_max; in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }
+            fvalue = fvalue + 0.0;
         }
         if ( single )
         {
@@ -2947,6 +2962,9 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
             in->bad = 1;
             return 0;
         }
+        /* A COUNT BELOW ITS DECLARED MIN IS REFUSED (docs/SPEC.md §5.1 row 3),
+           in the text form as on the wire */
+        if ( f->array_min > 0 && placed < f->array_min ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }
         /* a fixed array's tail keeps the defaults the prefill left there,
            exactly as a short wire count does */
         table_json_set_count( base, f, placed );
