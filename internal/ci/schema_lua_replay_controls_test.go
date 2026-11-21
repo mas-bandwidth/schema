@@ -15,6 +15,7 @@ package ci
 import (
 	"encoding/base64"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -200,10 +201,7 @@ func TestLuaFuzzReplayControls(t *testing.T) {
 	clone := func() map[string]map[string]string {
 		out := map[string]map[string]string{}
 		for name, files := range dirs {
-			out[name] = map[string]string{}
-			for f, text := range files {
-				out[name][f] = text
-			}
+			out[name] = maps.Clone(files)
 		}
 		return out
 	}
