@@ -35,6 +35,8 @@ func refusalExpected(surface string, e expectation, wireRefused bool) bool {
 var twinSpellings = [][2]string{
 	{"past_bound", "at_bound"}, {"past-bound", "at-bound"},
 	{"past_cap", "at_cap"}, {"past-cap", "at-cap"},
+	{"past_max", "at_max"}, {"past-max", "at-max"},
+	{"below_min", "at_min"}, {"below-min", "at-min"},
 	{"illformed", "wellformed"},
 }
 
