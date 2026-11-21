@@ -2,7 +2,7 @@
   "about": "Review finding F-014 (2026-11-21) as a filesystem corpus. Each case copies unit/ to {work}/unit, generates Go into {work}/out, renames one entry only in case (through a third name, so every volume takes it), and generates again into {work}/out. Afterwards {work}/out must hold exactly the files, names and bytes a first generation of the final unit writes into an empty directory, and a file that is nobody's must be untouched. rename_in is unit or out.",
   "cases": [
     {"id": "F-014/source-renamed-in-case", "rename_in": "unit", "from": "Player.schema", "to": "player.schema"},
-    {"id": "F-014/generated-file-renamed-in-case", "rename_in": "out", "from": "PlayerView.go", "to": "playerview.go"},
+    {"id": "F-014/generated-file-renamed-in-case", "rename_in": "out", "from": "PlayerTable.go", "to": "playertable.go"},
     {"id": "F-014/control-nothing-renamed"}
   ]
 }
