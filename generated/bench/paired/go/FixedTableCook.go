@@ -551,6 +551,7 @@ func (w *tableCookWriter) value(p unsafe.Pointer, f *TableFieldInfo, at int64, r
 		return true
 	}
 	// A cooked float is finite (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3): NaN and infinity refuse.
+	// A compressed float's -0 is written as +0 (§3.3, fixed-compressed-negzero).
 	value := tableJSONGetRaw(p, f.ElemSize)
 	if f.EnumDeprecated != nil && f.EnumDeprecated(value) {
 		return false
@@ -563,6 +564,9 @@ func (w *tableCookWriter) value(p unsafe.Pointer, f *TableFieldInfo, at int64, r
 	}
 	if f.Kind == 10 && value&0x7f800000 == 0x7f800000 || f.Kind == 11 && value&0x7ff0000000000000 == 0x7ff0000000000000 {
 		return false
+	}
+	if f.HasRange && (f.Kind == 10 && value == 0x80000000 || f.Kind == 11 && value == 0x8000000000000000) {
+		value = 0
 	}
 	w.put(at, value, width)
 	return true

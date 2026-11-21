@@ -6294,7 +6294,11 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 			if value.AimX != value.AimX || value.AimX < -1.0 || value.AimX > 1.0 {
 				return false
 			}
-			w.Put32(math.Float32bits(value.AimX))
+			if value.AimX == 0 {
+				w.Put32(0)
+			} else {
+				w.Put32(math.Float32bits(value.AimX))
+			}
 		}
 	}
 	{
@@ -6305,7 +6309,11 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 			if value.AimY != value.AimY || value.AimY < -1.0 || value.AimY > 1.0 {
 				return false
 			}
-			w.Put32(math.Float32bits(value.AimY))
+			if value.AimY == 0 {
+				w.Put32(0)
+			} else {
+				w.Put32(math.Float32bits(value.AimY))
+			}
 		}
 	}
 	{
@@ -6316,7 +6324,11 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 			if value.AimZ != value.AimZ || value.AimZ < -1.0 || value.AimZ > 1.0 {
 				return false
 			}
-			w.Put32(math.Float32bits(value.AimZ))
+			if value.AimZ == 0 {
+				w.Put32(0)
+			} else {
+				w.Put32(math.Float32bits(value.AimZ))
+			}
 		}
 	}
 	{
