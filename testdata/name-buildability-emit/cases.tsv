@@ -10,6 +10,7 @@ type_strlen	cs,elixir	a type named in lowercase letters only: C# CS8981; Elixir 
 table_memcpy	c,cpp,cs	a table named memcpy: the table backends' own memcpy calls; C# CS8981
 table_uint8_t	c,cpp	a table named uint8_t: the table backends' own uint8_t
 table_Math	cs	a table named Math in a unit with tables: the C# table backend's Math.Min named the user's type
-enum_kind	cs,elixir	an enum named in lowercase letters only, keying an array: C# CS8981; Elixir module Probe.kind and its keyed accessors
+enum_kind	cpp,cs,elixir	an enum named in lowercase letters only, keying an array, and a field named like it (kind kind): C++ member kind hid the type in its own initializer; C# CS8981; Elixir module Probe.kind and its keyed accessors
+field_named_type	cpp	fields, a union arm and a table field each named like their type or a constant (Kind Kind, Point Point, Count [Count]uint8): a C++ member hides the namespace name across its class, and a use before it changes its meaning
 base_my-file	c	a schema file named my-file: the C include guard SCHEMA_PROBE_MY-FILE_H is not a token
 pkg_Math	cs	package Math: namespace Math hid System.Math from the code and from the serialize.cs runtime compiled beside it
