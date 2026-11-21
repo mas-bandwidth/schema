@@ -253,6 +253,24 @@ func resText(res string) string {
 	return res
 }
 
+// effectiveBits is the N of an unsigned entry's value domain [0, 2^N - 1]: the
+// declared `bits(N)` where there is one, else the storage width of a plain
+// unsigned integer kind (or of an array's unsigned element), and 0 on every
+// entry that is neither.
+func effectiveBits(e Entry) int {
+	if e.Bits != 0 {
+		return e.Bits
+	}
+	kind := e.Kind
+	if kind == 14 || kind == 16 {
+		kind = e.ElemKind
+	}
+	if fam, bits := ladder(kind); fam == ladderUint {
+		return bits
+	}
+	return 0
+}
+
 // ranged reports whether an entry declares any bound at all.
 func (e Entry) ranged() bool { return e.Min != "" || e.Max != "" }
 
@@ -481,10 +499,20 @@ func monotoneAt(where string, want, got Entry, priorMoved bool) (widened bool, w
 		widened = true
 	}
 	if want.Bits != got.Bits {
-		if got.Bits < want.Bits {
-			return false, "", fmt.Errorf("%s, is %d bits wide in the lock and %d in the declaration: bits narrowed (%d -> %d) — `bits(N)` only GROWS: N at most the reader's is a read, and a narrower N cannot hold the value the older writer packed (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2, docs/SPEC-TABLES.md §21.1); deprecate this field and append a new one",
-				where, want.Bits, got.Bits, want.Bits, got.Bits)
+		// THE EFFECTIVE WIDTH, not the token: `bits=` is written on a
+		// `bits(N)` field only, and a plain unsigned integer of the same
+		// storage kind holds N = its whole width, so `uint16 -> bits(9)` is
+		// [0, 65535] narrowed to [0, 511] and `bits(9) -> uint16` the reverse
+		// (docs/FIXED-FORM-ALGORITHM.md §5.1: "bits(N): N(a) <= N(b)"). An
+		// absent token is never N = 0.
+		wantN, gotN := effectiveBits(want), effectiveBits(got)
+		if gotN < wantN {
+			return false, "", fmt.Errorf("%s, is %d bits wide in the lock and %d in the declaration: bits narrowed (%d -> %d) — `bits(N)` only GROWS: N at most the reader's is a read, and a narrower N cannot hold the value the older writer packed; a plain unsigned integer is N = its width (docs/FIXED-FORM-ALGORITHM.md §5.1, docs/SPEC-TABLES.md §21.1); deprecate this field and append a new one",
+				where, wantN, gotN, wantN, gotN)
 		}
+		// a larger N, or the same N moved between `bits(N)` and a plain
+		// unsigned integer of that width: every old value lands, and the
+		// record must carry the new form
 		widened = true
 	}
 	if !got.sameRange(want) {
