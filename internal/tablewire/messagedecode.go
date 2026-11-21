@@ -52,8 +52,8 @@ func MessageCount(data []byte, v *Vocabulary) (int, error) {
 // that mixes roots puts a discriminator in front of the bytes or wraps its
 // message set in one root holding a union of them. The error is a REFUSAL, a
 // wire this reader will not decode at all, and it is returned rather than
-// folded into the report. False with a nil error is damage, which is terminal
-// for the batch.
+// folded into the report. False always comes with that error, damage included,
+// which is terminal for the batch: there is no false with a nil error.
 //
 // THE BATCH SURFACE'S ANSWERS, each the page's (§3.3):
 //
