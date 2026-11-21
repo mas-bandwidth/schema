@@ -98,3 +98,41 @@ func TestRanEveryReadsTheFolder(t *testing.T) {
 		t.Errorf("a case held by name is not counted: %q, %v", summary, err)
 	}
 }
+
+// TestARowIdIsNeverACaseName (F-076): a carrier read as several rows prints
+// each as `<case>@<row>` (RowIDs), so a case may not be named like one. A
+// manifest with packet audit-ring and a wire case named
+// audit-ring@runtime-development was accepted; the runner's five real rows
+// went red as a duplicate, and with the wire case never dispatched the four
+// packet rows passed and credited it. The manifest refuses the name, and
+// CheckLog refuses two cases that owe one row id however they were built.
+func TestARowIdIsNeverACaseName(t *testing.T) {
+	t.Parallel()
+	row := func(name, carrier string) string {
+		return name + "\t" + carrier + "\ts\tRoot\tinputs/" + name + ".bin\tp\taccept\t-\t-"
+	}
+	// CONTROL: distinct names parse
+	if _, err := Parse(row("audit-ring", "packet") + "\n" + row("audit-wire", "wire") + "\n"); err != nil {
+		t.Fatalf("CONTROL FAILED: two plain case names: %v", err)
+	}
+	if _, err := Parse(row("audit-ring", "packet") + "\n" + row("audit-ring@runtime-development", "wire") + "\n"); err == nil || !strings.Contains(err.Error(), "audit-ring@runtime-development") {
+		t.Errorf("a case named like a row id parsed: %v", err)
+	}
+
+	rows := map[string][]string{"packet": {"runtime-development", "flat-development"}}
+	cases := []Case{{Name: "audit-ring", Carrier: "packet"}, {Name: "audit-ring@runtime-development", Carrier: "wire"}}
+	// the wire case was never dispatched: only the packet rows ran
+	packetOnly := "hostile-ledger ran audit-ring@runtime-development\nhostile-ledger ran audit-ring@flat-development\nhostile-ledger end\n"
+	if _, err := CheckLog(cases, packetOnly, 1, Held{}, Held{}, rows); err == nil || !strings.Contains(err.Error(), "audit-ring@runtime-development") {
+		t.Errorf("two cases owing the row id audit-ring@runtime-development, one never run, passed: %v", err)
+	}
+	// CONTROL: the same rows under distinct names pass, and lose the wire case by name
+	distinct := []Case{{Name: "audit-ring", Carrier: "packet"}, {Name: "audit-wire", Carrier: "wire"}}
+	if _, err := CheckLog(distinct, packetOnly, 1, Held{}, Held{}, rows); err == nil || !strings.Contains(err.Error(), "audit-wire") {
+		t.Errorf("CONTROL FAILED: the wire case missing under its own name: %v", err)
+	}
+	whole := "hostile-ledger ran audit-ring@runtime-development\nhostile-ledger ran audit-ring@flat-development\nhostile-ledger ran audit-wire\nhostile-ledger end\n"
+	if _, err := CheckLog(distinct, whole, 1, Held{}, Held{}, rows); err != nil {
+		t.Errorf("CONTROL FAILED: every row ran under distinct names: %v", err)
+	}
+}
