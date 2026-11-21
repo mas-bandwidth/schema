@@ -30,15 +30,30 @@ type exampleTool struct {
 
 var exampleTools = map[string]exampleTool{
 	"cpp": {"compile", "c++", "CXX", func(file, gen, root string) []string {
-		return []string{"-std=c++17", "-fsyntax-only", "-Wall", "-Wextra", "-Werror", "-I", gen, "-I", filepath.Join(root, "..", "serialize"), file}
+		return []string{"-std=c++17", "-fsyntax-only", "-Wall", "-Wextra", "-Werror", "-I", gen, "-I", runtimeDir(root, "SERIALIZE", "serialize"), file}
 	}},
 	"c": {"compile", "cc", "CC", func(file, gen, root string) []string {
-		return []string{"-std=c11", "-fsyntax-only", "-Wall", "-Wextra", "-Werror", "-I", gen, "-I", filepath.Join(root, "..", "serialize.c"), file}
+		return []string{"-std=c11", "-fsyntax-only", "-Wall", "-Wextra", "-Werror", "-I", gen, "-I", runtimeDir(root, "SERIALIZE_C", "serialize.c"), file}
 	}},
 	"js":     {"parse", "node", "NODE", func(file, _, _ string) []string { return []string{"--check", file} }},
 	"python": {"parse", "python3", "PYTHON", func(file, _, _ string) []string { return []string{"-m", "py_compile", file} }},
 	"ruby":   {"parse", "ruby", "RUBY", func(file, _, _ string) []string { return []string{"-c", file} }},
 	"lua":    {"parse", "luac", "LUAC", func(file, _, _ string) []string { return []string{"-p", file} }},
+}
+
+// runtimeDir is where a packet example's runtime header lives: the checkout
+// the environment names, else the sibling checkout the Makefile builds
+// against, else the pinned copy `make deps` fetches into build/. A table
+// example includes no runtime, so an absent one costs it nothing.
+func runtimeDir(root, env, name string) string {
+	if dir := os.Getenv(env); dir != "" {
+		return dir
+	}
+	sibling := filepath.Join(root, "..", name)
+	if _, err := os.Stat(sibling); err == nil {
+		return sibling
+	}
+	return filepath.Join(root, "build", name)
 }
 
 // exampleGenerated generates a unit for a language once and hands back the
@@ -148,9 +163,15 @@ func TestExamplesCompile(t *testing.T) {
 			if _, err := exec.LookPath(program); err != nil {
 				t.Fatalf("%s is not on PATH, so %s:%d cannot be held (%s=<path> names it): %v", program, e.Page, e.Line, tool.env, err)
 			}
-			gen, err := generated.dir(t, root, base, e.Unit, e.Lang)
-			if err != nil {
-				t.Fatalf("%s:%d: %v", e.Page, e.Line, err)
+			gen := ""
+			if tool.how == "compile" {
+				if e.Unit == "" {
+					t.Fatalf("%s:%d is a %s example and names no unit to compile against", e.Page, e.Line, e.Lang)
+				}
+				gen, err = generated.dir(t, root, base, e.Unit, e.Lang)
+				if err != nil {
+					t.Fatalf("%s:%d: %v", e.Page, e.Line, err)
+				}
 			}
 			dir := t.TempDir()
 			file := filepath.Join(dir, "example"+exampleExt[e.Lang])

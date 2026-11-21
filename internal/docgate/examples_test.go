@@ -140,10 +140,14 @@ func TestExamplesGateGoesRed(t *testing.T) {
 		"<!-- example: schema unit=unit file=A.schema -->", fence, "package b", fence, "",
 		"<!-- c-table-usage -->", fence + "c", "int y;", fence, "<!-- /c-table-usage -->", "",
 		"<!-- nobody-usage -->", fence + "c", "int z;", fence, "<!-- /nobody-usage -->", "",
+		"<!-- example: owed -->", fence + "cpp", "int main() { return Gone(); }", fence, "",
+		"<!-- example: owed -->", fence + "cpp", "int main() { return Gone(); }", fence, "",
+		"<!-- example: compile -->", fence + "python", "x = 1", fence, "",
 	}, "\n"))
 	write("skills/s/SKILL.md", "# Skill\n\n"+fence+"lua\nlocal x = 1\n"+fence+"\n")
 
-	examples, problems, err := CheckExamples(root)
+	// a ceiling of one: the second owed example is the planted fault
+	examples, problems, err := checkExamples(root, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,6 +166,7 @@ func TestExamplesGateGoesRed(t *testing.T) {
 		"docs/BAD.md example-leg":            1, // the unregistered marker
 		"make/c.mk example-leg":              1, // the registered gate that no longer reads it
 		"skills/s/SKILL.md example-unmarked": 1,
+		"internal/docgate/examples.go example-owed": 1, // two owed under a ceiling of one
 	}
 	for key, n := range want {
 		if got[key] != n {
@@ -185,6 +190,8 @@ func TestExamplesGateGoesRed(t *testing.T) {
 		"README.md\tschema\tschema\t1",
 		"docs/BAD.md\tc\tleg\t2",
 		"docs/BAD.md\trust\tunmarked\t1",
+		"docs/BAD.md\tcpp\towed\t2",
+		"docs/BAD.md\tpython\tcompile\t1", // a parse-only target needs no unit
 		"skills/s/SKILL.md\tlua\tunmarked\t1",
 	} {
 		if !strings.Contains(lines, line) {

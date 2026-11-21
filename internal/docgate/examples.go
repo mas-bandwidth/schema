@@ -12,14 +12,16 @@ import (
 
 // THE CODE EXAMPLES OF THE PAGES (review finding F-173). A fenced block whose
 // info string names a target language is an EXAMPLE, and every example on the
-// reader-facing pages is in exactly one of three classes, stated on the page:
+// reader-facing pages is in exactly one of four classes, stated on the page:
 //
 //   - COMPILE: `<!-- example: compile unit=<dir> -->` on the line above the
-//     fence. The slow gate compiles the block (or parses it, where the target
-//     has no compiler step) against the generated output of the unit named.
-//     With `harness=<name>` the block is spliced into
-//     testdata/harness/<name>.<ext> at its EXAMPLE line first: that is how a
-//     few lines lifted out of a program are still held to the real names.
+//     fence. The slow gate compiles the block against the generated output of
+//     the unit named (C and C++), or parses it (the targets whose examples the
+//     gate holds to their language's parser: Go, JavaScript, Python, Ruby and
+//     Lua, where `unit=` may be left off). With `harness=<name>` the block is
+//     spliced into testdata/harness/<name>.<ext> at its EXAMPLE line first:
+//     that is how a few lines lifted out of a program are still held to the
+//     real names.
 //   - LEG: the block sits between a leg's own `<!-- <name>-usage -->` markers,
 //     and that leg's gate extracts, builds and runs it. The registry below
 //     names the file that does, and the gate checks that file still reads
@@ -28,8 +30,15 @@ import (
 //     block is deliberately not a compilable unit: generated output quoted to
 //     show its shape, a signature, a line of a larger program. It is counted,
 //     so a page cannot drift into fragments without the count moving.
+//   - OWED: `<!-- example: owed -->` on the line above the fence. A whole
+//     program the page means to compile that does not compile against
+//     today's generator (the tutorial's later parts were written against a
+//     table API the declared table classes replaced, docs/SPEC-TABLES.md
+//     §2.2). It is counted, never compiled, and the number of them is a
+//     ceiling the gate holds (OwedCeiling): fixing one lowers it, and adding
+//     one is red.
 //
-// An example in none of the three is a finding, and so is a fence in a
+// An example in none of the four is a finding, and so is a fence in a
 // language the gate has never heard of: silence is never the passing state.
 
 // Example is one fenced target-language block of a page.
@@ -50,6 +59,7 @@ const (
 	ClassCompile  = "compile"
 	ClassLeg      = "leg"
 	ClassFragment = "fragment"
+	ClassOwed     = "owed"
 	// ClassSchema is a DECLARATION fence a compile example's unit is made of:
 	// `<!-- example: schema unit=<dir> file=<name> -->` holds the fence
 	// byte-equal to that file of the unit, so the page and the unit the gate
@@ -95,6 +105,7 @@ var LegMarkers = map[string]string{
 	"python-usage":                   "internal/ci/python_usage_fragments_test.go",
 	"ruby-usage":                     "internal/ci/ruby_usage_fragments_test.go",
 	"rust-table-usage":               "internal/codegen/rusttable/usage_rust_test.go",
+	"squirrel-table-usage":           "make/squirrel.mk",
 }
 
 var (
@@ -296,11 +307,11 @@ func (e *Example) readMark(mark string) error {
 		return fmt.Errorf("it names no class")
 	}
 	switch words[0] {
-	case ClassFragment:
+	case ClassFragment, ClassOwed:
 		if len(words) != 1 {
-			return fmt.Errorf("fragment takes no words")
+			return fmt.Errorf("%s takes no words", words[0])
 		}
-		e.Class = ClassFragment
+		e.Class = words[0]
 		return nil
 	case ClassCompile, ClassSchema:
 		e.Class = words[0]
@@ -319,7 +330,7 @@ func (e *Example) readMark(mark string) error {
 				return fmt.Errorf("%q is not a word %s takes", word, e.Class)
 			}
 		}
-		if e.Unit == "" {
+		if e.Unit == "" && (e.Class == ClassSchema || !ParseOnly[e.Lang]) {
 			return fmt.Errorf("%s names no unit", e.Class)
 		}
 		if e.Class == ClassSchema && e.File == "" {
@@ -327,8 +338,19 @@ func (e *Example) readMark(mark string) error {
 		}
 		return nil
 	}
-	return fmt.Errorf("%q is not compile, fragment or schema", words[0])
+	return fmt.Errorf("%q is not compile, fragment, owed or schema", words[0])
 }
+
+// ParseOnly names the target languages whose compile examples the slow gate
+// holds to their language's own parser rather than to a unit's generated
+// output: the leg's own usage gate is what binds their names.
+var ParseOnly = map[string]bool{"go": true, "js": true, "python": true, "ruby": true, "lua": true}
+
+// OwedCeiling is the most OWED examples the pages may carry. It only ever
+// comes down: an owed program fixed and marked compile lowers it, and a new
+// owed example is red. The tutorial's parts after Part 6 hold them (the
+// table API they were written against predates the declared table classes).
+const OwedCeiling = 22
 
 // Count is how many examples of one page, one language and one class there are.
 type Count struct {
@@ -348,21 +370,30 @@ func CountExamples(examples []Example) map[Count]int {
 // CheckExamples is the fast gate over the marking: every problem Examples
 // reports, every example in no class, every compile example whose unit or
 // harness is not on disk, and every leg marker whose gate file no longer
-// reads it.
+// reads it, and owed examples past OwedCeiling.
 func CheckExamples(root string) ([]Example, []Problem, error) {
+	return checkExamples(root, OwedCeiling)
+}
+
+func checkExamples(root string, ceiling int) ([]Example, []Problem, error) {
 	examples, problems, err := Examples(root)
 	if err != nil {
 		return nil, nil, err
 	}
 	legs := map[string]bool{}
+	owed := 0
 	for _, e := range examples {
 		switch e.Class {
 		case "":
 			problems = append(problems, Problem{File: e.Page, Line: e.Line, Ref: e.Lang,
-				Reason: "example-unmarked: mark it compile (the slow gate builds it) or fragment"})
+				Reason: "example-unmarked: mark it compile (the slow gate builds it), fragment or owed"})
+		case ClassOwed:
+			owed++
 		case ClassCompile:
-			if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(e.Unit))); err != nil {
-				problems = append(problems, Problem{File: e.Page, Line: e.Line, Ref: e.Unit, Reason: "example-unit: no such directory"})
+			if e.Unit != "" {
+				if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(e.Unit))); err != nil {
+					problems = append(problems, Problem{File: e.Page, Line: e.Line, Ref: e.Unit, Reason: "example-unit: no such directory"})
+				}
 			}
 			if e.Harness != "" {
 				if _, err := os.Stat(HarnessPath(root, e)); err != nil {
@@ -380,6 +411,10 @@ func CheckExamples(root string) ([]Example, []Problem, error) {
 		case ClassLeg:
 			legs[e.Leg] = true
 		}
+	}
+	if owed > ceiling {
+		problems = append(problems, Problem{File: "internal/docgate/examples.go", Line: 1, Ref: "OwedCeiling",
+			Reason: fmt.Sprintf("example-owed: the pages carry %d owed examples and the ceiling is %d; an owed program is fixed, never added", owed, ceiling)})
 	}
 	for leg := range legs {
 		gate, ok := LegMarkers[leg]
