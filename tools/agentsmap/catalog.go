@@ -115,6 +115,7 @@ var catalog = []Entry{
 	// internal/codegen/
 	e("internal/codegen/c", "C packet emitter", "go test ./internal/codegen/c", "go test ./internal/codegen/c"),
 	e("internal/codegen/ccommon", "C/C++ shared emit bits", "go test ./internal/codegen/c", "go test ./internal/codegen/c"),
+	e("internal/codegen/cfmt", "C house layout pass (.clang-format, whitespace only)", "make tables-c-clean", "go test ./internal/codegen/cfmt"),
 	e("internal/codegen/cqualify", "C package qualification", "go test ./internal/codegen/cqualify", "go test ./internal/codegen/cqualify"),
 	e("internal/codegen/cpp", "C++ packet emitter (reference)", "go test ./internal/codegen/cpp", "go test ./internal/codegen/cpp"),
 	e("internal/codegen/cpptable", "C++ table emitter (reference)", "go test ./internal/codegen/cpptable", "go test ./internal/codegen/cpptable"),

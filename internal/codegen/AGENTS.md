@@ -6,6 +6,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../../AGENTS.md
 | --- | --- | --- | --- |
 | `c/` | C packet emitter | `go test ./internal/codegen/c` | `go test ./internal/codegen/c` |
 | `ccommon/` | C/C++ shared emit bits | `go test ./internal/codegen/c` | `go test ./internal/codegen/c` |
+| `cfmt/` | C house layout pass (.clang-format, whitespace only) | `make tables-c-clean` | `go test ./internal/codegen/cfmt` |
 | `cpp/` | C++ packet emitter (reference) | `go test ./internal/codegen/cpp` | `go test ./internal/codegen/cpp` |
 | `cpptable/` | C++ table emitter (reference) | `go test ./internal/codegen/cpptable` | `go test ./internal/codegen/cpptable` |
 | `cqualify/` | C package qualification | `go test ./internal/codegen/cqualify` | `go test ./internal/codegen/cqualify` |
