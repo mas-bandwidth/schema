@@ -340,7 +340,7 @@ func TestConstrainedTestGateNegativeControl(t *testing.T) {
 		"l/joboff_windows_test.go": "package l\n",
 		".github/workflows/full.yml": "jobs:\n  tagged:\n    runs-on: [self-hosted, Linux]\n    steps:\n      - run: make test-x-tagged\n" +
 			"  windows:\n    runs-on: windows-latest\n    steps:\n      - run: go vet ./...\n      - run: go test ./d/\n" +
-			"      - run: echo \"go test ./h/\"\n" +
+			"      - run: echo go test ./h/\n" +
 			"      - if: false\n        run: go test ./i/\n" +
 			"      - run: |\n          cd nested\n          go test ./j/\n" +
 			"      - working-directory: nested\n        run: go test ./k/\n" +

@@ -16,7 +16,7 @@ jobs:
   echoes:
     runs-on: windows-latest
     steps:
-      - run: echo "go test ./h/"
+      - run: echo go test ./h/
   step-off:
     runs-on: windows-latest
     steps:
