@@ -41,8 +41,6 @@ fixed table Prior
     arm    Arm
     nested Inner
     cells  [2]Cell
-    ratio  float32    | min = 0, max = 100
-    real   float64    | min = 0, max = 100
     quant  float32    | min = 0, max = 100, resolution = 0.5
     fx     ufixed(16, 16) | min = 0, max = 100
 }
