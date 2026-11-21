@@ -92,7 +92,7 @@ func Check(u *ir.Unit, paths []string) (warnings []string, errs []error) {
 		warnings = append(warnings, fmt.Sprintf("%s: %s", path, w))
 	}
 	for _, r := range refusals {
-		errs = append(errs, fmt.Errorf("%s: %w — this edit changes what data already written MEANS, and no reader can report it; if you mean it, record it: schema tables-baseline --update --reason \"...\" (docs/SPEC-TABLES.md §18)", path, r))
+		errs = append(errs, fmt.Errorf("%s: %w — this edit changes what data already written MEANS, or stops it reading; if you mean it, record it: schema tables-baseline --update --reason \"...\" (docs/SPEC-TABLES.md §18)", path, r))
 	}
 	return warnings, errs
 }
