@@ -42,6 +42,11 @@ type widenBoundRow struct {
 	// is the writer's message batch, announce its announcement, and file the
 	// READER's file of the value the batch lands (the message row's pair).
 	wire, announce, file string
+	// peer is the corpus unit that IS the narrower writer of a message row:
+	// a connection's announcement is its own unit's (message_test.go,
+	// TestTheAnnouncementIsTheUnitsOwn), so the older build is a unit of its
+	// own, held here to the reader with the named bounds narrowed.
+	peer string
 }
 
 const widenBoundWireDir = "testdata/conformance/tables/wire"
@@ -83,6 +88,7 @@ var widenBoundRows = []widenBoundRow{
 		wire:     "widenbound_msg_peer.bin",
 		announce: "widenbound_conn.bin",
 		file:     "widenbound_msg.bin",
+		peer:     "widenboundpeer",
 	},
 }
 
@@ -124,11 +130,59 @@ func widenBoundWriter(m *Manifest, row widenBoundRow) (*ir.Unit, error) {
 	return unit, nil
 }
 
+// widenBoundSamePeer holds a peer unit to the narrowed reader: the same
+// message closure, entry for entry, and the same canonical text for every
+// root's default value, so the peer differs by nothing but its package name
+// and the narrowed bounds.
+func widenBoundSamePeer(narrowed, peer *ir.Unit) error {
+	want, got := tablewire.MessageVocabulary(narrowed), tablewire.MessageVocabulary(peer)
+	if len(want) != len(got) {
+		return fmt.Errorf("its message closure has %d entries, the narrowed reader's %d", len(got), len(want))
+	}
+	for i := range want {
+		if want[i].Key() != got[i].Key() {
+			return fmt.Errorf("message closure slot %d differs", i+1)
+		}
+	}
+	if len(narrowed.Tables) != len(peer.Tables) {
+		return fmt.Errorf("it declares %d tables, the narrowed reader %d", len(peer.Tables), len(narrowed.Tables))
+	}
+	nm, pm := tabletext.NewModel(narrowed), tabletext.NewModel(peer)
+	for name := range narrowed.Tables {
+		nd, pd := nm.Lookup(name), pm.Lookup(name)
+		if nd == nil || pd == nil {
+			continue
+		}
+		nt, err := nm.Write(nm.New(nd))
+		if err != nil {
+			return err
+		}
+		pt, err := pm.Write(pm.New(pd))
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(nt, pt) {
+			return fmt.Errorf("%s is born differently", name)
+		}
+	}
+	return nil
+}
+
 // widenBoundBytes is every file one row owes, by name.
 func widenBoundBytes(m *Manifest, row widenBoundRow) (map[string][]byte, error) {
 	older, err := widenBoundWriter(m, row)
 	if err != nil {
 		return nil, err
+	}
+	if row.peer != "" {
+		peer, err := newUnits(m).get(row.peer)
+		if err != nil {
+			return nil, err
+		}
+		if err := widenBoundSamePeer(older, peer); err != nil {
+			return nil, fmt.Errorf("%s is not %s with the named bounds narrowed: %w", row.peer, row.unit, err)
+		}
+		older = peer
 	}
 	writer := tabletext.NewModel(older)
 	value := writer.New(writer.Lookup(row.root))

@@ -1843,8 +1843,10 @@ rewrite widenbound_envelope_spans messagedemo ToolEnvelope testdata/conformance/
 rewrite widenbound_feed           streamdemo  Feed         testdata/conformance/tables/wire/widenbound_feed.bin
 rewrite widenbound_evodoc         tblvarevo1  EvoDoc       testdata/conformance/tables/wire/widenbound_evodoc.bin
 # The same grown bounds in the MESSAGE FORM at a fixed root (§3.3), and an
-# optional array of enums beside them: the peer is the narrower build, its
-# announcement is the connection, and the reader's own file of the value the
-# batch lands is the pair.
-connection widenbound_conn messagedemo 0x29928421706b3d0d testdata/conformance/tables/wire/widenbound_conn.bin
+# optional array of enums beside them: the peer is the narrower build, a unit
+# of its own (test/tables/widenbound/WidenBoundPeer.schema, messagedemo with
+# those bounds narrowed and nothing else), its announcement is the connection,
+# and the reader's own file of the value the batch lands is the pair.
+unit widenboundpeer test/tables/widenbound/WidenBoundPeer.schema
+connection widenbound_conn widenboundpeer 0x29928421706b3d0d testdata/conformance/tables/wire/widenbound_conn.bin
 message-drift widenbound_msg messagedemo widenbound_conn ToolMessage testdata/conformance/tables/wire/widenbound_msg.bin testdata/conformance/tables/wire/widenbound_msg_peer.bin testdata/conformance/tables/wire/widenbound_msg_as_reader.bin
