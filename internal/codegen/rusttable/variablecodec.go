@@ -654,7 +654,7 @@ func (g *gen) scalarWrite(f *ir.Field, x, dst string) string {
 	kind := scalarWireKind(f)
 	switch f.Type.Kind {
 	case ir.TBool:
-		return fmt.Sprintf("%s.push(if %s { 1 } else { 0 });", dst, x)
+		return fmt.Sprintf("%s.push(if %s { 1 } else { 0 });", dst, unparen(x))
 	case ir.TFloat32, ir.TFloat64:
 		return fmt.Sprintf("if !%s.is_finite() { table_float_refuse(ids, %q); } %s.extend_from_slice(&%s.to_bits().to_le_bytes());", x, g.floatOwner(f), dst, rustFloatStored(f, x))
 	}

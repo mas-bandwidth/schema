@@ -758,7 +758,7 @@ func buildCSOrUnityProgram(units []UnitSpec, isUnity bool) string {
                 {
                     var v = new %s.%s();
                     var rep = default(%s.Schema.TableReport);
-                    if (!%s.Schema.%sFromJson(v, c.In, ref rep) || rep.Damaged || rep.Refused) Die(c.Id, "FromJson var");
+                    if (!%s.Schema.%sFromJson(ref v, c.In, ref rep) || rep.Damaged || rep.Refused) Die(c.Id, "FromJson var");
                     long jsz = %s.Schema.%sToJsonMeasure(v);
                     if (jsz < 0) Die(c.Id, "ToJsonMeasure var");
                     byte[] jout = new byte[jsz];
