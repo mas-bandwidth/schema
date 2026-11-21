@@ -9,9 +9,13 @@
 // answers "which line has no gate".
 //
 // One mutation at a time is applied to a SCRATCH COPY of the tree, a detached
-// git worktree of HEAD under the work directory. The checkout the tool runs
-// from is never written. The mutant is run through the scope's stages, the
-// cheapest first, and the first red stage kills it.
+// git worktree of HEAD in a directory each run makes new under the work
+// directory and removes when it ends. The checkout the tool runs from is never
+// written, and nothing else under the work directory is touched. The mutant
+// is run through the scope's stages, the cheapest first, and the first red
+// stage kills it; a red that is a compiler refusing the mutant is
+// build-broken, and a stage that stays green without testing the mutant
+// leaves it unproven, not survived.
 //
 // Every stage must pass on the unmutated copy and show a proof that it
 // tested, before the first mutant and again after the last. The tool fails if
@@ -39,15 +43,24 @@ const usage = `usage: go run ./tools/mutation <command> [flags]
                               the mutants of a scope, or the sample a seed picks
   run    -scope S -work DIR [-n N -seed K] [-deep] [-stages a,b] [-ids x,y]
          [-retry FILE] [-out FILE] [-enforce]
-                              apply each mutant to a scratch copy and run the
-                              stages. -out appends one JSON line per mutant.
-                              -enforce exits 1 on a survivor that is not on
-                              the reviewed list, equivalents/<scope>.json
+                              apply each mutant to a scratch copy, made new
+                              under DIR for this run and removed after it, and
+                              run the stages. -out appends one JSON line per
+                              mutant. -enforce exits 1 on an unproven mutant,
+                              and on a survivor that is not on the reviewed
+                              list, equivalents/<scope>.json
   smoke  -work DIR            the fixed smoke set, smoke.json: every one must
                               be killed. This is the fast-CI check that the
                               driver itself still works
+  corpus -work DIR            the sweep's own corpus, testdata/: the real sweep
+                              and shell over a Go module and a C program whose
+                              mutants have recorded verdicts (killed, survived,
+                              build-broken, unproven, timeout, a stage refused),
+                              and a work directory of files the tool must not
+                              remove. Every verdict must be the recorded one
   report [-survivors] FILE... the table of one or more -out files, each
-                              mutant by its last result
+                              mutant by its last result; -survivors also lists
+                              every survivor and unproven mutant
 
 A scope is a core package (check, tablewire, tabletext, baseline, tablepack,
 tablecook, ir, cmd-schema) or a target (target-c ... target-squirrel).
@@ -181,7 +194,7 @@ func command(name string, args []string) error {
 				return err
 			}
 			for _, r := range latest(earlier) {
-				if r.Scope == *scopeName && r.Outcome == outcomeSurvived {
+				if r.Scope == *scopeName && (r.Outcome == outcomeSurvived || r.Outcome == outcomeUnproven) {
 					only = append(only, r.ID)
 				}
 			}
@@ -204,6 +217,11 @@ func command(name string, args []string) error {
 			return fmt.Errorf("smoke needs -work")
 		}
 		return runSmoke(root, *work)
+	case "corpus":
+		if *work == "" {
+			return fmt.Errorf("corpus needs -work")
+		}
+		return runCorpus(root, *work)
 	case "report":
 		var results []Result
 		for _, f := range fs.Args() {
@@ -220,8 +238,8 @@ func command(name string, args []string) error {
 		printTable(results)
 		if *survivors {
 			for _, r := range results {
-				if r.Outcome == outcomeSurvived {
-					fmt.Printf("%s\t%s\t%s:%d\t%s\t%q -> %q\t| %s\n", r.Scope, r.ID, r.File, r.Line, r.Op, clip(r.Old), clip(r.New), clip(r.Context))
+				if r.Outcome == outcomeSurvived || r.Outcome == outcomeUnproven {
+					fmt.Printf("%s\t%s\t%s\t%s:%d\t%s\t%q -> %q\t| %s\n", r.Outcome, r.Scope, r.ID, r.File, r.Line, r.Op, clip(r.Old), clip(r.New), clip(r.Context))
 				}
 			}
 		}
@@ -252,10 +270,11 @@ func runScope(root, work, scopeName string, n int, seed uint64, only []string, o
 	if err != nil {
 		return nil, err
 	}
-	tree, err := scratchTree(root, work, s.Name)
+	tree, remove, err := scratchTree(root, work, s.Name)
 	if err != nil {
 		return nil, err
 	}
+	defer remove()
 	// the mutants are read from the scratch copy, which is the tree they are
 	// applied to
 	muts, err := s.enumerate(tree)
@@ -307,34 +326,47 @@ func runScope(root, work, scopeName string, n int, seed uint64, only []string, o
 	return results, writeErr
 }
 
-// scratchTree makes the scratch copy: a detached worktree of HEAD at
-// <work>/<scope>/schema, with the sibling checkouts SIBLINGS names and the
-// built toolchains under dist/ linked beside and inside it, since the build
+// scratchTree makes this run's scratch copy: a detached worktree of HEAD at
+// <work>/<scope>-<random>/schema, with the sibling checkouts SIBLINGS names and
+// the built toolchains under dist/ linked beside and inside it, since the build
 // reads both by relative path.
-func scratchTree(root, work, scope string) (string, error) {
-	base, err := filepath.Abs(filepath.Join(work, scope))
+//
+// The directory that holds the copy is made new by this run, so the run owns
+// it and nothing else: whatever was under <work> before is never removed, and
+// two runs of one scope at once never share a copy. remove takes away the
+// worktree and that directory, and nothing else.
+func scratchTree(root, work, scope string) (tree string, remove func(), err error) {
+	dir, err := filepath.Abs(work)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
-	tree := filepath.Join(base, "schema")
-	if rel, err := filepath.Rel(root, tree); err == nil && !strings.HasPrefix(rel, "..") && !strings.HasPrefix(filepath.ToSlash(rel), "build/") {
-		return "", fmt.Errorf("the scratch copy %s would sit inside the checkout outside build/: put -work under build/ or outside the tree", tree)
+	if rel, err := filepath.Rel(root, filepath.Join(dir, scope, "schema")); err == nil && !strings.HasPrefix(rel, "..") && !strings.HasPrefix(filepath.ToSlash(rel), "build/") {
+		return "", nil, fmt.Errorf("the scratch copy under %s would sit inside the checkout outside build/: put -work under build/ or outside the tree", dir)
 	}
-	// a copy left by an earlier run is spoiled by definition
-	_ = exec.Command("git", "-C", root, "worktree", "remove", "--force", tree).Run()
-	if err := os.RemoveAll(base); err != nil {
-		return "", err
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", nil, err
 	}
-	_ = exec.Command("git", "-C", root, "worktree", "prune").Run()
-	if err := os.MkdirAll(base, 0o755); err != nil {
-		return "", err
+	base, err := os.MkdirTemp(dir, scope+"-")
+	if err != nil {
+		return "", nil, err
 	}
+	tree = filepath.Join(base, "schema")
+	remove = func() {
+		_ = exec.Command("git", "-C", root, "worktree", "remove", "--force", tree).Run()
+		_ = os.RemoveAll(base)
+	}
+	defer func() {
+		if err != nil {
+			remove()
+			tree, remove = "", nil
+		}
+	}()
 	if b, err := exec.Command("git", "-C", root, "worktree", "add", "--detach", tree, "HEAD").CombinedOutput(); err != nil {
-		return "", fmt.Errorf("git worktree add: %w\n%s", err, b)
+		return "", nil, fmt.Errorf("git worktree add: %w\n%s", err, b)
 	}
 	siblings, err := os.ReadFile(filepath.Join(root, "SIBLINGS"))
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	for line := range strings.SplitSeq(string(siblings), "\n") {
 		f := strings.Fields(line)
@@ -346,15 +378,15 @@ func scratchTree(root, work, scope string) (string, error) {
 			continue // not staged here; a stage that needs it says so on the baseline
 		}
 		if err := os.Symlink(have, filepath.Join(tree, filepath.FromSlash(f[0]))); err != nil {
-			return "", err
+			return "", nil, err
 		}
 	}
 	if dist := filepath.Join(root, "dist"); exists(dist) {
 		if err := os.Symlink(dist, filepath.Join(tree, "dist")); err != nil {
-			return "", err
+			return "", nil, err
 		}
 	}
-	return tree, nil
+	return tree, remove, nil
 }
 
 func exists(path string) bool {
@@ -388,8 +420,6 @@ func runSmoke(root, work string) error {
 		if err != nil {
 			return err
 		}
-		// the smoke set leaves no worktree behind in the checkout it ran from
-		_ = exec.Command("git", "-C", root, "worktree", "remove", "--force", filepath.Join(work, scope, "schema")).Run()
 		for _, r := range results {
 			if r.Outcome != outcomeKilled {
 				return fmt.Errorf("smoke mutant %s (%s:%d %s) is %s, and the smoke set is the mutants known to be killed", r.ID, r.File, r.Line, r.Op, r.Outcome)
@@ -412,6 +442,14 @@ func enforceEquivalents(results []Result) error {
 	}
 	bad := 0
 	for _, r := range results {
+		if r.Outcome == outcomeUnproven {
+			// a mutant no test was asked about is never a reviewed equivalent: the
+			// test that skipped or vanished under it is the hole
+			bad++
+			fmt.Fprintf(os.Stderr, "UNPROVEN %s %s %s:%d %s %q -> %q: every stage passed without testing it (stage %s): %s\nReproduce: go run ./tools/mutation run -scope %s -ids %s -work build/mutation\n",
+				r.Scope, r.ID, r.File, r.Line, r.Op, clip(r.Old), clip(r.New), r.Stage, firstLine(r.Tail), r.Scope, r.ID)
+			continue
+		}
 		if r.Outcome != outcomeSurvived {
 			continue
 		}
@@ -423,9 +461,16 @@ func enforceEquivalents(results []Result) error {
 			r.Scope, r.ID, r.File, r.Line, r.Op, clip(r.Old), clip(r.New), r.Scope, r.Scope, r.ID)
 	}
 	if bad > 0 {
-		return fmt.Errorf("%d surviving mutants are not on the reviewed list", bad)
+		return fmt.Errorf("%d surviving or unproven mutants are not on the reviewed list", bad)
 	}
 	return nil
+}
+
+func firstLine(s string) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		return s[:i]
+	}
+	return s
 }
 
 func loadEquivalents() (map[string]Equivalent, error) {
@@ -504,8 +549,8 @@ func latest(results []Result) []Result {
 // them, the killed split by the stage that did it.
 func printTable(results []Result) {
 	type row struct {
-		total, killed, survived, broken, timeout int
-		byStage                                  map[string]int
+		total, killed, survived, unproven, broken, timeout int
+		byStage                                            map[string]int
 	}
 	rows := map[string]*row{}
 	var names []string
@@ -525,11 +570,13 @@ func printTable(results []Result) {
 			w.timeout++
 		case outcomeBroken:
 			w.broken++
+		case outcomeUnproven:
+			w.unproven++
 		default:
 			w.survived++
 		}
 	}
-	fmt.Printf("%-18s %7s %7s %8s %7s %8s  %s\n", "scope", "mutants", "killed", "survived", "broken", "timeout", "killed by stage")
+	fmt.Printf("%-18s %7s %7s %8s %8s %7s %8s  %s\n", "scope", "mutants", "killed", "survived", "unproven", "broken", "timeout", "killed by stage")
 	for _, name := range names {
 		w := rows[name]
 		var stages []string
@@ -537,7 +584,7 @@ func printTable(results []Result) {
 			stages = append(stages, fmt.Sprintf("%s=%d", st, c))
 		}
 		sort.Strings(stages)
-		fmt.Printf("%-18s %7d %7d %8d %7d %8d  %s\n", name, w.total, w.killed, w.survived, w.broken, w.timeout, strings.Join(stages, " "))
+		fmt.Printf("%-18s %7d %7d %8d %8d %7d %8d  %s\n", name, w.total, w.killed, w.survived, w.unproven, w.broken, w.timeout, strings.Join(stages, " "))
 	}
 }
 

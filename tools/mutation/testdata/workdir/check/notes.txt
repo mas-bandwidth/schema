@@ -1,0 +1,2 @@
+A file the mutation tool did not make, inside <work>/<scope>/. A run of scope
+check with this as its work directory must leave it where it is (F-052).

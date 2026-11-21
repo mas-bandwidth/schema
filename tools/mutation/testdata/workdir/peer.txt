@@ -1,0 +1,2 @@
+A file the mutation tool did not make, beside <work>/<scope>/. It is the
+control: the old scratch builder removed check/notes.txt and left this (F-052).

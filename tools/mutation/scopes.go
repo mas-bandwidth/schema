@@ -38,13 +38,26 @@ type Stage struct {
 	// ran nothing and the sweep refuses to start: a command that exits zero
 	// without testing would otherwise call every mutant a survivor.
 	Proof string
+	// Counted is set for a `go test -v` stage: the tests it passes are counted
+	// by name. The unmutated tree must pass at least one, and a mutant under
+	// which one of those did not pass (skipped, filtered out, not reached) was
+	// not tested by it, which is `unproven` and not a survivor. `ok` alone
+	// proves nothing: go test prints it for a package whose every test was
+	// filtered out or skipped.
+	Counted bool
 	// Deep stages cost minutes each and run only when asked for.
 	Deep bool
 }
 
-// A go test that tested says `ok` for a package, and never that it had
-// nothing to run.
+// A go test that tested says `ok` for a package; the names of the tests it
+// passed are the rest of the proof (Counted).
 const goTestProof = `(?m)^ok\s+\S+`
+
+// goTest is the stage command that runs go test over pkgs, verbose so the
+// tests it passes can be counted.
+func goTest(flags, pkgs string) string {
+	return "go test -count=1 -v -p ${MUTATION_JOBS:-4} " + flags + pkgs
+}
 
 // coreScopes are the compiler's own packages, in the order the sweep takes
 // them.
@@ -107,18 +120,18 @@ func scopes(root string) ([]Scope, error) {
 	for _, c := range coreScopes {
 		pkg := "./" + c.dir + "/..."
 		s := Scope{Name: c.name, Go: []string{c.dir}, Min: minCore}
-		s.Stages = append(s.Stages, Stage{Name: "fast", Sh: "go test -count=1 -p ${MUTATION_JOBS:-4} " + pkg, Proof: goTestProof})
+		s.Stages = append(s.Stages, Stage{Name: "fast", Sh: goTest("", pkg), Proof: goTestProof, Counted: true})
 		gated, err := hasSlowTests(root, s.Go)
 		if err != nil {
 			return nil, err
 		}
 		if gated {
-			s.Stages = append(s.Stages, Stage{Name: "slow", Sh: "SCHEMA_SLOW=1 go test -count=1 -p ${MUTATION_JOBS:-4} -timeout 60m " + pkg, Proof: goTestProof, Deep: true})
+			s.Stages = append(s.Stages, Stage{Name: "slow", Sh: "SCHEMA_SLOW=1 " + goTest("-timeout 60m ", pkg), Proof: goTestProof, Counted: true, Deep: true})
 		}
 		// the product's own packages: a core package is also held by the tests of
 		// what imports it. The CI policy tests and the maintainer tools read the
 		// workflows and the tree, not the product, so they are left out.
-		s.Stages = append(s.Stages, Stage{Name: "repo", Sh: "go test -count=1 -p ${MUTATION_JOBS:-4} ./compiler/... ./cmd/... ./ir/... $(go list ./internal/... | grep -v /internal/ci)", Proof: goTestProof, Deep: true})
+		s.Stages = append(s.Stages, Stage{Name: "repo", Sh: goTest("", "./compiler/... ./cmd/... ./ir/... $(go list ./internal/... | grep -v /internal/ci)"), Proof: goTestProof, Counted: true, Deep: true})
 		out = append(out, s)
 	}
 	for _, t := range targetScopes {
@@ -130,7 +143,7 @@ func scopes(root string) ([]Scope, error) {
 			pkgs = append(pkgs, "./internal/codegen/"+p+"/...")
 		}
 		all := strings.Join(pkgs, " ")
-		s.Stages = append(s.Stages, Stage{Name: "fast", Sh: "go test -count=1 -p ${MUTATION_JOBS:-4} " + all, Proof: goTestProof})
+		s.Stages = append(s.Stages, Stage{Name: "fast", Sh: goTest("", all), Proof: goTestProof, Counted: true})
 
 		reg, err := readRegistry(root, t.lang)
 		if err != nil {
@@ -152,8 +165,8 @@ func scopes(root string) ([]Scope, error) {
 			s.Notes = append(s.Notes, "no make target "+hostile+": this target has no hostile runner to run")
 		}
 		s.Stages = append(s.Stages,
-			Stage{Name: "pins", Sh: "go test -count=1 -p ${MUTATION_JOBS:-4} ./internal/goldens", Proof: goTestProof},
-			Stage{Name: "slow", Sh: "SCHEMA_SLOW=1 go test -count=1 -p ${MUTATION_JOBS:-4} -timeout 120m " + all, Proof: goTestProof, Deep: true},
+			Stage{Name: "pins", Sh: goTest("", "./internal/goldens"), Proof: goTestProof, Counted: true},
+			Stage{Name: "slow", Sh: "SCHEMA_SLOW=1 " + goTest("-timeout 120m ", all), Proof: goTestProof, Counted: true, Deep: true},
 		)
 		out = append(out, s)
 	}

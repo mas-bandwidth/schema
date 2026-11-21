@@ -8,16 +8,22 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
 
-// The four things that can happen to a mutant.
+// The five things that can happen to a mutant.
 const (
-	outcomeKilled   = "killed"       // a stage went red: the tests noticed
-	outcomeSurvived = "survived"     // every stage stayed green: nothing noticed
-	outcomeBroken   = "build-broken" // the mutant does not compile: it tested nothing
-	outcomeTimeout  = "timeout"      // a stage outran its bound: counted with the killed, named apart
+	outcomeKilled   = "killed"       // a test ran and went red: the tests noticed
+	outcomeSurvived = "survived"     // every stage ran its tests and stayed green: nothing noticed
+	outcomeBroken   = "build-broken" // a compiler refused the mutant, Go's or a target's: no test was asked
+	outcomeTimeout  = "timeout"      // a stage, or the tester inside it, outran its bound: counted with the killed, named apart
+	// outcomeUnproven is a mutant every stage passed while not testing it: a
+	// test that passed on the unmutated tree was skipped, filtered out or gone
+	// under the mutant, or the stage's output lost its proof that it tested.
+	// It is no survivor and no kill: the coverage was not there to ask.
+	outcomeUnproven = "unproven"
 )
 
 // Result is one mutant's outcome.
@@ -48,7 +54,64 @@ type sweepOptions struct {
 	BaselineLimit time.Duration
 }
 
-var buildFailed = regexp.MustCompile(`\[build failed\]|\[setup failed\]`)
+// buildFailed is a compiler refusing the mutant before any test of it ran:
+// Go's own, and the native compilers the targets' stages run (C and C++ by
+// gcc or clang and their linkers, C#, Dart, Java, Rust, Elixir, Lobster). A
+// stage that dies here asked no test anything, so its verdict is build-broken
+// and never a kill.
+var buildFailed = regexp.MustCompile(`(?m)` + strings.Join([]string{
+	`\[build failed\]`, `\[setup failed\]`, // go test
+	`^\s*[^\s:]+:\d+:\d+: (?:fatal )?[Ee]rror: `,                                 // gcc, clang, dart: file:line:col: error:
+	`^\s*(?:collect2|ld|clang|clang\+\+|gcc|g\+\+|cc|c\+\+): (?:fatal )?error: `, // the driver or the linker
+	`^\s*\S+\.java:\d+: error: `,                                                 // javac
+	`\berror CS\d{4}:`,                                                           // dotnet
+	`^error\[E\d{4}\]: `, `^error: could not compile `,                           // rustc, cargo
+	`\*\* \((?:CompileError|SyntaxError|TokenMissingError|MismatchedDelimiterError)\)`, // elixir
+	`^\s*\S+\.lobster\(\d+\): error: `,                                                 // lobster
+}, "|"))
+
+// testerTimedOut is the tester inside a stage reporting that it gave up on a
+// test at its own deadline: go test's -timeout, and the conformance harness's
+// reply deadline. The stage then exits red before the sweep's own bound
+// fires, and the verdict is a timeout, not an assertion that failed.
+var testerTimedOut = regexp.MustCompile(`(?m)^panic: test timed out after |the driver stalled: no reply within `)
+
+// failed is the verdict of a stage that exited red: a compiler that refused
+// the mutant, a tester that hit its own deadline, or a test that failed.
+func failed(out []byte) string {
+	switch {
+	case buildFailed.Match(out):
+		return outcomeBroken
+	case testerTimedOut.Match(out):
+		return outcomeTimeout
+	}
+	return outcomeKilled
+}
+
+// passedTest is one test a `go test -v` passed, by name.
+var passedTest = regexp.MustCompile(`(?m)^\s*--- PASS: (\S+)`)
+
+// passedTests counts the tests a `go test -v` output passed, by name.
+func passedTests(out []byte) map[string]int {
+	got := map[string]int{}
+	for _, m := range passedTest.FindAllSubmatch(out, -1) {
+		got[string(m[1])]++
+	}
+	return got
+}
+
+// lost is the tests that passed on the unmutated tree and did not pass under
+// the mutant, sorted: each was skipped, filtered out or never reached.
+func lost(base, now map[string]int) []string {
+	var out []string
+	for name, n := range base {
+		if now[name] < n {
+			out = append(out, name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
 
 // sweep runs the mutants of one scope through its stages in the scratch tree.
 //
@@ -69,11 +132,14 @@ func sweep(scope Scope, tree string, muts []Mutant, opt sweepOptions, run Exec, 
 		return fmt.Errorf("scope %s: no mutant to apply: a sweep that mutates nothing proves nothing", scope.Name)
 	}
 	limits := make([]time.Duration, len(stages))
+	proofs := make([]*regexp.Regexp, len(stages))
+	passed := make([]map[string]int, len(stages))
 	for i, st := range stages {
-		took, err := baseline(scope, st, tree, opt.BaselineLimit, run)
+		took, tests, err := baseline(scope, st, tree, opt.BaselineLimit, run)
 		if err != nil {
 			return err
 		}
+		proofs[i], passed[i] = regexp.MustCompile(st.Proof), tests
 		limits[i] = 3*took + 2*time.Minute
 		_, _ = fmt.Fprintf(log, "baseline %s/%s green in %.0fs\n", scope.Name, st.Name, took.Seconds())
 	}
@@ -111,6 +177,11 @@ func sweep(scope Scope, tree string, muts []Mutant, opt sweepOptions, run Exec, 
 			}
 		}
 		if res.Outcome == outcomeSurvived {
+			// a green stage counts only if it tested the mutant: it must show its
+			// proof again, and pass every test it passed on the unmutated tree. A
+			// stage that did not is remembered, and a later stage may still kill
+			// the mutant.
+			var unproven *Result
 			for i, st := range stages {
 				out, ok, timedOut, took := run(tree, st.Sh, limits[i])
 				stagesRun++
@@ -122,12 +193,22 @@ func sweep(scope Scope, tree string, muts []Mutant, opt sweepOptions, run Exec, 
 					break
 				}
 				if !ok {
-					res.Outcome, res.Tail = outcomeKilled, tail(out)
-					if buildFailed.Match(out) {
-						res.Outcome = outcomeBroken
-					}
+					res.Outcome, res.Tail = failed(out), tail(out)
 					break
 				}
+				if unproven != nil {
+					continue
+				}
+				if !proofs[i].Match(out) {
+					unproven = &Result{Stage: st.Name, Tail: fmt.Sprintf("the stage passed and its output does not match %q: it did not test the mutant\n%s", st.Proof, tail(out))}
+				} else if st.Counted {
+					if missing := lost(passed[i], passedTests(out)); len(missing) > 0 {
+						unproven = &Result{Stage: st.Name, Tail: fmt.Sprintf("%d tests passed on the unmutated tree and did not pass under the mutant (skipped, filtered out or not reached): %s\n%s", len(missing), clip(strings.Join(missing, " ")), tail(out))}
+					}
+				}
+			}
+			if res.Outcome == outcomeSurvived && unproven != nil {
+				res.Outcome, res.Stage, res.Tail = outcomeUnproven, unproven.Stage, unproven.Tail
 			}
 		}
 		res.Seconds = seconds
@@ -147,8 +228,14 @@ func sweep(scope Scope, tree string, muts []Mutant, opt sweepOptions, run Exec, 
 	if stagesRun == 0 {
 		return fmt.Errorf("scope %s: %d mutants applied and no test stage ran: every one failed to build, so no test was asked anything", scope.Name, applied)
 	}
-	for _, st := range stages {
-		if _, err := baseline(scope, st, tree, opt.BaselineLimit, run); err != nil {
+	for i, st := range stages {
+		_, tests, err := baseline(scope, st, tree, opt.BaselineLimit, run)
+		if err == nil && st.Counted {
+			if missing := lost(passed[i], tests); len(missing) > 0 {
+				err = fmt.Errorf("scope %s stage %s: %d tests that passed before the first mutant did not pass after the last: %s", scope.Name, st.Name, len(missing), clip(strings.Join(missing, " ")))
+			}
+		}
+		if err != nil {
 			return fmt.Errorf("after the last mutant was reverted, and so every verdict of this run is void: %w", err)
 		}
 	}
@@ -156,22 +243,27 @@ func sweep(scope Scope, tree string, muts []Mutant, opt sweepOptions, run Exec, 
 }
 
 // baseline runs a stage on the unmutated tree, and holds it to green and to
-// its proof.
-func baseline(scope Scope, st Stage, tree string, limit time.Duration, run Exec) (time.Duration, error) {
+// its proof. A counted stage must also have passed at least one test by name,
+// and the tests it passed are returned: a `go test` that filtered out or
+// skipped every test still prints `ok` for the package.
+func baseline(scope Scope, st Stage, tree string, limit time.Duration, run Exec) (time.Duration, map[string]int, error) {
 	proof, err := regexp.Compile(st.Proof)
 	if err != nil || st.Proof == "" {
-		return 0, fmt.Errorf("scope %s stage %s: a stage needs a proof that it tested, and %q is not one", scope.Name, st.Name, st.Proof)
+		return 0, nil, fmt.Errorf("scope %s stage %s: a stage needs a proof that it tested, and %q is not one", scope.Name, st.Name, st.Proof)
 	}
 	out, ok, timedOut, took := run(tree, st.Sh, limit)
+	tests := passedTests(out)
 	switch {
 	case timedOut:
-		return 0, fmt.Errorf("scope %s stage %s: the unmutated tree did not finish %q within %s:\n%s", scope.Name, st.Name, st.Sh, limit, tail(out))
+		return 0, nil, fmt.Errorf("scope %s stage %s: the unmutated tree did not finish %q within %s:\n%s", scope.Name, st.Name, st.Sh, limit, tail(out))
 	case !ok:
-		return 0, fmt.Errorf("scope %s stage %s: the unmutated tree is red under %q, so the stage can tell a mutant nothing:\n%s", scope.Name, st.Name, st.Sh, tail(out))
+		return 0, nil, fmt.Errorf("scope %s stage %s: the unmutated tree is red under %q, so the stage can tell a mutant nothing:\n%s", scope.Name, st.Name, st.Sh, tail(out))
 	case !proof.Match(out):
-		return 0, fmt.Errorf("scope %s stage %s: %q passed and its output does not match %q: it tested nothing:\n%s", scope.Name, st.Name, st.Sh, st.Proof, tail(out))
+		return 0, nil, fmt.Errorf("scope %s stage %s: %q passed and its output does not match %q: it tested nothing:\n%s", scope.Name, st.Name, st.Sh, st.Proof, tail(out))
+	case st.Counted && len(tests) == 0:
+		return 0, nil, fmt.Errorf("scope %s stage %s: %q passed and ran no test: no `--- PASS` line, so every test it names was filtered out or skipped, or it is not run with -v:\n%s", scope.Name, st.Name, st.Sh, tail(out))
 	}
-	return took, nil
+	return took, tests, nil
 }
 
 // stagesFor is the scope's stages under the options, and an error when that

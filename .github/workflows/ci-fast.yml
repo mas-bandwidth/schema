@@ -860,6 +860,15 @@ jobs:
           cache: false
       - name: the smoke mutants are all killed
         run: go run ./tools/mutation smoke -work "$RUNNER_TEMP/mutation-smoke"
+      # The sweep's own corpus (tools/mutation/testdata): the real sweep and
+      # shell over a tiny Go module and C program whose mutants have recorded
+      # verdicts, beside a control for each: a skipped or filtered-out test is
+      # unproven, not a survivor (F-051); a work directory's files that the
+      # tool did not make stay (F-052); a compiler refusing the mutant is
+      # build-broken, not a kill (F-226); go test's own deadline is a timeout
+      # (F-227).
+      - name: the corpus mutants get their recorded verdicts
+        run: go run ./tools/mutation corpus -work "$RUNNER_TEMP/mutation-corpus"
 
   # FAST GOLANGCI-LINT OVER TOUCHED GO PACKAGES (~4-10 s on fleet runners).
   # Catches gocritic / staticcheck / errcheck / unused issues in touched Go

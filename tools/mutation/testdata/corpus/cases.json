@@ -1,0 +1,40 @@
+{
+  "about": "The mutation sweep's own corpus: `go run ./tools/mutation corpus` copies this directory, runs the real sweep with the real shell over each stage below, and fails unless every mutant gets the outcome named here and every refused stage is refused for the reason named here. Each finding's case sits beside a control that was right before the fix.",
+  "go": ["sum"],
+  "stages": [
+    {
+      "name": "go",
+      "sh": "go test -count=1 -v -timeout=1s ./sum",
+      "proof": "(?m)^ok\\s+\\S+",
+      "counted": true,
+      "mutants": [
+        {"id": "go-assertion", "file": "sum/sum.go", "old": "2 + 3", "new": "2 + 2", "want": "killed", "case": "control: TestSum runs and its assertion fails"},
+        {"id": "go-equivalent", "file": "sum/sum.go", "old": "2 + 3", "new": "3 + 2", "want": "survived", "case": "control: the same sum, TestSum runs and passes"},
+        {"id": "go-unbuildable", "file": "sum/sum.go", "old": "2 + 3", "new": "2 + missing_value", "want": "build-broken", "case": "control: Go's compiler refuses the mutant"},
+        {"id": "go-skipped", "file": "sum/sum.go", "old": "2 + 3", "new": "2 - 3", "want": "unproven", "case": "F-051: TestSum skips under the mutant and go test still prints ok; it was a survivor"},
+        {"id": "go-tester-deadline", "file": "sum/sum.go", "old": "2 + 3", "new": "3 + 3", "want": "timeout", "case": "F-227: go test's own -timeout fires before the sweep's bound; it was a kill"}
+      ]
+    },
+    {
+      "name": "go-filtered",
+      "sh": "go test -count=1 -v -run '^TestNoSuchTest$' ./sum",
+      "proof": "(?m)^ok\\s+\\S+",
+      "counted": true,
+      "refused": "ran no test",
+      "mutants": [
+        {"id": "filtered-assertion", "file": "sum/sum.go", "old": "2 + 3", "new": "2 + 2", "want": "", "case": "F-051: the stage filters out every test and go test prints ok [no tests to run]; the sweep called the mutant a survivor and must refuse the stage"}
+      ]
+    },
+    {
+      "name": "native",
+      "sh": "mkdir -p build && ${CC:-cc} -std=c11 -o build/sum native/sum.c && ./build/sum",
+      "proof": "CORPUS_SUM_PASSED",
+      "mutants": [
+        {"id": "native-assertion", "file": "native/sum.c", "old": "2 + 3", "new": "2 - 3", "want": "killed", "case": "control: the compiled program runs and its check fails"},
+        {"id": "native-equivalent", "file": "native/sum.c", "old": "2 + 3", "new": "3 + 2", "want": "survived", "case": "control: the same sum, the program runs and passes"},
+        {"id": "native-unbuildable", "file": "native/sum.c", "old": "2 + 3", "new": "2 + missing_value", "want": "build-broken", "case": "F-226: the C compiler refuses the mutant before the program runs; it was a kill"},
+        {"id": "native-no-proof", "file": "native/sum.c", "old": "puts(\"CORPUS_SUM_PASSED\");", "new": ";", "want": "unproven", "case": "F-051: the stage exits green without its proof under the mutant; it was a survivor"}
+      ]
+    }
+  ]
+}
