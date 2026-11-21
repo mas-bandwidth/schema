@@ -89,3 +89,60 @@ func TestJavaScriptObjectModelNamesRefused(t *testing.T) {
 		t.Errorf("ordinary names were refused: %v", errs)
 	}
 }
+
+// THE BINDING SITE (SPEC §4.6, §6.1). A declaration becomes a module-scope
+// binding of its own name in the generated JavaScript and a declaration of it
+// in the .d.ts. Three names cannot be one: an ES module refuses eval and
+// arguments as a binding, and a binding named undefined takes the value the
+// generated modules compare against (TypeScript refuses the declaration
+// outright). Each is refused as every kind of declaration. A FIELD of the
+// same name is a property and binds nothing, so it is kept.
+func TestJavaScriptUnbindableNamesRefusedAsDeclarations(t *testing.T) {
+	t.Parallel()
+	compile := func(source string) []error {
+		t.Helper()
+		f, perrs := parser.Parse("Probe.schema", []byte(source))
+		if len(perrs) > 0 {
+			t.Fatalf("parse %q: %v", source, perrs[0])
+		}
+		_, cerrs := check.Unit([]check.SourceFile{{
+			Path: "Probe.schema", Name: "Probe.schema", Base: "Probe", Bytes: []byte(source), AST: f,
+		}})
+		return cerrs
+	}
+	forms := func(name string) map[string]string {
+		return map[string]string{
+			"type":  "package probe\n\ntype " + name + "\n{\n    value uint32\n}\n\ntable Entry\n{\n    part " + name + "\n}\n",
+			"table": "package probe\n\ntable " + name + "\n{\n    value uint32\n}\n",
+			"enum":  "package probe\n\nenum " + name + "\n{\n    a\n    b\n}\n",
+			"flags": "package probe\n\nflags " + name + "\n{\n    a\n    b\n}\n",
+			"union": "package probe\n\ntype P\n{\n    a int32\n}\n\nunion " + name + "\n{\n    p P\n}\n",
+			"const": "package probe\n\nconst " + name + " = 1\n",
+		}
+	}
+	// the control: every form compiles under an ordinary name
+	for kind, source := range forms("Clean") {
+		if errs := compile(source); len(errs) > 0 {
+			t.Fatalf("the control %s named Clean was refused: %v", kind, errs)
+		}
+	}
+	for _, name := range []string{"eval", "arguments", "undefined"} {
+		for kind, source := range forms(name) {
+			errs := compile(source)
+			named := false
+			for _, err := range errs {
+				if strings.Contains(err.Error(), name) && strings.Contains(err.Error(), "JavaScript") {
+					named = true
+				}
+			}
+			if !named {
+				t.Errorf("%s %s was not refused naming the JavaScript binding; got %v", kind, name, errs)
+			}
+		}
+		// the same word as a field is a property, never a binding
+		field := "package probe\n\ntype Clean\n{\n    value uint32\n}\n\ntable Entry\n{\n    part Clean\n    " + name + " uint32\n}\n"
+		if errs := compile(field); len(errs) > 0 {
+			t.Errorf("a field named %s was refused: %v", name, errs)
+		}
+	}
+}
