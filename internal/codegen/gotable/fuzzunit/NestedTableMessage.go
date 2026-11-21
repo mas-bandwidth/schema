@@ -203,7 +203,7 @@ func tableMessageBodyArchiveConfig(r *TableMessageReader, value *ArchiveConfig, 
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Count = int32(v)
+						value.Count = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.Count != 1) {
