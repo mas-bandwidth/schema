@@ -59,3 +59,40 @@ func TestDependentsControlDirectoriesAloneMissTablewire(t *testing.T) {
 		}
 	}
 }
+
+// embedFixture: the Squirrel generator embeds runtime/module.nut, compiler
+// imports the generator, internal/goldens imports compiler, and
+// internal/codegen/lua's tests alone embed a fixture.
+const embedFixture = `github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel|fmt|runtime/module.nut runtime/sq.nut|
+github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel [github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel.test]|fmt testing|runtime/module.nut runtime/sq.nut|
+github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable|fmt github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel||
+github.com/mas-bandwidth/schema/v2/compiler|fmt github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel||
+github.com/mas-bandwidth/schema/v2/internal/goldens.test|fmt github.com/mas-bandwidth/schema/v2/compiler github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel testing||
+github.com/mas-bandwidth/schema/v2/internal/codegen/lua|fmt||testdata/x.lua 
+github.com/mas-bandwidth/schema/v2/ir|fmt||
+`
+
+// TestSelectPackagesSeedsDependentsFromAnEmbeddedChange: a runtime-only
+// change (a .nut file the Squirrel generator embeds, no .go file) selects
+// every package that builds on the generator, compiler and internal/goldens
+// among them; a changed file only a package's tests embed selects that
+// package alone; a file nothing embeds selects nothing more.
+func TestSelectPackagesSeedsDependentsFromAnEmbeddedChange(t *testing.T) {
+	t.Parallel()
+	got, err := expand(selectPackages(embedFixture, []string{"./internal/codegen/squirrel", "./internal/codegen/squirreltable"}, nil, []string{"internal/codegen/squirrel/runtime/module.nut"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"./compiler", "./internal/goldens"} {
+		if !slices.Contains(got, want) {
+			t.Errorf("a change to the embedded runtime/module.nut selected %v, without %s", got, want)
+		}
+	}
+	if slices.Contains(got, "./ir") {
+		t.Errorf("selected ./ir, which does not depend on the generator: %v", got)
+	}
+	got = selectPackages(embedFixture, nil, nil, []string{"internal/codegen/lua/testdata/x.lua", "docs/README.md"})
+	if !slices.Equal(got, []string{"./internal/codegen/lua"}) {
+		t.Errorf("a test-embedded change and an unembedded one selected %v, want only ./internal/codegen/lua", got)
+	}
+}

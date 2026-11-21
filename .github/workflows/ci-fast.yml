@@ -229,6 +229,9 @@ jobs:
             echo "::notice::the diff is empty against origin/$BASE — running the broad selection"
             files="ir/"
           fi
+          # the rows step reads the diff too: a changed file a package embeds
+          # (go:embed) seeds the dependents expansion from its owner
+          printf '%s\n' "$files" > "$RUNNER_TEMP/diff-files.txt"
           echo "--- files in the diff"
           echo "$files"
 
@@ -601,9 +604,10 @@ jobs:
             *" ./internal/codegen/gotable "*|*" ./... "*) flags="$flags -gotable-extras" ;;
           esac
           # the dependents of the changed non-test source ride beside the diff's
-          # own packages (THE DEPENDENTS in `pick`)
+          # own packages (THE DEPENDENTS in `pick`), and so do the dependents of a
+          # package that embeds a changed non-.go file (a runtime-only diff)
           # shellcheck disable=SC2086
-          rows=$(go run ./tools/gotestrows $flags -dependents-of "$SRC_PACKAGES" $PACKAGES)
+          rows=$(go run ./tools/gotestrows $flags -dependents-of "$SRC_PACKAGES" -changed-files "$RUNNER_TEMP/diff-files.txt" $PACKAGES)
           echo "$rows"
           echo "rows=$rows" >> "$GITHUB_OUTPUT"
 

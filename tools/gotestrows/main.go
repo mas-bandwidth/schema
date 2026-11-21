@@ -1,7 +1,7 @@
 // Command gotestrows cuts ci-fast's go-test-touched selection into matrix
 // rows that each finish inside the fleet's two-minute per-commit cap.
 //
-//	go run ./tools/gotestrows [-short] [-budget seconds] [-gotable-extras] [-dependents-of "<package>..."] <package>...
+//	go run ./tools/gotestrows [-short] [-budget seconds] [-gotable-extras] [-dependents-of "<package>..."] [-changed-files <file>] <package>...
 //
 // It prints one line of JSON, a GitHub Actions matrix `include` list: one
 // object per row, {"row": "k/n", "packages": "...", "run": "...", "skip":
@@ -10,7 +10,9 @@
 // non-test source the diff changed; every main-module package whose build or
 // tests depend on one of them (`go list -test`) is selected beside the
 // arguments, so a change cannot go green while it breaks a package it did not
-// touch.
+// touch. -changed-files names a file listing the diff's paths; a changed
+// non-.go file a package embeds (go:embed) seeds the expansion from that
+// package, and one only its tests embed selects the package alone.
 //
 // EVERY SELECTED TEST RUNS IN EXACTLY ONE ROW, by construction, and no row
 // list is a second home for the package list:
@@ -79,6 +81,7 @@ func main() {
 	budget := flag.Float64("budget", 60, "seconds of test time a packed row may carry")
 	extras := flag.Bool("gotable-extras", false, "add the tables-go-fixedform and conformance-go-rows rows")
 	changed := flag.String("dependents-of", "", "packages whose non-test source changed: every main-module package whose tests build against one of them is selected too")
+	changedFiles := flag.String("changed-files", "", "a file listing the diff's paths, one per line: a changed non-.go file a package embeds seeds -dependents-of with that package (a test embed selects the package alone)")
 	flag.Parse()
 
 	t, err := readTable(tablePath)
@@ -86,12 +89,21 @@ func main() {
 		fail(err)
 	}
 	args := flag.Args()
-	if strings.TrimSpace(*changed) != "" {
-		list, err := exec.Command("go", "list", "-test", "-f", "{{.ImportPath}}|{{join .Deps \" \"}}", "./...").Output()
+	seeds := strings.Fields(*changed)
+	var files []string
+	if *changedFiles != "" {
+		b, err := os.ReadFile(*changedFiles)
+		if err != nil {
+			fail(err)
+		}
+		files = strings.Fields(string(b))
+	}
+	if len(seeds) > 0 || len(files) > 0 {
+		list, err := exec.Command("go", "list", "-test", "-f", listFormat, "./...").Output()
 		if err != nil {
 			fail(fmt.Errorf("go list -test ./...: %w", err))
 		}
-		args = append(args, dependents(string(list), strings.Fields(*changed))...)
+		args = selectPackages(string(list), args, seeds, files)
 	}
 	pkgs, err := expand(args)
 	if err != nil {
@@ -192,6 +204,72 @@ func expand(args []string) ([]string, error) {
 	return out, nil
 }
 
+// listFormat is the `go list -test` template dependents and embedOwners read:
+// the import path, the transitive deps, the package's embedded files, and its
+// test embeds (in-package and external), each field after a "|".
+const listFormat = `{{.ImportPath}}|{{join .Deps " "}}|{{join .EmbedFiles " "}}|{{join .TestEmbedFiles " "}} {{join .XTestEmbedFiles " "}}`
+
+// embedOwners maps the diff's non-.go files to the main-module packages that
+// embed them (go:embed): src, the packages whose build embeds a changed file
+// (a change to their non-test source, so a seed for dependents), and test,
+// the packages whose tests alone embed one (selected themselves, with no
+// dependents). Without it a runtime-only change, such as a Squirrel
+// runtime/module.nut the Squirrel generator embeds, seeded no expansion and
+// left out every package that builds on that generator (compiler,
+// internal/goldens).
+func embedOwners(list string, files []string) (src, test []string) {
+	changed := map[string]bool{}
+	for _, f := range files {
+		if !strings.HasSuffix(f, ".go") {
+			changed[strings.TrimPrefix(f, "./")] = true
+		}
+	}
+	if len(changed) == 0 {
+		return nil, nil
+	}
+	for line := range strings.Lines(list) {
+		fields := strings.Split(strings.TrimSpace(line), "|")
+		if len(fields) < 4 {
+			continue
+		}
+		path := fields[0]
+		// the test variants repeat the package's embeds; the plain entry is enough
+		if strings.Contains(path, " ") || strings.HasSuffix(path, ".test") || strings.HasSuffix(path, "_test") {
+			continue
+		}
+		var rel string
+		switch {
+		case path == modulePath:
+			rel = "."
+		case strings.HasPrefix(path, modulePath+"/"):
+			rel = strings.TrimPrefix(path, modulePath+"/")
+		default:
+			continue
+		}
+		owns := func(embeds string) bool {
+			for e := range strings.FieldsSeq(embeds) {
+				f := e
+				if rel != "." {
+					f = rel + "/" + e
+				}
+				if changed[f] {
+					return true
+				}
+			}
+			return false
+		}
+		switch {
+		case owns(fields[2]):
+			src = append(src, "./"+rel)
+		case owns(fields[3]):
+			test = append(test, "./"+rel)
+		}
+	}
+	sort.Strings(src)
+	sort.Strings(test)
+	return src, test
+}
+
 // dependents reads `go list -test -f '{{.ImportPath}}|{{join .Deps " "}}'
 // ./...` and returns, ./-relative and sorted, every main-module package whose
 // own build or test binary depends on one of changed (./-relative package
@@ -218,6 +296,7 @@ func dependents(list string, changed []string) []string {
 		if !ok {
 			continue
 		}
+		deps, _, _ = strings.Cut(deps, "|") // the embed fields follow (listFormat)
 		path, _, _ = strings.Cut(path, " ")
 		path = strings.TrimSuffix(path, ".test")
 		path = strings.TrimSuffix(path, "_test")
@@ -314,4 +393,18 @@ func plan(t table, pkgs []string, short bool, budget float64) []Row {
 		rows = append(rows, Row{Packages: strings.Join(b, " ")})
 	}
 	return rows
+}
+
+// selectPackages is the package arguments plus what the diff reaches through
+// them: the owners of changed embedded files (embedOwners) and every
+// dependent of the seeds, the packages whose non-test source changed, and the
+// packages whose build embeds a changed file.
+func selectPackages(list string, args, seeds, files []string) []string {
+	src, test := embedOwners(list, files)
+	seeds = append(append([]string(nil), seeds...), src...)
+	out := append(append([]string(nil), args...), test...)
+	if len(seeds) > 0 {
+		out = append(out, dependents(list, seeds)...)
+	}
+	return out
 }
