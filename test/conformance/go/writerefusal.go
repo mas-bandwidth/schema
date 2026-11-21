@@ -180,7 +180,7 @@ func writeRefusalGoIndex(fv reflect.Value, index int, path string) (reflect.Valu
 func writeRefusalGoSet(owner, fv reflect.Value, name, kind, text string) error {
 	switch kind {
 	case "count":
-		n, err := strconv.Atoi(text)
+		n, err := writeRefusalGoToken(name, text)
 		if err != nil {
 			return err
 		}
@@ -188,50 +188,61 @@ func writeRefusalGoSet(owner, fv reflect.Value, name, kind, text string) error {
 		if !ok {
 			return fmt.Errorf("%s: no count beside %s", name, owner.Type())
 		}
-		companion.SetInt(int64(n))
-		return nil
+		return writeRefusalGoStore(companion, n)
 	case "length":
-		n, err := strconv.Atoi(text)
+		n, err := writeRefusalGoToken(name, text)
 		if err != nil {
 			return err
 		}
+		// THE LENGTH IS STORED FIRST, checked against its own declared kind,
+		// so a length the companion cannot hold moves nothing. Past storage
+		// only the length moves: the fill stops at the array's end, and the
+		// writer must refuse before it reads past it.
 		if fv.Kind() == reflect.Struct {
 			if val, ok := writeRefusalGoField(fv, "Value"); ok {
 				if comp, ok2 := writeRefusalGoField(fv, "ValueLength"); ok2 {
-					writeRefusalGoFill(val, n, 'a')
-					comp.SetInt(int64(n))
-					return nil
+					if err := writeRefusalGoStore(comp, n); err != nil {
+						return err
+					}
+					return writeRefusalGoFill(val, n, 'a')
 				}
 			}
 		}
-		writeRefusalGoFill(fv, n, 'a')
 		companion, ok := writeRefusalGoField(owner, name+"Length")
 		if !ok {
 			return fmt.Errorf("%s: no length beside %s", name, owner.Type())
 		}
-		companion.SetInt(int64(n))
-		return nil
+		if err := writeRefusalGoStore(companion, n); err != nil {
+			return err
+		}
+		return writeRefusalGoFill(fv, n, 'a')
 	case "bytes":
 		b, err := hex.DecodeString(text)
 		if err != nil {
 			return err
 		}
+		units := make([]uint16, len(b))
+		for i := range units {
+			units[i] = uint16(b[i])
+		}
 		if fv.Kind() == reflect.Struct {
 			if val, ok := writeRefusalGoField(fv, "Value"); ok {
 				if comp, ok2 := writeRefusalGoField(fv, "ValueLength"); ok2 {
-					writeRefusalGoBytes(val, b)
-					comp.SetInt(int64(len(b)))
-					return nil
+					if err := writeRefusalGoUnits(val, units); err != nil {
+						return err
+					}
+					return writeRefusalGoStore(comp, big.NewInt(int64(len(units))))
 				}
 			}
 		}
-		writeRefusalGoBytes(fv, b)
+		if err := writeRefusalGoUnits(fv, units); err != nil {
+			return err
+		}
 		companion, ok := writeRefusalGoField(owner, name+"Length")
 		if !ok {
 			return fmt.Errorf("%s: no length beside %s", name, owner.Type())
 		}
-		companion.SetInt(int64(len(b)))
-		return nil
+		return writeRefusalGoStore(companion, big.NewInt(int64(len(units))))
 	case "units":
 		b, err := hex.DecodeString(text)
 		if err != nil || len(b)%2 != 0 {
@@ -241,46 +252,25 @@ func writeRefusalGoSet(owner, fv reflect.Value, name, kind, text string) error {
 		for i := range units {
 			units[i] = uint16(b[2*i])<<8 | uint16(b[2*i+1])
 		}
-		writeRefusalGoUnits(fv, units)
+		if err := writeRefusalGoUnits(fv, units); err != nil {
+			return err
+		}
 		companion, ok := writeRefusalGoField(owner, name+"Length")
 		if !ok {
 			return fmt.Errorf("%s: no length beside %s", name, owner.Type())
 		}
-		companion.SetInt(int64(len(units)))
-		return nil
-	case "int":
-		n, ok := new(big.Int).SetString(text, 10)
-		if !ok {
-			return fmt.Errorf("%s: %q is not an integer", name, text)
-		}
-		// A value past the storage's own width (§5.1 row 11 on a bare int) is
-		// one Go's typed storage cannot hold: the type system refused it
-		// before the writer could, and the leg says so rather than writing a
-		// truncated value and calling it "wrote".
-		switch fv.Kind() {
-		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-			if !n.IsInt64() || fv.OverflowInt(n.Int64()) {
-				return errWriteRefusalUnrepresentable
-			}
-			fv.SetInt(n.Int64())
-		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-			if n.Sign() < 0 || !n.IsUint64() || fv.OverflowUint(n.Uint64()) {
-				return errWriteRefusalUnrepresentable
-			}
-			fv.SetUint(n.Uint64())
-		default:
-			return fmt.Errorf("%s: %s is not an integer", name, fv.Type())
-		}
-		return nil
-	case "ordinal":
-		n, err := strconv.ParseUint(text, 10, 64)
+		return writeRefusalGoStore(companion, big.NewInt(int64(len(units))))
+	case "int", "ordinal":
+		// §5.1 row 11 on a bare int, and an enum's ordinal: the declared
+		// storage is the field's own Go kind, and writeRefusalGoStore holds
+		// the token to it.
+		n, err := writeRefusalGoToken(name, text)
 		if err != nil {
 			return err
 		}
-		fv.SetUint(n)
-		return nil
+		return writeRefusalGoStore(fv, n)
 	case "tag":
-		tag, err := strconv.ParseUint(text, 10, 64)
+		tag, err := writeRefusalGoToken(name, text)
 		if err != nil {
 			return err
 		}
@@ -288,7 +278,11 @@ func writeRefusalGoSet(owner, fv reflect.Value, name, kind, text string) error {
 		if !ok {
 			return fmt.Errorf("%s: %s carries no union tag", name, fv.Type())
 		}
-		typ.SetUint(tag)
+		// the tag is stored before the payload is cleared, so a tag the
+		// storage cannot hold leaves the value as it was read
+		if err := writeRefusalGoStore(typ, tag); err != nil {
+			return err
+		}
 		if payload, ok := writeRefusalGoField(fv, "Payload"); ok {
 			payload.Set(reflect.Zero(payload.Type()))
 		}
@@ -307,6 +301,11 @@ func writeRefusalGoSet(owner, fv reflect.Value, name, kind, text string) error {
 		}
 		switch fv.Kind() {
 		case reflect.Float32, reflect.Float64:
+			// a finite decimal past a float32's range would be stored as an
+			// infinity, which is a different value: the storage cannot hold it
+			if fv.OverflowFloat(v) {
+				return errWriteRefusalUnrepresentable
+			}
 			fv.SetFloat(v)
 			if pres, ok := writeRefusalGoField(owner, name+"Present"); ok && pres.Kind() == reflect.Bool {
 				pres.SetBool(true)
@@ -319,27 +318,62 @@ func writeRefusalGoSet(owner, fv reflect.Value, name, kind, text string) error {
 	return fmt.Errorf("%s: unknown kind %q", name, kind)
 }
 
-func writeRefusalGoFill(fv reflect.Value, n int, unit byte) {
-	for i := 0; i < n && i < fv.Len(); i++ {
-		switch fv.Index(i).Kind() {
-		case reflect.Uint8:
-			fv.Index(i).SetUint(uint64(unit))
-		case reflect.Uint16:
-			fv.Index(i).SetUint(uint64(unit))
+// writeRefusalGoToken reads a row's decimal integer at any width, so the token
+// itself is never narrowed before it meets the field's declared kind.
+func writeRefusalGoToken(name, text string) (*big.Int, error) {
+	n, ok := new(big.Int).SetString(text, 10)
+	if !ok {
+		return nil, fmt.Errorf("%s: %q is not an integer", name, text)
+	}
+	return n, nil
+}
+
+// writeRefusalGoStore is THE ONE CHECKED CONVERSION every integer this driver
+// assigns goes through: a bare integer, an enum's ordinal, a union's tag, a
+// count, a length, and each unit of a string or a byte array. It is keyed on
+// the destination's own reflect kind, which is the generated field's declared
+// storage. A value that kind cannot hold is `unrepresentable` and nothing is
+// stored: reflect's SetInt and SetUint keep the low bits and say nothing, so
+// 256 in a one-byte ordinal would land as 0, a lawful member, and the row
+// would answer `wrote` for a value that was never written.
+func writeRefusalGoStore(fv reflect.Value, n *big.Int) error {
+	switch fv.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		if !n.IsInt64() || fv.OverflowInt(n.Int64()) {
+			return errWriteRefusalUnrepresentable
+		}
+		fv.SetInt(n.Int64())
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		if !n.IsUint64() || fv.OverflowUint(n.Uint64()) {
+			return errWriteRefusalUnrepresentable
+		}
+		fv.SetUint(n.Uint64())
+	default:
+		return fmt.Errorf("%s is not integer storage", fv.Type())
+	}
+	return nil
+}
+
+// writeRefusalGoFill writes unit into the first n elements the storage has.
+func writeRefusalGoFill(fv reflect.Value, n *big.Int, unit byte) error {
+	u := big.NewInt(int64(unit))
+	for i := 0; i < fv.Len() && big.NewInt(int64(i)).Cmp(n) < 0; i++ {
+		if err := writeRefusalGoStore(fv.Index(i), u); err != nil {
+			return err
 		}
 	}
+	return nil
 }
 
-func writeRefusalGoBytes(fv reflect.Value, b []byte) {
-	for i := 0; i < len(b) && i < fv.Len(); i++ {
-		fv.Index(i).SetUint(uint64(b[i]))
-	}
-}
-
-func writeRefusalGoUnits(fv reflect.Value, units []uint16) {
+// writeRefusalGoUnits writes a string's units, or a byte array's bytes, into
+// the elements the storage has.
+func writeRefusalGoUnits(fv reflect.Value, units []uint16) error {
 	for i := 0; i < len(units) && i < fv.Len(); i++ {
-		fv.Index(i).SetUint(uint64(units[i]))
+		if err := writeRefusalGoStore(fv.Index(i), big.NewInt(int64(units[i]))); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 func writeRefusalGoFloat(text string) (float64, error) {

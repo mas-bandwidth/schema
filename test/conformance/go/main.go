@@ -18,6 +18,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"math/big"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -517,17 +518,21 @@ func damageText(value any, damage string) error {
 	if !field.IsValid() || !length.IsValid() {
 		return fmt.Errorf("damage %q names no text field of %s", damage, v.Type())
 	}
-	var units []uint64
+	var units []uint16
 	if kind == "narrow" {
-		units = []uint64{0x61, 0xff, 0x62}
+		units = []uint16{0x61, 0xff, 0x62}
 	} else {
-		units = []uint64{0x61, 0xd800, 0x62}
+		units = []uint16{0x61, 0xd800, 0x62}
 	}
-	for i, u := range units {
-		field.Index(i).SetUint(u)
+	// THE CHECKED STORE (writerefusal.go): a wide damage named on a narrow
+	// field would otherwise land D800 as 00 and be scored as the damage.
+	if field.Len() < len(units) {
+		return fmt.Errorf("damage %q needs %d units and %s holds %d", damage, len(units), v.Type(), field.Len())
 	}
-	length.SetInt(int64(len(units)))
-	return nil
+	if err := writeRefusalGoUnits(field, units); err != nil {
+		return fmt.Errorf("damage %q: %s cannot hold it: %w", damage, v.Type(), err)
+	}
+	return writeRefusalGoStore(length, big.NewInt(int64(len(units))))
 }
 
 func surfaceBlock(lines []line, out string) error {
