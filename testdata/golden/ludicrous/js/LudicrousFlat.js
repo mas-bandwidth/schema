@@ -44,7 +44,7 @@ export function WriteFixedProbeFlat(view, value) {
   if (!Number.isInteger(value.angle) || value.angle < -11796480 || value.angle > 11796480) {
     return -1;
   }
-  if (value.position < -1966080000n || value.position > 1966080000n) {
+  if (typeof value.position !== "bigint" || value.position < -1966080000n || value.position > 1966080000n) {
     return -1;
   }
   lo = (((((value.angle >>> 0) - 4283170816) >>> 0) & 0x1ffffff));
@@ -52,7 +52,7 @@ export function WriteFixedProbeFlat(view, value) {
   v = SC.getUint32(0, true);
   view.setUint32(0, (lo | (v << 25)) >>> 0, true);
   lo = v >>> 7;
-  if (value.reach < -65536000000n || value.reach > 65536000000n) {
+  if (typeof value.reach !== "bigint" || value.reach < -65536000000n || value.reach > 65536000000n) {
     return -1;
   }
   SC.setBigUint64(0, value.reach - -65536000000n, true);
@@ -216,7 +216,7 @@ export function WriteUnsignedProbeFlat(view, value) {
   if (!Number.isInteger(value.angle) || value.angle < 0 || value.angle > 23592960) {
     return -1;
   }
-  if (value.span < 0n || value.span > 18446744073709486080n) {
+  if (typeof value.span !== "bigint" || value.span < 0n || value.span > 18446744073709486080n) {
     return -1;
   }
   lo = (((value.angle) & 0x1ffffff));
@@ -227,7 +227,7 @@ export function WriteUnsignedProbeFlat(view, value) {
   v = SC.getUint32(4, true);
   view.setUint32(4, (lo | (v << 25)) >>> 0, true);
   lo = v >>> 7;
-  if (value.reach < 0n || value.reach > 131072000000n) {
+  if (typeof value.reach !== "bigint" || value.reach < 0n || value.reach > 131072000000n) {
     return -1;
   }
   SC.setBigUint64(0, value.reach, true);
@@ -444,7 +444,7 @@ export function WriteWideProbeFlat(view, value) {
   view.setUint32(8, v, true);
   v = SC.getUint32(4, true);
   view.setUint32(12, v, true);
-  if (value.energy < -5000000000n || value.energy > 5000000000n) {
+  if (typeof value.energy !== "bigint" || value.energy < -5000000000n || value.energy > 5000000000n) {
     return -1;
   }
   SC.setBigUint64(0, value.energy - -5000000000n, true);
@@ -452,7 +452,7 @@ export function WriteWideProbeFlat(view, value) {
   view.setUint32(16, v, true);
   v = SC.getUint32(4, true) & 0x3;
   lo = v;
-  if (value.flux < -1267650600228229401496703205376n || value.flux > 1267650600228229401496703205376n) {
+  if (typeof value.flux !== "bigint" || value.flux < -1267650600228229401496703205376n || value.flux > 1267650600228229401496703205376n) {
     return -1;
   }
   bg = value.flux - -1267650600228229401496703205376n;
@@ -469,7 +469,7 @@ export function WriteWideProbeFlat(view, value) {
   lo = v >>> 30;
   v = SC.getUint32(4, true) & 0x3f;
   lo = (lo | (v << 2)) >>> 0;
-  if (value.bias < -1000n || value.bias > 1000n) {
+  if (typeof value.bias !== "bigint" || value.bias < -1000n || value.bias > 1000n) {
     return -1;
   }
   SC.setBigUint64(0, value.bias - -1000n, true);
@@ -677,7 +677,7 @@ export function WriteLudicrousStateFlat(view, value) {
   if (!Number.isInteger(value.probe.angle) || value.probe.angle < -11796480 || value.probe.angle > 11796480) {
     return -1;
   }
-  if (value.probe.position < -1966080000n || value.probe.position > 1966080000n) {
+  if (typeof value.probe.position !== "bigint" || value.probe.position < -1966080000n || value.probe.position > 1966080000n) {
     return -1;
   }
   lo = ((value.mode & 0x3) | (((((value.probe.angle >>> 0) - 4283170816) >>> 0) & 0x1ffffff) << 2));
@@ -685,7 +685,7 @@ export function WriteLudicrousStateFlat(view, value) {
   v = SC.getUint32(0, true);
   view.setUint32(0, (lo | (v << 27)) >>> 0, true);
   lo = v >>> 5;
-  if (value.probe.reach < -65536000000n || value.probe.reach > 65536000000n) {
+  if (typeof value.probe.reach !== "bigint" || value.probe.reach < -65536000000n || value.probe.reach > 65536000000n) {
     return -1;
   }
   SC.setBigUint64(0, value.probe.reach - -65536000000n, true);
@@ -757,7 +757,7 @@ export function WriteLudicrousStateFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  if (value.wide.energy < -5000000000n || value.wide.energy > 5000000000n) {
+  if (typeof value.wide.energy !== "bigint" || value.wide.energy < -5000000000n || value.wide.energy > 5000000000n) {
     return -1;
   }
   SC.setBigUint64(0, value.wide.energy - -5000000000n, true);
@@ -779,7 +779,7 @@ export function WriteLudicrousStateFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (2 - sb);
   }
-  if (value.wide.flux < -1267650600228229401496703205376n || value.wide.flux > 1267650600228229401496703205376n) {
+  if (typeof value.wide.flux !== "bigint" || value.wide.flux < -1267650600228229401496703205376n || value.wide.flux > 1267650600228229401496703205376n) {
     return -1;
   }
   bg = value.wide.flux - -1267650600228229401496703205376n;
@@ -821,7 +821,7 @@ export function WriteLudicrousStateFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (6 - sb);
   }
-  if (value.wide.bias < -1000n || value.wide.bias > 1000n) {
+  if (typeof value.wide.bias !== "bigint" || value.wide.bias < -1000n || value.wide.bias > 1000n) {
     return -1;
   }
   SC.setBigUint64(0, value.wide.bias - -1000n, true);
@@ -1670,7 +1670,7 @@ export function ReadDegenerateProbeFlatBits(view, numBits, value) {
 // must hold FixedVecMaxBytes.
 export function WriteFixedVecFlat(view, value) {
   let v = 0, lo = 0;
-  if (value.x < -6553600000n || value.x > 6553600000n) {
+  if (typeof value.x !== "bigint" || value.x < -6553600000n || value.x > 6553600000n) {
     return -1;
   }
   SC.setBigUint64(0, value.x - -6553600000n, true);
@@ -1678,7 +1678,7 @@ export function WriteFixedVecFlat(view, value) {
   view.setUint32(0, v, true);
   v = SC.getUint32(4, true) & 0x3;
   lo = v;
-  if (value.y < -6553600000n || value.y > 6553600000n) {
+  if (typeof value.y !== "bigint" || value.y < -6553600000n || value.y > 6553600000n) {
     return -1;
   }
   SC.setBigUint64(0, value.y - -6553600000n, true);
@@ -1687,7 +1687,7 @@ export function WriteFixedVecFlat(view, value) {
   lo = v >>> 30;
   v = SC.getUint32(4, true) & 0x3;
   lo = (lo | (v << 2)) >>> 0;
-  if (value.z < -6553600000n || value.z > 6553600000n) {
+  if (typeof value.z !== "bigint" || value.z < -6553600000n || value.z > 6553600000n) {
     return -1;
   }
   SC.setBigUint64(0, value.z - -6553600000n, true);
