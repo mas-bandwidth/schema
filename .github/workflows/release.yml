@@ -15,6 +15,18 @@ name: Release
 # unless ci-full's `proof` job left a green report for it (tools/matrix
 # VerifyRelease), naming the red cells when it is not.
 #
+# THE BINARIES come after the tag, in the `assets` job, which runs only when
+# the `release` job, and so every refusal above, passed. It is a job here and
+# not a workflow on `push: tags`, because a tag pushed with this run's
+# github.token starts no other workflow (GitHub runs no workflow for an event
+# the GITHUB_TOKEN caused, except workflow_dispatch and repository_dispatch).
+# It checks out the new tag, refuses unless the tag names the commit the
+# release job tagged, cross-compiles cmd/schema for six platforms with cgo off
+# and -trimpath (`make release-binaries`, tools/releasebin:
+# schema_<version>_<os>_<arch>.tar.gz, .zip for Windows, and SHA256SUMS), creates the GitHub release from the annotated
+# tag's message when there is none, and attaches the archives. It moves no
+# tag and decides nothing about the version.
+#
 #   gh workflow run release.yml --ref main -f version=vX.Y.Z
 
 on:
@@ -77,3 +89,43 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           make release RELEASE_COMMIT="$GITHUB_SHA" PROOF=build/proof/proof.json PUSH=1
+
+  assets:
+    needs: release
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    # six cross-compiled builds of one Go program, packed, and one upload
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # the tag the release job just pushed
+          ref: refs/tags/${{ inputs.version }}
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: build the release binaries
+        env:
+          GOFLAGS: -mod=readonly
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]; then
+            echo "the tag $VERSION names $(git rev-parse HEAD), not the released commit $GITHUB_SHA: no binaries"
+            exit 1
+          fi
+          make release-binaries VERSION="$VERSION" RELEASE_BINARIES_MTIME="$(git log -1 --format=%ct HEAD)"
+      - name: attach them to the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if ! gh release view "$VERSION" > /dev/null 2>&1; then
+            gh release create "$VERSION" --verify-tag --notes-from-tag --title "$VERSION"
+          fi
+          gh release upload "$VERSION" build/release-binaries/schema_"$VERSION"_* build/release-binaries/SHA256SUMS --clobber
