@@ -613,7 +613,8 @@ public final class TableCookWrite {
         }
     }
 
-    private static long bits(Object source, TableCookStorage storage, int width) {
+    private static long bits(
+            Object source, TableCookStorage storage, int width, boolean compressed) {
         if (source == null) {
             return 0;
         }
@@ -631,6 +632,10 @@ public final class TableCookWrite {
             long exponent = width == 4 ? 0x7f800000L : 0x7ff0000000000000L;
             if ((raw & exponent) == exponent) {
                 throw new NonFiniteFloat();
+            }
+            // a COMPRESSED float's -0 is cooked as +0 (fixed-compressed-negzero)
+            if (compressed && raw == (width == 4 ? 0x80000000L : 0x8000000000000000L)) {
+                return 0;
             }
             return raw;
         }
@@ -683,7 +688,7 @@ public final class TableCookWrite {
             put(out, order, at, order == BIG ? hi : lo, 8);
             put(out, order, at + 8, order == BIG ? lo : hi, 8);
         } else {
-            put(out, order, at, bits(source, f.storage, f.elemSize), f.elemSize);
+            put(out, order, at, bits(source, f.storage, f.elemSize, f.compressed), f.elemSize);
         }
     }
 

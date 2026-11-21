@@ -673,18 +673,20 @@ public final class TableVariable {
         // putF32In and putF64In write a ranged float: its raw bits as putF32
         // and putF64 do, and a value off [lo, hi] refuses the whole save in
         // every build (docs/SPEC.md §5.1 row 10), on every field shape.
+        // A ranged float is a COMPRESSED one, and its -0 is written as +0, the
+        // bits +0 writes (docs/SPEC-TABLES.md §3.3, fixed-compressed-negzero).
         public void putF32In(float v, double lo, double hi) {
             if ((double) v < lo || (double) v > hi) {
                 ids.offRange = true;
             }
-            putF32(v);
+            putF32(v == 0.0f ? 0.0f : v);
         }
 
         public void putF64In(double v, double lo, double hi) {
             if (v < lo || v > hi) {
                 ids.offRange = true;
             }
-            putF64(v);
+            putF64(v == 0.0 ? 0.0 : v);
         }
 
         public void putLeb(long v) {

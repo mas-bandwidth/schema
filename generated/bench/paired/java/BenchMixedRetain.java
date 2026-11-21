@@ -1349,7 +1349,8 @@ public final class BenchMixedRetain {
             w.putBytes(v.payload, 0, v.payload.length);
             w.frame(list);
         }
-        if (Float.floatToRawIntBits(v.aimX) != Float.floatToRawIntBits(0.0f)) {
+        if (Float.floatToRawIntBits((v.aimX == 0.0f ? 0.0f : v.aimX))
+                != Float.floatToRawIntBits(0.0f)) {
             w.putLeb(w.ref(BenchMixedVariable.F_aimX));
             w.put8(10);
             w.putF32In(
@@ -1357,7 +1358,8 @@ public final class BenchMixedRetain {
                     Double.longBitsToDouble(0xbff0000000000000L),
                     Double.longBitsToDouble(0x3ff0000000000000L));
         }
-        if (Float.floatToRawIntBits(v.aimY) != Float.floatToRawIntBits(0.0f)) {
+        if (Float.floatToRawIntBits((v.aimY == 0.0f ? 0.0f : v.aimY))
+                != Float.floatToRawIntBits(0.0f)) {
             w.putLeb(w.ref(BenchMixedVariable.F_aimY));
             w.put8(10);
             w.putF32In(
@@ -1365,7 +1367,8 @@ public final class BenchMixedRetain {
                     Double.longBitsToDouble(0xbff0000000000000L),
                     Double.longBitsToDouble(0x3ff0000000000000L));
         }
-        if (Float.floatToRawIntBits(v.aimZ) != Float.floatToRawIntBits(0.0f)) {
+        if (Float.floatToRawIntBits((v.aimZ == 0.0f ? 0.0f : v.aimZ))
+                != Float.floatToRawIntBits(0.0f)) {
             w.putLeb(w.ref(BenchMixedVariable.F_aimZ));
             w.put8(10);
             w.putF32In(
