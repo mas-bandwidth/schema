@@ -1,0 +1,7 @@
+package jname
+
+table Prop
+{
+    kind  string(16) | json = "type"
+    solid bool
+}
