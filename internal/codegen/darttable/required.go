@@ -90,6 +90,18 @@ bool _requiredCollectionKind(TableWireReader r, int expected) {
 }
 `
 
+// floatRangeCond holds a compressed float to its range evaluated at the
+// field's own width: a float32 range's ends are float32(min) and float32(max),
+// so a value between float32(max) and max (or min and float32(min)) is out of
+// range, as it is on every read (docs/SPEC-TABLES.md, the compressed float).
+func floatRangeCond(f *ir.Field, expr string) string {
+	lo, hi, ok := fixedFloatClampEnds(f)
+	if !ok {
+		lo, hi = fmtFloat(f.FMin), fmtFloat(f.FMax)
+	}
+	return fmt.Sprintf("%s >= %s && %s <= %s", expr, lo, expr, hi)
+}
+
 func requiredRangeCheck(f *ir.Field, expr, ind, refusal string) string {
 	if !f.Required {
 		return ""
@@ -105,7 +117,7 @@ func requiredRangeCheck(f *ir.Field, expr, ind, refusal string) string {
 	}
 	var cond string
 	if f.HasFloatRange {
-		cond = fmt.Sprintf("%s >= %s && %s <= %s", expr, fmtFloat(f.FMin), expr, fmtFloat(f.FMax))
+		cond = floatRangeCond(f, expr)
 	} else if f.HasIntRange {
 		lo, hi, _ := ir.TableRawRange(f)
 		switch {
@@ -154,7 +166,7 @@ func jsonWriteCheck(f *ir.Field, expr, ind, refusal string) string {
 	var cond string
 	switch {
 	case f.HasFloatRange:
-		cond = fmt.Sprintf("%s >= %s && %s <= %s", expr, fmtFloat(f.FMin), expr, fmtFloat(f.FMax))
+		cond = floatRangeCond(f, expr)
 	case f.Type.Kind == ir.TBits && f.Type.Width < 64:
 		cond = fmt.Sprintf("(%s & ~%s) == 0", expr, dartU64Literal((uint64(1)<<f.Type.Width)-1))
 	case f.HasIntRange || f.Type.Kind == ir.TFixed:
