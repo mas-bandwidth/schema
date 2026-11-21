@@ -93,6 +93,9 @@ type Compiler struct {
 
 	gens      map[string]Generator // every accepted --lang spelling
 	canonical []string             // one per registered generator, its first name
+	// declared holds what each [ConstructCarrier] declared at Register, by its
+	// canonical name; a generator without a declaration has no entry here
+	declared map[string]map[string]struct{}
 }
 
 // New returns a driver with every built-in generator this build carries

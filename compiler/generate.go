@@ -40,11 +40,34 @@ type Generator interface {
 	Generate(u *ir.Unit, opts Options) (map[string][]byte, error)
 }
 
+// A ConstructCarrier is a [Generator] that declares which centrally gated
+// constructs it carries. [Compiler.Generate] refuses a unit that uses one of
+// the constructs [CarryConstructs] lists (timestamp, required, forms, ...)
+// unless the selected target carries it, before the generator is invoked. The
+// built-in targets record theirs inside this package; a generator registered
+// from outside it implements Carries to opt in, whether it emits the construct
+// or only reads its metadata. [UnitConstructs] names what a unit uses.
+//
+// The declaration is read once, at [Compiler.Register], and is that
+// generator's whole answer: a construct it does not name is refused as for any
+// target that does not carry it. A key that is not one of [CarryConstructs]
+// fails the registration. A generator that does not implement Carries keeps
+// the behaviour it had: the registry inside this package answers for its name,
+// which refuses every gated construct for a name no built-in target holds.
+type ConstructCarrier interface {
+	Generator
+
+	// Carries returns the construct keys, from [CarryConstructs], this
+	// generator carries.
+	Carries() []string
+}
+
 // Register adds a generator under every name it answers to. It fails on a
-// generator that names itself nothing, on an empty name, and on a name another
+// generator that names itself nothing, on an empty name, on a name another
 // generator already holds — silently shadowing a target would make `--lang`
-// mean different things in different builds. Nothing is registered when it
-// fails.
+// mean different things in different builds — and on a [ConstructCarrier]
+// declaring a construct key [CarryConstructs] does not list. Nothing is
+// registered when it fails.
 func (c *Compiler) Register(g Generator) error {
 	names := g.Names()
 	if len(names) == 0 {
@@ -58,6 +81,17 @@ func (c *Compiler) Register(g Generator) error {
 			return fmt.Errorf("target %q is already registered", n)
 		}
 	}
+	var declared map[string]struct{}
+	if cc, ok := g.(ConstructCarrier); ok {
+		constructs := cc.Carries()
+		declared = make(map[string]struct{}, len(constructs))
+		for _, construct := range constructs {
+			if _, known := knownCarryConstructs[construct]; !known {
+				return fmt.Errorf("generator %T declares that it carries %q, which is no construct key — the keys are %s", g, construct, englishList(carryConstructs))
+			}
+			declared[construct] = struct{}{}
+		}
+	}
 	if c.gens == nil {
 		c.gens = map[string]Generator{}
 	}
@@ -65,7 +99,26 @@ func (c *Compiler) Register(g Generator) error {
 		c.gens[n] = g
 	}
 	c.canonical = append(c.canonical, names[0])
+	if declared != nil {
+		if c.declared == nil {
+			c.declared = map[string]map[string]struct{}{}
+		}
+		c.declared[names[0]] = declared
+	}
 	return nil
+}
+
+// carrierOf answers, for the generator registered under canonical name
+// target, whether it carries a construct: its own declaration when it made
+// one, else the built-in registry.
+func (c *Compiler) carrierOf(target string) func(construct string) bool {
+	if set, ok := c.declared[target]; ok {
+		return func(construct string) bool {
+			_, carried := set[construct]
+			return carried
+		}
+	}
+	return func(construct string) bool { return carries(target, construct) }
 }
 
 // Targets returns the canonical name of every registered generator, sorted.
@@ -102,41 +155,42 @@ func (c *Compiler) Generate(u *ir.Unit, target string, opts Options) (map[string
 		}
 	}
 	carrier := g.Names()[0]
+	has := c.carrierOf(carrier)
 	// GO CARRIES THE `timestamp` KIND FIRST (SPEC.md §4.13): every other
 	// target refuses a unit that uses it, here, once, by name — the
 	// construct, the target and the rule — so no other emitter is edited
 	// and none can write a second wire for a kind it does not know
-	if fields := ir.TableTimestampFields(u); !carries(carrier, carryTimestamp) && len(fields) > 0 {
+	if fields := ir.TableTimestampFields(u); !has(carryTimestamp) && len(fields) > 0 {
 		return nil, fmt.Errorf("the %s target does not carry the timestamp kind — %s: Go carries it first, "+
 			"and every other target refuses the construct by name until its own turn (SPEC.md §4.13, docs/SPEC-TABLES.md §2.11)",
 			carrier, strings.Join(fields, ", "))
 	}
-	if fname, owner, ok := firstRequiredField(u); !carries(carrier, carryRequired) && ok {
+	if fname, owner, ok := firstRequiredField(u); !has(carryRequired) && ok {
 		return nil, fmt.Errorf("target %q refuses | required — Go carries it first, and the construct is specified ahead of its implementation elsewhere (docs/SPEC-TABLES.md §2.3); the field %q in %s uses it", carrier, fname, owner)
 	}
 	// GO CARRIES THE `forms` DECLARATION FIRST (docs/SPEC-TABLES.md §2.12):
 	// every other target refuses a unit that declares forms, here, once, by
 	// name — the construct, the target and the rule — so no other emitter is
 	// edited and none can drop a form it does not know.
-	if tname, ok := firstFormsTable(u); !carries(carrier, carryForms) && ok {
+	if tname, ok := firstFormsTable(u); !has(carryForms) && ok {
 		return nil, fmt.Errorf("target %q refuses the construct forms on table %s — Go carries it first; no other target honours it until its turn (docs/SPEC-TABLES.md §2.12)", carrier, tname)
 	}
 	// GO CARRIES THE `integrity` TRAILER FIRST (docs/SPEC-TABLES.md
 	// §2.14): every other target refuses a unit that declares it, here,
 	// once, by name, so none can write a file without the trailer its
 	// declaration promises.
-	if tables := ir.TableIntegrityTables(u); !carries(carrier, carryIntegrity) && len(tables) > 0 {
+	if tables := ir.TableIntegrityTables(u); !has(carryIntegrity) && len(tables) > 0 {
 		return nil, fmt.Errorf("target %q refuses the construct integrity on table %s — Go carries the checksum trailer first; no other target honours it until its turn (docs/SPEC-TABLES.md §2.14)", carrier, tables[0])
 	}
 	// GO CARRIES TEXT LISTS AND THE ARRAY ROOT FIRST (docs/SPEC-TABLES.md
 	// §2.13, §16.10): every other target refuses them here, once, by name
-	if err := refuseTextForms(u, carrier); err != nil {
+	if err := refuseTextFormsBy(u, carrier, has); err != nil {
 		return nil, err
 	}
 	// GO CARRIES THE ONE-SIDED INTEGER RANGE FIRST (docs/SPEC-TABLES.md §4,
 	// SPEC §4.6): every other target refuses a unit that uses it, here,
 	// once, by name, so no other emitter is edited.
-	if fname, owner, ok := firstOneSidedField(u); !carries(carrier, carryOneSidedRange) && ok {
+	if fname, owner, ok := firstOneSidedField(u); !has(carryOneSidedRange) && ok {
 		return nil, fmt.Errorf("the %s target does not carry a one-sided integer range — %s: Go carries it first, and every other target refuses the construct by name until its own turn (SPEC §4.6, docs/SPEC-TABLES.md §4)", carrier, owner+"."+fname)
 	}
 	// GO, C, C#, C++, DART, JAVA AND RUST CARRY `?T` AND THE BY-VALUE `?[N]T` OVER A VARIABLE
@@ -144,11 +198,11 @@ func (c *Compiler) Generate(u *ir.Unit, target string, opts Options) (map[string
 	// edges gates on the presence companion, and every other target refuses
 	// the construct here, once, by name, so none can write an edge an absent
 	// value does not own.
-	if fields := ir.TableOptionalPointerClosures(u); !carries(carrier, carryOptionalVariableClosure) && len(fields) > 0 {
+	if fields := ir.TableOptionalPointerClosures(u); !has(carryOptionalVariableClosure) && len(fields) > 0 {
 		return nil, fmt.Errorf("target %q refuses the construct optional over a variable closure on field %s — Go, C, C#, C++, Dart, Java and Rust carry ?T and the by-value ?[N]T over a variable closure; every other target gates its walks on presence until its turn (docs/SPEC-TABLES.md §2.3)", carrier, fields[0])
 	}
 	// GO CARRIES THE OPTIONAL MAP FIRST (docs/SPEC-TABLES.md §2.8)
-	if err := refuseOptionalMaps(u, carrier); err != nil {
+	if err := refuseOptionalMapsBy(u, carrier, has); err != nil {
 		return nil, err
 	}
 	if lg, takes := g.(lineageGenerator); takes {
