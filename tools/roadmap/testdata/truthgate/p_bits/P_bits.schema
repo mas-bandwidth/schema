@@ -1,0 +1,8 @@
+package pbits
+
+type Holder
+{
+    small bits(3)
+    mid   bits(33)
+    wide  bits(64)
+}

@@ -1,0 +1,12 @@
+package pcomposition
+
+type Inner
+{
+    level uint16
+}
+
+type Outer
+{
+    first  Inner
+    second Inner
+}

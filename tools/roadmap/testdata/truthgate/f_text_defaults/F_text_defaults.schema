@@ -1,0 +1,18 @@
+package ftextdefaults
+
+flags Caps { Jump, Crouch, Fly }
+
+type Inner
+{
+    label string(6) = "in"
+    flags Caps = { Crouch }
+}
+
+fixed table Record
+{
+    name  string(8) = "hi"
+    token bytes(4) = "ab"
+    caps  Caps = { Jump, Fly }
+    inner Inner
+    items [2]Inner
+}

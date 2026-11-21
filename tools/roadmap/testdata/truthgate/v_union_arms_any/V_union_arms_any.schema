@@ -1,0 +1,19 @@
+package vunionarmsany
+
+table Item
+{
+    level int32
+}
+
+union Value
+{
+    amount int32
+    list   [..3]uint16
+    item   *Item
+    label  string(8)
+}
+
+table Record
+{
+    value Value
+}

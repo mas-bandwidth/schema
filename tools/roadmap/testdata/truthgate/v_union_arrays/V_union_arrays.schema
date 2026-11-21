@@ -1,0 +1,22 @@
+package vunionarrays
+
+type Ring
+{
+    radius uint16
+}
+
+type Slab
+{
+    width uint8
+}
+
+union Shape
+{
+    ring Ring
+    slab Slab
+}
+
+table Record
+{
+    shapes [..3]Shape
+}

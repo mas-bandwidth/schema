@@ -1,0 +1,8 @@
+package fint128
+
+fixed table Record
+{
+    entity uint128
+    energy int128 | min = -5000000000, max = 5000000000
+    raw    uint128
+}

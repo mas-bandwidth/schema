@@ -1,0 +1,6 @@
+package pstring
+
+type Holder
+{
+    text string(32)
+}

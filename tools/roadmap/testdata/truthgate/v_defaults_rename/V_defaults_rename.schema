@@ -1,0 +1,22 @@
+package vdefaultsrename
+
+flags Caps { Jump, Crouch, Fly }
+
+// the defaults on the table's own fields, and in a type the table holds by
+// value, in an array, optionally and as a map value
+type Inner
+{
+    label string(6) = "in"
+    flags Caps = { Crouch }
+}
+
+table Record | was = "OldRecord"
+{
+    name  string(8) = "hi"
+    token bytes(4) = "ab"
+    caps  Caps = { Jump, Fly }
+    inner Inner
+    items [2]Inner
+    maybe ?Inner
+    by_id map[uint32]Inner
+}

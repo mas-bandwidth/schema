@@ -1,0 +1,11 @@
+package fenumsflags
+
+enum Mode { Alpha, Beta, Gamma }
+
+flags Caps { Jump, Crouch, Fly }
+
+fixed table Record
+{
+    mode Mode
+    caps Caps
+}

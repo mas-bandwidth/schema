@@ -1,0 +1,8 @@
+package ptypes
+
+type Holder
+{
+    small int8
+    flag  bool
+    level uint16
+}

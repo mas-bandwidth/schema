@@ -1,0 +1,8 @@
+package vblobs
+
+table Asset
+{
+    data    *bytes
+    caption *string
+    alias   *string
+}

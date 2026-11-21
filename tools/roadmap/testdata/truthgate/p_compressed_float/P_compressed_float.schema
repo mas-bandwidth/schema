@@ -1,0 +1,6 @@
+package pcompressed
+
+type Holder
+{
+    angle float32 | min = -180, max = 180, resolution = 0.01
+}

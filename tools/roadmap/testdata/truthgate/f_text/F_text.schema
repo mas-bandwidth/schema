@@ -1,0 +1,7 @@
+package ftext
+
+fixed table Record
+{
+    name string(16)
+    blob bytes(8)
+}

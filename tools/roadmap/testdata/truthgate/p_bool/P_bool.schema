@@ -1,0 +1,7 @@
+package pbool
+
+type Holder
+{
+    on  bool
+    off bool
+}

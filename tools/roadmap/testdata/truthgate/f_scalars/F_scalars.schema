@@ -1,0 +1,10 @@
+package fscalars
+
+fixed table Record
+{
+    health int16 | min = 0, max = 1000
+    small  bits(5)
+    single float32
+    wide   float64
+    angle  float32 | min = -180, max = 180, resolution = 0.01
+}

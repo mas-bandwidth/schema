@@ -1,0 +1,6 @@
+package vmaps
+
+table Record
+{
+    scores map[uint32]int32
+}

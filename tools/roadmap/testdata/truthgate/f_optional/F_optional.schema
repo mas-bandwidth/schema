@@ -1,0 +1,18 @@
+package foptional
+
+enum Mode { Alpha, Beta }
+
+type Pose
+{
+    x int32
+    y int32
+}
+
+fixed table Record
+{
+    level ?int32
+    mode  ?Mode
+    pose  ?Pose
+    marks ?[2]uint16
+    tail  ?[..3]int32
+}

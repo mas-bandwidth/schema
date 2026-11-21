@@ -1,0 +1,7 @@
+package vfixedclass
+
+table Record
+{
+    level int32
+    count uint16
+}

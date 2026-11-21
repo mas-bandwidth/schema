@@ -1,0 +1,7 @@
+package pfloats
+
+type Holder
+{
+    single float32
+    wide   float64
+}

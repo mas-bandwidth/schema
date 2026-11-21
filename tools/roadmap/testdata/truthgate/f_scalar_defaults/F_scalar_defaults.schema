@@ -1,0 +1,10 @@
+package fscalardefaults
+
+enum Mode { Alpha, Beta, Gamma }
+
+fixed table Record
+{
+    retries int32 = -1
+    on      bool = true
+    mode    Mode = Beta
+}

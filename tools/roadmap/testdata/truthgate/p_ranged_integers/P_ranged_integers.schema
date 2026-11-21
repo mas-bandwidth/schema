@@ -1,0 +1,8 @@
+package pranged
+
+type Holder
+{
+    health int16 | min = 0, max = 1000
+    delta  int32 | min = -100, max = 100
+    big    int64 | min = -1000000000000, max = 1000000000000
+}
