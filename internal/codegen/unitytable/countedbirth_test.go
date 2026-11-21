@@ -42,8 +42,8 @@ func TestUnityCountedArrayBirthValue(t *testing.T) {
 	}
 }
 
-// the schema and its bytes are the Go engine's (the same unit as
-// internal/codegen/cstable's TestCSharpCountedArrayBirthValue)
+// The schema and its bytes are the Go engine's: the same unit as
+// internal/codegen/cstable's TestCSharpCountedArrayBirthValue.
 const unityCountedBirthSchema = `package probe
 
 type Rec
