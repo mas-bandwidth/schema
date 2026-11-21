@@ -75,6 +75,10 @@ public final class Main {
         System.out.println("msg_live " + msg(f));
         r.few.set(1, 7);
         System.out.println("root_live " + hex(RootVariable.save(r)));
+        jrep = new TableVariable.Report();
+        jr = RootVariable.fromJson("{\"few\":[0,7]}".getBytes(), jrep);
+        if (jr == null || jrep.refused) throw new AssertionError("fromJson live");
+        System.out.println("json_live " + hex(RootVariable.save(jr)));
         v.few.set(1, 7);
         System.out.println("var_live " + hex(VarVariable.save(v)));
         System.out.println("retain_live " + retain(v));
@@ -121,6 +125,7 @@ func countedBirthWant(t *testing.T) map[string]string {
 		}
 	}
 	want["json_birth"] = want["root_birth"]
+	want["json_live"] = want["root_live"]
 	if want["msg_birth"] != "020000" || len(want["root_birth"]) != 20 {
 		t.Fatalf("the reference moved: message %s, variable %s (want 020000 and 10 bytes)", want["msg_birth"], want["root_birth"])
 	}

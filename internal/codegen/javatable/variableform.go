@@ -5881,6 +5881,11 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		return
 	}
 	m := varMember(f)
+	if variableBornCount(f) > 0 {
+		// the text names the array whole: the born elements a fresh value
+		// holds (§22.2) are replaced, never appended to
+		fmt.Fprintf(b, "                if (in.peek() == '[') { v.%s.clear(); }\n", m)
+	}
 	switch {
 	case isPointerArray(f):
 		target := f.Type.Ref.(*ir.Struct)

@@ -79,6 +79,10 @@ void main() {
   print('msg_live ${msg(f)}');
   rv.few[1] = 7;
   print('root_live ${hex(w.rootWireSave(rv))}');
+  final lrep = w.TableTextReport();
+  final lr = w.rootFromJson('{"few":[0,7]}', lrep);
+  if (lrep.refused) throw StateError('FromJson live');
+  print('json_live ${hex(w.rootWireSave(lr))}');
   v.few[1] = 7;
   print('var_live ${hex(w.varWireSave(v))}');
   print('retain_live ${retain(v)}');
@@ -124,6 +128,7 @@ func countedBirthWant(t *testing.T) map[string]string {
 		}
 	}
 	want["json_birth"] = want["root_birth"]
+	want["json_live"] = want["root_live"]
 	if want["msg_birth"] != "020000" || len(want["root_birth"]) != 20 {
 		t.Fatalf("the reference moved: message %s, variable %s (want 020000 and 10 bytes)", want["msg_birth"], want["root_birth"])
 	}

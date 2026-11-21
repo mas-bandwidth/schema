@@ -81,6 +81,8 @@ f.few[1] = 7;
 console.log("msg_live " + msg(f));
 r.few[1] = 7;
 console.log("root_live " + hex(V.RootSave(r)));
+const lrep = new V.TableVariableReport();
+console.log("json_live " + hex(V.RootSave(V.RootFromJson('{"few":[0,7]}', lrep))));
 v.few[1] = 7;
 console.log("var_live " + hex(V.VarSave(v)));
 console.log("retain_live " + retain(v));
@@ -125,6 +127,7 @@ func countedBirthWant(t *testing.T, u *ir.Unit) map[string]string {
 		}
 	}
 	want["json_birth"] = want["root_birth"]
+	want["json_live"] = want["root_live"]
 	if want["msg_birth"] != "020000" || len(want["root_birth"]) != 20 {
 		t.Fatalf("the reference moved: message %s, variable %s (want 020000 and 10 bytes)", want["msg_birth"], want["root_birth"])
 	}
