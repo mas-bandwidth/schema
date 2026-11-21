@@ -250,7 +250,7 @@ func Render(u *ir.Unit) *Unit {
 		// default does, and both are absorbed by the reader's default — so
 		// the branch structure is deliberately not a fact here.
 		for _, f := range st.Fields {
-			t.Fields = append(t.Fields, renderField(f))
+			t.Fields = append(t.Fields, renderField(u, f))
 			// an ENUM-KEYED array's key enum is a vocabulary on the wire, not
 			// just a spelling: its slots ride under their variants' NAME ids
 			// (docs/SPEC-TABLES.md §3.2), so its variants are covered exactly as an
@@ -272,7 +272,7 @@ func Render(u *ir.Unit) *Unit {
 					out.Flags = append(out.Flags, Flags{Name: ref.Name, Variants: append([]string(nil), ref.Variants...)})
 				}
 			case *ir.Union:
-				collectUnion(out, ref, seenEnum, seenFlags, seenUnion)
+				collectUnion(u, out, ref, seenEnum, seenFlags, seenUnion)
 			}
 		}
 		out.Tables = append(out.Tables, t)
@@ -292,7 +292,7 @@ func renderEnum(e *ir.Enum) Enum {
 	return out
 }
 
-func renderUnion(un *ir.Union) Union {
+func renderUnion(u *ir.Unit, un *ir.Union) Union {
 	out := Union{Name: un.Name}
 	for _, v := range un.Variants {
 		// AN ARM IS A FIELD LINE (docs/SPEC-TABLES.md §2.6, §18.1): its line
@@ -314,7 +314,7 @@ func renderUnion(un *ir.Union) Union {
 		case v.Void():
 			arm.Tokens = []Token{{Key: "kind", Value: "none"}}
 		default:
-			arm.Tokens = renderField(v.F).Tokens
+			arm.Tokens = renderField(u, v.F).Tokens
 		}
 		if v.WasName != "" && !arm.hasToken("was") {
 			arm.Tokens = append(arm.Tokens, Token{Key: "was", Value: v.WasName})
@@ -330,7 +330,7 @@ func renderUnion(un *ir.Union) Union {
 
 // renderField lists a field's wire facts. The token ORDER here is the file's
 // column order; every key it can emit has a row in [DefaultTokenPolicy].
-func renderField(f *ir.Field) Field {
+func renderField(u *ir.Unit, f *ir.Field) Field {
 	out := Field{Name: f.Name, Id: ir.TableFieldWireId(f), JsonKey: f.JsonKey}
 	add := func(k, v string) { out.Tokens = append(out.Tokens, Token{Key: k, Value: v}) }
 
@@ -367,8 +367,10 @@ func renderField(f *ir.Field) Field {
 		case *ir.Struct:
 			// the WIRE name (docs/SPEC-TABLES.md §5): a table renamed under
 			// `was` keeps the name every stored record carries, so a rename
-			// moves nothing in this file
-			add("type", ref.WireName())
+			// moves nothing in this file. A GENERATED record (a text list's
+			// element) is spelled from its holder's and field's wire names for
+			// the same reason (ir.GeneratedWireName, F-004).
+			add("type", ir.ProjectionReferentName(u, ref))
 		default:
 			add("type", f.Type.Name)
 		}
@@ -786,12 +788,12 @@ func parseIdToken(fields []string) (uint64, error) {
 // (docs/SPEC-TABLES.md §2.6): an enum arm's enum and a flags arm's flags ride
 // under the same rules a field's do, and an arm that is another union brings
 // its own arms with it.
-func collectUnion(out *Unit, un *ir.Union, seenEnum, seenFlags, seenUnion map[string]bool) {
+func collectUnion(u *ir.Unit, out *Unit, un *ir.Union, seenEnum, seenFlags, seenUnion map[string]bool) {
 	if seenUnion[un.Name] {
 		return
 	}
 	seenUnion[un.Name] = true
-	out.Unions = append(out.Unions, renderUnion(un))
+	out.Unions = append(out.Unions, renderUnion(u, un))
 	for _, v := range un.Variants {
 		if v.F == nil || v.F.Type.Kind != ir.TNamed {
 			continue
@@ -808,7 +810,7 @@ func collectUnion(out *Unit, un *ir.Union, seenEnum, seenFlags, seenUnion map[st
 				out.Flags = append(out.Flags, Flags{Name: ref.Name, Variants: append([]string(nil), ref.Variants...)})
 			}
 		case *ir.Union:
-			collectUnion(out, ref, seenEnum, seenFlags, seenUnion)
+			collectUnion(u, out, ref, seenEnum, seenFlags, seenUnion)
 		}
 	}
 }

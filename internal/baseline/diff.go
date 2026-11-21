@@ -44,6 +44,7 @@ import (
 	"fmt"
 	"math/big"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -163,6 +164,10 @@ var DefaultTokenPolicy = map[string]TokenRule{
 	// exactly when those names survive. The keyed and positional spellings
 	// are different wire kinds, so THAT move is caught by the `kind` row.
 	"key": RuleRefs,
+	// A POINTER'S TARGET rides on the wire as its node's type id (§3.1), so a
+	// pointer slot moved to any other table — however alike the bodies — is
+	// refused, the pairing of a bare rename included (F-009)
+	"pointer-target": RuleFixed,
 
 	// ---- the vocabulary walks, which have no token of their own ----
 	"member":         RuleLoss,  // a closure member that is no longer covered by this baseline
@@ -211,6 +216,19 @@ func (f Finding) String() string { return f.Where + ": " + f.What }
 // passes, which shows the refusal came from THAT check and not from something
 // else in the walk.
 func Diff(base, live *Unit, policy map[string]TokenRule) []Finding {
+	d := newDiffer(base, live, policy)
+	var out []Finding
+	out = append(out, d.diffRetired()...)
+	out = append(out, d.diffTables()...)
+	out = append(out, d.diffEnums()...)
+	out = append(out, d.diffFlags()...)
+	out = append(out, d.diffUnions()...)
+	return out
+}
+
+// newDiffer pairs the two projections' members, which is everything a diff
+// and an update's ledger acknowledgment share.
+func newDiffer(base, live *Unit, policy map[string]TokenRule) *differ {
 	d := &differ{base: base, live: live, policy: policy, visiting: map[string]bool{}}
 	renames := policy["member"] == RuleLoss
 	// only tables carry per-member facts to compare; the vocabularies answer 0
@@ -221,14 +239,7 @@ func Diff(base, live *Unit, policy map[string]TokenRule) []Finding {
 	d.enums = pairMembers(enumIdents(base), enumIdents(live), renames, none)
 	d.unions = pairMembers(unionIdents(base), unionIdents(live), renames, none)
 	d.flags = pairMembers(flagsIdents(base), flagsIdents(live), renames, none)
-
-	var out []Finding
-	out = append(out, d.diffRetired()...)
-	out = append(out, d.diffTables()...)
-	out = append(out, d.diffEnums()...)
-	out = append(out, d.diffFlags()...)
-	out = append(out, d.diffUnions()...)
-	return out
+	return d
 }
 
 // diffRetired refuses a live declaration that re-adds a name or wire id the
@@ -242,7 +253,7 @@ func (d *differ) diffRetired() []Finding {
 	}
 	var out []Finding
 	for _, r := range d.base.Retired {
-		if r.Revived != "" || !liveMatchesRetired(d.live, r) {
+		if r.Revived != "" || !liveMatchesRetired(d.live, r, d.carriedTo) {
 			continue
 		}
 		out = append(out, Finding{Refuse, r.Name, fmt.Sprintf(
@@ -759,7 +770,7 @@ func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 		case RuleShape:
 			out = append(out, mapShapeFinding(where, bt.Value, lv, present)...)
 		case RuleRefs:
-			out = append(out, d.refsFindings(where, bt.Key, bt.Value, lv, present)...)
+			out = append(out, d.refsFindings(where, bf, bt.Key, bt.Value, lv, present)...)
 		}
 	}
 	// a fact the live projection carries and the baseline does not: ADDING a
@@ -835,12 +846,28 @@ func tightened(rule TokenRule, key, was, now string) bool {
 //     wire loss draw a harsher verdict merely because the author also renamed.
 //   - Changed to anything else — the new declaration has to be able to STAND
 //     IN for the old one for data already written (see substitutable).
-func (d *differ) refsFindings(where, key, was, now string, present bool) []Finding {
+//
+// A POINTER'S TARGET IS THE ONE REFERENT THE WIRE NAMES (docs/SPEC-TABLES.md
+// §3.1): a pointer rides as a node, and the node carries its table's TYPE ID,
+// the hash of the table's wire name. So for a pointer slot — scalar, array
+// element or map value — no other table stands in, however alike the two
+// bodies are, and a rename the pairing matched is no exception: only a
+// rename under `was` keeps the type id, and that one moves no `type=` here
+// (F-009).
+func (d *differ) refsFindings(where string, bf Field, key, was, now string, present bool) []Finding {
 	if !present {
 		return []Finding{{Refuse, where, fmt.Sprintf(
 			"%s %s removed — the field keeps its wire kind, so no reader can report the change (docs/SPEC-TABLES.md §4)", tokenNoun(key), was)}}
 	}
-	if now == was || d.pairedRename(key, was) == now {
+	if now == was {
+		return nil
+	}
+	if key == "type" && pointerSlot(bf) && !blobReferent(was) && !blobReferent(now) && d.policy["pointer-target"] == RuleFixed {
+		return []Finding{{Refuse, where, fmt.Sprintf(
+			"pointer target %s -> %s — every stored pointer's node carries %s's type id, and %s is a different type id: where the reader still declares %s the whole load refuses wire_damaged, and where it does not the pointer reads null and counts unknown; only a rename under was = %q keeps the type id (docs/SPEC-TABLES.md §3.1, §5)",
+			was, now, was, now, was, was)}}
+	}
+	if d.pairedRename(key, was) == now {
 		return nil
 	}
 	// a chain of simultaneous renames must not walk in a circle
@@ -888,11 +915,14 @@ func (d *differ) pairedRename(key, was string) string {
 //     a twin declaration carrying the same id under a different specified
 //     default rewrites the meaning of every stored body, which is the flagship
 //     class this whole file exists to refuse.
-//   - an ENUM value is its variant NAME hash, so it stands in when every
-//     variant name survives;
-//   - a UNION body opens with its arm NAME hash, and an arm is a field line,
-//     so it stands in when every arm name survives AND THE FACTS UNDER THOSE
-//     ARMS ARE UNCHANGED, the payload's own ids and facts included;
+//   - an ENUM value is its variant's WIRE ID — the hash of its first name,
+//     the `was` alias after a rename — so it stands in when every variant ID
+//     survives. Spelling is not identity: a same-spelled variant under another
+//     `was` is a different id, and a differently spelled one under the old
+//     name's `was` is the same one (F-007);
+//   - a UNION body opens with its arm's WIRE ID, and an arm is a field line,
+//     so it stands in when every arm ID survives AND THE FACTS UNDER THOSE
+//     ARMS ARE UNCHANGED, the payload's own ids and facts included (F-008);
 //   - a FLAGS mask is POSITIONAL and carries no names at all, so it stands in
 //     only when the old declaration's variants sit at the same bits.
 //   - an ENUM-KEYED array's KEY enum is judged as an enum: its slots ride
@@ -901,9 +931,12 @@ func (d *differ) substitutable(key, was, now string) []Finding {
 	switch key {
 	case "flags":
 		return bitsRide(flagsVariants(d.base, was), flagsVariants(d.live, now), now)
-	case "enum", "key":
-		return namesRide(enumNames(d.base, was), enumNames(d.live, now), now,
-			"variant name", "stored values naming them read as None")
+	case "enum":
+		return namesRide(enumIds(d.base, was), enumIds(d.live, now), now,
+			"variant id", "stored values naming them read as None and count unknown")
+	case "key":
+		return namesRide(enumIds(d.base, was), enumIds(d.live, now), now,
+			"variant id", "stored slots keyed by them are skipped and count unknown")
 	case "union":
 		return d.armsRide(was, now)
 	default: // "type", "payload" — a table body, read by field id
@@ -943,6 +976,23 @@ func (d *differ) bodyRides(was, now string) []Finding {
 		out = append(out, Finding{Refuse, "", fmt.Sprintf(
 			"%d of %d field ids do not ride — that much of every stored body reads back as declared defaults", missing, len(before.Fields))})
 	}
+	// THE NEW SIDE TOO (F-006): a field the replacement declares and the old
+	// body never carried is absorbed — the reader defaults it — UNLESS the
+	// reader REQUIRES it. Every body stored under the old referent lacks it,
+	// and a reader refuses each one missing_required, exactly as it does for
+	// a `| required` field added in place (docs/SPEC-TABLES.md §2.3).
+	if d.policy["required"] == RuleGain {
+		baseIds := map[uint64]bool{}
+		for _, bf := range before.Fields {
+			baseIds[bf.Id] = true
+		}
+		for _, lf := range after.Fields {
+			if _, req := lf.Get("required"); req && !baseIds[lf.Id] {
+				out = append(out, Finding{Refuse, "", fmt.Sprintf(
+					"%s declares %s `| required` and no body stored under %s carries it — a reader refuses every one missing_required", now, lf.Name, was)})
+			}
+		}
+	}
 	return out
 }
 
@@ -960,14 +1010,16 @@ func (d *differ) armsRide(was, now string) []Finding {
 	if before == nil {
 		return nil
 	}
-	liveArms := map[string]Field{}
+	// ARMS MATCH BY WIRE ID, as they do in the in-place walk: the id is what a
+	// stored body opens with, so the spelling is no evidence either way (F-008)
+	liveArms := map[uint64]Field{}
 	for _, a := range after.Arms {
-		liveArms[a.Name] = a
+		liveArms[a.Id] = a
 	}
 	var out []Finding
 	missing := 0
 	for _, ba := range before.Arms {
-		la, ok := liveArms[ba.Name]
+		la, ok := liveArms[ba.Id]
 		if !ok {
 			missing++
 			continue
@@ -978,7 +1030,7 @@ func (d *differ) armsRide(was, now string) []Finding {
 	}
 	if missing > 0 {
 		out = append(out, Finding{Refuse, "", fmt.Sprintf(
-			"%d of %d arm names do not ride — stored bodies naming them are skipped", missing, len(before.Arms))})
+			"%d of %d arm ids do not ride — stored bodies naming them are skipped and count unknown", missing, len(before.Arms))})
 	}
 	return out
 }
@@ -1025,19 +1077,38 @@ func flagsVariants(u *Unit, name string) []string {
 	return nil
 }
 
-func enumNames(u *Unit, name string) map[string]bool {
+// enumIds is an enum's variant WIRE IDS — what a stored value or a keyed slot
+// carries — as the set namesRide compares; nil when the unit has no such enum.
+func enumIds(u *Unit, name string) map[string]bool {
 	for _, e := range u.Enums {
 		if e.Name != name {
 			continue
 		}
 		set := map[string]bool{}
 		for _, v := range e.Variants {
-			set[v.Name] = true
+			set[fmt.Sprintf("%016x", v.Id)] = true
 		}
 		return set
 	}
 	return nil
 }
+
+// pointerSlot reports a field line whose storage is a POINTER — the field
+// itself, or each element of its array (a map's pointer value is its entry's
+// `value` field, which is a field line of its own): kind 17 (§3.1).
+func pointerSlot(f Field) bool {
+	kind, _ := f.Get("kind")
+	elem, _ := f.Get("elem")
+	return kind == pointerKind || elem == pointerKind
+}
+
+// pointerKind is the table wire's pointer kind (docs/SPEC-TABLES.md §3.1).
+var pointerKind = strconv.Itoa(ir.TableKindPointer)
+
+// blobReferent reports the two byte-buffer referents, whose node shape is the
+// blob's and not a declared table's (§2.5); they are judged by the referent
+// rule's ordinary path.
+func blobReferent(name string) bool { return name == "string" || name == "bytes" }
 
 func findUnion(u *Unit, name string) *Union {
 	for i := range u.Unions {
@@ -1057,44 +1128,94 @@ func findEnum(u *Unit, name string) *Enum {
 	return nil
 }
 
-// retiredMatch reports whether a live declaration is the one a ledger entry
-// names: the SAME vocabulary, and the entry's name or its wire id (issue
-// #441). A name reused anywhere shares the id, because the id is the name's
-// hash, so the id half catches a collision under a new spelling.
-func retiredMatch(r Retired, vocab, name string, id uint64) bool {
-	return r.Vocab == vocab && (r.Name == name || r.Id == id)
+// retiredOwner splits a ledger entry's qualified name into the declaration
+// that owned the member and the member. A declared name carries no dot, so
+// the last one separates them.
+func retiredOwner(name string) (owner, member string) {
+	i := strings.LastIndex(name, ".")
+	if i < 0 {
+		return "", name
+	}
+	return name[:i], name[i+1:]
 }
 
 // liveMatchesRetired reports whether the live projection carries the
 // declaration a retired entry names — the resurrection the ledger refuses.
-func liveMatchesRetired(live *Unit, r Retired) bool {
+//
+// THE MATCH IS SCOPED TO THE OWNER (F-242): a member's wire id is the hash of
+// its name, so `value` in First and `value` in Second share one id, and a
+// stored First body is read by First's ids alone. Inside the owner the match
+// is the entry's name OR its id, because a NEW spelling whose `was` names the
+// retired one carries the retired id (issue #441). The owner is the entry's
+// own declaration, or the live one a rename pairing carried it to (carried,
+// nil when there is no pairing to ask): a renamed declaration's stored bodies
+// are still the old one's.
+func liveMatchesRetired(live *Unit, r Retired, carried func(vocab, owner string) string) bool {
+	owner, member := retiredOwner(r.Name)
+	owners := map[string]bool{owner: true}
+	if carried != nil {
+		if to := carried(r.Vocab, owner); to != "" {
+			owners[to] = true
+		}
+	}
+	hit := func(name string, id uint64) bool { return name == member || id == r.Id }
 	switch r.Vocab {
 	case "field":
 		for _, t := range live.Tables {
+			if !owners[t.Name] {
+				continue
+			}
 			for _, f := range t.Fields {
-				if retiredMatch(r, "field", t.Name+"."+f.Name, f.Id) {
+				if hit(f.Name, f.Id) {
 					return true
 				}
 			}
 		}
 	case "enum-variant":
 		for _, e := range live.Enums {
+			if !owners[e.Name] {
+				continue
+			}
 			for _, v := range e.Variants {
-				if retiredMatch(r, "enum-variant", e.Name+"."+v.Name, v.Id) {
+				if hit(v.Name, v.Id) {
 					return true
 				}
 			}
 		}
 	case "union-arm":
 		for _, un := range live.Unions {
+			if !owners[un.Name] {
+				continue
+			}
 			for _, a := range un.Arms {
-				if retiredMatch(r, "union-arm", un.Name+"."+a.Name, a.Id) {
+				if hit(a.Name, a.Id) {
 					return true
 				}
 			}
 		}
 	}
 	return false
+}
+
+// carriedTo is the live declaration a rename pairing matched a baseline
+// declaration with, in the vocabulary a ledger entry names, and "" when the
+// declaration was not renamed.
+func (d *differ) carriedTo(vocab, owner string) string {
+	var p pairing
+	switch vocab {
+	case "field":
+		p = d.tables
+	case "enum-variant":
+		p = d.enums
+	case "union-arm":
+		p = d.unions
+	default:
+		return ""
+	}
+	if m := p[owner]; m.renamed {
+		return m.name
+	}
+	return ""
 }
 
 // retirements lists the declarations the live projection no longer carries,
