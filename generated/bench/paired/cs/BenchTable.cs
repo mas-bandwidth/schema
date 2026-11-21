@@ -2734,7 +2734,13 @@ namespace Bench
                     }
                     if (f.HasRange)
                     {
-                        if (value < f.RangeMin || value > f.RangeMax) { return RefuseText(ref input, "out_of_range"); }
+                        // A FLOAT32'S RANGE IS HELD AT FLOAT32 (docs/SPEC.md §4.6): the
+                        // value and both bounds at the field's own width, so the top grid
+                        // step its writer emits reads back
+                        if (single ? (float)value < (float)f.RangeMin || (float)value > (float)f.RangeMax : value < f.RangeMin || value > f.RangeMax)
+                        { return RefuseText(ref input, "out_of_range"); }
+                        // A COMPRESSED FLOAT'S -0 LANDS AS +0 (docs/SPEC-TABLES.md §3.3)
+                        value += 0.0;
                     }
                     if (single)
                     {
@@ -2751,47 +2757,11 @@ namespace Bench
                     }
                     return true;
                 }
-                // JSON HAS ONE NUMBER TYPE. 2.0 IS the integer 2 and 1e3 IS 1000, and a
-                // library that round-trips numbers through a double emits them that
-                // way — this walker's own float writer emits 1e+21. So an integer field
-                // takes any number whose VALUE is integral, however it was spelled;
-                // only a genuinely fractional value is the wrong shape for it.
+                // Every kind left here is a narrow integer, and the integer token rule
+                // above has already refused a fraction, an exponent and -0, so the
+                // token's digits are the value.
                 bool isSigned = f.Kind >= 2 && f.Kind <= 5;
-                bool saturated = false;
-                long value2 = 0;
-                if (tokenIntegral)
-                {
-                    value2 = TokenInteger(token, isSigned, out saturated);
-                }
-                else
-                {
-                    double d = TokenDouble(token, false);
-                    if (!Finite(d))
-                    {
-                        return RefuseText(ref input, "kind_mismatch");
-                    }
-                    if (isSigned)
-                    {
-                        if (d >= 9223372036854775808.0) { value2 = long.MaxValue; saturated = true; }
-                        else if (d < -9223372036854775808.0) { value2 = long.MinValue; saturated = true; }
-                        else if (d != (double)(long)d) { return RefuseText(ref input, "kind_mismatch"); }
-                        else { value2 = (long)d; }
-                    }
-                    else
-                    {
-                        if (d < 0.0)
-                        {
-                            // a negative for an unsigned field clamps to zero, as the
-                            // exact digit path already does
-                            if (d != (double)(long)d) { return RefuseText(ref input, "kind_mismatch"); }
-                            value2 = 0;
-                            saturated = true;
-                        }
-                        else if (d >= 18446744073709551616.0) { value2 = unchecked((long)ulong.MaxValue); saturated = true; }
-                        else if (d != (double)(ulong)d) { return RefuseText(ref input, "kind_mismatch"); }
-                        else { value2 = unchecked((long)(ulong)d); }
-                    }
-                }
+                long value2 = TokenInteger(token, isSigned, out bool saturated);
                 if (saturated) { return RefuseText(ref input, "out_of_range"); }
                 // Exact typed bounds preserve integers above 2^53 and unsigned values
                 // above Int64.MaxValue. The field's storage-width clamp follows this.
@@ -2957,6 +2927,7 @@ namespace Bench
                         }
                     }
                     if (clamped) { return RefuseText(ref input, "length_over_bound"); }
+                    if (placed < f.ArrayMin) { return RefuseText(ref input, "count_over_bound"); }
                     PutCount(value, f, placed);
                     return true;
                 }
@@ -3075,8 +3046,10 @@ namespace Bench
                         input.Bad = true;
                         return false;
                     }
-                    // a fixed array's tail keeps the defaults the prefill left there,
-                    // exactly as a short wire count does
+                    // A COUNT BELOW THE DECLARED MIN IS REFUSED (docs/SPEC.md §5.1 row
+                    // 3). A fixed array's tail keeps the defaults the prefill left
+                    // there, exactly as a short wire count does.
+                    if (placed < f.ArrayMin) { return RefuseText(ref input, "count_over_bound"); }
                     PutCount(value, f, placed);
                     return true;
                 }
@@ -4674,7 +4647,8 @@ namespace Bench
             {
                 if (f.WireGuard != null && !f.WireGuard(value)) { return false; }
                 // text or bytes with a declared default elide at it, as Rides says
-                if (!f.Optional && f.Counted && f.DefaultBytes == null) { return f.GetCount(value) != 0; }
+                // and a [A..B] array born at A elides at its birth value, as Rides says
+                if (!f.Optional && f.Counted && f.DefaultBytes == null && f.ArrayMin == 0) { return f.GetCount(value) != 0; }
                 return Rides(value, f);
             }
             static void MessageBody(ref BitWriter w, object value, TableTypeInfo type)
@@ -4792,8 +4766,17 @@ namespace Bench
                     if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry e)) { return false; }
                     if (reference == 0) { return true; }
                     if (Reserved(e.Id) || !SeenOnce(few, ref count, ref more, e.Id)) { return false; }
-                    if (!MessageSkip(ref r, d, e.Kind, e.Shape, depth)) { return false; }
+                    if (!MessageSkipField(ref r, d, e, depth)) { return false; }
                 }
+            }
+            // A message field cannot be required, so a writer elides a union FIELD at
+            // None at every build (§3.3 (c)): arm reference 0 stored for one is refused
+            // on the skip path as on a named read. An array element and an arm's own
+            // value keep their positional None and skip through MessageSkip.
+            static bool MessageSkipField(ref BitReader r, MessageRead d, TableMessageEntry e, int depth)
+            {
+                if (e.Kind == 15) { BitReader arm = r; if (!MessageReference(ref arm, d, out ulong armRef, out _) || armRef == 0) { return false; } }
+                return MessageSkip(ref r, d, e.Kind, e.Shape, depth);
             }
             // SeenOnce records one id of a body or one key of a keyed array and
             // answers false on a repeat: an id twice in one body, or a key twice in
@@ -4942,7 +4925,7 @@ namespace Bench
                     {
                         if (same) { return false; }
                         d.Report.Unknown++;
-                        if (!MessageSkip(ref r, d, entry.Kind, entry.Shape, depth)) { return false; }
+                        if (!MessageSkipField(ref r, d, entry, depth)) { return false; }
                         continue;
                     }
                     if (same && field.Ordinal <= last) { return false; }
@@ -4972,6 +4955,16 @@ namespace Bench
                 {
                     int n = f.GetCount(value);
                     if (f.DefaultBytes != null) { return n == f.DefaultBytes.Length && f.GetBuffer(value).AsSpan(0, n).SequenceEqual(f.DefaultBytes); }
+                    // BORN AT ITS MIN (docs/SPEC.md §4.2): a [A..B] array at A default
+                    // elements is the birth value the writer elides. A table element's
+                    // default is not judged from storage, and a quantized float's
+                    // stored value cannot say it, so neither is refused here.
+                    if (f.ArrayMin > 0)
+                    {
+                        if (n != f.ArrayMin || f.Kind == 13 || shape.Inner != null && shape.Inner.Packing == 2) { return false; }
+                        for (int i = 0; i < n; i++) { if (!DefaultElement(value, f, i)) { return false; } }
+                        return true;
+                    }
                     return n == 0;
                 }
                 if (!f.IsArray)
@@ -4988,9 +4981,11 @@ namespace Bench
                 if (f.IsArray && f.GetBuffer != null)
                 {
                     if (!r.Get(BitCount(shape.Max - shape.Min), out UInt128 raw) || !r.Align()) { return false; }
-                    ulong n = (ulong)raw;
+                    // bytes(N) AND [..N]uint8 ARE ONE KIND (§3.3): the count rides as
+                    // count - the announced min, as an array's does
+                    ulong n = (ulong)raw + shape.Min;
                     if (n > (ulong)((r.End - r.At) / 8)) { return false; }
-                    if (n > (ulong)f.ArrayBound) { return Fail(d.Report, "count_over_bound: " + f.Name); }
+                    if (n < (ulong)f.ArrayMin || n > (ulong)f.ArrayBound) { return Fail(d.Report, "count_over_bound: " + f.Name); }
                     int kept = (int)n;
                     if (value != null) { r.Bytes.Slice((int)(r.At / 8), kept).CopyTo(f.GetBuffer(value)); f.SetCount(value, kept); }
                     r.At += (long)n * 8; return true;
@@ -5034,7 +5029,8 @@ namespace Bench
                         return true;
                     }
                     int run = Width(shape.Elem) != 0 ? ValueBits(shape.Elem, shape.Inner) : -1;
-                    if (n > (ulong)f.ArrayBound) { return Fail(d.Report, "count_over_bound: " + f.Name); }
+                    // A COUNT BELOW THE DECLARED MIN IS REFUSED (docs/SPEC.md §5.1 row 3)
+                    if (n < (ulong)f.ArrayMin || n > (ulong)f.ArrayBound) { return Fail(d.Report, "count_over_bound: " + f.Name); }
                     int kept = (int)n;
                     int previous = f.Counted && value != null && f.GetCount != null ? f.GetCount(value) : 0;
                     // A FLOAT PAST THE BOUND IS STILL TESTED (docs/SPEC-TABLES.md §3.3):
@@ -5111,6 +5107,9 @@ namespace Bench
                 UInt128 stored = bits; bool negative = false, above = false;
                 if (shape.Packing == 1)
                 {
+                    // A RANGED VALUE IS HELD TO ITS ANNOUNCED KIND (§3.3): base plus
+                    // offset is never wrapped, named or skipped
+                    if (MessageNumber(kind) && !RangedHolds(kind, shape.Base, bits)) { return Fail(d.Report, "out_of_range: " + f.Name); }
                     stored = unchecked(bits + shape.Base);
                     bool baseNegative = (kind >= 18 || Signed(kind)) && unchecked((Int128)shape.Base) < 0;
                     negative = baseNegative && bits < unchecked(0 - shape.Base);
@@ -5434,6 +5433,14 @@ namespace Bench
                 {
                     int n = f.GetCount(value);
                     if (f.DefaultBytes != null) { return n != f.DefaultBytes.Length || !f.GetBuffer(value).AsSpan(0, n).SequenceEqual(f.DefaultBytes); }
+                    // BORN AT ITS MIN (docs/SPEC.md §4.2): a [A..B] array's birth value
+                    // is A default elements, and that is what the writer elides
+                    if (f.ArrayMin > 0)
+                    {
+                        if (n != f.ArrayMin || f.Kind == 13 && f.KeyId == null) { return true; }
+                        for (int i = 0; i < n; i++) { if (!DefaultElement(value, f, i)) { return true; } }
+                        return false;
+                    }
                     return n != 0;
                 }
                 if (!f.IsArray) { return !DefaultElement(value, f, 0); }
@@ -6072,7 +6079,7 @@ namespace Bench
                     if (!Compatible(elementKind, f.Kind, report)) { return false; }
                     if (f.Dynamic && count > int.MaxValue) { return CollectionCap(report); }
                     int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
-                    if (!f.Dynamic && count > (ulong)f.ArrayBound) { return Fail(report, "count_over_bound: " + f.Name); }
+                    if (!f.Dynamic && (count < (ulong)f.ArrayMin || count > (ulong)f.ArrayBound)) { return Fail(report, "count_over_bound: " + f.Name); }
                     int decoded = 0;
                     for (int i = 0; i < keep; i++)
                     {
@@ -6156,7 +6163,7 @@ namespace Bench
                     else
                     {
                         int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
-                        if (!f.Dynamic && count > (ulong)f.ArrayBound) { return Fail(report, "count_over_bound: " + f.Name); }
+                        if (!f.Dynamic && (count < (ulong)f.ArrayMin || count > (ulong)f.ArrayBound)) { return Fail(report, "count_over_bound: " + f.Name); }
                         int previous = f.Counted && f.GetCount != null ? f.GetCount(value) : 0;
                         int decoded = 0; long textSpent = 0;
                         for (int i = 0; i < keep; i++)
@@ -8679,7 +8686,7 @@ namespace Bench
             {
                 TableReset(value.Entities[i]);
             }
-            value.EntitiesCount = 0;
+            value.EntitiesCount = 1;
             for (int i = 0; i < value.Stats.Length; i++)
             {
                 TableReset(value.Stats[i]);
@@ -9258,15 +9265,15 @@ namespace Bench
                     new TableFieldInfo { Name = "world_time", Json = "world_time", TypeName = "int64", Id = 0x3eee6b51be54fc85, Kind = 5, IsArray = false, Counted = false, Optional = false, ArrayMin = 0, ArrayBound = 0, ElemWidth = 8, HasRange = true, RangeMin = -1e+12, RangeMax = 1e+12, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return unchecked((ulong)(long)(((global::Bench.BenchMixed)o).WorldTime)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Bench.BenchMixed)o).WorldTime = unchecked((long)(long)r); }, MessageSlot = 7, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0xfffffffffffffffful << 64) | 0xffffff172b5af000ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xe8d4a51000ul)), Ordinal = 6, NativeOffset = 40, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Bench.BenchMixed)o; value.WorldTime = 0; }, DefaultRaw = unchecked((ulong)(long)(0)), RangeJsonInteger = delegate (ulong raw, TableReport r) { long v = unchecked((long)raw); if (v < -1000000000000L || v > 1000000000000L) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } return raw; }, RequiredValidRaw = delegate (ulong raw) { long v = unchecked((long)(long)raw); return v >= -1000000000000L && v <= 1000000000000L; }, RangeRaw = delegate (ulong raw, TableReport r) { long v = unchecked((long)(long)raw); if (v < -1000000000000L) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } if (v > 1000000000000L) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } return unchecked((ulong)(long)(v)); } },
                     new TableFieldInfo { Name = "frame_tick", Json = "frame_tick", TypeName = "bits(48)", Id = 0x7bbc035f7b6d0112, Kind = 9, IsArray = false, Counted = false, Optional = false, ArrayMin = 0, ArrayBound = 0, ElemWidth = 8, HasRange = true, RangeMin = 0.0, RangeMax = 2.81474976710655e+14, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Bench.BenchMixed)o).FrameTick; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Bench.BenchMixed)o).FrameTick = unchecked((ulong)r); }, MessageSlot = 8, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfffffffffffful)), Ordinal = 7, NativeOffset = 48, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Bench.BenchMixed)o; value.FrameTick = 0; }, DefaultRaw = (ulong)0, RangeJsonInteger = delegate (ulong raw, TableReport r) { if (raw > 281474976710655ul) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } return raw; }, RequiredValidRaw = delegate (ulong raw) { return raw <= 281474976710655ul; }, RangeRaw = delegate (ulong raw, TableReport r) { ulong v = unchecked((ulong)raw); if (v > 281474976710655ul) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } return (ulong)v; } },
                     new TableFieldInfo { Name = "server_time", Json = "server_time", TypeName = "fixed(24, 8)", Id = 0x3c460475f9be69c6, Kind = 22, IsArray = false, Counted = false, Optional = false, ArrayMin = 0, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 65535.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetWide = delegate (object o, int i) { return unchecked((UInt128)(int)((global::Bench.BenchMixed)o).ServerTime); }, SetWide = delegate (object o, int i, UInt128 r) { ((global::Bench.BenchMixed)o).ServerTime = unchecked((int)r); }, MessageSlot = 9, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xffff00ul)), Ordinal = 8, NativeOffset = 56, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Bench.BenchMixed)o; value.ServerTime = 0; }, DefaultWide = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), WideSigned = true, FracBits = 8, RequiredValidWide = delegate (UInt128 raw) { Int128 v = unchecked((Int128)raw); return v >= unchecked((Int128)(((UInt128)0x0ul << 64) | 0x0ul)) && v <= unchecked((Int128)(((UInt128)0x0ul << 64) | 0xffff00ul)); }, RangeWide = delegate (UInt128 raw, TableReport r) { Int128 v = unchecked((Int128)raw); if (v < unchecked((Int128)(((UInt128)0x0ul << 64) | 0x0ul)) || v > unchecked((Int128)(((UInt128)0x0ul << 64) | 0xffff00ul))) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } return raw; } },
-                    new TableFieldInfo { Name = "entities", Json = "entities", TypeName = "MixedEntity", Id = 0x935d0fb07bb3822a, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayMin = 1, ArrayBound = 8, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return MixedEntityTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Bench.BenchMixed)o).Entities[i]; }, GetCount = delegate (object o) { return ((global::Bench.BenchMixed)o).EntitiesCount; }, SetCount = delegate (object o, int n) { ((global::Bench.BenchMixed)o).EntitiesCount = n; }, MessageSlot = 10, Ordinal = 9, NativeOffset = 64, NativeElementSize = 64, NativeCountOffset = 576, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Bench.BenchMixed)o; for (int i = 0; i < value.Entities.Length; i++) { TableReset(value.Entities[i]); } value.EntitiesCount = 0; } },
+                    new TableFieldInfo { Name = "entities", Json = "entities", TypeName = "MixedEntity", Id = 0x935d0fb07bb3822a, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayMin = 1, ArrayBound = 8, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return MixedEntityTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Bench.BenchMixed)o).Entities[i]; }, GetCount = delegate (object o) { return ((global::Bench.BenchMixed)o).EntitiesCount; }, SetCount = delegate (object o, int n) { ((global::Bench.BenchMixed)o).EntitiesCount = n; }, MessageSlot = 10, Ordinal = 9, NativeOffset = 64, NativeElementSize = 64, NativeCountOffset = 576, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Bench.BenchMixed)o; for (int i = 0; i < value.Entities.Length; i++) { TableReset(value.Entities[i]); } value.EntitiesCount = 1; } },
                     new TableFieldInfo { Name = "stats", Json = "stats", TypeName = "MixedStat", Id = 0xee639cad45b1994c, Kind = 13, IsArray = true, Counted = true, Optional = false, ArrayMin = 0, ArrayBound = 80, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return MixedStatTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Bench.BenchMixed)o).Stats[i]; }, GetCount = delegate (object o) { return ((global::Bench.BenchMixed)o).StatsCount; }, SetCount = delegate (object o, int n) { ((global::Bench.BenchMixed)o).StatsCount = n; }, MessageSlot = 11, Ordinal = 10, NativeOffset = 580, NativeElementSize = 8, NativeCountOffset = 1220, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Bench.BenchMixed)o; for (int i = 0; i < value.Stats.Length; i++) { TableReset(value.Stats[i]); } value.StatsCount = 0; } },
                     new TableFieldInfo { Name = "game_event", Json = "game_event", TypeName = "MixedEvent", Id = 0x2e35dc5321aa5790, Kind = 15, IsArray = false, Counted = false, Optional = false, ArrayMin = 0, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 3, EnumName = delegate (ulong v) { switch (v) { case 0: return "None"; case 1: return "hit"; case 2: return "chat"; case 3: return "pickup"; default: return "???"; } }, VariantId = delegate (ulong v) { switch (v) { case 0: return (ulong)0; case 1: return (ulong)0x33732819300680aa; case 2: return (ulong)0xf2a38d910b5b348b; case 3: return (ulong)0x9fa3a41c86ecb765; default: return (ulong)0; } }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = new TableUnionInfo { GetTag = delegate (object o) { return (ulong)((global::Bench.MixedEvent)o).Type; }, Create = delegate { return new global::Bench.MixedEvent(); }, NativeTagSize = 1, NativeArmOffset = 4, SetTag = delegate (object o, ulong t) { ((global::Bench.MixedEvent)o).Type = unchecked((global::Bench.MixedEventType)t); }, Arms = new TableUnionArmInfo[] { new TableUnionArmInfo(), new TableUnionArmInfo { MessageSlot = 68, Field = new TableFieldInfo { Name = "hit", Json = "hit", TypeName = "MixedHitEvent", Id = 0x33732819300680aa, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayMin = 0, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return MixedHitEventTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Bench.MixedEvent)o).Hit; }, MessageSlot = 68, Ordinal = 0, NativeOffset = 0, NativeElementSize = 16, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Bench.MixedEvent)o; TableReset(value.Hit); } }, TableRef = delegate { return MixedHitEventTableType(); }, Payload = delegate (object o) { return ((global::Bench.MixedEvent)o).Hit; } }, new TableUnionArmInfo { MessageSlot = 69, Field = new TableFieldInfo { Name = "chat", Json = "chat", TypeName = "MixedChatEvent", Id = 0xf2a38d910b5b348b, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayMin = 0, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return MixedChatEventTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Bench.MixedEvent)o).Chat; }, MessageSlot = 69, Ordinal = 0, NativeOffset = 0, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Bench.MixedEvent)o; TableReset(value.Chat); } }, TableRef = delegate { return MixedChatEventTableType(); }, Payload = delegate (object o) { return ((global::Bench.MixedEvent)o).Chat; } }, new TableUnionArmInfo { MessageSlot = 70, Field = new TableFieldInfo { Name = "pickup", Json = "pickup", TypeName = "MixedPickupEvent", Id = 0x9fa3a41c86ecb765, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayMin = 0, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return MixedPickupEventTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Bench.MixedEvent)o).Pickup; }, MessageSlot = 70, Ordinal = 0, NativeOffset = 0, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Bench.MixedEvent)o; TableReset(value.Pickup); } }, TableRef = delegate { return MixedPickupEventTableType(); }, Payload = delegate (object o) { return ((global::Bench.MixedEvent)o).Pickup; } } } }, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Bench.BenchMixed)o).GameEvent; }, MessageSlot = 12, Ordinal = 11, NativeOffset = 1224, NativeElementSize = 20, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Bench.BenchMixed)o; TableReset(value.GameEvent); } },
                     new TableFieldInfo { Name = "loadout", Json = "loadout", TypeName = "uint8", Id = 0x5759ce7586bbb5a3, Kind = 6, IsArray = true, Counted = false, Optional = false, ArrayMin = 0, ArrayBound = 4, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Bench.BenchMixed)o).Loadout[i]; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Bench.BenchMixed)o).Loadout[i] = unchecked((byte)r); }, MessageSlot = 13, Ordinal = 12, NativeOffset = 1244, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Bench.BenchMixed)o; Array.Clear(value.Loadout, 0, value.Loadout.Length); }, DefaultRaw = (ulong)0, RangeRaw = delegate (ulong raw, TableReport r) { byte v = unchecked((byte)raw); return (ulong)v; } },
                     new TableFieldInfo { Name = "player_name", Json = "player_name", TypeName = "string", Id = 0x13a62f542cf8e86e, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayMin = 0, ArrayBound = 15, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate (object o) { return ((global::Bench.BenchMixed)o).PlayerName; }, GetCount = delegate (object o) { return ((global::Bench.BenchMixed)o).PlayerNameLength; }, SetCount = delegate (object o, int n) { ((global::Bench.BenchMixed)o).PlayerNameLength = n; }, MessageSlot = 14, Ordinal = 13, NativeOffset = 1248, NativeElementSize = 16, NativeCountOffset = 1264, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Bench.BenchMixed)o; Array.Clear(value.PlayerName, 0, value.PlayerName.Length); value.PlayerNameLength = 0; } },
                     new TableFieldInfo { Name = "payload", Json = "payload", TypeName = "bytes", Id = 0xcfb8a9d063b5e9e5, Kind = 6, IsArray = true, Counted = true, Optional = false, ArrayMin = 0, ArrayBound = 16, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate (object o) { return ((global::Bench.BenchMixed)o).Payload; }, GetCount = delegate (object o) { return ((global::Bench.BenchMixed)o).PayloadLength; }, SetCount = delegate (object o, int n) { ((global::Bench.BenchMixed)o).PayloadLength = n; }, MessageSlot = 15, Ordinal = 14, NativeOffset = 1268, NativeElementSize = 16, NativeCountOffset = 1284, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Bench.BenchMixed)o; Array.Clear(value.Payload, 0, value.Payload.Length); value.PayloadLength = 0; } },
-                    new TableFieldInfo { Name = "aim_x", Json = "aim_x", TypeName = "float32", Id = 0xdbaf7be5e24296c9, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayMin = 0, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = -1.0, RangeMax = 1.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(((global::Bench.BenchMixed)o).AimX)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Bench.BenchMixed)o).AimX = BitConverter.Int32BitsToSingle(unchecked((int)(uint)r)); }, MessageSlot = 16, Ordinal = 15, NativeOffset = 1288, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Bench.BenchMixed)o; value.AimX = 0.0f; }, DefaultRaw = (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(0.0f)), NonFiniteField = "BenchMixed.aim_x", NonFiniteReason = "non_finite_float: BenchMixed.aim_x", RequiredValidRaw = delegate (ulong raw) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); return v >= -1.0f && v <= 1.0f; }, RangeRaw = delegate (ulong raw, TableReport r) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); if (v < -1.0f || v > 1.0f) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v)); } },
-                    new TableFieldInfo { Name = "aim_y", Json = "aim_y", TypeName = "float32", Id = 0xdbaf7ae5e2429516, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayMin = 0, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = -1.0, RangeMax = 1.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(((global::Bench.BenchMixed)o).AimY)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Bench.BenchMixed)o).AimY = BitConverter.Int32BitsToSingle(unchecked((int)(uint)r)); }, MessageSlot = 17, Ordinal = 16, NativeOffset = 1292, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Bench.BenchMixed)o; value.AimY = 0.0f; }, DefaultRaw = (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(0.0f)), NonFiniteField = "BenchMixed.aim_y", NonFiniteReason = "non_finite_float: BenchMixed.aim_y", RequiredValidRaw = delegate (ulong raw) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); return v >= -1.0f && v <= 1.0f; }, RangeRaw = delegate (ulong raw, TableReport r) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); if (v < -1.0f || v > 1.0f) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v)); } },
-                    new TableFieldInfo { Name = "aim_z", Json = "aim_z", TypeName = "float32", Id = 0xdbaf79e5e2429363, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayMin = 0, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = -1.0, RangeMax = 1.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(((global::Bench.BenchMixed)o).AimZ)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Bench.BenchMixed)o).AimZ = BitConverter.Int32BitsToSingle(unchecked((int)(uint)r)); }, MessageSlot = 18, Ordinal = 17, NativeOffset = 1296, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Bench.BenchMixed)o; value.AimZ = 0.0f; }, DefaultRaw = (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(0.0f)), NonFiniteField = "BenchMixed.aim_z", NonFiniteReason = "non_finite_float: BenchMixed.aim_z", RequiredValidRaw = delegate (ulong raw) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); return v >= -1.0f && v <= 1.0f; }, RangeRaw = delegate (ulong raw, TableReport r) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); if (v < -1.0f || v > 1.0f) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v)); } },
+                    new TableFieldInfo { Name = "aim_x", Json = "aim_x", TypeName = "float32", Id = 0xdbaf7be5e24296c9, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayMin = 0, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = -1.0, RangeMax = 1.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(((global::Bench.BenchMixed)o).AimX)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Bench.BenchMixed)o).AimX = BitConverter.Int32BitsToSingle(unchecked((int)(uint)r)); }, MessageSlot = 16, Ordinal = 15, NativeOffset = 1288, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Bench.BenchMixed)o; value.AimX = 0.0f; }, DefaultRaw = (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(0.0f)), NonFiniteField = "BenchMixed.aim_x", NonFiniteReason = "non_finite_float: BenchMixed.aim_x", RequiredValidRaw = delegate (ulong raw) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); return v >= -1.0f && v <= 1.0f; }, RangeRaw = delegate (ulong raw, TableReport r) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); if (v < -1.0f || v > 1.0f) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } v = v + 0; return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v)); } },
+                    new TableFieldInfo { Name = "aim_y", Json = "aim_y", TypeName = "float32", Id = 0xdbaf7ae5e2429516, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayMin = 0, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = -1.0, RangeMax = 1.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(((global::Bench.BenchMixed)o).AimY)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Bench.BenchMixed)o).AimY = BitConverter.Int32BitsToSingle(unchecked((int)(uint)r)); }, MessageSlot = 17, Ordinal = 16, NativeOffset = 1292, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Bench.BenchMixed)o; value.AimY = 0.0f; }, DefaultRaw = (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(0.0f)), NonFiniteField = "BenchMixed.aim_y", NonFiniteReason = "non_finite_float: BenchMixed.aim_y", RequiredValidRaw = delegate (ulong raw) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); return v >= -1.0f && v <= 1.0f; }, RangeRaw = delegate (ulong raw, TableReport r) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); if (v < -1.0f || v > 1.0f) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } v = v + 0; return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v)); } },
+                    new TableFieldInfo { Name = "aim_z", Json = "aim_z", TypeName = "float32", Id = 0xdbaf79e5e2429363, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayMin = 0, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = -1.0, RangeMax = 1.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(((global::Bench.BenchMixed)o).AimZ)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Bench.BenchMixed)o).AimZ = BitConverter.Int32BitsToSingle(unchecked((int)(uint)r)); }, MessageSlot = 18, Ordinal = 17, NativeOffset = 1296, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Bench.BenchMixed)o; value.AimZ = 0.0f; }, DefaultRaw = (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(0.0f)), NonFiniteField = "BenchMixed.aim_z", NonFiniteReason = "non_finite_float: BenchMixed.aim_z", RequiredValidRaw = delegate (ulong raw) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); return v >= -1.0f && v <= 1.0f; }, RangeRaw = delegate (ulong raw, TableReport r) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); if (v < -1.0f || v > 1.0f) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } v = v + 0; return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v)); } },
                     new TableFieldInfo { Name = "recoil", Json = "recoil", TypeName = "float32", Id = 0x9cef31fff7e2e457, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayMin = 0, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(((global::Bench.BenchMixed)o).Recoil)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Bench.BenchMixed)o).Recoil = BitConverter.Int32BitsToSingle(unchecked((int)(uint)r)); }, MessageSlot = 19, Ordinal = 18, NativeOffset = 1300, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Bench.BenchMixed)o; value.Recoil = 0.0f; }, DefaultRaw = (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(0.0f)), NonFiniteField = "BenchMixed.recoil", NonFiniteReason = "non_finite_float: BenchMixed.recoil", RangeRaw = delegate (ulong raw, TableReport r) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v)); } },
                     new TableFieldInfo { Name = "drift", Json = "drift", TypeName = "float64", Id = 0x5ab3f9c9341f6c04, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayMin = 0, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return unchecked((ulong)BitConverter.DoubleToInt64Bits(((global::Bench.BenchMixed)o).Drift)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Bench.BenchMixed)o).Drift = BitConverter.Int64BitsToDouble(unchecked((long)r)); }, MessageSlot = 20, Ordinal = 19, NativeOffset = 1304, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Bench.BenchMixed)o; value.Drift = 0.0; }, DefaultRaw = unchecked((ulong)BitConverter.DoubleToInt64Bits(0.0)), NonFiniteField = "BenchMixed.drift", NonFiniteReason = "non_finite_float: BenchMixed.drift", RangeRaw = delegate (ulong raw, TableReport r) { double v = BitConverter.Int64BitsToDouble(unchecked((long)raw)); return unchecked((ulong)BitConverter.DoubleToInt64Bits(v)); } },
                     new TableFieldInfo { Name = "wide_key", Json = "wide_key", TypeName = "uint128", Id = 0xa3348580461faf16, Kind = 19, IsArray = false, Counted = false, Optional = false, ArrayMin = 0, ArrayBound = 0, ElemWidth = 16, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetWide = delegate (object o, int i) { return unchecked((UInt128)(System.UInt128)((global::Bench.BenchMixed)o).WideKey); }, SetWide = delegate (object o, int i, UInt128 r) { ((global::Bench.BenchMixed)o).WideKey = unchecked((System.UInt128)r); }, MessageSlot = 21, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0xfffffffffffffffful << 64) | 0xfffffffffffffffful)), Ordinal = 20, NativeOffset = 1312, NativeElementSize = 16, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Bench.BenchMixed)o; value.WideKey = 0; }, DefaultWide = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), WideSigned = false, FracBits = 0 },
@@ -9522,9 +9529,9 @@ namespace Bench
             System.Diagnostics.Debug.Assert(len_payload <= 16);
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(1145), len_payload);
             if (len_payload > 0) { value.Payload.AsSpan(0, len_payload).CopyTo(b.Slice(1149)); }
-            BinaryPrimitives.WriteSingleLittleEndian(b.Slice(1165), value.AimX);
-            BinaryPrimitives.WriteSingleLittleEndian(b.Slice(1169), value.AimY);
-            BinaryPrimitives.WriteSingleLittleEndian(b.Slice(1173), value.AimZ);
+            BinaryPrimitives.WriteSingleLittleEndian(b.Slice(1165), value.AimX + 0.0f);
+            BinaryPrimitives.WriteSingleLittleEndian(b.Slice(1169), value.AimY + 0.0f);
+            BinaryPrimitives.WriteSingleLittleEndian(b.Slice(1173), value.AimZ + 0.0f);
             BinaryPrimitives.WriteSingleLittleEndian(b.Slice(1177), value.Recoil);
             BinaryPrimitives.WriteDoubleLittleEndian(b.Slice(1181), value.Drift);
             BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(1189), unchecked((ulong)(UInt128)value.WideKey));
@@ -9606,6 +9613,7 @@ namespace Bench
             // bits(48) width clamp
             if (value.FrameTick > 281474976710655ul) { clamped++; }
             if (value.ServerTime < 0 || value.ServerTime > 16776960) { clamped++; }
+            if (value.EntitiesCount < 1) { clamped++; }
             if (value.Entities != null)
             {
                 for (int i = 0; i < value.EntitiesCount && i < value.Entities.Length; ++i)
@@ -9722,6 +9730,7 @@ namespace Bench
             // bits(48) width clamp
             if (value.FrameTick > 281474976710655ul) { clamped++; }
             if (value.ServerTime < 0 || value.ServerTime > 16776960) { clamped++; }
+            if (value.EntitiesCount < 1) { clamped++; }
             if (value.Entities != null)
             {
                 for (int i = 0; i < value.EntitiesCount && i < value.Entities.Length; ++i)
