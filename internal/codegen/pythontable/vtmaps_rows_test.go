@@ -95,6 +95,7 @@ var pythonVTMapRows = []string{
 	"torture_cook_extremes",
 	"torture_wide_cook",
 	"torture_wide_cook_extremes",
+	"widenbound_evodoc",
 }
 
 // pythonVTMapRowConstructs are the Go-engine constructs the map row names on
