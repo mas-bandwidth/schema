@@ -9166,7 +9166,7 @@ only.
 | an array changed between keyed and positional | refuses `kind_mismatch` | **refuses** | **moves** |
 | an enum-keyed array's KEY enum swapped for another (§2.4) | `unknown` for each stored slot keyed by a variant name the new enum does not declare, and the slot is dropped; the new enum's unreached slots read their defaults | **refuses**, unless the new enum declares every variant name the old one did (§18.2) | **moves** |
 | a counted array's MINIMUM count moved, or gained or lost with the array's shape (SPEC §4.6) | refuses `count_over_bound` on a count below a raised minimum; silent on an array the writer elided at its born count, which reads back as the READER's minimum of default elements | **refuses** — the `mincount=` token is the array's born count as well as its floor (§18.1) | **moves** |
-| an enum VARIANT deprecated in place (§2.15) | silent — a stored value naming it reads as the field's declared default, and nothing is counted | **warns** | **moves** |
+| an enum VARIANT deprecated in place (§2.15) | silent — a stored value naming it reads as the field's declared default, and nothing is counted | **warns** | no |
 | a field or a union ARM changed between an `enum` and its raw integer | refuses `kind_mismatch` | **refuses** | **moves** |
 | a union ARM's declared TYPE changed | refuses `kind_mismatch` where the arm's kind moved, `wire_damaged` where its `L` no longer frames its kind | **refuses** | **moves** |
 | a declared RANGE tightened — a maximum lowered, a minimum raised, or a range declared where the field had none | refuses `out_of_range` on a value past the new bounds | **warns** — the `min=`/`max=` tokens are extents like a capacity (§18.1) | **moves** |

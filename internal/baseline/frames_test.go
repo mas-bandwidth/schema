@@ -395,7 +395,7 @@ func frameRows(t *testing.T) []frameRow {
 			instance: `{"grade":"Gold"}`,
 			read:     "0,0",
 			baseline: "warn",
-			build:    "moves",
+			build:    "stands",
 		},
 		{
 			name:     "a field changed from an enum to its raw integer",

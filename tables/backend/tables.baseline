@@ -1,5 +1,8 @@
-schema-tables-baseline 7
+schema-tables-baseline 8
 package backenddemo
+
+table Envelope
+    field payload id=0xcfb8a9d063b5e9e5 kind=15 union=Payload
 
 table LoginRequest
     field player_id id=0xc14ae3ff748dc438 kind=9 default=0
@@ -35,6 +38,14 @@ enum Region
     variant APAC id=0x0b38df8be8d23c24
     variant SA id=0x09460f07b5d5be59
 
+union Payload
+    arm login id=0x03c75db6e18f29d2 payload=LoginRequest
+    arm result id=0x9b51cd7cd76778c4 payload=MatchResult
+    arm purchase id=0x0ba8e96f5598f0c2 payload=StorePurchase
+
 ## history
 ### 2026-09-04 — first baseline: the message form's corpus (docs/SPEC-TABLES.md §3.3)
 - baseline created over 4 tables — data written BEFORE this point is not covered by it
+
+### 2026-11-21 (UTC) — rendering version 8: a counted array records its minimum count (mincount=) and a deprecated enum variant its marker (deprecated=true), so a moved minimum refuses and a deprecation warns (docs/SPEC-TABLES.md §18.1)
+- baseline REGENERATED over an unreadable one (baseline version 7, this compiler writes 8); the projection is this unit as it stands and the history above is preserved, but the previous projection could not be diffed, so no per-edit lines follow
