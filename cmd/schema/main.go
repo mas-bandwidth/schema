@@ -1,6 +1,6 @@
 // The schema compiler CLI (SPEC §7).
 //
-//	schema check      [dir|files...|saved-file]      parse + typecheck; a saved file answers its FORM BYTE (§3)
+//	schema check      [dir|files...|saved-file]      parse + typecheck; a saved file answers what it is by its leading bytes (§3)
 //	schema generate   --lang cpp --out <dir> [dir]   emit generated code
 //	schema testgen    [--lang go|lua|squirrel] [--out generated] [--verbose] [dir|files...]  emit the round-trip and damage tests of every table
 //	schema id         [dir|files...]                 print the protocol id
@@ -31,6 +31,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path"
@@ -97,15 +98,19 @@ func main() {
 		c.FixedRecordLimit = *limit
 		c.TablesBaseline = true
 		c.SchemaLock = true
-		// WHAT BYTE 0 SAYS, FIRST (docs/SPEC-TABLES.md §3, "THE FIRST BYTE").
-		// Every schema file begins with the form byte, so a file handed to
-		// `check` is answered by its form before anything else is said about
-		// it: one line, `FORM <n> <name>`, or a refusal that names the byte.
-		// A tool that read a file and never told you which of the five arms
-		// it was would be hiding the one fact the rest of the read depends on.
+		// WHAT THE LEADING BYTES SAY, FIRST (docs/SPEC-TABLES.md §3, "THE
+		// FIRST BYTE"). A file handed to `check` is answered by its format
+		// before anything else is said about it, on one line: `FORM <n>
+		// <name>` for a form, which begins with its form byte; `COOK` or
+		// `BLOCK FORM` with the byte order for an accelerator, which begins
+		// with its magic; and beside each the command that validates it. Any
+		// other first byte is a refusal that names the byte and lists what is
+		// recognised. A tool that read a file and never told you which of the
+		// five arms it was would be hiding the one fact the rest of the read
+		// depends on.
 		args, wires := splitWireFiles(fs.Args())
 		for _, w := range wires {
-			fmt.Printf("%s: %s\n", w.path, ir.WireFormLine(w.head))
+			fmt.Printf("%s: %s\n", w.path, ir.FileLine(w.head))
 		}
 		// A CHECK OVER FILES ALONE IS FINISHED: there is no unit to compile,
 		// and defaulting to the working directory would compile something the
@@ -488,6 +493,7 @@ func main() {
 			// the name this unit's closure gives it, its kind and its shape
 			text, described, derr := c.DescribeAnnouncement(unit, wire)
 			if derr != nil {
+				noteWrongFile(*in, wire, ir.FileVariable) // an announcement is a form-1 file
 				fail(derr)
 			}
 			fmt.Print(text)
@@ -503,6 +509,10 @@ func main() {
 				fatalf("%v", aerr)
 			}
 			report, err = c.UnpackMessages(unit, append([]compiler.MessageTree{{Root: *root, Dir: dir}}, batch...), announcement, wire, *oneFile)
+			if err != nil {
+				noteWrongFile(*announce, announcement, ir.FileVariable)
+				noteWrongFile(*in, wire, ir.FileMessage)
+			}
 		} else {
 			if len(batch) > 0 {
 				fatalf("--batch is the message form's own: pass --announce beside it (docs/SPEC-TABLES.md §3.3)")
@@ -512,6 +522,9 @@ func main() {
 				unpack = c.UnpackOneFile
 			}
 			report, err = unpack(unit, *root, wire, dir)
+			if err != nil {
+				noteWrongFile(*in, wire, ir.FileVariable, ir.FileFixed)
+			}
 		}
 		if err != nil {
 			fail(err)
@@ -547,6 +560,9 @@ func main() {
 		wire, packed := cookInput(c, unit, *root, *in, verbose)
 		bytes, cooked, report, err := c.Cook(unit, *root, wire, opts)
 		if err != nil {
+			if !packed {
+				noteWrongFile(*in, wire, ir.FileVariable, ir.FileFixed)
+			}
 			fail(err)
 		}
 		// TWO READS, TWO REPORTS, EACH NAMED. `cook --in <dir>` packs the tree
@@ -606,9 +622,12 @@ func main() {
 			if err != nil {
 				fatalf("%v", err)
 			}
-			if file, err = compiler.CookJoinAttribution(file, side); err != nil {
+			joined, err := compiler.CookJoinAttribution(file, side)
+			if err != nil {
+				noteWrongFile(args[0], file, ir.FileCook)
 				fail(err)
 			}
+			file = joined
 		}
 		rest := args[1:]
 		if len(rest) == 0 {
@@ -617,6 +636,7 @@ func main() {
 		unit := loadUnit(c, rest)
 		res, err := c.CookCheck(unit, *root, file)
 		if err != nil {
+			noteWrongFile(args[0], file, ir.FileCook)
 			fail(err)
 		}
 		if verbose {
@@ -646,13 +666,17 @@ func main() {
 			if err != nil {
 				fatalf("%v", err)
 			}
-			if file, err = compiler.CookJoinAttribution(file, side); err != nil {
+			joined, err := compiler.CookJoinAttribution(file, side)
+			if err != nil {
+				noteWrongFile(*in, file, ir.FileCook)
 				fail(err)
 			}
+			file = joined
 		}
 		unit := loadUnit(c, fs.Args())
 		wire, err := c.Uncook(unit, *root, file)
 		if err != nil {
+			noteWrongFile(*in, file, ir.FileCook)
 			fail(err)
 		}
 		if err := writeAtomic(*out, wire); err != nil {
@@ -825,11 +849,15 @@ help ai prints a block to paste into a project's AGENTS.md or CLAUDE.md: what
 the .schema files are, the commands, and the guide for AI assistants
 (docs/AI.md).
 
-check handed a SAVED FILE rather than a schema source answers its FORM BYTE
-first, on one line — FORM 1 the variable form, FORM 2 the message form, FORM 3
-the fixed form — or refuses it by name (docs/SPEC-TABLES.md §3). Every schema
-file begins with that byte and the registry there is the only place a value is
-assigned, so it is the first thing said about any file.
+check handed a SAVED FILE rather than a schema source says what it is first, on
+one line, from its leading bytes (docs/SPEC-TABLES.md §3): FORM 1 the variable
+form, FORM 2 the message form or FORM 3 the fixed form for a file that begins
+with its form byte; COOK or BLOCK FORM, with the byte order, for a file that
+begins with a cook's or a block's magic (§7.1, §19.1). Beside each it names the
+command that validates the file: unpack for a form, cook-check for a cook. Any
+other first byte is refused by name, with the list of what is recognised.
+unpack, cook, cook-check and uncook handed a file of a format they do not read
+name the format the same way before they exit nonzero.
 
 fmt is the only command that writes a schema file (schemafmt — one style, no
 options); a file already in format is not touched. Every other command reads
@@ -904,17 +932,32 @@ func refuseRuntimeForTarget(runtimeSet bool, runtime, lang string) error {
 }
 
 // wireFile is one argument that named a SAVED FILE rather than a schema
-// source: its path, and the first byte, which is its form (§3).
+// source: its path, and its leading bytes, which say what it is (§3, §7.1,
+// §19.1).
 type wireFile struct {
 	path string
 	head []byte
 }
 
+// noteWrongFile is called when a command's read of a data file has refused,
+// before the refusal is reported: when the file is one of the formats schema
+// writes and NOT one this command reads, it says which, through the classifier
+// `check` prints from, so "not a cook" or "newer_form" over a file of another
+// format comes with that format's name and the command that does read it. A
+// file of the right format that failed for another reason gains no line: the
+// error already says what is wrong with it.
+func noteWrongFile(path string, data []byte, reads ...ir.FileKind) {
+	class := ir.ClassifyFile(data)
+	if class.Format != nil && !slices.Contains(reads, class.Kind()) {
+		fmt.Fprintf(os.Stderr, "schema: %s is %s\n", path, class.Line())
+	}
+}
+
 // splitWireFiles separates the arguments that name SAVED FILES from the ones
 // that name schema sources. A schema source is a `.schema` file or a directory
 // of them; anything else that exists as a regular file is a saved file, and
-// §3's first byte is the whole of what this command can say about it without
-// being told which root it is.
+// its leading bytes are the whole of what this command can say about it
+// without being told which root it is.
 //
 // A path that does not exist is left in the schema arguments, so its "no such
 // file" comes from the loader that owns that message and not from here.
@@ -929,15 +972,15 @@ func splitWireFiles(args []string) (schemas []string, wires []wireFile) {
 			schemas = append(schemas, a)
 			continue
 		}
-		// ONE BYTE IS ALL THIS READS. A form byte is the whole header, and a
-		// tool that slurped a gigabyte to print one line would be answering a
-		// cheap question expensively.
+		// EIGHT BYTES ARE ALL THIS READS: the width of a magic, of which a
+		// form byte is the first. A tool that slurped a gigabyte to print one
+		// line would be answering a cheap question expensively.
 		f, err := os.Open(a) //nolint:gosec // the path is the caller's own argument
 		if err != nil {
 			fatalf("%v", err)
 		}
-		var head [1]byte
-		n, _ := f.Read(head[:])
+		var head [ir.FileHeadBytes]byte
+		n, _ := io.ReadFull(f, head[:]) // a short file is classified by what it holds
 		_ = f.Close()
 		wires = append(wires, wireFile{path: a, head: head[:n]})
 	}
