@@ -469,3 +469,91 @@ func TestJudgeCorpusRunnerNeverPassesOnNothing(t *testing.T) {
 		}
 	}
 }
+
+// TestJudgeRevisionsUnderOneWorkPath (F-216): the committed judge revisions
+// (testdata/judge-revisions) are one case id in two successive states, the
+// driver's only pin present on both sides and then gone from the new side,
+// replayed in order under ONE work path, as `make
+// release-differential-judge-corpus` does run after run in build/. Each state
+// owes the verdict a fresh scratch gives it. The corpus runner kept a fixed
+// folder per case id and the replayed driver only ever added files to it, so
+// the pin revision 1 wrote was still there for revision 2: the owed refusal
+// failed, and a wrong `pass` verdict passed.
+func TestJudgeRevisionsUnderOneWorkPath(t *testing.T) {
+	t.Parallel()
+	dir := filepath.Join("testdata", "judge-revisions")
+	revisions, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(revisions) < 2 {
+		t.Fatalf("%s holds %d revision(s): successive states need two", dir, len(revisions))
+	}
+	// CONTROL: each revision alone, on a fresh scratch, comes to its verdict
+	for _, rev := range revisions {
+		if _, err := RunJudgeCorpus(filepath.Join(dir, rev.Name()), t.TempDir()); err != nil {
+			t.Fatalf("CONTROL FAILED: revision %s on a fresh scratch: %v", rev.Name(), err)
+		}
+	}
+	// THE FINDING: in order, under one work path, each still comes to its own
+	work := t.TempDir()
+	for _, rev := range revisions {
+		if lines, err := RunJudgeCorpus(filepath.Join(dir, rev.Name()), work); err != nil {
+			t.Errorf("revision %s after the one before it, under one work path: %v\n%s", rev.Name(), err, strings.Join(lines, "\n"))
+		}
+	}
+	// and a wrong verdict on the last revision is refused there too
+	last := revisions[len(revisions)-1].Name()
+	wrong := t.TempDir()
+	if err := os.CopyFS(wrong, os.DirFS(filepath.Join(dir, last))); err != nil {
+		t.Fatal(err)
+	}
+	index, err := os.ReadFile(filepath.Join(wrong, "CASES.tsv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	flipped := strings.Replace(string(index), "\trefuse:packet wire, unit examples128, instance wide.bin\t", "\tpass\t", 1)
+	if flipped == string(index) {
+		t.Fatalf("%s/CASES.tsv no longer owes the refusal this test flips", last)
+	}
+	if err := os.WriteFile(filepath.Join(wrong, "CASES.tsv"), []byte(flipped), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	work = t.TempDir()
+	if _, err := RunJudgeCorpus(filepath.Join(dir, revisions[0].Name()), work); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RunJudgeCorpus(wrong, work); err == nil || !strings.Contains(err.Error(), "owes a pass and the release was refused") {
+		t.Errorf("a wrong pass verdict on revision %s, after revision %s under one work path, came out %v; want it refused", last, revisions[0].Name(), err)
+	}
+}
+
+// TestJudgeRefusesAScratchAnEarlierRunWroteIn (F-216, the class): Judge reads
+// every file under each side's packet output as what that side's driver
+// wrote, so a work folder that already holds a packet tree would credit a
+// side with files an earlier run left. Judge refuses it rather than read it.
+func TestJudgeRefusesAScratchAnEarlierRunWroteIn(t *testing.T) {
+	t.Parallel()
+	m := &Manifest{Units: map[string][]string{}}
+	side := fake{
+		name:   "v1.0.0",
+		ids:    map[string]string{"examples": "0x1"},
+		packet: map[string]string{"examples": "\x01"},
+	}
+	tree := writeTree(t, map[string]string{"test/main.cpp": ""})
+	// CONTROL: a fresh work folder judges
+	if _, err := Judge(side, side, []string{tree}, m, "json", t.TempDir(), 1); err != nil {
+		t.Fatalf("CONTROL FAILED: a fresh work folder: %v", err)
+	}
+	work := t.TempDir()
+	stale := filepath.Join(work, "packet", "examples", "0", "new", "testdata", "wire", "left.bin")
+	if err := os.MkdirAll(filepath.Dir(stale), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stale, []byte{7}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Judge(side, side, []string{tree}, m, "json", work, 1); err == nil || !strings.Contains(err.Error(), "an earlier run") {
+		t.Errorf("Judge over a work folder an earlier run wrote packet output in: %v; want it refused", err)
+	}
+}

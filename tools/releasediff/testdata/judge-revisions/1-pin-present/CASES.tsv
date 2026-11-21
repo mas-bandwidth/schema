@@ -1,0 +1,3 @@
+# THE JUDGE REVISIONS (F-216), revision 1 of 2: replayed first, under the same work path as revision 2.
+# Both sides write the driver's only pin, so the release passes.
+pin	pass	F-216 revision 1: both sides write wide.bin
