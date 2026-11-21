@@ -78,7 +78,7 @@ func TestHelpAINamesEveryTarget(t *testing.T) {
 	}
 	list, _, _ := strings.Cut(rest, "\n\n")
 	var got []string
-	for _, name := range strings.Split(list, ",") {
+	for name := range strings.SplitSeq(list, ",") {
 		got = append(got, strings.TrimSpace(name))
 	}
 	want := compiler.New().Targets()
@@ -144,7 +144,7 @@ func TestSchemaSkillIsWellFormed(t *testing.T) {
 		t.Fatal("SKILL.md's frontmatter is never closed")
 	}
 	fields := map[string]string{}
-	for _, line := range strings.Split(front, "\n") {
+	for line := range strings.SplitSeq(front, "\n") {
 		if k, v, ok := strings.Cut(line, ": "); ok {
 			fields[k] = v
 		}
