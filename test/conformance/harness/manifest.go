@@ -10,6 +10,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -289,6 +290,28 @@ func (md MessageDrift) Refused() bool { return md.SaveWire == "-" }
 // Prior says the row is a prior-writer row, which rides the `message-prior`
 // surface rather than `message`.
 func (md MessageDrift) Prior() bool { return md.WriterSchema != "" }
+
+// WriterBodies splits a prior-writer row's WriterValue into the §16 texts of
+// its batch's bodies, in order: one object is a batch of one, and a JSON array
+// of objects a batch of as many (FORMAT.md, `message-prior`).
+func (md MessageDrift) WriterBodies() ([][]byte, error) {
+	text := strings.TrimSpace(md.WriterValue)
+	if !strings.HasPrefix(text, "[") {
+		return [][]byte{[]byte(text)}, nil
+	}
+	var bodies []json.RawMessage
+	if err := json.Unmarshal([]byte(text), &bodies); err != nil {
+		return nil, fmt.Errorf("%s: the writer value is not a JSON array of bodies: %w", md.Name, err)
+	}
+	if len(bodies) == 0 {
+		return nil, fmt.Errorf("%s: the writer value names no body", md.Name)
+	}
+	out := make([][]byte, len(bodies))
+	for i, b := range bodies {
+		out[i] = b
+	}
+	return out, nil
+}
 
 // DriftPeer answers the peer's announcement wire and build version: the named
 // connection's, or a prior-writer row's own.

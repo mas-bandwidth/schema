@@ -133,12 +133,19 @@ func TestMessagePriorWriterRows(t *testing.T) {
 		wmodel := tabletext.NewModel(writer)
 
 		// the committed peer files are the writer's own bytes for the value
-		value := wmodel.New(wmodel.Lookup(row.Root))
-		var wrep tabletext.Report
-		if !wmodel.Read(value, []byte(row.WriterValue), &wrep) {
-			t.Fatalf("%s: the prior writer refuses its own value: %+v", name, wrep)
+		bodies, err := row.WriterBodies()
+		if err != nil {
+			t.Fatal(err)
 		}
-		batch, err := tablewire.EncodeMessages(wmodel, []*tabletext.Instance{value})
+		values := make([]*tabletext.Instance, len(bodies))
+		for i, text := range bodies {
+			values[i] = wmodel.New(wmodel.Lookup(row.Root))
+			var wrep tabletext.Report
+			if !wmodel.Read(values[i], text, &wrep) {
+				t.Fatalf("%s: the prior writer refuses its own value %s: %+v", name, text, wrep)
+			}
+		}
+		batch, err := tablewire.EncodeMessages(wmodel, values)
 		if err != nil {
 			t.Fatalf("%s: the prior writer refuses to write its value: %v", name, err)
 		}
@@ -163,7 +170,10 @@ func TestMessagePriorWriterRows(t *testing.T) {
 		if err := vocab.AnnounceRead(ann, &arep); err != nil {
 			t.Fatalf("%s: the reader refuses the prior writer's announcement: %v", name, err)
 		}
-		vals := []*tabletext.Instance{model.New(model.Lookup(row.Root))}
+		vals := make([]*tabletext.Instance, len(bodies))
+		for i := range vals {
+			vals[i] = model.New(model.Lookup(row.Root))
+		}
 		var rep tabletext.Report
 		n, ok, derr := tablewire.DecodeMessages(model, vals, pinned, &vocab, &rep)
 		if row.Refused() {
@@ -174,7 +184,7 @@ func TestMessagePriorWriterRows(t *testing.T) {
 				t.Errorf("the matrix owes %s a refusal and no bytes", name)
 			}
 		} else {
-			if !ok || derr != nil || n != 1 {
+			if !ok || derr != nil || n != len(bodies) {
 				t.Fatalf("%s: the reader refuses a value inside its range: ok=%t n=%d %v", name, ok, n, derr)
 			}
 			saved, err := tablewire.EncodeMessages(model, vals)

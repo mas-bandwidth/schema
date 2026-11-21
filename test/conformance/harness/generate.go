@@ -510,7 +510,7 @@ func generateMessageDrifts(u *units, m *Manifest, drifts []MessageDrift) error {
 
 // generatePriorWriter writes a prior-writer row's two peer files with the
 // independent engine: the announcement of the EARLIER release named by
-// WriterSchema, and the batch of one body that release writes for WriterValue.
+// WriterSchema, and the batch that release writes for WriterValue's bodies.
 // The value is lawful for that writer, which the writer's own text read and
 // message write both hold before a byte lands.
 func generatePriorWriter(u *units, md MessageDrift) error {
@@ -543,18 +543,24 @@ func generatePriorWriter(u *units, md MessageDrift) error {
 	if bv := ir.BuildVersion(writer); bv != md.PeerBuildVersion {
 		return fmt.Errorf("the writer %s has build version 0x%016x and the row names 0x%016x", md.WriterSchema, bv, md.PeerBuildVersion)
 	}
-	text := []byte(md.WriterValue)
+	bodies, err := md.WriterBodies()
+	if err != nil {
+		return err
+	}
 	model := tabletext.NewModel(writer)
 	root := model.Lookup(md.Root)
 	if root == nil {
 		return fmt.Errorf("root %q names no table of the writer", md.Root)
 	}
-	value := model.New(root)
-	var rep tabletext.Report
-	if !model.Read(value, text, &rep) {
-		return fmt.Errorf("the writer refuses its own value %s: %+v", md.WriterValue, rep)
+	values := make([]*tabletext.Instance, len(bodies))
+	for i, text := range bodies {
+		values[i] = model.New(root)
+		var rep tabletext.Report
+		if !model.Read(values[i], text, &rep) {
+			return fmt.Errorf("the writer refuses its own value %s: %+v", text, rep)
+		}
 	}
-	batch, err := tablewire.EncodeMessages(model, []*tabletext.Instance{value})
+	batch, err := tablewire.EncodeMessages(model, values)
 	if err != nil {
 		return fmt.Errorf("the writer refuses to write %s: %w", md.WriterValue, err)
 	}
