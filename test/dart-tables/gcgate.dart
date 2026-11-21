@@ -490,7 +490,7 @@ int _countScavenges(String errText) {
   // flat, certified row.
   if (begins != 1 || ends != 1 || !traced) {
     stderr.writeln(
-      'gcgate: the child's GC trace is not usable (markers begin=$begins '
+      "gcgate: the child's GC trace is not usable (markers begin=$begins "
       'end=$ends, GC trace line present=$traced); nothing was measured',
     );
     exit(2);
