@@ -437,7 +437,7 @@ func parseWorkflowContent(file, content string) ([]ciStep, error) {
 		// (the workflow's or a job's env or defaults, which every step
 		// inherits), this scanner does not resolve them and the file earns no
 		// credit.
-		if !strings.HasPrefix(trimmed, "- ") && !(inRun && indent > runIndent) && unreadContext(trimmed) {
+		if !strings.HasPrefix(trimmed, "- ") && (!inRun || indent <= runIndent) && unreadContext(trimmed) {
 			if cur == nil {
 				return nil, nil // no coverage credit from an unsupported workflow shape
 			}
