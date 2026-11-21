@@ -48,6 +48,10 @@ type CorpusMeta struct {
 	Schemas   int        `json:"schemas"`
 	CaseCount int        `json:"case_count"`
 	Pairs     []PairMeta `json:"pairs"`
+	// Pinned is the hand-written array-default matrix's units (pinned.go)
+	Pinned []PinnedUnit `json:"pinned"`
+	// only, when set by --only, is the packages the kept cases name
+	only map[string]bool
 }
 
 type UnitSpec struct {
@@ -72,6 +76,15 @@ func unitsFromMeta(meta *CorpusMeta) []UnitSpec {
 				VarRoot: p.VarRootV2, FixRoot: p.FixRootV2, BlkRoot: p.BlkRootV2,
 			},
 		)
+	}
+	for _, p := range meta.Pinned {
+		out = append(out, UnitSpec{
+			Pkg: p.Pkg, FileBase: p.FileBase, SchemaDir: p.Dir,
+			VarRoot: pinnedVarRoot, FixRoot: pinnedFixRoot, BlkRoot: pinnedBlkRoot,
+		})
+	}
+	if meta.only != nil {
+		out = slices.DeleteFunc(out, func(u UnitSpec) bool { return !meta.only[u.Pkg] })
 	}
 	return out
 }
@@ -293,8 +306,13 @@ func ensureTablegenCorpus(corpusDir string, seed uint64, schemas int, forceGen b
 		praw, err2 := os.ReadFile(packPath)
 		if err1 == nil && err2 == nil {
 			var meta CorpusMeta
-			if json.Unmarshal(mraw, &meta) == nil && meta.Seed == seed && meta.Schemas == schemas && len(meta.Pairs) == schemas {
+			if json.Unmarshal(mraw, &meta) == nil && meta.Seed == seed && meta.Schemas == schemas && len(meta.Pairs) == schemas && len(meta.Pinned) == len(pinnedShapes()) {
 				allExist := true
+				for _, pu := range meta.Pinned {
+					if !fileExists(pu.Dir) {
+						allExist = false
+					}
+				}
 				for _, pm := range meta.Pairs {
 					if !fileExists(pm.DirV1) || !fileExists(pm.DirV2) {
 						allExist = false
@@ -323,11 +341,21 @@ func ensureTablegenCorpus(corpusDir string, seed uint64, schemas int, forceGen b
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	pinned, pinnedCases, err := BuildPinned(schemasDir)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	cases = append(cases, pinnedCases...)
+	packed = PackCases(cases)
+	if err := os.WriteFile(packPath, packed, 0o644); err != nil {
+		return nil, nil, nil, err
+	}
 	meta := &CorpusMeta{
 		Seed:      seed,
 		Schemas:   schemas,
 		CaseCount: len(cases),
 		Pairs:     make([]PairMeta, len(pairs)),
+		Pinned:    pinned,
 	}
 	for i, p := range pairs {
 		meta.Pairs[i] = PairMeta{
@@ -410,6 +438,7 @@ func main() {
 	workFlag := flag.String("work", "./build/verify-tablegen", "working directory")
 	corpusFlag := flag.String("corpus", "", "pre-generated corpus directory (optional)")
 	genOnlyFlag := flag.Bool("generate-only", false, "only generate schemas, lockfiles, and oracle corpus")
+	onlyFlag := flag.String("only", "", "run only the cases whose id contains this text (a diagnostic: the gate runs them all)")
 	flag.Parse()
 
 	repoRoot, err := filepath.Abs(*repoFlag)
@@ -444,6 +473,28 @@ func main() {
 	if *genOnlyFlag {
 		fmt.Printf("TABLEGEN_CORPUS seed=%d pairs=%d cases=%d bytes=%d\n", meta.Seed, meta.Schemas, meta.CaseCount, len(packed))
 		return
+	}
+
+	if *onlyFlag != "" {
+		cases = slices.DeleteFunc(cases, func(c CorpusCase) bool { return !strings.Contains(c.ID, *onlyFlag) })
+		if len(cases) == 0 {
+			fmt.Fprintf(os.Stderr, "--only %q keeps no case\n", *onlyFlag)
+			os.Exit(2)
+		}
+		meta.only = map[string]bool{}
+		for _, c := range cases {
+			meta.only[c.Pkg] = true
+		}
+		packed = PackCases(cases)
+		corpusDir = filepath.Join(workRoot, "only")
+		if err := os.MkdirAll(corpusDir, 0o755); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		if err := os.WriteFile(filepath.Join(corpusDir, "corpus.pack"), packed, 0o644); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 	}
 
 	var targets []string
