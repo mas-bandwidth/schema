@@ -704,8 +704,8 @@ func ReadManifest(path, jsonDir string) (m *Manifest, err error) {
 			if err != nil {
 				return nil, fmt.Errorf("%s: %q is not a build version: %w", where, f[5], err)
 			}
-			if !strings.HasPrefix(f[6], "{") {
-				return nil, fmt.Errorf("%s: %q is not a writer value: it is the §16 text of the root, written without spaces", where, f[6])
+			if !strings.HasPrefix(f[6], "{") && !strings.HasPrefix(f[6], "[{") {
+				return nil, fmt.Errorf("%s: %q is not a writer value: it is the §16 text of the root, or a JSON array of them, written without spaces", where, f[6])
 			}
 			md := MessageDrift{
 				Name: f[1], Unit: f[2], Root: f[3],
