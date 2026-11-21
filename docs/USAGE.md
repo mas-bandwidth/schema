@@ -136,7 +136,10 @@ A default `generate --lang go` (no `--surface`) also removes stale surface
 files: any `.go` file in the output directory whose first line is the compiler's
 own header naming this unit's `.schema` file or package (SPEC-TABLES.md §8.8)
 and that this run did not write. With `--surface` nothing is removed; only
-`.go` files the compiler itself generated are ever touched.
+`.go` files the compiler itself generated are ever touched. A file this run
+wrote is never removed, and every output lands under this run's spelling, on a
+case-insensitive volume too: renaming `Player.schema` to `player.schema` and
+regenerating leaves `player.go` and no `Player.go`, for every target's files.
 
 ---
 
