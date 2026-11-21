@@ -258,7 +258,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [ unit-codegen, unit-codegen-java-1, unit-codegen-java-2, unit-codegen-java-3, unit-codegen-python-1, unit-codegen-python-2, unit-codegen-python-3, unit-codegen-python-4, unit-codegen-python-5, unit-codegen-python-6, unit-codegen-python-7, unit-codegen-rust-1, unit-codegen-rust-2, unit-codegen-rust-3, unit-codegen-go-1, unit-codegen-go-2, unit-codegen-c-1, unit-codegen-c-2, unit-codegen-c-3, unit-codegen-cs-1, unit-codegen-cs-2, unit-codegen-cs-3, unit-codegen-ruby-1, unit-codegen-ruby-2, unit-codegen-ruby-3, unit-codegen-dart-1, unit-codegen-dart-2, unit-codegen-dart-3, unit-codegen-goose-1, unit-codegen-goose-2, unit-codegen-unity-1, unit-codegen-unity-2, unit-codegen-js-1, unit-codegen-js-2, unit-codegen-lua-1, unit-codegen-lua-2, unit-codegen-lua-3, unit-codegen-luau-1, unit-codegen-luau-2, unit-codegen-moo-1, unit-codegen-moo-2, unit-codegen-squirrel-1, unit-codegen-squirrel-2, unit-codegen-cpp-1, unit-codegen-cpp-2, unit-codegen-cpp-3, unit-compiler-1, unit-compiler-2, unit-compiler-3, unit-compiler-4, unit-compiler-5, unit-compiler-6, unit-compiler-7, unit-compiler-8, unit-compiler-9, unit-compiler-10, unit-compiler-11, unit-compiler-12, unit-compiler-13, unit-compiler-14, unit-compiler-15, unit-compiler-16, unit-compiler-17, unit-compiler-18, unit-compiler-19, unit-rest, unit-vet, unit-rest-fuzz-1, unit-rest-fuzz-2, unit-rest-fuzz-3, unit-rest-cmd-1, unit-rest-cmd-2, unit-rest-goldens, unit-rest-ci, unit-rest-ci-2, unit-rest-tools, unit-rest-check, unit-elixir-1, unit-elixir-2, unit-elixir-3, unit-elixir-4, unit-elixir-5, unit-elixir-6, unit-elixir-7, unit-elixir-8, unit-elixir-9, unit-elixir-10, unit-elixir-11, unit-elixir-12, unit-elixir-13, unit-elixir-14, unit-elixir-15, slow-gate-codegen-0, slow-gate-codegen-1, slow-gate-codegen-2, slow-gate-codegen-3, slow-gate-codegen-4, slow-gate-codegen-5, slow-gate-codegen-6, slow-gate-codegen-7, slow-gate-codegen-8, slow-gate-codegen-9, slow-gate-codegen-10, slow-gate-codegen-11, slow-gate-codegen-12, slow-gate-codegen-13, slow-gate-codegen-14, slow-gate-codegen-15, slow-gate-codegen-16, slow-gate-codegen-17, slow-gate-codegen-18, slow-gate-codegen-19, slow-gate-codegen-20, slow-gate-codegen-21, slow-gate-codegen-22, slow-gate-codegen-23, slow-gate-codegen-24, slow-gate-codegen-25, slow-gate-rest-0, slow-gate-rest-1, slow-gate-rest-2, slow-gate-rest-3, slow-gate-rest-4, slow-gate-rest-5, slow-gate-rest-6, slow-gate-rest-7, slow-gate-rest-8, slow-gate-rest-9, versioning-conformance-a, versioning-conformance-b, versioning-go, versioning-c, versioning-rust, versioning-java, versioning-js, versioning-dart, versioning-cs, versioning-elixir, versioning-luau, versioning-goose ]
+        group: [ unit-codegen, unit-codegen-lobster, unit-codegen-java-1, unit-codegen-java-2, unit-codegen-java-3, unit-codegen-java-4, unit-codegen-java-5, unit-codegen-python-1, unit-codegen-python-2, unit-codegen-python-3, unit-codegen-python-4, unit-codegen-python-5, unit-codegen-python-6, unit-codegen-python-7, unit-codegen-python-8, unit-codegen-python-9, unit-codegen-rust-1, unit-codegen-rust-2, unit-codegen-rust-3, unit-codegen-rust-4, unit-codegen-go-1, unit-codegen-go-2, unit-codegen-go-3, unit-codegen-go-4, unit-codegen-go-5, unit-codegen-c-1, unit-codegen-c-2, unit-codegen-c-3, unit-codegen-cs-1, unit-codegen-cs-2, unit-codegen-cs-3, unit-codegen-ruby-1, unit-codegen-ruby-2, unit-codegen-ruby-3, unit-codegen-dart-1, unit-codegen-dart-2, unit-codegen-dart-3, unit-codegen-goose-1, unit-codegen-goose-2, unit-codegen-goose-3, unit-codegen-unity-1, unit-codegen-unity-2, unit-codegen-js-1, unit-codegen-js-2, unit-codegen-lua-1, unit-codegen-lua-2, unit-codegen-lua-3, unit-codegen-luau-1, unit-codegen-luau-2, unit-codegen-moo-1, unit-codegen-moo-2, unit-codegen-squirrel-1, unit-codegen-squirrel-2, unit-codegen-cpp-1, unit-codegen-cpp-2, unit-codegen-cpp-3, unit-compiler-1, unit-compiler-2, unit-compiler-3, unit-compiler-4, unit-compiler-5, unit-compiler-6, unit-compiler-7, unit-compiler-8, unit-compiler-9, unit-compiler-10, unit-compiler-11, unit-compiler-12, unit-compiler-13, unit-compiler-14, unit-compiler-15, unit-compiler-16, unit-compiler-17, unit-compiler-18, unit-compiler-19, unit-rest, unit-vet, unit-rest-fuzz-1, unit-rest-fuzz-2, unit-rest-fuzz-3, unit-rest-cmd-1, unit-rest-cmd-2, unit-rest-goldens, unit-rest-ci, unit-rest-ci-2, unit-rest-tools, unit-rest-check, unit-elixir-1, unit-elixir-2, unit-elixir-3, unit-elixir-4, unit-elixir-5, unit-elixir-6, unit-elixir-7, unit-elixir-8, unit-elixir-9, unit-elixir-10, unit-elixir-11, unit-elixir-12, unit-elixir-13, unit-elixir-14, unit-elixir-15, slow-gate-codegen-0, slow-gate-codegen-1, slow-gate-codegen-2, slow-gate-codegen-3, slow-gate-codegen-4, slow-gate-codegen-5, slow-gate-codegen-6, slow-gate-codegen-7, slow-gate-codegen-8, slow-gate-codegen-9, slow-gate-codegen-10, slow-gate-codegen-11, slow-gate-codegen-12, slow-gate-codegen-13, slow-gate-codegen-14, slow-gate-codegen-15, slow-gate-codegen-16, slow-gate-codegen-17, slow-gate-codegen-18, slow-gate-codegen-19, slow-gate-codegen-20, slow-gate-codegen-21, slow-gate-codegen-22, slow-gate-codegen-23, slow-gate-codegen-24, slow-gate-codegen-25, slow-gate-rest-0, slow-gate-rest-1, slow-gate-rest-2, slow-gate-rest-3, slow-gate-rest-4, slow-gate-rest-5, slow-gate-rest-6, slow-gate-rest-7, slow-gate-rest-8, slow-gate-rest-9, versioning-conformance-a, versioning-conformance-b, versioning-go, versioning-c, versioning-rust, versioning-java, versioning-js, versioning-dart, versioning-cs, versioning-elixir, versioning-luau, versioning-goose ]
         # RELAXED 2026-11-14 (maintainer: get main green): on a push and a pull
         # request (the events the 110 s PGROUP_WALL applies to) these rows are
         # excluded, because their median job wall over four CI full runs on
@@ -490,7 +490,7 @@ jobs:
       # default names. The release binary links libOpenGL and libGLX, which the
       # fleet hosts carry and a hosted fallback does not.
       - name: install the Lobster pin
-        if: matrix.group == 'unit-codegen'
+        if: matrix.group == 'unit-codegen-lobster'
         run: |
           set -euo pipefail
           if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then
@@ -507,31 +507,49 @@ jobs:
         if: startsWith(matrix.group, 'unit-codegen-python-')
         run: make -j"$(getconf _NPROCESSORS_ONLN)" tables-fixedform-corpus build/conformance-python
 
-      - name: go test the emitter packages (complement and Lobster)
+      - name: go test the emitter packages (complement)
         if: matrix.group == 'unit-codegen'
         env:
           SCHEMA_SLOW: '1'
-        run: go test -timeout 0 $(go list ./internal/codegen/... | grep -v '/elixirtable$' | grep -v '/cpptable$' | grep -v '/javatable$' | grep -v '/pythontable$' | grep -v '/python$' | grep -v '/rusttable$' | grep -v '/gotable$' | grep -v '/gotable/fuzzunit$' | grep -v '/darttable$' | grep -v '/dart$' | grep -v '/goosetable$' | grep -v '/goose$' | grep -v '/ctable$' | grep -v '/cstable$' | grep -v '/rubytable$' | grep -v '/ruby$' | grep -v '/luatable$' | grep -v '/lua$' | grep -v '/luautable$' | grep -v '/luau$' | grep -v '/mootable$' | grep -v '/moo$' | grep -v '/unitytable$' | grep -v '/unity$' | grep -v '/squirreltable$' | grep -v '/squirrel$' | grep -v '/jstable$' | grep -v '/js$')
+        run: go test -timeout 0 $(go list ./internal/codegen/... | grep -v '/elixirtable$' | grep -v '/cpptable$' | grep -v '/javatable$' | grep -v '/pythontable$' | grep -v '/python$' | grep -v '/rusttable$' | grep -v '/gotable$' | grep -v '/gotable/fuzzunit$' | grep -v '/darttable$' | grep -v '/dart$' | grep -v '/goosetable$' | grep -v '/goose$' | grep -v '/ctable$' | grep -v '/cstable$' | grep -v '/rubytable$' | grep -v '/ruby$' | grep -v '/luatable$' | grep -v '/lua$' | grep -v '/luautable$' | grep -v '/luau$' | grep -v '/mootable$' | grep -v '/moo$' | grep -v '/unitytable$' | grep -v '/unity$' | grep -v '/squirreltable$' | grep -v '/squirrel$' | grep -v '/jstable$' | grep -v '/js$' | grep -v '/lobstertable$' | grep -v '/lobster$')
 
-      - name: go test the Java table emitter package, row 1 of 3
+      - name: go test the Lobster emitter packages
+        if: matrix.group == 'unit-codegen-lobster'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/lobster ./internal/codegen/lobstertable
+
+      - name: go test the Java table emitter package, row 1 of 5
         if: matrix.group == 'unit-codegen-java-1'
         env:
           SCHEMA_SLOW: '1'
-        run: go test -v ./internal/codegen/javatable -run '^TestJava[A-L]'
+        run: go test -v ./internal/codegen/javatable -run '^TestJava[A-F]'
 
-      - name: go test the Java table emitter package, row 2 of 3
+      - name: go test the Java table emitter package, row 2 of 5
         if: matrix.group == 'unit-codegen-java-2'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/javatable -run '^TestJava[G-L]'
+
+      - name: go test the Java table emitter package, row 3 of 5
+        if: matrix.group == 'unit-codegen-java-3'
         env:
           SCHEMA_SLOW: '1'
         run: go test -v ./internal/codegen/javatable -run '^TestJava[M-Z0-9_]'
 
-      - name: go test the Java table emitter package, row 3 of 3
-        if: matrix.group == 'unit-codegen-java-3'
+      - name: go test the Java table emitter package, row 4 of 5
+        if: matrix.group == 'unit-codegen-java-4'
         env:
           SCHEMA_SLOW: '1'
-        run: go test -v ./internal/codegen/javatable -skip '^TestJava[A-L]|^TestJava[M-Z0-9_]'
+        run: go test -v ./internal/codegen/javatable -run '^TestFixe'
 
-      - name: go test the Python emitter packages, row 1 of 7
+      - name: go test the Java table emitter package, row 5 of 5
+        if: matrix.group == 'unit-codegen-java-5'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/javatable -skip '^TestJava[A-F]|^TestJava[G-L]|^TestJava[M-Z0-9_]|^TestFixe'
+
+      - name: go test the Python emitter packages, row 1 of 9
         if: matrix.group == 'unit-codegen-python-1'
         env:
           SCHEMA_SLOW: '1'
@@ -539,73 +557,107 @@ jobs:
           go test -v ./internal/codegen/python
           go test -v ./internal/codegen/pythontable -run '^TestPythonReflectionStrictTypes$'
 
-      - name: go test the Python emitter packages, row 2 of 7
+      - name: go test the Python emitter packages, row 2 of 9
         if: matrix.group == 'unit-codegen-python-2'
         env:
           SCHEMA_SLOW: '1'
-        run: go test -v ./internal/codegen/pythontable -run '^(TestPythonWireFuzzVerdictPipe|TestPythonVtPointerArrays)$'
+        run: go test -v ./internal/codegen/pythontable -run '^TestPythonWireFuzzVerdictPipe$'
 
-      - name: go test the Python emitter packages, row 3 of 7
+      - name: go test the Python emitter packages, row 3 of 9
         if: matrix.group == 'unit-codegen-python-3'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/pythontable -run '^TestPythonVtPointerArrays$'
+
+      - name: go test the Python emitter packages, row 4 of 9
+        if: matrix.group == 'unit-codegen-python-4'
         env:
           SCHEMA_SLOW: '1'
         run: go test -v ./internal/codegen/pythontable -run '^TestPythonFixedProofShapes$'
 
-      - name: go test the Python emitter packages, row 4 of 7
-        if: matrix.group == 'unit-codegen-python-4'
+      - name: go test the Python emitter packages, row 5 of 9
+        if: matrix.group == 'unit-codegen-python-5'
         env:
           SCHEMA_SLOW: '1'
         run: go test -v ./internal/codegen/pythontable -run '^(TestPythonFixedProofUnionsOptionals|TestPythonFixedProofEvolutionKindPairs)$'
 
-      - name: go test the Python emitter packages, row 5 of 7
-        if: matrix.group == 'unit-codegen-python-5'
+      - name: go test the Python emitter packages, row 6 of 9
+        if: matrix.group == 'unit-codegen-python-6'
         env:
           SCHEMA_SLOW: '1'
         run: go test -v ./internal/codegen/pythontable -run '^TestPython[A-E]|^TestPython[G-M]'
 
-      - name: go test the Python emitter packages, row 6 of 7
-        if: matrix.group == 'unit-codegen-python-6'
+      - name: go test the Python emitter packages, row 7 of 9
+        if: matrix.group == 'unit-codegen-python-7'
         env:
           SCHEMA_SLOW: '1'
         run: go test -v ./internal/codegen/pythontable -run '^TestPython[N-Q]|^TestPython[S-U]'
 
-      - name: go test the Python emitter packages, row 7 of 7
-        if: matrix.group == 'unit-codegen-python-7'
+      - name: go test the Python emitter packages, row 8 of 9
+        if: matrix.group == 'unit-codegen-python-8'
         env:
           SCHEMA_SLOW: '1'
-        run: go test -v ./internal/codegen/pythontable -skip '^TestPythonReflectionStrictTypes$|^TestPythonWireFuzzVerdictPipe$|^TestPythonVtPointerArrays$|^TestPythonFixedProofShapes$|^TestPythonFixedProofUnionsOptionals$|^TestPythonFixedProofEvolutionKindPairs$|^TestPython[A-E]|^TestPython[G-M]|^TestPython[N-Q]|^TestPython[S-U]'
+        run: go test -v ./internal/codegen/pythontable -run '^TestPythonR[^e]|^TestPythonRe[^f]|^TestPythonRef[^l]|^TestPythonRefl[^e]|^TestPythonRefle[^c]|^TestPythonReflec[^t]|^TestPythonReflect[^i]|^TestPythonReflecti[^o]|^TestPythonReflectio[^n]|^TestPythonReflection[^S]'
 
-      - name: go test the Rust table emitter package, row 1 of 3
+      - name: go test the Python emitter packages, row 9 of 9
+        if: matrix.group == 'unit-codegen-python-9'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/pythontable -skip '^TestPythonReflectionStrictTypes$|^TestPythonWireFuzzVerdictPipe$|^TestPythonVtPointerArrays$|^TestPythonFixedProofShapes$|^TestPythonFixedProofUnionsOptionals$|^TestPythonFixedProofEvolutionKindPairs$|^TestPython[A-E]|^TestPython[G-M]|^TestPython[N-Q]|^TestPython[S-U]|^TestPythonR[^e]|^TestPythonRe[^f]|^TestPythonRef[^l]|^TestPythonRefl[^e]|^TestPythonRefle[^c]|^TestPythonReflec[^t]|^TestPythonReflect[^i]|^TestPythonReflecti[^o]|^TestPythonReflectio[^n]|^TestPythonReflection[^S]'
+
+      - name: go test the Rust table emitter package, row 1 of 4
         if: matrix.group == 'unit-codegen-rust-1'
         env:
           SCHEMA_SLOW: '1'
-        run: go test -v ./internal/codegen/rusttable -run '^TestRust[A-L]'
+        run: go test -v ./internal/codegen/rusttable -run '^TestRust[A-F]'
 
-      - name: go test the Rust table emitter package, row 2 of 3
+      - name: go test the Rust table emitter package, row 2 of 4
         if: matrix.group == 'unit-codegen-rust-2'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/rusttable -run '^TestRust[G-L]'
+
+      - name: go test the Rust table emitter package, row 3 of 4
+        if: matrix.group == 'unit-codegen-rust-3'
         env:
           SCHEMA_SLOW: '1'
         run: go test -v ./internal/codegen/rusttable -run '^TestRust[M-Z0-9_]'
 
-      - name: go test the Rust table emitter package, row 3 of 3
-        if: matrix.group == 'unit-codegen-rust-3'
+      - name: go test the Rust table emitter package, row 4 of 4
+        if: matrix.group == 'unit-codegen-rust-4'
         env:
           SCHEMA_SLOW: '1'
-        run: go test -v ./internal/codegen/rusttable -skip '^TestRust[A-L]|^TestRust[M-Z0-9_]'
+        run: go test -v ./internal/codegen/rusttable -skip '^TestRust[A-F]|^TestRust[G-L]|^TestRust[M-Z0-9_]'
 
-      - name: go test the Go table emitter packages, row 1 of 2
+      - name: go test the Go table emitter fuzzunit package, row 1 of 5
         if: matrix.group == 'unit-codegen-go-1'
         env:
           SCHEMA_SLOW: '1'
-        run: |
-          go test -v ./internal/codegen/gotable/fuzzunit
-          go test -v ./internal/codegen/gotable -run '^TestGo'
+        run: go test -v ./internal/codegen/gotable/fuzzunit
 
-      - name: go test the Go table emitter packages, row 2 of 2
+      - name: go test the Go table emitter shared runtime corpora, row 2 of 5
         if: matrix.group == 'unit-codegen-go-2'
         env:
           SCHEMA_SLOW: '1'
-        run: go test -v ./internal/codegen/gotable -skip '^TestGo'
+        run: go test -v ./internal/codegen/gotable -run '^TestGoSharedRuntimeCoversTheCorpora$'
+
+      - name: go test the Go table emitter package, row 3 of 5
+        if: matrix.group == 'unit-codegen-go-3'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/gotable -run '^TestGo[A-Q]'
+
+      - name: go test the Go table emitter package, row 4 of 5
+        if: matrix.group == 'unit-codegen-go-4'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/gotable -run '^TestFixe'
+
+      - name: go test the Go table emitter package, row 5 of 5
+        if: matrix.group == 'unit-codegen-go-5'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/gotable -skip '^TestGoSharedRuntimeCoversTheCorpora$|^TestGo[A-Q]|^TestFixe'
 
       - name: go test the C table emitter package, row 1 of 3
         if: matrix.group == 'unit-codegen-c-1'
@@ -683,19 +735,25 @@ jobs:
           SCHEMA_SLOW: '1'
         run: go test -v ./internal/codegen/darttable -skip '^TestDart|^TestFixe'
 
-      - name: go test the Goose emitter packages, row 1 of 2
+      - name: go test the Goose emitter packages, row 1 of 3
         if: matrix.group == 'unit-codegen-goose-1'
         env:
           SCHEMA_SLOW: '1'
         run: |
           go test -v ./internal/codegen/goose
-          go test -v ./internal/codegen/goosetable -run '^TestGoose[A-F]'
+          go test -v ./internal/codegen/goosetable -run '^TestGoose[A-E]'
 
-      - name: go test the Goose emitter packages, row 2 of 2
+      - name: go test the Goose emitter packages, row 2 of 3
         if: matrix.group == 'unit-codegen-goose-2'
         env:
           SCHEMA_SLOW: '1'
-        run: go test -v ./internal/codegen/goosetable -skip '^TestGoose[A-F]'
+        run: go test -v ./internal/codegen/goosetable -run '^TestGooseF'
+
+      - name: go test the Goose emitter packages, row 3 of 3
+        if: matrix.group == 'unit-codegen-goose-3'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./internal/codegen/goosetable -skip '^TestGoose[A-E]|^TestGooseF'
 
       - name: go test the Unity emitter packages, row 1 of 2
         if: matrix.group == 'unit-codegen-unity-1'
@@ -827,7 +885,7 @@ jobs:
       # sets SCHEMA_REQUIRE_CORPUS=1, under which a missing oracle is a
       # failure. The two packages' suites are seconds, so the repeat is cheap.
       - name: the Lobster fixed form reads the reference's bytes
-        if: matrix.group == 'unit-codegen'
+        if: matrix.group == 'unit-codegen-lobster'
         run: make test-lobster
 
       # THE COMPILER PACKAGE, IN 18 ROWS, because one package is one test
