@@ -226,6 +226,12 @@ func deriveManifest(m *Manifest, path string) error {
 			// them rather than writing a text the form refuses (§16.7)
 			marker = " no-text"
 		}
+		if i.WireRefused {
+			// and so does this one: a driver answers a wire-refused instance's
+			// refused load by the read's reason, and any other refused load of a
+			// corpus instance stays a failure, so it has to know which is which
+			marker += " wire-refused"
+		}
 		fmt.Fprintf(&b, "instance %s %s %s %s%s\n", i.Name, i.Unit, i.Root, i.Wire, marker)
 	}
 	for _, wr := range m.JSONWriteRefusals {
