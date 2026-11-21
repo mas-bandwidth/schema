@@ -8,7 +8,8 @@ name: Release
 # a commit whose compiler encodes different wire bytes than the newest v tag's
 # under an equal protocol id (the previous-release differential, #463), and
 # otherwise tags
-# that one commit with that one annotated tag and pushes only that tag. The
+# that one commit with that one annotated tag and pushes only that tag, and
+# then publishes the GitHub release on that tag. The
 # number is the dispatcher's choice under docs/VERSIONING.md's rules; CI,
 # including a certify.yml run on the commit, must be green first.
 # And the proof table must be green AT THAT COMMIT: `make release` refuses
@@ -23,9 +24,10 @@ name: Release
 # It checks out the new tag, refuses unless the tag names the commit the
 # release job tagged, cross-compiles cmd/schema for six platforms with cgo off
 # and -trimpath (`make release-binaries`, tools/releasebin:
-# schema_<version>_<os>_<arch>.tar.gz, .zip for Windows, and SHA256SUMS), creates the GitHub release from the annotated
-# tag's message when there is none, and attaches the archives. It moves no
-# tag and decides nothing about the version.
+# schema_<version>_<os>_<arch>.tar.gz, .zip for Windows, and SHA256SUMS), and
+# uploads them to the GitHub release the release job's publish step made. It
+# never creates a release: a missing one fails the job, naming that step. It
+# moves no tag and decides nothing about the version.
 #
 #   gh workflow run release.yml --ref main -f version=vX.Y.Z
 
@@ -89,6 +91,25 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           make release RELEASE_COMMIT="$GITHUB_SHA" PROOF=build/proof/proof.json PUSH=1
+      # A RELEASE IS A TAG AND A GITHUB RELEASE (Glenn, 2026-11-21: "make sure
+      # schema latest releases aren't just tags, but are real github
+      # releases"). v3.0.0 and v3.0.1 left here as bare tags. This step runs
+      # only after `make release` pushed the tag, publishes the release on that
+      # tag and never makes a tag itself (--verify-tag). The body is GitHub's
+      # generated change list; the dispatcher replaces it with written notes,
+      # and a release that moves a protocol id or the build version says so
+      # first (docs/VERSIONING.md). If this step fails the tag is already
+      # pushed and a re-dispatch refuses the version, so finish by hand:
+      #
+      #   gh release create vX.Y.Z --verify-tag --title vX.Y.Z --generate-notes --latest
+      - name: publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # passed through the environment, never interpolated into the script
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          gh release create "$VERSION" --verify-tag --title "$VERSION" --generate-notes --latest
 
   assets:
     needs: release
@@ -119,6 +140,8 @@ jobs:
             exit 1
           fi
           make release-binaries VERSION="$VERSION" RELEASE_BINARIES_MTIME="$(git log -1 --format=%ct HEAD)"
+      # uploads only: the release job's "publish the GitHub release" step is
+      # the one place a release is created
       - name: attach them to the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -126,6 +149,7 @@ jobs:
         run: |
           set -euo pipefail
           if ! gh release view "$VERSION" > /dev/null 2>&1; then
-            gh release create "$VERSION" --verify-tag --notes-from-tag --title "$VERSION"
+            echo "no GitHub release $VERSION: the release job's \"publish the GitHub release\" step did not create it; publish it as that step's comment says, then re-run this job"
+            exit 1
           fi
           gh release upload "$VERSION" build/release-binaries/schema_"$VERSION"_* build/release-binaries/SHA256SUMS --clobber
