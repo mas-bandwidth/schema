@@ -29,9 +29,10 @@ const footer = "tables conformance: every registered surface passes"
 // fakeLeg is how one fake driver goes absent. The zero value answers every
 // surface the corpus asks about and registers all thirteen.
 type fakeLeg struct {
-	unlisted string // a surface left out of `list` altogether
-	exitTwo  string // a surface the driver exits 2 on
-	caseGone bool   // the wire surface answers `<case>.absent` for its one case
+	unlisted  string // a surface left out of `list` altogether
+	exitTwo   string // a surface the driver exits 2 on
+	caseGone  bool   // the wire surface answers `<case>.absent` for its one case
+	stopEarly string // a surface the driver exits 1 on before answering anything
 }
 
 // fakeCorpus is a one-instance conformance corpus: enough for the wire, json-read
@@ -91,6 +92,10 @@ func (c fakeCorpus) driverScript(t *testing.T, path string, leg fakeLeg) {
 	if exitTwo == "" {
 		exitTwo = "\x00" // a name no surface has, so the arm never fires
 	}
+	stopEarly := leg.stopEarly
+	if stopEarly == "" {
+		stopEarly = "\x00"
+	}
 	writeExec(t, path, fmt.Sprintf(`#!/bin/sh
 surface="$2"
 out="$3"
@@ -100,12 +105,16 @@ fi
 if [ "$surface" = %q ]; then
 	exit 2
 fi
+if [ "$surface" = %q ]; then
+	echo 'driver: stopped' >&2
+	exit 1
+fi
 case "$surface" in
 wire|json-read) %s ;;
 json-write) cp %q "$out/alpha.json" ;;
 esac
 exit 0
-`, list.String(), exitTwo, answer, c.json))
+`, list.String(), exitTwo, stopEarly, answer, c.json))
 }
 
 // committed plants a DISCOVERED registry — one <lang>/driver per leg, which is
