@@ -799,12 +799,11 @@ defmodule Driver do
     for [name, connection, root, wire | _] <- rows(rows, "message-batch") do
       with {unit, announcement} <- Map.get(connections, connection),
            mod when mod != nil <- message_module(unit),
-           tmod when tmod != nil <- file_codec(unit, root),
            {:ok, announced} <- mod.announce_read(File.read!(announcement)),
            {:ok, vocab} <- mod.for_root(announced, root) do
         count =
           case mod.load_messages(vocab, File.read!(wire), 256) do
-            {:ok, bodies} -> message_batch_decoded_count(vocab, tmod, root, bodies)
+            {:ok, bodies} -> WireFuzz.message_batch_decoded_count(unit, root, vocab, bodies)
             {:malformed, n, _bodies} -> n
             {:error, _reason, n} -> n
             {:error, _reason} -> 0
@@ -2127,7 +2126,10 @@ defmodule WireFuzz do
 
   # THE message-batch COUNT: every body decodes or the batch is refused whole,
   # and a refused batch returns a count of 0 (docs/SPEC-TABLES.md §3.3, §4).
-  defp message_batch_decoded_count(vocab, tmod, root, bodies) do
+  # Driver's message-batch rows call it: the decode lives here, beside the
+  # message surface's.
+  def message_batch_decoded_count(unit, root, vocab, bodies) do
+    tmod = file_codec(unit, root)
     unions = if function_exported?(tmod, :union_descriptors, 0), do: tmod.union_descriptors(), else: %{}
     tables = Map.put(tmod.descriptors(), {:unions}, unions)
     desc = Map.fetch!(tables, root)
