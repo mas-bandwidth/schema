@@ -843,7 +843,7 @@ tables-rust-cook-write-negative-control:
 # never passes on a SKIP.
 .PHONY: tables-rust-message-batch
 tables-rust-message-batch:
-	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 20m -run 'TestMessageFormBatchRust|TestMessageFormAnnounceRust|TestRustMessage(UnionFieldArmZero|QuantizedOnDefault|SeenSet|RangedHeld|OutOfRangeRefusedByName|CountedBornElidesByElementDefault)|TestRustVariableFloat32RangeAndNegZero|TestRustFixedAndMessageCountedMinAndNegZero|TestRustVariableCountedMinBornElidedAndHeld|TestRustText(LabelRulesHoldInSkippedValues|DepthCountsUnionArmsAndMapValues|MapKeysIndexedByHash)' -v
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 20m -run 'TestMessageFormBatchRust|TestMessageFormAnnounceRust|TestRustMessage(UnionFieldArmZero|QuantizedOnDefault|SeenSet|RangedHeld|OutOfRangeRefusedByName|CountedBornElidesByElementDefault)|TestRustVariableFloat32RangeAndNegZero|TestRustFixedAndMessageCountedMinAndNegZero|TestRustVariableCountedMinBornElidedAndHeld|TestRustText(LabelRulesHoldInSkippedValues|DepthCountsUnionArmsAndMapValues|MapKeysIndexedByHash)|TestRustRequiredBornArrayKeepsPresence|TestRustMessageRequiredCountedBornRides' -v
 	@echo 'tables Rust message batch: the message form reads and writes the reference bytes'
 
 test-rust: tables-rust-message-batch
