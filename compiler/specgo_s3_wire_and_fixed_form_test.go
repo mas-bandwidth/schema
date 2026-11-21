@@ -34,11 +34,11 @@ func TestSpecGoS3WireAndFixedForm(t *testing.T) {
 	rows := []specGoRow{
 		{
 			// §3.1 backend status: Go writes and reads a pointered wire
-			// (gotable/regions.go, TestRegionGraphs).
+			// (gotable/regions.go, TestRegionGraphs), as every backend now does.
 			name:    "3.1-backend-status-names-go",
 			section: "3.1",
-			want:    []string{"C and GO\nwrite and read it"},
-			stale:   []string{"the TOOL, C++ REFERENCE and C write it"},
+			want:    []string{"the TOOL and every backend write and read\nit."},
+			stale:   []string{"the TOOL, C++ REFERENCE and C write it", "the other backends refuse a pointered\nunit's wire by name"},
 		},
 		{
 			// §3.1 blob record: every writer refuses blob_shared and the

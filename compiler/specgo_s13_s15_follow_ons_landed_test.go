@@ -41,8 +41,8 @@ func TestSpecGoS13S15FollowOnsLanded(t *testing.T) {
 		},
 		{
 			row:    "§15 the unit registry",
-			holds:  []string{"C++, C and Go emit the registry", "ViewConstant"},
-			absent: []string{"the remaining seven ports do not"},
+			holds:  []string{"every port emits the registry", "ViewConstant"},
+			absent: []string{"the remaining seven ports do not", "the remaining six ports do not"},
 		},
 		{
 			row:    "§15 the view of a table-free unit",
