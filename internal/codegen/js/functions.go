@@ -465,7 +465,10 @@ func (g *gen) emitWriteFoldedNum(expr, lo, hi string, min, max *big.Int, checkIn
 // signed wrap. Where the bit count fits 32, the offset narrows to a Number
 // and rides serializeBits — byte-identical, the runtime's own split.
 func (g *gen) emitWriteFoldedBig(expr, lo, hi string, min, max *big.Int, comment, ind string) {
-	g.pf("%sif (%s < %s || %s > %s) {%s\n%s  return false;\n%s}\n", ind, expr, lo, expr, hi, comment, ind, ind)
+	// the BigInt type test rides first: a relational test against a BigInt
+	// bound is false for a boolean, a numeric string or a Number rather
+	// than refusing it
+	g.pf("%sif (typeof %s !== \"bigint\" || %s < %s || %s > %s) {%s\n%s  return false;\n%s}\n", ind, expr, expr, lo, expr, hi, comment, ind, ind)
 	bits := ir.BitsRequired(min, max)
 	if bits == 0 {
 		// degenerate range: ZERO bits — the refusal above is the whole write
@@ -532,7 +535,21 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		// the Q format and whole-unit bounds are compile-time constants of
 		// the call site, exactly like a ranged integer's bounds (STANDARD.md,
 		// fixed): one runtime call for every storage width — narrow bounds
-		// are Numbers, wide bounds BigInts (streams.js fixedPointParams)
+		// are Numbers, wide bounds BigInts (streams.js fixedPointParams).
+		// The raw value off its raw [min << F, max << F] is refused first,
+		// in both runtime modes (SPEC §5.1 row 1): the production stream's
+		// serializeFixed subtracts and writes unchecked, and the checked
+		// stream throws rather than refusing
+		fb := uint(f.Type.FracBits)
+		rawMin := new(big.Int).Lsh(f.IntMin, fb)
+		rawMax := new(big.Int).Lsh(f.IntMax, fb)
+		if f.Type.Width > 32 {
+			g.pf("%sif (typeof %s !== \"bigint\" || %s < %s || %s > %s) {\n%s  return false;\n%s}\n",
+				ind, name, name, bigLit(rawMin), name, bigLit(rawMax), ind, ind)
+		} else {
+			g.pf("%sif (!Number.isInteger(%s) || %s < %s || %s > %s) {\n%s  return false;\n%s}\n",
+				ind, name, name, rawMin.String(), name, rawMax.String(), ind, ind)
+		}
 		scratch, lo, hi := g.numScratch(), "", ""
 		if f.Type.Width > 32 {
 			scratch = g.bigScratch()
@@ -571,10 +588,14 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			case "int32":
 				lo, hi := g.rangeArgsNum(f)
 				if f.Type.Width > 32 {
-					// BigInt storage with an int32-family range: truncate to
-					// the call family's domain first — the C# (int) cast's
-					// twin — then guard in the Number domain
-					g.pf("%s{\n%s  const rangeValue = Number(BigInt.asIntN(32, %s));\n", ind, ind, name)
+					// BigInt storage with an int32-family range: the BigInt
+					// itself is guarded, type first, before it narrows (SPEC
+					// §5.1 row 1): a narrowing to the low 32 bits first would
+					// turn 2^32 + 50 into 50 and write it. Inside the range the
+					// narrowing to a Number is exact
+					g.pf("%sif (typeof %s !== \"bigint\" || %s < %s || %s > %s) {\n%s  return false;\n%s}\n",
+						ind, name, name, bigLit(f.IntMin), name, bigLit(f.IntMax), ind, ind)
+					g.pf("%s{\n%s  const rangeValue = Number(%s);\n", ind, ind, name)
 					g.emitWriteFoldedNum("rangeValue", lo, hi, f.IntMin, f.IntMax, false, "", ind+"  ")
 					g.pf("%s}\n", ind)
 					return
@@ -605,11 +626,20 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		}
 		g.emitWriteBareInt(f, name, ind)
 	case ir.TBits:
+		// a bits(N) value wider than N bits is refused here, in both runtime
+		// modes (SPEC §5.1 row 2): the production stream's serializeBits
+		// writes the low N bits unchecked, and the checked stream throws
+		// rather than refusing
+		max := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
 		if f.Type.Width <= 32 {
+			g.pf("%sif (!Number.isInteger(%s) || %s < 0 || %s > %s) {\n%s  return false;\n%s}\n",
+				ind, name, name, name, max.String(), ind, ind)
 			scratch := g.numScratch()
 			g.pf("%s%s.value = %s;\n", ind, scratch, name)
 			g.call(ind, fmt.Sprintf("stream.serializeBits(%s, %d)", scratch, f.Type.Width), "")
 		} else {
+			g.pf("%sif (typeof %s !== \"bigint\" || %s < 0n || %s > %s) {\n%s  return false;\n%s}\n",
+				ind, name, name, name, bigLit(max), ind, ind)
 			scratch := g.bigScratch()
 			g.pf("%s%s.value = %s;\n", ind, scratch, name)
 			g.call(ind, fmt.Sprintf("stream.serializeBits64(%s, %d)", scratch, f.Type.Width), "")
