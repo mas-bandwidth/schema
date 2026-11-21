@@ -335,6 +335,11 @@ build/tables-generated/p3/P3Block.h cast-align,old-style-cast,padded
 build/tables-generated/p3/P3Table.cpp float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
 build/tables-generated/p3/P3Table.h cast-align,comma,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default
 build/tables-generated/p3/Tblp3View.h padded
+build/tables-generated/packetunions/PacketUnions.h covered-switch-default,padded
+build/tables-generated/packetunions/PacketUnionsTable.cpp float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
+build/tables-generated/packetunions/PacketUnionsTable.h cast-align,comma,covered-switch-default,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default,switch-enum
+build/tables-generated/packetunions/PacketUnionsWire.h covered-switch-default,switch-default
+build/tables-generated/packetunions/TblpacketunionsView.h padded
 build/tables-generated/pointers/Graph.h covered-switch-default
 build/tables-generated/pointers/GraphBlock.cpp old-style-cast
 build/tables-generated/pointers/GraphBlock.h cast-align,old-style-cast,padded

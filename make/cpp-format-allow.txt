@@ -185,6 +185,8 @@ build/tables-generated/p2/P2Table.h
 build/tables-generated/p3/P3Block.h
 build/tables-generated/p3/P3Table.cpp
 build/tables-generated/p3/P3Table.h
+build/tables-generated/packetunions/PacketUnionsTable.cpp
+build/tables-generated/packetunions/PacketUnionsTable.h
 build/tables-generated/pointers/GraphBlock.h
 build/tables-generated/pointers/GraphTable.cpp
 build/tables-generated/pointers/GraphTable.h
