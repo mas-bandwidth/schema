@@ -775,11 +775,7 @@ func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 			out = append(out, Finding{Warn, where, fmt.Sprintf("%s %s -> %s (%s)", tokenNoun(bt.Key), bt.Value, lv, tightenNote(bt.Key))})
 		case RuleCountMin:
 			// a minimum that vanished is a minimum of zero now
-			now := "0"
-			if present {
-				now = lv
-			}
-			out = append(out, countMinFinding(where, bt.Value, now)...)
+			out = append(out, countMinFinding(where, bf, lf)...)
 		case RuleShape:
 			out = append(out, mapShapeFinding(where, bt.Value, lv, present)...)
 		case RuleRefs:
@@ -806,7 +802,7 @@ func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 			out = append(out, Finding{Warn, where, fmt.Sprintf("%s %s added (%s)", tokenNoun(lt.Key), lt.Value, tightenNote(lt.Key))})
 		case RuleCountMin:
 			// a minimum that appeared rose from zero
-			out = append(out, countMinFinding(where, "0", lt.Value)...)
+			out = append(out, countMinFinding(where, bf, lf)...)
 		}
 	}
 	// THE RENAME HINT (docs/SPEC-TABLES.md §16.4). A `was` added to a field
@@ -1293,7 +1289,7 @@ func (d *differ) diffEnums() []Finding {
 			lv, still := have[v.Id]
 			if !still {
 				out = append(out, Finding{Warn, "enum " + le.Name,
-					fmt.Sprintf("variant %s removed — stored values naming it read as None and count unknown", v.Name)})
+					fmt.Sprintf("variant %s removed — stored values naming it read as None and count unknown, and a stored slot of an array keyed by it is dropped and counts unknown", v.Name)})
 				continue
 			}
 			if d.policy["enum-deprecated"] == RuleLoss {

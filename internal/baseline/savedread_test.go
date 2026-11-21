@@ -6,10 +6,15 @@ package baseline_test
 // written before an edit is held to what this read does.
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/check"
+	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // savedRead is one old save met by the new schema.
@@ -17,42 +22,84 @@ type savedRead struct {
 	OK     bool             // the new schema read the old save
 	Reason string           // the refusal's reason name, "" when it read
 	Report tabletext.Report // the read's counters
-	Text   string           // the value the new schema holds after the read, as JSON; "" when refused
+	Text   string           // what the new schema holds after the read, as compact JSON; "" when refused
+	Own    string           // what the OLD schema reads back from its own save, as compact JSON
 }
 
-// readOldSave writes `json` as a save of `table` under the `before` schema and
-// reads it under the `after` schema.
-func readOldSave(t *testing.T, before, after, table, json string) savedRead {
-	t.Helper()
-	old := unit(t, before)
+// tryUnit is unit without the fatal: the compiler's answer for a source it
+// may refuse.
+func tryUnit(src string) (*ir.Unit, error) {
+	f, perrs := parser.Parse("Fixture.schema", []byte(src))
+	if len(perrs) > 0 {
+		return nil, perrs[0]
+	}
+	u, cerrs := check.Unit([]check.SourceFile{{
+		Path: "Fixture.schema", Name: "Fixture.schema", Base: "Fixture", Bytes: []byte(src), AST: f,
+	}})
+	if len(cerrs) > 0 {
+		return nil, cerrs[0]
+	}
+	return u, nil
+}
+
+// compact drops a JSON text's layout, so two texts compare by content.
+func compact(text string) string { return strings.Join(strings.Fields(text), "") }
+
+// trySavedRead writes `json` as a save of `table` under the old unit and reads
+// it under the new one. The error is the fixture's: a text the old schema
+// does not take, or a value either schema cannot write back.
+func trySavedRead(old, live *ir.Unit, table, json string) (savedRead, error) {
+	var out savedRead
 	om := tabletext.NewModel(old)
 	oi := om.New(om.Lookup(table))
 	var rr tabletext.Report
 	if !om.Read(oi, []byte(json), &rr) {
-		t.Fatalf("the old schema does not take the fixture %s: %+v", json, rr)
+		return out, fmt.Errorf("the old schema does not take the fixture %s: %s", json, rr.Reason)
 	}
 	saved, err := tablewire.Encode(om, oi)
 	if err != nil {
-		t.Fatalf("the old schema does not write the fixture %s: %v", json, err)
+		return out, fmt.Errorf("the old schema does not write the fixture %s: %w", json, err)
 	}
+	// the control: the old schema reads its own save
+	back := om.New(om.Lookup(table))
+	var br tabletext.Report
+	if ok, err := tablewire.Decode(om, back, saved, &br); !ok || err != nil {
+		return out, fmt.Errorf("the old schema does not read its own save of %s: %v", json, err)
+	}
+	own, err := om.Write(back)
+	if err != nil {
+		return out, fmt.Errorf("the old schema does not write back its own save of %s: %w", json, err)
+	}
+	out.Own = compact(string(own))
 
-	live := unit(t, after)
 	lm := tabletext.NewModel(live)
 	li := lm.New(lm.Lookup(table))
-	var out savedRead
 	ok, err := tablewire.Decode(lm, li, saved, &out.Report)
 	out.OK = ok && err == nil
 	if !out.OK {
 		out.Reason = tablewire.RefusalReason(err)
 		if out.Reason == "" {
-			t.Fatalf("the read of %s failed without a refusal reason: %v", json, err)
+			return out, fmt.Errorf("the read of %s failed without a refusal reason: %v", json, err)
 		}
-		return out
+		return out, nil
 	}
 	text, err := lm.Write(li)
 	if err != nil {
-		t.Fatalf("the new schema does not write back what it read from %s: %v", json, err)
+		// a value the reader holds and its own writer refuses (a flags mask
+		// naming no variant, say): the read happened, and the text says so
+		out.Text = "unwritable: " + err.Error()
+		return out, nil
 	}
-	out.Text = string(text)
-	return out
+	out.Text = compact(string(text))
+	return out, nil
+}
+
+// readOldSave is trySavedRead over two sources, fatal on a broken fixture.
+func readOldSave(t *testing.T, before, after, table, json string) savedRead {
+	t.Helper()
+	r, err := trySavedRead(unit(t, before), unit(t, after), table, json)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
 }

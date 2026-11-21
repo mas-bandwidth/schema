@@ -6,8 +6,9 @@ import (
 )
 
 // countMinFinding judges a counted array's MINIMUM COUNT moving, in either
-// direction (RuleCountMin). `was` and `now` are the two minimums, "0" for a
-// line that carries no `mincount=`: a `[..N]T`, and every other array shape.
+// direction (RuleCountMin), between the baseline's line and the live one. A
+// line that carries no `mincount=` holds a minimum of zero: a `[..N]T`, and
+// every other array shape.
 //
 // The minimum is two reader facts, and TestCountMinimumPredictionsAgreeWithTheRead
 // pins both against a real read of a saved file:
@@ -21,29 +22,68 @@ import (
 //     the reader's minimum of default elements, raised or lowered, and no
 //     counter fires — the class a changed specified default is in.
 //
-// So any move refuses, and the sentence says which of the two applies.
-func countMinFinding(where, was, now string) []Finding {
-	before, err1 := strconv.ParseInt(was, 10, 64)
-	after, err2 := strconv.ParseInt(now, 10, 64)
-	if err1 != nil || err2 != nil {
-		// a count neither side reads as a number is a file this check cannot
+// So any move refuses, and the sentence says which of the two applies. The
+// born count on the side that carries no minimum is the shape's own: a fixed
+// array is born full, at its bound, and every other shape is born empty.
+func countMinFinding(where string, bf, lf Field) []Finding {
+	before, ok1 := countFact(bf, "mincount")
+	after, ok2 := countFact(lf, "mincount")
+	if !ok1 || !ok2 {
+		// a count this check cannot read as a number is a line it cannot
 		// judge, and it says so rather than passing
-		return []Finding{{Refuse, where, fmt.Sprintf("%s %s -> %s", tokenNoun("mincount"), was, now)}}
+		was, _ := bf.Get("mincount")
+		now, _ := lf.Get("mincount")
+		return []Finding{{Refuse, where, fmt.Sprintf("%s %q -> %q is not a count", tokenNoun("mincount"), was, now)}}
 	}
 	if before == after {
 		return nil
 	}
-	born := fmt.Sprintf(
-		"a file whose writer elided the array at its born value, %s, reads back as %s, and nothing reports it",
-		defaultElements(before), defaultElements(after))
-	if after > before {
-		return []Finding{{Refuse, where, fmt.Sprintf(
-			"%s %d -> %d — a file holding the array with fewer than %d elements no longer reads: the load refuses count_over_bound; and %s (SPEC §4.6, docs/SPEC-TABLES.md §18.2)",
-			tokenNoun("mincount"), before, after, after, born)}}
+	head := fmt.Sprintf("%s %d -> %d", tokenNoun("mincount"), before, after)
+	var parts []string
+	// the smallest count a file can hold present is the old declaration's
+	// own floor, which is its born count: a fixed array is always written
+	// full, so it meets a new minimum only where its bound is below it
+	wasBorn, nowBorn := bornCount(bf, before), bornCount(lf, after)
+	if after > wasBorn {
+		parts = append(parts, fmt.Sprintf(
+			"a file holding the array with fewer than %d elements no longer reads: the load refuses count_over_bound", after))
 	}
-	return []Finding{{Refuse, where, fmt.Sprintf(
-		"%s %d -> %d — %s (SPEC §4.6, docs/SPEC-TABLES.md §18.2)",
-		tokenNoun("mincount"), before, after, born)}}
+	if wasBorn != nowBorn {
+		parts = append(parts, fmt.Sprintf(
+			"a file whose writer elided the array at its born value, %s, reads back as %s, and nothing reports it",
+			defaultElements(wasBorn), defaultElements(nowBorn)))
+	}
+	if len(parts) == 0 {
+		return []Finding{{Refuse, where, head}}
+	}
+	what := parts[0]
+	if len(parts) == 2 {
+		what += "; and " + parts[1]
+	}
+	return []Finding{{Refuse, where, head + " — " + what + " (SPEC §4.6, docs/SPEC-TABLES.md §18.2)"}}
+}
+
+// countFact reads one count token off a field line: zero when the line
+// carries none, and false when it carries one that is not a count.
+func countFact(f Field, key string) (int64, bool) {
+	v, has := f.Get(key)
+	if !has {
+		return 0, true
+	}
+	n, err := strconv.ParseInt(v, 10, 64)
+	return n, err == nil && n >= 0
+}
+
+// bornCount is the count a fresh value of the field's array carries, read off
+// its line: a counted array's minimum, a fixed array's bound, and zero for
+// every shape whose count the data decides.
+func bornCount(f Field, min int64) int64 {
+	if shape, _ := f.Get("array"); shape == "fixed" {
+		if n, ok := countFact(f, "bound"); ok {
+			return n
+		}
+	}
+	return min
 }
 
 // defaultElements spells a born count the way the sentence needs it.
