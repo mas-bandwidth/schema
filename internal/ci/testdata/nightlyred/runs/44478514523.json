@@ -1,0 +1,13 @@
+{
+  "id": 44478514523,
+  "name": "CI full",
+  "path": ".github/workflows/ci-full.yml",
+  "event": "schedule",
+  "status": "completed",
+  "conclusion": "failure",
+  "html_url": "https://github.com/mas-bandwidth/schema/actions/runs/44478514523",
+  "head_sha": "cd423ce29568abe1e2068aac775f2da596b17e48",
+  "head_branch": "main",
+  "run_attempt": 1,
+  "run_started_at": "2026-11-19T07:17:49Z"
+}

@@ -1,0 +1,43 @@
+2026-11-19T07:20:32.2512415Z ##[end-action id=__self.__run;outcome=skipped;conclusion=skipped;duration_ms=0]
+2026-11-19T07:20:32.2513756Z ##[start-action display=Run actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9;id=__self.__actions_cache]
+2026-11-19T07:20:32.2516465Z ##[end-action id=__self.__actions_cache;outcome=skipped;conclusion=skipped;duration_ms=0]
+2026-11-19T07:20:32.2517574Z ##[start-action display=the cached moo is the pin;id=__self.__run_2]
+2026-11-19T07:20:32.2528937Z ##[group]Run set -euo pipefail
+2026-11-19T07:20:32.2529130Z [36;1mset -euo pipefail[0m
+2026-11-19T07:20:32.2529314Z [36;1mwant='f60f0239f41c6c0a827ecee44a7f9539c5798068'[0m
+2026-11-19T07:20:32.2529543Z [36;1mgot=$(cat dist/moo/PIN 2>/dev/null || true)[0m
+2026-11-19T07:20:32.2529742Z [36;1mif [ "$got" != "$want" ]; then[0m
+2026-11-19T07:20:32.2530016Z [36;1m  echo "::error::dist/moo is moo ${got:-<none>}, not the pin $want; refusing to use it"; exit 1[0m
+2026-11-19T07:20:32.2530286Z [36;1mfi[0m
+2026-11-19T07:20:32.2530474Z [36;1mtest -x dist/moo/moo && test -x dist/moo/moo-analyze[0m
+2026-11-19T07:20:32.2571526Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-11-19T07:20:32.2571746Z env:
+2026-11-19T07:20:32.2571885Z   PGROUP_GO_TEST_TIMEOUT: 0
+2026-11-19T07:20:32.2572046Z   PGROUP_WALL: 
+2026-11-19T07:22:26.0771280Z            30 |                                  __glibc_objsize0 (__dest));
+2026-11-19T07:22:26.0771768Z               |                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~
+2026-11-19T07:22:26.0772498Z         In function ‘memcpy’,
+2026-11-19T07:22:26.0773645Z             inlined from ‘table_fixed_store_native’ at /home/nova/.cache/runner-tmp/TestFixedCountOpReachCoversItsHeaderASan3803908409/001/ProbeTable.h:1470:35,
+2026-11-19T07:22:26.0775087Z             inlined from ‘table_fixed_apply’ at /home/nova/.cache/runner-tmp/TestFixedCountOpReachCoversItsHeaderASan3803908409/001/ProbeTable.h:1576:17,
+2026-11-19T07:22:26.0809588Z             inlined from ‘table_fixed_run’ at /home/nova/.cache/runner-tmp/TestFixedCountOpReachCoversItsHeaderASan3803908409/001/ProbeTable.h:1700:9,
+2026-11-19T07:22:26.0811258Z             inlined from ‘root_fixed_load’ at /home/nova/.cache/runner-tmp/TestFixedCountOpReachCoversItsHeaderASan3803908409/001/ProbeTable.h:4605:9,
+2026-11-19T07:22:26.0812748Z             inlined from ‘main’ at /home/nova/.cache/runner-tmp/TestFixedCountOpReachCoversItsHeaderASan3803908409/001/main.c:26:9:
+2026-11-19T07:22:26.0814200Z         /usr/include/x86_64-linux-gnu/bits/string_fortified.h:29:10: error: ‘__builtin___memcpy_chk’ writing 8 bytes into a region of size 0 overflows the destination [-Werror=stringop-overflow=]
+2026-11-19T07:22:26.0815096Z            29 |   return __builtin___memcpy_chk (__dest, __src, __len,
+2026-11-19T07:22:26.0815598Z               |          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+2026-11-19T07:22:26.0816024Z            30 |                                  __glibc_objsize0 (__dest));
+2026-11-19T07:22:26.0816410Z               |                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~
+2026-11-19T07:22:26.0816808Z         cc1: all warnings being treated as errors
+2026-11-19T07:22:26.0817365Z --- FAIL: TestFixedCountOpReachCoversItsHeaderASan (2.48s)
+2026-11-19T07:22:26.0817870Z === CONT  TestCBigEndianFormThreeLineageStores
+2026-11-19T07:22:26.5308365Z === CONT  TestCCardsStrictApi
+2026-11-19T07:22:26.5368511Z --- PASS: TestCMessageSkipElementConsumesBits (3.56s)
+2026-11-19T07:22:26.5428271Z --- PASS: TestCCardsStrictApi (0.00s)
+2026-11-19T07:22:26.5488232Z === CONT  TestCBigEndianFormThreeReadNegativeControl
+2026-11-19T07:22:26.6147607Z --- PASS: TestCFixedNormalizationIsDamageNegativeControl (1.12s)
+2026-11-19T07:25:34.1151011Z --- PASS: TestFixedRoadmapCT08WritesConformance/c/R28 (160.41s)
+2026-11-19T07:25:34.1151808Z --- PASS: TestFixedRoadmapCT08WritesConformance (0.00s)
+2026-11-19T07:25:34.1152401Z FAIL
+2026-11-19T07:25:34.1181030Z FAIL	github.com/mas-bandwidth/schema/v2/internal/codegen/ctable	294.966s
+2026-11-19T07:25:34.4508666Z === RUN   TestElixirPacketEmptyElementCompilesClean
+2026-11-19T07:25:34.4509380Z === PAUSE TestElixirPacketEmptyElementCompilesClean

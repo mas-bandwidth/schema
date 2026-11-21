@@ -1,0 +1,34 @@
+2026-11-19T07:24:22.3802683Z ##[endgroup]
+2026-11-19T07:24:22.4075405Z [command]/usr/bin/git log -1 --format=%H
+2026-11-19T07:24:22.4267794Z cd423ce29568abe1e2068aac775f2da596b17e48
+2026-11-19T07:24:22.4675027Z ##[group]Run out=$(gofmt -l .)
+2026-11-19T07:24:22.4675891Z [36;1mout=$(gofmt -l .)[0m
+2026-11-19T07:24:22.4676627Z [36;1mif [ -n "$out" ]; then[0m
+2026-11-19T07:24:22.4677336Z [36;1m  echo "$out"[0m
+2026-11-19T07:24:22.4678341Z [36;1m  echo "::error::gofmt differs — run gofmt -w on the files above"[0m
+2026-11-19T07:24:22.4679428Z [36;1m  exit 1[0m
+2026-11-19T07:24:22.4679982Z [36;1mfi[0m
+2026-11-19T07:24:22.4687958Z env:
+2026-11-19T07:24:22.4688487Z   PGROUP_GO_TEST_TIMEOUT: 0
+2026-11-19T07:24:22.4689154Z   PGROUP_WALL: 
+2026-11-19T07:25:52.8186752Z 			^
+2026-11-19T07:25:52.8187750Z test/verify-vm/vectors.go:188:21: func (*bitPacker).align is unused (unused)
+2026-11-19T07:25:52.8189010Z func (p *bitPacker) align() {
+2026-11-19T07:25:52.8189921Z                     ^
+2026-11-19T07:25:52.8190997Z test/verify-vm/vectors.go:194:21: func (*bitPacker).writeBytes is unused (unused)
+2026-11-19T07:25:52.8208013Z func (p *bitPacker) writeBytes(b []byte) {
+2026-11-19T07:25:52.8208823Z                     ^
+2026-11-19T07:25:52.8209288Z 8 issues:
+2026-11-19T07:25:52.8209698Z * errorlint: 3
+2026-11-19T07:25:52.8210154Z * gocritic: 2
+2026-11-19T07:25:52.8210621Z * staticcheck: 1
+2026-11-19T07:25:52.8211069Z * unused: 2
+2026-11-19T07:25:52.8211331Z 
+2026-11-19T07:25:52.8249702Z ##[error]issues found
+2026-11-19T07:25:52.8262677Z Ran golangci-lint in 73513ms
+2026-11-19T07:25:52.8263902Z ##[endgroup]
+2026-11-19T07:25:52.8740659Z Post job cleanup.
+2026-11-19T07:25:53.0722242Z Skipping cache saving
+2026-11-19T07:25:53.1022106Z Post job cleanup.
+2026-11-19T07:25:53.2151925Z [command]/usr/bin/git version
+2026-11-19T07:25:53.2230655Z git version 2.53.0

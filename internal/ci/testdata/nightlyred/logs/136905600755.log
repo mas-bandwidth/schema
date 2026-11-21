@@ -1,0 +1,29 @@
+2026-11-21T16:34:20.7967772Z === PAUSE TestRefuseRuntimeForTarget
+2026-11-21T16:34:20.7968067Z === RUN   TestNewLegMissingLanguageIsARefusal
+2026-11-21T16:34:22.6560949Z --- PASS: TestNewLegMissingLanguageIsARefusal (1.85s)
+2026-11-21T16:34:22.6601094Z === RUN   TestNewLegExistingLanguageIsARefusal
+2026-11-21T16:34:24.6101161Z --- PASS: TestNewLegExistingLanguageIsARefusal (1.95s)
+2026-11-21T16:34:24.6101831Z === RUN   TestNewLegZigWritesSkeletonAndFixturePasses
+2026-11-21T16:34:26.7370900Z     newleg_test.go:122: fixture: exit status 1
+2026-11-21T16:34:26.7391529Z         # newleg_zig_fixture
+2026-11-21T16:34:26.7392111Z         package newleg_zig_fixture
+2026-11-21T16:34:26.7421511Z         	zig.go:14:2: use of internal package github.com/mas-bandwidth/schema/v2/internal/codegen/genheader not allowed
+2026-11-21T16:34:26.7422470Z         FAIL	newleg_zig_fixture [setup failed]
+2026-11-21T16:34:26.7422856Z         FAIL
+2026-11-21T16:34:26.7547399Z --- FAIL: TestNewLegZigWritesSkeletonAndFixturePasses (2.13s)
+2026-11-21T16:34:26.7548330Z === RUN   TestHelpListsNewLeg
+2026-11-21T16:34:28.5989946Z --- PASS: TestHelpListsNewLeg (1.85s)
+2026-11-21T16:34:28.5995958Z === RUN   TestNewLegZigYieldsABuildingTestingSkeleton
+2026-11-21T16:35:03.7305025Z --- PASS: TestNewLegZigYieldsABuildingTestingSkeleton (35.13s)
+2026-11-21T16:35:03.7305810Z === RUN   TestScaffoldWritesTheLegFilesInForm
+2026-11-21T16:35:03.7319116Z --- PASS: TestScaffoldWritesTheLegFilesInForm (0.00s)
+2026-11-21T16:35:03.7319702Z === RUN   TestScaffoldRefusesAndWritesNothing
+2026-11-21T16:35:03.7326656Z --- PASS: TestScaffoldRefusesAndWritesNothing (0.00s)
+2026-11-21T16:35:23.9765006Z --- PASS: TestGenerateGoRefusesGoReservedWords (10.92s)
+2026-11-21T16:35:23.9882091Z --- PASS: TestGenerateChecksEveryLanguagesWords (11.19s)
+2026-11-21T16:35:33.7435399Z --- PASS: TestGenerateGoRemovesStaleSurfaceFiles (20.95s)
+2026-11-21T16:35:33.7436121Z FAIL
+2026-11-21T16:35:33.7456995Z FAIL	github.com/mas-bandwidth/schema/v2/cmd/schema	90.764s
+2026-11-21T16:35:33.7706512Z exit status 1
+2026-11-21T16:35:33.7744328Z ##[error]Process completed with exit code 1.
+2026-11-21T16:35:33.8018626Z ##[group]Run go run ./tools/gotestreport -budget 10m "$PGROUP_GO_TEST_JSON"

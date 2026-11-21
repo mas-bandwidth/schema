@@ -1,0 +1,63 @@
+name: nightly red
+
+# A RED CI FULL NIGHTLY MUST NEVER GO UNSEEN. Before this file nothing
+# recorded or announced a failed nightly (PR #4539's audit), and every
+# scheduled ci-full run from 2026-11-07 to 11-19 ended failure. A run can also
+# read cancelled while a job inside it failed: on 2026-11-21 run 44923872707
+# was cancelled with go-test (unit-rest-cmd-2) failed inside it.
+#
+# So when a ci-full run completes, tools/nightlyred reads it and, for the
+# scheduled nightly only:
+#   - not green (failure, timed_out, startup_failure, or cancelled with a
+#     failed or timed-out job inside): one comment on the single issue
+#     labelled nightly-red, listing each failed job, its first error line and
+#     the run link. The issue is created and pinned the first time, and
+#     reopened and pinned when it was closed.
+#   - green: the open issue gets the green run's link and is closed.
+#   - cancelled with no failed job inside (somebody stopped it): left alone.
+# The decision is internal/ci/nightlyred.Announce, tested from recorded runs by
+# internal/ci/nightly_red_test.go, which also holds this file's wiring.
+#
+# To announce a run by hand (a missed nightly, or to check this file):
+#   gh workflow run nightly-red.yml -f run=<ci-full run id>
+# It still announces only a scheduled ci-full run.
+
+on:
+  workflow_run:
+    workflows: [ 'CI full' ]
+    types: [ completed ]
+  workflow_dispatch:
+    inputs:
+      run:
+        description: 'id of a completed ci-full run'
+        required: true
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+# one announcement at a time, in order, so two nights never race on the issue
+concurrency:
+  group: nightly-red
+  cancel-in-progress: false
+
+env:
+  # the nightly rule (internal/ci/nightly_test.go): no go test -timeout
+  PGROUP_GO_TEST_TIMEOUT: '0'
+
+jobs:
+  announce:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.event == 'schedule'
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: announce the run on the nightly-red issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id || inputs.run }}
+        run: go run ./tools/nightlyred -repo "$REPO" -run "$RUN_ID"

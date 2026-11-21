@@ -1469,6 +1469,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"nightly-conformance.yml:cpp-writes",
 		"nightly-conformance.yml:port",
 		"nightly-conformance.yml:registry",
+		"nightly-red.yml:announce",
 		"promotion-tag.yml:tag",
 		"python-leg.yml:fixed-corpus",
 		"python-leg.yml:plan",

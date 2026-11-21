@@ -1,0 +1,13 @@
+{
+  "id": 44923872707,
+  "name": "CI full",
+  "path": ".github/workflows/ci-full.yml",
+  "event": "workflow_dispatch",
+  "status": "completed",
+  "conclusion": "cancelled",
+  "html_url": "https://github.com/mas-bandwidth/schema/actions/runs/44923872707",
+  "head_sha": "a7f8403fef954847c78a5c83d48a0ae72942f5a6",
+  "head_branch": "v3.0.2",
+  "run_attempt": 1,
+  "run_started_at": "2026-11-21T16:18:43Z"
+}

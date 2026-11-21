@@ -1,0 +1,28 @@
+2026-11-19T13:18:44.7603815Z ##[group]Run set -euo pipefail
+2026-11-19T13:18:44.7605436Z [36;1mset -euo pipefail[0m
+2026-11-19T13:18:44.7607255Z [36;1mjq -r 'to_entries[] | "\(.value.result)\t\(.key)"' <<<"$NEEDS" | sort[0m
+2026-11-19T13:18:44.7609431Z [36;1mbad=$(jq -r --arg event "$EVENT" 'to_entries[][0m
+2026-11-19T13:18:44.7611183Z [36;1m  | select(.value.result != "success")[0m
+2026-11-19T13:18:44.7613783Z [36;1m  | select((.key == "pr-select" and .value.result == "skipped" and $event != "pull_request") | not)[0m
+2026-11-19T13:18:44.7616356Z [36;1m  | "\(.key): \(.value.result)"' <<<"$NEEDS")[0m
+2026-11-19T13:18:44.7617943Z [36;1mif [ -n "$bad" ]; then[0m
+2026-11-19T13:18:44.7619559Z [36;1m  echo "::error::not every job of this run succeeded:"[0m
+2026-11-19T13:18:44.7621280Z [36;1m  echo "$bad"[0m
+2026-11-19T13:18:44.7622460Z [36;1m  exit 1[0m
+2026-11-19T13:18:44.7623674Z [36;1mfi[0m
+2026-11-19T13:18:44.7624805Z [36;1mecho "every job succeeded"[0m
+2026-11-19T13:18:44.8819357Z success	pins
+2026-11-19T13:18:44.8819988Z success	proof
+2026-11-19T13:18:44.8820638Z success	shape-gate
+2026-11-19T13:18:44.8821321Z success	unity
+2026-11-19T13:18:44.8822061Z success	vuln
+2026-11-19T13:18:44.8822692Z success	windows
+2026-11-19T13:18:44.8941460Z ##[error]not every job of this run succeeded:
+2026-11-19T13:18:44.8949668Z go-test: failure
+2026-11-19T13:18:44.8950378Z leg-tagged: failure
+2026-11-19T13:18:44.8951063Z big-endian: failure
+2026-11-19T13:18:44.8951766Z lint: failure
+2026-11-19T13:18:44.8952435Z negative-controls: failure
+2026-11-19T13:18:44.8956127Z ##[error]Process completed with exit code 1.
+2026-11-19T13:18:44.9033714Z A job completed hook has been configured by the self-hosted runner administrator
+2026-11-19T13:18:44.9204211Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}

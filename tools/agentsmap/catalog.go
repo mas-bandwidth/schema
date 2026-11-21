@@ -195,6 +195,7 @@ var catalog = []Entry{
 	e("tools/matrix", "3.0.0 proof gate", "go test ./tools/matrix", "make proof"),
 	e("tools/moofuzzhost", "moo wire-fuzz native host (C++)", "make tables-moo-wire-fuzz", "make tables-moo-wire-fuzz"),
 	e("tools/negativecontrols", "negative-control enumerator", "go test ./tools/negativecontrols", "go run ./tools/negativecontrols check"),
+	e("tools/nightlyred", "red ci-full nightly announcer (nightly-red issue)", "go test ./internal/ci -run NightlyRed", "go run ./tools/nightlyred -repo mas-bandwidth/schema -run RUN_ID"),
 	e("tools/pgroup", "process-group runner for CI steps", "go test ./tools/pgroup", "go run ./tools/pgroup -- make test"),
 	e("tools/releasediff", "previous-release differential (#463)", "make release-differential-negative-control", "make release-differential"),
 	e("tools/releasebin", "release binaries for six platforms", "go test ./tools/releasebin", "make release-binaries"),
