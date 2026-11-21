@@ -26,6 +26,34 @@
       ]
     },
     {
+      "name": "go-two-packages",
+      "sh": "go test -count=1 -v -timeout=1s ./sum ./other",
+      "proof": "(?m)^ok\\s+\\S+",
+      "counted": true,
+      "mutants": [
+        {"id": "two-assertion", "file": "sum/sum.go", "old": "2 + 3", "new": "2 + 2", "want": "killed", "case": "control: sum's TestSum runs and its assertion fails"},
+        {"id": "two-skipped", "file": "sum/sum.go", "old": "2 + 3", "new": "2 - 3", "want": "unproven", "case": "F-051: sum's TestSum skips and other's TestSum, the same name, runs instead; counted by name alone it was a survivor"}
+      ]
+    },
+    {
+      "name": "proof-is-its-command",
+      "sh": ": native-gate",
+      "proof": "native-gate",
+      "refused": "met by its own command line",
+      "mutants": [
+        {"id": "echo-assertion", "file": "native/sum.c", "old": "2 + 3", "new": "2 - 3", "want": "", "case": "F-051: a stage that runs nothing and whose proof is its own name, as an empty make recipe whose target the proof names; the sweep called the mutant a survivor and must refuse the stage"}
+      ]
+    },
+    {
+      "name": "native-spaced-path",
+      "sh": "mkdir -p build && cp native/sum.c 'build/sum spaced.c' && ${CC:-cc} -std=c11 -o build/sum 'build/sum spaced.c' && ./build/sum",
+      "proof": "CORPUS_SUM_PASSED",
+      "mutants": [
+        {"id": "spaced-assertion", "file": "native/sum.c", "old": "2 + 3", "new": "2 - 3", "want": "killed", "case": "control: the compiled program runs and its check fails"},
+        {"id": "spaced-unbuildable", "file": "native/sum.c", "old": "2 + 3", "new": "2 + missing_value", "want": "build-broken", "case": "F-226: the C compiler refuses the mutant in a source whose path holds a space; it was a kill"}
+      ]
+    },
+    {
       "name": "native",
       "sh": "mkdir -p build && ${CC:-cc} -std=c11 -o build/sum native/sum.c && ./build/sum",
       "proof": "CORPUS_SUM_PASSED",

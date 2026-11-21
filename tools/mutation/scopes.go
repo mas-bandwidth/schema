@@ -152,7 +152,7 @@ func scopes(root string) ([]Scope, error) {
 		s.Stages = append(s.Stages, Stage{
 			Name:  "conformance",
 			Sh:    fmt.Sprintf("make -j${MUTATION_JOBS:-4} %s %s ${MUTATION_MAKE_ARGS:-} && env %s ${MUTATION_MAKE_ARGS:-} ./build/conformance-harness run --only %s", reg.Targets, reg.Env, reg.Env, t.lang),
-			Proof: `(?m)\b` + regexp.QuoteMeta(t.lang) + `\b`,
+			Proof: conformanceProof(t.lang),
 		})
 		hostile := "schema-" + t.lang + "-runs-hostile-corpus"
 		has, err := hasMakeTarget(root, hostile)
@@ -160,7 +160,7 @@ func scopes(root string) ([]Scope, error) {
 			return nil, err
 		}
 		if has {
-			s.Stages = append(s.Stages, Stage{Name: "hostile", Sh: "make " + hostile + " ${MUTATION_MAKE_ARGS:-}", Proof: `(?i)hostile|PASS|ok`})
+			s.Stages = append(s.Stages, hostileStage(t.lang, hostile))
 		} else {
 			s.Notes = append(s.Notes, "no make target "+hostile+": this target has no hostile runner to run")
 		}
@@ -171,6 +171,32 @@ func scopes(root string) ([]Scope, error) {
 		out = append(out, s)
 	}
 	return out, nil
+}
+
+// conformanceProof is the harness's matrix with the target's column and at
+// least one surface it passed cases on. The target's name alone is no proof:
+// the stage's own command line holds it, and make echoes that.
+func conformanceProof(lang string) string {
+	return `(?m)^TABLES CONFORMANCE — surface x language$[\s\S]*^surface +` + regexp.QuoteMeta(lang) + ` *$[\s\S]*^\S+ +pass [1-9]`
+}
+
+// hostileStage runs a target's hostile corpus, with what its runner prints
+// only when it ran cases and passed some. The runners print three ways:
+// most a summary, `N cases: P pass`; the Java and Rust runners a `PASS
+// <case>` line per case; the Lua, Luau and Squirrel targets go through
+// test/slowgate/proof, which names the gates that ran. Ruby's target is a
+// bare go test, so it runs verbose and is counted.
+func hostileStage(lang, target string) Stage {
+	st := Stage{Name: "hostile", Sh: "make " + target + " ${MUTATION_MAKE_ARGS:-}", Proof: `(?m)\b[1-9]\d* cases[:,][^\n]*\b[1-9]\d* pass\b`}
+	switch lang {
+	case "java", "rust":
+		st.Proof = `(?m)^PASS \S+`
+	case "lua", "luau", "squirrel":
+		st.Proof = `(?m)^SLOW GATE \S+: [1-9]\d* named gate\(s\) ran and PASS`
+	case "ruby":
+		st.Sh, st.Proof, st.Counted = "GOFLAGS=-v "+st.Sh, goTestProof, true
+	}
+	return st
 }
 
 type registry struct {

@@ -61,13 +61,14 @@ type sweepOptions struct {
 // and never a kill.
 var buildFailed = regexp.MustCompile(`(?m)` + strings.Join([]string{
 	`\[build failed\]`, `\[setup failed\]`, // go test
-	`^\s*[^\s:]+:\d+:\d+: (?:fatal )?[Ee]rror: `,                                 // gcc, clang, dart: file:line:col: error:
+	// a path may hold spaces (`build/arithmetic example.c`), never a colon
+	`^[^:\n]+:\d+:\d+: (?:fatal )?[Ee]rror: `,                                    // gcc, clang, dart: file:line:col: error:
 	`^\s*(?:collect2|ld|clang|clang\+\+|gcc|g\+\+|cc|c\+\+): (?:fatal )?error: `, // the driver or the linker
-	`^\s*\S+\.java:\d+: error: `,                                                 // javac
+	`^[^:\n]+\.java:\d+: error: `,                                                // javac
 	`\berror CS\d{4}:`,                                                           // dotnet
 	`^error\[E\d{4}\]: `, `^error: could not compile `,                           // rustc, cargo
 	`\*\* \((?:CompileError|SyntaxError|TokenMissingError|MismatchedDelimiterError)\)`, // elixir
-	`^\s*\S+\.lobster\(\d+\): error: `,                                                 // lobster
+	`^[^:\n]+\.lobster\(\d+\): error: `,                                                // lobster
 }, "|"))
 
 // testerTimedOut is the tester inside a stage reporting that it gave up on a
@@ -88,14 +89,35 @@ func failed(out []byte) string {
 	return outcomeKilled
 }
 
-// passedTest is one test a `go test -v` passed, by name.
-var passedTest = regexp.MustCompile(`(?m)^\s*--- PASS: (\S+)`)
+// passedTest is one test a `go test -v` passed, by name; packageLine is the
+// line go test ends each package's output with, naming the package.
+var (
+	passedTest  = regexp.MustCompile(`^\s*--- PASS: (\S+)`)
+	packageLine = regexp.MustCompile(`^(?:ok|FAIL|\?)\s+(\S+)`)
+)
 
-// passedTests counts the tests a `go test -v` output passed, by name.
+// passedTests counts the tests a `go test -v` output passed, each named by
+// its package and its name: two packages each with a TestValue are two
+// tests, and one of them that stops running is not stood in for by the
+// other. go test prints a package's output whole and then the line naming
+// the package, so each name belongs to the package line that follows it.
 func passedTests(out []byte) map[string]int {
 	got := map[string]int{}
-	for _, m := range passedTest.FindAllSubmatch(out, -1) {
-		got[string(m[1])]++
+	var pending []string
+	for line := range strings.SplitSeq(string(out), "\n") {
+		if m := passedTest.FindStringSubmatch(line); m != nil {
+			pending = append(pending, m[1])
+			continue
+		}
+		if m := packageLine.FindStringSubmatch(line); m != nil {
+			for _, name := range pending {
+				got[m[1]+" "+name]++
+			}
+			pending = nil
+		}
+	}
+	for _, name := range pending { // no package line followed them
+		got[name]++
 	}
 	return got
 }
@@ -251,6 +273,9 @@ func baseline(scope Scope, st Stage, tree string, limit time.Duration, run Exec)
 	if err != nil || st.Proof == "" {
 		return 0, nil, fmt.Errorf("scope %s stage %s: a stage needs a proof that it tested, and %q is not one", scope.Name, st.Name, st.Proof)
 	}
+	if proofMetByCommand(proof, st.Sh) {
+		return 0, nil, fmt.Errorf("scope %s stage %s: its proof %q is met by its own command line %q, or by make saying a target it names had nothing to do: a stage that ran nothing prints that, so it proves nothing", scope.Name, st.Name, st.Proof, st.Sh)
+	}
 	out, ok, timedOut, took := run(tree, st.Sh, limit)
 	tests := passedTests(out)
 	switch {
@@ -264,6 +289,22 @@ func baseline(scope Scope, st Stage, tree string, limit time.Duration, run Exec)
 		return 0, nil, fmt.Errorf("scope %s stage %s: %q passed and ran no test: no `--- PASS` line, so every test it names was filtered out or skipped, or it is not run with -v:\n%s", scope.Name, st.Name, st.Sh, tail(out))
 	}
 	return took, tests, nil
+}
+
+// proofMetByCommand reports whether a stage's proof is met by text a stage
+// that tested nothing still prints: its own command line, which make and a
+// shell echo, or make's word that a target the command names is up to date
+// or had nothing to be done.
+func proofMetByCommand(proof *regexp.Regexp, sh string) bool {
+	if proof.MatchString(sh) {
+		return true
+	}
+	for _, w := range strings.Fields(sh) {
+		if proof.MatchString("make: Nothing to be done for '"+w+"'.") || proof.MatchString("make: '"+w+"' is up to date.") {
+			return true
+		}
+	}
+	return false
 }
 
 // stagesFor is the scope's stages under the options, and an error when that
