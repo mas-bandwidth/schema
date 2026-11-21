@@ -37,7 +37,7 @@ def self.run(manifest, outdir)
       next
     end
     if pkg.nil? || cls.nil? || !has_msg
-      RubyConformance.absent(outdir, case_name, 'message form is not emitted for this root')
+      RubyConformance.no_codec(outdir, case_name)
       next
     end
     vocab = pkg::MessageVocabulary.new
