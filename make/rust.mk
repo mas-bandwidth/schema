@@ -612,7 +612,7 @@ tables-rust-alloc-negative-control: build/tables-generated-rust/.stamp build/coo
 # control, the big-endian check, the bench crates' compile gates, and the
 # packet tests — the corpus binaries in BOTH build modes (see below).
 .PHONY: test-rust
-test-rust: generated/rust/.stamp generated/rust-ludicrous/.stamp generated/bench/rust/.stamp generated/bench/paired/rust/.stamp
+test-rust: build/mustrun generated/rust/.stamp generated/rust-ludicrous/.stamp generated/bench/rust/.stamp generated/bench/paired/rust/.stamp
 	$(MAKE) tables-rust-clippy
 	$(MAKE) tables-rust-features
 	$(MAKE) tables-rust-names-negative-control
@@ -648,10 +648,10 @@ test-rust: generated/rust/.stamp generated/rust-ludicrous/.stamp generated/bench
 	# the debug run is the one that proves the contracts FIRE and the release
 	# run is the one that proves they are GONE and the corpus still writes the
 	# pinned wire. Java and Dart already run both.
-	cd test/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet
-	cd test/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release
-	cd test/rust-ludicrous && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet
-	cd test/rust-ludicrous && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release
+	cd test/rust && PATH="$(RUSTUP_BIN):$$PATH" ../../$(MUSTRUN) -name test-rust-debug -count 515 -- cargo run --quiet
+	cd test/rust && PATH="$(RUSTUP_BIN):$$PATH" ../../$(MUSTRUN) -name test-rust-release -count 509 -- cargo run --quiet --release
+	cd test/rust-ludicrous && PATH="$(RUSTUP_BIN):$$PATH" ../../$(MUSTRUN) -name test-rust-ludicrous-debug -count 49 -- cargo run --quiet
+	cd test/rust-ludicrous && PATH="$(RUSTUP_BIN):$$PATH" ../../$(MUSTRUN) -name test-rust-ludicrous-release -count 48 -- cargo run --quiet --release
 
 TEST_LEGS         += test-rust
 CONFORMANCE_LEGS  += $(call unless_skipped,rust,build/conformance-rust)
@@ -1955,9 +1955,9 @@ build/packet-end/rust/.stamp: bin/schema test/packet-end/End.schema make/rust.mk
 	@touch $@
 
 .PHONY: packet-end-rust packet-end-rust-negative-control
-packet-end-rust: build/packet-end/rust/.stamp
-	cd test/packet-end/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet -- ../../../testdata/wire/packet-end
-	cd test/packet-end/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release -- ../../../testdata/wire/packet-end
+packet-end-rust: build/mustrun build/packet-end/rust/.stamp
+	cd test/packet-end/rust && PATH="$(RUSTUP_BIN):$$PATH" ../../../$(MUSTRUN) -name packet-end-rust-debug -count 3 -- cargo run --quiet -- ../../../testdata/wire/packet-end
+	cd test/packet-end/rust && PATH="$(RUSTUP_BIN):$$PATH" ../../../$(MUSTRUN) -name packet-end-rust-release -count 3 -- cargo run --quiet --release -- ../../../testdata/wire/packet-end
 
 packet-end-rust-negative-control: packet-end-rust
 	@mkdir -p $(PACKET_END_RUST)-negative
@@ -1999,9 +1999,9 @@ $(PACKET_WRITE_TEXT_RUST)/.stamp: bin/schema test/packet-write-text/Text.schema 
 	@touch $@
 
 .PHONY: packet-write-text-rust packet-write-text-rust-negative-control
-packet-write-text-rust: $(PACKET_WRITE_TEXT_RUST)/.stamp
+packet-write-text-rust: build/mustrun $(PACKET_WRITE_TEXT_RUST)/.stamp
 	PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --manifest-path $(PACKET_WRITE_TEXT_RUST)/Cargo.toml
-	./$(PACKET_WRITE_TEXT_RUST)/target/debug/packetwritetext test/packet-write-text/cases.txt
+	$(MUSTRUN) -name packet-write-text-rust -count 11 -- ./$(PACKET_WRITE_TEXT_RUST)/target/debug/packetwritetext test/packet-write-text/cases.txt
 
 packet-write-text-rust-negative-control: packet-write-text-rust
 	@rm -rf $(PACKET_WRITE_TEXT_RUST)-negative/src

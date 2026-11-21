@@ -620,7 +620,7 @@ tables-dart-order-negative-control: build/tables-generated-dart/.stamp build/coo
 		echo "NEGATIVE CONTROL FAILED: the block row stayed green with the order check removed"; \
 		tail -20 build/dart-order-nc/log-block; exit 1; \
 	fi
-	@grep -q "ORDER FAIL block" build/dart-order-nc/log-block || \
+	@grep -Eq "ORDER FAIL block.*a forged order word OPENED" build/dart-order-nc/log-block || \
 		{ echo "NEGATIVE CONTROL FAILED: the block row went red for another reason"; \
 		  tail -20 build/dart-order-nc/log-block; exit 1; }
 	@if grep -q "ORDER FAIL cook" build/dart-order-nc/log-block; then \
@@ -644,7 +644,7 @@ tables-dart-order-negative-control: build/tables-generated-dart/.stamp build/coo
 		echo "NEGATIVE CONTROL FAILED: the cook row stayed green with the order check removed"; \
 		tail -20 build/dart-order-nc/log-cook; exit 1; \
 	fi
-	@grep -q "ORDER FAIL cook" build/dart-order-nc/log-cook || \
+	@grep -Eq "ORDER FAIL cook.*a forged order word OPENED" build/dart-order-nc/log-cook || \
 		{ echo "NEGATIVE CONTROL FAILED: the cook row went red for another reason"; \
 		  tail -20 build/dart-order-nc/log-cook; exit 1; }
 	@if grep -q "ORDER FAIL block" build/dart-order-nc/log-cook; then \
@@ -1368,8 +1368,17 @@ test-dart: tables-dart-cook-map tables-dart-cook-map-negative-control
 # standalone gate and its control, the forgery fuzzer and its control — the
 # long fuzz is `make tables-dart-release` — then the analyzer and the formatter
 # over every generated tree, and the packet tests, checked and compiled.
+# The registered counts of the primary packet harnesses (test/dart, test/dart-ludicrous):
+# each prints "ran N, failed M" as its last line and tools/mustrun holds N
+# to the number here, so a check that stops running, or a run that checks
+# nothing, is red. A commit that adds or removes a check changes the number.
+# The asserts-on JIT twin and the AOT twin count separately.
+DART_MAIN_CHECKS := 803
+DART_MAIN_CHECKS_AOT := 803
+DART_LUDICROUS_CHECKS := 48
+DART_LUDICROUS_CHECKS_AOT := 48
 .PHONY: test-dart
-test-dart: toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp generated/bench/dart/.stamp
+test-dart: toolchain-dart build/mustrun generated/dart/.stamp generated/dart-ludicrous/.stamp generated/bench/dart/.stamp
 	$(MAKE) tables-dart-clean
 	$(MAKE) tables-dart-names-negative-control
 	$(MAKE) tables-dart-standalone
@@ -1389,11 +1398,22 @@ test-dart: toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp 
 	$(MAKE) tables-dart-versioning-negative-control
 	$(DART) analyze generated/dart generated/dart-ludicrous generated/bench/dart test/dart test/dart-ludicrous bench/dart
 	$(DART) format --set-exit-if-changed --output=none generated/dart generated/dart-ludicrous generated/bench/dart
-	cd test/dart && $(DART) --enable-asserts main.dart
+	$(MAKE) test-dart-packet
+
+# The primary packet harnesses on their own, checked (JIT, asserts on) and
+# compiled (AOT), so they can be run (and broken on purpose) without the rest
+# of the leg. The AOT binaries are removed first: a failed compile must never
+# leave an older binary to run.
+.PHONY: test-dart-packet
+test-dart-packet: toolchain-dart build/mustrun generated/dart/.stamp generated/dart-ludicrous/.stamp generated/bench/dart/.stamp
+	cd test/dart && "$(CURDIR)/$(MUSTRUN)" -name test-dart-main -count $(DART_MAIN_CHECKS) -- $(DART) --enable-asserts main.dart
 	@mkdir -p build
-	cd test/dart && $(DART) compile exe -o ../../build/schema_test_dart main.dart >/dev/null && ../../build/schema_test_dart
-	cd test/dart-ludicrous && $(DART) --enable-asserts main.dart
-	cd test/dart-ludicrous && $(DART) compile exe -o ../../build/schema_test_dart_ludicrous main.dart >/dev/null && ../../build/schema_test_dart_ludicrous
+	@rm -f build/schema_test_dart build/schema_test_dart_ludicrous
+	cd test/dart && $(DART) compile exe -o ../../build/schema_test_dart main.dart >/dev/null
+	cd test/dart && "$(CURDIR)/$(MUSTRUN)" -name test-dart-main-aot -count $(DART_MAIN_CHECKS_AOT) -- ../../build/schema_test_dart
+	cd test/dart-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name test-dart-ludicrous -count $(DART_LUDICROUS_CHECKS) -- $(DART) --enable-asserts main.dart
+	cd test/dart-ludicrous && $(DART) compile exe -o ../../build/schema_test_dart_ludicrous main.dart >/dev/null
+	cd test/dart-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name test-dart-ludicrous-aot -count $(DART_LUDICROUS_CHECKS_AOT) -- ../../build/schema_test_dart_ludicrous
 
 TEST_LEGS         += test-dart
 TOOLCHAIN_LEGS    += dart
@@ -1956,12 +1976,12 @@ build/packet-write-cfloat/dart/.stamp: bin/schema test/packet-write-cfloat/CFloa
 	@touch $@
 
 .PHONY: packet-write-cfloat-dart packet-write-cfloat-dart-negative-control
-packet-write-cfloat-dart: build/packet-write-cfloat/dart/.stamp
+packet-write-cfloat-dart: build/mustrun build/packet-write-cfloat/dart/.stamp
 	$(DART) analyze build/packet-write-cfloat/dart test/packet-write-cfloat/dart
 	$(DART) format --set-exit-if-changed --output=none build/packet-write-cfloat/dart test/packet-write-cfloat/dart
-	$(DART) --enable-asserts test/packet-write-cfloat/dart/main.dart test/packet-write-cfloat/cases.txt
+	$(MUSTRUN) -name packet-write-cfloat-dart -count 10 -- $(DART) --enable-asserts test/packet-write-cfloat/dart/main.dart test/packet-write-cfloat/cases.txt
 	$(DART) compile exe -o build/packet-write-cfloat/dart/checker test/packet-write-cfloat/dart/main.dart >/dev/null
-	./build/packet-write-cfloat/dart/checker test/packet-write-cfloat/cases.txt
+	$(MUSTRUN) -name packet-write-cfloat-dart-aot -count 10 -- ./build/packet-write-cfloat/dart/checker test/packet-write-cfloat/cases.txt
 
 packet-write-cfloat-dart-negative-control: packet-write-cfloat-dart
 	@rm -rf build/packet-write-cfloat/dart-negative && mkdir -p build/packet-write-cfloat/dart-negative
@@ -2000,10 +2020,10 @@ build/packet-write-text/dart/.stamp: bin/schema test/packet-write-text/dart/Pack
 	@touch $@
 
 .PHONY: packet-write-text-dart packet-write-text-dart-negative-control
-packet-write-text-dart: build/packet-write-text/dart/.stamp
+packet-write-text-dart: build/mustrun build/packet-write-text/dart/.stamp
 	$(DART) analyze build/packet-write-text/dart/gen test/packet-write-text/dart
 	$(DART) format --set-exit-if-changed --output=none build/packet-write-text/dart/gen test/packet-write-text/dart
-	$(DART) --enable-asserts test/packet-write-text/dart/main.dart test/packet-write-text/cases.txt
+	$(MUSTRUN) -name packet-write-text-dart -count 11 -- $(DART) --enable-asserts test/packet-write-text/dart/main.dart test/packet-write-text/cases.txt
 
 packet-write-text-dart-negative-control: packet-write-text-dart
 	@mkdir -p build/packet-write-text/dart-negative

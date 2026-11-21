@@ -255,5 +255,13 @@ int main( int argc, char ** argv )
     }
 
     printf( "packet-write-text-cpp: %zu cases, %d refused, %d written\n", cases.size(), refused, written );
+    // the count line build/mustrun holds to the registered count: a case file
+    // that lost its rows runs nothing and is red
+    if ( cases.empty() )
+    {
+        fprintf( stderr, "FAILED: packet-write-text-cpp: no cases in %s\n", argv[1] );
+        failures++;
+    }
+    printf( "packet-write-text-cpp: ran %zu, failed %d\n", cases.size(), failures );
     return failures == 0 ? 0 : 1;
 }

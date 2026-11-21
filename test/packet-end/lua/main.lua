@@ -1,8 +1,16 @@
 -- The Lua 5.4 driver of the packet-end conformance vectors
 -- (testdata/wire/packet-end/README.md): read each packet with the generated
 -- one-packet read and hold its verdict.
-local dir = assert(arg[1], "usage: lua main.lua <generated dir> <vectors dir>")
-local vectors = assert(arg[2], "usage: lua main.lua <generated dir> <vectors dir>")
+--
+-- usage: lua main.lua <generated dir> <vectors dir> <vector file>...
+-- The trailing arguments are the directory's own listing of *.bin (the make
+-- recipe passes it): a vector on disk that this list does not hold, a listed
+-- vector that is not on disk, and an empty listing each fail the run, so a
+-- new or renamed vector cannot go unread. The last stdout line is
+-- "packet end Lua: ran N, failed M" (tools/mustrun reads it).
+local usage = "usage: lua main.lua <generated dir> <vectors dir> <vector file>..."
+local dir = assert(arg[1], usage)
+local vectors = assert(arg[2], usage)
 package.path = dir .. "/?.lua;" .. package.path
 
 local serialize = require("serialize")
@@ -27,7 +35,28 @@ local cases = {
   { name = "padding", verdict = "refuse" },
 }
 
+local ran = 0
+local known, listed = {}, 0
+for _, case in ipairs(cases) do known[case.name .. ".bin"] = false end
+for i = 3, #arg do
+  listed = listed + 1
+  if known[arg[i]] == nil then
+    fail(arg[i], "a vector in the directory that this driver does not read")
+  else
+    known[arg[i]] = true
+  end
+end
+if listed == 0 then
+  fail("listing", "the vector directory listing is empty")
+end
 for _, case in ipairs(cases) do
+  if not known[case.name .. ".bin"] then
+    fail(case.name, "the vector is not in the directory listing")
+  end
+end
+
+for _, case in ipairs(cases) do
+  ran = ran + 1
   local bytes = readFile(vectors .. "/" .. case.name .. ".bin")
   local value = E.NewEnd()
   local stream = serialize.ReadStream.new(bytes)
@@ -49,6 +78,7 @@ for _, case in ipairs(cases) do
   end
 end
 
-if failures > 0 then
+print(string.format("packet end Lua: ran %d, failed %d", ran, failures))
+if failures > 0 or ran == 0 then
   os.exit(1)
 end

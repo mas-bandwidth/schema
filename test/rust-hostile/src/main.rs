@@ -582,7 +582,13 @@ fn main() {
         bad.len(),
         stale.len()
     );
-    if !bad.is_empty() || !stale.is_empty() {
+    // The count line build/mustrun reads: a case is RUN when the port answered
+    // it (a pass, a carried FIX-CARD or an unexplained verdict). A SKIP is not
+    // run, so a case that starts skipping moves the count off the one the
+    // recipe registers, and an empty manifest runs nothing and is red.
+    let ran = passed + carried + bad.len();
+    println!("rust-hostile ({profile}): ran {ran}, failed {}", bad.len() + stale.len());
+    if !bad.is_empty() || !stale.is_empty() || ran == 0 {
         std::process::exit(1);
     }
 }

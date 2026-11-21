@@ -66,7 +66,14 @@ local function deepEqual(a: any, b: any): boolean
 	return true
 end
 
+-- ran counts the checks that ran; the first failed check raises, so the last
+-- stdout line is "packet defaults Luau: ran N, failed 0" (tools/mustrun reads
+-- it). read holds the pins this driver read: at the end every pin the make
+-- recipe carried in from testdata/wire/packet-defaults must be one of them.
+local ran = 0
+local read: { [string]: boolean } = {}
 local function check(ok: boolean, what: string)
+	ran += 1
 	if not ok then
 		error("FAILED: " .. what, 2)
 	end
@@ -144,6 +151,7 @@ end
 local function pin(name: string, file: string, value: any, initial: () -> any, want: () -> any)
 	local pinned = pins[file]
 	check(pinned ~= nil, "the pin " .. file .. " is carried in")
+	read[file] = true
 	local got, bits = write(d, name, value)
 	check(got == pinned.hex and bits == pinned.bits, "C++ pin " .. file .. ": " .. got .. " " .. bits)
 	checkRead(name, pinned.hex, pinned.bits, initial(), want())
@@ -281,4 +289,13 @@ for _ = 1, 2 do
 	want.Conditional.Value = zero()
 	checkRead("Choice", offWire, offBits, output, want)
 end
+do
+	local carried = 0
+	for name in pins :: any do
+		carried += 1
+		check(read[name] == true, "pin " .. tostring(name) .. " is in the directory and this driver does not read it")
+	end
+	check(carried > 0, "the pins directory is not empty")
+end
 print("packet defaults Luau: constructors, Init, eight C++ goldens and reused storage OK")
+print(string.format("packet defaults Luau: ran %d, failed 0", ran))

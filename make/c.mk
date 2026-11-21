@@ -1567,7 +1567,7 @@ tables-c-versioning: tables-fixedform-corpus
 test-c: build/schema_test_c build/schema_test_c_asan build/schema_test_c_ludicrous build/schema_test_bench_c build/conformance-harness build/conformance-c build/conformance-c-asan build/schema_test_c_fuzz build/schema_test_c_soak build/schema_test_c_variable build/schema_test_c_variable_asan
 	$(MAKE) test-c-recipe
 
-test-c-recipe: build/schema_test_c build/schema_test_c_asan build/schema_test_c_ludicrous build/schema_test_bench_c build/conformance-harness build/conformance-c build/conformance-c-asan build/schema_test_c_fuzz build/schema_test_c_soak build/schema_test_c_variable build/schema_test_c_variable_asan
+test-c-recipe: build/mustrun build/schema_test_c build/schema_test_c_asan build/schema_test_c_ludicrous build/schema_test_bench_c build/conformance-harness build/conformance-c build/conformance-c-asan build/schema_test_c_fuzz build/schema_test_c_soak build/schema_test_c_variable build/schema_test_c_variable_asan
 	$(MAKE) tables-c-wire-fuzz SEED=1 N=20000
 	$(MAKE) tables-c-zero-cost
 	$(MAKE) tables-c-json-walk
@@ -1590,10 +1590,10 @@ test-c-recipe: build/schema_test_c build/schema_test_c_asan build/schema_test_c_
 	./build/conformance-harness run --drivers test/conformance/c/drivers-asan.txt --work build/conformance-c-asan-work
 	$(MAKE) conformance-negative-control-c
 	$(MAKE) conformance-negative-control-c-foreign
-	cd test/c && ../../build/schema_test_c
-	cd test/c && ../../build/schema_test_c_asan
-	cd test/c-ludicrous && ../../build/schema_test_c_ludicrous
-	./build/schema_test_bench_c
+	cd test/c && ../../$(MUSTRUN) -name schema_test_c -count 840 -- ../../build/schema_test_c
+	cd test/c && ../../$(MUSTRUN) -name schema_test_c_asan -count 840 -- ../../build/schema_test_c_asan
+	cd test/c-ludicrous && ../../$(MUSTRUN) -name schema_test_c_ludicrous -count 39 -- ../../build/schema_test_c_ludicrous
+	$(MUSTRUN) -name schema_test_bench_c -count 35 -- ./build/schema_test_bench_c
 
 TEST_LEGS         += test-c
 CONFORMANCE_LEGS  += $(call unless_skipped,c,build/conformance-c)
@@ -2034,9 +2034,9 @@ build/cards-test-c-asan: cards-c-generate tables/cards/c/cards.h tables/cards/c/
 # cards-c-test builds the generated unit with the facade and cards_test.c,
 # and runs it natively and again under ASan/UBSan.
 .PHONY: cards-c-test
-cards-c-test: build/cards-test-c build/cards-test-c-asan
-	./build/cards-test-c
-	./build/cards-test-c-asan
+cards-c-test: build/mustrun build/cards-test-c build/cards-test-c-asan
+	$(MUSTRUN) -name cards-c-test -count 7 -- ./build/cards-test-c
+	$(MUSTRUN) -name cards-c-test-asan -count 7 -- ./build/cards-test-c-asan
 
 build/cards-driver-c: cards-c-generate tables/cards/c/cards.h tables/cards/c/cards.c tables/cards/c/driver.c tables/cards/c/retain_bridge.c tables/cards/c/sha256.c
 	@mkdir -p build
@@ -2372,8 +2372,8 @@ build/packet-end-c-test: build/packet-end/c/.stamp test/packet-end/c/main.c $(SE
 		test/packet-end/c/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
 
 .PHONY: packet-end-c packet-end-c-negative-control
-packet-end-c: build/packet-end-c-test
-	./build/packet-end-c-test testdata/wire/packet-end
+packet-end-c: build/mustrun build/packet-end-c-test
+	$(MUSTRUN) -name packet-end-c -count 3 -- ./build/packet-end-c-test testdata/wire/packet-end
 
 packet-end-c-negative-control: packet-end-c
 	@mkdir -p build/packet-end/c-negative
@@ -2409,8 +2409,8 @@ build/packet-write-text/c/driver: build/packet-write-text/c/.stamp test/packet-w
 		test/packet-write-text/c/driver.c $(SERIALIZE_C)/serialize.c -o $@ -lm
 
 .PHONY: packet-write-text-c packet-write-text-c-negative-control
-packet-write-text-c: build/packet-write-text/c/driver
-	./build/packet-write-text/c/driver test/packet-write-text/cases.txt
+packet-write-text-c: build/mustrun build/packet-write-text/c/driver
+	$(MUSTRUN) -name packet-write-text-c -count 11 -- ./build/packet-write-text/c/driver test/packet-write-text/cases.txt
 
 packet-write-text-c-negative-control: packet-write-text-c
 	@mkdir -p build/packet-write-text/c-negative

@@ -156,3 +156,14 @@ tables-squirrel-release:
 .PHONY: conformance-negative-control-squirrel-absent
 conformance-negative-control-squirrel-absent: build/conformance-harness build/conformance-squirrel toolchain-squirrel
 	@SQ="$(SQ)" sh test/conformance/squirrel/absent-negative-control
+
+# THE WIRE LIBRARY'S OWN TEST (test/conformance/squirrel/lib/wire_test.nut):
+# the assertions over lib/wire.nut. No recipe or Go test ran this file before
+# this target; it is a prerequisite of test-squirrel now, under build/mustrun
+# with its registered count, so it cannot stop running or run fewer
+# assertions unseen.
+.PHONY: squirrel-wire-lib-test
+squirrel-wire-lib-test: toolchain-squirrel build/mustrun
+	$(MUSTRUN) -name squirrel-wire-lib-test -count 50 -- "$(SQ)" test/conformance/squirrel/lib/wire_test.nut
+
+test-squirrel: squirrel-wire-lib-test
