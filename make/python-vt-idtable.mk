@@ -13,7 +13,7 @@
 # make/negative-controls.d/python-vt-idtable-negative-control.json.
 .PHONY: python-vt-idtable python-vt-idtable-negative-control
 python-vt-idtable: deps-go python-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtIdtable$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtIdtable(ReasonIsDiagnostic)?$$' ./internal/codegen/pythontable/
 
 python-vt-idtable-negative-control: deps-go python-toolchain-check
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtIdtableNegativeControl$$' ./internal/codegen/pythontable/

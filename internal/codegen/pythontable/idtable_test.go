@@ -20,7 +20,6 @@ package pythontable
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"maps"
 	"strings"
@@ -209,19 +208,21 @@ func idtableInputs(t *testing.T, u *ir.Unit) map[string][]byte {
 // field skipped and counted unknown, read at Alone.
 var idtableAccepted = []string{"unknown_escape", "unknown_nopayload", "unknown_enum_array", "unknown_variant"}
 
-// idtableRefusals are the hand-built wires the read refuses at Alone, with the
-// reason the Go engine gives: TestPythonVtIdtable holds the engine to each
-// reason before the probe holds Python to it.
-var idtableRefusals = []struct{ name, reason string }{
-	{"nopayload_nonzero", tablewire.ReasonWireDamaged},
-	{"known_escape", tablewire.ReasonKindMismatch},
-	{"enum_ref_past", tablewire.ReasonWireDamaged},
-	{"known_enum_ref_past", tablewire.ReasonWireDamaged},
-	{"unknown_enum_array_past", tablewire.ReasonWireDamaged},
+// idtableRefusals are the hand-built wires the read refuses at Alone:
+// TestPythonVtIdtable holds the engine to each refusal before the probe holds
+// Python to it. The verdict is the contract; why a read refused is each
+// side's own diagnostic (docs/rulings.json, refusal-verdict-only).
+var idtableRefusals = []string{
+	"nopayload_nonzero",
+	"known_escape",
+	"enum_ref_past",
+	"known_enum_ref_past",
+	"unknown_enum_array_past",
 }
 
 // idtableEngineVerdict is the Go engine's read of a wire at root: "read" with
-// its unknown count, or the refusal's reason.
+// its unknown count, or "refused". Any error that is not a read's refusal
+// fails the test.
 func idtableEngineVerdict(t *testing.T, u *ir.Unit, root string, wire []byte) (string, int) {
 	t.Helper()
 	m := tabletext.NewModel(u)
@@ -231,19 +232,18 @@ func idtableEngineVerdict(t *testing.T, u *ir.Unit, root string, wire []byte) (s
 	if ok {
 		return "read", report.Unknown
 	}
-	var refusal *tablewire.Refusal
-	if !errors.As(err, &refusal) {
-		t.Fatalf("the Go engine refuses with %v, not a reasoned refusal", err)
+	if !tablewire.ReadRefusal(err) {
+		t.Fatalf("the Go engine fails with %v, which is not a read's refusal", err)
 	}
-	return refusal.Reason, 0
+	return "refused", 0
 }
 
 // idtableProbeText is the probe with one load_refusal call per refusal, so the
 // probe and the engine check share the one list.
 func idtableProbeText() string {
 	var calls strings.Builder
-	for _, r := range idtableRefusals {
-		fmt.Fprintf(&calls, "load_refusal(%q, Alone, %q)\n", r.name, r.reason)
+	for _, name := range idtableRefusals {
+		fmt.Fprintf(&calls, "load_refusal(%q, Alone)\n", name)
 	}
 	return strings.Replace(idtableProbe, "#REFUSALS#\n", calls.String(), 1)
 }
@@ -295,13 +295,11 @@ unknown("unknown_nopayload", Alone)
 unknown("unknown_enum_array", Alone)
 unknown("unknown_variant", Alone)
 
-def load_refusal(name, cls, reason):
+def load_refusal(name, cls):
     try:
         cls.load(wire(name))
-    except Refused as err:
-        if err.reason != reason:
-            raise SystemExit("idtable_" + name + ": refused " + err.reason + ", not " + reason)
-        print("load", name, "refused", err.reason)
+    except Refused:
+        print("load", name, "refused")
     except Exception as err:
         raise SystemExit("idtable_" + name + ": raised " + type(err).__name__ + ", not Refused")
     else:
@@ -379,11 +377,36 @@ func TestPythonVtIdtable(t *testing.T) {
 			t.Errorf("the Go engine answers %s with %s (unknown %d), not a read with one unknown", name, verdict, unknown)
 		}
 	}
-	for _, r := range idtableRefusals {
-		if verdict, _ := idtableEngineVerdict(t, u, "Alone", inputs[r.name+".wire"]); verdict != r.reason {
-			t.Errorf("the Go engine answers %s with %s, not %s", r.name, verdict, r.reason)
+	for _, name := range idtableRefusals {
+		if verdict, _ := idtableEngineVerdict(t, u, "Alone", inputs[name+".wire"]); verdict != "refused" {
+			t.Errorf("the Go engine answers %s with %s, not refused", name, verdict)
 		}
 	}
+	idtableCheck(t, files)
+}
+
+// TestPythonVtIdtableReasonIsDiagnostic renames every refusal reason in a copy
+// of the emitted runtime and requires the probe to stay green: the
+// cross-language contract is the verdict, and why a read refused is Python's
+// own diagnostic (docs/rulings.json, refusal-verdict-only).
+//
+// Functional (pythonBinary): run with SCHEMA_SLOW=1.
+func TestPythonVtIdtableReasonIsDiagnostic(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "python (it runs the emitted table runtime)")
+	files, err := Generate(loadUnit(t, idtableSchema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files = maps.Clone(files)
+	plantReasonRename(t, files)
+	idtableCheck(t, files)
+}
+
+// idtableCheck runs the probe over files and requires every line it must
+// print.
+func idtableCheck(t *testing.T, files map[string][]byte) {
+	t.Helper()
 	got := idtableRun(t, files)
 	want := []string{
 		"alone same hue=2",
@@ -403,8 +426,8 @@ func TestPythonVtIdtable(t *testing.T) {
 		"write bad_nested refused",
 		"OK",
 	}
-	for _, r := range idtableRefusals {
-		want = append(want, "load "+r.name+" refused "+r.reason)
+	for _, name := range idtableRefusals {
+		want = append(want, "load "+name+" refused")
 	}
 	for _, line := range want {
 		if !strings.Contains(got, line+"\n") {
