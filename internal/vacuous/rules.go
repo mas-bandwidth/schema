@@ -17,13 +17,6 @@ type Finding struct {
 	Func  string
 	Msg   string
 	Gated bool // refused by the gate (the mechanically decidable classes)
-
-	fixKey string // class 2: the collection a non-empty check would name
-	fixT   string // class 2: the testing parameter in scope at the loop
-	fixAt  int    // class 2: the byte offset of the loop in its file
-
-	fixHoist     bool // class 2: fixKey is a new name for the ranged call
-	fixX0, fixX1 int  // class 2: the byte range of the ranged call
 }
 
 func (f Finding) String() string {
@@ -482,51 +475,21 @@ func (r *run) rule2(s *scope) {
 		return l
 	}
 	name := s.decl.Name.Name
-	var stack []ast.Node
-	hoisted := map[string]bool{}
-	report := func(loop ast.Node, source, key string) {
+	// There is no mechanical fix for this class: whether an empty collection
+	// is a pass (an absence check over warnings, errors, exemptions) or a test
+	// that checked nothing needs a reader. An automatic non-empty insert once
+	// turned correct absence checks red (F-057, F-058, F-059).
+	report := func(loop ast.Node, source, _ string) {
 		class := "2"
 		if source == textSource {
 			class = "2t"
 		}
 		r.add(class, loop, name, gatedSource(source), "assertions run only inside a loop over %s, and nothing checks that it is non-empty", source)
-		if len(stack) < 2 {
-			return
-		}
-		if _, labeled := stack[len(stack)-2].(*ast.LabeledStmt); labeled {
-			return
-		}
-		f := &r.findings[len(r.findings)-1]
-		f.fixT, f.fixAt = testingName(s.decl, stack), r.a.t.fset.Position(loop.Pos()).Offset
-		if key != "" {
-			f.fixKey = key
-			return
-		}
-		// an unnamed call: name it, so that it can be counted
-		rs, ok := loop.(*ast.RangeStmt)
-		if !ok {
-			return
-		}
-		call, ok := rs.X.(*ast.CallExpr)
-		if !ok || !r.collectionResult(s, call) {
-			return
-		}
-		callee := exprString(call.Fun)
-		last := callee[strings.LastIndex(callee, ".")+1:]
-		hoist := "all" + strings.ToUpper(last[:1]) + last[1:]
-		for hoisted[hoist] || usesName(s.decl, hoist) {
-			hoist += "s"
-		}
-		hoisted[hoist] = true
-		f.fixKey, f.fixHoist = hoist, true
-		f.fixX0, f.fixX1 = r.a.t.fset.Position(call.Pos()).Offset, r.a.t.fset.Position(call.End()).Offset
 	}
 	ast.Inspect(s.decl.Body, func(n ast.Node) bool {
 		if n == nil {
-			stack = stack[:len(stack)-1]
 			return false
 		}
-		stack = append(stack, n)
 		switch n := n.(type) {
 		case *ast.RangeStmt:
 			if !r.realChecks(s, n.Body) || reportsEach(s, n.Body) {
@@ -571,34 +534,6 @@ func (r *run) rule2(s *scope) {
 		}
 		return true
 	})
-}
-
-// testingName is the name of the innermost testing parameter in scope at the
-// top of stack, or "" when the enclosing functions take none.
-func testingName(decl *ast.FuncDecl, stack []ast.Node) string {
-	of := func(ft *ast.FuncType) string {
-		if ft.Params == nil {
-			return ""
-		}
-		for _, f := range ft.Params.List {
-			if isTestingType(f.Type) {
-				for _, n := range f.Names {
-					if n.Name != "_" {
-						return n.Name
-					}
-				}
-			}
-		}
-		return ""
-	}
-	for i := len(stack) - 1; i >= 0; i-- {
-		if lit, ok := stack[i].(*ast.FuncLit); ok {
-			if name := of(lit.Type); name != "" {
-				return name
-			}
-		}
-	}
-	return of(decl.Type)
 }
 
 // textSource names a collection cut from run-time text.
@@ -1494,57 +1429,6 @@ func (r *run) scalarResult(s *scope, call *ast.CallExpr, idx int) bool {
 			}
 		}
 		if !scalar {
-			return false
-		}
-	}
-	return true
-}
-
-// usesName reports whether a function already mentions an identifier.
-func usesName(d *ast.FuncDecl, name string) bool {
-	found := false
-	ast.Inspect(d, func(n ast.Node) bool {
-		if id, ok := n.(*ast.Ident); ok && id.Name == name {
-			found = true
-		}
-		return !found
-	})
-	return found
-}
-
-// collectionResult reports whether a call is known to answer one slice, array
-// or map: a function or method of this tree declared so.
-func (r *run) collectionResult(s *scope, call *ast.CallExpr) bool {
-	var decls []*ast.FuncDecl
-	switch fun := call.Fun.(type) {
-	case *ast.Ident:
-		decls = s.file.pkg.funcs[fun.Name]
-	case *ast.SelectorExpr:
-		if x, ok := fun.X.(*ast.Ident); ok {
-			if _, isPkg := s.file.imports[x.Name]; isPkg {
-				if p := r.a.t.imported(s.file, x.Name); p != nil {
-					decls = p.funcs[fun.Sel.Name]
-				}
-				break
-			}
-		}
-		decls = append(decls, s.file.pkg.methods[fun.Sel.Name]...)
-		for local := range s.file.imports {
-			if p := r.a.t.imported(s.file, local); p != nil {
-				decls = append(decls, p.methods[fun.Sel.Name]...)
-			}
-		}
-	}
-	if len(decls) == 0 {
-		return false
-	}
-	for _, d := range decls {
-		if d.Type.Results == nil || len(d.Type.Results.List) != 1 || len(d.Type.Results.List[0].Names) > 1 {
-			return false
-		}
-		switch d.Type.Results.List[0].Type.(type) {
-		case *ast.ArrayType, *ast.MapType:
-		default:
 			return false
 		}
 	}

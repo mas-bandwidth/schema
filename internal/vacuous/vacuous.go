@@ -91,13 +91,3 @@ func Run(root string, all bool, stdout, stderr io.Writer) (int, Counts) {
 	}
 	return 0, c
 }
-
-// Fix writes the missing non-empty check before every class 2 loop that can
-// take one, and returns how many it wrote.
-func Fix(root string) (int, error) {
-	t, err := loadTree(root)
-	if err != nil {
-		return 0, err
-	}
-	return applyFixes(root, analyze(t))
-}
