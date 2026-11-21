@@ -988,9 +988,16 @@ local function wrefWalk(u, root, v, path)
     if fd.shape == "map" and index ~= nil and i == #segments - 1 then
       return child, { shape = "map_entry", which = segments[#segments], index = index }, nil
     end
-    if fd.shape == "union" and index == nil and i == #segments - 1 then
-      local un = u.T.Unions[fd.target]
-      if un == nil then fail("no union " .. tostring(fd.target)) end
+    -- a union's arm, held by the field itself or by one element of an array
+    -- of unions (bounded_steps[3].label): the element IS the union value
+    local unionTarget = nil
+    if fd.shape == "union" and index == nil then unionTarget = fd.target end
+    if fd.shape == "array" and index ~= nil and fd.elem ~= nil and fd.elem.shape == "union" then unionTarget = fd.elem.target end
+    if unionTarget ~= nil and i == #segments - 1 then
+      if index ~= nil then child = child[index] end
+      if type(child) ~= "table" then fail(path .. ": " .. s .. " holds no union") end
+      local un = u.T.Unions[unionTarget]
+      if un == nil then fail("no union " .. tostring(unionTarget)) end
       local armName = segments[#segments]
       for _, arm in ipairs(un.arms) do
         if arm.name == armName then
@@ -999,7 +1006,7 @@ local function wrefWalk(u, root, v, path)
           return child, synthetic, nil
         end
       end
-      fail("no arm " .. armName .. " in union " .. tostring(fd.target))
+      fail("no arm " .. armName .. " in union " .. tostring(unionTarget))
     end
     if index ~= nil then child = child[index] end
     if type(child) ~= "table" then fail(path .. ": " .. s .. " holds no table") end
@@ -1007,8 +1014,42 @@ local function wrefWalk(u, root, v, path)
   end
 end
 
--- set the one field: every value a row names is one this leg's storage holds,
--- so no row answers `unrepresentable`
+-- THE ONE CHECKED CONVERSION: every integer a row names reaches storage
+-- through here. Lua holds an integer field as a 64-bit integer, and an
+-- unsigned 64-bit field as that integer's two's-complement wrap, so a token is
+-- UNREPRESENTABLE when the integer cannot hold it distinctly: past int64, or
+-- for an unsigned 64-bit field below 0 or past 2^64 - 1. math.tointeger would
+-- hand back nil there, and the setter stored nil: the field went to its
+-- default, the writer wrote it, and the row answered `wrote` for a value that
+-- was never written. Answers the integer, or nil when it is unrepresentable.
+local function wrefInteger(text, unsigned64)
+  local n = tonumber(text)
+  if math.type(n) == "integer" then
+    if unsigned64 and n < 0 then return nil end
+    return n
+  end
+  if not (unsigned64 and text:match("^%d+$")) then return nil end
+  local acc = 0
+  for c in text:gmatch("%d") do
+    -- acc * 10 + digit within 64 unsigned bits, compared unsigned
+    if math.ult(0x1999999999999999, acc) then return nil end
+    local t = acc * 10
+    local s = t + (c:byte() - 48)
+    if math.ult(s, t) then return nil end
+    acc = s
+  end
+  return acc
+end
+
+-- the one field's declared storage: an unsigned 64-bit integer
+local function wrefUnsigned64(d)
+  return d ~= nil and d.shape == "int" and d.signed == false and d.width == 8
+end
+
+local UNREPRESENTABLE = "unrepresentable\n"
+
+-- set the one field; answers UNREPRESENTABLE, and sets nothing, when the
+-- value is one this leg's storage cannot hold
 local function wrefSet(u, root, v, path, what, text)
   local owner, fd, index = wrefWalk(u, root, v, path)
   if fd.shape == "map_entry" then
@@ -1020,8 +1061,13 @@ local function wrefSet(u, root, v, path, what, text)
     local newVal
     if what == "float" then newVal = wrefFloat(text)
     elseif what == "bytes" then newVal = hexBytes(text)
-    elseif what == "length" then newVal = string.rep("a", math.tointeger(tonumber(text)))
-    elseif what == "int" then newVal = math.tointeger(tonumber(text))
+    elseif what == "length" then
+      local n = wrefInteger(text, false)
+      if n == nil then return UNREPRESENTABLE end
+      newVal = string.rep("a", n)
+    elseif what == "int" then
+      newVal = wrefInteger(text, false)
+      if newVal == nil then return UNREPRESENTABLE end
     else fail("unsupported map_entry kind " .. what) end
     if fd.which == "key" then
       owner[oldK] = nil
@@ -1046,17 +1092,22 @@ local function wrefSet(u, root, v, path, what, text)
   local d = fd
   if index ~= nil and fd.shape == "array" then d = fd.elem end
   if what == "int" then
-    holder[key] = math.tointeger(tonumber(text))
-  elseif what == "float" then
+    local n = wrefInteger(text, wrefUnsigned64(d))
+    if n == nil then return UNREPRESENTABLE end
+    holder[key] = n
+  elseif what == "float" or what == "real" then
     holder[key] = wrefFloat(text)
   elseif what == "count" then
+    local n = wrefInteger(text, false)
+    if n == nil then return UNREPRESENTABLE end
     local arr = holder[key] or {}
-    local n = math.tointeger(tonumber(text))
     for i = #arr + 1, n do arr[i] = deepCopy(arr[1]) end
     for i = #arr, n + 1, -1 do arr[i] = nil end
     holder[key] = arr
   elseif what == "length" then
-    holder[key] = string.rep("a", math.tointeger(tonumber(text)))
+    local n = wrefInteger(text, false)
+    if n == nil then return UNREPRESENTABLE end
+    holder[key] = string.rep("a", n)
   elseif what == "bytes" then
     holder[key] = hexBytes(text)
   elseif what == "units" then
@@ -1065,7 +1116,8 @@ local function wrefSet(u, root, v, path, what, text)
     for i = 1, #b, 2 do units[#units + 1] = b:byte(i) * 256 + b:byte(i + 1) end
     holder[key] = units
   elseif what == "ordinal" then
-    local n = math.tointeger(tonumber(text))
+    local n = wrefInteger(text, false)
+    if n == nil then return UNREPRESENTABLE end
     local var = n ~= 0 and d.variants[n] or nil
     if var ~= nil then
       holder[key] = var[1]
@@ -1073,7 +1125,8 @@ local function wrefSet(u, root, v, path, what, text)
       holder[key] = n
     end
   elseif what == "tag" then
-    local n = math.tointeger(tonumber(text))
+    local n = wrefInteger(text, false)
+    if n == nil then return UNREPRESENTABLE end
     local un = u.T.Unions[d.target]
     local arm = un.arms[n]
     local x = { tag = n }
@@ -1120,9 +1173,10 @@ local function surfaceWriteRefusal(all, outdir, surface)
     else
       local v, why = strictRead(u, root, mustRead(wire))
       if v == nil then fail(name .. ": load refused " .. wire .. " (" .. tostring(why) .. ")") end
-      wrefSet(u, root, v, path, what, text)
-      local answer
-      if surface == "write-refusal" then
+      local answer = wrefSet(u, root, v, path, what, text)
+      if answer == UNREPRESENTABLE then
+        -- the type system refused it first: nothing was set or written
+      elseif surface == "write-refusal" then
         if isFixed(u, root) then
           answer = wrefFixedSave(u, root, v)
         else
