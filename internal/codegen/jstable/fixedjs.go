@@ -1686,7 +1686,15 @@ func fixedZeroFor(f *ir.Field) string {
 	}
 	big := fixedIsBig(t)
 	switch t.Kind {
-	case ir.TFloat32, ir.TFloat64:
+	case ir.TFloat32:
+		// the record stores four bytes: a default float32 cannot spell exactly
+		// is constructed at the float32 it is stored as, which is the value a
+		// fixed load lands (Math.fround's), so a fresh record round-trips equal
+		if f.HasDefault {
+			return jsFloatLit(float64(float32(f.DefFloat)))
+		}
+		return "0"
+	case ir.TFloat64:
 		if f.HasDefault {
 			return fmt.Sprintf("%v", f.DefFloat)
 		}
