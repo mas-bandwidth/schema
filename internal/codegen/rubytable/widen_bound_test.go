@@ -208,7 +208,7 @@ func TestRubyWidenedFixedArrayBoundInNestedPlaces(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "both pinned Ruby interpreters")
 	schema := func(n int) string {
-		body := fmt.Sprintf(" inner Inner\n outer Outer\n second Outer\n maybe ?Inner\n")
+		body := " inner Inner\n outer Outer\n second Outer\n maybe ?Inner\n"
 		return fmt.Sprintf("package widenbound\nunion Choice {\n count int32\n note string(8)\n}\nfixed table Leaf {\n v int32 = 7\n}\nfixed table Inner {\n picks [%[1]d]Choice\n leaves [%[1]d]Leaf\n nums [%[1]d]int16\n}\nunion Outer {\n one int32\n many [%[1]d]Choice\n nums [%[1]d]int16\n}\nfixed table Root {\n%[2]s}\ntable Doc {\n%[2]s}\n", n, body)
 	}
 	const doc = `{"inner":{"picks":[{"count":1},{"note":"a"}],"leaves":[{"v":1},{"v":2}],"nums":[1,2]},"outer":{"many":[{"note":"b"},{"count":2}]},"second":{"nums":[3,4]},"maybe":{"picks":[{"count":3},{"count":4}],"leaves":[{"v":5},{"v":6}],"nums":[3,4]}}`

@@ -148,7 +148,7 @@ func widenBoundBytes(m *Manifest, row widenBoundRow) (map[string][]byte, error) 
 			return nil, err
 		}
 		if ok, err := tablewire.DecodeVariable(reader, landed, out[row.wire], &rep); !ok || err != nil || rep.Refused {
-			return nil, fmt.Errorf("%s: the reader refuses the narrower writer: %v %+v", row.wire, err, rep)
+			return nil, fmt.Errorf("%s: the reader refuses the narrower writer: %w %+v", row.wire, err, rep)
 		}
 	} else {
 		if out[row.wire], err = tablewire.EncodeMessages(writer, []*tabletext.Instance{value}); err != nil {
@@ -166,7 +166,7 @@ func widenBoundBytes(m *Manifest, row widenBoundRow) (map[string][]byte, error) 
 			return nil, fmt.Errorf("%s: the narrower peer announces build version 0x%016x: %w", row.announce, vocabulary.BuildVersion(), err)
 		}
 		if n, ok, err := tablewire.DecodeMessages(reader, []*tabletext.Instance{landed}, out[row.wire], &vocabulary, &rep); n != 1 || !ok || err != nil || rep.Refused {
-			return nil, fmt.Errorf("%s: the reader refuses the narrower peer: %v %+v", row.wire, err, rep)
+			return nil, fmt.Errorf("%s: the reader refuses the narrower peer: %w %+v", row.wire, err, rep)
 		}
 		if out[row.file], err = tablewire.Encode(reader, landed); err != nil {
 			return nil, err
