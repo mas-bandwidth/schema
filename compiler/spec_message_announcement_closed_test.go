@@ -39,10 +39,10 @@ func TestSpecMessageAnnouncementIsClosed(t *testing.T) {
 		"an array's `min` is at most its `max`",
 		// a packed bits and a max inside what the kind holds
 		"a packed `bits` and a `max` sit inside what the kind holds",
-		// a ranged base inside the kind; the sum base + offset is held on the
-		// body, named and skipped alike, never wrapped (TABLEWIRE-3)
+		// a ranged base inside the kind; the sum is held on the body, not at
+		// announce time (#4441, TABLEWIRE-3)
 		"a RANGED integer's `base` lies inside the announced kind",
-		"`base + offset` is held to the announced kind's storage domain on the body, at a named field and on the skip path alike, exactly and never wrapped",
+		"`base + offset` is held to the announced kind's storage domain on the body, at a named field and on the skip path alike, exactly and never wrapped (A RANGED OFFSET IS HELD TO THE DOMAIN THE READER CAN KNOW, above)",
 		// the zero-bit element, cited where it is written
 		"An array element that consumes no bits is refused where it is walked (A WALKED ARRAY ELEMENT THAT CONSUMES NO BITS REFUSES THE READ, above)",
 		// a landed integer outside the reader's kind
@@ -60,7 +60,6 @@ func TestSpecMessageAnnouncementIsClosed(t *testing.T) {
 	// the rule is written, not its history
 	stales := []string{
 		"today only the width is held",
-		"`base + 2^bits - 1` lies inside the",
 	}
 	for _, stale := range stales {
 		if strings.Contains(text, stale) {
