@@ -1813,6 +1813,11 @@ func fixedWriterRawNeededField(f *ir.Field, seen map[string]bool) bool {
 	case ir.TInt, ir.TFixed, ir.TBits:
 		_, ok := lobsterScalarWidthBound(f, "x")
 		return ok || len(lobsterScalarRangeBounds(f, "x")) > 0
+	case ir.TFloat32, ir.TFloat64:
+		// A COMPRESSED FLOAT IS HELD TO THE WRITER'S RANGE like every ranged
+		// kind (docs/rulings.json strict-only-read; docs/FIXED-FORM-ALGORITHM.md
+		// §4.6).
+		return f.HasFloatRange
 	}
 	return false
 }
@@ -1931,5 +1936,23 @@ func emitFixedWriterRawElement(g *lobster.Gen, f *ir.Field, at, ind string, seq 
 		if len(conds) > 0 {
 			g.Pf("%sif %s:\n%s    return schema_rt.TableRefuseOutOfRange\n", ind, strings.Join(conds, " or "), ind)
 		}
+	case ir.TFloat32, ir.TFloat64:
+		if !f.HasFloatRange {
+			return
+		}
+		// THE WRITER'S RANGE HOLDS A COMPRESSED FLOAT (docs/rulings.json
+		// strict-only-read; docs/FIXED-FORM-ALGORITHM.md §4.6): the stored value,
+		// in the writer's own type, against the writer's bounds in that type (a
+		// float32 against the float32-rounded min and max). A NaN compares false
+		// both ways and goes on to the finite pass, which refuses it by name.
+		salt := *seq
+		*seq++
+		fv := fmt.Sprintf("f_wc_%d", salt)
+		read, lo, hi := "read_float32_le", lobster.FormatFloat32(f.FMin), lobster.FormatFloat32(f.FMax)
+		if t.Kind == ir.TFloat64 {
+			read, lo, hi = "read_float64_le", lobster.FormatFloat(f.FMin), lobster.FormatFloat(f.FMax)
+		}
+		g.Pf("%slet %s = %s(data, %s)\n", ind, fv, read, at)
+		g.Pf("%sif %s < %s or %s > %s:\n%s    return schema_rt.TableRefuseOutOfRange\n", ind, fv, lo, fv, hi, ind)
 	}
 }
