@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,6 +15,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestPythonJsonScan holds the text scanner to the engine's JSON dialect.
@@ -2003,10 +2004,10 @@ int main() {
 	bin := filepath.Join(dir, "probe")
 	args := append([]string{"-std=c++17", "-O1", "-I" + dir, "-I" + serialize, path}, sources...)
 	args = append(args, "-o", bin)
-	if output, err := exec.Command("c++", args...).CombinedOutput(); err != nil {
+	if output, err := testproc.Command(t, "c++", args...).CombinedOutput(); err != nil {
 		t.Fatalf("C++ compile: %v\n%s", err, output)
 	}
-	output, err := exec.Command(bin).CombinedOutput()
+	output, err := testproc.Command(t, bin).CombinedOutput()
 	if err != nil {
 		t.Fatalf("C++ run: %v\n%s", err, output)
 	}

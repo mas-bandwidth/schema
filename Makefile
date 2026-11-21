@@ -1682,7 +1682,7 @@ BLOCKLESS_SCHEMA := $(BLOCKLESS_ROOT)/schema
 BLOCKFUL_ROOT    := build/zero-cost-block
 BLOCKLESS_SABOTAGE := blocks := (*ir.BlockUnit)(nil) // SABOTAGED: the block form removed (schema$(skip_hash)331)
 
-$(BLOCKLESS_SCHEMA): $(GO_SOURCES) Makefile
+$(BLOCKLESS_SCHEMA): $(GO_SOURCES) $(EMBED_SOURCES) Makefile
 	@mkdir -p $(BLOCKLESS_ROOT)
 	@sed 's|^\tblocks := ir.Blocks(u)|	$(BLOCKLESS_SABOTAGE)|' \
 		internal/codegen/cpptable/cpptable.go > $(BLOCKLESS_ROOT)/cpptable.gotext
@@ -6624,6 +6624,39 @@ registry:
 	@echo "goldens: $(GOLDENS_LEGS)"
 	@echo "toolchain: $(TOOLCHAIN_LEGS)"
 
+# THE REGISTRY COMPLETENESS GATE (internal/ci/registrycomplete_test.go): every
+# one of the 18 targets (SCHEMA_PORTS) is on every list above, or its
+# make/<lang>.mk declares that list not applicable to it and says why:
+#
+#   REGISTRY_NA                       += <list>:<lang>
+#   REGISTRY_NA_WHY.<list>.<lang>     := <the reason, one line>
+#
+# A port on neither, a declaration with no reason, a declaration for a port
+# the list already carries, and a declaration naming no list or port each
+# fail by name. It reads the lists as registered, so it refuses to run under
+# SCHEMA_SKIP_LEGS (a skipped leg drops off CONFORMANCE_LEGS).
+REGISTRY_LISTS := test conformance bench-tables goldens toolchain
+registry_on.test         = $(filter test-$(1),$(TEST_LEGS))
+registry_on.conformance  = $(filter %-$(1) %-$(1)/.stamp,$(CONFORMANCE_LEGS))
+registry_on.bench-tables = $(filter generated/bench/tables/$(1)/.stamp,$(BENCH_TABLES_LEGS))
+registry_on.goldens      = $(filter update-goldens-$(1),$(GOLDENS_LEGS))
+registry_on.toolchain    = $(filter $(1),$(TOOLCHAIN_LEGS))
+REGISTRY_CELLS = $(foreach l,$(REGISTRY_LISTS),$(foreach p,$(SCHEMA_PORTS),$(l):$(p)))
+registry_cell = $(if $(call registry_on.$(1),$(2)),$(if $(filter $(1):$(2),$(REGISTRY_NA)),$(1):$(2) is on the list and also declared not applicable),$(if $(filter $(1):$(2),$(REGISTRY_NA)),$(if $(strip $(REGISTRY_NA_WHY.$(1).$(2))),,$(1):$(2) is declared not applicable with no reason),$(1):$(2) is on neither the list nor REGISTRY_NA))
+REGISTRY_GAPS = $(strip $(foreach l,$(REGISTRY_LISTS),$(foreach p,$(SCHEMA_PORTS),$(call registry_cell,$(l),$(p)))) \
+	$(foreach na,$(filter-out $(REGISTRY_CELLS),$(REGISTRY_NA)),$(na) names no list or no port))
+
+.PHONY: registry-complete registry-na
+registry-complete:
+	@$(if $(strip $(SKIPPED_LEGS)),echo "registry-complete: run it without SCHEMA_SKIP_LEGS ($(strip $(SKIPPED_LEGS))): it reads the lists as registered"; exit 1)
+	@$(if $(REGISTRY_GAPS),$(foreach l,$(REGISTRY_LISTS),$(foreach p,$(SCHEMA_PORTS),$(if $(call registry_cell,$(l),$(p)),echo "registry-complete: $(call registry_cell,$(l),$(p))";))) \
+		$(foreach na,$(filter-out $(REGISTRY_CELLS),$(REGISTRY_NA)),echo "registry-complete: $(na) names no list or no port";) exit 1)
+	@$(foreach na,$(sort $(REGISTRY_NA)),echo "  n/a $(na): $(REGISTRY_NA_WHY.$(subst :,.,$(na)))";)
+	@echo "registry complete: $(words $(SCHEMA_PORTS)) targets on $(words $(REGISTRY_LISTS)) lists, $(words $(sort $(REGISTRY_NA))) declared not applicable"
+
+registry-na:
+	@echo "$(strip $(REGISTRY_NA))"
+
 # ---------------------------------------------------------------------------
 # THE TOOLCHAIN GATE (issue #599), the aggregate ----------------------------
 #
@@ -7353,13 +7386,33 @@ promotion-tag:
 # tag is made, unless PROOF names the proof report the ci-full `proof` job
 # wrote AT THE COMMIT BEING RELEASED and that report is green: no red cell and
 # test/proof/proof.json in step with the results (tools/matrix VerifyRelease). The
-# refusal names the red cells. release.yml downloads the report from the
-# ci-full run on the commit; a release with no report refuses by name. The
+# refusal names the red cells. release.yml downloads the report only from a
+# ci-full run on the commit whose conclusion is success, and refuses by name
+# when there is none; a release with no report refuses by name. The
 # lock runs first, so a red proof refuses before the previous-release
 # differential's build; the differential then runs, and the tagger last.
+#
+# THE FAST LANE, FOR PATCH RELEASES (Glenn, 2026-11-21: "Only run fast CI
+# checks for the point releases." "We can run the full checks only when the
+# fast CI doesn't find anything."). With RELEASE_LANE=fast the lock is a green
+# CI fast run at the commit (gh, so GH_TOKEN is needed), and the version must
+# be a patch of the newest v tag: same MAJOR.MINOR. A minor or major release
+# keeps the full proof above. The differential and the tagger run in both lanes.
 MATRIX_GOFLAGS ?=
+RELEASE_LANE ?= full
 release:
+ifeq ($(RELEASE_LANE),fast)
+	@newest=$$(git tag -l 'v*.*.*' --sort=-v:refname | head -n 1); \
+	case '$(RELEASE_VERSION)' in "$${newest%.*}".*) ;; *) echo "release REFUSES: the fast lane makes patch releases only; $(RELEASE_VERSION) is not a patch of $$newest: use the full lane"; exit 1;; esac
+	@sha=$$(git rev-parse '$(RELEASE_COMMIT)^{commit}'); \
+	run=$$(gh run list --workflow ci-fast.yml --commit "$$sha" --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty'); \
+	if [ -z "$$run" ]; then echo "release REFUSES: no green CI fast run at $$sha"; exit 1; fi; \
+	echo "release lock (fast lane): CI fast run $$run is green at $$sha"
+else ifeq ($(RELEASE_LANE),full)
 	go run $(MATRIX_GOFLAGS) ./tools/matrix release-check -report '$(PROOF)' -commit $$(git rev-parse '$(RELEASE_COMMIT)^{commit}')
+else
+	@echo "release REFUSES: RELEASE_LANE is fast or full, not '$(RELEASE_LANE)'"; exit 1
+endif
 	$(MAKE) --no-print-directory release-differential
 	go run ./tools/releasetag release -version '$(RELEASE_VERSION)' -commit $(RELEASE_COMMIT) -main $(RELEASE_MAIN) $(if $(PUSH),-push)
 

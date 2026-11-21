@@ -20,7 +20,7 @@
 LUAU_PACKET_SCHEMA := build/packet-luau/schema-luau
 LUAU_PACKET_STDIN  := test/packet-text/luau/stdin.sh
 
-$(LUAU_PACKET_SCHEMA): $(GO_SOURCES)
+$(LUAU_PACKET_SCHEMA): $(GO_SOURCES) $(EMBED_SOURCES)
 	@mkdir -p $(dir $@)
 	go build -o $@ ./cmd/schema
 

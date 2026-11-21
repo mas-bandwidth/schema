@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,6 +14,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // A CHAIN IS NOT A DEPTH (docs/SPEC-TABLES.md §3.1; docs/SECURITY.md): a legal
@@ -77,7 +78,7 @@ func TestFunctionalLobsterLongPointerChain(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, lobster, "main.lobster")
+	cmd := testproc.CommandContext(t, ctx, lobster, "main.lobster")
 	cmd.Dir = g.dir
 	out, err := cmd.CombinedOutput()
 	if ctx.Err() != nil {

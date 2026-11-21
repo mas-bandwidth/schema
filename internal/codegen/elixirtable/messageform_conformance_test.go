@@ -22,13 +22,14 @@ import (
 	"bytes"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // messageVariableRows is the manifest's message rows whose root is a variable
@@ -153,7 +154,7 @@ func TestMessageFormConformanceElixir(t *testing.T) {
 		// its own work directory: the default, build/conformance, is the one
 		// a conformance run beside this test writes and compares in
 		work := t.TempDir()
-		cmd := exec.Command(harness, "run", "--only", "elixir", "--work", work)
+		cmd := testproc.Command(t, harness, "run", "--only", "elixir", "--work", work)
 		cmd.Dir = root
 		out, err := cmd.CombinedOutput()
 		if err != nil {

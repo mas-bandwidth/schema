@@ -1058,17 +1058,20 @@ field NAME, so any reader takes any data, both directions: unknown fields are
 skipped by their kind, absent fields take their declared defaults, a field
 whose kind changed is skipped rather than misdecoded, a field whose kind
 merely GREW — an integer to a wider integer of the same signedness, or
-`float32` to `float64` — decodes exactly and counts `widened`, and
-out-of-range values are clamped. Every such event is counted in a report.
+`float32` to `float64` — decodes exactly and counts `widened`, and a value
+past the reader's own range or bound refuses the load by name
+(`out_of_range`, `count_over_bound`, `length_over_bound`), never clamped.
+Every evolution event is counted in a report.
 Framing damage is not an evolution event: a read that meets it refuses the
 whole load as `malformed` and hands back nothing to use (SPEC-TABLES.md §4). Tables never touch the protocol id —
 add, edit or remove one and no packet byte and no id moves.
 
 **An array's BOUND is not part of that identity either.** Resize a bounded
 array — a literal, a constant, or an `E.Max` expression that moved when
-the enum grew — and files written under the old bound still load: a count
-past your bound keeps the bounded prefix and counts `clamped`, a count short
-of it leaves your tail at its declared defaults. (`malformed` means something
+the enum grew — and files written under the old bound still load when they
+fit: a count past your bound refuses the load `count_over_bound`, never cut
+to a prefix, and a count short of it leaves your tail at its declared
+defaults. (`malformed` means something
 else: a count the body cannot cover.) The storage struct's size and extent
 change with the constant; the table on the wire does not, because identity is
 the field name hash and the kind.
@@ -2589,8 +2592,8 @@ table Save
 
 **`[]T` and `[..N]T` are the same bytes**, so the migration runs both ways: a
 schema that outgrew its bound removes it and reads every file it ever wrote,
-and one that discovers a bound adds it and reads every file too, clamping past
-it.
+and one that discovers a bound adds it and reads every file that fits it,
+refusing one past it `count_over_bound`.
 
 The element set is `[..N]T`'s exactly: a scalar, an enum, a `flags` mask, a
 declared `type`, a table by value, `*T` and a union, with nothing added and
@@ -2655,13 +2658,13 @@ names, because there is no lookup to accelerate.
 extent is a number that came out of a file, so an index past it is not a
 mistake a release build gets to make cheaply.
 
-**Two counters cannot fire here, and their absence is the design.**
+**Two answers cannot come from here, and their absence is the design.**
 `duplicate` cannot, because there is no key equality, so two equal elements
-are two elements. And **`clamped` cannot fire on the COUNT**, because there is
-no reader bound to clamp against: a count is read, refused by `LoadMeasure`
-before any decode, or damaged. A reader that declares `[..N]T` where the
-writer declared `[]T` clamps at N and counts once, which is the price of
-adding a bound.
+are two elements. And **`count_over_bound` cannot fire on the COUNT**, because
+there is no reader bound to hold it to: a count is read, refused by
+`LoadMeasure` before any decode, or damaged. A reader that declares `[..N]T`
+where the writer declared `[]T` refuses a file holding more than N
+`count_over_bound`, which is the price of adding a bound.
 
 
 ### Byte buffers: `bytes(N)`, `*bytes` and `*string`
@@ -3928,8 +3931,13 @@ one line per file it changed:
 schema pin v2.6.0 .
 ```
 
-It refuses, by name, a version that is not a Go pseudo-version or semver tag,
-a directory that does not exist or holds no pin line (an empty directory is
+The module path in the line moves with the version's major, as Go requires
+(`schema` for v0 and v1, `schema/vN` from v2 on), so one command moves a tree
+across a major. It refuses, by name, a version that is not a Go
+pseudo-version or semver tag, the tags v3.0.0, v3.0.1 and v3.0.2 (their `go.mod`
+names the `/v2` path, so Go resolves them under neither, `+incompatible` included), any
+version with build metadata (Go takes none but `+incompatible`, and schema has
+a `go.mod` at every major), a directory that does not exist or holds no pin line (an empty directory is
 the same refusal, never a silent success), and a tree whose pins already
 differ from each other (`--mixed-ok` accepts the tree and moves them
 together; the flag may sit before or after the directories). Nothing else in

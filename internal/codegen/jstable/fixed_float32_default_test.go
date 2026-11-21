@@ -2,13 +2,13 @@ package jstable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJsFixedFloat32DefaultIsTheStoredFloat32 holds a fixed table's float32
@@ -70,7 +70,7 @@ console.log(bad.length === 0 ? "OK" : bad.join("\n"));
 	if err := os.WriteFile(filepath.Join(dir, "probe.mjs"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, "probe.mjs")
+	cmd := testproc.Command(t, node, "probe.mjs")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil || strings.TrimSpace(string(out)) != "OK" {

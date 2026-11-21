@@ -3,13 +3,14 @@ package jstable
 import (
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // A flags array that names the same known variant twice is a repeated key and
@@ -84,7 +85,7 @@ for (const row of rows) {
 	if err := os.WriteFile(filepath.Join(dir, "flags.mjs"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, "flags.mjs")
+	cmd := testproc.Command(t, node, "flags.mjs")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

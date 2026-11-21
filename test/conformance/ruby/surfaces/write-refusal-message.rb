@@ -10,7 +10,7 @@ def self.run(manifest, outdir)
     cls = RubyConformance.root_class(unit, root)
     has_msg = !pkg.nil? && pkg.respond_to?(:save_messages) && pkg.respond_to?(:measure_messages)
     if pkg.nil? || cls.nil? || !has_msg || !RubyConformance.fixed_carried?(pkg, cls)
-      RubyConformance.absent(outdir, case_name, 'message form is not emitted for this root')
+      RubyConformance.no_codec(outdir, case_name)
       next
     end
     value = cls.load(RubyConformance.read_bytes(wire))

@@ -813,9 +813,9 @@ end
 
 -- type Tri3 (SPEC §6.1: the wire order is the declared order)
 function _M.WriteTri3(stream, v)
-  if math.type(v.A) ~= "integer" then return false end
+  if math.type(v.A) ~= "integer" or v.A < 0 or v.A > 1 then return false end
   if not stream:serializeBits({ value = v.A }, 1) then return false end -- the declared bit width
-  if math.type(v.B) ~= "integer" then return false end
+  if math.type(v.B) ~= "integer" or v.B < 0 or v.B > 3 then return false end
   if not stream:serializeBits({ value = v.B }, 2) then return false end -- the declared bit width
   return true
 end
@@ -833,9 +833,9 @@ end
 
 -- type Eleven (SPEC §6.1: the wire order is the declared order)
 function _M.WriteEleven(stream, v)
-  if math.type(v.A) ~= "integer" then return false end
+  if math.type(v.A) ~= "integer" or v.A < 0 or v.A > 7 then return false end
   if not stream:serializeBits({ value = v.A }, 3) then return false end -- the declared bit width
-  if math.type(v.B) ~= "integer" then return false end
+  if math.type(v.B) ~= "integer" or v.B < 0 or v.B > 255 then return false end
   if not stream:serializeBits({ value = v.B }, 8) then return false end -- the declared bit width
   return true
 end
@@ -873,17 +873,17 @@ end
 
 -- type HoldsEmptyUnion (SPEC §6.1: the wire order is the declared order)
 function _M.WriteHoldsEmptyUnion(stream, v)
-  if math.type(v.Lead) ~= "integer" then return false end
+  if math.type(v.Lead) ~= "integer" or v.Lead < 0 or v.Lead > 31 then return false end
   if not stream:serializeBits({ value = v.Lead }, 5) then return false end -- the declared bit width
   if not _M.WriteEmptyUnion(stream, v.U) then return false end
-  if math.type(v.Tail) ~= "integer" then return false end
+  if math.type(v.Tail) ~= "integer" or v.Tail < 0 or v.Tail > 127 then return false end
   if not stream:serializeBits({ value = v.Tail }, 7) then return false end -- the declared bit width
   return true
 end
 
 -- type Strs (SPEC §6.1: the wire order is the declared order)
 function _M.WriteStrs(stream, v)
-  if math.type(v.Lead) ~= "integer" then return false end
+  if math.type(v.Lead) ~= "integer" or v.Lead < 0 or v.Lead > 31 then return false end
   if not stream:serializeBits({ value = v.Lead }, 5) then return false end -- the declared bit width
   if type(v.S) ~= "string" or #v.S > 8 then return false end
   if not utf8valid(v.S) then return false end -- malformed UTF-8 (SPEC §5.1 row 8)
@@ -895,14 +895,14 @@ function _M.WriteStrs(stream, v)
   if not stream:serializeBits({ value = #v.B }, 4) then return false end -- the length
   -- align, then the used bytes (SPEC §4.7)
   if not stream:serializeBytes({ value = string.sub(v.B, 1, #v.B) }, #v.B) then return false end
-  if math.type(v.Tail) ~= "integer" then return false end
+  if math.type(v.Tail) ~= "integer" or v.Tail < 0 or v.Tail > 7 then return false end
   if not stream:serializeBits({ value = v.Tail }, 3) then return false end -- the declared bit width
   return true
 end
 
 -- type ArrNested (SPEC §6.1: the wire order is the declared order)
 function _M.WriteArrNested(stream, v)
-  if math.type(v.Lead) ~= "integer" then return false end
+  if math.type(v.Lead) ~= "integer" or v.Lead < 0 or v.Lead > 31 then return false end
   if not stream:serializeBits({ value = v.Lead }, 5) then return false end -- the declared bit width
   -- the count guards the loop (SPEC §6.3)
   if math.type(v.ItemsCount) ~= "integer" or v.ItemsCount < 0 or v.ItemsCount > 4 then return false end
@@ -910,14 +910,14 @@ function _M.WriteArrNested(stream, v)
   for _i = 1, v.ItemsCount do
     if not _M.WriteEleven(stream, v.Items[_i]) then return false end
   end
-  if math.type(v.Tail) ~= "integer" then return false end
+  if math.type(v.Tail) ~= "integer" or v.Tail < 0 or v.Tail > 7 then return false end
   if not stream:serializeBits({ value = v.Tail }, 3) then return false end -- the declared bit width
   return true
 end
 
 -- type Sole (SPEC §6.1: the wire order is the declared order)
 function _M.WriteSole(stream, v)
-  if math.type(v.Only) ~= "integer" then return false end
+  if math.type(v.Only) ~= "integer" or v.Only < 0 or v.Only > 8191 then return false end
   if not stream:serializeBits({ value = v.Only }, 13) then return false end -- the declared bit width
   return true
 end

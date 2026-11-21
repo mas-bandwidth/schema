@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -33,6 +32,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // luauFuzzPipeUnits is the subset of the corpus the verdict-pipe tests stage:
@@ -171,7 +172,7 @@ func luauFuzzHost(t *testing.T) string {
 		rel := filepath.Join("build", "luaufuzzhost", "luaufuzzhost")
 		full := filepath.Join(root, rel)
 		if _, err := os.Stat(full); err != nil {
-			cmd := exec.Command("make", rel)
+			cmd := testproc.Command(t, "make", rel)
 			cmd.Dir = root
 			if out, merr := cmd.CombinedOutput(); merr != nil {
 				luauFuzzHostErr = fmt.Errorf("make %s: %w\n%s", rel, merr, out)
@@ -195,7 +196,7 @@ func luauFuzzHost(t *testing.T) string {
 func luauFuzzHarness(t *testing.T) string {
 	t.Helper()
 	harness := filepath.Join(t.TempDir(), "conformance-harness")
-	build := exec.Command("go", "build", "-o", harness, "./test/conformance/harness")
+	build := testproc.Command(t, "go", "build", "-o", harness, "./test/conformance/harness")
 	build.Dir = root
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build conformance-harness: %v\n%s", err, out)
@@ -213,7 +214,7 @@ func runLuauWireFuzzVerdictPipe(t *testing.T, stageDir string, n int, expectGree
 	failed := filepath.Join(t.TempDir(), "failed.bin")
 	driverScript := filepath.Join(stageDir, "test", "conformance", "luau", "wirefuzz.luau")
 	driver := fmt.Sprintf("%s %s", host, driverScript)
-	cmd := exec.Command(harness, "wire-fuzz",
+	cmd := testproc.Command(t, harness, "wire-fuzz",
 		"--driver", driver,
 		"--seed", "1",
 		"--n", fmt.Sprintf("%d", n),

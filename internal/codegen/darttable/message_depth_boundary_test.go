@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,6 +15,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const depthBoundarySchema = `package depthprobe
@@ -262,7 +263,7 @@ func runDartDepthBoundaryProbe(t *testing.T, u *ir.Unit, ann []byte, cases []dep
 	if err := os.WriteFile(filepath.Join(dir, "batch_probe.dart"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(announceDartBinary(t), "--enable-asserts", "batch_probe.dart")
+	cmd := testproc.Command(t, announceDartBinary(t), "--enable-asserts", "batch_probe.dart")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	return string(out), err

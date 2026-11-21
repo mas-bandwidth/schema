@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -17,6 +16,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // The two units gotable/textform_test.go reads: the Document contract as a
@@ -334,7 +335,7 @@ func tfJSONStrict(v *Strict) []byte { n := StrictToJSONMeasure(v); b := make([]b
 					t.Fatal(err)
 				}
 			}
-			cmd := exec.Command("go", "test", "-count=1", "-run", "^TestOracle$", "-v", ".")
+			cmd := testproc.Command(t, "go", "test", "-count=1", "-run", "^TestOracle$", "-v", ".")
 			cmd.Dir = goDir
 			wantOut, err := cmd.CombinedOutput()
 			if err != nil {

@@ -2,12 +2,13 @@ package darttable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestWireIdentityMapDart holds docs/PORTING.md M6's identity half on the
@@ -87,7 +88,7 @@ func runIdentityProbe(t *testing.T, dart string, files, packet map[string][]byte
 	if err := os.WriteFile(filepath.Join(dir, "identity_probe.dart"), []byte(identityProbe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dart, "--enable-asserts", "identity_probe.dart")
+	cmd := testproc.Command(t, dart, "--enable-asserts", "identity_probe.dart")
 	cmd.Dir = dir
 	return cmd.CombinedOutput()
 }

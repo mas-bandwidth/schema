@@ -156,6 +156,20 @@ func TestCIFastAndCIFullRunOnPullRequestWhateverItsBase(t *testing.T) {
 	if _, ok := workflowTriggerBranches(wfs["ci-full.yml"])["push"]; ok {
 		t.Fatal("ci-full.yml gained a push trigger; it runs nightly and on dispatch only")
 	}
+	// the fork job runs for a fork's pull request and for nothing else
+	for _, c := range []struct {
+		ev   ciEvent
+		want bool
+	}{
+		{fork, true},
+		{ciEvent{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema"}, false},
+		{ciEvent{Name: "pull_request", Branch: "main", HeadRef: "feature", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"}, false},
+		{ciEvent{Name: "workflow_dispatch", Branch: "main", Repo: "mas-bandwidth/schema"}, false},
+	} {
+		if runs, err := jobRunsInWorkflow(wfs["ci-fast.yml"], "fork-pull-request", c.ev); err != nil || runs != c.want {
+			t.Fatalf("ci-fast.yml fork-pull-request on %s from %q: runs=%v err=%v, want %v", c.ev.Name, c.ev.HeadRepo, runs, err, c.want)
+		}
+	}
 	// ci-fast.yml runs on a push to main and nowhere else: the sprint reads
 	// this lane's verdict on every base tip to tell a card's red from main's.
 	if push := workflowTriggerBranches(wfs["ci-fast.yml"])["push"]; len(push) != 1 || push[0] != "main" {
@@ -168,6 +182,9 @@ func TestCIFastAndCIFullRunOnPullRequestWhateverItsBase(t *testing.T) {
 	for nameJob, body := range yamlJobs(wfs["ci-fast.yml"]) {
 		if strings.Contains(body, "github.event_name == 'workflow_dispatch'") {
 			continue // the leg rows run on dispatch only
+		}
+		if nameJob == "fork-pull-request" {
+			continue // a fork's pull request only: the red verdict that no CI ran
 		}
 		runs, err := jobRunsInWorkflow(wfs["ci-fast.yml"], nameJob, mainPush)
 		if err != nil {

@@ -135,10 +135,12 @@ func decodeMessagesWalk(m *tabletext.Model, insts []*tabletext.Instance, data []
 	// the reader's own build version, digested once for the batch rather than
 	// once a field (sameBuild)
 	build := ir.BuildVersion(m.Unit)
+	// each enum's variant ids, derived once for the batch (enumValue)
+	enums := map[*ir.Enum]map[uint64]int64{}
 	for i := range count {
 		// Omitted fields take declared defaults, including when storage is reused.
 		m.Clear(insts[i])
-		d := &bitDecoder{m: m, v: v, report: report, r: r, refBits: v.RefBits(), fail: fail, build: build, buildKnown: true}
+		d := &bitDecoder{m: m, v: v, report: report, r: r, refBits: v.RefBits(), fail: fail, build: build, buildKnown: true, enums: enums}
 		ok := d.body(insts[i])
 		if fail.err != nil {
 			return 0, fail.err
@@ -184,6 +186,13 @@ type bitDecoder struct {
 	// path alike. It is a test's instrument and nil on every real read: the
 	// tests' work is pinned by a count, never a clock.
 	dupOps *int
+	// enums is each enum's variant ids, keyed by id, derived the first time
+	// the batch resolves a variant of that enum, so a keyed slot's key and an
+	// enum's variant are one lookup and never a scan of the variants. The
+	// batch's bodies share it. enumOps, when set, counts the variant ids
+	// derived; it is a test's instrument and nil on every real read.
+	enums   map[*ir.Enum]map[uint64]int64
+	enumOps *int
 	// build is the READER's build version, digested once (buildKnown) and
 	// compared with the announced one by sameBuild
 	build      uint64
@@ -503,7 +512,10 @@ func (d *bitDecoder) text(cell *tabletext.Cell, count *int, f *ir.Field, entry i
 		d.damage()
 		return false
 	}
-	if len(raw) > int(f.Type.Size) {
+	// a string longer than this reader's bound, or than the ANNOUNCED max
+	// its length's bits can spell past (no conforming writer emits one),
+	// refuses, as the skip path refuses the second (§3.3, §4)
+	if len(raw) > int(f.Type.Size) || f.Type.Kind == ir.TString && len(raw) > int(shape.Max) {
 		d.refuse(ReasonLengthOverBound)
 		return false
 	}
@@ -730,7 +742,7 @@ func (d *bitDecoder) keyed(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 		if !ok {
 			return false
 		}
-		value := enumValueForId(f.KeyEnumRef, key.Id)
+		value := d.enumValue(f.KeyEnumRef, key.Id)
 		var sink tabletext.Cell
 		cell := &sink
 		switch {
@@ -902,7 +914,7 @@ func (d *bitDecoder) enumCell(cell *tabletext.Cell, f *ir.Field, element bool) b
 		return false
 	}
 	en := tabletext.EnumOf(f)
-	v := enumValueForId(en, entry.Id)
+	v := d.enumValue(en, entry.Id)
 	if v < 0 {
 		cell.U = 0
 		d.report.Unknown++
@@ -1279,6 +1291,12 @@ func (d *bitDecoder) skipAt(entry ir.TableVocabularyEntry, depth int, field bool
 		if !ok || !d.r.align() {
 			return false
 		}
+		// a length above the announced max refuses on the skip path as at a
+		// named field (§3.3), and before any byte is walked
+		if n > uint64(shape.Max) {
+			d.refuse(ReasonLengthOverBound)
+			return false
+		}
 		raw, ok := d.textBytes(n)
 		if !ok {
 			return false
@@ -1461,4 +1479,32 @@ func (d *bitDecoder) skipBody(depth int) bool {
 			return false
 		}
 	}
+}
+
+// enumValue is enumValueForId for this batch: the enum's variant ids are
+// derived once, the first time the batch meets the enum, and every later
+// resolve is one map lookup (docs/SPEC-TABLES.md §3.2, §3.3). A variant id
+// repeated in one enum keeps its first variant, as the scan did.
+func (d *bitDecoder) enumValue(e *ir.Enum, id uint64) int64 {
+	if d.enums == nil {
+		d.enums = map[*ir.Enum]map[uint64]int64{}
+	}
+	ids, ok := d.enums[e]
+	if !ok {
+		ids = make(map[uint64]int64, len(e.Variants))
+		for i := range e.Variants {
+			if d.enumOps != nil {
+				*d.enumOps++
+			}
+			vid := ir.TableWireId(e.VariantWireName(i))
+			if _, dup := ids[vid]; !dup {
+				ids[vid] = int64(i + 1)
+			}
+		}
+		d.enums[e] = ids
+	}
+	if v, ok := ids[id]; ok {
+		return v
+	}
+	return -1
 }

@@ -19,6 +19,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablepack"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const luaJSONFloatLocaleSchema = `package localefloat
@@ -87,7 +89,7 @@ func luaJSONFloatLocalePath(t *testing.T) string {
 		return ""
 	}
 	dir := t.TempDir()
-	cmd := exec.Command(localedef, "-i", "de_DE", "-f", "UTF-8", filepath.Join(dir, "de_DE.UTF-8"))
+	cmd := testproc.Command(t, localedef, "-i", "de_DE", "-f", "UTF-8", filepath.Join(dir, "de_DE.UTF-8"))
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Logf("localedef could not build de_DE.UTF-8 (%v); trying the installed locales\n%s", err, out)
@@ -120,7 +122,7 @@ func TestLuaJsonFloatTextIgnoresLocale(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := t.TempDir()
-	cmd := exec.Command(lua, append([]string{"main.lua", out}, luaJSONFloatLocaleTried...)...)
+	cmd := testproc.Command(t, lua, append([]string{"main.lua", out}, luaJSONFloatLocaleTried...)...)
 	cmd.Dir = mod
 	cmd.Env = append(os.Environ(), "LUA_PATH="+filepath.Join(mod, "?.lua")+";;", "LUA_INIT=")
 	if locpath := luaJSONFloatLocalePath(t); locpath != "" {
