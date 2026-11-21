@@ -1,0 +1,4 @@
+# driver <TAB> file <TAB> hex bytes; a driver alone completes and writes nothing; driver <TAB> !stopped fails its own check
+examples	a.bin	01
+examples128	wide.bin	07
+bench	b.bin	03
