@@ -2000,7 +2000,7 @@ trailer with no entries. Ten bytes, and every one of them is framing.
 `ship.bin` and `forged.bin` are used for the rest of this part and again in
 Part 13, so leave them where they are.
 
-### The point: any build reads any data
+### The point: another build reads the data
 
 Time passes. Copy the whole unit to `starlight-2.0`, the way a branch of your
 game would, and evolve it there. `Game.schema` gains a variant in the middle:
@@ -2011,6 +2011,7 @@ enum ShipType { Fighter, Interceptor, Freighter, Corvette }
 
 and `Config.schema` becomes:
 
+<!-- example: schema unit=internal/docgate/testdata/units/tutorial/starlight-2.0 file=Config.schema -->
 ```
 package starlight
 
@@ -2018,18 +2019,21 @@ table ShipConfig
 {
     display_name string(32)
     max_health   float32 = 100.0
-    armor        int32 = 1       | min = 0, max = 5
+    armor        int32 = 1       | min = 0, max = 10
     ship_type    ShipType
     shield       float32 = 50.0
 }
 ```
 
-`max_speed` is gone, `shield` is new, the armor cap dropped from 10 to 5, and
-`Interceptor` landed in the middle of the enum. On the packet wire any one of
-those edits is a new protocol id.
+`max_speed` is gone, `shield` is new, and `Interceptor` landed in the middle of
+the enum. On the packet wire any one of those edits is a new protocol id.
 
-`load.cpp` in `starlight-2.0`, entire:
+A table reads back into memory you size: `ShipConfigLoadMeasure` answers the
+exact bytes the load needs, and `ShipConfigLoad` decodes into that region and
+hands back the root, or `NULL` when it refuses. `load.cpp` in `starlight-2.0`,
+entire:
 
+<!-- example: compile unit=internal/docgate/testdata/units/tutorial/starlight-2.0 -->
 ```cpp
 #include "ConfigTable.h"
 #include <cstdio>
@@ -2050,24 +2054,43 @@ static std::vector<uint8_t> Slurp( const char * path )
     return bytes;
 }
 
+static const char * Reason( starlight::TableRefuseReason reason )
+{
+    using namespace starlight;
+    switch ( reason )
+    {
+        case out_of_range:  return "out_of_range";
+        case kind_mismatch: return "kind_mismatch";
+        case wire_damaged:  return "wire_damaged";
+        case unknown_form:  return "unknown_form";
+        default:            return "another reason";
+    }
+}
+
 int main( int argc, char ** argv )
 {
     using namespace starlight;
 
-    std::vector<uint8_t> buffer = Slurp( argv[1] );
-    int64_t bytes = (int64_t) buffer.size();
+    std::vector<uint8_t> wire = Slurp( argv[1] );
+    int64_t bytes = (int64_t) wire.size();
     if ( argc > 2 ) { bytes = atoi( argv[2] ); }
 
+    // the exact region the load needs; -1 is a wire it refuses already
+    int64_t need = ShipConfigLoadMeasure( wire.data(), bytes );
+    std::vector<uint8_t> region( need > 0 ? need : 0 );
+
     TableReport report;
-    ShipConfig loaded;
-    bool ok = ShipConfigLoad( loaded, buffer.data(), bytes, &report );
-    printf( "load: %s\n", ok ? "ok" : "stopped" );
+    const ShipConfig * loaded = ShipConfigLoad( region.data(), (int64_t) region.size(), wire.data(), bytes, &report );
+    if ( loaded == NULL )
+    {
+        printf( "load: refused, %s\n", Reason( report.refuse_reason ) );
+        return 1;
+    }
+    printf( "load: ok\n" );
     printf( "  name=%s health=%g armor=%d type=%s shield=%g\n",
-        loaded.display_name, loaded.max_health, loaded.armor,
-        EnumName( loaded.ship_type ), loaded.shield );
-    printf( "  report: unknown=%d kind_mismatch=%d clamped=%d duplicate=%d malformed=%d refused=%d\n",
-        report.unknown, report.kind_mismatch, report.clamped, report.duplicate,
-        (int) report.malformed, (int) report.refused );
+        loaded->display_name, loaded->max_health, loaded->armor,
+        EnumName( loaded->ship_type ), loaded->shield );
+    printf( "  report: unknown=%d widened=%d\n", report.unknown, report.widened );
     return 0;
 }
 ```
@@ -2076,17 +2099,16 @@ int main( int argc, char ** argv )
 $ c++ -std=c++17 -Wall -Wextra -Werror -I gen -I . -o load load.cpp gen/ConfigTable.cpp
 $ ./load ../starlight/ship.bin
 load: ok
-  name=Kestrel health=250 armor=5 type=Corvette shield=50
-  report: unknown=1 kind_mismatch=0 clamped=1 duplicate=0 malformed=0 refused=0
+  name=Kestrel health=250 armor=8 type=Corvette shield=50
+  report: unknown=1 widened=0
 ```
 
 Read that slowly, because each value is a rule.
 
-`name=Kestrel` and `health=250`: fields that still exist load as written.
+`name=Kestrel`, `health=250` and `armor=8`: fields that still exist load as
+written.
 
 `shield=50`: a field the file never heard of takes its declared default.
-
-`armor=5`: the stored 8 is **clamped** to the new `[0, 5]`, and counted.
 
 `type=Corvette`: an enum value rides as the hash of its variant's **name**, so
 inserting `Interceptor` in the middle moved nothing. On a packet wire, stored
@@ -2097,6 +2119,7 @@ length and counted, never misdecoded.
 
 It works in the other direction too. `save2.cpp`, in `starlight-2.0`:
 
+<!-- example: compile unit=internal/docgate/testdata/units/tutorial/starlight-2.0 -->
 ```cpp
 #include "ConfigTable.h"
 #include <cstdio>
@@ -2111,9 +2134,9 @@ int main()
     ship.display_name_length = 4;
     ship.ship_type = ShipType::Interceptor;   // the variant 1.0 has never heard of
     ship.shield = 75.0f;                      // the field 1.0 does not have
-    int64_t size = ShipConfigMeasure( ship );
+    int64_t size = ShipConfigMeasure( &ship );
     std::vector<uint8_t> buffer( size );
-    ShipConfigSave( ship, buffer.data(), size );
+    ShipConfigSave( &ship, buffer.data(), size );
     FILE * f = fopen( "dart.bin", "wb" );
     fwrite( buffer.data(), 1, size, f );
     fclose( f );
@@ -2130,8 +2153,9 @@ $ c++ -std=c++17 -Wall -Wextra -Werror -I gen -I . -o save2 save2.cpp gen/Config
 $ ./save2
 wrote dart.bin, 58 bytes
 $ cd ../starlight && ./load ../starlight-2.0/dart.bin
-load: ok  name=Dart type=None speed=500
-  report: unknown=2 kind_mismatch=0 clamped=0
+load: ok
+  name=Dart health=100 armor=1 type=None speed=500
+  report: unknown=2 widened=0
 ```
 
 The 1.0 build skipped `shield` as unknown, and the `Interceptor` variant it has
@@ -2140,108 +2164,131 @@ directions, any distance apart.
 
 Field identity on the table wire is a hash of the field name, every field is
 length prefixed, and enum values and union arms ride under their name hashes
-too. Unknown is skippable, absent is defaultable, and out of range is
-clampable. Contrast that with the packet wire, which **refuses** out-of-range
-values because the sender is an untrusted peer. Tables **clamp and count**,
-because the data is yours and half a config is better than none.
+too. So what a reader cannot name it skips and counts, and what the file does
+not carry takes its default. That is the whole of the give, and it is
+evolution only: a value the reader cannot hold as it was written is never bent
+to fit. The packet wire **refuses** out-of-range values because the sender is
+an untrusted peer, and a table read refuses them too, because half a config
+that was never saved is worse than a load that says no.
 
 ### The report is the witness
 
-`TableReport` is six counters and a verdict:
+`TableReport` is the read's ledger. The members a load program reads, with the
+rest of the struct left out:
 
+<!-- example: fragment -->
 ```cpp
 struct TableReport
 {
     int32_t unknown = 0;       // unknown field ids skipped (newer data)
-    int32_t kind_mismatch = 0; // known id, changed type — skipped, never misdecoded
     int32_t widened = 0;       // a kind that grew since the writer, decoded exactly
-    int32_t clamped = 0;       // out-of-range values clamped to declared bounds
-    // a key the TEXT form saw twice: last wins, and the repeat is counted
-    // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
-    // id twice is legal input whose last occurrence wins, silently (§3).
-    int32_t duplicate = 0;
-    bool malformed = false;    // damage: the whole load is refused, nothing of it is used
-    // THE REFUSAL VERDICT, which is not one of §4's events and moves no counter
-    // (docs/SPEC-TABLES.md §3): a FORM BYTE this reader does not carry. Five
-    // zero counters and a false flag are what a clean read prints too, so the
-    // verdict is what tells the two apart.
-    bool refused = false;
+    int32_t missing_required = 0;
+    bool damaged = false;      // damage: the whole load is refused, nothing of it is used
+    bool refused = false;      // a refusal that is not damage, a form byte this reader does not carry
+    TableRefuseReason refuse_reason = ok; // why, on every refusal; ok otherwise
+    // ...
 };
 ```
 
-`duplicate` belongs to the text form, which Part 9 reaches. The wire never
-raises it.
+`unknown` and `widened` are the only counters a load that returns can move.
+Every other thing a reader cannot take refuses the whole load: `Load` returns
+`NULL` and `refuse_reason` names why.
 
-You can see `kind_mismatch` by copying the unit again to `starlight-3.0` and
-making `armor` a `float32 = 1.0`. `load3.cpp` there is `load.cpp` with one
-printf, because `armor` is a different C++ type now:
+Copy the unit again to `starlight-2.1` and tighten the armor cap from 10 to 5,
+`armor int32 = 1 | min = 0, max = 5`. Kestrel's stored 8 no longer fits:
+
+```
+$ ./load ../starlight/ship.bin
+load: refused, out_of_range
+```
+
+The reader **never clamps**. A value it cannot hold refuses the load by name,
+because a clamped 5 is a ship nobody saved. A tighter range is an edit old
+files may not survive, and Part 10's baseline warns when you make it.
+
+You can see `kind_mismatch` by copying the unit to `starlight-3.0` and making
+`armor` a `float32 = 1.0`. `load.cpp` there is the 2.0 `load.cpp` with one
+printf changed, because `armor` is a different C++ type now:
 
 <!-- example: compile unit=internal/docgate/testdata/units/tutorial/starlight-3.0 harness=cpp-tutorial-load -->
 ```cpp
-    printf( "load: %s  armor=%g (a float now)\n", ok ? "ok" : "stopped", loaded.armor );
-    printf( "  report: unknown=%d kind_mismatch=%d clamped=%d\n",
-        report.unknown, report.kind_mismatch, report.clamped );
+    printf( "  name=%s health=%g armor=%g type=%s shield=%g\n",
+        loaded->display_name, loaded->max_health, loaded->armor,
+        EnumName( loaded->ship_type ), loaded->shield );
 ```
 
 ```
-$ c++ -std=c++17 -Wall -Wextra -Werror -I gen -I . -o load3 load3.cpp gen/ConfigTable.cpp
-$ ./load3 ../starlight/ship.bin
-load: ok  armor=1 (a float now)
-  report: unknown=1 kind_mismatch=1 clamped=0
+$ c++ -std=c++17 -Wall -Wextra -Werror -I gen -I . -o load load.cpp gen/ConfigTable.cpp
+$ ./load ../starlight/ship.bin
+load: refused, kind_mismatch
 ```
 
-The stored int under the `armor` id is not an int as far as this reader is
-concerned, so it is skipped and the field keeps its declared default. Never
-misdecoded.
+The stored int under the `armor` id is not a float as far as this reader is
+concerned, and an integer read as a float is another number, so the whole load
+refuses. Never misdecoded, and never half loaded.
 
-`malformed` is the counter that stops a load. The 2.0 `load` takes an optional
-byte count, so you can cut the file anywhere:
+One change of kind does read: a kind that **grew**. In `starlight-3.1` make
+`armor` an `int64 = 1 | min = 0, max = 10`, and print it as one:
+
+<!-- example: compile unit=internal/docgate/testdata/units/tutorial/starlight-3.1 harness=cpp-tutorial-load -->
+```cpp
+    printf( "  name=%s health=%g armor=%lld type=%s shield=%g\n",
+        loaded->display_name, loaded->max_health, (long long) loaded->armor,
+        EnumName( loaded->ship_type ), loaded->shield );
+```
+
+```
+$ ./load ../starlight/ship.bin
+load: ok
+  name=Kestrel health=250 armor=8 type=Corvette shield=50
+  report: unknown=1 widened=1
+```
+
+An `int32` read into an `int64` is exact, so the value lands and `widened`
+counts it: the bytes were not the shape this reader declares, and the next save
+writes the wider kind. The reverse, an `int64` read as an `int32`, is a kind
+mismatch.
+
+`damaged` is what a cut file sets. The 2.0 `load` takes an optional byte count,
+so you can cut the file anywhere:
 
 ```
 $ ./load ../starlight/ship.bin 17
-load: stopped
-  name= health=100 armor=1 type=None shield=50
-  report: unknown=0 kind_mismatch=0 clamped=0 duplicate=0 malformed=1 refused=0
+load: refused, wire_damaged
 $ ./load ../starlight/ship.bin 40
-load: stopped
-  name= health=100 armor=1 type=None shield=50
-  report: unknown=0 kind_mismatch=0 clamped=0 duplicate=0 malformed=1 refused=0
+load: refused, wire_damaged
 $ ./load ../starlight/ship.bin 88
-load: stopped
-  name= health=100 armor=1 type=None shield=50
-  report: unknown=0 kind_mismatch=0 clamped=0 duplicate=0 malformed=1 refused=0
+load: refused, wire_damaged
 ```
 
-Every field sits at its declared default, at every cut. That is the shape of
-the wire showing through: the file's **id table is its trailer**, and the
-reader locates it from the end, so a cut file has no vocabulary to name its own
-fields with. There is no useful prefix to keep, one byte short of the whole
-file or seventy.
+Nothing of the file is used, at any cut. That is the shape of the wire showing
+through: the file's **id table is its trailer**, and the reader locates it from
+the end, so a cut file has no vocabulary to name its own fields with. There is
+no useful prefix to keep, one byte short of the whole file or seventy.
 
-`refused` is not a counter and is not damage. The wire opens with a **form
-byte**, read before anything else, and a reader that meets a form it does not
-carry stops without decoding a thing. That is what `forged.bin` is: `ship.bin`
-with its first byte replaced.
+`refused` without `damaged` is a file this build does not carry. The wire opens
+with a **form byte**, read before anything else, and a reader that meets a form
+it does not carry stops without decoding a thing. That is what `forged.bin` is:
+`ship.bin` with its first byte replaced.
 
 ```
 $ ./load ../starlight/forged.bin
-load: stopped
-  name= health=100 armor=1 type=None shield=50
-  report: unknown=0 kind_mismatch=0 clamped=0 duplicate=0 malformed=0 refused=1
+load: refused, unknown_form
 ```
 
-Five zero counters and `malformed=0`, which is exactly what a clean read prints
-too. The verdict is what tells the two apart, so read `refused` before you read
-the counters. A file written by a build whose framing is newer than yours says
-so rather than pretending to be broken.
+A file written by a build whose framing is newer than yours says so rather than
+pretending to be broken.
 
-Only structural damage and an unknown form stop a load. Every schema-drift
-event above is a counter rather than a failure.
+So two kinds of drift are counters, `unknown` and `widened`, and the load
+returns whole. Everything else refuses whole: damage, a form this build does
+not carry, a value outside the reader's range, a kind the reader cannot hold
+exactly, a count or a string past the reader's bound, and a required field
+that is missing (docs/SPEC-TABLES.md §4).
 
-Adopt this discipline on day one: **log the counters**. A nonzero report means
-the data came from a different schema generation. It is still fully usable, but
-that is drift you want visible on a dashboard rather than invisible in a save
-file.
+Adopt this discipline on day one: **log the counters, and log every refusal
+with its reason**. A nonzero report means the data came from a different
+schema generation. It is still fully usable, but that is drift you want visible
+on a dashboard rather than invisible in a save file.
 
 ### Two rules the wire cannot enforce for you
 
@@ -2272,20 +2319,21 @@ baseline turns this law into a compile error.
 
 Edit a table, add fields, grow enums, reshape at will, and your protocol id
 **does not move**, as the banner above showed. Tables never touch it, and
-packets never pay for tolerance. The costs live where the tolerance lives: a
+packets never pay for evolution. The costs live where the evolution lives: a
 table's wire is byte granular rather than bit packed, 89 bytes here against
-Part 3's three, and the read walks and matches ids instead of streaming bits. A
-fixed-size table like this one still allocates nothing and stays a plain
-struct. What "fixed size" means, and what the other class costs, is Part 8's
-story.
+Part 3's three, and the read walks and matches ids instead of streaming bits.
+The load decodes into a region you sized with `LoadMeasure`, so its memory is
+yours. `table` is the class that evolves this freely; `fixed table` trades that
+freedom for a body of one constant size (docs/SPEC-TABLES.md §2.2).
 
 Two structural rules stand: a `type` cannot reference a table, because packets
 stay exact match while a table may reference types freely, and a table cannot
 nest itself by value.
 
-**You now have** a save format. Write it with any build of Starlight, read it
-with any other, and every difference between them is absorbed, counted and
-reported.
+**You now have** a save format. Write it with any build of Starlight and read
+it with another: what the reader cannot name is skipped and counted, what the
+file does not carry takes its default, and what the reader cannot hold exactly
+is refused by name, never bent to fit.
 
 ---
 
