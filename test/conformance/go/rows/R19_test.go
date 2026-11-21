@@ -71,6 +71,15 @@ func readM2Wire(wire []byte) (R19Report, error) {
 // Wire: testdata/conformance/tables/m1_open.bin (see MANIFEST.txt)
 // Report expectation: 0,0,0,0,0,false,read
 func TestRowR19(t *testing.T) {
+	// GATED, NAMED (rowan/silent-vacuous, 2026-11-21). Until this branch
+	// readM2Wire returned a zero report on every path, so this row passed
+	// having read nothing. Made honest, it is red: m1_open.bin is the
+	// retired form-1 wire, which the corpus pins as refused for an M2 reader
+	// (testdata/conformance/tables/reports.txt m1_open_as_m2), and M1 -> M2 is
+	// not an appended-field pair at all (M2 inserts an arm and removes one).
+	// The law runs for Go in internal/codegen/gotable
+	// TestFixedRoadmapGoT04VersionsEvolution/go/R19 on generated clean pairs.
+	t.Skip("R19 row has no clean NEW-READS-OLD pair in this module: m1_open.bin is retired form 1, refused for M2 (reports.txt m1_open_as_m2); rebuild the row on an appended-field pair")
 	wire, err := os.ReadFile("../../../../testdata/wire/tables/m1_open.bin")
 	if err != nil {
 		t.Fatal(err)

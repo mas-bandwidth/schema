@@ -104,9 +104,12 @@ test-go: tables-go-shared-runtime
 # umbrella target below keeps `make test-go` and the local run whole. Each
 # half runs ONLY its own rows (-run, anchored): before, both halves ran the
 # whole package and the names were only checked, so the split saved nothing.
+# TestRowR19 still runs under -run but is not a required PASS: it is gated by
+# name in R19_test.go (it read nothing until 2026-11-21; made honest, its wire
+# is the retired form 1), and its SKIP line with that reason lands in the log.
 conformance-go-rows-a: build/tables-generated-go/.stamp tables-go-sibling-runtime
 	cd test/conformance/go && SLOWGATE_LOG_DIR="$(CURDIR)/build/slowgate" sh $(CURDIR)/test/slowgate/proof conformance-go-rows-a \
-		'TestRowC12 TestRowC13 TestRowC14 TestRowC14WriterRefusesOutOfRange TestRowC7 TestRowC8 TestRowC8WriterRefusesOutOfRange TestRowCountedArraysValidData TestRowE5 TestRowF12 TestRowF8 TestRowF8NegativeControl TestRowF8RaggedTailByName TestRowFloat32ValuesNonFiniteRefused TestRowFloat32ValuesValidData TestRowP2 TestRowP3 TestRowR10 TestRowR14 TestRowR14LayoutRecordTooLargeByName TestRowR15 TestRowR17 TestRowR19 TestRowR20' \
+		'TestRowC12 TestRowC13 TestRowC14 TestRowC14WriterRefusesOutOfRange TestRowC7 TestRowC8 TestRowC8WriterRefusesOutOfRange TestRowCountedArraysValidData TestRowE5 TestRowF12 TestRowF8 TestRowF8NegativeControl TestRowF8RaggedTailByName TestRowFloat32ValuesNonFiniteRefused TestRowFloat32ValuesValidData TestRowP2 TestRowP3 TestRowR10 TestRowR14 TestRowR14LayoutRecordTooLargeByName TestRowR15 TestRowR17 TestRowR20' \
 		./rows/ -count=1 -timeout 600s -run '^(TestRowC12|TestRowC13|TestRowC14|TestRowC14WriterRefusesOutOfRange|TestRowC7|TestRowC8|TestRowC8WriterRefusesOutOfRange|TestRowCountedArraysValidData|TestRowE5|TestRowF12|TestRowF8|TestRowF8NegativeControl|TestRowF8RaggedTailByName|TestRowFloat32ValuesNonFiniteRefused|TestRowFloat32ValuesValidData|TestRowP2|TestRowP3|TestRowR10|TestRowR14|TestRowR14LayoutRecordTooLargeByName|TestRowR15|TestRowR17|TestRowR19|TestRowR20)$$'
 conformance-go-rows-b: build/tables-generated-go/.stamp tables-go-sibling-runtime
 	cd test/conformance/go && SLOWGATE_LOG_DIR="$(CURDIR)/build/slowgate" sh $(CURDIR)/test/slowgate/proof conformance-go-rows-b \
