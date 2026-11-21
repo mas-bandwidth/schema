@@ -41,8 +41,10 @@ func Inside(path string, tree os.FileInfo) bool {
 }
 
 // Overlap reports whether two existing directories are one, or one is inside
-// the other, by identity.
+// the other, by identity. Each is spelled clean first, as a directory made
+// for it was.
 func Overlap(a, b string) (bool, error) {
+	a, b = filepath.Clean(a), filepath.Clean(b)
 	ia, err := os.Stat(a)
 	if err != nil {
 		return false, err
