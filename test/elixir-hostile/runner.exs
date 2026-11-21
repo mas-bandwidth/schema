@@ -90,6 +90,7 @@ tables = %{
   "tables/maps" => Mapdemo.Table,
   "tables/lists" => Listdemo.Table,
   "test/tables/shapes" => Shapes.Table,
+  "test/tables/inner" => Inner.Table,
   "schemas/probe.schema" => Probe.Table,
   "testdata/conformance/feature-witnesses/full/Features.schema" => Featurewitnesses.Table
 }
