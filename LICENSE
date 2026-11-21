@@ -688,7 +688,7 @@ closed-source software.
 This permission applies to the generated output only. It does not apply to
 this program itself: modifying the compiler, or conveying it (including making
 a modified version available to users over a network, per AGPL section 13),
-remains subject to the licence below.
+remains subject to the licence above.
 
 This exception is modelled on the long-standing practice for compiler-like
 tools whose output is not covered by the tool's own licence — for example the
