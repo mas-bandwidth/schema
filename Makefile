@@ -6318,6 +6318,21 @@ tables-wire-fuzz-message-text-leg-negative-control: build/conformance-harness bu
 conformance-generate: build/conformance-harness
 	./build/conformance-harness generate
 
+# The VALUE-DEFAULTS instances' wire pins (test/tables/ValueDefaults.schema):
+# string, bytes and flags defaults in every carried field shape. Each wire is
+# `schema pack` of the authored text tree under test/tables/valuedefaults —
+# the compiler's own engine, the same third implementation the pack golden
+# uses — and the reference leg then has to load and re-save it byte for byte.
+# Run before conformance-generate when a tree changes.
+VALUE_DEFAULTS_UNIT := test/tables/ValueDefaults.schema
+VALUE_DEFAULTS_WIRE := testdata/conformance/tables/wire
+.PHONY: conformance-valuedefaults-pin
+conformance-valuedefaults-pin: bin/schema
+	./bin/schema pack --root VarDefaults --out $(VALUE_DEFAULTS_WIRE)/vd_var_defaults.bin test/tables/valuedefaults/vd_var_defaults $(VALUE_DEFAULTS_UNIT)
+	./bin/schema pack --root VarDefaults --out $(VALUE_DEFAULTS_WIRE)/vd_var_values.bin test/tables/valuedefaults/vd_var_values $(VALUE_DEFAULTS_UNIT)
+	./bin/schema pack --root FixedDefaults --out $(VALUE_DEFAULTS_WIRE)/vd_fixed_defaults.bin test/tables/valuedefaults/vd_fixed_defaults $(VALUE_DEFAULTS_UNIT)
+	./bin/schema pack --root FixedDefaults --out $(VALUE_DEFAULTS_WIRE)/vd_fixed_values.bin test/tables/valuedefaults/vd_fixed_values $(VALUE_DEFAULTS_UNIT)
+
 # The PINNED half: the cook's canonical node dump and the block forgery battery
 # resolved to byte offsets, both from the reference leg — C++ writes the pins,
 # every other leg compares, exactly as the wire goldens work.
