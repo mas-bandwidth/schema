@@ -72,6 +72,10 @@ func TestMessageFormHeldCSharp(t *testing.T) {
 			csHeldAssert(t, out, err, "row/"+msg.name)
 		})
 	}
+	t.Run("capacity_fixture", func(t *testing.T) {
+		t.Parallel()
+		csHeldAssert(t, out, err, "row/capacity_fixture")
+	})
 }
 
 const csHeldSchema = `package probe
@@ -429,8 +433,8 @@ static class Held
 
     // "M ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME ... MeasureMessages
     // and SaveMessages both refuse and return -1" and "M ABOVE THE CALLER'S
-    // CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME ... The reader sets the
-    // returned count to the wire's M before it returns the refusal."
+    // CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME ... A refused batch
+    // returns a count of 0" (docs/SPEC-TABLES.md §3.3).
     static void BatchTooLarge()
     {
         const string row = "batch_too_large";
@@ -448,7 +452,7 @@ static class Held
         Root[] storage = Bodies(1);
         var report = new TableReport();
         Schema.RootLoadMessages(storage, buf, vocab, report, out int count);
-        if (!report.Refused || report.Reason != "batch_too_large" || report.Damaged || count != 2) { Fail(row, "read over capacity: count=" + count + " reason=" + report.Reason); return; }
+        if (!report.Refused || report.Reason != "batch_too_large" || report.Damaged || count != 0) { Fail(row, "read over capacity: count=" + count + " reason=" + report.Reason); return; }
         Ok(row);
     }
 
@@ -797,9 +801,46 @@ func csHeldRowsClass(t *testing.T) string {
 		b.WriteString(csHeldMsgMethod(msg))
 		b.WriteString("        Msg_" + msg.name + "();\n")
 	}
+	fixture, err := filepath.Abs(filepath.Join("testdata", "batch_capacity_two.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.WriteString(strings.ReplaceAll(csHeldCapacityFixture, "FIXTURE", fixture))
+	b.WriteString("        CapacityFixture();\n")
 	b.WriteString("    return bad;\n}\n}\n")
 	return b.String()
 }
+
+// csHeldCapacityFixture is the row/capacity_fixture row: the committed
+// capacity fixture, testdata/batch_capacity_two.bin (two LoginRequest bodies
+// of tables/backend, client_build 40, written by the Go engine and pinned to
+// it by test/conformance/harness
+// TestBatchCapacityFixtureIsTheGoEnginesInEveryLeg), into storage for one
+// whose ClientBuild is the sentinel 17: "A refused batch returns a count of
+// `0`" and "refuses before it decodes anything" (docs/SPEC-TABLES.md §3.3).
+// Storage for two owes 2 and 40. A caller's capacity is a resource limit
+// (§6.5), so this row runs here, in the leg's own tests.
+const csHeldCapacityFixture = `    static void CapacityFixture()
+    {
+        const string row = "capacity_fixture";
+        byte[] wire = System.IO.File.ReadAllBytes(@"FIXTURE");
+        var vocab = new Bv();
+        var annReport = new Br();
+        Bs.AnnounceRead(vocab, Corpus("backend_conn.bin"), annReport);
+        if (!vocab.Announced) { Fail(row, "announce: " + annReport.Reason); return; }
+        var one = new Backenddemo.LoginRequest[] { new Backenddemo.LoginRequest() };
+        one[0].ClientBuild = 17;
+        var report = new Br();
+        Bs.LoginRequestLoadMessages(one, wire, vocab, report, out int count);
+        if (!report.Refused || count != 0) { Fail(row, "two bodies into storage for one: count=" + count + " refused=" + report.Refused + ", and a refused batch returns 0"); return; }
+        if (one[0].ClientBuild != 17) { Fail(row, "two bodies into storage for one: ClientBuild reads " + one[0].ClientBuild + ", not the sentinel 17"); return; }
+        var two = new Backenddemo.LoginRequest[] { new Backenddemo.LoginRequest(), new Backenddemo.LoginRequest() };
+        var loaded = new Br();
+        Bs.LoginRequestLoadMessages(two, wire, vocab, loaded, out int got);
+        if (got != 2 || loaded.Refused || loaded.Damaged || two[0].ClientBuild != 40 || two[1].ClientBuild != 40) { Fail(row, "two bodies into storage for two: count=" + got); return; }
+        Ok(row);
+    }
+`
 
 func csHeldConnMethod(c csHeldConn) string {
 	p := csHeldPre(c.pkg)
