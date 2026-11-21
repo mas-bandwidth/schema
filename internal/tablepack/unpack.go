@@ -176,6 +176,13 @@ func writeTree(m *tabletext.Model, inst *tabletext.Instance, root, dir string, o
 	if !oneFile {
 		for _, f := range st.Fields {
 			key := ir.TableFieldJsonKey(f)
+			if key == root && f.KeyEnum == "" {
+				// `<key>.json` would be `<Root>.json`, which pack reads as the
+				// whole root (§17.2): the expanded tree would not pack back.
+				// Write the whole root instead, which is the same instance.
+				oneFile = true
+				break
+			}
 			if !treeComponent(key) {
 				return fmt.Errorf("field %s: JSON key %q is not one safe local path component; use --one-file to preserve this key in JSON", f.Name, key)
 			}
