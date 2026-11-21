@@ -333,8 +333,8 @@ export function tableMessageSkipBody(r, v, indexBits, depth) {
 }
 // A scalar reconstructs at the announced storage width. A ranged value is the
 // offset plus the base, in unsigned 64-bit arithmetic so a negative base wraps
-// as it does in the reference; the caller then narrows to its own declared
-// width and clamps.
+// as it does in the reference; the caller then holds the value to its own
+// declared range, refusing out_of_range past it (§3.3, §4).
 export function tableMessageKindWidens(from, to) {
   return (from >= 2 && from <= 5 && ((to > from && to <= 5) || to === 18)) ||
          (from >= 6 && from <= 9 && ((to > from && to <= 9) || to === 19)) ||
@@ -771,6 +771,11 @@ func (g *fixedModule) messageRides(f *ir.Field, mem, ind string) string {
 // Object.is is the bit compare for two finite values, so a -0 under a +0
 // default rides, and a NaN never elides and reaches the writer's refusal.
 func messageDiffers(f *ir.Field, lhs, def string) string {
+	if f.Type.Kind == ir.TFloat32 {
+		// a float32 compares at float32, as its default is spelled and as the
+		// reference compares it (tablewire cellIsDefault)
+		lhs = "Math.fround(" + lhs + ")"
+	}
 	if fixedIsFloat(f.Type) && f.HasFloatRange {
 		// a COMPRESSED float's -0 IS +0 (§3.3, ruling fixed-compressed-negzero):
 		// it compares by value, so a -0 under a +0 default elides

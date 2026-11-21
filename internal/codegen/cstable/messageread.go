@@ -33,8 +33,17 @@ const tableMessageReadSource = `
             if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry e)) { return false; }
             if (reference == 0) { return true; }
             if (Reserved(e.Id) || !SeenOnce(few, ref count, ref more, e.Id)) { return false; }
-            if (!MessageSkip(ref r, d, e.Kind, e.Shape, depth)) { return false; }
+            if (!MessageSkipField(ref r, d, e, depth)) { return false; }
         }
+    }
+    // A message field cannot be required, so a writer elides a union FIELD at
+    // None at every build (§3.3 (c)): arm reference 0 stored for one is refused
+    // on the skip path as on a named read. An array element and an arm's own
+    // value keep their positional None and skip through MessageSkip.
+    static bool MessageSkipField(ref BitReader r, MessageRead d, TableMessageEntry e, int depth)
+    {
+        if (e.Kind == 15) { BitReader arm = r; if (!MessageReference(ref arm, d, out ulong armRef, out _) || armRef == 0) { return false; } }
+        return MessageSkip(ref r, d, e.Kind, e.Shape, depth);
     }
     // SeenOnce records one id of a body or one key of a keyed array and
     // answers false on a repeat: an id twice in one body, or a key twice in
@@ -183,7 +192,7 @@ const tableMessageReadSource = `
             {
                 if (same) { return false; }
                 d.Report.Unknown++;
-                if (!MessageSkip(ref r, d, entry.Kind, entry.Shape, depth)) { return false; }
+                if (!MessageSkipField(ref r, d, entry, depth)) { return false; }
                 continue;
             }
             if (same && field.Ordinal <= last) { return false; }
@@ -213,6 +222,16 @@ const tableMessageReadSource = `
         {
             int n = f.GetCount(value);
             if (f.DefaultBytes != null) { return n == f.DefaultBytes.Length && f.GetBuffer(value).AsSpan(0, n).SequenceEqual(f.DefaultBytes); }
+            // BORN AT ITS MIN (docs/SPEC.md §4.2): a [A..B] array at A default
+            // elements is the birth value the writer elides. A table element's
+            // default is not judged from storage, and a quantized float's
+            // stored value cannot say it, so neither is refused here.
+            if (f.ArrayMin > 0)
+            {
+                if (n != f.ArrayMin || f.Kind == 13 || shape.Inner != null && shape.Inner.Packing == 2) { return false; }
+                for (int i = 0; i < n; i++) { if (!DefaultElement(value, f, i)) { return false; } }
+                return true;
+            }
             return n == 0;
         }
         if (!f.IsArray)
@@ -229,9 +248,11 @@ const tableMessageReadSource = `
         if (f.IsArray && f.GetBuffer != null)
         {
             if (!r.Get(BitCount(shape.Max - shape.Min), out UInt128 raw) || !r.Align()) { return false; }
-            ulong n = (ulong)raw;
+            // bytes(N) AND [..N]uint8 ARE ONE KIND (§3.3): the count rides as
+            // count - the announced min, as an array's does
+            ulong n = (ulong)raw + shape.Min;
             if (n > (ulong)((r.End - r.At) / 8)) { return false; }
-            if (n > (ulong)f.ArrayBound) { return Fail(d.Report, "count_over_bound: " + f.Name); }
+            if (n < (ulong)f.ArrayMin || n > (ulong)f.ArrayBound) { return Fail(d.Report, "count_over_bound: " + f.Name); }
             int kept = (int)n;
             if (value != null) { r.Bytes.Slice((int)(r.At / 8), kept).CopyTo(f.GetBuffer(value)); f.SetCount(value, kept); }
             r.At += (long)n * 8; return true;
@@ -275,7 +296,8 @@ const tableMessageReadSource = `
                 return true;
             }
             int run = Width(shape.Elem) != 0 ? ValueBits(shape.Elem, shape.Inner) : -1;
-            if (n > (ulong)f.ArrayBound) { return Fail(d.Report, "count_over_bound: " + f.Name); }
+            // A COUNT BELOW THE DECLARED MIN IS REFUSED (docs/SPEC.md §5.1 row 3)
+            if (n < (ulong)f.ArrayMin || n > (ulong)f.ArrayBound) { return Fail(d.Report, "count_over_bound: " + f.Name); }
             int kept = (int)n;
             int previous = f.Counted && value != null && f.GetCount != null ? f.GetCount(value) : 0;
             // A FLOAT PAST THE BOUND IS STILL TESTED (docs/SPEC-TABLES.md §3.3):
@@ -352,6 +374,9 @@ const tableMessageReadSource = `
         UInt128 stored = bits; bool negative = false, above = false;
         if (shape.Packing == 1)
         {
+            // A RANGED VALUE IS HELD TO ITS ANNOUNCED KIND (§3.3): base plus
+            // offset is never wrapped, named or skipped
+            if (MessageNumber(kind) && !RangedHolds(kind, shape.Base, bits)) { return Fail(d.Report, "out_of_range: " + f.Name); }
             stored = unchecked(bits + shape.Base);
             bool baseNegative = (kind >= 18 || Signed(kind)) && unchecked((Int128)shape.Base) < 0;
             negative = baseNegative && bits < unchecked(0 - shape.Base);

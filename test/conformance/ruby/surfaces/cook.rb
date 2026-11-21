@@ -5,7 +5,7 @@ def self.run(manifest, outdir)
     name, unit, root, path = row[1, 4]
     pkg = RubyConformance.unit_package(unit)
     if pkg.nil?
-      RubyConformance.absent(outdir, name, 'unit not generated for ruby')
+      RubyConformance.no_codec(outdir, name)
       next
     end
     cls = pkg.const_get(root, false)

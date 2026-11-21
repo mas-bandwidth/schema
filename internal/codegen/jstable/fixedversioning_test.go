@@ -54,6 +54,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // ---- the rows ---------------------------------------------------------------
@@ -1012,7 +1014,7 @@ console.log("ok");
 	if err := os.WriteFile(filepath.Join(dir, "probe.mjs"), []byte(src), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, filepath.Join(dir, "probe.mjs"))
+	cmd := testproc.Command(t, node, filepath.Join(dir, "probe.mjs"))
 	cmd.Dir = dir
 	return cmd.CombinedOutput()
 }

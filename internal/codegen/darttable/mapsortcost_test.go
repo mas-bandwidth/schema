@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"math/bits"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // A MAP'S SORT COSTS O(n log n) WHATEVER ORDER ITS KEYS ARRIVE IN
@@ -113,7 +113,7 @@ func runMapSortCost(t *testing.T, files map[string][]byte) ([]byte, error) {
 	if err := os.WriteFile(filepath.Join(dir, "map_sort_cost.dart"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dartBinary(t), "--enable-asserts", "map_sort_cost.dart")
+	cmd := testproc.Command(t, dartBinary(t), "--enable-asserts", "map_sort_cost.dart")
 	cmd.Dir = dir
 	return cmd.CombinedOutput()
 }

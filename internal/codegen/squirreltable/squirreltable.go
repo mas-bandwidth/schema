@@ -72,6 +72,9 @@ type Module struct {
 	// viewNone is set once the view surface has written TableDocNone and
 	// TableTagsNone, which the module assigns exactly once
 	viewNone bool
+	// lineage is the fixed-form lineage this generation call was handed
+	// (GenerateLineage), per table, oldest first; nil for a unit with no lock.
+	lineage map[string][]FixedLineageEntry
 }
 
 // Printf appends to the module body.
@@ -99,6 +102,10 @@ func ModuleName(u *ir.Unit) string {
 // yet is refused by name, never emitted wrong (docs/PORT-SQUIRREL.md, THE
 // REGISTER).
 func Generate(u *ir.Unit) (map[string][]byte, error) {
+	return generate(u, nil)
+}
+
+func generate(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
@@ -108,7 +115,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			return nil, fmt.Errorf("schema file %s.schema collides with the Squirrel table module, which is %s.nut for package %s (docs/PORT-SQUIRREL.md, THE RUNTIME LAYOUT); rename the file", f.Base, name, u.Package)
 		}
 	}
-	m := &Module{Unit: u, runtimes: map[string]bool{}}
+	m := &Module{Unit: u, runtimes: map[string]bool{}, lineage: lineage}
 	m.Closure, m.Roots = closure(u)
 	desc := m.Runtime("descriptor")
 	for _, un := range unions(m.Closure) {

@@ -2,13 +2,14 @@ package jstable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestJsMessageSkipOfZeroWidthElementsIsBounded(t *testing.T) {
@@ -159,7 +160,7 @@ console.log("ok");
 		if err := os.WriteFile(probePath, []byte(probe), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		cmd := exec.Command(node, probePath)
+		cmd := testproc.Command(t, node, probePath)
 		cmd.Dir = dir
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("node probe failed: %v\n%s", err, out)

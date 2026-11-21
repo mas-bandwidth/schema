@@ -400,7 +400,10 @@ type RetainCase struct {
 const RetainShortSlack = 16
 
 type Manifest struct {
-	Units         []Unit
+	Units []Unit
+	// OptIn names the units whose rows a leg answers only once its `list`
+	// names `unit <key>` (optin.go).
+	OptIn         map[string]bool
 	Instances     []Instance
 	Connections   []Connection
 	Messages      []Message
@@ -455,7 +458,7 @@ type WriteRefusal struct {
 }
 
 // writeRefusalKinds is the closed set a row's Kind is drawn from.
-var writeRefusalKinds = map[string]bool{"int": true, "count": true, "length": true, "ordinal": true, "tag": true, "float": true, "bytes": true, "units": true}
+var writeRefusalKinds = map[string]bool{"int": true, "count": true, "length": true, "ordinal": true, "tag": true, "float": true, "real": true, "bytes": true, "units": true}
 
 // writeRefusalForms maps each write-refusal line kind, which is also its
 // surface, to the writer it drives.
@@ -592,6 +595,16 @@ func ReadManifest(path, jsonDir string) (m *Manifest, err error) {
 				return nil, fmt.Errorf("%s: unit takes a key and at least one schema path", where)
 			}
 			m.Units = append(m.Units, Unit{Key: f[1], Paths: f[2:]})
+		case "opt-in":
+			// opt-in <unit>: rows on this unit reach only a leg whose `list`
+			// names `unit <key>` (optin.go); for any other leg they are absent
+			if len(f) != 2 {
+				return nil, fmt.Errorf("%s: opt-in takes one unit key", where)
+			}
+			if m.OptIn == nil {
+				m.OptIn = map[string]bool{}
+			}
+			m.OptIn[f[1]] = true
 		case "instance":
 			if len(f) < 5 {
 				return nil, fmt.Errorf("%s: instance takes name, unit, root, wire path, and optional markers", where)

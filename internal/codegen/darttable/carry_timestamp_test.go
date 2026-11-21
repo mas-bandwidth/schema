@@ -13,10 +13,11 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestDartTimestampNative(t *testing.T) {
@@ -128,7 +129,7 @@ check(skipped.at==0&&mismatchReport.refused&&mismatchReport.reason=='kind_mismat
 		t.Fatal(err)
 	}
 	for _, args := range [][]string{{"--enable-asserts", "probe.dart"}, {"probe.dart"}} {
-		cmd := exec.Command(dartBinary(t), args...)
+		cmd := testproc.Command(t, dartBinary(t), args...)
 		cmd.Dir = dir
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("native Dart timestamp %v: %v\n%s", args, err, out)
@@ -182,11 +183,11 @@ int main(){uint8_t buf[4096];const char *names[]={"negative","min","max"};int64_
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("c++", "-std=c++17", "-O1", "-I"+runtime, "-I"+dir, filepath.Join(dir, "probe.cpp"), "-o", filepath.Join(dir, "probe"))
+	cmd := testproc.Command(t, "c++", "-std=c++17", "-O1", "-I"+runtime, "-I"+dir, filepath.Join(dir, "probe.cpp"), "-o", filepath.Join(dir, "probe"))
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("C++ timestamp pin: %v\n%s", err, out)
 	}
-	out, err := exec.Command(filepath.Join(dir, "probe")).CombinedOutput()
+	out, err := testproc.Command(t, filepath.Join(dir, "probe")).CombinedOutput()
 	if err != nil {
 		t.Fatalf("C++ timestamp run: %v\n%s", err, out)
 	}

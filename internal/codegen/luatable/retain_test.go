@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -19,6 +18,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestLuaRetainUnknown is the Lua leg of RETAIN-UNKNOWN (docs/SPEC-TABLES.md
@@ -470,7 +471,7 @@ func TestGoRetainOracle(t *testing.T){
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("go", "test", "-count=1", "-run", "^TestGoRetainOracle$", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", "-run", "^TestGoRetainOracle$", ".")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("generated Go retain reference: %v\n%s", err, out)

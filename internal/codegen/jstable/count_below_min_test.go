@@ -3,7 +3,6 @@ package jstable
 import (
 	"encoding/hex"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -11,6 +10,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // The reader declares [2..4]; the writer under another build declares [..4],
@@ -109,7 +109,7 @@ func TestJsCountBelowMinRefused(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "probe.mjs"), []byte(probe), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		cmd := exec.Command(node, "probe.mjs")
+		cmd := testproc.Command(t, node, "probe.mjs")
 		cmd.Dir = dir
 		out, err := cmd.CombinedOutput()
 		if err != nil || strings.TrimSpace(string(out)) != "OK" {

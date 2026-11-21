@@ -12,10 +12,11 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestPythonMessageCRC(t *testing.T) {
@@ -159,10 +160,10 @@ int main() {
 	bin := filepath.Join(d, "probe")
 	args := append([]string{"-std=c++17", "-O1", "-I" + d, "-I" + ser, path}, sources...)
 	args = append(args, "-o", bin)
-	if out, err := exec.Command("c++", args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, "c++", args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile C++ CRC: %v\n%s", err, out)
 	}
-	out, err := exec.Command(bin).Output()
+	out, err := testproc.Command(t, bin).Output()
 	if err != nil {
 		t.Fatalf("run C++ CRC: %v", err)
 	}

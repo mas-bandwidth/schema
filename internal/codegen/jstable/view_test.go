@@ -13,6 +13,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // viewDump is what view_test's probe prints of one generated <Home>View.js:
@@ -145,7 +147,7 @@ func viewRun(t *testing.T, node, dir string) (*ir.Unit, viewDump) {
 	if err := os.WriteFile(script, []byte(viewProbe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, script, module)
+	cmd := testproc.Command(t, node, script, module)
 	cmd.Dir = work
 	out, err := cmd.Output()
 	if err != nil {

@@ -1553,6 +1553,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		// the check. A bare signed integer is not this path.
 		w := int64(f.Type.Width)
 		top := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(w)), big.NewInt(1))
+		g.emitCheckInteger(name, ind)
 		g.emitCheckRange(name, g.dsp(name), big.NewInt(0), top, ind)
 		g.emitWriteWideRaw(name, w, ind)
 	case ir.TBool:
@@ -1641,11 +1642,13 @@ func shiftedRaw(v *big.Int, fracBits uint) *big.Int {
 func (g *gen) emitWriteFixed(f *ir.Field, name, ind string) {
 	rawMin, rawMax, _ := fixedRaw(f)
 	if f.IntMin.Cmp(f.IntMax) == 0 {
-		// degenerate: zero bits — the check is the whole write (SPEC §4.6)
-		g.raiseIf(fmt.Sprintf("%s != %s", name, intLit(rawMin)),
+		// degenerate: zero bits — the check is the whole write (SPEC §4.6).
+		// Exact inequality, so the float 5.0 is not the locked integer 5.
+		g.raiseIf(fmt.Sprintf("%s !== %s", name, intLit(rawMin)),
 			fmt.Sprintf("%s must hold the locked value %s", g.dsp(name), rawMin), ind)
 		return
 	}
+	g.emitCheckInteger(name, ind)
 	g.emitCheckRange(name, g.dsp(name), rawMin, rawMax, ind)
 	g.emitWriteOffset(name, rawMin, rawMax, ind)
 }
@@ -1654,11 +1657,13 @@ func (g *gen) emitWriteInt(f *ir.Field, name, ind string) {
 	w := int64(f.Type.Width)
 	if f.HasIntRange {
 		if f.IntMin.Cmp(f.IntMax) == 0 {
-			// degenerate range: ZERO bits — the check is the whole write
-			g.raiseIf(fmt.Sprintf("%s != %s", name, intLit(f.IntMin)),
+			// degenerate range: ZERO bits — the check is the whole write.
+			// Exact inequality, so the float 5.0 is not the locked integer 5.
+			g.raiseIf(fmt.Sprintf("%s !== %s", name, intLit(f.IntMin)),
 				fmt.Sprintf("%s must hold the locked value %s", g.dsp(name), f.IntMin), ind)
 			return
 		}
+		g.emitCheckInteger(name, ind)
 		g.emitCheckRange(name, g.dsp(name), f.IntMin, f.IntMax, ind)
 		g.emitWriteOffset(name, f.IntMin, f.IntMax, ind)
 		return
@@ -1676,6 +1681,15 @@ func (g *gen) emitWriteInt(f *ir.Field, name, ind string) {
 	g.raiseIf(fmt.Sprintf("not is_integer(%s)", name), fmt.Sprintf("%s is not an integer", g.dsp(name)), ind)
 	g.emitCheckRange(name, g.dsp(name), lo, hi, ind)
 	g.emitWriteWideRaw(name, w, ind)
+}
+
+// emitCheckInteger refuses a term that is not an integer before a range or
+// bits(N) check (docs/SPEC.md §5.1): `3.0 < 0` and `3.0 > 7` are both false
+// on the BEAM, so without it a float passes the range and raises
+// ArithmeticError in the bit arithmetic after it, past the write_x/1 verdict
+// form, which answers ArgumentError's refusal only.
+func (g *gen) emitCheckInteger(name, ind string) {
+	g.raiseIf(fmt.Sprintf("not is_integer(%s)", name), fmt.Sprintf("%s is not an integer", g.dsp(name)), ind)
 }
 
 // f32lit renders the float32 rounding of v as an Elixir float literal

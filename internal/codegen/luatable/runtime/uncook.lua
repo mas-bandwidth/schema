@@ -181,6 +181,8 @@ read_field = function(ctx, f, base)
         return nil, false
       end
       v = string.unpack("<f", ctx.data, at + 1)
+      -- a compressed float's -0 lands as +0 (§3.3, ruling fixed-compressed-negzero)
+      if f.fmin ~= nil and v == 0 then v = 0.0 end
     else
       if string.unpack("<i8", ctx.data, at + 1) & 0x7ff0000000000000 == 0x7ff0000000000000 then
         ctx.nonFinite = true
