@@ -1,5 +1,5 @@
 // The committed `was` rename corpus (ir/testdata/was-rename): one schema file
-// per step of two renames, the bool field a branch names and the default enum
+// per rename step, covering a bool field named by a branch and a default enum
 // variant, each beside its unrenamed base and its bare-rename control, with the
 // protocol id every file must hold (docs/SPEC-TABLES.md §5). The baseline's
 // half of the same files is internal/baseline/wasrename_corpus_test.go.
@@ -54,7 +54,7 @@ func TestWasRenameCorpus(t *testing.T) {
 		}
 		relations[c.group+"/"+c.relation]++
 	}
-	for _, group := range []string{"guard", "variant"} {
+	for _, group := range []string{"guard", "variant", "release-guard", "release-variant"} {
 		for _, relation := range []string{"base", "same", "moves"} {
 			if relations[group+"/"+relation] == 0 {
 				t.Errorf("group %s has no %s row: a rename is only proven beside its base and its bare-rename control", group, relation)

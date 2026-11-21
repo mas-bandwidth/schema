@@ -14,3 +14,10 @@ variant	after.schema	same	0x4e6f7c47f9afb4f5	0x3b5b3e5644c2c497
 variant	again.schema	same	0x4e6f7c47f9afb4f5	0xcfd769f22cc55539
 variant	bare.schema	moves	0x369250a56fd769bf	-
 variant	moved.schema	moves	0x703513578f237023	-
+# Exact release-note examples: the protocol IDs from before and after #4474.
+release-guard	before.schema	base	0x5d7702d614642e70	-
+release-guard	after.schema	same	0x5d7702d614642e70	0x6d39423b7b347eb8
+release-guard	bare.schema	moves	0xc8c90029bfc69896	-
+release-variant	before.schema	base	0xdc4d44c9a9363efb	-
+release-variant	after.schema	same	0xdc4d44c9a9363efb	0x9aea2e3a43bf5f41
+release-variant	bare.schema	moves	0xb82e3d6d44b95ec2	-
