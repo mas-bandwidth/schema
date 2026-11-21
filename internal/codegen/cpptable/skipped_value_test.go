@@ -186,6 +186,14 @@ static TableMessageEntry ranged_array( uint8_t kind, int64_t bits, int64_t base_
     return e;
 }
 
+// a string announced as string(max): its length rides at bits_required(0, max)
+static TableMessageEntry text_of( int64_t max )
+{
+    TableMessageEntry e;
+    e.kind = 12; e.max = max;
+    return e;
+}
+
 static TableMessageEntry keyed_names()
 {
     TableMessageEntry e;
@@ -233,6 +241,10 @@ static std::vector<SkipCase> skip_cases()
         { "keyed-zero-bit-repeat", keyed_names(), 3, { 2, 1, 1 }, { 2, 2, 2 } },
         { "keyed-zero-bit-payload-entry", keyed_names(), 3, { 2, 1, 3 }, { 2, 2, 2 } },
         { "keyed-zero-bit-above-count", keyed_names(), 2, { 1, 0 }, { 2, 2 } },
+        // three bits of length spell up to 7 under an announced max of 5; the
+        // bytes are 'a', and every one the length names is there
+        { "string-at-announced-max", text_of( 5 ), 3, { 5, 0, 0x6161616161ull }, { 3, 5, 40 } },
+        { "string-over-announced-max", text_of( 5 ), 3, { 7, 0, 0x61616161616161ull }, { 3, 5, 56 } },
     };
 }
 `
@@ -253,6 +265,8 @@ var cppSkippedShapeVerdicts = map[string]string{
 	"keyed-zero-bit-repeat":             "refused",
 	"keyed-zero-bit-payload-entry":      "refused",
 	"keyed-zero-bit-above-count":        "refused",
+	"string-at-announced-max":           "read",
+	"string-over-announced-max":         "refused",
 	"json-unknown-key-control":          "read",
 	"json-unknown-key-repeat":           "refused",
 	"json-skipped-object-key-control":   "read",
