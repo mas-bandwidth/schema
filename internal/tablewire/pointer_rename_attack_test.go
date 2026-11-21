@@ -103,7 +103,7 @@ func TestARequiredPointerToAnUndeclaredTableReadsNullAndCountsUnknown(t *testing
 	writer := renameModel(t, renameWriterSrc)
 	reader := renameModel(t, renameReaderSrc)
 	forged := renameSave(t, writer, `{"p": {"v": 7}, "c": 5}`)
-	lawfulNull := renameSave(t, reader, `{"c": 5}`)
+	lawfulNull := renameSave(t, reader, `{"p": null, "c": 5}`)
 	absent := renameSave(t, renameModel(t, renameNoFieldSrc), `{"c": 5}`)
 	if !strings.Contains(string(lawfulNull), "\x11\x00") {
 		// kind 17, index 0: a required null pointer RIDES (§2.3, §3.1)
