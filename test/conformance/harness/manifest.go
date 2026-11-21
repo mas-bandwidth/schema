@@ -258,7 +258,8 @@ type AnnounceGrown struct {
 // ITS SCHEMA rather than by a connection: WriterSchema is an earlier release of
 // Unit's own schema, WriterValue is a value that release may lawfully write,
 // and `harness generate` writes PeerAnnounce and PeerWire from the two with the
-// independent engine. PeerConn is empty and PeerBuildVersion is the writer's.
+// independent engine, with FileWire, the reader's default value in the file
+// form. PeerConn is empty and PeerBuildVersion is the writer's.
 // A SaveWire of `-` is a row every reader REFUSES: the prior writer's lawful
 // value lies outside what this reader's declaration holds (§4).
 type MessageDrift struct {
@@ -275,6 +276,11 @@ type MessageDrift struct {
 	PeerAnnounce     string
 	PeerBuildVersion uint64
 }
+
+// priorWireDir holds every file a prior-writer row names: the reader's
+// default file-form wire and the writer's announcement, one of each per
+// (unit, root), and the row's own batch and re-saved batch.
+const priorWireDir = "testdata/wire/tables/prior"
 
 // Refused says every reader owes this row a refusal.
 func (md MessageDrift) Refused() bool { return md.SaveWire == "-" }
@@ -662,19 +668,33 @@ func ReadManifest(path, jsonDir string) (m *Manifest, err error) {
 				FileWire: f[5], PeerWire: f[6], SaveWire: f[7],
 			})
 		case "message-prior":
-			// message-prior <name> <unit> <root> <file-wire> <writer schema> <writer build version> <writer value json> <announcement wire> <prior message wire> <resaved message wire or ->
-			if len(f) != 11 {
-				return nil, fmt.Errorf("%s: message-prior takes name, unit, root, file wire, writer schema, writer build version, writer value, announcement wire, prior message wire, resaved message wire or -", where)
+			// message-prior <name> <unit> <root> <writer schema> <writer build version> <writer value> <read|refused>
+			if len(f) != 8 {
+				return nil, fmt.Errorf("%s: message-prior takes name, unit, root, writer schema, writer build version, writer value, read or refused", where)
 			}
-			bv, err := strconv.ParseUint(f[6], 0, 64)
+			bv, err := strconv.ParseUint(f[5], 0, 64)
 			if err != nil {
-				return nil, fmt.Errorf("%s: %q is not a build version: %w", where, f[6], err)
+				return nil, fmt.Errorf("%s: %q is not a build version: %w", where, f[5], err)
 			}
-			m.MessageDrifts = append(m.MessageDrifts, MessageDrift{
-				Name: f[1], Unit: f[2], Root: f[3], FileWire: f[4],
-				WriterSchema: f[5], PeerBuildVersion: bv, WriterValue: f[7],
-				PeerAnnounce: f[8], PeerWire: f[9], SaveWire: f[10],
-			})
+			if !strings.HasPrefix(f[6], "{") {
+				return nil, fmt.Errorf("%s: %q is not a writer value: it is the §16 text of the root, written without spaces", where, f[6])
+			}
+			md := MessageDrift{
+				Name: f[1], Unit: f[2], Root: f[3],
+				WriterSchema: f[4], PeerBuildVersion: bv, WriterValue: f[6],
+				FileWire:     priorWireDir + "/" + f[2] + "_" + f[3] + "_default.bin",
+				PeerAnnounce: priorWireDir + "/" + f[2] + "_" + f[3] + "_conn.bin",
+				PeerWire:     priorWireDir + "/" + f[1] + "_message.bin",
+			}
+			switch f[7] {
+			case "read":
+				md.SaveWire = priorWireDir + "/" + f[1] + "_resaved.bin"
+			case "refused":
+				md.SaveWire = "-"
+			default:
+				return nil, fmt.Errorf("%s: %q is not an answer; it is read or refused", where, f[7])
+			}
+			m.MessageDrifts = append(m.MessageDrifts, md)
 		case "retain":
 			// retain <case> <unit> <root> <wire> <capacity> <ids> <save|->
 			if len(f) != 8 && len(f) != 10 {

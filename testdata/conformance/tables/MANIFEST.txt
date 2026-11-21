@@ -1612,14 +1612,60 @@ message-drift varevo_msg_v1_to_v3       tblvarevo3 varevo1_conn EvoMsg testdata/
 message-drift varevo_msg_v3_to_v1_batch tblvarevo1 varevo3_conn EvoMsg testdata/conformance/tables/wire/varevo1_msg.bin testdata/wire/tables/fuzz-vectors/varevo_msg_batch_v3.bin testdata/wire/tables/varevo_msg_batch_v3_as_v1.bin
 
 # A PRIOR WRITER'S LAWFUL MESSAGE AT A TIGHTENED RANGE (docs/SPEC-TABLES.md §3.3,
-# §4): the earlier release test/tables/prior/BackendWideScore.schema is
-# tables/backend with PlayerRow.score declared 0..200000, and today's reader
-# declares 0..100000. `harness generate` writes that writer's announcement and
-# its two batches of one body; every reader reads the body whose score is 80000
-# and REFUSES the one whose score is 150000 (out_of_range): no reader clamps the
-# value, and none delivers the message with a counter moved.
-message-prior match_prior_inside backenddemo MatchResult testdata/conformance/tables/wire/match_full.bin test/tables/prior/BackendWideScore.schema 0x01b45b6715922bb3 testdata/conformance/tables/prior/match_prior_inside.json testdata/wire/tables/match_prior_conn.bin testdata/wire/tables/match_prior_inside_message.bin testdata/wire/tables/match_prior_inside_as_current.bin
-message-prior match_prior_past   backenddemo MatchResult testdata/conformance/tables/wire/match_full.bin test/tables/prior/BackendWideScore.schema 0x01b45b6715922bb3 testdata/conformance/tables/prior/match_prior_past.json   testdata/wire/tables/match_prior_conn.bin testdata/wire/tables/match_prior_past_message.bin   -
+# §4; FORMAT.md `message-prior`). test/tables/prior/PriorWide.schema is an
+# earlier release of tblprior: every ranged value of Prior is declared 0..100
+# there (and `mask` bits(7)), and today's reader, PriorNarrow, declares 0..50
+# (bits(5)). One pair of rows per SHAPE a ranged value takes in a message: the
+# writer's batch of one body whose value lies inside the reader's range, which
+# every reader reads, and one whose value lies past it, which every reader
+# REFUSES (out_of_range). No reader clamps the value, and none delivers the
+# message with a counter moved.
+unit tblprior test/tables/prior/PriorNarrow.schema
+# a ranged int32
+message-prior prior_scalar_inside tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"scalar":40} read
+message-prior prior_scalar_past   tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"scalar":75} refused
+# a ranged uint8
+message-prior prior_small_inside tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"small":40} read
+message-prior prior_small_past   tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"small":75} refused
+# a ranged int64
+message-prior prior_wide_inside tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"wide":"40"} read
+message-prior prior_wide_past   tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"wide":"75"} refused
+# bits(7) read as bits(5)
+message-prior prior_mask_inside tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"mask":25} read
+message-prior prior_mask_past   tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"mask":75} refused
+# a fixed array element
+message-prior prior_pair_inside tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"pair":[40,10]} read
+message-prior prior_pair_past   tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"pair":[75,10]} refused
+# a counted array element
+message-prior prior_list_inside tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"list":[40,10]} read
+message-prior prior_list_past   tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"list":[10,75]} refused
+# an enum-keyed array element
+message-prior prior_keyed_inside tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"keyed":{"X":40,"Y":10}} read
+message-prior prior_keyed_past   tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"keyed":{"X":10,"Y":75}} refused
+# a union arm scalar payload
+message-prior prior_arm_inside tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"arm":{"amount":40}} read
+message-prior prior_arm_past   tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"arm":{"amount":75}} refused
+# a union arm record payload
+message-prior prior_arm_record_inside tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"arm":{"inner":{"level":40}}} read
+message-prior prior_arm_record_past   tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"arm":{"inner":{"level":75}}} refused
+# a nested record field
+message-prior prior_nested_inside tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"nested":{"level":40}} read
+message-prior prior_nested_past   tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"nested":{"level":75}} refused
+# a field of a nested table in an array
+message-prior prior_cells_inside tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"cells":[{"depth":40},{"depth":10}]} read
+message-prior prior_cells_past   tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"cells":[{"depth":10},{"depth":75}]} refused
+# a ranged float32
+message-prior prior_ratio_inside tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"ratio":40.5} read
+message-prior prior_ratio_past   tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"ratio":75.5} refused
+# a ranged float64
+message-prior prior_real_inside tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"real":40.5} read
+message-prior prior_real_past   tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"real":75.5} refused
+# a quantized float
+message-prior prior_quant_inside tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"quant":40.5} read
+message-prior prior_quant_past   tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"quant":75.5} refused
+# a ranged fixed-point value
+message-prior prior_fx_inside tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"fx":40.5} read
+message-prior prior_fx_past   tblprior Prior test/tables/prior/PriorWide.schema 0x0000000000000000 {"fx":75.5} refused
 
 rewrite varevo_v1_as_v2                 tblvarevo2 EvoDoc testdata/conformance/tables/wire/varevo_v1_full.bin
 rewrite varevo_v1_as_v3                 tblvarevo3 EvoDoc testdata/conformance/tables/wire/varevo_v1_full.bin
