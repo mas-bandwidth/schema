@@ -317,7 +317,8 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 		} else {
 			g.pf("    memset(value->%s,0,sizeof(value->%s));\n", f.Name, f.Name)
 			if f.Array == ir.ArrayCounted {
-				g.pf("    value->%s_count=0;\n", f.Name)
+				// BORN AT A, its declared minimum (docs/SPEC.md §4.2)
+				g.pf("    value->%s_count=%d;\n", f.Name, f.BornCount())
 			}
 		}
 		return
@@ -339,7 +340,9 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 		g.emitTableResetArray("value->"+f.Name, strconv.FormatInt(f.ArrayBound, 10), typ, selfInit, f)
 	case f.Array == ir.ArrayCounted:
 		g.emitTableResetArray("value->"+f.Name, strconv.FormatInt(f.ArrayBound, 10), typ, selfInit, f)
-		g.pf("    value->%s_count = 0;\n", f.Name)
+		// A [A..B]T COUNT IS BORN AT A, its declared minimum, in every target
+		// (docs/SPEC.md §4.2): zero is outside that count's own wire range.
+		g.pf("    value->%s_count = %d;\n", f.Name, f.BornCount())
 	case selfInit:
 		g.emitTableResetOne("value->"+f.Name, typ, f)
 	default:
@@ -470,14 +473,30 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind string
 		g.pf("%sif ( !table_float_finite( %s ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */\n", ind, expr)
 		if f.Required && f.HasFloatRange {
 			g.pf("%sif ( %s < %s || %s > %s ) { return 0; }\n", ind, expr, formatFloat(f.FMin, true), expr, formatFloat(f.FMax, true))
+		} else if f.HasFloatRange {
+			// row 10 of the write contract (docs/SPEC.md §5.1), debug only
+			g.pf("%sschema_assert( %s >= %s && %s <= %s ); /* a compressed float inside its range (§5.1 row 10) */\n", ind, expr, formatFloat(f.FMin, true), expr, formatFloat(f.FMax, true))
 		}
-		g.pf("%stable_writer_put32( w, table_float_to_bits( %s ) );\n", ind, expr)
+		if f.HasFloatRange {
+			// THE WRITER STORES +0 FOR A COMPRESSED FLOAT'S -0, the same bits
+			// it stores for +0 (docs/SPEC-TABLES.md §3.3, "-0 IS +0"), so a -0
+			// under a non-zero default never rides as 0x80000000
+			g.pf("%stable_writer_put32( w, table_float_to_bits( ( %s ) + 0.0f ) );\n", ind, expr)
+		} else {
+			g.pf("%stable_writer_put32( w, table_float_to_bits( %s ) );\n", ind, expr)
+		}
 	case tkF64:
 		g.pf("%sif ( !table_double_finite( %s ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */\n", ind, expr)
 		if f.Required && f.HasFloatRange {
 			g.pf("%sif ( %s < %s || %s > %s ) { return 0; }\n", ind, expr, formatFloat(f.FMin, false), expr, formatFloat(f.FMax, false))
+		} else if f.HasFloatRange {
+			g.pf("%sschema_assert( %s >= %s && %s <= %s ); /* a compressed float inside its range (§5.1 row 10) */\n", ind, expr, formatFloat(f.FMin, false), expr, formatFloat(f.FMax, false))
 		}
-		g.pf("%stable_writer_put64( w, table_double_to_bits( %s ) );\n", ind, expr)
+		if f.HasFloatRange {
+			g.pf("%stable_writer_put64( w, table_double_to_bits( ( %s ) + 0.0 ) );\n", ind, expr)
+		} else {
+			g.pf("%stable_writer_put64( w, table_double_to_bits( %s ) );\n", ind, expr)
+		}
 	default:
 		width := int(g.intBytes(g.ownerName(), f.Name, int64(tableKindWidth(kind))))
 		if f.Required {
@@ -493,6 +512,20 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind string
 				mask := (uint64(1) << f.Type.Width) - 1
 				g.pf("%sif ( (uint64_t)( %s ) > 0x%xull ) { return 0; }\n", ind, expr, mask)
 			}
+		} else if lo, hi, ok := ir.TableRawRange(f); ok {
+			// rows 1 and 2 of the write contract (docs/SPEC.md §5.1) on every
+			// field, element and arm payload that is not required: C is an
+			// assert leg, so the check is schema_assert and NDEBUG removes it
+			clampMin, clampMax := tableClampEnds(f, width)
+			if clampMin {
+				g.pf("%sschema_assert( %s >= %s ); /* a ranged value inside its declaration (§5.1 row 1) */\n", ind, expr, tableIntLit(lo, f.Type.Signed, width))
+			}
+			if clampMax {
+				g.pf("%sschema_assert( %s <= %s ); /* a ranged value inside its declaration (§5.1 row 1) */\n", ind, expr, tableIntLit(hi, f.Type.Signed, width))
+			}
+		} else if f.Type.Kind == ir.TBits && f.Type.Width < width*8 {
+			mask := (uint64(1) << f.Type.Width) - 1
+			g.pf("%sschema_assert( (uint64_t)( %s ) <= 0x%xull ); /* bits(%d) no wider than %d bits (§5.1 row 2) */\n", ind, expr, mask, f.Type.Width, f.Type.Width)
 		}
 		cast := fmt.Sprintf("uint%d_t", width*8)
 		g.pf("%s%s( w, (%s) ( %s ) );\n", ind, tablePut(width), cast, expr)
@@ -527,6 +560,10 @@ func (g *tableGen) emitTableReadScalarFrom(f *ir.Field, kind int, lvalue, ind, r
 			g.pf("%s        float decoded_f = table_bits_to_float( decoded_bits );\n", ind)
 			g.pf("%s        if ( decoded_f < %s ) { decoded_f = %s; r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }\n", ind, formatFloat(f.FMin, true), formatFloat(f.FMin, true))
 			g.pf("%s        else if ( decoded_f > %s ) { decoded_f = %s; r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }\n", ind, formatFloat(f.FMax, true), formatFloat(f.FMax, true))
+			// A COMPRESSED FLOAT'S -0 LANDS AS +0 (docs/SPEC-TABLES.md §3.3,
+			// "-0 IS +0"; ruling fixed-compressed-negzero), the value the
+			// fixed form and the Go engine land for the same bytes.
+			g.pf("%s        decoded_f = decoded_f + 0.0f; /* -0 + +0 is +0 */\n", ind)
 			g.pf("%s        %s = decoded_f;\n%s    }\n", ind, lvalue, ind)
 		} else {
 			g.pf("%s    else { %s = table_bits_to_float( decoded_bits ); }\n", ind, lvalue)
@@ -948,13 +985,13 @@ func (g *tableGen) emitFieldDescriptorAt(st *ir.Struct, f *ir.Field, guard, memb
 	if g.anyVariable {
 		pointerColumn = fmt.Sprintf("%s, ", boolC(f.Type.Pointer))
 	}
-	g.pf("    { \"%s\", %s, \"%s\", 0x%016xull, %d, %s, %s%s, %s, %s, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, \"%s\", %s, %d, %d, %d, %s },\n",
+	g.pf("    { \"%s\", %s, \"%s\", 0x%016xull, %d, %s, %s%s, %s, %s, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, \"%s\", %s, %d, %d, %d, %s, %d },\n",
 		f.Name, g.descriptorJSON(f), tableFieldTypeName(f), g.descriptorID(id), kind, boolC(isArray), pointerColumn,
 		boolC(counted), boolC(f.Type.Optional), boolC(f.Required), bound,
 		st.Name, member, elemSize, countOffset, presentOffset, table,
 		hasRange, rangeMin, fmt.Sprintf("%s, %s, %d", rangeMax, wide, frac), enumMax, variants, hasIds,
 		keyTypeName, keys, keyMax, arms, guard,
-		annotationColumns(f.Doc, f.Tags, g.vocabularySymbol(st.Name, f.Name, "tags")), sequence, textList, f.TextTotal, place)
+		annotationColumns(f.Doc, f.Tags, g.vocabularySymbol(st.Name, f.Name, "tags")), sequence, textList, f.TextTotal, place, f.BornCount())
 }
 
 func boolC(v bool) string {
