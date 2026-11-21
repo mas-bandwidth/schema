@@ -88,19 +88,25 @@ func TestMessagePriorWriterRows(t *testing.T) {
 	}
 	writers := map[string]*ir.Unit{}
 	for name, row := range rows {
+		// THE ENGINE'S OWN REASON, by the row's name. It is held here, against
+		// the engine alone: a leg owes the verdict and no reason
+		// (docs/rulings.json `refusal-verdict-only`).
 		shape, verdict, ok := cutLast(name, "_")
+		var reason string
 		switch {
 		case !ok:
 			t.Errorf("%s: a row is <shape>_inside, <shape>_past or <shape>_kind", name)
 		case verdict == "inside" && !row.Refused():
-		case verdict == "past" && row.Reason == tablewire.ReasonOutOfRange:
+		case verdict == "past" && row.Refused():
+			reason = tablewire.ReasonOutOfRange
 			// a range owes both halves: the value the reader holds, and the one it does not
 			if _, ok := rows[shape+"_inside"]; !ok {
 				t.Errorf("%s has no twin %s_inside: a ranged shape owes one read and one refusal", name, shape)
 			}
-		case verdict == "kind" && row.Reason == tablewire.ReasonKindMismatch:
+		case verdict == "kind" && row.Refused():
+			reason = tablewire.ReasonKindMismatch
 		default:
-			t.Errorf("%s: _inside reads, _past refuses out_of_range and _kind refuses kind_mismatch; the row says %q", name, row.Reason)
+			t.Errorf("%s: _inside reads, and _past and _kind are refused", name)
 		}
 
 		reader, err := u.get(row.Unit)
@@ -161,8 +167,8 @@ func TestMessagePriorWriterRows(t *testing.T) {
 		var rep tabletext.Report
 		n, ok, derr := tablewire.DecodeMessages(model, vals, pinned, &vocab, &rep)
 		if row.Refused() {
-			if reason := tablewire.RefusalReason(derr); ok || reason != row.Reason {
-				t.Errorf("%s: the reader owes a %s refusal: ok=%t reason=%q (%v)", name, row.Reason, ok, reason, derr)
+			if got := tablewire.RefusalReason(derr); ok || got != reason {
+				t.Errorf("%s: the engine owes a %s refusal: ok=%t reason=%q (%v)", name, reason, ok, got, derr)
 			}
 			if w, ok := owed[name]; !ok || w.want != nil {
 				t.Errorf("the matrix owes %s a refusal and no bytes", name)

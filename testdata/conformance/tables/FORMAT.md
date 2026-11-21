@@ -141,11 +141,15 @@ json-write-refusal <case> <unit> <root> <wire file> <damage>
   file form; `<name>_message.bin`, the writer's batch of one body; and for a
   `read` row `<name>_resaved.bin`, that body re-saved by the reader. It holds
   `<writer build version>` to the schema. A `refused` row is one every reader
-  REFUSES: the value is lawful for the prior writer and lies outside what this
-  reader's declaration holds (docs/SPEC-TABLES.md §4, `out_of_range`). No
-  reader clamps it or delivers the message with a counter moved, and the
-  generate step requires the engine's refusal to carry that reason. A driver
-  is handed the same `connection` and `message` pair either way.
+  REFUSES: the value is lawful for the prior writer, and it lies outside what
+  this reader's declaration holds or its kind is not one the reader's widens
+  from (docs/SPEC-TABLES.md §4). No reader clamps or defaults it and delivers
+  the message with a counter moved. A leg owes the VERDICT alone, never a
+  reason (docs/rulings.json `refusal-verdict-only`); the generate step requires
+  only that the engine's own refusal is a named one and not damage. A driver is
+  handed the same `connection` and `message` pair either way, and a refusal is
+  scored as one only from a leg that answered a `read` row of the same root
+  with bytes; from any other leg the row is absent.
 - **`retain`** reads through the retaining path under the row's two caller
   capacities. `<capacity>` is `full`, or `short`: one byte below the storage this
   implementation used in a roomy load. `<ids>` is `full` or an explicit entry

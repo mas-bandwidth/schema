@@ -485,12 +485,12 @@ func generateMessageDrifts(u *units, m *Manifest, drifts []MessageDrift) error {
 		var drep tabletext.Report
 		gotCnt, ok, err := tablewire.DecodeMessages(model, vals, batch, &vocab, &drep)
 		if md.Refused() {
-			// THE ROW EVERY READER REFUSES: the engine must refuse it too,
-			// and a prior-writer row for the one reason it exists to hold,
-			// so a row that went red for damage cannot stand in for the rule.
-			reason := tablewire.RefusalReason(err)
-			if ok || reason == "" || (md.Reason != "" && reason != md.Reason) {
-				return fmt.Errorf("message-drift %s: the row owes a %s refusal and the engine answered ok=%v reason=%q err=%v", md.Name, md.Reason, ok, reason, err)
+			// THE ROW EVERY READER REFUSES: the engine must refuse it too, by
+			// a NAMED verdict, so a batch that merely went bad as bytes cannot
+			// stand in for the rule the row holds. Which name is the engine's
+			// own detail and no leg's obligation (`refusal-verdict-only`).
+			if reason := tablewire.RefusalReason(err); ok || reason == "" {
+				return fmt.Errorf("message-drift %s: the row owes a refusal and the engine answered ok=%v reason=%q err=%v", md.Name, ok, reason, err)
 			}
 			continue
 		}

@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 // priorShapeRow is one `message-prior` row of the conformance manifest
@@ -32,9 +34,15 @@ func priorShapeRows(t *testing.T, repo string) []priorShapeRow {
 	for sc.Scan() {
 		fields := strings.Fields(sc.Text())
 		if len(fields) == 8 && fields[0] == "message-prior" && fields[2] == "tblprior" {
+			// the reason is this reader's own, named by the row's suffix; the
+			// corpus holds a leg to the verdict alone
 			row := priorShapeRow{name: fields[1]}
-			if fields[7] != "read" {
-				row.reason = fields[7]
+			switch {
+			case fields[7] == "read":
+			case strings.HasSuffix(fields[1], "_kind"):
+				row.reason = "kind_mismatch"
+			default:
+				row.reason = "out_of_range"
 			}
 			rows = append(rows, row)
 		}
@@ -97,7 +105,7 @@ func TestJsMessageReadNeverClampsOrCounts(t *testing.T) {
 // PriorNarrow. Every shape's value inside the reader's range reads with no
 // counter moved, every shape's value past it refuses out_of_range, and a kind
 // that moved refuses kind_mismatch unless it is the lawful widening, which
-// reads: each the independent engine's answer (TestMessagePriorWriterRows in
+// reads: each the independent engine's verdict (TestMessagePriorWriterRows in
 // test/conformance/harness holds the engine to the same rows).
 func TestJsMessagePriorWriterShapes(t *testing.T) {
 	node := jsNode(t)
@@ -173,6 +181,112 @@ func TestJsMessagePriorWriterShapes(t *testing.T) {
 		}
 		if got[row.name] != want {
 			t.Errorf("%s: JS=%q, want %q", row.name, got[row.name], want)
+		}
+	}
+}
+
+// TestJsMessageBatchRefusedWhole holds the refusal to the WHOLE batch
+// (docs/SPEC-TABLES.md §3.3, §4): a prior writer's batch of two bodies whose
+// second carries a value this reader's declaration does not hold delivers no
+// body. The count is not positive, the first body, already walked, goes back
+// to its defaults, the second is never published masked or clamped, and a
+// destination past the batch is untouched. The same two bodies with both
+// values inside the range are delivered whole.
+func TestJsMessageBatchRefusedWhole(t *testing.T) {
+	node := jsNode(t)
+	t.Parallel()
+	repo, err := filepath.Abs("../../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader := loadUnit(t, filepath.Join(repo, "test/tables/prior/PriorNarrow.schema"))
+	writer := loadUnit(t, filepath.Join(repo, "test/tables/prior/PriorWide.schema"))
+	wm := tabletext.NewModel(writer)
+	batch := func(values ...string) []byte {
+		t.Helper()
+		var insts []*tabletext.Instance
+		for _, text := range values {
+			inst := wm.New(wm.Lookup("Prior"))
+			var rep tabletext.Report
+			if !wm.Read(inst, []byte(text), &rep) {
+				t.Fatalf("the writer refused its own value %s: %+v", text, rep)
+			}
+			insts = append(insts, inst)
+		}
+		b, err := tablewire.EncodeMessages(wm, insts)
+		if err != nil {
+			t.Fatalf("EncodeMessages: %v", err)
+		}
+		return b
+	}
+	files, err := Generate(reader)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	base, err := js.Generate(reader)
+	if err != nil {
+		t.Fatalf("js.Generate: %v", err)
+	}
+	dir := t.TempDir()
+	var probe strings.Builder
+	probe.WriteString("import { readFileSync } from \"node:fs\";\nconst m = {};\n")
+	for _, set := range []map[string][]byte{base, files} {
+		for name, data := range set {
+			if strings.Contains(name, "/") {
+				continue
+			}
+			if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if strings.HasSuffix(name, "Table.js") {
+				fmt.Fprintf(&probe, "Object.assign(m, await import(%q));\n", "./"+name)
+			}
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "announce.bin"), tablewire.Announce(writer), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct{ name, first, second, want string }{
+		{"second_past_bits", `{"mask":25}`, `{"mask":75}`, "delivered=false|reason=out_of_range|mask=0,0,17|scalar=0,0,17"},
+		{"second_past_range", `{"scalar":40}`, `{"scalar":75}`, "delivered=false|reason=out_of_range|mask=0,0,17|scalar=0,0,17"},
+		{"second_kind", `{"mask":25}`, `{"narrowed":40}`, "delivered=false|reason=kind_mismatch|mask=0,0,17|scalar=0,0,17"},
+		{"both_inside", `{"mask":25,"scalar":40}`, `{"mask":30,"scalar":50}`, "delivered=true|reason=|mask=25,30,17|scalar=40,50,17"},
+	}
+	for _, tc := range cases {
+		if err := os.WriteFile(filepath.Join(dir, tc.name+".bin"), batch(tc.first, tc.second), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		fmt.Fprintf(&probe, `{
+  const voc = new m.TableVocabulary();
+  voc.Init(new Array(64));
+  if (!m.AnnounceRead(voc, new Uint8Array(readFileSync("announce.bin")), {})) { throw new Error("announce refused"); }
+  const values = [new m.Prior(), new m.Prior(), new m.Prior()];
+  for (const v of values) { v.mask = 17; v.scalar = 17; }
+  const rep = {};
+  const n = m.PriorLoadMessages(values, voc, new Uint8Array(readFileSync(%q)), rep);
+  console.log("ROW %s delivered=" + (n === 2) + (n === 2 || n < 1 ? "" : "|count=" + n) + "|reason=" + (rep.Reason ?? "") + "|mask=" + values.map((v) => v.mask).join(",") + "|scalar=" + values.map((v) => v.scalar).join(","));
+}
+`, tc.name+".bin", tc.name)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "probe.mjs"), []byte(probe.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(node, "probe.mjs")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("node probe failed: %v\n%s", err, out)
+	}
+	got := map[string]string{}
+	for line := range strings.SplitSeq(string(out), "\n") {
+		if after, ok := strings.CutPrefix(line, "ROW "); ok {
+			name, rest, _ := strings.Cut(after, " ")
+			got[name] = rest
+		}
+	}
+	for _, tc := range cases {
+		if got[tc.name] != tc.want {
+			t.Errorf("%s: JS=%q, want %q", tc.name, got[tc.name], tc.want)
 		}
 	}
 }

@@ -16,8 +16,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 // Unit is a compilation unit by the key the other lines use.
@@ -278,9 +276,6 @@ type MessageDrift struct {
 	WriterValue      string
 	PeerAnnounce     string
 	PeerBuildVersion uint64
-	// Reason is the reason the independent engine must give for a
-	// prior-writer row every reader refuses. A leg owes the refusal alone.
-	Reason string
 }
 
 // priorWireDir holds every file a prior-writer row names: the reader's
@@ -686,9 +681,9 @@ func ReadManifest(path, jsonDir string) (m *Manifest, err error) {
 				FileWire: f[5], PeerWire: f[6], SaveWire: f[7],
 			})
 		case "message-prior":
-			// message-prior <name> <unit> <root> <writer schema> <writer build version> <writer value> <read|out_of_range|kind_mismatch>
+			// message-prior <name> <unit> <root> <writer schema> <writer build version> <writer value> <read|refused>
 			if len(f) != 8 {
-				return nil, fmt.Errorf("%s: message-prior takes name, unit, root, writer schema, writer build version, writer value, read or the refusal reason", where)
+				return nil, fmt.Errorf("%s: message-prior takes name, unit, root, writer schema, writer build version, writer value, read or refused", where)
 			}
 			bv, err := strconv.ParseUint(f[5], 0, 64)
 			if err != nil {
@@ -707,10 +702,10 @@ func ReadManifest(path, jsonDir string) (m *Manifest, err error) {
 			switch f[7] {
 			case "read":
 				md.SaveWire = priorWireDir + "/" + f[1] + "_resaved.bin"
-			case tablewire.ReasonOutOfRange, tablewire.ReasonKindMismatch:
-				md.SaveWire, md.Reason = "-", f[7]
+			case "refused":
+				md.SaveWire = "-"
 			default:
-				return nil, fmt.Errorf("%s: %q is not an answer; it is read, %s or %s", where, f[7], tablewire.ReasonOutOfRange, tablewire.ReasonKindMismatch)
+				return nil, fmt.Errorf("%s: %q is not an answer; it is read or refused", where, f[7])
 			}
 			m.MessageDrifts = append(m.MessageDrifts, md)
 		case "retain":
