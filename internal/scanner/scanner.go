@@ -525,6 +525,17 @@ func (s *state) scanNumber(p Pos) Token {
 	for isDigit(s.peek()) {
 		s.advance()
 	}
+	if s.off-start > 1 && s.src[start] == '0' {
+		// `010` is ten here but octal eight in C, C++ and Go and a syntax
+		// error in strict-mode JavaScript, so the spelling is refused rather
+		// than let the legs disagree on a value (SPEC §4.1)
+		digits := string(s.src[start:s.off])
+		plain := strings.TrimLeft(digits, "0")
+		if plain == "" {
+			plain = "0"
+		}
+		s.errf(p, "a decimal number has no leading zero: %s would be decimal to schema but octal to C, C++ and Go; write %s, or 0x / 0b for another base (SPEC §4.1)", digits, plain)
+	}
 	isFloat := false
 	// a '.' begins a fraction only if not '..' (maximal munch: 1..5 is 1 .. 5)
 	if s.peek() == '.' && s.peek2() != '.' {

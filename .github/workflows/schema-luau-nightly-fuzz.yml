@@ -45,7 +45,7 @@ jobs:
       # on a hosted runner. On the fleet its post step saved the Actions Go
       # cache and held the replay job (11 s of work) for five minutes, past
       # the two-minute per-commit cap (run 42491594514, 2026-11-08).
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
           go-version-file: go.mod
@@ -67,7 +67,7 @@ jobs:
       # on a hosted runner. On the fleet its post step saved the Actions Go
       # cache and held the replay job (11 s of work) for five minutes, past
       # the two-minute per-commit cap (run 42491594514, 2026-11-08).
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
           go-version-file: go.mod
