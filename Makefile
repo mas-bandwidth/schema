@@ -473,10 +473,17 @@ TABLES_ZERO_COST_HEADERS := build/tables-generated/v1/*Table.h \
 	build/tables-generated/fixedevo/*Table.h build/tables-generated/m1/*Table.h \
 	build/tables-generated/m2/*Table.h build/tables-generated/scalars/*Table.h
 
+# $(1) one header. True when it carries a symbol the gate refuses. The last
+# stage reads ALL of its input (grep . >/dev/null, never grep -q): under
+# pipefail a reader that quits at its first line leaves sort writing into a
+# closed pipe, sort dies of SIGPIPE, the pipeline fails and a header with many
+# leaks read as clean (F-067). tables-zero-cost-negative-control plants 17,576.
+tables_zero_cost_leaks = grep -ohE "$(TABLES_ZERO_COST_SYMBOLS)" $(1) | grep -vxE "$(TABLES_ZERO_COST_ALLOWED)" | sort -u | grep . >/dev/null
+
 .PHONY: tables-zero-cost
 tables-zero-cost: build/tables-generated/.stamp
 	@for f in $(TABLES_ZERO_COST_HEADERS); do \
-		if grep -ohE "$(TABLES_ZERO_COST_SYMBOLS)" $$f | grep -vxE "$(TABLES_ZERO_COST_ALLOWED)" | sort -u | grep -q .; then \
+		if $(call tables_zero_cost_leaks,$$f); then \
 			grep -nE "$(TABLES_ZERO_COST_SYMBOLS)" $$f | grep -vE "$(TABLES_ZERO_COST_ALLOWED)"; \
 			echo "ZERO-COST GATE FAILED: pointer, map or list machinery leaked into $$f"; exit 1; \
 		fi; \
@@ -492,12 +499,23 @@ tables-zero-cost-negative-control: build/tables-generated/.stamp
 	@rm -rf build/zero-cost-control && mkdir -p build/zero-cost-control
 	@cp build/tables-generated/scalars/ScalarsTable.h build/zero-cost-control/GuardedTable.h
 	@printf 'static const TableNodeMap * kPlanted = NULL; /* PLANTED */\n' >> build/zero-cost-control/GuardedTable.h
-	@if ! grep -ohE "$(TABLES_ZERO_COST_SYMBOLS)" build/zero-cost-control/GuardedTable.h \
-			| grep -vxE "$(TABLES_ZERO_COST_ALLOWED)" | sort -u | grep -q .; then \
+	@if ! $(call tables_zero_cost_leaks,build/zero-cost-control/GuardedTable.h); then \
 		echo "NEGATIVE CONTROL FAILED: a planted node symbol left the zero-cost scan green"; exit 1; \
 	fi
 	@grep -ohE "$(TABLES_ZERO_COST_SYMBOLS)" build/zero-cost-control/GuardedTable.h | grep -vxE "$(TABLES_ZERO_COST_ALLOWED)" | sort -u
-	@echo "negative control: a planted node symbol turns the zero-cost scan RED, and the reserved id alone does not"
+	@# F-067: MANY leaks, more than a pipe holds, must still be leaks. 17,576
+	@# distinct node symbols (aaaTableNode .. zzzTableNode, about 300 KB through sort).
+	@printf 'static const int %sTableNode = 0;\n' {a..z}{a..z}{a..z} > build/zero-cost-control/ManyTable.h
+	@if ! $(call tables_zero_cost_leaks,build/zero-cost-control/ManyTable.h); then \
+		echo "NEGATIVE CONTROL FAILED: 17576 planted node symbols left the zero-cost scan green (F-067: the scan's reader quit early and sort died of SIGPIPE)"; exit 1; \
+	fi
+	@# and the same for the block-file check (tables_zero_cost_no_block_files): 1000
+	@# Block files, more than a pipe holds, must still be found.
+	@mkdir -p build/zero-cost-control/blockfiles && cd build/zero-cost-control/blockfiles && touch Planted{1..1000}Block.h
+	@if ! $(call tables_zero_cost_block_files_found,build/zero-cost-control/blockfiles); then \
+		echo "NEGATIVE CONTROL FAILED: 1000 planted Block files left the block-file check green (F-067: its reader quit early and find died of SIGPIPE)"; exit 1; \
+	fi
+	@echo "negative control: a planted node symbol turns the zero-cost scan RED, and the reserved id alone does not; 17576 planted symbols and 1000 planted Block files are RED too"
 
 # THE ACCESSOR/DESCRIPTOR AGREEMENT GATE, the C++ half of the JavaScript J1
 # technique (docs/PORTING.md, schema#421): the generated accessor and the
@@ -8103,8 +8121,13 @@ define tables_zero_cost_symbol_grep
 	echo "block zero-cost gate: no Table source carries one symbol of the block form"
 endef
 
+# $(1) a tree. True when it holds a Block file. The reader takes all of find's
+# output (never grep -q, F-067: under pipefail find died of SIGPIPE on a big
+# tree and the check passed); tables-zero-cost-negative-control plants 1000.
+tables_zero_cost_block_files_found = find $(1) -name '*Block.*' | grep . >/dev/null
+
 define tables_zero_cost_no_block_files
-	@if find $(1) -name '*Block.*' | grep -q .; then \
+	@if $(call tables_zero_cost_block_files_found,$(1)); then \
 		echo "ZERO-COST GATE FAILED: the block-less emitter still wrote a Block file — the sabotage did not take, and the comparison below would be a restatement"; \
 		find $(1) -name '*Block.*'; exit 1; \
 	fi
