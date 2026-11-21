@@ -255,6 +255,19 @@ var atomicCases = []atomicCase{
 		},
 	},
 	{
+		// F-220: a directory is one request, its sources land together
+		name: "fmt over a directory",
+		setup: func(t *testing.T) (string, func() error) {
+			return fmtDirectoryCase(t, "A.in", "B.long", false)
+		},
+	},
+	{
+		name: "fmt --migrate over a directory",
+		setup: func(t *testing.T) (string, func() error) {
+			return fmtDirectoryCase(t, "A.retired", "B.retired", true)
+		},
+	},
+	{
 		name: "tables-baseline --update",
 		setup: func(t *testing.T) (string, func() error) {
 			dir := realTempDir(t)
@@ -403,6 +416,23 @@ var atomicCases = []atomicCase{
 			mustWrite(t, path, "the bytes an earlier run packed, and they are long enough to cut\n")
 			return dir, func() error {
 				return writeAtomic(path, []byte("the bytes this run packs, which are not the same bytes\n"))
+			}
+		},
+	},
+	{
+		// publishOutputs is every paired output: pack --message --announce
+		// and cook --attribution, the side file and the payload together
+		name: "pack --announce and cook --attribution pairs",
+		setup: func(t *testing.T) (string, func() error) {
+			dir := realTempDir(t)
+			side, payload := filepath.Join(dir, "side.bin"), filepath.Join(dir, "out.bin")
+			mustWrite(t, side, "the announcement an earlier run wrote, long enough to cut\n")
+			mustWrite(t, payload, "the message an earlier run packed, long enough to cut\n")
+			return dir, func() error {
+				return publishOutputs("pack", []pairOutput{
+					{outputPath{"--announce", side}, []byte("the announcement this run writes, not the same bytes\n")},
+					{outputPath{"--out", payload}, []byte("the message this run packs, not the same bytes\n")},
+				}, nil)
 			}
 		},
 	},

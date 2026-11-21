@@ -317,9 +317,7 @@ func TestPublishedPathsHoldOnlyFinishedBytes(t *testing.T) {
 				outs = append(outs, pairOutput{outputPath{fmt.Sprintf("--out%d", i), p}, []byte(fmt.Sprintf("the finished bytes of output %d", i))})
 			}
 			steps := 0
-			saved := publishStep
-			t.Cleanup(func() { publishStep = saved })
-			publishStep = func(step string) {
+			look := func(step string) {
 				steps++
 				for _, o := range outs {
 					got, err := os.ReadFile(o.path)
@@ -335,7 +333,21 @@ func TestPublishedPathsHoldOnlyFinishedBytes(t *testing.T) {
 					}
 				}
 			}
-			if err := publishOutputs("test", outs, nil); err != nil {
+			// the publisher's seam: a look after every staged write and every
+			// rename, the points a publish is part done
+			f := outputFiles()
+			write, rename := f.Write, f.Rename
+			f.Write = func(file *os.File, name string, data []byte) error {
+				err := write(file, name, data)
+				look("staging " + name)
+				return err
+			}
+			f.Rename = func(oldname, newname string) error {
+				err := rename(oldname, newname)
+				look("renaming " + oldname + " to " + newname)
+				return err
+			}
+			if err := publishOutputsWith(f, "test", outs, nil); err != nil {
 				t.Fatal(err)
 			}
 			if steps == 0 {

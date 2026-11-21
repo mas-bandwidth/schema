@@ -113,6 +113,18 @@ func InRoot(r *os.Root) Files {
 	}
 }
 
+// InExistingDirectories is f that makes no directory: a write whose directory
+// is not there is refused with nothing changed, as creating the file there
+// would be. A command writing to a path a person named (pack --out, cook
+// --attribution) uses it; a command that owns an output tree does not.
+func (f Files) InExistingDirectories() Files {
+	shown := f.shown
+	f.Mkdir = func(name string, _ fs.FileMode) error {
+		return &fs.PathError{Op: "write into", Path: shown(name), Err: fs.ErrNotExist}
+	}
+	return f
+}
+
 func writeAll(f *os.File, _ string, data []byte) error {
 	_, err := f.Write(data)
 	return err
@@ -235,10 +247,49 @@ type change struct {
 
 // Txn is the changes of one command, published together by Commit.
 type Txn struct {
-	changes []*change
-	roots   []*os.Root
-	made    []made // directories staging created, outermost first
-	done    bool
+	changes  []*change
+	roots    []*os.Root
+	made     []made // directories staging created, outermost first
+	done     bool
+	distinct bool
+}
+
+// Distinct makes every write of t a file of its own: two writes that reach
+// one file refuse the commit with nothing changed, where otherwise the later
+// would win. The paths are compared after every symbolic link is followed,
+// and again by the file system's own answer as each file is published, since
+// two names a case-folding or normalizing file system takes as one entry are
+// one only once the first is there. A command whose outputs are one artifact
+// in several files (a message and its announcement) needs each one.
+func (t *Txn) Distinct() { t.distinct = true }
+
+// AliasError is two writes of a [Txn.Distinct] transaction that reach one
+// file, by the paths the caller named.
+type AliasError struct {
+	First, Second string
+}
+
+func (e *AliasError) Error() string {
+	return fmt.Sprintf("%s and %s name the same file", e.First, e.Second)
+}
+
+// aliased answers the AliasError of steps[i] against a write published before
+// it, if the entry it is about to replace is the one that write placed.
+func aliased(steps []*change, i int) error {
+	c := steps[i]
+	now, err := c.f.Lstat(c.file)
+	if err != nil {
+		return nil // nothing there yet: it is no file already published
+	}
+	for _, d := range steps[:i] {
+		if d.kind != write || !d.placed {
+			continue
+		}
+		if was, err := d.f.Lstat(d.file); err == nil && os.SameFile(now, was) {
+			return &AliasError{First: d.f.shown(d.path), Second: c.f.shown(c.path)}
+		}
+	}
+	return nil
 }
 
 type made struct {
@@ -538,6 +589,11 @@ func plain(c *change, err error) error {
 // read-only file or directory) happen before anything has changed: what was
 // staged is removed and the tree is as it was.
 //
+// In a [Txn.Distinct] transaction two writes that reach one file are an
+// [AliasError]: found from the paths before anything is staged, or, for two
+// names the file system alone takes as one, before the second is published,
+// which then puts back the first like any other failure.
+//
 // Only then is each change published, in the order it was made. One file
 // alone is replaced by a single rename. With more, each original entry is
 // renamed aside to a kept name and the staged file renamed into its place;
@@ -583,6 +639,10 @@ func (t *Txn) Commit() error {
 			c.file = file
 			key := filepath.Join(c.f.base, file)
 			if prev := last[key]; prev != nil {
+				if t.distinct {
+					clean()
+					return fmt.Errorf("%w; nothing was changed", &AliasError{First: prev.f.shown(prev.path), Second: c.f.shown(c.path)})
+				}
 				prev.dropped = true
 			}
 			last[key] = c
@@ -627,7 +687,13 @@ func (t *Txn) Commit() error {
 	}
 
 	for i, c := range steps {
-		err := c.publish()
+		var err error
+		if t.distinct && c.kind == write {
+			err = aliased(steps, i)
+		}
+		if err == nil {
+			err = c.publish()
+		}
 		if err == nil {
 			continue
 		}

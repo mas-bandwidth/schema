@@ -307,17 +307,14 @@ func main() {
 		if err != nil {
 			fail(err)
 		}
-		for _, p := range paths {
-			var rewrote bool
-			if *migrate {
-				_, rewrote, err = compiler.MigrateFile(p)
-			} else {
-				_, rewrote, err = compiler.FormatFile(p)
-			}
-			if err != nil {
-				fail(err)
-			}
-			if rewrote && verbose {
+		// one request: every source formats before any is written, and the
+		// ones that change land together or not at all
+		rewrote, err := formatSources(atomicfile.OS(), paths, *migrate)
+		if err != nil {
+			fail(err)
+		}
+		if verbose {
+			for _, p := range rewrote {
 				fmt.Printf("formatted %s\n", p)
 			}
 		}
@@ -751,14 +748,17 @@ func packTree(verb string, args []string) (string, []string) {
 	return args[0], rest
 }
 
-// writeAtomic writes through a temporary beside the destination and renames it
-// into place, so a run that never reaches this line leaves nothing at all and a
-// half-written file is never observable. An existing file keeps its mode; a new
-// one is 0644, the mode every generated file in this tree carries. It is the
-// one publisher every command writes through (internal/atomicfile): a path
-// that is a symbolic link is followed, and the link stays.
+// writeAtomic writes one output a person named through a temporary beside the
+// destination and renames it into place, so a run that never reaches this line
+// leaves nothing at all and a half-written file is never observable. An
+// existing file keeps its mode; a new one is 0644, the mode every generated
+// file in this tree carries. It is the one publisher every command writes
+// through (internal/atomicfile): a path that is a symbolic link is followed,
+// and the link stays; a directory that is not there is refused, not made.
 func writeAtomic(path string, data []byte) error {
-	return atomicfile.WriteFile(path, data, 0o644)
+	txn := atomicfile.New()
+	txn.With(outputFiles()).Write(path, data, 0o644)
+	return txn.Commit()
 }
 
 // reportLine prints what a pack or unpack counted and decides the exit code. A

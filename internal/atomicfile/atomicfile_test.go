@@ -460,3 +460,163 @@ func TestADirectoryInTheWayIsRefused(t *testing.T) {
 		t.Errorf("the directory holds %q", got)
 	}
 }
+
+// folding is OS() on a file system that takes two spellings of a name as one
+// entry (APFS and NTFS fold case): every name's last element is looked up in
+// lower case. It lets a Linux run reach the alias a folding volume makes.
+func folding() Files {
+	f := OS()
+	fold := func(name string) string {
+		return filepath.Join(filepath.Dir(name), strings.ToLower(filepath.Base(name)))
+	}
+	create, rename, remove, removeAll, lstat, mkdir, probe := f.Create, f.Rename, f.Remove, f.RemoveAll, f.Lstat, f.Mkdir, f.Probe
+	f.Create = func(name string, mode fs.FileMode) (*os.File, error) { return create(fold(name), mode) }
+	f.Rename = func(oldname, newname string) error { return rename(fold(oldname), fold(newname)) }
+	f.Remove = func(name string) error { return remove(fold(name)) }
+	f.RemoveAll = func(name string) error { return removeAll(fold(name)) }
+	f.Lstat = func(name string) (fs.FileInfo, error) { return lstat(fold(name)) }
+	f.Mkdir = func(name string, mode fs.FileMode) error { return mkdir(fold(name), mode) }
+	f.Probe = func(name string) error { return probe(fold(name)) }
+	return f
+}
+
+// A distinct transaction is one artifact in several files: two writes that
+// reach one file are refused with nothing changed, never the later one
+// winning. Through a symbolic link the paths say so before anything is
+// staged; for two spellings a folding file system takes as one, only the
+// entry the first write placed says so, before the second is published.
+func TestADistinctCommitRefusesTwoNamesForOneFile(t *testing.T) {
+	t.Parallel()
+	refused := func(t *testing.T, err error, first, second string) {
+		t.Helper()
+		var alias *AliasError
+		if !errors.As(err, &alias) || alias.First != first || alias.Second != second {
+			t.Fatalf("commit = %v; want %s and %s refused as one file", err, first, second)
+		}
+		if !strings.Contains(err.Error(), "nothing was changed") {
+			t.Errorf("the refusal does not say nothing was changed: %v", err)
+		}
+	}
+
+	t.Run("through a symbolic link, the file not there yet", func(t *testing.T) {
+		t.Parallel()
+		dir := tempDir(t)
+		target := filepath.Join(dir, "real")
+		if err := os.Mkdir(target, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink("real", filepath.Join(dir, "alias")); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+		first, second := filepath.Join(dir, "alias", "out.bin"), filepath.Join(target, "out.bin")
+		txn := New()
+		txn.Distinct()
+		txn.Write(first, []byte("side"), 0o644)
+		txn.Write(second, []byte("payload"), 0o644)
+		refused(t, txn.Commit(), first, second)
+		if got := names(t, dir); got != "alias real/" {
+			t.Errorf("the directory holds %q; want it as it was", got)
+		}
+	})
+
+	for _, existing := range []bool{false, true} {
+		name := "two spellings the file system folds, the file not there yet"
+		if existing {
+			name = "two spellings the file system folds, over an earlier file"
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			dir := tempDir(t)
+			var before fs.FileInfo
+			if existing {
+				put(t, filepath.Join(dir, "out.bin"), "earlier", 0o640)
+				before = lstat(t, filepath.Join(dir, "out.bin"))
+			}
+			first, second := filepath.Join(dir, "out.bin"), filepath.Join(dir, "OUT.bin")
+			txn := New()
+			txn.Distinct()
+			v := txn.With(folding())
+			v.Write(first, []byte("side"), 0o644)
+			v.Write(second, []byte("payload"), 0o644)
+			refused(t, txn.Commit(), first, second)
+			if !existing {
+				if got := names(t, dir); got != "" {
+					t.Errorf("the directory holds %q; want it empty, as it was", got)
+				}
+				return
+			}
+			if got := names(t, dir); got != "out.bin" {
+				t.Errorf("the directory holds %q; want the earlier file alone", got)
+			}
+			if got := read(t, first); got != "earlier" {
+				t.Errorf("the earlier file holds %q", got)
+			}
+			same(t, "after the refusal", first, before)
+		})
+	}
+
+	// the control: two files are two files, and without Distinct the folded
+	// pair is the later write, as before
+	t.Run("two files publish", func(t *testing.T) {
+		t.Parallel()
+		dir := tempDir(t)
+		txn := New()
+		txn.Distinct()
+		v := txn.With(folding())
+		v.Write(filepath.Join(dir, "side.bin"), []byte("side"), 0o644)
+		v.Write(filepath.Join(dir, "out.bin"), []byte("payload"), 0o644)
+		if err := txn.Commit(); err != nil {
+			t.Fatal(err)
+		}
+		if got := read(t, filepath.Join(dir, "side.bin")) + read(t, filepath.Join(dir, "out.bin")); got != "sidepayload" {
+			t.Errorf("the pair holds %q", got)
+		}
+	})
+	t.Run("without Distinct the later write wins", func(t *testing.T) {
+		t.Parallel()
+		dir := tempDir(t)
+		txn := New()
+		v := txn.With(folding())
+		v.Write(filepath.Join(dir, "out.bin"), []byte("side"), 0o644)
+		v.Write(filepath.Join(dir, "OUT.bin"), []byte("payload"), 0o644)
+		if err := txn.Commit(); err != nil {
+			t.Fatal(err)
+		}
+		if got := read(t, filepath.Join(dir, "out.bin")); got != "payload" {
+			t.Errorf("the file holds %q; want the later write", got)
+		}
+	})
+}
+
+// InExistingDirectories makes no directory: a write into one that is not
+// there is refused, nothing made, while the plain files make it.
+func TestInExistingDirectoriesMakesNone(t *testing.T) {
+	t.Parallel()
+	dir := tempDir(t)
+	side := filepath.Join(dir, "side.bin")
+	put(t, side, "earlier", 0o644)
+	before := lstat(t, side)
+	txn := New()
+	v := txn.With(OS().InExistingDirectories())
+	v.Write(side, []byte("side"), 0o644)
+	v.Write(filepath.Join(dir, "missing", "deeper", "out.bin"), []byte("payload"), 0o644)
+	err := txn.Commit()
+	if !errors.Is(err, fs.ErrNotExist) || !strings.Contains(err.Error(), "nothing was changed") || !strings.Contains(err.Error(), filepath.Join(dir, "missing")) {
+		t.Fatalf("commit = %v; want the missing directory named, nothing changed", err)
+	}
+	if got := names(t, dir); got != "side.bin" {
+		t.Errorf("the directory holds %q; want the side file alone", got)
+	}
+	same(t, "after the refusal", side, before)
+
+	// the control: the same commit through OS() makes the directories
+	txn = New()
+	txn.Write(side, []byte("side"), 0o644)
+	txn.Write(filepath.Join(dir, "missing", "deeper", "out.bin"), []byte("payload"), 0o644)
+	if err := txn.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, filepath.Join(dir, "missing", "deeper", "out.bin")); got != "payload" {
+		t.Errorf("the new file holds %q", got)
+	}
+}

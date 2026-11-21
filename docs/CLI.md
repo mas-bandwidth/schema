@@ -8,11 +8,16 @@ documented where the command is: [USAGE.md](USAGE.md).
 `unpack`, `cook`, `uncook`, `pin`) writes the new content to a temporary file
 beside it and renames that into place, so a write that fails (a full disk, a
 file-size limit, a read-only directory) exits 1 with the file byte for byte as
-it was. A command that changes several entries (`generate` into a directory,
-`unpack` into a tree, `pin` across packages) lands all of them or none: every
-file is staged before any is replaced, and a failure puts back the entries
-already moved. A path that is a symbolic link is followed and the link stays;
-an existing file keeps its mode. A file made read-only is not replaced: the
+it was. A command that changes several entries (`fmt` over several sources or a
+directory, `generate` into a directory, `unpack` into a tree, `pin` across
+packages, `pack --message --announce` and `cook --attribution` with their two
+files) lands all of them or none: every file is staged before any is
+replaced, and a failure puts back the entries already moved. `fmt` formats
+every source before it writes any, so a source that does not parse leaves
+every one as it was. The files pack, cook and uncook write go
+into a directory that is already there: a missing one is refused, not made. A
+path that is a symbolic link is followed and the link stays; an existing file
+keeps its mode. A file made read-only is not replaced: the
 command is refused with nothing changed. `new-leg` only creates files and
 never replaces one. One run writes to an output at a time: schema takes no
 lock.

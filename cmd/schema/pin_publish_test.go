@@ -74,7 +74,6 @@ func failOnce(path string, err error) func(oldpath, newpath string) error {
 	}
 }
 
-
 // TestPinPublishAllOrNothing fails a two-file pin at each point it can fail,
 // through publishPins' seam, and holds the tree to all old or all new: a
 // failure staging the second file (the reviewer's read-only directory) and a
