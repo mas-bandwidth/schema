@@ -68,13 +68,13 @@ func TestGeneratedMessageSetsKeepOuterMarks(t *testing.T) {
 	if TableMessageSetRepeat(v, outer, 3) {
 		t.Fatal("outer: first naming of 3 called a repeat")
 	}
-	for depth := 0; depth < 40; depth++ {
+	for depth := range 40 {
 		inner := TableMessageSetOpen(v)
 		if TableMessageSetRepeat(v, inner, 3) {
 			t.Fatalf("depth %d: the inner set's first naming of 3 called a repeat", depth)
 		}
 	}
-	for depth := 0; depth < 40; depth++ {
+	for range 40 {
 		TableMessageSetClose(v)
 	}
 	if !TableMessageSetRepeat(v, outer, 3) {
