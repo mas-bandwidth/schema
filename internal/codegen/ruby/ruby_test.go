@@ -32,6 +32,12 @@ func withDecl(d ir.Decl) *ir.Unit {
 	return u
 }
 
+func withTable(st *ir.Struct) *ir.Unit {
+	u := emptyUnit("game", "Game")
+	u.Files[0].Tables = []*ir.Struct{st}
+	return u
+}
+
 func fields(names ...string) []*ir.Field {
 	var out []*ir.Field
 	for _, n := range names {
@@ -360,6 +366,18 @@ func TestRubySkeleton(t *testing.T) {
 		{"field generated member read_bits", ruleGeneratedMember, withDecl(&ir.Struct{Name: "Player", Fields: fields("read_bits")}), "Player's field read_bits is the name of a member"},
 		{"arm generated member", ruleGeneratedMember, withDecl(&ir.Union{Name: "Event", Variants: []ir.UnionVariant{{Name: "read"}}}), "union Event's arm read is the name of a member the generated union class defines"},
 		{"arm named type", ruleGeneratedMember, withDecl(&ir.Union{Name: "Event", Variants: []ir.UnionVariant{{Name: "type"}}}), "union Event's arm type is the name of a member the generated union class defines"},
+		// RUBY-1: a field named to_h was replaced by the generated to_h, and
+		// public_send is how the descriptor codec and the table runtime reach
+		// a field by name.
+		{"field named to_h", ruleGeneratedMember, withDecl(&ir.Struct{Name: "Player", Fields: fields("to_h")}), "Player's field to_h is the name of a member the generated class defines"},
+		{"field named public_send", ruleGeneratedMember, withDecl(&ir.Struct{Name: "Player", Fields: fields("public_send")}), "Player's field public_send is the name of a member the generated class defines"},
+		{"arm named public_send", ruleGeneratedMember, withDecl(&ir.Union{Name: "Event", Variants: []ir.UnionVariant{{Name: "public_send"}}}), "union Event's arm public_send is the name of a member the generated union class defines"},
+		{"table field named to_json", ruleGeneratedMember, withTable(&ir.Struct{Name: "Fleet", IsTable: true, Fields: fields("to_json")}), "Fleet's field to_json is the name of a member the generated table class defines"},
+		{"table field named cook", ruleGeneratedMember, withTable(&ir.Struct{Name: "Fleet", IsTable: true, Fields: fields("cook")}), "Fleet's field cook is the name of a member the generated table class defines"},
+		{"table field named measure", ruleGeneratedMember, withTable(&ir.Struct{Name: "Fleet", IsTable: true, Fields: fields("measure")}), "Fleet's field measure is the name of a member the generated table class defines"},
+		// an arm whose tag constant spells the tag module's NAMES would
+		// redefine the name table
+		{"arm constant NAMES", ruleConstantSpelling, withDecl(&ir.Union{Name: "Event", Variants: []ir.UnionVariant{{Name: "NAMES"}}}), "union Event's arm NAMES spells the constant EventType::NAMES, colliding with built-in"},
 	}
 
 	t.Run("identifier-rules", func(t *testing.T) {
@@ -385,6 +403,7 @@ func TestRubySkeleton(t *testing.T) {
 			{"type with a digit and an underscore", withDecl(&ir.Struct{Name: "Player_2"})},
 			{"enum variant in capitals", withDecl(&ir.Enum{Name: "Weapon", Variants: []string{"LASER", "Rail"}})},
 			{"enum variant lowercase exported", withDecl(&ir.Enum{Name: "Tier", Variants: []string{"flash", "pro"}})},
+			{"type fields named for table members", withDecl(&ir.Struct{Name: "Player", Fields: fields("measure", "cook", "to_json", "save_text")})},
 			{"union arm named save", withDecl(&ir.Union{Name: "ToolBody", Variants: []ir.UnionVariant{{Name: "save"}}})},
 			{"arm named like a field", withDecl(&ir.Union{Name: "Event", Variants: []ir.UnionVariant{{Name: "Spawn"}, {Name: "hit"}}})},
 			// the field access rule carries every keyword (fields.go)
