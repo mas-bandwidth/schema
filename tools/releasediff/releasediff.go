@@ -831,18 +831,12 @@ func main() {
 	serialize := flag.String("serialize", "../serialize", "the serialize C++ runtime the packet drivers include")
 	work := flag.String("work", "build/release-differential", "the scratch directory, emptied first")
 	jobs := flag.Int("j", runtime.NumCPU(), "encodings at once")
-	judgeCorpus := flag.String("judge-corpus", "", "replay these committed corpora of Judge cases, comma-separated, in order under one work path, and exit (testdata/judge-corpus)")
+	judgeCorpus := judgeCorpusFlag(flag.CommandLine)
 	flag.Parse()
-	if *judgeCorpus != "" {
-		for corpus := range strings.SplitSeq(*judgeCorpus, ",") {
-			lines, err := RunJudgeCorpus(corpus, filepath.Join(*work, "judge-corpus"))
-			for _, line := range lines {
-				fmt.Println(line)
-			}
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "release-differential: %v\n", err)
-				os.Exit(1)
-			}
+	if len(*judgeCorpus) > 0 {
+		if err := runJudgeCorpora(*judgeCorpus, *work, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "release-differential: %v\n", err)
+			os.Exit(1)
 		}
 		return
 	}
@@ -852,6 +846,43 @@ func main() {
 		}
 		os.Exit(1)
 	}
+}
+
+// corpusDirs is the -judge-corpus flag: one directory per use, in the order
+// given. A directory is named whole, commas and all (F-237: split at commas,
+// a directory named release,beta was read as its siblings release and beta).
+type corpusDirs []string
+
+func (d *corpusDirs) String() string { return strings.Join(*d, " ") }
+
+func (d *corpusDirs) Set(dir string) error {
+	*d = append(*d, dir)
+	return nil
+}
+
+// judgeCorpusFlag defines -judge-corpus on set.
+func judgeCorpusFlag(set *flag.FlagSet) *corpusDirs {
+	dirs := &corpusDirs{}
+	set.Var(dirs, "judge-corpus", "replay this committed corpus of Judge cases and exit (testdata/judge-corpus); repeat the flag for more, replayed in order under one work path")
+	return dirs
+}
+
+// runJudgeCorpora replays each corpus in order under work/judge-corpus,
+// printing every case's line, and stops at the first that does not come to
+// its verdicts.
+func runJudgeCorpora(dirs []string, work string, out io.Writer) error {
+	for _, dir := range dirs {
+		lines, err := RunJudgeCorpus(dir, filepath.Join(work, "judge-corpus"))
+		for _, line := range lines {
+			if _, werr := fmt.Fprintln(out, line); werr != nil {
+				return werr
+			}
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // errRefused is the verdict's own exit: the report has already said why.
