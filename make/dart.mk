@@ -1368,8 +1368,17 @@ test-dart: tables-dart-cook-map tables-dart-cook-map-negative-control
 # standalone gate and its control, the forgery fuzzer and its control — the
 # long fuzz is `make tables-dart-release` — then the analyzer and the formatter
 # over every generated tree, and the packet tests, checked and compiled.
+# The registered counts of the primary packet harnesses (test/dart, test/dart-ludicrous):
+# each prints "ran N, failed M" as its last line and tools/mustrun holds N
+# to the number here, so a check that stops running, or a run that checks
+# nothing, is red. A commit that adds or removes a check changes the number.
+# The asserts-on JIT twin and the AOT twin count separately.
+DART_MAIN_CHECKS := 1
+DART_MAIN_CHECKS_AOT := 1
+DART_LUDICROUS_CHECKS := 1
+DART_LUDICROUS_CHECKS_AOT := 1
 .PHONY: test-dart
-test-dart: toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp generated/bench/dart/.stamp
+test-dart: toolchain-dart build/mustrun generated/dart/.stamp generated/dart-ludicrous/.stamp generated/bench/dart/.stamp
 	$(MAKE) tables-dart-clean
 	$(MAKE) tables-dart-names-negative-control
 	$(MAKE) tables-dart-standalone
@@ -1389,11 +1398,14 @@ test-dart: toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp 
 	$(MAKE) tables-dart-versioning-negative-control
 	$(DART) analyze generated/dart generated/dart-ludicrous generated/bench/dart test/dart test/dart-ludicrous bench/dart
 	$(DART) format --set-exit-if-changed --output=none generated/dart generated/dart-ludicrous generated/bench/dart
-	cd test/dart && $(DART) --enable-asserts main.dart
+	cd test/dart && "$(CURDIR)/$(MUSTRUN)" -name test-dart-main -count $(DART_MAIN_CHECKS) -- $(DART) --enable-asserts main.dart
 	@mkdir -p build
-	cd test/dart && $(DART) compile exe -o ../../build/schema_test_dart main.dart >/dev/null && ../../build/schema_test_dart
-	cd test/dart-ludicrous && $(DART) --enable-asserts main.dart
-	cd test/dart-ludicrous && $(DART) compile exe -o ../../build/schema_test_dart_ludicrous main.dart >/dev/null && ../../build/schema_test_dart_ludicrous
+	@rm -f build/schema_test_dart build/schema_test_dart_ludicrous
+	cd test/dart && $(DART) compile exe -o ../../build/schema_test_dart main.dart >/dev/null
+	cd test/dart && "$(CURDIR)/$(MUSTRUN)" -name test-dart-main-aot -count $(DART_MAIN_CHECKS_AOT) -- ../../build/schema_test_dart
+	cd test/dart-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name test-dart-ludicrous -count $(DART_LUDICROUS_CHECKS) -- $(DART) --enable-asserts main.dart
+	cd test/dart-ludicrous && $(DART) compile exe -o ../../build/schema_test_dart_ludicrous main.dart >/dev/null
+	cd test/dart-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name test-dart-ludicrous-aot -count $(DART_LUDICROUS_CHECKS_AOT) -- ../../build/schema_test_dart_ludicrous
 
 TEST_LEGS         += test-dart
 TOOLCHAIN_LEGS    += dart

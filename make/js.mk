@@ -1268,8 +1268,16 @@ test-js: cards-js-test cards-js-conformance cards-js-conformance-negative-contro
 
 # THE JAVASCRIPT LEG of `make test`: the table accelerator gates and their
 # negative controls, the runtime-home gate, and the packet tests in both node modes.
+# The registered counts of the primary packet harnesses (test/js, test/js-ludicrous):
+# each prints "ran N, failed M" as its last line and tools/mustrun holds N
+# to the number here, so a check that stops running, or a run that checks
+# nothing, is red. A commit that adds or removes a check changes the number.
+JS_MAIN_CHECKS := 1
+JS_MAIN_CHECKS_PRODUCTION := 1
+JS_LUDICROUS_CHECKS := 1
+JS_LUDICROUS_CHECKS_PRODUCTION := 1
 .PHONY: test-js
-test-js: toolchain-js generated/js/.stamp generated/js-ludicrous/.stamp generated/bench/js/.stamp
+test-js: build/mustrun toolchain-js generated/js/.stamp generated/js-ludicrous/.stamp generated/bench/js/.stamp
 	$(MAKE) tables-js-standalone
 	$(MAKE) tables-js-refuses-pointers
 	$(MAKE) tables-js-leg
@@ -1292,8 +1300,10 @@ test-js: toolchain-js generated/js/.stamp generated/js-ludicrous/.stamp generate
 	$(MAKE) tables-js-versioning-negative-control
 	$(MAKE) tables-js-fixed-roadmap-negative-control
 	$(MAKE) tables-js-message-form-negative-control
-	cd test/js && $(NODE) main.mjs && NODE_ENV=production $(NODE) main.mjs
-	cd test/js-ludicrous && $(NODE) main.mjs && NODE_ENV=production $(NODE) main.mjs
+	cd test/js && "$(CURDIR)/$(MUSTRUN)" -name test-js-main -count $(JS_MAIN_CHECKS) -- $(NODE) main.mjs
+	cd test/js && NODE_ENV=production "$(CURDIR)/$(MUSTRUN)" -name test-js-main-production -count $(JS_MAIN_CHECKS_PRODUCTION) -- $(NODE) main.mjs
+	cd test/js-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name test-js-ludicrous -count $(JS_LUDICROUS_CHECKS) -- $(NODE) main.mjs
+	cd test/js-ludicrous && NODE_ENV=production "$(CURDIR)/$(MUSTRUN)" -name test-js-ludicrous-production -count $(JS_LUDICROUS_CHECKS_PRODUCTION) -- $(NODE) main.mjs
 
 TEST_LEGS         += test-js
 TOOLCHAIN_LEGS    += js

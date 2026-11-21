@@ -999,16 +999,22 @@ tables-elixir-release:
 # both and the block lead gate — then the format check and the packet tests.
 # The port emits the whole variable class (docs/SPEC-TABLES.md §2, §3, §16),
 # whose own gate is tables-elixir-variable-class above.
+# The registered counts of the primary packet harnesses (test/elixir, test/elixir-ludicrous):
+# each prints "ran N, failed M" as its last line and tools/mustrun holds N
+# to the number here, so a check that stops running, or a run that checks
+# nothing, is red. A commit that adds or removes a check changes the number.
+ELIXIR_MAIN_CHECKS := 1
+ELIXIR_LUDICROUS_CHECKS := 1
 .PHONY: test-elixir test-elixir-recipe
 test-elixir: toolchain-elixir generated/elixir/.stamp generated/elixir-ludicrous/.stamp generated/bench/elixir/.stamp
 	$(MAKE) test-elixir-recipe
 
-test-elixir-recipe: toolchain-elixir generated/elixir/.stamp generated/elixir-ludicrous/.stamp generated/bench/elixir/.stamp
+test-elixir-recipe: build/mustrun toolchain-elixir generated/elixir/.stamp generated/elixir-ludicrous/.stamp generated/bench/elixir/.stamp
 	$(MAKE) tables-elixir-fuzz
 	$(MAKE) tables-elixir-block-lead
 	$(MIX) format --check-formatted generated/elixir/*.ex generated/elixir-ludicrous/*.ex generated/bench/elixir/*.ex generated/bench/elixir/realworld/*.ex
-	cd test/elixir && $(ELIXIR) main.exs
-	cd test/elixir-ludicrous && $(ELIXIR) main.exs
+	cd test/elixir && "$(CURDIR)/$(MUSTRUN)" -name test-elixir-main -count $(ELIXIR_MAIN_CHECKS) -- $(ELIXIR) main.exs
+	cd test/elixir-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name test-elixir-ludicrous -count $(ELIXIR_LUDICROUS_CHECKS) -- $(ELIXIR) main.exs
 
 TEST_LEGS            += test-elixir
 TOOLCHAIN_LEGS       += elixir
