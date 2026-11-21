@@ -44,8 +44,8 @@ func TestMessagePriorWriterIsRangesApart(t *testing.T) {
 		return after
 	}
 	narrow, wide := body("test/tables/prior/PriorNarrow.schema"), body("test/tables/prior/PriorWide.schema")
-	if n := strings.Count(narrow, "max = 50"); n != 12 {
-		t.Fatalf("PriorNarrow declares %d ranges of max = 50, want 12: move the rows with it", n)
+	if n := strings.Count(narrow, "max = 50"); n != 11 {
+		t.Fatalf("PriorNarrow declares %d ranges of max = 50, want 11: move the rows with it", n)
 	}
 	want := strings.ReplaceAll(strings.ReplaceAll(narrow, "max = 50", "max = 100"), "bits(5)", "bits(7)")
 	if wide != want {
