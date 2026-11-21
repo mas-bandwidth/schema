@@ -2515,20 +2515,54 @@ int _bytesCompare(List<int> a, List<int> b) {
   return a.length.compareTo(b.length);
 }
 
-// _stableSorted is a copy of a map's entries in ascending key order, ties in
-// their stored order (docs/SPEC-TABLES.md §2.8).
-List<T> _stableSorted<T>(List<T> l, int Function(T a, T b) cmp) {
-  final out = List<T>.from(l);
-  for (var i = 1; i < out.length; i++) {
-    final x = out[i];
-    var j = i - 1;
-    while (j >= 0 && cmp(out[j], x) > 0) {
-      out[j + 1] = out[j];
-      j--;
-    }
-    out[j + 1] = x;
+// _intCompare orders two signed integer keys by value (docs/SPEC-TABLES.md §2.8).
+int _intCompare(int a, int b) => a.compareTo(b);
+
+// _u64Compare orders two unsigned keys as 64-bit patterns (docs/SPEC-TABLES.md §2.8).
+int _u64Compare(int a, int b) => _u64Below(a, b) ? -1 : (_u64Above(a, b) ? 1 : 0);
+
+// _stableSortedBy is a copy of a map's entries in ascending key order, ties in
+// their stored order (docs/SPEC-TABLES.md §2.8). Each entry's sort key is
+// built ONCE, and a bottom-up merge sort over the entries' indices makes at
+// most n log2 n compares whatever order the entries arrive in: the JSON read
+// sorts a map in the order the document sent it, so the cost must not depend
+// on that order (§2.8's cost row: the sort is O(n log n) once per map).
+List<T> _stableSortedBy<T, K>(List<T> l, K Function(T) keyOf, int Function(K a, K b) cmp) {
+  final n = l.length;
+  if (n < 2) {
+    return List<T>.from(l);
   }
-  return out;
+  final keys = List<K>.generate(n, (i) => keyOf(l[i]), growable: false);
+  var from = List<int>.generate(n, (i) => i, growable: false);
+  var to = List<int>.filled(n, 0);
+  for (var width = 1; width < n; width *= 2) {
+    for (var lo = 0; lo < n; lo += 2 * width) {
+      final mid = lo + width < n ? lo + width : n;
+      final hi = lo + 2 * width < n ? lo + 2 * width : n;
+      var i = lo;
+      var j = mid;
+      var k = lo;
+      while (i < mid && j < hi) {
+        // the right run's entry goes first only when it is strictly below:
+        // an equal key keeps its stored order
+        if (cmp(keys[from[j]], keys[from[i]]) < 0) {
+          to[k++] = from[j++];
+        } else {
+          to[k++] = from[i++];
+        }
+      }
+      while (i < mid) {
+        to[k++] = from[i++];
+      }
+      while (j < hi) {
+        to[k++] = from[j++];
+      }
+    }
+    final swap = from;
+    from = to;
+    to = swap;
+  }
+  return List<T>.generate(n, (i) => l[from[i]]);
 }
 
 // _wideValid reports whether a run of Dart String UTF-16 codeUnits is well-formed:
@@ -2640,7 +2674,7 @@ final class BenchMixed {
   int worldTime = 0;
   int frameTick = 0;
   BigInt serverTime = BigInt.zero;
-  List<MixedEntity> entities = <MixedEntity>[];
+  List<MixedEntity> entities = List<MixedEntity>.generate(1, (_) => MixedEntity());
   List<MixedStat> stats = <MixedStat>[];
   MixedEvent gameEvent = MixedEvent();
   List<int> loadout = List<int>.generate(4, (_) => 0);
@@ -3063,7 +3097,18 @@ void benchMixedWireSaveBodyFields(TableWireWriter w, BenchMixed v) {
     _putWide(w, v.serverTime, 4);
   }
   assert(v.entities.length >= 1 && v.entities.length <= 8);
-  if (v.entities.isNotEmpty) {
+  var birthEntities = v.entities.length == 1;
+  if (birthEntities) {
+    for (var bi = 0; bi < 1; bi++) {
+      final mark = w.state.mark();
+      final b = w.sub();
+      b.path = [...w.path, 9, bi];
+      mixedEntityWireSaveBody(b, v.entities[bi]);
+      w.state.rollback(mark);
+      if (b.buf.length > 1) { birthEntities = false; break; }
+    }
+  }
+  if (v.entities.isNotEmpty && !birthEntities) {
     final ref = w.refFor(-7828083326636031446);
     final s = w.sub();
     s.putByte(13);
@@ -3142,22 +3187,22 @@ void benchMixedWireSaveBodyFields(TableWireWriter w, BenchMixed v) {
     w.putBytes(s.buf);
   }
   assert(!v.aimX.isFinite || (v.aimX >= -1.0 && v.aimX <= 1.0));
-  if (_f32Bits(v.aimX) != 0) {
+  if (_f32Bits((v.aimX == 0 ? 0.0 : v.aimX)) != 0) {
     w.putLeb(w.refFor(-2616736631205226807));
     w.putByte(10);
-    w.putU32(_f32Write(v.aimX, 'BenchMixed.aim_x'));
+    w.putU32(_f32Write((v.aimX == 0 ? 0.0 : v.aimX), 'BenchMixed.aim_x'));
   }
   assert(!v.aimY.isFinite || (v.aimY >= -1.0 && v.aimY <= 1.0));
-  if (_f32Bits(v.aimY) != 0) {
+  if (_f32Bits((v.aimY == 0 ? 0.0 : v.aimY)) != 0) {
     w.putLeb(w.refFor(-2616737730716855018));
     w.putByte(10);
-    w.putU32(_f32Write(v.aimY, 'BenchMixed.aim_y'));
+    w.putU32(_f32Write((v.aimY == 0 ? 0.0 : v.aimY), 'BenchMixed.aim_y'));
   }
   assert(!v.aimZ.isFinite || (v.aimZ >= -1.0 && v.aimZ <= 1.0));
-  if (_f32Bits(v.aimZ) != 0) {
+  if (_f32Bits((v.aimZ == 0 ? 0.0 : v.aimZ)) != 0) {
     w.putLeb(w.refFor(-2616738830228483229));
     w.putByte(10);
-    w.putU32(_f32Write(v.aimZ, 'BenchMixed.aim_z'));
+    w.putU32(_f32Write((v.aimZ == 0 ? 0.0 : v.aimZ), 'BenchMixed.aim_z'));
   }
   if (_f32Bits(v.recoil) != 0) {
     w.putLeb(w.refFor(-7138431908913683369));
@@ -4436,7 +4481,7 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
           if (r.retain != null) { for (final old in v.entities) { r.retain!.forget(old); } }
           v.entities = <MixedEntity>[];
           var keep = count;
-          if (keep < 0 || keep > 8) { r.report.refuse('count_over_bound'); return; }
+          if (keep < 1 || keep > 8) { r.report.refuse('count_over_bound'); return; }
           final arr = TableWireReader.sub(r, r.pos, end < r.pos ? r.pos : end);
           for (var i = 0; i < keep; i++) {
             final elen = arr.readLeb();
@@ -4548,8 +4593,8 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
               r.report.refuse('kind_mismatch'); return;
           }
           if (r.report.nonFiniteFloat.isNotEmpty) return;
-          if (d < -1) { r.report.refuse('out_of_range'); return; }
-          if (d > 1) { r.report.refuse('out_of_range'); return; }
+          if (d < -1.0) { r.report.refuse('out_of_range'); return; }
+          if (d > 1.0) { r.report.refuse('out_of_range'); return; }
           if (d == 0) d = 0.0;
           v.aimX = d;
         }
@@ -4566,8 +4611,8 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
               r.report.refuse('kind_mismatch'); return;
           }
           if (r.report.nonFiniteFloat.isNotEmpty) return;
-          if (d < -1) { r.report.refuse('out_of_range'); return; }
-          if (d > 1) { r.report.refuse('out_of_range'); return; }
+          if (d < -1.0) { r.report.refuse('out_of_range'); return; }
+          if (d > 1.0) { r.report.refuse('out_of_range'); return; }
           if (d == 0) d = 0.0;
           v.aimY = d;
         }
@@ -4584,8 +4629,8 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
               r.report.refuse('kind_mismatch'); return;
           }
           if (r.report.nonFiniteFloat.isNotEmpty) return;
-          if (d < -1) { r.report.refuse('out_of_range'); return; }
-          if (d > 1) { r.report.refuse('out_of_range'); return; }
+          if (d < -1.0) { r.report.refuse('out_of_range'); return; }
+          if (d > 1.0) { r.report.refuse('out_of_range'); return; }
           if (d == 0) d = 0.0;
           v.aimZ = d;
         }
@@ -5278,7 +5323,10 @@ final class TableTextReport {
   String refusal = '';
   String missingFields = '';
   bool variableRoot = false;
-  final Set<int> textLabels = <int>{};
+  // every &node label the text has defined so far, in document order, placed
+  // or in a skipped value alike (§16.7): true while its definition is open,
+  // false once it has closed.
+  final Map<int, bool> textLabels = <int, bool>{};
 
   // refuse records the read's whole-load refusal by name (a per-language
   // diagnostic, never compared across legs): the first refusal stands.
@@ -5681,7 +5729,6 @@ final class _Share {
   final Map<Object, int> count = <Object, int>{};
   final Map<Object, int> label = <Object, int>{};
   final Map<int, Object> defined = <int, Object>{};
-  final Set<int> pending = <int>{};
   int next = 0;
 
   void see(Object obj) {
@@ -5748,21 +5795,21 @@ Object? _readPtr(dynamic val, _Share sh, TableTextReport r, Object Function() ma
     if (raw is! int || raw < 1) {
       throw const FormatException('invalid node label');
     }
+    // a label alone REFERS: the text must have defined it before this point
+    // and closed that definition; one a skipped value defined reads null
     if (entries.length == 1) {
+      if (r.textLabels[raw] != false) throw const FormatException('undefined node label');
       final have = sh.defined[raw];
-      if (have == null) {
-        if (!sh.pending.contains(raw) && r.textLabels.contains(raw)) return null;
-        throw const FormatException('undefined node label');
-      }
+      if (have == null) return null;
       if (have.runtimeType != make().runtimeType) { r.refuse('kind_mismatch'); return null; }
       return have;
     }
-    final have = sh.defined[raw];
-    if (have != null) throw const FormatException('node label defined twice');
+    // a label with fields DEFINES, and only once in the whole text
+    if (r.textLabels.containsKey(raw)) throw const FormatException('node label defined twice');
     final made = make();
-    sh.pending.add(raw);
+    r.textLabels[raw] = true;
     fill(made, entries);
-    sh.pending.remove(raw);
+    r.textLabels[raw] = false;
     sh.defined[raw] = made;
     return made;
   }
@@ -5873,10 +5920,22 @@ double _jsonFloatField(dynamic val, TableTextReport r, [bool single = false, dou
   r.refuse('kind_mismatch');
   return def;
 }
+
+// _jsonCompressedFloat holds a compressed float's text value to its range,
+// evaluated at the field's width (a float32 range's ends are float32(min) and
+// float32(max)), and folds -0 to +0 (ruling fixed-compressed-negzero), as the
+// binary reads do.
+double _jsonCompressedFloat(double d, TableTextReport r, double lo, double hi, [double def = 0.0]) {
+  if (!(d >= lo && d <= hi)) {
+    r.refuse('out_of_range');
+    return def;
+  }
+  return d == 0 ? 0.0 : d;
+}
 // §16.2: comments and trailing commas are layout, not values. The
 // a repeated key is judged before jsonDecode folds an object's repeated key.
 // String tokens are copied byte-for-byte so comment marks inside them stay text.
-String _jsonPrepare(String text, TableTextReport r) {
+String _jsonPrepare(String text) {
   final source = text.codeUnits;
   final stripped = <int>[];
   var quoted = false;
@@ -5954,39 +6013,7 @@ String _jsonPrepare(String text, TableTextReport r) {
     }
     clean.add(c);
   }
-  final result = String.fromCharCodes(clean);
-  final stack = <Set<String>?>[];
-  final firstLabels = <int>{};
-  for (var i = 0; i < clean.length; i++) {
-    final c = clean[i];
-    if (c == 0x7b) { stack.add(<String>{}); continue; }
-    if (c == 0x5b) { stack.add(null); continue; }
-    if (c == 0x7d || c == 0x5d) { if (stack.isNotEmpty) stack.removeLast(); continue; }
-    if (c != 0x22) continue;
-    final begin = i;
-    i++;
-    for (; i < clean.length; i++) {
-      if (clean[i] == 0x5c) { i++; continue; }
-      if (clean[i] == 0x22) break;
-    }
-    if (i >= clean.length) throw const FormatException('unclosed JSON string');
-    var j = i + 1;
-    while (j < clean.length && clean[j] <= 0x20) j++;
-    if (j >= clean.length || clean[j] != 0x3a || stack.isEmpty || stack.last == null) continue;
-    final key = jsonDecode(result.substring(begin, i + 1)) as String;
-    if (key == '&node') {
-      var at = j + 1;
-      while (at < clean.length && clean[at] <= 0x20) at++;
-      final start = at;
-      while (at < clean.length && clean[at] >= 0x30 && clean[at] <= 0x39) at++;
-      final label = int.tryParse(result.substring(start, at));
-      while (at < clean.length && clean[at] <= 0x20) at++;
-      if (label != null && label > 0 && firstLabels.add(label) && at < clean.length && clean[at] == 0x2c) {
-        r.textLabels.add(label);
-      }
-    }
-  }
-  return result;
+  return String.fromCharCodes(clean);
 }
 
 // _JNum is a JSON number the int type cannot hold exactly, kept as its
@@ -6050,18 +6077,37 @@ int? _jsonSkippedLabel(dynamic raw) {
   return null;
 }
 
-void _jsonSkipEntry(int idx, String key, dynamic val, TableTextReport r) {
-  _jsonText(key);
-  _jsonName(key, r);
-  if (r.variableRoot && key.startsWith('&')) {
-    final label = idx == 0 && key == '&node' ? _jsonSkippedLabel(val) : null;
-    if (label == null) {
-      throw const FormatException('reserved ampersand prefix');
+// _jsonSkipObject walks one skipped object's entries in text order. In a
+// pointered root the label rules apply here as everywhere (§16.7): an &node key
+// is first or it is the reserved prefix out of place; a label alone REFERS, and
+// the text must have defined it and closed that definition; a label with fields
+// DEFINES, must be new to the text, and stays open until this object closes, so
+// a later reference reads null and a second definition refuses.
+void _jsonSkipObject(List<MapEntry<dynamic, dynamic>> entries, TableTextReport r) {
+  int? opened;
+  for (var idx = 0; idx < entries.length; idx++) {
+    final key = entries[idx].key;
+    if (key is! String) throw const FormatException('kind_mismatch');
+    final val = entries[idx].value;
+    _jsonText(key);
+    _jsonName(key, r);
+    if (r.variableRoot && key.startsWith('&')) {
+      final label = idx == 0 && key == '&node' ? _jsonSkippedLabel(val) : null;
+      if (label == null) {
+        throw const FormatException('reserved ampersand prefix');
+      }
+      if (entries.length == 1) {
+        if (r.textLabels[label] != false) throw const FormatException('undefined node label');
+        return;
+      }
+      if (r.textLabels.containsKey(label)) throw const FormatException('node label defined twice');
+      r.textLabels[label] = true;
+      opened = label;
+    } else {
+      _jsonSkipValue(val, r);
     }
-    r.textLabels.add(label);
-  } else {
-    _jsonSkipValue(val, r);
   }
+  if (opened != null) r.textLabels[opened] = false;
 }
 
 void _jsonSkipValue(dynamic val, TableTextReport r) {
@@ -6070,10 +6116,7 @@ void _jsonSkipValue(dynamic val, TableTextReport r) {
     return;
   }
   if (val is _JObj) {
-    for (var idx = 0; idx < val.entries.length; idx++) {
-      final entry = val.entries[idx];
-      _jsonSkipEntry(idx, entry.key, entry.value, r);
-    }
+    _jsonSkipObject(val.entries, r);
     return;
   }
   if (val is List) {
@@ -6083,13 +6126,7 @@ void _jsonSkipValue(dynamic val, TableTextReport r) {
     return;
   }
   if (val is Map) {
-    var idx = 0;
-    for (final entry in val.entries) {
-      final key = entry.key;
-      if (key is! String) throw const FormatException('kind_mismatch');
-      _jsonSkipEntry(idx, key, entry.value, r);
-      idx++;
-    }
+    _jsonSkipObject(val.entries.toList(), r);
   }
 }
 
@@ -6479,6 +6516,14 @@ List<T> _jsonList<T>(dynamic val, TableTextReport r, int bound, T Function(dynam
   return out;
 }
 
+// _jsonCountMin holds a counted [Min..N] array's read to its declared Min: a
+// shorter one is refused, in the text form as on the wire (docs/SPEC.md §5.1
+// row 3).
+List<T> _jsonCountMin<T>(List<T> out, TableTextReport r, int min) {
+  if (out.length < min) r.refuse('count_over_bound');
+  return out;
+}
+
 List<T> _jsonFixed<T>(dynamic val, TableTextReport r, int n, T Function() def, T Function(dynamic, T) f, [List<T>? fallback]) {
   if (val is! List) {
     r.refuse('kind_mismatch');
@@ -6525,7 +6570,11 @@ List<T> _jsonKeyed<T>(dynamic val, TableTextReport r, int n, T Function() def, M
   return out;
 }
 
-List<T> _jsonMap<T>(dynamic val, TableTextReport r, Object Function(T) keyOf, int Function(T a, T b) cmp, T? Function(String, dynamic) f, [List<T>? fallback]) {
+// _jsonMap reads a map's object in the order the document sent it and lands
+// the entries in ascending key order (§2.8, §16): sortKey builds each entry's
+// key once and _stableSortedBy sorts in O(n log n), so keys sent in
+// descending order cost what any order costs.
+List<T> _jsonMap<T, K>(dynamic val, TableTextReport r, Object Function(T) keyOf, K Function(T) sortKey, int Function(K a, K b) cmp, T? Function(String, dynamic) f, [List<T>? fallback]) {
   final entries = _jsonEntries(val);
   if (entries == null) {
     r.refuse('kind_mismatch');
@@ -6546,13 +6595,16 @@ List<T> _jsonMap<T>(dynamic val, TableTextReport r, Object Function(T) keyOf, in
       out.add(item);
     }
   }
-  return _stableSorted(out, cmp);
+  return _stableSortedBy<T, K>(out, sortKey, cmp);
 }
 
+// A MAP KEY is held to its declared string(N) bound and nothing else: the
+// 255-byte schema-name cap (_jsonName) never reaches a map key (§16.2), so a
+// string(300) key of 280 bytes is a key.
 String? _jsonStringKey(String k, int bound, TableTextReport r) {
   k = _jsonText(k);
   final len = utf8.encode(k).length;
-  if (bound >= 0 && (len > bound || len > 255)) {
+  if (bound >= 0 && len > bound) {
     r.refuse('length_over_bound');
     return null;
   }
@@ -7461,25 +7513,25 @@ void benchMixedToJsonBody(_JOut out, BenchMixed v, int depth, _Share sh, [int? l
   out.raw(_jsonString(base64Encode(latin1.encode(v.payload))));
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.aimX >= -1 && v.aimX <= 1)) { throw StateError('invalid_value: field aim_x out of range'); }
+  if (!(v.aimX >= -1.0 && v.aimX <= 1.0)) { throw StateError('invalid_value: field aim_x out of range'); }
   out.line(depth + 1);
   out.raw(_jsonString("aim_x"));
   out.raw(': ');
-  out.raw(_jsonFloat(v.aimX, true));
+  out.raw(_jsonFloat((v.aimX == 0 ? 0.0 : v.aimX), true));
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.aimY >= -1 && v.aimY <= 1)) { throw StateError('invalid_value: field aim_y out of range'); }
+  if (!(v.aimY >= -1.0 && v.aimY <= 1.0)) { throw StateError('invalid_value: field aim_y out of range'); }
   out.line(depth + 1);
   out.raw(_jsonString("aim_y"));
   out.raw(': ');
-  out.raw(_jsonFloat(v.aimY, true));
+  out.raw(_jsonFloat((v.aimY == 0 ? 0.0 : v.aimY), true));
   if (comma) out.raw(',');
   comma = true;
-  if (!(v.aimZ >= -1 && v.aimZ <= 1)) { throw StateError('invalid_value: field aim_z out of range'); }
+  if (!(v.aimZ >= -1.0 && v.aimZ <= 1.0)) { throw StateError('invalid_value: field aim_z out of range'); }
   out.line(depth + 1);
   out.raw(_jsonString("aim_z"));
   out.raw(': ');
-  out.raw(_jsonFloat(v.aimZ, true));
+  out.raw(_jsonFloat((v.aimZ == 0 ? 0.0 : v.aimZ), true));
   if (comma) out.raw(',');
   comma = true;
   out.line(depth + 1);
@@ -7607,6 +7659,7 @@ void benchMixedFromJsonFields(BenchMixed v, dynamic obj, TableTextReport r, _Sha
           }
           v.entities.add(e);
         }
+        if (v.entities.length < 1) { r.refuse('count_over_bound'); }
         break;
       case "stats":
         if (!seen.add(key)) r.refuse('text_damaged');
@@ -7642,15 +7695,15 @@ void benchMixedFromJsonFields(BenchMixed v, dynamic obj, TableTextReport r, _Sha
         break;
       case "aim_x":
         if (!seen.add(key)) r.refuse('text_damaged');
-        v.aimX = _jsonFloatField(val, r, true, v.aimX);
+        v.aimX = _jsonCompressedFloat(_jsonFloatField(val, r, true, v.aimX), r, -1.0, 1.0, v.aimX);
         break;
       case "aim_y":
         if (!seen.add(key)) r.refuse('text_damaged');
-        v.aimY = _jsonFloatField(val, r, true, v.aimY);
+        v.aimY = _jsonCompressedFloat(_jsonFloatField(val, r, true, v.aimY), r, -1.0, 1.0, v.aimY);
         break;
       case "aim_z":
         if (!seen.add(key)) r.refuse('text_damaged');
-        v.aimZ = _jsonFloatField(val, r, true, v.aimZ);
+        v.aimZ = _jsonCompressedFloat(_jsonFloatField(val, r, true, v.aimZ), r, -1.0, 1.0, v.aimZ);
         break;
       case "recoil":
         if (!seen.add(key)) r.refuse('text_damaged');
@@ -7766,9 +7819,10 @@ String fixedTableToJson(FixedTable v) {
 FixedTable fixedTableFromJson(String text, [TableTextReport? report]) {
   final r = report ?? TableTextReport();
   r.missingFields = '';
+  r.textLabels.clear();
   r.variableRoot = false;
   final v = FixedTable();
-  final root = _jsonDecodeExact(_jsonPrepare(text, r));
+  final root = _jsonDecodeExact(_jsonPrepare(text));
   if (_jsonEntries(root) == null) throw const FormatException('json_root_not_object: FixedTable');
   if (_jsonEntries(root) != null) {
     fixedTableFromJsonFields(v, root, r, _Share());

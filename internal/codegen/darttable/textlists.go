@@ -44,7 +44,8 @@ func textListWriteCheck(f *ir.Field, expr, ind, prefix, refusal string) string {
 }
 
 func (g *wireGen) emitSavePlainTextList(f *ir.Field, expr, ind string, id uint64) {
-	g.pf("%sif (%s.isNotEmpty) {\n", ind, expr)
+	rides := g.countedRides(f, expr, ind, 0)
+	g.pf("%sif (%s) {\n", ind, rides)
 	g.pf("%s  final ref=w.refFor(%s);final s=w.sub();s.putByte(12);s.putLeb(%s.length);\n", ind, dartU64Literal(id), expr)
 	g.pf("%s  for(final e in %s){final text=utf8.encode(e.value);s.putLeb(text.length);s.putBytes(text);}\n", ind, expr)
 	g.pf("%s  w.putLeb(ref);w.putByte(14);w.putLeb(s.buf.length);w.putBytes(s.buf);\n%s}\n", ind, ind)

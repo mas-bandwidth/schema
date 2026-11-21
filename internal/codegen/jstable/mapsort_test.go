@@ -72,7 +72,7 @@ func TestMapWriterSortJavaScript(t *testing.T) {
 	if !ok {
 		t.Fatal("no variable module was generated")
 	}
-	const sortLine = "  out.sort((a, b) => TableVariableKeyOrder(fd, a.key, b.key));\n"
+	const sortLine = "  TableVariableSortEntries(fd, out);\n"
 	if bytes.Count(module, []byte(sortLine)) != 1 {
 		t.Fatalf("the module does not carry the entry sort exactly once (%q): the witness below would plant nothing", strings.TrimSpace(sortLine))
 	}

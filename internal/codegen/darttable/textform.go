@@ -154,7 +154,10 @@ final class TableTextReport {
   String refusal = '';
   String missingFields = '';
   bool variableRoot = false;
-  final Set<int> textLabels = <int>{};
+  // every &node label the text has defined so far, in document order, placed
+  // or in a skipped value alike (§16.7): true while its definition is open,
+  // false once it has closed.
+  final Map<int, bool> textLabels = <int, bool>{};
 
   // refuse records the read's whole-load refusal by name (a per-language
   // diagnostic, never compared across legs): the first refusal stands.
@@ -557,7 +560,6 @@ final class _Share {
   final Map<Object, int> count = <Object, int>{};
   final Map<Object, int> label = <Object, int>{};
   final Map<int, Object> defined = <int, Object>{};
-  final Set<int> pending = <int>{};
   int next = 0;
 
   void see(Object obj) {
@@ -624,21 +626,21 @@ Object? _readPtr(dynamic val, _Share sh, TableTextReport r, Object Function() ma
     if (raw is! int || raw < 1) {
       throw const FormatException('invalid node label');
     }
+    // a label alone REFERS: the text must have defined it before this point
+    // and closed that definition; one a skipped value defined reads null
     if (entries.length == 1) {
+      if (r.textLabels[raw] != false) throw const FormatException('undefined node label');
       final have = sh.defined[raw];
-      if (have == null) {
-        if (!sh.pending.contains(raw) && r.textLabels.contains(raw)) return null;
-        throw const FormatException('undefined node label');
-      }
+      if (have == null) return null;
       if (have.runtimeType != make().runtimeType) { r.refuse('kind_mismatch'); return null; }
       return have;
     }
-    final have = sh.defined[raw];
-    if (have != null) throw const FormatException('node label defined twice');
+    // a label with fields DEFINES, and only once in the whole text
+    if (r.textLabels.containsKey(raw)) throw const FormatException('node label defined twice');
     final made = make();
-    sh.pending.add(raw);
+    r.textLabels[raw] = true;
     fill(made, entries);
-    sh.pending.remove(raw);
+    r.textLabels[raw] = false;
     sh.defined[raw] = made;
     return made;
   }
@@ -749,11 +751,23 @@ double _jsonFloatField(dynamic val, TableTextReport r, [bool single = false, dou
   r.refuse('kind_mismatch');
   return def;
 }
+
+// _jsonCompressedFloat holds a compressed float's text value to its range,
+// evaluated at the field's width (a float32 range's ends are float32(min) and
+// float32(max)), and folds -0 to +0 (ruling fixed-compressed-negzero), as the
+// binary reads do.
+double _jsonCompressedFloat(double d, TableTextReport r, double lo, double hi, [double def = 0.0]) {
+  if (!(d >= lo && d <= hi)) {
+    r.refuse('out_of_range');
+    return def;
+  }
+  return d == 0 ? 0.0 : d;
+}
 `)
 	g.pf(`// §16.2: comments and trailing commas are layout, not values. The
 // a repeated key is judged before jsonDecode folds an object's repeated key.
 // String tokens are copied byte-for-byte so comment marks inside them stay text.
-String _jsonPrepare(String text, TableTextReport r) {
+String _jsonPrepare(String text) {
   final source = text.codeUnits;
   final stripped = <int>[];
   var quoted = false;
@@ -831,39 +845,7 @@ String _jsonPrepare(String text, TableTextReport r) {
     }
     clean.add(c);
   }
-  final result = String.fromCharCodes(clean);
-  final stack = <Set<String>?>[];
-  final firstLabels = <int>{};
-  for (var i = 0; i < clean.length; i++) {
-    final c = clean[i];
-    if (c == 0x7b) { stack.add(<String>{}); continue; }
-    if (c == 0x5b) { stack.add(null); continue; }
-    if (c == 0x7d || c == 0x5d) { if (stack.isNotEmpty) stack.removeLast(); continue; }
-    if (c != 0x22) continue;
-    final begin = i;
-    i++;
-    for (; i < clean.length; i++) {
-      if (clean[i] == 0x5c) { i++; continue; }
-      if (clean[i] == 0x22) break;
-    }
-    if (i >= clean.length) throw const FormatException('unclosed JSON string');
-    var j = i + 1;
-    while (j < clean.length && clean[j] <= 0x20) j++;
-    if (j >= clean.length || clean[j] != 0x3a || stack.isEmpty || stack.last == null) continue;
-    final key = jsonDecode(result.substring(begin, i + 1)) as String;
-    if (key == '&node') {
-      var at = j + 1;
-      while (at < clean.length && clean[at] <= 0x20) at++;
-      final start = at;
-      while (at < clean.length && clean[at] >= 0x30 && clean[at] <= 0x39) at++;
-      final label = int.tryParse(result.substring(start, at));
-      while (at < clean.length && clean[at] <= 0x20) at++;
-      if (label != null && label > 0 && firstLabels.add(label) && at < clean.length && clean[at] == 0x2c) {
-        r.textLabels.add(label);
-      }
-    }
-  }
-  return result;
+  return String.fromCharCodes(clean);
 }
 
 `)
@@ -1018,9 +1000,9 @@ func (g *wireGen) emitTextToJsonField(st *ir.Struct, f *ir.Field) {
 			case wireKindBool:
 				g.pf("\t\t\tout.raw(e ? 'true' : 'false');\n")
 			case wireKindF32:
-				g.pf("\t\t\tout.raw(_jsonFloat(e, true));\n")
+				g.pf("\t\t\tout.raw(_jsonFloat(%s, true));\n", cfloatStored(f, "e"))
 			case wireKindF64:
-				g.pf("\t\t\tout.raw(_jsonFloat(e, false));\n")
+				g.pf("\t\t\tout.raw(_jsonFloat(%s, false));\n", cfloatStored(f, "e"))
 			case wireKindString:
 				g.pf("\t\t\tout.raw(_jsonString(e));\n")
 			case wireKindEnum:
@@ -1062,7 +1044,7 @@ func (g *wireGen) emitTextToJsonField(st *ir.Struct, f *ir.Field) {
 		if f.Type.Kind == ir.TFloat32 {
 			single = "true"
 		}
-		g.pf("\tout.raw(_jsonFloat(v.%s, %s));\n", name, single)
+		g.pf("\tout.raw(_jsonFloat(%s, %s));\n", cfloatStored(f, "v."+name), single)
 	case enumRef(f) != nil:
 		g.pf("\tout.raw(_jsonEnum(v.%s, %sName, '%s.%s'));\n", name, dartName(enumRef(f).Name), st.Name, f.Name)
 	default:
@@ -1107,6 +1089,20 @@ func (g *wireGen) emitTextFromJsonFields(st *ir.Struct) {
 	g.pf("\t}\n")
 	g.emitRequiredCheck(st, false, "\t")
 	g.pf("}\n\n")
+}
+
+// jsonFloatRead is the JSON read of one float value (a field, a list element,
+// an arm or an optional's payload). A COMPRESSED float is then held to its
+// range at the field's own width, float32(min) and float32(max) for a float32
+// (SPEC.md §4.6), refusing out_of_range past an end, and a -0 lands as +0
+// (docs/SPEC-TABLES.md §3.3), as the variable and fixed reads hold it. fb is
+// the fallback argument, ", v.name" or "".
+func jsonFloatRead(f *ir.Field, val string, single bool, fb string) string {
+	read := fmt.Sprintf("_jsonFloatField(%s, r, %t%s)", val, single, fb)
+	if lo, hi, ok := fixedFloatClampEnds(f); ok {
+		return fmt.Sprintf("_jsonCompressedFloat(%s, r, %s, %s%s)", read, lo, hi, fb)
+	}
+	return read
 }
 
 func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
@@ -1171,7 +1167,7 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 			case wireKindBool:
 				g.pf("\t\t\t\t\tv.%s.add(_jsonBoolField(item, r));\n", name)
 			case wireKindF32, wireKindF64:
-				g.pf("\t\t\t\t\tv.%s.add(_jsonFloatField(item, r, %t));\n", name, listElementKind(f) == wireKindF32)
+				g.pf("\t\t\t\t\tv.%s.add(%s);\n", name, jsonFloatRead(f, "item", listElementKind(f) == wireKindF32, ""))
 			case wireKindEnum:
 				g.pf("\t\t\t\t\tv.%s.add(%sFromName(item, r));\n", name, dartName(enumRef(f).Name))
 			case wireKindString:
@@ -1189,6 +1185,11 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 			}
 		}
 		g.pf("\t\t\t\t}\n")
+		if n := f.BornCount(); n > 0 {
+			// A COUNT BELOW ITS DECLARED MIN IS REFUSED, in the text form as
+			// on the wire (docs/SPEC.md §5.1 row 3; internal/tabletext read)
+			g.pf("\t\t\t\tif (v.%s.length < %d) { r.refuse('count_over_bound'); }\n", name, n)
+		}
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Kind == ir.TBool:
 		g.pf("\t\t\t\tif (val is bool) { v.%s = val; } else { r.refuse('kind_mismatch'); }\n", name)
@@ -1219,7 +1220,7 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 		g.pf("\t\t\t\tv.%s = _jsonBytesField(val, r, %d, v.%s);\n", name, f.Type.Size, name)
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
-		g.pf("\t\t\t\tv.%s = _jsonFloatField(val, r, %t, v.%s);\n", name, f.Type.Kind == ir.TFloat32, name)
+		g.pf("\t\t\t\tv.%s = %s;\n", name, jsonFloatRead(f, "val", f.Type.Kind == ir.TFloat32, ", v."+name))
 		g.pf("\t\t\t\tbreak;\n")
 	case enumRef(f) != nil:
 		g.pf("\t\t\t\tv.%s = %sFromName(val, r, v.%s);\n", name, dartName(enumRef(f).Name), name)
@@ -1301,11 +1302,11 @@ func (g *wireGen) emitTextToJson(st *ir.Struct) {
 func (g *wireGen) emitTextFromJson(st *ir.Struct) {
 	fn := dartName(st.Name) + "FromJson"
 	g.pf("%s %s(String text, [TableTextReport? report]) {\n", st.Name, fn)
-	g.pf("\tfinal r = report ?? TableTextReport();\n\tr.missingFields = '';\n\tr.variableRoot = %t;\n", ir.VariableTables(g.unit)[st.Name])
+	g.pf("\tfinal r = report ?? TableTextReport();\n\tr.missingFields = '';\n\tr.textLabels.clear();\n\tr.variableRoot = %t;\n", ir.VariableTables(g.unit)[st.Name])
 	g.pf("\tfinal v = %s();\n", st.Name)
 	// Keep source numeric tokens so float32's exact overflow boundary and
 	// wide integer values are decided before dart:convert rounds them.
-	g.pf("\tfinal root = _jsonDecodeExact(_jsonPrepare(text, r));\n")
+	g.pf("\tfinal root = _jsonDecodeExact(_jsonPrepare(text));\n")
 	if st.JsonArray {
 		g.pf("\tif (root is! List) throw const FormatException('json_root_not_array: %s');\n", st.Name)
 		// The throw above already leaves root a List here, so the call takes

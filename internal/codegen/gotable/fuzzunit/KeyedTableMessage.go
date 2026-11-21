@@ -14,7 +14,6 @@ package tabledemo
 import (
 	"encoding/binary"
 	"math"
-	"slices"
 	"unsafe"
 )
 
@@ -249,7 +248,7 @@ func tableMessageBodyTeamConfig(r *TableMessageReader, value *TeamConfig, starts
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
-					if n > 16 {
+					if n > 16 || n > uint64(entry.Shape.Max) {
 						r.Report.Refuse(TableRefuseLengthOverBound, "TeamConfig.banner")
 						return false
 					}
@@ -271,7 +270,7 @@ func tableMessageBodyTeamConfig(r *TableMessageReader, value *TeamConfig, starts
 				return false
 			}
 			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
+			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0, true) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -536,7 +535,7 @@ func tableMessageBodyGunnerConfig(r *TableMessageReader, value *GunnerConfig, st
 				return false
 			}
 			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
+			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0, true) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -843,7 +842,7 @@ func tableMessageBodyTurretConfig(r *TableMessageReader, value *TurretConfig, st
 				return false
 			}
 			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
+			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0, true) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -1192,8 +1191,11 @@ func tableMessageBodyHullConfig(r *TableMessageReader, value *HullConfig, starts
 					}
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
-					var seenKeys [64]uint64
-					seenKey := seenKeys[:0]
+					keys := tableMessageSetOpen(r.Vocabulary)
+					if keys < 0 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
 					lastKey := 0
 					for range n {
 						ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -1206,11 +1208,10 @@ func tableMessageBodyHullConfig(r *TableMessageReader, value *HullConfig, starts
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						if slices.Contains(seenKey, id) {
+						if tableMessageSetRepeat(r.Vocabulary, keys, ref) {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						seenKey = append(seenKey, id)
 						var key Weapon
 						known := key.TableEnumValue(id)
 						var scratch TurretConfig
@@ -1240,6 +1241,7 @@ func tableMessageBodyHullConfig(r *TableMessageReader, value *HullConfig, starts
 							return false
 						}
 					}
+					tableMessageSetClose(r.Vocabulary)
 				}
 				if widened {
 					r.Report.Widened++
@@ -1251,7 +1253,7 @@ func tableMessageBodyHullConfig(r *TableMessageReader, value *HullConfig, starts
 				return false
 			}
 			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
+			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0, true) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -1533,8 +1535,11 @@ func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, star
 					}
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
-					var seenKeys [64]uint64
-					seenKey := seenKeys[:0]
+					keys := tableMessageSetOpen(r.Vocabulary)
+					if keys < 0 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
 					lastKey := 0
 					for range n {
 						ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -1547,11 +1552,10 @@ func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, star
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						if slices.Contains(seenKey, id) {
+						if tableMessageSetRepeat(r.Vocabulary, keys, ref) {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						seenKey = append(seenKey, id)
 						var key Team
 						known := key.TableEnumValue(id)
 						var scratch TeamConfig
@@ -1581,6 +1585,7 @@ func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, star
 							return false
 						}
 					}
+					tableMessageSetClose(r.Vocabulary)
 				}
 				if widened {
 					r.Report.Widened++
@@ -1618,8 +1623,11 @@ func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, star
 					}
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
-					var seenKeys [64]uint64
-					seenKey := seenKeys[:0]
+					keys := tableMessageSetOpen(r.Vocabulary)
+					if keys < 0 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
 					lastKey := 0
 					for range n {
 						ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -1632,11 +1640,10 @@ func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, star
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						if slices.Contains(seenKey, id) {
+						if tableMessageSetRepeat(r.Vocabulary, keys, ref) {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						seenKey = append(seenKey, id)
 						var key Hull
 						known := key.TableEnumValue(id)
 						var scratch HullConfig
@@ -1666,6 +1673,7 @@ func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, star
 							return false
 						}
 					}
+					tableMessageSetClose(r.Vocabulary)
 				}
 				if widened {
 					r.Report.Widened++
@@ -1710,7 +1718,7 @@ func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, star
 				return false
 			}
 			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
+			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0, true) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -1858,8 +1866,11 @@ func tableMessageBodyScoreBoard(r *TableMessageReader, value *ScoreBoardRow, sta
 					}
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
-					var seenKeys [64]uint64
-					seenKey := seenKeys[:0]
+					keys := tableMessageSetOpen(r.Vocabulary)
+					if keys < 0 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
 					lastKey := 0
 					for range n {
 						ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -1872,11 +1883,10 @@ func tableMessageBodyScoreBoard(r *TableMessageReader, value *ScoreBoardRow, sta
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						if slices.Contains(seenKey, id) {
+						if tableMessageSetRepeat(r.Vocabulary, keys, ref) {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						seenKey = append(seenKey, id)
 						var key Team
 						known := key.TableEnumValue(id)
 						var scratch int32
@@ -1932,6 +1942,7 @@ func tableMessageBodyScoreBoard(r *TableMessageReader, value *ScoreBoardRow, sta
 							return false
 						}
 					}
+					tableMessageSetClose(r.Vocabulary)
 				}
 				if widened {
 					r.Report.Widened++
@@ -1943,7 +1954,7 @@ func tableMessageBodyScoreBoard(r *TableMessageReader, value *ScoreBoardRow, sta
 				return false
 			}
 			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
+			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0, true) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}

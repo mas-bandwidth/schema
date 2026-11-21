@@ -841,7 +841,7 @@ refuses a table today is a gap, named in §15, not a design.
 ```
 fixed table Physics
 {
-    mass float32 | min = 0.1, max = 100000.0
+    mass float32 = 1.0 | min = 0.1, max = 100000.0, resolution = 0.01
     drag float32
 }
 
@@ -3565,7 +3565,7 @@ fixed table ShipConfig
 }
 ```
 
-New locks start with `schema-lock 9`, use the prospective full-width, path-addressed definitions digest, and include complete `writer=<hex>` snapshots (the fixed-form algorithm §5.2). Rendering6/7/8 histories are salvaged without changing their saved wire keys; relocking appends the prospective current identity. Historical snapshots are checked against each entry’s recorded digest scheme. The supported rendering-7 example below remains readable unchanged; its absent snapshots are legacy-unknown.
+New locks start with `schema-lock 10`, use the prospective full-width, path-addressed definitions digest, and include complete `writer=<hex>` snapshots (the fixed-form algorithm §5.2). Rendering6/7/8 histories are salvaged without changing their saved wire keys; relocking appends the prospective current identity. Historical snapshots are checked against each entry’s recorded digest scheme. The supported rendering-7 example below remains readable unchanged; its absent snapshots are legacy-unknown.
 
 ```
 schema-lock 7
@@ -3674,7 +3674,7 @@ under a new name:
   and append a new one"*
 - a **moved range, resolution or fixed-point scale**, none of which moves a
   byte and all of which change what the bytes say: *"… is [1, 240] in the lock
-  and [1, 480] in the declaration — a field already in the lock keeps its
+  and [1, 120] in the declaration — a field already in the lock keeps its
   range: the bounds and the resolution are the scale a stored value is read
   back at, so moving them reads every record already written as a different
   number (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new
@@ -3775,9 +3775,9 @@ schema lock [--print] [--verbose] [--retire Table[@0x...] --reason <text>] [dir|
 Apart from `--retire`, it only ever APPENDS entries and values, adds blocks and
 flips `deprecated` on:
 it runs the check's own comparison first and **refuses everything the check
-refuses** — a reorder, a removal, a widening, a kind change, a held type that
-moved, an array element that moved, a union arm's payload type that moved, a
-moved default, a moved range, a flipped `?`, a reordered value list, an
+refuses** — a reorder, a removal, a narrowing, a kind change, a held type that
+moved, an array element that moved, a union arm whose payload names a
+different declaration, a moved default, a narrowed range, a flipped `?`, a reordered value list, an
 un-deprecation, a table withdrawn without a retirement, a type gone from the closure, a hand-edited
 file — so the one command that moves the file cannot be the one that breaks
 the rule. The ONE
@@ -4541,8 +4541,8 @@ MEANS, never where it is.
 refused. And undeprecating — taking `| deprecated` off again — is refused by
 the lock and by §21.1's monotone check, naming the enum and the variant. A
 deprecated field keeps this same one-way rule today; the field's own refusal is
-stated once, in `internal/lockfile/monotone.go:465` and pinned by
-TestLockFieldUndeprecateRefuses and TestUnDepRecateRefused. The variant is the
+stated once, in `monotoneAt` (`internal/lockfile/monotone.go`) and pinned by
+TestLockFieldUndeprecateRefuses and TestUnDeprecateRefused. The variant is the
 same rule one level in, not a second one.
 
 **READ.** A reader that meets a deprecated variant's id — on any form — yields
@@ -6675,7 +6675,8 @@ FORM TOO (§4):** the skipped payload is held to the conditions the wire and the
 announcement decide — an enum-keyed array's key names a declared no-payload
 entry and no key repeats, a string's bytes are well-formed UTF-8 with no zero
 byte, a float is finite and a quantized float's index is at most its `count`, an
-array's or keyed array's count is within `[min, max]` and a ranged integer's
+array's or keyed array's count is within `[min, max]`, a string's length is at
+most its announced `max`, and a ranged integer's
 reconstructed value is within its announced kind's storage domain, and a nested body names no field id twice
 and no reserved id — and a failure refuses the batch. **The skip walk is bounded
 at depth 128**, §4's binary bound (`tableMessageSkip`, `tableMessageSkipBody`): a nested body, array, keyed or map body, or a union whose arm is structural, past 128 levels refuses (recommended name `wire_damaged`); a scalar arm adds no level, as on the file form. <!-- limit name=message_skip_depth value=128 -->
@@ -6754,7 +6755,11 @@ property every wire shares.
 
 **A STRING OR AN ARRAY LONGER THAN THIS READER'S BOUND REFUSES**,
 `length_over_bound` or `count_over_bound`, exactly as §4 states. Nothing is cut,
-and no surplus is walked to find where a kept prefix ends.
+and no surplus is walked to find where a kept prefix ends. **So does one longer
+than the ANNOUNCED `max`**, whatever this reader's own bound: a string's length
+rides at `bits_required(0, max)` and an array's count at `bits_required(min,
+max)`, so their bits can spell more than `max`, which no conforming writer
+emits. The named read and the skip path give it the same verdict.
 
 ---
 
@@ -6840,7 +6845,12 @@ message, fixed, variable and text forms:
 - **A FINITE VALUE PAST AN END IS REFUSED**: every writer refuses it
   `invalid_value`, as it refuses any value off its declared range, and a read
   that meets one where the form carries the float whole refuses it
-  `out_of_range`, naming the field.
+  `out_of_range`, naming the field. The ends are held AT FLOAT32, where every
+  runtime evaluates the triple (SPEC.md §4.6): the value, narrowed to float32,
+  is compared with `float32(min)` and `float32(max)`, on every write and every
+  read in every form. An end float32 cannot spell exactly (`max = 0.1`,
+  `min = 0.7`) is the float32 nearest it, so the value at that end is in range
+  and one float32 step past it is not.
 - **`-0` IS `+0`.** It lands as exactly what `+0` lands as in that form: the
   value `0` itself where the form carries the float, and the INDEX OF 0 FOR
   THAT RANGE where the form quantizes, which decodes to the grid point the
@@ -7168,10 +7178,12 @@ caller's array of values is the whole of its storage.
     its entry table (kind `13`) whatever its value is;
   - an array's `min` is at most its `max`;
   - a packed `bits` and a `max` sit inside what the kind holds;
-  - a RANGED integer's `base` is such that `base + 2^bits - 1` lies inside the
-    announced kind: a width the kind holds is not enough, because under a base
-    near the kind's edge a lawful-looking width names values the kind cannot
-    hold.
+  - a RANGED integer's `base` lies inside the announced kind. The sum is not
+    held here, because `uint8 | min = 200, max = 250` is lawful and announces a
+    six-bit width whose top offsets pass the kind's edge: `base + offset` is
+    held to the announced kind's storage domain on the body, at a named field
+    and on the skip path alike, exactly and never wrapped (A RANGED OFFSET IS
+    HELD TO THE DOMAIN THE READER CAN KNOW, above).
 
   Two rules on the body complete it. An array element that consumes no bits is
   refused where it is walked (A WALKED ARRAY ELEMENT THAT CONSUMES NO BITS
@@ -17931,7 +17943,7 @@ line: name, wire id, kind, an array's ELEMENT kind, array shape (fixed,
 bounded, UNBOUNDED, enum-keyed or MAP, with the bound's EVALUATED value where
 the shape has one, for a keyed
 array the KEY enum it names, and for a map the KEY's kind and the KEY's
-capacity), string and bytes capacity, a byte buffer's `type=string` or
+capacity), string and bytes capacity, a `bits(N)` field's `N` (`bits=`), a byte buffer's `type=string` or
 `type=bytes` (the blob node's shape, §2.5), the declared
 RANGE (`min=` and `max=`), presence of an optional, a required field's
 `required=true` (§2.3), a fixed field's `F`
@@ -17953,7 +17965,7 @@ file's spelling of the payload-free kind the arm carries on the wire (§3). Ever
 FIELD tokens for what it is, in the field line's own column order and judged
 by the field line's own rules: `kind=`, then where the fact exists `elem=`,
 the `enum=` / `flags=` / `union=` / `type=` that names its referent,
-`array=`, `bound=`, `frac=`, `size=`, `min=` and `max=`. A tightened arm
+`array=`, `bound=`, `frac=`, `size=`, `bits=`, `min=` and `max=`. A tightened arm
 range warns exactly as a field's does, an arm records no default because an
 arm takes none (§2.6), and a renamed arm records `was=` and its alias on
 every spelling, judged on nothing: the id is the identity, and the alias is
@@ -18042,8 +18054,11 @@ addition does not meet the test.
 holds a stored value to its OWN declared bounds and refuses `out_of_range` past
 them (§4), so a tightened range is a data edit — every stored file holding a
 value past the new bound no longer reads. Only a DECLARED
-range is recorded: `bits(N)`'s implied `[0, 2^N − 1]` is its WIDTH, and the
-width is the `kind` this file already holds fixed. A fixed field's bounds
+range is recorded as `min=` and `max=`. A `bits(N)` field's implied
+`[0, 2^N − 1]` is recorded as `bits=N`, because the `kind` cannot hold it:
+`bits(9)` through `bits(16)` and `uint16` are all kind `7`, so an N narrowed
+inside one storage bucket would move no other token. `bits=` is judged as an
+extent (§18.2), and it is why the rendering version is `8`. A fixed field's bounds
 are its WHOLE-UNIT bounds, recorded beside the `frac=` that puts them on the
 raw scale (§4).
 
@@ -18066,7 +18081,7 @@ It carries no protocol id and no packet fact: the type wire, the wire-shape
 projection and the protocol id are untouched by all of it (§10).
 
 ```
-schema-tables-baseline 7
+schema-tables-baseline 8
 package shipdemo
 
 table ShipConfig
@@ -18127,7 +18142,11 @@ committed file whenever one is there, and:
   entries already are (§2.8), because the read gains the order check and a
   wire whose pairs were not ascending refuses `wire_damaged`; a declared
   RANGE tightened, from either end, or declared where the field or the ARM
-  had none; a text list's `total=` lowered, or declared where the list had
+  had none; a `bits(N)` narrowed inside one storage bucket (`bits(12)` to
+  `bits(9)`, both kind `7`), and an unsigned integer moved to a `bits(N)` of
+  the same kind whose `N` is below the bit length of its declared `max`, or
+  of its kind's width where it declares none (`uint16` to `bits(9)` warns,
+  `uint16 | max = 300` to `bits(9)` does not); a text list's `total=` lowered, or declared where the list had
   none (§2.13); an
   enum variant or a union arm removed; a DECLARATION renamed, or otherwise no
   longer in the closure under its baseline name (§18.3); a field REMOVED and
@@ -18332,8 +18351,8 @@ A field REPOINTED at another union carries a pair too (§18.3): a
 replacement whose shared arm holds a twin payload refuses on `default=`, one
 whose shared arm holds a scalar refuses on `payload=`, and a union carrying
 every arm of the old one under the same facts stands in.
-`TestBaselineRefusesTToOptional` holds the one-way optional edit and a new
-optional field. The projection over the corpus regenerates byte-identical. The warn class
+`TestBaselineAllowsOptionalEvolution` holds the optional edit in both
+directions and a new optional field. The projection over the corpus regenerates byte-identical. The warn class
 warns and does not refuse. A tightened range
 warns from either end and a loosened one is silent, over a ranged integer, a
 fixed field's whole-unit bounds and a compressed float's. The `was` chain

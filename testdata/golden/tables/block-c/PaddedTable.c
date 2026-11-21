@@ -1747,12 +1747,15 @@ static SCHEMA_UNUSED int64_t blockdemo_table_json_token_integer( const char * to
 
 #ifdef SCHEMA_BLOCKDEMO_TABLE_GRAPH_RUNTIME
 static SCHEMA_UNUSED int blockdemo_table_json_read_pointer( blockdemo_table_json_in_t * in, void * slot, const blockdemo_table_field_info_t * f, int32_t depth );
-static SCHEMA_UNUSED int blockdemo_table_json_skipped_ampersand( blockdemo_table_json_in_t * in, const char * key );
+static SCHEMA_UNUSED int blockdemo_table_json_skipped_ampersand( blockdemo_table_json_in_t * in, const char * key, int * reference, uint64_t * opened );
+static SCHEMA_UNUSED void blockdemo_table_json_skipped_close( blockdemo_table_json_in_t * in, uint64_t opened );
 #else
 static SCHEMA_UNUSED int blockdemo_table_json_read_pointer( blockdemo_table_json_in_t * in, void * slot, const blockdemo_table_field_info_t * f, int32_t depth )
 { (void)slot; (void)f; (void)depth; in->bad = 1; return 0; }
-static SCHEMA_UNUSED int blockdemo_table_json_skipped_ampersand( blockdemo_table_json_in_t * in, const char * key )
-{ (void)key; in->bad = 1; return 0; }
+static SCHEMA_UNUSED int blockdemo_table_json_skipped_ampersand( blockdemo_table_json_in_t * in, const char * key, int * reference, uint64_t * opened )
+{ (void)key; (void)reference; (void)opened; in->bad = 1; return 0; }
+static SCHEMA_UNUSED void blockdemo_table_json_skipped_close( blockdemo_table_json_in_t * in, uint64_t opened )
+{ (void)in; (void)opened; }
 #endif
 
 /* THE KEYS OF ONE OBJECT (docs/SPEC-TABLES.md §16.2): a repeated key refuses
@@ -1763,8 +1766,9 @@ static SCHEMA_UNUSED int blockdemo_table_json_skipped_ampersand( blockdemo_table
    object of a few keys and on the heap past that, so the set is as large as
    the object's own keys and never limited by the table's width. Two keys are
    the same key when their DECODED bytes are, so an escape spells the same key
-   as the character it names. */
-#define BLOCKDEMO_K_TABLE_JSON_KEYS_LOCAL 64
+   as the character it names. The stack set is small (eight keys at half
+   load) because one lives in every frame of a text nested to the depth cap. */
+#define BLOCKDEMO_K_TABLE_JSON_KEYS_LOCAL 16
 
 #ifndef schema_allocate
 #define schema_allocate(bytes) calloc(1,(size_t)(bytes))
@@ -1866,15 +1870,15 @@ static SCHEMA_UNUSED int blockdemo_table_json_skip_members( blockdemo_table_json
     uint64_t seen[64];
     int32_t seen_count = 0;
     int first = 1;
+    uint64_t opened = 0; /* the label a definition this skipped object opened */
     if ( depth > BLOCKDEMO_K_TABLE_JSON_MAX_DEPTH ) { in->bad = 1; return 0; }
     memset( seen, 0, sizeof( seen ) );
     in->pos++; /* the opening bracket */
     for ( ;; )
     {
         char c = blockdemo_table_json_peek( in );
-        if ( c == close ) { in->pos++; return 1; }
+        if ( c == close ) { in->pos++; blockdemo_table_json_skipped_close( in, opened ); return 1; }
         if ( c == 0 ) { in->bad = 1; return 0; }
-        int consumed = 0;
         if ( close == '}' )
         {
             char key[BLOCKDEMO_K_TABLE_JSON_MAX_KEY];
@@ -1896,13 +1900,25 @@ static SCHEMA_UNUSED int blockdemo_table_json_skip_members( blockdemo_table_json
             added = blockdemo_table_json_keys_add( in, keys, quote, key, length );
             if ( added < 0 ) { return 0; }
             if ( added == 0 ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
-            if ( key[0] == '&' && in->graph != NULL ) { if ( !first ) { in->bad = 1; return 0; } if ( !blockdemo_table_json_skipped_ampersand(in,key) ) { return 0; } consumed = 1; }
+            if ( key[0] == '&' && in->graph != NULL )
+            {
+                /* THE LABEL RULES HOLD IN A SKIPPED VALUE (§16.7): a label
+                   alone refers and must name a closed definition; a label
+                   with fields defines, must be new, and stays open until this
+                   object closes. Its comma, if any, is consumed with it. */
+                int reference = 0;
+                if ( !first ) { in->bad = 1; return 0; }
+                if ( !blockdemo_table_json_skipped_ampersand( in, key, &reference, &opened ) ) { return 0; }
+                if ( reference ) { return 1; }
+                first = 0;
+                continue;
+            }
         }
         first = 0;
-        if ( !consumed && !blockdemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
+        if ( !blockdemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
         c = blockdemo_table_json_peek( in );
         if ( c == ',' ) { in->pos++; continue; }   /* a trailing comma is accepted */
-        if ( c == close ) { in->pos++; return 1; }
+        if ( c == close ) { in->pos++; blockdemo_table_json_skipped_close( in, opened ); return 1; }
         in->bad = 1;
         return 0;
     }
@@ -2408,19 +2424,45 @@ static SCHEMA_UNUSED int schema_blockdemo_table_json_text_total_keep_( blockdemo
     return 0;
 }
 
+/* THE NESTING WALK'S FRAMES STAY SMALL. A text nested to the depth cap
+   (kTableJsonMaxDepth) recurses read_scalar -> read_pointer or read_union ->
+   read_table -> read_field once per level, and the 512 KiB stack a case thread
+   has must hold all of them, sanitizers included. So the recursive dispatch
+   keeps no buffer of its own: a union's key, a leaf's spelling, a keyed array's
+   tracking each live in a reader of their own, kept out of line, whose frame
+   exists only while that one value is read. */
+#ifndef SCHEMA_BLOCKDEMO_JSON_NOINLINE
+#if defined(__GNUC__) || defined(__clang__)
+#define SCHEMA_BLOCKDEMO_JSON_NOINLINE __attribute__((noinline))
+#elif defined(_MSC_VER)
+#define SCHEMA_BLOCKDEMO_JSON_NOINLINE __declspec(noinline)
+#else
+#define SCHEMA_BLOCKDEMO_JSON_NOINLINE
+#endif
+#endif
+
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_JSON_NOINLINE int blockdemo_table_json_read_union( blockdemo_table_json_in_t * in, void * storage, const blockdemo_table_field_info_t * f, int32_t depth );
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_JSON_NOINLINE int blockdemo_table_json_read_leaf( blockdemo_table_json_in_t * in, void * storage, const blockdemo_table_field_info_t * f, int32_t depth );
+
 static SCHEMA_UNUSED int blockdemo_table_json_read_scalar( blockdemo_table_json_in_t * in, void * storage, const blockdemo_table_field_info_t * f, int32_t depth )
 {
-    const char * token = NULL;
-    int64_t length = 0;
-    int integral = 0;
-    char textbuf[192]; /* a wide fixed's string spelling: 128 fraction digits, a whole part, a sign and a point */
     if ( f->text_list != 0 ) { return schema_blockdemo_table_json_read_text_element_( in, storage, f, depth ); }
     if ( f->kind == 17 )
     {
         if ( blockdemo_table_json_value_shape(in) == 'z' ) { blockdemo_table_json_set_raw(storage,f->elem_size,0); return blockdemo_table_json_literal(in,"null"); }
         return blockdemo_table_json_read_pointer(in,storage,f,depth);
     }
-    if ( f->arms != NULL )
+    if ( f->arms != NULL ) { return blockdemo_table_json_read_union( in, storage, f, depth ); }
+    if ( f->kind == 13 )
+    {
+        f->table->reset( storage );
+        return blockdemo_table_json_read_table( in, storage, f->table, depth + 1 );
+    }
+    return blockdemo_table_json_read_leaf( in, storage, f, depth );
+}
+
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_JSON_NOINLINE int blockdemo_table_json_read_union( blockdemo_table_json_in_t * in, void * storage, const blockdemo_table_field_info_t * f, int32_t depth )
+{
     {
         /* a union is an object with ONE key, the arm's name; {} is None, and
            two keys is a text this walk will not guess at */
@@ -2443,10 +2485,14 @@ static SCHEMA_UNUSED int blockdemo_table_json_read_scalar( blockdemo_table_json_
             const char * name = blockdemo_table_json_variant_name( f, (uint64_t) t );
             if ( name != NULL && strcmp( name, key ) == 0 ) { tag = t; break; }
         }
+        /* DEPTH (§16.2): the union's holder is at depth, the union object at
+           depth+1, and the arm's value at depth+2, where it is read or
+           skipped; a field arm reads through read_field(depth+1), whose own
+           scalar walk adds the level, as a by-value field's does */
         if ( tag == 0 )
         {
             in->report->unknown++;
-            if ( !blockdemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
+            if ( !blockdemo_table_json_skip_value( in, depth + 2 ) ) { return 0; }
         }
         else
         {
@@ -2455,14 +2501,14 @@ static SCHEMA_UNUSED int blockdemo_table_json_read_scalar( blockdemo_table_json_
             char want = arm != NULL ? blockdemo_table_json_shape( arm ) : (arms->arms[tag].table != NULL ? 'o' : 'z');
             if ( !( arm != NULL ? blockdemo_table_json_shape_accepts( arm, blockdemo_table_json_value_shape( in ) ) : blockdemo_table_json_value_shape( in ) == want ) && !(arm != NULL && arm->kind == 17 && !arm->is_array && blockdemo_table_json_value_shape(in) == 'z') ) {
                 in->report->refused=1, in->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
-                if ( !blockdemo_table_json_skip_value( in, depth+1 ) ) { return 0; }
+                if ( !blockdemo_table_json_skip_value( in, depth+2 ) ) { return 0; }
             } else {
                 if ( arm != NULL ) {
                     memset( payload, 0, arms->arms[tag].size );
                     if ( !blockdemo_table_json_read_field( in, storage, arm, depth+1 ) ) { return 0; }
                 } else if ( arms->arms[tag].table != NULL ) {
                     arms->arms[tag].table->reset( payload );
-                    if ( !blockdemo_table_json_read_table( in, payload, arms->arms[tag].table, depth+1 ) ) { return 0; }
+                    if ( !blockdemo_table_json_read_table( in, payload, arms->arms[tag].table, depth+2 ) ) { return 0; }
                 } else if ( !blockdemo_table_json_literal( in, "null" ) ) { return 0; }
                 blockdemo_table_json_set_raw( (uint8_t *)storage+arms->tag_offset, arms->tag_size, (uint64_t)tag );
             }
@@ -2473,11 +2519,16 @@ static SCHEMA_UNUSED int blockdemo_table_json_read_scalar( blockdemo_table_json_
         in->bad = 1; /* a second key: a one-of with two arms is not a value */
         return 0;
     }
-    if ( f->kind == 13 )
-    {
-        f->table->reset( storage );
-        return blockdemo_table_json_read_table( in, storage, f->table, depth + 1 );
-    }
+}
+
+/* every value that holds no nested value: an enum, flags, a bool, a
+   timestamp, a number */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_JSON_NOINLINE int blockdemo_table_json_read_leaf( blockdemo_table_json_in_t * in, void * storage, const blockdemo_table_field_info_t * f, int32_t depth )
+{
+    const char * token = NULL;
+    int64_t length = 0;
+    int integral = 0;
+    char textbuf[192]; /* a wide fixed's string spelling: 128 fraction digits, a whole part, a sign and a point */
     if ( blockdemo_table_json_is_enum( f ) )
     {
         char name[BLOCKDEMO_K_TABLE_JSON_MAX_KEY];
@@ -2600,10 +2651,25 @@ static SCHEMA_UNUSED int blockdemo_table_json_read_scalar( blockdemo_table_json_
             in->report->refused=1, in->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH;
             return 1;
         }
-        if ( f->has_range )
+        /* A float32 field's range is held at float32, the bounds as every
+           runtime holds them (SPEC.md §4.6 "every runtime evaluates the
+           triple" at float32; SPEC-TABLES §3.3 "a decoded value never leaves
+           [min, max]"), so the text "0.1" that the JSON writer emits for 0.1f
+           under max = 0.1 reads back. A compressed float's -0 lands as +0
+           (§3.3, the special values). */
+        if ( f->has_range && single )
+        {
+            float nv = (float) fvalue;
+            if ( nv < (float) f->range_min ) { nv = (float) f->range_min; in->report->refused=1, in->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
+            else if ( nv > (float) f->range_max ) { nv = (float) f->range_max; in->report->refused=1, in->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
+            nv = nv + 0.0f; /* -0 + +0 is +0 */
+            fvalue = (double) nv;
+        }
+        else if ( f->has_range )
         {
             if ( fvalue < f->range_min ) { fvalue = f->range_min; in->report->refused=1, in->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
             else if ( fvalue > f->range_max ) { fvalue = f->range_max; in->report->refused=1, in->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
+            fvalue = fvalue + 0.0;
         }
         if ( single )
         {
@@ -2666,6 +2732,9 @@ static SCHEMA_UNUSED int blockdemo_table_json_read_scalar( blockdemo_table_json_
     return 1;
 }
 
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_JSON_NOINLINE int blockdemo_table_json_read_keyed( blockdemo_table_json_in_t * in, uint8_t * storage, const blockdemo_table_field_info_t * f, int32_t depth );
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_JSON_NOINLINE int blockdemo_table_json_read_array( blockdemo_table_json_in_t * in, void * base, uint8_t * storage, const blockdemo_table_field_info_t * f, int32_t depth );
+
 static SCHEMA_UNUSED int blockdemo_table_json_read_field( blockdemo_table_json_in_t * in, void * base, const blockdemo_table_field_info_t * f, int32_t depth )
 {
     uint8_t * storage = (uint8_t *) base + f->offset;
@@ -2713,7 +2782,13 @@ static SCHEMA_UNUSED int blockdemo_table_json_read_field( blockdemo_table_json_i
         blockdemo_table_json_set_count( base, f, (int32_t) length );
         return 1;
     }
-    if ( blockdemo_table_json_is_keyed( f ) )
+    if ( blockdemo_table_json_is_keyed( f ) ) { return blockdemo_table_json_read_keyed( in, storage, f, depth ); }
+    if ( f->is_array ) { return blockdemo_table_json_read_array( in, base, storage, f, depth ); }
+    return blockdemo_table_json_read_scalar( in, storage, f, depth );
+}
+
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_JSON_NOINLINE int blockdemo_table_json_read_keyed( blockdemo_table_json_in_t * in, uint8_t * storage, const blockdemo_table_field_info_t * f, int32_t depth )
+{
     {
         /* every slot back to its declared defaults first, so a key the text
            omits keeps them and a repeated field key cannot leave an earlier
@@ -2801,7 +2876,10 @@ static SCHEMA_UNUSED int blockdemo_table_json_read_field( blockdemo_table_json_i
         }
         return 1;
     }
-    if ( f->is_array )
+}
+
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_JSON_NOINLINE int blockdemo_table_json_read_array( blockdemo_table_json_in_t * in, void * base, uint8_t * storage, const blockdemo_table_field_info_t * f, int32_t depth )
+{
     {
         /* LAST WINS has to be true of a repeated ARRAY key too, and it is
            wire-visible: a fixed array writes every slot, so a second, shorter
@@ -2873,12 +2951,14 @@ static SCHEMA_UNUSED int blockdemo_table_json_read_field( blockdemo_table_json_i
             in->bad = 1;
             return 0;
         }
+        /* A COUNT BELOW ITS DECLARED MIN IS REFUSED (docs/SPEC.md §5.1 row 3),
+           in the text form as on the wire */
+        if ( f->array_min > 0 && placed < f->array_min ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
         /* a fixed array's tail keeps the defaults the prefill left there,
            exactly as a short wire count does */
         blockdemo_table_json_set_count( base, f, placed );
         return 1;
     }
-    return blockdemo_table_json_read_scalar( in, storage, f, depth );
 }
 
 /* ONE table object: keys are field keys, unknown ones are skipped and
@@ -3100,23 +3180,23 @@ static const blockdemo_table_variant_info_t schema_blockdemo_padded_row_teams_ke
     { "Gold", 0xc416c97e0d3218b3ull },
 };
 static const blockdemo_table_field_info_t schema_blockdemo_padded_row_fields_[] = {
-    { "tag", "tag", "uint8", 0x56d7ab194448a4f3ull, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_padded_row_t, tag ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->tag ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "value", "value", "float64", 0x7ce4fd9430e80ceaull, 11, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_padded_row_t, value ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->value ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "flag", "flag", "bool", 0xd5f2d079088c0b17ull, 1, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_padded_row_t, flag ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->flag ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "id", "id", "uint32", 0x08b72e07b55c3ac0ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_padded_row_t, id ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, 0, 1, 0, 0, 15, (uint32_t) offsetof( blockdemo_padded_row_t, label ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->label ), (uint32_t) offsetof( blockdemo_padded_row_t, label_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "slots", "slots", "uint16", 0xe68c2e6bb1ee5646ull, 7, 1, 0, 0, 0, 4, (uint32_t) offsetof( blockdemo_padded_row_t, slots ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->slots[0] ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "teams", "teams", "uint8", 0xbaaeb048a5a8fa6dull, 6, 1, 0, 0, 0, (int32_t) BLOCKDEMO_TEAM_MAX, (uint32_t) offsetof( blockdemo_padded_row_t, teams ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->teams[0] ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, "Team", schema_blockdemo_padded_row_teams_keys_, 4, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "counter", "counter", "int32", 0x77976c7416517c63ull, 4, 0, 0, 1, 0, 0, (uint32_t) offsetof( blockdemo_padded_row_t, counter ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->counter ), 0xffffffffu, (uint32_t) offsetof( blockdemo_padded_row_t, counter_present ), NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "tag", "tag", "uint8", 0x56d7ab194448a4f3ull, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_padded_row_t, tag ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->tag ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "value", "value", "float64", 0x7ce4fd9430e80ceaull, 11, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_padded_row_t, value ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->value ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "flag", "flag", "bool", 0xd5f2d079088c0b17ull, 1, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_padded_row_t, flag ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->flag ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "id", "id", "uint32", 0x08b72e07b55c3ac0ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_padded_row_t, id ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, 0, 1, 0, 0, 15, (uint32_t) offsetof( blockdemo_padded_row_t, label ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->label ), (uint32_t) offsetof( blockdemo_padded_row_t, label_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "slots", "slots", "uint16", 0xe68c2e6bb1ee5646ull, 7, 1, 0, 0, 0, 4, (uint32_t) offsetof( blockdemo_padded_row_t, slots ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->slots[0] ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "teams", "teams", "uint8", 0xbaaeb048a5a8fa6dull, 6, 1, 0, 0, 0, (int32_t) BLOCKDEMO_TEAM_MAX, (uint32_t) offsetof( blockdemo_padded_row_t, teams ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->teams[0] ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, "Team", schema_blockdemo_padded_row_teams_keys_, 4, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "counter", "counter", "int32", 0x77976c7416517c63ull, 4, 0, 0, 1, 0, 0, (uint32_t) offsetof( blockdemo_padded_row_t, counter ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->counter ), 0xffffffffu, (uint32_t) offsetof( blockdemo_padded_row_t, counter_present ), NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
 };
 
 const blockdemo_table_type_info_t schema_blockdemo_padded_row_info_ = { "PaddedRow", (uint32_t) sizeof( blockdemo_padded_row_t ), 8, schema_blockdemo_padded_row_fields_, schema_blockdemo_padded_row_reset_raw_, BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
 static const blockdemo_table_field_info_t schema_blockdemo_padded_frame_fields_[] = {
-    { "marker", "marker", "uint8", 0xeddcb72b15486e77ull, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_padded_frame_t, marker ), (uint32_t) sizeof( ( (blockdemo_padded_frame_t *) 0 )->marker ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "stamp", "stamp", "uint64", 0xee7ba9ad45c64144ull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_padded_frame_t, stamp ), (uint32_t) sizeof( ( (blockdemo_padded_frame_t *) 0 )->stamp ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "rows", "rows", "PaddedRow", 0xa3a7061ff10a8138ull, 13, 1, 1, 0, 0, 64, (uint32_t) offsetof( blockdemo_padded_frame_t, rows ), (uint32_t) sizeof( ( (blockdemo_padded_frame_t *) 0 )->rows[0] ), (uint32_t) offsetof( blockdemo_padded_frame_t, rows_count ), 0xffffffffu, &schema_blockdemo_padded_row_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "blob", "blob", "bytes", 0xc573b39bc29148caull, 6, 1, 1, 0, 0, 12, (uint32_t) offsetof( blockdemo_padded_frame_t, blob ), (uint32_t) sizeof( ( (blockdemo_padded_frame_t *) 0 )->blob[0] ), (uint32_t) offsetof( blockdemo_padded_frame_t, blob_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "marker", "marker", "uint8", 0xeddcb72b15486e77ull, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_padded_frame_t, marker ), (uint32_t) sizeof( ( (blockdemo_padded_frame_t *) 0 )->marker ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "stamp", "stamp", "uint64", 0xee7ba9ad45c64144ull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_padded_frame_t, stamp ), (uint32_t) sizeof( ( (blockdemo_padded_frame_t *) 0 )->stamp ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "rows", "rows", "PaddedRow", 0xa3a7061ff10a8138ull, 13, 1, 1, 0, 0, 64, (uint32_t) offsetof( blockdemo_padded_frame_t, rows ), (uint32_t) sizeof( ( (blockdemo_padded_frame_t *) 0 )->rows[0] ), (uint32_t) offsetof( blockdemo_padded_frame_t, rows_count ), 0xffffffffu, &schema_blockdemo_padded_row_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "blob", "blob", "bytes", 0xc573b39bc29148caull, 6, 1, 1, 0, 0, 12, (uint32_t) offsetof( blockdemo_padded_frame_t, blob ), (uint32_t) sizeof( ( (blockdemo_padded_frame_t *) 0 )->blob[0] ), (uint32_t) offsetof( blockdemo_padded_frame_t, blob_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
 };
 
 const blockdemo_table_type_info_t schema_blockdemo_padded_frame_info_ = { "PaddedFrame", (uint32_t) sizeof( blockdemo_padded_frame_t ), 4, schema_blockdemo_padded_frame_fields_, schema_blockdemo_padded_frame_reset_raw_, BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0 };

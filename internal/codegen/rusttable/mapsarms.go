@@ -499,6 +499,15 @@ func (g *gen) emitArmPayload(b *strings.Builder, v ir.UnionVariant, arm string, 
 		}
 		fmt.Fprintf(b, "%sleb_write(&mut payload, index);\n", ind)
 	case f.Type.Kind == ir.TString && f.Array == ir.ArrayNone:
+		// an arm's string(N) is held as a field's is (docs/SPEC.md §5.1,
+		// rows 4 and 8): a length past N or a zero byte refuses in the
+		// debug build, and unbounded text refuses in every build
+		if f.Type.TextUnbounded() {
+			fmt.Fprintf(b, "%sif %s.as_bytes().contains(&0) || %s.len() as u64 > 0xffffffff { ids.refused=Some(String::from(\"invalid_value: unbounded text\")); return; }\n", ind, arm, arm)
+		} else {
+			fmt.Fprintf(b, "%sdebug_assert!(%s.len() <= %d, \"%s length past %d\");\n", ind, arm, rustTextBound(f), f.Name, rustTextBound(f))
+			fmt.Fprintf(b, "%sdebug_assert!(!%s.as_bytes().contains(&0), \"%s holds a zero byte\");\n", ind, arm, f.Name)
+		}
 		fmt.Fprintf(b, "%spayload.extend_from_slice(%s.as_bytes());\n", ind, arm)
 	case classOf(f) == vUnion && f.Array == ir.ArrayNone:
 		g.emitUnionElement(b, f, arm, "payload", ordinal, ind)

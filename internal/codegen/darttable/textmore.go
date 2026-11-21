@@ -138,18 +138,37 @@ int? _jsonSkippedLabel(dynamic raw) {
   return null;
 }
 
-void _jsonSkipEntry(int idx, String key, dynamic val, TableTextReport r) {
-  _jsonText(key);
-  _jsonName(key, r);
-  if (r.variableRoot && key.startsWith('&')) {
-    final label = idx == 0 && key == '&node' ? _jsonSkippedLabel(val) : null;
-    if (label == null) {
-      throw const FormatException('reserved ampersand prefix');
+// _jsonSkipObject walks one skipped object's entries in text order. In a
+// pointered root the label rules apply here as everywhere (§16.7): an &node key
+// is first or it is the reserved prefix out of place; a label alone REFERS, and
+// the text must have defined it and closed that definition; a label with fields
+// DEFINES, must be new to the text, and stays open until this object closes, so
+// a later reference reads null and a second definition refuses.
+void _jsonSkipObject(List<MapEntry<dynamic, dynamic>> entries, TableTextReport r) {
+  int? opened;
+  for (var idx = 0; idx < entries.length; idx++) {
+    final key = entries[idx].key;
+    if (key is! String) throw const FormatException('kind_mismatch');
+    final val = entries[idx].value;
+    _jsonText(key);
+    _jsonName(key, r);
+    if (r.variableRoot && key.startsWith('&')) {
+      final label = idx == 0 && key == '&node' ? _jsonSkippedLabel(val) : null;
+      if (label == null) {
+        throw const FormatException('reserved ampersand prefix');
+      }
+      if (entries.length == 1) {
+        if (r.textLabels[label] != false) throw const FormatException('undefined node label');
+        return;
+      }
+      if (r.textLabels.containsKey(label)) throw const FormatException('node label defined twice');
+      r.textLabels[label] = true;
+      opened = label;
+    } else {
+      _jsonSkipValue(val, r);
     }
-    r.textLabels.add(label);
-  } else {
-    _jsonSkipValue(val, r);
   }
+  if (opened != null) r.textLabels[opened] = false;
 }
 
 void _jsonSkipValue(dynamic val, TableTextReport r) {
@@ -158,10 +177,7 @@ void _jsonSkipValue(dynamic val, TableTextReport r) {
     return;
   }
   if (val is _JObj) {
-    for (var idx = 0; idx < val.entries.length; idx++) {
-      final entry = val.entries[idx];
-      _jsonSkipEntry(idx, entry.key, entry.value, r);
-    }
+    _jsonSkipObject(val.entries, r);
     return;
   }
   if (val is List) {
@@ -171,13 +187,7 @@ void _jsonSkipValue(dynamic val, TableTextReport r) {
     return;
   }
   if (val is Map) {
-    var idx = 0;
-    for (final entry in val.entries) {
-      final key = entry.key;
-      if (key is! String) throw const FormatException('kind_mismatch');
-      _jsonSkipEntry(idx, key, entry.value, r);
-      idx++;
-    }
+    _jsonSkipObject(val.entries.toList(), r);
   }
 }
 
@@ -567,6 +577,14 @@ List<T> _jsonList<T>(dynamic val, TableTextReport r, int bound, T Function(dynam
   return out;
 }
 
+// _jsonCountMin holds a counted [Min..N] array's read to its declared Min: a
+// shorter one is refused, in the text form as on the wire (docs/SPEC.md §5.1
+// row 3).
+List<T> _jsonCountMin<T>(List<T> out, TableTextReport r, int min) {
+  if (out.length < min) r.refuse('count_over_bound');
+  return out;
+}
+
 List<T> _jsonFixed<T>(dynamic val, TableTextReport r, int n, T Function() def, T Function(dynamic, T) f, [List<T>? fallback]) {
   if (val is! List) {
     r.refuse('kind_mismatch');
@@ -613,7 +631,11 @@ List<T> _jsonKeyed<T>(dynamic val, TableTextReport r, int n, T Function() def, M
   return out;
 }
 
-List<T> _jsonMap<T>(dynamic val, TableTextReport r, Object Function(T) keyOf, int Function(T a, T b) cmp, T? Function(String, dynamic) f, [List<T>? fallback]) {
+// _jsonMap reads a map's object in the order the document sent it and lands
+// the entries in ascending key order (§2.8, §16): sortKey builds each entry's
+// key once and _stableSortedBy sorts in O(n log n), so keys sent in
+// descending order cost what any order costs.
+List<T> _jsonMap<T, K>(dynamic val, TableTextReport r, Object Function(T) keyOf, K Function(T) sortKey, int Function(K a, K b) cmp, T? Function(String, dynamic) f, [List<T>? fallback]) {
   final entries = _jsonEntries(val);
   if (entries == null) {
     r.refuse('kind_mismatch');
@@ -634,13 +656,16 @@ List<T> _jsonMap<T>(dynamic val, TableTextReport r, Object Function(T) keyOf, in
       out.add(item);
     }
   }
-  return _stableSorted(out, cmp);
+  return _stableSortedBy<T, K>(out, sortKey, cmp);
 }
 
+// A MAP KEY is held to its declared string(N) bound and nothing else: the
+// 255-byte schema-name cap (_jsonName) never reaches a map key (§16.2), so a
+// string(300) key of 280 bytes is a key.
 String? _jsonStringKey(String k, int bound, TableTextReport r) {
   k = _jsonText(k);
   final len = utf8.encode(k).length;
-  if (bound >= 0 && (len > bound || len > 255)) {
+  if (bound >= 0 && len > bound) {
     r.refuse('length_over_bound');
     return null;
   }
@@ -911,7 +936,7 @@ func (g *wireGen) emitJsonValue(f *ir.Field, expr string, d int, ind, where stri
 	case f.Type.Kind == ir.TBool:
 		g.pf("%sout.raw(%s ? 'true' : 'false');\n", ind, expr)
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
-		g.pf("%sout.raw(_jsonFloat(%s, %v));\n", ind, expr, f.Type.Kind == ir.TFloat32)
+		g.pf("%sout.raw(_jsonFloat(%s, %v));\n", ind, cfloatStored(f, expr), f.Type.Kind == ir.TFloat32)
 	case enumRef(f) != nil:
 		g.pf("%sout.raw(_jsonEnum(%s, %sName, '%s'));\n", ind, expr, dartName(enumRef(f).Name), where)
 	case jsonIntegerWide(f):
@@ -960,6 +985,16 @@ func unionArmShapeCond(f *ir.Field, item string) string {
 	return cond
 }
 
+// jsonCountMin wraps the JSON read of a counted [Min..N] array with Min > 0 in
+// the runtime's _jsonCountMin, which refuses a count below Min (docs/SPEC.md
+// §5.1 row 3); any other read is returned as it is.
+func jsonCountMin(f *ir.Field, read string) string {
+	if n := f.BornCount(); n > 0 {
+		return fmt.Sprintf("_jsonCountMin(%s, r, %d)", read, n)
+	}
+	return read
+}
+
 // jsonReadExpr is the Dart expression that reads one field-shaped value out of
 // the decoded JSON value `val` (§16.2, §16.3).
 func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int, fallback ...string) string {
@@ -975,7 +1010,7 @@ func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int, fallback ...strin
 	}
 	switch {
 	case f.IsTextList():
-		return g.jsonTextListRead(f, val, d, fbArg)
+		return jsonCountMin(f, g.jsonTextListRead(f, val, d, fbArg))
 	case f.Type.Optional:
 		return g.jsonReadExpr(nonOptional(f), val, d, fallback...)
 	case f.IsMap():
@@ -989,7 +1024,8 @@ func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int, fallback ...strin
 		}
 		et := f.MapEntry.Name
 		valMember := fieldMember(value)
-		cmpExpr := fmt.Sprintf("(%s a, %s b) => %s", et, et, mapKeyCompare(f))
+		keyType, keyOf, cmp := mapSortArgs(f)
+		sortArgs := fmt.Sprintf("(%s e) => %s, %s", et, keyOf, cmp)
 		var valBody string
 		if value.Type.Optional {
 			valBody = fmt.Sprintf("if (%s == null) { m%d.%s = false; } else { m%d.%s = true; m%d.%s = %s; }",
@@ -997,8 +1033,8 @@ func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int, fallback ...strin
 		} else {
 			valBody = fmt.Sprintf("m%d.%s = %s;", d, valMember, g.jsonReadExpr(value, item, d+1, fmt.Sprintf("m%d.%s", d, valMember)))
 		}
-		return fmt.Sprintf("_jsonMap<%s>(%s, r, (m%d) => m%d.%s, %s, (k%d, %s) { final kk%d = %s; if (kk%d == null) return null; final m%d = %s(); m%d.%s = kk%d; %s return m%d; }%s)",
-			et, val, d, d, fieldMember(key), cmpExpr, d, item, d, keyExpr, d, d, et, d, fieldMember(key), d, valBody, d, fbArg)
+		return fmt.Sprintf("_jsonMap<%s, %s>(%s, r, (m%d) => m%d.%s, %s, (k%d, %s) { final kk%d = %s; if (kk%d == null) return null; final m%d = %s(); m%d.%s = kk%d; %s return m%d; }%s)",
+			et, keyType, val, d, d, fieldMember(key), sortArgs, d, item, d, keyExpr, d, d, et, d, fieldMember(key), d, valBody, d, fbArg)
 	case isKeyed(f):
 		en := f.KeyEnumRef
 		var slots strings.Builder
@@ -1017,8 +1053,8 @@ func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int, fallback ...strin
 		if f.Array == ir.ArrayCounted {
 			bound = int(f.ArrayBound)
 		}
-		return fmt.Sprintf("_jsonList<%s>(%s, r, %d, (%s) => %s%s)",
-			g.listElemType(f), val, bound, item, g.jsonReadExpr(singleOf(f), item, d+1), fbArg)
+		return jsonCountMin(f, fmt.Sprintf("_jsonList<%s>(%s, r, %d, (%s) => %s%s)",
+			g.listElemType(f), val, bound, item, g.jsonReadExpr(singleOf(f), item, d+1), fbArg))
 	case f.Type.Blob():
 		if f.Type.Kind == ir.TString {
 			return fmt.Sprintf("_jsonStringBlob(%s, r%s)", val, fbArg)
@@ -1056,7 +1092,7 @@ func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int, fallback ...strin
 	case f.Type.Kind == ir.TBool:
 		return fmt.Sprintf("_jsonBoolField(%s, r%s)", val, fbArg)
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
-		return fmt.Sprintf("_jsonFloatField(%s, r, %t%s)", val, f.Type.Kind == ir.TFloat32, fbArg)
+		return jsonFloatRead(f, val, f.Type.Kind == ir.TFloat32, fbArg)
 	case enumRef(f) != nil:
 		return fmt.Sprintf("%sFromName(%s, r%s)", dartName(enumRef(f).Name), val, fbArg)
 	case f.Type.Kind == ir.TBits:

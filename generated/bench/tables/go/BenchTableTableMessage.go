@@ -235,19 +235,61 @@ func (v *TableVocabulary) Init(storage []TableMessageEntry) {
 // two words so every level below the binary bound has one: a level's mark
 // still stands when that level's open body began at or before the last naming,
 // and the levels whose bodies were opened since are dropped as the entry is
-// named again. Two slots announcing one id are one entry, the first.
+// named again. Two slots announcing one id are one entry, the first: the
+// entries are sorted in place by id and position (the position parked in
+// bodySeenAt, which every fresh entry holds at zero), each run of one id
+// points at its first, and a second sort by position puts them back, so the
+// work is n log n in the caller's storage and nothing is allocated.
 func tableMessageSeenOpen(v *TableVocabulary, starts []uint64, depth int) {
 	v.bodyClock++
 	starts[depth] = v.bodyClock
+	if depth == 0 {
+		v.setTop = 0
+	}
 }
 func tableMessageSeenFirst(v *TableVocabulary) {
-	for i := range v.Count {
-		for j := range i {
-			if v.Entries[j].ID == v.Entries[i].ID {
-				v.Entries[i].bodyFirst = uint64(j + 1)
-				break
+	s := v.Entries[:v.Count]
+	for i := range s {
+		s[i].bodySeenAt = uint64(i)
+		s[i].bodyFirst = 0
+	}
+	slices.SortFunc(s, func(a, b TableMessageEntry) int {
+		v.announceProbes++
+		if a.ID != b.ID {
+			if a.ID < b.ID {
+				return -1
 			}
+			return 1
 		}
+		if a.bodySeenAt < b.bodySeenAt {
+			return -1
+		}
+		if a.bodySeenAt > b.bodySeenAt {
+			return 1
+		}
+		return 0
+	})
+	for i := 1; i < len(s); i++ {
+		if s[i].ID == s[i-1].ID {
+			first := s[i-1].bodyFirst
+			if first == 0 {
+				first = s[i-1].bodySeenAt + 1
+			}
+			s[i].bodyFirst = first
+		}
+	}
+	slices.SortFunc(s, func(a, b TableMessageEntry) int {
+		v.announceProbes++
+		if a.bodySeenAt < b.bodySeenAt {
+			return -1
+		}
+		if a.bodySeenAt > b.bodySeenAt {
+			return 1
+		}
+		return 0
+	})
+	for i := range s {
+		s[i].bodySeenAt = 0
 	}
 }
 func tableMessageSeenRepeat(v *TableVocabulary, starts []uint64, depth int, ref uint64) bool {
@@ -288,6 +330,72 @@ func tableMessageSeenRepeat(v *TableVocabulary, starts []uint64, depth int, ref 
 	}
 	e.bodySeenAt = v.bodyClock<<8 | uint64(depth)
 	return false
+}
+
+// A KEY TWICE IN ONE KEYED ARRAY AND A FIELD ID TWICE IN ONE SKIPPED BODY ARE
+// DAMAGE (mas-bandwidth/schema docs/SPEC-TABLES.md §3.2, §3.3), and each test is one look at the
+// named entry, as the body's is: no scan of the keys seen so far, and nothing
+// allocated. Every keyed array and every skipped body is a SET on one stack in
+// the vocabulary, opened at the next clock tick; an entry keeps the tick and
+// level of its last naming and a bit for each shallower set that had named it
+// and is still open, so a set's marks survive the sets nested inside it. Two
+// slots announcing one id are one entry, the first. The root body's open
+// empties the stack, so a refused read leaves nothing behind.
+func tableMessageSetOpen(v *TableVocabulary) int {
+	if v.setTop >= len(v.setStarts)-1 {
+		return -1
+	}
+	v.setTop++
+	v.bodyClock++
+	v.setStarts[v.setTop] = v.bodyClock
+	return v.setTop
+}
+func tableMessageSetClose(v *TableVocabulary) {
+	if v.setTop > 0 {
+		v.setTop--
+	}
+}
+func tableMessageSetRepeat(v *TableVocabulary, level int, ref uint64) bool {
+	v.setProbes++
+	e := &v.Entries[ref-1]
+	if e.bodyFirst != 0 {
+		e = &v.Entries[e.bodyFirst-1]
+	}
+	at, last := e.setSeenAt>>9, int(e.setSeenAt&511)
+	starts := v.setStarts[:level+1]
+	if starts[level] <= at {
+		if last == level || e.setSeenBelow[level>>6]>>uint(level&63)&1 != 0 {
+			return true
+		}
+		tableMessageSetTrim(&e.setSeenBelow, level)
+	} else {
+		kept, hi := 0, level
+		for kept < hi {
+			mid := (kept + hi) / 2
+			v.setProbes++
+			if starts[mid] <= at {
+				kept = mid + 1
+			} else {
+				hi = mid
+			}
+		}
+		if last < kept {
+			e.setSeenBelow[last>>6] |= 1 << uint(last&63)
+		}
+		tableMessageSetTrim(&e.setSeenBelow, kept)
+	}
+	e.setSeenAt = v.bodyClock<<9 | uint64(level)
+	return false
+}
+func tableMessageSetTrim(b *[5]uint64, k int) {
+	for i := range b {
+		lo := i * 64
+		if k <= lo {
+			b[i] = 0
+		} else if k < lo+64 {
+			b[i] &= 1<<uint(k-lo) - 1
+		}
+	}
 }
 func (v *TableVocabulary) Entry(ref uint64) (TableMessageEntry, bool) {
 	if ref == 0 || ref > uint64(v.Count) {
@@ -431,8 +539,24 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 	src := TableReader{Buffer: words, Report: report}
 	count := int64(0)
 	nodeSeen := false
+	twice := func() bool {
+		s := v.Entries[:count]
+		slices.SortFunc(s, func(a, b TableMessageEntry) int {
+			return slices.Compare(words[a.Shape.Min:a.Shape.Max], words[b.Shape.Min:b.Shape.Max])
+		})
+		for i := 1; i < len(s); i++ {
+			if slices.Equal(words[s[i-1].Shape.Min:s[i-1].Shape.Max], words[s[i].Shape.Min:s[i].Shape.Max]) {
+				return true
+			}
+		}
+		return false
+	}
 	for src.Offset < int64(len(words)) {
 		if count >= int64(len(v.Entries)) {
+			if twice() {
+				report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return tableMessageRefuse(report, "vocabulary_too_large")
 		}
 		began := src.Offset
@@ -444,26 +568,14 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 		if e.ID == 0xffffffffffffffff {
 			nodeSeen = true
 		}
-		for i := range count {
-			o := v.Entries[i].Shape
-			if o.Max-o.Min == src.Offset-began && o.Min >= 0 && o.Max <= int64(len(words)) {
-				same := true
-				for j := o.Min; j < o.Max; j++ {
-					if words[j] != words[began+j-o.Min] {
-						same = false
-						break
-					}
-				}
-				if same {
-					report.Refuse(TableRefuseWireDamaged, "")
-					return false
-				}
-			}
-		}
 		e.Shape.Min = began
 		e.Shape.Max = src.Offset
 		v.Entries[count] = e
 		count++
+	}
+	if twice() {
+		report.Refuse(TableRefuseWireDamaged, "")
+		return false
 	}
 	src.Offset = 0
 	for i := range count {
@@ -496,10 +608,14 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 // declared-fact equality, bit pattern for bit pattern. Each accepted entry parks
 // its byte extent in Shape.Min and Shape.Max until the scan is over, and the
 // second pass in tableAnnounceRead resolves every entry in place, so no offset
-// into the announcement outlives the call. The scan is quadratic in the entry
-// count, and the entry count is bounded above at 4096, so it is at most eight
-// million compares on a path that runs ONCE a connection and never again. The
-// compare is spelled inline so the emitter claims no new runtime name.
+// into the announcement outlives the call. The duplicate test sorts the
+// parked extents in place by their bytes and compares neighbours (twice), so
+// it is n log n in the entry count, allocates nothing, and leaves the order to
+// the second pass, which rewrites every entry from the announcement. It runs
+// when the entries are all read, and also before vocabulary_too_large, so a
+// repeated entry read before the bound is crossed is damage, as it was when
+// each entry was compared on arrival. It is spelled inline so the emitter
+// claims no new runtime name.
 // tableMessageKnownKind is §3.3's closed announcement set: kinds 0..32 plus the
 // timestamp 36 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3 entry shape table); 33, 34, 35 and 37
 // stay malformed.
@@ -687,7 +803,12 @@ func tableMessageCount(r *TableBitReader, s TableMessageShape) (uint64, bool) {
 	raw, ok := r.Get(tableMessageBits(uint64(s.Max - s.Min)))
 	return raw + uint64(s.Min), ok
 }
-func tableMessageSkip(r *TableBitReader, v *TableVocabulary, indexBits int64, e TableMessageEntry, depth int) bool {
+
+// field is set where the payload is a FIELD's own, an unknown field of a body:
+// a conforming writer elides a None union field, so an explicit arm reference
+// 0 there is refused (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3), while an array element's and a
+// union arm value's None stay positional and lawful.
+func tableMessageSkip(r *TableBitReader, v *TableVocabulary, indexBits int64, e TableMessageEntry, depth int, field bool) bool {
 	if depth > 128 {
 		return false
 	}
@@ -709,10 +830,10 @@ func tableMessageSkip(r *TableBitReader, v *TableVocabulary, indexBits int64, e 
 	case 15:
 		ref, ok := r.Get(v.RefBits)
 		if !ok || ref == 0 {
-			return ok
+			return ok && !field
 		}
 		arm, ok := v.Entry(ref)
-		return ok && arm.ID < 0xfffffffffffffffd && arm.Shape.Kind != 0 && tableMessageSkip(r, v, indexBits, arm, depth+1)
+		return ok && arm.ID < 0xfffffffffffffffd && arm.Shape.Kind != 0 && tableMessageSkip(r, v, indexBits, arm, depth+1, false)
 	case 12:
 		n, ok := tableMessageCount(r, s)
 		if !ok || n > uint64(s.Max) || !r.Align() {
@@ -737,35 +858,35 @@ func tableMessageSkip(r *TableBitReader, v *TableVocabulary, indexBits int64, e 
 		if s.Kind == 14 && e.Element.Kind == 6 && !r.Align() {
 			return false
 		}
-		if s.Kind == 14 && (e.Element.Bits >= 0 && e.Element.Kind != 10 && e.Element.Kind != 11 || e.Element.Kind == 0 || e.Element.Kind == 32) {
+		// a RANGED element carries a value condition, base plus offset inside its
+		// announced kind, so it is walked as a float is, unless it rides no bits
+		if s.Kind == 14 && (e.Element.Bits >= 0 && e.Element.Kind != 10 && e.Element.Kind != 11 && (e.Element.Packing != 1 || e.Element.Bits == 0) || e.Element.Kind == 0 || e.Element.Kind == 32) {
 			width := max(e.Element.Bits, int64(0))
 			return r.Skip(int64(n) * width)
 		}
 		if s.Kind == 16 {
-			var seen [64]uint64
-			keys := seen[:0]
+			level := tableMessageSetOpen(v)
+			if level < 0 {
+				return false
+			}
 			for range n {
 				ref, ok := r.Get(v.RefBits)
 				if !ok {
 					return false
 				}
-				id, ok := v.Name(ref)
-				if !ok {
+				if _, ok = v.Name(ref); !ok || tableMessageSetRepeat(v, level, ref) {
 					return false
 				}
-				if slices.Contains(keys, id) {
-					return false
-				}
-				keys = append(keys, id)
-				if !tableMessageSkip(r, v, indexBits, TableMessageEntry{Shape: e.Element}, depth+1) {
+				if !tableMessageSkip(r, v, indexBits, TableMessageEntry{Shape: e.Element}, depth+1, false) {
 					return false
 				}
 			}
+			tableMessageSetClose(v)
 			return true
 		}
 		for range n {
 			before := r.Offset
-			if !tableMessageSkip(r, v, indexBits, TableMessageEntry{Shape: e.Element}, depth+1) || r.Offset == before {
+			if !tableMessageSkip(r, v, indexBits, TableMessageEntry{Shape: e.Element}, depth+1, false) || r.Offset == before {
 				return false
 			}
 		}
@@ -789,6 +910,14 @@ func tableMessageSkip(r *TableBitReader, v *TableVocabulary, indexBits int64, e 
 		f := math.Float64frombits(raw)
 		return !math.IsNaN(f) && !math.IsInf(f, 0)
 	}
+	// A RANGED INTEGER IS RECONSTRUCTED AND HELD TO ITS ANNOUNCED KIND on the
+	// skip path too (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3), by the one reconstruction the
+	// typed read uses, so a body gets one verdict named or skipped
+	if s.Packing == 1 {
+		var raw [16]byte
+		ok, over := tableMessageReadScalar(r, s, &raw)
+		return ok && !over
+	}
 	return s.Bits >= 0 && r.Skip(s.Bits)
 }
 
@@ -797,25 +926,24 @@ func tableMessageSkipBody(r *TableBitReader, v *TableVocabulary, indexBits int64
 	if depth > 128 {
 		return false
 	}
-	var seen [64]uint64
-	ids := seen[:0]
+	level := tableMessageSetOpen(v)
+	if level < 0 {
+		return false
+	}
 	for {
 		ref, ok := r.Get(v.RefBits)
 		if !ok {
 			return false
 		}
 		if ref == 0 {
+			tableMessageSetClose(v)
 			return true
 		}
 		e, ok := v.Entry(ref)
-		if !ok || e.ID >= 0xfffffffffffffffd {
+		if !ok || e.ID >= 0xfffffffffffffffd || tableMessageSetRepeat(v, level, ref) {
 			return false
 		}
-		if slices.Contains(ids, e.ID) {
-			return false
-		}
-		ids = append(ids, e.ID)
-		if !tableMessageSkip(r, v, indexBits, e, depth) {
+		if !tableMessageSkip(r, v, indexBits, e, depth, true) {
 			return false
 		}
 	}
@@ -888,6 +1016,20 @@ func tableMessageReadScalar(r *TableBitReader, s TableMessageShape, out *[16]byt
 		}
 		lo = loSum
 		hi = hiSum
+		// THE ANNOUNCED KIND HOLDS THE SUM OR THE READ REFUSES (mas-bandwidth/schema docs/SPEC-TABLES.md
+		// §3.3), whatever the reader's own kind: uint8 | min = 200, max = 250
+		// spells 200 + 63 in six bits, and a widened uint16 reader must not land it
+		if integer {
+			if w := tableMessageKindBits(s.Kind); w < 128 {
+				if signed {
+					if int64(hi) != int64(lo)>>63 || w < 64 && (int64(lo) < -(int64(1)<<uint(w-1)) || int64(lo) > (int64(1)<<uint(w-1))-1) {
+						return true, true
+					}
+				} else if hi != 0 || w < 64 && lo>>uint(w) != 0 {
+					return true, true
+				}
+			}
+		}
 	} else if signed {
 		if s.Bits < 64 {
 			if s.Bits > 0 {
@@ -1990,7 +2132,7 @@ func tableMessageBodyTableEntity(r *TableMessageReader, value *TableEntity, star
 				return false
 			}
 			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
+			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0, true) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -2262,7 +2404,7 @@ func tableMessageBodyTableStat(r *TableMessageReader, value *TableStat, starts [
 				return false
 			}
 			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
+			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0, true) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -3550,7 +3692,7 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 							default:
 								(*payload41).Type = TableEventTypeNone
 								r.Report.Unknown++
-								if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, payload42, 0) {
+								if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, payload42, 0, false) {
 									r.Report.Refuse(TableRefuseWireDamaged, "")
 									return false
 								}
@@ -3679,7 +3821,7 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
-					if n > 15 {
+					if n > 15 || n > uint64(entry.Shape.Max) {
 						r.Report.Refuse(TableRefuseLengthOverBound, "TableMixed.player_name")
 						return false
 					}
@@ -4437,7 +4579,7 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 				return false
 			}
 			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
+			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0, true) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -4789,7 +4931,7 @@ func tableMessageBodyTableHitEvent(r *TableMessageReader, value *TableHitEvent, 
 				return false
 			}
 			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
+			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0, true) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -4970,7 +5112,7 @@ func tableMessageBodyTableChatEvent(r *TableMessageReader, value *TableChatEvent
 				return false
 			}
 			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
+			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0, true) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -5151,7 +5293,7 @@ func tableMessageBodyTablePickupEvent(r *TableMessageReader, value *TablePickupE
 				return false
 			}
 			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
+			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0, true) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}

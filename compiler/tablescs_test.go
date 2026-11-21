@@ -140,17 +140,17 @@ func TestCsCarriesBlobs(t *testing.T) {
 	}
 	// every built-in target now registers blobs (lua, compiler/target_lua.go,
 	// was the last), so the refusal is asked for a new leg's name, which has
-	// no target. refuseBlobs leaves java out of the
-	// carrier list it spells (compiler/builtin.go), so the list below does not
-	// name it. squirrel is registered as a carrier under its build tag
+	// no target. The live refusal is refuseBytes (the retired refuseBlobs,
+	// which left java out of its list, is gone), so java is named. squirrel is
+	// registered as a carrier under its build tag
 	// (compiler/target_squirrel_blobs.go), so it is named only in that build.
-	err = refuseBlobs(u, "newleg")
+	err = refuseBytes(u, "newleg")
 	if err == nil {
-		t.Fatal("refuseBlobs accepted a blob-bearing unit for a new leg")
+		t.Fatal("refuseBytes accepted a blob-bearing unit for a new leg")
 	}
 	// python is registered as a carrier under its build tag
 	// (compiler/carries_python_blobs.go), so it too is named only in that build.
-	legs := []string{"c", "cpp", "cs", "dart", "elixir", "go", "js", "lobster", "lua", "luau"}
+	legs := []string{"c", "cpp", "cs", "dart", "elixir", "go", "java", "js", "lobster", "lua", "luau"}
 	wants := []string{"--lang cs", "--lang js", "--lang rust"}
 	if slices.Contains(blobTargets, "python") {
 		legs = append(legs, "python")
@@ -168,7 +168,7 @@ func TestCsCarriesBlobs(t *testing.T) {
 	legs = append(legs, "unity")
 	wants = append(wants, "--lang unity")
 	carry := strings.Join(legs[:len(legs)-1], ", ") + " and " + legs[len(legs)-1]
-	wants = append(wants, mooLegSpelled(gooseLegSpelled("*bytes and *string are "+carry+" only today")))
+	wants = append(wants, mooLegSpelled(gooseLegSpelled("*bytes are "+carry+" only today")))
 	for _, want := range wants {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("blob-carrier refusal does not name %q: %v", want, err)

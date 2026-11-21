@@ -226,6 +226,12 @@ func deriveManifest(m *Manifest, path string) error {
 			// them rather than writing a text the form refuses (§16.7)
 			marker = " no-text"
 		}
+		if i.WireRefused {
+			// and so does this one: a driver answers a wire-refused instance's
+			// refused load by the read's reason, and any other refused load of a
+			// corpus instance stays a failure, so it has to know which is which
+			marker += " wire-refused"
+		}
 		fmt.Fprintf(&b, "instance %s %s %s %s%s\n", i.Name, i.Unit, i.Root, i.Wire, marker)
 	}
 	for _, wr := range m.JSONWriteRefusals {
@@ -744,6 +750,14 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 		if err != nil {
 			return false, fmt.Errorf("%s: %w", d.lang, err)
 		}
+		// rows on an opt-in unit the leg does not name are not asked (optin.go)
+		legDerived, notAsked, notOptedIn, err := legManifest(m, derived, d.lang, listed)
+		if err != nil {
+			return false, fmt.Errorf("%s: %w", d.lang, err)
+		}
+		if len(notOptedIn) > 0 {
+			_, _ = io.WriteString(w, "conformance OPT-IN "+d.lang+": `list` names no unit "+strings.Join(notOptedIn, ", ")+", so its rows count absent\n")
+		}
 		for _, s := range surfaces {
 			legWant := want[s]
 			var exemptions []string
@@ -775,7 +789,7 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			if err := os.MkdirAll(out, 0o755); err != nil {
 				return false, err
 			}
-			code, stderr, err := runDriver(d, derived, s, out)
+			code, stderr, err := runDriver(d, legDerived, s, out)
 			if err != nil {
 				return false, err
 			}
@@ -806,6 +820,12 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 				_, _ = io.WriteString(w, "conformance EXEMPTS "+line+"\n")
 			}
 			for _, e := range legWant {
+				if notAsked[e.name] {
+					r.missing++
+					r.mark(e.name, outcomeAbsent)
+					r.verdict(e.name, "absent")
+					continue
+				}
 				pass, named, missing, failed := r.pass, r.named, r.missing, len(r.failures)
 				scoreAnswer(d.lang, s, out, e, wireRefusals[e.name], r)
 				slug, isRelaxed := relaxed[relaxedKey(d.lang, s, e.name)]
@@ -833,6 +853,11 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 					}
 				}
 			}
+			// a pass on one half of a refusal pair counts only beside an
+			// answer on the other half (twins.go)
+			for _, name := range applyTwinRule(twinPairs(s, legWant, wireRefusals), r) {
+				_, _ = io.WriteString(w, "conformance TWIN "+d.lang+" / "+s+": "+name+" counts absent: the other half of its refusal pair was not answered\n")
+			}
 			if reference && r.missing > r.named {
 				r.failures = append(r.failures, fmt.Sprintf(
 					"the REFERENCE leg answered ABSENT for %d case(s) — an absence here is the corpus "+
@@ -856,6 +881,23 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 	return report(w, langs, results), nil
 }
 
+// scoreRefusalAbsent scores the `<case>.absent` a leg wrote on a row whose
+// expected answer is a refusal (message wire `-`, `wire-refused`), and says
+// whether it scored it. A file naming a reason is the historical spelling of
+// the refusal, and the caller scores it PASS (the reason's text is not
+// compared). An EMPTY file is the driver contract's per-case absence, a leg
+// with no codec for the root (README.md, "A CASE may be absent too"): that is
+// a missing feature, never the refusal the row owes, so it counts absent and
+// a leg with no codec cannot pass a must-refuse row.
+func scoreRefusalAbsent(name string, reason []byte, r *result) bool {
+	if len(bytes.TrimSpace(reason)) > 0 {
+		return false
+	}
+	r.missing++
+	r.mark(name, outcomeAbsent)
+	return true
+}
+
 // scoreAnswer scores one case written by a leg. The blob-shared marker
 // changes that one wire expectation from bytes to a named writer refusal, for
 // Go and for every port refused-by= names (inst.WireRefusal); inst is the zero
@@ -868,9 +910,13 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 			r.mark(e.name, outcomeFail)
 			return
 		}
-		if _, err := os.ReadFile(answer + ".absent"); err != nil {
+		reason, err := os.ReadFile(answer + ".absent")
+		if err != nil {
 			r.failures = append(r.failures, fmt.Sprintf("%s: expected refusal, driver wrote nothing", e.name))
 			r.mark(e.name, outcomeFail)
+			return
+		}
+		if scoreRefusalAbsent(e.name, reason, r) {
 			return
 		}
 		r.pass++
@@ -887,9 +933,13 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 			r.mark(e.name, outcomeFail)
 			return
 		}
-		if _, err := os.ReadFile(answer + ".absent"); err != nil {
+		reason, err := os.ReadFile(answer + ".absent")
+		if err != nil {
 			r.failures = append(r.failures, fmt.Sprintf("%s: expected wire refusal, driver wrote nothing", e.name))
 			r.mark(e.name, outcomeFail)
+			return
+		}
+		if scoreRefusalAbsent(e.name, reason, r) {
 			return
 		}
 		r.pass++

@@ -166,6 +166,8 @@ build/tables-generated-js/.stamp: bin/schema testdata/conformance/feature-witnes
 	./bin/schema generate --lang js --out build/tables-generated-js/rt1 test/tables/RT1.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/rt2 test/tables/RT2.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/rt3 test/tables/RT3.schema
+	# THE SHAPES UNIT (test/tables/shapes), opted in by the driver's `list`
+	./bin/schema generate --lang js --out build/tables-generated-js/shapes test/tables/shapes
 	@touch $@
 
 # The JS twin of the C++ "no serialize include path" build and of the C#

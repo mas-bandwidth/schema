@@ -183,7 +183,8 @@ func (g *tableGen) canProbe(st *ir.Struct) bool {
 
 // tableDefaultProbedStructs returns the set of struct names that can be reached
 // by a default or slot probe (check_default = 1). A struct can only be probed if
-// it is the target of a scalar table write or an enum-keyed table slot write.
+// it is the target of a scalar table write, an enum-keyed table slot write, or the
+// element of a counted array whose Min is above 0 (its birth probe).
 func tableDefaultProbedStructs(u *ir.Unit) map[string]bool {
 	closure := ir.TableClosure(u)
 	probed := map[string]bool{}
@@ -199,7 +200,7 @@ func tableDefaultProbedStructs(u *ir.Unit) map[string]bool {
 			if ir.TableWireScalarKind(f) != tkTable {
 				continue
 			}
-			if f.KeyEnum != "" || (f.Array == ir.ArrayNone && !f.IsList() && !f.IsMap() && !f.Type.Optional) {
+			if f.KeyEnum != "" || f.BornCount() > 0 || (f.Array == ir.ArrayNone && !f.IsList() && !f.IsMap() && !f.Type.Optional) {
 				probed[f.Type.Name] = true
 			}
 		}
@@ -545,7 +546,8 @@ typedef struct TableFieldInfo
     int sequence; /* 0 inline field, 1 unbounded list, 2 map */
     uint8_t text_list; /* 0 none, 1 string(M) elements, 2 ?string(M) elements (SPEC-TABLES 2.13) */
     int64_t text_total; /* | total = N byte cap across text-list elements, or 0 (SPEC-TABLES 2.13) */
-    void * (*place)(void * worker,void * slot,const char * key,int32_t length,int64_t number);
+    void * (*place)(void * worker,void * slot,const char * key,int32_t length,int64_t number,int fresh);
+    int32_t array_min; /* a [A..B]T count's declared minimum A (docs/SPEC.md §4.2), else 0 */
 } TableFieldInfo;
 
 typedef struct TableTypeInfo
