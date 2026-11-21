@@ -1250,6 +1250,8 @@ framing node_field_wrong_kind                   graphdemo ListNode testdata/wire
 framing node_type_ref_zero                      graphdemo ListNode testdata/wire/tables/framing/node_type_ref_zero.bin               refused -
 framing node_index_above_count                  graphdemo ListNode testdata/wire/tables/framing/node_index_above_count.bin           refused -
 framing node_index_null                         graphdemo ListNode testdata/wire/tables/framing/node_index_null.bin                  read    testdata/conformance/tables/framing/listnode_1.json
+framing node_type_undeclared                    graphdemo ListNode testdata/wire/tables/framing/node_type_undeclared.bin             read    testdata/conformance/tables/framing/listnode_1.json
+framing node_type_declared_wrong                graphdemo ListNode testdata/wire/tables/framing/node_type_declared_wrong.bin         refused -
 framing node_reserved_id_in_record              graphdemo ListNode testdata/wire/tables/framing/node_reserved_id_in_record.bin       refused -
 framing node_unknown_to_fixed_reader            tblr1 Cfg testdata/wire/tables/framing/node_unknown_to_fixed_reader.bin     refused -
 framing node_table_L_past_body                  graphdemo ListNode testdata/wire/tables/framing/node_table_L_past_body.bin           refused -
