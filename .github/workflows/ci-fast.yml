@@ -358,6 +358,19 @@ jobs:
               m=$d; while [ "$m" != . ]; do [ -f "$m/go.mod" ] && continue 2; case "$m" in */*) m=${m%/*} ;; *) m=. ;; esac; done
               case " $packages " in *" ./$d "*) ;; *) packages="$packages ./$d" ;; esac
             done
+            # THE DEPENDENTS. A package whose non-test source changed can break
+            # the tests of every package that builds on it, and the diff names
+            # none of those: PR #4437 changed the front end and merged green
+            # with internal/tablewire red. These are the packages, among the
+            # ones above, whose non-test .go files changed; the rows step hands
+            # them to gotestrows -dependents-of, which selects every
+            # main-module package whose build or tests depend on one of them
+            # (`go list -test`). A test-only change selects no dependents.
+            src_packages=""
+            src_dirs=$(awk '/\.go$/ && !/_test\.go$/ { d = $0; if (!sub(/\/[^\/]*$/, "", d)) d = "."; if (!(d in seen)) { seen[d] = 1; print d } }' <<<"$files")
+            for d in $src_dirs; do
+              case " $packages " in *" ./$d "*) src_packages="$src_packages ./$d" ;; esac
+            done
             # THE RUNTIME-ONLY DIFF. A language's emitted runtime (a .lua, .moo,
             # .nut, .goose, .rs ... file under its codegen directory) is tested
             # by that language's two Go packages, the type surface and the
@@ -455,6 +468,7 @@ jobs:
               done
             fi
             packages=$(echo "$packages" | xargs || true)
+            src_packages=$(echo "$src_packages" | xargs || true)
           }
 
           # THE LANGUAGE LINTS (the owner, 2026-11-15: "run only the fastest
@@ -546,6 +560,7 @@ jobs:
 
           echo "broad=$broad"               >> "$GITHUB_OUTPUT"
           echo "packages=$packages"         >> "$GITHUB_OUTPUT"
+          echo "src_packages=$src_packages" >> "$GITHUB_OUTPUT"
           echo "legs=$json"                 >> "$GITHUB_OUTPUT"
           echo "verify_legs=$verify_legs_json" >> "$GITHUB_OUTPUT"
           echo "clean_legs=$clean_legs_json"   >> "$GITHUB_OUTPUT"
@@ -556,6 +571,7 @@ jobs:
             echo
             echo "* broad selection: **$broad**"
             echo "* packages: \`${packages:-(none)}\`"
+            echo "* dependents of: \`${src_packages:-(none)}\`"
             echo "* legs: \`$json\`"
             echo "* verify-legs: \`$verify_legs_json\`"
             echo "* clean-legs: \`$clean_legs_json\`"
@@ -575,6 +591,7 @@ jobs:
         if: steps.pick.outputs.packages != ''
         env:
           PACKAGES: ${{ steps.pick.outputs.packages }}
+          SRC_PACKAGES: ${{ steps.pick.outputs.src_packages }}
           BROAD: ${{ steps.pick.outputs.broad }}
         run: |
           set -euo pipefail
@@ -583,8 +600,10 @@ jobs:
           case " $PACKAGES " in
             *" ./internal/codegen/gotable "*|*" ./... "*) flags="$flags -gotable-extras" ;;
           esac
+          # the dependents of the changed non-test source ride beside the diff's
+          # own packages (THE DEPENDENTS in `pick`)
           # shellcheck disable=SC2086
-          rows=$(go run ./tools/gotestrows $flags $PACKAGES)
+          rows=$(go run ./tools/gotestrows $flags -dependents-of "$SRC_PACKAGES" $PACKAGES)
           echo "$rows"
           echo "rows=$rows" >> "$GITHUB_OUTPUT"
 

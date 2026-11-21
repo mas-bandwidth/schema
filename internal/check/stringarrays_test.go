@@ -74,6 +74,10 @@ func TestTextListAndArrayRootRefusals(t *testing.T) {
 			"package t\ntable L {\n    xs [..4]string(8)\n}\ntable LXsAppend {\n    y int32\n}\n"},
 		{"json on a table takes array only", "names no text shape",
 			"package t\ntable G | json = \"object\" {\n    goals []int32\n}\n"},
+		// json = "value" was withdrawn from SPEC-TABLES (§16.13, design in
+		// docs/plans/json-value.md): it is refused like any other value
+		{"json = value is withdrawn", "names no text shape",
+			"package t\nenum K { A, B }\ntable N {\n    kind K\n}\ntable V | json = \"value\", integrity = \"crc32c\" {\n    nodes []N\n    text  *bytes\n}\n"},
 		{"json on a table takes a string", "json on a table line takes a quoted string",
 			"package t\ntable G | json = 3 {\n    goals []int32\n}\n"},
 		{"bare json on a table", "attribute json requires a value",
