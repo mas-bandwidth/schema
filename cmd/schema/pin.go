@@ -39,15 +39,6 @@ const pinReleases = "https://github.com/mas-bandwidth/schema/releases"
 
 var pinLine = regexp.MustCompile(`^` + regexp.QuoteMeta(pinDirectiveHead+pinModuleBase) + `(/v[0-9]+)?` + regexp.QuoteMeta(pinCommandTail))
 
-// A Go pseudo-version (the `v...-yyyymmddhhmmss-<12 hex>` form) is also a
-// semver tag, so one grammar covers both; refusing anything else by name keeps
-// a typo from silently rewriting every pin to a version that cannot resolve.
-var pinSemver = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)((-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)|(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?$`)
-
-func validPinVersion(v string) bool {
-	return pinSemver.MatchString(v) || modulemove.IsPseudoVersion(v)
-}
-
 // pinTarget decides a pin: the module path the pin line takes for version,
 // or the refusal. boundary is the first v3 tag whose go.mod names /v3 (""
 // while there is none) and ownModule the module path main resolves under,
@@ -60,7 +51,11 @@ func validPinVersion(v string) bool {
 // was cut while go.mod still named /v2, so neither path resolves it (with no
 // boundary, that is every v3 tag).
 func pinTarget(version, boundary, ownModule string) (string, error) {
-	if !validPinVersion(version) {
+	// One grammar, Go's own (modulemove.ValidVersion), before any file is
+	// read: a Go pseudo-version is also a semver version, so it covers both,
+	// and refusing anything else by name keeps a typo from rewriting every
+	// pin to a version that cannot resolve.
+	if !modulemove.ValidVersion(version) {
 		return "", fmt.Errorf("schema pin: %s is not a Go pseudo-version or semver tag", version)
 	}
 	// The boundary is held against the CANONICAL release, the version with

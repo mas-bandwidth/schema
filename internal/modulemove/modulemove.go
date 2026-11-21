@@ -15,7 +15,6 @@ import (
 	"maps"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 )
 
@@ -42,28 +41,80 @@ var (
 // it alone: it names the base path under every major.
 const moduleBase = "github.com/mas-bandwidth/" + "schema"
 
-// pseudo is Go's pseudo-version grammar (golang.org/x/mod/module), all three
-// forms: vX.0.0-yyyymmddhhmmss-hash, vX.Y.(Z+1)-0.yyyymmddhhmmss-hash and
-// vX.Y.Z-pre.0.yyyymmddhhmmss-hash.
+// ValidVersion reports whether v is a version Go resolves a module at: the
+// grammar of golang.org/x/mod's semver.IsValid, held to the full canonical
+// spelling (vMAJOR.MINOR.PATCH, never the v1 or v1.2 shorthand), written out
+// here because this module takes no dependency for it. The three numbers are
+// digits with no leading zero. A pre-release is dot-separated identifiers of
+// [0-9A-Za-z-], none empty, an all-digit one with no leading zero. Build
+// metadata is dot-separated identifiers of [0-9A-Za-z-], none empty. Nothing
+// here is read as an integer, so a number of any length is a number.
+func ValidVersion(v string) bool {
+	rest, ok := strings.CutPrefix(v, "v")
+	if !ok {
+		return false
+	}
+	rest, build, hasBuild := strings.Cut(rest, "+")
+	core, pre, hasPre := strings.Cut(rest, "-")
+	nums := strings.Split(core, ".")
+	if len(nums) != 3 {
+		return false
+	}
+	for _, n := range nums {
+		if !isNumeric(n) || (len(n) > 1 && n[0] == '0') {
+			return false
+		}
+	}
+	if hasPre {
+		for id := range strings.SplitSeq(pre, ".") {
+			if !isIdent(id) || (isNumeric(id) && len(id) > 1 && id[0] == '0') {
+				return false
+			}
+		}
+	}
+	if hasBuild {
+		for id := range strings.SplitSeq(build, ".") {
+			if !isIdent(id) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// isIdent: a non-empty run of [0-9A-Za-z-].
+func isIdent(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if (r < '0' || r > '9') && (r < 'A' || r > 'Z') && (r < 'a' || r > 'z') && r != '-' {
+			return false
+		}
+	}
+	return true
+}
+
+// pseudo is the shape of Go's pseudo-versions (golang.org/x/mod/module), all
+// three forms: vX.0.0-yyyymmddhhmmss-hash, vX.Y.(Z+1)-0.yyyymmddhhmmss-hash
+// and vX.Y.Z-pre.0.yyyymmddhhmmss-hash. It is a shape only: IsPseudoVersion
+// holds the version to ValidVersion as well, as x/mod does.
 var pseudo = regexp.MustCompile(`^v[0-9]+\.(0\.0-|[0-9]+\.[0-9]+-([^+]*\.)?0\.)[0-9]{14}-[0-9a-f]{12}$`)
 
 // IsPseudoVersion reports whether v is a Go pseudo-version: a commit, not a
 // tag. A commit is never below the boundary, because whether it resolves
 // depends on the go.mod at that commit, which pin cannot see offline.
-func IsPseudoVersion(v string) bool { return pseudo.MatchString(v) }
+func IsPseudoVersion(v string) bool { return ValidVersion(v) && pseudo.MatchString(v) }
 
-// Major is the major number of a semver version (v3.0.4 is 3), or -1.
-func Major(v string) int {
-	s, ok := strings.CutPrefix(v, "v")
-	if !ok {
-		return -1
+// Major is the major of a version as it is written (v3.0.4 is "3"), or "" for
+// a string that is not a version. It stays text: a major is compared and
+// written into a module path, never counted, so none is too long.
+func Major(v string) string {
+	if !ValidVersion(v) {
+		return ""
 	}
-	s, _, _ = strings.Cut(s, ".")
-	n, err := strconv.Atoi(s)
-	if err != nil {
-		return -1
-	}
-	return n
+	major, _, _ := strings.Cut(v[1:], ".")
+	return major
 }
 
 // PreModuleMove reports whether version, a semver tag with no build metadata,
@@ -71,7 +122,7 @@ func Major(v string) int {
 // resolve it. An empty boundary means every v3 tag is. A pseudo-version is a
 // commit and never counts as below; neither does any other major.
 func PreModuleMove(version, boundary string) bool {
-	if Major(version) != 3 || IsPseudoVersion(version) {
+	if Major(version) != "3" || IsPseudoVersion(version) {
 		return false
 	}
 	return boundary == "" || Compare(version, boundary) < 0
@@ -171,12 +222,15 @@ func ModulePath(goMod string) (string, error) {
 }
 
 // PathFor is the module path Go requires for a version of this module: the
-// base path for v0 and v1, the base path plus /vN for major N from 2 on.
+// base path for v0 and v1, the base path plus /vN for major N from 2 on, N
+// as the version writes it.
 func PathFor(version string) string {
-	if m := Major(version); m >= 2 {
-		return moduleBase + "/v" + strconv.Itoa(m)
+	switch major := Major(version); major {
+	case "", "0", "1":
+		return moduleBase
+	default:
+		return moduleBase + "/v" + major
 	}
-	return moduleBase
 }
 
 // ReleaseGate checks a release tag against the go.mod at the commit it names
@@ -205,7 +259,7 @@ func ReleaseGate(version, goMod, boundary string, tagModules map[string]string) 
 		return fmt.Errorf("%w: tagging %s needs go.mod to name %s, and it names %s, so Go cannot resolve the tag; pin's boundary (internal/modulemove.FirstV3ModuleTag = %q) does not cover it, so pin would hand it to adopters", ErrModuleMismatch, version, want, have, boundary)
 	case have == want && pre:
 		return fmt.Errorf("%w: go.mod names %s, so Go resolves %s, but pin's boundary (internal/modulemove.FirstV3ModuleTag = %q) refuses it; set the boundary to the first tag cut with the /v3 module path", ErrBoundaryCovers, have, version, boundary)
-	case have == want && Major(version) == 3 && version != boundary && firstV3Module(tagModules):
+	case have == want && Major(version) == "3" && version != boundary && firstV3Module(tagModules):
 		return fmt.Errorf("%w: %s would be the first v3 tag cut with a go.mod naming %s, and pin's boundary (internal/modulemove.FirstV3ModuleTag) is %q; set the boundary to %s, or release as %s", ErrBoundaryStale, version, have, boundary, version, boundary)
 	}
 	return nil
@@ -224,7 +278,7 @@ func BoundaryGate(boundary string, tagModules map[string]string) error {
 		return nil
 	}
 	for _, tag := range slices.Sorted(maps.Keys(tagModules)) {
-		if Major(tag) != 3 || IsPseudoVersion(tag) {
+		if Major(tag) != "3" || IsPseudoVersion(tag) {
 			continue
 		}
 		have, below := tagModules[tag], Compare(tag, boundary) < 0
@@ -242,7 +296,7 @@ func BoundaryGate(boundary string, tagModules map[string]string) error {
 // release being checked would be the first that Go resolves under /v3.
 func firstV3Module(tagModules map[string]string) bool {
 	for tag, have := range tagModules {
-		if Major(tag) == 3 && !IsPseudoVersion(tag) && have == PathFor(tag) {
+		if Major(tag) == "3" && !IsPseudoVersion(tag) && have == PathFor(tag) {
 			return false
 		}
 	}

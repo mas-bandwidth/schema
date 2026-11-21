@@ -128,7 +128,7 @@ func TestFirstV3ModuleTagParses(t *testing.T) {
 	if FirstV3ModuleTag == "" {
 		return
 	}
-	if Major(FirstV3ModuleTag) != 3 || strings.ContainsAny(FirstV3ModuleTag, "-+") || strings.Count(FirstV3ModuleTag, ".") != 2 {
+	if Major(FirstV3ModuleTag) != "3" || strings.ContainsAny(FirstV3ModuleTag, "-+") || strings.Count(FirstV3ModuleTag, ".") != 2 {
 		t.Errorf("FirstV3ModuleTag = %q; want a v3.Y.Z release tag", FirstV3ModuleTag)
 	}
 }
@@ -153,5 +153,82 @@ func TestTreeGate(t *testing.T) {
 		if !errors.Is(err, c.want) || (c.want == nil) != (err == nil) {
 			t.Errorf("%s: TreeGate(boundary %q) = %v; want %v", c.name, c.boundary, err, c.want)
 		}
+	}
+}
+
+// The spellings the reviewer's CLI comparison found, shared by the tests
+// below: each is one Go's golang.org/x/mod refuses as a version.
+var badVersions = []string{
+	"v3.0.1-rc..0.20261121185943-f397f5f7765d", // an empty pre-release identifier
+	"v2.5.1-beta.01",                        // a numeric pre-release identifier with a leading zero
+	"v02.5.1-0.20261121185943-f397f5f7765d", // a pseudo-version with a leading-zero major
+	"v02.0.0-20261121185943-f397f5f7765d",
+	"v2.05.1", "v2.5.01",
+	"v2.5.1-", "v2.5.1-.rc", "v2.5.1-rc.", "v2.5.1-rc_1", "v2.5.1-00",
+	"v2.5.1+", "v2.5.1+a..b", "v2.5.1-rc.1+",
+	"v2.5", "v2", "v", "2.5.1", "V2.5.1", "v2.5.1.0", "", "main",
+	" v2.5.1", "v2.5.1\n",
+}
+
+// TestValidVersion: the grammar is Go's (semver.IsValid on a version already
+// in canonical form): no leading zeros in a number, no empty identifier.
+func TestValidVersion(t *testing.T) {
+	t.Parallel()
+	for _, v := range badVersions {
+		if ValidVersion(v) {
+			t.Errorf("ValidVersion(%q) = true; Go refuses it", v)
+		}
+		if IsPseudoVersion(v) {
+			t.Errorf("IsPseudoVersion(%q) = true; it is not a version at all", v)
+		}
+	}
+	for _, v := range []string{
+		"v2.5.1-beta.1",
+		"v2.5.1-0.20261121185943-f397f5f7765d", // the real /v2 pseudo-version of main
+		"v0.0.0", "v1.16.0", "v2.5.1", "v3.0.4", "v10.20.30",
+		"v2.5.1-0", "v2.5.1-rc.1", "v2.5.1-0a", "v2.5.1-a-b.0-1", "v2.5.1--",
+		"v2.5.1+incompatible", "v2.5.1+build.007", "v2.5.1-rc.1+build",
+		"v9223372036854775808.0.0", // past int64: still a version
+		"v3.0.0-20261121000000-abcdef123456",
+		"v3.1.0-rc.1.0.20261121000000-abcdef123456",
+	} {
+		if !ValidVersion(v) {
+			t.Errorf("ValidVersion(%q) = false; Go accepts it", v)
+		}
+	}
+	for v, want := range map[string]bool{
+		"v2.5.1-0.20261121185943-f397f5f7765d":      true,
+		"v3.0.0-20261121000000-abcdef123456":        true,
+		"v3.1.0-rc.1.0.20261121000000-abcdef123456": true,
+		"v2.5.1-beta.1":                      false,
+		"v2.5.1":                             false,
+		"v2.5.1-20261121185943-f397f5f7765d": false, // the vX.0.0 form on a later patch
+	} {
+		if got := IsPseudoVersion(v); got != want {
+			t.Errorf("IsPseudoVersion(%q) = %v; want %v", v, got, want)
+		}
+	}
+}
+
+// TestPathForKeepsTheMajorAsWritten: the path's major is the version's own
+// digits, never a number that can overflow into the unversioned path.
+func TestPathForKeepsTheMajorAsWritten(t *testing.T) {
+	t.Parallel()
+	for v, want := range map[string]string{
+		"v0.9.0":                               moduleBase,
+		"v1.16.0":                              moduleBase,
+		"v2.5.1":                               moduleBase + "/v2",
+		"v3.0.4":                               moduleBase + "/v3",
+		"v2.5.1-0.20261121185943-f397f5f7765d": moduleBase + "/v2",
+		"v9223372036854775808.0.0":             moduleBase + "/v9223372036854775808",
+		"v340282366920938463463374607431768211456.1.2": moduleBase + "/v340282366920938463463374607431768211456",
+	} {
+		if got := PathFor(v); got != want {
+			t.Errorf("PathFor(%s) = %s; want %s", v, got, want)
+		}
+	}
+	// and a major past int64 is not a v3 tag, nor any tag below the boundary
+	if PreModuleMove("v9223372036854775808.0.0", "") {
+		t.Error("a major past int64 counts as a v3 tag below the boundary")
 	}
 }

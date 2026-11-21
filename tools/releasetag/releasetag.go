@@ -282,7 +282,7 @@ func release(g Git, version, rev, mainRef string, push bool, out io.Writer, boun
 	if boundary != "" {
 		tagModules = map[string]string{}
 		for _, existing := range fields(tags) {
-			if _, err := ParseVersion(existing); err != nil || modulemove.Major(existing) != 3 {
+			if _, err := ParseVersion(existing); err != nil || modulemove.Major(existing) != "3" {
 				continue
 			}
 			src, err := g.Run("show", existing+":go.mod")
