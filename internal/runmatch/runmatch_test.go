@@ -44,6 +44,9 @@ func TestSelectsFollowsGo(t *testing.T) {
 		{"^TestFast$", "TestFastest", false},
 		{"TestFast", "TestFastest", true},
 		{"/roundtrip", "TestAnything", true},
+		{"TestGated/roundtrip", "TestGated/roundtrip", true},
+		{"TestGated/roundtrip", "TestGated/other", false},
+		{"TestGated", "TestGated/any", true},
 		{"TestMissing", "TestFast", false},
 	} {
 		s, err := Compile(tc.pattern)
@@ -56,5 +59,32 @@ func TestSelectsFollowsGo(t *testing.T) {
 	}
 	if _, err := Compile("TestA|("); err == nil {
 		t.Error("a pattern with an element that does not compile returned no error")
+	}
+}
+
+// TestSkipsFollowsGo: -skip removes a test only on a match that is not partial.
+func TestSkipsFollowsGo(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		pattern, name string
+		want          bool
+	}{
+		{"TestFast", "TestFast", true},
+		{"TestFast", "TestFast/sub", true},
+		{"TestFast/sub", "TestFast", false},
+		{"TestFast/sub", "TestFast/sub", true},
+		{"TestFast/sub", "TestFast/other", false},
+		{"TestA|TestFast", "TestFast", true},
+		{"TestA/x|TestFast/y", "TestFast", false},
+		{"TestGated", "TestFast", false},
+		{"^TestPythonReflectionStrictTypes$", "TestPythonReflectionStrictTypes", true},
+	} {
+		p, err := Compile(tc.pattern)
+		if err != nil {
+			t.Fatalf("Compile(%q): %v", tc.pattern, err)
+		}
+		if got := p.Skips(tc.name); got != tc.want {
+			t.Errorf("-skip %q removes %s = %v, want %v", tc.pattern, tc.name, got, tc.want)
+		}
 	}
 }

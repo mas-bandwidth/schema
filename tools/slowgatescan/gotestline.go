@@ -25,8 +25,9 @@ type goTestLine struct {
 
 	run    string // the -run pattern in force (the last one), make's `$$` read as `$`
 	hasRun bool
+	skip   string // the -skip pattern in force, or ""
 	// runsNothing: a flag in force makes the tests not run, or run in a way
-	// this scan does not model (-count=0, -list, -c, -exec, -skip).
+	// this scan does not model (-count=0, -list, -c, -exec).
 	runsNothing string
 	tags        []string
 
@@ -107,13 +108,26 @@ func parseGoTestLine(cmd string) goTestLine {
 		return l
 	}
 	start := 0
-	for _, sep := range []string{";", "&&", "||", "|", "(", "{", "`", " then ", " do ", " else "} {
-		if i := strings.LastIndex(cmd[:invocations[0][0]], sep); i >= 0 && i+len(sep) > start {
+	before := cmd[:invocations[0][0]]
+	for _, sep := range []string{";", "&&", "||", "|", "`", " then ", " do ", " else "} {
+		if i := strings.LastIndex(before, sep); i >= 0 && i+len(sep) > start {
 			start = i + len(sep)
 		}
 	}
+	// a `(` or `{` opens a subshell, a group or a `$$(` substitution; the one
+	// in a make reference `$(NAME)` or `${NAME}` opens nothing
+	for i := len(before) - 1; i >= start; i-- {
+		if before[i] != '(' && before[i] != '{' {
+			continue
+		}
+		if i > 0 && before[i-1] == '$' && !(i > 1 && before[i-2] == '$' && before[i] == '(') {
+			continue // `$(NAME)`, `${NAME}` and the shell's `$${name}`
+		}
+		start = i + 1
+		break
+	}
 	words := shellWords(cmd[start:])
-	for _, name := range []string{"SCHEMA_SLOW", "SCHEMA_REQUIRE_CORPUS", "GOOS", "GOARCH"} {
+	for _, name := range []string{"SCHEMA_SLOW", "SCHEMA_REQUIRE_CORPUS", "GOOS", "GOARCH", "GOFLAGS"} {
 		if strings.Contains(cmd[:start], name) {
 			words = append(shellWords(cmd[:start]), words...)
 			break
@@ -246,13 +260,25 @@ func parseGoTestLine(cmd string) goTestLine {
 	// THE FLAGS, last one wins, before and after the package list. After
 	// -args everything goes to the test binary, which reads the -test.* forms;
 	// the go tool reads both forms.
+	//
+	// GOFLAGS is read first: the go tool applies its entries as flags given
+	// before the command line's, so `GOFLAGS=-count=0 go test` runs nothing
+	// and `GOFLAGS=-tags=x` builds under the tag. Only a GOFLAGS the line
+	// itself sets is known here; one this scan cannot read voids the proof.
+	gateUnread = l.unreadEnv
+	goflags := strings.Fields(value("GOFLAGS"))
+	if l.unreadEnv != gateUnread {
+		l.unreadArg, l.unreadEnv = l.unreadEnv, gateUnread
+	}
+	words = append(append(append([]string{}, words[:args]...), goflags...), words[args:]...)
+	last := len(goflags) + args // GOFLAGS entries are whole words: none ends a command
 	afterArgs := false
 	count := ""
 	for i := args; i < len(words); i++ {
 		w := words[i]
-		ended := strings.HasSuffix(w, ";")
+		ended := i >= last && strings.HasSuffix(w, ";")
 		w = strings.TrimSuffix(w, ";")
-		if commandEnd(w) {
+		if i >= last && commandEnd(w) {
 			break
 		}
 		if w == "-args" || w == "--args" {
@@ -300,9 +326,11 @@ func parseGoTestLine(cmd string) goTestLine {
 				}
 				l.tags = strings.FieldsFunc(v, func(r rune) bool { return r == ',' || r == ' ' || r == '\t' })
 			case "skip":
-				if next() != "" {
-					l.runsNothing = "-skip removes tests from the selection, which this scan does not model"
+				v, ok := readable(next())
+				if !ok {
+					l.unreadArg = "its -skip pattern cannot be read"
 				}
+				l.skip = v
 			case "list":
 				next()
 				l.runsNothing = "-list prints test names and runs none"
@@ -314,8 +342,12 @@ func parseGoTestLine(cmd string) goTestLine {
 					l.runsNothing = "-c builds the test binary and runs nothing"
 				}
 			}
-		} else if _, ok := readable(w); !ok && l.unreadArg == "" {
+		} else if strings.HasPrefix(w, "$") && !strings.HasPrefix(w, "$$") {
+			// a whole word that is a make expansion this scan could not
+			// resolve: it may hold packages, or flags
 			l.unreadArg = "an argument of the test command cannot be read (" + w + ")"
+		} else if strings.HasPrefix(w, "$$") && !afterArgs {
+			l.unreadArg = "an argument of the test command is a shell expansion (" + w + ")"
 		}
 		if ended {
 			break
@@ -341,6 +373,8 @@ func (l goTestLine) provable() (bool, string) {
 		return false, l.unreadArg
 	case l.runsNothing != "":
 		return false, l.runsNothing
+	case l.skip != "":
+		return false, "-skip removes tests from the selection, and an unarmed line is not credited through one"
 	case !l.hasRun:
 		return false, "it has no -run pattern, so it runs every test of the package"
 	}

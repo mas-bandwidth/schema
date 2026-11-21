@@ -830,8 +830,32 @@ func coveredByCI(steps []ciStep, t gatedTest) string {
 	return ""
 }
 
-// coveredBy reports the first armed recipe whose package and -run pattern select
-// t, using Go's own -run semantics.
+// runs reports whether a recipe line RUNS the test called name, read as the go
+// tool and the test binary read the line: the last -run in force selects it,
+// no -skip in force removes it, and no flag makes the run empty. A line this
+// scan cannot read runs nothing it can be credited with — python-reflection-core
+// was credited with TestPythonReflectionStrictTypes, the one test its recipe
+// names in -skip, because only -run was read.
+func (r recipe) runs(name string) bool {
+	l := r.test
+	if l.undecided != "" || l.unreadArg != "" || l.runsNothing != "" {
+		return false
+	}
+	if l.hasRun {
+		if p, err := runmatch.Compile(l.run); err != nil || !p.Selects(name) {
+			return false
+		}
+	}
+	if l.skip != "" {
+		if p, err := runmatch.Compile(l.skip); err != nil || p.Skips(name) {
+			return false
+		}
+	}
+	return true
+}
+
+// coveredBy reports the first armed recipe whose package it names and which
+// runs t.
 func coveredBy(recipes []recipe, t gatedTest) string {
 	for _, r := range recipes {
 		if !r.armed {
@@ -840,7 +864,7 @@ func coveredBy(recipes []recipe, t gatedTest) string {
 		if !recipeMatchesPkg(r, t.pkg) {
 			continue
 		}
-		if r.runPat == "" || matchesRun(r.runPat, t.name) {
+		if r.runs(t.name) {
 			return r.target
 		}
 	}
@@ -1038,6 +1062,12 @@ func makeVariables(files []string) (map[string]string, error) {
 			return nil, err
 		}
 		for line := range strings.SplitSeq(string(b), "\n") {
+			if m := makeAppend.FindStringSubmatch(line); m != nil {
+				// built up in pieces, target by target or with override: its
+				// value is make's to say, and this scan does not guess it
+				ambiguous[m[1]+m[2]+m[3]] = true
+				continue
+			}
 			m := makeAssignment.FindStringSubmatch(strings.TrimRight(line, " \t\r"))
 			if m == nil || strings.HasSuffix(m[2], `\`) {
 				continue
@@ -1053,6 +1083,10 @@ func makeVariables(files []string) (map[string]string, error) {
 	}
 	return vars, nil
 }
+
+// makeAppend is every assignment makeAssignment does not read whole: `NAME +=`,
+// `override NAME =`, `export NAME =` and a target-specific `target: NAME =`.
+var makeAppend = regexp.MustCompile(`^(?:([A-Za-z_][A-Za-z0-9_]*)[ \t]*\+=|(?:override|export)[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*(?:::?|\?|\+)?=|[^\t#=:]+:[ \t]*([A-Za-z_][A-Za-z0-9_]*)[ \t]*(?:::?|\?|\+)?=)`)
 
 var makeReference = regexp.MustCompile(`\$[({]([A-Za-z_][A-Za-z0-9_]*)[)}]`)
 
@@ -1276,11 +1310,6 @@ func judgeRecipeLine(rel string, start int, target, cmd string, gated map[string
 	}
 	parsed := parseGoTestLine(cmd)
 	armed := parsed.armed()
-	runPat := runPattern(cmd)
-	if parsed.undecided == "" && parsed.unreadArg == "" {
-		// the pattern in force is the last one, wherever it is spelled
-		runPat = parsed.run
-	}
 	named := namedPackages(cmd)
 	pkgs := packagesOf(cmd, gated)
 	if proof && len(pkgs) == 0 {
@@ -1307,7 +1336,7 @@ func judgeRecipeLine(rel string, start int, target, cmd string, gated map[string
 	ledger.Judged()
 	return recipe{
 		file: rel, line: start, target: target, cmd: cmd,
-		packages: pkgs, armed: armed, runPat: runPat, test: parsed,
+		packages: pkgs, armed: armed, runPat: parsed.run, test: parsed,
 	}, true
 }
 
@@ -1394,16 +1423,6 @@ func gatedUnder(spelled string, gated map[string]bool) bool {
 		}
 	}
 	return false
-}
-
-var runFlag = regexp.MustCompile(`-run[= ]+'?"?([^'"\s]+)'?"?`)
-
-func runPattern(cmd string) string {
-	m := runFlag.FindStringSubmatch(cmd)
-	if m == nil {
-		return ""
-	}
-	return strings.ReplaceAll(m[1], "$$", "$")
 }
 
 func readExceptions(path string) ([]exception, error) {

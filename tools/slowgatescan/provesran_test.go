@@ -324,6 +324,15 @@ func TestUnarmedLineVerdictFollowsGoSelection(t *testing.T) {
 		{"go test -run TestFast ./pkg -args -run TestGated", 1, "-run after -args is not testing's flag: undecided"},
 		{"go test -run TestFast ./pkg -args -test.count=0", 1, "-test.count=0 after -args runs nothing"},
 		{"go test -run $$(cat pattern.txt) ./pkg", 1, "the pattern cannot be read"},
+		// GOFLAGS on the line is flags given before the command line's
+		{"GOFLAGS=-count=0 go test ./pkg -v -run TestFast", 1, "GOFLAGS=-count=0 runs TestFast zero times"},
+		{"GOFLAGS=-skip=TestFast go test ./pkg -v -run TestFast", 1, "GOFLAGS=-skip removes the one test selected"},
+		{"GOFLAGS=-count=1 go test ./pkg -v -run TestFast", 0, "GOFLAGS=-count=1 runs TestFast once"},
+		{"GOFLAGS=-count=0 go test ./pkg -count=1 -run TestFast", 0, "the command line's -count overrides GOFLAGS"},
+		{"GOOS=linux GOFLAGS=-tags=include_optional_feature go test ./pkg -run TestFeature", 0, "the tag given through GOFLAGS builds TestFeature"},
+		{"GOFLAGS=$(EXTRA) go test ./pkg -run TestFast", 1, "GOFLAGS cannot be read, so nothing is proven"},
+		{"go test $(EXTRA_FLAGS) ./pkg -run TestFast", 1, "a word this scan cannot read may hold flags"},
+		{"UNRELATED_SCHEMA_SLOW=1 go test ./pkg -run TestGated", 1, "another variable's name ends in SCHEMA_SLOW: nothing is armed"},
 		// declarations are read under the build context the line runs in
 		{"GOOS=linux go test -run 'TestFeature' ./pkg", 1, "TestFeature is behind a build tag the line does not set: no tests to run"},
 		{"GOOS=linux go test -tags include_optional_feature -run 'TestFeature' ./pkg", 0, "with the tag it runs TestFeature"},
@@ -404,5 +413,92 @@ func TestArmingIsTheEnvironmentTheTestSees(t *testing.T) {
 		if got := parseGoTestLine(cmd).armed(); got != want {
 			t.Errorf("armed(%q) = %v, want %v", cmd, got, want)
 		}
+	}
+}
+
+// TestCoverageCreditsOnlyWhatALineRuns is the accounting's negative control
+// (the reviewer's F-036): a gated test is credited to an armed recipe only when
+// that recipe's line runs it. python-reflection-core selects ^TestPythonReflection
+// and names TestPythonReflectionStrictTypes in -skip; it was credited with that
+// very test, so losing the strict shard that does run it would have been masked.
+func TestCoverageCreditsOnlyWhatALineRuns(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeTree(t, root, map[string]string{
+		"go.mod": "module example.com/root\n",
+		"pkg/a_test.go": "package pkg\n\nimport \"testing\"\n\n" +
+			"func TestPythonReflectionStrictTypes(t *testing.T) { slowtest.Gate(t, \"x\") }\n" +
+			"func TestPythonReflectionCorpus(t *testing.T) { slowtest.Gate(t, \"x\") }\n" +
+			"func TestOther(t *testing.T) { slowtest.Gate(t, \"x\") }\n",
+		"Makefile": strings.Join([]string{
+			"core:",
+			"\tSCHEMA_SLOW=1 go test -count=1 -run '^TestPythonReflection' -skip '^TestPythonReflectionStrictTypes$$' ./pkg/",
+			"strict:",
+			"\tSCHEMA_SLOW=1 SHARD=$* go test -v -count=1 -run '^TestPythonReflectionStrictTypes$$' ./pkg/",
+			"last-run-wins:",
+			"\tSCHEMA_SLOW=1 go test -run '^TestOther$$' -run '^TestNothing$$' ./pkg/",
+			"runs-nothing:",
+			"\tSCHEMA_SLOW=1 go test -count=0 -run '^TestOther$$' ./pkg/",
+			"unarmed-by-env:",
+			"\tenv -u SCHEMA_REQUIRE_CORPUS go test -run '^TestOther$$' ./pkg/",
+			"",
+		}, "\n"),
+	})
+	gated, err := gatedPackages(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recipes, err := scanMakefiles(root, gated)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]string{
+		"TestPythonReflectionStrictTypes": "strict",
+		"TestPythonReflectionCorpus":      "core",
+		"TestOther":                       "", // no line runs it: one selects it and then selects something else, one runs zero times, one is unarmed
+	} {
+		if got := coveredBy(recipes, gatedTest{pkg: "./pkg", name: name}); got != want {
+			t.Errorf("%s is credited to %q, want %q", name, got, want)
+		}
+	}
+	// drop the strict shard: the test the core recipe skips is now run by nobody
+	var withoutStrict []recipe
+	for _, r := range recipes {
+		if r.target != "strict" {
+			withoutStrict = append(withoutStrict, r)
+		}
+	}
+	if got := coveredBy(withoutStrict, gatedTest{pkg: "./pkg", name: "TestPythonReflectionStrictTypes"}); got != "" {
+		t.Errorf("with the strict shard gone, TestPythonReflectionStrictTypes is still credited to %q: the loss is masked", got)
+	}
+}
+
+// TestMakeVariablesReadsOnlyWhatItCanReadWhole: a variable make builds up in
+// pieces is not expanded from its first piece. Its recipe line keeps the
+// reference, and an unarmed line whose packages cannot be read is refused.
+func TestMakeVariablesReadsOnlyWhatItCanReadWhole(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	writeTree(t, dir, map[string]string{"Makefile": strings.Join([]string{
+		"WHOLE = ./leg -run X",
+		"SPLIT = ./plain",
+		"SPLIT += ./leg",
+		"TWICE = ./plain",
+		"TWICE = ./leg",
+		"override FORCED = ./plain",
+		"check: SCOPED = ./plain",
+		"LONG = ./plain \\",
+		"\t./leg",
+		"",
+	}, "\n")})
+	vars, err := makeVariables([]string{filepath.Join(dir, "Makefile")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(vars) != 1 || vars["WHOLE"] != "./leg -run X" {
+		t.Errorf("makeVariables = %v, want WHOLE alone (SPLIT is appended to, TWICE has two values, FORCED is an override, SCOPED is target-specific, LONG continues)", vars)
+	}
+	if got := expandMakeVariables("go test $(WHOLE) $(SPLIT) ${WHOLE}", vars); got != "go test ./leg -run X $(SPLIT) ./leg -run X" {
+		t.Errorf("expandMakeVariables = %q", got)
 	}
 }
