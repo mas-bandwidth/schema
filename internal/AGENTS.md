@@ -33,5 +33,6 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `tabletext/` | table JSON text | `go test ./internal/tabletext` | `go test ./internal/tabletext` |
 | `tablewire/` | table wire codecs | `go test ./internal/tablewire` | `go test ./internal/tablewire` |
 | `testproc/` | bounded child processes for tests | `go test ./internal/testproc` | `go test ./internal/testproc` |
+| `vacuous/` | Go tests that pass checking nothing | `go test ./internal/vacuous` | `go test ./internal/ci -run TestEveryGoTestCanFail` |
 | `version/` | binary version stamp | `go test ./internal/version` | `go test ./internal/version` |
 | `viewlisting/` | view listing vs IR | `go test ./internal/viewlisting` | `go test ./internal/viewlisting` |
