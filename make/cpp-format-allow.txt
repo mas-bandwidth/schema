@@ -226,6 +226,8 @@ build/tables-generated/v1/V1Table.h
 build/tables-generated/v2/V2Block.h
 build/tables-generated/v2/V2Table.cpp
 build/tables-generated/v2/V2Table.h
+build/tables-generated/valuedefaults/ValueDefaultsTable.cpp
+build/tables-generated/valuedefaults/ValueDefaultsTable.h
 build/tables-generated/varevo1/VarEvo1Block.h
 build/tables-generated/varevo1/VarEvo1Table.cpp
 build/tables-generated/varevo1/VarEvo1Table.h
