@@ -817,12 +817,14 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		// AN UNBOUNDED ARRAY IS THE COUNTED ARRAY'S OWN BYTES (§2.9): kind 14,
 		// L, the element kind, the live count, the elements; empty elides.
 		born := f.BornCount()
+		// A [Min..N]T AT ITS BIRTH ELIDES (internal/tablewire encodeArray,
+		// allBirth): Min elements, each at its zero, are what an absent field
+		// reads. A REQUIRED (or optional) field keeps its presence and never
+		// elides at birth, exactly as the engine's allBirth excludes it.
+		birthElides := born > 0 && !f.Required && !f.Type.Optional
 		live := "!" + x + ".is_empty()"
-		if born > 0 && classOf(f) != vTable {
-			// A [Min..N]T AT ITS BIRTH ELIDES (internal/tablewire encodeArray,
-			// allBirth): Min elements, each at its zero, are what an absent
-			// field reads
-			live = fmt.Sprintf("%s.len() != %d || %s.iter().take(%d).any(|e| %s)", x, born, x, born, elemNonDefaultExpr(f, "e"))
+		if birthElides && classOf(f) != vTable {
+			live =fmt.Sprintf("%s.len() != %d || %s.iter().take(%d).any(|e| %s)", x, born, x, born, elemNonDefaultExpr(f, "e"))
 		}
 		fmt.Fprintf(b, "%sif %s {\n", ind, requiredWriteGuard(f, live))
 		count := x + ".len()"
@@ -837,7 +839,7 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 				fmt.Fprintf(b, "%sdebug_assert!(%s, \"%s count under %d\");\n", inner, lenAtLeast(x, f.ArrayMin), f.Name, f.ArrayMin)
 			}
 		}
-		if born > 0 && classOf(f) == vTable {
+		if birthElides && classOf(f) == vTable {
 			// a table element's body is at its zero when it writes no field
 			// (the terminating reference alone): the elided array rolls the
 			// id table back to before its own header
@@ -859,7 +861,7 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 			}
 			fmt.Fprintf(b, "%slet mut eb = Vec::new();\n", ein)
 			emitTableBodyInto(b, f, "e", "eb", fmt.Sprintf("path.step(%d, j as u32)", ordinal), ein)
-			if born > 0 {
+			if birthElides {
 				fmt.Fprintf(b, "%sif eb.as_slice() != [0u8] { at_birth = false; }\n", ein)
 			}
 			fmt.Fprintf(b, "%sleb_write(&mut body, eb.len() as u64);\n", ein)
@@ -879,14 +881,14 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 			fmt.Fprintf(b, "%s%s\n", ein, g.scalarWrite(f, "(*e)", "body"))
 		}
 		fmt.Fprintf(b, "%s}\n", inner)
-		if born > 0 && classOf(f) == vTable {
+		if birthElides && classOf(f) == vTable {
 			fmt.Fprintf(b, "%sif at_birth { ids.rollback(birth_mark); } else {\n", inner)
 		}
 		fmt.Fprintf(b, "%sleb_write(out, r);\n", inner)
 		fmt.Fprintf(b, "%sout.push(%d);\n", inner, kind)
 		fmt.Fprintf(b, "%sleb_write(out, body.len() as u64);\n", inner)
 		fmt.Fprintf(b, "%sout.extend_from_slice(&body);\n", inner)
-		if born > 0 && classOf(f) == vTable {
+		if birthElides && classOf(f) == vTable {
 			fmt.Fprintf(b, "%s}\n", inner)
 		}
 		fmt.Fprintf(b, "%s}\n", ind)
