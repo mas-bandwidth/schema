@@ -1,8 +1,10 @@
 package main
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -83,7 +85,10 @@ func TestCreditReadsSelectorsAsGoRewritesThem(t *testing.T) {
 // (testdata/corpus): each row names a fixture tree, what is judged there, and
 // the verdict. A `static` row is the unarmed-line audit's exit code; a
 // `credit` row is the make target credited with running a gated test, `-` for
-// none. Every reported verdict sits beside a clean control in the same file.
+// none; a `coverage` row is the whole accounting's exit code over a committed
+// transcript, run in a scratch copy of the tree; a `gated` row is the set of
+// gated packages. Every reported verdict sits beside a clean control in the
+// same file.
 func TestSlowGateScanCorpus(t *testing.T) {
 	t.Parallel()
 	dir := filepath.Join("testdata", "corpus")
@@ -92,6 +97,13 @@ func TestSlowGateScanCorpus(t *testing.T) {
 		t.Fatal(err)
 	}
 	red, green := 0, 0
+	tally := func(refused bool) {
+		if refused {
+			red++
+		} else {
+			green++
+		}
+	}
 	for n, line := range strings.Split(string(data), "\n") {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
@@ -101,6 +113,17 @@ func TestSlowGateScanCorpus(t *testing.T) {
 			t.Fatalf("cases.tsv line %d: %d fields, want 5 (id, tree, check, subject, want)", n+1, len(f))
 		}
 		id, tree, check, subject, want := f[0], filepath.Join(dir, f[1]), f[2], f[3], f[4]
+		if check == "gated" {
+			got := "-"
+			if gated, err := gatedPackages(tree); err == nil {
+				got = strings.Join(slices.Sorted(maps.Keys(gated)), " ")
+			}
+			if got != want {
+				t.Errorf("%s: the gated packages of %s are %q, want %q", id, f[1], got, want)
+			}
+			tally(want == "-")
+			continue
+		}
 		gatedTests, err := gatedTestPackages(tree)
 		if err != nil {
 			t.Fatalf("%s: %v", id, err)
@@ -123,11 +146,7 @@ func TestSlowGateScanCorpus(t *testing.T) {
 			if got != want {
 				t.Errorf("%s: the static scan of %s exits %s, want %s", id, f[1], got, want)
 			}
-			if want == "0" {
-				green++
-			} else {
-				red++
-			}
+			tally(want != "0")
 		case "credit":
 			pkg, name, ok := strings.Cut(subject, ".")
 			if !ok {
@@ -140,11 +159,36 @@ func TestSlowGateScanCorpus(t *testing.T) {
 			if got != want {
 				t.Errorf("%s: %s in %s is credited to %q, want %q", id, subject, f[1], got, want)
 			}
-			if want == "-" {
-				red++
-			} else {
-				green++
+			tally(want == "-")
+		case "coverage":
+			parts := strings.Split(subject, ":")
+			if len(parts) < 2 {
+				t.Fatalf("%s: subject %q is not transcript:go-exit[:blocked]", id, subject)
 			}
+			goExit, err := strconv.Atoi(parts[1])
+			if err != nil {
+				t.Fatalf("%s: %v", id, err)
+			}
+			scratch := t.TempDir()
+			if err := os.CopyFS(scratch, os.DirFS(tree)); err != nil {
+				t.Fatal(err)
+			}
+			table := filepath.Join(scratch, "build", "slowgate", "coverage.tsv")
+			if len(parts) > 2 && parts[2] == "blocked" {
+				if err := os.MkdirAll(table, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			got := strconv.Itoa(runCoverage(scratch, filepath.Join(scratch, parts[0]), goExit, recipes, nil, nil))
+			if got != want {
+				t.Errorf("%s: the accounting over %s exits %s, want %s", id, subject, got, want)
+			}
+			if want == "0" {
+				if b, err := os.ReadFile(table); err != nil || strings.Count(string(b), "\n") < 2 {
+					t.Errorf("%s: a green accounting left no table at %s (%v)", id, table, err)
+				}
+			}
+			tally(want != "0")
 		default:
 			t.Fatalf("%s: unknown check %q", id, check)
 		}

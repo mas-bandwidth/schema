@@ -41,7 +41,10 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"go/ast"
 	"go/build"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -103,6 +106,7 @@ func main() {
 	shardHalf := flag.String("half", "all", "with -emit-shard-packages: codegen, rest or all")
 	shardIndex := flag.Int("shard", -1, "with -emit-shard-packages: shard index, or -1 for every gated package of the half")
 	shardCount := flag.Int("shards", 1, "with -emit-shard-packages: number of shards")
+	goExit := flag.Int("go-exit", -1, "with -coverage: the exit status of the go test that wrote the transcript (required)")
 	root := flag.String("C", ".", "repository root")
 	flag.Parse()
 
@@ -157,11 +161,14 @@ func main() {
 	}
 
 	if *coverage != "" {
+		if *goExit < 0 {
+			fail("-coverage needs -go-exit, the exit status of the go test that wrote %s: a transcript whose run failed or was cut proves nothing", *coverage)
+		}
 		steps, err := workflowSteps(*root)
 		if err != nil {
 			fail("scanning .github/workflows: %v", err)
 		}
-		os.Exit(runCoverage(*root, *coverage, recipes, exceptions, steps))
+		os.Exit(runCoverage(*root, *coverage, *goExit, recipes, exceptions, steps))
 	}
 	os.Exit(runStatic(*root, recipes, exceptions, gated, gatedTests))
 }
@@ -297,7 +304,7 @@ func runStatic(root string, recipes []recipe, exceptions []exception, gated map[
 //	ci         no make target runs it; it runs ONLY on ci-full.yml's SCHEMA_SLOW=1
 //	           steps. Not silence: a named lane, counted here, listed in the file.
 //	NOBODY     nothing in the repo runs it. That is the failure.
-func runCoverage(root, logPath string, recipes []recipe, exceptions []exception, steps []ciStep) int {
+func runCoverage(root, logPath string, goExit int, recipes []recipe, exceptions []exception, steps []ciStep) int {
 	skipped, err := gateSkips(logPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "slow gate coverage: reading %s: %v\n", logPath, err)
@@ -331,16 +338,31 @@ func runCoverage(root, logPath string, recipes []recipe, exceptions []exception,
 			rows = append(rows, fmt.Sprintf("NOBODY\t%s\t-", tDisplay))
 		}
 	}
+	// THE TABLE IS THE RECEIPT: a table that could not be written is a red
+	// verdict, never a green one that names a file that is not there (the
+	// reviewer's F-234).
 	out := filepath.Join(root, "build", "slowgate", "coverage.tsv")
-	if err := os.MkdirAll(filepath.Dir(out), 0o755); err == nil {
-		_ = os.WriteFile(out, []byte("# bucket\ttest\trun by\n"+strings.Join(rows, "\n")+"\n"), 0o644)
+	if err := writeCoverageTable(out, rows); err != nil {
+		fmt.Printf("SLOW GATE COVERAGE FAILED: the table could not be written: %v\n", err)
+		return 1
 	}
+	red := false
 	if len(uncovered) > 0 {
 		fmt.Printf("SLOW GATE COVERAGE FAILED: %d of %d tests that skip at slowtest.Gate under a plain `go test ./...` are run by NOTHING — no make target and no SCHEMA_SLOW=1 CI step (schema#988):\n", len(uncovered), len(skipped))
 		for _, n := range uncovered {
 			fmt.Printf("  %s\n", n.Display())
 		}
 		fmt.Println("remedy: give it a positive gate target that goes through test/slowgate/proof, or name it in make/slow-gate-exceptions.txt with the reason.")
+		red = true
+	}
+	// The accounting is read whatever go test's status, so a red run still
+	// shows its table; but a run that failed, did not build or was cut cannot
+	// prove every gated test reached its gate (the reviewer's F-233).
+	if goExit != 0 {
+		fmt.Printf("SLOW GATE COVERAGE FAILED: the go test that wrote %s exited %d — a test failed, a package did not build, or the run was cut, so the transcript cannot prove every gated test reached its gate\n", logPath, goExit)
+		red = true
+	}
+	if red {
 		return 1
 	}
 	var laneNames []string
@@ -355,6 +377,15 @@ func runCoverage(root, logPath string, recipes []recipe, exceptions []exception,
 	fmt.Printf("slow gate coverage: %d slowtest skips in %s accounted for — %d run by a make target that sets the variable, %d run only by %s, 0 run by nobody (table: build/slowgate/coverage.tsv)\n",
 		len(skipped), logPath, byMake, byCI, ciDesc)
 	return 0
+}
+
+// writeCoverageTable writes the accounting's rows to out, creating its
+// directory.
+func writeCoverageTable(out string, rows []string) error {
+	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(out, []byte("# bucket\ttest\trun by\n"+strings.Join(rows, "\n")+"\n"), 0o644)
 }
 
 // workflowSteps parses workflow files in .github/workflows/*.yml and extracts
@@ -1031,8 +1062,16 @@ func gatedPackagesWith(root string, reaching map[string][]string) (map[string]bo
 			return err
 		}
 		if info.IsDir() {
-			switch info.Name() {
-			case ".git", "build", "generated", "node_modules":
+			// the directories the go tool never builds a package from are
+			// not gated packages: testdata, vendor, and names starting with
+			// `_` or `.` (the reviewer's F-241: the scan's own corpus trees
+			// under testdata were counted, 58 → 62)
+			name := info.Name()
+			if path != root && (name == "testdata" || name == "vendor" || strings.HasPrefix(name, "_") || strings.HasPrefix(name, ".")) {
+				return filepath.SkipDir
+			}
+			switch name {
+			case "build", "generated", "node_modules":
 				return filepath.SkipDir
 			}
 			return nil
@@ -1045,6 +1084,14 @@ func gatedPackagesWith(root string, reaching map[string][]string) (map[string]bo
 			return err
 		}
 		if !strings.Contains(string(b), "slowtest.Gate(") {
+			return nil
+		}
+		// the spelling in a comment or a string is not a call (F-241)
+		calls, err := callsSlowtestGate(path, b)
+		if err != nil {
+			return err
+		}
+		if !calls {
 			return nil
 		}
 		rel, err := filepath.Rel(root, filepath.Dir(path))
@@ -1065,6 +1112,30 @@ func gatedPackagesWith(root string, reaching map[string][]string) (map[string]bo
 		gated["./"+dir] = true
 	}
 	return gated, nil
+}
+
+// callsSlowtestGate reports whether a Go source holds a call slowtest.Gate(…)
+// in its code: the spelling in a comment or a string literal is not one. A
+// source that does not parse is an error, not an ungated file.
+func callsSlowtestGate(path string, src []byte) (bool, error) {
+	f, err := parser.ParseFile(token.NewFileSet(), path, src, parser.SkipObjectResolution)
+	if err != nil {
+		return false, err
+	}
+	found := false
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok || found {
+			return !found
+		}
+		if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "Gate" {
+			if x, ok := sel.X.(*ast.Ident); ok && x.Name == "slowtest" {
+				found = true
+			}
+		}
+		return !found
+	})
+	return found, nil
 }
 
 var targetLine = regexp.MustCompile(`^([A-Za-z0-9_./$()%-][^:=]*):(?:[^=]|$)`)
@@ -1561,6 +1632,7 @@ func gateSkips(path string) ([]gatedTest, error) {
 
 	var results []gatedTest
 	seen := map[string]bool{}
+	closed := map[string]bool{} // package → its stream has closed
 
 	sc := bufio.NewScanner(fh)
 	sc.Buffer(make([]byte, 10<<20), 10<<20)
@@ -1581,6 +1653,14 @@ func gateSkips(path string) ([]gatedTest, error) {
 		if err := json.Unmarshal([]byte(line), &ev); err != nil {
 			return nil, fmt.Errorf("line %d: malformed JSON event: %w", lineNo, err)
 		}
+		if ev.Package != "" {
+			if _, ok := closed[ev.Package]; !ok {
+				closed[ev.Package] = false
+			}
+			if ev.Test == "" && (ev.Action == "pass" || ev.Action == "fail" || ev.Action == "skip") {
+				closed[ev.Package] = true
+			}
+		}
 		if strings.Contains(ev.Output, gateSkipMarker) {
 			if strings.TrimSpace(ev.Package) == "" || strings.TrimSpace(ev.Test) == "" {
 				return nil, fmt.Errorf("line %d: gate skip record missing package or test identity", lineNo)
@@ -1595,6 +1675,20 @@ func gateSkips(path string) ([]gatedTest, error) {
 	}
 	if err := sc.Err(); err != nil {
 		return nil, fmt.Errorf("reading %s: %w", path, err)
+	}
+	// EVERY PACKAGE CLOSES. go test -json ends each package's stream with a
+	// package-level pass, fail or skip; a stream cut at an event boundary
+	// parses cleanly and holds fewer skips than the run would have, and was
+	// read as complete (the reviewer's F-233).
+	var cut []string
+	for pkg, ok := range closed {
+		if !ok {
+			cut = append(cut, pkg)
+		}
+	}
+	if len(cut) > 0 {
+		sort.Strings(cut)
+		return nil, fmt.Errorf("the transcript was cut: %d package(s) have no closing pass, fail or skip record: %s", len(cut), strings.Join(cut, ", "))
 	}
 
 	sort.Slice(results, func(i, j int) bool {

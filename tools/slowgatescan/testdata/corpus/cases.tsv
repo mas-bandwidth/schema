@@ -6,6 +6,12 @@
 #                  target, want the scan's exit code (1 refused, 0 proven).
 #          credit  the coverage accounting; subject is pkg.Test, want the make
 #                  target credited with running it, - for none.
+#          coverage  the whole accounting over a committed go test -json
+#                  transcript; subject is transcript:go-exit, with :blocked
+#                  when the table's path is taken by a directory; want the
+#                  exit code (the tree is copied to a scratch directory first).
+#          gated   the gated packages; subject is -, want them space-separated,
+#                  - for a tree the scan refuses as holding none.
 #
 # F-030: -race builds under the race tag, so a test behind //go:build !race is
 # not built; an unarmed line that selects only it runs no tests, and an armed
@@ -18,3 +24,14 @@ F-030-race-credit-control	f030-race-credit	credit	pkg.TestBoth	race
 # removes TestWin_Codec; the line that skips it is not credited with it.
 F-219-space-skip	f219-space-skip	credit	pkg.TestWin_Codec	-
 F-219-space-skip-control	f219-space-skip	credit	pkg.TestWin_Other	core
+# F-233: a transcript cut at an event boundary, or written by a go test that
+# exited nonzero, proves nothing; the whole stream from a clean run does.
+F-233-cut-transcript	f233-transcript	coverage	cut.jsonl:0	1
+F-233-go-exit	f233-transcript	coverage	full.jsonl:1	1
+F-233-control	f233-transcript	coverage	full.jsonl:0	0
+# F-234: a coverage table that cannot be written is a red verdict.
+F-234-table-blocked	f233-transcript	coverage	full.jsonl:0:blocked	1
+# F-241: testdata is not a package, and the call spelled in a comment or a
+# string is not a call.
+F-241-not-built	f241-not-built	gated	-	-
+F-241-control	f241-control	gated	-	./gatedpkg
