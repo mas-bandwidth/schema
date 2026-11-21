@@ -1853,8 +1853,8 @@ write-refusal wref_var_str_length_ok   graphdemo   Scene       testdata/wire/tab
 write-refusal wref_var_arm_length      cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin     bounded_steps[3].label length 13               refused
 write-refusal wref_var_arm_length_ok   cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin     bounded_steps[3].label length 12               wrote
 # row 5, an enum ordinal outside the variant set:
-write-refusal wref_var_enum            listdemo    Mixed       testdata/wire/tables/list_mixed.bin                        grades[0]           ordinal 3                    refused
-write-refusal wref_var_enum_ok         listdemo    Mixed       testdata/wire/tables/list_mixed.bin                        grades[0]           ordinal 2                    wrote
+write-refusal wref_var_enum            listdemo    Mixed       testdata/wire/tables/list_mixed.bin                        grades[0]           ordinal 4                    refused
+write-refusal wref_var_enum_ok         listdemo    Mixed       testdata/wire/tables/list_mixed.bin                        grades[0]           ordinal 3                    wrote
 # row 6, a union tag past the last arm:
 write-refusal wref_var_union_tag       cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin     bounded_steps[0]    tag     5                    refused
 write-refusal wref_var_union_tag_ok    cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin     bounded_steps[0]    tag     4                    wrote
@@ -1873,8 +1873,8 @@ write-refusal-json jref_var_range_high    graphdemo   Scene       testdata/wire/
 write-refusal-json jref_var_range_high_ok graphdemo   Scene       testdata/wire/tables/graph_tree.bin                        version             int     99                   wrote
 write-refusal-json jref_var_bits13_wide   cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin b_bits13            int     8192                 refused
 write-refusal-json jref_var_bits13_ok     cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin b_bits13            int     8191                 wrote
-write-refusal-json jref_var_enum          listdemo    Mixed       testdata/wire/tables/list_mixed.bin                        grades[0]           ordinal 3                    refused
-write-refusal-json jref_var_enum_ok       listdemo    Mixed       testdata/wire/tables/list_mixed.bin                        grades[0]           ordinal 2                    wrote
+write-refusal-json jref_var_enum          listdemo    Mixed       testdata/wire/tables/list_mixed.bin                        grades[0]           ordinal 4                    refused
+write-refusal-json jref_var_enum_ok       listdemo    Mixed       testdata/wire/tables/list_mixed.bin                        grades[0]           ordinal 3                    wrote
 write-refusal-json jref_var_arm_length    cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin     bounded_steps[3].label length 13               refused
 write-refusal-json jref_var_arm_length_ok cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin     bounded_steps[3].label length 12               wrote
 
@@ -1916,3 +1916,102 @@ framing union_chain_unknown_at_bound   tblr1 Cfg testdata/wire/tables/framing/un
 framing union_chain_unknown_past_bound tblr1 Cfg testdata/wire/tables/framing/union_chain_unknown_past_bound.bin refused -
 framing union_chain_unknown_deep       tblr1 Cfg testdata/wire/tables/framing/union_chain_unknown_deep.bin       refused -
 rewrite union_chain_unknown_at_bound   tblr1 Cfg testdata/wire/tables/framing/union_chain_unknown_at_bound.bin
+
+# ---- THE SHAPES UNIT (test/tables/shapes) ----
+# Shapes no other unit declares: float32 bounds float32 cannot spell exactly,
+# -0 under a zero and a non-zero default, counted arrays whose Min is above 0,
+# a degenerate 128-bit fixed point, a union of scalar arms, an enum and a flags
+# set as list elements; on a variable table (Bounds) and a fixed one
+# (FixedBounds). OPT-IN: a leg answers these rows once its `list` names
+# `unit shapes` (test/conformance/harness/optin.go); until then they count
+# absent on that leg, never pass. Every image under testdata/wire/tables/shapes
+# that no writer makes is written by TestShapesImagesArePinned
+# (SHAPES_WRITE=1), except bounds_octets_below_min.bin, which is
+# `bin/schema pack --root Bounds` of {"octets": [7]} against
+# testdata/conformance/tables/shapes-loose (the same schema with every Min
+# dropped, so the count rides as written).
+unit shapes test/tables/shapes
+opt-in shapes
+instance shapes_bounds_ends           shapes Bounds      testdata/wire/tables/shapes/bounds_ends.bin
+instance shapes_bounds_negzero        shapes Bounds      testdata/wire/tables/shapes/bounds_negzero.bin
+instance shapes_bounds_octets_at_min  shapes Bounds      testdata/wire/tables/shapes/bounds_octets_at_min.bin
+instance shapes_bounds_octets_below_min shapes Bounds    testdata/wire/tables/shapes/bounds_octets_below_min.bin no-text wire-refused
+instance shapes_fixed_ends            shapes FixedBounds testdata/wire/tables/shapes/fixed_ends.bin
+instance shapes_fixed_negzero         shapes FixedBounds testdata/wire/tables/shapes/fixed_negzero.bin
+instance shapes_fixed_octets_at_min   shapes FixedBounds testdata/wire/tables/shapes/fixed_octets_at_min.bin
+instance shapes_fixed_octets_three    shapes FixedBounds testdata/wire/tables/shapes/fixed_octets_three.bin
+instance shapes_fixed_octets_below_min shapes FixedBounds testdata/wire/tables/shapes/fixed_octets_below_min.bin no-text wire-refused
+instance shapes_fixed_tenth_at_max    shapes FixedBounds testdata/wire/tables/shapes/fixed_tenth_at_max.bin
+instance shapes_fixed_tenth_past_max  shapes FixedBounds testdata/wire/tables/shapes/fixed_tenth_past_max.bin no-text wire-refused
+instance shapes_fixed_seventh_at_min  shapes FixedBounds testdata/wire/tables/shapes/fixed_seventh_at_min.bin
+instance shapes_fixed_seventh_below_min shapes FixedBounds testdata/wire/tables/shapes/fixed_seventh_below_min.bin no-text wire-refused
+# GOOSE-3: the fixed read refuses a non-finite plain float (non_finite_float);
+# the _ok rows are the image's base, read whole
+instance shapes_fixed_f32_ok          shapes FixedBounds testdata/wire/tables/shapes/fixed_ends.bin
+instance shapes_fixed_f64_ok          shapes FixedBounds testdata/wire/tables/shapes/fixed_ends.bin
+instance shapes_fixed_f32_nan         shapes FixedBounds testdata/wire/tables/shapes/fixed_f32_nan.bin no-text wire-refused
+instance shapes_fixed_f32_signalling_nan shapes FixedBounds testdata/wire/tables/shapes/fixed_f32_signalling_nan.bin no-text wire-refused
+instance shapes_fixed_f32_inf         shapes FixedBounds testdata/wire/tables/shapes/fixed_f32_inf.bin no-text wire-refused
+instance shapes_fixed_f32_neginf      shapes FixedBounds testdata/wire/tables/shapes/fixed_f32_neginf.bin no-text wire-refused
+instance shapes_fixed_f64_nan         shapes FixedBounds testdata/wire/tables/shapes/fixed_f64_nan.bin no-text wire-refused
+instance shapes_fixed_f64_inf         shapes FixedBounds testdata/wire/tables/shapes/fixed_f64_inf.bin no-text wire-refused
+instance shapes_fixed_f64_neginf      shapes FixedBounds testdata/wire/tables/shapes/fixed_f64_neginf.bin no-text wire-refused
+# the write contract (docs/SPEC.md §5.1): a compressed float one float32 step
+# past each end (row 10, held at float32: TABLEWIRE-1), a count below Min
+# (row 3), an out-of-set enum in a list element (row 5), a union tag (row 6)
+write-refusal wref_shapes_tenth_past      shapes Bounds testdata/wire/tables/shapes/bounds_ends.bin tenth    real 0.10000000894069672 refused
+write-refusal wref_shapes_tenth_past_ok   shapes Bounds testdata/wire/tables/shapes/bounds_ends.bin tenth    real 0.1                 wrote
+write-refusal wref_shapes_seventh_below   shapes Bounds testdata/wire/tables/shapes/bounds_ends.bin seventh  real 0.6999999284744263  refused
+write-refusal wref_shapes_seventh_below_ok shapes Bounds testdata/wire/tables/shapes/bounds_ends.bin seventh real 0.7                 wrote
+write-refusal wref_shapes_ranged_high     shapes Bounds testdata/wire/tables/shapes/bounds_ends.bin ranged   real 2.5000002384185791  refused
+write-refusal wref_shapes_ranged_high_ok  shapes Bounds testdata/wire/tables/shapes/bounds_ends.bin ranged   real 2.5                 wrote
+write-refusal wref_shapes_ranged_low      shapes Bounds testdata/wire/tables/shapes/bounds_ends.bin ranged   real -1.5000001192092896 refused
+write-refusal wref_shapes_ranged_low_ok   shapes Bounds testdata/wire/tables/shapes/bounds_ends.bin ranged   real -1.5                wrote
+write-refusal wref_shapes_octets_count    shapes Bounds testdata/wire/tables/shapes/bounds_ends.bin octets   count 1                  refused
+write-refusal wref_shapes_octets_count_ok shapes Bounds testdata/wire/tables/shapes/bounds_ends.bin octets   count 2                  wrote
+write-refusal wref_shapes_recs_count      shapes Bounds testdata/wire/tables/shapes/bounds_ends.bin recs     count 0                  refused
+write-refusal wref_shapes_recs_count_ok   shapes Bounds testdata/wire/tables/shapes/bounds_ends.bin recs     count 1                  wrote
+write-refusal wref_shapes_tones_enum      shapes Bounds testdata/wire/tables/shapes/bounds_ends.bin tones[0] ordinal 4                refused
+write-refusal wref_shapes_tones_enum_ok   shapes Bounds testdata/wire/tables/shapes/bounds_ends.bin tones[0] ordinal 3                wrote
+write-refusal wref_shapes_pick_tag        shapes Bounds testdata/wire/tables/shapes/bounds_ends.bin pick     tag 4                    refused
+write-refusal wref_shapes_pick_tag_ok     shapes Bounds testdata/wire/tables/shapes/bounds_ends.bin pick     tag 3                    wrote
+write-refusal wref_shapes_zero_nan        shapes Bounds testdata/wire/tables/shapes/bounds_ends.bin zero     float nan                refused
+write-refusal wref_shapes_zero_ok         shapes Bounds testdata/wire/tables/shapes/bounds_ends.bin zero     real -0                  wrote
+write-refusal-fixed fref_shapes_tenth_past      shapes FixedBounds testdata/wire/tables/shapes/fixed_ends.bin tenth    real 0.10000000894069672 refused
+write-refusal-fixed fref_shapes_tenth_past_ok   shapes FixedBounds testdata/wire/tables/shapes/fixed_ends.bin tenth    real 0.1                 wrote
+write-refusal-fixed fref_shapes_seventh_below   shapes FixedBounds testdata/wire/tables/shapes/fixed_ends.bin seventh  real 0.6999999284744263  refused
+write-refusal-fixed fref_shapes_seventh_below_ok shapes FixedBounds testdata/wire/tables/shapes/fixed_ends.bin seventh real 0.7                 wrote
+write-refusal-fixed fref_shapes_octets_count    shapes FixedBounds testdata/wire/tables/shapes/fixed_ends.bin octets   count 1                  refused
+write-refusal-fixed fref_shapes_octets_count_ok shapes FixedBounds testdata/wire/tables/shapes/fixed_ends.bin octets   count 2                  wrote
+write-refusal-fixed fref_shapes_recs_count      shapes FixedBounds testdata/wire/tables/shapes/fixed_ends.bin recs     count 0                  refused
+write-refusal-fixed fref_shapes_recs_count_ok   shapes FixedBounds testdata/wire/tables/shapes/fixed_ends.bin recs     count 1                  wrote
+write-refusal-fixed fref_shapes_tones_enum      shapes FixedBounds testdata/wire/tables/shapes/fixed_ends.bin tones[0] ordinal 4                refused
+write-refusal-fixed fref_shapes_tones_enum_ok   shapes FixedBounds testdata/wire/tables/shapes/fixed_ends.bin tones[0] ordinal 3                wrote
+write-refusal-fixed fref_shapes_plain_nan       shapes FixedBounds testdata/wire/tables/shapes/fixed_ends.bin plain    float nan                refused
+write-refusal-fixed fref_shapes_plain_ok        shapes FixedBounds testdata/wire/tables/shapes/fixed_ends.bin plain    real -0                  wrote
+write-refusal-json jref_shapes_tenth_past      shapes Bounds testdata/wire/tables/shapes/bounds_ends.bin tenth    real 0.10000000894069672 refused
+write-refusal-json jref_shapes_tenth_past_ok   shapes Bounds testdata/wire/tables/shapes/bounds_ends.bin tenth    real 0.1                 wrote
+write-refusal-json jref_shapes_octets_count    shapes Bounds testdata/wire/tables/shapes/bounds_ends.bin octets   count 1                  refused
+write-refusal-json jref_shapes_octets_count_ok shapes Bounds testdata/wire/tables/shapes/bounds_ends.bin octets   count 2                  wrote
+write-refusal-json jref_shapes_tones_enum      shapes Bounds testdata/wire/tables/shapes/bounds_ends.bin tones[0] ordinal 4                refused
+write-refusal-json jref_shapes_tones_enum_ok   shapes Bounds testdata/wire/tables/shapes/bounds_ends.bin tones[0] ordinal 3                wrote
+# the text read (§16): each end and one float32 step past it, a count below
+# Min, the degenerate fixed point, -0 (lands +0, uncounted)
+json-hostile shapes-tenth-at-max            shapes Bounds      testdata/conformance/tables/json-hostile/shapes-tenth-at-max            read
+json-hostile shapes-tenth-past-max          shapes Bounds      testdata/conformance/tables/json-hostile/shapes-tenth-past-max          refused
+json-hostile shapes-seventh-at-min          shapes Bounds      testdata/conformance/tables/json-hostile/shapes-seventh-at-min          read
+json-hostile shapes-seventh-below-min       shapes Bounds      testdata/conformance/tables/json-hostile/shapes-seventh-below-min       refused
+json-hostile shapes-ranged-at-max           shapes Bounds      testdata/conformance/tables/json-hostile/shapes-ranged-at-max           read
+json-hostile shapes-ranged-past-max         shapes Bounds      testdata/conformance/tables/json-hostile/shapes-ranged-past-max         refused
+json-hostile shapes-octets-at-min           shapes Bounds      testdata/conformance/tables/json-hostile/shapes-octets-at-min           read
+json-hostile shapes-octets-below-min        shapes Bounds      testdata/conformance/tables/json-hostile/shapes-octets-below-min        refused
+json-hostile shapes-recs-at-min             shapes Bounds      testdata/conformance/tables/json-hostile/shapes-recs-at-min             read
+json-hostile shapes-recs-below-min          shapes Bounds      testdata/conformance/tables/json-hostile/shapes-recs-below-min          refused
+json-hostile shapes-pinned-at-max           shapes Bounds      testdata/conformance/tables/json-hostile/shapes-pinned-at-max           read
+json-hostile shapes-pinned-past-max         shapes Bounds      testdata/conformance/tables/json-hostile/shapes-pinned-past-max         refused
+json-hostile shapes-negzero                 shapes Bounds      testdata/conformance/tables/json-hostile/shapes-negzero                 read
+json-hostile shapes-fixed-tenth-at-max      shapes FixedBounds testdata/conformance/tables/json-hostile/shapes-fixed-tenth-at-max      read
+json-hostile shapes-fixed-tenth-past-max    shapes FixedBounds testdata/conformance/tables/json-hostile/shapes-fixed-tenth-past-max    refused
+json-hostile shapes-fixed-octets-at-min     shapes FixedBounds testdata/conformance/tables/json-hostile/shapes-fixed-octets-at-min     read
+json-hostile shapes-fixed-octets-below-min  shapes FixedBounds testdata/conformance/tables/json-hostile/shapes-fixed-octets-below-min  refused
+json-hostile shapes-fixed-negzero           shapes FixedBounds testdata/conformance/tables/json-hostile/shapes-fixed-negzero           read

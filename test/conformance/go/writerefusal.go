@@ -293,8 +293,12 @@ func writeRefusalGoSet(owner, fv reflect.Value, name, kind, text string) error {
 			payload.Set(reflect.Zero(payload.Type()))
 		}
 		return nil
-	case "float":
+	case "float", "real":
+		// float names a non-finite value; real a finite decimal, `-0` included
 		v, err := writeRefusalGoFloat(text)
+		if kind == "real" {
+			v, err = strconv.ParseFloat(text, 64)
+		}
 		if err != nil {
 			return err
 		}

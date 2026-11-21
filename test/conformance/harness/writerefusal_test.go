@@ -305,6 +305,13 @@ func mutateWriteRefusal(model *tabletext.Model, inst *tabletext.Instance, path, 
 		}
 		cell.F = fv
 		return true, nil
+	case "real":
+		fv, err := strconv.ParseFloat(text, 64)
+		if err != nil {
+			return false, err
+		}
+		cell.F = fv
+		return true, nil
 	}
 	return false, fmt.Errorf("%s: unknown kind %q", path, kind)
 }
