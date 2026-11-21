@@ -228,7 +228,10 @@ func makeTargetExists(root, mkFile, target string) bool {
 		files = []string{filepath.Join(root, filepath.FromSlash(mkFile))}
 	} else {
 		files = append(files, filepath.Join(root, "Makefile"))
-		matches, _ := provesran.Glob(filepath.Join(root, "make", "*.mk"))
+		matches, err := provesran.Glob(filepath.Join(root, "make", "*.mk"))
+		if err != nil {
+			return false
+		}
 		files = append(files, matches...)
 	}
 	for _, f := range files {

@@ -306,6 +306,13 @@ func TestUnarmedLineVerdictFollowsGoSelection(t *testing.T) {
 		{"go test -run 'Test(Fast|Gated)/x' ./pkg", 1, "the group selects TestGated"},
 		{"go test -run 'TestFa[s/|]t' ./pkg", 0, "a `/` or `|` inside brackets separates nothing"},
 		{"go test -run 'TestFast' -skip 'TestFast' ./pkg", 1, "-skip is not modelled, so nothing is proven"},
+		// a line that runs nothing credits nothing
+		{"go test ./pkg -v -count=0 -run TestFast", 1, "-count=0 runs TestFast zero times"},
+		{"go test -count 0 -run TestFast ./pkg", 1, "-count 0 runs TestFast zero times"},
+		{"go test -count=$(COUNT) -run TestFast ./pkg", 1, "the count cannot be read, so nothing is proven"},
+		{"go test -count=1 -run TestFast ./pkg", 0, "it runs TestFast once"},
+		{"go test -list TestFast -run TestFast ./pkg", 1, "-list prints names and runs nothing"},
+		{"go test -c -run TestFast ./pkg", 1, "-c builds the test binary and runs nothing"},
 		// declarations are read under the build context the line runs in
 		{"GOOS=linux go test -run 'TestFeature' ./pkg", 1, "TestFeature is behind a build tag the line does not set: no tests to run"},
 		{"GOOS=linux go test -tags include_optional_feature -run 'TestFeature' ./pkg", 0, "with the tag it runs TestFeature"},
@@ -339,29 +346,6 @@ func TestUnarmedLineVerdictFollowsGoSelection(t *testing.T) {
 		}
 		if got := runStatic(root, recipes, nil, gated, gatedTests); got != tc.want {
 			t.Errorf("unarmed `%s`: the static scan exited %d, want %d (%s)", tc.recipe, got, tc.want, tc.why)
-		}
-	}
-}
-
-// TestRunSelectorsIsGosSplit pins the port of testing/match.go's splitRegexp.
-func TestRunSelectorsIsGosSplit(t *testing.T) {
-	t.Parallel()
-	for pattern, want := range map[string][]string{
-		"TestA":           {"TestA"},
-		"TestA/b":         {"TestA"},
-		"TestA/b|TestC/d": {"TestA", "TestC"},
-		"TestA|TestB":     {"TestA", "TestB"},
-		"TestA/(b|TestC)": {"TestA"},
-		"Test(A|B)/x":     {"Test(A|B)"},
-		"Test[/|]A/x":     {"Test[/|]A"},
-		`Test\/A/x`:       {`Test\/A`},
-		"TestA/b/c|TestD": {"TestA", "TestD"},
-		"":                {""},
-		"/sub":            {""},
-		"TestA|":          {"TestA", ""},
-	} {
-		if got := runSelectors(pattern); !slices.Equal(got, want) {
-			t.Errorf("runSelectors(%q) = %q, want %q", pattern, got, want)
 		}
 	}
 }

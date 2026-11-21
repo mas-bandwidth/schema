@@ -115,3 +115,17 @@ func (l *Ledger) Check(t TB) {
 		t.Fatal(err)
 	}
 }
+
+// Glob is filepath.Glob for a scan that looks in several places and needs a
+// match in at least one of them: it returns the sorted matches of pattern,
+// which may be none, and counts each as judged. The ledger's Err is then red
+// when no place held a match.
+func (l *Ledger) Glob(pattern string) ([]string, error) {
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return nil, fmt.Errorf("glob %s: %w", pattern, err)
+	}
+	sort.Strings(matches)
+	l.judged += len(matches)
+	return matches, nil
+}

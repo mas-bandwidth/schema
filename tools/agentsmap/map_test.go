@@ -105,6 +105,7 @@ func TestStaleMapFailsUntilRegenerate(t *testing.T) {
 
 func TestNoPerHarnessFileStandsBesideAgents(t *testing.T) {
 	root := testRoot(t)
+	files := 0
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -116,6 +117,7 @@ func TestNoPerHarnessFileStandsBesideAgents(t *testing.T) {
 			}
 			return nil
 		}
+		files++
 		if d.Name() == "CLAUDE.md" {
 			rel, _ := filepath.Rel(root, path)
 			t.Errorf("%s stands beside AGENTS.md; Glenn, 2026-09-18: AGENTS.md alone — no CLAUDE.md, no pointer file, no symlink", filepath.ToSlash(rel))
@@ -124,6 +126,9 @@ func TestNoPerHarnessFileStandsBesideAgents(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if files == 0 {
+		t.Fatal("the walk read no file: a search that looked at nothing found no CLAUDE.md")
 	}
 }
 

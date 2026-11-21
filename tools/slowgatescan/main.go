@@ -47,9 +47,11 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/provesran"
+	"github.com/mas-bandwidth/schema/v2/internal/runmatch"
 )
 
 const gateSkipMarker = "SCHEMA_SLOW: this test shells out"
@@ -164,20 +166,17 @@ func main() {
 }
 
 // selectsNoGatedTest reports whether an unarmed recipe line is PROVEN to run
-// no test the gate can skip. The proof has two halves, and both are required:
+// tests, and to run none the gate can skip. Both halves are required:
 //
-//   - the -run pattern SELECTS A TEST in every package the line names, among
-//     the tests declared under the build context the line runs in (its -tags,
-//     its GOOS and GOARCH, else the lane's). A pattern that matches no such
-//     test runs nothing (`go test` prints "no tests to run" and exits 0), and
-//     a line that runs nothing proves nothing;
+//   - the line RUNS A TEST in every package it names: its -run pattern selects
+//     one among the tests declared under the build context the line runs in
+//     (its -tags, its GOOS and GOARCH, else the lane's), and no flag on it
+//     makes `go test` run nothing (-count=0, -list, -c). A line that runs
+//     nothing exits 0 and proves nothing;
 //   - no test that reaches the gate (gatedTests, by directory, under any build
 //     context) is selected.
 //
-// Selection is Go's, ported from testing/match.go (runSelectors): the pattern
-// is an alternation at each top-level `|`, each alternative is split at its
-// top-level `/`, and a top-level test runs when the FIRST element of any
-// alternative matches its name, whatever the later elements say.
+// Selection is Go's own (internal/runmatch, a port of testing/match.go):
 // `-run TestGated/roundtrip` runs TestGated, which skips at the gate before
 // any subtest is reached; `-run 'TestFast/unused|TestGated/roundtrip'` runs
 // both parents.
@@ -187,19 +186,12 @@ func main() {
 // whose declarations cannot be read, or a package gated by the marker alone
 // (another module's, whose reach this scan does not compute).
 func selectsNoGatedTest(root string, r recipe, gatedTests map[string][]string) bool {
-	if r.runPat == "" || len(r.packages) == 0 || skipFlag.MatchString(r.cmd) {
+	if r.runPat == "" || len(r.packages) == 0 || runsNothingOrUnmodelled(r.cmd) {
 		return false
 	}
-	var selectors []*regexp.Regexp
-	for _, first := range runSelectors(r.runPat) {
-		re, err := regexp.Compile(first)
-		if err != nil {
-			return false
-		}
-		selectors = append(selectors, re)
-	}
-	selects := func(name string) bool {
-		return slices.ContainsFunc(selectors, func(re *regexp.Regexp) bool { return re.MatchString(name) })
+	selector, err := runmatch.Compile(r.runPat)
+	if err != nil {
+		return false
 	}
 	ctx, ok := recipeBuildContext(r.cmd)
 	if !ok {
@@ -211,7 +203,7 @@ func selectsNoGatedTest(root string, r recipe, gatedTests map[string][]string) b
 		}
 		dir := strings.TrimPrefix(pkg, "./")
 		gatedHere, ok := gatedTests[dir]
-		if !ok || slices.ContainsFunc(gatedHere, selects) {
+		if !ok || slices.ContainsFunc(gatedHere, selector.Selects) {
 			return false
 		}
 		declared, err := declaredTestsIn(filepath.Join(root, filepath.FromSlash(dir)), &ctx)
@@ -220,7 +212,7 @@ func selectsNoGatedTest(root string, r recipe, gatedTests map[string][]string) b
 		}
 		selected := 0
 		for name := range declared {
-			if selects(name) {
+			if selector.Selects(name) {
 				selected++
 			}
 		}
@@ -231,54 +223,32 @@ func selectsNoGatedTest(root string, r recipe, gatedTests map[string][]string) b
 	return true
 }
 
-var skipFlag = regexp.MustCompile(`(?:^|\s)-skip(?:[=\s]|$)`)
-
-// runSelectors is the top-level half of testing/match.go's splitRegexp: the
-// first `/`-separated element of each `|`-separated alternative of a -run
-// pattern, where a `/` or a `|` inside brackets or parentheses separates
-// nothing. A top-level test runs when any of them matches its name.
-func runSelectors(s string) []string {
-	var firsts []string
-	element := 0 // index of the current element within its alternative
-	cs, cp := 0, 0
-	for i := 0; i < len(s); {
-		switch s[i] {
-		case '[':
-			cs++
-		case ']':
-			if cs--; cs < 0 { // an unmatched ']' is legal
-				cs = 0
+// runsNothingOrUnmodelled reports a `go test` flag under which the line's
+// tests do not run, or run in a way this scan does not model: -count=0 runs
+// each test zero times, -list prints names, -c only builds the test binary,
+// and -skip removes tests from the selection. A -count this scan cannot read
+// (a variable) is the same: nothing is proven.
+func runsNothingOrUnmodelled(cmd string) bool {
+	words := shellWords(cmd)
+	for i, w := range words {
+		name, value, hasValue := strings.Cut(strings.TrimPrefix(strings.TrimPrefix(w, "-"), "-"), "=")
+		if !strings.HasPrefix(w, "-") {
+			continue
+		}
+		name = strings.TrimPrefix(name, "test.")
+		switch name {
+		case "skip", "list", "c":
+			return true
+		case "count":
+			if !hasValue && i+1 < len(words) {
+				value = words[i+1]
 			}
-		case '(':
-			if cs == 0 {
-				cp++
-			}
-		case ')':
-			if cs == 0 {
-				cp--
-			}
-		case '\\':
-			i++
-		case '/', '|':
-			if cs == 0 && cp == 0 {
-				if element == 0 {
-					firsts = append(firsts, s[:i])
-				}
-				element++
-				if s[i] == '|' {
-					element = 0
-				}
-				s = s[i+1:]
-				i = 0
-				continue
+			if n, err := strconv.Atoi(value); err != nil || n < 1 {
+				return true
 			}
 		}
-		i++
 	}
-	if element == 0 {
-		firsts = append(firsts, s)
-	}
-	return firsts
+	return false
 }
 
 var (
@@ -453,11 +423,10 @@ func runCoverage(root, logPath string, recipes []recipe, exceptions []exception,
 // workflowSteps parses workflow files in .github/workflows/*.yml and extracts
 // steps that run `go test` with SCHEMA_SLOW enabled.
 func workflowSteps(root string) ([]ciStep, error) {
-	paths, err := filepath.Glob(filepath.Join(root, ".github", "workflows", "*.yml"))
+	paths, err := provesran.Glob(filepath.Join(root, ".github", "workflows", "*.yml"))
 	if err != nil {
 		return nil, err
 	}
-	sort.Strings(paths)
 	var steps []ciStep
 	for _, p := range paths {
 		b, err := os.ReadFile(p)
@@ -1025,6 +994,7 @@ func gatedPackages(root string) (map[string]bool, error) {
 
 func gatedPackagesWith(root string, reaching map[string][]string) (map[string]bool, error) {
 	gated := map[string]bool{}
+	spelled := 0
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -1050,11 +1020,15 @@ func gatedPackagesWith(root string, reaching map[string][]string) (map[string]bo
 		if err != nil {
 			return err
 		}
+		spelled++
 		gated["./"+filepath.ToSlash(rel)] = true
 		return nil
 	})
 	if err != nil {
 		return nil, err
+	}
+	if spelled == 0 && len(reaching) == 0 {
+		return nil, fmt.Errorf("no test source under %s spells slowtest.Gate( and no test reaches it: the walk read the wrong tree, or the gate is gone", root)
 	}
 	for dir := range reaching {
 		gated["./"+dir] = true

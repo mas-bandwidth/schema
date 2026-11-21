@@ -73,6 +73,7 @@ func TestCorpusIsCanonical(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		checked := 0
 		for _, e := range entries {
 			if e.IsDir() || !strings.HasSuffix(e.Name(), ".schema") {
 				continue
@@ -86,9 +87,13 @@ func TestCorpusIsCanonical(t *testing.T) {
 			if err != nil {
 				t.Fatalf("%s: %v", p, err)
 			}
+			checked++
 			if string(out) != string(data) {
 				t.Errorf("%s is not formatter-canonical — run: make fmt", p)
 			}
+		}
+		if checked == 0 {
+			t.Fatalf("%s holds no .schema file: the corpus moved, and the fmt-drift gate formatted nothing", dir)
 		}
 	}
 }
@@ -383,6 +388,9 @@ func TestGoldenTableSource(t *testing.T) {
 			entries, err := os.ReadDir(dir)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if len(entries) == 0 {
+				t.Fatalf("%s pins no file: a unit whose golden directory is empty compares nothing", dir)
 			}
 			pinned := map[string][]byte{}
 			for _, e := range entries {

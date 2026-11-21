@@ -111,6 +111,10 @@ func conformanceLegGaps(t *testing.T, replace map[string]string) []string {
 	graph := makeGraph(t, root, replace)
 	schemas := manifestUnitSchemas(t, root)
 	var gaps []string
+	// a leg may have no runtime directory (ctable has none), so one leg's
+	// empty glob is not the defect;
+	// every leg's being empty is this check reading the wrong place
+	runtimes := provesran.NewLedger("emitted runtime files under internal/codegen/<package>/runtime")
 	for _, leg := range conformanceLegs {
 		if graph[leg.target] == nil {
 			gaps = append(gaps, leg.name+": make has no rule for "+leg.target)
@@ -133,7 +137,7 @@ func conformanceLegGaps(t *testing.T, replace map[string]string) []string {
 			gaps = append(gaps, leg.name+": the compiler's Go sources are not an input of "+leg.target)
 		}
 		for _, pkg := range leg.packages {
-			files, err := provesran.Glob(filepath.Join(root, "internal", "codegen", pkg, "runtime", "*"))
+			files, err := runtimes.Glob(filepath.Join(root, "internal", "codegen", pkg, "runtime", "*"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -150,6 +154,7 @@ func conformanceLegGaps(t *testing.T, replace map[string]string) []string {
 			}
 		}
 	}
+	runtimes.Check(t)
 	return gaps
 }
 

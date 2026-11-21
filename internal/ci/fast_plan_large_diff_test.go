@@ -179,8 +179,7 @@ func largeDiffDirs(t *testing.T, root string, max int) []string {
 			if _, err := os.Stat(filepath.Join(path, "go.mod")); err == nil {
 				return filepath.SkipDir // a nested module
 			}
-			gos, _ := provesran.Glob(filepath.Join(path, "*.go"))
-			if len(gos) > 0 {
+			if dirHoldsGoSource(path) {
 				dirs = append(dirs, rel)
 			}
 			return nil
@@ -258,4 +257,19 @@ func TestFastPlanLargeDiff(t *testing.T) {
 	if got := run(old); strings.HasPrefix(got, "yes|") {
 		t.Errorf("NEGATIVE CONTROL FAILED: the echo-into-grep broad rule selected broad=yes on a %d-byte list", len(list))
 	}
+}
+
+// dirHoldsGoSource is a question about one directory, and "no" is an answer:
+// it is not a scan, so it is not held to provesran's zero-match rule.
+func dirHoldsGoSource(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".go") {
+			return true
+		}
+	}
+	return false
 }

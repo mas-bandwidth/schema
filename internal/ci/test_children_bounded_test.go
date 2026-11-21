@@ -83,6 +83,7 @@ func TestEveryTestChildIsBounded(t *testing.T) {
 		if err != nil {
 			t.Fatalf("covered package %s: %v", dir, err)
 		}
+		read := 0
 		for _, e := range entries {
 			n := e.Name()
 			if e.IsDir() || !strings.HasSuffix(n, ".go") || (!helperDir(dir) && !strings.HasSuffix(n, "_test.go")) {
@@ -97,7 +98,11 @@ func TestEveryTestChildIsBounded(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			read++
 			bad = append(bad, at...)
+		}
+		if read == 0 {
+			t.Fatalf("covered package %s: no source was read, so nothing in it is held to testproc — the package moved, or the list is stale", dir)
 		}
 	}
 	sort.Strings(bad)

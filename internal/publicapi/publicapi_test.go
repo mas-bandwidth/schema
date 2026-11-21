@@ -78,6 +78,9 @@ func goSourceFiles(t *testing.T, dir string) []string {
 		}
 		names = append(names, name)
 	}
+	if len(names) == 0 {
+		t.Fatalf("%s holds no non-test Go source: the package moved, and the scan over its sources would read nothing", dir)
+	}
 	sort.Strings(names)
 	return names
 }
@@ -311,6 +314,9 @@ func readTree(t *testing.T, dir string) map[string][]byte {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(out) == 0 {
+		t.Fatalf("%s holds no emitted file: two empty trees compare equal, and that comparison proves nothing", dir)
 	}
 	return out
 }

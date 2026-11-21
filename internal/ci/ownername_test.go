@@ -19,17 +19,22 @@ func TestOwnerName(t *testing.T) {
 	citationKey := regexp.MustCompile("docs/rulings\\.json`?[,;: ]+`?([a-z][a-z0-9-]+)")
 
 	files := []string{filepath.Join(root, "AGENTS.md"), filepath.Join(root, "docs", "SPEC.md")}
+	gateSources := 0
 	err := filepath.WalkDir(filepath.Join(root, "internal", "ci"), func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if !d.IsDir() && strings.HasSuffix(path, ".go") {
 			files = append(files, path)
+			gateSources++
 		}
 		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if gateSources == 0 {
+		t.Fatal("the walk of internal/ci found no .go source; this gate would pass having read two documents")
 	}
 
 	scanned := 0
