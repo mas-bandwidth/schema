@@ -42,11 +42,12 @@ func buildMessageVerdictFrames(t *testing.T, r *messageFuzzRoot, u *units) (hist
 		t.Fatal("tblm1.Msg has no seq field")
 	}
 	peer := ir.BuildVersion(irUnit) ^ 0x5eed
+	// one batch; the peer's announcement says what kind seq IS
+	batch, err := tablewire.EncodeMessagesWithVocabulary(r.model, []*tabletext.Instance{inst}, r.entries)
+	if err != nil {
+		t.Fatal(err)
+	}
 	frame := func(entries []ir.TableVocabularyEntry) []byte {
-		batch, err := tablewire.EncodeMessagesWithVocabulary(r.model, []*tabletext.Instance{inst}, entries)
-		if err != nil {
-			t.Fatal(err)
-		}
 		return packMessageFuzzFrame(wrapVocabularyAnnouncement(peer, ir.TableVocabularyBytes(entries)), batch)
 	}
 	old := append([]ir.TableVocabularyEntry(nil), r.entries...)
