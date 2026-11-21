@@ -1,0 +1,28 @@
+// THE VARIABLE SAVE'S WRITE CONTRACT (docs/SPEC.md §5.1 rows 1, 2 and 5),
+// read by test/cpp-hostile/contract/contract.cpp: one value per row at each
+// position it can ride in (a field, an array element and a union arm's
+// payload), set one past its declaration in a debug build.
+package contractdemo
+
+enum Grade
+{
+    A
+    B
+    C
+}
+
+union Pick
+{
+    small int32 | min = 0, max = 9
+    wide  bits(13)
+}
+
+table Contract
+{
+    level  int32 | min = 0, max = 100
+    mask   bits(13)
+    grade  Grade
+    levels [..4]int32 | min = 0, max = 100
+    grades [..4]Grade
+    pick   Pick
+}

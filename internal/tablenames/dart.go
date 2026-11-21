@@ -76,6 +76,7 @@ func init() {
 		Name{Name: "TableMessageKindWidth", What: "the announced message bit codec: the fixed width of a scalar kind's payload"},
 		Name{Name: "TableMessageKindWidens", What: "the announced message bit codec: whether an announced kind widens exactly into the declared one (§4)"},
 		Name{Name: "TableMessageLeb", What: "the announced message bit codec: the canonical LEB128 length every length takes (§3)"},
+		Name{Name: "TableMessageRangedFits", What: "the announced message bit codec: whether a ranged base + offset lies inside the announced kind, exactly and never wrapped (§3.3)"},
 		Name{Name: "TableMessageSameEntry", What: "the announced message bit codec: whether one entry's bytes repeat an earlier entry's (§3.3)"},
 		Name{Name: "TableMessageSkipEntry", What: "the announced message bit codec: step over one announced entry by the shape its announcement decoded (§3.3)"},
 		Name{Name: "TableMessageAnnounceUtf8", What: "the announced message bit codec: validate a vocabulary entry's UTF-8 name (§3.3)"},
