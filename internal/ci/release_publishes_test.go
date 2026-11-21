@@ -23,6 +23,7 @@ const (
 	releaseUploadCommand    = `gh release upload "$VERSION" build/release-binaries/schema_"$VERSION"_* build/release-binaries/SHA256SUMS --clobber`
 	releaseListedCheck      = `if [ "$built" != "$listed" ]; then`
 	releaseAttachedCheck    = `if [ "$attached" != "$built" ]; then`
+	releaseManifestCheck    = `if ! cmp -s build/release-binaries/SHA256SUMS "$published/SHA256SUMS"; then`
 	releaseChecksumCommand  = `(cd "$published" && sha256sum --strict -c SHA256SUMS)`
 	releaseGoPublicCommand  = `gh release edit "$VERSION" --draft=false --latest`
 	releasePublicOnlyWhole  = "F-171"
@@ -77,7 +78,7 @@ func releaseWholeErrors(content string) []string {
 		errs = append(errs, "release.yml:assets creates a release: only the release job's draft step does")
 	}
 	at := -1
-	for _, step := range []string{releaseUploadCommand, releaseListedCheck, releaseAttachedCheck, releaseChecksumCommand, releaseGoPublicCommand} {
+	for _, step := range []string{releaseUploadCommand, releaseListedCheck, releaseAttachedCheck, releaseManifestCheck, releaseChecksumCommand, releaseGoPublicCommand} {
 		i := strings.Index(assets, step)
 		if i < 0 {
 			errs = append(errs, "release.yml:assets does not run `"+step+"`: the release could go public without every archive attached and checked")
@@ -189,6 +190,7 @@ func TestReleaseGoesPublicOnlyWhole(t *testing.T) {
 		{"published as latest by the release job", releasePublishCommand, strings.Replace(releasePublishCommand, "--draft", "--latest", 1), "before its assets are checked"},
 		{"the checksum check dropped", releaseChecksumCommand, "true", "sha256sum --strict -c SHA256SUMS"},
 		{"the draft's names unchecked", releaseAttachedCheck, "if false; then", `"$attached" != "$built"`},
+		{"the draft's manifest trusted (F-246)", releaseManifestCheck, "if false; then", `cmp -s build/release-binaries/SHA256SUMS`},
 		{"published before the upload", releaseUploadCommand, releaseGoPublicCommand + "\n          " + releaseUploadCommand, "out of order"},
 	} {
 		if !strings.Contains(wf, c.from) {
@@ -198,5 +200,70 @@ func TestReleaseGoesPublicOnlyWhole(t *testing.T) {
 		if !strings.Contains(errs, c.want) {
 			t.Errorf("NEGATIVE CONTROL FAILED: %q: got %q, want an error containing %q", c.name, errs, c.want)
 		}
+	}
+}
+
+// releaseProofDownloadErrors holds the full lane's proof download: a failed
+// `gh run download` of the proof artifact, or an artifact with no
+// proof.json, refuses in that step by name. At v3.0.5 the step ended
+// `|| echo "...; make release will refuse"`, so the download's own failure
+// passed the step and the refusal came later under another name.
+func releaseProofDownloadErrors(content string) []string {
+	var errs []string
+	for raw := range strings.SplitSeq(content, "\n") {
+		line := strings.TrimSpace(raw)
+		if strings.HasPrefix(line, "#") || !strings.Contains(line, "gh run download") {
+			continue
+		}
+		if strings.Contains(line, "|| echo") || strings.Contains(line, "|| true") {
+			errs = append(errs, "release.yml swallows a failed proof download: `"+line+"`")
+		}
+	}
+	for _, need := range []string{
+		`if ! gh run download "$run" --name proof --dir build/proof; then`,
+		`if [ ! -s build/proof/proof.json ]; then`,
+	} {
+		if !strings.Contains(content, need) {
+			errs = append(errs, "release.yml does not refuse by name when the proof download fails: missing `"+need+"`")
+		}
+	}
+	return errs
+}
+
+// TestReleaseProofDownloadRefusesByName holds the live release.yml and
+// replays the F-171 workflow corpus: the v3.0.5 workflow (its `|| echo`) is
+// refused and the control accepted.
+func TestReleaseProofDownloadRefusesByName(t *testing.T) {
+	t.Parallel()
+	wf, ok := workflows(t, repoRoot(t))["release.yml"]
+	if !ok {
+		t.Fatal("missing .github/workflows/release.yml")
+	}
+	for _, e := range releaseProofDownloadErrors(wf) {
+		t.Error(e)
+	}
+	for _, c := range []struct {
+		file string
+		red  bool
+	}{
+		{"release-public-before-assets.yml", true},
+		{"release-draft-until-assets.yml", false},
+	} {
+		data, err := os.ReadFile(filepath.Join(releaseWorkflowFixtures, c.file))
+		if err != nil {
+			t.Fatal(err)
+		}
+		errs := releaseProofDownloadErrors(string(data))
+		if c.red != (len(errs) > 0) {
+			t.Errorf("CORPUS %s: red=%v, errors %q", c.file, c.red, errs)
+		}
+	}
+	const from = `if ! gh run download "$run" --name proof --dir build/proof; then`
+	if !strings.Contains(wf, from) {
+		t.Fatal("control cannot plant: the download refusal is missing")
+	}
+	planted := strings.Replace(wf, from, `gh run download "$run" --name proof --dir build/proof || echo "no report"; if false; then`, 1)
+	if errs := strings.Join(releaseProofDownloadErrors(planted), "\n"); !strings.Contains(errs, "swallows a failed proof download") {
+		t.Errorf("NEGATIVE CONTROL FAILED: a swallowed download passed: %q", errs)
 	}
 }

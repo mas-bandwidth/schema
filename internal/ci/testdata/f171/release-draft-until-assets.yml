@@ -108,7 +108,15 @@ jobs:
           set -euo pipefail
           run=$(gh run list --workflow ci-full.yml --commit "$GITHUB_SHA" --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')
           if [ -z "$run" ]; then echo "release REFUSES: no green ci-full run at $GITHUB_SHA (a red, cancelled or missing run carries no proof the release can take)"; exit 1; fi
-          gh run download "$run" --name proof --dir build/proof || echo "the green ci-full run $run at $GITHUB_SHA kept no proof report; make release will refuse"
+          # a failed download refuses here, by name: never a message and on
+          if ! gh run download "$run" --name proof --dir build/proof; then
+            echo "release REFUSES: the green ci-full run $run at $GITHUB_SHA has no downloadable proof report (artifact 'proof')"
+            exit 1
+          fi
+          if [ ! -s build/proof/proof.json ]; then
+            echo "release REFUSES: the proof artifact of ci-full run $run at $GITHUB_SHA holds no build/proof/proof.json"
+            exit 1
+          fi
       - name: make the release tag
         env:
           GOFLAGS: -mod=readonly
@@ -216,6 +224,10 @@ jobs:
           published="$RUNNER_TEMP/published-assets"
           rm -rf "$published"
           gh release download "$VERSION" --dir "$published"
+          if ! cmp -s build/release-binaries/SHA256SUMS "$published/SHA256SUMS"; then
+            echo "release REFUSES to publish $VERSION: the draft checksums differ from the current build"
+            exit 1
+          fi
           (cd "$published" && sha256sum --strict -c SHA256SUMS)
           gh release edit "$VERSION" --draft=false --latest
           echo "published $VERSION as latest with $(echo "$built" | wc -l) assets"
