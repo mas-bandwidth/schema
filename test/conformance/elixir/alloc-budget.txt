@@ -153,3 +153,7 @@ vd_var_defaults 41560 201 30922
 vd_var_values 74401 284 45924
 vd_fixed_defaults 20332 131 15974
 vd_fixed_values 20189 139 16438
+packetunions_doc_full 10018 13 5736
+packetunions_doc_empty 2321 3 1776
+packetunions_msg_full 5858 16 4306
+packetunions_msg_one 2758 8 2076

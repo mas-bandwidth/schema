@@ -127,6 +127,7 @@ defmodule AllocAudit do
   # runs, and whose root that codec loads and saves back (a blob two slots name
   # refuses the save, docs/SPEC-TABLES.md §2.5); the rest are named, not measured
   @unit_packages %{
+    "packetunions" => "tblpacketunions",
     "scalars" => "scalardemo",
     "tblscalars2" => "scalardemo2",
     "widelist" => "widelistdemo"
