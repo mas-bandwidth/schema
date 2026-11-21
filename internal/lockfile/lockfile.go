@@ -233,9 +233,9 @@ type Entry struct {
 
 	// Default is the field's FRESH VALUE — its specified default where one is
 	// declared, and the implicit zero otherwise (SPEC §5), rendered as exact
-	// canonical text. It is a WIRE FACT, not a convenience: a deprecated slot
-	// holds it, an absent field on the id-table wire reads back as it, and a
-	// reader given an older writer's record fills the missing field from it.
+	// canonical text. It is a WIRE FACT, not a convenience: an absent field on
+	// the id-table wire reads back as it, and a reader given an older writer's
+	// record fills the missing field from it.
 	// Move it and every such record means something else.
 	Default string
 
@@ -258,8 +258,9 @@ type Entry struct {
 	Optional bool
 
 	// Deprecated is the field's `| deprecated` marker (§2.10). It may turn
-	// on and it may never turn off: the slot stays where it is, nothing new
-	// may name the field, and a reader ignores what it finds there.
+	// on and it may never turn off: the slot stays where it is and is still
+	// carried — written and read like any other field — and the application
+	// ignores it (docs/rulings.json `fixed-deprecated-field-is-carried`).
 	Deprecated bool
 
 	// Bound is an array's DECLARED ELEMENT COUNT — `[4]T`'s 4, `[..N]T`'s

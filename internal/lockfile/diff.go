@@ -346,9 +346,10 @@ func diffValues(lk, lv *ValueList, policy Policy) error {
 		switch {
 		case wantDep && !gotDep:
 			// DEPRECATION IS ONE WAY, one level in (docs/SPEC-TABLES.md
-			// §2.15): the variant keeps its ordinal, and every writer since the
-			// marker went on wrote the element default into its slot.
-			return fmt.Errorf("%s, is deprecated in the lock and live in the declaration: undeprecated (deprecated -> live) — deprecation is ONE WAY: every writer since the slot was deprecated wrote the default into it, so what would come back is not data (docs/FIXED-FORM-BILL-READS-BACKWARD.md §12.3, docs/SPEC-TABLES.md §21.1, docs/SPEC-TABLES.md §2.15); leave it `| deprecated`",
+			// §2.15): the variant keeps its ordinal, every strict writer since
+			// the marker went on refused it, and every reader read it as the
+			// field's default.
+			return fmt.Errorf("%s, is deprecated in the lock and live in the declaration: undeprecated (deprecated -> live) — deprecation is ONE WAY: while the variant was deprecated every writer refused it and every reader read it as the field's default, so the marker stays on for life (docs/FIXED-FORM-BILL-READS-BACKWARD.md §12.3, docs/SPEC-TABLES.md §21.1, docs/SPEC-TABLES.md §2.15); leave it `| deprecated`",
 				where)
 		case !wantDep && gotDep && policy == Current:
 			return stale(lv.Decl, lv.Name, valueName(lv, i), "deprecated in the declaration and live in the lock")

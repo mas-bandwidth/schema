@@ -182,8 +182,10 @@ func namedElement(want, got Entry) bool {
 // rangeRule classifies a move of a field's declared bounds or its scale. A
 // range OUTWARD is a widening: every value an older writer could hold is still
 // inside. A range INWARD, a range added where none was, and a moved
-// fixed-point scale are refusals — the first two because an old value now
-// clamps, the third because the same stored number means something else (§2).
+// fixed-point scale are refusals — the first two because an old value can now
+// fall outside the reader's range, and the strict read refuses it
+// (`out_of_range`), the third because the same stored number means something
+// else (§2).
 //
 // A COMPRESSED FLOAT'S RESOLUTION IS THE ONE SCALE THAT MOVES ONE WAY. In the
 // fixed form a compressed float rides as the float32 itself (SPEC-TABLES
@@ -494,18 +496,19 @@ func monotoneAt(where string, want, got Entry, priorMoved bool) (widened bool, w
 		widened = true
 	}
 	if got.Default != want.Default {
-		return false, "", fmt.Errorf("%s, defaults to %s in the lock and %s in the declaration: default changed (%s -> %s) — a field already in the lock keeps its default: an older writer's missing field is filled from this default, and a deprecated slot holds it, so a record written before the change reads differently after it (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2, docs/SPEC-TABLES.md §21.1); deprecate this field and append a new one",
+		return false, "", fmt.Errorf("%s, defaults to %s in the lock and %s in the declaration: default changed (%s -> %s) — a field already in the lock keeps its default: an older writer's missing field is filled from this default, so a record written before the change reads differently after it (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2, docs/SPEC-TABLES.md §21.1); deprecate this field and append a new one",
 			where, want.Default, got.Default, want.Default, got.Default)
 	}
 	switch {
 	case want.Deprecated && !got.Deprecated:
 		// DEPRECATION IS ONE WAY (docs/FIXED-FORM-BILL-READS-BACKWARD.md
-		// §12.3, which corrects §2's row): every writer that ran while the
-		// field was deprecated left the DEFAULT in the slot, so what comes
-		// back is not data, and there is nothing to turn back on — a
-		// deprecated field keeps its slot and is read on every plan, identity
-		// included.
-		return false, "", fmt.Errorf("%s, is deprecated in the lock and live in the declaration: undeprecated (deprecated -> live) — deprecation is ONE WAY: every writer since the slot was deprecated wrote the default into it, so what would come back is not data (docs/FIXED-FORM-BILL-READS-BACKWARD.md §12.3, docs/SPEC-TABLES.md §21.1); leave it `| deprecated` and append a new field",
+		// §12.3, which corrects §2's row). A deprecated field is still CARRIED
+		// (docs/rulings.json `fixed-deprecated-field-is-carried`): it keeps
+		// its slot, the writer stores what the value holds and every plan
+		// lands it. What the rule rests on is that the application ignores a
+		// deprecated field, so what records written meanwhile hold there is
+		// not data anyone kept, and the marker stays on for life.
+		return false, "", fmt.Errorf("%s, is deprecated in the lock and live in the declaration: undeprecated (deprecated -> live) — deprecation is ONE WAY: the application ignores a deprecated field, so what records written while it was deprecated hold in its slot is not data anyone kept, and the marker stays on for life (docs/FIXED-FORM-BILL-READS-BACKWARD.md §12.3, docs/SPEC-TABLES.md §21.1); leave it `| deprecated` and append a new field",
 			where)
 	case !want.Deprecated && got.Deprecated:
 		widened, what = true, "deprecated in the declaration and live in the lock"
