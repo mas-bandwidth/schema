@@ -45,10 +45,14 @@ func pairFixture(t *testing.T) (dir, payload, side string) {
 }
 
 func publishPair(sideFlag, side, payloadFlag, payload string) error {
-	return publishOutputs([]pairOutput{
+	return publishPairReading("test", sideFlag, side, payloadFlag, payload, nil)
+}
+
+func publishPairReading(verb, sideFlag, side, payloadFlag, payload string, ins []outputPath) error {
+	return publishOutputs(verb, []pairOutput{
 		{outputPath{sideFlag, side}, []byte("new side bytes")},
 		{outputPath{payloadFlag, payload}, []byte("new payload bytes")},
-	})
+	}, ins)
 }
 
 func wantFile(t *testing.T, path, want string) {
@@ -152,10 +156,12 @@ func TestPairedOutputsRefuseSymlinkedDirectoryAlias(t *testing.T) {
 			viaAlias := filepath.Join(alias, filepath.Base(payload))
 			err := refuseAliasedPaths(cmd.verb, []outputPath{{cmd.side, viaAlias}, {cmd.payload, payload}}, nil)
 			wantAliasRefused(t, err, cmd.side, cmd.payload)
-			// a file not yet written aliases through the directory just the same
+			// a file not yet written aliases through the directory just the
+			// same: the publish finds it, and writes nothing
 			fresh := filepath.Join(dir, "fresh.bin")
-			err = refuseAliasedPaths(cmd.verb, []outputPath{{cmd.side, filepath.Join(alias, "fresh.bin")}, {cmd.payload, fresh}}, nil)
+			err = publishPairReading(cmd.verb, cmd.side, filepath.Join(alias, "fresh.bin"), cmd.payload, fresh, nil)
 			wantAliasRefused(t, err, cmd.side, cmd.payload)
+			wantEntries(t, dir, "out.bin", "side.bin")
 			if cmd.input != "" {
 				err = refuseAliasedPaths(cmd.verb, []outputPath{{cmd.side, filepath.Join(dir, "s.bin")}, {cmd.payload, viaAlias}}, []outputPath{{cmd.input, payload}})
 				wantAliasRefused(t, err, cmd.input, cmd.payload)
@@ -219,6 +225,64 @@ func TestPairedOutputsSideFailureKeepsThePayload(t *testing.T) {
 			wantFile(t, payload, oldPayload)
 			wantEntries(t, dir, "out.bin", "side.bin")
 		})
+	}
+}
+
+// One directory entry under two spellings the file system treats as one name
+// (APFS: composed and decomposed é). Only the file system can say so, so the
+// test runs where it does and is skipped, named, where it does not.
+func TestPairedOutputsRefuseNormalizationAlias(t *testing.T) {
+	const composed, decomposed = "café.bin", "café.bin"
+	probe := t.TempDir()
+	writeTestFile(t, filepath.Join(probe, composed), "probe")
+	if _, err := os.Lstat(filepath.Join(probe, decomposed)); err != nil {
+		t.Skipf("this file system keeps %q and %q apart, so they are two files here: %v", composed, decomposed, err)
+	}
+	for _, cmd := range pairedCommands {
+		t.Run(cmd.verb+"/existing", func(t *testing.T) {
+			dir := t.TempDir()
+			payload := filepath.Join(dir, composed)
+			writeTestFile(t, payload, oldPayload)
+			side := filepath.Join(dir, decomposed)
+			err := refuseAliasedPaths(cmd.verb, []outputPath{{cmd.side, side}, {cmd.payload, payload}}, nil)
+			wantAliasRefused(t, err, cmd.side, cmd.payload)
+			err = publishPairReading(cmd.verb, cmd.side, side, cmd.payload, payload, nil)
+			wantAliasRefused(t, err, cmd.side, cmd.payload)
+			wantFile(t, payload, oldPayload)
+			wantEntries(t, dir, composed)
+		})
+		t.Run(cmd.verb+"/fresh", func(t *testing.T) {
+			dir := t.TempDir()
+			err := publishPairReading(cmd.verb, cmd.side, filepath.Join(dir, decomposed), cmd.payload, filepath.Join(dir, composed), nil)
+			wantAliasRefused(t, err, cmd.side, cmd.payload)
+			wantEntries(t, dir)
+		})
+	}
+}
+
+// cook --in X --out X with X a symlink: the output would replace the input's
+// own directory entry. So would an output naming the file X resolves to.
+func TestCookRefusesOutputOverSymlinkedInput(t *testing.T) {
+	dir := t.TempDir()
+	real := filepath.Join(dir, "real.bin")
+	writeTestFile(t, real, oldPayload)
+	link := filepath.Join(dir, "link.bin")
+	if err := os.Symlink("real.bin", link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	side := filepath.Join(dir, "side.bin")
+	in := []outputPath{{"--in", link}}
+	for _, out := range []string{link, real} {
+		err := refuseAliasedPaths("cook", []outputPath{{"--attribution", side}, {"--out", out}}, in)
+		wantAliasRefused(t, err, "--in", "--out")
+		err = publishPairReading("cook", "--attribution", side, "--out", out, in)
+		wantAliasRefused(t, err, "--in", "--out")
+		info, lerr := os.Lstat(link)
+		if lerr != nil || info.Mode()&os.ModeSymlink == 0 {
+			t.Fatalf("the input link was replaced: %v, %v", info, lerr)
+		}
+		wantFile(t, real, oldPayload)
+		wantEntries(t, dir, "link.bin", "real.bin")
 	}
 }
 

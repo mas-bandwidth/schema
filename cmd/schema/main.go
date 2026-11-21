@@ -456,7 +456,7 @@ func main() {
 			announcement = c.Announce(unit)
 			pub = []pairOutput{{outputPath{"--announce", *announce}, announcement}, pub[0]}
 		}
-		if err := publishOutputs(pub); err != nil {
+		if err := publishOutputs("pack", pub, nil); err != nil {
 			fatalf("%v", err)
 		}
 		if verbose {
@@ -589,7 +589,7 @@ func main() {
 			bytes = data
 			pub = []pairOutput{{outputPath{"--attribution", *attribution}, side}, {outputPath{"--out", *out}, bytes}}
 		}
-		if err := publishOutputs(pub); err != nil {
+		if err := publishOutputs("cook", pub, []outputPath{{"--in", *in}}); err != nil {
 			fatalf("%v", err)
 		}
 		if verbose {
