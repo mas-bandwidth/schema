@@ -29,7 +29,9 @@ func (g *tableGen) emitMessageLoadBody(st *ir.Struct) {
 	g.pf("// not this field's is a kind mismatch and skipped the same way.\n")
 	g.pf("inline bool %sLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, %s & value )\n{\n", st.Name, st.Name)
 	g.pf("    %sReset( value );\n", st.Name)
-	g.pf("    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};\n")
+	// the body's SEEN SET is a level of the repeat check, kept in the
+	// vocabulary's entries rather than on this frame (TableMessageSeenOnce)
+	g.pf("    const TableMessageSeenBody seen( vocabulary );\n")
 	if len(st.Fields) > 0 {
 		// §3.3's (a) and (b) are refused only where the reader knows the
 		// sender's default and order: the same announced shape at the same
@@ -49,7 +51,7 @@ func (g *tableGen) emitMessageLoadBody(st *ir.Struct) {
 	g.pf("        // field and is read before this walk begins, so meeting one here is\n")
 	g.pf("        // a second numbering wherever it sits\n")
 	g.pf("        if ( TableMessageReserved( entry.id ) )\n        {\n            report->damaged = true;\n            return false;\n        }\n")
-	g.pf("        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )\n        {\n            report->damaged = true;\n            return false;\n        } // one field id twice in one body is damage (§3.3)\n")
+	g.pf("        if ( !TableMessageSeenOnce( seen, ref ) )\n        {\n            report->damaged = true;\n            return false;\n        } // one field id twice in one body is damage (§3.3)\n")
 	g.pf("        switch ( entry.id )\n        {\n")
 	for fi, f := range st.Fields {
 		mine := ir.TableFieldEntry(f)
@@ -63,7 +65,7 @@ func (g *tableGen) emitMessageLoadBody(st *ir.Struct) {
 		g.pf("                if ( entry.kind != %d || entry.elem_kind != %d )\n                {\n", mine.Kind, mine.Shape.Elem)
 		g.emitMessageWidenBranch(f, mine, "entry", "                    ")
 		g.pf("                    report->refused = true;\n                    report->refuse_reason = kind_mismatch;\n")
-		g.pf("                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )\n                    {\n                        report->damaged = true;\n                        return false;\n                    }\n")
+		g.pf("                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )\n                    {\n                        report->damaged = true;\n                        return false;\n                    }\n")
 		g.pf("                    break;\n                }\n")
 		g.emitMessageReadField(f, "same_shape")
 		g.pf("                break;\n            }\n")
@@ -73,7 +75,7 @@ func (g *tableGen) emitMessageLoadBody(st *ir.Struct) {
 	// be a field of this record. Another build may have added it (§3.3).
 	g.pf("                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }\n")
 	g.pf("                report->unknown++;\n")
-	g.pf("                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )\n                {\n                    report->damaged = true;\n                    return false;\n                }\n")
+	g.pf("                if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )\n                {\n                    report->damaged = true;\n                    return false;\n                }\n")
 	g.pf("                break;\n")
 	g.pf("        }\n    }\n}\n\n")
 }
@@ -178,7 +180,17 @@ func (g *tableGen) emitMessageReadTextFromChecked(f *ir.Field, value, count, ind
 	g.pf("%s{\n%s    uint64_t n%s = 0;\n", ind, ind, sfx)
 	// A LENGTH WHOSE PAYLOAD RUNS PAST THE BATCH IS DAMAGE at the field that
 	// carried it (§3.3), found before the clamp so nothing else counts
-	g.pf("%[1]s    if ( !r.get( n%[2]s, %[3]s ) || !r.align() || !r.has( (int64_t) n%[4]s * 8 ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx, width, sfx)
+	if f.Type.Kind == ir.TBytes {
+		// A bytes(N) IS AN ARRAY OF KIND 6 (§3.3, "bytes(N) AND [..N]uint8 ARE
+		// THE SAME KIND"), so its count rides as count - min, exactly as an
+		// array's does: a sender's [A..B]uint8 announces min A, and the count
+		// it means is the raw offset plus A
+		g.pf("%[1]s    if ( !r.get( n%[2]s, %[3]s ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx, width)
+		g.pf("%s    n%s += (uint64_t) %s.min;\n", ind, sfx, from)
+		g.pf("%[1]s    if ( !r.align() || !r.has( (int64_t) n%[2]s * 8 ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx)
+	} else {
+		g.pf("%[1]s    if ( !r.get( n%[2]s, %[3]s ) || !r.align() || !r.has( (int64_t) n%[4]s * 8 ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx, width, sfx)
+	}
 	if f.Type.Kind == ir.TString {
 		g.pf("%s    const uint8_t * text%s = r.buffer + ( r.offset >> 3 );\n", ind, sfx)
 		// ILL-FORMED TEXT IS DAMAGE HERE TOO, AND IT IS TERMINAL (§3.3): the
@@ -498,7 +510,7 @@ func (g *tableGen) emitMessageReadKeyed(f *ir.Field, ind, gate string) {
 	g.pf("%s{\n%s    uint64_t n%s = 0;\n", ind, ind, sfx)
 	g.pf("%[1]s    if ( !r.get( n%[2]s, TableBitsRequired( 0, entry.max ) ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx)
 	g.pf("%[1]s    if ( %[2]s && n%[3]s == 0 )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, gate, sfx)
-	g.pf("%s    uint64_t seen_keys%s[(kTableMessageSeenBits + 63) / 64] = {};\n", ind, sfx)
+	g.pf("%s    const TableMessageSeenBody seen_keys%s( vocabulary );\n", ind, sfx)
 	g.pf("%s    int32_t last_key_slot%s = 0;\n", ind, sfx)
 	g.pf("%s    for ( uint64_t p%s = 0; p%s < n%s; p%s++ )\n%s    {\n", ind, sfx, sfx, sfx, sfx, ind)
 	inner := ind + "        "
@@ -506,7 +518,7 @@ func (g *tableGen) emitMessageReadKeyed(f *ir.Field, ind, gate string) {
 	g.pf("%[1]sif ( !r.get( key_ref%[2]s, vocabulary.ref_bits ) )\n%[1]s{\n%[1]s    report->damaged = true;\n%[1]s    return false;\n%[1]s}\n", inner, sfx)
 	g.pf("%sTableMessageEntry key_entry%s;\n", inner, sfx)
 	g.pf("%[1]sif ( !TableMessageNameEntry( vocabulary, key_ref%[2]s, key_entry%[3]s ) )\n%[1]s{\n%[1]s    report->damaged = true;\n%[1]s    return false;\n%[1]s}\n", inner, sfx, sfx)
-	g.pf("%[1]sif ( !TableMessageSeenOnce( seen_keys%[2]s, vocabulary, key_ref%[3]s, key_entry%[4]s.id ) )\n%[1]s{\n%[1]s    report->damaged = true;\n%[1]s    return false;\n%[1]s}\n", inner, sfx, sfx, sfx)
+	g.pf("%[1]sif ( !TableMessageSeenOnce( seen_keys%[2]s, key_ref%[3]s ) )\n%[1]s{\n%[1]s    report->damaged = true;\n%[1]s    return false;\n%[1]s}\n", inner, sfx, sfx)
 	g.pf("%s%s key%s = %s::None;\n", inner, f.KeyEnum, sfx, f.KeyEnum)
 	g.pf("%sconst bool named%s = TableEnumValue( key_entry%s.id, key%s );\n", inner, sfx, sfx, sfx)
 	g.pf("%sif ( !named%s ) { report->unknown++; }\n", inner, sfx)
@@ -549,8 +561,21 @@ func (g *tableGen) emitMessageReadScalarFromEntryChecked(f *ir.Field, lvalue, in
 	defer g.msgLeave()
 	kind := tableScalarKind(f)
 	packing, bits, base, baseHi, qmin, qdelta, qcount := from+".packing", from+".value_bits", from+".base_lo", from+".base_hi", from+".qmin", from+".qdelta", from+".qcount"
+	announced := from + ".kind"
 	if element {
 		packing, bits, base, baseHi, qmin, qdelta, qcount = from+".elem_packing", from+".elem_value_bits", from+".elem_base_lo", from+".elem_base_hi", from+".elem_qmin", from+".elem_qdelta", from+".elem_qcount"
+		announced = from + ".elem_kind"
+	}
+	// THE ANNOUNCED KIND'S DOMAIN HOLDS BASE PLUS OFFSET (§3.3) before the
+	// sum is formed: TableMessageRangedHolds is the skip path's own test, so a
+	// ranged value past it never lands here wrapped back into this reader's
+	// range. It refuses out_of_range without clamping (§3.3, "A RANGED OFFSET
+	// IS HELD TO THE DOMAIN THE READER CAN KNOW"), so the sum is never formed
+	// and the default check that follows never reads it.
+	past := "past" + sfx
+	holds := func(lo, hi string) {
+		g.pf("%s    const bool %s = %s == 1 && !TableMessageRangedHolds( %s, %s, %s, %s, %s );\n", ind, past, packing, announced, lo, hi, base, baseHi)
+		g.pf("%[1]s    if ( %[2]s )\n%[1]s    {\n%[1]s        report->refused = true;\n%[1]s        report->refuse_reason = out_of_range;\n%[1]s    }\n", ind, past)
 	}
 	// THE WIDTH IS RESOLVED, not derived here: the entry carries what the
 	// kind, the packing and the announced bits together settled, computed
@@ -628,6 +653,9 @@ func (g *tableGen) emitMessageReadScalarFromEntryChecked(f *ir.Field, lvalue, in
 		if f.HasFloatRange {
 			g.pf("%[1]s    if ( decoded_f%[2]s < %[3]s )\n%[1]s    {\n%[1]s        decoded_f%[4]s = %[5]s;\n%[1]s        report->refused = true;\n%[1]s        report->refuse_reason = out_of_range;\n%[1]s    }\n", ind, sfx, formatFloat(f.FMin, true), sfx, formatFloat(f.FMin, true))
 			g.pf("%[1]s    else if ( decoded_f%[2]s > %[3]s )\n%[1]s    {\n%[1]s        decoded_f%[4]s = %[5]s;\n%[1]s        report->refused = true;\n%[1]s        report->refuse_reason = out_of_range;\n%[1]s    }\n", ind, sfx, formatFloat(f.FMax, true), sfx, formatFloat(f.FMax, true))
+			// A COMPRESSED FLOAT'S -0 IS +0 (§3.3; ruling fixed-compressed-negzero),
+			// a raw payload's sign bit included: it lands as the value 0, uncounted
+			g.pf("%[1]s    if ( !( decoded_f%[2]s < 0.0f ) && !( decoded_f%[2]s > 0.0f ) ) { decoded_f%[2]s = 0.0f; } // -0 lands as +0\n", ind, sfx)
 		}
 		g.pf("%s    %s = decoded_f%s;\n%s}\n", ind, lvalue, sfx, ind)
 		return
@@ -638,6 +666,11 @@ func (g *tableGen) emitMessageReadScalarFromEntryChecked(f *ir.Field, lvalue, in
 	signed := ir.TableKindSigned(kind) || (f.Type.Kind == ir.TInt && f.Type.Timestamp)
 	bytesWide := tableKindWidth(kind)
 	decoded := "decoded_v" + sfx
+	if gate != "" {
+		// a value past the announced domain is already refused, and its
+		// default check would read a sum that was never formed
+		gate = "!" + past + " && " + gate
+	}
 	g.pf("%s{\n", ind)
 	g.pf("%s    const int64_t width%s = %s;\n", ind, sfx, width)
 	if bytesWide == 16 && widened {
@@ -651,6 +684,7 @@ func (g *tableGen) emitMessageReadScalarFromEntryChecked(f *ir.Field, lvalue, in
 		}
 		g.pf("%s    uint64_t raw%s = 0;\n", ind, sfx)
 		g.pf("%[1]s    if ( width%[2]s < 0 || width%[3]s > 64 || !r.get( raw%[4]s, width%[5]s ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx, sfx, sfx, sfx)
+		holds("raw"+sfx, "0")
 		if signed {
 			g.pf("%s    if ( %s != 1 && width%s > 0 && width%s < 64 )\n%s    {\n", ind, packing, sfx, sfx, ind)
 			g.pf("%s        const uint64_t sign%s = uint64_t(1) << ( width%s - 1 );\n", ind, sfx, sfx)
@@ -660,7 +694,7 @@ func (g *tableGen) emitMessageReadScalarFromEntryChecked(f *ir.Field, lvalue, in
 		} else {
 			g.pf("%s    serialize::uint128_t raw_v%s = serialize::uint128_t( raw%s );\n", ind, sfx, sfx)
 		}
-		g.pf("%s    if ( %s == 1 ) { raw_v%s = raw_v%s + ( ( serialize::uint128_t( (uint64_t) %s ) << 64 ) | serialize::uint128_t( (uint64_t) %s ) ); }\n", ind, packing, sfx, sfx, baseHi, base)
+		g.pf("%s    if ( %s == 1 && !%s ) { raw_v%s = raw_v%s + ( ( serialize::uint128_t( (uint64_t) %s ) << 64 ) | serialize::uint128_t( (uint64_t) %s ) ); }\n", ind, packing, past, sfx, sfx, baseHi, base)
 		g.pf("%s    %s %s = %s( raw_v%s );\n", ind, storage, decoded, storage, sfx)
 		if gate != "" {
 			g.pf("%[1]s    if ( %[2]s && ( %[3]s ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, gate, g.fieldIsDefault(f, decoded))
@@ -680,8 +714,9 @@ func (g *tableGen) emitMessageReadScalarFromEntryChecked(f *ir.Field, lvalue, in
 		}
 		g.pf("%s    uint64_t lo_v%s = 0, hi_v%s = 0;\n", ind, sfx, sfx)
 		g.pf("%[1]s    if ( width%[2]s < 0 || !r.get( lo_v%[3]s, width%[4]s < 64 ? width%[5]s : 64 ) || ( width%[6]s > 64 && !r.get( hi_v%[7]s, width%[8]s - 64 ) ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx, sfx, sfx, sfx, sfx, sfx, sfx)
+		holds("lo_v"+sfx, "hi_v"+sfx)
 		g.pf("%s    serialize::uint128_t raw_v%s = ( serialize::uint128_t( hi_v%s ) << 64 ) | serialize::uint128_t( lo_v%s );\n", ind, sfx, sfx, sfx)
-		g.pf("%s    if ( %s == 1 ) { raw_v%s = raw_v%s + ( ( serialize::uint128_t( (uint64_t) %s ) << 64 ) | serialize::uint128_t( (uint64_t) %s ) ); }\n", ind, packing, sfx, sfx, baseHi, base)
+		g.pf("%s    if ( %s == 1 && !"+past+" ) { raw_v%s = raw_v%s + ( ( serialize::uint128_t( (uint64_t) %s ) << 64 ) | serialize::uint128_t( (uint64_t) %s ) ); }\n", ind, packing, sfx, sfx, baseHi, base)
 		g.pf("%s    %s %s = %s( raw_v%s );\n", ind, storage, decoded, storage, sfx)
 		if gate != "" {
 			g.pf("%[1]s    if ( %[2]s && ( %[3]s ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, gate, g.fieldIsDefault(f, decoded))
@@ -696,8 +731,9 @@ func (g *tableGen) emitMessageReadScalarFromEntryChecked(f *ir.Field, lvalue, in
 	}
 	g.pf("%s    uint64_t raw%s = 0;\n", ind, sfx)
 	g.pf("%[1]s    if ( width%[2]s < 0 || !r.get( raw%[3]s, width%[4]s ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx, sfx, sfx)
+	holds("raw"+sfx, "0")
 	g.pf("%s    int64_t decoded_wide%s = (int64_t) raw%s;\n", ind, sfx, sfx)
-	g.pf("%s    if ( %s == 1 ) { decoded_wide%s = (int64_t) ( raw%s + (uint64_t) %s ); }\n", ind, packing, sfx, sfx, base)
+	g.pf("%s    if ( %s == 1 && !%s ) { decoded_wide%s = (int64_t) ( raw%s + (uint64_t) %s ); }\n", ind, packing, past, sfx, sfx, base)
 	if signed {
 		g.pf("%s    else if ( width%s > 0 && width%s < 64 )\n%s    {\n", ind, sfx, sfx, ind)
 		g.pf("%s        const uint64_t sign%s = uint64_t(1) << ( width%s - 1 );\n", ind, sfx, sfx)
