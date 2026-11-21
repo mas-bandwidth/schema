@@ -23,14 +23,13 @@ Rules:
 - `flags` variants are bit positions: add new ones at the end only.
 
 Commands (replace <dir> with the directory of .schema files):
-  schema fmt <dir>        format in place; the only command that writes .schema files
+  schema fmt <dir>        format in place (the only command that writes them)
   schema check <dir>      parse and check the unit
   schema generate --lang <lang> --out <out> <dir>
   schema id <dir>         print the protocol id
   schema help             list every command
 
---lang takes: c, cpp, cs, dart, elixir, go, goose, java, js, lobster, lua,
-luau, python, ruby, rust, squirrel, unity
+--lang takes: {{targets}}
 
 After every change to a .schema file:
   1. schema fmt <dir>

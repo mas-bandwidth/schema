@@ -1,6 +1,6 @@
 # schema
 
-> Schema is the data language for games. You declare constants, enums, flags, types, unions and tables in .schema files, and the schema compiler generates bit-packed serialization code from that one definition in C, C++, C# (modern), C# (unity), Dart, Elixir, Go, Goose, Java, JavaScript, Lobster, Lua, Luau, Python, Ruby, Rust and Squirrel. Types are the same-build packet wire; tables are the versioned wire for saves, config, assets and messages between builds.
+> Schema is the data language for games. You declare constants, enums, flags, types, unions and tables in .schema files, and the schema compiler generates bit-packed serialization code from that one definition in C, C# (modern), C# (unity), C++, Dart, Elixir, Go, Goose, Java, JavaScript, Lobster, Lua, Luau, Python, Ruby, Rust and Squirrel, and moo from a build with `-tags schema_leg_moo`. Types are the same-build packet wire; tables are the versioned wire for saves, config, assets and messages between builds.
 
 ## Docs
 
