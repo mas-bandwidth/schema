@@ -7,6 +7,7 @@ package fuzz_test
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,13 +18,30 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 )
 
+// corpusDirs are the two corpora the property tests run over. Both are
+// required: each is a unit of its own, and one missing used to drop a whole
+// corpus while the test still passed on the other (F-048).
+var corpusDirs = []string{"../../examples", "../../examples128"}
+
 func corpusUnits(t *testing.T) map[string][]check.SourceFile {
 	t.Helper()
+	out, err := corpusUnitsFrom(corpusDirs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+// corpusUnitsFrom reads every .schema file of each directory into one unit
+// per directory. A directory that cannot be read, a file that cannot be read
+// or does not parse, and a directory with no .schema file are each an error:
+// the caller asked for that corpus, and checking less than it is not a pass.
+func corpusUnitsFrom(dirs []string) (map[string][]check.SourceFile, error) {
 	out := map[string][]check.SourceFile{}
-	for _, dir := range []string{"../../examples", "../../examples128"} {
+	for _, dir := range dirs {
 		entries, err := os.ReadDir(dir)
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("corpus %s: %w", dir, err)
 		}
 		var files []check.SourceFile
 		for _, e := range entries {
@@ -32,25 +50,26 @@ func corpusUnits(t *testing.T) map[string][]check.SourceFile {
 			}
 			b, err := os.ReadFile(filepath.Join(dir, e.Name()))
 			if err != nil {
-				continue
+				return nil, fmt.Errorf("corpus %s: %w", dir, err)
 			}
 			ast, perrs := parser.Parse(e.Name(), b)
 			if len(perrs) > 0 {
-				t.Fatalf("%s/%s does not parse: %v", dir, e.Name(), perrs[0])
+				return nil, fmt.Errorf("%s/%s does not parse: %v", dir, e.Name(), perrs[0])
 			}
 			files = append(files, check.SourceFile{
 				Path: e.Name(), Name: e.Name(),
 				Base: strings.TrimSuffix(e.Name(), ".schema"), Bytes: b, AST: ast,
 			})
 		}
-		if len(files) > 0 {
-			out[dir] = files
+		if len(files) == 0 {
+			return nil, fmt.Errorf("corpus %s holds no .schema file", dir)
 		}
+		out[dir] = files
 	}
-	if len(out) == 0 {
-		t.Fatal("no corpus units found")
+	if len(out) != len(dirs) {
+		return nil, fmt.Errorf("read %d corpus units from %d directories", len(out), len(dirs))
 	}
-	return out
+	return out, nil
 }
 
 // Generated output must be byte-identical across repeated runs of the same
