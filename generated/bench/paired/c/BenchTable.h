@@ -3391,6 +3391,7 @@ typedef struct bench_table_message_entry_t {
  int16_t value_bits,elem_value_bits;
  uint8_t kind,packing,elem_kind,elem_packing;
  uint16_t own_slot; /* exact compiled encoded-entry identity, zero for another shape */
+ uint16_t id_slot; /* the first slot announcing this entry's id: a body's repeat check keys on it */
 } bench_table_message_entry_t;
 typedef struct bench_table_message_shape_facts_t {
  uint8_t packing,elem_kind; int64_t value_bits,base_lo,base_hi,min,max;
@@ -3406,6 +3407,11 @@ enum { SCHEMA_BENCH_TABLE_NO_VOCABULARY=3,SCHEMA_BENCH_TABLE_SECOND_ANNOUNCEMENT
 #endif
 static SCHEMA_UNUSED bench_table_vocabulary_t bench_table_vocabulary(bench_table_message_entry_t * storage,int64_t capacity)
 {bench_table_vocabulary_t v;memset(&v,0,sizeof(v));v.entries=storage;v.max_entries=capacity;v.max_bytes=65536;return v;}
+/* max_bytes is the announcement's byte bound, 64 KiB by the protocol (§3.3).
+   A caller may raise it, but the entry count stays held below
+   kTableMessageSeenRefs (8192): announce_read refuses a larger vocabulary as
+   vocabulary_too_large, whatever max_bytes and the capacity allow, so every
+   resolved reference stays inside a body's seen set. */
 static SCHEMA_UNUSED int bench_table_message_leb(const uint8_t * in,int64_t size,int64_t * at,uint64_t * value)
 {
  bench_table_reader_t r=bench_table_reader_make(in,size,NULL);
@@ -3607,6 +3613,14 @@ static SCHEMA_UNUSED int bench_table_announce_once(bench_table_vocabulary_t * v,
  for(i=0;i<count;i++){int64_t began=at;
   if(!bench_table_message_entry_read(words,words_bytes,&at,v->entries+i))goto damaged;
   v->entries[i].own_slot=bench_table_message_own_slot(words+began,at-began);
+  /* ONE ID, ONE NAME (§3.2, §3.3): an id announced at two shapes is one
+     field, so every slot carrying it shares the first slot's ordinal and a
+     body naming it through both repeats it. */
+  {int64_t j;
+  v->entries[i].id_slot=(uint16_t)(i+1);
+   for(j=0;j<i;j++)if(v->entries[j].id==v->entries[i].id){v->entries[i].id_slot=v->entries[j].id_slot;
+   break;
+   }}
  }}
  v->count=count;
  v->ref_bits=bench_table_bits_required(0,count);
@@ -3651,12 +3665,16 @@ static SCHEMA_UNUSED int bench_table_message_ref(bench_table_message_reader_t * 
  if(name) return (*entry)->id<UINT64_C(0xfffffffffffffffd) && (*entry)->kind==0;
  return 1;
 }
-/* THE BODY'S SEEN SET (§3.3): one bit a vocabulary reference, sized for every
-   reference an accepted announcement can resolve, so the caller's declared
-   capacity is the bound and 4096 (the default, and the form-1 id table's own
-   cap) is not. A reference outside it, or one named twice, answers 0. */
-static SCHEMA_UNUSED int bench_table_message_seen_once(uint8_t * seen,int64_t ref)
+/* THE BODY'S SEEN SET (§3.3): one bit an ID, keyed on the first slot that
+   announced it (id_slot), so an id named through two slots of different
+   shapes is the repeat §3.3 forbids. It is sized for every reference an
+   accepted announcement can resolve, so the caller's declared capacity is the
+   bound and 4096 (the default, and the form-1 id table's own cap) is not. A
+   vocabulary filled by hand leaves id_slot zero and keys on the slot itself.
+   An ordinal outside the set, or an id named twice, answers 0. */
+static SCHEMA_UNUSED int bench_table_message_seen_once(uint8_t * seen,const bench_table_vocabulary_t * v,const bench_table_message_entry_t * e)
 {
+ int64_t ref=e->id_slot?(int64_t)e->id_slot:(int64_t)(e-v->entries+1);
  if(ref<1||ref>BENCH_K_TABLE_MESSAGE_SEEN_REFS)return 0;
  if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))return 0;
  seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
@@ -3704,13 +3722,12 @@ static SCHEMA_UNUSED int bench_table_message_skip_body(bench_table_message_reade
  if(r->skip_depth>128)return 0;
  memset(seen,0,sizeof(seen));
  for(;;) {const bench_table_message_entry_t * entry;
- int64_t ref;
   if(!bench_table_message_ref(r,&entry,0))return 0;
   if(entry==NULL)return 1;
   if(entry->id>=UINT64_C(0xfffffffffffffffd))return 0;
-  /* A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or skipped. */
-  ref=entry-r->vocabulary->entries+1;
-  if(!bench_table_message_seen_once(seen,ref))return 0;
+  /* A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or skipped, through
+     one slot or two. */
+  if(!bench_table_message_seen_once(seen,r->vocabulary,entry))return 0;
   if(!bench_table_message_skip(r,entry))return 0;
  }
 }
@@ -3785,10 +3802,8 @@ static SCHEMA_UNUSED int bench_table_message_skip(bench_table_message_reader_t *
    if(e->kind==16)memset(seen,0,sizeof(seen));
    for(i=0;i<n;i++) {
     if(e->kind==16) {
-     int64_t key;
      if(!bench_table_message_ref(r,&entry,1)||entry==NULL)return 0;
-     key=entry-r->vocabulary->entries+1;
-     if(!bench_table_message_seen_once(seen,key))return 0;
+     if(!bench_table_message_seen_once(seen,r->vocabulary,entry))return 0;
     }
     before=r->bits.offset;
     /* A SCALAR ELEMENT IS NOT A STRUCTURAL PAYLOAD (§3.3), so it is held to
@@ -5215,12 +5230,10 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_message_body(bench_table_messag
  bench_mixed_entity_reset(value);
  memset(seen,0,sizeof(seen));
  for(;;){const bench_table_message_entry_t * entry;
- int64_t ref;
  if(!bench_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
- ref=entry-r->vocabulary->entries+1;
- if(!bench_table_message_seen_once(seen,ref))goto damaged;
+ if(!bench_table_message_seen_once(seen,r->vocabulary,entry))goto damaged;
  switch(entry->id){
  case UINT64_C(0x23fcfd6678e36712): {
  int same_shape=same_build && entry->own_slot==31;
@@ -5925,12 +5938,10 @@ static SCHEMA_UNUSED int bench_mixed_stat_load_message_body(bench_table_message_
  bench_mixed_stat_reset(value);
  memset(seen,0,sizeof(seen));
  for(;;){const bench_table_message_entry_t * entry;
- int64_t ref;
  if(!bench_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
- ref=entry-r->vocabulary->entries+1;
- if(!bench_table_message_seen_once(seen,ref))goto damaged;
+ if(!bench_table_message_seen_once(seen,r->vocabulary,entry))goto damaged;
  switch(entry->id){
  case UINT64_C(0x80ab75f0866dbf65): {
  int same_shape=same_build && entry->own_slot==51;
@@ -6400,12 +6411,10 @@ static SCHEMA_UNUSED int bench_mixed_hit_event_load_message_body(bench_table_mes
  bench_mixed_hit_event_reset(value);
  memset(seen,0,sizeof(seen));
  for(;;){const bench_table_message_entry_t * entry;
- int64_t ref;
  if(!bench_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
- ref=entry-r->vocabulary->entries+1;
- if(!bench_table_message_seen_once(seen,ref))goto damaged;
+ if(!bench_table_message_seen_once(seen,r->vocabulary,entry))goto damaged;
  switch(entry->id){
  case UINT64_C(0xb7bc9ac015a25050): {
  int same_shape=same_build && entry->own_slot==45;
@@ -6822,12 +6831,10 @@ static SCHEMA_UNUSED int bench_mixed_chat_event_load_message_body(bench_table_me
  bench_mixed_chat_event_reset(value);
  memset(seen,0,sizeof(seen));
  for(;;){const bench_table_message_entry_t * entry;
- int64_t ref;
  if(!bench_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
- ref=entry-r->vocabulary->entries+1;
- if(!bench_table_message_seen_once(seen,ref))goto damaged;
+ if(!bench_table_message_seen_once(seen,r->vocabulary,entry))goto damaged;
  switch(entry->id){
  case UINT64_C(0xa5013e9ad5caeda4): {
  int same_shape=same_build && entry->own_slot==29;
@@ -7190,12 +7197,10 @@ static SCHEMA_UNUSED int bench_mixed_pickup_event_load_message_body(bench_table_
  bench_mixed_pickup_event_reset(value);
  memset(seen,0,sizeof(seen));
  for(;;){const bench_table_message_entry_t * entry;
- int64_t ref;
  if(!bench_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
- ref=entry-r->vocabulary->entries+1;
- if(!bench_table_message_seen_once(seen,ref))goto damaged;
+ if(!bench_table_message_seen_once(seen,r->vocabulary,entry))goto damaged;
  switch(entry->id){
  case UINT64_C(0x9e7fd06d864fbd56): {
  int same_shape=same_build && entry->own_slot==49;
@@ -9255,12 +9260,10 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_message_body(bench_table_message
  bench_bench_mixed_reset(value);
  memset(seen,0,sizeof(seen));
  for(;;){const bench_table_message_entry_t * entry;
- int64_t ref;
  if(!bench_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
- ref=entry-r->vocabulary->entries+1;
- if(!bench_table_message_seen_once(seen,ref))goto damaged;
+ if(!bench_table_message_seen_once(seen,r->vocabulary,entry))goto damaged;
  switch(entry->id){
  case UINT64_C(0xaa38aca481f528a8): {
  int same_shape=same_build && entry->own_slot==1;

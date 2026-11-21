@@ -4610,6 +4610,7 @@ typedef struct tabledemo_table_message_entry_t {
  int16_t value_bits,elem_value_bits;
  uint8_t kind,packing,elem_kind,elem_packing;
  uint16_t own_slot; /* exact compiled encoded-entry identity, zero for another shape */
+ uint16_t id_slot; /* the first slot announcing this entry's id: a body's repeat check keys on it */
 } tabledemo_table_message_entry_t;
 typedef struct tabledemo_table_message_shape_facts_t {
  uint8_t packing,elem_kind; int64_t value_bits,base_lo,base_hi,min,max;
@@ -4625,6 +4626,11 @@ enum { SCHEMA_TABLEDEMO_TABLE_NO_VOCABULARY=3,SCHEMA_TABLEDEMO_TABLE_SECOND_ANNO
 #endif
 static SCHEMA_UNUSED tabledemo_table_vocabulary_t tabledemo_table_vocabulary(tabledemo_table_message_entry_t * storage,int64_t capacity)
 {tabledemo_table_vocabulary_t v;memset(&v,0,sizeof(v));v.entries=storage;v.max_entries=capacity;v.max_bytes=65536;return v;}
+/* max_bytes is the announcement's byte bound, 64 KiB by the protocol (§3.3).
+   A caller may raise it, but the entry count stays held below
+   kTableMessageSeenRefs (8192): announce_read refuses a larger vocabulary as
+   vocabulary_too_large, whatever max_bytes and the capacity allow, so every
+   resolved reference stays inside a body's seen set. */
 static SCHEMA_UNUSED int tabledemo_table_message_leb(const uint8_t * in,int64_t size,int64_t * at,uint64_t * value)
 {
  tabledemo_table_reader_t r=tabledemo_table_reader_make(in,size,NULL);
@@ -4826,6 +4832,14 @@ static SCHEMA_UNUSED int tabledemo_table_announce_once(tabledemo_table_vocabular
  for(i=0;i<count;i++){int64_t began=at;
   if(!tabledemo_table_message_entry_read(words,words_bytes,&at,v->entries+i))goto damaged;
   v->entries[i].own_slot=tabledemo_table_message_own_slot(words+began,at-began);
+  /* ONE ID, ONE NAME (§3.2, §3.3): an id announced at two shapes is one
+     field, so every slot carrying it shares the first slot's ordinal and a
+     body naming it through both repeats it. */
+  {int64_t j;
+  v->entries[i].id_slot=(uint16_t)(i+1);
+   for(j=0;j<i;j++)if(v->entries[j].id==v->entries[i].id){v->entries[i].id_slot=v->entries[j].id_slot;
+   break;
+   }}
  }}
  v->count=count;
  v->ref_bits=tabledemo_table_bits_required(0,count);
@@ -4870,12 +4884,16 @@ static SCHEMA_UNUSED int tabledemo_table_message_ref(tabledemo_table_message_rea
  if(name) return (*entry)->id<UINT64_C(0xfffffffffffffffd) && (*entry)->kind==0;
  return 1;
 }
-/* THE BODY'S SEEN SET (§3.3): one bit a vocabulary reference, sized for every
-   reference an accepted announcement can resolve, so the caller's declared
-   capacity is the bound and 4096 (the default, and the form-1 id table's own
-   cap) is not. A reference outside it, or one named twice, answers 0. */
-static SCHEMA_UNUSED int tabledemo_table_message_seen_once(uint8_t * seen,int64_t ref)
+/* THE BODY'S SEEN SET (§3.3): one bit an ID, keyed on the first slot that
+   announced it (id_slot), so an id named through two slots of different
+   shapes is the repeat §3.3 forbids. It is sized for every reference an
+   accepted announcement can resolve, so the caller's declared capacity is the
+   bound and 4096 (the default, and the form-1 id table's own cap) is not. A
+   vocabulary filled by hand leaves id_slot zero and keys on the slot itself.
+   An ordinal outside the set, or an id named twice, answers 0. */
+static SCHEMA_UNUSED int tabledemo_table_message_seen_once(uint8_t * seen,const tabledemo_table_vocabulary_t * v,const tabledemo_table_message_entry_t * e)
 {
+ int64_t ref=e->id_slot?(int64_t)e->id_slot:(int64_t)(e-v->entries+1);
  if(ref<1||ref>TABLEDEMO_K_TABLE_MESSAGE_SEEN_REFS)return 0;
  if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))return 0;
  seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
@@ -4923,13 +4941,12 @@ static SCHEMA_UNUSED int tabledemo_table_message_skip_body(tabledemo_table_messa
  if(r->skip_depth>128)return 0;
  memset(seen,0,sizeof(seen));
  for(;;) {const tabledemo_table_message_entry_t * entry;
- int64_t ref;
   if(!tabledemo_table_message_ref(r,&entry,0))return 0;
   if(entry==NULL)return 1;
   if(entry->id>=UINT64_C(0xfffffffffffffffd))return 0;
-  /* A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or skipped. */
-  ref=entry-r->vocabulary->entries+1;
-  if(!tabledemo_table_message_seen_once(seen,ref))return 0;
+  /* A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or skipped, through
+     one slot or two. */
+  if(!tabledemo_table_message_seen_once(seen,r->vocabulary,entry))return 0;
   if(!tabledemo_table_message_skip(r,entry))return 0;
  }
 }
@@ -5004,10 +5021,8 @@ static SCHEMA_UNUSED int tabledemo_table_message_skip(tabledemo_table_message_re
    if(e->kind==16)memset(seen,0,sizeof(seen));
    for(i=0;i<n;i++) {
     if(e->kind==16) {
-     int64_t key;
      if(!tabledemo_table_message_ref(r,&entry,1)||entry==NULL)return 0;
-     key=entry-r->vocabulary->entries+1;
-     if(!tabledemo_table_message_seen_once(seen,key))return 0;
+     if(!tabledemo_table_message_seen_once(seen,r->vocabulary,entry))return 0;
     }
     before=r->bits.offset;
     /* A SCALAR ELEMENT IS NOT A STRUCTURAL PAYLOAD (§3.3), so it is held to
@@ -6181,12 +6196,10 @@ static SCHEMA_UNUSED int tabledemo_gunner_settings_load_message_body(tabledemo_t
  tabledemo_gunner_settings_reset(value);
  memset(seen,0,sizeof(seen));
  for(;;){const tabledemo_table_message_entry_t * entry;
- int64_t ref;
  if(!tabledemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
- ref=entry-r->vocabulary->entries+1;
- if(!tabledemo_table_message_seen_once(seen,ref))goto damaged;
+ if(!tabledemo_table_message_seen_once(seen,r->vocabulary,entry))goto damaged;
  switch(entry->id){
  case UINT64_C(0xb75aa3662201646a): {
  int same_shape=same_build && entry->own_slot==11;
@@ -6750,12 +6763,10 @@ static SCHEMA_UNUSED int tabledemo_ship_entry_load_message_body(tabledemo_table_
  tabledemo_ship_entry_reset(value);
  memset(seen,0,sizeof(seen));
  for(;;){const tabledemo_table_message_entry_t * entry;
- int64_t ref;
  if(!tabledemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
- ref=entry-r->vocabulary->entries+1;
- if(!tabledemo_table_message_seen_once(seen,ref))goto damaged;
+ if(!tabledemo_table_message_seen_once(seen,r->vocabulary,entry))goto damaged;
  switch(entry->id){
  case UINT64_C(0x2d21d7cd66bd5a5d): {
  int same_shape=same_build && entry->own_slot==89;
@@ -7384,12 +7395,10 @@ static SCHEMA_UNUSED int tabledemo_global_settings_load_message_body(tabledemo_t
  tabledemo_global_settings_reset(value);
  memset(seen,0,sizeof(seen));
  for(;;){const tabledemo_table_message_entry_t * entry;
- int64_t ref;
  if(!tabledemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
- ref=entry-r->vocabulary->entries+1;
- if(!tabledemo_table_message_seen_once(seen,ref))goto damaged;
+ if(!tabledemo_table_message_seen_once(seen,r->vocabulary,entry))goto damaged;
  switch(entry->id){
  case UINT64_C(0xa65f859b617deaf3): {
  int same_shape=same_build && entry->own_slot==7;
@@ -8277,12 +8286,10 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_message_body(tabledemo_table
  tabledemo_pack_config_reset(value);
  memset(seen,0,sizeof(seen));
  for(;;){const tabledemo_table_message_entry_t * entry;
- int64_t ref;
  if(!tabledemo_table_message_ref(r,&entry,0))goto damaged;
  if(entry==NULL)return 1;
  if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;
- ref=entry-r->vocabulary->entries+1;
- if(!tabledemo_table_message_seen_once(seen,ref))goto damaged;
+ if(!tabledemo_table_message_seen_once(seen,r->vocabulary,entry))goto damaged;
  switch(entry->id){
  case UINT64_C(0xbb62c62c9808ea37): {
  int same_shape=same_build && entry->own_slot==27;
@@ -8357,10 +8364,8 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_message_body(tabledemo_table
   if(!tabledemo_table_message_count(r,entry,&n))goto damaged;
   for(i=0;i<n;i++){const tabledemo_table_message_entry_t * key;
   int32_t slot=-1;
-  int64_t kref;
   if(!tabledemo_table_message_ref(r,&key,1)||key==NULL)goto damaged;
-  kref=key-r->vocabulary->entries+1;
-  if(!tabledemo_table_message_seen_once(seen_keys,kref))goto damaged;
+  if(!tabledemo_table_message_seen_once(seen_keys,r->vocabulary,key))goto damaged;
   switch(key->id){
   case UINT64_C(0xd011f7c3c15285c2):slot=0;
   break;
@@ -8409,10 +8414,8 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_message_body(tabledemo_table
   if(!tabledemo_table_message_count(r,entry,&n))goto damaged;
   for(i=0;i<n;i++){const tabledemo_table_message_entry_t * key;
   int32_t slot=-1;
-  int64_t kref;
   if(!tabledemo_table_message_ref(r,&key,1)||key==NULL)goto damaged;
-  kref=key-r->vocabulary->entries+1;
-  if(!tabledemo_table_message_seen_once(seen_keys,kref))goto damaged;
+  if(!tabledemo_table_message_seen_once(seen_keys,r->vocabulary,key))goto damaged;
   switch(key->id){
   case UINT64_C(0x483d9e6c1ccd1f9b):slot=0;
   break;

@@ -54,6 +54,8 @@ type vocabCapacityRefs struct {
 	variant             [3]uint64
 	table, keyedUnknown uint64
 	firstName           uint64 // first dummy kind-0 name past the unit's entries
+	twinU8, twinU16     uint64 // one id announced at two shapes
+	aWide               uint64 // the field a's id announced again at another shape
 }
 
 func vocabCapacityFixtures(t *testing.T) (*ir.Unit, []byte, vocabCapacityRefs) {
@@ -74,6 +76,18 @@ func vocabCapacityFixtures(t *testing.T) (*ir.Unit, []byte, vocabCapacityRefs) {
 		Id: 0x7200002, Kind: ir.TableKindKeyed,
 		Shape: ir.TableMessageShape{Max: 255, Elem: ir.TableKindNoPayload, Inner: &noPayload},
 	})
+	// ONE ID AT TWO SHAPES (§3.2, §3.3): the id is the wire's name, so naming
+	// it through either slot is the same field, and both in one body repeat it.
+	refs.twinU8 = uint64(len(entries) + 1)
+	entries = append(entries, ir.TableVocabularyEntry{Id: 0x7200003, Kind: ir.TableKindU8})
+	refs.twinU16 = uint64(len(entries) + 1)
+	entries = append(entries, ir.TableVocabularyEntry{Id: 0x7200003, Kind: ir.TableKindU16})
+	for _, f := range u.Tables["Root"].Fields {
+		if f.Name == "a" {
+			refs.aWide = uint64(len(entries) + 1)
+			entries = append(entries, ir.TableVocabularyEntry{Id: ir.TableFieldWireId(f), Kind: ir.TableKindI16})
+		}
+	}
 	refs.firstName = uint64(len(entries) + 1)
 	for i := 0; len(entries) < vocabCapacityCount; i++ {
 		entries = append(entries, ir.TableVocabularyEntry{Id: uint64(0x7300000 + i)})
@@ -193,6 +207,44 @@ func vocabCapacityCases(refs vocabCapacityRefs) []vocabCapacityCase {
 	ref(&skipKeyedRepeat, refs.firstName+9)
 	ref(&skipKeyedRepeat, 0)
 	cases = append(cases, vocabCapacityCase{name: "skip_keyed_repeat_past_4096_refused", body: skipKeyedRepeat})
+
+	var twins []uint8
+	ref(&twins, refs.twinU8)
+	skipProgressPut(&twins, 5, 8)
+	ref(&twins, refs.twinU16)
+	skipProgressPut(&twins, 6, 16)
+	ref(&twins, 0)
+	cases = append(cases, vocabCapacityCase{name: "one_id_two_slots_unknown_refused", body: twins})
+
+	var twinOnce []uint8
+	ref(&twinOnce, refs.twinU16)
+	skipProgressPut(&twinOnce, 6, 16)
+	ref(&twinOnce, 0)
+	cases = append(cases, vocabCapacityCase{name: "one_id_second_slot_alone_reads", body: twinOnce, wantLoad: true, unknown: 1})
+
+	var twinsSkipped []uint8
+	ref(&twinsSkipped, refs.table)
+	ref(&twinsSkipped, refs.twinU16)
+	skipProgressPut(&twinsSkipped, 6, 16)
+	ref(&twinsSkipped, refs.twinU8)
+	skipProgressPut(&twinsSkipped, 5, 8)
+	ref(&twinsSkipped, 0)
+	ref(&twinsSkipped, 0)
+	cases = append(cases, vocabCapacityCase{name: "one_id_two_slots_in_skipped_body_refused", body: twinsSkipped})
+
+	var namedTwice []uint8
+	ref(&namedTwice, refs.a)
+	skipProgressPut(&namedTwice, 9, 32)
+	ref(&namedTwice, refs.aWide)
+	skipProgressPut(&namedTwice, 9, 16)
+	ref(&namedTwice, 0)
+	cases = append(cases, vocabCapacityCase{name: "named_field_id_two_slots_refused", body: namedTwice})
+
+	var namedWide []uint8
+	ref(&namedWide, refs.aWide)
+	skipProgressPut(&namedWide, 9, 16)
+	ref(&namedWide, 0)
+	cases = append(cases, vocabCapacityCase{name: "named_field_through_second_slot_reads", body: namedWide, wantLoad: true, a: 9})
 
 	var past []uint8
 	ref(&past, vocabCapacityCount+1)
