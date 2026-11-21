@@ -188,7 +188,9 @@ schema-lua-fuzz-replay-controls: schema-lua-fuzz-toolchain $(LUA_FUZZ_GENERATED)
 		name=$$(basename $$case); \
 		if replay $$case > $$w/$$name.log 2>&1; then \
 			echo "lua replay control failed: $$name replayed green"; cat $$w/$$name.log; exit 1; fi; \
-		echo "lua replay control: $$name is refused ($$(grep -v '^lua fuzz replay:' $$w/$$name.log | head -1))"; \
+		reason=$$(grep -v ' cases, [0-9]* failed$$' $$w/$$name.log | head -1); \
+		[ -n "$$reason" ] || { echo "lua replay control failed: $$name was refused without a reason"; exit 1; }; \
+		echo "lua replay control: $$name is refused ($$reason)"; \
 		refused=$$((refused + 1)); \
 	done; \
 	[ $$refused -eq 6 ] || { echo "lua replay controls: $$refused of 6 ran"; exit 1; }; \

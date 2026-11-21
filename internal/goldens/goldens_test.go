@@ -490,6 +490,49 @@ func tableUnits(goldenTables string) ([]tableUnit, error) {
 	return units, nil
 }
 
+// tableUnitsFor is tableUnits as TestGoldenTableSource reads it. Under -update
+// a missing testdata/golden/tables is created first, so the documented repair
+// (`make update-goldens`) writes every required directory from nothing; it
+// used to stop on the missing parent before reading the writers' lists
+// (finding F-056). Without -update a missing parent stays an error: the
+// comparison never passes on a tree that pins nothing.
+func tableUnitsFor(goldenTables string, update bool) ([]tableUnit, error) {
+	if update {
+		if err := os.MkdirAll(goldenTables, 0o755); err != nil {
+			return nil, err
+		}
+	}
+	return tableUnits(goldenTables)
+}
+
+// TestTableGoldenRootIsCreatedOnUpdate is F-056's regression test: with
+// testdata/golden present and its tables directory absent, the update path
+// creates the directory and lists no unit (TestGoldenTableSource then writes
+// every required one); the compare path refuses.
+func TestTableGoldenRootIsCreatedOnUpdate(t *testing.T) {
+	golden := filepath.Join(t.TempDir(), "golden")
+	if err := os.Mkdir(golden, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	tables := filepath.Join(golden, "tables")
+	if _, err := tableUnitsFor(tables, false); !os.IsNotExist(err) {
+		t.Errorf("compare with no tables directory: error %v, want not-exist", err)
+	}
+	if _, err := os.Stat(tables); !os.IsNotExist(err) {
+		t.Errorf("the compare path created %s", tables)
+	}
+	units, err := tableUnitsFor(tables, true)
+	if err != nil {
+		t.Fatalf("update with no tables directory: %v", err)
+	}
+	if len(units) != 0 {
+		t.Errorf("update listed %v in a directory it just created", units)
+	}
+	if st, err := os.Stat(tables); err != nil || !st.IsDir() {
+		t.Errorf("update did not create %s: %v", tables, err)
+	}
+}
+
 // TestGoldenTableSource pins every tables unit's emitted Table sources
 // byte-for-byte (SPEC §7.2 gate 1), one directory of testdata/golden/tables
 // at a time, the set derived from the listing. What each directory pins is
@@ -499,7 +542,7 @@ func tableUnits(goldenTables string) ([]tableUnit, error) {
 // emitter change that moves a pinned file is red on the PR that made it,
 // whichever unit it landed in.
 func TestGoldenTableSource(t *testing.T) {
-	listed, err := tableUnits(tableGoldenDir)
+	listed, err := tableUnitsFor(tableGoldenDir, *update)
 	if err != nil {
 		t.Fatal(err)
 	}

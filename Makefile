@@ -4882,7 +4882,7 @@ tables-arms-negative-controls: tables-arms-list-edge-negative-control \
 # breaking under an unchanged schema is stop-the-line, never a quiet re-pin
 # (SPEC §3.1) — this target is for intentional emitter/schema changes only.
 update-goldens: build/schema_test_retain build/schema_test build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/schema_test_tables build/schema_test_block build/schema_test_maps build/schema_test_lists build/schema_test_arms build/conformance-harness
-	@mkdir -p testdata/golden testdata/wire testdata/wire/tables
+	@mkdir -p testdata/golden testdata/golden/tables testdata/wire testdata/wire/tables
 	go test ./internal/goldens -update -run 'TestGolden'
 	go test -tags schema_leg_moo ./internal/goldens -update -run 'TestGolden'
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test

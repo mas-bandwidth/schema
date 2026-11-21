@@ -115,8 +115,10 @@ tables-moo-wire-fuzz-retain: toolchain-moo build/conformance-harness build/confo
 	$(call moo-wire-fuzz-run,--retain $(MOO_WIRE_FUZZ_ARGS),build/wire-fuzz/moo-retain.log,build/wire-fuzz/moo-retain.absent,$(MOO_WIRE_FUZZ_RETAIN_ABSENT_PIN),$(MOO_WIRE_FUZZ_RETAIN_ABSENT_COUNT))
 
 # each pinned mutant replayed alone: <file> <unit> <root> [message|retain]
-tables-moo-wire-fuzz-pinned: toolchain-moo build/conformance-harness build/conformance-moo $(MOOFUZZHOST)
-	@n=0; while read -r file unit root mode; do \
+tables-moo-wire-fuzz-pinned: tables-moo-wire-fuzz-pinned-list-controls toolchain-moo build/conformance-harness build/conformance-moo $(MOOFUZZHOST)
+	@out=$$(sh make/checks/moo-pinned-list.sh $(MOO_WIRE_FUZZ_PINNED) $(MOO_WIRE_FUZZ_PINNED_DIR)) || exit 1; \
+	echo "$$out"; listed=$${out#*: }; listed=$${listed%% *}; \
+	n=0; while read -r file unit root mode; do \
 		case "$$file" in ""|\#*) continue ;; esac; \
 		flag=""; [ "$$mode" = message ] && flag=--message; [ "$$mode" = retain ] && flag=--retain; \
 		if ! ./build/conformance-harness wire-fuzz --driver test/conformance/moo/wirefuzz-driver \
@@ -125,12 +127,35 @@ tables-moo-wire-fuzz-pinned: toolchain-moo build/conformance-harness build/confo
 			cat build/wire-fuzz/moo-pinned.log; echo "tables-moo-wire-fuzz-pinned: $$file diverges again"; exit 1; fi; \
 		n=$$((n + 1)); \
 	done < $(MOO_WIRE_FUZZ_PINNED); \
-	[ $$n -gt 0 ] || { echo "tables-moo-wire-fuzz-pinned: $(MOO_WIRE_FUZZ_PINNED) lists no mutant; nothing was replayed"; exit 1; }; \
-	for f in $(MOO_WIRE_FUZZ_PINNED_DIR)/*; do \
-		[ -e "$$f" ] || { echo "tables-moo-wire-fuzz-pinned: $(MOO_WIRE_FUZZ_PINNED_DIR) holds no saved mutant"; exit 1; }; \
-		grep -q "^$$f " $(MOO_WIRE_FUZZ_PINNED) || { echo "tables-moo-wire-fuzz-pinned: $$f is saved and $(MOO_WIRE_FUZZ_PINNED) does not list it, so nothing replays it"; exit 1; }; \
-	done; \
+	[ $$n -gt 0 ] && [ $$n -eq "$$listed" ] || { echo "tables-moo-wire-fuzz-pinned: $$n replayed, $$listed listed in $(MOO_WIRE_FUZZ_PINNED)"; exit 1; }; \
 	echo "tables-moo-wire-fuzz-pinned: $$n pinned mutants agree with the oracle"
+
+# THE PINNED LIST'S CONTROLS (toolchain-free, milliseconds), run before every
+# pinned replay: make/checks/moo-pinned-list.sh over the committed fixtures in
+# testdata/moo-wire-fuzz-pinned-controls. good must be accepted with 2 mutants;
+# each other fixture must be refused. no-final-newline is the list whose last
+# line the replay's `read` loop dropped while it reported success (F-055).
+MOO_PINNED_LIST_CONTROLS := testdata/moo-wire-fuzz-pinned-controls
+MOO_PINNED_LIST_REFUSED  := no-final-newline unlisted-saved listed-not-saved names-nothing
+.PHONY: tables-moo-wire-fuzz-pinned-list-controls
+tables-moo-wire-fuzz-pinned-list-controls:
+	@c=$(MOO_PINNED_LIST_CONTROLS); \
+	out=$$(sh make/checks/moo-pinned-list.sh $$c/good/PINNED $$c/good/pins 2>&1) || \
+		{ echo "moo pinned list control failed: the good fixture was refused: $$out"; exit 1; }; \
+	case "$$out" in *": 2 mutant(s) listed"*) ;; *) echo "moo pinned list control failed: the good fixture reads as: $$out"; exit 1 ;; esac; \
+	echo "moo pinned list control: good is accepted (2 mutants)"; \
+	dirs=0; for d in $$c/*/; do dirs=$$((dirs + 1)); done; \
+	[ $$dirs -eq 5 ] || { echo "moo pinned list controls: $$c holds $$dirs directories, the recipe runs good and 4 refused"; exit 1; }; \
+	refused=0; \
+	for case in $(MOO_PINNED_LIST_REFUSED); do \
+		if out=$$(sh make/checks/moo-pinned-list.sh $$c/$$case/PINNED $$c/$$case/pins 2>&1); then \
+			echo "moo pinned list control failed: $$case was accepted ($$out)"; exit 1; fi; \
+		[ -n "$$out" ] || { echo "moo pinned list control failed: $$case was refused without a reason"; exit 1; }; \
+		echo "moo pinned list control: $$case is refused ($$out)"; \
+		refused=$$((refused + 1)); \
+	done; \
+	[ $$refused -eq 4 ] || { echo "moo pinned list controls: $$refused of 4 ran"; exit 1; }; \
+	echo "moo pinned list controls: 4 of 4 broken lists refused"
 
 # THE PIPE's CONTROL: a scratch copy of the units with one reader bug planted
 # (a string frame past its body not counted malformed), and the harness must
