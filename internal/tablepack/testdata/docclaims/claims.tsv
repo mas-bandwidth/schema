@@ -1,25 +1,25 @@
 # case	root	edit	verdict	unknown	widened	page	says
-field-removed	Ship	-	read	1	0	README.md
-field-added	Ship	-	read	0	0	README.md
-enum-variant-unknown	Ship	-	read	1	0	README.md
-enum-variant-inserted	Ship	-	read	0	0	README.md
-range-tightened	Ship	-	refused	-	-	README.md
-range-tightened-in-range	Ship	-	read	0	0	README.md
-kind-changed	Ship	-	refused	-	-	README.md
-kind-widened	Ship	-	read	0	1	README.md
-bound-shrunk	Cargo	-	refused	-	-	README.md
-bound-shrunk-fits	Cargo	-	read	0	0	README.md
-capacity-shrunk	Ship	-	refused	-	-	README.md
-map-key-ascending	Ledger	-	read	0	0	README.md
-map-key-descending	Ledger	-	refused	-	-	README.md
-map-key-repeated	Ledger	-	refused	-	-	README.md
-map-key-over-bound	Fleet	-	refused	-	-	README.md
-map-key-kind-changed	Fleet	-	refused	-	-	README.md
-map-key-widened	Fleet	-	read	0	1	README.md
-text-list-total	Handover	-	refused	-	-	README.md
-required-added	Profile	-	refused	-	-	README.md
-optional-to-plain	Seat	-	read	0	0	README.md
-damaged-cut	Ship	cut:17	refused	-	-	README.md
-form-unknown	Ship	byte0:7f	refused	-	-	README.md
-text-repeated-key	Ship	text	refused	-	-	README.md
-text-out-of-range	Ship	text	refused	-	-	README.md
+field-removed	Ship	-	read	1	0	README.md	-
+field-added	Ship	-	read	0	0	README.md	-
+enum-variant-unknown	Ship	-	read	1	0	README.md	-
+enum-variant-inserted	Ship	-	read	0	0	README.md	-
+range-tightened	Ship	-	refused	-	-	README.md	-
+range-tightened-in-range	Ship	-	read	0	0	README.md	-
+kind-changed	Ship	-	refused	-	-	README.md	-
+kind-widened	Ship	-	read	0	1	README.md	-
+bound-shrunk	Cargo	-	refused	-	-	README.md	-
+bound-shrunk-fits	Cargo	-	read	0	0	README.md	-
+capacity-shrunk	Ship	-	refused	-	-	README.md	-
+map-key-ascending	Ledger	-	read	0	0	README.md	-
+map-key-descending	Ledger	-	refused	-	-	README.md	-
+map-key-repeated	Ledger	-	refused	-	-	README.md	-
+map-key-over-bound	Fleet	-	refused	-	-	README.md	-
+map-key-kind-changed	Fleet	-	refused	-	-	README.md	-
+map-key-widened	Fleet	-	read	0	1	README.md	-
+text-list-total	Handover	-	refused	-	-	README.md	-
+required-added	Profile	-	refused	-	-	README.md	-
+optional-to-plain	Seat	-	read	0	0	README.md	-
+damaged-cut	Ship	cut:17	refused	-	-	README.md	-
+form-unknown	Ship	byte0:7f	refused	-	-	README.md	-
+text-repeated-key	Ship	text	refused	-	-	README.md	-
+text-out-of-range	Ship	text	refused	-	-	README.md	-
