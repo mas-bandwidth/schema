@@ -10,10 +10,10 @@
 # the checkout when no sibling is there (a hosted macOS runner has none).
 .PHONY: packet-void-python packet-void-python-negative-control
 packet-void-python: python-toolchain-check deps-go
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketUnions$$' ./internal/codegen/python/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestPythonPacketUnions$$' ./internal/codegen/python/
 
 packet-void-python-negative-control: python-toolchain-check deps-go
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketUnionsNegativeControl$$' ./internal/codegen/python/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestPythonPacketUnionsNegativeControl$$' ./internal/codegen/python/
 
 PYTHON_CI_SUPPORT_GROUPS += python-ci-packet-unions
 python-ci-packet-unions: packet-void-python packet-void-python-negative-control

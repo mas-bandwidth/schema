@@ -23,8 +23,8 @@
 // run actually loaded (§1.6).
 //
 // run.sh builds it (`bench/run.sh --only goose`): it generates
-// bench/corpus/Bench.schema for Goose with build/schema-goose (the target is
-// behind the schema_leg_goose tag), copies this file beside the generated
+// bench/corpus/Bench.schema for Goose with build/schema-goose (a plain
+// build: goose is a built-in target), copies this file beside the generated
 // modules, and runs `goose build -O2`. Run from bench/goose:
 //
 //   cd bench/goose && ../../build/bench/schema_bench_goose [--csv] [--round K] [--quick]

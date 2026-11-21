@@ -1,9 +1,7 @@
-//go:build schema_leg_moo
-
 // The moo table surface's compiler claims (internal/codegen/mootable;
-// docs/PORT-MOO.md, THE LAYERS, layer 3). The target is behind the
-// schema_leg_moo tag (compiler/target_moo.go), and so is this file: run it
-// with `go test -tags schema_leg_moo ./compiler/` (make test-moo-tables).
+// docs/PORT-MOO.md, THE LAYERS, layer 3). Moo is a built-in target
+// (compiler/target_moo.go), so these run in the default `go test ./compiler/`
+// (make test-moo-tables).
 package compiler
 
 import (

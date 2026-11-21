@@ -423,6 +423,14 @@ generated class per table and per map entry, each with its descriptor
   - unions with table arms, and arrays of them: carried
     ([the table unions](port-python/table-unions.md))
 
+  - arrays of a union whose arms are all packet types: carried on the
+    variable, fixed, message and text forms, through the same descriptor-driven
+    `union_array` codec (test/tables/packetunions). A write raises
+    `InvalidValue` for a count past the bound, a tag that names no arm or an
+    arm value out of range; a read refuses an out-of-range count, a fixed-form
+    tag past the last arm and nonzero dead bytes, and reads an unknown variable
+    arm as None.
+
 - **A packet-typed field is carried by value.** A packet `type` in a table
   field, array element, map value or union arm is carried
   ([the table packet types](port-python/table-packet-types.md)).
@@ -668,6 +676,14 @@ the core stands against the P4 row; the rules of this page are unchanged.
 
   - raw `uint128` and ranged `int128`: carried
     ([the packet int128](port-python/packet-int128.md))
+
+  - `string`, `bytes` and `flags` defaults (SPEC §4.2): carried. The
+    constructor holds the literal's bytes or the mask, the §5 zero form stays
+    all-zero, and every field still rides the wire. Python registers as a
+    packet value-default carrier (`compiler/carries_python_packet.go`), so the
+    driver passes them in a packet-only unit and in a unit with tables alike
+    (`TestPythonDriverCarriesPacketValueDefault`); the shared pins under
+    `testdata/wire/packet-defaults` are `make packet-defaults-python`'s.
 - **The implicit enum zero is `None_`.** Python will not let a class body
   assign to `None`, so the zero every leg spells `None` is spelled `None_`
   in generated code. The name tables keep the schema spelling `"None"`, and

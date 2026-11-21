@@ -24,6 +24,13 @@
 # One-time widelist inventory: these new paths instantiate existing table,
 # view and list templates. Keep the exact observed kinds; new kinds and
 # stale entries still fail. This does not change the format inventory.
+# One-time packetunions inventory (docs/PORTING.md J4): the new corpus unit
+# test/tables/packetunions adds five paths and 21 path/kind pairs, each kind
+# one the same emitter form already carries elsewhere (the table files A1Table's
+# exact kinds, the packet files only the three packet kinds above). Its C++ is
+# byte-identical from the baseline compiler and from PR #4450, and a clang
+# census reports exactly these entries. No existing entry changed; new kinds
+# and stale entries still fail.
 build/tables-generated/a1/A1Table.cpp float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
 build/tables-generated/a1/A1Table.h cast-align,comma,covered-switch-default,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default,switch-enum
 build/tables-generated/a1/Tbla1View.cpp old-style-cast
@@ -335,6 +342,11 @@ build/tables-generated/p3/P3Block.h cast-align,old-style-cast,padded
 build/tables-generated/p3/P3Table.cpp float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
 build/tables-generated/p3/P3Table.h cast-align,comma,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default
 build/tables-generated/p3/Tblp3View.h padded
+build/tables-generated/packetunions/PacketUnions.h covered-switch-default,padded
+build/tables-generated/packetunions/PacketUnionsTable.cpp float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
+build/tables-generated/packetunions/PacketUnionsTable.h cast-align,comma,covered-switch-default,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default,switch-enum
+build/tables-generated/packetunions/PacketUnionsWire.h covered-switch-default,switch-default
+build/tables-generated/packetunions/TblpacketunionsView.h padded
 build/tables-generated/pointers/Graph.h covered-switch-default
 build/tables-generated/pointers/GraphBlock.cpp old-style-cast
 build/tables-generated/pointers/GraphBlock.h cast-align,old-style-cast,padded
@@ -420,6 +432,11 @@ build/tables-generated/v2/V2Block.h cast-align,old-style-cast,padded
 build/tables-generated/v2/V2Table.cpp float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
 build/tables-generated/v2/V2Table.h cast-align,comma,covered-switch-default,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,sign-conversion,switch-default,switch-enum
 build/tables-generated/v2/V2Wire.h covered-switch-default,switch-default
+build/tables-generated/valuedefaults/TblvaluedefaultsView.cpp old-style-cast
+build/tables-generated/valuedefaults/TblvaluedefaultsView.h padded
+build/tables-generated/valuedefaults/ValueDefaults.h covered-switch-default,padded
+build/tables-generated/valuedefaults/ValueDefaultsTable.cpp cast-align,float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
+build/tables-generated/valuedefaults/ValueDefaultsTable.h cast-align,comma,covered-switch-default,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default,switch-enum
 build/tables-generated/varevo1/Tblvarevo1View.cpp old-style-cast
 build/tables-generated/varevo1/Tblvarevo1View.h padded
 build/tables-generated/varevo1/VarEvo1.h covered-switch-default,padded

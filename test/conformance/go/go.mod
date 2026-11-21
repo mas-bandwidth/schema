@@ -167,3 +167,11 @@ replace cooktorture => ../../../build/tables-generated-go/cooktorture
 require cooktorturewide v0.0.0
 
 replace cooktorturewide => ../../../build/tables-generated-go/cooktorturewide
+
+require tblvaluedefaults v0.0.0
+
+replace tblvaluedefaults => ../../../build/tables-generated-go/valuedefaults
+
+require tblpacketunions v0.0.0
+
+replace tblpacketunions => ../../../build/tables-generated-go/packetunions

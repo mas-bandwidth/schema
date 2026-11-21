@@ -12,4 +12,4 @@
 PYTHON_CI_SUPPORT_GROUPS += python-ci-packet-arrays
 python-ci-packet-arrays: deps-go python-packet-arrays-negative-control
 python-packet-arrays-negative-control: python-toolchain-check deps-go
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run TestPythonPacketArraysNegativeControl ./internal/codegen/python/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run TestPythonPacketArraysNegativeControl ./internal/codegen/python/

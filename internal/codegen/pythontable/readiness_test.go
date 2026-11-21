@@ -36,14 +36,14 @@ import (
 //   - ci-json-pin: test/conformance/python/ci.json names `"python": "pin"`,
 //     so both pin steps above run for the Python row;
 //   - readiness-entry: test/conformance/nightly-readiness carries python in
-//     its acceptance shape: the language, its two packages under the
-//     schema_leg_python tag, the tagged harness built and run for
+//     its acceptance shape: the language, its two packages in the default
+//     build with no tag, the plain harness built and run for
 //     `implementation --lang python`, the pins as a prerequisite, the wire
 //     fuzz under the current pin over build/conformance-python, its own
 //     packet probes and retention controls, and no bare interpreter;
 //   - readiness-harness: the harness admits `implementation --lang python`
-//     in a schema_leg_python build only, and make/python-ci-release.mk builds
-//     that harness with the tag.
+//     in every build (a built-in target), and make/python-ci-release.mk builds
+//     that harness with no tag.
 //
 // The files are passed in, so the negative control can hand it planted copies.
 func pythonReadinessFindings(files map[string]string) []string {
@@ -114,9 +114,9 @@ func pythonReadinessFindings(files map[string]string) []string {
 
 	readiness := files["test/conformance/nightly-readiness"]
 	for _, rule := range []string{
-		`"moo", "python")`,
+		`"moo", "python",`,
 		`"python": ("python", "pythontable"),`,
-		`GO_TAGS = {"python": "schema_leg_python"}`,
+		"GO_TAGS = {}",
 		`tags = ["-tags", GO_TAGS[lang]] if lang in GO_TAGS else []`,
 		`"go", "test", *tags, "-json", "-timeout=0"`,
 		`PYTHON_DIST = "dist/python-` + pyrun.CurrentVersion + `/bin/python3.15"`,
@@ -136,15 +136,22 @@ func pythonReadinessFindings(files map[string]string) []string {
 		}
 	}
 
-	admit := files["test/conformance/harness/implementation_python.go"]
-	if !strings.HasPrefix(admit, "//go:build schema_leg_python\n") ||
-		!strings.Contains(admit, `taggedImplementationLanguages = append(taggedImplementationLanguages, "python")`) ||
-		!strings.Contains(makeRecipe(mk, "build/conformance-harness-python"),
-			"go build -tags schema_leg_python -o $@ ./test/conformance/harness") {
+	admit := files["test/conformance/harness/implementation_tagged.go"]
+	if strings.HasPrefix(admit, "//go:build") ||
+		!strings.Contains(admit, "var builtinImplementationLanguages = []string{") ||
+		!strings.Contains(admit, `"moo", "python", "ruby",`) ||
+		!strings.Contains(makeRecipe(mk, "build/conformance-harness-python"), "go build -o $@ ./test/conformance/harness") ||
+		strings.Contains(makeRecipe(mk, "build/conformance-harness-python"), "-tags") {
 		add("readiness-harness")
 	}
 	return findings
 }
+
+// pythonLegTag is the python leg's old build tag, which the negative control
+// plants to prove the readiness rules refuse it. It is spelled in two halves
+// because this file plants the tag rather than using it, and
+// internal/ci's TestNoShippedLegBehindABuildTag reads Go files.
+const pythonLegTag = "schema_leg_" + "python"
 
 // readinessBareInterpreter is a Python interpreter named with no directory in
 // the readiness script's code: a command list whose first word is a bare
@@ -220,7 +227,7 @@ var pythonReadinessFiles = []string{
 	".github/workflows/leg.yml",
 	"test/conformance/python/ci.json",
 	"test/conformance/nightly-readiness",
-	"test/conformance/harness/implementation_python.go",
+	"test/conformance/harness/implementation_tagged.go",
 }
 
 func readPythonReadinessFiles(t *testing.T) (string, map[string]string) {
@@ -286,13 +293,13 @@ func TestPythonReadinessNegativeControl(t *testing.T) {
 		{"leg-pins", ".github/workflows/leg.yml", "      - uses: ./.github/actions/python\n        if: matrix.python != ''\n", ""},
 		{"leg-pins", ".github/workflows/leg.yml", "        if: matrix.python != ''\n", "        if: matrix.moo != ''\n"},
 		{"ci-json-pin", "test/conformance/python/ci.json", `"python": "pin"`, `"python": ""`},
-		{"readiness-entry", "test/conformance/nightly-readiness", `"moo", "python")`, `"moo")`},
-		{"readiness-entry", "test/conformance/nightly-readiness", `GO_TAGS = {"python": "schema_leg_python"}`, `GO_TAGS = {}`},
+		{"readiness-entry", "test/conformance/nightly-readiness", `"moo", "python",`, `"moo",`},
+		{"readiness-entry", "test/conformance/nightly-readiness", "GO_TAGS = {}", `GO_TAGS = {"python": "` + pythonLegTag + `"}`},
 		{"readiness-entry", "test/conformance/nightly-readiness", `harness = "./build/conformance-harness-python"`, `harness = "./build/conformance-harness"`},
 		{"readiness-entry", "test/conformance/nightly-readiness", "def run_python_packets(runner):\n", "def run_python_packets(runner):\n    runner.run(\"probe\", [\"python3.15\", \"-V\"])\n"},
 		{"readiness-entry", "test/conformance/nightly-readiness", `return PYTHON_DIST + " -W error`, `return "python3.15 -W error`},
-		{"readiness-harness", "test/conformance/harness/implementation_python.go", "//go:build schema_leg_python\n", ""},
-		{"readiness-harness", "make/python-ci-release.mk", "go build -tags schema_leg_python -o $@ ./test/conformance/harness", "go build -o $@ ./test/conformance/harness"},
+		{"readiness-harness", "test/conformance/harness/implementation_tagged.go", `"moo", "python", "ruby",`, `"moo", "ruby",`},
+		{"readiness-harness", "make/python-ci-release.mk", "go build -o $@ ./test/conformance/harness", "go build -tags " + pythonLegTag + " -o $@ ./test/conformance/harness"},
 	} {
 		planted := maps.Clone(files)
 		if strings.Count(planted[plant.file], plant.before) != 1 {

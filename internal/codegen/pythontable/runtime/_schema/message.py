@@ -635,6 +635,10 @@ def _read_value(reader: BitReader, field: object, shape: Shape, vocab: MessageVo
         except UnicodeDecodeError:
             raise Refused("wire_damaged", "message text is not UTF-8") from None
     if shape.kind == 14:
+        # bytes(N) and [..N]uint8 are one kind (SPEC-TABLES §3.3): any other
+        # announced element kind is a kind mismatch, as an array's is below.
+        if fd.codec == "bytes" and shape.element != 6:
+            raise Refused("kind_mismatch", "message bytes element kind changed")
         count = shape.minimum + reader.get((shape.maximum - shape.minimum).bit_length())
         if count > shape.maximum:
             raise Refused("wire_damaged", "message count exceeds announced bound")
@@ -657,7 +661,13 @@ def _read_value(reader: BitReader, field: object, shape: Shape, vocab: MessageVo
         values = [_read_value(reader, element, shape.inner, vocab, own_version, keys, stats, depth + 1) for _ in range(count)]
         if fd.array_kind == 1 and count < fd.bound:
             for _ in range(fd.bound - count):
-                values.append(descriptor.new_by_name(element.target) if element.codec == "table" else element.default)
+                if element.codec == "table":
+                    values.append(descriptor.new_by_name(element.target))
+                elif element.codec in ("union", "union_array"):
+                    # An empty union, as the variable read and the constructor pad.
+                    values.append(descriptor.new_union_by_name(element.target))
+                else:
+                    values.append(element.default)
         return bytes(cast(list[int], values)) if fd.codec == "bytes" else values
     if shape.kind == 30:
         entry = _reference(reader, vocab)
@@ -738,6 +748,9 @@ def _read_value(reader: BitReader, field: object, shape: Shape, vocab: MessageVo
     if type(value) is float and getattr(fd, "float_range", False):
         if value < fd.fmin or value > fd.fmax:
             raise Refused("out_of_range", fd.name)
+        if value == 0:
+            # A compressed float's -0 is +0 (SPEC-TABLES §3.3), whatever the peer announced.
+            return 0.0
     return value
 
 

@@ -116,12 +116,12 @@ The commands:
 
 ```
 schema check    <dir of .schema files>
-schema generate --lang c|cpp|cs|dart|elixir|go|goose|java|js|lobster|lua|luau|python|ruby|rust|squirrel|unity --out <outdir> <dir>
+schema generate --lang c|cpp|cs|dart|elixir|go|goose|java|js|lobster|lua|luau|moo|python|ruby|rust|squirrel|unity --out <outdir> <dir>
 schema fmt      <dir of .schema files>
 ```
 
-`--lang unity` is C# (unity) and `--lang cs` is C# (modern). The default build
-refuses `--lang moo`; Moo needs a compiler built with `-tags schema_leg_moo`.
+`--lang unity` is C# (unity) and `--lang cs` is C# (modern). Every target is
+in the default build.
 
 `fmt` is the only command that writes a `.schema` file. Every other command
 reads your schema files and leaves them alone, so a read-only checkout, a

@@ -88,8 +88,8 @@ named in its section below.
     `unknown` class alone; everything else a reader cannot take, it refuses
     whole, so there is nothing else to lose. It is opt-in, it
     allocates nothing, and every gap counts `retain_lost`. Specified in
-    SPEC-TABLES.md §6.6. The C++ reference, C# and Go carry it; C, Rust, Java,
-    JavaScript, Dart and Elixir do not yet.
+    SPEC-TABLES.md §6.6. Every target carries it (ROADMAP.md, the
+    retain-unknown row).
 11. **This page moves with the facts.** #446's golden now reads the evolution
     table below — `TestEvolutionTableFrames` in `internal/baseline` runs a
     fixture per row through all three frames and pins the verdicts, and
@@ -736,7 +736,7 @@ never released: no tagged version carries it, no port ever grew a message verb,
 and the only readers that ever existed are the reference and the tool in the
 same repository. A form byte with no reader outside the tree that defines it is
 a number and not a wire. Taking `3` would have left `2` as a form no writer
-writes, which every reader in nine languages would carry forever or refuse by
+writes, which every reader in every target would carry forever or refuse by
 name and explain in every page. The form byte is exactly what made that safe: a
 reader meets a byte it does not know, refuses by name, and never reports damage.
 
@@ -959,15 +959,26 @@ with their own version numbers:
 |---|---|
 | [serialize](https://github.com/mas-bandwidth/serialize) | C++ |
 | [serialize.c](https://github.com/mas-bandwidth/serialize.c) | C |
-| [serialize.cs](https://github.com/mas-bandwidth/serialize.cs) | C# |
+| [serialize.cs](https://github.com/mas-bandwidth/serialize.cs) | C# (modern), C# (unity) |
 | [serialize.go](https://github.com/mas-bandwidth/serialize.go) | Go |
 | [serialize.js](https://github.com/mas-bandwidth/serialize.js) | JavaScript |
 | [serialize.rs](https://github.com/mas-bandwidth/serialize.rs) | Rust |
 
 They share one wire standard and are checked against each other. CI pins
 each to a released tag, never to `main`, and newer runtimes keep working with
-older generated code. Dart, Java and Elixir generate self-contained output
-and need only their pinned SDKs.
+older generated code. Goose, Lobster, Lua, Luau, Moo and Squirrel carry
+their runtime ([serialize.goose](https://github.com/mas-bandwidth/serialize.goose),
+[serialize.lobster](https://github.com/mas-bandwidth/serialize.lobster),
+[serialize.lua](https://github.com/mas-bandwidth/serialize.lua),
+[serialize.luau](https://github.com/mas-bandwidth/serialize.luau),
+[serialize.moo](https://github.com/mas-bandwidth/serialize.moo),
+[serialize.nut](https://github.com/mas-bandwidth/serialize.nut)) vendored
+verbatim at a pinned commit, one sha256 per file in its `SERIALIZE_PIN`;
+Python and Ruby vendor serialize.py and serialize.rb from `third_party/`,
+where they are staged until their own repositories exist, with one sha256 per
+file in their `SERIALIZE_PIN`.
+Dart, Java and Elixir generate self-contained output and need only their
+pinned SDKs.
 
 **Tags: a promotion tag on every main merge, a version tag only on a
 release.** Two kinds of tag name a commit of this repository, and nobody makes
@@ -1197,41 +1208,22 @@ Protocol Buffers, FlatBuffers, Avro and Cap'n Proto, was mapped mechanism by
 mechanism onto this design. The record, all three documents verbatim with the
 tally, is #464; the gaps it found are the issues in the list below.
 
-## Owed before 3.0.0
+## Owed
 
 Each of these is a claim this page makes in the present tense with the
-repository not yet behind it. The 3.0.0 release holds the list at zero.
+repository not yet behind it. The list was to stand at zero for 3.0.0; that
+release and 3.0.1 are out with these four still open.
 
-- #435: the uniform 64-bit wire, the form byte, the id table, the enum kind,
-  flags bit positions in the build version, the reserved-id refusals. The C++
-  reference and `internal/tablewire` carry all of it, held by the conformance
-  lock. What is owed is the eight ports (#511 to #518), each of which writes
-  the previous form today.
-- #523: the message form, form byte `2`, the batch primitive and the bitpacked
-  body, the announcement and its two reserved ids, the announced unit vocabulary
-  of id, kind and shape triples in its compiler-settled order, the two
-  announcement bounds, the batch bound, the mask's declared width, and the names §11 owes it. The C++ reference
-  carries the form and `internal/tablenames` claims §11's names. What is owed
-  is the eight ports and the form's `LoadRetain` (SPEC-TABLES.md §3.3), whose
+- #523: the message form's retaining read. The form itself is carried by the
+  C++ reference and every port (ROADMAP.md, the message form row). What is
+  owed is the form's `LoadRetain` (SPEC-TABLES.md §3.3), whose
   form 2 write refuses by name and whose form 2 read is not built.
 - #554: the `column` projection token, reserved by name on the packet wire and
   emitted nowhere.
-- #434: the reserved escape kind. The C++ reference and `internal/tablewire`
-  carry it; what is owed is the eight ports (#511 to #518).
 - #432: the cook triple, and the byte-order sentences in five places.
-- #525: retain-unknown in the eight ports. The C++ reference, the two report
-  counters, `internal/tablewire`'s own retention, the wire fuzzer's retention
-  leg, which needed it, and the conformance manifest's retain rows are built.
-  The message form carries no retention: it is fixed tables only (SPEC-TABLES
-  §3.3).
-- #523: the unbounded array, `[]T` and `[]*T`, its refusals and the
-  `list_migrates` golden that pins "the same bytes" as `[..N]T`
-  (SPEC-TABLES.md §2.9). The C++ reference carries the construct and the
-  golden is pinned. What is owed is the eight ports and the tool's cook and
-  uncook halves (SPEC-TABLES.md §7.4).
 - #439 and #460: the standard's own contradictions on `T`→`*T`, the flags
-  row, writer misuse, the declaration-rename row, the count of silent edits,
-  and the pages that still say schema is not an evolution system.
+  row, writer misuse, the declaration-rename row and the count of silent
+  edits.
 
 When two sentences in the repository disagree, the one with the golden wins,
 and the other is a bug in prose. A full read of the standard, front to back,

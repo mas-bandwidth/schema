@@ -1,0 +1,8 @@
+package pflags
+
+flags Caps { Jump, Crouch, Fly }
+
+type Holder
+{
+    caps Caps
+}

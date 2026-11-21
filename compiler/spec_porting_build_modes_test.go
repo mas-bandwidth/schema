@@ -25,7 +25,7 @@ func TestSpecPortingReadVerdictEveryBuild(t *testing.T) {
 		"a release and a checked or debug build, an optimised and an overflow-checking one",
 		"the port's gates run each mode the language offers",
 		"Write-side checks follow `docs/rulings.json` write-refusal's per-leg table and are not changed by this rule",
-		"a debug-only assert in C, C++, C#, Rust, Java and Dart, a refusal in every build in Go, JavaScript, Elixir, Lua, Luau, Squirrel, MOO and Goose",
+		"a debug-only assert in C, C++, C#, Rust, Java and Dart and in Lobster's packet writer, a refusal in every build in Go, JavaScript, Elixir, Lua, Luau, Squirrel, Moo, Goose, Python, Ruby and Lobster's table writers",
 		"Loading never crashes on input that loads, and that covers freeing what was loaded.",
 		"a leg whose values own their pointers drops a loaded pointer chain without recursion",
 		"a chain the reader accepts never overflows the stack when it is freed",

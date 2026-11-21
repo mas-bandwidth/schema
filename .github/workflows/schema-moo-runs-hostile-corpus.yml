@@ -1,0 +1,70 @@
+name: schema-moo-runs-hostile-corpus
+
+# THE MOO PORT RUNS THE SHARED HOSTILE CORPUS (docs/HOSTILE-CORPUS.md), the
+# same two jobs the Luau port's workflow runs
+# (schema-luau-runs-hostile-corpus.yml). The corpus job generates the moo
+# reader for each schema the manifest names and holds every input to the
+# manifest's verdict, named reason and decoded-value digest under the pinned
+# interpreter. The planted-bad-pattern control plants a text-reader bug in the
+# scratch units and requires the runner to go red on exactly the rows it
+# moves.
+
+# NIGHTLY RUNS HAVE NO TIMEOUT (the owner, 2026-11-16: "Nightly runs don't
+# have a timeout... they can run as long as they need."). No job or step in
+# this file carries timeout-minutes, and PGROUP_GO_TEST_TIMEOUT: '0' below has
+# tools/pgroup give every go test under a step -timeout=0 in place of the one
+# it names, so a slow row finishes and reports every test. GitHub's default
+# 360-minute job limit is the only backstop, and a job it stops reads
+# cancelled, never green. internal/ci/nightly_test.go holds the rule.
+
+on:
+  # NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is not light moved to
+  # nightly test now." "no exceptions."). A push or pull request runs only the fast lane, ci-fast.yml.
+  schedule:
+    - cron: "41 3 * * *"
+  workflow_dispatch:
+
+env:
+  # the nightly rule in the header: no go test -timeout under tools/pgroup
+  PGROUP_GO_TEST_TIMEOUT: '0'
+  GOFLAGS: -mod=readonly
+  NOVA_TEST_NO_HOST: '1'
+
+jobs:
+  corpus:
+    # Fleet only: a fork pull request has no fleet runner and is skipped before
+    # it can reach one.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, linux, x64, schema]
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          # no Actions cache: the fleet runner keeps its own warm Go cache
+          cache: false
+      # THE MOO PIN, as make/moo.mk's dist-moo builds it: the checkout is
+      # refused unless it is the pinned commit.
+      - uses: ./.github/actions/moo
+      - name: the corpus gate
+        run: make schema-moo-runs-hostile-corpus
+
+  negative-control:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, linux, x64, schema]
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          # no Actions cache: the fleet runner keeps its own warm Go cache
+          cache: false
+      - uses: ./.github/actions/moo
+      - name: the planted-bad-pattern control
+        run: make schema-moo-runs-hostile-corpus-negative-control

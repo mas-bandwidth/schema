@@ -1,0 +1,7 @@
+package voptionalarrays
+
+table Record
+{
+    marks ?[2]uint16
+    tail  ?[..3]int32
+}

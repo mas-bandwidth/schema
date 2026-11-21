@@ -1,0 +1,7 @@
+package pconstitem
+
+type Holder
+{
+    const(0xAB, 8)
+    level uint16
+}

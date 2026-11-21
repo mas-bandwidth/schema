@@ -159,6 +159,10 @@ static partial class Program
     {
         return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
     }
+    static Report Copy(Tblvaluedefaults.TableReport r)
+    {
+        return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
+    }
     static Report Copy(Tblvarevo1.TableReport r)
     {
         return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
@@ -172,6 +176,10 @@ static partial class Program
         return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
     }
     static Report Copy(Cooktorture.TableReport r)
+    {
+        return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
+    }
+    static Report Copy(Tblpacketunions.TableReport r)
     {
         return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
     }
@@ -417,6 +425,12 @@ static partial class Program
         Row<Tblfixedevo.EvoRoot, Tblfixedevo.TableReport>("tblfixedevo", "EvoRoot", () => new Tblfixedevo.TableReport(), Copy,
             Tblfixedevo.Schema.EvoRootLoad, Tblfixedevo.Schema.EvoRootMeasure, Tblfixedevo.Schema.EvoRootSave,
             Tblfixedevo.Schema.EvoRootFromJson, Tblfixedevo.Schema.EvoRootToJsonMeasure, Tblfixedevo.Schema.EvoRootToJson),
+        Row<Tblvaluedefaults.VarDefaults, Tblvaluedefaults.TableReport>("tblvaluedefaults", "VarDefaults", () => new Tblvaluedefaults.TableReport(), Copy,
+            Tblvaluedefaults.Schema.VarDefaultsLoad, Tblvaluedefaults.Schema.VarDefaultsMeasure, Tblvaluedefaults.Schema.VarDefaultsSave,
+            Tblvaluedefaults.Schema.VarDefaultsFromJson, Tblvaluedefaults.Schema.VarDefaultsToJsonMeasure, Tblvaluedefaults.Schema.VarDefaultsToJson, Tblvaluedefaults.Schema.VarDefaultsLoadMeasure),
+        Row<Tblvaluedefaults.FixedDefaults, Tblvaluedefaults.TableReport>("tblvaluedefaults", "FixedDefaults", () => new Tblvaluedefaults.TableReport(), Copy,
+            Tblvaluedefaults.Schema.FixedDefaultsLoad, Tblvaluedefaults.Schema.FixedDefaultsMeasure, Tblvaluedefaults.Schema.FixedDefaultsSave,
+            Tblvaluedefaults.Schema.FixedDefaultsFromJson, Tblvaluedefaults.Schema.FixedDefaultsToJsonMeasure, Tblvaluedefaults.Schema.FixedDefaultsToJson),
         Row<Tblvarevo1.EvoDoc, Tblvarevo1.TableReport>("tblvarevo1", "EvoDoc", () => new Tblvarevo1.TableReport(), Copy,
             Tblvarevo1.Schema.EvoDocLoad, Tblvarevo1.Schema.EvoDocMeasure, Tblvarevo1.Schema.EvoDocSave,
             Tblvarevo1.Schema.EvoDocFromJson, Tblvarevo1.Schema.EvoDocToJsonMeasure, Tblvarevo1.Schema.EvoDocToJson, Tblvarevo1.Schema.EvoDocLoadMeasure),
@@ -435,6 +449,12 @@ static partial class Program
         Row<Tblvarevo3.EvoMsg, Tblvarevo3.TableReport>("tblvarevo3", "EvoMsg", () => new Tblvarevo3.TableReport(), Copy,
             Tblvarevo3.Schema.EvoMsgLoad, Tblvarevo3.Schema.EvoMsgMeasure, Tblvarevo3.Schema.EvoMsgSave,
             Tblvarevo3.Schema.EvoMsgFromJson, Tblvarevo3.Schema.EvoMsgToJsonMeasure, Tblvarevo3.Schema.EvoMsgToJson),
+        Row<Tblpacketunions.ShapeDoc, Tblpacketunions.TableReport>("packetunions", "ShapeDoc", () => new Tblpacketunions.TableReport(), Copy,
+            Tblpacketunions.Schema.ShapeDocLoad, Tblpacketunions.Schema.ShapeDocMeasure, Tblpacketunions.Schema.ShapeDocSave,
+            Tblpacketunions.Schema.ShapeDocFromJson, Tblpacketunions.Schema.ShapeDocToJsonMeasure, Tblpacketunions.Schema.ShapeDocToJson, Tblpacketunions.Schema.ShapeDocLoadMeasure),
+        Row<Tblpacketunions.ShapeMsg, Tblpacketunions.TableReport>("packetunions", "ShapeMsg", () => new Tblpacketunions.TableReport(), Copy,
+            Tblpacketunions.Schema.ShapeMsgLoad, Tblpacketunions.Schema.ShapeMsgMeasure, Tblpacketunions.Schema.ShapeMsgSave,
+            Tblpacketunions.Schema.ShapeMsgFromJson, Tblpacketunions.Schema.ShapeMsgToJsonMeasure, Tblpacketunions.Schema.ShapeMsgToJson),
         Row<Cooktorture.TortureCook, Cooktorture.TableReport>("cooktorture", "TortureCook", () => new Cooktorture.TableReport(), Copy,
             Cooktorture.Schema.TortureCookLoad, Cooktorture.Schema.TortureCookMeasure, Cooktorture.Schema.TortureCookSave,
             Cooktorture.Schema.TortureCookFromJson, Cooktorture.Schema.TortureCookToJsonMeasure, Cooktorture.Schema.TortureCookToJson, Cooktorture.Schema.TortureCookLoadMeasure),
@@ -1893,6 +1913,29 @@ static partial class Program
             c.MessageSave = (value, bytes) => value is Tblvarevo3.EvoMsg[] batch ? Tblvarevo3.Schema.EvoMsgSaveMessages(batch, bytes) : Tblvarevo3.Schema.EvoMsgSaveMessages(new Tblvarevo3.EvoMsg[] { (Tblvarevo3.EvoMsg)value }, bytes);
         }
         {
+            Codec c = Find("packetunions", "ShapeDoc");
+            c.CookMeasure = value => Tblpacketunions.Schema.ShapeDocCookMeasure((Tblpacketunions.ShapeDoc)value);
+            c.Cook = (value, bytes, big) => Tblpacketunions.Schema.ShapeDocCook((Tblpacketunions.ShapeDoc)value, bytes, big ? Tblpacketunions.TableByteOrder.Big : Tblpacketunions.TableByteOrder.Little);
+        }
+        {
+            Codec c = Find("packetunions", "ShapeMsg");
+            c.Announcement = Tblpacketunions.Schema.Announce().ToArray();
+            c.CookMeasure = value => Tblpacketunions.Schema.ShapeMsgCookMeasure((Tblpacketunions.ShapeMsg)value);
+            c.Cook = (value, bytes, big) => Tblpacketunions.Schema.ShapeMsgCook((Tblpacketunions.ShapeMsg)value, bytes, big ? Tblpacketunions.TableByteOrder.Big : Tblpacketunions.TableByteOrder.Little);
+            var ownVocabulary = new Tblpacketunions.TableVocabulary(); Tblpacketunions.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Tblpacketunions.TableReport());
+            c.MessageLoad = (announcement, bytes, report) =>
+            {
+                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblpacketunions.TableVocabulary(); var inner = new Tblpacketunions.TableReport();
+                if (!ReferenceEquals(announcement, c.Announcement)) { Tblpacketunions.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                var values = new Tblpacketunions.ShapeMsg[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblpacketunions.ShapeMsg(); }
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Tblpacketunions.Schema.ShapeMsgLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
+            };
+            c.MessageMeasure = value => value is Tblpacketunions.ShapeMsg[] batch ? Tblpacketunions.Schema.ShapeMsgMeasureMessages(batch) : Tblpacketunions.Schema.ShapeMsgMeasureMessages(new Tblpacketunions.ShapeMsg[] { (Tblpacketunions.ShapeMsg)value });
+            c.MessageSave = (value, bytes) => value is Tblpacketunions.ShapeMsg[] batch ? Tblpacketunions.Schema.ShapeMsgSaveMessages(batch, bytes) : Tblpacketunions.Schema.ShapeMsgSaveMessages(new Tblpacketunions.ShapeMsg[] { (Tblpacketunions.ShapeMsg)value }, bytes);
+        }
+        {
             Codec c = Find("cooktorture", "TortureCook");
             c.CookMeasure = value => Cooktorture.Schema.TortureCookCookMeasure((Cooktorture.TortureCook)value);
             c.Cook = (value, bytes, big) => Cooktorture.Schema.TortureCookCook((Cooktorture.TortureCook)value, bytes, big ? Cooktorture.TableByteOrder.Big : Cooktorture.TableByteOrder.Little);
@@ -1995,6 +2038,16 @@ static partial class Program
             Codec c = Find("tblw1", "Fleet");
             c.CookMeasure = value => Tblw1.Schema.FleetCookMeasure((Tblw1.Fleet)value);
             c.Cook = (value, bytes, big) => Tblw1.Schema.FleetCook((Tblw1.Fleet)value, bytes, big ? Tblw1.TableByteOrder.Big : Tblw1.TableByteOrder.Little);
+        }
+        {
+            Codec c = Find("tblvaluedefaults", "VarDefaults");
+            c.CookMeasure = value => Tblvaluedefaults.Schema.VarDefaultsCookMeasure((Tblvaluedefaults.VarDefaults)value);
+            c.Cook = (value, bytes, big) => Tblvaluedefaults.Schema.VarDefaultsCook((Tblvaluedefaults.VarDefaults)value, bytes, big ? Tblvaluedefaults.TableByteOrder.Big : Tblvaluedefaults.TableByteOrder.Little);
+        }
+        {
+            Codec c = Find("tblvaluedefaults", "FixedDefaults");
+            c.CookMeasure = value => Tblvaluedefaults.Schema.FixedDefaultsCookMeasure((Tblvaluedefaults.FixedDefaults)value);
+            c.Cook = (value, bytes, big) => Tblvaluedefaults.Schema.FixedDefaultsCook((Tblvaluedefaults.FixedDefaults)value, bytes, big ? Tblvaluedefaults.TableByteOrder.Big : Tblvaluedefaults.TableByteOrder.Little);
         }
         {
             Codec c = Find("tblp2", "Chain");

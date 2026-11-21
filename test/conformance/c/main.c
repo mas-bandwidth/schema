@@ -173,7 +173,8 @@ static const UnitFn units[] = {
     conformance_codecs_tblp1,
     conformance_codecs_tblp3,
     conformance_codecs_scalars,
-    conformance_codecs_graphdemo, conformance_codecs_blobdemo, conformance_codecs_tblg1, conformance_codecs_tblp2, conformance_codecs_streamdemo, conformance_codecs_tblscalars2, conformance_codecs_tblfixedevo, conformance_codecs_widelist, conformance_codecs_featurewitnesses, conformance_codecs_tblvarevo1, conformance_codecs_tblvarevo2, conformance_codecs_tblvarevo3, conformance_codecs_cooktorture, conformance_codecs_cooktorturewide
+    conformance_codecs_graphdemo, conformance_codecs_blobdemo, conformance_codecs_tblg1, conformance_codecs_tblp2, conformance_codecs_streamdemo, conformance_codecs_tblscalars2, conformance_codecs_tblfixedevo, conformance_codecs_widelist, conformance_codecs_featurewitnesses, conformance_codecs_tblvarevo1, conformance_codecs_tblvarevo2, conformance_codecs_tblvarevo3, conformance_codecs_cooktorture, conformance_codecs_cooktorturewide,
+    conformance_codecs_tblvaluedefaults, conformance_codecs_packetunions
 };
 
 static const ConformanceCodec * find_codec( const char * unit, const char * root )

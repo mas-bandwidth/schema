@@ -14,7 +14,7 @@ FROM=$from TO=$to perl -0pe 'BEGIN { $c = 0 } $c += s/\Q$ENV{FROM}\E/$ENV{TO}/g;
     exit 1
 }
 printf '{"Replace":{"%s/%s":"%s/%s/runtime.goose"}}\n' "$root" "$source" "$root" "$out" > "$out/overlay.json"
-go build -tags schema_leg_goose -overlay "$root/$out/overlay.json" -o "$out/schema-goose" ./cmd/schema
+go build -overlay "$root/$out/overlay.json" -o "$out/schema-goose" ./cmd/schema
 mkdir -p "$out/units"
 # The localisation control needs one unit, not a compile of every unrelated
 # unit for each surface. The ordinary conformance gate covers the full corpus.

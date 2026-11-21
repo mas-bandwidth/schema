@@ -1,0 +1,17 @@
+package vdoctags
+
+/// A player's standing.
+enum Grade | progression
+{
+    Bronze
+    /// The top rank.
+    Gold | celebrate
+}
+
+/// One record.
+table Record | designer_facing
+{
+    /// Damage per hit.
+    damage float32 | ui_slider, tuning
+    grade  Grade
+}

@@ -1,0 +1,7 @@
+package pcountedarrays
+
+type Holder
+{
+    values [1..8]uint16
+    more   [..4]int32
+}

@@ -90,7 +90,7 @@ only, and OLD-REFUSES-NEW for the other direction).
 37 rows × up to 4 columns — the rows whose read columns are `—` are LOCK-only, `held_type_change` and
 `plan_cap` among them — the four DIVERGENCE rows below (§5.8's 4, 9, 11, 12), the
 `union_unselected_arm` row that schema#1157 settled, the floor and hash
-tests, on the reference and nine legs. The reference first,
+tests, on the reference and every leg. The reference first,
 red first; then the legs from the corpus, algorithm not reference; the swarm takes the mechanical rows with
 the target and the corpus file named on the card.
 
@@ -203,7 +203,7 @@ row above pins; the ranges are `range_widen_hostile` (the writer's `| 0..100`, t
 `union_append_hostile` (a forged tag `3` against the writer's two arms refusing `out_of_range`). A leg
 asserts the refusal and that nothing landed.
 
-**What `fixedform_dump.cpp` owes, so nine legs read the same bytes** (§5.9 #32's manifest, `build/fixedform-corpus/manifest.txt`):
+**What `fixedform_dump.cpp` owes, so every leg reads the same bytes** (§5.9 #32's manifest, `build/fixedform-corpus/manifest.txt`):
 
 | file | what the dump writes | the manifest line |
 |---|---|---|
@@ -318,7 +318,7 @@ GUARANTEE; nothing may be relied on any of it.** Go and Rust happen to land the 
 unselected arm on every record (rust's own words: "an unselected union arm keeps the default rather than the
 previous record"). Java, Dart, JS and C# happen to leave the caller's bytes. C and C++ overlay their arms by
 construction — a real C union has no other arm to reset — so the question cannot be put to them at all. The
-ruling is one word for all nine: undefined.
+ruling is one word for every leg: undefined.
 
 **What the documents say.** `SPEC.md` §4.8 settles it for the VARIABLE form, naming these targets by name:
 

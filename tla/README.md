@@ -227,9 +227,9 @@ the triggering action in the counterexample. The runs are recorded in
 
 A model checked here does not prove any implementation. The concrete proof is
 the card conformance check (`the-card-corpus-is-a-language-neutral-conformance-set`)
-and each language stream's own upgrade and edit tests; the eight language
-streams cite this model from their upgrade and edit functions as the contract
-they implement.
+and each language stream's own upgrade and edit tests; every card facade
+under `tables/cards/` except the Go, Python and Ruby ones cites this model
+from its upgrade and edit code as the contract it implements.
 
 # tla/Framing
 

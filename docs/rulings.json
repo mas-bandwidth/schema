@@ -429,6 +429,15 @@
         "if there is ever any uncertainty about how to read something, and it is weird or not a natural case for somebody sending us well formed data, the answer is always reject."
       ],
       "source": "the maintainer, relayed verbatim by the coordinator from the live session of 2026-11-17: the standing principle that an uncertain or unnatural read is refused, applied to a blob record outside the root's closure named from a declared slot"
+    },
+    {
+      "id": "every-target-default-build",
+      "date": "2026-11-21",
+      "quotes": [
+        "all languages, by default, all the time.",
+        "we aim for language parity across every single language. 100% parity."
+      ],
+      "source": "the maintainer, live session of 2026-11-21: every shipped target is built in, in every build, with no build tag, and every gate, check, CI job and report covers all eighteen targets; a target that cannot do something is marked not applicable with its reason, never left out of the check"
     }
   ]
 }

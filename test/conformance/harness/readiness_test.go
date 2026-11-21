@@ -15,9 +15,9 @@ func testReadinessRevision() (string, error) { return readinessTestRevision, nil
 
 func writeReadinessFixture(t *testing.T, dir string) {
 	t.Helper()
-	for i, lang := range originalNine {
-		writeFile(t, filepath.Join(dir, fmt.Sprintf("lane-%d", i), "readiness-"+lang+".txt"), "pass\n")
-		writeFile(t, filepath.Join(dir, fmt.Sprintf("lane-%d", i), "readiness-"+lang+".revision"), readinessTestRevision+"\n")
+	for _, lang := range everyTarget {
+		writeFile(t, filepath.Join(dir, "lane-"+lang, "readiness-"+lang+".txt"), "pass\n")
+		writeFile(t, filepath.Join(dir, "lane-"+lang, "readiness-"+lang+".revision"), readinessTestRevision+"\n")
 	}
 }
 
@@ -32,7 +32,7 @@ func fakeRoadmapChecker(t *testing.T, code int) string {
 		"test \"$1\" = --script || exit 94\n" +
 		"test \"$2\" = tools/roadmap/render.lisp || exit 95\n" +
 		"test \"$3\" = --check || exit 96\n" +
-		"test \"$4\" = --require-original-nine || exit 97\n" +
+		"test \"$4\" = --require-every-target || exit 97\n" +
 		"test \"$5\" = docs/roadmap.sexp || exit 98\n" +
 		"test \"$6\" = ROADMAP.md || exit 99\n" +
 		"echo ROADMAP_CHECKER_DIAGNOSTIC\n" +
@@ -42,21 +42,29 @@ func fakeRoadmapChecker(t *testing.T, code int) string {
 	return log
 }
 
-func TestReadinessReceiptsRequireEveryOriginalLanguage(t *testing.T) {
+func TestReadinessReceiptsRequireEveryTarget(t *testing.T) {
 	for _, tc := range []struct {
 		name, want string
 		damage     func(*testing.T, string)
 	}{
 		{"complete", "", func(*testing.T, string) {}},
 		{"missing cpp", "cpp: missing readiness", func(t *testing.T, dir string) {
-			if err := os.Remove(filepath.Join(dir, "lane-0", "readiness-cpp.txt")); err != nil {
+			if err := os.Remove(filepath.Join(dir, "lane-cpp", "readiness-cpp.txt")); err != nil {
 				t.Fatal(err)
 			}
 		}},
 		{"missing port", "elixir: missing readiness", func(t *testing.T, dir string) {
-			if err := os.Remove(filepath.Join(dir, "lane-8", "readiness-elixir.txt")); err != nil {
+			if err := os.Remove(filepath.Join(dir, "lane-elixir", "readiness-elixir.txt")); err != nil {
 				t.Fatal(err)
 			}
+		}},
+		{"missing newer target", "unity: missing readiness", func(t *testing.T, dir string) {
+			if err := os.Remove(filepath.Join(dir, "lane-unity", "readiness-unity.txt")); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"failed newer target", "runtime acceptance requires pass", func(t *testing.T, dir string) {
+			writeFile(t, filepath.Join(dir, "lane-lua", "readiness-lua.txt"), "fail\n")
 		}},
 		{"duplicate pass", "duplicate readiness receipt for cpp", func(t *testing.T, dir string) {
 			writeFile(t, filepath.Join(dir, "another", "readiness-cpp.txt"), "pass")
@@ -65,19 +73,19 @@ func TestReadinessReceiptsRequireEveryOriginalLanguage(t *testing.T) {
 			writeFile(t, filepath.Join(dir, "another", "readiness-cpp.txt"), "fail")
 		}},
 		{"failed", "runtime acceptance requires pass", func(t *testing.T, dir string) {
-			writeFile(t, filepath.Join(dir, "lane-1", "readiness-c.txt"), "fail\n")
+			writeFile(t, filepath.Join(dir, "lane-c", "readiness-c.txt"), "fail\n")
 		}},
 		{"invalid", "runtime acceptance requires pass", func(t *testing.T, dir string) {
-			writeFile(t, filepath.Join(dir, "lane-1", "readiness-c.txt"), "pass\nfail\n")
+			writeFile(t, filepath.Join(dir, "lane-c", "readiness-c.txt"), "pass\nfail\n")
 		}},
 		{"empty", "runtime acceptance requires pass", func(t *testing.T, dir string) {
-			writeFile(t, filepath.Join(dir, "lane-1", "readiness-c.txt"), "")
+			writeFile(t, filepath.Join(dir, "lane-c", "readiness-c.txt"), "")
 		}},
 		{"whitespace", "runtime acceptance requires pass", func(t *testing.T, dir string) {
-			writeFile(t, filepath.Join(dir, "lane-1", "readiness-c.txt"), " pass ")
+			writeFile(t, filepath.Join(dir, "lane-c", "readiness-c.txt"), " pass ")
 		}},
 		{"directory", "must be a regular file", func(t *testing.T, dir string) {
-			path := filepath.Join(dir, "lane-1", "readiness-c.txt")
+			path := filepath.Join(dir, "lane-c", "readiness-c.txt")
 			if err := os.Remove(path); err != nil {
 				t.Fatal(err)
 			}
@@ -86,11 +94,11 @@ func TestReadinessReceiptsRequireEveryOriginalLanguage(t *testing.T) {
 			}
 		}},
 		{"symlink", "must be a regular file", func(t *testing.T, dir string) {
-			path := filepath.Join(dir, "lane-1", "readiness-c.txt")
+			path := filepath.Join(dir, "lane-c", "readiness-c.txt")
 			if err := os.Remove(path); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.Symlink(filepath.Join(dir, "lane-0", "readiness-cpp.txt"), path); err != nil {
+			if err := os.Symlink(filepath.Join(dir, "lane-cpp", "readiness-cpp.txt"), path); err != nil {
 				t.Fatal(err)
 			}
 		}},
@@ -107,7 +115,7 @@ func TestReadinessReceiptsRequireEveryOriginalLanguage(t *testing.T) {
 	}
 }
 
-func TestOriginalNineCoverageRequiresRoadmapAndRuntimeAcceptance(t *testing.T) {
+func TestEveryTargetCoverageRequiresRoadmapAndRuntimeAcceptance(t *testing.T) {
 	t.Chdir("../../..")
 	rows, fixed := completeCoverage(realCoverageShape(t))
 	for _, tc := range []struct {
@@ -117,9 +125,9 @@ func TestOriginalNineCoverageRequiresRoadmapAndRuntimeAcceptance(t *testing.T) {
 		want     string
 	}{
 		{"all obligations", 0, true, ""},
-		{"green counts red roadmap", 1, true, "Original-nine roadmap: FAIL"},
+		{"green counts red roadmap", 1, true, "Every-target roadmap: FAIL"},
 		{"green counts missing runtime", 0, false, "cpp: missing readiness receipt"},
-		{"both missing", 1, false, "Original-nine runtime acceptance: FAIL"},
+		{"both missing", 1, false, "Every-target runtime acceptance: FAIL"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			log := fakeRoadmapChecker(t, tc.checker)
@@ -136,11 +144,11 @@ func TestOriginalNineCoverageRequiresRoadmapAndRuntimeAcceptance(t *testing.T) {
 			if !strings.Contains(out.String(), tc.want) || !strings.Contains(out.String(), "ROADMAP_CHECKER_DIAGNOSTIC") {
 				t.Fatalf("lost diagnostic %q:\n%s", tc.want, out.String())
 			}
-			if tc.want != "" && strings.Contains(out.String(), "PASS: every original-nine") {
+			if tc.want != "" && strings.Contains(out.String(), "PASS: every target") {
 				t.Fatalf("incomplete readiness claimed success:\n%s", out.String())
 			}
 			argv, err := os.ReadFile(log)
-			if err != nil || string(argv) != "--script\ntools/roadmap/render.lisp\n--check\n--require-original-nine\ndocs/roadmap.sexp\nROADMAP.md\n" {
+			if err != nil || string(argv) != "--script\ntools/roadmap/render.lisp\n--check\n--require-every-target\ndocs/roadmap.sexp\nROADMAP.md\n" {
 				t.Fatalf("checker command changed: %q %v", argv, err)
 			}
 		})
@@ -150,7 +158,7 @@ func TestOriginalNineCoverageRequiresRoadmapAndRuntimeAcceptance(t *testing.T) {
 func TestRoadmapCheckerFindsRepositoryFromHarnessDirectory(t *testing.T) {
 	fakeRoadmapChecker(t, 0)
 	var out bytes.Buffer
-	if err := checkOriginalNineRoadmap(&out); err != nil {
+	if err := checkEveryTargetRoadmap(&out); err != nil {
 		t.Fatalf("nested checkout discovery: %v\n%s", err, out.String())
 	}
 }
@@ -164,7 +172,7 @@ func TestCoverageMissingSBCLFailsClosedButReportOnlyDoesNotCheck(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	var out bytes.Buffer
 	if err := coverageReportWithImplementationCheck(&out, dir, defaultManifest, defaultJSONDir, defaultReports, true, func(*Manifest) []string { return nil }, testReadinessRevision); err == nil ||
-		!strings.Contains(out.String(), "sbcl") || !strings.Contains(out.String(), "Original-nine roadmap: FAIL") {
+		!strings.Contains(out.String(), "sbcl") || !strings.Contains(out.String(), "Every-target roadmap: FAIL") {
 		t.Fatalf("missing checker passed or hid reason: %v\n%s", err, out.String())
 	}
 	writeFile(t, filepath.Join(dir, "readiness-cpp.txt"), "fail")
@@ -186,9 +194,9 @@ func TestCoverageImplementationFailureCannotBeOverriddenByReceipts(t *testing.T)
 	err := coverageReportWithImplementationCheck(&out, dir, defaultManifest, defaultJSONDir, defaultReports, true,
 		func(*Manifest) []string { return []string{"required feature witness missing"} }, testReadinessRevision)
 	if err == nil || !strings.Contains(out.String(), "required feature witness missing") ||
-		!strings.Contains(out.String(), "Original-nine runtime acceptance: PASS") ||
-		!strings.Contains(out.String(), "Original-nine roadmap: PASS") ||
-		strings.Contains(out.String(), "PASS: every original-nine") {
+		!strings.Contains(out.String(), "Every-target runtime acceptance: PASS") ||
+		!strings.Contains(out.String(), "Every-target roadmap: PASS") ||
+		strings.Contains(out.String(), "PASS: every target") {
 		t.Fatalf("green subset masked incomplete implementation: %v\n%s", err, out.String())
 	}
 }
@@ -201,35 +209,35 @@ func TestReadinessRevisionsBindEveryReceipt(t *testing.T) {
 	}{
 		{"all current", "", func(*testing.T, string) {}},
 		{"missing", "missing readiness revision", func(t *testing.T, dir string) {
-			if err := os.Remove(filepath.Join(dir, "lane-0", "readiness-cpp.revision")); err != nil {
+			if err := os.Remove(filepath.Join(dir, "lane-cpp", "readiness-cpp.revision")); err != nil {
 				t.Fatal(err)
 			}
 		}},
 		{"old", "does not match checkout HEAD", func(t *testing.T, dir string) {
-			writeFile(t, filepath.Join(dir, "lane-0", "readiness-cpp.revision"), old+"\n")
+			writeFile(t, filepath.Join(dir, "lane-cpp", "readiness-cpp.revision"), old+"\n")
 		}},
 		{"mixed artifacts", "java: readiness revision", func(t *testing.T, dir string) {
-			writeFile(t, filepath.Join(dir, "lane-5", "readiness-java.revision"), old)
+			writeFile(t, filepath.Join(dir, "lane-java", "readiness-java.revision"), old)
 		}},
 		{"abbreviated", "invalid readiness revision", func(t *testing.T, dir string) {
-			writeFile(t, filepath.Join(dir, "lane-0", "readiness-cpp.revision"), readinessTestRevision[:12])
+			writeFile(t, filepath.Join(dir, "lane-cpp", "readiness-cpp.revision"), readinessTestRevision[:12])
 		}},
 		{"invalid", "invalid readiness revision", func(t *testing.T, dir string) {
-			writeFile(t, filepath.Join(dir, "lane-0", "readiness-cpp.revision"), strings.Repeat("z", 40))
+			writeFile(t, filepath.Join(dir, "lane-cpp", "readiness-cpp.revision"), strings.Repeat("z", 40))
 		}},
 		{"extra line", "invalid readiness revision", func(t *testing.T, dir string) {
-			writeFile(t, filepath.Join(dir, "lane-0", "readiness-cpp.revision"), readinessTestRevision+"\n"+old)
+			writeFile(t, filepath.Join(dir, "lane-cpp", "readiness-cpp.revision"), readinessTestRevision+"\n"+old)
 		}},
 		{"duplicate pass different revision", "duplicate readiness receipt for cpp", func(t *testing.T, dir string) {
 			writeFile(t, filepath.Join(dir, "old-artifact", "readiness-cpp.txt"), "pass\n")
 			writeFile(t, filepath.Join(dir, "old-artifact", "readiness-cpp.revision"), old)
 		}},
 		{"revision symlink", "revision must be a regular file", func(t *testing.T, dir string) {
-			path := filepath.Join(dir, "lane-0", "readiness-cpp.revision")
+			path := filepath.Join(dir, "lane-cpp", "readiness-cpp.revision")
 			if err := os.Remove(path); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.Symlink(filepath.Join(dir, "lane-1", "readiness-c.revision"), path); err != nil {
+			if err := os.Symlink(filepath.Join(dir, "lane-c", "readiness-c.revision"), path); err != nil {
 				t.Fatal(err)
 			}
 		}},
@@ -252,7 +260,7 @@ func TestReadinessResolvesRevisionOnceAndReportsIt(t *testing.T) {
 	writeReadinessFixture(t, dir)
 	calls := 0
 	var out bytes.Buffer
-	problems := originalReadinessProblems(&out, dir, func() (string, error) {
+	problems := everyTargetReadinessProblems(&out, dir, func() (string, error) {
 		calls++
 		return readinessTestRevision, nil
 	})
@@ -307,7 +315,7 @@ func TestCoverageCannotPassWithoutCheckoutProvenance(t *testing.T) {
 	var out bytes.Buffer
 	err := coverageReportWithImplementationCheck(&out, dir, defaultManifest, defaultJSONDir, defaultReports, true,
 		func(*Manifest) []string { return nil }, func() (string, error) { return "", fmt.Errorf("Git metadata unavailable") })
-	if err == nil || !strings.Contains(out.String(), "Git metadata unavailable") || strings.Contains(out.String(), "PASS: every original-nine") {
+	if err == nil || !strings.Contains(out.String(), "Git metadata unavailable") || strings.Contains(out.String(), "PASS: every target") {
 		t.Fatalf("unknown checkout revision passed: %v\n%s", err, out.String())
 	}
 }

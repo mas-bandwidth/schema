@@ -126,9 +126,11 @@ define tables_generate_cs
 	$(1) generate --lang cs --out $(2)/varevo3 test/tables/varevo/VarEvo3.schema & pids="$$pids $$!"; \
 	$(1) generate --lang cs --out $(2)/cooktorture test/tables/cooktorture/CookTorture.schema & pids="$$pids $$!"; \
 	$(1) generate --lang cs --out $(2)/cooktorturewide test/tables/cooktorturewide/CookTortureWide.schema & pids="$$pids $$!"; \
+	$(1) generate --lang cs --out $(2)/packetunions test/tables/packetunions/PacketUnions.schema & pids="$$pids $$!"; \
 	$(1) generate --lang cs --out $(2)/blobs tables/blobs & pids="$$pids $$!"; \
 	$(1) generate --lang cs --out $(2)/p2 test/tables/P2.schema & pids="$$pids $$!"; \
 	$(1) generate --lang cs --out $(2)/w1 test/tables/W1.schema & pids="$$pids $$!"; \
+	$(1) generate --lang cs --out $(2)/valuedefaults test/tables/ValueDefaults.schema & pids="$$pids $$!"; \
 	$(1) generate --lang cs --out $(2)/w2 test/tables/W2.schema & pids="$$pids $$!"; \
 	$(1) generate --lang cs --out $(2)/lists tables/lists & pids="$$pids $$!"; \
 	$(1) generate --lang cs --out $(2)/widelist tables/widelist & pids="$$pids $$!"; \
@@ -152,7 +154,7 @@ define tables_generate_cs
 	for pid in $$pids; do wait $$pid; done
 endef
 
-build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/K1.schema test/tables/K2.schema test/tables/CsIds.schema test/tables/CsUnions.schema test/tables/CsView.schema $(SCHEMAS_TABLES_MESSAGES) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema tables/scalars test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema tables/pointers tables/blobs test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema tables/lists tables/widelist tables/maps tables/stream test/tables/G1.schema tables/backend tables/vocab tables/vocab9 test/tables/R1.schema test/tables/R2.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/CsRetain1.schema test/tables/CsRetain2.schema test/tables/CsCollections1.schema test/tables/CsCollections2.schema test/tables/UT.schema testdata/conformance/feature-witnesses/full/Features.schema
+build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/K1.schema test/tables/K2.schema test/tables/CsIds.schema test/tables/CsUnions.schema test/tables/CsView.schema $(SCHEMAS_TABLES_MESSAGES) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema tables/scalars test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/ValueDefaults.schema tables/pointers tables/blobs test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema tables/lists tables/widelist tables/maps tables/stream test/tables/G1.schema tables/backend tables/vocab tables/vocab9 test/tables/R1.schema test/tables/R2.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/CsRetain1.schema test/tables/CsRetain2.schema test/tables/CsCollections1.schema test/tables/CsCollections2.schema test/tables/UT.schema testdata/conformance/feature-witnesses/full/Features.schema
 	@mkdir -p build/tables-generated-cs
 	$(call tables_generate_cs,./bin/schema,build/tables-generated-cs)
 	@touch $@

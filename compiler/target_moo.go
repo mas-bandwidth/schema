@@ -1,12 +1,9 @@
-//go:build schema_leg_moo
-
 // One built-in target, registered from its own init so a target is one file
 // and a new one adds a file (docs/CONTRIBUTING.md, "Adding a language").
 //
-// Scaffolded by `schema new-leg moo`. The schema_leg_moo tag keeps this
-// target out of the default nine until the packet surface has claims in
-// compiler/*_test.go; `go build -tags schema_leg_moo` is `schema generate --lang moo`.
-// Drop the tag when the port joins the builtins.
+// Moo is a built-in target of the default build: `make` and a plain
+// `go build ./cmd/schema` answer `schema generate --lang moo`, with no build
+// tag (compiler/target_moo_builtin_test.go holds it there).
 package compiler
 
 import (

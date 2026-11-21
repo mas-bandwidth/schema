@@ -39,7 +39,7 @@ func TestPythonHandtextCISelection(t *testing.T) {
 		expressions = append(expressions, regexp.MustCompile(pattern))
 	}
 	var names []string
-	for line := range strings.SplitSeq(run("go", "test", "-tags", "schema_leg_python", "-list", "^TestPythonHandtext", "./internal/codegen/pythontable/"), "\n") {
+	for line := range strings.SplitSeq(run("go", "test", "-list", "^TestPythonHandtext", "./internal/codegen/pythontable/"), "\n") {
 		if strings.HasPrefix(line, "TestPythonHandtext") {
 			names = append(names, line)
 		}

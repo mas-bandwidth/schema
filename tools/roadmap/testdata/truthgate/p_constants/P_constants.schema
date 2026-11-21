@@ -1,0 +1,11 @@
+package pconstants
+
+const MaxCount = 4
+const Limit uint16 = 1000
+const Twice = (MaxCount + 1) * 2
+
+type Holder
+{
+    count int32 | min = 0, max = Twice
+    cap   uint16 | min = 0, max = Limit
+}

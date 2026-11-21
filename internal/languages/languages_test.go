@@ -176,10 +176,11 @@ func TestUnityIsNeverALanguage(t *testing.T) {
 // languages, since the two C# generators are one language.
 const ownerList = "C, C++, C# (modern), C# (unity), Dart, Elixir, Go, Goose, Java, JavaScript, Lobster, Lua, Luau, Moo, Python, Ruby, Rust and Squirrel"
 
-// TestSummaryBothTagStates injects the entry list for both states of the moo
-// build tag: the generator behind schema_leg_moo, and the tag dropped. The
-// list reads the same in both, with no clause left behind and no count, and
-// the counts stay seventeen languages and eighteen targets.
+// TestSummaryBothTagStates injects the entry list for both states of a
+// generator's build tag: one target behind a new-leg tag (TagPrefix), and
+// every target built in, as all shipped ones are. The list reads the same in
+// both, with no clause left behind and no count, and the counts stay seventeen
+// languages and eighteen targets.
 func TestSummaryBothTagStates(t *testing.T) {
 	var untagged []Language
 	for _, target := range []string{"c", "cpp", "cs", "unity", "dart", "elixir", "go", "goose", "java", "js", "lobster", "lua", "luau", "moo", "python", "ruby", "rust", "squirrel"} {

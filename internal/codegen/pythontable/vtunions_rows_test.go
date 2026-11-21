@@ -53,6 +53,12 @@ var vtUnionRows = []vtUnionRow{
 	{"union-arms-any", []string{"stream_arm_first", "stream_arm_pointer", "stream_arm_tag", "a2_arm_enum_as_int", "a2_arm_pointer_as_int",
 		"a2_arm_bytes_as_string", "a2_arm_length_off_width", "a1_arm_moved_width_as_a2", "a1_arm_one_width_as_a2", "a1_arm_as_string_as_a2",
 		"a1_arm_as_body_as_a2", "a1_arm_body_as_a2", "a1_arm_unknown_as_a2", "nested_arm_trailing", "escape_arm"}, []string{"unions_maps_keyed"}},
+	// an array of a union whose arms are all packet types (test/tables/packetunions;
+	// SPEC-TABLES §2.6, §3, §3.4): the variable root and the fixed root, read and
+	// refused on both forms
+	{"packet-union-arrays", []string{"packetunions_doc_full", "packetunions_msg_full", "packetunions_msg_one",
+		"packetunions_doc_count_past_bound", "packetunions_doc_unknown_arm", "packetunions_msg_count_past_bound",
+		"packetunions_msg_tag_past_max", "packetunions_msg_none_payload", "packetunions_msg_unused_slot"}, nil},
 }
 
 // vtUnionConstructs is luatable's unions_maps_keyed construct: a table arm, a
@@ -341,6 +347,17 @@ func vtUnionPlant(suffix, from, to string) func(*testing.T, map[string][]byte) {
 	}
 }
 
+// vtUnionPlants applies several vtUnionPlant edits to the one emitted file,
+// for a fault that must reach the read check and the decode together or the
+// probe stops instead of reading.
+func vtUnionPlants(suffix string, edits ...[2]string) func(*testing.T, map[string][]byte) {
+	return func(t *testing.T, files map[string][]byte) {
+		for _, e := range edits {
+			vtUnionPlant(suffix, e[0], e[1])(t, files)
+		}
+	}
+}
+
 // vtUnionControls are the planted union faults, each with the cases it must
 // turn red by name, keyed by roadmap row.
 var vtUnionControls = []struct {
@@ -355,12 +372,13 @@ var vtUnionControls = []struct {
 		"union-arrays":     {"unions_maps_keyed"},
 		"union-arms-any":   {"stream_arm_pointer", "stream_arm_tag", "unions_maps_keyed"},
 	}},
-	// the variable save frames a length-kind arm (a table, text) a second
+	// the variable save frames a length-kind arm (a table, text, a packet type) a second
 	// time instead of writing its field line in place as the arm header
 	{"variable-length-arm-in-place", vtUnionPlant("_schema/kind_union.py", "    if f.kind in _LENGTH_KINDS:\n", "    if False:\n"), map[string][]string{
-		"union-table-arms": {"unions_maps_keyed"},
-		"union-arrays":     {"unions_maps_keyed"},
-		"union-arms-any":   {"stream_arm_first", "unions_maps_keyed"},
+		"union-table-arms":    {"unions_maps_keyed"},
+		"union-arrays":        {"unions_maps_keyed"},
+		"union-arms-any":      {"stream_arm_first", "unions_maps_keyed"},
+		"packet-union-arrays": {"packetunions_doc_full", "packetunions_doc_unknown_arm"},
 	}},
 	// the variable read stops checking that an arm's payload fills its L: the
 	// nested arm with trailing bytes reads
@@ -372,8 +390,9 @@ var vtUnionControls = []struct {
 	// the fixed read drops every arm: each active arm reads as no arm, so the
 	// write-back loses it
 	{"fixed-arm-dropped", vtUnionPlant("_schema/fixedform.py", "        value.type = _integer(data, at, spec[\"tag\"])\n", "        value.type = 0\n"), map[string][]string{
-		"union-table-arms": {"m1_open", "m1_save", "m2_close", "m2_open", "message_arms", "message_arm_edits"},
-		"union-arrays":     {"message_batch", "message_arm_edits"},
+		"union-table-arms":    {"m1_open", "m1_save", "m2_close", "m2_open", "message_arms", "message_arm_edits"},
+		"union-arrays":        {"message_batch", "message_arm_edits"},
+		"packet-union-arrays": {"packetunions_msg_full", "packetunions_msg_one"},
 	}},
 	// the fixed read's form refusal (a form-1 file at a fixed root, every
 	// report row here) writes into the caller's report before it refuses
@@ -383,6 +402,42 @@ var vtUnionControls = []struct {
 		"union-arms-any": {"a2_arm_enum_as_int", "a2_arm_pointer_as_int", "a2_arm_bytes_as_string", "a2_arm_length_off_width",
 			"a1_arm_moved_width_as_a2", "a1_arm_one_width_as_a2", "a1_arm_as_string_as_a2", "a1_arm_as_body_as_a2", "a1_arm_body_as_a2",
 			"a1_arm_unknown_as_a2", "escape_arm"},
+	}},
+	// the variable read takes one element past a counted array's bound and
+	// keeps the first bound of them: the array counting past its bound reads
+	{"variable-union-count-bound", vtUnionPlants("_schema/kind_union.py",
+		[2]string{"elif count > fd.bound or", "elif count > fd.bound + 1 or"},
+		[2]string{"            raise Refused(\"wire_damaged\", \"bytes left inside an array of unions\")\n        return values\n",
+			"            raise Refused(\"wire_damaged\", \"bytes left inside an array of unions\")\n        return values[:fd.bound]\n"}), map[string][]string{
+		"packet-union-arrays": {"packetunions_doc_count_past_bound"},
+	}},
+	// the fixed read clamps a counted array's count to its bound instead of
+	// refusing it: the array counting past its bound reads
+	{"fixed-count-clamped", vtUnionPlants("_schema/fixedform.py",
+		[2]string{"            if count < spec.get(\"minimum\", 0) or count > spec[\"bound\"]:\n                raise Refused(\"count_over_bound\")\n",
+			"            if count > spec[\"bound\"]:\n                count = spec[\"bound\"]\n"},
+		[2]string{"            n = _integer(data, at, 4)\n            at += 4\n",
+			"            n = min(_integer(data, at, 4), spec[\"bound\"])\n            at += 4\n"}), map[string][]string{
+		"packet-union-arrays": {"packetunions_msg_count_past_bound"},
+	}},
+	// the fixed read takes a tag past the last arm as the last arm instead of
+	// refusing it: the element tagged past the maximum reads
+	{"fixed-tag-clamped", vtUnionPlants("_schema/fixedform.py",
+		[2]string{"        if tag > len(arms):\n            raise Refused(\"out_of_range\")\n",
+			"        if tag > len(arms):\n            tag = len(arms)\n"},
+		[2]string{"        value.type = _integer(data, at, spec[\"tag\"])\n",
+			"        value.type = min(_integer(data, at, spec[\"tag\"]), len(spec[\"children\"]))\n"}), map[string][]string{
+		"packet-union-arrays": {"packetunions_msg_tag_past_max"},
+	}},
+	// the fixed read stops checking the bytes past a union element's selected
+	// arm: a None element with a nonzero payload byte reads
+	{"fixed-union-dead-bytes", vtUnionPlant("_schema/fixedform.py", "        _dead(data, at + used, at + size)\n", ""), map[string][]string{
+		"packet-union-arrays": {"packetunions_msg_none_payload"},
+	}},
+	// the fixed read stops checking a counted array's slots past its count: a
+	// nonzero byte in an unused slot reads
+	{"fixed-counted-dead-slots", vtUnionPlant("_schema/fixedform.py", "            _dead(data, at + 4 + count * elem[\"size\"], at + size)\n", ""), map[string][]string{
+		"packet-union-arrays": {"packetunions_msg_unused_slot"},
 	}},
 }
 

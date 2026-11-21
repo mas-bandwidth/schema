@@ -1,0 +1,11 @@
+package pscalardefaults
+
+enum Mode { Alpha, Beta, Gamma }
+
+type Holder
+{
+    retries int32 = -1
+    on      bool = true
+    mode    Mode = Beta
+    rate    float32 = 1.5
+}

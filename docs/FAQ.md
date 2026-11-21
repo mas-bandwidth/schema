@@ -300,9 +300,8 @@ cost with no buyer. See
 **That is the promise, and [ROADMAP.md](../ROADMAP.md) tracks it feature by
 feature.** Schema generates C, C++, C# (modern), C# (unity), Dart, Elixir, Go,
 Goose, Java, JavaScript, Lobster, Lua, Luau, Moo, Python, Ruby, Rust and
-Squirrel, all from one IR: eighteen targets, seventeen languages. The default
-build leaves Moo out: `--lang moo` needs a compiler built with
-`-tags schema_leg_moo`. The roadmap
+Squirrel, all from one IR: eighteen targets, seventeen languages, every one
+in the default build. The roadmap
 has one column per language for the packet wire, fixed tables and variable
 tables, and a feature is ticked only when that language carries it.
 
@@ -357,7 +356,10 @@ In every language but three, yes.
 Every other target calls a small serialize-family runtime for its language;
 [SPEC.md §1](SPEC.md#1-what-schema-is) names each one. They are small, open
 source, and doing the bit-level stream work the generated code calls into.
-Python, Ruby, Goose and Moo ship theirs inside the generated output.
+Both C# generators share serialize.cs. Goose, Lobster, Lua, Luau, Moo, Python
+and Ruby ship theirs inside the generated output, vendored verbatim and pinned
+by sha256; Squirrel's is vendored and pinned the same way, and the caller
+places it beside the generated modules ([PORT-SQUIRREL.md](PORT-SQUIRREL.md)).
 **Dart, Elixir and Java need nothing but their own toolchain** — those three
 carry the bit reader and writer in the generated code itself, and are held to
 the same goldens as the rest.

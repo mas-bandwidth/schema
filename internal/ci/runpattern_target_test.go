@@ -144,7 +144,7 @@ func TestPythonDynamicRunPatternBindingsAndCoverageWiring(t *testing.T) {
 		{"make/python-handtext.mk", "python-handtext-ci-coverage", "TestPythonHandtextCISelection"},
 	} {
 		s := files[tc.file]
-		for _, want := range []string{tc.target + ":", "SCHEMA_SLOW=1 go test -count=1 -tags schema_leg_python -run '^" + tc.test + "$$' ./internal/ci/", "test-python:"} {
+		for _, want := range []string{tc.target + ":", "SCHEMA_SLOW=1 go test -count=1 -run '^" + tc.test + "$$' ./internal/ci/", "test-python:"} {
 			if !strings.Contains(s, want) {
 				t.Errorf("%s lacks %q", tc.file, want)
 			}

@@ -1,0 +1,67 @@
+// ValueDefaults.schema — string, bytes and flags DEFAULTS on the table wire,
+// together, in every field shape that carries one (docs/SPEC.md §4.2,
+// docs/SPEC-TABLES.md §4): a plain field; a nested type by value; a counted
+// array, a fixed array and a slice of that type; an enum-keyed array; a map
+// value; an optional; a pointer target; and a union arm. VarDefaults is the
+// variable form (form 1), where a field at its default ELIDES on save and an
+// absent field READS as its default; FixedDefaults is the fixed form (form 3),
+// where the default is the template the record is prefilled with.
+//
+// A default on the container itself (an array, a map, an optional, a pointer,
+// a union arm) is refused by the parser in every target; the compiler's fast
+// test TestValueDefaultsEveryShape holds both halves.
+package tblvaluedefaults
+
+flags Caps { Jump, Crouch, Fly }
+
+enum Slot { Alpha, Beta, Gamma }
+
+type Item
+{
+    s string(8) = "dflt"
+    b bytes(4) = "ab"
+    f Caps = { Jump, Fly }
+    n int32
+}
+
+union Pick
+{
+    item  Item
+    count int32
+}
+
+table Leaf
+{
+    s    string(8) = "leaf"
+    b    bytes(4) = "lf"
+    f    Caps = { Crouch }
+    next *Leaf
+}
+
+table VarDefaults
+{
+    s       string(8) = "dflt"
+    b       bytes(4) = "ab"
+    f       Caps = { Jump, Fly }
+    item    Item
+    counted [..3]Item
+    pair    [2]Item
+    list    []Item
+    keyed   [Slot]Item
+    by_id   map[uint8]Item
+    opt     ?Item
+    leaf    *Leaf
+    pick    Pick
+}
+
+fixed table FixedDefaults
+{
+    s       string(8) = "dflt"
+    b       bytes(4) = "ab"
+    f       Caps = { Jump, Fly }
+    item    Item
+    counted [..3]Item
+    pair    [2]Item
+    keyed   [Slot]Item
+    pick    Pick
+}

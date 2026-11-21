@@ -501,8 +501,13 @@ func TestSquirrelMessageFormMatchesTheGoldens(t *testing.T) {
 			fixed++
 		}
 	}
-	if fixed != 15 {
-		t.Fatalf("manifest has %d message rows over a fixed root, want 15", fixed)
+	// The want is derived from the manifest, never a hard-coded count a new
+	// row breaks: only a fixed table carries the message form (§3.3), so
+	// every message row that names message bytes must sit over a fixed root,
+	// and a row over a variable root carries "-" and is skipped by
+	// readMessageRows. Zero rows means the reader, not the manifest, broke.
+	if len(rows) == 0 || fixed != len(rows) {
+		t.Fatalf("manifest has %d message rows with bytes and %d of them over a fixed root, want every one over a fixed root and at least one", len(rows), fixed)
 	}
 	out := string(runSquirrelMessages(t, root, units, connections, rows, false))
 	for _, row := range rows {

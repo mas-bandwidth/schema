@@ -24,13 +24,14 @@
   arm is `None`, and a by-value table only when every field of it is left out,
   judged through the descriptors (`FieldDesc.is_default`), so an inactive arm
   member that is set, or a user `__eq__`, moves no byte.
-- **An array of packet unions waits for the packet layer.** The target calls
-  the shared `refuseUnported` chain and registers as a union-array carrier
-  (compiler/carries_python_unions.go), so an array of table-side unions (a
-  union with a general arm) is carried; its one addition to the chain,
-  `pythonRefusePacketUnionArrays` (compiler/target_python.go), names an array
-  of a union whose arms are all packet types until P4 carries packet types
-  into tables.
+- **An array of packet unions is carried.** The target calls the shared
+  `refuseUnported` chain and registers as a union-array carrier
+  (compiler/carries_python_unions.go) for every array of unions in a table
+  closure, a union whose arms are all packet types included: the table frame
+  emits a packet union as a `UnionDesc` descriptor and the runtime's
+  `union_array` codec is descriptor-driven, so the variable, fixed, message
+  and text forms carry it, held by the `packetunions` corpus unit and
+  `TestPythonVtUnionsCarriesPacketUnionArrays`.
 - **Widening is the widening cell's.** A scalar arm under a kind its declared
   kind widens to is read and counted by the kind-pair ladder, held in
   `TestPythonVtWidening` (`port/python/vt/widening`).

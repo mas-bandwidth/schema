@@ -8,4 +8,4 @@
 PYTHON_CI_SUPPORT_GROUPS += python-ci-packet-int128
 python-ci-packet-int128: python-packet-int128-negative-control
 python-packet-int128-negative-control: python-toolchain-check $(SERIALIZE_GO_RUNTIME)/go.mod
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run TestPythonPacketInt128NegativeControl ./internal/codegen/python/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run TestPythonPacketInt128NegativeControl ./internal/codegen/python/

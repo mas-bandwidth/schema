@@ -1,0 +1,30 @@
+package vrenames
+
+enum Mode
+{
+    Alpha
+    Beta | was = "Bravo"
+}
+
+type Ring
+{
+    radius uint16 | was = "size"
+}
+
+type Slab
+{
+    width uint8
+}
+
+union Shape
+{
+    ring Ring
+    slab Slab | was = "block"
+}
+
+table Record
+{
+    mode  Mode
+    shape Shape
+    ring  Ring
+}

@@ -16,6 +16,6 @@
 PYTHON_CI_SUPPORT_GROUPS += python-ci-vt-timestamp
 python-ci-vt-timestamp: python-vt-timestamp python-vt-timestamp-negative-control
 python-vt-timestamp:
-	sh test/slowgate/proof python-vt-timestamp-compiler 'TestPythonCarriesTimestamp' -tags schema_leg_python ./compiler -run '^TestPythonCarriesTimestamp$$' -count=1
+	sh test/slowgate/proof python-vt-timestamp-compiler 'TestPythonCarriesTimestamp' ./compiler -run '^TestPythonCarriesTimestamp$$' -count=1
 python-vt-timestamp-negative-control: python-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run TestPythonVtTimestampNegativeControl ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run TestPythonVtTimestampNegativeControl ./internal/codegen/pythontable/

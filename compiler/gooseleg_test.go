@@ -6,10 +6,11 @@ import (
 	"testing"
 )
 
-// The cross-target carrier gates name the Goose leg only where the target
-// is built in (`-tags schema_leg_goose`, compiler/target_goose.go): its table
-// wire carries the constructs compiler/carries_goose_tablewire.go registers.
-// gooseLegBuilt is that tag's answer (gooseleg_on_test.go, gooseleg_off_test.go).
+// The cross-target carrier gates name the Goose leg, a built-in target of
+// every build (compiler/target_goose.go): its table wire carries the
+// constructs compiler/carries_goose_tablewire.go registers. gooseLegBuilt is
+// always true (gooseleg_on_test.go); the helpers keep their shape so a gate
+// reads the same as the other legs' helpers.
 
 // withGooseLeg is a sorted carrier list with goose in it when the leg is built.
 func withGooseLeg(carriers []string) []string {

@@ -535,7 +535,10 @@ jobs:
 
           # THE TOUCHED-LANGUAGE EMITTED-CODE CLEAN GATES (lang-clean):
           #   c      — tables-c-zero-cost + tables-c-clean
-          #   elixir — tables-elixir-accessor-descriptor-agreement + tables-elixir-offsets
+          #   elixir — tables-elixir-offsets (row elixir-offsets) and the agreement gate
+          #            in three shards (rows elixir-agreement-1..3, make/elixir.mk
+          #            ELIXIR_AGREEMENT_SHARDS): the strict compile of the whole
+          #            corpus alone passes the two-minute cap on a loaded runner
           #   js     — tables-js-clean
           #   rust   — tables-rust-clippy
           schema_corpus=no
@@ -547,7 +550,7 @@ jobs:
             clean_legs="$clean_legs c"
           fi
           if [ "$schema_corpus" = yes ] || case " $touched_legs " in *" elixir "*) true ;; *) false ;; esac || grep -qE '^test/elixir-tables/' <<<"$files"; then
-            clean_legs="$clean_legs elixir"
+            clean_legs="$clean_legs elixir-offsets elixir-agreement-1 elixir-agreement-2 elixir-agreement-3"
           fi
           if [ "$schema_corpus" = yes ] || case " $touched_legs " in *" js "*) true ;; *) false ;; esac || grep -qE '^eslint\.config\.mjs$' <<<"$files"; then
             clean_legs="$clean_legs js"
@@ -775,6 +778,32 @@ jobs:
       - name: go vet
         run: go vet ./...
 
+  # THE ROADMAP TRUTH GATE, on every pull request and push whatever the diff
+  # touches: a compiler change can break a ticked cell without touching the
+  # roadmap, and a roadmap change can tick a cell the compiler refuses. Built
+  # with NO tags — the binary `make` ships — it holds the registered targets
+  # to README.md's --lang list and generates a probe unit for every ✅ cell
+  # of ROADMAP.md with that column's target; a refusal is red by section, row,
+  # column and refusal text (tools/roadmap/truthgate_test.go). Generation
+  # only, no language toolchain. Moo behind a build tag and Python's refused
+  # packet defaults shipped in v3.0.1 because nothing ran this.
+  roadmap-truth:
+    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 2
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: every ticked roadmap cell generates in the default build
+        run: go test -count=1 -run '^(TestDefaultBuildTargetsAreTheDocumentedLanguages|TestEveryTickedRoadmapCellGenerates)$' ./tools/roadmap/
+
   # FAST GOLANGCI-LINT OVER TOUCHED GO PACKAGES (~4-10 s on fleet runners).
   # Catches gocritic / staticcheck / errcheck / unused issues in touched Go
   # packages right on the PR instead of waiting for ci-full.yml's lint job.
@@ -848,7 +877,9 @@ jobs:
   # Covers the fast emitted-code checks that previously ran only in Certify or
   # dispatch-only leg-gate:
   #   c      — tables-c-zero-cost + tables-c-clean
-  #   elixir — tables-elixir-accessor-descriptor-agreement + tables-elixir-offsets
+  #   elixir — tables-elixir-offsets (row elixir-offsets) +
+  #            tables-elixir-accessor-descriptor-agreement-shard-K
+  #            (rows elixir-agreement-1..3; the shards together walk every unit)
   #   js     — tables-js-clean
   #   rust   — tables-rust-clippy
   lang-clean:
@@ -887,7 +918,7 @@ jobs:
           components: clippy, rustfmt
         if: matrix.lang == 'rust' && runner.environment == 'github-hosted'
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
-        if: matrix.lang == 'elixir' && runner.environment == 'github-hosted'
+        if: startsWith(matrix.lang, 'elixir-') && runner.environment == 'github-hosted'
         with:
           otp-version: '29'
           elixir-version: '1.20'
@@ -937,9 +968,13 @@ jobs:
             rust)
               make -j"$(nproc)" tables-rust-clippy RUSTUP_BIN="$(dirname "$(command -v cargo)")"
               ;;
-            elixir)
+            elixir-offsets|elixir-agreement-[0-9]*)
+              case "$LANG_ROW" in
+                elixir-offsets) target=tables-elixir-offsets ;;
+                *) target="tables-elixir-accessor-descriptor-agreement-shard-${LANG_ROW#elixir-agreement-}" ;;
+              esac
               MIX_HOME="$RUNNER_TEMP/.mix" HEX_HOME="$RUNNER_TEMP/.hex" \
-                make -j"$(nproc)" tables-elixir-accessor-descriptor-agreement tables-elixir-offsets \
+                make -j"$(nproc)" "$target" \
                 BEAM_PATH="$(dirname "$(command -v erl)"):$(dirname "$(command -v elixir)")" \
                 ELIXIR_BIN="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" \
                 ELIXIR=elixir ELIXIRC=elixirc MIX=mix \

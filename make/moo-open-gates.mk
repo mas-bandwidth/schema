@@ -36,7 +36,7 @@ tables-moo-runtime-home-negative-control: build/schema-moo tables-moo-runtime-ho
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/mootable/mootable.go":"%s/build/moo-runtime-home-fileorder.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/moo-runtime-home-overlay.json
-	@go build -tags schema_leg_moo -overlay=build/moo-runtime-home-overlay.json -o build/schema-moo-runtime-home-sabotaged ./cmd/schema
+	@go build -overlay=build/moo-runtime-home-overlay.json -o build/schema-moo-runtime-home-sabotaged ./cmd/schema
 	@rm -rf $(MOO_HOME_DIR)/base-sabotage $(MOO_HOME_DIR)/added-sabotage
 	@./build/schema-moo-runtime-home-sabotaged generate --lang moo --out $(MOO_HOME_DIR)/base-sabotage $(MOO_HOME_DIR)/base-src
 	@./build/schema-moo-runtime-home-sabotaged generate --lang moo --out $(MOO_HOME_DIR)/added-sabotage $(MOO_HOME_DIR)/src

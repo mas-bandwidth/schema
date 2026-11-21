@@ -20,8 +20,8 @@ import (
 // These registered-construct prerequisites are independent of what a port
 // elects to claim. They are not exhaustive specification or native runtime
 // acceptance: removing cases cannot make these prerequisites pass.
-func originalImplementationProblems(m *Manifest) []string {
-	return implementationProblems(m, originalNine, compiler.CarryConstructs(), compiler.Carried, newUnits(m), compiler.New())
+func everyTargetImplementationProblems(m *Manifest) []string {
+	return implementationProblems(m, everyTarget, compiler.CarryConstructs(), compiler.Carried, newUnits(m), compiler.New())
 }
 
 type implementationGenerator interface {
@@ -462,10 +462,10 @@ func implementationRoot(u *ir.Unit, name string) (*ir.Unit, error) {
 }
 
 func implementationReport(w io.Writer, m *Manifest, lang string) error {
-	langs := originalNine
+	langs := everyTarget
 	if lang != "" {
 		if !admittedImplementationLanguage(lang) {
-			return fmt.Errorf("implementation: %q is not an original-nine language", lang)
+			return fmt.Errorf("implementation: %q is not a target", lang)
 		}
 		langs = []string{lang}
 	}

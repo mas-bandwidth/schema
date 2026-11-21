@@ -98,7 +98,7 @@ if [ -n "${source2:-}" ]; then
 else
 	printf '{"Replace":{"%s/%s":"%s/%s/runtime.goose"}}\n' "$root" "$source" "$root" "$out" > "$out/overlay.json"
 fi
-go build -tags schema_leg_goose -overlay "$root/$out/overlay.json" -o "$out/schema-goose" ./cmd/schema
+go build -overlay "$root/$out/overlay.json" -o "$out/schema-goose" ./cmd/schema
 # one unit localises the clause; the ordinary conformance gate runs the corpus
 awk -v u="$unit" '($1 == "unit" && $2 == u) || (($1 == "instance" || $1 == "json-hostile") && $3 == u)' testdata/conformance/tables/MANIFEST.txt > "$out/manifest.txt"
 mkdir -p "$out/units"

@@ -7,9 +7,11 @@ import (
 	"sort"
 )
 
-// The original nine are the nightly completion obligation. Other registered
-// languages remain visible without being silently promoted to this gate.
-var originalNine = []string{"cpp", "c", "cs", "go", "rust", "java", "js", "dart", "elixir"}
+// Every target owes parity: all 18 are the nightly completion obligation, and
+// no subset of them is ever the acceptance set. A target without a row, a
+// fixed-form receipt, a runtime receipt or a registration is a finding, never
+// a skip.
+var everyTarget = []string{"c", "cpp", "cs", "dart", "elixir", "go", "goose", "java", "js", "lobster", "lua", "luau", "moo", "python", "ruby", "rust", "squirrel", "unity"}
 
 type coverageKey struct{ surface, class string }
 
@@ -51,16 +53,16 @@ func requiredCoverageShape(m *Manifest, reports map[string]string, jsonDir strin
 	return shape, nil
 }
 
-func originalCoverageProblems(rows []coverageRow, fixed map[string]string, shape map[coverageKey]*coverageExpected) []string {
+func everyTargetCoverageProblems(rows []coverageRow, fixed map[string]string, shape map[coverageKey]*coverageExpected) []string {
 	required := map[string]bool{}
-	for _, lang := range originalNine {
+	for _, lang := range everyTarget {
 		required[lang] = true
 	}
 	seen := map[string]map[coverageKey]bool{}
 	var problems []string
 	for _, row := range rows {
 		if !required[row.Lang] || row.Direction != directionReadsCpp {
-			continue // expansion languages and optional reread diagnostics
+			continue // names outside the targets and optional reread diagnostics
 		}
 		key := coverageKey{row.Surface, row.Class}
 		label := row.Lang + " / " + row.Surface
@@ -110,14 +112,14 @@ func originalCoverageProblems(rows []coverageRow, fixed map[string]string, shape
 			problems = append(problems, fmt.Sprintf("%s: named absence=%d is not an answered case", label, row.Named))
 		}
 	}
-	for _, lang := range originalNine {
+	for _, lang := range everyTarget {
 		for key := range shape {
 			if !seen[lang][key] {
 				problems = append(problems, fmt.Sprintf("%s / %s (%s): missing required coverage row", lang, key.surface, key.class))
 			}
 		}
 		// C++ generated the fixed corpus before its required coverage run.
-		// Each of the eight ports has a separate fixed-form gate receipt.
+		// Each of the other 17 targets has a separate fixed-form gate receipt.
 		if lang != referenceLang && fixed[lang] != "pass" {
 			problems = append(problems, fmt.Sprintf("%s: fixed form requires pass, got %q", lang, fixed[lang]))
 		}
@@ -128,13 +130,13 @@ func originalCoverageProblems(rows []coverageRow, fixed map[string]string, shape
 
 // coverageReport always renders available evidence before returning failure.
 // Default mode remains an informational report; completion is opt-in.
-func coverageReport(w io.Writer, in, manifestPath, jsonDir, reportsPath string, requireNine bool) error {
-	return coverageReportWithImplementationCheck(w, in, manifestPath, jsonDir, reportsPath, requireNine, originalImplementationProblems, checkoutReadinessRevision)
+func coverageReport(w io.Writer, in, manifestPath, jsonDir, reportsPath string, requireEveryTarget bool) error {
+	return coverageReportWithImplementationCheck(w, in, manifestPath, jsonDir, reportsPath, requireEveryTarget, everyTargetImplementationProblems, checkoutReadinessRevision)
 }
 
 // The internal check parameter lets report tests isolate independent obligations.
 // The public command always supplies the real implementation/corpus checker.
-func coverageReportWithImplementationCheck(w io.Writer, in, manifestPath, jsonDir, reportsPath string, requireNine bool, implementationCheck func(*Manifest) []string, currentRevision func() (string, error)) error {
+func coverageReportWithImplementationCheck(w io.Writer, in, manifestPath, jsonDir, reportsPath string, requireEveryTarget bool, implementationCheck func(*Manifest) []string, currentRevision func() (string, error)) error {
 	rows, fixed, readErr := readCoverage(in)
 	if err := coverageMarkdown(w, rows, fixed); err != nil {
 		return err
@@ -143,16 +145,16 @@ func coverageReportWithImplementationCheck(w io.Writer, in, manifestPath, jsonDi
 	if readErr != nil {
 		problems = append(problems, "coverage input: "+readErr.Error())
 	}
-	if requireNine {
+	if requireEveryTarget {
 		m, err := ReadManifest(manifestPath, jsonDir)
 		if err == nil {
 			implementationProblems := implementationCheck(m)
 			if len(implementationProblems) == 0 {
-				if _, err := fmt.Fprintln(w, "Original-nine implementation/corpus prerequisites: PASS."); err != nil {
+				if _, err := fmt.Fprintln(w, "Every-target implementation/corpus prerequisites: PASS."); err != nil {
 					return err
 				}
 			} else {
-				if _, err := fmt.Fprintln(w, "Original-nine implementation/corpus prerequisites: FAIL."); err != nil {
+				if _, err := fmt.Fprintln(w, "Every-target implementation/corpus prerequisites: FAIL."); err != nil {
 					return err
 				}
 				problems = append(problems, implementationProblems...)
@@ -163,19 +165,19 @@ func coverageReportWithImplementationCheck(w io.Writer, in, manifestPath, jsonDi
 				var shape map[coverageKey]*coverageExpected
 				shape, err = requiredCoverageShape(m, reports, jsonDir)
 				if err == nil {
-					problems = append(problems, originalCoverageProblems(rows, fixed, shape)...)
+					problems = append(problems, everyTargetCoverageProblems(rows, fixed, shape)...)
 				}
 			}
 		}
 		if err != nil {
 			problems = append(problems, "manifest expectations: "+err.Error())
 		}
-		if _, err := fmt.Fprint(w, "## Original nine completion\n\n"); err != nil {
+		if _, err := fmt.Fprint(w, "## Every target completion\n\n"); err != nil {
 			return err
 		}
-		problems = append(problems, originalReadinessProblems(w, in, currentRevision)...)
+		problems = append(problems, everyTargetReadinessProblems(w, in, currentRevision)...)
 		if len(problems) == 0 {
-			if _, err := fmt.Fprintln(w, "PASS: every original-nine surface/class matches the manifest; all cases are answered or give an allowed named refusal, all eight port fixed-form gates pass, the implementation/corpus prerequisites pass, all nine full runtime acceptance receipts pass, and the original-nine roadmap is complete and current."); err != nil {
+			if _, err := fmt.Fprintln(w, "PASS: every target's surface/class matches the manifest; all cases are answered or give an allowed named refusal, all 17 non-reference fixed-form gates pass, the implementation/corpus prerequisites pass, all 18 full runtime acceptance receipts pass, and the every-target roadmap is complete and current."); err != nil {
 				return err
 			}
 		}

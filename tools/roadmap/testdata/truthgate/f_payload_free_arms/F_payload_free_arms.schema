@@ -1,0 +1,18 @@
+package fpayloadfree
+
+type Payload
+{
+    level uint16
+}
+
+union Mixed
+{
+    ping
+    payload Payload
+    pong
+}
+
+fixed table Record
+{
+    choice Mixed
+}

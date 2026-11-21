@@ -1,0 +1,8 @@
+package preserved
+
+type Holder
+{
+    level bits(3)
+    reserved(5)
+    more  uint16
+}

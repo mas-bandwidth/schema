@@ -9,32 +9,31 @@ document disagree, one of them is a bug (see VERSIONING.md).
 **schema** is a small language for describing bitpacked network data, and a
 compiler — written in Go — that translates `*.schema` files into generated
 source code in C, C++, C# (modern), C# (unity), Dart, Elixir, Go, Goose, Java,
-JavaScript, Lobster, Lua, Luau, Moo, Python, Ruby, Rust and Squirrel. The
-default build leaves Moo out: `--lang moo` needs a compiler built with
-`-tags schema_leg_moo`. Every target but Dart, Elixir and Java
-reads and writes through a serialize-family runtime library; those three carry
-the bit reader and writer in the generated code itself and need nothing but
-their own toolchain:
+JavaScript, Lobster, Lua, Luau, Moo, Python, Ruby, Rust and Squirrel. Every
+target is in the default build. Fifteen of the eighteen targets read and write
+through a serialize-family runtime library; the other three, Dart, Elixir and
+Java, carry the bit reader and writer in the generated code itself and need
+nothing but their own toolchain:
 
 | target | runtime library |
 |---|---|
 | C | [serialize.c](https://github.com/mas-bandwidth/serialize.c) |
 | C++ | [serialize](https://github.com/mas-bandwidth/serialize) |
 | C# (modern) | [serialize.cs](https://github.com/mas-bandwidth/serialize.cs) |
-| C# (unity) | [serialize.cs](https://github.com/mas-bandwidth/serialize.cs) ([UNITY.md](UNITY.md)) |
+| C# (unity) | [serialize.cs](https://github.com/mas-bandwidth/serialize.cs), added to the Unity project beside the generated code ([UNITY.md](UNITY.md)) |
 | Dart | none — the generated code is self-contained |
 | Elixir | none — the generated code is self-contained |
 | Go | [serialize.go](https://github.com/mas-bandwidth/serialize.go) |
 | Goose | [serialize.goose](https://github.com/mas-bandwidth/serialize.goose), vendored at `internal/codegen/goose/runtime/` and emitted beside the generated modules |
 | Java | none — the generated code is self-contained |
 | JavaScript | [serialize.js](https://github.com/mas-bandwidth/serialize.js) |
-| Rust | [serialize.rs](https://github.com/mas-bandwidth/serialize.rs) |
 | Lobster | [serialize.lobster](https://github.com/mas-bandwidth/serialize.lobster) |
 | Lua | [serialize.lua](https://github.com/mas-bandwidth/serialize.lua) |
 | Luau | [serialize.luau](https://github.com/mas-bandwidth/serialize.luau) |
 | Moo | [serialize.moo](https://github.com/mas-bandwidth/serialize.moo), vendored at `internal/codegen/moo/runtime/` and emitted beside the generated modules |
 | Python | serialize.py, staged in this repository at `third_party/serialize.py/` and shipped inside each generated package |
 | Ruby | [serialize.rb](https://github.com/mas-bandwidth/serialize.rb), staged at `third_party/serialize.rb/` and vendored into each generated package |
+| Rust | [serialize.rs](https://github.com/mas-bandwidth/serialize.rs) |
 | Squirrel | [serialize.nut](https://github.com/mas-bandwidth/serialize.nut) |
 
 The runtimes are bit-for-bit wire compatible, pinned in CI with shared golden
@@ -767,9 +766,8 @@ FloatExpr   = float expression over float literals, int literals and const names
   On the TABLE wire a field at its declared default elides and an
   absent field reads as it, whatever the kind (SPEC-TABLES.md §4), so the
   string, bytes and flags defaults are part of that wire's contract exactly
-  as a scalar's is. C and C++ carry all three on both wires. The other seven
-  built-in backends carry them for packet-only fields and refuse a default
-  reachable from any table by name.
+  as a scalar's is. Every built-in backend carries all three on the table
+  wire and on the packet wire.
   **On the packet wire, defaults initialize storage without eliding fields.**
   A selected union payload starts at these construction values before its
   fields are decoded (§4.8). The ordinary field encodings still apply,
@@ -825,7 +823,7 @@ FloatExpr   = float expression over float literals, int literals and const names
   `const name =` declaration); `if` / `switch` / `align` / `reserved` are
   keywords; any other identifier begins a field. The grammar is LL(2), and
   hand-written recursive descent is the intended implementation.
-- **Enum variants** are comma-separated identifiers, trailing comma allowed.
+- **Enum variants** are identifiers separated by a comma or a newline (§4.1), trailing comma allowed.
   **Every enum has `None = 0` implicitly — universal, never declared.**
   Declared variants pack tightly from 1; max derives as the count. An enum
   takes no `| max` attribute: its wire width derives from its variant count
@@ -851,7 +849,7 @@ FloatExpr   = float expression over float literals, int literals and const names
     because mask tests are how flag state is consumed, **plus the `Count`
     constant** — the declared variant count, the one `.Count` in the
     language — every packet target emits it in its own spelling:
-    `CapsCount` in C++, C#, Go, JavaScript, Lua, Luau, Squirrel, MOO,
+    `CapsCount` in C++, C#, Go, JavaScript, Lua, Luau, Squirrel, Moo,
     Goose and Lobster; `CAPS_COUNT` in C, Rust and Java; `capsCount` in Dart;
     `caps_count/0` in Elixir; `Caps.Count`, a class attribute, in Python; `Caps::Count` in Ruby.
     **`flags` is a
@@ -994,8 +992,9 @@ sequence    uint16
   writer always writes the field and a reader refuses a record missing it
   (`missing_required`, the missing field named). It is refused on a packet
   `type` field, on an optional `?T` and on a `fixed table`'s field, and it
-  moves neither the protocol id nor the build version. Every other language
-  refuses the construct at generation until its turn (compiler/generate.go).
+  moves neither the protocol id nor the build version. Every target in the
+  default build generates it; the central refusal in compiler/generate.go
+  remains for a target that does not register the construct.
 - **`was = "old_name"`, the rename attribute, table closures only**
   (SPEC-TABLES.md §5). A table field's wire id is the hash of its name, so a
   bare rename would orphan every byte ever written under the old one; `was`
@@ -1077,7 +1076,7 @@ type Quat | quat4
   table ShipConfig | designer_facing
   {
       /// The hull's structural health. A hull at zero is destroyed.
-      health   float32 = 100.0 | ui_slider, min = 0.0, max = 1000.0
+      health   float32 = 100.0 | ui_slider, min = 0.0, max = 1000.0, resolution = 0.1
       texture  uint64          | asset_ref
       nickname string(32)      | localized
   }
@@ -1191,7 +1190,8 @@ enum and the generated `<Union>Type` tag enums — carries its
 extent as a member named `Max` in the target's own convention: `E::Max`
 (C++), `Schema.EMax` (C#, a typed constant beside the enum, never a member
 a variant's value could alias), `EMax` (Go), `E::MAX` (Rust), `EMax` (JS), `E_MAX`
-(C), `E.max` (Dart), `E.MAX` (Java), `E.max/0` (Elixir). Its value is the enum's
+(C), `E.max` (Dart), `E.MAX` (Java), `E.max/0` (Elixir), `E.Max` (Lua, Luau,
+Squirrel, Python), `E::Max` (Ruby), `EMax` (Goose, Lobster, Moo). Its value is the enum's
 max — the same number `E.Max` names in schema
 expressions (§4.2): the highest wire-legal value, which under the
 sentinel-zero convention is the count of real variants. Application code
@@ -1564,7 +1564,8 @@ All compile errors with positions:
   any L, and the rest — checks a declaration or field name against the
   reserved words of all seventeen languages: C, C++, C#, Go, Rust, Java,
   JavaScript, Dart, Elixir, Lua, Luau, Moo, Squirrel, Goose, Lobster,
-  Python and Ruby. The words
+  Python and Ruby. That is seventeen word lists for the eighteen targets:
+  C# (modern) and C# (unity) read the one C# list. The words
   live in ONE table in the checker (a language's keywords and literals, plus
   the predeclared names its generated code would shadow: Go's universe block,
   Dart's dart:core types and Object members, Elixir's arity-0 Kernel
@@ -1688,17 +1689,18 @@ The byte-string tightening is what lets the targets agree:
 **A successful read terminates the C string.** In C and C++, a successful
 read writes the **zero byte at index `length`**, always, so the buffer is a
 valid C string after every accepted read. That is what the `+ 1` in those
-two storage rows is for (§6.1). In C#, Rust, Java, JavaScript, Dart,
-Elixir and Go, the used length is the truth, and a successful read writes
-nothing past it, under §5's tail rule.
+two storage rows is for (§6.1). In every other target, the used length is
+the truth, and a successful read writes nothing past it, under §5's tail
+rule.
 
 For every legal write the wire bits are identical to `serialize_string` over
 a buffer of N + 1.
 
 **Every packet target uses the same framing** — length over [0, N], then
-align, then raw bytes. MOO emits a runtime `serializeString` call on both write
-and read, and Python a runtime `serialize_string` call on both; C, C++, C#, Rust, Java, JavaScript, Dart, Elixir, Go, Lua, Luau,
-Squirrel, Goose and Lobster compose the framing from primitives. This is a
+align, then raw bytes. Moo emits a runtime `serializeString` call on both write
+and read, and Python and Ruby a runtime `serialize_string` call on both; C,
+C++, C# (modern), C# (unity), Rust, Java, JavaScript, Dart, Elixir, Go, Lua,
+Luau, Squirrel, Goose and Lobster compose the framing from primitives. This is a
 generated-code consequence, stated so no backend discovers it late: the
 runtimes' `serialize_string` is the **wire oracle** for `string(N)`, not
 necessarily the emitted call. C# and Rust have no alternative: the §6.1
@@ -1708,8 +1710,9 @@ buffer but `serialize_string` takes `&mut String`, which allocates.
 Dart, Java and Elixir have no runtime to call.
 C++, C, Go and JavaScript may use their runtime string call for the framing
 and do not. **The encoding check and the interior-null check hold in every packet
-target, in every build.** MOO gets both checks from its runtime
-`serializeString` call; the other packet targets enforce them from their
+target, in every build.** Moo gets both checks from its runtime
+`serializeString` call, and Python and Ruby from their runtime
+`serialize_string` call; the other packet targets enforce them from their
 emitted read paths. Dart, Java and Elixir have no runtime at all, while
 classic C++ read appends `'\0'` and would silently truncate.
 
@@ -1751,15 +1754,20 @@ makes illegal states representable — zero payloads, or several at once.
 ```
 union ColliderShape
 {
-    box     BoxCollider
+    cube    BoxCollider
     sphere  SphereCollider
     capsule CapsuleCollider
     hull    HullCollider
 }
 ```
 
+(The arm is `cube`, not `box`: `box` is a reserved word in Rust, and §4.6's
+target-name safety refuses a name that is reserved in any target.)
+
 An arm is a FIELD LINE, so an arm's type is any type a field's is, and an arm
-may name no type at all:
+may name no type at all. An arm whose payload is not a declared `type` makes
+the union a table-closure construct (below), so this union is held by a
+table:
 
 ```
 union Value
@@ -1768,6 +1776,11 @@ union Value
     label  string(64)
     offset Vec3
     ping
+}
+
+table Setting
+{
+    value Value
 }
 ```
 
@@ -1961,7 +1974,7 @@ union Value
   nothing heap-allocates per value. Elixir, where no term is mutable and
   pre-allocated storage buys nothing, holds the value as `nil` (None),
   `{:arm, payload}`, or a payload-free arm's bare atom. Rust holds the value as a real
-  `enum <Union> { None, Box(BoxCollider), ... }`, `None` the default — and
+  `enum <Union> { None, Cube(BoxCollider), ... }`, `None` the default — and
   STILL emits the `<Union>Type` tag newtype beside it: the tag surface
   (constants, `Max`) is uniform across targets whatever the value
   representation. Every union also gets `Write<Union>`/`Read<Union>` wire
@@ -2185,17 +2198,20 @@ layout as kind `5` (SPEC-TABLES.md §2.11, §3.4), because the fixed layout's
 kind set is closed and gains no member in this card; the fixed form therefore
 does not tell the two spellings apart, and says so.
 
-**The value in each language is that language's own time type, and Go carries
-it first.** In Go the field is the `int64` count and the `time.Time` is the
-accessor pair generated beside it, `<Field>Time()` in UTC and
+**Every target in the default build generates it, and the field is the
+nanosecond count.** In every target the field holds the signed 64-bit count
+itself (`int64_t` in C and C++, for example). Go also generates a `time.Time`
+accessor pair beside the field, `<Field>Time()` in UTC and
 `Set<Field>Time(t)`; the setter refuses BY NAME a `t` whose nanosecond count
 is outside `Time.UnixNano`'s domain — the years 1678 through 2262 — rather
 than storing a wrapped number, because an undefined conversion has no wire
-value at all, and Go's zero `time.Time{}` is the zero time. Every other target
-REFUSES the construct BY NAME until its own turn, the diagnostic naming the
-construct, the target and that Go carries it first (SPEC-TABLES.md §11). **No
-target converts through a float and none loses the count**: the nanoseconds
-ride the wire as an integer and are placed into the host type as an integer.
+value at all, and Go's zero `time.Time{}` is the zero time. The compiler
+keeps a central refusal for a target that does not register the construct
+(compiler/generate.go), the diagnostic naming the construct, the target and
+the rule (SPEC-TABLES.md §11); no target in the default build is refused by
+it. **No target converts through a float and none loses the count**: the
+nanoseconds ride the wire as an integer and are placed into the host type as
+an integer.
 
 **The text form is RFC 3339.** A timestamp's JSON is a STRING, RFC 3339 with
 nanosecond precision and a `Z` offset — `"2026-10-15T12:34:05.123456789Z"`,
@@ -2255,8 +2271,10 @@ face untrusted bytes; writers do not.
 
 The packet `Write` contract includes row 8 (§5.1): a zero byte or used bytes
 that are not well-formed UTF-8. Each leg checks writes by its own mechanism.
-C, C++, C#, Rust, Java and Dart use a debug-only assert; Go, JavaScript,
-Elixir, Lua, Luau, Squirrel, MOO, Goose, Python and Ruby use a refusal in every build.
+C, C++, C# (modern), Rust, Java, Dart and Lobster use a debug-only assert;
+Go, JavaScript, Elixir, Lua, Luau, Squirrel, Moo, Goose, Python and Ruby use a
+refusal in every build. The C# (unity) packet writer does not check row 8; its
+reader refuses the same text (§4.7).
 The reader independently refuses the same ill-formed text in every build
 (§4.7). Ranges are trusted inputs everywhere: generated code never feeds
 attacker-influenced values as min/max.
@@ -2326,6 +2344,13 @@ write-side check and no write-side refusal, and none is a defect. Reads are the
 library's responsibility, because they arrive from the network, and every read
 check runs in every leg, in every build (§4). (docs/rulings.json `write-refusal`, 2026-11-10)
 
+The table below and the per-writer lists after it cover fifteen of the
+eighteen legs, the ones the `write-refusal` ruling places. The other three
+state their mechanism in their
+port documents: in Python and Ruby a write raises `InvalidValue`
+(PORT-PYTHON.md, PORT-RUBY.md), and C# (unity) rides its write contracts on
+`Debug.Assert`, gone from a release build (UNITY.md).
+
 | leg | idiom | build | how a refusal surfaces |
 |---|---|---|---|
 | C++ | `schema_assert` (tables), `serialize_assert` (packets) | debug: `NDEBUG` removes it | the assert; a routed `schema_assert` handler sees it first |
@@ -2340,7 +2365,7 @@ check runs in every leg, in every build (§4). (docs/rulings.json `write-refusal
 | Lua | none | every build | `nil, "invalid_value: <Owner>.<field>"` |
 | Luau | none | every build | `nil, { name = "invalid_value", field = "<Owner>.<field>" }` |
 | Squirrel | none | every build | `null`, the reason in `SaveReason` |
-| MOO | none | every build | `nil, { name, field }` |
+| Moo | none | every build | `nil, { name, field }` |
 | Goose | none | every build | `SaveRefuseInvalidValue`, named by `save_refusal_name` |
 | Lobster | `assert` (packets; `--runtime-no-asserts` removes it) | debug packets; every build tables | `SaveChecked`'s `TableRefuseInvalidValue`; `save_reasoned`'s reason |
 
@@ -2390,7 +2415,7 @@ Each leg's variable `Save` and its `Measure`:
 
 - **Squirrel**: 1–8 every build; 9 unchecked; 10 every build
 
-- **MOO**: 1–8 every build; 9 unchecked; 10 every build
+- **Moo**: 1–8 every build; 9 unchecked; 10 every build
 
 - **Goose**: 1–8 and 10 every build; 9 not audited
 
@@ -2511,7 +2536,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - packet `Write`: 2–6 every build; 1 every build, raising for `int32` and `int64`; 7 raises; 11 every build, held by `packet-write-bareint-squirrel` (a negative `uint64` is the same 64 bits as one in the width, docs/PORT-SQUIRREL.md); 8 and 10 every build, refusing with `false`
 
-- **MOO**
+- **Moo**
 
   - `FixedSave`: 1–8 every build
 
@@ -2624,12 +2649,15 @@ Per `type`, per target:
    `Flush`): a nested write's count is the enclosing stream's position, so a
    second return value would only repeat that counter at every call site.
 3. **`Read(buffer, object) -> ok/error`** — straight-line read code with full
-   validation, in each target's native error idiom — the list covers C, C++, C#, Rust, Java, JavaScript, Dart, Elixir and Go:
- `int` 1/0 in C, `bool` in C++, Dart and Java, `bool` +
-   latched `Error` in C#, `error` in Go, `Result` in Rust, `{:ok, value}` or
-   `:error` in Elixir, and `bool` + the stream's latched `error` in JS
-   (generated validation refusals return `false` latching nothing, so callers
-   tell the two channels apart exactly as in C#). The consumed size (§5)
+   validation, in each target's native error idiom:
+   `int` 1/0 in C, `bool` in C++, Dart, Java, Lobster and Squirrel, `bool` +
+   latched `Error` in C# (modern and unity alike), `error` in Go, `Result` in
+   Rust, `{:ok, value}` or `:error` in Elixir, `bool` + the stream's latched
+   `error` in JS, Lua and Luau and its latched `refusal()` in Moo (in all four
+   generated validation refusals return `false` latching nothing, so callers
+   tell the two channels apart exactly as in C#), `bool` with the reason in
+   `serialize_error(s)` in Goose, and the value or a raised `Refused` in
+   Python and Ruby. The consumed size (§5)
    surfaces per target idiom — a success value that carries bits consumed
    where the idiom allows, an out-parameter where it does not. **In ELIXIR it
    is a SECOND ENTRY and not a second argument**, a binary carrying no
@@ -2654,8 +2682,9 @@ Per `type`, per target:
 6. **For a `union` declaration (§4.8):** the `<Union>Type` tag enum
    (`None = 0`, then the variants in declared order) with its `Max`
    extent in the §4.2 spelling — a member of the enum's own scope in C++,
-   Rust, Dart, Java and Elixir, a separate constant beside it in C#, Go,
-   JS and C — and its debug-name function, the value
+   Rust, Dart, Java, Elixir, Lua, Luau, Squirrel, Python and Ruby, a
+   separate constant beside it in C#, Go, JS, C, Goose, Lobster and Moo —
+   and its debug-name function, the value
    representation in each language's own idiom, and
    `Write<Union>`/`Read<Union>` with the tag framing — representation per
    target, behavior identical.
@@ -3025,7 +3054,7 @@ it), because a fallible read chain otherwise decays below the inliner's
 cold-callsite threshold.
 
 "Sequential field operations" is the C and C++ shape, not every port's.
-Rust, Go, C#, Dart, Elixir, Java and the JavaScript flat form fold each
+Rust, Go, C# (modern), C# (unity), Dart, Elixir, Java and the JavaScript flat form fold each
 maximal run of fixed-width fields into whole words at generation time:
 values are packed with literal shifts and masks and handed over a word at a
 time, and a read unpacks them the same way behind one bounds check per word.
@@ -3044,10 +3073,16 @@ closing.
 
 ### 6.3 Per-target notes
 
-C, C++, C#, Rust, Java, JavaScript, Dart, Elixir and Go are covered below, in the two groups §1 draws. The six that read
-and write through a serialize-family runtime:
+C, C++, C# (modern), Rust, Java, JavaScript, Dart, Elixir and Go are covered
+below, in the two groups §1 draws. The remaining targets — C# (unity), Goose,
+Lobster, Lua, Luau, Moo, Python, Ruby and Squirrel — all read and write
+through a serialize-family runtime (§1), and their per-target notes are their
+port documents: UNITY.md, PORT-GOOSE.md, PORT-LOBSTER.md, PORT-LUA.md,
+PORT-LUAU.md, PORT-MOO.md, PORT-PYTHON.md, PORT-RUBY.md and
+PORT-SQUIRREL.md. The six covered here that read and write through a
+serialize-family runtime:
 
-| | C | C++ | C# | Go | JavaScript | Rust |
+| | C | C++ | C# (modern) | Go | JavaScript | Rust |
 |---|---|---|---|---|---|---|
 | emits against | `serialize_write_stream_t`/`serialize_read_stream_t` free functions | `WriteStream`/`ReadStream` methods (or `serialize_*`-equivalent calls) | sealed `WriteStream`/`ReadStream` (`ref` params, `bool` returns + sticky `Error`) | `WriteStream`/`ReadStream` concrete types (no interface dispatch) | methods on the stream parameter — generated JS never imports the runtime | `WriteStream`/`ReadStream` via the `Stream` trait, monomorphized |
 | error idiom | `int` 1/0 early-out; the stream latches the error, generated validation refusals included (`serialize_read_fail`) | `return false` early-out | `bool` early-out; counts checked before loops; latched `Error` for callers | sticky stream errors; counts checked before loops; `return stream.Err()` | `bool` early-out; validation failures return false without latching, stream failures latch on `stream.error` | `?` propagation of `serialize::Error` |
@@ -3081,7 +3116,7 @@ Go, zero third-party dependencies, one static binary: `schema`.
 
 ```
 schema check      [--verbose] [dir|files...]   // parse + typecheck; exit code for CI
-schema generate   [--lang c|cpp|cs|dart|elixir|go|java|js|rust]
+schema generate   [--lang c|cpp|cs|dart|elixir|go|goose|java|js|lobster|lua|luau|moo|python|ruby|rust|squirrel|unity]
                   [--out <dir>] [--verbose] [dir|files...]
 schema id         [dir|files...]               // print the protocol id
 schema projection [dir|files...]               // print the wire shape projection (§3.1)
@@ -3105,6 +3140,10 @@ schema help
 serve the type wire this document specifies; the other seven belong to the
 table wire and are specified in SPEC-TABLES.md, because one binary reads one
 set of declarations and both wires are declared in it.
+
+`--lang cs` and `--lang unity` are the two C# generators, C# (modern) and
+C# (unity). Every target, `moo` included (PORT-MOO.md), is compiled into the
+default build.
 
 Success is silent. Commands whose printed output is their answer (`id`,
 `projection`, `build-version`, `version`) print it; everything else prints
@@ -3357,9 +3396,11 @@ Rows keep their numbers permanently — code and corpus cite them as `§9 qN`.
 Every row to date is settled, deferred with its design banked, or discarded.
 
 1. ~~Strings as byte strings~~ — settled: §4.7. One shape for
-   `string`/`bytes`; every backend composes the wire from primitives; the
-   UTF-8 encoding check and the interior-null check are generated-code
-   validation in every target.
+   `string`/`bytes`; one framing in every backend, emitted as the runtime
+   string call in Moo, Python and Ruby and composed from primitives in the
+   others; the UTF-8 encoding check and the interior-null check hold in
+   every target, from the runtime call in those three and as generated-code
+   validation in the rest.
 2. ~~Storage-type overrides~~ — settled by the integer family: storage is
    declared by the type name (`thrust int8 | min = 0, max = 100`); no
    override mechanism exists.
@@ -3385,7 +3426,8 @@ Every row to date is settled, deferred with its design banked, or discarded.
    code.
 9. ~~Explicit enum variant values, flag enums, the separator~~ — settled:
    canonical enums only (§4.2) — explicit and sparse values are declined
-   permanently; `flags` is supported (§4.2); variants are comma-separated.
+   permanently; `flags` is supported (§4.2); variants are separated by a comma or a
+   newline (§4.1).
 10. ~~Sentinel-terminated collections~~ — deferred to the delta pass,
     which designs all three measured terminator idioms at once
     (bool-continuation, sentinel value, stop action). Readers are

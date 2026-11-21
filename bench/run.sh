@@ -267,8 +267,8 @@ if beam_pinned elixir && beam_pinned erl; then
 fi
 # Goose (docs/PORT-GOOSE.md): the pinned compiler `make dist-goose` installs,
 # or $GOOSE. Its runtime is vendored into the generated unit, so like the
-# codegen-only legs there is no runtime checkout; the target is behind the
-# schema_leg_goose tag, so the leg builds build/schema-goose itself.
+# codegen-only legs there is no runtime checkout; the leg builds
+# build/schema-goose itself (a plain build: goose is a built-in target).
 GOOSE_BIN="${GOOSE:-$PWD/dist/goose-v2026.2-linux-x64/goose}"
 GOOSE_VERSION="$("$GOOSE_BIN" version 2>/dev/null | head -1 || true)"
 
@@ -697,7 +697,7 @@ if [ -z "$ONLY" ] || [ "$ONLY" = goose ]; then
                 echo "== goose: reusing build/bench/schema_bench_goose ==" >&2
             else
                 echo "== goose: build (goose build -O2) ==" >&2
-                go build -tags schema_leg_goose -o build/schema-goose ./cmd/schema
+                go build -o build/schema-goose ./cmd/schema
                 rm -rf build/bench/goose-src && mkdir -p build/bench/goose-src
                 ./build/schema-goose generate --lang goose --out build/bench/goose-src bench/corpus/Bench.schema
                 cp bench/goose/main.goose build/bench/goose-src/

@@ -30,7 +30,7 @@ func TestSpecTablesCurrent(t *testing.T) {
 	s66 := specTablesSection(t, page, "### 6.6 Retain-unknown", "## 7. The cooked form")
 	s161 := specTablesSection(t, page, "### 16.1 The surface", "### 16.2 The mapping")
 	s163 := specTablesSection(t, page, "### 16.3 What the writer refuses", "### 16.4 The key")
-	s1612 := specTablesSection(t, page, "### 16.12 The outside oracle", "### 16.13 Any JSON value")
+	s1612 := specTablesSection(t, page, "### 16.12 The outside oracle", "### 16.13 Withdrawn: `json = \"value\"`")
 	w0 := specTablesSection(t, page, "**W0. The result is the whole text or nothing.**", "**W1. The graph pass**")
 
 	// the page wraps at a fixed width, so a sentence is matched with its line
@@ -139,12 +139,14 @@ func TestSpecTablesCurrent(t *testing.T) {
 			text: s161,
 			wants: []string{
 				"the FIXED class in every table backend",
-				"C++, C, C#, Dart, Elixir, Go, Goose, Java, JavaScript, Lobster, Lua, Luau, MOO, Rust and Squirrel",
+				"C, C++, C# (modern), C# (unity), Dart, Elixir, Go, Goose, Java, JavaScript, Lobster, Lua, Luau, Moo, Python, Ruby, Rust and Squirrel",
 				"ELIXIR HAS A WALK TO MEASURE",
 				"it emits the text form and both table wires",
 			},
 			stales: []string{
 				"the FIXED class in all nine",
+				"C++, C, C#, Dart, Elixir, Go, Goose, Java, JavaScript, Lobster, Lua, Luau, MOO, Rust and Squirrel",
+				"the absence is already made one level up",
 				"ELIXIR HAS NO WALK TO MEASURE",
 				"it emits no text form and no table wire",
 			},

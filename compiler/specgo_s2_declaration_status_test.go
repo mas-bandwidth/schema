@@ -36,8 +36,8 @@ func TestSpecGoS2DeclarationStatus(t *testing.T) {
 		},
 		{
 			name:  "§2.9 every registered list target carries []T",
-			holds: []string{"Go, C, C#, Rust, Dart, Java, JavaScript and Elixir"},
-			gone:  []string{"the tool's COOK and UNCOOK halves do not lay out the element arrays yet"},
+			holds: []string{"**Every target carries the\nconstruct** — Go, C, C# (modern), C# (unity), Dart, Elixir, Goose, Java,"},
+			gone:  []string{"the tool's COOK and UNCOOK halves do not lay out the element arrays yet", "Go, C, C#, Rust, Dart, Java, JavaScript and Elixir"},
 		},
 		{
 			name:  "§2.9 TableList.At returns nil out of range",

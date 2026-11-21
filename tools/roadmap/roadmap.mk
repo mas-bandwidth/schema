@@ -28,7 +28,7 @@ ROADMAP_DATA_DIR = build/roadmap-data-check
 # The page itself is re-rendered on main in one commit (`make roadmap`);
 # `make roadmap-page-check` holds the committed tables to the render, nightly,
 # on dispatch, and for whoever re-renders the page.
-.PHONY: roadmap roadmap-check roadmap-data-check roadmap-page-check roadmap-check-negative-control roadmap-original-nine-check roadmap-test
+.PHONY: roadmap roadmap-check roadmap-data-check roadmap-page-check roadmap-check-negative-control roadmap-every-target-check roadmap-test
 roadmap:
 	@command -v $(SBCL) >/dev/null 2>&1 || { echo "make roadmap REFUSES: sbcl is not installed (tools/roadmap/render.lisp needs it)"; exit 2; }
 	$(SBCL) --script tools/roadmap/render.lisp docs/roadmap.sexp ROADMAP.md
@@ -62,11 +62,12 @@ roadmap-check-negative-control:
 	if $(SBCL) --script tools/roadmap/render.lisp --check docs/roadmap.sexp $(ROADMAP_NC_DIR)/inside.md >/dev/null 2>&1; then echo "NEGATIVE CONTROL FAILED: the drift check passed a paragraph inside a block"; exit 1; fi; \
 	echo "OK: roadmap-check refuses an \"X update:\" paragraph put back, inside a block and outside by anyone but Glenn"
 
-# Release/conformance acceptance: the original nine must be complete in all
-# three rendered sections. Ordinary roadmap-check still permits honest TODOs.
-roadmap-original-nine-check:
-	@command -v $(SBCL) >/dev/null 2>&1 || { echo "make roadmap-original-nine-check REFUSES: sbcl is not installed"; exit 2; }
-	$(SBCL) --script tools/roadmap/render.lisp --check --require-original-nine docs/roadmap.sexp ROADMAP.md
+# Release/conformance acceptance: every target (all 18 columns) must be complete
+# in all three rendered sections; a :not-applicable cell with a reason in :note
+# owes nothing. Ordinary roadmap-check still permits honest TODOs.
+roadmap-every-target-check:
+	@command -v $(SBCL) >/dev/null 2>&1 || { echo "make roadmap-every-target-check REFUSES: sbcl is not installed"; exit 2; }
+	$(SBCL) --script tools/roadmap/render.lisp --check --require-every-target docs/roadmap.sexp ROADMAP.md
 
 roadmap-test:
 	@command -v $(SBCL) >/dev/null 2>&1 || { echo "make roadmap-test REFUSES: sbcl is not installed (tools/roadmap/render.lisp needs it)"; exit 2; }

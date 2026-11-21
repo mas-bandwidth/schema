@@ -57,12 +57,11 @@ flipped byte in variant 3 and requires each red by its own message.
 ## The nightly-readiness entry
 
 `test/conformance/nightly-readiness python` runs the leg's acceptance in the
-shape Goose and MOO run theirs (`test/conformance/nightly-readiness.md`,
+shape Goose and Moo run theirs (`test/conformance/nightly-readiness.md`,
 "Python"): `implementation --lang python` through
-`build/conformance-harness-python`, the harness built with
-`schema_leg_python` (`make/python-ci-release.mk`; the untagged harness refuses
-the name); the `python`, `pythontable` and `lockfile` packages whole under
-`SCHEMA_SLOW` and the tag; the packet probes under both pins; the defaults,
+`build/conformance-harness-python`, a plain build of the harness
+(`make/python-ci-release.mk`; python is a built-in target); the `python`,
+`pythontable` and `lockfile` packages whole under `SCHEMA_SLOW`; the packet probes under both pins; the defaults,
 UTF-8 and finite packet gates; the fixed writer's lineage, the message form
 against the C++ reference and the bench leg's gate, each with its control; the
 wire fuzz over `build/conformance-python` under the current pin, plain and
@@ -73,5 +72,5 @@ with its 600-second cap lifted, as Goose's are. The contract tests in
 copied recipes for Python as for every other language.
 
 The nightly workflow (`nightly-conformance.yml`) runs its readiness step for
-the original nine only, as it does for Goose and MOO, and its port job has no
-Python pin step; adding Python there is a change to that workflow.
+every port leg, Python included, and its port job installs the Python pins
+for a leg whose `ci.json` names them (`test/conformance/python/ci.json`).

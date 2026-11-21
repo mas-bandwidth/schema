@@ -12,6 +12,7 @@ import (
 	"streamdemo"
 	"tblg1"
 	"tblp2"
+	"tblvaluedefaults"
 	"tblvarevo1"
 	"tblvarevo2"
 	"tblvarevo3"
@@ -46,6 +47,11 @@ var retentionCodecs = []retentionCodec{
 	}, cooktorture.TortureCookLoadMeasure, cooktorture.TortureCookLoadRetain, cooktorture.TortureCookMeasureRetain, cooktorture.TortureCookSaveRetain, func(r *cooktorture.TableReport) report {
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}, func(r *cooktorture.TableReport) (int32, int32) { return r.Retained, r.RetainLost }),
+	retainRow("tblvaluedefaults", "VarDefaults", func() *tblvaluedefaults.TableRetain {
+		return &tblvaluedefaults.TableRetain{Bytes: make([]byte, 1<<20), Ids: make([]tblvaluedefaults.TableRetainID, (1<<20)/8)}
+	}, tblvaluedefaults.VarDefaultsLoadMeasure, tblvaluedefaults.VarDefaultsLoadRetain, tblvaluedefaults.VarDefaultsMeasureRetain, tblvaluedefaults.VarDefaultsSaveRetain, func(r *tblvaluedefaults.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}, func(r *tblvaluedefaults.TableReport) (int32, int32) { return r.Retained, r.RetainLost }),
 	retainRow("cooktorturewide", "TortureWideCook", func() *cooktorturewide.TableRetain {
 		return &cooktorturewide.TableRetain{Bytes: make([]byte, 1<<20), Ids: make([]cooktorturewide.TableRetainID, (1<<20)/8)}
 	}, cooktorturewide.TortureWideCookLoadMeasure, cooktorturewide.TortureWideCookLoadRetain, cooktorturewide.TortureWideCookMeasureRetain, cooktorturewide.TortureWideCookSaveRetain, func(r *cooktorturewide.TableReport) report {
