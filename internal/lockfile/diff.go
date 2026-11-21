@@ -334,6 +334,24 @@ func diffValues(lk, lv *ValueList, policy Policy) error {
 				where, lv.Values[i], valueRule(lk, lv, want, lv.Values[i]), lk.Child())
 		}
 		if lk.Decl == DeclUnion {
+			// A SCALAR ARM ON BOTH SIDES is judged by the monotone law, fact
+			// for fact, as a field is (docs/FIXED-FORM-ALGORITHM.md §5.1: "each
+			// payload WIDENS"): a narrowed range or a narrower integer is
+			// refused, and a wider one is a change the record must carry. An
+			// arm that names a declaration is judged in that declaration's own
+			// block and here by its name; an arm an older rendering recorded
+			// by spelling alone is held to that spelling until `schema lock`
+			// writes its facts down.
+			if wantArm, gotArm := valueArm(lk, i), valueArm(lv, i); wantArm != nil && gotArm != nil {
+				widened, what, err := monotoneAt(where, *wantArm, *gotArm, false)
+				if err != nil {
+					return err
+				}
+				if widened && policy == Current {
+					return stale(lv.Decl, lv.Name, valueName(lv, i), what)
+				}
+				continue
+			}
 			wantP := payloadTypeName(valuePayload(lk, i))
 			gotP := payloadTypeName(valuePayload(lv, i))
 			if wantP != gotP {
@@ -346,9 +364,10 @@ func diffValues(lk, lv *ValueList, policy Policy) error {
 		switch {
 		case wantDep && !gotDep:
 			// DEPRECATION IS ONE WAY, one level in (docs/SPEC-TABLES.md
-			// §2.15): the variant keeps its ordinal, and every writer since the
-			// marker went on wrote the element default into its slot.
-			return fmt.Errorf("%s, is deprecated in the lock and live in the declaration: undeprecated (deprecated -> live) — deprecation is ONE WAY: every writer since the slot was deprecated wrote the default into it, so what would come back is not data (docs/FIXED-FORM-BILL-READS-BACKWARD.md §12.3, docs/SPEC-TABLES.md §21.1, docs/SPEC-TABLES.md §2.15); leave it `| deprecated`",
+			// §2.15): the variant keeps its ordinal, every strict writer since
+			// the marker went on refused it, and every reader read it as the
+			// field's default.
+			return fmt.Errorf("%s, is deprecated in the lock and live in the declaration: undeprecated (deprecated -> live) — deprecation is ONE WAY: while the variant was deprecated every writer refused it and every reader read it as the field's default, so the marker stays on for life (docs/FIXED-FORM-BILL-READS-BACKWARD.md §12.3, docs/SPEC-TABLES.md §21.1, docs/SPEC-TABLES.md §2.15); leave it `| deprecated`",
 				where)
 		case !wantDep && gotDep && policy == Current:
 			return stale(lv.Decl, lv.Name, valueName(lv, i), "deprecated in the declaration and live in the lock")

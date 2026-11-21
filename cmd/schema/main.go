@@ -103,14 +103,23 @@ func main() {
 		// it: one line, `FORM <n> <name>`, or a refusal that names the byte.
 		// A tool that read a file and never told you which of the five arms
 		// it was would be hiding the one fact the rest of the read depends on.
-		args, wires := splitWireFiles(fs.Args())
-		for _, w := range wires {
-			fmt.Printf("%s: %s\n", w.path, ir.WireFormLine(w.head))
+		args, wires, err := splitWireFiles(fs.Args())
+		if err != nil {
+			fail(err)
+		}
+		// A REFUSED BYTE IS A FAILING CHECK: the exit is nonzero once the
+		// unit, if one was named too, has had its own answer.
+		lines, wireRefused := wireFormLines(wires)
+		for _, l := range lines {
+			fmt.Println(l)
 		}
 		// A CHECK OVER FILES ALONE IS FINISHED: there is no unit to compile,
 		// and defaulting to the working directory would compile something the
 		// caller never named.
 		if len(wires) > 0 && len(args) == 0 {
+			if wireRefused {
+				os.Exit(1)
+			}
 			return
 		}
 		paths, err := compiler.GatherPaths(args)
@@ -132,6 +141,9 @@ func main() {
 		}
 		if verbose {
 			fmt.Printf("ok: package %s, protocol id 0x%016x\n", unit.Package, unit.ProtocolId)
+		}
+		if wireRefused {
+			os.Exit(1)
 		}
 	case "id":
 		unit := loadUnit(c, os.Args[2:])
@@ -918,11 +930,17 @@ type wireFile struct {
 //
 // A path that does not exist is left in the schema arguments, so its "no such
 // file" comes from the loader that owns that message and not from here.
-func splitWireFiles(args []string) (schemas []string, wires []wireFile) {
+func splitWireFiles(args []string) (schemas []string, wires []wireFile, err error) {
 	for _, a := range args {
 		if strings.HasSuffix(a, ".schema") {
 			schemas = append(schemas, a)
 			continue
+		}
+		// `Ships.Schema` is a schema source in the wrong spelling, never a
+		// saved file: read as one, its `p` would be refused as a form byte
+		// and the source would go unchecked
+		if strings.EqualFold(filepath.Ext(a), ".schema") {
+			return nil, nil, fmt.Errorf("%s: a schema file's extension is .schema in lowercase; rename the file", a)
 		}
 		info, err := os.Stat(a)
 		if err != nil || info.IsDir() {
@@ -941,7 +959,20 @@ func splitWireFiles(args []string) (schemas []string, wires []wireFile) {
 		_ = f.Close()
 		wires = append(wires, wireFile{path: a, head: head[:n]})
 	}
-	return schemas, wires
+	return schemas, wires, nil
+}
+
+// wireFormLines is each saved file's form line (docs/SPEC-TABLES.md §3),
+// `<path>: <line>`, and whether any byte was refused.
+func wireFormLines(wires []wireFile) (lines []string, refused bool) {
+	for _, f := range wires {
+		line := ir.WireFormLine(f.head)
+		lines = append(lines, f.path+": "+line)
+		if strings.HasPrefix(line, "REFUSED") {
+			refused = true
+		}
+	}
+	return lines, refused
 }
 
 // loadUnit gathers the unit's files and compiles them, exiting nonzero on any

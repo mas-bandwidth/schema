@@ -19594,11 +19594,11 @@ constexpr TableFixedDst RangedWidthsFixedDst[] = {
 // run after the guarded payload it replaces: the entries that are nearly
 // all of a plan never test a guard at all.
 constexpr TableFixedEntry RangedWidthsFixedPlan[] = {
-    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // b8
-    { 4u, 4u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // b8
+    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // b8
+    { 4u, 4u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // b8
     { 8u, 8u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // b8
     { 12u, 16u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // b64
-    { 20u, 24u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 2 }, // b64
+    { 20u, 24u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // b64
     { 24u, 32u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 8 }, // b48
 };
 constexpr int32_t RangedWidthsFixedPlanCount = 6;

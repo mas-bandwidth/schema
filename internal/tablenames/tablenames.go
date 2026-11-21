@@ -48,12 +48,14 @@ import (
 // define the name. The allocation:
 //
 //	Cpp 0, Cs 1, Rust 2, Go 3, Java 4, C 5, Elixir 6, Js 7,
-//	Dart 8, Lua 9, Luau 10, Squirrel 11.
+//	Dart 8, Lua 9, Luau 10, Moo 11, Squirrel 12, Python 13,
+//	Unity 14, Ruby 15.
 //
 // Each backend's own file declares its bit, and define refuses a bit two
 // files claim. A new port takes the next bit after the highest listed here
-// and adds its line to the allocation in the same change.
-type Backend uint16
+// (16 is the next free one) and adds its line to the allocation, and to
+// bits_test.go, in the same change. Lobster claims no names and takes no bit.
+type Backend uint32
 
 // Name is one spelling the generated table runtimes carry, and the backends
 // whose emitted text carries it.
