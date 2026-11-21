@@ -506,8 +506,11 @@ func (e *fixedEmit) checkValue(ind int, f *ir.Field, pl place) {
 		e.p(ind+1, "%s += 1;", i)
 		e.p(ind, "}")
 	case f.Array == ir.ArrayCounted:
+		// a count under the declared minimum breaks the contract as a count
+		// past the bound does (docs/SPEC.md §5.1 row 3): Goose refuses the
+		// write in every build, at any depth (a zero minimum spells `< 0`)
 		cnt := pl.val + "Count"
-		e.p(ind, "if %s < 0 || (%s as i64) > %d { return false; }", cnt, cnt, f.ArrayBound)
+		e.p(ind, "if %s < %d || (%s as i64) > %d { return false; }", cnt, f.ArrayMin, cnt, f.ArrayBound)
 		if !elemNeedsCheck(el) {
 			return
 		}
@@ -773,11 +776,20 @@ func (e *fixedEmit) clampElem(ind int, f *ir.Field, pl place) {
 // out_of_range instead of clamping and counting. It is what <T>FixedLoad
 // calls after the run; the clamp pass itself remains for the write contract's
 // negative control.
+//
+// A counted array's declared minimum is held here too, on the landed count,
+// as count_over_bound (docs/SPEC.md §5.1 row 3; the engine's fixed read,
+// internal/tablewire/fixed.go). It is a bound of every record that holds the
+// array, at any depth: elemNeedsClamp already walks into every record that
+// holds a counted array, so a child's minimum is reached whatever its
+// parent declares, and a field whose one bound is its own minimum is walked
+// for that minimum alone. The lineage read lands through the same function,
+// so it holds the minimum too.
 // ---------------------------------------------------------------------------
 
 func (e *fixedEmit) strictRefuseField(ind int, base string, f *ir.Field) {
 	el := elemOf(f)
-	if !elemNeedsClamp(el) {
+	if !elemNeedsClamp(el) && !countMinHeld(f) {
 		return
 	}
 	pl := fieldPlace(base, f)
@@ -801,6 +813,12 @@ func (e *fixedEmit) strictRefuseValue(ind int, f *ir.Field, pl place) {
 		e.p(ind+1, "%s += 1;", i)
 		e.p(ind, "}")
 	case f.Array == ir.ArrayCounted:
+		if countMinHeld(f) {
+			e.p(ind, "if %sCount < %d { return schema_rt::FixedRefuseCountOverBound; }", pl.val, f.ArrayMin)
+		}
+		if !elemNeedsClamp(el) {
+			return
+		}
 		i := e.loopVar()
 		e.p(ind, "var %s: i64 = 0;", i)
 		e.p(ind, "while %s < %sCount {", i, pl.val)
@@ -810,6 +828,12 @@ func (e *fixedEmit) strictRefuseValue(ind int, f *ir.Field, pl place) {
 	default:
 		e.strictRefuseElem(ind, el, pl)
 	}
+}
+
+// countMinHeld is whether f is a counted array with a positive declared
+// minimum, the one bound the strict read holds on the stored count itself.
+func countMinHeld(f *ir.Field) bool {
+	return f.Array == ir.ArrayCounted && f.ArrayMin > 0
 }
 
 func (e *fixedEmit) strictRefuseElem(ind int, f *ir.Field, pl place) {

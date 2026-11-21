@@ -385,11 +385,11 @@ def t_set_union(p:TextParser, sl:Slot, f:FieldDescriptor, v:TNode, path:string) 
         sl.cell.arm = nil
         return true
     if a.s == "tab":
-        let inner = t_fill(p, it, table_of(a.t), path + "." + key.text)
-        if not inner:
+        let filled = t_fill(p, it, table_of(a.t), path + "." + key.text)
+        if not filled:
             return false
         sl.cell.i = a.tag
-        sl.cell.tab = inner
+        sl.cell.tab = filled
         sl.cell.arm = nil
         return true
     let fv = Slot { fd: a, present: false, count: 0, cell: Value {}, elems: [], entries: [] }
@@ -488,10 +488,10 @@ def t_value_into(p:TextParser, sl:Slot, f:FieldDescriptor, v:TNode, path:string)
     if f.s == "ptr":
         return t_pointer(p, sl, v, path)
     if f.s == "tab":
-        let inner = t_fill(p, v, table_of(f.t), path)
-        if not inner:
+        let filled = t_fill(p, v, table_of(f.t), path)
+        if not filled:
             return false
-        sl.cell.tab = inner
+        sl.cell.tab = filled
         return true
     if f.s == "arr":
         if f.array == "keyed":
@@ -570,10 +570,10 @@ def t_pointer(p:TextParser, sl:Slot, n:TNode, path:string) -> bool:
         t_set_fail(p, "text_kind_mismatch")
         return false
     if length(n.items) == 0 or n.items[0].text != "&node":
-        let inner = t_fill(p, n, table_of(sl.fd.t), path)
-        if not inner:
+        let filled = t_fill(p, n, table_of(sl.fd.t), path)
+        if not filled:
             return false
-        sl.cell.node = inner
+        sl.cell.node = filled
         return true
     if length(n.items) < 2 or n.items[0].kind != "str" or n.items[1].kind != "num":
         t_set_fail(p, "text_reference")

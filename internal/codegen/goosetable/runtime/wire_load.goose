@@ -996,6 +996,11 @@ recursive fn load_array(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, framed: i6
         } else if count > d.bound as! u64 {
             keep = d.bound as! u64;
             c.report.oor += 1;
+        } else if d.array == ArrayCounted && count < d.min as! u64 {
+            // THE COUNT MINIMUM (docs/SPEC.md §5.1 row 3): a counted array
+            // under its declared least count is out of range at any depth,
+            // as the engine's read refuses it (internal/tablewire/decode.go)
+            c.report.oor += 1;
         }
         if widened { c.report.widened += 1; }
         var sub = Rd { off: r.off, end: if end < r.off { r.off } else { end } };
