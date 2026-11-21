@@ -1,0 +1,7 @@
+{
+  "name": "Kestrel",
+  "health": 100,
+  "speed": 500,
+  "armor": 4,
+  "kind": "None"
+}
