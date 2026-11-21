@@ -2667,6 +2667,8 @@ write_value = function(T: any, d: any, val: any, depth: number, g: any, w: any, 
     return true
   elseif s == "float" then
     if not float_ok(d, val) then return false end
+    -- a compressed float's -0 is written as 0 (§3.3, fixed-compressed-negzero)
+    if d.res ~= nil and val == 0 then val = 0 end
     local text = float_text(val, d.f32)
     if text == nil then return false end
     raw(w, text)

@@ -1955,6 +1955,10 @@ local function mAtDefault(fd: any, val: any): boolean
 	if fd.s == "enum" then return val == (fd.def or 0) end
 	if fd.s == "float" then
 		local def = fd.def or 0.0
+		if fd.res ~= nil then
+			if val == 0 then val = 0 end
+			if def == 0 then def = 0 end
+		end
 		if fd.f32 then
 			buffer.writef32(msgScratch, 0, val)
 			local a = buffer.readu32(msgScratch, 0)
@@ -2003,6 +2007,8 @@ end
 local function mEncodeScalar(c: any, owner: string, e: any, kind: number, shape: any, val: any, fname: string): boolean
 	local ok, why = mValidScalar(e, val)
 	if not ok then return mFail(c, why or "invalid_value", owner, fname) end
+	-- a compressed float's -0 is stored as +0 (§3.3, fixed-compressed-negzero)
+	if (kind == 10 or kind == 11) and e.res ~= nil and val == 0 then val = 0 end
 	if kind == 1 then
 		mPut(c.w, if val then 1 else 0, 1)
 		return true

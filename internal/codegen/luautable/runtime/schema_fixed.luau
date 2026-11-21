@@ -850,6 +850,8 @@ local function writeLeaf(f: any, n: Node, v: any, buf: buffer, off: number)
 		buffer.writeu8(buf, off, v and 1 or 0)
 	elseif f.s == "float" then
 		if typeof(v) ~= "number" then error(nonFinite(f), 0) end
+		-- a compressed float's -0 is stored as +0 (§3.3, fixed-compressed-negzero)
+		if f.res ~= nil and v == 0 then v = 0 end
 		if n.kind == 10 then
 			local bits = doubleToF32(v)
 			if bit32.band(bits, 0x7F800000) == 0x7F800000 then error(nonFinite(f), 0) end
