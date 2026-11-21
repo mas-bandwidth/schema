@@ -14,12 +14,18 @@
 
 static int failed = 0;
 
+/* every check and every golden compare is one counted unit: main prints
+   "ran N, failed M" and build/mustrun holds N to the count the recipe
+   registers */
+static int ran = 0;
+
 static void check( int condition, const char * message )
 {
+    ran++;
     if ( !condition )
     {
         printf( "FAILED: %s\n", message );
-        failed = 1;
+        failed++;
     }
 }
 
@@ -31,12 +37,13 @@ static void golden_wire( const char * name, const unsigned char * data, int byte
     size_t n;
     int i;
 
+    ran++;
     sprintf( path, "../../testdata/wire/%s.bin", name );
     file = fopen( path, "rb" );
     if ( !file )
     {
         printf( "FAILED: cannot open wire golden %s\n", path );
-        failed = 1;
+        failed++;
         return;
     }
     n = fread( expected, 1, sizeof( expected ), file );
@@ -45,7 +52,7 @@ static void golden_wire( const char * name, const unsigned char * data, int byte
     if ( (int) n != bytes )
     {
         printf( "FAILED: %s — C wrote %d bytes, golden is %d\n", name, bytes, (int) n );
-        failed = 1;
+        failed++;
         return;
     }
     for ( i = 0; i < bytes; i++ )
@@ -54,7 +61,7 @@ static void golden_wire( const char * name, const unsigned char * data, int byte
         {
             printf( "FAILED: %s — first difference at byte %d: C=%02x golden=%02x\n",
                     name, i, data[i], expected[i] );
-            failed = 1;
+            failed++;
             return;
         }
     }
@@ -238,8 +245,11 @@ int main( void )
     if ( failed )
     {
         printf( "FAILED\n" );
-        return 1;
     }
-    printf( "OK\n" );
-    return 0;
+    else
+    {
+        printf( "OK\n" );
+    }
+    printf( "schema_test_c_ludicrous: ran %d, failed %d\n", ran, failed );
+    return ( failed != 0 || ran == 0 ) ? 1 : 0;
 }

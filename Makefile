@@ -3542,21 +3542,21 @@ test-core-tables-1:
 	$(MAKE) test-core-tables-1c
 	$(MAKE) test-core-tables-1d
 
-test-core-tables-1a: build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_tables_asan
+test-core-tables-1a: build/mustrun build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_tables_asan
 	# THE TOOLCHAIN GATE's own control (issue #599): the gate above is what
 	# stands between a missing toolchain and a green run, so it is held to the
 	# same rule as every other gate here. It has to go red on demand, by name.
 	$(MAKE) toolchain-negative-control
-	./build/schema_test
-	./build/schema_test_guard
+	$(MUSTRUN) -name schema_test -count 735 -- ./build/schema_test
+	$(MUSTRUN) -name schema_test_guard -count 8 -- ./build/schema_test_guard
 	$(MAKE) check-zero-range-negative-control
 	$(MAKE) check-enum-bound-negative-control
 	$(MAKE) check-wstring-refusal-negative-control
 	$(MAKE) projection-variant-order-negative-control
 	$(MAKE) projection-wire-law-negative-control
 	$(MAKE) projection-union-arm-order-negative-control
-	./build/schema_test_tables
-	./build/schema_test_tables_asan
+	$(MUSTRUN) -name schema_test_tables -count 153 -- ./build/schema_test_tables
+	$(MUSTRUN) -name schema_test_tables_asan -count 153 -- ./build/schema_test_tables_asan
 	# THE ORDINAL SLOT CACHE (docs/SPEC-TABLES.md §3): a save that answers a
 	# repeat header out of slot[ordinal] is held to main's own bytes by
 	# compiler/tablerefordinal_test.go, and the ONE rule a green pin cannot be
@@ -3672,7 +3672,7 @@ test-core-tables-2: build/conformance-harness build/tables-generated/.stamp
 	$(MAKE) tables-clamp-limits
 	$(MAKE) tables-clamp-limits-negative-control
 
-test-core-tables-3: build/schema_test_block build/schema_test_block_asan build/schema_test_block_fuzz build/schema_test_block_fuzz_asan build/pack-text/.stamp build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp build/schema_test_pack build/schema_test_pack_asan build/tables-pack.bin build/tables-pack-root.bin build/schema_test_random build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/tables-generated/.stamp
+test-core-tables-3: build/mustrun build/schema_test_block build/schema_test_block_asan build/schema_test_block_fuzz build/schema_test_block_fuzz_asan build/pack-text/.stamp build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp build/schema_test_pack build/schema_test_pack_asan build/tables-pack.bin build/tables-pack-root.bin build/schema_test_random build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/tables-generated/.stamp
 	$(MAKE) tables-block
 	$(MAKE) tables-block-fuzz
 	$(MAKE) tables-block-fuzz-extent-negative-control
@@ -3720,13 +3720,13 @@ test-core-tables-3: build/schema_test_block build/schema_test_block_asan build/s
 	$(MAKE) tables-json-differential-negative-control
 	$(MAKE) tables-hostile-values
 	$(MAKE) tables-hostile-negative-control
-	./build/schema_test_random
-	./build/schema_test_ludicrous
-	./build/schema_test_bench
+	$(MUSTRUN) -name schema_test_random -count 40001 -- ./build/schema_test_random
+	$(MUSTRUN) -name schema_test_ludicrous -count 61 -- ./build/schema_test_ludicrous
+	$(MUSTRUN) -name schema_test_bench -count 37 -- ./build/schema_test_bench
 	# the tables bench corpus's oracle — the generated table unit has no other
 	# consumer under `make test`, and a unit that generates but does not compile
 	# is issue #80's lesson, so each leg's compile gate rides in its test-<lang>
-	./build/schema_test_bench_table
+	$(MUSTRUN) -name schema_test_bench_table -count 66 -- ./build/schema_test_bench_table
 
 test: toolchain build/schema_test build/schema_test_guard build/schema_test_tables build/schema_test_block build/schema_test_block_asan build/schema_test_block_fuzz build/schema_test_block_fuzz_asan build/pack-text/.stamp build/schema_test_hostile build/schema_test_hostile_asan build/hostile-values/.stamp build/schema_test_pack build/schema_test_pack_asan build/tables-pack.bin build/tables-pack-root.bin build/schema_test_tables_asan build/schema_test_random build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/conformance-harness
 	$(MAKE) test-core-tables-1
@@ -5008,8 +5008,8 @@ bench-variants: generated/bench/go/.stamp
 bench-table-corpus: build/schema_test_bench_table
 	./build/schema_test_bench_table pin
 
-bench-table-check: build/schema_test_bench_table
-	./build/schema_test_bench_table verify
+bench-table-check: build/mustrun build/schema_test_bench_table
+	$(MUSTRUN) -name schema_test_bench_table -count 66 -- ./build/schema_test_bench_table verify
 
 # Matched Fixed Table uses BenchMixed itself, reached through the tiny wrapper.
 # The wrapper is never serialized; packet storage remains independently built.

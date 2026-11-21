@@ -7,12 +7,58 @@
     other bits; trailing.bin and padding.bin are the two refusals.
 */
 
+#define _POSIX_C_SOURCE 200809L
+
+#include <dirent.h>
 #include <stdio.h>
 #include <string.h>
 
 #include "EndWire.h"
 
 static int failed;
+
+/* one counted unit per vector: main prints "ran N, failed M" and build/mustrun
+   holds N to the count the recipe registers */
+static int ran;
+
+/* The vectors this driver reads are named in main. The directory is held to
+   that list: a .bin the driver does not read is red, so a vector added to the
+   shared corpus cannot ride unread. A named vector that is gone fails at its
+   load. */
+static void hold_directory( const char * dir )
+{
+    static const char * const known[] = { "exact.bin", "trailing.bin", "padding.bin" };
+    DIR * listing = opendir( dir );
+    struct dirent * entry;
+
+    if ( listing == NULL )
+    {
+        printf( "FAILED: packet-end cannot list %s\n", dir );
+        failed = 1;
+        return;
+    }
+    while ( ( entry = readdir( listing ) ) != NULL )
+    {
+        size_t length = strlen( entry->d_name );
+        int i;
+        int read_here = 0;
+
+        if ( length < 4 || strcmp( entry->d_name + length - 4, ".bin" ) != 0 )
+        {
+            continue;
+        }
+        for ( i = 0; i < 3; i++ )
+        {
+            if ( strcmp( entry->d_name, known[i] ) == 0 ) { read_here = 1; }
+        }
+        if ( !read_here )
+        {
+            printf( "FAILED: packet-end vector %s is in %s and this driver does not read it\n", entry->d_name, dir );
+            failed = 1;
+        }
+    }
+    closedir( listing );
+}
 
 static int load_packet( const char * dir, const char * name, unsigned char * storage, int * bytes )
 {
@@ -59,8 +105,11 @@ int main( int argc, char ** argv )
     int accepted;
     unsigned int value;
 
+    hold_directory( dir );
+
     memset( storage, 0, sizeof( storage ) );
     if ( !load_packet( dir, "exact.bin", storage, &bytes ) ) { return 1; }
+    ran++;
     read_packet( storage, bytes, &accepted, &value );
     if ( !accepted || value != 3u )
     {
@@ -70,6 +119,7 @@ int main( int argc, char ** argv )
 
     memset( storage, 0, sizeof( storage ) );
     if ( !load_packet( dir, "trailing.bin", storage, &bytes ) ) { return 1; }
+    ran++;
     read_packet( storage, bytes, &accepted, &value );
     if ( accepted )
     {
@@ -79,6 +129,7 @@ int main( int argc, char ** argv )
 
     memset( storage, 0, sizeof( storage ) );
     if ( !load_packet( dir, "padding.bin", storage, &bytes ) ) { return 1; }
+    ran++;
     read_packet( storage, bytes, &accepted, &value );
     if ( accepted )
     {
@@ -90,5 +141,6 @@ int main( int argc, char ** argv )
     {
         printf( "packet-end: exact accepted as 3; trailing and padding refused\n" );
     }
-    return failed ? 1 : 0;
+    printf( "packet-end-c: ran %d, failed %d\n", ran, failed ? 1 : 0 );
+    return ( failed || ran == 0 ) ? 1 : 0;
 }

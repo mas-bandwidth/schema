@@ -1196,7 +1196,7 @@ tables-cs-fixedform-arm-negative-control: bin/schema
 # (a unit that generates but does not compile is issue #80's lesson), and the
 # packet tests.
 .PHONY: test-cs
-test-cs: toolchain-cs build/tables-generated-cs/.stamp generated/bench/tables/cs/.stamp generated/bench/paired/cs/.stamp generated/cs/.stamp generated/cs-ludicrous/.stamp generated/bench/cs/.stamp
+test-cs: build/mustrun toolchain-cs build/tables-generated-cs/.stamp generated/bench/tables/cs/.stamp generated/bench/paired/cs/.stamp generated/cs/.stamp generated/cs-ludicrous/.stamp generated/bench/cs/.stamp
 	$(MAKE) tables-cs-json-walk
 	$(MAKE) tables-cs-standalone
 	$(MAKE) tables-cs-variable-surface
@@ -1222,9 +1222,9 @@ test-cs: toolchain-cs build/tables-generated-cs/.stamp generated/bench/tables/cs
 	$(DOTNET) build bench/tables/cs -c Release --nologo -v quiet
 	$(DOTNET) build bench/paired/cs -c Release --nologo -v quiet -property:UseSharedCompilation=false "-property:SerializeCsRoot=$(abspath $(SERIALIZE_CS))"
 	cd bench/cs && $(DOTNET) build -c Release --nologo -v quiet
-	cd test/cs && $(DOTNET) run
-	cd test/cs && $(DOTNET) run -c Release
-	cd test/cs-ludicrous && $(DOTNET) run
+	cd test/cs && ../../$(MUSTRUN) -name test-cs-debug -count 966 -- $(DOTNET) run
+	cd test/cs && ../../$(MUSTRUN) -name test-cs-release -count 968 -- $(DOTNET) run -c Release
+	cd test/cs-ludicrous && ../../$(MUSTRUN) -name test-cs-ludicrous -count 56 -- $(DOTNET) run
 
 TEST_LEGS         += test-cs
 TOOLCHAIN_LEGS    += cs
@@ -1313,11 +1313,11 @@ $(CARDS_CS_STAMP): bin/schema $(wildcard tables/cards/*.schema)
 # and cards-cs-generate only, never on build/tables-generated-cs/.stamp or
 # build-conformance-cs, so a red elsewhere in the leg cannot hold it.
 .PHONY: cards-cs-test
-cards-cs-test: bin/schema cards-cs-generate
+cards-cs-test: build/mustrun bin/schema cards-cs-generate
 	$(DOTNET) build tables/cards/cs/Cards.csproj -c Debug --nologo -v quiet
 	$(DOTNET) build tables/cards/cs/Cards.csproj -c Release --nologo -v quiet
-	$(DOTNET) run --project tables/cards/cs/Tests/Tests.csproj -c Debug --nologo
-	$(DOTNET) run --project tables/cards/cs/Tests/Tests.csproj -c Release --nologo
+	$(MUSTRUN) -name cards-cs-test-debug -count 7 -- $(DOTNET) run --project tables/cards/cs/Tests/Tests.csproj -c Debug --nologo
+	$(MUSTRUN) -name cards-cs-test-release -count 7 -- $(DOTNET) run --project tables/cards/cs/Tests/Tests.csproj -c Release --nologo
 
 # cards-cs-driver builds the facade driver program once, so the conformance
 # check pays no build per surface.
@@ -1545,9 +1545,9 @@ build/packet-end/cs/.stamp: bin/schema test/packet-end/End.schema make/cs.mk
 	./bin/schema generate --lang cs --out $(PACKET_END_CS) test/packet-end/End.schema
 	@touch $@
 
-packet-end-cs: build/packet-end/cs/.stamp
-	$(DOTNET) run --project test/packet-end/cs/packet-end.csproj -- testdata/wire/packet-end
-	$(DOTNET) run --configuration Release --project test/packet-end/cs/packet-end.csproj -- testdata/wire/packet-end
+packet-end-cs: build/mustrun build/packet-end/cs/.stamp
+	$(MUSTRUN) -name packet-end-cs-debug -count 3 -- $(DOTNET) run --project test/packet-end/cs/packet-end.csproj -- testdata/wire/packet-end
+	$(MUSTRUN) -name packet-end-cs-release -count 3 -- $(DOTNET) run --configuration Release --project test/packet-end/cs/packet-end.csproj -- testdata/wire/packet-end
 	@echo 'packet end C#: exact packet accepted as 3, trailing byte and final-byte padding refused'
 
 # The control removes the end call from the emitter through a go build
@@ -1593,8 +1593,8 @@ $(PACKET_WRITE_CFLOAT_CS)/.stamp: bin/schema test/packet-write-cfloat/CFloat.sch
 	./bin/schema generate --lang cs --out $(PACKET_WRITE_CFLOAT_CS) test/packet-write-cfloat/CFloat.schema
 	@touch $@
 
-packet-write-cfloat-cs: $(PACKET_WRITE_CFLOAT_CS)/.stamp
-	$(DOTNET) run --configuration Debug --project test/packet-write-cfloat/cs/packet-write-cfloat.csproj -- test/packet-write-cfloat
+packet-write-cfloat-cs: build/mustrun $(PACKET_WRITE_CFLOAT_CS)/.stamp
+	$(MUSTRUN) -name packet-write-cfloat-cs -count 10 -- $(DOTNET) run --configuration Debug --project test/packet-write-cfloat/cs/packet-write-cfloat.csproj -- test/packet-write-cfloat
 	@echo 'packet-write-cfloat C#: every refused case refused, every lawful case reads back quantized'
 
 # The control turns the generated finite/range assertion into a constant true

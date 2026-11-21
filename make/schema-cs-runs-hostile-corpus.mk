@@ -39,9 +39,14 @@ $(CS_HOSTILE_BUILD)/bin/.stamp: $(CS_HOSTILE_BUILD)/generated/.stamp test/cs-hos
 	$(DOTNET) build test/cs-hostile/cshostile.csproj $(CS_HOSTILE_DOTNET_FLAGS) -o $(CS_HOSTILE_BUILD)/bin
 	@touch $@
 
+# The registered count: the runner prints `cs-hostile: ran N, failed M`, where N
+# is every case the port answered (a SKIP is not run), and build/mustrun holds N
+# to this number, so a manifest that loses cases or a case that starts skipping
+# is red. A commit that adds a hostile case changes it.
+CS_HOSTILE_CASES ?= 192
 .PHONY: schema-cs-runs-hostile-corpus
-schema-cs-runs-hostile-corpus: $(CS_HOSTILE_BUILD)/bin/.stamp
-	$(DOTNET) $(CS_HOSTILE_BUILD)/bin/cshostile.dll "$(CS_HOSTILE_CORPUS)" "$(CS_HOSTILE_FINDINGS)"
+schema-cs-runs-hostile-corpus: build/mustrun $(CS_HOSTILE_BUILD)/bin/.stamp
+	$(MUSTRUN) -name schema-cs-runs-hostile-corpus -count $(CS_HOSTILE_CASES) -- $(DOTNET) $(CS_HOSTILE_BUILD)/bin/cshostile.dll "$(CS_HOSTILE_CORPUS)" "$(CS_HOSTILE_FINDINGS)"
 
 # The port's normal unit target runs the corpus: this file is included after
 # make/cs.mk by the Makefile's wildcard, so the prerequisite lands here and
