@@ -18,8 +18,12 @@ import (
 // vector the conformance manifest answers `malformed`
 // (testdata/conformance/tables/MANIFEST.txt, docs/LAYERS/1-framing.md) is
 // loaded through the plain read and the retaining read, and each must return
-// NO VALUE: `{:error, :malformed, report}` with the report malformed, and the
-// retaining read's stores emptied. A damaged text refuses the text read the
+// NO VALUE: a refusal, `{:error, verdict, report}`, and the retaining read's
+// stores emptied. Only the verdict is held, never the refusal's name: a row
+// the manifest answers `refused` may be damage (`:malformed`) or a form this
+// reader does not carry (a form-3 file at a variable root, which F1 of
+// docs/LAYERS/1-framing.md makes a refusal by name, never damage), and either
+// way the whole load is discarded. A damaged text refuses the text read the
 // same way. (The message batch's whole-batch discard is held by
 // TestMessageFormBatchElixir; the fixed form refuses every damage by name.)
 //
@@ -111,7 +115,7 @@ end
 data = File.read!(%q)
 
 case %s.variable_load(%q, data) do
-  {:error, :malformed, %%{reason: "wire_damaged"}} -> :ok
+  {:error, verdict, %%{}} when is_atom(verdict) -> :ok
   other -> Probe.fail(%q <> ": the plain read handed back " <> inspect(other, limit: 8))
 end
 `, r[2], units[unit].module, r[1], r[0])

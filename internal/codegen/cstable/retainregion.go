@@ -65,9 +65,11 @@ func tableRetainRegionSource() string {
 	s = tableReplace(s, "RetainDiscard(value.Store, value.Path, f.Ordinal)", "value.DiscardField(f)")
 	// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the retention
 	// store keeps nothing a damaged load captured, nor anything an earlier load
-	// left in it.
+	// left in it. A form the reader does not carry (a fixed-form file at a
+	// variable root, docs/LAYERS/1-framing.md F1) is a refusal by name, not
+	// damage, and it empties the store the same way: nothing is retained.
 	s = tableReplace(s, "            else { Damage(report); Finish(report, Verdict.Damaged); }\n            return IntPtr.Zero;",
-		"            else { Damage(report); Finish(report, Verdict.Damaged); retain->Used = 0; retain->IdUsed = 0; retain->Count = 0; }\n            return IntPtr.Zero;")
+		"            else { Damage(report); Finish(report, Verdict.Damaged); }\n            retain->Used = 0; retain->IdUsed = 0; retain->Count = 0;\n            return IntPtr.Zero;")
 	s = tableReplace(s, "Finish(report, Verdict.Refused); return IntPtr.Zero; }",
 		"Finish(report, Verdict.Refused); retain->Used = 0; retain->IdUsed = 0; retain->Count = 0; return IntPtr.Zero; }")
 	s = tableReplace(s, "Finish(report, Verdict.Damaged); return IntPtr.Zero; }\n        report.Damaged = damagedBefore;",
