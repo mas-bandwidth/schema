@@ -79,7 +79,7 @@ func fixedRows(d, x, y string) []pinnedRow {
 
 const pinnedRec = "type Rec {\n    n int32 = 55\n    on bool\n}\n"
 const pinnedWide = "type Wide {\n    id uint128\n    mask bits(64)\n}\n"
-const pinnedEnum ="enum Tone {\n    Low\n    Mid\n    High\n}\n"
+const pinnedEnum = "enum Tone {\n    Low\n    Mid\n    High\n}\n"
 
 // pinnedShapes is the matrix's rows. A wide element's two live values are one
 // with only its HIGH half set and one with only its low half set, because a

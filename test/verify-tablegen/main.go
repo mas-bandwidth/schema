@@ -238,16 +238,24 @@ func resolveGooseTool(repoRoot string) string {
 }
 
 func runChecked(dir string, extraEnv []string, name string, args ...string) (string, error) {
-	cmd := exec.Command(name, args...)
-	cmd.Dir = dir
-	if len(extraEnv) > 0 {
-		cmd.Env = append(os.Environ(), extraEnv...)
+	run := func() (string, error) {
+		cmd := exec.Command(name, args...)
+		cmd.Dir = dir
+		if len(extraEnv) > 0 {
+			cmd.Env = append(os.Environ(), extraEnv...)
+		}
+		var out bytes.Buffer
+		cmd.Stdout = &out
+		cmd.Stderr = &out
+		err := cmd.Run()
+		return out.String(), err
 	}
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &out
-	err := cmd.Run()
-	return out.String(), err
+	if matrix != nil {
+		if out, err, ok := matrix.viaPack(args, run); ok {
+			return out, err
+		}
+	}
+	return run()
 }
 
 func requireToken(out string, err error, lang string, caseCount int) error {
@@ -438,6 +446,7 @@ func main() {
 	workFlag := flag.String("work", "./build/verify-tablegen", "working directory")
 	corpusFlag := flag.String("corpus", "", "pre-generated corpus directory (optional)")
 	genOnlyFlag := flag.Bool("generate-only", false, "only generate schemas, lockfiles, and oracle corpus")
+	matrixFlag := flag.Bool("matrix", false, "name every failing case of each target instead of stopping at the first (a diagnostic, matrix.go)")
 	onlyFlag := flag.String("only", "", "run only the cases whose id contains this text (a diagnostic: the gate runs them all)")
 	flag.Parse()
 
@@ -506,6 +515,20 @@ func main() {
 	default:
 		fmt.Fprintln(os.Stderr, "--lang is required")
 		os.Exit(2)
+	}
+
+	if *matrixFlag {
+		matrix = newMatrix()
+		var mwg sync.WaitGroup
+		for _, lang := range targets {
+			lang := strings.TrimSpace(lang)
+			mwg.Go(func() {
+				runMatrix(repoRoot, schemaBin, schemaMooBin, workRoot, lang, meta, cases)
+			})
+		}
+		mwg.Wait()
+		printMatrix(targets, len(cases))
+		return
 	}
 
 	var wg sync.WaitGroup
