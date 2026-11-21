@@ -1593,8 +1593,8 @@ $(PACKET_WRITE_CFLOAT_CS)/.stamp: bin/schema test/packet-write-cfloat/CFloat.sch
 	./bin/schema generate --lang cs --out $(PACKET_WRITE_CFLOAT_CS) test/packet-write-cfloat/CFloat.schema
 	@touch $@
 
-packet-write-cfloat-cs: $(PACKET_WRITE_CFLOAT_CS)/.stamp
-	$(DOTNET) run --configuration Debug --project test/packet-write-cfloat/cs/packet-write-cfloat.csproj -- test/packet-write-cfloat
+packet-write-cfloat-cs: build/mustrun $(PACKET_WRITE_CFLOAT_CS)/.stamp
+	$(MUSTRUN) -name packet-write-cfloat-cs -count 10 -- $(DOTNET) run --configuration Debug --project test/packet-write-cfloat/cs/packet-write-cfloat.csproj -- test/packet-write-cfloat
 	@echo 'packet-write-cfloat C#: every refused case refused, every lawful case reads back quantized'
 
 # The control turns the generated finite/range assertion into a constant true

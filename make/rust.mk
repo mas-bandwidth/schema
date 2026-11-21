@@ -1999,9 +1999,9 @@ $(PACKET_WRITE_TEXT_RUST)/.stamp: bin/schema test/packet-write-text/Text.schema 
 	@touch $@
 
 .PHONY: packet-write-text-rust packet-write-text-rust-negative-control
-packet-write-text-rust: $(PACKET_WRITE_TEXT_RUST)/.stamp
+packet-write-text-rust: build/mustrun $(PACKET_WRITE_TEXT_RUST)/.stamp
 	PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --manifest-path $(PACKET_WRITE_TEXT_RUST)/Cargo.toml
-	./$(PACKET_WRITE_TEXT_RUST)/target/debug/packetwritetext test/packet-write-text/cases.txt
+	$(MUSTRUN) -name packet-write-text-rust -count 11 -- ./$(PACKET_WRITE_TEXT_RUST)/target/debug/packetwritetext test/packet-write-text/cases.txt
 
 packet-write-text-rust-negative-control: packet-write-text-rust
 	@rm -rf $(PACKET_WRITE_TEXT_RUST)-negative/src

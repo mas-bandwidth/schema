@@ -2409,8 +2409,8 @@ build/packet-write-text/c/driver: build/packet-write-text/c/.stamp test/packet-w
 		test/packet-write-text/c/driver.c $(SERIALIZE_C)/serialize.c -o $@ -lm
 
 .PHONY: packet-write-text-c packet-write-text-c-negative-control
-packet-write-text-c: build/packet-write-text/c/driver
-	./build/packet-write-text/c/driver test/packet-write-text/cases.txt
+packet-write-text-c: build/mustrun build/packet-write-text/c/driver
+	$(MUSTRUN) -name packet-write-text-c -count 11 -- ./build/packet-write-text/c/driver test/packet-write-text/cases.txt
 
 packet-write-text-c-negative-control: packet-write-text-c
 	@mkdir -p build/packet-write-text/c-negative

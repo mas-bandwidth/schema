@@ -30,11 +30,13 @@ public final class Main {
     }
 
     public static void main(String[] args) throws Exception {
+        int ran = 0;
         for (String line : Files.readAllLines(Path.of(args[0]))) {
             line = line.trim();
             if (line.isEmpty() || line.startsWith("#")) {
                 continue;
             }
+            ran++;
             String[] parts = line.split("\\|");
             String name = parts[0].trim();
             byte[] raw = parseHex(parts[1].trim());
@@ -59,6 +61,12 @@ public final class Main {
                 fail(name + " read back differs");
             }
         }
+        // the count line build/mustrun holds to the registered count: a case
+        // file that lost its rows runs nothing and is red
+        if (ran == 0) {
+            fail("no cases in " + args[0]);
+        }
+        System.out.println("packet-write-text Java: ran " + ran + ", failed " + failures);
         if (failures != 0) {
             System.exit(1);
         }
