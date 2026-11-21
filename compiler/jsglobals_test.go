@@ -447,9 +447,11 @@ func TestJsUnitDeclaringEveryGlobalRunsAndTypeChecks(t *testing.T) {
 		t.Parallel()
 		node := os.Getenv("NODE")
 		if node == "" {
-			if node, err = exec.LookPath("node"); err != nil {
+			path, err := exec.LookPath("node")
+			if err != nil {
 				t.Skip("no node on PATH: set NODE")
 			}
+			node = path
 		}
 		runtime := os.Getenv("SERIALIZE_JS")
 		if runtime == "" {
@@ -474,9 +476,11 @@ func TestJsUnitDeclaringEveryGlobalRunsAndTypeChecks(t *testing.T) {
 		t.Parallel()
 		tsc := os.Getenv("TSC")
 		if tsc == "" {
-			if tsc, err = exec.LookPath("tsc"); err != nil {
+			path, err := exec.LookPath("tsc")
+			if err != nil {
 				t.Skip("no tsc on PATH: set TSC")
 			}
+			tsc = path
 		}
 		args := []string{"--strict", "--noEmit", "--target", "es2022", "--module", "nodenext", "--moduleResolution", "nodenext", "consumer.ts"}
 		for name := range files {
