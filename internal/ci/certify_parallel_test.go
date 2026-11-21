@@ -30,7 +30,9 @@ var certifyCoreShards = []string{
 var certifyShardedLegs = map[string][]string{
 	"c":      {"c-1", "c-2", "c-3"},
 	"elixir": {"elixir-1", "elixir-2", "elixir-3", "elixir-4"},
+	"goose":  {"goose-1", "goose-2", "goose-3"},
 	"python": {"python-1", "python-2", "python-3", "python-4", "python-5"},
+	"ruby":   {"ruby-1", "ruby-2", "ruby-3", "ruby-4"},
 }
 
 var certifyLinuxOnlyLegs = []string{"goose", "luau"}
@@ -241,6 +243,8 @@ func checkCertifyParallelPolicy(certifyYAML, makefile string, registeredLegs []s
 		`make conformance SCHEMA_SKIP_LEGS="$OTHER_LEGS"`,
 		"make test-c-recipe",
 		"make test-elixir-recipe",
+		"make test-goose-recipe",
+		"make test-ruby-recipe",
 		"make python-ci-packages",
 		"make python-ci-compiler",
 		`make "test-${SHARD}"`,
