@@ -36,7 +36,7 @@ func TestMapWriterSortDart(t *testing.T) {
 
 // TestMapWriterSortDartNegativeControl is the gate's negative control
 // (tables-dart-map-sort-negative-control): the generated runtime's
-// _stableSorted returns its input in stored order, and the same probe must go
+// _stableSortedBy returns its input in stored order, and the same probe must go
 // red on the saved bytes.
 func TestMapWriterSortDartNegativeControl(t *testing.T) {
 	t.Parallel()
@@ -50,7 +50,7 @@ func TestMapWriterSortDartNegativeControl(t *testing.T) {
 	unsorted := func(f map[string][]byte) {
 		for name, src := range f {
 			s := string(src)
-			const sig = "List<T> _stableSorted<T>(List<T> l, int Function(T a, T b) cmp) {\n"
+			const sig = "List<T> _stableSortedBy<T, K>(List<T> l, K Function(T) keyOf, int Function(K a, K b) cmp) {\n"
 			if strings.Contains(s, sig) {
 				f[name] = []byte(strings.Replace(s, sig, sig+"  if (l.isNotEmpty) return List<T>.from(l);\n", 1))
 			}
