@@ -986,6 +986,15 @@ jobs:
                 cf="$RUNNER_TEMP/clang-format/bin/clang-format"
               fi
               "$cf" --version
+              # On a fleet runner the format gate reads each file's verdict
+              # from the host's store when these exact bytes were already
+              # judged by this formatter under this style
+              # (make/checks/c-clean-format.sh): the gate is 250 s of
+              # clang-format CPU over 580 generated files, and a commit
+              # changes few of them.
+              if [ "${RUNNER_ENVIRONMENT:-}" = self-hosted ]; then
+                export C_FORMAT_CACHE="$HOME/.cache/schema-ci/c-format-verdicts"
+              fi
               make -j"$(nproc)" tables-c-zero-cost tables-c-clean tables-c-soak-compile-modes SCHEMA_REQUIRE_CLANG_FORMAT=1 CLANG_FORMAT="$cf"
               ;;
             js)
