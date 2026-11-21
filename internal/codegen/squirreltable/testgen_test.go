@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -15,6 +14,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestSquirrelTestgenRoundTripAndDamage is the gate of `schema testgen
@@ -145,7 +146,7 @@ func TestSquirrelTestgenRoundTripAndDamage(t *testing.T) {
 		extra := map[string][]byte{"schema_table_save.nut": patched}
 		maps.Copy(extra, tests)
 		write(dir, extra)
-		cmd := exec.Command(sq, want[0])
+		cmd := testproc.Command(t, sq, want[0])
 		cmd.Dir = dir
 		var stdout, stderr bytes.Buffer
 		cmd.Stdout, cmd.Stderr = &stdout, &stderr

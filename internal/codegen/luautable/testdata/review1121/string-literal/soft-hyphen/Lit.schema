@@ -1,0 +1,14 @@
+package lit
+
+/// soft­hyphen separator
+type Held
+{
+    /// field soft­hyphen separator
+    n uint8
+}
+
+/// soft­hyphen separator
+table Holder
+{
+    h Held
+}

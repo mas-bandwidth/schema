@@ -3747,7 +3747,7 @@ fact per line, made to be read in a diff. Here is the part of it that covers
 `ShipConfig` and the flags it now carries:
 
 ```
-schema-tables-baseline 7
+schema-tables-baseline 8
 package starlight
 
 table ShipConfig
@@ -3810,8 +3810,8 @@ The rest of the refused list: a field's wire kind or an array's element kind
 changed, keyed and positional array spellings swapped, and a referent swapped
 for one that cannot stand in.
 
-**Warned**, because the runtime report already counts the loss but you should
-know at edit time. Warnings print and exit 0. Rename `max_speed` to
+**Warned**, because the load refuses a stored file that no longer fits, by
+name, and you should know at edit time. Warnings print and exit 0. Rename `max_speed` to
 `top_speed`:
 
 ```
@@ -3823,7 +3823,7 @@ Shrink a capacity:
 
 ```
 $ schema check .
-warning: tables.baseline: ShipConfig.display_name: capacity 32 -> 16 (a stored value longer than the new capacity is truncated and counts clamped)
+warning: tables.baseline: ShipConfig.display_name: capacity 32 -> 16 (a file holding a value longer than the new capacity no longer reads: the load refuses length_over_bound)
 ```
 
 **Passed in silence**, because the wire absorbs it: fields added, removed or

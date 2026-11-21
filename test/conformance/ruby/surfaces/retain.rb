@@ -7,7 +7,7 @@ def self.run(manifest, outdir)
     cls = RubyConformance.root_class(unit, root)
     if pkg.nil? || cls.nil? || !pkg.const_defined?(:TableRetain, false) ||
        !cls.respond_to?(:load_retain) || !RubyConformance.supported?(pkg, cls)
-      RubyConformance.absent(outdir, case_name, 'unit does not provide retaining file reads')
+      RubyConformance.no_codec(outdir, case_name)
       next
     end
     id_count = ids == 'full' ? (1 << 17) : Integer(ids, 10)
@@ -27,7 +27,7 @@ def self.run(manifest, outdir)
       next
     end
     unless value.respond_to?(:to_json)
-      RubyConformance.absent(outdir, case_name, 'unit does not provide JSON text')
+      RubyConformance.no_codec(outdir, case_name)
       next
     end
     RubyConformance.write_bytes(outdir, case_name, ("read\n" + value.to_json).b)

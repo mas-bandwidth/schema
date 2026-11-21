@@ -115,3 +115,6 @@ erl_crash.dump
 /test/packet-write-text/cs/obj/
 /test/packet-write-text/unity/**/bin/
 /test/packet-write-text/unity/**/obj/
+
+# a local build of the VS Code extension (editors/vscode/README.md)
+/editors/vscode/*.vsix

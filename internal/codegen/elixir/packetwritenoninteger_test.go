@@ -2,11 +2,12 @@ package elixir
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const packetNonIntegerSchema = `package Nonintpacket
@@ -55,7 +56,7 @@ func TestElixirPacketWriteRefusesNonInteger(t *testing.T) {
 	}
 	sort.Strings(names)
 
-	cmd := exec.Command(elixircBin, append([]string{"-o", ebin}, names...)...)
+	cmd := testproc.Command(t, elixircBin, append([]string{"-o", ebin}, names...)...)
 	cmd.Dir = dir
 	cmd.Env = toolchainEnv(elixirBin)
 	compiled, err := cmd.CombinedOutput()
@@ -67,7 +68,7 @@ func TestElixirPacketWriteRefusesNonInteger(t *testing.T) {
 	if err := os.WriteFile(probe, []byte(packetNonIntegerProbe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd = exec.Command(elixirBin, "-pa", ebin, probe)
+	cmd = testproc.Command(t, elixirBin, "-pa", ebin, probe)
 	cmd.Dir = dir
 	cmd.Env = toolchainEnv(elixirBin)
 	run, err := cmd.CombinedOutput()

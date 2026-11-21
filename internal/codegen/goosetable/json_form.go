@@ -453,7 +453,7 @@ func (e *jsonEmit) write(f *ir.Field, pl place, desc, depth string) string {
 	case ir.TBool:
 		return fmt.Sprintf("schema_rt::json_write_bool(out, %s)", pl.val)
 	case ir.TFloat32, ir.TFloat64:
-		return fmt.Sprintf("schema_rt::json_write_float(out, %s)", pl.val)
+		return fmt.Sprintf("schema_rt::json_write_float(out, %s, %s)", pl.val, desc)
 	case ir.TString:
 		return fmt.Sprintf("schema_rt::json_write_str(out, %s, %s)", pl.val, pl.length)
 	case ir.TBytes:
@@ -502,11 +502,15 @@ func (e *jsonEmit) readField(ind int, base string, f *ir.Field, desc, elem strin
 		e.p(ind, "return schema_rt::json_read_keyed(jr, %s, '%c', depth) { r, k, d =>", names, shapeOf(el))
 	} else {
 		count := pl.val + "Count"
+		least := int64(0)
+		if f.Array == ir.ArrayCounted {
+			least = f.ArrayMin
+		}
 		if f.Array != ir.ArrayCounted {
 			e.p(ind, "var count: i32 = 0;")
 			count = "count"
 		}
-		e.p(ind, "return schema_rt::json_read_array(jr, %s, %d, '%c', depth) { r, k, d =>", count, n, shapeOf(el))
+		e.p(ind, "return schema_rt::json_read_array(jr, %s, %d, %d, '%c', depth) { r, k, d =>", count, least, n, shapeOf(el))
 	}
 	for _, s := range body {
 		e.p(ind+1, "%s", strings.ReplaceAll(s, "(jr, ", "(r, "))

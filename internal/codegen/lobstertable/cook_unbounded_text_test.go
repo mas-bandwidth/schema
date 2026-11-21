@@ -224,11 +224,17 @@ else:
 	if err != nil {
 		t.Fatal(err)
 	}
-	const anchor = "if start < other.end and other.start < end:"
-	if strings.Count(string(src), anchor) != 1 {
-		t.Fatal("overlap control anchor must occur once")
+	// The read runs the cook check first, which refuses the alias by more
+	// than one clause, so the control removes the check's call and then the
+	// read's own overlap condition.
+	const check = "    if cook_check(data, read_uint64_le(data, 0) != cook_magic) != \"ok\":\n        return nil\n"
+	const anchor = "    for(c.ranges) other:\n        if start < other.end and other.start < end:"
+	if strings.Count(string(src), anchor) != 1 || strings.Count(string(src), check) != 1 {
+		t.Fatal("overlap control anchors must occur once each")
 	}
-	if err := os.WriteFile(runtime, []byte(strings.Replace(string(src), anchor, "if false and start < other.end and other.start < end:", 1)), 0o644); err != nil {
+	patched := strings.Replace(string(src), check, "", 1)
+	patched = strings.Replace(patched, anchor, "    for(c.ranges) other:\n        if false and start < other.end and other.start < end:", 1)
+	if err := os.WriteFile(runtime, []byte(patched), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if got := run(aliasControl); got != "changed" {

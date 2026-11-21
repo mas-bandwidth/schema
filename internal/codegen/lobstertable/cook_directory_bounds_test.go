@@ -148,11 +148,14 @@ func TestLobsterCookReadForgedDirectoryRefuses(t *testing.T) {
 func TestLobsterCookReadForgedDirectoryRefusesNegativeControl(t *testing.T) {
 	t.Parallel()
 	const bound = "        if off < 0 or off >= data_length or (i > 0 and data_offset + off < c.dir[i - 1]):\n            return nil\n"
+	// the cook check ReadCook runs first refuses the same files, so the
+	// control removes both
+	const check = "    if cook_check(data, read_uint64_le(data, 0) != cook_magic) != \"ok\":\n        return nil\n"
 	out, code := cookDirectoryRun(t, func(src string) string {
-		if strings.Count(src, bound) != 1 {
-			t.Fatal("the control's anchor, the directory bound, is not in cook.lobster once")
+		if strings.Count(src, bound) != 1 || strings.Count(src, check) != 1 {
+			t.Fatal("the control's anchors, the directory bound and the check's call, are not in cook.lobster once each")
 		}
-		return strings.Replace(src, bound, "", 1)
+		return strings.Replace(strings.Replace(src, bound, "", 1), check, "", 1)
 	})
 	why := cookDirectoryVerdict(out, code)
 	if why == "" {

@@ -294,7 +294,7 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.I8Span = int8(v)
+						value.I8Span = int8(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int8
 					}
 				}
 				if exact && !(value.I8Span != 0) {
@@ -353,7 +353,7 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.I8Low = int8(v)
+						value.I8Low = int8(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int8
 					}
 				}
 				if exact && !(value.I8Low != 0) {
@@ -412,7 +412,7 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.I8High = int8(v)
+						value.I8High = int8(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int8
 					}
 				}
 				if exact && !(value.I8High != 0) {
@@ -471,7 +471,7 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.I8Inside = int8(v)
+						value.I8Inside = int8(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int8
 					}
 				}
 				if exact && !(value.I8Inside != 0) {
@@ -530,7 +530,7 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.I16Span = int16(v)
+						value.I16Span = int16(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int16
 					}
 				}
 				if exact && !(value.I16Span != 0) {
@@ -589,7 +589,7 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.I16Low = int16(v)
+						value.I16Low = int16(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int16
 					}
 				}
 				if exact && !(value.I16Low != 0) {
@@ -648,7 +648,7 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.I16High = int16(v)
+						value.I16High = int16(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int16
 					}
 				}
 				if exact && !(value.I16High != 0) {
@@ -707,7 +707,7 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.I16Inside = int16(v)
+						value.I16Inside = int16(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int16
 					}
 				}
 				if exact && !(value.I16Inside != 0) {
@@ -766,7 +766,7 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.I32Span = int32(v)
+						value.I32Span = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.I32Span != 0) {
@@ -825,7 +825,7 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.I32Low = int32(v)
+						value.I32Low = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.I32Low != 0) {
@@ -884,7 +884,7 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.I32High = int32(v)
+						value.I32High = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.I32High != 0) {
@@ -943,7 +943,7 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.I32Inside = int32(v)
+						value.I32Inside = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.I32Inside != 0) {
@@ -1257,7 +1257,7 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 									r.Report.Refuse(TableRefuseWireDamaged, "")
 									return false
 								}
-								(*p) = int16(v)
+								(*p) = int16(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int16
 							}
 						}
 					}
@@ -1602,7 +1602,7 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.U8Span = uint8(v)
+						value.U8Span = uint8(v & 0xff)
 					}
 				}
 				if exact && !(value.U8Span != 0) {
@@ -1661,7 +1661,7 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.U8Low = uint8(v)
+						value.U8Low = uint8(v & 0xff)
 					}
 				}
 				if exact && !(value.U8Low != 0) {
@@ -1720,7 +1720,7 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.U8High = uint8(v)
+						value.U8High = uint8(v & 0xff)
 					}
 				}
 				if exact && !(value.U8High != 1) {
@@ -1779,7 +1779,7 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.U8Inside = uint8(v)
+						value.U8Inside = uint8(v & 0xff)
 					}
 				}
 				if exact && !(value.U8Inside != 1) {
@@ -1838,7 +1838,7 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.U16Span = uint16(v)
+						value.U16Span = uint16(v & 0xffff)
 					}
 				}
 				if exact && !(value.U16Span != 0) {
@@ -1897,7 +1897,7 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.U16Low = uint16(v)
+						value.U16Low = uint16(v & 0xffff)
 					}
 				}
 				if exact && !(value.U16Low != 0) {
@@ -1956,7 +1956,7 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.U16High = uint16(v)
+						value.U16High = uint16(v & 0xffff)
 					}
 				}
 				if exact && !(value.U16High != 1) {
@@ -2015,7 +2015,7 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.U16Inside = uint16(v)
+						value.U16Inside = uint16(v & 0xffff)
 					}
 				}
 				if exact && !(value.U16Inside != 1) {
@@ -2074,7 +2074,7 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.U32Span = uint32(v)
+						value.U32Span = uint32(v & 0xffffffff)
 					}
 				}
 				if exact && !(value.U32Span != 0) {
@@ -2133,7 +2133,7 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.U32Low = uint32(v)
+						value.U32Low = uint32(v & 0xffffffff)
 					}
 				}
 				if exact && !(value.U32Low != 0) {
@@ -2192,7 +2192,7 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.U32High = uint32(v)
+						value.U32High = uint32(v & 0xffffffff)
 					}
 				}
 				if exact && !(value.U32High != 1) {
@@ -2251,7 +2251,7 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.U32Inside = uint32(v)
+						value.U32Inside = uint32(v & 0xffffffff)
 					}
 				}
 				if exact && !(value.U32Inside != 1) {
@@ -2811,7 +2811,7 @@ func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, st
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.B8 = uint32(v)
+						value.B8 = uint32(v & 0xffffffff)
 					}
 				}
 				if exact && !(value.B8 != 0) {
@@ -2870,7 +2870,7 @@ func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, st
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.B16 = uint32(v)
+						value.B16 = uint32(v & 0xffffffff)
 					}
 				}
 				if exact && !(value.B16 != 0) {
@@ -2929,7 +2929,7 @@ func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, st
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.B32 = uint32(v)
+						value.B32 = uint32(v & 0xffffffff)
 					}
 				}
 				if exact && !(value.B32 != 0) {
@@ -3042,7 +3042,7 @@ func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, st
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.B12 = uint32(v)
+						value.B12 = uint32(v & 0xffffffff)
 					}
 				}
 				if exact && !(value.B12 != 0) {

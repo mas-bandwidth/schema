@@ -23,13 +23,14 @@ package cpptable
 import (
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const cppBigEndianForm3Schema = `package beprobe
@@ -203,12 +204,12 @@ using namespace beprobe;
 	args := []string{"-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror", "-Wno-invalid-offsetof", "-I" + dir, filepath.Join(dir, "probe.cpp")}
 	args = append(args, sources...)
 	args = append(args, "-o", filepath.Join(dir, "probe"))
-	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, out)
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	output, runErr := exec.CommandContext(ctx, filepath.Join(dir, "probe")).CombinedOutput()
+	output, runErr := testproc.CommandContext(t, ctx, filepath.Join(dir, "probe")).CombinedOutput()
 	var fails []string
 	for line := range strings.SplitSeq(string(output), "\n") {
 		if strings.HasPrefix(line, "FAIL: ") {

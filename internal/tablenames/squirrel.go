@@ -103,12 +103,12 @@ var squirrelModuleKeys = map[string][]string{
 	"the runtime files (schema_table_*.nut), each its own module table": {
 		"noteStringOrigin", "stringIdentity", "blobIdentity",
 		"AnnounceRead", "Begin", "Block", "BuildVersion", "Bytes", "Cook", "CookMeasure", "Create", "deadNotZero",
-		"DefaultLimits", "Destroy", "EditTextForm", "FixedWidened", "FromJson", "fromJsonWalk", "LoadMessages",
+		"DefaultLimits", "Destroy", "EditTextForm", "f32", "FixedWidened", "FromJson", "fromJsonWalk", "LoadMessages",
 		"LoadRetain", "LoadText", "LoadTextForm", "MeasureMessages", "MeasureRetain", "Names", "ReadStrict",
 		"ReadStrictNames", "Rows", "SaveMessages", "SaveRetain", "SaveText", "SaveTextForm",
 		"Set", "ToJson", "ToJsonMeasure", "blobOf", "blobOfHex", "cyclic", "get", "getF32", "getF64", "geti32", "getu", "keyed",
 		"link", "load", "loadWalk", "mapKeyCmp", "mapWriteOrder", "measure", "noteStringOrigin", "numberForCook", "put", "putF32", "putF64", "puti32", "report", "save",
-		"stringIdentity", "textIllFormed", "u32le", "u64le", "utf8Ok",
+		"stringIdentity", "text", "textIllFormed", "u32le", "u64le", "utf8Ok",
 	},
 }
 

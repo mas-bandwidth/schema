@@ -373,12 +373,12 @@ def message_open(data:string, rep:LoadReport) -> Reader?, int:
         return nil, 2
     let start = size - 8 - n * 8
     let ids:[int] = []
+    let distinct = IdSet {}
     var i = 0
     while i < n:
         let id = read_int64_le(data, start + i * 8)
-        for(ids) prev:
-            if prev == id:
-                return nil, 2
+        if not idset_add(distinct, id):
+            return nil, 2
         push(ids, id)
         i++
     let st = LoadState { data: data, ids: ids, report: rep }
@@ -416,7 +416,7 @@ def announce_inner(v:MessageVocabulary, data:string, rep:LoadReport) -> bool:
     var words_count = 0
     var words_lo = 0
     var words_n = 0
-    let seen_refs:[int] = []
+    let seen_refs = IdSet {}
     var next_ref = 1
     while true:
         let ref, ok = leb(r)
@@ -430,11 +430,9 @@ def announce_inner(v:MessageVocabulary, data:string, rep:LoadReport) -> bool:
             return false
         if ref == next_ref:
             next_ref++
-        for(seen_refs) sr:
-            if sr == ref:
-                rep.malformed = true
-                return false
-        push(seen_refs, ref)
+        if not idset_add(seen_refs, ref):
+            rep.malformed = true
+            return false
         let id, named = rid(r, ref)
         if not named or id == node_table_id or not has(r, 1):
             rep.malformed = true
@@ -695,7 +693,7 @@ def message_skip(m:MessageRead, s:MessageShape, el:MessageShape, depth:int) -> b
             return false
         if k == 14 and el.bits == 0:
             return true
-        let seen:[int] = []
+        let seen = IdSet {}
         var i = 0
         while i < n:
             if k == 16:
@@ -703,9 +701,8 @@ def message_skip(m:MessageRead, s:MessageShape, el:MessageShape, depth:int) -> b
                 let id, named = message_name(v, ref)
                 if not good or not named:
                     return false
-                for(seen) old:
-                    if old == id: return false
-                push(seen, id)
+                if not idset_add(seen, id):
+                    return false
             let before = r.off
             if not message_skip(m, el, MessageShape {}, depth + 1):
                 return false
@@ -724,7 +721,7 @@ def message_skip(m:MessageRead, s:MessageShape, el:MessageShape, depth:int) -> b
 def message_skip_body(m:MessageRead, depth:int) -> bool:
     if depth > message_skip_depth:
         return false
-    let seen:[int] = []
+    let seen = IdSet {}
     while true:
         let ref, ok = mb_get(m.bits, m.v.ref_bits)
         if not ok or ref == 0:
@@ -732,9 +729,8 @@ def message_skip_body(m:MessageRead, depth:int) -> bool:
         let e = message_entry(m.v, ref)
         if not e or not ult(e.id, message_vocabulary_id):
             return false
-        for(seen) id:
-            if id == e.id: return false
-        push(seen, e.id)
+        if not idset_add(seen, e.id):
+            return false
         if not message_skip(m, e.shape, e.element, depth):
             return false
     return false
@@ -970,7 +966,7 @@ def message_keyed(m:MessageRead, sl:Slot, e:MessageEntry, exact:bool) -> bool:
         return false
     let keys = keyed_variants(f)
     let ed = elem_of(f)
-    let seen:[int] = []
+    let seen = IdSet {}
     var last_slot = 0
     var i = 0
     while i < n:
@@ -982,10 +978,8 @@ def message_keyed(m:MessageRead, sl:Slot, e:MessageEntry, exact:bool) -> bool:
         if not named:
             rep.malformed = true
             return false
-        for(seen) old:
-            if old == id:
-                return message_refuse(rep, "duplicate")
-        push(seen, id)
+        if not idset_add(seen, id):
+            return message_refuse(rep, "duplicate")
         let value = enum_value(keys, id)
         var cell = Value {}
         if value >= 1 and value <= length(sl.elems):
@@ -1052,7 +1046,7 @@ def message_body(m:MessageRead, rec:Record) -> bool:
     let rep = m.rep
     let v = m.v
     let slots = message_slots_of(message_facts.fields, rec.d.name)
-    let seen:[int] = []
+    let seen = IdSet {}
     // THE SENDER'S BUILD VERSION IS THIS READER'S OWN (§3.3 (a), (b)): every
     // field's default and every record's field order are digested into the
     // build version, so there, and only there, this reader's declaration is
@@ -1070,12 +1064,8 @@ def message_body(m:MessageRead, rec:Record) -> bool:
             return false
         if ref == 0:
             for(rec.fields) sl:
-                if sl.fd.required:
-                    var present = false
-                    for(seen) id:
-                        if id == sl.fd.id: present = true
-                    if not present:
-                        return message_refuse(rep, "missing_required")
+                if sl.fd.required and not idset_has(seen, sl.fd.id):
+                    return message_refuse(rep, "missing_required")
             m.body_fields = body_fields
             return true
         body_fields++
@@ -1083,10 +1073,8 @@ def message_body(m:MessageRead, rec:Record) -> bool:
         if not e or not ult(e.id, message_vocabulary_id):
             rep.malformed = true
             return false
-        for(seen) id:
-            if id == e.id:
-                return message_refuse(rep, "duplicate")
-        push(seen, e.id)
+        if not idset_add(seen, e.id):
+            return message_refuse(rep, "duplicate")
         var at = -1
         for(rec.fields) sl, i:
             if at < 0 and sl.fd.id == e.id:

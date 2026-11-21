@@ -61,8 +61,9 @@ func TestExprConstDefines(t *testing.T) {
 		// a wide leaf (3000000000 self-promotes past int) makes the subtree
 		// long long, so the symbolic form is safe
 		"#define WIDE_PLUS ( WIDE + 1 )\n",
-		// hex source spelling survives
-		"#define HEX_ID ( 0xDEADBEEF )\n",
+		// hex source spelling survives; past INT32_MAX it carries LL, since
+		// C types the unsuffixed literal unsigned int (signedHex)
+		"#define HEX_ID ( 0xDEADBEEFLL )\n",
 		// E.Max has no C twin: fold, schema spelling in the comment
 		"#define NUM_TEAMS ( 2 ) /* = Team.Max */\n",
 	} {

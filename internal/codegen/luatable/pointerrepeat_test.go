@@ -121,7 +121,7 @@ func TestLuaPointerRepeatAgreesWithTheEngine(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "wires.bin"), luaFuzzWiresFile(mutants), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		out, err := luaFuzzRun(lua, dir, "wires.bin")
+		out, err := luaFuzzRun(t, lua, dir, "wires.bin")
 		if err != nil {
 			t.Fatalf("unit %s: %v", g.unit, err)
 		}
