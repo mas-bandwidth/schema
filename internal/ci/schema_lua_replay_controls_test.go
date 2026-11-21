@@ -194,7 +194,9 @@ func TestLuaFuzzReplayControls(t *testing.T) {
 			t.Errorf("the embedded Lua fuzz harness no longer refuses with %q", want)
 		}
 	}
-	if strings.Contains(harness, "| sort") {
+	if strings.Contains(harness, `| sort")`) || strings.Count(harness, "io.popen(") != 2 {
+		// listFiles is the one popen that lists a directory; tablesModule's
+		// `ls | head -1` is the other
 		t.Error("the embedded Lua fuzz harness pipes a listing to sort again: the pipe reports sort's status, not find's")
 	}
 	// the controls run before every replay, and count what they ran
