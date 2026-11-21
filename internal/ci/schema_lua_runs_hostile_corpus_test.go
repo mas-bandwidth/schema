@@ -61,6 +61,13 @@ const (
 	luaHostilePlantFile = "fixed.lua"
 	luaHostilePlantFrom = "  if form ~= formByte then\n    if form == 1 then error(\"previous_form\", 0) end\n"
 	luaHostilePlantTo   = "  if true then -- PLANTED: the form gate refuses the form it carries\n    if form == 1 then error(\"previous_form\", 0) end\n"
+
+	// luaHostileCrashTo is the second plant at the same place: the fixed
+	// reader crashes (a Lua runtime error, not a refusal it raises by name) on
+	// every form-3 input. A crash is an error, never a refusal, so a case the
+	// manifest refuses must go red too: a runner that folded every raise out
+	// of the fixed read into `damaged` would leave those cases green.
+	luaHostileCrashTo = "  local _ = nil + form -- PLANTED: the fixed reader crashes\n" + luaHostilePlantFrom
 )
 
 // luaHostileCase is one manifest row.
@@ -129,9 +136,10 @@ type luaHostileUnit struct {
 }
 
 // luaHostileGenerate emits the Lua table surface for every distinct schema in
-// the corpus. plant patches the emitted wire reader in the scratch copy: it is
-// the planted-bad-pattern control and never touches the tree.
-func luaHostileGenerate(t *testing.T, root, dir string, cases []luaHostileCase, plant bool) []luaHostileUnit {
+// the corpus. plant, when it is not empty, replaces luaHostilePlantFrom in the
+// emitted wire reader of the scratch copy: it is a planted-bad-pattern control
+// and never touches the tree.
+func luaHostileGenerate(t *testing.T, root, dir string, cases []luaHostileCase, plant string) []luaHostileUnit {
 	t.Helper()
 	seen := map[string]bool{}
 	var units []luaHostileUnit
@@ -174,12 +182,12 @@ func luaHostileGenerate(t *testing.T, root, dir string, cases []luaHostileCase, 
 		if err != nil {
 			entry.unavailable = err.Error()
 		} else {
-			if plant && !packet {
+			if plant != "" && !packet {
 				if rt, ok := files[luaHostilePlantFile]; ok {
 					if !strings.Contains(string(rt), luaHostilePlantFrom) {
 						t.Fatalf("the emitted %s does not carry the planted pattern %q", luaHostilePlantFile, luaHostilePlantFrom)
 					}
-					files[luaHostilePlantFile] = []byte(strings.ReplaceAll(string(rt), luaHostilePlantFrom, luaHostilePlantTo))
+					files[luaHostilePlantFile] = []byte(strings.ReplaceAll(string(rt), luaHostilePlantFrom, plant))
 					planted++
 				}
 			}
@@ -194,7 +202,7 @@ func luaHostileGenerate(t *testing.T, root, dir string, cases []luaHostileCase, 
 		}
 		units = append(units, entry)
 	}
-	if plant && planted == 0 {
+	if plant != "" && planted == 0 {
 		t.Fatalf("no emitted table unit carries %s, so the planted reader bug went nowhere", luaHostilePlantFile)
 	}
 	var index strings.Builder
@@ -243,10 +251,24 @@ local function report()
     outOfRange = 0, widened = 0, repeatedKey = 0, reason = "" }
 end
 
+-- A REFUSAL THE GENERATED READER RAISES is its reason, a bare name
+-- (error("truncated", 0)), or the same name behind the position Lua adds when
+-- the level is left out (".../fixed.lua:148: count_over_bound"). Anything else
+-- raised (a runtime error such as "attempt to index a nil value", "fixed: no
+-- descriptor for table X", a table) is not a refusal: refusalName answers nil
+-- and the caller re-raises it, so the case is an error, never a refusal.
+local function refusalName(err)
+  if type(err) ~= "string" then return nil end
+  local name = err:match("^[a-z][a-z0-9_]*$") or err:match("^.-:%d+: ([a-z][a-z0-9_]*)$")
+  return name
+end
+
 local function caseResult(c)
   local unit = units[c[3]]
-  if not unit then return "refuse", "reader_unavailable", nil end
-  if unit.unavailable ~= "" then return "refuse", "reader_unavailable", nil end
+  -- no unit, or one that did not generate, is a missing codec: an error of
+  -- this runner, never a refusal (a refusal conforms on its verdict alone)
+  if not unit then error("no unit generated for " .. c[3], 0) end
+  if unit.unavailable ~= "" then error("the unit did not generate: " .. unit.unavailable, 0) end
   package.path = unit.dir .. "/?.lua;" .. package.path
   local payload = read(corpusDir .. "/" .. c[5])
   if c[2] == "packet" then
@@ -280,10 +302,20 @@ local function caseResult(c)
     -- A FIXED-ROOT FILE IS FORM 3 (docs/SPEC-TABLES.md §3.4): the input is
     -- dispatched by its form byte to the fixed form's batch read, which must
     -- hold exactly one record, as the C++ runner does (test/cpp-hostile).
-    -- Every named fixed-form refusal is the manifest's generic damaged.
+    -- The read is into ONE value (capacity 1), so a file of none or of more
+    -- than one record is the reader's own refusal. Only a refusal the reader
+    -- raises by name is a refusal; any other raise is re-raised, and a read
+    -- that returns without one record and without refusing is an error.
     if #payload > 0 and payload:byte(1) == 3 and T.Fixed ~= nil and T.Fixed[c[4]] ~= nil then
-      local ok, records = pcall(T.FixedLoad, c[4], payload)
-      if not ok or records == nil or #records ~= 1 then return "refuse", "damaged", nil end
+      local ok, records = pcall(T.FixedLoad, c[4], payload, 1)
+      if not ok then
+        local name = refusalName(records)
+        if name == nil then error(records, 0) end
+        return "refuse", name, nil
+      end
+      if records == nil or #records ~= 1 then
+        error("the fixed read into one value returned " .. (records == nil and "nil" or (#records .. " records")) .. " without refusing", 0)
+      end
       value = records[1]
     else
       value = L.Load(T, c[4], payload, r)
@@ -363,7 +395,11 @@ for raw in io.lines(manifestPath) do
     -- conforms on its verdict alone, so it must not be one)
     local verdict, reason, canonical = "error", "reader_error", nil
     local ok, v, r, text = pcall(caseResult, c)
-    if ok then verdict, reason, canonical = v, r, text end
+    if ok then
+      verdict, reason, canonical = v, r, text
+    else
+      reason = tostring(v):gsub("[\t\r\n]", " ")
+    end
     if canonical ~= nil then
       local f = assert(io.open(outDir .. "/" .. c[1], "wb"))
       f:write(canonical)
@@ -381,7 +417,7 @@ type luaHostileAnswer struct {
 }
 
 // luaHostileRun decodes every case once and returns the answers.
-func luaHostileRun(t *testing.T, root, corpusDir string, cases []luaHostileCase, plant bool) map[string]luaHostileAnswer {
+func luaHostileRun(t *testing.T, root, corpusDir string, cases []luaHostileCase, plant string) map[string]luaHostileAnswer {
 	t.Helper()
 	interpreter := luarun.Interpreter(t)
 	dir := t.TempDir()
@@ -541,7 +577,7 @@ func TestSchemaLuaRunsHostileCorpus(t *testing.T) {
 	root := repoRoot(t)
 	corpusDir := luaHostileCorpusDir(t, root)
 	cases := luaHostileCorpusCases(t, corpusDir)
-	answers := luaHostileRun(t, root, corpusDir, cases, false)
+	answers := luaHostileRun(t, root, corpusDir, cases, "")
 	bad := luaHostileCompare(t, cases, answers)
 	if len(bad) != 0 {
 		t.Fatalf("the Lua port disagrees with %d of %d hostile-corpus cases:\n  %s",
@@ -566,16 +602,36 @@ func TestSchemaLuaHostileCorpusPlantedReader(t *testing.T) {
 	root := repoRoot(t)
 	corpusDir := luaHostileCorpusDir(t, root)
 	cases := luaHostileCorpusCases(t, corpusDir)
-	clean := luaHostileRun(t, root, corpusDir, cases, false)
+	clean := luaHostileRun(t, root, corpusDir, cases, "")
 	if bad := luaHostileCompare(t, cases, clean); len(bad) != 0 {
 		t.Fatalf("with the plant out the runner must be green:\n  %s", strings.Join(bad, "\n  "))
 	}
-	planted := luaHostileRun(t, root, corpusDir, cases, true)
+	planted := luaHostileRun(t, root, corpusDir, cases, luaHostilePlantTo)
 	bad := luaHostileCompare(t, cases, planted)
 	if len(bad) == 0 {
 		t.Fatalf("the planted reader bug (the fixed form gate refuses form 3) was not observed: the corpus stayed green")
 	}
 	t.Logf("the planted reader bug is red: %s", bad[0])
+	// THE CRASH PLANT: a fixed reader that crashes must turn a case the
+	// manifest refuses red, as an error; folded into `damaged` it would pass.
+	crashed := luaHostileCompare(t, cases, luaHostileRun(t, root, corpusDir, cases, luaHostileCrashTo))
+	if why := luaHostileCrashedRefusal(crashed); why == "" {
+		t.Fatalf("the planted fixed-reader crash passed as a refusal: no case the manifest refuses went red as an error:\n  %s",
+			strings.Join(crashed, "\n  "))
+	} else {
+		t.Logf("the planted fixed-reader crash is red on a refused case: %s", why)
+	}
+}
+
+// luaHostileCrashedRefusal returns the first disagreement in which the
+// manifest refuses and the port answered an error, or "".
+func luaHostileCrashedRefusal(bad []string) string {
+	for _, why := range bad {
+		if strings.Contains(why, ": want "+luaHostileRefuse+"/") && strings.Contains(why, ", got error/") {
+			return why
+		}
+	}
+	return ""
 }
 
 // TestSchemaLuaHostileCorpusLane pins the target and the workflow: the corpus

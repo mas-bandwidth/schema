@@ -23,7 +23,10 @@ schema-lua-runs-hostile-corpus: toolchain-lua
 # THE PLANTED-BAD-PATTERN CONTROL: a wire reader bug goes into a scratch copy of
 # the emitted fixed.lua (the form gate refuses the form it carries, so the
 # accepted form-3 wire is refused: a changed verdict, since a refusal conforms on
-# its verdict alone), and the corpus comparison must go red. Red with the plant in, green with it
+# its verdict alone), and the corpus comparison must go red. A second plant
+# makes the fixed reader crash (a runtime error, not a refusal it raises by
+# name), and a case the manifest refuses must go red as an error: a crash never
+# passes as a refusal. Red with the plant in, green with it
 # out; the heavy corpus replay stays nightly, this control rides every push.
 .PHONY: schema-lua-runs-hostile-corpus-planted
 schema-lua-runs-hostile-corpus-planted: toolchain-lua
