@@ -1250,14 +1250,29 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
         }
         if (allDef) { return true; }
       }
-      w.leb(ids.ref(fd.id));
-      w.u8(14);
+      // A COUNTED ARRAY AT ITS BIRTH ELIDES (§3; tablewire encodeArray): Min
+      // elements, each at its default — a table element's body the terminator
+      // alone — is the value a fresh holder has, so it is not written, exactly
+      // as a scalar at its default is not
+      let birth = (fd.min || 0) > 0 && n === fd.min && !fd.req && !fd.opt;
+      const mark = ids.mark();
+      const ref = ids.ref(fd.id);
       const body = new TableVariableWriter();
       body.u8(fd.ek);
       body.leb(n);
       for (let i = 0; i < n; i++) {
+        const at = body.len;
         if (!TableVariableWriteElement(fd, body, ids, nodes, val[i], retain, path, i)) { return false; }
+        if (birth) {
+          const s = fd.e.s;
+          birth = s === "tab" ? body.len - at === 2 && body.b[at] === 1 && body.b[at + 1] === 0
+            : s === "union" || s === "ptr" ? val[i] === null
+            : !fd.tl && TableVariableElemIsDefault(fd.e, val[i]);
+        }
       }
+      if (birth) { ids.rollback(mark); return true; }
+      w.leb(ref);
+      w.u8(14);
       w.leb(body.len);
       w.raw(body.b);
       return true;
