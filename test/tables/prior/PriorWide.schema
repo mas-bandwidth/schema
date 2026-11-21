@@ -23,7 +23,7 @@ fixed table Cell
 
 union Arm
 {
-    none
+    idle
     amount int32 | min = 0, max = 100
     inner  Inner
 }
