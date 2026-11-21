@@ -27,6 +27,7 @@ for unit in featurewitnesses:testdata/conformance/feature-witnesses/full/Feature
 	mapdemo:tables/maps \
 	messagedemo:tables/messages \
 	scalars:tables/scalars \
+	shapes:test/tables/shapes \
 	streamdemo:tables/stream \
 	tabledemo:tables/examples \
 	tbla2:test/tables/A2.schema \

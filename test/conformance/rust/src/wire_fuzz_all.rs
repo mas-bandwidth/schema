@@ -30,6 +30,7 @@ mod listdemo;
 mod mapdemo;
 mod messagedemo;
 mod scalars;
+mod shapes;
 mod streamdemo;
 mod tabledemo;
 mod tbla2;
@@ -316,6 +317,8 @@ fn drive_message(unit: &str, root: &str, wire: &[u8]) -> Option<Reply> {
 /// ROOTS is every (unit, root) this driver answers, in the order `drive`
 /// matches them.
 const ROOTS: &[(&str, &str)] = &[
+    ("shapes", "Bounds"),
+    ("shapes", "FixedBounds"),
     ("featurewitnesses", "Root"),
     ("featurewitnesses", "ArrayRoot"),
     ("backenddemo", "LoginRequest"),
@@ -388,6 +391,7 @@ const ROOTS: &[(&str, &str)] = &[
 // The harness holds its caller-owned region even when the read refuses
 // damaged framing (§3, §4.2).
 const FIXED_ROOTS: &[(&str, &str)] = &[
+    ("shapes", "FixedBounds"),
     ("backenddemo", "LoginRequest"),
     ("backenddemo", "MatchResult"),
     ("backenddemo", "StorePurchase"),
@@ -507,6 +511,7 @@ fn drive_fixed(unit: &str, root: &str, wire: &[u8]) -> Option<Reply> {
         ("scalars", "SimState") => fixed_arm!(scalars, sim_state_fixed_load, sim_state_fixed_save, sim_state_fixed_measure, SimStateRow, wire),
         ("tblscalars2", "SimState") => fixed_arm!(tblscalars2, sim_state_fixed_load, sim_state_fixed_save, sim_state_fixed_measure, SimStateRow, wire),
         ("tblfixedevo", "EvoRoot") => fixed_arm!(tblfixedevo, evo_root_fixed_load, evo_root_fixed_save, evo_root_fixed_measure, EvoRootRow, wire),
+        ("shapes", "FixedBounds") => fixed_arm!(shapes, fixed_bounds_fixed_load, fixed_bounds_fixed_save, fixed_bounds_fixed_measure, FixedBoundsRow, wire),
         ("cooktorture", "TortureFixedWref") => fixed_arm!(cooktorture, torture_fixed_wref_fixed_load, torture_fixed_wref_fixed_save, torture_fixed_wref_fixed_measure, TortureFixedWrefRow, wire),
         ("tblvarevo1", "EvoMsg") => fixed_arm!(tblvarevo1, evo_msg_fixed_load, evo_msg_fixed_save, evo_msg_fixed_measure, EvoMsgRow, wire),
         ("tblvarevo2", "EvoMsg") => fixed_arm!(tblvarevo2, evo_msg_fixed_load, evo_msg_fixed_save, evo_msg_fixed_measure, EvoMsgRow, wire),
@@ -590,6 +595,8 @@ fn drive(unit: &str, root: &str, wire: &[u8], retain: bool) -> Option<Reply> {
         ("tblr2", "Cfg") => arm!(tblr2, cfg_load, cfg_load_retain, cfg_save, cfg_save_checked, cfg_save_retain, cfg_load_measure, wire, retain),
         ("tblscalars2", "SimState") => arm!(tblscalars2, sim_state_load, sim_state_load_retain, sim_state_save, sim_state_save_checked, sim_state_save_retain, sim_state_load_measure, wire, retain),
         ("tblfixedevo", "EvoRoot") => arm!(tblfixedevo, evo_root_load, evo_root_load_retain, evo_root_save, evo_root_save_checked, evo_root_save_retain, evo_root_load_measure, wire, retain),
+        ("shapes", "Bounds") => arm!(shapes, bounds_load, bounds_load_retain, bounds_save, bounds_save_checked, bounds_save_retain, bounds_load_measure, wire, retain),
+        ("shapes", "FixedBounds") => arm!(shapes, fixed_bounds_load, fixed_bounds_load_retain, fixed_bounds_save, fixed_bounds_save_checked, fixed_bounds_save_retain, fixed_bounds_load_measure, wire, retain),
         ("cooktorture", "TortureFixedWref") => arm!(cooktorture, torture_fixed_wref_load, torture_fixed_wref_load_retain, torture_fixed_wref_save, torture_fixed_wref_save_checked, torture_fixed_wref_save_retain, torture_fixed_wref_load_measure, wire, retain),
         ("tblvarevo1", "EvoDoc") => arm!(tblvarevo1, evo_doc_load, evo_doc_load_retain, evo_doc_save, evo_doc_save_checked, evo_doc_save_retain, evo_doc_load_measure, wire, retain),
         ("tblvarevo1", "EvoMsg") => arm!(tblvarevo1, evo_msg_load, evo_msg_load_retain, evo_msg_save, evo_msg_save_checked, evo_msg_save_retain, evo_msg_load_measure, wire, retain),
