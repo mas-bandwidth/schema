@@ -237,7 +237,10 @@ func TestLuauCookOpenAgreesWithGo(t *testing.T) {
 			}
 			cooked, err := tablecook.Cook(cu.m, inst, tablecook.Options{})
 			if err != nil {
-				t.Skipf("the tool writes no cook for %s: %v", row.caseName, err)
+				// The strict read accepted this instance, so it has a cook:
+				// the refused rows left by name above. An error here is the
+				// tool failing on an eligible case, never a row to skip.
+				t.Fatalf("the tool wrote no cook for %s, which the strict read accepts: %v", row.caseName, err)
 			}
 			build := fmt.Sprintf("0x%016x", cu.build)
 			out := runProbe(t, cu.g, cookProbe(cu.g, rootName, build, false), map[string][]byte{"wire": wire, "cook": cooked})
