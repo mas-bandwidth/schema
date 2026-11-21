@@ -2091,14 +2091,22 @@ func (g *messageGen) emitMessageRides(f *ir.Field, owner string, indent int) str
 			// (a float by its pattern, an enum or a union by the zero
 			// reference), a table element by a body that is its terminator
 			// alone.
-			born := g.nextTemp("born")
-			idx := g.nextTemp("i")
+			// the names come from the field's expression, never the shared
+			// temp counter, so the rest of the emitted method is unchanged
+			tag := strings.Map(func(r rune) rune {
+				if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' {
+					return r
+				}
+				return '_'
+			}, expr)
+			born := "born_" + tag
+			idx := "bornAt_" + tag
 			g.pf("%sboolean %s = %sCount == %d;\n", ind, born, expr, f.BornCount())
 			g.pf("%sfor (int %s = 0; %s && %s < %d; %s++) {\n", ind, idx, born, idx, f.BornCount(), idx)
 			elem := fmt.Sprintf("%s[%s]", expr, idx)
 			if isStructType(f.Type) {
 				st := f.Type.Ref.(*ir.Struct)
-				probe := g.nextTemp("probe")
+				probe := "bornProbe_" + tag
 				g.pf("%s    TableMessage.Writer %s = new TableMessage.Writer(null, 0, true);\n", ind, probe)
 				g.pf("%s    if (!%s.saveMessageBody(%s, %s)) { return false; }\n", ind, messageClass(st.Name), probe, elem)
 				g.pf("%s    if (%s.bits != %dL) { %s = false; }\n", ind, probe, g.refBits, born)

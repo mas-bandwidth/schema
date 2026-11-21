@@ -705,9 +705,16 @@ func (g *fixedModule) messageRides(f *ir.Field, mem, ind string) string {
 			// value rides nothing. Each element is judged as a field of its
 			// own: a float by its bits, an enum or a union by the zero
 			// reference, a table by a body that is its terminator alone.
-			iv := g.nextIdxVar()
-			g.probeSeq++
-			v := fmt.Sprintf("_%sBorn%d", ir.GoExportName(f.Name), g.probeSeq)
+			// the names come from the member's expression, never the shared
+			// counters, so the rest of the emitted function is unchanged
+			tag := strings.Map(func(r rune) rune {
+				if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' {
+					return r
+				}
+				return '_'
+			}, mem)
+			iv := "_bornAt_" + tag
+			v := "_born_" + tag
 			g.pf("%slet %s = %sCount === %d;\n", ind, v, mem, f.BornCount())
 			g.pf("%sfor (let %s = 0; %s && %s < %d; %s++) {\n", ind, iv, v, iv, f.BornCount(), iv)
 			cond := g.messageRides(messageElementField(f), mem+"["+iv+"]", ind+"  ")
