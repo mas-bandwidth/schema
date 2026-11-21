@@ -9,8 +9,9 @@ import (
 
 // THE WRITER'S ELISION TEST JUDGES TEXT BY ITS BYTES (docs/SPEC-TABLES.md §3,
 // §3.3: a field is elided only where it holds its declared default). A text
-// cell holds its value in Str, so a text element or field at its default is
-// default and one holding any other bytes is not. No schema reaches
+// cell holds its value in Str, so a text element (a text list's element record
+// field) or field at its default is default and one holding any other bytes
+// is not. No schema reaches
 // cellIsDefault with a text cell today (a text list takes no lower bound and
 // no fixed extent, §2.13.1, and a scalar text field elides by messageElides
 // and elides, not here); the test holds the function to the rule directly so
@@ -22,6 +23,11 @@ func TestCellIsDefaultJudgesTextByItsBytes(t *testing.T) {
 	field := func(name string) *ir.Field {
 		for _, f := range st.Fields {
 			if f.Name == name {
+				// a text list rides as an array of its element record, so
+				// its text cell is that record's one field (ir.TextListElem)
+				if elem := f.TextListElem(); elem != nil {
+					return elem.Fields[0]
+				}
 				return f
 			}
 		}
