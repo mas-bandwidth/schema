@@ -39,12 +39,55 @@ fixed table Root {
 
 // TestLuauBlockReadAgreesWithGo pins docs/SPEC-TABLES.md §19.2 and §19.4 on the
 // Luau leg: the generated Go builder writes a block, both readers land the same
-// records through their own descriptors, and each damaged block refuses by the
-// name Go's BlockOpen answers. Expected bytes and verdicts come from the
-// generated Go of the same unit, never from a number typed here.
+// records through their own descriptors, and each damaged block opens or
+// refuses exactly where Go's BlockOpen does. Expected bytes and verdicts come
+// from the generated Go of the same unit, never from a number typed here. A
+// damaged block is held to Go's VERDICT only: the reason each side names is
+// per-language diagnostic detail, never compared across targets
+// (docs/rulings.json refusal-verdict-only).
 func TestLuauBlockReadAgreesWithGo(t *testing.T) {
 	slowtest.Gate(t, "the pinned Luau interpreter and the schema-go oracle")
 	t.Parallel()
+	luauBlockReadAgreesWithGo(t, nil)
+}
+
+// TestLuauBlockReadReasonIsDiagnostic renames every reason the Luau BlockOpen
+// names: the verdicts are unchanged, so the agreement must stay green.
+func TestLuauBlockReadReasonIsDiagnostic(t *testing.T) {
+	slowtest.Gate(t, "the pinned Luau interpreter and the schema-go oracle")
+	t.Parallel()
+	got := luauBlockReadAgreesWithGo(t, func(t *testing.T, files map[string][]byte) {
+		const anchor = `return nil, "`
+		src := string(files["schema_blockread.luau"])
+		if !strings.Contains(src, anchor) {
+			t.Fatalf("NEGATIVE CONTROL FAILED: schema_blockread.luau names no refusal by %q", anchor)
+		}
+		files["schema_blockread.luau"] = []byte(strings.ReplaceAll(src, anchor, anchor+"renamed_by_the_plant_"))
+	})
+	if !strings.Contains(got, " refused renamed_by_the_plant_") {
+		t.Errorf("NEGATIVE CONTROL FAILED: the rename reached no damaged block:\n%s", got)
+	}
+}
+
+// blockVerdicts maps each damaged block's name to its verdict, "ok" or
+// "refused"; anything after the verdict is that side's diagnostic.
+func blockVerdicts(t *testing.T, side string, out []byte) map[string]string {
+	t.Helper()
+	verdicts := map[string]string{}
+	for line := range strings.SplitSeq(strings.TrimRight(string(out), "\n"), "\n") {
+		f := strings.Fields(line)
+		if len(f) < 2 || (f[1] != "ok" && f[1] != "refused") || (f[1] == "ok" && len(f) != 2) {
+			t.Fatalf("%s printed %q, not a case and its verdict", side, line)
+		}
+		verdicts[f[0]] = f[1]
+	}
+	return verdicts
+}
+
+// luauBlockReadAgreesWithGo runs both legs, the Luau files edited by plant
+// first when it is not nil, and returns the Luau damaged-block lines.
+func luauBlockReadAgreesWithGo(t *testing.T, plant func(*testing.T, map[string][]byte)) string {
+	t.Helper()
 	dir := t.TempDir()
 	schema := filepath.Join(dir, "Probe.schema")
 	if err := os.WriteFile(schema, []byte(blockReadSchema), 0o644); err != nil {
@@ -109,6 +152,9 @@ func TestLuauBlockReadAgreesWithGo(t *testing.T) {
 	}
 	files["schema_blockread.luau"] = blockread
 	files["descriptor.luau"] = []byte(luauBlockDescriptor(u, blocks))
+	if plant != nil {
+		plant(t, files)
+	}
 	for name, data := range files {
 		if err := os.WriteFile(filepath.Join(luDir, name), data, 0o644); err != nil {
 			t.Fatal(err)
@@ -157,14 +203,14 @@ end
 		t.Fatal(err)
 	}
 	runBlockProbe(t, goDir, "TestCases")
-	wantReasons, err := os.ReadFile(filepath.Join(dir, "go_reasons.txt"))
+	goReasons, err := os.ReadFile(filepath.Join(dir, "go_reasons.txt"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	var damageMain strings.Builder
 	damageMain.WriteString("--!strict\nlocal B = require(\"./schema_blockread\")\nlocal D = require(\"./descriptor\")\nlocal I = require(\"./inputs\")\n")
 	for _, c := range cases {
-		fmt.Fprintf(&damageMain, "do\n local buf = I[%q]\n local blk, reason = B.BlockOpen(D.root, buf, %d, buffer.len(buf) - %d)\n print(%q .. \" \" .. (reason or \"ok\"))\nend\n", c.name, c.base, c.base, c.name)
+		fmt.Fprintf(&damageMain, "do\n local buf = I[%q]\n local blk, reason = B.BlockOpen(D.root, buf, %d, buffer.len(buf) - %d)\n print(%q .. (if blk == nil then \" refused \" .. tostring(reason) else \" ok\"))\nend\n", c.name, c.base, c.base, c.name)
 	}
 	if err := os.WriteFile(filepath.Join(luDir, "damage.luau"), []byte(damageMain.String()), 0o644); err != nil {
 		t.Fatal(err)
@@ -174,9 +220,11 @@ end
 		inputs[c.name] = c.data
 	}
 	gotReasons := luaurun.Run(t, luDir, "damage.luau", inputs)
-	if string(gotReasons) != string(wantReasons) {
-		t.Fatalf("the Luau block refusals disagree with Go's BlockOpen:\nLua:\n%s\nGo:\n%s", gotReasons, wantReasons)
+	want, got := blockVerdicts(t, "Go's BlockOpen", goReasons), blockVerdicts(t, "the Luau BlockOpen", gotReasons)
+	if len(want) != len(cases) || !maps.Equal(got, want) {
+		t.Fatalf("the Luau block verdicts disagree with Go's BlockOpen (the reasons are diagnostic only):\nLua:\n%s\nGo:\n%s", gotReasons, goReasons)
 	}
+	return string(gotReasons)
 }
 
 type blockReadCase struct {
@@ -338,11 +386,11 @@ func TestCases(t *testing.T) {
 		copy(region, data)
 		var b RootBlock
 		err = b.Open(unsafe.Pointer(&region[off]), int64(len(region)-off))
-		reason := "ok"
+		verdict := "ok"
 		if err != nil {
-			reason = err.Error()
+			verdict = "refused " + err.Error()
 		}
-		fmt.Fprintf(&out, "%%s %%s\n", name, reason)
+		fmt.Fprintf(&out, "%%s %%s\n", name, verdict)
 	}
 	if err := os.WriteFile(filepath.Join(outDir, "go_reasons.txt"), []byte(out.String()), 0o644); err != nil {
 		t.Fatal(err)
