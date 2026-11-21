@@ -85,7 +85,7 @@ func checkJsVariableStrict(loadBody, markBody string) []string {
 // contract.
 func TestJsVariableClassStrict(t *testing.T) {
 	t.Parallel()
-	u := loadSchemaString(t, "variable-strict.schema", jsVariableStrictSchema)
+	u := loadSchemaString(t, "variable_strict.schema", jsVariableStrictSchema)
 	files, err := generateVariableFiles(u, nil)
 	if err != nil {
 		t.Fatalf("generateVariableFiles: %v", err)
@@ -116,7 +116,7 @@ func TestJsVariableClassStrict(t *testing.T) {
 func TestJsVariableClassStrictNegativeControl(t *testing.T) {
 	t.Parallel()
 
-	u := loadSchemaString(t, "variable-strict.schema", jsVariableStrictSchema)
+	u := loadSchemaString(t, "variable_strict.schema", jsVariableStrictSchema)
 	files, err := generateVariableFiles(u, nil)
 	if err != nil {
 		t.Fatalf("generateVariableFiles: %v", err)

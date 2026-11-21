@@ -131,13 +131,27 @@ func vtElideNaNWire(t *testing.T, u *ir.Unit) []byte {
 	return out
 }
 
-// vtElideRoundWire is an Inner.cr wire carrying float32(0.1), which lies
-// above the declared max 0.1: the engine's reader refuses it.
+// vtElideRoundWire is an Inner.cr wire carrying the float32 just above
+// float32(0.1), which lies above the declared max 0.1 even with both ends
+// narrowed to float32 (SPEC.md 4.6): every reader refuses it.
 func vtElideRoundWire(t *testing.T, u *ir.Unit) []byte {
+	t.Helper()
+	return vtElideCrWire(t, u, []byte{0xce, 0xcc, 0xcc, 0x3d}) // nextafter(float32(0.1), +inf)
+}
+
+// vtElideAtMaxWire is an Inner.cr wire carrying float32(0.1): the declared
+// max narrowed to float32, so it lies inside the range and the engine's
+// reader takes it (SPEC-TABLES 3.3, the triple is evaluated at float32).
+func vtElideAtMaxWire(t *testing.T, u *ir.Unit) []byte {
+	t.Helper()
+	return vtElideCrWire(t, u, []byte{0xcd, 0xcc, 0xcc, 0x3d}) // float32(0.1)
+}
+
+// vtElideCrWire is an Inner.cr wire whose float32 bytes are planted as to.
+func vtElideCrWire(t *testing.T, u *ir.Unit, to []byte) []byte {
 	t.Helper()
 	wire := vtFixedClassEngineWire(t, u, "Holder", `{"inner": {"cr": 0.05}}`)
 	from := []byte{0xcd, 0xcc, 0x4c, 0x3d} // float32(0.05)
-	to := []byte{0xcd, 0xcc, 0xcc, 0x3d}   // float32(0.1)
 	at := strings.Index(string(wire), string(from))
 	if at < 0 {
 		t.Fatalf("the float32 anchor is not in the wire %x", wire)
@@ -206,7 +220,10 @@ func TestPythonVtFixedClassElisionEngine(t *testing.T) {
 		t.Error("nan: the engine reads a NaN")
 	}
 	if !engineRefuses(u, "Holder", vtElideRoundWire(t, u)) {
-		t.Error("cr_round: the engine reads float32(0.1) under max 0.1")
+		t.Error("cr_round: the engine reads a float32 above float32(0.1) under max 0.1")
+	}
+	if engineRefuses(u, "Holder", vtElideAtMaxWire(t, u)) {
+		t.Error("cr_at_max: the engine refuses float32(0.1) under max 0.1")
 	}
 	wire, resaved := vtElideDeprecatedWire(t, u)
 	t.Logf("deprecated wire: %s", hex.EncodeToString(wire))
