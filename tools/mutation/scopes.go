@@ -168,14 +168,29 @@ func scopes(root string) ([]Scope, error) {
 		} else {
 			s.Notes = append(s.Notes, "no make target "+hostile+": this target has no hostile runner to run")
 		}
+		slow := "SCHEMA_SLOW=1 " + goTest("-timeout 120m ", all)
+		if slowReadsCorpus[t.lang] {
+			slow = "make -j${MUTATION_JOBS:-4} " + fixedformCorpus + " ${MUTATION_MAKE_ARGS:-} && " + slow
+		}
 		s.Stages = append(s.Stages,
 			Stage{Name: "pins", Sh: goTest("", "./internal/goldens"), Proof: goTestProof, Counted: true},
-			Stage{Name: "slow", Sh: "SCHEMA_SLOW=1 " + goTest("-timeout 120m ", all), Proof: goTestProof, Counted: true, Deep: true},
+			Stage{Name: "slow", Sh: slow, Proof: goTestProof, Counted: true, Deep: true},
 		)
 		out = append(out, s)
 	}
 	return out, nil
 }
+
+// fixedformCorpus is the make target that writes build/fixedform-corpus, the
+// C++ reference's fixed-form bytes the ports' fixed-proof tests read.
+const fixedformCorpus = "build/fixedform-corpus/.stamp"
+
+// slowReadsCorpus are the targets whose slow tests fail without
+// build/fixedform-corpus (Luau's fixed-proof negative controls open its files
+// and are red without them; the other ports' corpus tests skip). A scratch
+// tree has no build/, so their slow stage makes the corpus first, as the
+// certify jobs do before their tests.
+var slowReadsCorpus = map[string]bool{"luau": true}
 
 // conformanceProof is the harness's matrix with the target's column and at
 // least one surface it passed cases on. The target's name alone is no proof:

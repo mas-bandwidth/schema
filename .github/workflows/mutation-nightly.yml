@@ -118,6 +118,10 @@ jobs:
           cache: false
       - name: the sibling runtimes, at their pins
         run: make deps
+      # the Python pins at dist/, which the scratch worktree links: the deep
+      # stages run cmd/schema's TestPythonSurfaceCLIBehavior and the product's
+      # Python tests, and those refuse to run without the pinned interpreter
+      - uses: ./.github/actions/python
       - name: mutate ${{ matrix.scope }} and require every survivor reviewed
         run: |
           set -euo pipefail

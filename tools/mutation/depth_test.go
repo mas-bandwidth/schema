@@ -72,6 +72,35 @@ func TestAMutantNoDeepStageSawIsNotASurvivor(t *testing.T) {
 	}
 }
 
+// A slow stage whose tests read build/fixedform-corpus makes it first: a
+// scratch tree has no build/, and Luau's fixed-proof controls were red on the
+// unmutated tree without it, so the baseline refused the scope.
+func TestASlowStageBuildsTheCorpusItsTestsRead(t *testing.T) {
+	all, err := scopes(repo(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, s := range all {
+		lang := strings.TrimPrefix(s.Name, "target-")
+		for _, st := range s.Stages {
+			if st.Name != "slow" || !strings.HasPrefix(s.Name, "target-") {
+				continue
+			}
+			builds := strings.HasPrefix(st.Sh, "make ") && strings.Contains(st.Sh, " "+fixedformCorpus+" ") && strings.Index(st.Sh, fixedformCorpus) < strings.Index(st.Sh, "go test")
+			if builds != slowReadsCorpus[lang] {
+				t.Errorf("scope %s: the slow stage builds the corpus: %v, and its tests need it: %v (%q)", s.Name, builds, slowReadsCorpus[lang], st.Sh)
+			}
+			if builds {
+				n++
+			}
+		}
+	}
+	if n == 0 {
+		t.Fatal("no slow stage builds the corpus: target-luau's baseline is red on a scratch tree")
+	}
+}
+
 // The deep stages cost minutes per mutant, so the nightly splits each scope's
 // sample across jobs: the parts are disjoint and together the whole sample.
 func TestShardsSplitTheSampleWhole(t *testing.T) {
@@ -170,6 +199,12 @@ func TestTheNightlyRunsEveryStage(t *testing.T) {
 		if !strings.Contains(r, `-shard "${{ matrix.shard }}"`) {
 			t.Errorf("the nightly sweeps a whole sample in one job: %q", r)
 		}
+	}
+	// the core job's deep stages run cmd/schema's Python tests, which refuse
+	// without the pinned interpreter
+	core, _, found := strings.Cut(string(b), "\n  targets:\n")
+	if _, job, ok := strings.Cut(core, "\n  core:\n"); !found || !ok || !strings.Contains(job, "uses: ./.github/actions/python") {
+		t.Error("the nightly's core job does not install the Python pins its deep stages need")
 	}
 	// and every row of both matrices is a part
 	if n := strings.Count(string(b), `| go run ./tools/mutation shard -parts "$MUTATION_SHARDS")`); n != 2 {
