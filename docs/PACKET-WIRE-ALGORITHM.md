@@ -487,7 +487,7 @@ stricter and its own. The C++ word-wise scan (eight-byte steps, overlapping last
 
 **UTF-8:** well-formed under Unicode Table 3-7. Overlong forms, surrogates encoded in UTF-8,
 code points above `10FFFF`, truncated sequences, bare continuations, and the bytes `0xFE` /
-`0xFF` all `REFUSE`. Both checks hold in every packet target, in every build. MOO gets both
+`0xFF` all `REFUSE`. Both checks hold in every packet target, in every build. Moo gets both
 checks from its runtime `serializeString` call; the other packet targets enforce them in
 generated code, and three targets have no runtime at all.
 

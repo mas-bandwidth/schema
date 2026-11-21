@@ -57,7 +57,7 @@ flipped byte in variant 3 and requires each red by its own message.
 ## The nightly-readiness entry
 
 `test/conformance/nightly-readiness python` runs the leg's acceptance in the
-shape Goose and MOO run theirs (`test/conformance/nightly-readiness.md`,
+shape Goose and Moo run theirs (`test/conformance/nightly-readiness.md`,
 "Python"): `implementation --lang python` through
 `build/conformance-harness-python`, the harness built with
 `schema_leg_python` (`make/python-ci-release.mk`; the untagged harness refuses

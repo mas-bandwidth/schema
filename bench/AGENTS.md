@@ -17,7 +17,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `lobster/` | Lobster runner | `make bench-lobster-gate` | `bench/run.sh --only lobster` |
 | `lua/` | Lua packet runner | `make bench-lua-gate` | `bench/lua/run` |
 | `luau/` | Luau runner | `make bench-luau-gate` | `bench/run.sh --only luau` |
-| `moo/` | MOO packet gate | `make bench-moo-gate` | `bench/moo/run --gate` |
+| `moo/` | Moo packet gate | `make bench-moo-gate` | `bench/moo/run --gate` |
 | `paired/` | paired before/after + fixed-form bytes | `make bench-paired-check` | `make bench-paired-gate` |
 | `python/` | Python packet runner | `bench/run.sh --only python` | `bench/run.sh --only python` |
 | `results/` | committed CSV ledgers | `none` | `bench/run.sh` |

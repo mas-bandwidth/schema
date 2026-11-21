@@ -26,7 +26,7 @@ port's generated codec over its vendored serialize.goose the same way, and
 serialize.luau (see "The Luau leg" below). `bench/python` measures the Python
 packet codec with the generated package's vendored serialize.py runtime.
 `bench/lobster` and `bench/squirrel` are `run.sh` legs too, fourteen in all;
-the Lua, MOO and Ruby packet runners (`bench/lua/run`, `bench/moo/run`,
+the Lua, Moo and Ruby packet runners (`bench/lua/run`, `bench/moo/run`,
 `bench/ruby/run`) run on their own, outside `run.sh`.
 
 ## Running

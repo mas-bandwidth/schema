@@ -849,7 +849,7 @@ FloatExpr   = float expression over float literals, int literals and const names
     because mask tests are how flag state is consumed, **plus the `Count`
     constant** — the declared variant count, the one `.Count` in the
     language — every packet target emits it in its own spelling:
-    `CapsCount` in C++, C#, Go, JavaScript, Lua, Luau, Squirrel, MOO,
+    `CapsCount` in C++, C#, Go, JavaScript, Lua, Luau, Squirrel, Moo,
     Goose and Lobster; `CAPS_COUNT` in C, Rust and Java; `capsCount` in Dart;
     `caps_count/0` in Elixir; `Caps.Count`, a class attribute, in Python; `Caps::Count` in Ruby.
     **`flags` is a
@@ -1191,7 +1191,7 @@ extent as a member named `Max` in the target's own convention: `E::Max`
 (C++), `Schema.EMax` (C#, a typed constant beside the enum, never a member
 a variant's value could alias), `EMax` (Go), `E::MAX` (Rust), `EMax` (JS), `E_MAX`
 (C), `E.max` (Dart), `E.MAX` (Java), `E.max/0` (Elixir), `E.Max` (Lua, Luau,
-Squirrel, Python), `E::Max` (Ruby), `EMax` (Goose, Lobster, MOO). Its value is the enum's
+Squirrel, Python), `E::Max` (Ruby), `EMax` (Goose, Lobster, Moo). Its value is the enum's
 max — the same number `E.Max` names in schema
 expressions (§4.2): the highest wire-legal value, which under the
 sentinel-zero convention is the count of real variants. Application code
@@ -1697,7 +1697,7 @@ For every legal write the wire bits are identical to `serialize_string` over
 a buffer of N + 1.
 
 **Every packet target uses the same framing** — length over [0, N], then
-align, then raw bytes. MOO emits a runtime `serializeString` call on both write
+align, then raw bytes. Moo emits a runtime `serializeString` call on both write
 and read, and Python and Ruby a runtime `serialize_string` call on both; C,
 C++, C# (modern), C# (unity), Rust, Java, JavaScript, Dart, Elixir, Go, Lua,
 Luau, Squirrel, Goose and Lobster compose the framing from primitives. This is a
@@ -1710,7 +1710,7 @@ buffer but `serialize_string` takes `&mut String`, which allocates.
 Dart, Java and Elixir have no runtime to call.
 C++, C, Go and JavaScript may use their runtime string call for the framing
 and do not. **The encoding check and the interior-null check hold in every packet
-target, in every build.** MOO gets both checks from its runtime
+target, in every build.** Moo gets both checks from its runtime
 `serializeString` call, and Python and Ruby from their runtime
 `serialize_string` call; the other packet targets enforce them from their
 emitted read paths. Dart, Java and Elixir have no runtime at all, while
@@ -2272,7 +2272,7 @@ face untrusted bytes; writers do not.
 The packet `Write` contract includes row 8 (§5.1): a zero byte or used bytes
 that are not well-formed UTF-8. Each leg checks writes by its own mechanism.
 C, C++, C# (modern), Rust, Java, Dart and Lobster use a debug-only assert;
-Go, JavaScript, Elixir, Lua, Luau, Squirrel, MOO, Goose, Python and Ruby use a
+Go, JavaScript, Elixir, Lua, Luau, Squirrel, Moo, Goose, Python and Ruby use a
 refusal in every build. The C# (unity) packet writer does not check row 8; its
 reader refuses the same text (§4.7).
 The reader independently refuses the same ill-formed text in every build
@@ -2365,7 +2365,7 @@ port documents: in Python and Ruby a write raises `InvalidValue`
 | Lua | none | every build | `nil, "invalid_value: <Owner>.<field>"` |
 | Luau | none | every build | `nil, { name = "invalid_value", field = "<Owner>.<field>" }` |
 | Squirrel | none | every build | `null`, the reason in `SaveReason` |
-| MOO | none | every build | `nil, { name, field }` |
+| Moo | none | every build | `nil, { name, field }` |
 | Goose | none | every build | `SaveRefuseInvalidValue`, named by `save_refusal_name` |
 | Lobster | `assert` (packets; `--runtime-no-asserts` removes it) | debug packets; every build tables | `SaveChecked`'s `TableRefuseInvalidValue`; `save_reasoned`'s reason |
 
@@ -2415,7 +2415,7 @@ Each leg's variable `Save` and its `Measure`:
 
 - **Squirrel**: 1–8 every build; 9 unchecked; 10 every build
 
-- **MOO**: 1–8 every build; 9 unchecked; 10 every build
+- **Moo**: 1–8 every build; 9 unchecked; 10 every build
 
 - **Goose**: 1–8 and 10 every build; 9 not audited
 
@@ -2536,7 +2536,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - packet `Write`: 2–6 every build; 1 every build, raising for `int32` and `int64`; 7 raises; 11 every build, held by `packet-write-bareint-squirrel` (a negative `uint64` is the same 64 bits as one in the width, docs/PORT-SQUIRREL.md); 8 and 10 every build, refusing with `false`
 
-- **MOO**
+- **Moo**
 
   - `FixedSave`: 1–8 every build
 
@@ -2653,7 +2653,7 @@ Per `type`, per target:
    `int` 1/0 in C, `bool` in C++, Dart, Java, Lobster and Squirrel, `bool` +
    latched `Error` in C# (modern and unity alike), `error` in Go, `Result` in
    Rust, `{:ok, value}` or `:error` in Elixir, `bool` + the stream's latched
-   `error` in JS, Lua and Luau and its latched `refusal()` in MOO (in all four
+   `error` in JS, Lua and Luau and its latched `refusal()` in Moo (in all four
    generated validation refusals return `false` latching nothing, so callers
    tell the two channels apart exactly as in C#), `bool` with the reason in
    `serialize_error(s)` in Goose, and the value or a raised `Refused` in
@@ -2683,7 +2683,7 @@ Per `type`, per target:
    (`None = 0`, then the variants in declared order) with its `Max`
    extent in the §4.2 spelling — a member of the enum's own scope in C++,
    Rust, Dart, Java, Elixir, Lua, Luau, Squirrel, Python and Ruby, a
-   separate constant beside it in C#, Go, JS, C, Goose, Lobster and MOO —
+   separate constant beside it in C#, Go, JS, C, Goose, Lobster and Moo —
    and its debug-name function, the value
    representation in each language's own idiom, and
    `Write<Union>`/`Read<Union>` with the tag framing — representation per
@@ -3398,7 +3398,7 @@ Every row to date is settled, deferred with its design banked, or discarded.
 
 1. ~~Strings as byte strings~~ — settled: §4.7. One shape for
    `string`/`bytes`; one framing in every backend, emitted as the runtime
-   string call in MOO, Python and Ruby and composed from primitives in the
+   string call in Moo, Python and Ruby and composed from primitives in the
    others; the UTF-8 encoding check and the interior-null check hold in
    every target, from the runtime call in those three and as generated-code
    validation in the rest.

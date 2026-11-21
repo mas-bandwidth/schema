@@ -73,7 +73,7 @@ func TestSpecPacketWriteBareIntWidth(t *testing.T) {
 
 	writeSection := specTablesSection(t, spec, "Each leg's `FixedSave`", "## 6. ")
 	row11 := regexp.MustCompile(`11 (every build|debug|unrepresentable|not yet held)`)
-	for _, leg := range []string{"C++", "C", "C#", "Rust", "Java", "Dart", "Go", "JavaScript", "Elixir", "Lua", "Luau", "Squirrel", "MOO", "Goose", "Lobster"} {
+	for _, leg := range []string{"C++", "C", "C#", "Rust", "Java", "Dart", "Go", "JavaScript", "Elixir", "Lua", "Luau", "Squirrel", "Moo", "Goose", "Lobster"} {
 		marker := "- **" + leg + "**"
 		_, cell, found := strings.Cut(writeSection, marker)
 		if !found {
