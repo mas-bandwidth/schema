@@ -2183,6 +2183,9 @@ fn message_codec(unit: &str, root: &str, ann: &[u8], wire: &[u8]) -> Option<Opti
         ("vocabdemo", "Wide09") => message_round_trip!(vocabdemo, Wide09Row, wide09_load_messages, wide09_measure_messages, wide09_save_messages, ann, wire),
         ("vocab9demo", "Wide00") => message_round_trip!(vocab9demo, Wide00Row, wide00_load_messages, wide00_measure_messages, wide00_save_messages, ann, wire),
         ("vocab9demo", "Wide19") => message_round_trip!(vocab9demo, Wide19Row, wide19_load_messages, wide19_measure_messages, wide19_save_messages, ann, wire),
+        // widenbound_msg: a message-drift row, messagedemo read from its
+        // narrower peer widenboundpeer (docs/SPEC-TABLES.md §21.1)
+        ("messagedemo", "ToolMessage") => message_round_trip!(messagedemo, ToolMessageRow, tool_message_load_messages, tool_message_measure_messages, tool_message_save_messages, ann, wire),
         ("tblvarevo1", "EvoMsg") => message_round_trip!(tblvarevo1, EvoMsgRow, evo_msg_load_messages, evo_msg_measure_messages, evo_msg_save_messages, ann, wire),
         ("tblvarevo3", "EvoMsg") => message_round_trip!(tblvarevo3, EvoMsgRow, evo_msg_load_messages, evo_msg_measure_messages, evo_msg_save_messages, ann, wire),
         _ => return None,

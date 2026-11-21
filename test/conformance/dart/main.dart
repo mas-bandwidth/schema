@@ -5114,6 +5114,21 @@ final Map<String, MessageCodec> messageRuns = {
     save: varevo3_fixed.evoMsgSaveMessages,
     damaged: (r) => r.refused,
   ),
+  // widenbound_msg (a message-drift row: messagedemo read from its narrower
+  // peer widenboundpeer, docs/SPEC-TABLES.md §21.1) reads this root on the
+  // message surface, so it is a message row and not a fuzz row alone.
+  'messagedemo ToolMessage': _messageRow<messagedemo_fixed.ToolMessage, messagedemo_fixed.TableVocabulary, messagedemo_fixed.TableReport>(
+    fresh: messagedemo_fixed.ToolMessage.new,
+    init: messagedemo_fixed.initToolMessage,
+    vocabulary: () => messagedemo_fixed.TableVocabulary(entries: _entries(() => messagedemo_fixed.TableMessageEntry(0, 0))),
+    report: messagedemo_fixed.TableReport.new,
+    own: () => _ownAnnouncement(messagedemo_fixed.announceMeasure, messagedemo_fixed.announce),
+    announceRead: messagedemo_fixed.announceRead,
+    load: messages_fixed.toolMessageLoadMessages,
+    measure: messages_fixed.toolMessageMeasureMessages,
+    save: messages_fixed.toolMessageSaveMessages,
+    damaged: (r) => r.refused,
+  ),
 };
 
 final Map<String, MessageCodec> messageFuzzRuns = {
@@ -5128,18 +5143,6 @@ final Map<String, MessageCodec> messageFuzzRuns = {
     load: varevo2_fixed.evoMsgLoadMessages,
     measure: varevo2_fixed.evoMsgMeasureMessages,
     save: varevo2_fixed.evoMsgSaveMessages,
-    damaged: (r) => r.refused,
-  ),
-  'messagedemo ToolMessage': _messageRow<messagedemo_fixed.ToolMessage, messagedemo_fixed.TableVocabulary, messagedemo_fixed.TableReport>(
-    fresh: messagedemo_fixed.ToolMessage.new,
-    init: messagedemo_fixed.initToolMessage,
-    vocabulary: () => messagedemo_fixed.TableVocabulary(entries: _entries(() => messagedemo_fixed.TableMessageEntry(0, 0))),
-    report: messagedemo_fixed.TableReport.new,
-    own: () => _ownAnnouncement(messagedemo_fixed.announceMeasure, messagedemo_fixed.announce),
-    announceRead: messagedemo_fixed.announceRead,
-    load: messages_fixed.toolMessageLoadMessages,
-    measure: messages_fixed.toolMessageMeasureMessages,
-    save: messages_fixed.toolMessageSaveMessages,
     damaged: (r) => r.refused,
   ),
   'tblfixedevo EvoRoot': _messageRow<tblfixedevo_fixed.EvoRoot, tblfixedevo_fixed.TableVocabulary, tblfixedevo_fixed.TableReport>(
