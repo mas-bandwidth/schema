@@ -15,7 +15,10 @@
 ;;;; renderer's output.
 ;;;;
 ;;;; A cell is ✅ only when every leaf task under its work node is :done, and a
-;;;; :done task must carry non-empty :evidence. An evidence overlay entry may
+;;;; :done task must carry non-empty :evidence. A :not-applicable task must
+;;;; carry its reason in :note; a cell whose every leaf is not applicable is
+;;;; "—" and counts in neither side of its column's "complete" percentage.
+;;;; An evidence overlay entry may
 ;;;; move a task's :state and :evidence; it may not name a task the graph does
 ;;;; not have, and it is held to the same rule.
 ;;;;
@@ -161,16 +164,20 @@ an evidence overlay file, one plist per task."
   (and (stringp s) (plusp (length (string-trim '(#\Space #\Tab #\Newline #\Return) s)))))
 
 (defun validate-task-node (id node)
-  "The rule a task is held to: a known state, and evidence when it is done."
+  "The rule a task is held to: a known state, evidence when it is done, and
+the reason in :note when it is not applicable."
   (let ((state (getf node :state))
         (evidence (getf node :evidence)))
-    (unless (member state '(:unknown :todo :doing :done))
+    (unless (member state '(:unknown :todo :doing :done :not-applicable))
       (error "Task ~s has invalid state: ~s" id state))
     (when (eq state :done)
       (unless (and (listp evidence)
                    evidence
                    (some #'non-blank-string-p evidence))
-        (error "Done task ~s has empty or missing required :evidence" id)))))
+        (error "Done task ~s has empty or missing required :evidence" id)))
+    (when (eq state :not-applicable)
+      (unless (non-blank-string-p (getf node :note))
+        (error "Not-applicable task ~s has no :note giving the reason" id)))))
 
 (defun build-and-validate-node-table (nodes root-id)
   (let ((table (make-hash-table :test 'equal)))
@@ -435,14 +442,20 @@ name; nil when DIR does not exist."
 (defstruct cell-eval
   text
   is-green
-  has-unknown)
+  has-unknown
+  not-applicable)
+
+;;; A :not-applicable leaf is left out of its cell's count: a cell whose every
+;;; leaf is not applicable renders "—" and is left out of its column's
+;;; "complete" percentage, numerator and denominator both.
 
 (defun evaluate-cell (leaf-ids table)
   (let ((total (length leaf-ids))
         (done 0)
         (unknown 0)
         (todo 0)
-        (doing 0))
+        (doing 0)
+        (not-applicable 0))
     (when (zerop total)
       (error "Cell has 0 leaf tasks"))
     (dolist (id leaf-ids)
@@ -453,8 +466,12 @@ name; nil when DIR does not exist."
           (:unknown (incf unknown))
           (:todo (incf todo))
           (:doing (incf doing))
+          (:not-applicable (incf not-applicable))
           (otherwise (error "Unrecognized state ~s for task ~s" state id)))))
+    (decf total not-applicable)
     (cond
+      ((zerop total)
+       (make-cell-eval :text "—" :is-green nil :has-unknown nil :not-applicable t))
       ((= done total)
        ;; All required leaves done => visible green indicator + 100%
        (make-cell-eval :text "✅ 100%" :is-green t :has-unknown nil))
@@ -472,7 +489,9 @@ name; nil when DIR does not exist."
 (defun assessed-cell-text (eval work &optional leaf-ids table)
   ;; This roadmap view shows verified completion only. Detailed states stay in S.
   (declare (ignore work leaf-ids table))
-  (if (cell-eval-is-green eval) "✅" "❌"))
+  (cond ((cell-eval-not-applicable eval) "—")
+        ((cell-eval-is-green eval) "✅")
+        (t "❌")))
 
 (defun render-table-string (roadmap table sexp-path)
   (let* ((rows (getf roadmap :rows))
@@ -518,19 +537,24 @@ name; nil when DIR does not exist."
 
     ;; Summary row (Final language row)
     ;; "Output the verified feature percentage; keep counts in the source work set."
-    (let ((n-features (length rows)))
-      (format out "| complete")
-      (dolist (col cols)
-        (let ((c-id (first col))
-              (green-count 0))
-          (dolist (row rows)
-            (let* ((r-id (first row))
-                   (eval (gethash (cons r-id c-id) cell-evals)))
+    ;; A not-applicable cell counts in neither the numerator nor the
+    ;; denominator; a column with no applicable row renders "—".
+    (format out "| complete")
+    (dolist (col cols)
+      (let ((c-id (first col))
+            (green-count 0)
+            (applicable 0))
+        (dolist (row rows)
+          (let* ((r-id (first row))
+                 (eval (gethash (cons r-id c-id) cell-evals)))
+            (unless (cell-eval-not-applicable eval)
+              (incf applicable)
               (when (cell-eval-is-green eval)
-                (incf green-count))))
-          (let ((pct (floor (* 100 green-count) n-features)))
-            (format out " | ~D%" pct))))
-      (format out " |~%"))
+                (incf green-count)))))
+        (if (zerop applicable)
+            (format out " | —")
+            (format out " | ~D%" (floor (* 100 green-count) applicable)))))
+    (format out " |~%")
 
     ;; Link to source data
     (format out "~%[Source data](~a)~%" sexp-path)
@@ -607,8 +631,11 @@ sections/columns. TABLE is the validated graph after evidence overlays."
                              (remove-if
                               (lambda (leaf)
                                 (let ((task (gethash leaf table)))
-                                  (and (eq (getf task :state) :done)
-                                       (some #'non-blank-string-p (getf task :evidence)))))
+                                  (or (and (eq (getf task :state) :done)
+                                           (some #'non-blank-string-p (getf task :evidence)))
+                                      ;; nothing is owed where the work does not apply
+                                      (and (eq (getf task :state) :not-applicable)
+                                           (non-blank-string-p (getf task :note))))))
                               leaves)))
                       (when unfinished
                         (push (format nil "Unfinished cell ~a/~a/~a (work ~s)" id row-id lang work-id)
@@ -974,6 +1001,67 @@ order, and refuses a result whose hand-written part differs from EXISTING's."
             (setf (cell-eval-is-green eval) t)
             (unless (string= (assessed-cell-text eval nil '("new") table) "✅")
               (error "Verified cell lost its tick")))))
+
+      (test "not-applicable cell renders a dash and is left out of the complete row"
+        (lambda ()
+          (let* ((sexp '(:schema 1 :root "rm" :nodes
+                         ((:id "done-1" :type :task :title "D1" :state :done :evidence ("PR #1"))
+                          (:id "done-2" :type :task :title "D2" :state :done :evidence ("PR #2"))
+                          (:id "todo-1" :type :task :title "T1" :state :todo :evidence nil)
+                          (:id "na-1" :type :task :title "N1" :state :not-applicable :note "the platform cannot")
+                          (:id "na-2" :type :task :title "N2" :state :not-applicable :note "the platform cannot")
+                          (:id "na-3" :type :task :title "N3" :state :not-applicable :note "the platform cannot")
+                          (:id "na-4" :type :task :title "N4" :state :not-applicable :note "the platform cannot")
+                          (:id "mixed" :type :work-set :children ("done-1" "na-1"))
+                          (:id "rm" :type :roadmap :title "RM"
+                           :rows (("r1" "Row 1") ("r2" "Row 2"))
+                           :columns (("c1" "c1") ("c2" "c2") ("c3" "c3"))
+                           :cells (("r1" "c1" "mixed") ("r2" "c1" "na-2")
+                                   ("r1" "c2" "todo-1") ("r2" "c2" "done-2")
+                                   ("r1" "c3" "na-3") ("r2" "c3" "na-4"))))))
+                 (nodes (validate-root sexp))
+                 (table (build-and-validate-node-table nodes "rm"))
+                 (rendered (render-table-string (gethash "rm" table) table "docs/roadmap.sexp")))
+            (unless (search "| Row 1 | ✅ | ❌ | — |" rendered)
+              (error "A done leaf beside a not-applicable leaf must be green: ~s" rendered))
+            (unless (search "| Row 2 | — | ✅ | — |" rendered)
+              (error "A not-applicable cell must render a dash: ~s" rendered))
+            (unless (search "| complete | 100% | 50% | — |" rendered)
+              (error "Not-applicable cells must leave the complete row: ~s" rendered)))))
+
+      (test "not-applicable without a reason is refused"
+        (lambda ()
+          (dolist (node '((:id "na" :type :task :title "N" :state :not-applicable)
+                          (:id "na" :type :task :title "N" :state :not-applicable :note "  ")
+                          (:id "na" :type :task :title "N" :state :not-applicable :evidence ("x"))))
+            (let ((caught nil))
+              (handler-case (build-and-validate-node-table (list node) "na")
+                (error () (setf caught t)))
+              (unless caught (error "Accepted a not-applicable task with no reason: ~s" node))))
+          (let* ((table (build-and-validate-node-table
+                         '((:id "t1" :type :task :title "T1" :state :todo :evidence nil)) "t1"))
+                 (caught nil))
+            (handler-case
+                (apply-evidence-overlay table (read-restricted-forms-from-string
+                                               "(:id \"t1\" :state :not-applicable)") "test overlay")
+              (error () (setf caught t)))
+            (unless caught (error "An overlay set not-applicable with no reason"))
+            (apply-evidence-overlay table (read-restricted-forms-from-string
+                                           "(:id \"t1\" :state :not-applicable :note \"the platform cannot\")") "test overlay")
+            (unless (eq (getf (gethash "t1" table) :state) :not-applicable)
+              (error "An overlay with a reason did not set not-applicable")))))
+
+      (test "original nine owes nothing for a not-applicable cell"
+        (lambda ()
+          (let ((sexp (original-nine-test-graph)))
+            (original-nine-test-set sexp "variable-tables/dart" :state :not-applicable)
+            (original-nine-test-set sexp "variable-tables/dart" :evidence nil)
+            (original-nine-test-set sexp "variable-tables/dart" :note "the platform cannot")
+            (when (original-nine-test-problems sexp)
+              (error "A not-applicable cell with a reason was reported unfinished"))
+            (original-nine-test-set sexp "variable-tables/dart" :state :todo)
+            (unless (= 2 (length (original-nine-test-problems sexp)))
+              (error "Control: a todo cell was not reported unfinished")))))
 
       (test "shared leaf deduplication"
         (lambda ()

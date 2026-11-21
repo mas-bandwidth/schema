@@ -153,8 +153,8 @@ Variable tables have pointers to other tables, maps and other features that give
 | the unit registry, UnitView | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | widening on read, and the refusal reasons | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | cards: the sprint's card record as a variable table (tables/cards) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| no allocation on read | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
-| complete | 96% | 96% | 96% | 96% | 100% | 96% | 96% | 96% | 100% | 100% | 96% | 100% | 100% | 96% | 96% | 96% | 96% | 100% |
+| no allocation on read | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | — | ✅ | ❌ | ✅ | — | ❌ | ❌ | ❌ | ❌ | ✅ |
+| complete | 100% | 96% | 96% | 100% | 100% | 96% | 96% | 96% | 100% | 100% | 96% | 100% | 100% | 96% | 96% | 96% | 96% | 100% |
 
 [Source data](docs/roadmap.sexp)
 
