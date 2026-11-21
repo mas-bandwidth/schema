@@ -1,4 +1,4 @@
-schema-tables-baseline 7
+schema-tables-baseline 8
 package cards
 
 table Card
@@ -15,7 +15,7 @@ table Card
     field shared id=0x080a026ee7d87df4 kind=14 elem=13 type=PathText array=unbounded
     field needs id=0x4dde811e86af67ba kind=14 elem=13 type=CardID array=unbounded
     field test id=0xf9e6e6ef197c2b25 kind=12 size=192
-    field done_when id=0xdc677b66a5b57712 kind=17 type=string
+    field done id=0xdc677b66a5b57712 kind=17 type=string was=done_when
     field deadline_minutes id=0x502361da63c704cb kind=4 min=0 max=100000
     field source id=0x76dbdc228f782db8 kind=17 type=string
     field epoch id=0xfc9697d1196e6ba6 kind=4
@@ -25,9 +25,26 @@ table Card
     field head id=0x0a8f12cc5f9a0c03 kind=12 size=40
     field branch id=0x919ec0f651278ba5 kind=12 size=128
     field body id=0xcd4de79bc6c93295 kind=17 type=string
+    field extra id=0xfd29ee12a979cb69 kind=14 elem=13 type=KeyValue array=unbounded
+    field consumers id=0x97842f69f4f0ba0e kind=14 elem=13 type=Consumer array=unbounded
 
 table CardID
     field s id=0xaf63ee4c86020b22 kind=12 size=64
+
+table Consumer
+    field kind id=0xef9c96d721673243 kind=12 size=16
+    field who id=0x5ec5fc194891690f kind=12 size=32
+    field route id=0x3127fb469f19ebde kind=12 size=48
+    field model id=0x9de543933e6e703a kind=12 size=64
+    field started id=0xc732f2e2fbe9f15e kind=5
+    field ended id=0x34bb12befe88eb1b kind=5
+    field outcome id=0x75fe2a8465b02e53 kind=12 size=16
+    field line id=0xbf4ba5ad694f5907 kind=12 size=200
+    field cost_micro_usd id=0x593e2ab0efbb6334 kind=5
+
+table KeyValue
+    field key id=0x3dc94a19365b10ec kind=12 size=32
+    field value id=0x7ce4fd9430e80cea kind=17 type=string
 
 table PathText
     field s id=0xaf63ee4c86020b22 kind=12 size=192
@@ -39,6 +56,8 @@ enum Column
     variant review id=0x0e9718950b3dd3a1
     variant merging id=0x1bdb1ee8587d58f0
     variant landed id=0xdd3bf9933387198d
+    variant plan id=0xa5e84c0db713a4b2
+    variant check id=0x830cf17637260a67
 
 enum Priority
     variant normal id=0x61053f0e3ebbd272
@@ -58,3 +77,6 @@ enum Tier
 
 ### 2026-10-11 (UTC) — first baseline
 - table Card: base_ref, new_paths removed and _base, _new added in one edit — if that is a rename the wire id moved with the name and every stored value orphans: declare it `_base ... | was = "base_ref"`, and pair `json = "base_ref"` if the text key must survive (docs/SPEC-TABLES.md §5, §16.4) [warn]
+
+### 2026-11-21 (UTC) — rendering version 8: a bits(N) field records bits=N, so N narrowed inside one storage bucket warns (docs/SPEC-TABLES.md §18.1)
+- baseline REGENERATED over an unreadable one (baseline version 7, this compiler writes 8); the projection is this unit as it stands and the history above is preserved, but the previous projection could not be diffed, so no per-edit lines follow

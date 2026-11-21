@@ -1,4 +1,4 @@
-schema-tables-baseline 7
+schema-tables-baseline 8
 package vocabdemo
 
 table Wide00
@@ -154,3 +154,6 @@ table Wide09
 ## history
 ### 2026-09-04 — first baseline: the wide-vocabulary unit (docs/SPEC-TABLES.md §3.3)
 - baseline created over 10 tables — data written BEFORE this point is not covered by it
+
+### 2026-11-21 (UTC) — rendering version 8: a bits(N) field records bits=N, so N narrowed inside one storage bucket warns (docs/SPEC-TABLES.md §18.1)
+- baseline REGENERATED over an unreadable one (baseline version 7, this compiler writes 8); the projection is this unit as it stands and the history above is preserved, but the previous projection could not be diffed, so no per-edit lines follow

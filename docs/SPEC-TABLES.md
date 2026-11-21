@@ -3565,7 +3565,7 @@ fixed table ShipConfig
 }
 ```
 
-New locks start with `schema-lock 9`, use the prospective full-width, path-addressed definitions digest, and include complete `writer=<hex>` snapshots (the fixed-form algorithm §5.2). Rendering6/7/8 histories are salvaged without changing their saved wire keys; relocking appends the prospective current identity. Historical snapshots are checked against each entry’s recorded digest scheme. The supported rendering-7 example below remains readable unchanged; its absent snapshots are legacy-unknown.
+New locks start with `schema-lock 10`, use the prospective full-width, path-addressed definitions digest, and include complete `writer=<hex>` snapshots (the fixed-form algorithm §5.2). Rendering6/7/8 histories are salvaged without changing their saved wire keys; relocking appends the prospective current identity. Historical snapshots are checked against each entry’s recorded digest scheme. The supported rendering-7 example below remains readable unchanged; its absent snapshots are legacy-unknown.
 
 ```
 schema-lock 7
@@ -3674,7 +3674,7 @@ under a new name:
   and append a new one"*
 - a **moved range, resolution or fixed-point scale**, none of which moves a
   byte and all of which change what the bytes say: *"… is [1, 240] in the lock
-  and [1, 480] in the declaration — a field already in the lock keeps its
+  and [1, 120] in the declaration — a field already in the lock keeps its
   range: the bounds and the resolution are the scale a stored value is read
   back at, so moving them reads every record already written as a different
   number (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new
@@ -3775,9 +3775,9 @@ schema lock [--print] [--verbose] [--retire Table[@0x...] --reason <text>] [dir|
 Apart from `--retire`, it only ever APPENDS entries and values, adds blocks and
 flips `deprecated` on:
 it runs the check's own comparison first and **refuses everything the check
-refuses** — a reorder, a removal, a widening, a kind change, a held type that
-moved, an array element that moved, a union arm's payload type that moved, a
-moved default, a moved range, a flipped `?`, a reordered value list, an
+refuses** — a reorder, a removal, a narrowing, a kind change, a held type that
+moved, an array element that moved, a union arm whose payload names a
+different declaration, a moved default, a narrowed range, a flipped `?`, a reordered value list, an
 un-deprecation, a table withdrawn without a retirement, a type gone from the closure, a hand-edited
 file — so the one command that moves the file cannot be the one that breaks
 the rule. The ONE
@@ -4541,8 +4541,8 @@ MEANS, never where it is.
 refused. And undeprecating — taking `| deprecated` off again — is refused by
 the lock and by §21.1's monotone check, naming the enum and the variant. A
 deprecated field keeps this same one-way rule today; the field's own refusal is
-stated once, in `internal/lockfile/monotone.go:465` and pinned by
-TestLockFieldUndeprecateRefuses and TestUnDepRecateRefused. The variant is the
+stated once, in `monotoneAt` (`internal/lockfile/monotone.go`) and pinned by
+TestLockFieldUndeprecateRefuses and TestUnDeprecateRefused. The variant is the
 same rule one level in, not a second one.
 
 **READ.** A reader that meets a deprecated variant's id — on any form — yields
@@ -18550,8 +18550,8 @@ A field REPOINTED at another union carries a pair too (§18.3): a
 replacement whose shared arm holds a twin payload refuses on `default=`, one
 whose shared arm holds a scalar refuses on `payload=`, and a union carrying
 every arm of the old one under the same facts stands in.
-`TestBaselineRefusesTToOptional` holds the one-way optional edit and a new
-optional field. The projection over the corpus regenerates byte-identical. The warn class
+`TestBaselineAllowsOptionalEvolution` holds the optional edit in both
+directions and a new optional field. The projection over the corpus regenerates byte-identical. The warn class
 warns and does not refuse. A tightened range
 warns from either end and a loosened one is silent, over a ranged integer, a
 fixed field's whole-unit bounds and a compressed float's. The `was` chain
