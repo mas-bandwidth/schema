@@ -269,7 +269,7 @@ func firstUseSource() string {
   # enum's variant, a union's arm, a keyed slot's key and a node record's type
   # each use their id where the walk meets them.
   defp first_use_order?(body, ids) do
-    with {:ok, <<>>, acc, table} <- first_use_fields(body, ids, {[], MapSet.new()}, true, nil),
+    with {:ok, <<>>, acc, table} <- first_use_fields(body, ids, {[], MapSet.new()}, true, nil, 0),
          {:ok, {order, _seen}} <- first_use_nodes(table, ids, acc) do
       Enum.reverse(order) == first_use_entries(ids)
     else
@@ -294,7 +294,14 @@ func firstUseSource() string {
 
   # first_use_fields walks one body to its terminator. In the root body the
   # node table's payload is set aside, its records walked after the body.
-  defp first_use_fields(bin, ids, acc, root, table) do
+  #
+  # THE WALK IS DEPTH-BOUNDED (ELIXIR-6): d counts the framed contents it has
+  # descended, and past 512 the walk answers :error, which first_use_order?/2
+  # maps to "framing this walk cannot follow", the strict walk's to refuse
+  # (its own cap is 128 bodies, and no lawful nesting spends more than a few
+  # framed contents per body). The walk runs on attacker bytes before any
+  # other walk on the announcement read, so it never recurses without bound.
+  defp first_use_fields(bin, ids, acc, root, table, d) do
     case first_use_leb(bin) do
       {0, rest} ->
         {:ok, rest, acc, table}
@@ -303,12 +310,12 @@ func firstUseSource() string {
         case first_use(ids, ref, acc) do
           {:ok, 0x%016X, acc} when root and kind == 12 ->
             with {:ok, content, rest} <- first_use_framed(rest) do
-              first_use_fields(rest, ids, acc, root, content)
+              first_use_fields(rest, ids, acc, root, content, d)
             end
 
           {:ok, _id, acc} ->
-            with {:ok, rest, acc} <- first_use_payload(rest, kind, ids, acc) do
-              first_use_fields(rest, ids, acc, root, table)
+            with {:ok, rest, acc} <- first_use_payload(rest, kind, ids, acc, d) do
+              first_use_fields(rest, ids, acc, root, table, d)
             end
 
           :error ->
@@ -346,9 +353,10 @@ func firstUseSource() string {
        when type_id in [0x%016X, 0x%016X],
        do: {:ok, acc}
 
-  defp first_use_record(record, _type_id, ids, acc), do: first_use_content(record, 13, ids, acc)
+  defp first_use_record(record, _type_id, ids, acc),
+    do: first_use_content(record, 13, ids, acc, 0)
 
-  defp first_use_payload(bin, kind, ids, acc) when kind in [17, 30] do
+  defp first_use_payload(bin, kind, ids, acc, _d) when kind in [17, 30] do
     case first_use_leb(bin) do
       {0, rest} ->
         {:ok, rest, acc}
@@ -364,7 +372,7 @@ func firstUseSource() string {
     end
   end
 
-  defp first_use_payload(bin, 15, ids, acc) do
+  defp first_use_payload(bin, 15, ids, acc, d) do
     case first_use_leb(bin) do
       {0, rest} ->
         {:ok, rest, acc}
@@ -372,7 +380,7 @@ func firstUseSource() string {
       {ref, <<kind, rest::binary>>} ->
         with {:ok, _id, acc} <- first_use(ids, ref, acc),
              {:ok, content, rest} <- first_use_framed(rest),
-             {:ok, acc} <- first_use_content(content, kind, ids, acc) do
+             {:ok, acc} <- first_use_content(content, kind, ids, acc, d + 1) do
           {:ok, rest, acc}
         end
 
@@ -381,14 +389,14 @@ func firstUseSource() string {
     end
   end
 
-  defp first_use_payload(bin, kind, ids, acc) when kind in [12, 13, 14, 16, 31, 32] do
+  defp first_use_payload(bin, kind, ids, acc, d) when kind in [12, 13, 14, 16, 31, 32] do
     with {:ok, content, rest} <- first_use_framed(bin),
-         {:ok, acc} <- first_use_content(content, kind, ids, acc) do
+         {:ok, acc} <- first_use_content(content, kind, ids, acc, d + 1) do
       {:ok, rest, acc}
     end
   end
 
-  defp first_use_payload(bin, kind, _ids, acc) do
+  defp first_use_payload(bin, kind, _ids, acc, _d) do
     w = first_use_width(kind)
 
     case bin do
@@ -397,50 +405,52 @@ func firstUseSource() string {
     end
   end
 
-  defp first_use_content(b, 13, ids, acc) do
-    case first_use_fields(b, ids, acc, false, nil) do
+  defp first_use_content(_b, _kind, _ids, _acc, d) when d > 512, do: :error
+
+  defp first_use_content(b, 13, ids, acc, d) do
+    case first_use_fields(b, ids, acc, false, nil, d) do
       {:ok, <<>>, acc, nil} -> {:ok, acc}
       _ -> :error
     end
   end
 
-  defp first_use_content(<<ek, rest::binary>>, kind, ids, acc) when kind in [14, 16] do
+  defp first_use_content(<<ek, rest::binary>>, kind, ids, acc, d) when kind in [14, 16] do
     case first_use_leb(rest) do
-      {n, items} when kind == 14 -> first_use_elements(items, ek, n, ids, acc)
-      {n, items} -> first_use_slots(items, ek, n, ids, acc)
+      {n, items} when kind == 14 -> first_use_elements(items, ek, n, ids, acc, d)
+      {n, items} -> first_use_slots(items, ek, n, ids, acc, d)
       :error -> :error
     end
   end
 
-  defp first_use_content(_b, kind, _ids, _acc) when kind in [14, 16], do: :error
+  defp first_use_content(_b, kind, _ids, _acc, _d) when kind in [14, 16], do: :error
 
-  defp first_use_content(b, kind, ids, acc) when kind in [15, 17, 30] do
-    case first_use_payload(b, kind, ids, acc) do
+  defp first_use_content(b, kind, ids, acc, d) when kind in [15, 17, 30] do
+    case first_use_payload(b, kind, ids, acc, d) do
       {:ok, <<>>, acc} -> {:ok, acc}
       _ -> :error
     end
   end
 
-  defp first_use_content(_b, _kind, _ids, acc), do: {:ok, acc}
+  defp first_use_content(_b, _kind, _ids, acc, _d), do: {:ok, acc}
 
-  defp first_use_elements(<<>>, _ek, 0, _ids, acc), do: {:ok, acc}
-  defp first_use_elements(_rest, _ek, 0, _ids, _acc), do: :error
+  defp first_use_elements(<<>>, _ek, 0, _ids, acc, _d), do: {:ok, acc}
+  defp first_use_elements(_rest, _ek, 0, _ids, _acc, _d), do: :error
 
-  defp first_use_elements(rest, ek, n, ids, acc) do
-    with {:ok, rest, acc} <- first_use_payload(rest, ek, ids, acc) do
-      first_use_elements(rest, ek, n - 1, ids, acc)
+  defp first_use_elements(rest, ek, n, ids, acc, d) do
+    with {:ok, rest, acc} <- first_use_payload(rest, ek, ids, acc, d) do
+      first_use_elements(rest, ek, n - 1, ids, acc, d)
     end
   end
 
-  defp first_use_slots(<<>>, _ek, 0, _ids, acc), do: {:ok, acc}
-  defp first_use_slots(_rest, _ek, 0, _ids, _acc), do: :error
+  defp first_use_slots(<<>>, _ek, 0, _ids, acc, _d), do: {:ok, acc}
+  defp first_use_slots(_rest, _ek, 0, _ids, _acc, _d), do: :error
 
-  defp first_use_slots(rest, ek, n, ids, acc) do
+  defp first_use_slots(rest, ek, n, ids, acc, d) do
     with {key, rest} <- first_use_leb(rest),
          {:ok, _id, acc} <- first_use(ids, key, acc),
          {:ok, content, rest} <- first_use_framed(rest),
-         {:ok, acc} <- first_use_content(content, ek, ids, acc) do
-      first_use_slots(rest, ek, n - 1, ids, acc)
+         {:ok, acc} <- first_use_content(content, ek, ids, acc, d + 1) do
+      first_use_slots(rest, ek, n - 1, ids, acc, d)
     end
   end
 
@@ -672,7 +682,7 @@ func withOnlyVoidArms(runtime string) string {
 // Elixir's type checker proves always raises; such a unit is emitted without
 // them.
 var unionFamilies = []string{"collect_union_nodes", "save_collect_union_nodes", "arm_header", "arm_content", "arm_node_key",
-	"read_arm", "read_arm_payload", "arm_framing_damaged?", "retyped_arm", "json_arm", "json_read_arm", "arm_extent", "union_elements_extent"}
+	"read_arm", "read_arm_payload", "arm_framing_damaged?", "retyped_arm", "json_arm", "json_read_arm", "arm_extent", "union_elements_extent", "write_arm"}
 
 var unionClauses = []string{
 	"  defp field_extent(%{t: :union,",
@@ -688,6 +698,8 @@ var unionClauses = []string{
 	"  defp json_list_elem(%{elem_kind: 15}",
 	"  defp json_read_field(%{t: :union}",
 	"  defp json_read_list_elem(%{elem_kind: 15}",
+	"  defp write_value(%{t: :union}",
+	"  defp write_element(%{elem_kind: 15}",
 }
 
 const unionNodeBranch = "          :union ->\n            collect_union_nodes(f.elem, Map.get(value, f.name), acc)\n\n"
@@ -1115,12 +1127,17 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # its nodes are visited where the union sits, exactly as a field's are.
   defp save_collect_union_nodes(_union, nil, acc, seen), do: {acc, seen}
 
+  # an arm the union does not declare refuses the save by name (docs/SPEC.md
+  # §5.1 row 6) before any node is numbered
   defp save_collect_union_nodes(union, {arm, payload}, acc, seen) do
-    case Map.fetch!(Map.fetch!(@unions, union).by_name, arm) do
+    case Map.get(Map.fetch!(@unions, union).by_name, arm) do
+      nil -> throw(:invalid_value)
       %{t: :void} -> {acc, seen}
       a -> save_collect_nodes(%{fields: [a]}, %{a.name => payload}, acc, seen)
     end
   end
+
+  defp save_collect_union_nodes(_union, _other, _acc, _seen), do: throw(:invalid_value)
 
   # save_push_node numbers a TABLE node a pointer names, once, by its stored
   # number, and walks its body the first time only: a node reached again is the
@@ -1245,11 +1262,14 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp collect_union_nodes(_union, nil, acc), do: acc
 
   defp collect_union_nodes(union, {arm, payload}, acc) do
-    case Map.fetch!(Map.fetch!(@unions, union).by_name, arm) do
+    case Map.get(Map.fetch!(@unions, union).by_name, arm) do
+      nil -> throw(:invalid_value)
       %{t: :void} -> acc
       a -> collect_nodes(%{fields: [a]}, %{a.name => payload}, acc)
     end
   end
+
+  defp collect_union_nodes(_union, _other, _acc), do: throw(:invalid_value)
 
   # push_node queues an unassembled read marker once, for the live ownership
   # walk (§2.5): a decoded record's pointer fields are markers until the whole
@@ -1512,7 +1532,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp emit_field(%{t: :float} = f, value, idx_map, ids, order, acc) do
-    v = Map.get(value, f.name, f.default)
+    v = cfloat_zero(Map.get(value, f.name, f.default), f)
 
     if not emit_scalar?(f, v) do
       {idx_map, ids, order, acc}
@@ -1561,15 +1581,28 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp same?(a, b) when is_float(a) and is_float(b), do: a === b
   defp same?(a, b), do: a == b
 
-  # Compare the stored width: BEAM inputs and schema literals are binary64.
-  defp same_field?(%{t: :float, width: 4}, a, b),
-    do: float_bytes(a, 4) == float_bytes(b, 4)
+  # Compare the stored width: BEAM inputs and schema literals are binary64. A
+  # compressed float's -0 is +0 (cfloat_zero/2), so it elides as +0 does.
+  defp same_field?(%{t: :float, width: 4} = f, a, b),
+    do: float_bytes(cfloat_zero(a, f), 4) == float_bytes(cfloat_zero(b, f), 4)
+
+  defp same_field?(%{t: :float} = f, a, b), do: same?(cfloat_zero(a, f), cfloat_zero(b, f))
 
   defp same_field?(_f, a, b), do: same?(a, b)
 
+  # A COMPRESSED FLOAT'S -0 IS +0 (docs/SPEC-TABLES.md §3.3, ruling
+  # fixed-compressed-negzero): a float with a declared range lands -0 as +0
+  # on every read, and every writer stores +0 for it, the bits of +0. A plain
+  # float keeps its sign. Exact equality tells -0.0 from 0.0 (OTP 27).
+  defp cfloat_zero(v, %{min: _}) when v === -0.0, do: 0.0
+  defp cfloat_zero(v, %{elem_min: _}) when v === -0.0, do: 0.0
+  defp cfloat_zero(v, _f), do: v
+
   # SPEC-TABLES §2.3, §3: a present optional array always writes; a [N]T of
   # tables always writes; any other [N]T elides when every element is the
-  # declared default, and a counted or unbounded array elides when empty.
+  # declared default; a counted array born at Min (docs/SPEC.md §4.2) elides
+  # when it holds its Min elements, each at its default; and any other counted
+  # or unbounded array elides when empty.
   defp list_elides?(f, elements) do
     cond do
       Map.get(f, :optional, false) or Map.get(f, :required, false) ->
@@ -1579,21 +1612,46 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         false
 
       Map.has_key?(f, :fixed_array) and f.elem_kind == 10 ->
-        Enum.all?(elements, &(float_bytes(&1, 4) == float_bytes(f.elem_default, 4)))
+        Enum.all?(elements, &born_default?(f, &1))
 
       Map.has_key?(f, :fixed_array) ->
-        Enum.all?(elements, &same?(&1, f.elem_default))
+        Enum.all?(elements, &same?(cfloat_zero(&1, f), f.elem_default))
+
+      Map.has_key?(f, :min_count) ->
+        length(elements) == f.min_count and Enum.all?(elements, &born_default?(f, &1))
 
       true ->
         elements == []
     end
   end
 
+  # born_default? is whether one element sits at the element default, which a
+  # birth slot holds. A table element is at its default when every field holds
+  # its declared default exactly and none is required (a required field
+  # always rides, so its body is never empty).
+  defp born_default?(%{text_list: true} = f, e) do
+    default = if f.text_optional, do: nil, else: ""
+    is_map(e) and Map.get(e, "value", default) === default
+  end
+
+  defp born_default?(%{elem_kind: 13} = f, e) do
+    desc = Map.fetch!(@tables, f.elem)
+    born = defaults(desc)
+
+    is_map(e) and not Enum.any?(desc.fields, &Map.get(&1, :required, false)) and
+      Map.merge(born, e) === born
+  end
+
+  defp born_default?(%{elem_kind: 10} = f, e),
+    do: float_bytes(cfloat_zero(e, f), 4) == float_bytes(f.elem_default, 4)
+
+  defp born_default?(f, e), do: same?(cfloat_zero(e, f), f.elem_default)
+
   # a [N]T always carries N elements (docs/SPEC-TABLES.md §3): a shorter
-  # value is padded with the element default, a longer one is cut at N.
+  # value is padded with the element default. A longer one never reaches
+  # here: write_value/2 refused it, because no writer cuts a value.
   defp pad_fixed(%{fixed_array: n} = f, elements) when is_list(elements) do
-    kept = Enum.take(elements, n)
-    kept ++ List.duplicate(f.elem_default, n - length(kept))
+    elements ++ List.duplicate(f.elem_default, max(n - length(elements), 0))
   end
 
   defp pad_fixed(_f, elements), do: elements
@@ -1643,7 +1701,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     do: {int_bytes(v, a.width, a.signed), ids, order}
 
   defp arm_content(%{t: :float} = a, v, _idx_map, ids, order),
-    do: {float_bytes(v, a.width), ids, order}
+    do: {float_bytes(cfloat_zero(v, a), a.width), ids, order}
 
   defp arm_content(%{t: :bool}, v, _idx_map, ids, order),
     do: {if(v, do: <<1>>, else: <<0>>), ids, order}
@@ -1727,8 +1785,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     {if(e, do: <<1>>, else: <<0>>), ids, order}
   end
 
-  defp emit_element(%{elem_kind: kind}, e, _idx_map, ids, order) when kind in [10, 11] do
-    {float_bytes(e, kind_width(kind)), ids, order}
+  defp emit_element(%{elem_kind: kind} = f, e, _idx_map, ids, order) when kind in [10, 11] do
+    {float_bytes(cfloat_zero(e, f), kind_width(kind)), ids, order}
   end
 
   defp emit_element(%{elem_kind: kind}, e, _idx_map, ids, order)
@@ -2757,7 +2815,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp read_payload(%{t: :float} = f, payload, _nodes, _ids, report) do
-    {v, report} = clamp_int(float_of(payload, f.width, f.non_finite), f, report)
+    {v, report} = clamp_int(cfloat_zero(float_of(payload, f.width, f.non_finite), f), f, report)
     {:cont, v, report}
   end
 
@@ -3203,6 +3261,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp clamp_count(n, %{max_count: max}, _report) when n > max,
     do: {max, throw(:wire_damaged)}
 
+  # a counted array's count below its Min refuses the whole load (docs/SPEC.md
+  # §5.1 row 3, §4.2): no conforming writer sends it, since the count is born
+  # at Min and an all-birth array elides
+  defp clamp_count(n, %{min_count: min}, _report) when n < min,
+    do: {n, throw(:wire_damaged)}
+
   defp clamp_count(n, _f, report), do: {n, report}
 
   # widens? reports whether a wire kind decodes EXACTLY into this field
@@ -3217,7 +3281,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # reads at the wire kind's own width and lands, one widened event counts, and an
   # out-of-range value clamps as always.
   defp read_widened(%{t: :float} = f, kind, payload, report) do
-    {v, report} = clamp_int(float_of(payload, kind_width(kind), f.non_finite), f, report)
+    v = cfloat_zero(float_of(payload, kind_width(kind), f.non_finite), f)
+    {v, report} = clamp_int(v, f, report)
     {v, %{report | widened: report.widened + 1}}
   end
 
@@ -3450,7 +3515,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
     if byte_size(rest) >= w do
       <<raw::binary-size(^w), after_sub::binary>> = rest
-      {v, report} = clamp_list_int(float_of(raw, w, f.non_finite), f, report)
+      {v, report} = clamp_list_int(cfloat_zero(float_of(raw, w, f.non_finite), f), f, report)
       read_list_elements(f, after_sub, n - 1, nodes, ids, [v | acc], report)
     else
       {Enum.reverse(acc), throw(:wire_damaged)}
@@ -3562,60 +3627,185 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # A WRITER'S TEXT CHECK (docs/SPEC-TABLES.md §16.3, docs/SPEC.md §5.1 row 8):
   # well-formed text with no zero byte. The text writer refuses a zero too,
   # because its reader refuses the \u0000 text a writer would otherwise spell.
+  #
+  # THE WRITE CONTRACT (docs/SPEC.md §5.1, ruling write-refusal): Elixir
+  # refuses an off-declaration value in EVERY build, so every writer holds
+  # EVERY field it writes to its declaration, required or not, and every
+  # union arm payload and array element with it, before a byte is built.
   defp validate_record(desc, value) do
     Enum.each(desc.fields, fn f ->
-      if Map.get(f, :text_list, false) and field_active?(f, desc, value) do
-        validate_text_list(f, Map.get(value, f.name, f.default))
-      end
-
-      if Map.get(f, :unbounded, false) and field_active?(f, desc, value) do
-        text = Map.get(value, f.name, f.default)
-
-        unless Map.get(f, :optional, false) and text == nil do
-          if not is_binary(text) or not utf8_valid?(text), do: throw(:invalid_value)
-        end
-      end
-
-      if Map.get(f, :t) == :string and field_active?(f, desc, value) do
-        text = Map.get(value, f.name, f.default)
-
-        unless Map.get(f, :optional, false) and text == nil do
-          if not is_binary(text) or not utf8_valid?(text), do: throw(:invalid_value)
-        end
-      end
-
-      if Map.get(f, :required, false) and field_active?(f, desc, value) do
-        required_value(f, Map.get(value, f.name, f.default))
+      if field_active?(f, desc, value) do
+        v = Map.get(value, f.name, f.default)
+        if Map.get(f, :text_list, false), do: validate_text_list(f, v)
+        write_value(f, v)
       end
     end)
   end
 
-  defp required_value(%{t: :list} = f, values) do
-    Enum.each(pad_fixed(f, values), fn v ->
-      if Map.has_key?(f, :elem_min) and (v < f.elem_min or v > f.elem_max),
-        do: throw(:invalid_value)
+  # write_value holds one value to its declaration (docs/SPEC.md §5.1 rows 1-6,
+  # 8, 10, 11): a ranged integer's min/max, a bits(N)'s N bits, a bare
+  # integer's storage width, a string(N)'s and a bytes(N)'s N, a counted
+  # array's [Min, Max], a [N]T's N, a ranged float's range at the float's own
+  # width, an enum name, a union arm and its payload. A refusal throws
+  # :invalid_value, which save/2 and to_json/2 answer as {:error,
+  # :invalid_value}: nothing raises, and no value is truncated into its width,
+  # forced into its range or cut at its bound (no writer quantizes or clamps,
+  # docs/plans/strict-only.md decision 8).
+  defp write_value(%{optional: true}, nil), do: :ok
 
-      if f.elem_kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29] do
-        bits = Map.get(f, :elem_bits, kind_width(f.elem_kind) * 8)
-        signed = f.elem_kind in [2, 3, 4, 5, 18, 20, 21, 22, 23, 24]
-        required_integer(v, bits, signed)
-      end
-    end)
+  defp write_value(%{t: :list} = f, values) do
+    cond do
+      values == nil ->
+        :ok
+
+      not is_list(values) ->
+        throw(:invalid_value)
+
+      true ->
+        n = length(values)
+
+        # a [N]T carries exactly N elements: a shorter value is padded with the
+        # element default (pad_fixed/2), a longer one refuses, never cut
+        if Map.has_key?(f, :fixed_array) and n > f.fixed_array, do: throw(:invalid_value)
+
+        if Map.get(f, :array) == :counted and
+             (n < Map.get(f, :min_count, 0) or n > f.array_bound),
+           do: throw(:invalid_value)
+
+        if not Map.get(f, :text_list, false), do: Enum.each(values, &write_element(f, &1))
+    end
   end
 
-  defp required_value(%{t: :keyed} = f, slots) do
-    Enum.each(f.key_names, fn name ->
-      required_value(f.item, Map.get(slots, name, f.item.default))
-    end)
+  defp write_value(%{t: :keyed} = f, slots) do
+    cond do
+      slots == nil ->
+        :ok
+
+      not is_map(slots) ->
+        throw(:invalid_value)
+
+      true ->
+        Enum.each(f.key_names, fn name ->
+          write_value(f.item, Map.get(slots, name, f.item.default))
+        end)
+    end
   end
 
-  defp required_value(%{min: lo, max: hi}, v) when v < lo or v > hi,
-    do: throw(:invalid_value)
+  defp write_value(%{t: :int} = f, v) do
+    if not is_integer(v), do: throw(:invalid_value)
 
-  defp required_value(%{t: :int} = f, v),
-    do: required_integer(v, Map.get(f, :bits, f.width * 8), f.signed)
+    case f do
+      %{min: lo, max: hi} when is_number(v) and (v < lo or v > hi) -> throw(:invalid_value)
+      _ -> :ok
+    end
 
-  defp required_value(_f, _v), do: :ok
+    required_integer(v, Map.get(f, :bits, f.width * 8), f.signed)
+  end
+
+  defp write_value(%{t: :float} = f, v),
+    do: write_float(v, f.width, Map.get(f, :min), Map.get(f, :max))
+
+  defp write_value(%{t: :string} = f, v), do: write_text(f, v)
+
+  defp write_value(%{t: :bytes} = f, v) do
+    if not is_binary(v) or (Map.get(f, :size, 0) > 0 and byte_size(v) > f.size),
+      do: throw(:invalid_value)
+  end
+
+  defp write_value(%{t: :enum} = f, v) do
+    if v not in [nil, "None"] and not Map.has_key?(f.by_name, v), do: throw(:invalid_value)
+  end
+
+  defp write_value(%{t: :union} = f, v), do: write_arm(f.elem, v)
+
+  defp write_value(%{t: :table}, v) do
+    if v != nil and not is_map(v), do: throw(:invalid_value)
+  end
+
+  defp write_value(_f, _v), do: :ok
+
+  # one array element by the array's element kind: a table element is a body
+  # (its own fields are held when save_fields writes it), a string its UTF-8
+  # and bound, an enum a member name, a union an arm, a float its range at its
+  # width, and an integer its range, its bits(N) and its storage width.
+  defp write_element(%{elem_kind: 13}, e) do
+    if not is_map(e), do: throw(:invalid_value)
+  end
+
+  defp write_element(%{elem_kind: 12} = f, e), do: write_text(f, e)
+
+  # "None" is the reserved nil spelling a fixed root's optional enum array
+  # carries (json_list_elem/3 writes it as is)
+  defp write_element(%{elem_kind: 30} = f, e) do
+    if e not in [nil, "None"] and not Map.has_key?(f.by_name, e), do: throw(:invalid_value)
+  end
+
+  defp write_element(%{elem_kind: 15} = f, e), do: write_arm(f.elem, e)
+
+  defp write_element(%{elem_kind: kind} = f, e) when kind in [10, 11],
+    do: write_float(e, kind_width(kind), Map.get(f, :elem_min), Map.get(f, :elem_max))
+
+  defp write_element(%{elem_kind: kind} = f, e)
+       when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29] do
+    if not is_integer(e), do: throw(:invalid_value)
+
+    if Map.has_key?(f, :elem_min) and (e < f.elem_min or e > f.elem_max),
+      do: throw(:invalid_value)
+
+    bits = Map.get(f, :elem_bits, kind_width(kind) * 8)
+    required_integer(e, bits, kind in [2, 3, 4, 5, 18, 20, 21, 22, 23, 24])
+  end
+
+  defp write_element(_f, _e), do: :ok
+
+  # a union value is nil (None) or {arm, payload}: the arm is one the union
+  # declares, and its payload is held as a field of the arm's own type
+  defp write_arm(_union, nil), do: :ok
+
+  defp write_arm(union, {arm, payload}) do
+    case Map.fetch(Map.fetch!(@unions, union).by_name, arm) do
+      # a payload-free arm's payload is nil, which write_value/2 admits
+      {:ok, a} -> write_value(a, if(payload == nil, do: a.default, else: payload))
+      :error -> throw(:invalid_value)
+    end
+  end
+
+  defp write_arm(_union, _other), do: throw(:invalid_value)
+
+  # text is well-formed UTF-8 with no zero byte (row 8), within its string(N)
+  defp write_text(f, v) do
+    if not is_binary(v) or not utf8_valid?(v), do: throw(:invalid_value)
+
+    if not Map.get(f, :unbounded, false) and Map.get(f, :size, 0) > 0 and
+         byte_size(v) > f.size,
+       do: throw(:invalid_value)
+  end
+
+  # A FLOAT32'S RANGE IS HELD AT FLOAT32 (docs/SPEC.md §4.6: every runtime
+  # evaluates the triple at float32): the descriptor carries a float32 field's
+  # ends already narrowed to float32, and the value is narrowed the way the
+  # write will narrow it, so the writer refuses exactly what its reader would.
+  # A value past float32's range has no finite float32 at all: it is past
+  # every declared range, and an unranged one is float_bytes/2's and
+  # json_float/2's to refuse as non_finite_float (one check, one owner).
+  defp write_float(v, _width, _lo, _hi) when not is_number(v), do: throw(:invalid_value)
+
+  defp write_float(_v, _width, nil, _hi), do: :ok
+
+  defp write_float(v, width, lo, hi) do
+    x = float_at_width(v, width)
+    if x < lo or x > hi, do: throw(:invalid_value)
+  end
+
+  defp float_at_width(v, 4) when v >= 3.4028235677973366e38 or v <= -3.4028235677973366e38,
+    do: v
+
+  defp float_at_width(v, 4) do
+    <<x::float-32>> = <<v::float-32>>
+    x
+  end
+
+  defp float_at_width(v, _width), do: v
 
   defp required_integer(v, bits, signed) do
     {lo, hi} =
@@ -4355,7 +4545,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     if Map.has_key?(f, :array_bound) and f.array_bound > 0 and length(elements) > f.array_bound,
       do: throw(:invalid_value)
 
-    required_value(f, elements)
+    write_value(f, elements)
 
     case pad_fixed(f, elements) do
       [] ->
@@ -4443,7 +4633,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp json_field(%{t: :keyed} = f, slots, depth) do
     slots = slots || %{}
-    required_value(f, slots)
+    write_value(f, slots)
 
     case f.key_names do
       [] ->
@@ -4496,13 +4686,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp json_field(%{timestamp: _}, v, _depth), do: ["\"", timestamp_text(v), "\""]
 
   defp json_field(%{t: :int, frac: frac} = f, v, _depth) do
-    required_value(f, v)
+    write_value(f, v)
     text = fixed_text(v, frac)
     if json_wide_int?(f), do: ["\"", text, "\""], else: text
   end
 
   defp json_field(%{t: :int} = f, v, _depth) do
-    required_value(f, v)
+    write_value(f, v)
     text = Integer.to_string(v)
     if json_wide_int?(f), do: ["\"", text, "\""], else: text
   end
@@ -4959,19 +5149,51 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   # json_skip_value walks a value the reader drops (an unknown key, a kind
-  # mismatch, an element past its bound), so a label defined inside it is
-  # still defined and a later reference to it reads null, never malformed
-  # (docs/SPEC-TABLES.md §16.2, §16.7).
+  # mismatch, an element past its bound). The label rules apply there as
+  # everywhere (docs/SPEC-TABLES.md §16.2, §16.7): a label alone REFERS, and
+  # the text must have defined it and closed that definition; a label with
+  # fields DEFINES, must be new to the text, and stays open until the skipped
+  # object closes, so a later reference reads null and a second definition is
+  # malformed.
+  defp json_skip_value({:obj, [{"&node", label}]}) when is_integer(label) and label > 0 do
+    if Process.get(:elixir_json_variable, false) and
+         (not Map.has_key?(Process.get(:elixir_json_defs, %{}), label) or
+            Map.has_key?(Process.get(:elixir_json_open, %{}), label)) do
+      Process.put(:elixir_json_bad, true)
+      throw(:wire_damaged)
+    end
+
+    :ok
+  end
+
   defp json_skip_value({:obj, [{"&node", label} | rest]}) when is_integer(label) and label > 0 do
-    if Process.get(:elixir_json_variable, false) do
-      defs = Process.get(:elixir_json_defs, %{})
-      Process.put(:elixir_json_defs, Map.put_new(defs, label, :dropped))
+    variable = Process.get(:elixir_json_variable, false)
+
+    if variable do
+      if Map.has_key?(Process.get(:elixir_json_defs, %{}), label) or
+           Map.has_key?(Process.get(:elixir_json_open, %{}), label) do
+        Process.put(:elixir_json_bad, true)
+        throw(:wire_damaged)
+      end
+
+      Process.put(:elixir_json_open, Map.put(Process.get(:elixir_json_open, %{}), label, true))
     end
 
     Enum.each(rest, fn {k, v} ->
       json_skip_key(k)
       json_skip_value(v)
     end)
+
+    if variable do
+      Process.put(:elixir_json_open, Map.delete(Process.get(:elixir_json_open, %{}), label))
+
+      Process.put(
+        :elixir_json_defs,
+        Map.put(Process.get(:elixir_json_defs, %{}), label, :dropped)
+      )
+    end
+
+    :ok
   end
 
   defp json_skip_value({:obj, pairs}) do
@@ -5345,6 +5567,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         {:skip, throw(:wire_damaged)}
 
       {:ok, v} ->
+        v = cfloat_zero(v, f)
+
         case f do
           %{min: lo, max: _hi} when v < lo ->
             throw(:wire_damaged)
@@ -5386,6 +5610,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         end
       end)
 
+    # a counted array below its Min refuses (docs/SPEC.md §5.1 row 3)
+    if length(elements) < Map.get(f, :min_count, 0), do: throw(:wire_damaged)
     {Enum.reverse(elements), report}
   end
 
@@ -5413,6 +5639,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         end
       end)
 
+    # a counted array below its Min refuses (docs/SPEC.md §5.1 row 3)
+    if length(elems) < Map.get(f, :min_count, 0), do: throw(:wire_damaged)
     {Enum.reverse(elems), report}
   end
 
@@ -5656,9 +5884,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
        when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19],
        do: {:skip, throw(:wire_damaged)}
 
-  defp json_read_list_elem(%{elem_kind: 10}, {:decimal, _} = e, report) do
+  # a float32 element's decimal token rounds once, at float32, and the value
+  # then takes the element's range like any other number
+  defp json_read_list_elem(%{elem_kind: 10} = f, {:decimal, _} = e, report) do
     case json_decimal_f32(e) do
-      {:ok, value} -> {value, report}
+      {:ok, value} -> json_read_list_elem(f, value, report)
       :error -> {:skip, throw(:wire_damaged)}
     end
   end
@@ -5753,7 +5983,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp json_read_list_elem(%{elem_kind: kind} = f, e, report)
        when kind in [10, 11] and is_number(e) do
     case json_float_in_width(e, kind_width(kind)) do
-      {:ok, v} -> clamp_list_int(v, f, report)
+      {:ok, v} -> clamp_list_int(cfloat_zero(v, f), f, report)
       :error -> {:skip, throw(:wire_damaged)}
     end
   end
@@ -6147,10 +6377,10 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp json_number(bin) do
     with {:ok, neg, int_value, r1} <- json_num_sign(bin) |> json_num_int(),
          {:ok, frac_digits, r3} <- json_num_frac(r1),
-         {:ok, exp_str, r4} <- json_num_exp(r3),
+         {:ok, exp_digits, r4} <- json_num_exp(r3),
          :ok <- json_num_tail(r4) do
       cond do
-        frac_digits != "" or exp_str != "" ->
+        frac_digits > 0 or exp_digits > 0 ->
           {:ok, {:decimal, json_token(bin, r4)}, r4}
 
         int_value == :big ->
@@ -6211,40 +6441,91 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp json_int_past(<<c, rest::binary>>) when c in ?0..?9, do: json_int_past(rest)
   defp json_int_past(rest), do: {:big, rest}
 
-  defp json_num_frac(<<".", c, rest::binary>>) when c in ?0..?9, do: json_digits(rest, [c])
+  # the fraction and exponent are scanned, not collected: each answers its
+  # digit count, and the token itself is the document's sub-binary, so a
+  # token of any length costs one pass and no list (ELIXIR-7)
+  defp json_num_frac(<<".", c, rest::binary>>) when c in ?0..?9, do: json_digits(rest, 1)
   defp json_num_frac(<<".", _::binary>>), do: :error
-  defp json_num_frac(rest), do: {:ok, "", rest}
+  defp json_num_frac(rest), do: {:ok, 0, rest}
 
   defp json_num_exp(<<e, s, c, rest::binary>>)
-       when e in [?e, ?E] and s in [?+, ?-] and c in ?0..?9 do
-    {:ok, d, r} = json_digits(rest, [c])
-    {:ok, <<e, s>> <> d, r}
-  end
+       when e in [?e, ?E] and s in [?+, ?-] and c in ?0..?9,
+       do: json_digits(rest, 1)
 
-  defp json_num_exp(<<e, c, rest::binary>>) when e in [?e, ?E] and c in ?0..?9 do
-    {:ok, d, r} = json_digits(rest, [c])
-    {:ok, <<e>> <> d, r}
-  end
+  defp json_num_exp(<<e, c, rest::binary>>) when e in [?e, ?E] and c in ?0..?9,
+    do: json_digits(rest, 1)
 
   defp json_num_exp(<<e, _::binary>>) when e in [?e, ?E], do: :error
-  defp json_num_exp(rest), do: {:ok, "", rest}
+  defp json_num_exp(rest), do: {:ok, 0, rest}
 
   defp json_num_tail(<<c, _::binary>>) when c in [?., ?e, ?E, ?+, ?-] or c in ?0..?9, do: :error
   defp json_num_tail(_), do: :ok
 
-  defp json_digits(<<c, rest::binary>>, acc) when c in ?0..?9, do: json_digits(rest, [c | acc])
-  defp json_digits(rest, acc), do: {:ok, acc |> Enum.reverse() |> IO.iodata_to_binary(), rest}
+  defp json_digits(<<c, rest::binary>>, n) when c in ?0..?9, do: json_digits(rest, n + 1)
+  defp json_digits(rest, n), do: {:ok, n, rest}
+
+  # A DECIMAL TOKEN HAS NO LENGTH LIMIT (docs/SPEC-TABLES.md §16.2: no leg
+  # may cap it), so its work is bounded by what it decides, never by its
+  # length (ELIXIR-7). json_decimal_parts reads a token as sign, significant
+  # digits (no leading or trailing zero) and a power of ten, in one linear
+  # pass that builds no integer; an exponent's text past twelve significant
+  # digits stands as 10^12, past every decision below.
+  defp json_decimal_parts(token) do
+    {neg, unsigned} =
+      case token do
+        <<"-", rest::binary>> -> {true, rest}
+        _ -> {false, token}
+      end
+
+    {mantissa, power} =
+      case :binary.match(unsigned, ["e", "E"]) do
+        {at, 1} ->
+          {binary_part(unsigned, 0, at),
+           json_exponent(binary_part(unsigned, at + 1, byte_size(unsigned) - at - 1))}
+
+        :nomatch ->
+          {unsigned, 0}
+      end
+
+    {whole, fraction} =
+      case :binary.split(mantissa, ".") do
+        [w, f] -> {w, f}
+        [w] -> {w, ""}
+      end
+
+    all = String.trim_leading(whole <> fraction, "0")
+    digits = String.trim_trailing(all, "0")
+    {neg, digits, power - byte_size(fraction) + (byte_size(all) - byte_size(digits))}
+  end
+
+  defp json_exponent(<<"-", d::binary>>), do: -json_exponent_magnitude(d)
+  defp json_exponent(<<"+", d::binary>>), do: json_exponent_magnitude(d)
+  defp json_exponent(d), do: json_exponent_magnitude(d)
+
+  defp json_exponent_magnitude(d) do
+    d = String.trim_leading(d, "0")
+
+    cond do
+      d == "" -> 0
+      byte_size(d) > 12 -> 1_000_000_000_000
+      true -> String.to_integer(d)
+    end
+  end
+
+  # json_sticky keeps the first 800 significant digits and stands a 1 for the
+  # rest. The digits end in no zero, so what is cut is not zero, and no
+  # binary32 or binary64 midpoint has as many as 800 significant digits, so a
+  # rounding of the kept digits is the rounding of the whole token.
+  defp json_sticky(digits, shift) when byte_size(digits) > 801,
+    do: {binary_part(digits, 0, 800) <> "1", shift + byte_size(digits) - 801}
+
+  defp json_sticky(digits, shift), do: {digits, shift}
 
   # Round a decimal directly to binary32. Going through binary64 first loses
   # which side of a binary32 halfway point an exact decimal token occupies.
   defp json_decimal_f32({:decimal, token}) do
-    [mantissa | exponent] = String.split(token, ~r/[eE]/, parts: 2)
-    power = if exponent == [], do: 0, else: String.to_integer(hd(exponent))
-    sign = if String.starts_with?(mantissa, "-"), do: 1, else: 0
-    [whole | tail] = String.split(String.trim_leading(mantissa, "-"), ".", parts: 2)
-    fraction = if tail == [], do: "", else: hd(tail)
-    digits = String.trim_leading(whole <> fraction, "0")
-    shift = power - byte_size(fraction)
+    {neg, digits, shift} = json_decimal_parts(token)
+    sign = if neg, do: 1, else: 0
     order = byte_size(digits) + shift
 
     cond do
@@ -6255,6 +6536,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         :error
 
       true ->
+        {digits, shift} = json_sticky(digits, shift)
         n = String.to_integer(digits)
 
         {n, d} =
@@ -6293,6 +6575,22 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   # json_decimal_float is the double a decimal text spells; one past the
   # double's range is :overflow_float, which no field accepts (§16.2).
+  # A token past 1000 bytes is first cut to its 800 significant digits and
+  # a sticky digit, with its power held to five digits (past either end of
+  # the double's range already), so the parse costs what it decides.
+  defp json_decimal_float({:decimal, token}) when byte_size(token) > 1000 do
+    case json_decimal_parts(token) do
+      {neg, "", _shift} ->
+        if neg, do: -0.0, else: 0.0
+
+      {neg, digits, shift} ->
+        {digits, shift} = json_sticky(digits, shift)
+        shift = shift |> max(-99_999) |> min(99_999)
+        sign = if neg, do: "-", else: ""
+        json_decimal_float({:decimal, sign <> digits <> "e" <> Integer.to_string(shift)})
+    end
+  end
+
   defp json_decimal_float({:decimal, token}) do
     case Float.parse(token) do
       {f, ""} -> f
@@ -6308,32 +6606,27 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp fixed_raw(raw, frac) when is_integer(raw), do: {:ok, raw <<< frac}
 
   defp fixed_raw({:decimal, token}, frac) do
-    [mantissa | exponent] = String.split(token, ~r/[eE]/, parts: 2)
-    power = if exponent == [], do: 0, else: String.to_integer(hd(exponent))
-    negative = String.starts_with?(mantissa, "-")
-    unsigned = String.trim_leading(mantissa, "-")
-    [whole | tail] = String.split(unsigned, ".", parts: 2)
-    fraction = if tail == [], do: "", else: hd(tail)
-    digits = String.to_integer(whole <> fraction)
-    shift = power - byte_size(fraction)
-    numerator = digits <<< frac
+    {negative, digits, shift} = json_decimal_parts(token)
 
     cond do
-      # the token cap (511 bytes) bounds the digits, so an exponent past 700
-      # either way decides without the power: zero stays zero, a larger shift
-      # is past every field's range (the clamp counts it) and a smaller one is
-      # finer than 2^-F with no exact scaled integer
-      digits == 0 ->
+      digits == "" ->
         {:ok, 0}
 
-      shift > 700 ->
+      # a value of 10^700 or more is past every field's range (the clamp
+      # counts it), decided from the digit count without the power
+      byte_size(digits) + shift > 700 ->
         v = Integer.pow(10, 700)
         {:ok, if(negative, do: -v, else: v)}
 
-      shift < -700 ->
+      # finer than 2^-F: the digits end in no zero, so a decimal of more than
+      # F fraction places is no multiple of 2^-F, and has no exact scaled
+      # integer. Past these two the digits number at most 700 + F.
+      shift < -frac ->
         :error
 
       true ->
+        numerator = String.to_integer(digits) <<< frac
+
         {numerator, denominator} =
           if shift >= 0,
             do: {numerator * Integer.pow(10, shift), 1},
@@ -8793,7 +9086,8 @@ func fieldDescriptor(u *ir.Unit, owner string, f *ir.Field, ordinal int, fl *ir.
 			}
 		}
 		if f.HasFloatRange {
-			fmt.Fprintf(&b, ", elem_min: %s, elem_max: %s", fixedFloatLiteral(f.FMin), fixedFloatLiteral(f.FMax))
+			lo, hi := floatRangeEnds(f)
+			fmt.Fprintf(&b, ", elem_min: %s, elem_max: %s", lo, hi)
 		}
 		if fl := flagsRef(f); fl != nil {
 			// an array of flags: each element's text is its set names
@@ -8805,6 +9099,12 @@ func fieldDescriptor(u *ir.Unit, owner string, f *ir.Field, ordinal int, fl *ir.
 		}
 		if f.Array != ir.ArrayList {
 			fmt.Fprintf(&b, ", array_bound: %d", f.ArrayBound)
+		}
+		if born := f.BornCount(); born > 0 {
+			// docs/SPEC.md §4.2, §5.1 row 3: a [Min..N]T count is born at Min,
+			// every writer refuses a count below it, every read refuses one,
+			// and an array holding its Min elements at their default elides
+			fmt.Fprintf(&b, ", min_count: %d, elem_default: %s", born, variableBornElementDefault(f))
 		}
 		if f.Array == ir.ArrayFixed {
 			// SPEC-TABLES §3: a [N]T writes all N elements; a table element
@@ -8891,7 +9191,8 @@ func fieldDescriptor(u *ir.Unit, owner string, f *ir.Field, ordinal int, fl *ir.
 		b.WriteString(", t: :float")
 		fmt.Fprintf(&b, ", width: %d", ir.TableKindWidth(kind))
 		if f.HasFloatRange {
-			fmt.Fprintf(&b, ", min: %s, max: %s", fixedFloatLiteral(f.FMin), fixedFloatLiteral(f.FMax))
+			lo, hi := floatRangeEnds(f)
+			fmt.Fprintf(&b, ", min: %s, max: %s", lo, hi)
 		}
 	case f.Type.Kind == ir.TBool:
 		b.WriteString(", t: :bool")
@@ -8926,6 +9227,15 @@ func variableFieldDefault(f *ir.Field) string {
 	switch {
 	case f.KeyEnum != "":
 		return "%{}"
+	case f.Array == ir.ArrayCounted && f.BornCount() > 0:
+		// docs/SPEC.md §4.2: a [Min..N]T is BORN AT Min, its declared
+		// minimum, so an absent field lands Min element defaults
+		one := variableBornElementDefault(f)
+		slots := make([]string, f.BornCount())
+		for i := range slots {
+			slots[i] = one
+		}
+		return "[" + strings.Join(slots, ", ") + "]"
 	case f.Array != ir.ArrayNone:
 		return "[]"
 	case f.IsMap():
@@ -8977,6 +9287,36 @@ func variableFieldDefault(f *ir.Field) string {
 		return "nil"
 	}
 	return "nil"
+}
+
+// floatRangeEnds spells a ranged float's declared ends as the runtime holds
+// them. A float32 field's ends are narrowed to float32 first (docs/SPEC.md
+// §4.6: every runtime evaluates the triple at float32), so a read compares the
+// float32 it decoded, and a write the float32 it will store, against exactly
+// the value the declaration names at that width, and never against a double a
+// hair wider or narrower: max = 0.1 admits float32(0.1), which every writer
+// stores for 0.1.
+func floatRangeEnds(f *ir.Field) (string, string) {
+	if f.Type.Kind == ir.TFloat32 {
+		return fixedFloatLiteral(float64(float32(f.FMin))), fixedFloatLiteral(float64(float32(f.FMax)))
+	}
+	return fixedFloatLiteral(f.FMin), fixedFloatLiteral(f.FMax)
+}
+
+// variableBornElementDefault is one birth slot of the counted array f
+// (docs/SPEC.md §4.2): the element's declared default, and for a text list
+// the element map with no "value", which reads as the element's own default
+// text.
+func variableBornElementDefault(f *ir.Field) string {
+	if f.IsTextList() {
+		return "%{}"
+	}
+	elem := *f
+	elem.Array = ir.ArrayNone
+	elem.ArrayBound = 0
+	elem.ArrayMin = 0
+	elem.Type.Optional = false
+	return variableFieldDefault(&elem)
 }
 
 // writeEnumMaps spells an enum's two name↔id maps (docs/SPEC-TABLES.md §5, §3).
