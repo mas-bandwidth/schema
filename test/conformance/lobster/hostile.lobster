@@ -66,11 +66,17 @@ def saved(name:string, rec:schema_rt.Record) -> string:
         return name + " unsaved " + why + "\n"
     return name + " accept " + hexs(text) + "\n"
 
-// refused names a refusal by its reason: the message form's own name, or
-// `damaged` for a read that reports damage without one
+// refused names a refusal by its reason: the message form's own name (the
+// engine's tablewire.MessageReason, kept by internal/ci/hostilecorpus
+// RefusalReason), or `damaged` for every other refusal, a bound's included.
+// Conformance compares the verdict, never a bound's own name
+// (docs/rulings.json refusal-verdict-only; SPEC-TABLES 6.5, 13.10): a message
+// past a child's range that the port names out_of_range is the corpus's
+// damaged, as the wire path below already maps it.
 def refused(name:string, rep:schema_rt.LoadReport) -> string:
-    if rep.refused and rep.reason != "":
-        return name + " refuse " + rep.reason + "\n"
+    let why = rep.reason
+    if rep.refused and (why == "newer_form" or why == "no_vocabulary" or why == "second_announcement" or why == "vocabulary_too_large" or why == "message_form_as_file" or why == "batch_too_large"):
+        return name + " refuse " + why + "\n"
     return name + " refuse damaged\n"
 
 def text_answer(name:string, table:string, data:string) -> string:

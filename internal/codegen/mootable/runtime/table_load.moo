@@ -992,6 +992,13 @@ local function array_body(fd: any, sub: any, report: any, v: any): boolean
 		-- a count past the reader's bound refuses the load (count_over_bound)
 		over(report)
 		return false
+	elseif fd.array == "counted" and fd.min ~= nil and count < fd.min then
+		-- THE COUNT MINIMUM (docs/SPEC.md §5.1 row 3): a counted array under
+		-- its declared least count refuses the load as one past its bound
+		-- does, at any depth, as the engine's read refuses it
+		-- (internal/tablewire/decode.go)
+		over(report)
+		return false
 	end
 	local slot = fd.slot
 	local holder: any = nil
