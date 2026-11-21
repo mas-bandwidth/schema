@@ -460,16 +460,15 @@ func squirrelRunHostileCorpus(t *testing.T, plant func(files map[string][]byte))
 }
 
 // squirrelHostilePlantFrom and squirrelHostilePlantTo are the planted reader
-// bug: the generated strict wire reader's form gate no longer hands form 3 to
-// the fixed reader, so the fixed wire the corpus accepts (wire-valid) is
-// refused as a newer form. The plant changes a verdict: a refusal conforms on
-// its verdict alone (docs/rulings.json refusal-verdict-only), so a plant that
-// only renamed a refusal would leave the corpus green. The plant is applied to
-// the scratch copy of the generated runtime only, never to the embedded source.
+// bug: the generated <Root>FixedLoad's form gate refuses the form it carries,
+// so the fixed wire the corpus accepts (wire-valid, form 3) is refused. The
+// plant changes a verdict: a refusal conforms on its verdict alone
+// (docs/rulings.json refusal-verdict-only), so a plant that only renamed a
+// refusal would leave the corpus green. The plant is applied to the scratch
+// copy of the generated module only, never to the generator.
 const (
-	squirrelHostilePlantFile = "schema_table_refusal.nut"
-	squirrelHostilePlantFrom = `if (fixedReader && form == FORM_FIXED) {`
-	squirrelHostilePlantTo   = `if (false) { // PLANTED: the form gate refuses the form it carries`
+	squirrelHostilePlantFrom = `if (b[0] != 3) { _M.FixedReason = "newer_form"; return -1; }`
+	squirrelHostilePlantTo   = `if (true) { _M.FixedReason = "newer_form"; return -1; } // PLANTED: the form gate refuses the form it carries`
 )
 
 // TestSquirrelRunsHostileCorpusPlant is the planted-bad-pattern control: the
@@ -481,15 +480,15 @@ func TestSquirrelRunsHostileCorpusPlant(t *testing.T) {
 	slowtest.Gate(t, "the pinned Squirrel interpreter (make dist-squirrel) over every hostile-corpus input")
 	planted := 0
 	_, mismatchNames, findingLines := squirrelRunHostileCorpus(t, func(files map[string][]byte) {
-		src, ok := files[squirrelHostilePlantFile]
-		if !ok || !strings.Contains(string(src), squirrelHostilePlantFrom) {
-			return
+		for name, src := range files {
+			if strings.Contains(string(src), squirrelHostilePlantFrom) {
+				files[name] = []byte(strings.ReplaceAll(string(src), squirrelHostilePlantFrom, squirrelHostilePlantTo))
+				planted++
+			}
 		}
-		files[squirrelHostilePlantFile] = []byte(strings.Replace(string(src), squirrelHostilePlantFrom, squirrelHostilePlantTo, 1))
-		planted++
 	})
 	if planted == 0 {
-		t.Fatalf("the plant did not land: %s carries no %q", squirrelHostilePlantFile, squirrelHostilePlantFrom)
+		t.Fatalf("the plant did not land: no generated file carries %q", squirrelHostilePlantFrom)
 	}
 	drift := squirrelHostileMismatchSetDrift(mismatchNames, squirrelExpectedHostileMismatchNames())
 	if len(drift) == 0 {

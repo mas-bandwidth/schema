@@ -26,12 +26,15 @@ const (
 	rubyHostileProbeSchemaPath = "schemas/probe.schema"
 	rubyHostileProbeSchema     = "package probe\n\ntable Root\n{\n    entries map[int32]int32\n}\n"
 
-	// The planted reader bug: the form gates refuse the form they carry, so
-	// every clean wire the corpus accepts is refused. The plant changes a
-	// verdict: a refusal conforms on its verdict alone (refusal-verdict-only),
-	// so a plant that only renamed a refusal would leave the corpus green.
-	rubyHostilePlantFrom = "if form != FORM"
-	rubyHostilePlantTo   = "if form != FORM || true"
+	// The planted reader bug: the fixed-form gates refuse the form they carry,
+	// so the fixed wire the corpus accepts (wire-valid, form 3) is refused. The
+	// plant changes a verdict: a refusal conforms on its verdict alone
+	// (refusal-verdict-only), so a plant that only renamed a refusal would
+	// leave the corpus green.
+	rubyHostilePlantFrom     = "if b0 != 3"
+	rubyHostilePlantTo       = "if b0 != 3 || true"
+	rubyHostilePlantFormFrom = "if b0 != form"
+	rubyHostilePlantFormTo   = "if b0 != form || true"
 
 	rubyAllocationFactorF = 512.0
 	rubyAllocationSlackKB = 2048.0
@@ -132,29 +135,33 @@ func rubyHostilePackage(t *testing.T, schema string, files map[string][]byte) st
 	return ""
 }
 
-func rubyHostilePlant(t *testing.T, files map[string][]byte) {
+// rubyHostilePlant plants the reader bug in a unit's fixed-form reader and
+// reports whether it landed. The variable-form gate in _table/load.rb is not
+// planted: the corpus accepts no form-1 wire, so refusing one changes no
+// verdict, and the same gate guards the module's own load-time reads.
+func rubyHostilePlant(t *testing.T, files map[string][]byte) bool {
 	t.Helper()
+	landed := false
 	for name := range files {
 		if strings.HasSuffix(name, "/_fixed.rb") {
-			src := string(files[name])
-			src = strings.ReplaceAll(src, "if b0 != 3", "if b0 != 3 || true")
-			src = strings.ReplaceAll(src, "if b0 != form", "if b0 != form || true")
-			files[name] = []byte(src)
-		}
-		if strings.HasSuffix(name, "/_table/load.rb") {
 			src := string(files[name])
 			if !strings.Contains(src, rubyHostilePlantFrom) {
 				t.Fatalf("%s does not carry the planted pattern %q", name, rubyHostilePlantFrom)
 			}
-			files[name] = []byte(strings.ReplaceAll(src, rubyHostilePlantFrom, rubyHostilePlantTo))
+			src = strings.ReplaceAll(src, rubyHostilePlantFrom, rubyHostilePlantTo)
+			src = strings.ReplaceAll(src, rubyHostilePlantFormFrom, rubyHostilePlantFormTo)
+			files[name] = []byte(src)
+			landed = true
 		}
 	}
+	return landed
 }
 
 func rubyHostileGenerate(t *testing.T, root, dir string, cases []rubyHostileCase, plant bool) []rubyHostileUnit {
 	t.Helper()
 	seen := map[string]bool{}
 	var units []rubyHostileUnit
+	planted := false
 	for _, c := range cases {
 		if seen[c.Schema] {
 			continue
@@ -178,12 +185,15 @@ func rubyHostileGenerate(t *testing.T, root, dir string, cases []rubyHostileCase
 			entry.unavailable = err.Error()
 		} else {
 			entry.pkg = rubyHostilePackage(t, c.Schema, files)
-			if plant {
-				rubyHostilePlant(t, files)
+			if plant && rubyHostilePlant(t, files) {
+				planted = true
 			}
 			rubyHostileWriteTree(t, unitDir, files)
 		}
 		units = append(units, entry)
+	}
+	if plant && !planted {
+		t.Fatal("no emitted unit carries a fixed-form reader (_fixed.rb), so the planted reader bug went nowhere")
 	}
 	return units
 }
