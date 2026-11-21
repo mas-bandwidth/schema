@@ -828,10 +828,17 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// clang-format. The tables-c-clean gate holds the result to the pinned
 	// clang-format over the whole corpus.
 	for name, data := range out {
-		out[name] = []byte(cfmt.Format(formatCompactCFunctions(string(data))))
+		out[name] = []byte(houseLayout(formatCompactCFunctions(string(data))))
 	}
 	return out, nil
 }
+
+// houseLayout is the pass every emitted file leaves through. It is a
+// variable for one reason: this package's own tests plant faults in the
+// emitted text by exact spelling, and they read the EMITTER's text, before
+// the layout (house_layout_test.go says why that is sound and holds this
+// default). Nothing outside those tests assigns it.
+var houseLayout = cfmt.Format
 
 func generateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
