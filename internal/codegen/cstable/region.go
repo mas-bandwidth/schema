@@ -34,13 +34,13 @@ func generateRegion(u *ir.Unit) []byte {
 		g.pf("public static %s %sLoadBuilder(System.IntPtr region) { return (%s)TableWire.CopyRegion(%sTableType(), region); }\n", st.Name, st.Name, st.Name, st.Name)
 		g.pf("public static unsafe %sRow* %sLoad(System.IntPtr region, long capacity, System.IntPtr attribution, long attributionCapacity, System.ReadOnlySpan<byte> bytes, TableReport report) { return (%sRow*)TableWire.LoadRegion(%sTableType(), region, capacity, attribution, attributionCapacity, bytes, report); }\n", st.Name, st.Name, st.Name, st.Name)
 		g.pf("public static long %sLoadMeasure(System.ReadOnlySpan<byte> bytes, out long dataBytes, out long attributionBytes, out TableRefuseReason reason) { long n = TableWire.LoadMeasureParts(%sTableType(), bytes, out dataBytes, out attributionBytes, out string text); reason = text == null ? TableRefuseReason.ok : System.Enum.Parse<TableRefuseReason>(text); return n; }\n", st.Name, st.Name)
-		g.pf("public static unsafe %sRow* %sLoadRetain(IntPtr region, long capacity, ReadOnlySpan<byte> bytes, ref TableRetain retain, TableReport report) { return (%sRow*)TableWire.LoadRetainRegion(%sTableType(), region, capacity, bytes, ref retain, report); }\n", st.Name, st.Name, st.Name, st.Name)
-		g.pf("public static unsafe %sRow* %sLoadRetain(IntPtr region, long capacity, IntPtr attribution, long attributionCapacity, ReadOnlySpan<byte> bytes, ref TableRetain retain, TableReport report) { return (%sRow*)TableWire.LoadRetainRegion(%sTableType(), region, capacity, attribution, attributionCapacity, bytes, ref retain, report); }\n", st.Name, st.Name, st.Name, st.Name)
+		g.pf("public static unsafe %sRow* %sLoadRetain(global::System.IntPtr region, long capacity, ReadOnlySpan<byte> bytes, ref TableRetain retain, TableReport report) { return (%sRow*)TableWire.LoadRetainRegion(%sTableType(), region, capacity, bytes, ref retain, report); }\n", st.Name, st.Name, st.Name, st.Name)
+		g.pf("public static unsafe %sRow* %sLoadRetain(global::System.IntPtr region, long capacity, global::System.IntPtr attribution, long attributionCapacity, ReadOnlySpan<byte> bytes, ref TableRetain retain, TableReport report) { return (%sRow*)TableWire.LoadRetainRegion(%sTableType(), region, capacity, attribution, attributionCapacity, bytes, ref retain, report); }\n", st.Name, st.Name, st.Name, st.Name)
 		cap := ir.TableWireIdCapacity(u)
-		g.pf("public static long %sMeasureRetain(IntPtr region, ref TableRetain retain) { Span<ulong> ids = stackalloc ulong[%d]; Span<int> slots = stackalloc int[%d]; return TableWire.SaveRetainRegion(region, %sTableType(), Span<byte>.Empty, ids, slots, ref retain, null, true); }\n", st.Name, cap, cap, st.Name)
-		g.pf("public static long %sMeasureRetain(IntPtr region, ref TableRetain retain, TableAllocator allocator) { Span<ulong> ids = stackalloc ulong[%d]; Span<int> slots = stackalloc int[%d]; return TableWire.SaveRetainRegion(region, %sTableType(), Span<byte>.Empty, ids, slots, ref retain, null, true, allocator); }\n", st.Name, cap, cap, st.Name)
-		g.pf("public static long %sSaveRetain(IntPtr region, ref TableRetain retain, Span<byte> bytes, TableReport report) { Span<ulong> ids = stackalloc ulong[%d]; Span<int> slots = stackalloc int[%d]; return TableWire.SaveRetainRegion(region, %sTableType(), bytes, ids, slots, ref retain, report, false); }\n", st.Name, cap, cap, st.Name)
-		g.pf("public static long %sSaveRetain(IntPtr region, ref TableRetain retain, Span<byte> bytes, TableReport report, TableAllocator allocator) { Span<ulong> ids = stackalloc ulong[%d]; Span<int> slots = stackalloc int[%d]; return TableWire.SaveRetainRegion(region, %sTableType(), bytes, ids, slots, ref retain, report, false, allocator); }\n", st.Name, cap, cap, st.Name)
+		g.pf("public static long %sMeasureRetain(global::System.IntPtr region, ref TableRetain retain) { Span<ulong> ids = stackalloc ulong[%d]; Span<int> slots = stackalloc int[%d]; return TableWire.SaveRetainRegion(region, %sTableType(), Span<byte>.Empty, ids, slots, ref retain, null, true); }\n", st.Name, cap, cap, st.Name)
+		g.pf("public static long %sMeasureRetain(global::System.IntPtr region, ref TableRetain retain, TableAllocator allocator) { Span<ulong> ids = stackalloc ulong[%d]; Span<int> slots = stackalloc int[%d]; return TableWire.SaveRetainRegion(region, %sTableType(), Span<byte>.Empty, ids, slots, ref retain, null, true, allocator); }\n", st.Name, cap, cap, st.Name)
+		g.pf("public static long %sSaveRetain(global::System.IntPtr region, ref TableRetain retain, Span<byte> bytes, TableReport report) { Span<ulong> ids = stackalloc ulong[%d]; Span<int> slots = stackalloc int[%d]; return TableWire.SaveRetainRegion(region, %sTableType(), bytes, ids, slots, ref retain, report, false); }\n", st.Name, cap, cap, st.Name)
+		g.pf("public static long %sSaveRetain(global::System.IntPtr region, ref TableRetain retain, Span<byte> bytes, TableReport report, TableAllocator allocator) { Span<ulong> ids = stackalloc ulong[%d]; Span<int> slots = stackalloc int[%d]; return TableWire.SaveRetainRegion(region, %sTableType(), bytes, ids, slots, ref retain, report, false, allocator); }\n", st.Name, cap, cap, st.Name)
 		g.pf("public static long %sMeasure(System.IntPtr region) { Span<ulong> ids = stackalloc ulong[%d]; return TableWire.SaveRegion(region, %sTableType(), Span<byte>.Empty, ids, true); }\n", st.Name, cap, st.Name)
 		g.pf("public static long %sMeasure(System.IntPtr region, TableAllocator allocator) { Span<ulong> ids = stackalloc ulong[%d]; return TableWire.SaveRegion(region, %sTableType(), Span<byte>.Empty, ids, true, allocator); }\n", st.Name, cap, st.Name)
 		g.pf("public static long %sSave(System.IntPtr region, Span<byte> bytes) { Span<ulong> ids = stackalloc ulong[%d]; return TableWire.SaveRegion(region, %sTableType(), bytes, ids, false); }\n", st.Name, cap, st.Name)
@@ -85,14 +85,14 @@ const tableRegionSource = `
             return true;
         }
         public int Count(TableFieldInfo f) { if (f.Unbounded) { byte* slot = Slot(f); long delta = unchecked((long)NativeWord(slot, 8)); return delta == 0 ? 0 : checked((int)NativeWord(slot + delta, 4)); } return f.NativeCountOffset < 0 ? f.ArrayBound : (int)NativeWord(Base + At + f.NativeCountOffset, 4); }
-        public UInt128 Wide(TableFieldInfo f, int index)
+        public global::System.UInt128 Wide(TableFieldInfo f, int index)
         {
-            UInt128 raw = NativeWord(Slot(f, index), f.NativeElementSize);
-            if (f.WideSigned && f.NativeElementSize < 16) { int shift = 128 - f.NativeElementSize * 8; raw = unchecked((UInt128)((Int128)(raw << shift) >> shift)); }
+            global::System.UInt128 raw = NativeWord(Slot(f, index), f.NativeElementSize);
+            if (f.WideSigned && f.NativeElementSize < 16) { int shift = 128 - f.NativeElementSize * 8; raw = unchecked((global::System.UInt128)((global::System.Int128)(raw << shift) >> shift)); }
             return raw;
         }
         public void SetRaw(TableFieldInfo f, int index, ulong raw) { if (Base != null) { NativePut(Slot(f, index), raw, f.NativeElementSize); } }
-        public void SetWide(TableFieldInfo f, int index, UInt128 raw) { if (Base != null) { NativePut(Slot(f, index), raw, f.NativeElementSize); } }
+        public void SetWide(TableFieldInfo f, int index, global::System.UInt128 raw) { if (Base != null) { NativePut(Slot(f, index), raw, f.NativeElementSize); } }
         public Span<byte> Buffer(TableFieldInfo f) { if (f.Unbounded) { byte* slot = Slot(f); long delta = unchecked((long)NativeWord(slot, 8)); return delta == 0 ? Span<byte>.Empty : new Span<byte>(slot + delta + 8, checked((int)NativeWord(slot + delta, 4))); } return new Span<byte>(Slot(f), f.ArrayBound + (f.Kind == 12 ? 1 : 0)); }
         public Span<char> Chars(TableFieldInfo f) { return new Span<char>(Slot(f), f.ArrayBound + 1); }
         public void SetCount(TableFieldInfo f, int n) { if (f.Unbounded) { byte* slot = Slot(f); long delta = unchecked((long)NativeWord(slot, 8)); if (delta != 0) { NativePut(slot + delta, (uint)n, 4); } return; } if (Base != null) { NativePut(Base + At + f.NativeCountOffset, (uint)n, 4); } }
@@ -109,14 +109,14 @@ const tableRegionSource = `
         public TableWorker Worker { get; set; }
         public bool Refused;
     }
-    static unsafe UInt128 NativeWord(byte* p, int width)
+    static unsafe global::System.UInt128 NativeWord(byte* p, int width)
     {
-        UInt128 value = 0;
-        for (int i = 0; i < width; i++) { value |= (UInt128)p[BitConverter.IsLittleEndian ? i : width - 1 - i] << (i * 8); }
+        global::System.UInt128 value = 0;
+        for (int i = 0; i < width; i++) { value |= (global::System.UInt128)p[global::System.BitConverter.IsLittleEndian ? i : width - 1 - i] << (i * 8); }
         return value;
     }
-    static unsafe void NativePut(byte* p, UInt128 value, int width)
-    { for (int i = 0; i < width; i++) { p[BitConverter.IsLittleEndian ? i : width - 1 - i] = unchecked((byte)(value >> (i * 8))); } }
+    static unsafe void NativePut(byte* p, global::System.UInt128 value, int width)
+    { for (int i = 0; i < width; i++) { p[global::System.BitConverter.IsLittleEndian ? i : width - 1 - i] = unchecked((byte)(value >> (i * 8))); } }
     static unsafe void NativeReset(NativeValue value, TableTypeInfo type)
     {
         if (value.Base == null) { return; }
@@ -287,10 +287,10 @@ const tableRegionSource = `
         {
             int width = Width(kind);
             if (!r.Has(width)) { return Damage(report); }
-            UInt128 wide = r.Fixed(global::System.Math.Min(width, 8));
-            if (width == 16) { wide |= (UInt128)r.Fixed(8) << 64; }
+            global::System.UInt128 wide = r.Fixed(global::System.Math.Min(width, 8));
+            if (width == 16) { wide |= (global::System.UInt128)r.Fixed(8) << 64; }
             else if ((kind >= 2 && kind <= 5) || (kind >= 20 && kind <= 23))
-            { int shift = 128 - width * 8; wide = unchecked((UInt128)((Int128)(wide << shift) >> shift)); }
+            { int shift = 128 - width * 8; wide = unchecked((global::System.UInt128)((global::System.Int128)(wide << shift) >> shift)); }
             if (f.RangeWide != null) { wide = f.RangeWide(wide, report); if (report.Refused) { return false; } }
             value.SetWide(f, index, wide); return true;
         }
@@ -586,9 +586,9 @@ const tableRegionSource = `
 
     // The authoring conversion owns its allocations. Memoizing each node
     // before its fields preserves both sharing and editable cycles.
-    public static unsafe object CopyRegion(TableTypeInfo type, IntPtr region, bool mutable = false)
+    public static unsafe object CopyRegion(TableTypeInfo type, global::System.IntPtr region, bool mutable = false)
     {
-        if (region == IntPtr.Zero) { return null; }
+        if (region == global::System.IntPtr.Zero) { return null; }
         var nodes = new System.Collections.Generic.Dictionary<long, object>();
         object value = type.Create(); nodes.Add(0, value);
         NativeCopyBody(new NativeValue((byte*)region, 0) { Mutable = mutable }, value, type, nodes); return value;
@@ -658,32 +658,32 @@ const tableRegionSource = `
     }
     // Data and attribution may be placed separately; reads after Load need
     // only data. The caller keeps both allocations stable during this call.
-    public static unsafe IntPtr LoadRegion(TableTypeInfo type, IntPtr region, long capacity, ReadOnlySpan<byte> bytes, TableReport report)
+    public static unsafe global::System.IntPtr LoadRegion(TableTypeInfo type, global::System.IntPtr region, long capacity, ReadOnlySpan<byte> bytes, TableReport report)
     {
         long total = LoadMeasurePartsWalk(type, bytes, out long dataBytes, out long attributionBytes, out string reason, out bool wireNonFinite);
-        if (total >= 0 && capacity < total) { return IntPtr.Zero; }
-        return NativeLoadRegion(type, region, dataBytes, (IntPtr)((byte*)region + dataBytes), attributionBytes, bytes, report, total, dataBytes, reason, wireNonFinite);
+        if (total >= 0 && capacity < total) { return global::System.IntPtr.Zero; }
+        return NativeLoadRegion(type, region, dataBytes, (global::System.IntPtr)((byte*)region + dataBytes), attributionBytes, bytes, report, total, dataBytes, reason, wireNonFinite);
     }
-    public static unsafe IntPtr LoadRegion(TableTypeInfo type, IntPtr region, long capacity, IntPtr attribution, long attributionCapacity, ReadOnlySpan<byte> bytes, TableReport report)
+    public static unsafe global::System.IntPtr LoadRegion(TableTypeInfo type, global::System.IntPtr region, long capacity, global::System.IntPtr attribution, long attributionCapacity, ReadOnlySpan<byte> bytes, TableReport report)
     {
         long total = LoadMeasurePartsWalk(type, bytes, out long dataBytes, out _, out string reason, out bool wireNonFinite);
         return NativeLoadRegion(type, region, capacity, attribution, attributionCapacity, bytes, report, total, dataBytes, reason, wireNonFinite);
     }
-    static unsafe IntPtr NativeLoadRegion(TableTypeInfo type, IntPtr region, long capacity, IntPtr attribution, long attributionCapacity, ReadOnlySpan<byte> bytes, TableReport report, long total, long dataBytes, string reason, bool wireNonFinite)
+    static unsafe global::System.IntPtr NativeLoadRegion(TableTypeInfo type, global::System.IntPtr region, long capacity, global::System.IntPtr attribution, long attributionCapacity, ReadOnlySpan<byte> bytes, TableReport report, long total, long dataBytes, string reason, bool wireNonFinite)
     {
-        if (report == null) { throw new ArgumentNullException(nameof(report)); }
+        if (report == null) { throw new global::System.ArgumentNullException(nameof(report)); }
         report.Refused = false; report.Reason = null; report.NonFiniteFloat = null;
         if (total < 0)
         {
-            if (reason == "integrity_mismatch") { IntegrityDamage(report); return IntPtr.Zero; }
+            if (reason == "integrity_mismatch") { IntegrityDamage(report); return global::System.IntPtr.Zero; }
             if (reason != null) { report.Refused = true; report.Reason = reason == "unknown_form" ? (bytes[0] == 2 ? "message_form_as_file" : "newer_form") : reason; Finish(report, Verdict.Refused); }
             else { Damage(report); Finish(report, Verdict.Damaged); }
-            return IntPtr.Zero;
+            return global::System.IntPtr.Zero;
         }
         long attributionBytes = total - dataBytes;
-        if (region == IntPtr.Zero || attribution == IntPtr.Zero || capacity < dataBytes || attributionCapacity < attributionBytes || ((ulong)region % (ulong)type.RegionAlign) != 0 || ((ulong)attribution & 7) != 0) { return IntPtr.Zero; }
+        if (region == global::System.IntPtr.Zero || attribution == global::System.IntPtr.Zero || capacity < dataBytes || attributionCapacity < attributionBytes || ((ulong)region % (ulong)type.RegionAlign) != 0 || ((ulong)attribution & 7) != 0) { return global::System.IntPtr.Zero; }
         ulong dataAddress = (ulong)region, attrAddress = (ulong)attribution;
-        if (dataAddress <= attrAddress ? attrAddress - dataAddress < (ulong)dataBytes : dataAddress - attrAddress < (ulong)attributionBytes) { return IntPtr.Zero; }
+        if (dataAddress <= attrAddress ? attrAddress - dataAddress < (ulong)dataBytes : dataAddress - attrAddress < (ulong)attributionBytes) { return global::System.IntPtr.Zero; }
         if (type.Integrity) { bytes = bytes.Slice(0, bytes.Length - 4); }
         ulong idsCount = Read64(bytes, bytes.Length - 8);
         int end = bytes.Length - 8 - (int)idsCount * 8;
@@ -734,11 +734,11 @@ const tableRegionSource = `
         bool complete = NativeReadBody(ref state, ref root, new NativeValue(data, 0), type, report, false);
         if (wireNonFinite && report.NonFiniteFloat == null) { report.NonFiniteFloat = "a float the wire carries"; report.NonFiniteReason = "non_finite_float: a float the wire carries"; }
         // a non-finite float refuses the load and lands nothing (docs/SPEC-TABLES.md §3.3)
-        if (NonFiniteRefused(report) || report.Refused) { report.Damaged |= damagedBefore; System.Runtime.InteropServices.NativeMemory.Clear(data, checked((nuint)dataBytes)); Finish(report, Verdict.Refused); return IntPtr.Zero; }
+        if (NonFiniteRefused(report) || report.Refused) { report.Damaged |= damagedBefore; System.Runtime.InteropServices.NativeMemory.Clear(data, checked((nuint)dataBytes)); Finish(report, Verdict.Refused); return global::System.IntPtr.Zero; }
         // a cyclic wire is damage and refuses the whole load (docs/SPEC-TABLES.md §3.1, §4)
         if (good && RegionCyclic(data, directory, count, type, default, false)) { Damage(report); }
         // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): no root, and the region holds nothing.
-        if (report.Damaged) { System.Runtime.InteropServices.NativeMemory.Clear(data, checked((nuint)dataBytes)); Finish(report, Verdict.Damaged); return IntPtr.Zero; }
+        if (report.Damaged) { System.Runtime.InteropServices.NativeMemory.Clear(data, checked((nuint)dataBytes)); Finish(report, Verdict.Damaged); return global::System.IntPtr.Zero; }
         report.Damaged = damagedBefore;
         Finish(report, complete ? Verdict.Ok : Verdict.BodyStopped); return region;
     }

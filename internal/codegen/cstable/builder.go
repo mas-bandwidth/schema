@@ -28,7 +28,7 @@ func (g *tableGen) emitBuilders(names []string) {
 	for _, n := range rows {
 		g.pf("    if (typeof(T) == typeof(%sRow)) { return %sTableType(); }\n", n, n)
 	}
-	g.pf("    throw new ArgumentException(\"T must be a generated native table or type row in this unit\");\n}\n")
+	g.pf("    throw new global::System.ArgumentException(\"T must be a generated native table or type row in this unit\");\n}\n")
 	for _, n := range names {
 		if g.unit.Tables[n].IsMapEntry() {
 			continue
@@ -48,7 +48,7 @@ func (g *tableGen) emitBuilders(names []string) {
 const tableBuilderSource = `
 // Stable native slabs. Create one worker per filling thread and join workers
 // before saving, locking or disposing. Only acquiring a slab synchronizes.
-public sealed unsafe class TableArena : IDisposable
+public sealed unsafe class TableArena : global::System.IDisposable
 {
     internal const int SlabBytes = 64 * 1024;
     const int SegmentBytes = 4 * 1024 * 1024;
@@ -99,10 +99,10 @@ public sealed unsafe class TableArena : IDisposable
 
 public unsafe struct TableBlobSlot
 {
-    public IntPtr Pointer;
+    public global::System.IntPtr Pointer;
     public long Length;
     public long ByteLength;
-    public byte* Data { get { return Pointer == IntPtr.Zero ? null : (byte*)Pointer + 8; } }
+    public byte* Data { get { return Pointer == global::System.IntPtr.Zero ? null : (byte*)Pointer + 8; } }
     public Span<byte> Bytes { get { return new Span<byte>(Data, checked((int)ByteLength)); } }
 }
 
@@ -126,12 +126,12 @@ public sealed unsafe class TableWorker
     }
     public TableList<T> List<T>(ref TableCookList slot, TableFieldInfo field) where T : unmanaged
     {
-        if (!field.Dynamic || field.Map || sizeof(T) != field.NativeElementSize) { throw new ArgumentException("list element must match its descriptor"); }
+        if (!field.Dynamic || field.Map || sizeof(T) != field.NativeElementSize) { throw new global::System.ArgumentException("list element must match its descriptor"); }
         fixed (TableCookList* p = &slot) { return new TableList<T>(this, p, field); }
     }
     public TableMap<T> Map<T>(ref TableCookList slot, TableFieldInfo field) where T : unmanaged
     {
-        if (!field.Map || sizeof(T) != field.NativeElementSize) { throw new ArgumentException("map entry must match its descriptor"); }
+        if (!field.Map || sizeof(T) != field.NativeElementSize) { throw new global::System.ArgumentException("map entry must match its descriptor"); }
         fixed (TableCookList* p = &slot) { return new TableMap<T>(this, p, field); }
     }
     static class Row<T> where T : unmanaged { internal static readonly TableTypeInfo Type = Schema.TableBuilderType<T>(); }
@@ -139,7 +139,7 @@ public sealed unsafe class TableWorker
     {
         TableTypeInfo type = Row<T>.Type;
         byte* p = Raw(type.StorageSize);
-        if (p != null) { Schema.TableWire.ResetNative((IntPtr)p, type); }
+        if (p != null) { Schema.TableWire.ResetNative((global::System.IntPtr)p, type); }
         return (T*)p;
     }
     public TableBlobSlot AllocBytes(long length) { return Blob(length, 0); }
@@ -151,31 +151,31 @@ public sealed unsafe class TableWorker
         if (p == null) { return default; }
         *(uint*)p = (uint)length;
         *(uint*)(p + 4) = 0;
-        return new TableBlobSlot { Pointer = (IntPtr)p, Length = length, ByteLength = length };
+        return new TableBlobSlot { Pointer = (global::System.IntPtr)p, Length = length, ByteLength = length };
     }
 }
 
-public abstract unsafe class TableBuilder : IDisposable
+public abstract unsafe class TableBuilder : global::System.IDisposable
 {
     readonly TableTypeInfo type;
     readonly TableAllocator allocator;
     readonly TableArena arena;
     readonly TableWorker worker;
-    IntPtr root, packed;
+    global::System.IntPtr root, packed;
     bool disposed, locked;
     public long DataBytes { get; private set; }
     public long AttributionBytes { get; private set; }
-    public IntPtr Region { get { return LockedRoot; } }
+    public global::System.IntPtr Region { get { return LockedRoot; } }
     public long RegionBytes { get { return DataBytes + AttributionBytes; } }
     public bool IsLocked { get { return locked && !disposed; } }
-    protected IntPtr MutableRoot { get { return disposed || locked ? IntPtr.Zero : root; } }
-    protected IntPtr LockedRoot { get { return disposed || !locked ? IntPtr.Zero : packed; } }
+    protected global::System.IntPtr MutableRoot { get { return disposed || locked ? global::System.IntPtr.Zero : root; } }
+    protected global::System.IntPtr LockedRoot { get { return disposed || !locked ? global::System.IntPtr.Zero : packed; } }
     protected TableBuilder(TableTypeInfo type, TableAllocator allocator)
     {
         this.type = type; this.allocator = allocator;
         arena = new TableArena(allocator); worker = arena.CreateWorker();
-        root = (IntPtr)worker.Raw(type.StorageSize);
-        if (root != IntPtr.Zero) { Schema.TableWire.ResetNative(root, type); }
+        root = (global::System.IntPtr)worker.Raw(type.StorageSize);
+        if (root != global::System.IntPtr.Zero) { Schema.TableWire.ResetNative(root, type); }
     }
     public TableWorker CreateWorker() { return arena.CreateWorker(); }
     public T* Alloc<T>() where T : unmanaged { return worker.Alloc<T>(); }
@@ -185,32 +185,32 @@ public abstract unsafe class TableBuilder : IDisposable
     {
         if (disposed) { return false; }
         if (locked) { return true; }
-        if (root == IntPtr.Zero) { return false; }
-        IntPtr result = Schema.TableWire.PackOwned(root, type, allocator, out long data, out long attribution, true);
-        if (result == IntPtr.Zero) { return false; }
-        packed = result; DataBytes = data; AttributionBytes = attribution; locked = true; root = IntPtr.Zero;
+        if (root == global::System.IntPtr.Zero) { return false; }
+        global::System.IntPtr result = Schema.TableWire.PackOwned(root, type, allocator, out long data, out long attribution, true);
+        if (result == global::System.IntPtr.Zero) { return false; }
+        packed = result; DataBytes = data; AttributionBytes = attribution; locked = true; root = global::System.IntPtr.Zero;
         arena.Dispose(); return true;
     }
     public bool Load(ReadOnlySpan<byte> bytes, TableReport report)
     { return !disposed && !locked && Schema.TableWire.LoadBuilder(root, type, worker, bytes, report); }
-    public bool CopyFrom(IntPtr region)
+    public bool CopyFrom(global::System.IntPtr region)
     {
-        if (disposed || locked || region == IntPtr.Zero) { return false; }
+        if (disposed || locked || region == global::System.IntPtr.Zero) { return false; }
         long n = Schema.TableWire.PackSize(region, type, allocator, out _, out _);
         if (n < 0) { return false; }
         byte* target = worker.Raw(n); if (target == null) { return false; }
-        if (!Schema.TableWire.PackInto(region, type, (IntPtr)target, n, allocator, out _, out _)) { return false; }
-        root = (IntPtr)target; return true;
+        if (!Schema.TableWire.PackInto(region, type, (global::System.IntPtr)target, n, allocator, out _, out _)) { return false; }
+        root = (global::System.IntPtr)target; return true;
     }
-    public long Measure() { return Schema.TableWire.MeasureBuilder(disposed ? IntPtr.Zero : locked ? packed : root, type, allocator, !locked); }
-    public long Save(Span<byte> bytes) { return Schema.TableWire.SaveBuilder(disposed ? IntPtr.Zero : locked ? packed : root, type, bytes, allocator, !locked); }
-    public long CookMeasure() { return Schema.TableWire.CookRegion(disposed ? IntPtr.Zero : locked ? packed : root, type, IntPtr.Zero, 0, TableByteOrder.Little, true, allocator, !locked); }
+    public long Measure() { return Schema.TableWire.MeasureBuilder(disposed ? global::System.IntPtr.Zero : locked ? packed : root, type, allocator, !locked); }
+    public long Save(Span<byte> bytes) { return Schema.TableWire.SaveBuilder(disposed ? global::System.IntPtr.Zero : locked ? packed : root, type, bytes, allocator, !locked); }
+    public long CookMeasure() { return Schema.TableWire.CookRegion(disposed ? global::System.IntPtr.Zero : locked ? packed : root, type, global::System.IntPtr.Zero, 0, TableByteOrder.Little, true, allocator, !locked); }
     public bool Cook(Span<byte> bytes, TableByteOrder order = TableByteOrder.Little)
-    { fixed (byte* p = bytes) { return Schema.TableWire.CookRegion(disposed ? IntPtr.Zero : locked ? packed : root, type, (IntPtr)p, bytes.Length, order, false, allocator, !locked) >= 0; } }
+    { fixed (byte* p = bytes) { return Schema.TableWire.CookRegion(disposed ? global::System.IntPtr.Zero : locked ? packed : root, type, (global::System.IntPtr)p, bytes.Length, order, false, allocator, !locked) >= 0; } }
     public void Dispose()
     {
         if (disposed) { return; }
-        disposed = true; arena.Dispose(); allocator.Release((void*)packed); packed = root = IntPtr.Zero;
+        disposed = true; arena.Dispose(); allocator.Release((void*)packed); packed = root = global::System.IntPtr.Zero;
         DataBytes = AttributionBytes = 0;
     }
 }
@@ -219,14 +219,14 @@ public abstract unsafe class TableBuilder : IDisposable
 func tableBuilderWireSource(u *ir.Unit) string {
 	cap := ir.TableWireIdCapacity(u)
 	return `
-    public static void ResetNative(IntPtr pointer, TableTypeInfo type) { NativeReset(new NativeValue((byte*)pointer, 0), type); }
-    public static long MeasureBuilder(IntPtr root, TableTypeInfo type, TableAllocator allocator, bool mutable = false)
+    public static void ResetNative(global::System.IntPtr pointer, TableTypeInfo type) { NativeReset(new NativeValue((byte*)pointer, 0), type); }
+    public static long MeasureBuilder(global::System.IntPtr root, TableTypeInfo type, TableAllocator allocator, bool mutable = false)
     { Span<ulong> ids = stackalloc ulong[` + strconv.Itoa(cap) + `]; return SaveRegion(root, type, Span<byte>.Empty, ids, true, allocator, mutable); }
-    public static long SaveBuilder(IntPtr root, TableTypeInfo type, Span<byte> bytes, TableAllocator allocator, bool mutable = false)
+    public static long SaveBuilder(global::System.IntPtr root, TableTypeInfo type, Span<byte> bytes, TableAllocator allocator, bool mutable = false)
     { Span<ulong> ids = stackalloc ulong[` + strconv.Itoa(cap) + `]; return SaveRegion(root, type, bytes, ids, false, allocator, mutable); }
-    public static long PackSize(IntPtr pointer, TableTypeInfo type, TableAllocator allocator, out long data, out long attribution, bool mutable = false)
+    public static long PackSize(global::System.IntPtr pointer, TableTypeInfo type, TableAllocator allocator, out long data, out long attribution, bool mutable = false)
     {
-        data = attribution = 0; if (pointer == IntPtr.Zero) { return -1; }
+        data = attribution = 0; if (pointer == global::System.IntPtr.Zero) { return -1; }
         NativeValue root = new NativeValue((byte*)pointer, 0) { Mutable = mutable }; RegionGraph graph = RegionNumber(root, type, allocator);
         if (!graph.Valid) { return -1; }
         try
@@ -234,12 +234,12 @@ func tableBuilderWireSource(u *ir.Unit) string {
             data = RegionPlace(root, type, ref graph, out _); if (data < 0) { return -1; }
             attribution = ((long)graph.Count + 1) * 16; return checked(data + attribution);
         }
-        catch (OverflowException) { return -1; }
+        catch (global::System.OverflowException) { return -1; }
         finally { graph.Dispose(); }
     }
-    public static bool PackInto(IntPtr pointer, TableTypeInfo type, IntPtr target, long capacity, TableAllocator allocator, out long data, out long attribution, bool mutable = false)
+    public static bool PackInto(global::System.IntPtr pointer, TableTypeInfo type, global::System.IntPtr target, long capacity, TableAllocator allocator, out long data, out long attribution, bool mutable = false)
     {
-        data = attribution = 0; if (pointer == IntPtr.Zero || target == IntPtr.Zero) { return false; }
+        data = attribution = 0; if (pointer == global::System.IntPtr.Zero || target == global::System.IntPtr.Zero) { return false; }
         NativeValue root = new NativeValue((byte*)pointer, 0) { Mutable = mutable }; RegionGraph graph = RegionNumber(root, type, allocator);
         if (!graph.Valid) { return false; }
         try
@@ -248,20 +248,20 @@ func tableBuilderWireSource(u *ir.Unit) string {
             attribution = ((long)graph.Count + 1) * 16; long size = checked(data + attribution);
             if (size > capacity || (ulong)size > (ulong)nuint.MaxValue) { return false; }
             System.Runtime.InteropServices.NativeMemory.Clear((void*)target, (nuint)size);
-            RegionPackWriter writer = new RegionPackWriter { Bytes = (byte*)target, Big = !BitConverter.IsLittleEndian, Graph = graph };
+            RegionPackWriter writer = new RegionPackWriter { Bytes = (byte*)target, Big = !global::System.BitConverter.IsLittleEndian, Graph = graph };
             RegionPack(ref writer, root, type, data, true); return true;
         }
-        catch (OverflowException) { return false; }
+        catch (global::System.OverflowException) { return false; }
         finally { graph.Dispose(); }
     }
-    public static IntPtr PackOwned(IntPtr pointer, TableTypeInfo type, TableAllocator allocator, out long data, out long attribution, bool mutable = false)
+    public static global::System.IntPtr PackOwned(global::System.IntPtr pointer, TableTypeInfo type, TableAllocator allocator, out long data, out long attribution, bool mutable = false)
     {
         long size = PackSize(pointer, type, allocator, out data, out attribution, mutable);
-        if (size < 0) { return IntPtr.Zero; }
-        void* target = allocator.Get(size); if (target == null) { return IntPtr.Zero; }
-        if (!PackInto(pointer, type, (IntPtr)target, size, allocator, out long writtenData, out long writtenAttribution, mutable) || writtenData != data || writtenAttribution != attribution)
-        { allocator.Release(target); return IntPtr.Zero; }
-        return (IntPtr)target;
+        if (size < 0) { return global::System.IntPtr.Zero; }
+        void* target = allocator.Get(size); if (target == null) { return global::System.IntPtr.Zero; }
+        if (!PackInto(pointer, type, (global::System.IntPtr)target, size, allocator, out long writtenData, out long writtenAttribution, mutable) || writtenData != data || writtenAttribution != attribution)
+        { allocator.Release(target); return global::System.IntPtr.Zero; }
+        return (global::System.IntPtr)target;
     }
 `
 }

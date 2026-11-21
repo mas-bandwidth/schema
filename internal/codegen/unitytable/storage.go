@@ -215,7 +215,7 @@ func emitScalarAssert(b *strings.Builder, f *ir.Field, v string) {
 			return
 		}
 		if f.Type.Width == 128 {
-			fmt.Fprintf(b, "Debug.Assert(%s >= %s && %s <= %s, \"%s is outside its declared range\");\n",
+			fmt.Fprintf(b, "global::System.Diagnostics.Debug.Assert(%s >= %s && %s <= %s, \"%s is outside its declared range\");\n",
 				v, lit128Expr(lo, f.Type.Signed), v, lit128Expr(hi, f.Type.Signed), f.Name)
 			return
 		}
@@ -224,30 +224,30 @@ func emitScalarAssert(b *strings.Builder, f *ir.Field, v string) {
 			if lo.Cmp(minI64Big) == 0 {
 				loS = "long.MinValue"
 			}
-			fmt.Fprintf(b, "Debug.Assert(%s >= %s && %s <= %s, \"%s is outside its declared range [%s, %s]\");\n",
+			fmt.Fprintf(b, "global::System.Diagnostics.Debug.Assert(%s >= %s && %s <= %s, \"%s is outside its declared range [%s, %s]\");\n",
 				v, loS, v, hiS, f.Name, lo.String(), hi.String())
 			return
 		}
-		fmt.Fprintf(b, "Debug.Assert(%s, \"%s is outside its declared range [%s, %s]\");\n",
+		fmt.Fprintf(b, "global::System.Diagnostics.Debug.Assert(%s, \"%s is outside its declared range [%s, %s]\");\n",
 			unsignedTest(v, lo, hi, true), f.Name, lo.String(), hi.String())
 	case ir.TFloat32:
-		fmt.Fprintf(b, "Debug.Assert(!float.IsNaN(%s) && !float.IsInfinity(%s), \"%s is not finite\");\n", v, v, f.Name)
+		fmt.Fprintf(b, "global::System.Diagnostics.Debug.Assert(!float.IsNaN(%s) && !float.IsInfinity(%s), \"%s is not finite\");\n", v, v, f.Name)
 		if f.HasFloatRange {
-			fmt.Fprintf(b, "Debug.Assert(%s >= %s && %s <= %s, \"%s is outside its declared range\");\n",
+			fmt.Fprintf(b, "global::System.Diagnostics.Debug.Assert(%s >= %s && %s <= %s, \"%s is outside its declared range\");\n",
 				v, formatFloat32Lit(f.FMin), v, formatFloat32Lit(f.FMax), f.Name)
 		}
 	case ir.TFloat64:
-		fmt.Fprintf(b, "Debug.Assert(!double.IsNaN(%s) && !double.IsInfinity(%s), \"%s is not finite\");\n", v, v, f.Name)
+		fmt.Fprintf(b, "global::System.Diagnostics.Debug.Assert(!double.IsNaN(%s) && !double.IsInfinity(%s), \"%s is not finite\");\n", v, v, f.Name)
 		if f.HasFloatRange {
-			fmt.Fprintf(b, "Debug.Assert(%s >= %s && %s <= %s, \"%s is outside its declared range\");\n",
+			fmt.Fprintf(b, "global::System.Diagnostics.Debug.Assert(%s >= %s && %s <= %s, \"%s is outside its declared range\");\n",
 				v, formatFloat64Lit(f.FMin), v, formatFloat64Lit(f.FMax), f.Name)
 		}
 	case ir.TNamed:
 		if en, ok := f.Type.Ref.(*ir.Enum); ok {
-			fmt.Fprintf(b, "Debug.Assert((ulong)%s <= %dUL, \"%s is outside enum %s\");\n", v, len(en.Variants), f.Name, en.Name)
+			fmt.Fprintf(b, "global::System.Diagnostics.Debug.Assert((ulong)%s <= %dUL, \"%s is outside enum %s\");\n", v, len(en.Variants), f.Name, en.Name)
 			for i, variant := range en.Variants {
 				if enumVariantDeprecated(en, i) {
-					fmt.Fprintf(b, "Debug.Assert(%s != %s.%s, \"%s names deprecated variant %s\");\n", v, en.Name, variant, f.Name, variant)
+					fmt.Fprintf(b, "global::System.Diagnostics.Debug.Assert(%s != %s.%s, \"%s names deprecated variant %s\");\n", v, en.Name, variant, f.Name, variant)
 				}
 			}
 		}
@@ -423,12 +423,12 @@ func emitVariableStorageField(b *strings.Builder, u *ir.Unit, pkg string, f *ir.
 	elemT := userElementType(u, pkg, f)
 	switch {
 	case f.IsList(), f.IsMap():
-		fmt.Fprintf(b, "    public %s[] %s = Array.Empty<%s>();\n", elemT, memberName, elemT)
+		fmt.Fprintf(b, "    public %s[] %s = global::System.Array.Empty<%s>();\n", elemT, memberName, elemT)
 		fmt.Fprintf(b, "    public int %sCount;\n", memberName)
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		fmt.Fprintf(b, "    public %s %s;\n", elemT, memberName)
 	case f.Type.TextUnbounded():
-		fmt.Fprintf(b, "    public byte[] %s = Array.Empty<byte>();\n", memberName)
+		fmt.Fprintf(b, "    public byte[] %s = global::System.Array.Empty<byte>();\n", memberName)
 		fmt.Fprintf(b, "    public int %sLength;\n", memberName)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		fmt.Fprintf(b, "    public byte[] %s = new byte[%d];\n", memberName, f.Type.Size)
@@ -523,7 +523,7 @@ func emitTableUnion(types, schema *strings.Builder, u *ir.Unit, un *ir.Union) {
 
 	types.WriteString(ir.DocComment(un.Doc, "", "//"))
 	if hasFixedUnionClosure(u, un, map[string]bool{}) {
-		fmt.Fprintf(types, "[Serializable]\npublic struct %s\n{\n    public %sType Type;\n", un.Name, un.Name)
+		fmt.Fprintf(types, "[global::System.Serializable]\npublic struct %s\n{\n    public %sType Type;\n", un.Name, un.Name)
 		for _, v := range un.Variants {
 			if v.Void() {
 				continue
@@ -533,7 +533,7 @@ func emitTableUnion(types, schema *strings.Builder, u *ir.Unit, un *ir.Union) {
 		types.WriteString("}\n\n")
 		return
 	}
-	fmt.Fprintf(types, "[Serializable]\npublic sealed class %s\n{\n    public %sType Type;\n", un.Name, un.Name)
+	fmt.Fprintf(types, "[global::System.Serializable]\npublic sealed class %s\n{\n    public %sType Type;\n", un.Name, un.Name)
 	var armFields []*ir.Field
 	for _, v := range un.Variants {
 		if v.Void() {
@@ -550,7 +550,7 @@ func emitTableStorageType(types *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	pkg := namespaceOf(u.Package)
 	types.WriteString(ir.DocComment(st.Doc, "", "//"))
 	if hasFixedStorageClosure(u, st) {
-		fmt.Fprintf(types, "[Serializable]\npublic struct %s\n{\n", st.Name)
+		fmt.Fprintf(types, "[global::System.Serializable]\npublic struct %s\n{\n", st.Name)
 		for _, f := range st.Fields {
 			types.WriteString(ir.DocComment(f.Doc, "    ", "//"))
 			emitFixedStorageField(types, f, member(f))
@@ -558,7 +558,7 @@ func emitTableStorageType(types *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		types.WriteString("}\n\n")
 		return
 	}
-	fmt.Fprintf(types, "[Serializable]\npublic sealed class %s\n{\n", st.Name)
+	fmt.Fprintf(types, "[global::System.Serializable]\npublic sealed class %s\n{\n", st.Name)
 	for _, f := range st.Fields {
 		types.WriteString(ir.DocComment(f.Doc, "    ", "//"))
 		emitVariableStorageField(types, u, pkg, f, member(f))

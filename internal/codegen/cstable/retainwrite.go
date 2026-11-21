@@ -50,9 +50,9 @@ func tableRetainWriteSource() string {
 }
 
 const tableRetainSaveSource = `
-    public static long SaveRetainRegion(IntPtr pointer, TableTypeInfo type, Span<byte> buffer, Span<ulong> vocabulary, Span<int> slots, ref TableRetain store, TableReport report, bool measure, TableAllocator allocator = default)
+    public static long SaveRetainRegion(global::System.IntPtr pointer, TableTypeInfo type, Span<byte> buffer, Span<ulong> vocabulary, Span<int> slots, ref TableRetain store, TableReport report, bool measure, TableAllocator allocator = default)
     {
-        if (pointer == IntPtr.Zero || !measure && report == null) { return -1; }
+        if (pointer == global::System.IntPtr.Zero || !measure && report == null) { return -1; }
         NativeValue native = new NativeValue((byte*)pointer, 0);
         RegionGraph graph = RegionNumber(native, type, allocator, true, true); if (!graph.Valid) { return -1; }
         try
@@ -86,14 +86,14 @@ const tableRetainSaveSource = `
         }
         finally { graph.Dispose(); }
     }
-    public static IntPtr LoadRetainRegion(TableTypeInfo type, IntPtr region, long capacity, ReadOnlySpan<byte> bytes, ref TableRetain store, TableReport report)
+    public static global::System.IntPtr LoadRetainRegion(TableTypeInfo type, global::System.IntPtr region, long capacity, ReadOnlySpan<byte> bytes, ref TableRetain store, TableReport report)
     {
         long total = LoadMeasurePartsWalk(type, bytes, out long data, out long attribution, out string reason, out bool wireNonFinite);
-        if (total >= 0 && capacity < total) { return IntPtr.Zero; }
+        if (total >= 0 && capacity < total) { return global::System.IntPtr.Zero; }
         fixed (TableRetain* retain = &store)
-        { return RetainLoadRegion(type, region, data, (IntPtr)((byte*)region + data), attribution, bytes, report, total, data, reason, wireNonFinite, retain); }
+        { return RetainLoadRegion(type, region, data, (global::System.IntPtr)((byte*)region + data), attribution, bytes, report, total, data, reason, wireNonFinite, retain); }
     }
-    public static IntPtr LoadRetainRegion(TableTypeInfo type, IntPtr region, long capacity, IntPtr attribution, long attributionCapacity, ReadOnlySpan<byte> bytes, ref TableRetain store, TableReport report)
+    public static global::System.IntPtr LoadRetainRegion(TableTypeInfo type, global::System.IntPtr region, long capacity, global::System.IntPtr attribution, long attributionCapacity, ReadOnlySpan<byte> bytes, ref TableRetain store, TableReport report)
     {
         long total = LoadMeasurePartsWalk(type, bytes, out long data, out _, out string reason, out bool wireNonFinite);
         fixed (TableRetain* retain = &store)

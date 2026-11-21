@@ -16,7 +16,7 @@ const tableWideJsonSource = `
         }
         o.Put((byte)'"');
     }
-    static void WriteWide(ref Out o, UInt128 raw, TableFieldInfo f)
+    static void WriteWide(ref Out o, global::System.UInt128 raw, TableFieldInfo f)
     {
         // a wide kind is a STRING of decimal digits (§16.14 W10, W11); a
         // 32-bit fixed kind stays a bare number
@@ -30,8 +30,8 @@ const tableWideJsonSource = `
         for (int i = 0; i < used; i++) { o.Put((byte)digits[i]); }
         if (f.Kind < 20 || f.Kind > 29) { if (quoted) { o.Put((byte)'"'); } return; }
         o.Put((byte)'.');
-        UInt128 mask = ((UInt128)1 << frac) - 1;
-        UInt128 fraction = raw & mask;
+        global::System.UInt128 mask = ((global::System.UInt128)1 << frac) - 1;
+        global::System.UInt128 fraction = raw & mask;
         if (fraction == 0) { o.Put((byte)'0'); if (quoted) { o.Put((byte)'"'); } return; }
         while (fraction != 0)
         {
@@ -86,13 +86,13 @@ const tableWideJsonSource = `
         int start = 0, end = n, point = integer + exponent;
         while (start < end && digits[start] == 0) { start++; point--; }
         while (end > start && digits[end - 1] == 0) { end--; }
-        UInt128 raw = 0, sign = (UInt128)1 << 127;
+        global::System.UInt128 raw = 0, sign = (global::System.UInt128)1 << 127;
         bool saturated = false;
         if (start == end) { }
         else if (point > 40)
         {
             saturated = true;
-            raw = negative ? (f.WideSigned ? sign : 0) : (f.WideSigned ? sign - 1 : UInt128.MaxValue);
+            raw = negative ? (f.WideSigned ? sign : 0) : (f.WideSigned ? sign - 1 : global::System.UInt128.MaxValue);
         }
         else if (point < -40) { return RefuseText(ref input, "kind_mismatch"); }
         else
@@ -101,7 +101,7 @@ const tableWideJsonSource = `
             int fn = 0;
             for (int z = point; z < 0; z++) { fractionDigits[fn++] = 0; }
             for (int k = global::System.Math.Max(point, 0) + start; k < end; k++) { fractionDigits[fn++] = digits[k]; }
-            UInt128 fraction = 0;
+            global::System.UInt128 fraction = 0;
             for (int bit = 0; bit < f.FracBits; bit++)
             {
                 int carry = 0;
@@ -109,11 +109,11 @@ const tableWideJsonSource = `
                 fraction = (fraction << 1) | (uint)carry;
             }
             for (int k = 0; k < fn; k++) { if (fractionDigits[k] != 0) { return RefuseText(ref input, "kind_mismatch"); } }
-            UInt128 whole = 0;
+            global::System.UInt128 whole = 0;
             for (int k = start; k < start + point && !saturated; k++)
             {
                 uint digit = k < end ? digits[k] : 0u;
-                if (whole > (UInt128.MaxValue - digit) / 10) { saturated = true; }
+                if (whole > (global::System.UInt128.MaxValue - digit) / 10) { saturated = true; }
                 else { whole = whole * 10 + digit; }
             }
             if (!saturated && f.FracBits > 0 && (whole >> (128 - f.FracBits)) != 0) { saturated = true; }
@@ -126,7 +126,7 @@ const tableWideJsonSource = `
             }
             else
             {
-                if (saturated) { raw = UInt128.MaxValue; }
+                if (saturated) { raw = global::System.UInt128.MaxValue; }
                 if (negative && raw != 0) { raw = 0; saturated = true; }
             }
         }

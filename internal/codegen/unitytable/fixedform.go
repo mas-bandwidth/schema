@@ -1098,7 +1098,7 @@ func lineageLane(st *ir.Struct, r *fixedRoot, e FixedLineageEntry, ownFacts bool
 
 func byteArray(b *strings.Builder, data []byte) {
 	if len(data) == 0 {
-		b.WriteString("Array.Empty<byte>()")
+		b.WriteString("global::System.Array.Empty<byte>()")
 		return
 	}
 	b.WriteString("new byte[]\n{\n")
@@ -1117,7 +1117,7 @@ func byteArray(b *strings.Builder, data []byte) {
 
 func opArray(b *strings.Builder, ops []fixedOp) {
 	if len(ops) == 0 {
-		b.WriteString("Array.Empty<TableWire.FixedOp>()")
+		b.WriteString("global::System.Array.Empty<TableWire.FixedOp>()")
 		return
 	}
 	b.WriteString("new TableWire.FixedOp[]\n{\n")
@@ -1129,7 +1129,7 @@ func opArray(b *strings.Builder, ops []fixedOp) {
 
 func guardArray(b *strings.Builder, guards []fixedGuard) {
 	if len(guards) == 0 {
-		b.WriteString("Array.Empty<TableWire.FixedGuard>()")
+		b.WriteString("global::System.Array.Empty<TableWire.FixedGuard>()")
 		return
 	}
 	b.WriteString("new TableWire.FixedGuard[]\n{\n")
@@ -1141,7 +1141,7 @@ func guardArray(b *strings.Builder, guards []fixedGuard) {
 
 func fillArray(b *strings.Builder, fills []fixedFill) {
 	if len(fills) == 0 {
-		b.WriteString("Array.Empty<TableWire.FixedFill>()")
+		b.WriteString("global::System.Array.Empty<TableWire.FixedFill>()")
 		return
 	}
 	b.WriteString("new TableWire.FixedFill[]\n{\n")
@@ -1155,7 +1155,7 @@ func fillArray(b *strings.Builder, fills []fixedFill) {
 
 func ushortArray(b *strings.Builder, vals []uint16) {
 	if len(vals) == 0 {
-		b.WriteString("Array.Empty<ushort>()")
+		b.WriteString("global::System.Array.Empty<ushort>()")
 		return
 	}
 	b.WriteString("new ushort[]\n{\n")
@@ -1261,7 +1261,7 @@ func emitFixed(b *strings.Builder, u *ir.Unit, r *fixedRoot) {
 
 	fmt.Fprintf(b, "public static long %sFixedSave(ReadOnlySpan<%s> values, Span<byte> buffer)\n{\n", name, name)
 	var save strings.Builder
-	save.WriteString("Debug.Assert(values.Length > 0, \"a fixed-form file holds at least one record\");\n")
+	save.WriteString("global::System.Diagnostics.Debug.Assert(values.Length > 0, \"a fixed-form file holds at least one record\");\n")
 	fmt.Fprintf(&save, "long need = %sFixedMeasure(values.Length);\n", name)
 	save.WriteString("if (need < 0 || buffer.Length < need) { return -1; }\n")
 	save.WriteString("buffer.Slice(0, TableWire.FixedHead).Clear();\n")
@@ -1276,7 +1276,7 @@ func emitFixed(b *strings.Builder, u *ir.Unit, r *fixedRoot) {
 	save.WriteString("    Span<byte> body = record.Slice(8);\n    body.Clear();\n")
 	fmt.Fprintf(&save, "    %sFixedStore(body, in values[k]);\n}\n", name)
 	if crc {
-		save.WriteString("BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice((int)need - 4, 4), TableWire.IntegrityCrc(buffer.Slice(0, (int)need - 4)));\n")
+		save.WriteString("global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice((int)need - 4, 4), TableWire.IntegrityCrc(buffer.Slice(0, (int)need - 4)));\n")
 	}
 	save.WriteString("return need;\n")
 	b.WriteString(indent(save.String()))
@@ -1408,7 +1408,7 @@ func emitFixedUnitHelpers(b *strings.Builder, u *ir.Unit) {
 		tagBytes := ir.TableFixedUnionTagBytes(un)
 		fmt.Fprintf(b, "internal static void FixedStore_%s(Span<byte> body, in %s value)\n{\n", un.Name, un.Name)
 		var sb strings.Builder
-		fmt.Fprintf(&sb, "Debug.Assert((ulong)value.Type <= %dUL, \"union %s tag outside declared arms\");\n", len(un.Variants), un.Name)
+		fmt.Fprintf(&sb, "global::System.Diagnostics.Debug.Assert((ulong)value.Type <= %dUL, \"union %s tag outside declared arms\");\n", len(un.Variants), un.Name)
 		fmt.Fprintf(&sb, "TableWire.FixedPut(body, 0, %d, (ulong)value.Type);\n", tagBytes)
 		sb.WriteString("switch (value.Type)\n{\n")
 		for _, v := range un.Variants {
@@ -1474,15 +1474,15 @@ func emitFixedFieldStore(b *strings.Builder, u *ir.Unit, f *ir.Field, expr, buf 
 	case f.Type.Kind == ir.TString:
 		n := f.Type.Size
 		fmt.Fprintf(b, "{\n    int slen = %sLength;\n", expr)
-		fmt.Fprintf(b, "    Debug.Assert(slen >= 0 && slen <= %d, \"%s length outside [0, %d]\");\n", n, f.Name, n)
+		fmt.Fprintf(b, "    global::System.Diagnostics.Debug.Assert(slen >= 0 && slen <= %d, \"%s length outside [0, %d]\");\n", n, f.Name, n)
 		fmt.Fprintf(b, "    Buffer%d<byte> sbuf = %s;\n", n, expr)
-		fmt.Fprintf(b, "    Debug.Assert(TableWire.TextValid(sbuf.AsSpan().Slice(0, slen)), \"%s is not valid UTF-8\");\n", f.Name)
+		fmt.Fprintf(b, "    global::System.Diagnostics.Debug.Assert(TableWire.TextValid(sbuf.AsSpan().Slice(0, slen)), \"%s is not valid UTF-8\");\n", f.Name)
 		fmt.Fprintf(b, "    TableWire.FixedPut(%s, %d, 4, (ulong)slen);\n", buf, off)
 		fmt.Fprintf(b, "    if (slen > 0) { sbuf.AsSpan().Slice(0, slen).CopyTo(%s.Slice(%d, slen)); }\n}\n", buf, off+4)
 	case f.Type.Kind == ir.TBytes:
 		n := f.Type.Size
 		fmt.Fprintf(b, "{\n    int blen = %sLength;\n", expr)
-		fmt.Fprintf(b, "    Debug.Assert(blen >= 0 && blen <= %d, \"%s length outside [0, %d]\");\n", n, f.Name, n)
+		fmt.Fprintf(b, "    global::System.Diagnostics.Debug.Assert(blen >= 0 && blen <= %d, \"%s length outside [0, %d]\");\n", n, f.Name, n)
 		fmt.Fprintf(b, "    Buffer%d<byte> bbuf = %s;\n", n, expr)
 		fmt.Fprintf(b, "    TableWire.FixedPut(%s, %d, 4, (ulong)blen);\n", buf, off)
 		fmt.Fprintf(b, "    if (blen > 0) { bbuf.AsSpan().Slice(0, blen).CopyTo(%s.Slice(%d, blen)); }\n}\n", buf, off+4)
@@ -1506,7 +1506,7 @@ func emitFixedFieldStore(b *strings.Builder, u *ir.Unit, f *ir.Field, expr, buf 
 		iv := fmt.Sprintf("i%d", depth)
 		ev := fmt.Sprintf("elem%d", depth)
 		fmt.Fprintf(b, "{\n    int cnt = %sCount;\n", expr)
-		fmt.Fprintf(b, "    Debug.Assert(cnt >= %d && cnt <= %d, \"%s count outside [%d, %d]\");\n", f.ArrayMin, f.ArrayBound, f.Name, f.ArrayMin, f.ArrayBound)
+		fmt.Fprintf(b, "    global::System.Diagnostics.Debug.Assert(cnt >= %d && cnt <= %d, \"%s count outside [%d, %d]\");\n", f.ArrayMin, f.ArrayBound, f.Name, f.ArrayMin, f.ArrayBound)
 		fmt.Fprintf(b, "    TableWire.FixedPut(%s, %d, 4, (ulong)cnt);\n", buf, off)
 		fmt.Fprintf(b, "    for (int %s = 0; %s < cnt; %s++)\n    {\n", iv, iv, iv)
 		var loop strings.Builder

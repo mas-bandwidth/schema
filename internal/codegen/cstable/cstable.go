@@ -565,7 +565,7 @@ public sealed class TableKeyed<T, E> where E : struct, System.Enum
     {
         if ((uint)(key - 1) >= (uint)SlotCount)
         {
-            throw new ArgumentOutOfRangeException("key",
+            throw new global::System.ArgumentOutOfRangeException("key",
                 "an enum-keyed array holds one slot per named variant: None keys none, and neither does a key past Max");
         }
     }
@@ -640,28 +640,28 @@ public const string TableDocNone = "";
 func tableBitHelpers() string {
 	return `// the IEEE-754 bit patterns the wire carries for f32 and f64 (docs/SPEC-TABLES.md §3).
 // Forced inline so a float never crosses a call the JIT might not inline (M3).
-[MethodImpl(MethodImplOptions.AggressiveInlining)]
+[global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
 public static float TableBitsToFloat(uint bits)
 {
-    return BitConverter.Int32BitsToSingle(unchecked((int)bits));
+    return global::System.BitConverter.Int32BitsToSingle(unchecked((int)bits));
 }
 
-[MethodImpl(MethodImplOptions.AggressiveInlining)]
+[global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
 public static uint TableFloatToBits(float value)
 {
-    return unchecked((uint)BitConverter.SingleToInt32Bits(value));
+    return unchecked((uint)global::System.BitConverter.SingleToInt32Bits(value));
 }
 
-[MethodImpl(MethodImplOptions.AggressiveInlining)]
+[global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
 public static double TableBitsToDouble(ulong bits)
 {
-    return BitConverter.Int64BitsToDouble(unchecked((long)bits));
+    return global::System.BitConverter.Int64BitsToDouble(unchecked((long)bits));
 }
 
-[MethodImpl(MethodImplOptions.AggressiveInlining)]
+[global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
 public static ulong TableDoubleToBits(double value)
 {
-    return unchecked((ulong)BitConverter.DoubleToInt64Bits(value));
+    return unchecked((ulong)global::System.BitConverter.DoubleToInt64Bits(value));
 }
 
 `
@@ -740,7 +740,7 @@ public sealed class TableFieldInfo
     internal int NativeOffset, NativeElementSize, NativeCountOffset, NativePresentOffset;
     internal int MessageSlot = 0;
     internal bool MessageBounded = false, MessageSigned = false;
-    internal UInt128 MessageMin = 0, MessageMax = 0;
+    internal global::System.UInt128 MessageMin = 0, MessageMax = 0;
     public string Name;         // schema field name, e.g. "health"
     public string Json;         // the TEXT form's key: the json = "key" attribute, else Name (§16.4)
     public string TypeName;     // schema type name, e.g. "float32", "Grade"
@@ -794,13 +794,13 @@ public sealed class TableFieldInfo
     public Func<ulong, TableReport, ulong> RangeRaw;
     public Func<ulong, TableReport, ulong> RangeJsonInteger;
     public Func<ulong, bool> RequiredValidRaw;
-    public UInt128 DefaultWide;
+    public global::System.UInt128 DefaultWide;
     public int FracBits;
     public bool WideSigned;
-    public Func<UInt128, TableReport, UInt128> RangeWide;
-    public Func<UInt128, bool> RequiredValidWide;
-    public Func<object, int, UInt128> GetWide;
-    public Action<object, int, UInt128> SetWide;
+    public Func<global::System.UInt128, TableReport, global::System.UInt128> RangeWide;
+    public Func<global::System.UInt128, bool> RequiredValidWide;
+    public Func<object, int, global::System.UInt128> GetWide;
+    public Action<object, int, global::System.UInt128> SetWide;
     public byte[] DefaultBytes;
     public Action<object> ResetField;
     public string Guard;        // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded

@@ -5,12 +5,12 @@ import "github.com/mas-bandwidth/schema/v2/ir"
 func (g *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
 	n := bl.Table.Name
 	g.hf("    // Begin settles the layout before workers fill disjoint rows. It touches\n    // the prologue and triples only; use Clear on storage when byte stability matters.\n")
-	g.hf("    public static bool Begin(out %sBlock block, IntPtr pointer, long capacity, in %sCounts counts, out TableBlockRefusal refusal)\n    {\n        block = default; refusal = default;\n", n, n)
+	g.hf("    public static bool Begin(out %sBlock block, global::System.IntPtr pointer, long capacity, in %sCounts counts, out TableBlockRefusal refusal)\n    {\n        block = default; refusal = default;\n", n, n)
 	for _, a := range bl.Arrays {
 		name := member(a.Field)
 		g.hf("        if (counts.%s < 0 || counts.%s > %d) { refusal = new TableBlockRefusal { Array = %q, Count = counts.%s, Maximum = %d }; return false; }\n", name, name, a.Max, a.Field.Name, name, a.Max)
 	}
-	g.hf("        if (pointer == IntPtr.Zero || ((ulong)pointer & 63) != 0) { return false; }\n        long at = %d;\n", bl.Projection.Size)
+	g.hf("        if (pointer == global::System.IntPtr.Zero || ((ulong)pointer & 63) != 0) { return false; }\n        long at = %d;\n", bl.Projection.Size)
 	for _, a := range bl.Arrays {
 		name := member(a.Field)
 		g.hf("        at = (at + 63) & ~63L; long %sAt = at; at += (long)counts.%s * %d;\n", name, name, a.Stride)
@@ -47,36 +47,36 @@ public struct TableBlockRefusal
 }
 public sealed class TableBlockAllocator
 {
-    public Func<long, IntPtr> Allocate;
-    public Action<IntPtr> Free;
+    public Func<long, global::System.IntPtr> Allocate;
+    public Action<global::System.IntPtr> Free;
 }
 // One allocation at construction. Begin and worker access allocate nothing.
 // Borrowed blocks and spans must not outlive this storage or its next Begin.
-public unsafe class TableBlockStorage : IDisposable
+public unsafe class TableBlockStorage : global::System.IDisposable
 {
-    IntPtr allocation;
+    global::System.IntPtr allocation;
     readonly TableBlockAllocator allocator;
-    public IntPtr Pointer { get; private set; }
+    public global::System.IntPtr Pointer { get; private set; }
     public long Capacity { get; private set; }
     protected TableBlockStorage(long capacity, TableBlockAllocator allocator)
     {
-        if (capacity <= 0 || capacity > long.MaxValue - 63) { throw new ArgumentOutOfRangeException(nameof(capacity)); }
-        if (allocator != null && (allocator.Allocate == null || allocator.Free == null)) { throw new ArgumentException("allocator requires both callbacks"); }
+        if (capacity <= 0 || capacity > long.MaxValue - 63) { throw new global::System.ArgumentOutOfRangeException(nameof(capacity)); }
+        if (allocator != null && (allocator.Allocate == null || allocator.Free == null)) { throw new global::System.ArgumentException("allocator requires both callbacks"); }
         this.allocator = allocator;
-        allocation = allocator == null ? Marshal.AllocHGlobal(checked((nint)(capacity + 63))) : allocator.Allocate(capacity + 63);
-        if (allocation == IntPtr.Zero) { throw new OutOfMemoryException(); }
-        Pointer = (IntPtr)(((ulong)allocation + 63) & ~63ul); Capacity = capacity;
+        allocation = allocator == null ? global::System.Runtime.InteropServices.Marshal.AllocHGlobal(checked((nint)(capacity + 63))) : allocator.Allocate(capacity + 63);
+        if (allocation == global::System.IntPtr.Zero) { throw new global::System.OutOfMemoryException(); }
+        Pointer = (global::System.IntPtr)(((ulong)allocation + 63) & ~63ul); Capacity = capacity;
     }
     public void Clear()
     {
-        if (Pointer == IntPtr.Zero) { throw new ObjectDisposedException(nameof(TableBlockStorage)); }
-        NativeMemory.Clear((void*)Pointer, checked((nuint)Capacity));
+        if (Pointer == global::System.IntPtr.Zero) { throw new global::System.ObjectDisposedException(nameof(TableBlockStorage)); }
+        global::System.Runtime.InteropServices.NativeMemory.Clear((void*)Pointer, checked((nuint)Capacity));
     }
     public void Dispose()
     {
-        if (allocation == IntPtr.Zero) { return; }
-        if (allocator == null) { Marshal.FreeHGlobal(allocation); } else { allocator.Free(allocation); }
-        allocation = IntPtr.Zero; Pointer = IntPtr.Zero; Capacity = 0;
+        if (allocation == global::System.IntPtr.Zero) { return; }
+        if (allocator == null) { global::System.Runtime.InteropServices.Marshal.FreeHGlobal(allocation); } else { allocator.Free(allocation); }
+        allocation = global::System.IntPtr.Zero; Pointer = global::System.IntPtr.Zero; Capacity = 0;
     }
 }
 `

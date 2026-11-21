@@ -370,7 +370,7 @@ func (g *gen) emitBuffers() {
 	for _, n := range lengths {
 		name := bufferName(n)
 		first := bufferFirstField(n)
-		g.tf("[Serializable]\n[StructLayout(LayoutKind.Sequential)]\n")
+		g.tf("[global::System.Serializable]\n[global::System.Runtime.InteropServices.StructLayout(global::System.Runtime.InteropServices.LayoutKind.Sequential)]\n")
 		g.tf("public struct %s<T> where T : unmanaged\n{\n", name)
 		g.tf("    public const int Capacity = %d;\n\n", n)
 		switch {
@@ -386,8 +386,8 @@ func (g *gen) emitBuffers() {
 			emitBufferFieldRun(g, "T", "E", n)
 		}
 		g.tf("\n    public T this[int index]\n    {\n")
-		g.tf("        get { return MemoryMarshal.CreateReadOnlySpan(ref %s, Capacity)[index]; }\n", first)
-		g.tf("        set { MemoryMarshal.CreateSpan(ref %s, Capacity)[index] = value; }\n", first)
+		g.tf("        get { return global::System.Runtime.InteropServices.MemoryMarshal.CreateReadOnlySpan(ref %s, Capacity)[index]; }\n", first)
+		g.tf("        set { global::System.Runtime.InteropServices.MemoryMarshal.CreateSpan(ref %s, Capacity)[index] = value; }\n", first)
 		g.tf("    }\n}\n\n")
 	}
 	g.tf("// %s carries the buffers' Span views. An extension on `ref this` is how\n", buffersClass)
@@ -400,7 +400,7 @@ func (g *gen) emitBuffers() {
 		name := bufferName(n)
 		first := bufferFirstField(n)
 		g.tf("    public static Span<T> AsSpan<T>(ref this %s<T> buffer) where T : unmanaged\n    {\n", name)
-		g.tf("        return MemoryMarshal.CreateSpan(ref buffer.%s, %s<T>.Capacity);\n", first, name)
+		g.tf("        return global::System.Runtime.InteropServices.MemoryMarshal.CreateSpan(ref buffer.%s, %s<T>.Capacity);\n", first, name)
 		g.tf("    }\n")
 	}
 	g.tf("}\n\n")
@@ -539,7 +539,7 @@ func (g *gen) emitFlags(d *ir.Flags) {
 	g.tf("%s", ir.DocComment(d.Doc, "", "//"))
 	g.tf("// %s — one bit per variant; wire %d bits (SPEC §4.2). ulong-backed, the full\n", d.Name, d.WireBits)
 	g.tf("// width §4.2 requires, so bits a newer build appended survive a round trip.\n")
-	g.tf("[Flags]\npublic enum %s : ulong\n{\n", d.Name)
+	g.tf("[global::System.Flags]\npublic enum %s : ulong\n{\n", d.Name)
 	for i, v := range d.Variants {
 		g.tf("%s", ir.DocComment(d.VariantDocs[i], "    ", "//"))
 		g.tf("    %s = 1ul << %d,\n", v, i)
@@ -581,7 +581,7 @@ func (g *gen) emitUnion(d *ir.Union) {
 	g.tf("// union %s — Type says which arm holds the value. default is the empty union\n", d.Name)
 	g.tf("// (None). A read initializes the selected arm from its construction form;\n")
 	g.tf("// the other arms are unspecified (SPEC §4.8). Consumers read the selected arm.\n")
-	g.tf("[Serializable]\npublic struct %s\n{\n    public %sType Type;\n", d.Name, d.Name)
+	g.tf("[global::System.Serializable]\npublic struct %s\n{\n    public %sType Type;\n", d.Name, d.Name)
 	for _, v := range d.Variants {
 		if v.Void() {
 			continue // a payload-free arm has no storage (SPEC §4.8)
@@ -597,7 +597,7 @@ func (g *gen) emitStruct(d *ir.Struct) {
 	if hasDefaults(d) {
 		g.tf(" — declares defaults: Schema.New%s() constructs it, default is the zero form", d.Name)
 	}
-	g.tf("\n[Serializable]\npublic struct %s\n{\n", d.Name)
+	g.tf("\n[global::System.Serializable]\npublic struct %s\n{\n", d.Name)
 	prevGuard := ""
 	for _, f := range d.Fields {
 		if f.Guard != prevGuard {

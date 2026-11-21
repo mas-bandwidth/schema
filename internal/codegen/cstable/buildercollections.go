@@ -34,7 +34,7 @@ internal static unsafe class TableListStorage
     {
         if (slot->Count == int.MaxValue || !Reserve(worker, slot, field, slot->Count + 1)) { return null; }
         byte* p = At((byte*)slot, slot->Count, field.NativeElementSize);
-        Schema.TableWire.ResetNativeElement((IntPtr)p, field); slot->Count++; return p;
+        Schema.TableWire.ResetNativeElement((global::System.IntPtr)p, field); slot->Count++; return p;
     }
     internal static bool Erase(TableWorker worker, TableCookList* slot, TableFieldInfo field, int index)
     {
@@ -85,10 +85,10 @@ public readonly unsafe struct TableMap<T> where T : unmanaged
         int lo = 0, hi = Count;
         while (lo < hi)
         {
-            int mid = lo + (hi - lo) / 2; int order = Schema.TableWire.BuilderKeyCompare((IntPtr)At(mid), field.Table.Fields[0], text, raw);
+            int mid = lo + (hi - lo) / 2; int order = Schema.TableWire.BuilderKeyCompare((global::System.IntPtr)At(mid), field.Table.Fields[0], text, raw);
             if (order < 0) { lo = mid + 1; } else { hi = mid; }
         }
-        found = lo < Count && Schema.TableWire.BuilderKeyCompare((IntPtr)At(lo), field.Table.Fields[0], text, raw) == 0;
+        found = lo < Count && Schema.TableWire.BuilderKeyCompare((global::System.IntPtr)At(lo), field.Table.Fields[0], text, raw) == 0;
         return lo;
     }
     T* InsertKey(ReadOnlySpan<byte> text, ulong raw, bool textual)
@@ -96,7 +96,7 @@ public readonly unsafe struct TableMap<T> where T : unmanaged
         int at = Search(text, raw, textual, out bool found); if (at < 0) { return null; }
         if (found) { return At(at); }
         byte* entry = TableListStorage.Add(worker, slot, field); if (entry == null) { return null; }
-        if (!Schema.TableWire.BuilderKeySet(worker, (IntPtr)entry, field.Table.Fields[0], text, raw)) { slot->Count--; return null; }
+        if (!Schema.TableWire.BuilderKeySet(worker, (global::System.IntPtr)entry, field.Table.Fields[0], text, raw)) { slot->Count--; return null; }
         TableListStorage.Head* head = (TableListStorage.Head*)((byte*)slot + slot->Reference);
         for (int i = slot->Count - 1; i > at; i--) { head->Items[i] = head->Items[i - 1]; }
         head->Items[at] = entry; return (T*)entry;
@@ -111,7 +111,7 @@ public readonly unsafe struct TableMap<T> where T : unmanaged
 `
 
 const tableBuilderCollectionWireSource = `
-    public static void ResetNativeElement(IntPtr pointer, TableFieldInfo field)
+    public static void ResetNativeElement(global::System.IntPtr pointer, TableFieldInfo field)
     {
         if (field.Kind == 13) { ResetNative(pointer, field.Table); }
         else if (field.Kind == 15) { System.Runtime.InteropServices.NativeMemory.Clear((void*)pointer, (nuint)field.NativeElementSize); }
@@ -127,7 +127,7 @@ const tableBuilderCollectionWireSource = `
         { long value = unchecked((long)raw), bound = 1L << (bits - 1); return value >= -bound && value < bound; }
         return raw < (1UL << bits);
     }
-    public static int BuilderKeyCompare(IntPtr pointer, TableFieldInfo key, ReadOnlySpan<byte> text, ulong raw)
+    public static int BuilderKeyCompare(global::System.IntPtr pointer, TableFieldInfo key, ReadOnlySpan<byte> text, ulong raw)
     {
         NativeValue value = new NativeValue((byte*)pointer, 0);
         if (key.Kind == 12) { return value.Buffer(key).Slice(0, value.Count(key)).SequenceCompareTo(text); }
@@ -143,7 +143,7 @@ const tableBuilderCollectionWireSource = `
         NativePut(blob, (uint)text.Length, 4); text.CopyTo(new Span<byte>(blob + 8, text.Length));
         NativePut(value.Slot(field), unchecked((ulong)(blob - value.Slot(field))), 8); return true;
     }
-    public static bool BuilderKeySet(TableWorker worker, IntPtr pointer, TableFieldInfo key, ReadOnlySpan<byte> text, ulong raw)
+    public static bool BuilderKeySet(TableWorker worker, global::System.IntPtr pointer, TableFieldInfo key, ReadOnlySpan<byte> text, ulong raw)
     {
         NativeValue value = new NativeValue((byte*)pointer, 0);
         if (key.Unbounded) { return BuilderTextSet(worker, value, key, text); }

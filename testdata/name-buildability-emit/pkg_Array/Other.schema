@@ -1,0 +1,13 @@
+package Array
+
+type Holder
+{
+    first  Inner
+    many   [..4]Inner
+    x      float64
+    wide   uint128
+    label  string(16)
+    quad   [4]float64
+    list   [..MaxItems]uint32
+    marks  Bits
+}

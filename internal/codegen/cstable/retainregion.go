@@ -4,7 +4,7 @@ package cstable
 // path-bearing value. Shared parsing and storage laws remain one source.
 func tableRetainRegionSource() string {
 	s := tableRegionSource[tableSourceIndex(tableRegionSource, "    unsafe struct NativeValue"):tableSourceIndex(tableRegionSource, "    // The authoring conversion")]
-	s += tableRegionSource[tableSourceIndex(tableRegionSource, "    static unsafe IntPtr NativeLoadRegion"):]
+	s += tableRegionSource[tableSourceIndex(tableRegionSource, "    static unsafe global::System.IntPtr NativeLoadRegion"):]
 	s = tableReplace(s, "Native", "Retain")
 	s = tableReplace(s, "        if (BuilderElement(state.Worker, value, f, index)) { return true; }", "")
 	s = tableReplace(s, "f.Retain", "f.Native")
@@ -66,11 +66,11 @@ func tableRetainRegionSource() string {
 	// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the retention
 	// store keeps nothing a damaged load captured, nor anything an earlier load
 	// left in it.
-	s = tableReplace(s, "            else { Damage(report); Finish(report, Verdict.Damaged); }\n            return IntPtr.Zero;",
-		"            else { Damage(report); Finish(report, Verdict.Damaged); retain->Used = 0; retain->IdUsed = 0; retain->Count = 0; }\n            return IntPtr.Zero;")
-	s = tableReplace(s, "Finish(report, Verdict.Refused); return IntPtr.Zero; }",
-		"Finish(report, Verdict.Refused); retain->Used = 0; retain->IdUsed = 0; retain->Count = 0; return IntPtr.Zero; }")
-	s = tableReplace(s, "Finish(report, Verdict.Damaged); return IntPtr.Zero; }\n        report.Damaged = damagedBefore;",
-		"Finish(report, Verdict.Damaged); retain->Used = 0; retain->IdUsed = 0; retain->Count = 0; return IntPtr.Zero; }\n        report.Damaged = damagedBefore;")
+	s = tableReplace(s, "            else { Damage(report); Finish(report, Verdict.Damaged); }\n            return global::System.IntPtr.Zero;",
+		"            else { Damage(report); Finish(report, Verdict.Damaged); retain->Used = 0; retain->IdUsed = 0; retain->Count = 0; }\n            return global::System.IntPtr.Zero;")
+	s = tableReplace(s, "Finish(report, Verdict.Refused); return global::System.IntPtr.Zero; }",
+		"Finish(report, Verdict.Refused); retain->Used = 0; retain->IdUsed = 0; retain->Count = 0; return global::System.IntPtr.Zero; }")
+	s = tableReplace(s, "Finish(report, Verdict.Damaged); return global::System.IntPtr.Zero; }\n        report.Damaged = damagedBefore;",
+		"Finish(report, Verdict.Damaged); retain->Used = 0; retain->IdUsed = 0; retain->Count = 0; return global::System.IntPtr.Zero; }\n        report.Damaged = damagedBefore;")
 	return s
 }

@@ -43,11 +43,11 @@ func emitCarrierFieldDecl(b *strings.Builder, pkg string, f *ir.Field, m string)
 	elemT := carrierElemType(pkg, f)
 	switch {
 	case f.IsList(), f.IsMap():
-		fmt.Fprintf(b, "    public %s[] %s = Array.Empty<%s>();\n    public int %sCount;\n", elemT, m, elemT, m)
+		fmt.Fprintf(b, "    public %s[] %s = global::System.Array.Empty<%s>();\n    public int %sCount;\n", elemT, m, elemT, m)
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		fmt.Fprintf(b, "    public %s %s;\n", elemT, m)
 	case f.Type.TextUnbounded():
-		fmt.Fprintf(b, "    public byte[] %s = Array.Empty<byte>();\n    public int %sLength;\n", m, m)
+		fmt.Fprintf(b, "    public byte[] %s = global::System.Array.Empty<byte>();\n    public int %sLength;\n", m, m)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		fmt.Fprintf(b, "    public byte[] %s = new byte[%d];\n    public int %sLength;\n", m, f.Type.Size, m)
 	case f.Array == ir.ArrayFixed:
@@ -192,7 +192,7 @@ func emitPullElement(b *strings.Builder, u *ir.Unit, pkg string, f *ir.Field, sr
 		eName := f.MapEntry.Name
 		fmt.Fprintf(b, "%s%s = %s == null ? new __Carrier_%s() : _Pull_%s(%s, map, oldMap, oldOwners);\n", ind, dstExpr, srcExpr, eName, eName, srcExpr)
 	case f.Type.Blob():
-		fmt.Fprintf(b, "%sif (%s == null) { %s = null; } else { if (!map.TryGetValue(%s, out object _cb)) { _cb = new TableBlob(%s.Data ?? Array.Empty<byte>()); map[%s] = _cb; } %s = (TableBlob)_cb; }\n",
+		fmt.Fprintf(b, "%sif (%s == null) { %s = null; } else { if (!map.TryGetValue(%s, out object _cb)) { _cb = new TableBlob(%s.Data ?? global::System.Array.Empty<byte>()); map[%s] = _cb; } %s = (TableBlob)_cb; }\n",
 			ind, srcExpr, dstExpr, srcExpr, srcExpr, srcExpr, dstExpr)
 	case f.Type.Pointer:
 		tName := f.Type.Name
@@ -233,7 +233,7 @@ func emitPushElement(b *strings.Builder, u *ir.Unit, pkg string, f *ir.Field, sr
 		qual := "global::" + pkg + "." + eName
 		fmt.Fprintf(b, "%s{ var _me = new %s(); if (%s != null) { _PushInto_%s(%s, _me, map, nodeOut); } %s = _me; }\n", ind, qual, srcExpr, eName, srcExpr, dstExpr)
 	case f.Type.Blob():
-		fmt.Fprintf(b, "%sif (%s == null) { %s = null; } else { if (!map.TryGetValue(%s, out object _ub)) { byte[] _bd = %s.Data; _ub = new TableBlob(_bd == null ? Array.Empty<byte>() : (byte[])_bd.Clone()); map[%s] = _ub; } %s = (TableBlob)_ub; }\n",
+		fmt.Fprintf(b, "%sif (%s == null) { %s = null; } else { if (!map.TryGetValue(%s, out object _ub)) { byte[] _bd = %s.Data; _ub = new TableBlob(_bd == null ? global::System.Array.Empty<byte>() : (byte[])_bd.Clone()); map[%s] = _ub; } %s = (TableBlob)_ub; }\n",
 			ind, srcExpr, dstExpr, srcExpr, srcExpr, srcExpr, dstExpr)
 	case f.Type.Pointer:
 		tName := f.Type.Name
@@ -277,7 +277,7 @@ func emitPullFieldBody(b *strings.Builder, u *ir.Unit, pkg string, f *ir.Field, 
 	elemCarrierT := carrierElemType(pkg, f)
 	switch {
 	case f.IsList(), f.IsMap():
-		fmt.Fprintf(b, "    {\n        int _raw = src.%sCount;\n        int _alloc = _raw > 0 ? _raw : 0;\n        if (dst.%s.Length < _alloc) { Array.Resize(ref dst.%s, _alloc); }\n        int _copy = src.%s == null ? 0 : Math.Min(_alloc, src.%s.Length);\n        for (int _i = 0; _i < _copy; _i++)\n        {\n", m, m, m, m, m)
+		fmt.Fprintf(b, "    {\n        int _raw = src.%sCount;\n        int _alloc = _raw > 0 ? _raw : 0;\n        if (dst.%s.Length < _alloc) { global::System.Array.Resize(ref dst.%s, _alloc); }\n        int _copy = src.%s == null ? 0 : global::System.Math.Min(_alloc, src.%s.Length);\n        for (int _i = 0; _i < _copy; _i++)\n        {\n", m, m, m, m, m)
 		if isCarrierClassElem(f) {
 			fmt.Fprintf(b, "            if (dst.%s[_i] == null) { dst.%s[_i] = new %s(); }\n", m, m, elemCarrierT)
 		}
@@ -288,21 +288,21 @@ func emitPullFieldBody(b *strings.Builder, u *ir.Unit, pkg string, f *ir.Field, 
 		}
 		fmt.Fprintf(b, "        dst.%sCount = _raw;\n    }\n", m)
 	case f.Type.TextUnbounded():
-		fmt.Fprintf(b, "    {\n        int _raw = src.%sLength;\n        int _copy = src.%s == null || _raw <= 0 ? 0 : Math.Min(_raw, src.%s.Length);\n        if (dst.%s.Length < _copy) { Array.Resize(ref dst.%s, _copy); }\n        if (_copy > 0) { Array.Copy(src.%s, 0, dst.%s, 0, _copy); }\n        dst.%sLength = _raw;\n    }\n",
+		fmt.Fprintf(b, "    {\n        int _raw = src.%sLength;\n        int _copy = src.%s == null || _raw <= 0 ? 0 : global::System.Math.Min(_raw, src.%s.Length);\n        if (dst.%s.Length < _copy) { global::System.Array.Resize(ref dst.%s, _copy); }\n        if (_copy > 0) { global::System.Array.Copy(src.%s, 0, dst.%s, 0, _copy); }\n        dst.%sLength = _raw;\n    }\n",
 			m, m, m, m, m, m, m, m)
 	case (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) && !f.Type.Pointer:
 		if fixedHolder {
-			fmt.Fprintf(b, "    {\n        int _raw = src.%sLength;\n        int _copy = _raw <= 0 ? 0 : Math.Min(_raw, %d);\n        Array.Clear(dst.%s, 0, %d);\n        if (_copy > 0) { src.%s.AsSpan().Slice(0, _copy).CopyTo(dst.%s); }\n        dst.%sLength = _raw;\n    }\n",
+			fmt.Fprintf(b, "    {\n        int _raw = src.%sLength;\n        int _copy = _raw <= 0 ? 0 : global::System.Math.Min(_raw, %d);\n        global::System.Array.Clear(dst.%s, 0, %d);\n        if (_copy > 0) { src.%s.AsSpan().Slice(0, _copy).CopyTo(dst.%s); }\n        dst.%sLength = _raw;\n    }\n",
 				m, f.Type.Size, m, f.Type.Size, m, m, m)
 		} else {
-			fmt.Fprintf(b, "    {\n        int _raw = src.%sLength;\n        int _copy = src.%s == null || _raw <= 0 ? 0 : Math.Min(_raw, Math.Min((int)%d, src.%s.Length));\n        Array.Clear(dst.%s, 0, %d);\n        if (_copy > 0) { Array.Copy(src.%s, 0, dst.%s, 0, _copy); }\n        dst.%sLength = _raw;\n    }\n",
+			fmt.Fprintf(b, "    {\n        int _raw = src.%sLength;\n        int _copy = src.%s == null || _raw <= 0 ? 0 : global::System.Math.Min(_raw, global::System.Math.Min((int)%d, src.%s.Length));\n        global::System.Array.Clear(dst.%s, 0, %d);\n        if (_copy > 0) { global::System.Array.Copy(src.%s, 0, dst.%s, 0, _copy); }\n        dst.%sLength = _raw;\n    }\n",
 				m, m, f.Type.Size, m, m, f.Type.Size, m, m, m)
 		}
 	case f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted:
 		limitExpr := fmt.Sprintf("%d", f.ArrayBound)
 		if f.Array == ir.ArrayCounted {
 			fmt.Fprintf(b, "    dst.%sCount = src.%sCount;\n", m, m)
-			limitExpr = fmt.Sprintf("(src.%sCount <= 0 ? 0 : Math.Min(src.%sCount, %d))", m, m, f.ArrayBound)
+			limitExpr = fmt.Sprintf("(src.%sCount <= 0 ? 0 : global::System.Math.Min(src.%sCount, %d))", m, m, f.ArrayBound)
 		}
 		if fixedHolder {
 			elemUserT := scalarStorageType(f.Type)
@@ -311,12 +311,12 @@ func emitPullFieldBody(b *strings.Builder, u *ir.Unit, pkg string, f *ir.Field, 
 			b.WriteString("        }\n    }\n")
 		} else {
 			if f.KeyEnum != "" && isTable {
-				fmt.Fprintf(b, "    if (src.%s != null && src.%s.Slots != null)\n    {\n        int _n = Math.Min(%s, src.%s.Slots.Length);\n        for (int _i = 0; _i < _n; _i++)\n        {\n", m, m, limitExpr, m)
+				fmt.Fprintf(b, "    if (src.%s != null && src.%s.Slots != null)\n    {\n        int _n = global::System.Math.Min(%s, src.%s.Slots.Length);\n        for (int _i = 0; _i < _n; _i++)\n        {\n", m, m, limitExpr, m)
 				emitPullElement(b, u, pkg, f, fmt.Sprintf("src.%s.Slots[_i]", m), fmt.Sprintf("dst.%s[_i]", m), "            ")
 				b.WriteString("        }\n    }\n")
 			} else {
 				slots := fmt.Sprintf("src.%s", m)
-				fmt.Fprintf(b, "    if (%s != null)\n    {\n        int _n = Math.Min(%s, %s.Length);\n        for (int _i = 0; _i < _n; _i++)\n        {\n", slots, limitExpr, slots)
+				fmt.Fprintf(b, "    if (%s != null)\n    {\n        int _n = global::System.Math.Min(%s, %s.Length);\n        for (int _i = 0; _i < _n; _i++)\n        {\n", slots, limitExpr, slots)
 				emitPullElement(b, u, pkg, f, fmt.Sprintf("%s[_i]", slots), fmt.Sprintf("dst.%s[_i]", m), "            ")
 				b.WriteString("        }\n    }\n")
 			}
@@ -333,17 +333,17 @@ func emitPushFieldBody(b *strings.Builder, u *ir.Unit, pkg string, f *ir.Field, 
 	userElemT := userElementType(u, pkg, f)
 	switch {
 	case f.IsList(), f.IsMap():
-		fmt.Fprintf(b, "    {\n        int _n = src.%sCount;\n        dst.%s = _n <= 0 ? Array.Empty<%s>() : new %s[_n];\n        for (int _i = 0; _i < _n; _i++)\n        {\n", m, m, userElemT, userElemT)
+		fmt.Fprintf(b, "    {\n        int _n = src.%sCount;\n        dst.%s = _n <= 0 ? global::System.Array.Empty<%s>() : new %s[_n];\n        for (int _i = 0; _i < _n; _i++)\n        {\n", m, m, userElemT, userElemT)
 		emitPushElement(b, u, pkg, f, fmt.Sprintf("src.%s[_i]", m), fmt.Sprintf("dst.%s[_i]", m), "            ")
 		fmt.Fprintf(b, "        }\n        dst.%sCount = _n;\n    }\n", m)
 	case f.Type.TextUnbounded():
-		fmt.Fprintf(b, "    {\n        int _n = src.%sLength;\n        dst.%s = _n <= 0 ? Array.Empty<byte>() : src.%s.AsSpan(0, _n).ToArray();\n        dst.%sLength = _n;\n    }\n", m, m, m, m)
+		fmt.Fprintf(b, "    {\n        int _n = src.%sLength;\n        dst.%s = _n <= 0 ? global::System.Array.Empty<byte>() : src.%s.AsSpan(0, _n).ToArray();\n        dst.%sLength = _n;\n    }\n", m, m, m, m)
 	case (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) && !f.Type.Pointer:
 		if fixedHolder {
-			fmt.Fprintf(b, "    {\n        dst.%s = default;\n        int _n = Math.Clamp(src.%sLength, 0, %d);\n        if (_n > 0) { src.%s.AsSpan(0, _n).CopyTo(dst.%s.AsSpan()); }\n        dst.%sLength = _n;\n    }\n",
+			fmt.Fprintf(b, "    {\n        dst.%s = default;\n        int _n = global::System.Math.Clamp(src.%sLength, 0, %d);\n        if (_n > 0) { src.%s.AsSpan(0, _n).CopyTo(dst.%s.AsSpan()); }\n        dst.%sLength = _n;\n    }\n",
 				m, m, f.Type.Size, m, m, m)
 		} else {
-			fmt.Fprintf(b, "    {\n        if (dst.%s == null || dst.%s.Length < %d) { dst.%s = new byte[%d]; } else { Array.Clear(dst.%s, 0, dst.%s.Length); }\n        int _n = Math.Clamp(src.%sLength, 0, %d);\n        if (_n > 0) { Array.Copy(src.%s, 0, dst.%s, 0, _n); }\n        dst.%sLength = _n;\n    }\n",
+			fmt.Fprintf(b, "    {\n        if (dst.%s == null || dst.%s.Length < %d) { dst.%s = new byte[%d]; } else { global::System.Array.Clear(dst.%s, 0, dst.%s.Length); }\n        int _n = global::System.Math.Clamp(src.%sLength, 0, %d);\n        if (_n > 0) { global::System.Array.Copy(src.%s, 0, dst.%s, 0, _n); }\n        dst.%sLength = _n;\n    }\n",
 				m, m, f.Type.Size, m, f.Type.Size, m, m, m, f.Type.Size, m, m, m)
 		}
 	case f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted:

@@ -218,7 +218,7 @@ func (g *blockGen) emitBlittable(name string) {
 	}
 	g.sf("// %s — a block row, or a record one nests by value. `Row` is a CLAIMED\n", name)
 	g.sf("// suffix (docs/SPEC-TABLES.md §11), so no declaration in the unit can take it.\n")
-	g.sf("[StructLayout(LayoutKind.Sequential, Pack = 1, Size = %d)]\n", ml.Size)
+	g.sf("[global::System.Runtime.InteropServices.StructLayout(global::System.Runtime.InteropServices.LayoutKind.Sequential, Pack = 1, Size = %d)]\n", ml.Size)
 	g.sf("public unsafe struct %sRow\n{\n", name)
 	g.emitBlittableFields(ml, 0, false)
 	g.sf("}\n\n")
@@ -233,7 +233,7 @@ func (g *blockGen) emitProjection(bl *ir.BlockLayout) {
 	g.sf("//\n")
 	g.sf("// It is a SEPARATE record from <Table>Row: a table can be both a block root\n")
 	g.sf("// and another block's row, and the two differ by the prologue.\n")
-	g.sf("[StructLayout(LayoutKind.Sequential, Pack = 1, Size = %d)]\n", bl.Projection.Size)
+	g.sf("[global::System.Runtime.InteropServices.StructLayout(global::System.Runtime.InteropServices.LayoutKind.Sequential, Pack = 1, Size = %d)]\n", bl.Projection.Size)
 	g.sf("public unsafe struct %sBlockProjection\n{\n", name)
 	g.sf("    public ulong Magic;        // generated: identifies a schema block\n")
 	g.sf("    public ulong BuildVersion; // generated: the unit's build version (docs/SPEC-TABLES.md §20)\n")
@@ -474,7 +474,7 @@ func (g *blockGen) emitLayoutCheck() {
 		// it on one side only — which is §19.5's named negative control —
 		// could not turn anything red here.
 		for _, a := range bl.Arrays {
-			g.rf("        Size(\"%sBlock.%sStride\", (int)%sBlock.%sStride, Unsafe.SizeOf<%sRow>());\n",
+			g.rf("        Size(\"%sBlock.%sStride\", (int)%sBlock.%sStride, global::System.Runtime.CompilerServices.Unsafe.SizeOf<%sRow>());\n",
 				bl.Table.Name, ir.GoExportName(a.Field.Name), bl.Table.Name, ir.GoExportName(a.Field.Name),
 				a.ElemName)
 		}
@@ -482,13 +482,13 @@ func (g *blockGen) emitLayoutCheck() {
 	g.rf("    }\n\n")
 	g.rf("    private static void Size(string what, int got, int want)\n    {\n")
 	g.rf("        if (got != want)\n        {\n")
-	g.rf("            throw new InvalidOperationException(\n")
+	g.rf("            throw new global::System.InvalidOperationException(\n")
 	g.rf("                \"schema block layout: \" + what + \" is \" + got + \" bytes in this runtime and \" + want +\n")
 	g.rf("                \" in the schema the C++ side asserts — the two sides disagree about the bytes (docs/SPEC-TABLES.md §19.3)\");\n")
 	g.rf("        }\n    }\n\n")
 	g.rf("    private static void Offset(string what, long got, long want)\n    {\n")
 	g.rf("        if (got != want)\n        {\n")
-	g.rf("            throw new InvalidOperationException(\n")
+	g.rf("            throw new global::System.InvalidOperationException(\n")
 	g.rf("                \"schema block layout: \" + what + \" sits at \" + got + \" in this runtime and \" + want +\n")
 	g.rf("                \" in the schema the C++ side asserts — the two sides disagree about the bytes (docs/SPEC-TABLES.md §19.3)\");\n")
 	g.rf("        }\n    }\n")
@@ -506,7 +506,7 @@ func (g *blockGen) emitRecordCheck(name string, ml *ir.MemberLayout, projection 
 	g.rf("        {\n")
 	g.rf("            %s probe = default;\n", spelled)
 	g.rf("            byte* at = (byte*)&probe;\n")
-	g.rf("            Size(\"%s\", Unsafe.SizeOf<%s>(), %d);\n", spelled, spelled, ml.Size)
+	g.rf("            Size(\"%s\", global::System.Runtime.CompilerServices.Unsafe.SizeOf<%s>(), %d);\n", spelled, spelled, ml.Size)
 	if projection {
 		g.rf("            Offset(\"%s.Magic\", (byte*)&probe.Magic - at, 0);\n", spelled)
 		g.rf("            Offset(\"%s.BuildVersion\", (byte*)&probe.BuildVersion - at, 8);\n", spelled)
@@ -623,11 +623,11 @@ func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	g.hf("    // at one build — so a consumer older than its producer is not a case. A\n")
 	g.hf("    // mismatch is a refusal; regenerate both sides. Data that must outlive the\n")
 	g.hf("    // build that wrote it takes the wire, which this same table still has.\n")
-	g.hf("    public static bool Open(out %sBlock block, IntPtr pointer, long bytes) { return Open(out block, pointer, bytes, out _); }\n", name)
-	g.hf("    public static bool Open(out %sBlock block, IntPtr pointer, long bytes, out TableRefuseReason reason)\n    {\n", name)
+	g.hf("    public static bool Open(out %sBlock block, global::System.IntPtr pointer, long bytes) { return Open(out block, pointer, bytes, out _); }\n", name)
+	g.hf("    public static bool Open(out %sBlock block, global::System.IntPtr pointer, long bytes, out TableRefuseReason reason)\n    {\n", name)
 	g.hf("        block = default; reason = TableRefuseReason.ok;\n")
 	g.hf("        TableBlockLayout.Verify();\n")
-	g.hf("        if (pointer == IntPtr.Zero) { reason = TableRefuseReason.unaligned_base; return false; }\n        if (bytes < %d) { reason = TableRefuseReason.truncated; return false; }\n", bl.Projection.Size)
+	g.hf("        if (pointer == global::System.IntPtr.Zero) { reason = TableRefuseReason.unaligned_base; return false; }\n        if (bytes < %d) { reason = TableRefuseReason.truncated; return false; }\n", bl.Projection.Size)
 	g.hf("        byte* at = (byte*)pointer;\n")
 	g.hf("        if (Schema.TableBlockRead64(at) != Schema.TableBlockMagic) { reason = Schema.TableBlockRead64(at) == System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(Schema.TableBlockMagic) ? TableRefuseReason.foreign_order : TableRefuseReason.not_a_cook; return false; }\n")
 	g.hf("        if (Schema.TableBlockRead64(at + 16) != Schema.TableBlockByteOrder) { reason = TableRefuseReason.not_a_cook; return false; }\n")
@@ -648,7 +648,7 @@ func (g *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 		g.hf("            ulong offsetOf = Schema.TableBlockRead64(at + %d);\n", a.OffsetOfOffset)
 		g.hf("            ulong count = Schema.TableBlockRead64(at + %d) & uint.MaxValue;\n", a.CountOffset)
 		g.hf("            ulong stride = Schema.TableBlockRead64(at + %d) >> 32;\n", a.CountOffset)
-		g.hf("            if (stride != (ulong)Unsafe.SizeOf<%sRow>()) { reason = TableRefuseReason.bad_layout; return false; }\n", a.ElemName)
+		g.hf("            if (stride != (ulong)global::System.Runtime.CompilerServices.Unsafe.SizeOf<%sRow>()) { reason = TableRefuseReason.bad_layout; return false; }\n", a.ElemName)
 		g.hf("            // past the DECLARED MAXIMUM: Begin refuses this on the producer\n")
 		g.hf("            // side and Open refuses it here, because a consumer that sizes\n")
 		g.hf("            // anything by the maximum would overflow on a count the maximum\n")
@@ -800,7 +800,7 @@ func blockRuntime(buildVersion uint64) string {
 // projection (docs/SPEC-TABLES.md §2.7). A consumer reads all three FROM THE
 // INSTANCE, never from its own constants — that is the difference between a
 // generated pair of structs and an ABI (§19.2).
-[StructLayout(LayoutKind.Sequential, Pack = 1, Size = 16)]
+[global::System.Runtime.InteropServices.StructLayout(global::System.Runtime.InteropServices.LayoutKind.Sequential, Pack = 1, Size = 16)]
 public struct TableBlockTriple
 {
     public ulong OffsetOf; // block-relative: the block relocates by plain memcpy
@@ -943,7 +943,7 @@ public static partial class Schema
     // row by row.
     public static ulong TableBlockByteOrder
     {
-        get { return BitConverter.IsLittleEndian ? 1UL : 2UL; }
+        get { return global::System.BitConverter.IsLittleEndian ? 1UL : 2UL; }
     }
 
     public static unsafe ulong TableBlockRead64(byte* p) { return System.Runtime.CompilerServices.Unsafe.ReadUnaligned<ulong>(p); }

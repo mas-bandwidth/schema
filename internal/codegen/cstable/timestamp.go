@@ -24,7 +24,7 @@ const tableTimestampJsonSource = `
         if (!TimestampDigits(s, 0, 4, out int year) || !TimestampDigits(s, 5, 2, out int month) ||
             !TimestampDigits(s, 8, 2, out int day) || !TimestampDigits(s, 11, 2, out int hour) ||
             !TimestampDigits(s, 14, 2, out int minute) || !TimestampDigits(s, 17, 2, out int second)) { return false; }
-        if (year < 1 || month < 1 || month > 12 || day < 1 || day > DateTime.DaysInMonth(year, month) || hour > 23 || minute > 59 || second > 59) { return false; }
+        if (year < 1 || month < 1 || month > 12 || day < 1 || day > global::System.DateTime.DaysInMonth(year, month) || hour > 23 || minute > 59 || second > 59) { return false; }
         int at = 19, digits = 0;
         long fraction = 0;
         if (s[at] == '.')
@@ -49,8 +49,8 @@ const tableTimestampJsonSource = `
         }
         else { return false; }
         if (at != s.Length) { return false; }
-        long seconds = (new DateTime(year, month, day, hour, minute, second, DateTimeKind.Utc).Ticks - DateTime.UnixEpoch.Ticks) / TimeSpan.TicksPerSecond - offset;
-        Int128 total = (Int128)seconds * 1000000000 + fraction;
+        long seconds = (new global::System.DateTime(year, month, day, hour, minute, second, global::System.DateTimeKind.Utc).Ticks - global::System.DateTime.UnixEpoch.Ticks) / global::System.TimeSpan.TicksPerSecond - offset;
+        global::System.Int128 total = (global::System.Int128)seconds * 1000000000 + fraction;
         if (total < long.MinValue || total > long.MaxValue) { return false; }
         nanos = (long)total;
         return true;
@@ -74,7 +74,7 @@ const tableTimestampJsonSource = `
         long seconds = nanos / 1000000000;
         long fraction = nanos % 1000000000;
         if (fraction < 0) { fraction += 1000000000; seconds--; }
-        DateTime date = DateTime.UnixEpoch.AddTicks(seconds * TimeSpan.TicksPerSecond);
+        global::System.DateTime date = global::System.DateTime.UnixEpoch.AddTicks(seconds * global::System.TimeSpan.TicksPerSecond);
         Span<char> text = stackalloc char[19];
         if (!date.TryFormat(text, out int written, "yyyy-MM-dd'T'HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture) || written != 19) { return false; }
         output.Put((byte)'"');

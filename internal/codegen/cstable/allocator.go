@@ -6,9 +6,9 @@ const tableAllocatorSource = `
 // and must return null on failure. Native builder and region scratch use this pair.
 public unsafe struct TableAllocator
 {
-    public delegate*<IntPtr, long, IntPtr> Allocate;
-    public delegate*<IntPtr, IntPtr, void> Free;
-    public IntPtr Context;
+    public delegate*<global::System.IntPtr, long, global::System.IntPtr> Allocate;
+    public delegate*<global::System.IntPtr, global::System.IntPtr, void> Free;
+    public global::System.IntPtr Context;
     internal void* Get(long bytes)
     {
         if (bytes <= 0 || (ulong)bytes > (ulong)nuint.MaxValue || (Allocate == null) != (Free == null)) { return null; }
@@ -21,12 +21,12 @@ public unsafe struct TableAllocator
             if (p != null) { System.Runtime.InteropServices.NativeMemory.Clear(p, size); }
             return p;
         }
-        catch (OutOfMemoryException) { return null; }
+        catch (global::System.OutOfMemoryException) { return null; }
     }
     internal void Release(void* pointer)
     {
         if (pointer == null) { return; }
-        if (Free != null) { Free(Context, (IntPtr)pointer); }
+        if (Free != null) { Free(Context, (global::System.IntPtr)pointer); }
         else { System.Runtime.InteropServices.NativeMemory.AlignedFree(pointer); }
     }
 }

@@ -362,7 +362,7 @@ func (g *cookGen) emitBlittable(name string) {
 	}
 	g.sf("// %s — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md §11), so no\n", name)
 	g.sf("// declaration in the unit can take it.\n")
-	g.sf("[StructLayout(LayoutKind.Sequential, Pack = 1, Size = %d)]\n", ml.Size)
+	g.sf("[global::System.Runtime.InteropServices.StructLayout(global::System.Runtime.InteropServices.LayoutKind.Sequential, Pack = 1, Size = %d)]\n", ml.Size)
 	g.sf("public unsafe struct %sRow\n{\n", name)
 	w := &cookWriter{g: g}
 	for _, fl := range ml.Fields {
@@ -513,7 +513,7 @@ func (g *cookGen) emitLayoutCheck() {
 	}
 	for _, un := range g.cook.unions {
 		size, _, _, armAt := ir.UnionLayout(g.unit, un)
-		g.rf("        Size(%q, Unsafe.SizeOf<%sRow>(), %d);\n", un.Name+"Row", un.Name, size)
+		g.rf("        Size(%q, global::System.Runtime.CompilerServices.Unsafe.SizeOf<%sRow>(), %d);\n", un.Name+"Row", un.Name, size)
 		g.rf("        { %sRow probe = default; byte* at = (byte*)&probe; Offset(%q, (byte*)&probe.Type - at, 0);", un.Name, un.Name+"Row.Type")
 		for _, v := range un.Variants {
 			if v.Void() {
@@ -526,13 +526,13 @@ func (g *cookGen) emitLayoutCheck() {
 	g.rf("    }\n\n")
 	g.rf("    internal static void Size(string what, int got, int want)\n    {\n")
 	g.rf("        if (got != want)\n        {\n")
-	g.rf("            throw new InvalidOperationException(\n")
+	g.rf("            throw new global::System.InvalidOperationException(\n")
 	g.rf("                \"schema cook layout: \" + what + \" is \" + got + \" bytes in this runtime and \" + want +\n")
 	g.rf("                \" in the layout model the cook's bytes come from — the two disagree about the bytes (docs/SPEC-TABLES.md §20.3)\");\n")
 	g.rf("        }\n    }\n\n")
 	g.rf("    internal static void Offset(string what, long got, long want)\n    {\n")
 	g.rf("        if (got != want)\n        {\n")
-	g.rf("            throw new InvalidOperationException(\n")
+	g.rf("            throw new global::System.InvalidOperationException(\n")
 	g.rf("                \"schema cook layout: \" + what + \" sits at \" + got + \" in this runtime and \" + want +\n")
 	g.rf("                \" in the layout model the cook's bytes come from — the two disagree about the bytes (docs/SPEC-TABLES.md §20.3)\");\n")
 	g.rf("        }\n    }\n")
@@ -548,7 +548,7 @@ func (g *cookGen) emitRecordCheck(name string) {
 	g.rf("        {\n")
 	g.rf("            %s probe = default;\n", spelled)
 	g.rf("            byte* at = (byte*)&probe;\n")
-	g.rf("            Size(\"%s\", Unsafe.SizeOf<%s>(), %d);\n", spelled, spelled, ml.Size)
+	g.rf("            Size(\"%s\", global::System.Runtime.CompilerServices.Unsafe.SizeOf<%s>(), %d);\n", spelled, spelled, ml.Size)
 	for _, fl := range ml.Fields {
 		g.rf("            Offset(\"%s.%s\", (byte*)%s - at, %d);\n", spelled, ir.GoExportName(fl.Field.Name),
 			g.cookFieldAddress(fl.Field), fl.Offset)
@@ -637,11 +637,11 @@ func (g *cookGen) emitOpen(st *ir.Struct, ml *ir.MemberLayout, align int64) {
 	g.hf("    // would put one signed value into that arithmetic and one negative case\n")
 	g.hf("    // into every comparison; a caller holding a length from a stat casts once,\n")
 	g.hf("    // at the call site, where the sign is still its own business.\n")
-	g.hf("    public static bool Open(out %sCook cook, IntPtr pointer, long length) { return Open(out cook, pointer, length, out _); }\n", name)
-	g.hf("    public static bool Open(out %sCook cook, IntPtr pointer, long length, out TableRefuseReason reason)\n    {\n", name)
+	g.hf("    public static bool Open(out %sCook cook, global::System.IntPtr pointer, long length) { return Open(out cook, pointer, length, out _); }\n", name)
+	g.hf("    public static bool Open(out %sCook cook, global::System.IntPtr pointer, long length, out TableRefuseReason reason)\n    {\n", name)
 	g.hf("        cook = default; reason = TableRefuseReason.ok;\n")
 	g.hf("        TableCookLayout.Verify();\n")
-	g.hf("        if (pointer == IntPtr.Zero) { reason = TableRefuseReason.unaligned_base; return false; }\n        if (length < %d) { reason = TableRefuseReason.truncated; return false; }\n", cookHeaderBytes)
+	g.hf("        if (pointer == global::System.IntPtr.Zero) { reason = TableRefuseReason.unaligned_base; return false; }\n        if (length < %d) { reason = TableRefuseReason.truncated; return false; }\n", cookHeaderBytes)
 	g.hf("        byte* at = (byte*)pointer;\n")
 	g.hf("        ulong bytes = (ulong)length;\n\n")
 	g.hf("        // THE MAGIC, read BYTEWISE before anything else: it is what establishes\n")
@@ -711,7 +711,7 @@ func (g *cookGen) emitOpen(st *ir.Struct, ml *ir.MemberLayout, align int64) {
 	g.hf("    // past that ceiling is opened through the pointer form, never through this.\n")
 	g.hf("    public static bool Open(out %sCook cook, ReadOnlySpan<byte> bytes)\n    {\n", name)
 	g.hf("        fixed (byte* p = bytes)\n        {\n")
-	g.hf("            return Open(out cook, (IntPtr)p, bytes.Length);\n")
+	g.hf("            return Open(out cook, (global::System.IntPtr)p, bytes.Length);\n")
 	g.hf("        }\n    }\n\n")
 }
 
@@ -1001,7 +1001,7 @@ public sealed class TableCookInfo
     public TableCookFieldInfo[] Fields;
 }
 
-[StructLayout(LayoutKind.Sequential, Size = 16)]
+[global::System.Runtime.InteropServices.StructLayout(global::System.Runtime.InteropServices.LayoutKind.Sequential, Size = 16)]
 public struct TableCookList
 {
     public long Reference;
@@ -1043,7 +1043,7 @@ public static partial class Schema
     // whose recorded order is not this build's is simply not this build's file.
     public static ulong TableCookByteOrder
     {
-        get { return BitConverter.IsLittleEndian ? 1UL : 2UL; }
+        get { return global::System.BitConverter.IsLittleEndian ? 1UL : 2UL; }
     }
 
     // §7.1's header is 64 bytes of u64 words, and the DATA part begins at

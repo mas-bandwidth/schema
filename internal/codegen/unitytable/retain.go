@@ -90,9 +90,9 @@ const unityRetainTypesSource = `public sealed class TableRetain
 
     public TableRetain(int byteCapacity, int idCapacity)
     {
-        Bytes = byteCapacity > 0 ? new byte[byteCapacity] : Array.Empty<byte>();
+        Bytes = byteCapacity > 0 ? new byte[byteCapacity] : global::System.Array.Empty<byte>();
         Capacity = byteCapacity;
-        Ids = idCapacity > 0 ? new Id[idCapacity] : Array.Empty<Id>();
+        Ids = idCapacity > 0 ? new Id[idCapacity] : global::System.Array.Empty<Id>();
         IdCapacity = idCapacity;
     }
 
@@ -120,12 +120,12 @@ internal struct RetainPath
     {
         if (Depth >= TableWire.RetainMaxDepth)
         {
-            throw new InvalidOperationException("Schema retention path depth");
+            throw new global::System.InvalidOperationException("Schema retention path depth");
         }
         uint[] next = new uint[(Depth + 1) * 2];
         if (Steps != null && Depth > 0)
         {
-            Array.Copy(Steps, 0, next, 0, Depth * 2);
+            global::System.Array.Copy(Steps, 0, next, 0, Depth * 2);
         }
         next[Depth * 2] = (uint)ordinal;
         next[Depth * 2 + 1] = (uint)index;
@@ -141,22 +141,22 @@ const unityRetainWireSource = `    internal const int RetainMaxDepth = @DEPTH@;
 
     static uint Retain32(ReadOnlySpan<byte> p, int off)
     {
-        return BinaryPrimitives.ReadUInt32LittleEndian(p.Slice(off, 4));
+        return global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(p.Slice(off, 4));
     }
 
     static ulong Retain64(ReadOnlySpan<byte> p, int off)
     {
-        return BinaryPrimitives.ReadUInt64LittleEndian(p.Slice(off, 8));
+        return global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(p.Slice(off, 8));
     }
 
     static void RetainPut32(Span<byte> p, int off, uint v)
     {
-        BinaryPrimitives.WriteUInt32LittleEndian(p.Slice(off, 4), v);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(p.Slice(off, 4), v);
     }
 
     static void RetainPut64(Span<byte> p, int off, ulong v)
     {
-        BinaryPrimitives.WriteUInt64LittleEndian(p.Slice(off, 8), v);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(p.Slice(off, 8), v);
     }
 
     static int RetainPayloadOffset(ReadOnlySpan<byte> bytes, int recOffset)
@@ -193,7 +193,7 @@ const unityRetainWireSource = `    internal const int RetainMaxDepth = @DEPTH@;
             int n = checked((int)Retain32(retain.Bytes, from));
             if (!RetainHere(retain, from, path, true, field))
             {
-                if (from != to) { Buffer.BlockCopy(retain.Bytes, from, retain.Bytes, to, n); }
+                if (from != to) { global::System.Buffer.BlockCopy(retain.Bytes, from, retain.Bytes, to, n); }
                 to += n;
                 kept++;
             }
@@ -369,13 +369,13 @@ const unityRetainWireSource = `    internal const int RetainMaxDepth = @DEPTH@;
         int mark = r.Offset;
         if (!r.Skip(kind)) { return false; }
         if ((kind == 10 || kind == 11) && r.Offset - mark == Width(kind) &&
-            NonFiniteBits(kind, kind == 10 ? BinaryPrimitives.ReadUInt32LittleEndian(r.Buffer.Slice(mark, 4)) : BinaryPrimitives.ReadUInt64LittleEndian(r.Buffer.Slice(mark, 8))))
+            NonFiniteBits(kind, kind == 10 ? global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(r.Buffer.Slice(mark, 4)) : global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(r.Buffer.Slice(mark, 8))))
         {
             NonFiniteRetained(id, report);
             return true;
         }
         if (retain == null) { return true; }
-        long cap = retain.Bytes == null ? 0 : Math.Min(retain.Capacity, retain.Bytes.LongLength);
+        long cap = retain.Bytes == null ? 0 : global::System.Math.Min(retain.Capacity, retain.Bytes.LongLength);
         Reader payload = new Reader(r.Buffer.Slice(mark, r.Offset - mark), r.Vocabulary);
         RetainIn probe = new RetainIn { R = payload, Limit = cap - retain.Used - RetainHeader - 8L * path.Depth };
         if (!RetainInPayload(ref probe, kind, 0) || probe.R.Offset != payload.Buffer.Length)
@@ -455,9 +455,9 @@ const unityRetainWireSource = `    internal const int RetainMaxDepth = @DEPTH@;
 
         public ulong Record(ulong id)
         {
-            if (Array.BinarySearch(RetainKnown, id) >= 0) { return Reference(id); }
+            if (global::System.Array.BinarySearch(RetainKnown, id) >= 0) { return Reference(id); }
             if (Store == null) { Lost = true; return 0; }
-            int idCap = Store.Ids == null ? 0 : Math.Min(Store.IdCapacity, Store.Ids.Length);
+            int idCap = Store.Ids == null ? 0 : global::System.Math.Min(Store.IdCapacity, Store.Ids.Length);
             for (int i = 0; i < Store.IdUsed; i++)
             {
                 if (Store.Ids[i].Value == id) { return (ulong)Store.Ids[i].Slot; }
@@ -700,7 +700,7 @@ const unityRetainWireSource = `    internal const int RetainMaxDepth = @DEPTH@;
             RetainOut s = new RetainOut { R = new Reader(paySpan, default), Input = paySpan, W = w };
             if (!RetainOutPayload(ref s, ref ids, kind, 0))
             {
-                throw new InvalidOperationException("Retention measure/write disagreement");
+                throw new global::System.InvalidOperationException("Retention measure/write disagreement");
             }
             w = s.W;
             ids.Store.Bytes[cur + 25] = 1;
@@ -980,7 +980,7 @@ const unityRetainWireSource = `    internal const int RetainMaxDepth = @DEPTH@;
         {
             UInt128Value raw = f.GetWide(value.Obj, i);
             int width = Width(f.Kind);
-            w.Fixed((ulong)raw, Math.Min(width, 8));
+            w.Fixed((ulong)raw, global::System.Math.Min(width, 8));
             if (width == 16) { w.Fixed((ulong)(raw >> 64), 8); }
         }
         else

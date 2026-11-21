@@ -571,7 +571,7 @@ func countReset(fieldExpr string, born int64) string {
 }
 
 func flatReset(fieldExpr string) string {
-	return fmt.Sprintf("(t) => { if (%s != null) Array.Clear(%s, 0, %s.Length); }", fieldExpr, fieldExpr, fieldExpr)
+	return fmt.Sprintf("(t) => { if (%s != null) global::System.Array.Clear(%s, 0, %s.Length); }", fieldExpr, fieldExpr, fieldExpr)
 }
 
 func textLenReset(f *ir.Field, fieldExpr string) string {
@@ -582,7 +582,7 @@ func bufferReset(f *ir.Field, fieldExpr string) string {
 	var sb strings.Builder
 	sb.WriteString("(t) => { if (")
 	sb.WriteString(fieldExpr)
-	sb.WriteString(" != null) { Array.Clear(")
+	sb.WriteString(" != null) { global::System.Array.Clear(")
 	sb.WriteString(fieldExpr)
 	sb.WriteString(", 0, ")
 	sb.WriteString(fieldExpr)
@@ -608,13 +608,13 @@ func (b *fixedRootBuild) addScalarSlot(f *ir.Field, expr string) {
 		})
 	case ir.TFloat32:
 		b.slots = append(b.slots, fixedSlot{
-			setRaw:    fmt.Sprintf("(t, v) => %s = BitConverter.UInt32BitsToSingle((uint)v)", expr),
+			setRaw:    fmt.Sprintf("(t, v) => %s = global::System.BitConverter.UInt32BitsToSingle((uint)v)", expr),
 			setDouble: fmt.Sprintf("(t, d) => %s = (float)d", expr),
 			reset:     reset,
 		})
 	case ir.TFloat64:
 		b.slots = append(b.slots, fixedSlot{
-			setRaw:    fmt.Sprintf("(t, v) => %s = BitConverter.UInt64BitsToDouble(v)", expr),
+			setRaw:    fmt.Sprintf("(t, v) => %s = global::System.BitConverter.UInt64BitsToDouble(v)", expr),
 			setDouble: fmt.Sprintf("(t, d) => %s = d", expr),
 			reset:     reset,
 		})
@@ -1696,9 +1696,9 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 			case 1:
 				g.pf("%s    %s[0] = (byte)%s.Type;\n", ind, slice, expr)
 			case 2:
-				g.pf("%s    BinaryPrimitives.WriteUInt16LittleEndian(%s, (ushort)%s.Type);\n", ind, slice, expr)
+				g.pf("%s    global::System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(%s, (ushort)%s.Type);\n", ind, slice, expr)
 			case 4:
-				g.pf("%s    BinaryPrimitives.WriteUInt32LittleEndian(%s, (uint)%s.Type);\n", ind, slice, expr)
+				g.pf("%s    global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(%s, (uint)%s.Type);\n", ind, slice, expr)
 			}
 			g.pf("%s    switch (%s.Type)\n%s    {\n", ind, expr, ind)
 			owner := unionOwner(r)
@@ -1776,11 +1776,11 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 			}
 		case 16:
 			if f.Type.Signed {
-				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, unchecked((ulong)(UInt128)(Int128)%s));\n", ind, slice, expr)
-				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), unchecked((ulong)((UInt128)(Int128)%s >> 64)));\n", ind, slice, expr)
+				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, unchecked((ulong)(global::System.UInt128)(global::System.Int128)%s));\n", ind, slice, expr)
+				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), unchecked((ulong)((global::System.UInt128)(global::System.Int128)%s >> 64)));\n", ind, slice, expr)
 			} else {
-				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, unchecked((ulong)(UInt128)%s));\n", ind, slice, expr)
-				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), unchecked((ulong)((UInt128)%s >> 64)));\n", ind, slice, expr)
+				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, unchecked((ulong)(global::System.UInt128)%s));\n", ind, slice, expr)
+				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), unchecked((ulong)((global::System.UInt128)%s >> 64)));\n", ind, slice, expr)
 			}
 		}
 	default:
@@ -1811,11 +1811,11 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 			}
 		case 16:
 			if f.Type.Signed {
-				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, unchecked((ulong)(UInt128)(Int128)%s));\n", ind, slice, expr)
-				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), unchecked((ulong)((UInt128)(Int128)%s >> 64)));\n", ind, slice, expr)
+				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, unchecked((ulong)(global::System.UInt128)(global::System.Int128)%s));\n", ind, slice, expr)
+				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), unchecked((ulong)((global::System.UInt128)(global::System.Int128)%s >> 64)));\n", ind, slice, expr)
 			} else {
-				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, unchecked((ulong)(UInt128)%s));\n", ind, slice, expr)
-				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), unchecked((ulong)((UInt128)%s >> 64)));\n", ind, slice, expr)
+				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s, unchecked((ulong)(global::System.UInt128)%s));\n", ind, slice, expr)
+				g.pf("%sBinaryPrimitives.WriteUInt64LittleEndian(%s.Slice(8), unchecked((ulong)((global::System.UInt128)%s >> 64)));\n", ind, slice, expr)
 			}
 		}
 	}
@@ -2057,17 +2057,17 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	}
 	g.pf("    buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();\n")
 	g.pf("    buffer[0] = TableFixedWire.Form;\n")
-	g.pf("    BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), %sFixedHash);\n", name)
-	g.pf("    BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(TableFixedWire.HeaderBytes), (uint)%sFixedLayoutBytes);\n", name)
+	g.pf("    global::System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), %sFixedHash);\n", name)
+	g.pf("    global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(TableFixedWire.HeaderBytes), (uint)%sFixedLayoutBytes);\n", name)
 	g.pf("    %sFixedLayout.CopyTo(buffer.Slice(TableFixedWire.HeaderBytes + 4));\n", name)
 	g.pf("    Span<byte> at = buffer.Slice(TableFixedWire.HeaderBytes + 4 + (int)%sFixedLayoutBytes);\n", name)
 	g.pf("    for (int k = 0; k < values.Length; ++k)\n    {\n")
-	g.pf("        BinaryPrimitives.WriteUInt64LittleEndian(at, %sFixedHash);\n", name)
+	g.pf("        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(at, %sFixedHash);\n", name)
 	g.pf("        at.Slice(8, (int)%sFixedBodyBytes).Clear();\n", name)
 	g.pf("        %sFixedWriteBody(at.Slice(8), values[k]);\n", name)
 	g.pf("        at = at.Slice((int)%sFixedRecordBytes);\n    }\n", name)
 	if st.Integrity == "crc32c" {
-		g.pf("    BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice((int)need - 4), TableWire.IntegrityCrc(buffer.Slice(0, (int)need - 4)));\n")
+		g.pf("    global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice((int)need - 4), TableWire.IntegrityCrc(buffer.Slice(0, (int)need - 4)));\n")
 	}
 	g.pf("    return need;\n}\n\n")
 
@@ -2075,7 +2075,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    return %sFixedSave((ReadOnlySpan<%s>)values, buffer);\n}\n\n", name, name)
 
 	g.pf("public static long %sFixedSave(%s value, Span<byte> buffer)\n{\n", name, name)
-	g.pf("    ReadOnlySpan<%s> span = MemoryMarshal.CreateReadOnlySpan(ref value, 1);\n", name)
+	g.pf("    ReadOnlySpan<%s> span = global::System.Runtime.InteropServices.MemoryMarshal.CreateReadOnlySpan(ref value, 1);\n", name)
 	g.pf("    return %sFixedSave(span, buffer);\n}\n\n", name)
 
 	g.pf("public static long %sFixedLoad(\n", name)
@@ -2110,7 +2110,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        if (data[reserved] != 0)\n        {\n")
 	g.pf("            if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }\n")
 	g.pf("            return -1;\n        }\n    }\n")
-	g.pf("    uint layout_bytes = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(TableFixedWire.HeaderBytes));\n")
+	g.pf("    uint layout_bytes = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(TableFixedWire.HeaderBytes));\n")
 	g.pf("    if ((long)layout_bytes + TableFixedWire.HeaderBytes + 4 > data.Length)\n    {\n")
 	g.pf("        if (report != null) { report.Refused = true; report.Reason = \"layout_malformed\"; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("        return -1;\n    }\n")
@@ -2118,7 +2118,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// STEP 4: THE HEADER'S HASH, TAKEN AS GIVEN. Nothing is recomputed from the
 	// wire: the definitions digest is not on the wire, so the hash cannot be
 	// re-derived from a file at all (§5.3).
-	g.pf("    ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt));\n")
+	g.pf("    ulong hash = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt));\n")
 	// STEP 5 and STEP 6: SELECT BY HASH, then the floor. Outside the lineage is
 	// layout_newer — ship the reader; below the floor is layout_unsupported —
 	// upgrade the client. BOTH report THE FILE'S hash (§5.9 #7), and what
@@ -2145,7 +2145,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// THE IDENTITY PLAN'S BYTES ARE ITS GUARD POOL (§4.1): it carries no remap
 	// table, and a chain past the two lanes is read out of the pool here.
 	g.pf("    ReadOnlySpan<byte> planBytes = %sFixedGuardPool;\n", name)
-	g.pf("    TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();\n")
+	g.pf("    TableFixedFill[] fillBuf = global::System.Array.Empty<TableFixedFill>();\n")
 	g.pf("    int fillCount = 0;\n")
 	g.pf("    int census_unknown = 0;\n")
 	g.pf("    int census_kind = 0;\n")
@@ -2172,7 +2172,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("            if (report != null) { report.Refused = true; report.Reason = \"plan_too_large\"; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("            return -1;\n        }\n")
 	g.pf("        entries = new ReadOnlySpan<TableFixedEntry>(lane.Entries, 0, lane.Count);\n")
-	g.pf("        planBytes = MemoryMarshal.AsBytes<TableFixedEntry>(lane.Entries);\n")
+	g.pf("        planBytes = global::System.Runtime.InteropServices.MemoryMarshal.AsBytes<TableFixedEntry>(lane.Entries);\n")
 	g.pf("        // THE PREFILL IS THE SLOTS THE PLAN DOES NOT LAND, derived from\n")
 	g.pf("        // the plan this endpoint selected. It reads no layout and compiles\n")
 	g.pf("        // nothing, so it is not what §5.8 row 3 retires from the load\n")
@@ -2222,13 +2222,13 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// loop charged one allocation per widened run PER RECORD. One buffer serves
 	// the whole batch: TableFixedWire.Run grows it only when a run needs more
 	// than it holds, and writes every byte it hands on.
-	g.pf("    byte[] widenScratch = Array.Empty<byte>();\n")
+	g.pf("    byte[] widenScratch = global::System.Array.Empty<byte>();\n")
 	g.pf("    // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the\n")
 	g.pf("    // skip: identity's fill is empty, so this read writes no slot twice.\n")
 	g.pf("    for (int k = 0; k < n; ++k)\n    {\n")
 	// THE PER-RECORD HASH CHECK IS FIRST — before the prefill, so a refusal has
 	// written not one destination byte (§5.3, §5.8 row 9).
-	g.pf("        if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)\n        {\n")
+	g.pf("        if (global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)\n        {\n")
 	g.pf("            for (int j = 0; j < k; ++j) { TableReset(values[j]); }\n")
 	g.pf("            if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = \"no_layout\"; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("            return -1;\n        }\n")
@@ -2292,7 +2292,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    return %sFixedLoad((Span<%s>)values, data, plan, report);\n}\n\n", name, name)
 
 	g.pf("public static long %sFixedLoad(%s value, ReadOnlySpan<byte> data, Span<TableFixedEntry> plan, TableReport report = null)\n{\n", name, name)
-	g.pf("    Span<%s> span = MemoryMarshal.CreateSpan(ref value, 1);\n", name)
+	g.pf("    Span<%s> span = global::System.Runtime.InteropServices.MemoryMarshal.CreateSpan(ref value, 1);\n", name)
 	g.pf("    return %sFixedLoad(span, data, plan, report);\n}\n\n", name)
 
 	g.pf("public static void TableFixedRun(\n")
@@ -2301,7 +2301,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    %s dst,\n", name)
 	g.pf("    TableReport report = null,\n")
 	g.pf("    ReadOnlySpan<byte> planBytes = default)\n{\n")
-	g.pf("    byte[] widenScratch = Array.Empty<byte>();\n")
+	g.pf("    byte[] widenScratch = global::System.Array.Empty<byte>();\n")
 	g.pf("    int forgedOrdinal = 0;\n")
 	g.pf("    string run_why = %sFixedRun(plan, src, dst, report, planBytes, ref widenScratch, ref forgedOrdinal);\n", name)
 	g.pf("    if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = \"out_of_range\"; }\n")
@@ -2341,7 +2341,7 @@ func (g *tableGen) emitFixedRunHelpers(name string, slots []fixedSlot) {
 	}
 	g.pf("        default: break;\n    }\n}\n\n")
 
-	g.pf("private static void %sFixedSetWide(%s t, uint slot, UInt128 w)\n{\n", name, name)
+	g.pf("private static void %sFixedSetWide(%s t, uint slot, global::System.UInt128 w)\n{\n", name, name)
 	g.pf("    switch (slot)\n    {\n")
 	for i, s := range slots {
 		if s.setWide != "" {
@@ -2392,13 +2392,13 @@ func (g *tableGen) emitFixedRunHelpers(name string, slots []fixedSlot) {
 	g.pf("        switch (p.Op)\n        {\n")
 	g.pf("            case TableFixedWire.Copy:\n                {\n")
 	g.pf("                    if (p.Size == 1) { %sFixedSetRaw(dst, p.Dst, src[(int)p.Src], report); }\n", name)
-	g.pf("                    else if (p.Size == 2) { %sFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }\n", name)
-	g.pf("                    else if (p.Size == 4) { %sFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }\n", name)
-	g.pf("                    else if (p.Size == 8) { %sFixedSetRaw(dst, p.Dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }\n", name)
+	g.pf("                    else if (p.Size == 2) { %sFixedSetRaw(dst, p.Dst, global::System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)), report); }\n", name)
+	g.pf("                    else if (p.Size == 4) { %sFixedSetRaw(dst, p.Dst, global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)), report); }\n", name)
+	g.pf("                    else if (p.Size == 8) { %sFixedSetRaw(dst, p.Dst, global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)), report); }\n", name)
 	g.pf("                    else if (p.Size == 16)\n                    {\n")
-	g.pf("                        ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));\n")
-	g.pf("                        ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));\n")
-	g.pf("                        %sFixedSetWide(dst, p.Dst, new UInt128(hi, lo));\n", name)
+	g.pf("                        ulong lo = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));\n")
+	g.pf("                        ulong hi = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));\n")
+	g.pf("                        %sFixedSetWide(dst, p.Dst, new global::System.UInt128(hi, lo));\n", name)
 	g.pf("                    }\n")
 	g.pf("                    else { %sFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }\n", name)
 	g.pf("                    break;\n                }\n")
@@ -2427,28 +2427,28 @@ func (g *tableGen) emitFixedRunHelpers(name string, slots []fixedSlot) {
 	g.pf("                    for (int e = 0; e < runs; ++e)\n                    {\n")
 	g.pf("                        int at = (int)p.Src + e * sw;\n")
 	g.pf("                        if (p.Sign == 2)\n                        {\n")
-	g.pf("                            double d2 = (double)BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at));\n")
-	g.pf("                            BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);\n")
+	g.pf("                            double d2 = (double)global::System.Buffers.Binary.BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at));\n")
+	g.pf("                            global::System.Buffers.Binary.BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);\n")
 	g.pf("                            continue;\n                        }\n")
 	g.pf("                        ulong raw = 0;\n")
 	g.pf("                        if (sw == 1) raw = src[at];\n")
-	g.pf("                        else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));\n")
-	g.pf("                        else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));\n")
-	g.pf("                        else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));\n")
+	g.pf("                        else if (sw == 2) raw = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));\n")
+	g.pf("                        else if (sw == 4) raw = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));\n")
+	g.pf("                        else if (sw == 8) raw = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));\n")
 	g.pf("                        if (p.Sign == 1)\n                        {\n")
 	g.pf("                            int bits = sw * 8;\n")
 	g.pf("                            ulong top = 1UL << (bits - 1);\n")
 	g.pf("                            if ((raw & top) != 0) { raw |= unchecked(~((top << 1) - 1UL)); }\n                        }\n")
 	g.pf("                        Span<byte> cell = wide.Slice(e * dw, dw);\n")
 	g.pf("                        if (dw == 1) cell[0] = unchecked((byte)raw);\n")
-	g.pf("                        else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, unchecked((ushort)raw));\n")
-	g.pf("                        else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, unchecked((uint)raw));\n")
-	g.pf("                        else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);\n                    }\n")
+	g.pf("                        else if (dw == 2) global::System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(cell, unchecked((ushort)raw));\n")
+	g.pf("                        else if (dw == 4) global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(cell, unchecked((uint)raw));\n")
+	g.pf("                        else if (dw == 8) global::System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);\n                    }\n")
 	g.pf("                    %sFixedSetBytes(dst, p.Dst, wide, need);\n", name)
 	g.pf("                    if (report != null) { report.Widened += runs; }\n")
 	g.pf("                    break;\n                }\n")
 	g.pf("            case TableFixedWire.Count:\n                {\n")
-	g.pf("                    int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));\n")
+	g.pf("                    int v = global::System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));\n")
 	g.pf("                    if (v < 0 || (uint)v > p.Size) { return \"count_over_bound\"; }\n")
 	g.pf("                    // A COUNTED ARRAY'S SLOTS PAST ITS COUNT ARE DEAD (§4.5):\n")
 	g.pf("                    // Aux is one element's source byte count, Size the bound in elements.\n")
@@ -2459,7 +2459,7 @@ func (g *tableGen) emitFixedRunHelpers(name string, slots []fixedSlot) {
 	g.pf("                    break;\n                }\n")
 	g.pf("            case TableFixedWire.Text:\n                {\n")
 	g.pf("                    uint cap = p.Size;\n")
-	g.pf("                    int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));\n")
+	g.pf("                    int v = global::System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));\n")
 	g.pf("                    if (v < 0 || (uint)v > cap) { return \"length_over_bound\"; }\n")
 	g.pf("                    // A TEXT OR BYTES FIELD'S UNITS PAST ITS USED LENGTH ARE\n")
 	g.pf("                    // DEAD (§4.5): a non-zero dead byte refuses wire_damaged.\n")
@@ -2475,31 +2475,31 @@ func (g *tableGen) emitFixedRunHelpers(name string, slots []fixedSlot) {
 	g.pf("            case TableFixedWire.Ordinal:\n                {\n")
 	g.pf("                    ulong raw = 0;\n")
 	g.pf("                    if (p.Size == 1) raw = src[(int)p.Src];\n")
-	g.pf("                    else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));\n")
-	g.pf("                    else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));\n")
-	g.pf("                    else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));\n")
+	g.pf("                    else if (p.Size == 2) raw = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));\n")
+	g.pf("                    else if (p.Size == 4) raw = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));\n")
+	g.pf("                    else if (p.Size == 8) raw = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));\n")
 	g.pf("                    uint v = 0;\n")
 	g.pf("                    if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)\n                    {\n")
 	g.pf("                        ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);\n")
-	g.pf("                        ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);\n")
+	g.pf("                        ushort count = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);\n")
 	g.pf("                        if (raw != 0 && raw <= count)\n                        {\n")
-	g.pf("                            v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));\n                        }\n")
+	g.pf("                            v = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));\n                        }\n")
 	g.pf("                        if (raw > count) { return \"out_of_range\"; }\n                    }\n")
 	g.pf("                    %sFixedSetRaw(dst, p.Dst, v, report);\n", name)
 	g.pf("                    break;\n                }\n")
 	g.pf("            case TableFixedWire.Widen:\n                {\n")
 	g.pf("                    ulong raw = 0;\n")
 	g.pf("                    if (p.Size == 1) raw = src[(int)p.Src];\n")
-	g.pf("                    else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));\n")
-	g.pf("                    else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));\n")
-	g.pf("                    else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));\n")
+	g.pf("                    else if (p.Size == 2) raw = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));\n")
+	g.pf("                    else if (p.Size == 4) raw = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));\n")
+	g.pf("                    else if (p.Size == 8) raw = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));\n")
 	g.pf("                    if (p.Sign != 0)\n                    {\n")
 	g.pf("                        int bits = (int)p.Size * 8;\n")
 	g.pf("                        ulong top = 1UL << (bits - 1);\n")
 	g.pf("                        if ((raw & top) != 0)\n                        {\n")
 	g.pf("                            raw |= unchecked(~((top << 1) - 1UL));\n                        }\n                    }\n")
 	g.pf("                    if (p.DstSize == 16)\n                    {\n")
-	g.pf("                        UInt128 w = (p.Sign != 0 && unchecked((long)raw) < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;\n")
+	g.pf("                        global::System.UInt128 w = (p.Sign != 0 && unchecked((long)raw) < 0) ? unchecked((global::System.UInt128)(global::System.Int128)(long)raw) : (global::System.UInt128)raw;\n")
 	g.pf("                        %sFixedSetWide(dst, p.Dst, w);\n", name)
 	g.pf("                    }\n")
 	g.pf("                    else\n                    {\n")
@@ -2508,7 +2508,7 @@ func (g *tableGen) emitFixedRunHelpers(name string, slots []fixedSlot) {
 	g.pf("                    if (report != null) { report.Widened++; }\n")
 	g.pf("                    break;\n                }\n")
 	g.pf("            case TableFixedWire.WidenF:\n                {\n")
-	g.pf("                    float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));\n")
+	g.pf("                    float f = global::System.Buffers.Binary.BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));\n")
 	g.pf("                    %sFixedSetDouble(dst, p.Dst, (double)f);\n", name)
 	g.pf("                    if (report != null) { report.Widened++; }\n")
 	g.pf("                    break;\n                }\n")

@@ -353,7 +353,7 @@ internal sealed class RefEq : System.Collections.Generic.IEqualityComparer<objec
 {
     internal static readonly RefEq Instance = new RefEq();
     public new bool Equals(object x, object y) { return ReferenceEquals(x, y); }
-    public int GetHashCode(object obj) { return RuntimeHelpers.GetHashCode(obj); }
+    public int GetHashCode(object obj) { return global::System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj); }
 }
 
 internal static readonly object _StructRootOwner = new object();
@@ -434,28 +434,28 @@ internal static int FormatWideUnsigned(UInt128Value value, Span<char> dst)
 
 public const string TableDocNone = "";
 
-[MethodImpl(MethodImplOptions.AggressiveInlining)]
+[global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
 public static float TableBitsToFloat(uint bits)
 {
-    return BitConverter.Int32BitsToSingle(unchecked((int)bits));
+    return global::System.BitConverter.Int32BitsToSingle(unchecked((int)bits));
 }
 
-[MethodImpl(MethodImplOptions.AggressiveInlining)]
+[global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
 public static uint TableFloatToBits(float value)
 {
-    return unchecked((uint)BitConverter.SingleToInt32Bits(value));
+    return unchecked((uint)global::System.BitConverter.SingleToInt32Bits(value));
 }
 
-[MethodImpl(MethodImplOptions.AggressiveInlining)]
+[global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
 public static double TableBitsToDouble(ulong bits)
 {
-    return BitConverter.Int64BitsToDouble(unchecked((long)bits));
+    return global::System.BitConverter.Int64BitsToDouble(unchecked((long)bits));
 }
 
-[MethodImpl(MethodImplOptions.AggressiveInlining)]
+[global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
 public static ulong TableDoubleToBits(double value)
 {
-    return unchecked((ulong)BitConverter.DoubleToInt64Bits(value));
+    return unchecked((ulong)global::System.BitConverter.DoubleToInt64Bits(value));
 }
 
 public struct TableReport
@@ -542,9 +542,9 @@ internal static int _MapReasonCode(_R box)
         if (s == "blob_shared") { return TableReport.BlobShared; }
         if (s == "batch_too_large") { return TableReport.BatchTooLarge; }
         if (s == "truncated") { return TableReport.Truncated; }
-        if (s.StartsWith("non_finite_float", StringComparison.Ordinal)) { return TableReport.NonFiniteFloat; }
-        if (s.StartsWith("count_over_bound", StringComparison.Ordinal)) { return TableReport.CountOverBound; }
-        if (s.StartsWith("length_over_bound", StringComparison.Ordinal)) { return TableReport.LengthOverBound; }
+        if (s.StartsWith("non_finite_float", global::System.StringComparison.Ordinal)) { return TableReport.NonFiniteFloat; }
+        if (s.StartsWith("count_over_bound", global::System.StringComparison.Ordinal)) { return TableReport.CountOverBound; }
+        if (s.StartsWith("length_over_bound", global::System.StringComparison.Ordinal)) { return TableReport.LengthOverBound; }
     }
     return TableReport.WireDamaged;
 }
@@ -580,9 +580,9 @@ public sealed class TableKeyed<T, E> where E : struct, Enum
     static int MaxDeclared()
     {
         long max = 0;
-        foreach (object v in Enum.GetValues(typeof(E)))
+        foreach (object v in global::System.Enum.GetValues(typeof(E)))
         {
-            max = Math.Max(max, Convert.ToInt64(v, CultureInfo.InvariantCulture));
+            max = global::System.Math.Max(max, global::System.Convert.ToInt64(v, CultureInfo.InvariantCulture));
         }
         return (int)max;
     }
@@ -612,7 +612,7 @@ public sealed class TableKeyed<T, E> where E : struct, Enum
     {
         if ((uint)(key - 1) >= (uint)SlotCount)
         {
-            throw new ArgumentOutOfRangeException("key",
+            throw new global::System.ArgumentOutOfRangeException("key",
                 "an enum-keyed array holds one slot per named variant: None keys none, and neither does a key past Max");
         }
     }

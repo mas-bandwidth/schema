@@ -91,10 +91,10 @@ func (g *tableGen) emitRetainRefusals() {
 				continue
 			}
 			why := "FIXED-class root: retain-unknown requires a variable region and its node directory (SPEC-TABLES section 6.6)."
-			g.pf("[Obsolete(%q, true)] public static IntPtr %sLoadRetain(IntPtr region, long capacity, ReadOnlySpan<byte> bytes, ref TableRetain retain, TableReport report) { throw new NotSupportedException(); }\n", why, st.Name)
-			g.pf("[Obsolete(%q, true)] public static long %sMeasureRetain(IntPtr region, ref TableRetain retain) { throw new NotSupportedException(); }\n", why, st.Name)
-			g.pf("[Obsolete(%q, true)] public static long %sSaveRetain(IntPtr region, ref TableRetain retain, Span<byte> bytes, TableReport report) { throw new NotSupportedException(); }\n", why, st.Name)
-			g.pf("[Obsolete(\"Retention writing the MESSAGE form is refused by name; save each retained region as a file.\", true)] public static long %sSaveRetainMessages(ReadOnlySpan<IntPtr> roots, Span<TableRetain> retains, Span<byte> bytes, TableReport report) { throw new NotSupportedException(); }\n", st.Name)
+			g.pf("[global::System.Obsolete(%q, true)] public static global::System.IntPtr %sLoadRetain(global::System.IntPtr region, long capacity, ReadOnlySpan<byte> bytes, ref TableRetain retain, TableReport report) { throw new global::System.NotSupportedException(); }\n", why, st.Name)
+			g.pf("[global::System.Obsolete(%q, true)] public static long %sMeasureRetain(global::System.IntPtr region, ref TableRetain retain) { throw new global::System.NotSupportedException(); }\n", why, st.Name)
+			g.pf("[global::System.Obsolete(%q, true)] public static long %sSaveRetain(global::System.IntPtr region, ref TableRetain retain, Span<byte> bytes, TableReport report) { throw new global::System.NotSupportedException(); }\n", why, st.Name)
+			g.pf("[global::System.Obsolete(\"Retention writing the MESSAGE form is refused by name; save each retained region as a file.\", true)] public static long %sSaveRetainMessages(ReadOnlySpan<global::System.IntPtr> roots, Span<TableRetain> retains, Span<byte> bytes, TableReport report) { throw new global::System.NotSupportedException(); }\n", st.Name)
 		}
 	}
 }
@@ -127,7 +127,7 @@ const tableRetainSource = `
         public RetainPath Step(int ordinal, int index)
         {
             RetainPath next = this;
-            if (next.Depth >= @DEPTH@) { throw new InvalidOperationException("Schema retention path depth"); }
+            if (next.Depth >= @DEPTH@) { throw new global::System.InvalidOperationException("Schema retention path depth"); }
             next.Steps[next.Depth * 2] = (uint)ordinal;
             next.Steps[next.Depth * 2 + 1] = (uint)index;
             next.Depth++; return next;
@@ -311,7 +311,7 @@ const tableRetainSource = `
         }
         public ulong Record(ulong id)
         {
-            if (Array.BinarySearch(RetainKnown, id) >= 0) { return Reference(id); }
+            if (global::System.Array.BinarySearch(RetainKnown, id) >= 0) { return Reference(id); }
             for (int i = 0; i < Store->IdUsed; i++) { if (Store->Ids[i].Value == id) { return (ulong)Store->Ids[i].Slot; } }
             if (Store->Ids == null || Store->IdUsed >= Store->IdCapacity) { Lost = true; return 0; }
             Store->Ids[Store->IdUsed++] = new TableRetain.Id { Value = id, Slot = ++Count }; return (ulong)Count;
@@ -461,7 +461,7 @@ const tableRetainSource = `
             if (!RetainHere(ids.Store, record, path) || RetainRecordWire(record, ref ids, out ulong reference) < 0) { continue; }
             w.Var(reference); w.Byte(record[24]);
             RetainOut s = new RetainOut { R = new Reader(new ReadOnlySpan<byte>(RetainPayload(record), (int)Retain32(record + 12)), default), Input = RetainPayload(record), W = w };
-            if (!RetainOutPayload(ref s, ref ids, record[24], 0)) { throw new InvalidOperationException("Retention measure/write disagreement"); }
+            if (!RetainOutPayload(ref s, ref ids, record[24], 0)) { throw new global::System.InvalidOperationException("Retention measure/write disagreement"); }
             w = s.W; record[25] = 1;
         }
     }

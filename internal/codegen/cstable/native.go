@@ -88,7 +88,7 @@ const tableNativeSource = `
         public long Base;
         public NativeWriter(Span<byte> bytes, bool measure, bool big, Graph graph)
         { Bytes = bytes; Measure = measure; Big = big; Graph = graph; Base = 0; }
-        public void Put(long at, UInt128 raw, int width)
+        public void Put(long at, global::System.UInt128 raw, int width)
         {
             if (Measure) { return; }
             for (int i = 0; i < width; i++) { Bytes[checked((int)(Base + at + (Big ? width - 1 - i : i)))] = unchecked((byte)(raw >> (i * 8))); }
@@ -160,7 +160,7 @@ const tableNativeSource = `
             TableFieldInfo arm = f.Arms.Arms[(int)tag].Field;
             return arm == null || NativeField(ref w, at + f.Arms.NativeArmOffset, union, arm, extentAt, ref extent);
         }
-        UInt128 raw = f.GetWide != null ? f.GetWide(value, index) : f.GetRaw(value, index);
+        global::System.UInt128 raw = f.GetWide != null ? f.GetWide(value, index) : f.GetRaw(value, index);
         w.Put(at, raw, f.NativeElementSize); return true;
     }
     static long NativeRecordBytes(TableTypeInfo type)

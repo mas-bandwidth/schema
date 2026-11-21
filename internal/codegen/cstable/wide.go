@@ -16,11 +16,11 @@ func wideLiteral(v *big.Int, signed bool) string {
 		n.Add(n, new(big.Int).Lsh(big.NewInt(1), 128))
 	}
 	hi := new(big.Int).Rsh(new(big.Int).Set(n), 64).Uint64()
-	typ := "UInt128"
+	typ := "global::System.UInt128"
 	if signed {
-		typ = "Int128"
+		typ = "global::System.Int128"
 	}
-	return fmt.Sprintf("unchecked((%s)(((UInt128)0x%xul << 64) | 0x%xul))", typ, hi, n.Uint64())
+	return fmt.Sprintf("unchecked((%s)(((global::System.UInt128)0x%xul << 64) | 0x%xul))", typ, hi, n.Uint64())
 }
 
 func wideColumns(f *ir.Field) string {
@@ -32,12 +32,12 @@ func wideColumns(f *ir.Field) string {
 	fmt.Fprintf(&b, ", DefaultWide = %s, WideSigned = %v, FracBits = %d", wideLiteral(def, false), f.Type.Signed, f.Type.FracBits)
 	lo, hi, bounded := ir.TableRawRange(f)
 	if bounded {
-		typ := "UInt128"
+		typ := "global::System.UInt128"
 		if f.Type.Signed {
-			typ = "Int128"
+			typ = "global::System.Int128"
 		}
-		fmt.Fprintf(&b, ", RequiredValidWide = delegate (UInt128 raw) { %s v = unchecked((%s)raw); return v >= %s && v <= %s; }", typ, typ, wideLiteral(lo, f.Type.Signed), wideLiteral(hi, f.Type.Signed))
-		fmt.Fprintf(&b, ", RangeWide = delegate (UInt128 raw, TableReport r) { %s v = unchecked((%s)raw); if (v < %s || v > %s) { if (!r.Refused) { r.Refused = true; r.Reason = \"out_of_range\"; } } return raw; }", typ, typ, wideLiteral(lo, f.Type.Signed), wideLiteral(hi, f.Type.Signed))
+		fmt.Fprintf(&b, ", RequiredValidWide = delegate (global::System.UInt128 raw) { %s v = unchecked((%s)raw); return v >= %s && v <= %s; }", typ, typ, wideLiteral(lo, f.Type.Signed), wideLiteral(hi, f.Type.Signed))
+		fmt.Fprintf(&b, ", RangeWide = delegate (global::System.UInt128 raw, TableReport r) { %s v = unchecked((%s)raw); if (v < %s || v > %s) { if (!r.Refused) { r.Refused = true; r.Reason = \"out_of_range\"; } } return raw; }", typ, typ, wideLiteral(lo, f.Type.Signed), wideLiteral(hi, f.Type.Signed))
 	}
 	return b.String()
 }

@@ -1,0 +1,78 @@
+package probe
+
+// Declarations named after the System types the C# and Unity emitters spell:
+// the static classes they call, the attributes they apply, the exceptions they
+// throw and the value types they store.
+
+enum Enum
+{ Alpha, Beta }
+
+flags Flags
+{ X, Y }
+
+type Array { a uint8 }
+type BitConverter { a uint8 }
+type BinaryPrimitives { a uint8 }
+type Convert { a uint8 }
+type Debug { a uint8 }
+type Marshal { a uint8 }
+type NativeMemory { a uint8 }
+type Unsafe { a uint8 }
+type Math { a uint8 }
+type MemoryExtensions { a uint8 }
+type RuntimeHelpers { a uint8 }
+type DateTimeKind { a uint8 }
+type LayoutKind { a uint8 }
+type MethodImplOptions { a uint8 }
+type StringComparison { a uint8 }
+type GC { a uint8 }
+type MethodImpl { a uint8 }
+type FieldOffset { a uint8 }
+type Obsolete { a uint8 }
+type Serializable { a uint8 }
+type ThreadStatic { a uint8 }
+type InlineArray { a uint8 }
+type Conditional { a uint8 }
+type Int128 { a uint8 }
+type UInt128 { a uint8 }
+type IntPtr { a uint8 }
+type DateTime { a uint8 }
+type TimeSpan { a uint8 }
+type IDisposable { a uint8 }
+type Exception { a uint8 }
+type ArgumentException { a uint8 }
+type ArgumentOutOfRangeException { a uint8 }
+type InvalidOperationException { a uint8 }
+type NotSupportedException { a uint8 }
+type ObjectDisposedException { a uint8 }
+type OutOfMemoryException { a uint8 }
+type OverflowException { a uint8 }
+
+table Buffer
+{
+    wide  uint128
+    swide int128 | min = -5, max = 5
+    f     float32
+    d     float64
+    s     string(8)
+    b     bytes(4)
+    list  [..4]uint16
+    e     Enum
+    fl    Flags
+    keyed [Enum]uint8
+    opt   ?int32
+}
+
+fixed table StructLayout | forms="wire,json,cook,block"
+{
+    x int32
+    w uint128
+    f float64
+    e Enum
+}
+
+table MemoryMarshal
+{
+    many []Buffer
+    m    map[string(8)]uint32
+}

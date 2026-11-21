@@ -54,8 +54,8 @@ const unityBlockCookRuntimeSource = `public enum TableRefuseReason
 internal static TableRefuseReason _ParseRefuseReason(string why)
 {
     if (string.IsNullOrEmpty(why)) { return TableRefuseReason.ok; }
-    if (Enum.TryParse<TableRefuseReason>(why, false, out TableRefuseReason parsed)) { return parsed; }
-    if (why.StartsWith("non_finite_float", StringComparison.Ordinal)) { return TableRefuseReason.non_finite_float; }
+    if (global::System.Enum.TryParse<TableRefuseReason>(why, false, out TableRefuseReason parsed)) { return parsed; }
+    if (why.StartsWith("non_finite_float", global::System.StringComparison.Ordinal)) { return TableRefuseReason.non_finite_float; }
     return TableRefuseReason.bad_layout;
 }
 
@@ -136,18 +136,18 @@ public sealed class TableCookInfo
 }
 
 public const ulong TableBlockMagic = 0x4B4C42414D484353UL;
-public static ulong TableBlockByteOrder => BitConverter.IsLittleEndian ? 1UL : 2UL;
+public static ulong TableBlockByteOrder => global::System.BitConverter.IsLittleEndian ? 1UL : 2UL;
 
 public const ulong TableCookMagic = 0x4B4F4F434D484353UL;
-public static ulong TableCookByteOrder => BitConverter.IsLittleEndian ? 1UL : 2UL;
+public static ulong TableCookByteOrder => global::System.BitConverter.IsLittleEndian ? 1UL : 2UL;
 public const long TableCookHeaderBytes = 64;
 public const long TableCookMaxAlign = 64;
 
 public static ulong TableBlockRead64(ReadOnlySpan<byte> bytes, int at)
 {
-    return BitConverter.IsLittleEndian
-        ? BinaryPrimitives.ReadUInt64LittleEndian(bytes.Slice(at, 8))
-        : BinaryPrimitives.ReadUInt64BigEndian(bytes.Slice(at, 8));
+    return global::System.BitConverter.IsLittleEndian
+        ? global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(bytes.Slice(at, 8))
+        : global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64BigEndian(bytes.Slice(at, 8));
 }
 
 public static ulong TableCookRead64(ReadOnlySpan<byte> bytes, int at)
@@ -158,11 +158,11 @@ public static ulong TableCookRead64(ReadOnlySpan<byte> bytes, int at)
 internal static int _CookTextStart(byte[] bytes, int regionEnd, int slot)
 {
     if (bytes == null || slot < 0 || slot > regionEnd - 8) { return -1; }
-    long delta = BinaryPrimitives.ReadInt64LittleEndian(bytes.AsSpan(slot, 8));
+    long delta = global::System.Buffers.Binary.BinaryPrimitives.ReadInt64LittleEndian(bytes.AsSpan(slot, 8));
     if (delta == 0) { return -1; }
     long target = slot + delta;
     if (target < 0 || target > regionEnd - 8) { return -1; }
-    uint used = BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan((int)target, 4));
+    uint used = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan((int)target, 4));
     if (used > (ulong)(regionEnd - target - 8)) { return -1; }
     return (int)target;
 }
@@ -226,8 +226,8 @@ func rowReadExpr(pkg string, f *ir.Field, bytesExpr, atExpr string) string {
 		return fmt.Sprintf("(%s[%s] != 0)", bytesExpr, atExpr)
 	case ir.TInt, ir.TFixed:
 		if t.Width == 128 {
-			lo := fmt.Sprintf("BinaryPrimitives.ReadUInt64LittleEndian(%s.Slice(0, 8))", sp)
-			hi := fmt.Sprintf("BinaryPrimitives.ReadUInt64LittleEndian(%s.Slice(8, 8))", sp)
+			lo := fmt.Sprintf("global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(%s.Slice(0, 8))", sp)
+			hi := fmt.Sprintf("global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(%s.Slice(8, 8))", sp)
 			if t.Signed {
 				return fmt.Sprintf("new Int128Value(%s, %s)", hi, lo)
 			}
@@ -238,34 +238,34 @@ func rowReadExpr(pkg string, f *ir.Field, bytesExpr, atExpr string) string {
 			case 8:
 				return fmt.Sprintf("unchecked((sbyte)%s[%s])", bytesExpr, atExpr)
 			case 16:
-				return fmt.Sprintf("BinaryPrimitives.ReadInt16LittleEndian(%s.Slice(0, 2))", sp)
+				return fmt.Sprintf("global::System.Buffers.Binary.BinaryPrimitives.ReadInt16LittleEndian(%s.Slice(0, 2))", sp)
 			case 32:
-				return fmt.Sprintf("BinaryPrimitives.ReadInt32LittleEndian(%s.Slice(0, 4))", sp)
+				return fmt.Sprintf("global::System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(%s.Slice(0, 4))", sp)
 			default:
-				return fmt.Sprintf("BinaryPrimitives.ReadInt64LittleEndian(%s.Slice(0, 8))", sp)
+				return fmt.Sprintf("global::System.Buffers.Binary.BinaryPrimitives.ReadInt64LittleEndian(%s.Slice(0, 8))", sp)
 			}
 		}
 		switch t.Width {
 		case 8:
 			return fmt.Sprintf("%s[%s]", bytesExpr, atExpr)
 		case 16:
-			return fmt.Sprintf("BinaryPrimitives.ReadUInt16LittleEndian(%s.Slice(0, 2))", sp)
+			return fmt.Sprintf("global::System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(%s.Slice(0, 2))", sp)
 		case 32:
-			return fmt.Sprintf("BinaryPrimitives.ReadUInt32LittleEndian(%s.Slice(0, 4))", sp)
+			return fmt.Sprintf("global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(%s.Slice(0, 4))", sp)
 		default:
-			return fmt.Sprintf("BinaryPrimitives.ReadUInt64LittleEndian(%s.Slice(0, 8))", sp)
+			return fmt.Sprintf("global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(%s.Slice(0, 8))", sp)
 		}
 	case ir.TBits:
 		if t.Width <= 8 {
 			return fmt.Sprintf("(uint)%s[%s]", bytesExpr, atExpr)
 		}
 		if t.Width <= 16 {
-			return fmt.Sprintf("(uint)BinaryPrimitives.ReadUInt16LittleEndian(%s.Slice(0, 2))", sp)
+			return fmt.Sprintf("(uint)global::System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(%s.Slice(0, 2))", sp)
 		}
 		if t.Width <= 32 {
-			return fmt.Sprintf("BinaryPrimitives.ReadUInt32LittleEndian(%s.Slice(0, 4))", sp)
+			return fmt.Sprintf("global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(%s.Slice(0, 4))", sp)
 		}
-		return fmt.Sprintf("BinaryPrimitives.ReadUInt64LittleEndian(%s.Slice(0, 8))", sp)
+		return fmt.Sprintf("global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(%s.Slice(0, 8))", sp)
 	case ir.TNamed:
 		qual := "global::" + pkg + "." + t.Name
 		switch ref := t.Ref.(type) {
@@ -275,14 +275,14 @@ func rowReadExpr(pkg string, f *ir.Field, bytesExpr, atExpr string) string {
 			case 1:
 				return fmt.Sprintf("(%s)%s[%s]", qual, bytesExpr, atExpr)
 			case 2:
-				return fmt.Sprintf("(%s)BinaryPrimitives.ReadUInt16LittleEndian(%s.Slice(0, 2))", qual, sp)
+				return fmt.Sprintf("(%s)global::System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(%s.Slice(0, 2))", qual, sp)
 			case 4:
-				return fmt.Sprintf("(%s)BinaryPrimitives.ReadUInt32LittleEndian(%s.Slice(0, 4))", qual, sp)
+				return fmt.Sprintf("(%s)global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(%s.Slice(0, 4))", qual, sp)
 			default:
-				return fmt.Sprintf("(%s)BinaryPrimitives.ReadUInt64LittleEndian(%s.Slice(0, 8))", qual, sp)
+				return fmt.Sprintf("(%s)global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(%s.Slice(0, 8))", qual, sp)
 			}
 		case *ir.Flags:
-			return fmt.Sprintf("(%s)BinaryPrimitives.ReadUInt64LittleEndian(%s.Slice(0, 8))", qual, sp)
+			return fmt.Sprintf("(%s)global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(%s.Slice(0, 8))", qual, sp)
 		}
 	}
 	return "default"
@@ -300,7 +300,7 @@ func emitRowScalarMember(b *strings.Builder, u *ir.Unit, pkg, ownerName string, 
 		if !isMethod {
 			bi = ind + "        "
 		}
-		fmt.Fprintf(b, "%suint bits = BinaryPrimitives.ReadUInt32LittleEndian(%s.AsSpan(%s, 4));\n", bi, bytesExpr, atExpr)
+		fmt.Fprintf(b, "%suint bits = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(%s.AsSpan(%s, 4));\n", bi, bytesExpr, atExpr)
 		fmt.Fprintf(b, "%sif ((bits & 0x7F800000u) != 0x7F800000u) { return Schema.TableBitsToFloat(bits); }\n", bi)
 		fmt.Fprintf(b, "%sif (NonFiniteFloat.Length == 0) { NonFiniteFloat = %q; }\n", bi, ownerField)
 		fmt.Fprintf(b, "%sreturn 0.0f;\n", bi)
@@ -321,7 +321,7 @@ func emitRowScalarMember(b *strings.Builder, u *ir.Unit, pkg, ownerName string, 
 		if !isMethod {
 			bi = ind + "        "
 		}
-		fmt.Fprintf(b, "%sulong bits = BinaryPrimitives.ReadUInt64LittleEndian(%s.AsSpan(%s, 8));\n", bi, bytesExpr, atExpr)
+		fmt.Fprintf(b, "%sulong bits = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(%s.AsSpan(%s, 8));\n", bi, bytesExpr, atExpr)
 		fmt.Fprintf(b, "%sif ((bits & 0x7FF0000000000000UL) != 0x7FF0000000000000UL) { return Schema.TableBitsToDouble(bits); }\n", bi)
 		fmt.Fprintf(b, "%sif (NonFiniteFloat.Length == 0) { NonFiniteFloat = %q; }\n", bi, ownerField)
 		fmt.Fprintf(b, "%sreturn 0.0;\n", bi)
@@ -357,14 +357,14 @@ func emitInlineRowAccessors(b *strings.Builder, u *ir.Unit, pkg, ownerName strin
 			emitCookListRowAccessors(b, u, pkg, ownerName, f, fl.Offset, acc, bytesExpr, originExpr, endExpr, ind)
 			continue
 		case f.Type.TextUnbounded() && bl == nil:
-			fmt.Fprintf(b, "%spublic int %sLength { get { int p = Schema._CookTextStart(%s, %s, %s + %d); return p < 0 ? 0 : (int)BinaryPrimitives.ReadUInt32LittleEndian(%s.AsSpan(p, 4)); } }\n",
+			fmt.Fprintf(b, "%spublic int %sLength { get { int p = Schema._CookTextStart(%s, %s, %s + %d); return p < 0 ? 0 : (int)global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(%s.AsSpan(p, 4)); } }\n",
 				ind, acc, bytesExpr, endExpr, originExpr, fl.Offset, bytesExpr)
 			fmt.Fprintf(b, "%spublic ReadOnlySpan<byte> %sBytes() { int p = Schema._CookTextStart(%s, %s, %s + %d); return p < 0 ? ReadOnlySpan<byte>.Empty : %s.AsSpan(p + 8, %sLength); }\n",
 				ind, acc, bytesExpr, endExpr, originExpr, fl.Offset, bytesExpr, acc)
 		case f.Type.Pointer && f.Array == ir.ArrayNone:
 			fmt.Fprintf(b, "%spublic int %s => %s + %d;\n", ind, acc, originExpr, fl.Offset)
 		case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
-			fmt.Fprintf(b, "%spublic int %sLength { get { int used = BinaryPrimitives.ReadInt32LittleEndian(%s.AsSpan(%s + %d, 4)); return used < 0 || used > %d ? 0 : used; } }\n",
+			fmt.Fprintf(b, "%spublic int %sLength { get { int used = global::System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(%s.AsSpan(%s + %d, 4)); return used < 0 || used > %d ? 0 : used; } }\n",
 				ind, acc, bytesExpr, originExpr, facts.CountOffset, f.Type.Size)
 			fmt.Fprintf(b, "%spublic ReadOnlySpan<byte> %sBytes => %s.AsSpan(%s + %d, %sLength);\n",
 				ind, acc, bytesExpr, originExpr, fl.Offset, acc)
@@ -380,7 +380,7 @@ func emitInlineRowAccessors(b *strings.Builder, u *ir.Unit, pkg, ownerName strin
 		case facts.IsArray:
 			fmt.Fprintf(b, "%spublic const int %sBound = %d;\n", ind, acc, facts.ArrayBound)
 			if facts.Counted && facts.CountOffset >= 0 {
-				fmt.Fprintf(b, "%spublic int %sCount { get { int used = BinaryPrimitives.ReadInt32LittleEndian(%s.AsSpan(%s + %d, 4)); return used < 0 || used > %d ? 0 : used; } }\n",
+				fmt.Fprintf(b, "%spublic int %sCount { get { int used = global::System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(%s.AsSpan(%s + %d, 4)); return used < 0 || used > %d ? 0 : used; } }\n",
 					ind, acc, bytesExpr, originExpr, facts.CountOffset, facts.ArrayBound)
 			}
 			elem := *f
@@ -407,8 +407,8 @@ func emitCookListRowAccessors(b *strings.Builder, u *ir.Unit, pkg, ownerName str
 	fmt.Fprintf(b, "%spublic int %sCount\n%s{\n%s    get\n%s    {\n", ind, acc, ind, ind, ind)
 	fmt.Fprintf(b, "%s        int slot = %s + %d;\n", ind, originExpr, offset)
 	fmt.Fprintf(b, "%s        if (slot < 0 || slot > %s - 12) { return 0; }\n", ind, endExpr)
-	fmt.Fprintf(b, "%s        long delta = BinaryPrimitives.ReadInt64LittleEndian(%s.AsSpan(slot, 8));\n", ind, bytesExpr)
-	fmt.Fprintf(b, "%s        int count = BinaryPrimitives.ReadInt32LittleEndian(%s.AsSpan(slot + 8, 4));\n", ind, bytesExpr)
+	fmt.Fprintf(b, "%s        long delta = global::System.Buffers.Binary.BinaryPrimitives.ReadInt64LittleEndian(%s.AsSpan(slot, 8));\n", ind, bytesExpr)
+	fmt.Fprintf(b, "%s        int count = global::System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(%s.AsSpan(slot + 8, 4));\n", ind, bytesExpr)
 	fmt.Fprintf(b, "%s        if (count <= 0 || delta == 0 || slot + delta < 0 || slot + delta > %s) { return 0; }\n", ind, endExpr)
 	if size > 0 {
 		fmt.Fprintf(b, "%s        return count > (%s - (slot + delta)) / %d ? 0 : count;\n", ind, endExpr, size)
@@ -416,7 +416,7 @@ func emitCookListRowAccessors(b *strings.Builder, u *ir.Unit, pkg, ownerName str
 		fmt.Fprintf(b, "%s        return count;\n", ind)
 	}
 	fmt.Fprintf(b, "%s    }\n%s}\n", ind, ind)
-	fmt.Fprintf(b, "%sint _%sElements => (%s + %d) + checked((int)BinaryPrimitives.ReadInt64LittleEndian(%s.AsSpan(%s + %d, 8)));\n",
+	fmt.Fprintf(b, "%sint _%sElements => (%s + %d) + checked((int)global::System.Buffers.Binary.BinaryPrimitives.ReadInt64LittleEndian(%s.AsSpan(%s + %d, 8)));\n",
 		ind, acc, originExpr, offset, bytesExpr, originExpr, offset)
 	elem := *f
 	elem.Array = ir.ArrayNone
@@ -441,12 +441,12 @@ func emitCookMapRowAccessors(b *strings.Builder, u *ir.Unit, pkg string, f *ir.F
 	fmt.Fprintf(b, "%spublic int %sCount\n%s{\n%s    get\n%s    {\n", ind, acc, ind, ind, ind)
 	fmt.Fprintf(b, "%s        int slot = %s + %d;\n", ind, originExpr, offset)
 	fmt.Fprintf(b, "%s        if (slot < 0 || slot > %s - 12) { return 0; }\n", ind, endExpr)
-	fmt.Fprintf(b, "%s        long delta = BinaryPrimitives.ReadInt64LittleEndian(%s.AsSpan(slot, 8));\n", ind, bytesExpr)
-	fmt.Fprintf(b, "%s        int count = BinaryPrimitives.ReadInt32LittleEndian(%s.AsSpan(slot + 8, 4));\n", ind, bytesExpr)
+	fmt.Fprintf(b, "%s        long delta = global::System.Buffers.Binary.BinaryPrimitives.ReadInt64LittleEndian(%s.AsSpan(slot, 8));\n", ind, bytesExpr)
+	fmt.Fprintf(b, "%s        int count = global::System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(%s.AsSpan(slot + 8, 4));\n", ind, bytesExpr)
 	fmt.Fprintf(b, "%s        if (count <= 0 || delta == 0 || slot + delta < 0 || slot + delta > %s) { return 0; }\n", ind, endExpr)
 	fmt.Fprintf(b, "%s        return count > (%s - (slot + delta)) / %d ? 0 : count;\n", ind, endExpr, el.Size)
 	fmt.Fprintf(b, "%s    }\n%s}\n", ind, ind)
-	fmt.Fprintf(b, "%sint _%sEntries => (%s + %d) + checked((int)BinaryPrimitives.ReadInt64LittleEndian(%s.AsSpan(%s + %d, 8)));\n",
+	fmt.Fprintf(b, "%sint _%sEntries => (%s + %d) + checked((int)global::System.Buffers.Binary.BinaryPrimitives.ReadInt64LittleEndian(%s.AsSpan(%s + %d, 8)));\n",
 		ind, acc, originExpr, offset, bytesExpr, originExpr, offset)
 	fmt.Fprintf(b, "%spublic %s %sAt(int index, %s into) { into.At = _%sEntries + index * %d; return into; }\n",
 		ind, entryRow, acc, entryRow, acc, el.Size)
@@ -467,11 +467,11 @@ func emitCookMapRowAccessors(b *strings.Builder, u *ir.Unit, pkg string, f *ir.F
 	case key.Type.Kind == ir.TString:
 		if key.Type.TextUnbounded() {
 			fmt.Fprintf(b, "%s    int data = Schema._CookTextStart(%s, %s, entry + %d);\n", ind, bytesExpr, endExpr, keyOff)
-			fmt.Fprintf(b, "%s    int used = data < 0 ? 0 : (int)BinaryPrimitives.ReadUInt32LittleEndian(%s.AsSpan(data, 4));\n", ind, bytesExpr)
+			fmt.Fprintf(b, "%s    int used = data < 0 ? 0 : (int)global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(%s.AsSpan(data, 4));\n", ind, bytesExpr)
 			fmt.Fprintf(b, "%s    return %s.AsSpan(data < 0 ? 0 : data + 8, used).SequenceCompareTo(key);\n", ind, bytesExpr)
 		} else {
 			pieces := ir.FieldPieces(u, key, keyOff)
-			fmt.Fprintf(b, "%s    int used = BinaryPrimitives.ReadInt32LittleEndian(%s.AsSpan(entry + %d, 4));\n", ind, bytesExpr, pieces[1].Offset)
+			fmt.Fprintf(b, "%s    int used = global::System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(%s.AsSpan(entry + %d, 4));\n", ind, bytesExpr, pieces[1].Offset)
 			fmt.Fprintf(b, "%s    if (used < 0 || used > %d) { used = 0; }\n", ind, key.Type.Size)
 			fmt.Fprintf(b, "%s    return %s.AsSpan(entry + %d, used).SequenceCompareTo(key);\n", ind, bytesExpr, keyOff)
 		}
@@ -553,7 +553,7 @@ func emitBlockRecordDesc(b *strings.Builder, u *ir.Unit, record string, ml *ir.M
 	fmt.Fprintf(b, "        Name = %q,\n        BuildVersion = Schema.BuildVersion,\n        Size = %d,\n        Align = %d,\n        NumFields = %d,\n",
 		name, ml.Size, ml.Align, len(ml.Fields))
 	if len(ml.Fields) == 0 {
-		b.WriteString("        Fields = Array.Empty<Schema.TableBlockFieldInfo>()\n    };\n\n")
+		b.WriteString("        Fields = global::System.Array.Empty<Schema.TableBlockFieldInfo>()\n    };\n\n")
 		return
 	}
 	b.WriteString("        Fields = new Schema.TableBlockFieldInfo[]\n        {\n")
@@ -594,9 +594,9 @@ func emitBlockClass(b *strings.Builder, u *ir.Unit, pkg string, blocks *ir.Block
 		rowT := a.ElemName + "Row"
 		fmt.Fprintf(b, "\n    public const int %sStride = %d;\n    public const int %sMax = %d;\n    public const int %sProjectionOffset = %d;\n",
 			acc, a.Stride, acc, a.Max, acc, a.TripleOffset)
-		fmt.Fprintf(b, "    public int %sOffsetOf => checked((int)BinaryPrimitives.ReadUInt64LittleEndian(Bytes.AsSpan(Base + %d, 8)));\n", acc, a.OffsetOfOffset)
-		fmt.Fprintf(b, "    public int %sCount => checked((int)BinaryPrimitives.ReadUInt32LittleEndian(Bytes.AsSpan(Base + %d, 4)));\n", acc, a.CountOffset)
-		fmt.Fprintf(b, "    public int %sPitch => checked((int)BinaryPrimitives.ReadUInt32LittleEndian(Bytes.AsSpan(Base + %d, 4)));\n", acc, a.StrideOffset)
+		fmt.Fprintf(b, "    public int %sOffsetOf => checked((int)global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(Bytes.AsSpan(Base + %d, 8)));\n", acc, a.OffsetOfOffset)
+		fmt.Fprintf(b, "    public int %sCount => checked((int)global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(Bytes.AsSpan(Base + %d, 4)));\n", acc, a.CountOffset)
+		fmt.Fprintf(b, "    public int %sPitch => checked((int)global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(Bytes.AsSpan(Base + %d, 4)));\n", acc, a.StrideOffset)
 		fmt.Fprintf(b, "    public %s %sCursor() { return new %s(Bytes, Base, Base + Length); }\n", rowT, acc, rowT)
 		fmt.Fprintf(b, "    public %s %sAt(int index, %s into) { into.At = Base + %sOffsetOf + index * %sPitch; return into; }\n", rowT, acc, rowT, acc, acc)
 		fmt.Fprintf(b, "    public ReadOnlySpan<byte> %sBytes() { return Bytes.AsSpan(Base + %sOffsetOf, %sCount * %sPitch); }\n", acc, acc, acc, acc)
@@ -618,17 +618,17 @@ func emitBlockClass(b *strings.Builder, u *ir.Unit, pkg string, blocks *ir.Block
 	}
 	fmt.Fprintf(b, "        if (bytes == null || baseOffset < 0 || baseOffset %% %d != 0) { return null; }\n", ir.BlockAlign)
 	b.WriteString("        if (bytes.Length - baseOffset < BlockMaxBytes) { return null; }\n")
-	b.WriteString("        BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(baseOffset, 8), Schema.TableBlockMagic);\n")
-	b.WriteString("        BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(baseOffset + 8, 8), Schema.BuildVersion);\n")
-	b.WriteString("        BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(baseOffset + 16, 8), Schema.TableBlockByteOrder);\n")
+	b.WriteString("        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(baseOffset, 8), Schema.TableBlockMagic);\n")
+	b.WriteString("        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(baseOffset + 8, 8), Schema.BuildVersion);\n")
+	b.WriteString("        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(baseOffset + 16, 8), Schema.TableBlockByteOrder);\n")
 	b.WriteString("        long offset = ProjectionSize;\n")
 	for _, a := range bl.Arrays {
 		pName := ir.GoExportName(a.Field.Name) + "Count"
 		align := max(a.ElemAlign(), int64(ir.BlockAlign))
 		fmt.Fprintf(b, "        offset = (offset + %dL) & ~%dL;\n", align-1, align-1)
-		fmt.Fprintf(b, "        BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(baseOffset + %d, 8), (ulong)offset);\n", a.OffsetOfOffset)
-		fmt.Fprintf(b, "        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(baseOffset + %d, 4), (uint)%s);\n", a.CountOffset, pName)
-		fmt.Fprintf(b, "        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(baseOffset + %d, 4), %du);\n", a.StrideOffset, a.Stride)
+		fmt.Fprintf(b, "        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(baseOffset + %d, 8), (ulong)offset);\n", a.OffsetOfOffset)
+		fmt.Fprintf(b, "        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(baseOffset + %d, 4), (uint)%s);\n", a.CountOffset, pName)
+		fmt.Fprintf(b, "        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(baseOffset + %d, 4), %du);\n", a.StrideOffset, a.Stride)
 		fmt.Fprintf(b, "        offset += (long)%s * %dL;\n", pName, a.Stride)
 	}
 	fmt.Fprintf(b, "        int used = checked((int)((offset + %dL) & ~%dL));\n", ir.BlockAlign-1, ir.BlockAlign-1)
@@ -648,9 +648,9 @@ func emitBlockClass(b *strings.Builder, u *ir.Unit, pkg string, blocks *ir.Block
 		acc := rowAccessorBase(a.Field)
 		align := max(a.ElemAlign(), int64(ir.BlockAlign))
 		b.WriteString("        {\n")
-		fmt.Fprintf(b, "            ulong offsetOf = BinaryPrimitives.ReadUInt64LittleEndian(bytes.AsSpan(baseOffset + %d, 8));\n", a.OffsetOfOffset)
-		fmt.Fprintf(b, "            uint count = BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(baseOffset + %d, 4));\n", a.CountOffset)
-		fmt.Fprintf(b, "            uint stride = BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(baseOffset + %d, 4));\n", a.StrideOffset)
+		fmt.Fprintf(b, "            ulong offsetOf = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(bytes.AsSpan(baseOffset + %d, 8));\n", a.OffsetOfOffset)
+		fmt.Fprintf(b, "            uint count = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(baseOffset + %d, 4));\n", a.CountOffset)
+		fmt.Fprintf(b, "            uint stride = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(baseOffset + %d, 4));\n", a.StrideOffset)
 		fmt.Fprintf(b, "            if (stride != %sStride || count > %sMax) { reason = Schema.TableRefuseReason.bad_layout; return false; }\n", acc, acc)
 		fmt.Fprintf(b, "            if (offsetOf < %dUL || offsetOf %% %dUL != 0 || offsetOf > (ulong)extent) { reason = Schema.TableRefuseReason.bad_layout; return false; }\n", bl.Projection.Size, align)
 		b.WriteString("            long rows = (long)count * stride;\n")
@@ -878,7 +878,7 @@ func emitCookClass(b *strings.Builder, u *ir.Unit, c *unityCookUnit, st *ir.Stru
 
 	b.WriteString("    public int At(int slot, int size)\n    {\n")
 	b.WriteString("        if (size < 0 || Length < 8 || slot < Region || slot - Region > Length - 8) { return RefOutside; }\n")
-	b.WriteString("        long delta = BinaryPrimitives.ReadInt64LittleEndian(Bytes.AsSpan(slot, 8));\n")
+	b.WriteString("        long delta = global::System.Buffers.Binary.BinaryPrimitives.ReadInt64LittleEndian(Bytes.AsSpan(slot, 8));\n")
 	b.WriteString("        if (delta == 0) { return RefNone; }\n")
 	b.WriteString("        long relative = slot - Region;\n")
 	b.WriteString("        if (delta < -relative || delta > (long)Length - size - relative) { return RefOutside; }\n")
@@ -896,7 +896,7 @@ func emitCookClass(b *strings.Builder, u *ir.Unit, c *unityCookUnit, st *ir.Stru
 		fmt.Fprintf(b, "    public static readonly Schema.TableCookInfo %s = new Schema.TableCookInfo\n    {\n        Name = %q,\n        Size = %d,\n        Align = %d,\n        NumFields = %d,\n",
 			sym, r, rml.Size, rml.Align, len(rml.Fields))
 		if len(rml.Fields) == 0 {
-			b.WriteString("        Fields = Array.Empty<Schema.TableCookFieldInfo>()\n    };\n\n")
+			b.WriteString("        Fields = global::System.Array.Empty<Schema.TableCookFieldInfo>()\n    };\n\n")
 			continue
 		}
 		b.WriteString("        Fields = new Schema.TableCookFieldInfo[]\n        {\n")

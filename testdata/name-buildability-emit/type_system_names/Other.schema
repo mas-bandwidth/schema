@@ -1,0 +1,21 @@
+package probe
+
+type Holder
+{
+    a  Array
+    b  BitConverter
+    c  Debug
+    d  MethodImpl
+    e  UInt128
+    f  IntPtr
+    g  Unsafe
+    h  Math
+    i  Enum
+    j  Flags
+    k  InvalidOperationException
+    l  Serializable
+    m  InlineArray
+    n  [3]uint8
+    o  float32
+    p  uint128
+}

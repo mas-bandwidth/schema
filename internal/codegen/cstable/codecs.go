@@ -238,11 +238,11 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 	}
 	switch {
 	case f.IsList(), f.IsMap():
-		g.tf("    public %s[] %s = Array.Empty<%s>();\n    public int %sCount;\n", typ, name, typ, name)
+		g.tf("    public %s[] %s = global::System.Array.Empty<%s>();\n    public int %sCount;\n", typ, name, typ, name)
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		g.tf("    public %s %s;\n", typ, name)
 	case f.Type.TextUnbounded():
-		g.tf("    public byte[] %s = Array.Empty<byte>();\n    public int %sLength;\n", name, name)
+		g.tf("    public byte[] %s = global::System.Array.Empty<byte>();\n    public int %sLength;\n", name, name)
 	case f.Type.Kind == ir.TString:
 		g.tf("    public byte[] %s = new byte[%d]; // string(%s): max length, used length beside it\n",
 			name, f.Type.Size, ir.RenderExpr(f.Type.SizeExpr))
@@ -477,11 +477,11 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 	name := member(f)
 	switch {
 	case f.IsMap(), f.IsList():
-		g.pf("    Array.Clear(value.%s, 0, value.%s.Length); value.%sCount = 0;\n", name, name, name)
+		g.pf("    global::System.Array.Clear(value.%s, 0, value.%s.Length); value.%sCount = 0;\n", name, name, name)
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		g.pf("    value.%s = null;\n", name)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
-		g.pf("    Array.Clear(value.%s, 0, value.%s.Length);\n", name, name)
+		g.pf("    global::System.Array.Clear(value.%s, 0, value.%s.Length);\n", name, name)
 		g.pf("    value.%sLength = 0;\n", name)
 		g.emitBufferDefault(f, "value.", "    ", g.pf)
 	case f.Array != ir.ArrayNone && isClassRef(f.Type) && !f.Type.Pointer:
@@ -493,7 +493,7 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 		}
 	case f.Array != ir.ArrayNone:
 		base := g.keyedSlots("value.", f)
-		g.pf("    Array.Clear(%s, 0, %s.Length);\n", base, base)
+		g.pf("    global::System.Array.Clear(%s, 0, %s.Length);\n", base, base)
 		if f.Array == ir.ArrayCounted {
 			g.pf("    value.%sCount = %d;\n", name, f.BornCount())
 		}
@@ -777,9 +777,9 @@ func csRawGet(expr string, t ir.FieldType) string {
 	case ir.TBool:
 		return expr + " ? 1ul : 0ul"
 	case ir.TFloat32:
-		return "(ulong)unchecked((uint)BitConverter.SingleToInt32Bits(" + expr + "))"
+		return "(ulong)unchecked((uint)global::System.BitConverter.SingleToInt32Bits(" + expr + "))"
 	case ir.TFloat64:
-		return "unchecked((ulong)BitConverter.DoubleToInt64Bits(" + expr + "))"
+		return "unchecked((ulong)global::System.BitConverter.DoubleToInt64Bits(" + expr + "))"
 	case ir.TInt:
 		if t.Signed {
 			return "unchecked((ulong)(long)(" + expr + "))"
@@ -802,9 +802,9 @@ func csRawSet(expr, src string, t ir.FieldType) string {
 	case ir.TBool:
 		return expr + " = " + src + " != 0;"
 	case ir.TFloat32:
-		return expr + " = BitConverter.Int32BitsToSingle(unchecked((int)(uint)" + src + "));"
+		return expr + " = global::System.BitConverter.Int32BitsToSingle(unchecked((int)(uint)" + src + "));"
 	case ir.TFloat64:
-		return expr + " = BitConverter.Int64BitsToDouble(unchecked((long)" + src + "));"
+		return expr + " = global::System.BitConverter.Int64BitsToDouble(unchecked((long)" + src + "));"
 	case ir.TInt:
 		if t.Signed {
 			return expr + " = unchecked((" + csFieldType(t) + ")(long)" + src + ");"
@@ -857,7 +857,7 @@ func (g *tableGen) tableStorageColumns(f *ir.Field) string {
 		}
 		fmt.Fprintf(&b, ", GetChild = delegate (object o, int i) { return %s; }, SetChild = delegate (object o, int i, object v) { %s = (%s)v; }", g.elementExpr(f), g.elementExpr(f), typ)
 	case ir.TableKindWide(tableScalarKind(f)):
-		fmt.Fprintf(&b, ", GetWide = delegate (object o, int i) { return unchecked((UInt128)(%s)%s); }, SetWide = delegate (object o, int i, UInt128 r) { %s = unchecked((%s)r); }", csFieldType(f.Type), g.elementExpr(f), g.elementExpr(f), csFieldType(f.Type))
+		fmt.Fprintf(&b, ", GetWide = delegate (object o, int i) { return unchecked((global::System.UInt128)(%s)%s); }, SetWide = delegate (object o, int i, global::System.UInt128 r) { %s = unchecked((%s)r); }", csFieldType(f.Type), g.elementExpr(f), g.elementExpr(f), csFieldType(f.Type))
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		fmt.Fprintf(&b, ", GetBuffer = delegate (object o) { return %s; }", g.storageExpr(f))
 		fmt.Fprintf(&b, ", GetCount = delegate (object o) { return %s%sLength; }", cast, name)
@@ -879,7 +879,7 @@ func (g *tableGen) tableStorageColumns(f *ir.Field) string {
 			typ = f.MapEntry.Name
 			class = true
 		}
-		fmt.Fprintf(&b, ", EnsureCount = delegate (object o, int n) { var value = (%s)o; if (value.%s.Length < n) { Array.Resize(ref value.%s, global::System.Math.Max(n, global::System.Math.Max(4, value.%s.Length * 2))); }", ownerType, name, name, name)
+		fmt.Fprintf(&b, ", EnsureCount = delegate (object o, int n) { var value = (%s)o; if (value.%s.Length < n) { global::System.Array.Resize(ref value.%s, global::System.Math.Max(n, global::System.Math.Max(4, value.%s.Length * 2))); }", ownerType, name, name, name)
 		if class {
 			fmt.Fprintf(&b, " for (int i = 0; i < n; i++) { if (value.%s[i] == null) { value.%s[i] = new global::%s.%s(); } }", name, name, capitalize(g.unit.Package), typ)
 		}
@@ -890,7 +890,7 @@ func (g *tableGen) tableStorageColumns(f *ir.Field) string {
 		fmt.Fprintf(&b, ", SetPresent = delegate (object o, bool p) { %s%sPresent = p; }", cast, name)
 	}
 	if f.Type.TextUnbounded() {
-		fmt.Fprintf(&b, ", Unbounded = true, EnsureCount = delegate (object o, int n) { var value = (%s)o; if (value.%s.Length < n) { Array.Resize(ref value.%s,n); } }", ownerType, name, name)
+		fmt.Fprintf(&b, ", Unbounded = true, EnsureCount = delegate (object o, int n) { var value = (%s)o; if (value.%s.Length < n) { global::System.Array.Resize(ref value.%s,n); } }", ownerType, name, name)
 	}
 	if f.IsTextList() {
 		fmt.Fprintf(&b, ", TextList = true, TextField = %q, TextTotal = %dL", g.owner.Name+"."+f.Name, f.TextTotal)

@@ -17,14 +17,14 @@ func (g *tableGen) emitTextListSurface(st *ir.Struct) {
 		if ir.TextListOptional(f) {
 			g.pf("public static bool %sAppendAbsent(%s value) { return TableWire.TextAppend(value, %s, ReadOnlySpan<byte>.Empty, false); }\n", prefix, st.Name, descriptor)
 		}
-		g.pf("public static unsafe ReadOnlySpan<byte> %sTextAt(%sRow* value, int index, out bool present) { return TableWire.TextAtNative((IntPtr)value, %s, index, out present); }\n", prefix, st.Name, descriptor)
+		g.pf("public static unsafe ReadOnlySpan<byte> %sTextAt(%sRow* value, int index, out bool present) { return TableWire.TextAtNative((global::System.IntPtr)value, %s, index, out present); }\n", prefix, st.Name, descriptor)
 		args, worker := "", "null"
 		if f.IsList() || ir.TextListUnbounded(f) {
 			args, worker = "TableWorker worker, ", "worker"
 		}
-		g.pf("public static unsafe bool %sAppend(%s%sRow* value, ReadOnlySpan<byte> text) { return TableWire.TextAppendNative(%s, (IntPtr)value, %s, text, true); }\n", prefix, args, st.Name, worker, descriptor)
+		g.pf("public static unsafe bool %sAppend(%s%sRow* value, ReadOnlySpan<byte> text) { return TableWire.TextAppendNative(%s, (global::System.IntPtr)value, %s, text, true); }\n", prefix, args, st.Name, worker, descriptor)
 		if ir.TextListOptional(f) {
-			g.pf("public static unsafe bool %sAppendAbsent(%s%sRow* value) { return TableWire.TextAppendNative(%s, (IntPtr)value, %s, ReadOnlySpan<byte>.Empty, false); }\n", prefix, args, st.Name, worker, descriptor)
+			g.pf("public static unsafe bool %sAppendAbsent(%s%sRow* value) { return TableWire.TextAppendNative(%s, (global::System.IntPtr)value, %s, ReadOnlySpan<byte>.Empty, false); }\n", prefix, args, st.Name, worker, descriptor)
 		}
 	}
 }
@@ -79,18 +79,18 @@ const tableNativeTextListSource = `
         for (int i = 0; i < count; i++) { NativeValue child = value.Child(field, i); if (!text.Optional || child.Present(text)) { int length = child.Count(text); System.Diagnostics.Debug.Assert(length >= 0); spent += length; if (spent > field.TextTotal) { return false; } } }
         return spent <= field.TextTotal;
     }
-    public static unsafe ReadOnlySpan<byte> TextAtNative(IntPtr pointer, TableFieldInfo field, int index, out bool present)
+    public static unsafe ReadOnlySpan<byte> TextAtNative(global::System.IntPtr pointer, TableFieldInfo field, int index, out bool present)
     {
-        present = false; if (pointer == IntPtr.Zero || index < 0) { return default; }
+        present = false; if (pointer == global::System.IntPtr.Zero || index < 0) { return default; }
         NativeValue value = new NativeValue((byte*)pointer, 0) { Mutable = true };
         if (index >= value.Count(field)) { return default; }
         NativeValue child = value.Child(field, index); TableFieldInfo text = field.Table.Fields[0];
         if (text.Optional && !child.Present(text)) { return default; }
         present = true; return child.Buffer(text).Slice(0, child.Count(text));
     }
-    public static unsafe bool TextAppendNative(TableWorker worker, IntPtr pointer, TableFieldInfo field, ReadOnlySpan<byte> bytes, bool present)
+    public static unsafe bool TextAppendNative(TableWorker worker, global::System.IntPtr pointer, TableFieldInfo field, ReadOnlySpan<byte> bytes, bool present)
     {
-        if (pointer == IntPtr.Zero || worker != null && worker.Arena.Closed) { return false; }
+        if (pointer == global::System.IntPtr.Zero || worker != null && worker.Arena.Closed) { return false; }
         NativeValue value = new NativeValue((byte*)pointer, 0) { Mutable = true }; TableFieldInfo text = field.Table.Fields[0]; int count = value.Count(field);
         if (count < 0 || count >= field.ArrayBound || !present && !text.Optional || present && (bytes.Length > text.ArrayBound || !TextValid(bytes))) { return false; }
         if (!TextFitsRegion(value, field, present ? bytes.Length : 0)) { return false; }

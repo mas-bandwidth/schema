@@ -9,7 +9,7 @@ const tableMessageReadSource = `
     static bool MessageReference(ref BitReader r, MessageRead d, out ulong reference, out TableMessageEntry entry)
     {
         entry = null; reference = 0;
-        if (!r.Get(d.Vocabulary.RefBits, out UInt128 raw) || raw > (uint)d.Vocabulary.Count) { return false; }
+        if (!r.Get(d.Vocabulary.RefBits, out global::System.UInt128 raw) || raw > (uint)d.Vocabulary.Count) { return false; }
         reference = (ulong)raw;
         if (reference != 0) { entry = d.Vocabulary.Entries[(int)reference - 1]; }
         return true;
@@ -58,22 +58,22 @@ const tableMessageReadSource = `
     }
     // RangedHolds reconstructs a ranged offset from the sender's base and holds
     // it to its kind's own domain: the offset's bits can spell a value past it.
-    static bool RangedHolds(byte kind, UInt128 baseRaw, UInt128 offset)
+    static bool RangedHolds(byte kind, global::System.UInt128 baseRaw, global::System.UInt128 offset)
     {
         int w = Width(kind) * 8;
         if (w == 0) { return true; }
         bool signed = Signed(kind);
-        Int128 b = kind >= 18 || signed ? unchecked((Int128)baseRaw) : (Int128)(ulong)baseRaw;
+        global::System.Int128 b = kind >= 18 || signed ? unchecked((global::System.Int128)baseRaw) : (global::System.Int128)(ulong)baseRaw;
         if (w == 128)
         {
-            if (signed) { return offset <= unchecked((UInt128)Int128.MaxValue - (UInt128)b); }
-            return b >= 0 ? offset <= UInt128.MaxValue - (UInt128)b : offset >= unchecked((UInt128)0 - (UInt128)b);
+            if (signed) { return offset <= unchecked((global::System.UInt128)global::System.Int128.MaxValue - (global::System.UInt128)b); }
+            return b >= 0 ? offset <= global::System.UInt128.MaxValue - (global::System.UInt128)b : offset >= unchecked((global::System.UInt128)0 - (global::System.UInt128)b);
         }
         // the offset is under 2^64 here, so the sum leaves Int128 only past every bound
-        Int128 v = unchecked(b + (Int128)offset);
+        global::System.Int128 v = unchecked(b + (global::System.Int128)offset);
         if (v < b) { return false; }
-        Int128 lo = signed ? -((Int128)1 << (w - 1)) : 0;
-        Int128 hi = signed ? ((Int128)1 << (w - 1)) - 1 : ((Int128)1 << w) - 1;
+        global::System.Int128 lo = signed ? -((global::System.Int128)1 << (w - 1)) : 0;
+        global::System.Int128 hi = signed ? ((global::System.Int128)1 << (w - 1)) - 1 : ((global::System.Int128)1 << w) - 1;
         return v >= lo && v <= hi;
     }
     // a non-finite float under an entry this reader does not declare refuses
@@ -99,15 +99,15 @@ const tableMessageReadSource = `
             case 13: return MessageSkipBody(ref r, d, depth + 1);
             case 17: return false; // a node reference: no fixed body holds one
             case 12:
-                if (!r.Get(BitCount(shape.Max), out UInt128 length) || !r.Align() || length > (ulong)((r.End - r.At) / 8)) { return false; }
+                if (!r.Get(BitCount(shape.Max), out global::System.UInt128 length) || !r.Align() || length > (ulong)((r.End - r.At) / 8)) { return false; }
                 if (!TextValid(r.Bytes.Slice((int)(r.At / 8), (int)length))) { return false; }
                 r.At += (long)length * 8; return true;
             case 31:
-                return r.Align() && r.Get(32, out UInt128 opaque) && r.Skip((long)opaque * 8);
+                return r.Align() && r.Get(32, out global::System.UInt128 opaque) && r.Skip((long)opaque * 8);
             case 14:
             case 16:
                 ulong min = kind == 16 ? 0 : shape.Min;
-                if (!r.Get(BitCount(shape.Max - min), out UInt128 raw)) { return false; }
+                if (!r.Get(BitCount(shape.Max - min), out global::System.UInt128 raw)) { return false; }
                 ulong n = (ulong)raw + min;
                 if (n > shape.Max) { return Fail(d.Report, "count_over_bound"); }
                 if (kind == 14 && shape.Elem == 6 && !r.Align()) { return false; }
@@ -140,23 +140,23 @@ const tableMessageReadSource = `
             case 10:
                 if (shape.Packing == 2)
                 {
-                    if (!r.Get(shape.Bits, out UInt128 index) || index > shape.Steps) { return false; }
+                    if (!r.Get(shape.Bits, out global::System.UInt128 index) || index > shape.Steps) { return false; }
                     float normalized = (float)(uint)index / shape.Steps;
                     if (NonFiniteBits(10, TableFloatToBits(normalized * shape.Delta + shape.QMin))) { NonFiniteSkipped(d.Report); }
                     return true;
                 }
-                if (!r.Get(32, out UInt128 f32)) { return false; }
+                if (!r.Get(32, out global::System.UInt128 f32)) { return false; }
                 if (NonFiniteBits(10, (ulong)f32)) { NonFiniteSkipped(d.Report); }
                 return true;
             case 11:
-                if (!r.Get(64, out UInt128 f64)) { return false; }
+                if (!r.Get(64, out global::System.UInt128 f64)) { return false; }
                 if (NonFiniteBits(11, (ulong)f64)) { NonFiniteSkipped(d.Report); }
                 return true;
             default:
                 if (!MessageKind(kind)) { return false; }
                 if (MessageNumber(kind) && shape.Packing == 1)
                 {
-                    if (!r.Get(shape.Bits, out UInt128 offset)) { return false; }
+                    if (!r.Get(shape.Bits, out global::System.UInt128 offset)) { return false; }
                     return RangedHolds(kind, shape.Base, offset) || Fail(d.Report, "out_of_range");
                 }
                 return r.Skip(ValueBits(kind, shape));
@@ -247,7 +247,7 @@ const tableMessageReadSource = `
     {
         if (f.IsArray && f.GetBuffer != null)
         {
-            if (!r.Get(BitCount(shape.Max - shape.Min), out UInt128 raw) || !r.Align()) { return false; }
+            if (!r.Get(BitCount(shape.Max - shape.Min), out global::System.UInt128 raw) || !r.Align()) { return false; }
             // bytes(N) AND [..N]uint8 ARE ONE KIND (§3.3): the count rides as
             // count - the announced min, as an array's does
             ulong n = (ulong)raw + shape.Min;
@@ -259,7 +259,7 @@ const tableMessageReadSource = `
         }
         if (kind == 12)
         {
-            if (!r.Get(BitCount(shape.Max), out UInt128 length) || !r.Align()) { return false; }
+            if (!r.Get(BitCount(shape.Max), out global::System.UInt128 length) || !r.Align()) { return false; }
             long bits = (long)length * 8;
             if (bits > r.End - r.At) { return false; }
             ReadOnlySpan<byte> text = r.Bytes.Slice((int)(r.At / 8), (int)length); r.At += bits;
@@ -267,7 +267,7 @@ const tableMessageReadSource = `
         }
         if (f.IsArray)
         {
-            if (!r.Get(BitCount(shape.Max - shape.Min), out UInt128 raw) || kind == 14 && shape.Elem == 6 && !r.Align()) { return false; }
+            if (!r.Get(BitCount(shape.Max - shape.Min), out global::System.UInt128 raw) || kind == 14 && shape.Elem == 6 && !r.Align()) { return false; }
             ulong n = (ulong)raw + shape.Min;
             if (f.KeyId != null)
             {
@@ -351,7 +351,7 @@ const tableMessageReadSource = `
             return MessageReadField(ref r, d, union, arm, entry.Kind, entry.Shape, depth + 1);
         }
         int width = ValueBits(kind, shape);
-        if (!r.Get(width, out UInt128 bits)) { return false; }
+        if (!r.Get(width, out global::System.UInt128 bits)) { return false; }
         if (kind == 10)
         {
             if (shape.Packing == 2)
@@ -371,33 +371,33 @@ const tableMessageReadSource = `
         if (kind == 11 && NonFiniteBits(11, (ulong)bits)) { NonFinite(f, d.Report); return true; }
         if (kind == 1 || kind == 11)
         { if (keep) { f.SetRaw(value, index, (ulong)bits); } return true; }
-        UInt128 stored = bits; bool negative = false, above = false;
+        global::System.UInt128 stored = bits; bool negative = false, above = false;
         if (shape.Packing == 1)
         {
             // A RANGED VALUE IS HELD TO ITS ANNOUNCED KIND (§3.3): base plus
             // offset is never wrapped, named or skipped
             if (MessageNumber(kind) && !RangedHolds(kind, shape.Base, bits)) { return Fail(d.Report, "out_of_range: " + f.Name); }
             stored = unchecked(bits + shape.Base);
-            bool baseNegative = (kind >= 18 || Signed(kind)) && unchecked((Int128)shape.Base) < 0;
+            bool baseNegative = (kind >= 18 || Signed(kind)) && unchecked((global::System.Int128)shape.Base) < 0;
             negative = baseNegative && bits < unchecked(0 - shape.Base);
             above = !baseNegative && stored < bits;
             if (kind < 18)
             {
                 ulong raw = unchecked((ulong)stored);
                 negative = Signed(kind) && unchecked((long)raw) < 0; above = false;
-                stored = negative ? unchecked((UInt128)(Int128)(long)raw) : raw;
+                stored = negative ? unchecked((global::System.UInt128)(global::System.Int128)(long)raw) : raw;
             }
         }
         else if (Signed(kind) && width > 0 && ((bits >> (width - 1)) & 1) != 0)
-        { negative = true; if (width < 128) { stored |= UInt128.MaxValue << width; } }
+        { negative = true; if (width < 128) { stored |= global::System.UInt128.MaxValue << width; } }
         if (f.MessageBounded)
         {
             bool low, high;
             if (f.MessageSigned)
             {
-                low = negative && unchecked((Int128)stored) < unchecked((Int128)f.MessageMin);
-                high = above || !negative && stored > (UInt128)Int128.MaxValue || !low && unchecked((Int128)stored) > unchecked((Int128)f.MessageMax);
-                if (!negative && unchecked((Int128)f.MessageMin) > 0 && stored < f.MessageMin) { low = true; }
+                low = negative && unchecked((global::System.Int128)stored) < unchecked((global::System.Int128)f.MessageMin);
+                high = above || !negative && stored > (global::System.UInt128)global::System.Int128.MaxValue || !low && unchecked((global::System.Int128)stored) > unchecked((global::System.Int128)f.MessageMax);
+                if (!negative && unchecked((global::System.Int128)f.MessageMin) > 0 && stored < f.MessageMin) { low = true; }
             }
             else { low = negative || stored < f.MessageMin; high = above || !negative && stored > f.MessageMax; }
             if (low || high) { return Fail(d.Report, "out_of_range: " + f.Name); }

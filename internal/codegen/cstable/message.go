@@ -121,7 +121,7 @@ public sealed class TableVocabulary
     public bool Announced { get; internal set; }
     public ulong BuildVersion { get; internal set; }
     internal bool Attempted;
-    internal TableMessageEntry[] Entries = Array.Empty<TableMessageEntry>();
+    internal TableMessageEntry[] Entries = global::System.Array.Empty<TableMessageEntry>();
     public int Count { get { return Entries.Length; } }
     public int RefBits { get { return global::System.Math.Max(1, System.Numerics.BitOperations.Log2((uint)global::System.Math.Max(1, Count)) + 1); } }
 }
@@ -130,7 +130,7 @@ internal sealed class TableMessageShape
     public byte Packing, Elem;
     public int Bits;
     public ulong Min, Max;
-    public UInt128 Base;
+    public global::System.UInt128 Base;
     public float QMin, QMax, QRes, Delta;
     public uint Steps;
     public TableMessageShape Inner;
@@ -165,22 +165,22 @@ const tableMessageSource = `
                 if (!r.Var(out ulong bits) || bits > (ulong)Width(kind) * 8) { return false; }
                 shape.Bits = (int)bits;
                 if (kind >= 18 && kind <= 29)
-                { if (!r.Has(16)) { return false; } shape.Base = r.Fixed(8); shape.Base |= (UInt128)r.Fixed(8) << 64; }
+                { if (!r.Has(16)) { return false; } shape.Base = r.Fixed(8); shape.Base |= (global::System.UInt128)r.Fixed(8) << 64; }
                 else
                 {
                     if (!r.Var(out ulong raw)) { return false; }
-                    shape.Base = Signed(kind) ? unchecked((UInt128)(Int128)((long)(raw >> 1) ^ -(long)(raw & 1))) : raw;
+                    shape.Base = Signed(kind) ? unchecked((global::System.UInt128)(global::System.Int128)((long)(raw >> 1) ^ -(long)(raw & 1))) : raw;
                 }
                 int dom = Width(kind) * 8;
                 if (dom < 128)
                 {
                     if (Signed(kind))
                     {
-                        Int128 sb = unchecked((Int128)shape.Base);
-                        Int128 mn = -(Int128.One << (dom - 1)), mx = (Int128.One << (dom - 1)) - 1;
+                        global::System.Int128 sb = unchecked((global::System.Int128)shape.Base);
+                        global::System.Int128 mn = -(global::System.Int128.One << (dom - 1)), mx = (global::System.Int128.One << (dom - 1)) - 1;
                         if (sb < mn || sb > mx) { return false; }
                     }
-                    else if (shape.Base > (UInt128.One << dom) - 1) { return false; }
+                    else if (shape.Base > (global::System.UInt128.One << dom) - 1) { return false; }
                 }
             }
             else if (shape.Packing == 2 && kind == 10)
@@ -211,7 +211,7 @@ const tableMessageSource = `
     public static TableVocabulary OwnVocabulary(ReadOnlySpan<byte> bytes)
     {
         var vocabulary = new TableVocabulary();
-        if (AnnounceRead(vocabulary, bytes, new TableReport()) != Verdict.Ok) { throw new InvalidOperationException("invalid generated vocabulary"); }
+        if (AnnounceRead(vocabulary, bytes, new TableReport()) != Verdict.Ok) { throw new global::System.InvalidOperationException("invalid generated vocabulary"); }
         return vocabulary;
     }
     public static Verdict AnnounceRead(TableVocabulary v, ReadOnlySpan<byte> bytes, TableReport report)
@@ -271,7 +271,7 @@ const tableMessageSource = `
             if (id == ulong.MaxValue - 1 || id == ulong.MaxValue - 2 || id == ulong.MaxValue && node || !MessageKind(kind) || !Shape(ref payload, kind, out TableMessageShape shape))
             { Damage(report); return Finish(report, Verdict.Damaged); }
             if (id == ulong.MaxValue) { node = true; }
-            if (!keys.Add(Convert.ToHexString(payload.Buffer.Slice(start, payload.Offset - start)))) { Damage(report); return Finish(report, Verdict.Damaged); }
+            if (!keys.Add(global::System.Convert.ToHexString(payload.Buffer.Slice(start, payload.Offset - start)))) { Damage(report); return Finish(report, Verdict.Damaged); }
             entries.Add(new TableMessageEntry { Id = id, Kind = kind, Shape = shape });
             if (entries.Count > (v.MaxEntries > 0 ? v.MaxEntries : 4096)) { return Refuse(report, "vocabulary_too_large"); }
         }
@@ -283,7 +283,7 @@ const tableMessageSource = `
         public long At;
         public bool Measure;
         public BitWriter(Span<byte> bytes, bool measure) { Bytes = bytes; Measure = measure; At = 0; }
-        public void Put(UInt128 value, int bits)
+        public void Put(global::System.UInt128 value, int bits)
         {
             if (!Measure) { for (int i = 0; i < bits; i++) { int at = checked((int)(At + i)); if (((value >> i) & 1) != 0) { Bytes[at >> 3] |= (byte)(1 << (at & 7)); } } }
             At += bits;
@@ -296,13 +296,13 @@ const tableMessageSource = `
         public ReadOnlySpan<byte> Bytes;
         public long At, End;
         public BitReader(ReadOnlySpan<byte> bytes) { Bytes = bytes; At = 0; End = (long)bytes.Length * 8; }
-        public bool Get(int bits, out UInt128 value)
+        public bool Get(int bits, out global::System.UInt128 value)
         {
             value = 0; if (bits < 0 || bits > 128 || bits > End - At) { return false; }
-            for (int i = 0; i < bits; i++) { long at = At + i; value |= (UInt128)((Bytes[(int)(at >> 3)] >> (int)(at & 7)) & 1) << i; }
+            for (int i = 0; i < bits; i++) { long at = At + i; value |= (global::System.UInt128)((Bytes[(int)(at >> 3)] >> (int)(at & 7)) & 1) << i; }
             At += bits; return true;
         }
-        public bool Align() { return Get((int)((8 - (At & 7)) & 7), out UInt128 padding) && padding == 0; }
+        public bool Align() { return Get((int)((8 - (At & 7)) & 7), out global::System.UInt128 padding) && padding == 0; }
         public bool Skip(long bits) { if (bits < 0 || bits > End - At) { return false; } At += bits; return true; }
     }
     static ulong NameSlot(ulong id)
@@ -362,7 +362,7 @@ const tableMessageSource = `
             if (arm.Field != null) { MessageField(ref w, union, arm.Field, tableOwnVocabulary.Entries[arm.MessageSlot - 1].Shape); }
             return;
         }
-        UInt128 bits = f.GetWide != null ? f.GetWide(value, i) : f.GetBuffer != null ? f.GetBuffer(value)[i] : f.GetRaw(value, i);
+        global::System.UInt128 bits = f.GetWide != null ? f.GetWide(value, i) : f.GetBuffer != null ? f.GetBuffer(value)[i] : f.GetRaw(value, i);
         if (f.Kind == 10 && shape.Packing == 2)
         {
             float normalized = (TableBitsToFloat((uint)bits) - shape.QMin) / shape.Delta;
@@ -392,7 +392,7 @@ const tableMessageSource = `
         if (size > bytes.Length) { return -1; }
         bytes.Slice(0, (int)size).Clear(); BitWriter writer = new BitWriter(bytes, false);
         MessageBatch(ref writer, values, type);
-        if (type.Integrity) { BinaryPrimitives.WriteUInt32LittleEndian(bytes.Slice((int)size - 4), IntegrityCrc(bytes.Slice(0, (int)size - 4))); }
+        if (type.Integrity) { global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes.Slice((int)size - 4), IntegrityCrc(bytes.Slice(0, (int)size - 4))); }
         return size;
     }
     static void MessageBatch(ref BitWriter w, object[] values, TableTypeInfo type)

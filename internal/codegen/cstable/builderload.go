@@ -5,31 +5,31 @@ const tableBuilderLoadSource = `
     {
         TableCookList* slot = (TableCookList*)(value.Base + value.At + field.NativeOffset);
         if (!TableListStorage.Reserve(worker, slot, field, index + 1)) { return false; }
-        ResetNativeElement((IntPtr)TableListStorage.At((byte*)slot, index, field.NativeElementSize), field);
+        ResetNativeElement((global::System.IntPtr)TableListStorage.At((byte*)slot, index, field.NativeElementSize), field);
         return true;
     }
     // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a builder load
     // that meets damage answers false with the builder's root back at its
     // declared defaults, so nothing it decoded can be saved or locked.
-    public static bool LoadBuilder(IntPtr pointer, TableTypeInfo type, TableWorker worker, ReadOnlySpan<byte> bytes, TableReport report)
+    public static bool LoadBuilder(global::System.IntPtr pointer, TableTypeInfo type, TableWorker worker, ReadOnlySpan<byte> bytes, TableReport report)
     {
-        if (report == null) { throw new ArgumentNullException(nameof(report)); }
+        if (report == null) { throw new global::System.ArgumentNullException(nameof(report)); }
         bool damagedBefore = report.Damaged;
         report.Damaged = false;
         bool whole = LoadBuilderWalk(pointer, type, worker, bytes, report);
         if (report.Damaged)
         {
-            if (pointer != IntPtr.Zero && !worker.Arena.Closed) { NativeReset(new NativeValue((byte*)pointer, 0) { Mutable = true }, type); }
+            if (pointer != global::System.IntPtr.Zero && !worker.Arena.Closed) { NativeReset(new NativeValue((byte*)pointer, 0) { Mutable = true }, type); }
             if (report.Verdict != Verdict.Refused) { Finish(report, Verdict.Damaged); }
             return false;
         }
         report.Damaged = damagedBefore;
         return whole;
     }
-    static bool LoadBuilderWalk(IntPtr pointer, TableTypeInfo type, TableWorker worker, ReadOnlySpan<byte> bytes, TableReport report)
+    static bool LoadBuilderWalk(global::System.IntPtr pointer, TableTypeInfo type, TableWorker worker, ReadOnlySpan<byte> bytes, TableReport report)
     {
         report.Refused = false; report.Reason = null; report.NonFiniteFloat = null; Finish(report, Verdict.BodyStopped);
-        if (pointer == IntPtr.Zero || worker.Arena.Closed) { return false; }
+        if (pointer == global::System.IntPtr.Zero || worker.Arena.Closed) { return false; }
         if (bytes.Length == 0) { Damage(report); Finish(report, Verdict.Damaged); return false; }
         if (bytes[0] != 1)
         { report.Refused = true; report.Reason = bytes[0] == 2 ? "message_form_as_file" : "newer_form"; Finish(report, Verdict.Refused); return false; }

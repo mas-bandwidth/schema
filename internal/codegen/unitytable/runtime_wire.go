@@ -10,9 +10,9 @@ public sealed class TableVocabulary
     public bool Announced { get; internal set; }
     public ulong BuildVersion { get; internal set; }
     internal bool Attempted;
-    internal TableMessageEntry[] Entries = Array.Empty<TableMessageEntry>();
+    internal TableMessageEntry[] Entries = global::System.Array.Empty<TableMessageEntry>();
     public int Count { get { return Entries.Length; } }
-    public int RefBits { get { return Math.Max(1, Schema.Log2Bits((ulong)Math.Max(1, Count)) + 1); } }
+    public int RefBits { get { return global::System.Math.Max(1, Schema.Log2Bits((ulong)global::System.Math.Max(1, Count)) + 1); } }
 }
 internal sealed class TableMessageShape
 {
@@ -43,7 +43,7 @@ internal static partial class TableWire
     // ledger on first use, so a null-report read allocates nothing after that
     // (docs/SPEC-TABLES.md §6.5). The head of every read resets it exactly as
     // it resets a caller-supplied report.
-    [ThreadStatic]
+    [global::System.ThreadStatic]
     static _R ignored;
     static _R IgnoredReport() { return ignored ?? (ignored = new _R()); }
 
@@ -86,14 +86,14 @@ internal static partial class TableWire
             while (Slots[slot] != 0 && Values[Slots[slot] - 1] != id) { slot = (slot + 1) & mask; }
             return slot;
         }
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public ulong Reference(ulong id)
         {
             if (!Slots.IsEmpty) { return (ulong)Slots[Slot(id)]; }
             for (int i = 0; i < Count; i++) { if (Values[i] == id) { return (ulong)i + 1; } }
             return 0;
         }
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public ulong Ref(ulong id)
         {
             if (!Slots.IsEmpty)
@@ -114,7 +114,7 @@ internal static partial class TableWire
             Count++;
             return (ulong)Count;
         }
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public ulong RefAt(int ordinal, ulong id)
         {
             if (!OrdinalSlots.IsEmpty && (uint)ordinal < (uint)OrdinalSlots.Length)
@@ -185,11 +185,11 @@ internal static partial class TableWire
         public Span<byte> Buffer;
         public int Offset;
         public Writer(Span<byte> buffer) { Buffer = buffer; Offset = 0; }
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public void Byte(byte v) { Buffer[Offset++] = v; }
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public void Raw(ReadOnlySpan<byte> v) { v.CopyTo(Buffer.Slice(Offset)); Offset += v.Length; }
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public void Fixed(ulong v, int n)
         {
             switch (n)
@@ -204,7 +204,7 @@ internal static partial class TableWire
             }
             Offset += n;
         }
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public void Header(ulong reference, byte kind)
         {
             if (reference < 128)
@@ -215,12 +215,12 @@ internal static partial class TableWire
             }
             Var(reference); Byte(kind);
         }
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public void HeaderAt(int ordinal, ulong id, byte kind, ref Ids ids)
         {
             Header(ids.RefAt(ordinal, id), kind);
         }
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public void Var(ulong v)
         {
             if (v < 128) { Byte(unchecked((byte)v)); return; }
@@ -238,11 +238,11 @@ internal static partial class TableWire
         public int Offset;
         public Reader(ReadOnlySpan<byte> buffer, ReadOnlySpan<byte> vocabulary)
         { Buffer = buffer; Vocabulary = vocabulary; Offset = 0; Graph = null; Retain = null; Path = default; }
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public bool Has(int n) { return n >= 0 && n <= Buffer.Length - Offset; }
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public byte Byte() { return Buffer[Offset++]; }
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public ulong Fixed(int n)
         {
             ulong v;
@@ -260,7 +260,7 @@ internal static partial class TableWire
             Offset += n;
             return v;
         }
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public bool Var(out ulong v)
         {
             if ((uint)Offset < (uint)Buffer.Length)
@@ -286,7 +286,7 @@ internal static partial class TableWire
             Offset = start;
             return false;
         }
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public bool Ref(out ulong reference, out ulong id)
         {
             id = 0;
@@ -399,7 +399,7 @@ internal static partial class TableWire
             else if (EdgeCount == Edges.Length)
             {
                 ulong[] grown = System.Buffers.ArrayPool<ulong>.Shared.Rent(Edges.Length * 2);
-                Array.Copy(Edges, grown, EdgeCount);
+                global::System.Array.Copy(Edges, grown, EdgeCount);
                 System.Buffers.ArrayPool<ulong>.Shared.Return(Edges); Edges = grown;
             }
             Edges[EdgeCount++] = index;
@@ -851,7 +851,7 @@ internal static partial class TableWire
     static void CycleField(object value, TableFieldInfo f, System.Collections.Generic.Dictionary<object, int> index, System.Collections.Generic.List<int> targets)
     {
         if (f == null) { return; }
-        int n = f.IsArray ? Math.Max(0, Count(value, f)) : 1;
+        int n = f.IsArray ? global::System.Math.Max(0, Count(value, f)) : 1;
         for (int i = 0; i < n; i++)
         {
             if (f.Kind == 13) { object child = f.GetChild(value, i); if (child != null) { CycleSlots(child, f.Table, index, targets); } }
@@ -1006,7 +1006,7 @@ internal static partial class TableWire
         if (sorted) { return true; }
         object[] entries = new object[n];
         for (int i = 0; i < n; i++) { entries[i] = f.GetChild(value, i); }
-        Array.Sort(entries, (a, b) => CompareKey(a, b, key));
+        global::System.Array.Sort(entries, (a, b) => CompareKey(a, b, key));
         for (int i = 1; i < n; i++)
         { if (CompareKey(entries[i - 1], entries[i], key) >= 0) { return false; } }
         for (int i = 0; i < n; i++) { f.SetChild(value, i, entries[i]); }
@@ -1350,8 +1350,8 @@ internal static partial class TableWire
                 shape.Delta = shape.QMax - shape.QMin;
                 float steps = shape.Delta / shape.QRes;
                 if (!float.IsFinite(shape.Delta) || !float.IsFinite(steps)) { return false; }
-                steps = Math.Clamp(steps, 1f, 4294967040f);
-                shape.Steps = (uint)Math.Ceiling(steps); shape.Bits = BitCount(shape.Steps);
+                steps = global::System.Math.Clamp(steps, 1f, 4294967040f);
+                shape.Steps = (uint)global::System.Math.Ceiling(steps); shape.Bits = BitCount(shape.Steps);
             }
             else if (shape.Packing != 0) { return false; }
         }
@@ -1370,7 +1370,7 @@ internal static partial class TableWire
     public static TableVocabulary OwnVocabulary(ReadOnlySpan<byte> bytes)
     {
         var vocabulary = new TableVocabulary();
-        if (AnnounceRead(vocabulary, bytes, new _R()) != Verdict.Ok) { throw new InvalidOperationException("invalid generated vocabulary"); }
+        if (AnnounceRead(vocabulary, bytes, new _R()) != Verdict.Ok) { throw new global::System.InvalidOperationException("invalid generated vocabulary"); }
         return vocabulary;
     }
     public static Verdict AnnounceRead(TableVocabulary v, ReadOnlySpan<byte> bytes, _R report)
@@ -1516,7 +1516,7 @@ internal static partial class TableWire
             float normalized = (TableBitsToFloat((uint)bits) - shape.QMin) / shape.Delta;
             if (!(normalized >= 0)) { normalized = 0; } else if (!(normalized <= 1)) { normalized = 1; }
             float scaled = normalized * shape.Steps;
-            bits = Math.Min((uint)Math.Floor((double)(scaled + 0.5f)), shape.Steps);
+            bits = global::System.Math.Min((uint)global::System.Math.Floor((double)(scaled + 0.5f)), shape.Steps);
         }
         else if (shape.Packing == 1) { bits = unchecked(bits - shape.Base); }
         w.Put(bits, ValueBits(f.Kind, shape));
@@ -1540,7 +1540,7 @@ internal static partial class TableWire
         if (size > bytes.Length) { return -1; }
         bytes.Slice(0, (int)size).Clear(); BitWriter writer = new BitWriter(bytes, false);
         MessageBatch(ref writer, values, type);
-        if (type.Integrity) { BinaryPrimitives.WriteUInt32LittleEndian(bytes.Slice((int)size - 4), IntegrityCrc(bytes.Slice(0, (int)size - 4))); }
+        if (type.Integrity) { global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes.Slice((int)size - 4), IntegrityCrc(bytes.Slice(0, (int)size - 4))); }
         return size;
     }
     static void MessageBatch(ref BitWriter w, object[] values, TableTypeInfo type)
@@ -2143,10 +2143,10 @@ internal static partial class TableWire
         w.Put(at, raw, f.NativeElementSize); return true;
     }
     static long NativeRecordBytes(TableTypeInfo type)
-    { return NativeExtent(type) ? Align(type.StorageSize, Math.Max(8, type.StorageAlign)) : type.StorageSize; }
+    { return NativeExtent(type) ? Align(type.StorageSize, global::System.Math.Max(8, type.StorageAlign)) : type.StorageSize; }
     static long NativePlace(object value, TableTypeInfo type, Graph graph, out int alignment)
     {
-        alignment = Math.Max(8, type.StorageAlign);
+        alignment = global::System.Math.Max(8, type.StorageAlign);
         NativeWriter probe = new NativeWriter(default, true, false, graph);
         long extent = 0, rootBytes = NativeRecordBytes(type);
         // Placement precedes validation of references: later nodes have no
@@ -2158,7 +2158,7 @@ internal static partial class TableWire
             foreach (Node node in graph.Nodes)
             {
                 int align = node.BlobKind != 0 ? 8 : node.Type.StorageAlign;
-                alignment = Math.Max(alignment, align); at = Align(at, align); node.NativeOffset = at;
+                alignment = global::System.Math.Max(alignment, align); at = Align(at, align); node.NativeOffset = at;
                 if (node.BlobKind != 0) { at += 8 + ((TableBlob)node.Value).Data.Length + (node.BlobKind == 12 ? 1 : 0); }
                 else
                 {
@@ -2459,7 +2459,7 @@ internal static partial class TableWire
                 if (f.IsArray && f.KeyId == null && f.Kind == 13 && !rootElemSizes.IsEmpty)
                 {
                     int c = Count(value, f);
-                    int take = Math.Min(c, Math.Max(0, rootElemSizes.Length - elemOffset));
+                    int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                     elemCache = rootElemSizes.Slice(elemOffset, take);
                     elemOffset += take;
                 }
@@ -2503,7 +2503,7 @@ internal static partial class TableWire
         else if (f.GetWide != null)
         {
             UInt128Value raw = f.GetWide(value, i); int width = Width(f.Kind);
-            w.Fixed(unchecked((ulong)raw), Math.Min(width, 8)); if (width == 16) { w.Fixed(unchecked((ulong)(raw >> 64)), 8); }
+            w.Fixed(unchecked((ulong)raw), global::System.Math.Min(width, 8)); if (width == 16) { w.Fixed(unchecked((ulong)(raw >> 64)), 8); }
         }
         else { w.Fixed(f.GetBuffer != null ? f.GetBuffer(value)[i] : f.GetRaw(value, i), Width(f.Kind)); }
     }
@@ -2558,7 +2558,7 @@ internal static partial class TableWire
             if (f.IsArray && f.KeyId == null && f.Kind == 13 && !rootElemSizes.IsEmpty)
             {
                 int c = Count(value, f);
-                int take = Math.Min(c, Math.Max(0, rootElemSizes.Length - elemOffset));
+                int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));
                 elemCache = rootElemSizes.Slice(elemOffset, take);
                 elemOffset += take;
             }
@@ -2629,7 +2629,7 @@ internal static partial class TableWire
     {
         if (bytes.Length < 5) { return false; }
         int end = bytes.Length - 4;
-        uint stored = BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(end));
+        uint stored = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(end));
         if (stored != IntegrityCrc(bytes.Slice(0, end))) { return false; }
         bytes = bytes.Slice(0, end);
         return true;
@@ -2773,7 +2773,7 @@ internal static partial class TableWire
         {
             int width = Width(kind);
             if (!r.Has(width)) { return Damage(report); }
-            UInt128Value wide = r.Fixed(Math.Min(width, 8));
+            UInt128Value wide = r.Fixed(global::System.Math.Min(width, 8));
             if (width == 16) { wide |= (UInt128Value)r.Fixed(8) << 64; }
             else if ((kind >= 2 && kind <= 5) || (kind >= 20 && kind <= 23))
             { int shift = 128 - width * 8; wide = unchecked((UInt128Value)((Int128Value)(wide << shift) >> shift)); }
@@ -2877,7 +2877,7 @@ internal static partial class TableWire
     static void ZeroField(object value, TableFieldInfo f)
     {
         if (f.Dynamic) { f.ResetField(value); return; }
-        if (f.GetBuffer != null) { Array.Clear(f.GetBuffer(value), 0, f.ArrayBound); }
+        if (f.GetBuffer != null) { global::System.Array.Clear(f.GetBuffer(value), 0, f.ArrayBound); }
         else
         {
             int n = f.IsArray ? f.ArrayBound : 1;
@@ -2961,7 +2961,7 @@ internal static partial class TableWire
             if (!Compatible(elementKind, f.Kind, report)) { return false; }
             if (f.Dynamic && count > int.MaxValue) { return CollectionCap(report); }
             if (r.Retain != null) { RetainDiscard(r.Retain, r.Path, f.Ordinal); }
-            int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
+            int keep = (int)global::System.Math.Min(count, (ulong)f.ArrayBound);
             if (!f.Dynamic && (count < (ulong)f.ArrayMin || count > (ulong)f.ArrayBound)) { return Fail(report, "count_over_bound: " + f.Name); }
             int decoded = 0;
             for (int i = 0; i < keep; i++)
@@ -3046,7 +3046,7 @@ internal static partial class TableWire
             else
             {
                 if (array.Retain != null) { RetainDiscard(array.Retain, array.Path, f.Ordinal); }
-                int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
+                int keep = (int)global::System.Math.Min(count, (ulong)f.ArrayBound);
                 if (!f.Dynamic && (count < (ulong)f.ArrayMin || count > (ulong)f.ArrayBound)) { return Fail(report, "count_over_bound: " + f.Name); }
                 int previous = f.Counted && f.GetCount != null ? f.GetCount(value) : 0;
                 int decoded = 0; long textSpent = 0;
@@ -3078,7 +3078,7 @@ internal static partial class TableWire
         TableFieldInfo[] fields = type.Fields;
         if (fields == null || fields.Length == 0)
         {
-            type.IdIndex = Array.Empty<TableFieldInfo>();
+            type.IdIndex = global::System.Array.Empty<TableFieldInfo>();
             type.IdMask = 0;
             return;
         }
@@ -3186,7 +3186,7 @@ internal static partial class TableWire
             try
             {
                 for (int i = 0; i < count; i++) { ids[i] = Read64(vocabulary, i * 8); }
-                Array.Sort(ids, 0, count);
+                global::System.Array.Sort(ids, 0, count);
                 for (int i = 1; i < count; i++) { if (ids[i] == ids[i - 1]) { return false; } }
                 return true;
             }

@@ -139,7 +139,7 @@ func (g *gen) emitPair(pair, typ string, writeBody, readBody func()) {
 func (g *gen) emitCoreAttr() {
 	g.needsCompiler = true
 	g.sf("// inline-only batch core — a real call would address-expose the batch\n")
-	g.sf("[MethodImpl(MethodImplOptions.AggressiveInlining)]\n")
+	g.sf("[global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]\n")
 }
 
 // batchScopeChild names the nested pair a composition site calls into when

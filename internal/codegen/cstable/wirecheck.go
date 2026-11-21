@@ -81,7 +81,7 @@ const tableWireCheckSource = `
             else if (EdgeCount == Edges.Length)
             {
                 ulong[] grown = System.Buffers.ArrayPool<ulong>.Shared.Rent(Edges.Length * 2);
-                Array.Copy(Edges, grown, EdgeCount);
+                global::System.Array.Copy(Edges, grown, EdgeCount);
                 System.Buffers.ArrayPool<ulong>.Shared.Return(Edges); Edges = grown;
             }
             Edges[EdgeCount++] = index;

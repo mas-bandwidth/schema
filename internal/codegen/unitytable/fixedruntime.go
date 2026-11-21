@@ -123,7 +123,7 @@ const fixedRuntime = `
         public readonly ushort[] Remap;
 
         public FixedLane(ulong hash, int recordBytes, int why, bool identity, bool prefill, int widens, int planCount, byte[] layout, FixedOp[] ops, FixedOp[] checks)
-            : this(hash, recordBytes, why, identity, prefill, widens, 0, planCount, false, layout, ops, checks, Array.Empty<FixedGuard>(), Array.Empty<FixedGuard>(), Array.Empty<FixedFill>(), Array.Empty<ushort>())
+            : this(hash, recordBytes, why, identity, prefill, widens, 0, planCount, false, layout, ops, checks, global::System.Array.Empty<FixedGuard>(), global::System.Array.Empty<FixedGuard>(), global::System.Array.Empty<FixedFill>(), global::System.Array.Empty<ushort>())
         {
         }
 
@@ -174,22 +174,22 @@ const fixedRuntime = `
 
     internal static float FixedGetF32(ReadOnlySpan<byte> b, int at)
     {
-        return BitConverter.Int32BitsToSingle(BinaryPrimitives.ReadInt32LittleEndian(b.Slice(at, 4)));
+        return global::System.BitConverter.Int32BitsToSingle(global::System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(b.Slice(at, 4)));
     }
 
     internal static double FixedGetF64(ReadOnlySpan<byte> b, int at)
     {
-        return BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(b.Slice(at, 8)));
+        return global::System.BitConverter.Int64BitsToDouble(global::System.Buffers.Binary.BinaryPrimitives.ReadInt64LittleEndian(b.Slice(at, 8)));
     }
 
     internal static void FixedPutF32(Span<byte> b, int at, float v)
     {
-        BinaryPrimitives.WriteInt32LittleEndian(b.Slice(at, 4), BitConverter.SingleToInt32Bits(v));
+        global::System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(b.Slice(at, 4), global::System.BitConverter.SingleToInt32Bits(v));
     }
 
     internal static void FixedPutF64(Span<byte> b, int at, double v)
     {
-        BinaryPrimitives.WriteInt64LittleEndian(b.Slice(at, 8), BitConverter.DoubleToInt64Bits(v));
+        global::System.Buffers.Binary.BinaryPrimitives.WriteInt64LittleEndian(b.Slice(at, 8), global::System.BitConverter.DoubleToInt64Bits(v));
     }
 
     internal static bool FixedDeadZero(ReadOnlySpan<byte> b, int from, int to)
@@ -290,8 +290,8 @@ const fixedRuntime = `
                     }
                 case FixedRangeS128:
                     {
-                        ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(body.Slice(c.Src, 8));
-                        ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(body.Slice(c.Src + 8, 8));
+                        ulong lo = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(body.Slice(c.Src, 8));
+                        ulong hi = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(body.Slice(c.Src + 8, 8));
                         Int128Value v = new Int128Value(hi, lo);
                         Int128Value minV = new Int128Value(c.Lo2, c.Lo);
                         Int128Value maxV = new Int128Value(c.Hi2, c.Hi);
@@ -300,8 +300,8 @@ const fixedRuntime = `
                     }
                 case FixedRangeU128:
                     {
-                        ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(body.Slice(c.Src, 8));
-                        ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(body.Slice(c.Src + 8, 8));
+                        ulong lo = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(body.Slice(c.Src, 8));
+                        ulong hi = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(body.Slice(c.Src + 8, 8));
                         UInt128Value v = new UInt128Value(hi, lo);
                         UInt128Value minV = new UInt128Value(c.Lo2, c.Lo);
                         UInt128Value maxV = new UInt128Value(c.Hi2, c.Hi);
@@ -309,28 +309,28 @@ const fixedRuntime = `
                         break;
                     }
                 case FixedF32Finite:
-                    if ((BinaryPrimitives.ReadUInt32LittleEndian(body.Slice(c.Src, 4)) & 0x7F800000u) == 0x7F800000u) { return TableReport.NonFiniteFloat; }
+                    if ((global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(body.Slice(c.Src, 4)) & 0x7F800000u) == 0x7F800000u) { return TableReport.NonFiniteFloat; }
                     break;
                 case FixedF32Range:
                     {
-                        uint bits = BinaryPrimitives.ReadUInt32LittleEndian(body.Slice(c.Src, 4));
+                        uint bits = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(body.Slice(c.Src, 4));
                         if ((bits & 0x7F800000u) == 0x7F800000u) { return TableReport.NonFiniteFloat; }
-                        float v = BitConverter.Int32BitsToSingle(unchecked((int)bits));
-                        float minV = BitConverter.Int32BitsToSingle(unchecked((int)(uint)c.Lo));
-                        float maxV = BitConverter.Int32BitsToSingle(unchecked((int)(uint)c.Hi));
+                        float v = global::System.BitConverter.Int32BitsToSingle(unchecked((int)bits));
+                        float minV = global::System.BitConverter.Int32BitsToSingle(unchecked((int)(uint)c.Lo));
+                        float maxV = global::System.BitConverter.Int32BitsToSingle(unchecked((int)(uint)c.Hi));
                         if (v < minV || v > maxV) { return TableReport.OutOfRange; }
                         break;
                     }
                 case FixedF64Finite:
-                    if ((BinaryPrimitives.ReadUInt64LittleEndian(body.Slice(c.Src, 8)) & 0x7FF0000000000000UL) == 0x7FF0000000000000UL) { return TableReport.NonFiniteFloat; }
+                    if ((global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(body.Slice(c.Src, 8)) & 0x7FF0000000000000UL) == 0x7FF0000000000000UL) { return TableReport.NonFiniteFloat; }
                     break;
                 case FixedF64Range:
                     {
-                        ulong bits = BinaryPrimitives.ReadUInt64LittleEndian(body.Slice(c.Src, 8));
+                        ulong bits = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(body.Slice(c.Src, 8));
                         if ((bits & 0x7FF0000000000000UL) == 0x7FF0000000000000UL) { return TableReport.NonFiniteFloat; }
-                        double v = BitConverter.Int64BitsToDouble(unchecked((long)bits));
-                        double minV = BitConverter.Int64BitsToDouble(unchecked((long)c.Lo));
-                        double maxV = BitConverter.Int64BitsToDouble(unchecked((long)c.Hi));
+                        double v = global::System.BitConverter.Int64BitsToDouble(unchecked((long)bits));
+                        double minV = global::System.BitConverter.Int64BitsToDouble(unchecked((long)c.Lo));
+                        double maxV = global::System.BitConverter.Int64BitsToDouble(unchecked((long)c.Hi));
                         if (v < minV || v > maxV) { return TableReport.OutOfRange; }
                         break;
                     }

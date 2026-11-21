@@ -1,0 +1,43 @@
+package Array
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+flags Bits
+{ X, Y }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+table Item
+{
+    wide  uint128
+    f     float32
+    d     float64
+    s     string(8)
+    b     bytes(4)
+    list  [..4]uint16
+    e     Kind
+    fl    Bits
+    keyed [Kind]uint8
+    many  []Part
+    m     map[string(8)]uint32
+}
+
+fixed table Part | forms="wire,json,cook,block"
+{
+    x int32
+    w uint128
+    f float64
+    e Kind
+}

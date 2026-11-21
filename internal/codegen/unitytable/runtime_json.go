@@ -64,7 +64,7 @@ internal static class TableJson
     // then counts as unknown, turning a refusal into a silent loss.
     static bool Named(string name)
     {
-        return name != null && !string.Equals(name, "???", StringComparison.Ordinal);
+        return name != null && !string.Equals(name, "???", global::System.StringComparison.Ordinal);
     }
 
     // finite: not a NaN, not an infinity. C++ spells the NaN test v == v; C#
@@ -190,7 +190,7 @@ internal static class TableJson
             byte[] fractionDigits = new byte[token.Length + 48];
             int fn = 0;
             for (int z = point; z < 0; z++) { fractionDigits[fn++] = 0; }
-            for (int k = Math.Max(point, 0) + start; k < end; k++) { fractionDigits[fn++] = digits[k]; }
+            for (int k = global::System.Math.Max(point, 0) + start; k < end; k++) { fractionDigits[fn++] = digits[k]; }
             UInt128Value fraction = 0;
             for (int bit = 0; bit < f.FracBits; bit++)
             {
@@ -242,7 +242,7 @@ internal static class TableJson
     // name settles it, and "bytes" is a keyword no declaration can claim.
     static bool IsBytes(TableFieldInfo f)
     {
-        return f.IsArray && f.Kind == 6 && string.Equals(f.TypeName, "bytes", StringComparison.Ordinal);
+        return f.IsArray && f.Kind == 6 && string.Equals(f.TypeName, "bytes", global::System.StringComparison.Ordinal);
     }
 
     // An ENUM-KEYED array (docs/SPEC-TABLES.md §2.4): its JSON form is an OBJECT
@@ -1269,7 +1269,7 @@ internal static class TableJson
         if (!TimestampDigits(s, 0, 4, out int year) || !TimestampDigits(s, 5, 2, out int month) ||
             !TimestampDigits(s, 8, 2, out int day) || !TimestampDigits(s, 11, 2, out int hour) ||
             !TimestampDigits(s, 14, 2, out int minute) || !TimestampDigits(s, 17, 2, out int second)) { return false; }
-        if (year < 1 || month < 1 || month > 12 || day < 1 || day > DateTime.DaysInMonth(year, month) || hour > 23 || minute > 59 || second > 59) { return false; }
+        if (year < 1 || month < 1 || month > 12 || day < 1 || day > global::System.DateTime.DaysInMonth(year, month) || hour > 23 || minute > 59 || second > 59) { return false; }
         int at = 19, digits = 0;
         long fraction = 0;
         if (s[at] == '.')
@@ -1294,7 +1294,7 @@ internal static class TableJson
         }
         else { return false; }
         if (at != s.Length) { return false; }
-        long seconds = (new DateTime(year, month, day, hour, minute, second, DateTimeKind.Utc).Ticks - 621355968000000000L) / TimeSpan.TicksPerSecond - offset;
+        long seconds = (new global::System.DateTime(year, month, day, hour, minute, second, global::System.DateTimeKind.Utc).Ticks - 621355968000000000L) / global::System.TimeSpan.TicksPerSecond - offset;
         // THE WHOLE INT64 NANOSECOND RANGE READS (§16.2), its writer's own
         // output included: below the epoch the whole seconds carry one second
         // the fraction gives back, so seconds * 1e9 never leaves int64 where
@@ -1306,7 +1306,7 @@ internal static class TableJson
                 ? checked((seconds + 1) * 1000000000L + (fraction - 1000000000L))
                 : checked(seconds * 1000000000L + fraction);
         }
-        catch (OverflowException) { return false; }
+        catch (global::System.OverflowException) { return false; }
         nanos = total;
         return true;
     }
@@ -1329,7 +1329,7 @@ internal static class TableJson
         long seconds = nanos / 1000000000;
         long fraction = nanos % 1000000000;
         if (fraction < 0) { fraction += 1000000000; seconds--; }
-        DateTime date = new DateTime(621355968000000000L, DateTimeKind.Utc).AddTicks(seconds * TimeSpan.TicksPerSecond);
+        global::System.DateTime date = new global::System.DateTime(621355968000000000L, global::System.DateTimeKind.Utc).AddTicks(seconds * global::System.TimeSpan.TicksPerSecond);
         Span<char> text = stackalloc char[19];
         if (!date.TryFormat(text, out int written, "yyyy-MM-dd'T'HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture) || written != 19) { return false; }
         output.Put((byte)'"');
@@ -2371,7 +2371,7 @@ internal static class TableJson
             }
             if (!canonical) { return RefuseText(ref input, "base64_not_canonical"); }
             byte[] storage = f.GetBuffer(value);
-            Array.Clear(storage, 0, f.ArrayBound);
+            global::System.Array.Clear(storage, 0, f.ArrayBound);
             PutCount(value, f, 0);
             int placed = 0;
             uint accumulator = 0;

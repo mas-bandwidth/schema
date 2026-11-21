@@ -167,7 +167,7 @@ func (g *gen) emitBuffers() error {
 	g.needsCompiler = true // [InlineArray]
 	g.tf("// Inline fixed buffers: a struct's arrays, strings and bytes live inside it.\n")
 	for _, n := range lengths {
-		g.tf("[InlineArray(%d)]\npublic struct InlineBuffer%d<T>\n{\n    private T element0;\n}\n\n", n, n)
+		g.tf("[global::System.Runtime.CompilerServices.InlineArray(%d)]\npublic struct InlineBuffer%d<T>\n{\n    private T element0;\n}\n\n", n, n)
 	}
 	return nil
 }
@@ -178,7 +178,7 @@ func (g *gen) clearBuffer(name, length string) string {
 		return fmt.Sprintf("%s[..].Clear();", name)
 	}
 	g.needsSystem = true
-	return fmt.Sprintf("Array.Clear(%s, 0, %s);", name, length)
+	return fmt.Sprintf("global::System.Array.Clear(%s, 0, %s);", name, length)
 }
 
 // prefix renders the span over a buffer's first n elements.

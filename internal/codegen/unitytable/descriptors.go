@@ -431,7 +431,7 @@ func (c *descCtx) storageColumns(f *ir.Field) string {
 	}
 	if f.IsMap() || f.IsList() {
 		cls := isCarrierClassElem(f)
-		fmt.Fprintf(&b, ", EnsureCount = delegate (object o, int n) { var value = (%s)o; if (value.%s.Length < n) { Array.Resize(ref value.%s, Math.Max(n, Math.Max(4, value.%s.Length * 2))); }", carrierT, m, m, m)
+		fmt.Fprintf(&b, ", EnsureCount = delegate (object o, int n) { var value = (%s)o; if (value.%s.Length < n) { global::System.Array.Resize(ref value.%s, global::System.Math.Max(n, global::System.Math.Max(4, value.%s.Length * 2))); }", carrierT, m, m, m)
 		if cls {
 			fmt.Fprintf(&b, " for (int i = 0; i < n; i++) { if (value.%s[i] == null) { value.%s[i] = new %s(); } }", m, m, elemT)
 		}
@@ -442,7 +442,7 @@ func (c *descCtx) storageColumns(f *ir.Field) string {
 		fmt.Fprintf(&b, ", SetPresent = delegate (object o, bool p) { %s%sPresent = p; }", cast, m)
 	}
 	if f.Type.TextUnbounded() {
-		fmt.Fprintf(&b, ", Unbounded = true, EnsureCount = delegate (object o, int n) { var value = (%s)o; if (value.%s.Length < n) { Array.Resize(ref value.%s, n); } }", carrierT, m, m)
+		fmt.Fprintf(&b, ", Unbounded = true, EnsureCount = delegate (object o, int n) { var value = (%s)o; if (value.%s.Length < n) { global::System.Array.Resize(ref value.%s, n); } }", carrierT, m, m)
 	}
 	if f.IsTextList() {
 		fmt.Fprintf(&b, ", TextList = true, TextField = %q, TextTotal = %dL", c.owner.Name+"."+f.Name, f.TextTotal)
@@ -918,7 +918,7 @@ func emitTableDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, outside 
 	fmt.Fprintf(b, "        info.BytesEdge = %t; info.StringEdge = %t;\n", bytesEdge, stringEdge)
 
 	if len(st.Fields) == 0 {
-		b.WriteString("        info.Fields = Array.Empty<TableFieldInfo>();\n")
+		b.WriteString("        info.Fields = global::System.Array.Empty<TableFieldInfo>();\n")
 	} else {
 		b.WriteString("        info.Fields = new TableFieldInfo[]\n        {\n")
 		for _, f := range st.Fields {

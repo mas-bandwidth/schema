@@ -307,7 +307,7 @@ const tableVariableWireSource = `
     {
         if (key.Kind == 12) { return key.GetBuffer(a).AsSpan(0, key.GetCount(a)).SequenceCompareTo(key.GetBuffer(b).AsSpan(0, key.GetCount(b))); }
         if (key.GetWide != null)
-        { return key.WideSigned ? unchecked((Int128)key.GetWide(a, 0)).CompareTo(unchecked((Int128)key.GetWide(b, 0))) : key.GetWide(a, 0).CompareTo(key.GetWide(b, 0)); }
+        { return key.WideSigned ? unchecked((global::System.Int128)key.GetWide(a, 0)).CompareTo(unchecked((global::System.Int128)key.GetWide(b, 0))) : key.GetWide(a, 0).CompareTo(key.GetWide(b, 0)); }
         ulong x = key.GetRaw(a, 0), y = key.GetRaw(b, 0);
         return key.Kind >= 2 && key.Kind <= 5 ? unchecked((long)x).CompareTo(unchecked((long)y)) : x.CompareTo(y);
     }
@@ -326,7 +326,7 @@ const tableVariableWireSource = `
         if (sorted) { return true; }
         object[] entries = new object[n];
         for (int i = 0; i < n; i++) { entries[i] = f.GetChild(value, i); }
-        Array.Sort(entries, (a, b) => CompareKey(a, b, key));
+        global::System.Array.Sort(entries, (a, b) => CompareKey(a, b, key));
         for (int i = 1; i < n; i++)
         { if (CompareKey(entries[i - 1], entries[i], key) >= 0) { return false; } }
         for (int i = 0; i < n; i++) { f.SetChild(value, i, entries[i]); }

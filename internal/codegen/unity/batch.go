@@ -79,7 +79,7 @@ func (g *gen) emitPair(name string, writeBody, readBody func()) {
 		g.needsCompiler = true
 		g.sf("// Write%sBatch is the body on a register-resident batch; inline only, so a\n", name)
 		g.sf("// caller never takes the batch's address.\n")
-		g.sf("[MethodImpl(MethodImplOptions.AggressiveInlining)]\n")
+		g.sf("[global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]\n")
 		g.sf("private static bool Write%sBatch(ref WriteBatch batch, ref %s value)\n{\n", name, name)
 		g.inBatch = true
 		writeBody()
@@ -105,7 +105,7 @@ func (g *gen) emitPair(name string, writeBody, readBody func()) {
 		g.needsCompiler = true
 		g.sf("// Read%sBatch is the body on a register-resident batch; inline only, so a\n", name)
 		g.sf("// caller never takes the batch's address.\n")
-		g.sf("[MethodImpl(MethodImplOptions.AggressiveInlining)]\n")
+		g.sf("[global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]\n")
 		g.sf("private static bool Read%sBatch(ref ReadBatch batch, ref %s value)\n{\n", name, name)
 		g.inBatch = true
 		readBody()

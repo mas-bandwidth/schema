@@ -372,7 +372,7 @@ func (g *gen) emitFlags(d *ir.Flags) {
 	g.tf("// %s — one bit per variant, consumed as masks; wire %d bits (SPEC §4.2).\n", d.Name, d.WireBits)
 	g.tf("// The backing type is ulong in every declaration, the full width §4.2\n")
 	g.tf("// requires, so bits a newer build appended survive a read and a rewrite.\n")
-	g.tf("[Flags]\npublic enum %s : ulong\n{\n", d.Name)
+	g.tf("[global::System.Flags]\npublic enum %s : ulong\n{\n", d.Name)
 	for i, v := range d.Variants {
 		g.tf("%s", ir.DocComment(d.VariantDocs[i], "    ", "//"))
 		g.tf("    %s = 1ul << %d,\n", v, i)

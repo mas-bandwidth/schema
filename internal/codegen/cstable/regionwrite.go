@@ -200,7 +200,7 @@ const tableRegionWriteSource = `
         else if (f.Kind == 17) { w.Var(ids.Graph.Index(value.Pointer(f, i))); }
         else if (f.GetWide != null)
         {
-            UInt128 raw = value.Wide(f, i); int width = Width(f.Kind);
+            global::System.UInt128 raw = value.Wide(f, i); int width = Width(f.Kind);
             w.Fixed(unchecked((ulong)raw), global::System.Math.Min(width, 8)); if (width == 16) { w.Fixed(unchecked((ulong)(raw >> 64)), 8); }
         }
         else { w.Fixed(f.GetBuffer != null ? value.Buffer(f)[i] : value.Raw(f, i), Width(f.Kind)); }
@@ -244,9 +244,9 @@ const tableRegionWriteSource = `
         if (root) { RegionWriteNodes(ref w, ref ids); }
         w.Var(0);
     }
-    public static unsafe long SaveRegion(IntPtr pointer, TableTypeInfo type, Span<byte> buffer, Span<ulong> vocabulary, bool measure, TableAllocator allocator = default, bool mutable = false)
+    public static unsafe long SaveRegion(global::System.IntPtr pointer, TableTypeInfo type, Span<byte> buffer, Span<ulong> vocabulary, bool measure, TableAllocator allocator = default, bool mutable = false)
     {
-        if (pointer == IntPtr.Zero) { return -1; }
+        if (pointer == global::System.IntPtr.Zero) { return -1; }
         NativeValue value = new NativeValue((byte*)pointer, 0) { Mutable = mutable };
         RegionIds ids = new RegionIds(vocabulary) { RootType = type };
         if (type.Variable) { ids.Graph = RegionNumber(value, type, allocator, true, true); if (!ids.Graph.Valid) { return -1; } }

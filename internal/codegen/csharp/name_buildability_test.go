@@ -42,18 +42,17 @@ func TestNameCorpusBuildsCs(t *testing.T) {
 		}
 		runtime = append(runtime, path)
 	}
-	// a runtime that names System.Math unqualified cannot share an assembly
-	// with `namespace Math`, whatever the generated code does
-	runtimeMath := false
-	bareMath := regexp.MustCompile(`(^|[^.A-Za-z0-9_:])Math\.`)
+	// a runtime that names a System type unqualified cannot share an assembly
+	// with a namespace of that name, whatever the generated code does
+	var code strings.Builder
 	for _, path := range runtime {
 		data, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
 		}
 		for line := range strings.SplitSeq(string(data), "\n") {
-			code, _, _ := strings.Cut(line, "//") // a doc comment may name Math
-			runtimeMath = runtimeMath || bareMath.MatchString(code)
+			c, _, _ := strings.Cut(line, "//") // a doc comment may name the type
+			code.WriteString(c + "\n")
 		}
 	}
 	csc, refs := cscToolchain(t)
@@ -61,8 +60,11 @@ func TestNameCorpusBuildsCs(t *testing.T) {
 		t.Run(c.Name, func(t *testing.T) {
 			t.Parallel()
 			files := nameemit.Generate(t, c, "cs")
-			if runtimeMath && strings.HasPrefix(c.Name, "pkg_Math") {
-				t.Skipf("%s: the serialize.cs at %s still names Math unqualified; the case builds once the pinned runtime spells global::System.Math", c.Name, runtimeDir)
+			if pkg, ok := strings.CutPrefix(c.Name, "pkg_"); ok {
+				bare := regexp.MustCompile(`(^|[^.A-Za-z0-9_:])` + regexp.QuoteMeta(pkg) + `\b`)
+				if bare.MatchString(code.String()) {
+					t.Skipf("%s: the serialize.cs at %s still names %s unqualified; the case builds once the pinned runtime spells it global::System.%s", c.Name, runtimeDir, pkg, pkg)
+				}
 			}
 			dir := t.TempDir()
 			sources := nameemit.Write(t, files, dir, ".cs")

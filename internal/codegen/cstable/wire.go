@@ -80,9 +80,9 @@ func leafRideCondition(f *ir.Field) string {
 	prop := member(f)
 	switch f.Type.Kind {
 	case ir.TFloat32:
-		return fmt.Sprintf("BitConverter.SingleToUInt32Bits(v.%s) != 0x%08xu", prop, math.Float32bits(float32(fieldDefaultFloat(f))))
+		return fmt.Sprintf("global::System.BitConverter.SingleToUInt32Bits(v.%s) != 0x%08xu", prop, math.Float32bits(float32(fieldDefaultFloat(f))))
 	case ir.TFloat64:
-		return fmt.Sprintf("BitConverter.DoubleToUInt64Bits(v.%s) != 0x%016xul", prop, math.Float64bits(fieldDefaultFloat(f)))
+		return fmt.Sprintf("global::System.BitConverter.DoubleToUInt64Bits(v.%s) != 0x%016xul", prop, math.Float64bits(fieldDefaultFloat(f)))
 	}
 	return fmt.Sprintf("v.%s != %s", prop, fieldDefaultExpr(f))
 }
@@ -339,7 +339,7 @@ func (g *tableGen) emitWireSurface(st *ir.Struct) {
 	}
 	if ir.VariableTables(g.unit)[st.Name] {
 		g.pf("public static long %sLoadMeasure(ReadOnlySpan<byte> bytes) { return TableWire.LoadMeasure(%sTableType(), bytes, out _); }\n\n", st.Name, st.Name)
-		g.pf("public static long %sLoadMeasure(ReadOnlySpan<byte> bytes, out TableRefuseReason reason) { long size = TableWire.LoadMeasure(%sTableType(), bytes, out string why); reason = why == null ? TableRefuseReason.ok : Enum.Parse<TableRefuseReason>(why); return size; }\n", st.Name, st.Name)
+		g.pf("public static long %sLoadMeasure(ReadOnlySpan<byte> bytes, out TableRefuseReason reason) { long size = TableWire.LoadMeasure(%sTableType(), bytes, out string why); reason = why == null ? TableRefuseReason.ok : global::System.Enum.Parse<TableRefuseReason>(why); return size; }\n", st.Name, st.Name)
 	}
 	cap := ir.TableWireIdCapacity(g.unit)
 	if !ir.VariableTables(g.unit)[st.Name] {
@@ -503,7 +503,7 @@ public static partial class TableWire
     // ledger on first use, so a null-report read allocates nothing after that
     // (docs/SPEC-TABLES.md §6.5). The head of every read resets it exactly as
     // it resets a caller-supplied report.
-    [ThreadStatic]
+    [global::System.ThreadStatic]
     static TableReport ignored;
     static TableReport IgnoredReport() { return ignored ?? (ignored = new TableReport()); }
 
@@ -546,14 +546,14 @@ public static partial class TableWire
             while (Slots[slot] != 0 && Values[Slots[slot] - 1] != id) { slot = (slot + 1) & mask; }
             return slot;
         }
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public ulong Reference(ulong id)
         {
             if (!Slots.IsEmpty) { return (ulong)Slots[Slot(id)]; }
             for (int i = 0; i < Count; i++) { if (Values[i] == id) { return (ulong)i + 1; } }
             return 0;
         }
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public ulong Ref(ulong id)
         {
             if (!Slots.IsEmpty)
@@ -574,7 +574,7 @@ public static partial class TableWire
             Count++;
             return (ulong)Count;
         }
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public ulong RefAt(int ordinal, ulong id)
         {
             if (!OrdinalSlots.IsEmpty && (uint)ordinal < (uint)OrdinalSlots.Length)
@@ -645,11 +645,11 @@ public static partial class TableWire
         public Span<byte> Buffer;
         public int Offset;
         public Writer(Span<byte> buffer) { Buffer = buffer; Offset = 0; }
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public void Byte(byte v) { Buffer[Offset++] = v; }
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public void Raw(ReadOnlySpan<byte> v) { v.CopyTo(Buffer.Slice(Offset)); Offset += v.Length; }
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public void Fixed(ulong v, int n)
         {
             switch (n)
@@ -664,7 +664,7 @@ public static partial class TableWire
             }
             Offset += n;
         }
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public void Header(ulong reference, byte kind)
         {
             if (reference < 128)
@@ -675,12 +675,12 @@ public static partial class TableWire
             }
             Var(reference); Byte(kind);
         }
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public void HeaderAt(int ordinal, ulong id, byte kind, ref Ids ids)
         {
             Header(ids.RefAt(ordinal, id), kind);
         }
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public void Var(ulong v)
         {
             if (v < 128) { Byte(unchecked((byte)v)); return; }
@@ -696,11 +696,11 @@ public static partial class TableWire
         public int Offset;
         public Reader(ReadOnlySpan<byte> buffer, ReadOnlySpan<byte> vocabulary)
         { Buffer = buffer; Vocabulary = vocabulary; Offset = 0; Graph = null; }
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public bool Has(int n) { return n >= 0 && n <= Buffer.Length - Offset; }
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public byte Byte() { return Buffer[Offset++]; }
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public ulong Fixed(int n)
         {
             ulong v;
@@ -718,7 +718,7 @@ public static partial class TableWire
             Offset += n;
             return v;
         }
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public bool Var(out ulong v)
         {
             if ((uint)Offset < (uint)Buffer.Length)
@@ -744,7 +744,7 @@ public static partial class TableWire
             Offset = start;
             return false;
         }
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public bool Ref(out ulong reference, out ulong id)
         {
             id = 0;
@@ -1038,7 +1038,7 @@ public static partial class TableWire
         else if (f.Kind == 17) { w.Var(ids.Graph.Index(f.GetChild(value, i))); }
         else if (f.GetWide != null)
         {
-            UInt128 raw = f.GetWide(value, i); int width = Width(f.Kind);
+            global::System.UInt128 raw = f.GetWide(value, i); int width = Width(f.Kind);
             w.Fixed(unchecked((ulong)raw), global::System.Math.Min(width, 8)); if (width == 16) { w.Fixed(unchecked((ulong)(raw >> 64)), 8); }
         }
         else { w.Fixed(f.GetBuffer != null ? f.GetBuffer(value)[i] : f.GetRaw(value, i), Width(f.Kind)); }
@@ -1165,7 +1165,7 @@ public static partial class TableWire
     {
         if (bytes.Length < 5) { return false; }
         int end = bytes.Length - 4;
-        uint stored = BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(end));
+        uint stored = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(end));
         if (stored != IntegrityCrc(bytes.Slice(0, end))) { return false; }
         bytes = bytes.Slice(0, end);
         return true;
@@ -1299,10 +1299,10 @@ public static partial class TableWire
         {
             int width = Width(kind);
             if (!r.Has(width)) { return Damage(report); }
-            UInt128 wide = r.Fixed(global::System.Math.Min(width, 8));
-            if (width == 16) { wide |= (UInt128)r.Fixed(8) << 64; }
+            global::System.UInt128 wide = r.Fixed(global::System.Math.Min(width, 8));
+            if (width == 16) { wide |= (global::System.UInt128)r.Fixed(8) << 64; }
             else if ((kind >= 2 && kind <= 5) || (kind >= 20 && kind <= 23))
-            { int shift = 128 - width * 8; wide = unchecked((UInt128)((Int128)(wide << shift) >> shift)); }
+            { int shift = 128 - width * 8; wide = unchecked((global::System.UInt128)((global::System.Int128)(wide << shift) >> shift)); }
             if (f.RangeWide != null) { wide = f.RangeWide(wide, report); if (report.Refused) { return false; } }
             f.SetWide(value, index, wide); return true;
         }
@@ -1398,7 +1398,7 @@ public static partial class TableWire
     static void ZeroField(object value, TableFieldInfo f)
     {
         if (f.Dynamic) { f.ResetField(value); return; }
-        if (f.GetBuffer != null) { Array.Clear(f.GetBuffer(value), 0, f.ArrayBound); }
+        if (f.GetBuffer != null) { global::System.Array.Clear(f.GetBuffer(value), 0, f.ArrayBound); }
         else
         {
             int n = f.IsArray ? f.ArrayBound : 1;
@@ -1597,7 +1597,7 @@ public static partial class TableWire
         TableFieldInfo[] fields = type.Fields;
         if (fields == null || fields.Length == 0)
         {
-            type.IdIndex = Array.Empty<TableFieldInfo>();
+            type.IdIndex = global::System.Array.Empty<TableFieldInfo>();
             type.IdMask = 0;
             return;
         }

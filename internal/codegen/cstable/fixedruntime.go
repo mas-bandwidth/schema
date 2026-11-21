@@ -196,7 +196,7 @@ public readonly struct TableFixedKnownLayout
 // build and at run time owes a name rather than a crash (§5.9 #8).
 public sealed class TableFixedLineagePlan
 {
-    public TableFixedEntry[] Entries = Array.Empty<TableFixedEntry>();
+    public TableFixedEntry[] Entries = global::System.Array.Empty<TableFixedEntry>();
     public int Count;
     public int Split; // THE SPLIT (§5.9 #42): the number of UNGUARDED entries, the index the guarded half starts at
     public int Unknown;
@@ -208,7 +208,7 @@ public readonly struct TableFixedSlot<T>
 {
     public readonly Action<T, ulong> SetRaw;
     public readonly Action<T, double> SetDouble;
-    public readonly Action<T, UInt128> SetWide;
+    public readonly Action<T, global::System.UInt128> SetWide;
     public readonly TableFixedSetBytes<T> SetBytes;
     public readonly Action<T, ulong, TableReport> SetRawReport;
     public readonly Action<T> Reset; // declared default into this slot, and nowhere else
@@ -216,7 +216,7 @@ public readonly struct TableFixedSlot<T>
     public TableFixedSlot(
         Action<T, ulong> setRaw = null,
         Action<T, double> setDouble = null,
-        Action<T, UInt128> setWide = null,
+        Action<T, global::System.UInt128> setWide = null,
         TableFixedSetBytes<T> setBytes = null,
         Action<T, ulong, TableReport> setRawReport = null,
         Action<T> reset = null)
@@ -246,14 +246,14 @@ public static class TableFixedWire
     {
         int width = System.Runtime.CompilerServices.Unsafe.SizeOf<T>();
         int n = global::System.Math.Min(src.Length / width, dst.Length);
-        MemoryMarshal.Cast<byte, T>(src.Slice(0, n * width)).CopyTo(dst); /* byte order: swapped below on a big-endian host */
-        if (!BitConverter.IsLittleEndian) { ReverseEach(MemoryMarshal.AsBytes(dst.Slice(0, n)), width); }
+        global::System.Runtime.InteropServices.MemoryMarshal.Cast<byte, T>(src.Slice(0, n * width)).CopyTo(dst); /* byte order: swapped below on a big-endian host */
+        if (!global::System.BitConverter.IsLittleEndian) { ReverseEach(global::System.Runtime.InteropServices.MemoryMarshal.AsBytes(dst.Slice(0, n)), width); }
     }
     public static void WriteLittle<T>(ReadOnlySpan<T> src, Span<byte> dst) where T : unmanaged
     {
         int width = System.Runtime.CompilerServices.Unsafe.SizeOf<T>();
-        MemoryMarshal.AsBytes(src).CopyTo(dst); /* byte order: swapped below on a big-endian host */
-        if (!BitConverter.IsLittleEndian) { ReverseEach(dst.Slice(0, src.Length * width), width); }
+        global::System.Runtime.InteropServices.MemoryMarshal.AsBytes(src).CopyTo(dst); /* byte order: swapped below on a big-endian host */
+        if (!global::System.BitConverter.IsLittleEndian) { ReverseEach(dst.Slice(0, src.Length * width), width); }
     }
     // Reverses each width-byte group of bytes in place: one element's host image
     // to its little-endian image, and back.
@@ -335,10 +335,10 @@ public static class TableFixedWire
     {
         ReadOnlySpan<byte> e = b.Bytes.Slice(4 + i * EntryBytes, EntryBytes);
         TableFixedLayoutEntry outEntry = default;
-        outEntry.Id = BinaryPrimitives.ReadUInt64LittleEndian(e);
+        outEntry.Id = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(e);
         outEntry.Kind = e[8];
-        outEntry.Size = BinaryPrimitives.ReadUInt32LittleEndian(e.Slice(9));
-        outEntry.Children = BinaryPrimitives.ReadUInt32LittleEndian(e.Slice(13));
+        outEntry.Size = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(e.Slice(9));
+        outEntry.Children = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(e.Slice(13));
         return outEntry;
     }
 
@@ -384,7 +384,7 @@ public static class TableFixedWire
     {
         TableFixedLayoutView v = default;
         v.Bytes = bytes;
-        v.Count = bytes.Length >= 4 ? (int)BinaryPrimitives.ReadUInt32LittleEndian(bytes) : 0;
+        v.Count = bytes.Length >= 4 ? (int)global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(bytes) : 0;
         return v;
     }
 
@@ -457,7 +457,7 @@ public static class TableFixedWire
                     if (d.Arg == TextBytes)
                     {
                         if (te.Size < 4 || me.Size < 4) { return null; }
-                        int used = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)at));
+                        int used = global::System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)at));
                         uint cap = global::System.Math.Min(me.Size - 4u, te.Size - 4u);
                         if (used < 0 || (uint)used > cap) { return null; } // the live length rule refuses this
                         return DeadZero(src.Slice((int)at + 4 + used, (int)te.Size - 4 - used));
@@ -471,7 +471,7 @@ public static class TableFixedWire
                     uint n = global::System.Math.Min(their_n, my_n);
                     if (d.Counted != 0)
                     {
-                        int count = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)at));
+                        int count = global::System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)at));
                         if (count < 0 || (uint)count > n) { return null; } // the live count rule refuses this
                         string why = DeadZero(src.Slice((int)at + 4 + count * (int)tel.Size, (int)te.Size - 4 - count * (int)tel.Size));
                         if (why != null) { return why; }
@@ -507,7 +507,7 @@ public static class TableFixedWire
             case 12: // string(N): the bytes past the used length are dead
                 {
                     if (te.Size < 4 || me.Size < 4) { return null; }
-                    int used = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)at));
+                    int used = global::System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)at));
                     uint cap = global::System.Math.Min(me.Size - 4u, te.Size - 4u);
                     if (used < 0 || (uint)used > cap) { return null; } // the live length rule refuses this
                     return DeadZero(src.Slice((int)at + 4 + used, (int)te.Size - 4 - used));
@@ -517,9 +517,9 @@ public static class TableFixedWire
                     uint tag_bytes = TagBytes(theirs, ti);
                     ulong tag = 0;
                     if (tag_bytes == 1) { tag = src[(int)at]; }
-                    else if (tag_bytes == 2) { tag = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)at)); }
-                    else if (tag_bytes == 4) { tag = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)at)); }
-                    else if (tag_bytes == 8) { tag = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)at)); }
+                    else if (tag_bytes == 2) { tag = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)at)); }
+                    else if (tag_bytes == 4) { tag = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)at)); }
+                    else if (tag_bytes == 8) { tag = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)at)); }
                     if (tag == 0) { return DeadZero(src.Slice((int)at + (int)tag_bytes, (int)te.Size - (int)tag_bytes)); }
                     if (tag > te.Children) { return null; } // a forged tag refuses in the live pass
                     int their_arm = ti + 1;
@@ -679,7 +679,7 @@ public static class TableFixedWire
         view = default;
         why = null;
         if (bytes.Length < 4) { why = "layout_malformed"; return false; }
-        uint count = BinaryPrimitives.ReadUInt32LittleEndian(bytes);
+        uint count = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(bytes);
         if (count == 0 || (long)count * EntryBytes + 4 != bytes.Length)
         {
             why = "layout_count_mismatch";
@@ -797,12 +797,12 @@ public static class TableFixedWire
             Pool += bytes;
             if (total - Pool < Count * entrySize) { Overflow = true; return 0; }
             uint at = (uint)(total - Pool);
-            Span<byte> planBytes = MemoryMarshal.AsBytes(Plan);
+            Span<byte> planBytes = global::System.Runtime.InteropServices.MemoryMarshal.AsBytes(Plan);
             for (int j = 0; j < ChainLen; ++j)
             {
                 Span<byte> l = planBytes.Slice((int)at + j * GuardLinkBytes, GuardLinkBytes);
-                BinaryPrimitives.WriteUInt32LittleEndian(l, Chain[j].Guard);
-                BinaryPrimitives.WriteUInt64LittleEndian(l.Slice(4), Chain[j].Arg);
+                global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(l, Chain[j].Guard);
+                global::System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(l.Slice(4), Chain[j].Arg);
                 l[12] = Chain[j].ArgW;
             }
             return at;
@@ -821,11 +821,11 @@ public static class TableFixedWire
             Pool += bytes;
             if (total - Pool < Count * entrySize) { Overflow = true; return 0; }
             uint at = (uint)(total - Pool);
-            Span<byte> planBytes = MemoryMarshal.AsBytes(Plan);
-            BinaryPrimitives.WriteUInt16LittleEndian(planBytes.Slice((int)at), (ushort)n);
+            Span<byte> planBytes = global::System.Runtime.InteropServices.MemoryMarshal.AsBytes(Plan);
+            global::System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(planBytes.Slice((int)at), (ushort)n);
             for (int i = 0; i < n; ++i)
             {
-                BinaryPrimitives.WriteUInt16LittleEndian(planBytes.Slice((int)at + 2 + 2 * i), values[i]);
+                global::System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(planBytes.Slice((int)at + 2 + 2 * i), values[i]);
             }
             return at;
         }
@@ -1409,8 +1409,8 @@ public static class TableFixedWire
         for (int j = 0; j < (int)p.GuardCount; ++j)
         {
             ReadOnlySpan<byte> l = planBytes.Slice((int)p.GuardIndex + j * GuardLinkBytes, GuardLinkBytes);
-            uint guard = BinaryPrimitives.ReadUInt32LittleEndian(l);
-            ulong arg = BinaryPrimitives.ReadUInt64LittleEndian(l.Slice(4));
+            uint guard = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(l);
+            ulong arg = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(l.Slice(4));
             if (TagAt(src, guard, l[12]) != arg) { return false; }
         }
         return true;
@@ -1423,9 +1423,9 @@ public static class TableFixedWire
         switch (w)
         {
             case 1: return src[at];
-            case 2: return BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
-            case 4: return BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
-            case 8: return BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+            case 2: return global::System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+            case 4: return global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+            case 8: return global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
             default:
                 {
                     ulong v = 0;
@@ -1542,9 +1542,9 @@ public static class TableFixedWire
                             ulong raw = p.Size switch
                             {
                                 1 => src[(int)p.Src],
-                                2 => BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)),
-                                4 => BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)),
-                                8 => BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)),
+                                2 => global::System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)),
+                                4 => global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)),
+                                8 => global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)),
                                 _ => 0UL,
                             };
                             slots[(int)p.Dst].SetRawReport(dst, raw, report);
@@ -1555,21 +1555,21 @@ public static class TableFixedWire
                         }
                         else if (p.Size == 2)
                         {
-                            slots[(int)p.Dst].SetRaw?.Invoke(dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)));
+                            slots[(int)p.Dst].SetRaw?.Invoke(dst, global::System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)));
                         }
                         else if (p.Size == 4)
                         {
-                            slots[(int)p.Dst].SetRaw?.Invoke(dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)));
+                            slots[(int)p.Dst].SetRaw?.Invoke(dst, global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)));
                         }
                         else if (p.Size == 8)
                         {
-                            slots[(int)p.Dst].SetRaw?.Invoke(dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)));
+                            slots[(int)p.Dst].SetRaw?.Invoke(dst, global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)));
                         }
                         else if (p.Size == 16)
                         {
-                            ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
-                            ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
-                            slots[(int)p.Dst].SetWide?.Invoke(dst, new UInt128(hi, lo));
+                            ulong lo = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                            ulong hi = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
+                            slots[(int)p.Dst].SetWide?.Invoke(dst, new global::System.UInt128(hi, lo));
                         }
                         else
                         {
@@ -1615,15 +1615,15 @@ public static class TableFixedWire
                             int at = (int)p.Src + e * sw;
                             if (p.Sign == 2)
                             {
-                                double d2 = (double)BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at));
-                                BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
+                                double d2 = (double)global::System.Buffers.Binary.BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at));
+                                global::System.Buffers.Binary.BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
                                 continue;
                             }
                             ulong raw = 0;
                             if (sw == 1) raw = src[at];
-                            else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
-                            else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
-                            else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                            else if (sw == 2) raw = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                            else if (sw == 4) raw = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                            else if (sw == 8) raw = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
                             if (p.Sign == 1)
                             {
                                 int bits = sw * 8;
@@ -1632,9 +1632,9 @@ public static class TableFixedWire
                             }
                             System.Span<byte> cell = wide.Slice(e * dw, dw);
                             if (dw == 1) cell[0] = unchecked((byte)raw);
-                            else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, unchecked((ushort)raw));
-                            else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, unchecked((uint)raw));
-                            else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
+                            else if (dw == 2) global::System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(cell, unchecked((ushort)raw));
+                            else if (dw == 4) global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(cell, unchecked((uint)raw));
+                            else if (dw == 8) global::System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
                         }
                         slots[(int)p.Dst].SetBytes?.Invoke(dst, wide, need);
                         // WIDENED COUNTS ONE PER ELEMENT WIDENED, NOT ONE PER ENTRY.
@@ -1652,7 +1652,7 @@ public static class TableFixedWire
                     }
                 case Count:
                     {
-                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        int v = global::System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                         if (v < 0 || (uint)v > p.Size) { return "count_over_bound"; }
                         // A COUNTED ARRAY'S SLOTS PAST ITS COUNT ARE DEAD
                         // (docs/rulings.json fixed-dead-bytes-are-zero): Aux is
@@ -1669,7 +1669,7 @@ public static class TableFixedWire
                 case Text:
                     {
                         uint cap = p.Size;
-                        int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                        int v = global::System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                         if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
                         // A TEXT OR BYTES FIELD'S UNITS PAST ITS USED LENGTH ARE
                         // DEAD (docs/rulings.json fixed-dead-bytes-are-zero):
@@ -1703,17 +1703,17 @@ public static class TableFixedWire
                         // variant.
                         ulong raw = 0;
                         if (p.Size == 1) raw = src[(int)p.Src];
-                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
-                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
-                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 2) raw = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
                         uint v = 0;
                         if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
                         {
                             ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
-                            ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
+                            ushort count = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
                             if (raw != 0 && raw <= count)
                             {
-                                v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                                v = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
                             }
                             // A FORGED ORDINAL — one past the WRITER's own variant
                             // count — lands 0 (None) and moves NOTHING (§5.4: the
@@ -1738,9 +1738,9 @@ public static class TableFixedWire
                     {
                         ulong raw = 0;
                         if (p.Size == 1) raw = src[(int)p.Src];
-                        else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
-                        else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
-                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 2) raw = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 4) raw = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
                         if (p.Sign != 0)
                         {
                             int bits = (int)p.Size * 8;
@@ -1752,7 +1752,7 @@ public static class TableFixedWire
                         }
                         if (p.DstSize == 16)
                         {
-                            UInt128 w = (p.Sign != 0 && unchecked((long)raw) < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                            global::System.UInt128 w = (p.Sign != 0 && unchecked((long)raw) < 0) ? unchecked((global::System.UInt128)(global::System.Int128)(long)raw) : (global::System.UInt128)raw;
                             slots[(int)p.Dst].SetWide?.Invoke(dst, w);
                         }
                         else
@@ -1767,7 +1767,7 @@ public static class TableFixedWire
                         // THE FLOAT RUNG IS THE ORDINARY CONVERSION (docs/SPEC-TABLES.md
                         // §3.3, ALG §4.2): exact for every finite float32; a NaN or an
                         // infinity stays one, and the finite pass after the run refuses it.
-                        float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
+                        float f = global::System.Buffers.Binary.BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
                         slots[(int)p.Dst].SetDouble?.Invoke(dst, (double)f);
                         if (report != null) { report.Widened++; }
                         break;

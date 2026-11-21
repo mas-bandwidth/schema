@@ -5,9 +5,9 @@ func (g *tableGen) emitRegionCookSurface(names []string) {
 		if g.unit.Tables[n].IsMapEntry() || !g.unit.Tables[n].CarriesForm("cook") {
 			continue
 		}
-		g.pf("public static long %sCookMeasure(IntPtr region, TableAllocator allocator = default) { return TableWire.CookRegion(region, %sTableType(), IntPtr.Zero, 0, TableByteOrder.Little, true, allocator); }\n", n, n)
-		g.pf("public static bool %sCook(IntPtr region, IntPtr bytes, long capacity, TableByteOrder order = TableByteOrder.Little, TableAllocator allocator = default) { return TableWire.CookRegion(region, %sTableType(), bytes, capacity, order, false, allocator) >= 0; }\n", n, n)
-		g.pf("public static unsafe bool %sCook(IntPtr region, Span<byte> bytes, TableByteOrder order = TableByteOrder.Little, TableAllocator allocator = default) { fixed (byte* p = bytes) { return %sCook(region, (IntPtr)p, bytes.Length, order, allocator); } }\n", n, n)
+		g.pf("public static long %sCookMeasure(global::System.IntPtr region, TableAllocator allocator = default) { return TableWire.CookRegion(region, %sTableType(), global::System.IntPtr.Zero, 0, TableByteOrder.Little, true, allocator); }\n", n, n)
+		g.pf("public static bool %sCook(global::System.IntPtr region, global::System.IntPtr bytes, long capacity, TableByteOrder order = TableByteOrder.Little, TableAllocator allocator = default) { return TableWire.CookRegion(region, %sTableType(), bytes, capacity, order, false, allocator) >= 0; }\n", n, n)
+		g.pf("public static unsafe bool %sCook(global::System.IntPtr region, Span<byte> bytes, TableByteOrder order = TableByteOrder.Little, TableAllocator allocator = default) { fixed (byte* p = bytes) { return %sCook(region, (global::System.IntPtr)p, bytes.Length, order, allocator); } }\n", n, n)
 	}
 }
 
@@ -24,7 +24,7 @@ const tableRegionCookSource = `
         // float is finite, so a NaN or an infinity refuses the cook. A builder's
         // pack into its own region is not a form and carries what it holds.
         public bool Finite;
-        public void Put(long at, UInt128 raw, int width)
+        public void Put(long at, global::System.UInt128 raw, int width)
         {
             if (Bytes == null) { return; }
             for (int i = 0; i < width; i++) { Bytes[Base + at + (Big ? width - 1 - i : i)] = unchecked((byte)(raw >> (i * 8))); }
@@ -157,9 +157,9 @@ const tableRegionCookSource = `
             if (attribution) { w.Put(data + (i + 1) * 16L, (ulong)node.NativeOffset, 8); w.Put(data + (i + 1) * 16L + 8, node.TypeId, 8); }
         }
     }
-    public static long CookRegion(IntPtr pointer, TableTypeInfo type, IntPtr bytes, long capacity, TableByteOrder order, bool measure, TableAllocator allocator = default, bool mutable = false)
+    public static long CookRegion(global::System.IntPtr pointer, TableTypeInfo type, global::System.IntPtr bytes, long capacity, TableByteOrder order, bool measure, TableAllocator allocator = default, bool mutable = false)
     {
-        if (pointer == IntPtr.Zero || order != TableByteOrder.Little && order != TableByteOrder.Big) { return -1; }
+        if (pointer == global::System.IntPtr.Zero || order != TableByteOrder.Little && order != TableByteOrder.Big) { return -1; }
         NativeValue root = new NativeValue((byte*)pointer, 0) { Mutable = mutable }; RegionGraph graph = RegionNumber(root, type, allocator);
         if (!graph.Valid) { return -1; }
         try
@@ -167,14 +167,14 @@ const tableRegionCookSource = `
             long data = RegionPlace(root, type, ref graph, out int alignment, true); if (data < 0) { return -1; }
             long directory = ((long)graph.Count + 1) * 16, size = checked(64 + data + directory);
             if (measure) { return size; }
-            if (bytes == IntPtr.Zero || capacity < size || (ulong)size > (ulong)nuint.MaxValue) { return -1; }
+            if (bytes == global::System.IntPtr.Zero || capacity < size || (ulong)size > (ulong)nuint.MaxValue) { return -1; }
             System.Runtime.InteropServices.NativeMemory.Clear((void*)bytes, (nuint)size);
             RegionPackWriter w = new RegionPackWriter { Bytes = (byte*)bytes, Big = order == TableByteOrder.Big, Graph = graph };
             w.Put(0, 0x4b4f4f434d484353ul, 8); w.Put(8, tableOwnVocabulary.BuildVersion, 8); w.Put(16, (uint)order, 8);
             w.Put(24, (ulong)data, 8); w.Put(32, (ulong)directory, 8); w.Put(40, (uint)alignment, 8);
             w.Base = 64; RegionPack(ref w, root, type, data, true); return size;
         }
-        catch (OverflowException) { return -1; }
+        catch (global::System.OverflowException) { return -1; }
         finally { graph.Dispose(); }
     }
 `

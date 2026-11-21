@@ -116,7 +116,7 @@ public static class TableJson
     // then counts as unknown, turning a refusal into a silent loss.
     static bool Named(string name)
     {
-        return name != null && !string.Equals(name, "???", StringComparison.Ordinal);
+        return name != null && !string.Equals(name, "???", global::System.StringComparison.Ordinal);
     }
 
     // finite: not a NaN, not an infinity. C++ spells the NaN test v == v; C#
@@ -162,7 +162,7 @@ public static class TableJson
     // name settles it, and "bytes" is a keyword no declaration can claim.
     static bool IsBytes(TableFieldInfo f)
     {
-        return f.IsArray && f.Kind == 6 && string.Equals(f.TypeName, "bytes", StringComparison.Ordinal);
+        return f.IsArray && f.Kind == 6 && string.Equals(f.TypeName, "bytes", global::System.StringComparison.Ordinal);
     }
 
     // An ENUM-KEYED array (docs/SPEC-TABLES.md §2.4): its JSON form is an OBJECT
@@ -1896,7 +1896,7 @@ public static class TableJson
             }
             if (!canonical) { return RefuseText(ref input, "base64_not_canonical"); }
             byte[] storage = f.GetBuffer(value);
-            Array.Clear(storage, 0, f.ArrayBound);
+            global::System.Array.Clear(storage, 0, f.ArrayBound);
             PutCount(value, f, 0);
             int placed = 0;
             uint accumulator = 0;
