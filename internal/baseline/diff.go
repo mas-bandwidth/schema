@@ -706,20 +706,21 @@ var mapOwnedTokens = map[string]bool{"array": true, "type": true, "keykind": tru
 // the `[..N]Pair` its entries already are is THE SAME BYTES IN BOTH
 // DIRECTIONS, where `Pair`'s fields are exactly a `key` and a `value` — which
 // is what the `kind` and `elem` rows on this same line hold — and the MAP
-// DIRECTION GAINS THE ORDER CHECK, so a wire whose pairs were not ascending
-// reads short and says so. §18.2 warns on the edit for that reason: nothing
-// already written changes meaning, and something is lost that the read
-// reports.
+// DIRECTION GAINS THE ORDER CHECK, so a wire whose pairs were not ascending,
+// or that repeats a key, refuses `wire_damaged` (§2.8: the one read keeps no
+// prefix). §18.2 warns on the edit for that reason: nothing a conforming
+// writer wrote changes meaning, but a wire the array read accepted the map
+// read refuses.
 func mapShapeFinding(where, was, now string, present bool) []Finding {
 	if !present || was == now || (was != "map" && now != "map") {
 		return nil
 	}
 	if now == "map" {
 		return []Finding{{Warn, where, fmt.Sprintf(
-			"array shape %s -> map — the same bytes in both directions where the element's fields are exactly a `key` and a `value`, and the MAP DIRECTION GAINS THE ORDER CHECK: a wire whose pairs were not ascending keeps the ascending prefix, reads short and says so (docs/SPEC-TABLES.md §2.8, §18.2)", was)}}
+			"array shape %s -> map — the same bytes in both directions where the element's fields are exactly a `key` and a `value`, and the MAP DIRECTION GAINS THE ORDER CHECK: a wire whose pairs were not ascending refuses `wire_damaged`, and so does a repeated key (docs/SPEC-TABLES.md §2.8, §18.2)", was)}}
 	}
 	return []Finding{{Warn, where, fmt.Sprintf(
-		"array shape map -> %s — the same bytes in both directions where the element's fields are exactly a `key` and a `value`, and the array direction LOSES the order check and the duplicate merge: repeated keys arrive as ordinary elements (docs/SPEC-TABLES.md §2.8, §18.2)", now)}}
+		"array shape map -> %s — the same bytes in both directions where the element's fields are exactly a `key` and a `value`, and the array direction LOSES the order check and the repeated-key refusal: pairs out of order or with a repeated key read as ordinary elements (docs/SPEC-TABLES.md §2.8, §18.2)", now)}}
 }
 
 func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
