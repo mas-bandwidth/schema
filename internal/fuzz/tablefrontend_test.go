@@ -58,18 +58,52 @@ func loadUnit(name, src string) (*ir.Unit, []error) {
 	return unit, nil
 }
 
-// seedSchemas adds every *.schema file under dir to the fuzzer corpus.
-func seedSchemas(dir string, add func(string)) {
-	filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() || filepath.Ext(d.Name()) != ".schema" {
+// seedSchemas adds every *.schema file under dir to the fuzzer corpus and
+// returns how many. A walk error or an unreadable schema is an error, never a
+// shorter corpus.
+func seedSchemas(dir string, add func(string)) (int, error) {
+	n := 0
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || filepath.Ext(d.Name()) != ".schema" {
 			return nil
 		}
-		if b, err := os.ReadFile(path); err == nil {
-			add(string(b))
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return err
 		}
+		add(string(b))
+		n++
 		return nil
 	})
+	return n, err
 }
+
+// TestSeedSchemasCountsWhatItAdds is the control: a missing directory is an
+// error, an empty one counts zero, and each real seed directory holds schemas.
+func TestSeedSchemasCountsWhatItAdds(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := seedSchemas(filepath.Join(dir, "absent"), func(string) {}); err == nil {
+		t.Fatal("a missing seed directory walked without error")
+	}
+	if n, err := seedSchemas(dir, func(string) {}); err != nil || n != 0 {
+		t.Fatalf("an empty directory seeded %d (err %v), want 0", n, err)
+	}
+	for _, real := range tableSeedDirs {
+		if n, err := seedSchemas(real, func(string) {}); err != nil || n == 0 {
+			t.Errorf("%s seeds %d schemas (err %v), want at least one", real, n, err)
+		}
+	}
+}
+
+// tableSeedDirs are the trees FuzzTableFrontEnd seeds from.
+var tableSeedDirs = []string{
+	"../../tables", "../../test", "../../internal",
+	"../../examples", "../../examples128", "../../bench", "../../testdata",
+}
+
 
 // tableHandSeeds are shapes aimed at the table front end's own guards, so a
 // regression in any of them is found in seconds rather than hours.
@@ -90,11 +124,14 @@ var tableHandSeeds = []string{
 // Go emitter a unit it neither panics nor refuses in silence on, and the
 // emitted Go — for one input in four — must parse.
 func FuzzTableFrontEnd(f *testing.F) {
-	for _, dir := range []string{
-		"../../tables", "../../test", "../../internal",
-		"../../examples", "../../examples128", "../../bench", "../../testdata",
-	} {
-		seedSchemas(dir, func(s string) { f.Add(s) })
+	for _, dir := range tableSeedDirs {
+		n, err := seedSchemas(dir, func(s string) { f.Add(s) })
+		if err != nil {
+			f.Fatalf("seed directory %s: %v", dir, err)
+		}
+		if n == 0 {
+			f.Fatalf("seed directory %s holds no .schema file", dir)
+		}
 	}
 	for _, s := range tableHandSeeds {
 		f.Add(s)
