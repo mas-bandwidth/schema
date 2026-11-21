@@ -287,6 +287,9 @@ func arith(op string, x, y cValue) (cValue, error) {
 		if op == "/" {
 			r.Quo(a, b)
 		} else {
+			if t.signed && !t.holds(new(big.Int).Quo(a, b)) {
+				return cValue{}, fmt.Errorf("signed overflow in %%: the quotient %s / %s does not fit int%d", a, b, t.bits)
+			}
 			r.Rem(a, b)
 		}
 	}

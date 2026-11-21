@@ -178,6 +178,9 @@ func (g *gen) carrierEval(e ast.Expr) (*big.Int, carrier, bool) {
 				return nil, c, false
 			}
 			v.Rem(x, y)
+			if !c.holds(new(big.Int).Quo(x, y)) {
+				return nil, c, false // the quotient is computed too: MIN % -1 overflows though the remainder is 0
+			}
 		default:
 			return nil, c, false
 		}

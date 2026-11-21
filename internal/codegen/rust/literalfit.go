@@ -109,6 +109,9 @@ func rangeEval(e ast.Expr, lo, hi *big.Int) (*big.Int, bool) {
 				return nil, false
 			}
 			v.Rem(x, y)
+			if !in(new(big.Int).Quo(x, y)) {
+				return nil, false // MIN % -1: the implied quotient overflows, a const-evaluation error
+			}
 		default:
 			return nil, false
 		}

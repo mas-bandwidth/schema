@@ -84,6 +84,22 @@ const Bottom = -9223372036854775807 - 1
 const BottomBack = -(-Bottom)
 const Huge = 9007199254740993
 const Top uint64 = 0xffffffffffffffff
+const Low8 int8 = -127 - 1
+const Low16 int16 = -32767 - 1
+const Low32 int32 = -2147483647 - 1
+const Low64 int64 = -9223372036854775807 - 1
+const Rem8 = Low8 % -1
+const Rem16 = Low16 % -1
+const Rem32 = Low32 % (-1)
+const Rem64 = Low64 % (-1)
+const Div8 = Low8 / -1
+const Div16 = Low16 / -1
+const Div32 = Low32 / -1
+const Rem8Literal int8 = (-127 - 1) % (-1)
+const Rem16Literal int16 = (-32767 - 1) % (-1)
+const Rem32Literal int32 = (-2147483647 - 1) % (-1)
+const Rem64Literal = (-9223372036854775807 - 1) % (-1)
+const BottomRem = Bottom % -1
 `
 
 const constAgreeTypes = `
@@ -99,6 +115,10 @@ type Defaults
     h uint8 = 300 - 100
     i int64 = 0x80000000 - 0x80000001
     j uint32 = Ceiling - 1
+    k int8 = (-127 - 1) % (-1)
+    l int16 = Low16 % -1
+    m int32 = (-2147483647 - 1) % (-1)
+    n int64 = Low64 % (-1)
 }
 `
 
