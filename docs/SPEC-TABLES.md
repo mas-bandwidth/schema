@@ -26,8 +26,9 @@ tool output are one case, not two, and the whole of this document serves
 it. The hardcoded wire (`type`, SPEC.md) is the same-build contract,
 guarded by the protocol id: same-or-refuse. Packets are its loudest user,
 not its definition — any data whose writer and reader share a schema build
-belongs there. The table wire is the opposite contract: **any reader reads
-any data**, and the differences are reported, never fatal.
+belongs there. The table wire is the opposite contract: **a reader reads
+another build's data across every lawful edit**, and the differences are
+reported; what it cannot read whole it refuses whole, by name (§4).
 
 The two contracts never mix. Flatbuffers- and protobuf-class evolution
 ideas apply here, to tables — they do not apply to `type`, whose wire is
