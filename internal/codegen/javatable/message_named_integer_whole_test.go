@@ -181,8 +181,8 @@ func TestJavaMessageNamedIntegerHeldWholeAndUnionFieldArmZero(t *testing.T) {
 	for _, c := range cases {
 		line := ""
 		for l := range strings.SplitSeq(out, "\n") {
-			if strings.HasPrefix(l, "CASE "+c.name+" ") {
-				line = strings.TrimPrefix(l, "CASE "+c.name+" ")
+			if rest, ok := strings.CutPrefix(l, "CASE "+c.name+" "); ok {
+				line = rest
 			}
 		}
 		if line == "" {
@@ -193,7 +193,7 @@ func TestJavaMessageNamedIntegerHeldWholeAndUnionFieldArmZero(t *testing.T) {
 		if c.want == "refused" {
 			ok = strings.HasPrefix(line, "refused ")
 		} else {
-			for _, w := range strings.Fields(c.want) {
+			for w := range strings.FieldsSeq(c.want) {
 				if !strings.Contains(" "+line+" ", " "+w+" ") {
 					ok = false
 				}

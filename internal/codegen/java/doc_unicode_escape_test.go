@@ -88,7 +88,7 @@ func eligibleUnicodeEscape(s string) bool {
 func TestDocCommentHasNoUnicodeEscape(t *testing.T) {
 	src := generateDocEscapeJava(t)
 	docs := 0
-	for _, line := range strings.Split(src, "\n") {
+	for line := range strings.SplitSeq(src, "\n") {
 		t2 := strings.TrimSpace(line)
 		if !strings.HasPrefix(t2, "// a ") && !strings.HasPrefix(t2, "// an ") {
 			continue
@@ -113,7 +113,7 @@ func TestDocCommentKeepsItsText(t *testing.T) {
 		unAt("// a variant doc @u0022"),
 	} {
 		found := false
-		for _, line := range strings.Split(src, "\n") {
+		for line := range strings.SplitSeq(src, "\n") {
 			if strings.TrimSpace(strings.ReplaceAll(line, escapedBackslash, "\\")) == want {
 				found = true
 			}
