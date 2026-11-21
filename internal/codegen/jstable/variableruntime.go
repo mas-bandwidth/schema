@@ -1576,6 +1576,13 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
       keep = fd.bound;
       report.oor++;
       if (fd.tl && !report.oorField) { report.oorField = fd.field; }
+    } else if (count < (fd.min || 0)) {
+      // a count below the declared Min is off the count's own range: the
+      // field is refused out_of_range where it stands, before any element
+      // lands (SPEC §5.1 row 3; decode.go arrayBody refuseField)
+      report.oor++;
+      if (fd.tl && !report.oorField) { report.oorField = fd.field; }
+      return false;
     }
     // the span from the cursor to the body's end, empty rather than negative
     // when the count's own spelling ran past it (decode.go subTo)
@@ -2802,9 +2809,12 @@ function TableVariableTextArray(fd, inp, v, depth, graph, report) {
   v[fd.n] = out;
   const bound = fd.list ? 0x7fffffff : fd.bound;
   let placed = 0;
+  // a closed array shorter than the declared Min is off the count's own
+  // range, refused as the count past Max is (SPEC §5.1 row 3; read.go)
+  const least = () => { if (placed < (fd.min || 0)) { report.oor++; } return true; };
   for (;;) {
     let ch = inp.peek();
-    if (ch === "]") { inp.p++; return true; }
+    if (ch === "]") { inp.p++; return least(); }
     if (ch === "") { inp.bad = true; return false; }
     const shape = inp.shape();
     if (placed >= bound) {
@@ -2824,7 +2834,7 @@ function TableVariableTextArray(fd, inp, v, depth, graph, report) {
     }
     ch = inp.peek();
     if (ch === ",") { inp.p++; continue; }
-    if (ch === "]") { inp.p++; return true; }
+    if (ch === "]") { inp.p++; return least(); }
     inp.bad = true;
     return false;
   }

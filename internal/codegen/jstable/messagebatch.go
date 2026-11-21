@@ -1124,6 +1124,12 @@ func (g *fixedModule) emitMessageReadArray(f *ir.Field, mem, ind, shape string, 
 		g.pf("%s  if (n === 0n && r.Vocabulary.BuildVersion === %s) { r.Report.Damaged = true; return false; }\n", ind, jsId(ir.BuildVersion(g.unit)))
 	}
 	g.pf("%s  if (keep > %d) { keep = %d; r.Report.Oor++; }\n", ind, bound, bound)
+	if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+		// a count below the declared Min is off the count's own range and is
+		// refused as the count past Max is (SPEC §5.1 row 3; Go
+		// messagedecode.go refuses count_over_bound)
+		g.pf("%s  if (n < %dn) { r.Report.Oor++; }\n", ind, f.ArrayMin)
+	}
 	e := messageElementField(f)
 	if f.KeyEnum != "" {
 		g.pf("%s  const seenKeys = [];\n", ind)
