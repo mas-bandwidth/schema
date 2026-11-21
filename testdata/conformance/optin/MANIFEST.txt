@@ -1,0 +1,32 @@
+# THE OPT-IN CORPUS: a committed manifest with one opt-in unit, the rows a leg
+# that omits that unit must not be handed, and a control beside each. Format:
+# testdata/conformance/tables/FORMAT.md. The harness derives it and filters it
+# for a leg that names `unit backenddemo` and one that does not; the two
+# filtered manifests are pinned beside it (leg-opts-in.txt, leg-omits.txt) by
+# test/conformance/harness/optin_corpus_test.go, and the Java driver answers
+# both in internal/codegen/javatable/conformance_optin_test.go.
+
+unit scalars     tables/scalars
+unit tblvarevo3  test/tables/varevo/VarEvo3.schema
+unit backenddemo tables/backend
+opt-in backenddemo
+
+connection varevo3_conn tblvarevo3  0x25fed5501e5d7aa5 testdata/wire/tables/varevo3_conn.bin
+connection backend_conn backenddemo 0x2309093a1139c6cc testdata/wire/tables/backend_conn.bin
+
+# F-096: `score` on a required unit and `score.json` on the opt-in one. The
+# json-write case `score.json` is the required row's and is asked;
+# `score.json.json` is the opt-in row's and is not.
+instance score      scalars     SimState      testdata/conformance/tables/wire/scalars_full.bin
+instance score.json backenddemo StorePurchase testdata/conformance/tables/wire/store_full.bin
+
+# F-097: one name, two surfaces, two units. The required instance's wire and
+# text cases are asked; the opt-in write-refusal row is not.
+instance shared      scalars     SimState      testdata/conformance/tables/wire/scalars_default.bin
+write-refusal shared backenddemo StorePurchase testdata/conformance/tables/wire/store_full.bin quantity int 100 refused
+
+# F-186: a write-refusal-message row reads the opt-in unit through its
+# connection, so a leg that omits the unit is handed neither; the row on a
+# required unit's connection is the control.
+write-refusal-message mref_range_high_ok backend_conn StorePurchase testdata/conformance/tables/wire/store_full.bin          quantity       int   99       wrote
+write-refusal-message mref_unionstr_ok   varevo3_conn EvoMsg        testdata/conformance/tables/wire/varevo3_msg_notice.bin payload.notice bytes 61C3A962 wrote
