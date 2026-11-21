@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"maps"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -630,30 +631,40 @@ func TestLobsterFixedFormEvolution(t *testing.T) {
 		newerWid := lobsterReadSchema(t, "VNEW_cfloat_range_widen")
 		tableWid := lobsterFixedRoot(t, olderWid).Name
 		pkgWid := lobsterUnitOf(t, newerWid).Package
+		// THE WRITER'S RANGE HOLDS A COMPRESSED FLOAT (docs/rulings.json
+		// strict-only-read; docs/FIXED-FORM-ALGORITHM.md §4.6): old_ (0.5, inside
+		// the OLD writer's [-1, 1]) lands exactly; hostile_ (1.5, past the
+		// writer's range, inside the NEW reader's [-2, 2]) and past_ (5.0, past
+		// both) refuse the whole load out_of_range with nothing landed.
 		aimClean := lobsterManifestFloatBits(t, corpus, "old_cfloat_range_widen.bin", "values", "r0.aim")
-		aimHostile := lobsterManifestFloatBits(t, corpus, "hostile_cfloat_range_widen.bin", "forged", "r0.aim")
-		cleanBytes, err := os.ReadFile(filepath.Join(corpus, "old_cfloat_range_widen.bin"))
-		if err != nil {
-			t.Fatal(err)
+		if math.Float32frombits(aimClean) != 0.5 {
+			t.Fatalf("old_cfloat_range_widen.bin r0.aim is %v, want 0.5", math.Float32frombits(aimClean))
 		}
-		hostileBytes, err := os.ReadFile(filepath.Join(corpus, "hostile_cfloat_range_widen.bin"))
-		if err != nil {
-			t.Fatal(err)
+		wid := map[string][]byte{}
+		for _, name := range []string{"old", "hostile", "past"} {
+			data, err := os.ReadFile(filepath.Join(corpus, name+"_cfloat_range_widen.bin"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			wid[name+".bin"] = data
 		}
 		bodyWid := fmt.Sprintf(`
-    let back:[%s.%s] = []
-    for(8): push(back, %s.New%s())
+    let back:[%[1]s.%[2]s] = []
+    for(8): push(back, %[1]s.New%[2]s())
     let r = schema_rt.TableReport {}
-    let plan = %s.make_plan(4096)
-    let n1 = %s.%sFixedLoad(back, read_in("clean.bin"), plan, r)
-    assert_true(n1 == 1 and r.clamped == 0 and not r.malformed, "cfloat_range_widen clean")
-    assert_eq(read_uint32_le(write_float32_le(schema_rt.zeros(4), 0, back[0].Aim), 0), %d, "cfloat_range_widen clean bits")
-    let n2 = %s.%sFixedLoad(back, read_in("hostile.bin"), plan, r)
-    assert_true(n2 == 1 and r.clamped == 0 and not r.malformed, "cfloat_range_widen hostile")
-    assert_eq(read_uint32_le(write_float32_le(schema_rt.zeros(4), 0, back[0].Aim), 0), %d, "cfloat_range_widen hostile bits")
+    let plan = %[1]s.make_plan(4096)
+    let n1 = %[1]s.%[2]sFixedLoad(back, read_in("old.bin"), plan, r)
+    assert_true(n1 == 1 and r.reason == "" and not r.malformed, "cfloat_range_widen old_ lands")
+    assert_eq(read_uint32_le(write_float32_le(schema_rt.zeros(4), 0, back[0].Aim), 0), %[3]d, "cfloat_range_widen old_ bits")
+    for(["hostile.bin", "past.bin"]) name:
+        back[0].Aim = 0.25
+        back[0].Lead = 0x5A5A5A5A
+        let n2 = %[1]s.%[2]sFixedLoad(back, read_in(name), plan, r)
+        assert_true(n2 == -1 and r.reason == "out_of_range" and r.verdict == schema_rt.TableOpenRefused and not r.malformed, "cfloat_range_widen " + name + " refuses out_of_range, got reason=" + r.reason)
+        assert_true(back[0].Aim == 0.25 and back[0].Lead == 0x5A5A5A5A, "cfloat_range_widen " + name + " lands nothing")
     print "PASS"
-`, pkgWid, tableWid, pkgWid, tableWid, pkgWid, pkgWid, tableWid, int64(aimClean), pkgWid, tableWid, int64(aimHostile))
-		if out := runLobsterVersionProbe(t, newerWid, []string{olderWid}, 0, bodyWid, map[string][]byte{"clean.bin": cleanBytes, "hostile.bin": hostileBytes}); strings.TrimSpace(out) != "PASS" {
+`, pkgWid, tableWid, int64(aimClean))
+		if out := runLobsterVersionProbe(t, newerWid, []string{olderWid}, 0, bodyWid, wid); strings.TrimSpace(out) != "PASS" {
 			t.Fatalf("cfloat_range_widen: %q", out)
 		}
 		compared.Add(3)
