@@ -114,11 +114,17 @@ func writeFixedField(b *strings.Builder, u *ir.Unit, f *ir.Field, vname, fname s
 			bound = "fixed." + fname + ".length"
 		}
 		elem := fixedElementExpr(f, "fixed."+fname+"[i]")
+		if f.KeyEnum == "" {
+			// THE FIXED RECORD'S ELEMENTS REPLACE THE BORN LIST: a [A..B]T
+			// list is born holding A elements (docs/SPEC.md §4.2), and what
+			// the record carries is placed over them, never after them.
+			fmt.Fprintf(b, "%sv.%s.clear();\n", ind, vname)
+		}
 		fmt.Fprintf(b, "%sfor (int i = 0; i < %s; i++) {\n", ind, bound)
 		if f.KeyEnum != "" {
 			// a keyed array's list is born pre-filled with the bound's defaults
 			// (generateTableVariable's Value constructor), so its slots are
-			// set, not appended; a bounded or counted array is born empty.
+			// set, not appended.
 			fmt.Fprintf(b, "%s    v.%s.set(i, %s);\n", ind, vname, elem)
 		} else {
 			fmt.Fprintf(b, "%s    v.%s.add(%s);\n", ind, vname, elem)

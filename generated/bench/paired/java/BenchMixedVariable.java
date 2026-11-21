@@ -3441,14 +3441,17 @@ public final class BenchMixedVariable {
         v.frameTick = fixed.frameTick;
         v.serverTime = fixed.serverTime;
         assert fixed.entitiesCount >= 1 && fixed.entitiesCount <= 8;
+        v.entities.clear();
         for (int i = 0; i < fixed.entitiesCount; i++) {
             v.entities.add(MixedEntityVariable.fromFixed(fixed.entities[i]));
         }
         assert fixed.statsCount >= 0 && fixed.statsCount <= 80;
+        v.stats.clear();
         for (int i = 0; i < fixed.statsCount; i++) {
             v.stats.add(MixedStatVariable.fromFixed(fixed.stats[i]));
         }
         v.gameEvent = MixedEventVariable.fromFixed(fixed.gameEvent);
+        v.loadout.clear();
         for (int i = 0; i < fixed.loadout.length; i++) {
             v.loadout.add((fixed.loadout[i] & 0xFF));
         }
