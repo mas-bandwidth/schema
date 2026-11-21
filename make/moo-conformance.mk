@@ -22,7 +22,7 @@ MOO_CONFORMANCE_SCHEMAS := $(foreach p,$(MOO_CONFORMANCE_UNIT_PATHS),$(if $(filt
 
 # the moo runtimes are //go:embed'ded into the binary, which GO_SOURCES (*.go
 # only) does not see: a changed runtime file rebuilds it
-build/schema-moo: $(GO_SOURCES) $(wildcard internal/codegen/moo*/runtime/*)
+build/schema-moo: $(GO_SOURCES) $(EMBED_SOURCES) $(wildcard internal/codegen/moo*/runtime/*)
 	@mkdir -p build
 	go build -o $@ ./cmd/schema
 

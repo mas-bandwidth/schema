@@ -15,7 +15,10 @@
 # A disagreement the port already owes is carried, by name, in
 # test/cpp-hostile/known-findings.tsv, and printed as a FIX-CARD. A disagreement
 # no FIX-CARD names is a failure, and a FIX-CARD that has gone green is a
-# failure too, so the list cannot rot into silence.
+# failure too, so the list cannot rot into silence. A skip (a case the port
+# has no API for) is held the same way, by name, in test/cpp-hostile/known-skips.tsv:
+# a skip no line names fails, so a binding dropped from the case binary reads
+# red, and a line whose case answers fails too.
 #
 # The planted-verdict control copies the corpus to a scratch directory, flips
 # one accepted case's verdict to a refusal, and requires the runner to go red
@@ -24,6 +27,7 @@
 CPP_HOSTILE_CORPUS   ?= internal/ci/hostilecorpus/corpus
 CPP_HOSTILE_BUILD    := build/cpp-hostile
 CPP_HOSTILE_FINDINGS ?= test/cpp-hostile/known-findings.tsv
+CPP_HOSTILE_SKIPS    ?= test/cpp-hostile/known-skips.tsv
 # -g1, not -g: line tables are all a sanitizer report needs to name file and
 # line, and full -g made GCC's variable tracking 81% of compiling
 # unit_messagedemo.cpp (218 of 270 s, -ftime-report, g++ 16; the whole
@@ -101,7 +105,7 @@ $(CPP_HOSTILE_BUILD)/hostilecorpusexec: $(wildcard tools/hostilecorpusexec/*.go 
 .PHONY: schema-cpp-runs-hostile-corpus
 schema-cpp-runs-hostile-corpus: $(CPP_HOSTILE_BUILD)/case $(CPP_HOSTILE_BUILD)/hostilecorpusexec
 	$(CPP_HOSTILE_BUILD)/hostilecorpusexec run -port cpp -exec $(CPP_HOSTILE_BUILD)/case \
-		-corpus "$(CPP_HOSTILE_CORPUS)" -findings "$(CPP_HOSTILE_FINDINGS)"
+		-corpus "$(CPP_HOSTILE_CORPUS)" -findings "$(CPP_HOSTILE_FINDINGS)" -skips "$(CPP_HOSTILE_SKIPS)"
 
 # The plant: one case the engine accepts is recorded as a refusal it never
 # names, in a scratch copy of the corpus, and the runner must name it FAIL.
@@ -114,7 +118,7 @@ schema-cpp-runs-hostile-corpus-negative-control: $(CPP_HOSTILE_BUILD)/case $(CPP
 	@if cmp -s $(CPP_HOSTILE_CORPUS)/manifest.tsv $(CPP_HOSTILE_BUILD)/plant/corpus/manifest.tsv; then \
 		echo 'NEGATIVE CONTROL FAILED: the planted verdict did not apply'; exit 1; fi
 	@if $(CPP_HOSTILE_BUILD)/hostilecorpusexec run -port cpp -exec $(CPP_HOSTILE_BUILD)/case \
-			-corpus $(CPP_HOSTILE_BUILD)/plant/corpus -findings "$(CPP_HOSTILE_FINDINGS)" > $(CPP_HOSTILE_BUILD)/plant/log 2>&1; then \
+			-corpus $(CPP_HOSTILE_BUILD)/plant/corpus -findings "$(CPP_HOSTILE_FINDINGS)" -skips "$(CPP_HOSTILE_SKIPS)" > $(CPP_HOSTILE_BUILD)/plant/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: a changed verdict left the corpus green'; \
 		cat $(CPP_HOSTILE_BUILD)/plant/log; exit 1; fi
 	@grep -q '^FAIL wire-valid ' $(CPP_HOSTILE_BUILD)/plant/log || \

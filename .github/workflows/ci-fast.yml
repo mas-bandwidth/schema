@@ -186,7 +186,12 @@ jobs:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
     outputs:
-      packages: ${{ steps.pick.outputs.packages }}
+      # the finalized selection the go test rows test (gotestrows -packages-out):
+      # go-test-touched is gated on it, never on the pick step's own list, which
+      # an embed-only diff leaves empty while its owner is selected
+      packages: ${{ steps.rows.outputs.packages }}
+      # the diff's own Go packages, what golangci-lint-fast lints
+      lint_packages: ${{ steps.pick.outputs.packages }}
       legs: ${{ steps.pick.outputs.legs }}
       verify_legs: ${{ steps.pick.outputs.verify_legs }}
       clean_legs: ${{ steps.pick.outputs.clean_legs }}
@@ -229,6 +234,9 @@ jobs:
             echo "::notice::the diff is empty against origin/$BASE — running the broad selection"
             files="ir/"
           fi
+          # the rows step reads the diff too: a changed file a package embeds
+          # (go:embed) seeds the dependents expansion from its owner
+          printf '%s\n' "$files" > "$RUNNER_TEMP/diff-files.txt"
           echo "--- files in the diff"
           echo "$files"
 
@@ -358,6 +366,19 @@ jobs:
               m=$d; while [ "$m" != . ]; do [ -f "$m/go.mod" ] && continue 2; case "$m" in */*) m=${m%/*} ;; *) m=. ;; esac; done
               case " $packages " in *" ./$d "*) ;; *) packages="$packages ./$d" ;; esac
             done
+            # THE DEPENDENTS. A package whose non-test source changed can break
+            # the tests of every package that builds on it, and the diff names
+            # none of those: PR #4437 changed the front end and merged green
+            # with internal/tablewire red. These are the packages, among the
+            # ones above, whose non-test .go files changed; the rows step hands
+            # them to gotestrows -dependents-of, which selects every
+            # main-module package whose build or tests depend on one of them
+            # (`go list -test`). A test-only change selects no dependents.
+            src_packages=""
+            src_dirs=$(awk '/\.go$/ && !/_test\.go$/ { d = $0; if (!sub(/\/[^\/]*$/, "", d)) d = "."; if (!(d in seen)) { seen[d] = 1; print d } }' <<<"$files")
+            for d in $src_dirs; do
+              case " $packages " in *" ./$d "*) src_packages="$src_packages ./$d" ;; esac
+            done
             # THE RUNTIME-ONLY DIFF. A language's emitted runtime (a .lua, .moo,
             # .nut, .goose, .rs ... file under its codegen directory) is tested
             # by that language's two Go packages, the type surface and the
@@ -455,6 +476,7 @@ jobs:
               done
             fi
             packages=$(echo "$packages" | xargs || true)
+            src_packages=$(echo "$src_packages" | xargs || true)
           }
 
           # THE LANGUAGE LINTS (the owner, 2026-11-15: "run only the fastest
@@ -549,6 +571,7 @@ jobs:
 
           echo "broad=$broad"               >> "$GITHUB_OUTPUT"
           echo "packages=$packages"         >> "$GITHUB_OUTPUT"
+          echo "src_packages=$src_packages" >> "$GITHUB_OUTPUT"
           echo "legs=$json"                 >> "$GITHUB_OUTPUT"
           echo "verify_legs=$verify_legs_json" >> "$GITHUB_OUTPUT"
           echo "clean_legs=$clean_legs_json"   >> "$GITHUB_OUTPUT"
@@ -559,6 +582,7 @@ jobs:
             echo
             echo "* broad selection: **$broad**"
             echo "* packages: \`${packages:-(none)}\`"
+            echo "* dependents of: \`${src_packages:-(none)}\`"
             echo "* legs: \`$json\`"
             echo "* verify-legs: \`$verify_legs_json\`"
             echo "* clean-legs: \`$clean_legs_json\`"
@@ -575,9 +599,9 @@ jobs:
       # a row with no edit. gotable adds the two make rows below.
       - name: the go test rows
         id: rows
-        if: steps.pick.outputs.packages != ''
         env:
           PACKAGES: ${{ steps.pick.outputs.packages }}
+          SRC_PACKAGES: ${{ steps.pick.outputs.src_packages }}
           BROAD: ${{ steps.pick.outputs.broad }}
         run: |
           set -euo pipefail
@@ -586,10 +610,15 @@ jobs:
           case " $PACKAGES " in
             *" ./internal/codegen/gotable "*|*" ./... "*) flags="$flags -gotable-extras" ;;
           esac
+          # the dependents of the changed non-test source ride beside the diff's
+          # own packages (THE DEPENDENTS in `pick`), and so do the dependents of a
+          # package that embeds a changed non-.go file (a runtime-only diff)
           # shellcheck disable=SC2086
-          rows=$(go run ./tools/gotestrows $flags $PACKAGES)
+          rows=$(go run ./tools/gotestrows $flags -dependents-of "$SRC_PACKAGES" -changed-files "$RUNNER_TEMP/diff-files.txt" -packages-out "$RUNNER_TEMP/selected-packages.txt" $PACKAGES)
           echo "$rows"
           echo "rows=$rows" >> "$GITHUB_OUTPUT"
+          echo "packages=$(cat "$RUNNER_TEMP/selected-packages.txt")" >> "$GITHUB_OUTPUT"
+          echo "* go test selection (packages, embed owners, dependents): \`$(cat "$RUNNER_TEMP/selected-packages.txt")\`" >> "$GITHUB_STEP_SUMMARY"
 
   # THE CHEAP LINTS, the ones that answer in seconds and catch the mistake a
   # human would otherwise find by reading. modernize runs here too (issue
@@ -790,7 +819,7 @@ jobs:
   # packages right on the PR instead of waiting for ci-full.yml's lint job.
   golangci-lint-fast:
     needs: plan
-    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.packages != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.lint_packages != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
     defaults:
@@ -811,11 +840,11 @@ jobs:
         with:
           version: v2.12.2
           skip-cache: true
-          args: --allow-parallel-runners ${{ needs.plan.outputs.packages }}
+          args: --allow-parallel-runners ${{ needs.plan.outputs.lint_packages }}
       - name: golangci-lint on touched Go packages
         if: runner.environment != 'github-hosted'
         env:
-          PACKAGES: ${{ needs.plan.outputs.packages }}
+          PACKAGES: ${{ needs.plan.outputs.lint_packages }}
         run: |
           set -euo pipefail
           if [ -f /opt/nova/sdk/env.sh ]; then

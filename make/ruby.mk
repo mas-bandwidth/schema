@@ -6,7 +6,7 @@
 # The pinned interpreters and analyzers are make/ruby-toolchain.mk's. Ruby is
 # a built-in target of every build, so build/schema-ruby is a plain build.
 
-build/schema-ruby: $(shell find compiler internal cmd ir -name '*.go' -o -name '*.rb' -o -name '*.rbs' 2>/dev/null)
+build/schema-ruby: $(shell find compiler internal cmd ir -name '*.go' -o -name '*.rb' -o -name '*.rbs' 2>/dev/null) $(EMBED_SOURCES)
 	@mkdir -p build
 	go build -o $@ ./cmd/schema
 # SERIALIZE_PIN, the vendored serialize.rb's pin, and every other runtime file
