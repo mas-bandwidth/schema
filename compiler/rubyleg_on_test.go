@@ -1,6 +1,6 @@
 // The Ruby packet wire through the compiler's driver (docs/plans/ruby-leg.md,
-// R3 and R4), in a build with the schema_leg_ruby tag:
-// `go test -tags schema_leg_ruby ./compiler -run Ruby` (make test-ruby).
+// R3 and R4), in the default build, where ruby is a built-in target:
+// `go test ./compiler -run Ruby` (make test-ruby).
 package compiler
 
 import (
@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// TestRubyTargetIsRegistered: the tagged build carries the ruby target,
+// TestRubyTargetIsRegistered: the default build carries the ruby target,
 // registered from its own init, with its table carries set registered empty.
 func init() {
 	nonGoCarriers["ruby"] = CarryConstructs()
@@ -18,7 +18,7 @@ func init() {
 func TestRubyTargetIsRegistered(t *testing.T) {
 	t.Parallel()
 	if !slices.Contains(New().Targets(), "ruby") {
-		t.Fatalf("the schema_leg_ruby build lists no ruby target: %v", New().Targets())
+		t.Fatalf("the default build lists no ruby target: %v", New().Targets())
 	}
 	got, ok := Carried("ruby")
 	if !ok {

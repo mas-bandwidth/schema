@@ -35,9 +35,9 @@ GOOSE_DIST = "dist/goose-v2026.2-linux-x64"
 # the leg runs only its pinned interpreters, never one found on PATH.
 PYTHON_DIST = "dist/python-3.15.2/bin/python3.15"
 RUBY_DIST = "dist/ruby-4.0.9/bin/ruby"
-# Build tags a leg's Go test phases run under: Python's gates run under the
-# leg's tag everywhere else (make/python.mk's python-ci-packages), so here too.
-GO_TAGS = {"python": "schema_leg_python"}
+# Build tags a leg's Go test phases run under: none, every shipped target is
+# built in (Glenn, 2026-11-21: "all languages, by default, all the time.").
+GO_TAGS = {}
 # Mutable variable-file loads, with the full fixed/message roster still
 # exercising each root's form-specific reader. Goose's load grows its own
 # value table, so it has no caller region and no LoadMeasure.
@@ -685,7 +685,7 @@ def run_python_packets(runner):
     runner.make("packet-build", "dist-python python-toolchain-check build/schema-python")
     for label, tests in PYTHON_PACKET_PROBES.items():
         runner.run("packet-" + label + "-0",
-                   ["go", "test", "-tags", GO_TAGS["python"], "-json", "-timeout=0", "-count=1", "-parallel=2",
+                   ["go", "test", "-json", "-timeout=0", "-count=1", "-parallel=2",
                     "-run", "^(" + "|".join(tests) + ")$", "./internal/codegen/python"],
                    validate=lambda text, t=tests: native_result(text, list(t), "python"))
     makefile = python_uncapped_makefile(runner, PYTHON_PACKET_FEATURES, "packet-features")
@@ -1105,7 +1105,7 @@ def run_controls(runner, lang):
     elif lang == "python":
         for name, tests in PYTHON_RETENTION_CONTROLS.items():
             runner.run("retain-python-" + name,
-                       ["go", "test", "-tags", GO_TAGS["python"], "-json", "-timeout=0", "-count=1", "-parallel=2",
+                       ["go", "test", "-json", "-timeout=0", "-count=1", "-parallel=2",
                         "-run", "^(" + "|".join(tests) + ")$", "./internal/codegen/pythontable"],
                        validate=lambda text, t=tests: native_result(text, list(t), "pythontable"))
     elif lang == "ruby":

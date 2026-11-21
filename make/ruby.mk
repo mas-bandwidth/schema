@@ -3,26 +3,24 @@
 # wildcard include; the Makefile names no language. The leg registers itself
 # at the end of this file.
 #
-# The pinned interpreters and analyzers are make/ruby-toolchain.mk's. The
-# target stays behind the schema_leg_ruby build tag until the table layers
-# (R5 fixed tables and R6 variable tables) satisfy the cross-leg table gates,
-# so R4 builds build/schema-ruby with -tags schema_leg_ruby.
+# The pinned interpreters and analyzers are make/ruby-toolchain.mk's. Ruby is
+# a built-in target of every build, so build/schema-ruby is a plain build.
 
 build/schema-ruby: $(shell find compiler internal cmd ir -name '*.go' -o -name '*.rb' -o -name '*.rbs' 2>/dev/null)
 	@mkdir -p build
-	go build -tags schema_leg_ruby -o $@ ./cmd/schema
+	go build -o $@ ./cmd/schema
 
 .PHONY: test-ruby test-ruby-recipe update-goldens-ruby ruby-skeleton-negative-control
 test-ruby: ruby-toolchain-check ruby-serialize-test packet-utf8-ruby bench-ruby-gate
 	$(MAKE) test-ruby-recipe
 test-ruby-recipe: ruby-toolchain-check
-	sh test/slowgate/proof test-ruby-packet 'TestRubySkeleton TestVendoredRubySerializeIsThePin TestRubyPacketClose TestRubyPacketCloseAnalyzer TestRubyPacketDefaults TestRubyPacketFinite TestRubyPacketVoid TestRubyPacketReadBitsAndOwnership TestRubyPacketShapeBench' -count=1 -timeout 600s -tags schema_leg_ruby -run '^(TestRubySkeleton|TestVendoredRubySerializeIsThePin|TestRubyPacketClose$$|TestRubyPacketCloseAnalyzer$$|TestRubyPacketDefaults$$|TestRubyPacketFinite$$|TestRubyPacketVoid$$|TestRubyPacketReadBitsAndOwnership$$|TestRubyPacketShapeBench$$)' ./internal/codegen/ruby/
+	sh test/slowgate/proof test-ruby-packet 'TestRubySkeleton TestVendoredRubySerializeIsThePin TestRubyPacketClose TestRubyPacketCloseAnalyzer TestRubyPacketDefaults TestRubyPacketFinite TestRubyPacketVoid TestRubyPacketReadBitsAndOwnership TestRubyPacketShapeBench' -count=1 -timeout 600s -run '^(TestRubySkeleton|TestVendoredRubySerializeIsThePin|TestRubyPacketClose$$|TestRubyPacketCloseAnalyzer$$|TestRubyPacketDefaults$$|TestRubyPacketFinite$$|TestRubyPacketVoid$$|TestRubyPacketReadBitsAndOwnership$$|TestRubyPacketShapeBench$$)' ./internal/codegen/ruby/
 	sh test/slowgate/proof test-ruby-tables 'TestRubyVariableTablesAllSurfacesAndStrictAnalyze TestRubyMessageFormAndRetainUnknown TestRubyBlockManifestAndRealUnitsAnalyze' -count=1 -timeout 600s -run '^(TestRubyVariableTablesAllSurfacesAndStrictAnalyze|TestRubyMessageFormAndRetainUnknown|TestRubyBlockManifestAndRealUnitsAnalyze)$$' ./internal/codegen/rubytable/
-	sh test/slowgate/proof test-ruby-compiler 'TestRubyTargetIsRegistered TestRubyGeneratesAnEmptyUnitThroughTheDriver TestRubyCarriesThePacketWireThroughTheDriver TestNewLegRubyRecipe TestCountedArrayIsBornAtItsDeclaredMinimum TestCountOnWriteIsDebugOnlyWhereTheLanguageHasThatIdiom TestGuardCommentsSpellTheConditionTheWayDescriptorsDo TestVoidArmInTypeBodyIsCheckedAndCarried TestUnionTagEnumExportsMaxNoCountAndItsDebugName TestTagEnumDebugNameCoversNoneVariantsAndOutOfSet TestUnionTagOnWriteIsDebugOnlyWhereTheLanguageHasThatIdiom TestPacketValueDefaultsCarriers TestNoVariableTableMessagePath TestEveryTargetHasATableBackend TestFixedTableValueDefaultsEveryLeg TestFX1GeneratesOnEveryLeg' -count=1 -tags schema_leg_ruby -run 'Ruby|CountedArray|CountOnWrite|GuardComments|VoidArmInTypeBody|UnionTag|TagEnumDebugName|PacketValueDefaultsCarriers|TestNoVariableTableMessagePath|TestEveryTargetHasATableBackend|FixedTableValueDefaultsEveryLeg|FX1GeneratesOnEveryLeg' ./compiler
+	sh test/slowgate/proof test-ruby-compiler 'TestRubyTargetIsRegistered TestRubyGeneratesAnEmptyUnitThroughTheDriver TestRubyCarriesThePacketWireThroughTheDriver TestNewLegRubyRecipe TestCountedArrayIsBornAtItsDeclaredMinimum TestCountOnWriteIsDebugOnlyWhereTheLanguageHasThatIdiom TestGuardCommentsSpellTheConditionTheWayDescriptorsDo TestVoidArmInTypeBodyIsCheckedAndCarried TestUnionTagEnumExportsMaxNoCountAndItsDebugName TestTagEnumDebugNameCoversNoneVariantsAndOutOfSet TestUnionTagOnWriteIsDebugOnlyWhereTheLanguageHasThatIdiom TestPacketValueDefaultsCarriers TestNoVariableTableMessagePath TestEveryTargetHasATableBackend TestFixedTableValueDefaultsEveryLeg TestFX1GeneratesOnEveryLeg' -count=1 -run 'Ruby|CountedArray|CountOnWrite|GuardComments|VoidArmInTypeBody|UnionTag|TagEnumDebugName|PacketValueDefaultsCarriers|TestNoVariableTableMessagePath|TestEveryTargetHasATableBackend|FixedTableValueDefaultsEveryLeg|FX1GeneratesOnEveryLeg' ./compiler
 update-goldens-ruby: ;
 
 ruby-skeleton-negative-control: ruby-toolchain-check
-	sh test/slowgate/proof ruby-skeleton-negative-control 'TestRubySkeleton' -count=1 -timeout 600s -tags schema_leg_ruby -run 'TestRubySkeleton/negative-control' ./internal/codegen/ruby/
+	sh test/slowgate/proof ruby-skeleton-negative-control 'TestRubySkeleton' -count=1 -timeout 600s -run 'TestRubySkeleton/negative-control' ./internal/codegen/ruby/
 
 # build/conformance-ruby generates every MANIFEST.txt tables unit for Ruby,
 # plus the variable-class framing sibling for tblr1 (test/tables/R1.schema).

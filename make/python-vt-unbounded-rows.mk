@@ -13,7 +13,7 @@ PYTHON_CI_SUPPORT_GROUPS += python-ci-vt-unbounded-rows
 .PHONY: python-ci-vt-unbounded-rows python-vt-unbounded-rows python-vt-unbounded-rows-negative-control
 python-ci-vt-unbounded-rows: python-vt-unbounded-rows python-vt-unbounded-rows-negative-control
 python-vt-unbounded-rows: python-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtUnboundedRows$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestPythonVtUnboundedRows$$' ./internal/codegen/pythontable/
 python-vt-unbounded-rows-negative-control: python-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtUnboundedRowsNegativeControl$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestPythonVtUnboundedRowsNegativeControl$$' ./internal/codegen/pythontable/
 test-python: python-vt-unbounded-rows python-vt-unbounded-rows-negative-control

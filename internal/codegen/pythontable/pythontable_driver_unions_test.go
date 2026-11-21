@@ -15,7 +15,7 @@ import (
 func TestPythonVtUnionsThroughTheDriver(t *testing.T) {
 	t.Parallel()
 	if _, ok := compiler.Carried("python"); !ok {
-		t.Skip("the python target is behind the schema_leg_python build tag")
+		t.Fatal("compiler.Carried(\"python\") has no registration: python is a built-in target of every build")
 	}
 	const src = `package unions
 
@@ -63,7 +63,7 @@ table Root
 func TestPythonVtUnionsRefusesPacketUnionArrays(t *testing.T) {
 	t.Parallel()
 	if _, ok := compiler.Carried("python"); !ok {
-		t.Skip("the python target is behind the schema_leg_python build tag")
+		t.Fatal("compiler.Carried(\"python\") has no registration: python is a built-in target of every build")
 	}
 	const src = `package unions
 

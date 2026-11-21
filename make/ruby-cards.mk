@@ -13,7 +13,7 @@ $(CARDS_RUBY_GENERATED)/.stamp: build/schema-ruby tables/cards/Card.schema table
 	@touch $@
 
 cards-ruby-test: ruby-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_ruby -run '^TestRubyCards$$' ./internal/codegen/rubytable/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestRubyCards$$' ./internal/codegen/rubytable/
 
 cards-ruby-conformance: toolchain-ruby build/conformance-harness cards-ruby-generate
 	RUBY=$(RUBY) ./build/conformance-harness cards --work build/cards-ruby-current --corpus tables/cards/conformance --driver 'tables/cards/ruby/driver' --require $(CARDS_RUBY_SURFACES)
@@ -42,7 +42,7 @@ cards-ruby-hash-negative-control: toolchain-ruby build/conformance-harness cards
 	$(call cards-ruby-control,taskhash,s/Digest::SHA256.hexdigest(data)/"0" * 64/)
 
 cards-ruby-facade-negative-control: ruby-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_ruby -run '^TestRubyCardsFacadeNegativeControl$$' ./internal/codegen/rubytable/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestRubyCardsFacadeNegativeControl$$' ./internal/codegen/rubytable/
 
 ruby-ci-cards: cards-ruby-test cards-ruby-conformance cards-ruby-render-negative-control cards-ruby-upgrade-negative-control cards-ruby-hash-negative-control cards-ruby-facade-negative-control
 test-ruby: ruby-ci-cards

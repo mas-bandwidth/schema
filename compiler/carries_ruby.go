@@ -3,7 +3,7 @@ package compiler
 // rubyCarried is every construct the Ruby target carries (docs/SPEC-TABLES.md;
 // docs/PORT-RUBY.md, THE CARD MAP). It starts empty: the skeleton carries no
 // table construct. A later layer that carries one adds a line in its OWN new
-// file (compiler/carries_ruby_<surface>.go, tag schema_leg_ruby):
+// file (compiler/carries_ruby_<surface>.go, no build tag):
 //
 //	var _ = carryRuby(carryForms)
 //

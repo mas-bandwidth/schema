@@ -51,12 +51,12 @@ goose-toolchain-ready:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	@$(call toolchain_probe,goose,GOOSE,$(GOOSE))
 
-# THE HARNESS WITH THE TARGET'S TAG: `implementation --lang goose` reads
-# compiler.Carried("goose"), which only a schema_leg_goose build registers
-# (test/conformance/harness/implementation_goose.go).
+# THE HARNESS FOR THE LEG: `implementation --lang goose` reads
+# compiler.Carried("goose"), which every build registers: goose is a
+# built-in target (test/conformance/harness/implementation_tagged.go).
 build/conformance-harness-goose: $(wildcard test/conformance/harness/*.go) $(GO_SOURCES)
 	@mkdir -p build
-	go build -tags schema_leg_goose -o $@ ./test/conformance/harness
+	go build -o $@ ./test/conformance/harness
 
 # test-goose runs both Goose packages: the type surface (internal/codegen/goose)
 # and the table surface (internal/codegen/goosetable), each under the pinned
@@ -103,8 +103,8 @@ tables-goose-tablewire-negative-control:
 	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestGooseTableWireNegativeControl$$' ./internal/codegen/goosetable/
 
 # build/conformance-goose is the manifest's units generated for goose, one
-# directory per unit. The schema_leg_goose tag is the target's until the port
-# joins the builtins (compiler/target_goose.go). A unit the target refuses is
+# directory per unit. Goose is a built-in target of every build
+# (compiler/target_goose.go). A unit the target refuses is
 # recorded as its refusal line, never dropped in silence. The units move with
 # the compiler, the goose runtimes it embeds and the unit schemas, not only with
 # the manifest.
@@ -113,7 +113,7 @@ build/conformance-goose: $(GOOSE_MANIFEST) make/goose.mk $(GO_SOURCES) \
 	$(filter internal/codegen/goose/% internal/codegen/goosetable/%,$(EMBED_SOURCES)) \
 	$(CONFORMANCE_UNIT_SCHEMAS)
 	@rm -rf $@ && mkdir -p $@
-	go build -tags schema_leg_goose -o build/schema-goose ./cmd/schema
+	go build -o build/schema-goose ./cmd/schema
 	@grep '^unit ' $(GOOSE_MANIFEST) | while read -r _ key paths; do \
 		if ./build/schema-goose generate --lang goose --out $@/$$key $$paths >$@/$$key.log 2>&1; then \
 			rm -f $@/$$key.log; \

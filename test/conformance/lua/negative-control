@@ -70,7 +70,7 @@ if cmp -s "$source" "$out/runtime.lua"; then
     exit 1
 fi
 printf '{"Replace":{"%s/%s":"%s/%s/runtime.lua"}}\n' "$root" "$source" "$root" "$out" > "$out/overlay.json"
-go build -tags schema_leg_lua -overlay "$root/$out/overlay.json" -o "$out/schema-lua" ./cmd/schema
+go build -overlay "$root/$out/overlay.json" -o "$out/schema-lua" ./cmd/schema
 
 # the units exactly as make/lua.mk's build/conformance-lua generates them
 mkdir -p "$out/generated"

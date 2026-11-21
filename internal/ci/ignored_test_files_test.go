@@ -45,9 +45,10 @@ import (
 // tagBoundTestFiles is the allow list: a test file excluded by a build tag
 // written on purpose, each beside the reason it is not silent.
 var tagBoundTestFiles = map[string]string{
-	"test/conformance/harness/implementation_goose_on_test.go": "the schema_leg_goose half of gooseTagged; " +
-		"implementation_goose_off_test.go is its untagged twin, and `make test-goose-tagged-harness` " +
-		"(make/goose-tagged.mk, ci-full.yml's leg-tagged job) runs the package under the tag",
+	"test/conformance/harness/implementation_tagprobe_on_test.go": "the schema_leg_tagprobe half of tagprobeTagged, " +
+		"a made-up new leg holding the tagged admission a `schema new-leg` leg uses; " +
+		"implementation_tagprobe_off_test.go is its untagged twin, and `make test-tagged-harness` " +
+		"(make/newleg-tagged.mk, ci-full.yml's leg-tagged job) runs the package under the tag",
 }
 
 // ignoredScanRoots are the package patterns the gate covers: the compiler and

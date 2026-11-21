@@ -15,7 +15,7 @@ var shippedTargets = []string{
 }
 
 // TestShippedTargetsAreBuiltIn is the regression test for v3.0.1's defect:
-// compiler/target_moo.go sat behind a schema_leg_moo build tag, so the default
+// compiler/target_moo.go sat behind a build tag for its leg, so the default
 // binary answered `--lang moo` with "not implemented" while the docs listed
 // Moo as supported. This file carries no build tag, so it runs in the default
 // build, and it fails if any shipped language is missing from the registered

@@ -54,12 +54,11 @@ build/conformance-lobster \
 build/goose-wirefuzz-legs/.verify-stamp \
 build/goose-messagefuzz-legs/.verify-stamp: $(CONFORMANCE_UNIT_LOCKS)
 
-# Harness built with the harness's remaining leg tags so `implementation --lang`
-# admits every VM backend (moo is built in and needs no tag).
+# The harness is a plain build: every shipped target is built in, so
+# `implementation --lang` admits every VM backend with no tag.
 build/conformance-harness-vm: $(wildcard test/conformance/harness/*.go) $(GO_SOURCES) $(wildcard internal/codegen/moo*/runtime/*)
 	@mkdir -p build
-	go build -tags schema_leg_python,schema_leg_ruby,schema_leg_squirrel,schema_leg_goose \
-		-o $@ ./test/conformance/harness
+	go build -o $@ ./test/conformance/harness
 
 # Deep per-VM verification driver: all-27-feature packet goldens (ludicrous,
 # clauses [50], joins [33], rigidbody, shipcreate, probe, chat, compressed_probe),

@@ -14,10 +14,10 @@
 # make/negative-controls.d/python-vt-idtable-rows-negative-control.json.
 .PHONY: python-vt-idtable-rows python-vt-idtable-rows-negative-control
 python-vt-idtable-rows: deps-go python-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtIdtableRows$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestPythonVtIdtableRows$$' ./internal/codegen/pythontable/
 
 python-vt-idtable-rows-negative-control: deps-go python-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtIdtableRowsNegativeControl$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestPythonVtIdtableRowsNegativeControl$$' ./internal/codegen/pythontable/
 
 test-python: python-vt-idtable-rows python-vt-idtable-rows-negative-control
 PYTHON_CI_SUPPORT_GROUPS += python-vt-idtable-rows python-vt-idtable-rows-negative-control

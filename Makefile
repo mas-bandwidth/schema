@@ -6484,6 +6484,11 @@ conformance-negative-control-block-dump: build/conformance-harness build/conform
 # THE PORT REGISTRY: every make/<lang>.mk whose stem has no dash. A dashed
 # stem (make/<card-id>.mk, make/<lang>-<part>.mk) is a gate or support
 # fragment: included like any make file, never probed as a --lang port.
+# THE SHIPPED TARGETS: every one is built in, in every build (Glenn,
+# 2026-11-21: "all languages, by default, all the time."), so none of them may
+# take the new-leg skeleton's skip below. compiler/target_moo_builtin_test.go
+# holds the compiler to the same eighteen.
+SCHEMA_SHIPPED_TARGETS := c cpp cs dart elixir go goose java js lobster lua luau moo python ruby rust squirrel unity
 SCHEMA_PORTS := $(sort $(filter-out %-%,$(foreach p,$(patsubst make/%.mk,%,$(wildcard make/*.mk)),$(if $(findstring -,$(p)),,$(p)))))
 
 .PHONY: tables-ports-refuse-wide-scalars
@@ -6495,6 +6500,12 @@ tables-ports-refuse-wide-scalars: bin/schema
 	for lang in $(SCHEMA_PORTS); do \
 		if ./bin/schema generate --lang $$lang --out build/tables-wide-refusal/$$lang tables/scalars > build/tables-wide-refusal/$$lang.log 2>&1; then \
 			carry=$$((carry+1)); continue; \
+		fi; \
+		if grep -q 'is not implemented' build/tables-wide-refusal/$$lang.log; then \
+			case " $(SCHEMA_SHIPPED_TARGETS) " in *" $$lang "*) \
+				echo "REFUSAL GATE FAILED: $$lang is a shipped target and the default build answers --lang $$lang with 'is not implemented':"; \
+				cat build/tables-wide-refusal/$$lang.log; exit 1;; \
+			esac; \
 		fi; \
 		if grep -q 'is not implemented' build/tables-wide-refusal/$$lang.log && \
 		   [ "$$(sed -n '1p' compiler/target_$$lang.go 2>/dev/null)" = "//go:build schema_leg_$$lang" ]; then \
@@ -6544,16 +6555,16 @@ test-moo-tagged-table: toolchain-moo build/fixedform-corpus/.stamp
 # so the moo rows build with no tag (the names stay, for the matrix and its
 # pins): the compiler's Moo tests and the shipped-target registration, the moo
 # table descriptors load under the pinned interpreter, and the harness's
-# admission tests (moo in every build; the tagged-admission test under the
-# goose tag below).
-.PHONY: test-moo-tagged-compiler-smoke test-moo-tagged-table-smoke test-goose-tagged-harness-smoke
+# admission tests (every shipped target in every build; the tagged-admission
+# test under a made-up new leg's tag below, make/newleg-tagged.mk).
+.PHONY: test-moo-tagged-compiler-smoke test-moo-tagged-table-smoke test-tagged-harness-smoke
 test-moo-tagged-compiler-smoke: toolchain-moo
 	SCHEMA_SLOW=1 go test -count=1 -timeout 60m -run '^(TestMoo|TestEachTargetDeclaresWhatItCarries|TestShippedTargetsAreBuiltIn)' ./compiler/
 test-moo-tagged-table-smoke: toolchain-moo
 	SCHEMA_SLOW=1 go test -count=1 -timeout 60m -run '^TestMooTableDescriptorsLoad$$' ./internal/codegen/mootable/
-	SCHEMA_SLOW=1 go test -count=1 -timeout 60m -run '^(TestImplementationAdmitsTaggedLanguagesByBuild|TestImplementationAdmitsMooByBuild)$$' ./test/conformance/harness/
-test-goose-tagged-harness-smoke:
-	SCHEMA_SLOW=1 go test -count=1 -timeout 60m -tags schema_leg_goose -run '^TestImplementationAdmitsTaggedLanguagesByBuild$$' ./test/conformance/harness/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 60m -run '^(TestImplementationAdmitsTaggedLanguagesByBuild|TestImplementationAdmitsEveryShippedTarget)$$' ./test/conformance/harness/
+test-tagged-harness-smoke:
+	SCHEMA_SLOW=1 go test -count=1 -timeout 60m -tags schema_leg_tagprobe -run '^TestImplementationAdmitsTaggedLanguagesByBuild$$' ./test/conformance/harness/
 # map is not a compiler backend. Include it by path so the registry wildcard
 # above stays live ports only (tables-ports-refuse-wide-scalars).
 include $(wildcard tools/agentsmap/map.mk)

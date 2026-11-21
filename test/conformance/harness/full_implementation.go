@@ -465,7 +465,7 @@ func implementationReport(w io.Writer, m *Manifest, lang string) error {
 	langs := originalNine
 	if lang != "" {
 		if !admittedImplementationLanguage(lang) {
-			return fmt.Errorf("implementation: %q is not an original-nine language", lang)
+			return fmt.Errorf("implementation: %q is not a shipped language", lang)
 		}
 		langs = []string{lang}
 	}

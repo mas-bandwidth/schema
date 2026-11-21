@@ -12,17 +12,17 @@
 
 .PHONY: schema-python-runs-hostile-corpus schema-python-runs-hostile-corpus-negative-control
 schema-python-runs-hostile-corpus: python-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonRunsHostileCorpus$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestPythonRunsHostileCorpus$$' ./internal/codegen/pythontable/
 
 schema-python-runs-hostile-corpus-negative-control: python-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonHostileCorpusPlantedReader$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestPythonHostileCorpusPlantedReader$$' ./internal/codegen/pythontable/
 
 .PHONY: schema-python-resource-bounds schema-python-resource-bounds-negative-control
 schema-python-resource-bounds: python-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonResourceBoundsHostileShapes$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestPythonResourceBoundsHostileShapes$$' ./internal/codegen/pythontable/
 
 schema-python-resource-bounds-negative-control: python-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonResourceBoundsPlantedPattern$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestPythonResourceBoundsPlantedPattern$$' ./internal/codegen/pythontable/
 
 # THE CI SUPPORT ROW: the four targets are one row of the Python leg's
 # support matrix, so a direct test-python prerequisite never falls outside it.

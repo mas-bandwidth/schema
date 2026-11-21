@@ -7,9 +7,9 @@ PYTHON_CI_SUPPORT_GROUPS += tables-python-usage tables-python-usage-negative-con
 
 .PHONY: tables-python-usage tables-python-usage-negative-control
 tables-python-usage: python-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonUsageFragmentsRun$$' ./internal/ci/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestPythonUsageFragmentsRun$$' ./internal/ci/
 
 tables-python-usage-negative-control: python-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonUsageFragmentsRunNegativeControl$$' ./internal/ci/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestPythonUsageFragmentsRunNegativeControl$$' ./internal/ci/
 
 test-python: tables-python-usage tables-python-usage-negative-control
