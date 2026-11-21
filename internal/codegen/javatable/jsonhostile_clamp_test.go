@@ -3,7 +3,6 @@ package javatable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -13,6 +12,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJsonHostileReportClampCounterJava pins the Java text reader's VERDICT to
@@ -162,7 +163,7 @@ public final class Driver {
 	sort.Strings(sources)
 	javac, java := javaTools(t)
 	args := append([]string{"--release", "17", "-d", classes}, sources...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 
@@ -173,7 +174,7 @@ public final class Driver {
 			if err := os.WriteFile(tp, r.text, 0o644); err != nil {
 				t.Fatal(err)
 			}
-			out, err := exec.Command(java, "-ea", "-cp", classes, "Driver", packages[r.key], r.root, tp).CombinedOutput()
+			out, err := testproc.Command(t, java, "-ea", "-cp", classes, "Driver", packages[r.key], r.root, tp).CombinedOutput()
 			if err != nil {
 				t.Fatalf("java: %v\n%s", err, out)
 			}

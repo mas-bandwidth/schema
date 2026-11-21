@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -22,6 +21,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // csT18Pair is the OLD and NEW generation of one row.
@@ -293,7 +294,7 @@ static class ProbeMain
 			args = append(args, "-r:"+ref)
 		}
 		args = append(args, sources...)
-		compile := exec.Command(dotnet, args...)
+		compile := testproc.Command(t, dotnet, args...)
 		compile.Env, compile.Dir = csDotnetEnv(dir, dir), dir
 		compileOut, compileErr := compile.CombinedOutput()
 		if compileErr != nil {
@@ -303,7 +304,7 @@ static class ProbeMain
 		if err := os.WriteFile(filepath.Join(dir, "cst18.runtimeconfig.json"), []byte(cfg), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		run := exec.Command(dotnet, "exec", app)
+		run := testproc.Command(t, dotnet, "exec", app)
 		run.Env, run.Dir = csDotnetEnv(dir, dir), dir
 		out, runErr := run.CombinedOutput()
 		for _, fx := range fixtures {

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,6 +14,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestGoMessageFormGoldens asserts the Go leg answers every `connection` and
@@ -236,7 +237,7 @@ func runGoGoldensEdited(t *testing.T, u *ir.Unit, testSource string, edit func(m
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("go", "test", "-count=1", "-timeout", "120s", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", "-timeout", "120s", ".")
 	cmd.Dir = dir
 	return cmd.CombinedOutput()
 }

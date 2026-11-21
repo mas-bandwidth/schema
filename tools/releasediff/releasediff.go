@@ -32,7 +32,9 @@
 // differing byte; so does a packet driver that passes its own checks on one
 // side only, since those checks read the bytes it wrote. A unit whose id moved is listed, not compared; so is a unit
 // either compiler refuses, a driver that builds on one side only, and an
-// instance one side refuses to encode.
+// instance the previous release refuses to encode. An instance the previous
+// release encodes and the new compiler refuses is a writer regression, and
+// refuses.
 //
 // A run that compared nothing proves nothing, so it refuses too: no packet
 // driver compared on both sides, or, against a previous release of 3.0.0 or
@@ -407,7 +409,14 @@ func Judge(old, new Compiler, trees []string, m *Manifest, jsonDir, work string,
 	}
 
 	// THE PACKET WIRE: one driver source on both sides, the first tree whose
-	// copy builds against both compilers' C++
+	// copy builds against both compilers' C++. Every file under a side's
+	// output is read as what its driver wrote, so a packet tree an earlier
+	// run left in work would be credited to this one (F-216): refuse it.
+	if _, err := os.Lstat(filepath.Join(work, "packet")); err == nil {
+		return nil, fmt.Errorf("%s already holds packet output from an earlier run: a driver would be credited with files it did not write; judge in an empty work folder", work)
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return nil, err
+	}
 	packetCompared := 0
 	for _, d := range drivers {
 		wg.Go(func() {
@@ -450,6 +459,17 @@ func Judge(old, new Compiler, trees []string, m *Manifest, jsonDir, work string,
 					note = fmt.Sprintf("; a run stopped early, so only what both wrote compares (previous: %s, new: %s)", firstLineOr(oerr), firstLineOr(nerr))
 				}
 				if n == 0 {
+					// NO NAME IN COMMON IS NOT NOTHING TO SAY. When both runs
+					// completed, CompareTrees has already found the first
+					// file one side wrote and the other did not: a pin the
+					// previous release writes and this compiler does not (or
+					// writes under another name) is a difference under an
+					// equal id, and it is recorded before the driver is
+					// listed as uncompared. A run that stopped early reports
+					// no listing difference, so that case is as it was.
+					if diff != nil {
+						add(&r.Differences, fmt.Sprintf("packet wire, unit %s, instance %s", unitNames(d.Units), diff))
+					}
 					add(&r.Uncompared, fmt.Sprintf("packet %s: the two runs wrote no encoding in common%s", d.Name, note))
 					return
 				}
@@ -486,7 +506,9 @@ func Judge(old, new Compiler, trees []string, m *Manifest, jsonDir, work string,
 				case oerr != nil:
 					add(&r.Uncompared, fmt.Sprintf("table %s, unit %s, instance %s: %s refuses it (%s)", form, j.inst.Unit, j.inst.Name, old.Name(), firstLine(oerr)))
 				case nerr != nil:
-					add(&r.Uncompared, fmt.Sprintf("table %s, unit %s, instance %s: %s refuses it (%s)", form, j.inst.Unit, j.inst.Name, new.Name(), firstLine(nerr)))
+					// a value the previous release writes and this one
+					// will not: a writer regression, never new reach
+					add(&r.Differences, fmt.Sprintf("table %s, unit %s, instance %s: %s encodes it and %s refuses it (%s)", form, j.inst.Unit, j.inst.Name, old.Name(), new.Name(), firstLine(nerr)))
 				default:
 					mu.Lock()
 					tableCompared[k]++
@@ -813,13 +835,58 @@ func main() {
 	serialize := flag.String("serialize", "../serialize", "the serialize C++ runtime the packet drivers include")
 	work := flag.String("work", "build/release-differential", "the scratch directory, emptied first")
 	jobs := flag.Int("j", runtime.NumCPU(), "encodings at once")
+	judgeCorpus := judgeCorpusFlag(flag.CommandLine)
 	flag.Parse()
+	if len(*judgeCorpus) > 0 {
+		if err := runJudgeCorpora(*judgeCorpus, *work, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "release-differential: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if err := run(*prev, *rev, *oldBin, *newBin, *corpus, *serialize, *work, *jobs); err != nil {
 		if !errors.Is(err, errRefused) {
 			fmt.Fprintf(os.Stderr, "release-differential: %v\n", err)
 		}
 		os.Exit(1)
 	}
+}
+
+// corpusDirs is the -judge-corpus flag: one directory per use, in the order
+// given. A directory is named whole, commas and all (F-237: split at commas,
+// a directory named release,beta was read as its siblings release and beta).
+type corpusDirs []string
+
+func (d *corpusDirs) String() string { return strings.Join(*d, " ") }
+
+func (d *corpusDirs) Set(dir string) error {
+	*d = append(*d, dir)
+	return nil
+}
+
+// judgeCorpusFlag defines -judge-corpus on set.
+func judgeCorpusFlag(set *flag.FlagSet) *corpusDirs {
+	dirs := &corpusDirs{}
+	set.Var(dirs, "judge-corpus", "replay this committed corpus of Judge cases and exit (testdata/judge-corpus); repeat the flag for more, replayed in order under one work path")
+	return dirs
+}
+
+// runJudgeCorpora replays each corpus in order under work/judge-corpus,
+// printing every case's line, and stops at the first that does not come to
+// its verdicts.
+func runJudgeCorpora(dirs []string, work string, out io.Writer) error {
+	for _, dir := range dirs {
+		lines, err := RunJudgeCorpus(dir, filepath.Join(work, "judge-corpus"))
+		for _, line := range lines {
+			if _, werr := fmt.Fprintln(out, line); werr != nil {
+				return werr
+			}
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // errRefused is the verdict's own exit: the report has already said why.

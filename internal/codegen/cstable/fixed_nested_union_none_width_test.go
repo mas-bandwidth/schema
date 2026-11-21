@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,6 +12,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestCSharpFixedNestedUnionNoneWidth crosses the C# compiled plan against the
@@ -116,10 +117,10 @@ int main( void )
 		cxx = "c++"
 	}
 	bin := filepath.Join(dir, "probe")
-	if out, err := exec.Command(cxx, "-std=c++17", "-O0", "-I"+dir, pp, "-o", bin).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, "-std=c++17", "-O0", "-I"+dir, pp, "-o", bin).CombinedOutput(); err != nil {
 		t.Fatalf("the C++ probe did not compile: %v\n%s", err, out)
 	}
-	out, err := exec.Command(bin).CombinedOutput()
+	out, err := testproc.Command(t, bin).CombinedOutput()
 	if err != nil {
 		t.Fatalf("the C++ probe did not run: %v\n%s", err, out)
 	}

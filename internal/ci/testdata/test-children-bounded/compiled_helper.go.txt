@@ -1,0 +1,22 @@
+package fixture
+
+import (
+	"os/exec"
+	"path/filepath"
+	"testing"
+)
+
+// a compiled leg's helper: build the generated crate, then run its binary
+func buildAndRun(t *testing.T, dir string) string {
+	t.Helper()
+	build := exec.Command("cargo", "build", "--release", "--offline")
+	build.Dir = dir
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("cargo build: %v\n%s", err, out)
+	}
+	out, err := exec.Command(filepath.Join(dir, "target", "release", "probe")).Output()
+	if err != nil {
+		t.Fatalf("probe: %v", err)
+	}
+	return string(out)
+}
