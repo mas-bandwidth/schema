@@ -237,7 +237,43 @@ func runChecked(dir string, extraEnv []string, name string, args ...string) (str
 	return out.String(), err
 }
 
+// proveSample holds a run to having something to verify (F-045): `--schemas 0`
+// generated no pair, every target's driver ran no case, and the tool printed
+// TABLEGEN_OK <lang> 0 and exited 0. The sample is at least one pair, the
+// corpus carries exactly the pairs asked for, every pair contributes a case,
+// and every case is its own (no id twice). This is the one place all 18
+// targets' drivers take their cases from.
+func proveSample(schemas int, meta *CorpusMeta, cases []CorpusCase) error {
+	if schemas < 1 {
+		return fmt.Errorf("--schemas %d: the sample is empty, and a verification over no schema passes nothing", schemas)
+	}
+	if len(meta.Pairs) != schemas {
+		return fmt.Errorf("the corpus carries %d schema pair(s) and --schemas asked for %d", len(meta.Pairs), schemas)
+	}
+	if len(cases) == 0 || len(cases) != meta.CaseCount {
+		return fmt.Errorf("the corpus carries %d case(s) and its meta says %d: a run over no case passes nothing", len(cases), meta.CaseCount)
+	}
+	byPkg := map[string]int{}
+	ids := map[string]bool{}
+	for _, c := range cases {
+		if ids[c.ID] {
+			return fmt.Errorf("the corpus carries the case %s twice", c.ID)
+		}
+		ids[c.ID] = true
+		byPkg[c.Pkg]++
+	}
+	for _, pm := range meta.Pairs {
+		if byPkg[pm.PkgV1]+byPkg[pm.PkgV2] == 0 {
+			return fmt.Errorf("schema pair %d (%s) contributes no case to the corpus", pm.Index, pm.Name)
+		}
+	}
+	return nil
+}
+
 func requireToken(out string, err error, lang string, caseCount int) error {
+	if caseCount < 1 {
+		return fmt.Errorf("%s was handed %d cases: a driver over no case proves nothing", lang, caseCount)
+	}
 	want := fmt.Sprintf("TABLEGEN_OK %s %d", lang, caseCount)
 	if err != nil {
 		return fmt.Errorf("%s failed (%w):\n%s", lang, err, out)
@@ -436,7 +472,14 @@ func main() {
 		corpusDir = filepath.Join(repoRoot, corpusDir)
 	}
 
+	if *schemasFlag < 1 {
+		fmt.Fprintf(os.Stderr, "--schemas %d: the sample is empty, and a verification over no schema passes nothing\n", *schemasFlag)
+		os.Exit(2)
+	}
 	meta, cases, packed, err := ensureTablegenCorpus(corpusDir, *seedFlag, *schemasFlag, *genOnlyFlag)
+	if err == nil {
+		err = proveSample(*schemasFlag, meta, cases)
+	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

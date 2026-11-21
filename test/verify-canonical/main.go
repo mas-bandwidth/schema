@@ -183,7 +183,7 @@ func ensureCorpus(repoRoot, corpusDir string) ([]byte, []byte, [3][]byte, error)
 
 	s0, s1, s2 := buildJSONPermutations()
 	perms := [3][]byte{[]byte(s0), []byte(s1), []byte(s2)}
-	names := [3]string{"json_sorted.json", "json_reverse.json", "json_shuffled.json"}
+	names := permutationNames
 
 	var wantWire, wantJSON []byte
 	for i, raw := range perms {
@@ -225,6 +225,56 @@ func ensureCorpus(repoRoot, corpusDir string) ([]byte, []byte, [3][]byte, error)
 		return nil, nil, [3][]byte{}, err
 	}
 	return wantWire, wantJSON, perms, nil
+}
+
+// permutationNames are the three JSON inputs of the corpus, in the order
+// buildJSONPermutations returns them.
+var permutationNames = [3]string{"json_sorted.json", "json_reverse.json", "json_shuffled.json"}
+
+// loadCorpus reads a pre-generated corpus and holds it to the corpus this
+// program writes, BY IDENTITY: each of the three JSON inputs is, byte for
+// byte, the permutation of its name, so the three are three orderings and not
+// one input under three names. A leg read "6 of 6" when json_sorted.json had
+// been copied over the other two (F-044): the same key order three times is
+// one permutation, and the reverse and shuffled orders were never read. A
+// file that cannot be read is an error, never an empty input.
+func loadCorpus(corpusDir string) (wire, text []byte, perms [3][]byte, err error) {
+	read := func(name string) []byte {
+		data, rerr := os.ReadFile(filepath.Join(corpusDir, name))
+		if rerr != nil && err == nil {
+			err = rerr
+		}
+		if rerr == nil && len(data) == 0 && err == nil {
+			err = fmt.Errorf("%s is empty", filepath.Join(corpusDir, name))
+		}
+		return data
+	}
+	wire, text = read("canonical.bin"), read("canonical.json")
+	s0, s1, s2 := buildJSONPermutations()
+	want := [3]string{s0, s1, s2}
+	var bad []string
+	for i, name := range permutationNames {
+		perms[i] = read(name)
+		if err != nil {
+			return nil, nil, [3][]byte{}, err
+		}
+		if string(perms[i]) != want[i] {
+			which := "another input"
+			for j, w := range want {
+				if j != i && string(perms[i]) == w {
+					which = permutationNames[j] + "'s"
+				}
+			}
+			bad = append(bad, fmt.Sprintf("%s does not carry its own ordering (it carries %s): the permutations are checked by identity, and a copy is one ordering counted twice", name, which))
+		}
+	}
+	if err != nil {
+		return nil, nil, [3][]byte{}, err
+	}
+	if len(bad) > 0 {
+		return nil, nil, [3][]byte{}, fmt.Errorf("%s is not the canonical corpus:\n  %s", corpusDir, strings.Join(bad, "\n  "))
+	}
+	return wire, text, perms, nil
 }
 
 func generateCanonical(repoRoot, schemaBin, schemaMooBin, lang, outDir string) error {
@@ -342,11 +392,11 @@ func main() {
 		return
 	}
 	if fileExists(filepath.Join(corpusDir, "canonical.bin")) && fileExists(filepath.Join(corpusDir, "json_shuffled.json")) {
-		wantWire, _ = os.ReadFile(filepath.Join(corpusDir, "canonical.bin"))
-		wantJSON, _ = os.ReadFile(filepath.Join(corpusDir, "canonical.json"))
-		perms[0], _ = os.ReadFile(filepath.Join(corpusDir, "json_sorted.json"))
-		perms[1], _ = os.ReadFile(filepath.Join(corpusDir, "json_reverse.json"))
-		perms[2], _ = os.ReadFile(filepath.Join(corpusDir, "json_shuffled.json"))
+		wantWire, wantJSON, perms, err = loadCorpus(corpusDir)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 	} else {
 		wantWire, wantJSON, perms, err = ensureCorpus(repoRoot, corpusDir)
 		if err != nil {
