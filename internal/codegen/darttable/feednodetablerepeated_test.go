@@ -14,7 +14,6 @@ package darttable
 import (
 	"encoding/hex"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -23,6 +22,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // The three replay mutants the wire fuzzer printed for streamdemo.Feed.
@@ -118,7 +119,7 @@ void main(List<String> args) {
 			if err := os.WriteFile(path, mutant, 0o600); err != nil {
 				t.Fatal(err)
 			}
-			cmd := exec.Command(dartBinary(t), "--enable-asserts", "probe.dart", filepath.Base(path))
+			cmd := testproc.Command(t, dartBinary(t), "--enable-asserts", "probe.dart", filepath.Base(path))
 			cmd.Dir = dir
 			out, err := cmd.CombinedOutput()
 			if err != nil {

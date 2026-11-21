@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -12,6 +11,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestMapWriterSortJavaScript pins docs/PORTING.md M19's "the WRITER holds the
@@ -71,7 +72,7 @@ func TestMapWriterSortJavaScript(t *testing.T) {
 	if !ok {
 		t.Fatal("no variable module was generated")
 	}
-	const sortLine = "  out.sort((a, b) => TableVariableKeyOrder(fd, a.key, b.key));\n"
+	const sortLine = "  TableVariableSortEntries(fd, out);\n"
 	if bytes.Count(module, []byte(sortLine)) != 1 {
 		t.Fatalf("the module does not carry the entry sort exactly once (%q): the witness below would plant nothing", strings.TrimSpace(sortLine))
 	}
@@ -110,7 +111,7 @@ func TestMapWriterSortJavaScript(t *testing.T) {
 		if err := os.WriteFile(script, []byte(mapSortDriver), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		cmd := exec.Command(node, script, specPath)
+		cmd := testproc.Command(t, node, script, specPath)
 		cmd.Dir = dir
 		out, err := cmd.CombinedOutput()
 		if err != nil {

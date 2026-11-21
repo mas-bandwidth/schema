@@ -5,13 +5,13 @@ import (
 	"maps"
 	"math/big"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -299,10 +299,10 @@ int main(void)
 	args := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-O1", "-finstrument-functions", "-fsanitize=undefined", "-fno-sanitize-recover=all", "-I", dir, "-I", ser, mainPath}
 	args = append(args, cfiles...)
 	args = append(args, "-lm", "-o", bin)
-	if out, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile C failed: %v\n%s", err, out)
 	}
-	out, err := exec.Command(bin).CombinedOutput()
+	out, err := testproc.Command(t, bin).CombinedOutput()
 	return string(out), err
 }
 

@@ -29,7 +29,6 @@ package javatable
 import (
 	"encoding/hex"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -38,6 +37,8 @@ import (
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const finiteSchema = `package probe
@@ -541,10 +542,10 @@ func runFiniteProbe(t *testing.T, sabotage *finiteSabotage) map[string]string {
 	}
 	sort.Strings(sources)
 	args := append([]string{"--release", "17", "-Xlint:all", "-Werror", "-d", dir}, sources...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	out, err := exec.Command(java, "-ea", "-cp", dir, u.Package+".Driver").CombinedOutput()
+	out, err := testproc.Command(t, java, "-ea", "-cp", dir, u.Package+".Driver").CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
 	}

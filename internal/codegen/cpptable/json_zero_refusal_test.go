@@ -20,6 +20,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const cppJsonZeroSchema = `package probe
@@ -213,12 +215,12 @@ func runCppJsonZeroProbe(t *testing.T) []byte {
 	exe := filepath.Join(src, "probe")
 	args := append([]string{"-std=c++17", "-O1", "-I" + src, probe}, sources...)
 	args = append(args, "-o", exe)
-	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, args...).CombinedOutput(); err != nil {
 		t.Fatalf("the probe did not compile: %v\n%s", err, out)
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, exe).CombinedOutput()
+	out, err := testproc.CommandContext(t, ctx, exe).CombinedOutput()
 	if err != nil {
 		t.Fatalf("the C++ probe failed: %v\n%s", err, out)
 	}

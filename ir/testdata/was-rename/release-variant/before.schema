@@ -1,0 +1,8 @@
+package demo
+enum Grade
+{
+ Bronze,
+ Silver
+}
+type Award { grade Grade = Silver }
+table Save { award Award }

@@ -1067,6 +1067,10 @@ array_body = function(fd: any, sub: any, report: any, v: any, headerEnd: number?
 	elseif count > fd.bound then
 		keep = fd.bound
 		report.clamped = report.clamped + 1; noteField("clamped", arrayName)
+	elseif fd.array == "counted" and count < (fd.min or 0) then
+		-- A COUNTED ARRAY BELOW ITS MIN (docs/SPEC.md §5.1 row 3): off the
+		-- reader's declaration, as a count past its bound is
+		report.clamped = report.clamped + 1; noteField("clamped", arrayName)
 	end
 	local slot = fd.slot
 	local holder: any = nil

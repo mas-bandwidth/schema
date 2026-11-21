@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -17,6 +16,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const requiredForm1Schema = `package req
@@ -105,10 +106,10 @@ int main(){ RootBuilder root; int64_t n=RootMeasure(root); if(n<=0)return 1; std
 	bin := filepath.Join(dir, "probe")
 	args := append([]string{"-std=c++17", "-O1", "-I" + dir, "-I" + ser, path}, sources...)
 	args = append(args, "-o", bin)
-	if out, err := exec.Command("c++", args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, "c++", args...).CombinedOutput(); err != nil {
 		t.Fatalf("C++ compile: %v\n%s", err, out)
 	}
-	cppWire, err := exec.Command(bin).Output()
+	cppWire, err := testproc.Command(t, bin).Output()
 	if err != nil {
 		t.Fatalf("C++ save: %v", err)
 	}

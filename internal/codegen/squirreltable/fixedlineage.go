@@ -12,7 +12,6 @@ package squirreltable
 
 import (
 	"fmt"
-	"sync"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
 
@@ -55,45 +54,13 @@ func FixedLineageOf(u *ir.Unit, name string) (FixedLineageEntry, bool) {
 	return FixedLineageEntry{}, false
 }
 
-// The lineage rides a package registry keyed by the unit, not a field on
-// Module (which lives in squirrelreltable.go, the shared registrar this card
-// does not edit): GenerateLineage deposits it for the duration of the call and
-// the fixed-form surface reads it back by the unit it is emitting. A mutex
-// keeps concurrent builds of different units apart.
-var (
-	lineageMu     sync.Mutex
-	lineageByUnit = map[*ir.Unit]map[string][]FixedLineageEntry{}
-)
-
-func lineageOf(u *ir.Unit) map[string][]FixedLineageEntry {
-	lineageMu.Lock()
-	defer lineageMu.Unlock()
-	return lineageByUnit[u]
-}
-
 // GenerateLineage is the second entry point of §5.9 #1: the driver read the
 // unit's lock once (compiler/lineage.go) and hands the lineage down as DATA,
 // so this backend opens no file. A nil lineage is the no-lock case and keeps
-// today's reader.
+// today's reader. The lineage rides the call's own Module, never state shared
+// between calls, so overlapping generations of one unit each read their own.
 func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
-	lineageMu.Lock()
-	prev, had := lineageByUnit[u]
-	if lineage == nil {
-		delete(lineageByUnit, u)
-	} else {
-		lineageByUnit[u] = lineage
-	}
-	lineageMu.Unlock()
-	defer func() {
-		lineageMu.Lock()
-		if had {
-			lineageByUnit[u] = prev
-		} else {
-			delete(lineageByUnit, u)
-		}
-		lineageMu.Unlock()
-	}()
-	return Generate(u)
+	return generate(u, lineage)
 }
 
 // generateLineage is the lineage the emitter lays down for one table: the
@@ -469,8 +436,8 @@ func emitFixedPlanDecodeValue(m *Module, f *ir.Field, node *fixedLayoutNode, at 
 			switch f.Type.Kind {
 			case ir.TString:
 				m.Printf("%sif (_rt_fixed.textIllFormed(b, at + %s + 4, n)) return \"text_ill_formed\";\n", ind, off)
-				m.Printf("%slocal s = \"\"; for (local i = 0; i < n; i++) s += b[at + %s + 4 + i].tochar();\n", ind, off)
-				m.Printf("%s%s = s;\n", ind, expr)
+				// built in work linear in n, never a per-byte append (SQUIRREL-3)
+				m.Printf("%s%s = _rt_fixed.text(b, at + %s + 4, n);\n", ind, expr, off)
 			default:
 				m.Printf("%s%s = blob(n); for (local i = 0; i < n; i++) %s[i] = b[at + %s + 4 + i];\n", ind, expr, expr, off)
 			}

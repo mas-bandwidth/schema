@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,6 +13,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // jsonIntegersSchema is the unit testdata/wire/json-integers/ reads: an int32,
@@ -251,7 +252,7 @@ public static class WideIntegerProbe
 	for _, r := range refs {
 		buildArgs = append(buildArgs, "-r:"+r)
 	}
-	build := exec.Command(csDotnet(), buildArgs...)
+	build := testproc.Command(t, csDotnet(), buildArgs...)
 	build.Env = csDotnetEnv(out, out)
 	if b, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("csc failed:\n%s", b)
@@ -262,7 +263,7 @@ public static class WideIntegerProbe
 	}
 
 	runArgs := append([]string{"exec", filepath.Join(out, "probe.dll")}, paths...)
-	run := exec.Command(csDotnet(), runArgs...)
+	run := testproc.Command(t, csDotnet(), runArgs...)
 	run.Env = csDotnetEnv(out, out)
 	got, err := run.CombinedOutput()
 	if err != nil {

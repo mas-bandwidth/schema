@@ -3,13 +3,13 @@ package darttable
 import (
 	"fmt"
 	"maps"
-	"os/exec"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -220,7 +220,7 @@ func runDartReview1121Reads(t *testing.T, u *ir.Unit, probe string) (string, err
 	maps.Copy(files, map[string][]byte{"review1121_reads.dart": []byte(probe)})
 	dir := t.TempDir()
 	writeFiles(t, dir, files)
-	cmd := exec.Command(dartBinary(t), "--enable-asserts", "review1121_reads.dart")
+	cmd := testproc.Command(t, dartBinary(t), "--enable-asserts", "review1121_reads.dart")
 	cmd.Dir = dir
 	got, err := cmd.CombinedOutput()
 	return string(got), err

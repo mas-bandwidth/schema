@@ -27,6 +27,7 @@ import .schema_rt;
 import .schema_tables;
 import .wire_load;
 import .wire_retain;
+import .fixed;
 
 let KindUnion: u8 = 15;
 let KindKeyed: u8 = 16;
@@ -502,6 +503,12 @@ fn field(c: SaveCtx&, s: i64, d: FieldDesc, owner: i64, ordinal: i64) {
             // an unbounded array is the counted array's own bytes (§2.9); an
             // empty one elides
             let n = if s < 0 || !c.vals[s].made { 0 } else { c.vals[s].len };
+            if d.array == ArrayCounted && s >= 0 && c.vals[s].made && n < d.min {
+                // an array a caller holds below its Min is refused, never
+                // elided as absent (docs/SPEC.md §5.1 row 3)
+                refuse(c, SaveRefuseInvalidValue);
+                return;
+            }
             if n == 0 { return; }
             field_array(c, s, d, n);
             return;
@@ -656,11 +663,44 @@ recursive fn put_value(c: SaveCtx&, s: i64, d: const FieldDesc&, kind: u8) {
         arm_header(c, s, d.ref);
         return;
     }
-    let v = scalar_bits(c, s, d);
+    var v = scalar_bits(c, s, d);
     if d.shape == ShapeFloat && float_special(v.lo, kind == KindF32) {
         // every writer refuses a NaN or an infinity (§3, §3.3)
         refuse(c, SaveRefuseNonFiniteFloat);
         return;
+    }
+    // THE WRITE HOLDS EVERY VALUE TO ITS DECLARATION (docs/SPEC.md §5.1;
+    // Goose refuses in every build): a ranged integer or fixed-point value
+    // off its range (on the raw scale), a bits(N) value past its width, and a
+    // compressed float off its range (held at float32, frange_holds) are
+    // refused invalid_value, never written.
+    if d.shape == ShapeFloat && d.frange {
+        let x = if kind == KindF32 { f32_value(v.lo as! u32) } else { fixed_bits_f64(v.lo) };
+        if !frange_holds(x, d) {
+            refuse(c, SaveRefuseInvalidValue);
+            return;
+        }
+        // A COMPRESSED FLOAT'S -0 IS STORED AS +0 (SPEC-TABLES §3.3, ruling
+        // fixed-compressed-negzero)
+        if x == 0.0 { v = Int128 { lo: 0, hi: 0 }; }
+    }
+    if d.shape == ShapeInt {
+        if d.ranged {
+            var lo = d.lo;
+            var hi = d.hi;
+            if d.ibits != 0 || d.fbits != 0 {
+                lo = shl128(lo, d.fbits);
+                hi = shl128(hi, d.fbits);
+            }
+            if cmp128(v, d.signed, lo, d.signed) < 0 || cmp128(v, d.signed, hi, d.signed) > 0 {
+                refuse(c, SaveRefuseInvalidValue);
+                return;
+            }
+        }
+        if d.bits > 0 && (v.hi != 0 || (d.bits < 64 && v.lo >= ((1 as u64) << (d.bits as! u64)))) {
+            refuse(c, SaveRefuseInvalidValue);
+            return;
+        }
     }
     let w = kind_width(kind);
     if w == 16 {
@@ -701,6 +741,11 @@ fn text_sum(c: SaveCtx&, s: i64, count: i64) -> i64 {
 recursive fn array_body(c: SaveCtx&, s: i64, d: const FieldDesc&, count: i64) {
     let e = d.elem;
     guard e else { return; }
+    if d.array == ArrayCounted && (count < d.min || count > d.bound) {
+        // a count below Min or past Max is refused (docs/SPEC.md §5.1 row 3)
+        refuse(c, SaveRefuseInvalidValue);
+        return;
+    }
     let ek = if e.shape == ShapePtr { KindPointer } else { d.ek };
     put(c, ek);
     put_leb(c, count as! u64);

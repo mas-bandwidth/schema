@@ -226,6 +226,12 @@ func deriveManifest(m *Manifest, path string) error {
 			// them rather than writing a text the form refuses (§16.7)
 			marker = " no-text"
 		}
+		if i.WireRefused {
+			// and so does this one: a driver answers a wire-refused instance's
+			// refused load by the read's reason, and any other refused load of a
+			// corpus instance stays a failure, so it has to know which is which
+			marker += " wire-refused"
+		}
 		fmt.Fprintf(&b, "instance %s %s %s %s%s\n", i.Name, i.Unit, i.Root, i.Wire, marker)
 	}
 	for _, wr := range m.JSONWriteRefusals {
@@ -771,6 +777,9 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 				if reference {
 					r.failures = append(r.failures, absentReference(s, "`list` does not name it"))
 				}
+				if opts.claims != nil {
+					opts.claims.enforce(d.lang, s, legWant, r)
+				}
 				continue
 			}
 			out := filepath.Join(work, "out", d.lang, s)
@@ -791,6 +800,9 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 				}
 				if reference {
 					r.failures = append(r.failures, absentReference(s, "the driver exited 2"))
+				}
+				if opts.claims != nil {
+					opts.claims.enforce(d.lang, s, legWant, r)
 				}
 				continue
 			}

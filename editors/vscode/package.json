@@ -1,0 +1,52 @@
+{
+  "name": "schema-language",
+  "displayName": "Schema",
+  "description": "Syntax highlighting for .schema files, the data language for games: one definition compiles to bit-packed serialization code for 18 targets in 17 languages.",
+  "version": "0.1.0",
+  "publisher": "mas-bandwidth",
+  "license": "AGPL-3.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mas-bandwidth/schema.git",
+    "directory": "editors/vscode"
+  },
+  "homepage": "https://github.com/mas-bandwidth/schema",
+  "bugs": {
+    "url": "https://github.com/mas-bandwidth/schema/issues"
+  },
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "schema",
+    "serialization",
+    "games",
+    "network",
+    "codegen"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "schema",
+        "aliases": [
+          "Schema",
+          "schema"
+        ],
+        "extensions": [
+          ".schema"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "schema",
+        "scopeName": "source.schema",
+        "path": "./syntaxes/schema.tmLanguage.json"
+      }
+    ]
+  }
+}

@@ -22,6 +22,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `lockfile/` | schema.lock lineage | `go test ./internal/lockfile` | `go test ./internal/lockfile` |
 | `mapwalk/` | map walk | `go test ./internal/mapwalk` | `go test ./internal/mapwalk` |
 | `memceiling/` | memory ceiling for allocating tests | `go test ./internal/memceiling` | `go test ./internal/memceiling` |
+| `modulemove/` | pin and release boundary of the /v3 module move | `go test ./internal/modulemove` | `go test ./internal/modulemove` |
 | `parser/` | recursive-descent parser | `go test ./internal/parser` | `go test ./internal/parser` |
 | `publicapi/` | external-module API gate | `go test ./internal/publicapi` | `go test ./internal/publicapi` |
 | `rfc3339/` | strict RFC 3339 timestamp parser | `go test ./internal/rfc3339` | `go test ./internal/rfc3339` |
@@ -32,5 +33,6 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `tablepack/` | pack/unpack | `go test ./internal/tablepack` | `go test ./internal/tablepack` |
 | `tabletext/` | table JSON text | `go test ./internal/tabletext` | `go test ./internal/tabletext` |
 | `tablewire/` | table wire codecs | `go test ./internal/tablewire` | `go test ./internal/tablewire` |
+| `testproc/` | bounded child processes for tests | `go test ./internal/testproc` | `go test ./internal/testproc` |
 | `version/` | binary version stamp | `go test ./internal/version` | `go test ./internal/version` |
 | `viewlisting/` | view listing vs IR | `go test ./internal/viewlisting` | `go test ./internal/viewlisting` |

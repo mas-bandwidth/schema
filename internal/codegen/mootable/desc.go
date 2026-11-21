@@ -183,9 +183,12 @@ func fieldDesc(g *Gen, owner string, f *ir.Field, ordinal int, guard string) str
 	if g.wireless {
 		id, json = 0, ""
 	}
-	fmt.Fprintf(&b, "{ id = %s, name = %q, owner = %q, slot = %q, json = %q, o = %d, k = %d, ",
+	// the json key is any text schema check admits (`json = "..."`), so it is
+	// spelled in moo's own string syntax, never Go's %q, whose \u and \U
+	// escapes moo does not share (review 2026-11-21, MOO-2)
+	fmt.Fprintf(&b, "{ id = %s, name = %q, owner = %q, slot = %q, json = %s, o = %d, k = %d, ",
 		IdLit(id), f.Name, owner, ir.GoExportName(f.Name),
-		json, ordinal, ir.TableWireFieldKind(f))
+		textLit(json), ordinal, ir.TableWireFieldKind(f))
 	if f.Type.Optional {
 		fmt.Fprintf(&b, "present = %q, ", ir.GoExportName(f.Name+"_present"))
 	}
@@ -286,7 +289,17 @@ func valueDesc(g *Gen, f *ir.Field, def bool) string {
 	case t.Kind == ir.TFloat32 || t.Kind == ir.TFloat64:
 		parts := []string{"s = \"float\"", fmt.Sprintf("f32 = %v", t.Kind == ir.TFloat32)}
 		if f.HasFloatRange {
-			parts = append(parts, "flo = "+f64Pair(f.FMin), "fhi = "+f64Pair(f.FMax), "fres = "+f64Pair(f.Resolution))
+			// a float32's ends are the float32 the declaration names, where
+			// every runtime evaluates the triple (SPEC §4.6): every read,
+			// write and text path compares the float32 value, widened
+			// exactly, against these, so the comparison is at float32 and
+			// the float32 nearest max = 0.1 is in range (review 2026-11-21,
+			// cross-leg float32-range)
+			fmin, fmax := f.FMin, f.FMax
+			if t.Kind == ir.TFloat32 {
+				fmin, fmax = float64(float32(fmin)), float64(float32(fmax))
+			}
+			parts = append(parts, "flo = "+f64Pair(fmin), "fhi = "+f64Pair(fmax), "fres = "+f64Pair(f.Resolution))
 			if t.Kind == ir.TFloat32 {
 				// the ends a float32 read clamps TO, as float32(v) rounds them
 				parts = append(parts, fmt.Sprintf("flo32 = 0x%08x, fhi32 = 0x%08x", math.Float32bits(float32(f.FMin)), math.Float32bits(float32(f.FMax))))

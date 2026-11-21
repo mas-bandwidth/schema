@@ -2,12 +2,13 @@ package jstable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // The OLDER, NARROWER writer and the newer reader of one table: every field
@@ -146,7 +147,7 @@ console.log("widening reasons ok");
 	if err := os.WriteFile(script, []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, script, older, newer, lists, narrowWire, pristineWire)
+	cmd := testproc.Command(t, node, script, older, newer, lists, narrowWire, pristineWire)
 	cmd.Dir = work
 	out, err := cmd.CombinedOutput()
 	if err != nil {

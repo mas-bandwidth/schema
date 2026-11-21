@@ -25,6 +25,21 @@ static SCHEMA_UNUSED int table_message_ref(TableMessageReader * r,const TableMes
  if(name) return (*entry)->id<UINT64_C(0xfffffffffffffffd) && (*entry)->kind==0;
  return 1;
 }
+/* THE BODY'S SEEN SET (§3.3): one bit an ID, keyed on the first slot that
+   announced it (id_slot), so an id named through two slots of different
+   shapes is the repeat §3.3 forbids. It is sized for every reference an
+   accepted announcement can resolve, so the caller's declared capacity is the
+   bound and 4096 (the default, and the form-1 id table's own cap) is not. A
+   vocabulary filled by hand leaves id_slot zero and keys on the slot itself.
+   An ordinal outside the set, or an id named twice, answers 0. */
+static SCHEMA_UNUSED int table_message_seen_once(uint8_t * seen,const TableVocabulary * v,const TableMessageEntry * e)
+{
+ int64_t ref=e->id_slot?(int64_t)e->id_slot:(int64_t)(e-v->entries+1);
+ if(ref<1||ref>kTableMessageSeenRefs)return 0;
+ if(seen[(ref-1)>>3]&(uint8_t)(1u<<((ref-1)&7)))return 0;
+ seen[(ref-1)>>3]|=(uint8_t)(1u<<((ref-1)&7));
+ return 1;
+}
 static SCHEMA_UNUSED TableMessageEntry table_message_element(const TableMessageEntry * e)
 {
  TableMessageEntry v;memset(&v,0,sizeof(v));v.kind=e->elem_kind;
@@ -47,19 +62,6 @@ static SCHEMA_UNUSED int table_message_count(TableMessageReader * r,const TableM
  *n=raw+(uint64_t)e->min;
  if(*n>(uint64_t)e->max)return 0;
  return !(e->kind==14 && e->elem_kind==6) || table_bit_align_read(&r->bits);
-}
-/* A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), and so is one key twice in a
-   keyed array (§3.2). An id is the wire's name, not the slot that carried it:
-   one name may be announced at two shapes, so the bit is the id's FIRST slot,
-   which table_announce_once resolves once per connection; an entry a caller
-   resolved by hand, with no first slot, stands for itself. */
-static SCHEMA_UNUSED int table_message_seen_once(uint8_t * seen,const TableVocabulary * v,const TableMessageEntry * entry)
-{
- int64_t slot=entry->first_slot ? (int64_t)entry->first_slot : (int64_t)(entry-v->entries)+1;
- if(slot<1||slot>kTableMessageSeenSlots)return 0;
- if(seen[(slot-1)>>3]&(uint8_t)(1u<<((slot-1)&7)))return 0;
- seen[(slot-1)>>3]|=(uint8_t)(1u<<((slot-1)&7));
- return 1;
 }
 static SCHEMA_UNUSED int table_message_signed_kind(uint8_t kind)
 {
@@ -126,14 +128,15 @@ static SCHEMA_UNUSED int table_message_skip_field(TableMessageReader * r,const T
    path. Past 128 is damaged, and 128 itself still skips. */
 static SCHEMA_UNUSED int table_message_skip_body(TableMessageReader * r)
 {
- uint8_t seen[kTableMessageSeenSlots/8]; /* one bit an id, at its first slot */
+ uint8_t seen[kTableMessageSeenRefs/8]; /* one bit a vocabulary reference */
  if(r->skip_depth>128)return 0;
  memset(seen,0,sizeof(seen));
  for(;;) {const TableMessageEntry * entry;
   if(!table_message_ref(r,&entry,0))return 0;
   if(entry==NULL)return 1;
   if(entry->id>=UINT64_C(0xfffffffffffffffd))return 0;
-  /* A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or skipped. */
+  /* A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or skipped, through
+     one slot or two. */
   if(!table_message_seen_once(seen,r->vocabulary,entry))return 0;
   if(!table_message_skip_field(r,entry))return 0;
  }
@@ -148,7 +151,7 @@ static SCHEMA_UNUSED int table_message_skip_deeper(TableMessageReader * r,const 
    own frame, so the bitset rides only where a keyed array is skipped. */
 static SCHEMA_UNUSED int table_message_skip_keyed(TableMessageReader * r,const TableMessageEntry * elem,uint64_t n)
 {
- uint8_t seen[kTableMessageSeenSlots/8];uint64_t i;const TableMessageEntry * key;int64_t before;
+ uint8_t seen[kTableMessageSeenRefs/8];uint64_t i;const TableMessageEntry * key;int64_t before;
  memset(seen,0,sizeof(seen));
  for(i=0;i<n;i++) {
   if(!table_message_ref(r,&key,1)||key==NULL||!table_message_seen_once(seen,r->vocabulary,key))return 0;
@@ -424,7 +427,7 @@ func (g *tableGen) messageReadValue(f *ir.Field, dst, count, e, ind string) {
 		g.pf("%s if(kept<n)r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE;%s=(int32_t)kept; }\n", ind, count)
 	case f.KeyEnum != "":
 		kSlot := g.messageSlot(ir.TableFieldEntry(f))
-		g.pf("%s{uint64_t n,i;uint8_t seen_keys[kTableMessageSeenSlots/8];int32_t last_slot=-1;int k_same=(r->vocabulary->build_version==%s && %s->own_slot==%d);TableMessageEntry element_shape=table_message_element(%s);const TableMessageEntry * element_entry=&element_shape;(void)element_entry;memset(seen_keys,0,sizeof(seen_keys));\n%s if(!table_message_count(r,%s,&n))goto damaged;for(i=0;i<n;i++){const TableMessageEntry * key;int32_t slot=-1;\n%s if(!table_message_ref(r,&key,1)||key==NULL||!table_message_seen_once(seen_keys,r->vocabulary,key))goto damaged;switch(key->id){\n", ind, buildVersionName(g.unit.Package), e, kSlot, e, ind, e, ind)
+		g.pf("%s{uint64_t n,i;uint8_t seen_keys[kTableMessageSeenRefs/8];int32_t last_slot=-1;int k_same=(r->vocabulary->build_version==%s && %s->own_slot==%d);TableMessageEntry element_shape=table_message_element(%s);const TableMessageEntry * element_entry=&element_shape;(void)element_entry;memset(seen_keys,0,sizeof(seen_keys));\n%s if(!table_message_count(r,%s,&n))goto damaged;for(i=0;i<n;i++){const TableMessageEntry * key;int32_t slot=-1;\n%s if(!table_message_ref(r,&key,1)||key==NULL)goto damaged;if(!table_message_seen_once(seen_keys,r->vocabulary,key))goto damaged;switch(key->id){\n", ind, buildVersionName(g.unit.Package), e, kSlot, e, ind, e, ind)
 		for i, v := range f.KeyEnumRef.Variants {
 			g.pf("%s case UINT64_C(0x%016x):slot=%d;break;\n", ind, ir.TableWireId(f.KeyEnumRef.VariantWireName(i)), i)
 			_ = v
@@ -517,7 +520,7 @@ func (g *tableGen) emitMessageUnionRead(un *ir.Union) {
 
 func (g *tableGen) emitMessageRead(st *ir.Struct) {
 	g.pf("static SCHEMA_UNUSED int %s(TableMessageReader * r,%s * value)\n{\n", g.api(st.Name, "load_message_body"), st.Name)
-	g.pf(" uint8_t seen[kTableMessageSeenSlots/8];int same_build=r->vocabulary->build_version==%s;int32_t last_field_ord=0;(void)last_field_ord;%s(value);memset(seen,0,sizeof(seen));for(;;){const TableMessageEntry * entry;\n if(!table_message_ref(r,&entry,0))goto damaged;if(entry==NULL)return 1;if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;if(!table_message_seen_once(seen,r->vocabulary,entry))goto damaged;switch(entry->id){\n", buildVersionName(g.unit.Package), g.api(st.Name, "reset"))
+	g.pf(" uint8_t seen[kTableMessageSeenRefs/8];int same_build=r->vocabulary->build_version==%s;int32_t last_field_ord=0;(void)last_field_ord;%s(value);memset(seen,0,sizeof(seen));for(;;){const TableMessageEntry * entry;\n if(!table_message_ref(r,&entry,0))goto damaged;if(entry==NULL)return 1;if(entry->id>=UINT64_C(0xfffffffffffffffd))goto damaged;if(!table_message_seen_once(seen,r->vocabulary,entry))goto damaged;switch(entry->id){\n", buildVersionName(g.unit.Package), g.api(st.Name, "reset"))
 	for fi, f := range st.Fields {
 		g.pf(" case UINT64_C(0x%016x): {\n", ir.TableFieldWireId(f))
 		// §3.3(b) proves order only for this record's exact compiled entry

@@ -11,13 +11,14 @@ package javatable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const generationHeadroomJavaSchema = `package probe
@@ -212,10 +213,10 @@ func TestJavaWireCheckGenerationHeadroom(t *testing.T) {
 	}
 	args := append([]string{"--release", "17", "-d", classes}, srcs...)
 	args = append(args, probe)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "probe.WireGenerationProbe",
+	out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, "probe.WireGenerationProbe",
 		strconv.Itoa(generationHeadroomBodies)).CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)

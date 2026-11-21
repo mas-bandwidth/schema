@@ -203,6 +203,9 @@ export function WriteProbeHeader(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) { // const(171, 8) — SPEC §4.3
     return false;
   }
+  if (!Number.isInteger(value.version) || value.version < 0 || value.version > 7) {
+    return false;
+  }
   NUMBER_SCRATCH.value = value.version;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
@@ -286,12 +289,21 @@ export function ZeroProbeBits(value) {
 }
 
 export function WriteProbeBits(stream, value) {
+  if (!Number.isInteger(value.small) || value.small < 0 || value.small > 511) {
+    return false;
+  }
   NUMBER_SCRATCH.value = value.small;
   if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
     return false;
   }
+  if (typeof value.boundary !== "bigint" || value.boundary < 0n || value.boundary > 8589934591n) {
+    return false;
+  }
   BIGINT_SCRATCH.value = value.boundary;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 33)) {
+    return false;
+  }
+  if (typeof value.wide !== "bigint" || value.wide < 0n || value.wide > 18446744073709551615n) {
     return false;
   }
   BIGINT_SCRATCH.value = value.wide;
@@ -305,7 +317,7 @@ export function WriteProbeBits(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
-  if (value.nonce < 0n || value.nonce > 18446744073709551615n) {
+  if (typeof value.nonce !== "bigint" || value.nonce < 0n || value.nonce > 18446744073709551615n) {
     return false;
   }
   BIGINT_SCRATCH.value = BigInt.asUintN(64, value.nonce);
@@ -1307,12 +1319,21 @@ export function WriteTestData(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
+  if (!Number.isInteger(value.d) || value.d < 0 || value.d > 255) {
+    return false;
+  }
   NUMBER_SCRATCH.value = value.d;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
+  if (!Number.isInteger(value.e) || value.e < 0 || value.e > 255) {
+    return false;
+  }
   NUMBER_SCRATCH.value = value.e;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
+    return false;
+  }
+  if (!Number.isInteger(value.f) || value.f < 0 || value.f > 255) {
     return false;
   }
   NUMBER_SCRATCH.value = value.f;
@@ -1412,7 +1433,7 @@ export function WriteTestData(stream, value) {
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  if (value.int64Range < -1000000000000n || value.int64Range > 1000000000000n) {
+  if (typeof value.int64Range !== "bigint" || value.int64Range < -1000000000000n || value.int64Range > 1000000000000n) {
     return false;
   }
   BIGINT_SCRATCH.value = BigInt.asUintN(64, value.int64Range - -1000000000000n);

@@ -2,7 +2,6 @@ package js
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -10,6 +9,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const unionThenBytesSchema = `package unionalign
@@ -112,7 +113,7 @@ console.log('OK');
 			t.Fatal(err)
 		}
 		for _, production := range []bool{false, true} {
-			cmd := exec.Command(node, "harness.mjs")
+			cmd := testproc.Command(t, node, "harness.mjs")
 			cmd.Dir = dir
 			env := append(os.Environ(), "SERIALIZE_JS_INDEX="+index)
 			if production {

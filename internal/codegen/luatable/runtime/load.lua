@@ -690,7 +690,11 @@ local function scalar_at(r, d, kind, report, ctx)
   -- outside it counts out of range and the strict read refuses it; no
   -- reader clamps. A field, an element, a map value and a union arm all land
   -- here, as fixed.lua and message.lua hold the same bound.
-  if d.fmin ~= nil and d.fmax ~= nil and (x < d.fmin or x > d.fmax) then report.outOfRange = report.outOfRange + 1 end
+  -- The compare is at float32 (docs/SPEC.md §4.6, D.float_off_range). A
+  -- COMPRESSED FLOAT'S -0 LANDS AS +0, uncounted (§3.3, ruling
+  -- fixed-compressed-negzero).
+  if d.fmin ~= nil and D.float_off_range(d, x) then report.outOfRange = report.outOfRange + 1 end
+  if d.fmin ~= nil and x == 0 then x = 0.0 end
   -- THE bits(N) CLAMP is a bits(N) field's alone (decode.go scalarAt: the
   -- declared kind is TBits): a flags field's descriptor carries its wire bits
   -- for the JSON writer, and an undeclared flag bit on the wire lands as it
@@ -1402,6 +1406,10 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)
   elseif above(count, fd.bound) then
     keep = fd.bound
     report.outOfRange = report.outOfRange + 1
+  elseif not fd.fixed and count >= 0 and count < (fd.min or 0) then
+    -- A COUNTED ARRAY BELOW ITS MIN (SPEC.md §5.1 row 3; decode.go refuses
+    -- count_over_bound): out of range, as a count past its max is.
+    report.outOfRange = report.outOfRange + 1
   end
   local total = fd.total
   local spent = 0
@@ -2065,6 +2073,8 @@ local function placed(nodes)
   return out
 end
 
+local wire_check
+
 -- read_form1 loads a form-1 wire for table `name` of module T into a fresh
 -- value and fills report. Damage discards the whole load (§4): every root
 -- class returns nil when damaged, including a wire that cannot open.
@@ -2076,7 +2086,7 @@ end
 -- `state`, the readers, the id table and the queue are the caller's and nothing
 -- of them is built. Neither changes a byte of what is read: both are nil in the
 -- plain form. A load that answers nil leaves `into` at defaults or partly read.
-local function read_form1(T, name, bytes, report, state, into)
+local function read_form1(T, name, bytes, report, state, into, wire_first)
   local desc = T.Tables[name]
   state = state or L.NewState()
   report.nonFiniteFloat = nil
@@ -2116,6 +2126,27 @@ local function read_form1(T, name, bytes, report, state, into)
   if desc == nil then
     report.damaged = true
     return nil
+  end
+  -- THE WIRE ALONE FIRST (docs/SPEC-TABLES.md §6.5, "TWO KINDS OF CONDITION";
+  -- tablewire decode.go's phase one): with wire_first, the strict read holds
+  -- every byte to the wire's own rules before the walk decodes anything, so
+  -- a body the check refuses costs no decode and no repeated rebuild of a
+  -- field the walk would read last-wins. The refusal is the second answer.
+  -- A non-finite float the check meets is named by the walk where a declared
+  -- field reaches it, and refuses after the walk otherwise (the third answer);
+  -- a count past the storage cap is a decode condition in the reference
+  -- engine (§2.9), so the walk names it in read order, after a non-finite
+  -- float it meets first, and the check's answer stands only where the walk
+  -- accepts.
+  local wire_after = nil
+  if wire_first then
+    local reason = wire_check(state, bytes, blen)
+    if reason == "non_finite_float" or reason == "count_over_extent_cap" then
+      wire_after = reason
+    elseif reason ~= nil then
+      if into ~= nil then D.reset(T, desc, into) end
+      return nil, reason
+    end
   end
   local raw = node_scan(bytes, o, report, desc.variable, state)
   local ctx = state.ctx
@@ -2246,7 +2277,7 @@ local function read_form1(T, name, bytes, report, state, into)
   end
   release(ctx)
   if report.damaged then return nil end
-  return root
+  return root, nil, wire_after
 end
 
 -- THE CONDITIONS DECIDABLE FROM THE WIRE ALONE (docs/SPEC-TABLES.md §6.5, "TWO
@@ -2609,7 +2640,7 @@ end
 -- opened: st.ids holds its id table, and blen is its length without an
 -- integrity trailer. It answers nil when the file passes, or the refusal's
 -- name; a non-finite float met nowhere else answers "non_finite_float".
-local function wire_check(st, bytes, blen)
+wire_check = function(st, bytes, blen)
   local c = st.wc
   local nids = #st.ids
   for k in pairs(c.used) do
@@ -2715,6 +2746,7 @@ function L.Load(T, name, bytes, report, state, into)
   r.missingRequired = 0
   r.wireDamaged = false
   r.reason = nil
+  r.wireAlone = nil
   state = state or L.NewState()
   -- A FIXED-CLASS ROOT'S FILE IS FORM 3 (docs/SPEC-TABLES.md §3.4): a form-1
   -- file is previous_form, refused before anything decodes, so nothing moves and
@@ -2725,19 +2757,28 @@ function L.Load(T, name, bytes, report, state, into)
     r.reason = "previous_form"
     return nil
   end
-  local root = read_form1(T, name, bytes, r, state, into)
-  local reason = strict_refusal(bytes, r, root)
+  -- THE WIRE ALONE (§6.5): every byte is held to the wire's own rules, the
+  -- bytes the walk skips or reads last-wins included (wirecheck.go), BEFORE
+  -- the walk (read_form1's wire_first), as the reference engine's phase one.
+  local root, wire_reason, wire_after = read_form1(T, name, bytes, r, state, into, true)
+  local reason = wire_reason
   if reason == nil then
-    -- THE WIRE ALONE (§6.5): every byte is held to the wire's own rules, the
-    -- bytes the walk skips or reads last-wins included (wirecheck.go).
-    local blen = #bytes
-    if T.Tables[name].integrity ~= nil then blen = blen - 4 end
-    reason = wire_check(state, bytes, blen)
+    reason = strict_refusal(bytes, r, root)
+    if reason == nil and wire_after ~= nil then
+      reason = wire_after
+      if reason == "count_over_extent_cap" then r.refused = 1 end
+    end
+  end
+  if wire_reason ~= nil then
+    -- the walk never ran: the report carries the verdict alone
+    r.wireAlone = true
     if reason == "wire_damaged" then
       r.damaged = true
       r.wireDamaged = true
     elseif reason == "count_over_extent_cap" then
       r.refused = 1
+    elseif reason == "blob_shared" then
+      r.sharedBlob = 1
     end
   end
   if reason ~= nil then

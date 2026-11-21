@@ -202,7 +202,7 @@ func tableMessageBodyTeamConfig(r *TableMessageReader, value *TeamConfig, starts
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.SpawnCount = int32(v)
+						value.SpawnCount = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.SpawnCount != 4) {
@@ -248,7 +248,7 @@ func tableMessageBodyTeamConfig(r *TableMessageReader, value *TeamConfig, starts
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
-					if n > 16 {
+					if n > 16 || n > uint64(entry.Shape.Max) {
 						r.Report.Refuse(TableRefuseLengthOverBound, "TeamConfig.banner")
 						return false
 					}
@@ -1931,7 +1931,7 @@ func tableMessageBodyScoreBoard(r *TableMessageReader, value *ScoreBoardRow, sta
 									r.Report.Refuse(TableRefuseWireDamaged, "")
 									return false
 								}
-								(*p) = int32(v)
+								(*p) = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 							}
 							if (*p) != 0 {
 								slotDefault = false

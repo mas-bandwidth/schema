@@ -2,12 +2,13 @@ package darttable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestRetainedRecordsReturnToTheirOwnBody pins docs/SPEC-TABLES.md §6.6 at
@@ -110,7 +111,7 @@ void main(List<String> args) {
 		t.Fatal(err)
 	}
 	output := filepath.Join(dir, "save.wire")
-	cmd := exec.Command(dartBinary(t), "--enable-asserts", "probe.dart", input, output)
+	cmd := testproc.Command(t, dartBinary(t), "--enable-asserts", "probe.dart", input, output)
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("retain probe: %v\n%s", err, out)

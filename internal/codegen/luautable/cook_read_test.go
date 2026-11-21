@@ -228,7 +228,9 @@ func TestLuauCookOpenAgreesWithGo(t *testing.T) {
 			inst := cu.m.New(table)
 			var report tabletext.Report
 			if _, err := tablewire.Decode(cu.m, inst, wire, &report); err != nil {
-				if strings.HasPrefix(tablewire.RefusalReason(err), "blob_shared") {
+				if row.blobShared || strings.HasPrefix(tablewire.RefusalReason(err), "blob_shared") {
+					// a wire-refused row (testdata/conformance/tables/FORMAT.md): the
+					// strict read refuses it, so the tool writes no cook to open
 					t.Skip("layer 4 (luau): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 				}
 				t.Fatalf("decode %s: %v", row.caseName, err)

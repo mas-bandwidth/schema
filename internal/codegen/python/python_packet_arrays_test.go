@@ -14,6 +14,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // arraysSchema holds fixed arrays [N]T and counted arrays [A..B]T of every
@@ -100,11 +102,9 @@ const arraysProbe = `
 import sys
 from arrays import Arrays, Bits, Elem, Holder, HolderType, InvalidValue, Kind, Refused, Shape, ShapeType, Small, Wrap
 
-
 def fail(msg):
     print("FAILED: " + msg)
     sys.exit(1)
-
 
 # the hand-checked vector, both ways
 vec = bytes.fromhex("01021d2000")
@@ -141,7 +141,6 @@ if Arrays.read(a.write()) != a:
 if Small.read(Small().write()) != Small():
     fail("a fresh Small does not round-trip")
 
-
 def full():
     v = Arrays()
     v.bs = [True, False, True]
@@ -171,7 +170,6 @@ def full():
     v.fixedg[1].v = 77
     return v
 
-
 v = full()
 data = v.write()
 back = Arrays.read(data)
@@ -194,19 +192,16 @@ if got.gated != [] or len(got.fixedg) != 2 or got.fixedg[0].on is not False or g
 # written by the Go leg; Python writes the same bytes, and reads Go's bytes
 # back to the same value
 
-
 def small():
     s = Small()
     s.a = [1, 2]
     s.c = [7, 8]
     return s
 
-
 def defaults():
     d = Arrays()
     d.on = True
     return d
-
 
 def many():
     w = Wrap()
@@ -215,13 +210,11 @@ def many():
     w.h.many.items[0].v = 12
     return w
 
-
 def pair():
     w = Wrap()
     w.h.type = HolderType.Pair
     w.h.pair.v = [3, 250]
     return w
-
 
 with open("go.hex") as handle:
     reference = [bytes.fromhex(line) for line in handle.read().split()]
@@ -261,35 +254,29 @@ except InvalidValue as exc:
 else:
     fail("a short arm array was written")
 
-
 # every out-of-contract write raises InvalidValue at the element's path
 def setitem(name, i, value):
     def f(v):
         getattr(v, name)[i] = value
     return f
 
-
 def setattr_(name, value):
     def f(v):
         setattr(v, name, value)
     return f
-
 
 def elem_v(name, i, value):
     def f(v):
         getattr(v, name)[i].v = value
     return f
 
-
 def gated(value):
     def f(v):
         v.gated = value
     return f
 
-
 def gated_v(v):
     v.gated[1].v = -40000
-
 
 cases = [
     ("Arrays.bs", setattr_("bs", [True, False])),
@@ -465,7 +452,7 @@ func goReference(t *testing.T, u *ir.Unit) []byte {
 		files["arrays/"+name] = data
 	}
 	writeTree(t, dir, files)
-	cmd := exec.Command("go", "run", ".")
+	cmd := testproc.Command(t, "go", "run", ".")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GOFLAGS=-mod=mod", "GOWORK=off")
 	out, err := cmd.Output()

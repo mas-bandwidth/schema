@@ -22,12 +22,13 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // The pins make/python-toolchain.mk builds (docs/PORT-PYTHON.md, THE PIN).
@@ -138,7 +139,7 @@ func Try(t testing.TB, python, dir, main string, inputs map[string][]byte) (stdo
 			t.Fatal(werr)
 		}
 	}
-	cmd := exec.Command(python, "-W", "error", "-I", "-B", main)
+	cmd := testproc.Command(t, python, "-W", "error", "-I", "-B", main)
 	cmd.Dir = dir
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out
@@ -154,7 +155,7 @@ func Analyze(t testing.TB, dir string, paths ...string) (string, error) {
 	t.Helper()
 	slowtest.Gate(t, "the pinned mypy")
 	args := append([]string{"--strict", "--python-version", "3.11", "--no-color-output", "--cache-dir", filepath.Join(dir, ".mypy_cache")}, paths...)
-	cmd := exec.Command(Mypy(t), args...)
+	cmd := testproc.Command(t, Mypy(t), args...)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	return string(out), err
@@ -180,7 +181,7 @@ func HexLines(t testing.TB, stdout []byte) [][]byte {
 func TryStdin(t testing.TB, python, dir, main string, args []string, stdin string) (stdout, stderr string, err error) {
 	t.Helper()
 	slowtest.Gate(t, "the pinned Python interpreter")
-	cmd := exec.Command(python, append([]string{"-W", "error", "-I", "-B", main}, args...)...)
+	cmd := testproc.Command(t, python, append([]string{"-W", "error", "-I", "-B", main}, args...)...)
 	cmd.Dir = dir
 	cmd.Stdin = strings.NewReader(stdin)
 	var out, errb bytes.Buffer

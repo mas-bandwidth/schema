@@ -14,7 +14,11 @@ name: Release
 # including a certify.yml run on the commit, must be green first.
 # And the proof table must be green AT THAT COMMIT: `make release` refuses
 # unless ci-full's `proof` job left a green report for it (tools/matrix
-# VerifyRelease), naming the red cells when it is not.
+# VerifyRelease), naming the red cells when it is not, and the report is read
+# only from a ci-full run at that commit whose conclusion is success: its
+# `verdict` job fails the run on any red go-test, generated, negative-control
+# or vuln row, which `proof` alone does not see. That is the `full` lane. The default `fast` lane (patch releases only, Glenn, 2026-11-21) is
+# locked instead on a green CI fast run at the commit; ci-full runs after.
 #
 # THE BINARIES come after the tag, in the `assets` job, which runs only when
 # the `release` job, and so every refusal above, passed. It is a job here and
@@ -38,6 +42,15 @@ on:
         description: 'the release version, vMAJOR.MINOR.PATCH, greater than the newest v tag'
         required: true
         type: string
+      lane:
+        # fast: a patch release gated on a green CI fast run at the commit
+        # (Glenn, 2026-11-21: "Only run fast CI checks for the point
+        # releases."); full: the ci-full proof report, for any release
+        description: 'fast (patch releases: green CI fast at the commit) or full (the ci-full proof report)'
+        required: true
+        default: fast
+        type: choice
+        options: [fast, full]
 
 # Releases are serial: two dispatches must not both read the same newest tag.
 concurrency:
@@ -69,22 +82,30 @@ jobs:
           go-version: '1.26'
           cache: false
       # THE RELEASE LOCK: the proof report ci-full's `proof` job wrote at this
-      # exact commit. `make release` refuses unless it is there and green
+      # exact commit, read only from a ci-full run there whose conclusion is
+      # success (CI-TOOLS-5: `proof` needs only the conformance rows, so a run
+      # red on go-test, generated, the negative controls or vuln can still
+      # carry a green proof; the run's conclusion includes its `verdict` job).
+      # `make release` refuses unless the report is there and green
       # (tools/matrix VerifyRelease), naming the red cells; a commit with no
-      # completed ci-full run has no report, and the release refuses on that.
+      # green ci-full run refuses here, by name.
       - name: the proof report at this commit
+        if: inputs.lane == 'full'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          run=$(gh run list --workflow ci-full.yml --commit "$GITHUB_SHA" --status completed --limit 1 --json databaseId --jq '.[0].databaseId // empty')
-          if [ -z "$run" ]; then echo "no completed ci-full run at $GITHUB_SHA: no proof report, and make release will refuse"; exit 0; fi
-          gh run download "$run" --name proof --dir build/proof || echo "the ci-full run $run at $GITHUB_SHA kept no proof report; make release will refuse"
+          run=$(gh run list --workflow ci-full.yml --commit "$GITHUB_SHA" --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+          if [ -z "$run" ]; then echo "release REFUSES: no green ci-full run at $GITHUB_SHA (a red, cancelled or missing run carries no proof the release can take)"; exit 1; fi
+          gh run download "$run" --name proof --dir build/proof || echo "the green ci-full run $run at $GITHUB_SHA kept no proof report; make release will refuse"
       - name: make the release tag
         env:
           GOFLAGS: -mod=readonly
           # passed through the environment, never interpolated into the script
           VERSION: ${{ inputs.version }}
+          # the fast lane's lock asks gh for the CI fast run at the commit
+          RELEASE_LANE: ${{ inputs.lane }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           git fetch --quiet origin main

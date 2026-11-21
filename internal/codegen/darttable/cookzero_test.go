@@ -12,13 +12,14 @@ import (
 	"encoding/hex"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestDartCookWriteZeroesDeadSlots(t *testing.T) {
@@ -66,7 +67,7 @@ func TestDartCookWriteZeroesDeadSlots(t *testing.T) {
 				t.Fatal(err)
 			}
 			text := filepath.Join(repo, "testdata", "conformance", "tables", "json", row.instance+".json")
-			cmd := exec.Command(dartBin, "--enable-asserts", probePath, text)
+			cmd := testproc.Command(t, dartBin, "--enable-asserts", probePath, text)
 			cmd.Dir = dir
 			out, err := cmd.CombinedOutput()
 			if err != nil {
