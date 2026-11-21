@@ -20,7 +20,6 @@ import (
 	"math/big"
 	"sort"
 	"strings"
-	"sync"
 
 	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -184,7 +183,7 @@ func emitFixedRoot(g *Gen, root *ir.Struct) {
 	g.Pf("\tfloor = %d,\n", floor)
 	g.Pf("\tlineage = {\n")
 	for _, e := range entries {
-		writer := resolveMooEntryWriter(g.Unit, root, e, own.Wire)
+		writer := resolveMooEntryWriter(g, root, e, own.Wire)
 		g.Pf("\t\t{ hash = %s, recordBytes = %d, retired = %v, layout = %s%s }, -- 0x%016x\n",
 			IdLit(e.Wire), e.Record-fixedHashBytes, e.Retired, bytesLit(e.Layout), writerRanges(g, root, writer, e.Layout), e.Wire)
 	}
@@ -192,27 +191,22 @@ func emitFixedRoot(g *Gen, root *ir.Struct) {
 	g.Pf("})\n\n")
 }
 
-// writerRanges is one lineage entry's WRITER ranges (§4.5): for each ranged
-// integer field of the reader's root that the writer declared ranged at the
-// same storage width and scalar kind, the writer's raw bounds keyed by the
-// field's wire id — the fields, widths and kinds the C++ reference's known
-// ranges hold (internal/codegen/cpptable/lineage.go, collectKnownRanges). A
-// ranged fixed array's range holds each element the same as a scalar; the
-// runtime lands it on the array's element node. An entry with no writer, or
-// no such field, lays down nothing.
-var mooUnitLocks sync.Map // *ir.Unit -> *lockfile.Unit
-
-func resolveMooEntryWriter(u *ir.Unit, root *ir.Struct, e FixedLineageEntry, ownWire uint64) *ir.Struct {
+// resolveMooEntryWriter is the writer of a lineage entry: the one handed in,
+// or for an entry named by hash alone the one the unit's lock records. The
+// lock is read at most once per module and held on that module's Gen, so it
+// lives only as long as the generation call: nothing about the unit is kept
+// at package level.
+func resolveMooEntryWriter(g *Gen, root *ir.Struct, e FixedLineageEntry, ownWire uint64) *ir.Struct {
 	if e.Writer != nil {
 		return e.Writer
 	}
+	u := g.Unit
 	if u == nil || root == nil || e.Wire == ownWire {
 		return nil
 	}
-	var lock *lockfile.Unit
-	if v, ok := mooUnitLocks.Load(u); ok {
-		lock, _ = v.(*lockfile.Unit)
-	} else {
+	if !g.lockRead {
+		g.lockRead = true
+		var lock *lockfile.Unit
 		var paths []string
 		for _, f := range u.Files {
 			if f != nil && f.Path != "" {
@@ -224,12 +218,12 @@ func resolveMooEntryWriter(u *ir.Unit, root *ir.Struct, e FixedLineageEntry, own
 				lock = lk
 			}
 		}
-		mooUnitLocks.Store(u, lock)
+		g.lock = lock
 	}
-	if lock == nil {
+	if g.lock == nil {
 		return nil
 	}
-	for _, le := range lockfile.Lineage(lock, root.WireName()) {
+	for _, le := range lockfile.Lineage(g.lock, root.WireName()) {
 		if le.Wire == e.Wire {
 			return le.Writer
 		}
@@ -246,6 +240,14 @@ func mooStorageBounds(signed bool, bits int) (*big.Int, *big.Int) {
 	return big.NewInt(0), new(big.Int).Sub(new(big.Int).Lsh(one, uint(bits)), one)
 }
 
+// writerRanges is one lineage entry's WRITER ranges (§4.5): for each ranged
+// integer field of the reader's root that the writer declared ranged at the
+// same storage width and scalar kind, the writer's raw bounds keyed by the
+// field's wire id — the fields, widths and kinds the C++ reference's known
+// ranges hold (internal/codegen/cpptable/lineage.go, collectKnownRanges). A
+// ranged fixed array's range holds each element the same as a scalar; the
+// runtime lands it on the array's element node. An entry with no writer, or
+// no such field, lays down nothing.
 func writerRanges(g *Gen, reader, writer *ir.Struct, layout []byte) string {
 	if writer == nil {
 		return ""

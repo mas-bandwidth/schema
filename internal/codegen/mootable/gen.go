@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/genheader"
+	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -32,6 +33,11 @@ type Gen struct {
 	// reaches, which the unit view writes (view.go): its ids are 0 and its
 	// text keys empty (docs/SPEC-TABLES.md §8.2).
 	wireless bool
+	// lock is the unit's lock, read at most once per module (lockRead) when
+	// a lineage entry names its writer by hash alone (fixedform.go,
+	// resolveMooEntryWriter); it lives as long as this module's generation.
+	lock     *lockfile.Unit
+	lockRead bool
 
 	body     strings.Builder
 	requires map[string]bool

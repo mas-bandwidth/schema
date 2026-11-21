@@ -22,7 +22,7 @@ import (
 )
 
 func init() {
-	Register("fixed-form-evolve", emitFixedEvolve)
+	registerCall("fixed-form-evolve", emitFixedEvolve)
 }
 
 // FixedLineageEntry is one locked layout of one fixed table (docs/FIXED-FORM-ALGORITHM.md §5.2):
@@ -38,24 +38,11 @@ type FixedLineageEntry struct {
 	Writer  *ir.Struct
 }
 
-var (
-	lineageMu   sync.Mutex
-	unitLineage = map[*ir.Unit]map[string][]FixedLineageEntry{}
-)
-
 // GenerateLineage emits the Lobster table modules for u with explicit per-table
 // lineage entries (oldest first; the table's own current layout is appended
-// last if not already present).
+// last if not already present). The lineage travels with this call alone.
 func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
-	lineageMu.Lock()
-	unitLineage[u] = lineage
-	lineageMu.Unlock()
-	defer func() {
-		lineageMu.Lock()
-		delete(unitLineage, u)
-		lineageMu.Unlock()
-	}()
-	return Generate(u)
+	return generate(u, &genCall{lineage: lineage, explicit: true})
 }
 
 // FixedLineageOf computes the entry a unit's own build locks for table name:
@@ -80,13 +67,6 @@ func FixedLineageOf(u *ir.Unit, name string) (FixedLineageEntry, bool) {
 	return FixedLineageEntry{}, false
 }
 
-func lookupUnitLineage(u *ir.Unit) (map[string][]FixedLineageEntry, bool) {
-	lineageMu.Lock()
-	defer lineageMu.Unlock()
-	m, ok := unitLineage[u]
-	return m, ok
-}
-
 func fixedTableQualifies(g *lobster.Gen, st *ir.Struct) bool {
 	if st == nil || st.IsMapEntry() || !ir.TableFixedSupported(st, 0) {
 		return false
@@ -100,7 +80,7 @@ func fixedTableQualifies(g *lobster.Gen, st *ir.Struct) bool {
 	return fixedLobsterSimple(st, 0)
 }
 
-func emitFixedEvolve(g *lobster.Gen) error {
+func emitFixedEvolve(g *lobster.Gen, c *genCall) error {
 	var local []*ir.Struct
 	localSet := map[string]bool{}
 	addCandidate := func(st *ir.Struct) {
@@ -144,7 +124,7 @@ func emitFixedEvolve(g *lobster.Gen) error {
 		visit(st)
 	}
 
-	explicitMap, hasExplicit := lookupUnitLineage(g.Unit)
+	explicitMap, hasExplicit := c.lineage, c.explicit
 	var sibMap map[string][]FixedLineageEntry
 	if !hasExplicit {
 		sibMap = discoverSiblingLineage(g.Unit)
