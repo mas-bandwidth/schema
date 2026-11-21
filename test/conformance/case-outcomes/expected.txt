@@ -6,7 +6,6 @@ message msg_error error
 message msg_no_unit absent
 message msg_inapplicable_no_unit absent
 message msg_no_root absent
-wire wire_read bytes
 wire wire_refused reason
 wire wire_error error
 wire wire_fixed_read bytes

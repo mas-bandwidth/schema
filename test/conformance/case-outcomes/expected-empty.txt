@@ -8,7 +8,6 @@ message msg_error absent
 message msg_no_unit absent
 message msg_inapplicable_no_unit absent
 message msg_no_root absent
-wire wire_read absent
 wire wire_refused absent
 wire wire_error absent
 wire wire_fixed_read absent
