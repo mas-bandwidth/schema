@@ -2710,11 +2710,14 @@ function TableVariableTextListRead(fd, inp, v, depth, graph, report) {
 // all see the same entry (§3.1)
 let TableVariableEntryCache = null;
 
-function TableVariableUtf8Compare(a, b) {
-  const x = TableVariableUtf8Encode(a), y = TableVariableUtf8Encode(b);
+function TableVariableBytesCompare(x, y) {
   const n = Math.min(x.length, y.length);
   for (let i = 0; i < n; i++) { if (x[i] !== y[i]) { return x[i] < y[i] ? -1 : 1; } }
   return x.length === y.length ? 0 : (x.length < y.length ? -1 : 1);
+}
+
+function TableVariableUtf8Compare(a, b) {
+  return TableVariableBytesCompare(TableVariableUtf8Encode(a), TableVariableUtf8Encode(b));
 }
 
 // THE KEY ORDER (internal/tabletext MapKeyOrder): byte-wise over the UTF-8 for
@@ -2722,6 +2725,18 @@ function TableVariableUtf8Compare(a, b) {
 function TableVariableKeyOrder(fd, a, b) {
   if (fd.ks) { return TableVariableUtf8Compare(a, b); }
   return a < b ? -1 : (a > b ? 1 : 0);
+}
+
+// THE ENTRY SORT, in the key order: a string key is encoded to UTF-8 once
+// per entry, not twice per compare
+function TableVariableSortEntries(fd, ents) {
+  if (!fd.ks) {
+    ents.sort((a, b) => (a.key < b.key ? -1 : (a.key > b.key ? 1 : 0)));
+    return;
+  }
+  const keyed = ents.map((e) => ({ b: TableVariableUtf8Encode(e.key), e }));
+  keyed.sort((x, y) => TableVariableBytesCompare(x.b, y.b));
+  for (let i = 0; i < keyed.length; i++) { ents[i] = keyed[i].e; }
 }
 
 function TableVariableMapEntries(fd, m) {
@@ -2736,7 +2751,7 @@ function TableVariableMapEntries(fd, m) {
     e.value = val;
     out.push(e);
   }
-  out.sort((a, b) => TableVariableKeyOrder(fd, a.key, b.key));
+  TableVariableSortEntries(fd, out);
   if (TableVariableEntryCache !== null) { TableVariableEntryCache.set(m, out); }
   return out;
 }
@@ -4620,6 +4635,11 @@ function TableVariableTextMap(fd, inp, v, depth, graph, report) {
   inp.p++;
   const kd = fd.c.fields[0], vd = fd.c.fields[1];
   const ents = [];
+  // THE REPEAT TEST IS ONE KEYED LOOKUP, never a scan of the landed entries
+  // (linear work in the entry count): a string key is equal exactly when its
+  // UTF-8 is, and an integer key (Number or BigInt) by value, which is Map's
+  // own key equality
+  const at = new Map();
   const mapField = inp.field;
   v[fd.n] = new Map();
   for (;;) {
@@ -4649,8 +4669,8 @@ function TableVariableTextMap(fd, inp, v, depth, graph, report) {
       const entry = fd.c.make();
       entry.key = key;
       if (!TableVariableTextValue(vd, inp, entry, depth, graph, report)) { return false; }
-      const at = ents.findIndex((e) => TableVariableKeyOrder(fd, e.key, key) === 0);
-      if (at >= 0) { report.repeated++; ents[at] = entry; } else { ents.push(entry); }
+      const i = at.get(key);
+      if (i !== undefined) { report.repeated++; ents[i] = entry; } else { at.set(key, ents.length); ents.push(entry); }
     }
     ch = inp.peek();
     if (ch === ",") { inp.p++; continue; }
@@ -4658,7 +4678,7 @@ function TableVariableTextMap(fd, inp, v, depth, graph, report) {
     inp.bad = true;
     return false;
   }
-  ents.sort((a, b) => TableVariableKeyOrder(fd, a.key, b.key));
+  TableVariableSortEntries(fd, ents);
   for (const e of ents) { v[fd.n].set(e.key, e.value); }
   return true;
 }
