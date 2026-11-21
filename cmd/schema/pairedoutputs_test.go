@@ -104,7 +104,7 @@ func TestPairedOutputsPublishBoth(t *testing.T) {
 		t.Run(cmd.verb, func(t *testing.T) {
 			dir, payload, side := pairFixture(t)
 			outs := []outputPath{{cmd.side, side}, {cmd.payload, payload}}
-			if err := refuseAliasedPaths(cmd.verb, outs, nil); err != nil {
+			if err := refuseOutputsIntoInputs(cmd.verb, outs, nil); err != nil {
 				t.Fatalf("distinct outputs refused: %v", err)
 			}
 			if err := publishPair(cmd.side, side, cmd.payload, payload); err != nil {
@@ -121,11 +121,11 @@ func TestPairedOutputsRefuseOnePath(t *testing.T) {
 	for _, cmd := range pairedCommands {
 		t.Run(cmd.verb, func(t *testing.T) {
 			_, payload, _ := pairFixture(t)
-			err := refuseAliasedPaths(cmd.verb, []outputPath{{cmd.side, payload}, {cmd.payload, payload}}, nil)
+			err := refuseOutputsIntoInputs(cmd.verb, []outputPath{{cmd.side, payload}, {cmd.payload, payload}}, nil)
 			wantAliasRefused(t, err, cmd.side, cmd.payload)
 			// the same file spelled another way is still the same file
 			dotted := filepath.Join(filepath.Dir(payload), ".", filepath.Base(payload))
-			err = refuseAliasedPaths(cmd.verb, []outputPath{{cmd.side, dotted}, {cmd.payload, payload}}, nil)
+			err = refuseOutputsIntoInputs(cmd.verb, []outputPath{{cmd.side, dotted}, {cmd.payload, payload}}, nil)
 			wantAliasRefused(t, err, cmd.side, cmd.payload)
 			if cmd.input == "" {
 				return
@@ -140,7 +140,7 @@ func TestPairedOutputsRefuseOnePath(t *testing.T) {
 				} else {
 					outs[0].path = payload
 				}
-				err := refuseAliasedPaths(cmd.verb, outs, []outputPath{{cmd.input, payload}})
+				err := refuseOutputsIntoInputs(cmd.verb, outs, []outputPath{{cmd.input, payload}})
 				wantAliasRefused(t, err, cmd.input, out)
 			}
 		})
@@ -156,7 +156,7 @@ func TestPairedOutputsRefuseSymlinkedDirectoryAlias(t *testing.T) {
 				t.Skipf("symlinks unavailable: %v", err)
 			}
 			viaAlias := filepath.Join(alias, filepath.Base(payload))
-			err := refuseAliasedPaths(cmd.verb, []outputPath{{cmd.side, viaAlias}, {cmd.payload, payload}}, nil)
+			err := refuseOutputsIntoInputs(cmd.verb, []outputPath{{cmd.side, viaAlias}, {cmd.payload, payload}}, nil)
 			wantAliasRefused(t, err, cmd.side, cmd.payload)
 			// a file not yet written aliases through the directory just the
 			// same: the publish finds it, and writes nothing
@@ -165,7 +165,7 @@ func TestPairedOutputsRefuseSymlinkedDirectoryAlias(t *testing.T) {
 			wantAliasRefused(t, err, cmd.side, cmd.payload)
 			wantEntries(t, dir, "out.bin", "side.bin")
 			if cmd.input != "" {
-				err = refuseAliasedPaths(cmd.verb, []outputPath{{cmd.side, filepath.Join(dir, "s.bin")}, {cmd.payload, viaAlias}}, []outputPath{{cmd.input, payload}})
+				err = refuseOutputsIntoInputs(cmd.verb, []outputPath{{cmd.side, filepath.Join(dir, "s.bin")}, {cmd.payload, viaAlias}}, []outputPath{{cmd.input, payload}})
 				wantAliasRefused(t, err, cmd.input, cmd.payload)
 			}
 		})
@@ -198,7 +198,7 @@ func TestPairedOutputsFailureKeepsTheExistingPair(t *testing.T) {
 			t.Run(cmd.verb+"/"+tc.name, func(t *testing.T) {
 				dir, payload, side := pairFixture(t)
 				badPayload, keep := tc.setup(t, dir)
-				if err := refuseAliasedPaths(cmd.verb, []outputPath{{cmd.side, side}, {cmd.payload, badPayload}}, nil); err != nil {
+				if err := refuseOutputsIntoInputs(cmd.verb, []outputPath{{cmd.side, side}, {cmd.payload, badPayload}}, nil); err != nil {
 					t.Fatalf("distinct outputs refused: %v", err)
 				}
 				if err := publishPair(cmd.side, side, cmd.payload, badPayload); err == nil {
@@ -246,7 +246,7 @@ func TestPairedOutputsRefuseNormalizationAlias(t *testing.T) {
 			payload := filepath.Join(dir, composed)
 			writeTestFile(t, payload, oldPayload)
 			side := filepath.Join(dir, decomposed)
-			err := refuseAliasedPaths(cmd.verb, []outputPath{{cmd.side, side}, {cmd.payload, payload}}, nil)
+			err := refuseOutputsIntoInputs(cmd.verb, []outputPath{{cmd.side, side}, {cmd.payload, payload}}, nil)
 			wantAliasRefused(t, err, cmd.side, cmd.payload)
 			err = publishPairReading(cmd.verb, cmd.side, side, cmd.payload, payload, nil)
 			wantAliasRefused(t, err, cmd.side, cmd.payload)
@@ -275,7 +275,7 @@ func TestCookRefusesOutputOverSymlinkedInput(t *testing.T) {
 	side := filepath.Join(dir, "side.bin")
 	in := []outputPath{{"--in", link}}
 	for _, out := range []string{link, real} {
-		err := refuseAliasedPaths("cook", []outputPath{{"--attribution", side}, {"--out", out}}, in)
+		err := refuseOutputsIntoInputs("cook", []outputPath{{"--attribution", side}, {"--out", out}}, in)
 		wantAliasRefused(t, err, "--in", "--out")
 		err = publishPairReading("cook", "--attribution", side, "--out", out, in)
 		wantAliasRefused(t, err, "--in", "--out")

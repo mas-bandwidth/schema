@@ -366,6 +366,9 @@ func main() {
 				schemaBases = append(schemaBases, f.Base)
 			}
 		}
+		if err := refuseGeneratedOverSources("generate", *out, files, fs.Args()); err != nil {
+			fatalf("%v", err)
+		}
 		if err := writeGenerated(*out, files, *lang, removeStale, unit.Package, schemaBases, verbose); err != nil {
 			fail(err)
 		}
@@ -387,6 +390,9 @@ func main() {
 			fail(err)
 		}
 		if err := os.MkdirAll(*out, 0o755); err != nil {
+			fatalf("%v", err)
+		}
+		if err := refuseGeneratedOverSources("testgen", *out, files, fs.Args()); err != nil {
 			fatalf("%v", err)
 		}
 		if err := writeGenerated(*out, files, *lang, false, unit.Package, nil, verbose); err != nil {
@@ -426,7 +432,14 @@ func main() {
 		if *announce != "" {
 			outs = []outputPath{{"--announce", *announce}, {"--out", *out}}
 		}
-		if err := refuseAliasedPaths("pack", outs, nil); err != nil {
+		// the tree, every --batch tree and every schema source are what this
+		// run reads: no output may land on or in them
+		ins := []outputPath{{"the tree argument", dir}}
+		for _, m := range batch {
+			ins = append(ins, outputPath{"--batch", m.Dir})
+		}
+		ins = append(ins, sourceInputs(rest)...)
+		if err := refuseOutputsIntoInputs("pack", outs, ins); err != nil {
 			fatalf("%v", err)
 		}
 		unit := loadUnit(c, rest)
@@ -457,7 +470,7 @@ func main() {
 			announcement = c.Announce(unit)
 			pub = []pairOutput{{outputPath{"--announce", *announce}, announcement}, pub[0]}
 		}
-		if err := publishOutputs("pack", pub, nil); err != nil {
+		if err := publishOutputs("pack", pub, ins); err != nil {
 			fatalf("%v", err)
 		}
 		if verbose {
@@ -556,7 +569,10 @@ func main() {
 		if *attribution != "" {
 			outs = []outputPath{{"--attribution", *attribution}, {"--out", *out}}
 		}
-		if err := refuseAliasedPaths("cook", outs, []outputPath{{"--in", *in}}); err != nil {
+		// --in (a file, or a tree to pack first) and every schema source are
+		// what this run reads: no output may land on or in them
+		ins := append([]outputPath{{"--in", *in}}, sourceInputs(fs.Args())...)
+		if err := refuseOutputsIntoInputs("cook", outs, ins); err != nil {
 			fatalf("%v", err)
 		}
 		unit := loadUnit(c, fs.Args())
@@ -591,7 +607,7 @@ func main() {
 			bytes = data
 			pub = []pairOutput{{outputPath{"--attribution", *attribution}, side}, {outputPath{"--out", *out}, bytes}}
 		}
-		if err := publishOutputs("cook", pub, []outputPath{{"--in", *in}}); err != nil {
+		if err := publishOutputs("cook", pub, ins); err != nil {
 			fatalf("%v", err)
 		}
 		if verbose {
@@ -655,6 +671,13 @@ func main() {
 		if *root == "" || *in == "" || *out == "" {
 			fatalf("uncook needs --root <Table>, --in <file> and --out <file>")
 		}
+		// the cook, its attribution file and every schema source are what
+		// this run reads: the output may not land on any of them
+		outs := []outputPath{{"--out", *out}}
+		ins := append([]outputPath{{"--in", *in}, {"--attribution", *attribution}}, sourceInputs(fs.Args())...)
+		if err := refuseOutputsIntoInputs("uncook", outs, ins); err != nil {
+			fatalf("%v", err)
+		}
 		file, err := os.ReadFile(*in)
 		if err != nil {
 			fatalf("%v", err)
@@ -673,7 +696,7 @@ func main() {
 		if err != nil {
 			fail(err)
 		}
-		if err := writeAtomic(*out, wire); err != nil {
+		if err := publishOutputs("uncook", []pairOutput{{outs[0], wire}}, ins); err != nil {
 			fatalf("%v", err)
 		}
 		if verbose {
@@ -987,6 +1010,37 @@ func loadUnit(c *compiler.Compiler, args []string) *ir.Unit {
 		fail(err)
 	}
 	return u
+}
+
+// sourceInputs names every schema source a command's unit arguments load, as
+// inputs no output may resolve to (SPEC.md §7: fmt is the only command that
+// writes a schema file). Arguments that do not gather name nothing here: the
+// load that follows reports them.
+func sourceInputs(args []string) []outputPath {
+	if len(args) == 0 {
+		args = []string{"."}
+	}
+	paths, err := compiler.GatherPaths(args)
+	if err != nil {
+		return nil
+	}
+	ins := make([]outputPath, len(paths))
+	for i, p := range paths {
+		ins[i] = outputPath{sourceInput, p}
+	}
+	return ins
+}
+
+// refuseGeneratedOverSources holds generate and testgen to the same rule as
+// every other writing command: a file about to be written under dir may not
+// resolve to a schema source the unit was loaded from.
+func refuseGeneratedOverSources(verb, dir string, files map[string][]byte, unitArgs []string) error {
+	outs := make([]outputPath, 0, len(files))
+	for name := range files {
+		outs = append(outs, outputPath{"the generated file", filepath.Join(dir, name)})
+	}
+	sort.Slice(outs, func(i, j int) bool { return outs[i].path < outs[j].path })
+	return refuseSourceOutputs(verb, outs, sourceInputs(unitArgs))
 }
 
 // messageTrees is the repeatable `--batch <Table>=<tree-dir>` flag: the
