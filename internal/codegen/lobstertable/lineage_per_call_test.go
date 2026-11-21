@@ -65,9 +65,7 @@ func TestLobsterLineageBelongsToItsCall(t *testing.T) {
 		var wg sync.WaitGroup
 		errs := make(chan string, workers)
 		for w := range workers {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				k := (w + iter) % len(lineages)
 				got, err := gen(lineages[k])
 				if err != nil {
@@ -77,7 +75,7 @@ func TestLobsterLineageBelongsToItsCall(t *testing.T) {
 				if got != want[k] {
 					errs <- "an overlapping call emitted another call's lineage"
 				}
-			}()
+			})
 		}
 		wg.Wait()
 		close(errs)
