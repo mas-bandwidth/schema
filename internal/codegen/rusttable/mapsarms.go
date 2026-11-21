@@ -534,6 +534,11 @@ func (g *gen) emitArrayBodyWrite(b *strings.Builder, f *ir.Field, x, dst string,
 		count = fmt.Sprintf("%d", f.ArrayBound)
 	case f.Array == ir.ArrayCounted:
 		count = fmt.Sprintf("%s.len().min(%d)", x, f.ArrayBound)
+		if f.ArrayMin > 0 {
+			// under the declared minimum is a debug assert (§3; Rust write
+			// checks are debug asserts only)
+			fmt.Fprintf(b, "%sdebug_assert!(%s.len() >= %d, \"%s count under %d\");\n", ind, x, f.ArrayMin, f.Name, f.ArrayMin)
+		}
 	case f.Type.Kind == ir.TBytes && !f.Type.Pointer:
 		count = fmt.Sprintf("%s.len().min(%d)", x, f.Type.Size)
 	}
@@ -1109,6 +1114,10 @@ func (g *gen) emitArrayBodyReadChecked(b *strings.Builder, f *ir.Field, field, a
 	bound := f.ArrayBound
 	if f.Type.Kind == ir.TBytes && f.Array == ir.ArrayNone {
 		bound = f.Type.Size
+	}
+	if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+		// a count under the declared minimum is damage (§3)
+		fmt.Fprintf(b, "%sif count < %d { report.damaged = true; }\n", i3, f.ArrayMin)
 	}
 	switch {
 	case f.Array == ir.ArrayList:
