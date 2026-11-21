@@ -717,7 +717,11 @@ func (g *fixedModule) messageRides(f *ir.Field, mem, ind string) string {
 			v := "_born_" + tag
 			g.pf("%slet %s = %sCount === %d;\n", ind, v, mem, f.BornCount())
 			g.pf("%sfor (let %s = 0; %s && %s < %d; %s++) {\n", ind, iv, v, iv, f.BornCount(), iv)
+			// whatever the element's test declares lives inside this loop's
+			// block, so its counter is given back after
+			seq := g.probeSeq
 			cond := g.messageRides(messageElementField(f), mem+"["+iv+"]", ind+"  ")
+			g.probeSeq = seq
 			g.pf("%s  if (%s) { %s = false; }\n", ind, cond, v)
 			g.pf("%s}\n", ind)
 			return "(" + mem + "Count > 0 && !" + v + ")"
