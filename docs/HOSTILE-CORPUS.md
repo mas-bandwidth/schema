@@ -120,7 +120,8 @@ binary per port under AddressSanitizer and UndefinedBehaviorSanitizer and
 driven by `tools/hostilecorpusexec`, which runs each case in its own process
 with a 512 KiB case-thread stack and the per-case budget, so a crash, a
 sanitizer report or a hang fails only that case; a retaining load of a
-fixed-storage root, which neither port has, answers `SKIP`). Each carries the disagreements
+fixed-storage root, which neither port has, answers `SKIP`, and a skip passes only
+when the port's `known-skips.tsv` names its case; none is named today). Each carries the disagreements
 its port still owes in a `known-findings.tsv` beside the runner and prints them
 as FIX-CARDs. A disagreement no FIX-CARD names fails the run, and so does a
 FIX-CARD whose case has gone green.
