@@ -1618,8 +1618,8 @@ message-drift varevo_msg_v3_to_v1_batch tblvarevo1 varevo3_conn EvoMsg testdata/
 # its two batches of one body; every reader reads the body whose score is 80000
 # and REFUSES the one whose score is 150000 (out_of_range): no reader clamps the
 # value, and none delivers the message with a counter moved.
-message-prior match_prior_inside backenddemo MatchResult testdata/conformance/tables/wire/match_full.bin test/tables/prior/BackendWideScore.schema 0x0000000000000000 testdata/conformance/tables/prior/match_prior_inside.json testdata/wire/tables/match_prior_conn.bin testdata/wire/tables/match_prior_inside_message.bin testdata/wire/tables/match_prior_inside_as_current.bin
-message-prior match_prior_past   backenddemo MatchResult testdata/conformance/tables/wire/match_full.bin test/tables/prior/BackendWideScore.schema 0x0000000000000000 testdata/conformance/tables/prior/match_prior_past.json   testdata/wire/tables/match_prior_conn.bin testdata/wire/tables/match_prior_past_message.bin   -
+message-prior match_prior_inside backenddemo MatchResult testdata/conformance/tables/wire/match_full.bin test/tables/prior/BackendWideScore.schema 0x01b45b6715922bb3 testdata/conformance/tables/prior/match_prior_inside.json testdata/wire/tables/match_prior_conn.bin testdata/wire/tables/match_prior_inside_message.bin testdata/wire/tables/match_prior_inside_as_current.bin
+message-prior match_prior_past   backenddemo MatchResult testdata/conformance/tables/wire/match_full.bin test/tables/prior/BackendWideScore.schema 0x01b45b6715922bb3 testdata/conformance/tables/prior/match_prior_past.json   testdata/wire/tables/match_prior_conn.bin testdata/wire/tables/match_prior_past_message.bin   -
 
 rewrite varevo_v1_as_v2                 tblvarevo2 EvoDoc testdata/conformance/tables/wire/varevo_v1_full.bin
 rewrite varevo_v1_as_v3                 tblvarevo3 EvoDoc testdata/conformance/tables/wire/varevo_v1_full.bin
