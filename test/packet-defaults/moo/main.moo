@@ -20,8 +20,15 @@ local inputs = require("./inputs")
 
 local U64 = serialize.Uint64
 local failed = 0
+-- ran counts the checks; the last stdout line is "packet defaults moo: ran N,
+-- failed M" (tools/mustrun reads it). read holds the goldens this main read:
+-- at the end every *.bin the driver carried in from testdata/wire/
+-- packet-defaults must be one of them, and there must be some.
+local ran = 0
+local read: { [string]: boolean } = {}
 
 local function check(ok: boolean, what: string)
+	ran += 1
 	if not ok then
 		print("FAILED: " .. what)
 		failed += 1
@@ -141,6 +148,7 @@ local function checkRead(name: string, bytes: string, bits: number, initial: any
 end
 
 local function pin(name: string, golden: string, value: any, initial: () -> any, want: () -> any)
+	read[golden .. ".bin"] = true
 	local bytes = buffer.tostring((inputs :: any)[golden .. ".bin"])
 	local bits = tonumber(string.match(buffer.tostring((inputs :: any)[golden .. ".bits"]), "%d+")) :: number
 	local got, gotBits = write(d, name, value)
@@ -284,7 +292,18 @@ for attempt = 1, 2 do
 	checkRead("Choice", offBytes, offBits, output, want, "repeated Conditional selection " .. attempt)
 end
 
-if failed > 0 then
+do
+	local carried = 0
+	for name in inputs :: any do
+		if string.sub(name, -4) == ".bin" then
+			carried += 1
+			check(read[name] == true, "golden " .. name .. " is in the directory and this main does not read it")
+		end
+	end
+	check(carried > 0, "the goldens directory is not empty")
+end
+print(string.format("packet defaults moo: ran %d, failed %d", ran, failed))
+if failed > 0 or ran == 0 then
 	error(string.format("packet defaults moo: %d check(s) failed", failed), 0)
 end
 print("packet defaults moo: constructors, eight C++ goldens and reused storage OK")
