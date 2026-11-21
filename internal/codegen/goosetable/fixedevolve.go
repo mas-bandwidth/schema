@@ -295,6 +295,7 @@ func (e *fixedEvolveEmit) emitRoot(st *ir.Struct) {
 	e.p("            let r = _%sFixedScan(data, body);\n", n)
 	e.p("            if r != 0 { var j: i64 = 0; while j < k { values[j] = %s { .. }; j += 1; } return schema_rt::fixed_evolve_refuse(report, r, false); }\n", typ)
 	e.p("            _%sFixedRead(data, body, values[k]);\n", n)
+	e.emitFinite(st, n, typ)
 	e.emitStrictRefuse(n, typ)
 	for i, plan := range plans {
 		e.p("        } else if pick == %d {\n", i+1)
@@ -307,6 +308,7 @@ func (e *fixedEvolveEmit) emitRoot(st *ir.Struct) {
 		e.p("            let r = _%sFixedScan(img, 0);\n", n)
 		e.p("            if r != 0 { var j: i64 = 0; while j < k { values[j] = %s { .. }; j += 1; } return schema_rt::fixed_evolve_refuse(report, r, false); }\n", typ)
 		e.p("            _%sFixedRead(img, 0, values[k]);\n", n)
+		e.emitFinite(st, n, typ)
 		e.p("            if forged != 0 { var j: i64 = 0; while j <= k { values[j] = %s { .. }; j += 1; } return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseOutOfRange, false); }\n", typ)
 		e.emitWriterRefuse(st, olds[i].Ranges)
 		e.emitStrictRefuse(n, typ)
@@ -333,6 +335,21 @@ func (e *fixedEvolveEmit) emitRoot(st *ir.Struct) {
 	}
 	e.p("    return count;\n")
 	e.p("}\n")
+}
+
+// emitFinite makes a landed record's finite pass the read's answer
+// (SPEC-TABLES §3.3), before any bounds pass: a NaN or an infinity refuses
+// non_finite_float, and every element of the batch already written goes back
+// to its declared defaults.
+func (e *fixedEvolveEmit) emitFinite(st *ir.Struct, n, typ string) {
+	if !finiteStruct(st) {
+		return
+	}
+	e.p("            if !_%sFixedFinite(values[k]) {\n", n)
+	e.p("                var j: i64 = 0;\n")
+	e.p("                while j <= k { values[j] = %s { .. }; j += 1; }\n", typ)
+	e.p("                return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseNonFiniteFloat, false);\n")
+	e.p("            }\n")
 }
 
 // emitStrictRefuse makes a landed record's strict bounds pass the read's

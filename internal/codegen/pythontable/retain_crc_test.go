@@ -10,10 +10,11 @@ import (
 	"hash/crc32"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestPythonRetainCRC(t *testing.T) {
@@ -86,14 +87,14 @@ int main(int argc,char **argv) {
 	bin := filepath.Join(cppdir, "retain_crc")
 	args := append([]string{"-std=c++17", "-O1", "-I" + cppdir, "-I" + ser, src}, sources...)
 	args = append(args, "-o", bin)
-	if output, err := exec.Command("c++", args...).CombinedOutput(); err != nil {
+	if output, err := testproc.Command(t, "c++", args...).CombinedOutput(); err != nil {
 		t.Fatalf("C++ retain CRC compile: %v\n%s", err, output)
 	}
 	input := filepath.Join(cppdir, "wire")
 	if err := os.WriteFile(input, wire, 0600); err != nil {
 		t.Fatal(err)
 	}
-	cppwire, err := exec.Command(bin, input).Output()
+	cppwire, err := testproc.Command(t, bin, input).Output()
 	if err != nil {
 		t.Fatalf("C++ retain CRC: %v", err)
 	}

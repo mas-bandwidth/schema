@@ -1381,15 +1381,20 @@ func (g *gen) emitTextWriteOne(b *strings.Builder, f *ir.Field, x, d, ind string
 		case ir.TBool:
 			fmt.Fprintf(b, "%sw.out.push_str(if %s { \"true\" } else { \"false\" });\n", ind, x)
 		case ir.TFloat32:
+			// a float32 range is compared at float32 (docs/SPEC.md §4.6), and a
+			// compressed float's -0 is written as +0
+			// (docs/rulings.json fixed-compressed-negzero)
 			if f.HasFloatRange {
-				fmt.Fprintf(b, "%sif !((%s as f64) >= %s && (%s as f64) <= %s) { w.refused = true; }\n", ind, x, fixedFloatLit(f.FMin), x, fixedFloatLit(f.FMax))
+				lo, hi := rustFloatBounds(f)
+				fmt.Fprintf(b, "%sif !(%s >= %s && %s <= %s) { w.refused = true; }\n", ind, x, lo, x, hi)
 			}
-			fmt.Fprintf(b, "%sjson_float(%s as f64, true, w);\n", ind, x)
+			fmt.Fprintf(b, "%sjson_float(%s as f64, true, w);\n", ind, rustFloatStored(f, x))
 		case ir.TFloat64:
 			if f.HasFloatRange {
-				fmt.Fprintf(b, "%sif !(%s >= %s && %s <= %s) { w.refused = true; }\n", ind, x, fixedFloatLit(f.FMin), x, fixedFloatLit(f.FMax))
+				lo, hi := rustFloatBounds(f)
+				fmt.Fprintf(b, "%sif !(%s >= %s && %s <= %s) { w.refused = true; }\n", ind, x, lo, x, hi)
 			}
-			fmt.Fprintf(b, "%sjson_float(%s, false, w);\n", ind, unparen(x))
+			fmt.Fprintf(b, "%sjson_float(%s, false, w);\n", ind, unparen(rustFloatStored(f, x)))
 		case ir.TFixed:
 			fmt.Fprint(b, emitTextScalarRangeRefuse(f, x, ind))
 			// WHOLE UNITS, exact, from the raw integer (§16.2); a storage

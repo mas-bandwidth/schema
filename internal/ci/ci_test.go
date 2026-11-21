@@ -942,17 +942,17 @@ func resolveCIToken(tok string, ev ciEvent) (string, error) {
 	case "github.repository":
 		return ev.Repo, nil
 	case "github.event.pull_request.head.repo.full_name":
-		if ev.Name != "pull_request" {
+		if ev.Name != "pull_request" && ev.Name != "pull_request_target" {
 			return "", nil
 		}
 		return ev.HeadRepo, nil
 	case "github.base_ref", "github.event.pull_request.base.ref":
-		if ev.Name != "pull_request" {
+		if ev.Name != "pull_request" && ev.Name != "pull_request_target" {
 			return "", nil
 		}
 		return ev.Branch, nil
 	case "github.head_ref", "github.event.pull_request.head.ref":
-		if ev.Name != "pull_request" {
+		if ev.Name != "pull_request" && ev.Name != "pull_request_target" {
 			return "", nil
 		}
 		return ev.HeadRef, nil

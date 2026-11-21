@@ -5,7 +5,6 @@ import (
 	"maps"
 	"math/big"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,6 +15,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // A float32 field reads a JSON number by ONE correctly rounded conversion
@@ -177,7 +178,7 @@ func TestJSONFloat32TieOracle(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("go", "test", "-count=1", "-timeout", "600s", "-run", "^TestJSONFloat32TieOracle$", "-v", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", "-timeout", "600s", "-run", "^TestJSONFloat32TieOracle$", "-v", ".")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GOFLAGS=-mod=readonly")
 	out, err := cmd.CombinedOutput()

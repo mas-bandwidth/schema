@@ -238,7 +238,8 @@ func (m *msgGen) storageCheck(f *ir.Field, expr, ind string) {
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		m.pf("%sdebug_assert!(%s_length >= 0 && %s_length <= %d, \"the declared length is the bound (docs/SPEC-TABLES.md §3.4)\");\n", ind, expr, expr, f.Type.Size)
 	case f.Array == ir.ArrayCounted:
-		m.pf("%sdebug_assert!(%s_count >= 0 && %s_count <= %d, \"the declared count is the bound (docs/SPEC-TABLES.md §3.4)\");\n", ind, expr, expr, f.ArrayBound)
+		// a counted array's floor is its declared Min (docs/SPEC.md §5.1 row 3)
+		m.pf("%sdebug_assert!(%s_count >= %d && %s_count <= %d, \"the declared count is the bound (docs/SPEC-TABLES.md §3.4)\");\n", ind, expr, f.ArrayMin, expr, f.ArrayBound)
 	}
 }
 
@@ -267,6 +268,11 @@ func (m *msgGen) rides(f *ir.Field, expr, dexpr, ind string) string {
 			return expr + "_length > 0"
 		}
 		return fmt.Sprintf("%s_length != %d || %s[..%d] != %s", expr, len(f.DefBytes), expr, len(f.DefBytes), rustByteArray(f.DefBytes))
+	case f.Array == ir.ArrayCounted && f.ArrayMin > 0 && !isStructRef(f.Type) && !isUnionRef(f.Type) && f.Type.Kind != ir.TString && f.Type.Kind != ir.TBytes:
+		// A [Min..N]T ARRAY AT ITS BIRTH ELIDES (internal/tablewire
+		// messageElides): Min elements, each at its default.
+		e := msgElement(f)
+		return fmt.Sprintf("%s_count > 0 && (%s_count != %d || (0..%d).any(|i| %s))", expr, expr, f.ArrayMin, f.ArrayMin, m.rides(e, expr+"[i]", dexpr+"[i]", ind))
 	case f.Array == ir.ArrayCounted:
 		return expr + "_count > 0"
 	case f.Array == ir.ArrayFixed:
@@ -291,6 +297,10 @@ func (m *msgGen) rides(f *ir.Field, expr, dexpr, ind string) string {
 // ordinal or a union tag outside its set, and a NaN or infinity refuse in every
 // build elsewhere.
 func (m *msgGen) scalarWriteCheck(f *ir.Field, expr, ind string) {
+	if a := rustFloatRangeAssert(f, expr, ind); a != "" {
+		m.pf("%s", a)
+		return
+	}
 	switch f.Type.Kind {
 	case ir.TBool, ir.TFloat32, ir.TFloat64, ir.TNamed:
 		return
@@ -486,11 +496,15 @@ func (m *msgGen) emitLoadBody(st *ir.Struct) {
 		if widens {
 			body.pf("%slet mut widened = false;\n", ind)
 		}
-		if !f.Type.Optional {
+		if !f.Type.Optional && !msgQuantizedExempt(f, mine) {
 			body.pf("%slet unknown_before = report.unknown;\n", ind)
 		}
 		body.pf("%s%s: {\n", ind, label)
 		body.compat(f, mine, "entry", "", label, ind+"    ")
+		nested := isStructRef(f.Type) && f.Array == ir.ArrayNone && f.KeyEnum == "" && !f.Type.Optional
+		if nested {
+			body.pf("%s    let start = r.offset;\n", ind)
+		}
 		body.readValue(f, "value."+f.Name, "entry", ind+"    ")
 		if f.Type.Optional {
 			body.pf("%s    value.%s_present = true;\n", ind, f.Name)
@@ -509,10 +523,25 @@ func (m *msgGen) emitLoadBody(st *ir.Struct) {
 			// read met a name this build cannot resolve (an unknown arm,
 			// variant or nested field) reads a default lawfully and is not
 			// held to it.
-			body.pf("%s    if same_build && report.unknown == unknown_before {\n", ind)
-			rides := body.rides(f, "value."+f.Name, "dflt."+f.Name, ind+"        ")
-			body.pf("%s        let rides = %s;\n%s        if !rides %s // a field stored at its default (§3.3 (a))\n", ind, rides, ind, msgBad)
-			body.pf("%s    }\n", ind)
+			//
+			// A COMPRESSED FLOAT ELIDES BY ITS HELD VALUE, compared with its
+			// default before quantization (docs/SPEC-TABLES.md §3.3), so a held
+			// value that quantizes onto the default's step still rides and reads
+			// back as the default: a quantized field, and a fixed array of
+			// quantized elements, is never judged here (internal/tablewire's
+			// `quantized` term). A counted array is judged by its count alone. A
+			// NESTED BODY is judged by its wire spelling, the terminator alone,
+			// never by re-encoding the value it decoded.
+			switch {
+			case msgQuantizedExempt(f, mine):
+			case nested:
+				body.pf("%s    if same_build && report.unknown == unknown_before && r.offset - start <= v.ref_bits as u64 %s // a field stored at its default (§3.3 (a))\n", ind, msgBad)
+			default:
+				body.pf("%s    if same_build && report.unknown == unknown_before {\n", ind)
+				rides := body.rides(f, "value."+f.Name, "dflt."+f.Name, ind+"        ")
+				body.pf("%s        let rides = %s;\n%s        if !rides %s // a field stored at its default (§3.3 (a))\n", ind, rides, ind, msgBad)
+				body.pf("%s    }\n", ind)
+			}
 		}
 		if widens {
 			body.pf("%s    if widened { report.widened += 1; }\n", ind)
@@ -529,12 +558,10 @@ func (m *msgGen) emitLoadBody(st *ir.Struct) {
 	m.pf("pub fn %s_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut %sRow) -> bool {\n", snake, st.Name)
 	m.pf("    *value = %s_message_default();\n", snake)
 	// A FIELD ID TWICE IN ONE BODY IS DAMAGE (docs/SPEC-TABLES.md §3.3), known
-	// or unknown: the ids this body has carried are held in a fixed stack set,
-	// and the vector only owns ids past its capacity, so every id is covered
-	// without an allocation for an ordinary body.
-	m.pf("    let mut seen_ids = [0u64; 64];\n")
-	m.pf("    let mut seen_count = 0usize;\n")
-	m.pf("    let mut seen_more: Vec<u64> = Vec::new();\n")
+	// or unknown: the ids this body has carried are one bit each by the id's
+	// ordinal, whichever slot named it, in a fixed stack set, so the test is
+	// constant work per reference and the body allocates nothing.
+	m.pf("    let mut seen = TableMessageSeen::default();\n")
 	// THE SENDER'S OWN BUILD IS THIS READER'S (docs/SPEC-TABLES.md §3.3 (a),
 	// (b); docs/rulings.json reads-refuse-non-canonical): every field's
 	// default and every record's field order are digested into the build
@@ -554,16 +581,33 @@ func (m *msgGen) emitLoadBody(st *ir.Struct) {
 	m.pf("        if reference == 0 { return true; }\n")
 	m.pf("        let Some(entry) = v.entry(reference).copied() else %s;\n", msgBad)
 	m.pf("        if entry.id >= 0xffff_ffff_ffff_fffd %s\n", msgBad)
-	m.pf("        if seen_ids[..core::cmp::min(seen_count, seen_ids.len())].contains(&entry.id) || seen_more.contains(&entry.id) %s\n", msgBad)
-	m.pf("        if seen_count < seen_ids.len() { seen_ids[seen_count] = entry.id; } else { seen_more.push(entry.id); }\n")
-	m.pf("        seen_count += 1;\n")
+	m.pf("        if !seen.once(v.seen_key(reference)) %s\n", msgBad)
 	m.pf("        match entry.id {\n")
 	m.pf("%s", arms)
 	// A FIELD THE RECORD DOES NOT DECLARE, at this reader's own build, has no
 	// place in the sender's record (§3.3 (b)); under another build it is a
 	// newer writer's field, skipped and counted (§4).
-	m.pf("            _ => {\n                if same_build %s // a field the record does not declare (§3.3 (b))\n                report.unknown += 1;\n                if !table_message_skip(r, v, &entry, 0) %s\n            }\n", msgBad, msgBad)
+	m.pf("            _ => {\n                if same_build %s // a field the record does not declare (§3.3 (b))\n                report.unknown += 1;\n                if !table_message_skip_field(r, v, &entry, 0) %s\n            }\n", msgBad, msgBad)
 	m.pf("        }\n    }\n}\n\n")
+}
+
+// msgQuantizedExempt is whether a field's stored-at-default test is waived
+// because its value is quantized (internal/tablewire messagedecode.go's
+// `quantized` term): a compressed float, or a fixed or keyed array whose
+// element is one. Such a value elides by its held value before quantization
+// (docs/SPEC-TABLES.md §3.3), so its decoded value at the default's step is
+// lawful. A counted array is judged by its count, which is not quantized.
+func msgQuantizedExempt(f *ir.Field, mine ir.TableVocabularyEntry) bool {
+	if f.Type.Optional || isUnionRef(f.Type) {
+		return false
+	}
+	if f.Array == ir.ArrayNone && f.KeyEnum == "" {
+		return mine.Shape.Packing == ir.TableMessageQuantized
+	}
+	if f.Array == ir.ArrayCounted && f.KeyEnum == "" && f.ArrayMin == 0 {
+		return false // judged by its count alone; a [Min..N] count is never zero
+	}
+	return mine.Shape.Inner != nil && mine.Shape.Inner.Packing == ir.TableMessageQuantized
 }
 
 func wireWidenable(kind int) bool {
@@ -622,10 +666,15 @@ func (m *msgGen) compat(f *ir.Field, mine ir.TableVocabularyEntry, entry, reset,
 		m.pf("%sif %s {\n%s    widened = true;\n%s} else {\n", inner, compat, inner, inner)
 		inner += "    "
 	}
+	// A FIELD's mismatch is skipped as a field, so a union field's explicit
+	// None is damage there too (§3.3 (c)); a union arm (reset names its None)
+	// is a positional payload.
+	skip := "table_message_skip_field"
 	if reset != "" {
 		m.pf("%s%s;\n", inner, reset)
+		skip = "table_message_skip"
 	}
-	m.pf("%sreport.damaged = true;\n%sif !table_message_skip(r, v, &%s, 0) %s\n%sbreak %s;\n", inner, inner, entry, msgBad, inner, label)
+	m.pf("%sreport.damaged = true;\n%sif !%s(r, v, &%s, 0) %s\n%sbreak %s;\n", inner, inner, skip, entry, msgBad, inner, label)
 	if compat != "" {
 		m.pf("%s    }\n", ind)
 	}
@@ -776,6 +825,10 @@ func (m *msgGen) convertScalar(f *ir.Field, expr, entry, ind string) {
 				hi = fmt.Sprintf("f64::from_bits(0x%x)", math.Float64bits(f.FMax))
 			}
 			m.pf("%sif x < %s { x = %s; report.damaged = true; } else if x > %s { x = %s; report.damaged = true; }\n", ind, lo, lo, hi, hi)
+			// a compressed float's -0 lands as +0 (docs/rulings.json
+			// fixed-compressed-negzero): a plain float32 announced for it
+			// carries the sign bit
+			m.pf("%sif x == 0.0 { x = 0.0; }\n", ind)
 		}
 		m.pf("%s%s = x;\n", ind, expr)
 		return
@@ -830,7 +883,7 @@ func (m *msgGen) readArray(f *ir.Field, expr, entry, ind string) {
 	e := msgElement(f)
 	elArg := el
 	if f.KeyEnum == "" || msgNeedsEntry(e) {
-		m.pf("%s    let %s = TableMessageEntry { id: 0, kind: %s.shape.elem, shape: %s.element, element: TableMessageShape::default() };\n", ind, el, entry, entry)
+		m.pf("%s    let %s = TableMessageEntry { id: 0, kind: %s.shape.elem, shape: %s.element, element: TableMessageShape::default(), first: 0 };\n", ind, el, entry, entry)
 	} else {
 		elArg = entry
 	}
@@ -838,13 +891,11 @@ func (m *msgGen) readArray(f *ir.Field, expr, entry, ind string) {
 	if f.KeyEnum != "" {
 		// A KEYED SLOT TWICE IN ONE KEYED ARRAY IS DAMAGE (docs/SPEC-TABLES.md
 		// §3.2, §3.3): the slots this array has named are held in a fixed set.
-		m.pf("%s    let mut seen_keys = [0u64; 64];\n", ind)
-		m.pf("%s    let mut seen_key_more: Vec<u64> = Vec::new();\n", ind)
-		m.pf("%s    for (seen_key_count, _) in (0..n).enumerate() {\n", ind)
+		m.pf("%s    let mut seen_keys = TableMessageSeen::default();\n", ind)
+		m.pf("%s    for _ in 0..n {\n", ind)
 		m.pf("%s        let Some(reference) = r.get(v.ref_bits) else %s;\n", ind, msgBad)
 		m.pf("%s        let Some(id) = v.name(reference) else %s;\n", ind, msgBad)
-		m.pf("%s        if seen_keys[..core::cmp::min(seen_key_count, seen_keys.len())].contains(&id) || seen_key_more.contains(&id) %s\n", ind, msgBad)
-		m.pf("%s        if seen_key_count < seen_keys.len() { seen_keys[seen_key_count] = id; } else { seen_key_more.push(id); }\n", ind)
+		m.pf("%s        if !seen_keys.once(v.seen_key(reference)) %s\n", ind, msgBad)
 		m.pf("%s        let key: usize = match id {", ind)
 		for i := range f.KeyEnumRef.Variants {
 			m.pf(" 0x%016x => %d,", ir.TableWireId(f.KeyEnumRef.VariantWireName(i)), i+1)
@@ -855,6 +906,11 @@ func (m *msgGen) readArray(f *ir.Field, expr, entry, ind string) {
 		m.readValue(e, "(*p)", elArg, ind+"        ")
 		m.pf("%s    }\n", ind)
 	} else {
+		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+			// A COUNT BELOW THE READER's DECLARED MIN IS REFUSED (docs/SPEC.md
+			// §4.2; internal/tablewire refuses it as count_over_bound)
+			m.pf("%s    if n < %d %s\n", ind, f.ArrayMin, msgBad)
+		}
 		m.pf("%s    let keep = core::cmp::min(n, %d);\n", ind, f.ArrayBound)
 		m.pf("%s    if keep < n { report.damaged = true; }\n", ind)
 		m.pf("%s    let width = table_message_value_bits(%s.kind, &%s.shape);\n", ind, el, el)
@@ -1206,7 +1262,14 @@ pub fn table_message_skip_ranged(r: &mut TableBitReader, kind: u8, width: i64, s
     } else {
         0
     };
-    let offset = ((hi as u128) << 64) | lo as u128;
+    table_message_ranged(kind, ((hi as u128) << 64) | lo as u128, s).is_some()
+}
+
+/// A RANGED value's base plus offset, HELD TO THE ANNOUNCED KIND's STORAGE
+/// DOMAIN and never wrapped (§3.3): the 128-bit two's-complement image of the
+/// value, or None when the sum lands outside the kind. The named read and the
+/// skip both take it, so the two give one verdict.
+pub fn table_message_ranged(kind: u8, offset: u128, s: &TableMessageShape) -> Option<u128> {
     let bits = kind_bits(kind);
     if table_message_signed_kind(kind) {
         // Narrow announcements store a sign-extended 64-bit base; wide
@@ -1218,16 +1281,16 @@ pub fn table_message_skip_ranged(r: &mut TableBitReader, kind: u8, width: i64, s
             s.base_lo as i64 as i128
         };
         let biased = (base as u128) ^ (1u128 << 127);
-        let Some(sum) = biased.checked_add(offset) else { return false };
+        let sum = biased.checked_add(offset)?;
         let value = (sum ^ (1u128 << 127)) as i128;
         let bottom = if bits >= 128 { i128::MIN } else { -(1i128 << (bits - 1)) };
         let top = if bits >= 128 { i128::MAX } else { (1i128 << (bits - 1)) - 1 };
-        value >= bottom && value <= top
+        if value >= bottom && value <= top { Some(value as u128) } else { None }
     } else {
         let base = if bits > 64 { ((s.base_hi as u128) << 64) | s.base_lo as u128 } else { s.base_lo as u128 };
-        let Some(value) = base.checked_add(offset) else { return false };
+        let value = base.checked_add(offset)?;
         let top = if bits >= 128 { u128::MAX } else { (1u128 << bits) - 1 };
-        value <= top
+        if value <= top { Some(value) } else { None }
     }
 }
 
@@ -1243,9 +1306,11 @@ pub fn table_message_read_scalar(r: &mut TableBitReader, kind: u8, s: &TableMess
     let mut lo = r.get(core::cmp::min(bits, 64))?;
     let mut hi = if bits > 64 { r.get(bits - 64)? } else { 0 };
     if s.packing == 1 && kind != 10 {
-        let (sum, carry) = lo.overflowing_add(s.base_lo);
-        lo = sum;
-        hi = hi.wrapping_add(s.base_hi).wrapping_add(carry as u64);
+        // BASE PLUS OFFSET IS HELD TO THE ANNOUNCED KIND, never wrapped and
+        // never truncated to its width (§3.3): a sum outside the kind is damage.
+        let value = table_message_ranged(kind, ((hi as u128) << 64) | lo as u128, s)?;
+        lo = value as u64;
+        hi = (value >> 64) as u64;
     }
     if s.packing == 2 && kind == 10 {
         // AN INDEX ABOVE THE ENDPOINT's ANNOUNCED count IS BATCH DAMAGE (§3.3,
@@ -1294,9 +1359,62 @@ pub fn table_message_write_scalar(w: &mut TableBitWriter, s: &TableMessageShape,
     }
 }
 
-/// A strict skip of one value by the ENDPOINT's shape (§3.3): what a reader does
-/// with a field it cannot name, or one whose kind is not the declaration's.
+/// THE KEYS A BODY HAS NAMED (§3.3): one bit per id ordinal up to
+/// TABLE_MESSAGE_SEEN_KEYS (the conforming default vocabulary, 4096), on the
+/// stack, so a body's repeat test is constant work per reference and
+/// allocates nothing. THE CALLER-DECLARED CAPACITY IS THE BOUND (§3.3), so a
+/// vocabulary declared larger admits every distinct id it holds: a key past
+/// the bitset goes to an ordered set beside it, which holds only the keys
+/// this body named past 4096, is built only when the first such key arrives,
+/// and costs logarithmic work per reference, with no cap of its own.
+pub const TABLE_MESSAGE_SEEN_KEYS: u64 = 4096;
+
+pub struct TableMessageSeen {
+    bits: [u64; 64],
+    past: std::collections::BTreeSet<u64>,
+}
+
+impl Default for TableMessageSeen {
+    fn default() -> Self {
+        TableMessageSeen { bits: [0u64; 64], past: std::collections::BTreeSet::new() }
+    }
+}
+
+impl TableMessageSeen {
+    /// Marks a key: false when the key was named before, or is zero.
+    pub fn once(&mut self, key: u64) -> bool {
+        if key == 0 {
+            return false;
+        }
+        if key > TABLE_MESSAGE_SEEN_KEYS {
+            return self.past.insert(key);
+        }
+        let i = (key - 1) as usize;
+        let bit = 1u64 << (i & 63);
+        if self.bits[i >> 6] & bit != 0 {
+            return false;
+        }
+        self.bits[i >> 6] |= bit;
+        true
+    }
+}
+
+/// A strict skip of one POSITIONAL value by the ENDPOINT's shape (§3.3): an
+/// array element or a union arm's payload, where a union's None is lawful.
 pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &TableMessageEntry, depth: u32) -> bool {
+    table_message_skip_at(r, v, e, depth, false)
+}
+
+/// A strict skip of one FIELD by the ENDPOINT's shape (§3.3): what a reader
+/// does with a field it cannot name, or one whose kind is not the
+/// declaration's. A message field is never required, so a union FIELD's None
+/// elides and its explicit arm reference 0 is damage (§3.3 (c)), whether this
+/// reader names the field or not.
+pub fn table_message_skip_field(r: &mut TableBitReader, v: &TableVocabulary, e: &TableMessageEntry, depth: u32) -> bool {
+    table_message_skip_at(r, v, e, depth, true)
+}
+
+fn table_message_skip_at(r: &mut TableBitReader, v: &TableVocabulary, e: &TableMessageEntry, depth: u32, field: bool) -> bool {
     if depth > 128 {
         return false;
     }
@@ -1314,7 +1432,7 @@ pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &Table
         17 => false,
         15 => match r.get(v.ref_bits) {
             None => false,
-            Some(0) => true,
+            Some(0) => !field,
             Some(reference) => match v.entry(reference).copied() {
                 Some(arm) => arm.id < 0xffff_ffff_ffff_fffd && arm.kind != 0 &&
                     table_message_skip(r, v, &arm, depth + u32::from(matches!(arm.kind, 13..=16))),
@@ -1363,7 +1481,7 @@ pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &Table
             if n > s.max || (e.kind == 14 && s.elem == 6 && !r.align()) {
                 return false;
             }
-            let element = TableMessageEntry { id: 0, kind: s.elem, shape: e.element, element: TableMessageShape::default() };
+            let element = TableMessageEntry { id: 0, kind: s.elem, shape: e.element, element: TableMessageShape::default(), first: 0 };
             // A RUN OF FIXED-WIDTH ELEMENTS IS ARITHMETIC (§3.3): a float, a
             // ranged or quantized element carries a value condition, and a
             // keyed entry carries a key reference, so those are walked.
@@ -1378,20 +1496,17 @@ pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &Table
                 }
             }
             // A KEYED ARRAY'S KEY NAMES A DECLARED NO-PAYLOAD ENTRY AND NO KEY
-            // REPEATS (§3.2, §3.3): the set is one id per entry and the caller's
-            // vocabulary sizes it.
-            let mut seen: Vec<u64> = Vec::with_capacity(v.count);
+            // REPEATS (§3.2, §3.3): the set is one bit per id, on the stack.
+            let mut seen = TableMessageSeen::default();
             for _ in 0..n {
                 // THE KEY IS PART OF THE WALKED ELEMENT: the offset is sampled
                 // before it so a width-0 slot cannot accept the run unread.
                 let at = r.offset;
                 if e.kind == 16 {
                     let Some(reference) = r.get(v.ref_bits) else { return false };
-                    let Some(id) = v.name(reference) else { return false };
-                    if seen.contains(&id) {
+                    if v.name(reference).is_none() || !seen.once(v.seen_key(reference)) {
                         return false;
                     }
-                    seen.push(id);
                 }
                 if !table_message_skip(r, v, &element, depth + 1) {
                     return false;
@@ -1424,9 +1539,9 @@ pub fn table_message_skip_body(r: &mut TableBitReader, v: &TableVocabulary, dept
         return false;
     }
     // A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or skipped: the set
-    // is one id per entry, whichever slot carried it, and the caller's
-    // vocabulary sizes it. A reference the entry table returns is lawful.
-    let mut seen: Vec<u64> = Vec::with_capacity(v.count);
+    // is one bit per id, whichever slot carried it, on the stack. A union
+    // field of a skipped body is a field, so its explicit None is damage.
+    let mut seen = TableMessageSeen::default();
     loop {
         match r.get(v.ref_bits) {
             None => return false,
@@ -1436,11 +1551,10 @@ pub fn table_message_skip_body(r: &mut TableBitReader, v: &TableVocabulary, dept
                 if e.id >= 0xffff_ffff_ffff_fffd {
                     return false;
                 }
-                if seen.contains(&e.id) {
+                if !seen.once(v.seen_key(reference)) {
                     return false;
                 }
-                seen.push(e.id);
-                if !table_message_skip(r, v, &e, depth) {
+                if !table_message_skip_field(r, v, &e, depth) {
                     return false;
                 }
             }

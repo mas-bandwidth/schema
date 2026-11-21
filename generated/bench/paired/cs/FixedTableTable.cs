@@ -417,7 +417,7 @@ namespace Bench
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.WorldTime = unchecked((long)v), reset: (t) => { t.Value.WorldTime = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.FrameTick = unchecked((ulong)v), reset: (t) => { t.Value.FrameTick = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.ServerTime = unchecked((int)v), reset: (t) => { t.Value.ServerTime = 0; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.EntitiesCount = (int)v, reset: (t) => { t.Value.EntitiesCount = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.EntitiesCount = (int)v, reset: (t) => { t.Value.EntitiesCount = 1; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].EntityId = unchecked((uint)v), reset: (t) => { t.Value.Entities[0].EntityId = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].PosX = unchecked((int)v), reset: (t) => { t.Value.Entities[0].PosX = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].PosY = unchecked((int)v), reset: (t) => { t.Value.Entities[0].PosY = 0; }),
@@ -1080,7 +1080,7 @@ namespace Bench
                 case 6: { t.Value.WorldTime = 0; } break;
                 case 7: { t.Value.FrameTick = 0; } break;
                 case 8: { t.Value.ServerTime = 0; } break;
-                case 9: { t.Value.EntitiesCount = 0; } break;
+                case 9: { t.Value.EntitiesCount = 1; } break;
                 case 10: { t.Value.Entities[0].EntityId = 0; } break;
                 case 11: { t.Value.Entities[0].PosX = 0; } break;
                 case 12: { t.Value.Entities[0].PosY = 0; } break;

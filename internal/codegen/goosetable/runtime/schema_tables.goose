@@ -92,6 +92,21 @@ struct FieldDesc {
                               // all; 0 for none
 }
 
+// frange_holds is a compressed float's declared range test (SPEC.md §4.6;
+// tabletext.FloatInRange), the one comparison every read and writer here
+// takes: a float32 field's range is held AT FLOAT32, so a bound float32
+// cannot spell exactly (max = 0.1) is the float32 nearest it and the top grid
+// step is lawful; a float64 field's at float64. A NaN holds nothing.
+fn frange_holds(v: f64, d: const FieldDesc&) -> bool {
+    if d.is_f32 {
+        let x = v as f32;
+        let lo = d.flo as f32;
+        let hi = d.fhi as f32;
+        return x >= lo && x <= hi;
+    }
+    return v >= d.flo && v <= d.fhi;
+}
+
 // TableDesc is one table — or a packet type a table reaches by value, which
 // rides the table wire as a body — as data (docs/SPEC-TABLES.md §3, §8.1).
 struct TableDesc {

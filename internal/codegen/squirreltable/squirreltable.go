@@ -72,6 +72,9 @@ type Module struct {
 	// viewNone is set once the view surface has written TableDocNone and
 	// TableTagsNone, which the module assigns exactly once
 	viewNone bool
+	// lineage is the fixed-form lineage this generation call was handed
+	// (GenerateLineage), per table, oldest first; nil for a unit with no lock.
+	lineage map[string][]FixedLineageEntry
 }
 
 // Printf appends to the module body.
@@ -99,6 +102,10 @@ func ModuleName(u *ir.Unit) string {
 // yet is refused by name, never emitted wrong (docs/PORT-SQUIRREL.md, THE
 // REGISTER).
 func Generate(u *ir.Unit) (map[string][]byte, error) {
+	return generate(u, nil)
+}
+
+func generate(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
@@ -108,7 +115,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			return nil, fmt.Errorf("schema file %s.schema collides with the Squirrel table module, which is %s.nut for package %s (docs/PORT-SQUIRREL.md, THE RUNTIME LAYOUT); rename the file", f.Base, name, u.Package)
 		}
 	}
-	m := &Module{Unit: u, runtimes: map[string]bool{}}
+	m := &Module{Unit: u, runtimes: map[string]bool{}, lineage: lineage}
 	m.Closure, m.Roots = closure(u)
 	desc := m.Runtime("descriptor")
 	for _, un := range unions(m.Closure) {
@@ -638,13 +645,13 @@ func baseDesc(u *ir.Unit, f *ir.Field) map[string]string {
 		// a COMPRESSED float32's message-form quantizer (docs/SPEC-TABLES.md
 		// §3.3, SPEC.md §4.3): the step count, min, delta and index width
 		// the message writer quantizes by; 0 steps for a float carried whole
-		// a COMPRESSED float's declared range, as declared (a float64, not
-		// rounded to float32): the variable and fixed reads clamp a finite
-		// value past an end to it and count clamped (docs/SPEC-TABLES.md §3.3,
-		// §4), exactly as the Go engine's scalarAt compares
+		// a COMPRESSED float's declared range: the variable and fixed reads
+		// clamp a finite value past an end to it and count clamped
+		// (docs/SPEC-TABLES.md §3.3, §4). A float32's ends are the float32
+		// nearest each declared end, the range held at float32 (SPEC.md §4.6),
+		// so the value at an end float32 cannot spell (max = 0.1) is in range
 		if f.HasFloatRange {
-			d["fmin"] = squirrel.Float64Lit(f.FMin)
-			d["fmax"] = squirrel.Float64Lit(f.FMax)
+			d["fmin"], d["fmax"] = floatRangeLits(f)
 		}
 		shape := ir.TableFieldShape(f)
 		if shape.Inner != nil && (f.Array != ir.ArrayNone || f.KeyEnum != "") {

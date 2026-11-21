@@ -321,8 +321,11 @@ func (g *fixedModule) emitLoadMessageBody(st *ir.Struct) {
 	// above, so an unknown entry met twice is the same damage as a known one.
 	g.pf("        if (sameBuild) { r.report.Damage(); return false; } // a field the record does not declare (§3.3)\n")
 	g.pf("        r.report.unknown++;\n")
+	// A REFUSAL THE SKIP NAMED KEEPS ITS REASON (count_over_bound,
+	// out_of_range): only a skip that failed without one is damage, as the
+	// reference's first refusal stands (internal/tablewire/messagedecode.go set).
 	g.pf("        if (!tableMessageSkipEntry(r, entry, 0, true)) {\n")
-	g.pf("          r.report.Damage();\n          return false;\n        }\n")
+	g.pf("          if (!r.report.refused) r.report.Damage();\n          return false;\n        }\n")
 	g.pf("        break;\n")
 	g.pf("    }\n  }\n}\n\n")
 }
@@ -820,7 +823,10 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, entry ir.TableVocabulary
 		g.pf("%s  if (r.bits.failed) { %s; }\n", aind, bad)
 		g.pf("%s  n = raw + %s.min;\n", aind, shapeExpr)
 		g.pf("%s}\n", aind)
-		g.pf("%sif (n > %s.max) { %s; }\n", aind, shapeExpr, bad)
+		// THE COUNT'S BITS CAN SPELL MORE THAN max - min: a count above the
+		// announced maximum refuses count_over_bound before any element, as
+		// the reference's array does (§3.3, §4)
+		g.pf("%sif (n > %s.max) { r.report.Refuse('count_over_bound'); return false; }\n", aind, shapeExpr)
 		g.pf("%sif (%s == %d && %s.elem == 6 && !r.bits.align()) { %s; }\n", aind, kindExpr, ir.TableKindArray, shapeExpr, bad)
 		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
 			g.pf("%sif (n < %d || n > %d) { r.report.Refuse('count_over_bound'); return false; }\n", aind, f.ArrayMin, f.ArrayBound)
@@ -870,7 +876,9 @@ func (g *fixedModule) emitMessageReadKeyed(f *ir.Field, entry ir.TableVocabulary
 	g.pf("%s    if (r.bits.failed) { %s; }\n", ind, bad)
 	g.pf("%s    slots = raw + %s.min;\n", ind, shapeExpr)
 	g.pf("%s  }\n", ind)
-	g.pf("%s  if (slots > %s.max) { %s; }\n", ind, shapeExpr, bad)
+	// a count above the announced maximum refuses before any slot is read,
+	// whatever this reader's own enum could hold (the reference's keyed)
+	g.pf("%s  if (slots > %s.max) { r.report.Refuse('count_over_bound'); return false; }\n", ind, shapeExpr)
 	if !f.Type.Optional && !f.Required {
 		g.pf("%s  if (sameBuild && slots == 0) { %s; }\n", ind, bad)
 	}
@@ -1238,7 +1246,7 @@ func (g *fixedModule) emitMessageReadUnion(un *ir.Union, expr, ind string, field
 	// union: `Unknown++`, `return d.skip(entry)`; docs/SPEC-TABLES.md §3.3).
 	g.pf("%s        %s.type = %s; r.report.unknown++;\n", ind, expr, tagNone)
 	g.pf("%s        if (!tableMessageSkipEntry(r, arm)) {\n", ind)
-	g.pf("%s          r.report.Damage();\n", ind)
+	g.pf("%s          if (!r.report.refused) r.report.Damage();\n", ind)
 	g.pf("%s          return false;\n", ind)
 	g.pf("%s        }\n", ind)
 	g.pf("%s        break;\n", ind)
@@ -1595,9 +1603,10 @@ bool tableMessageSkip(TableMessageReader r, int kind, TableMessageShape s, [int 
         }
       }
       // THE COUNT'S BITS CAN SPELL MORE THAN max - min, so a count above the
-      // announced maximum is damage here as it is at a named field
-      // (docs/SPEC-TABLES.md §3.3, §4).
-      if (n > s.max) return false;
+      // announced maximum refuses count_over_bound here as it does at a named
+      // field, before any element (docs/SPEC-TABLES.md §3.3, §4; the
+      // reference's skip, internal/tablewire/messagedecode.go).
+      if (n > s.max) return r.report.Refuse('count_over_bound');
       if (kind == 14 && s.elem == 6 && !r.bits.align()) return false;
       final inner = s.inner ?? TableMessageShape();
       // elementRunBits + skipRun (internal/tablewire/messagedecode.go): a

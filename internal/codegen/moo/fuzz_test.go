@@ -39,7 +39,6 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -51,6 +50,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/goname"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const fuzzDefaultSeed = 20261028
@@ -158,7 +159,7 @@ func buildCorpus(t *testing.T, patch func(t *testing.T, u *fuzzUnit, files map[s
 		t.Fatal(err)
 	}
 	c.goBin = filepath.Join(mod, "fuzzgo")
-	cmd := exec.Command("go", "build", "-o", c.goBin, ".")
+	cmd := testproc.Command(t, "go", "build", "-o", c.goBin, ".")
 	cmd.Dir = mod
 	cmd.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=mod")
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -510,7 +511,7 @@ func mooRequires(u *ir.Unit) string {
 // runGo feeds the Go harness its script and returns its output lines.
 func (c *fuzzCorpus) runGo(t *testing.T, script string) []string {
 	t.Helper()
-	cmd := exec.Command(c.goBin)
+	cmd := testproc.Command(t, c.goBin)
 	cmd.Stdin = strings.NewReader(script)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr

@@ -21,6 +21,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // Pin is the moo commit `make dist-moo` builds: mas-bandwidth/moo v1.3.0.
@@ -157,7 +159,7 @@ func runInterpreter(t testing.TB, moo, dir, main string, inputs map[string][]byt
 	if err := os.WriteFile(filepath.Join(dir, "inputs.moo"), InputsModule(inputs), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(moo, main)
+	cmd := testproc.Command(t, moo, main)
 	cmd.Dir = dir
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -177,7 +179,7 @@ func Analyze(t testing.TB, dir string, files ...string) string {
 	if analyze == "" {
 		t.Fatalf("moorun: moo-analyze does not resolve: %s", why)
 	}
-	cmd := exec.Command(analyze, files...)
+	cmd := testproc.Command(t, analyze, files...)
 	cmd.Dir = dir
 	out, _ := cmd.CombinedOutput()
 	return string(out)

@@ -55,6 +55,8 @@ TOOLCHAIN_LEGS     += moo
 TOOLCHAIN_PINS_moo := MOO MOO_ANALYZE
 CONFORMANCE_LEGS   += $(call unless_skipped,moo,build/conformance-moo)
 GOLDENS_LEGS       += update-goldens-moo
+REGISTRY_NA        += bench-tables:moo
+REGISTRY_NA_WHY.bench-tables.moo := bench/tables/moo/leg build generates its own unit, so the aggregate has no prerequisite to add
 
 # J6: native moo owning card facade. The Go host supplies only CLI file IO;
 # parser/render/upgrade/edit/hash/view execute under the pinned interpreter.

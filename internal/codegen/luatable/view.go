@@ -8,10 +8,10 @@
 // A type NO TABLE CLOSURE REACHES carries no table-wire identity (§8.2): its
 // fields\x27 ids are 0, their json keys are nil, and an enum\x27s variants carry id
 // 0, exactly as viewlisting pins them. A descriptor describes; it adds no
-// codec and no wire (§8.2). The view is emitted as a side file by a
-// RegisterPass, so the unit\x27s table module is unchanged (§8.5). The pass
-// records the module in the package\x27s view registry (ViewFile), which the
-// unit\x27s test collects beside the table module.
+// codec and no wire (§8.2). The view is a side file beside the table module,
+// never a change to it (§8.5): ViewFile renders it from the unit on each call
+// and keeps nothing, so the unit's test collects it beside the table module and
+// a unit the caller drops is never held by this package.
 package luatable
 
 import (
@@ -20,25 +20,11 @@ import (
 	"math/big"
 	"sort"
 	"strings"
-	"sync"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/genheader"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
-
-func init() {
-	RegisterPass(emitView)
-}
-
-// viewMu guards viewEmitted. Passes run once per unit, and unit tests run
-// concurrently under t.Parallel(), so the registry is a plain map behind a
-// lock keyed by the unit pointer.
-var viewMu sync.Mutex
-
-// viewEmitted holds each unit\x27s view module source as its pass emitted it,
-// keyed by the unit pointer (docs/SPEC-TABLES.md §8.5).
-var viewEmitted = map[*ir.Unit]string{}
 
 // ViewName is the unit\x27s view module basename: capitalize(package) + "View"
 // (docs/SPEC-TABLES.md §8.5).
@@ -49,36 +35,13 @@ func ViewName(u *ir.Unit) string {
 	return strings.ToUpper(u.Package[:1]) + u.Package[1:] + "View"
 }
 
-// ViewFile returns the view module source a unit\x27s pass emitted, building it
-// on demand for a table-free unit (§8.3).
+// ViewFile returns the unit's view module source, <Package>View.lua, rendered
+// for this call (§8.3, §8.5).
 func ViewFile(u *ir.Unit) (string, bool) {
 	if u == nil {
 		return "", false
 	}
-	viewMu.Lock()
-	src, ok := viewEmitted[u]
-	viewMu.Unlock()
-	if !ok {
-		src = buildViewSource(u)
-		viewMu.Lock()
-		viewEmitted[u] = src
-		viewMu.Unlock()
-	}
-	return src, true
-}
-
-// emitView writes <Package>View.lua. It runs as a pass so the view is a file
-// beside the table module, never a change to it (docs/SPEC-TABLES.md §8.5).
-func emitView(m *Module) error {
-	u := m.Unit
-	if len(u.Tables) == 0 {
-		return nil
-	}
-	src := buildViewSource(u)
-	viewMu.Lock()
-	viewEmitted[u] = src
-	viewMu.Unlock()
-	return nil
+	return buildViewSource(u), true
 }
 
 // buildViewSource renders the unit\x27s view module source.

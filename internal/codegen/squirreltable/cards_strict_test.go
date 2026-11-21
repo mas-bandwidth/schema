@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,6 +15,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestSquirrelCardsConformance pins the Squirrel cards facade and driver
@@ -209,7 +210,7 @@ func runSquirrelCardsSurface(t *testing.T, root, sq, genDir string, facade map[s
 
 	stage := stageSquirrelCardsFacade(t, facade)
 	outDir := t.TempDir()
-	cmd := exec.Command(sq, filepath.Join(stage, "driver.nut"), manifestRel, surface, outDir)
+	cmd := testproc.Command(t, sq, filepath.Join(stage, "driver.nut"), manifestRel, surface, outDir)
 	cmd.Dir = root
 	cmd.Env = append(os.Environ(), "CARDS_SQUIRREL_GENERATED="+genDir)
 	var stdout, stderr bytes.Buffer
@@ -276,7 +277,7 @@ func TestSquirrelCardsConformance(t *testing.T) {
 
 	genDir := squirrelCardsGenerated(t, root)
 	stage := stageSquirrelCardsFacade(t, facade)
-	unitCmd := exec.Command(sq, filepath.Join(stage, "cards_test.nut"))
+	unitCmd := testproc.Command(t, sq, filepath.Join(stage, "cards_test.nut"))
 	unitCmd.Dir = root
 	unitCmd.Env = append(os.Environ(), "CARDS_SQUIRREL_GENERATED="+genDir)
 	var unitOut, unitErr bytes.Buffer

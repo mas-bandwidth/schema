@@ -5,7 +5,6 @@ import (
 	"maps"
 	"math/big"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -17,6 +16,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestDartMessageWriterCarries128BitFields generates a fixed table with int128,
@@ -106,12 +107,12 @@ fixed table M {
 	// The analyzer must find no errors: the red this card clears is
 	// "The argument type 'UInt128' can't be assigned to the parameter type
 	// 'int'", etc. (BenchFixed.dart).
-	analyze := exec.Command(dartBin, "analyze", dir)
+	analyze := testproc.Command(t, dartBin, "analyze", dir)
 	if out, err := analyze.CombinedOutput(); err != nil {
 		t.Fatalf("dart analyze refused the 128-bit message form: %v\n%s", err, out)
 	}
 
-	run := exec.Command(dartBin, "--enable-asserts", "int128_probe.dart")
+	run := testproc.Command(t, dartBin, "--enable-asserts", "int128_probe.dart")
 	run.Dir = dir
 	if out, err := run.CombinedOutput(); err != nil {
 		t.Fatalf("the 128-bit message-form round trip did not run green: %v\n%s", err, out)

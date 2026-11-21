@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -29,6 +28,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobstertable"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func lobsterWireFuzzVerdictMakefileCheck(mk string) error {
@@ -117,7 +118,7 @@ func lobsterWireFuzzBins(t *testing.T, root string) (harness, host string) {
 			{lobsterWireFuzzHarness, "./test/conformance/harness"},
 			{lobsterWireFuzzHost, "./test/conformance/lobster/wirefuzzhost"},
 		} {
-			cmd := exec.Command("go", "build", "-o", spec.out, spec.pkg)
+			cmd := testproc.Command(t, "go", "build", "-o", spec.out, spec.pkg)
 			cmd.Dir = root
 			out, err := cmd.CombinedOutput()
 			if err != nil {
@@ -239,7 +240,7 @@ func runLobsterWireFuzz(t *testing.T, root, harness, host, units, mode string, e
 	}
 	args = append(args, "--driver", driver)
 	args = append(args, extra...)
-	cmd := exec.Command(harness, args...)
+	cmd := testproc.Command(t, harness, args...)
 	cmd.Dir = root
 	out, err := cmd.CombinedOutput()
 	return string(out), err
