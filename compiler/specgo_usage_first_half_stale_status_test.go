@@ -190,9 +190,11 @@ func TestSpecGoUsageFirstHalfStaleStatus(t *testing.T) {
 	has("Every surface implies `wire`")
 	has("An unknown surface is refused by name")
 
-	// strict plain reads: the two exceptions.
-	has("keeps the records it decoded ahead of")
-	has("`FromJson` answers `false` with an empty report")
+	// the one read: a refused batch keeps nothing (review finding F-173), and
+	// the one exception left.
+	hasFlat("answers a refused batch with a count of 0 and every value it had written reset")
+	notHas("keeps the records it decoded ahead of")
+	hasFlat("`FromJson` answers `false` with an empty report")
 
 	// floats: a compressed float's -0 default becomes +0.
 	has("compressed float's `-0` lands and reads back as `+0`")
