@@ -278,13 +278,11 @@ func TestCountRefusalDiscardsTheWholeLoadC(t *testing.T) {
 				t.Fatalf("%s/%d: retaining oracle count refusal: ok=%v err=%v report=%+v retained=%d", shape, count, ok, err, rr, retained.Used())
 			}
 			fn := ir.RustSnake(root)
-			// An unreachable record or repeated map key is a second fault; its
-			// refusal may precede the oversized count. The reachable node and
-			// ascending map cases separately pin the count reason.
-			reasonCheck := "report.refused && report.refuse_reason == SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP"
-			if shape == "unreachable-node" || shape == "map-equal" {
-				reasonCheck = "report.refused"
-			}
+			// The C read is held to the VERDICT alone: refused, nothing landed,
+			// nothing retained. The reason it names is its own diagnostic and is
+			// never compared with the oracle's (docs/rulings.json
+			// refusal-verdict-only).
+			reasonCheck := "report.refused"
 			fmt.Fprintf(&body, `
     {
         static const uint8_t wire[] = { %s };
@@ -371,8 +369,9 @@ func TestCountRefusalDiscardsTheWholeLoadC(t *testing.T) {
     }
 `, cBytes(trailing))
 	// The maximum representable count is not a cap refusal. With only one
-	// entry in its frame it is independently truncated, so both readers must
-	// classify it as wire damage rather than count-over-cap.
+	// entry in its frame it is independently truncated: the oracle names it
+	// wire damage, and the C read must refuse it (its own reason is
+	// diagnostic, never compared).
 	root, atCap := cCountWire(t, u, "map", 1<<31-1, false)
 	var capReport tabletext.Report
 	if ok, err := tablewire.Decode(model, model.New(model.Lookup(root)), atCap, &capReport); ok || !capReport.Refused || tablewire.RefusalReason(err) != tablewire.ReasonWireDamaged {
@@ -381,7 +380,7 @@ func TestCountRefusalDiscardsTheWholeLoadC(t *testing.T) {
 	fmt.Fprintf(&body, `
     {
         static const uint8_t wire[] = { %s }; TableReport report;
-        CHECK(leaf_load(region, sizeof(region), wire, sizeof(wire), &report) == NULL && report.refused && report.refuse_reason == SCHEMA_TABLE_REFUSE_WIRE_DAMAGED, "at-cap truncated body is damage");
+        CHECK(leaf_load(region, sizeof(region), wire, sizeof(wire), &report) == NULL && report.refused, "at-cap truncated body refuses");
     }
 `, cBytes(atCap))
 	// The short collection is malformed, not a storage-cap refusal.
@@ -393,7 +392,7 @@ func TestCountRefusalDiscardsTheWholeLoadC(t *testing.T) {
 	fmt.Fprintf(&body, `
     {
         static const uint8_t wire[] = { %s }; TableReport report;
-        CHECK(leaf_load(region, sizeof(region), wire, sizeof(wire), &report) == NULL && report.refused && report.refuse_reason == SCHEMA_TABLE_REFUSE_WIRE_DAMAGED, "short body damage");
+        CHECK(leaf_load(region, sizeof(region), wire, sizeof(wire), &report) == NULL && report.refused, "short body refuses");
     }
     {
         uint8_t forms[2] = { 2, 255 };
