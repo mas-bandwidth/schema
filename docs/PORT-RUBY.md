@@ -394,14 +394,19 @@ and `TestRubySkeleton` turns each off in turn and requires its case to pass):
 - **A field must be a valid Ruby method name and not a generated member.**
   Fields keep snake_case and become methods, so a field named for a generated
   member (`read`, `read_bits`, `write`, `load`, `save`, `descriptor`, `initialize`,
-  `inspect`, `hash`, `class`, `freeze`, `dup`, `clone`, `send`,
-  `method`) is refused by name (`object_id` is carried because the shared corpus spells it in `examples/Types.schema` and `tables/block/Render.schema`, and generated code uses `equal?` rather than `object_id`); `eql?` is a member too, but no
-  schema identifier can spell it. A union arm takes the members a generated
+  `inspect`, `to_h`, `hash`, `class`, `freeze`, `dup`, `clone`, `send`,
+  `public_send`, `method`) is refused by name (`object_id` is carried because the shared corpus spells it in `examples/Types.schema` and `tables/block/Render.schema`, and generated code uses `equal?` rather than `object_id`); `eql?` is a member too, but no
+  schema identifier can spell it. A table field also takes the members only a
+  generated table class defines (`measure`, `measure_retain`, `save_retain`,
+  `save_text`, `to_json`, `cook`, `cook_measure`; `tableMembers`); a type's
+  field may spell them. A union arm takes the members a generated
   union class defines (`type`, the union's arm number, `read`, `read_bits`,
   `write`, `initialize`, `inspect`, `hash`, `class`, `freeze`, `dup`, `clone`,
-  `send`, `method`); `load`, `save` and `descriptor` are table members, not
+  `send`, `public_send`, `method`); `load`, `save` and `descriptor` are table members, not
   union members, so the `save` arm of `tables/messages/Messages.schema` and
-  `test/tables/M1.schema` carries as written. A field or arm spelled
+  `test/tables/M1.schema` carries as written. An arm's constant on the
+  union's tag module (`ir.GoExportName`) must not spell the module's own
+  `NAMES` (`None` and `Max` are the checker's). A field or arm spelled
   like a Ruby keyword is carried (the field access rule above); `class`
   is refused as a generated member, not as a keyword. The emitter holds the list
   (`generatedMembers`); the table layers claim their runtime's names in

@@ -1,0 +1,9 @@
+package game
+
+table Fleet
+{
+    measured uint32
+    cooked uint32
+    to_hash uint32
+    json uint32
+}

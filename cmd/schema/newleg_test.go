@@ -264,7 +264,7 @@ func copyScaffoldTree(t *testing.T, from, to string, keep func(rel string) bool)
 		}
 		rel, _ := filepath.Rel(from, p)
 		if info.IsDir() {
-			if info.Name() == "testdata" {
+			if info.Name() == "testdata" && !embedsTestdata(t, filepath.Dir(p)) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -278,6 +278,31 @@ func copyScaffoldTree(t *testing.T, from, to string, keep func(rel string) bool)
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+// embedsTestdata reports whether a non-test Go source in dir embeds its
+// testdata directory (internal/modulemove/pincorpus does): that package does
+// not build without it, so the copy keeps it, and every other testdata stays
+// behind.
+func embedsTestdata(t *testing.T, dir string) bool {
+	t.Helper()
+	sources, err := filepath.Glob(filepath.Join(dir, "*.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, src := range sources {
+		if strings.HasSuffix(src, "_test.go") {
+			continue
+		}
+		data, err := os.ReadFile(src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(data), "\n//go:embed testdata") {
+			return true
+		}
+	}
+	return false
 }
 
 func copyScaffoldFile(t *testing.T, from, to string) {

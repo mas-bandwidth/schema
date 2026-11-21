@@ -109,7 +109,7 @@ func TestGoTestgenBoundProbes(t *testing.T) {
 			if at < 0 {
 				t.Fatal("no TeamConfigLoadBody")
 			}
-			direct := bytes.Index(src[at:], []byte("v := int32(r.Get32())"))
+			direct := bytes.Index(src[at:], []byte("v := r.getI32()"))
 			if direct < 0 {
 				t.Fatal("no direct-kind read of spawn_count")
 			}

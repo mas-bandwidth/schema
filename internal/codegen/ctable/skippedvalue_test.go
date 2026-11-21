@@ -11,6 +11,8 @@ import (
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestCSkippedValueIsValidated runs every row of the shared skipped-value
@@ -134,10 +136,10 @@ func TestCSkippedValueIsValidated(t *testing.T) {
 		}
 	}
 	args = append(args, "-lm", "-o", binary)
-	if out, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, out)
 	}
-	out, err := exec.Command(binary).CombinedOutput()
+	out, err := testproc.Command(t, binary).CombinedOutput()
 	if err != nil {
 		t.Fatalf("probe: %v\n%s", err, out)
 	}

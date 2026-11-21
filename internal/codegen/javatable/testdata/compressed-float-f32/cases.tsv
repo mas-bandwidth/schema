@@ -1,0 +1,44 @@
+# A compressed float on the variable and JSON forms (F-203; docs/SPEC-TABLES.md
+# 3.3, SPEC.md 4.6, ruling fixed-compressed-negzero), Probe.schema beside it:
+# its range is held at float32 (0x3dcccccd, the float32 0.1f, is inside
+# max = 0.1; 0x3dccccce, the next float32 past it, is outside), and its -0
+# (0x80000000) IS +0 (0x00000000).
+#
+# op:
+#   variable-read   input is the float32 bits on the variable wire: a scalar
+#                   field's own slot, or for list the first element of a
+#                   saved list
+#   variable-write  input is the float32 bits assigned before the save
+#                   (a list gets it as its one element); the save is read back
+#   json-read       input is the JSON text read
+# want: the float32 bits the field holds after the operation, refused, or
+# elided (the save is byte-equal to the save of a fresh value). A write of
+# 0x80000000 that lands must also leave -0's bits nowhere in the wire.
+# reason: the Java leg's own diagnostic on a refusal (detail, not a verdict;
+# ruling refusal-verdict-only), - where none is held to.
+#
+# id	op	field	input	want	reason
+variable-read:negzero	variable-read	z	0x80000000	0x00000000	-
+variable-read:negzero-nonzero-default	variable-read	nz	0x80000000	0x00000000	-
+variable-read:f32-end	variable-read	tenth	0x3dcccccd	0x3dcccccd	-
+variable-read:past-end	variable-read	tenth	0x3dccccce	refused	out_of_range: Probe.tenth
+variable-read:list-negzero	variable-read	list	0x80000000	0x00000000	-
+variable-read:list-f32-end	variable-read	list	0x3dcccccd	0x3dcccccd	-
+variable-read:list-past-end	variable-read	list	0x3dccccce	refused	out_of_range: Probe.list
+variable-read:lawful-half	variable-read	nz	0x3f000000	0x3f000000	-
+variable-write:f32-end	variable-write	tenth	0x3dcccccd	0x3dcccccd	-
+variable-write:list-f32-end	variable-write	list	0x3dcccccd	0x3dcccccd	-
+variable-write:past-end	variable-write	tenth	0x3dccccce	refused	-
+variable-write:list-past-end	variable-write	list	0x3dccccce	refused	-
+variable-write:negzero-nonzero-default	variable-write	nz	0x80000000	0x00000000	-
+variable-write:negzero-elided	variable-write	z	0x80000000	elided	-
+variable-write:poszero-elided	variable-write	z	0x00000000	elided	-
+variable-write:list-negzero	variable-write	list	0x80000000	0x00000000	-
+json-read:f32-end	json-read	tenth	{"tenth":0.1}	0x3dcccccd	-
+json-read:past-end	json-read	tenth	{"tenth":0.10000001}	refused	out_of_range: tenth
+json-read:negzero	json-read	z	{"z":-0}	0x00000000	-
+json-read:negzero-nonzero-default	json-read	nz	{"nz":-0}	0x00000000	-
+json-read:list-f32-end	json-read	list	{"list":[0.1]}	0x3dcccccd	-
+json-read:list-negzero	json-read	list	{"list":[-0]}	0x00000000	-
+json-read:list-past-end	json-read	list	{"list":[0.10000001]}	refused	out_of_range: list
+json-read:lawful-half	json-read	nz	{"nz":0.5}	0x3f000000	-

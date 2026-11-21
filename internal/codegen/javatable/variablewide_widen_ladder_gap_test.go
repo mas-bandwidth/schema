@@ -3,7 +3,6 @@ package javatable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -12,6 +11,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJavaFixWidenLadderGap pins that a `flags` field (wire kind 9, u64) whose
@@ -95,10 +96,10 @@ func TestJavaFixWidenLadderGap(t *testing.T) {
 			sources = append(sources, driver)
 			sort.Strings(sources)
 			args := append([]string{"--release", "17", "-d", classes}, sources...)
-			if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+			if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 				t.Fatalf("javac: %v\n%s", err, out)
 			}
-			out, err := exec.Command(javaBin, "-ea", "-cp", classes, "Driver", wirePath).CombinedOutput()
+			out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, "Driver", wirePath).CombinedOutput()
 			if err != nil {
 				t.Fatalf("java: %v\n%s", err, out)
 			}

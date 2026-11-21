@@ -3,7 +3,6 @@ package javatable
 import (
 	"encoding/hex"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -13,6 +12,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // The minimal damaged MatchResult FILE (form 1) of this cause: a random mutant
@@ -85,7 +86,7 @@ func TestJavaFixMatchResultFileDamageRefused(t *testing.T) {
 	sort.Strings(sources)
 	javac, javaBin := javaTools(t)
 	args := append([]string{"--release", "17", "-d", classes}, sources...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	for _, tc := range cases {
@@ -103,7 +104,7 @@ func TestJavaFixMatchResultFileDamageRefused(t *testing.T) {
 			if err := os.WriteFile(wirePath, tc.mutant, 0o644); err != nil {
 				t.Fatal(err)
 			}
-			out, err := exec.Command(javaBin, "-ea", "-cp", classes, driverName, wirePath).CombinedOutput()
+			out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, driverName, wirePath).CombinedOutput()
 			if err != nil {
 				t.Fatalf("java driver: %v\n%s", err, out)
 			}
