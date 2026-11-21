@@ -247,7 +247,7 @@ func tableMessageBodyTeamConfig(r *TableMessageReader, value *TeamConfig, starts
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
-					if n > 16 {
+					if n > 16 || n > uint64(entry.Shape.Max) {
 						r.Report.Refuse(TableRefuseLengthOverBound, "TeamConfig.banner")
 						return false
 					}

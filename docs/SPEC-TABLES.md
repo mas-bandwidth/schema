@@ -6675,7 +6675,8 @@ FORM TOO (§4):** the skipped payload is held to the conditions the wire and the
 announcement decide — an enum-keyed array's key names a declared no-payload
 entry and no key repeats, a string's bytes are well-formed UTF-8 with no zero
 byte, a float is finite and a quantized float's index is at most its `count`, an
-array's or keyed array's count is within `[min, max]` and a ranged integer's
+array's or keyed array's count is within `[min, max]`, a string's length is at
+most its announced `max`, and a ranged integer's
 reconstructed value is within its announced kind's storage domain, and a nested body names no field id twice
 and no reserved id — and a failure refuses the batch. **The skip walk is bounded
 at depth 128**, §4's binary bound (`tableMessageSkip`, `tableMessageSkipBody`): a nested body, array, keyed or map body, or a union whose arm is structural, past 128 levels refuses (recommended name `wire_damaged`); a scalar arm adds no level, as on the file form. <!-- limit name=message_skip_depth value=128 -->
@@ -6754,7 +6755,11 @@ property every wire shares.
 
 **A STRING OR AN ARRAY LONGER THAN THIS READER'S BOUND REFUSES**,
 `length_over_bound` or `count_over_bound`, exactly as §4 states. Nothing is cut,
-and no surplus is walked to find where a kept prefix ends.
+and no surplus is walked to find where a kept prefix ends. **So does one longer
+than the ANNOUNCED `max`**, whatever this reader's own bound: a string's length
+rides at `bits_required(0, max)` and an array's count at `bits_required(min,
+max)`, so their bits can spell more than `max`, which no conforming writer
+emits. The named read and the skip path give it the same verdict.
 
 ---
 

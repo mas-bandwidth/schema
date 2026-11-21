@@ -308,7 +308,7 @@ func tableMessageBodyGunnerSettings(r *TableMessageReader, value *GunnerSettings
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
-					if n > 24 {
+					if n > 24 || n > uint64(entry.Shape.Max) {
 						r.Report.Refuse(TableRefuseLengthOverBound, "GunnerSettings.callsign")
 						return false
 					}
@@ -593,7 +593,7 @@ func tableMessageBodyShipEntry(r *TableMessageReader, value *ShipEntry, starts [
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
-					if n > 32 {
+					if n > 32 || n > uint64(entry.Shape.Max) {
 						r.Report.Refuse(TableRefuseLengthOverBound, "ShipEntry.display_name")
 						return false
 					}
@@ -1197,7 +1197,7 @@ func tableMessageBodyGlobalSettings(r *TableMessageReader, value *GlobalSettings
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
-					if n > 48 {
+					if n > 48 || n > uint64(entry.Shape.Max) {
 						r.Report.Refuse(TableRefuseLengthOverBound, "GlobalSettings.build_note")
 						return false
 					}
