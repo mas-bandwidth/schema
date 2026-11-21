@@ -99,10 +99,13 @@ func gatedTestPackages(root string) (map[string][]string, error) {
 			}
 		}
 	}
+	// A directory that cannot be walked, or a test source that cannot be
+	// parsed, is an error here and in moduleFuncs: skipped quietly it was a
+	// package this scan called ungated without having read it.
 	dirs := map[string]bool{}
-	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	err = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
-			return nil
+			return err
 		}
 		if d.IsDir() {
 			switch d.Name() {
@@ -116,18 +119,22 @@ func gatedTestPackages(root string) (map[string][]string, error) {
 		}
 		if strings.HasSuffix(path, "_test.go") {
 			rel, err := filepath.Rel(root, filepath.Dir(path))
-			if err == nil {
-				dirs[filepath.ToSlash(rel)] = true
+			if err != nil {
+				return err
 			}
+			dirs[filepath.ToSlash(rel)] = true
 		}
 		return nil
 	})
+	if err != nil {
+		return nil, err
+	}
 	out := map[string][]string{}
 	for rel := range dirs {
 		dir := filepath.Join(root, filepath.FromSlash(rel))
 		tests, err := declaredTests(dir)
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("reading the test declarations of %s: %w", rel, err)
 		}
 		for name := range tests {
 			if reaching[funcKey{dir: rel, name: name}] {
@@ -180,7 +187,7 @@ func moduleFuncs(root string) (map[funcKey]funcBody, error) {
 	fset := token.NewFileSet()
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
-			return nil
+			return err
 		}
 		if d.IsDir() {
 			switch d.Name() {
@@ -197,7 +204,7 @@ func moduleFuncs(root string) (map[funcKey]funcBody, error) {
 		}
 		f, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
 		if err != nil {
-			return nil
+			return err
 		}
 		imports := map[string]string{}
 		for _, imp := range f.Imports {
@@ -223,11 +230,11 @@ func moduleFuncs(root string) (map[funcKey]funcBody, error) {
 		}
 		full, err := parser.ParseFile(fset, path, nil, 0)
 		if err != nil {
-			return nil
+			return err
 		}
 		rel, err := filepath.Rel(root, filepath.Dir(path))
 		if err != nil {
-			return nil
+			return err
 		}
 		dir := filepath.ToSlash(rel)
 		for _, decl := range full.Decls {
