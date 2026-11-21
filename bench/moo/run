@@ -11,7 +11,7 @@ if [ ! -x "$MOO" ] && ! command -v "$MOO" >/dev/null 2>&1; then
     exit 2
 fi
 if [ ! -f "$GEN/Bench.moo" ]; then
-    [ -x ./build/schema-moo ] || go build -tags schema_leg_moo -o build/schema-moo ./cmd/schema
+    [ -x ./build/schema-moo ] || go build -o build/schema-moo ./cmd/schema
     rm -rf "$GEN"
     mkdir -p "$GEN"
     ./build/schema-moo generate --lang moo --out "$GEN" bench/corpus/Bench.schema

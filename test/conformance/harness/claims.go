@@ -100,7 +100,7 @@ const outcomeClaimedAbsent = "claimed-absent"
 // the manifest, each case's unit through the compiler, and each leg's carried
 // constructs from the registry. A leg whose target has no registration in this
 // build is an error rather than a leg that claims nothing: a target behind a
-// build tag (schema_leg_luau and its siblings) registers only in a harness
+// build tag (a schema_leg_<lang> leg still being built) registers only in a harness
 // built with that tag, and a nightly that silently enforced nothing for it
 // would be green over a check that never ran.
 func buildClaims(m *Manifest, langs []string) (*claimSet, error) {

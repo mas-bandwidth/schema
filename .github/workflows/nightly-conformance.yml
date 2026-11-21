@@ -65,8 +65,9 @@ env:
   # The harness is built with every leg's tag, because a target behind a tag
   # registers what it carries only in a binary built with it, and the claim
   # check refuses a leg it has no registration for rather than enforcing
-  # nothing (test/conformance/harness/claims.go).
-  HARNESS_TAGS: schema_leg_goose,schema_leg_moo,schema_leg_python,schema_leg_ruby
+  # nothing (test/conformance/harness/claims.go). Moo is built in and needs
+  # no tag (test/conformance/harness/implementation_moo.go).
+  HARNESS_TAGS: schema_leg_goose,schema_leg_python,schema_leg_ruby
 
 jobs:
   registry:

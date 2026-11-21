@@ -37,6 +37,10 @@ func TestNightlyRuntimePinsMatchMergeAndRelease(t *testing.T) {
 
 // Every optional registered target must be linked into the nightly harness.
 // Otherwise a freshly installed port fails its claims before exercising code.
+// The optional pieces are the tagged carries registrations under compiler/
+// (a schema_leg_<lang> leg still being built) and the tagged `implementation
+// --lang` admissions under test/conformance/harness/ (goose, python, ruby);
+// a built-in target such as moo has neither and needs no tag.
 func TestNightlyHarnessIncludesEveryOptionalTarget(t *testing.T) {
 	root := repoRoot(t)
 	files := workflows(t, root)
@@ -52,6 +56,11 @@ func TestNightlyHarnessIncludesEveryOptionalTarget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	admissions, err := filepath.Glob(filepath.Join(root, "test", "conformance", "harness", "implementation_*.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths = append(paths, admissions...)
 	optional := regexp.MustCompile(`schema_leg_[a-z]+`)
 	checked := map[string]bool{}
 	for _, path := range paths {

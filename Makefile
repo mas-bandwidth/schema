@@ -6533,23 +6533,25 @@ include $(wildcard make/*.mk)
 # unchanged.
 .PHONY: test-moo-tagged-compiler test-moo-tagged-table
 test-moo-tagged-compiler: toolchain-moo build/fixedform-corpus/.stamp
-	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 60m -tags schema_leg_moo ./compiler/
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 60m ./compiler/
 test-moo-tagged-table: toolchain-moo build/fixedform-corpus/.stamp
-	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 60m -tags schema_leg_moo ./internal/codegen/mootable/ ./test/conformance/harness/
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 60m ./internal/codegen/mootable/ ./test/conformance/harness/
 # THE PER-COMMIT SMOKES OF THE SAME MATRIX (ci-full.yml's leg-tagged job,
 # non-schedule events). Measured on run 42578064640, the full halves cannot
 # fit the 110 s per-commit budget at any row count (moo-table 859 s, one
 # test alone 586 s), so per-commit rows run these instead and the full
-# halves above run on the workflow's schedule. Each smoke compiles its
-# tagged build and runs the tagged registration/admission tests: the
-# compiler's Moo tests, the moo table descriptors load under the pinned
-# interpreter, and the harness's tagged-admission test under each tag.
+# halves above run on the workflow's schedule. Moo is a built-in target now,
+# so the moo rows build with no tag (the names stay, for the matrix and its
+# pins): the compiler's Moo tests and the shipped-target registration, the moo
+# table descriptors load under the pinned interpreter, and the harness's
+# admission tests (moo in every build; the tagged-admission test under the
+# goose tag below).
 .PHONY: test-moo-tagged-compiler-smoke test-moo-tagged-table-smoke test-goose-tagged-harness-smoke
 test-moo-tagged-compiler-smoke: toolchain-moo
-	SCHEMA_SLOW=1 go test -count=1 -timeout 60m -tags schema_leg_moo -run '^(TestMoo|TestEachTargetDeclaresWhatItCarries)' ./compiler/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 60m -run '^(TestMoo|TestEachTargetDeclaresWhatItCarries|TestShippedTargetsAreBuiltIn)' ./compiler/
 test-moo-tagged-table-smoke: toolchain-moo
-	SCHEMA_SLOW=1 go test -count=1 -timeout 60m -tags schema_leg_moo -run '^TestMooTableDescriptorsLoad$$' ./internal/codegen/mootable/
-	SCHEMA_SLOW=1 go test -count=1 -timeout 60m -tags schema_leg_moo -run '^TestImplementationAdmitsTaggedLanguagesByBuild$$' ./test/conformance/harness/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 60m -run '^TestMooTableDescriptorsLoad$$' ./internal/codegen/mootable/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 60m -run '^(TestImplementationAdmitsTaggedLanguagesByBuild|TestImplementationAdmitsMooByBuild)$$' ./test/conformance/harness/
 test-goose-tagged-harness-smoke:
 	SCHEMA_SLOW=1 go test -count=1 -timeout 60m -tags schema_leg_goose -run '^TestImplementationAdmitsTaggedLanguagesByBuild$$' ./test/conformance/harness/
 # map is not a compiler backend. Include it by path so the registry wildcard

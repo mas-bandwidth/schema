@@ -45,9 +45,6 @@ import (
 // tagBoundTestFiles is the allow list: a test file excluded by a build tag
 // written on purpose, each beside the reason it is not silent.
 var tagBoundTestFiles = map[string]string{
-	"test/conformance/harness/implementation_moo_on_test.go": "the schema_leg_moo half of mooTagged; " +
-		"implementation_moo_off_test.go is its untagged twin, and `make test-moo-tagged` " +
-		"(make/moo-tagged.mk, ci-full.yml's leg-tagged job) runs the package under the tag",
 	"test/conformance/harness/implementation_goose_on_test.go": "the schema_leg_goose half of gooseTagged; " +
 		"implementation_goose_off_test.go is its untagged twin, and `make test-goose-tagged-harness` " +
 		"(make/goose-tagged.mk, ci-full.yml's leg-tagged job) runs the package under the tag",

@@ -217,8 +217,9 @@ stacked on layer 1, landed one at a time against current main.
 
 1. **The packet surface** (this page): the generator for the type wire, the
    harness, the toolchain and its CI step, the analyzer gate, the register
-   column and the roadmap. The `schema_leg_moo` build tag stays on
-   `compiler/target_moo.go` until the port joins the builtins.
+   column and the roadmap. Moo is a built-in target: `compiler/target_moo.go`
+   carries no build tag, so the default build (`make`, `bin/schema`) answers
+   `schema generate --lang moo`.
 2. **The packet gates**: moo legs of `test/packet-defaults`, `packet-finite`
    and `packet-text`, with their negative controls; the
    `generated/moo` tree and its goldens.

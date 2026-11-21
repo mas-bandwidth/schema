@@ -11,9 +11,7 @@
 # relays stdout, stderr and the verdict, so the packet-text harness speaks to
 # it as to any other driver. -analyze first requires moo-analyze to be silent
 # over the generated modules and the main (no error, no lint warning). The
-# driver calls the emitter directly, as internal/codegen/moo's own gates do:
-# the compiler's moo target stays behind the schema_leg_moo tag until the port
-# joins the builtins.
+# driver calls the emitter directly, as internal/codegen/moo's own gates do.
 #
 # THE NEGATIVE CONTROLS build the same driver with `go build -overlay` over a
 # copy of one internal/codegen/moo file that tools/sabotage broke (one named

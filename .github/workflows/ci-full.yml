@@ -1700,11 +1700,12 @@ jobs:
   # rebases; that scan proves the rules EXIST, and the emission from nothing is
   # what proves one ran.
 
-  # THE LEGS UNDER THEIR BUILD TAGS (make/moo-tagged.mk, make/goose-tagged.mk).
-  # `-tags schema_leg_moo` registers the moo target, so every cross-target gate in
-  # ./compiler meets one more target; go-test above runs both packages
-  # untagged, and certify's test-moo-tables runs only the compiler's tests
-  # named Moo, so without this job a tagged red lands unseen. It is its own
+  # THE MOO LEG WHOLE AND THE LEGS UNDER THEIR BUILD TAGS (make/moo-tagged.mk,
+  # make/goose-tagged.mk). Moo is a built-in target (2026-11-21: the
+  # schema_leg_moo tag is gone), so its rows build with no tag; they keep the
+  # job because they run the compiler, mootable and harness packages whole
+  # under SCHEMA_SLOW=1 with the pinned moo interpreter, which go-test's rows
+  # do not. The goose row still builds the harness under schema_leg_goose. It is its own
   # job, beside go-test rather than one of its rows, because
   # tools/slowgatescan credits each go-test row with the tests it selects, and
   # this run selects the compiler's tests a second time under another build.
@@ -1784,19 +1785,19 @@ jobs:
       - uses: ./.github/actions/moo
         if: matrix.group != 'goose'
 
-      - name: the moo leg's compiler under schema_leg_moo (smoke)
+      - name: the moo leg's compiler, default build (smoke)
         if: matrix.group == 'moo-compiler' && github.event_name != 'schedule'
         run: make test-moo-tagged-compiler-smoke
 
-      - name: the moo leg's compiler under schema_leg_moo
+      - name: the moo leg's compiler, default build
         if: matrix.group == 'moo-compiler' && github.event_name == 'schedule'
         run: make test-moo-tagged-compiler
 
-      - name: the moo leg's table and conformance packages under schema_leg_moo (smoke)
+      - name: the moo leg's table and conformance packages, default build (smoke)
         if: matrix.group == 'moo-table' && github.event_name != 'schedule'
         run: make test-moo-tagged-table-smoke
 
-      - name: the moo leg's table and conformance packages under schema_leg_moo
+      - name: the moo leg's table and conformance packages, default build
         if: matrix.group == 'moo-table' && github.event_name == 'schedule'
         run: make test-moo-tagged-table
 
