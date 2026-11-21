@@ -37,7 +37,9 @@
 // SHA-256 of the port's text writer with its one trailing newline removed (the
 // engine's canonical text, internal/tabletext.Model.Write, carries none). A
 // read that throws or refuses is the corpus's `damaged`, unless its refusal is
-// one the manifest names (corpusReason): the verdict is the contract, and why a
+// one the manifest names (corpusReason). Only the generated reader's own
+// refusal is a refusal (a text read's FormatException, a report's refused
+// flag): any other throw is the case's `error`, never `damaged`. The verdict is the contract, and why a
 // read refused is per-language detail (docs/SPEC-TABLES.md §6.5), so every other
 // reason folds into `damaged`, as the C and C++ harnesses answer. The name is
 // printed on a FAIL line as the port's diagnostic and never compared: a refusal
@@ -175,17 +177,21 @@ Answer _text(String schema, String table, Uint8List payload) {
   } on FormatException {
     return _damaged;
   }
+  // The generated text read refuses by throwing a FormatException (its
+  // <root>FromJson with a report still throws for bytes that are not JSON):
+  // that, and only that, is the read's refusal. Anything else it or this
+  // runner raises (a TypeError, a RangeError, a StateError, a missing binding)
+  // is not a refusal: it leaves this function and the case answers `error`,
+  // so a crash can never pass as a conforming refusal.
   final dispatch.Loaded? loaded;
-  final String written;
   try {
     loaded = dispatch.textLoad(schema, table, text);
-    if (loaded == null) return _unbound('text');
-    if (loaded.refused) return Answer('refuse', corpusReason(loaded.reason, payload));
-    written = loaded.written();
-  } catch (_) {
-    return _damaged;
+  } on FormatException catch (e) {
+    return Answer('refuse', corpusReason(e.message.split(':').first, payload));
   }
-  return _after(_accepted(written), 'WireSave/WireMeasure', loaded.exercise);
+  if (loaded == null) return _unbound('text');
+  if (loaded.refused) return Answer('refuse', corpusReason(loaded.reason, payload));
+  return _after(_accepted(loaded.written()), 'WireSave/WireMeasure', loaded.exercise);
 }
 
 // ---- the wire carriers ----

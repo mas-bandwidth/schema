@@ -22,7 +22,10 @@
 # to go red naming an unexplained case, and no wire or announce case (message-valid
 # states its decoded defaults through the text read of `{}`, so it reddens too).
 # Then it runs the real units with a 0 ms budget and requires a case to go red
-# over budget. It runs the unplanted target first (its prerequisite), so the
+# over budget. A second plant makes the text reader throw a StateError (a
+# crash, not the reader's FormatException refusal) and requires a case the
+# manifest refuses to go red as an error: a crash never passes as a refusal.
+# It runs the unplanted target first (its prerequisite), so the
 # pull-request negative-control row carries both halves.
 
 DART_HOSTILE_CORPUS   ?= internal/ci/hostilecorpus/corpus
@@ -86,6 +89,17 @@ schema-dart-runs-hostile-corpus-negative-control: schema-dart-runs-hostile-corpu
 		echo 'NEGATIVE CONTROL FAILED: a text-reader plant turned a wire, message or announce case red'; \
 		cat $(DART_HOSTILE_BUILD)/plant/log; exit 1; fi
 	@tail -1 $(DART_HOSTILE_BUILD)/plant/log
+	@cp -R $(DART_HOSTILE_BUILD)/generated/. $(DART_HOSTILE_BUILD)/plant/build/dart-hostile/generated/
+	@sed -i.orig "s|^  final root = _jsonDecodeExact(_jsonPrepare(text, r));|  final root = _jsonDecodeExact(_jsonPrepare(text, r)); throw StateError('PLANTED');|" \
+		$(DART_HOSTILE_BUILD)/plant/build/dart-hostile/generated/*/*Wire.dart
+	@if $(DART) run $(DART_HOSTILE_BUILD)/plant/test/dart-hostile/runner.dart "$(DART_HOSTILE_CORPUS)" "$(DART_HOSTILE_FINDINGS)" \
+			> $(DART_HOSTILE_BUILD)/plant/crash.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: a text reader that crashes on every input left the corpus green'; \
+		cat $(DART_HOSTILE_BUILD)/plant/crash.log; exit 1; fi
+	@grep -q '^FAIL .* carrier=text got=error .* want=refuse ' $(DART_HOSTILE_BUILD)/plant/crash.log || \
+		{ echo 'NEGATIVE CONTROL FAILED: a text reader crash passed as a refusal (no refused text case went red)'; \
+		  cat $(DART_HOSTILE_BUILD)/plant/crash.log; exit 1; }
+	@tail -1 $(DART_HOSTILE_BUILD)/plant/crash.log
 	@if HOSTILE_CASE_BUDGET_MS=0 $(DART) run test/dart-hostile/runner.dart "$(DART_HOSTILE_CORPUS)" "$(DART_HOSTILE_FINDINGS)" \
 			> $(DART_HOSTILE_BUILD)/plant/budget.log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: a 0 ms case budget left the corpus green'; \
@@ -93,4 +107,4 @@ schema-dart-runs-hostile-corpus-negative-control: schema-dart-runs-hostile-corpu
 	@grep -q '^FAIL .* got=error over budget' $(DART_HOSTILE_BUILD)/plant/budget.log || \
 		{ echo 'NEGATIVE CONTROL FAILED: a 0 ms case budget went red without naming a case over budget'; \
 		  cat $(DART_HOSTILE_BUILD)/plant/budget.log; exit 1; }
-	@echo 'dart hostile-corpus negative control: a text reader that refuses accepted inputs reds the corpus, so does a 0 ms budget; unplanted it is green'
+	@echo 'dart hostile-corpus negative control: a text reader that refuses accepted inputs reds the corpus, a text reader that crashes reds a refused case, so does a 0 ms budget; unplanted it is green'
