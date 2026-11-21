@@ -379,11 +379,11 @@ func ensureTablegenCorpus(corpusDir string, seed uint64, schemas int, forceGen b
 		return nil, nil, nil, err
 	}
 	meta := &CorpusMeta{
-		Seed:      seed,
-		Schemas:   schemas,
-		CaseCount: len(cases),
-		Pairs:     make([]PairMeta, len(pairs)),
-		Pinned:    pinned,
+		Seed:          seed,
+		Schemas:       schemas,
+		CaseCount:     len(cases),
+		Pairs:         make([]PairMeta, len(pairs)),
+		Pinned:        pinned,
 		PinnedVersion: pinnedVersion,
 	}
 	for i, p := range pairs {
