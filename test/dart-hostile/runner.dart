@@ -123,14 +123,21 @@ Answer _text(String schema, String table, Uint8List payload) {
     return _damaged;
   }
   final dispatch.Loaded? loaded;
-  final String written;
   try {
     loaded = dispatch.textLoad(schema, table, text);
-    if (loaded == null) return _unbound('text');
-    if (loaded.refused) return Answer('refuse', corpusReason(loaded.reason, payload));
-    written = loaded.written();
   } catch (_) {
     return _damaged;
+  }
+  if (loaded == null) return _unbound('text');
+  if (loaded.refused) return Answer('refuse', corpusReason(loaded.reason, payload));
+  // THE WRITE AFTER AN ACCEPT IS NOT THE READ (F-070): a throw from the text
+  // writer once the reader accepted is an execution failure, never the
+  // reader's damaged verdict a finding could carry.
+  final String written;
+  try {
+    written = loaded.written();
+  } catch (e) {
+    return Answer('error', 'after accept, the text writer raised ${e.toString().split('\n').first}');
   }
   return _after(_accepted(written), 'WireSave/WireMeasure', loaded.exercise);
 }
@@ -437,6 +444,13 @@ String sha256Hex(List<int> message) {
 
 // ---- the manifest and the carried findings ----
 
+// A finding's answer: `accept <digest>` (this port's digest) or `refuse` (a
+// refusal, whatever its reason: docs/rulings.json refusal-verdict-only).
+final _answerForm = RegExp(r'^(accept \S+|refuse)$');
+
+bool _carries(String answer, Answer got) =>
+    (answer == 'refuse' && got.verdict == 'refuse') || (got.verdict == 'accept' && answer == 'accept ${got.detail}');
+
 List<List<String>> _rows(String path) => File(path)
     .readAsLinesSync()
     .where((l) => l.isNotEmpty && !l.startsWith('#'))
@@ -467,9 +481,17 @@ Future<void> main(List<String> args) async {
   final budgetEnv = Platform.environment['HOSTILE_CASE_BUDGET_MS'] ?? '';
   final budget = Duration(milliseconds: budgetEnv.isEmpty ? 5000 : int.parse(budgetEnv));
   final corpus = args[0];
+  // known findings: name<TAB>slug<TAB>input<TAB>answer<TAB>one line, where the
+  // answer is what this port gives the case today, `accept <digest>` or
+  // `refuse` (docs/HOSTILE-CORPUS.md). A finding carries that answer and no
+  // other (F-079).
   final findings = <String, List<String>>{};
   if (args.length == 2 && File(args[1]).existsSync()) {
     for (final f in _rows(args[1])) {
+      if (f.length != 5 || !_answerForm.hasMatch(f[3])) {
+        stderr.writeln('${args[1]}: a finding is name, slug, input, answer (accept <digest> or refuse) and one line, tab-separated: ${f.join('\t')}');
+        exit(2);
+      }
       findings[f[0]] = f;
     }
   }
@@ -497,11 +519,12 @@ Future<void> main(List<String> args) async {
       } else {
         passed++;
       }
-      // A FINDING CARRIES A READER'S VERDICT, never an execution failure
-      // (F-070): an error answer (a timeout, a crash, an unbound reader) is
-      // not the disagreement the finding names, and reads FAIL.
-    } else if (finding != null && (got.verdict == 'accept' || got.verdict == 'refuse')) {
-      stdout.writeln('FIX-CARD: ${finding[1]}: ${finding[2]} ${finding[3]} (got $got)');
+      // A FINDING CARRIES THE ANSWER IT RECORDS, and no other: never an
+      // execution failure (F-070: a timeout, a crash, an unbound reader, a
+      // writer that threw after an accept), and never a different verdict or
+      // digest (F-079: a refusal under a finding for a wrong digest).
+    } else if (finding != null && _carries(finding[3], got)) {
+      stdout.writeln('FIX-CARD: ${finding[1]}: ${finding[2]} ${finding[4]} (got $got)');
       carried++;
     } else {
       stdout.writeln('FAIL $name carrier=$carrier got=$got want=$want');

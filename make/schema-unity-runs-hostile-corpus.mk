@@ -44,6 +44,7 @@ $(UNITY_HOSTILE_BUILD)/bin/.stamp: $(UNITY_HOSTILE_BUILD)/generated/.stamp test/
 .PHONY: schema-unity-runs-hostile-corpus
 schema-unity-runs-hostile-corpus: $(UNITY_HOSTILE_BUILD)/bin/.stamp
 	$(call hostile_ledgered,unity,$(UNITY_HOSTILE_BUILD)/run.log,$(DOTNET) $(UNITY_HOSTILE_BUILD)/bin/unityhostile.dll "$(UNITY_HOSTILE_CORPUS)" "$(UNITY_HOSTILE_FINDINGS)",$(UNITY_HOSTILE_CORPUS))
+	sh make/checks/hostile-carry-controls.sh unity findings $(UNITY_HOSTILE_BUILD)/carry '$(DOTNET) $(UNITY_HOSTILE_BUILD)/bin/unityhostile.dll "$$CARRY_CORPUS" "$$CARRY_FINDINGS"'
 
 # The port's normal unit target runs the corpus: this file is included after
 # make/cs.mk by the Makefile's wildcard, so the prerequisite lands here and

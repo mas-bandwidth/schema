@@ -43,6 +43,7 @@ JS_HOSTILE_PACKET_ROWS := packet=runtime-development,runtime-production,flat-dev
 .PHONY: schema-js-runs-hostile-corpus
 schema-js-runs-hostile-corpus: schema-js-hostile-generate
 	$(call hostile_ledgered,js,$(JS_HOSTILE_BUILD)/run.log,$(NODE) test/js-hostile/runner.mjs run "$(JS_HOSTILE_CORPUS)" $(JS_HOSTILE_BUILD)/generated "$(JS_HOSTILE_SERIALIZE)" "$(JS_HOSTILE_FINDINGS)",$(JS_HOSTILE_CORPUS),-rows $(JS_HOSTILE_PACKET_ROWS))
+	sh make/checks/hostile-carry-controls.sh js findings $(JS_HOSTILE_BUILD)/carry '$(NODE) test/js-hostile/runner.mjs run "$$CARRY_CORPUS" $(JS_HOSTILE_BUILD)/generated "$(JS_HOSTILE_SERIALIZE)" "$$CARRY_FINDINGS"'
 
 test-js: schema-js-runs-hostile-corpus
 

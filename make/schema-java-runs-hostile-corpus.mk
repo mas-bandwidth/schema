@@ -64,6 +64,7 @@ $(JAVA_HOSTILE_BUILD)/packet/.stamp: bin/schema make/hostile-packet-units.sh mak
 .PHONY: schema-java-runs-hostile-corpus
 schema-java-runs-hostile-corpus: $(JAVA_HOSTILE_BUILD)/classes/.stamp $(JAVA_HOSTILE_BUILD)/packet/.stamp
 	$(call hostile_ledgered,java,$(JAVA_HOSTILE_BUILD)/run.log,$(JAVA) -cp $(JAVA_HOSTILE_BUILD)/classes Runner "$(JAVA_HOSTILE_CORPUS)" "$(JAVA_HOSTILE_FINDINGS)" "$(JAVA_HOSTILE_BUILD)/packet",$(JAVA_HOSTILE_CORPUS))
+	sh make/checks/hostile-carry-controls.sh java findings $(JAVA_HOSTILE_BUILD)/carry '$(JAVA) -cp $(JAVA_HOSTILE_BUILD)/classes Runner "$$CARRY_CORPUS" "$$CARRY_FINDINGS" "$(JAVA_HOSTILE_BUILD)/packet"'
 
 # The port's normal unit target runs the corpus: this file is included after
 # make/java.mk by the Makefile's wildcard, so the prerequisite lands here and

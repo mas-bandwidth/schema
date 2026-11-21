@@ -283,7 +283,18 @@ static class Runner
         var findings = new Dictionary<string, string[]>();
         if (File.Exists(findingsPath))
         {
-            foreach (string[] f in Rows(findingsPath, 4)) { findings[f[0]] = f; }
+            // known findings: name<TAB>slug<TAB>input<TAB>answer<TAB>one line,
+            // where the answer is what this port gives the case today,
+            // `accept <digest>` or `refuse` (docs/HOSTILE-CORPUS.md). A finding
+            // carries that answer and no other (F-079).
+            foreach (string[] f in Rows(findingsPath, 5))
+            {
+                if (f[3] != "refuse" && !(f[3].StartsWith("accept ", StringComparison.Ordinal) && f[3].Length > 7 && f[3].IndexOf(' ', 7) < 0))
+                {
+                    throw new InvalidDataException(findingsPath + ": a finding's answer is `accept <digest>` or `refuse`: " + string.Join("\t", f));
+                }
+                findings[f[0]] = f;
+            }
         }
         var cases = new List<Case>();
         foreach (string[] f in Rows(Path.Combine(corpus, "manifest.tsv"), 9))
@@ -359,12 +370,13 @@ static class Runner
                     passed++;
                 }
             }
-            // A FINDING CARRIES A READER'S VERDICT, never an execution failure
-            // (F-070): a timeout, a crash or a runner error is not the
-            // disagreement the finding names, and reads FAIL.
-            else if (finding != null && (c.Got.StartsWith("accept ", StringComparison.Ordinal) || c.Got.StartsWith("refuse ", StringComparison.Ordinal)))
+            // A FINDING CARRIES THE ANSWER IT RECORDS, and no other: never an
+            // execution failure (F-070: a timeout, a crash or a runner error),
+            // and never a different verdict or digest (F-079: a refusal under
+            // a finding for a wrong digest).
+            else if (finding != null && (finding[3] == "refuse" ? c.Got.StartsWith("refuse ", StringComparison.Ordinal) : c.Got == finding[3]))
             {
-                Console.WriteLine("FIX-CARD: " + finding[1] + ": " + finding[2] + " " + finding[3]);
+                Console.WriteLine("FIX-CARD: " + finding[1] + ": " + finding[2] + " " + finding[4] + " (got " + c.Got + ")");
                 carried++;
             }
             else

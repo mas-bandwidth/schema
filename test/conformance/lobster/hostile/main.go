@@ -338,9 +338,33 @@ func digest(answerHex string, packet bool) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
-// readFindings: name<TAB>one line, `#` comments.
-func readFindings(path string) (map[string]string, error) {
-	out := map[string]string{}
+// carriedFinding is one line of the findings file: the answer this port gives
+// the case today, `accept <digest>` or `refuse`, and one line saying why.
+type carriedFinding struct {
+	answer, text string
+}
+
+func (f carriedFinding) String() string { return f.text }
+
+// carries says whether the finding carries got: a refusal under `refuse`,
+// whatever its reason (docs/rulings.json refusal-verdict-only), or the very
+// accept and digest it records. Nothing else (F-070, F-079).
+func (f carriedFinding) carries(got string) bool {
+	if f.answer == "refuse" {
+		return strings.HasPrefix(got, "refuse ")
+	}
+	return got == f.answer
+}
+
+func validAnswer(a string) bool {
+	d, accept := strings.CutPrefix(a, "accept ")
+	return a == "refuse" || (accept && d != "" && !strings.ContainsAny(d, " \t"))
+}
+
+// readFindings: name<TAB>answer<TAB>one line, `#` comments. A finding carries
+// the answer it records and no other (F-079).
+func readFindings(path string) (map[string]carriedFinding, error) {
+	out := map[string]carriedFinding{}
 	if path == "" {
 		return out, nil
 	}
@@ -352,11 +376,11 @@ func readFindings(path string) (map[string]string, error) {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		name, text, ok := strings.Cut(line, "\t")
-		if !ok {
-			return nil, fmt.Errorf("%s: %q is not name<TAB>finding", path, line)
+		f := strings.SplitN(line, "\t", 3)
+		if len(f) != 3 || f[0] == "" || f[2] == "" || !validAnswer(f[1]) {
+			return nil, fmt.Errorf("%s: %q is not name<TAB>answer (accept <digest> or refuse)<TAB>finding", path, line)
 		}
-		out[name] = text
+		out[f[0]] = carriedFinding{f[1], f[2]}
 	}
 	return out, nil
 }
@@ -466,10 +490,11 @@ func main() {
 		case got == want:
 			pass++
 			fmt.Printf("PASS %s\n", c.Name)
-		// A FINDING CARRIES A READER'S VERDICT, never an execution failure
-		// (F-070): a case with no answer, or an answer that is neither an
-		// accept nor a refusal, fails whatever the findings file says.
-		case owed && ok && (a[0] == "accept" || a[0] == "refuse"):
+		// A FINDING CARRIES THE ANSWER IT RECORDS, and no other: never an
+		// execution failure (F-070: no answer, a digest that failed, an
+		// answer that is neither an accept nor a refusal), and never a
+		// different verdict or digest (F-079).
+		case owed && ok && finding.carries(got):
 			carried++
 			fmt.Printf("FIX-CARD %s carrier=%s: %s (got %s, want %s)\n", c.Name, c.Carrier, finding, got, want)
 		default:

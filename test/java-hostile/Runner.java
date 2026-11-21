@@ -732,10 +732,16 @@ public final class Runner {
             budgetMs = Long.parseLong(budgetEnv);
         }
 
-        // known findings: name<TAB>slug<TAB>input<TAB>one line
+        // known findings: name<TAB>slug<TAB>input<TAB>answer<TAB>one line, where
+        // the answer is what this port gives the case today, `accept <digest>`
+        // or `refuse` (docs/HOSTILE-CORPUS.md). A finding carries that answer
+        // and no other (F-079).
         Map<String, String[]> findings = new HashMap<>();
         if (Files.exists(findingsPath)) {
-            for (String[] f : rows(findingsPath, 4)) {
+            for (String[] f : rows(findingsPath, 5)) {
+                if (!f[3].matches("accept \\S+|refuse")) {
+                    throw new IOException(findingsPath + ": a finding's answer is `accept <digest>` or `refuse`: " + String.join("\t", f));
+                }
                 findings.put(f[0], f);
             }
         }
@@ -766,12 +772,12 @@ public final class Runner {
                     System.out.println("PASS " + name);
                     passed++;
                 }
-            // A FINDING CARRIES A READER'S VERDICT, never an execution failure
-            // (F-070): a timeout, a crash or a reader missing from the
-            // classpath is not the disagreement the finding names, and reads
-            // FAIL whatever known-findings.tsv says about the case.
-            } else if (finding != null && (got.startsWith("accept ") || got.startsWith("refuse "))) {
-                System.out.println("FIX-CARD: " + finding[1] + ": " + finding[2] + " " + finding[3]);
+            // A FINDING CARRIES THE ANSWER IT RECORDS, and no other: never an
+            // execution failure (F-070: a timeout, a crash or a reader missing
+            // from the classpath), and never a different verdict or digest
+            // (F-079: a refusal under a finding for a wrong digest).
+            } else if (finding != null && (finding[3].equals("refuse") ? got.startsWith("refuse ") : got.equals(finding[3]))) {
+                System.out.println("FIX-CARD: " + finding[1] + ": " + finding[2] + " " + finding[4] + " (got " + got + ")");
                 carried++;
             } else {
                 System.out.println("FAIL " + name + " carrier=" + carrier + " got=" + got + " want=" + expected);

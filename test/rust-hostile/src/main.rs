@@ -488,13 +488,22 @@ fn main() {
         .unwrap_or_else(|| thread::available_parallelism().map_or(1, |n| n.get()).min(4))
         .max(1);
 
-    // known findings: name<TAB>slug<TAB>input<TAB>one line. A name of the form
-    // <case>@<profile> is a finding in that build profile only.
+    // known findings: name<TAB>slug<TAB>input<TAB>answer<TAB>one line, where
+    // the answer is what this port gives the case today, `accept <digest>` or
+    // `refuse` (docs/HOSTILE-CORPUS.md); a finding carries that answer and no
+    // other (F-079). A name of the form <case>@<profile> is a finding in that
+    // build profile only.
     let mut findings: HashMap<String, Vec<String>> = HashMap::new();
     if findings_path.exists() {
-        match rows(findings_path, 4) {
+        match rows(findings_path, 5) {
             Ok(rs) => {
                 for f in rs {
+                    let answer_ok = f[3] == "refuse"
+                        || f[3].strip_prefix("accept ").is_some_and(|d| !d.is_empty() && !d.contains(' '));
+                    if !answer_ok {
+                        eprintln!("{}: a finding's answer is `accept <digest>` or `refuse`: {}", findings_path.display(), f.join("\t"));
+                        std::process::exit(2);
+                    }
                     let key = match f[0].split_once('@') {
                         Some((name, p)) if p == profile => name.to_string(),
                         Some(_) => continue,
@@ -575,11 +584,12 @@ fn main() {
                 println!("PASS {name}");
                 passed += 1;
             }
-        } else if let Some(fc) = finding.filter(|_| got.starts_with("accept ") || got.starts_with("refuse ")) {
-            // A FINDING CARRIES A READER'S VERDICT, never an execution failure
-            // (F-070): a timeout, a crash or a runner error is not the
-            // disagreement the finding names, and falls through to FAIL.
-            println!("FIX-CARD: {}: {} {}", fc[1], fc[2], fc[3]);
+        } else if let Some(fc) = finding.filter(|fc| if fc[3] == "refuse" { got.starts_with("refuse ") } else { got == fc[3] }) {
+            // A FINDING CARRIES THE ANSWER IT RECORDS, and no other: never an
+            // execution failure (F-070: a timeout, a crash or a runner error),
+            // and never a different verdict or digest (F-079: a refusal under
+            // a finding for a wrong digest). Anything else falls through to FAIL.
+            println!("FIX-CARD: {}: {} {} (got {got})", fc[1], fc[2], fc[4]);
             carried += 1;
         } else {
             println!("FAIL {name} carrier={carrier} got={got} want={expected}");
