@@ -141,7 +141,7 @@ func TestGenheaderLineFitsEveryGate(t *testing.T) {
 	if !strings.Contains(genheader.Text, genheader.URL) || strings.ContainsAny(genheader.Text, "%\n") {
 		t.Fatalf("genheader.Text %q must hold the URL whole and no %% or newline", genheader.Text)
 	}
-	for _, line := range strings.Split(strings.TrimSuffix(genheader.Wrapped("//"), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSuffix(genheader.Wrapped("//"), "\n"), "\n") {
 		if n := len([]rune(line)); n > 100 {
 			t.Errorf("wrapped line %q is %d columns, past Java's 100", line, n)
 		}
