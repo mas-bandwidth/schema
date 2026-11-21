@@ -22,8 +22,9 @@ import (
 // table (docs/SPEC-TABLES.md §16.9, §8.8), importing the standard library
 // only, and the compiled units are held to test/conformance/textform/: every
 // positive vector reads to its typed-value oracle and rewrites byte for byte,
-// both leaf edits land only their own bytes, every refusal vector refuses by
-// its stable name, the attachment oracle holds, and a fuzzed edit of one value
+// both leaf edits land only their own bytes, every refusal vector refuses
+// with nothing landed (the verdict; its .reason is never compared,
+// docs/rulings.json refusal-verdict-only), the attachment oracle holds, and a fuzzed edit of one value
 // changes only that value's line and that value. The Document vectors run on a
 // FIXED and a VARIABLE root; the Graph vectors on the variable one.
 func TestCommentedTextForm(t *testing.T) {
@@ -525,6 +526,23 @@ func TestDocumentEdits(t *testing.T) {
 	}
 }
 
+// refused holds a corpus refusal vector to its VERDICT (docs/rulings.json
+// refusal-verdict-only): the read refused with the text form's own refusal
+// type. The .reason file beside the vector is the recommended, non-normative
+// name and is never compared: why a read refused is per-language diagnostic
+// detail. Any other error is a failure, never a refusal.
+func refused(t testing.TB, stem string, err error) *TableTextFormError {
+	t.Helper()
+	var e *TableTextFormError
+	if err == nil {
+		t.Fatalf("%%s: accepted, want refused", stem)
+	}
+	if !errors.As(err, &e) {
+		t.Fatalf("%%s: %%v (%%T) is not a refusal", stem, err, err)
+	}
+	return e
+}
+
 func TestDocumentRefusals(t *testing.T) {
 	names, err := filepath.Glob(filepath.Join(vectors, "refusals", "*.sexp"))
 	if err != nil || len(names) == 0 {
@@ -537,12 +555,11 @@ func TestDocumentRefusals(t *testing.T) {
 			continue // Graph's, run by the variable unit
 		}
 		input := vector(t, "refusals/"+stem+".sexp")
-		reason := strings.TrimSpace(string(vector(t, "refusals/"+stem+".reason")))
 		doc, v, err := DocumentLoadTextForm(input, TableTextFormDefaultLimits())
 		if doc != nil || v != nil {
 			t.Fatalf("%%s: a refusal returned a document or a value", stem)
 		}
-		e := refusal(t, err, reason)
+		e := refused(t, stem, err)
 		if e.Offset < 0 || e.Offset > len(input) {
 			t.Fatalf("%%s: offset %%d outside the input", stem, e.Offset)
 		}
@@ -784,7 +801,6 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
-	"strings"
 	"testing"
 )
 
@@ -876,14 +892,15 @@ func TestStrictRequiredAndGuards(t *testing.T) {
 func itoa(n int) string { b, _ := json.Marshal(n); return string(b) }
 
 func TestGraphRefusals(t *testing.T) {
+	// the corpus's Graph vectors: the verdict only (refusal-verdict-only);
+	// the .reason beside each is recommended vocabulary, never compared
 	for _, stem := range []string{"duplicate-map", "forward-reference"} {
 		input := vector(t, "refusals/"+stem+".sexp")
-		reason := strings.TrimSpace(string(vector(t, "refusals/"+stem+".reason")))
 		doc, v, err := GraphLoadTextForm(input, TableTextFormDefaultLimits())
-		var e *TableTextFormError
-		if doc != nil || v != nil || !errors.As(err, &e) || e.Name != reason {
-			t.Fatalf("%s: %v, want %s", stem, err, reason)
+		if doc != nil || v != nil {
+			t.Fatalf("%s: a refusal returned a document or a value", stem)
 		}
+		refused(t, stem, err)
 	}
 	// the sharing rules beyond the corpus (§16.7, §16.9.2)
 	for text, want := range map[string]string{
