@@ -67,6 +67,53 @@ func TestReasonedAbsentOnAnAnswerRowFails(t *testing.T) {
 	}
 }
 
+// The same rule on the committed corpus (F-091): blob_equal_bytes is an
+// accepted wire row of blobdemo.Catalog, and a leg that refuses it, here with
+// blob_shared's own reason, fails by that reason; blob_shared, its refused twin
+// on the same root, passes with the same answer; an EMPTY .absent on either is
+// the missing codec.
+func TestReasonedAbsentOnACommittedAcceptedRowFails(t *testing.T) {
+	chdirRepoRoot(t)
+	m, err := ReadManifest(defaultManifest, defaultJSONDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := map[string]Instance{}
+	for _, inst := range m.Instances {
+		if inst.Name == "blob_equal_bytes" || inst.Name == "blob_shared" {
+			rows[inst.Name] = inst
+		}
+	}
+	accepted, refused := rows["blob_equal_bytes"], rows["blob_shared"]
+	if accepted.Name == "" || refused.Name == "" || accepted.WireRefused || !refused.WireRefused || accepted.Root != refused.Root {
+		t.Fatalf("the manifest no longer carries the accepted/refused pair on one root: %+v %+v", accepted, refused)
+	}
+	score := func(inst Instance, answer []byte) *result {
+		want, err := os.ReadFile(inst.Wire)
+		if err != nil {
+			t.Fatal(err)
+		}
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, inst.Name+".absent"), answer, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		r := &result{total: 1}
+		scoreAnswer("ruby", "wire", dir, expectation{name: inst.Name, want: want}, inst, r)
+		return r
+	}
+	if r := score(accepted, []byte("blob_shared")); len(r.failures) != 1 || r.missing != 0 || r.pass != 0 {
+		t.Fatalf("a reasoned .absent on the accepted %s scored %+v, want one failure", accepted.Name, r)
+	}
+	if r := score(refused, []byte("blob_shared")); r.pass != 1 || len(r.failures) != 0 {
+		t.Fatalf("the owed refusal on %s scored %+v, want PASS", refused.Name, r)
+	}
+	for _, inst := range []Instance{accepted, refused} {
+		if r := score(inst, nil); r.missing != 1 || r.pass != 0 || len(r.failures) != 0 {
+			t.Fatalf("an empty .absent on %s scored %+v, want one missing case", inst.Name, r)
+		}
+	}
+}
+
 // A row on an opt-in unit the leg does not name is not asked of it, on every
 // surface, json-write's `<case>.json` expectation included: it counts absent,
 // never "the driver wrote nothing".
