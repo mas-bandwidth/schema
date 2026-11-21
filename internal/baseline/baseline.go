@@ -69,8 +69,9 @@ const FileName = "tables.baseline"
 const HistoryHeading = "## history"
 
 // RetiredHeading opens the RETIRED-NAMES LEDGER inside the file (issue #441,
-// docs/SPEC-TABLES.md §18.4): the register of every field, enum variant and
-// union arm a `--update` has removed, with the wire id it rode under and the
+// docs/SPEC-TABLES.md §18.4): the register of every field, enum variant,
+// union arm and declaration name (table, enum, flags, union) a `--update` has
+// removed or freed, with the wire id it rode under and the
 // day it was retired. [Update] appends to it and never drops an entry, so a
 // name re-added years later meets the record of its own retirement and is
 // refused until a `--update --reason` acknowledges the resurrection. It is
@@ -95,17 +96,19 @@ type Unit struct {
 	History []string
 
 	// Retired is the `## retired` ledger (issue #441): one entry per field,
-	// enum variant and union arm a `--update` has removed, in file order.
+	// enum variant, union arm and declaration name a `--update` has removed
+	// or freed, in file order.
 	// [Update] appends to it and never drops an entry; [Render] leaves it
 	// empty, because the live projection cannot know what is gone.
 	Retired []Retired
 }
 
 // A Retired is one name the closure no longer carries: a field, an enum
-// variant or a union arm a `--update` removed. It is the ledger Protobuf's
+// variant, a union arm, or a table, enum, flags or union name a `--update`
+// removed or freed. It is the ledger Protobuf's
 // `reserved` is, baseline-only and with no wire cost.
 type Retired struct {
-	Vocab string // "field", "enum-variant" or "union-arm"
+	Vocab string // "field", "enum-variant", "union-arm", "table", "enum", "flags" or "union"
 	Name  string // its fully-qualified name when it was retired
 	Id    uint64 // the wire id it rode under
 	Date  string // the day --update recorded the retirement

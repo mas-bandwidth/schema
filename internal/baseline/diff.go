@@ -43,6 +43,7 @@ package baseline
 import (
 	"fmt"
 	"math/big"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1162,6 +1163,11 @@ func retiredOwner(name string) (owner, member string) {
 // nil when there is no pairing to ask): a renamed declaration's stored bodies
 // are still the old one's.
 func liveMatchesRetired(live *Unit, r Retired, carried func(vocab, owner string) string) bool {
+	if names, ok := declarationNames(live)[r.Vocab]; ok {
+		// a retired DECLARATION is matched by its name alone: it has no owner,
+		// and a table's id is its name's hash
+		return slices.Contains(names, r.Name)
+	}
 	owner, member := retiredOwner(r.Name)
 	owners := map[string]bool{owner: true}
 	if carried != nil {
@@ -1231,11 +1237,20 @@ func (d *differ) carriedTo(vocab, owner string) string {
 
 // retirements lists the declarations the live projection no longer carries,
 // as ledger entries dated `date`: every field, enum variant and union arm whose
-// wire id was in `base` and is gone from `live` (issue #441). It is the
+// wire id was in `base` and is gone from `live` (issue #441), and every table,
+// enum, flags and union NAME `base` declared that `live` does not. It is the
 // ledger's source, read by [Update] and never by [Render] — the live
 // projection cannot know what is gone.
+//
+// A DECLARATION'S NAME IS RETIRED TOO. A table's wire name is its node
+// records' type id (docs/SPEC-TABLES.md §3.1), so a table that declares a name
+// a removal or a bare rename freed is the type a save made before then names:
+// its pointers read the old records as the new table. An enum, a flags and a
+// union are retired by the same rule, strict, because a reused name is the one
+// edit no row of the diff sees as a change. A `was` rename keeps the wire name
+// and frees nothing.
 func retirements(base, live *Unit, date string) []Retired {
-	var out []Retired
+	out := retiredDeclarations(base, live, date)
 	for _, bt := range base.Tables {
 		// A MAP'S GENERATED ENTRY declares nothing: its `key` and `value` are the
 		// map's own shape under the two ids every entry shares, so retiring them
@@ -1288,6 +1303,44 @@ func retirements(base, live *Unit, date string) []Retired {
 				continue
 			}
 			out = append(out, Retired{Vocab: "union-arm", Name: bu.Name + "." + a.Name, Id: a.Id, Date: date})
+		}
+	}
+	return out
+}
+
+// declarationNames is each declaration vocabulary's names in a projection: a
+// table by its WIRE name (its node type id's spelling, §3.1), and an enum, a
+// flags and a union by its name. A map's generated entry is not a
+// declaration, and is left out.
+func declarationNames(u *Unit) map[string][]string {
+	out := map[string][]string{"table": nil, "enum": nil, "flags": nil, "union": nil}
+	for _, t := range u.Tables {
+		if !strings.Contains(t.Name, ".") {
+			out["table"] = append(out["table"], t.Name)
+		}
+	}
+	for _, e := range u.Enums {
+		out["enum"] = append(out["enum"], e.Name)
+	}
+	for _, f := range u.Flags {
+		out["flags"] = append(out["flags"], f.Name)
+	}
+	for _, un := range u.Unions {
+		out["union"] = append(out["union"], un.Name)
+	}
+	return out
+}
+
+// retiredDeclarations is the declaration names `base` carries and `live` does
+// not, as ledger entries under the id the name hashes to (a table's type id).
+func retiredDeclarations(base, live *Unit, date string) []Retired {
+	was, now := declarationNames(base), declarationNames(live)
+	var out []Retired
+	for _, vocab := range []string{"table", "enum", "flags", "union"} {
+		for _, name := range was[vocab] {
+			if !slices.Contains(now[vocab], name) {
+				out = append(out, Retired{Vocab: vocab, Name: name, Id: ir.TableWireId(name), Date: date})
+			}
 		}
 	}
 	return out

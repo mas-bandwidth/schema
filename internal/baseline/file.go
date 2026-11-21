@@ -214,10 +214,19 @@ func update(u *ir.Unit, paths []string, reason, date string) (string, bool, erro
 			// there would let a retired member come back over its old saves.
 			live.History = base.History
 			live.Retired = append([]Retired(nil), base.Retired...)
-			ackRevivals(live, ldate, nil)
+			revived = ackRevivals(live, ldate, nil)
+			// The previous projection PARSED, so what it carried and this unit
+			// does not is still known: a declaration or member removed in the
+			// same update as the package rename is retired here as on any
+			// other update, or the rename would be the way to free a name.
+			newly = retirements(base, live, ldate)
+			live.Retired = append(live.Retired, newly...)
 			entry = []string{
 				fmt.Sprintf("### %s — %s", date, reason),
 				fmt.Sprintf("- baseline REGENERATED over a foreign unit's baseline (baseline is for package %s, this unit is package %s); the projection is this unit as it stands and the history above is preserved, but the previous projection could not be diffed, so no per-edit lines follow", base.Package, u.Package),
+			}
+			if len(newly) > 0 || len(revived) > 0 {
+				entry = retiredEntry(entry, newly, revived)
 			}
 			break
 		}
