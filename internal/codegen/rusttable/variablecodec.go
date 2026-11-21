@@ -656,7 +656,7 @@ func (g *gen) scalarWrite(f *ir.Field, x, dst string) string {
 	case ir.TBool:
 		return fmt.Sprintf("%s.push(if %s { 1 } else { 0 });", dst, x)
 	case ir.TFloat32, ir.TFloat64:
-		return fmt.Sprintf("if !%s.is_finite() { table_float_refuse(ids, %q); } %s.extend_from_slice(&%s.to_bits().to_le_bytes());", x, g.floatOwner(f), dst, x)
+		return fmt.Sprintf("if !%s.is_finite() { table_float_refuse(ids, %q); } %s.extend_from_slice(&%s.to_bits().to_le_bytes());", x, g.floatOwner(f), dst, rustFloatStored(f, x))
 	}
 	w := ir.TableKindWidth(kind) * 8
 	t := fmt.Sprintf("u%d", w)
@@ -673,6 +673,9 @@ func (g *gen) scalarWrite(f *ir.Field, x, dst string) string {
 // value (a bool or a float assert its own way, and a bits(N) whose storage
 // is exactly N bits broad cannot exceed them).
 func (g *gen) scalarSaveRefusal(f *ir.Field, x, ind string) string {
+	if a := rustFloatRangeAssert(f, x, ind); a != "" {
+		return a
+	}
 	// a fixed field is stored RAW: its declared whole-unit bounds shift by F
 	// onto the raw scale, exactly as the read's clamp does (docs/SPEC-TABLES.md
 	// §4). Comparing the raw storage with the whole-unit bound would refuse a
@@ -811,10 +814,10 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		count := x + ".len()"
 		if f.Array == ir.ArrayCounted {
 			count = fmt.Sprintf("%s.len().min(%d)", x, f.ArrayBound)
-			// a count past the declared maximum is refused in EVERY build
-			// (docs/SPEC.md §5.1, row 3): it guards the storage the writer
-			// indexes, not a value, so the debug-only allowance does not reach it
-			fmt.Fprintf(b, "%sif %s.len() > %d { ids.refused = Some(String::from(\"invalid_value: count past max\")); }\n", inner, x, f.ArrayBound)
+			// a count past the declared maximum is a debug assert (docs/SPEC.md
+			// §5.1, row 3; Rust write checks are debug asserts only); the
+			// writer's storage is held by the clamp to Max above in every build
+			fmt.Fprintf(b, "%sdebug_assert!(%s.len() <= %d, \"%s count past %d\");\n", inner, x, f.ArrayBound, f.Name, f.ArrayBound)
 		}
 		fmt.Fprintf(b, "%slet r = ids.id_ref(0x%016x);\n", inner, id)
 		fmt.Fprintf(b, "%slet count = %s;\n", inner, count)
@@ -2478,11 +2481,47 @@ func requiredWriteGuard(f *ir.Field, differs string) string {
 }
 
 // File and JSON floats keep IEEE storage; declared compressed ranges clamp on read.
+// A FLOAT32 FIELD's RANGE IS COMPARED AT FLOAT32 (docs/SPEC.md §4.6), so a
+// value at float32(max) is in range, and a compressed float's -0 lands as +0,
+// uncounted (docs/SPEC-TABLES.md §3.3, docs/rulings.json
+// fixed-compressed-negzero).
 func emitVariableFloatClamp(b *strings.Builder, f *ir.Field, value, counter, ind string) {
 	if !f.HasFloatRange {
 		return
 	}
-	kind := scalarRust(f)
+	lo, hi := rustFloatBounds(f)
 	value = strings.TrimPrefix(value, "let mut ")
-	fmt.Fprintf(b, "%sif (%s as f64) < %s { %s = %s as %s; %s = true; } else if (%s as f64) > %s { %s = %s as %s; %s = true; }\n", ind, value, fixedFloatLit(f.FMin), value, fixedFloatLit(f.FMin), kind, counter, value, fixedFloatLit(f.FMax), value, fixedFloatLit(f.FMax), kind, counter)
+	fmt.Fprintf(b, "%sif %s < %s { %s = %s; %s = true; } else if %s > %s { %s = %s; %s = true; }\n", ind, value, lo, value, lo, counter, value, hi, value, hi, counter)
+	fmt.Fprintf(b, "%sif %s == 0.0 { %s = 0.0; }\n", ind, value, value)
+}
+
+// rustFloatBounds is a ranged float's declared min and max at the field's own
+// width, as exact bit patterns: a float32 range is the float32 the declaration
+// rounds to (docs/SPEC.md §4.6), never the float64 literal.
+func rustFloatBounds(f *ir.Field) (lo, hi string) {
+	if f.Type.Kind == ir.TFloat32 {
+		return fmt.Sprintf("f32::from_bits(0x%x)", math.Float32bits(float32(f.FMin))), fmt.Sprintf("f32::from_bits(0x%x)", math.Float32bits(float32(f.FMax)))
+	}
+	return fmt.Sprintf("f64::from_bits(0x%x)", math.Float64bits(f.FMin)), fmt.Sprintf("f64::from_bits(0x%x)", math.Float64bits(f.FMax))
+}
+
+// rustFloatRangeAssert is the write contract's row 10 (docs/SPEC.md §5.1): a
+// compressed or ranged float off its range, a debug assert and nothing else in
+// this assert leg. A NaN or an infinity is left to the finite rule's own check.
+func rustFloatRangeAssert(f *ir.Field, x, ind string) string {
+	if !f.HasFloatRange || (f.Type.Kind != ir.TFloat32 && f.Type.Kind != ir.TFloat64) {
+		return ""
+	}
+	lo, hi := rustFloatBounds(f)
+	return fmt.Sprintf("%sdebug_assert!(!%s.is_finite() || (%s >= %s && %s <= %s), \"%s out of range\");\n", ind, x, x, lo, x, hi, f.Name)
+}
+
+// rustFloatStored is the value a float write stores: a compressed float's -0
+// is stored as +0 (docs/rulings.json fixed-compressed-negzero), and a plain
+// float keeps its bits.
+func rustFloatStored(f *ir.Field, x string) string {
+	if !f.HasFloatRange {
+		return x
+	}
+	return fmt.Sprintf("(if %s == 0.0 { 0.0 } else { %s })", x, x)
 }

@@ -5,7 +5,8 @@
 // hang costs only its own case:
 //
 //	hostilecorpusexec run -port c -exec build/c-hostile/case \
-//	    -corpus internal/ci/hostilecorpus/corpus -findings test/c-hostile/known-findings.tsv
+//	    -corpus internal/ci/hostilecorpus/corpus -findings test/c-hostile/known-findings.tsv \
+//	    -skips test/c-hostile/known-skips.tsv
 //	hostilecorpusexec probe-schema <out>   # write the corpus's probe schema
 //
 // The case binary is invoked as `<exec> <carrier> <schema> <table> <input>` and
@@ -26,7 +27,11 @@
 // disagreement the port owes is carried in known-findings.tsv (name, slug,
 // input, one line) and printed as a FIX-CARD; a disagreement no FIX-CARD names
 // fails the run, and so does a FIX-CARD whose case agrees, is skipped, or is
-// gone from the manifest. Reads files only: no network.
+// gone from the manifest. A skip is held the same way: the cases a port has no
+// API for are carried in known-skips.tsv (name, one line saying why), a skip
+// no line names fails the run, and so does a line whose case answers or is
+// gone. A binding dropped from the case binary therefore reads red, never as
+// a growing skip count. Reads files only: no network.
 package main
 
 import (
@@ -71,6 +76,7 @@ func main() {
 	binary := flags.String("exec", "", "the port's case binary")
 	corpus := flags.String("corpus", "internal/ci/hostilecorpus/corpus", "corpus directory")
 	findings := flags.String("findings", "", "the port's known-findings.tsv")
+	skips := flags.String("skips", "", "the port's known-skips.tsv: every case it may skip, by name")
 	jobs := flags.Int("jobs", defaultJobs(), "cases run at once")
 	only := flags.String("case", "", "run one case and print its raw answer")
 	if err := flags.Parse(os.Args[2:]); err != nil {
@@ -87,7 +93,7 @@ func main() {
 		}
 		budget = time.Duration(ms) * time.Millisecond
 	}
-	ok, err := run(*port, *binary, *corpus, *findings, *only, *jobs, budget)
+	ok, err := run(*port, *binary, *corpus, *findings, *skips, *only, *jobs, budget)
 	if err != nil {
 		fatal(err)
 	}
@@ -154,7 +160,39 @@ func loadFindings(path string) (map[string]finding, []string, error) {
 	return out, order, s.Err()
 }
 
-func run(port, binary, corpus, findingsPath, only string, jobs int, budget time.Duration) (bool, error) {
+// loadSkips reads known-skips.tsv: name and one line saying why, tab-separated.
+// A missing file carries no skips, so every skip fails.
+func loadSkips(path string) (map[string]string, []string, error) {
+	out := map[string]string{}
+	var order []string
+	if path == "" {
+		return out, order, nil
+	}
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return out, order, nil
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	for n, line := range strings.Split(string(data), "\n") {
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		name, why, ok := strings.Cut(line, "\t")
+		if !ok || name == "" || why == "" || strings.Contains(why, "\t") {
+			return nil, nil, fmt.Errorf("%s:%d: a skip is a case name and one line saying why, tab-separated", path, n+1)
+		}
+		if _, dup := out[name]; dup {
+			return nil, nil, fmt.Errorf("%s:%d: %s is carried twice", path, n+1, name)
+		}
+		out[name] = why
+		order = append(order, name)
+	}
+	return out, order, nil
+}
+
+func run(port, binary, corpus, findingsPath, skipsPath, only string, jobs int, budget time.Duration) (bool, error) {
 	_, cases, err := hostilecorpus.LoadManifest(corpus)
 	if err != nil {
 		return false, err
@@ -170,6 +208,10 @@ func run(port, binary, corpus, findingsPath, only string, jobs int, budget time.
 		return false, fmt.Errorf("no case %s", only)
 	}
 	findings, order, err := loadFindings(findingsPath)
+	if err != nil {
+		return false, err
+	}
+	knownSkips, skipOrder, err := loadSkips(skipsPath)
 	if err != nil {
 		return false, err
 	}
@@ -199,8 +241,18 @@ func run(port, binary, corpus, findingsPath, only string, jobs int, budget time.
 		got := answers[i]
 		want := expected(c)
 		f, has := findings[c.Name]
+		_, skipKnown := knownSkips[c.Name]
+		if skipKnown && got.kind != "skip" {
+			fmt.Printf("STALE %s: known-skips.tsv carries a case this port answers (%s)\n", c.Name, got)
+			stale++
+		}
 		switch {
 		case got.kind == "skip":
+			if !skipKnown {
+				fmt.Printf("FAIL %s carrier=%s: skipped and known-skips.tsv does not name it: %s\n", c.Name, c.Carrier, got.detail)
+				unexplained++
+				break
+			}
 			skipped++
 			fmt.Printf("SKIP %s carrier=%s: %s\n", c.Name, c.Carrier, got.detail)
 			if has {
@@ -227,6 +279,12 @@ func run(port, binary, corpus, findingsPath, only string, jobs int, budget time.
 	for _, name := range order {
 		if !seen[name] {
 			fmt.Printf("STALE %s: FIX-CARD %s names no case the manifest carries\n", name, findings[name].slug)
+			stale++
+		}
+	}
+	for _, name := range skipOrder {
+		if !seen[name] {
+			fmt.Printf("STALE %s: known-skips.tsv names no case the manifest carries\n", name)
 			stale++
 		}
 	}

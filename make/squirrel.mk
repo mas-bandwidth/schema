@@ -60,7 +60,7 @@ toolchain-squirrel:
 	@$(call toolchain_probe,squirrel,SQ,$(SQ))
 
 # the leg's own copy of the compiler, at the path its targets name
-build/schema-squirrel: $(GO_SOURCES)
+build/schema-squirrel: $(GO_SOURCES) $(EMBED_SOURCES)
 	@mkdir -p build
 	go build -o $@ ./cmd/schema
 
