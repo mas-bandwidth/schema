@@ -238,8 +238,9 @@ func setJSONPath(m map[string]any, path string, value any) {
 // edits land only their own bytes and value, a semantic no-op keeps the old
 // spelling, a bound is refused and the old document stays, every structural
 // edit is text_edit_conflict, disjoint edits apply by original span),
-// TestDocumentRefusals (every Document refusal vector refuses by its stable
-// name, offset inside the input), TestDocumentAttachment and
+// TestDocumentRefusals (every Document refusal vector refuses with nothing
+// landed, offset inside the input; the verdict only, never the .reason name,
+// docs/rulings.json refusal-verdict-only), TestDocumentAttachment and
 // TestDocumentLimits. It prints the number of vectors exercised.
 func TestSquirrelDocumentVectors(t *testing.T) {
 	t.Parallel()
@@ -365,18 +366,21 @@ func TestSquirrelDocumentVectors(t *testing.T) {
 	if err != nil || len(names) == 0 {
 		t.Fatalf("no refusal vectors: %v", err)
 	}
-	reasons := map[string]string{}
+	// The verdict only (docs/rulings.json refusal-verdict-only): the .reason
+	// beside each vector is recommended, non-normative vocabulary and is
+	// never read here.
+	var corpus []string
 	for _, name := range names {
 		stem := strings.TrimSuffix(filepath.Base(name), ".sexp")
 		if stem == "duplicate-map" || stem == "forward-reference" {
 			continue
 		}
-		reasons["r-"+stem] = strings.TrimSpace(string(vector("refusals/" + stem + ".reason")))
+		corpus = append(corpus, "r-"+stem)
 		inputs["r-"+stem] = vector("refusals/" + stem + ".sexp")
 		fmt.Fprintf(&p, "load(%q, inputs[%q], null);\n", "r-"+stem, "r-"+stem)
 	}
-	if len(reasons) < 20 {
-		t.Fatalf("only %d Document refusal vectors", len(reasons))
+	if len(corpus) < 20 {
+		t.Fatalf("only %d Document refusal vectors", len(corpus))
 	}
 
 	script := strings.Replace(p.String(), "edit(", "local docs = { roadmap = load(\"base-roadmap\", inputs.roadmap, null), layout = load(\"base-layout\", inputs.layout, null) };\nedit(", 1)
@@ -401,10 +405,13 @@ func TestSquirrelDocumentVectors(t *testing.T) {
 		js := probeBytes(t, l.args[1])
 		return probeBytes(t, l.args[0]), decodeJSON(t, js)
 	}
+	// refusal holds a refusal; want "" holds the VERDICT alone (a corpus
+	// vector: refused, nothing landed, the name never compared), and a
+	// non-empty want also pins this port's own name for its own rows.
 	refusal := func(key, want string, input []byte) {
 		t.Helper()
 		l := got[key]
-		if l.verb != "refuse" || len(l.args) != 2 || l.args[0] != want {
+		if l.verb != "refuse" || len(l.args) != 2 || (want != "" && l.args[0] != want) {
 			t.Errorf("%s: %s %v, want refuse %s", key, l.verb, l.args, want)
 			return
 		}
@@ -524,9 +531,9 @@ func TestSquirrelDocumentVectors(t *testing.T) {
 	refusal("limit-alloc", "text_limit", nil)
 	value("limit-default")
 
-	// the refusals by name
-	for key, want := range reasons {
-		refusal(key, want, inputs[key])
+	// the corpus refusals: the verdict, never the name
+	for _, key := range corpus {
+		refusal(key, "", inputs[key])
 	}
 	t.Logf("ran %d document vectors", count)
 }
