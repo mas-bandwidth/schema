@@ -2,6 +2,7 @@ package ci
 
 import (
 	"fmt"
+	"io/fs"
 	"maps"
 	"os"
 	"os/exec"
@@ -370,5 +371,102 @@ func TestGolangciLintCacheIsolatedPerWorkspace(t *testing.T) {
 	// non-interposed / big-endian C soak #ifdef combinations are compile-checked in <2m CI.
 	if !strings.Contains(wfs["ci-fast.yml"], "tables-c-soak-compile-modes") {
 		t.Error("ci-fast.yml lang-clean (c) does not run tables-c-soak-compile-modes")
+	}
+}
+
+func checkDarwinCSourceWithPosixCSource(cFiles map[string]string) []string {
+	var errs []string
+	names := make([]string, 0, len(cFiles))
+	for name := range cFiles {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+
+	for _, name := range names {
+		src := cFiles[name]
+		hasPosix := false
+		hasDarwin := false
+		for line := range strings.SplitSeq(src, "\n") {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "#define _POSIX_C_SOURCE") || strings.HasPrefix(trimmed, "#define _XOPEN_SOURCE") {
+				hasPosix = true
+			}
+			if strings.HasPrefix(trimmed, "#define _DARWIN_C_SOURCE") {
+				hasDarwin = true
+			}
+		}
+		if !hasPosix {
+			continue
+		}
+		usesDarwinAPI := strings.Contains(src, "__APPLE__") ||
+			strings.Contains(src, "<malloc/malloc.h>") ||
+			strings.Contains(src, "malloc_zone_") ||
+			strings.Contains(src, "_SC_NPROCESSORS_ONLN")
+		if usesDarwinAPI && !hasDarwin {
+			errs = append(errs, fmt.Sprintf("%s defines _POSIX_C_SOURCE/_XOPEN_SOURCE and uses __APPLE__/Darwin extensions without defining _DARWIN_C_SOURCE (Apple SDK hides malloc_zone_t and _SC_NPROCESSORS_ONLN)", name))
+		}
+	}
+	return errs
+}
+
+// TestDarwinCSourceAccompaniesPosixCSource ensures any .c/.h file that defines
+// _POSIX_C_SOURCE or _XOPEN_SOURCE and touches __APPLE__, <malloc/malloc.h>,
+// malloc_zone_*, or _SC_NPROCESSORS_ONLN also defines _DARWIN_C_SOURCE so Apple
+// SDK headers keep Darwin extensions visible under -std=c99.
+func TestDarwinCSourceAccompaniesPosixCSource(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+
+	cFiles := map[string]string{}
+	for _, dir := range []string{"test", "tables", "bench", "runtime"} {
+		base := filepath.Join(root, dir)
+		if _, err := os.Stat(base); err != nil {
+			continue
+		}
+		err := filepath.WalkDir(base, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() {
+				return nil
+			}
+			ext := filepath.Ext(d.Name())
+			if ext != ".c" && ext != ".h" {
+				return nil
+			}
+			rel, err := filepath.Rel(root, path)
+			if err != nil {
+				return err
+			}
+			b, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			cFiles[filepath.ToSlash(rel)] = string(b)
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if _, ok := cFiles["test/c-tables/soak_main.c"]; !ok {
+		t.Fatal("walk did not visit test/c-tables/soak_main.c")
+	}
+	if errs := checkDarwinCSourceWithPosixCSource(cFiles); len(errs) > 0 {
+		for _, e := range errs {
+			t.Error(e)
+		}
+		t.FailNow()
+	}
+
+	// Planted negative control: dropping _DARWIN_C_SOURCE from soak_main.c must fail closed.
+	mut := maps.Clone(cFiles)
+	mut["test/c-tables/soak_main.c"] = strings.Replace(mut["test/c-tables/soak_main.c"], "#define _DARWIN_C_SOURCE 1\n", "", 1)
+	if mut["test/c-tables/soak_main.c"] == cFiles["test/c-tables/soak_main.c"] {
+		t.Fatal("negative control did not mutate test/c-tables/soak_main.c")
+	}
+	if errs := checkDarwinCSourceWithPosixCSource(mut); len(errs) == 0 {
+		t.Error("NEGATIVE CONTROL FAILED: soak_main.c without _DARWIN_C_SOURCE stayed green")
 	}
 }
