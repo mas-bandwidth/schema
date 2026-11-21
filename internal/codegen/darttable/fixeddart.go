@@ -835,6 +835,11 @@ func (g *fixedGen) emitWriteElement(f *ir.Field, base string, at int64, expr, in
 		}
 	}
 	g.emitWriteBoundsAssert(g.pf, f, expr, ind)
+	if f.Type.Kind == ir.TFloat32 {
+		// A COMPRESSED -0 IS STORED AS +0 (ruling fixed-compressed-negzero):
+		// its float32 bits would otherwise carry the sign the reader folds.
+		expr = cfloatStored(f, expr)
+	}
 	g.store(ind, fixedOff(base, at), f.Type, expr)
 }
 

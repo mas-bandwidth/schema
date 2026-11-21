@@ -2498,9 +2498,23 @@ func wireFloatRides(f *ir.Field, expr, lit string) string {
 		if f.HasDefault {
 			def = float32(f.DefFloat)
 		}
-		return fmt.Sprintf("_f32Bits(%s) != %d", expr, math.Float32bits(def))
+		if f.HasFloatRange && def == 0 {
+			def = 0 // a compressed float's -0 default is +0 (§3.3)
+		}
+		return fmt.Sprintf("_f32Bits(%s) != %d", cfloatStored(f, expr), math.Float32bits(def))
 	}
 	return floatRides(f, expr, lit)
+}
+
+// cfloatStored is the value a writer stores for a float field: a COMPRESSED
+// float's -0 is stored as +0, the same bits it stores for +0, so it elides
+// wherever +0 elides (docs/SPEC-TABLES.md §3.3; ruling
+// fixed-compressed-negzero). A plain float rides bit for bit.
+func cfloatStored(f *ir.Field, expr string) string {
+	if f.HasFloatRange {
+		return "(" + expr + " == 0 ? 0.0 : " + expr + ")"
+	}
+	return expr
 }
 
 func (g *wireGen) floatDefault(f *ir.Field) string {
@@ -2683,7 +2697,7 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s", rideOpen(ind, f, wireFloatRides(f, expr, g.floatDefault(f))))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, kind)
-		g.pf("%s\tw.%s(%s(%s, '%s'));\n", ind, put, bits, expr, g.floatOwner(f))
+		g.pf("%s\tw.%s(%s(%s, '%s'));\n", ind, put, bits, cfloatStored(f, expr), g.floatOwner(f))
 		g.pf("%s}\n", ind)
 	case enumRef(f) != nil:
 		e := enumRef(f)
@@ -2809,7 +2823,7 @@ func (g *wireGen) emitSaveScalarList(f *ir.Field, expr, ind string, id uint64) {
 	case wireKindBool:
 		g.pf("%s\t\ts.putByte(e ? 1 : 0);\n", ind)
 	case wireKindF32:
-		g.pf("%s\t\ts.putU32(_f32Write(e, '%s'));\n", ind, g.floatOwner(f))
+		g.pf("%s\t\ts.putU32(_f32Write(%s, '%s'));\n", ind, cfloatStored(f, "e"), g.floatOwner(f))
 	case wireKindF64:
 		g.pf("%s\t\ts.putU64(_f64Write(e, '%s'));\n", ind, g.floatOwner(f))
 	default:
@@ -3288,11 +3302,14 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\t\t\tr.report.refuse('kind_mismatch'); return;\n", ind)
 		g.pf("%s\t\t}\n", ind)
 		g.pf("%s\t\tif (r.report.nonFiniteFloat.isNotEmpty) return;\n", ind)
-		if f.HasFloatRange {
-			// one past an end clamps and counts, and a -0 lands as +0,
-			// uncounted (§3.3, A COMPRESSED FLOAT'S SPECIAL VALUES)
-			g.pf("%s\t\tif (d < %s) { r.report.refuse('out_of_range'); return; }\n", ind, fmtFloat(f.FMin))
-			g.pf("%s\t\tif (d > %s) { r.report.refuse('out_of_range'); return; }\n", ind, fmtFloat(f.FMax))
+		if lo, hi, ok := fixedFloatClampEnds(f); ok {
+			// a value past an end refuses, and a -0 lands as +0, uncounted
+			// (§3.3, A COMPRESSED FLOAT'S SPECIAL VALUES). The ends are the
+			// float32 the declaration names (SPEC §4.6: every runtime
+			// evaluates the triple at float32), so the top step a writer
+			// stores for `max = 0.1` reads back.
+			g.pf("%s\t\tif (d < %s) { r.report.refuse('out_of_range'); return; }\n", ind, lo)
+			g.pf("%s\t\tif (d > %s) { r.report.refuse('out_of_range'); return; }\n", ind, hi)
 			g.pf("%s\t\tif (d == 0) d = 0.0;\n", ind)
 		}
 		g.pf("%s\t\tv.%s = d;\n", ind, name)
@@ -3350,6 +3367,21 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 	}
 }
 
+// emitCFloatElem reads ONE element of a compressed float array (its bounds
+// already checked) and holds it to the field's range as a scalar compressed
+// float is held (§3.3, A COMPRESSED FLOAT'S SPECIAL VALUES): a value past an
+// end refuses out_of_range and ends the element walk, and a -0 lands as +0.
+// lo and hi are the float32 ends (fixedFloatClampEnds).
+func (g *wireGen) emitCFloatElem(f *ir.Field, src, dest, report, lo, hi, ind string) {
+	g.pf("%s{\n", ind)
+	g.pf("%s\tvar x = %s.readF32(%s.pos, '%s'); %s.pos += 4;\n", ind, src, src, g.floatOwner(f), src)
+	g.pf("%s\tif (%s.report.nonFiniteFloat.isNotEmpty) { break; }\n", ind, report)
+	g.pf("%s\tif (x < %s || x > %s) { %s.report.refuse('out_of_range'); break; }\n", ind, lo, hi, report)
+	g.pf("%s\tif (x == 0) { x = 0.0; }\n", ind)
+	g.pf("%s\t%s.add(x);\n", ind, dest)
+	g.pf("%s}\n", ind)
+}
+
 // emitLoadScalarListElem emits the tolerant read of ONE element of a `[]T`
 // of scalars, strings or enums, appending it to the destination list (dest is
 // `v.field`). A scalar reads at its kind's width, a bool one byte, a string
@@ -3393,6 +3425,10 @@ func (g *wireGen) emitLoadScalarListElem(f *ir.Field, dest, arr string, ind stri
 		g.pf("%s\t\t\t%s.add(%s.readBool());\n", ind, dest, arr)
 	case wireKindF32:
 		g.pf("%s\t\t\tif (!%s.has(4)) { r.report.refuse('wire_damaged'); break; }\n", ind, arr)
+		if lo, hi, ok := fixedFloatClampEnds(f); ok {
+			g.emitCFloatElem(f, arr, dest, "r", lo, hi, ind+"\t\t\t")
+			break
+		}
 		g.pf("%s\t\t\t%s.add(%s.readF32(%s.pos, '%s')); %s.pos += 4;\n", ind, dest, arr, arr, g.floatOwner(f), arr)
 	case wireKindF64:
 		// f64 widens an f32 element kind (§4). The array already counted widened.
