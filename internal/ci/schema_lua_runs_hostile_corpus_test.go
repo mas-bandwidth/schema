@@ -68,6 +68,23 @@ const (
 	// manifest refuses must go red too: a runner that folded every raise out
 	// of the fixed read into `damaged` would leave those cases green.
 	luaHostileCrashTo = "  local _ = nil + form -- PLANTED: the fixed reader crashes\n" + luaHostilePlantFrom
+
+	// luaHostileEmptyFrom and luaHostileEmptyTo are the third plant, in the
+	// message runtime: the batch read lands no value and refuses nothing. That
+	// is no refusal, so a message case the manifest refuses must go red.
+	luaHostileEmptyFile = "message.lua"
+	luaHostileEmptyFrom = "  if #data == 0 then\n    report.damaged = true\n    return nil\n  end\n"
+	luaHostileEmptyTo   = "  do return {} end -- PLANTED: lands nothing, refuses nothing\n" + luaHostileEmptyFrom
+)
+
+// luaHostilePlant replaces from with to in one emitted runtime file of every
+// table unit's scratch copy; the zero value plants nothing.
+type luaHostilePlant struct{ file, from, to string }
+
+var (
+	luaHostileGatePlant  = luaHostilePlant{luaHostilePlantFile, luaHostilePlantFrom, luaHostilePlantTo}
+	luaHostileCrashPlant = luaHostilePlant{luaHostilePlantFile, luaHostilePlantFrom, luaHostileCrashTo}
+	luaHostileEmptyPlant = luaHostilePlant{luaHostileEmptyFile, luaHostileEmptyFrom, luaHostileEmptyTo}
 )
 
 // luaHostileCase is one manifest row.
@@ -136,10 +153,10 @@ type luaHostileUnit struct {
 }
 
 // luaHostileGenerate emits the Lua table surface for every distinct schema in
-// the corpus. plant, when it is not empty, replaces luaHostilePlantFrom in the
-// emitted wire reader of the scratch copy: it is a planted-bad-pattern control
-// and never touches the tree.
-func luaHostileGenerate(t *testing.T, root, dir string, cases []luaHostileCase, plant string) []luaHostileUnit {
+// the corpus. plant, when it is not the zero value, patches one emitted
+// runtime file of the scratch copy: it is a planted-bad-pattern control and
+// never touches the tree.
+func luaHostileGenerate(t *testing.T, root, dir string, cases []luaHostileCase, plant luaHostilePlant) []luaHostileUnit {
 	t.Helper()
 	seen := map[string]bool{}
 	var units []luaHostileUnit
@@ -182,12 +199,12 @@ func luaHostileGenerate(t *testing.T, root, dir string, cases []luaHostileCase, 
 		if err != nil {
 			entry.unavailable = err.Error()
 		} else {
-			if plant != "" && !packet {
-				if rt, ok := files[luaHostilePlantFile]; ok {
-					if !strings.Contains(string(rt), luaHostilePlantFrom) {
-						t.Fatalf("the emitted %s does not carry the planted pattern %q", luaHostilePlantFile, luaHostilePlantFrom)
+			if plant.file != "" && !packet {
+				if rt, ok := files[plant.file]; ok {
+					if !strings.Contains(string(rt), plant.from) {
+						t.Fatalf("the emitted %s does not carry the planted pattern %q", plant.file, plant.from)
 					}
-					files[luaHostilePlantFile] = []byte(strings.ReplaceAll(string(rt), luaHostilePlantFrom, plant))
+					files[plant.file] = []byte(strings.ReplaceAll(string(rt), plant.from, plant.to))
 					planted++
 				}
 			}
@@ -202,8 +219,8 @@ func luaHostileGenerate(t *testing.T, root, dir string, cases []luaHostileCase, 
 		}
 		units = append(units, entry)
 	}
-	if plant != "" && planted == 0 {
-		t.Fatalf("no emitted table unit carries %s, so the planted reader bug went nowhere", luaHostilePlantFile)
+	if plant.file != "" && planted == 0 {
+		t.Fatalf("no emitted table unit carries %s, so the planted reader bug went nowhere", plant.file)
 	}
 	var index strings.Builder
 	for _, unit := range units {
@@ -371,7 +388,10 @@ local function caseResult(c)
     if r.nonFiniteFloat ~= nil then return "refuse", "non_finite_float", nil end
     if r.reason ~= "" then return "refuse", r.reason, nil end
     if r.refused > 0 then return "refuse", "damaged", nil end
-    if r.damaged or values == nil or values[1] == nil then return "refuse", "damaged", nil end
+    if r.damaged or values == nil then return "refuse", "damaged", nil end
+    -- a batch read into one value that lands none and refuses nothing is no
+    -- refusal
+    if values[1] == nil then error("the batch read into one value landed none without refusing", 0) end
     value = values[1]
   else
     -- not a refusal: the runner has no binding for the carrier
@@ -417,7 +437,7 @@ type luaHostileAnswer struct {
 }
 
 // luaHostileRun decodes every case once and returns the answers.
-func luaHostileRun(t *testing.T, root, corpusDir string, cases []luaHostileCase, plant string) map[string]luaHostileAnswer {
+func luaHostileRun(t *testing.T, root, corpusDir string, cases []luaHostileCase, plant luaHostilePlant) map[string]luaHostileAnswer {
 	t.Helper()
 	interpreter := luarun.Interpreter(t)
 	dir := t.TempDir()
@@ -577,7 +597,7 @@ func TestSchemaLuaRunsHostileCorpus(t *testing.T) {
 	root := repoRoot(t)
 	corpusDir := luaHostileCorpusDir(t, root)
 	cases := luaHostileCorpusCases(t, corpusDir)
-	answers := luaHostileRun(t, root, corpusDir, cases, "")
+	answers := luaHostileRun(t, root, corpusDir, cases, luaHostilePlant{})
 	bad := luaHostileCompare(t, cases, answers)
 	if len(bad) != 0 {
 		t.Fatalf("the Lua port disagrees with %d of %d hostile-corpus cases:\n  %s",
@@ -602,11 +622,11 @@ func TestSchemaLuaHostileCorpusPlantedReader(t *testing.T) {
 	root := repoRoot(t)
 	corpusDir := luaHostileCorpusDir(t, root)
 	cases := luaHostileCorpusCases(t, corpusDir)
-	clean := luaHostileRun(t, root, corpusDir, cases, "")
+	clean := luaHostileRun(t, root, corpusDir, cases, luaHostilePlant{})
 	if bad := luaHostileCompare(t, cases, clean); len(bad) != 0 {
 		t.Fatalf("with the plant out the runner must be green:\n  %s", strings.Join(bad, "\n  "))
 	}
-	planted := luaHostileRun(t, root, corpusDir, cases, luaHostilePlantTo)
+	planted := luaHostileRun(t, root, corpusDir, cases, luaHostileGatePlant)
 	bad := luaHostileCompare(t, cases, planted)
 	if len(bad) == 0 {
 		t.Fatalf("the planted reader bug (the fixed form gate refuses form 3) was not observed: the corpus stayed green")
@@ -614,12 +634,21 @@ func TestSchemaLuaHostileCorpusPlantedReader(t *testing.T) {
 	t.Logf("the planted reader bug is red: %s", bad[0])
 	// THE CRASH PLANT: a fixed reader that crashes must turn a case the
 	// manifest refuses red, as an error; folded into `damaged` it would pass.
-	crashed := luaHostileCompare(t, cases, luaHostileRun(t, root, corpusDir, cases, luaHostileCrashTo))
+	crashed := luaHostileCompare(t, cases, luaHostileRun(t, root, corpusDir, cases, luaHostileCrashPlant))
 	if why := luaHostileCrashedRefusal(crashed); why == "" {
 		t.Fatalf("the planted fixed-reader crash passed as a refusal: no case the manifest refuses went red as an error:\n  %s",
 			strings.Join(crashed, "\n  "))
 	} else {
 		t.Logf("the planted fixed-reader crash is red on a refused case: %s", why)
+	}
+	// THE EMPTY PLANT: a batch read that lands nothing and refuses nothing
+	// must turn a message case the manifest refuses red, as an error.
+	emptied := luaHostileCompare(t, cases, luaHostileRun(t, root, corpusDir, cases, luaHostileEmptyPlant))
+	if why := luaHostileCrashedRefusal(emptied); why == "" || !strings.HasPrefix(why, "message") {
+		t.Fatalf("the planted empty batch read passed as a refusal: no message case the manifest refuses went red as an error:\n  %s",
+			strings.Join(emptied, "\n  "))
+	} else {
+		t.Logf("the planted empty batch read is red on a refused case: %s", why)
 	}
 }
 

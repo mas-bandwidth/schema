@@ -25,6 +25,9 @@
 # over budget. A second plant makes the text reader throw a StateError (a
 # crash, not the reader's FormatException refusal) and requires a case the
 # manifest refuses to go red as an error: a crash never passes as a refusal.
+# A third makes the fixed read and the batch read return 0 without refusing,
+# and requires a refused wire case and a refused message case to go red as
+# errors: a read that lands nothing and refuses nothing is not a refusal.
 # It runs the unplanted target first (its prerequisite), so the
 # pull-request negative-control row carries both halves.
 
@@ -100,6 +103,24 @@ schema-dart-runs-hostile-corpus-negative-control: schema-dart-runs-hostile-corpu
 		{ echo 'NEGATIVE CONTROL FAILED: a text reader crash passed as a refusal (no refused text case went red)'; \
 		  cat $(DART_HOSTILE_BUILD)/plant/crash.log; exit 1; }
 	@tail -1 $(DART_HOSTILE_BUILD)/plant/crash.log
+	@rm -rf $(DART_HOSTILE_BUILD)/plant/build/dart-hostile/generated && \
+		cp -R $(DART_HOSTILE_BUILD)/generated $(DART_HOSTILE_BUILD)/plant/build/dart-hostile/generated
+	@sed -i.orig "s|^  final view = shipEntryFixedLoadView.of(bytes);|  return 0; // PLANTED: lands nothing, refuses nothing|" \
+		$(DART_HOSTILE_BUILD)/plant/build/dart-hostile/generated/tabledemo/PackFixed.dart
+	@sed -i.orig "s|^  if (count < 0) return -1;|  return 0; // PLANTED: lands nothing, refuses nothing|" \
+		$(DART_HOSTILE_BUILD)/plant/build/dart-hostile/generated/messagedemo/MessagesFixed.dart
+	@if ! grep -q PLANTED $(DART_HOSTILE_BUILD)/plant/build/dart-hostile/generated/tabledemo/PackFixed.dart || \
+		! grep -q PLANTED $(DART_HOSTILE_BUILD)/plant/build/dart-hostile/generated/messagedemo/MessagesFixed.dart; then \
+		echo 'NEGATIVE CONTROL FAILED: the planted empty reads did not apply'; exit 1; fi
+	@if $(DART) run $(DART_HOSTILE_BUILD)/plant/test/dart-hostile/runner.dart "$(DART_HOSTILE_CORPUS)" "$(DART_HOSTILE_FINDINGS)" \
+			> $(DART_HOSTILE_BUILD)/plant/empty.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: reads that land nothing and refuse nothing left the corpus green'; \
+		cat $(DART_HOSTILE_BUILD)/plant/empty.log; exit 1; fi
+	@grep -q '^FAIL .* carrier=wire got=error .* want=refuse ' $(DART_HOSTILE_BUILD)/plant/empty.log && \
+		grep -q '^FAIL .* carrier=message got=error .* want=refuse ' $(DART_HOSTILE_BUILD)/plant/empty.log || \
+		{ echo 'NEGATIVE CONTROL FAILED: a fixed or batch read that landed nothing and refused nothing passed as a refusal'; \
+		  cat $(DART_HOSTILE_BUILD)/plant/empty.log; exit 1; }
+	@tail -1 $(DART_HOSTILE_BUILD)/plant/empty.log
 	@if HOSTILE_CASE_BUDGET_MS=0 $(DART) run test/dart-hostile/runner.dart "$(DART_HOSTILE_CORPUS)" "$(DART_HOSTILE_FINDINGS)" \
 			> $(DART_HOSTILE_BUILD)/plant/budget.log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: a 0 ms case budget left the corpus green'; \

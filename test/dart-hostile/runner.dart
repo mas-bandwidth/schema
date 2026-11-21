@@ -260,7 +260,9 @@ Answer? _fixedWire(String schema, String table, Uint8List payload) {
   final values = <tabledemo_fixed.ShipEntry>[tabledemo_fixed.ShipEntry()];
   final report = tabledemo_fixed.TableFixedReport();
   final n = pack_fixed.shipEntryFixedLoad(values, 1, payload, payload.length, pack_fixed.shipEntryFixedNewPlan(), report);
-  if (n != 1 || report.refused != tabledemo_fixed.TableFixedRefusal.none) return Answer('refuse', _fixedRefusal(report));
+  if (n < 0 || report.refused != tabledemo_fixed.TableFixedRefusal.none) return Answer('refuse', _fixedRefusal(report));
+  // a read into one value that neither lands it nor refuses is no refusal
+  if (n != 1) return Answer('error', 'the fixed read into one value returned $n without refusing');
   final value = _shipEntryFromFixed(values[0]);
   return _after(_accepted(tabledemo.shipEntryToJson(value)), 'FixedMeasure/FixedSave', () {
     final out = Uint8List(pack_fixed.shipEntryFixedMeasure(1));
@@ -334,7 +336,9 @@ Answer _message(String table, Uint8List payload, {required bool announced}) {
   final r = messagedemo_fixed.TableReport();
   final count = messages.toolMessageLoadMessages(<messagedemo_fixed.ToolMessage>[value], payload, vocab, r);
   if (r.refused) return Answer('refuse', corpusReason(r.reason, payload));
-  if (count != 1) return _damaged;
+  if (count < 0) return Answer('refuse', corpusReason(r.reason, payload));
+  // a batch read into one value that neither lands it nor refuses is no refusal
+  if (count != 1) return Answer('error', 'the batch read into one value returned $count without refusing');
   return _messageAccepted(value);
 }
 
