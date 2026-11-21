@@ -2034,9 +2034,9 @@ build/cards-test-c-asan: cards-c-generate tables/cards/c/cards.h tables/cards/c/
 # cards-c-test builds the generated unit with the facade and cards_test.c,
 # and runs it natively and again under ASan/UBSan.
 .PHONY: cards-c-test
-cards-c-test: build/cards-test-c build/cards-test-c-asan
-	./build/cards-test-c
-	./build/cards-test-c-asan
+cards-c-test: build/mustrun build/cards-test-c build/cards-test-c-asan
+	$(MUSTRUN) -name cards-c-test -count 7 -- ./build/cards-test-c
+	$(MUSTRUN) -name cards-c-test-asan -count 7 -- ./build/cards-test-c-asan
 
 build/cards-driver-c: cards-c-generate tables/cards/c/cards.h tables/cards/c/cards.c tables/cards/c/driver.c tables/cards/c/retain_bridge.c tables/cards/c/sha256.c
 	@mkdir -p build

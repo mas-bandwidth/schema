@@ -1313,11 +1313,11 @@ $(CARDS_CS_STAMP): bin/schema $(wildcard tables/cards/*.schema)
 # and cards-cs-generate only, never on build/tables-generated-cs/.stamp or
 # build-conformance-cs, so a red elsewhere in the leg cannot hold it.
 .PHONY: cards-cs-test
-cards-cs-test: bin/schema cards-cs-generate
+cards-cs-test: build/mustrun bin/schema cards-cs-generate
 	$(DOTNET) build tables/cards/cs/Cards.csproj -c Debug --nologo -v quiet
 	$(DOTNET) build tables/cards/cs/Cards.csproj -c Release --nologo -v quiet
-	$(DOTNET) run --project tables/cards/cs/Tests/Tests.csproj -c Debug --nologo
-	$(DOTNET) run --project tables/cards/cs/Tests/Tests.csproj -c Release --nologo
+	$(MUSTRUN) -name cards-cs-test-debug -count 7 -- $(DOTNET) run --project tables/cards/cs/Tests/Tests.csproj -c Debug --nologo
+	$(MUSTRUN) -name cards-cs-test-release -count 7 -- $(DOTNET) run --project tables/cards/cs/Tests/Tests.csproj -c Release --nologo
 
 # cards-cs-driver builds the facade driver program once, so the conformance
 # check pays no build per surface.

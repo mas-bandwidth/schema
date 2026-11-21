@@ -2304,8 +2304,8 @@ build/cards-java-facade/.stamp: cards-java-generate \
 	@touch $@
 
 .PHONY: cards-java-test
-cards-java-test: build/cards-java-facade/.stamp
-	$(JAVA) -XX:+UseSerialGC -XX:ActiveProcessorCount=1 -cp build/cards-java-facade CardsTest
+cards-java-test: build/mustrun build/cards-java-facade/.stamp
+	$(MUSTRUN) -name cards-java-test -count 7 -- $(JAVA) -XX:+UseSerialGC -XX:ActiveProcessorCount=1 -cp build/cards-java-facade CardsTest
 
 .PHONY: cards-java-conformance
 cards-java-conformance: build/conformance-harness build/cards-java-facade/.stamp

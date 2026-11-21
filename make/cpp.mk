@@ -39,9 +39,9 @@ build/cards-cpp-test-asan: cards-cpp-generate tables/cards/cpp/cards.cpp tables/
 		tables/cards/cpp/cards_test.cpp $(CARDS_CPP_SRCS) -o $@
 
 .PHONY: cards-cpp-test
-cards-cpp-test: build/cards-cpp-test build/cards-cpp-test-asan
-	./build/cards-cpp-test
-	./build/cards-cpp-test-asan
+cards-cpp-test: build/mustrun build/cards-cpp-test build/cards-cpp-test-asan
+	$(MUSTRUN) -name cards-cpp-test -count 7 -- ./build/cards-cpp-test
+	$(MUSTRUN) -name cards-cpp-test-asan -count 7 -- ./build/cards-cpp-test-asan
 
 build/cards-cpp-driver: cards-cpp-generate tables/cards/cpp/cards.cpp tables/cards/cpp/sha256.cpp tables/cards/cpp/driver.cpp make/cpp.mk
 	@mkdir -p build
