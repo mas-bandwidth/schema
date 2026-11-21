@@ -397,9 +397,21 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 	case ir.TBool:
 		g.pf("%stable_fixed_put8( %s + %d, %s ? 1 : 0 );\n", ind, buf, off, expr)
 	case ir.TFloat32:
-		g.pf("%stable_fixed_putf32( %s + %d, %s );\n", ind, buf, off, expr)
+		if f.HasFloatRange {
+			// THE WRITER STORES +0 FOR A COMPRESSED FLOAT'S -0 (docs/SPEC-TABLES.md
+			// §3.3, the FIXED row; ruling fixed-compressed-negzero): the sum
+			// rule of fixedClampNegZero, -0 + +0 is +0 and every other value
+			// is itself
+			g.pf("%stable_fixed_putf32( %s + %d, ( %s ) + 0.0f );\n", ind, buf, off, expr)
+		} else {
+			g.pf("%stable_fixed_putf32( %s + %d, %s );\n", ind, buf, off, expr)
+		}
 	case ir.TFloat64:
-		g.pf("%stable_fixed_putf64( %s + %d, %s );\n", ind, buf, off, expr)
+		if f.HasFloatRange {
+			g.pf("%stable_fixed_putf64( %s + %d, ( %s ) + 0.0 );\n", ind, buf, off, expr)
+		} else {
+			g.pf("%stable_fixed_putf64( %s + %d, %s );\n", ind, buf, off, expr)
+		}
 	default:
 		if w == 16 {
 			if f.Type.Signed {
@@ -918,10 +930,16 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("    read_widened = report->widened;\n")
 	}
 	g.pf("    for ( k = 0; k < count; ++k )\n    {\n")
-	if ir.TableFixedClampNeeded(st) {
+	if fixedClampNeeded(st) {
 		g.pf("        int32_t rec_widened = report->widened;\n")
 	}
-	g.pf("        if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }\n")
+	// REFUSE IS TOTAL (§5.8): a later record's hash refuses after records
+	// 0..k-1 have landed, so they go back to their defaults and no counter
+	// they moved survives, as at every other refusal in this loop.
+	g.pf("        if ( table_fixed_get64( at ) != hash )\n        {\n")
+	g.pf("            int64_t j;\n            for ( j = 0; j < k; ++j ) { %s( values + j ); }\n", g.api(st.Name, "reset"))
+	g.pf("            memset( report, 0, sizeof( *report ) ); report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT;\n")
+	g.pf("            return -1;\n        }\n")
 	g.pf("        /* EVERY DEAD BYTE IS ZERO (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,\n")
 	g.pf("           §5.3 step 11): a non-zero one refuses the whole load as\n")
 	g.pf("           wire_damaged in this check pass, before any byte of the record lands. */\n")
@@ -968,7 +986,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("            default: break;\n            }\n")
 		g.pf("            if ( known_out_of_range != 0 ) { int64_t j; for ( j = 0; j <= k; ++j ) { %s( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; return -1; }\n        }\n", g.api(st.Name, "reset"))
 	}
-	if ir.TableFixedClampNeeded(st) {
+	if fixedClampNeeded(st) {
 		g.pf("        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the\n")
 		g.pf("           storage it just wrote: the same pass for either plan (§3.4). A\n")
 		g.pf("           content rule that refuses ends the read here, nothing decoded,\n")
@@ -1134,7 +1152,7 @@ optional's payload only when the present byte says so. */
 
 // emitFixedClampBodyFn is ONE type's bounds, the twin of its write body.
 func (g *tableGen) emitFixedClampBodyFn(st *ir.Struct) {
-	if !ir.TableFixedClampNeeded(st) {
+	if !fixedClampNeeded(st) {
 		return
 	}
 	g.pf("/* %s's read-side bounds. */\n", st.Name)
@@ -1177,7 +1195,7 @@ the array first. */
 // emitFixedWriteCheckBodyFn is ONE type's write check, the const twin of its
 // read-side bounds.
 func (g *tableGen) emitFixedWriteCheckBodyFn(st *ir.Struct) {
-	if !ir.TableFixedClampNeeded(st) {
+	if !fixedClampNeeded(st) {
 		return
 	}
 	g.fixedWriteCheck = true
@@ -1195,7 +1213,7 @@ func (g *tableGen) emitFixedWriteCheckBodyFn(st *ir.Struct) {
 // writeAdmits is the one call a writer's schema_assert makes for a value of
 // table st, or "" when the fixed form bounds nothing in st's closure.
 func (g *tableGen) writeAdmits(st *ir.Struct) string {
-	if !ir.TableFixedEmitted(g.unit, st) || !ir.TableFixedClampNeeded(st) {
+	if !ir.TableFixedEmitted(g.unit, st) || !fixedClampNeeded(st) {
 		return ""
 	}
 	return g.sym(st.Name, "write_admits")
@@ -1230,7 +1248,7 @@ func (g *tableGen) emitWriteAdmits(st *ir.Struct) {
 // one place the count reaches the report. It returns -1 on a refusal so the
 // load can turn the refusal into "nothing decoded" without moving a counter.
 func (g *tableGen) emitFixedClamp(st *ir.Struct) {
-	if !ir.TableFixedClampNeeded(st) {
+	if !fixedClampNeeded(st) {
 		return
 	}
 	g.pf("/* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's\n")
@@ -1255,7 +1273,7 @@ func (g *tableGen) emitFixedClamp(st *ir.Struct) {
 }
 
 func (g *tableGen) emitFixedClampField(f *ir.Field, val string, indent int) {
-	if !ir.TableFixedClampNeededField(f) {
+	if !fixedClampNeededField(f) {
 		return
 	}
 	ind := strings.Repeat(" ", indent)
@@ -1279,6 +1297,15 @@ func (g *tableGen) emitFixedClampPayload(f *ir.Field, val string, indent int) {
 	case f.Array == ir.ArrayFixed:
 		g.emitFixedClampLoop(f, strconv.FormatInt(f.ArrayBound, 10), val+f.Name, indent)
 	case f.Array == ir.ArrayCounted:
+		if f.ArrayMin > 0 {
+			// A COUNT BELOW ITS DECLARED MIN IS REFUSED (docs/SPEC.md §5.1
+			// row 3): the fixed form's stored count is held to [Min, N] as
+			// the wire's is, over storage, so both plans meet the same pass.
+			g.pf("%sif ( %s%s_count < %d ) { (*out_of_range)++; }\n", strings.Repeat(" ", indent), val, f.Name, f.ArrayMin)
+			if !ir.TableFixedClampNeededField(f) {
+				return
+			}
+		}
 		count := fmt.Sprintf("(int64_t) %s%s_count", val, f.Name)
 		if g.fixedWriteCheck {
 			// the walk stays inside the array; the count's own bound is the
@@ -1355,19 +1382,19 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
-			if ir.TableFixedClampNeeded(r) {
+			if fixedClampNeeded(r) {
 				g.pf("%s%s( &%s, out_of_range, damaged );\n", ind, g.fixedBoundsSym(r.Name), expr)
 			}
 			return
 		case *ir.Union:
 			g.pf("%sif ( (uint32_t) %s.type > %du ) { (*out_of_range)++; }\n",
 				ind, expr, r.Max)
-			if !ir.TableFixedClampNeededUnionArm(r) {
+			if !fixedClampNeededUnionArm(r) {
 				return
 			}
 			g.pf("%sswitch ( %s.type )\n%s{\n", ind, expr, ind)
 			for _, v := range r.Variants {
-				if v.F == nil || !ir.TableFixedClampNeededField(v.F) {
+				if v.F == nil || !fixedClampNeededField(v.F) {
 					continue
 				}
 				g.pf("%s    case %s:\n%s    {\n", ind, enumConst(f.Type.Name+"Type", v.Name), ind)
@@ -1559,3 +1586,58 @@ typedef int TableFixedOnce;
 #endif
 #endif
 `
+
+// fixedClampNeeded is ir.TableFixedClampNeeded with one bound more: a counted
+// array whose declared minimum is above zero holds its stored count to
+// [Min, N] in the same straight-line pass (docs/SPEC.md §5.1 row 3). The pass
+// runs over storage, after either plan's copy, so the plans themselves are
+// unchanged.
+func fixedClampNeeded(st *ir.Struct) bool {
+	return ir.TableFixedClampNeeded(st) || fixedMinCountIn(st, map[string]bool{})
+}
+
+func fixedClampNeededField(f *ir.Field) bool {
+	return ir.TableFixedClampNeededField(f) || fixedMinCountField(f, map[string]bool{})
+}
+
+func fixedClampNeededUnionArm(r *ir.Union) bool {
+	for _, v := range r.Variants {
+		if v.F != nil && fixedClampNeededField(v.F) {
+			return true
+		}
+	}
+	return false
+}
+
+func fixedMinCountIn(st *ir.Struct, seen map[string]bool) bool {
+	if seen[st.Name] {
+		return false
+	}
+	seen[st.Name] = true
+	for _, f := range st.Fields {
+		if fixedMinCountField(f, seen) {
+			return true
+		}
+	}
+	return false
+}
+
+func fixedMinCountField(f *ir.Field, seen map[string]bool) bool {
+	if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+		return true
+	}
+	if f.Type.Kind != ir.TNamed || f.Type.Pointer {
+		return false
+	}
+	switch r := f.Type.Ref.(type) {
+	case *ir.Struct:
+		return fixedMinCountIn(r, seen)
+	case *ir.Union:
+		for _, v := range r.Variants {
+			if v.F != nil && fixedMinCountField(v.F, seen) {
+				return true
+			}
+		}
+	}
+	return false
+}
