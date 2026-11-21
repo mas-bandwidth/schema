@@ -2,7 +2,6 @@ package jstable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -12,6 +11,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestLoadMeasureCoversVariableFramingJavaScript pins the JavaScript variable
@@ -107,7 +108,7 @@ console.log(%[1]sLoadMeasure(wire).toString());
 			if err := os.WriteFile(script, []byte(src), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			cmd := exec.Command(node, script, filepath.Join(repo, c.wire))
+			cmd := testproc.Command(t, node, script, filepath.Join(repo, c.wire))
 			cmd.Dir = dir
 			out, err := cmd.CombinedOutput()
 			if err != nil {

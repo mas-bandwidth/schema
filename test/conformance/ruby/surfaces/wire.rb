@@ -6,7 +6,7 @@ def self.run(manifest, outdir)
     pkg = RubyConformance.unit_package(unit)
     cls = RubyConformance.root_class(unit, root)
     if pkg.nil? || cls.nil? || !RubyConformance.supported?(pkg, cls)
-      RubyConformance.absent(outdir, case_name, 'wire root is not generated and supported')
+      RubyConformance.no_codec(outdir, case_name)
       next
     end
     begin

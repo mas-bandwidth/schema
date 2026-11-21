@@ -125,7 +125,10 @@ func (g *tableGen) emitMapHelpers(owner *ir.Struct, f *ir.Field) {
 	g.pf("static SCHEMA_UNUSED %s * %s(const TableCtx * ctx,const TableMap * map,%s key)\n{\n", n, g.sym(n, "find"), ktype)
 	g.pf("    if(ctx!=NULL && ctx->arena!=NULL) { TableSequenceCursor cursor=table_sequence_cursor(ctx,map,sizeof(%s)); const %s * entry;\n        while((entry=(const %s *)table_sequence_next(&cursor))!=NULL) { if(%s(%s,key)==0) { return (%s *)(uintptr_t)entry; } }\n    } else {\n", n, n, n, g.sym(n, "key_compare"), keyArenaCall, n)
 	g.pf("        int32_t lo=0,hi=map->count; const %s * entries=map->items.value ? (const %s *)((const uint8_t *)(const void *)&map->items+map->items.value) : NULL;\n        if(entries==NULL) { return NULL; }\n        while(lo<hi) { int32_t mid=lo+(hi-lo)/2; int order=%s(%s,key); if(order<0) { lo=mid+1; } else if(order>0) { hi=mid; } else { return (%s *)(uintptr_t)(entries+mid); } }\n    } return NULL;\n}\n", n, n, g.sym(n, "key_compare"), keyRegionCall, n)
-	g.pf("static SCHEMA_UNUSED %s * %s(TableWorker * worker,TableMap * map,%s key)\n{\n    TableCtx ctx; %s * entry;\n    if(worker==NULL || worker->arena==NULL || worker->arena->locked) { return NULL; } ctx.arena=worker->arena;\n", n, g.sym(n, "place"), ktype, n)
+	// fresh: the caller already knows no entry holds this key (the JSON read
+	// keeps a hash set of the keys it placed), so the linear find over the
+	// builder's segments is skipped and a map of n keys reads in O(n).
+	g.pf("static SCHEMA_UNUSED %s * %s(TableWorker * worker,TableMap * map,%s key,int fresh)\n{\n    TableCtx ctx; %s * entry;\n    if(worker==NULL || worker->arena==NULL || worker->arena->locked) { return NULL; } ctx.arena=worker->arena;\n", n, g.sym(n, "place"), ktype, n)
 	if stringKey {
 		if unboundedKey {
 			g.pf("    if(key.length<0 || (key.length && key.data==NULL) || !table_wire_utf8((const uint8_t *)key.data,(uint64_t)key.length)) { return NULL; }\n")
@@ -133,7 +136,7 @@ func (g *tableGen) emitMapHelpers(owner *ir.Struct, f *ir.Field) {
 			g.pf("    if(key.length<0 || key.length>%d || (key.length && key.data==NULL)) { return NULL; }\n", key.Type.Size)
 		}
 	}
-	g.pf("    entry=%s(&ctx,map,key);\n    if(entry!=NULL) {\n", g.sym(n, "find"))
+	g.pf("    entry=fresh ? NULL : %s(&ctx,map,key);\n    if(entry!=NULL) {\n", g.sym(n, "find"))
 	// Reset just the value: string keys may point into this same entry.
 	g.pf("        %s * value=entry; (void)value;\n", n)
 	g.emitTableResetField(value)
@@ -161,7 +164,7 @@ func (g *tableGen) emitMapHelpers(owner *ir.Struct, f *ir.Field) {
 	if mapPair(f) {
 		handle = "entry"
 	}
-	g.pf("static SCHEMA_UNUSED %s * %s(TableWorker * worker,TableMap * map,%s key)\n{ %s * entry=%s(worker,map,%s); return entry ? %s : NULL; }\n", vtype, g.api(surface, "insert"), keyParam, n, g.sym(n, "place"), keyArg, handle)
+	g.pf("static SCHEMA_UNUSED %s * %s(TableWorker * worker,TableMap * map,%s key)\n{ %s * entry=%s(worker,map,%s,0); return entry ? %s : NULL; }\n", vtype, g.api(surface, "insert"), keyParam, n, g.sym(n, "place"), keyArg, handle)
 	g.pf("static SCHEMA_UNUSED %s * %s(TableArena * arena,TableMap * map,%s key)\n{ TableCtx ctx; %s * entry; ctx.arena=arena; if(arena==NULL || arena->locked) { return NULL; } entry=%s(&ctx,map,%s); return entry ? %s : NULL; }\n", vtype, g.api(surface, "find_mut"), keyParam, n, g.sym(n, "find"), keyArg, handle)
 	result := "const " + vtype + " *"
 	found := handle
@@ -176,11 +179,11 @@ func (g *tableGen) emitMapHelpers(owner *ir.Struct, f *ir.Field) {
 	g.pf("static SCHEMA_UNUSED %s %s(const TableMap * map,%s key)\n{ const %s * entry=%s(NULL,map,%s); return entry ? %s : NULL; }\n", result, g.api(surface, "find"), keyParam, n, g.sym(n, "find"), keyArg, found)
 	g.pf("static SCHEMA_UNUSED int %s(TableArena * arena,TableMap * map,%s key)\n{ TableCtx ctx; %s * entry; ctx.arena=arena; if(arena==NULL || arena->locked) { return 0; } entry=%s(&ctx,map,%s); return entry ? table_sequence_erase(arena,map,entry,sizeof(%s)) : 0; }\n", g.api(surface, "erase"), keyParam, n, g.sym(n, "find"), keyArg, n)
 	g.pf("static SCHEMA_UNUSED TableSequenceCursor %s(const TableCtx * ctx,const TableMap * map)\n{ return table_sequence_cursor(ctx,map,sizeof(%s)); }\n", g.api(surface, "each"), n)
-	g.pf("static SCHEMA_UNUSED void * %s(void * worker,void * slot,const char * text,int32_t length,int64_t number)\n{\n", g.sym(n, "json_place"))
+	g.pf("static SCHEMA_UNUSED void * %s(void * worker,void * slot,const char * text,int32_t length,int64_t number,int fresh)\n{\n", g.sym(n, "json_place"))
 	if stringKey {
-		g.pf("    TableMapKey key={text,length}; (void)number; return %s((TableWorker *)worker,(TableMap *)slot,key);\n", g.sym(n, "place"))
+		g.pf("    TableMapKey key={text,length}; (void)number; return %s((TableWorker *)worker,(TableMap *)slot,key,fresh);\n", g.sym(n, "place"))
 	} else {
-		g.pf("    (void)text; (void)length; return %s((TableWorker *)worker,(TableMap *)slot,(%s)number);\n", g.sym(n, "place"), ktype)
+		g.pf("    (void)text; (void)length; return %s((TableWorker *)worker,(TableMap *)slot,(%s)number,fresh);\n", g.sym(n, "place"), ktype)
 	}
 	g.pf("}\n")
 	g.emitMapKeyRead(f)

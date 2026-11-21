@@ -2,7 +2,6 @@ package js
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -10,6 +9,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJsFlatRefusesNonFiniteBareFloats pins SPEC §4.3's float rows: a bare
@@ -156,7 +157,7 @@ console.log('OK');
 	if err := os.WriteFile(filepath.Join(dir, "harness.mjs"), []byte(harness), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, "harness.mjs")
+	cmd := testproc.Command(t, node, "harness.mjs")
 	cmd.Dir = dir
 	env := os.Environ()
 	if production {

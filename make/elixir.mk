@@ -141,6 +141,10 @@ build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk testdata/conform
 	# the stamp formats nothing: tables-elixir-clean checks the raw output.
 	@touch $@
 
+# the leg's generated units move with every unit schema the conformance
+# manifest names, not only with the ones listed above
+build/tables-generated-elixir/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)
+
 ELIXIR_TABLE_UNIT_SOURCES = $(foreach u,$(sort $(ELIXIR_TABLE_UNITS)),build/tables-generated-elixir/$(firstword $(subst :, ,$(u)))/*.ex)
 
 build/elixir-tables-ebin/.stamp: build/tables-generated-elixir/.stamp test/conformance/elixir/driver_impl.ex
@@ -1014,6 +1018,8 @@ TEST_LEGS            += test-elixir
 TOOLCHAIN_LEGS       += elixir
 TOOLCHAIN_PINS_elixir := ELIXIR ELIXIRC MIX
 CONFORMANCE_LEGS     += $(call unless_skipped,elixir,build-conformance-elixir)
+REGISTRY_NA          += goldens:elixir
+REGISTRY_NA_WHY.goldens.elixir := no committed table goldens; its packet goldens (testdata/golden/elixir) are rewritten by internal/goldens at the top of update-goldens
 # Packet UTF-8 content validation, including a compiled mutation control.
 build/packet-text/elixir/.stamp: bin/schema test/packet-text/Narrow.schema
 	@mkdir -p build/packet-text/elixir/source

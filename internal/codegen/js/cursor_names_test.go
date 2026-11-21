@@ -2,7 +2,6 @@ package js
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -10,6 +9,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // The flat tier's cursor guards refuse an emission that names the runtime
@@ -114,7 +115,7 @@ func TestJsFieldsNamedAfterTheFlatCursorGenerate(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, production := range []bool{false, true} {
-			cmd := exec.Command(node, "run.mjs")
+			cmd := testproc.Command(t, node, "run.mjs")
 			cmd.Dir = dir
 			cmd.Env = os.Environ()
 			if production {

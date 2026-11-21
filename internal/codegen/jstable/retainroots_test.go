@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestRetainsUnknownOnEveryRootJavaScript is the retain-unknown core of this
@@ -87,7 +88,7 @@ process.stdout.write(JSON.stringify({ hex: Buffer.from(out).toString("hex") }));
 		if err := os.WriteFile(inputPath, payload, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		cmd := exec.Command(node, probe, inputPath)
+		cmd := testproc.Command(t, node, probe, inputPath)
 		cmd.Dir = dir
 		out, err := cmd.CombinedOutput()
 		if err != nil {

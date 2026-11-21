@@ -87,6 +87,7 @@ public final class Runner {
                     Map.entry("tables/stream", "streamdemo"),
                     Map.entry("tables/maps", "mapdemo"),
                     Map.entry("tables/lists", "listdemo"),
+                    Map.entry("test/tables/shapes", "shapes"),
                     Map.entry("schemas/probe.schema", "probe"),
                     Map.entry("testdata/conformance/feature-witnesses/full/Features.schema", "featurewitnesses"));
 

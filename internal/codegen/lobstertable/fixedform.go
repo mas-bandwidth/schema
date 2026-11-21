@@ -281,6 +281,13 @@ func putElement(g *lobster.Gen, f *ir.Field, expr, base string, off, stride int6
 		g.Pf("%sb = write_int8_le(b, %s, if %s: 1 else: 0)\n", ind, at, expr)
 		return
 	case ir.TFloat32:
+		if f.HasFloatRange {
+			// A COMPRESSED FLOAT'S -0 IS +0 (docs/SPEC-TABLES.md §3.3, the
+			// rulings file's fixed-compressed-negzero): the writer stores the
+			// +0 bits for it, as the reference's fixed write does.
+			g.Pf("%sb = write_float32_le(b, %s, if %s == 0.0: 0.0 else: %s)\n", ind, at, expr, expr)
+			return
+		}
 		g.Pf("%sb = write_float32_le(b, %s, %s)\n", ind, at, expr)
 		return
 	case ir.TFloat64:

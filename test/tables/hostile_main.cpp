@@ -58,6 +58,10 @@
 #include "AssetsTable.h"
 // the MAP unit: §2.8's text rows name Text, whose maps read into a builder
 #include "TextTable.h"
+// and its Depth and EdgeRow roots: the depth cap through a map and a union
+// object, and string(N) keys past 255 bytes (review 2026-11-21)
+#include "DepthTable.h"
+#include "RowsTable.h"
 // the LIST unit: §2.8's duplicate-key row names Army, a list of tables that hold maps
 #include "HoldersTable.h"
 #include "FeaturesTable.h"
@@ -260,6 +264,8 @@ REGION_CODEC( SceneCodec, graphdemo, Scene );
 REGION_CODEC( ArmyCodec, listdemo, Army );
 REGION_CODEC( RootCodec, featurewitnesses, Root );
 REGION_CODEC( FeedCodec, streamdemo, Feed );
+REGION_CODEC( DepthCodec, mapdemo, Depth );
+REGION_CODEC( EdgeRowCodec, mapdemo, EdgeRow );
 REGION_CODEC( CatalogCodec, blobdemo, Catalog );
 
 // the same three questions over the VARIABLE class (docs/SPEC-TABLES.md §16.7):
@@ -517,6 +523,8 @@ int main( int argc, char ** argv )
         else if ( strcmp( root, "Catalog" ) == 0 ) { check_region_case<CatalogCodec>( name, t, text_size, packed, size, refused ); }
         else if ( strcmp( root, "Army" ) == 0 ) { check_region_case<ArmyCodec>( name, t, text_size, packed, size, refused ); }
         else if ( strcmp( root, "Root" ) == 0 ) { check_region_case<RootCodec>( name, t, text_size, packed, size, refused ); }
+        else if ( strcmp( root, "Depth" ) == 0 ) { check_region_case<DepthCodec>( name, t, text_size, packed, size, refused ); }
+        else if ( strcmp( root, "EdgeRow" ) == 0 ) { check_region_case<EdgeRowCodec>( name, t, text_size, packed, size, refused ); }
         else if ( strcmp( root, "Text" ) == 0 ) { check_text_case( name, t, text_size, packed, refused ); }
         else
         {

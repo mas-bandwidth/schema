@@ -4708,22 +4708,22 @@ export function BenchMixedSaveMessageBody(w, value) {
       w.Put(BigInt(value.payload[_i9]), 8);
     }
   }
-  if (value.aimX !== 0) {
+  if (Math.fround(value.aimX) !== 0) {
     w.Put(16n, TableMessageRefBitsHere);
     if (!Number.isFinite(Math.fround(value.aimX))) { return false; }
     { const b = TableMessageFloat32Bits(value.aimX); tableMessageWriteScalar(w, {Packing:2, Bits:8, Base:[0n,0n], QMin:-1, QDelta:2, QCount:200}, b, 0n); }
   }
-  if (value.aimY !== 0) {
+  if (Math.fround(value.aimY) !== 0) {
     w.Put(17n, TableMessageRefBitsHere);
     if (!Number.isFinite(Math.fround(value.aimY))) { return false; }
     { const b = TableMessageFloat32Bits(value.aimY); tableMessageWriteScalar(w, {Packing:2, Bits:8, Base:[0n,0n], QMin:-1, QDelta:2, QCount:200}, b, 0n); }
   }
-  if (value.aimZ !== 0) {
+  if (Math.fround(value.aimZ) !== 0) {
     w.Put(18n, TableMessageRefBitsHere);
     if (!Number.isFinite(Math.fround(value.aimZ))) { return false; }
     { const b = TableMessageFloat32Bits(value.aimZ); tableMessageWriteScalar(w, {Packing:2, Bits:8, Base:[0n,0n], QMin:-1, QDelta:2, QCount:200}, b, 0n); }
   }
-  if (!Object.is(value.recoil, 0)) {
+  if (!Object.is(Math.fround(value.recoil), 0)) {
     w.Put(19n, TableMessageRefBitsHere);
     if (!Number.isFinite(Math.fround(value.recoil))) { return false; }
     w.Put(TableMessageFloat32Bits(value.recoil), 32);

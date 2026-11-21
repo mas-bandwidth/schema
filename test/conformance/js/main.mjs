@@ -798,6 +798,11 @@ const wireRows = [
   // a pointer under a false guard and inside an absent optional over a
   // variable closure is no edge (§2.3, §3.1)
   ["tblg1", "Guarded", "g1/Tblg1Variable.js"],
+  // the SHAPES unit (test/tables/shapes), opted in by `list` below: float32
+  // bounds float32 cannot spell, -0, counted arrays whose Min is above 0, on a
+  // variable table and a fixed one
+  ["shapes", "Bounds", "shapes/ShapesVariable.js"],
+  ["shapes", "FixedBounds", "shapes/ShapesVariable.js"],
 ];
 
 // fuzzUnits binds the roster units no text surface names (tbla2, tblk1,
@@ -973,7 +978,22 @@ const textUnits = {
   tblm1: "m1/Tblm1Variable.js", tblm2: "m2/Tblm2Variable.js",
   listdemo: "lists/ListdemoVariable.js",
   widelist: "widelist/WidelistdemoVariable.js",
+  shapes: "shapes/ShapesVariable.js",
 };
+
+// unitView binds a unit's variable module and its View (<Pkg>View.js beside
+// it, docs/SPEC-TABLES.md §8): the write-refusal rows read an enum's names, a
+// union's arms and a new element's class from the declaration. null when this
+// leg generates no View for the unit.
+async function unitView(unit) {
+  const path = textUnits[unit] ?? wireRows.find((r) => r[0] === unit)?.[2];
+  if (path === undefined) { return null; }
+  const viewPath = path.replace(/Variable\.js$/, "View.js");
+  if (!existsSync(resolve(generated, path)) || !existsSync(resolve(generated, viewPath))) { return null; }
+  const m = await load(path);
+  const v = await load(viewPath);
+  return { m, view: v.UnitView() };
+}
 
 async function textCodec(unit, root) {
   const path = textUnits[unit];
@@ -1008,6 +1028,12 @@ async function surfaceWire(lines, outDir) {
       // by its own name, which is the wire refusal the harness holds a
       // wire-refused instance to.
       if (r.sharedBlob > 0) { writeFileSync(join(outDir, f[1] + ".absent"), "blob_shared"); continue; }
+      // A WIRE-REFUSED INSTANCE (FORMAT.md): every port refuses its bytes, and
+      // the answer is the read's own reason; any other refused load is a red
+      if (f.includes("wire-refused")) {
+        writeFileSync(join(outDir, f[1] + ".absent"), (r.reason || "refused") + "\n");
+        continue;
+      }
       fail(f[1] + ": load refused " + f[4]);
     }
     const saved = codec.save(v);
@@ -1645,6 +1671,8 @@ if (surface === "list") {
   // answer every row whose unit this leg generates, and name the reason beside
   // a row it cannot reach.
   process.stdout.write("wire\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\nmessage\nmessage-prior\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n");
+  // the opt-in units this leg answers (MANIFEST.txt `opt-in`)
+  process.stdout.write("unit shapes\n");
   process.exit(0);
 }
 if (surface === "block-lead") {
@@ -1681,7 +1709,7 @@ switch (surface) {
   case "write-refusal-fixed":
   case "write-refusal-message":
   case "write-refusal-json":
-    await surfaceWriteRefusal(surface, lines, outDir, textCodec, messageVerbs);
+    await surfaceWriteRefusal(surface, lines, outDir, textCodec, messageVerbs, unitView);
     break;
   default: process.exit(2);
 }

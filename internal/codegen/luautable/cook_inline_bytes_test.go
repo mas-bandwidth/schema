@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,6 +15,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // paddedCookTexts are tables/block PaddedFrame instances the load reads and
@@ -162,7 +163,7 @@ func runLuauErr(t *testing.T, dir, main string, inputs map[string][]byte) ([]byt
 	if err := os.WriteFile(filepath.Join(dir, "inputs.luau"), luaurun.InputsModule(inputs), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(luau, main)
+	cmd := testproc.Command(t, luau, main)
 	cmd.Dir = dir
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr

@@ -18,6 +18,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // Version is the pinned Luau release (make/luau.mk).
@@ -120,7 +122,7 @@ func Run(t testing.TB, dir, main string, inputs map[string][]byte) []byte {
 	if err := os.WriteFile(filepath.Join(dir, "inputs.luau"), InputsModule(inputs), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(luau, main)
+	cmd := testproc.Command(t, luau, main)
 	cmd.Dir = dir
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -139,7 +141,7 @@ func Analyze(t testing.TB, dir string, files ...string) string {
 	if analyze == "" {
 		t.Fatalf("luaurun: luau-analyze does not resolve: %s", why)
 	}
-	cmd := exec.Command(analyze, files...)
+	cmd := testproc.Command(t, analyze, files...)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

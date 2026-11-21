@@ -143,7 +143,7 @@ tables-go-json-walk: build/tables-generated-go/.stamp
 # a generated package names its schema's `package` and Go resolves an import by
 # module path — so the conformance leg's go.mod replaces one path per unit,
 # exactly as test/go/go.mod already does for the packet corpus.
-build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema $(wildcard test/tables/[MAKR][12].schema) tables/scalars/Scalars.schema test/tables/Scalars2.schema tables/messages/Messages.schema tables/backend/Backend.schema tables/vocab/Vocab.schema tables/vocab9/Vocab9.schema $(wildcard tables/stream/*.schema tables/blobs/*.schema tables/lists/*.schema tables/maps/*.schema tables/widelist/*.schema) test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema testdata/conformance/feature-witnesses/full/Features.schema
+build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema $(wildcard test/tables/[MAKR][12].schema) tables/scalars/Scalars.schema test/tables/Scalars2.schema tables/messages/Messages.schema tables/backend/Backend.schema tables/vocab/Vocab.schema tables/vocab9/Vocab9.schema $(wildcard tables/stream/*.schema tables/blobs/*.schema tables/lists/*.schema tables/maps/*.schema tables/widelist/*.schema) test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/shapes/Shapes.schema testdata/conformance/feature-witnesses/full/Features.schema
 	@mkdir -p build/tables-generated-go
 	# EVERY UNIT GENERATES AT ONCE (one xargs, 8 wide): the generations are
 	# independent, and run one after another they alone passed the 110 s
@@ -180,6 +180,7 @@ build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema t
 		'build/tables-generated-go/prior test/tables/prior/PriorNarrow.schema' \
 		'build/tables-generated-go/cooktorture test/tables/cooktorture/CookTorture.schema' \
 		'build/tables-generated-go/cooktorturewide test/tables/cooktorturewide/CookTortureWide.schema' \
+		'build/tables-generated-go/shapes test/tables/shapes/Shapes.schema' \
 		'build/tables-generated-go/messages tables/messages' \
 		'build/tables-generated-go/stream tables/stream' \
 		'build/tables-generated-go/blobs tables/blobs' \
@@ -224,6 +225,7 @@ build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema t
 	$(call go_table_module,prior,tblprior)
 	$(call go_table_module,cooktorture,cooktorture)
 	$(call go_table_module,cooktorturewide,cooktorturewide)
+	$(call go_table_module,shapes,shapes)
 	$(call go_table_module,m1,tblm1)
 	$(call go_table_module,m2,tblm2)
 	$(call go_table_module,a1,tbla1)
@@ -827,6 +829,9 @@ test-go: generated/bench/tables/go/.stamp generated/bench/paired/go/.stamp gener
 TEST_LEGS         += test-go
 CONFORMANCE_LEGS  += $(call unless_skipped,go,build/conformance-go)
 BENCH_TABLES_LEGS += generated/bench/tables/go/.stamp
+REGISTRY_NA       += goldens:go toolchain:go
+REGISTRY_NA_WHY.goldens.go   := no committed table goldens; its packet goldens (testdata/golden/go) are rewritten by internal/goldens at the top of update-goldens
+REGISTRY_NA_WHY.toolchain.go := go.mod's go line sets the floor and the go command refuses an older one; bin/schema needs Go before any probe could run
 
 .PHONY: tables-go-wire-fuzz tables-go-wire-fuzz-negative-control
 tables-go-wire-fuzz: build/conformance-harness build/conformance-go

@@ -2,12 +2,13 @@ package elixirtable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestArmRetypeElixir pins docs/SPEC-TABLES.md §3 and §4 at a UNION ARM and at
@@ -155,7 +156,7 @@ func runArmProbe(t *testing.T, elixirBin string, files map[string][]byte, probe 
 		args = append(args, "-r", n)
 	}
 	args = append(args, "probe.exs")
-	cmd := exec.Command(elixirBin, args...)
+	cmd := testproc.Command(t, elixirBin, args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	out, err := cmd.CombinedOutput()
