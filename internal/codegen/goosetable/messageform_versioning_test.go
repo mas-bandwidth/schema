@@ -11,15 +11,17 @@ package goosetable
 // does: AnnounceRead the WRITER's announcement, LoadMessages the batch
 // against it. The Go engine reads the same batch under the same announcement
 // (tablewire.AnnounceRead, tablewire.DecodeMessages) into the reader's model,
-// and the two legs must agree on everything the read decides:
+// and the two legs must agree on the VERDICT (docs/rulings.json
+// refusal-verdict-only):
 //
-//   - the bodies delivered and the damage flag,
-//   - §4's counters: `unknown` (an id the reader cannot name, stepped over by
-//     its announced shape), `kind_mismatch` (an announced kind off this
-//     reader's ladder, stepped over), `widened` (a kind below this reader's
-//     on the same ladder, decoded at the sender's width), `clamped`,
+//   - refused by both (why is per-language diagnostic detail, never
+//     compared), or accepted by both with
+//   - the bodies delivered,
 //   - the values landed (record images against the Go read's values), and
 //   - the batch the reader saves of what it read, against the Go encode.
+//
+// §4's counters (`unknown`, `widened`) are logged, never compared across
+// targets (conformance-is-read-then-write).
 //
 // NEW-READS-OLD reads the older writer: the widening rows widen, the append
 // rows land defaults. OLD-READS-NEW reads the newer writer: an appended field
@@ -115,18 +117,27 @@ func TestGooseMessageFormVersioning(t *testing.T) {
 			}
 			var rep tabletext.Report
 			got, ok, err := tablewire.DecodeMessages(m, insts, batch, &vocab, &rep)
-			if err != nil || !ok || got != n {
-				// A strict refusal is the answer (docs/SPEC-TABLES.md §6.5).
-				// Goose must refuse the same batch by the same reason.
-				reason := tablewire.RefusalReason(err)
+			if err != nil {
+				// A strict refusal is the answer (docs/SPEC-TABLES.md §6.5):
+				// Goose must refuse the same batch. Only the VERDICT is held
+				// (docs/rulings.json refusal-verdict-only); the reasons are
+				// printed as diagnostics, never compared. An error from the
+				// reference that is not a read's refusal is a failure.
+				if !tablewire.ReadRefusal(err) {
+					t.Fatalf("the Go reference failed rather than refused: %v", err)
+				}
 				r := gooseMsgProbe(t, gooseMsgCase{unit: reader, root: root, data: batch, announce: announce, capacity: n})
 				if r.announced != "1 ok 0 0" {
 					t.Fatalf("AnnounceRead of the writer's announcement answered %q:\n%s", r.announced, r.raw)
 				}
-				if r.loadN >= 0 || r.loadReason != reason {
-					t.Fatalf("the Go reference refused %s (n=%d ok=%v err=%v); Goose answered n=%d %s:\n%s", reason, got, ok, err, r.loadN, r.loadReason, r.raw)
+				if !r.loadRefused() {
+					t.Fatalf("the Go reference refused (%s: %v); Goose accepted n=%d %s:\n%s", tablewire.RefusalReason(err), err, r.loadN, r.loadReason, r.raw)
 				}
+				t.Logf("refused by both: Go %s, Goose %s", tablewire.RefusalReason(err), r.loadReason)
 				return
+			}
+			if !ok || got != n {
+				t.Fatalf("the Go reference neither refused nor delivered every body: n=%d of %d ok=%v", got, n, ok)
 			}
 			var values [][]string
 			for _, inst := range insts {
@@ -154,21 +165,15 @@ func TestGooseMessageFormVersioning(t *testing.T) {
 			} else {
 				r.agrees(t, want, n)
 			}
-			type counter struct {
-				name      string
-				got, want int64
+			// §4's unknown and widened counters are per-language detail, never
+			// compared across targets (docs/rulings.json
+			// conformance-is-read-then-write): logged, and the Go side's alone
+			// feeds the battery's non-vacuity check below. The Goose leg's own
+			// kind_mismatch and clamped stay at zero on an accepted read.
+			if r.loadMismatch != 0 || r.loadClamped != 0 {
+				t.Fatalf("the Goose read accepted with kind_mismatch=%d clamped=%d:\n%s", r.loadMismatch, r.loadClamped, r.raw)
 			}
-			for _, k := range []counter{
-				{"unknown", r.loadUnknown, int64(rep.Unknown)},
-				{"kind_mismatch", r.loadMismatch, 0},
-				{"widened", r.loadWidened, int64(rep.Widened)},
-				{"clamped", r.loadClamped, 0},
-			} {
-				if k.got != k.want {
-					t.Fatalf("%s: the Goose read counted %d, the Go reference %d:\n%s", k.name, k.got, k.want, r.raw)
-				}
-			}
-			t.Logf("unknown=%d widened=%d", rep.Unknown, rep.Widened)
+			t.Logf("unknown: Go %d Goose %d; widened: Go %d Goose %d", rep.Unknown, r.loadUnknown, rep.Widened, r.loadWidened)
 			mu.Lock()
 			moved[c.name] = int64(rep.Unknown + rep.Widened)
 			mu.Unlock()

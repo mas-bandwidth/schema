@@ -462,6 +462,16 @@ func (r gooseMsgResult) owes(t *testing.T, golden []byte, bodies int) {
 	}
 }
 
+// loadRefused is the Goose leg's VERDICT on the batch it loaded, the only
+// thing held to another target (docs/rulings.json refusal-verdict-only): a
+// refusal by reason returns -1, and damage returns 0 bodies with the
+// malformed flag set, so either delivers no value. Which reason or kind it
+// names is per-language diagnostic detail and is never compared. A probe
+// that printed no load line answers 0 with no flag: not a refusal.
+func (r gooseMsgResult) loadRefused() bool {
+	return r.loadN < 0 || (r.loadN == 0 && r.loadMalformed)
+}
+
 // agrees is owes when the batch loaded is not the bytes the values save to:
 // the save of the values is want, and the load lands the values.
 func (r gooseMsgResult) agrees(t *testing.T, want []byte, bodies int) {
@@ -942,7 +952,7 @@ func TestGooseMessageFormCarriesWideKinds(t *testing.T) {
 	r.agrees(t, want, len(values))
 
 	// A 128-bit or fixed-point offset past the declared max is refused on write
-	// by Goose and refused as out_of_range on read by both readers.
+	// by Goose and refused on read by both readers.
 	oorSaved := gooseMsgProbe(t, gooseMsgCase{unit: u, root: "SimState", values: [][]string{
 		{
 			".Energy.lo = 6000000000", ".Energy.hi = 0",
@@ -984,11 +994,15 @@ func TestGooseMessageFormCarriesWideKinds(t *testing.T) {
 	}
 	m := tabletext.NewModel(u)
 	var drep tabletext.Report
-	if n, ok, err := tablewire.DecodeMessages(m, []*tabletext.Instance{m.New(fixedRootStruct(t, u, "SimState"))}, oorBatch, &vocab, &drep); ok || n != 0 || !drep.Refused || drep.Reason != "out_of_range" {
-		t.Fatalf("Go reference on out-of-range wide batch: n=%d ok=%v rep=%+v err=%v", n, ok, drep, err)
+	// the VERDICT on both sides (docs/rulings.json refusal-verdict-only):
+	// refused, with no body delivered; why is per-language detail, logged
+	n, ok, err := tablewire.DecodeMessages(m, []*tabletext.Instance{m.New(fixedRootStruct(t, u, "SimState"))}, oorBatch, &vocab, &drep)
+	if ok || n != 0 || !drep.Refused || !tablewire.ReadRefusal(err) {
+		t.Fatalf("Go reference on out-of-range wide batch: n=%d ok=%v rep=%+v err=%v, want refused", n, ok, drep, err)
 	}
 	oorGot := gooseMsgProbe(t, gooseMsgCase{unit: u, root: "SimState", values: [][]string{{}}, data: oorBatch})
-	if oorGot.loadCount != 0 || oorGot.loadReason != "out_of_range" {
-		t.Fatalf("Goose load on out-of-range wide batch: count=%d reason=%q, want 0 out_of_range", oorGot.loadCount, oorGot.loadReason)
+	if oorGot.loadCount != 0 || !oorGot.loadRefused() {
+		t.Fatalf("Goose load on out-of-range wide batch: n=%d count=%d reason=%q malformed=%v, want refused (Go: %v)", oorGot.loadN, oorGot.loadCount, oorGot.loadReason, oorGot.loadMalformed, err)
 	}
+	t.Logf("out-of-range wide batch refused by both: Go %s, Goose %s", tablewire.RefusalReason(err), oorGot.loadReason)
 }
