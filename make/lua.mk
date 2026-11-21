@@ -171,8 +171,8 @@ build/packet-finite/lua/.stamp: bin/schema test/packet-finite/lua/Finite.schema
 	@touch $@
 
 .PHONY: packet-finite-lua packet-finite-lua-negative-control
-packet-finite-lua: toolchain-lua build/packet-finite/lua/.stamp
-	$(LUA) test/packet-finite/lua/main.lua build/packet-finite/lua/generated
+packet-finite-lua: toolchain-lua build/packet-finite/lua/.stamp build/mustrun
+	$(MUSTRUN) -name packet-finite-lua -count 1 -- $(LUA) test/packet-finite/lua/main.lua build/packet-finite/lua/generated
 
 # $(1) is the direction: read or write.
 define packet-finite-lua-control
@@ -223,9 +223,12 @@ build/packet-defaults/lua/.stamp: bin/schema test/packet-defaults/Defaults.schem
 	./bin/schema generate --lang lua --out build/packet-defaults/lua/generated/plain test/packet-defaults/Plain.schema
 	@touch $@
 
+# The goldens directory's own listing, handed to the driver: a golden no pin
+# reads, a pin with no golden and an empty directory each fail the run.
+PACKET_DEFAULTS_LUA_GOLDENS = $(sort $(notdir $(wildcard testdata/wire/packet-defaults/*.bin)))
 .PHONY: packet-defaults-lua packet-defaults-lua-negative-control
-packet-defaults-lua: toolchain-lua build/packet-defaults/lua/.stamp
-	$(LUA) test/packet-defaults/lua/main.lua build/packet-defaults/lua/generated testdata/wire/packet-defaults
+packet-defaults-lua: toolchain-lua build/packet-defaults/lua/.stamp build/mustrun
+	$(MUSTRUN) -name packet-defaults-lua -count 1 -- $(LUA) test/packet-defaults/lua/main.lua build/packet-defaults/lua/generated testdata/wire/packet-defaults $(PACKET_DEFAULTS_LUA_GOLDENS)
 
 packet-defaults-lua-negative-control: packet-defaults-lua
 	@rm -rf build/packet-defaults/lua-negative && mkdir -p build/packet-defaults/lua-negative
@@ -320,8 +323,8 @@ $(CARDS_LUA_GENERATED)/.stamp: bin/schema tables/cards/Card.schema tables/cards/
 	./bin/schema generate --lang lua --out $(CARDS_LUA_GENERATED) tables/cards
 	@touch $@
 
-cards-lua-test: toolchain-lua cards-lua-generate tables/cards/lua/cards.lua tables/cards/lua/cards_test.lua
-	$(LUA) tables/cards/lua/cards_test.lua
+cards-lua-test: toolchain-lua cards-lua-generate tables/cards/lua/cards.lua tables/cards/lua/cards_test.lua build/mustrun
+	$(MUSTRUN) -name cards-lua-test -count 1 -- $(LUA) tables/cards/lua/cards_test.lua
 
 cards-lua-conformance: toolchain-lua build/conformance-harness cards-lua-generate
 	./build/conformance-harness cards --work build/cards-lua-conformance --corpus tables/cards/conformance --driver 'tables/cards/lua/driver' --require $(CARDS_REQUIRE_LUA)
@@ -473,9 +476,12 @@ build/packet-end/lua/.stamp: bin/schema test/packet-end/End.schema
 	./bin/schema generate --lang lua --out build/packet-end/lua/generated test/packet-end/End.schema
 	@touch $@
 
+# The vector directory's own listing, handed to the driver: a vector it does
+# not read, a vector it reads that is gone and an empty directory each fail.
+PACKET_END_LUA_VECTORS = $(sort $(notdir $(wildcard testdata/wire/packet-end/*.bin)))
 .PHONY: packet-end-lua packet-end-lua-negative-control
-packet-end-lua: toolchain-lua build/packet-end/lua/.stamp
-	$(LUA) test/packet-end/lua/main.lua build/packet-end/lua/generated testdata/wire/packet-end
+packet-end-lua: toolchain-lua build/packet-end/lua/.stamp build/mustrun
+	$(MUSTRUN) -name packet-end-lua -count 1 -- $(LUA) test/packet-end/lua/main.lua build/packet-end/lua/generated testdata/wire/packet-end $(PACKET_END_LUA_VECTORS)
 
 packet-end-lua-negative-control: packet-end-lua
 	@rm -rf build/packet-end/lua-negative && mkdir -p build/packet-end/lua-negative
@@ -484,7 +490,7 @@ packet-end-lua-negative-control: packet-end-lua
 		"$(CURDIR)" "$(CURDIR)" > build/packet-end/lua-negative/overlay.json
 	go build -overlay=build/packet-end/lua-negative/overlay.json -o build/packet-end/lua-negative/schema ./cmd/schema
 	./build/packet-end/lua-negative/schema generate --lang lua --out build/packet-end/lua-negative/generated test/packet-end/End.schema
-	@if $(LUA) test/packet-end/lua/main.lua build/packet-end/lua-negative/generated testdata/wire/packet-end > build/packet-end/lua-negative/log 2>&1; then \
+	@if $(LUA) test/packet-end/lua/main.lua build/packet-end/lua-negative/generated testdata/wire/packet-end $(PACKET_END_LUA_VECTORS) > build/packet-end/lua-negative/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: the Lua packet end check was removed and the end gate stayed green'; exit 1; fi
 	@grep -Fq 'FAILED: trailing: accepted as 3' build/packet-end/lua-negative/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: the trailing byte was not the failure'; cat build/packet-end/lua-negative/log; exit 1; }
@@ -502,8 +508,8 @@ build/packet-write-cfloat/lua/.stamp: bin/schema test/packet-write-cfloat/CFloat
 
 PACKET_WRITE_CFLOAT_LUA_DIR ?= build/packet-write-cfloat/lua/generated
 .PHONY: packet-write-cfloat-lua packet-write-cfloat-lua-negative-control
-packet-write-cfloat-lua: toolchain-lua build/packet-write-cfloat/lua/.stamp
-	$(LUA) test/packet-write-cfloat/lua/main.lua $(PACKET_WRITE_CFLOAT_LUA_DIR) test/packet-write-cfloat
+packet-write-cfloat-lua: toolchain-lua build/packet-write-cfloat/lua/.stamp build/mustrun
+	$(MUSTRUN) -name packet-write-cfloat-lua -count 1 -- $(LUA) test/packet-write-cfloat/lua/main.lua $(PACKET_WRITE_CFLOAT_LUA_DIR) test/packet-write-cfloat
 
 packet-write-cfloat-lua-negative-control: packet-write-cfloat-lua
 	@rm -rf build/packet-write-cfloat/lua-negative && mkdir -p build/packet-write-cfloat/lua-negative/generated
@@ -528,8 +534,8 @@ build/packet-write-bareint/lua/.stamp: bin/schema test/packet-write-bareint/Bare
 	@touch $@
 
 .PHONY: packet-write-bareint-lua packet-write-bareint-lua-negative-control
-packet-write-bareint-lua: toolchain-lua build/packet-write-bareint/lua/.stamp
-	$(LUA) test/packet-write-bareint/lua/main.lua build/packet-write-bareint/lua/generated test/packet-write-bareint
+packet-write-bareint-lua: toolchain-lua build/packet-write-bareint/lua/.stamp build/mustrun
+	$(MUSTRUN) -name packet-write-bareint-lua -count 1 -- $(LUA) test/packet-write-bareint/lua/main.lua build/packet-write-bareint/lua/generated test/packet-write-bareint
 
 # The control removes the width test of a bare field below 64 bits: an
 # out-of-width value must then write its low bits, and the gate must name
