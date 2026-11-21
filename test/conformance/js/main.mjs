@@ -667,6 +667,27 @@ async function surfaceMessage(lines, outDir) {
     if (saveMessages(body, buffer, report) !== size) { fail(f[1] + ": message save " + JSON.stringify(report)); }
     writeFileSync(join(outDir, f[1]), buffer);
   }
+  // message-batch <case> <connection> <root> <wire>: load with room for every
+  // body and answer the count LoadMessages returned (docs/SPEC-TABLES.md §3.3;
+  // FORMAT.md, `message-batch`).
+  for (const f of kind(lines, "message-batch")) {
+    const conn = connections.find((c) => c[1] === f[2]);
+    if (conn === undefined) { fail("message-batch " + f[1] + " names no connection " + f[2]); }
+    const row = messageRow(conn[2], f[3]);
+    if (row === null) { fail(f[1] + ": no message row for " + conn[2] + "." + f[3]); }
+    const runtime = await load(row[2]);
+    const unit = await load(row[3]);
+    const loadMessages = unit[f[3] + "LoadMessages"];
+    if (loadMessages === undefined) { fail(f[1] + ": no LoadMessages for " + f[3]); }
+    const vocabulary = new runtime.TableVocabulary();
+    vocabulary.Init(new Array(Math.max(runtime.TableMessageEntriesHere, 4096)));
+    if (!runtime.AnnounceRead(vocabulary, new Uint8Array(readFileSync(conn[4])), {})) {
+      fail(f[1] + ": the announcement was refused: " + conn[4]);
+    }
+    const values = Array.from({ length: 256 }, () => new runtime[f[3]]());
+    const count = loadMessages(values, vocabulary, new Uint8Array(readFileSync(f[4])), {});
+    writeFileSync(join(outDir, f[1]), "count " + count + "\n");
+  }
 }
 
 // messageVerbs answers a message row's Measure/Save pair for the write-refusal

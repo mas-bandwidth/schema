@@ -152,10 +152,10 @@ final msgShort=Uint8List(message.length-1)..fillRange(0,message.length-1,0xa5);c
 final dest=List.generate(3,(i)=>f.Reading());check(f.readingLoadMessages(dest,message,vocab,f.TableReport())==3&&dest[2].x==1002,'message load');
 for(var at=1;at<message.length;at++){for(var bit=0;bit<8;bit++){
  final bad=Uint8List.fromList(message);bad[at]^=1<<bit;final er=f.TableReport();final unchanged=List.generate(3,(i)=>f.Reading()..x=777);
- check(f.readingLoadMessages(unchanged,bad,vocab,er)==-1&&er.refused&&er.reason=='integrity_mismatch'&&er.unknown==0&&unchanged.every((x)=>x.x==777),'all single-bit message corruption predecode');
+ check(f.readingLoadMessages(unchanged,bad,vocab,er)==0&&er.refused&&er.reason=='integrity_mismatch'&&er.unknown==0&&unchanged.every((x)=>x.x==777),'all single-bit message corruption predecode');
 }}
-for(var cut=1;cut<6;cut++){final er=f.TableReport();check(f.readingLoadMessages(dest,Uint8List.sublistView(message,0,cut),vocab,er)==-1&&er.reason=='integrity_mismatch','short message CRC');}
-final wrongMsg=f.TableReport();check(f.readingLoadMessages(dest,Uint8List.fromList([1]),vocab,wrongMsg)==-1&&wrongMsg.reason=='newer_form','message form first');
+for(var cut=1;cut<6;cut++){final er=f.TableReport();check(f.readingLoadMessages(dest,Uint8List.sublistView(message,0,cut),vocab,er)==0&&er.reason=='integrity_mismatch','short message CRC');}
+final wrongMsg=f.TableReport();check(f.readingLoadMessages(dest,Uint8List.fromList([1]),vocab,wrongMsg)==0&&wrongMsg.reason=='newer_form','message form first');
 }
 }
 `, fixedPin("reading.fixed.hex"), fixedPin("plain-reading.fixed.hex"), hex.EncodeToString(rawMessage), hex.EncodeToString(integrityTestSeal(rawMessage)))
