@@ -28,6 +28,7 @@ import (
 	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 )
@@ -575,8 +576,7 @@ func plain(c *change, err error) error {
 	if errors.As(err, &pe) && c.next != "" && strings.HasSuffix(pe.Path, filepath.Base(c.next)) {
 		return &fs.PathError{Op: pe.Op, Path: c.f.shown(c.path), Err: pe.Err}
 	}
-	var le *os.LinkError
-	if errors.As(err, &le) {
+	if le, ok := errors.AsType[*os.LinkError](err); ok {
 		return &fs.PathError{Op: "replace", Path: c.f.shown(c.path), Err: le.Err}
 	}
 	return err
@@ -589,17 +589,17 @@ func plain(c *change, err error) error {
 // read-only file or directory) happen before anything has changed: what was
 // staged is removed and the tree is as it was.
 //
-// In a [Txn.Distinct] transaction two writes that reach one file are an
-// [AliasError]: found from the paths before anything is staged, or, for two
-// names the file system alone takes as one, before the second is published,
-// which then puts back the first like any other failure.
-//
 // Only then is each change published, in the order it was made. One file
 // alone is replaced by a single rename. With more, each original entry is
 // renamed aside to a kept name and the staged file renamed into its place;
 // if a rename fails, every entry already moved is put back, last first, and
 // the error says nothing was changed. When every change is published the
 // kept originals are removed.
+//
+// In a [Txn.Distinct] transaction two writes that reach one file are an
+// [AliasError]: found from the paths before anything is staged, or, for two
+// names the file system alone takes as one, before the second is published,
+// which then puts back the first like any other failure.
 //
 // An original that will not go back is the one case that ends neither all
 // old nor all new: it is left at its kept name, never removed, and the error
@@ -618,8 +618,8 @@ func (t *Txn) Commit() error {
 				_ = c.f.Remove(c.next)
 			}
 		}
-		for i := len(t.made) - 1; i >= 0; i-- {
-			_ = t.made[i].f.Remove(t.made[i].name)
+		for _, m := range slices.Backward(t.made) {
+			_ = m.f.Remove(m.name)
 		}
 	}
 	unchanged := func(c *change, err error) error {

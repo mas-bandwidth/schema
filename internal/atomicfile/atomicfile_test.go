@@ -330,7 +330,7 @@ func TestCommitIsAllOrNothing(t *testing.T) {
 		dir, commit := tree(t)
 		a, twin := filepath.Join(dir, "a.txt"), filepath.Join(dir, "twin.txt")
 		before := map[string]fs.FileInfo{}
-		for _, name := range strings.Fields(treeBefore) {
+		for _, name := range strings.FieldsSeq(treeBefore) {
 			if !strings.HasSuffix(name, "/") {
 				before[name] = lstat(t, filepath.Join(dir, name))
 			}
@@ -489,8 +489,8 @@ func TestADistinctCommitRefusesTwoNamesForOneFile(t *testing.T) {
 	t.Parallel()
 	refused := func(t *testing.T, err error, first, second string) {
 		t.Helper()
-		var alias *AliasError
-		if !errors.As(err, &alias) || alias.First != first || alias.Second != second {
+		alias, ok := errors.AsType[*AliasError](err)
+		if !ok || alias.First != first || alias.Second != second {
 			t.Fatalf("commit = %v; want %s and %s refused as one file", err, first, second)
 		}
 		if !strings.Contains(err.Error(), "nothing was changed") {

@@ -149,8 +149,7 @@ func publishOutputsWith(f atomicfile.Files, verb string, outs []pairOutput, ins 
 		v.Write(o.path, o.data, 0o644)
 	}
 	err := txn.Commit()
-	var alias *atomicfile.AliasError
-	if errors.As(err, &alias) {
+	if alias, ok := errors.AsType[*atomicfile.AliasError](err); ok {
 		flag := func(path string) string {
 			for _, o := range outs {
 				if filepath.Clean(o.path) == filepath.Clean(path) {

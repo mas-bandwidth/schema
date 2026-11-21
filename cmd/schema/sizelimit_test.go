@@ -17,6 +17,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -73,7 +74,7 @@ func runLimited(t *testing.T, limit int, bin string, args ...string) (ok bool, o
 	cmd.Env = append(os.Environ(), sizeLimitEnv+"="+strconv.Itoa(limit))
 	data, err := cmd.CombinedOutput()
 	if err != nil {
-		if _, exited := err.(*exec.ExitError); !exited {
+		if _, exited := errors.AsType[*exec.ExitError](err); !exited {
 			t.Fatalf("schema %s under a %d-byte limit: %v\n%s", strings.Join(args, " "), limit, err, data)
 		}
 		return false, string(data)
