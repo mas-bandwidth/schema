@@ -120,12 +120,14 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	mods := moduleFiles(u, reach)
 	graph := map[string]map[string]bool{}
 	var order []string
+	writers := &writerLookup{}
 	for _, f := range u.Files {
 		if !mods[f.Base] {
 			continue
 		}
 		g := newGen(u, f)
 		g.Lineage = lineage
+		g.writers = writers
 		emitFile(g, reach)
 		for _, p := range parts {
 			if err := p.fn(g); err != nil {
