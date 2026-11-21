@@ -1696,21 +1696,61 @@ public final class Driver {
             return;
         }
         if (fieldValue instanceof java.util.List<?> list) {
-            writeRefusalResize(list, count);
+            writeRefusalResize(owner, name, list, count);
             return;
         }
         throw new NoSuchFieldException(name + " carries no count");
     }
 
-    private static void writeRefusalResize(java.util.List<?> list, int count) {
+    private static void writeRefusalResize(Object owner, String name, java.util.List<?> list, int count)
+            throws ReflectiveOperationException {
         @SuppressWarnings("unchecked")
         java.util.List<Object> raw = (java.util.List<Object>) list;
         while (raw.size() > count) {
             raw.remove(raw.size() - 1);
         }
         while (raw.size() < count) {
-            raw.add(raw.isEmpty() ? null : raw.get(0));
+            // AN EMPTY LIST HAS NO ELEMENT TO REPEAT: the new one is the
+            // element type's own fresh value, never null (a writer is owed a
+            // value at every index it is told to write).
+            raw.add(raw.isEmpty() ? writeRefusalFreshElement(owner, name) : raw.get(0));
         }
+    }
+
+    private static Object writeRefusalFreshElement(Object owner, String name)
+            throws ReflectiveOperationException {
+        java.lang.reflect.Field field = writeRefusalField(owner.getClass(), name);
+        if (!(field.getGenericType() instanceof java.lang.reflect.ParameterizedType listType)
+                || !(listType.getActualTypeArguments()[0] instanceof Class<?> element)) {
+            throw new NoSuchFieldException(name + " names no element type");
+        }
+        if (element == Boolean.class) {
+            return Boolean.FALSE;
+        }
+        if (element == Byte.class) {
+            return (byte) 0;
+        }
+        if (element == Short.class) {
+            return (short) 0;
+        }
+        if (element == Integer.class) {
+            return 0;
+        }
+        if (element == Long.class) {
+            return 0L;
+        }
+        if (element == Float.class) {
+            return 0f;
+        }
+        if (element == Double.class) {
+            return 0d;
+        }
+        if (element == String.class) {
+            return "";
+        }
+        java.lang.reflect.Constructor<?> fresh = element.getDeclaredConstructor();
+        fresh.setAccessible(true);
+        return fresh.newInstance();
     }
 
     private static void writeRefusalLength(

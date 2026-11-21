@@ -61,6 +61,21 @@ func optInLines(text string, skip map[string]bool) (kept string, dropped map[str
 	return strings.TrimSuffix(b.String(), "\n"), dropped
 }
 
+// caseNotAsked says whether a surface's case sits on a row the leg was not
+// handed. The json-write surface names a case after its row plus ".json"
+// (the file the driver writes), so it is looked up by the row's own name too.
+func caseNotAsked(notAsked map[string]bool, surface, name string) bool {
+	if notAsked[name] {
+		return true
+	}
+	if surface == "json-write" {
+		if row, ok := strings.CutSuffix(name, ".json"); ok {
+			return notAsked[row]
+		}
+	}
+	return false
+}
+
 // legManifest is the derived manifest a leg is handed, and the cases it is
 // not asked: derived itself when the leg opted into every opt-in unit, and
 // otherwise a filtered copy beside it.
