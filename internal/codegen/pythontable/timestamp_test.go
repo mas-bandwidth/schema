@@ -7,7 +7,8 @@ package pythontable
 // was written from. The engine's own wires are the oracle: every accepted case
 // must save byte for byte to the engine's wire, both after the read and from a
 // value built fresh, and every refused case must be refused by the engine and
-// by Python with the same reason and no value. The cases cover both widening
+// by Python with no value; why each refused is its own diagnostic, never
+// compared (docs/rulings.json, refusal-verdict-only). The cases cover both widening
 // directions §2.11 closes (a timestamp wire read into an int64 field, and an
 // int64 wire read into a timestamp field), a wire cut inside the timestamp's
 // own eight bytes, and the write refusals' path and rule. Both pinned
@@ -51,22 +52,21 @@ table Count
 `
 
 // pythonTimestampRow is one case: the root it is read as, the engine's
-// variable wire, and the value the read must land or the reason it must be
-// refused with.
+// variable wire, and the value the read must land or that it must be refused.
 type pythonTimestampRow struct {
-	name   string
-	root   string
-	at     int64
-	id     uint32
-	wire   []byte
-	reason string // "" for an accepted case
+	name    string
+	root    string
+	at      int64
+	id      uint32
+	wire    []byte
+	refused bool
 }
 
 // pythonTimestampRows builds the engine's wires for the counts §2.11 names
 // (the zero time, both signs, the min and max of the int64 cell), the int64
 // twin's own wire, and the refused cases, then holds every case to the Go
 // engine's own read: an accepted case lands its value, a refused one is
-// refused with the case's reason.
+// refused.
 func pythonTimestampRows(t *testing.T) []pythonTimestampRow {
 	t.Helper()
 	m := tabletext.NewModel(loadUnit(t, pythonTimestampSchema))
@@ -129,23 +129,23 @@ func pythonTimestampRows(t *testing.T) []pythonTimestampRow {
 	cut := append(append([]byte(nil), positive[:3+3]...), trailer...)
 
 	rows = append(rows,
-		pythonTimestampRow{name: "kind_int64", root: "Event", wire: mismatch, reason: tablewire.ReasonKindMismatch},
-		pythonTimestampRow{name: "int64_wire_as_timestamp", root: "Event", wire: count, reason: tablewire.ReasonKindMismatch},
-		pythonTimestampRow{name: "timestamp_wire_as_int64", root: "Count", wire: positive, reason: tablewire.ReasonKindMismatch},
-		pythonTimestampRow{name: "shortened", root: "Event", wire: short, reason: tablewire.ReasonWireDamaged},
-		pythonTimestampRow{name: "payload_cut", root: "Event", wire: cut, reason: tablewire.ReasonWireDamaged},
+		pythonTimestampRow{name: "kind_int64", root: "Event", wire: mismatch, refused: true},
+		pythonTimestampRow{name: "int64_wire_as_timestamp", root: "Event", wire: count, refused: true},
+		pythonTimestampRow{name: "timestamp_wire_as_int64", root: "Count", wire: positive, refused: true},
+		pythonTimestampRow{name: "shortened", root: "Event", wire: short, refused: true},
+		pythonTimestampRow{name: "payload_cut", root: "Event", wire: cut, refused: true},
 	)
 
 	for _, row := range rows {
 		inst := m.New(lookup(row.root))
 		var report tabletext.Report
 		ok, err := tablewire.Decode(m, inst, row.wire, &report)
-		if row.reason != "" {
+		if !ok && !tablewire.ReadRefusal(err) {
+			t.Fatalf("the engine fails %s with %v, which is not a read's refusal", row.name, err)
+		}
+		if row.refused {
 			if ok {
-				t.Fatalf("the engine accepted %s, want refused %s", row.name, row.reason)
-			}
-			if got := tablewire.RefusalReason(err); got != row.reason {
-				t.Fatalf("the engine refused %s as %q (%v), want %s", row.name, got, err, row.reason)
+				t.Fatalf("the engine accepted %s, want refused", row.name)
 			}
 			continue
 		}
@@ -180,13 +180,11 @@ for case in cases:
     try:
         value = root.load(data)
     except Refused as err:
-        if verdict == "ok":
+        if verdict != "refused":
             raise SystemExit("vt_timestamp " + name + ": refused " + err.reason + ", want accepted")
-        if err.reason != verdict:
-            raise SystemExit("vt_timestamp " + name + ": refused " + err.reason + ", want " + verdict)
         continue
     if verdict != "ok":
-        raise SystemExit("vt_timestamp " + name + ": accepted, want refused " + verdict)
+        raise SystemExit("vt_timestamp " + name + ": accepted, want refused")
     at, ident, want = int(case[3]), int(case[4]), case[5]
     if value.at != at:
         raise SystemExit("vt_timestamp " + name + ": at " + str(value.at) + ", want " + str(at))
@@ -234,8 +232,8 @@ func pythonTimestampInputs(t *testing.T, rows []pythonTimestampRow) map[string][
 	var cases strings.Builder
 	for _, row := range rows {
 		inputs["case_"+row.name+".bin"] = row.wire
-		if row.reason != "" {
-			fmt.Fprintf(&cases, "%s\t%s\t%s\n", row.name, row.root, row.reason)
+		if row.refused {
+			fmt.Fprintf(&cases, "%s\t%s\trefused\n", row.name, row.root)
 			continue
 		}
 		fmt.Fprintf(&cases, "%s\t%s\tok\t%d\t%d\t%s\n", row.name, row.root, row.at, row.id, hex.EncodeToString(row.wire))
@@ -272,6 +270,30 @@ func TestPythonVtTimestamp(t *testing.T) {
 	}
 }
 
+// TestPythonVtTimestampReasonIsDiagnostic renames every refusal reason in a
+// copy of the generated runtime and requires the probe to stay green: the
+// cross-language contract is the verdict, and why a read refused is Python's
+// own diagnostic (docs/rulings.json, refusal-verdict-only).
+func TestPythonVtTimestampReasonIsDiagnostic(t *testing.T) {
+	t.Parallel()
+	rows := pythonTimestampRows(t)
+	files, err := Generate(loadUnit(t, pythonTimestampSchema))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files = maps.Clone(files)
+	plantReasonRename(t, files)
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	inputs := pythonTimestampInputs(t, rows)
+	for _, python := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
+		out, stderr, err := pyrun.Try(t, python, dir, "main.py", inputs)
+		if err != nil || !strings.Contains(out, "OK\n") {
+			t.Fatalf("%s: the probe went red on a renamed reason: %v\n%s%s", python, err, out, stderr)
+		}
+	}
+}
+
 // TestPythonVtTimestampNegativeControl plants one fault per check of the
 // probe in a COPY of the generated package (its runtime, or the generated
 // module whose straight-line loaders carry the kind check), and each must turn
@@ -298,15 +320,6 @@ func TestPythonVtTimestampNegativeControl(t *testing.T) {
 			red:     "vt_timestamp positive:",
 		},
 		{
-			// A kind mismatch is refused under the wrong reason.
-			name:    "reason",
-			path:    "",
-			sites:   4, // two fields in each of the two loaders
-			anchor:  "raise Refused(\"kind_mismatch\", ",
-			planted: "raise Refused(\"out_of_range\", ",
-			red:     "vt_timestamp kind_int64: refused out_of_range, want kind_mismatch",
-		},
-		{
 			// An int64 field takes a timestamp wire: the second widening
 			// direction §2.11 closes is opened, the first stays closed.
 			name:    "widen_reverse",
@@ -314,16 +327,7 @@ func TestPythonVtTimestampNegativeControl(t *testing.T) {
 			sites:   2, // the at field in each of the two loaders
 			anchor:  "if kind != fields[0].kind:\n",
 			planted: "if kind != fields[0].kind and not (kind == 36 and fields[0].kind == 5):\n",
-			red:     "vt_timestamp timestamp_wire_as_int64: accepted, want refused kind_mismatch",
-		},
-		{
-			// A payload cut inside its body is refused under the wrong reason.
-			name:    "payload_cut",
-			path:    "stamp/_schema/load.py",
-			sites:   1,
-			anchor:  "raise Refused(\"wire_damaged\", \"a length runs past its body\")",
-			planted: "raise Refused(\"past_end\", \"a length runs past its body\")",
-			red:     "vt_timestamp payload_cut: refused past_end, want wire_damaged",
+			red:     "vt_timestamp timestamp_wire_as_int64: accepted, want refused",
 		},
 		{
 			// A bool passes the int check.
@@ -373,16 +377,6 @@ func TestPythonVtTimestampNegativeControl(t *testing.T) {
 				t.Fatalf("the negative control's anchor %q stands %d times in %s, want %d", control.anchor, got, path, control.sites)
 			}
 			sabotaged[path] = []byte(strings.ReplaceAll(text, control.anchor, control.planted))
-			if control.name == "payload_cut" {
-				// Isolate Reader.take's refusal: the scalar loader's independent
-				// whole-file diagnostic otherwise catches the same malformed wire.
-				const check = "        if err.reason != \"wire_damaged\":\n"
-				generated := string(sabotaged[module])
-				if got := strings.Count(generated, check); got != 2 {
-					t.Fatalf("the scalar diagnostic anchor stands %d times, want 2", got)
-				}
-				sabotaged[module] = []byte(strings.ReplaceAll(generated, check, "        if False:\n"))
-			}
 			dir := t.TempDir()
 			writeTree(t, dir, sabotaged)
 
