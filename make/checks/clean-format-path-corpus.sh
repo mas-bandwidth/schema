@@ -13,6 +13,36 @@ mkdir -p "$2"
 work=$(mktemp -d "$2/path-cases.XXXXXX")
 trap 'rm -rf "$work"' 0
 
+# Freeze the roster before invoking an engine. awk also writes the final row
+# with a newline when the input file ends immediately after its last field.
+awk -F "$(printf '\t')" '
+BEGIN {
+	n = split("ordinary-path empty-ratchet missing-ratchet stale-outside-tree space-in-tree", required, " ")
+}
+/^#/ || /^$/ { next }
+{
+	if (NF != 5 || $1 == "" || $2 == "" || $3 == "" || $4 == "" || $5 == "") {
+		print FILENAME ":" FNR ": expected five nonempty fields" > "/dev/stderr"
+		bad = 1
+		next
+	}
+	if (seen[$1]++) {
+		print FILENAME ":" FNR ": duplicate case " $1 > "/dev/stderr"
+		bad = 1
+	}
+	print
+}
+END {
+	for (i = 1; i <= n; i++) {
+		if (!(required[i] in seen)) {
+			print FILENAME ": missing required case " required[i] > "/dev/stderr"
+			bad = 1
+		}
+	}
+	exit bad
+}
+' "$corpus/cases.tsv" > "$work/cases.tsv"
+
 # The ratchet's outside.h exists relative to the working directory. Both scan
 # trees contain the same clean bytes, so only the tree's spelling varies.
 cp "$root/.clang-format" "$work/.clang-format"
@@ -40,14 +70,14 @@ while IFS="$(printf '\t')" read -r name tree ratchet want detail; do
 	if [ "$lang" = cpp ]; then set -- "$@" check; fi
 	status=0
 	: > "$work/visits"
-	( cd "$work" && LC_ALL=C EXPECT_DIRS='' CLANG_FORMAT=./trace-format OUT=results sh "$engine" "$@" "$tree" ) > "$work/$name.log" 2>&1 || status=$?
+	( cd "$work" && LC_ALL=C EXPECT_DIRS='' CLANG_FORMAT=./trace-format OUT=results sh "$engine" "$@" "$tree" ) > "$work/case.log" 2>&1 || status=$?
 	case "$want" in
 	pass) [ "$status" -eq 0 ] && [ "$(cat "$work/visits")" = "$detail" ] ;;
-	reject) [ "$status" -ne 0 ] && grep -Fq -- "$detail" "$work/$name.log" ;;
+	reject) [ "$status" -ne 0 ] && grep -Fq -- "$detail" "$work/case.log" ;;
 	*) echo "unknown outcome $want in $name" >&2; exit 2 ;;
 	esac && { echo "PASS $lang $name (exit $status)"; continue; }
 	echo "FAIL $lang $name (expected $want: $detail; exit $status)"
-	cat "$work/$name.log"
+	cat "$work/case.log"
 	failed=1
-done < "$corpus/cases.tsv"
+done < "$work/cases.tsv"
 exit "$failed"
