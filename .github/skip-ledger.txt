@@ -40,7 +40,7 @@ skip short ^-short:
 # (SCHEMA_REQUIRE_CORPUS is unset), the toolchain is still the reason.
 skip tool:rust-32bit 32-bit target
 skip tool:rust ^rustc (is )?not on PATH
-skip tool:rust ^no cargo toolchain
+skip tool:rust ^no cargo (toolchain|on PATH)
 skip tool:c++ no c\+\+ on PATH
 skip tool:c++ ^c\+\+( unavailable| is not on PATH)?(:| and) 
 skip tool:c++ clang\+\+
@@ -57,12 +57,12 @@ skip tool:dotnet ^dotnet (unavailable|not found)
 skip tool:dotnet ^no (dotnet on PATH|Roslyn csc\.dll|\.NET ref pack)
 skip tool:dotnet ^Unity toolchain unavailable
 skip tool:java javac|^java not on PATH|no JDK
-skip tool:node ^no node toolchain
+skip tool:node ^no node (toolchain|on PATH)
 skip tool:eslint ^eslint unavailable
 skip tool:dart ^no Dart toolchain
 skip tool:dart ^the Dart SDK is not unpacked
 skip tool:elixir ^no (Elixir|elixirc):
-skip tool:make (requires|shells out to|reads) make\b
+skip tool:make (requires|shells out to|reads) (the )?make\b
 skip tool:make ^no make on PATH
 skip tool:git shells out to git
 skip tool:sh ^no sh on PATH
@@ -123,6 +123,7 @@ skip root ^root writes through a read-only directory
 # helper: a helper-process entry point, run by the test that names it.
 # Provided by no lane: it skips whenever go test runs it directly.
 skip helper TestGooseDieWithParent
+skip helper ^helper for Test
 
 # inapplicable: a table-driven test's row does not apply to this case.
 # Provided by no lane.

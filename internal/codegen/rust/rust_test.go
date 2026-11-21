@@ -223,9 +223,14 @@ union Event {
 		}
 	}
 
-	if cargoBin == "" || serializePath == "" {
-		t.Logf("cargo (%s) or serialize.rs (%s) not found; skipping compilation check", cargoBin, serializePath)
-		return
+	// The compile is the half of this test that proves the export: without
+	// cargo or the sibling runtime it is a skip the ledger reads, and a
+	// failure under SCHEMA_REQUIRE_CORPUS, never a pass.
+	if cargoBin == "" {
+		slowtest.Missing(t, "no cargo on PATH")
+	}
+	if serializePath == "" {
+		slowtest.Missing(t, "no serialize.rs runtime: set SERIALIZE_RS or stage the sibling checkout")
 	}
 
 	dir := t.TempDir()

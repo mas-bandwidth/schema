@@ -28,12 +28,22 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/skipledger"
 )
 
 const skipLedgerPath = ".github/skip-ledger.txt"
+
+// repoSkipScan reads the repository once for the three gates that share it.
+var repoSkipScan = sync.OnceValues(func() (*skipScan, error) {
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		return nil, err
+	}
+	return scanSkipSites(root)
+})
 
 func readSkipLedger(t *testing.T, root string) *skipledger.Ledger {
 	t.Helper()
@@ -70,7 +80,7 @@ func TestEverySkipInTheTreeNamesALedgerReason(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 	l := readSkipLedger(t, root)
-	scan, err := scanSkipSites(root)
+	scan, err := repoSkipScan()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +178,7 @@ func TestFixture(t *testing.T) { t.Skip("fixtures are data, not tests") }
 
 func TestNoTestMainLeavesBeforeItRunsTheTests(t *testing.T) {
 	t.Parallel()
-	scan, err := scanSkipSites(repoRoot(t))
+	scan, err := repoSkipScan()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,13 +243,37 @@ func TestMain(m *testing.M) {
 
 func TestStartsHelper(t *testing.T) { t.Setenv("HELPER_MODE", "1") }
 `,
+		// the same, read through a constant in a switch
+		"child/main_test.go": `package child
+
+import (
+	"os"
+	"os/exec"
+	"testing"
+)
+
+const childEnv = "CHILD_MODE"
+
+func TestMain(m *testing.M) {
+	switch os.Getenv(childEnv) {
+	case "block":
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
+}
+
+func TestStartsChild(t *testing.T) {
+	cmd := exec.Command(os.Args[0])
+	cmd.Env = append(os.Environ(), childEnv+"=block")
+}
+`,
 	})
 	scan, err := scanSkipSites(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if scan.testMains != 3 {
-		t.Errorf("the scan found %d TestMain functions, want 3", scan.testMains)
+	if scan.testMains != 4 {
+		t.Errorf("the scan found %d TestMain functions, want 4", scan.testMains)
 	}
 	if len(scan.noRun) != 1 || !strings.HasPrefix(scan.noRun[0], "never/main_test.go:") {
 		t.Errorf("a TestMain with no m.Run was not refused: %v", scan.noRun)
@@ -469,7 +503,7 @@ func TestSkipLedgerLaneGateNegativeControl(t *testing.T) {
 
 func TestNoTestReturnsQuietlyWhenItsToolchainIsMissing(t *testing.T) {
 	t.Parallel()
-	scan, err := scanSkipSites(repoRoot(t))
+	scan, err := repoSkipScan()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -477,7 +511,119 @@ func TestNoTestReturnsQuietlyWhenItsToolchainIsMissing(t *testing.T) {
 		t.Fatalf("the scan read %d files that import testing: it is looking at the wrong tree", scan.files)
 	}
 	for _, d := range scan.disguised {
-		t.Errorf("%s:%d: %s looks for a toolchain, a file or a variable and returns quietly when it is missing: go test prints PASS over a body that did not run. "+
-			"Call t.Skip with a reason the ledger names (and fail instead where SCHEMA_REQUIRE_CORPUS is set), or t.Fatal", d.file, d.line, d.fn)
+		t.Errorf("%s:%d: %s %s: go test prints PASS over a body that did not run, and no ledger sees a skip. "+
+			"Call t.Skip with a reason the ledger names (slowtest.RequireTool fails instead where SCHEMA_REQUIRE_CORPUS is set), or t.Fatal", d.file, d.line, d.fn, d.what)
+	}
+}
+
+// The negative control. TestCargo is the reviewer's case, kept as she found
+// it in internal/codegen/rust: it probes for cargo and a sibling checkout,
+// logs that it is "skipping", and returns PASS.
+func TestDisguisedSkipGateNegativeControl(t *testing.T) {
+	t.Parallel()
+	root := writeTree(t, map[string]string{
+		"p/p_test.go": `package p
+
+import (
+	"os"
+	"os/exec"
+	"testing"
+)
+
+func TestCargo(t *testing.T) {
+	var serializePath string
+	if p := os.Getenv("SERIALIZE_RS"); p != "" {
+		serializePath = p
+	}
+	cargoBin, err := exec.LookPath("cargo")
+	if err != nil {
+		if fi, err2 := os.Stat("/opt/rustup/bin/cargo"); err2 == nil && !fi.IsDir() {
+			cargoBin = "/opt/rustup/bin/cargo"
+		}
+	}
+	if cargoBin == "" || serializePath == "" {
+		t.Logf("cargo (%s) or serialize.rs (%s) not found; skipping compilation check", cargoBin, serializePath)
+		return
+	}
+	_ = exec.Command(cargoBin, "check").Run()
+}
+
+func TestLookPathReturn(t *testing.T) {
+	cc, err := exec.LookPath("cc")
+	if err != nil {
+		return
+	}
+	_ = exec.Command(cc).Run()
+}
+
+func TestOnlyWhenFound(t *testing.T) {
+	if node, err := exec.LookPath("node"); err == nil {
+		if out, err := exec.Command(node, "x.js").CombinedOutput(); err != nil {
+			t.Fatalf("%v %s", err, out)
+		}
+	}
+}
+
+func TestEnvReturn(t *testing.T) {
+	t.Run("sub", func(t *testing.T) {
+		if os.Getenv("CORPUS_DIR") == "" {
+			return
+		}
+		t.Log("ran")
+	})
+}
+
+func TestSkips(t *testing.T) {
+	if _, err := exec.LookPath("cc"); err != nil {
+		t.Skip("no cc on PATH")
+	}
+}
+
+func TestFails(t *testing.T) {
+	cc, err := exec.LookPath("cc")
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+	_ = cc
+}
+
+func TestOptionalArgument(t *testing.T) {
+	args := []string{"--edition", "2024"}
+	if cc, err := exec.LookPath("cc"); err == nil {
+		args = append(args, "-C", "linker="+cc)
+	}
+	if err := exec.Command("rustc", args...).Run(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAlreadyBuilt(t *testing.T) {
+	if _, err := os.Stat("build/.stamp"); err == nil {
+		return
+	}
+	t.Log("builds it")
+}
+
+func find() (string, bool) {
+	p, err := exec.LookPath("cc")
+	if err != nil {
+		return "", false
+	}
+	return p, true
+}
+`,
+	})
+	scan, err := scanSkipSites(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, d := range scan.disguised {
+		got = append(got, fmt.Sprintf("%s:%d", d.fn, d.line))
+	}
+	want := []string{"TestCargo:20", "TestLookPathReturn:29", "TestOnlyWhenFound:36", "func literal:45"}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Errorf("disguised skips:\n got %v\nwant %v", got, want)
 	}
 }

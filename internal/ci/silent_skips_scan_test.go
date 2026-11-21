@@ -126,6 +126,39 @@ func stringLit(e ast.Expr) (string, bool) {
 	return "", false
 }
 
+// stringConsts are the file's constants that are string literals.
+func stringConsts(f *ast.File) map[string]string {
+	out := map[string]string{}
+	for _, decl := range f.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok || gen.Tok != token.CONST {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			vs, ok := spec.(*ast.ValueSpec)
+			if !ok || len(vs.Names) != len(vs.Values) {
+				continue
+			}
+			for i, name := range vs.Names {
+				if s, ok := stringLit(vs.Values[i]); ok {
+					out[name.Name] = s
+				}
+			}
+		}
+	}
+	return out
+}
+
+func stringOrConst(e ast.Expr, consts map[string]string) (string, bool) {
+	if s, ok := stringLit(e); ok {
+		return s, true
+	}
+	if id, ok := e.(*ast.Ident); ok && consts[id.Name] != "" {
+		return consts[id.Name], true
+	}
+	return "", false
+}
+
 // isTestingValue reports whether the identifier is declared with a type from
 // package testing (t *testing.T, tb testing.TB, b *testing.B, f *testing.F).
 func isTestingValue(id *ast.Ident) bool {
@@ -164,8 +197,16 @@ func scanSkipSites(root string) (*skipScan, error) {
 		if scan.setenv[dir] == nil {
 			scan.setenv[dir] = map[string]bool{}
 		}
+		consts := stringConsts(f)
 		ast.Inspect(f, func(n ast.Node) bool {
 			switch v := n.(type) {
+			case *ast.BinaryExpr:
+				// childEnv+"=block": a child's variable, named by a constant
+				if id, ok := v.X.(*ast.Ident); ok && v.Op == token.ADD {
+					if rest, ok := stringLit(v.Y); ok && strings.HasPrefix(rest, "=") && consts[id.Name] != "" {
+						scan.setenv[dir][consts[id.Name]] = true
+					}
+				}
 			case *ast.BasicLit:
 				if s, ok := stringLit(v); ok {
 					if m := setenvLit.FindStringSubmatch(s); m != nil {
@@ -178,7 +219,7 @@ func scanSkipSites(root string) (*skipScan, error) {
 					return true
 				}
 				if sel.Sel.Name == "Setenv" && len(v.Args) == 2 {
-					if s, ok := stringLit(v.Args[0]); ok {
+					if s, ok := stringOrConst(v.Args[0], consts); ok {
 						scan.setenv[dir][s] = true
 					}
 				}
@@ -226,7 +267,7 @@ func scanSkipSites(root string) (*skipScan, error) {
 				continue
 			}
 			scan.testMains++
-			scanTestMain(scan, fset, rel, fn)
+			scanTestMain(scan, fset, rel, fn, consts)
 		}
 		scanDisguisedSkips(scan, fset, rel, f)
 		return nil
@@ -246,7 +287,7 @@ func scanSkipSites(root string) (*skipScan, error) {
 
 // scanTestMain records a TestMain that never calls m.Run, and every quiet
 // way out of it before the first m.Run.
-func scanTestMain(scan *skipScan, fset *token.FileSet, rel string, fn *ast.FuncDecl) {
+func scanTestMain(scan *skipScan, fset *token.FileSet, rel string, fn *ast.FuncDecl, consts map[string]string) {
 	m := ""
 	if names := fn.Type.Params.List[0].Names; len(names) == 1 {
 		m = names[0].Name
@@ -277,7 +318,7 @@ func scanTestMain(scan *skipScan, fset *token.FileSet, rel string, fn *ast.FuncD
 					return true
 				}
 				if types.ExprString(call.Fun) == "os.Getenv" {
-					if s, ok := stringLit(call.Args[0]); ok {
+					if s, ok := stringOrConst(call.Args[0], consts); ok {
 						out = append(out, s)
 					}
 				}
@@ -298,6 +339,14 @@ func scanTestMain(scan *skipScan, fset *token.FileSet, rel string, fn *ast.FuncD
 				if v.Else != nil {
 					walk(v.Else)
 				}
+				conds = conds[:len(conds)-1]
+				return false
+			case *ast.SwitchStmt:
+				// switch os.Getenv(childEnv) { case "block": ... }: every
+				// case is under what the switch reads
+				head := &ast.SwitchStmt{Switch: v.Switch, Init: v.Init, Tag: v.Tag, Body: &ast.BlockStmt{}}
+				conds = append(conds, head)
+				walk(v.Body)
 				conds = conds[:len(conds)-1]
 				return false
 			case *ast.ReturnStmt:
@@ -651,22 +700,24 @@ func neverCompiled(scan *constraintScan, proofs []laneProof) []constrainedTest {
 // The scanner reads every function that takes a testing value and returns
 // nothing. It follows what was probed: a name assigned from exec.LookPath,
 // os.Stat, os.Lstat, os.Getenv or os.LookupEnv, and a name assigned under an
-// if that tests one. An if whose condition reads a probed name (or probes
-// directly), and whose body ends in a bare return without having called
-// Skip, Fatal, Error, Fail or panic, is a disguised skip.
+// if that tests one. Two shapes are refused:
+//
+//   - "missing, so leave": an if whose condition says a probed name came back
+//     empty or in error (err != nil, path == "", os.Getenv(...) != "1"), and
+//     whose body is a bare return, with at most a t.Log before it;
+//   - "found, so run the rest": an if with no else whose condition says a
+//     toolchain was found (the err of an exec.LookPath == nil) and whose body
+//     holds the part of the test that needs it. Without the toolchain that
+//     part is skipped and the test passes.
 type disguisedSkip struct {
 	file string
 	line int
 	fn   string
+	what string
 }
 
 var probeCalls = map[string]bool{
 	"exec.LookPath": true, "os.Stat": true, "os.Lstat": true, "os.Getenv": true, "os.LookupEnv": true,
-}
-
-var loudCalls = map[string]bool{
-	"Skip": true, "Skipf": true, "SkipNow": true, "Fatal": true, "Fatalf": true, "FailNow": true,
-	"Error": true, "Errorf": true, "Fail": true,
 }
 
 func hasProbe(n ast.Node) bool {
@@ -726,7 +777,8 @@ func scanDisguisedSkips(scan *skipScan, fset *token.FileSet, rel string, f *ast.
 			})
 			return found
 		}
-		var under []bool // whether each enclosing if tests a probe
+		var under []bool                 // whether each enclosing if tests a probe
+		lookPathErr := map[string]bool{} // the names that hold an exec.LookPath error
 		var walk func(n ast.Node)
 		walk = func(n ast.Node) {
 			ast.Inspect(n, func(n ast.Node) bool {
@@ -743,9 +795,11 @@ func scanDisguisedSkips(scan *skipScan, fset *token.FileSet, rel string, f *ast.
 					for _, u := range under {
 						probe = probe || u
 					}
-					for _, l := range v.Lhs {
+					lookPath := len(v.Rhs) == 1 && isCall(v.Rhs[0], "exec.LookPath")
+					for i, l := range v.Lhs {
 						if id, ok := l.(*ast.Ident); ok && id.Name != "_" {
 							marks[id.Name] = append(marks[id.Name], mark{v.Pos(), probe})
+							lookPathErr[id.Name] = lookPath && i == 1
 						}
 					}
 				case *ast.IfStmt:
@@ -753,8 +807,14 @@ func scanDisguisedSkips(scan *skipScan, fset *token.FileSet, rel string, f *ast.
 						walk(v.Init)
 					}
 					tests := reads(v.Cond, v.Body.Pos()) || (v.Init != nil && hasProbe(v.Init))
-					if tests && quietReturn(v.Body) {
-						scan.disguised = append(scan.disguised, disguisedSkip{rel, fset.Position(v.Pos()).Line, name})
+					probed := func(e ast.Expr) bool { return reads(e, v.Body.Pos()) }
+					switch {
+					case tests && quietReturn(v.Body) && saysMissing(v.Cond, probed):
+						scan.disguised = append(scan.disguised, disguisedSkip{rel, fset.Position(v.Pos()).Line, name,
+							"returns quietly when what it looked for is missing"})
+					case v.Else == nil && doesTestWork(v.Body) && saysToolFound(v, func(id string) bool { return lookPathErr[id] }):
+						scan.disguised = append(scan.disguised, disguisedSkip{rel, fset.Position(v.Pos()).Line, name,
+							"runs part of its body only when exec.LookPath finds the toolchain"})
 					}
 					under = append(under, tests)
 					walk(v.Body)
@@ -780,8 +840,13 @@ func scanDisguisedSkips(scan *skipScan, fset *token.FileSet, rel string, f *ast.
 	})
 }
 
-// quietReturn reports whether the block ends in a bare return and nothing in
-// it skipped or failed the test first.
+func isCall(e ast.Expr, fun string) bool {
+	call, ok := e.(*ast.CallExpr)
+	return ok && types.ExprString(call.Fun) == fun
+}
+
+// quietReturn reports whether the block is a bare return with at most log
+// lines before it: nothing ran, nothing skipped, nothing failed.
 func quietReturn(b *ast.BlockStmt) bool {
 	if len(b.List) == 0 {
 		return false
@@ -790,21 +855,95 @@ func quietReturn(b *ast.BlockStmt) bool {
 	if !ok || len(ret.Results) != 0 {
 		return false
 	}
-	loud := false
+	for _, st := range b.List[:len(b.List)-1] {
+		expr, ok := st.(*ast.ExprStmt)
+		if !ok {
+			return false
+		}
+		call, ok := expr.X.(*ast.CallExpr)
+		if !ok {
+			return false
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok || (sel.Sel.Name != "Log" && sel.Sel.Name != "Logf") {
+			return false
+		}
+	}
+	return true
+}
+
+func isLit(e ast.Expr, value string) bool {
+	if id, ok := e.(*ast.Ident); ok {
+		return id.Name == value
+	}
+	if lit, ok := e.(*ast.BasicLit); ok {
+		return lit.Value == value
+	}
+	return false
+}
+
+// saysMissing reports whether the condition holds when a probe came back
+// empty or in error: probed != nil, probed == "", probed != "<value>",
+// !probed, on either side of && or ||.
+func saysMissing(cond ast.Expr, probed func(ast.Expr) bool) bool {
+	switch v := cond.(type) {
+	case *ast.ParenExpr:
+		return saysMissing(v.X, probed)
+	case *ast.UnaryExpr:
+		return v.Op == token.NOT && probed(v.X)
+	case *ast.BinaryExpr:
+		switch v.Op {
+		case token.LAND, token.LOR:
+			return saysMissing(v.X, probed) || saysMissing(v.Y, probed)
+		case token.NEQ:
+			if isLit(v.Y, "nil") {
+				return probed(v.X)
+			}
+			if lit, ok := v.Y.(*ast.BasicLit); ok && lit.Kind == token.STRING && lit.Value != `""` {
+				return probed(v.X)
+			}
+		case token.EQL:
+			if isLit(v.Y, `""`) {
+				return probed(v.X)
+			}
+		}
+	}
+	return false
+}
+
+// saysToolFound reports whether the if runs its body only when an
+// exec.LookPath succeeded: `if _, err := exec.LookPath(x); err == nil {`, or
+// `err == nil` on a name that holds a LookPath error.
+func saysToolFound(v *ast.IfStmt, lookPathErr func(string) bool) bool {
+	cond, ok := v.Cond.(*ast.BinaryExpr)
+	if !ok || cond.Op != token.EQL || !isLit(cond.Y, "nil") {
+		return false
+	}
+	id, ok := cond.X.(*ast.Ident)
+	if !ok {
+		return false
+	}
+	if init, ok := v.Init.(*ast.AssignStmt); ok && len(init.Rhs) == 1 && isCall(init.Rhs[0], "exec.LookPath") {
+		return len(init.Lhs) == 2 && types.ExprString(init.Lhs[1]) == id.Name
+	}
+	return v.Init == nil && lookPathErr(id.Name)
+}
+
+// doesTestWork reports whether the block runs a program or asserts: the part
+// of a test whose absence matters. A block that only adds an argument (a
+// linker path when cc is there) is not one.
+func doesTestWork(b *ast.BlockStmt) bool {
+	work := false
 	ast.Inspect(b, func(n ast.Node) bool {
 		if call, ok := n.(*ast.CallExpr); ok {
-			switch fun := call.Fun.(type) {
-			case *ast.SelectorExpr:
-				if loudCalls[fun.Sel.Name] || types.ExprString(fun) == "os.Exit" {
-					loud = true
-				}
-			case *ast.Ident:
-				if fun.Name == "panic" {
-					loud = true
+			if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
+				switch sel.Sel.Name {
+				case "Command", "CommandContext", "Fatal", "Fatalf", "Error", "Errorf", "Run":
+					work = true
 				}
 			}
 		}
-		return !loud
+		return !work
 	})
-	return !loud
+	return work
 }
