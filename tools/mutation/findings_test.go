@@ -168,7 +168,7 @@ func TestSweepHoldsEveryStageToTheTestsItRan(t *testing.T) {
 
 	// a stage whose proof its own command line meets, as an empty make recipe
 	// whose target the proof names: refused before it runs
-	echo := Stage{Name: "native", Sh: ": native-gate", Proof: "native-gate"}
+	echo := Stage{Name: "native", Sh: "echo native-gate", Proof: "native-gate"}
 	s, tree, muts = sumTree(t, echo, "2 - 3")
 	got, err = verdicts(t, s, tree, muts, answers(t, map[string]string{"2 + 3": "native-gate\n", "2 - 3": "native-gate\n"}, nil))
 	if err == nil || !strings.Contains(err.Error(), "met by its own command line") {

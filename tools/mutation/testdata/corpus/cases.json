@@ -37,7 +37,7 @@
     },
     {
       "name": "proof-is-its-command",
-      "sh": ": native-gate",
+      "sh": "echo native-gate",
       "proof": "native-gate",
       "refused": "met by its own command line",
       "mutants": [
