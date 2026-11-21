@@ -490,7 +490,7 @@ func generateMessageDrifts(u *units, m *Manifest, drifts []MessageDrift) error {
 			// stand in for the rule the row holds. Which name is the engine's
 			// own detail and no leg's obligation (`refusal-verdict-only`).
 			if reason := tablewire.RefusalReason(err); ok || reason == "" {
-				return fmt.Errorf("message-drift %s: the row owes a refusal and the engine answered ok=%v reason=%q err=%v", md.Name, ok, reason, err)
+				return fmt.Errorf("message-drift %s: the row owes a refusal and the engine answered ok=%v reason=%q err=%w", md.Name, ok, reason, err)
 			}
 			continue
 		}
