@@ -811,11 +811,14 @@ func floatDefault(f *ir.Field) string {
 
 // floatProps renders what a float needs: its width, the compressed range a
 // read clamps to, and nf, the <Owner>.<field> name a non-finite read refuses
-// as (docs/SPEC-TABLES.md §3.3).
+// as (docs/SPEC-TABLES.md §3.3). A compressed float is a float32, and its
+// ends are the float32 the declaration names, where every runtime evaluates
+// the triple (SPEC §4.6): a double end a hair past it would refuse the
+// value 0.1f under max = 0.1 that the writer and the other legs hold.
 func (g *variableGen) floatProps(f *ir.Field) string {
 	lo, hi := "null", "null"
 	if f.HasFloatRange {
-		lo, hi = jsFloat(f.FMin), jsFloat(f.FMax)
+		lo, hi = jsFloat(float64(float32(f.FMin))), jsFloat(float64(float32(f.FMax)))
 	}
 	return fmt.Sprintf("f32: %v, lo: %s, hi: %s, nf: %s", f.Type.Kind == ir.TFloat32, lo, hi, jsStr(g.floatOwner(f)))
 }
