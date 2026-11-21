@@ -35,6 +35,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
@@ -71,8 +72,9 @@ var readingCommands = [][]string{
 }
 
 // every registered target, so the generate leg measures the whole matrix
-// rather than the two backends that happen to be convenient.
-var targets = []string{"c", "cpp", "cs", "dart", "elixir", "go", "java", "js", "rust"}
+// rather than the backends that happen to be convenient: read from the
+// driver, never a hand list (a hand list of nine hid the other nine).
+var targets = compiler.New().Targets()
 
 // buildCLI builds this package into the test's temporary directory and returns
 // the binary's path. The tests drive the CLI as a user does — a process, an
@@ -322,16 +324,21 @@ func TestSubprocessTestsAreGated(t *testing.T) {
 // its value.
 func TestNonGoTargetRefusesSurfaceByPresence(t *testing.T) {
 	t.Parallel()
-	for _, lang := range []string{"cpp", "cs", "java", "dart", "js", "elixir", "rust"} {
-		if err := refuseSurfaceForTarget(true, lang); err == nil {
+	// every registered target: go and python honor the flag, every other
+	// target refuses it by presence; the flag's absence is honored everywhere.
+	for _, lang := range targets {
+		err := refuseSurfaceForTarget(true, lang)
+		if lang == "go" || lang == "python" {
+			if err != nil {
+				t.Fatalf("refuseSurfaceForTarget(true, %q) must not refuse, got %v", lang, err)
+			}
+			continue
+		}
+		if err == nil {
 			t.Fatalf("refuseSurfaceForTarget(true, %q) must refuse by presence, got nil", lang)
 		}
 	}
-	// the Go target honors the flag; the flag's absence is honored everywhere.
-	if err := refuseSurfaceForTarget(true, "go"); err != nil {
-		t.Fatalf("refuseSurfaceForTarget(true, \"go\") must not refuse, got %v", err)
-	}
-	for _, lang := range []string{"go", "cpp", "cs", "java", "dart", "js", "elixir", "rust"} {
+	for _, lang := range targets {
 		if err := refuseSurfaceForTarget(false, lang); err != nil {
 			t.Fatalf("refuseSurfaceForTarget(false, %q) must not refuse, got %v", lang, err)
 		}

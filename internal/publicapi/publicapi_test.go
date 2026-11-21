@@ -222,7 +222,7 @@ func TestExternalModuleBuildsTheCLI(t *testing.T) {
 	}
 	var cases []genCase
 	for _, corpus := range []string{corpusDir, corpus128Dir} {
-		for _, target := range []string{"c", "cpp", "cs", "go", "js", "rust"} {
+		for _, target := range compiler.New().Targets() {
 			cases = append(cases, genCase{
 				name:   filepath.Base(corpus) + "-" + target,
 				corpus: corpus,

@@ -41,8 +41,10 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/ruby"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/rust"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/unity"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -76,11 +78,13 @@ var backends = []backend{
 	{"lobster", lobster.Generate},
 }
 
-// fuzzBackends is the full 16-emitter set driven by FuzzPipeline and
+// fuzzBackends is the full 18-emitter set, every target driven by FuzzPipeline and
 // FuzzPipelineTwoFiles, including python (which refuses declarations until P4
 // lands while emitting package skeletons on declaration-free units).
 var fuzzBackends = append(append([]backend(nil), backends...),
 	backend{"python", python.Generate},
+	backend{"ruby", ruby.Generate},
+	backend{"unity", unity.Generate},
 )
 
 // unitOf runs parse+check over the named sources. A parse or check failure is
@@ -228,11 +232,11 @@ func FuzzPipelineTwoFiles(f *testing.F) {
 }
 
 // TestFuzzPipelineAllSixteenEmitters verifies that fuzzBackends registers all
-// 16 emitters so FuzzPipeline and FuzzPipelineTwoFiles drive every target.
+// 18 emitters so FuzzPipeline and FuzzPipelineTwoFiles drive every target.
 func TestFuzzPipelineAllSixteenEmitters(t *testing.T) {
 	want := []string{
 		"cpp", "csharp", "golang", "rust", "c", "js", "dart",
-		"java", "elixir", "lua", "luau", "squirrel", "moo", "goose", "lobster", "python",
+		"java", "elixir", "lua", "luau", "squirrel", "moo", "goose", "lobster", "python", "ruby", "unity",
 	}
 	got := map[string]bool{}
 	for _, b := range fuzzBackends {

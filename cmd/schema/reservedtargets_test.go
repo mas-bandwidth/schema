@@ -274,7 +274,9 @@ func TestGenerateEveryTargetRefusesEveryLanguagesWords(t *testing.T) {
 	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	for _, lang := range []string{"c", "cpp", "cs", "dart", "elixir", "go", "java", "js", "rust"} {
+	// every registered target: the refusal is the checker's, so no target
+	// may generate a field the other languages cannot spell
+	for _, lang := range targets {
 		out, status := runFail(t, bin, "generate", "--lang", lang, "--out", filepath.Join(work, "out-"+lang), dir)
 		if status != 1 {
 			t.Errorf("generate --lang %s exited %d, want 1\n%s", lang, status, out)

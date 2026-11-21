@@ -79,7 +79,12 @@ func TestOptionalOverVariableClosureIsLegal(t *testing.T) {
 	src := "package probe\ntable Inner\n{\n    text *string\n}\ntable Outer\n{\n    inner ?Inner\n    pair ?[2]Inner\n}\n"
 	u := unitFromSource(t, src)
 	c := New()
-	for _, lang := range []string{"go", "c", "cs", "cpp", "dart", "java", "rust"} {
+	// every target that carries it generates it: the carriers are read from
+	// the registry, so a port that registers the construct is held to it
+	for _, lang := range c.Targets() {
+		if !carries(lang, carryOptionalVariableClosure) {
+			continue
+		}
 		t.Run(lang, func(t *testing.T) {
 			t.Parallel()
 			if _, err := c.Generate(u, lang, nil); err != nil {
