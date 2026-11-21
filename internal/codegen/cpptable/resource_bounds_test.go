@@ -46,6 +46,7 @@ fixed table Root
     blob     bytes(16)
     heading  float32 | min = -180.0, max = 180.0, resolution = 0.01
     gains    [2]float32 | min = -1.0, max = 1.0, resolution = 0.001
+    mask     bits(13)
 }
 `
 
@@ -273,5 +274,27 @@ func TestCppCompressedFloatNegZeroAndFloat32Range(t *testing.T) {
 	}
 	if !strings.Contains(src, "single ? (double) (float) f->range_min : f->range_min") {
 		t.Fatal("the JSON read compares a float32 against its unrounded double bound")
+	}
+}
+
+// THE VARIABLE SAVE'S WRITE CONTRACT on a field that is not `required`
+// (docs/SPEC.md §5.1 rows 1 and 2): a debug-only schema_assert, as the fixed
+// and packet writers hold it, and nothing a release build runs. Row 5 (an
+// enum outside its set) already refuses in every build through TableEnumRef.
+func TestCppVariableSaveAssertsTheWriteContract(t *testing.T) {
+	t.Parallel()
+	src := resourceBoundsEmitted(t)
+	save := cppFunctionText(t, src, "inline bool RootSaveBodyFields(")
+	for _, want := range []string{
+		"schema_assert( value.small >= ", // row 1, a ranged field
+		"schema_assert( value.small <= ",
+		"schema_assert( value.mask <= 8191ull );", // row 2, bits(13)
+	} {
+		if !strings.Contains(save, want) {
+			t.Fatalf("RootSaveBodyFields has no %q:\n%s", want, save)
+		}
+	}
+	if strings.Contains(save, "if ( value.small < -100") {
+		t.Fatal("a field that is not required refuses its range in every build; the assert leg asserts it")
 	}
 }
