@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -15,60 +16,138 @@ import (
 // driver a manifest without those rows, and scores each of them ABSENT: a
 // missing feature, never a pass (and on the reference leg, a failure).
 
+// refKind is what a derived manifest line names in its reference column.
+type refKind int
+
+const (
+	refNone     refKind = iota // the row reads no unit (a forgery)
+	refUnit                    // a unit key
+	refConn                    // a connection key: the row reads the connection's unit
+	refInstance                // an instance name: the row reads the instance's unit
+)
+
+// derivedRow is one line kind of the derived manifest (deriveManifest, run.go):
+// which column holds what the row reads, and the cases the row carries. It is
+// the one place that says how a line is read, so the filter and the check
+// below never guess a column. A cook-write's third column is a file name and a
+// forgery's a kind; neither is ever read as a unit.
+type derivedRow struct {
+	ref   refKind
+	col   int
+	cases func(f []string) []caseKey
+}
+
+func sameName(surfaces ...string) func(f []string) []caseKey {
+	return func(f []string) []caseKey {
+		out := make([]caseKey, len(surfaces))
+		for i, s := range surfaces {
+			out[i] = caseKey{s, f[1]}
+		}
+		return out
+	}
+}
+
+func ownName(f []string) []caseKey { return []caseKey{{f[0], f[1]}} }
+
+var derivedRows = map[string]derivedRow{
+	"unit":       {ref: refUnit, col: 1},
+	"connection": {ref: refUnit, col: 2},
+	"instance": {ref: refUnit, col: 2, cases: func(f []string) []caseKey {
+		// a no-text instance has a wire case alone (§16.7, claims.go)
+		if len(f) > 5 && slices.Contains(f[5:], "no-text") {
+			return []caseKey{{"wire", f[1]}}
+		}
+		return []caseKey{{"wire", f[1]}, {"json-read", f[1]}, {"json-write", f[1] + ".json"}}
+	}},
+	"json-write-refusal":    {ref: refUnit, col: 2, cases: func(f []string) []caseKey { return []caseKey{{"json-write", f[1] + ".json"}} }},
+	"message":               {ref: refConn, col: 2, cases: ownName},
+	"message-refusal":       {ref: refConn, col: 2, cases: ownName},
+	"write-refusal-message": {ref: refConn, col: 2, cases: ownName},
+	"write-refusal":         {ref: refUnit, col: 2, cases: ownName},
+	"write-refusal-fixed":   {ref: refUnit, col: 2, cases: ownName},
+	"write-refusal-json":    {ref: refUnit, col: 2, cases: ownName},
+	"retain":                {ref: refUnit, col: 2, cases: sameName("retain", "retain-save")},
+	"report":                {ref: refUnit, col: 2, cases: ownName},
+	"framing":               {ref: refUnit, col: 2, cases: ownName},
+	"json-hostile":          {ref: refUnit, col: 2, cases: ownName},
+	"cook":                  {ref: refUnit, col: 2, cases: sameName("cook", "cook-foreign")},
+	"block":                 {ref: refUnit, col: 2, cases: sameName("block", "block-foreign", "block-dump")},
+	"cook-write": {ref: refInstance, col: 1, cases: func(f []string) []caseKey {
+		return []caseKey{{"cook-write", f[1]}, {"cook-write", f[1] + "-be"}}
+	}},
+	"forgery": {ref: refNone},
+}
+
+// derivedLine reads one line of a derived manifest: its fields and its kind,
+// or nil fields for a blank line or a comment. A kind the table does not
+// know, or a line too short for its reference column, is refused.
+func derivedLine(line string) ([]string, derivedRow, error) {
+	f := strings.Fields(line)
+	if len(f) == 0 || strings.HasPrefix(f[0], "#") {
+		return nil, derivedRow{}, nil
+	}
+	row, ok := derivedRows[f[0]]
+	if !ok {
+		return nil, derivedRow{}, fmt.Errorf("`%s`: %q is not a derived manifest line kind", line, f[0])
+	}
+	if len(f) <= row.col || len(f) < 2 {
+		return nil, derivedRow{}, fmt.Errorf("`%s`: too short for a %s line", line, f[0])
+	}
+	return f, row, nil
+}
+
 // optInLines splits a derived manifest's text for one leg: kept is the text
 // without the rows on units the leg has not opted into, and dropped names
-// every case those rows carried.
-func optInLines(text string, skip map[string]bool) (kept string, dropped map[string]bool) {
+// every row those rows carried.
+func optInLines(text string, skip map[string]bool) (kept string, dropped map[string]bool, err error) {
 	dropped = map[string]bool{}
 	if len(skip) == 0 {
-		return text, dropped
+		return text, dropped, nil
 	}
-	// a pass over the connections first, so a message row on one goes too
+	// a pass over the connections and instances first, so a row that reads
+	// one goes with it
 	conns := map[string]bool{}
 	instances := map[string]bool{}
 	for line := range strings.SplitSeq(text, "\n") {
-		f := strings.Fields(line)
-		if len(f) > 2 && skip[f[2]] {
-			switch f[0] {
-			case "connection":
-				conns[f[1]] = true
-			case "instance":
-				instances[f[1]] = true
-			}
+		f, row, err := derivedLine(line)
+		if err != nil {
+			return "", nil, err
+		}
+		if f == nil || row.ref != refUnit || !skip[f[row.col]] {
+			continue
+		}
+		switch f[0] {
+		case "connection":
+			conns[f[1]] = true
+		case "instance":
+			instances[f[1]] = true
 		}
 	}
 	var b strings.Builder
 	for line := range strings.SplitSeq(text, "\n") {
-		f := strings.Fields(line)
+		f, row, _ := derivedLine(line)
 		drop := false
-		switch {
-		case len(f) == 0 || strings.HasPrefix(f[0], "#"):
-		case f[0] == "unit" && len(f) > 1 && skip[f[1]]:
-			drop = true
-		case f[0] == "connection" && len(f) > 1 && conns[f[1]]:
-			drop = true
-		case onConnection[f[0]]:
-			// its third field is a connection key, never a unit, even where
-			// a key happens to spell an omitted unit's name
-			if len(f) > 2 && conns[f[2]] {
-				drop, dropped[f[1]] = true, true
+		if f != nil {
+			switch row.ref {
+			case refUnit:
+				drop = skip[f[row.col]]
+			case refConn:
+				drop = conns[f[row.col]]
+			case refInstance:
+				drop = instances[f[row.col]]
 			}
-		case f[0] == "cook-write" && len(f) > 1 && instances[f[1]]:
-			drop, dropped[f[1]] = true, true
-		case len(f) > 2 && skip[f[2]]:
-			drop, dropped[f[1]] = true, true
 		}
-		if !drop {
-			b.WriteString(line)
-			b.WriteByte('\n')
+		if drop {
+			if row.cases != nil {
+				dropped[f[1]] = true
+			}
+			continue
 		}
+		b.WriteString(line)
+		b.WriteByte('\n')
 	}
-	return strings.TrimSuffix(b.String(), "\n"), dropped
+	return strings.TrimSuffix(b.String(), "\n"), dropped, nil
 }
-
-// onConnection is the derived line kinds whose third field is a connection
-// key rather than a unit: the row reads the connection's unit.
-var onConnection = map[string]bool{"message": true, "message-refusal": true, "write-refusal-message": true}
 
 // checkLegRows holds the filtered manifest to the cases the leg is asked: no
 // row it keeps belongs to a case the leg is not asked, and no row it keeps
@@ -78,41 +157,42 @@ var onConnection = map[string]bool{"message": true, "message-refusal": true, "wr
 func checkLegRows(kept string, cases notAsked) error {
 	conns, instances := map[string]bool{}, map[string]bool{}
 	for line := range strings.SplitSeq(kept, "\n") {
-		if f := strings.Fields(line); len(f) > 1 {
-			switch f[0] {
-			case "connection":
-				conns[f[1]] = true
-			case "instance":
-				instances[f[1]] = true
-			}
+		f, _, err := derivedLine(line)
+		if err != nil {
+			return err
+		}
+		if f == nil {
+			continue
+		}
+		switch f[0] {
+		case "connection":
+			conns[f[1]] = true
+		case "instance":
+			instances[f[1]] = true
 		}
 	}
 	for line := range strings.SplitSeq(kept, "\n") {
-		f := strings.Fields(line)
-		if len(f) < 2 || strings.HasPrefix(f[0], "#") {
+		f, row, _ := derivedLine(line)
+		if f == nil {
 			continue
 		}
-		var surfaces []caseKey
-		switch f[0] {
-		case "unit", "opt-in", "connection", "forgery":
-		case "instance":
-			surfaces = []caseKey{{"wire", f[1]}, {"json-read", f[1]}, {"json-write", f[1] + ".json"}}
-		case "json-write-refusal":
-			surfaces = []caseKey{{"json-write", f[1] + ".json"}}
-		default:
-			surfaces = []caseKey{{f[0], f[1]}}
-		}
-		for _, key := range surfaces {
-			if unit, ok := cases[key]; ok {
-				return fmt.Errorf("`%s` is a row of case %q on the %s surface, which reads the omitted unit %s",
-					strings.Join(f, " "), key.name, key.surface, unit)
+		if row.cases != nil {
+			for _, key := range row.cases(f) {
+				if unit, ok := cases[key]; ok {
+					return fmt.Errorf("`%s` is a row of case %q on the %s surface, which reads the omitted unit %s",
+						strings.Join(f, " "), key.name, key.surface, unit)
+				}
 			}
 		}
-		if onConnection[f[0]] && len(f) > 2 && !conns[f[2]] {
-			return fmt.Errorf("`%s` names connection %s, which the leg is not handed", strings.Join(f, " "), f[2])
-		}
-		if f[0] == "cook-write" && !instances[f[1]] {
-			return fmt.Errorf("`%s` names instance %s, which the leg is not handed", strings.Join(f, " "), f[1])
+		switch row.ref {
+		case refConn:
+			if !conns[f[row.col]] {
+				return fmt.Errorf("`%s` names connection %s, which the leg is not handed", strings.Join(f, " "), f[row.col])
+			}
+		case refInstance:
+			if !instances[f[row.col]] {
+				return fmt.Errorf("`%s` names instance %s, which the leg is not handed", strings.Join(f, " "), f[row.col])
+			}
 		}
 	}
 	return nil
@@ -197,7 +277,10 @@ func legManifest(m *Manifest, derived, lang string, listed map[string]bool) (str
 	if err != nil {
 		return "", nil, nil, err
 	}
-	kept, _ := optInLines(string(text), skip)
+	kept, _, err := optInLines(string(text), skip)
+	if err != nil {
+		return "", nil, nil, fmt.Errorf("the manifest for %s: %w", lang, err)
+	}
 	if err := checkLegRows(kept, cases); err != nil {
 		return "", nil, nil, fmt.Errorf("the manifest for %s: %w", lang, err)
 	}
