@@ -2,7 +2,7 @@
 // (test/conformance/README.md, "The wire-fuzz driver"; docs/SPEC-TABLES.md
 // §4.2; docs/PORT-SQUIRREL.md, THE HARNESS and THE CARD MAP).
 //
-// usage: sq test/conformance/squirrel/wirefuzz.nut [builder]
+// usage: sq test/conformance/squirrel/wirefuzz.nut [builder|mixed]
 //
 // ONE sq process for the whole run, on a pipe, that only reads. The harness
 // generates every mutant and holds the oracle; this leg loads each mutant
@@ -55,6 +55,12 @@ local out = ::stdout;
 
 local FORM_VARIABLE = 1;
 local builder = vargv.len() >= 1 && vargv[0] == "builder";
+// `mixed` is the harness's --mixed-builder profile (the Goose, Dart and
+// JavaScript legs' one): ONE process over the whole file roster, each FIXED
+// root answered as the plain arm answers it and each VARIABLE root as the
+// builder arm does. The nightly readiness run (test/conformance/nightly-readiness)
+// drives this leg this way.
+local mixed = vargv.len() >= 1 && vargv[0] == "mixed";
 
 // read exactly n bytes, or null at the end of the stream. A pipe has no
 // length, and the stream's readblob caps a read at len(), so the bytes are
@@ -214,7 +220,7 @@ for (local i = 0; i < count; i++) {
   if (form == FORM_VARIABLE) {
     local u = openUnit(unit);
     if (retain == 0) {
-      if (u != false && (root in u.T.Descriptors) && u.T.Descriptors[root].variable == builder) {
+      if (u != false && (root in u.T.Descriptors) && (mixed || u.T.Descriptors[root].variable == builder)) {
         codec = { u = u, root = root, d = u.T.Descriptors[root], retain = false };
       }
     } else if (retain == 1) {
@@ -264,7 +270,7 @@ for (;;) {
   } else {
     local v = c.u.L.loadWalk(c.u.T, c.root, wire, report);
     loaded = v != null && !report.stopped;
-    if (!builder) {
+    if (!builder && !(mixed && c.d.variable)) {
       if (v == null) v = c.d.make();
       loaded = true;
     }
