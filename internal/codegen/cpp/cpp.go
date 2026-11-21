@@ -125,6 +125,7 @@ type gen struct {
 	bulkBytes      map[*ir.Field]bool // fixed [N]uint8 arrays at statically byte-aligned positions (ir.AlignedFixedByteArrays)
 	saidReadSlack  bool               // the read-slack buffer contract is stated once per file, on its first MaxBytes
 	saidFlagAppend bool               // the FlagNames append helpers are emitted once per file
+	members        map[string]bool    // inside a class body: the member names it declares (see scoped)
 	needsSerialize bool               // the file emits wire functions -> include "serialize.h"
 	needsNew       bool               // placement construction of selected union arms
 	needsCstring   bool               // the file emits memset/memcpy -> include <string.h>
@@ -359,7 +360,14 @@ func (g *gen) emitUnion(d *ir.Union) {
 	}
 	g.pf("// Bytes of unselected arms are indeterminate.\n")
 	g.pf("struct %s\n{\n", d.Name)
-	g.pf("    %sType type;\n", d.Name)
+	g.members = map[string]bool{"type": true}
+	for _, v := range d.Variants {
+		if !v.Void() {
+			g.members[v.Name] = true
+		}
+	}
+	tag := g.scoped(d.Name+"Type", d.DeclaredName()+"Type")
+	g.pf("    %s type;\n", tag)
 	if firstPayload != nil {
 		g.pf("\n    union\n    {\n")
 		for _, v := range d.Variants {
@@ -367,13 +375,23 @@ func (g *gen) emitUnion(d *ir.Union) {
 				continue // a payload-free arm has only its tag (SPEC §4.8)
 			}
 			g.noteRef(v.Type)
-			g.pf("        %s %s;\n", v.Type, v.Name)
+			g.pf("        %s %s;\n", g.armType(v), v.Name)
 		}
 		g.pf("    };\n")
 	}
-	g.pf("\n    %s() : type( %sType::None ) {} // the tag only — arms are freshly constructed at selection\n", d.Name, d.Name)
-	g.emitArmSetters(d)
+	g.pf("\n    %s() : type( %s::None ) {} // the tag only — arms are freshly constructed at selection\n", d.Name, tag)
+	g.emitArmSetters(d, tag)
+	g.members = nil
 	g.pf("};\n\n")
+}
+
+// armType is an arm's payload type as the union struct's body spells it.
+func (g *gen) armType(v ir.UnionVariant) string {
+	declared := v.Type
+	if v.Ref != nil && v.Ref.Name == v.Type {
+		declared = v.Ref.DeclaredName()
+	}
+	return g.scoped(v.Type, declared)
 }
 
 // emitArmSetters emits one Select<Variant>() member per arm (SPEC §4.8, the
@@ -382,8 +400,7 @@ func (g *gen) emitUnion(d *ir.Union) {
 // the same construction Read<Name> performs — and returned for the caller to
 // populate; a payload-free arm's setter assigns the tag alone. The setters sit
 // in the data header and touch no wire function, so the wire half is unmoved.
-func (g *gen) emitArmSetters(d *ir.Union) {
-	tag := d.Name + "Type"
+func (g *gen) emitArmSetters(d *ir.Union, tag string) {
 	for _, v := range d.Variants {
 		arm := ir.GoExportName(v.Name)
 		g.pf("\n")
@@ -395,9 +412,9 @@ func (g *gen) emitArmSetters(d *ir.Union) {
 			continue
 		}
 		g.needsNew = true
-		g.pf("    %s & Select%s() // sets the tag and constructs the arm with its defaults (SPEC §4.8)\n", v.Type, arm)
+		g.pf("    %s & Select%s() // sets the tag and constructs the arm with its defaults (SPEC §4.8)\n", g.armType(v), arm)
 		g.pf("    {\n")
-		g.pf("        ::new ( static_cast<void *>( &%s ) ) %s{};\n", v.Name, v.Type)
+		g.pf("        ::new ( static_cast<void *>( &%s ) ) %s{};\n", v.Name, g.armType(v))
 		g.pf("        type = %s::%s;\n", tag, arm)
 		g.pf("        return %s;\n", v.Name)
 		g.pf("    }\n")
@@ -556,8 +573,35 @@ func (g *gen) emitStruct(d *ir.Struct) {
 	g.pf("%s", ir.DocComment(d.Doc, "", "//"))
 	g.pf("// type %s\n", d.Name)
 	g.pf("struct %s\n{\n", d.Name)
+	g.members = map[string]bool{}
+	for _, f := range d.Fields {
+		g.members[f.Name] = true
+		switch {
+		case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+			g.members[f.Name+"_length"] = true
+		case f.Array == ir.ArrayCounted:
+			g.members[f.Name+"_count"] = true
+		}
+	}
 	g.emitFields(d.Fields)
+	g.members = nil
 	g.pf("};\n\n")
+}
+
+// scoped spells a namespace-scope name (a type, a constant, a flags bit) for
+// use inside the class body being emitted. A member is in scope across its
+// whole class, so a field named like a type it or a sibling uses (`kind kind`,
+// SPEC §4.6) hides that type there, and a use before the member is declared
+// changes the name's meaning in the class, which C++ refuses: such a name is
+// written qualified from the global namespace, which no member can hide.
+// spelled is the emitter's spelling (a marked one under the type escape) and
+// declared is the schema's, which is what a member name can equal. Outside a
+// class body, and for a name no member shares, the spelling is unchanged.
+func (g *gen) scoped(spelled, declared string) string {
+	if g.members[declared] {
+		return "::" + g.unit.Package + "::" + spelled
+	}
+	return spelled
 }
 
 func (g *gen) emitFields(fields []*ir.Field) {
@@ -618,9 +662,9 @@ func (g *gen) initializer(f *ir.Field, typ string, isStructType bool) string {
 		case f.Type.Kind == ir.TBool:
 			return fmt.Sprintf(" = %v", f.DefBool)
 		case f.DefVariant != "":
-			return fmt.Sprintf(" = %s::%s", f.Type.Name, f.DefVariant)
+			return fmt.Sprintf(" = %s::%s", g.scoped(f.Type.Name, f.Type.DeclaredName()), f.DefVariant)
 		case f.Type.Kind == ir.TNamed:
-			return " = " + flagsDefaultExpr(f) // a flags mask is the one named type with a value default
+			return " = " + g.flagsDefaultExpr(f) // a flags mask is the one named type with a value default
 		case f.Type.Kind == ir.TFloat32:
 			return " = " + formatFloat(f.DefFloat, true)
 		case f.Type.Kind == ir.TFloat64:
@@ -649,7 +693,7 @@ func (g *gen) initializer(f *ir.Field, typ string, isStructType bool) string {
 		return " = 0.0"
 	case ir.TNamed:
 		if _, isEnum := f.Type.Ref.(*ir.Enum); isEnum {
-			return fmt.Sprintf(" = %s::None", f.Type.Name)
+			return fmt.Sprintf(" = %s::None", g.scoped(f.Type.Name, f.Type.DeclaredName()))
 		}
 		return " = 0" // flags alias
 	default:
@@ -725,7 +769,7 @@ func (g *gen) cppFieldType(t ir.FieldType) (string, bool) {
 		if _, isUnion := t.Ref.(*ir.Union); isUnion {
 			// the generated union struct self-initializes (its constructor
 			// is the None value), the struct rule exactly
-			return t.Name, true
+			return g.scoped(t.Name, t.DeclaredName()), true
 		}
 		st, isStruct := t.Ref.(*ir.Struct)
 		if isStruct && st.CppNative != "" && g.unit.DeclFile[t.Name] != g.file.Base {
@@ -737,7 +781,7 @@ func (g *gen) cppFieldType(t ir.FieldType) (string, bool) {
 			g.nativeIncludes[st.CppInclude] = true
 			return "::" + st.CppNative, true
 		}
-		return t.Name, isStruct
+		return g.scoped(t.Name, t.DeclaredName()), isStruct
 	}
 	return "/* ? */", false
 }
@@ -824,7 +868,7 @@ func (g *gen) renderable(e ast.Expr) bool {
 func (g *gen) renderExpr(e ast.Expr) string {
 	return spaceParens(ir.RenderExprIdent(e, func(name string) string {
 		g.noteRef(name)
-		return name
+		return g.scoped(name, name)
 	}))
 }
 
@@ -926,7 +970,7 @@ func byteListLit(b []byte) string {
 // flagsDefaultExpr renders a flags default as the declaration's own masks
 // ored together, `( Caps_Jump | Caps_Crouch )`, and `0` for the empty set
 // (SPEC §4.2).
-func flagsDefaultExpr(f *ir.Field) string {
+func (g *gen) flagsDefaultExpr(f *ir.Field) string {
 	fl, ok := f.Type.Ref.(*ir.Flags)
 	if !ok || !f.HasDefault || f.DefInt == nil || f.DefInt.Sign() == 0 {
 		return "0"
@@ -934,7 +978,7 @@ func flagsDefaultExpr(f *ir.Field) string {
 	var names []string
 	for i, v := range fl.Variants {
 		if f.DefInt.Bit(i) == 1 {
-			names = append(names, fl.Name+"_"+v)
+			names = append(names, g.scoped(fl.Name+"_"+v, fl.DeclaredName()+"_"+v))
 		}
 	}
 	return "( " + strings.Join(names, " | ") + " )"

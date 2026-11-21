@@ -1,0 +1,9 @@
+package probe
+
+type Holder
+{
+    Kind  Kind = Beta
+    Point Point
+    Shape Shape
+    Count [Count]uint8
+}

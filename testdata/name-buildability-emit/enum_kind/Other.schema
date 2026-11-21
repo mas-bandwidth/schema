@@ -3,6 +3,6 @@ package probe
 type Holder
 {
     slots Slots
-    mode  kind
+    kind  kind
     x     float32
 }

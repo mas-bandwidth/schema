@@ -1,0 +1,23 @@
+package probe
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+const Count = 3
+
+type Point
+{
+    x float32
+    y float32
+}
+
+union Shape
+{
+    Point Point
+}
+
+table Item
+{
+    Kind  Kind
+    Count [..Count]uint16
+}
