@@ -47,6 +47,7 @@ for unit in featurewitnesses:testdata/conformance/feature-witnesses/full/Feature
 	tblvarevo3:test/tables/varevo/VarEvo3.schema \
 	cooktorture:test/tables/cooktorture/CookTorture.schema \
 	cooktorturewide:test/tables/cooktorturewide/CookTortureWide.schema \
+	packetunions:test/tables/packetunions/PacketUnions.schema \
 	tblv1:test/tables/V1.schema \
 	tblv2:test/tables/V2.schema \
 	tblw1:test/tables/W1.schema \
@@ -74,6 +75,18 @@ for unit in featurewitnesses:testdata/conformance/feature-witnesses/full/Feature
 		sed 's/^use crate::\*;/use super::*;/' "$f" > "$dir/src/$name/$(basename "$f")"
 		printf '#[allow(dead_code, unused_imports)]\npub mod %s;\n#[allow(unused_imports)]\npub use %s::*;\n' "$m" "$m" >>"$dir/src/$name/mod.rs"
 	done
+	# A unit whose tables name packet types carries them in its packet module,
+	# and its lib.rs pins each name both layers declare to the packet type
+	# (`pub use <packet module>::<Name>;`, docs/SPEC-TABLES.md Rust notes).
+	# The unit module here does the same, or the fixed and message modules'
+	# `use super::*` would reach the table layer's type of that name.
+	if [ -f "$dir/gen/$name/lib.rs" ]; then
+		for m in $(sed -n 's/^pub use \([a-z0-9_]*\)::[A-Z][A-Za-z0-9_]*;$/\1/p' "$dir/gen/$name/lib.rs" | sort -u); do
+			cp "$dir/gen/$name/$m.rs" "$dir/src/$name/$m.rs"
+			printf '#[allow(dead_code, unused_imports)]\npub mod %s;\n#[allow(unused_imports)]\npub use %s::*;\n' "$m" "$m" >>"$dir/src/$name/mod.rs"
+		done
+		grep -E '^pub use [a-z0-9_]+::[A-Z][A-Za-z0-9_]*;$' "$dir/gen/$name/lib.rs" >>"$dir/src/$name/mod.rs" || true
+	fi
 done
 cp test/conformance/rust/src/wire_fuzz_all.rs "$dir/src/main.rs"
 rustc --edition 2024 -C opt-level=1 -C codegen-units=16 -A warnings -o "$out" "$dir/src/main.rs"

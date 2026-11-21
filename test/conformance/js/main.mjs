@@ -579,6 +579,7 @@ const messageRows = [
   ["vocab9demo", "Wide00", "vocab9/Vocab9demoTable.js", "vocab9/Vocab9Table.js"],
   ["tblvarevo1", "EvoMsg", "varevo1/Tblvarevo1Table.js", "varevo1/VarEvo1Table.js"],
   ["tblvarevo3", "EvoMsg", "varevo3/Tblvarevo3Table.js", "varevo3/VarEvo3Table.js"],
+  ["packetunions", "ShapeMsg", "packetunions/TblpacketunionsTable.js", "packetunions/PacketUnionsTable.js"],
 ];
 
 const messageFuzzRows = [
@@ -743,6 +744,8 @@ const wireRows = [
   ["cooktorture", "TortureCook", "cooktorture/CookTortureVariable.js"],
   ["cooktorture", "TortureFixedWref", "cooktorture/CookTortureVariable.js"],
   ["cooktorturewide", "TortureWideCook", "cooktorturewide/CookTortureWideVariable.js"],
+  ["packetunions", "ShapeDoc", "packetunions/TblpacketunionsVariable.js"],
+  ["packetunions", "ShapeMsg", "packetunions/TblpacketunionsVariable.js"],
   // the message corpus's root on the variable wire: union arms of every
   // carried field type, wide text among them (§2.6, §3)
   ["messagedemo", "ToolMessage", "messages/MessagedemoVariable.js"],
@@ -947,6 +950,7 @@ const textUnits = {
   tblvarevo3: "varevo3/Tblvarevo3Variable.js",
   cooktorture: "cooktorture/CookTortureVariable.js",
   cooktorturewide: "cooktorturewide/CookTortureWideVariable.js",
+  packetunions: "packetunions/TblpacketunionsVariable.js",
   backenddemo: "backend/BackenddemoVariable.js",
   vocabdemo: "vocab/VocabdemoVariable.js",
   vocab9demo: "vocab9/Vocab9demoVariable.js",

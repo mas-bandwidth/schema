@@ -149,7 +149,10 @@ import '../../../build/tables-generated-dart/cooktorture/CookTortureFixed.dart' 
 import '../../../build/tables-generated-dart/cooktorture/CookTortureCook.dart' as cooktorturecook;
 import '../../../build/tables-generated-dart-scalars/cooktorturewide/CookTortureWideWire.dart' as cooktorturewide;
 import '../../../build/tables-generated-dart-scalars/cooktorturewide/CookTortureWideCook.dart' as cooktorturewidecook;
-
+import '../../../build/tables-generated-dart/packetunions/TblpacketunionsWire.dart' as tblpacketunions;
+import '../../../build/tables-generated-dart/packetunions/TblpacketunionsFixed.dart' as tblpacketunions_fixed;
+import '../../../build/tables-generated-dart/packetunions/PacketUnions.dart' as packetunions_packet;
+import '../../../build/tables-generated-dart/packetunions/PacketUnionsFixed.dart' as packetunions_fixed;
 // Decode JSON bytes before entering a generated String reader. The generated
 // reader owns the one leading byte-order mark skip (docs/SPEC-TABLES.md §16.2,
 // §16.12), so the boundary hands it the text unchanged, as the JS driver's
@@ -1150,6 +1153,49 @@ void _f2w_varevo3_EvoMsg(tblvarevo3_fixed.EvoMsg f, tblvarevo3.EvoMsg w) {
   w.seq = f.seq;
   w.tier = f.tier;
   w.v3Extra = f.v3Extra;
+}
+
+void _w2f_packetunions_Shape(tblpacketunions.Shape w, packetunions_packet.Shape f) {
+  f.type = packetunions_packet.ShapeType(w.armTag);
+  if (w.armTag == 1) {
+    f.ring.radius = w.ring.radius;
+  } else if (w.armTag == 2) {
+    f.slab.width = w.slab.width;
+    f.slab.depth = w.slab.depth;
+  }
+}
+
+void _f2w_packetunions_Shape(packetunions_packet.Shape f, tblpacketunions.Shape w) {
+  w.armTag = f.type;
+  if (f.type == 1) {
+    w.ring.radius = f.ring.radius;
+  } else if (f.type == 2) {
+    w.slab.width = f.slab.width;
+    w.slab.depth = f.slab.depth;
+  }
+}
+
+void _w2f_packetunions_ShapeMsg(tblpacketunions.ShapeMsg w, tblpacketunions_fixed.ShapeMsg f) {
+  f.seq = w.seq;
+  f.shapesCount = w.shapes.length;
+  for (var i = 0; i < w.shapes.length; i++) {
+    _w2f_packetunions_Shape(w.shapes[i], f.shapes[i]);
+  }
+  for (var i = 0; i < f.pair.length; i++) {
+    _w2f_packetunions_Shape(w.pair[i], f.pair[i]);
+  }
+}
+
+void _f2w_packetunions_ShapeMsg(tblpacketunions_fixed.ShapeMsg f, tblpacketunions.ShapeMsg w) {
+  w.seq = f.seq;
+  w.shapes = List<tblpacketunions.Shape>.generate(f.shapesCount, (i) {
+    final e = tblpacketunions.Shape();
+    _f2w_packetunions_Shape(f.shapes[i], e);
+    return e;
+  });
+  for (var i = 0; i < f.pair.length; i++) {
+    _f2w_packetunions_Shape(f.pair[i], w.pair[i]);
+  }
 }
 
 void _w2f_scalars_Pose(scalardemo.Pose w, dynamic f) {
@@ -2319,6 +2365,18 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
       return _fixedResave(wire, cooktorture_fixed.TortureFixedWref.new, cooktorture_fixed.tortureFixedWrefFixedNewPlan, cooktorture_fixed.TableFixedReport.new, (rep) => rep.refused != 0, cooktorture_fixed.tortureFixedWrefFixedLoad, cooktorture_fixed.tortureFixedWrefFixedMeasure, cooktorture_fixed.tortureFixedWrefFixedSave);
     case 'cooktorturewide TortureWideCook':
       return _wireResaveOne(wire, cooktorturewide.TableWireReport.new, (rep) => (rep.refused, rep.refusal), cooktorturewide.tortureWideCookWireLoad, cooktorturewide.tortureWideCookWireSave);
+    case 'packetunions ShapeDoc':
+      return _wireResaveOne(wire, tblpacketunions.TableWireReport.new, (rep) => (rep.refused, rep.refusal), tblpacketunions.shapeDocWireLoad, tblpacketunions.shapeDocWireSave);
+    case 'packetunions ShapeMsg':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tblpacketunions.TableWireReport();
+        final w = tblpacketunions.shapeMsgWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = tblpacketunions_fixed.ShapeMsg();
+        _w2f_packetunions_ShapeMsg(w, f);
+        return _fixedSaveOne(f, packetunions_fixed.shapeMsgFixedMeasure, packetunions_fixed.shapeMsgFixedSave);
+      }
+      return _fixedResave(wire, tblpacketunions_fixed.ShapeMsg.new, packetunions_fixed.shapeMsgFixedNewPlan, tblpacketunions_fixed.TableFixedReport.new, (rep) => rep.refused != 0, packetunions_fixed.shapeMsgFixedLoad, packetunions_fixed.shapeMsgFixedMeasure, packetunions_fixed.shapeMsgFixedSave);
     case 'listdemo Army':
       return _wireResaveOne(wire, listdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), listdemo.armyWireLoad, listdemo.armyWireSave);
     case 'listdemo Mixed':
@@ -2757,6 +2815,18 @@ Uint8List? jsonReadSave(String unit, String root, String text) {
       final v = cooktorturewide.tortureWideCookFromJson(text, rep);
       if (rep.refused) return null;
       return cooktorturewide.tortureWideCookWireSave(v);
+    case 'packetunions ShapeDoc':
+      final rep = tblpacketunions.TableTextReport();
+      final v = tblpacketunions.shapeDocFromJson(text, rep);
+      if (rep.refused) return null;
+      return tblpacketunions.shapeDocWireSave(v);
+    case 'packetunions ShapeMsg':
+      final rep = tblpacketunions.TableTextReport();
+      final w = tblpacketunions.shapeMsgFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = tblpacketunions_fixed.ShapeMsg();
+      _w2f_packetunions_ShapeMsg(w, f);
+      return _fixedSaveOne(f, packetunions_fixed.shapeMsgFixedMeasure, packetunions_fixed.shapeMsgFixedSave);
     case 'listdemo Army':
       final rep = listdemo.TableTextReport();
       final v = listdemo.armyFromJson(text, rep);
@@ -3152,6 +3222,23 @@ String? jsonWriteText(String unit, String root, Uint8List wire) {
       final v = cooktorturewide.tortureWideCookWireLoad(wire, rep);
       if (rep.refused) return null;
       return cooktorturewide.tortureWideCookToJson(v);
+    case 'packetunions ShapeDoc':
+      final rep = tblpacketunions.TableWireReport();
+      final v = tblpacketunions.shapeDocWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return tblpacketunions.shapeDocToJson(v);
+    case 'packetunions ShapeMsg':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tblpacketunions.TableWireReport();
+        final w = tblpacketunions.shapeMsgWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return tblpacketunions.shapeMsgToJson(w);
+      }
+      final f = _fixedLoadOne(wire, tblpacketunions_fixed.ShapeMsg.new, packetunions_fixed.shapeMsgFixedNewPlan, tblpacketunions_fixed.TableFixedReport.new, (rep) => rep.refused != 0, packetunions_fixed.shapeMsgFixedLoad);
+      if (f == null) return null;
+      final w = tblpacketunions.ShapeMsg();
+      _f2w_packetunions_ShapeMsg(f, w);
+      return tblpacketunions.shapeMsgToJson(w);
     case 'listdemo Army':
       final rep = listdemo.TableWireReport();
       final v = listdemo.armyWireLoad(wire, rep);
@@ -3636,6 +3723,10 @@ String? loadReport(String unit, String root, Uint8List wire, {bool framing = fal
       final rep = cooktorturewide.TableWireReport();
       cooktorturewide.tortureWideCookWireLoad(wire, rep);
       return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
+    case 'packetunions ShapeDoc':
+      final rep = tblpacketunions.TableWireReport();
+      tblpacketunions.shapeDocWireLoad(wire, rep);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
     case 'listdemo Army':
       final rep = listdemo.TableWireReport();
       listdemo.armyWireLoad(wire, rep);
@@ -3744,6 +3835,8 @@ String? loadReport(String unit, String root, Uint8List wire, {bool framing = fal
       return _fixedReportLine(wire, tblvarevo1_fixed.EvoMsg.new, varevo1_fixed.evoMsgFixedNewPlan, tblvarevo1_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), varevo1_fixed.evoMsgFixedLoad);
     case 'tblvarevo3 EvoMsg':
       return _fixedReportLine(wire, tblvarevo3_fixed.EvoMsg.new, varevo3_fixed.evoMsgFixedNewPlan, tblvarevo3_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), varevo3_fixed.evoMsgFixedLoad);
+    case 'packetunions ShapeMsg':
+      return _fixedReportLine(wire, tblpacketunions_fixed.ShapeMsg.new, packetunions_fixed.shapeMsgFixedNewPlan, tblpacketunions_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), packetunions_fixed.shapeMsgFixedLoad);
     case 'cooktorture TortureFixedWref':
       return _fixedReportLine(wire, cooktorture_fixed.TortureFixedWref.new, cooktorture_fixed.tortureFixedWrefFixedNewPlan, cooktorture_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), cooktorture_fixed.tortureFixedWrefFixedLoad);
   }
@@ -5114,6 +5207,18 @@ final Map<String, MessageCodec> messageRuns = {
     save: varevo3_fixed.evoMsgSaveMessages,
     damaged: (r) => r.refused,
   ),
+  'packetunions ShapeMsg': _messageRow<tblpacketunions_fixed.ShapeMsg, tblpacketunions_fixed.TableVocabulary, tblpacketunions_fixed.TableReport>(
+    fresh: tblpacketunions_fixed.ShapeMsg.new,
+    init: tblpacketunions_fixed.initShapeMsg,
+    vocabulary: () => tblpacketunions_fixed.TableVocabulary(entries: _entries(() => tblpacketunions_fixed.TableMessageEntry(0, 0))),
+    report: tblpacketunions_fixed.TableReport.new,
+    own: () => _ownAnnouncement(tblpacketunions_fixed.announceMeasure, tblpacketunions_fixed.announce),
+    announceRead: tblpacketunions_fixed.announceRead,
+    load: packetunions_fixed.shapeMsgLoadMessages,
+    measure: packetunions_fixed.shapeMsgMeasureMessages,
+    save: packetunions_fixed.shapeMsgSaveMessages,
+    damaged: (r) => r.refused,
+  ),
 };
 
 final Map<String, MessageCodec> messageFuzzRuns = {
@@ -5832,6 +5937,13 @@ _FuzzRoot? fuzzRoot(String unit, String root) {
       return _FuzzRoot(
           _plainCodec(cooktorturewide.TableWireReport.new, cooktorturewide.tortureWideCookWireMeasure, cooktorturewide.tortureWideCookWireLoad, cooktorturewide.tortureWideCookWireSave),
           retain: _retainCodec(cooktorturewide.TableRetain.new, cooktorturewide.TableWireReport.new, cooktorturewide.tortureWideCookWireMeasure, cooktorturewide.tortureWideCookWireLoadRetain, cooktorturewide.tortureWideCookWireSaveRetain));
+    case 'packetunions ShapeDoc':
+      return _FuzzRoot(
+          _plainCodec(tblpacketunions.TableWireReport.new, tblpacketunions.shapeDocWireMeasure, tblpacketunions.shapeDocWireLoad, tblpacketunions.shapeDocWireSave),
+          retain: _retainCodec(tblpacketunions.TableRetain.new, tblpacketunions.TableWireReport.new, tblpacketunions.shapeDocWireMeasure, tblpacketunions.shapeDocWireLoadRetain, tblpacketunions.shapeDocWireSaveRetain));
+    case 'packetunions ShapeMsg':
+      return _FuzzRoot(
+          _fixedFuzzCodec(tblpacketunions_fixed.ShapeMsg.new, packetunions_fixed.shapeMsgFixedNewPlan, tblpacketunions_fixed.TableFixedReport.new, packetunions_fixed.shapeMsgFixedLoad, packetunions_fixed.shapeMsgFixedMeasure, packetunions_fixed.shapeMsgFixedSave));
   }
   return null;
 }

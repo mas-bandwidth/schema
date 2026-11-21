@@ -128,6 +128,7 @@ ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	tblfixedevo:test/tables/fixedevo \
 	tblvarevo1:test/tables/varevo/VarEvo1.schema tblvarevo2:test/tables/varevo/VarEvo2.schema tblvarevo3:test/tables/varevo/VarEvo3.schema \
 	cooktorture:test/tables/cooktorture/CookTorture.schema cooktorturewide:test/tables/cooktorturewide/CookTortureWide.schema \
+	packetunions:test/tables/packetunions/PacketUnions.schema \
 	tblrt1:test/tables/RT1.schema tblrt2:test/tables/RT2.schema tblrt3:test/tables/RT3.schema \
 	tblg1:test/tables/G1.schema widelist:tables/widelist \
 	featurewitnesses:testdata/conformance/feature-witnesses/full/Features.schema

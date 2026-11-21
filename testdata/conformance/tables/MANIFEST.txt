@@ -1818,3 +1818,34 @@ write-refusal-json jref_union_tag          tabledemo   RootConfig       testdata
 write-refusal-json jref_count              tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              weapons                                  count   9            refused
 write-refusal-json jref_length             tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              version_note                             length  17           refused
 write-refusal-json jref_bytes_length       tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              profiles[0].icon                         length  17           refused
+
+# ---- AN ARRAY OF PACKET UNIONS (docs/SPEC-TABLES.md §2.6, §3, §3.3, §3.4) ----
+# A union whose arms are all packet types, as an array in a table closure: the
+# counted spelling and the fixed spelling, each with a None element riding
+# live between two arms, in the variable class (ShapeDoc, form 1), the fixed
+# class (ShapeMsg, form 3) and the message form (form 2). The wires are the
+# compiler engine's (`schema pack`); every leg reads and writes them.
+unit packetunions test/tables/packetunions/PacketUnions.schema
+
+instance packetunions_doc_full  packetunions ShapeDoc testdata/conformance/tables/wire/packetunions_doc_full.bin
+instance packetunions_doc_empty packetunions ShapeDoc testdata/conformance/tables/wire/packetunions_doc_empty.bin
+instance packetunions_msg_full  packetunions ShapeMsg testdata/conformance/tables/wire/packetunions_msg_full.bin
+instance packetunions_msg_one   packetunions ShapeMsg testdata/conformance/tables/wire/packetunions_msg_one.bin
+
+connection packetunions_conn packetunions 0xffdaf476ba71ad22 testdata/wire/tables/packetunions_conn.bin
+message packetunions_msg_full packetunions_conn ShapeMsg testdata/conformance/tables/wire/packetunions_msg_full.bin testdata/wire/tables/packetunions_msg_full_message.bin
+message packetunions_msg_one  packetunions_conn ShapeMsg testdata/conformance/tables/wire/packetunions_msg_one.bin  testdata/wire/tables/packetunions_msg_one_message.bin
+
+# The reads every leg owes on the same construct. Variable form: four elements
+# against [..3] refuses; an arm id this build does not declare (a later build's
+# third arm) reads as a None element, skipped by its length and counted, the
+# slot kept live. Fixed form: four against [..3] refuses, an arm tag past the
+# union's last arm refuses, and a None element or an unused slot holding a
+# nonzero byte is non-canonical and refuses.
+report packetunions_doc_count_past_bound packetunions ShapeDoc testdata/wire/tables/packetunions_doc_count_past_bound.bin
+report packetunions_doc_unknown_arm      packetunions ShapeDoc testdata/wire/tables/packetunions_doc_unknown_arm.bin
+report packetunions_msg_count_past_bound packetunions ShapeMsg testdata/wire/tables/packetunions_msg_count_past_bound.bin
+report packetunions_msg_tag_past_max     packetunions ShapeMsg testdata/wire/tables/packetunions_msg_tag_past_max.bin
+report packetunions_msg_none_payload     packetunions ShapeMsg testdata/wire/tables/packetunions_msg_none_payload.bin
+report packetunions_msg_unused_slot      packetunions ShapeMsg testdata/wire/tables/packetunions_msg_unused_slot.bin
+rewrite packetunions_doc_unknown_arm     packetunions ShapeDoc testdata/wire/tables/packetunions_doc_unknown_arm.bin

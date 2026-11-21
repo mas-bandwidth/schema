@@ -15,6 +15,7 @@ import (
 	"tblk2"
 	"tblm1"
 	"tblm2"
+	"tblpacketunions"
 	tblscalars2 "tblscalars2"
 	"tblv1"
 	"tblv2"
@@ -229,6 +230,13 @@ var messageCodecs = []messageCodec{
 		v.Init(make([]tblvarevo3.TableMessageEntry, max(4096, tblvarevo3.TableMessageEntriesHere)))
 		return v
 	}, tblvarevo3.AnnounceMeasure, tblvarevo3.Announce, tblvarevo3.AnnounceRead, tblvarevo3.EvoMsgLoadMessages, tblvarevo3.EvoMsgMeasureMessages, tblvarevo3.EvoMsgSaveMessages, func(r *tblvarevo3.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}),
+	messageRow("packetunions", "ShapeMsg", tblpacketunions.ShapeMsgReset, func() *tblpacketunions.TableVocabulary {
+		v := new(tblpacketunions.TableVocabulary)
+		v.Init(make([]tblpacketunions.TableMessageEntry, max(4096, tblpacketunions.TableMessageEntriesHere)))
+		return v
+	}, tblpacketunions.AnnounceMeasure, tblpacketunions.Announce, tblpacketunions.AnnounceRead, tblpacketunions.ShapeMsgLoadMessages, tblpacketunions.ShapeMsgMeasureMessages, tblpacketunions.ShapeMsgSaveMessages, func(r *tblpacketunions.TableReport) report {
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),
 	messageRow("tblvarevo2", "EvoMsg", tblvarevo2.EvoMsgReset, func() *tblvarevo2.TableVocabulary {

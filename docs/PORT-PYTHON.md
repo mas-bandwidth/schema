@@ -423,6 +423,14 @@ generated class per table and per map entry, each with its descriptor
   - unions with table arms, and arrays of them: carried
     ([the table unions](port-python/table-unions.md))
 
+  - arrays of a union whose arms are all packet types: carried on the
+    variable, fixed, message and text forms, through the same descriptor-driven
+    `union_array` codec (test/tables/packetunions). A write raises
+    `InvalidValue` for a count past the bound, a tag that names no arm or an
+    arm value out of range; a read refuses an out-of-range count, a fixed-form
+    tag past the last arm and nonzero dead bytes, and reads an unknown variable
+    arm as None.
+
 - **A packet-typed field is carried by value.** A packet `type` in a table
   field, array element, map value or union arm is carried
   ([the table packet types](port-python/table-packet-types.md)).

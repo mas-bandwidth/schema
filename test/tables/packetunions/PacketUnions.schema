@@ -1,0 +1,39 @@
+// PacketUnions.schema — an ARRAY OF UNIONS whose arms are all packet types,
+// in a variable table and in a fixed table (docs/SPEC-TABLES.md §2.6, §3,
+// §3.3; docs/SPEC.md §4.8). A packet union in a table closure is a union slot
+// per element: the counted spelling and the fixed spelling, a None element
+// riding live between two arms, in both classes and on the message form.
+package tblpacketunions
+
+type Ring
+{
+    radius uint16
+}
+
+type Slab
+{
+    width uint8
+    depth int16
+}
+
+union Shape
+{
+    ring Ring
+    slab Slab
+}
+
+// The variable class (form 1).
+table ShapeDoc
+{
+    id     int32
+    shapes [..3]Shape
+    pair   [2]Shape
+}
+
+// The fixed class (form 3) and the message form (form 2).
+fixed table ShapeMsg
+{
+    seq    int32
+    shapes [..3]Shape
+    pair   [2]Shape
+}
