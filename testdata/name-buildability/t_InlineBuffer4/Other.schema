@@ -1,0 +1,13 @@
+package probe
+
+type Holder
+{
+    first  InlineBuffer4
+    many   [..4]InlineBuffer4
+    x      float64
+    y      float32
+    wide   uint128
+    label  string(16)
+    quad   [4]float64
+    list   [..MaxItems]uint32
+}

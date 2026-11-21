@@ -1,0 +1,314 @@
+# case	verdict	names	note
+ctl	builds	-	-
+b_1x	refuse-at-check	Rust	rule 1: basename is not an identifier
+b_Array	builds	-	-
+b_BitConverter	builds	-	-
+b_Bitwise	builds	-	-
+b_Box	refuse-at-check	Rust	rule 1: basename folds to a Rust reserved word
+b_Buffer_case1	builds	-	-
+b_Clone	builds	-	-
+b_Comparable	builds	-	-
+b_Default	builds	-	-
+b_Double	builds	-	-
+b_Endian	refuse-at-check	Dart	rule 1: basename is a reserved word
+b_Enum_case1	refuse-at-check	Rust	rule 1: basename folds to a Rust reserved word
+b_Error_case1	builds	-	-
+b_Float	refuse-at-check	C	refused on main (survey control)
+b_Holder	builds	-	-
+b_Inner	builds	-	-
+b_Int128	refuse-at-check	Dart	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_Integer	builds	-	-
+b_Kernel	builds	-	-
+b_Kind	builds	-	-
+b_List	refuse-at-check	Dart	rule 1: basename is a reserved word
+b_Map	builds	-	-
+b_Math_case1	refuse-at-check	C	refused on main (survey control)
+b_NULL_case1	builds	-	-
+b_None	refuse-at-check	Python	rule 1: basename is a reserved word
+b_Number	builds	-	-
+b_Object	refuse-at-check	Dart	rule 1: basename is a reserved word
+b_Option	builds	-	-
+b_OtherWire	refuse-at-generate	c,cpp	an emitter refuses it at generate (a rule outside the checker today)
+b_Other_	builds	-	-
+b_PacketRuntime	refuse-at-check	Elixir	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_ProbeView	refuse-at-check	-	refused on main (survey control)
+b_ProbeWire	builds	-	-
+b_Probe_	builds	-	-
+b_Result	builds	-	-
+b_Schema_case1	refuse-at-check	Dart	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_SchemaRuntime	refuse-at-check	C	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_Self_case1	refuse-at-check	Rust	rule 1: basename is a reserved word
+b_Serialize_case1	refuse-at-check	C++	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_Some	builds	-	-
+b_Span	builds	-	-
+b_String_case1	refuse-at-check	C	refused on main (survey control)
+b_Struct_case1	refuse-at-check	Rust	rule 1: basename folds to a Rust reserved word
+b_System	builds	-	-
+b_Type_case1	refuse-at-check	Rust	rule 1: basename folds to a Rust reserved word
+b_UInt128	refuse-at-check	Java	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_Uint8List	builds	-	-
+b_Vec	builds	-	-
+b___init__	refuse-at-check	Go	rule 2: a leading underscore drops the file from the Go package
+b_alloc	builds	-	-
+b_as	refuse-at-check	C#	rule 1: basename is a reserved word
+b_assert	refuse-at-check	C	refused on main (survey control)
+b_base	refuse-at-check	C#	rule 1: basename is a reserved word
+b_binary	builds	-	-
+b_bit32	builds	-	-
+b_bits	builds	-	-
+b_buffer	builds	-	-
+b_class	refuse-at-check	C#	rule 1: basename is a reserved word
+b_continue	refuse-at-check	C	rule 1: basename is a reserved word
+b_core	refuse-at-check	Rust	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_coroutine	refuse-at-check	Lua	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_debug	refuse-at-check	Lua	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_def	refuse-at-check	Lobster	rule 1: basename is a reserved word
+b_descriptors	refuse-at-check	Lobster	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_end	refuse-at-check	Elixir	rule 1: basename is a reserved word
+b_enum	refuse-at-check	C	rule 1: basename is a reserved word
+b_error	refuse-at-check	Go	rule 1: basename is a reserved word
+b_errors	builds	-	-
+b_export	refuse-at-check	C++	rule 1: basename is a reserved word
+b_f64	refuse-at-check	Goose	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_fn	refuse-at-check	Elixir	rule 1: basename is a reserved word
+b_foo_windows	refuse-at-check	Go	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_from	refuse-at-check	Goose	rule 1: basename is a reserved word
+b_function	refuse-at-check	JavaScript	rule 1: basename is a reserved word
+b_import	refuse-at-check	Go	rule 1: basename is a reserved word
+b_init	refuse-at-check	Luau	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_int	refuse-at-check	C	rule 1: basename is a reserved word
+b_io	refuse-at-check	Lua	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_len	refuse-at-check	Go	rule 1: basename is a reserved word
+b_let	refuse-at-check	Goose	rule 1: basename is a reserved word
+b_lib	refuse-at-check	Rust	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_local	refuse-at-check	Lua	rule 1: basename is a reserved word
+b_main	refuse-at-check	Rust	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_math	refuse-at-check	C	refused on main (survey control)
+b_memcpy	builds	-	-
+b_mod	refuse-at-check	Rust	rule 1: basename is a reserved word
+b_my-file	refuse-at-check	Rust	rule 1: basename is not an identifier
+b_namespace	refuse-at-check	C#	rule 1: basename is a reserved word
+b_nil	refuse-at-check	Elixir	rule 1: basename is a reserved word
+b_null	refuse-at-check	C#	rule 1: basename is a reserved word
+b_os	refuse-at-check	Lua	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_package	refuse-at-check	Go	rule 1: basename is a reserved word
+b_print	refuse-at-check	Go	rule 1: basename is a reserved word
+b_probe	builds	-	-
+b_probeView_case1	refuse-at-check	Lobster	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_record	refuse-at-check	Java	rule 1: basename is a reserved word
+b_schema_module	refuse-at-check	Squirrel	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_schema_rt	refuse-at-check	Squirrel	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_schema_runtime	refuse-at-check	Squirrel	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_schema_tables	refuse-at-check	Squirrel	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_schema_wire	refuse-at-check	Squirrel	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_self	refuse-at-check	Elixir	rule 1: basename is a reserved word
+b_serialize	refuse-at-check	C++	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_serialize_float	refuse-at-check	Lua	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_serialize_int_relative	refuse-at-check	Lua	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_serialize_stream	refuse-at-check	Lua	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_serialize_wide	refuse-at-check	moo	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_size_t	builds	-	-
+b_static	refuse-at-check	C	rule 1: basename is a reserved word
+b_std	refuse-at-check	Rust	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_str	builds	-	-
+b_string	refuse-at-check	C	refused on main (survey control)
+b_string_	builds	-	-
+b_struct	refuse-at-check	C	rule 1: basename is a reserved word
+b_table	refuse-at-check	Lua	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_this	refuse-at-check	C#	rule 1: basename is a reserved word
+b_tostring	builds	-	-
+b_type	refuse-at-check	Go	rule 1: basename is a reserved word
+b_typeof	refuse-at-check	C	rule 1: basename is a reserved word
+b_u8	refuse-at-check	Goose	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_uint8_t	builds	-	-
+b_utf8	refuse-at-check	Lua	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_var	refuse-at-check	Dart	rule 1: basename is a reserved word
+b_x_test	refuse-at-check	Go	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_InvalidValue	refuse-at-check	Python	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_Refused	refuse-at-check	Python	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_PROTOCOL_ID	refuse-at-check	Python	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_Io_case1	builds	-	-
+b_Coroutine_case1	builds	-	-
+b_Init_case1	builds	-	-
+b_Def_case1	builds	-	-
+b_Class_case1	builds	-	-
+b_Main_	builds	-	-
+b_serialize2	builds	-	-
+b_x_testing	builds	-	-
+b_schema	refuse-at-check	Dart	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_SCHEMA_RT_case1	refuse-at-check	Squirrel	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_Core_case1	refuse-at-check	Rust	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_Std_case1	refuse-at-check	Rust	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_Lib_case1	refuse-at-check	Rust	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_Serialize_Float_case1	refuse-at-check	Lua	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b__M	refuse-at-check	Go	rule 2: a leading underscore drops the file from the Go package
+b_linux_amd64	refuse-at-check	Go	rule 2: basename hides a standard module, the runtime or a Go build constraint
+b_Holder_windows	refuse-at-check	Go	rule 2: basename hides a standard module, the runtime or a Go build constraint
+p_Integer	refuse-at-generate	ruby	an emitter refuses it at generate (a rule outside the checker today)
+p_Kernel	refuse-at-generate	ruby	an emitter refuses it at generate (a rule outside the checker today)
+p_Math_case1	refuse-at-generate	ruby	an emitter refuses it at generate (a rule outside the checker today)
+p_Probe	builds	-	-
+p_System	builds	-	-
+p_alloc	builds	-	-
+p_binary	builds	-	-
+p_bit32	builds	-	-
+p_bits	refuse-at-check	-	package name refused on main
+p_buffer	builds	-	-
+p_class	refuse-at-check	-	package name refused on main
+p_core	builds	-	-
+p_def	refuse-at-check	-	package name refused on main
+p_end	refuse-at-check	-	package name refused on main
+p_enum	refuse-at-check	-	package name refused on main
+p_errors	builds	-	-
+p_fn	refuse-at-check	-	package name refused on main
+p_function	refuse-at-check	-	package name refused on main
+p_int	refuse-at-check	-	package name refused on main
+p_io	refuse-at-generate	python	an emitter refuses it at generate (a rule outside the checker today)
+p_local	refuse-at-check	-	package name refused on main
+p_math	refuse-at-generate	python,ruby	an emitter refuses it at generate (a rule outside the checker today)
+p_mod	refuse-at-check	-	package name refused on main
+p_namespace	refuse-at-check	-	package name refused on main
+p_nil	refuse-at-check	-	package name refused on main
+p_os	refuse-at-generate	python	an emitter refuses it at generate (a rule outside the checker today)
+p_self	refuse-at-check	-	package name refused on main
+p_serialize	builds	-	-
+p_std	refuse-at-generate	goose	an emitter refuses it at generate (a rule outside the checker today)
+p_string	refuse-at-check	-	package name refused on main
+p_struct	refuse-at-check	-	package name refused on main
+p_sys	refuse-at-generate	python	an emitter refuses it at generate (a rule outside the checker today)
+p_table	refuse-at-check	-	package name refused on main
+p_type	refuse-at-check	-	package name refused on main
+p_typing	refuse-at-generate	python	an emitter refuses it at generate (a rule outside the checker today)
+t_Array	refuse-at-generate	ruby	an emitter refuses it at generate (a rule outside the checker today)
+t_BigInt	builds	-	-
+t_BitConverter	builds	-	-
+t_Bitwise	builds	-	-
+t_Box	builds	-	-
+t_Buffer_case1	builds	-	-
+t_ByteData	refuse-at-check	-	type name is a reserved word (refused on main)
+t_Clone	builds	-	-
+t_Comparable	refuse-at-generate	ruby	an emitter refuses it at generate (a rule outside the checker today)
+t_Convert	builds	-	-
+t_Copy	builds	-	-
+t_Debug	refuse-at-check	C#	rule 4: type name shadows a platform name
+t_Default	refuse-at-check	Rust	refused on main (survey control)
+t_Diagnostics	builds	-	-
+t_Display	builds	-	-
+t_Double	builds	-	-
+t_Encoding	refuse-at-generate	ruby	an emitter refuses it at generate (a rule outside the checker today)
+t_Endian	refuse-at-check	Dart	refused on main (survey control)
+t_Enum	builds	-	-
+t_Eq	builds	-	-
+t_Err	refuse-at-check	Rust	refused on main (survey control)
+t_Error_case1	refuse-at-check	Rust	refused on main (survey control)
+t_Exception	refuse-at-generate	python,ruby	an emitter refuses it at generate (a rule outside the checker today)
+t_Float	refuse-at-generate	ruby	an emitter refuses it at generate (a rule outside the checker today)
+t_Float32List	refuse-at-check	Dart	rule 4: type name shadows a platform name
+t_Float64List	refuse-at-check	Dart	rule 4: type name shadows a platform name
+t_Formatter	builds	-	-
+t_From	refuse-at-check	Rust	refused on main (survey control)
+t_Hash	refuse-at-generate	ruby	an emitter refuses it at generate (a rule outside the checker today)
+t_InlineArray	builds	-	-
+t_InlineBuffer4	builds	-	-
+t_Int128	refuse-at-check	Dart	rule 4: type name shadows a platform name
+t_Integer	refuse-at-generate	ruby	an emitter refuses it at generate (a rule outside the checker today)
+t_Kernel	refuse-at-generate	ruby	an emitter refuses it at generate (a rule outside the checker today)
+t_List	refuse-at-check	Dart	refused on main (survey control)
+t_Map	builds	-	-
+t_Math_case1	refuse-at-generate	ruby	an emitter refuses it at generate (a rule outside the checker today)
+t_NULL	builds	-	-
+t_NonFiniteFloat	builds	-	-
+t_None	refuse-at-check	-	refused on main (survey control)
+t_Number	builds	-	-
+t_Object	refuse-at-check	Dart	refused on main (survey control)
+t_Ok	refuse-at-check	Rust	refused on main (survey control)
+t_Option	builds	-	-
+t_Other	builds	-	-
+t_PacketRuntime	refuse-at-check	Elixir	rule 4: type name shadows a platform name
+t_PartialEq	builds	-	-
+t_Probe	builds	-	-
+t_ReadOnlySpan	builds	-	-
+t_ReadStream	refuse-at-check	Rust	refused on main (survey control)
+t_Reader	builds	-	-
+t_Result	refuse-at-check	Rust	refused on main (survey control)
+t_Schema	refuse-at-check	C#	refused on main (survey control)
+t_Self	refuse-at-check	Rust	refused on main (survey control)
+t_Serialize_case1	refuse-at-generate	ruby	an emitter refuses it at generate (a rule outside the checker today)
+t_Single	builds	-	-
+t_Some	builds	-	-
+t_Span	builds	-	-
+t_Stream	refuse-at-check	Rust	refused on main (survey control)
+t_String	refuse-at-check	Dart	refused on main (survey control)
+t_Struct_case1	refuse-at-generate	ruby	an emitter refuses it at generate (a rule outside the checker today)
+t_System	builds	-	-
+t_TextValid	builds	-	-
+t_Type_case1	builds	-	-
+t_UInt128	refuse-at-check	Java	rule 4: type name shadows a platform name
+t_Uint16List	refuse-at-check	Dart	rule 4: type name shadows a platform name
+t_Uint32List	refuse-at-check	Dart	rule 4: type name shadows a platform name
+t_Uint8List	refuse-at-check	Dart	rule 4: type name shadows a platform name
+t_Validation	builds	-	-
+t_ValueError	refuse-at-generate	python	an emitter refuses it at generate (a rule outside the checker today)
+t_Vec	builds	-	-
+t_WriteStream	refuse-at-check	Rust	refused on main (survey control)
+t_Writer	builds	-	-
+t_alloc	refuse-at-generate	ruby	Ruby refuses a lowercase type name at generate
+t_assert	refuse-at-check	-	refused on main (survey control)
+t_binary	refuse-at-generate	ruby	Ruby refuses a lowercase type name at generate
+t_bit32	refuse-at-generate	ruby	Ruby refuses a lowercase type name at generate
+t_bits	refuse-at-check	-	refused on main (survey control)
+t_buffer	refuse-at-check	Luau	rule 4: type name shadows a platform name
+t_core	refuse-at-check	Rust	rule 4: type name shadows a platform name
+t_error	refuse-at-check	Go	refused on main (survey control)
+t_errors	refuse-at-check	Go	rule 4: type name shadows a platform name
+t_f32	refuse-at-check	Rust	rule 4: type name shadows a platform name
+t_f64	refuse-at-check	Rust	rule 4: type name shadows a platform name
+t_fmt	refuse-at-check	Go	rule 4: type name shadows a platform name
+t_i64	refuse-at-check	Rust	rule 4: type name shadows a platform name
+t_io	refuse-at-generate	ruby	Ruby refuses a lowercase type name at generate
+t_ipairs	refuse-at-generate	ruby	Ruby refuses a lowercase type name at generate
+t_len	refuse-at-check	Go	refused on main (survey control)
+t_math	refuse-at-check	Go	rule 4: type name shadows a platform name
+t_memcpy	refuse-at-generate	ruby	Ruby refuses a lowercase type name at generate
+t_print	refuse-at-check	Go	refused on main (survey control)
+t_select	refuse-at-check	Go	refused on main (survey control)
+t_serialize	refuse-at-check	Rust	refused on main (survey control)
+t_size_t	refuse-at-generate	ruby	Ruby refuses a lowercase type name at generate
+t_std	refuse-at-check	Rust	rule 4: type name shadows a platform name
+t_str	refuse-at-check	Rust	rule 4: type name shadows a platform name
+t_struct	refuse-at-check	-	refused on main (survey control)
+t_table	refuse-at-check	-	refused on main (survey control)
+t_tonumber	refuse-at-generate	ruby	Ruby refuses a lowercase type name at generate
+t_tostring	refuse-at-generate	ruby	Ruby refuses a lowercase type name at generate
+t_type	refuse-at-check	-	refused on main (survey control)
+t_u128	refuse-at-check	Rust	rule 4: type name shadows a platform name
+t_u8	refuse-at-check	Rust	rule 4: type name shadows a platform name
+t_uint8_t	refuse-at-generate	ruby	Ruby refuses a lowercase type name at generate
+t_unsafe	refuse-at-check	-	type name is a reserved word (refused on main)
+t_utf8	refuse-at-check	Go	rule 4: type name shadows a platform name
+t_vector	refuse-at-generate	ruby	Ruby refuses a lowercase type name at generate
+t_usize	refuse-at-check	Rust	rule 4: type name shadows a platform name
+t_isize	refuse-at-check	Rust	rule 4: type name shadows a platform name
+t_i8	refuse-at-check	Rust	rule 4: type name shadows a platform name
+t_i128	refuse-at-check	Rust	rule 4: type name shadows a platform name
+t_u16	refuse-at-check	Rust	rule 4: type name shadows a platform name
+t_u32	refuse-at-check	Rust	rule 4: type name shadows a platform name
+t_u64	refuse-at-check	Rust	rule 4: type name shadows a platform name
+t_Int8List	refuse-at-check	Dart	rule 4: type name shadows a platform name
+t_Uint64List	refuse-at-check	Dart	rule 4: type name shadows a platform name
+t_Float32x4List	refuse-at-check	Dart	rule 4: type name shadows a platform name
+t_Uint8ClampedList	refuse-at-check	Dart	rule 4: type name shadows a platform name
+t_strconv	refuse-at-check	Go	rule 4: type name shadows a platform name
+t_slices	refuse-at-check	Go	rule 4: type name shadows a platform name
+t_bytes	refuse-at-check	Go	rule 4: type name shadows a platform name
+t_base64	refuse-at-check	Go	rule 4: type name shadows a platform name
+t_time	refuse-at-check	Go	rule 4: type name shadows a platform name
+t_sync	refuse-at-check	Go	rule 4: type name shadows a platform name
+t_atomic	refuse-at-check	Go	rule 4: type name shadows a platform name
+t_goruntime	refuse-at-check	Go	rule 4: type name shadows a platform name
+t_U8_case1	builds	-	-
+t_Str_case1	builds	-	-
+t_Core_case1	builds	-	-
+t_Fmt_case1	builds	-	-
+t_Utf8_case1	builds	-	-
+t_Debugger	builds	-	-
