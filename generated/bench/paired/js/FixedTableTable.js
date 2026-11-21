@@ -589,6 +589,12 @@ export function FixedTableLoadMessages(values, vocabulary, data, report) {
         TableMessageRefuse(report, "non_finite_float: " + report.NonFiniteFloat);
         return -1;
       }
+      // A REFUSAL IN ANY BODY (a length or count past a bound, §3.3) refuses
+      // the batch with its reason; no body of it is delivered.
+      if (report.Reason) {
+        for (let j = 0; j <= i; j++) { InitFixedTable(values[j]); }
+        return -1;
+      }
       // DAMAGE ANYWHERE IN THE BATCH DELIVERS NO BODY (docs/SPEC-TABLES.md §4):
       // the count says 0 and every body the walk touched goes back to its
       // declared defaults.
