@@ -173,7 +173,7 @@ func main() {
 	timeout := fs.Duration("timeout", 0, "whole-run wall-clock timeout (wire-fuzz only)")
 	corpus := fs.String("corpus", "tables/cards/conformance", "the card conformance corpus directory (cards only)")
 	expected := fs.String("expected", "", "where the card expected answers live, default <corpus>/expected (cards only)")
-	require := fs.String("require", "", "comma-separated required card surfaces, default all nine (cards only)")
+	require := fs.String("require", strings.Join(cardSurfaces, ","), "comma-separated required card surfaces, default all nine (cards only)")
 	claims := fs.Bool("claims", false, "fail a claimed case answered ABSENT (run only)")
 	coverage := fs.String("coverage", "", "write coverage rows as JSON (run, cross-read)")
 	lang := fs.String("lang", "", "the original-nine language (implementation), or writes to re-read (cross-read)")
@@ -209,6 +209,12 @@ func main() {
 	}
 
 	if command == "cards" {
+		// The required set is what turns an absent or caseless surface red: an
+		// empty one, or a name that is no card surface (a typo), would quietly
+		// require less than it reads as requiring.
+		if err := checkRequire(*require); err != nil {
+			fatalf("%v", err)
+		}
 		exp := *expected
 		if exp == "" {
 			exp = filepath.Join(*corpus, "expected")
