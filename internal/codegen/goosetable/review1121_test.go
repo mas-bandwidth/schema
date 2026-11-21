@@ -156,8 +156,8 @@ func reviewBatch(t *testing.T, writer *ir.Unit, fill func(w *reviewBits, slot fu
 		return 0, 0
 	}
 	w := &reviewBits{}
-	fill(w, slot, int(refBits))
-	w.put(0, int(refBits)) // the body's terminator
+	fill(w, slot, refBits)
+	w.put(0, refBits) // the body's terminator
 	return append([]byte{2, 0}, w.out...)
 }
 
