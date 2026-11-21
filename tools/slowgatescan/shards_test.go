@@ -134,9 +134,9 @@ func TestShardAccountingRefusesAGapAndAnOverlap(t *testing.T) {
 	if n := count(unknownRow, "./compiler", "TestA"); n != 0 {
 		t.Errorf("a step on a row the matrix does not declare selects compiler.TestA %d times, want 0", n)
 	}
-	moduleRoot := head + step("c", "go test $(go list ./... | grep -v '/v2/compiler$')")
+	moduleRoot := head + step("c", "go test $(go list ./... | grep -v '/v3/compiler$')")
 	if n := count(moduleRoot, "./compiler", "TestA"); n != 0 {
-		t.Errorf("a '/v2/compiler$' filter keeps ./compiler: selected %d times, want 0", n)
+		t.Errorf("a '/v3/compiler$' filter keeps ./compiler: selected %d times, want 0", n)
 	}
 	if n := count(moduleRoot, "./internal/compilerx", "TestA"); n != 1 {
 		t.Errorf("a '$'-anchored filter drops a package it does not end: selected %d times, want 1", n)

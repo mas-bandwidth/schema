@@ -94,9 +94,10 @@ schema version
 
 This builds the head of `main`, where every release is tagged. Nothing else is
 needed: no `make`, no generated files, no other toolchain. `schema version`
-prints the Go module version, which ends in the commit it was built from. Do
-not use `@latest`: the module path still ends in `/v2`, so Go resolves it to
-v2.5.0 rather than the newest release.
+prints the Go module version, which ends in the commit it was built from. Use
+`@main` until the first release after v3.0.1 is tagged, and `@latest` from
+then on: the tags v3.0.0 and v3.0.1 were made while the module path still
+ended in `/v2`, so Go cannot resolve them.
 
 **Prebuilt binaries.** From the first release after v3.0.1, every
 [release](https://github.com/mas-bandwidth/schema/releases) carries
