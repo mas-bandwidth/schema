@@ -1285,9 +1285,11 @@ test-go: tables-go-finite-float
 # compiler's engine in both directions. Nightly in certify.yml, never in
 # ci-fast or ci-full: SCHEMA_TABLE_DIFF=1, set only here, is what opts the two
 # tests in; ci-full's SCHEMA_SLOW=1 run of ./internal/fuzz skips them.
+TABLE_DIFF_FROM ?= 0
+TABLE_DIFF_TO ?= 200
 .PHONY: fuzz-tables-diff
 fuzz-tables-diff:
-	SCHEMA_SLOW=1 SCHEMA_TABLE_DIFF=1 SCHEMA_TABLE_DIFF_TO=200 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestRandomTableDifferential$$' -v
+	SCHEMA_SLOW=1 SCHEMA_TABLE_DIFF=1 SCHEMA_TABLE_DIFF_FROM=$(TABLE_DIFF_FROM) SCHEMA_TABLE_DIFF_TO=$(TABLE_DIFF_TO) go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestRandomTableDifferential$$' -v
 	SCHEMA_SLOW=1 SCHEMA_TABLE_DIFF=1 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestRandomTableDifferentialNegativeControl$$' -v
 
 # The property-based random-schema tests (card schema-go-rapid-property-tests):

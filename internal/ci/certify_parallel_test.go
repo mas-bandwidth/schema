@@ -20,7 +20,10 @@ var certifyCoreShards = []string{
 	"core-go",
 	"generated",
 	"fuzz-tables-go",
-	"fuzz-tables-diff",
+	"fuzz-tables-diff-1",
+	"fuzz-tables-diff-2",
+	"fuzz-tables-diff-3",
+	"fuzz-tables-diff-4",
 	"fuzz-tables-props",
 }
 
@@ -229,7 +232,10 @@ func checkCertifyParallelPolicy(certifyYAML, makefile string, registeredLegs []s
 		"go test ./internal/fuzz/",
 		"test/generated-tree/verify",
 		"make fuzz-tables-go FUZZTIME=10m",
-		"make fuzz-tables-diff",
+		"make fuzz-tables-diff TABLE_DIFF_FROM=0 TABLE_DIFF_TO=49",
+		"make fuzz-tables-diff TABLE_DIFF_FROM=50 TABLE_DIFF_TO=99",
+		"make fuzz-tables-diff TABLE_DIFF_FROM=100 TABLE_DIFF_TO=149",
+		"make fuzz-tables-diff TABLE_DIFF_FROM=150 TABLE_DIFF_TO=200",
 		"make fuzz-tables-props",
 		`make toolchain SCHEMA_SKIP_LEGS="$OTHER_LEGS"`,
 		`make conformance SCHEMA_SKIP_LEGS="$OTHER_LEGS"`,

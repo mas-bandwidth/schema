@@ -46,14 +46,27 @@ func TestCookWriteAnswersEveryCookWriteRowDart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, need := range []string{"pointers/GraphCook.dart", "blobs/AssetsCook.dart", "cards/CardsWire.dart"} {
-		if _, err := os.Stat(filepath.Join(repo, "build", "tables-generated-dart", need)); err != nil {
-			if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-				t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the generated Dart corpus lacks %s: run make tables-dart-block-build", need)
+	corpusRoot := t.TempDir()
+	corpusDart := filepath.Join(corpusRoot, "tables-generated-dart")
+	corpusScalars := filepath.Join(corpusRoot, "tables-generated-dart-scalars")
+	func() {
+		dartMakeMu.Lock()
+		defer dartMakeMu.Unlock()
+		for _, need := range []string{".stamp", "cards/.stamp", "pointers/GraphCook.dart", "blobs/AssetsCook.dart", "cards/CardsWire.dart"} {
+			if _, err := os.Stat(filepath.Join(repo, "build", "tables-generated-dart", need)); err != nil {
+				if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
+					t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the generated Dart corpus lacks %s: run make tables-dart-block-build", need)
+				}
+				t.Skip("the generated Dart corpus is not built: make tables-dart-block-build")
 			}
-			t.Skip("the generated Dart corpus is not built: make tables-dart-block-build")
 		}
-	}
+		if err := os.CopyFS(corpusDart, os.DirFS(filepath.Join(repo, "build", "tables-generated-dart"))); err != nil {
+			t.Fatalf("stage tables-generated-dart copy: %v", err)
+		}
+		if err := os.CopyFS(corpusScalars, os.DirFS(filepath.Join(repo, "build", "tables-generated-dart-scalars"))); err != nil {
+			t.Fatalf("stage tables-generated-dart-scalars copy: %v", err)
+		}
+	}()
 	manifest := filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt")
 	data, err := os.ReadFile(manifest)
 	if err != nil {
@@ -110,11 +123,22 @@ func TestCookWriteAnswersEveryCookWriteRowDart(t *testing.T) {
 		t.Fatalf("cook-write manifest has %d rows, want 83", len(rows))
 	}
 	outDir := t.TempDir()
+	driverSrc, err := os.ReadFile(filepath.Join(repo, "test", "conformance", "dart", "main.dart"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	driverRewritten := strings.ReplaceAll(string(driverSrc), "'../../../build/tables-generated-dart-scalars/", "'"+filepath.ToSlash(corpusScalars)+"/")
+	driverRewritten = strings.ReplaceAll(driverRewritten, "'../../../build/tables-generated-dart/", "'"+filepath.ToSlash(corpusDart)+"/")
+	driverRewritten = strings.ReplaceAll(driverRewritten, "'../../../build/", "'"+filepath.ToSlash(filepath.Join(repo, "build"))+"/")
+	driverMain := filepath.Join(outDir, "main.dart")
+	if err := os.WriteFile(driverMain, []byte(driverRewritten), 0600); err != nil {
+		t.Fatal(err)
+	}
 	driverPath := filepath.Join(outDir, "manifest.txt")
 	if err := os.WriteFile(driverPath, []byte(driverManifest.String()), 0600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dart, "--enable-asserts", "test/conformance/dart/main.dart", driverPath, "cook-write", outDir)
+	cmd := exec.Command(dart, "--enable-asserts", driverMain, driverPath, "cook-write", outDir)
 	cmd.Dir = repo
 	output, runErr := cmd.CombinedOutput()
 	if runErr != nil {
@@ -167,7 +191,7 @@ func TestCookWriteAnswersEveryCookWriteRowDart(t *testing.T) {
 	t.Run("refusals", func(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()
-		probe := strings.ReplaceAll(cookWriteRefusalProbe, "@CORPUS@", filepath.Join(repo, "build", "tables-generated-dart"))
+		probe := strings.ReplaceAll(cookWriteRefusalProbe, "@CORPUS@", filepath.ToSlash(corpusDart))
 		if err := os.WriteFile(filepath.Join(dir, "cook_refusal_probe.dart"), []byte(probe), 0o600); err != nil {
 			t.Fatal(err)
 		}

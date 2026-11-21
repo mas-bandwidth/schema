@@ -2,6 +2,7 @@ package ci
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -253,21 +254,121 @@ PATH="$RUSTUP_BIN:$PATH" cargo check
 	}
 }
 
+func checkGolangciLintParallelIsolation(makeFiles, workflowFiles map[string]string) []string {
+	var errs []string
+
+	var mkNames []string
+	for name := range makeFiles {
+		mkNames = append(mkNames, name)
+	}
+	slices.Sort(mkNames)
+	for _, name := range mkNames {
+		for lineNo, line := range strings.Split(makeFiles[name], "\n") {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "#") {
+				continue
+			}
+			if strings.Contains(line, "$(GOLANGCI_LINT) run") || strings.Contains(line, "golangci-lint run") {
+				if !strings.Contains(line, "GOLANGCI_LINT_CACHE=") {
+					errs = append(errs, fmt.Sprintf("%s:%d runs golangci-lint without workspace-isolated GOLANGCI_LINT_CACHE: %s", name, lineNo+1, trimmed))
+				}
+				if !strings.Contains(line, "--allow-parallel-runners") {
+					errs = append(errs, fmt.Sprintf("%s:%d runs golangci-lint without --allow-parallel-runners: %s", name, lineNo+1, trimmed))
+				}
+			}
+		}
+	}
+
+	var wfNames []string
+	for name := range workflowFiles {
+		wfNames = append(wfNames, name)
+	}
+	slices.Sort(wfNames)
+	for _, name := range wfNames {
+		body := workflowFiles[name]
+		lines := strings.Split(body, "\n")
+		for i, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "#") {
+				continue
+			}
+			if strings.Contains(line, "golangci-lint run") {
+				if !strings.Contains(line, "GOLANGCI_LINT_CACHE=") {
+					errs = append(errs, fmt.Sprintf("%s:%d runs golangci-lint without GOLANGCI_LINT_CACHE: %s", name, i+1, trimmed))
+				}
+				if !strings.Contains(line, "--allow-parallel-runners") {
+					errs = append(errs, fmt.Sprintf("%s:%d runs golangci-lint without --allow-parallel-runners: %s", name, i+1, trimmed))
+				}
+			}
+			if strings.Contains(line, "uses: golangci/golangci-lint-action@") {
+				end := min(len(lines), i+14)
+				stepBlock := strings.Join(lines[i:end], "\n")
+				if strings.Contains(stepBlock, "install-only: true") {
+					continue
+				}
+				if !strings.Contains(stepBlock, "GOLANGCI_LINT_CACHE:") {
+					errs = append(errs, fmt.Sprintf("%s:%d runs golangci-lint-action without GOLANGCI_LINT_CACHE", name, i+1))
+				}
+				if !strings.Contains(stepBlock, "--allow-parallel-runners") {
+					errs = append(errs, fmt.Sprintf("%s:%d runs golangci-lint-action without --allow-parallel-runners in args", name, i+1))
+				}
+			}
+		}
+	}
+	return errs
+}
+
 // TestGolangciLintCacheIsolatedPerWorkspace ensures multi-runner fleet hosts
-// never share ~/.cache/golangci-lint's process lock ("Error: parallel
-// golangci-lint is running") when golangci-lint-fast and lang-lint (go) or
-// concurrent PRs run simultaneously on one machine.
+// never hit golangci-lint's global lock ("Error: parallel golangci-lint is
+// running") or share ~/.cache/golangci-lint when golangci-lint-fast,
+// lang-lint (go), or concurrent PRs run simultaneously on one machine.
 func TestGolangciLintCacheIsolatedPerWorkspace(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
-	mkBytes, err := os.ReadFile(filepath.Join(root, "make", "schema-go-generated-golangci-lint-gate.mk"))
+
+	makeFiles := map[string]string{
+		"Makefile": readCI(t, root, "Makefile"),
+	}
+	mkPaths, err := filepath.Glob(filepath.Join(root, "make", "*.mk"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	mk := string(mkBytes)
-	for lineNo, line := range strings.Split(mk, "\n") {
-		if strings.Contains(line, "$(GOLANGCI_LINT) run") && !strings.Contains(line, "GOLANGCI_LINT_CACHE=") {
-			t.Errorf("make/schema-go-generated-golangci-lint-gate.mk:%d runs $(GOLANGCI_LINT) without workspace-isolated GOLANGCI_LINT_CACHE: %s", lineNo+1, strings.TrimSpace(line))
+	for _, p := range mkPaths {
+		rel, _ := filepath.Rel(root, p)
+		makeFiles[rel] = readCI(t, root, rel)
+	}
+	wfs := workflows(t, root)
+
+	if errs := checkGolangciLintParallelIsolation(makeFiles, wfs); len(errs) > 0 {
+		for _, e := range errs {
+			t.Error(e)
 		}
+		t.FailNow()
+	}
+
+	// Planted negative controls.
+	gateKey := filepath.Join("make", "schema-go-generated-golangci-lint-gate.mk")
+	mutMK := maps.Clone(makeFiles)
+	mutMK[gateKey] = strings.Replace(mutMK[gateKey], "--allow-parallel-runners ", "", 1)
+	if mutMK[gateKey] == makeFiles[gateKey] {
+		t.Fatalf("negative control did not mutate %s", gateKey)
+	}
+	if errs := checkGolangciLintParallelIsolation(mutMK, wfs); len(errs) == 0 {
+		t.Errorf("NEGATIVE CONTROL FAILED: dropping --allow-parallel-runners from %s stayed green", gateKey)
+	}
+
+	mutWF := maps.Clone(wfs)
+	mutWF["ci-fast.yml"] = strings.Replace(mutWF["ci-fast.yml"], "golangci-lint run --allow-parallel-runners $PACKAGES", "golangci-lint run $PACKAGES", 1)
+	if mutWF["ci-fast.yml"] == wfs["ci-fast.yml"] {
+		t.Fatal("negative control did not mutate ci-fast.yml")
+	}
+	if errs := checkGolangciLintParallelIsolation(makeFiles, mutWF); len(errs) == 0 {
+		t.Error("NEGATIVE CONTROL FAILED: dropping --allow-parallel-runners from ci-fast.yml stayed green")
+	}
+
+	// Also verify ci-fast.yml lang-clean (c) runs tables-c-soak-compile-modes so
+	// non-interposed / big-endian C soak #ifdef combinations are compile-checked in <2m CI.
+	if !strings.Contains(wfs["ci-fast.yml"], "tables-c-soak-compile-modes") {
+		t.Error("ci-fast.yml lang-clean (c) does not run tables-c-soak-compile-modes")
 	}
 }
