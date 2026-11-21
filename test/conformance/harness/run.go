@@ -19,6 +19,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // surfaces, in the order the matrix prints them.
@@ -672,6 +673,62 @@ type runOptions struct {
 	// results, when set, is where every case's verdict is written
 	// (writeResults), the input tools/matrix proof reads.
 	results string
+	// jobs, above 1, runs up to that many of a leg's surface drivers at once
+	// before any of them is scored (prefetchDrivers). Each surface writes its
+	// own out directory from the same derived manifest, and the scoring loop
+	// reads the answers in the same order as before, so the verdict and the
+	// report are the serial run's; only the drivers' stdout is held and
+	// printed per surface, in order. Zero or one is the serial run.
+	jobs int
+}
+
+// driverRun is one surface driver's exit, held for the scoring loop.
+type driverRun struct {
+	code   int
+	stderr string
+	stdout []byte
+	err    error
+}
+
+// prefetchDrivers runs every listed surface's driver for leg d, up to jobs at
+// once, each into its own freshly made out directory under work, and returns
+// the exits by surface. A BEAM, JVM or .NET leg pays its start-up once per
+// surface; side by side those start-ups overlap instead of adding up (the
+// Elixir leg: 21 surfaces, 50 s in a row on an amd-1 4-cpu slot).
+func prefetchDrivers(d driver, derived, work string, listed map[string]bool, jobs int) (map[string]*driverRun, error) {
+	var todo []string
+	for _, s := range surfaces {
+		if !listed[s] {
+			continue
+		}
+		out := filepath.Join(work, "out", d.lang, s)
+		if err := os.RemoveAll(out); err != nil {
+			return nil, err
+		}
+		if err := os.MkdirAll(out, 0o755); err != nil {
+			return nil, err
+		}
+		todo = append(todo, s)
+	}
+	runs := make(map[string]*driverRun, len(todo))
+	for _, s := range todo {
+		runs[s] = &driverRun{}
+	}
+	sem := make(chan struct{}, jobs)
+	var wg sync.WaitGroup
+	for _, s := range todo {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(s string, r *driverRun) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			var stdout bytes.Buffer
+			r.code, r.stderr, r.err = runDriverTo(d, derived, s, filepath.Join(work, "out", d.lang, s), &stdout)
+			r.stdout = stdout.Bytes()
+		}(s, runs[s])
+	}
+	wg.Wait()
+	return runs, nil
 }
 
 func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPath, work, only, skip string, opts runOptions) (bool, error) {
@@ -744,6 +801,13 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 		if err != nil {
 			return false, fmt.Errorf("%s: %w", d.lang, err)
 		}
+		var prefetched map[string]*driverRun
+		if opts.jobs > 1 {
+			prefetched, err = prefetchDrivers(d, derived, work, listed, opts.jobs)
+			if err != nil {
+				return false, err
+			}
+		}
 		for _, s := range surfaces {
 			legWant := want[s]
 			var exemptions []string
@@ -769,13 +833,20 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 				continue
 			}
 			out := filepath.Join(work, "out", d.lang, s)
-			if err := os.RemoveAll(out); err != nil {
-				return false, err
+			var code int
+			var stderr string
+			if p := prefetched[s]; p != nil {
+				_, _ = os.Stdout.Write(p.stdout)
+				code, stderr, err = p.code, p.stderr, p.err
+			} else {
+				if err := os.RemoveAll(out); err != nil {
+					return false, err
+				}
+				if err := os.MkdirAll(out, 0o755); err != nil {
+					return false, err
+				}
+				code, stderr, err = runDriver(d, derived, s, out)
 			}
-			if err := os.MkdirAll(out, 0o755); err != nil {
-				return false, err
-			}
-			code, stderr, err := runDriver(d, derived, s, out)
 			if err != nil {
 				return false, err
 			}
@@ -1100,11 +1171,16 @@ func listSurfaces(d driver, manifest string) (map[string]bool, error) {
 }
 
 func runDriver(d driver, manifest, surface, out string) (int, string, error) {
+	return runDriverTo(d, manifest, surface, out, os.Stdout)
+}
+
+// runDriverTo is runDriver with the driver's stdout sent to stdout.
+func runDriverTo(d driver, manifest, surface, out string, stdout io.Writer) (int, string, error) {
 	argv := append(append([]string{}, d.argv...), manifest, surface, out)
 	cmd := exec.Command(argv[0], argv[1:]...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
-	cmd.Stdout = os.Stdout
+	cmd.Stdout = stdout
 	err := cmd.Run()
 	if err == nil {
 		return 0, stderr.String(), nil

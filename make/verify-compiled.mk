@@ -211,13 +211,27 @@ _verify-dart-bench: toolchain-dart bin/schema generated/bench/dart/.stamp genera
 
 .PHONY: _verify-elixir-conformance _verify-elixir-bench
 _verify-elixir-conformance: toolchain-elixir build/conformance-harness build-conformance-elixir generated/elixir/.stamp generated/elixir-ludicrous/.stamp packet-defaults-elixir packet-utf8-elixir packet-finite-elixir
-	cd test/elixir && $(ELIXIR) main.exs
-	cd test/elixir-ludicrous && $(ELIXIR) main.exs
 	@rm -rf build/verify/conformance-elixir && mkdir -p build/verify/conformance-elixir $(VERIFY_RESULTS_DIR)
-	BEAM_PATH="$(BEAM_PATH)" ELIXIR_TABLES_EBIN="$(CURDIR)/build/elixir-tables-ebin" ./build/conformance-harness run --only elixir --claims --work build/verify/conformance-elixir --results $(VERIFY_RESULTS_DIR)/elixir.json
+	@# The two packet suites and the tables run are independent, so they run
+	@# side by side, and the tables run starts the leg's 21 surface drivers
+	@# up to $(VERIFY_JOBS) at a time (--jobs): each is a BEAM start-up plus
+	@# its cases, 50 s in a row and the job's longest step on an amd-1 slot.
+	@set -e; \
+		(cd test/elixir && $(ELIXIR) main.exs) & p1=$$!; \
+		(cd test/elixir-ludicrous && $(ELIXIR) main.exs) & p2=$$!; \
+		BEAM_PATH="$(BEAM_PATH)" ELIXIR_TABLES_EBIN="$(CURDIR)/build/elixir-tables-ebin" ./build/conformance-harness run --only elixir --claims --jobs $(VERIFY_JOBS) --work build/verify/conformance-elixir --results $(VERIFY_RESULTS_DIR)/elixir.json & p3=$$!; \
+		rc=0; wait $$p1 || rc=1; wait $$p2 || rc=1; wait $$p3 || rc=1; exit $$rc
 
-_verify-elixir-bench: toolchain-elixir bin/schema generated/bench/elixir/.stamp generated/bench/tables/elixir/.stamp tables-elixir-bench-gate cards-elixir-conformance tables-elixir-view packet-end-elixir packet-write-cfloat-elixir packet-write-text-elixir packet-write-bareint-elixir
+# The timed quick run is a prerequisite of its own, so under the umbrella's -j
+# it runs beside the gates instead of after them, with one warmup and one
+# measured run (--round 0), as _verify-go-bench-quick does: in CI the figure is
+# read by nobody (the job checks only that the CSV is not empty), and the
+# runner's golden and variant gates run in full before any timing either way.
+.PHONY: _verify-elixir-bench-quick
+_verify-elixir-bench-quick: toolchain-elixir bin/schema generated/bench/elixir/.stamp
 	@mkdir -p build/verify build/bench && rm -f build/verify/bench-elixir.csv
 	@beam_extra="$$(dirname "$$(PATH="$(BEAM_PATH):$$PATH" command -v elixir 2>/dev/null || echo /nonexistent)"):$$(dirname "$$(PATH="$(BEAM_PATH):$$PATH" command -v erl 2>/dev/null || echo /nonexistent)")"; \
-		BEAM_PATH="$(BEAM_PATH):$$beam_extra" bench/run.sh --quick --bare --only elixir --out build/verify/bench-elixir.csv
+		BEAM_PATH="$(BEAM_PATH):$$beam_extra" bench/run.sh --quick --round 0 --bare --only elixir --out build/verify/bench-elixir.csv
+
+_verify-elixir-bench: toolchain-elixir bin/schema generated/bench/elixir/.stamp generated/bench/tables/elixir/.stamp tables-elixir-bench-gate cards-elixir-conformance tables-elixir-view packet-end-elixir packet-write-cfloat-elixir packet-write-text-elixir packet-write-bareint-elixir _verify-elixir-bench-quick
 	@test -s build/verify/bench-elixir.csv

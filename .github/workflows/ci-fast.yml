@@ -1001,8 +1001,22 @@ jobs:
               make -j"$(nproc)" tables-rust-clippy RUSTUP_BIN="$(dirname "$(command -v cargo)")"
               ;;
             elixir)
+              # The agreement gate's corpus ebin compiles without the Erlang
+              # SSA optimizer (make/elixir.mk ELIXIR_EBIN_ERL_COMPILER_OPTIONS:
+              # no warning comes from those passes, so the strict verdict is
+              # the same; 477 s of CPU becomes 197 s). The offsets gate
+              # measures heap words, so it compiles its own units as shipped.
+              # On a fleet runner the corpus ebin comes from the host's store
+              # when these exact sources already passed the strict compile
+              # (make/elixir-ebin-cache.sh): the verify-leg Elixir rows want
+              # the same ebin at the same moment, and one job compiles it.
+              ebin_cache=
+              if [ "${RUNNER_ENVIRONMENT:-}" = self-hosted ]; then
+                ebin_cache="$HOME/.cache/schema-ci/elixir-tables-ebin"
+              fi
               MIX_HOME="$RUNNER_TEMP/.mix" HEX_HOME="$RUNNER_TEMP/.hex" \
                 make -j"$(nproc)" tables-elixir-accessor-descriptor-agreement tables-elixir-offsets \
+                ELIXIR_EBIN_ERL_COMPILER_OPTIONS='[no_ssa_opt]' ELIXIR_EBIN_CACHE="$ebin_cache" \
                 BEAM_PATH="$(dirname "$(command -v erl)"):$(dirname "$(command -v elixir)")" \
                 ELIXIR_BIN="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" \
                 ELIXIR=elixir ELIXIRC=elixirc MIX=mix \
@@ -1189,7 +1203,25 @@ jobs:
             dart)   make "verify-${{ matrix.leg }}-${{ matrix.gate }}" DART=dart ;;
             java)   make "verify-${{ matrix.leg }}-${{ matrix.gate }}" JAVA=java JAVAC=javac ;;
             js)     make "verify-${{ matrix.leg }}-${{ matrix.gate }}" NODE=node ;;
-            elixir) make "verify-${{ matrix.leg }}-${{ matrix.gate }}" BEAM_PATH="$(dirname "$(command -v erl)"):$(dirname "$(command -v elixir)")" ;;
+            # Elixir: every BEAM fixture these three gates compile (the table
+            # corpus ebin, the cards, the tablegen units, the bench leg) skips
+            # the Erlang SSA optimizer, two thirds of the compile's CPU. None of
+            # its passes reports a warning, so every strict compile gives the
+            # same verdict; beam_validator still checks every module; no gate
+            # here judges a rate or a heap figure (the bench row checks only
+            # that the quick run wrote its CSV). The optimized BEAM runs these
+            # same three gates every night (ci-full.yml, elixir-verify), and
+            # Certify fuzzes it (tables-wire-fuzz-release-elixir, test-elixir).
+            # On a fleet runner the table corpus ebin comes from the host's
+            # store when these exact sources already passed the strict compile
+            # under these options (make/elixir-ebin-cache.sh).
+            elixir)
+              ebin_cache=
+              if [ "${RUNNER_ENVIRONMENT:-}" = self-hosted ]; then
+                ebin_cache="$HOME/.cache/schema-ci/elixir-tables-ebin"
+              fi
+              ERL_COMPILER_OPTIONS='[no_ssa_opt]' make "verify-${{ matrix.leg }}-${{ matrix.gate }}" ELIXIR_EBIN_CACHE="$ebin_cache" BEAM_PATH="$(dirname "$(command -v erl)"):$(dirname "$(command -v elixir)")"
+              ;;
             *)      make "verify-${{ matrix.leg }}-${{ matrix.gate }}" ;;
           esac
 

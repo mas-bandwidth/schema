@@ -175,6 +175,7 @@ func main() {
 	expected := fs.String("expected", "", "where the card expected answers live, default <corpus>/expected (cards only)")
 	require := fs.String("require", "", "comma-separated required card surfaces, default all nine (cards only)")
 	claims := fs.Bool("claims", false, "fail a claimed case answered ABSENT (run only)")
+	jobs := fs.Int("jobs", 1, "run up to this many of a leg's surface drivers at once; each surface still writes its own out directory and is scored in the same order (run only)")
 	coverage := fs.String("coverage", "", "write coverage rows as JSON (run, cross-read)")
 	lang := fs.String("lang", "", "the original-nine language (implementation), or writes to re-read (cross-read)")
 	writes := fs.String("writes", "", "that leg's answers (cross-read only)")
@@ -305,6 +306,7 @@ func main() {
 			opts.claims = set
 		}
 		opts.results = *resultsOut
+		opts.jobs = *jobs
 		ok, err := runWith(os.Stdout, m, *manifest, *jsonDir, *reports, *drivers, *work, *only, *skip, opts)
 		if err != nil {
 			fatalf("%v", err)

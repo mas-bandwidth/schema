@@ -1446,6 +1446,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-full.yml:cs-fuzz",
 		"ci-full.yml:cs-tables",
 		"ci-full.yml:dart-fuzz",
+		"ci-full.yml:elixir-verify",
 		"ci-full.yml:generated",
 		"ci-full.yml:go-test",
 		"ci-full.yml:js-fuzz",

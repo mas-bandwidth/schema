@@ -143,9 +143,34 @@ build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk testdata/conform
 
 ELIXIR_TABLE_UNIT_SOURCES = $(foreach u,$(sort $(ELIXIR_TABLE_UNITS)),build/tables-generated-elixir/$(firstword $(subst :, ,$(u)))/*.ex)
 
+# ELIXIR_EBIN_ERL_COMPILER_OPTIONS, empty by default, is handed to the Erlang
+# compiler as ERL_COMPILER_OPTIONS for this one compile. The per-commit lane
+# (ci-fast.yml lang-clean, elixir row) sets it to [no_ssa_opt]: the SSA
+# optimizer (its type passes above all) is two thirds of this compile's CPU
+# (477 s of CPU in full, 197 s without it, on amd-1), and none of those passes
+# reports a warning (OTP 29 compiler-10.0.3: the warnings come from v3_core,
+# sys_core_fold, beam_core_to_ssa and beam_ssa_throw, all still run), so the
+# strict wrapper's verdict is the same. beam_validator still checks every
+# module. Everything that measures this ebin (the allocation audit and soak)
+# and the nightly Certify run leave it empty and get the optimized BEAM.
+ELIXIR_EBIN_ERL_COMPILER_OPTIONS ?=
+
+# ELIXIR_EBIN_CACHE, empty by default, is a directory that holds this ebin by
+# the hash of what it is compiled from (make/elixir-ebin-cache.sh carries the
+# key and the reasoning). The per-commit lane sets it on a fleet runner, to a
+# directory every runner of the host shares: this compile is the longest step
+# of three Elixir jobs (lang-clean and the verify-leg fuzz and conformance rows
+# start it at the same moment, on the same cores), and with the store one of
+# them compiles and the rest copy; a later commit that leaves the generated Elixir alone compiles
+# nothing. A hit is the same bytes, the same toolchain and the same compiler
+# options having passed the strict wrapper before, never a name or an age. The
+# nightly lanes leave it empty and compile.
+ELIXIR_EBIN_CACHE ?=
+ELIXIR_EBIN_CACHED = $(if $(ELIXIR_EBIN_CACHE),ELIXIR_EBIN_TOOLCHAIN="$$($(ELIXIR) --version 2>&1)" sh $(CURDIR)/make/elixir-ebin-cache.sh '$(ELIXIR_EBIN_CACHE)' build/elixir-tables-ebin $(ELIXIR_TABLE_UNIT_SOURCES) test/conformance/elixir/driver_impl.ex make/elixir-strict.sh make/elixir-ebin-cache.sh -- env)
+
 build/elixir-tables-ebin/.stamp: build/tables-generated-elixir/.stamp test/conformance/elixir/driver_impl.ex
 	@rm -rf build/elixir-tables-ebin && mkdir -p build/elixir-tables-ebin
-	$(ELIXIRC_STRICT) -o build/elixir-tables-ebin $(ELIXIR_TABLE_UNIT_SOURCES) \
+	$(if $(ELIXIR_EBIN_ERL_COMPILER_OPTIONS),ERL_COMPILER_OPTIONS='$(ELIXIR_EBIN_ERL_COMPILER_OPTIONS)') $(ELIXIR_EBIN_CACHED) $(ELIXIRC_STRICT) -o build/elixir-tables-ebin $(ELIXIR_TABLE_UNIT_SOURCES) \
 		test/conformance/elixir/driver_impl.ex
 	@touch $@
 

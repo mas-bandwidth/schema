@@ -2820,6 +2820,65 @@ jobs:
       - name: run Dart ${{ matrix.name }} fuzz
         run: make ${{ matrix.target }} DART=dart
 
+  # THE ELIXIR VERIFY GATES ON THE OPTIMIZED BEAM, NIGHTLY. The per-commit
+  # lane (ci-fast.yml, verify-leg) runs make verify-elixir-<gate> with every
+  # BEAM fixture compiled under ERL_COMPILER_OPTIONS=[no_ssa_opt] and the table
+  # corpus ebin taken from the runner host's store when its sources are
+  # unchanged: the optimized strict compile of the corpus alone is past the
+  # two-minute rule on a loaded runner (477 s of CPU; 168 s on a four-thread
+  # slot of amd-1, 2026-11-21). This job is the other half: the same three
+  # gates, one per row, with no compiler option and no store, so the BEAM they
+  # fuzz, score and time is the one a user's `elixirc` produces. Nightly and
+  # dispatch only, because a row is the compile the fast lane could not hold.
+  elixir-verify:
+    if: github.event_name != 'push' && github.event_name != 'pull_request'
+    name: Elixir verify, optimized BEAM (${{ matrix.gate }})
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        gate: [conformance, bench, fuzz]
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check out the sibling runtime (pinned release)
+        run: |
+          set -euo pipefail
+          cd ..
+          # A self-hosted runner's workspace PARENT persists between runs: the
+          # previous run's clone is removed and re-cloned at the pinned tag
+          # every time, never reused (as go-test does).
+          rm -rf serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
+
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        if: runner.environment == 'github-hosted'
+        with:
+          otp-version: '29'
+          elixir-version: '1.20'
+
+      - name: make verify-elixir-${{ matrix.gate }}, every BEAM compiled as shipped
+        run: |
+          set -euo pipefail
+          if [ -f /opt/nova/sdk/env.sh ]; then
+            . /opt/nova/sdk/env.sh
+          fi
+          if [ -n "${ERL_COMPILER_OPTIONS:-}" ]; then
+            echo "::error::ERL_COMPILER_OPTIONS is set (${ERL_COMPILER_OPTIONS}): this job certifies the BEAM the default compile produces"
+            exit 1
+          fi
+          make "verify-elixir-${{ matrix.gate }}" BEAM_PATH="$(dirname "$(command -v erl)"):$(dirname "$(command -v elixir)")"
+
 
   # THE C# TABLES LEG, PER C# PULL REQUEST: since 2026-11-15 an unlabelled pull
   # request runs it only when pr-select finds the C# leg's paths or a shared
@@ -4026,7 +4085,7 @@ jobs:
   # internal/ci/nightly_test.go holds `needs` to every other job here.
   verdict:
     if: always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    needs: [go-test, leg-tagged, pr-select, generated, pins, conformance-matrix, conformance, proof, cs-fuzz, js-fuzz, dart-fuzz, cs-tables, unity, big-endian, lint, vuln, windows, msvc, shape-gate, cpp-lock, negative-controls-matrix, negative-controls]
+    needs: [go-test, leg-tagged, pr-select, generated, pins, conformance-matrix, conformance, proof, cs-fuzz, js-fuzz, dart-fuzz, elixir-verify, cs-tables, unity, big-endian, lint, vuln, windows, msvc, shape-gate, cpp-lock, negative-controls-matrix, negative-controls]
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
