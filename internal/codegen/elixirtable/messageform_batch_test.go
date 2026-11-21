@@ -270,7 +270,7 @@ func roundTripBody(row messageBatchRow, expected string) string {
     # form-1 instance's pinned text holds.
     batch = File.read!(batch_file())
     {:ok, values} = M.load_messages(vocab, batch)
-    check(values == ` + expected + `, "LoadMessages did not give the values the form-1 instance decodes to")
+    check(values == ` + expected + `, "LoadMessages did not give the values the form-1 instance decodes to, it gave #{inspect(values, limit: :infinity)}")
     {:ok, again} = M.save_messages(vocab, values)
     check(again == batch, "SaveMessages did not reproduce the batch bytes exactly")
     {:ok, measure} = M.measure_messages(vocab, values)
@@ -343,7 +343,7 @@ func expectedFieldValue(t *testing.T, u *ir.Unit, slots map[string]uint64, f *ir
 		if !ok {
 			t.Fatalf("field %s holds %T, want an array", f.Name, raw)
 		}
-		if _, isUnion := f.Type.Ref.(*ir.Union); isUnion && unionArrayElided(f, arr) {
+		if arrayElided(f, arr) {
 			return "", false
 		}
 		return expectedArrayValue(t, u, slots, f, arr), true
@@ -528,25 +528,52 @@ func expectedUnionArm(t *testing.T, u *ir.Unit, slots map[string]uint64, f *ir.F
 	return ""
 }
 
-// unionArrayElided is the Go oracle's elision rule for an array of unions
+// arrayElided is the Go oracle's elision rule for an array field
 // (internal/tablewire messageElides, docs/SPEC-TABLES.md §3.3): a counted array
-// with no element is left out, and so is a fixed array whose every element is
-// None. A None element is `{}` or `null` in the text.
-func unionArrayElided(f *ir.Field, arr []any) bool {
+// with no element is left out; a fixed array of tables always rides, because
+// position is identity; and any other fixed array is left out when every
+// element is at its default: None for a union (`{}` or `null` in the text) or
+// an enum, zero for an integer, false for a bool, the empty text.
+func arrayElided(f *ir.Field, arr []any) bool {
 	if f.CountedOnWire() {
 		return len(arr) == 0
 	}
+	if _, isTable := f.Type.Ref.(*ir.Struct); isTable {
+		return false
+	}
 	for _, e := range arr {
-		if obj, _ := e.(map[string]any); len(obj) != 0 {
-			return false
+		switch v := e.(type) {
+		case nil:
+		case map[string]any:
+			if len(v) != 0 {
+				return false
+			}
+		case bool:
+			if v {
+				return false
+			}
+		case string:
+			if _, isEnum := f.Type.Ref.(*ir.Enum); isEnum && v == "None" {
+				continue
+			}
+			if n, ok := jsonInteger(e); f.Type.Kind == ir.TInt && ok && n.String() == "0" {
+				continue
+			}
+			if v != "" {
+				return false
+			}
+		default:
+			if n, ok := jsonInteger(e); !ok || n.String() != "0" {
+				return false
+			}
 		}
 	}
 	return true
 }
 
 // expectedArrayValue renders one fixed array's decoded elements: the element is
-// the field's named type with the array shape stripped. A table element is its
-// body. A union element (an array of unions, §2.6) is its arm as a union field
+// the field's type with the array shape stripped. A table element is its
+// body, and an integer, bool, text or enum element is expectedScalarElement's. A union element (an array of unions, §2.6) is its arm as a union field
 // decodes one, and a None element, `{}` or `null` in the text, is `:none`,
 // which is how the reader returns an array element at arm 0 (§3.3 (c)).
 func expectedArrayValue(t *testing.T, u *ir.Unit, slots map[string]uint64, f *ir.Field, arr []any) string {
@@ -572,7 +599,11 @@ func expectedArrayValue(t *testing.T, u *ir.Unit, slots map[string]uint64, f *ir
 	}
 	st, ok := f.Type.Ref.(*ir.Struct)
 	if !ok {
-		t.Fatalf("array field %s holds element type %T, which this card's fixed roots do not carry", f.Name, f.Type.Ref)
+		var elems []string
+		for _, e := range arr {
+			elems = append(elems, expectedScalarElement(t, slots, f, e))
+		}
+		return "[" + strings.Join(elems, ", ") + "]"
 	}
 	var elems []string
 	for _, e := range arr {
@@ -583,6 +614,51 @@ func expectedArrayValue(t *testing.T, u *ir.Unit, slots map[string]uint64, f *ir
 		elems = append(elems, expectedStructBody(t, u, slots, st, obj))
 	}
 	return "[" + strings.Join(elems, ", ") + "]"
+}
+
+// expectedScalarElement renders one array element that is no table and no
+// union, as the reader returns it: an element always rides, so one at its
+// default is spelled as that default and never elided. An enum is its
+// variant's announced slot and None is 0, an integer its number, a bool 1 or
+// 0, and text its string.
+func expectedScalarElement(t *testing.T, slots map[string]uint64, f *ir.Field, raw any) string {
+	t.Helper()
+	switch f.Type.Kind {
+	case ir.TNamed:
+		if e, ok := f.Type.Ref.(*ir.Enum); ok {
+			name, ok := raw.(string)
+			if !ok {
+				t.Fatalf("array field %s holds enum element %T, want a variant name", f.Name, raw)
+			}
+			if name == "None" {
+				return "0"
+			}
+			return expectedEnumSlot(t, slots, e, name)
+		}
+	case ir.TInt:
+		n, ok := jsonInteger(raw)
+		if !ok {
+			t.Fatalf("array field %s holds integer element %T, want a number or a string of digits", f.Name, raw)
+		}
+		return n.String()
+	case ir.TBool:
+		b, ok := raw.(bool)
+		if !ok {
+			t.Fatalf("array field %s holds bool element %T, want a bool", f.Name, raw)
+		}
+		if b {
+			return "1"
+		}
+		return "0"
+	case ir.TString:
+		s, ok := raw.(string)
+		if !ok {
+			t.Fatalf("array field %s holds text element %T, want a string", f.Name, raw)
+		}
+		return fmt.Sprintf("%q", s)
+	}
+	t.Fatalf("array field %s holds an element of kind %v (%T), which no message row carries yet", f.Name, f.Type.Kind, f.Type.Ref)
+	return ""
 }
 
 // expectedEnumSlot renders a selected enum variant as the reference LoadMessages
