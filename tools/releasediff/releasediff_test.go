@@ -388,3 +388,39 @@ func TestJudgeRefusesARunThatComparedNothing(t *testing.T) {
 		}
 	}
 }
+
+// A value the previous release could write and the new compiler refuses to
+// write is a writer regression: it refuses the release, by name, in either
+// table form. The reverse (the new compiler writes what the previous release
+// refused) is new reach and stays listed.
+func TestJudgeRefusesWhatThePreviousReleaseEncodesAndTheNewRefuses(t *testing.T) {
+	t.Parallel()
+	m := &Manifest{
+		Units:     map[string][]string{"same": {"tables/same"}},
+		Keys:      []string{"same"},
+		Instances: []Instance{{"s1", "same", "Root"}, {"s2", "same", "Root"}},
+	}
+	ids := map[string]string{"examples": "0x1", "tables/same": "0x3"}
+	packet := map[string]string{"examples": "\x01"}
+	old := fake{name: "v3.0.2", ids: ids, packet: packet,
+		pack: map[string]string{"s1/v": "\x01", "s1/m": "\x11", "s2/v": "\x02"}}
+	nw := fake{name: "HEAD", ids: ids, packet: packet,
+		pack: map[string]string{"s1/v": "\x01", "s2/v": "\x02", "s2/m": "\x12"}}
+	tree := writeTree(t, map[string]string{"test/main.cpp": ""})
+	r, err := Judge(old, nw, []string{tree}, m, "json", t.TempDir(), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"table message form, unit same, instance s1: v3.0.2 encodes it and HEAD refuses it (schema: unknown flag --message)"}
+	if !slices.Equal(r.Differences, want) {
+		t.Errorf("differences %q; want %q", r.Differences, want)
+	}
+	if !r.Refused() {
+		t.Error("a writer regression did not refuse the release")
+	}
+	if !slices.ContainsFunc(r.Uncompared, func(s string) bool {
+		return strings.HasPrefix(s, "table message form, unit same, instance s2: v3.0.2 refuses it")
+	}) {
+		t.Errorf("new reach (the previous release refused, the new one writes) is not listed: %q", r.Uncompared)
+	}
+}
