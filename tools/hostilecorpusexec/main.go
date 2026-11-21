@@ -17,7 +17,8 @@
 //	                        engine's canonical text carries none)
 //	accept bytes\n<bytes>   a packet re-written by the port's own writer
 //	accept -\n              an accepted announcement: no digest
-//	refuse <reason>\n       a named refusal, or damaged
+//	refuse <reason>\n       a refusal; the reason is the port's own diagnostic
+//	                        and is never compared (refusal-verdict-only)
 //	skip <why>\n            a carrier the port has no API for
 //	unbound <what>\n        the runner names no binding: the runner's defect
 //	error <what>\n          the port could not answer
@@ -259,7 +260,7 @@ func run(port, binary, corpus, findingsPath, skipsPath, only string, jobs int, b
 				fmt.Printf("STALE %s: FIX-CARD %s names a case this port skips\n", c.Name, f.slug)
 				stale++
 			}
-		case got == want:
+		case agrees(got, want):
 			if has {
 				fmt.Printf("STALE %s: FIX-CARD %s no longer reproduces\n", c.Name, f.slug)
 				stale++
@@ -298,6 +299,18 @@ func expected(c hostilecorpus.Case) answer {
 		return answer{"accept", c.Digest}
 	}
 	return answer{"refuse", c.Reason}
+}
+
+// agrees reports whether a port's answer conforms to the manifest's. A refusal
+// conforms on its verdict alone (docs/rulings.json refusal-verdict-only,
+// SPEC-TABLES §6.5 and §13.10): the reason a port names is its own diagnostic
+// detail, printed on a FAIL line but never compared. An accept conforms on the
+// digest of its decoded value.
+func agrees(got, want answer) bool {
+	if got.kind == "refuse" && want.kind == "refuse" {
+		return true
+	}
+	return got == want
 }
 
 // sanitizerMarks are the lines a sanitizer prints when it reports; one on
