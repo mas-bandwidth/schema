@@ -860,13 +860,29 @@ jobs:
           cache: false
       - name: the smoke mutants are all killed
         run: go run ./tools/mutation smoke -work "$RUNNER_TEMP/mutation-smoke"
-      # The sweep's own corpus (tools/mutation/testdata): the real sweep and
-      # shell over a tiny Go module and C program whose mutants have recorded
-      # verdicts, beside a control for each: a skipped or filtered-out test is
-      # unproven, not a survivor (F-051); a work directory's files that the
-      # tool did not make stay (F-052); a compiler refusing the mutant is
-      # build-broken, not a kill (F-226); go test's own deadline is a timeout
-      # (F-227).
+
+  # THE MUTATION DRIVER'S OWN CORPUS (tools/mutation/testdata), beside the
+  # smoke set and in parallel with it: the real sweep and shell over a tiny Go
+  # module and C program whose mutants have recorded verdicts, each beside a
+  # control. A skipped or filtered-out test is unproven, not a survivor
+  # (F-051); a work directory's files the tool did not make stay (F-052); a
+  # compiler refusing the mutant is build-broken, not a kill (F-226); go
+  # test's own deadline is a timeout (F-227). Measured 16 s on vision under
+  # load 70.
+  mutation-corpus:
+    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 2
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
       - name: the corpus mutants get their recorded verdicts
         run: go run ./tools/mutation corpus -work "$RUNNER_TEMP/mutation-corpus"
 

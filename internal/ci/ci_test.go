@@ -1437,6 +1437,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-fast.yml:leg-gate-rust",
 		"ci-fast.yml:leg-gate-squirrel",
 		"ci-fast.yml:lint-fast",
+		"ci-fast.yml:mutation-corpus",
 		"ci-fast.yml:mutation-smoke",
 		"ci-fast.yml:plan",
 		"ci-fast.yml:verify-leg",
