@@ -81,7 +81,44 @@ func transparent(w string) bool {
 
 func parseGoTestLine(cmd string) goTestLine {
 	var l goTestLine
-	words := shellWords(cmd)
+	// THE COMMAND IS READ WHERE IT STANDS. A recipe is often a whole shell
+	// script on one line (a for loop, a case, quoted sed programs), and
+	// splitting all of it into words lets a quote three commands back swallow
+	// the one that matters. So the words are those of the simple command that
+	// holds the test invocation, from the separator before it; the text in
+	// front is read too only when it names a variable this scan models, since
+	// an `export` or an `unset` there reaches the command.
+	invocations := goTestCommand.FindAllStringIndex(cmd, -1)
+	for at := 0; ; {
+		i := strings.Index(cmd[at:], "test/slowgate/proof")
+		if i < 0 {
+			break
+		}
+		invocations = append(invocations, []int{at + i, at + i})
+		at += i + 1
+	}
+	switch len(invocations) {
+	case 0:
+		l.undecided = "it runs no `go test` this scan can find as a command"
+		return l
+	case 1:
+	default:
+		l.undecided = "it runs more than one test command on one line"
+		return l
+	}
+	start := 0
+	for _, sep := range []string{";", "&&", "||", "|", "(", "{", "`", " then ", " do ", " else "} {
+		if i := strings.LastIndex(cmd[:invocations[0][0]], sep); i >= 0 && i+len(sep) > start {
+			start = i + len(sep)
+		}
+	}
+	words := shellWords(cmd[start:])
+	for _, name := range []string{"SCHEMA_SLOW", "SCHEMA_REQUIRE_CORPUS", "GOOS", "GOARCH"} {
+		if strings.Contains(cmd[:start], name) {
+			words = append(shellWords(cmd[:start]), words...)
+			break
+		}
+	}
 
 	// the invocation: `go test`, or the proof script (whose arguments after
 	// <label> '<names>' are go test's)
@@ -102,12 +139,8 @@ func parseGoTestLine(cmd string) goTestLine {
 			}
 		}
 	}
-	switch {
-	case found == 0:
-		l.undecided = "it runs no `go test` this scan can find as a command"
-		return l
-	case found > 1:
-		l.undecided = "it runs more than one test command on one line"
+	if found != 1 {
+		l.undecided = "its test command could not be read as shell words"
 		return l
 	}
 
