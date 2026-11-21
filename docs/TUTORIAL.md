@@ -791,7 +791,7 @@ by hand, with 1013 in the health bits. A value outside its declared range is
 **refused, not clamped**. The read returns false and you drop the packet. The
 same goes for counts past an array bound, string lengths past their maximum,
 enum values above the extent, and reads that run past the end of the buffer.
-This holds in all nine languages, because the same compiler wrote all nine
+This holds in every language, because the same compiler wrote every one of the
 readers.
 
 One buffer contract to know before this ships. The C and C++ readers pull a
@@ -861,7 +861,7 @@ $ schema id .
 ```
 
 **You now have** a real network message, three bytes on the wire, hostile input
-refused, in any of nine languages.
+refused, in any of seventeen languages.
 
 ---
 

@@ -31,7 +31,7 @@ safely accept a packet from the network at all. You are then choosing between
 In schema there is nothing to omit. Refusing an out-of-range value is not a
 verification pass you run first, it is what the read does: the bound is part of
 the type, so the generated reader checks it inline in every language, because
-one compiler emitted all nine. There is no such thing as a schema port that
+one compiler emitted every one. There is no such thing as a schema port that
 reads but cannot validate.
 
 For a 60 Hz gameplay packet where you decode the whole thing anyway, that trade
@@ -99,7 +99,7 @@ Two further differences worth being precise about. Cap'n Proto is byte- and
 word-aligned by design — alignment is what makes the in-place trick sound —
 where schema packs to the bit. And Cap'n Proto brings a large surface: RPC,
 promise pipelining, capabilities, an ecosystem. schema brings a language and
-nine code generators, and nothing else.
+one code generator per target, and nothing else.
 
 On size: on the gameplay packet in [COMPARISON.md](COMPARISON.md), Cap'n Proto
 is 96 bytes unpacked and **52 packed**, against schema's 28. Packed is the
@@ -239,17 +239,13 @@ project stopped tomorrow, you would still have working serializers and could
 maintain them by hand. That is a materially different exposure from depending
 on a runtime library.
 
-## Only nine languages. What about Python, Swift?
+## My language is not on the list. What about Swift?
 
-Not supported today. The nine exist because they are what the authors ship
-in: C++ engine, C# for Unity, Go for backend services, Rust for tooling,
-JavaScript for the browser client, Dart for Flutter clients, Elixir for the
-BEAM realtime services, Java for the JVM side of the estate.
+Not supported today. The languages schema generates are the ones game teams
+ship in: engines, clients, backend services, tools and scripting. Each port
+has a design page under `docs/` (PORT-PYTHON.md, PORT-MOO.md and the rest).
 
-Python is being ported now, one layer at a time, and does not generate code
-yet: [PORT-PYTHON.md](PORT-PYTHON.md) is its design.
-
-A new backend is a Go package that walks the same IR the existing nine consume,
+A new backend is a Go package that walks the same IR the existing ones consume,
 and the cross-language test harness would tell you immediately whether it
 agrees with the others bit for bit. That is the mechanism, but it is real work
 and nobody should pretend otherwise.
@@ -260,8 +256,8 @@ That is what it is designed for, and the specific guarantee is: **a read
 refuses out-of-range input rather than clamping or trusting it.** Ranged
 values, array counts past their bound, string and bytes lengths past their
 maximum, enum values that are not variants, and reads that run past the end of
-the buffer all fail the read, and the same rules hold in all nine languages
-because one compiler emitted all nine.
+the buffer all fail the read, and the same rules hold in every language
+because one compiler emitted them all.
 
 What it does *not* do: it is not a transport, so it does nothing about replay,
 amplification, rate limiting or authentication. Those belong to the layer
@@ -291,7 +287,7 @@ index past the writer's own storage: an assert in an assert leg, a refusal
 elsewhere.
 
 Reads are different: **the read guarantee is unconditional** — that is where
-untrusted input arrives, and it holds in all nine languages in every build.
+untrusted input arrives, and it holds in every language in every build.
 Keep values inside their declared bounds when you write them — your code
 already knows they are,
 and in a game shipping at 60 Hz re-checking every field on the write path is a
@@ -302,9 +298,11 @@ cost with no buyer. See
 ## Is everything supported in every language?
 
 **That is the promise, and [ROADMAP.md](../ROADMAP.md) tracks it feature by
-feature.** Schema generates C, C# (modern), C# (unity), C++, Dart, Elixir, Go,
-Goose, Java, JavaScript, Lobster, Lua, Luau, Python, Ruby, Rust and Squirrel,
-and moo from a build with `-tags schema_leg_moo`, all from one IR. The roadmap
+feature.** Schema generates C, C++, C# (modern), C# (unity), Dart, Elixir, Go,
+Goose, Java, JavaScript, Lobster, Lua, Luau, Moo, Python, Ruby, Rust and
+Squirrel, all from one IR: eighteen targets, seventeen languages. The default
+build leaves Moo out: `--lang moo` needs a compiler built with
+`-tags schema_leg_moo`. The roadmap
 has one column per language for the packet wire, fixed tables and variable
 tables, and a feature is ticked only when that language carries it.
 
@@ -359,7 +357,7 @@ In every language but three, yes.
 Every other target calls a small serialize-family runtime for its language;
 [SPEC.md §1](SPEC.md#1-what-schema-is) names each one. They are small, open
 source, and doing the bit-level stream work the generated code calls into.
-Python, Ruby, Goose and moo ship theirs inside the generated output.
+Python, Ruby, Goose and Moo ship theirs inside the generated output.
 **Dart, Elixir and Java need nothing but their own toolchain** — those three
 carry the bit reader and writer in the generated code itself, and are held to
 the same goldens as the rest.
