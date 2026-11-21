@@ -73,13 +73,13 @@ func usage() {
              --coverage writes its rows. Exits nonzero on any failure.
 
   coverage   read every coverage row under --in and print the nightly's
-             coverage table. --require-original-nine requires full feature
+             coverage table. --require-every-target requires full feature
              support, runtime acceptance receipts and completed roadmap tasks.
 
   implementation
              require every registered Schema construct, a positive corpus
              witness in a reachable root, and successful code generation.
-             --lang checks one original-nine language; unset checks all nine.
+             --lang checks one target; unset checks all 18.
              This prerequisite does not replace native runtime acceptance.
 
   wire-fuzz  mutate every pinned wire in the corpus, feed each mutant to one
@@ -120,8 +120,8 @@ flags:
   --lang <lang>       the leg whose writes are re-read (cross-read only)
   --writes <dir>      that leg's answers, <surface>/<case> (cross-read only)
   --in <dir>          where the coverage rows are (coverage only)
-  --require-original-nine
-                      require complete original-nine coverage and fixed forms
+  --require-every-target
+                      require complete coverage and fixed forms for all 18 targets
   --ports             leave the reference leg out of the matrix (matrix only)
   --results <path>    write every case's verdict as JSON, the input of
                       "go run ./tools/matrix proof" (run only)
@@ -176,17 +176,17 @@ func main() {
 	require := fs.String("require", "", "comma-separated required card surfaces, default all nine (cards only)")
 	claims := fs.Bool("claims", false, "fail a claimed case answered ABSENT (run only)")
 	coverage := fs.String("coverage", "", "write coverage rows as JSON (run, cross-read)")
-	lang := fs.String("lang", "", "the original-nine language (implementation), or writes to re-read (cross-read)")
+	lang := fs.String("lang", "", "one of the 18 targets (implementation), or writes to re-read (cross-read)")
 	writes := fs.String("writes", "", "that leg's answers (cross-read only)")
 	in := fs.String("in", "", "where the coverage rows are (coverage only)")
-	requireNine := fs.Bool("require-original-nine", false, "require original-nine completion (coverage only)")
+	requireEveryTarget := fs.Bool("require-every-target", false, "require completion for all 18 targets (coverage only)")
 	ports := fs.Bool("ports", false, "leave the reference leg out (matrix only)")
 	if len(os.Args) > 2 {
 		_ = fs.Parse(os.Args[2:])
 	}
 
-	if *requireNine && command != "coverage" {
-		fatalf("--require-original-nine is only valid with coverage, the unified full-implementation gate")
+	if *requireEveryTarget && command != "coverage" {
+		fatalf("--require-every-target is only valid with coverage, the unified full-implementation gate")
 	}
 
 	if command == "matrix" {
@@ -202,7 +202,7 @@ func main() {
 		if *in == "" {
 			fatalf("coverage: --in names no directory")
 		}
-		if err := coverageReport(os.Stdout, *in, *manifest, *jsonDir, *reports, *requireNine); err != nil {
+		if err := coverageReport(os.Stdout, *in, *manifest, *jsonDir, *reports, *requireEveryTarget); err != nil {
 			fatalf("%v", err)
 		}
 		return

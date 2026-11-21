@@ -10,8 +10,8 @@ import (
 )
 
 // The shared entry fixture is separate from the global corpus: no verdict is
-// assigned to an expansion port. The nightly reference job runs this oracle
-// once, then each original-nine driver reads the same four files once.
+// assigned to any target by it. The nightly reference job runs this oracle
+// once, then each of the 18 targets' drivers reads the same four files once.
 func TestBOMEntryCorpusOracle(t *testing.T) {
 	_, _, units := corpus(t)
 	m, err := ReadManifest("testdata/conformance/tables/bom-entry/MANIFEST.txt", "testdata/conformance/tables/bom-entry/json")

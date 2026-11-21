@@ -182,5 +182,5 @@ split ./compiler ^Test.*(Carries|Carriers|IsShipped)
 # The Rust refusal probe builds a native driver; keep its cold build out of
 # the otherwise small harness row.
 split ./test/conformance/harness ^TestRustDriverAnswersWriteRefusal$
-split ./test/conformance/harness ^TestOriginalImplementationUsesAllRequiredConstructs$
+split ./test/conformance/harness ^TestEveryTargetImplementationUsesAllRequiredConstructs$
 split ./internal/goldens ^TestGeneratedTextNamesNoMachine$

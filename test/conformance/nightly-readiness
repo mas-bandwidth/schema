@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Execute original-nine (and Goose, MOO and Python) acceptance gates; a report or carried finding is not a pass.
+"""Execute a target's runtime acceptance gates (every target owes them; the ones without gates here are refused by name); a report or carried finding is not a pass.
 
 This entrypoint adds no wall-clock timeout. Native test execution uses -timeout=0;
 protocol deadlines and the existing negative controls' intended oracles stay intact.
@@ -527,7 +527,7 @@ class Runner:
             self.missing("phase-contract-duplicates", "duplicate phases: " + ", ".join(duplicates))
         self.out.joinpath("results.json").write_text(json.dumps(self.results, indent=2) + "\n")
         failed = [row["phase"] for row in self.results if row["errors"]]
-        print("\nOriginal-nine readiness " + lang + ": " +
+        print("\nRuntime readiness " + lang + ": " +
               ("INCOMPLETE: " + ", ".join(failed) if failed else "PASS"), flush=True)
         if not failed:
             print("NIGHTLY_READINESS_PASS language=" + lang + " phases=" + str(len(self.results)), flush=True)

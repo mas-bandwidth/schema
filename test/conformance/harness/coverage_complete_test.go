@@ -16,7 +16,7 @@ import (
 func completeCoverage(shape map[coverageKey]*coverageExpected) ([]coverageRow, map[string]string) {
 	var rows []coverageRow
 	fixed := map[string]string{}
-	for _, lang := range originalNine {
+	for _, lang := range everyTarget {
 		for key, want := range shape {
 			rows = append(rows, coverageRow{Lang: lang, Direction: directionReadsCpp,
 				Surface: key.surface, Class: key.class, Cases: want.cases, Answered: want.cases})
@@ -37,7 +37,7 @@ func smallCoverageShape() map[coverageKey]*coverageExpected {
 	}
 }
 
-func TestOriginalNineCoverageRejectsIncompleteRecords(t *testing.T) {
+func TestEveryTargetCoverageRejectsIncompleteRecords(t *testing.T) {
 	shape := smallCoverageShape()
 	for _, tc := range []struct {
 		name, diagnostic string
@@ -45,6 +45,12 @@ func TestOriginalNineCoverageRejectsIncompleteRecords(t *testing.T) {
 	}{
 		{"missing language", "elixir /", func(r []coverageRow, _ map[string]string) []coverageRow {
 			return slices.DeleteFunc(r, func(v coverageRow) bool { return v.Lang == "elixir" })
+		}},
+		{"missing newer target", "squirrel /", func(r []coverageRow, _ map[string]string) []coverageRow {
+			return slices.DeleteFunc(r, func(v coverageRow) bool { return v.Lang == "squirrel" })
+		}},
+		{"missing newer surface", "luau / block", func(r []coverageRow, _ map[string]string) []coverageRow {
+			return slices.DeleteFunc(r, func(v coverageRow) bool { return v.Lang == "luau" && v.Surface == "block" })
 		}},
 		{"missing canonical", "cpp / wire (fixed): missing", func(r []coverageRow, _ map[string]string) []coverageRow {
 			return slices.DeleteFunc(r, func(v coverageRow) bool { return v.Lang == "cpp" && v.Surface == "wire" && v.Class == "fixed" })
@@ -75,10 +81,11 @@ func TestOriginalNineCoverageRejectsIncompleteRecords(t *testing.T) {
 		{"missing fixed form", "fixed form requires pass", func(r []coverageRow, f map[string]string) []coverageRow { delete(f, "java"); return r }},
 		{"failed fixed form", "got \"fail\"", func(r []coverageRow, f map[string]string) []coverageRow { f["java"] = "fail"; return r }},
 		{"uncarried fixed form", "got \"none\"", func(r []coverageRow, f map[string]string) []coverageRow { f["java"] = "none"; return r }},
+		{"newer target fixed form", "moo: fixed form requires pass", func(r []coverageRow, f map[string]string) []coverageRow { delete(f, "moo"); return r }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rows, fixed := completeCoverage(shape)
-			problems := originalCoverageProblems(tc.damage(rows, fixed), fixed, shape)
+			problems := everyTargetCoverageProblems(tc.damage(rows, fixed), fixed, shape)
 			if !strings.Contains(strings.Join(problems, "\n"), tc.diagnostic) {
 				t.Fatalf("missing refusal %q: %v", tc.diagnostic, problems)
 			}
@@ -86,13 +93,21 @@ func TestOriginalNineCoverageRejectsIncompleteRecords(t *testing.T) {
 	}
 }
 
-func TestOriginalNineCoverageSemanticRefusalsAreAnswers(t *testing.T) {
+func TestEveryTargetCoverageSemanticRefusalsAreAnswers(t *testing.T) {
 	shape := smallCoverageShape()
 	rows, fixed := completeCoverage(shape)
-	rows = append(rows, coverageRow{Lang: "lua", Direction: directionReadsCpp, Surface: "wire", SurfaceAbsent: true})
-	fixed["lua"] = "none"
-	if problems := originalCoverageProblems(rows, fixed, shape); len(problems) != 0 {
+	if problems := everyTargetCoverageProblems(rows, fixed, shape); len(problems) != 0 {
 		t.Fatalf("complete answered cases failed: %v", problems)
+	}
+	// lua is one of the 18: an absent surface and no fixed-form gate are owed.
+	damaged := append(slices.Clone(rows), coverageRow{Lang: "lua", Direction: directionReadsCpp, Surface: "wire", SurfaceAbsent: true})
+	owed := map[string]string{}
+	for lang, verdict := range fixed {
+		owed[lang] = verdict
+	}
+	owed["lua"] = "none"
+	if problems := strings.Join(everyTargetCoverageProblems(damaged, owed, shape), "\n"); !strings.Contains(problems, "lua / wire: unexpected surface/class") || !strings.Contains(problems, `lua: fixed form requires pass, got "none"`) {
+		t.Fatalf("an incomplete lua leg passed: %v", problems)
 	}
 	for i := range rows {
 		if rows[i].Lang == "go" && rows[i].Class == "fixed" {
@@ -101,7 +116,7 @@ func TestOriginalNineCoverageSemanticRefusalsAreAnswers(t *testing.T) {
 			break
 		}
 	}
-	if problems := originalCoverageProblems(rows, fixed, shape); !strings.Contains(strings.Join(problems, "\n"), "named absence=1 is not an answered case") {
+	if problems := everyTargetCoverageProblems(rows, fixed, shape); !strings.Contains(strings.Join(problems, "\n"), "named absence=1 is not an answered case") {
 		t.Fatalf("feature absence passed as semantic refusal: %v", problems)
 	}
 }
@@ -153,7 +168,7 @@ func writeCoverageFixture(t *testing.T, dir string, rows []coverageRow, fixed ma
 	}
 }
 
-func TestOriginalNineCoverageManifestReportAndRefusals(t *testing.T) {
+func TestEveryTargetCoverageManifestReportAndRefusals(t *testing.T) {
 	fakeRoadmapChecker(t, 0)
 	t.Chdir("../../..")
 	shape := realCoverageShape(t)
@@ -165,7 +180,7 @@ func TestOriginalNineCoverageManifestReportAndRefusals(t *testing.T) {
 	if err := coverageReportWithImplementationCheck(&out, dir, defaultManifest, defaultJSONDir, defaultReports, true, func(*Manifest) []string { return nil }, testReadinessRevision); err != nil {
 		t.Fatalf("%v\n%s", err, out.String())
 	}
-	if !strings.Contains(out.String(), "PASS: every original-nine") {
+	if !strings.Contains(out.String(), "PASS: every target") {
 		t.Fatalf("completion not reported: %s", out.String())
 	}
 	// Remove all C++ rows. Ports cannot define their own smaller denominator.
@@ -200,7 +215,7 @@ func TestCoverageReportKeepsReadableRowsAfterDamagedInput(t *testing.T) {
 	}
 }
 
-func TestOriginalNineCoverageWorkflowReportsBeforeFailure(t *testing.T) {
+func TestEveryTargetCoverageWorkflowReportsBeforeFailure(t *testing.T) {
 	slowtest.Gate(t, "bash (the coverage workflow shell)")
 	needShell(t)
 	raw, err := os.ReadFile("../../../.github/workflows/nightly-conformance.yml")
@@ -230,16 +245,17 @@ func TestOriginalNineCoverageWorkflowReportsBeforeFailure(t *testing.T) {
 	dir := t.TempDir()
 	// Stand in for a missing lane: the harness gate fails, but ordinary
 	// reporting remains successful. Other tests exercise the real verdict.
-	writeExec(t, filepath.Join(dir, "bin", "go"), "#!/bin/sh\necho COVERAGE_DIAGNOSTIC\nfor arg in \"$@\"; do\n  if [ \"$arg\" = --require-original-nine ]; then exit 1; fi\ndone\nexit 0\n")
+	writeExec(t, filepath.Join(dir, "bin", "go"), "#!/bin/sh\necho COVERAGE_DIAGNOSTIC\nfor arg in \"$@\"; do\n  if [ \"$arg\" = --require-every-target ]; then exit 1; fi\ndone\nexit 0\n")
 	summary := filepath.Join(dir, "summary.md")
 	for _, guarded := range []bool{true, false} {
 		run := script
 		if !guarded {
-			run = strings.ReplaceAll(run, "--require-original-nine", "")
+			run = strings.ReplaceAll(run, "--require-every-target", "")
 		}
 		cmd := exec.Command("bash", "--noprofile", "--norc", "-c", run)
 		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "PATH="+filepath.Join(dir, "bin")+":"+os.Getenv("PATH"), "GITHUB_STEP_SUMMARY="+summary)
+		// HARNESS_TAGS is the workflow-level env the step builds the harness with.
+		cmd.Env = append(os.Environ(), "PATH="+filepath.Join(dir, "bin")+":"+os.Getenv("PATH"), "GITHUB_STEP_SUMMARY="+summary, "HARNESS_TAGS=schema_leg_goose,schema_leg_moo,schema_leg_python,schema_leg_ruby")
 		out, err := cmd.CombinedOutput()
 		if (err != nil) != guarded {
 			t.Fatalf("guarded=%t exit=%v output=%s", guarded, err, out)

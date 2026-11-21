@@ -2,10 +2,11 @@
 
 package main
 
-// Python is admitted to `implementation --lang python` in a harness built with
-// its tag (build/conformance-harness-python, make/python-ci-release.mk), as
-// Goose and MOO are with theirs; the audit reads compiler.Carried("python")
-// (compiler/carries_python*.go).
+// Python is admitted to `implementation --lang python` in every build; a
+// harness built with its tag (build/conformance-harness-python,
+// make/python-ci-release.mk) is the one where compiler.Carried("python") has
+// the target's registrations (compiler/carries_python*.go), and any other
+// build reports them missing.
 func init() {
 	taggedImplementationLanguages = append(taggedImplementationLanguages, "python")
 }

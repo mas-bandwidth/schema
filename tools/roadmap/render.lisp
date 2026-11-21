@@ -15,12 +15,15 @@
 ;;;; renderer's output.
 ;;;;
 ;;;; A cell is ✅ only when every leaf task under its work node is :done, and a
-;;;; :done task must carry non-empty :evidence. An evidence overlay entry may
+;;;; :done task must carry non-empty :evidence. A :not-applicable task must
+;;;; carry its reason in :note; a cell whose every leaf is not applicable is
+;;;; "—" and counts in neither side of its column's "complete" percentage.
+;;;; An evidence overlay entry may
 ;;;; move a task's :state and :evidence; it may not name a task the graph does
 ;;;; not have, and it is held to the same rule.
 ;;;;
 ;;;; Usage:
-;;;;   sbcl --script tools/roadmap/render.lisp [--check] [--require-original-nine] [--evidence DIR] [roadmap.sexp] [ROADMAP.md]
+;;;;   sbcl --script tools/roadmap/render.lisp [--check] [--require-every-target] [--evidence DIR] [roadmap.sexp] [ROADMAP.md]
 ;;;;   sbcl --script tools/roadmap/render.lisp --test
 
 (defpackage :roadmap-renderer
@@ -161,16 +164,20 @@ an evidence overlay file, one plist per task."
   (and (stringp s) (plusp (length (string-trim '(#\Space #\Tab #\Newline #\Return) s)))))
 
 (defun validate-task-node (id node)
-  "The rule a task is held to: a known state, and evidence when it is done."
+  "The rule a task is held to: a known state, evidence when it is done, and
+the reason in :note when it is not applicable."
   (let ((state (getf node :state))
         (evidence (getf node :evidence)))
-    (unless (member state '(:unknown :todo :doing :done))
+    (unless (member state '(:unknown :todo :doing :done :not-applicable))
       (error "Task ~s has invalid state: ~s" id state))
     (when (eq state :done)
       (unless (and (listp evidence)
                    evidence
                    (some #'non-blank-string-p evidence))
-        (error "Done task ~s has empty or missing required :evidence" id)))))
+        (error "Done task ~s has empty or missing required :evidence" id)))
+    (when (eq state :not-applicable)
+      (unless (non-blank-string-p (getf node :note))
+        (error "Not-applicable task ~s has no :note giving the reason" id)))))
 
 (defun build-and-validate-node-table (nodes root-id)
   (let ((table (make-hash-table :test 'equal)))
@@ -435,14 +442,20 @@ name; nil when DIR does not exist."
 (defstruct cell-eval
   text
   is-green
-  has-unknown)
+  has-unknown
+  not-applicable)
+
+;;; A :not-applicable leaf is left out of its cell's count: a cell whose every
+;;; leaf is not applicable renders "—" and is left out of its column's
+;;; "complete" percentage, numerator and denominator both.
 
 (defun evaluate-cell (leaf-ids table)
   (let ((total (length leaf-ids))
         (done 0)
         (unknown 0)
         (todo 0)
-        (doing 0))
+        (doing 0)
+        (not-applicable 0))
     (when (zerop total)
       (error "Cell has 0 leaf tasks"))
     (dolist (id leaf-ids)
@@ -453,8 +466,12 @@ name; nil when DIR does not exist."
           (:unknown (incf unknown))
           (:todo (incf todo))
           (:doing (incf doing))
+          (:not-applicable (incf not-applicable))
           (otherwise (error "Unrecognized state ~s for task ~s" state id)))))
+    (decf total not-applicable)
     (cond
+      ((zerop total)
+       (make-cell-eval :text "—" :is-green nil :has-unknown nil :not-applicable t))
       ((= done total)
        ;; All required leaves done => visible green indicator + 100%
        (make-cell-eval :text "✅ 100%" :is-green t :has-unknown nil))
@@ -472,7 +489,9 @@ name; nil when DIR does not exist."
 (defun assessed-cell-text (eval work &optional leaf-ids table)
   ;; This roadmap view shows verified completion only. Detailed states stay in S.
   (declare (ignore work leaf-ids table))
-  (if (cell-eval-is-green eval) "✅" "❌"))
+  (cond ((cell-eval-not-applicable eval) "—")
+        ((cell-eval-is-green eval) "✅")
+        (t "❌")))
 
 (defun render-table-string (roadmap table sexp-path)
   (let* ((rows (getf roadmap :rows))
@@ -518,19 +537,24 @@ name; nil when DIR does not exist."
 
     ;; Summary row (Final language row)
     ;; "Output the verified feature percentage; keep counts in the source work set."
-    (let ((n-features (length rows)))
-      (format out "| complete")
-      (dolist (col cols)
-        (let ((c-id (first col))
-              (green-count 0))
-          (dolist (row rows)
-            (let* ((r-id (first row))
-                   (eval (gethash (cons r-id c-id) cell-evals)))
+    ;; A not-applicable cell counts in neither the numerator nor the
+    ;; denominator; a column with no applicable row renders "—".
+    (format out "| complete")
+    (dolist (col cols)
+      (let ((c-id (first col))
+            (green-count 0)
+            (applicable 0))
+        (dolist (row rows)
+          (let* ((r-id (first row))
+                 (eval (gethash (cons r-id c-id) cell-evals)))
+            (unless (cell-eval-not-applicable eval)
+              (incf applicable)
               (when (cell-eval-is-green eval)
-                (incf green-count))))
-          (let ((pct (floor (* 100 green-count) n-features)))
-            (format out " | ~D%" pct))))
-      (format out " |~%"))
+                (incf green-count)))))
+        (if (zerop applicable)
+            (format out " | —")
+            (format out " | ~D%" (floor (* 100 green-count) applicable)))))
+    (format out " |~%")
 
     ;; Link to source data
     (format out "~%[Source data](~a)~%" sexp-path)
@@ -573,26 +597,30 @@ once each, none of which carries :text."
     page))
 
 ;;; Explicit release acceptance; rendering/drift checks remain usable mid-work.
+;;; Parity is owed by every target, always: no subset of the columns is ever
+;;; the acceptance set. A cell owes nothing only when it is :not-applicable
+;;; with a reason in :note.
 
-(defparameter *original-nine-languages*
-  '("cpp" "c" "cs" "go" "rust" "java" "js" "dart" "elixir"))
+(defparameter *every-target-languages*
+  '("c" "cpp" "cs" "dart" "elixir" "go" "goose" "java" "js" "lobster"
+    "lua" "luau" "moo" "python" "ruby" "rust" "squirrel" "unity"))
 
-(defparameter *original-nine-roadmaps*
+(defparameter *every-target-roadmaps*
   '("packet-wire" "fixed-tables" "variable-tables"))
 
-(defun original-nine-problems (sexp table)
-  "Every unfinished original-nine cell and leaf, plus missing required page
+(defun every-target-problems (sexp table)
+  "Every unfinished cell and leaf in every target column, plus missing required page
 sections/columns. TABLE is the validated graph after evidence overlays."
   (let ((page (validate-page sexp table))
         (memo (make-hash-table :test 'equal))
         (problems nil))
-    (dolist (id *original-nine-roadmaps*)
+    (dolist (id *every-target-roadmaps*)
       (unless (member id (getf page :roadmaps) :test #'string=)
         (push (format nil "Missing required rendered roadmap section ~s" id) problems))
       (let ((roadmap (find-reachable-roadmap (getf sexp :root) table id)))
         (if (null roadmap)
             (push (format nil "Missing required reachable roadmap ~s" id) problems)
-            (dolist (lang *original-nine-languages*)
+            (dolist (lang *every-target-languages*)
               (if (not (assoc lang (getf roadmap :columns) :test #'string=))
                   (push (format nil "Missing required language ~s in roadmap ~s" lang id) problems)
                   (dolist (row (getf roadmap :rows))
@@ -607,8 +635,11 @@ sections/columns. TABLE is the validated graph after evidence overlays."
                              (remove-if
                               (lambda (leaf)
                                 (let ((task (gethash leaf table)))
-                                  (and (eq (getf task :state) :done)
-                                       (some #'non-blank-string-p (getf task :evidence)))))
+                                  (or (and (eq (getf task :state) :done)
+                                           (some #'non-blank-string-p (getf task :evidence)))
+                                      ;; nothing is owed where the work does not apply
+                                      (and (eq (getf task :state) :not-applicable)
+                                           (non-blank-string-p (getf task :note))))))
                               leaves)))
                       (when unfinished
                         (push (format nil "Unfinished cell ~a/~a/~a (work ~s)" id row-id lang work-id)
@@ -755,21 +786,21 @@ order, and refuses a result whose hand-written part differs from EXISTING's."
       (values sexp table files entries))))
 
 (defun render-to-roadmap-file (sexp-path roadmap-path check-only
-                                &optional evidence-dir require-original-nine)
+                                &optional evidence-dir require-every-target)
   (let ((evidence-dir (or evidence-dir (default-evidence-directory sexp-path))))
     (multiple-value-bind (sexp table files entries) (load-work-graph sexp-path evidence-dir)
       (unless (probe-file roadmap-path)
         (error "~a not found: the tables are spliced into the hand-written page, which must exist" roadmap-path))
       (let* ((existing (read-file-to-string roadmap-path))
              (page (splice-page-string existing sexp table sexp-path))
-             (problems (and require-original-nine (original-nine-problems sexp table))))
-        (when require-original-nine
+             (problems (and require-every-target (every-target-problems sexp table))))
+        (when require-every-target
           (if problems
               (progn
-                (format *error-output* "INCOMPLETE: original-nine roadmap acceptance failed~%")
+                (format *error-output* "INCOMPLETE: every-target roadmap acceptance failed~%")
                 (dolist (problem problems)
                   (format *error-output* "~a~%" problem)))
-              (format t "OK: original-nine roadmap acceptance (all three sections, all required leaves done with evidence)~%")))
+              (format t "OK: every-target roadmap acceptance (all three sections, all required leaves done with evidence)~%")))
         (if check-only
             (if (string= existing page)
                 (progn
@@ -790,18 +821,17 @@ order, and refuses a result whose hand-written part differs from EXISTING's."
 
 ;;; Test Suite
 
-(defun original-nine-test-graph ()
-  "A complete original-nine page with unfinished optional expansion columns."
+(defun every-target-test-graph ()
+  "A complete page: every target done in all three sections."
   (let ((sections '("packet-wire" "fixed-tables" "variable-tables"))
-        (languages '("cpp" "c" "cs" "go" "rust" "java" "js" "dart" "elixir" "lua"))
+        (languages (copy-list *every-target-languages*))
         (nodes nil))
     (dolist (section sections)
       (let ((cells nil))
         (dolist (lang languages)
           (let ((id (format nil "~a/~a" section lang)))
-            (push (list :id id :type :task
-                        :state (if (string= lang "lua") :todo :done)
-                        :evidence (unless (string= lang "lua") '("executed fixture gate")))
+            (push (list :id id :type :task :state :done
+                        :evidence '("executed fixture gate"))
                   nodes)
             (push (list "feature" lang id) cells)))
         (push (list :id section :type :roadmap :title section
@@ -814,15 +844,15 @@ order, and refuses a result whose hand-written part differs from EXISTING's."
           :page (list :roadmaps (copy-list sections))
           :nodes (nreverse nodes))))
 
-(defun original-nine-test-problems (sexp &optional overlays)
+(defun every-target-test-problems (sexp &optional overlays)
   (let ((table (build-and-validate-node-table (validate-root sexp) (getf sexp :root))))
     (apply-evidence-overlay table overlays)
-    (original-nine-problems sexp table)))
+    (every-target-problems sexp table)))
 
-(defun original-nine-test-node (sexp id)
+(defun every-target-test-node (sexp id)
   (find id (getf sexp :nodes) :key (lambda (node) (getf node :id)) :test #'string=))
 
-(defun original-nine-test-set (sexp id key value)
+(defun every-target-test-set (sexp id key value)
   (setf (getf sexp :nodes)
         (mapcar (lambda (node)
                   (if (string= id (getf node :id)) (plist-put node key value) node))
@@ -843,28 +873,54 @@ order, and refuses a result whose hand-written part differs from EXISTING's."
                    (format t "FAIL: ~a (~a)~%" name e)
                    (incf fail-count)))))
 
-      (test "original nine accepts all three sections and ignores optional expansion TODOs"
+      (test "every target accepts all three sections when every column is done"
         (lambda ()
-          (when (original-nine-test-problems (original-nine-test-graph))
-            (error "Complete original nine did not pass"))))
+          (unless (= 18 (length *every-target-languages*))
+            (error "Every-target list is not the 18 targets: ~s" *every-target-languages*))
+          (when (every-target-test-problems (every-target-test-graph))
+            (error "Complete page did not pass"))))
 
-      (test "original nine names every unfinished cell and leaf"
+      (test "every target refuses a todo cell in any column, newer ones included"
         (lambda ()
-          (let ((sexp (original-nine-test-graph)))
+          (dolist (lang '("lua" "goose" "luau" "moo" "python" "lobster" "ruby" "squirrel" "unity"))
+            (let ((sexp (every-target-test-graph)))
+              (every-target-test-set sexp (format nil "variable-tables/~a" lang) :state :todo)
+              (let ((problems (every-target-test-problems sexp)))
+                (unless (and (= 2 (length problems))
+                             (some (lambda (line)
+                                     (search (format nil "variable-tables/feature/~a" lang) line))
+                                   problems))
+                  (error "Todo cell in column ~a escaped: ~s" lang problems)))))))
+
+      (test "every target refuses a missing newer column"
+        (lambda ()
+          (let* ((sexp (every-target-test-graph))
+                 (roadmap (every-target-test-node sexp "packet-wire")))
+            (setf (getf roadmap :columns)
+                  (remove "unity" (getf roadmap :columns) :key #'first :test #'string=)
+                  (getf roadmap :cells)
+                  (remove "unity" (getf roadmap :cells) :key #'second :test #'string=))
+            (unless (equal (every-target-test-problems sexp)
+                           '("Missing required language \"unity\" in roadmap \"packet-wire\""))
+              (error "Missing unity column escaped")))))
+
+      (test "every target names every unfinished cell and leaf"
+        (lambda ()
+          (let ((sexp (every-target-test-graph)))
             (loop for id in '("packet-wire/cpp" "fixed-tables/c" "variable-tables/dart")
                   for state in '(:todo :doing :unknown) do
-                    (original-nine-test-set sexp id :state state))
-            (let ((problems (original-nine-test-problems sexp)))
+                    (every-target-test-set sexp id :state state))
+            (let ((problems (every-target-test-problems sexp)))
               (unless (= 6 (length problems))
                 (error "Expected three cell and three leaf diagnostics: ~s" problems))
               (dolist (id '("packet-wire/cpp" "fixed-tables/c" "variable-tables/dart"))
                 (unless (some (lambda (line) (and (search "leaf" line) (search id line))) problems)
                   (error "Missing unfinished leaf ~a: ~s" id problems)))))))
 
-      (test "original nine descends work sets and reports shared debt for both cells"
+      (test "every target descends work sets and reports shared debt for both cells"
         (lambda ()
-          (let* ((sexp (original-nine-test-graph))
-                 (roadmap (original-nine-test-node sexp "variable-tables")))
+          (let* ((sexp (every-target-test-graph))
+                 (roadmap (every-target-test-node sexp "variable-tables")))
             (push '(:id "shared-debt" :type :task :state :todo) (getf sexp :nodes))
             (push '(:id "nested" :type :work-set :children ("shared-debt")) (getf sexp :nodes))
             (push '(:id "both" :type :work-set :children ("nested" "variable-tables/dart"))
@@ -872,71 +928,71 @@ order, and refuses a result whose hand-written part differs from EXISTING's."
             (dolist (cell (getf roadmap :cells))
               (when (member (second cell) '("dart" "go") :test #'string=)
                 (setf (third cell) "both")))
-            (let ((problems (original-nine-test-problems sexp)))
+            (let ((problems (every-target-test-problems sexp)))
               (unless (and (= 4 (length problems))
                            (= 2 (count-if (lambda (line) (search "leaf \"shared-debt\"" line)) problems))
                            (some (lambda (line) (search "variable-tables/feature/dart" line)) problems)
                            (some (lambda (line) (search "variable-tables/feature/go" line)) problems))
                 (error "Shared nested debt lost a cell or leaf: ~s" problems))))))
 
-      (test "original nine refuses a missing required column even when remaining matrix is complete"
+      (test "every target refuses a missing required column even when remaining matrix is complete"
         (lambda ()
-          (let* ((sexp (original-nine-test-graph))
-                 (roadmap (original-nine-test-node sexp "fixed-tables")))
+          (let* ((sexp (every-target-test-graph))
+                 (roadmap (every-target-test-node sexp "fixed-tables")))
             (setf (getf roadmap :columns)
                   (remove "dart" (getf roadmap :columns) :key #'first :test #'string=)
                   (getf roadmap :cells)
                   (remove "dart" (getf roadmap :cells) :key #'second :test #'string=))
-            (unless (equal (original-nine-test-problems sexp)
+            (unless (equal (every-target-test-problems sexp)
                            '("Missing required language \"dart\" in roadmap \"fixed-tables\""))
-              (error "Missing original-nine column escaped")))))
+              (error "Missing target column escaped")))))
 
-      (test "original nine refuses an unrendered section that remains in the graph"
+      (test "every target refuses an unrendered section that remains in the graph"
         (lambda ()
-          (let ((sexp (original-nine-test-graph)))
+          (let ((sexp (every-target-test-graph)))
             (setf (getf (getf sexp :page) :roadmaps) '("packet-wire" "fixed-tables"))
-            (unless (equal (original-nine-test-problems sexp)
+            (unless (equal (every-target-test-problems sexp)
                            '("Missing required rendered roadmap section \"variable-tables\""))
               (error "Hidden required section escaped")))))
 
-      (test "original nine refuses a removed section"
+      (test "every target refuses a removed section"
         (lambda ()
-          (let ((sexp (original-nine-test-graph)))
+          (let ((sexp (every-target-test-graph)))
             (setf (getf (getf sexp :page) :roadmaps) '("packet-wire" "fixed-tables")
                   (getf sexp :nodes)
                   (remove "variable-tables" (getf sexp :nodes)
                           :key (lambda (node) (getf node :id)) :test #'string=))
-            (original-nine-test-set sexp "goal" :children '("packet-wire" "fixed-tables"))
-            (unless (= 2 (length (original-nine-test-problems sexp)))
+            (every-target-test-set sexp "goal" :children '("packet-wire" "fixed-tables"))
+            (unless (= 2 (length (every-target-test-problems sexp)))
               (error "Missing required section escaped")))))
 
-      (test "original nine uses effective overlay state in both directions"
+      (test "every target uses effective overlay state in both directions"
         (lambda ()
-          (let ((sexp (original-nine-test-graph)))
-            (unless (= 2 (length (original-nine-test-problems
+          (let ((sexp (every-target-test-graph)))
+            (unless (= 2 (length (every-target-test-problems
                                  sexp '((:id "variable-tables/dart" :state :todo)))))
               (error "Overlay regression escaped"))
-            (original-nine-test-set sexp "variable-tables/dart" :state :todo)
-            (when (original-nine-test-problems
+            (every-target-test-set sexp "variable-tables/dart" :state :todo)
+            (when (every-target-test-problems
                    sexp '((:id "variable-tables/dart" :state :done :evidence ("executed new gate"))))
               (error "Proven overlay completion was ignored")))))
 
-      (test "original nine fails closed on evidence and malformed graph"
+      (test "every target fails closed on evidence and malformed graph"
         (lambda ()
           (dolist (fault '(:evidence :dangling :cycle :missing-cell))
-            (let* ((sexp (original-nine-test-graph))
-                   (node (original-nine-test-node sexp "variable-tables"))
+            (let* ((sexp (every-target-test-graph))
+                   (node (every-target-test-node sexp "variable-tables"))
                    (caught nil))
               (case fault
                 (:evidence
-                 (original-nine-test-set sexp "variable-tables/dart" :evidence nil))
+                 (every-target-test-set sexp "variable-tables/dart" :evidence nil))
                 (:dangling (setf (third (first (getf node :cells))) "missing"))
                 (:cycle
                  (push '(:id "cycle" :type :work-set :children ("cycle")) (getf sexp :nodes)))
                 (:missing-cell (setf (getf node :cells) (rest (getf node :cells)))))
-              (handler-case (original-nine-test-problems sexp)
+              (handler-case (every-target-test-problems sexp)
                 (error () (setf caught t)))
-              (unless caught (error "Accepted malformed original-nine input: ~s" fault))))))
+              (unless caught (error "Accepted malformed every-target input: ~s" fault))))))
 
       (test "literal EOF keyword is trailing data"
         (lambda ()
@@ -974,6 +1030,67 @@ order, and refuses a result whose hand-written part differs from EXISTING's."
             (setf (cell-eval-is-green eval) t)
             (unless (string= (assessed-cell-text eval nil '("new") table) "✅")
               (error "Verified cell lost its tick")))))
+
+      (test "not-applicable cell renders a dash and is left out of the complete row"
+        (lambda ()
+          (let* ((sexp '(:schema 1 :root "rm" :nodes
+                         ((:id "done-1" :type :task :title "D1" :state :done :evidence ("PR #1"))
+                          (:id "done-2" :type :task :title "D2" :state :done :evidence ("PR #2"))
+                          (:id "todo-1" :type :task :title "T1" :state :todo :evidence nil)
+                          (:id "na-1" :type :task :title "N1" :state :not-applicable :note "the platform cannot")
+                          (:id "na-2" :type :task :title "N2" :state :not-applicable :note "the platform cannot")
+                          (:id "na-3" :type :task :title "N3" :state :not-applicable :note "the platform cannot")
+                          (:id "na-4" :type :task :title "N4" :state :not-applicable :note "the platform cannot")
+                          (:id "mixed" :type :work-set :children ("done-1" "na-1"))
+                          (:id "rm" :type :roadmap :title "RM"
+                           :rows (("r1" "Row 1") ("r2" "Row 2"))
+                           :columns (("c1" "c1") ("c2" "c2") ("c3" "c3"))
+                           :cells (("r1" "c1" "mixed") ("r2" "c1" "na-2")
+                                   ("r1" "c2" "todo-1") ("r2" "c2" "done-2")
+                                   ("r1" "c3" "na-3") ("r2" "c3" "na-4"))))))
+                 (nodes (validate-root sexp))
+                 (table (build-and-validate-node-table nodes "rm"))
+                 (rendered (render-table-string (gethash "rm" table) table "docs/roadmap.sexp")))
+            (unless (search "| Row 1 | ✅ | ❌ | — |" rendered)
+              (error "A done leaf beside a not-applicable leaf must be green: ~s" rendered))
+            (unless (search "| Row 2 | — | ✅ | — |" rendered)
+              (error "A not-applicable cell must render a dash: ~s" rendered))
+            (unless (search "| complete | 100% | 50% | — |" rendered)
+              (error "Not-applicable cells must leave the complete row: ~s" rendered)))))
+
+      (test "not-applicable without a reason is refused"
+        (lambda ()
+          (dolist (node '((:id "na" :type :task :title "N" :state :not-applicable)
+                          (:id "na" :type :task :title "N" :state :not-applicable :note "  ")
+                          (:id "na" :type :task :title "N" :state :not-applicable :evidence ("x"))))
+            (let ((caught nil))
+              (handler-case (build-and-validate-node-table (list node) "na")
+                (error () (setf caught t)))
+              (unless caught (error "Accepted a not-applicable task with no reason: ~s" node))))
+          (let* ((table (build-and-validate-node-table
+                         '((:id "t1" :type :task :title "T1" :state :todo :evidence nil)) "t1"))
+                 (caught nil))
+            (handler-case
+                (apply-evidence-overlay table (read-restricted-forms-from-string
+                                               "(:id \"t1\" :state :not-applicable)") "test overlay")
+              (error () (setf caught t)))
+            (unless caught (error "An overlay set not-applicable with no reason"))
+            (apply-evidence-overlay table (read-restricted-forms-from-string
+                                           "(:id \"t1\" :state :not-applicable :note \"the platform cannot\")") "test overlay")
+            (unless (eq (getf (gethash "t1" table) :state) :not-applicable)
+              (error "An overlay with a reason did not set not-applicable")))))
+
+      (test "every target owes nothing for a not-applicable cell"
+        (lambda ()
+          (let ((sexp (every-target-test-graph)))
+            (every-target-test-set sexp "variable-tables/dart" :state :not-applicable)
+            (every-target-test-set sexp "variable-tables/dart" :evidence nil)
+            (every-target-test-set sexp "variable-tables/dart" :note "the platform cannot")
+            (when (every-target-test-problems sexp)
+              (error "A not-applicable cell with a reason was reported unfinished"))
+            (every-target-test-set sexp "variable-tables/dart" :state :todo)
+            (unless (= 2 (length (every-target-test-problems sexp)))
+              (error "Control: a todo cell was not reported unfinished")))))
 
       (test "shared leaf deduplication"
         (lambda ()
@@ -1438,7 +1555,7 @@ order, and refuses a result whose hand-written part differs from EXISTING's."
 (defun main (argv)
   (let ((check-only nil)
         (test-mode nil)
-        (require-original-nine nil)
+        (require-every-target nil)
         (evidence-dir nil)
         (positional nil))
     (loop while argv do
@@ -1446,8 +1563,8 @@ order, and refuses a result whose hand-written part differs from EXISTING's."
         (cond
           ((string= arg "--check")
            (setf check-only t))
-          ((string= arg "--require-original-nine")
-           (setf require-original-nine t))
+          ((string= arg "--require-every-target")
+           (setf require-every-target t))
           ((string= arg "--test")
            (setf test-mode t))
           ((string= arg "--evidence")
@@ -1474,7 +1591,7 @@ order, and refuses a result whose hand-written part differs from EXISTING's."
                                                    (pathname (if (char= (char evidence-dir (1- (length evidence-dir))) #\/)
                                                                  evidence-dir
                                                                  (concatenate 'string evidence-dir "/"))))
-                                              require-original-nine)))
+                                              require-every-target)))
             (sb-ext:exit :code code))
         (error (e)
           (format *error-output* "Error: ~a~%" e)
