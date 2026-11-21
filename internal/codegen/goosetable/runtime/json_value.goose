@@ -1045,11 +1045,13 @@ recursive fn jw_value(c: JvOut&, out: u8[>..]&, s: i64, d: FieldDesc, owner: con
     if d.shape == ShapeBool { return json_write_bool(out, jv_bool(c.vals, s, d)); }
     if d.shape == ShapeFloat {
         let bits = if jv_state(c.vals, s) == ValAbsent { float_default_bits(d) } else { c.vals[s].bits.lo };
+        // json_write_float holds a compressed float to its range (at float32
+        // for a float32) and writes its -0 as +0, as the typed writer does
         if d.is_f32 {
             let x = fixed_bits_f32(bits as! u32);
-            return json_put_float(out, x, true);
+            return json_write_float(out, x, d);
         }
-        return json_put_float(out, fixed_bits_f64(bits), false);
+        return json_write_float(out, fixed_bits_f64(bits), d);
     }
     let v = jv_int(c.vals, s, d);
     if d.ranged {
@@ -1784,6 +1786,9 @@ recursive fn jr_array(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
         if r < 0 { ok = false; break; }
         if r == 0 { break; }
     }
+    // a closed array shorter than its Min is off the count's own range and
+    // refused as the count past Max is (SPEC.md §5.1 row 3; tabletext read.go)
+    if ok && d.array == ArrayCounted && placed < d.min { c.jr.rep.oor += 1; }
     if ok { jr_collection(c, s, d, mark, placed); }
     c.scratch.resize(mark);
     return ok;
@@ -1861,6 +1866,7 @@ fn jr_text_list(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], depth: i64) 
         if r < 0 { ok = false; break; }
         if r == 0 { break; }
     }
+    if ok && d.array == ArrayCounted && placed < d.min { c.jr.rep.oor += 1; } // §5.1 row 3
     if ok { jr_collection(c, s, d, mark, placed); }
     c.scratch.resize(mark);
     return ok;
