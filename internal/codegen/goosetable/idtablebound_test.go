@@ -30,8 +30,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/goosetable"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/goose/gooserun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/goosetable"
 )
 
 // idBoundRoots are the vectors' two roots: their unit, root and file suffix.

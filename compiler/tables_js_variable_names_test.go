@@ -1,7 +1,7 @@
 package compiler
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
+	"github.com/mas-bandwidth/schema/v3/internal/tablenames"
 	"regexp"
 	"sort"
 	"strings"

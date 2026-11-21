@@ -30,8 +30,8 @@ import (
 	"strings"
 	"testing"
 
-	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	cgen "github.com/mas-bandwidth/schema/v3/internal/codegen/c"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 const bigEndianForm3Schema = `package probe

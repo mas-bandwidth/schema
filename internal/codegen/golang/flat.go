@@ -72,8 +72,8 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/goname"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/goname"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // maxRunBits caps one flat run. Past it the run closes and a fresh one opens

@@ -13,8 +13,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/golang"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 func keysOf(files map[string][]byte) []string {

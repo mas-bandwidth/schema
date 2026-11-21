@@ -3,9 +3,9 @@ package tablecook_test
 import (
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/tablecook"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // A COOKED BOOL IS 0 OR 1 (docs/SPEC-TABLES.md §7): a bool's storage byte and

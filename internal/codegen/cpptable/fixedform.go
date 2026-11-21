@@ -26,7 +26,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // THE SIZES, THE WALK, THE LAYOUT AND THE HASH ARE NOT HERE. They produce the

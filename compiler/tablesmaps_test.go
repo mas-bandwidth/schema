@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/cpptable"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // mapSrc holds the three shapes §2.8's own example does — a lookup by name, a

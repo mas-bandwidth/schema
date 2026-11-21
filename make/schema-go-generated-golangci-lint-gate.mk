@@ -148,7 +148,7 @@ schema-go-generated-golangci-lint-gate-nightly-measure: schema-go-generated-gola
 	@for d in build/tables-generated-go/*/; do \
 		[ -f "$$d/go.mod" ] || continue; \
 		m=$$(sed -n 's/^module //p' "$$d/go.mod"); \
-		printf 'module %s\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace github.com/mas-bandwidth/schema/v2 => %s\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => %s\n' \
+		printf 'module %s\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v3 v3.0.0-00010101000000-000000000000\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace github.com/mas-bandwidth/schema/v3 => %s\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => %s\n' \
 			"$$m" "$(CURDIR)" "$(GOLANGCI_GATE_RUNTIME)" > "$$d/go.mod"; \
 	done
 	@: > $(GOLANGCI_GATE_DIR)/tables.lint.log

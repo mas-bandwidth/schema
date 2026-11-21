@@ -1,7 +1,7 @@
 package python
 
 import (
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // A union by value is a nested generated union class (SPEC §4.8).

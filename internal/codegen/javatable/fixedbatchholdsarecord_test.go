@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 func TestJavaFixedBatchHoldsARecord(t *testing.T) {

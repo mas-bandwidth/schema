@@ -19,7 +19,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // Pin is the interpreter's path below the repository root, the one
@@ -56,7 +56,7 @@ func RepoRoot() (string, error) {
 	}
 	for {
 		data, err := os.ReadFile(filepath.Join(dir, "go.mod"))
-		if err == nil && strings.Contains(string(data), "module github.com/mas-bandwidth/schema/v2") {
+		if err == nil && strings.Contains(string(data), "module github.com/mas-bandwidth/schema/v3") {
 			return dir, nil
 		}
 		parent := filepath.Dir(dir)

@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
 )
 
 // THE HELD RESERVED-TYPE VECTORS (docs/SPEC-TABLES.md §3.1, §3.3, §5): a node

@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // damaged is the emitted refusal for damage a decoder meets (docs/SPEC-TABLES.md

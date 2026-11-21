@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	javapkt "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	javapkt "github.com/mas-bandwidth/schema/v3/internal/codegen/java"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // TestBlockBuildAndCookWriteJava pins the producer entries of the two

@@ -15,8 +15,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/check"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/check"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 func TestGenerateChecksEveryLanguagesWords(t *testing.T) {
@@ -213,7 +213,7 @@ func (s *ReadStream) Err() error { return s.err }
 				fail("generate: %s", outBytes)
 				return
 			}
-			mod := fmt.Sprintf("module t\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace (\n\tgithub.com/mas-bandwidth/schema/v2 => %s\n\tgithub.com/mas-bandwidth/serialize.go/v2 => %s\n)\n", checkout, runtime)
+			mod := fmt.Sprintf("module t\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v3 v3.0.0-00010101000000-000000000000\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace (\n\tgithub.com/mas-bandwidth/schema/v3 => %s\n\tgithub.com/mas-bandwidth/serialize.go/v2 => %s\n)\n", checkout, runtime)
 			if err := os.WriteFile(filepath.Join(out, "go.mod"), []byte(mod), 0o644); err != nil {
 				fail("%v", err)
 				return

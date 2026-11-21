@@ -141,7 +141,7 @@ all: bin/schema
 # tag on a release build and tag-commits-hash elsewhere; outside a git checkout
 # the stamp is left empty and internal/version falls back to the build info.
 VERSION ?= $(shell git describe --tags --match 'v[0-9]*' --dirty 2>/dev/null)
-LDFLAGS := $(if $(VERSION),-X github.com/mas-bandwidth/schema/v2/internal/version.version=$(VERSION),)
+LDFLAGS := $(if $(VERSION),-X github.com/mas-bandwidth/schema/v3/internal/version.version=$(VERSION),)
 
 bin/schema: $(GO_SOURCES) $(EMBED_SOURCES)
 	go build -ldflags "$(LDFLAGS)" -o $@ ./cmd/schema

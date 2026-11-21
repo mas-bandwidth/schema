@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lobster/lobsterrun"
 )
 
 // The shared-blob fixture is legal as an in-memory region and as a cook

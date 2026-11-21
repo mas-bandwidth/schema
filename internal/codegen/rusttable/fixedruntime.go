@@ -1,6 +1,6 @@
 package rusttable
 
-import "github.com/mas-bandwidth/schema/v2/ir"
+import "github.com/mas-bandwidth/schema/v3/ir"
 
 // fixedRuntimeModule is the FIXED FORM's shared runtime (docs/SPEC-TABLES.md
 // §3.4), emitted once per unit that carries a fixed root: the plan entry, the

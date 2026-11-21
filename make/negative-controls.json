@@ -2530,7 +2530,7 @@
     {
       "name": "goose-wire-verdict",
       "when": "pull-request",
-      "why": "The Goose variable-table wire-fuzz verdict control (make/goose.mk), one target, tables-goose-wire-fuzz-verdict-negative-control. The recipe does not say what it sabotages. Measured on intel on 2026-11-09, exit 0. The recipe prints no control-step duration, so this row uses the make wall (time -p real), 5.27 s. The same log's go test line is ok github.com/mas-bandwidth/schema/v2/internal/codegen/goosetable 3.899s. 5.27 s is under 110 s, so the row stays on the pull request.",
+      "why": "The Goose variable-table wire-fuzz verdict control (make/goose.mk), one target, tables-goose-wire-fuzz-verdict-negative-control. The recipe does not say what it sabotages. Measured on intel on 2026-11-09, exit 0. The recipe prints no control-step duration, so this row uses the make wall (time -p real), 5.27 s. The same log's go test line for internal/codegen/goosetable is 3.899s. 5.27 s is under 110 s, so the row stays on the pull request.",
       "targets": [
         "tables-goose-wire-fuzz-verdict-negative-control"
       ]
@@ -2538,7 +2538,7 @@
     {
       "name": "lobster-wire-verdict",
       "when": "pull-request",
-      "why": "The Lobster variable-table wire-fuzz verdict control (make/lobster-fuzz.mk), one target, tables-lobster-wire-fuzz-verdict-negative-control. The recipe says the negative control plants its fault in the generated artifact the VM compiles and does not name that fault. Measured on intel on 2026-11-09, exit 0. The recipe prints no control-step duration, so this row uses the make wall (time -p real), 2.91 s. The same log's go test line is ok github.com/mas-bandwidth/schema/v2/internal/codegen/lobstertable 1.396s. 2.91 s is under 110 s, so the row stays on the pull request.",
+      "why": "The Lobster variable-table wire-fuzz verdict control (make/lobster-fuzz.mk), one target, tables-lobster-wire-fuzz-verdict-negative-control. The recipe says the negative control plants its fault in the generated artifact the VM compiles and does not name that fault. Measured on intel on 2026-11-09, exit 0. The recipe prints no control-step duration, so this row uses the make wall (time -p real), 2.91 s. The same log's go test line for internal/codegen/lobstertable is 1.396s. 2.91 s is under 110 s, so the row stays on the pull request.",
       "targets": [
         "tables-lobster-wire-fuzz-verdict-negative-control"
       ],

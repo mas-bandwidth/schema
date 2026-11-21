@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/dart"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // Count parameters share begin's scope with its storage and refusal context;

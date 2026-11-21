@@ -10,8 +10,8 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/mas-bandwidth/schema/v2/internal/ast"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/ast"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // enumBound is what the provenance walk found under a bound: the enum the

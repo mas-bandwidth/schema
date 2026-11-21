@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // THE VARIABLE FORM'S WRITE CONTRACT IS A DEBUG ASSERT (docs/SPEC.md §5.1):

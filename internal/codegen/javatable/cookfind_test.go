@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // A COOKED MAP HAS FIND (docs/PORTING.md M19; docs/SPEC-TABLES.md §2.8): a binary

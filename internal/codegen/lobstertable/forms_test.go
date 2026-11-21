@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/lobster/lobsterrun"
 )
 
 // THE FORMS A TABLE CARRIES (docs/SPEC-TABLES.md §2.12): the Lobster target

@@ -15,7 +15,7 @@
 // array at the same index.
 package ctable
 
-import "github.com/mas-bandwidth/schema/v2/ir"
+import "github.com/mas-bandwidth/schema/v3/ir"
 
 // tableJsonWalk wraps the walker for one generated source. The package name
 // appears NOWHERE inside the markers, so the gate between them is a strict

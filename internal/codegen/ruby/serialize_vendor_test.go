@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/ruby/rubyrun"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/ruby/rubyrun"
 )
 
 // stagedSerialize is the serialize.rb tree make vendor-serialize-ruby copies

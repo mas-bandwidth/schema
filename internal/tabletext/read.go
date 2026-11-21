@@ -18,8 +18,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/mas-bandwidth/schema/v2/internal/rfc3339"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/rfc3339"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // The caps the generated walk carries, mirrored so a text one side refuses is

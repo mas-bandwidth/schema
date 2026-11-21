@@ -3,7 +3,7 @@ package cpptable
 import (
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // THE ONE CONTENT RULE THE WIRE HAS (docs/SPEC-TABLES.md §3, §4): a kind 12

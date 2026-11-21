@@ -3,7 +3,7 @@ package tablewire
 import (
 	"errors"
 
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
 )
 
 // THE ONE READ (docs/SPEC-TABLES.md §4, §6.5): every read returns the whole

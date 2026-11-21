@@ -61,18 +61,18 @@ while IFS= read -r package; do
   esac
   # The full fuzz omnibus is covered by all 48 explicit shard rows; keep
   # its focused pipe and fault controls in automatically discovered shards.
-  if [ "$package" = "github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable" ]; then
+  if [ "$package" = "github.com/mas-bandwidth/schema/v3/internal/codegen/pythontable" ]; then
     names=$(printf '%s\n' "$names" | sed '/^TestPythonWireFuzzVerdictPipe$/d')
   fi
   skip=
-  if [ "$package" = "github.com/mas-bandwidth/schema/v2/internal/codegen/python" ]; then
+  if [ "$package" = "github.com/mas-bandwidth/schema/v3/internal/codegen/python" ]; then
     printf '%s\n' "$names" | grep -qx TestPythonPacketCore || { echo "missing TestPythonPacketCore" >&2; exit 1; }
     for part in 0 1 2 3 4 5 6 7; do
       [ "$(printf '%s\n' "$support" | grep -cx "python-ci-packet-core-$part")" -eq 1 ] || { echo "missing or duplicate packet core shard $part" >&2; exit 1; }
     done
     names=$(printf '%s\n' "$names" | sed '/^TestPythonPacketCore$/d')
   fi
-  if [ "$package" = "github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable" ]; then
+  if [ "$package" = "github.com/mas-bandwidth/schema/v3/internal/codegen/pythontable" ]; then
     names=$(printf '%s\n' "$names" | sed '/^TestPythonVtEvolution$/d')
     printf '%s\n' "$names" | grep -qx TestPythonVtFixedClassBuildVersionImports || { echo "missing TestPythonVtFixedClassBuildVersionImports" >&2; exit 1; }
     for delegated in TestPythonScalarWidenHistorical TestPythonContainerWidenHistorical TestPythonMapShapeBench TestPythonReflectionStrictTypes; do

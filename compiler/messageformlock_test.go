@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/goosetable"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/mootable"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/rubytable"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/goosetable"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/mootable"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/rubytable"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // THE MESSAGE FORM IS FIXED TABLES ONLY, IN EVERY BACKEND (docs/SPEC-TABLES.md

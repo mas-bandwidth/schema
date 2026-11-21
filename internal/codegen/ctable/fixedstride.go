@@ -21,7 +21,7 @@ package ctable
 import (
 	"encoding/binary"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // fixedLineageLayoutEntry is one entry of a writer's layout as it rides: bytes,

@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // THE DESCRIPTOR (docs/SPEC-TABLES.md §8.1). Beside every table's type and

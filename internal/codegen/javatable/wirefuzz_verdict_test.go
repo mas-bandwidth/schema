@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // THE WIRE-FUZZ VERDICT PIPE FOR JAVA (docs/SPEC-TABLES.md §4.2, §6.5,

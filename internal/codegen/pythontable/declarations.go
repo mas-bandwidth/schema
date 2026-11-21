@@ -1,7 +1,7 @@
 package pythontable
 
 import (
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // A table unit's module carries the schema file's constants, enums and flags

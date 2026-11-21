@@ -23,9 +23,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/compiler"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
 )
 
 var allLangs = []string{
@@ -150,14 +150,14 @@ func setupGoWorkspace(repoRoot, schemaBin, workDir string) (string, error) {
 	if err := os.MkdirAll(filepath.Join(shimRoot, "tables"), 0o755); err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(filepath.Join(shimRoot, "go.mod"), []byte("module github.com/mas-bandwidth/schema/v2\n\ngo 1.23\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(shimRoot, "go.mod"), []byte("module github.com/mas-bandwidth/schema/v3\n\ngo 1.23\n"), 0o644); err != nil {
 		return "", err
 	}
 	if err := os.Symlink(filepath.Join(repoRoot, "tables", "goruntime"), filepath.Join(shimRoot, "tables", "goruntime")); err != nil && !os.IsExist(err) {
 		return "", err
 	}
 	genMod := fmt.Sprintf(
-		"module reusegen\n\ngo 1.23\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.1.1\n)\n\nreplace github.com/mas-bandwidth/schema/v2 => %s\nreplace github.com/mas-bandwidth/serialize.go/v2 => %s\n",
+		"module reusegen\n\ngo 1.23\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v3 v3.0.0-00010101000000-000000000000\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.1.1\n)\n\nreplace github.com/mas-bandwidth/schema/v3 => %s\nreplace github.com/mas-bandwidth/serialize.go/v2 => %s\n",
 		shimRoot, serGo,
 	)
 	if err := os.WriteFile(filepath.Join(genDir, "go.mod"), []byte(genMod), 0o644); err != nil {
@@ -168,7 +168,7 @@ func setupGoWorkspace(repoRoot, schemaBin, workDir string) (string, error) {
 		return "", err
 	}
 	appMod := fmt.Sprintf(
-		"module reuseapp\n\ngo 1.23\n\nrequire (\n\treusegen v0.0.0\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.1.1\n)\n\nreplace reusegen => ../gen\nreplace github.com/mas-bandwidth/schema/v2 => %s\nreplace github.com/mas-bandwidth/serialize.go/v2 => %s\n",
+		"module reuseapp\n\ngo 1.23\n\nrequire (\n\treusegen v0.0.0\n\tgithub.com/mas-bandwidth/schema/v3 v3.0.0-00010101000000-000000000000\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.1.1\n)\n\nreplace reusegen => ../gen\nreplace github.com/mas-bandwidth/schema/v3 => %s\nreplace github.com/mas-bandwidth/serialize.go/v2 => %s\n",
 		shimRoot, serGo,
 	)
 	if err := os.WriteFile(filepath.Join(appDir, "go.mod"), []byte(appMod), 0o644); err != nil {

@@ -23,7 +23,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // fixedSizeUnit writes one table whose record body is a byte buffer of the

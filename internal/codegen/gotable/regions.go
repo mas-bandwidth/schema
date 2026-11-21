@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // A variable unit uses the canonical POD rows throughout its table closure.

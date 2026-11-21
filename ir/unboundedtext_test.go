@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // TestUnboundedTextProjectsItsOwnLine holds docs/SPEC-TABLES.md §2.13.1 and

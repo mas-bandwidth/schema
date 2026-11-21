@@ -10,7 +10,7 @@
 package check
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/ast"
+	"github.com/mas-bandwidth/schema/v3/internal/ast"
 )
 
 // checkListSpelling holds every rule a `[]T` field carries that is not the

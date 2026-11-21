@@ -3,7 +3,7 @@ package cpp
 import (
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // fileHasStrings reports whether any declaration in the file carries a

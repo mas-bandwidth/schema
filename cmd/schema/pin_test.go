@@ -24,7 +24,7 @@ func writePinPkg(t *testing.T, root, pkg, content string) string {
 // pinDirective is assembled here so no line of THIS source file starts with
 // the directive: `go generate ./...` scans test files too, and a fixture
 // written as a column-0 raw-string line would be run as a real command.
-const pinDirective = "//go:generate go run github.com/mas-bandwidth/schema/v2/cmd/schema@"
+const pinDirective = "//go:generate go run github.com/mas-bandwidth/schema/v3/cmd/schema@"
 
 var (
 	pinPkg1 = "package p1\n\n" +

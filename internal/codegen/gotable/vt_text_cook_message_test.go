@@ -3,7 +3,7 @@ package gotable
 import (
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // The STRICT-100 cells vt/text-form/go, vt/cook-write/go and

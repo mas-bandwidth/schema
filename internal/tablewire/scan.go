@@ -1,7 +1,7 @@
 package tablewire
 
 import (
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // NodeRecordTypes is the node table's record scan as a MEASURE would see it

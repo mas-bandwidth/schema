@@ -8,7 +8,7 @@ import (
 	"math/bits"
 	"sync/atomic"
 
-	"github.com/mas-bandwidth/schema/v2/internal/ast"
+	"github.com/mas-bandwidth/schema/v3/internal/ast"
 )
 
 // BitsRequired mirrors the runtimes' bits_required(min, max): the bit length

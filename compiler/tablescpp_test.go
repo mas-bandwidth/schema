@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
+	"github.com/mas-bandwidth/schema/v3/internal/tablenames"
 )
 
 // cppRuntimeIdent is the C++ leg's runtime-name scan: the spellings the C++

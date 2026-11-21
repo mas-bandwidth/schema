@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // java/W6: THE PLAN IS PARTITIONED UNGUARDED-FIRST (docs/FIXED-FORM-ALGORITHM.md

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
+	"github.com/mas-bandwidth/schema/v3/internal/lockfile"
 )
 
 // TestLineageRefusesHashCollision: the lock refuses a lineage holding two

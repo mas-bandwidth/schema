@@ -1,7 +1,7 @@
 package python
 
 import (
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // The 128-bit integer kinds (SPEC §4.3): uint128 is the raw field, always 128

@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/python/pyrun"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v3/internal/tablewire"
 )
 
 const retainMapZeroWire = "01010e5c0d031d020c06626f6d626572030d10040c06626f6d62657205049001000000001f020c0766696768746572030d11040c076669676874657205046400000000001b020c0573636f7574030d0f040c0573636f757405041e0000000000060e180d020a020807000000031102000a02080c00000003110200071102080e2d0d012a020c036b6974030e200d020e020602030d0709041600000000000e020609030d070904630000000000000a0e220d020f0203fdff030d070904fdffffff00000f02030200030d0709040200000000000b0c13010c10040c06736861726564050432000000000044ade113495c4a29ec105b36194ac93d0000000000000000861b638ebaadbcc4cfa98b28b5d4697f04348de9464c027b5d81b3a4c4a0df6370f0f5f0b3a14f2974a279448ee2e5b1cee3da5f6cdcd86dffffffffffffffff0d4fb1d1d25282750c00000000000000"

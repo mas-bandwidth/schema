@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // TestDartGraphCheckedOverEveryPointer holds docs/SPEC-TABLES.md §6.5 (THE

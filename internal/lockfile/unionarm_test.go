@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
+	"github.com/mas-bandwidth/schema/v3/internal/lockfile"
 )
 
 // TestUnionArmTablesPassTheirOwnLineageLayouts pins the four tables that hold

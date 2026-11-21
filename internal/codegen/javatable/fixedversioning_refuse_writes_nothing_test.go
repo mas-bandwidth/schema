@@ -15,7 +15,7 @@ package javatable
 // zero anywhere. REFUSE IS TOTAL, the prefill included, and every counter is 0.
 import (
 	"encoding/binary"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"

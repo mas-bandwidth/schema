@@ -11,8 +11,8 @@ package check
 import (
 	"fmt"
 
-	"github.com/mas-bandwidth/schema/v2/internal/ast"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/ast"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // resolveMapField resolves `ships map[string(32)]ShipConfig` (docs/SPEC-TABLES.md

@@ -15,9 +15,9 @@ require (
 require github.com/mas-bandwidth/serialize.go/v2 v2.0.0
 
 // the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)
-require github.com/mas-bandwidth/schema/v2 v2.0.0
+require github.com/mas-bandwidth/schema/v3 v3.0.0-00010101000000-000000000000
 
-replace github.com/mas-bandwidth/schema/v2 => ../..
+replace github.com/mas-bandwidth/schema/v3 => ../..
 
 replace tabledemo => ../../build/tables-generated-go/examples
 

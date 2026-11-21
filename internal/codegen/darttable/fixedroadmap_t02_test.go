@@ -20,7 +20,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // t02Flat is the smallest declared fixed table: two adjacent scalars, which the

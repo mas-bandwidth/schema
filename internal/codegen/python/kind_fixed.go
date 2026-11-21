@@ -3,7 +3,7 @@ package python
 import (
 	"math/big"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // The fixed point kinds fixed(I, F) and ufixed(I, F): the value is the raw

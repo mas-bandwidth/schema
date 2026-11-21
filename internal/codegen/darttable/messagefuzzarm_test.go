@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v3/internal/slowtest"
 )
 
 // THE DART MESSAGE FUZZ ARM HONOURS WHAT THE LOAD RETURNS (docs/SPEC-TABLES.md

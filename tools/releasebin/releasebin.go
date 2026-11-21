@@ -6,7 +6,7 @@
 // For every target (default: Targets) it runs
 //
 //	CGO_ENABLED=0 GOOS=<os> GOARCH=<arch> go build -trimpath \
-//	    -ldflags "-X github.com/mas-bandwidth/schema/v2/internal/version.version=<version>" \
+//	    -ldflags "-X github.com/mas-bandwidth/schema/v3/internal/version.version=<version>" \
 //	    ./cmd/schema
 //
 // (the same stamp `make` gives bin/schema) and packs the binary with LICENSE
@@ -55,7 +55,7 @@ var Targets = []Target{
 }
 
 // VersionVar is the link-time stamp internal/version reads.
-const VersionVar = "github.com/mas-bandwidth/schema/v2/internal/version.version"
+const VersionVar = "github.com/mas-bandwidth/schema/v3/internal/version.version"
 
 // ErrVersion refuses a version that cannot name an archive.
 var ErrVersion = errors.New("version must be non-empty and contain only letters, digits, '.', '-' and '+'")

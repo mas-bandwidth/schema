@@ -5,9 +5,9 @@ package compiler
 import (
 	"fmt"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/java"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/javatable"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/java"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/javatable"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // javaTarget emits Java 17.

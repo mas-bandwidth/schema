@@ -17,7 +17,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // TestCsCompressedFloatLaw asserts cs/R30 whole on the C# leg. The three bounds

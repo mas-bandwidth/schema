@@ -28,7 +28,7 @@
 //     members claim nothing at unit scope (docs/SPEC-TABLES.md §11).
 package cstable
 
-import "github.com/mas-bandwidth/schema/v2/ir"
+import "github.com/mas-bandwidth/schema/v3/ir"
 
 // emitJsonSurface emits one closure member's text-form surface: three thin
 // wrappers over the generic walk, each naming a descriptor and nothing else.

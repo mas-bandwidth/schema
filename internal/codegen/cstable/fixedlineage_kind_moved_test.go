@@ -22,7 +22,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // The pair below is a KIND MOVE and not a widen: the one field is an int32

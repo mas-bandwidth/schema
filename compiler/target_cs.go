@@ -5,9 +5,9 @@ package compiler
 import (
 	"fmt"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/cstable"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/csharp"
+	"github.com/mas-bandwidth/schema/v3/internal/codegen/cstable"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // csTarget emits C#.

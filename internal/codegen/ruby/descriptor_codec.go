@@ -6,7 +6,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // GenerateDescriptor emits the D1 alternative packet codec shape: a frozen

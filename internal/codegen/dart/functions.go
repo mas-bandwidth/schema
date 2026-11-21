@@ -19,7 +19,7 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v3/ir"
 )
 
 // emitSignature writes a function signature, wrapped in the formatter's
