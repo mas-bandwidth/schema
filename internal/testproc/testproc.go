@@ -8,6 +8,10 @@
 //   - it is killed, with its whole process group, when the test ends: its
 //     context is the test's own (testing.TB.Context), cancelled as the test
 //     finishes;
+//   - once the child itself has exited, normally or not, whatever is left of
+//     its process group is killed before Wait (and Run, Output,
+//     CombinedOutput) returns, so a grandchild it started and left behind
+//     dies with it;
 //   - it is killed a margin before the test binary's -timeout deadline, so a
 //     child that never answers fails its own test by name instead of taking
 //     the whole binary down in a timeout panic that would orphan it;
@@ -22,7 +26,9 @@
 package testproc
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"os/exec"
 	"testing"
 	"time"
@@ -35,20 +41,70 @@ const Margin = 5 * time.Second
 // descendant that escaped the group could otherwise hold open.
 const WaitDelay = 5 * time.Second
 
+// Cmd is an exec.Cmd whose Wait, and so Run, Output and CombinedOutput, kills
+// what is left of the child's process group once the child has exited.
+type Cmd struct {
+	*exec.Cmd
+}
+
+// Wait waits for the child, then kills its process group.
+func (c *Cmd) Wait() error {
+	err := c.Cmd.Wait()
+	_ = killGroup(c.Cmd)
+	return err
+}
+
+// Run starts the child and waits for it as Wait does.
+func (c *Cmd) Run() error {
+	if err := c.Start(); err != nil {
+		return err
+	}
+	return c.Wait()
+}
+
+// Output runs the child and returns its stdout, as exec.Cmd.Output does.
+func (c *Cmd) Output() ([]byte, error) {
+	if c.Stdout != nil {
+		return nil, errors.New("testproc: Stdout already set")
+	}
+	var stdout, stderr bytes.Buffer
+	c.Stdout = &stdout
+	capture := c.Stderr == nil
+	if capture {
+		c.Stderr = &stderr
+	}
+	err := c.Run()
+	if exit, ok := errors.AsType[*exec.ExitError](err); ok && capture {
+		exit.Stderr = stderr.Bytes()
+	}
+	return stdout.Bytes(), err
+}
+
+// CombinedOutput runs the child and returns its stdout and stderr together.
+func (c *Cmd) CombinedOutput() ([]byte, error) {
+	if c.Stdout != nil || c.Stderr != nil {
+		return nil, errors.New("testproc: Stdout or Stderr already set")
+	}
+	var out bytes.Buffer
+	c.Stdout, c.Stderr = &out, &out
+	err := c.Run()
+	return out.Bytes(), err
+}
+
 // Command is exec.Command for a child of test t, bounded as the package says.
-func Command(t testing.TB, name string, args ...string) *exec.Cmd {
+func Command(t testing.TB, name string, args ...string) *Cmd {
 	t.Helper()
 	return CommandContext(t, t.Context(), name, args...)
 }
 
 // CommandContext is exec.CommandContext for a child of test t: ctx bounds it
 // as well, and it is bounded as the package says.
-func CommandContext(t testing.TB, ctx context.Context, name string, args ...string) *exec.Cmd {
+func CommandContext(t testing.TB, ctx context.Context, name string, args ...string) *Cmd {
 	t.Helper()
 	ctx = withTestBounds(t, ctx)
 	cmd := exec.CommandContext(ctx, name, args...)
 	bound(cmd)
-	return cmd
+	return &Cmd{cmd}
 }
 
 // withTestBounds joins ctx to the test's end and to the binary's deadline.

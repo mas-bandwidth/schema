@@ -26,7 +26,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -225,7 +224,7 @@ func fuzzEngine(m *tabletext.Model, def *ir.Struct, variable bool, data []byte) 
 
 // fuzzLeg is one wirefuzz.nut process on its pipe.
 type fuzzLeg struct {
-	cmd    *exec.Cmd
+	cmd    *testproc.Cmd
 	stdin  io.WriteCloser
 	stdout *bufio.Reader
 	stderr bytes.Buffer

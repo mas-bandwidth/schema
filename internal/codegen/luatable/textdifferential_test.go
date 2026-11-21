@@ -24,7 +24,6 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -277,7 +276,7 @@ func compareLuaTextDifferential(m *tabletext.Model, dir string, n int) ([]string
 
 // luaFuzzCommand is the pinned interpreter running main.lua in dir with its
 // arguments, with the whole of package.path luarun.Run gives a probe.
-func luaFuzzCommand(t *testing.T, dir string, args ...string) *exec.Cmd {
+func luaFuzzCommand(t *testing.T, dir string, args ...string) *testproc.Cmd {
 	t.Helper()
 	slowtest.Gate(t, luaTextDifferentialCost)
 	cmd := testproc.Command(t, luarun.Interpreter(t), append([]string{"main.lua"}, args...)...)
