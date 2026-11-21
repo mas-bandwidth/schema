@@ -537,7 +537,7 @@ func TestJsDeclarationsBesideTypeScriptTypeNamesTypeCheck(t *testing.T) {
 	u, err := load(`package demo
 
 const number = 1
-const bigint = 18446744073709551615
+const bigint uint64 = 18446744073709551615
 const symbol = 3
 const unknown = 4
 const never = 0.5
