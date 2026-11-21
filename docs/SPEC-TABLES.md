@@ -7173,10 +7173,12 @@ caller's array of values is the whole of its storage.
     its entry table (kind `13`) whatever its value is;
   - an array's `min` is at most its `max`;
   - a packed `bits` and a `max` sit inside what the kind holds;
-  - a RANGED integer's `base` is such that `base + 2^bits - 1` lies inside the
-    announced kind: a width the kind holds is not enough, because under a base
-    near the kind's edge a lawful-looking width names values the kind cannot
-    hold.
+  - a RANGED integer's `base` lies inside the announced kind. The sum is not
+    held here, because `uint8 | min = 200, max = 250` is lawful and announces a
+    six-bit width whose top offsets pass the kind's edge: `base + offset` is
+    held to the announced kind's storage domain on the body, at a named field
+    and on the skip path alike, exactly and never wrapped (A RANGED OFFSET IS
+    HELD TO THE DOMAIN THE READER CAN KNOW, above).
 
   Two rules on the body complete it. An array element that consumes no bits is
   refused where it is walked (A WALKED ARRAY ELEMENT THAT CONSUMES NO BITS

@@ -1906,15 +1906,20 @@ type TableMessageShape struct {
 }
 
 // An entry keeps its matching own encoded-entry slot, if any, and in the
-// caller's storage the first slot for its id and the body-read duplicate marks.
+// caller's storage the first slot for its id, the body-read duplicate marks
+// and the marks of the keyed arrays and skipped bodies that named it.
 type TableMessageEntry struct {
 	ID                             uint64
 	Shape, Element                 TableMessageShape
 	OwnSlot, bodyFirst, bodySeenAt uint64
 	bodySeenBelow                  [2]uint64
+	setSeenAt                      uint64
+	setSeenBelow                   [5]uint64
 }
 
 // Storage belongs to the caller and is resolved once for one connection direction.
+// setProbes counts the looks the key and skipped-id duplicate tests take, so a
+// test pins their work by a count and never a clock.
 type TableVocabulary struct {
 	Entries            []TableMessageEntry
 	Count, RefBits     int64
@@ -1923,6 +1928,9 @@ type TableVocabulary struct {
 	MaxBytes           int64
 	Strict             bool
 	bodyClock          uint64
+	setTop             int
+	setStarts          [320]uint64
+	setProbes          uint64
 }
 type TableMessageReader struct {
 	Bits       TableBitReader
