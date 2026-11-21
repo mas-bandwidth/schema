@@ -145,7 +145,7 @@ raise AssertionError('keyed representation sabotage was not detected')
 func pythonHostedPacketKeyedModuleFiles(t *testing.T) map[string][]byte {
 	t.Helper()
 	dir := t.TempDir()
-	for name, source := range map[string]string{"Core.schema": packetKeyedSchema, "BoardPerSlot.schema": "package packetkeyed\ntype Extra { x uint8 }\n"} {
+	for name, source := range map[string]string{"Records.schema": packetKeyedSchema, "BoardPerSlot.schema": "package packetkeyed\ntype Extra { x uint8 }\n"} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(source), 0o600); err != nil {
 			t.Fatal(err)
 		}

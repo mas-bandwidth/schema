@@ -179,6 +179,7 @@ var catalog = []Entry{
 	e("testdata/golden", "generated-source goldens", "go test ./internal/goldens", "make update-goldens"),
 	e("testdata/jsontestsuite", "vendored JSONTestSuite (MIT)", "go test ./internal/tabletext", "go test ./internal/tabletext -run JSONTestSuite"),
 	e("testdata/luau-nightly-fuzz", "Luau nightly fuzz repros", "make luau-nightly-fuzz-replay", "make luau-nightly-fuzz"),
+	e("testdata/name-buildability", "name-shadowing probe corpus", "go test ./internal/check -run TestNameBuildabilityCorpus", "make name-buildability"),
 	e("testdata/wire", "pinned wire bytes", "go test ./internal/goldens", "make update-goldens"),
 
 	// tools/
@@ -192,6 +193,7 @@ var catalog = []Entry{
 	e("tools/luaufuzzhost", "Luau nightly fuzz host (C++)", "make luau-nightly-fuzz-replay", "make luau-nightly-fuzz"),
 	e("tools/matrix", "3.0.0 proof gate", "go test ./tools/matrix", "make proof"),
 	e("tools/moofuzzhost", "moo wire-fuzz native host (C++)", "make tables-moo-wire-fuzz", "make tables-moo-wire-fuzz"),
+	e("tools/namebuild", "name-buildability nightly, all 18 targets", "go test ./tools/namebuild", "make name-buildability"),
 	e("tools/negativecontrols", "negative-control enumerator", "go test ./tools/negativecontrols", "go run ./tools/negativecontrols check"),
 	e("tools/pgroup", "process-group runner for CI steps", "go test ./tools/pgroup", "go run ./tools/pgroup -- make test"),
 	e("tools/releasediff", "previous-release differential (#463)", "make release-differential-negative-control", "make release-differential"),

@@ -183,7 +183,7 @@ func TestPythonReflectionCorpusNegativeControl(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the pinned Python interpreter")
 	cases := []struct{ name, file, from, to, line string }{
-		{"drop-table", "_schema/unit_view.py", `    ViewType("Record", "Core.schema", True, _descriptors["Record"], "Record documentation.", ("visible", )),` + "\n", "", "union Choice arm 1"},
+		{"drop-table", "_schema/unit_view.py", `    ViewType("Record", "Records.schema", True, _descriptors["Record"], "Record documentation.", ("visible", )),` + "\n", "", "union Choice arm 1"},
 		{"table-doc", "_schema/unit_view.py", `"Record documentation.", ("visible", ))`, `"drift", ("visible", ))`, "table Record"},
 		{"arm-doc", "_schema/unit_view.py", `"Arm documentation.", ("arm_tag", ))`, `"drift", ("arm_tag", ))`, "union Choice arm 1"},
 		{"field-key", "Core.py", `json_key="value", type_name="int32"`, `json_key="drift", type_name="int32"`, "table Record field value"},
@@ -270,8 +270,8 @@ func TestPythonReflectionVocabularyNegativeControl(t *testing.T) {
 			from, to, line := "", "", ""
 			switch name {
 			case "constant":
-				from = `ViewConstant("Limit", "Core.schema", "int64", False, 42, 0.0`
-				to = `ViewConstant("Limit", "Core.schema", "int64", False, 43, 0.0`
+				from = `ViewConstant("Limit", "Records.schema", "int64", False, 42, 0.0`
+				to = `ViewConstant("Limit", "Records.schema", "int64", False, 43, 0.0`
 				line = "constant Limit"
 			case "enum-id":
 				id := ir.TableWireId(u.Enums["Grade"].VariantWireName(0))

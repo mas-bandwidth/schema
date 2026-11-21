@@ -1,0 +1,90 @@
+name: Schema name buildability
+
+# THE NAME-BUILDABILITY NIGHTLY (SPEC §4.6, File-name safety and Platform-name
+# safety; make/name-buildability.mk; tools/namebuild). A unit `schema check`
+# accepts generates code that builds and loads in all 18 targets.
+# testdata/name-buildability is the name-shadowing survey's probe corpus: the
+# fast lane holds every row's verdict at the checker (internal/check,
+# TestNameBuildabilityCorpus), and this job generates every row the checker
+# accepts in every target and builds and loads it with the target's own
+# toolchain, printing the per-target summary.
+#
+# FORKS: this repository is PUBLIC, so it runs on its schedule and by dispatch
+# only, never for a pull request, and never on the host named space.
+#
+# NIGHTLY RUNS HAVE NO TIMEOUT (the owner, 2026-11-16: "Nightly runs don't
+# have a timeout... they can run as long as they need."). No job or step in
+# this file carries timeout-minutes, and PGROUP_GO_TEST_TIMEOUT: '0' below has
+# tools/pgroup give every go test under a step -timeout=0 in place of the one
+# it names. GitHub's default 360-minute job limit is the only backstop, and a
+# job it stops reads cancelled, never green. internal/ci/nightly_test.go holds
+# the rule.
+
+on:
+  # NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is not light moved to
+  # nightly test now." "no exceptions."). A push or pull request runs only the fast lane, ci-fast.yml.
+  schedule:
+    - cron: '13 2 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: schema-name-buildability-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # the nightly rule in the header: no go test -timeout under tools/pgroup
+  PGROUP_GO_TEST_TIMEOUT: '0'
+  SERIALIZE_TAG: v2.1.3
+  SERIALIZE_C_TAG: v2.1.1
+  SERIALIZE_GO_TAG: v2.1.1
+  SERIALIZE_RS_TAG: v5.0.0
+  SERIALIZE_CS_TAG: v2.1.1
+
+jobs:
+  nightly:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    steps:
+      - name: never the host named space
+        # before the checkout, so tools/pgroup is not there yet
+        shell: bash
+        run: |
+          if [ "$(hostname -s)" = space ]; then
+            echo "::error::space is the game server and never runs CI"; exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: 'Tool presence check: go'
+        run: |
+          want="$(sed -nE 's/^go ([0-9]+\.[0-9]+)$/\1/p' go.mod)"
+          got="$(go version | sed -nE 's/.*go([0-9]+\.[0-9]+).*/\1/p')"
+          if [ -z "$got" ] || [ "$got" != "$want" ]; then
+            echo "TOOL-MISSING go $want $got ($RUNNER_NAME)"
+            exit 1
+          fi
+      - name: Check out the C++, C, C#, Go and Rust serialize runtimes (pinned releases)
+        run: |
+          set -euo pipefail
+          cd ..
+          rm -rf serialize serialize.c serialize.cs serialize.go serialize.rs
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG" https://github.com/mas-bandwidth/serialize.c.git serialize.c
+          git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
+          git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
+          git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
+      - uses: ./.github/actions/moo
+      - uses: ./.github/actions/python
+      - uses: ./.github/actions/ruby
+      - name: every accepted row generates, builds and loads in all 18 targets
+        run: make name-buildability DART=dart NODE=node JAVA=java JAVAC=javac
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: name-buildability-summary
+          path: build/name-buildability
+          if-no-files-found: error

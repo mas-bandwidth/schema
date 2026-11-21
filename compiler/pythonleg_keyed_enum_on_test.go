@@ -27,7 +27,7 @@ func TestPythonKeyedEnumThroughDriver(t *testing.T) {
         fixed table Holder { values Scores }`,
 	} {
 		c := New()
-		u, err := c.Load(writeSchemas(t, map[string]string{"Core.schema": src}))
+		u, err := c.Load(writeSchemas(t, map[string]string{"Records.schema": src}))
 		if err != nil {
 			t.Fatal(err)
 		}

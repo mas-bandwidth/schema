@@ -636,11 +636,11 @@ print('ok')
 		}
 	}
 	invalid := []byte(schema + "\ntable Pointer { target *Root }\n")
-	parsed, parseErrors := parser.Parse("Core.schema", invalid)
+	parsed, parseErrors := parser.Parse("Records.schema", invalid)
 	if len(parseErrors) != 0 {
 		t.Fatal(parseErrors)
 	}
-	_, errors := check.Unit([]check.SourceFile{{Path: "Core.schema", Name: "Core.schema", Base: "Core", Bytes: invalid, AST: parsed}})
+	_, errors := check.Unit([]check.SourceFile{{Path: "Records.schema", Name: "Records.schema", Base: "Records", Bytes: invalid, AST: parsed}})
 	if len(errors) == 0 || !strings.Contains(fmt.Sprint(errors), `json = "array" refuses a table any pointer targets`) {
 		t.Fatalf("array-root pointer was not refused by name: %v", errors)
 	}

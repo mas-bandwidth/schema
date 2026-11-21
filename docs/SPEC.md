@@ -1651,6 +1651,54 @@ All compile errors with positions:
   the build naming the schema. The C++ headers' bare spellings are out of
   scope, because every generated name carries an extension and `<cmath>` has
   none.
+  **Every target can spell every basename the checker accepts** (Rowan's
+  ruling, 2026-11-21: a unit `schema check` accepts generates code that builds
+  and loads in all 18 targets; strict wins, the same in every language). A
+  basename names a module (Rust, Python, Ruby, Elixir, Lua, Luau, moo), an
+  import (Goose, Lobster), a class file (Java, C#) or an include guard (C,
+  C++), so whatever target is generated it is refused, naming the file and the
+  targets that cannot express it, when it is:
+  (1) not an identifier (`[A-Za-z_][A-Za-z0-9_]*`: `1x`, `my-file`);
+  (2) a reserved word of any of the seventeen languages (the one table
+  above), matched as written, and lowercased for Rust, which lowercases the
+  basename into its module (`Enum.schema` is `mod enum`); Goose and Lobster
+  import the basename as written, so `Def.schema` stays legal;
+  (3) started with `_`, which the go tool reads as leaving the file out of
+  the package and the Python package reserves;
+  (4) the name of a standard module or of the runtime some target emits
+  beside the generated modules: Lua's standard libraries (`coroutine`,
+  `debug`, `io`, `os`, `package`, `string`, `table`, `utf8`, `math`), which
+  `require` answers first; Rust's `core`, `std`, `main` and `lib`, lowercased;
+  Goose's `std`, `main` and scalar types (`bool`, `i8` ... `u64`, `f32`,
+  `f64`); `init`, which Luau and moo resolve to the directory's own module;
+  `serialize`, and any basename starting with `serialize_` or `schema_`
+  (the runtimes' module families); the support files `SchemaRuntime` (C),
+  `PacketRuntime` (Elixir), `Schema` (Dart), `Int128` and `UInt128` (Dart,
+  Java) and `descriptors` (Lobster), ignoring case; and `InvalidValue`,
+  `PROTOCOL_ID` and `Refused`, which the Python package's `__init__.py`
+  exports;
+  (5) a Go build constraint in the file the Go target writes (`<base>.go`): a
+  `_test` suffix, or a `_<goos>`, `_<goarch>` or `_<goos>_<goarch>` suffix;
+  (6) equal, ignoring case, to another basename of the unit, because a
+  case-insensitive file system (macOS, Windows) holds one file for the pair;
+  or (7) equal, ignoring case, to the unit's view file name (SPEC-TABLES.md
+  §8.5), which Lobster spells `<package>View`.
+  The corpus that proves each rule is testdata/name-buildability: the checker
+  holds every row's verdict in the fast lane, and the nightly
+  (tools/namebuild) generates every accepted row in all 18 targets and builds
+  and loads it.
+- **Platform-name safety:** a declaration is a top-level symbol beside the
+  names a target's generated code spells unqualified and cannot qualify, so a
+  declaration named like one is refused for every target, naming the target:
+  Rust's primitive types and crates (`u8` ... `u128`, `usize`, `i8` ...
+  `i128`, `isize`, `f32`, `f64`, `str`, `std`, `core`), the same scalar names
+  in Goose's namespace, the `dart:typed_data` list classes the Dart output
+  imports unprefixed (`Uint8List` and the rest), the packages the Go output
+  imports (`atomic`, `base64`, `binary`, `bytes`, `errors`, `fmt`, `goruntime`,
+  `math`, `slices`, `strconv`, `sync`, `time`, `utf8`), Luau's and moo's
+  `buffer` library, C#'s `Debug`, the 128-bit support classes `Int128` and
+  `UInt128` (Dart, Java), and Elixir's support module `PacketRuntime`. A
+  reserved word or a claimed name above takes its own diagnostic instead.
 
 ### 4.7 Strings and byte blocks — byte strings, one shape
 

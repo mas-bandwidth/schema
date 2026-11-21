@@ -30,6 +30,7 @@ var boundedChildDirs = []string{
 	"internal/codegen/python", "internal/codegen/pythontable", "internal/codegen/python/pyrun",
 	"internal/codegen/ruby", "internal/codegen/rubytable", "internal/codegen/ruby/rubyrun",
 	"internal/codegen/squirrel", "internal/codegen/squirreltable", "internal/codegen/squirrel/sqrun",
+	"tools/namebuild",
 }
 
 // helperDir reports whether dir is a run-helper package, whose every file
