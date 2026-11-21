@@ -715,6 +715,11 @@ local function readArray(f: any, w: Node, r: Node, buf: buffer, at: number, cx: 
 		local count = buffer.readu32(buf, w.off + at)
 		-- the bound THE PLAN CARRIES is the WRITER's own (bill §12.5)
 		if count > theirs then error(refuse("count_over_bound"), 0) end
+		-- A COUNT UNDER THE DECLARED MINIMUM REFUSES at every depth
+		-- (docs/SPEC-TABLES.md §5.1 row 3; internal/tablewire fixed.go and
+		-- fixedlineage.go hold the reader's own minimum): a child's [2..4]
+		-- inside a parent array is held whatever the parent declares.
+		if count < (f.min or 0) then error(refuse("count_over_bound"), 0) end
 		-- slots past the live count are dead, up to the writer's bound; the
 		-- remainder past floor(capacity) is not part of that span
 		if we.size > 0 then
