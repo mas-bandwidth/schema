@@ -134,7 +134,7 @@ public final class TableVocabulary {
         if (buffer == null || buffer.length < tableAnnouncement.length) {
             return -1;
         }
-        System.arraycopy(tableAnnouncement, 0, buffer, 0, tableAnnouncement.length);
+        java.lang.System.arraycopy(tableAnnouncement, 0, buffer, 0, tableAnnouncement.length);
         return tableAnnouncement.length;
     }
 
@@ -165,7 +165,7 @@ public final class TableVocabulary {
     public static final class Report {
         public boolean damaged;
         public boolean refused;
-        public String reason;
+        public java.lang.String reason;
         public int unknown;
         public int widened;
         // The endpoint's and the unit's own build versions a strict announcement
@@ -183,7 +183,7 @@ public final class TableVocabulary {
             buildVersionOwn = 0;
         }
 
-        public void refuse(String why) {
+        public void refuse(java.lang.String why) {
             if (!refused) { refused = true; reason = why; }
         }
     }
@@ -358,13 +358,13 @@ public final class TableVocabulary {
                 // ALLOCATED: the BYTE bound is 64 KiB, checked from the field's
                 // own L before an entry is touched (§3.3).
                 long limit = v.maxBytes > 0 ? v.maxBytes : 65536L;
-                if (Long.compareUnsigned(n, limit) > 0) {
+                if (java.lang.Long.compareUnsigned(n, limit) > 0) {
                     report.refused = true;
                     report.reason = "vocabulary_too_large";
                     return false;
                 }
                 vocab = new byte[(int) n];
-                System.arraycopy(sub.buf, sub.off, vocab, 0, (int) n);
+                java.lang.System.arraycopy(sub.buf, sub.off, vocab, 0, (int) n);
                 vocabCount++;
             } else {
                 report.unknown++;
@@ -436,7 +436,7 @@ public final class TableVocabulary {
             v.entries[count++] = e;
         }
         v.count = count;
-        v.refBits = Math.max(1, bitCount(count));
+        v.refBits = java.lang.Math.max(1, bitCount(count));
         v.announced = true;
         return true;
     }
@@ -521,7 +521,7 @@ public final class TableVocabulary {
         if (n <= 0) {
             return 0;
         }
-        return 64 - Long.numberOfLeadingZeros(n);
+        return 64 - java.lang.Long.numberOfLeadingZeros(n);
     }
 
     static boolean knownKind(int kind) {
@@ -583,7 +583,7 @@ public final class TableVocabulary {
             }
             if (s.packing == 1 && kind != 10) {
                 long bits = r.leb();
-                if (r.err || Long.compareUnsigned(bits, (long) kindWidth(kind) * 8) > 0) {
+                if (r.err || java.lang.Long.compareUnsigned(bits, (long) kindWidth(kind) * 8) > 0) {
                     return null;
                 }
                 s.bits = bits;
@@ -604,7 +604,7 @@ public final class TableVocabulary {
                     } else if (kind >= 25 && kind <= 28) {
                         if (s.baseHi != 0L) { return null; }
                         int dom = kindWidth(kind) * 8;
-                        if (dom < 64 && Long.compareUnsigned(s.baseLo, (1L << dom) - 1L) > 0) {
+                        if (dom < 64 && java.lang.Long.compareUnsigned(s.baseLo, (1L << dom) - 1L) > 0) {
                             return null;
                         }
                     }
@@ -622,7 +622,7 @@ public final class TableVocabulary {
                         }
                     } else {
                         int dom = kindWidth(kind) * 8;
-                        if (dom < 64 && Long.compareUnsigned(base, (1L << dom) - 1L) > 0) {
+                        if (dom < 64 && java.lang.Long.compareUnsigned(base, (1L << dom) - 1L) > 0) {
                             return null;
                         }
                     }
@@ -634,9 +634,9 @@ public final class TableVocabulary {
                 if (!r.has(12)) {
                     return null;
                 }
-                s.qMin = Float.intBitsToFloat((int) r.u32());
-                s.qMax = Float.intBitsToFloat((int) r.u32());
-                s.qRes = Float.intBitsToFloat((int) r.u32());
+                s.qMin = java.lang.Float.intBitsToFloat((int) r.u32());
+                s.qMax = java.lang.Float.intBitsToFloat((int) r.u32());
+                s.qRes = java.lang.Float.intBitsToFloat((int) r.u32());
                 if (!(s.qMin < s.qMax) || !(s.qRes > 0)) {
                     return null;
                 }
@@ -644,13 +644,13 @@ public final class TableVocabulary {
                 float values = s.qDelta / s.qRes;
                 // A TRIPLE WHOSE delta OR delta/res IS NOT FINITE IN FLOAT32 is a
                 // hostile width like any other (§3.3): refused, no vocabulary.
-                if (!Float.isFinite(s.qDelta) || !Float.isFinite(values)) {
+                if (!java.lang.Float.isFinite(s.qDelta) || !java.lang.Float.isFinite(values)) {
                     return null;
                 }
-                values = Math.max(1.0f, Math.min(4294967040.0f, values));
+                values = java.lang.Math.max(1.0f, java.lang.Math.min(4294967040.0f, values));
                 // count = ceil(delta / res) bounded to [1, 4294967040] (§3.3), a
                 // count the 32-bit unsigned width holds, then bits_required(0, count).
-                long count = (long) Math.ceil((double) values);
+                long count = (long) java.lang.Math.ceil((double) values);
                 s.steps = count;
                 s.bits = bitCount(count);
                 return s;
@@ -659,7 +659,7 @@ public final class TableVocabulary {
         }
         if (kind == 12) {
             long max = r.leb();
-            if (r.err || Long.compareUnsigned(max, 0x7fffffffL) > 0) {
+            if (r.err || java.lang.Long.compareUnsigned(max, 0x7fffffffL) > 0) {
                 return null;
             }
             s.max = max;
@@ -668,13 +668,13 @@ public final class TableVocabulary {
         if (kind == 14 || kind == 16) {
             if (kind == 14) {
                 long min = r.leb();
-                if (r.err || Long.compareUnsigned(min, 0xffffffffL) > 0) {
+                if (r.err || java.lang.Long.compareUnsigned(min, 0xffffffffL) > 0) {
                     return null;
                 }
                 s.min = min;
             }
             long max = r.leb();
-            if (r.err || Long.compareUnsigned(max, 0xffffffffL) > 0 || Long.compareUnsigned(max, s.min) < 0) {
+            if (r.err || java.lang.Long.compareUnsigned(max, 0xffffffffL) > 0 || java.lang.Long.compareUnsigned(max, s.min) < 0) {
                 return null;
             }
             s.max = max;
@@ -812,9 +812,9 @@ public final class TableMessage {
                     return;
                 }
                 if (src != null) {
-                    int copy = Math.min(n, src.length);
+                    int copy = java.lang.Math.min(n, src.length);
                     if (copy > 0) {
-                        System.arraycopy(src, 0, buf, off, copy);
+                        java.lang.System.arraycopy(src, 0, buf, off, copy);
                     }
                     for (int i = copy; i < n; i++) {
                         buf[off + i] = 0;
@@ -1073,8 +1073,8 @@ public final class TableMessage {
         long minLo, minHi, maxLo, maxHi;
         if (signed) {
             if (width >= 128) {
-                minLo = 0L; minHi = Long.MIN_VALUE;
-                maxLo = -1L; maxHi = Long.MAX_VALUE;
+                minLo = 0L; minHi = java.lang.Long.MIN_VALUE;
+                maxLo = -1L; maxHi = java.lang.Long.MAX_VALUE;
             } else {
                 long min = -(1L << (width - 1));
                 long max = (1L << (width - 1)) - 1L;
@@ -1093,15 +1093,15 @@ public final class TableMessage {
         if (baseMax > 0) { return false; }
         if (baseMin >= 0) {
             long limLo = maxLo - baseLo;
-            long borrow = Long.compareUnsigned(maxLo, baseLo) < 0 ? 1L : 0L;
+            long borrow = java.lang.Long.compareUnsigned(maxLo, baseLo) < 0 ? 1L : 0L;
             long limHi = maxHi - baseHi - borrow;
             return compareUnsigned128(offLo, offHi, limLo, limHi) <= 0;
         }
         long loLo = minLo - baseLo;
-        long borrowLo = Long.compareUnsigned(minLo, baseLo) < 0 ? 1L : 0L;
+        long borrowLo = java.lang.Long.compareUnsigned(minLo, baseLo) < 0 ? 1L : 0L;
         long loHi = minHi - baseHi - borrowLo;
         long hiLo = maxLo - baseLo;
-        long borrowHi = Long.compareUnsigned(maxLo, baseLo) < 0 ? 1L : 0L;
+        long borrowHi = java.lang.Long.compareUnsigned(maxLo, baseLo) < 0 ? 1L : 0L;
         long hiHi = maxHi - baseHi - borrowHi;
         return compareUnsigned128(offLo, offHi, loLo, loHi) >= 0
                 && compareUnsigned128(offLo, offHi, hiLo, hiHi) <= 0;
@@ -1109,7 +1109,7 @@ public final class TableMessage {
 
     public static boolean skipRun(Reader r, long n, long width) {
         if (width == 0L) { return !r.err; }
-        if (width < 0L || n < 0L || n > Long.MAX_VALUE / width) {
+        if (width < 0L || n < 0L || n > java.lang.Long.MAX_VALUE / width) {
             r.err = true;
             return false;
         }
@@ -1248,7 +1248,7 @@ public final class TableMessage {
 
     public static void writeScalar(Writer w, int packing, int bits, long baseLo, long baseHi, long lo, long hi) {
         if (packing == 1) {
-            long borrow = Long.compareUnsigned(lo, baseLo) < 0 ? 1L : 0L;
+            long borrow = java.lang.Long.compareUnsigned(lo, baseLo) < 0 ? 1L : 0L;
             lo -= baseLo;
             hi -= baseHi + borrow;
         }
@@ -1268,7 +1268,7 @@ public final class TableMessage {
             ratio = 1.0f;
         }
         float scaled = ratio * (float) qCount + 0.5f;
-        long index = (long) Math.floor((double) scaled);
+        long index = (long) java.lang.Math.floor((double) scaled);
         if (index > qCount) {
             index = qCount;
         }
@@ -1299,12 +1299,12 @@ public final class TableMessage {
         if (r.err) { return 0L; }
         long v = (s.packing == 1) ? (raw + s.baseLo) : raw;
         if (hasRange) {
-            if (Long.compareUnsigned(v, min) < 0) { v = min; r.report.refuse("out_of_range"); }
-            else if (Long.compareUnsigned(v, max) > 0) { v = max; r.report.refuse("out_of_range"); }
+            if (java.lang.Long.compareUnsigned(v, min) < 0) { v = min; r.report.refuse("out_of_range"); }
+            else if (java.lang.Long.compareUnsigned(v, max) > 0) { v = max; r.report.refuse("out_of_range"); }
         }
         if (bitsWidth > 0 && bitsWidth < 64) {
             long maxBits = (1L << bitsWidth) - 1L;
-            if (Long.compareUnsigned(v, maxBits) > 0) {
+            if (java.lang.Long.compareUnsigned(v, maxBits) > 0) {
                 v = maxBits;
                 r.report.refuse("out_of_range");
             }
@@ -1316,12 +1316,12 @@ public final class TableMessage {
     public static long[] read128Raw(Reader r, TableVocabulary.Shape s, boolean signed) {
         long lo, hi;
         if (s.kind == 18 || s.kind == 19 || s.kind == 24 || s.kind == 29) {
-            lo = r.get((int) Math.min(s.bits, 64L));
+            lo = r.get((int) java.lang.Math.min(s.bits, 64L));
             hi = s.bits > 64L ? r.get((int) (s.bits - 64L)) : 0L;
             if (r.err) { return new long[]{0L, 0L}; }
             if (s.packing == 1) {
                 long sum = lo + s.baseLo;
-                long carry = Long.compareUnsigned(sum, lo) < 0 ? 1L : 0L;
+                long carry = java.lang.Long.compareUnsigned(sum, lo) < 0 ? 1L : 0L;
                 lo = sum;
                 hi = hi + s.baseHi + carry;
             }
@@ -1342,13 +1342,13 @@ public final class TableMessage {
     }
 
     public static int compareUnsigned128(long aLo, long aHi, long bLo, long bHi) {
-        int c = Long.compareUnsigned(aHi, bHi);
-        return c != 0 ? c : Long.compareUnsigned(aLo, bLo);
+        int c = java.lang.Long.compareUnsigned(aHi, bHi);
+        return c != 0 ? c : java.lang.Long.compareUnsigned(aLo, bLo);
     }
 
     public static int compareSigned128(long aLo, long aHi, long bLo, long bHi) {
-        int c = Long.compare(aHi, bHi);
-        return c != 0 ? c : Long.compareUnsigned(aLo, bLo);
+        int c = java.lang.Long.compare(aHi, bHi);
+        return c != 0 ? c : java.lang.Long.compareUnsigned(aLo, bLo);
     }
 
     // A FLOAT IS FINITE ON THE MESSAGE WIRE (docs/SPEC-TABLES.md §3.3, the
@@ -1356,18 +1356,18 @@ public final class TableMessage {
     // are a NaN or an infinity refuses the batch as non_finite_float, naming
     // the first such field, before any range is applied. A quantized float's
     // index always names a finite value.
-    public static void nonFiniteFloat(TableVocabulary.Report report, String field) {
+    public static void nonFiniteFloat(TableVocabulary.Report report, java.lang.String field) {
         if (!report.refused) {
             report.refused = true;
             report.reason = "non_finite_float: " + field;
         }
     }
 
-    public static float readFloat32(Reader r, TableVocabulary.Shape s, float min, float max, boolean hasRange, String field) {
+    public static float readFloat32(Reader r, TableVocabulary.Shape s, float min, float max, boolean hasRange, java.lang.String field) {
         float v;
         if (s.packing == 2) {
             long index = r.get((int) s.bits);
-            if (r.err || Long.compareUnsigned(index, s.steps) > 0) {
+            if (r.err || java.lang.Long.compareUnsigned(index, s.steps) > 0) {
                 r.err = true;
                 return 0.0f;
             }
@@ -1381,7 +1381,7 @@ public final class TableMessage {
                 nonFiniteFloat(r.report, field);
                 return 0.0f;
             }
-            v = Float.intBitsToFloat(raw);
+            v = java.lang.Float.intBitsToFloat(raw);
         }
         if (hasRange) {
             if (v < min) { v = min; r.report.refuse("out_of_range"); }
@@ -1390,11 +1390,11 @@ public final class TableMessage {
         return v;
     }
 
-    public static double readFloat64(Reader r, TableVocabulary.Shape s, double min, double max, boolean hasRange, String field) {
+    public static double readFloat64(Reader r, TableVocabulary.Shape s, double min, double max, boolean hasRange, java.lang.String field) {
         if (s.kind == 10) {
             if (s.packing == 2) {
                 long index = r.get((int) s.bits);
-                if (r.err || Long.compareUnsigned(index, s.steps) > 0) {
+                if (r.err || java.lang.Long.compareUnsigned(index, s.steps) > 0) {
                     r.err = true;
                     return 0.0;
                 }
@@ -1409,7 +1409,7 @@ public final class TableMessage {
                 return 0.0;
             }
             // the float rung is the ordinary conversion: exact for every finite float32
-            return (double) Float.intBitsToFloat(raw);
+            return (double) java.lang.Float.intBitsToFloat(raw);
         }
         long raw = r.get(64);
         if (r.err) { return 0.0; }
@@ -1417,7 +1417,7 @@ public final class TableMessage {
             nonFiniteFloat(r.report, field);
             return 0.0;
         }
-        double v = Double.longBitsToDouble(raw);
+        double v = java.lang.Double.longBitsToDouble(raw);
         if (hasRange) {
             if (v < min) { v = min; r.report.refuse("out_of_range"); }
             else if (v > max) { v = max; r.report.refuse("out_of_range"); }
@@ -1904,7 +1904,7 @@ func (g *messageGen) messageCheckValue(f *ir.Field, expr string, indent int, lin
 		idx := g.nextTemp("i")
 		bound := expr + ".length"
 		if f.Array == ir.ArrayCounted {
-			bound = "Math.min(" + expr + "Count, " + expr + ".length)"
+			bound = "java.lang.Math.min(" + expr + "Count, " + expr + ".length)"
 		}
 		*lines = append(*lines, fmt.Sprintf("%sfor (int %s = 0; %s < %s; %s++) {\n", ind, idx, idx, bound, idx))
 		g.messageCheckValue(&elem, expr+"["+idx+"]", indent+4, lines)
@@ -1990,8 +1990,8 @@ func messageScalarRange(f *ir.Field, expr string, lo, hi *big.Int) []string {
 		mask = (uint64(1) << (8 * uint(width))) - 1
 	}
 	return []string{
-		fmt.Sprintf("Long.compareUnsigned((%s) & %sL, %sL) >= 0", expr, fixedHexLong(mask), fixedHexLong(lo.Uint64())),
-		fmt.Sprintf("Long.compareUnsigned((%s) & %sL, %sL) <= 0", expr, fixedHexLong(mask), fixedHexLong(hi.Uint64())),
+		fmt.Sprintf("java.lang.Long.compareUnsigned((%s) & %sL, %sL) >= 0", expr, fixedHexLong(mask), fixedHexLong(lo.Uint64())),
+		fmt.Sprintf("java.lang.Long.compareUnsigned((%s) & %sL, %sL) <= 0", expr, fixedHexLong(mask), fixedHexLong(hi.Uint64())),
 	}
 }
 
@@ -2121,9 +2121,9 @@ func (g *messageGen) scalarOrUnionRidesExpr(f *ir.Field, expr string) string {
 	// -0 under a +0 default is not the default.
 	switch typ {
 	case "float":
-		return "Float.floatToRawIntBits(" + expr + ") != Float.floatToRawIntBits(" + def + ")"
+		return "java.lang.Float.floatToRawIntBits(" + expr + ") != java.lang.Float.floatToRawIntBits(" + def + ")"
 	case "double":
-		return "Double.doubleToRawLongBits(" + expr + ") != Double.doubleToRawLongBits(" + def + ")"
+		return "java.lang.Double.doubleToRawLongBits(" + expr + ") != java.lang.Double.doubleToRawLongBits(" + def + ")"
 	}
 	return expr + " != " + def
 }
@@ -2280,17 +2280,17 @@ func (g *messageGen) emitSaveElement(f *ir.Field, kind uint8, shape ir.TableMess
 	// (docs/SPEC-TABLES.md §3.3, both special-values rules): the body answers
 	// false before the quantizer runs, so measure and save both return -1.
 	case int(kind) == ir.TableKindF64:
-		g.pf("%sif (!Double.isFinite(%s)) { return false; }\n", ind, expr)
-		g.pf("%sw.put(Double.doubleToRawLongBits(%s), 64);\n", ind, expr)
+		g.pf("%sif (!java.lang.Double.isFinite(%s)) { return false; }\n", ind, expr)
+		g.pf("%sw.put(java.lang.Double.doubleToRawLongBits(%s), 64);\n", ind, expr)
 
 	case int(kind) == ir.TableKindF32:
-		g.pf("%sif (!Float.isFinite(%s)) { return false; }\n", ind, expr)
+		g.pf("%sif (!java.lang.Float.isFinite(%s)) { return false; }\n", ind, expr)
 		if shape.Packing == ir.TableMessageQuantized {
 			count, delta, _ := ir.TableMessageQuantization(shape)
 			g.pf("%sTableMessage.writeFloat32Quantized(w, %s, %s, %s, %dL, %d);\n",
 				ind, expr, fixedFloatLit(shape.QMin), fixedFloatLit(delta), count, shape.Bits)
 		} else {
-			g.pf("%sw.put((long) Float.floatToRawIntBits(%s) & 0xffffffffL, 32);\n", ind, expr)
+			g.pf("%sw.put((long) java.lang.Float.floatToRawIntBits(%s) & 0xffffffffL, 32);\n", ind, expr)
 		}
 
 	default:
@@ -2425,13 +2425,13 @@ func (g *messageGen) emitLoadPayload(f *ir.Field, owner, entryVar string, indent
 		g.pf("%sint %s = r.atByte();\n", ind, startVar)
 		g.pf("%sif (!r.skipBits(%s * 8L)) { r.report.damaged = true; return false; }\n", ind, nVar)
 		g.pf("%sif (!TableMessage.utf8Valid(r.buf, %s, (int) %s)) { r.report.damaged = true; return false; }\n", ind, startVar, nVar)
-		g.pf("%sint %s = (int) Math.min(%s, %dL);\n", ind, keptVar, nVar, f.Type.Size)
+		g.pf("%sint %s = (int) java.lang.Math.min(%s, %dL);\n", ind, keptVar, nVar, f.Type.Size)
 		g.pf("%sif ((long) %s < %s) {\n", ind, keptVar, nVar)
 		g.pf("%s    %s = TableMessage.utf8Clamp(r.buf, %s, %s);\n", ind, keptVar, startVar, keptVar)
 		g.pf("%s    r.report.refuse(\"length_over_bound\");\n", ind)
 		g.pf("%s}\n", ind)
 		g.pf("%sjava.util.Arrays.fill(%s, (byte) 0);\n", ind, expr)
-		g.pf("%sSystem.arraycopy(r.buf, %s, %s, 0, %s);\n", ind, startVar, expr, keptVar)
+		g.pf("%sjava.lang.System.arraycopy(r.buf, %s, %s, 0, %s);\n", ind, startVar, expr, keptVar)
 		g.pf("%s%sLength = %s;\n", ind, expr, keptVar)
 
 	case f.Type.Kind == ir.TBytes && f.Array == ir.ArrayNone && f.KeyEnum == "":
@@ -2442,10 +2442,10 @@ func (g *messageGen) emitLoadPayload(f *ir.Field, owner, entryVar string, indent
 		g.pf("%sif (r.err || !r.align()) { r.report.damaged = true; return false; }\n", ind)
 		g.pf("%sint %s = r.atByte();\n", ind, startVar)
 		g.pf("%sif (!r.skipBits(%s * 8L)) { r.report.damaged = true; return false; }\n", ind, nVar)
-		g.pf("%sint %s = (int) Math.min(%s, %dL);\n", ind, keptVar, nVar, f.Type.Size)
+		g.pf("%sint %s = (int) java.lang.Math.min(%s, %dL);\n", ind, keptVar, nVar, f.Type.Size)
 		g.pf("%sif ((long) %s < %s) { r.report.refuse(\"length_over_bound\"); }\n", ind, keptVar, nVar)
 		g.pf("%sjava.util.Arrays.fill(%s, (byte) 0);\n", ind, expr)
-		g.pf("%sSystem.arraycopy(r.buf, %s, %s, 0, %s);\n", ind, startVar, expr, keptVar)
+		g.pf("%sjava.lang.System.arraycopy(r.buf, %s, %s, 0, %s);\n", ind, startVar, expr, keptVar)
 		g.pf("%s%sLength = %s;\n", ind, expr, keptVar)
 
 	case f.KeyEnum != "":
@@ -2523,7 +2523,7 @@ func (g *messageGen) emitLoadPayload(f *ir.Field, owner, entryVar string, indent
 		g.pf("%slong %s = TableMessage.readCount(r, %s.shape);\n", ind, nVar, entryVar)
 		g.pf("%sif (r.err) { r.report.damaged = true; return false; }\n", ind)
 		g.pf("%sif (%s.element.kind == 6 && !r.align()) { r.report.damaged = true; return false; }\n", ind, entryVar)
-		g.pf("%slong %s = Math.min(%s, %dL);\n", ind, keepVar, nVar, f.ArrayBound)
+		g.pf("%slong %s = java.lang.Math.min(%s, %dL);\n", ind, keepVar, nVar, f.ArrayBound)
 		g.pf("%sif (%s < %s) { r.report.refuse(\"count_over_bound\"); }\n", ind, keepVar, nVar)
 		g.pf("%slong %s = TableMessage.elementRunBits(14, %s.element);\n", ind, runVar, entryVar)
 		g.pf("%slong %s = (%s >= 0L && %s > %s) ? %s : %s;\n", ind, walkVar, runVar, nVar, keepVar, keepVar, nVar)
@@ -2826,7 +2826,7 @@ func (g *messageGen) emitRootBatch(st *ir.Struct, valType string) {
 	g.pf("        if (w.overflow) { return -1; }\n")
 	if st.Integrity != "" {
 		g.pf("        int n = w.bytesWritten();\n")
-		g.pf("        return n > Integer.MAX_VALUE - 4 ? -1 : n + 4;\n")
+		g.pf("        return n > java.lang.Integer.MAX_VALUE - 4 ? -1 : n + 4;\n")
 	} else {
 		g.pf("        return w.bytesWritten();\n")
 	}
@@ -2903,7 +2903,7 @@ func (g *messageGen) emitRootBatch(st *ir.Struct, valType string) {
 	g.pf("        }\n")
 	g.pf("        if (data.length < 2) { report.damaged = true; return 0; }\n")
 	g.pf("        int count = (data[1] & 0xff) + 1;\n")
-	g.pf("        int cap = values == null ? 0 : Math.min(capacity, values.length);\n")
+	g.pf("        int cap = values == null ? 0 : java.lang.Math.min(capacity, values.length);\n")
 	g.pf("        if (count > cap) {\n")
 	g.pf("            report.refused = true;\n")
 	g.pf("            report.reason = \"batch_too_large\";\n")

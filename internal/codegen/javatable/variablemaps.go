@@ -34,24 +34,24 @@ func writeVariableMapHelpers(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		m := varMember(f)
 		entry := f.MapEntry.Name + "Variable.Value"
 		key := ir.MapKeyField(f)
-		compare := "Integer.compare(a.key,b.key)"
+		compare := "java.lang.Integer.compare(a.key,b.key)"
 		switch {
 		case key.Type.Kind == ir.TString:
-			compare = "java.util.Arrays.compareUnsigned(a.key.getBytes(StandardCharsets.UTF_8),b.key.getBytes(StandardCharsets.UTF_8))"
+			compare = "java.util.Arrays.compareUnsigned(a.key.getBytes(java.nio.charset.StandardCharsets.UTF_8),b.key.getBytes(java.nio.charset.StandardCharsets.UTF_8))"
 		case key.Type.Width > 32:
-			compare = "Long.compare(a.key,b.key)"
+			compare = "java.lang.Long.compare(a.key,b.key)"
 			if !key.Type.Signed {
-				compare = "Long.compareUnsigned(a.key,b.key)"
+				compare = "java.lang.Long.compareUnsigned(a.key,b.key)"
 			}
 		case !key.Type.Signed:
-			compare = "Integer.compareUnsigned(a.key,b.key)"
+			compare = "java.lang.Integer.compareUnsigned(a.key,b.key)"
 		}
 		fmt.Fprintf(b, "    static int compare_%s(%s a, %s b) { return %s; }\n", m, entry, entry, compare)
-		fmt.Fprintf(b, "    static List<%s> order_%s(List<%s> entries) {\n", entry, m, entry)
+		fmt.Fprintf(b, "    static java.util.List<%s> order_%s(java.util.List<%s> entries) {\n", entry, m, entry)
 		fmt.Fprintf(b, "        java.util.TreeMap<%s,%s> ordered = new java.util.TreeMap<>(%sVariable::compare_%s);\n", entry, entry, st.Name, m)
-		fmt.Fprintf(b, "        for (%s entry : entries) ordered.put(entry,entry);\n        return new ArrayList<>(ordered.values());\n    }\n", entry)
+		fmt.Fprintf(b, "        for (%s entry : entries) ordered.put(entry,entry);\n        return new java.util.ArrayList<>(ordered.values());\n    }\n", entry)
 		if unitCarriesForm(u, "json") {
-			fmt.Fprintf(b, "    static void jsonMapValue_%s(StringBuilder b, TableVariable.NodeGraph graph, %s v, int depth) {\n", m, entry)
+			fmt.Fprintf(b, "    static void jsonMapValue_%s(java.lang.StringBuilder b, TableVariable.NodeGraph graph, %s v, int depth) {\n", m, entry)
 			writeJsonFieldValue(b, u, f.MapEntry, variableStruct(f.MapEntry).Fields[1])
 			b.WriteString("    }\n")
 			fmt.Fprintf(b, "    static void readMapValue_%s(TableJson.In in, %s v, int depth) {\n", m, entry)
@@ -98,18 +98,18 @@ func writeJsonMapValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fiel
 	m := varMember(f)
 	entry := f.MapEntry.Name + "Variable.Value"
 	key := ir.MapKeyField(f)
-	fmt.Fprintf(b, "        { List<%s> entries = "+st.Name+"Variable.order_%s(v.%s); b.append('{'); for(int i=0;i<entries.size();i++) { if(i>0)b.append(','); TableJson.indent(b,depth+1); %s entry=entries.get(i);\n", entry, m, m, entry)
-	keyText := "Integer.toString(entry.key)"
+	fmt.Fprintf(b, "        { java.util.List<%s> entries = "+st.Name+"Variable.order_%s(v.%s); b.append('{'); for(int i=0;i<entries.size();i++) { if(i>0)b.append(','); TableJson.indent(b,depth+1); %s entry=entries.get(i);\n", entry, m, m, entry)
+	keyText := "java.lang.Integer.toString(entry.key)"
 	switch {
 	case key.Type.Kind == ir.TString:
 		keyText = "entry.key"
 	case key.Type.Width > 32:
-		keyText = "Long.toString(entry.key)"
+		keyText = "java.lang.Long.toString(entry.key)"
 		if !key.Type.Signed {
-			keyText = "Long.toUnsignedString(entry.key)"
+			keyText = "java.lang.Long.toUnsignedString(entry.key)"
 		}
 	case !key.Type.Signed:
-		keyText = "Integer.toUnsignedString(entry.key)"
+		keyText = "java.lang.Integer.toUnsignedString(entry.key)"
 	}
 	fmt.Fprintf(b, "        TableJson.esc(b,%s); b.append(\": \");\n", keyText)
 	fmt.Fprintf(b, "        %sVariable.jsonMapValue_%s(b,graph,entry,depth+1);\n", st.Name, m)
@@ -120,20 +120,20 @@ func readJsonMapValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field
 	m := varMember(f)
 	entry := f.MapEntry.Name + "Variable.Value"
 	key := ir.MapKeyField(f)
-	hashType := "Integer"
+	hashType := "java.lang.Integer"
 	switch {
 	case key.Type.Kind == ir.TString:
-		hashType = "String"
+		hashType = "java.lang.String"
 	case key.Type.Width > 32:
-		hashType = "Long"
+		hashType = "java.lang.Long"
 	}
 	fmt.Fprintf(b, "                if(in.peek()!='{'){in.bad=true;return;} in.p++; v.%s.clear(); java.util.HashSet<%s> seen_%s=new java.util.HashSet<>();\n", m, hashType, m)
-	fmt.Fprintf(b, "                while(in.peek()!='}') { if(in.peek()==0){in.bad=true;return;} String mapKey=in.scanStored(); if(in.bad)return; if(in.peek()!=':'){in.bad=true;return;} in.p++; %s entry=new %s(); boolean accepted=true;\n", entry, entry)
+	fmt.Fprintf(b, "                while(in.peek()!='}') { if(in.peek()==0){in.bad=true;return;} java.lang.String mapKey=in.scanStored(); if(in.bad)return; if(in.peek()!=':'){in.bad=true;return;} in.p++; %s entry=new %s(); boolean accepted=true;\n", entry, entry)
 	if key.Type.Kind == ir.TString {
 		if key.Type.TextUnbounded() {
 			b.WriteString("                    entry.key=mapKey;\n")
 		} else {
-			fmt.Fprintf(b, "                    entry.key=mapKey; if(mapKey.getBytes(StandardCharsets.UTF_8).length>%d){accepted=false;in.rep.refuse(\"length_over_bound\");}\n", key.Type.Size)
+			fmt.Fprintf(b, "                    entry.key=mapKey; if(mapKey.getBytes(java.nio.charset.StandardCharsets.UTF_8).length>%d){accepted=false;in.rep.refuse(\"length_over_bound\");}\n", key.Type.Size)
 		}
 	} else {
 		// A key is parsed at arbitrary precision before narrowing: unsigned 64-bit
@@ -153,7 +153,7 @@ func readJsonMapValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field
 		// inside one, so a key with anything before its first digit or minus is
 		// not a JSON number and is malformed, as the engine's placeMapKey reads
 		// it (§16.2). The integer rule is judged on the key itself.
-		fmt.Fprintf(b, "                    TableJson.In number=new TableJson.In(mapKey.getBytes(StandardCharsets.UTF_8),new TableVariable.Report()); number.space(); if(number.bad||number.p!=0||mapKey.isEmpty()){in.bad=true;return;} number.scanNumber(new boolean[1]); if(number.bad||number.p!=number.t.length){in.bad=true;return;} if(!TableJson.integerToken(mapKey)){accepted=false;in.rep.refuse(\"kind_mismatch\");}else{java.math.BigInteger n=TableJson.exactIntegerToken(mapKey); if(n==null){accepted=false;in.rep.refuse(\"kind_mismatch\");}else if(n.compareTo(%s)<0||n.compareTo(%s)>0){accepted=false;in.rep.refuse(\"kind_mismatch\");}else entry.key=n.%s();}\n", min, max, cast)
+		fmt.Fprintf(b, "                    TableJson.In number=new TableJson.In(mapKey.getBytes(java.nio.charset.StandardCharsets.UTF_8),new TableVariable.Report()); number.space(); if(number.bad||number.p!=0||mapKey.isEmpty()){in.bad=true;return;} number.scanNumber(new boolean[1]); if(number.bad||number.p!=number.t.length){in.bad=true;return;} if(!TableJson.integerToken(mapKey)){accepted=false;in.rep.refuse(\"kind_mismatch\");}else{java.math.BigInteger n=TableJson.exactIntegerToken(mapKey); if(n==null){accepted=false;in.rep.refuse(\"kind_mismatch\");}else if(n.compareTo(%s)<0||n.compareTo(%s)>0){accepted=false;in.rep.refuse(\"kind_mismatch\");}else entry.key=n.%s();}\n", min, max, cast)
 	}
 	b.WriteString("                    if(!accepted){in.skipValue();}else {\n")
 	fmt.Fprintf(b, "                    %sVariable.readMapValue_%s(in,entry,%s);\n", st.Name, m, depth)
@@ -195,7 +195,7 @@ func writeMapFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fiel
 	fmt.Fprintf(b, "                    if(keyReport.widened>0&&!keyWidened){report.widened++;keyWidened=true;}if(keyReport.refused){report.refuse(keyReport.reason);v.%s.clear();break;}if(keyReport.damaged||kr.fail||kr.off!=kr.limit){report.damaged=true;break;}\n", m)
 	key := ir.MapKeyField(f)
 	if key.Type.Kind == ir.TString && !key.Type.TextUnbounded() {
-		fmt.Fprintf(b, "                    if(keyValue.key.getBytes(StandardCharsets.UTF_8).length>%d){report.refuse(\"length_over_bound\");continue;}\n", key.Type.Size)
+		fmt.Fprintf(b, "                    if(keyValue.key.getBytes(java.nio.charset.StandardCharsets.UTF_8).length>%d){report.refuse(\"length_over_bound\");continue;}\n", key.Type.Size)
 	}
 	fmt.Fprintf(b, "                    int order=v.%s.isEmpty()?-1:"+st.Name+"Variable.compare_%s(v.%s.get(v.%s.size()-1),keyValue);if(order>0){report.damaged=true;break;} %s decoded=new %s();int priorWidened=report.widened;\n", m, m, m, m, entry, entry)
 	if retain {
@@ -203,6 +203,6 @@ func writeMapFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fiel
 	} else {
 		fmt.Fprintf(b, "                    %sVariable.readFields(er,decoded,nt,report);\n", f.MapEntry.Name)
 	}
-	fmt.Fprintf(b, "                    report.widened=priorWidened+Math.max(0,report.widened-priorWidened-keyReport.widened);if(er.off!=er.limit){report.damaged=true;}if(order==0){v.%s.set(v.%s.size()-1,decoded);report.refuse(\"wire_damaged\");}else v.%s.add(decoded);\n", m, m, m)
+	fmt.Fprintf(b, "                    report.widened=priorWidened+java.lang.Math.max(0,report.widened-priorWidened-keyReport.widened);if(er.off!=er.limit){report.damaged=true;}if(order==0){v.%s.set(v.%s.size()-1,decoded);report.refuse(\"wire_damaged\");}else v.%s.add(decoded);\n", m, m, m)
 	b.WriteString("                    } } } }}else{r.skip(kind);report.refuse(\"kind_mismatch\");}\n")
 }

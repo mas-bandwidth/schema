@@ -176,15 +176,30 @@ func is128(t ir.FieldType) bool {
 // SPEC §4.6) and never copied here.
 var javaReserved = schemacheck.ReservedIn("Java")
 
-// javaTypeHazards is every PascalCase spelling a generated nested class must
-// not take: the java.lang / core names generated bodies use unqualified —
-// a nested class named Long would shadow java.lang.Long inside its file —
-// plus the emitted 128-bit support pair.
+// javaTypeHazards is every spelling a generated nested class must not take:
+// the emitted 128-bit support pair, which generated bodies name by its simple
+// name. No platform name is here: generated Java spells every platform type
+// from the package root (java.lang.Long, java.util.Arrays, never a bare Long
+// or an import), so a class of the unit named Long, Object or Arrays — nested,
+// or the outer class of a sibling Long.schema — shadows nothing the generated
+// code uses (JLS §6.4.1). compiler's TestJavaNamesNoPlatformTypeUnqualified
+// holds it.
 var javaTypeHazards = map[string]bool{
-	"String": true, "StringBuilder": true, "Long": true, "Float": true,
-	"Double": true, "Math": true, "System": true,
 	"Int128": true, "UInt128": true,
 }
+
+// PackageRoot is the one simple name a declaration cannot take in generated
+// Java: every platform type is spelled in full from the package `java`, and a
+// class, field or variable named `java` in scope obscures that package for
+// every qualified name in its scope (JLS §6.4.2, §6.5.2) — no spelling then
+// reaches java.lang. The table emitter refuses it for its own members.
+const PackageRoot = "java"
+
+// RestrictedTypeNames are the contextual words javac refuses as a class name
+// (JLS §3.9, TypeIdentifier) that the reserved-word row (check.ReservedIn,
+// which carries var, yield and record) leaves out, because they are legal as
+// a field or a variable.
+var RestrictedTypeNames = map[string]bool{"sealed": true, "permits": true}
 
 // javaName maps an exported member/constant/variant name into Java's
 // lowerCamelCase: the first-letter-lowered form of ir.GoExportName. The two
@@ -209,18 +224,36 @@ func checkNames(u *ir.Unit) error {
 			}
 			return fmt.Errorf("%s %s maps to the reserved Java identifier %q; rename it", kind, name, mapped)
 		}
+		if mapped == PackageRoot {
+			return fmt.Errorf("%s %s of %s maps to the Java identifier %q, which obscures the java package every platform type in generated Java is named from (JLS §6.4.2); rename it", kind, name, owner, mapped)
+		}
 		return nil
 	}
 	fileBases := map[string]bool{}
 	for _, f := range u.Files {
 		fileBases[f.Base] = true
+		// the basename is the outer class's name (SPEC §6.1): javac refuses
+		// a reserved or restricted word there, and a class named java in the
+		// package obscures the java package in every file of it
+		switch {
+		case javaReserved[f.Base] || RestrictedTypeNames[f.Base]:
+			return fmt.Errorf("schema file %s.schema names the outer class the Java emitter writes for it, and %q is reserved as a Java class name; rename the file", f.Base, f.Base)
+		case f.Base == PackageRoot:
+			return fmt.Errorf("schema file %s.schema names the outer class the Java emitter writes for it, and a class named %q obscures the java package every platform type in generated Java is named from (JLS §6.4.2); rename the file", f.Base, f.Base)
+		}
 	}
 	checkType := func(kind, name string) error {
 		if fileBases[name] {
 			return fmt.Errorf("%s %s collides with the outer class the Java emitter writes for %s.schema (one public class per file); rename one of them", kind, name, name)
 		}
 		if javaTypeHazards[name] {
-			return fmt.Errorf("%s %s would shadow the core Java name %q inside generated files; rename it", kind, name, name)
+			return fmt.Errorf("%s %s would shadow the generated support class %q inside generated files; rename it", kind, name, name)
+		}
+		if RestrictedTypeNames[name] {
+			return fmt.Errorf("%s %s is reserved as a Java class name; rename it", kind, name)
+		}
+		if name == PackageRoot {
+			return fmt.Errorf("%s %s becomes a class named %q, which obscures the java package every platform type in generated Java is named from (JLS §6.4.2); rename it", kind, name, name)
 		}
 		return nil
 	}
@@ -228,6 +261,11 @@ func checkNames(u *ir.Unit) error {
 	// and no Java reserved word is upper case: only types and members check
 	for _, e := range u.Enums {
 		if err := checkType("enum", e.Name); err != nil {
+			return err
+		}
+	}
+	for _, fl := range u.Flags {
+		if err := checkType("flags", fl.Name); err != nil {
 			return err
 		}
 	}
@@ -281,9 +319,8 @@ type gen struct {
 	stored      bool // write side: data holds the partial word, scratch is stale
 	usesScratch bool // write side: the body loads the scratch word
 
-	usesWire   bool            // the file emitted wire functions: the VarHandle rides
-	usesArrays bool            // the file calls Arrays.fill
-	helpers    map[string]bool // the bitpacker helpers the file's bodies call
+	usesWire bool            // the file emitted wire functions: the VarHandle rides
+	helpers  map[string]bool // the bitpacker helpers the file's bodies call
 }
 
 // use records that a body calls the named bitpacker helper, so the file
@@ -436,19 +473,9 @@ func (g *gen) assemble() []byte {
 	}
 	h.WriteString("\n")
 	fmt.Fprintf(&h, "package %s;\n\n", g.unit.Package)
-	var imports []string
-	if g.usesWire {
-		imports = append(imports, "java.lang.invoke.MethodHandles", "java.lang.invoke.VarHandle", "java.nio.ByteOrder")
-	}
-	if g.usesArrays {
-		imports = append(imports, "java.util.Arrays")
-	}
-	for _, imp := range imports {
-		fmt.Fprintf(&h, "import %s;\n", imp)
-	}
-	if len(imports) > 0 {
-		h.WriteString("\n")
-	}
+	// no imports: every platform type is spelled from the package root
+	// (java.util.Arrays, java.lang.invoke.VarHandle), which no class of the
+	// unit can shadow (javaTypeHazards, PackageRoot)
 	fmt.Fprintf(&h, "// %s carries every generated declaration of %s.schema — Java has no\n", g.file.Base, g.file.Base)
 	h.WriteString("// top-level functions or constants, so the file's one public class is their\n")
 	h.WriteString("// home; types nest inside it (SPEC §6.1 naming).\n")
@@ -457,8 +484,8 @@ func (g *gen) assemble() []byte {
 	if g.usesWire {
 		h.WriteString("    // 64-bit little-endian word access into byte[] — the proven-fast JVM\n")
 		h.WriteString("    // form (VarHandle byteArrayViewVarHandle, serialize.java's own).\n")
-		h.WriteString("    private static final VarHandle LONG_LE =\n")
-		h.WriteString("            MethodHandles.byteArrayViewVarHandle(long[].class, ByteOrder.LITTLE_ENDIAN);\n\n")
+		h.WriteString("    private static final java.lang.invoke.VarHandle LONG_LE =\n")
+		h.WriteString("            java.lang.invoke.MethodHandles.byteArrayViewVarHandle(long[].class, java.nio.ByteOrder.LITTLE_ENDIAN);\n\n")
 		for _, helper := range javaHelpers {
 			if g.helpers[helper.name] {
 				h.WriteString(helper.src)
@@ -569,7 +596,7 @@ func (g *gen) emitTagEnum(name, typ string, members, docs []string, max int64, c
 	// whichever enum it is. Nothing on the read or write path calls it.
 	g.bpf("    // enumName%s: debug/log/tooling name for any %s storage value —\n", name, name)
 	g.bpf("    // out-of-set values (wire-legal up to the declared max) name as \"???\"\n")
-	g.bpf("    public static String enumName%s(long value) {\n", name)
+	g.bpf("    public static java.lang.String enumName%s(long value) {\n", name)
 	g.bpf("        if (value == %s.NONE) {\n            return \"None\";\n        }\n", name)
 	for _, m := range members {
 		g.bpf("        if (value == %s.%s) {\n            return \"%s\";\n        }\n", name, constName(m), m)
@@ -597,7 +624,7 @@ func (g *gen) emitEnum(d *ir.Enum) {
 
 	g.bpf("    // enumName%s: debug/log/tooling name for any %s storage value —\n", d.Name, d.Name)
 	g.bpf("    // out-of-set values (wire-legal up to the declared max) name as \"???\"\n")
-	g.bpf("    public static String enumName%s(long value) {\n", d.Name)
+	g.bpf("    public static java.lang.String enumName%s(long value) {\n", d.Name)
 	g.bpf("        if (value == %s.NONE) {\n            return \"None\";\n        }\n", d.Name)
 	for _, v := range d.Variants {
 		g.bpf("        if (value == %s.%s) {\n            return \"%s\";\n        }\n", d.Name, constName(v), v)
@@ -620,7 +647,7 @@ func (g *gen) emitFlags(d *ir.Flags) {
 
 	g.bpf("    // flagName%s: debug/log/tooling name for bit i of %s —\n", d.Name, d.Name)
 	g.bpf("    // out-of-range bits name as \"???\"\n")
-	g.bpf("    public static String flagName%s(int bit) {\n", d.Name)
+	g.bpf("    public static java.lang.String flagName%s(int bit) {\n", d.Name)
 	g.bpf("        switch (bit) {\n")
 	for i, v := range d.Variants {
 		g.bpf("            case %d:\n                return \"%s\";\n", i, v)
@@ -629,8 +656,8 @@ func (g *gen) emitFlags(d *ir.Flags) {
 
 	g.bpf("    // flagNames%s renders the set bits of value as \"A|B\" — \"0\" for the\n", d.Name)
 	g.bpf("    // empty set, bits past the declared variants as hex\n")
-	g.bpf("    public static String flagNames%s(long value) {\n", d.Name)
-	g.bpf("        StringBuilder names = new StringBuilder();\n")
+	g.bpf("    public static java.lang.String flagNames%s(long value) {\n", d.Name)
+	g.bpf("        java.lang.StringBuilder names = new java.lang.StringBuilder();\n")
 	for i, v := range d.Variants {
 		g.bpf("        if ((value & (1L << %d)) != 0) {\n", i)
 		g.bpf("            if (names.length() > 0) {\n                names.append('|');\n            }\n")
@@ -640,7 +667,7 @@ func (g *gen) emitFlags(d *ir.Flags) {
 		g.bpf("        if (value >>> %d != 0) {\n", len(d.Variants))
 		g.bpf("            if (names.length() > 0) {\n                names.append('|');\n            }\n")
 		g.bpf("            // Long.toHexString renders the bit pattern, not a sign\n")
-		g.bpf("            names.append(\"0x\").append(Long.toHexString((value >>> %d) << %d));\n", len(d.Variants), len(d.Variants))
+		g.bpf("            names.append(\"0x\").append(java.lang.Long.toHexString((value >>> %d) << %d));\n", len(d.Variants), len(d.Variants))
 		g.bpf("        }\n")
 	}
 	g.bpf("        return names.length() == 0 ? \"0\" : names.toString();\n    }\n\n")
@@ -715,8 +742,7 @@ func (g *gen) emitStorageField(f *ir.Field) []string {
 			}
 			g.bpf("        public final %s[] %s = new %s[%s];\n", typ, name, typ, bound)
 			ctor = append(ctor,
-				fmt.Sprintf("            Arrays.fill(%s, %s.zero);\n", name, typ))
-			g.usesArrays = true
+				fmt.Sprintf("            java.util.Arrays.fill(%s, %s.zero);\n", name, typ))
 		default:
 			g.bpf("        public final %s[] %s = new %s[%s];\n", scalarJavaType(f.Type), name, scalarJavaType(f.Type), bound)
 		}
