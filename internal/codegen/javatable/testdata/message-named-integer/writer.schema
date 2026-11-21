@@ -1,0 +1,16 @@
+package probe
+
+union U
+{
+    pid  uint32 | min = 0, max = 1000
+    note uint8
+}
+
+fixed table Msg
+{
+    a uint8 = 250 | min = 250, max = 255
+    b uint8 = 250 | min = 250, max = 255
+    c uint64 = 18446744073709551610 | min = 18446744073709551610, max = 18446744073709551615
+    d int64 = 9223372036854775802 | min = 9223372036854775802, max = 9223372036854775807
+    u U
+}

@@ -3,11 +3,11 @@ package javatable
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -24,43 +24,33 @@ import (
 // the fixed read and the message read. The bytes are the Go engine's, written
 // under a [..4] declaration (or, for the fixed read, the reader's own layout
 // with its count word rewritten); the lawful twin of each case reads.
-const (
-	countMinReader = `package probe
+//
+// The two schemas and one row per case are the committed corpus
+// testdata/count-below-min/{reader.schema,writer.schema,cases.tsv} (F-203).
+const countMinDir = "testdata/count-below-min"
 
-type Inner { x int32 }
-
-table Probe
-{
-    items [2..4]int32
-    inner [2..4]Inner
+// countMinCovers is what the committed rows must hold between them: each form
+// below its minimum and at it.
+var countMinCovers = []string{
+	"variable-items-1", "variable-items-2", "variable-inner-1",
+	"json-items-1", "json-items-2", "fixed-1", "fixed-2", "message-1", "message-2",
 }
-
-fixed table Msg
-{
-    items [2..4]int32
-}
-`
-	countMinWriter = `package probe
-
-type Inner { x int32 }
-
-table Probe
-{
-    items [..4]int32
-    inner [..4]Inner
-}
-
-fixed table Msg
-{
-    items [..4]int32
-}
-`
-)
 
 func TestJavaCountBelowMinRefused(t *testing.T) {
 	t.Parallel()
-	reader := unitFrom(t, countMinReader)
-	writer := unitFrom(t, countMinWriter)
+	casesPath := filepath.Join(countMinDir, "cases.tsv")
+	rows := corpusRows(t, casesPath, 6)
+	inCorpus := map[string]bool{}
+	for _, r := range rows {
+		inCorpus[r[0]] = true
+	}
+	for _, label := range countMinCovers {
+		if !inCorpus[label] {
+			t.Errorf("%s has no %s row", casesPath, label)
+		}
+	}
+	reader := unitFrom(t, corpusSchema(t, countMinDir, "reader.schema"))
+	writer := unitFrom(t, corpusSchema(t, countMinDir, "writer.schema"))
 	files, err := Generate(reader)
 	if err != nil {
 		t.Fatal(err)
@@ -83,55 +73,58 @@ func TestJavaCountBelowMinRefused(t *testing.T) {
 
 	rm := tabletext.NewModel(reader)
 	wm := tabletext.NewModel(writer)
-	encode := func(m *tabletext.Model, table, text string, enc func(*tabletext.Model, *tabletext.Instance) ([]byte, error)) string {
+	oracle := func(m *tabletext.Model, table, text string) *tabletext.Instance {
 		inst := m.New(m.Lookup(table))
 		var rep tabletext.Report
 		if !m.Read(inst, []byte(text), &rep) || !rep.Silent() {
 			t.Fatalf("oracle read %s: %+v", text, rep)
 		}
-		w, err := enc(m, inst)
+		return inst
+	}
+	// payload is what the driver reads for one row: the JSON text itself, or
+	// the hex of the bytes the row's form reads.
+	payload := func(form, table, value, forge string) string {
+		var w []byte
+		var err error
+		switch form {
+		case "json":
+			return value
+		case "variable":
+			w, err = tablewire.EncodeVariable(wm, oracle(wm, table, value))
+		case "message":
+			w, err = tablewire.EncodeMessages(wm, []*tabletext.Instance{oracle(wm, table, value)})
+		case "fixed":
+			w, err = tablewire.EncodeFixed(rm, oracle(rm, table, value))
+		default:
+			t.Fatalf("no form %s", form)
+		}
 		if err != nil {
-			t.Fatalf("oracle encode %s: %v", text, err)
+			t.Fatalf("oracle encode %s %s: %v", form, value, err)
+		}
+		if forge != "-" {
+			spelled, ok := strings.CutPrefix(forge, "count=")
+			n, perr := strconv.ParseUint(spelled, 10, 32)
+			if !ok || perr != nil || form != "fixed" {
+				t.Fatalf("forge %s on the %s form: only count=N on the fixed form is spelled", forge, form)
+			}
+			// the count word lies just before the first element (287454020
+			// is 0x11223344)
+			at := bytes.Index(w, []byte{0x44, 0x33, 0x22, 0x11})
+			if at < 4 || binary.LittleEndian.Uint32(w[at-4:]) != 2 {
+				t.Fatal("no count word 2 before the first element in the fixed save")
+			}
+			w = bytes.Clone(w)
+			binary.LittleEndian.PutUint32(w[at-4:], uint32(n))
 		}
 		return hexOf(w)
 	}
-	messages := func(m *tabletext.Model, inst *tabletext.Instance) ([]byte, error) {
-		return tablewire.EncodeMessages(m, []*tabletext.Instance{inst})
-	}
-	fixedLawful := func() []byte {
-		inst := rm.New(rm.Lookup("Msg"))
-		var rep tabletext.Report
-		if !rm.Read(inst, []byte(`{"items":[287454020,1432778632]}`), &rep) || !rep.Silent() {
-			t.Fatalf("oracle read: %+v", rep)
+	var plan strings.Builder
+	for _, r := range rows {
+		id, form, table, value, forge, want := r[0], r[1], r[2], r[3], r[4], r[5]
+		if want != "refused" && want != "read" {
+			t.Fatalf("%s: want %s, not refused or read", id, want)
 		}
-		w, err := tablewire.EncodeFixed(rm, inst)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return w
-	}()
-	// the count word lies just before the first element (287454020 is
-	// 0x11223344): rewritten to 1
-	fixedForged := bytes.Clone(fixedLawful)
-	at := bytes.Index(fixedForged, []byte{0x44, 0x33, 0x22, 0x11})
-	if at < 4 || binary.LittleEndian.Uint32(fixedForged[at-4:]) != 2 {
-		t.Fatal("no count word 2 before the first element in the fixed save")
-	}
-	binary.LittleEndian.PutUint32(fixedForged[at-4:], 1)
-
-	cases := map[string]string{
-		"VAR_ITEMS_1": encode(wm, "Probe", `{"items":[77]}`, tablewire.EncodeVariable),
-		"VAR_ITEMS_2": encode(wm, "Probe", `{"items":[77,78],"inner":[{},{}]}`, tablewire.EncodeVariable),
-		"VAR_INNER_1": encode(wm, "Probe", `{"items":[77,78],"inner":[{"x":1}]}`, tablewire.EncodeVariable),
-		"FIXED_2":     hexOf(fixedLawful),
-		"FIXED_1":     hexOf(fixedForged),
-		"MSG_1":       encode(wm, "Msg", `{"items":[77]}`, messages),
-		"MSG_2":       encode(wm, "Msg", `{"items":[77,78]}`, messages),
-		"ANNOUNCE":    hexOf(tablewire.Announce(writer)),
-	}
-	driver := countMinDriver
-	for k, v := range cases {
-		driver = strings.ReplaceAll(driver, k, v)
+		plan.WriteString(id + "\t" + form + "\t" + payload(form, table, value, forge) + "\t" + want + "\n")
 	}
 
 	t.Run("jdk", func(t *testing.T) {
@@ -146,7 +139,7 @@ func TestJavaCountBelowMinRefused(t *testing.T) {
 				files[name] = data
 			}
 		}
-		files["Driver.java"] = []byte(driver)
+		files["Driver.java"] = []byte(countMinDriver)
 		dir := t.TempDir()
 		var sources []string
 		for name, data := range files {
@@ -158,20 +151,25 @@ func TestJavaCountBelowMinRefused(t *testing.T) {
 				sources = append(sources, p)
 			}
 		}
+		planPath := filepath.Join(dir, "plan.tsv")
+		if err := os.WriteFile(planPath, []byte(plan.String()), 0o644); err != nil {
+			t.Fatal(err)
+		}
 		sort.Strings(sources)
 		args := append([]string{"--release", "17", "-nowarn", "-d", dir}, sources...)
 		if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 			t.Fatalf("javac: %v\n%s", err, out)
 		}
-		out, err := testproc.Command(t, java, "-ea", "-cp", dir, reader.Package+".Driver").CombinedOutput()
+		out, err := testproc.Command(t, java, "-ea", "-cp", dir, reader.Package+".Driver", hexOf(tablewire.Announce(writer)), planPath).CombinedOutput()
 		if err != nil {
 			t.Fatalf("java: %v\n%s", err, out)
 		}
-		n := 0
+		seen := map[string]bool{}
 		for line := range strings.SplitSeq(string(out), "\n") {
 			if rest, ok := strings.CutPrefix(line, "CHECK "); ok {
-				n++
-				if label, verdict, _ := strings.Cut(rest, " "); verdict != "ok" {
+				label, verdict, _ := strings.Cut(rest, " ")
+				seen[label] = true
+				if verdict != "ok" {
 					t.Errorf("%s: %s", label, verdict)
 				}
 			}
@@ -179,20 +177,19 @@ func TestJavaCountBelowMinRefused(t *testing.T) {
 				t.Log(rest)
 			}
 		}
-		if n != len(countMinLabels) {
-			t.Errorf("the probe made %d checks, want %d:\n%s", n, len(countMinLabels), out)
+		for _, r := range rows {
+			if !seen[r[0]] {
+				t.Errorf("the probe made no %s check:\n%s", r[0], out)
+			}
 		}
 	})
 }
 
-var countMinLabels = []string{
-	"variable-items-1", "variable-items-2", "variable-inner-1",
-	"json-items-1", "json-items-2", "fixed-1", "fixed-2", "message-1", "message-2",
-}
-
-var countMinDriver = fmt.Sprintf(`package probe;
+const countMinDriver = `package probe;
 
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 public final class Driver {
     static byte[] fromHex(String s) {
@@ -236,21 +233,25 @@ public final class Driver {
         say(label, refuse ? (refused && "count_over_bound".equals(r.reason)) : !refused, "n=" + n + " refused=" + r.refused + " damaged=" + r.damaged + " reason=" + r.reason);
     }
 
-    public static void main(String[] args) {
-        variable("variable-items-1", "VAR_ITEMS_1", true);
-        variable("variable-items-2", "VAR_ITEMS_2", false);
-        variable("variable-inner-1", "VAR_INNER_1", true);
-        json("json-items-1", %q, true);
-        json("json-items-2", %q, false);
-        fixed("fixed-1", "FIXED_1", true);
-        fixed("fixed-2", "FIXED_2", false);
+    public static void main(String[] args) throws Exception {
         TableVocabulary vocab = new TableVocabulary();
         vocab.reset(16);
         TableVocabulary.Report arep = new TableVocabulary.Report();
-        if (!TableVocabulary.announceRead(vocab, fromHex("ANNOUNCE"), arep)) { System.out.println("CHECK announce FAIL " + arep.reason); return; }
-        message("message-1", vocab, "MSG_1", true);
-        message("message-2", vocab, "MSG_2", false);
+        if (!TableVocabulary.announceRead(vocab, fromHex(args[0]), arep)) { System.out.println("CHECK announce FAIL " + arep.reason); return; }
+        for (String line : Files.readAllLines(Path.of(args[1]), StandardCharsets.UTF_8)) {
+            if (line.isEmpty()) { continue; }
+            String[] f = line.split("\t", -1);
+            String label = f[0], form = f[1], payload = f[2];
+            boolean refuse = f[3].equals("refused");
+            switch (form) {
+                case "variable": variable(label, payload, refuse); break;
+                case "json": json(label, payload, refuse); break;
+                case "fixed": fixed(label, payload, refuse); break;
+                case "message": message(label, vocab, payload, refuse); break;
+                default: System.out.println("CHECK " + label + " FAIL no form " + form);
+            }
+        }
         System.out.println("NOTE a fresh value holds " + new ProbeVariable.Value().items.size() + " items and " + new MsgFixed.Value().itemsCount + " fixed items");
     }
 }
-`, `{"items":[77],"inner":[{},{}]}`, `{"items":[77,78],"inner":[{},{}]}`)
+`
