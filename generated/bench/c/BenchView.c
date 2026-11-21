@@ -43,9 +43,9 @@ static const bench_table_variant_info_t schema_bench_bench_mixed_game_event_outs
 };
 static const bench_table_union_arm_info_t schema_bench_bench_mixed_game_event_outside_arms_[] = {
     { 0, NULL, NULL, 0 },
-    { (uint32_t)offsetof( bench_mixed_event_t, as.hit ), &schema_bench_mixed_hit_event_info_, NULL, (uint32_t)sizeof( ((bench_mixed_event_t *)0)->as.hit ) },
-    { (uint32_t)offsetof( bench_mixed_event_t, as.chat ), &schema_bench_mixed_chat_event_info_, NULL, (uint32_t)sizeof( ((bench_mixed_event_t *)0)->as.chat ) },
-    { (uint32_t)offsetof( bench_mixed_event_t, as.pickup ), &schema_bench_mixed_pickup_event_info_, NULL, (uint32_t)sizeof( ((bench_mixed_event_t *)0)->as.pickup ) },
+    { (uint32_t) offsetof( bench_mixed_event_t, as.hit ), &schema_bench_mixed_hit_event_info_, NULL, (uint32_t) sizeof( ( (bench_mixed_event_t *) 0 )->as.hit ) },
+    { (uint32_t) offsetof( bench_mixed_event_t, as.chat ), &schema_bench_mixed_chat_event_info_, NULL, (uint32_t) sizeof( ( (bench_mixed_event_t *) 0 )->as.chat ) },
+    { (uint32_t) offsetof( bench_mixed_event_t, as.pickup ), &schema_bench_mixed_pickup_event_info_, NULL, (uint32_t) sizeof( ( (bench_mixed_event_t *) 0 )->as.pickup ) },
 };
 static const bench_table_union_info_t schema_bench_bench_mixed_game_event_outside_union_ = { (uint32_t) offsetof( bench_mixed_event_t, type ), (uint32_t) sizeof( ( (bench_mixed_event_t *) 0 )->type ), schema_bench_bench_mixed_game_event_outside_arms_ };
 static const bench_table_wide_range_t schema_bench_bench_mixed_wide_key_outside_range_ = { { 0ull, 0ull }, { 18446744073709551615ull, 18446744073709551615ull } };
@@ -177,7 +177,7 @@ static const bench_table_field_info_t schema_bench_mixed_stat_fields_[] = {
 
 const bench_table_type_info_t schema_bench_mixed_stat_info_ = { "MixedStat", (uint32_t) sizeof( bench_mixed_stat_t ), 2, schema_bench_mixed_stat_fields_, schema_bench_mixed_stat_reset_raw_, BENCH_TABLE_DOC_NONE, 0, NULL, 0 };
 
-const bench_unit_view_info_t * schema_bench_unit_view_(void)
+const bench_unit_view_info_t * schema_bench_unit_view_( void )
 {
     static const bench_view_variant_t MixedWeapon_view_variants[] = {
         { 0, "None", 0, NULL, NULL, NULL, BENCH_TABLE_DOC_NONE, 0, NULL },

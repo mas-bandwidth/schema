@@ -582,7 +582,9 @@ static SCHEMA_UNUSED void table_mark_value( TableReader * r, uint8_t kind, Table
 static SCHEMA_UNUSED int table_nodes_all_named( const TableReader * root, uint64_t records, TableReport * report )
 {
     TableGraphWire g; TableNodeScan scan; TableReader body; uint64_t id, i, k;
-    uint64_t * start = NULL, * stack = NULL, * cursor = NULL;
+    uint64_t * start = NULL;
+    uint64_t * stack = NULL;
+    uint64_t * cursor = NULL;
     uint8_t * marks = NULL;
     int ok = 1, shared = 0;
     if ( records > (uint64_t)( INT64_MAX / (int64_t)sizeof(uint64_t) - 2 ) ) { return 0; }

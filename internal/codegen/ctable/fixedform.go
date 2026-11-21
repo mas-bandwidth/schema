@@ -435,7 +435,6 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("   Every byte is settled by the schema compiler. */\n")
 	g.pf("static SCHEMA_UNUSED const uint8_t %s_fixed_layout[] = {\n", n)
 	g.emitFixedByteArray(layout)
-	g.pf("};\n")
 	g.pf("static SCHEMA_UNUSED const int64_t %s_fixed_layout_bytes = (int64_t) sizeof( %s_fixed_layout );\n\n", n, n)
 
 	g.pf("/* MY SIDE of the layout, one row per entry: the storage facts a layout\n")
@@ -589,7 +588,6 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf(" */\n")
 		g.pf("static SCHEMA_UNUSED const uint8_t %s_fixed_known_%d[] = {\n", n, i)
 		g.emitFixedByteArray(e.Layout)
-		g.pf("};\n")
 	}
 	g.pf("/* THE LINEAGE, OLDEST FIRST, THE CURRENT LAYOUT LAST (§5.2). THE ONLY FACT\n")
 	g.pf("   A FILE IS MATCHED ON IS THE HASH; the layout bytes are what a known hash\n")
@@ -822,9 +820,9 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("       file of the two forms this reader is supposed to name. */\n")
 	g.pf("    if ( data[0] != kTableFixedForm )\n    {\n")
 	g.pf("        report->refused = 1;\n")
-	g.pf("        report->reason = data[0] == 1 ? SCHEMA_TABLE_PREVIOUS_FORM\n")
-	g.pf("                       : data[0] == 2 ? SCHEMA_TABLE_MESSAGE_FORM_AS_FILE\n")
-	g.pf("                       : SCHEMA_TABLE_NEWER_FORM;\n")
+	// the inner conditional is parenthesized: the house layout
+	// (.clang-format) breaks a bare chain of them mid-line
+	g.pf("        report->reason = data[0] == 1 ? SCHEMA_TABLE_PREVIOUS_FORM : ( data[0] == 2 ? SCHEMA_TABLE_MESSAGE_FORM_AS_FILE : SCHEMA_TABLE_NEWER_FORM );\n")
 	g.pf("        return -1;\n    }\n")
 	if st.Integrity != "" {
 		g.pf("    if ( !schema_table_integrity_holds_( data, bytes ) )\n    {\n")
@@ -1108,13 +1106,26 @@ func (g *tableGen) structNamed(name string) *ir.Struct {
 	return g.unit.Structs[name]
 }
 
+// emitFixedByteArray writes the bytes of an initializer and closes it. The
+// last byte carries no comma and the brace closes on its line: a trailing
+// comma would make the house layout (.clang-format) put one byte per line.
 func (g *tableGen) emitFixedByteArray(b []byte) {
+	if len(b) == 0 {
+		g.pf("};\n")
+		return
+	}
 	for i := 0; i < len(b); i += 16 {
 		end := min(i+16, len(b))
 		var sb strings.Builder
 		sb.WriteString("   ")
-		for _, v := range b[i:end] {
-			fmt.Fprintf(&sb, " 0x%02x,", v)
+		for j, v := range b[i:end] {
+			fmt.Fprintf(&sb, " 0x%02x", v)
+			if i+j+1 < len(b) {
+				sb.WriteString(",")
+			}
+		}
+		if end == len(b) {
+			sb.WriteString(" };")
 		}
 		g.pf("%s\n", sb.String())
 	}
@@ -1523,8 +1534,7 @@ typedef int TableFixedOnce;
 static SCHEMA_UNUSED int table_fixed_once_claim( TableFixedOnce * f )
 {
     int want = SCHEMA_TABLE_FIXED_ONCE_UNBUILT;
-    return __atomic_compare_exchange_n( f, &want, SCHEMA_TABLE_FIXED_ONCE_BUILDING, 0,
-                                        __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE ) ? 1 : 0;
+    return __atomic_compare_exchange_n( f, &want, SCHEMA_TABLE_FIXED_ONCE_BUILDING, 0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE ) ? 1 : 0;
 }
 /* THE WAIT. The build is a BOUNDED walk over the lock's own bytes — no file, no
    allocation, no lock of its own and no call out — so the thread that claimed it

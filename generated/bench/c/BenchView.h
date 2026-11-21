@@ -33,7 +33,7 @@
 #if defined( _MSC_VER )
 #define SCHEMA_BENCH_TABLE_INLINE __forceinline
 #elif defined( __GNUC__ ) || defined( __clang__ )
-#define SCHEMA_BENCH_TABLE_INLINE inline __attribute__(( always_inline ))
+#define SCHEMA_BENCH_TABLE_INLINE inline __attribute__( ( always_inline ) )
 #else
 #define SCHEMA_BENCH_TABLE_INLINE inline
 #endif
@@ -41,33 +41,34 @@
 
 
 typedef int bench_table_refuse_reason_t;
-enum {
-    SCHEMA_BENCH_TABLE_REFUSE_OK=0,
-    SCHEMA_BENCH_TABLE_REFUSE_NOT_A_COOK=1,
-    SCHEMA_BENCH_TABLE_REFUSE_FOREIGN_ORDER=2,
-    SCHEMA_BENCH_TABLE_REFUSE_WRONG_BUILD_VERSION=3,
-    SCHEMA_BENCH_TABLE_REFUSE_RESERVED_NOT_ZERO=4,
-    SCHEMA_BENCH_TABLE_REFUSE_BAD_ALIGNMENT=5,
-    SCHEMA_BENCH_TABLE_REFUSE_TRUNCATED=6,
-    SCHEMA_BENCH_TABLE_REFUSE_UNALIGNED_BASE=7,
-    SCHEMA_BENCH_TABLE_REFUSE_BAD_LAYOUT=8,
-    SCHEMA_BENCH_TABLE_REFUSE_UNKNOWN_FORM=9,
-    SCHEMA_BENCH_TABLE_REFUSE_COUNT_OVER_LENGTH=10,
-    SCHEMA_BENCH_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP=11,
-    SCHEMA_BENCH_TABLE_REFUSE_BLOB_OVER_SIZE_CAP=12,
-    SCHEMA_BENCH_TABLE_REFUSE_DATA_CYCLE=13,
-    SCHEMA_BENCH_TABLE_REFUSE_INVALID_VALUE=14,
-    SCHEMA_BENCH_TABLE_REFUSE_ALLOCATION_FAILED=15,
-    SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED=16,
-    SCHEMA_BENCH_TABLE_REFUSE_MALFORMED=17,
-    SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE=18,
-    SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH=19,
-    SCHEMA_BENCH_TABLE_REFUSE_BASE64_DAMAGED=20,
-    SCHEMA_BENCH_TABLE_REFUSE_BASE64_NOT_CANONICAL=21,
-    SCHEMA_BENCH_TABLE_REFUSE_INTEGRITY_MISMATCH=22,
-    SCHEMA_BENCH_TABLE_REFUSE_NON_FINITE_FLOAT=23,
-    SCHEMA_BENCH_TABLE_REFUSE_BLOB_SHARED=24,
-    SCHEMA_BENCH_TABLE_REFUSE_MISSING_REQUIRED=25
+enum
+{
+    SCHEMA_BENCH_TABLE_REFUSE_OK = 0,
+    SCHEMA_BENCH_TABLE_REFUSE_NOT_A_COOK = 1,
+    SCHEMA_BENCH_TABLE_REFUSE_FOREIGN_ORDER = 2,
+    SCHEMA_BENCH_TABLE_REFUSE_WRONG_BUILD_VERSION = 3,
+    SCHEMA_BENCH_TABLE_REFUSE_RESERVED_NOT_ZERO = 4,
+    SCHEMA_BENCH_TABLE_REFUSE_BAD_ALIGNMENT = 5,
+    SCHEMA_BENCH_TABLE_REFUSE_TRUNCATED = 6,
+    SCHEMA_BENCH_TABLE_REFUSE_UNALIGNED_BASE = 7,
+    SCHEMA_BENCH_TABLE_REFUSE_BAD_LAYOUT = 8,
+    SCHEMA_BENCH_TABLE_REFUSE_UNKNOWN_FORM = 9,
+    SCHEMA_BENCH_TABLE_REFUSE_COUNT_OVER_LENGTH = 10,
+    SCHEMA_BENCH_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP = 11,
+    SCHEMA_BENCH_TABLE_REFUSE_BLOB_OVER_SIZE_CAP = 12,
+    SCHEMA_BENCH_TABLE_REFUSE_DATA_CYCLE = 13,
+    SCHEMA_BENCH_TABLE_REFUSE_INVALID_VALUE = 14,
+    SCHEMA_BENCH_TABLE_REFUSE_ALLOCATION_FAILED = 15,
+    SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED = 16,
+    SCHEMA_BENCH_TABLE_REFUSE_MALFORMED = 17,
+    SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE = 18,
+    SCHEMA_BENCH_TABLE_REFUSE_KIND_MISMATCH = 19,
+    SCHEMA_BENCH_TABLE_REFUSE_BASE64_DAMAGED = 20,
+    SCHEMA_BENCH_TABLE_REFUSE_BASE64_NOT_CANONICAL = 21,
+    SCHEMA_BENCH_TABLE_REFUSE_INTEGRITY_MISMATCH = 22,
+    SCHEMA_BENCH_TABLE_REFUSE_NON_FINITE_FLOAT = 23,
+    SCHEMA_BENCH_TABLE_REFUSE_BLOB_SHARED = 24,
+    SCHEMA_BENCH_TABLE_REFUSE_MISSING_REQUIRED = 25
 };
 
 
@@ -112,7 +113,13 @@ typedef struct bench_table_report_t
    bits are a NaN or an infinity (docs/SPEC-TABLES.md §3.3). It takes 21, past
    the message form's 3..6 and the fixed form's 7..20, so one report reason
    names it whichever form a unit carries. */
-enum SCHEMA_BENCH_TABLE_REFUSAL_REASON { SCHEMA_BENCH_TABLE_NO_REFUSAL, SCHEMA_BENCH_TABLE_NEWER_FORM, SCHEMA_BENCH_TABLE_MESSAGE_FORM_AS_FILE, SCHEMA_BENCH_TABLE_NON_FINITE_FLOAT = 21 };
+enum SCHEMA_BENCH_TABLE_REFUSAL_REASON
+{
+    SCHEMA_BENCH_TABLE_NO_REFUSAL,
+    SCHEMA_BENCH_TABLE_NEWER_FORM,
+    SCHEMA_BENCH_TABLE_MESSAGE_FORM_AS_FILE,
+    SCHEMA_BENCH_TABLE_NON_FINITE_FLOAT = 21
+};
 
 /* ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 
@@ -170,7 +177,10 @@ typedef struct bench_table_variant_info_t
    are one, so every absent doc compares equal by address. */
 static SCHEMA_UNUSED const char BENCH_TABLE_DOC_NONE[1] = "";
 
-typedef struct bench_table_wide_range_t { uint64_t lo[2], hi[2]; } bench_table_wide_range_t;
+typedef struct bench_table_wide_range_t
+{
+    uint64_t lo[2], hi[2];
+} bench_table_wide_range_t;
 
 typedef struct bench_table_field_info_t
 {
@@ -224,7 +234,7 @@ typedef struct bench_table_field_info_t
     int sequence; /* 0 inline field, 1 unbounded list, 2 map */
     uint8_t text_list; /* 0 none, 1 string(M) elements, 2 ?string(M) elements (SPEC-TABLES 2.13) */
     int64_t text_total; /* | total = N byte cap across text-list elements, or 0 (SPEC-TABLES 2.13) */
-    void * (*place)(void * worker,void * slot,const char * key,int32_t length,int64_t number);
+    void * ( *place )( void * worker, void * slot, const char * key, int32_t length, int64_t number );
 } bench_table_field_info_t;
 
 typedef struct bench_table_type_info_t
@@ -238,7 +248,7 @@ typedef struct bench_table_type_info_t
        absent field takes, and it holds no type to spell — this is the one
        thing the descriptors could not express without it. It is the void *
        form of <name>_reset and the same code. */
-    void (*reset)( void * storage );
+    void ( *reset )( void * storage );
     /* the declaration's own doc and tags, on the same terms as a field's
        (docs/SPEC-TABLES.md §8.1) */
     const char * doc;
@@ -250,11 +260,30 @@ typedef struct bench_table_type_info_t
 } bench_table_type_info_t;
 
 
-
-static SCHEMA_UNUSED float bench_table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
-static SCHEMA_UNUSED uint32_t bench_table_float_to_bits( float f ) { uint32_t b; memcpy( &b, &f, 4 ); return b; }
-static SCHEMA_UNUSED double bench_table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
-static SCHEMA_UNUSED uint64_t bench_table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
+static SCHEMA_UNUSED float bench_table_bits_to_float( uint32_t bits )
+{
+    float f;
+    memcpy( &f, &bits, 4 );
+    return f;
+}
+static SCHEMA_UNUSED uint32_t bench_table_float_to_bits( float f )
+{
+    uint32_t b;
+    memcpy( &b, &f, 4 );
+    return b;
+}
+static SCHEMA_UNUSED double bench_table_bits_to_double( uint64_t bits )
+{
+    double d;
+    memcpy( &d, &bits, 8 );
+    return d;
+}
+static SCHEMA_UNUSED uint64_t bench_table_double_to_bits( double d )
+{
+    uint64_t b;
+    memcpy( &b, &d, 8 );
+    return b;
+}
 
 /* A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, the packet wire's own rule): a
    NaN or an infinity, whatever its sign or payload, has an all-ones exponent,
@@ -342,7 +371,7 @@ typedef struct bench_view_constant_t
     int64_t int_value;       // the folded value; float_value when is_float
     double float_value;
     const char * doc;        // the `///` block above it, verbatim (SPEC §4.1);
-                             // "" when there is none, never NULL (§8.1)
+    // "" when there is none, never NULL (§8.1)
     int32_t num_tags;             // the declaration's tags (SPEC §4.2), in
     const char * const * tags;    // DECLARED order; 0 and NULL when there are none
 } bench_view_constant_t;
@@ -352,28 +381,28 @@ typedef struct bench_view_variant_t          // one enum variant, one flags bit,
     uint64_t value;         // an enum's value, a flags BIT INDEX, a union's tag
     const char * name;
     uint64_t id;            // the table-wire id (§5). It is 0 for a flags bit,
-                            // and throughout a vocabulary no table closure
-                            // reaches (§8.2)
+    // and throughout a vocabulary no table closure
+    // reaches (§8.2)
     const char * payload_name;      // a union arm's TYPE as declared — a record's
-                                    // name, or a general arm's spelling
-                                    // ("int32", "string(64)", "*Chunk"); NULL on
-                                    // a payload-free arm and on every other row
+    // name, or a general arm's spelling
+    // ("int32", "string(64)", "*Chunk"); NULL on
+    // a payload-free arm and on every other row
     const bench_table_type_info_t * payload;  // that payload's descriptor — never NULL for
-                                    // an arm naming a `type` or a `table` (§8.2);
-                                    // NULL on a general arm, on a payload-free
-                                    // arm, on tag 0, and on an enum or flags row
+    // an arm naming a `type` or a `table` (§8.2);
+    // NULL on a general arm, on a payload-free
+    // arm, on tag 0, and on an enum or flags row
     const bench_table_field_info_t * field;   // a general arm's FIELD descriptor: its kind,
-                                    // width, bounds, capacity, companions and the
-                                    // offsets §8.1 takes within the union's
-                                    // storage. NULL on an arm naming a `type` or
-                                    // a `table`, on a payload-free arm, on tag 0,
-                                    // and on an enum or flags row
+    // width, bounds, capacity, companions and the
+    // offsets §8.1 takes within the union's
+    // storage. NULL on an arm naming a `type` or
+    // a `table`, on a payload-free arm, on tag 0,
+    // and on an enum or flags row
     const char * doc;               // the `///` block above this variant, bit or
-                                    // arm, verbatim; "" when there is none (§8.1)
+    // arm, verbatim; "" when there is none (§8.1)
     int32_t num_tags;               // this row's own tags, in DECLARED order;
     const char * const * tags;      // 0 and NULL when there are none. On a general
-                                    // arm the `field` descriptor above carries the
-                                    // same two values (§8.1)
+    // arm the `field` descriptor above carries the
+    // same two values (§8.1)
 } bench_view_variant_t;
 
 typedef struct bench_view_vocabulary_t       // an enum, a flags or a union declaration
@@ -395,9 +424,9 @@ typedef struct bench_view_type_t             // one declaration: a type, or a ta
     const char * file;
     int table;                     // declared `table`
     const bench_table_type_info_t * type;     // §8.1's descriptor: the properties, and this
-                                    // declaration's own doc and tags beside them
+    // declaration's own doc and tags beside them
     const char * doc;               // the `///` block above it; "" when none. The
-                                    // same text `type->doc` carries (§8.1)
+    // same text `type->doc` carries (§8.1)
     int32_t num_tags;               // the declaration's tags (SPEC §4.2), in
     const char * const * tags;      // DECLARED order; the same list `type` carries
 } bench_view_type_t;
@@ -406,12 +435,18 @@ typedef struct bench_unit_view_info_t
 {
     const char * package;
     uint64_t protocol_id;
-    int32_t num_types;      const bench_view_type_t * types;
-    int32_t num_tables;     const bench_view_type_t * tables;
-    int32_t num_enums;      const bench_view_vocabulary_t * enums;
-    int32_t num_flags;      const bench_view_vocabulary_t * flags;
-    int32_t num_unions;     const bench_view_vocabulary_t * unions;
-    int32_t num_constants;  const bench_view_constant_t * constants;
+    int32_t num_types;
+    const bench_view_type_t * types;
+    int32_t num_tables;
+    const bench_view_type_t * tables;
+    int32_t num_enums;
+    const bench_view_vocabulary_t * enums;
+    int32_t num_flags;
+    const bench_view_vocabulary_t * flags;
+    int32_t num_unions;
+    const bench_view_vocabulary_t * unions;
+    int32_t num_constants;
+    const bench_view_constant_t * constants;
 } bench_unit_view_info_t;
 
 /* ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ---- */
@@ -450,7 +485,7 @@ static SCHEMA_UNUSED void bench_bench_bits_reset( bench_bench_bits_t * value )
 static SCHEMA_UNUSED void schema_bench_bench_bits_reset_raw_( void * storage ) { bench_bench_bits_reset( (bench_bench_bits_t *) storage ); }
 
 extern const bench_table_type_info_t schema_bench_bench_bits_info_;
-static SCHEMA_UNUSED const bench_table_type_info_t * bench_bench_bits_table_type(void) { return &schema_bench_bench_bits_info_; }
+static SCHEMA_UNUSED const bench_table_type_info_t * bench_bench_bits_table_type( void ) { return &schema_bench_bench_bits_info_; }
 static SCHEMA_UNUSED void bench_bench_ints_reset( bench_bench_ints_t * value )
 {
     value->f0 = 0;
@@ -468,7 +503,7 @@ static SCHEMA_UNUSED void bench_bench_ints_reset( bench_bench_ints_t * value )
 static SCHEMA_UNUSED void schema_bench_bench_ints_reset_raw_( void * storage ) { bench_bench_ints_reset( (bench_bench_ints_t *) storage ); }
 
 extern const bench_table_type_info_t schema_bench_bench_ints_info_;
-static SCHEMA_UNUSED const bench_table_type_info_t * bench_bench_ints_table_type(void) { return &schema_bench_bench_ints_info_; }
+static SCHEMA_UNUSED const bench_table_type_info_t * bench_bench_ints_table_type( void ) { return &schema_bench_bench_ints_info_; }
 static SCHEMA_UNUSED void bench_bench_mixed_reset( bench_bench_mixed_t * value )
 {
     value->sequence = 0;
@@ -481,10 +516,16 @@ static SCHEMA_UNUSED void bench_bench_mixed_reset( bench_bench_mixed_t * value )
     value->frame_tick = 0;
     value->server_time = 0;
     bench_mixed_entity_reset( &value->entities[0] );
-    { int32_t i; for ( i = 1; i < (int32_t) ( 8 ); i++ ) { value->entities[i] = value->entities[0]; } }
+    {
+        int32_t i;
+        for ( i = 1; i < (int32_t) ( 8 ); i++ ) { value->entities[i] = value->entities[0]; }
+    }
     value->entities_count = 0;
     bench_mixed_stat_reset( &value->stats[0] );
-    { int32_t i; for ( i = 1; i < (int32_t) ( 80 ); i++ ) { value->stats[i] = value->stats[0]; } }
+    {
+        int32_t i;
+        for ( i = 1; i < (int32_t) ( 80 ); i++ ) { value->stats[i] = value->stats[0]; }
+    }
     value->stats_count = 0;
     memset( &value->game_event, 0, sizeof( value->game_event ) );
     bench_mixed_hit_event_reset( &value->game_event.as.hit );
@@ -513,7 +554,7 @@ static SCHEMA_UNUSED void bench_bench_mixed_reset( bench_bench_mixed_t * value )
 static SCHEMA_UNUSED void schema_bench_bench_mixed_reset_raw_( void * storage ) { bench_bench_mixed_reset( (bench_bench_mixed_t *) storage ); }
 
 extern const bench_table_type_info_t schema_bench_bench_mixed_info_;
-static SCHEMA_UNUSED const bench_table_type_info_t * bench_bench_mixed_table_type(void) { return &schema_bench_bench_mixed_info_; }
+static SCHEMA_UNUSED const bench_table_type_info_t * bench_bench_mixed_table_type( void ) { return &schema_bench_bench_mixed_info_; }
 static SCHEMA_UNUSED void bench_bench_packet_reset( bench_bench_packet_t * value )
 {
     value->a = 0;
@@ -533,7 +574,7 @@ static SCHEMA_UNUSED void bench_bench_packet_reset( bench_bench_packet_t * value
 static SCHEMA_UNUSED void schema_bench_bench_packet_reset_raw_( void * storage ) { bench_bench_packet_reset( (bench_bench_packet_t *) storage ); }
 
 extern const bench_table_type_info_t schema_bench_bench_packet_info_;
-static SCHEMA_UNUSED const bench_table_type_info_t * bench_bench_packet_table_type(void) { return &schema_bench_bench_packet_info_; }
+static SCHEMA_UNUSED const bench_table_type_info_t * bench_bench_packet_table_type( void ) { return &schema_bench_bench_packet_info_; }
 static SCHEMA_UNUSED void bench_mixed_chat_event_reset( bench_mixed_chat_event_t * value )
 {
     value->channel = 0;
@@ -543,7 +584,7 @@ static SCHEMA_UNUSED void bench_mixed_chat_event_reset( bench_mixed_chat_event_t
 static SCHEMA_UNUSED void schema_bench_mixed_chat_event_reset_raw_( void * storage ) { bench_mixed_chat_event_reset( (bench_mixed_chat_event_t *) storage ); }
 
 extern const bench_table_type_info_t schema_bench_mixed_chat_event_info_;
-static SCHEMA_UNUSED const bench_table_type_info_t * bench_mixed_chat_event_table_type(void) { return &schema_bench_mixed_chat_event_info_; }
+static SCHEMA_UNUSED const bench_table_type_info_t * bench_mixed_chat_event_table_type( void ) { return &schema_bench_mixed_chat_event_info_; }
 static SCHEMA_UNUSED void bench_mixed_entity_reset( bench_mixed_entity_t * value )
 {
     value->entity_id = 0;
@@ -565,7 +606,7 @@ static SCHEMA_UNUSED void bench_mixed_entity_reset( bench_mixed_entity_t * value
 static SCHEMA_UNUSED void schema_bench_mixed_entity_reset_raw_( void * storage ) { bench_mixed_entity_reset( (bench_mixed_entity_t *) storage ); }
 
 extern const bench_table_type_info_t schema_bench_mixed_entity_info_;
-static SCHEMA_UNUSED const bench_table_type_info_t * bench_mixed_entity_table_type(void) { return &schema_bench_mixed_entity_info_; }
+static SCHEMA_UNUSED const bench_table_type_info_t * bench_mixed_entity_table_type( void ) { return &schema_bench_mixed_entity_info_; }
 static SCHEMA_UNUSED void bench_mixed_hit_event_reset( bench_mixed_hit_event_t * value )
 {
     value->target_id = 0;
@@ -577,7 +618,7 @@ static SCHEMA_UNUSED void bench_mixed_hit_event_reset( bench_mixed_hit_event_t *
 static SCHEMA_UNUSED void schema_bench_mixed_hit_event_reset_raw_( void * storage ) { bench_mixed_hit_event_reset( (bench_mixed_hit_event_t *) storage ); }
 
 extern const bench_table_type_info_t schema_bench_mixed_hit_event_info_;
-static SCHEMA_UNUSED const bench_table_type_info_t * bench_mixed_hit_event_table_type(void) { return &schema_bench_mixed_hit_event_info_; }
+static SCHEMA_UNUSED const bench_table_type_info_t * bench_mixed_hit_event_table_type( void ) { return &schema_bench_mixed_hit_event_info_; }
 static SCHEMA_UNUSED void bench_mixed_pickup_event_reset( bench_mixed_pickup_event_t * value )
 {
     value->item_id = 0;
@@ -587,7 +628,7 @@ static SCHEMA_UNUSED void bench_mixed_pickup_event_reset( bench_mixed_pickup_eve
 static SCHEMA_UNUSED void schema_bench_mixed_pickup_event_reset_raw_( void * storage ) { bench_mixed_pickup_event_reset( (bench_mixed_pickup_event_t *) storage ); }
 
 extern const bench_table_type_info_t schema_bench_mixed_pickup_event_info_;
-static SCHEMA_UNUSED const bench_table_type_info_t * bench_mixed_pickup_event_table_type(void) { return &schema_bench_mixed_pickup_event_info_; }
+static SCHEMA_UNUSED const bench_table_type_info_t * bench_mixed_pickup_event_table_type( void ) { return &schema_bench_mixed_pickup_event_info_; }
 static SCHEMA_UNUSED void bench_mixed_stat_reset( bench_mixed_stat_t * value )
 {
     value->stat_id = 0;
@@ -597,9 +638,9 @@ static SCHEMA_UNUSED void bench_mixed_stat_reset( bench_mixed_stat_t * value )
 static SCHEMA_UNUSED void schema_bench_mixed_stat_reset_raw_( void * storage ) { bench_mixed_stat_reset( (bench_mixed_stat_t *) storage ); }
 
 extern const bench_table_type_info_t schema_bench_mixed_stat_info_;
-static SCHEMA_UNUSED const bench_table_type_info_t * bench_mixed_stat_table_type(void) { return &schema_bench_mixed_stat_info_; }
-const bench_unit_view_info_t * schema_bench_unit_view_(void);
-static SCHEMA_UNUSED const bench_unit_view_info_t * bench_unit_view(void) { return schema_bench_unit_view_(); }
+static SCHEMA_UNUSED const bench_table_type_info_t * bench_mixed_stat_table_type( void ) { return &schema_bench_mixed_stat_info_; }
+const bench_unit_view_info_t * schema_bench_unit_view_( void );
+static SCHEMA_UNUSED const bench_unit_view_info_t * bench_unit_view( void ) { return schema_bench_unit_view_(); }
 #ifdef __cplusplus
 }
 #endif

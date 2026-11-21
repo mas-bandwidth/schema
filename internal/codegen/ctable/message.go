@@ -59,29 +59,31 @@ func tableMessageForm(u *ir.Unit, hasProbes bool) string {
 	b.WriteString("#ifndef SCHEMA_" + strings.ToUpper(u.Package) + "_TABLE_MESSAGE\n#define SCHEMA_" + strings.ToUpper(u.Package) + "_TABLE_MESSAGE\n")
 	entries, announcement := tablewire.MessageVocabulary(u), tablewire.Announce(u)
 	fmt.Fprintf(&b, "enum { kTableMessageRefBitsHere=%d, kTableMessageEntriesHere=%d, kTableAnnounceBytes=%d, kTableMessageBatchMax=256, kTableMessageSeenRefs=8192 };\n", ir.TableMessageRefBits(len(entries)), len(entries), len(announcement))
-	b.WriteString("static const uint8_t kTableAnnounce[kTableAnnounceBytes]={")
+	// The initializers carry no trailing comma: one would make the house
+	// layout (.clang-format) put one value per line.
+	var announce []string
 	for _, v := range announcement {
-		fmt.Fprintf(&b, "0x%02x,", v)
+		announce = append(announce, fmt.Sprintf("0x%02x", v))
 	}
-	b.WriteString("};\n")
+	b.WriteString("static const uint8_t kTableAnnounce[kTableAnnounceBytes]={" + strings.Join(announce, ",") + "};\n")
 	// Retain the exact encoded entry identity before resolving quantization
 	// facts: different triples can resolve to the same qmin/delta/count.
-	b.WriteString("static const uint8_t kTableMessageEntryKeyBytes[]={")
+	var keyBytes, offsetText []string
 	offsets := []int{0}
 	for _, e := range entries {
 		for _, v := range []byte(e.Key()) {
-			fmt.Fprintf(&b, "0x%02x,", v)
+			keyBytes = append(keyBytes, fmt.Sprintf("0x%02x", v))
 		}
 		offsets = append(offsets, offsets[len(offsets)-1]+len(e.Key()))
 	}
 	if len(entries) == 0 {
-		b.WriteString("0")
+		keyBytes = append(keyBytes, "0")
 	}
-	b.WriteString("};\nstatic const int32_t kTableMessageEntryKeyOffsets[]={")
 	for _, offset := range offsets {
-		fmt.Fprintf(&b, "%d,", offset)
+		offsetText = append(offsetText, fmt.Sprintf("%d", offset))
 	}
-	b.WriteString("};\n")
+	b.WriteString("static const uint8_t kTableMessageEntryKeyBytes[]={" + strings.Join(keyBytes, ",") + "};\n")
+	b.WriteString("static const int32_t kTableMessageEntryKeyOffsets[]={" + strings.Join(offsetText, ",") + "};\n")
 	b.WriteString(`static SCHEMA_UNUSED uint16_t table_message_own_slot(const uint8_t * raw,int64_t length)
 {
  int32_t i;
