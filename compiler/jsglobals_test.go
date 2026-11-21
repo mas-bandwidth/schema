@@ -510,3 +510,90 @@ func loadJsGlobalsShadow(t *testing.T) *ir.Unit {
 	}
 	return u
 }
+
+// A declaration named after a TypeScript predefined type (unknown, never,
+// symbol, number, bigint, undefined) cannot be declared in a .d.ts, so the
+// checker refuses it before a declaration file is written (internal/check,
+// TestJavaScriptUnbindableNamesRefusedAsDeclarations). What is left type-checks:
+// types named intrinsic and declare, which TypeScript reads as keywords only
+// where it expects one, and fields named like every refused declaration.
+func TestJsDeclarationsBesideTypeScriptTypeNamesTypeCheck(t *testing.T) {
+	t.Parallel()
+	load := func(src string) (*ir.Unit, error) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "Wire.schema")
+		if err := os.WriteFile(path, []byte(src), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return New().Load([]string{path})
+	}
+	for _, name := range []string{"eval", "arguments", "undefined", "unknown", "never", "symbol", "number", "bigint"} {
+		if _, err := load("package demo\n\ntype " + name + " { value uint32 }\n"); err == nil {
+			t.Errorf("type %s loads: its JavaScript module or declaration file cannot bind that name", name)
+		}
+	}
+	u, err := load(`package demo
+
+type Clean { value uint32 }
+type intrinsic { value uint32 }
+type declare { value uint32 }
+
+type Holder
+{
+    a Clean
+    b intrinsic
+    c declare
+    eval uint32
+    arguments uint32
+    undefined uint32
+    unknown uint32
+    never uint32
+    symbol uint32
+    number uint32
+    bigint uint32
+}
+
+table Entry
+{
+    part Clean
+    number uint32
+}
+`)
+	if err != nil {
+		t.Fatalf("the control unit does not load: %v", err)
+	}
+	files, err := New().Generate(u, "js", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("tsc", func(t *testing.T) {
+		slowtest.Gate(t, "tsc (it type-checks the generated declarations)")
+		tsc := os.Getenv("TSC")
+		if tsc == "" {
+			path, err := exec.LookPath("tsc")
+			if err != nil {
+				t.Skip("no tsc on PATH: set TSC")
+			}
+			tsc = path
+		}
+		dir := t.TempDir()
+		args := []string{"--strict", "--noEmit", "--target", "es2022", "--module", "nodenext", "--moduleResolution", "nodenext"}
+		for name, data := range files {
+			if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if strings.HasSuffix(name, ".d.ts") {
+				args = append(args, name)
+			}
+		}
+		if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"type":"module"}`+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		cmd := testproc.Command(t, tsc, args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("tsc --strict: %v\n%s", err, out)
+		}
+	})
+}

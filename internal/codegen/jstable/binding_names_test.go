@@ -12,13 +12,14 @@ import (
 )
 
 // A declaration named eval, arguments or undefined cannot be a module-scope
-// binding in the generated JavaScript, so the checker refuses it before any
+// binding in the generated JavaScript, and one named after a TypeScript
+// predefined type cannot be declared in the .d.ts, so the checker refuses it before any
 // module is written (internal/check, SPEC §4.6). The same words as FIELDS are
 // properties: the unit generates, every module loads, and the values survive
 // a save and a load.
 func TestJsFieldsNamedLikeUnbindableNamesRoundTrip(t *testing.T) {
 	t.Parallel()
-	for _, name := range []string{"eval", "arguments", "undefined"} {
+	for _, name := range []string{"eval", "arguments", "undefined", "unknown", "never", "symbol", "number", "bigint"} {
 		src := "package demo\n\ntype " + name + "\n{\n    value uint32\n}\n\ntable Entry\n{\n    part " + name + "\n}\n"
 		ast, perrs := parser.Parse("Demo.schema", []byte(src))
 		if len(perrs) != 0 {
@@ -39,12 +40,29 @@ type Clean
     value uint32
 }
 
+type intrinsic
+{
+    value uint32
+}
+
+type declare
+{
+    value uint32
+}
+
 table Entry
 {
     part Clean
+    a intrinsic
+    b declare
     eval uint32
     arguments uint32
     undefined uint32
+    unknown uint32
+    never uint32
+    symbol uint32
+    number uint32
+    bigint uint32
 }
 `)
 	files, err := Generate(u)
@@ -75,6 +93,8 @@ e.part.value = 42;
 e.eval = 21;
 e.arguments = 42;
 e.undefined = 7;
+e.a.value = 1; e.b.value = 2;
+e.unknown = 3; e.never = 4; e.symbol = 5; e.number = 6; e.bigint = 8;
 const wire = v.EntrySave(e);
 expect(wire !== null && wire.length > 0, "save");
 const report = new v.TableVariableReport();
@@ -84,5 +104,7 @@ expect(back.part.value === 42, "part.value " + back.part.value);
 expect(back.eval === 21, "eval " + back.eval);
 expect(back.arguments === 42, "arguments " + back.arguments);
 expect(back.undefined === 7, "undefined " + back.undefined);
+expect(back.a.value === 1 && back.b.value === 2, "intrinsic and declare");
+expect(back.unknown === 3 && back.never === 4 && back.symbol === 5 && back.number === 6 && back.bigint === 8, "the fields named like TypeScript types");
 console.log("BINDING NAMES OK");
 `

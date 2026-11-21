@@ -92,10 +92,11 @@ func TestJavaScriptObjectModelNamesRefused(t *testing.T) {
 
 // THE BINDING SITE (SPEC §4.6, §6.1). A declaration becomes a module-scope
 // binding of its own name in the generated JavaScript and a declaration of it
-// in the .d.ts. Three names cannot be one: an ES module refuses eval and
-// arguments as a binding, and a binding named undefined takes the value the
-// generated modules compare against (TypeScript refuses the declaration
-// outright). Each is refused as every kind of declaration. A FIELD of the
+// in the .d.ts. Eight names cannot be one: an ES module refuses eval and
+// arguments as a binding, a binding named undefined takes the value the
+// generated modules compare against, and TypeScript refuses a declaration
+// named after a predefined type (unknown, never, symbol, number, bigint,
+// undefined). Each is refused as every kind of declaration. A FIELD of the
 // same name is a property and binds nothing, so it is kept.
 func TestJavaScriptUnbindableNamesRefusedAsDeclarations(t *testing.T) {
 	t.Parallel()
@@ -120,13 +121,16 @@ func TestJavaScriptUnbindableNamesRefusedAsDeclarations(t *testing.T) {
 			"const": "package probe\n\nconst " + name + " = 1\n",
 		}
 	}
-	// the control: every form compiles under an ordinary name
-	for kind, source := range forms("Clean") {
-		if errs := compile(source); len(errs) > 0 {
-			t.Fatalf("the control %s named Clean was refused: %v", kind, errs)
+	// the controls: every form compiles under an ordinary name, and under
+	// two words TypeScript reads as keywords only where it expects one
+	for _, name := range []string{"Clean", "intrinsic", "declare"} {
+		for kind, source := range forms(name) {
+			if errs := compile(source); len(errs) > 0 {
+				t.Fatalf("the control %s named %s was refused: %v", kind, name, errs)
+			}
 		}
 	}
-	for _, name := range []string{"eval", "arguments", "undefined"} {
+	for _, name := range []string{"eval", "arguments", "undefined", "unknown", "never", "symbol", "number", "bigint"} {
 		for kind, source := range forms(name) {
 			errs := compile(source)
 			named := false
