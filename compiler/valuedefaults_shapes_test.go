@@ -20,6 +20,12 @@ import (
 func TestValueDefaultsEveryShape(t *testing.T) {
 	t.Parallel()
 	u := unitFromPaths(t, []string{filepath.Join("..", "test", "tables", "ValueDefaults.schema")})
+	// The fixture is held to its promised shapes and defaults before any
+	// output is read, and each target's output to carrying both table roots
+	// (valuedefaults_gate_test.go, with the controls each half must refuse).
+	if err := valueDefaultsFixture(u); err != nil {
+		t.Fatal(err)
+	}
 	c := New()
 	targets := c.Targets()
 	// 17 in the default build; moo joins under its build tag
@@ -32,8 +38,8 @@ func TestValueDefaultsEveryShape(t *testing.T) {
 			t.Errorf("%s refuses the value-defaults unit: %v", target, err)
 			continue
 		}
-		if len(files) == 0 {
-			t.Errorf("%s generated no files for the value-defaults unit", target)
+		if err := tableRootsEmitted(files, valueDefaultsRoots...); err != nil {
+			t.Errorf("%s: %v", target, err)
 		}
 	}
 }
