@@ -31,6 +31,10 @@ static void fill( ByteOrderProbe & v )
     v.label_length = 2;
     v.ok = true;
     v.tail = 0x7F;
+    v.b8 = 0xA5;
+    v.b12 = 0xABC;
+    v.b17 = 0x1ABCD;
+    v.b40 = 0xAB12345678ull;
 }
 
 static int write_file( const char * path )
@@ -91,6 +95,7 @@ static int check_file( const char * path )
     FIELD( lead ); FIELD( a ); FIELD( b ); FIELD( c ); FIELD( d ); FIELD( g ); FIELD( e ); FIELD( f );
     FIELD( vals[0] ); FIELD( vals[1] ); FIELD( vals[2] ); FIELD( wide[0] ); FIELD( wide[1] );
     FIELD( label_length ); FIELD( label[0] ); FIELD( label[1] ); FIELD( label[2] ); FIELD( ok ); FIELD( tail );
+    FIELD( b8 ); FIELD( b12 ); FIELD( b17 ); FIELD( b40 );
 #undef FIELD
     if ( failures != 0 ) { return 1; }
     std::printf( "fixed endian: checked %s\n", path );

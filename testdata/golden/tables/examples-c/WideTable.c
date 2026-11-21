@@ -2600,10 +2600,25 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_scalar( tabledemo_table_json_
             in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
             return 1;
         }
-        if ( f->has_range )
+        /* A float32 field's range is held at float32, the bounds as every
+           runtime holds them (SPEC.md §4.6 "every runtime evaluates the
+           triple" at float32; SPEC-TABLES §3.3 "a decoded value never leaves
+           [min, max]"), so the text "0.1" that the JSON writer emits for 0.1f
+           under max = 0.1 reads back. A compressed float's -0 lands as +0
+           (§3.3, the special values). */
+        if ( f->has_range && single )
+        {
+            float nv = (float) fvalue;
+            if ( nv < (float) f->range_min ) { nv = (float) f->range_min; in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
+            else if ( nv > (float) f->range_max ) { nv = (float) f->range_max; in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
+            nv = nv + 0.0f; /* -0 + +0 is +0 */
+            fvalue = (double) nv;
+        }
+        else if ( f->has_range )
         {
             if ( fvalue < f->range_min ) { fvalue = f->range_min; in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
             else if ( fvalue > f->range_max ) { fvalue = f->range_max; in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
+            fvalue = fvalue + 0.0;
         }
         if ( single )
         {
@@ -2873,6 +2888,9 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_field( tabledemo_table_json_i
             in->bad = 1;
             return 0;
         }
+        /* A COUNT BELOW ITS DECLARED MIN IS REFUSED (docs/SPEC.md §5.1 row 3),
+           in the text form as on the wire */
+        if ( f->array_min > 0 && placed < f->array_min ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
         /* a fixed array's tail keeps the defaults the prefill left there,
            exactly as a short wire count does */
         tabledemo_table_json_set_count( base, f, placed );
@@ -3598,9 +3616,9 @@ static SCHEMA_UNUSED int schema_tabledemo_table_json_read_unbounded_text_(tabled
 }
 #endif
 static const tabledemo_table_field_info_t schema_tabledemo_wide_blob_fields_[] = {
-    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, 0, 0, 1, 0, 0, 70000, (uint32_t) offsetof( tabledemo_wide_blob_t, label ), (uint32_t) sizeof( ( (tabledemo_wide_blob_t *) 0 )->label ), (uint32_t) offsetof( tabledemo_wide_blob_t, label_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "payload", "payload", "bytes", 0xcfb8a9d063b5e9e5ull, 6, 1, 0, 1, 0, 0, 70000, (uint32_t) offsetof( tabledemo_wide_blob_t, payload ), (uint32_t) sizeof( ( (tabledemo_wide_blob_t *) 0 )->payload[0] ), (uint32_t) offsetof( tabledemo_wide_blob_t, payload_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "samples", "samples", "uint16", 0xe3b1ca6a3b48dddcull, 7, 1, 0, 1, 0, 0, 70000, (uint32_t) offsetof( tabledemo_wide_blob_t, samples ), (uint32_t) sizeof( ( (tabledemo_wide_blob_t *) 0 )->samples[0] ), (uint32_t) offsetof( tabledemo_wide_blob_t, samples_count ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, 0, 0, 1, 0, 0, 70000, (uint32_t) offsetof( tabledemo_wide_blob_t, label ), (uint32_t) sizeof( ( (tabledemo_wide_blob_t *) 0 )->label ), (uint32_t) offsetof( tabledemo_wide_blob_t, label_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "payload", "payload", "bytes", 0xcfb8a9d063b5e9e5ull, 6, 1, 0, 1, 0, 0, 70000, (uint32_t) offsetof( tabledemo_wide_blob_t, payload ), (uint32_t) sizeof( ( (tabledemo_wide_blob_t *) 0 )->payload[0] ), (uint32_t) offsetof( tabledemo_wide_blob_t, payload_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "samples", "samples", "uint16", 0xe3b1ca6a3b48dddcull, 7, 1, 0, 1, 0, 0, 70000, (uint32_t) offsetof( tabledemo_wide_blob_t, samples ), (uint32_t) sizeof( ( (tabledemo_wide_blob_t *) 0 )->samples[0] ), (uint32_t) offsetof( tabledemo_wide_blob_t, samples_count ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
 };
 
 const tabledemo_table_type_info_t schema_tabledemo_wide_blob_info_ = { "WideBlob", (uint32_t) sizeof( tabledemo_wide_blob_t ), 3, schema_tabledemo_wide_blob_fields_, schema_tabledemo_wide_blob_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };

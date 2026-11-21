@@ -110,6 +110,17 @@ func jsonModule(m *Module) {
 	}
 }
 
+// floatRangeLits spells a ranged float's ends as every path compares them:
+// a float32's at the float32 nearest each declared end, since the triple is
+// evaluated at float32 (docs/SPEC.md §4.6, docs/SPEC-TABLES.md §3.3), and a
+// float64's as declared.
+func floatRangeLits(f *ir.Field) (string, string) {
+	if f.Type.Kind == ir.TFloat32 {
+		return squirrel.Float32Lit(f.FMin), squirrel.Float32Lit(f.FMax)
+	}
+	return squirrel.Float64Lit(f.FMin), squirrel.Float64Lit(f.FMax)
+}
+
 // jsonFacts emits the facts of one field's VALUE type at target, and at its
 // element descriptor when the field is an array (the element shares them).
 func jsonFacts(m *Module, f *ir.Field, target string) {
@@ -122,7 +133,8 @@ func jsonFacts(m *Module, f *ir.Field, target string) {
 			m.Printf("%s.frac <- %d;\n", t, f.Type.FracBits)
 		}
 		if f.HasFloatRange {
-			m.Printf("%s.fmin <- %s;\n%s.fmax <- %s;\n", t, squirrel.Float64Lit(f.FMin), t, squirrel.Float64Lit(f.FMax))
+			lo, hi := floatRangeLits(f)
+			m.Printf("%s.fmin <- %s;\n%s.fmax <- %s;\n", t, lo, t, hi)
 		}
 		if isFlags(f) {
 			fl := f.Type.Ref.(*ir.Flags)

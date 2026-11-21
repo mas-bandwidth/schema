@@ -58,7 +58,7 @@ func tableMessageForm(u *ir.Unit, hasProbes bool) string {
 	var b strings.Builder
 	b.WriteString("#ifndef SCHEMA_" + strings.ToUpper(u.Package) + "_TABLE_MESSAGE\n#define SCHEMA_" + strings.ToUpper(u.Package) + "_TABLE_MESSAGE\n")
 	entries, announcement := tablewire.MessageVocabulary(u), tablewire.Announce(u)
-	fmt.Fprintf(&b, "enum { kTableMessageRefBitsHere=%d, kTableMessageEntriesHere=%d, kTableAnnounceBytes=%d, kTableMessageBatchMax=256 };\n", ir.TableMessageRefBits(len(entries)), len(entries), len(announcement))
+	fmt.Fprintf(&b, "enum { kTableMessageRefBitsHere=%d, kTableMessageEntriesHere=%d, kTableAnnounceBytes=%d, kTableMessageBatchMax=256, kTableMessageSeenSlots=4096 };\n", ir.TableMessageRefBits(len(entries)), len(entries), len(announcement))
 	b.WriteString("static const uint8_t kTableAnnounce[kTableAnnounceBytes]={")
 	for _, v := range announcement {
 		fmt.Fprintf(&b, "0x%02x,", v)
@@ -182,6 +182,7 @@ typedef struct TableMessageEntry {
  int16_t value_bits,elem_value_bits;
  uint8_t kind,packing,elem_kind,elem_packing;
  uint16_t own_slot; /* exact compiled encoded-entry identity, zero for another shape */
+ uint16_t first_slot; /* the first slot carrying this id: a body's seen set is keyed by it */
 } TableMessageEntry;
 typedef struct TableMessageShapeFacts {
  uint8_t packing,elem_kind; int64_t value_bits,base_lo,base_hi,min,max;
@@ -304,15 +305,21 @@ static SCHEMA_UNUSED int table_announce_once(TableVocabulary * v,const uint8_t *
   /* Declared canonical bytes identify a shape. Resolved quantization facts
      alone can collapse different triples (#722). Until validation finishes,
      min/max temporarily hold the source span; no announcement pointer escapes. */
+  entry->first_slot=0;
   for(i=0;i<count;i++){int64_t start=v->entries[i].min,length=v->entries[i].max-start;
-   if(length==at-began && !memcmp(words+start,words+began,(size_t)length))goto damaged;}
+   if(length==at-began && !memcmp(words+start,words+began,(size_t)length))goto damaged;
+   /* ONE NAME AT TWO SHAPES IS ONE ID (§3.3): the id's first slot stands for it */
+   if(!entry->first_slot && v->entries[i].id==entry->id)entry->first_slot=v->entries[i].first_slot;}
+  /* a slot past the seen set has no first slot and is refused where it is used, as a reference past 4096 always was */
+  if(!entry->first_slot && count<kTableMessageSeenSlots)entry->first_slot=(uint16_t)(count+1);
   entry->min=began;entry->max=at;
   count++;
  }
  /* Resolve accepted spans, retaining their exact own-entry proof. */
  at=0;{int64_t i;for(i=0;i<count;i++){int64_t began=at;
+  uint16_t first=v->entries[i].first_slot;
   if(!table_message_entry_read(words,words_bytes,&at,v->entries+i))goto damaged;
-  v->entries[i].own_slot=table_message_own_slot(words+began,at-began);
+  v->entries[i].own_slot=table_message_own_slot(words+began,at-began);v->entries[i].first_slot=first;
  }}
  v->count=count;v->ref_bits=table_bits_required(0,count);if(v->ref_bits==0)v->ref_bits=1;v->announced=1;return 1;
 damaged:

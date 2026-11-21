@@ -2486,11 +2486,24 @@ struct TableJsonIn
     int64_t key_count;
     int64_t key_capacity;
     int64_t key_mark; // the first key of the object being walked
+    // THE KEY INDEX: every key on the stack, by its hash, in an open-addressed
+    // table of stack positions plus one (zero is an empty slot), so a key is
+    // checked against its object in expected constant time and never against
+    // every key the object holds, which made one object of n keys n^2/2
+    // compares. The table is at least twice the keys it holds, and the keys
+    // leave it in the reverse of the order they came, which restores a linear
+    // probe table exactly. The hash is seeded per read from addresses the
+    // process chose, so a text cannot be written against one fixed function.
+    int64_t * key_index;
+    int64_t key_index_size; // a power of two
+    uint64_t key_seed;
     static constexpr int64_t kInlineKeys = 128;
     static constexpr int64_t kInlineKeyBytes = 4096;
+    static constexpr int64_t kInlineKeyIndex = 256;
     int64_t key_inline_offset[kInlineKeys];
     int32_t key_inline_length[kInlineKeys];
     char key_inline_bytes[kInlineKeyBytes];
+    int64_t key_inline_index[kInlineKeyIndex];
 };
 
 inline void TableJsonKeysInit( TableJsonIn & in )
@@ -2503,6 +2516,14 @@ inline void TableJsonKeysInit( TableJsonIn & in )
     in.key_count = 0;
     in.key_capacity = TableJsonIn::kInlineKeys;
     in.key_mark = 0;
+    in.key_index = in.key_inline_index;
+    in.key_index_size = TableJsonIn::kInlineKeyIndex;
+    for ( int64_t i = 0; i < TableJsonIn::kInlineKeyIndex; i++ ) { in.key_inline_index[i] = 0; }
+    uint64_t seed = (uint64_t) (uintptr_t) &in * 0x9E3779B97F4A7C15ull ^ (uint64_t) (uintptr_t) in.text ^ 0xCBF29CE484222325ull;
+    seed ^= seed >> 33;
+    seed *= 0xFF51AFD7ED558CCDull;
+    seed ^= seed >> 33;
+    in.key_seed = seed;
 }
 
 inline void TableJsonKeysShutdown( TableJsonIn & in )
@@ -2510,7 +2531,44 @@ inline void TableJsonKeysShutdown( TableJsonIn & in )
     if ( in.key_bytes != NULL && in.key_bytes != in.key_inline_bytes ) { free( in.key_bytes ); }
     if ( in.key_offset != NULL && in.key_offset != in.key_inline_offset ) { free( in.key_offset ); }
     if ( in.key_length != NULL && in.key_length != in.key_inline_length ) { free( in.key_length ); }
+    if ( in.key_index != NULL && in.key_index != in.key_inline_index ) { free( in.key_index ); }
     TableJsonKeysInit( in );
+}
+
+// TableJsonKeyHash is a key's slot in the KEY INDEX, under this read's seed.
+inline uint64_t TableJsonKeyHash( const TableJsonIn & in, const char * key, int32_t length )
+{
+    uint64_t h = in.key_seed ^ ( (uint64_t) (uint32_t) length * 0x9E3779B97F4A7C15ull );
+    for ( int32_t i = 0; i < length; i++ ) { h = ( h ^ (uint8_t) key[i] ) * 0x100000001B3ull; }
+    h ^= h >> 33;
+    h *= 0xFF51AFD7ED558CCDull;
+    h ^= h >> 33;
+    h *= 0xC4CEB9FE1A85EC53ull;
+    h ^= h >> 33;
+    return h;
+}
+
+// places stack position i in the KEY INDEX, at the first empty slot of its probe
+inline void TableJsonKeyIndexPlace( TableJsonIn & in, int64_t i )
+{
+    const uint64_t mask = (uint64_t) in.key_index_size - 1;
+    uint64_t slot = TableJsonKeyHash( in, in.key_bytes + in.key_offset[i], in.key_length[i] ) & mask;
+    while ( in.key_index[slot] != 0 ) { slot = ( slot + 1 ) & mask; }
+    in.key_index[slot] = i + 1;
+}
+
+// TableJsonKeysCut takes the stack back to count keys, the newest first, which
+// leaves the KEY INDEX exactly as it stood before they came.
+inline void TableJsonKeysCut( TableJsonIn & in, int64_t count )
+{
+    const uint64_t mask = (uint64_t) in.key_index_size - 1;
+    for ( int64_t i = in.key_count - 1; i >= count; i-- )
+    {
+        uint64_t slot = TableJsonKeyHash( in, in.key_bytes + in.key_offset[i], in.key_length[i] ) & mask;
+        while ( in.key_index[slot] != i + 1 ) { slot = ( slot + 1 ) & mask; }
+        in.key_index[slot] = 0;
+    }
+    in.key_count = count;
 }
 
 // ONE OBJECT's key window: the stack's mark at its opening is where it must be
@@ -2529,7 +2587,7 @@ struct TableJsonKeyScope
     }
     ~TableJsonKeyScope()
     {
-        in.key_count = count;
+        TableJsonKeysCut( in, count );
         in.key_bytes_used = used;
         in.key_mark = mark;
     }
@@ -2569,6 +2627,19 @@ inline bool TableJsonKeysGrow( TableJsonIn & in, int64_t count, int64_t bytes )
         in.key_length = length;
         in.key_capacity = capacity;
     }
+    if ( count * 2 > in.key_index_size )
+    {
+        int64_t size = in.key_index_size;
+        while ( count * 2 > size ) { size *= 2; }
+        int64_t * index = (int64_t *) malloc( (size_t) size * sizeof( int64_t ) );
+        if ( index == NULL ) { return false; }
+        for ( int64_t i = 0; i < size; i++ ) { index[i] = 0; }
+        if ( in.key_index != in.key_inline_index ) { free( in.key_index ); }
+        in.key_index = index;
+        in.key_index_size = size;
+        // the live keys go back in in stack order, so the newest still leaves first
+        for ( int64_t i = 0; i < in.key_count; i++ ) { TableJsonKeyIndexPlace( in, i ); }
+    }
     if ( bytes > in.key_bytes_size )
     {
         int64_t size = in.key_bytes_size != 0 ? in.key_bytes_size : TableJsonIn::kInlineKeyBytes;
@@ -2596,9 +2667,13 @@ inline bool TableJsonKeysGrow( TableJsonIn & in, int64_t count, int64_t bytes )
 // object.
 inline bool TableJsonKeyTrack( TableJsonIn & in, const char * key, int32_t length )
 {
-    for ( int64_t i = in.key_mark; i < in.key_count; i++ )
+    // only a key at or above the object's mark is its own: the same key in an
+    // enclosing object stands in the index too and is stepped past
+    const uint64_t mask = (uint64_t) in.key_index_size - 1;
+    for ( uint64_t slot = TableJsonKeyHash( in, key, length ) & mask; in.key_index[slot] != 0; slot = ( slot + 1 ) & mask )
     {
-        if ( in.key_length[i] == length && ( length == 0 || memcmp( in.key_bytes + in.key_offset[i], key, (size_t) length ) == 0 ) )
+        const int64_t i = in.key_index[slot] - 1;
+        if ( i >= in.key_mark && in.key_length[i] == length && ( length == 0 || memcmp( in.key_bytes + in.key_offset[i], key, (size_t) length ) == 0 ) )
         {
             in.report->refused = true;
             in.report->refuse_reason = malformed;
@@ -2613,6 +2688,7 @@ inline bool TableJsonKeyTrack( TableJsonIn & in, const char * key, int32_t lengt
     in.key_length[in.key_count] = length;
     in.key_count = count;
     in.key_bytes_used = bytes;
+    TableJsonKeyIndexPlace( in, count - 1 );
     return true;
 }
 
@@ -4487,18 +4563,28 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
         }
         if ( f->has_range )
         {
-            if ( value < f->range_min )
+            // A float32 FIELD'S RANGE IS A float32 RANGE (docs/SPEC.md §4.3, as
+            // every binary read of this leg holds it): the value is already a
+            // float32 and the bounds are taken at float32 too, so the text
+            // "0.1" this leg's own writer emits for 0.1f reads back against a
+            // max of 0.1 rather than refusing against the unrounded double
+            const double range_min = single ? (double) (float) f->range_min : f->range_min;
+            const double range_max = single ? (double) (float) f->range_max : f->range_max;
+            if ( value < range_min )
             {
-                value = f->range_min;
+                value = range_min;
                 in.report->refused = true;
                 in.report->refuse_reason = out_of_range;
             }
-            else if ( value > f->range_max )
+            else if ( value > range_max )
             {
-                value = f->range_max;
+                value = range_max;
                 in.report->refused = true;
                 in.report->refuse_reason = out_of_range;
             }
+            // A COMPRESSED FLOAT'S -0 IS +0 (docs/SPEC-TABLES.md §3.3; ruling
+            // fixed-compressed-negzero): neither below nor above zero is zero
+            if ( !( value < 0.0 ) && !( value > 0.0 ) ) { value = 0.0; }
         }
         if ( single )
         {

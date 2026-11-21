@@ -2368,7 +2368,7 @@ Each leg's variable `Save` and its `Measure`:
 
 - **C++**: 1–2 and 8 debug; 3–7 every build (8 too for optional text and text-list elements); 9 unchecked; 10 every build
 
-- **C**: 1–4 and 8 debug; 5–7 every build; 9 unchecked; 10 every build
+- **C**: 1–4, 8 and 10 debug, on every field, element and arm payload (1, 2 and 10 also every build for a `required` field); 5–7 every build; 9 unchecked
 
 - **C#**: 1–8 and 10 debug, the region `Save` and the managed cook included; 9 unchecked
 
@@ -2376,7 +2376,7 @@ Each leg's variable `Save` and its `Measure`:
 
 - **Java**: 1–5 and 8 debug; 6–7 every build; 9 unchecked; 10 every build
 
-- **Dart**: 1–5 and 8 debug; 6–7 every build; 10 every build for `required` fields only; 9 unchecked
+- **Dart**: 1–5, 8 and 10 debug, on every field, element and arm payload (1 and 10 also every build for a `required` field); 6–7 every build; 9 unchecked
 
 - **Go**: 1–8 and 10 every build; 9 unchecked
 
