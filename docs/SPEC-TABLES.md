@@ -1145,9 +1145,8 @@ moves, in either direction.
 **`*T` IS NOT IN THAT FAMILY, and the difference is deliberate.** A pointer
 rides as a node index under its own kind `17` (§3.1), because a body that may
 be named twice cannot also sit inline at one of its names. So moving a field
-between a pointer and either of the other two is a REPORTED edit: §4's kind
-mismatch, counted, with the field taking its declared default and the rest of
-the body reading on. A shared kind would have made that edit silent — a stored
+between a pointer and either of the other two is a REFUSED edit: §4's kind
+mismatch, and the whole load refuses `kind_mismatch`. A shared kind would have made that edit silent — a stored
 index reading back as a plausible length — and the wire spends a kind rather
 than allow it.
 
@@ -3882,8 +3881,8 @@ one: a field may still be named `timestamp`, and a declaration of that name
 still wins.
 
 **Its kind is its own and it widens into nothing.** On the variable wire a
-field respelled between `int64` and `timestamp` is a kind mismatch, skipped
-and counted in both directions (§4), and the widening family is closed to the
+field respelled between `int64` and `timestamp` is a kind mismatch, and the
+whole load refuses in both directions (§4); the widening family is closed to the
 pair: refused, by name, until it is ruled. What the kind buys over the bare
 `int64` is exactly that refusal, plus the value a target holds — `time.Time`
 in Go, UTC on read, with a time outside `Time.UnixNano`'s domain refused by
@@ -4804,7 +4803,7 @@ one document rather than two.
   | `30` enum | the VARIANT ID reference, `0` for `None` |
   | `31` escape | `L`, then `L` bytes, opaque |
   | `32` no payload | `L`, then `L` bytes, and this form writes `L = 0` |
-  | `36` timestamp | 8 bytes, two's complement, little-endian: NANOSECONDS SINCE THE UNIX EPOCH, `0` being the zero time `1970-01-01T00:00:00Z` (SPEC.md §4.13). The payload is the `i64`'s and the KIND is not `5`: a field respelled between `int64` and `timestamp` is a kind mismatch, counted, never reinterpreted, and NEITHER SPELLING WIDENS INTO THE OTHER (§4). Every count is a legal value — the wire has no range to check — and what a target refuses is a time its own time type holds and no count names, at the point a time enters the field, by name (SPEC.md §4.13). **`35` IS NOT THIS KIND'S NUMBER:** `35` is the fixed layout's optional wrapper (§3.4), a LAYOUT kind that never rides a record, and the next number the wire has free is `36` |
+  | `36` timestamp | 8 bytes, two's complement, little-endian: NANOSECONDS SINCE THE UNIX EPOCH, `0` being the zero time `1970-01-01T00:00:00Z` (SPEC.md §4.13). The payload is the `i64`'s and the KIND is not `5`: a field respelled between `int64` and `timestamp` is a kind mismatch that refuses the load, never reinterpreted, and NEITHER SPELLING WIDENS INTO THE OTHER (§4). Every count is a legal value — the wire has no range to check — and what a target refuses is a time its own time type holds and no count names, at the point a time enters the field, by name (SPEC.md §4.13). **`35` IS NOT THIS KIND'S NUMBER:** `35` is the fixed layout's optional wrapper (§3.4), a LAYOUT kind that never rides a record, and the next number the wire has free is `36` |
 
   **A `1` BOOL'S PAYLOAD IS ONE BYTE, AND `0` AND `1` ARE THE ONLY LEGAL VALUES.**
   A writer writes only `0` or `1`. On the VARIABLE wire any OTHER byte is
