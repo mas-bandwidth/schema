@@ -64,7 +64,8 @@ table Graph {
 // TestLuaHandEditableTextRead is the Lua textform read gate (docs/SPEC-TABLES.md
 // §16.9.1, §16.9.2, §16.9.4): every accepted conformance document reads to the
 // value the generated Go reads (compared through the JSON form of the same
-// value), and every refused one refuses by the Go reader's stable name.
+// value), and every refused one refuses: the verdict, never the name
+// (docs/rulings.json refusal-verdict-only).
 func TestLuaHandEditableTextRead(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
@@ -151,9 +152,14 @@ for _, name in ipairs(names) do
   local root = inputs[name .. "_root"]
   local ok, v = pcall(TF.Load, T, root, inputs[name])
   if not ok then
+    -- a refusal is the runtime's refusal table (textform.lua fail); any
+    -- other raised value is a crash, never a refusal
     local e = v
-    local nm = type(e) == "table" and e.name or tostring(e)
-    print(name .. "\tREFUSE\t" .. nm)
+    if type(e) == "table" and type(e.name) == "string" and type(e.offset) == "number" then
+      print(name .. "\tREFUSE\t" .. e.name)
+    else
+      print(name .. "\tCRASH\t" .. (tostring(e):gsub("[\t\n]", " ")))
+    end
   else
     local text = J.ToJson(T, root, v)
     if text == nil then
@@ -263,9 +269,12 @@ end
 		if !ok {
 			t.Fatalf("%s: no probe result", name)
 		}
-		reason := strings.TrimSpace(string(read(filepath.Join(vectors, "refusals", stem+".reason"))))
-		if r.verdict != "REFUSE" || r.body != reason {
-			t.Errorf("%s: got %s %s, want REFUSE %s", stem, r.verdict, r.body, reason)
+		// The verdict only (docs/rulings.json refusal-verdict-only): the read
+		// raised the runtime's refusal, so nothing landed. The name is
+		// per-language diagnostic detail and the .reason beside the vector is
+		// recommended vocabulary, never compared. A crash is not a refusal.
+		if r.verdict != "REFUSE" {
+			t.Errorf("%s: got %s %s, want REFUSE", stem, r.verdict, r.body)
 		}
 	}
 }
