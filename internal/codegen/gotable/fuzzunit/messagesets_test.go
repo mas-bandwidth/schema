@@ -307,3 +307,207 @@ func TestGeneratedMessageSkipKeyedAllocatesNothing(t *testing.T) {
 		t.Fatalf("a skipped keyed array of %d slots allocated %v times a read", n, allocs)
 	}
 }
+
+// TestGeneratedMessageStringHeldToAnnouncedMax: a string's length rides at
+// bits_required(0, max), so a `string(5)` writer's three bits can spell 7,
+// which ProfileConfig's own `string(32)` would admit. No conforming writer
+// emits it, and the named read refuses it as the skip path does; the length
+// at the announced max lands on both.
+func TestGeneratedMessageStringHeldToAnnouncedMax(t *testing.T) {
+	t.Parallel()
+	named := setFieldId(t, "ProfileConfig", "name")
+	for _, id := range []uint64{named, setUnknownId} {
+		for _, c := range []struct {
+			text string
+			bad  bool
+		}{{"abcdefg", true}, {"abcde", false}} {
+			entries := []ir.TableVocabularyEntry{{Id: id, Kind: ir.TableKindString, Shape: ir.TableMessageShape{Max: 5}}}
+			v := &TableVocabulary{}
+			v.Init(make([]TableMessageEntry, len(entries)+1))
+			var report TableReport
+			if !AnnounceRead(v, setAnnouncement(entries), &report) {
+				t.Fatalf("the announcement was refused: %+v", report)
+			}
+			refBits := int(v.RefBits)
+			var w setBits
+			w.put(2, 8) // form byte
+			w.put(0, 8) // M - 1
+			w.put(1, refBits)
+			w.put(uint64(len(c.text)), 3)
+			for w.n%8 != 0 {
+				w.put(0, 1)
+			}
+			for _, b := range []byte(c.text) {
+				w.put(uint64(b), 8)
+			}
+			w.put(0, refBits)
+			values := make([]ProfileConfig, 1)
+			_, ok := ProfileConfigLoadMessages(values, v, w.b, &report)
+			path := "named"
+			if id == setUnknownId {
+				path = "skip"
+			}
+			if ok == c.bad {
+				t.Errorf("%s: a %d-byte string under an announced max of 5: ok=%v %+v", path, len(c.text), ok, report)
+			}
+			if ok && path == "named" && string(values[0].Name[:values[0].NameLength]) != c.text {
+				t.Errorf("named: the string landed as %q, want %q", values[0].Name[:values[0].NameLength], c.text)
+			}
+		}
+	}
+}
+
+// TestGeneratedAnnouncementDuplicateEntries: two entries that agree on the id,
+// the kind and every fact of the shape are refused wherever they sit in the
+// announcement, a long announcement of distinct entries is accepted, and a
+// repeat read before the entry bound is crossed is damage, never
+// vocabulary_too_large, as it was when each entry was compared on arrival.
+// The test is a sort of the parked extents in place and a neighbour compare,
+// so it is n log n where it was pairwise.
+func TestGeneratedAnnouncementDuplicateEntries(t *testing.T) {
+	t.Parallel()
+	const n = 4000
+	distinct := make([]ir.TableVocabularyEntry, n)
+	for i := range n {
+		distinct[i] = setName(i)
+	}
+	announce := func(entries []ir.TableVocabularyEntry, storage int) (bool, TableReport) {
+		v := &TableVocabulary{}
+		v.Init(make([]TableMessageEntry, storage))
+		var report TableReport
+		return AnnounceRead(v, setAnnouncement(entries), &report), report
+	}
+	if ok, report := announce(distinct, n); !ok {
+		t.Fatalf("%d distinct entries were refused: %+v", n, report)
+	}
+	repeated := append([]ir.TableVocabularyEntry(nil), distinct...)
+	repeated[n-1] = repeated[0]
+	if ok, _ := announce(repeated, n); ok {
+		t.Fatal("an entry repeated at the two ends of the announcement was accepted")
+	}
+	// the bound crossed after a repeat: damage
+	early := append([]ir.TableVocabularyEntry(nil), distinct...)
+	early[1] = early[0]
+	if ok, report := announce(early, n-1); ok || report.Reason == "vocabulary_too_large" {
+		t.Fatalf("a repeat at entry 1 under a crossed bound was answered ok=%v reason=%q, want damage", ok, report.Reason)
+	}
+	// distinct entries past the bound: vocabulary_too_large
+	if ok, report := announce(distinct, n-1); ok || report.Reason != "vocabulary_too_large" {
+		t.Fatalf("distinct entries past the bound were answered ok=%v reason=%q", ok, report.Reason)
+	}
+}
+
+// setField is a declared field of the example corpus, with its own entry.
+func setField(t *testing.T, table, field string) (*ir.Field, ir.TableVocabularyEntry) {
+	t.Helper()
+	c := compiler.New()
+	paths, err := compiler.GatherPaths([]string{"../../../../tables/examples"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := c.Load(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range u.Tables[table].Fields {
+		if f.Name == field {
+			return f, ir.TableFieldEntry(f)
+		}
+	}
+	t.Fatalf("%s.%s is not declared", table, field)
+	return nil, ir.TableVocabularyEntry{}
+}
+
+// setVerdict reads one body through load after announcing entries, and
+// says whether the read was accepted and with what refusal.
+func setVerdict(t *testing.T, entries []ir.TableVocabularyEntry, body func(w *setBits, refBits int), load func(v *TableVocabulary, data []byte, report *TableReport) bool) (bool, TableReport) {
+	t.Helper()
+	v := &TableVocabulary{}
+	v.Init(make([]TableMessageEntry, len(entries)+1))
+	var report TableReport
+	if !AnnounceRead(v, setAnnouncement(entries), &report) {
+		t.Fatalf("the announcement was refused: %+v", report)
+	}
+	refBits := int(v.RefBits)
+	var w setBits
+	w.put(2, 8) // form byte
+	w.put(0, 8) // M - 1
+	body(&w, refBits)
+	w.put(0, refBits)
+	return load(v, w.b, &report), report
+}
+
+// TestGeneratedMessageCountsHeldToAnnouncedMax: a count rides at
+// bits_required(min, max) of the SENDER's announced bound, so its bits can
+// spell more than the announced max, which no conforming writer emits. A
+// bytes count, a counted array's count and a keyed array's slot count past
+// the announced max refuse count_over_bound on the named read, as the engine
+// and the skip path refuse them, even where this reader's own bound would
+// admit the count; the count at the announced max lands.
+func TestGeneratedMessageCountsHeldToAnnouncedMax(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		name, table, field string
+		max                int64
+		load               func(v *TableVocabulary, data []byte, report *TableReport) bool
+	}{
+		{"bytes", "ProfileConfig", "icon", 5, func(v *TableVocabulary, data []byte, report *TableReport) bool {
+			_, ok := ProfileConfigLoadMessages(make([]ProfileConfig, 1), v, data, report)
+			return ok
+		}},
+		{"counted array", "ShipEntry", "hardpoints", 2, func(v *TableVocabulary, data []byte, report *TableReport) bool {
+			_, ok := ShipEntryLoadMessages(make([]ShipEntry, 1), v, data, report)
+			return ok
+		}},
+		{"keyed array", "PackConfig", "thresholds", 2, func(v *TableVocabulary, data []byte, report *TableReport) bool {
+			_, ok := PackConfigLoadMessages(make([]PackConfig, 1), v, data, report)
+			return ok
+		}},
+	} {
+		f, own := setField(t, c.table, c.field)
+		for _, id := range []uint64{own.Id, setUnknownId} {
+			path := "named"
+			if id == setUnknownId {
+				path = "skip"
+			}
+			for _, n := range []int64{c.max + 1, c.max} {
+				entry := own
+				entry.Id = id
+				entry.Shape.Max = c.max
+				entries := []ir.TableVocabularyEntry{entry}
+				keyed := f.KeyEnumRef != nil
+				if keyed {
+					for i := range f.KeyEnumRef.Variants {
+						entries = append(entries, ir.TableVocabularyEntry{Id: ir.TableWireId(f.KeyEnumRef.VariantWireName(i))})
+					}
+				}
+				elemBits := int(entry.Shape.Inner.Bits)
+				if f.Type.Kind == ir.TBytes {
+					elemBits = 8
+				}
+				ok, report := setVerdict(t, entries, func(w *setBits, refBits int) {
+					w.put(1, refBits)
+					w.put(uint64(n-entry.Shape.Min), ir.TableMessageBitsRequired(entry.Shape.Min, entry.Shape.Max))
+					if f.Type.Kind == ir.TBytes {
+						for w.n%8 != 0 {
+							w.put(0, 1)
+						}
+					}
+					for i := range n {
+						if keyed {
+							w.put(uint64(i+2), refBits)
+						}
+						w.put(1, elemBits)
+					}
+				}, c.load)
+				bad := n > c.max
+				if ok == bad {
+					t.Errorf("%s %s: a count of %d under an announced max of %d: ok=%v %+v", c.name, path, n, c.max, ok, report)
+				}
+				if bad && path == "named" && report.Refusal != TableRefuseCountOverBound {
+					t.Errorf("%s named: a count past the announced max refused %v, want count_over_bound", c.name, report.Refusal)
+				}
+			}
+		}
+	}
+}

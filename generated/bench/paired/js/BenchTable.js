@@ -2222,7 +2222,9 @@ export function tableMessageSkip(r, v, indexBits, e, depth) {
     }
     case 12: {
       const [n, ok] = tableMessageCount(r, s);
-      if (!ok) { return false; }
+      // a length above the ANNOUNCED max, which its bits can spell and no
+      // conforming writer emits, refuses as at a named field (§3.3)
+      if (!ok || n > BigInt(s.Max)) { return false; }
       if (!r.Align()) { return false; }
       // A SKIPPED STRING IS HELD TO THE TEXT RULE (§3.3, §4): bytes this
       // reader does not keep are still damage when ill-formed.
@@ -4891,22 +4893,13 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
         let widened = false;
         if (entry.Shape.Kind !== 14 || entry.Element.Kind !== 13) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [n, ok] = tableMessageCount(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; }
+          if (n > BigInt(entry.Shape.Max)) { TableMessageRefuse(r.Report, "count_over_bound"); return false; }
           if (entry.Element.Kind === 6 && !r.Bits.Align()) { r.Report.Damaged = true; return false; }
-          let keep = Number(n);
+          const keep = Number(n);
           if (n === 0n && r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n) { r.Report.Damaged = true; return false; }
-          if (keep > 8) { keep = 8; r.Report.Oor++; }
-          for (let _i10 = 0n; _i10 < n; _i10++) {
-            const p = _i10 < BigInt(keep) ? value.entities[Number(_i10)] : null;
-            if (p === null) {
-              if (entry.Element.Bits >= 0 || entry.Element.Kind === 0 || entry.Element.Kind === 32) {
-                if (!r.Bits.Skip(Number(n - _i10) * Math.max(0, entry.Element.Bits))) { r.Report.Damaged = true; return false; }
-                break;
-              }
-              const before = r.Bits.Offset;
-              if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, { Shape: entry.Element }, 0) || r.Bits.Offset === before) { r.Report.Damaged = true; return false; }
-            } else {
-              if (!MixedEntityLoadMessageBody(r, value.entities[Number(_i10)])) { return false; }
-            }
+          if (keep > 8 || keep < 1) { TableMessageRefuse(r.Report, "count_over_bound"); return false; }
+          for (let _i10 = 0; _i10 < keep; _i10++) {
+            if (!MixedEntityLoadMessageBody(r, value.entities[_i10])) { return false; }
           }
           value.entitiesCount = keep;
         }
@@ -4919,22 +4912,13 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
         let widened = false;
         if (entry.Shape.Kind !== 14 || entry.Element.Kind !== 13) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         { const [n, ok] = tableMessageCount(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; }
+          if (n > BigInt(entry.Shape.Max)) { TableMessageRefuse(r.Report, "count_over_bound"); return false; }
           if (entry.Element.Kind === 6 && !r.Bits.Align()) { r.Report.Damaged = true; return false; }
-          let keep = Number(n);
+          const keep = Number(n);
           if (n === 0n && r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n) { r.Report.Damaged = true; return false; }
-          if (keep > 80) { keep = 80; r.Report.Oor++; }
-          for (let _i11 = 0n; _i11 < n; _i11++) {
-            const p = _i11 < BigInt(keep) ? value.stats[Number(_i11)] : null;
-            if (p === null) {
-              if (entry.Element.Bits >= 0 || entry.Element.Kind === 0 || entry.Element.Kind === 32) {
-                if (!r.Bits.Skip(Number(n - _i11) * Math.max(0, entry.Element.Bits))) { r.Report.Damaged = true; return false; }
-                break;
-              }
-              const before = r.Bits.Offset;
-              if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, { Shape: entry.Element }, 0) || r.Bits.Offset === before) { r.Report.Damaged = true; return false; }
-            } else {
-              if (!MixedStatLoadMessageBody(r, value.stats[Number(_i11)])) { return false; }
-            }
+          if (keep > 80) { TableMessageRefuse(r.Report, "count_over_bound"); return false; }
+          for (let _i11 = 0; _i11 < keep; _i11++) {
+            if (!MixedStatLoadMessageBody(r, value.stats[_i11])) { return false; }
           }
           value.statsCount = keep;
         }
@@ -4990,24 +4974,15 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
         if (entry.Shape.Kind !== 14 || entry.Element.Kind !== 6) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         const subBefore = r.Report.Unknown + (r.Substituted ?? 0);
         { const [n, ok] = tableMessageCount(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; }
+          if (n > BigInt(entry.Shape.Max)) { TableMessageRefuse(r.Report, "count_over_bound"); return false; }
           if (entry.Element.Kind === 6 && !r.Bits.Align()) { r.Report.Damaged = true; return false; }
-          let keep = Number(n);
+          const keep = Number(n);
           if (n === 0n && r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n) { r.Report.Damaged = true; return false; }
-          if (keep > 4) { keep = 4; r.Report.Oor++; }
-          for (let _i12 = 0n; _i12 < n; _i12++) {
-            const p = _i12 < BigInt(keep) ? value.loadout[Number(_i12)] : null;
-            if (p === null) {
-              if (entry.Element.Bits >= 0 || entry.Element.Kind === 0 || entry.Element.Kind === 32) {
-                if (!r.Bits.Skip(Number(n - _i12) * Math.max(0, entry.Element.Bits))) { r.Report.Damaged = true; return false; }
-                break;
-              }
-              const before = r.Bits.Offset;
-              if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, { Shape: entry.Element }, 0) || r.Bits.Offset === before) { r.Report.Damaged = true; return false; }
-            } else {
-              { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Element); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
-                x = BigInt.asUintN(8, x);
-                value.loadout[Number(_i12)] = Number(x);
-              }
+          if (keep > 4) { TableMessageRefuse(r.Report, "count_over_bound"); return false; }
+          for (let _i12 = 0; _i12 < keep; _i12++) {
+            { const [v, ok] = tableMessageReadScalar(r.Bits, entry.Element); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];
+              x = BigInt.asUintN(8, x);
+              value.loadout[_i12] = Number(x);
             }
           }
         }
@@ -5028,8 +5003,8 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
           if (!r.Bits.Skip(Number(n) * 8)) { r.Report.Damaged = true; return false; }
           const rawLen = Number(n);
           if (!tableMessageUtf8Valid(r.Bits.Buffer, start, rawLen)) { r.Report.Damaged = true; return false; }
-          let kept = rawLen;
-          if (kept > 15) { kept = tableMessageUtf8Clamp(r.Bits.Buffer, start, 15); r.Report.Oor++; }
+          if (rawLen > 15 || n > BigInt(entry.Shape.Max)) { TableMessageRefuse(r.Report, "length_over_bound"); return false; }
+          const kept = rawLen;
           value.playerName.fill(0);
           for (let _i15 = 0; _i15 < kept; _i15++) { value.playerName[_i15] = r.Bits.Buffer[start + _i15]; }
           value.playerNameLength = kept;
@@ -5045,10 +5020,11 @@ export function BenchMixedLoadMessageBody(r, value, elideEmpty) {
         if (entry.Shape.Kind !== 14 || entry.Element.Kind !== 6) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }
         const subBefore = r.Report.Unknown + (r.Substituted ?? 0);
         { const [n, ok] = tableMessageCount(r.Bits, entry.Shape); if (!ok || !r.Bits.Align()) { r.Report.Damaged = true; return false; }
+          if (n > BigInt(entry.Shape.Max)) { TableMessageRefuse(r.Report, "count_over_bound"); return false; }
           const start = r.Bits.Offset >> 3;
           if (!r.Bits.Skip(Number(n) * 8)) { r.Report.Damaged = true; return false; }
-          let kept = Number(n);
-          if (kept > 16) { kept = 16; r.Report.Oor++; }
+          const kept = Number(n);
+          if (kept > 16) { TableMessageRefuse(r.Report, "length_over_bound"); return false; }
           value.payload.fill(0);
           for (let _i16 = 0; _i16 < kept; _i16++) { value.payload[_i16] = r.Bits.Buffer[start + _i16]; }
           value.payloadLength = kept;

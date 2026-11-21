@@ -258,7 +258,9 @@ export function tableMessageSkip(r, v, indexBits, e, depth) {
     }
     case 12: {
       const [n, ok] = tableMessageCount(r, s);
-      if (!ok) { return false; }
+      // a length above the ANNOUNCED max, which its bits can spell and no
+      // conforming writer emits, refuses as at a named field (§3.3)
+      if (!ok || n > BigInt(s.Max)) { return false; }
       if (!r.Align()) { return false; }
       // A SKIPPED STRING IS HELD TO THE TEXT RULE (§3.3, §4): bytes this
       // reader does not keep are still damage when ill-formed.
@@ -484,7 +486,7 @@ func baseBigLit(base *big.Int) string {
 // gates only the batch verbs on FixedDeclared).
 func (g *fixedModule) emitMessageBody(st *ir.Struct) {
 	g.needHome("TableBitWriter", "TableMessageRefBitsHere", "tableMessageEntry",
-		"tableMessageUtf8Valid", "tableMessageUtf8Clamp",
+		"tableMessageUtf8Valid", "tableMessageUtf8Clamp", "TableMessageRefuse",
 		"tableMessageCount", "tableMessageSkip", "tableMessageSkipBody",
 		"tableMessageKindWidens", "tableMessageReadScalar", "tableMessageWriteScalar",
 		"TableMessageFloat32Bits", "TableMessageFloat32FromBits",
@@ -1030,8 +1032,11 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, mem, ind, shape string, 
 		g.pf("%s  if (!r.Bits.Skip(Number(n) * 8)) { r.Report.Damaged = true; return false; }\n", ind)
 		g.pf("%s  const rawLen = Number(n);\n", ind)
 		g.pf("%s  if (!tableMessageUtf8Valid(r.Bits.Buffer, start, rawLen)) { r.Report.Damaged = true; return false; }\n", ind)
-		g.pf("%s  let kept = rawLen;\n", ind)
-		g.pf("%s  if (kept > %d) { kept = tableMessageUtf8Clamp(r.Bits.Buffer, start, %d); r.Report.Oor++; }\n", ind, f.Type.Size, f.Type.Size)
+		// A STRING LONGER THAN THIS READER'S BOUND, OR THAN THE ANNOUNCED max
+		// its length's bits can spell past, REFUSES length_over_bound: nothing
+		// is cut (docs/SPEC-TABLES.md §3.3, §4; the engine's text read)
+		g.pf("%s  if (rawLen > %d || n > BigInt(%s.Max)) { TableMessageRefuse(r.Report, \"length_over_bound\"); return false; }\n", ind, f.Type.Size, shape)
+		g.pf("%s  const kept = rawLen;\n", ind)
 		iv := g.nextIdxVar()
 		g.pf("%s  %s.fill(0);\n", ind, mem)
 		g.pf("%s  for (let %s = 0; %s < kept; %s++) { %s[%s] = r.Bits.Buffer[start + %s]; }\n", ind, iv, iv, iv, mem, iv, iv)
@@ -1039,10 +1044,14 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, mem, ind, shape string, 
 	case f.Type.Kind == ir.TBytes:
 		iv := g.nextIdxVar()
 		g.pf("%s{ const [n, ok] = tableMessageCount(r.Bits, %s); if (!ok || !r.Bits.Align()) { r.Report.Damaged = true; return false; }\n", ind, shape)
+		// a bytes count past the ANNOUNCED max refuses count_over_bound before
+		// any byte is walked; past this reader's bound, length_over_bound.
+		// Nothing is cut (§3.3, §4; the engine's text read)
+		g.pf("%s  if (n > BigInt(%s.Max)) { TableMessageRefuse(r.Report, \"count_over_bound\"); return false; }\n", ind, shape)
 		g.pf("%s  const start = r.Bits.Offset >> 3;\n", ind)
 		g.pf("%s  if (!r.Bits.Skip(Number(n) * 8)) { r.Report.Damaged = true; return false; }\n", ind)
-		g.pf("%s  let kept = Number(n);\n", ind)
-		g.pf("%s  if (kept > %d) { kept = %d; r.Report.Oor++; }\n", ind, f.Type.Size, f.Type.Size)
+		g.pf("%s  const kept = Number(n);\n", ind)
+		g.pf("%s  if (kept > %d) { TableMessageRefuse(r.Report, \"length_over_bound\"); return false; }\n", ind, f.Type.Size)
 		g.pf("%s  %s.fill(0);\n", ind, mem)
 		g.pf("%s  for (let %s = 0; %s < kept; %s++) { %s[%s] = r.Bits.Buffer[start + %s]; }\n", ind, iv, iv, iv, mem, iv, iv)
 		g.pf("%s  %sLength = kept;\n%s}\n", ind, mem, ind)
@@ -1075,15 +1084,31 @@ func (g *fixedModule) emitMessageReadArray(f *ir.Field, mem, ind, shape string, 
 		bound = f.Type.Size
 		companion = mem + "Length"
 	}
+	over := "TableMessageRefuse(r.Report, \"count_over_bound\"); return false"
 	g.pf("%s{ const [n, ok] = tableMessageCount(r.Bits, %s); if (!ok) { %s; }\n", ind, shape, bad)
+	// THE COUNT'S BITS CAN SPELL MORE THAN THE ANNOUNCED max, which no
+	// conforming writer emits: a count past it refuses count_over_bound
+	// before this reader's own bound is consulted (§3.3; the engine's array
+	// and keyed reads)
+	g.pf("%s  if (n > BigInt(%s.Max)) { %s; }\n", ind, shape, over)
 	if f.KeyEnum == "" {
 		g.pf("%s  if (%s.Kind === 6 && !r.Bits.Align()) { %s; }\n", ind, elemExpr, bad)
 	}
-	g.pf("%s  let keep = Number(n);\n", ind)
+	g.pf("%s  const keep = Number(n);\n", ind)
 	if elideEmpty {
 		g.pf("%s  if (n === 0n && r.Vocabulary.BuildVersion === %s) { r.Report.Damaged = true; return false; }\n", ind, jsId(ir.BuildVersion(g.unit)))
 	}
-	g.pf("%s  if (keep > %d) { keep = %d; r.Report.Oor++; }\n", ind, bound, bound)
+	if f.KeyEnum == "" {
+		// AN ARRAY LONGER THAN THIS READER'S BOUND, or a counted array below
+		// its declared min, REFUSES count_over_bound: nothing is cut and no
+		// surplus is walked (§3.3, §4; the engine's array read). A keyed
+		// array's slots this reader cannot name are unknowns, not surplus.
+		cond := fmt.Sprintf("keep > %d", bound)
+		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+			cond += fmt.Sprintf(" || keep < %d", f.ArrayMin)
+		}
+		g.pf("%s  if (%s) { %s; }\n", ind, cond, over)
+	}
 	e := messageElementField(f)
 	if f.KeyEnum != "" {
 		g.pf("%s  const seenKeys = [];\n", ind)
@@ -1122,18 +1147,8 @@ func (g *fixedModule) emitMessageReadArray(f *ir.Field, mem, ind, shape string, 
 			g.pf("%s  %s = 0;\n", ind, companion)
 		}
 	} else {
-		g.pf("%s  for (let %s = 0n; %s < n; %s++) {\n", ind, iv, iv, iv)
-		g.pf("%s    const p = %s < BigInt(keep) ? %s[Number(%s)] : null;\n", ind, iv, mem, iv)
-		g.pf("%s    if (p === null) {\n", ind)
-		g.pf("%s      if (%s.Bits >= 0 || %s.Kind === 0 || %s.Kind === 32) {\n", ind, elemExpr, elemExpr, elemExpr)
-		g.pf("%s        if (!r.Bits.Skip(Number(n - %s) * Math.max(0, %s.Bits))) { %s; }\n", ind, iv, elemExpr, bad)
-		g.pf("%s        break;\n", ind)
-		g.pf("%s      }\n", ind)
-		g.pf("%s      const before = r.Bits.Offset;\n", ind)
-		g.pf("%s      if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, { Shape: %s }, 0) || r.Bits.Offset === before) { %s; }\n", ind, elemExpr, bad)
-		g.pf("%s    } else {\n", ind)
-		g.emitMessageReadElement(e, mem+"[Number("+iv+")]", ind+"      ", elemExpr)
-		g.pf("%s    }\n", ind)
+		g.pf("%s  for (let %s = 0; %s < keep; %s++) {\n", ind, iv, iv, iv)
+		g.emitMessageReadElement(e, mem+"["+iv+"]", ind+"    ", elemExpr)
 		g.pf("%s  }\n", ind)
 		if counted {
 			g.pf("%s  %s = keep;\n", ind, companion)
@@ -1383,6 +1398,12 @@ func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 	g.pf("      if (report.NonFiniteFloat) {\n")
 	g.pf("        for (let j = 0; j <= i; j++) { Init%s(values[j]); }\n", n)
 	g.pf("        TableMessageRefuse(report, \"non_finite_float: \" + report.NonFiniteFloat);\n")
+	g.pf("        return -1;\n")
+	g.pf("      }\n")
+	g.pf("      // A REFUSAL IN ANY BODY (a length or count past a bound, §3.3) refuses\n")
+	g.pf("      // the batch with its reason; no body of it is delivered.\n")
+	g.pf("      if (report.Reason) {\n")
+	g.pf("        for (let j = 0; j <= i; j++) { Init%s(values[j]); }\n", n)
 	g.pf("        return -1;\n")
 	g.pf("      }\n")
 	g.pf("      // DAMAGE ANYWHERE IN THE BATCH DELIVERS NO BODY (docs/SPEC-TABLES.md §4):\n")
