@@ -65,6 +65,12 @@ func pinTarget(version, boundary, ownModule string) (string, error) {
 	// but +incompatible, which names a module with no go.mod at its major,
 	// and every schema tag has one, so no spelling with a + resolves.
 	canonical, meta, _ := strings.Cut(version, "+")
+	// A version in the shape of a pseudo-version is one Go reads as a commit,
+	// and resolves only when it is a lawful one: a real time, a base version
+	// that exists, a canonical revision. All of that is checked offline.
+	if err := modulemove.CheckPseudoVersion(canonical); err != nil {
+		return "", fmt.Errorf("schema pin: %s is not a Go pseudo-version or semver tag: %w", version, err)
+	}
 	if modulemove.PreModuleMove(canonical, boundary) {
 		return "", fmt.Errorf("schema pin: Go cannot resolve %s: the %s tag was cut before the module path moved to /v3, so its go.mod names /v2 and neither path finds it; use a prebuilt binary from %s, or `go install %s/cmd/schema@main`", version, canonical, pinReleases, ownModule)
 	}

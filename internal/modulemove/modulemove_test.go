@@ -2,9 +2,11 @@ package modulemove
 
 import (
 	"errors"
+	"fmt"
 	"maps"
 	"strings"
 	"testing"
+	"time"
 )
 
 // The module lines are assembled from parts so the module-path move program
@@ -231,4 +233,90 @@ func TestPathForKeepsTheMajorAsWritten(t *testing.T) {
 	if PreModuleMove("v9223372036854775808.0.0", "") {
 		t.Error("a major past int64 counts as a v3 tag below the boundary")
 	}
+}
+
+// TestCheckPseudoVersion: a version in the shape of a pseudo-version must be
+// one Go resolves (cmd/go refuses the rest as malformed, the reviewer's runs
+// of `go list -m` against a real revision): its timestamp a real UTC time,
+// its base one of the three legal forms, its revision twelve lower-case hex
+// digits. A version that is not in that shape is a tag, and passes.
+func TestCheckPseudoVersion(t *testing.T) {
+	t.Parallel()
+	for _, v := range []string{
+		// the three forms
+		"v2.0.0-20261121185943-f397f5f7765d",        // vX.0.0-date-hash: no base
+		"v2.5.1-0.20261121185943-f397f5f7765d",      // vX.Y.(Z+1)-0.date-hash: base v2.5.0 (the real /v2 pseudo-version of main)
+		"v2.5.0-rc.1.0.20261121185943-f397f5f7765d", // vX.Y.Z-pre.0.date-hash: base v2.5.0-rc.1
+		"v2.0.0-rc.1.0.20261121185943-f397f5f7765d", // the pre form may sit on patch zero
+		"v2.0.0-0.0.20261121185943-f397f5f7765d",    // base v2.0.0-0
+		"v2.5.0-a-b.0.20261121185943-f397f5f7765d",
+		"v0.0.0-20240229235959-0123456789ab", // 29 February in a leap year, the last second of a day
+		"v2.0.1-0.20000229000000-0123456789ab",
+		"v2.5.1-0.00010101000000-0123456789ab", // year 1
+		// tags, not in the shape at all
+		"v2.5.1", "v2.5.1-beta.1", "v2.5.1-20261999185943-f397f5f7765d", "v2.5.1-0.2026-f397f5f7765d",
+	} {
+		if err := CheckPseudoVersion(v); err != nil {
+			t.Errorf("CheckPseudoVersion(%s) = %v; Go resolves it", v, err)
+		}
+	}
+	for v, why := range map[string]string{
+		"v2.5.1-0.20261999185943-f397f5f7765d":      "month",  // F-161
+		"v2.5.1-0.20260019185943-f397f5f7765d":      "month",  // month 00
+		"v2.5.1-0.20261100185943-f397f5f7765d":      "day",    // day 00
+		"v2.5.1-0.20261131185943-f397f5f7765d":      "day",    // 31 November
+		"v2.5.1-0.20260229185943-f397f5f7765d":      "day",    // 29 February, 2026 is no leap year
+		"v2.5.1-0.21000229185943-f397f5f7765d":      "day",    // nor is 2100
+		"v2.5.1-0.20261121245943-f397f5f7765d":      "hour",   // 24
+		"v2.5.1-0.20261121186043-f397f5f7765d":      "minute", // 60
+		"v2.5.1-0.20261121185960-f397f5f7765d":      "second", // 60: Go takes no leap second
+		"v2.0.0-20261321185943-f397f5f7765d":        "month",
+		"v2.5.0-rc.1.0.20261121185999-f397f5f7765d": "second",
+		"v2.0.0-0.20261121185943-f397f5f7765d":      "patch", // F-162
+		"v3.0.0-0.20261121185943-f397f5f7765d":      "patch",
+		"v3.4.0-0.20261121185943-f397f5f7765d":      "patch",
+		"v2.5.1-0.20261121185943-f397f5f7765":       "revision",
+		"v2.5.1-0.20261121185943-f397f5f7765d0":     "revision",
+		"v2.5.1-0.20261121185943-F397F5F7765D":      "revision",
+		"v2.5.1-0.20261121185943-g397f5f7765d":      "revision",
+		"v2.0.0-20261121185943-f397f5f7765dabcdef":  "revision",
+	} {
+		err := CheckPseudoVersion(v)
+		if err == nil {
+			t.Errorf("CheckPseudoVersion(%s) = nil; Go refuses it (%s)", v, why)
+			continue
+		}
+		if !strings.Contains(err.Error(), why) {
+			t.Errorf("CheckPseudoVersion(%s) = %v; want it to name the %s", v, err, why)
+		}
+	}
+}
+
+// TestPseudoTimeAgreesWithTheCalendar sweeps the timestamp field by field
+// against Go's own reading of the same layout (time.Parse is the parser
+// cmd/go uses for it; it reads no clock): every month and day of a leap
+// year, a common year and the two century cases, and every value of each
+// time field.
+func TestPseudoTimeAgreesWithTheCalendar(t *testing.T) {
+	t.Parallel()
+	check := func(stamp string) {
+		_, perr := time.Parse("20060102150405", stamp)
+		err := CheckPseudoVersion("v2.5.1-0." + stamp + "-0123456789ab")
+		if (perr == nil) != (err == nil) {
+			t.Errorf("timestamp %s: CheckPseudoVersion = %v; Go's parse = %v", stamp, err, perr)
+		}
+	}
+	for _, year := range []int{1, 1900, 2000, 2024, 2026, 2100, 9999} {
+		for month := range 100 {
+			for day := range 100 {
+				check(fmt.Sprintf("%04d%02d%02d120000", year, month, day))
+			}
+		}
+	}
+	for n := range 100 {
+		check(fmt.Sprintf("20261121%02d0000", n))
+		check(fmt.Sprintf("2026112100%02d00", n))
+		check(fmt.Sprintf("202611210000%02d", n))
+	}
+	check("00000101000000")
 }

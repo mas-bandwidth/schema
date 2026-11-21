@@ -95,16 +95,89 @@ func isIdent(s string) bool {
 	return true
 }
 
-// pseudo is the shape of Go's pseudo-versions (golang.org/x/mod/module), all
-// three forms: vX.0.0-yyyymmddhhmmss-hash, vX.Y.(Z+1)-0.yyyymmddhhmmss-hash
-// and vX.Y.Z-pre.0.yyyymmddhhmmss-hash. It is a shape only: IsPseudoVersion
-// holds the version to ValidVersion as well, as x/mod does.
-var pseudo = regexp.MustCompile(`^v[0-9]+\.(0\.0-|[0-9]+\.[0-9]+-([^+]*\.)?0\.)[0-9]{14}-[0-9a-f]{12}$`)
+// pseudo is the shape Go reads as a pseudo-version, golang.org/x/mod/module's
+// own pattern: vX.0.0-yyyymmddhhmmss-rev, vX.Y.Z-pre.0.yyyymmddhhmmss-rev and
+// vX.Y.(Z+1)-0.yyyymmddhhmmss-rev. It is a shape only: a version in it is a
+// commit to Go, never a tag, whether or not it is one Go can resolve
+// (CheckPseudoVersion).
+var pseudo = regexp.MustCompile(`^v[0-9]+\.(0\.0-|[0-9]+\.[0-9]+-([^+]*\.)?0\.)[0-9]{14}-[A-Za-z0-9]+$`)
 
-// IsPseudoVersion reports whether v is a Go pseudo-version: a commit, not a
-// tag. A commit is never below the boundary, because whether it resolves
-// depends on the go.mod at that commit, which pin cannot see offline.
+// IsPseudoVersion reports whether v is in the shape of a Go pseudo-version:
+// a commit, not a tag. A commit is never below the boundary, because whether
+// it resolves depends on the go.mod at that commit, which pin cannot see
+// offline.
 func IsPseudoVersion(v string) bool { return ValidVersion(v) && pseudo.MatchString(v) }
+
+// CheckPseudoVersion refuses a version that is in the shape of a
+// pseudo-version and is not one Go resolves, by everything that can be known
+// without the repository (cmd/go refuses each as malformed):
+//
+//   - the timestamp is a real UTC time, yyyymmddhhmmss, each field in range
+//     and the day one its month has. It is read as digits, never against a
+//     clock.
+//   - the base is one of the three legal forms. vX.Y.Z-0.time-rev stands for
+//     the commit after release vX.Y.(Z-1), so its patch is not zero: no
+//     release precedes vX.Y.0 in that form. (vX.0.0-time-rev has no base, and
+//     vX.Y.Z-pre.0.time-rev follows the pre-release vX.Y.Z-pre.)
+//   - the revision is twelve lower-case hex digits, git's short hash as Go
+//     writes it.
+//
+// A version not in the shape is a tag, and passes; so does build metadata,
+// which is not this check's business.
+func CheckPseudoVersion(v string) error {
+	v, _, _ = strings.Cut(v, "+")
+	if !IsPseudoVersion(v) {
+		return nil
+	}
+	core, pre, _ := strings.Cut(v[1:], "-")
+	dash := strings.LastIndexByte(pre, '-')
+	rev, lead := pre[dash+1:], pre[:dash]
+	stamp, lead := lead[len(lead)-14:], lead[:len(lead)-14]
+	if err := checkStamp(stamp); err != nil {
+		return fmt.Errorf("the timestamp %s of this pseudo-version is not a time: %w", stamp, err)
+	}
+	if lead == "0." && strings.HasSuffix(core, ".0") {
+		return fmt.Errorf("a pseudo-version of the form vX.Y.Z-0.%s-%s follows the release before patch Z, and patch 0 has none", stamp, rev)
+	}
+	if len(rev) != 12 || strings.Trim(rev, "0123456789abcdef") != "" {
+		return fmt.Errorf("the revision %s of this pseudo-version is not twelve lower-case hex digits", rev)
+	}
+	return nil
+}
+
+// checkStamp holds fourteen digits to a calendar date and a time of day, as
+// Go's time.Parse holds the layout 20060102150405: any year, month 01 to 12,
+// a day the month has in that year, hour to 23, minute and second to 59 (no
+// leap second).
+func checkStamp(s string) error {
+	num := func(from, to int) int {
+		n := 0
+		for _, r := range s[from:to] {
+			n = n*10 + int(r-'0')
+		}
+		return n
+	}
+	year, month, day := num(0, 4), num(4, 6), num(6, 8)
+	hour, minute, second := num(8, 10), num(10, 12), num(12, 14)
+	if month < 1 || month > 12 {
+		return fmt.Errorf("month %s", s[4:6])
+	}
+	days := [...]int{31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}[month-1]
+	if month == 2 && year%4 == 0 && (year%100 != 0 || year%400 == 0) {
+		days = 29
+	}
+	switch {
+	case day < 1 || day > days:
+		return fmt.Errorf("day %s of month %s, year %s", s[6:8], s[4:6], s[0:4])
+	case hour > 23:
+		return fmt.Errorf("hour %s", s[8:10])
+	case minute > 59:
+		return fmt.Errorf("minute %s", s[10:12])
+	case second > 59:
+		return fmt.Errorf("second %s", s[12:14])
+	}
+	return nil
+}
 
 // Major is the major of a version as it is written (v3.0.4 is "3"), or "" for
 // a string that is not a version. It stays text: a major is compared and

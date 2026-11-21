@@ -483,6 +483,15 @@ var pinBadSpellings = []string{
 	"v2.5.1-beta.01",                        // a numeric pre-release identifier with a leading zero
 	"v02.5.1-0.20261121185943-f397f5f7765d", // a pseudo-version with a leading-zero major
 	"v02.0.0-20261121185943-f397f5f7765d",
+	// in the shape of a pseudo-version, and not one Go resolves:
+	"v2.5.1-0.20261999185943-f397f5f7765d", // month 19
+	"v2.5.1-0.20260230185943-f397f5f7765d", // 30 February
+	"v2.5.1-0.20261121245943-f397f5f7765d", // hour 24
+	"v2.0.0-0.20261121185943-f397f5f7765d", // the -0. form on patch zero: no release precedes it
+	"v3.0.0-0.20261121185943-f397f5f7765d",
+	"v2.5.1-0.20261121185943-f397f5f7765",   // an 11-character revision
+	"v2.5.1-0.20261121185943-F397F5F7765D",  // an upper-case revision
+	"v2.5.1-0.20261121185943-f397f5f7765d0", // a 13-character revision
 }
 
 const pinBigMajor = "v9223372036854775808.0.0"
