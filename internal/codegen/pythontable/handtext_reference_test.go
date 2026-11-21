@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -18,6 +17,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestPythonHandtextReferencesFunctional compares the same source and typed output with
@@ -53,7 +54,7 @@ func TestReference(t *testing.T) {
 }`)
 	goDir := t.TempDir()
 	writeTree(t, goDir, goFiles)
-	cmd := exec.Command("go", "test", "-count=1", "-v", "-run", "^TestReference$", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", "-v", "-run", "^TestReference$", ".")
 	cmd.Dir = goDir
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -101,11 +102,11 @@ int main() {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(cppDir, "reference")
-	cmd = exec.Command("c++", "-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror", "-I"+cppDir, "-I"+ser, path, filepath.Join(cppDir, "CoreTable.cpp"), "-o", bin)
+	cmd = testproc.Command(t, "c++", "-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror", "-I"+cppDir, "-I"+ser, path, filepath.Join(cppDir, "CoreTable.cpp"), "-o", bin)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("C++ compile: %v\n%s", err, out)
 	}
-	cppJSON, err := exec.Command(bin).CombinedOutput()
+	cppJSON, err := testproc.Command(t, bin).CombinedOutput()
 	if err != nil {
 		t.Fatalf("C++ reference: %v: %s", err, cppJSON)
 	}
@@ -177,7 +178,7 @@ func TestOracle(t *testing.T) {
 }`, vectors))
 			dir := t.TempDir()
 			writeTree(t, dir, files)
-			cmd := exec.Command("go", "test", "-count=1", "-v", "-run", "^TestOracle$", ".")
+			cmd := testproc.Command(t, "go", "test", "-count=1", "-v", "-run", "^TestOracle$", ".")
 			cmd.Dir = dir
 			output, err := cmd.CombinedOutput()
 			if err != nil {
@@ -277,7 +278,7 @@ int main(int argc, char **argv) {
 				t.Fatal(err)
 			}
 			bin := filepath.Join(dir, "oracle")
-			cmd := exec.Command("c++", "-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror", "-I"+dir, "-I"+ser, path, filepath.Join(dir, "CoreTable.cpp"), "-o", bin)
+			cmd := testproc.Command(t, "c++", "-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror", "-I"+dir, "-I"+ser, path, filepath.Join(dir, "CoreTable.cpp"), "-o", bin)
 			if out, err := cmd.CombinedOutput(); err != nil {
 				t.Fatalf("compile: %v\n%s", err, out)
 			}
@@ -287,7 +288,7 @@ int main(int argc, char **argv) {
 			}
 			var expected []string
 			for _, stem := range []string{"roadmap", "layout", "kinds", "variable"} {
-				out, err := exec.Command(bin, stem, filepath.Join(vectors, stem+".input.sexp")).CombinedOutput()
+				out, err := testproc.Command(t, bin, stem, filepath.Join(vectors, stem+".input.sexp")).CombinedOutput()
 				if err != nil {
 					t.Fatalf("C++ %s: %v: %s", stem, err, out)
 				}
@@ -361,7 +362,7 @@ func TestOracle(t *testing.T) {
 }`)
 	dir := t.TempDir()
 	writeTree(t, dir, files)
-	cmd := exec.Command("go", "test", "-count=1", "-v", "-run", "^TestOracle$", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", "-v", "-run", "^TestOracle$", ".")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -416,11 +417,11 @@ int main(int argc, char **argv) {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(cppDir, "oracle")
-	cmd = exec.Command("c++", "-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror", "-I"+cppDir, "-I"+ser, path, filepath.Join(cppDir, "CoreTable.cpp"), "-o", bin)
+	cmd = testproc.Command(t, "c++", "-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror", "-I"+cppDir, "-I"+ser, path, filepath.Join(cppDir, "CoreTable.cpp"), "-o", bin)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("C++ compile: %v\n%s", err, out)
 	}
-	cppOut, err := exec.Command(bin, cppInput).CombinedOutput()
+	cppOut, err := testproc.Command(t, bin, cppInput).CombinedOutput()
 	if err != nil {
 		t.Fatalf("C++ oracle: %v\n%s", err, cppOut)
 	}
@@ -493,11 +494,11 @@ int main() {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(cppDir, "oracle")
-	cmd := exec.Command("c++", "-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror", "-I"+cppDir, "-I"+ser, path, filepath.Join(cppDir, "CoreTable.cpp"), "-o", bin)
+	cmd := testproc.Command(t, "c++", "-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror", "-I"+cppDir, "-I"+ser, path, filepath.Join(cppDir, "CoreTable.cpp"), "-o", bin)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("C++ compile: %v\n%s", err, out)
 	}
-	cpp, err := exec.Command(bin).Output()
+	cpp, err := testproc.Command(t, bin).Output()
 	if err != nil {
 		t.Fatalf("C++ oracle: %v", err)
 	}

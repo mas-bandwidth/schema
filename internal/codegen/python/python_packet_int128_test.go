@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,6 +14,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // int128Schema is the 128-bit kinds on their own (Raw, Ranged) and beside the
@@ -373,7 +374,7 @@ func runInt128Oracle(t *testing.T, u *ir.Unit) ([]int128Case, []int128Forge) {
 		slowtest.SerializeGo(t, repoRoot(t))))
 	files["oracle_test.go"] = []byte(int128GoOracle(cases, hasNew))
 	writeTree(t, dir, files)
-	cmd := exec.Command("go", "test", "-count=1", "-run", "^TestInt128Oracle$", "-v", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", "-run", "^TestInt128Oracle$", "-v", ".")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GOWORK=off", "GOPROXY=off", "GOFLAGS=")
 	out, err := cmd.CombinedOutput()
@@ -475,27 +476,22 @@ with open("cases.json") as f:
     spec = json.load(f)
 fail = False
 
-
 def report(msg):
     global fail
     fail = True
     print("FAILED: " + msg)
-
 
 def parse(kind, text):
     if kind == "bool":
         return text == "true"
     return int(text)
 
-
 def get(value, path):
     return reduce(getattr, path.split("."), value)
-
 
 def put(value, path, x):
     parts = path.split(".")
     setattr(get(value, ".".join(parts[:-1])) if len(parts) > 1 else value, parts[-1], x)
-
 
 def written(name, value):
     try:
@@ -503,7 +499,6 @@ def written(name, value):
     except InvalidValue as exc:
         report(name + ": the write was refused: " + str(exc))
         return None
-
 
 for case in spec["cases"]:
     cls = getattr(wide, case["root"])

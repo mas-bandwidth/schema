@@ -904,7 +904,7 @@ end
 -- type ProbeHeader (SPEC §6.1: the wire order is the declared order)
 function _M.WriteProbeHeader(stream, v)
   if not stream:serializeBits({ value = 171 }, 8) then return false end -- const(171, 8) — SPEC §4.3
-  if math.type(v.Version) ~= "integer" then return false end
+  if math.type(v.Version) ~= "integer" or v.Version < 0 or v.Version > 7 then return false end
   if not stream:serializeBits({ value = v.Version }, 3) then return false end -- the declared bit width
   if not stream:serializeBits({ value = 0 }, 5) then return false end -- reserved(5): zeros on the wire (SPEC §4.3)
   if not stream:serializeAlign() then return false end -- SPEC §4.3
@@ -915,9 +915,9 @@ end
 
 -- type ProbeBits (SPEC §6.1: the wire order is the declared order)
 function _M.WriteProbeBits(stream, v)
-  if math.type(v.Small) ~= "integer" then return false end
+  if math.type(v.Small) ~= "integer" or v.Small < 0 or v.Small > 511 then return false end
   if not stream:serializeBits({ value = v.Small }, 9) then return false end -- the declared bit width
-  if math.type(v.Boundary) ~= "integer" then return false end
+  if math.type(v.Boundary) ~= "integer" or v.Boundary < 0 or v.Boundary > 8589934591 then return false end
   if not stream:serializeBits64({ value = v.Boundary }, 33) then return false end -- the declared bit width
   if math.type(v.Wide) ~= "integer" then return false end
   if not stream:serializeBits64({ value = v.Wide }, 64) then return false end -- the declared bit width
@@ -1096,11 +1096,11 @@ function _M.WriteTestData(stream, v)
   if not stream:serializeBits({ value = v.B - -100 }, 8) then return false end -- the offset from min
   if math.type(v.C) ~= "integer" or v.C < -100 or v.C > 150 then return false end
   if not stream:serializeBits({ value = v.C - -100 }, 8) then return false end -- the offset from min
-  if math.type(v.D) ~= "integer" then return false end
+  if math.type(v.D) ~= "integer" or v.D < 0 or v.D > 255 then return false end
   if not stream:serializeBits({ value = v.D }, 8) then return false end -- the declared bit width
-  if math.type(v.E) ~= "integer" then return false end
+  if math.type(v.E) ~= "integer" or v.E < 0 or v.E > 255 then return false end
   if not stream:serializeBits({ value = v.E }, 8) then return false end -- the declared bit width
-  if math.type(v.F) ~= "integer" then return false end
+  if math.type(v.F) ~= "integer" or v.F < 0 or v.F > 255 then return false end
   if not stream:serializeBits({ value = v.F }, 8) then return false end -- the declared bit width
   if not stream:serializeBool({ value = v.G }) then return false end -- SPEC §4.3
   -- the count guards the loop (SPEC §6.3)

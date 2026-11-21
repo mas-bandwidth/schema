@@ -4,7 +4,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -12,6 +11,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestElixirVoidUnionNative(t *testing.T) {
@@ -44,7 +45,7 @@ func TestElixirVoidUnionNative(t *testing.T) {
 			// OTP29 emits some type diagnostics outside its warning counter; use
 			// the repository's strict wrapper rather than trusting the flag alone.
 			args := append([]string{strict, filepath.Join(filepath.Dir(elixirBin), "elixirc"), "--warnings-as-errors", "-o", ebin}, names...)
-			cmd := exec.Command("sh", args...)
+			cmd := testproc.Command(t, "sh", args...)
 			cmd.Dir = dir
 			cmd.Env = append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
 			if out, err := cmd.CombinedOutput(); err != nil || strings.Contains(string(out), "warning:") {
@@ -109,7 +110,7 @@ IO.puts("void unions passed")
 			if err := os.WriteFile(filepath.Join(dir, "probe.exs"), []byte(probe), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			cmd = exec.Command(elixirBin, "-pa", ebin, "probe.exs")
+			cmd = testproc.Command(t, elixirBin, "-pa", ebin, "probe.exs")
 			cmd.Dir = dir
 			cmd.Env = append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
 			out, err := cmd.CombinedOutput()

@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -27,6 +26,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // t10Root is the named fixed root of a unit, so a probe can name its surface.
@@ -108,7 +109,7 @@ T10Probe.run()
 		args = append(args, "-r", n)
 	}
 	args = append(args, "probe.exs")
-	cmd := exec.Command(bin, args...)
+	cmd := testproc.Command(t, bin, args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	out, err := cmd.CombinedOutput()

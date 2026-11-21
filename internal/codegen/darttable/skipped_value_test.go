@@ -16,12 +16,13 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const dartSkippedValueDir = "../../../testdata/wire/skipped-value"
@@ -172,7 +173,7 @@ void main(List<String> args) {
 	if err := os.WriteFile(filepath.Join(dir, "skipped_probe.dart"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dartBinary(t), append([]string{"--enable-asserts", "skipped_probe.dart"}, args...)...)
+	cmd := testproc.Command(t, dartBinary(t), append([]string{"--enable-asserts", "skipped_probe.dart"}, args...)...)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -376,7 +377,7 @@ void main(List<String> args) {
 	if err := os.WriteFile(filepath.Join(dir, "keyed_probe.dart"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dartBinary(t), append([]string{"--enable-asserts", "keyed_probe.dart"}, args...)...)
+	cmd := testproc.Command(t, dartBinary(t), append([]string{"--enable-asserts", "keyed_probe.dart"}, args...)...)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

@@ -27,7 +27,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -38,6 +37,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const jsTextDifferentialSchema = `package probe
@@ -159,7 +160,7 @@ func runJSTextDifferential(t *testing.T, edit func(map[string][]byte)) ([]byte, 
 	if err := os.Mkdir(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, script)
+	cmd := testproc.Command(t, node, script)
 	cmd.Dir = work
 	cmd.Env = append(os.Environ(),
 		"SCHEMA_TEXT_DIFF_DIR="+dir,

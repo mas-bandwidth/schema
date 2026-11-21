@@ -2,13 +2,14 @@ package dart
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestDartZeroBitReadFunctionalRefusesBadBounds pins that a generated read
@@ -60,7 +61,7 @@ void main() {
 	if err := os.WriteFile(filepath.Join(dir, "main.dart"), []byte(driver), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("dart", "main.dart")
+	cmd := testproc.Command(t, "dart", "main.dart")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

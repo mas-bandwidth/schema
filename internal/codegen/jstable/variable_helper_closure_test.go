@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // Generic variable codecs refer to text-list helpers even when every field in
@@ -45,7 +47,7 @@ func TestJavaScriptVariableHelperClosure(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			cmd := exec.Command(eslint, "--config", config, "--max-warnings", "0", ".")
+			cmd := testproc.Command(t, eslint, "--config", config, "--max-warnings", "0", ".")
 			cmd.Dir = dir
 			if out, err := cmd.CombinedOutput(); err != nil {
 				t.Fatalf("generated runtime lint: %v\n%s", err, out)

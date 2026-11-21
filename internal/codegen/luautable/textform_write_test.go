@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -18,6 +17,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 type tfWriteEdit struct {
@@ -190,7 +191,7 @@ func TestLuauTextFormEditKeepsTheDocument(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("go", "test", "-count=1", "-timeout", "600s", "-run", "^TestOracle$", "-v", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", "-timeout", "600s", "-run", "^TestOracle$", "-v", ".")
 	cmd.Dir = goDir
 	wantOut, err := cmd.CombinedOutput()
 	if err != nil {

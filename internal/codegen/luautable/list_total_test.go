@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -17,6 +16,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // listTotalCases are the four spellings of compiler/listtotalbytes_refusal_test.go,
@@ -318,7 +319,7 @@ func goTotalOracleOutput(t *testing.T, field string, wires [3][]byte) []string {
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("go", "test", "-count=1", "-timeout", "600s", "-v", "-run", "TestOracle", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", "-timeout", "600s", "-v", "-run", "TestOracle", ".")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GOFLAGS=-mod=readonly", "NOVA_TEST_NO_HOST=1",
 		"FIELD="+field,

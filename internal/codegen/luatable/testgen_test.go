@@ -5,12 +5,13 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestLuaTestgenWritesPassingTests is the gate of `schema testgen --lang lua`
@@ -201,7 +202,7 @@ func TestLuaTestgenWritesPassingTests(t *testing.T) {
 func runLuaFile(t *testing.T, dir, main string) ([]byte, error) {
 	t.Helper()
 	lua := luarun.Interpreter(t)
-	cmd := exec.Command(lua, main)
+	cmd := testproc.Command(t, lua, main)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "LUA_PATH="+filepath.Join(dir, "?.lua")+";;", "LUA_INIT=")
 	var stdout, stderr bytes.Buffer

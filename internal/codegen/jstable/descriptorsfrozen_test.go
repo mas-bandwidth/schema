@@ -3,12 +3,13 @@ package jstable
 import (
 	"bytes"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJavaScriptDescriptorsAreConstants holds docs/PORTING.md M13 on the
@@ -66,7 +67,7 @@ func TestJavaScriptDescriptorsAreConstants(t *testing.T) {
 		if err := os.WriteFile(script, []byte(descriptorsFrozenDriver), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		cmd := exec.Command(node, script, path)
+		cmd := testproc.Command(t, node, script, path)
 		cmd.Dir = dir
 		out, err := cmd.CombinedOutput()
 		if err != nil {

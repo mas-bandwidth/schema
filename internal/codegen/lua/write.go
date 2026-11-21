@@ -133,9 +133,15 @@ func emitWriteScalar(m *Module, b *strings.Builder, val string, f *ir.Field, ind
 	case ir.TInt:
 		switch {
 		case t.Width == 128 && f.HasIntRange:
+			// the runtime traps a value off its range (IMPLEMENTING.md U9), so
+			// the writer refuses it first (SPEC §5.1 row 1)
+			fmt.Fprintf(b, "%sif not wide_within(%s, %s, %s, true) then return false end -- SPEC §5.1 row 1\n",
+				indent, val, wideBound(m, f.IntMin), wideBound(m, f.IntMax))
 			call(fmt.Sprintf("stream:serializeInt128({ value = %s }, %s, %s)", val,
 				Int128Literal(f.IntMin), Int128Literal(f.IntMax)), " -- int128, offset from min (SPEC §4.3)")
 		case t.Width == 128:
+			m.Helper("write_wide", writeWideHelpers)
+			fmt.Fprintf(b, "%sif not wide_value(%s) then return false end\n", indent, val)
 			call(fmt.Sprintf("stream:serializeUint128({ value = %s })", val), " -- uint128 raw (SPEC §4.3)")
 		case f.HasIntRange:
 			lo, hi := IntLiteral(f.IntMin), IntLiteral(f.IntMax)
@@ -175,9 +181,32 @@ func emitWriteScalar(m *Module, b *strings.Builder, val string, f *ir.Field, ind
 			emitBitsOrSkip(b, indent, val, int64(t.Width), "the storage width")
 		}
 	case ir.TBits:
-		fmt.Fprintf(b, "%sif math.type(%s) ~= \"integer\" then return false end\n", indent, val)
+		if t.Width < 64 {
+			// a bits(N) value wider than N bits is refused, never trapped by
+			// the bit writer (SPEC §5.1 row 2)
+			top := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(t.Width)), big.NewInt(1))
+			fmt.Fprintf(b, "%sif math.type(%s) ~= \"integer\" or %s < 0 or %s > %s then return false end\n",
+				indent, val, val, val, IntLiteral(top))
+		} else {
+			fmt.Fprintf(b, "%sif math.type(%s) ~= \"integer\" then return false end\n", indent, val)
+		}
 		emitBitsOrSkip(b, indent, val, int64(t.Width), "the declared bit width")
 	case ir.TFixed:
+		// the raw value is held to [min << F, max << F] before the runtime,
+		// which traps a value off it (SPEC §5.1 row 1)
+		rawMin := new(big.Int).Lsh(f.IntMin, uint(t.FracBits))
+		rawMax := new(big.Int).Lsh(f.IntMax, uint(t.FracBits))
+		switch {
+		case t.Width > 64:
+			fmt.Fprintf(b, "%sif not wide_within(%s, %s, %s, %v) then return false end\n",
+				indent, val, wideBound(m, rawMin), wideBound(m, rawMax), t.Signed)
+		case rawMax.Cmp(maxInt64) > 0:
+			fmt.Fprintf(b, "%sif math.type(%s) ~= \"integer\" or math.ult(%s, %s) or math.ult(%s, %s) then return false end\n",
+				indent, val, val, IntLiteral(rawMin), IntLiteral(rawMax), val)
+		default:
+			fmt.Fprintf(b, "%sif math.type(%s) ~= \"integer\" or %s < %s or %s > %s then return false end\n",
+				indent, val, val, IntLiteral(rawMin), val, IntLiteral(rawMax))
+		}
 		call(fmt.Sprintf("stream:serializeFixed({ value = %s }, %d, %d, %s, %s)", val,
 			t.IntBits, t.FracBits, IntLiteral(f.IntMin), IntLiteral(f.IntMax)), " -- the Q format's raw offset (SPEC §4.3)")
 	case ir.TFloat32:
@@ -237,6 +266,44 @@ func emitBitsOrSkip(b *strings.Builder, indent, expr string, bits int64, what st
 	}
 	fmt.Fprintf(b, "%sif not stream:%s({ value = %s }, %d) then return false end -- %s\n",
 		indent, fn, expr, bits, what)
+}
+
+// writeWideHelpers are the 128-bit write guards: wide_value says a value is the
+// { lo, hi } pair of integers the runtime takes, and wide_within that it lies in
+// [min, max], compared signed or unsigned on the high half and unsigned on the
+// low (docs/PORT-LUA.md, 64-BIT AND 128-BIT INTEGERS).
+const writeWideHelpers = `local function wide_value(v)
+  return type(v) == "table" and math.type(v.lo) == "integer" and math.type(v.hi) == "integer"
+end
+
+local function wide_less(a, b, signed)
+  if a.hi ~= b.hi then
+    if signed then return a.hi < b.hi end
+    return math.ult(a.hi, b.hi)
+  end
+  return math.ult(a.lo, b.lo)
+end
+
+local function wide_within(v, min, max, signed)
+  return wide_value(v) and not wide_less(v, min, signed) and not wide_less(max, v, signed)
+end
+`
+
+// wideBound names a 128-bit bound as a module constant, emitted once beside
+// the write guards, so a guard line stays inside the 120 columns.
+func wideBound(m *Module, v *big.Int) string {
+	m.Helper("write_wide", writeWideHelpers)
+	lit := Int128Literal(v)
+	if name, ok := m.wideBounds[lit]; ok {
+		return name
+	}
+	if m.wideBounds == nil {
+		m.wideBounds = map[string]string{}
+	}
+	name := fmt.Sprintf("WIDE_BOUND_%d", len(m.wideBounds)+1)
+	m.wideBounds[lit] = name
+	m.Helper(fmt.Sprintf("write_wide_bound_%06d", len(m.wideBounds)), fmt.Sprintf("local %s = %s\n", name, lit))
+	return name
 }
 
 // callBits is the const/reserved primitive at its declared width.

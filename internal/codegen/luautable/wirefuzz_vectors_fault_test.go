@@ -204,7 +204,7 @@ func luauVectorRun(t *testing.T, u *ir.Unit, c luauVectorFaultCase, wire []byte,
 	if lua == "" {
 		t.Fatalf("luaurun: the Luau interpreter does not resolve: %s", why)
 	}
-	out, err := luauFuzzRun(lua, g, &luauFuzzChunk{n: 1, mutants: g.mutants})
+	out, err := luauFuzzRun(t, lua, g, &luauFuzzChunk{n: 1, mutants: g.mutants})
 	if err != nil {
 		t.Fatal(err)
 	}
