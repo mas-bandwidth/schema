@@ -1196,17 +1196,15 @@ func (d *bitDecoder) rangedFloat(v float64, f *ir.Field) float64 {
 	// THE ONE RULE (§3.3, the special values): a value is finite here, because
 	// the read refused a NaN or an infinity on its bits first; one past an end
 	// refuses out_of_range, and a -0 lands as +0. THE RANGE IS HELD AT
-	// FLOAT32 (SPEC.md §4.6), where every runtime evaluates it: the value is
-	// a float32, and a bound float32 cannot spell exactly (max = 0.1) is the
-	// float32 nearest it, so the top grid step is lawful.
-	lo, hi := float32(f.FMin), float32(f.FMax)
-	if float32(v) < lo {
+	// FLOAT32 (SPEC.md §4.6), by the one comparison the engine has
+	// (tabletext.FloatInRange): a bound float32 cannot spell exactly (max = 0.1)
+	// is the float32 nearest it, so the top grid step is lawful.
+	if !tabletext.FloatInRange(f, v) {
 		d.refuse(ReasonOutOfRange)
-		return float64(lo)
-	}
-	if float32(v) > hi {
-		d.refuse(ReasonOutOfRange)
-		return float64(hi)
+		if float32(v) < float32(f.FMin) {
+			return float64(float32(f.FMin))
+		}
+		return float64(float32(f.FMax))
 	}
 	if v == 0 {
 		return 0
