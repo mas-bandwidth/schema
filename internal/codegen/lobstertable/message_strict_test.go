@@ -27,11 +27,11 @@ func TestLobsterMessageOneRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const anchor = "if id == e.id:\n                return message_refuse(rep, \"duplicate\")"
+	const anchor = "        if not idset_add(seen, e.id):\n            return message_refuse(rep, \"duplicate\")"
 	if strings.Count(string(src), anchor) != 1 {
 		t.Fatal("body duplicate anchor must occur once")
 	}
-	changed := strings.Replace(string(src), anchor, "if id == e.id:\n                pass()", 1)
+	changed := strings.Replace(string(src), anchor, "        idset_add(seen, e.id)", 1)
 	if err := os.WriteFile(path, []byte(changed), 0o644); err != nil {
 		t.Fatal(err)
 	}

@@ -7,12 +7,12 @@ def self.run(manifest, outdir)
     name, unit, path = row[1], row[2], row[3]
     pkg = RubyConformance.unit_package(unit)
     if pkg.nil?
-      RubyConformance.absent(outdir, name, 'unit not generated for ruby')
+      RubyConformance.no_codec(outdir, name)
       next
     end
     root = RubyConformanceBlocks.block_root(name)
     if root.nil?
-      RubyConformance.absent(outdir, name, "no block root for #{name}")
+      RubyConformance.no_codec(outdir, name)
       next
     end
     handle = RubyConformanceBlocks.open_block(pkg, root, RubyConformance.read_bytes(path))

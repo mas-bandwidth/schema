@@ -144,9 +144,20 @@ _verify-go-conformance: build/conformance-harness build/conformance-go generated
 	@rm -rf build/verify/conformance-go && mkdir -p build/verify/conformance-go $(VERIFY_RESULTS_DIR)
 	./build/conformance-harness run --only go --claims --work build/verify/conformance-go --results $(VERIFY_RESULTS_DIR)/go.json
 
-_verify-go-bench: bin/schema generated/bench/go/.stamp generated/bench/tables/go/.stamp tables-go-bench-gate
+# The timed quick run is a prerequisite of its own, so under the umbrella's -j
+# it runs beside the gates instead of after them, and it takes one warmup and
+# one measured run (--round 0) instead of one and three: in CI the figure is an
+# iteration instrument read by nobody, the golden and variant gates inside the
+# runner are what can go red, and they run in full either way. The whole of
+# verify-leg (go, bench) was cancelled at the two-minute cap on a loaded runner
+# with the quick run alone at 84 s (run 44911874471); on a loaded amd-3 slot
+# the quick run is 38.7 s as before and 19.3 s with --round 0.
+.PHONY: _verify-go-bench-quick
+_verify-go-bench-quick: generated/bench/go/.stamp
 	@mkdir -p build/verify build/bench && rm -f build/verify/bench-go.csv
-	bench/run.sh --quick --bare --only go --out build/verify/bench-go.csv
+	bench/run.sh --quick --round 0 --bare --only go --out build/verify/bench-go.csv
+
+_verify-go-bench: bin/schema generated/bench/go/.stamp generated/bench/tables/go/.stamp tables-go-bench-gate _verify-go-bench-quick
 	@test -s build/verify/bench-go.csv
 
 # ---- rust ----

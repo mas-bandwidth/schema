@@ -14,13 +14,14 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const dartTextCommaSchema = `package probe
@@ -113,7 +114,7 @@ func dartTextCommaRun(t *testing.T, edit func(map[string][]byte)) []string {
 	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(dartTextCommaProbe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dartBinary(t), append([]string{"--enable-asserts", "probe.dart"}, args...)...)
+	cmd := testproc.Command(t, dartBinary(t), append([]string{"--enable-asserts", "probe.dart"}, args...)...)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

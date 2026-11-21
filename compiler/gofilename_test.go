@@ -32,7 +32,7 @@ func loadBase(t *testing.T, base, src string) *ir.Unit {
 func TestGoRefusesABasenameGoReadsAsABuildConstraint(t *testing.T) {
 	t.Parallel()
 	const src = "package p\ntype Ship { hp int32 }\ntable Fleet { size int32 }\n"
-	for _, base := range []string{"Player_linux.v1", "Player_test", "Player_windows", "Player_amd64", "Player_linux_arm64", "Player_js_test", "_Player"} {
+	for _, base := range []string{"Player_test", "Player_windows", "Player_amd64", "Player_linux_arm64", "Player_js_test", "_Player"} {
 		_, err := New().Generate(loadBase(t, base, src), "go", Options{})
 		if err == nil || !strings.Contains(err.Error(), "build constraint") {
 			t.Errorf("%s.schema: want the Go file-name refusal, got %v", base, err)
@@ -41,14 +41,23 @@ func TestGoRefusesABasenameGoReadsAsABuildConstraint(t *testing.T) {
 			t.Errorf("%s.schema: cpp refused a basename only Go cannot carry: %v", base, err)
 		}
 	}
-	// `_test.go` is read off the WHOLE name, past a dot: test-only
-	if _, err := New().Generate(loadBase(t, "Player.v1_test", src), "go", Options{}); err == nil || !strings.Contains(err.Error(), "build constraint") {
-		t.Errorf("Player.v1_test.schema: want the Go file-name refusal, got %v", err)
+	// a dotted basename (Player_linux.v1, Player.v1_test) never reaches the Go
+	// target: the checker refuses it for every target, because the basename
+	// becomes generated identifiers (SPEC 4.6, FRONTEND-4)
+	for _, base := range []string{"Player_linux.v1", "Player.v1_test", "Player_test.v1"} {
+		dir := t.TempDir()
+		path := filepath.Join(dir, base+".schema")
+		if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := New().Load([]string{path}); err == nil || !strings.Contains(err.Error(), "must be one") {
+			t.Errorf("%s.schema: want the basename refusal, got %v", base, err)
+		}
 	}
 	// a name that only looks like one is generated: the go tool reads the
 	// GOOS/GOARCH parts after the first `_` and before the first `.`, exactly
-	// in lower case, so Player_test.v1.go is an ordinary package file
-	for _, base := range []string{"Player", "linux", "Player_Windows", "Player_tests", "Player_x", "Player_test.v1"} {
+	// in lower case
+	for _, base := range []string{"Player", "linux", "Player_Windows", "Player_tests", "Player_x"} {
 		files, err := New().Generate(loadBase(t, base, src), "go", Options{})
 		if err != nil {
 			t.Errorf("%s.schema: %v", base, err)

@@ -2,7 +2,6 @@ package dart
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -10,6 +9,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestDartWriteAssertsBitsWidth pins SPEC §5.1 contract row 2 on the Dart
@@ -203,7 +204,7 @@ void main(List<String> args) {
 		{"enable-asserts", []string{"--enable-asserts", "main.dart", "asserts"}},
 		{"release", []string{"main.dart"}},
 	} {
-		cmd := exec.Command("dart", c.args...)
+		cmd := testproc.Command(t, "dart", c.args...)
 		cmd.Dir = dir
 		out, err := cmd.CombinedOutput()
 		if err != nil {

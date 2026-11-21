@@ -214,7 +214,7 @@ func tableMessageBodyRootConfig(r *TableMessageReader, value *RootConfig, starts
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
-					if n > 16 {
+					if n > 16 || n > uint64(entry.Shape.Max) {
 						r.Report.Refuse(TableRefuseLengthOverBound, "RootConfig.version_note")
 						return false
 					}
@@ -1881,7 +1881,7 @@ func tableMessageBodyProfileConfig(r *TableMessageReader, value *ProfileConfig, 
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
-					if n > 32 {
+					if n > 32 || n > uint64(entry.Shape.Max) {
 						r.Report.Refuse(TableRefuseLengthOverBound, "ProfileConfig.name")
 						return false
 					}

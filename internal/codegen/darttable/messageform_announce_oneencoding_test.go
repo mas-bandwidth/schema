@@ -21,6 +21,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // announceTerminatorExact is the emitted lines that require a body's zero
@@ -258,7 +260,7 @@ void main() {
 	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(announceOneEncodingDartBinary(t), "probe.dart")
+	cmd := testproc.Command(t, announceOneEncodingDartBinary(t), "probe.dart")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	return string(out), err

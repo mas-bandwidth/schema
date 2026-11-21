@@ -14,10 +14,11 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestDartRequiredNative(t *testing.T) {
@@ -214,7 +215,7 @@ failed=false;try{w.exactToJson(w.Exact());}on StateError{failed=true;}check(fail
 		t.Fatal(err)
 	}
 	for _, args := range [][]string{{"--enable-asserts", "probe.dart"}, {"probe.dart"}} {
-		cmd := exec.Command(dartBinary(t), args...)
+		cmd := testproc.Command(t, dartBinary(t), args...)
 		cmd.Dir = dir
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("required Dart %v: %v\n%s", args, err, out)
@@ -249,7 +250,7 @@ func requiredDartGoPins(t *testing.T, u *ir.Unit, roots []string) map[string]str
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("go", "test", "-timeout=0", "-count=1", "-run", "^TestRequiredPins$", ".")
+	cmd := testproc.Command(t, "go", "test", "-timeout=0", "-count=1", "-run", "^TestRequiredPins$", ".")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("independent required Go: %v\n%s", err, out)
@@ -311,7 +312,7 @@ check(textReason==%q,'JSON required pin');
 		t.Fatal(err)
 	}
 	for _, args := range [][]string{{"--enable-asserts", "probe.dart"}, {"probe.dart"}} {
-		cmd := exec.Command(dartBinary(t), args...)
+		cmd := testproc.Command(t, dartBinary(t), args...)
 		cmd.Dir = dir
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("required shared pins %v: %v\n%s", args, err, out)

@@ -381,8 +381,13 @@ local function timestamp_ns(text)
   return secs * 1000000000 + frac
 end
 
+-- every integer kind, 128 bits included, spells its range in fewer digits
+local INTEGER_DIGITS = 40
+
 -- the exact integral value of an RFC 8259 number token as sign + decimal
--- digits, or nil when the token has a nonzero fraction (§16.9.2 integers)
+-- digits, or nil when the token has a nonzero fraction (§16.9.2 integers);
+-- a third answer, true, says the value has more digits than any integer kind
+-- holds, which is text_bound
 local function integral_digits(token)
   local neg = false
   local t = token
@@ -405,24 +410,21 @@ local function integral_digits(token)
   end
   local digits = intpart .. fracpart
   local shift = exp - #fracpart
-  if shift < 0 then
-    local drop = -shift
-    if drop >= #digits then
-      if not digits:match("^0*$") then return nil end
-      digits = "0"
-    else
-      local tail = digits:sub(#digits - drop + 1)
-      if not tail:match("^0*$") then return nil end
-      digits = digits:sub(1, #digits - drop)
-    end
-  elseif shift > 0 then
-    digits = digits .. string.rep("0", shift)
+  -- THE SIGNIFICANT DIGITS FIRST: the value is digits * 10^shift with the
+  -- leading and trailing zeros gone, so zero is zero whatever its exponent,
+  -- a negative shift left over is a nonzero fraction, and the exponent never
+  -- allocates past the digits a 128-bit integer can carry (INTEGER_DIGITS).
+  local first = digits:find("[1-9]")
+  if first == nil then return false, "0" end
+  local last = #digits
+  while digits:byte(last) == 48 do
+    last = last - 1
   end
-  digits = digits:gsub("^0+", "")
-  if digits == "" then
-    neg = false
-    digits = "0"
-  end
+  shift = shift + (#digits - last)
+  digits = digits:sub(first, last)
+  if shift < 0 then return nil end
+  if #digits + shift > INTEGER_DIGITS then return neg, nil, true end
+  if shift > 0 then digits = digits .. string.rep("0", shift) end
   return neg, digits
 end
 
@@ -450,7 +452,8 @@ end
 
 -- §16.9.2 integer rows: exact integral value, kind and declared range checked
 local function integer_text(d, node)
-  local neg, digits = integral_digits(node.v)
+  local neg, digits, past = integral_digits(node.v)
+  if past then fail("text_bound", node.pos) end
   if digits == nil then fail("text_kind_mismatch", node.pos) end
   local lo, hi = int_bounds(d)
   local below
@@ -604,6 +607,7 @@ local function resolve_array(T, d, node, labels)
   end
   if d.fixed and #items ~= d.bound then fail("text_bound", node.pos) end
   if not d.fixed and d.bound and d.bound > 0 and #items > d.bound then fail("text_bound", node.pos) end
+  if not d.fixed and not d.list and #items < (d.min or 0) then fail("text_bound", node.pos) end
   local parts = {}
   for idx = 1, #items do
     parts[idx] = resolve_value(T, d.elem, items[idx], labels)

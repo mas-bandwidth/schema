@@ -29,8 +29,18 @@ module RubyConformance
     File.binwrite(File.join(outdir, name), data)
   end
 
+  # A `.absent` that names a reason carries that reason as the leg's answer,
+  # and on a row that owes a refusal the harness scores it as the refusal.
   def self.absent(outdir, name, reason)
     write_bytes(outdir, "#{name}.absent", reason.to_s.b)
+  end
+
+  # A case this leg has NO CODEC for (its unit or root is not generated, or the
+  # form is not emitted) is an EMPTY `.absent`: the per-case absence of
+  # test/conformance/README.md, which counts absent and never as a refusal, so
+  # a missing codec cannot pass a must-refuse row.
+  def self.no_codec(outdir, name)
+    write_bytes(outdir, "#{name}.absent", ''.b)
   end
 
   def self.module_const_name(pkg)

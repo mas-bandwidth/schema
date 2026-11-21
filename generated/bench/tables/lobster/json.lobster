@@ -1954,7 +1954,7 @@ def j_place_float(r:JsonReader, cell:Value, f:FieldDescriptor, token:string, sin
     if j_is_inf(v) or v != v:
         j_refuse(r, "non_finite_float")
         return
-    if f.franged and (v < f.flo or v > f.fhi):
+    if f.franged and not float_in_range(f, v):
         j_refuse(r, "out_of_range")
         return
     if single:

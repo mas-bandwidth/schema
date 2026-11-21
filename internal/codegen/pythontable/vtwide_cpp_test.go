@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,6 +14,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // cppWideWire reads the same declared values with generated C++ and saves form 1.
@@ -80,10 +81,10 @@ int main() {
 	bin := filepath.Join(dir, "probe")
 	args := append([]string{"-std=c++17", "-O1", "-I" + dir, "-I" + ser, path}, sources...)
 	args = append(args, "-o", bin)
-	if out, err := exec.Command("c++", args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, "c++", args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile C++ oracle: %v\n%s", err, out)
 	}
-	out, err := exec.Command(bin).Output()
+	out, err := testproc.Command(t, bin).Output()
 	if err != nil {
 		t.Fatalf("run C++ oracle: %v", err)
 	}

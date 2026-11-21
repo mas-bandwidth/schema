@@ -11,7 +11,10 @@
 
 package tabledemo
 
-import "math"
+import (
+	"math"
+	"slices"
+)
 
 const TableMessageRefBitsHere = 7
 const TableMessageEntriesHere = 123
@@ -293,8 +296,24 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 	src := TableReader{Buffer: words, Report: report}
 	count := int64(0)
 	nodeSeen := false
+	twice := func() bool {
+		s := v.Entries[:count]
+		slices.SortFunc(s, func(a, b TableMessageEntry) int {
+			return slices.Compare(words[a.Shape.Min:a.Shape.Max], words[b.Shape.Min:b.Shape.Max])
+		})
+		for i := 1; i < len(s); i++ {
+			if slices.Equal(words[s[i-1].Shape.Min:s[i-1].Shape.Max], words[s[i].Shape.Min:s[i].Shape.Max]) {
+				return true
+			}
+		}
+		return false
+	}
 	for src.Offset < int64(len(words)) {
 		if count >= int64(len(v.Entries)) {
+			if twice() {
+				report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return tableMessageRefuse(report, "vocabulary_too_large")
 		}
 		began := src.Offset
@@ -306,26 +325,14 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 		if e.ID == 0xffffffffffffffff {
 			nodeSeen = true
 		}
-		for i := range count {
-			o := v.Entries[i].Shape
-			if o.Max-o.Min == src.Offset-began && o.Min >= 0 && o.Max <= int64(len(words)) {
-				same := true
-				for j := o.Min; j < o.Max; j++ {
-					if words[j] != words[began+j-o.Min] {
-						same = false
-						break
-					}
-				}
-				if same {
-					report.Refuse(TableRefuseWireDamaged, "")
-					return false
-				}
-			}
-		}
 		e.Shape.Min = began
 		e.Shape.Max = src.Offset
 		v.Entries[count] = e
 		count++
+	}
+	if twice() {
+		report.Refuse(TableRefuseWireDamaged, "")
+		return false
 	}
 	src.Offset = 0
 	for i := range count {
