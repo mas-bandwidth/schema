@@ -40,7 +40,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -50,6 +49,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // versioningRow is one definition change: one row of
@@ -755,7 +756,7 @@ func buildRow(t *testing.T, dir, row string, sides []sideSpec) (map[string]javaB
 	}
 	args := append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)
 	args = append(args, probes...)
-	cmd := exec.Command(javac, args...)
+	cmd := testproc.Command(t, javac, args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("%s: javac: %v\n%s", row, err, out)
 	}
@@ -767,7 +768,7 @@ func runProbe(t *testing.T, classes, class, file string) probeRun {
 
 	t.Helper()
 	_, javaBin := javaTools(t)
-	cmd := exec.Command(javaBin, "-ea", "-cp", classes, class, file)
+	cmd := testproc.Command(t, javaBin, "-ea", "-cp", classes, class, file)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("java %s %s: %v\n%s", class, filepath.Base(file), err, out)
@@ -1254,14 +1255,14 @@ func runFixedVersioningTextUnderArm(t *testing.T, trueBytes bool) {
 	args := append([]string{"--release", "17", "-nowarn", "-d", classes}, fu1Src...)
 	args = append(args, fu2Src...)
 	args = append(args, driverPath)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	mode := "plain"
 	if trueBytes {
 		mode = "true_bytes"
 	}
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "ArmProbe", fu1Bin, mode).CombinedOutput()
+	out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, "ArmProbe", fu1Bin, mode).CombinedOutput()
 	if err != nil {
 		t.Fatalf("java ArmProbe (%s): %v\n%s", mode, err, out)
 	}
@@ -1510,10 +1511,10 @@ func TestFixedVersioningPlanTooLarge(t *testing.T) {
 	}
 	args := append([]string{"--release", "17", "-nowarn", "-d", classes}, fu2Src...)
 	args = append(args, driverPath)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "PlanCapProbe", fu1Bin).CombinedOutput()
+	out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, "PlanCapProbe", fu1Bin).CombinedOutput()
 	if err != nil {
 		t.Fatalf("java PlanCapProbe: %v\n%s", err, out)
 	}

@@ -43,6 +43,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const finiteFloatSchema = `package probe
@@ -791,12 +793,12 @@ func runFiniteFloatProbe(t *testing.T, edit func(map[string][]byte)) (string, er
 		t.Fatal(err)
 	}
 	bin := filepath.Join(dir, "finite")
-	build := exec.Command("rustc", "--edition", "2024", "-o", bin, "main.rs")
+	build := testproc.Command(t, "rustc", "--edition", "2024", "-o", bin, "main.rs")
 	build.Dir = dir
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("the probe did not build: %v\n%s", err, out)
 	}
-	run := exec.Command(bin)
+	run := testproc.Command(t, bin)
 	run.Dir = dir
 	out, err := run.CombinedOutput()
 	return string(out), err

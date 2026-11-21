@@ -21,6 +21,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestFixedRoadmapCppT14CompressedFloats(t *testing.T) {
@@ -182,10 +184,10 @@ using namespace cfold;
 		t.Fatal(err)
 	}
 	args := []string{"-std=c++17", "-O2", "-I" + dir, filepath.Join(dir, "probe.cpp"), "-o", filepath.Join(dir, "probe")}
-	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, out)
 	}
-	if out, err := exec.Command(filepath.Join(dir, "probe")).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, filepath.Join(dir, "probe")).CombinedOutput(); err != nil {
 		t.Fatalf("run: %v\n%s", err, out)
 	}
 }

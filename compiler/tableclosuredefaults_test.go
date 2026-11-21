@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,6 +12,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // Construction starts a positive-minimum count at that minimum (SPEC 4.2),
@@ -103,7 +104,7 @@ fixed table Root {
 				runtime := slowtest.SerializeGo(t, "..")
 				write("go.mod", fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace (\n\tgithub.com/mas-bandwidth/schema/v2 => %q\n\tgithub.com/mas-bandwidth/serialize.go/v2 => %q\n)\n", root, runtime))
 				write("defaults_test.go", replace.Replace(tableClosureDefaultsGo))
-				cmd := exec.Command("go", "test", "-count=1", "-timeout", "600s", ".")
+				cmd := testproc.Command(t, "go", "test", "-count=1", "-timeout", "600s", ".")
 				cmd.Dir = dir
 				if out, err := cmd.CombinedOutput(); err != nil {
 					t.Fatalf("generated Go: %v\n%s", err, out)
@@ -123,7 +124,7 @@ fixed table Root {
 <ItemGroup><Compile Include="`+filepath.ToSlash(runtime)+`/src/Serialize.cs" /><Compile Include="`+filepath.ToSlash(runtime)+`/src/Int128Pair.cs" /></ItemGroup>
 </Project>`)
 				write("Program.cs", replace.Replace(tableClosureDefaultsCS))
-				cmd := exec.Command(dotnet, "run", "--configuration", "Release", "-property:UseSharedCompilation=false")
+				cmd := testproc.Command(t, dotnet, "run", "--configuration", "Release", "-property:UseSharedCompilation=false")
 				cmd.Dir = dir
 				if out, err := cmd.CombinedOutput(); err != nil {
 					t.Fatalf("generated C#: %v\n%s", err, out)

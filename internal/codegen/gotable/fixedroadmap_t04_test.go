@@ -30,7 +30,6 @@ package gotable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -38,6 +37,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestFixedRoadmapGoT04VersionsEvolution(t *testing.T) {
@@ -357,7 +358,7 @@ func t04GoR19(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(testDir, "clean_test.go"), []byte(src), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("go", "test", "-count=1", "-run", "TestClean", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", "-run", "TestClean", ".")
 	cmd.Dir = testDir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
