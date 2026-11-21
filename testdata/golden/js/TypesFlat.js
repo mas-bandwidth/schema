@@ -2112,7 +2112,7 @@ export function ReadExpressionProbeFlatBits(view, numBits, value) {
 // must hold ExtremeProbeMaxBytes.
 export function WriteExtremeProbeFlat(view, value) {
   let v = 0;
-  if (value.floorBound < -9223372036854775808n || value.floorBound > 100n) {
+  if (typeof value.floorBound !== "bigint" || value.floorBound < -9223372036854775808n || value.floorBound > 100n) {
     return -1;
   }
   SC.setBigUint64(0, value.floorBound - -9223372036854775808n, true);
@@ -2120,7 +2120,7 @@ export function WriteExtremeProbeFlat(view, value) {
   view.setUint32(0, v, true);
   v = SC.getUint32(4, true);
   view.setUint32(4, v, true);
-  if (value.doubledFloor < -9223372036854775808n || value.doubledFloor > 100n) {
+  if (typeof value.doubledFloor !== "bigint" || value.doubledFloor < -9223372036854775808n || value.doubledFloor > 100n) {
     return -1;
   }
   SC.setBigUint64(0, value.doubledFloor - -9223372036854775808n, true);
@@ -2128,7 +2128,7 @@ export function WriteExtremeProbeFlat(view, value) {
   view.setUint32(8, v, true);
   v = SC.getUint32(4, true);
   view.setUint32(12, v, true);
-  if (value.ceilingRange < 1n || value.ceilingRange > 18446744073709551615n) {
+  if (typeof value.ceilingRange !== "bigint" || value.ceilingRange < 1n || value.ceilingRange > 18446744073709551615n) {
     return -1;
   }
   SC.setBigUint64(0, value.ceilingRange - 1n, true);
@@ -2287,7 +2287,7 @@ export function ReadExtremeProbeFlatBits(view, numBits, value) {
 // must hold ExtremeRowMaxBytes.
 export function WriteExtremeRowFlat(view, value) {
   let v = 0;
-  if (value.clampedFloor < -9223372036854775808n || value.clampedFloor > 100n) {
+  if (typeof value.clampedFloor !== "bigint" || value.clampedFloor < -9223372036854775808n || value.clampedFloor > 100n) {
     return -1;
   }
   SC.setBigUint64(0, value.clampedFloor - -9223372036854775808n, true);
@@ -2295,7 +2295,7 @@ export function WriteExtremeRowFlat(view, value) {
   view.setUint32(0, v, true);
   v = SC.getUint32(4, true);
   view.setUint32(4, v, true);
-  if (value.clampedCeiling < 1n || value.clampedCeiling > 18446744073709551614n) {
+  if (typeof value.clampedCeiling !== "bigint" || value.clampedCeiling < 1n || value.clampedCeiling > 18446744073709551614n) {
     return -1;
   }
   SC.setBigUint64(0, value.clampedCeiling - 1n, true);
