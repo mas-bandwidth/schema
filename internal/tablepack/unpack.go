@@ -252,20 +252,64 @@ func writeTree(m *tabletext.Model, inst *tabletext.Instance, root, dir string, o
 // a case-insensitive filesystem would merge them too — overlap. Every
 // declared field counts, written or not, so the shape a schema unpacks to
 // does not depend on the values.
+//
+// A name that is not plain portable ASCII counts as an overlap too: two
+// different Unicode spellings (é as one code point, or e and a combining
+// accent) are different keys but one path on a filesystem that normalizes
+// names, as macOS does, and no rule short of the filesystem's own says which
+// pairs those are. The whole root keeps such keys inside one JSON text, where
+// they stay distinct. An enum-keyed array's variant files are checked the
+// same way inside their directory.
 func treeNamesOverlap(st *ir.Struct, root string) bool {
-	taken := map[string]bool{strings.ToLower(root + ".json"): true}
+	taken := map[string]bool{}
+	claim := func(seen map[string]bool, name string) bool {
+		if !portableName(name) {
+			return true
+		}
+		folded := strings.ToLower(name)
+		if seen[folded] {
+			return true
+		}
+		seen[folded] = true
+		return false
+	}
+	if claim(taken, root+".json") {
+		return true
+	}
 	for _, f := range st.Fields {
 		name := ir.TableFieldJsonKey(f)
 		if f.KeyEnum == "" {
 			name += ".json"
 		}
-		name = strings.ToLower(name)
-		if taken[name] {
+		if claim(taken, name) {
 			return true
 		}
-		taken[name] = true
+		if f.KeyEnum == "" {
+			continue
+		}
+		variants := map[string]bool{}
+		for slot := tabletext.KeyedFirstSlot(); slot < tabletext.KeyedSlotCount(f); slot++ {
+			if claim(variants, tabletext.EnumName(f.KeyEnumRef, tabletext.KeyedSlotValue(f, slot))+".json") {
+				return true
+			}
+		}
 	}
 	return false
+}
+
+// portableName holds a name to the POSIX portable filename characters,
+// [A-Za-z0-9._-]: the names every filesystem stores as written.
+func portableName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '.' || c == '_' || c == '-') {
+			return false
+		}
+	}
+	return true
 }
 
 func unpackKeyed(m *tabletext.Model, fv *tabletext.Field, parent *os.Root, dir string) error {
