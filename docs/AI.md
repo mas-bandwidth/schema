@@ -374,10 +374,11 @@ table ShipConfig
 ```
 
 A plain `table` is the **variable** class: self-describing, fields identified
-by the hash of their names, so any build reads any other build's file.
-Unknown fields are skipped and counted, absent fields read as their defaults,
-and a narrower integer widens on read. Every such event is counted in a read
-report; damaged framing refuses the whole load.
+by the hash of their names, so a build reads another build's file across every
+lawful edit. Unknown fields are skipped and counted, absent fields read as
+their defaults, and a narrower integer widens on read and is counted. A read is
+one read: a changed kind, a value past its bound or damaged framing refuses the
+whole load by name, and nothing is clamped.
 
 ```schema
 fixed table Physics

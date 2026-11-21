@@ -66,7 +66,7 @@ yours**, by an explicit permanent grant in [LICENSE](../LICENSE).
    compiled out may write an off-declaration value; the reader on the other end
    refuses it. **No target panics on a write and none throws.**
 5. **The read side is untouched by that doctrine.** A read faces untrusted data
-   and keeps every mandated check, in every build; the tolerant read IS the
+   and keeps every mandated check, in every build; the one read IS the
    verifier, and the wire fuzzer is the gate on that claim.
 6. **`make` is the one entry** for build, generate, test and bench. A leg is
    added as a target, never as a script somebody remembers to run.

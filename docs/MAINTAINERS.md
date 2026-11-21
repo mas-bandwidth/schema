@@ -85,10 +85,10 @@ the opinionated layers built on top of it living elsewhere. The boundary, in Gle
 words (2026-08-25): *"schema is types and bitpacking and enums and constants."*
 
 - **The table layer is part of the language.** `table` declares a data type on
-  the evolution-tolerant table wire, and docs/SPEC-TABLES.md is its normative page
+  the evolving table wire, and docs/SPEC-TABLES.md is its normative page
   beside docs/SPEC.md. `type` is the realtime wire (hardcoded structs, one protocol
-  id, same-or-refuse) and `table` is the tolerant one (identity by name hash, unknown
-  fields skipped, absent fields defaulted, any reader reads any data). Collections
+  id, same-or-refuse) and `table` is the evolving one (identity by name hash, unknown
+  fields skipped and counted, absent fields defaulted, every lawful edit read, anything else refused by name). Collections
   live in a `table` body alone: the unbounded `map[K]V` and `[]T` are declarable there
   and refused by name in a `type` (SPEC.md §1, SPEC-TABLES.md §2.8, §2.9). The data
   path is schema's too, as `schema pack`, `unpack`, `cook`, `cook-check` and `uncook`

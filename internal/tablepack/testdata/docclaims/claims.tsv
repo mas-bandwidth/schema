@@ -1,25 +1,59 @@
 # case	root	edit	verdict	unknown	widened	page	says
-field-removed	Ship	-	read	1	0	README.md	-
-field-added	Ship	-	read	0	0	README.md	-
-enum-variant-unknown	Ship	-	read	1	0	README.md	-
-enum-variant-inserted	Ship	-	read	0	0	README.md	-
-range-tightened	Ship	-	refused	-	-	README.md	-
-range-tightened-in-range	Ship	-	read	0	0	README.md	-
-kind-changed	Ship	-	refused	-	-	README.md	-
-kind-widened	Ship	-	read	0	1	README.md	-
-bound-shrunk	Cargo	-	refused	-	-	README.md	-
-bound-shrunk-fits	Cargo	-	read	0	0	README.md	-
-capacity-shrunk	Ship	-	refused	-	-	README.md	-
-map-key-ascending	Ledger	-	read	0	0	README.md	-
-map-key-descending	Ledger	-	refused	-	-	README.md	-
-map-key-repeated	Ledger	-	refused	-	-	README.md	-
-map-key-over-bound	Fleet	-	refused	-	-	README.md	-
-map-key-kind-changed	Fleet	-	refused	-	-	README.md	-
-map-key-widened	Fleet	-	read	0	1	README.md	-
-text-list-total	Handover	-	refused	-	-	README.md	-
-required-added	Profile	-	refused	-	-	README.md	-
-optional-to-plain	Seat	-	read	0	0	README.md	-
-damaged-cut	Ship	cut:17	refused	-	-	README.md	-
-form-unknown	Ship	byte0:7f	refused	-	-	README.md	-
-text-repeated-key	Ship	text	refused	-	-	README.md	-
-text-out-of-range	Ship	text	refused	-	-	README.md	-
+field-removed	Ship	-	read	1	0	docs/USAGE.md	unknown fields are skipped by their kind and counted
+field-removed	Ship	-	read	1	0	docs/AI.md	Unknown fields are skipped and counted
+field-removed	Ship	-	read	1	0	docs/TUTORIAL.md	the file's `max_speed` has no home here, so it was skipped by its
+field-added	Ship	-	read	0	0	docs/USAGE.md	absent fields take their declared defaults
+field-added	Ship	-	read	0	0	docs/AI.md	absent fields read as their defaults
+field-added	Ship	-	read	0	0	docs/TUTORIAL.md	a field the file never heard of takes its declared default
+enum-variant-unknown	Ship	-	read	1	0	docs/USAGE.md	an enum variant or a union arm removed (a stored use reads as `None` or empty and counts `unknown`)
+enum-variant-unknown	Ship	-	read	1	0	docs/TUTORIAL.md	the `Interceptor` variant it has no name for loaded as `None`, also counted, never as a neighbor
+enum-variant-inserted	Ship	-	read	0	0	docs/TUTORIAL.md	inserting `Interceptor` in the middle moved nothing
+range-tightened	Ship	-	refused	-	-	docs/USAGE.md	a stored value outside it refuses the whole load, `out_of_range`; the reader never clamps
+range-tightened	Ship	-	refused	-	-	docs/TUTORIAL.md	A value it cannot hold refuses the load by name
+range-tightened	Ship	-	refused	-	-	docs/FAQ.md	a value past its declared bound refuses (`out_of_range`)
+range-tightened	Ship	-	refused	-	-	docs/VERSIONING.md	A tightened range refuses every stored file holding a value past it.
+range-tightened	Ship	-	refused	-	-	docs/COMPARISON-TABLES.md	refuse `out_of_range` on the table wire
+range-tightened	Ship	-	refused	-	-	docs/JAVA-DIALECT.md	a load refuses a wire value past them, naming `out_of_range`
+range-tightened-in-range	Ship	-	read	0	0	docs/VERSIONING.md	A tightened range refuses every stored file holding a value past it.
+kind-changed	Ship	-	refused	-	-	docs/USAGE.md	a field whose kind changed otherwise refuses the load (`kind_mismatch`) rather than being misdecoded
+kind-changed	Ship	-	refused	-	-	docs/FAQ.md	A changed kind refuses (`kind_mismatch`)
+kind-changed	Ship	-	refused	-	-	docs/COMPARISON-TABLES.md	`kind_mismatch`: the load refuses, never misdecoded
+kind-changed	Ship	-	refused	-	-	docs/TUTORIAL.md	an integer read as a float is another number, so the whole load refuses
+kind-widened	Ship	-	read	0	1	docs/USAGE.md	decodes exactly and counts `widened`
+kind-widened	Ship	-	read	0	1	docs/FAQ.md	a kind that merely grew decoded exactly and counted `widened`
+kind-widened	Ship	-	read	0	1	docs/TUTORIAL.md	An `int32` read into an `int64` is exact, so the value lands and `widened` counts it
+kind-narrowed	Ship	-	refused	-	-	docs/TUTORIAL.md	The reverse, an `int64` read as an `int32`, is a kind mismatch.
+bound-shrunk	Cargo	-	refused	-	-	docs/USAGE.md	a count past your bound refuses the load `count_over_bound`, never cut to a prefix
+bound-shrunk	Cargo	-	refused	-	-	docs/COMPARISON-TABLES.md	a stored count past the new bound refuses the load (`count_over_bound`)
+bound-shrunk-fits	Cargo	-	read	0	0	docs/USAGE.md	files written under the old bound still load when they fit
+bound-shrunk-fits	Cargo	-	read	0	0	docs/COMPARISON-TABLES.md	a count within it reads
+capacity-shrunk	Ship	-	refused	-	-	docs/USAGE.md	a stored count or string past the new bound refuses the whole load, `count_over_bound` or `length_over_bound`
+map-key-ascending	Ledger	-	read	0	0	docs/USAGE.md	A map's keys ascend strictly on the wire
+map-key-descending	Ledger	-	refused	-	-	docs/USAGE.md	a repeated key and a descending key are both input no conforming writer produces: the read refuses the whole load
+map-key-descending	Ledger	-	refused	-	-	docs/PORTING.md	a repeated key and a descending key are each damage, and the whole load refuses `wire_damaged`
+map-key-repeated	Ledger	-	refused	-	-	docs/USAGE.md	a repeated key and a descending key are both input no conforming writer produces: the read refuses the whole load
+map-key-repeated	Ledger	-	refused	-	-	docs/PORTING.md	a repeated key and a descending key are each damage, and the whole load refuses `wire_damaged`
+map-key-over-bound	Fleet	-	refused	-	-	docs/USAGE.md	A key past the reader's bound refuses the whole load (`length_over_bound`); nothing is dropped and nothing is clamped.
+map-key-over-bound	Fleet	-	refused	-	-	docs/PORTING.md	a key past the bound refuses `length_over_bound`
+map-key-kind-changed	Fleet	-	refused	-	-	docs/USAGE.md	A key kind that disagrees refuses it too (`kind_mismatch`)
+map-key-kind-changed	Fleet	-	refused	-	-	docs/PORTING.md	a key kind the reader does not declare refuses `kind_mismatch`
+map-key-widened	Fleet	-	read	0	1	docs/USAGE.md	a key kind the reader's own WIDENS decodes exactly and counts one `widened`
+text-list-total	Handover	-	refused	-	-	docs/USAGE.md	every read of a stored list past the total refuses the whole load (`length_over_bound`
+required-added	Profile	-	refused	-	-	docs/USAGE.md	a newer reader refuses it as `missing_required`
+required-added	Profile	-	refused	-	-	docs/TUTORIAL.md	and a required field that is missing
+optional-to-plain	Seat	-	read	0	0	docs/USAGE.md	a present body at its defaults reads into a plain `T` as those defaults
+optional-to-plain	Seat	-	read	0	0	docs/VERSIONING.md	an old plain reader reads that body as the declared defaults
+pointer-to-plain	Seat	-	refused	-	-	docs/USAGE.md	moving a field between `*T` and either of the other two refuses the load (`kind_mismatch`
+pointer-to-plain	Seat	-	refused	-	-	docs/SPEC-TABLES.md	between a pointer and either of the other two is a REFUSED edit: §4's kind mismatch, and the whole load refuses `kind_mismatch`.
+timestamp-respelled	Event	-	refused	-	-	docs/SPEC-TABLES.md	field respelled between `int64` and `timestamp` is a kind mismatch, and the whole load refuses in both directions
+union-arm-kind-changed	Hold	-	refused	-	-	docs/PORTING.md	a retyped arm is an ordinary KIND MISMATCH, and the whole load refuses `kind_mismatch`
+union-arm-unchanged	Hold	-	read	0	0	docs/PORTING.md	a retyped arm is an ordinary KIND MISMATCH, and the whole load refuses `kind_mismatch`
+damaged-cut	Ship	cut:17	refused	-	-	docs/USAGE.md	a read that meets it refuses the whole load (`wire_damaged`) and hands back nothing to use
+damaged-cut	Ship	cut:17	refused	-	-	docs/FAQ.md	framing damage anywhere refuses (`wire_damaged`)
+damaged-cut	Ship	cut:17	refused	-	-	docs/TUTORIAL.md	Nothing of the file is used, at any cut.
+form-unknown	Ship	byte0:7f	refused	-	-	docs/FAQ.md	a form byte the reader does not know refuses by name
+form-unknown	Ship	byte0:7f	refused	-	-	docs/TUTORIAL.md	a reader that meets a form it does not carry stops without decoding a thing
+text-repeated-key	Ship	text	refused	-	-	docs/USAGE.md	a key the text gives twice refuses the whole read too — never last-wins
+text-repeated-key	Ship	text	refused	-	-	docs/TUTORIAL.md	write `armor` twice and the whole read refuses (`malformed`)
+text-out-of-range	Ship	text	refused	-	-	docs/USAGE.md	an out-of-range number refuses (`out_of_range`)
+text-out-of-range	Ship	text	refused	-	-	docs/TUTORIAL.md	write `"armor": 11` and it refuses `out_of_range`

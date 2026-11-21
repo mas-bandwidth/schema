@@ -2006,13 +2006,16 @@ written; a present one always is, even at its defaults — so "absent" and
 "present with nothing to say" stay two different values, and a reader that
 sees the field sets `_present` whatever it contains.
 
-The framing is the ordinary field's, which makes `?T`, `*T` and a plain `T`
-nesting **three spellings of one field**: for any value that is not entirely
-default, move a field among the three and no byte changes, in either
+The framing is the ordinary field's, which makes `?T` and a plain `T`
+nesting **two spellings of one field**: for any value that is not entirely
+default, move a field between the two and no byte changes, in either
 direction. The one difference is at the empty end — a plain `T` holding
-nothing but defaults writes nothing, while a present `?T` and a non-null `*T`
-write a body — and no direction misdecodes: an absent field reads as the
-declared default, as null, or as absent, each of which is right.
+nothing but defaults writes nothing, while a present `?T` writes a body —
+and no direction misdecodes: an absent field reads as the declared default
+or as absent, and a present body at its defaults reads into a plain `T` as
+those defaults. A `*T` is not a third spelling: a pointer rides as a node
+index under its own kind, so moving a field between `*T` and either of the
+other two refuses the load (`kind_mismatch`, SPEC-TABLES.md §2.3).
 
 `?` goes on nested tables and types, enums, flags, scalars, and bounded
 arrays of those — `?[..N]T` and `?[N]T`. An optional array rides whole when
