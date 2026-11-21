@@ -71,29 +71,6 @@ func (c *checker) closureStruct(wireOrDeclName string) *ir.Struct {
 	return nil
 }
 
-func findBaselineTable(u *baseline.Unit, name string) *baseline.Table {
-	for i := range u.Tables {
-		t := &u.Tables[i]
-		if t.Name == name || (t.Declared != "" && t.Declared == name) {
-			return t
-		}
-	}
-	return nil
-}
-
-func findBaselineField(t *baseline.Table, name string, id uint64) *baseline.Field {
-	if t == nil {
-		return nil
-	}
-	for i := range t.Fields {
-		f := &t.Fields[i]
-		if f.Name == name || (id != 0 && f.Id == id) {
-			return f
-		}
-	}
-	return nil
-}
-
 func findBaselineEnum(u *baseline.Unit, name string) *baseline.Enum {
 	for i := range u.Enums {
 		if u.Enums[i].Name == name {
@@ -169,8 +146,8 @@ func (c *checker) checkBaselineRetiredNames(paths []string) {
 			if refusedTables[tableName] || !c.declaresOrAliasesName(tableName) {
 				continue
 			}
-			bt := findBaselineTable(base, tableName)
-			lt := findBaselineTable(live, tableName)
+			bt := base.Table(tableName)
+			lt := live.Table(tableName)
 			if r.Revived != "" && equalBaselineTable(bt, lt) {
 				continue
 			}
@@ -179,12 +156,15 @@ func (c *checker) checkBaselineRetiredNames(paths []string) {
 				tableName, r.Id, baseline.FileName)
 
 		case "field":
-			tableName, fieldName, ok := strings.Cut(r.Name, ".")
+			// THE MATCH IS SCOPED to the table the field was retired from, and
+			// it is the baseline package's own (baseline.Retired.Names): a
+			// field id is the hash of the bare name, so it rides in every
+			// table with a field of that name
+			tableName, fieldName, ok := r.Scope()
 			if !ok {
 				continue
 			}
-			bt := findBaselineTable(base, tableName)
-			lt := findBaselineTable(live, tableName)
+			bt := base.Table(tableName)
 			// If the enclosing table itself left the baseline when its fields
 			// were retired, and the table name is now re-declared or aliased in
 			// the unit without a matching acknowledged resurrection, refuse the
@@ -195,12 +175,12 @@ func (c *checker) checkBaselineRetiredNames(paths []string) {
 					tableName, baseline.FileName, r.Name, r.Id)
 			}
 
-			lf := findBaselineField(lt, fieldName, r.Id)
+			lf := live.RetiredField(r)
 			st := c.closureStruct(tableName)
 			var irField *ir.Field
 			if st != nil {
 				for _, f := range st.Fields {
-					if f.Name == fieldName || f.WasName == fieldName || ir.TableFieldWireId(f) == r.Id {
+					if r.Names(tableName, f.Name, f.WasName, ir.TableFieldWireId(f)) {
 						irField = f
 						break
 					}
@@ -209,7 +189,7 @@ func (c *checker) checkBaselineRetiredNames(paths []string) {
 			if lf == nil && irField == nil {
 				continue
 			}
-			bf := findBaselineField(bt, fieldName, r.Id)
+			bf := base.RetiredField(r)
 			if r.Revived != "" &&
 				bf != nil && lf != nil &&
 				bf.Name == fieldName && lf.Name == fieldName &&
@@ -221,7 +201,7 @@ func (c *checker) checkBaselineRetiredNames(paths []string) {
 				r.Name, r.Id, baseline.FileName)
 
 		case "enum-variant":
-			enumName, variantName, ok := strings.Cut(r.Name, ".")
+			enumName, variantName, ok := r.Scope()
 			if !ok {
 				continue
 			}
@@ -235,7 +215,7 @@ func (c *checker) checkBaselineRetiredNames(paths []string) {
 				if i < len(en.Was) {
 					was = en.Was[i]
 				}
-				if en.Variants[i] == variantName || was == variantName || ir.TableWireId(en.VariantWireName(i)) == r.Id {
+				if r.Names(enumName, en.Variants[i], was, ir.TableWireId(en.VariantWireName(i))) {
 					matchedIdx = i
 					break
 				}
@@ -274,21 +254,11 @@ func (c *checker) checkBaselineRetiredNames(paths []string) {
 				r.Name, r.Id, baseline.FileName)
 
 		case "union-arm":
-			unionName, armName, ok := strings.Cut(r.Name, ".")
+			unionName, armName, ok := r.Scope()
 			if !ok {
 				continue
 			}
-			lu := findBaselineUnion(live, unionName)
-			if lu == nil {
-				continue
-			}
-			var la *baseline.Field
-			for i := range lu.Arms {
-				if lu.Arms[i].Name == armName || lu.Arms[i].Id == r.Id {
-					la = &lu.Arms[i]
-					break
-				}
-			}
+			la := live.RetiredArm(r)
 			if la == nil {
 				continue
 			}
