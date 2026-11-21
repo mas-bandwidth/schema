@@ -180,4 +180,9 @@ func pythonRefusePacketUnionArrays(u *ir.Unit) error {
 func init() {
 	registerBuiltin(pythonTarget{}, true, true, false, false)
 	wasRowTargets = append(wasRowTargets, "python")
+	// Python carries string, bytes and flags defaults on the FORM-1 table
+	// wire in every field shape: a default lives on a plain field of a table
+	// or a type, and the parser refuses one on a container in every target
+	// (TestValueDefaultsEveryShape).
+	valueDefaultTargets = append(valueDefaultTargets, "python")
 }
