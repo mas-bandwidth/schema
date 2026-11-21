@@ -16,6 +16,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -542,5 +543,47 @@ func TestNoCommandDamagesAFileItRewrites(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestGenerateOverAReadOnlyFile is the reviewer's read-only run without the
+// binary: one file of an earlier generation is read-only, and generate over
+// it is refused. It used to exit 1 having already replaced the files that
+// sort before the read-only one, new beside old; now every file is the one
+// the earlier run wrote, nothing is added and nothing removed, and with the
+// file writable again the retry writes them all.
+func TestGenerateOverAReadOnlyFile(t *testing.T) {
+	t.Parallel()
+	if os.Geteuid() == 0 {
+		t.Skip("root writes a read-only file")
+	}
+	var generate atomicCase
+	for _, tc := range atomicCases {
+		if tc.name == "generate" {
+			generate = tc
+		}
+	}
+	dir, run := generate.setup(t)
+	locked := filepath.Join(dir, "PlayerTable.go")
+	if err := os.Chmod(locked, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	ageTree(t, dir)
+	before := snapshotTree(t, dir)
+	err := run()
+	if !errors.Is(err, fs.ErrPermission) || !strings.Contains(err.Error(), "nothing was changed") {
+		t.Errorf("generate over a read-only file = %v; want permission denied, saying nothing was changed", err)
+	}
+	assertSameTree(t, "after generate was refused by a read-only file", before, snapshotTree(t, dir))
+
+	if err := os.Chmod(locked, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(); err != nil {
+		t.Fatalf("the retry with the file writable: %v", err)
+	}
+	after := snapshotTree(t, dir)
+	if _, stale := after["PlayerStale.go"]; stale || !strings.Contains(after["PlayerTable.go"].data, "new table") || !strings.Contains(after["PlayerBlock.go"].data, "this run adds") {
+		t.Errorf("the retry did not write the run whole: %v", treeNamesOf(after))
 	}
 }

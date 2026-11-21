@@ -254,6 +254,7 @@ type View struct {
 	t    *Txn
 	f    Files
 	root *os.Root
+	dir  string // every name is taken inside it
 }
 
 // With answers the view of t that works through f.
@@ -273,24 +274,10 @@ func (t *Txn) OpenRoot(dir string) (View, error) {
 }
 
 // Under answers the view of the directory dir inside this one: every name is
-// taken inside dir. It has no root of its own to read through.
-func (v View) Under(dir string) View { return View{t: v.t, f: v.f.under(dir)} }
-
-// under is f with every name taken inside the directory dir.
-func (f Files) under(dir string) Files {
-	in := func(name string) string { return filepath.Join(dir, name) }
-	g := f
-	g.Create = func(name string, mode fs.FileMode) (*os.File, error) { return f.Create(in(name), mode) }
-	g.Write = func(file *os.File, name string, data []byte) error { return f.Write(file, in(name), data) }
-	g.Rename = func(oldname, newname string) error { return f.Rename(in(oldname), in(newname)) }
-	g.Remove = func(name string) error { return f.Remove(in(name)) }
-	g.RemoveAll = func(name string) error { return f.RemoveAll(in(name)) }
-	g.Lstat = func(name string) (fs.FileInfo, error) { return f.Lstat(in(name)) }
-	g.Readlink = func(name string) (string, error) { return f.Readlink(in(name)) }
-	g.Mkdir = func(name string, mode fs.FileMode) error { return f.Mkdir(in(name), mode) }
-	g.Probe = func(name string) error { return f.Probe(in(name)) }
-	g.base = filepath.Join(f.base, dir)
-	return g
+// taken inside dir, which the commit makes if it is not there. It has no
+// root of its own to read through.
+func (v View) Under(dir string) View {
+	return View{t: v.t, f: v.f, dir: filepath.Join(v.dir, dir)}
 }
 
 // Root is the root this view is confined to, for reading; nil for a view
@@ -301,20 +288,20 @@ func (v View) Root() *os.Root { return v.root }
 // a new one takes mode. A later Write to the same file replaces an earlier
 // one.
 func (v View) Write(path string, data []byte, mode fs.FileMode) {
-	v.t.changes = append(v.t.changes, &change{kind: write, f: v.f, path: path, data: data, mode: mode})
+	v.t.changes = append(v.t.changes, &change{kind: write, f: v.f, path: filepath.Join(v.dir, path), data: data, mode: mode})
 }
 
-// Remove stages the removal of the entry at path: a file, a symbolic link
+// Delete stages the removal of the entry at path: a file, a symbolic link
 // itself, or a directory with everything under it. An entry that is not
 // there when the commit reaches it is no change.
-func (v View) Remove(path string) {
-	v.t.changes = append(v.t.changes, &change{kind: remove, f: v.f, path: path})
+func (v View) Delete(path string) {
+	v.t.changes = append(v.t.changes, &change{kind: remove, f: v.f, path: filepath.Join(v.dir, path)})
 }
 
 // Respell stages the rename of the entry at path to another spelling of the
 // same name, for a filesystem that folds case and keeps the old spelling.
 func (v View) Respell(path, to string) {
-	v.t.changes = append(v.t.changes, &change{kind: respell, f: v.f, path: path, to: to})
+	v.t.changes = append(v.t.changes, &change{kind: respell, f: v.f, path: filepath.Join(v.dir, path), to: filepath.Join(v.dir, to)})
 }
 
 // Write stages data as the content of the plain path. See [View.Write].
@@ -322,8 +309,8 @@ func (t *Txn) Write(path string, data []byte, mode fs.FileMode) {
 	t.With(OS()).Write(path, data, mode)
 }
 
-// Remove stages the removal of the entry at the plain path. See [View.Remove].
-func (t *Txn) Remove(path string) { t.With(OS()).Remove(path) }
+// Delete stages the removal of the entry at the plain path. See [View.Delete].
+func (t *Txn) Delete(path string) { t.With(OS()).Delete(path) }
 
 // WriteFile replaces the content of one file, or creates it: the whole new
 // content, or the file as it was.

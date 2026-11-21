@@ -82,6 +82,7 @@ var catalog = []Entry{
 
 	// internal/
 	e("internal/ast", "parsed *.schema form", "go test ./internal/parser", "go test ./internal/parser"),
+	e("internal/atomicfile", "the one publisher every CLI write goes through", "go test ./internal/atomicfile", "go test ./internal/atomicfile"),
 	e("internal/baseline", "tables baseline pins", "go test ./internal/baseline", "go test ./internal/baseline"),
 	e("internal/check", "resolve, check, lower to IR", "go test ./internal/check", "go test ./internal/check"),
 	e("internal/ci", "workflow pin and SDK gates", "go test ./internal/ci", "go test ./internal/ci"),

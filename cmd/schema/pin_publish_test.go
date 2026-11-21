@@ -2,11 +2,14 @@ package main
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/mas-bandwidth/schema/v2/internal/atomicfile"
 )
 
 // pinPublishTree is two packages at v2.5.0 and the changes that move both to
@@ -51,6 +54,13 @@ func assertAlone(t *testing.T, what, dir string) {
 	}
 }
 
+// pinSeam is the publisher's file operations with rename replaced.
+func pinSeam(rename func(oldpath, newpath string) error) atomicfile.Files {
+	f := atomicfile.OS()
+	f.Rename = rename
+	return f
+}
+
 // failOnce fails the first rename onto path, the publication of that file,
 // and lets every other rename through, the ones that put entries back
 // included.
@@ -83,7 +93,7 @@ func TestPinPublishAllOrNothing(t *testing.T) {
 	t.Run("no failure: both files move", func(t *testing.T) {
 		t.Parallel()
 		dirs, changes := pinPublishTree(t)
-		if err := publishPins(osPinFiles, changes); err != nil {
+		if err := publishPins(atomicfile.OS(), changes); err != nil {
 			t.Fatal(err)
 		}
 		assertPinTree(t, "published", dirs, changes, next)
@@ -93,17 +103,16 @@ func TestPinPublishAllOrNothing(t *testing.T) {
 		t.Parallel()
 		dirs, changes := pinPublishTree(t)
 		renames := 0
-		f := pinFiles{
-			createTemp: func(dir, pattern string) (*os.File, error) {
-				if dir == dirs[1] {
-					return nil, errDisk
-				}
-				return os.CreateTemp(dir, pattern)
-			},
-			rename: func(oldpath, newpath string) error {
-				renames++
-				return os.Rename(oldpath, newpath)
-			},
+		f := pinSeam(func(oldpath, newpath string) error {
+			renames++
+			return os.Rename(oldpath, newpath)
+		})
+		create := f.Create
+		f.Create = func(name string, mode fs.FileMode) (*os.File, error) {
+			if filepath.Dir(name) == dirs[1] {
+				return nil, errDisk
+			}
+			return create(name, mode)
 		}
 		err := publishPins(f, changes)
 		if !errors.Is(err, errDisk) || !strings.Contains(err.Error(), "nothing was changed") {
@@ -115,7 +124,7 @@ func TestPinPublishAllOrNothing(t *testing.T) {
 		assertPinTree(t, "after a stage failure", dirs, changes, orig)
 
 		// the retry, on a tree that is still all old, moves both
-		if err := publishPins(osPinFiles, changes); err != nil {
+		if err := publishPins(atomicfile.OS(), changes); err != nil {
 			t.Fatal(err)
 		}
 		assertPinTree(t, "the retry", dirs, changes, next)
@@ -124,7 +133,7 @@ func TestPinPublishAllOrNothing(t *testing.T) {
 	t.Run("publishing the second file fails", func(t *testing.T) {
 		t.Parallel()
 		dirs, changes := pinPublishTree(t)
-		f := pinFiles{createTemp: os.CreateTemp, rename: failOnce(changes[1].path, errDisk)}
+		f := pinSeam(failOnce(changes[1].path, errDisk))
 		err := publishPins(f, changes)
 		if !errors.Is(err, errDisk) || !strings.Contains(err.Error(), "nothing was changed") {
 			t.Errorf("publishPins = %v; want the publish failure, saying nothing was changed", err)
@@ -135,15 +144,12 @@ func TestPinPublishAllOrNothing(t *testing.T) {
 	t.Run("moving the second original aside fails", func(t *testing.T) {
 		t.Parallel()
 		dirs, changes := pinPublishTree(t)
-		f := pinFiles{
-			createTemp: os.CreateTemp,
-			rename: func(oldpath, newpath string) error {
-				if oldpath == changes[1].path {
-					return errDisk
-				}
-				return os.Rename(oldpath, newpath)
-			},
-		}
+		f := pinSeam(func(oldpath, newpath string) error {
+			if oldpath == changes[1].path {
+				return errDisk
+			}
+			return os.Rename(oldpath, newpath)
+		})
 		err := publishPins(f, changes)
 		if !errors.Is(err, errDisk) || !strings.Contains(err.Error(), "nothing was changed") {
 			t.Errorf("publishPins = %v; want the failure, saying nothing was changed", err)
@@ -175,7 +181,7 @@ func TestPinPublishAllOrNothing(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		f := pinFiles{createTemp: os.CreateTemp, rename: failOnce(changes[1].path, errDisk)}
+		f := pinSeam(failOnce(changes[1].path, errDisk))
 		err = publishPins(f, changes)
 		if !errors.Is(err, errDisk) || !strings.Contains(err.Error(), "nothing was changed") {
 			t.Errorf("publishPins = %v; want the publish failure, saying nothing was changed", err)
@@ -240,7 +246,7 @@ func TestPinPublishAllOrNothing(t *testing.T) {
 			assertAlone(t, what, realDir)
 		}
 
-		f := pinFiles{createTemp: os.CreateTemp, rename: failOnce(changes[1].path, errDisk)}
+		f := pinSeam(failOnce(changes[1].path, errDisk))
 		err = publishPins(f, changes)
 		if !errors.Is(err, errDisk) || !strings.Contains(err.Error(), "nothing was changed") {
 			t.Errorf("publishPins = %v; want the publish failure, saying nothing was changed", err)
@@ -255,7 +261,7 @@ func TestPinPublishAllOrNothing(t *testing.T) {
 			t.Errorf("after a failed pin the linked file is not the entry it was (same file %v, last written %v; want %v)", os.SameFile(before, after), after.ModTime(), pinOld)
 		}
 
-		if err := publishPins(osPinFiles, changes); err != nil {
+		if err := publishPins(atomicfile.OS(), changes); err != nil {
 			t.Fatal(err)
 		}
 		assertLink("after a pin")
@@ -272,20 +278,17 @@ func TestPinPublishAllOrNothing(t *testing.T) {
 		t.Parallel()
 		dirs, changes := pinPublishTree(t)
 		onto := 0
-		f := pinFiles{
-			createTemp: os.CreateTemp,
-			rename: func(oldpath, newpath string) error {
-				switch newpath {
-				case changes[1].path:
-					return errDisk // publishing the second, and putting it back
-				case changes[0].path:
-					if onto++; onto > 1 {
-						return errDisk // putting the first entry back
-					}
+		f := pinSeam(func(oldpath, newpath string) error {
+			switch newpath {
+			case changes[1].path:
+				return errDisk // publishing the second, and putting it back
+			case changes[0].path:
+				if onto++; onto > 1 {
+					return errDisk // putting the first entry back
 				}
-				return os.Rename(oldpath, newpath)
-			},
-		}
+			}
+			return os.Rename(oldpath, newpath)
+		})
 		err := publishPins(f, changes)
 		if !errors.Is(err, errDisk) || !strings.Contains(err.Error(), "HALF MOVED") {
 			t.Fatalf("publishPins = %v; want the publish failure, saying the pin is half moved", err)
