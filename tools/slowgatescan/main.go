@@ -1306,7 +1306,14 @@ func namedPackages(cmd string) []string {
 		tok = strings.Trim(tok, "\"'")
 		switch {
 		case tok == "./...":
-			add("./...")
+			// under a `cd <dir> &&` it is that directory's subtree, not the
+			// repository's; a directory this scan cannot read keeps the
+			// widest reading
+			if base != "" && !strings.Contains(base, "$") {
+				add("./" + filepath.ToSlash(filepath.Clean(base)) + "/...")
+			} else {
+				add("./...")
+			}
 		case tok == "." || tok == "./":
 			if base == "" {
 				continue
