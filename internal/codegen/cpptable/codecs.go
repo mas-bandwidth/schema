@@ -2002,11 +2002,22 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind, sfx s
 		// A NaN OR AN INFINITY IS REFUSED, NEVER WRITTEN (docs/SPEC-TABLES.md §3.3)
 		g.pf("%sif ( !TableFloatFinite( %s ) ) { return false; } // a NaN or an infinity is refused (§3.3)\n", ind, expr)
 		g.emitRequiredRangeCheck(f, expr, ind, "return false;")
-		g.pf("%sw.put32( table_float_to_bits( %s ) );\n", ind, expr)
+		if f.HasFloatRange {
+			// A COMPRESSED FLOAT'S -0 IS STORED AS +0 (docs/SPEC-TABLES.md §3.3;
+			// ruling fixed-compressed-negzero), the bits +0 rides as, so a -0
+			// under a non-zero default never rides its sign bit
+			g.pf("%sw.put32( ( !( %s < 0.0f ) && !( %s > 0.0f ) ) ? 0u : table_float_to_bits( %s ) ); // -0 is stored as +0\n", ind, expr, expr, expr)
+		} else {
+			g.pf("%sw.put32( table_float_to_bits( %s ) );\n", ind, expr)
+		}
 	case tkF64:
 		g.pf("%sif ( !TableFloatFinite( %s ) ) { return false; } // a NaN or an infinity is refused (§3.3)\n", ind, expr)
 		g.emitRequiredRangeCheck(f, expr, ind, "return false;")
-		g.pf("%sw.put64( table_double_to_bits( %s ) );\n", ind, expr)
+		if f.HasFloatRange {
+			g.pf("%sw.put64( ( !( %s < 0.0 ) && !( %s > 0.0 ) ) ? 0ull : table_double_to_bits( %s ) ); // -0 is stored as +0\n", ind, expr, expr, expr)
+		} else {
+			g.pf("%sw.put64( table_double_to_bits( %s ) );\n", ind, expr)
+		}
 	case tkString:
 		g.pf("%s{\n", ind)
 		if ir.TextListUnbounded(f) {
@@ -2863,6 +2874,11 @@ func (g *tableGen) emitTableReadScalarFromChecked(f *ir.Field, kind int, lvalue,
 			if f.HasFloatRange {
 				g.pf("%[1]s        if ( decoded_f < %[2]s )\n%[1]s        {\n%[1]s            decoded_f = %[3]s;\n%[1]s            r.report->refused = true;\n%[1]s            r.report->refuse_reason = out_of_range;\n%[1]s        }\n", ind, formatFloat(f.FMin, true), formatFloat(f.FMin, true))
 				g.pf("%[1]s        else if ( decoded_f > %[2]s )\n%[1]s        {\n%[1]s            decoded_f = %[3]s;\n%[1]s            r.report->refused = true;\n%[1]s            r.report->refuse_reason = out_of_range;\n%[1]s        }\n", ind, formatFloat(f.FMax, true), formatFloat(f.FMax, true))
+				// A COMPRESSED FLOAT'S -0 IS +0 (docs/SPEC-TABLES.md §3.3; ruling
+				// fixed-compressed-negzero): it lands as the value 0, uncounted,
+				// as the fixed form's fixedNegZero lands it. Neither below nor
+				// above zero is zero, and spells no float ==.
+				g.pf("%[1]s        if ( !( decoded_f < 0.0f ) && !( decoded_f > 0.0f ) ) { decoded_f = 0.0f; } // -0 lands as +0\n", ind)
 			}
 			g.pf("%s        %s = decoded_f;\n", ind, lvalue)
 		} else {
