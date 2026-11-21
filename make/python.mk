@@ -77,6 +77,11 @@ packet-finite-python-negative-control: python-toolchain-check
 # The tag remains accepted by existing leg gates; the target is built in.
 build/schema-python: $(shell find compiler internal cmd ir -name '*.go' 2>/dev/null)
 	go build -o $@ ./cmd/schema
+# The runtime the compiler embeds and emits verbatim, and SERIALIZE_PIN beside
+# it: a vendored serialize.py bump changes both, and either must rebuild the
+# compiler and so build/conformance-python, or a stale runtime can pass.
+# TestConformanceCompilersRebuildOnTheirRuntime holds it.
+build/schema-python: $(shell find internal/codegen/python/runtime -type f 2>/dev/null)
 
 # build/conformance-python is the tables manifest's units generated for
 # python, one directory per unit key. A unit the target refuses leaves its

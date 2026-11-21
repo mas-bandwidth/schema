@@ -510,6 +510,19 @@ eighteen with no build tag; a new leg still behind its own
 `schema_leg_<name>` tag registers only under it, and a leg with no
 registration is refused rather than read as claiming nothing.
 
+**A TICKED CELL MAY NOT BE ABSENT EITHER.** A ✅ in ROADMAP.md says the leg
+carries that row's feature, so under `--claims` a case whose roadmap row is
+ticked for the leg is owed whatever the carries registry says. Answering it
+ABSENT — a `<case>.absent` file, a surface left out of `list`, or exit code 2
+on the surface, which is how a leg whose generator refused the unit says so —
+fails the leg by name and row, and the coverage cell counts it with `!N`
+(`absent !N` for a whole surface). Which rows a case reads is one table,
+`caseRows` in `harness/ticked.go`, by surface and the root's class; the ticks
+are read from the committed ROADMAP.md, the row ids from docs/roadmap.sexp,
+and `harness/ticked_test.go` holds every row the table names to the committed
+roadmap and carries the reversed witnesses. A row not ticked for the leg keeps
+the rule above: its absence is the work left, counted and not red.
+
 ## The wire-fuzz driver
 
 `harness wire-fuzz` checks the single read contract in one process per leg.

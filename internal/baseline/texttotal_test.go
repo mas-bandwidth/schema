@@ -2,7 +2,7 @@ package baseline_test
 
 // A TEXT LIST's TOTAL in the baseline (docs/SPEC-TABLES.md §2.13, §18.1,
 // §18.2): the field line carries `total=N`, and the total is an extent like a
-// bound — a reader keeps the prefix within its own total and counts clamped —
+// bound — a reader refuses a list past its own total length_over_bound —
 // so a lowered or newly declared total warns and a raised or removed one
 // passes. Each case carries this package's two controls: DISCRIMINATION (the
 // same field edited in the direction the wire absorbs) and ATTRIBUTION (the
@@ -62,8 +62,8 @@ func TestTextTotalRendersOnTheFieldLine(t *testing.T) {
 	}
 }
 
-// TestTextTotalLoweredWarns: a lowered total drops stored elements past it
-// and counts clamped, so it warns, naming what is lost.
+// TestTextTotalLoweredWarns: a lowered total refuses a stored list past it
+// length_over_bound, so it warns, naming what is lost.
 func TestTextTotalLoweredWarns(t *testing.T) {
 	t.Parallel()
 	lowered := editOf(t, totalFixtureSrc, "| total = 256", "| total = 128")
@@ -71,7 +71,7 @@ func TestTextTotalLoweredWarns(t *testing.T) {
 	if !find(fs, baseline.Warn, "Handover.rules", "text list total 256 -> 128") {
 		t.Errorf("a lowered total is not warned on the list's line: %s", summary(fs))
 	}
-	if !find(fs, baseline.Warn, "Handover.rules", "drops the rest and counts clamped") {
+	if !find(fs, baseline.Warn, "Handover.rules", "the load refuses length_over_bound") {
 		t.Errorf("the warning does not say what a lowered total costs: %s", summary(fs))
 	}
 	// ATTRIBUTION: the total row alone carries the verdict

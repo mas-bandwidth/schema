@@ -16,8 +16,10 @@
 //     budget, by the seconds the table measured for them (a package the
 //     table does not name weighs defaultWeight);
 //   - a package with `split` lines gets one row per line, `-run` that
-//     pattern, and one more row that `-skip`s every one of them: the
-//     complement, so a new test lands in that row with no edit anywhere.
+//     pattern and `-skip` every earlier line's, and one more row that
+//     `-skip`s every one of them: the complement, so a new test lands in that
+//     row with no edit anywhere. Because a line skips the lines above it, a
+//     broad line (a name range) placed after narrow ones takes only the rest.
 //   - `subsplit` divides a single parent's children in the same way. Each
 //     child pattern gets a row; its complement keeps future named corpus
 //     seeds, and the package complement excludes the parent altogether.
@@ -191,8 +193,11 @@ func plan(t table, pkgs []string, short bool, budget float64) []Row {
 			whole = append(whole, p)
 			continue
 		}
-		for _, pat := range pats {
-			rows = append(rows, Row{Packages: p, Run: pat})
+		// A split row skips every earlier split line's pattern, so a broad
+		// line after narrow ones (a family, a name range) takes only what they
+		// left and no test runs in two rows.
+		for i, pat := range pats {
+			rows = append(rows, Row{Packages: p, Run: pat, Skip: strings.Join(pats[:i], "|")})
 		}
 		// Preserve table order without iterating a map. A slash is Go's
 		// hierarchical matcher separator, so the child skip does not skip

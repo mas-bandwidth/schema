@@ -638,6 +638,9 @@ forgery cook_open_unaligned_delta      cook Scene Scene 0    0x0068       8     
 forgery cook_open_dead_counted_tail    cook Scene Scene 0    0x0098       1     0x55                           -1 open   a non-zero byte in dead Scene.layers slot past layers_count=0 — cook-check's dead-byte refusal, not O(1) Open's
 forgery cook_open_string_unused_tail   cook Scene Scene 0    0x0044       1     0x7f                           -1 open   a non-zero byte past Scene.name used length — cook-check's dead-byte refusal, not O(1) Open's
 forgery cook_open_record_padding_slack cook Scene Scene 0    0x0064       1     0x42                           -1 open   a non-zero byte in Scene alignment padding slack — cook-check's dead-byte refusal, not O(1) Open's
+forgery cook_open_directory_offset_wraps cook Scene Scene 0    0x17d0       8     0x7ffffffffffffff0             -1 open   a directory offset whose end wraps past 2^63 — cook-check's refusal (TABLETEXT-7), not O(1) Open's
+forgery cook_open_directory_offset_neg   cook Scene Scene 0    0x17d0       8     0xffffffffffffffc0             -1 open   a negative directory offset — cook-check's refusal, not O(1) Open's
+forgery cook_open_directory_offset_past  cook Scene Scene 0    0x17d0       8     0x0000000000000ff0             -1 open   a directory offset at the data length — cook-check's refusal, not O(1) Open's
 
 # THE HOSTILE-VALUE BATTERY (docs/SPEC-TABLES.md §16.2, §16.3, §17.5): one tree
 # per rule the text form states, so a divergence between the compiler's engine
@@ -1238,6 +1241,7 @@ framing union_void_arm                          tblr1 Cfg testdata/wire/tables/f
 framing union_unknown_arm                       tblr1 Cfg testdata/wire/tables/framing/union_unknown_arm.bin                read    testdata/conformance/tables/framing/cfg_silver.json
 framing union_arm_zero_in_field                 tblr1 Cfg testdata/wire/tables/framing/union_arm_zero_in_field.bin          read    testdata/conformance/tables/framing/cfg_silver.json
 framing node_clean                              graphdemo ListNode testdata/wire/tables/framing/node_clean.bin                       read    testdata/conformance/tables/framing/listnode_1_to_2.json
+framing frame_form_three_at_variable_root      graphdemo ListNode testdata/wire/tables/framing/frame_form_three_at_variable_root.bin refused -
 framing node_count_disagrees                    graphdemo ListNode testdata/wire/tables/framing/node_count_disagrees.bin             refused -
 framing node_record_L_past_field                graphdemo ListNode testdata/wire/tables/framing/node_record_L_past_field.bin         refused -
 framing node_record_bytes_after_terminator      graphdemo ListNode testdata/wire/tables/framing/node_record_bytes_after_terminator.bin refused -
