@@ -1081,6 +1081,9 @@ load_fields = function(R, T, name, value, ctx)
     local f, index = field_by_id(T, desc, e.id)
     if f == nil then
       if ordered then return false end
+      -- a field this record does not declare is skipped and counted unknown,
+      -- as tablewire's decode counts it (docs/SPEC-TABLES.md §4)
+      ctx.unknown = (ctx.unknown or 0) + 1
       if not skip_entry(R, e, ctx, nil, true) then return false end
     else
       if ordered and index <= lastKnown then return false end
@@ -1246,10 +1249,14 @@ write_body = function(W, T, name, value, ctx)
   return true
 end
 
-local function load_one(R, T, root, vocab)
+local function load_one(R, T, root, vocab, report)
   local rootval = T["New" .. root]()
   local ctx = { vocab = vocab, refBits = vocab.refBits }
-  if not load_body(R, T, root, rootval, ctx) then return nil, ctx.nonFinite, ctx.reason end
+  local ok = load_body(R, T, root, rootval, ctx)
+  -- the unknown fields, enum variants, union arms and keyed slots the walk
+  -- skipped reach the caller's report (tablewire's Report.Unknown)
+  report.unknown = (report.unknown or 0) + (ctx.unknown or 0)
+  if not ok then return nil, ctx.nonFinite, ctx.reason end
   return rootval
 end
 
@@ -1796,7 +1803,7 @@ function M.loadMessages(T, root, vocab, data, report)
   local R = new_reader(data, 16)
   local values = {}
   for i = 1, count do
-    local v, nonfinite, reason = load_one(R, T, root, vocab)
+    local v, nonfinite, reason = load_one(R, T, root, vocab, report)
     if nonfinite ~= nil then
       -- A NON-FINITE FLOAT REFUSES THE BATCH
       -- (docs/SPEC-TABLES.md §3.3): no record lands, and Reason names it.
