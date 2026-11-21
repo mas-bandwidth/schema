@@ -95,6 +95,7 @@
 #include "VarEvo3Table.h"
 #include "CookTortureTable.h"
 #include "CookTortureWideTable.h"
+#include "PacketUnionsTable.h"
 
 struct Reply
 {
@@ -466,6 +467,7 @@ static const Codec codecs[] = {
     FIXED( "tblvarevo1", tblvarevo1, EvoMsg ),
     FIXED( "tblvarevo2", tblvarevo2, EvoMsg ),
     FIXED( "tblvarevo3", tblvarevo3, EvoMsg ),
+    FIXED( "packetunions", tblpacketunions, ShapeMsg ),
     FIXED( "cooktorture", cooktorture, TortureFixedWref ),
     FIXED( "tblr1", tblr1, Cfg ),
     FIXED( "tblr2", tblr2, Cfg ),
@@ -521,6 +523,7 @@ static const Codec codecs[] = {
     VARIABLE( "tblvarevo3", tblvarevo3, EvoDoc ),
     VARIABLE( "cooktorture", cooktorture, TortureCook ),
     VARIABLE( "cooktorturewide", cooktorturewide, TortureWideCook ),
+    VARIABLE( "packetunions", tblpacketunions, ShapeDoc ),
     // and the same roots under the MESSAGE form (docs/SPEC-TABLES.md §3.3),
     // one entry per message the corpus pins
     MESSAGE( "backenddemo", backenddemo, LoginRequest ),
@@ -532,6 +535,7 @@ static const Codec codecs[] = {
     MESSAGE( "vocab9demo", vocab9demo, Wide19 ),
     MESSAGE( "tblvarevo1", tblvarevo1, EvoMsg ),
     MESSAGE( "tblvarevo3", tblvarevo3, EvoMsg ),
+    MESSAGE( "packetunions", tblpacketunions, ShapeMsg ),
     MESSAGE5( "backenddemo", backenddemo, LoginRequest ),
     MESSAGE5( "backenddemo", backenddemo, MatchResult ),
     MESSAGE5( "backenddemo", backenddemo, StorePurchase ),
@@ -595,6 +599,7 @@ static const Codec codecs[] = {
     RETAIN( "tblvarevo3", tblvarevo3, EvoDoc ),
     RETAIN( "cooktorture", cooktorture, TortureCook ),
     RETAIN( "cooktorturewide", cooktorturewide, TortureWideCook ),
+    RETAIN( "packetunions", tblpacketunions, ShapeDoc ),
 };
 
 // The file-form dispatch and refusal transport are exercised independently of

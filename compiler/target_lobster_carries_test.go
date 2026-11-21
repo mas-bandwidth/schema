@@ -64,7 +64,7 @@ func lobsterManifestUnits(t *testing.T) map[string]*ir.Unit {
 
 // TestLobsterGeneratesEveryManifestUnit holds the target to the runtime it
 // emits: every supported unit of the tables conformance manifest generates for lobster,
-// with the original-nine full-feature witness still held to its named refusal. THE REVERSED
+// with the full-feature witness every target owes still held to its named refusal. THE REVERSED
 // WITNESS: the shared refusals the target applied before its load and save
 // covered these constructs (refuseUnported, refuseOptionalArrays, refuseLists,
 // refuseMaps) still refuse units of this same manifest by name for a target
@@ -79,9 +79,10 @@ func TestLobsterGeneratesEveryManifestUnit(t *testing.T) {
 	}
 	witnessed := 0
 	for key, u := range units {
-		// The populated full-language witness is mandatory for the original
-		// nine. Preserve this later port's explicit forms debt without extending
-		// its implementation scope or pretending the witness generates.
+		// The populated full-language witness is owed by every target. Until
+		// lobster carries forms it refuses the witness by name, so the debt stays
+		// visible (the conformance implementation audit counts it as owed) and
+		// nothing pretends the witness generates.
 		if key == "featurewitnesses" && !carries("lobster", carryForms) {
 			if _, err := c.Generate(u, "lobster", nil); err == nil ||
 				!strings.Contains(err.Error(), "lobster") || !strings.Contains(err.Error(), "construct forms") {

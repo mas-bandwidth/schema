@@ -14,7 +14,7 @@ import (
 var pythonRoadmapCellCounts = map[string]int{
 	"packet-wire":     27,
 	"fixed-tables":    56,
-	"variable-tables": 32,
+	"variable-tables": 33,
 }
 
 // pythonLayerTaskRx names the layer tasks P4 to P16 that once held whole

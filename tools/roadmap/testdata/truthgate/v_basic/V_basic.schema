@@ -1,0 +1,16 @@
+package vbasic
+
+enum Mode { Alpha, Beta }
+
+table Record
+{
+    level int32 = 0
+    mode  Mode
+    name  string(16)
+    child Child
+}
+
+table Child
+{
+    amount int64
+}

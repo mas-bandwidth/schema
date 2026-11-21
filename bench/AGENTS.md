@@ -7,7 +7,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `c/` | C serialize runner | `bench/run.sh --only c` | `bench/run.sh --only c` |
 | `corpus/` | bench schemas and weighting gate | `go test ./bench/corpus` | `go test ./bench/corpus` |
 | `cpp/` | C++ reference runner | `bench/run.sh --only cpp` | `bench/run.sh --only cpp` |
-| `cs/` | C# runner | `bench/run.sh --only cs` | `bench/run.sh --only cs` |
+| `cs/` | C# (modern) runner | `bench/run.sh --only cs` | `bench/run.sh --only cs` |
 | `dart/` | Dart runner | `bench/run.sh --only dart` | `bench/run.sh --only dart` |
 | `elixir/` | Elixir runner | `bench/run.sh --only elixir` | `bench/run.sh --only elixir` |
 | `go/` | Go runner | `bench/run.sh --only go` | `bench/run.sh --only go` |
@@ -17,11 +17,11 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `lobster/` | Lobster runner | `make bench-lobster-gate` | `bench/run.sh --only lobster` |
 | `lua/` | Lua packet runner | `make bench-lua-gate` | `bench/lua/run` |
 | `luau/` | Luau runner | `make bench-luau-gate` | `bench/run.sh --only luau` |
-| `moo/` | MOO packet gate | `make bench-moo-gate` | `bench/moo/run --gate` |
+| `moo/` | Moo packet gate | `make bench-moo-gate` | `bench/moo/run --gate` |
 | `paired/` | paired before/after + fixed-form bytes | `make bench-paired-check` | `make bench-paired-gate` |
 | `python/` | Python packet runner | `bench/run.sh --only python` | `bench/run.sh --only python` |
 | `results/` | committed CSV ledgers | `none` | `bench/run.sh` |
-| `ruby/` | Ruby packet runner | `make bench-ruby-gate` | `bench/run.sh --only ruby` |
+| `ruby/` | Ruby packet runner | `make bench-ruby-gate` | `bench/ruby/run` |
 | `rust/` | Rust runner | `bench/run.sh --only rust` | `bench/run.sh --only rust` |
 | `squirrel/` | Squirrel packet runner | `make bench-squirrel-gate` | `bench/squirrel/run` |
 | `tables/` | tables bench pass | `make bench-tables` | `make bench-tables` |

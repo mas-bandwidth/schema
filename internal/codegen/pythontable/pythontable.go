@@ -432,12 +432,10 @@ func packetBlockerItems(items []ir.Item) (field, kind string, ok bool) {
 			if f, k, found := packetBlockerItems(item.Else); found {
 				return f, k, true
 			}
-		case *ir.ConstItem:
-			return "", "const", true
-		case *ir.ReservedItem:
-			return "", "reserved", true
-		case *ir.AlignItem:
-			return "", "align", true
+		case *ir.ConstItem, *ir.ReservedItem, *ir.AlignItem:
+			// carried: the hosted class is the packet core's own, whose
+			// item emitters write and check them (SPEC §4.3), and they have
+			// no storage, so the type's table descriptor never names them
 		}
 	}
 	return "", "", false
@@ -1898,7 +1896,8 @@ func pythonJSONIsFlags(f *ir.Field) bool {
 
 // keyedElemCodec is the codec of an enum-keyed array's element, or "" for an
 // element the keyed kind does not carry yet: bool, the integer and
-// fixed-point kinds, enums, flags masks, and tables by value.
+// fixed-point kinds, enums, flags masks, and a table or a declared type by
+// value (both ride a kind-13 body, as an array element does: elementCodecOf).
 func keyedElemCodec(f *ir.Field) string {
 	switch f.Type.Kind {
 	case ir.TBool:
@@ -1910,11 +1909,9 @@ func keyedElemCodec(f *ir.Field) string {
 	case ir.TFloat64:
 		return "float64"
 	case ir.TNamed:
-		switch ref := f.Type.Ref.(type) {
+		switch f.Type.Ref.(type) {
 		case *ir.Struct:
-			if ref.IsTable {
-				return "table"
-			}
+			return "table"
 		case *ir.Enum:
 			return "enum"
 		case *ir.Flags:

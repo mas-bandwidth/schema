@@ -1,0 +1,22 @@
+package punions
+
+type Ring
+{
+    radius uint16
+}
+
+type Slab
+{
+    width uint8
+}
+
+union Shape
+{
+    ring Ring
+    slab Slab
+}
+
+type Holder
+{
+    shape Shape
+}

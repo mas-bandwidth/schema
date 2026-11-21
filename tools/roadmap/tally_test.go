@@ -16,7 +16,7 @@ import (
 // the tables to the renderer's exact output where it is present.
 
 var (
-	generatedCellRx = regexp.MustCompile(`^(?:✅(?: 100%)?|❌|\d+%|\?(?: \((?:≥ )?\d+%\))?|(?:≥ )?\d+/\d+(?: \((?:≥ )?\d+%\))?)$`)
+	generatedCellRx = regexp.MustCompile(`^(?:✅(?: 100%)?|❌|—|\d+%|\?(?: \((?:≥ )?\d+%\))?|(?:≥ )?\d+/\d+(?: \((?:≥ )?\d+%\))?)$`)
 )
 
 func isValidCell(cell string, inGenerated bool) bool {
@@ -149,11 +149,10 @@ func TestThePageCarriesTheThreeTables(t *testing.T) {
 	}
 }
 
-// TestEveryTableHasEveryLanguage holds every table header to the nine supported
-// packet-wire languages (#1861), then the ports on main below parity (goose,
-// docs/PORT-GOOSE.md), then the queued ports (luau, lua, squirrel, moo), then
-// lobster, then python (docs/PORT-PYTHON.md), then unity (docs/UNITY.md), in
-// the same order.
+// TestEveryTableHasEveryLanguage holds every table header to all 18 targets,
+// every one of which owes parity, in the page's column order (the order the
+// columns were added: #1861, then goose, luau, lua, squirrel, moo, lobster,
+// python, unity and ruby).
 func TestEveryTableHasEveryLanguage(t *testing.T) {
 	want := "| feature | cpp | c | cs | go | rust | java | js | dart | elixir | goose | luau | lua | squirrel | moo | lobster | python | unity | ruby |"
 	headers := 0
@@ -177,7 +176,7 @@ func TestGeneratedCellGrammar(t *testing.T) {
 		"✅ 100%", "100%", "50%", "0%",
 		"?", "? (≥ 0%)", "? (≥ 50%)", "? (≥ 14%)",
 		"1/1", "3/3 (100%)", "≥ 1/3", "≥ 1/3 (≥ 33%)", "≥ 0/23 (≥ 0%)",
-		"✅", "❌",
+		"✅", "❌", "—",
 	}
 	for _, c := range validGenerated {
 		if !isValidCell(c, true) {
@@ -198,7 +197,7 @@ func TestGeneratedCellGrammar(t *testing.T) {
 			t.Errorf("expected %q to be valid outside generated block", c)
 		}
 	}
-	for _, c := range []string{"100%", "50%", "? (≥ 50%)", "≥ 1/3", "foo"} {
+	for _, c := range []string{"100%", "50%", "? (≥ 50%)", "≥ 1/3", "—", "foo"} {
 		if isValidCell(c, false) {
 			t.Errorf("expected %q to be invalid outside generated block", c)
 		}
@@ -277,6 +276,63 @@ func TestLispRendererSuite(t *testing.T) {
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("sbcl test.lisp failed: %v\noutput:\n%s", err, string(out))
+	}
+}
+
+// notApplicableGraph is a one-table graph whose column c1 carries a
+// not-applicable cell; note is that task's :note form ("" leaves it out).
+func notApplicableGraph(note string) string {
+	return `(:schema 1 :root "goal" :page (:roadmaps ("alpha")) :nodes (
+ (:id "done-1" :type :task :title "D1" :state :done :evidence ("PR #1"))
+ (:id "todo-1" :type :task :title "T1" :state :todo :evidence nil)
+ (:id "na-1" :type :task :title "N1" :state :not-applicable ` + note + `)
+ (:id "alpha" :type :roadmap :title "Alpha" :rows (("r1" "Row 1") ("r2" "Row 2"))
+  :columns (("c1" "c1") ("c2" "c2"))
+  :cells (("r1" "c1" "done-1") ("r2" "c1" "na-1") ("r1" "c2" "todo-1") ("r2" "c2" "done-1")))
+ (:id "goal" :type :work-set :children ("alpha"))))`
+}
+
+// TestNotApplicableRendersADash renders a graph with a :not-applicable cell
+// through the renderer's command line: the cell is "—", it is left out of
+// its column's "complete" percentage, and the page passes the cell grammar.
+// The control: the same task with no :note is refused by name.
+func TestNotApplicableRendersADash(t *testing.T) {
+	sbcl := sbclOrSkip(t)
+	render := func(graph string) (string, error) {
+		dir := t.TempDir()
+		page := dir + "/ROADMAP.md"
+		if err := os.WriteFile(dir+"/roadmap.sexp", []byte(graph), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(page, []byte("# T\n\n<!-- nova-work:alpha:start -->\n<!-- nova-work:alpha:end -->\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command(sbcl, "--script", "tools/roadmap/render.lisp", dir+"/roadmap.sexp", page)
+		cmd.Dir = "../.."
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return string(out), err
+		}
+		got, err := os.ReadFile(page)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(got), nil
+	}
+	got, err := render(notApplicableGraph(`:note "the platform cannot"`))
+	if err != nil {
+		t.Fatalf("a not-applicable task with a reason did not render: %v\n%s", err, got)
+	}
+	for _, want := range []string{"| Row 1 | ✅ | ❌ |", "| Row 2 | — | ✅ |", "| complete | 100% | 50% |"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("rendered page lacks %q:\n%s", want, got)
+		}
+	}
+	if err := checkRoadmapText(got); err != nil {
+		t.Errorf("the rendered dash fails the cell grammar: %v", err)
+	}
+	out, err := render(notApplicableGraph(""))
+	if err == nil || !strings.Contains(out, "na-1") || !strings.Contains(out, ":note") {
+		t.Fatalf("a not-applicable task with no reason was not refused by name: err=%v\n%s", err, out)
 	}
 }
 

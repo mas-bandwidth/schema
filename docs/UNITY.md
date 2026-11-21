@@ -1,11 +1,11 @@
-# Unity C#: `--lang unity`
+# C# (unity): `--lang unity`
 
-Schema has two C# generators, and they are two generators, not one with a
-switch:
+Schema has two C# generators, C# (modern) and C# (unity), and they are two
+generators, not one with a switch:
 
-- **`--lang cs`** is the best modern C#: .NET 8 and later, C# 12, structs with
-  `[InlineArray]` buffers, taken by `ref`.
-- **`--lang unity`** is the best Unity C#, and it is the one most C# users of
+- **`--lang cs`**, C# (modern), is the best modern C#: .NET 8 and later, C# 12,
+  structs with `[InlineArray]` buffers, taken by `ref`.
+- **`--lang unity`**, C# (unity), is the best C# for Unity, and it is the one most C# users of
   schema will use. It targets what every Unity from 2021.2 through Unity 6
   compiles: **C# 9 over the netstandard2.1 API surface**, under IL2CPP and AOT,
   with Burst in the picture.
@@ -52,7 +52,7 @@ is unmanaged, so every generated type satisfies `where T : unmanaged`: it can
 sit in a `NativeArray<T>`, in an ECS component and in a Burst job, and
 `default(T)` costs nothing and allocates nothing.
 
-| schema | Unity C# storage | why |
+| schema | C# (unity) storage | why |
 |---|---|---|
 | `int8`..`int64`, `uint8`..`uint64` | `sbyte`..`long`, `byte`..`ulong` | SPEC §6.1's C# column |
 | `int128` / `uint128`, 128-bit `fixed` | `Int128Value` / `UInt128Value` | serialize.cs's emulated pair: two `ulong`s, unmanaged, on every TFM |
@@ -283,7 +283,7 @@ per folder, and the assembly's name and references are the project's decision.
 ## Speed
 
 The fastest correct code per language is the bar, and the techniques the
-modern C# generator measured carry over to C# 9 unchanged: neither needs a
+C# (modern) generator measured carry over to C# 9 unchanged: neither needs a
 language feature past C# 7.2. This generator re-derives them in its own
 emitter rather than sharing `cs`'s.
 

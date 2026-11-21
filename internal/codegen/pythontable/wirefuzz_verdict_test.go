@@ -348,7 +348,7 @@ func runPythonWireFuzzVerdictArm(t *testing.T, root, dir string, script []byte, 
 	var buildWG sync.WaitGroup
 	var compilerErr, harnessErr string
 	buildWG.Go(func() {
-		cmd := testproc.Command(t, "go", "build", "-tags", "schema_leg_python", "-o", compiler, "./cmd/schema")
+		cmd := testproc.Command(t, "go", "build", "-o", compiler, "./cmd/schema")
 		cmd.Dir = root
 		if out, err := cmd.CombinedOutput(); err != nil {
 			compilerErr = fmt.Sprintf("build Python compiler: %v: %s", err, out)

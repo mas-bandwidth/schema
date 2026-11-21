@@ -1,0 +1,22 @@
+package vuniontablearms
+
+table Ring
+{
+    radius uint16
+}
+
+table Slab
+{
+    width uint8
+}
+
+union Shape
+{
+    ring Ring
+    slab Slab
+}
+
+table Record
+{
+    shape Shape
+}

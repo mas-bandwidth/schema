@@ -13,7 +13,7 @@ schema-go's, and docs/SPEC.md and docs/SPEC-TABLES.md are the standard as
 written.
 
 This page fixes the design. The skeleton it describes is in the tree:
-`compiler/target_goose.go` (behind the `schema_leg_goose` build tag),
+`compiler/target_goose.go` (a builtin target),
 `compiler/carries_goose.go`, `internal/codegen/goose` (the type surface),
 `internal/codegen/goosetable` (the table surface),
 `internal/codegen/goose/gooserun` (the test helper), `make/goose.mk`,
@@ -245,8 +245,8 @@ Fixed now for the pro cards; never renamed.
 
 | file | what it is | who writes it |
 |---|---|---|
-| `compiler/target_goose.go` | the target: the shared refusal chain (THE CARRIES PATTERN), then the type surface, then the table surface, behind the `schema_leg_goose` tag until the packet surface has claims | this card; the tag is dropped when the port joins the builtins |
-| `compiler/carries_goose.go` | the carried constructs, registered ONCE in its `init()` from the package-level slice `gooseCarried` | this card only; a later card adds `var _ = carryGoose(<construct>)` in its own `compiler/carries_goose_<surface>.go` (tag `schema_leg_goose`): package-level variables initialise before any `init()` |
+| `compiler/target_goose.go` | the target: the shared refusal chain (THE CARRIES PATTERN), then the type surface, then the table surface; a builtin (the `schema_leg_goose` tag was dropped when the port joined the builtins) | this card |
+| `compiler/carries_goose.go` | the carried constructs, registered ONCE in its `init()` from the package-level slice `gooseCarried` | this card only; a later card adds `var _ = carryGoose(<construct>)` in its own `compiler/carries_goose_<surface>.go`: package-level variables initialise before any `init()` |
 | `internal/codegen/goose/goose.go` | the TYPE emitter (`Gen`, `Slots`, `TypeRef`, the literal renderers) and `Register`, the hook a later file joins from its own `init()` | this card only |
 | `internal/codegen/goose/read.go`, `write.go` | the type wire, joined through `goose.Register` | type-wire-read, type-wire-write |
 | `internal/codegen/goose/runtime/*.goose` | the type-wire runtime, `go:embed` by glob, emitted beside the modules: `schema_rt.goose` now (the `Int128` lanes), `serialize*.goose` and the float sidecar later | one file per card |
@@ -337,7 +337,7 @@ every packet field kind except a string, bytes or flags default (refused
 above), enums, flags, unions (the
 payload-free arm included, which the packet surface carries in every
 target), and a `[A..B]` count born at `A`. Its claims sit in
-`compiler/*_test.go` beside the other nine targets' (`bornAtMinimum`,
+`compiler/*_test.go` beside the other targets' (`bornAtMinimum`,
 `guardComment`, `tagEnumSurface`, the payload-free arm's `carried`). The
 packet wire has landed since (THE PACKET WIRE): goose left
 `packetWriterOwed` and carries its write-side claims in `refusesEveryBuild`
@@ -345,7 +345,7 @@ and `tagRefusesEveryBuild`, and `compiler/carries_goose_packet.go` registers
 the string, bytes and flags packet defaults.
 
 **How a later card carries a construct.** In its OWN new file
-`compiler/carries_goose_<surface>.go`, tag `schema_leg_goose`, never by
+`compiler/carries_goose_<surface>.go`, never by
 editing `target_goose.go` or `carries_goose.go`:
 
 - a construct keyed in `compiler/carries.go` is a package-level line,

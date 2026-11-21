@@ -304,6 +304,9 @@ define tables_generate
 	$(1) generate --lang cpp --out $(2)/w2 test/tables/W2.schema
 	$(1) generate --lang cpp --out $(2)/r1 test/tables/R1.schema
 	$(1) generate --lang cpp --out $(2)/r2 test/tables/R2.schema
+	# THE VALUE-DEFAULTS UNIT (docs/SPEC.md §4.2): string, bytes and flags
+	# defaults in every carried field shape, variable root and fixed root
+	$(1) generate --lang cpp --out $(2)/valuedefaults test/tables/ValueDefaults.schema
 	# THE FLOAT BIT-PATTERN PAIR (docs/SPEC-TABLES.md §3, §4, schema#480): the
 	# root carrying a signalling NaN and a payload NaN, and the same root one
 	# generation on with the float32 fields respelled float64 — the widened rung
@@ -362,6 +365,7 @@ define tables_generate
 	$(1) generate --lang cpp --out $(2)/varevo3 test/tables/varevo/VarEvo3.schema
 	$(1) generate --lang cpp --out $(2)/cooktorture test/tables/cooktorture/CookTorture.schema
 	$(1) generate --lang cpp --out $(2)/cooktorturewide test/tables/cooktorturewide/CookTortureWide.schema
+	$(1) generate --lang cpp --out $(2)/packetunions test/tables/packetunions/PacketUnions.schema
 	$(1) generate --lang cpp --out $(2)/backend tables/backend
 	$(1) generate --lang cpp --out $(2)/vocab tables/vocab
 	$(1) generate --lang cpp --out $(2)/vocab9 tables/vocab9
@@ -379,9 +383,9 @@ endef
 
 tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome -Itest/tables \
 	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys \
-	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/w1 -I$(1)/w2 -I$(1)/r1 -I$(1)/r2 -I$(1)/f1 -I$(1)/f2 -I$(1)/l1 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/fixedevo -I$(1)/varevo1 -I$(1)/varevo2 -I$(1)/varevo3 -I$(1)/cooktorture -I$(1)/cooktorturewide -I$(1)/maps -I$(1)/lists -I$(1)/widelist -I$(1)/arms -I$(1)/backend -I$(1)/vocab -I$(1)/vocab9 -I$(1)/bases -I$(1)/rt1 -I$(1)/rt2 -I$(1)/rt3 -I$(1)/wide -I$(1)/features -I$(SERIALIZE)
+	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/w1 -I$(1)/w2 -I$(1)/r1 -I$(1)/r2 -I$(1)/f1 -I$(1)/f2 -I$(1)/l1 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/fixedevo -I$(1)/varevo1 -I$(1)/varevo2 -I$(1)/varevo3 -I$(1)/cooktorture -I$(1)/cooktorturewide -I$(1)/packetunions -I$(1)/maps -I$(1)/lists -I$(1)/widelist -I$(1)/arms -I$(1)/backend -I$(1)/vocab -I$(1)/vocab9 -I$(1)/bases -I$(1)/rt1 -I$(1)/rt2 -I$(1)/rt3 -I$(1)/wide -I$(1)/features -I$(SERIALIZE)
 
-build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_WIDELIST) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/DeadBytes.schema test/tables/FNZ.schema test/tables/UT1.schema test/tables/UT2.schema test/tables/FN1.schema test/tables/FN2.schema test/tables/HB.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/FD1.schema test/tables/FH1.schema test/tables/FH2.schema test/tables/FG1.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FM1.schema test/tables/FM2.schema test/tables/VOLD_field_append.schema test/tables/VNEW_field_append.schema test/tables/VOLD_field_deprecate.schema test/tables/VNEW_field_deprecate.schema test/tables/VOLD_field_undeprecate.schema test/tables/VNEW_field_undeprecate.schema test/tables/VOLD_enum_append.schema test/tables/VNEW_enum_append.schema test/tables/VOLD_enum_width.schema test/tables/VNEW_enum_width.schema test/tables/VOLD_union_append.schema test/tables/VNEW_union_append.schema test/tables/VOLD_union_arm_payload_widen.schema test/tables/VNEW_union_arm_payload_widen.schema test/tables/VOLD_flags_append.schema test/tables/VNEW_flags_append.schema test/tables/VOLD_keyed_array_enum_append.schema test/tables/VNEW_keyed_array_enum_append.schema test/tables/VOLD_nested_append.schema test/tables/VNEW_nested_append.schema test/tables/VOLD_rename_without_was.schema test/tables/VNEW_rename_without_was.schema $(SCHEMAS_VERSIONING) testdata/conformance/feature-witnesses/full/Features.schema
+build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_WIDELIST) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/ValueDefaults.schema test/tables/packetunions/PacketUnions.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/DeadBytes.schema test/tables/FNZ.schema test/tables/UT1.schema test/tables/UT2.schema test/tables/FN1.schema test/tables/FN2.schema test/tables/HB.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/FD1.schema test/tables/FH1.schema test/tables/FH2.schema test/tables/FG1.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FM1.schema test/tables/FM2.schema test/tables/VOLD_field_append.schema test/tables/VNEW_field_append.schema test/tables/VOLD_field_deprecate.schema test/tables/VNEW_field_deprecate.schema test/tables/VOLD_field_undeprecate.schema test/tables/VNEW_field_undeprecate.schema test/tables/VOLD_enum_append.schema test/tables/VNEW_enum_append.schema test/tables/VOLD_enum_width.schema test/tables/VNEW_enum_width.schema test/tables/VOLD_union_append.schema test/tables/VNEW_union_append.schema test/tables/VOLD_union_arm_payload_widen.schema test/tables/VNEW_union_arm_payload_widen.schema test/tables/VOLD_flags_append.schema test/tables/VNEW_flags_append.schema test/tables/VOLD_keyed_array_enum_append.schema test/tables/VNEW_keyed_array_enum_append.schema test/tables/VOLD_nested_append.schema test/tables/VNEW_nested_append.schema test/tables/VOLD_rename_without_was.schema test/tables/VNEW_rename_without_was.schema $(SCHEMAS_VERSIONING) testdata/conformance/feature-witnesses/full/Features.schema
 	@mkdir -p build/tables-generated
 	$(call tables_generate,./bin/schema,build/tables-generated)
 	@touch $@
@@ -5220,11 +5224,12 @@ CONFORMANCE_INCLUDES := -Ibuild/tables-generated/maps -Ibuild/tables-generated/l
 	-Ibuild/tables-generated/v2 -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
 	-Ibuild/tables-generated/block -Ibuild/tables-generated/pointers \
 	-Ibuild/tables-generated/p2 -Ibuild/tables-generated/messages -Ibuild/tables-generated/stream \
-	-Ibuild/tables-generated/m1 -Ibuild/tables-generated/m2 -Ibuild/tables-generated/a1 -Ibuild/tables-generated/a2 -Ibuild/tables-generated/g1 -Ibuild/tables-generated/k1 -Ibuild/tables-generated/k2 -Ibuild/tables-generated/w1 -Ibuild/tables-generated/w2 -Ibuild/tables-generated/r1 -Ibuild/tables-generated/r2 -Ibuild/tables-generated/blobs -Itest/tables -Ibuild/tables-generated/scalars -Ibuild/tables-generated/scalars2 -Ibuild/tables-generated/fixedevo -Ibuild/tables-generated/varevo1 -Ibuild/tables-generated/varevo2 -Ibuild/tables-generated/varevo3 -Ibuild/tables-generated/cooktorture -Ibuild/tables-generated/cooktorturewide -Ibuild/tables-generated/backend -Ibuild/tables-generated/vocab -Ibuild/tables-generated/vocab9 -Ibuild/tables-generated/arms -Ibuild/tables-generated/rt1 -Ibuild/tables-generated/features -I$(SERIALIZE)
+	-Ibuild/tables-generated/m1 -Ibuild/tables-generated/m2 -Ibuild/tables-generated/a1 -Ibuild/tables-generated/a2 -Ibuild/tables-generated/g1 -Ibuild/tables-generated/k1 -Ibuild/tables-generated/k2 -Ibuild/tables-generated/w1 -Ibuild/tables-generated/w2 -Ibuild/tables-generated/r1 -Ibuild/tables-generated/r2 -Ibuild/tables-generated/blobs -Itest/tables -Ibuild/tables-generated/scalars -Ibuild/tables-generated/scalars2 -Ibuild/tables-generated/fixedevo -Ibuild/tables-generated/varevo1 -Ibuild/tables-generated/varevo2 -Ibuild/tables-generated/varevo3 -Ibuild/tables-generated/cooktorture -Ibuild/tables-generated/cooktorturewide -Ibuild/tables-generated/packetunions -Ibuild/tables-generated/backend -Ibuild/tables-generated/vocab -Ibuild/tables-generated/vocab9 -Ibuild/tables-generated/arms -Ibuild/tables-generated/rt1 -Ibuild/tables-generated/features -Ibuild/tables-generated/valuedefaults -I$(SERIALIZE)
 CONFORMANCE_SOURCES = $(wildcard build/tables-generated/maps/*Table.cpp) $(wildcard build/tables-generated/lists/*Table.cpp) $(wildcard build/tables-generated/widelist/*Table.cpp) build/tables-generated/examples/TablesTable.cpp \
 	build/tables-generated/w1/W1Table.cpp build/tables-generated/w2/W2Table.cpp \
+	build/tables-generated/valuedefaults/ValueDefaultsTable.cpp \
 	build/tables-generated/r1/R1Table.cpp build/tables-generated/r2/R2Table.cpp \
-	build/tables-generated/scalars/ScalarsTable.cpp build/tables-generated/scalars2/Scalars2Table.cpp build/tables-generated/fixedevo/FixedEvoTable.cpp build/tables-generated/varevo1/VarEvo1Table.cpp build/tables-generated/varevo2/VarEvo2Table.cpp build/tables-generated/varevo3/VarEvo3Table.cpp build/tables-generated/cooktorture/CookTortureTable.cpp build/tables-generated/cooktorture/CookTortureBlock.cpp build/tables-generated/cooktorturewide/CookTortureWideTable.cpp \
+	build/tables-generated/scalars/ScalarsTable.cpp build/tables-generated/scalars2/Scalars2Table.cpp build/tables-generated/fixedevo/FixedEvoTable.cpp build/tables-generated/varevo1/VarEvo1Table.cpp build/tables-generated/varevo2/VarEvo2Table.cpp build/tables-generated/varevo3/VarEvo3Table.cpp build/tables-generated/cooktorture/CookTortureTable.cpp build/tables-generated/cooktorture/CookTortureBlock.cpp build/tables-generated/cooktorturewide/CookTortureWideTable.cpp build/tables-generated/packetunions/PacketUnionsTable.cpp \
 	build/tables-generated/examples/WideTable.cpp build/tables-generated/examples/NestedTable.cpp \
 	build/tables-generated/examples/KeyedTable.cpp build/tables-generated/examples/PackTable.cpp build/tables-generated/v1/V1Table.cpp \
 	build/tables-generated/v2/V2Table.cpp build/tables-generated/p1/P1Table.cpp \
@@ -6319,6 +6324,21 @@ tables-wire-fuzz-message-text-leg-negative-control: build/conformance-harness bu
 conformance-generate: build/conformance-harness
 	./build/conformance-harness generate
 
+# The VALUE-DEFAULTS instances' wire pins (test/tables/ValueDefaults.schema):
+# string, bytes and flags defaults in every carried field shape. Each wire is
+# `schema pack` of the authored text tree under test/tables/valuedefaults —
+# the compiler's own engine, the same third implementation the pack golden
+# uses — and the reference leg then has to load and re-save it byte for byte.
+# Run before conformance-generate when a tree changes.
+VALUE_DEFAULTS_UNIT := test/tables/ValueDefaults.schema
+VALUE_DEFAULTS_WIRE := testdata/conformance/tables/wire
+.PHONY: conformance-valuedefaults-pin
+conformance-valuedefaults-pin: bin/schema
+	./bin/schema pack --root VarDefaults --out $(VALUE_DEFAULTS_WIRE)/vd_var_defaults.bin test/tables/valuedefaults/vd_var_defaults $(VALUE_DEFAULTS_UNIT)
+	./bin/schema pack --root VarDefaults --out $(VALUE_DEFAULTS_WIRE)/vd_var_values.bin test/tables/valuedefaults/vd_var_values $(VALUE_DEFAULTS_UNIT)
+	./bin/schema pack --root FixedDefaults --out $(VALUE_DEFAULTS_WIRE)/vd_fixed_defaults.bin test/tables/valuedefaults/vd_fixed_defaults $(VALUE_DEFAULTS_UNIT)
+	./bin/schema pack --root FixedDefaults --out $(VALUE_DEFAULTS_WIRE)/vd_fixed_values.bin test/tables/valuedefaults/vd_fixed_values $(VALUE_DEFAULTS_UNIT)
+
 # The PINNED half: the cook's canonical node dump and the block forgery battery
 # resolved to byte offsets, both from the reference leg — C++ writes the pins,
 # every other leg compares, exactly as the wire goldens work.
@@ -6485,6 +6505,11 @@ conformance-negative-control-block-dump: build/conformance-harness build/conform
 # THE PORT REGISTRY: every make/<lang>.mk whose stem has no dash. A dashed
 # stem (make/<card-id>.mk, make/<lang>-<part>.mk) is a gate or support
 # fragment: included like any make file, never probed as a --lang port.
+# THE SHIPPED TARGETS: every one is built in, in every build (Glenn,
+# 2026-11-21: "all languages, by default, all the time."), so none of them may
+# take the new-leg skeleton's skip below. compiler/target_moo_builtin_test.go
+# holds the compiler to the same eighteen.
+SCHEMA_SHIPPED_TARGETS := c cpp cs dart elixir go goose java js lobster lua luau moo python ruby rust squirrel unity
 SCHEMA_PORTS := $(sort $(filter-out %-%,$(foreach p,$(patsubst make/%.mk,%,$(wildcard make/*.mk)),$(if $(findstring -,$(p)),,$(p)))))
 
 .PHONY: tables-ports-refuse-wide-scalars
@@ -6496,6 +6521,12 @@ tables-ports-refuse-wide-scalars: bin/schema
 	for lang in $(SCHEMA_PORTS); do \
 		if ./bin/schema generate --lang $$lang --out build/tables-wide-refusal/$$lang tables/scalars > build/tables-wide-refusal/$$lang.log 2>&1; then \
 			carry=$$((carry+1)); continue; \
+		fi; \
+		if grep -q 'is not implemented' build/tables-wide-refusal/$$lang.log; then \
+			case " $(SCHEMA_SHIPPED_TARGETS) " in *" $$lang "*) \
+				echo "REFUSAL GATE FAILED: $$lang is a shipped target and the default build answers --lang $$lang with 'is not implemented':"; \
+				cat build/tables-wide-refusal/$$lang.log; exit 1;; \
+			esac; \
 		fi; \
 		if grep -q 'is not implemented' build/tables-wide-refusal/$$lang.log && \
 		   [ "$$(sed -n '1p' compiler/target_$$lang.go 2>/dev/null)" = "//go:build schema_leg_$$lang" ]; then \
@@ -6534,25 +6565,27 @@ include $(wildcard make/*.mk)
 # unchanged.
 .PHONY: test-moo-tagged-compiler test-moo-tagged-table
 test-moo-tagged-compiler: toolchain-moo build/fixedform-corpus/.stamp
-	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 60m -tags schema_leg_moo ./compiler/
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 60m ./compiler/
 test-moo-tagged-table: toolchain-moo build/fixedform-corpus/.stamp
-	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 60m -tags schema_leg_moo ./internal/codegen/mootable/ ./test/conformance/harness/
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 60m ./internal/codegen/mootable/ ./test/conformance/harness/
 # THE PER-COMMIT SMOKES OF THE SAME MATRIX (ci-full.yml's leg-tagged job,
 # non-schedule events). Measured on run 42578064640, the full halves cannot
 # fit the 110 s per-commit budget at any row count (moo-table 859 s, one
 # test alone 586 s), so per-commit rows run these instead and the full
-# halves above run on the workflow's schedule. Each smoke compiles its
-# tagged build and runs the tagged registration/admission tests: the
-# compiler's Moo tests, the moo table descriptors load under the pinned
-# interpreter, and the harness's tagged-admission test under each tag.
-.PHONY: test-moo-tagged-compiler-smoke test-moo-tagged-table-smoke test-goose-tagged-harness-smoke
+# halves above run on the workflow's schedule. Moo is a built-in target now,
+# so the moo rows build with no tag (the names stay, for the matrix and its
+# pins): the compiler's Moo tests and the shipped-target registration, the moo
+# table descriptors load under the pinned interpreter, and the harness's
+# admission tests (every shipped target in every build; the tagged-admission
+# test under a made-up new leg's tag below, make/newleg-tagged.mk).
+.PHONY: test-moo-tagged-compiler-smoke test-moo-tagged-table-smoke test-tagged-harness-smoke
 test-moo-tagged-compiler-smoke: toolchain-moo
-	SCHEMA_SLOW=1 go test -count=1 -timeout 60m -tags schema_leg_moo -run '^(TestMoo|TestEachTargetDeclaresWhatItCarries)' ./compiler/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 60m -run '^(TestMoo|TestEachTargetDeclaresWhatItCarries|TestShippedTargetsAreBuiltIn)' ./compiler/
 test-moo-tagged-table-smoke: toolchain-moo
-	SCHEMA_SLOW=1 go test -count=1 -timeout 60m -tags schema_leg_moo -run '^TestMooTableDescriptorsLoad$$' ./internal/codegen/mootable/
-	SCHEMA_SLOW=1 go test -count=1 -timeout 60m -tags schema_leg_moo -run '^TestImplementationAdmitsTaggedLanguagesByBuild$$' ./test/conformance/harness/
-test-goose-tagged-harness-smoke:
-	SCHEMA_SLOW=1 go test -count=1 -timeout 60m -tags schema_leg_goose -run '^TestImplementationAdmitsTaggedLanguagesByBuild$$' ./test/conformance/harness/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 60m -run '^TestMooTableDescriptorsLoad$$' ./internal/codegen/mootable/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 60m -run '^(TestImplementationAdmitsTaggedLanguagesByBuild|TestImplementationAdmitsEveryShippedTarget)$$' ./test/conformance/harness/
+test-tagged-harness-smoke:
+	SCHEMA_SLOW=1 go test -count=1 -timeout 60m -tags schema_leg_tagprobe -run '^TestImplementationAdmitsTaggedLanguagesByBuild$$' ./test/conformance/harness/
 # map is not a compiler backend. Include it by path so the registry wildcard
 # above stays live ports only (tables-ports-refuse-wide-scalars).
 include $(wildcard tools/agentsmap/map.mk)
@@ -7974,7 +8007,7 @@ pins-wire-tables-forms: bin/schema build/conformance-harness
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_retain
 	./build/conformance-harness generate
 
-PINS_CONFORMANCE_DIRS := maps lists widelist examples v1 v2 p1 p2 p3 block pointers messages stream m1 m2 a1 a2 g1 k1 k2 w1 w2 r1 r2 blobs scalars scalars2 fixedevo varevo1 varevo2 varevo3 cooktorture cooktorturewide backend vocab vocab9 arms rt1 features
+PINS_CONFORMANCE_DIRS := maps lists widelist examples v1 v2 p1 p2 p3 block pointers messages stream m1 m2 a1 a2 g1 k1 k2 w1 w2 r1 r2 blobs scalars scalars2 fixedevo varevo1 varevo2 varevo3 cooktorture cooktorturewide packetunions backend vocab vocab9 arms rt1 features
 PINS_CONFORMANCE_SOURCES = $$(ls build/tables-generated/maps/*Table.cpp build/tables-generated/lists/*Table.cpp build/tables-generated/widelist/*Table.cpp) $(filter-out build/tables-generated/maps/% build/tables-generated/lists/% build/tables-generated/widelist/%,$(CONFORMANCE_SOURCES))
 
 .PHONY: pins-conformance

@@ -310,7 +310,8 @@ counts at their minimum) unless a field gives `= value`. The default goes
 before the `|`. A range that excludes zero needs a default inside it. A
 `string(N)` or `bytes(N)` field takes a quoted default (`name string(16) =
 "player"`) and a flags field a list of variants (`caps Caps = { Jump }`);
-`--lang python` refuses those three default kinds by name today. Arrays,
+every target carries those three default kinds on a packet `type` and on a
+table. Arrays,
 nested types and unions take no field default. On a
 table, a field equal to its default is left off the wire and an absent field
 reads as its default, so changing a table default changes what stored files
@@ -520,10 +521,10 @@ command did. Errors always print, one diagnostic per line.
 | `schema help ai` | print the guidance block for a project's AGENTS.md |
 
 `--lang` takes `c`, `cpp`, `cs` (C# (modern): .NET 8+, C# 12), `dart`,
-`elixir`, `go`, `goose`, `java`, `js`, `lobster`, `lua`, `luau`, `python`,
-`ruby`, `rust`, `squirrel` and `unity` (C# (unity): C# 9 over
-netstandard2.1, the surface Unity compiles, [UNITY.md](UNITY.md)). Moo is
-generated only by a compiler built with `go build -tags schema_leg_moo`.
+`elixir`, `go`, `goose`, `java`, `js`, `lobster`, `lua`, `luau`, `moo`,
+`python`, `ruby`, `rust`, `squirrel` and `unity` (C# (unity): C# 9 over
+netstandard2.1, the surface Unity compiles, [UNITY.md](UNITY.md)). Every
+target is in the default build.
 `--surface` (Go and Python) narrows the table surfaces emitted and
 `--runtime` (Go) picks the shared or standalone table runtime
 ([CLI.md](CLI.md), [USAGE.md](USAGE.md)).

@@ -130,9 +130,9 @@ func TestNightlyFixedCorpusWiring(t *testing.T) {
 	for _, phase := range []struct{ step, name, command string }{
 		{"build the ${{ matrix.lang }} driver and the nightly harness", "driver", "make ${{ matrix.targets }} ${{ matrix.env }} $extra"},
 		{"the ${{ matrix.lang }} leg reads the C++ corpus (claims enforced)", "wire", "env ${{ matrix.env }} ./build/nightly-harness run"},
-		{"the original-nine leg checks the four BOM entry cases", "bom", "env ${{ matrix.env }} make conformance-bom-entry"},
+		{"the ${{ matrix.lang }} leg checks the four BOM entry cases", "bom", "env ${{ matrix.env }} make conformance-bom-entry"},
 		{"the ${{ matrix.lang }} leg reads the C++ fixed form", "fixed", "if $gate; then"},
-		{"the original-nine runtime readiness gate", "readiness", "if env ${{ matrix.env }} python3 test/conformance/nightly-readiness"},
+		{"the ${{ matrix.lang }} runtime readiness gate", "readiness", "if env ${{ matrix.env }} python3 test/conformance/nightly-readiness"},
 	} {
 		body := step(phase.step)
 		before := strings.Index(body, "--phase "+phase.name+"-before")

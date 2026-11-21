@@ -1,0 +1,8 @@
+package vkeyed
+
+enum Axis { X, Y, Z }
+
+table Record
+{
+    per_axis [Axis]int32
+}

@@ -318,7 +318,7 @@ unit, named for the unit's package:
 
 | file | what it is |
 |---|---|
-| `compiler/target_ruby.go` | the target, behind the `schema_leg_ruby` build tag until the packet surface has claims; the shared refusal chain, then the emitters |
+| `compiler/target_ruby.go` | the target, a builtin (the `schema_leg_ruby` tag was dropped when the port joined the builtins); the shared refusal chain, then the emitters |
 | `compiler/carries_ruby.go` | the carried constructs, registered once from `rubyCarried`; a later layer adds `var _ = carryRuby(<construct>)` in its own file |
 | `internal/codegen/ruby` | the type surface's emitter (`Generate`), the identifier rules (`CheckNames`) and, from the packet layer, its codec |
 | `internal/codegen/ruby/runtime/` | the runtime, embedded and emitted with its module line naming the unit: the errors (`_schema.rb`), and, from the packet layer, serialize.rb vendored by sha256 (`runtime/SERIALIZE_PIN`, `make vendor-serialize-ruby`) |
@@ -447,10 +447,11 @@ out as lowercase hex lines.**
 ## THE CROSS-LEG GATES OWED
 
 Several compiler gates walk every registered target and hold each to a claim
-about the code it generates. In a build with the `schema_leg_ruby` tag the
-skeleton is registered but generates no type or table, so these gates fail
-under that tag until the layer that carries the construct lands. They are
-owed by those layers, not weakened: each layer adds Ruby's claim to the gate
+about the code it generates. While Ruby was a skeleton behind the
+`schema_leg_ruby` tag (dropped when the port joined the builtins) it was
+registered but generated no type or table, so these gates failed under that
+tag until the layer that carries the construct landed. They were owed by
+those layers, not weakened: each layer adds Ruby's claim to the gate
 in the same change that carries the construct.
 
 - **R4, the packet wire** (types, unions, counted arrays):

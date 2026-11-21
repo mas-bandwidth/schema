@@ -103,7 +103,7 @@ USAGE_GOOSE_DIR ?= build/goose-usage
 tables-goose-usage: bin/schema $(USAGE_DOC) $(SCHEMAS_TABLES_POINTERS)
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	@rm -rf $(USAGE_GOOSE_DIR) && mkdir -p $(USAGE_GOOSE_DIR)
-	go build -tags schema_leg_goose -o $(USAGE_GOOSE_DIR)/schema ./cmd/schema
+	go build -o $(USAGE_GOOSE_DIR)/schema ./cmd/schema
 	$(USAGE_GOOSE_DIR)/schema generate --lang goose --out $(USAGE_GOOSE_DIR)/unit tables/pointers
 	go run ./test/cookgen --bytes 4096 --root Scene --ref head --chain ListNode --next next --out $(USAGE_GOOSE_DIR)/Scene.cook
 	./bin/schema cook-check --root Scene $(USAGE_GOOSE_DIR)/Scene.cook tables/pointers

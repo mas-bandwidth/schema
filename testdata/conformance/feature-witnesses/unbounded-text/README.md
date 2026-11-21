@@ -13,6 +13,6 @@ clean reports. Additional permanent tests cover the generated-Go golden,
 long Unicode keys with a common prefix, duplicate-key identity, optional
 values, element APIs, bounded lengths/counts, invalid UTF-8 and embedded NUL.
 
-The full shared harness runs once in original-nine nightly readiness. These
+The full shared harness runs once in nightly readiness, in the C++ leg. These
 fixtures are neutral oracle regressions; they do not claim that every port
 already implements unbounded text or replace per-language feature witnesses.

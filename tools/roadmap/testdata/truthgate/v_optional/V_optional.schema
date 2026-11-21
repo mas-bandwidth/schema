@@ -1,0 +1,12 @@
+package voptional
+
+table Record
+{
+    level ?int32
+    child ?Child
+}
+
+table Child
+{
+    amount int32
+}

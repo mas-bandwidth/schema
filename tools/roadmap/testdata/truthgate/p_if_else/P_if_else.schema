@@ -1,0 +1,14 @@
+package pifelse
+
+type Holder
+{
+    active bool
+    if active
+    {
+        level uint16
+    }
+    else
+    {
+        idle uint32
+    }
+}

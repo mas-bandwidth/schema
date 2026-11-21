@@ -88,8 +88,28 @@ var conformanceLegs = []conformanceLeg{
 	{"lua", "build/conformance-lua", []string{"lua", "luatable"}},
 	{"luau", "build/conformance-luau", []string{"luau", "luautable"}},
 	{"moo", "build/conformance-moo", []string{"moo", "mootable"}},
+	{"python", "build/conformance-python", []string{"python", "pythontable"}},
+	{"ruby", "build/conformance-ruby", []string{"ruby", "rubytable"}},
 	{"rust", "build/conformance-rust", []string{"rusttable"}},
 	{"squirrel", "build/conformance-squirrel", []string{"squirrel", "squirreltable"}},
+	{"unity", "build/conformance-unity/.stamp", []string{"unity", "unitytable"}},
+}
+
+// TestConformanceLegsCoverEveryLeg holds the table above to every leg the
+// harness discovers (test/conformance/<lang>/ci.json): a leg whose inputs are
+// not checked is a leg whose stale build can pass.
+func TestConformanceLegsCoverEveryLeg(t *testing.T) {
+	root := repoRootDir(t)
+	found, err := filepath.Glob(filepath.Join(root, "test", "conformance", "*", "ci.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range found {
+		leg := filepath.Base(filepath.Dir(f))
+		if !slices.ContainsFunc(conformanceLegs, func(l conformanceLeg) bool { return l.name == leg }) {
+			t.Errorf("conformanceLegs has no row for the harness leg %s", leg)
+		}
+	}
 }
 
 func repoRootDir(t *testing.T) string {

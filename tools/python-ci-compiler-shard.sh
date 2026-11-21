@@ -6,4 +6,4 @@ case "$group" in *[!A-Za-z0-9_+]*|+*|*+|*++*) echo "invalid compiler shard" >&2;
 names=$(printf '%s' "$group" | tr '+' ' ')
 pattern=$(printf '%s' "$group" | tr '+' '|')
 label=$(printf '%s' "$group" | cksum | cut -d ' ' -f1)
-exec sh test/slowgate/proof "python-ci-compiler-$label" "$names" -tags schema_leg_python ./compiler -run "^($pattern)$" -count=1
+exec sh test/slowgate/proof "python-ci-compiler-$label" "$names" ./compiler -run "^($pattern)$" -count=1

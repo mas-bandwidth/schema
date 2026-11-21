@@ -1,5 +1,3 @@
-//go:build schema_leg_python
-
 package compiler
 
 // THE FIXED-CLASS FIELD KINDS are field kinds and not constructs of the §2

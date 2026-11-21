@@ -35,7 +35,12 @@ proves in full.*
   needs or it stays internal. The per-language emitters are implementations, not API.
 
 - **What `make` proves, in full** (moved here from README 2026-08-06 — too dense for the
-  human front page, load-bearing for a working session): all nine backends live (the JS
+  human front page, load-bearing for a working session). `make test` runs every registered
+  leg, all eighteen targets: the C++ reference in its core and one `test-<lang>` leg for each
+  of the other seventeen (`TEST_LEGS`, make/<lang>.mk). This paragraph describes the legs of
+  C, C++, C# (modern), Dart, Elixir, Go, Java, JavaScript and Rust; the C# (unity), Goose,
+  Lobster, Lua, Luau, Moo, Python, Ruby and Squirrel legs run too and are not described
+  here. Of the nine described, all are live (the JS
   legs — `test/js`, `test/js-ludicrous` — joined 2026-08-16 with the sixth backend; the
   Dart legs — `test/dart`, `test/dart-ludicrous`, each run twice: JIT --enable-asserts
   and AOT release — joined 2026-08-30 with the seventh, whose generated output is
@@ -93,7 +98,8 @@ words (2026-08-25): *"schema is types and bitpacking and enums and constants."*
   and refused by name in a `type` (SPEC.md §1, SPEC-TABLES.md §2.8, §2.9). The data
   path is schema's too, as `schema pack`, `unpack`, `cook`, `cook-check` and `uncook`
   over a JSON tree. ROADMAP.md's table-wire rows carry each backend's state, C++ the
-  reference and the other eight ports behind it.
+  reference and the other seventeen targets beside it. Every row is complete in every
+  column but "no allocation on read", which ten targets still owe.
 - **The protocol layer stays out of the language.** Messages, objects, the view
   markers, quantize, round and contexts are not part of schema: the offering is
   types, enums, flags, unions, constants and bitpacking on the type wire, and tables

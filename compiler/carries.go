@@ -109,7 +109,7 @@ func CarryConstructs() []string {
 
 // Carried is the set of constructs target registered, in registry order, and
 // whether target has a registration in this build at all. A target behind a
-// build tag (schema_leg_luau and its siblings) has none unless the binary was
+// build tag (a schema_leg_<lang> leg still being built) has none unless the binary was
 // built with that tag, which is a different answer from "carries nothing".
 func Carried(target string) ([]string, bool) {
 	set, ok := targetCarries[target]

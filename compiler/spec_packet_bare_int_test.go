@@ -49,8 +49,8 @@ func TestSpecPacketWriteBareIntWidth(t *testing.T) {
 	row = "PACKET-WIRE-ALGORITHM §2.4 the bare-integer row"
 	for _, want := range []string{
 		"The value must fit its declared width (SPEC §5.1 row 11)",
-		"a debug assert in C, C++, C#, Rust, Java and Dart",
-		"a refusal in every build in Go, JavaScript, Elixir, Lua, Luau, Squirrel, MOO and Goose",
+		"a debug assert in C, C++, C#, Rust, Java, Dart and Lobster",
+		"a refusal in every build in Go, JavaScript, Elixir, Lua, Luau, Squirrel, Moo, Goose, Python and Ruby",
 		"cast to the **same-width unsigned** first",
 	} {
 		mustState(t, row, scalar, want)
@@ -73,7 +73,7 @@ func TestSpecPacketWriteBareIntWidth(t *testing.T) {
 
 	writeSection := specTablesSection(t, spec, "Each leg's `FixedSave`", "## 6. ")
 	row11 := regexp.MustCompile(`11 (every build|debug|unrepresentable|not yet held)`)
-	for _, leg := range []string{"C++", "C", "C#", "Rust", "Java", "Dart", "Go", "JavaScript", "Elixir", "Lua", "Luau", "Squirrel", "MOO", "Goose", "Lobster"} {
+	for _, leg := range []string{"C++", "C", "C#", "Rust", "Java", "Dart", "Go", "JavaScript", "Elixir", "Lua", "Luau", "Squirrel", "Moo", "Goose", "Lobster"} {
 		marker := "- **" + leg + "**"
 		_, cell, found := strings.Cut(writeSection, marker)
 		if !found {

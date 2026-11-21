@@ -54,6 +54,7 @@
     <Compile Include="$(TablesGeneratedDir)/widelist/*.cs" />
     <Compile Include="$(TablesGeneratedDir)/w2/*.cs" />
     <Compile Include="$(TablesGeneratedDir)/w1/*.cs" />
+    <Compile Include="$(TablesGeneratedDir)/valuedefaults/*.cs" />
     <Compile Include="$(TablesGeneratedDir)/p2/*.cs" />
     <Compile Include="$(TablesGeneratedDir)/blobs/*.cs" />
     <Compile Include="$(TablesGeneratedDir)/pointers/*.cs" />
@@ -64,6 +65,7 @@
     <Compile Include="$(TablesGeneratedDir)/varevo3/*.cs" />
     <Compile Include="$(TablesGeneratedDir)/cooktorture/*.cs" />
     <Compile Include="$(TablesGeneratedDir)/cooktorturewide/*.cs" />
+    <Compile Include="$(TablesGeneratedDir)/packetunions/*.cs" />
     <Compile Include="$(TablesGeneratedDir)/scalars/*.cs" />
     <Compile Include="$(TablesGeneratedDir)/messages/*.cs" />
     <Compile Include="$(TablesGeneratedDir)/m1/*.cs" />

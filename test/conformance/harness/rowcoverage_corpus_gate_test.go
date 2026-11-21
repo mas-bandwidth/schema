@@ -1,7 +1,7 @@
 // The row-coverage gate (gates/row-coverage/corpus): every row the manifest
 // names has actual corpus bytes for every native leg that reads it. The data
 // is the party's ledger (testdata/conformance/tables/MANIFEST.txt, FORMAT.md
-// there) and the nine legs are what the harness discovers under
+// there) and the legs (all 18 targets) are what the harness discovers under
 // test/conformance/<lang>/driver -- the same registry the matrix reads.
 //
 // Every row kind maps to file paths a leg will read, and the gate enumerates
@@ -27,7 +27,7 @@ import (
 	"testing"
 )
 
-// legNames discovers the nine native legs from test/conformance/<lang>/driver,
+// legNames discovers the native legs (all 18 targets) from test/conformance/<lang>/driver,
 // excluding `harness` (this package's directory) and `canary` (the
 // sprint-canary end-to-end positive control, which is its own single C file
 // rather than a conformance driver -- test/conformance/canary/).

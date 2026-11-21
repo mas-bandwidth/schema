@@ -10,12 +10,12 @@ name: Nightly conformance
 # `registry` discovers ports from test/conformance/<lang>/ci.json. `cpp-writes`
 # builds, writes and validates the canonical corpus and verifies the committed
 # pins. `port (<lang>)` reads it, checks canonical output and claimed coverage,
-# and runs its fixed-form gate. The original nine also run the full readiness
-# entrypoint, including strict fuzz/retain acceptance. `coverage` requires all
-# runtime receipts AND 100% of the underlying roadmap task graph for packet,
-# fixed and variable tables. An open task, missing receipt or skipped surface
-# cannot be reported as original-nine completion. Expansion languages remain
-# visible without this completion obligation. Work across languages stays O(n).
+# and runs its fixed-form gate, the BOM entry cases and the full readiness
+# entrypoint, including strict fuzz/retain acceptance. Every target owes
+# parity: `coverage` requires all 18 targets' runtime receipts AND 100% of the
+# underlying roadmap task graph for packet, fixed and variable tables, in
+# every target column. An open task, missing receipt or skipped surface in any
+# target cannot be reported as completion. Work across languages stays O(n).
 #
 # THE FLEET'S RUNNERS, never hosted (standing rule, 2026-10-21), and never the
 # host named space, which is the game server and in no runner pool: every job
@@ -62,11 +62,11 @@ env:
   SERIALIZE_RS_TAG: v5.0.0
   SERIALIZE_CS_TAG: v2.1.1
   SERIALIZE_JS_TAG: v2.1.2
-  # The harness is built with every leg's tag, because a target behind a tag
-  # registers what it carries only in a binary built with it, and the claim
-  # check refuses a leg it has no registration for rather than enforcing
-  # nothing (test/conformance/harness/claims.go).
-  HARNESS_TAGS: schema_leg_goose,schema_leg_moo,schema_leg_python,schema_leg_ruby
+  # The harness is a plain build: every shipped target is built in and
+  # registers what it carries in every binary (Glenn, 2026-11-21: "all
+  # languages, by default, all the time."), and the claim check refuses a leg
+  # it has no registration for rather than enforcing nothing
+  # (test/conformance/harness/claims.go).
 
 jobs:
   registry:
@@ -250,7 +250,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: make dist-luau dist-squirrel
 
-      - name: the C++ original-nine readiness gate
+      - name: the C++ runtime readiness gate
         if: ${{ !cancelled() }}
         run: |
           set -uo pipefail
@@ -428,7 +428,7 @@ jobs:
           if [ "${{ matrix.lang }}" = rust ]; then extra="RUSTUP_BIN=$(dirname "$(command -v cargo)")"; fi
           # shellcheck disable=SC2086
           make ${{ matrix.targets }} ${{ matrix.env }} $extra
-          go build -tags "$HARNESS_TAGS" -o build/nightly-harness ./test/conformance/harness
+          go build -o build/nightly-harness ./test/conformance/harness
           python3 test/conformance/fixed-corpus-identity.py verify "$SHARED_FIXED_REFERENCE" "$SHARED_FIXED_RECEIPT" --consumer build --phase driver-after
 
       - name: the ${{ matrix.lang }} leg reads the C++ corpus (claims enforced)
@@ -442,8 +442,7 @@ jobs:
 
       - name: differential json-fuzz on the ${{ matrix.lang }} leg (N=5000)
         run: env ${{ matrix.env }} ./build/nightly-harness json-fuzz --only ${{ matrix.lang }} --seed 1 --n 5000 --failed build/nightly/report/json-fuzz-failures
-      - name: the original-nine leg checks the four BOM entry cases
-        if: contains(fromJSON('["c","cs","go","rust","java","js","dart","elixir"]'), matrix.lang)
+      - name: the ${{ matrix.lang }} leg checks the four BOM entry cases
         run: |
           python3 test/conformance/fixed-corpus-identity.py verify "$SHARED_FIXED_REFERENCE" "$SHARED_FIXED_RECEIPT" --consumer build --phase bom-before
           env ${{ matrix.env }} make conformance-bom-entry CONFORMANCE_BOM_LANG=${{ matrix.lang }} \
@@ -489,8 +488,8 @@ jobs:
             echo pass > "$record"
           else echo fail > "$record"; exit 1; fi
 
-      - name: the original-nine runtime readiness gate
-        if: ${{ !cancelled() && contains(fromJSON('["c","cs","go","rust","java","js","dart","elixir"]'), matrix.lang) }}
+      - name: the ${{ matrix.lang }} runtime readiness gate
+        if: ${{ !cancelled() }}
         run: |
           set -uo pipefail
           mkdir -p build/nightly/report
@@ -561,12 +560,14 @@ jobs:
         continue-on-error: true
       # The coverage command invokes SBCL itself and records a missing validator
       # as a failed acceptance check, alongside every other missing receipt.
+      # The default build carries every target's registrations, so each one's
+      # implementation prerequisites are checked against its real generator.
       - name: the coverage table
         run: |
           set -euo pipefail
           mkdir -p build/nightly/coverage build/nightly/rows
           status=0
-          go run ./test/conformance/harness coverage --in build/nightly/rows --require-original-nine > build/nightly/coverage/coverage.md 2>&1 || status=$?
+          go run ./test/conformance/harness coverage --in build/nightly/rows --require-every-target > build/nightly/coverage/coverage.md 2>&1 || status=$?
           cat build/nightly/coverage/coverage.md >> "$GITHUB_STEP_SUMMARY"
           cat build/nightly/coverage/coverage.md
           exit "$status"

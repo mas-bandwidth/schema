@@ -1,8 +1,13 @@
-# Original-nine nightly readiness
+# Nightly readiness
 
-Run `test/conformance/nightly-readiness <lang>` for exactly one of
-`cpp c cs go rust java js dart elixir goose moo python`. Goose, MOO and Python,
-the languages past the original nine, run the same expanded shape (below). The nightly workflow must preserve
+Every target owes a readiness receipt: the nightly's
+`coverage --require-every-target` gate requires one from each of the eighteen
+(README.md, "The nightly"). Run `test/conformance/nightly-readiness <lang>`
+for exactly one of the 18 targets: `cpp c cs go rust java js dart elixir goose
+ruby moo python lua luau squirrel lobster unity` (`cs` is C# (modern), `unity`
+is C# (unity)). Every target runs the acceptance below; Goose, Moo, Python,
+Lua, Luau, Squirrel, Lobster and C# (unity) run it through their own
+toolchains and drivers, described in their sections. The nightly workflow must preserve
 stdout and `build/nightly-readiness/<lang>/`, and write a passing readiness
 receipt only after exit zero. Every phase is attempted; one failed phase keeps
 the final result incomplete. A green conformance report or a manually completed
@@ -25,7 +30,7 @@ does not add an all-pairs matrix or ask the reference to read each writer.
 | Wire and retaining load | Build the existing all-roots driver. Run the shared differential `wire-fuzz` directly for plain and `--retain`, each at seeds 1, 2 and 3 with 100000 random mutants plus the complete enumerated pass. Dart and JavaScript use the mixed-builder profile for their managed variable-file loaders; the complete fixed/message roster retains its form-specific oracle. No `--finite-owed`, replay-only replacement, caller seed/count reduction or custom roster is accepted. |
 | Wire/retention controls | Execute the existing planted wire controls and retention controls. C, Go and Rust's existing retention overlays are reproduced with only the outer Go-suite timeout changed to zero; the exact intended test failure and diagnostic remain mandatory. |
 
-C# runs those six passes through its native region loader and retaining loader,
+C# (modern) runs those six passes through its native region loader and retaining loader,
 then runs three additional plain mutable-builder passes with `--builder` at the
 same seeds and counts. The two profiles have different count-cap contracts.
 Each has its own mandatory phase names and strict summary; neither can stand
@@ -39,7 +44,7 @@ The packet/table package pairs are:
 | --- | --- | --- | --- |
 | C++ | cpp | cpptable | schema_test, guard, random, ludicrous |
 | C | c | ctable | normal, ASan, ludicrous, bench |
-| C# | csharp | cstable | dotnet Debug and Release, normal and ludicrous |
+| C# (modern) | csharp | cstable | dotnet Debug and Release, normal and ludicrous |
 | Go | golang | gotable | go run, normal and ludicrous |
 | Rust | rust | rusttable | cargo Debug and Release, normal and ludicrous |
 | Java | java | javatable | with and without -ea, normal and ludicrous |
@@ -47,8 +52,14 @@ The packet/table package pairs are:
 | Dart | dart | darttable | assertions and compiled executable, normal and ludicrous |
 | Elixir | elixir | elixirtable | normal and ludicrous |
 | Goose | goose | goosetable | `goose run` and `goose run --debug`, normal and ludicrous |
-| MOO | moo | mootable | the package's golden probes under the pinned `moo`, normal and ludicrous |
+| Moo | moo | mootable | the package's golden probes under the pinned `moo`, normal and ludicrous |
+| Ruby | ruby | rubytable | the package's probes under the pinned Ruby, normal and ludicrous |
 | Python | python | pythontable | the package's probes under both pinned CPythons, normal and ludicrous |
+| Lua | lua | luatable | the package's golden probes, then `test/lua-ludicrous/main.lua` under the pinned `lua` |
+| Luau | luau | luautable | the package's golden probes, then `test/luau-ludicrous/main.luau` under the pinned `luau` |
+| Squirrel | squirrel | squirreltable | the package's golden probes, then `test/squirrel-ludicrous/main.nut` under the pinned `sq` |
+| Lobster | lobster | lobstertable | the package's golden probes under the pinned `lobster`, normal and ludicrous |
+| C# (unity) | unity | unitytable | `test/unity` Debug and Release, normal and ludicrous |
 
 External table targets are `tables-maps/lists/arms/retain/view/doctags/flat-wire/
 fixed-matched/fixed-twin` for C++; `tables-c-fixedform/variable/usage`;
@@ -58,10 +69,12 @@ fixed-matched/fixed-twin` for C++; `tables-c-fixedform/variable/usage`;
 `tables-elixir-fixed-form/fixed-bench`; and for Goose
 `tables-goose-versioning`, `tables-goose-message-form` and the
 `tables-goose-versioning/fixedform/message-form/message-peer` negative controls;
-and for MOO `tables-moo-fixed`, `tables-moo-message-form` and
+and for Moo `tables-moo-fixed`, `tables-moo-message-form` and
 `tables-moo-compiler-claims`; and for Python `python-fixed-writer-lineage`,
 `python-message-conformance`, `tables-python-bench-gate` and their negative
-controls. Versioning and fixed-roadmap Go tests
+controls; and for Ruby `ruby-fixed-writer-lineage`, `tables-ruby-bench-gate`
+and their negative controls; and for the five legs below the gates their
+sections name. Versioning and fixed-roadmap Go tests
 already run in their complete packages, without the legacy filtered targets'
 600-second or 20-minute suite limits.
 
@@ -72,10 +85,10 @@ rejected; only the retaining arm may report seeds outside its retention domain.
 
 ## Goose
 
-Goose is behind the `schema_leg_goose` build tag. Its prerequisites fetch and
-probe the pinned compiler (`goose-toolchain-ready`) and build
-`build/conformance-harness-goose`, the harness with the tag, which runs the
-implementation phase; every other harness phase uses the ordinary harness.
+Goose is a built-in target. Its prerequisites fetch and probe the pinned
+compiler (`goose-toolchain-ready`) and build
+`build/conformance-harness-goose`, a plain build of the harness, which runs
+the implementation phase; every other harness phase uses the ordinary harness.
 The packet programs are `test/goose/main.goose` and
 `test/goose-ludicrous/main.goose` beside their generated modules and the wire
 goldens (`build/goose-packet/.stamp`); each prints `OK` under both modes.
@@ -97,15 +110,15 @@ reach): `retain-goose-tablewire` and `retain-goose-fuzz` run those tests
 uncapped and require them to pass. Goose has no §5.6 retirement; any
 `RETIRED` or `SKIP` marker is incomplete.
 
-## MOO
+## Moo
 
-MOO is behind the `schema_leg_moo` build tag. Its prerequisites build and
-probe the pinned interpreter and analyzer (`moo-toolchain-ready`, which runs
-`dist-moo` when either is missing) and build `build/conformance-harness-moo`,
-the harness with the tag, which runs the implementation phase; every other
+Moo is a built-in target. Its prerequisites build and probe the pinned
+interpreter and analyzer (`moo-toolchain-ready`, which runs `dist-moo` when
+either is missing) and build `build/conformance-harness-moo`, a plain build
+of the harness, which runs the implementation phase; every other
 harness phase uses the ordinary harness.
 
-The moo CLI has no io, so MOO has no packet program on disk. Its packet
+The moo CLI has no io, so Moo has no packet program on disk. Its packet
 programs are internal/codegen/moo's probes, which generate `examples` and
 `examples128`, stage the C++ goldens as moo source and run the pinned
 interpreter: `packet-normal-0` runs the golden write, read, truncation,
@@ -114,30 +127,29 @@ wire, each a `go test -json` phase whose every named probe must pass. Its
 packet features are the defaults, UTF-8 and finite gates with their
 controls.
 
-MOO's wire-fuzz leg is already one process over the whole roster
+Moo's wire-fuzz leg is already one process over the whole roster
 (`test/conformance/moo/wirefuzz-driver`: `wirefuzz.moo` under the native host
 `tools/moofuzzhost`, each unit required from its own directory), so it needs
 no dispatcher. It answers the region measure itself and runs the plain
 profile, as its own and release-tier gates do; the message form of a
 variable-class root is its named absence, which this run counts as incomplete.
 
-MOO's gate recipes run `go test` under Go's default ten-minute cap. The run
+Moo's gate recipes run `go test` under Go's default ten-minute cap. The run
 executes them through a private makefile that copies each such recipe from
 `make/moo*.mk` with `-timeout=0` added; a recipe that names a cap fails
 closed, and per-recipe hashes are recorded. Its retention controls plant their
 sabotage in the emitted runtime in-test: `retain-moo-save` and
-`retain-moo-refusal` run those tests uncapped and require them to pass. MOO
+`retain-moo-refusal` run those tests uncapped and require them to pass. Moo
 has no §5.6 retirement; any `RETIRED` or `SKIP` marker is incomplete.
 
 ## Python
 
-Python's gates run under the `schema_leg_python` build tag (`make
-test-python`'s `python-ci-packages` among them), so every Go test phase of
-this run (the native packages, the packet probes and the retention controls)
-passes `-tags schema_leg_python`. Its prerequisites build and probe the pinned
-interpreters and analyzer (`dist-python`, `python-toolchain-check`) and build
-`build/conformance-harness-python`, the harness with the tag, the only build
-that admits `implementation --lang python`; every other harness phase uses the
+Python is a built-in target, so every Go test phase of this run (the native
+packages, the packet probes and the retention controls) runs with no build
+tag. Its prerequisites build and probe the pinned interpreters and analyzer
+(`dist-python`, `python-toolchain-check`) and build
+`build/conformance-harness-python`, a plain build of the harness, which runs
+the implementation phase; every other harness phase uses the
 ordinary harness.
 
 Python's packet programs are internal/codegen/python's probes, each running
@@ -163,11 +175,80 @@ copy of the emitted runtime or the driver in-test: `retain-python-save` and
 `retain-python-remap` run those tests uncapped and require them to pass.
 Python has no §5.6 retirement; any `RETIRED` or `SKIP` marker is incomplete.
 
+## Lua, Luau, Squirrel, Lobster and C# (unity)
+
+These five run under the ordinary harness; each has its own prerequisites:
+the pinned toolchain (`toolchain-lua`, `toolchain-luau`, `toolchain-squirrel`,
+`lobster-dist-present toolchain-lobster`, `toolchain-unity`) and the
+conformance units and host its wire driver needs. The interpreter or SDK is
+the environment's `LUA`, `LUAU`, `SQ`, `LOBSTER` or `DOTNET`, else the pin's
+path under `dist/`.
+
+Packets:
+
+- Lua, Luau and Squirrel: `packet-normal-0` runs the packet package's golden
+  write and read probes with their negative controls (a `go test -json` phase
+  whose every named probe must pass). `packet-ludicrous-0` runs the leg's
+  ludicrous program (`test/lua-ludicrous/main.lua`,
+  `test/luau-ludicrous/main.luau`, `test/squirrel-ludicrous/main.nut`) over
+  `examples128` generated for the leg: every pinned instance written byte for
+  byte against the C++-pinned goldens in `testdata/wire`, read back, the
+  defaults, branch zeroing, hostile `setBits` rejections, truncation, the
+  degenerate one-byte probe and the unsigned probe's write refusal. It must
+  print `OK`. Packet features are the defaults, UTF-8 and finite gates with
+  their controls, and `<lang>-ludicrous-negative-control`, which flips one
+  byte of the `ludicrous_state` golden and requires the program to fail on
+  exactly that golden.
+- Lobster: both shapes are the packet package's probes under the pinned
+  `lobster`: `packet-normal-0` the golden write and read, constants, protocol
+  id, void arms, union before byte array, arm defaults, float range and packet
+  end probes with their controls; `packet-ludicrous-0` the wide and unsigned
+  fixed goldens with their controls. Its packet features are the defaults,
+  text and finite-float probes with their controls, run the same way.
+- C# (unity): `test/unity` takes the shape as its argument and runs under
+  `dotnet run -c Debug` (the write contracts live) and `-c Release`, four
+  programs, each printing `OK`. Its packet features are the defaults and UTF-8
+  gates with their controls and `unity-wire-negative-control`; C# (unity) has
+  no finite gate, as C# (modern) has none.
+
+External gates are each leg's bench leg, documented-surface (`usage`) gate,
+text or JSON differential and strict gate over the generated code (luacheck,
+`luau-analyze` strict, the Squirrel lint gate, Lobster strict), each with its
+control; Luau adds its fixed-form and versioning gates, Squirrel its fixed-form
+and message-form controls. C# (unity) runs `unity-tables`, `unity-fixed`,
+`tables-unity-standalone` (the strict dialect build of a table unit) and its
+bench gate with its control.
+
+Wire drivers, one process over every unit, in the plain profile except where
+noted: `test/conformance/lua/wirefuzz.lua` over `build/conformance-lua`;
+`test/conformance/luau/wirefuzz-driver`; `test/conformance/squirrel/wirefuzz.nut
+mixed`, in the mixed-builder profile (variable-file roots under the builder
+oracle, fixed and message roots under theirs, one process); Lobster's
+`build/lobster-wirefuzzhost` with its known-leaks list; and
+`test/conformance/unity/driver wire-fuzz`.
+
+Wire controls are each leg's existing planted wire-fuzz controls. Retention
+controls are the table package's in-test retention controls, each a
+`retain-<lang>-<name>` phase whose named tests must pass: Lua's save and
+message controls, Luau's and Squirrel's message-form controls, Lobster's
+unknown-node and verdict-pipe controls and C# (unity)'s message-and-unknown
+retention test.
+
+These legs' gate recipes run `go test`, directly or through
+`test/slowgate/proof`, with a 600-second cap or none. The run executes the
+packet build, packet features, external gates, driver build and wire controls
+through private makefiles that copy each such recipe from the leg's own
+fragments (`make/<lang>.mk`, `make/<lang>-*.mk`, `make/schema-<lang>-*.mk`)
+with that cap replaced by `-timeout=0` (a command naming none gains it); any
+other cap fails closed, and per-recipe hashes are recorded. None of them has a
+§5.6 retirement; any `RETIRED` or `SKIP` marker is incomplete.
+
 Wire controls are the existing `tables[-<lang>]-wire-fuzz-negative-control`
-targets, with C#'s pack control and Elixir's refusal control. Retention controls
-are C++'s retaining differential pair; C's dropped retained field; C#'s
+targets, with C# (modern)'s pack control and Elixir's refusal control. Retention controls
+are C++'s retaining differential pair; C's dropped retained field; C# (modern)'s
 `tables-cs-retain-negative-control`; Go's file-count floor and unknown-node
-controls; Rust's capacity-check overlay; Goose's, MOO's and Python's in-test retention controls; Java's declared-default and node-record
+controls; Rust's capacity-check overlay; the in-test retention controls of
+Goose, Ruby, Moo, Python, Lua, Luau, Squirrel, Lobster and C# (unity); Java's declared-default and node-record
 controls; JavaScript's cards upgrade control alongside the full native RT1
 suite; and Dart/Elixir's retained-node controls. The named controls' enumerated
 runs may use N=0; they never stand in for the six positive release runs.
@@ -221,7 +302,7 @@ runs may use N=0; they never stand in for the six positive release runs.
 
 ## Known incomplete acceptance exposed by this entrypoint
 
-This is intentionally not a retrospective claim that today's nine ports are
+This is intentionally not a retrospective claim that the ports are
 complete. Existing defaults let Java run no random mutants; Java, Dart and
 several other release targets permit finite-value exemptions; JavaScript and
 Elixir drivers acknowledge absent roots. Some native packages have live owed
@@ -244,5 +325,8 @@ regressions therefore enter nightly automatically without repeating the referenc
 work for each language.
 
 The C negative-control grep regression belongs to the C native package and runs
-with that language. The original-nine gate does not require expansion-language
-CI corpora through the repository-wide `internal/ci` package.
+with that language. Each target's CI corpora are required by its own
+readiness run, not through the repository-wide `internal/ci` package.
+`internal/ci` checks that this script accepts every target the coverage gate
+requires a receipt for, with its packages, driver build, wire controls and
+external gates.

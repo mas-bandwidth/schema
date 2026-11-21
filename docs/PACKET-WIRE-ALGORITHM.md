@@ -258,7 +258,7 @@ PUT_RANGED(w, value, min, max):
 |---|---|
 | `bool` | `PUT_BITS(w, 0 or 1, 1)` |
 | `bits(N)` | `PUT_VALUE(w, value, N)`, N in [1,64] |
-| bare `intN` / `uintN` | `N` raw bits. The value must fit its declared width (SPEC §5.1 row 11), checked by the leg's mechanism — a debug assert in C, C++, C#, Rust, Java and Dart, a refusal in every build in Go, JavaScript, Elixir, Lua, Luau, Squirrel, MOO and Goose. Signed width `< 64`: cast to the **same-width unsigned** first, then `PUT_VALUE` — a signed value converted to u64 sign-extends and the high bits corrupt the stream |
+| bare `intN` / `uintN` | `N` raw bits. The value must fit its declared width (SPEC §5.1 row 11), checked by the leg's mechanism — a debug assert in C, C++, C#, Rust, Java, Dart and Lobster, a refusal in every build in Go, JavaScript, Elixir, Lua, Luau, Squirrel, Moo, Goose, Python and Ruby. Signed width `< 64`: cast to the **same-width unsigned** first, then `PUT_VALUE` — a signed value converted to u64 sign-extends and the high bits corrupt the stream |
 | ranged `intN` / `uintN` | `PUT_RANGED` |
 | `uint128` (bare) | 128 raw bits, low 64-bit half first (`PUT_VALUE` of the low 64, then the high 64) |
 | `int128 \| min, max` | `PUT_RANGED` over the 128-bit range; where the range fits 64 bits or fewer the bytes are identical to `int64` over the same bounds. Bare `int128` and ranged `uint128` do not compile |
@@ -301,8 +301,8 @@ PUT_BITS(w, integer, wire_bits)
 **The value check is SPEC §5.1 row 10.** A NaN, an infinity, or a finite value outside
 [min, max] is a value the declaration does not admit, checked before quantizing by the leg's
 mechanism as `docs/rulings.json` `write-refusal` lists it: a debug assert in C, C++, C#, Rust,
-Java and Dart, and a refusal in every build in Go, JavaScript, Elixir, Lua, Luau, Squirrel, MOO
-and Goose. A conforming writer never relies on clamping the value into [0, 1]: an in-range value
+Java, Dart and Lobster, and a refusal in every build in Go, JavaScript, Elixir, Lua, Luau, Squirrel,
+Moo, Goose, Python and Ruby. A conforming writer never relies on clamping the value into [0, 1]: an in-range value
 normalizes into [0, 1] by itself. What a build whose check is compiled out writes for an
 off-range value is unspecified (SPEC §5), and the reader on the other end refuses an off-range
 decode (§3.4). A runtime that keeps a [0, 1] clamp in its release build is not required to
@@ -487,7 +487,7 @@ stricter and its own. The C++ word-wise scan (eight-byte steps, overlapping last
 
 **UTF-8:** well-formed under Unicode Table 3-7. Overlong forms, surrogates encoded in UTF-8,
 code points above `10FFFF`, truncated sequences, bare continuations, and the bytes `0xFE` /
-`0xFF` all `REFUSE`. Both checks hold in every packet target, in every build. MOO gets both
+`0xFF` all `REFUSE`. Both checks hold in every packet target, in every build. Moo gets both
 checks from its runtime `serializeString` call; the other packet targets enforce them in
 generated code, and three targets have no runtime at all.
 
@@ -555,35 +555,35 @@ red.
 
 ## 7. Coverage matrix stub
 
-Fifteen packet targets, one wire. Fill a cell when that port has proved the construct against the
+Eighteen packet targets, one wire. Fill a cell when that port has proved the construct against the
 fixture in §6; leave it blank until it has. **C++ is the reference writer of the goldens, not
 an exemption from the proof.** This table is a stub: the fixtures exist, the per-language ticks
 are the work.
 
-| construct | fixture | c | cpp | cs | rust | java | js | dart | elixir | go | lua | luau | squirrel | moo | goose | lobster |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| LSB-first bits, low-32-first >32 | `probebits`, `bench_bits` |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| `const` / `reserved` / `align` | `probe_header` |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| ranged int, incl. min≠0 | `testdata`, `bench_ints` |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| degenerate min==max (zero bits) | `degenerate`, `degenerate_probe` |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| full-range uint32 / uint64 | `unsigned_probe`, `probebits` |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| `bool`, bare float, `bits(N)` | `bench_packet`, `bench_mixed` |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| compressed float, two roundings | `compressed_probe` |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| `if` / `else`, nested, zero of untaken | `rigidbody_*`, `packet-defaults/conditional-*` |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| `[N]T` / `[Min..N]T` | `probearray`, `testdata` |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| `string(N)` length + align + bytes | `chat` |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| `string(N)` UTF-8 + interior null | `serialize/conformance/string.txt`, `packet-text` |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| `bytes(N)` | `serialize/conformance/bytes.txt`; `Block` in `Wire.schema` |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| enum, wire range `[0, Max]` | `probearray` (`Weapon`) |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| `flags` | `shipcreate_flags`, `ProbeFlags` |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| union tag + selected arm, None, void | `probecollider`, `packet-void`, `ArmDefaults` `0x51` |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| `int128` / `uint128` / `fixed` / `ufixed` | `ludicrous_state`, `fixed.txt` |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| specified defaults do not elide | `packet-defaults/` |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| empty type (zero bits) | `Heartbeat` in `Wire.schema` |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| non-finite refusal: NaN / signalling NaN / each infinity refused, `-0` and a subnormal bit exact | PORTING.md float row; corpus pins |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| paired 64-record `BenchMixed` | `bench_mixed.bin` + variants |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| bit-flip agreement | SPEC §7.2 gate 5 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| write-side debug-only vs every-build | SPEC §5 tiers |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| construct | fixture | c | cpp | cs | rust | java | js | dart | elixir | go | lua | luau | squirrel | moo | goose | lobster | python | ruby | unity |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| LSB-first bits, low-32-first >32 | `probebits`, `bench_bits` |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| `const` / `reserved` / `align` | `probe_header` |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| ranged int, incl. min≠0 | `testdata`, `bench_ints` |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| degenerate min==max (zero bits) | `degenerate`, `degenerate_probe` |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| full-range uint32 / uint64 | `unsigned_probe`, `probebits` |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| `bool`, bare float, `bits(N)` | `bench_packet`, `bench_mixed` |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| compressed float, two roundings | `compressed_probe` |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| `if` / `else`, nested, zero of untaken | `rigidbody_*`, `packet-defaults/conditional-*` |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| `[N]T` / `[Min..N]T` | `probearray`, `testdata` |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| `string(N)` length + align + bytes | `chat` |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| `string(N)` UTF-8 + interior null | `serialize/conformance/string.txt`, `packet-text` |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| `bytes(N)` | `serialize/conformance/bytes.txt`; `Block` in `Wire.schema` |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| enum, wire range `[0, Max]` | `probearray` (`Weapon`) |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| `flags` | `shipcreate_flags`, `ProbeFlags` |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| union tag + selected arm, None, void | `probecollider`, `packet-void`, `ArmDefaults` `0x51` |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| `int128` / `uint128` / `fixed` / `ufixed` | `ludicrous_state`, `fixed.txt` |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| specified defaults do not elide | `packet-defaults/` |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| empty type (zero bits) | `Heartbeat` in `Wire.schema` |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| non-finite refusal: NaN / signalling NaN / each infinity refused, `-0` and a subnormal bit exact | PORTING.md float row; corpus pins |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| paired 64-record `BenchMixed` | `bench_mixed.bin` + variants |  | golden |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| bit-flip agreement | SPEC §7.2 gate 5 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| write-side debug-only vs every-build | SPEC §5 tiers |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
 
 A blank cell is not a skip. It is a cell nobody has ticked on this page yet.
 

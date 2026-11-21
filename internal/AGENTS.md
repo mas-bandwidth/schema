@@ -8,7 +8,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `baseline/` | tables baseline pins | `go test ./internal/baseline` | `go test ./internal/baseline` |
 | `check/` | resolve, check, lower to IR | `go test ./internal/check` | `go test ./internal/check` |
 | `ci/` | workflow pin and SDK gates | `go test ./internal/ci` | `go test ./internal/ci` |
-| [codegen/](codegen/AGENTS.md) | per-language emitters | `go test ./internal/codegen/...` | `go test ./internal/codegen/...` |
+| [codegen/](codegen/AGENTS.md) | packet and table emitters for every target | `go test ./internal/codegen/...` | `go test ./internal/codegen/...` |
 | `docgate/` | link-and-citation gate over the pages | `go test ./internal/docgate` | `make docs-check` |
 | `fixedproof/` | leg-independent fixed-table proof suite | `go test ./internal/fixedproof` | `go test ./internal/fixedproof` |
 | `fixedvector/` | fixed form's shared cross-version vectors | `go test ./internal/fixedvector` | `go test ./internal/fixedvector` |

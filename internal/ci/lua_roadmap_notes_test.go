@@ -13,7 +13,12 @@ import (
 // main with no tag, and the tolerant entry points are owed to the cut, not
 // offered as features. Every packet, fixed and variable-table note must name
 // the cut or the :done bar, and no port/lua note may name the retired
-// schema_leg_lua tag.
+// lua build tag (retiredLuaTag).
+// retiredLuaTag is the lua leg's old build tag, which a roadmap note must not
+// name. It is spelled in two halves because this file is a check against the
+// tag, not a use of it, and TestNoShippedLegBehindABuildTag reads Go files.
+const retiredLuaTag = "schema_leg_" + "lua"
+
 func TestLuaRoadmapNotesDescribeThePresent(t *testing.T) {
 	t.Parallel()
 
@@ -31,7 +36,7 @@ func TestLuaRoadmapNotesDescribeThePresent(t *testing.T) {
 	var badTolerant []string
 	for _, m := range nodeRx.FindAllStringSubmatch(string(raw), -1) {
 		id, note := m[1], m[2]
-		if strings.Contains(note, "schema_leg_lua") || buildTagRx.MatchString(note) {
+		if strings.Contains(note, retiredLuaTag) || buildTagRx.MatchString(note) {
 			badTag = append(badTag, id)
 		}
 		switch {

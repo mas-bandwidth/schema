@@ -1,12 +1,12 @@
 #!/bin/sh
-# One original-nine reader over the four shared BOM entry fixtures.
+# One target's reader (any of the 18) over the four shared BOM entry fixtures.
 # Use the existing harness scorer and driver protocol; no corpus generation.
 set -eu
 
 check_lang() {
     case "$1" in
-        cpp|c|cs|go|rust|java|js|dart|elixir) ;;
-        *) echo "BOM entry gate only covers the original nine ports: $1" >&2; exit 2 ;;
+        c|cpp|cs|dart|elixir|go|goose|java|js|lobster|lua|luau|moo|python|ruby|rust|squirrel|unity) ;;
+        *) echo "BOM entry gate covers the 18 targets; not a target: $1" >&2; exit 2 ;;
     esac
 }
 

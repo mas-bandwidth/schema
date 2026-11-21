@@ -231,7 +231,7 @@ fixed-compressed-negzero): the writer stores `+0` for a compressed float's `-0`,
 `+0`. It keeps no sign bit and counts nothing. A PLAIN `float32`/`float64`'s `-0` is not this rule's: it is
 carried bit-exact.
 
-**The whole write contract, per leg and per build, is [SPEC.md](SPEC.md) §5.1.** **Write-side bound checks use each language's own idiom, and that decides the build** ([SPEC.md](SPEC.md) §5.1's per-leg table; `docs/rulings.json`, `write-refusal`): a debug-only assert in C, C++, C#, Rust, Java and Dart, and a refusal in every build in Go, JavaScript, Elixir, Lua, Luau, Squirrel, MOO and Goose. `count <= Max`
+**The whole write contract, per leg and per build, is [SPEC.md](SPEC.md) §5.1.** **Write-side bound checks use each language's own idiom, and that decides the build** ([SPEC.md](SPEC.md) §5.1's per-leg table; `docs/rulings.json`, `write-refusal`): a debug-only assert in C, C++, C#, Rust, Java and Dart, and a refusal in every build in Go, JavaScript, Elixir, Lua, Luau, Squirrel, Moo, Goose, Lobster, Python and Ruby. `count <= Max`
 and `length <= N` are a caller contract; a release build of a debug-only leg removes its check exactly as it removes `assert`, pays nothing,
 and **clamps nothing**. The Go fixed writer REFUSES in every build: `<T>FixedSave` returns `-1`, and `<T>FixedSaveReason` returns `TableRefuseInvalidValue`, for a count
 outside `0..Max`, a length outside `0..N`, a value off its declared `min`/`max`, an ordinal or union tag past its

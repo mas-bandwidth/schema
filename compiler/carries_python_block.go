@@ -1,5 +1,3 @@
-//go:build schema_leg_python
-
 package compiler
 
 // THE BLOCK FORM carries no construct from the §2 carry vocabulary

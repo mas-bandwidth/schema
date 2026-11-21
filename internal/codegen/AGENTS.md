@@ -9,8 +9,8 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../../AGENTS.md
 | `cpp/` | C++ packet emitter (reference) | `go test ./internal/codegen/cpp` | `go test ./internal/codegen/cpp` |
 | `cpptable/` | C++ table emitter (reference) | `go test ./internal/codegen/cpptable` | `go test ./internal/codegen/cpptable` |
 | `cqualify/` | C package qualification | `go test ./internal/codegen/cqualify` | `go test ./internal/codegen/cqualify` |
-| `csharp/` | C# packet emitter | `go test ./internal/codegen/csharp` | `go test ./internal/codegen/csharp` |
-| `cstable/` | C# table emitter | `go test ./internal/codegen/cstable` | `go test ./internal/codegen/cstable` |
+| `csharp/` | C# (modern) packet emitter | `go test ./internal/codegen/csharp` | `go test ./internal/codegen/csharp` |
+| `cstable/` | C# (modern) table emitter | `go test ./internal/codegen/cstable` | `go test ./internal/codegen/cstable` |
 | `ctable/` | C table emitter | `go test ./internal/codegen/ctable` | `go test ./internal/codegen/ctable` |
 | `dart/` | Dart packet emitter | `go test ./internal/codegen/dart` | `go test ./internal/codegen/dart` |
 | `darttable/` | Dart table emitter | `go test ./internal/codegen/darttable` | `go test ./internal/codegen/darttable` |
@@ -41,5 +41,5 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../../AGENTS.md
 | `rusttable/` | Rust table emitter | `go test ./internal/codegen/rusttable` | `go test ./internal/codegen/rusttable` |
 | `squirrel/` | Squirrel packet emitter | `go test ./internal/codegen/squirrel` | `go test ./internal/codegen/squirrel` |
 | `squirreltable/` | Squirrel table emitter | `go test ./internal/codegen/squirreltable` | `go test ./internal/codegen/squirreltable` |
-| `unity/` | Unity C# packet emitter (docs/UNITY.md) | `go test ./internal/codegen/unity` | `go test ./internal/codegen/unity` |
-| `unitytable/` | Unity C# table emitter (docs/UNITY.md) | `go test ./compiler -run TestUnityTable` | `make unity-tables` |
+| `unity/` | C# (unity) packet emitter (docs/UNITY.md) | `go test ./internal/codegen/unity` | `go test ./internal/codegen/unity` |
+| `unitytable/` | C# (unity) table emitter (docs/UNITY.md) | `go test ./compiler -run TestUnityTable` | `make unity-tables` |

@@ -18,7 +18,7 @@ PYTHON_CI_SUPPORT_GROUPS += python-vt-keyed-rows python-vt-keyed-rows-negative-c
 test-python: python-vt-keyed-rows python-vt-keyed-rows-negative-control
 
 python-vt-keyed-rows: python-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtKeyedRows$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestPythonVtKeyedRows$$' ./internal/codegen/pythontable/
 
 python-vt-keyed-rows-negative-control: python-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtKeyedRowsNegativeControl$$' ./internal/codegen/pythontable/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestPythonVtKeyedRowsNegativeControl$$' ./internal/codegen/pythontable/

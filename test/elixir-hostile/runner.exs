@@ -90,7 +90,8 @@ tables = %{
   "tables/maps" => Mapdemo.Table,
   "tables/lists" => Listdemo.Table,
   "schemas/probe.schema" => Probe.Table,
-  "testdata/conformance/feature-witnesses/full/Features.schema" => Featurewitnesses.Table
+  "testdata/conformance/feature-witnesses/full/Features.schema" => Featurewitnesses.Table,
+  "test/tables/ValueDefaults.schema" => Tblvaluedefaults.Table
 }
 
 messages = %{

@@ -25,12 +25,15 @@ port's generated codec over its vendored serialize.goose the same way, and
 `bench/luau` measures the Luau backend's generated codec on its vendored
 serialize.luau (see "The Luau leg" below). `bench/python` measures the Python
 packet codec with the generated package's vendored serialize.py runtime.
+`bench/lobster` and `bench/squirrel` are `run.sh` legs too, fourteen in all;
+the Lua, Moo and Ruby packet runners (`bench/lua/run`, `bench/moo/run`,
+`bench/ruby/run`) run on their own, outside `run.sh`.
 
 ## Running
 
     bench/run.sh                 # Release, results in bench/results/<date>-<arch>-<host>.csv
     bench/run.sh --debug         # also the Debug pair (matched-pair methodology)
-    bench/run.sh --only c|cpp|go|rust|cs|js|java|dart|elixir|goose|lobster|luau|python   # one language leg
+    bench/run.sh --only c|cpp|go|rust|cs|js|java|dart|elixir|goose|lobster|luau|squirrel|python   # one language leg
     bench/run.sh --quick         # the iteration instrument: bench_mixed only,
                                  # 3 measured runs per leg, golden gate intact,
                                  # and the blended table (per-message time
@@ -67,10 +70,10 @@ overrides the merge tool.
 
 **A publishable pass is a driver pass**, not a bare run.sh invocation:
 
-    bench/tools/pass-driver.sh [--rounds 7] [--langs cpp,c,go,rust,cs,js,java,dart,elixir] [--inline]
+    bench/tools/pass-driver.sh [--rounds 7] [--langs cpp,c,go,rust,cs,js,java,dart,elixir,lobster,luau] [--inline]
 
-`--langs` defaults to all nine — the languages the published table carries —
-and a leg whose toolchain is absent is skipped and recorded (`# skipped:`)
+`--langs` defaults to all eleven legs the driver accepts
+(`cpp,c,go,rust,cs,js,java,dart,elixir,lobster,luau`), and a leg whose toolchain is absent is skipped and recorded (`# skipped:`)
 rather than failing the pass.
 
 The driver runs the §2 methodology: a C++ control leg, N interleaved rounds
@@ -318,7 +321,9 @@ record; the maintainer makes it.
 ## The benchmark set
 
 One shape, plus the raw bitpacker. Family `gen` is oracle-gated per §1.5;
-its iteration count is fixed and identical across all nine languages.
+its iteration count is fixed per leg: 4,000,000 in the cpp, c, go, rust, cs,
+js, java, dart, elixir, goose and lobster runners, 12,800 in luau and python,
+and 320 in squirrel, and every row records its count in the `iters` column.
 
 | bench        | family | pinned to golden | shape                                              |
 |--------------|--------|------------------|----------------------------------------------------|
@@ -340,7 +345,7 @@ measures BenchMixed and nothing else in family `gen`.
 Their type declarations and `testdata/wire` goldens survive as CONFORMANCE
 fixtures — `test/main.cpp`, `test/c/main.c`, `test/bench/main.cpp`,
 `test/bench/c_main.c` and the port suites gate on every one of them under
-`make test`, in up to nine languages — and `examples/*.schema` is untouched.
+`make test`, in up to eighteen targets — and `examples/*.schema` is untouched.
 No bench reads them.
 
 bench_mixed's definition is `bench/corpus/Bench.schema`, and its weighting
@@ -564,7 +569,7 @@ A runner is a standalone program in `bench/<lang>/` that:
 - **elixir**: `bench/elixir/main.exs` — run from `bench/elixir` under the
   pinned BEAM toolchain PATH as `elixir main.exs --csv`
 - **goose**: `bench/goose/main.goose` — `run.sh` builds `build/schema-goose`
-  (the `schema_leg_goose` tag), generates `bench/corpus/Bench.schema` for
+  (a plain build: goose is a built-in target), generates `bench/corpus/Bench.schema` for
   Goose into `build/bench/goose-src` beside a copy of the runner, and builds
   it with the pinned compiler (`make dist-goose`, or `GOOSE`) as
   `goose build -O2` with the host C compiler; run from `bench/goose` as

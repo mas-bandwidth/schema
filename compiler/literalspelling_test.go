@@ -6,8 +6,8 @@
 // This test generates every registered target from one tiny declaration and
 // holds the code part of every line (comments stripped) to hex with a
 // lowercase `0x` or decimal; the six legs that render a bound symbolically
-// are also held to the exact spellings they emit. Under the schema_leg_moo
-// tag the Moo leg is registered and checked the same way. No toolchain runs:
+// are also held to the exact spellings they emit. The Moo leg is built in, so
+// it is registered and checked the same way. No toolchain runs:
 // it reads the emitted text.
 package compiler
 

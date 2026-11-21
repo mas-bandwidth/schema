@@ -18,7 +18,7 @@ import (
 // certify full language implementation acceptance, not merely this conformance
 // subset or the narrower fixed-form gates. The producing workflow owns the
 // actual acceptance commands; this gate refuses missing or failed receipts.
-// Expansion languages do not acquire an original-nine obligation here.
+// Every one of the 18 targets owes a receipt; a missing one is a finding.
 func readinessProblems(dir, revision string) []string {
 	seen := map[string]string{}
 	var problems []string
@@ -32,7 +32,7 @@ func readinessProblems(dir, revision string) []string {
 			return nil
 		}
 		lang := strings.TrimSuffix(strings.TrimPrefix(name, "readiness-"), ".txt")
-		if !slices.Contains(originalNine, lang) {
+		if !slices.Contains(everyTarget, lang) {
 			return nil
 		}
 		if previous, ok := seen[lang]; ok {
@@ -73,7 +73,7 @@ func readinessProblems(dir, revision string) []string {
 	if err != nil {
 		problems = append(problems, "readiness input: "+err.Error())
 	}
-	for _, lang := range originalNine {
+	for _, lang := range everyTarget {
 		if _, ok := seen[lang]; !ok {
 			problems = append(problems, lang+": missing readiness receipt (runtime acceptance requires pass)")
 		}
@@ -85,13 +85,13 @@ func readinessProblems(dir, revision string) []string {
 // Check the actual graph, evidence overlay and rendered page together. The
 // renderer owns the roadmap semantics; coverage cannot substitute its counts
 // for any roadmap obligation. Missing tools and checker failures stay red.
-func checkOriginalNineRoadmap(w io.Writer) error {
+func checkEveryTargetRoadmap(w io.Writer) error {
 	root, err := docgate.FindRoot(".")
 	if err != nil {
 		return err
 	}
 	cmd := exec.Command("sbcl", "--script", "tools/roadmap/render.lisp",
-		"--check", "--require-original-nine", "docs/roadmap.sexp", "ROADMAP.md")
+		"--check", "--require-every-target", "docs/roadmap.sexp", "ROADMAP.md")
 	cmd.Dir = root
 	output, err := cmd.CombinedOutput()
 	if len(output) != 0 {
@@ -115,7 +115,7 @@ func checkOriginalNineRoadmap(w io.Writer) error {
 
 // Revision resolution is injected only by internal report tests. The public
 // command always uses checkoutReadinessRevision and resolves it once.
-func originalReadinessProblems(w io.Writer, in string, currentRevision func() (string, error)) []string {
+func everyTargetReadinessProblems(w io.Writer, in string, currentRevision func() (string, error)) []string {
 	revision, err := currentRevision()
 	var problems []string
 	emit := func(ok bool, format string, args ...any) {
@@ -137,15 +137,15 @@ func originalReadinessProblems(w io.Writer, in string, currentRevision func() (s
 	}
 	problems = append(problems, readinessProblems(in, revision)...)
 	if len(problems) == 0 {
-		emit(false, "Original-nine runtime acceptance: PASS (nine current-run receipts).")
+		emit(false, "Every-target runtime acceptance: PASS (18 current-run receipts).")
 	} else {
-		emit(false, "Original-nine runtime acceptance: FAIL.")
+		emit(false, "Every-target runtime acceptance: FAIL.")
 	}
-	if err := checkOriginalNineRoadmap(w); err != nil {
-		emit(false, "Original-nine roadmap: FAIL.")
-		problems = append(problems, "original-nine roadmap: "+err.Error())
+	if err := checkEveryTargetRoadmap(w); err != nil {
+		emit(false, "Every-target roadmap: FAIL.")
+		problems = append(problems, "every-target roadmap: "+err.Error())
 	} else {
-		emit(false, "Original-nine roadmap: PASS (graph, evidence and rendered-page freshness).")
+		emit(false, "Every-target roadmap: PASS (graph, evidence and rendered-page freshness).")
 	}
 	return problems
 }

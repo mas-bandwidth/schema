@@ -106,11 +106,13 @@ what the language specifies, in a way that weakens a check.
 
 ## What we do to find these ourselves
 
-- A native Go fuzz harness drives parse → check → generate across the C, C++, C#, Dart, Go, JavaScript and Rust
-  backends. Every crasher ever found is committed as a permanent regression
+- A native Go fuzz harness drives parse → check → generate across the C, C++,
+  C# (modern), Dart, Elixir, Go, Goose, Java, JavaScript, Lobster, Lua, Luau,
+  Moo, Python, Rust and Squirrel backends. Every crasher ever found is committed as a permanent regression
   input and re-run on every push.
-- The cross-language corpus generates the same schemas in C, C++, C#, Dart,
-  Elixir, Go, Java, JavaScript and Rust
+- The cross-language corpus generates the same schemas in C, C++,
+  C# (modern), C# (unity), Dart, Elixir, Go, Goose, Java, JavaScript, Lobster,
+  Lua, Luau, Moo, Python, Ruby, Rust and Squirrel
   and compares emitted wire bit for bit against pinned goldens.
   That comparison is not a per-push macOS job, and it is not promised on every
   push. Per-push evidence is Linux.

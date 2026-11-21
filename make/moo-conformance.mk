@@ -8,8 +8,8 @@
 # directory per unit. EVERY unit is generated: a unit the target refuses is
 # recorded as build/conformance-moo/<unit>.refused, holding the refusal, and
 # its one line is printed — never dropped in silence — and the driver answers
-# every case naming it absent (docs/PORTING.md I4). The schema_leg_moo tag is
-# the target's until the port joins the builtins (compiler/target_moo.go).
+# every case naming it absent (docs/PORTING.md I4). build/schema-moo is the
+# default build of the compiler: moo is a built-in target (compiler/target_moo.go).
 #
 # The leg's driver (test/conformance/moo/driver) stages the manifest and the
 # fixtures as moo source per surface under build/conformance-moo-driver/, apart
@@ -24,7 +24,7 @@ MOO_CONFORMANCE_SCHEMAS := $(foreach p,$(MOO_CONFORMANCE_UNIT_PATHS),$(if $(filt
 # only) does not see: a changed runtime file rebuilds it
 build/schema-moo: $(GO_SOURCES) $(EMBED_SOURCES) $(wildcard internal/codegen/moo*/runtime/*)
 	@mkdir -p build
-	go build -tags schema_leg_moo -o $@ ./cmd/schema
+	go build -o $@ ./cmd/schema
 
 build/conformance-moo: build/schema-moo $(MOO_CONFORMANCE_MANIFEST) make/moo-conformance.mk \
 	$(MOO_CONFORMANCE_SCHEMAS) $(wildcard internal/codegen/moo*/runtime/*)

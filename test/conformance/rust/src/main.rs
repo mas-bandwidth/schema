@@ -913,6 +913,30 @@ macro_rules! with_root {
                 use cooktorturewide::{torture_wide_cook_from_json_bytes as $from_json, torture_wide_cook_load as $load, torture_wide_cook_save_checked as $save, torture_wide_cook_to_json_checked as $to_json};
                 Some($body)
             }
+            ("tblvaluedefaults", "VarDefaults") => {
+                #[allow(unused_imports)]
+                use tblvaluedefaults::{var_defaults_from_json_bytes as $from_json, var_defaults_load as $load, var_defaults_save_checked as $save, var_defaults_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tblvaluedefaults", "FixedDefaults") => {
+                #[allow(unused_imports, unused_variables)]
+                use tblvaluedefaults::{fixed_defaults_from_json_bytes as $from_json, fixed_defaults_load as $load, fixed_defaults_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(tblvaluedefaults, FixedDefaults, FixedDefaultsRow, fixed_defaults_cook_write, fixed_defaults_fixed_save, fixed_defaults_fixed_measure);
+                Some($body)
+            }
+            ("packetunions", "ShapeDoc") => {
+                #[allow(unused_imports)]
+                use packetunions::{shape_doc_from_json_bytes as $from_json, shape_doc_load as $load, shape_doc_save_checked as $save, shape_doc_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("packetunions", "ShapeMsg") => {
+                #[allow(unused_imports, unused_variables)]
+                use packetunions::{shape_msg_from_json_bytes as $from_json, shape_msg_load as $load, shape_msg_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(packetunions, ShapeMsg, ShapeMsgRow, shape_msg_cook_write, shape_msg_fixed_save, shape_msg_fixed_measure);
+                Some($body)
+            }
             ("graphdemo", "Scene") => {
                 #[allow(unused_imports)]
                 use graphdemo::{scene_from_json_bytes as $from_json, scene_load as $load, scene_save_checked as $save, scene_to_json_checked as $to_json};
@@ -1337,6 +1361,8 @@ fn fixed_read(unit: &str, root: &str, data: &[u8]) -> Option<FixedRead> {
         ("tblvarevo1", "EvoMsg") => fixed_read!(tblvarevo1, evo_msg_fixed_load, evo_msg_fixed_save, evo_msg_fixed_measure, EvoMsgRow, data),
         ("tblvarevo2", "EvoMsg") => fixed_read!(tblvarevo2, evo_msg_fixed_load, evo_msg_fixed_save, evo_msg_fixed_measure, EvoMsgRow, data),
         ("tblvarevo3", "EvoMsg") => fixed_read!(tblvarevo3, evo_msg_fixed_load, evo_msg_fixed_save, evo_msg_fixed_measure, EvoMsgRow, data),
+        ("tblvaluedefaults", "FixedDefaults") => fixed_read!(tblvaluedefaults, fixed_defaults_fixed_load, fixed_defaults_fixed_save, fixed_defaults_fixed_measure, FixedDefaultsRow, data),
+        ("packetunions", "ShapeMsg") => fixed_read!(packetunions, shape_msg_fixed_load, shape_msg_fixed_save, shape_msg_fixed_measure, ShapeMsgRow, data),
         ("tabledemo", "ArchiveConfig") => fixed_read!(tabledemo, archive_config_fixed_load, archive_config_fixed_save, archive_config_fixed_measure, ArchiveConfigRow, data),
         ("tabledemo", "KeyedConfig") => fixed_read!(tabledemo, keyed_config_fixed_load, keyed_config_fixed_save, keyed_config_fixed_measure, KeyedConfigRow, data),
         ("tabledemo", "LoadoutConfig") => fixed_read!(tabledemo, loadout_config_fixed_load, loadout_config_fixed_save, loadout_config_fixed_measure, LoadoutConfigRow, data),
@@ -1439,6 +1465,18 @@ macro_rules! with_fixed_value_root {
                 use tblvarevo3 as $k;
                 #[allow(unused_imports)]
                 use $k::{EvoMsgRow as $row, EvoMsg as $value, evo_msg_fixed_load as $load, evo_msg_fixed_save as $save, evo_msg_fixed_measure as $measure, evo_msg_to_json_checked as $to, evo_msg_from_json_bytes as $from, evo_msg_cook_write as $cook};
+                Some($body)
+            }
+            ("tblvaluedefaults", "FixedDefaults") => {
+                use tblvaluedefaults as $k;
+                #[allow(unused_imports)]
+                use $k::{FixedDefaultsRow as $row, FixedDefaults as $value, fixed_defaults_fixed_load as $load, fixed_defaults_fixed_save as $save, fixed_defaults_fixed_measure as $measure, fixed_defaults_to_json_checked as $to, fixed_defaults_from_json_bytes as $from, fixed_defaults_cook_write as $cook};
+                Some($body)
+            }
+            ("packetunions", "ShapeMsg") => {
+                use packetunions as $k;
+                #[allow(unused_imports)]
+                use $k::{ShapeMsgRow as $row, ShapeMsg as $value, shape_msg_fixed_load as $load, shape_msg_fixed_save as $save, shape_msg_fixed_measure as $measure, shape_msg_to_json_checked as $to, shape_msg_from_json_bytes as $from, shape_msg_cook_write as $cook};
                 Some($body)
             }
             ("tabledemo", "ArchiveConfig") => {
@@ -2185,6 +2223,7 @@ fn message_codec(unit: &str, root: &str, ann: &[u8], wire: &[u8]) -> Option<Opti
         ("vocab9demo", "Wide19") => message_round_trip!(vocab9demo, Wide19Row, wide19_load_messages, wide19_measure_messages, wide19_save_messages, ann, wire),
         ("tblvarevo1", "EvoMsg") => message_round_trip!(tblvarevo1, EvoMsgRow, evo_msg_load_messages, evo_msg_measure_messages, evo_msg_save_messages, ann, wire),
         ("tblvarevo3", "EvoMsg") => message_round_trip!(tblvarevo3, EvoMsgRow, evo_msg_load_messages, evo_msg_measure_messages, evo_msg_save_messages, ann, wire),
+        ("packetunions", "ShapeMsg") => message_round_trip!(packetunions, ShapeMsgRow, shape_msg_load_messages, shape_msg_measure_messages, shape_msg_save_messages, ann, wire),
         _ => return None,
     })
 }

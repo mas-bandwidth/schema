@@ -1,0 +1,18 @@
+package ppayloadfree
+
+type Payload
+{
+    level uint16
+}
+
+union Mixed
+{
+    ping
+    payload Payload
+    pong
+}
+
+type Holder
+{
+    choice Mixed
+}

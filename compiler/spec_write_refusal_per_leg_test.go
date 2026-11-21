@@ -144,6 +144,11 @@ func legListAfter(t *testing.T, text, marker string) []string {
 	var legs []string
 	for leg := range strings.SplitSeq(rest[open+1:closing], ",") {
 		if leg = strings.TrimSpace(leg); leg != "" {
+			// the ruling is quoted as it was given and spells the leg MOO;
+			// the pages name the language Moo (internal/languages)
+			if leg == "MOO" {
+				leg = "Moo"
+			}
 			legs = append(legs, leg)
 		}
 	}

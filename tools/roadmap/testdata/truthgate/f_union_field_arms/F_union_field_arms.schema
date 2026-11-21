@@ -1,0 +1,13 @@
+package funionfieldarms
+
+union Value
+{
+    amount int32
+    label  string(8)
+    list   [..3]uint16
+}
+
+fixed table Record
+{
+    value Value
+}

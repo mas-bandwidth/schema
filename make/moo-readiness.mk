@@ -12,12 +12,12 @@ moo-toolchain-ready:
 	@$(call toolchain_probe,moo,MOO,$(MOO))
 	@$(call toolchain_probe,moo,MOO_ANALYZE,$(MOO_ANALYZE))
 
-# THE HARNESS WITH THE TARGET'S TAG: `implementation --lang moo` reads
-# compiler.Carried("moo"), which only a schema_leg_moo build registers
-# (test/conformance/harness/implementation_moo.go).
+# THE HARNESS FOR THE MOO LEG: `implementation --lang moo` reads
+# compiler.Carried("moo"), which every build registers now that moo is a
+# built-in target (test/conformance/harness/implementation_moo.go).
 build/conformance-harness-moo: $(wildcard test/conformance/harness/*.go) $(GO_SOURCES) $(wildcard internal/codegen/moo*/runtime/*)
 	@mkdir -p build
-	go build -tags schema_leg_moo -o $@ ./test/conformance/harness
+	go build -o $@ ./test/conformance/harness
 
 # THE MESSAGE FORM ON THE MOO LEG (docs/SPEC-TABLES.md §3.3): the batch load
 # and save against the manifest, the Go engine and its evolution, the
@@ -27,12 +27,11 @@ build/conformance-harness-moo: $(wildcard test/conformance/harness/*.go) $(GO_SO
 tables-moo-message-form: moo-toolchain-ready build/fixedform-corpus/.stamp
 	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -run '^TestMooMessage' ./internal/codegen/mootable/
 
-# THE TARGET'S COMPILER CLAIMS under its build tag (compiler/tablesmoo_test.go,
-# compiler/tablesmoonames_test.go): the half of test-moo-tables the untagged
-# package runs cannot reach.
+# THE TARGET'S COMPILER CLAIMS (compiler/tablesmoo_test.go,
+# compiler/tablesmoonames_test.go) under the slow gate and the pinned toolchain.
 .PHONY: tables-moo-compiler-claims
 tables-moo-compiler-claims: moo-toolchain-ready
-	SCHEMA_SLOW=1 go test -count=1 -tags schema_leg_moo -run 'Moo' ./compiler/
+	SCHEMA_SLOW=1 go test -count=1 -run 'Moo' ./compiler/
 
 # THE WHOLE-ROSTER DRIVER's parts (test/conformance/moo/wirefuzz-driver): the
 # generated units and the native host its one process runs under, both built

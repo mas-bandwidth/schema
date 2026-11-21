@@ -36,12 +36,14 @@ import (
 	"tblm2"
 	"tblp1"
 	"tblp3"
+	"tblpacketunions"
 	"tblr1"
 	tblr1variable "tblr1variable"
 	"tblr2"
 	tblscalars2 "tblscalars2"
 	"tblv1"
 	"tblv2"
+	"tblvaluedefaults"
 	"tblvarevo1"
 	"tblvarevo2"
 	"tblvarevo3"
@@ -232,6 +234,12 @@ func init() {
 	})
 	bind("tblvarevo3", "EvoMsg", func(c codec) codec {
 		return fixedForm(c, tblvarevo3.EvoMsgFixedLoad, tblvarevo3.EvoMsgFixedMeasure, tblvarevo3.EvoMsgFixedSave)
+	})
+	bind("tblvaluedefaults", "FixedDefaults", func(c codec) codec {
+		return fixedForm(c, tblvaluedefaults.FixedDefaultsFixedLoad, tblvaluedefaults.FixedDefaultsFixedMeasure, tblvaluedefaults.FixedDefaultsFixedSave)
+	})
+	bind("packetunions", "ShapeMsg", func(c codec) codec {
+		return fixedForm(c, tblpacketunions.ShapeMsgFixedLoad, tblpacketunions.ShapeMsgFixedMeasure, tblpacketunions.ShapeMsgFixedSave)
 	})
 	bind("cooktorture", "TortureFixedWref", func(c codec) codec {
 		return fixedForm(c, cooktorture.TortureFixedWrefFixedLoad, cooktorture.TortureFixedWrefFixedMeasure, cooktorture.TortureFixedWrefFixedSave)

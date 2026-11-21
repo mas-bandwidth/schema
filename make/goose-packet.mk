@@ -16,13 +16,13 @@
 #   packet-end-goose       test/packet-end: SPEC §5's one end check after the
 #                          top-level object, a control that removes it
 #
-# The target lives behind the schema_leg_goose tag until the port joins the
-# builtins, so every generation here uses build/schema-goose-packet.
+# Goose is a built-in target; every generation here uses
+# build/schema-goose-packet, a plain build of cmd/schema.
 
 .PHONY: goose-packet-ready
 goose-packet-ready:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
-	go build -tags schema_leg_goose -o build/schema-goose-packet ./cmd/schema
+	go build -o build/schema-goose-packet ./cmd/schema
 
 # THE PACKET PROGRAMS as files (test/conformance/nightly-readiness goose):
 # examples/ and examples128/ generated beside test/goose/main.goose and
@@ -44,7 +44,7 @@ define goose-packet-sabotaged
 	@mkdir -p $(1)
 	go run ./tools/sabotage -name $(2) -out $(1)/emitter.gotext $(3)
 	@printf '{"Replace":{"%s/$(3)":"%s/$(1)/emitter.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > $(1)/overlay.json
-	go build -tags schema_leg_goose -overlay=$(1)/overlay.json -o $(1)/schema ./cmd/schema
+	go build -overlay=$(1)/overlay.json -o $(1)/schema ./cmd/schema
 endef
 
 # ---- packet text: SPEC §4.7's UTF-8 and interior-null refusals ----

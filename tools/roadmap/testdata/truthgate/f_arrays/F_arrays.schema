@@ -1,0 +1,7 @@
+package farrays
+
+fixed table Record
+{
+    fixed_values   [4]int32
+    counted_values [..8]uint16
+}

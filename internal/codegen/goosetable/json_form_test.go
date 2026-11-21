@@ -43,9 +43,9 @@ const jsonManifest = "testdata/conformance/tables/MANIFEST.txt"
 
 // jsonGooseUnits is the manifest's units the goose target generates today
 // (`make build/conformance-goose` records every other as its refusal): the
-// target's refusal chain lives behind the schema_leg_goose tag
-// (compiler/target_goose.go), which this package's tests do not build with,
-// so the set is named here and a unit the chain starts carrying joins it.
+// target's refusal chain lives in compiler/target_goose.go, a built-in target
+// this emitter package does not import, so the set is named here and a unit
+// the chain starts carrying joins it.
 var jsonGooseUnits = map[string]bool{
 	"tabledemo": true, "tblv1": true, "tblv2": true, "tblp1": true, "tblp2": true, "tblp3": true,
 	"graphdemo": true, "blockdemo": true, "tblk1": true, "tblk2": true, "vocabdemo": true,

@@ -1,0 +1,10 @@
+package ptextdefaults
+
+flags Caps { Jump, Crouch, Fly }
+
+type Holder
+{
+    name  string(6) = "hi"
+    token bytes(4) = "ab"
+    caps  Caps = { Jump, Fly }
+}

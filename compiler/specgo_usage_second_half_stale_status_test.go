@@ -75,7 +75,7 @@ var usageChecks = []usageCheck{
 		name:    "walking fields carries both classes",
 		section: "### Walking fields at runtime",
 		end:     "### Inspecting a whole build:",
-		want:    "Go carry both classes",
+		want:    "target carry both classes",
 		stale:   "C++ and C carry both\nclasses, the other seven",
 	},
 	{

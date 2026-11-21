@@ -1,0 +1,6 @@
+package pbytes
+
+type Holder
+{
+    data bytes(16)
+}
