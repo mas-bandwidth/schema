@@ -71,7 +71,7 @@ proves in full.*
   that does not parse, one not greater than the newest `v` tag, a commit not on `main`, a patch
   release that moves the build version's form, and, first, a commit whose compiler encodes
   different wire bytes than the newest `v` tag's under an equal protocol id
-  (`make release-differential`), and it tags that commit and nothing else. Without `PUSH=1` both targets only print the
+  (`make release-differential`), and it tags that commit and nothing else; the workflow then publishes the GitHub release on that tag (`gh release create --verify-tag`), so a release is never a bare tag. Without `PUSH=1` both targets only print the
   decision. The tag-name and refusal logic is `tools/releasetag`, unit-tested with no git;
   the policy is docs/VERSIONING.md ("The compiler's own version").
 - **Trajectory** (Glenn, 2026-08-05): once design settles and implementation starts, this
