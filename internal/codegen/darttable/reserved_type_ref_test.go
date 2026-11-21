@@ -3,12 +3,13 @@ package darttable
 import (
 	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestDartNodeTypeReservedIdRefused(t *testing.T) {
@@ -41,7 +42,7 @@ func TestDartNodeTypeReservedIdRefused(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, dartBinary(t), "--enable-asserts", "reserved_type_probe.dart", filepath.Join(root, "testdata", "wire", "tables", "framing"))
+	cmd := testproc.CommandContext(t, ctx, dartBinary(t), "--enable-asserts", "reserved_type_probe.dart", filepath.Join(root, "testdata", "wire", "tables", "framing"))
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

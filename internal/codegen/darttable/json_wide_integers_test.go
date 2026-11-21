@@ -15,12 +15,13 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const jsonIntegersSchema = `package probe
@@ -159,7 +160,7 @@ func TestDartJsonWideIntegersAreStrings(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cmd := exec.Command(dart, "--enable-asserts", "probe.dart")
+	cmd := testproc.Command(t, dart, "--enable-asserts", "probe.dart")
 	cmd.Dir = writeDir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("Dart json-integers probe: %v\n%s", err, out)

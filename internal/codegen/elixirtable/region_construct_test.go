@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -19,6 +18,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func regionGoProbe(t *testing.T, u *ir.Unit, statements string) string {
@@ -41,7 +42,7 @@ func regionGoProbe(t *testing.T, u *ir.Unit, statements string) string {
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("go", "test", "-timeout=0", "-count=1", "-v", ".")
+	cmd := testproc.Command(t, "go", "test", "-timeout=0", "-count=1", "-v", ".")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

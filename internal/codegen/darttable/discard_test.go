@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,6 +12,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // discardUnit has a fixed root and a variable root, each carrying a nested
@@ -181,7 +182,7 @@ void main() {
 	if err := os.WriteFile(filepath.Join(dir, "discard_probe.dart"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dart, "--enable-asserts", "discard_probe.dart")
+	cmd := testproc.Command(t, dart, "--enable-asserts", "discard_probe.dart")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("the Dart wire loads did not discard on damage: %v\n%s", err, out)

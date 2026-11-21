@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // Both the wire registry and report reader must reach the variable envelope,
@@ -28,7 +29,7 @@ func TestJavaScriptDriverToolEnvelope(t *testing.T) {
 			t.Fatal(err)
 		}
 		out := t.TempDir()
-		cmd := exec.Command(node, filepath.Join(repo, "test/conformance/js/main.mjs"), manifest, surface, out)
+		cmd := testproc.Command(t, node, filepath.Join(repo, "test/conformance/js/main.mjs"), manifest, surface, out)
 		cmd.Dir = repo
 		cmd.Env = append(os.Environ(), "SCHEMA_JS_GENERATED="+tree)
 		if log, err := cmd.CombinedOutput(); err != nil {

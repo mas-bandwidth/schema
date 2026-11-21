@@ -29,7 +29,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -39,6 +38,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const blockBuildSchema = `package probe
@@ -167,7 +168,7 @@ func TestBlockBuildAndCookWriteDart(t *testing.T) {
 		[]byte(blockBuildProbe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dartBinary(t), "--enable-asserts", "blockbuild_probe.dart")
+	cmd := testproc.Command(t, dartBinary(t), "--enable-asserts", "blockbuild_probe.dart")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -291,7 +292,7 @@ func blockBuildMatchesTheGoBuilderOverBlockdemo(t *testing.T) {
 			}
 		}
 	}
-	cmd := exec.Command("go", "test", "-count=1", "-v", "-run", "^TestImage$", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", "-v", "-run", "^TestImage$", ".")
 	cmd.Dir = goDir
 	goOut, err := cmd.CombinedOutput()
 	if err != nil {
@@ -316,7 +317,7 @@ func blockBuildMatchesTheGoBuilderOverBlockdemo(t *testing.T) {
 			}
 		}
 	}
-	cmd = exec.Command(dartBin, "--enable-asserts", "block_image_probe.dart")
+	cmd = testproc.Command(t, dartBin, "--enable-asserts", "block_image_probe.dart")
 	cmd.Dir = dartDir
 	dartOut, err := cmd.CombinedOutput()
 	if err != nil {

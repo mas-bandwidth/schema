@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,6 +13,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestDartArrayRootNative(t *testing.T) {
@@ -73,7 +74,7 @@ check(w.%sToJson(v)==%q,%q);
 	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(body.String()), 0600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dartBinary(t), "--enable-asserts", "probe.dart")
+	cmd := testproc.Command(t, dartBinary(t), "--enable-asserts", "probe.dart")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("array-root native: %v\n%s", err, out)

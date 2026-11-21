@@ -25,7 +25,6 @@ import (
 	"fmt"
 	"math/big"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -34,6 +33,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // messageBatchRow is one `message` manifest line: the file-form wire and the
@@ -603,7 +604,7 @@ Probe.run()
 	if err := os.WriteFile(filepath.Join(dir, "probe.exs"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(elixirBin, "-r", TableMessageModule+".ex", "probe.exs")
+	cmd := testproc.Command(t, elixirBin, "-r", TableMessageModule+".ex", "probe.exs")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	out, err := cmd.CombinedOutput()
@@ -670,7 +671,7 @@ func runElixirModuleProbe(t *testing.T, module []byte, probe string) (string, er
 	if err := os.WriteFile(filepath.Join(dir, "probe.exs"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(elixirBin, "-r", TableMessageModule+".ex", "probe.exs")
+	cmd := testproc.Command(t, elixirBin, "-r", TableMessageModule+".ex", "probe.exs")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	out, err := cmd.CombinedOutput()

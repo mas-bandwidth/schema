@@ -540,11 +540,11 @@ end
 
 -- type Trio (SPEC §6.1: the wire order is the declared order)
 function _M.WriteTrio(stream, v)
-  if math.type(v.A) ~= "integer" then return false end
+  if math.type(v.A) ~= "integer" or v.A < 0 or v.A > 1048575 then return false end
   if not stream:serializeBits({ value = v.A }, 20) then return false end -- the declared bit width
-  if math.type(v.B) ~= "integer" then return false end
+  if math.type(v.B) ~= "integer" or v.B < 0 or v.B > 1048575 then return false end
   if not stream:serializeBits({ value = v.B }, 20) then return false end -- the declared bit width
-  if math.type(v.C) ~= "integer" then return false end
+  if math.type(v.C) ~= "integer" or v.C < 0 or v.C > 16777215 then return false end
   if not stream:serializeBits({ value = v.C }, 24) then return false end -- the declared bit width
   return true
 end
@@ -564,7 +564,7 @@ end
 -- type TrioFirst (SPEC §6.1: the wire order is the declared order)
 function _M.WriteTrioFirst(stream, v)
   if not _M.WriteTrio(stream, v.Inner) then return false end
-  if math.type(v.Trailer) ~= "integer" then return false end
+  if math.type(v.Trailer) ~= "integer" or v.Trailer < 0 or v.Trailer > 65535 then return false end
   if not stream:serializeBits({ value = v.Trailer }, 16) then return false end -- the declared bit width
   return true
 end
@@ -581,7 +581,7 @@ function _M.WriteTrioStraddle(stream, v)
   if not stream:serializeBits64({ value = v.Pad3 }, 64) then return false end -- the declared bit width
   if math.type(v.Pad4) ~= "integer" then return false end
   if not stream:serializeBits64({ value = v.Pad4 }, 64) then return false end -- the declared bit width
-  if math.type(v.Pad5) ~= "integer" then return false end
+  if math.type(v.Pad5) ~= "integer" or v.Pad5 < 0 or v.Pad5 > 16777215 then return false end
   if not stream:serializeBits({ value = v.Pad5 }, 24) then return false end -- the declared bit width
   if not _M.WriteTrio(stream, v.Inner) then return false end
   return true

@@ -234,9 +234,11 @@ write_field_value = function(T, f, x, at, w, index)
   elseif s == "float" then
     -- A COOKED FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): a NaN or an
     -- infinity (or a double past the float32 range in a float32 slot) is
-    -- refused, never written; -0 and the subnormals ride exactly.
+    -- refused, never written; -0 and the subnormals ride exactly, except a
+    -- compressed float's -0, which is +0 (§3.3, ruling fixed-compressed-negzero).
     local v = x
     if v == nil then v = f.default or 0.0 end
+    v = D.cf(f, v)
     if f.f32 then
       if string.unpack("<I4", string.pack("<f", v)) & D.F32_EXP == D.F32_EXP then return nil end
       put_f32(w, at, v)

@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,6 +15,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestVariableClassBeyondCardConstructsJavaScript pins the JavaScript leg's
@@ -465,7 +466,7 @@ func TestVariableClassBeyondCardConstructsJavaScript(t *testing.T) {
 	if err := os.WriteFile(script, []byte(variableClassProbeDriver), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, script, specPath)
+	cmd := testproc.Command(t, node, script, specPath)
 	cmd.Dir = work
 	out, err := cmd.CombinedOutput()
 	if err != nil {

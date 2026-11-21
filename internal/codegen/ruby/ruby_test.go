@@ -16,6 +16,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/ruby/rubyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func emptyUnit(pkg string, bases ...string) *ir.Unit {
@@ -147,7 +149,7 @@ func driverSurfaceContract(t *testing.T, driver, surfacesDir, dir string) error 
 	if err := os.WriteFile(manifest, []byte("# empty manifest\n"), 0o644); err != nil {
 		return err
 	}
-	list := exec.Command("sh", driver, manifest, "list")
+	list := testproc.Command(t, "sh", driver, manifest, "list")
 	list.Dir = dir
 	list.Env = append(os.Environ(), "RUBY="+rubyBin)
 	out, err := list.CombinedOutput()
@@ -163,7 +165,7 @@ func driverSurfaceContract(t *testing.T, driver, surfacesDir, dir string) error 
 			return fmt.Errorf("%s lists the unimplemented surface %q", driver, surface)
 		}
 	}
-	cmd := exec.Command("sh", driver, manifest, "unknown-absent-surface", filepath.Join(dir, "out"))
+	cmd := testproc.Command(t, "sh", driver, manifest, "unknown-absent-surface", filepath.Join(dir, "out"))
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "RUBY="+rubyBin)
 	out, err = cmd.CombinedOutput()

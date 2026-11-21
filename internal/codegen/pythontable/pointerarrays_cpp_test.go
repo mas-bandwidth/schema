@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,6 +12,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestPythonVtPointerArraysCppIdentity holds shared node identity against the
@@ -73,10 +74,10 @@ int main() {
 	bin := filepath.Join(dir, "probe")
 	args := append([]string{"-std=c++17", "-O1", "-I" + dir, "-I" + ser, path}, sources...)
 	args = append(args, "-o", bin)
-	if out, err := exec.Command("c++", args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, "c++", args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile C++: %v\n%s", err, out)
 	}
-	wire, err := exec.Command(bin).Output()
+	wire, err := testproc.Command(t, bin).Output()
 	if err != nil {
 		t.Fatalf("C++ save: %v", err)
 	}

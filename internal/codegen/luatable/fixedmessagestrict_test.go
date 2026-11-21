@@ -12,7 +12,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -21,6 +20,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const fixedMessageStrictSchema = `package probe
@@ -55,7 +56,7 @@ func fixedMessageStrictGoOracle(t *testing.T, src string) map[string]string {
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("nice", "-n", "19", "go", "test", "-count=1", "-timeout", "600s", "-run", "^TestFixedMessageStrictOracle$", "-v", ".")
+	cmd := testproc.Command(t, "nice", "-n", "19", "go", "test", "-count=1", "-timeout", "600s", "-run", "^TestFixedMessageStrictOracle$", "-v", ".")
 	cmd.Dir = probeDir
 	cmd.Env = append(os.Environ(), "GOFLAGS=-mod=mod", "GOSUMDB=off")
 	out, err := cmd.CombinedOutput()
