@@ -771,6 +771,9 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 				if reference {
 					r.failures = append(r.failures, absentReference(s, "`list` does not name it"))
 				}
+				if opts.claims != nil {
+					opts.claims.enforce(d.lang, s, legWant, r)
+				}
 				continue
 			}
 			out := filepath.Join(work, "out", d.lang, s)
@@ -791,6 +794,9 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 				}
 				if reference {
 					r.failures = append(r.failures, absentReference(s, "the driver exited 2"))
+				}
+				if opts.claims != nil {
+					opts.claims.enforce(d.lang, s, legWant, r)
 				}
 				continue
 			}

@@ -200,6 +200,9 @@ func TestMessageFormBatchRust(t *testing.T) {
 		// per-language diagnostics.
 		var rep tabletext.Report
 		count, ok, err := tablewire.DecodeMessages(mn, news, wire, v, &rep)
+		// A value the newer range cannot hold is refused BY NAME as
+		// out_of_range (§3.3); any other refusal is damage.
+		wantOOR := !ok && tablewire.RefusalReason(err) == tablewire.ReasonOutOfRange
 		var upgraded []byte
 		if ok {
 			if err != nil || count != len(olds) {
@@ -231,12 +234,14 @@ func TestMessageFormBatchRust(t *testing.T) {
             let measured = card_measure_messages(&values[..count], &mut mrep);
             same = wrote == WANT.len() as i64 && measured == WANT.len() as i64 && buf == WANT;
         }
-        let verdict = if want_ok { ok && count == %d } else { !ok && count == 0 && lrep.damaged };
+        let want_oor = %t;
+        let refusal = if want_oor { lrep.refused && !lrep.damaged && matches!(lrep.reason, TableReason::OutOfRange) } else { lrep.damaged };
+        let verdict = if want_ok { ok && count == %d } else { !ok && count == 0 && refusal };
         say("upgrade", announced && verdict && same,
-            format!("announced={announced} ok={ok} want_ok={want_ok} count={count} same={same} report={lrep:?}"));
+            format!("announced={announced} ok={ok} want_ok={want_ok} want_oor={want_oor} count={count} same={same} report={lrep:?}"));
     }
 `, len(announce), rustBytes(announce), len(wire), rustBytes(wire), len(upgraded), rustBytes(upgraded),
-			len(olds), ok, len(olds))
+			len(olds), ok, wantOOR, len(olds))
 		out := runMessageBatchProbe(t, newer, main)
 		if line := messageBatchLine(out, "upgrade"); line != "BATCH upgrade ok" {
 			t.Fatalf("the newer Rust reader does not upgrade the older batch as the oracle does: %s", line)

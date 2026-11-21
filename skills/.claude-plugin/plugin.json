@@ -1,0 +1,13 @@
+{
+  "name": "schema",
+  "description": "Write and change .schema files and generate bit-packed serialization code for games (packets, backend messages, save games, config, cooked assets), for 18 targets in 17 languages.",
+  "author": {
+    "name": "Mas Bandwidth",
+    "url": "https://github.com/mas-bandwidth"
+  },
+  "homepage": "https://github.com/mas-bandwidth/schema",
+  "repository": "https://github.com/mas-bandwidth/schema",
+  "license": "AGPL-3.0",
+  "skills": ["./schema"],
+  "keywords": ["schema", "serialization", "games", "network", "codegen"]
+}

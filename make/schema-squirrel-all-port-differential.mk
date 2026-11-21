@@ -25,8 +25,18 @@ SQUIRREL_DIFFERENTIAL_FAST  = ./internal/ci -run '^TestSquirrelAllPortDifferenti
 # answers every case `.absent` and the comparison has nothing to compare.
 # internal/ci/schema_squirrel_all_port_differential_test.go refuses that empty
 # lens rather than passing it.
+#
+# THE SAME ORDER CUT EVERY LEG INCLUDED AFTER THIS FILE. make/unity.mk also
+# comes later, so the prerequisite list above never carried
+# build/conformance-unity/.stamp, and the nightly's harness died on
+# "harness: unity: `test/conformance/unity/driver ...` failed". The first
+# recipe line therefore builds $(CONFORMANCE_LEGS) again, expanded when the
+# recipe runs, after every file is read: it holds every registered leg. It runs
+# after the prerequisites above are done, so no target is built by two makes at
+# once, and the legs already built are up to date and cost nothing.
 .PHONY: schema-squirrel-all-port-differential
 schema-squirrel-all-port-differential: build/conformance-harness build/conformance-cpp build/conformance-squirrel build/schema_test_cook toolchain $(CONFORMANCE_LEGS)
+	$(if $(strip $(CONFORMANCE_LEGS)),@$(MAKE) --no-print-directory $(CONFORMANCE_LEGS))
 	@rm -rf $(SQUIRREL_DIFFERENTIAL_WORK)
 	@$(CONFORMANCE_ENV) ./build/conformance-harness run --work $(SQUIRREL_DIFFERENTIAL_WORK) \
 		$(if $(SKIPPED_LEGS),--skip $(subst $(skip_space),$(skip_comma),$(strip $(SKIPPED_LEGS))))

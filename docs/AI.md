@@ -16,6 +16,15 @@ To give a project's own assistant the short version, run `schema help ai` and
 paste its output into that project's `AGENTS.md` or `CLAUDE.md`. Its text is
 [cmd/schema/help/ai.md](../cmd/schema/help/ai.md).
 
+Claude Code can install the Agent Skill in
+[skills/schema](../skills/schema/SKILL.md) as a plugin, with this repository
+as the plugin marketplace:
+
+```
+/plugin marketplace add mas-bandwidth/schema
+/plugin install schema@schema
+```
+
 ## What schema is, and when to use it
 
 You write `.schema` files that declare constants, enums, flags, types, unions
