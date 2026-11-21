@@ -332,7 +332,7 @@ func FormatFile(path string) (canonical []byte, rewrote bool, err error) {
 	if string(out) == string(data) {
 		return out, false, nil
 	}
-	if err := os.WriteFile(path, out, 0o644); err != nil {
+	if err := writeSourceAtomic(path, out); err != nil {
 		return nil, false, err
 	}
 	return out, true, nil
@@ -356,10 +356,43 @@ func MigrateFile(path string) (canonical []byte, rewrote bool, err error) {
 	if string(out) == string(data) {
 		return out, false, nil
 	}
-	if err := os.WriteFile(path, out, 0o644); err != nil {
+	if err := writeSourceAtomic(path, out); err != nil {
 		return nil, false, err
 	}
 	return out, true, nil
+}
+
+// writeSourceAtomic rewrites an author's schema file through a temporary
+// beside it and a rename, so a full disk or a killed process leaves the
+// original file whole rather than truncated. The file keeps its mode.
+func writeSourceAtomic(path string, data []byte) error {
+	mode := os.FileMode(0o644)
+	if info, err := os.Stat(path); err == nil {
+		mode = info.Mode().Perm()
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	write := func() error {
+		if _, err := tmp.Write(data); err != nil {
+			_ = tmp.Close()
+			return err
+		}
+		if err := tmp.Close(); err != nil {
+			return err
+		}
+		if err := os.Chmod(name, mode); err != nil {
+			return err
+		}
+		return os.Rename(name, path)
+	}
+	if err := write(); err != nil {
+		_ = os.Remove(name)
+		return err
+	}
+	return nil
 }
 
 // UserAgent reports which build of the compiler is running, as the one-line
