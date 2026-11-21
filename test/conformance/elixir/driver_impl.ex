@@ -789,6 +789,30 @@ defmodule Driver do
           write_absent(outdir, name)
       end
     end
+
+    # message-batch <case> <connection> <root> <wire>: load with room for every
+    # body and answer the count load_messages returned, 0 for every refusal
+    # (docs/SPEC-TABLES.md §3.3; FORMAT.md, `message-batch`).
+    for [name, connection, root, wire | _] <- rows(rows, "message-batch") do
+      with {unit, announcement} <- Map.get(connections, connection),
+           mod when mod != nil <- message_module(unit),
+           {:ok, announced} <- mod.announce_read(File.read!(announcement)),
+           {:ok, vocab} <- mod.for_root(announced, root) do
+        count =
+          case mod.load_messages(vocab, File.read!(wire), 256) do
+            {:ok, bodies} -> length(bodies)
+            {:malformed, n, _bodies} -> n
+            {:error, _reason, n} -> n
+            {:error, _reason} -> 0
+          end
+
+        write(outdir, name, "count #{count}\n")
+      else
+        other ->
+          IO.puts(:stderr, "message-batch #{name}: #{inspect(other)}")
+          write_absent(outdir, name)
+      end
+    end
   end
 
   # THE WRITE-REFUSAL SURFACES (docs/SPEC.md §5.1, test/conformance/README.md).
