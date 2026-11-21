@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
 
 type Kind int
@@ -255,11 +256,22 @@ func (s *state) scanDoc() (Token, bool) {
 				s.advance()
 				s.advance()
 				continue
+			case c == 0xC2 && s.peekAt(1) == 0x85:
+				s.errf(s.pos(), "the Unicode next-line character U+0085 inside a /// doc line ends the comment line for some target compilers (C#); remove it (SPEC §4.1)")
+				s.advance()
+				s.advance()
+				continue
 			}
 			s.advance()
 		}
 		raw := s.src[start:s.off]
-		text := strings.TrimRight(string(raw), " \t\r")
+		if !utf8.Valid(raw) {
+			s.errf(Pos{s.file, s.line, 1}, "a /// doc line is not valid UTF-8; the text reaches generated sources that must be UTF-8 (SPEC §4.1)")
+		}
+		// a form feed or vertical tab between a backslash and the newline is
+		// still a line splice to GCC and Clang, so it is trimmed with the
+		// other trailing whitespace before the backslash test
+		text := strings.TrimRight(string(raw), " \t\r\f\v")
 		if strings.HasSuffix(text, "\\") {
 			p := s.pos()
 			p.Col -= len(raw) - len(text) + 1
@@ -438,6 +450,9 @@ func (s *state) scanToken() Token {
 				return Token{String, string(s.src[start:s.off]) + `"`, p}
 			}
 			s.advance()
+			if !utf8.Valid(s.src[start:s.off]) {
+				s.errf(p, "a string literal is not valid UTF-8 (SPEC §4.1)")
+			}
 			return Token{String, string(s.src[start:s.off]), p}
 
 		default:
@@ -509,7 +524,7 @@ func (s *state) scanNumber(p Pos) Token {
 		if s.off == start+2 {
 			s.errf(p, "malformed hex literal")
 		}
-		return Token{Int, string(s.src[start:s.off]), p}
+		return s.numberToken(Int, start, p)
 	}
 	if s.peek() == '0' && (s.peek2() == 'b' || s.peek2() == 'B') {
 		s.advance()
@@ -520,7 +535,7 @@ func (s *state) scanNumber(p Pos) Token {
 		if s.off == start+2 {
 			s.errf(p, "malformed binary literal")
 		}
-		return Token{Int, string(s.src[start:s.off]), p}
+		return s.numberToken(Int, start, p)
 	}
 	for isDigit(s.peek()) {
 		s.advance()
@@ -566,8 +581,23 @@ func (s *state) scanNumber(p Pos) Token {
 	if isFloat {
 		kind = Float
 	}
+	return s.numberToken(kind, start, p)
+}
+
+// numberToken is the number scanned from start, refused by name past
+// maxNumberLength: a multi-megabyte digit run costs quadratic work to
+// convert, and no width in the language needs more than a few dozen digits.
+func (s *state) numberToken(kind Kind, start int, p Pos) Token {
+	if s.off-start > maxNumberLength {
+		s.errf(p, "a number literal is longer than %d characters", maxNumberLength)
+		return Token{kind, "0", p}
+	}
 	return Token{kind, string(s.src[start:s.off]), p}
 }
+
+// maxNumberLength bounds one number's spelling (uint128's largest value is
+// 39 decimal digits, 130 characters in binary).
+const maxNumberLength = 4096
 
 func isHexDigit(c byte) bool {
 	return isDigit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
