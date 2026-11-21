@@ -339,8 +339,12 @@ class Reader {
     if (report.refused) {
       return { verdict: "refuse", detail: reasonName(rt.TableFixedRefusalName(report.refused)) };
     }
-    if (n !== 1 || report.damaged) {
+    if (report.damaged || n < 0) {
       return DAMAGED;
+    }
+    if (n !== 1) {
+      // neither one value nor a refusal: an error, never damaged
+      return { verdict: "error", detail: `the fixed read into one value returned ${n} without refusing` };
     }
     const size = fm[`${T}FixedMeasure`](1);
     if (fm[`${T}FixedSave`]([value], 1, new Uint8Array(size)) !== size) {
@@ -398,8 +402,12 @@ class Reader {
     if (report.Verdict === fixed.TableMessageOpenRefused) {
       return { verdict: "refuse", detail: reasonName(report.Reason || "") || "damaged" };
     }
-    if (report.Damaged || n !== 1) {
-      return DAMAGED;
+    if (report.Damaged || report.Reason || n < 0) {
+      return { verdict: "refuse", detail: reasonName(report.Reason || "") || "damaged" };
+    }
+    if (n !== 1) {
+      // neither one value nor a refusal: an error, never damaged
+      return { verdict: "error", detail: `the batch read into one value returned ${n} without refusing` };
     }
     const size = batch[`${T}MeasureMessages`]([value], {});
     if (size > 0) {

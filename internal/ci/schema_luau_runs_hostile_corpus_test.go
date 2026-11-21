@@ -364,23 +364,25 @@ for _, c in CASES do
 	elseif c.carrier == "wire" then
 		local rep = newreport()
 		local form = buffer.len(b) > 0 and buffer.readu8(b, 0) or -1
-		if form == 2 then
-			verdict, reason = "refuse", "message_form_as_file"
-		elseif form == 3 then
+		if form == 3 then
 			-- A FIXED ROOT's file is form 3 (docs/SPEC-TABLES.md §3.4), read
 			-- through the fixed form by its form byte, as the C++ runner does
-			-- (test/cpp-hostile/hostile.hpp HC_FIXED): a file holds one record.
-			local recs = F.read(S.lookup(c.root), nil :: any, b, rep)
+			-- (test/cpp-hostile/hostile.hpp HC_FIXED): a file holds one record,
+			-- so the read is into one (capacity 1) and a file of more is the
+			-- reader's own refusal.
+			local recs = F.read(S.lookup(c.root), nil :: any, b, rep, 1)
 			if recs == nil then
 				verdict, reason = "refuse", if rep.malformed then "damaged" else nn(rep.reason)
 			elseif #recs ~= 1 then
-				verdict, reason = "refuse", "damaged"
+				-- neither one value nor a refusal: an error, never damaged
+				error("the fixed read into one value returned " .. #recs .. " records without refusing")
 			else
 				v = recs[1]
 			end
-		elseif form ~= 1 then
-			verdict, reason = "refuse", form < 0 and "damaged" or "newer_form"
 		else
+			-- EVERY OTHER FILE goes to the reader, whose form gate refuses an
+			-- empty file, a message (form 2) and a newer form itself: this
+			-- runner never answers a refusal for the reader.
 			v = LoadDigest(c.root, b, rep)
 			if v == nil then verdict, reason = "refuse", nn(rep.reason) end
 		end
@@ -413,7 +415,8 @@ for _, c in CASES do
 		if n < 0 or (rep.reason or "") ~= "" then
 			verdict, reason = "refuse", nn(rep.reason)
 		elseif n ~= 1 then
-			verdict, reason = "refuse", "damaged"
+			-- neither one value nor a refusal: an error, never damaged
+			error("the batch read into one value returned " .. n .. " without refusing")
 		else
 			-- schema_message.luau hands back each body as a bit range, not an
 			-- instance. A body exactly one reference wide can only be the
@@ -477,7 +480,7 @@ func plantHostileTextReader(t *testing.T, dir string) {
 }
 
 // runHostileCorpus runs the corpus and returns one FIX-CARD line per mismatch.
-func runHostileCorpus(t *testing.T, root, corpusDir string, plant bool) []string {
+func runHostileCorpus(t *testing.T, root, corpusDir string, plant func(t *testing.T, dir string)) []string {
 	t.Helper()
 	cases := loadHostileManifest(t, corpusDir)
 	bySchema := map[string][]hostileCase{}
@@ -510,8 +513,8 @@ func runHostileCorpus(t *testing.T, root, corpusDir string, plant bool) []string
 		for _, c := range group {
 			inputs[c.name] = hostilePayload(t, corpusDir, c.input)
 		}
-		if plant && !packet {
-			plantHostileTextReader(t, dir)
+		if plant != nil && !packet {
+			plant(t, dir)
 		}
 		if err := os.WriteFile(filepath.Join(dir, "main.luau"), []byte(main), 0o644); err != nil {
 			t.Fatal(err)
@@ -634,7 +637,7 @@ func TestLuauRunsHostileCorpus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	findings := runHostileCorpus(t, root, filepath.Join(root, "internal", "ci", "hostilecorpus", "corpus"), false)
+	findings := runHostileCorpus(t, root, filepath.Join(root, "internal", "ci", "hostilecorpus", "corpus"), nil)
 	carried := map[string]bool{}
 	var bad []string
 	for _, f := range findings {
@@ -687,7 +690,7 @@ func TestLuauRunsHostileCorpusPlantedPattern(t *testing.T) {
 		t.Fatal("NEGATIVE CONTROL FAILED: the manifest has no text case the plant can move")
 	}
 	got := map[string]bool{}
-	for _, f := range runHostileCorpus(t, root, corpusDir, true) {
+	for _, f := range runHostileCorpus(t, root, corpusDir, plantHostileTextReader) {
 		rest, ok := strings.CutPrefix(f, "FIX-CARD: luau-hostile-corpus: ")
 		if !ok {
 			t.Fatalf("NEGATIVE CONTROL FAILED: a finding without its FIX-CARD line: %s", f)
@@ -707,6 +710,43 @@ func TestLuauRunsHostileCorpusPlantedPattern(t *testing.T) {
 		if !want[name] {
 			t.Errorf("NEGATIVE CONTROL FAILED: the planted text reader moved %s, which it cannot reach", name)
 		}
+	}
+	// THE CRASH PLANT: the strict load crashes on every input. The files the
+	// manifest refuses for their form (empty, a message, a newer form) must
+	// go red as errors: the reader refuses them, never this runner, so a
+	// crash cannot pass as a refusal.
+	crashed := map[string]string{}
+	for _, f := range runHostileCorpus(t, root, corpusDir, plantHostileLoadCrash) {
+		rest, _ := strings.CutPrefix(f, "FIX-CARD: luau-hostile-corpus: ")
+		name, _, _ := strings.Cut(rest, " ")
+		crashed[name] = rest
+	}
+	for _, name := range []string{"wire-empty", "wire-form-02", "wire-form-ff"} {
+		if why, ok := crashed[name]; !ok || !strings.Contains(why, " got error/") {
+			t.Errorf("NEGATIVE CONTROL FAILED: the planted load crash passed as a refusal on %s (%q)", name, why)
+		}
+	}
+}
+
+// hostileLoadCrashAnchor is the strict load's entry in the emitted runtime
+// (schema_load.luau, L.ReadStrict, which L.load calls).
+const hostileLoadCrashAnchor = "function L.ReadStrict(root: string, bytes: buffer, report: any): any\n"
+
+// plantHostileLoadCrash makes the scratch unit's strict load raise on every
+// input: a crash, not a refusal it names.
+func plantHostileLoadCrash(t *testing.T, dir string) {
+	t.Helper()
+	path := filepath.Join(dir, "schema_load.luau")
+	src, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(string(src), hostileLoadCrashAnchor); n != 1 {
+		t.Fatalf("NEGATIVE CONTROL FAILED: the load crash anchor appears %d times in schema_load.luau, want 1", n)
+	}
+	planted := strings.Replace(string(src), hostileLoadCrashAnchor, hostileLoadCrashAnchor+"\tif root ~= nil then error(\"PLANTED: the load crashes\") end\n", 1)
+	if err := os.WriteFile(path, []byte(planted), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
 
