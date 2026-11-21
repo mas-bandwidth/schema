@@ -211,6 +211,9 @@ local gotClean = T.LoadMessages("Msg", vocab, inputs.clean, rClean)
 assert(gotClean ~= nil and #gotClean == 1, "clean load failed")
 assert(not rClean.damaged and rClean.refused == 0 and rClean.reason == "", "clean report dirty")
 assert(gotClean[1].x == 42 and gotClean[1].y == -7, "clean values wrong")
+-- the one field v2 does not declare (oldTag, held at 9) is counted unknown,
+-- as tablewire's decode counts it (docs/SPEC-TABLES.md §4)
+assert(rClean.unknown == 1, "clean report.unknown: " .. tostring(rClean.unknown))
 
 -- 2. Out-of-range scalar refused by LoadMessages and M.loadMessages(..., false).
 local rOob = {}
