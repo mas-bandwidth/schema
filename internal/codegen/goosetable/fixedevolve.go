@@ -36,7 +36,8 @@ type FixedEvolutionEntry struct {
 	Record  int64
 	Retired bool
 	Reason  string
-	// Ranges are the WRITER's ranged integer leaves (ir.TableFixedWriterRanges),
+	// Ranges are the WRITER's ranged leaves, integer and compressed float
+	// (ir.TableFixedWriterRanges),
 	// so a read through this entry refuses a value its writer could not have
 	// stored, before the reader's own bounds pass runs
 	// (docs/FIXED-FORM-ALGORITHM.md §4.5, §4.6).
@@ -379,7 +380,7 @@ func (e *fixedEvolveEmit) emitWriterRefuse(st *ir.Struct, ranges []ir.TableFixed
 				continue
 			}
 			val := fieldPlace("values[k]", f).val
-			bounds := scalarBounds(elemOf(wf))
+			bounds := writerBounds(elemOf(wf))
 			if f.Array == ir.ArrayFixed {
 				i := fmt.Sprintf("wr%d", j)
 				e.p("            var %s: i64 = 0;\n", i)
@@ -396,6 +397,23 @@ func (e *fixedEvolveEmit) emitWriterRefuse(st *ir.Struct, ranges []ir.TableFixed
 			}
 			break
 		}
+	}
+}
+
+// writerBounds is one writer-range field image's bounds: an integer-shaped
+// leaf's (scalarBounds), or a compressed float's writer min and max
+// (ir.TableFixedWriterField sets HasFloatRange with the WRITER's FMin/FMax),
+// compared in the field's own type — an f32 against its float32-rounded bound,
+// the same literal the reader's own pass uses (floatBounds). A NaN passes both
+// tests here and the reader's finite pass refuses it.
+func writerBounds(f *ir.Field) []scalarBound {
+	lo, hi, ok := floatBounds(f)
+	if !ok {
+		return scalarBounds(f)
+	}
+	return []scalarBound{
+		{test: func(v string) string { return fmt.Sprintf("%s < %s", v, lo) }, land: lo},
+		{test: func(v string) string { return fmt.Sprintf("%s > %s", v, hi) }, land: hi},
 	}
 }
 
