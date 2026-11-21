@@ -143,7 +143,7 @@ tables-go-json-walk: build/tables-generated-go/.stamp
 # a generated package names its schema's `package` and Go resolves an import by
 # module path — so the conformance leg's go.mod replaces one path per unit,
 # exactly as test/go/go.mod already does for the packet corpus.
-build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema $(wildcard test/tables/[MAKR][12].schema) tables/scalars/Scalars.schema test/tables/Scalars2.schema tables/messages/Messages.schema tables/backend/Backend.schema tables/vocab/Vocab.schema tables/vocab9/Vocab9.schema $(wildcard tables/stream/*.schema tables/blobs/*.schema tables/lists/*.schema tables/maps/*.schema tables/widelist/*.schema) test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema testdata/conformance/feature-witnesses/full/Features.schema
+build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema $(wildcard test/tables/[MAKR][12].schema) tables/scalars/Scalars.schema test/tables/Scalars2.schema tables/messages/Messages.schema tables/backend/Backend.schema tables/vocab/Vocab.schema tables/vocab9/Vocab9.schema $(wildcard tables/stream/*.schema tables/blobs/*.schema tables/lists/*.schema tables/maps/*.schema tables/widelist/*.schema) test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/ValueDefaults.schema testdata/conformance/feature-witnesses/full/Features.schema
 	@mkdir -p build/tables-generated-go
 	# EVERY UNIT GENERATES AT ONCE (one xargs, 8 wide): the generations are
 	# independent, and run one after another they alone passed the 110 s
@@ -174,6 +174,7 @@ build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema t
 		'build/tables-generated-go/scalars tables/scalars' \
 		'build/tables-generated-go/scalars2 test/tables/Scalars2.schema' \
 		'build/tables-generated-go/fixedevo test/tables/fixedevo' \
+		'build/tables-generated-go/valuedefaults test/tables/ValueDefaults.schema' \
 		'build/tables-generated-go/varevo1 test/tables/varevo/VarEvo1.schema' \
 		'build/tables-generated-go/varevo2 test/tables/varevo/VarEvo2.schema' \
 		'build/tables-generated-go/varevo3 test/tables/varevo/VarEvo3.schema' \
@@ -222,6 +223,7 @@ build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema t
 	$(call go_table_module,varevo3,tblvarevo3)
 	$(call go_table_module,cooktorture,cooktorture)
 	$(call go_table_module,cooktorturewide,cooktorturewide)
+	$(call go_table_module,valuedefaults,tblvaluedefaults)
 	$(call go_table_module,m1,tblm1)
 	$(call go_table_module,m2,tblm2)
 	$(call go_table_module,a1,tbla1)
