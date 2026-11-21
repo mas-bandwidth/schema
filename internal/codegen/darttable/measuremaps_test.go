@@ -11,7 +11,6 @@ package darttable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -20,6 +19,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // measureRootCase is one root the row pins: the unit, the generated wire
@@ -141,7 +142,7 @@ void main() {
 
 func runDartMeasure(t *testing.T, dart, dir, bin, label string) int64 {
 	t.Helper()
-	cmd := exec.Command(dart, "--enable-asserts", "probe.dart")
+	cmd := testproc.Command(t, dart, "--enable-asserts", "probe.dart")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "BIN="+bin)
 	out, err := cmd.CombinedOutput()

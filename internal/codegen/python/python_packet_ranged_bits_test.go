@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math/big"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -17,6 +16,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/goname"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // rangedBitsField is one ranged integer or bits field in a root's closure, as
@@ -656,7 +657,7 @@ func rangedBitsGoReference(t *testing.T, u *ir.Unit, root string) map[string][]b
 		"go.mod":            []byte(mod),
 		"reference_test.go": []byte(oracle.String()),
 	})
-	cmd := exec.Command("go", "test", "-count=1", "-timeout", "300s", "-run", "^TestRangedBitsGoReference$", "-v", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", "-timeout", "300s", "-run", "^TestRangedBitsGoReference$", "-v", ".")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=mod")
 	out, err := cmd.CombinedOutput()

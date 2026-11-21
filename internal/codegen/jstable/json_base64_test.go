@@ -5,13 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJavaScriptTextBase64MatchesEngine pins docs/SPEC-TABLES.md §16.2's
@@ -143,7 +144,7 @@ for (const row of rows) {
 	if err := os.WriteFile(filepath.Join(dir, "base64.mjs"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, "base64.mjs")
+	cmd := testproc.Command(t, node, "base64.mjs")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -206,7 +207,7 @@ if (RootFromJson('{"v":"AQI"}', new TableVariableReport()) !== null) throw new E
 	if err := os.WriteFile(filepath.Join(dir, "probe.mjs"), []byte(probe), 0600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(jsNode(t), "probe.mjs")
+	cmd := testproc.Command(t, jsNode(t), "probe.mjs")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err == nil || !strings.Contains(string(out), "noncanonical base64 accepted") {

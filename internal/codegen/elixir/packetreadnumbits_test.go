@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestElixirPacketReadRefusesNegativeBitCount holds the packet read's @spec:
@@ -30,7 +32,7 @@ func TestElixirPacketReadRefusesNegativeBitCount(t *testing.T) {
 		t.Fatal(err)
 	}
 	compile := append([]string{"-o", ebin}, names...)
-	cmd := exec.Command(elixircBinary(t), compile...)
+	cmd := testproc.Command(t, elixircBinary(t), compile...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	out, err := cmd.CombinedOutput()
@@ -41,7 +43,7 @@ func TestElixirPacketReadRefusesNegativeBitCount(t *testing.T) {
 	if err := os.WriteFile(probe, []byte(packetReadNumBitsProbe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd = exec.Command(elixirBinary(t), "-pa", ebin, probe)
+	cmd = testproc.Command(t, elixirBinary(t), "-pa", ebin, probe)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	out, err = cmd.CombinedOutput()

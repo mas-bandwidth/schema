@@ -4,13 +4,14 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestDartGraphCheckedOverEveryPointer holds docs/SPEC-TABLES.md §6.5 (THE
@@ -91,7 +92,7 @@ func TestDartGraphCheckedOverEveryPointer(t *testing.T) {
 	writeFiles(t, dir, set)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, dartBinary(t), "--enable-asserts", "graph_probe.dart", framing)
+	cmd := testproc.CommandContext(t, ctx, dartBinary(t), "--enable-asserts", "graph_probe.dart", framing)
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("the graph probe failed: %v\n%s", err, out)

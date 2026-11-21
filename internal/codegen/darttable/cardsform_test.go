@@ -2,7 +2,6 @@ package darttable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -11,6 +10,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func buildUnit(t *testing.T, src string) *ir.Unit {
@@ -334,7 +335,7 @@ void main(List<String> args) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dartBinary(t), "--enable-asserts", "probe.dart", oracle)
+	cmd := testproc.Command(t, dartBinary(t), "--enable-asserts", "probe.dart", oracle)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -438,7 +439,7 @@ void main(List<String> args) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dartBinary(t), "--enable-asserts", "probe.dart", oracleWire, oracleJSON)
+	cmd := testproc.Command(t, dartBinary(t), "--enable-asserts", "probe.dart", oracleWire, oracleJSON)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -502,7 +503,7 @@ void main() {
 	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dartBinary(t), "--enable-asserts", "probe.dart")
+	cmd := testproc.Command(t, dartBinary(t), "--enable-asserts", "probe.dart")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

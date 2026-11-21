@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -24,6 +23,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const minMaxSchema = `package probe
@@ -223,7 +224,7 @@ func TestLuauMessageAnnounceMinAboveMax(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(goDir, "cases.txt"), []byte(casesFile.String()), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("nice", "-n", "19", "go", "test", "-count=1", "-timeout", "600s", "-run", "^TestMinMaxOracle$", "-v", ".")
+	cmd := testproc.Command(t, "nice", "-n", "19", "go", "test", "-count=1", "-timeout", "600s", "-run", "^TestMinMaxOracle$", "-v", ".")
 	cmd.Dir = goDir
 	cmd.Env = append(os.Environ(), "GOFLAGS=-mod=readonly")
 	out, err := cmd.CombinedOutput()

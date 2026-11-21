@@ -3,7 +3,6 @@ package luatable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -11,6 +10,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // THE CALLER-OWNED LOAD, MEASURED (docs/PORTING.md M1, I1, I9, I14). A load
@@ -159,7 +160,7 @@ func allocPinRefusal(have, want string) error {
 
 func interpreterVersion(t *testing.T) string {
 	t.Helper()
-	out, err := exec.Command(luarun.Interpreter(t), "-v").Output()
+	out, err := testproc.Command(t, luarun.Interpreter(t), "-v").Output()
 	if err != nil {
 		t.Fatalf("lua -v: %v", err)
 	}

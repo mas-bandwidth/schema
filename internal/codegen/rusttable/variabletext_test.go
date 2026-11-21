@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestCardTextFormMatchesGo pins docs/SPEC-TABLES.md §16, §16.2, §16.7: the
@@ -51,13 +53,13 @@ func TestCardTextFormMatchesGo(t *testing.T) {
 	}
 
 	bin := filepath.Join(root, "probe")
-	cmd := exec.Command("rustc", "--edition", "2024", "-O", "-o", bin, "main.rs")
+	cmd := testproc.Command(t, "rustc", "--edition", "2024", "-O", "-o", bin, "main.rs")
 	cmd.Dir = root
 	cmd.Env = os.Environ()
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("the card text form did not build: %v\n%s", err, out)
 	}
-	run := exec.Command(bin,
+	run := testproc.Command(t, bin,
 		filepath.Join(repo, "tables", "cards", "fuzz", "card-populated.wire"),
 		filepath.Join(repo, "tables", "cards", "fuzz", "card-populated.json"))
 	run.Dir = root

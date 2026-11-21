@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,6 +12,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestCookMapFieldExposesItsEntriesLikeGo holds the Dart cook of a MAP field to
@@ -158,7 +159,7 @@ func goCookOracle(t *testing.T, u *ir.Unit, oracle, dir string) string {
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("go", "test", "-count=1", "-timeout", "600s", "-run", "TestCookMapOracle", "-v", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", "-timeout", "600s", "-run", "TestCookMapOracle", "-v", ".")
 	cmd.Dir = module
 	cmd.Env = append(os.Environ(), "COOK_OUT="+dir)
 	out, err := cmd.CombinedOutput()
@@ -191,7 +192,7 @@ func dartCookProgram(t *testing.T, dart string, files map[string][]byte, program
 	if err := os.WriteFile(filepath.Join(lib, program), source, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dart, "--enable-asserts", program, dir)
+	cmd := testproc.Command(t, dart, "--enable-asserts", program, dir)
 	cmd.Dir = lib
 	out, err := cmd.CombinedOutput()
 	if err != nil {

@@ -38,6 +38,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // wideSchema has every 128-bit message-form path: a bare uint128 (128 bits,
@@ -188,10 +190,10 @@ int main( void )
 		t.Fatal(err)
 	}
 	bin := filepath.Join(dir, "probe")
-	if out, err := exec.Command(cxx, "-std=c++17", "-O1", "-I"+dir, "-I"+ser, filepath.Join(dir, "probe.cpp"), "-o", bin).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, "-std=c++17", "-O1", "-I"+dir, "-I"+ser, filepath.Join(dir, "probe.cpp"), "-o", bin).CombinedOutput(); err != nil {
 		t.Fatalf("the C++ reference probe did not compile: %v\n%s", err, out)
 	}
-	out, err := exec.Command(bin).CombinedOutput()
+	out, err := testproc.Command(t, bin).CombinedOutput()
 	if err != nil {
 		t.Fatalf("the C++ reference probe failed: %v\n%s", err, out)
 	}
@@ -322,7 +324,7 @@ void main() {
 		if err := os.WriteFile(filepath.Join(dir, "wide_probe.dart"), []byte(probe), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		cmd := exec.Command(dartBin, "--enable-asserts", "wide_probe.dart")
+		cmd := testproc.Command(t, dartBin, "--enable-asserts", "wide_probe.dart")
 		cmd.Dir = dir
 		out, err := cmd.CombinedOutput()
 		if err != nil || !bytes.Contains(out, []byte("ok")) {
