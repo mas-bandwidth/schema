@@ -1694,7 +1694,7 @@ All compile errors with positions:
   `i128`, `isize`, `f32`, `f64`, `str`, `std`, `core`), the same scalar names
   in Goose's namespace, the `dart:typed_data` list classes the Dart output
   imports unprefixed (`Uint8List` and the rest), the packages the Go output
-  imports (`atomic`, `base64`, `binary`, `bytes`, `errors`, `fmt`, `goruntime`,
+  imports (`atomic`, `base64`, `binary`, `errors`, `fmt`, `goruntime`,
   `math`, `slices`, `strconv`, `sync`, `time`, `utf8`), Luau's and moo's
   `buffer` library, C#'s `Debug`, the 128-bit support classes `Int128` and
   `UInt128` (Dart, Java), and Elixir's support module `PacketRuntime`. A

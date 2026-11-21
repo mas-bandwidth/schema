@@ -111,7 +111,7 @@ func TestPythonReflectionDescriptorDocsNegativeControl(t *testing.T) {
 				t.Fatal(err)
 			}
 			for name, data := range files {
-				if !strings.HasSuffix(name, "/Core.py") {
+				if !strings.HasSuffix(name, "/Records.py") {
 					continue
 				}
 				if !strings.Contains(string(data), tc.from) {
@@ -300,7 +300,7 @@ func TestPythonReflectionFieldVocabularyNegativeControl(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			path := "fieldvocab/Core.py"
+			path := "fieldvocab/Records.py"
 			src := string(files[path])
 			if !strings.Contains(src, tc.from) {
 				t.Fatal("vocabulary control anchor absent")

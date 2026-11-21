@@ -107,8 +107,8 @@ func printValue(t *testing.T, name string, v *Box) {
 // jsonByteArraysProbe writes the two texts from the constructor's default and
 // a filled value, then reads each text back and prints the landed storage, the
 // wire it saves and its type names (docs/SPEC-TABLES.md §16.1, §16.2).
-const jsonByteArraysProbe = `require("./BoxTable")
-local T = require("./BoxTable")
+const jsonByteArraysProbe = `require("./CartonTable")
+local T = require("./CartonTable")
 local json = require("./schema_json")
 local save = require("./schema_save")
 local St = require("./schema_tables")
@@ -164,7 +164,7 @@ func TestLuauJsonByteArrays(t *testing.T) {
 	slowtest.Gate(t, "the pinned Luau interpreter and the schema-go oracle")
 
 	dir := t.TempDir()
-	schemaPath := filepath.Join(dir, "Box.schema")
+	schemaPath := filepath.Join(dir, "Carton.schema")
 	if err := os.WriteFile(schemaPath, []byte(jsonByteArraysSchema), 0o644); err != nil {
 		t.Fatal(err)
 	}

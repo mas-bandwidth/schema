@@ -186,7 +186,7 @@ func TestPythonReflectionCorpusNegativeControl(t *testing.T) {
 		{"drop-table", "_schema/unit_view.py", `    ViewType("Record", "Records.schema", True, _descriptors["Record"], "Record documentation.", ("visible", )),` + "\n", "", "union Choice arm 1"},
 		{"table-doc", "_schema/unit_view.py", `"Record documentation.", ("visible", ))`, `"drift", ("visible", ))`, "table Record"},
 		{"arm-doc", "_schema/unit_view.py", `"Arm documentation.", ("arm_tag", ))`, `"drift", ("arm_tag", ))`, "union Choice arm 1"},
-		{"field-key", "Core.py", `json_key="value", type_name="int32"`, `json_key="drift", type_name="int32"`, "table Record field value"},
+		{"field-key", "Records.py", `json_key="value", type_name="int32"`, `json_key="drift", type_name="int32"`, "table Record field value"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -419,7 +419,7 @@ func TestPythonReflectionKindHoleNegativeControl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.ToSlash(filepath.Join(u.Package, "Core.py"))
+	path := filepath.ToSlash(filepath.Join(u.Package, "Records.py"))
 	src := string(files[path])
 	if reflectionUnsupportedKind.MatchString(src) {
 		t.Fatal("clean field was already unsupported")

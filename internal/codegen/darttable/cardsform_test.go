@@ -195,7 +195,7 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 // round trip against the Go leg's committed evidence is the work the card
 // still owes; this test pins the acceptance boundary it must reach.
 // TestCardDeclarationsPinTheVariableFormGap loads the two declarations of the
-// testdata/cards pair (base.schema, new.schema) and proves they parse, check
+// testdata/cards pair (card_base.schema, card_new.schema) and proves they parse, check
 // and generate with the constructs the card record uses — a variable table root,
 // a table as an unbounded list element, an int32 with min/max, a bool, an enum
 // and a `was` rename on a *string field (docs/SPEC-TABLES.md §2.5, §2.9, §3,
@@ -204,7 +204,7 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 func TestCardDeclarationsPinTheVariableFormGap(t *testing.T) {
 	t.Parallel()
 
-	for _, name := range []string{"base.schema", "new.schema"} {
+	for _, name := range []string{"card_base.schema", "card_new.schema"} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			src, err := os.ReadFile(filepath.Join("testdata", "cards", name))

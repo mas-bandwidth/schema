@@ -366,18 +366,18 @@ end
 func TestMooTableDescriptorsNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "moo (it loads the generated table modules)")
 	t.Parallel()
-	g := generateFiles(t, map[string]string{"Box.schema": "package boxes\ntable Box\n{\n    a uint8 = 7\n}\n"})
-	path := filepath.Join(g.dir, "BoxTable.moo")
-	src := string(g.files["BoxTable.moo"])
+	g := generateFiles(t, map[string]string{"Carton.schema": "package boxes\ntable Box\n{\n    a uint8 = 7\n}\n"})
+	path := filepath.Join(g.dir, "CartonTable.moo")
+	src := string(g.files["CartonTable.moo"])
 	const anchor = "cls = \"n\", fw = 1, def = 7 }"
 	if strings.Count(src, anchor) != 1 {
-		t.Fatalf("the default anchor is not in BoxTable.moo exactly once:\n%s", src)
+		t.Fatalf("the default anchor is not in CartonTable.moo exactly once:\n%s", src)
 	}
 	if err := os.WriteFile(path, []byte(strings.Replace(src, anchor, "cls = \"n\", fw = 1, def = 8 }", 1)), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	main := "--!strict\nlocal St = require(\"./schema_tables\")\nlocal tables = 0\nlocal descriptors: { [string]: any } = {}\n" +
-		"for k, v in require(\"./BoxTable\") do\n\tif type(v) == \"table\" and string.sub(k, -10) == \"Descriptor\" then descriptors[v.name] = v end\nend\n" +
+		"for k, v in require(\"./CartonTable\") do\n\tif type(v) == \"table\" and string.sub(k, -10) == \"Descriptor\" then descriptors[v.name] = v end\nend\n" +
 		descriptorProbe + "print(\"tables \" .. tables)\n"
 	if err := os.WriteFile(filepath.Join(g.dir, "main.moo"), []byte(main), 0o644); err != nil {
 		t.Fatal(err)

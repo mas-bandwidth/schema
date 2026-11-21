@@ -745,7 +745,7 @@ func TestPythonJsonFieldMatchNegativeControl(t *testing.T) {
 		name, path, original, replacement, expression string
 	}{
 		{"descriptor", "core/_schema/json_table.py", "field = fields.get(key)", "field = fields.get('sabotaged:' + key)", `from_json(Counters, '{"small":7}')`},
-		{"generated", "core/Core.py", `elif key == "small":`, `elif key == "sabotaged":`, `Counters.from_json('{"small":7}')`},
+		{"generated", "core/Records.py", `elif key == "small":`, `elif key == "sabotaged":`, `Counters.from_json('{"small":7}')`},
 	} {
 		copyFiles := maps.Clone(files)
 		source := string(copyFiles[control.path])

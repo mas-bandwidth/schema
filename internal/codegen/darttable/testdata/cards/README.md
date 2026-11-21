@@ -1,13 +1,13 @@
 # cards testdata — the variable form's declaration pair
 
 These fixtures are the two declarations the Dart variable-form round trip
-(docs/SPEC-TABLES.md §3, §3.1, §5) compares: `base.schema` is the OLDER
-declaration and `new.schema` the NEWER one. The pair differs only by a
+(docs/SPEC-TABLES.md §3, §3.1, §5) compares: `card_base.schema` is the OLDER
+declaration and `card_new.schema` the NEWER one. The pair differs only by a
 `was = "..."` rename on the optional body field, so a reader built from
-`base.schema` must find the newer wire's renamed id through the alias
+`card_base.schema` must find the newer wire's renamed id through the alias
 (docs/SPEC-TABLES.md §5) and default every field the newer wire does not carry.
 
-`new.schema` carries exactly the card constructs the Dart backend is asked to
+`card_new.schema` carries exactly the card constructs the Dart backend is asked to
 emit on form byte 1: a variable table root, tables as unbounded list elements
 (`[]PathText`, §2.9), bool/int32 (with min/max)/enum fields, `string(N)`, and
 `*string` — the string kind of §2.5. The two files differ by the `body` to

@@ -58,7 +58,7 @@ func TestLuauTableLoadKeyedMapAndClampRules(t *testing.T) {
 
 	t.Run("keyed-unnamed", func(t *testing.T) {
 		t.Parallel()
-		g := generateFiles(t, map[string]string{"Box.schema": keyedSchema})
+		g := generateFiles(t, map[string]string{"Carton.schema": keyedSchema})
 		field := ir.TableWireId("arr")
 		aID, bID := ir.TableWireId("A"), ir.TableWireId("B")
 		xID := ir.TableWireId("Q")
@@ -83,7 +83,7 @@ func TestLuauTableLoadKeyedMapAndClampRules(t *testing.T) {
 		w := wire(root, field, aID, xID, bID)
 		main := fmt.Sprintf(`local inputs = require("./inputs")
 local load = require("./schema_load")
-require("./BoxTable")
+require("./CartonTable")
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
 local v = load.loadWalk("Box", inputs.wire, report)
 local parts = {}
@@ -97,8 +97,8 @@ print(table.concat(parts, ",") .. "|" .. %s)`, report)
 
 	t.Run("keyed-descriptor", func(t *testing.T) {
 		t.Parallel()
-		g := generateFiles(t, map[string]string{"Box.schema": keyedSchema})
-		data, err := os.ReadFile(filepath.Join(g.dir, "BoxTable.luau"))
+		g := generateFiles(t, map[string]string{"Carton.schema": keyedSchema})
+		data, err := os.ReadFile(filepath.Join(g.dir, "CartonTable.luau"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -114,7 +114,7 @@ print(table.concat(parts, ",") .. "|" .. %s)`, report)
 
 	t.Run("map-kind-mismatch", func(t *testing.T) {
 		t.Parallel()
-		g := generateFiles(t, map[string]string{"Box.schema": "package p\ntable Box\n{\n\tm map[uint8]uint8\n}\n"})
+		g := generateFiles(t, map[string]string{"Carton.schema": "package p\ntable Box\n{\n\tm map[uint8]uint8\n}\n"})
 		field := ir.TableWireId("m")
 		keyID, valueID := ir.TableWireId("key"), ir.TableWireId("value")
 		entry1 := leb(2)
@@ -142,7 +142,7 @@ print(table.concat(parts, ",") .. "|" .. %s)`, report)
 		w := wire(root, field, keyID, valueID)
 		main := fmt.Sprintf(`local inputs = require("./inputs")
 local load = require("./schema_load")
-require("./BoxTable")
+require("./CartonTable")
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
 local v = load.loadWalk("Box", inputs.wire, report)
 print(#v.M .. "|" .. %s)`, report)
@@ -154,7 +154,7 @@ print(#v.M .. "|" .. %s)`, report)
 
 	t.Run("clamp-utf8", func(t *testing.T) {
 		t.Parallel()
-		g := generateFiles(t, map[string]string{"Box.schema": "package p\ntable Box\n{\n\ts string(4)\n}\n"})
+		g := generateFiles(t, map[string]string{"Carton.schema": "package p\ntable Box\n{\n\ts string(4)\n}\n"})
 		field := ir.TableWireId("s")
 		payload := leb(5)
 		payload = append(payload, 'a', 'b', 0xE2, 0x82, 0xAC)
@@ -165,7 +165,7 @@ print(#v.M .. "|" .. %s)`, report)
 		w := wire(root, field)
 		main := fmt.Sprintf(`local inputs = require("./inputs")
 local load = require("./schema_load")
-require("./BoxTable")
+require("./CartonTable")
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
 local v = load.loadWalk("Box", inputs.wire, report)
 -- a string(N) is a buffer and its used Length (docs/PORT-LUAU.md, THE TYPE MAPPING)

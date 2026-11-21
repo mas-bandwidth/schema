@@ -147,7 +147,7 @@ func TestPythonHandtextSurfaceSelection(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", tc.name, err)
 		}
-		src := string(files["probe/Core.py"])
+		src := string(files["probe/Records.py"])
 		if strings.Contains(src, "def from_text_form(") != tc.want {
 			t.Fatalf("%s: incorrect textform selection", tc.name)
 		}
@@ -170,7 +170,7 @@ func TestPythonHandtextSurfaceSelection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("wire-only name refused: %v", err)
 	}
-	if strings.Contains(string(files["probe/Core.py"]), "def from_text_form(") {
+	if strings.Contains(string(files["probe/Records.py"]), "def from_text_form(") {
 		t.Fatal("wire-only table emitted textform")
 	}
 	if _, ok := files["probe/_schema/json_table.py"]; ok {
@@ -204,7 +204,7 @@ func TestPythonHandtextSurfaceNegativeControl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := "probe/Core.py"
+	path := "probe/Records.py"
 	source := string(files[path])
 	const method = "def from_text_form("
 	if strings.Count(source, method) != 1 {

@@ -24,7 +24,7 @@ func TestPythonTableCoreShapeBench(t *testing.T) {
 	dir := t.TempDir()
 	writeTree(t, dir, files)
 	probe := pyrun.ImportPrelude + `import time
-import fixedunion.Core as Core
+import fixedunion.Records as Records
 from fixedunion import Money
 from fixedunion._schema.load import load_table
 from fixedunion._schema.save import save_table
@@ -41,9 +41,9 @@ m.u32 = 4000000000
 m.u64 = (1 << 62) + 7
 m.u128 = (1999999 << 16) + 11
 data = m.save()
-if Core._s_save_Money(m) != data:
+if Records._s_save_Money(m) != data:
     raise SystemExit("the straight-line save differs from the descriptor walk")
-if Core._s_load_Money(Money, data) != m or load_table(Money, data) != m:
+if Records._s_load_Money(Money, data) != m or load_table(Money, data) != m:
     raise SystemExit("the straight-line load differs from the descriptor walk")
 
 N = 10000
@@ -61,13 +61,13 @@ def run(fn):
     return best
 
 def gen_save():
-    Core._s_save_Money(m)
+    Records._s_save_Money(m)
 
 def desc_save():
     save_table(m)
 
 def gen_load():
-    Core._s_load_Money(Money, data)
+    Records._s_load_Money(Money, data)
 
 def desc_load():
     load_table(Money, data)
@@ -169,7 +169,7 @@ func TestPythonVtPointerArraysShapeBench(t *testing.T) {
 	dir := t.TempDir()
 	writeTree(t, dir, files)
 	probe := pyrun.ImportPrelude + `import time
-import ptrbench.Core as Core
+import ptrbench.Records as Records
 from ptrbench import Holder, Leaf
 from ptrbench._schema.load import load_table
 from ptrbench._schema.save import save_table
@@ -195,9 +195,9 @@ h.extra = [a, c]
 h.bonus = 424242
 
 data = h.save()
-if Core._s_save_Holder(h) != data or save_table(h) != data:
+if Records._s_save_Holder(h) != data or save_table(h) != data:
     raise SystemExit("the straight-line save differs from the descriptor walk")
-if Core._s_load_Holder(Holder, data) != h or load_table(Holder, data) != h:
+if Records._s_load_Holder(Holder, data) != h or load_table(Holder, data) != h:
     raise SystemExit("the straight-line load differs from the descriptor walk")
 
 N = 5000
@@ -215,13 +215,13 @@ def run(fn):
     return best
 
 def gen_save():
-    Core._s_save_Holder(h)
+    Records._s_save_Holder(h)
 
 def desc_save():
     save_table(h)
 
 def gen_load():
-    Core._s_load_Holder(Holder, data)
+    Records._s_load_Holder(Holder, data)
 
 def desc_load():
     load_table(Holder, data)

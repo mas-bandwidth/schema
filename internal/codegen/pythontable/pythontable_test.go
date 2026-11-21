@@ -485,7 +485,7 @@ func TestPythonTableCoreCarriesPacketThroughUnion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Generate refused a packet type reached through a union arm: %v", err)
 	}
-	if _, ok := files["packetunion/Core.py"]; !ok {
+	if _, ok := files["packetunion/Records.py"]; !ok {
 		t.Fatalf("the generated module is missing: %v", sortedFileNames(files))
 	}
 }

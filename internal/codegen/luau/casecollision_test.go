@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
+	"github.com/mas-bandwidth/schema/v2/internal/irtest"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -62,7 +63,8 @@ func TestLuauGeneratedNamesAreCaseInsensitiveUnique(t *testing.T) {
 
 	t.Run("Text beside the runtime's text", func(t *testing.T) {
 		t.Parallel()
-		u := unitFromSchemas(t, map[string]string{"Schema_text.schema": withType("TextProbe")})
+		u := unitFromSchemas(t, map[string]string{"Probe.schema": withType("TextProbe")})
+		irtest.Rebase(t, u, "Probe", "Schema_text") // the checker refuses Schema_text first (SPEC §4.6)
 		runtime := map[string][]byte{"schema_text.luau": []byte("-- runtime\n")}
 		err := CheckBases(u, runtime)
 		if err == nil {
@@ -78,9 +80,12 @@ func TestLuauGeneratedNamesAreCaseInsensitiveUnique(t *testing.T) {
 	t.Run("Foo and foo in one tree", func(t *testing.T) {
 		t.Parallel()
 		u := unitFromSchemas(t, map[string]string{
-			"Foo.schema": withType("FooProbe"),
-			"foo.schema": withType("FooTwo"),
+			"Foo.schema":    withType("FooProbe"),
+			"FooTwo.schema": withType("FooTwo"),
 		})
+		// the checker refuses a basename pair differing only by case first
+		// (SPEC §4.6); this backend's own guard sits behind it
+		irtest.Rebase(t, u, "FooTwo", "foo")
 		_, err := Generate(u)
 		if err == nil {
 			t.Fatal("Foo.luau and foo.luau were both emitted")
@@ -137,7 +142,8 @@ func TestLuauGeneratedNamesAreCaseInsensitiveUnique(t *testing.T) {
 	// "Text beside the runtime's text" assertion above.
 	t.Run("exact comparison does not catch the case pair", func(t *testing.T) {
 		t.Parallel()
-		u := unitFromSchemas(t, map[string]string{"Schema_text.schema": withType("TextProbe")})
+		u := unitFromSchemas(t, map[string]string{"Probe.schema": withType("TextProbe")})
+		irtest.Rebase(t, u, "Probe", "Schema_text") // the checker refuses Schema_text first (SPEC §4.6)
 		runtime := map[string][]byte{"schema_text.luau": []byte("-- runtime\n")}
 		if _, _, collides := collidingNames(u, runtime, func(a, b string) bool { return a == b }); collides {
 			t.Fatal("the exact-comparison control caught Text/text, so it is not a control")

@@ -198,7 +198,7 @@ func TestPythonCardsCppJSON(t *testing.T) {
 	maps.Copy(files, tables)
 	dir := t.TempDir()
 	writeTree(t, dir, files)
-	program := `#include "CoreTable.h"
+	program := `#include "RecordsTable.h"
 #include <cstdio>
 #include <cstring>
 #include <vector>

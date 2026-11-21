@@ -1,4 +1,4 @@
-// new.schema — the NEWER declaration of the cards testdata pair
+// card_new.schema — the NEWER declaration of the cards testdata pair
 // (docs/SPEC-TABLES.md §3, §5). It renames the optional body field `body` to
 // `done_when` and keeps its wire id through `was = "body"`, and adds the
 // scalar and list fields the card record carries.

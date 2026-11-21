@@ -35,7 +35,7 @@ func TestPythonKeyedEnumThroughDriver(t *testing.T) {
 		if err != nil {
 			t.Fatalf("driver refused keyed enum: %v", err)
 		}
-		code := string(files["enumkey/Core.py"])
+		code := string(files["enumkey/Records.py"])
 		if !strings.Contains(code, `codec="keyed"`) || !strings.Contains(code, `codec="enum"`) || !strings.Contains(code, `variant_ids=`) {
 			t.Fatal("driver did not emit keyed enum metadata")
 		}

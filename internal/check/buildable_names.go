@@ -231,13 +231,22 @@ var platformNames = func() map[string]string {
 		"Int8List", "Uint8List", "Uint8ClampedList", "Int16List", "Uint16List", "Int32List", "Uint32List",
 		"Int64List", "Uint64List", "Float32List", "Float64List", "Float32x4List", "Int32x4List", "Float64x2List")
 	put("a package the generated Go imports, and a package-scope declaration of that name collides with the import (Go)",
-		"atomic", "base64", "binary", "bytes", "errors", "fmt", "goruntime", "math", "slices", "strconv", "sync", "time", "utf8")
+		"atomic", "base64", "binary", "errors", "fmt", "goruntime", "math", "slices", "strconv", "sync", "time", "utf8")
 	put("the buffer library the generated code calls unqualified (Luau, moo)", "buffer")
 	put("System.Diagnostics.Debug, which the generated C# calls unqualified (C#)", "Debug")
 	put("the 128-bit support library the Dart and Java emitters write beside a 128-bit unit (Dart, Java)", "Int128", "UInt128")
 	put("the support module the Elixir emitter writes beside the unit, Package.PacketRuntime (Elixir)", "PacketRuntime")
 	return m
 }()
+
+// PlatformNames returns the §4.6 platform-name table as a copy: each
+// declaration name the checker refuses for every target because some
+// target's generated code spells it unqualified, mapped to the targets and
+// the mechanism. A test that declares names taken from generated code skips
+// these as it skips ReservedWords.
+func PlatformNames() map[string]string {
+	return maps.Clone(platformNames)
+}
 
 // checkPlatformNames refuses a declaration named like a platformNames entry
 // (SPEC §4.6, Platform-name safety). A name the reserved-word check already

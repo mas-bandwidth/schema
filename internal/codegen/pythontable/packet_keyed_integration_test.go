@@ -119,7 +119,7 @@ print('ok')
 func TestPythonHostedPacketKeyedTableWireNegativeControl(t *testing.T) {
 	t.Parallel()
 	files, inputs := pythonHostedPacketKeyedTableFiles(t)
-	name := "packetkeyed/Core.py"
+	name := "packetkeyed/Records.py"
 	const anchor = "keyed_list=True,"
 	if strings.Count(string(files[name]), anchor) != 1 {
 		t.Fatal("keyed representation control lost its anchor")

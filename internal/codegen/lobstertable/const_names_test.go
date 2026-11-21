@@ -267,7 +267,8 @@ func tableSchemaCanDeclare(name string) bool {
 		return false
 	}
 	_, reserved := check.ReservedWords()[name]
-	return !reserved
+	_, platform := check.PlatformNames()[name]
+	return !reserved && !platform
 }
 
 func insertTableConsts(src string, names []string) string {
