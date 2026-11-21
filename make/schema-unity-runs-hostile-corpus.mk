@@ -18,7 +18,10 @@
 # The planted-verdict control requires the unplanted corpus green, then copies
 # the corpus to a scratch directory, flips the committed verdict of one passing
 # accepted case and one passing refused case, and requires the runner to go red
-# naming each.
+# naming each. Then it builds the units again with ShipEntry's FixedLoad
+# planted to throw, and requires the refused fixed-root files of other forms
+# (empty, form 2, form 0xff) to go red: the reader, never the runner, refuses
+# them, so a crash cannot pass as a refusal.
 
 UNITY_HOSTILE_CORPUS   ?= internal/ci/hostilecorpus/corpus
 UNITY_HOSTILE_BUILD    ?= build/unity-hostile
@@ -84,3 +87,21 @@ schema-unity-runs-hostile-corpus-negative-control: $(UNITY_HOSTILE_BUILD)/bin/.s
 		{ echo "NEGATIVE CONTROL FAILED: the runner read an input outside the corpus without refusing it"; \
 		  cat $(UNITY_HOSTILE_BUILD)/plant/log; exit 1; }; \
 	echo "unity hostile-corpus negative control: planted verdicts on $$acc and $$ref and an outside input on $$out red the corpus; unplanted it is green"
+	@rm -rf $(UNITY_HOSTILE_BUILD)/plant/generated && cp -R $(UNITY_HOSTILE_BUILD)/generated $(UNITY_HOSTILE_BUILD)/plant/generated
+	@sed -i.orig 's|^            int why = TableWire.FixedOpen(data, ShipEntryFixedLanes,|            if (data.Length >= 0) { throw new System.InvalidOperationException("PLANTED"); } int why = TableWire.FixedOpen(data, ShipEntryFixedLanes,|' \
+		$(UNITY_HOSTILE_BUILD)/plant/generated/*_tables_examples/*.cs
+	@if ! grep -q 'PLANTED' $(UNITY_HOSTILE_BUILD)/plant/generated/*_tables_examples/*.cs; then \
+		echo 'NEGATIVE CONTROL FAILED: the planted FixedLoad crash did not apply'; exit 1; fi
+	$(DOTNET) build test/unity-hostile/unityhostile.csproj -v q --nologo \
+		-p:HostileGeneratedDir=$(CURDIR)/$(UNITY_HOSTILE_BUILD)/plant/generated \
+		-p:SerializeCsRoot=$(abspath $(SERIALIZE_CS)) -o $(UNITY_HOSTILE_BUILD)/plant/bin
+	@if $(DOTNET) $(UNITY_HOSTILE_BUILD)/plant/bin/unityhostile.dll "$(UNITY_HOSTILE_CORPUS)" "$(UNITY_HOSTILE_FINDINGS)" \
+			> $(UNITY_HOSTILE_BUILD)/plant/crash.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: a FixedLoad that crashes on every input left the corpus green'; \
+		cat $(UNITY_HOSTILE_BUILD)/plant/crash.log; exit 1; fi
+	@for name in wire-empty wire-form-02 wire-form-ff; do \
+		grep -q "^FAIL $$name " $(UNITY_HOSTILE_BUILD)/plant/crash.log || \
+			{ echo "NEGATIVE CONTROL FAILED: a FixedLoad crash passed as a refusal on $$name (the runner refused it for the reader)"; \
+			  cat $(UNITY_HOSTILE_BUILD)/plant/crash.log; exit 1; }; \
+	done
+	@echo "unity hostile-corpus negative control: a FixedLoad that crashes reds the refused fixed-root files (wire-empty, wire-form-02, wire-form-ff)"

@@ -439,7 +439,10 @@ func dispatch(u *unit, r row, bodies *bytes.Buffer, emitted map[string]bool) str
 		case s.fixed:
 			emit(f+"_wire", fixedWireBody)
 		case s.fixedRoot:
-			emit(f+"_wire", oversizedFixedWireBody)
+			// A fixed root past the fixed-form ceiling has no file reader in
+			// the port: no verdict to take, so the row is a listed skip, never
+			// a refusal this runner makes up for the reader.
+			return skip(t + " is a fixed root with no file form (its record is past the fixed-form ceiling) in the Unity port")
 		default:
 			emit(f+"_wire", wireBody)
 		}
@@ -532,30 +535,22 @@ const wireBody = `
     }
 `
 
+// A fixed-class root has no variable Load in the Unity port: EVERY input goes
+// to its FixedLoad, whose form gate refuses a file of another form (an empty
+// file, form 1, a message, a newer form) itself. The runner never answers a
+// refusal for the reader: one it made up would pass whatever the reader does,
+// a crash included. A load that neither lands one value nor refuses is an
+// error, never `damaged`.
 const fixedWireBody = `
     [MethodImpl(MethodImplOptions.NoInlining)]
     static string {F}_wire(byte[] d)
     {
-        if (d.Length > 0 && d[0] == 3)
-        {
-            var arr = new {N}.{T}[] { {N}.Schema.New{T}() };
-            var r = default({N}.Schema.TableReport);
-            long n = {N}.Schema.{T}FixedLoad(arr, d, ref r, 16384);
-            return H.Read(n == 1, r.Refused || r.Damaged, ReasonText(r.ReasonText, r.Reason, {N}.Schema.TableReport.ReasonName)) ?? {F}_accept(arr[0]);
-        }
-        if (d.Length > 0 && d[0] == 1) { return H.Refuse("damaged"); }
-        if (d.Length > 0 && d[0] == 2) { return H.Refuse("message_form_as_file"); }
-        if (d.Length > 0 && d[0] > 3) { return H.Refuse("newer_form"); }
-        return H.Refuse("damaged");
-    }
-`
-
-const oversizedFixedWireBody = `
-    static string {F}_wire(byte[] d)
-    {
-        if (d.Length > 0 && d[0] == 2) { return H.Refuse("message_form_as_file"); }
-        if (d.Length > 0 && d[0] > 3) { return H.Refuse("newer_form"); }
-        return H.Refuse("damaged");
+        var arr = new {N}.{T}[] { {N}.Schema.New{T}() };
+        var r = default({N}.Schema.TableReport);
+        long n = {N}.Schema.{T}FixedLoad(arr, d, ref r, 16384);
+        bool refused = r.Refused || r.Damaged;
+        if (n != 1 && !refused) { return "error: FixedLoad returned " + n + " without refusing"; }
+        return H.Read(n == 1, refused, ReasonText(r.ReasonText, r.Reason, {N}.Schema.TableReport.ReasonName)) ?? {F}_accept(arr[0]);
     }
 `
 
