@@ -100,7 +100,7 @@ enum Grade
     Gold
 }
 
-table LiveRoot
+fixed table LiveRoot
 {
     grades [1..4]Grade
 }
@@ -395,7 +395,7 @@ func guardProbeSource(t *testing.T) string {
 func guardProbeFiles(t *testing.T) map[string][]byte {
 	t.Helper()
 	u := unitFrom(t, `package probe
-table Root { n int32 }
+fixed table Root { n int32 }
 `)
 	files, err := Generate(u)
 	if err != nil {
@@ -750,16 +750,29 @@ table Bag
 		t.Fatalf("a unit whose only table the form refuses has %d fixed roots, want 0", len(roots))
 	}
 
-	// The positive control, so the test cannot pass by answering false always.
-	plain := unitFrom(t, `package probe
+	// A variable table is form 1, always (docs/SPEC-TABLES.md §3.4), however
+	// well its closure would fit the layout: no fixed root.
+	variable := unitFrom(t, `package probe
 
 table Bag
 {
     n int32
 }
 `)
+	if roots := jsFixedUnitRoots(variable); len(roots) != 0 {
+		t.Fatalf("a unit of one variable scalar table has %d fixed roots, want 0", len(roots))
+	}
+
+	// The positive control, so the test cannot pass by answering false always.
+	plain := unitFrom(t, `package probe
+
+fixed table Bag
+{
+    n int32
+}
+`)
 	if roots := jsFixedUnitRoots(plain); len(roots) == 0 {
-		t.Fatal("a unit of one plain scalar table has no fixed roots, want one")
+		t.Fatal("a unit of one fixed scalar table has no fixed roots, want one")
 	}
 }
 
