@@ -1,7 +1,9 @@
 package main
 
 import (
+	"go/build"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -30,9 +32,49 @@ type goTestLine struct {
 	// this scan does not model (-count=0, -list, -c, -exec).
 	runsNothing string
 	tags        []string
+	// impliedTags are the build tags a flag sets without -tags: -race builds
+	// under `race`, -msan under `msan`, -asan under `asan` (the reviewer's
+	// F-030: a test behind `//go:build !race` is not built by `go test -race`).
+	impliedTags []string
 
 	slow, requireCorpus string // SCHEMA_SLOW and SCHEMA_REQUIRE_CORPUS as the test binary sees them
 	goos, goarch        string // GOOS and GOARCH the line sets for the command, or ""
+	cgo                 string // CGO_ENABLED the line sets for the command, or ""
+}
+
+// untrackedContext are the environment variables that change a build's tags
+// in ways this scan does not model (experiment tags, the toolchain's release
+// tags, architecture feature levels). A line that sets one proves nothing
+// about which tests it builds.
+var untrackedContext = []string{"GOEXPERIMENT", "GOTOOLCHAIN", "GOAMD64", "GOARM", "GOARM64", "GO386", "GOMIPS", "GOMIPS64", "GOPPC64", "GORISCV64", "GOWASM"}
+
+// buildContext is the build context the test command builds in: the lane's
+// (build.Default, the host the scan runs on), with what the line sets — its
+// -tags, the tags -race, -msan and -asan imply, CGO_ENABLED, GOOS and GOARCH.
+// custom reports whether any of that differs from the lane's own.
+func (l goTestLine) buildContext() (ctx build.Context, custom bool) {
+	ctx = build.Default
+	ctx.BuildTags = append(append([]string{}, l.tags...), l.impliedTags...)
+	custom = len(ctx.BuildTags) > 0
+	if l.goos != "" && l.goos != ctx.GOOS {
+		ctx.GOOS, custom = l.goos, true
+	}
+	if l.goarch != "" && l.goarch != ctx.GOARCH {
+		ctx.GOARCH, custom = l.goarch, true
+	}
+	switch {
+	case l.cgo == "0":
+		ctx.CgoEnabled = false
+	case l.cgo == "1":
+		ctx.CgoEnabled = true
+	case custom && (ctx.GOOS != build.Default.GOOS || ctx.GOARCH != build.Default.GOARCH):
+		// the go tool disables cgo by default when cross-compiling
+		ctx.CgoEnabled = false
+	}
+	if ctx.CgoEnabled != build.Default.CgoEnabled {
+		custom = true
+	}
+	return ctx, custom
 }
 
 // armed reports whether the gate is open for the tests this line runs:
@@ -117,7 +159,7 @@ func parseGoTestLine(cmd string) goTestLine {
 	}
 	start := commandStart(cmd, invocations[0])
 	words := shellWords(cmd[start:])
-	for _, name := range []string{"SCHEMA_SLOW", "SCHEMA_REQUIRE_CORPUS", "GOOS", "GOARCH", "GOFLAGS"} {
+	for _, name := range append([]string{"SCHEMA_SLOW", "SCHEMA_REQUIRE_CORPUS", "GOOS", "GOARCH", "GOFLAGS", "CGO_ENABLED"}, untrackedContext...) {
 		if strings.Contains(cmd[:start], name) {
 			words = append(shellWords(cmd[:start]), words...)
 			break
@@ -240,7 +282,15 @@ func parseGoTestLine(cmd string) goTestLine {
 	}
 	l.slow, l.requireCorpus = value("SCHEMA_SLOW"), value("SCHEMA_REQUIRE_CORPUS")
 	gateUnread := l.unreadEnv
-	l.goos, l.goarch = value("GOOS"), value("GOARCH")
+	l.goos, l.goarch, l.cgo = value("GOOS"), value("GOARCH"), value("CGO_ENABLED")
+	if l.cgo != "" && l.cgo != "0" && l.cgo != "1" {
+		l.unreadEnv = "CGO_ENABLED=" + l.cgo + " is not a value the go tool reads"
+	}
+	for _, name := range untrackedContext {
+		if value(name) != "" {
+			l.unreadEnv = name + " on the line changes the build tags, which this scan does not model"
+		}
+	}
 	if l.unreadEnv != gateUnread {
 		// a build context this scan cannot read voids what it proves about
 		// the selection, not whether the gate is open
@@ -316,6 +366,23 @@ func parseGoTestLine(cmd string) goTestLine {
 					l.unreadArg = "its -tags cannot be read"
 				}
 				l.tags = strings.FieldsFunc(v, func(r rune) bool { return r == ',' || r == ' ' || r == '\t' })
+			case "race", "msan", "asan":
+				// a boolean flag: -race, or -race=true|false; the last one wins
+				on := true
+				if hasVal {
+					b, err := strconv.ParseBool(val)
+					if err != nil {
+						l.unreadArg = "its -" + name + " cannot be read"
+					}
+					on = b
+				}
+				l.impliedTags = slices.DeleteFunc(l.impliedTags, func(t string) bool { return t == name })
+				if on {
+					l.impliedTags = append(l.impliedTags, name)
+				}
+			case "compiler", "toolexec":
+				next()
+				l.unreadArg = "its -" + name + " changes how the tests are built or run, which this scan does not model"
 			case "skip":
 				v, ok := readable(next())
 				if !ok {

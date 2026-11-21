@@ -1,0 +1,15 @@
+package fixture
+
+import (
+	"errors"
+	"os/exec"
+	"testing"
+)
+
+// os/exec for its types only: the command arrives from a bounded helper.
+func waitFor(t *testing.T, c *exec.Cmd) {
+	var exit *exec.ExitError
+	if err := c.Run(); err != nil && !errors.As(err, &exit) {
+		t.Fatal(err)
+	}
+}

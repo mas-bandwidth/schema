@@ -1,0 +1,20 @@
+# The slow-gate scan's committed corpus: TestSlowGateScanCorpus reads every row.
+# id	tree	check	subject	want
+#
+# tree:    a fixture root beside this file (its Makefile and its Go packages).
+# check:   static  the unarmed-line audit; subject is the tree's one recipe
+#                  target, want the scan's exit code (1 refused, 0 proven).
+#          credit  the coverage accounting; subject is pkg.Test, want the make
+#                  target credited with running it, - for none.
+#
+# F-030: -race builds under the race tag, so a test behind //go:build !race is
+# not built; an unarmed line that selects only it runs no tests, and an armed
+# race line is not credited with it.
+F-030-race-unarmed	f030-race-unarmed	static	check	1
+F-030-race-unarmed-control	f030-race-unarmed-control	static	check	0
+F-030-race-credit	f030-race-credit	credit	pkg.TestNoRace	-
+F-030-race-credit-control	f030-race-credit	credit	pkg.TestBoth	race
+# F-219: go test rewrites a space in a selector to _, so -skip 'TestWin Codec'
+# removes TestWin_Codec; the line that skips it is not credited with it.
+F-219-space-skip	f219-space-skip	credit	pkg.TestWin_Codec	-
+F-219-space-skip-control	f219-space-skip	credit	pkg.TestWin_Other	core

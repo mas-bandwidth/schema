@@ -340,6 +340,20 @@ func TestUnarmedLineVerdictFollowsGoSelection(t *testing.T) {
 		{"GOOS=linux go test -tags $(FEATURE_TAGS) -run 'TestFeature' ./pkg", 1, "the tags cannot be read, so nothing is proven"},
 		{"GOOS=linux go test -run 'TestWindowsOnly' ./pkg", 1, "the test exists only in a _windows_test.go file: no tests to run on linux"},
 		{"GOOS=windows go test -run 'TestWindowsOnly' ./pkg", 0, "on windows it runs TestWindowsOnly"},
+		// the tags a flag implies are build tags too (the reviewer's F-030):
+		// -race builds under `race`, so a test behind `//go:build !race` is not
+		// built and the line runs no tests
+		{"go test -race -count=1 -run TestNoRace ./pkg", 1, "-race leaves out the !race file: no tests to run"},
+		{"go test -count=1 -run TestNoRace ./pkg", 0, "without -race it runs TestNoRace"},
+		{"go test -race=false -count=1 -run TestNoRace ./pkg", 0, "-race=false builds without the tag"},
+		{"go test -race -race=false -run TestNoRace ./pkg", 0, "the last -race wins"},
+		{"GOFLAGS=-race go test -count=1 -run TestNoRace ./pkg", 1, "-race through GOFLAGS is -race"},
+		{"go test -msan -run TestNoRace ./pkg", 0, "-msan sets msan, not race"},
+		{"go test -race=maybe -run TestNoRace ./pkg", 1, "the -race value cannot be read"},
+		{"CGO_ENABLED=0 go test -run TestCgoOnly ./pkg", 1, "with cgo off the cgo-only file is not built"},
+		{"CGO_ENABLED=1 go test -run TestCgoOnly ./pkg", 0, "with cgo on it runs TestCgoOnly"},
+		{"GOEXPERIMENT=nosuch go test -run TestFast ./pkg", 1, "GOEXPERIMENT changes tags this scan does not model"},
+		{"go test -toolexec $(WRAP) -run TestFast ./pkg", 1, "-toolexec is not modelled"},
 	} {
 		root := t.TempDir()
 		writeTree(t, root, map[string]string{
@@ -347,6 +361,8 @@ func TestUnarmedLineVerdictFollowsGoSelection(t *testing.T) {
 			"pkg/a_test.go":            "package pkg\n\nimport \"testing\"\n\nfunc TestGated(t *testing.T) {\n\tslowtest.Gate(t, \"x\")\n\tt.Run(\"roundtrip\", func(t *testing.T) {})\n}\n\nfunc TestFast(t *testing.T) {}\n",
 			"pkg/feature_test.go":      "//go:build include_optional_feature\n\npackage pkg\n\nimport \"testing\"\n\nfunc TestFeature(t *testing.T) {}\n",
 			"pkg/only_windows_test.go": "package pkg\n\nimport \"testing\"\n\nfunc TestWindowsOnly(t *testing.T) {}\n",
+			"pkg/norace_test.go":       "//go:build !race\n\npackage pkg\n\nimport \"testing\"\n\nfunc TestNoRace(t *testing.T) {}\n",
+			"pkg/cgo_test.go":          "//go:build cgo\n\npackage pkg\n\nimport \"testing\"\n\nfunc TestCgoOnly(t *testing.T) {}\n",
 			"Makefile":                 "check:\n\t" + tc.recipe + "\n",
 		})
 		gatedTests, err := gatedTestPackages(root)
@@ -464,7 +480,7 @@ func TestCoverageCreditsOnlyWhatALineRuns(t *testing.T) {
 		"TestPythonReflectionCorpus":      "core",
 		"TestOther":                       "", // no line runs it: one selects it and then selects something else, one runs zero times, one is unarmed
 	} {
-		if got := coveredBy(recipes, gatedTest{pkg: "./pkg", name: name}); got != want {
+		if got := coveredBy(newDeclCache(root), recipes, gatedTest{pkg: "./pkg", name: name}); got != want {
 			t.Errorf("%s is credited to %q, want %q", name, got, want)
 		}
 	}
@@ -475,7 +491,7 @@ func TestCoverageCreditsOnlyWhatALineRuns(t *testing.T) {
 			withoutStrict = append(withoutStrict, r)
 		}
 	}
-	if got := coveredBy(withoutStrict, gatedTest{pkg: "./pkg", name: "TestPythonReflectionStrictTypes"}); got != "" {
+	if got := coveredBy(newDeclCache(root), withoutStrict, gatedTest{pkg: "./pkg", name: "TestPythonReflectionStrictTypes"}); got != "" {
 		t.Errorf("with the strict shard gone, TestPythonReflectionStrictTypes is still credited to %q: the loss is masked", got)
 	}
 }

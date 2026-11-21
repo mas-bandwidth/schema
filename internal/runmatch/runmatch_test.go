@@ -62,6 +62,47 @@ func TestSelectsFollowsGo(t *testing.T) {
 	}
 }
 
+// TestPatternsAreRewrittenAsGoRewritesThem is the reviewer's F-219: Go
+// rewrites each element of a selector before compiling it, a space character
+// to `_`, so `-skip 'TestWin Codec'` and `-skip TestWin_Codec` both remove the
+// top-level TestWin_Codec. Compiled raw, the spelling with a space matched
+// nothing, and a line that skips the test was credited with running it. The
+// control: a selector naming another test leaves TestWin_Codec running.
+func TestPatternsAreRewrittenAsGoRewritesThem(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		pattern, name string
+		skips, runs   bool
+	}{
+		{"TestWin Codec", "TestWin_Codec", true, true},
+		{"TestWin_Codec", "TestWin_Codec", true, true},
+		{"^TestWin Codec$", "TestWin_Codec", true, true},
+		{"TestWin\tCodec", "TestWin_Codec", true, true},
+		{"TestWin Codec", "TestWin_Codec", true, true},
+		{"TestWin Codec", "TestWin_Codec", true, true},
+		{"TestA|TestWin Codec", "TestWin_Codec", true, true},
+		{"TestWin Other", "TestWin_Codec", false, false},
+		{"TestOther", "TestWin_Codec", false, false},
+		{"TestWin/Codec x", "TestWin/Codec_x", true, true},
+	} {
+		p, err := Compile(tc.pattern)
+		if err != nil {
+			t.Fatalf("Compile(%q): %v", tc.pattern, err)
+		}
+		if got := p.Skips(tc.name); got != tc.skips {
+			t.Errorf("-skip %q removes %s = %v, want %v (go test rewrites spaces to _)", tc.pattern, tc.name, got, tc.skips)
+		}
+		if got := p.Selects(tc.name); got != tc.runs {
+			t.Errorf("-run %q selects %s = %v, want %v (go test rewrites spaces to _)", tc.pattern, tc.name, got, tc.runs)
+		}
+	}
+	for in, want := range map[string]string{"a b": "a_b", "a\x01b": `a\x01b`, "plain": "plain", "　": "_"} {
+		if got := Rewrite(in); got != want {
+			t.Errorf("Rewrite(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 // TestSkipsFollowsGo: -skip removes a test only on a match that is not partial.
 func TestSkipsFollowsGo(t *testing.T) {
 	t.Parallel()

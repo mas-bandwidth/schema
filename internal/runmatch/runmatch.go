@@ -24,6 +24,7 @@ package runmatch
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -84,14 +85,55 @@ type Pattern struct {
 	alternatives [][]*regexp.Regexp
 }
 
-// Compile reads a -run or -skip pattern. An element that is not a regular
+// Rewrite is testing's rewrite, applied to each element of a pattern before it
+// is compiled: every space character becomes `_` and every unprintable rune
+// its quoted escape. So `-skip 'TestWin Codec'` removes TestWin_Codec, as
+// `go test` does (the reviewer's F-219: compiled raw, the space matched
+// nothing and the test was credited to a line that skips it).
+func Rewrite(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case isSpace(r):
+			b.WriteByte('_')
+		case !strconv.IsPrint(r):
+			q := strconv.QuoteRune(r)
+			b.WriteString(q[1 : len(q)-1])
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// isSpace is testing's isSpace: not the same as Unicode's Z class.
+func isSpace(r rune) bool {
+	if r < 0x2000 {
+		switch r {
+		case '\t', '\n', '\v', '\f', '\r', ' ', 0x85, 0xA0, 0x1680:
+			return true
+		}
+		return false
+	}
+	if r <= 0x200a {
+		return true
+	}
+	switch r {
+	case 0x2028, 0x2029, 0x202f, 0x205f, 0x3000:
+		return true
+	}
+	return false
+}
+
+// Compile reads a -run or -skip pattern. Each element is rewritten as
+// testing rewrites it, then compiled; an element that is not a regular
 // expression is an error: `go test` refuses it too.
 func Compile(pattern string) (*Pattern, error) {
 	var p Pattern
 	for _, alternative := range Split(pattern) {
 		var compiled []*regexp.Regexp
 		for _, element := range alternative {
-			re, err := regexp.Compile(element)
+			re, err := regexp.Compile(Rewrite(element))
 			if err != nil {
 				return nil, fmt.Errorf("pattern %q: element %q: %w", pattern, element, err)
 			}

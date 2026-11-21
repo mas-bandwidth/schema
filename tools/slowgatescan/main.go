@@ -47,6 +47,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/provesran"
@@ -170,7 +171,8 @@ func main() {
 //
 //   - the line RUNS A TEST in every package it names: its -run pattern selects
 //     one among the tests declared under the build context the line runs in
-//     (its -tags, its GOOS and GOARCH, else the lane's), and no flag on it
+//     (its -tags, the tags -race, -msan and -asan imply, its CGO_ENABLED,
+//     GOOS and GOARCH, else the lane's), and no flag on it
 //     makes `go test` run nothing (-count=0, -list, -c). A line that runs
 //     nothing exits 0 and proves nothing;
 //   - no test that reaches the gate (gatedTests, by directory, under any build
@@ -196,14 +198,7 @@ func selectsNoGatedTest(root string, r recipe, gatedTests map[string][]string) b
 	if err != nil {
 		return false
 	}
-	ctx := build.Default
-	ctx.BuildTags = r.test.tags
-	if r.test.goos != "" {
-		ctx.GOOS = r.test.goos
-	}
-	if r.test.goarch != "" {
-		ctx.GOARCH = r.test.goarch
-	}
+	ctx, _ := r.test.buildContext()
 	for _, pkg := range r.packages {
 		if strings.HasSuffix(pkg, "/...") {
 			return false
@@ -316,10 +311,11 @@ func runCoverage(root, logPath string, recipes []recipe, exceptions []exception,
 	var uncovered []gatedTest
 	var rows []string
 	usedCILanes := map[string]bool{}
+	decls := newDeclCache(root)
 
 	for _, t := range skipped {
 		tDisplay := t.Display()
-		if target := coveredBy(recipes, t); target != "" {
+		if target := coveredBy(decls, recipes, t); target != "" {
 			byMake++
 			rows = append(rows, fmt.Sprintf("make\t%s\t%s", tDisplay, target))
 		} else if ok, _ := coveredByException(exceptions, t); ok {
@@ -854,9 +850,12 @@ func (r recipe) runs(name string) bool {
 	return true
 }
 
-// coveredBy reports the first armed recipe whose package it names and which
-// runs t.
-func coveredBy(recipes []recipe, t gatedTest) string {
+// coveredBy reports the first armed recipe whose package it names, which runs
+// t, and which builds t: a line that builds under another context than the
+// lane's (-tags, -race, CGO_ENABLED, GOOS, GOARCH) is credited only with the
+// tests declared under that context — `go test -race` does not build a test
+// behind `//go:build !race` (the reviewer's F-030).
+func coveredBy(decls *declCache, recipes []recipe, t gatedTest) string {
 	for _, r := range recipes {
 		if !r.armed {
 			continue
@@ -864,11 +863,45 @@ func coveredBy(recipes []recipe, t gatedTest) string {
 		if !recipeMatchesPkg(r, t.pkg) {
 			continue
 		}
-		if r.runs(t.name) {
-			return r.target
+		if !r.runs(t.name) {
+			continue
 		}
+		if ctx, custom := r.test.buildContext(); custom && !decls.declares(t.pkg, &ctx, t.name) {
+			continue
+		}
+		return r.target
 	}
 	return ""
+}
+
+// declCache holds the tests each package declares under each build context a
+// recipe line names, read once per package and context.
+type declCache struct {
+	root string
+	read map[string]map[string]bool
+}
+
+func newDeclCache(root string) *declCache {
+	return &declCache{root: root, read: map[string]map[string]bool{}}
+}
+
+// declares reports whether the package pkg (a "./dir" path under the root)
+// declares a top-level test name in a file ctx builds. A package that cannot
+// be read declares nothing.
+func (c *declCache) declares(pkg string, ctx *build.Context, name string) bool {
+	key := strings.Join([]string{pkg, ctx.GOOS, ctx.GOARCH, strconv.FormatBool(ctx.CgoEnabled), strings.Join(ctx.BuildTags, ",")}, "\x00")
+	set, ok := c.read[key]
+	if !ok {
+		dir := filepath.Join(c.root, filepath.FromSlash(strings.TrimPrefix(pkg, "./")))
+		declared, err := declaredTestsIn(dir, ctx)
+		if err != nil {
+			declared = map[string]bool{}
+		}
+		set = declared
+		c.read[key] = set
+	}
+	top, _, _ := strings.Cut(name, "/")
+	return set[top]
 }
 
 func recipeMatchesPkg(r recipe, pkg string) bool {
