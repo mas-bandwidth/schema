@@ -371,3 +371,49 @@ func TestMessageBodyDuplicateTestIsLinear(t *testing.T) {
 		}
 	}
 }
+
+// TestMessageQuantizedTopStepAtFloat32 is TABLEWIRE-1's message half: a
+// compressed float32 whose max float32 cannot spell exactly (0.1) dequantizes
+// its top index to float32(0.1), which is the declared maximum as every
+// runtime holds it (SPEC.md §4.6: the range is evaluated at float32). The top
+// and the bottom index both read; one index past the top is refused.
+func TestMessageQuantizedTopStepAtFloat32(t *testing.T) {
+	t.Parallel()
+	m := covModel(t, "package quanttop\nfixed table R { x float32 | min = 0, max = 0.1, resolution = 0.01 }\n")
+	root := m.Lookup("R")
+	entry := ir.TableFieldEntry(root.Fields[0])
+	if entry.Shape.Packing != ir.TableMessageQuantized {
+		t.Fatalf("the field announces packing %d, want quantized", entry.Shape.Packing)
+	}
+	count, _, ok := ir.TableMessageQuantization(entry.Shape)
+	if !ok {
+		t.Fatal("the shape does not derive")
+	}
+	read := func(index uint64) (bool, float64) {
+		v := &Vocabulary{entries: []ir.TableVocabularyEntry{entry}, announced: true}
+		refBits := v.RefBits()
+		var w bitWriter
+		w.put(0, 8)
+		w.put(1, refBits)
+		w.put(index, int(entry.Shape.Bits))
+		w.put(0, refBits)
+		w.align()
+		inst := m.New(root)
+		ok, _ := DecodeMessage(m, inst, append([]byte{ir.TableWireMessageForm}, w.b...), v, &tabletext.Report{})
+		return ok, inst.Fields[0].Cell.F
+	}
+	if ok, x := read(uint64(count)); !ok || float32(x) != float32(0.1) {
+		t.Fatalf("the top index was answered ok=%v x=%v, want float32(0.1)", ok, x)
+	}
+	if ok, x := read(1); !ok || x <= 0 {
+		t.Fatalf("index 1 was answered ok=%v x=%v", ok, x)
+	}
+	if ok, x := read(0); !ok || x != 0 {
+		t.Fatalf("the bottom index was answered ok=%v x=%v, want 0", ok, x)
+	}
+	if uint64(count)+1 < uint64(1)<<uint(entry.Shape.Bits) {
+		if ok, _ := read(uint64(count) + 1); ok {
+			t.Fatal("an index past the top was read")
+		}
+	}
+}
