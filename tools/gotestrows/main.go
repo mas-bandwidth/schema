@@ -1,12 +1,16 @@
 // Command gotestrows cuts ci-fast's go-test-touched selection into matrix
 // rows that each finish inside the fleet's two-minute per-commit cap.
 //
-//	go run ./tools/gotestrows [-short] [-budget seconds] [-gotable-extras] <package>...
+//	go run ./tools/gotestrows [-short] [-budget seconds] [-gotable-extras] [-dependents-of "<package>..."] <package>...
 //
 // It prints one line of JSON, a GitHub Actions matrix `include` list: one
 // object per row, {"row": "k/n", "packages": "...", "run": "...", "skip":
 // "...", "make": "..."}. A package argument of ./... is every package of the
-// main module (`go list ./...`).
+// main module (`go list ./...`). -dependents-of names the packages whose
+// non-test source the diff changed; every main-module package whose build or
+// tests depend on one of them (`go list -test`) is selected beside the
+// arguments, so a change cannot go green while it breaks a package it did not
+// touch.
 //
 // EVERY SELECTED TEST RUNS IN EXACTLY ONE ROW, by construction, and no row
 // list is a second home for the package list:
@@ -74,13 +78,22 @@ func main() {
 	short := flag.Bool("short", false, "weigh packages by their -short time (a broad diff)")
 	budget := flag.Float64("budget", 60, "seconds of test time a packed row may carry")
 	extras := flag.Bool("gotable-extras", false, "add the tables-go-fixedform and conformance-go-rows rows")
+	changed := flag.String("dependents-of", "", "packages whose non-test source changed: every main-module package whose tests build against one of them is selected too")
 	flag.Parse()
 
 	t, err := readTable(tablePath)
 	if err != nil {
 		fail(err)
 	}
-	pkgs, err := expand(flag.Args())
+	args := flag.Args()
+	if strings.TrimSpace(*changed) != "" {
+		list, err := exec.Command("go", "list", "-test", "-f", "{{.ImportPath}}|{{join .Deps \" \"}}", "./...").Output()
+		if err != nil {
+			fail(fmt.Errorf("go list -test ./...: %w", err))
+		}
+		args = append(args, dependents(string(list), strings.Fields(*changed))...)
+	}
+	pkgs, err := expand(args)
 	if err != nil {
 		fail(err)
 	}
@@ -177,6 +190,59 @@ func expand(args []string) ([]string, error) {
 		}
 	}
 	return out, nil
+}
+
+// dependents reads `go list -test -f '{{.ImportPath}}|{{join .Deps " "}}'
+// ./...` and returns, ./-relative and sorted, every main-module package whose
+// own build or test binary depends on one of changed (./-relative package
+// paths). A change to a package's non-test source can break the tests of a
+// package that imports it, directly or not; the diff's directories alone
+// never name that package (PR #4437 changed the front end and left
+// internal/tablewire red with every selected row green). The test variants
+// ("p [p.test]", "p_test [p.test]", "p.test") count as p, so a package whose
+// tests alone import a changed one is selected too.
+func dependents(list string, changed []string) []string {
+	want := map[string]bool{}
+	for _, c := range changed {
+		c = strings.TrimPrefix(strings.TrimSuffix(c, "/"), "./")
+		if c == "." || c == "" {
+			want[modulePath] = true
+			continue
+		}
+		want[modulePath+"/"+c] = true
+	}
+	seen := map[string]bool{}
+	var out []string
+	for line := range strings.Lines(list) {
+		path, deps, ok := strings.Cut(strings.TrimSpace(line), "|")
+		if !ok {
+			continue
+		}
+		path, _, _ = strings.Cut(path, " ")
+		path = strings.TrimSuffix(path, ".test")
+		path = strings.TrimSuffix(path, "_test")
+		if path != modulePath && !strings.HasPrefix(path, modulePath+"/") {
+			continue
+		}
+		hit := false
+		for d := range strings.FieldsSeq(deps) {
+			if want[d] {
+				hit = true
+				break
+			}
+		}
+		if !hit || seen[path] {
+			continue
+		}
+		seen[path] = true
+		rel := "."
+		if path != modulePath {
+			rel = "./" + strings.TrimPrefix(path, modulePath+"/")
+		}
+		out = append(out, rel)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func plan(t table, pkgs []string, short bool, budget float64) []Row {
