@@ -1,0 +1,2 @@
+F-025
+-args hands the test binary its own selector

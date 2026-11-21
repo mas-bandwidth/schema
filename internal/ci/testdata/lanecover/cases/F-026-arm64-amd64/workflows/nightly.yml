@@ -1,0 +1,32 @@
+name: nightly
+on:
+  schedule:
+    - cron: '1 2 * * *'
+  workflow_dispatch:
+jobs:
+  unit:
+    runs-on: [self-hosted, Linux, X64]
+    strategy:
+      matrix:
+        group: [ one, two, rest ]
+    steps:
+      - name: row one
+        if: matrix.group == 'one'
+        run: go test ./a -run '^TestA$'
+      - name: row two
+        if: matrix.group == 'two'
+        run: go test ./a -skip '^TestA$'
+      - name: the rest
+        if: matrix.group == 'rest'
+        run: go test $(go list ./... | grep -v '/a$')
+      - name: tagged
+        run: make -j4 test-tagged V=1
+  mac:
+    # the nested module runs only here, on the certify macOS runner's labels
+    runs-on: [self-hosted, macOS, ARM64, fleet, schema]
+    steps:
+      - run: make test-nested
+  windows:
+    runs-on: windows-latest
+    steps:
+      - run: go test ./w/

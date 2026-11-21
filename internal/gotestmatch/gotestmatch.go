@@ -9,12 +9,19 @@
 // subtest level. A test runs when some -run alternative matches every level of
 // its name that the alternative has an expression for, and no -skip
 // alternative matches it completely: a -skip alternative with more levels than
-// the name skips only the subtests it goes on to name.
+// the name skips only the subtests it goes on to name. Every level of a value
+// is rewritten as test names are before it is compiled (testing.rewrite): a
+// space is an underscore, so `-skip 'TestWin Codec'` skips TestWin_Codec.
+//
+// testdata/go-answers.txt is a real Go test binary's record of which tests ran
+// for every pair of a set of -run and -skip values; corpus_test.go holds this
+// package to it and, behind the slow gate, the record to the current Go.
 package gotestmatch
 
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -110,7 +117,10 @@ func compile(s string) ([][]*regexp.Regexp, error) {
 	for _, alt := range Split(s) {
 		var levels []*regexp.Regexp
 		for _, expr := range alt {
-			re, err := regexp.Compile(expr)
+			// simpleMatch.verify rewrites every level of the selector the way
+			// names are rewritten, so `-skip 'TestWin Codec'` is the
+			// expression TestWin_Codec (review finding F-219).
+			re, err := regexp.Compile(rewrite(expr))
 			if err != nil {
 				return nil, err
 			}
@@ -140,6 +150,40 @@ alt:
 	return false, false
 }
 
-// rewrite is the part of testing.rewrite a name written in source can need:
-// a space in a subtest name is matched as an underscore.
-func rewrite(s string) string { return strings.ReplaceAll(s, " ", "_") }
+// rewrite is testing.rewrite, applied by the testing package both to every
+// subtest name and to every level of a -run or -skip value: a space is an
+// underscore, and a character that does not print is its quoted escape.
+func rewrite(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case isSpace(r):
+			b.WriteByte('_')
+		case !strconv.IsPrint(r):
+			q := strconv.QuoteRune(r)
+			b.WriteString(q[1 : len(q)-1])
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// isSpace is testing.isSpace, which is not the Unicode Z class.
+func isSpace(r rune) bool {
+	if r < 0x2000 {
+		switch r {
+		case '\t', '\n', '\v', '\f', '\r', ' ', 0x85, 0xA0, 0x1680:
+			return true
+		}
+		return false
+	}
+	if r <= 0x200a {
+		return true
+	}
+	switch r {
+	case 0x2028, 0x2029, 0x202f, 0x205f, 0x3000:
+		return true
+	}
+	return false
+}

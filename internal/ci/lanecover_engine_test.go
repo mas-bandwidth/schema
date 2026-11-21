@@ -30,6 +30,7 @@ import (
 
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/mas-bandwidth/schema/v2/internal/gotestmatch"
 	"go/ast"
@@ -75,7 +76,7 @@ type laneCmd struct {
 	match    *gotestmatch.Matcher
 	workflow string // the counted workflow that reaches it, or ""
 	tier     string // "per-commit" or "nightly"
-	goos     map[string]bool
+	platform map[string]bool
 	target   string // the make target whose recipe holds it, or ""
 	hits     int    // tests this command selects
 }
@@ -896,6 +897,7 @@ type laneRecipeLine struct {
 type laneMake struct {
 	vars  map[string]string
 	rules []*laneRule
+	files map[string]bool // every file read, from the root
 }
 
 var (
@@ -906,30 +908,94 @@ var (
 // laneReadMake reads the root Makefile and the files it includes into rules
 // and plain variables. It reads every branch of a conditional, and the body of
 // a define as the rules it would stamp out, with $(1) left as it is.
+//
+// The files read are the ones make reads: the Makefile, then each include
+// directive where it stands, a literal path (which must exist, unless the
+// directive is -include or sinclude) or a $(wildcard ...) of one directory,
+// whose empty answer is make's own. An include this reader cannot resolve is
+// an error, not a file skipped.
 func laneReadMake(root string) (*laneMake, error) {
-	files := []string{"Makefile"}
-	for _, g := range []string{"make/*.mk", "make/checks/*.mk", "make/negative-controls.d/*.mk", "tools/agentsmap/map.mk", "tools/roadmap/roadmap.mk"} {
-		m, err := filepath.Glob(filepath.Join(root, g))
-		if err != nil {
-			return nil, err
-		}
-		for _, f := range m {
-			rel, _ := filepath.Rel(root, f)
-			files = append(files, filepath.ToSlash(rel))
-		}
+	mk := &laneMake{vars: map[string]string{}, files: map[string]bool{}}
+	if err := mk.readFile(root, "Makefile", false); err != nil {
+		return nil, err
 	}
-	mk := &laneMake{vars: map[string]string{}}
-	for _, f := range files {
-		body, err := os.ReadFile(filepath.Join(root, f))
-		if err != nil {
-			return nil, err
-		}
-		mk.read(f, string(body))
+	if len(mk.rules) == 0 {
+		return nil, fmt.Errorf("%s: the Makefile and its includes declare no rule", root)
 	}
 	return mk, nil
 }
 
-func (mk *laneMake) read(file, body string) {
+var laneMakeWildcard = regexp.MustCompile(`^\$\(wildcard\s+([^$()]+)\)$`)
+
+func (mk *laneMake) readFile(root, file string, optional bool) error {
+	if mk.files[file] {
+		return nil // make reads it again; its rules are already here
+	}
+	body, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(file)))
+	if optional && errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	mk.files[file] = true
+	return mk.read(root, file, string(body))
+}
+
+// include reads the files one include directive names.
+func (mk *laneMake) include(root, src, directive, args string) error {
+	optional := directive != "include"
+	words := strings.Fields(args)
+	for i := 0; i < len(words); i++ {
+		w := words[i]
+		if strings.HasPrefix(w, "$(wildcard") {
+			j := i
+			for j < len(words) && !strings.HasSuffix(words[j], ")") {
+				j++
+			}
+			if j == len(words) {
+				return fmt.Errorf("%s: an include this reader cannot read: %s %s", src, directive, args)
+			}
+			m := laneMakeWildcard.FindStringSubmatch(strings.Join(words[i:j+1], " "))
+			if m == nil {
+				return fmt.Errorf("%s: an include this reader cannot read: %s %s", src, directive, args)
+			}
+			i = j
+			for p := range strings.FieldsSeq(m[1]) {
+				dir, pat := path.Split(p)
+				if strings.ContainsAny(dir, "*?[") {
+					return fmt.Errorf("%s: a wildcard over directories this reader does not expand: %s", src, p)
+				}
+				entries, err := os.ReadDir(filepath.Join(root, filepath.FromSlash(dir)))
+				if errors.Is(err, fs.ErrNotExist) {
+					continue // make's $(wildcard) of a missing directory is empty
+				}
+				if err != nil {
+					return err
+				}
+				for _, e := range entries { // os.ReadDir sorts, as make's wildcard does
+					if ok, err := path.Match(pat, e.Name()); err != nil {
+						return fmt.Errorf("%s: %w", src, err)
+					} else if ok && !e.IsDir() {
+						if err := mk.readFile(root, dir+e.Name(), false); err != nil {
+							return err
+						}
+					}
+				}
+			}
+			continue
+		}
+		if strings.Contains(w, "$") {
+			return fmt.Errorf("%s: an include this reader cannot read: %s %s", src, directive, args)
+		}
+		if err := mk.readFile(root, path.Clean(w), optional); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (mk *laneMake) read(root, file, body string) error {
 	lines := strings.Split(body, "\n")
 	var cur *laneRule
 	depth := 0
@@ -972,7 +1038,14 @@ func (mk *laneMake) read(file, body string) {
 		case "endif":
 			depth--
 		}
-		if first == "define" || first == "endef" || first == "ifeq" || first == "ifneq" || first == "ifdef" || first == "ifndef" || first == "else" || first == "endif" || first == "include" || first == "-include" || first == "export" || first == "unexport" || first == "vpath" {
+		if first == "include" || first == "-include" || first == "sinclude" {
+			if err := mk.include(root, fmt.Sprintf("%s:%d", file, start+1), first, strings.TrimSpace(strings.TrimPrefix(flat, first))); err != nil {
+				return err
+			}
+			cur = nil
+			continue
+		}
+		if first == "define" || first == "endef" || first == "ifeq" || first == "ifneq" || first == "ifdef" || first == "ifndef" || first == "else" || first == "endif" || first == "export" || first == "unexport" || first == "vpath" {
 			continue
 		}
 		head, rest, ok := strings.Cut(flat, ":")
@@ -994,6 +1067,7 @@ func (mk *laneMake) read(file, body string) {
 		}
 		mk.rules = append(mk.rules, cur)
 	}
+	return nil
 }
 
 // expand replaces the plain variables this reader knows. `$$` survives as `$`;
@@ -1062,7 +1136,7 @@ func laneBuild(mk *laneMake, wfs map[string]laneWorkflow) *laneSet {
 	}
 	type reachVal struct {
 		workflow, tier, src string
-		goos                map[string]bool
+		platform            map[string]bool
 	}
 	reached := map[reachKey]*reachVal{}
 	set := &laneSet{copies: map[string][]string{}}
@@ -1072,9 +1146,9 @@ func laneBuild(mk *laneMake, wfs map[string]laneWorkflow) *laneSet {
 		k := reachKey{r}
 		if v, ok := reached[k]; ok {
 			grew := false
-			for g := range from.goos {
-				if !v.goos[g] {
-					v.goos[g] = true
+			for g := range from.platform {
+				if !v.platform[g] {
+					v.platform[g] = true
 					grew = true
 				}
 			}
@@ -1086,11 +1160,11 @@ func laneBuild(mk *laneMake, wfs map[string]laneWorkflow) *laneSet {
 				return
 			}
 		} else {
-			goos := map[string]bool{}
-			for g := range from.goos {
-				goos[g] = true
+			platform := map[string]bool{}
+			for g := range from.platform {
+				platform[g] = true
 			}
-			reached[k] = &reachVal{workflow: from.workflow, tier: from.tier, goos: goos}
+			reached[k] = &reachVal{workflow: from.workflow, tier: from.tier, platform: platform}
 		}
 		for _, p := range r.prereqs {
 			p = mk.expand(p)
@@ -1132,10 +1206,10 @@ func laneBuild(mk *laneMake, wfs map[string]laneWorkflow) *laneSet {
 	sort.SliceStable(steps, func(i, j int) bool { return steps[i].tier == "per-commit" && steps[j].tier != "per-commit" })
 	for _, st := range steps {
 		file, _, _ := strings.Cut(st.src, ":")
-		goos := map[string]bool{st.goos: true}
+		platform := map[string]bool{st.platform: true}
 		cmds, makes, _ := laneScript(st.src, st.run, st.dir)
 		for _, c := range cmds {
-			c.workflow, c.tier, c.goos = file, st.tier, goos
+			c.workflow, c.tier, c.platform = file, st.tier, platform
 			if st.unread != "" && c.unread == "" {
 				c.unread = st.unread
 			}
@@ -1145,7 +1219,7 @@ func laneBuild(mk *laneMake, wfs map[string]laneWorkflow) *laneSet {
 			continue // a step this reader cannot place reaches no make goal
 		}
 		for _, g := range makes {
-			visit(g, reachVal{workflow: file, tier: st.tier, goos: goos, src: st.src}, true)
+			visit(g, reachVal{workflow: file, tier: st.tier, platform: platform, src: st.src}, true)
 		}
 	}
 	for _, r := range mk.rules {
@@ -1159,7 +1233,7 @@ func laneBuild(mk *laneMake, wfs map[string]laneWorkflow) *laneSet {
 				set.copies[cp.src] = append(set.copies[cp.src], cp.dstDir)
 			}
 			for _, c := range cmds {
-				c.workflow, c.tier, c.goos, c.target = v.workflow, v.tier, v.goos, r.targets[0]
+				c.workflow, c.tier, c.platform, c.target = v.workflow, v.tier, v.platform, r.targets[0]
 				if r.conditional && c.unread == "" {
 					c.unread = "its make rule is declared inside a conditional"
 				}
@@ -1231,8 +1305,8 @@ func laneTestsIn(filename string, src []byte) ([]string, error) {
 
 // laneContext is a build a command compiles under.
 type laneContext struct {
-	goos string
-	tags string // comma-joined, sorted
+	platform string // GOOS/GOARCH
+	tags     string // comma-joined, sorted
 }
 
 // laneCompiled asks the toolchain which test files each package of the main
@@ -1245,7 +1319,11 @@ func laneCompiled(root string, ctx laneContext) (map[string]map[string]bool, err
 	args = append(args, "./...")
 	cmd := exec.Command("go", args...)
 	cmd.Dir = root
-	cmd.Env = append(os.Environ(), "GOOS="+ctx.goos, "GOARCH=amd64", "CGO_ENABLED=0", "GOFLAGS=", "GOWORK=off")
+	goos, goarch, ok := strings.Cut(ctx.platform, "/")
+	if !ok {
+		return nil, fmt.Errorf("build context %+v names no GOOS/GOARCH", ctx)
+	}
+	cmd.Env = append(os.Environ(), "GOOS="+goos, "GOARCH="+goarch, "CGO_ENABLED=0", "GOFLAGS=", "GOWORK=off")
 	var out, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &stderr
 	if err := cmd.Run(); err != nil {
@@ -1285,7 +1363,11 @@ func laneCompiled(root string, ctx laneContext) (map[string]map[string]bool, err
 // root does not reach.
 func laneBuilds(file string, ctx laneContext) bool {
 	bc := build.Default
-	bc.GOOS, bc.GOARCH, bc.CgoEnabled = ctx.goos, "amd64", false
+	goos, goarch, ok := strings.Cut(ctx.platform, "/")
+	if !ok {
+		return false
+	}
+	bc.GOOS, bc.GOARCH, bc.CgoEnabled = goos, goarch, false
 	bc.BuildTags = nil
 	if ctx.tags != "" {
 		bc.BuildTags = strings.Split(ctx.tags, ",")
@@ -1405,14 +1487,14 @@ func laneAssignAll(files []laneFile, set *laneSet, compiled func(laneContext) (m
 	// the contexts: linux with no tags (what plain `go test` on the fleet
 	// compiles), and each readable command's own
 	ctxs := map[laneContext]map[string]map[string]bool{}
-	need := map[laneContext]bool{{goos: "linux"}: true}
+	need := map[laneContext]bool{{platform: "linux/amd64"}: true}
 	for i := range set.cmds {
 		c := &set.cmds[i]
 		if c.unread != "" {
 			continue
 		}
-		for g := range c.goos {
-			need[laneContext{goos: g, tags: strings.Join(c.tags, ",")}] = true
+		for g := range c.platform {
+			need[laneContext{platform: g, tags: strings.Join(c.tags, ",")}] = true
 		}
 	}
 	var mu sync.Mutex
@@ -1476,8 +1558,8 @@ func laneAssignAll(files []laneFile, set *laneSet, compiled func(laneContext) (m
 						continue
 					}
 					ok := false
-					for g := range c.goos {
-						if ctxs[laneContext{goos: g, tags: strings.Join(c.tags, ",")}][f.dir][f.name] {
+					for g := range c.platform {
+						if ctxs[laneContext{platform: g, tags: strings.Join(c.tags, ",")}][f.dir][f.name] {
 							ok = true
 						}
 					}
@@ -1489,8 +1571,8 @@ func laneAssignAll(files []laneFile, set *laneSet, compiled func(laneContext) (m
 					// directory a reached recipe copies the file into, and
 					// only by a build that compiles the file
 					builds := false
-					for g := range c.goos {
-						if laneBuilds(f.abs, laneContext{goos: g, tags: strings.Join(c.tags, ",")}) {
+					for g := range c.platform {
+						if laneBuilds(f.abs, laneContext{platform: g, tags: strings.Join(c.tags, ",")}) {
 							builds = true
 						}
 					}

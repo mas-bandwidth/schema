@@ -589,7 +589,7 @@ fuzz-generated-readers-go:
 
 .PHONY: tables-go-fuzz
 tables-go-fuzz: build/tables-generated-go/.stamp build/conformance-harness
-	./build/conformance-harness run --drivers /dev/null --work build/conformance-go-fuzz-work > /dev/null 2>&1 || true
+	sh test/slowgate/fixtures build/conformance-go-fuzz-work ./build/conformance-harness run --drivers /dev/null --work build/conformance-go-fuzz-work
 	cd test/go-tables && GO_TABLES_FIXTURES="$(CURDIR)/build/conformance-go-fuzz-work/fixtures" SEED=$(SEED) N=$(N) go test -run Fuzz -count 1 .
 	cd test/go-tables && GO_TABLES_FIXTURES="$(CURDIR)/build/conformance-go-fuzz-work/fixtures" SEED=$(SEED) N=$(N) go test -race -run Fuzz -count 1 .
 
@@ -1175,7 +1175,7 @@ tables-go-fixed-form-negative-control: bin/schema build/schema_test_bench_paired
 # TestEveryGoTestIsAssignedToALane is red for a test here that no such line runs.
 .PHONY: tables-go-module
 tables-go-module: build/tables-generated-go/.stamp build/conformance-harness tables-go-sibling-runtime
-	./build/conformance-harness run --drivers /dev/null --work build/conformance-go-module-work > /dev/null 2>&1 || true
+	sh test/slowgate/fixtures build/conformance-go-module-work ./build/conformance-harness run --drivers /dev/null --work build/conformance-go-module-work
 	cd test/go-tables && GO_TABLES_FIXTURES="$(CURDIR)/build/conformance-go-module-work/fixtures" go test -count 1 .
 test-go: tables-go-module
 

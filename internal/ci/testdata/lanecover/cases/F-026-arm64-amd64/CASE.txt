@@ -1,0 +1,2 @@
+F-026-arm64-amd64
+her repro: an _amd64 file whose only lane is the macOS ARM64 runner, where Go does not compile it

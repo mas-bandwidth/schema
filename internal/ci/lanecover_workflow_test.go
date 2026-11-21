@@ -784,12 +784,12 @@ func (mx laneMatrix) rows(event string) (rows []map[string]laneVal, known bool) 
 
 // laneStep is one step's script as it runs for one trigger and one matrix row.
 type laneStep struct {
-	src    string
-	run    string
-	dir    string
-	tier   string // "per-commit" (push) or "nightly" (schedule)
-	goos   string // "linux", "windows", "darwin", or "" when not known
-	unread string // why every command in it is credited with nothing
+	src      string
+	run      string
+	dir      string
+	tier     string // "per-commit" (push) or "nightly" (schedule)
+	platform string // GOOS/GOARCH, as "darwin/arm64", or "" when not known
+	unread   string // why every command in it is credited with nothing
 }
 
 type laneRawStep struct {
@@ -1010,7 +1010,13 @@ func laneEnvChangesGoTest(envs ...string) bool {
 	return false
 }
 
-// laneRunsOn names the GOOS a job's runs-on means for one row, or "".
+// laneRunsOn names the GOOS/GOARCH a job's runs-on means for one row, or ""
+// when the labels do not say both: the operating system by its label, the
+// architecture by an explicit ARM64 or X64 label, else by the GitHub-hosted
+// image it names (ubuntu and windows images are x64 unless named -arm; the
+// macos images from 14 on are arm64, 13 and the -large and -intel ones x64).
+// A runner whose architecture is unknown compiles nothing certain, so its
+// commands are credited with nothing (review finding F-026).
 func laneRunsOn(runsOn string, env laneEnv) string {
 	text := laneExpr.ReplaceAllStringFunc(runsOn, func(m string) string {
 		v := laneEval(laneExpr.FindStringSubmatch(m)[1], env)
@@ -1036,7 +1042,41 @@ func laneRunsOn(runsOn string, env laneEnv) string {
 	if len(got) != 1 || strings.Contains(text, "\x01") {
 		return ""
 	}
-	return got[0]
+	arch := laneRunnerArch(low)
+	if arch == "" {
+		return ""
+	}
+	return got[0] + "/" + arch
+}
+
+var (
+	laneLabelSplit  = regexp.MustCompile(`[\s,\[\]"']+`)
+	laneHostedAMD64 = regexp.MustCompile(`^(ubuntu-(latest|[0-9.]+)|windows-(latest|[0-9]+)|macos-13|macos-[0-9a-z]+-(large|intel))$`)
+	laneHostedARM64 = regexp.MustCompile(`^(ubuntu-[0-9.]+-arm|windows-[0-9]+-arm|macos-(latest|1[4-9]|2[0-9])(-xlarge)?)$`)
+)
+
+// laneRunnerArch is the GOARCH a lower-cased runs-on names, or "".
+func laneRunnerArch(low string) string {
+	arch := map[string]bool{}
+	for _, l := range laneLabelSplit.Split(low, -1) {
+		switch {
+		case l == "arm64" || l == "aarch64":
+			arch["arm64"] = true
+		case l == "x64" || l == "amd64" || l == "x86_64":
+			arch["amd64"] = true
+		case laneHostedARM64.MatchString(l):
+			arch["arm64"] = true
+		case laneHostedAMD64.MatchString(l):
+			arch["amd64"] = true
+		}
+	}
+	if len(arch) != 1 {
+		return ""
+	}
+	for a := range arch {
+		return a
+	}
+	return ""
 }
 
 // laneSteps writes every step of every workflow once per automatic trigger
@@ -1096,21 +1136,21 @@ func laneSteps(wfs map[string]laneWorkflow) (steps []laneStep, counted int) {
 				}
 				for _, row := range rows {
 					env := laneEnv{event: event, row: row, rowKnown: known}
-					goos := laneRunsOn(job.runsOn, env)
+					platform := laneRunsOn(job.runsOn, env)
 					for _, st := range job.steps {
 						if !laneCertain(st.cond, env) {
 							continue
 						}
-						out := laneStep{src: st.src, run: laneSubst(st.run, env), dir: st.dir, tier: tier, goos: goos}
+						out := laneStep{src: st.src, run: laneSubst(st.run, env), dir: st.dir, tier: tier, platform: platform}
 						switch {
-						case goos == "":
-							out.unread = "the job's runs-on does not name one operating system"
+						case platform == "":
+							out.unread = "the job's runs-on does not name one operating system and architecture"
 						case st.dir == "\x00":
 							out.unread = "the step's working-directory is not a literal"
 						case laneEnvChangesGoTest(wf.env, job.env, st.env):
 							out.unread = "GOFLAGS is set for this step, which can change what go test runs"
 						}
-						key := out.src + "\x00" + out.run + "\x00" + tier + "\x00" + goos
+						key := out.src + "\x00" + out.run + "\x00" + tier + "\x00" + platform
 						if !seen[key] {
 							seen[key] = true
 							steps = append(steps, out)

@@ -1,0 +1,411 @@
+# What a Go test binary ran, for every pair of -run and -skip patterns.
+# Recorded with go1.26.10 by TestRecordedGoAnswersAreCurrent (corpus_test.go says how to regenerate).
+# Each row: -run, -skip, the tests that ran (- for none). "" is the flag unset.
+# case F-219: -run "" -skip "TestWin Codec", TestWin_Codec ran=false
+# case F-219-underscore: -run "" -skip "TestWin_Codec", TestWin_Codec ran=false
+# case F-219-control: -run "" -skip "Different Name", TestWin_Codec ran=true
+# case F-219-run: -run "TestWin Codec" -skip "", TestWin_Codec ran=true
+# case F-219-subtest: -run "TestA/has space" -skip "", TestA/has_space ran=true
+# case F-021: -run "" -skip "TestMissing/child|TestWin", TestWin ran=false
+# case F-021-control: -run "" -skip "TestWin/child|TestMissing", TestWin ran=true
+names	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space TestC TestC/sub TestC/other TestC/child TestC/has_space TestX TestX/sub TestX/other TestX/child TestX/has_space TestWin TestWin/sub TestWin/other TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+""	""	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space TestC TestC/sub TestC/other TestC/child TestC/has_space TestX TestX/sub TestX/other TestX/child TestX/has_space TestWin TestWin/sub TestWin/other TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+""	TestA	TestB TestB/sub TestB/other TestB/child TestB/has_space TestC TestC/sub TestC/other TestC/child TestC/has_space TestX TestX/sub TestX/other TestX/child TestX/has_space TestWin TestWin/sub TestWin/other TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+""	^TestA$	TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space TestC TestC/sub TestC/other TestC/child TestC/has_space TestX TestX/sub TestX/other TestX/child TestX/has_space TestWin TestWin/sub TestWin/other TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+""	TestA/sub	TestA TestA/other TestA/child TestA/has_space TestAB TestAB/other TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space TestC TestC/sub TestC/other TestC/child TestC/has_space TestX TestX/sub TestX/other TestX/child TestX/has_space TestWin TestWin/sub TestWin/other TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+""	TestA|TestB	TestC TestC/sub TestC/other TestC/child TestC/has_space TestX TestX/sub TestX/other TestX/child TestX/has_space TestWin TestWin/sub TestWin/other TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+""	TestX/child|TestB	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space TestC TestC/sub TestC/other TestC/child TestC/has_space TestX TestX/sub TestX/other TestX/has_space TestWin TestWin/sub TestWin/other TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+""	^(TestA|TestB)$	TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space TestC TestC/sub TestC/other TestC/child TestC/has_space TestX TestX/sub TestX/other TestX/child TestX/has_space TestWin TestWin/sub TestWin/other TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+""	Test[A/|B]	TestC TestC/sub TestC/other TestC/child TestC/has_space TestX TestX/sub TestX/other TestX/child TestX/has_space TestWin TestWin/sub TestWin/other TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+""	/sub	TestA TestA/other TestA/child TestA/has_space TestAB TestAB/other TestAB/child TestAB/has_space TestB TestB/other TestB/child TestB/has_space TestC TestC/other TestC/child TestC/has_space TestX TestX/other TestX/child TestX/has_space TestWin TestWin/other TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+""	TestMissing/child|TestWin	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space TestC TestC/sub TestC/other TestC/child TestC/has_space TestX TestX/sub TestX/other TestX/child TestX/has_space
+""	TestWin/child|TestMissing	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space TestC TestC/sub TestC/other TestC/child TestC/has_space TestX TestX/sub TestX/other TestX/child TestX/has_space TestWin TestWin/sub TestWin/other TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/has_space
+""	Test[A-C]	TestX TestX/sub TestX/other TestX/child TestX/has_space TestWin TestWin/sub TestWin/other TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+""	TestA/has_space	TestA TestA/sub TestA/other TestA/child TestAB TestAB/sub TestAB/other TestAB/child TestB TestB/sub TestB/other TestB/child TestB/has_space TestC TestC/sub TestC/other TestC/child TestC/has_space TestX TestX/sub TestX/other TestX/child TestX/has_space TestWin TestWin/sub TestWin/other TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+""	TestA/sub|TestA/other	TestA TestA/child TestA/has_space TestAB TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space TestC TestC/sub TestC/other TestC/child TestC/has_space TestX TestX/sub TestX/other TestX/child TestX/has_space TestWin TestWin/sub TestWin/other TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+""	TestA//x	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space TestC TestC/sub TestC/other TestC/child TestC/has_space TestX TestX/sub TestX/other TestX/child TestX/has_space TestWin TestWin/sub TestWin/other TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+""	Test./^s|TestWin/c	TestA TestA/other TestA/child TestA/has_space TestAB TestAB/other TestAB/child TestAB/has_space TestB TestB/other TestB/child TestB/has_space TestC TestC/other TestC/child TestC/has_space TestX TestX/other TestX/child TestX/has_space TestWin TestWin/other TestWin_Codec TestWin_Codec/other
+""	TestWin Codec	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space TestC TestC/sub TestC/other TestC/child TestC/has_space TestX TestX/sub TestX/other TestX/child TestX/has_space TestWin TestWin/sub TestWin/other TestWin/child TestWin/has_space
+""	TestWin_Codec	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space TestC TestC/sub TestC/other TestC/child TestC/has_space TestX TestX/sub TestX/other TestX/child TestX/has_space TestWin TestWin/sub TestWin/other TestWin/child TestWin/has_space
+""	Different Name	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space TestC TestC/sub TestC/other TestC/child TestC/has_space TestX TestX/sub TestX/other TestX/child TestX/has_space TestWin TestWin/sub TestWin/other TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+""	TestA/has space	TestA TestA/sub TestA/other TestA/child TestAB TestAB/sub TestAB/other TestAB/child TestB TestB/sub TestB/other TestB/child TestB/has_space TestC TestC/sub TestC/other TestC/child TestC/has_space TestX TestX/sub TestX/other TestX/child TestX/has_space TestWin TestWin/sub TestWin/other TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestA	""	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space
+TestA	TestA	-
+TestA	^TestA$	TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space
+TestA	TestA/sub	TestA TestA/other TestA/child TestA/has_space TestAB TestAB/other TestAB/child TestAB/has_space
+TestA	TestA|TestB	-
+TestA	TestX/child|TestB	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space
+TestA	^(TestA|TestB)$	TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space
+TestA	Test[A/|B]	-
+TestA	/sub	TestA TestA/other TestA/child TestA/has_space TestAB TestAB/other TestAB/child TestAB/has_space
+TestA	TestMissing/child|TestWin	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space
+TestA	TestWin/child|TestMissing	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space
+TestA	Test[A-C]	-
+TestA	TestA/has_space	TestA TestA/sub TestA/other TestA/child TestAB TestAB/sub TestAB/other TestAB/child
+TestA	TestA/sub|TestA/other	TestA TestA/child TestA/has_space TestAB TestAB/child TestAB/has_space
+TestA	TestA//x	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space
+TestA	Test./^s|TestWin/c	TestA TestA/other TestA/child TestA/has_space TestAB TestAB/other TestAB/child TestAB/has_space
+TestA	TestWin Codec	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space
+TestA	TestWin_Codec	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space
+TestA	Different Name	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space
+TestA	TestA/has space	TestA TestA/sub TestA/other TestA/child TestAB TestAB/sub TestAB/other TestAB/child
+^TestA$	""	TestA TestA/sub TestA/other TestA/child TestA/has_space
+^TestA$	TestA	-
+^TestA$	^TestA$	-
+^TestA$	TestA/sub	TestA TestA/other TestA/child TestA/has_space
+^TestA$	TestA|TestB	-
+^TestA$	TestX/child|TestB	TestA TestA/sub TestA/other TestA/child TestA/has_space
+^TestA$	^(TestA|TestB)$	-
+^TestA$	Test[A/|B]	-
+^TestA$	/sub	TestA TestA/other TestA/child TestA/has_space
+^TestA$	TestMissing/child|TestWin	TestA TestA/sub TestA/other TestA/child TestA/has_space
+^TestA$	TestWin/child|TestMissing	TestA TestA/sub TestA/other TestA/child TestA/has_space
+^TestA$	Test[A-C]	-
+^TestA$	TestA/has_space	TestA TestA/sub TestA/other TestA/child
+^TestA$	TestA/sub|TestA/other	TestA TestA/child TestA/has_space
+^TestA$	TestA//x	TestA TestA/sub TestA/other TestA/child TestA/has_space
+^TestA$	Test./^s|TestWin/c	TestA TestA/other TestA/child TestA/has_space
+^TestA$	TestWin Codec	TestA TestA/sub TestA/other TestA/child TestA/has_space
+^TestA$	TestWin_Codec	TestA TestA/sub TestA/other TestA/child TestA/has_space
+^TestA$	Different Name	TestA TestA/sub TestA/other TestA/child TestA/has_space
+^TestA$	TestA/has space	TestA TestA/sub TestA/other TestA/child
+TestA/sub	""	TestA TestA/sub TestAB TestAB/sub
+TestA/sub	TestA	-
+TestA/sub	^TestA$	TestAB TestAB/sub
+TestA/sub	TestA/sub	TestA TestAB
+TestA/sub	TestA|TestB	-
+TestA/sub	TestX/child|TestB	TestA TestA/sub TestAB TestAB/sub
+TestA/sub	^(TestA|TestB)$	TestAB TestAB/sub
+TestA/sub	Test[A/|B]	-
+TestA/sub	/sub	TestA TestAB
+TestA/sub	TestMissing/child|TestWin	TestA TestA/sub TestAB TestAB/sub
+TestA/sub	TestWin/child|TestMissing	TestA TestA/sub TestAB TestAB/sub
+TestA/sub	Test[A-C]	-
+TestA/sub	TestA/has_space	TestA TestA/sub TestAB TestAB/sub
+TestA/sub	TestA/sub|TestA/other	TestA TestAB
+TestA/sub	TestA//x	TestA TestA/sub TestAB TestAB/sub
+TestA/sub	Test./^s|TestWin/c	TestA TestAB
+TestA/sub	TestWin Codec	TestA TestA/sub TestAB TestAB/sub
+TestA/sub	TestWin_Codec	TestA TestA/sub TestAB TestAB/sub
+TestA/sub	Different Name	TestA TestA/sub TestAB TestAB/sub
+TestA/sub	TestA/has space	TestA TestA/sub TestAB TestAB/sub
+TestA|TestB	""	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space
+TestA|TestB	TestA	TestB TestB/sub TestB/other TestB/child TestB/has_space
+TestA|TestB	^TestA$	TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space
+TestA|TestB	TestA/sub	TestA TestA/other TestA/child TestA/has_space TestAB TestAB/other TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space
+TestA|TestB	TestA|TestB	-
+TestA|TestB	TestX/child|TestB	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space
+TestA|TestB	^(TestA|TestB)$	TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space
+TestA|TestB	Test[A/|B]	-
+TestA|TestB	/sub	TestA TestA/other TestA/child TestA/has_space TestAB TestAB/other TestAB/child TestAB/has_space TestB TestB/other TestB/child TestB/has_space
+TestA|TestB	TestMissing/child|TestWin	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space
+TestA|TestB	TestWin/child|TestMissing	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space
+TestA|TestB	Test[A-C]	-
+TestA|TestB	TestA/has_space	TestA TestA/sub TestA/other TestA/child TestAB TestAB/sub TestAB/other TestAB/child TestB TestB/sub TestB/other TestB/child TestB/has_space
+TestA|TestB	TestA/sub|TestA/other	TestA TestA/child TestA/has_space TestAB TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space
+TestA|TestB	TestA//x	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space
+TestA|TestB	Test./^s|TestWin/c	TestA TestA/other TestA/child TestA/has_space TestAB TestAB/other TestAB/child TestAB/has_space TestB TestB/other TestB/child TestB/has_space
+TestA|TestB	TestWin Codec	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space
+TestA|TestB	TestWin_Codec	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space
+TestA|TestB	Different Name	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space
+TestA|TestB	TestA/has space	TestA TestA/sub TestA/other TestA/child TestAB TestAB/sub TestAB/other TestAB/child TestB TestB/sub TestB/other TestB/child TestB/has_space
+TestX/child|TestB	""	TestB TestB/sub TestB/other TestB/child TestB/has_space TestX TestX/child
+TestX/child|TestB	TestA	TestB TestB/sub TestB/other TestB/child TestB/has_space TestX TestX/child
+TestX/child|TestB	^TestA$	TestB TestB/sub TestB/other TestB/child TestB/has_space TestX TestX/child
+TestX/child|TestB	TestA/sub	TestB TestB/sub TestB/other TestB/child TestB/has_space TestX TestX/child
+TestX/child|TestB	TestA|TestB	TestX TestX/child
+TestX/child|TestB	TestX/child|TestB	TestX
+TestX/child|TestB	^(TestA|TestB)$	TestX TestX/child
+TestX/child|TestB	Test[A/|B]	TestX TestX/child
+TestX/child|TestB	/sub	TestB TestB/other TestB/child TestB/has_space TestX TestX/child
+TestX/child|TestB	TestMissing/child|TestWin	TestB TestB/sub TestB/other TestB/child TestB/has_space TestX TestX/child
+TestX/child|TestB	TestWin/child|TestMissing	TestB TestB/sub TestB/other TestB/child TestB/has_space TestX TestX/child
+TestX/child|TestB	Test[A-C]	TestX TestX/child
+TestX/child|TestB	TestA/has_space	TestB TestB/sub TestB/other TestB/child TestB/has_space TestX TestX/child
+TestX/child|TestB	TestA/sub|TestA/other	TestB TestB/sub TestB/other TestB/child TestB/has_space TestX TestX/child
+TestX/child|TestB	TestA//x	TestB TestB/sub TestB/other TestB/child TestB/has_space TestX TestX/child
+TestX/child|TestB	Test./^s|TestWin/c	TestB TestB/other TestB/child TestB/has_space TestX TestX/child
+TestX/child|TestB	TestWin Codec	TestB TestB/sub TestB/other TestB/child TestB/has_space TestX TestX/child
+TestX/child|TestB	TestWin_Codec	TestB TestB/sub TestB/other TestB/child TestB/has_space TestX TestX/child
+TestX/child|TestB	Different Name	TestB TestB/sub TestB/other TestB/child TestB/has_space TestX TestX/child
+TestX/child|TestB	TestA/has space	TestB TestB/sub TestB/other TestB/child TestB/has_space TestX TestX/child
+^(TestA|TestB)$	""	TestA TestA/sub TestA/other TestA/child TestA/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space
+^(TestA|TestB)$	TestA	TestB TestB/sub TestB/other TestB/child TestB/has_space
+^(TestA|TestB)$	^TestA$	TestB TestB/sub TestB/other TestB/child TestB/has_space
+^(TestA|TestB)$	TestA/sub	TestA TestA/other TestA/child TestA/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space
+^(TestA|TestB)$	TestA|TestB	-
+^(TestA|TestB)$	TestX/child|TestB	TestA TestA/sub TestA/other TestA/child TestA/has_space
+^(TestA|TestB)$	^(TestA|TestB)$	-
+^(TestA|TestB)$	Test[A/|B]	-
+^(TestA|TestB)$	/sub	TestA TestA/other TestA/child TestA/has_space TestB TestB/other TestB/child TestB/has_space
+^(TestA|TestB)$	TestMissing/child|TestWin	TestA TestA/sub TestA/other TestA/child TestA/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space
+^(TestA|TestB)$	TestWin/child|TestMissing	TestA TestA/sub TestA/other TestA/child TestA/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space
+^(TestA|TestB)$	Test[A-C]	-
+^(TestA|TestB)$	TestA/has_space	TestA TestA/sub TestA/other TestA/child TestB TestB/sub TestB/other TestB/child TestB/has_space
+^(TestA|TestB)$	TestA/sub|TestA/other	TestA TestA/child TestA/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space
+^(TestA|TestB)$	TestA//x	TestA TestA/sub TestA/other TestA/child TestA/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space
+^(TestA|TestB)$	Test./^s|TestWin/c	TestA TestA/other TestA/child TestA/has_space TestB TestB/other TestB/child TestB/has_space
+^(TestA|TestB)$	TestWin Codec	TestA TestA/sub TestA/other TestA/child TestA/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space
+^(TestA|TestB)$	TestWin_Codec	TestA TestA/sub TestA/other TestA/child TestA/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space
+^(TestA|TestB)$	Different Name	TestA TestA/sub TestA/other TestA/child TestA/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space
+^(TestA|TestB)$	TestA/has space	TestA TestA/sub TestA/other TestA/child TestB TestB/sub TestB/other TestB/child TestB/has_space
+Test[A/|B]	""	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space
+Test[A/|B]	TestA	TestB TestB/sub TestB/other TestB/child TestB/has_space
+Test[A/|B]	^TestA$	TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space
+Test[A/|B]	TestA/sub	TestA TestA/other TestA/child TestA/has_space TestAB TestAB/other TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space
+Test[A/|B]	TestA|TestB	-
+Test[A/|B]	TestX/child|TestB	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space
+Test[A/|B]	^(TestA|TestB)$	TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space
+Test[A/|B]	Test[A/|B]	-
+Test[A/|B]	/sub	TestA TestA/other TestA/child TestA/has_space TestAB TestAB/other TestAB/child TestAB/has_space TestB TestB/other TestB/child TestB/has_space
+Test[A/|B]	TestMissing/child|TestWin	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space
+Test[A/|B]	TestWin/child|TestMissing	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space
+Test[A/|B]	Test[A-C]	-
+Test[A/|B]	TestA/has_space	TestA TestA/sub TestA/other TestA/child TestAB TestAB/sub TestAB/other TestAB/child TestB TestB/sub TestB/other TestB/child TestB/has_space
+Test[A/|B]	TestA/sub|TestA/other	TestA TestA/child TestA/has_space TestAB TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space
+Test[A/|B]	TestA//x	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space
+Test[A/|B]	Test./^s|TestWin/c	TestA TestA/other TestA/child TestA/has_space TestAB TestAB/other TestAB/child TestAB/has_space TestB TestB/other TestB/child TestB/has_space
+Test[A/|B]	TestWin Codec	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space
+Test[A/|B]	TestWin_Codec	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space
+Test[A/|B]	Different Name	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space
+Test[A/|B]	TestA/has space	TestA TestA/sub TestA/other TestA/child TestAB TestAB/sub TestAB/other TestAB/child TestB TestB/sub TestB/other TestB/child TestB/has_space
+/sub	""	TestA TestA/sub TestAB TestAB/sub TestB TestB/sub TestC TestC/sub TestX TestX/sub TestWin TestWin/sub TestWin_Codec TestWin_Codec/sub
+/sub	TestA	TestB TestB/sub TestC TestC/sub TestX TestX/sub TestWin TestWin/sub TestWin_Codec TestWin_Codec/sub
+/sub	^TestA$	TestAB TestAB/sub TestB TestB/sub TestC TestC/sub TestX TestX/sub TestWin TestWin/sub TestWin_Codec TestWin_Codec/sub
+/sub	TestA/sub	TestA TestAB TestB TestB/sub TestC TestC/sub TestX TestX/sub TestWin TestWin/sub TestWin_Codec TestWin_Codec/sub
+/sub	TestA|TestB	TestC TestC/sub TestX TestX/sub TestWin TestWin/sub TestWin_Codec TestWin_Codec/sub
+/sub	TestX/child|TestB	TestA TestA/sub TestAB TestAB/sub TestC TestC/sub TestX TestX/sub TestWin TestWin/sub TestWin_Codec TestWin_Codec/sub
+/sub	^(TestA|TestB)$	TestAB TestAB/sub TestC TestC/sub TestX TestX/sub TestWin TestWin/sub TestWin_Codec TestWin_Codec/sub
+/sub	Test[A/|B]	TestC TestC/sub TestX TestX/sub TestWin TestWin/sub TestWin_Codec TestWin_Codec/sub
+/sub	/sub	TestA TestAB TestB TestC TestX TestWin TestWin_Codec
+/sub	TestMissing/child|TestWin	TestA TestA/sub TestAB TestAB/sub TestB TestB/sub TestC TestC/sub TestX TestX/sub
+/sub	TestWin/child|TestMissing	TestA TestA/sub TestAB TestAB/sub TestB TestB/sub TestC TestC/sub TestX TestX/sub TestWin TestWin/sub TestWin_Codec TestWin_Codec/sub
+/sub	Test[A-C]	TestX TestX/sub TestWin TestWin/sub TestWin_Codec TestWin_Codec/sub
+/sub	TestA/has_space	TestA TestA/sub TestAB TestAB/sub TestB TestB/sub TestC TestC/sub TestX TestX/sub TestWin TestWin/sub TestWin_Codec TestWin_Codec/sub
+/sub	TestA/sub|TestA/other	TestA TestAB TestB TestB/sub TestC TestC/sub TestX TestX/sub TestWin TestWin/sub TestWin_Codec TestWin_Codec/sub
+/sub	TestA//x	TestA TestA/sub TestAB TestAB/sub TestB TestB/sub TestC TestC/sub TestX TestX/sub TestWin TestWin/sub TestWin_Codec TestWin_Codec/sub
+/sub	Test./^s|TestWin/c	TestA TestAB TestB TestC TestX TestWin TestWin_Codec
+/sub	TestWin Codec	TestA TestA/sub TestAB TestAB/sub TestB TestB/sub TestC TestC/sub TestX TestX/sub TestWin TestWin/sub
+/sub	TestWin_Codec	TestA TestA/sub TestAB TestAB/sub TestB TestB/sub TestC TestC/sub TestX TestX/sub TestWin TestWin/sub
+/sub	Different Name	TestA TestA/sub TestAB TestAB/sub TestB TestB/sub TestC TestC/sub TestX TestX/sub TestWin TestWin/sub TestWin_Codec TestWin_Codec/sub
+/sub	TestA/has space	TestA TestA/sub TestAB TestAB/sub TestB TestB/sub TestC TestC/sub TestX TestX/sub TestWin TestWin/sub TestWin_Codec TestWin_Codec/sub
+TestMissing/child|TestWin	""	TestWin TestWin/sub TestWin/other TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestMissing/child|TestWin	TestA	TestWin TestWin/sub TestWin/other TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestMissing/child|TestWin	^TestA$	TestWin TestWin/sub TestWin/other TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestMissing/child|TestWin	TestA/sub	TestWin TestWin/sub TestWin/other TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestMissing/child|TestWin	TestA|TestB	TestWin TestWin/sub TestWin/other TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestMissing/child|TestWin	TestX/child|TestB	TestWin TestWin/sub TestWin/other TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestMissing/child|TestWin	^(TestA|TestB)$	TestWin TestWin/sub TestWin/other TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestMissing/child|TestWin	Test[A/|B]	TestWin TestWin/sub TestWin/other TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestMissing/child|TestWin	/sub	TestWin TestWin/other TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestMissing/child|TestWin	TestMissing/child|TestWin	-
+TestMissing/child|TestWin	TestWin/child|TestMissing	TestWin TestWin/sub TestWin/other TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/has_space
+TestMissing/child|TestWin	Test[A-C]	TestWin TestWin/sub TestWin/other TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestMissing/child|TestWin	TestA/has_space	TestWin TestWin/sub TestWin/other TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestMissing/child|TestWin	TestA/sub|TestA/other	TestWin TestWin/sub TestWin/other TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestMissing/child|TestWin	TestA//x	TestWin TestWin/sub TestWin/other TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestMissing/child|TestWin	Test./^s|TestWin/c	TestWin TestWin/other TestWin_Codec TestWin_Codec/other
+TestMissing/child|TestWin	TestWin Codec	TestWin TestWin/sub TestWin/other TestWin/child TestWin/has_space
+TestMissing/child|TestWin	TestWin_Codec	TestWin TestWin/sub TestWin/other TestWin/child TestWin/has_space
+TestMissing/child|TestWin	Different Name	TestWin TestWin/sub TestWin/other TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestMissing/child|TestWin	TestA/has space	TestWin TestWin/sub TestWin/other TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestWin/child|TestMissing	""	TestWin TestWin/child TestWin_Codec TestWin_Codec/child
+TestWin/child|TestMissing	TestA	TestWin TestWin/child TestWin_Codec TestWin_Codec/child
+TestWin/child|TestMissing	^TestA$	TestWin TestWin/child TestWin_Codec TestWin_Codec/child
+TestWin/child|TestMissing	TestA/sub	TestWin TestWin/child TestWin_Codec TestWin_Codec/child
+TestWin/child|TestMissing	TestA|TestB	TestWin TestWin/child TestWin_Codec TestWin_Codec/child
+TestWin/child|TestMissing	TestX/child|TestB	TestWin TestWin/child TestWin_Codec TestWin_Codec/child
+TestWin/child|TestMissing	^(TestA|TestB)$	TestWin TestWin/child TestWin_Codec TestWin_Codec/child
+TestWin/child|TestMissing	Test[A/|B]	TestWin TestWin/child TestWin_Codec TestWin_Codec/child
+TestWin/child|TestMissing	/sub	TestWin TestWin/child TestWin_Codec TestWin_Codec/child
+TestWin/child|TestMissing	TestMissing/child|TestWin	-
+TestWin/child|TestMissing	TestWin/child|TestMissing	TestWin TestWin_Codec
+TestWin/child|TestMissing	Test[A-C]	TestWin TestWin/child TestWin_Codec TestWin_Codec/child
+TestWin/child|TestMissing	TestA/has_space	TestWin TestWin/child TestWin_Codec TestWin_Codec/child
+TestWin/child|TestMissing	TestA/sub|TestA/other	TestWin TestWin/child TestWin_Codec TestWin_Codec/child
+TestWin/child|TestMissing	TestA//x	TestWin TestWin/child TestWin_Codec TestWin_Codec/child
+TestWin/child|TestMissing	Test./^s|TestWin/c	TestWin TestWin_Codec
+TestWin/child|TestMissing	TestWin Codec	TestWin TestWin/child
+TestWin/child|TestMissing	TestWin_Codec	TestWin TestWin/child
+TestWin/child|TestMissing	Different Name	TestWin TestWin/child TestWin_Codec TestWin_Codec/child
+TestWin/child|TestMissing	TestA/has space	TestWin TestWin/child TestWin_Codec TestWin_Codec/child
+Test[A-C]	""	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space TestC TestC/sub TestC/other TestC/child TestC/has_space
+Test[A-C]	TestA	TestB TestB/sub TestB/other TestB/child TestB/has_space TestC TestC/sub TestC/other TestC/child TestC/has_space
+Test[A-C]	^TestA$	TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space TestC TestC/sub TestC/other TestC/child TestC/has_space
+Test[A-C]	TestA/sub	TestA TestA/other TestA/child TestA/has_space TestAB TestAB/other TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space TestC TestC/sub TestC/other TestC/child TestC/has_space
+Test[A-C]	TestA|TestB	TestC TestC/sub TestC/other TestC/child TestC/has_space
+Test[A-C]	TestX/child|TestB	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space TestC TestC/sub TestC/other TestC/child TestC/has_space
+Test[A-C]	^(TestA|TestB)$	TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space TestC TestC/sub TestC/other TestC/child TestC/has_space
+Test[A-C]	Test[A/|B]	TestC TestC/sub TestC/other TestC/child TestC/has_space
+Test[A-C]	/sub	TestA TestA/other TestA/child TestA/has_space TestAB TestAB/other TestAB/child TestAB/has_space TestB TestB/other TestB/child TestB/has_space TestC TestC/other TestC/child TestC/has_space
+Test[A-C]	TestMissing/child|TestWin	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space TestC TestC/sub TestC/other TestC/child TestC/has_space
+Test[A-C]	TestWin/child|TestMissing	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space TestC TestC/sub TestC/other TestC/child TestC/has_space
+Test[A-C]	Test[A-C]	-
+Test[A-C]	TestA/has_space	TestA TestA/sub TestA/other TestA/child TestAB TestAB/sub TestAB/other TestAB/child TestB TestB/sub TestB/other TestB/child TestB/has_space TestC TestC/sub TestC/other TestC/child TestC/has_space
+Test[A-C]	TestA/sub|TestA/other	TestA TestA/child TestA/has_space TestAB TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space TestC TestC/sub TestC/other TestC/child TestC/has_space
+Test[A-C]	TestA//x	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space TestC TestC/sub TestC/other TestC/child TestC/has_space
+Test[A-C]	Test./^s|TestWin/c	TestA TestA/other TestA/child TestA/has_space TestAB TestAB/other TestAB/child TestAB/has_space TestB TestB/other TestB/child TestB/has_space TestC TestC/other TestC/child TestC/has_space
+Test[A-C]	TestWin Codec	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space TestC TestC/sub TestC/other TestC/child TestC/has_space
+Test[A-C]	TestWin_Codec	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space TestC TestC/sub TestC/other TestC/child TestC/has_space
+Test[A-C]	Different Name	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space TestB TestB/sub TestB/other TestB/child TestB/has_space TestC TestC/sub TestC/other TestC/child TestC/has_space
+Test[A-C]	TestA/has space	TestA TestA/sub TestA/other TestA/child TestAB TestAB/sub TestAB/other TestAB/child TestB TestB/sub TestB/other TestB/child TestB/has_space TestC TestC/sub TestC/other TestC/child TestC/has_space
+TestA/has_space	""	TestA TestA/has_space TestAB TestAB/has_space
+TestA/has_space	TestA	-
+TestA/has_space	^TestA$	TestAB TestAB/has_space
+TestA/has_space	TestA/sub	TestA TestA/has_space TestAB TestAB/has_space
+TestA/has_space	TestA|TestB	-
+TestA/has_space	TestX/child|TestB	TestA TestA/has_space TestAB TestAB/has_space
+TestA/has_space	^(TestA|TestB)$	TestAB TestAB/has_space
+TestA/has_space	Test[A/|B]	-
+TestA/has_space	/sub	TestA TestA/has_space TestAB TestAB/has_space
+TestA/has_space	TestMissing/child|TestWin	TestA TestA/has_space TestAB TestAB/has_space
+TestA/has_space	TestWin/child|TestMissing	TestA TestA/has_space TestAB TestAB/has_space
+TestA/has_space	Test[A-C]	-
+TestA/has_space	TestA/has_space	TestA TestAB
+TestA/has_space	TestA/sub|TestA/other	TestA TestA/has_space TestAB TestAB/has_space
+TestA/has_space	TestA//x	TestA TestA/has_space TestAB TestAB/has_space
+TestA/has_space	Test./^s|TestWin/c	TestA TestA/has_space TestAB TestAB/has_space
+TestA/has_space	TestWin Codec	TestA TestA/has_space TestAB TestAB/has_space
+TestA/has_space	TestWin_Codec	TestA TestA/has_space TestAB TestAB/has_space
+TestA/has_space	Different Name	TestA TestA/has_space TestAB TestAB/has_space
+TestA/has_space	TestA/has space	TestA TestAB
+TestA/sub|TestA/other	""	TestA TestA/sub TestA/other TestAB TestAB/sub TestAB/other
+TestA/sub|TestA/other	TestA	-
+TestA/sub|TestA/other	^TestA$	TestAB TestAB/sub TestAB/other
+TestA/sub|TestA/other	TestA/sub	TestA TestA/other TestAB TestAB/other
+TestA/sub|TestA/other	TestA|TestB	-
+TestA/sub|TestA/other	TestX/child|TestB	TestA TestA/sub TestA/other TestAB TestAB/sub TestAB/other
+TestA/sub|TestA/other	^(TestA|TestB)$	TestAB TestAB/sub TestAB/other
+TestA/sub|TestA/other	Test[A/|B]	-
+TestA/sub|TestA/other	/sub	TestA TestA/other TestAB TestAB/other
+TestA/sub|TestA/other	TestMissing/child|TestWin	TestA TestA/sub TestA/other TestAB TestAB/sub TestAB/other
+TestA/sub|TestA/other	TestWin/child|TestMissing	TestA TestA/sub TestA/other TestAB TestAB/sub TestAB/other
+TestA/sub|TestA/other	Test[A-C]	-
+TestA/sub|TestA/other	TestA/has_space	TestA TestA/sub TestA/other TestAB TestAB/sub TestAB/other
+TestA/sub|TestA/other	TestA/sub|TestA/other	TestA TestAB
+TestA/sub|TestA/other	TestA//x	TestA TestA/sub TestA/other TestAB TestAB/sub TestAB/other
+TestA/sub|TestA/other	Test./^s|TestWin/c	TestA TestA/other TestAB TestAB/other
+TestA/sub|TestA/other	TestWin Codec	TestA TestA/sub TestA/other TestAB TestAB/sub TestAB/other
+TestA/sub|TestA/other	TestWin_Codec	TestA TestA/sub TestA/other TestAB TestAB/sub TestAB/other
+TestA/sub|TestA/other	Different Name	TestA TestA/sub TestA/other TestAB TestAB/sub TestAB/other
+TestA/sub|TestA/other	TestA/has space	TestA TestA/sub TestA/other TestAB TestAB/sub TestAB/other
+TestA//x	""	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space
+TestA//x	TestA	-
+TestA//x	^TestA$	TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space
+TestA//x	TestA/sub	TestA TestA/other TestA/child TestA/has_space TestAB TestAB/other TestAB/child TestAB/has_space
+TestA//x	TestA|TestB	-
+TestA//x	TestX/child|TestB	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space
+TestA//x	^(TestA|TestB)$	TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space
+TestA//x	Test[A/|B]	-
+TestA//x	/sub	TestA TestA/other TestA/child TestA/has_space TestAB TestAB/other TestAB/child TestAB/has_space
+TestA//x	TestMissing/child|TestWin	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space
+TestA//x	TestWin/child|TestMissing	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space
+TestA//x	Test[A-C]	-
+TestA//x	TestA/has_space	TestA TestA/sub TestA/other TestA/child TestAB TestAB/sub TestAB/other TestAB/child
+TestA//x	TestA/sub|TestA/other	TestA TestA/child TestA/has_space TestAB TestAB/child TestAB/has_space
+TestA//x	TestA//x	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space
+TestA//x	Test./^s|TestWin/c	TestA TestA/other TestA/child TestA/has_space TestAB TestAB/other TestAB/child TestAB/has_space
+TestA//x	TestWin Codec	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space
+TestA//x	TestWin_Codec	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space
+TestA//x	Different Name	TestA TestA/sub TestA/other TestA/child TestA/has_space TestAB TestAB/sub TestAB/other TestAB/child TestAB/has_space
+TestA//x	TestA/has space	TestA TestA/sub TestA/other TestA/child TestAB TestAB/sub TestAB/other TestAB/child
+Test./^s|TestWin/c	""	TestA TestA/sub TestAB TestAB/sub TestB TestB/sub TestC TestC/sub TestX TestX/sub TestWin TestWin/sub TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/child TestWin_Codec/has_space
+Test./^s|TestWin/c	TestA	TestB TestB/sub TestC TestC/sub TestX TestX/sub TestWin TestWin/sub TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/child TestWin_Codec/has_space
+Test./^s|TestWin/c	^TestA$	TestAB TestAB/sub TestB TestB/sub TestC TestC/sub TestX TestX/sub TestWin TestWin/sub TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/child TestWin_Codec/has_space
+Test./^s|TestWin/c	TestA/sub	TestA TestAB TestB TestB/sub TestC TestC/sub TestX TestX/sub TestWin TestWin/sub TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/child TestWin_Codec/has_space
+Test./^s|TestWin/c	TestA|TestB	TestC TestC/sub TestX TestX/sub TestWin TestWin/sub TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/child TestWin_Codec/has_space
+Test./^s|TestWin/c	TestX/child|TestB	TestA TestA/sub TestAB TestAB/sub TestC TestC/sub TestX TestX/sub TestWin TestWin/sub TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/child TestWin_Codec/has_space
+Test./^s|TestWin/c	^(TestA|TestB)$	TestAB TestAB/sub TestC TestC/sub TestX TestX/sub TestWin TestWin/sub TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/child TestWin_Codec/has_space
+Test./^s|TestWin/c	Test[A/|B]	TestC TestC/sub TestX TestX/sub TestWin TestWin/sub TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/child TestWin_Codec/has_space
+Test./^s|TestWin/c	/sub	TestA TestAB TestB TestC TestX TestWin TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/child TestWin_Codec/has_space
+Test./^s|TestWin/c	TestMissing/child|TestWin	TestA TestA/sub TestAB TestAB/sub TestB TestB/sub TestC TestC/sub TestX TestX/sub
+Test./^s|TestWin/c	TestWin/child|TestMissing	TestA TestA/sub TestAB TestAB/sub TestB TestB/sub TestC TestC/sub TestX TestX/sub TestWin TestWin/sub TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/has_space
+Test./^s|TestWin/c	Test[A-C]	TestX TestX/sub TestWin TestWin/sub TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/child TestWin_Codec/has_space
+Test./^s|TestWin/c	TestA/has_space	TestA TestA/sub TestAB TestAB/sub TestB TestB/sub TestC TestC/sub TestX TestX/sub TestWin TestWin/sub TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/child TestWin_Codec/has_space
+Test./^s|TestWin/c	TestA/sub|TestA/other	TestA TestAB TestB TestB/sub TestC TestC/sub TestX TestX/sub TestWin TestWin/sub TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/child TestWin_Codec/has_space
+Test./^s|TestWin/c	TestA//x	TestA TestA/sub TestAB TestAB/sub TestB TestB/sub TestC TestC/sub TestX TestX/sub TestWin TestWin/sub TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/child TestWin_Codec/has_space
+Test./^s|TestWin/c	Test./^s|TestWin/c	TestA TestAB TestB TestC TestX TestWin TestWin_Codec
+Test./^s|TestWin/c	TestWin Codec	TestA TestA/sub TestAB TestAB/sub TestB TestB/sub TestC TestC/sub TestX TestX/sub TestWin TestWin/sub TestWin/child TestWin/has_space
+Test./^s|TestWin/c	TestWin_Codec	TestA TestA/sub TestAB TestAB/sub TestB TestB/sub TestC TestC/sub TestX TestX/sub TestWin TestWin/sub TestWin/child TestWin/has_space
+Test./^s|TestWin/c	Different Name	TestA TestA/sub TestAB TestAB/sub TestB TestB/sub TestC TestC/sub TestX TestX/sub TestWin TestWin/sub TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/child TestWin_Codec/has_space
+Test./^s|TestWin/c	TestA/has space	TestA TestA/sub TestAB TestAB/sub TestB TestB/sub TestC TestC/sub TestX TestX/sub TestWin TestWin/sub TestWin/child TestWin/has_space TestWin_Codec TestWin_Codec/sub TestWin_Codec/child TestWin_Codec/has_space
+TestWin Codec	""	TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestWin Codec	TestA	TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestWin Codec	^TestA$	TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestWin Codec	TestA/sub	TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestWin Codec	TestA|TestB	TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestWin Codec	TestX/child|TestB	TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestWin Codec	^(TestA|TestB)$	TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestWin Codec	Test[A/|B]	TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestWin Codec	/sub	TestWin_Codec TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestWin Codec	TestMissing/child|TestWin	-
+TestWin Codec	TestWin/child|TestMissing	TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/has_space
+TestWin Codec	Test[A-C]	TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestWin Codec	TestA/has_space	TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestWin Codec	TestA/sub|TestA/other	TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestWin Codec	TestA//x	TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestWin Codec	Test./^s|TestWin/c	TestWin_Codec TestWin_Codec/other
+TestWin Codec	TestWin Codec	-
+TestWin Codec	TestWin_Codec	-
+TestWin Codec	Different Name	TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestWin Codec	TestA/has space	TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestWin_Codec	""	TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestWin_Codec	TestA	TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestWin_Codec	^TestA$	TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestWin_Codec	TestA/sub	TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestWin_Codec	TestA|TestB	TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestWin_Codec	TestX/child|TestB	TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestWin_Codec	^(TestA|TestB)$	TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestWin_Codec	Test[A/|B]	TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestWin_Codec	/sub	TestWin_Codec TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestWin_Codec	TestMissing/child|TestWin	-
+TestWin_Codec	TestWin/child|TestMissing	TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/has_space
+TestWin_Codec	Test[A-C]	TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestWin_Codec	TestA/has_space	TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestWin_Codec	TestA/sub|TestA/other	TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestWin_Codec	TestA//x	TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestWin_Codec	Test./^s|TestWin/c	TestWin_Codec TestWin_Codec/other
+TestWin_Codec	TestWin Codec	-
+TestWin_Codec	TestWin_Codec	-
+TestWin_Codec	Different Name	TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+TestWin_Codec	TestA/has space	TestWin_Codec TestWin_Codec/sub TestWin_Codec/other TestWin_Codec/child TestWin_Codec/has_space
+Different Name	""	-
+Different Name	TestA	-
+Different Name	^TestA$	-
+Different Name	TestA/sub	-
+Different Name	TestA|TestB	-
+Different Name	TestX/child|TestB	-
+Different Name	^(TestA|TestB)$	-
+Different Name	Test[A/|B]	-
+Different Name	/sub	-
+Different Name	TestMissing/child|TestWin	-
+Different Name	TestWin/child|TestMissing	-
+Different Name	Test[A-C]	-
+Different Name	TestA/has_space	-
+Different Name	TestA/sub|TestA/other	-
+Different Name	TestA//x	-
+Different Name	Test./^s|TestWin/c	-
+Different Name	TestWin Codec	-
+Different Name	TestWin_Codec	-
+Different Name	Different Name	-
+Different Name	TestA/has space	-
+TestA/has space	""	TestA TestA/has_space TestAB TestAB/has_space
+TestA/has space	TestA	-
+TestA/has space	^TestA$	TestAB TestAB/has_space
+TestA/has space	TestA/sub	TestA TestA/has_space TestAB TestAB/has_space
+TestA/has space	TestA|TestB	-
+TestA/has space	TestX/child|TestB	TestA TestA/has_space TestAB TestAB/has_space
+TestA/has space	^(TestA|TestB)$	TestAB TestAB/has_space
+TestA/has space	Test[A/|B]	-
+TestA/has space	/sub	TestA TestA/has_space TestAB TestAB/has_space
+TestA/has space	TestMissing/child|TestWin	TestA TestA/has_space TestAB TestAB/has_space
+TestA/has space	TestWin/child|TestMissing	TestA TestA/has_space TestAB TestAB/has_space
+TestA/has space	Test[A-C]	-
+TestA/has space	TestA/has_space	TestA TestAB
+TestA/has space	TestA/sub|TestA/other	TestA TestA/has_space TestAB TestAB/has_space
+TestA/has space	TestA//x	TestA TestA/has_space TestAB TestAB/has_space
+TestA/has space	Test./^s|TestWin/c	TestA TestA/has_space TestAB TestAB/has_space
+TestA/has space	TestWin Codec	TestA TestA/has_space TestAB TestAB/has_space
+TestA/has space	TestWin_Codec	TestA TestA/has_space TestAB TestAB/has_space
+TestA/has space	Different Name	TestA TestA/has_space TestAB TestAB/has_space
+TestA/has space	TestA/has space	TestA TestAB

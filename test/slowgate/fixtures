@@ -1,0 +1,58 @@
+#!/bin/sh
+# FRESH FIXTURES OR NO FIXTURES (review finding F-194).
+#
+# A gate that reads fixtures another program writes must not be able to pass
+# on what an earlier run left behind. Three recipes wrote their fixtures with
+#
+#     ./build/conformance-harness run ... --work <dir> > /dev/null 2>&1 || true
+#
+# into a directory that persists between runs: when the producer failed, the
+# `|| true` hid it and the consumer read the previous run's files and went
+# green. The producer exits 0 when it works, so nothing needed hiding.
+#
+# usage: sh test/slowgate/fixtures <work-dir> <producer command... --work <work-dir> ...>
+#
+# The producer command is run as given, and must itself name `--work
+# <work-dir>` (so every check that reads the recipe sees where it writes). The
+# directory is removed first, so what the consumer reads was written by this
+# run or does not exist. A producer that fails, or that exits 0 having written
+# no <work-dir>/fixtures file, fails here by name with its output, and the
+# directory is removed again so that no later step can read a partial set.
+set -e
+
+work="$1"; shift || true
+if [ -z "$work" ] || [ $# -eq 0 ]; then
+	echo "test/slowgate/fixtures: usage: fixtures <work-dir> <producer command... --work <work-dir> ...>" >&2
+	exit 2
+fi
+case "$work" in
+	/|.|..|"$HOME") echo "test/slowgate/fixtures: refusing to remove '$work'" >&2; exit 2 ;;
+esac
+named=0
+prev=""
+for a in "$@"; do
+	if [ "$prev" = "--work" ] && [ "$a" = "$work" ]; then named=1; fi
+	prev="$a"
+done
+if [ "$named" -ne 1 ]; then
+	echo "test/slowgate/fixtures: the producer command does not name --work $work, so it does not write where the consumer reads: $*" >&2
+	exit 2
+fi
+
+rm -rf "$work"
+log="$work.log"
+rc=0
+"$@" > "$log" 2>&1 || rc=$?
+if [ "$rc" -ne 0 ]; then
+	cat "$log"
+	rm -rf "$work"
+	echo "FIXTURES FAILED: '$*' exited $rc, so $work holds nothing and the gate that reads it does not run on an earlier run's files."
+	exit 1
+fi
+if [ ! -d "$work/fixtures" ] || [ -z "$(ls -A "$work/fixtures" 2>/dev/null)" ]; then
+	cat "$log"
+	rm -rf "$work"
+	echo "FIXTURES FAILED: '$*' exited 0 and wrote no file under $work/fixtures."
+	exit 1
+fi
+rm -f "$log"

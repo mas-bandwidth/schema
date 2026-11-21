@@ -133,17 +133,26 @@ func laneLoad(root string) (*laneMake, map[string]string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	files, err := filepath.Glob(filepath.Join(root, ".github", "workflows", "*.yml"))
+	// GitHub runs every .yml and .yaml file in the directory; a tree with
+	// none is a gate that would read no lane, so it is refused here.
+	dir := filepath.Join(root, ".github", "workflows")
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, nil, err
 	}
 	wfs := map[string]string{}
-	for _, f := range files {
-		body, err := os.ReadFile(f)
+	for _, e := range entries {
+		if e.IsDir() || (!strings.HasSuffix(e.Name(), ".yml") && !strings.HasSuffix(e.Name(), ".yaml")) {
+			continue
+		}
+		body, err := os.ReadFile(filepath.Join(dir, e.Name()))
 		if err != nil {
 			return nil, nil, err
 		}
-		wfs[filepath.Base(f)] = string(body)
+		wfs[e.Name()] = string(body)
+	}
+	if len(wfs) == 0 {
+		return nil, nil, fmt.Errorf("%s holds no .yml or .yaml workflow: the gate would read no lane", dir)
 	}
 	return mk, wfs, nil
 }
@@ -180,7 +189,7 @@ func laneVerdict(root string, mk *laneMake, workflows map[string]string, compile
 	for _, f := range files {
 		walked[f.dir+"/"+f.name] = true
 	}
-	plain, err := compiled(laneContext{goos: "linux"})
+	plain, err := compiled(laneContext{platform: "linux/amd64"})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -206,7 +215,7 @@ func realCompiled(root string) func(laneContext) (map[string]map[string]bool, er
 		err  error
 	}
 	return func(ctx laneContext) (map[string]map[string]bool, error) {
-		v, _ := realCompiledCache.LoadOrStore(root+"\x00"+ctx.goos+"\x00"+ctx.tags, &entry{})
+		v, _ := realCompiledCache.LoadOrStore(root+"\x00"+ctx.platform+"\x00"+ctx.tags, &entry{})
 		e := v.(*entry)
 		e.once.Do(func() { e.got, e.err = laneCompiled(root, ctx) })
 		return e.got, e.err
@@ -321,7 +330,9 @@ func TestLaneCoverageGoesRedOnTheRealLanes(t *testing.T) {
 			t.Fatalf("edited %d conformance-go-rows-b recipes, want 1", edited)
 		}
 		// her rule: named like certify.yml's `test-${{ matrix.shard }}` goals, on no row
-		mk2.read("planted.mk", "test-stella-never-on-any-matrix:\n\tcd test/conformance/go && go test ./rows/ -count=1 -run '^TestRowR20FloatWidensExactly$$'\n")
+		if err := mk2.read(root, "planted.mk", "test-stella-never-on-any-matrix:\n\tcd test/conformance/go && go test ./rows/ -count=1 -run '^TestRowR20FloatWidensExactly$$'\n"); err != nil {
+			t.Fatal(err)
+		}
 		has(t, nowhere(t, mk2, wfs), "test/conformance/go/rows/R20_test.go: TestRowR20FloatWidensExactly is run by no CI lane")
 	})
 	t.Run("F-022 ci-full's smoke steps are off on its only automatic event", func(t *testing.T) {
@@ -438,7 +449,7 @@ on:
   workflow_dispatch:
 jobs:
   unit:
-    runs-on: [self-hosted, Linux]
+    runs-on: [self-hosted, Linux, X64]
     strategy:
       matrix:
         group: [ one, two, rest ]
@@ -578,83 +589,6 @@ func TestLaneCoverageControls(t *testing.T) {
 			name: "the command is echoed", makefile: laneGoodMakefile,
 			nightly: edit(laneGoodNightly, "run: go test ./a -run '^TestA$'", "run: echo go test ./a -run '^TestA$'"),
 			want:    []string{"a/a_test.go: TestA" + none},
-		},
-		// the reviewer's rows F-020 to F-026, each her repro on this fixture
-		{
-			name: "F-020 -count=0 runs nothing", makefile: laneGoodMakefile,
-			nightly: edit(laneGoodNightly, "run: go test ./w/", "run: go test ./w/ -count=0"),
-			want:    []string{"w/only_windows_test.go (1 tests): no CI lane's build compiles this file", "w/only_windows_test.go: TestWin" + none},
-		},
-		{
-			name: "F-021 a -skip alternative after a deeper one skips the test", makefile: laneGoodMakefile,
-			nightly: edit(laneGoodNightly, "run: go test ./w/", "run: go test ./w/ -skip 'TestMissing/child|TestWin'"),
-			want:    []string{"w/only_windows_test.go: TestWin" + none},
-		},
-		{
-			name: "F-021 control: -skip of another test keeps it", makefile: laneGoodMakefile,
-			nightly: edit(laneGoodNightly, "run: go test ./w/", "run: go test ./w/ -skip 'TestWin/child|TestMissing'"),
-		},
-		{
-			name: "F-022 the job waits for an event the workflow never receives", makefile: laneGoodMakefile,
-			nightly: edit(laneGoodNightly, "  windows:\n", "  windows:\n    if: github.event_name == 'pull_request'\n"),
-			want:    []string{"w/only_windows_test.go (1 tests): no CI lane's build compiles this file", "w/only_windows_test.go: TestWin" + none},
-		},
-		{
-			name: "F-022 control: the job's event is the workflow's own", makefile: laneGoodMakefile,
-			nightly: edit(laneGoodNightly, "  windows:\n", "  windows:\n    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'\n"),
-		},
-		{
-			name: "F-022 a step excluded from the only automatic event", makefile: laneGoodMakefile,
-			nightly: edit(laneGoodNightly, "        if: matrix.group == 'two'", "        if: matrix.group == 'two' && github.event_name != 'schedule'"),
-			want:    []string{"a/a_test.go: FuzzC" + none, "a/a_test.go: TestB" + none},
-		},
-		{
-			name: "F-022 an if this reader cannot decide", makefile: laneGoodMakefile,
-			nightly: edit(laneGoodNightly, "        if: matrix.group == 'two'", "        if: matrix.group == 'two' && runner.environment == 'self-hosted'"),
-			want:    []string{"a/a_test.go: FuzzC" + none, "a/a_test.go: TestB" + none},
-		},
-		{
-			name:     "F-023 control: a matrix goal the rows name is credited",
-			makefile: laneGoodMakefile + "test-one: test-all\ntest-two:\ntest-rest:\n",
-			nightly:  edit(laneGoodNightly, "make -j4 test-all V=1", "make -j4 \"test-${{ matrix.group }}\" V=1"),
-		},
-		{
-			name:     "F-023 a make rule no matrix row names is credited with nothing",
-			makefile: edit(laneGoodMakefile, "test-all: test-tagged test-nested", "test-all: test-nested\ntest-stella-never-on-any-matrix: test-tagged") + "test-one: test-all\ntest-two:\ntest-rest:\n",
-			nightly:  edit(laneGoodNightly, "make -j4 test-all V=1", "make -j4 \"test-${{ matrix.group }}\" V=1"),
-			want:     []string{"b/tagged_test.go (1 tests): no CI lane's build compiles this file", "b/tagged_test.go: TestTagged" + none},
-		},
-		{
-			name: "F-024 the matrix loses the one value a guarded step waits for", makefile: laneGoodMakefile,
-			nightly: edit(laneGoodNightly, "group: [ one, two, rest ]", "group: [ one, rest ]"),
-			want:    []string{"a/a_test.go: FuzzC" + none, "a/a_test.go: TestB" + none},
-		},
-		{
-			name: "F-024 the value is excluded", makefile: laneGoodMakefile,
-			nightly: edit(laneGoodNightly, "group: [ one, two, rest ]\n", "group: [ one, two, rest ]\n        exclude:\n          - group: two\n"),
-			want:    []string{"a/a_test.go: FuzzC" + none, "a/a_test.go: TestB" + none},
-		},
-		{
-			name: "F-024 the matrix is computed by another job", makefile: laneGoodMakefile,
-			nightly: edit(laneGoodNightly, "group: [ one, two, rest ]", "group: ${{ fromJSON(needs.plan.outputs.groups) }}"),
-			want:    []string{"a/a_test.go: FuzzC" + none, "a/a_test.go: TestA" + none, "a/a_test.go: TestB" + none, "b/b_test.go: TestPlain" + none},
-		},
-		{
-			name: "F-025 -args hands the test binary its own selector", makefile: laneGoodMakefile,
-			nightly: edit(laneGoodNightly, "run: go test ./w/", "run: go test ./w/ -args -test.run TestNotFound"),
-			want:    []string{"w/only_windows_test.go (1 tests): no CI lane's build compiles this file", "w/only_windows_test.go: TestWin" + none},
-		},
-		{
-			name: "F-026 a nested module's Windows-only file on a Linux lane", makefile: laneGoodMakefile,
-			nightly: laneGoodNightly,
-			files:   map[string]string{"nested/n_test.go": "", "nested/n_windows_test.go": "package nested\n\nimport \"testing\"\n\nfunc TestNested(t *testing.T) {}\n"},
-			want:    []string{"nested/n_windows_test.go: TestNested" + none},
-		},
-		{
-			name: "F-026 a nested module's tagged file with no tag lane", makefile: laneGoodMakefile,
-			nightly: laneGoodNightly,
-			files:   map[string]string{"nested/n_test.go": "//go:build never\n\npackage nested\n\nimport \"testing\"\n\nfunc TestNested(t *testing.T) {}\n"},
-			want:    []string{"nested/n_test.go (1 tests): no CI lane's build compiles this file", "nested/n_test.go: TestNested" + none},
 		},
 		{
 			name: "the command sits in a shell if", makefile: laneGoodMakefile,
@@ -872,7 +806,7 @@ func TestLaneCommandReader(t *testing.T) {
 // is certainly true.
 func TestLaneExpressions(t *testing.T) {
 	t.Parallel()
-	row := map[string]laneVal{"group": laneS("unit-a"), "os": laneS("fleet"), "flag": laneB(true), "runner": {kind: laneList, raw: "[self-hosted, macOS]"}}
+	row := map[string]laneVal{"group": laneS("unit-a"), "os": laneS("fleet"), "flag": laneB(true), "runner": {kind: laneList, raw: "[self-hosted, macOS, ARM64]"}}
 	sched := laneEnv{event: "schedule", row: row, rowKnown: true}
 	push := laneEnv{event: "push", row: row, rowKnown: true}
 	noRow := laneEnv{event: "schedule"}
@@ -930,8 +864,33 @@ func TestLaneExpressions(t *testing.T) {
 	if got := laneSubst("make \"test-${{ matrix.group }}\" ${{ matrix.runner }} ${{ needs.x.outputs.y }} ${{ github.event_name == 'schedule' && 'full' || 'smoke' }}", sched); got != "make \"test-unit-a\" ${{ matrix.runner }} ${{ needs.x.outputs.y }} full" {
 		t.Errorf("substitution = %q", got)
 	}
-	if got := laneRunsOn("${{ matrix.runner }}", sched); got != "darwin" {
-		t.Errorf("runs-on from a row's list = %q, want darwin", got)
+	if got := laneRunsOn("${{ matrix.runner }}", sched); got != "darwin/arm64" {
+		t.Errorf("runs-on from a row's list = %q, want darwin/arm64", got)
+	}
+	for runsOn, want := range map[string]string{
+		"[self-hosted, Linux, X64, fleet, schema]":         "linux/amd64",
+		"[ self-hosted, linux, x64, schema ]":              "linux/amd64",
+		"[\"self-hosted\", \"Linux\", \"X64\", \"fleet\"]": "linux/amd64",
+		"[self-hosted, macOS, ARM64, fleet, schema]":       "darwin/arm64",
+		"[self-hosted, macOS, fleet]":                      "", // F-026: no architecture named
+		"[self-hosted, Linux, X64, ARM64]":                 "", // two
+		"ubuntu-24.04":                                     "linux/amd64",
+		"ubuntu-latest":                                    "linux/amd64",
+		"ubuntu-24.04-arm":                                 "linux/arm64",
+		"windows-latest":                                   "windows/amd64",
+		"windows-2025":                                     "windows/amd64",
+		"windows-11-arm":                                   "windows/arm64",
+		"macos-latest":                                     "darwin/arm64",
+		"macos-15":                                         "darwin/arm64",
+		"macos-13":                                         "darwin/amd64",
+		"macos-15-intel":                                   "darwin/amd64",
+		"macos-15-large":                                   "darwin/amd64",
+		"macos-15-xlarge":                                  "darwin/arm64",
+		"self-hosted":                                      "",
+	} {
+		if got := laneRunsOn(runsOn, sched); got != want {
+			t.Errorf("runs-on %s = %q, want %q", runsOn, got, want)
+		}
 	}
 	if got := laneRunsOn("${{ needs.x.outputs.runner }}", sched); got != "" {
 		t.Errorf("an unresolved runs-on = %q, want none", got)
@@ -1007,5 +966,264 @@ func TestLaneMatrixRows(t *testing.T) {
 	}
 	if rows, known := (laneMatrix{}).rows("schedule"); !known || len(rows) != 1 {
 		t.Errorf("a job with no matrix: %d rows, known %v; want its one run", len(rows), known)
+	}
+}
+
+// laneCorpus is the committed fixture corpus: testdata/lanecover (its README
+// says how a case is laid out).
+const laneCorpus = "testdata/lanecover"
+
+// laneCorpusTree builds one corpus case in a temporary directory: the
+// committed tree with the case's files laid over it.
+func laneCorpusTree(t *testing.T, id string) string {
+	t.Helper()
+	root := t.TempDir()
+	lay := func(src string) {
+		t.Helper()
+		err := filepath.WalkDir(src, func(p string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return err
+			}
+			rel, err := filepath.Rel(src, p)
+			if err != nil {
+				return err
+			}
+			if first, rest, ok := strings.Cut(filepath.ToSlash(rel), "/"); ok && first == "workflows" {
+				rel = filepath.Join(".github", "workflows", filepath.FromSlash(rest))
+			}
+			body, err := os.ReadFile(p)
+			if err != nil {
+				return err
+			}
+			dst := filepath.Join(root, rel)
+			if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+				return err
+			}
+			return os.WriteFile(dst, body, 0o644)
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	lay(filepath.Join(laneCorpus, "tree"))
+	dir := filepath.Join(laneCorpus, "cases", id)
+	for _, part := range []string{"workflows", "files"} {
+		if _, err := os.Stat(filepath.Join(dir, part)); err == nil {
+			if part == "workflows" {
+				// laid as workflows/..., which lay() installs under .github
+				tmp := t.TempDir()
+				if err := os.CopyFS(filepath.Join(tmp, "workflows"), os.DirFS(filepath.Join(dir, part))); err != nil {
+					t.Fatal(err)
+				}
+				lay(tmp)
+			} else {
+				lay(filepath.Join(dir, part))
+			}
+		}
+	}
+	if body, err := os.ReadFile(filepath.Join(dir, "Makefile")); err == nil {
+		if err := os.WriteFile(filepath.Join(root, "Makefile"), body, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if body, err := os.ReadFile(filepath.Join(dir, "remove.txt")); err == nil {
+		for name := range strings.FieldsSeq(string(body)) {
+			if err := os.Remove(filepath.Join(root, filepath.FromSlash(name))); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	return root
+}
+
+// TestLaneCoverageFindingsCorpus runs the gate over every committed case in
+// testdata/lanecover/cases and holds it to the case's want.txt: each line an
+// error the gate must give, no other error, and none at all for a control.
+// The reviewer's findings on this gate (F-020 to F-026) live there, each her
+// repro beside a control; a finding whose case is gone fails here by id, and
+// so does a corpus with no control or no case.
+func TestLaneCoverageFindingsCorpus(t *testing.T) {
+	t.Parallel()
+	entries, err := os.ReadDir(filepath.Join(laneCorpus, "cases"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	have := map[string]bool{}
+	controls, faults := 0, 0
+	for _, e := range entries {
+		if !e.IsDir() {
+			t.Errorf("%s: a file among the case directories", e.Name())
+			continue
+		}
+		id := e.Name()
+		have[id] = true
+		wantBody, err := os.ReadFile(filepath.Join(laneCorpus, "cases", id, "want.txt"))
+		if err != nil {
+			t.Errorf("%s: no want.txt, so the case asserts nothing: %v", id, err)
+			continue
+		}
+		if head, err := os.ReadFile(filepath.Join(laneCorpus, "cases", id, "CASE.txt")); err != nil || strings.SplitN(string(head), "\n", 2)[0] != id {
+			t.Errorf("%s: CASE.txt must open with the case's id", id)
+		}
+		var want []string
+		for line := range strings.SplitSeq(string(wantBody), "\n") {
+			if strings.TrimSpace(line) != "" {
+				want = append(want, line)
+			}
+		}
+		if len(want) == 0 {
+			controls++
+		} else {
+			faults++
+		}
+		t.Run(id, func(t *testing.T) {
+			t.Parallel()
+			root := laneCorpusTree(t, id)
+			mk, wfs, err := laneLoad(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			res, _, err := laneVerdict(root, mk, wfs, func(ctx laneContext) (map[string]map[string]bool, error) {
+				return laneCompiled(root, ctx)
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			errs := res.errors()
+			if len(errs) != len(want) {
+				t.Errorf("got %d errors, want %d:\n%s", len(errs), len(want), strings.Join(errs, "\n"))
+			}
+			for _, w := range want {
+				if !slices.ContainsFunc(errs, func(e string) bool { return strings.Contains(e, w) }) {
+					t.Errorf("no error holds %q; got:\n%s", w, strings.Join(errs, "\n"))
+				}
+			}
+		})
+	}
+	for _, id := range []string{"control", "F-020", "F-021", "F-021-control", "F-022", "F-022-control", "F-023", "F-023-control", "F-024", "F-025", "F-026", "F-026-arm64", "F-026-arm64-amd64", "F-026-arm64-neutral", "F-219", "F-219-underscore", "F-219-control"} {
+		if !have[id] {
+			t.Errorf("case %s is not in %s/cases: a finding's repro or its control was removed", id, laneCorpus)
+		}
+	}
+	if controls < 4 || faults < 7 {
+		t.Errorf("the corpus holds %d controls and %d faults: fewer than the findings it was committed with", controls, faults)
+	}
+}
+
+// TestLaneCorpusTreeIsTheInlineFixture keeps the two fixtures one: the tree
+// the corpus cases are laid over is the tree the inline controls edit.
+func TestLaneCorpusTreeIsTheInlineFixture(t *testing.T) {
+	t.Parallel()
+	for file, want := range map[string]string{"Makefile": laneGoodMakefile, "workflows/nightly.yml": laneGoodNightly} {
+		got, err := os.ReadFile(filepath.Join(laneCorpus, "tree", filepath.FromSlash(file)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != want {
+			t.Errorf("%s/tree/%s differs from the inline fixture the controls edit", laneCorpus, file)
+		}
+	}
+}
+
+// TestLaneMakeReadsWhatMakeIncludes holds the make reader to make's own list
+// of files: the include directives, where they stand, and nothing else. It
+// replaced a fixed list of globs, one of which (make/negative-controls.d/*.mk)
+// matched nothing, and which read make/checks files whether or not the
+// Makefile included them.
+func TestLaneMakeReadsWhatMakeIncludes(t *testing.T) {
+	t.Parallel()
+	tree := func(t *testing.T, files map[string]string) string {
+		t.Helper()
+		root := t.TempDir()
+		for name, body := range files {
+			p := filepath.Join(root, filepath.FromSlash(name))
+			if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return root
+	}
+	targets := func(mk *laneMake) []string {
+		var got []string
+		for _, r := range mk.rules {
+			got = append(got, r.targets...)
+		}
+		slices.Sort(got)
+		return got
+	}
+	root := tree(t, map[string]string{
+		"Makefile":            "all: ; true\ninclude $(wildcard make/*.mk)\n-include absent.mk\nsinclude also-absent.mk\ninclude make/checks/x.mk\n",
+		"make/a.mk":           "a: ; true\ninclude make/inner/b.mk\n",
+		"make/c.mk":           "c: ; true\n",
+		"make/notes.txt":      "n: ; true\n",
+		"make/inner/b.mk":     "b: ; true\n",
+		"make/checks/x.mk":    "x: ; true\n",
+		"make/checks/y.mk":    "y: ; true\n", // not included: make never reads it
+		"make/inner/twice.mk": "t: ; true\n",
+	})
+	mk, err := laneReadMake(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := targets(mk), []string{"a", "all", "b", "c", "x"}; !slices.Equal(got, want) {
+		t.Errorf("rules read = %v, want %v", got, want)
+	}
+	for name, files := range map[string]map[string]string{
+		"a missing include":             {"Makefile": "all: ; true\ninclude make/absent.mk\n"},
+		"an include it cannot expand":   {"Makefile": "all: ; true\ninclude $(MKS)\n"},
+		"a wildcard over directories":   {"Makefile": "all: ; true\ninclude $(wildcard */*.mk)\n"},
+		"a wildcard it cannot read":     {"Makefile": "all: ; true\ninclude $(wildcard $(D)/*.mk)\n"},
+		"a Makefile that declares none": {"Makefile": "# nothing\n"},
+	} {
+		if _, err := laneReadMake(tree(t, files)); err == nil {
+			t.Errorf("%s: read without an error", name)
+		}
+	}
+	repo, err := laneReadMake(repoRoot(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"Makefile", "make/go.mk", "make/goose-blockcook.mk", "make/checks/generated-tree.mk", "tools/roadmap/roadmap.mk"} {
+		if !repo.files[f] {
+			t.Errorf("the real Makefile's includes did not reach %s", f)
+		}
+	}
+	if len(repo.files) < 20 {
+		t.Errorf("the real Makefile's includes reached %d files, which is not this repository's make", len(repo.files))
+	}
+}
+
+// TestLaneLoadRefusesATreeWithNoWorkflow: a workflows directory with nothing
+// GitHub runs is a gate over no lane, not a pass.
+func TestLaneLoadRefusesATreeWithNoWorkflow(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	for name, body := range map[string]string{
+		"Makefile":                 "all: ; true\n",
+		".github/workflows/README": "not a workflow\n",
+	} {
+		p := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, _, err := laneLoad(root); err == nil {
+		t.Error("a tree with no .yml or .yaml workflow loaded")
+	}
+	if err := os.WriteFile(filepath.Join(root, ".github", "workflows", "w.yaml"), []byte("on: push\njobs: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, wfs, err := laneLoad(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := wfs["w.yaml"]; !ok || len(wfs) != 1 {
+		t.Errorf("workflows read = %v, want the one .yaml file", slices.Collect(maps.Keys(wfs)))
 	}
 }

@@ -1,0 +1,29 @@
+name: nightly
+on:
+  schedule:
+    - cron: '1 2 * * *'
+  workflow_dispatch:
+jobs:
+  unit:
+    runs-on: [self-hosted, Linux, X64]
+    strategy:
+      matrix:
+        group: ${{ fromJSON(needs.plan.outputs.groups) }}
+    steps:
+      - name: row one
+        if: matrix.group == 'one'
+        run: go test ./a -run '^TestA$'
+      - name: row two
+        if: matrix.group == 'two'
+        run: go test ./a -skip '^TestA$'
+      - name: the rest
+        if: matrix.group == 'rest'
+        run: go test $(go list ./... | grep -v '/a$')
+      - name: tagged and nested
+        run: |
+          # go test ./never
+          make -j4 test-all V=1
+  windows:
+    runs-on: windows-latest
+    steps:
+      - run: go test ./w/

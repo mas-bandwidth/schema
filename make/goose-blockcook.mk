@@ -58,7 +58,7 @@ GOOSE_ACCEL_FUZZ_N    ?= 20000
 # rule writes them before either starts, never two at once.
 .PHONY: goose-accel-fixtures
 goose-accel-fixtures: build/conformance-harness
-	./build/conformance-harness run --drivers /dev/null --work build/goose-accel-work > /dev/null 2>&1 || true
+	sh test/slowgate/fixtures build/goose-accel-work ./build/conformance-harness run --drivers /dev/null --work build/goose-accel-work
 
 .PHONY: tables-goose-fuzz
 tables-goose-fuzz: build/conformance-harness build/conformance-goose goose-accel-fixtures

@@ -1,0 +1,2 @@
+F-026-arm64-neutral
+the control: the nested module runs only on the macOS ARM64 runner, and its file has no GOOS or GOARCH suffix

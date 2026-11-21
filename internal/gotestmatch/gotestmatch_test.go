@@ -41,6 +41,14 @@ func TestRunsAsGoTestDoes(t *testing.T) {
 		{"Test[A-C]", "TestB", []string{"TestC"}, true},
 		{"TestA", "", []string{"TestA", "has space"}, true},
 		{"TestA/has_space", "", []string{"TestA", "has space"}, true},
+		// F-219: the selector is rewritten as names are, so a space in it is
+		// an underscore. The last row is the control: an unrelated selector.
+		{"", "TestWin Codec", []string{"TestWin_Codec"}, false},
+		{"", "TestWin_Codec", []string{"TestWin_Codec"}, false},
+		{"", "Different Name", []string{"TestWin_Codec"}, true},
+		{"TestWin Codec", "", []string{"TestWin_Codec"}, true},
+		{"TestA/has space", "", []string{"TestA", "has space"}, true},
+		{"TestA/has\tspace", "", []string{"TestA", "has space"}, true},
 	} {
 		m, err := New(c.run, c.skip)
 		if err != nil {

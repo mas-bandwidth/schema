@@ -1,0 +1,2 @@
+F-022-step-event
+a step excluded from the only automatic event
