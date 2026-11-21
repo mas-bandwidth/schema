@@ -3375,7 +3375,7 @@ check`, and so `schema generate`, diffs against it:
 ```
 $ schema check configs/
 configs/tables.baseline: ShipConfig.damage: specified default 21.0 -> 25.0 — this
-edit changes what data already written MEANS, and no reader can report it; if you
+edit changes what data already written MEANS, or stops it reading; if you
 mean it, record it: schema tables-baseline --update --reason "..." (SPEC-TABLES.md §18)
 schema: 1 error(s)
 schema <version>
