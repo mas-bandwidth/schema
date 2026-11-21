@@ -83,12 +83,9 @@ def self.run(manifest, outdir)
       RubyConformance.absent(outdir, case_name, 'fixed root not generated for ruby')
       next
     end
-    begin
-      value = cls.load(RubyConformance.read_bytes(wire))
-    rescue pkg::Refused => e
-      RubyConformance.absent(outdir, case_name, e.message)
-      next
-    end
+    # A committed wire the reader refuses is a reader failure, never a missing
+    # feature: let it raise, so the surface is red and not absent.
+    value = cls.load(RubyConformance.read_bytes(wire))
     begin
       assign_fixed(pkg, value, pkg._s_fixed_roots[root]['spec'], path, rule, token)
       cls.fixed_save([value])
