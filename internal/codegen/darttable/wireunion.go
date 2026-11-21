@@ -358,7 +358,7 @@ func (g *wireGen) emitPutElem(f *ir.Field, ek int, e, p, ind string) {
 	case wireKindBool:
 		g.pf("%s%s.putByte(%s ? 1 : 0);\n", ind, p, e)
 	case wireKindF32:
-		g.pf("%s%s.putU32(_f32Write(%s, '%s'));\n", ind, p, e, g.floatOwner(f))
+		g.pf("%s%s.putU32(_f32Write(%s, '%s'));\n", ind, p, cfloatStored(f, e), g.floatOwner(f))
 	case wireKindF64:
 		g.pf("%s%s.putU64(_f64Write(%s, '%s'));\n", ind, p, e, g.floatOwner(f))
 	default:
@@ -650,10 +650,11 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		g.pf("%s\tif (%s.limit - %s.pos %s 8) %s\n", ind, p, p, g.widthCmp(), bad)
 		g.pf("%s\t%s = %s.readF64(%s.pos, '%s');\n", ind, dest, p, p, g.floatOwner(f))
 		g.pf("%s}\n", ind)
-		if f.HasFloatRange {
-			// a -0 lands as +0, uncounted (§3.3, A COMPRESSED FLOAT'S SPECIAL VALUES)
-			g.pf("%sif (%s < %s) { %s.report.refuse('out_of_range'); }\n", ind, dest, fmtFloat(f.FMin), p)
-			g.pf("%sif (%s > %s) { %s.report.refuse('out_of_range'); }\n", ind, dest, fmtFloat(f.FMax), p)
+		if lo, hi, ok := fixedFloatClampEnds(f); ok {
+			// a -0 lands as +0, uncounted (§3.3, A COMPRESSED FLOAT'S SPECIAL
+			// VALUES); the ends are the float32 the declaration names
+			g.pf("%sif (%s < %s) { %s.report.refuse('out_of_range'); }\n", ind, dest, lo, p)
+			g.pf("%sif (%s > %s) { %s.report.refuse('out_of_range'); }\n", ind, dest, hi, p)
 			g.pf("%sif (%s == 0) %s = 0.0;\n", ind, dest, dest)
 		}
 		g.pf("%s%s.pos = %s.limit;\n", ind, p, p)
@@ -791,6 +792,17 @@ func (g *wireGen) emitGetElemBad(f *ir.Field, ek int, out, p, ind, bad string) {
 		g.pf("%s%s.add(%s.readBool());\n", ind, out, p)
 	case wireKindF32:
 		g.pf("%sif (!%s.has(4)) %s\n", ind, p, bad)
+		if lo, hi, ok := fixedFloatClampEnds(f); ok {
+			// a compressed float element is held to the field's float32
+			// range and lands a -0 as +0 (§3.3), as a scalar one is
+			g.pf("%s{\n", ind)
+			g.pf("%s\tvar x = %s.readF32(%s.pos, '%s'); %s.pos += 4;\n", ind, p, p, g.floatOwner(f), p)
+			g.pf("%s\tif (x < %s || x > %s) { %s.report.refuse('out_of_range'); %s }\n", ind, lo, hi, p, bad)
+			g.pf("%s\tif (x == 0) { x = 0.0; }\n", ind)
+			g.pf("%s\t%s.add(x);\n", ind, out)
+			g.pf("%s}\n", ind)
+			break
+		}
 		g.pf("%s%s.add(%s.readF32(%s.pos, '%s')); %s.pos += 4;\n", ind, out, p, p, g.floatOwner(f), p)
 	case wireKindF64:
 		g.pf("%sif (!%s.has(8)) %s\n", ind, p, bad)

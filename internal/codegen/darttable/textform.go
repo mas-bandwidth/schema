@@ -749,6 +749,18 @@ double _jsonFloatField(dynamic val, TableTextReport r, [bool single = false, dou
   r.refuse('kind_mismatch');
   return def;
 }
+
+// _jsonCompressedFloat holds a compressed float's text value to its range,
+// evaluated at the field's width (a float32 range's ends are float32(min) and
+// float32(max)), and folds -0 to +0 (ruling fixed-compressed-negzero), as the
+// binary reads do.
+double _jsonCompressedFloat(double d, TableTextReport r, double lo, double hi, [double def = 0.0]) {
+  if (!(d >= lo && d <= hi)) {
+    r.refuse('out_of_range');
+    return def;
+  }
+  return d == 0 ? 0.0 : d;
+}
 `)
 	g.pf(`// §16.2: comments and trailing commas are layout, not values. The
 // a repeated key is judged before jsonDecode folds an object's repeated key.
