@@ -284,9 +284,12 @@ func cppValues(t *testing.T, u *ir.Unit) map[string]cValue {
 		}
 		out[name] = raw
 	}
-	if i := strings.Index(text, "struct Defaults\n{"); i >= 0 {
-		body := text[i:]
-		body = body[:strings.Index(body, "};")]
+	if _, rest, found := strings.Cut(text, "struct Defaults\n{"); found {
+		body, _, closed := strings.Cut(rest, "};")
+		if !closed {
+			t.Errorf("C++: struct Defaults has no closing }; in the generated header")
+			return out
+		}
 		for _, m := range cppMemberLine.FindAllStringSubmatch(body, -1) {
 			v, err := evalC(m[3], func(n string) (cValue, error) { return resolve(n, 0) })
 			if err != nil {
