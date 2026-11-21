@@ -18298,7 +18298,8 @@ rewrites nothing.
 
 **A REMOVAL LEAVES A LEDGER ENTRY, and the ledger is what refuses a name
 reused** (issue #441). The `## retired` section records every field, enum
-variant and union arm a `--update` removes — its vocabulary, its
+variant and union arm a `--update` removes, and every declaration name it
+frees (below) — its vocabulary, its
 fully-qualified name, the wire id it rode under and the day it was retired —
 and `--update` APPENDS to it and NEVER DROPS an entry. The compiler keeps no
 history, so this is the one record in the file the live projection cannot
@@ -18310,6 +18311,21 @@ reuse is legal once it is deliberate: `--update --reason "..."` writes
 `revived=<date>` on the entry, which is the acknowledgment, and the entry
 itself stays. This is Protobuf's `reserved`, held in the baseline, with no wire
 cost.
+
+**A freed DECLARATION NAME is retired too.** A table, enum, flags or union
+whose name an update frees — by removing it, by renaming it without `was`, or
+in the same update as a package rename — leaves a `table`, `enum`, `flags` or
+`union` entry under the id its name hashes to. A table's wire name IS its node
+records' type id (§3.1): a later table declared under a freed name is the type
+a save made before then names, so its pointers would read those records as the
+new table. The check refuses the reuse exactly as it refuses a member's, until
+`--update --reason` acknowledges it, and the same holds for an enum, a flags
+and a union, strict, because a reused declaration name is an edit no other row
+of the diff sees. A `was` rename keeps the wire name and frees nothing. An
+update over a renamed package's baseline still retires what the previous
+projection carried, because it parsed: a package rename is not a way to free
+a name. A package name itself needs no entry, because the check refuses ANY
+change of package until `--update` regenerates over it (above).
 
 **The date is UTC, and the entry says so**: `### 2026-09-04 (UTC) — <reason>`.
 A baseline is a shared artifact read on other machines in other zones, so one
