@@ -4,6 +4,9 @@ package compiler
 
 import (
 	"fmt"
+	"maps"
+	"slices"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
@@ -63,12 +66,84 @@ func (goTarget) GenerateLineage(u *ir.Unit, opts Options, lineage *FixedLineage)
 		}
 		files[name] = data
 	}
+	if err := refuseGoConstraintNames(u, files); err != nil {
+		return nil, err
+	}
 	// every identifier takes Go's initialisms, across the packet and table
 	// files together (internal/goname)
 	if err := goname.RespellFiles(files); err != nil {
 		return nil, fmt.Errorf("respelling the generated Go: %w", err)
 	}
 	return files, nil
+}
+
+// refuseGoConstraintNames refuses an output file name the go tool reads as a
+// build constraint rather than as a name: a leading `_` or `.` drops the file
+// from the package, a `_test` suffix makes it test-only, and a `_<goos>`,
+// `_<goarch>` or `_<goos>_<goarch>` suffix limits it to that platform (the go
+// command's "Build constraints", file names). Every output is named from a
+// schema file's basename (<base>.go, <base>Table.go, ...), so the refusal
+// names the schema file to rename.
+func refuseGoConstraintNames(u *ir.Unit, files map[string][]byte) error {
+	for _, name := range slices.Sorted(maps.Keys(files)) {
+		why := goConstraintName(name)
+		if why == "" {
+			continue
+		}
+		// the schema file it is named from: the longest basename it starts with
+		base := ""
+		for _, f := range u.Files {
+			if strings.HasPrefix(name, f.Base) && len(f.Base) > len(base) {
+				base = f.Base
+			}
+		}
+		if base == "" {
+			return fmt.Errorf("the Go target writes %s, and the go tool reads %s in a file name as a build constraint — a compiler bug, not a schema error", name, why)
+		}
+		return fmt.Errorf("schema file %s.schema: the Go target writes %s, and the go tool reads %s in a file name as a build constraint, so that code would not build into the package; rename the schema file", base, name, why)
+	}
+	return nil
+}
+
+// goConstraintName answers what about a .go file name the go tool reads as a
+// build constraint, or "" for a plain name. It follows go/build: the leading
+// `_` or `.`, then the name up to its first `.`, with everything before its
+// first `_` ignored and the `_`-separated parts matched exactly.
+func goConstraintName(name string) string {
+	if strings.HasPrefix(name, "_") || strings.HasPrefix(name, ".") {
+		return "a leading " + name[:1]
+	}
+	stem, _, _ := strings.Cut(name, ".")
+	i := strings.Index(stem, "_")
+	if i < 0 {
+		return ""
+	}
+	parts := strings.Split(stem[i:], "_")
+	n := len(parts)
+	if parts[n-1] == "test" {
+		return "the _test suffix"
+	}
+	if n >= 3 && goKnownOS[parts[n-2]] && goKnownArch[parts[n-1]] {
+		return "the _" + parts[n-2] + "_" + parts[n-1] + " suffix"
+	}
+	if goKnownOS[parts[n-1]] || goKnownArch[parts[n-1]] {
+		return "the _" + parts[n-1] + " suffix"
+	}
+	return ""
+}
+
+// goKnownOS and goKnownArch are the go tool's file-name GOOS and GOARCH lists
+// (internal/syslist), including the names it reserves without supporting.
+var goKnownOS = setOf("aix", "android", "darwin", "dragonfly", "freebsd", "hurd", "illumos", "ios", "js", "linux", "nacl", "netbsd", "openbsd", "plan9", "solaris", "wasip1", "windows", "zos")
+
+var goKnownArch = setOf("386", "amd64", "amd64p32", "arm", "armbe", "arm64", "arm64be", "loong64", "mips", "mipsle", "mips64", "mips64le", "mips64p32", "mips64p32le", "ppc", "ppc64", "ppc64le", "riscv", "riscv64", "s390", "s390x", "sparc", "sparc64", "wasm")
+
+func setOf(names ...string) map[string]bool {
+	m := make(map[string]bool, len(names))
+	for _, n := range names {
+		m[n] = true
+	}
+	return m
 }
 
 // goTableLineage is the lock's lineage in the Go backend's own spelling. Nil in,
