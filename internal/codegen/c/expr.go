@@ -68,9 +68,38 @@ func (g *gen) symbolic(e ast.Expr) bool {
 }
 
 // renderExpr renders an expression in C form: every constant reference is
-// spelled SCREAMING_SNAKE, the way this target #defines it.
+// spelled SCREAMING_SNAKE, the way this target #defines it, and a hexadecimal
+// literal C would type unsigned carries the LL suffix (signedHex).
 func renderExpr(e ast.Expr) string {
-	return spaceParens(ir.RenderExprIdent(e, screaming))
+	return spaceParens(ir.RenderExprIdent(signedHex(e), screaming))
+}
+
+// signedHex returns e with every hexadecimal literal in (INT32_MAX,
+// UINT32_MAX] spelled with the LL suffix. C types an unsuffixed hex literal
+// in that range unsigned int — not long long as a decimal of the same value
+// — so `0xffffffff + 1` wraps to 0 where the checker says 4294967296, and
+// `MASK * 2` over `#define MASK ( 0xffffffff )` wraps likewise. The suffix
+// keeps the author's spelling and makes the literal the signed 64-bit value
+// carrierEval models (every leaf wider than int32 evaluates in long long),
+// so the C value is the checker's value. Other hex literals are already
+// signed in C (int, or long / long long past UINT32_MAX; past INT64_MAX
+// carrierEval folds). The input tree is never modified.
+func signedHex(e ast.Expr) ast.Expr {
+	switch e := e.(type) {
+	case *ast.IntLit:
+		if strings.HasPrefix(strings.ToLower(e.Text), "0x") && e.Value != nil &&
+			e.Value.Sign() > 0 && !fitsInt32(e.Value) && e.Value.IsUint64() && e.Value.Uint64() <= math.MaxUint32 {
+			return &ast.IntLit{Pos: e.Pos, Value: e.Value, Text: "0x" + e.Text[2:] + "LL"}
+		}
+		return e
+	case *ast.UnaryExpr:
+		return &ast.UnaryExpr{Pos: e.Pos, Op: e.Op, X: signedHex(e.X)}
+	case *ast.BinaryExpr:
+		return &ast.BinaryExpr{Pos: e.Pos, Op: e.Op, X: signedHex(e.X), Y: signedHex(e.Y)}
+	case *ast.ParenExpr:
+		return &ast.ParenExpr{Pos: e.Pos, X: signedHex(e.X)}
+	}
+	return e
 }
 
 // spaceParens spells a rendered expression's parentheses the way the rest of
@@ -148,7 +177,9 @@ func (g *gen) carrierEval(e ast.Expr) (*big.Int, bool, bool) {
 	switch e := e.(type) {
 	case *ast.IntLit:
 		// a literal past INT64_MAX has no unsuffixed spelling in C — the
-		// decimal literal ladder ends at long long
+		// decimal literal ladder ends at long long. A hex literal C would
+		// type unsigned int renders LL-suffixed (signedHex), so every leaf
+		// wider than int32 is a signed 64-bit value, as modelled here.
 		return e.Value, !fitsInt32(e.Value), e.Value.IsInt64()
 	case *ast.IdentExpr:
 		c, ok := g.unit.Consts[e.Name]
@@ -197,6 +228,9 @@ func (g *gen) carrierEval(e ast.Expr) (*big.Int, bool, bool) {
 				return nil, wide, false
 			}
 			v.Rem(x, y)
+			if !fitsCarrier(new(big.Int).Quo(x, y), wide) {
+				return nil, wide, false // the target computes the quotient: MIN % -1 overflows though the remainder is 0
+			}
 		default:
 			return nil, wide, false
 		}
