@@ -8,7 +8,7 @@ documented where the command is: [USAGE.md](USAGE.md).
 file changed; the line's module path moves to the one the version's major
 requires (`schema/vN` from v2 on). `--mixed-ok` may sit before or after the
 directories; it accepts a tree whose pins already differ and moves them
-together. A pseudo-version is a commit and is always accepted.
+together. A pseudo-version is a commit, and is accepted when it is one Go resolves (a real UTC timestamp, a legal base form, a twelve-digit lower-case revision).
 The command refuses by name a version that is not a Go pseudo-version
 or a semver tag; every v3 tag cut before the module path moved to `/v3`, under
 any spelling (the boundary is `internal/modulemove.FirstV3ModuleTag`; while it
