@@ -6344,10 +6344,10 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp json_number(bin) do
     with {:ok, neg, int_value, r1} <- json_num_sign(bin) |> json_num_int(),
          {:ok, frac_digits, r3} <- json_num_frac(r1),
-         {:ok, exp_str, r4} <- json_num_exp(r3),
+         {:ok, exp_digits, r4} <- json_num_exp(r3),
          :ok <- json_num_tail(r4) do
       cond do
-        frac_digits != "" or exp_str != "" ->
+        frac_digits > 0 or exp_digits > 0 ->
           {:ok, {:decimal, json_token(bin, r4)}, r4}
 
         int_value == :big ->
@@ -6408,40 +6408,91 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp json_int_past(<<c, rest::binary>>) when c in ?0..?9, do: json_int_past(rest)
   defp json_int_past(rest), do: {:big, rest}
 
-  defp json_num_frac(<<".", c, rest::binary>>) when c in ?0..?9, do: json_digits(rest, [c])
+  # the fraction and exponent are scanned, not collected: each answers its
+  # digit count, and the token itself is the document's sub-binary, so a
+  # token of any length costs one pass and no list (ELIXIR-7)
+  defp json_num_frac(<<".", c, rest::binary>>) when c in ?0..?9, do: json_digits(rest, 1)
   defp json_num_frac(<<".", _::binary>>), do: :error
-  defp json_num_frac(rest), do: {:ok, "", rest}
+  defp json_num_frac(rest), do: {:ok, 0, rest}
 
   defp json_num_exp(<<e, s, c, rest::binary>>)
-       when e in [?e, ?E] and s in [?+, ?-] and c in ?0..?9 do
-    {:ok, d, r} = json_digits(rest, [c])
-    {:ok, <<e, s>> <> d, r}
-  end
+       when e in [?e, ?E] and s in [?+, ?-] and c in ?0..?9,
+       do: json_digits(rest, 1)
 
-  defp json_num_exp(<<e, c, rest::binary>>) when e in [?e, ?E] and c in ?0..?9 do
-    {:ok, d, r} = json_digits(rest, [c])
-    {:ok, <<e>> <> d, r}
-  end
+  defp json_num_exp(<<e, c, rest::binary>>) when e in [?e, ?E] and c in ?0..?9,
+    do: json_digits(rest, 1)
 
   defp json_num_exp(<<e, _::binary>>) when e in [?e, ?E], do: :error
-  defp json_num_exp(rest), do: {:ok, "", rest}
+  defp json_num_exp(rest), do: {:ok, 0, rest}
 
   defp json_num_tail(<<c, _::binary>>) when c in [?., ?e, ?E, ?+, ?-] or c in ?0..?9, do: :error
   defp json_num_tail(_), do: :ok
 
-  defp json_digits(<<c, rest::binary>>, acc) when c in ?0..?9, do: json_digits(rest, [c | acc])
-  defp json_digits(rest, acc), do: {:ok, acc |> Enum.reverse() |> IO.iodata_to_binary(), rest}
+  defp json_digits(<<c, rest::binary>>, n) when c in ?0..?9, do: json_digits(rest, n + 1)
+  defp json_digits(rest, n), do: {:ok, n, rest}
+
+  # A DECIMAL TOKEN HAS NO LENGTH LIMIT (docs/SPEC-TABLES.md §16.2: no leg
+  # may cap it), so its work is bounded by what it decides, never by its
+  # length (ELIXIR-7). json_decimal_parts reads a token as sign, significant
+  # digits (no leading or trailing zero) and a power of ten, in one linear
+  # pass that builds no integer; an exponent's text past twelve significant
+  # digits stands as 10^12, past every decision below.
+  defp json_decimal_parts(token) do
+    {neg, unsigned} =
+      case token do
+        <<"-", rest::binary>> -> {true, rest}
+        _ -> {false, token}
+      end
+
+    {mantissa, power} =
+      case :binary.match(unsigned, ["e", "E"]) do
+        {at, 1} ->
+          {binary_part(unsigned, 0, at),
+           json_exponent(binary_part(unsigned, at + 1, byte_size(unsigned) - at - 1))}
+
+        :nomatch ->
+          {unsigned, 0}
+      end
+
+    {whole, fraction} =
+      case :binary.split(mantissa, ".") do
+        [w, f] -> {w, f}
+        [w] -> {w, ""}
+      end
+
+    all = String.trim_leading(whole <> fraction, "0")
+    digits = String.trim_trailing(all, "0")
+    {neg, digits, power - byte_size(fraction) + (byte_size(all) - byte_size(digits))}
+  end
+
+  defp json_exponent(<<"-", d::binary>>), do: -json_exponent_magnitude(d)
+  defp json_exponent(<<"+", d::binary>>), do: json_exponent_magnitude(d)
+  defp json_exponent(d), do: json_exponent_magnitude(d)
+
+  defp json_exponent_magnitude(d) do
+    d = String.trim_leading(d, "0")
+
+    cond do
+      d == "" -> 0
+      byte_size(d) > 12 -> 1_000_000_000_000
+      true -> String.to_integer(d)
+    end
+  end
+
+  # json_sticky keeps the first 800 significant digits and stands a 1 for the
+  # rest. The digits end in no zero, so what is cut is not zero, and no
+  # binary32 or binary64 midpoint has as many as 800 significant digits, so a
+  # rounding of the kept digits is the rounding of the whole token.
+  defp json_sticky(digits, shift) when byte_size(digits) > 801,
+    do: {binary_part(digits, 0, 800) <> "1", shift + byte_size(digits) - 801}
+
+  defp json_sticky(digits, shift), do: {digits, shift}
 
   # Round a decimal directly to binary32. Going through binary64 first loses
   # which side of a binary32 halfway point an exact decimal token occupies.
   defp json_decimal_f32({:decimal, token}) do
-    [mantissa | exponent] = String.split(token, ~r/[eE]/, parts: 2)
-    power = if exponent == [], do: 0, else: String.to_integer(hd(exponent))
-    sign = if String.starts_with?(mantissa, "-"), do: 1, else: 0
-    [whole | tail] = String.split(String.trim_leading(mantissa, "-"), ".", parts: 2)
-    fraction = if tail == [], do: "", else: hd(tail)
-    digits = String.trim_leading(whole <> fraction, "0")
-    shift = power - byte_size(fraction)
+    {neg, digits, shift} = json_decimal_parts(token)
+    sign = if neg, do: 1, else: 0
     order = byte_size(digits) + shift
 
     cond do
@@ -6452,6 +6503,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         :error
 
       true ->
+        {digits, shift} = json_sticky(digits, shift)
         n = String.to_integer(digits)
 
         {n, d} =
@@ -6490,6 +6542,22 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   # json_decimal_float is the double a decimal text spells; one past the
   # double's range is :overflow_float, which no field accepts (§16.2).
+  # A token past 1000 bytes is first cut to its 800 significant digits and
+  # a sticky digit, with its power held to five digits (past either end of
+  # the double's range already), so the parse costs what it decides.
+  defp json_decimal_float({:decimal, token}) when byte_size(token) > 1000 do
+    case json_decimal_parts(token) do
+      {neg, "", _shift} ->
+        if neg, do: -0.0, else: 0.0
+
+      {neg, digits, shift} ->
+        {digits, shift} = json_sticky(digits, shift)
+        shift = shift |> max(-99_999) |> min(99_999)
+        sign = if neg, do: "-", else: ""
+        json_decimal_float({:decimal, sign <> digits <> "e" <> Integer.to_string(shift)})
+    end
+  end
+
   defp json_decimal_float({:decimal, token}) do
     case Float.parse(token) do
       {f, ""} -> f
@@ -6505,32 +6573,27 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp fixed_raw(raw, frac) when is_integer(raw), do: {:ok, raw <<< frac}
 
   defp fixed_raw({:decimal, token}, frac) do
-    [mantissa | exponent] = String.split(token, ~r/[eE]/, parts: 2)
-    power = if exponent == [], do: 0, else: String.to_integer(hd(exponent))
-    negative = String.starts_with?(mantissa, "-")
-    unsigned = String.trim_leading(mantissa, "-")
-    [whole | tail] = String.split(unsigned, ".", parts: 2)
-    fraction = if tail == [], do: "", else: hd(tail)
-    digits = String.to_integer(whole <> fraction)
-    shift = power - byte_size(fraction)
-    numerator = digits <<< frac
+    {negative, digits, shift} = json_decimal_parts(token)
 
     cond do
-      # the token cap (511 bytes) bounds the digits, so an exponent past 700
-      # either way decides without the power: zero stays zero, a larger shift
-      # is past every field's range (the clamp counts it) and a smaller one is
-      # finer than 2^-F with no exact scaled integer
-      digits == 0 ->
+      digits == "" ->
         {:ok, 0}
 
-      shift > 700 ->
+      # a value of 10^700 or more is past every field's range (the clamp
+      # counts it), decided from the digit count without the power
+      byte_size(digits) + shift > 700 ->
         v = Integer.pow(10, 700)
         {:ok, if(negative, do: -v, else: v)}
 
-      shift < -700 ->
+      # finer than 2^-F: the digits end in no zero, so a decimal of more than
+      # F fraction places is no multiple of 2^-F, and has no exact scaled
+      # integer. Past these two the digits number at most 700 + F.
+      shift < -frac ->
         :error
 
       true ->
+        numerator = String.to_integer(digits) <<< frac
+
         {numerator, denominator} =
           if shift >= 0,
             do: {numerator * Integer.pow(10, shift), 1},
