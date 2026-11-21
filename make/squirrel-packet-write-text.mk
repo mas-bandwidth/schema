@@ -7,11 +7,8 @@ build/packet-write-text/squirrel/.stamp: bin/schema test/packet-write-text/Text.
 	@touch $@
 
 .PHONY: packet-write-text-squirrel packet-write-text-squirrel-negative-control
-packet-write-text-squirrel: build/packet-write-text/squirrel/.stamp toolchain-squirrel
-	"$(SQ)" test/packet-write-text/squirrel/main.nut build/packet-write-text/squirrel > build/packet-write-text/squirrel/stdout 2> build/packet-write-text/squirrel/stderr
-	@cat build/packet-write-text/squirrel/stdout
-	@if [ -s build/packet-write-text/squirrel/stderr ] || grep -q '^FAILED:' build/packet-write-text/squirrel/stdout; then \
-		cat build/packet-write-text/squirrel/stderr >&2; exit 1; fi
+packet-write-text-squirrel: build/packet-write-text/squirrel/.stamp toolchain-squirrel build/mustrun
+	$(MUSTRUN) -name packet-write-text-squirrel -count 1 -- "$(SQ)" test/packet-write-text/squirrel/main.nut build/packet-write-text/squirrel
 
 # THE WRITE-TEXT CONTROL: drop only the emitted write-side text check and
 # require the driver to red the interior zero byte by name.

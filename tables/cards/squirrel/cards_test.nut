@@ -229,4 +229,7 @@ test("TestReadStrictRefusesWhatTheDeclarationCannotName", function() {
 });
 
 ::print(::format("cards (squirrel): %d passed, %d failed\n", passed, failed));
+// The count tools/mustrun reads; a run of no test is a failure.
+::print(::format("cards (squirrel): ran %d, failed %d\n", passed + failed, failed));
+if (passed + failed == 0) ::error("cards (squirrel): no test ran\n");
 if (failed > 0) ::error("cards (squirrel): " + failed + " test(s) failed\n");

@@ -30,12 +30,14 @@ build/packet-defaults/squirrel/.stamp: bin/schema test/packet-defaults/Defaults.
 	./bin/schema generate --lang squirrel --out build/packet-defaults/squirrel/plain test/packet-defaults/Plain.schema
 	@touch $@
 
+# sq EXITS 0 ON A RUNTIME ERROR, so the exit status proves nothing. The driver
+# prints "ran N, failed M" as its last act and build/mustrun requires that
+# line with the registered count: a run that dies, runs fewer checks or fails
+# one is red. The goldens directory's own listing rides in after --vectors.
+PACKET_DEFAULTS_SQUIRREL_GOLDENS = $(sort $(notdir $(wildcard testdata/wire/packet-defaults/*.bin)))
 .PHONY: packet-defaults-squirrel packet-defaults-squirrel-negative-control
-packet-defaults-squirrel: build/packet-defaults/squirrel/.stamp packet-defaults-cpp toolchain-squirrel
-	"$(SQ)" test/packet-defaults/squirrel/main.nut testdata/wire/packet-defaults > build/packet-defaults/squirrel/stdout 2> build/packet-defaults/squirrel/stderr
-	@cat build/packet-defaults/squirrel/stdout
-	@if [ -s build/packet-defaults/squirrel/stderr ] || grep -q '^FAILED:' build/packet-defaults/squirrel/stdout; then \
-		cat build/packet-defaults/squirrel/stderr >&2; exit 1; fi
+packet-defaults-squirrel: build/packet-defaults/squirrel/.stamp packet-defaults-cpp toolchain-squirrel build/mustrun
+	$(MUSTRUN) -name packet-defaults-squirrel -count 1 -- "$(SQ)" test/packet-defaults/squirrel/main.nut testdata/wire/packet-defaults --vectors $(PACKET_DEFAULTS_SQUIRREL_GOLDENS)
 
 # THE CONSTRUCTOR-BYTES CONTROL: drop only the emitted byte-literal assignments
 # in the constructor and require the runtime check to fail on constructor bytes.
@@ -45,7 +47,7 @@ packet-defaults-squirrel-negative-control: packet-defaults-squirrel
 	go run ./tools/sabotage -name packet-defaults-squirrel-constructor-bytes -out build/packet-defaults/squirrel-negative/squirrel.gotext internal/codegen/squirrel/squirrel.go
 	@printf '{"Replace":{"%s/internal/codegen/squirrel/squirrel.go":"%s/build/packet-defaults/squirrel-negative/squirrel.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-defaults/squirrel-negative/overlay.json
 	go run -overlay=build/packet-defaults/squirrel-negative/overlay.json ./cmd/schema generate --lang squirrel --out build/packet-defaults/squirrel-negative/generated test/packet-defaults/Defaults.schema
-	"$(SQ)" test/packet-defaults/squirrel/main.nut testdata/wire/packet-defaults build/packet-defaults/squirrel-negative/generated build/packet-defaults/squirrel/plain > build/packet-defaults/squirrel-negative/log 2>&1
+	"$(SQ)" test/packet-defaults/squirrel/main.nut testdata/wire/packet-defaults build/packet-defaults/squirrel-negative/generated build/packet-defaults/squirrel/plain --vectors $(PACKET_DEFAULTS_SQUIRREL_GOLDENS) > build/packet-defaults/squirrel-negative/log 2>&1
 	@grep -Fxq 'FAILED: packet-default constructor bytes' build/packet-defaults/squirrel-negative/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: Squirrel constructor bytes did not fail the runtime check'; cat build/packet-defaults/squirrel-negative/log; exit 1; }
 	@grep -Fxm1 'FAILED: packet-default constructor bytes' build/packet-defaults/squirrel-negative/log
@@ -58,12 +60,10 @@ build/packet-end/squirrel/.stamp: bin/schema test/packet-end/End.schema make/squ
 	./bin/schema generate --lang squirrel --out build/packet-end/squirrel test/packet-end/End.schema
 	@touch $@
 
+PACKET_END_SQUIRREL_VECTORS = $(sort $(notdir $(wildcard testdata/wire/packet-end/*.bin)))
 .PHONY: packet-end-squirrel packet-end-squirrel-negative-control
-packet-end-squirrel: build/packet-end/squirrel/.stamp toolchain-squirrel
-	"$(SQ)" test/packet-end/squirrel/main.nut testdata/wire/packet-end build/packet-end/squirrel > build/packet-end/squirrel/stdout 2> build/packet-end/squirrel/stderr
-	@cat build/packet-end/squirrel/stdout
-	@if [ -s build/packet-end/squirrel/stderr ] || grep -q '^FAILED:' build/packet-end/squirrel/stdout; then \
-		cat build/packet-end/squirrel/stderr >&2; exit 1; fi
+packet-end-squirrel: build/packet-end/squirrel/.stamp toolchain-squirrel build/mustrun
+	$(MUSTRUN) -name packet-end-squirrel -count 1 -- "$(SQ)" test/packet-end/squirrel/main.nut testdata/wire/packet-end build/packet-end/squirrel --vectors $(PACKET_END_SQUIRREL_VECTORS)
 
 # THE END-CHECK CONTROL: remove the generated read's end call, so the public
 # read accepts a whole byte left after the object and nonzero unused bits in
@@ -74,7 +74,7 @@ packet-end-squirrel-negative-control: packet-end-squirrel
 	go run ./tools/sabotage -name packet-end-squirrel-end -out build/packet-end/squirrel-negative/read.gotext internal/codegen/squirrel/read.go
 	@printf '{"Replace":{"%s/internal/codegen/squirrel/read.go":"%s/build/packet-end/squirrel-negative/read.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-end/squirrel-negative/overlay.json
 	go run -overlay=build/packet-end/squirrel-negative/overlay.json ./cmd/schema generate --lang squirrel --out build/packet-end/squirrel-negative/gen test/packet-end/End.schema
-	"$(SQ)" test/packet-end/squirrel/main.nut testdata/wire/packet-end build/packet-end/squirrel-negative/gen > build/packet-end/squirrel-negative/log 2>&1 || true
+	"$(SQ)" test/packet-end/squirrel/main.nut testdata/wire/packet-end build/packet-end/squirrel-negative/gen --vectors $(PACKET_END_SQUIRREL_VECTORS) > build/packet-end/squirrel-negative/log 2>&1 || true
 	@grep -Fq 'FAILED: trailing packet accepted' build/packet-end/squirrel-negative/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: Squirrel end check removal accepted the trailing byte'; cat build/packet-end/squirrel-negative/log; exit 1; }
 	@grep -Fq 'FAILED: padding packet accepted' build/packet-end/squirrel-negative/log || \
@@ -93,11 +93,8 @@ build/packet-write-bareint/squirrel/.stamp: bin/schema test/packet-write-bareint
 	@touch $@
 
 .PHONY: packet-write-bareint-squirrel packet-write-bareint-squirrel-negative-control
-packet-write-bareint-squirrel: build/packet-write-bareint/squirrel/.stamp toolchain-squirrel
-	"$(SQ)" test/packet-write-bareint/squirrel/main.nut test/packet-write-bareint/cases.txt build/packet-write-bareint/squirrel/bareint build/packet-write-bareint/squirrel/carriers > build/packet-write-bareint/squirrel/stdout 2> build/packet-write-bareint/squirrel/stderr
-	@cat build/packet-write-bareint/squirrel/stdout
-	@if [ -s build/packet-write-bareint/squirrel/stderr ] || grep -q '^FAILED:' build/packet-write-bareint/squirrel/stdout; then \
-		cat build/packet-write-bareint/squirrel/stderr >&2; exit 1; fi
+packet-write-bareint-squirrel: build/packet-write-bareint/squirrel/.stamp toolchain-squirrel build/mustrun
+	$(MUSTRUN) -name packet-write-bareint-squirrel -count 1 -- "$(SQ)" test/packet-write-bareint/squirrel/main.nut test/packet-write-bareint/cases.txt build/packet-write-bareint/squirrel/bareint build/packet-write-bareint/squirrel/carriers
 
 # THE WIDTH CONTROL: the writer keeps only its integer check, so an
 # out-of-width bare value reaches the wire and the driver must fail by name.

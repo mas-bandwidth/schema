@@ -214,7 +214,9 @@ ok("the writer round-trips the one instance byte-identically: what was read, re-
 ok("a clean read prints the reports.txt row: 0,0,0,0,0,false,read", wire.reportRow(read.report) == "0,0,0,0,0,false,read");
 ok("a refusal prints the same six zeroes and the VERDICT that tells it apart: 0,0,0,0,0,false,refused", wire.reportRow(rLying.report) == "0,0,0,0,0,false,refused");
 
-if (failed == 0) {
+// The count tools/mustrun reads (make squirrel-wire-lib-test).
+::print("wire: ran " + ran + ", failed " + failed + "\n");
+if (failed == 0 && ran > 0) {
     ::print("wire: the squirrel foundation's " + ran + " assertions green\n");
     return 0;
 }
