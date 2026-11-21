@@ -496,7 +496,7 @@ func (m *fixedImage) field(f *ir.Field) {
 			m.elem(el)
 		}
 	case f.Array == ir.ArrayCounted:
-		c := int64(m.next() % uint64(f.ArrayBound+1))
+		c := f.ArrayMin + int64(m.next()%uint64(f.ArrayBound-f.ArrayMin+1)) // lawful: Min..Bound
 		m.put(uint64(c), 4)
 		for range c {
 			m.elem(el)

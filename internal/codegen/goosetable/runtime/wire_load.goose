@@ -609,9 +609,12 @@ fn scalar_at(c: LoadCtx&, rep: LoadReport&, r: Rd&, out: LoadVal&, d: FieldDesc,
         }
         var keep: u32 = bits;
         if d.frange {
+            // the range is held AT FLOAT32 (SPEC.md §4.6, frange_holds)
             let v = f32_value(bits);
-            if v < d.flo { keep = f32_bits(d.flo as f32); rep.oor += 1; }
-            else if v > d.fhi { keep = f32_bits(d.fhi as f32); rep.oor += 1; }
+            if !frange_holds(v, d) {
+                keep = if v < d.flo { f32_bits(d.flo as f32) } else { f32_bits(d.fhi as f32) };
+                rep.oor += 1;
+            }
             else if v == 0.0 { keep = 0; } // a -0 lands as +0, uncounted (§3.3)
         }
         out.bits = Int128 { lo: keep, hi: 0 };
@@ -995,6 +998,11 @@ recursive fn load_array(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, framed: i6
             }
         } else if count > d.bound as! u64 {
             keep = d.bound as! u64;
+            c.report.oor += 1;
+        } else if !bytes && d.array == ArrayCounted && count < d.min as! u64 {
+            // a count below the declared Min is off the count's own range and
+            // refuses the read as the count past Max does (SPEC.md §5.1 row
+            // 3; tablewire decode.go refuses count_over_bound)
             c.report.oor += 1;
         }
         if widened { c.report.widened += 1; }
