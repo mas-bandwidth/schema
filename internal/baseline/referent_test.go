@@ -59,7 +59,7 @@ func readReferentCase(t *testing.T, dir string) referentCase {
 		t.Fatal(err)
 	}
 	var c referentCase
-	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(data)), "\n") {
 		f := strings.Fields(line)
 		if len(f) < 2 {
 			t.Fatalf("%s: unreadable case line %q", dir, line)
