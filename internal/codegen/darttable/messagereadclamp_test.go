@@ -64,10 +64,11 @@ func TestMessageReadClampsDeclaredRangeDart(t *testing.T) {
 		checkMessageReadClamp(t, row.root, u, storePurchaseClampMutant(t, m), "out_of_range")
 	})
 
-	// The counted-array vector: a count above the reader's own bound keeps the
-	// bound, counts one `clamped`, reads and drops the surplus elements, and
-	// lands the KEPT count in the reader's storage so a save writes what the Go
-	// oracle's array does (`fv.Count = int(kept)`).
+	// The counted-array vector: a count above the reader's own bound (three
+	// against [..2]) REFUSES the whole read count_over_bound
+	// (docs/rulings.json strict-only-read): the Go oracle refuses the same
+	// bytes, LoadMessages answers 0 with refused set and that reason, and the
+	// untouched destination still saves the oracle's default body.
 	t.Run("CountedArray", func(t *testing.T) {
 		t.Parallel()
 		u, announce, mutant := countedArrayClampMutant(t)
