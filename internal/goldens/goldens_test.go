@@ -524,8 +524,49 @@ func TestGoldenTableSource(t *testing.T) {
 				}
 				pinned[e.Name()] = got
 			}
+			// The other way: every emitted file the writer rule pins is on
+			// disk. Without this a deleted pin leaves the listing shorter
+			// and the gate green.
+			for name := range files {
+				if _, ok := pinned[name]; !ok && tablePinRule(unit.target, name) {
+					t.Errorf("%s: the %s target emits %s for %s and no golden pins it (run: make update-goldens)", dir, unit.target, name, unit.dir)
+				}
+			}
 			pinDir(t, dir, pinned)
 		})
+	}
+}
+
+// tablePinRule is the writer rule of each tables target: the emitted files
+// `make update-goldens` copies into testdata/golden/tables (Makefile
+// pins-source-cpp, pins-source-c, pins-source-cs).
+func tablePinRule(target, name string) bool {
+	suffixes := map[string][]string{
+		"cpp": {"Table.h", "Table.cpp"},
+		"c":   {"Table.h", "Table.c", "View.h", "View.c"},
+		"cs":  {"Table.cs"},
+	}[target]
+	for _, suffix := range suffixes {
+		if strings.HasSuffix(name, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+// TestTablePinRuleNamesWhatTheWritersCopy is the control on tablePinRule.
+func TestTablePinRuleNamesWhatTheWritersCopy(t *testing.T) {
+	for _, c := range []struct {
+		target, name string
+		want         bool
+	}{
+		{"cpp", "UnitsTable.h", true}, {"cpp", "UnitsTable.cpp", true}, {"cpp", "Units.h", false},
+		{"c", "UnitsTable.c", true}, {"c", "UnitsView.h", true}, {"c", "Units.c", false},
+		{"cs", "UnitsTable.cs", true}, {"cs", "Units.cs", false}, {"zig", "UnitsTable.zig", false},
+	} {
+		if got := tablePinRule(c.target, c.name); got != c.want {
+			t.Errorf("tablePinRule(%s, %s) = %v, want %v", c.target, c.name, got, c.want)
+		}
 	}
 }
 

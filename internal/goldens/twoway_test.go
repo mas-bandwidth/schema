@@ -30,9 +30,9 @@ func TestPinDirComparesBothWays(t *testing.T) {
 		return dir
 	}
 	for _, c := range []struct {
-		name  string
+		name   string
 		mutate func(t *testing.T, dir string)
-		want  string
+		want   string
 	}{
 		{"the emitted set", func(*testing.T, string) {}, ""},
 		{"an obsolete golden beside it", func(t *testing.T, dir string) {
