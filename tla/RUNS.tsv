@@ -48,7 +48,7 @@ MCWireCheckEdgesStaleTail.cfg	WireCheckEdges	counterexample	NamesCountThisFile	2
 MCFixedBatch.cfg	FixedBatch	exhaustive	-	379	299	10	0	21.0.12.1	2.19 (2024-08-08, rev 5a47802)	e1abe124e393a3a504df809bb484eb893ed7f50e863bce858b5f3e6d6c26b841
 MCFixedBatchLandDuringDecode.cfg	FixedBatch	counterexample	OneVerdict	248	204	4	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)	55cbcba9b728cb7bb3c113359df6629174c09b5ec9f661e7cf349420754e26a9
 MCFixedBatchCommitShort.cfg	FixedBatch	counterexample	OneVerdict	282	228	5	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)	a66f0fbba88cf18fbb61faa95aaee2ea0aad45a0b6f0241fb7c861159d932e0b
-MCFixedBatchStrideOff.cfg	FixedBatch	counterexample	ReadsValueBytes	248	204	4	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)	24286b7334b63a8baa0299c25da748305aad49b56d43da9fadb5de97ea2bb80a
+MCFixedBatchStrideOff.cfg	FixedBatch	counterexample	ReadsValueBytes	248	204	4	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)	2ba36857e9b2ccbfb6915cf39417018db24362f21ee8b4dc6b44a16ab813d1fa
 MCFixedBatchNoTailCheck.cfg	FixedBatch	counterexample	OneVerdict	242	242	4	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)	0a6c585b63d22c6b628195de843d37c19cd259513b20234124d2116739a452f5
 MCWireAlign.cfg	WireAlign	exhaustive	-	917546	677886	6	0	21.0.12.1	2.19 (2024-08-08, rev 5a47802)	8b81a2ceb367118abc5019e78350386445a8b3087d9278af99954a7dd30bd738
 MCWireAlignVariableAsFixed.cfg	WireAlign	counterexample	AlignedWhereMarked	153801	144277	3	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)	a3b2aeec510e81bcc6993e049802f69907cdbb83f5ecae0fa18e91496deca547
