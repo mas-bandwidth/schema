@@ -1907,3 +1907,11 @@ json-hostile map-string-key-repeated     mapdemo          EdgeRow testdata/confo
 json-hostile map-keys-distinct           mapdemo          EdgeRow testdata/conformance/tables/json-hostile/map-keys-distinct           read
 json-hostile timestamp-int64-min         featurewitnesses Root    testdata/conformance/tables/json-hostile/timestamp-int64-min         read
 json-hostile timestamp-below-int64-min   featurewitnesses Root    testdata/conformance/tables/json-hostile/timestamp-below-int64-min   refused
+
+# R3. Binary depth through a chain of unions in an unknown field (CPP-1): each
+# union arm's payload is framed and one level deeper (SPEC-TABLES §4,
+# binary_max_depth); 128 passes, 129 refuses, and 5000 refuses without a reader
+# recursing that deep (test/conformance/harness/framing_review1121_test.go).
+framing union_chain_unknown_at_bound   tblr1 Cfg testdata/wire/tables/framing/union_chain_unknown_at_bound.bin   read    testdata/conformance/tables/framing/cfg_silver.json
+framing union_chain_unknown_past_bound tblr1 Cfg testdata/wire/tables/framing/union_chain_unknown_past_bound.bin refused -
+framing union_chain_unknown_deep       tblr1 Cfg testdata/wire/tables/framing/union_chain_unknown_deep.bin       refused -

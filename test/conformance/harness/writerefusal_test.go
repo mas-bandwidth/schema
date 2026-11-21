@@ -62,6 +62,12 @@ func TestWriteRefusalSurfaceHoldsTheGoEngine(t *testing.T) {
 			if answer == wr.Verdict {
 				return
 			}
+			if answer == "unrepresentable" && wr.Verdict == "refused" && wr.Kind == "int" {
+				// §5.1 row 11 past 64 bits: the instance model's 64-bit cell
+				// cannot hold the value, which is the type system's refusal
+				// the harness scores as one (run.go, `unrepresentable`)
+				return
+			}
 			// The Go engine holds every value these rows name, and every
 			// fixed root here emits its fixed form, so the engine owes the
 			// manifest's verdict exactly: an `unrepresentable` or `absent`
@@ -308,6 +314,11 @@ func setRefusalInt(cell *tabletext.Cell, f *ir.Field, text string) bool {
 	if !ok {
 		return false
 	}
+	// a cell the load left without wide storage holds 64 bits: a value past
+	// them (a uint64 field's 2^64) is one the instance model cannot hold
+	if cell.Wide == nil && !n.IsInt64() && !n.IsUint64() {
+		return false
+	}
 	cell.Wide = new(big.Int).Set(n)
 	if n.IsInt64() {
 		cell.I = n.Int64()
@@ -381,6 +392,17 @@ func writeRefusalTarget(inst *tabletext.Instance, path string) (*tabletext.Field
 		}
 		if index >= len(slots) {
 			return nil, nil, nil, fmt.Errorf("%s: %s has no element %d", path, name, index)
+		}
+		if slots[index].Tab == nil && slots[index].Arm != nil && len(segments) == 2 {
+			// an element of an array of unions, and the path's last segment
+			// names its active scalar arm: `bounded_steps[3].label`
+			un := tabletext.UnionOf(fv.Def)
+			armName := segments[1]
+			if un == nil || slots[index].U == 0 || int(slots[index].U) > len(un.Variants) || un.Variants[slots[index].U-1].Name != armName {
+				return nil, nil, nil, fmt.Errorf("%s: %s[%d] active arm is not %q", path, name, index, armName)
+			}
+			armFv := slots[index].Arm
+			return armFv, &armFv.Cell, armFv.Def, nil
 		}
 		if slots[index].Tab == nil {
 			return nil, nil, nil, fmt.Errorf("%s: %s[%d] is not a nested value", path, name, index)
