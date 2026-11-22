@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/genheader"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -90,7 +91,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	for decl := range u.DeclFile {
 		for _, suffix := range []string{"Block", "Cook", FixedModuleSuffix} {
 			for _, f := range u.Files {
-				if decl == ir.GoExportName(f.Base)+suffix {
+				if elixir.ModuleName(decl) == ir.GoExportName(f.Base)+suffix {
 					return nil, fmt.Errorf("declaration %s collides with the module the Elixir table backend writes for schema file %s.schema (%s.%s%s); rename one of them",
 						decl, f.Base, ns, ir.GoExportName(f.Base), suffix)
 				}
