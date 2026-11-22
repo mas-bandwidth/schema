@@ -993,17 +993,6 @@ func scorePrior(answer string, e expectation, r *result) {
 	}
 }
 
-// wasNotAsked answers whether the expectation name on surface belongs to a row
-// the leg was not handed (an opt-in unit it does not name, optin.go). The
-// json-write surface names its expectations `<case>.json` after the instance
-// row they come from, so the row is found under the case name.
-func wasNotAsked(notAsked map[string]bool, surface, name string) bool {
-	if notAsked[name] {
-		return true
-	}
-	return surface == "json-write" && notAsked[strings.TrimSuffix(name, ".json")]
-}
-
 // scoreRefusalAbsent scores the `<case>.absent` a leg wrote on a row whose
 // expected answer is a refusal (message wire `-`, `wire-refused`), and says
 // whether it scored it. A file naming a reason is the historical spelling of
