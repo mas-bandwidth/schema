@@ -1314,7 +1314,7 @@ func (g *wireGen) emitTextFromJson(st *ir.Struct) {
 	g.pf("%s %s(String text, [TableTextReport? report]) {\n", st.Name, fn)
 	// THE REPORT IS RESET IN FULL at the start of every read, as Go's FromJSON zeroes
 	// its report (docs/SPEC-TABLES.md §4): no count carries over from an earlier call.
-	g.pf("\tfinal r = report ?? TableTextReport();\n\tr.unknown = 0;\n\tr.refused = false;\n\tr.refusal = '';\n\tr.missingFields = '';\n\tr.textLabels.clear();\n\tr.variableRoot = %t;\n", ir.VariableTables(g.unit)[st.Name])
+	g.pf("\tfinal r = report ?? TableTextReport();\n\tr.unknown = 0;\n\tr.refused = false;\n\tr.refusal = '';\n\tr.missingFields = '';\n\tr.labelsSeen.clear();\n\tr.labelsOpen.clear();\n\tr.variableRoot = %t;\n", ir.VariableTables(g.unit)[st.Name])
 	g.pf("\tfinal v = %s();\n", st.Name)
 	// A text the grammar, the text rules or the reserved prefix refuse is a refusal
 	// with a reason on the report, never an exception (docs/SPEC-TABLES.md §16.2, §16.3).
