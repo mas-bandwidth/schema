@@ -1021,7 +1021,7 @@ func (g *variableGen) fieldDescTail(f *ir.Field) string {
 	case f.Type.Pointer:
 		fmt.Fprintf(&b, "s: \"ptr\", js: \"o\", t: %s }", jsStr(tableOf(f).Name))
 	case enumOf(f) != nil:
-		fmt.Fprintf(&b, "s: \"enum\", js: \"s\", vs: %s, def: %s }", enumVariants(enumOf(f)), enumDefault(f))
+		fmt.Fprintf(&b, "s: \"enum\", js: \"s\", vs: %s, dp: %s, def: %s }", enumVariants(enumOf(f)), enumDeprecated(enumOf(f)), enumDefault(f))
 	case flagsOf(f) != nil:
 		fmt.Fprintf(&b, "s: \"flags\", js: \"a\", big: true, kw: 8, lo: null, hi: null, bits: 0, vs: %s, def: %s }",
 			flagsVariants(flagsOf(f)), intDefault(f))
@@ -1061,7 +1061,7 @@ func (g *variableGen) elemDesc(f *ir.Field) string {
 	case f.Type.Pointer:
 		return fmt.Sprintf("{ s: \"ptr\", js: \"o\", t: %s }", jsStr(tableOf(f).Name))
 	case enumOf(f) != nil:
-		return fmt.Sprintf("{ s: \"enum\", js: \"s\", vs: %s }", enumVariants(enumOf(f)))
+		return fmt.Sprintf("{ s: \"enum\", js: \"s\", el: true, vs: %s, dp: %s }", enumVariants(enumOf(f)), enumDeprecated(enumOf(f)))
 	case flagsOf(f) != nil:
 		return fmt.Sprintf("{ s: \"flags\", js: \"a\", big: true, kw: 8, lo: null, hi: null, bits: 0, vs: %s }",
 			flagsVariants(flagsOf(f)))
@@ -1114,6 +1114,19 @@ func tableJSONShape(st *ir.Struct) string {
 
 // enumVariants renders an enum's variants as [name, wire id] pairs: identity
 // is the variant NAME's hash (docs/SPEC-TABLES.md §5).
+// enumDeprecated lists the variants marked `| deprecated` (docs/SPEC-TABLES.md
+// section 2.15): a reader meeting one yields the field's default, an element's
+// default (None) for an element, and never counts it unknown.
+func enumDeprecated(e *ir.Enum) string {
+	var parts []string
+	for i := range e.Variants {
+		if i < len(e.VariantTags) && slices.Contains(e.VariantTags[i], "deprecated") {
+			parts = append(parts, jsStr(e.Variants[i]))
+		}
+	}
+	return "[" + strings.Join(parts, ", ") + "]"
+}
+
 func enumVariants(e *ir.Enum) string {
 	parts := make([]string, len(e.Variants))
 	for i := range e.Variants {

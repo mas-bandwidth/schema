@@ -124,7 +124,13 @@ func imageDstRow(u *ir.Unit, e ir.TableFixedLayoutEntry) fixedDst {
 		// the tag leads that storage, so the two offsets are the same byte
 		aux = dst + imageTerms(u, d.Aux)
 	}
-	return fixedDst{dst: dst, stride: stride, aux: aux, counted: d.Counted, arg: d.Meta}
+	arg := d.Meta
+	if d.Counted == 1 && d.Stride != nil && d.Stride.Array == ir.ArrayCounted {
+		// a counted array's row carries THIS reader's minimum A, which the
+		// evolved-reader plan holds the writer's count to (docs/SPEC.md 4.6)
+		arg = int(d.Stride.ArrayMin)
+	}
+	return fixedDst{dst: dst, stride: stride, aux: aux, counted: d.Counted, arg: arg}
 }
 
 func imageTerms(u *ir.Unit, terms []ir.TableFixedTerm) int64 {
