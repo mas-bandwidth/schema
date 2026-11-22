@@ -32,6 +32,14 @@ defmodule WriteRefusalPacketProbe do
   def apply_op("fixed_constant", n, v), do: %{v | fixed_constant: String.to_integer(n)}
   def apply_op("reserved_zero", n, v), do: %{v | reserved_zero: String.to_integer(n)}
 
+  # the BEAM holds no NaN or infinity float: a nonfinite ratio rides as the
+  # non-float atom the runtime documents (:nan, :infinity), which the packet
+  # writer must refuse.
+  def apply_op("ratio", "nan", v), do: %{v | ratio: :nan}
+  def apply_op("ratio", "inf", v), do: %{v | ratio: :infinity}
+  def apply_op("ratio", "-inf", v), do: %{v | ratio: :neg_infinity}
+  def apply_op("ratio", x, v), do: %{v | ratio: String.to_float(if String.contains?(x, "."), do: x, else: x <> ".0")}
+
   def verdict(value) do
     try do
       PacketWriteRefusalFile.write_packet_write_refusal!(value)

@@ -19,6 +19,8 @@
 #   text_fill <n>       the string holds n bytes of 'a' and length n
 #   fixed_constant <n>  the field `fixed_constant` (only 5 is lawful)
 #   reserved_zero <n>   the field `reserved_zero` (only 0 is lawful)
+#   ratio <x>           the compressed float32 field `ratio` (min 0, max 1); x is a decimal,
+#                       nan, inf or -inf
 scalar_high            refused scalar 11
 scalar_low             refused scalar -1
 scalar_at_max          wrote   scalar 10
@@ -42,3 +44,9 @@ const_wrong            refused fixed_constant 6
 const_at               wrote   fixed_constant 5
 reserved_wrong         refused reserved_zero 1
 reserved_at            wrote   reserved_zero 0
+ratio_high             refused ratio 1.5
+ratio_low              refused ratio -0.5
+ratio_nan              refused ratio nan
+ratio_inf              refused ratio inf
+ratio_at_max           wrote   ratio 1
+ratio_at_min           wrote   ratio 0

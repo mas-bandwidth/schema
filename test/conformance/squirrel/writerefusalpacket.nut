@@ -33,6 +33,14 @@ local nibble = function(c) {
   throw "rows: bad hex digit " + c;
 };
 
+// real parses a float argument; nan, inf and -inf are spelled out.
+local real = function(arg) {
+  if (arg == "nan") return 0.0 / 0.0;
+  if (arg == "inf") return 1.0 / 0.0;
+  if (arg == "-inf") return -1.0 / 0.0;
+  return arg.tofloat();
+};
+
 // apply makes the row's one change to a fresh, lawful value.
 local apply = function(v, op, arg) {
   switch (op) {
@@ -55,6 +63,7 @@ local apply = function(v, op, arg) {
     }
     case "fixed_constant": v.FixedConstant = arg.tointeger(); break;
     case "reserved_zero": v.ReservedZero = arg.tointeger(); break;
+    case "ratio": v.Ratio = real(arg); break;
     default: throw "rows: unknown op " + op;
   }
 };

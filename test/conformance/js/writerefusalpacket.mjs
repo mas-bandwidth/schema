@@ -31,6 +31,16 @@ function hexBytes(text) {
   return out;
 }
 
+// real parses a float argument; nan, inf and -inf are spelled out.
+function real(text) {
+  if (text === "nan") return NaN;
+  if (text === "inf") return Infinity;
+  if (text === "-inf") return -Infinity;
+  const x = Number(text);
+  if (Number.isNaN(x)) { throw new Error(JSON.stringify(text) + " is not a number"); }
+  return x;
+}
+
 // apply sets the one field the op names, in the storage the writer reads.
 function apply(value, op, arg) {
   const n = Number(arg);
@@ -51,6 +61,7 @@ function apply(value, op, arg) {
     case "text_fill": value.text.fill(0x61, 0, n); value.textLength = n; break;
     case "fixed_constant": value.fixedConstant = n; break;
     case "reserved_zero": value.reservedZero = n; break;
+    case "ratio": value.ratio = real(arg); break;
     default: throw new Error("unknown op " + JSON.stringify(op));
   }
 }

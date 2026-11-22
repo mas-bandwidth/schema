@@ -10,6 +10,12 @@ import sys
 from packetrefusal import InvalidValue, PacketWriteRefusal
 
 
+def real(arg):
+    # nan, inf and -inf are spelled out, never left to the language's parser.
+    specials = {"nan": float("nan"), "inf": float("inf"), "-inf": float("-inf")}
+    return specials[arg] if arg in specials else float(arg)
+
+
 def apply(v, op, arg):
     if op == "scalar":
         v.scalar = int(arg)
@@ -33,6 +39,8 @@ def apply(v, op, arg):
         v.fixed_constant = int(arg)
     elif op == "reserved_zero":
         v.reserved_zero = int(arg)
+    elif op == "ratio":
+        v.ratio = real(arg)
     else:
         raise SystemExit("unknown op " + op)
 

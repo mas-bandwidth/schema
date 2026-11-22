@@ -23,6 +23,18 @@ def int_arg() -> int:
     assert ok
     return n
 
+// float_arg is the argument as a float; nan, inf and -inf are spelled out.
+def float_arg() -> float:
+    if arg == "nan":
+        return 0.0 / 0.0
+    elif arg == "inf":
+        return 1.0 / 0.0
+    elif arg == "-inf":
+        return -1.0 / 0.0
+    let x, ok = string_to_float(arg)
+    assert ok
+    return x
+
 // bytes_of is the row's hex argument as a byte string, two digits a byte
 def bytes_of(text:string) -> string:
     var out = schema_rt.zeros(length(text) / 2)
@@ -61,6 +73,8 @@ elif op == "fixed_constant":
     v.FixedConstant = int_arg()
 elif op == "reserved_zero":
     v.ReservedZero = int_arg()
+elif op == "ratio":
+    v.Ratio = float_arg()
 else:
     print("probe: unknown op " + op)
     assert false

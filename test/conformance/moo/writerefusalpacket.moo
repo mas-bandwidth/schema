@@ -20,6 +20,20 @@ local function fromHex(h: string): string
 	return table.concat(parts)
 end
 
+-- ratioBits is the binary32 pattern a float argument spells: a moo float32
+-- field holds its raw bits as a number (SPEC section 4.3), and nan, inf and
+-- -inf are spelled out as their patterns, not left to the decimal reader.
+local function ratioBits(arg: string): number
+	if arg == "nan" then
+		return 0x7FC00000
+	elseif arg == "inf" then
+		return 0x7F800000
+	elseif arg == "-inf" then
+		return 0xFF800000
+	end
+	return serialize.Float32.parse(arg).bits
+end
+
 -- apply is one op on a fresh value. A string(8) holds its length as the moo
 -- string's own length, so a length op is a string of that many lawful bytes.
 local function apply(v: any, op: string, arg: string)
@@ -42,6 +56,8 @@ local function apply(v: any, op: string, arg: string)
 		v.FixedConstant = n
 	elseif op == "reserved_zero" then
 		v.ReservedZero = n
+	elseif op == "ratio" then
+		v.Ratio = ratioBits(arg)
 	else
 		error("write-refusal-packet moo: unknown op " .. op)
 	end

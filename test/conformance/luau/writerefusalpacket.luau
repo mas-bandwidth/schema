@@ -20,6 +20,18 @@ local function fromHex(h: string): buffer
 	return b
 end
 
+-- real parses a float argument; nan, inf and -inf are spelled out.
+local function real(arg: string): number
+	if arg == "nan" then
+		return 0 / 0
+	elseif arg == "inf" then
+		return math.huge
+	elseif arg == "-inf" then
+		return -math.huge
+	end
+	return assert(tonumber(arg), arg) :: number
+end
+
 local function build(op: string, arg: string): any
 	local v: any = P.NewPacketWriteRefusal()
 	if op == "scalar" then
@@ -46,6 +58,8 @@ local function build(op: string, arg: string): any
 		v.FixedConstant = tonumber(arg)
 	elseif op == "reserved_zero" then
 		v.ReservedZero = tonumber(arg)
+	elseif op == "ratio" then
+		v.Ratio = real(arg)
 	else
 		error("write-refusal-packet: unknown op " .. op)
 	end

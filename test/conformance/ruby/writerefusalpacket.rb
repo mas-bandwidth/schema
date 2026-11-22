@@ -10,6 +10,16 @@
 
 require_relative "packetrefusal"
 
+# real parses a float argument; nan, inf and -inf are spelled out.
+def real(arg)
+  case arg
+  when "nan" then Float::NAN
+  when "inf" then Float::INFINITY
+  when "-inf" then -Float::INFINITY
+  else Float(arg)
+  end
+end
+
 def apply(value, op, arg)
   case op
   when "scalar" then value.scalar = Integer(arg)
@@ -22,6 +32,7 @@ def apply(value, op, arg)
   when "text_fill" then value.text = "a" * Integer(arg)
   when "fixed_constant" then value.fixed_constant = Integer(arg)
   when "reserved_zero" then value.reserved_zero = Integer(arg)
+  when "ratio" then value.ratio = real(arg)
   else raise ArgumentError, "unknown op #{op}"
   end
 end

@@ -81,6 +81,7 @@ type PacketWriteRefusal
     shot           Shot
     fixed_constant int32 = 5 | min = 5, max = 5
     reserved_zero  int32 = 0 | min = 0, max = 0
+    ratio          float32 | min = 0.0, max = 1.0, resolution = 0.01
     const(0xAB, 8)
     reserved(5)
 }
@@ -92,6 +93,7 @@ const writeRefusalPacketProbe = `package packetrefusal
 
 import (
 	"errors"
+	"math"
 	"testing"
 
 	"github.com/mas-bandwidth/serialize.go/v2"
@@ -130,6 +132,12 @@ func TestWriteRefusalPacketRows(t *testing.T) {
 		{"const_at", "wrote", func(v *PacketWriteRefusal) { v.FixedConstant = 5 }},
 		{"reserved_wrong", "refused", func(v *PacketWriteRefusal) { v.ReservedZero = 1 }},
 		{"reserved_at", "wrote", func(v *PacketWriteRefusal) { v.ReservedZero = 0 }},
+		{"ratio_high", "refused", func(v *PacketWriteRefusal) { v.Ratio = 1.5 }},
+		{"ratio_low", "refused", func(v *PacketWriteRefusal) { v.Ratio = -0.5 }},
+		{"ratio_nan", "refused", func(v *PacketWriteRefusal) { v.Ratio = float32(math.NaN()) }},
+		{"ratio_inf", "refused", func(v *PacketWriteRefusal) { v.Ratio = float32(math.Inf(1)) }},
+		{"ratio_at_max", "wrote", func(v *PacketWriteRefusal) { v.Ratio = 1 }},
+		{"ratio_at_min", "wrote", func(v *PacketWriteRefusal) { v.Ratio = 0 }},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -139,8 +147,14 @@ func TestWriteRefusalPacketRows(t *testing.T) {
 			err := WritePacketWriteRefusal(stream, &value)
 			switch c.want {
 			case "refused":
-				if !errors.Is(err, serialize.ErrValueOutOfRange) {
-					t.Fatalf("FAILED: %s: wrote or erred wrongly, got %v, want serialize.ErrValueOutOfRange", c.name, err)
+				// A NaN or an infinity has its own refusal kind (a non-finite float);
+				// every other refused value is out of range.
+				want := serialize.ErrValueOutOfRange
+				if c.name == "ratio_nan" || c.name == "ratio_inf" {
+					want = serialize.ErrNonFiniteFloat
+				}
+				if !errors.Is(err, want) {
+					t.Fatalf("FAILED: %s: wrote or erred wrongly, got %v, want %v", c.name, err, want)
 				}
 			case "wrote":
 				if err != nil {

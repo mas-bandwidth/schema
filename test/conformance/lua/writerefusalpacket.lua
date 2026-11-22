@@ -24,6 +24,7 @@ local ops = {
   text_fill = function(v, n) v.Text = string.rep("a", n) end,
   fixed_constant = function(v, n) v.FixedConstant = n end,
   reserved_zero = function(v, n) v.ReservedZero = n end,
+  ratio = function(v, x) v.Ratio = x end,
 }
 
 for line in inputs.rows:gmatch("[^\n]+") do
@@ -33,7 +34,12 @@ for line in inputs.rows:gmatch("[^\n]+") do
     local name, op, arg = f[1], f[3], f[4]
     local set = assert(ops[op], "unknown op " .. op)
     local v = G.NewPacketWriteRefusal()
-    if op ~= "text_bytes" then arg = assert(math.tointeger(tonumber(arg)), arg) end
+    if op == "ratio" then
+      if arg == "nan" then arg = 0 / 0
+      elseif arg == "inf" then arg = math.huge
+      elseif arg == "-inf" then arg = -math.huge
+      else arg = assert(tonumber(arg), arg) end
+    elseif op ~= "text_bytes" then arg = assert(math.tointeger(tonumber(arg)), arg) end
     set(v, arg)
     local stream = serialize.WriteStream.new(256)
     local ran, ok = pcall(G.WritePacketWriteRefusal, stream, v)
