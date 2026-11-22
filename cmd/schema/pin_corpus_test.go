@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mas-bandwidth/schema/v2/internal/atomicfile"
 	"github.com/mas-bandwidth/schema/v2/internal/modulemove"
 	"github.com/mas-bandwidth/schema/v2/internal/modulemove/pincorpus"
 )
@@ -186,27 +187,27 @@ func runPinCorpusTree(t *testing.T, c pincorpus.TreeCase) {
 
 	// the case's failures
 	renames := make([]int, len(c.Fail))
-	f := pinFiles{
-		createTemp: func(dir, pattern string) (*os.File, error) {
-			for _, rule := range c.Fail {
-				if rule.StageIn != "" && dir == at(rule.StageIn) {
-					return nil, errPinCorpus
-				}
+	f := atomicfile.OS()
+	create := f.Create
+	f.Create = func(name string, mode fs.FileMode) (*os.File, error) {
+		for _, rule := range c.Fail {
+			if rule.StageIn != "" && filepath.Dir(name) == at(rule.StageIn) {
+				return nil, errPinCorpus
 			}
-			return os.CreateTemp(dir, pattern)
-		},
-		rename: func(oldpath, newpath string) error {
-			for i, rule := range c.Fail {
-				if rule.Onto == "" || newpath != at(rule.Onto) {
-					continue
-				}
-				renames[i]++
-				if renames[i] >= rule.From && (rule.Until == 0 || renames[i] <= rule.Until) {
-					return errPinCorpus
-				}
+		}
+		return create(name, mode)
+	}
+	f.Rename = func(oldpath, newpath string) error {
+		for i, rule := range c.Fail {
+			if rule.Onto == "" || newpath != at(rule.Onto) {
+				continue
 			}
-			return os.Rename(oldpath, newpath)
-		},
+			renames[i]++
+			if renames[i] >= rule.From && (rule.Until == 0 || renames[i] <= rule.Until) {
+				return errPinCorpus
+			}
+		}
+		return os.Rename(oldpath, newpath)
 	}
 
 	dirs := make([]string, len(c.Dirs))
