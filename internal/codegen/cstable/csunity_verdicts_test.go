@@ -302,9 +302,9 @@ byte[] oldWire = H(%q), betaWire = H(%q), unknownWire = H(%q), emptyWire = H(%q)
 `, hex.EncodeToString(oldWire), hex.EncodeToString(betaWire), hex.EncodeToString(unknownWire), hex.EncodeToString(emptyWire), hex.EncodeToString(dupWire), hex.EncodeToString(oldElemWire))
 
 	dir := csVerdictsBuild(t, fmt.Sprintf(t08Main, body), false)
-	out, _ := csVerdictsRun(t, dir)
-	if !strings.Contains(out, "PROBE OK") || strings.Contains(out, "FAIL ") {
-		t.Fatalf("the driven reader failed:\n%s", out)
+	out, err := csVerdictsRun(t, dir)
+	if err != nil || !strings.Contains(out, "PROBE OK") || strings.Contains(out, "FAIL ") {
+		t.Fatalf("the driven reader failed (%v):\n%s", err, out)
 	}
 }
 
