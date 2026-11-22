@@ -100,6 +100,7 @@ var catalog = []Entry{
 	e("internal/lockfile", "schema.lock lineage", "go test ./internal/lockfile", "go test ./internal/lockfile"),
 	e("internal/memceiling", "memory ceiling for allocating tests", "go test ./internal/memceiling", "go test ./internal/memceiling"),
 	e("internal/modulemove", "pin and release boundary of the /v3 module move", "go test ./internal/modulemove", "go test ./internal/modulemove"),
+	e("internal/nameemit", "name-corpus reader for the emit legs", "go test ./internal/codegen/c ./internal/codegen/cpp ./internal/codegen/csharp ./internal/codegen/elixir -run TestNameCorpusBuilds", "SCHEMA_SLOW=1 go test ./internal/codegen/c ./internal/codegen/cpp ./internal/codegen/csharp ./internal/codegen/elixir -run TestNameCorpusBuilds"),
 	e("internal/parser", "recursive-descent parser", "go test ./internal/parser", "go test ./internal/parser"),
 	e("internal/publicapi", "external-module API gate", "go test ./internal/publicapi", "go test ./internal/publicapi"),
 	e("internal/rfc3339", "strict RFC 3339 timestamp parser", "go test ./internal/rfc3339", "go test ./internal/rfc3339"),
@@ -183,6 +184,7 @@ var catalog = []Entry{
 	e("testdata/lua-nightly-fuzz", "Lua fuzz replay controls", "make schema-lua-fuzz-replay-controls", "make schema-lua-fuzz-replay"),
 	e("testdata/luau-nightly-fuzz", "Luau nightly fuzz repros", "make luau-nightly-fuzz-replay", "make luau-nightly-fuzz"),
 	e("testdata/moo-wire-fuzz-pinned-controls", "moo pinned-list controls", "make tables-moo-wire-fuzz-pinned-list-controls", "go test ./internal/ci -run TestMooPinnedListIsReadWhole"),
+	e("testdata/name-buildability-emit", "platform-shadowing names the emitters must express", "go test ./internal/codegen/c ./internal/codegen/cpp ./internal/codegen/csharp ./internal/codegen/elixir -run TestNameCorpusBuilds", "SCHEMA_SLOW=1 go test ./internal/codegen/c ./internal/codegen/cpp ./internal/codegen/csharp ./internal/codegen/elixir -run TestNameCorpusBuilds"),
 	e("testdata/ruby-gems-lock-controls", "Ruby gem lock controls", "make ruby-gems-lock-controls", "go test ./internal/ci -run TestRubyGemsLockIsReadWhole"),
 	e("testdata/wire", "pinned wire bytes", "go test ./internal/goldens", "make update-goldens"),
 
