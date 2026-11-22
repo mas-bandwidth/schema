@@ -109,11 +109,143 @@ glue() {
 		done
 		echo "    return -1;"
 		echo "}"
+		# THE 2026-11-22 SURFACES (test/conformance/README.md). The cook
+		# writer over a loaded value, for write-refusal-cook: <Root>CookMeasure
+		# then <Root>Cook into a buffer of that size, little-endian; 0 is
+		# written, 1 refused, -1 a root with no region cook writer.
+		echo "fn conformance_cook_var(root: const u8[:], data: const u8[:], vals: const schema_rt::LoadVal[:], nodes: const schema_rt::LoadNode[:], at: i64) -> i64 {"
+		for cf in "$1"/*Cook.goose; do
+			[ -f "$cf" ] || continue
+			for r in $(sed -n 's/^fn \([A-Za-z0-9_]*\)CookMeasure(data: .*/\1/p' "$cf"); do
+				echo "    if root == \"$r\" {"
+				echo "        let m = $ns::${r}CookMeasure(data, vals, nodes, at);"
+				echo "        if m < 0 { return 1; }"
+				echo "        var buf: u8[>..] = [];"
+				echo "        buf.resize(m, 0);"
+				echo "        if !$ns::${r}Cook(data, vals, nodes, at, buf[0..m], false) { return 1; }"
+				echo "        return 0;"
+				echo "    }"
+			done
+		done
+		echo "    return -1;"
+		echo "}"
+		# THE ANNOUNCEMENT (announce): the unit's announcement as the
+		# generator writes it ($ns::MessageAnnouncement), and AnnounceRead
+		# into a fresh vocabulary of the unit, its strict flag set by the
+		# runtime's own field or left at its default. -1 is a unit with no
+		# message form.
+		if grep -q '^let MessageAnnouncement:' "$1"/*.goose; then
+			echo "fn conformance_announce_write(out: u8[>..]&) -> i64 {"
+			echo "    out.append($ns::MessageAnnouncement);"
+			echo "    return 0;"
+			echo "}"
+			echo "fn conformance_announce_read(strict: bool, ann: const u8[:], out: u8[>..]&) -> i64 {"
+			echo "    var voc = schema_rt::MsgVocabulary { .. };"
+			echo "    voc.own_build_version = $ns::MessageBuildVersion;"
+			echo "    if strict { voc.strict = true; }"
+			echo "    var rep = schema_rt::MsgReport { .. };"
+			echo "    if schema_rt::announce_read(voc, ann, rep) && rep.reason == 0 && !rep.damaged { out.append(\"read\"); } else { out.append(\"refused\"); }"
+			echo "    out.push(10);"
+			echo "    return 0;"
+			echo "}"
+		else
+			echo "fn conformance_announce_write(out: u8[>..]&) -> i64 { return -1; }"
+			echo "fn conformance_announce_read(strict: bool, ann: const u8[:], out: u8[>..]&) -> i64 { return -1; }"
+		fi
+		# announce send: SaveMessages of ONE value, loaded from the row's wire
+		# or fresh (-), with no announcement read or written (FL-18)
+		echo "fn conformance_announce_send(root: const u8[:], data: const u8[:], fresh: bool, out: u8[>..]&) -> i64 {"
+		for r in $(sed -n 's/^fn \([A-Za-z0-9_]*\)SaveMessages(.*/\1/p' "$1"/*Table.goose); do
+			echo "    if root == \"$r\" {"
+			echo "        var values: $ns::$r[1] = [$ns::$r { .. }];"
+			echo "        if !fresh {"
+			if grep -q "^fn ${r}FixedEvolveLoad(" "$1"/*Table.goose; then
+				echo "            var rep = schema_rt::FixedEvolveReport { .. };"
+				echo "            if $ns::${r}FixedEvolveLoad(values[0..1], data, rep) != 1 || rep.damaged || rep.reason != 0 || rep.oor != 0 { return -2; }"
+			elif grep -q "^fn ${r}FixedLoad(" "$1"/*Table.goose; then
+				echo "            var rep = schema_rt::FixedReport { .. };"
+				echo "            if $ns::${r}FixedLoad(values[0..1], data, rep) != 1 || rep.damaged || rep.reason != 0 || rep.oor != 0 { return -2; }"
+			else
+				echo "            return -2;"
+			fi
+			echo "        }"
+			echo "        var srep = schema_rt::MsgReport { .. };"
+			echo "        var saved: u8[>..] = [];"
+			echo "        let n = $ns::${r}SaveMessages(values[0..1], saved, srep);"
+			echo "        if n < 0 || srep.reason != 0 { out.append(\"refused\"); out.push(10); return 0; }"
+			echo "        out.append(saved);"
+			echo "        return 0;"
+			echo "    }"
+		done
+		echo "    return -1;"
+		echo "}"
+		# READ INTO THE CALLER'S VALUES (read-into): the fixed load, LoadMessages
+		# and the text read each take the caller's values and ONE report; the
+		# same values and report go to all three reads, and the ToJson text of
+		# every value the call was handed is written after the refused one.
+		# -1 is a root with no such read.
+		echo "fn conformance_ri_verdict(out: u8[>..]&, ok: bool) {"
+		echo "    if ok { out.append(\"read\"); } else { out.append(\"refused\"); }"
+		echo "    out.push(10);"
+		echo "}"
+		tojson=$(sed -n 's/^fn \([A-Za-z0-9_]*\)ToJson(.*/\1/p' "$1"/*Table.goose)
+		echo "fn conformance_fresh_json(root: const u8[:], out: u8[>..]&) -> i64 {"
+		for r in $tojson; do
+			echo "    if root == \"$r\" { let v = $ns::$r { .. }; return $ns::${r}ToJson(v, out); }"
+		done
+		echo "    return -1;"
+		echo "}"
+		echo "fn conformance_read_into(root: const u8[:], form: const u8[:], lawful: const u8[:], damaged: const u8[:], count: i64, ann: const u8[:], out: u8[>..]&) -> i64 {"
+		for r in $tojson; do
+			if grep -q "^fn ${r}FixedLoad(" "$1"/*Table.goose; then
+				echo "    if form == \"fixed\" && root == \"$r\" {"
+				echo "        var values: $ns::$r[>..] = [];"
+				echo "        for _ in count { values.push($ns::$r { .. }); }"
+				echo "        var rep = schema_rt::FixedReport { .. };"
+				echo "        for step in 3 {"
+				echo "            let n = $ns::${r}FixedLoad(values[0..count], if step == 1 { damaged } else { lawful }, rep);"
+				echo "            conformance_ri_verdict(out, n >= 0 && !rep.damaged && rep.reason == 0);"
+				echo "            if step == 1 { for k in count { var t: u8[>..] = []; if $ns::${r}ToJson(values[k], t) < 0 { return -2; } out.append(t); } }"
+				echo "        }"
+				echo "        return 0;"
+				echo "    }"
+			fi
+			if grep -q "^fn ${r}LoadMessages(" "$1"/*Table.goose; then
+				echo "    if form == \"message\" && root == \"$r\" {"
+				echo "        var voc = schema_rt::MsgVocabulary { .. };"
+				echo "        var arep = schema_rt::MsgReport { .. };"
+				echo "        if !schema_rt::announce_read(voc, ann, arep) { return -3; }"
+				echo "        var values: $ns::$r[>..] = [];"
+				echo "        for _ in count { values.push($ns::$r { .. }); }"
+				echo "        var rep = schema_rt::MsgReport { .. };"
+				echo "        for step in 3 {"
+				echo "            let n = $ns::${r}LoadMessages(values[0..count], voc, if step == 1 { damaged } else { lawful }, rep);"
+				echo "            conformance_ri_verdict(out, n >= 0 && rep.reason == 0 && !rep.damaged);"
+				echo "            if step == 1 { for k in count { var t: u8[>..] = []; if $ns::${r}ToJson(values[k], t) < 0 { return -2; } out.append(t); } }"
+				echo "        }"
+				echo "        return 0;"
+				echo "    }"
+			fi
+			if grep -q "^fn ${r}FromJson(" "$1"/*Table.goose; then
+				echo "    if form == \"json\" && root == \"$r\" {"
+				echo "        var v = $ns::$r { .. };"
+				echo "        var rep = schema_rt::json_report();"
+				echo "        for step in 3 {"
+				echo "            let ok = $ns::${r}FromJson(v, if step == 1 { damaged } else { lawful }, rep);"
+				echo "            conformance_ri_verdict(out, ok && !rep.damaged && rep.reason == 0);"
+				echo "            if step == 1 { var t: u8[>..] = []; if $ns::${r}ToJson(v, t) < 0 { return -2; } out.append(t); }"
+				echo "        }"
+				echo "        return 0;"
+				echo "    }"
+			fi
+		done
+		echo "    return -1;"
+		echo "}"
 		NS="$ns" perl - "$1"/*.goose <<'EOF_WREF_PERL'
 use strict;
 use warnings;
 my $ns = $ENV{NS};
-my (%structs, %field_order, %slot_names, %enums, %unions, %fixed_load, %fixed_evolve, %msg_save, %json_to);
+my (%structs, %field_order, %slot_names, %enums, %unions, %fixed_load, %fixed_evolve, %msg_save, %json_to, %cook_typed, %block_begin);
 my $cur = "";
 my $cur_desc = "";
 my $in_ns = 0;
@@ -131,6 +263,8 @@ while (my $line = <>) {
 	if ($line =~ /^fn\s+([A-Za-z0-9_]+)FixedEvolveLoad\(/) { $fixed_evolve{$1} = 1; }
 	if ($line =~ /^fn\s+([A-Za-z0-9_]+)SaveMessages\(/) { $msg_save{$1} = 1; }
 	if ($line =~ /^fn\s+([A-Za-z0-9_]+)ToJson\(/) { $json_to{$1} = 1; }
+	if ($line =~ /^fn\s+([A-Za-z0-9_]+)CookMeasure\(\)/) { $cook_typed{$1} = 1; }
+	if ($line =~ /^fn\s+([A-Za-z0-9_]+)BlockBegin\(/) { $block_begin{$1} = 1; }
 	if ($line =~ /^struct\s+([A-Za-z0-9_]+)\s*\{/) {
 		$cur = $1;
 		$structs{$cur} = {};
@@ -283,6 +417,13 @@ for my $st (sort keys %structs) {
 				print "            }\n";
 				print "        }\n";
 			} else {
+				if (!exists $structs{$st}{"${f}Count"}) {
+					# SF-34, SF-35, FL-22: a native [N] array holds exactly N
+					# elements, so `elems` of any other count cannot be held
+					print "        if rest.len == 0 && idx < 0 && kind == \"elems\" {\n";
+					print "            return if wref_parse_i64(text) == $cap { 1 } else { 2 };\n";
+					print "        }\n";
+				}
 				if (exists $structs{$st}{"${f}Count"}) {
 					print "        if rest.len == 0 && idx < 0 && kind == \"count\" {\n";
 					print "            let n = wref_parse_i64(text);\n";
@@ -320,7 +461,7 @@ for my $st (sort keys %structs) {
 			my $raw_t = $enums{$ft} || $ft;
 			my $cast_t = exists($enums{$ft}) ? "${ns}::$ft" : $ft;
 			if ($raw_t =~ /^(u8|u16|u32|u64|i8|i16|i32|i64)$/) {
-				print "        if rest.len == 0 && idx < 0 && (kind == \"int\" || kind == \"ordinal\") {\n";
+				print "        if rest.len == 0 && idx < 0 && (kind == \"int\" || kind == \"ordinal\" || kind == \"mask\") {\n";
 				print "            let n = wref_parse_i64(text);\n";
 				if (my $b = $int_bounds{$raw_t}) {
 					print "            if n < $b->[0] || n > $b->[1] { return 2; }\n";
@@ -336,26 +477,53 @@ for my $st (sort keys %structs) {
 	print "    return 0;\n}\n";
 }
 
-print "fn conformance_wref(surface: const u8[:], root: const u8[:], announce: const u8[:], data: const u8[:], path: const u8[:], kind: const u8[:], text: const u8[:]) -> const u8[:] {\n";
-for my $r (sort keys %fixed_load) {
+# a wire of `-` (fresh) starts from the root's fresh value (SF-05, SF-06)
+print "fn conformance_wref(surface: const u8[:], root: const u8[:], announce: const u8[:], data: const u8[:], fresh: bool, path: const u8[:], kind: const u8[:], text: const u8[:]) -> const u8[:] {\n";
+my %wref_roots = (%fixed_load, %msg_save);
+for my $r (sort keys %wref_roots) {
 	next unless exists $structs{$r} && !$unions{$r};
 	print "    if root == \"$r\" {\n";
 	print "        var values: ${ns}::$r\[1] = [${ns}::$r { .. }];\n";
-	if ($fixed_evolve{$r}) {
+	if (!$fixed_load{$r}) {
+		print "        if !fresh { return \"!load-failed\"; }\n";
+	} elsif ($fixed_evolve{$r}) {
 		print "        var rep = schema_rt::FixedEvolveReport { .. };\n";
-		print "        if ${ns}::${r}FixedEvolveLoad(values[0..1], data, rep) != 1 || rep.damaged || rep.reason != 0 || rep.oor != 0 { return \"!load-failed\"; }\n";
+		print "        if !fresh && (${ns}::${r}FixedEvolveLoad(values[0..1], data, rep) != 1 || rep.damaged || rep.reason != 0 || rep.oor != 0) { return \"!load-failed\"; }\n";
 	} else {
 		print "        var rep = schema_rt::FixedReport { .. };\n";
-		print "        if ${ns}::${r}FixedLoad(values[0..1], data, rep) != 1 || rep.damaged || rep.reason != 0 || rep.oor != 0 { return \"!load-failed\"; }\n";
+		print "        if !fresh && (${ns}::${r}FixedLoad(values[0..1], data, rep) != 1 || rep.damaged || rep.reason != 0 || rep.oor != 0) { return \"!load-failed\"; }\n";
+	}
+	if ($block_begin{$r}) {
+		# shared ruling 2: <Root>BlockBegin lays the block out from its
+		# counts and is handed no field value, no used length and no inline
+		# array's count, so a row of those kinds is unrepresentable
+		print "        if surface == \"write-refusal-block\" {\n";
+		print "            if kind == \"int\" || kind == \"length\" || kind == \"elems\" || kind == \"float\" || kind == \"mask\" || kind == \"bytes\" { return \"unrepresentable\\n\"; }\n";
+		print "            return \"!block-kind-not-driven\";\n";
+		print "        }\n";
 	}
 	print "        let st = wref_set_$r(values[0], path, kind, text);\n";
 	print "        if st == 0 { return \"!set-failed\"; }\n";
 	print "        if st == 2 { return \"unrepresentable\\n\"; }\n";
-	print "        if surface == \"write-refusal\" || surface == \"write-refusal-fixed\" {\n";
-	print "            var saved: u8[>..] = [];\n";
-	print "            if ${ns}::${r}FixedSave(values[0..1], saved) < 0 { return \"refused\\n\"; }\n";
-	print "            return \"wrote\\n\";\n";
-	print "        }\n";
+	if ($fixed_load{$r}) {
+		print "        if surface == \"write-refusal\" || surface == \"write-refusal-fixed\" {\n";
+		print "            var saved: u8[>..] = [];\n";
+		print "            if ${ns}::${r}FixedSave(values[0..1], saved) < 0 { return \"refused\\n\"; }\n";
+		print "            return \"wrote\\n\";\n";
+		print "        }\n";
+	}
+	if ($cook_typed{$r}) {
+		# the cook writer: <Root>CookMeasure, then <Root>Cook into a buffer
+		# of that size, little-endian
+		print "        if surface == \"write-refusal-cook\" {\n";
+		print "            let cm = ${ns}::${r}CookMeasure();\n";
+		print "            if cm < 0 { return \"refused\\n\"; }\n";
+		print "            var cbuf: u8[>..] = [];\n";
+		print "            cbuf.resize(cm, 0);\n";
+		print "            if !${ns}::${r}Cook(values[0], cbuf[0..cm], false) { return \"refused\\n\"; }\n";
+		print "            return \"wrote\\n\";\n";
+		print "        }\n";
+	}
 	if ($msg_save{$r}) {
 		print "        if surface == \"write-refusal-message\" {\n";
 		print "            var voc = schema_rt::MsgVocabulary { .. };\n";
@@ -937,7 +1105,7 @@ main_units() {
 	framing) awk '$1 == "framing" { print $3 }' "$1" ;;
 	retain | retain-save) awk '$1 == "retain" { print $3 }' "$1" ;;
 	json-hostile) awk '$1 == "json-hostile" { print $3 }' "$1" ;;
-	write-refusal | write-refusal-fixed | write-refusal-json) awk -v s="$2" '$1 == s { print $3 }' "$1" ;;
+	write-refusal | write-refusal-fixed | write-refusal-json | write-refusal-cook | write-refusal-block | announce | read-into | json-write-into) awk -v s="$2" '$1 == s { print $3 }' "$1" ;;
 	write-refusal-message) awk '$1 == "connection" { u[$2] = $3 } $1 == "write-refusal-message" && ($3 in u) { print u[$3] }' "$1" ;;
 	*) awk '$1 == "unit" { print $2 }' "$1" ;;
 	esac | sort -u
@@ -1042,7 +1210,7 @@ for key in $(awk '$1 == "unit" { print $2 }' "$1"); do
 				(s == "framing" && $1 == "framing" && $3 == k) ||
 				((s == "retain" || s == "retain-save") && $1 == "retain" && $3 == k) ||
 				(s == "json-hostile" && $1 == "json-hostile" && $3 == k) ||
-				((s == "write-refusal" || s == "write-refusal-fixed" || s == "write-refusal-json") && $1 == s && $3 == k) ||
+				((s == "write-refusal" || s == "write-refusal-fixed" || s == "write-refusal-json" || s == "write-refusal-cook" || s == "write-refusal-block" || s == "announce" || s == "read-into" || s == "json-write-into") && $1 == s && $3 == k) ||
 				(s == "write-refusal-message" && $1 == "write-refusal-message" && unit_of[$3] == k) { print $2 " absent" }' "$1" >"$dir/$2.$key.out"
 			echo 0 >"$dir/$2.$key.rc"
 			continue
