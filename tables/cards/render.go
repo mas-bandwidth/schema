@@ -3,8 +3,8 @@
 // Render loads the record's wire into a temporary measured/aligned generated
 // region and emits the admitted brief text: RESULT first, the mapped keys in a
 // fixed documented order, extras in stored order, then the body bytes verbatim
-// (docs/SPEC-TABLES.md §6.2, §16). It is a known-field view reporting tolerant
-// projection events like ToJSON, never an archival/machine-state rewrite.
+// (docs/SPEC-TABLES.md §6.2, §16). It is a known-field view returning a
+// strict read report like ToJSON, never an archival/machine-state rewrite.
 package cards
 
 import (

@@ -869,7 +869,7 @@ dropped, which must turn the map's test red beside the list's, and the KEYS'
 ascending test dropped, which is the map's alone and would go untested under a
 shared control.
 
-**Targets:** maps, json-map-walk, maps-sort-negative-control, maps-dead-entry-negative-control, maps-ascending-negative-control, maps-duplicate-negative-control, maps-key-kind-negative-control, maps-clamp-negative-control, maps-fit-negative-control, maps-depth-negative-control, maps-text-order-negative-control, maps-unreached-negative-control, maps-cook-check-negative-control
+**Targets:** maps, json-map-walk, maps-sort-negative-control, maps-dead-entry-negative-control, maps-ascending-negative-control, maps-repeated-key-negative-control, maps-key-kind-negative-control, maps-key-over-bound-negative-control, maps-fit-negative-control, maps-depth-negative-control, maps-text-order-negative-control, maps-unreached-negative-control, maps-cook-check-negative-control
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | goose | moo | lobster | squirrel | luau | lua | python | ruby | unity |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
