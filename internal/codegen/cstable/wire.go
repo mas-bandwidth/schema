@@ -472,6 +472,10 @@ func (g *tableGen) wireColumns(f *ir.Field) string {
 	} else if f.Type.Kind == ir.TBits && int64(f.Type.Width) < 8*ir.TableFixedStorageBytes(f.Type) {
 		high := (uint64(1) << f.Type.Width) - 1
 		fmt.Fprintf(&b, ", RequiredValidRaw = delegate (ulong raw) { return raw <= %dul; }", high)
+	} else if fl := flagsRef(f); fl != nil && fl.WireBits < 64 {
+		// A FLAGS MASK HOLDS TO ITS WIDTH W (docs/SPEC-TABLES.md §4, A TABLE LOAD
+		// HOLDS A MASK TO ITS WIDTH): a write never lands a bit its own read refuses
+		fmt.Fprintf(&b, ", RequiredValidRaw = delegate (ulong raw) { return (raw >> %d) == 0; }", fl.WireBits)
 	}
 	if f.HasFloatRange {
 		typ := csFieldType(f.Type)
@@ -497,6 +501,11 @@ func (g *tableGen) wireColumns(f *ir.Field) string {
 		}
 	} else if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
 		fmt.Fprintf(&c, "if (v > %dul) { if (!r.Refused) { r.Refused = true; r.Reason = \"out_of_range\"; } } ", (uint64(1)<<f.Type.Width)-1)
+	} else if fl := flagsRef(f); fl != nil && fl.WireBits < 64 {
+		// A MASK BIT AT OR ABOVE THE READER'S W REFUSES THE LOAD (docs/SPEC-TABLES.md
+		// §4): flags append at the end, so old data never carries one, and an old
+		// reader does not read new data; every widened unsigned kind lands here too
+		fmt.Fprintf(&c, "if ((raw >> %d) != 0) { if (!r.Refused) { r.Refused = true; r.Reason = \"out_of_range\"; } } ", fl.WireBits)
 	}
 	if f.HasFloatRange {
 		lit := formatFloat64

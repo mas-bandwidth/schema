@@ -102,6 +102,11 @@ func messageSlot(u *ir.Unit, f *ir.Field) string {
 	lo, hi, ok := ir.TableRawRange(f)
 	if f.Type.Kind == ir.TBits {
 		lo, hi, ok = big.NewInt(0), new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1)), true
+	} else if fl, isFlags := f.Type.Ref.(*ir.Flags); isFlags && f.Type.Kind == ir.TNamed && fl.WireBits < 64 {
+		// A MASK BIT AT OR ABOVE THE READER'S W REFUSES (docs/SPEC-TABLES.md §4, A
+		// TABLE LOAD HOLDS A MASK TO ITS WIDTH): a newer writer announces a wider
+		// mask, and each value is held to this reader's own W
+		lo, hi, ok = big.NewInt(0), new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(fl.WireBits)), big.NewInt(1)), true
 	} else if !ok && ir.TableKindWide(tableScalarKind(f)) {
 		lo, hi = tableStorageRange(f.Type.Signed, f.Type.Width)
 		ok = true
