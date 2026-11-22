@@ -258,7 +258,7 @@ if (mode == "list") {
   foreach (name in ["wire", "report", "framing", "json-read", "json-write", "json-hostile",
                      "cook", "cook-foreign", "block", "block-foreign", "block-dump",
                      "forgery", "cook-forgery", "cook-reason", "block-reason",
-                     "cook-write", "message", "retain", "retain-save",
+                     "cook-write", "message", "message-prior", "retain", "retain-save",
                      "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json"]) print(name + "\n");
   return;
 }
@@ -769,6 +769,51 @@ if (mode == "message") {
     local lr = {};
     local count = T[root + "LoadMessages"](storage, v, readBytes(f[5]), lr);
     if (count < 1 || lr.bodyDamaged || (("refused" in lr) && lr.refused)) throw name + ": LoadMessages answered " + count;
+    local values = storage.slice(0, count);
+    local size = T[root + "MeasureMessages"](values, {});
+    if (size < 0) throw name + ": MeasureMessages refused";
+    local out = blob(size);
+    if (T[root + "SaveMessages"](values, out, {}) != size) throw name + ": SaveMessages did not write the measure";
+    writeBytes(outdir + "/" + name, out);
+  }
+  return;
+}
+
+// THE PRIOR WRITER (testdata/conformance/tables/FORMAT.md, `message-prior`): the same
+// read of a prior writer's batch, handed on its own keywords (prior-connection,
+// prior-message). A row may owe a refusal, so the answer is what the public
+// read returned: the batch re-saved, or <case>.refused holding this leg's own
+// reason, which the harness never compares (docs/rulings.json
+// refusal-verdict-only).
+if (mode == "message-prior") {
+  local connections = {};
+  foreach (ln in lines) {
+    local f = splitFields(ln);
+    if (f.len() >= 5 && f[0] == "prior-connection") connections[f[1]] <- { unit = f[2], file = f[4] };
+  }
+  foreach (ln in lines) {
+    local f = splitFields(ln);
+    if (f.len() < 6 || f[0] != "prior-message") continue;
+    local name = f[1]; local root = f[3];
+    if (!(f[2] in connections)) throw name + ": no prior-connection " + f[2];
+    local conn = connections[f[2]];
+    if (!generated(conn.unit)) { writeAbsent(name); continue; }
+    local T = openUnit(conn.unit)[1];
+    if (!T.Descriptors[root].fixed) {
+      writeText(outdir + "/" + name + ".absent", "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)");
+      continue;
+    }
+    local v = {};
+    local ar = {};
+    if (!T.AnnounceRead(v, readBytes(conn.file), ar)) throw name + ": AnnounceRead refused: " + (("reason" in ar) ? ar.reason : "?");
+    local storage = array(T.TableMessageBatchMax);
+    for (local i = 0; i < storage.len(); i++) storage[i] = T[root]();
+    local lr = {};
+    local count = T[root + "LoadMessages"](storage, v, readBytes(f[5]), lr);
+    if (count < 1 || (("bodyDamaged" in lr) && lr.bodyDamaged) || (("refused" in lr) && lr.refused)) {
+      writeText(outdir + "/" + name + ".refused", ("reason" in lr) ? ("" + lr.reason) : "refused");
+      continue;
+    }
     local values = storage.slice(0, count);
     local size = T[root + "MeasureMessages"](values, {});
     if (size < 0) throw name + ": MeasureMessages refused";
