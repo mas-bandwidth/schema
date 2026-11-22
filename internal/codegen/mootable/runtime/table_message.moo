@@ -373,8 +373,10 @@ local function fixedKind(k: number): boolean
 	return k >= 20 and k <= 29
 end
 
+-- Kind 31 is held by name and never written (R17): an announcement naming it
+-- is malformed, as one naming 33 or 34 is.
 local function knownKind(k: number): boolean
-	return k == 0 or (k >= 1 and k <= 17) or (k >= 18 and k <= 29) or (k >= 30 and k <= 32) or k == 36
+	return k == 0 or (k >= 1 and k <= 17) or (k >= 18 and k <= 29) or k == 30 or k == 32 or k == 36
 end
 
 -- the compressed float's derivation (ir.TableMessageQuantization): the step
@@ -713,7 +715,7 @@ local function announceRead(v: any, data: buffer, report: any): boolean
 					return false
 				end
 				at += w
-			elseif kind == 12 or kind == 13 or kind == 14 or kind == 15 or kind == 16 or kind == 31 then
+			elseif kind == 12 or kind == 13 or kind == 14 or kind == 15 or kind == 16 then
 				local n
 				n, at = V.leb(data, at, start)
 				if n == nil or at + n > start then
@@ -1699,15 +1701,6 @@ skipEntry = function(t: any, kind: number, shape: any, depth: number?, field: bo
 			return dmal(t)
 		end
 		return true
-	elseif kind == 31 then
-		if not ralign(r) then
-			return false
-		end
-		local n, ok = get(r, 32)
-		if not ok then
-			return false
-		end
-		return skipBits(r, n * 8)
 	elseif kind == 14 or kind == 16 then
 		local n = shape.min
 		local width = countBits(shape)
