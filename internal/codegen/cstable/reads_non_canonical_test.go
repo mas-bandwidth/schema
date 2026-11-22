@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -14,6 +13,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // csNonCanonicalRow is one row of testdata/wire/non-canonical/MANIFEST.tsv.
@@ -434,7 +435,7 @@ func csNonCanonicalRun(t *testing.T, schema, program string) string {
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, csDotnet(), args...)
+	cmd := testproc.CommandContext(t, ctx, csDotnet(), args...)
 	cmd.Env = csDotnetEnv(dir, dir)
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -444,7 +445,7 @@ func csNonCanonicalRun(t *testing.T, schema, program string) string {
 	if err := os.WriteFile(filepath.Join(dir, "probe.runtimeconfig.json"), []byte(rc), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	run := exec.CommandContext(ctx, csDotnet(), "exec", app)
+	run := testproc.CommandContext(t, ctx, csDotnet(), "exec", app)
 	run.Env = csDotnetEnv(dir, dir)
 	run.Dir = dir
 	out, err := run.CombinedOutput()

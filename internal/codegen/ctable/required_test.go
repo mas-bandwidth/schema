@@ -11,6 +11,8 @@ import (
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func runCProbe(t *testing.T, schema, probe string) {
@@ -48,10 +50,10 @@ func runCProbe(t *testing.T, schema, probe string) {
 		}
 	}
 	args = append(args, "-lm", "-o", bin)
-	if out, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile failed: %v\n%s", err, out)
 	}
-	if out, err := exec.Command(bin).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, bin).CombinedOutput(); err != nil {
 		t.Fatalf("probe failed: %v\n%s", err, out)
 	}
 }

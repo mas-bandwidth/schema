@@ -3,13 +3,14 @@ package cstable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // THE WRITER'S RANGE IS THE BOUND (docs/FIXED-FORM-ALGORITHM.md §4.5), the
@@ -153,7 +154,7 @@ static class ProbeMain
 			if dotnet == "" {
 				dotnet = "dotnet"
 			}
-			cmd := exec.Command(dotnet, "run", "--project", dir, "-v", "q", "--nologo")
+			cmd := testproc.Command(t, dotnet, "run", "--project", dir, "-v", "q", "--nologo")
 			cmd.Dir = dir
 			cmd.Env = append(os.Environ(), "SCHEMA_FIXEDFORM_CORPUS="+corpus, "DOTNET_NOLOGO=1")
 			out, runErr := cmd.CombinedOutput()

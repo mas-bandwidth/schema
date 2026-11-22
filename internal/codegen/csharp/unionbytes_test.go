@@ -13,6 +13,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const unionByteArraySchema = `package unionbytes
@@ -203,7 +205,7 @@ func runUnionByteArrayCsProbe(t *testing.T, files map[string][]byte) {
 		args = append(args, "-r:"+ref)
 	}
 	args = append(args, sources...)
-	compile := exec.Command(dotnet, args...)
+	compile := testproc.Command(t, dotnet, args...)
 	compile.Env, compile.Dir = csUnionBytesEnv(dir, dir), dir
 	if out, err := compile.CombinedOutput(); err != nil {
 		t.Fatalf("csc compile failed: %v\n%s", err, out)
@@ -213,7 +215,7 @@ func runUnionByteArrayCsProbe(t *testing.T, files map[string][]byte) {
 	if err := os.WriteFile(filepath.Join(dir, "probe.runtimeconfig.json"), []byte(cfg), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	run := exec.Command(dotnet, "exec", app)
+	run := testproc.Command(t, dotnet, "exec", app)
 	run.Env, run.Dir = csUnionBytesEnv(dir, dir), dir
 	out, err := run.CombinedOutput()
 	if err != nil {

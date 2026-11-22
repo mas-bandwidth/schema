@@ -7446,8 +7446,27 @@ release-binaries:
 RELEASE_DIFFERENTIAL_PREV ?=
 RELEASE_DIFFERENTIAL_FLAGS ?=
 RELEASE_DIFFERENTIAL_JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
+# THE JUDGE CORPUS (tools/releasediff/testdata/judge-corpus): committed cases,
+# each two listings of what the packet drivers wrote and the verdict the
+# release owes on them, replayed through the differential's own Judge. The
+# differential and its negative control both run it first, so the gate replays
+# its own regressions (F-142: a pin on one side only, no file name in common)
+# on every release and every night. It reads files only and takes under a
+# second; it is red on an empty corpus and on a case folder its index does
+# not name. After it, THE JUDGE REVISIONS (testdata/judge-revisions, every
+# folder there, in name order): one case id in successive states, replayed
+# under the same work path, each owing the verdict a fresh scratch gives it
+# (F-216: a pin an earlier state wrote was still in the scratch for the next).
+RELEASE_JUDGE_REVISIONS := $(sort $(patsubst %/,%,$(wildcard tools/releasediff/testdata/judge-revisions/*/)))
+# One -judge-corpus per directory, in order (F-237: a directory is named whole,
+# never split at a comma).
+.PHONY: release-differential-judge-corpus
+release-differential-judge-corpus:
+	@test -n "$(word 2,$(RELEASE_JUDGE_REVISIONS))" || { echo "release-differential-judge-corpus: tools/releasediff/testdata/judge-revisions holds fewer than two revisions: successive states need two" >&2; exit 1; }
+	go run ./tools/releasediff $(foreach d,tools/releasediff/testdata/judge-corpus $(RELEASE_JUDGE_REVISIONS),-judge-corpus $(d)) -work build/release-differential-judge-corpus
+
 .PHONY: release-differential release-differential-negative-control
-release-differential: $(SERIALIZE_RUNTIME)/serialize.h
+release-differential: $(SERIALIZE_RUNTIME)/serialize.h release-differential-judge-corpus
 	go run ./tools/releasediff $(if $(RELEASE_DIFFERENTIAL_PREV),-prev $(RELEASE_DIFFERENTIAL_PREV)) -rev $(RELEASE_COMMIT) -serialize $(SERIALIZE_RUNTIME) -j $(RELEASE_DIFFERENTIAL_JOBS) $(RELEASE_DIFFERENTIAL_FLAGS)
 
 # THE RELEASE REFUSES ON IT (release-refuses-on-differential). Two dry runs of
@@ -7509,7 +7528,7 @@ release-refuses-on-differential-negative-control: release-refuses-on-differentia
 # and on no other wire.
 RELEASE_DIFFERENTIAL_CONTROL := build/release-differential-control
 RELEASE_DIFFERENTIAL_RUN = go run ./tools/releasediff -prev clean -old-bin $(RELEASE_DIFFERENTIAL_CONTROL)/schema-clean -corpus . -serialize $(SERIALIZE) -j $(RELEASE_DIFFERENTIAL_JOBS)
-release-differential-negative-control:
+release-differential-negative-control: release-differential-judge-corpus
 	@rm -rf $(RELEASE_DIFFERENTIAL_CONTROL) && mkdir -p $(RELEASE_DIFFERENTIAL_CONTROL)
 	go build -o $(RELEASE_DIFFERENTIAL_CONTROL)/schema-clean ./cmd/schema
 	go run ./tools/sabotage -name release-differential-union-tag -out $(RELEASE_DIFFERENTIAL_CONTROL)/functions.gotext internal/codegen/cpp/functions.go

@@ -3,13 +3,14 @@ package compiler
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/viewlisting"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestGoUnitViewCorpus(t *testing.T) {
@@ -65,7 +66,7 @@ func TestGoUnitViewCorpus(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			cmd := exec.Command("go", "test", "-count=1", ".")
+			cmd := testproc.Command(t, "go", "test", "-count=1", ".")
 			cmd.Dir = dir
 			if out, err := cmd.CombinedOutput(); err != nil {
 				t.Fatalf("generated view: %v\n%s", err, out)

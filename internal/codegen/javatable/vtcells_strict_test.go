@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -31,6 +30,8 @@ import (
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 var javaVarCellAnchors = map[string]struct {
@@ -400,10 +401,10 @@ func javaVariableCellsStrictRun(t *testing.T, undermine func(pkg string, files m
 	args := append([]string{"--release", "17", "-d", classes}, oldPaths...)
 	args = append(args, newPaths...)
 	args = append(args, probePath)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		return string(out), fmt.Errorf("javac: %w", err)
 	}
-	cmd := exec.Command(javaBin, "-ea", "-cp", classes, "Probe")
+	cmd := testproc.Command(t, javaBin, "-ea", "-cp", classes, "Probe")
 	var env []string
 	for _, e := range os.Environ() {
 		if !strings.HasPrefix(e, "JAVA_TOOL_OPTIONS=") {

@@ -58,7 +58,7 @@ func WriteDefaultArm(stream *serialize.WriteStream, value *DefaultArm) error {
 		f0 := uint64(value.Entries[i].Retries) & 0xffffffff
 		f1 := uint64(value.Entries[i].Preferred) & 0xf
 		w0 := f0 | f1<<32
-		stream.SerializeBits64(&w0, 36)
+		_ = stream.SerializeBits64(&w0, 36) // sticky: the stream latches the first error and Err reports it
 	}
 	if value.Marker > 7 {
 		return serialize.ErrValueOutOfRange
@@ -94,7 +94,7 @@ func (value *DefaultArm) read(stream *serialize.ReadStream) error {
 	value.EntriesCount = int32(offsetValue)
 	for i := int32(0); i < value.EntriesCount; i++ {
 		c0 := uint64(0)
-		stream.SerializeBits64(&c0, 36)
+		_ = stream.SerializeBits64(&c0, 36) // sticky: checked once for the run below
 		if stream.Err() != nil {
 			return stream.Err()
 		}

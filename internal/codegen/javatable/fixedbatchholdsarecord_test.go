@@ -9,12 +9,13 @@ package javatable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestJavaFixedBatchHoldsARecord(t *testing.T) {
@@ -60,12 +61,12 @@ func TestJavaFixedBatchHoldsARecord(t *testing.T) {
 	}
 	sources = append(sources, filepath.Join(src, "Driver.java"))
 	args := append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 
 	// -ea is the debug build: the save contract is a debug assert.
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "Driver", oneRecord, noRecord).CombinedOutput()
+	out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, "Driver", oneRecord, noRecord).CombinedOutput()
 	if err != nil {
 		t.Fatalf("java Driver: %v\n%s", err, out)
 	}

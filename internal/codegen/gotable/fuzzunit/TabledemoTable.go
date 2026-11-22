@@ -1022,6 +1022,11 @@ func (w *TableWriter) Put64(v uint64) {
 	}
 }
 
+// putI64 and getI8..getI64: same-width two's-complement lanes, lossless both ways.
+func (w *TableWriter) putI64(v int64) {
+	w.Put64(uint64(v)) /* #nosec G115 -- same-width two's-complement */
+}
+
 // Put128 writes two little-endian lanes, low first, under one Advance.
 func (w *TableWriter) Put128(lo, hi uint64) {
 	at := w.Offset
@@ -1165,6 +1170,18 @@ func (r *TableReader) Get64() uint64 {
 	v := binary.LittleEndian.Uint64(r.Buffer[r.Offset:])
 	r.Offset += 8
 	return v
+}
+func (r *TableReader) getI8() int8 {
+	return int8(r.Get8()) /* #nosec G115 -- same-width two's-complement */
+}
+func (r *TableReader) getI16() int16 {
+	return int16(r.Get16()) /* #nosec G115 -- same-width two's-complement */
+}
+func (r *TableReader) getI32() int32 {
+	return int32(r.Get32()) /* #nosec G115 -- same-width two's-complement */
+}
+func (r *TableReader) getI64() int64 {
+	return int64(r.Get64()) /* #nosec G115 -- same-width two's-complement */
 }
 
 // lebPair reads a one-byte canonical LEB. False means EOF or a multi-byte
@@ -2510,6 +2527,9 @@ func tableFixedLineagePlans(known []TableFixedKnownLayout, myLayout []byte, dst 
 	return out
 }
 
+func tableFixedOverlayOf[T any](p *T) []byte {
+	return tableFixedOverlay(unsafe.Pointer(p), unsafe.Sizeof(*p))
+}
 func init() {
 	if unsafe.Sizeof(EffectRow{}) != 8 || unsafe.Offsetof(EffectRow{}.Type) != 0 {
 		panic("schema union row layout")
@@ -5264,6 +5284,11 @@ func (w *TableRetainWriter) Put64(v uint64) {
 	if w.Advance(8) && !w.Measuring {
 		binary.LittleEndian.PutUint64(w.Buffer[at:], v)
 	}
+}
+
+// putI64 and getI8..getI64: same-width two's-complement lanes, lossless both ways.
+func (w *TableRetainWriter) putI64(v int64) {
+	w.Put64(uint64(v)) /* #nosec G115 -- same-width two's-complement */
 }
 
 // Put128 writes two little-endian lanes, low first, under one Advance.
