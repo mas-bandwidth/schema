@@ -268,11 +268,6 @@ func (m *msgGen) rides(f *ir.Field, expr, dexpr, ind string) string {
 			return expr + "_length > 0"
 		}
 		return fmt.Sprintf("%s_length != %d || %s[..%d] != %s", expr, len(f.DefBytes), expr, len(f.DefBytes), rustByteArray(f.DefBytes))
-	case f.Array == ir.ArrayCounted && f.ArrayMin > 0 && !isStructRef(f.Type) && !isUnionRef(f.Type) && f.Type.Kind != ir.TString && f.Type.Kind != ir.TBytes:
-		// A [Min..N]T ARRAY AT ITS BIRTH ELIDES (internal/tablewire
-		// messageElides): Min elements, each at its default.
-		e := msgElement(f)
-		return fmt.Sprintf("%s_count > 0 && (%s_count != %d || (0..%d).any(|i| %s))", expr, expr, f.ArrayMin, f.ArrayMin, m.rides(e, expr+"[i]", dexpr+"[i]", ind))
 	case f.Array == ir.ArrayCounted:
 		return m.countedRides(f, expr, dexpr, ind)
 	case f.Array == ir.ArrayFixed:
