@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -85,7 +86,7 @@ func TestFixedDeadBytesAreZero(t *testing.T) {
 				t.Fatal("nested lineage reader accepted non-zero union dead bytes")
 			}
 			if !mapsEqual(r.fresh, r.value) {
-				t.Fatal("nested lineage refusal left the row off its declared default (R4)")
+				t.Fatalf("nested lineage refusal left the row off its declared default (R4): %s", deadDiff(r.fresh, r.value))
 			}
 		})
 	}
@@ -138,7 +139,7 @@ func checkDeadBytesResult(t *testing.T, vec fixedvector.DeadVector, r deadProbeR
 		// RULING R4: the refusal leaves the row handed in at its declared
 		// default, every field equal to a fresh value's.
 		if !mapsEqual(r.fresh, r.value) {
-			t.Fatalf("%s reader: %s refusal left the row off its declared default", reader, vec.File)
+			t.Fatalf("%s reader: %s refusal left the row off its declared default: %s", reader, vec.File, deadDiff(r.fresh, r.value))
 		}
 		return
 	}
@@ -560,4 +561,21 @@ public final class DeadProbe {
 }
 `, pkg, root, pkg, root, pkg, root, pkg, root, pkg, pkg, pkg, root, pkg, pkg, root, pkg, root, pkg, root)
 	return b.String()
+}
+
+// deadDiff names the fields where a refused row differs from a fresh value.
+func deadDiff(fresh, value map[string]string) string {
+	var out []string
+	for k, want := range fresh {
+		if got := value[k]; got != want {
+			out = append(out, fmt.Sprintf("%s=%q want %q", k, got, want))
+		}
+	}
+	for k, got := range value {
+		if _, ok := fresh[k]; !ok {
+			out = append(out, fmt.Sprintf("%s=%q not in a fresh value", k, got))
+		}
+	}
+	sort.Strings(out)
+	return strings.Join(out, "; ")
 }
