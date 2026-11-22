@@ -11957,9 +11957,9 @@ inline int64_t TeamConfigSaveMessages( const TeamConfig * values, int64_t count,
 //
 // `count` is IN and OUT: in, the storage the caller has room for, and out,
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
-// batch_too_large, found from the count before a body is decoded, and count
-// comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// batch_too_large, found from the count before a body is decoded: count
+// comes back 0, as for every refused batch, and the storage is untouched; a
+// caller that needs room reads the wire's M itself. DAMAGE ANYWHERE IN THE BATCH
 // DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
 // and every body the walk touched is reset to its declared defaults.
 inline bool TeamConfigLoadMessages( TeamConfig * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
@@ -11978,8 +11978,7 @@ inline bool TeamConfigLoadMessages( TeamConfig * values, int64_t * count, const 
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity )
     {
-        *count = bodies;
-        TableMessageRefuseBatch( to );
+        TableMessageRefuseBatch( to ); // a refused batch returns a count of 0 (§3.3)
         return false;
     }
     for ( int64_t i = 0; i < bodies; i++ )
@@ -12508,9 +12507,9 @@ inline int64_t GunnerConfigSaveMessages( const GunnerConfig * values, int64_t co
 //
 // `count` is IN and OUT: in, the storage the caller has room for, and out,
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
-// batch_too_large, found from the count before a body is decoded, and count
-// comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// batch_too_large, found from the count before a body is decoded: count
+// comes back 0, as for every refused batch, and the storage is untouched; a
+// caller that needs room reads the wire's M itself. DAMAGE ANYWHERE IN THE BATCH
 // DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
 // and every body the walk touched is reset to its declared defaults.
 inline bool GunnerConfigLoadMessages( GunnerConfig * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
@@ -12529,8 +12528,7 @@ inline bool GunnerConfigLoadMessages( GunnerConfig * values, int64_t * count, co
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity )
     {
-        *count = bodies;
-        TableMessageRefuseBatch( to );
+        TableMessageRefuseBatch( to ); // a refused batch returns a count of 0 (§3.3)
         return false;
     }
     for ( int64_t i = 0; i < bodies; i++ )
@@ -13190,9 +13188,9 @@ inline int64_t TurretConfigSaveMessages( const TurretConfig * values, int64_t co
 //
 // `count` is IN and OUT: in, the storage the caller has room for, and out,
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
-// batch_too_large, found from the count before a body is decoded, and count
-// comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// batch_too_large, found from the count before a body is decoded: count
+// comes back 0, as for every refused batch, and the storage is untouched; a
+// caller that needs room reads the wire's M itself. DAMAGE ANYWHERE IN THE BATCH
 // DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
 // and every body the walk touched is reset to its declared defaults.
 inline bool TurretConfigLoadMessages( TurretConfig * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
@@ -13211,8 +13209,7 @@ inline bool TurretConfigLoadMessages( TurretConfig * values, int64_t * count, co
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity )
     {
-        *count = bodies;
-        TableMessageRefuseBatch( to );
+        TableMessageRefuseBatch( to ); // a refused batch returns a count of 0 (§3.3)
         return false;
     }
     for ( int64_t i = 0; i < bodies; i++ )
@@ -14102,9 +14099,9 @@ inline int64_t HullConfigSaveMessages( const HullConfig * values, int64_t count,
 //
 // `count` is IN and OUT: in, the storage the caller has room for, and out,
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
-// batch_too_large, found from the count before a body is decoded, and count
-// comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// batch_too_large, found from the count before a body is decoded: count
+// comes back 0, as for every refused batch, and the storage is untouched; a
+// caller that needs room reads the wire's M itself. DAMAGE ANYWHERE IN THE BATCH
 // DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
 // and every body the walk touched is reset to its declared defaults.
 inline bool HullConfigLoadMessages( HullConfig * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
@@ -14123,8 +14120,7 @@ inline bool HullConfigLoadMessages( HullConfig * values, int64_t * count, const 
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity )
     {
-        *count = bodies;
-        TableMessageRefuseBatch( to );
+        TableMessageRefuseBatch( to ); // a refused batch returns a count of 0 (§3.3)
         return false;
     }
     for ( int64_t i = 0; i < bodies; i++ )
@@ -15219,9 +15215,9 @@ inline int64_t KeyedConfigSaveMessages( const KeyedConfig * values, int64_t coun
 //
 // `count` is IN and OUT: in, the storage the caller has room for, and out,
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
-// batch_too_large, found from the count before a body is decoded, and count
-// comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// batch_too_large, found from the count before a body is decoded: count
+// comes back 0, as for every refused batch, and the storage is untouched; a
+// caller that needs room reads the wire's M itself. DAMAGE ANYWHERE IN THE BATCH
 // DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
 // and every body the walk touched is reset to its declared defaults.
 inline bool KeyedConfigLoadMessages( KeyedConfig * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
@@ -15240,8 +15236,7 @@ inline bool KeyedConfigLoadMessages( KeyedConfig * values, int64_t * count, cons
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity )
     {
-        *count = bodies;
-        TableMessageRefuseBatch( to );
+        TableMessageRefuseBatch( to ); // a refused batch returns a count of 0 (§3.3)
         return false;
     }
     for ( int64_t i = 0; i < bodies; i++ )
@@ -15983,9 +15978,9 @@ inline int64_t ScoreBoardSaveMessages( const ScoreBoard * values, int64_t count,
 //
 // `count` is IN and OUT: in, the storage the caller has room for, and out,
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
-// batch_too_large, found from the count before a body is decoded, and count
-// comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// batch_too_large, found from the count before a body is decoded: count
+// comes back 0, as for every refused batch, and the storage is untouched; a
+// caller that needs room reads the wire's M itself. DAMAGE ANYWHERE IN THE BATCH
 // DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
 // and every body the walk touched is reset to its declared defaults.
 inline bool ScoreBoardLoadMessages( ScoreBoard * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
@@ -16004,8 +15999,7 @@ inline bool ScoreBoardLoadMessages( ScoreBoard * values, int64_t * count, const 
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity )
     {
-        *count = bodies;
-        TableMessageRefuseBatch( to );
+        TableMessageRefuseBatch( to ); // a refused batch returns a count of 0 (§3.3)
         return false;
     }
     for ( int64_t i = 0; i < bodies; i++ )

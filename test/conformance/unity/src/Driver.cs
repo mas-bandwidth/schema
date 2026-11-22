@@ -73,6 +73,9 @@ namespace SchemaUnityConformance
         bool Cook(object value, byte[] buffer, bool bigEndian);
 
         object MessageLoad(byte[] announcement, byte[] wire, DriverReport report);
+        // MessageBatchCount loads one batch with room for every body and answers
+        // the count LoadMessages returned (a `message-batch` row, SPEC-TABLES §3.3).
+        int MessageBatchCount(byte[] announcement, byte[] wire);
         long MessageMeasure(object value);
         long MessageSave(object value, byte[] buffer);
 
@@ -547,6 +550,19 @@ namespace SchemaUnityConformance
                 return batch;
             }
 
+            public int MessageBatchCount(byte[] announcement, byte[] wire)
+            {
+                if (loadMessages == null || announceRead == null) { return -1; }
+                var vocab = new TVocab();
+                TRep announced = default;
+                announceRead(vocab, announcement, ref announced);
+                T[] values = new T[256];
+                for (int i = 0; i < values.Length; i++) { values[i] = MakeFresh(); }
+                TRep inner = default;
+                loadMessages(values, wire, vocab, ref inner, out int count);
+                return count;
+            }
+
             public long MessageMeasure(object value)
             {
                 if (measureMessages == null) { return -1; }
@@ -989,6 +1005,16 @@ namespace SchemaUnityConformance
                 byte[] bytes = new byte[checked((int)size)];
                 if (codec.MessageSave(value, bytes) != size) { return 1; }
                 File.WriteAllBytes(Path.Combine(outDir, f[1]), bytes);
+            }
+            // message-batch <case> <connection> <root> <wire>: the count
+            // LoadMessages returned with room for every body (FORMAT.md)
+            foreach (string[] f in Kind("message-batch"))
+            {
+                string[] conn = FindLine(c => c[0] == "connection" && c[1] == f[2]);
+                ICodec codec = FindCodec(conn[2], f[3]);
+                if (codec == null || !codec.HasMessage) { Console.Error.WriteLine("driver: no message codec for " + conn[2] + "." + f[3]); return 1; }
+                int count = codec.MessageBatchCount(File.ReadAllBytes(conn[4]), File.ReadAllBytes(f[4]));
+                File.WriteAllText(Path.Combine(outDir, f[1]), "count " + count + "\n");
             }
             return 0;
         }

@@ -6218,8 +6218,8 @@ static SCHEMA_UNUSED int graphdemo_stamp_load_messages(graphdemo_stamp_t * value
  *count=0;
  bodies=graphdemo_table_message_open(&r,vocabulary,buffer,bytes,report);
  if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;
- report->refused=1;
+ /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_GRAPHDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }

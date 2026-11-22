@@ -33,8 +33,8 @@ type resetCase struct {
 }
 
 var resetCases = []resetCase{
-	{"non_finite_float", "-1", "non_finite_float", "0"},
-	{"out_of_range", "-1", "out_of_range", "0"},
+	{"non_finite_float", "0", "non_finite_float", "0"},
+	{"out_of_range", "0", "out_of_range", "0"},
 	{"damaged_framing", "0", "ok", "1"},
 }
 
@@ -60,7 +60,7 @@ func TestGooseLoadMessagesRefusalResetsBatchNegativeControl(t *testing.T) {
 	}
 	changed := resetUnitFiles(t, u, nil)
 	anchor := "            if r.reason != 0 {\n                report.reason = r.reason;\n                reasoned = true;\n                break;\n            }\n"
-	early := "            if r.reason != 0 {\n                report.reason = r.reason;\n                return -1;\n            }\n"
+	early := "            if r.reason != 0 {\n                report.reason = r.reason;\n                return 0;\n            }\n"
 	replaced := 0
 	for name, data := range changed {
 		if strings.Count(string(data), anchor) == 0 {

@@ -7653,8 +7653,8 @@ static SCHEMA_UNUSED int tabledemo_ranged_signed_load_messages(tabledemo_ranged_
  *count=0;
  bodies=tabledemo_table_message_open(&r,vocabulary,buffer,bytes,report);
  if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;
- report->refused=1;
+ /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_TABLEDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
@@ -9344,8 +9344,8 @@ static SCHEMA_UNUSED int tabledemo_ranged_unsigned_load_messages(tabledemo_range
  *count=0;
  bodies=tabledemo_table_message_open(&r,vocabulary,buffer,bytes,report);
  if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;
- report->refused=1;
+ /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_TABLEDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
@@ -10064,8 +10064,8 @@ static SCHEMA_UNUSED int tabledemo_ranged_widths_load_messages(tabledemo_ranged_
  *count=0;
  bodies=tabledemo_table_message_open(&r,vocabulary,buffer,bytes,report);
  if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;
- report->refused=1;
+ /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_TABLEDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
