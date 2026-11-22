@@ -83,7 +83,7 @@ func TestRustVariableCountedArrayMinimum(t *testing.T) {
 	}
 	slowtest.Gate(t, "rustc (it builds and runs the generated Rust)")
 	if _, err := exec.LookPath("rustc"); err != nil {
-		t.Skip("rustc not found")
+		t.Skip("rustc not on PATH")
 	}
 	out, err := runRustGeneratedFilesProbe(t, files, rustCountedBirthMain)
 	if err != nil || strings.Contains(out, "FAILED") {
