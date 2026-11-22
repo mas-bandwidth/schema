@@ -379,10 +379,10 @@ _M.ReadTri3 <- function(stream, value) {
 
 // WriteTri3 writes value in declared order; false on a refused value.
 _M.WriteTri3 <- function(stream, value) {
-  if (typeof value.A != "integer") return false;
+  if (typeof value.A != "integer" || (value.A >>> 1) != 0) return false;
   _h.value = value.A;
   if (!stream.serializeBits(_h, 1)) return false;
-  if (typeof value.B != "integer") return false;
+  if (typeof value.B != "integer" || (value.B >>> 2) != 0) return false;
   _h.value = value.B;
   if (!stream.serializeBits(_h, 2)) return false;
   return true;
@@ -463,10 +463,10 @@ _M.ReadEleven <- function(stream, value) {
 
 // WriteEleven writes value in declared order; false on a refused value.
 _M.WriteEleven <- function(stream, value) {
-  if (typeof value.A != "integer") return false;
+  if (typeof value.A != "integer" || (value.A >>> 3) != 0) return false;
   _h.value = value.A;
   if (!stream.serializeBits(_h, 3)) return false;
-  if (typeof value.B != "integer") return false;
+  if (typeof value.B != "integer" || (value.B >>> 8) != 0) return false;
   _h.value = value.B;
   if (!stream.serializeBits(_h, 8)) return false;
   return true;
@@ -674,11 +674,11 @@ _M.ReadHoldsEmptyUnion <- function(stream, value) {
 
 // WriteHoldsEmptyUnion writes value in declared order; false on a refused value.
 _M.WriteHoldsEmptyUnion <- function(stream, value) {
-  if (typeof value.Lead != "integer") return false;
+  if (typeof value.Lead != "integer" || (value.Lead >>> 5) != 0) return false;
   _h.value = value.Lead;
   if (!stream.serializeBits(_h, 5)) return false;
   if (!_M.WriteEmptyUnion(stream, value.U)) return false;
-  if (typeof value.Tail != "integer") return false;
+  if (typeof value.Tail != "integer" || (value.Tail >>> 7) != 0) return false;
   _h.value = value.Tail;
   if (!stream.serializeBits(_h, 7)) return false;
   return true;
@@ -741,7 +741,7 @@ _M.ReadStrs <- function(stream, value) {
 
 // WriteStrs writes value in declared order; false on a refused value.
 _M.WriteStrs <- function(stream, value) {
-  if (typeof value.Lead != "integer") return false;
+  if (typeof value.Lead != "integer" || (value.Lead >>> 5) != 0) return false;
   _h.value = value.Lead;
   if (!stream.serializeBits(_h, 5)) return false;
   if (typeof value.S != "blob" || typeof value.SLength != "integer" || value.SLength < 0 || value.SLength > 8 || value.SLength > value.S.len()) return false;
@@ -753,7 +753,7 @@ _M.WriteStrs <- function(stream, value) {
   _h.value = value.BLength;
   if (!stream.serializeBits(_h, 4)) return false;
   if (!stream.serializeBytes(_usedBytes(value.B, value.BLength))) return false;
-  if (typeof value.Tail != "integer") return false;
+  if (typeof value.Tail != "integer" || (value.Tail >>> 3) != 0) return false;
   _h.value = value.Tail;
   if (!stream.serializeBits(_h, 3)) return false;
   return true;
@@ -801,7 +801,7 @@ _M.ReadArrNested <- function(stream, value) {
 
 // WriteArrNested writes value in declared order; false on a refused value.
 _M.WriteArrNested <- function(stream, value) {
-  if (typeof value.Lead != "integer") return false;
+  if (typeof value.Lead != "integer" || (value.Lead >>> 5) != 0) return false;
   _h.value = value.Lead;
   if (!stream.serializeBits(_h, 5)) return false;
   if (typeof value.ItemsCount != "integer" || value.ItemsCount < 0 || value.ItemsCount > 4) return false;
@@ -810,7 +810,7 @@ _M.WriteArrNested <- function(stream, value) {
   for (local _i = 0; _i < value.ItemsCount; _i++) {
     if (!_M.WriteEleven(stream, value.Items[_i])) return false;
   }
-  if (typeof value.Tail != "integer") return false;
+  if (typeof value.Tail != "integer" || (value.Tail >>> 3) != 0) return false;
   _h.value = value.Tail;
   if (!stream.serializeBits(_h, 3)) return false;
   return true;
@@ -844,7 +844,7 @@ _M.ReadSole <- function(stream, value) {
 
 // WriteSole writes value in declared order; false on a refused value.
 _M.WriteSole <- function(stream, value) {
-  if (typeof value.Only != "integer") return false;
+  if (typeof value.Only != "integer" || (value.Only >>> 13) != 0) return false;
   _h.value = value.Only;
   if (!stream.serializeBits(_h, 13)) return false;
   return true;

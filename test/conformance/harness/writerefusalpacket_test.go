@@ -30,7 +30,7 @@ func TestWriteRefusalPacket(t *testing.T) {
 	if !failed {
 		t.Fatalf("negative control: the upper-bound comparison moved and the packet surface stayed green\n%s", out)
 	}
-	if !strings.Contains(out, "scalar_at_max") {
+	if !strings.Contains(out, "FAILED: scalar_at_max") {
 		t.Fatalf("negative control: the packet surface went red, but not at the boundary case\n%s", out)
 	}
 }
@@ -140,11 +140,11 @@ func TestWriteRefusalPacketRows(t *testing.T) {
 			switch c.want {
 			case "refused":
 				if !errors.Is(err, serialize.ErrValueOutOfRange) {
-					t.Fatalf("%s: got %v, want serialize.ErrValueOutOfRange", c.name, err)
+					t.Fatalf("FAILED: %s: wrote or erred wrongly, got %v, want serialize.ErrValueOutOfRange", c.name, err)
 				}
 			case "wrote":
 				if err != nil {
-					t.Fatalf("%s: the lawful value at the boundary was refused: %v", c.name, err)
+					t.Fatalf("FAILED: %s: the lawful value at the boundary was refused: %v", c.name, err)
 				}
 			default:
 				t.Fatalf("%s: unknown expectation %q", c.name, c.want)
