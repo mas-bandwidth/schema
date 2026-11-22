@@ -401,12 +401,14 @@ local function entryRead(r: any): any
 	r.at = r.at + 8
 	if e.id == VERSION_ID or e.id == VOCAB_ID then r.bad = true; return e end
 	local kind = rU8(r)
-	if kind > 32 and kind ~= 36 then r.bad = true; return e end
+	-- Kind 31 is held by name and never written (R17): an announcement naming
+	-- it is malformed, as one naming 33 or 34 is.
+	if kind == 31 or (kind > 32 and kind ~= 36) then r.bad = true; return e end
 	e.shape = shapeRead(r, kind)
 	if r.bad then return e end
 	if kind == 14 or kind == 16 then
 		local elem = rU8(r)
-		if (elem > 32 and elem ~= 36) or elem == 14 or elem == 16 then r.bad = true; return e end
+		if elem == 31 or (elem > 32 and elem ~= 36) or elem == 14 or elem == 16 then r.bad = true; return e end
 		e.shape.elem = elem
 		e.element = shapeRead(r, elem)
 		e.shape.element = e.element
@@ -424,7 +426,7 @@ local function skipStep(r: any, kind: number): boolean
 		if r.at + w // 8 > r.e then return false end
 		r.at = r.at + w // 8
 		return true
-	elseif kind == 12 or kind == 13 or kind == 14 or kind == 15 or kind == 16 or kind == 31 then
+	elseif kind == 12 or kind == 13 or kind == 14 or kind == 15 or kind == 16 then
 		local n = rLeb(r)
 		if r.bad or r.at + n > r.e then return false end
 		r.at = r.at + n
@@ -1009,7 +1011,7 @@ skipShape = function(r: any, st: any, e: any, fd: any, dep: any, fieldEntry: boo
 		-- A missing element is that zero shape (kind 0, width 0), not a raised index.
 		local element = if e.element ~= nil then e.element else newShape()
 		local ik = element.kind
-		local variable = ik == 12 or ik == 13 or ik == 14 or ik == 15 or ik == 16 or ik == 17 or ik == 30 or ik == 31
+		local variable = ik == 12 or ik == 13 or ik == 14 or ik == 15 or ik == 16 or ik == 17 or ik == 30
 		-- A walked element that consumes no bits refuses the read
 		-- (docs/SPEC-TABLES.md §3.3; tableMessageSkip, r.Offset==before).
 		local function walkOne(): boolean
@@ -1079,10 +1081,6 @@ skipShape = function(r: any, st: any, e: any, fd: any, dep: any, fieldEntry: boo
 			if not walkOne() then return false end
 		end
 		return true
-	elseif k == 31 then
-		if not align(r) then return false end
-		local n, ok = get(r, 32)
-		return ok and skip(r, n * 8)
 	end
 	-- A SKIPPED RANGED VALUE IS HELD TO THE ANNOUNCED KIND as the named read
 	-- holds it (§3.3, SKIPPED IS NOT UNREAD): a sum the kind cannot hold is
