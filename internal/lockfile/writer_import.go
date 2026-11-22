@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/atomicfile"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -107,7 +108,7 @@ func ImportWriterWithOptions(u *ir.Unit, paths []string, target string, writer *
 	if next == string(data) {
 		return path, false, nil
 	}
-	if err := os.WriteFile(path, []byte(next), 0644); err != nil {
+	if err := atomicfile.WriteFile(path, []byte(next), 0o644); err != nil {
 		return "", false, err
 	}
 	return path, true, nil

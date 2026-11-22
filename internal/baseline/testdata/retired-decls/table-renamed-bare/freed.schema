@@ -1,0 +1,13 @@
+package decls
+
+table Link
+{
+    value int32
+    next  *Link
+}
+
+table Holder
+{
+    p *Link
+    c int32
+}

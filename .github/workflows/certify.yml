@@ -604,8 +604,9 @@ jobs:
   # rather than typed here, so a port lands its release gate by adding the
   # target to its make/<lang>.mk and nothing else — no
   # edit to this file, and no chance of a target that exists but runs nowhere,
-  # which is what `tables-java-release` was before this job. On a tree that
-  # carries none the matrix is empty and the leg job is skipped.
+  # which is what `tables-java-release` was before this job. A plan is never
+  # empty: tools/releasetargets refuses one, so release-gates never skips on
+  # an empty matrix and the verdict takes no skip of it as green (F-066).
   #
   # ONE LEG PER TARGET. The targets together outran one job's old hour (run
   # 33831179695 was cancelled at 60 minutes, and a cancelled gate proves
@@ -632,13 +633,24 @@ jobs:
           # C# fuzz (wire), Dart fuzz (wire) 142 s in run 42556155793, with
           # the C# build step at 117 s capped and 148 s nightly; ci-full.yml
           # keeps the seeded N=2000 per-commit smoke).
-          targets=$( { grep -hoE '^tables-[a-z0-9]+-release:' Makefile make/*.mk | sed 's/:$//'; sed -n 's/^WIRE_FUZZ_RELEASE_LEGS *:= *//p' make/wire-fuzz-release.mk | tr ' ' '\n' | sed 's/^/tables-wire-fuzz-release-/'; printf '%s\n' tables-cs-wire-fuzz tables-cs-region-fuzz tables-js-wire-fuzz-plain tables-js-wire-fuzz-retain tables-dart-wire-fuzz; } | sort -u | jq -R . | jq -sc .)
+          #
+          # READ FROM MAKE'S OWN DATABASE, NEVER THE SOURCE TEXT (F-066): a
+          # grep of the make files for '^tables-[a-z0-9]+-release:' dropped
+          # the job of a rule spelled `tables-go-release :`, and a sed of the
+          # first `WIRE_FUZZ_RELEASE_LEGS :=` line lost every leg a `+=` added,
+          # both exiting 0. tools/releasetargets runs `make -pq`, plans every
+          # rule make defined and every leg of the list as make expanded it,
+          # and refuses by name a leg or campaign with no rule and an empty
+          # plan. First it replays the committed corpus of the spellings that
+          # fooled the old planner through this same make.
+          set -euo pipefail
+          go run ./tools/releasetargets -fixtures tools/releasetargets/testdata/f066
+          targets=$(go run ./tools/releasetargets -also tables-cs-wire-fuzz,tables-cs-region-fuzz,tables-js-wire-fuzz-plain,tables-js-wire-fuzz-retain,tables-dart-wire-fuzz)
           echo "$targets"
           echo "targets=$targets" >> "$GITHUB_OUTPUT"
 
   release-gates:
     needs: release-targets
-    if: needs.release-targets.outputs.targets != '[]'
     name: release-gates (${{ matrix.target }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
@@ -1291,10 +1303,7 @@ jobs:
           jq -r 'to_entries[] | "\(.value.result)\t\(.key)"' <<<"$NEEDS" | sort
           bad=$(jq -r 'to_entries[]
             | select(.value.result != "success")
-            | select((.key == "release-gates" and .value.result == "skipped"
-                and $all["release-targets"].result == "success"
-                and $all["release-targets"].outputs.targets == "[]") | not)
-            | "\(.key): \(.value.result)"' --argjson all "$NEEDS" <<<"$NEEDS")
+            | "\(.key): \(.value.result)"' <<<"$NEEDS")
           if [ -n "$bad" ]; then
             echo "::error::not every job of this run succeeded:"
             echo "$bad"

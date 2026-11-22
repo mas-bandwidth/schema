@@ -558,6 +558,7 @@ static const MsgCodec msg_codecs[] = {
     MSGCODEC( "vocab9demo", vocab9demo, Wide19 ),
     MSGCODEC( "tblvarevo1", tblvarevo1, EvoMsg ),
     MSGCODEC( "tblvarevo3", tblvarevo3, EvoMsg ),
+    MSGCODEC( "messagedemo", messagedemo, ToolMessage ),
 };
 
 // ---------------------------------------------------------------------------

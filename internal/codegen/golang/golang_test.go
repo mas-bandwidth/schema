@@ -320,7 +320,7 @@ func TestUnionSurfaceEmitted(t *testing.T) {
 		expectation{"public const int ShapeMaxBits = 18;", 1})
 	jsFiles, jsErr := js.Generate(u)
 	addTarget("JS", jsFiles, jsErr,
-		expectation{"export const ShapeType = Object.freeze({", 1},
+		expectation{"export const ShapeType = globalThis.Object.freeze({", 1},
 		expectation{"export class Shape {", 1},
 		expectation{"export function WriteShape(stream, value) {", 1},
 		expectation{"export function ReadShape(stream, value, nested) {", 1},

@@ -545,7 +545,7 @@ console.log("ok");
 // SPEC-TABLES.md §19.2): the one that carries the announcement surface.
 func messageHomeBase(u *ir.Unit) string {
 	for name, b := range generatedTree(u) {
-		if strings.Contains(string(b), "TableMessageAnnouncement = new Uint8Array(") {
+		if strings.Contains(string(b), "TableMessageAnnouncement = new globalThis.Uint8Array(") {
 			return strings.TrimSuffix(name, ".js")
 		}
 	}
