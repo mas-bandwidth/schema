@@ -58,7 +58,7 @@ fixed table Msg
 `
 
 // the sender of the message batch: the same Msg with v an int32, which the
-// receiver (v a bool) cannot read, so the batch is refused at its first body
+// receiver (v a bool) cannot read, so the batch is refused at its first body.
 const unityVerdictsSnd = `package snd
 
 fixed table Msg
