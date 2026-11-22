@@ -311,6 +311,7 @@ const unityRetainWireSource = `    internal const int RetainMaxDepth = @DEPTH@;
                 if (!RetainInPayload(ref s, kind, depth)) { return false; }
                 break;
             case 17:
+            case 31: // held by name, never written (R17): met only as damage
                 return false;
             default:
                 s.Raw(s.R.Buffer.Slice(s.R.Offset, bytes));
@@ -334,7 +335,6 @@ const unityRetainWireSource = `    internal const int RetainMaxDepth = @DEPTH@;
         switch (kind)
         {
             case 12:
-            case 31:
             case 32:
                 if (!s.R.Var(out ulong size) || size > (ulong)(s.R.Buffer.Length - s.R.Offset)) { return false; }
                 s.Var(size);
@@ -584,6 +584,7 @@ const unityRetainWireSource = `    internal const int RetainMaxDepth = @DEPTH@;
                 if (!RetainOutPayload(ref s, ref ids, kind, depth)) { return false; }
                 break;
             case 17:
+            case 31: // held by name, never written (R17): met only as damage
                 return false;
             default:
                 s.Raw(s.R.Buffer.Slice(s.R.Offset, bytes));
@@ -606,7 +607,6 @@ const unityRetainWireSource = `    internal const int RetainMaxDepth = @DEPTH@;
         switch (kind)
         {
             case 12:
-            case 31:
             case 32:
                 if (!s.R.Var(out ulong size) || size > (ulong)(s.R.Buffer.Length - s.R.Offset)) { return false; }
                 s.Var(size);
