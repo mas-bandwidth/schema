@@ -594,7 +594,7 @@ export function FixedTableLoadMessages(values, vocabulary, data, report) {
       // the batch with its reason; no body of it is delivered.
       if (report.Reason) {
         for (let j = 0; j <= i; j++) { InitFixedTable(values[j]); }
-        return -1;
+        return 0;
       }
       // DAMAGE ANYWHERE IN THE BATCH DELIVERS NO BODY (docs/SPEC-TABLES.md §4):
       // the count says 0 and every body the walk touched goes back to its
@@ -602,13 +602,14 @@ export function FixedTableLoadMessages(values, vocabulary, data, report) {
       for (let j = 0; j <= i; j++) { InitFixedTable(values[j]); }
       return 0;
     }
-    // A VALUE OUTSIDE ITS DECLARED RANGE (or a length past its bound) REFUSES THE
-    // BATCH BY NAME as out_of_range (docs/SPEC-TABLES.md §3.3), as the Go
-    // reference and the Rust port do: the count is 0 and
-    // every body of the batch goes back to its declared defaults.
-    if (report.Oor > 0) {
-      for (let j = 0; j < count; j++) { InitFixedTable(values[j]); }
-      TableMessageRefuse(report, "out_of_range");
+    // A VALUE, A COUNT OR A LENGTH PAST ITS BOUND, OR A KIND MISMATCH, IN
+    // ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md §4, the strict read):
+    // the body walk counts it, at any depth, and a body handed back cut to
+    // its bound would be a value the Go engine refuses (messagedecode.go);
+    // a refused batch returns a count of 0 (§3.3), as every refused batch does.
+    if (report.Oor > 0 || report.Mismatch > 0) {
+      for (let j = 0; j <= i; j++) { InitFixedTable(values[j]); }
+      TableMessageRefuse(report, report.Oor > 0 ? "out_of_range" : "kind_mismatch");
       return 0;
     }
   }
