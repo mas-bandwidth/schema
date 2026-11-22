@@ -1397,6 +1397,7 @@ fn json_read_enum<T>(jr: JsonIn&, slot: T&, f: const FieldDesc&) -> bool {
 // skipped and counted, a non-string element is kind_mismatch (§16.2).
 fn json_read_flags<T>(jr: JsonIn&, slot: T&, names: const (const u8[:])[:], depth: i64) -> bool {
     if !json_expect(jr, '[') { return false; }
+    if depth + 1 > JsonMaxDepth { return json_fail(jr); }
     var bits: u64 = 0;
     var seen: u64 = 0;
     loop {
@@ -1408,7 +1409,7 @@ fn json_read_flags<T>(jr: JsonIn&, slot: T&, names: const (const u8[:])[:], dept
         if c == 0 { return json_fail(jr); }
         if c != '"' {
             jr.rep.mismatch += 1;
-            if !json_skip_value(jr, depth + 1) { return false; }
+            if !json_skip_value(jr, depth + 2) { return false; }
         } else {
             var key: u8[256] = [0; 256];
             let n, ok = json_scan_into(jr, key[..JsonMaxKey], false);
@@ -1446,6 +1447,7 @@ fn json_read_flags<T>(jr: JsonIn&, slot: T&, names: const (const u8[:])[:], dept
 // (§16.2). F(jr, index, depth) reads one element.
 fn json_read_array<F>(jr: JsonIn&, count: i32&, least: i64, bound: i64, shape: u8, depth: i64) -> bool {
     if !json_expect(jr, '[') { return false; }
+    if depth + 1 > JsonMaxDepth { return json_fail(jr); }
     var placed: i64 = 0;
     loop {
         let c = json_peek(jr);
@@ -1484,6 +1486,7 @@ fn json_read_array<F>(jr: JsonIn&, count: i32&, least: i64, bound: i64, shape: u
 // (§16.2). The caller has put every slot back at its default.
 fn json_read_keyed<F>(jr: JsonIn&, names: const (const u8[:])[:], shape: u8, depth: i64) -> bool {
     if !json_expect(jr, '{') { return false; }
+    if depth + 1 > JsonMaxDepth { return json_fail(jr); }
     var seen: u64[8] = [0; 8];
     var kset = json_keyset_start(jr.kset_slots);
     loop {
@@ -1515,10 +1518,10 @@ fn json_read_keyed<F>(jr: JsonIn&, names: const (const u8[:])[:], shape: u8, dep
         }
         if slot < 0 {
             jr.rep.unknown += 1;
-            if !json_skip_value(jr, depth + 1) { return false; }
+            if !json_skip_value(jr, depth + 2) { return false; }
         } else if !json_shape_takes(shape, json_shape(jr)) {
             jr.rep.mismatch += 1;
-            if !json_skip_value(jr, depth + 1) { return false; }
+            if !json_skip_value(jr, depth + 2) { return false; }
         } else if !F(jr, slot, depth + 1) {
             return false;
         }
@@ -1536,6 +1539,7 @@ fn json_read_keyed<F>(jr: JsonIn&, names: const (const u8[:])[:], shape: u8, dep
 // op, depth) reads an arm (JsonOpRead) or sets the tag (JsonOpTag).
 fn json_read_union<U, F>(jr: JsonIn&, u: U&, d: const UnionDesc&, shapes: const u8[:], depth: i64) -> bool {
     if !json_expect(jr, '{') { return false; }
+    if depth + 1 > JsonMaxDepth { return json_fail(jr); }
     if !F(jr, u, 0, JsonOpTag, depth) { return false; }
     if json_peek(jr) == '}' {
         jr.pos += 1;
@@ -1556,10 +1560,10 @@ fn json_read_union<U, F>(jr: JsonIn&, u: U&, d: const UnionDesc&, shapes: const 
     }
     if tag == 0 {
         jr.rep.unknown += 1;
-        if !json_skip_value(jr, depth + 1) { return false; }
+        if !json_skip_value(jr, depth + 2) { return false; }
     } else if !json_shape_takes(shapes[a], json_shape(jr)) {
         jr.rep.mismatch += 1;
-        if !json_skip_value(jr, depth + 1) { return false; }
+        if !json_skip_value(jr, depth + 2) { return false; }
     } else {
         if shapes[a] == 'z' {
             if !json_literal(jr, "null") { return false; }

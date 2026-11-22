@@ -198,23 +198,41 @@ fn wref_f64_bits(bits: u64) -> f64 {
     return schema_rt::fixed_bits_f64(bits);
 }
 fn wref_parse_f64(s: const u8[:]) -> f64 {
-    var dot: i64 = 0;
-    while dot < s.len && s[dot] != '.' { dot += 1; }
-    if dot == s.len { return wref_parse_i64(s) as f64; }
+    // a decimal with an optional fraction and exponent (`1e39`,
+    // `3.4028234663852886e38`, `-2.5`): digits into a mantissa, the decimal
+    // point and the exponent into one power of ten
+    var i: i64 = 0;
     var neg = false;
-    var start: i64 = 0;
-    if s.len > 0 && s[0] == '-' { neg = true; start = 1; }
-    let whole = wref_parse_i64(s[start..dot]) as f64;
-    var frac: f64 = 0.0;
-    var scale: f64 = 0.1;
-    var i: i64 = dot + 1;
+    if s.len > 0 && s[0] == '-' { neg = true; i = 1; }
+    var m: f64 = 0.0;
+    var e10: i64 = 0;
+    var seen_dot = false;
     while i < s.len {
-        frac += ((s[i] - '0') as f64) * scale;
-        scale *= 0.1;
+        let c = s[i];
+        if c == 'e' || c == 'E' { break; }
+        if c == '.' {
+            seen_dot = true;
+        } else {
+            m = m * 10.0 + ((c - '0') as f64);
+            if seen_dot { e10 -= 1; }
+        }
         i += 1;
     }
-    let res = whole + frac;
-    return if neg { -res } else { res };
+    if i < s.len {
+        i += 1;
+        var eneg = false;
+        if i < s.len && s[i] == '-' { eneg = true; i += 1; }
+        else if i < s.len && s[i] == '+' { i += 1; }
+        var ex: i64 = 0;
+        while i < s.len {
+            ex = ex * 10 + ((s[i] - '0') as i64);
+            i += 1;
+        }
+        e10 += if eneg { -ex } else { ex };
+    }
+    while e10 > 0 { m = m * 10.0; e10 -= 1; }
+    while e10 < 0 { m = m / 10.0; e10 += 1; }
+    return if neg { -m } else { m };
 }
 fn wref_f32(s: const u8[:]) -> f32 {
     if s == "nan" { return wref_f32_bits(0x7fc00000); }

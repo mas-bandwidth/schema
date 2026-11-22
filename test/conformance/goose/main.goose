@@ -538,6 +538,44 @@ fn wref_loaded_hex(s: const u8[:], out: u8[>..]&) -> bool {
     return true;
 }
 
+fn wref_loaded_parse_f64(s: const u8[:]) -> f64 {
+    // a decimal with an optional fraction and exponent (`1e39`,
+    // `3.4028234663852886e38`, `-2.5`): digits into a mantissa, the decimal
+    // point and the exponent into one power of ten
+    var i: i64 = 0;
+    var neg = false;
+    if s.len > 0 && s[0] == '-' { neg = true; i = 1; }
+    var m: f64 = 0.0;
+    var e10: i64 = 0;
+    var seen_dot = false;
+    while i < s.len {
+        let c = s[i];
+        if c == 'e' || c == 'E' { break; }
+        if c == '.' {
+            seen_dot = true;
+        } else {
+            m = m * 10.0 + ((c - '0') as f64);
+            if seen_dot { e10 -= 1; }
+        }
+        i += 1;
+    }
+    if i < s.len {
+        i += 1;
+        var eneg = false;
+        if i < s.len && s[i] == '-' { eneg = true; i += 1; }
+        else if i < s.len && s[i] == '+' { i += 1; }
+        var ex: i64 = 0;
+        while i < s.len {
+            ex = ex * 10 + ((s[i] - '0') as i64);
+            i += 1;
+        }
+        e10 += if eneg { -ex } else { ex };
+    }
+    while e10 > 0 { m = m * 10.0; e10 -= 1; }
+    while e10 < 0 { m = m / 10.0; e10 += 1; }
+    return if neg { -m } else { m };
+}
+
 fn wref_loaded_f32_bits(s: const u8[:]) -> u64 {
     if s == "nan" { return 0x7fc00000; }
     if s == "inf" { return 0x7f800000; }
@@ -545,8 +583,7 @@ fn wref_loaded_f32_bits(s: const u8[:]) -> u64 {
     if s == "1.5" { return 0x3fc00000; }
     if s == "2.5" { return 0x40200000; }
     if s == "0" || s == "0.0" { return 0; }
-    let n, _ok = parse_int(s);
-    return schema_rt::fixed_f32_bits(n as f32) as u64;
+    return schema_rt::fixed_f32_bits(wref_loaded_parse_f64(s) as f32) as u64;
 }
 
 fn wref_loaded_f64_bits(s: const u8[:]) -> u64 {
@@ -556,8 +593,7 @@ fn wref_loaded_f64_bits(s: const u8[:]) -> u64 {
     if s == "1.5" { return 0x3ff8000000000000; }
     if s == "2.5" { return 0x4004000000000000; }
     if s == "0" || s == "0.0" { return 0; }
-    let n, _ok = parse_int(s);
-    return schema_rt::fixed_f64_bits(n as f64);
+    return schema_rt::fixed_f64_bits(wref_loaded_parse_f64(s));
 }
 
 fn wref_loaded_leaf(data: u8[>..]&, vals: schema_rt::LoadVal[>..]&, s: i64, d: schema_rt::FieldDesc, kind: const u8[:], text: const u8[:]) -> i64 {
