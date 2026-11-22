@@ -178,8 +178,8 @@ func TestOptVerifyFastWorkflowSelector(t *testing.T) {
 	if !strings.Contains(wf, "  verify-leg:\n") {
 		t.Fatal("ci-fast.yml missing verify-leg job")
 	}
-	if !strings.Contains(wf, "gate: [conformance, bench, fuzz]") {
-		t.Fatal("ci-fast.yml verify-leg missing gate: [conformance, bench, fuzz] matrix")
+	if !strings.Contains(wf, "gate: [conformance, bench, fuzz, tablegen]") {
+		t.Fatal("ci-fast.yml verify-leg missing gate: [conformance, bench, fuzz, tablegen] matrix")
 	}
 
 	addLegRe := regexp.MustCompile(`\badd_leg\s+([a-z0-9]+)\b`)
