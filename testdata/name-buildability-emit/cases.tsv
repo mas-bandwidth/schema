@@ -11,5 +11,4 @@ table_memcpy	c,cpp,cs	a table named memcpy: the table backends' own memcpy calls
 table_uint8_t	c,cpp	a table named uint8_t: the table backends' own uint8_t
 table_Math	cs	a table named Math in a unit with tables: the C# table backend's Math.Min named the user's type
 enum_kind	cs,elixir	an enum named in lowercase letters only, keying an array: C# CS8981; Elixir module Probe.kind and its keyed accessors
-base_my-file	c	a schema file named my-file: the C include guard SCHEMA_PROBE_MY-FILE_H is not a token
 pkg_Math	cs	package Math: namespace Math hid System.Math from the code and from the serialize.cs runtime compiled beside it

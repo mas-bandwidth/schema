@@ -1578,7 +1578,9 @@ All compile errors with positions:
   names below there is no escaping machinery; rename at the source.
 - **Platform names are the emitter's to carry.** A name no language reserves
   can still be one a target's platform defines, and where the target can
-  say the name, its emitter does; nothing here is refused. In C and C++ a
+  say the name, its emitter does and the checker accepts it. A platform name
+  some target's emitter still spells unqualified is refused for every target
+  instead (platform-name safety, below). In C and C++ a
   declared type may spell a libc type, function or macro (`type uint8_t`,
   `type memcpy`, `type NULL`): the emitters write the declared types under a
   marker the pass after them maps back (`internal/codegen/cqualify`), so the
@@ -1588,9 +1590,9 @@ All compile errors with positions:
   headers define takes its C++ spelling with one trailing underscore
   (`type NULL` is `struct NULL_`); C prefixes every declaration with the
   package already. A C header's include guard keeps the file base's case and
-  spells every other byte in hex (`my-file.schema` guards with
-  `SCHEMA_PROBE_my_2Dfile_h`), so every base is a token and no two files
-  share one. C# names `global::System.Math`, and a unit with a type named in
+  spells every other byte in hex (`my_file.schema` guards with
+  `SCHEMA_PROBE_my_5Ffile_h`), so no two files share one.
+  C# names `global::System.Math`, and a unit with a type named in
   lowercase letters only disables CS8981 in its generated files. Elixir
   lowers a declaration to the module `<Ns>.<Name>` with its first letter
   raised (`type memcpy` is `Probe.Memcpy`). Every one of these is the target's

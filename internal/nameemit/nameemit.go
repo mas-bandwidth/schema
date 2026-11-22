@@ -1,7 +1,7 @@
 // Package nameemit reads the committed corpus testdata/name-buildability-emit:
 // units whose declared names a target's emitter once spelled into code that
-// target's toolchain rejects (a type named uint8_t, memcpy or NULL, a schema
-// file named my-file, a package named Math). The rule they pin: every unit
+// target's toolchain rejects (a type named uint8_t, memcpy or NULL, a
+// package named Math). The rule they pin: every unit
 // `schema check` accepts generates code that builds in every target, and where
 // a target can express a name, its emitter does.
 //
