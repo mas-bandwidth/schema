@@ -2109,7 +2109,7 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
     local out = read_base64(inp, -1, report)
     if out == nil then return false end
     if report.kindChanged ~= before then
-      holder[key] = elem and false or nil
+      if elem then holder[key] = false else holder[key] = nil end
     else
       holder[key] = { value = out == false and "" or out }
     end
@@ -2165,7 +2165,7 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
       return false
     end
     if name == "None" then
-      holder[key] = elem and false or nil
+      if elem then holder[key] = false else holder[key] = nil end
       return true
     end
     for _, v in ipairs(d.variants) do
@@ -2184,7 +2184,7 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
         return true
       end
     end
-    holder[key] = elem and false or nil
+    if elem then holder[key] = false else holder[key] = nil end
     report.unknown = report.unknown + 1
     return true
   elseif s == "flags" then
