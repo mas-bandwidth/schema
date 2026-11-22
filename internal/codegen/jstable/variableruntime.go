@@ -605,6 +605,12 @@ function TableVariableSaveWalk(c, v, retain, why) {
     w.raw(sub.b);
   }
   w.u8(0);
+  // THE ID TABLE'S MAXIMUM (docs/SPEC-TABLES.md §3): every reader refuses more
+  // than 4096 entries, so the writer refuses the value and writes nothing.
+  if (globalThis.BigInt(ids.list.length) > TableVariableEntryBound) {
+    if (why !== undefined && why !== null && why.reason === null) { why.reason = "invalid_value"; }
+    return null;
+  }
   for (const id of ids.list) { w.u64(id); }
   w.u64(globalThis.BigInt(ids.list.length));
   if (c.integrity) { w.u32(c.integrity.sum(w.b, w.len)); }
