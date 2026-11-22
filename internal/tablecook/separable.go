@@ -21,17 +21,30 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
+// cookOrder asks THE ONE CLASSIFIER ([ir.ClassifyFile]) whether these bytes
+// begin with a cook's magic, and answers the byte order the magic establishes.
+// Every reader in this package that tells a cook from anything else comes
+// through here, so what the tool calls a cook and what `schema check` names
+// one are the same answer.
+func cookOrder(file []byte) (order, bool) {
+	c := ir.ClassifyFile(file)
+	switch {
+	case c.Kind() != ir.FileCook:
+		return nil, false
+	case c.Big:
+		return binary.BigEndian, true
+	}
+	return binary.LittleEndian, true
+}
+
 // magicOrder reads the magic BYTEWISE, before anything else, and answers the
 // byte order every other header field is written in.
 func magicOrder(file []byte) (order, error) {
 	if int64(len(file)) < HeaderBytes {
 		return nil, fmt.Errorf("not a cook: %d bytes is shorter than the %d-byte header", len(file), HeaderBytes)
 	}
-	switch {
-	case binary.LittleEndian.Uint64(file) == Magic:
-		return binary.LittleEndian, nil
-	case binary.BigEndian.Uint64(file) == Magic:
-		return binary.BigEndian, nil
+	if ord, ok := cookOrder(file); ok {
+		return ord, nil
 	}
 	return nil, fmt.Errorf("not a cook: the magic is 0x%016x, and a cook's is 0x%016x in one order or the other", binary.LittleEndian.Uint64(file), Magic)
 }

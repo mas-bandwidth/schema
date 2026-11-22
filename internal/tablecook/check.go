@@ -16,7 +16,6 @@ package tablecook
 
 import (
 	"cmp"
-	"encoding/binary"
 	"fmt"
 	"slices"
 
@@ -108,12 +107,8 @@ func rootAlignmentOf(m *tabletext.Model, file []byte) int64 {
 	if int64(len(file)) < HeaderBytes {
 		return ir.RegionAlignFloor
 	}
-	var ord order = binary.LittleEndian
-	switch {
-	case binary.LittleEndian.Uint64(file) == Magic:
-	case binary.BigEndian.Uint64(file) == Magic:
-		ord = binary.BigEndian
-	default:
+	ord, ok := cookOrder(file)
+	if !ok {
 		return ir.RegionAlignFloor
 	}
 	// §7.1: the alignment word is untrusted, and it is used to derive an
