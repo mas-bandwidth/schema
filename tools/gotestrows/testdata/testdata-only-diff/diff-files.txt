@@ -1,0 +1,4 @@
+tools/releasetargets/testdata/f066/split-assignment.mk
+internal/ci/testdata/f171/release-public-before-assets.yml
+testdata/golden/go/example.go.golden
+docs/README.md

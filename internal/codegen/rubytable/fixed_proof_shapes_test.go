@@ -44,7 +44,11 @@ func TestRubyFixedProofShapes(t *testing.T) {
 	rows := []string{"utf8-values", "byte-buffers", "nested-types", "nested-fixed-tables", "fixed-arrays", "counted-arrays", "keyed-arrays", "nested-keyed-arrays", "text-bytes-flags-defaults"}
 	t.Run("value-suite", func(t *testing.T) { fixedproof.RunValueRows(t, runner, rows...) })
 	t.Run("negative-controls", func(t *testing.T) { fixedproof.RunNegativeControlRows(t, runner, rows...) })
-	for _, tc := range fixedproof.Cases() {
+	allCases := fixedproof.Cases()
+	if len(allCases) == 0 {
+		t.Fatal("fixedproof.Cases() is empty: the loop below would check nothing")
+	}
+	for _, tc := range allCases {
 		want, selected := expected[tc.ID]
 		if !selected {
 			continue

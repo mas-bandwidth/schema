@@ -27,6 +27,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 // memaccessCallRe finds a memset/memcpy/memmove invocation, with or without the
@@ -99,7 +101,7 @@ func TestTablesCppMemaccessDestinationsAreVoidCast(t *testing.T) {
 	}
 
 	root := repoRoot(t)
-	files, err := filepath.Glob(filepath.Join(root, "test", "tables", "*.cpp"))
+	files, err := provesran.Glob(filepath.Join(root, "test", "tables", "*.cpp"))
 	if err != nil {
 		t.Fatal(err)
 	}

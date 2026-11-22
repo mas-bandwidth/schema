@@ -53,14 +53,23 @@ func TestDependentsSelectsEveryPackageThatBuildsOnAChange(t *testing.T) {
 func TestDependentsControlDirectoriesAloneMissTablewire(t *testing.T) {
 	t.Parallel()
 	tb := table{short: map[string]float64{}, plain: map[string]float64{}}
-	for _, pkgs := range [][]string{{"./internal/parser"}, append([]string{"./internal/parser"}, dependents(listFixture, []string{"./internal/parser"})...)} {
-		found := false
+	tablewireInARow := func(pkgs []string) bool {
 		for _, r := range plan(tb, pkgs, false, 60) {
-			found = found || slices.Contains(strings.Fields(r.Packages), "./internal/tablewire")
+			if slices.Contains(strings.Fields(r.Packages), "./internal/tablewire") {
+				return true
+			}
 		}
-		if want := len(pkgs) > 1; found != want {
-			t.Fatalf("packages %v: tablewire in a row = %v, want %v", pkgs, found, want)
-		}
+		return false
+	}
+	// THE CONTROL: the diff's directories alone must miss tablewire. If they
+	// do not, the miss this witness reverses is not reproduced.
+	alone := []string{"./internal/parser"}
+	if tablewireInARow(alone) {
+		t.Fatalf("packages %v: the directories alone put tablewire in a row; the control does not reproduce the miss", alone)
+	}
+	withDependents := append([]string{"./internal/parser"}, dependents(listFixture, []string{"./internal/parser"})...)
+	if !tablewireInARow(withDependents) {
+		t.Fatalf("packages %v: tablewire is in no row even with dependents", withDependents)
 	}
 }
 
@@ -179,5 +188,52 @@ func TestDeletedEmbeddedFileSelectsItsOwner(t *testing.T) {
 	}
 	if got := selectPackages(embedFixture, nil, nil, []string{"internal/codegen/squirrel/README.md"}, gone); len(got) != 0 {
 		t.Errorf("deleting a file no pattern covers selected %v", got)
+	}
+}
+
+// TestRunSelectsTheOwnerOfATestdataOnlyDiff: a diff that changes only files
+// under a package's testdata/ (a new fixture or corpus case) selects that
+// package, through the command's one entry point as ci-fast's rows step calls
+// it. Before, such a diff named no package and matched no embed, so
+// go-test-touched skipped and the tests that read the changed files did not
+// run on the pull request that changed them. The diff, the go list and the
+// want are a committed corpus case (testdata/testdata-only-diff): its control
+// lines, a docs file and a root testdata/ file whose directory is no package,
+// select nothing.
+func TestRunSelectsTheOwnerOfATestdataOnlyDiff(t *testing.T) {
+	t.Parallel()
+	dir := filepath.Join("testdata", "testdata-only-diff")
+	list, err := os.ReadFile(filepath.Join(dir, "list.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantB, err := os.ReadFile(filepath.Join(dir, "want.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := strings.Fields(string(wantB))
+	if len(want) == 0 {
+		t.Fatal("the corpus case wants nothing: it would check nothing")
+	}
+	selected := filepath.Join(t.TempDir(), "selected.txt")
+	var out bytes.Buffer
+	golist := func() (string, error) { return string(list), nil }
+	if err := run([]string{"-table", filepath.Join("..", "..", tablePath), "-changed-files", filepath.Join(dir, "diff-files.txt"), "-packages-out", selected}, golist, allExist, &out); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(selected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Fields(string(b))
+	slices.Sort(got)
+	if !slices.Equal(got, want) {
+		t.Errorf("a testdata-only diff selected %q, want %q", got, want)
+	}
+	// negative control: without the testdata owners the same diff selects
+	// nothing, which is the defect this case reproduces
+	src, test := embedOwners(string(list), []string{"tools/releasetargets/testdata/f066/split-assignment.mk"}, allExist)
+	if len(src)+len(test) != 0 {
+		t.Errorf("the embed rule alone selected %v %v for a testdata file: the case no longer isolates the testdata rule", src, test)
 	}
 }

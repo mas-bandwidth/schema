@@ -262,6 +262,9 @@ if (m.GraphLoadRetain(wire("graph.bin"), kept, kr) === null || kept.count === 0 
 			names = append(names, n)
 		}
 		sort.Strings(names)
+		if len(names) == 0 {
+			t.Fatal("names is empty: the loop below would check nothing")
+		}
 		for _, name := range names {
 			list := rows[name]
 			t.Run(name, func(t *testing.T) {

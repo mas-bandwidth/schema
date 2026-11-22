@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,6 +15,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestFunctionalCppLongPointerChain holds the C++ leg to docs/SPEC-TABLES.md
@@ -169,10 +170,10 @@ int main( void )
 	args := []string{"-std=c++17", "-O1", "-I" + outDir, "-I" + native, "-I" + serialize, filepath.Join(outDir, "probe.cpp")}
 	args = append(args, sources...)
 	args = append(args, "-o", filepath.Join(outDir, "probe"))
-	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, args...).CombinedOutput(); err != nil {
 		return out, fmt.Errorf("the probe did not compile: %w", err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
-	return exec.CommandContext(ctx, filepath.Join(outDir, "probe")).CombinedOutput()
+	return testproc.CommandContext(t, ctx, filepath.Join(outDir, "probe")).CombinedOutput()
 }

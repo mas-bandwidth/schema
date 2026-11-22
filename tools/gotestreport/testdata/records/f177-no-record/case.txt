@@ -1,0 +1,5 @@
+# F-177 control: no record file at all (this directory holds only case.txt)
+# was already red under -require-record, and stays red.
+args: -require-record -provides tool:rust
+exit: 1
+want: NO RECORD       this lane's go test left no record

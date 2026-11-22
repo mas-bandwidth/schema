@@ -1,0 +1,11 @@
+package referents
+
+table First
+{
+    n int32
+}
+
+table Root
+{
+    selected *First
+}

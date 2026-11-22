@@ -118,6 +118,9 @@ func TestMessageMatchingShapeStrict(t *testing.T) {
 			wire []byte
 		}{name, keyed, wire})
 	}
+	if len(cases) == 0 {
+		t.Fatal("cases is empty: the loop below would check nothing")
+	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			v := shapeVocabulary(t, tc.m, tc.m, false)

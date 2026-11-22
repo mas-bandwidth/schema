@@ -55,6 +55,9 @@ func TestLobsterUnitViewListing(t *testing.T) {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
+	if len(keys) == 0 {
+		t.Fatal("keys is empty: the loop below would check nothing")
+	}
 	for _, key := range keys {
 		t.Run(key, func(t *testing.T) {
 			g, err := generateLoadUnit(t, units[key])

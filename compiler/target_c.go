@@ -29,13 +29,18 @@ func (t cTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error) {
 // ctable opens no file and a build ships a reader for every layout the lock
 // records.
 func (cTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (map[string][]byte, error) {
-	files, err := emitC(u, lineage)
+	// every declared type is emitted under its marker (cqualify.Escape), so
+	// the qualification below can tell the unit's names from the C library's
+	// and the emitters' own: a `type uint8_t`, `type memcpy` or `type NULL`
+	// respells the user's declaration and never the platform's name
+	esc, table := cqualify.Escape(u, func(string) bool { return true })
+	files, err := emitC(esc, lineage)
 	if err != nil {
-		return nil, err
+		return nil, table.Err(err)
 	}
 	// C has no namespace: every name the unit declares takes its package
 	// here, once, across both emitters' files (internal/codegen/cqualify)
-	return cqualify.Qualify(files, u.Package)
+	return cqualify.QualifyEscaped(files, u.Package, table)
 }
 
 // emitC is both emitters' output in the schema's own spellings, before the
@@ -86,7 +91,9 @@ func cTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]ctable.FixedL
 	}
 	out := map[string][]ctable.FixedLineageEntry{}
 	for _, st := range ir.TableFixedRoots(u) {
-		entries := lineage.Entries(st.Name)
+		// the lock names a table by its declared name; the emitter keys it by
+		// the name it emits (cqualify.Escape's marked spelling)
+		entries := lineage.Entries(st.DeclaredName())
 		if len(entries) == 0 {
 			continue
 		}

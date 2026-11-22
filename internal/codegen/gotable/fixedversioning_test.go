@@ -32,7 +32,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -44,6 +43,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // ---- the rows ---------------------------------------------------------------
@@ -824,8 +825,8 @@ func TestFixedFormCorpusBuildsOnTheBench(t *testing.T) {
 	}
 	info, err := os.Stat(path)
 	if err != nil || info.Size() == 0 {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the C++ reference's byte oracle has no manifest at %s (make tables-fixedform-corpus): %v", path, err)
+		if slowtest.CorpusRequired() {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the C++ reference's byte oracle has no manifest at %s (make tables-fixedform-corpus): %v", path, err)
 		}
 		t.Skip("the C++ reference's byte oracle is not built: make tables-fixedform-corpus")
 	}
@@ -847,8 +848,8 @@ func fixedCorpus(t *testing.T) string {
 		// missing file means the build did not do what the target says it did
 		// — and a suite that skips itself there would report green over §5
 		// having never run, which is the whole reason this gate exists.
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the reference's byte oracle is not in %s: %v", dir, err)
+		if slowtest.CorpusRequired() {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the reference's byte oracle is not in %s: %v", dir, err)
 		}
 		t.Skip("the reference's byte oracle is not built: make tables-fixedform-corpus")
 	}
@@ -1152,7 +1153,7 @@ func runVersionProbeRetired(t *testing.T, reader string, older []string, retire 
 		}
 	}
 	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
-	cmd := exec.Command("go", "test", "-count=1", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", ".")
 	cmd.Dir = dir
 	return cmd.CombinedOutput()
 }

@@ -8,7 +8,7 @@
 // Team — None = 0 implicit, variants dense from 1, wire range [0, 2] (SPEC §4.2);
 // a frozen object of Number values — the JS translation of the family's
 // integer-backed enums; | max = ... headroom values are plain Numbers
-export const Team = Object.freeze({
+export const Team = globalThis.Object.freeze({
   None: 0,
   Red: 1,
   Blue: 2,
@@ -33,7 +33,7 @@ export function EnumNameTeam(value) {
 // ShipType — None = 0 implicit, variants dense from 1, wire range [0, 5] (SPEC §4.2);
 // a frozen object of Number values — the JS translation of the family's
 // integer-backed enums; | max = ... headroom values are plain Numbers
-export const ShipType = Object.freeze({
+export const ShipType = globalThis.Object.freeze({
   None: 0,
   Fighter: 1,
   Corvette: 2,
@@ -67,7 +67,7 @@ export function EnumNameShipType(value) {
 // MissileType — None = 0 implicit, variants dense from 1, wire range [0, 3] (SPEC §4.2);
 // a frozen object of Number values — the JS translation of the family's
 // integer-backed enums; | max = ... headroom values are plain Numbers
-export const MissileType = Object.freeze({
+export const MissileType = globalThis.Object.freeze({
   None: 0,
   Heatseeker: 1,
   Torpedo: 2,
@@ -95,7 +95,7 @@ export function EnumNameMissileType(value) {
 // PropType — None = 0 implicit, variants dense from 1, wire range [0, 6] (SPEC §4.2);
 // a frozen object of Number values — the JS translation of the family's
 // integer-backed enums; | max = ... headroom values are plain Numbers
-export const PropType = Object.freeze({
+export const PropType = globalThis.Object.freeze({
   None: 0,
   Asteroid: 1,
   Chunk: 2,
@@ -132,7 +132,7 @@ export function EnumNamePropType(value) {
 // Pending — None = 0 implicit, variants dense from 1, wire range [0, 0] (SPEC §4.2);
 // a frozen object of Number values — the JS translation of the family's
 // integer-backed enums; | max = ... headroom values are plain Numbers
-export const Pending = Object.freeze({
+export const Pending = globalThis.Object.freeze({
   None: 0,
 });
 export const PendingMax = 0; // the exported extent (SPEC §4.2)

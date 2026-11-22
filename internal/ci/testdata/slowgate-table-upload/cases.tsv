@@ -1,0 +1,9 @@
+# The slow-gate table upload's committed corpus (the reviewer's F-235):
+# TestSlowGateRowsUploadTheirCoverageTable reads every row with the same
+# check it runs on .github/workflows/ci-full.yml.
+# id	fixture	want (ok, or refused)
+F-235-control	good.yml	ok
+F-235-missing	missing.yml	refused
+F-235-wrong-path	wrong-path.yml	refused
+F-235-absent-is-green	absent-is-green.yml	refused
+F-235-red-row-uploads-nothing	red-row-uploads-nothing.yml	refused

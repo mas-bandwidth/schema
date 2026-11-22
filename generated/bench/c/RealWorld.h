@@ -5,8 +5,8 @@
    AGPL-3.0, its output is not.
    package realworld — protocol id 0xcc9644116a3dac22 */
 
-#ifndef SCHEMA_REALWORLD_REAL_WORLD_H
-#define SCHEMA_REALWORLD_REAL_WORLD_H
+#ifndef SCHEMA_REALWORLD_RealWorld_h
+#define SCHEMA_REALWORLD_RealWorld_h
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -242,4 +242,4 @@ static SCHEMA_UNUSED realworld_real_packet_t realworld_new_real_packet( void )
 }
 #endif
 
-#endif /* SCHEMA_REALWORLD_REAL_WORLD_H */
+#endif /* SCHEMA_REALWORLD_RealWorld_h */

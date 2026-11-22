@@ -31,10 +31,10 @@
     "PORT-SQUIRREL.md",
     "PORTING.md",
     "SECURITY.md",
+    "SPEC-CONFORMANCE.md",
     "SPEC-TABLES.md",
     "UNITY.md",
-    "VERSIONING.md",
-    "relaxed.md"
+    "VERSIONING.md"
   ],
   "excludeFolders": [
     "docs/LAYERS",

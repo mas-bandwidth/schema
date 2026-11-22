@@ -24,10 +24,13 @@
 # conformance-negative-control-lobster-write-refusal  the fixed root's checked
 #                                            writer (docs/SPEC.md §5.1:
 #                                            write-refusal and -fixed red)
+# conformance-negative-control-lobster-write-refusal-fixed  the fixed writer's
+#                                            finite-float rule (§5.1: write-refusal-fixed
+#                                            and write-refusal red; message green)
 # conformance-negative-control-lobster-write-refusal-message  the message
 #                                            writer's scalar check (§5.1:
 #                                            write-refusal-message red)
-.PHONY: conformance-negative-control-lobster conformance-negative-control-lobster-walk conformance-negative-control-lobster-framing conformance-negative-control-lobster-cycle conformance-negative-control-lobster-write-refusal conformance-negative-control-lobster-write-refusal-message
+.PHONY: conformance-negative-control-lobster conformance-negative-control-lobster-walk conformance-negative-control-lobster-framing conformance-negative-control-lobster-cycle conformance-negative-control-lobster-write-refusal conformance-negative-control-lobster-write-refusal-fixed conformance-negative-control-lobster-write-refusal-message
 conformance-negative-control-lobster: lobster-dist-present build/conformance-harness
 	sh test/conformance/lobster/negative-control report
 
@@ -43,8 +46,11 @@ conformance-negative-control-lobster-cycle: lobster-dist-present build/conforman
 conformance-negative-control-lobster-write-refusal: lobster-dist-present build/conformance-harness
 	sh test/conformance/lobster/negative-control write-refusal
 
+conformance-negative-control-lobster-write-refusal-fixed: lobster-dist-present build/conformance-harness
+	sh test/conformance/lobster/negative-control write-refusal-fixed
+
 conformance-negative-control-lobster-write-refusal-message: lobster-dist-present build/conformance-harness
 	sh test/conformance/lobster/negative-control write-refusal-message
 
 # The controls ride the leg: `make test` reaches them through test-lobster.
-test-lobster: conformance-negative-control-lobster conformance-negative-control-lobster-walk conformance-negative-control-lobster-framing conformance-negative-control-lobster-cycle conformance-negative-control-lobster-write-refusal conformance-negative-control-lobster-write-refusal-message
+test-lobster: conformance-negative-control-lobster conformance-negative-control-lobster-walk conformance-negative-control-lobster-framing conformance-negative-control-lobster-cycle conformance-negative-control-lobster-write-refusal conformance-negative-control-lobster-write-refusal-fixed conformance-negative-control-lobster-write-refusal-message

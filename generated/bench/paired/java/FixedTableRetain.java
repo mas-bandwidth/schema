@@ -53,7 +53,7 @@ public final class FixedTableRetain {
 
     static void decodeNodeBodyRetain(
             TableVariable.Reader r,
-            Object val,
+            java.lang.Object val,
             long typeId,
             TableRetain retain,
             TableVariable.Report report,
@@ -113,7 +113,7 @@ public final class FixedTableRetain {
     static void writeNodeBodyRetain(
             TableVariable.Writer w,
             TableVariable.NodeGraph nodes,
-            Object val,
+            java.lang.Object val,
             long typeId,
             TableRetain retain,
             TableVariable.Report report,
@@ -289,7 +289,7 @@ public final class FixedTableRetain {
         put64(b, at, id);
         at += 8;
         b[at++] = (byte) kind;
-        System.arraycopy(resolved, 0, b, at, resolved.length);
+        java.lang.System.arraycopy(resolved, 0, b, at, resolved.length);
         retain.used += total;
         report.retained++;
     }
@@ -335,12 +335,12 @@ public final class FixedTableRetain {
             int table = w.off;
             w.putLeb(nodeCount);
             for (int i = 0; i < nodeCount; i++) {
-                Object value = nodes.nodeValue(i);
+                java.lang.Object value = nodes.nodeValue(i);
                 long typeId = nodes.nodeType(i);
                 w.putLeb(w.ref(typeId));
                 if (nodes.nodeBlob(i)) {
-                    if (value instanceof String) {
-                        w.putUtf8((String) value);
+                    if (value instanceof java.lang.String) {
+                        w.putUtf8((java.lang.String) value);
                     } else {
                         byte[] bytes = (byte[]) value;
                         w.putLeb(bytes.length);
@@ -348,7 +348,7 @@ public final class FixedTableRetain {
                     }
                 } else {
                     int body = w.off;
-                    Integer key = retain == null ? null : retain.nodeKeys.get(value);
+                    java.lang.Integer key = retain == null ? null : retain.nodeKeys.get(value);
                     if (key != null) {
                         path[0] = -(key + 1);
                         path[1] = 0;

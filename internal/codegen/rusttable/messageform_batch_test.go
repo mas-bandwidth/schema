@@ -45,6 +45,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestMessageFormBatchRust(t *testing.T) {
@@ -200,6 +202,9 @@ func TestMessageFormBatchRust(t *testing.T) {
 		// per-language diagnostics.
 		var rep tabletext.Report
 		count, ok, err := tablewire.DecodeMessages(mn, news, wire, v, &rep)
+		// A value the newer range cannot hold is refused BY NAME as
+		// out_of_range (§3.3); any other refusal is damage.
+		wantOOR := !ok && tablewire.RefusalReason(err) == tablewire.ReasonOutOfRange
 		var upgraded []byte
 		if ok {
 			if err != nil || count != len(olds) {
@@ -231,12 +236,14 @@ func TestMessageFormBatchRust(t *testing.T) {
             let measured = card_measure_messages(&values[..count], &mut mrep);
             same = wrote == WANT.len() as i64 && measured == WANT.len() as i64 && buf == WANT;
         }
-        let verdict = if want_ok { ok && count == %d } else { !ok && count == 0 && lrep.damaged };
+        let want_oor = %t;
+        let refusal = if want_oor { lrep.refused && !lrep.damaged && matches!(lrep.reason, TableReason::OutOfRange) } else { lrep.damaged };
+        let verdict = if want_ok { ok && count == %d } else { !ok && count == 0 && refusal };
         say("upgrade", announced && verdict && same,
-            format!("announced={announced} ok={ok} want_ok={want_ok} count={count} same={same} report={lrep:?}"));
+            format!("announced={announced} ok={ok} want_ok={want_ok} want_oor={want_oor} count={count} same={same} report={lrep:?}"));
     }
 `, len(announce), rustBytes(announce), len(wire), rustBytes(wire), len(upgraded), rustBytes(upgraded),
-			len(olds), ok, len(olds))
+			len(olds), ok, wantOOR, len(olds))
 		out := runMessageBatchProbe(t, newer, main)
 		if line := messageBatchLine(out, "upgrade"); line != "BATCH upgrade ok" {
 			t.Fatalf("the newer Rust reader does not upgrade the older batch as the oracle does: %s", line)
@@ -246,8 +253,8 @@ func TestMessageFormBatchRust(t *testing.T) {
 	// 4. THE BATCH's REFUSALS AND ITS DAMAGE RULES (§3.3), each by name:
 	// "`M` ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME" (MeasureMessages
 	// and SaveMessages both, -1), "`M` ABOVE THE CALLER'S CAPACITY ON THE READ
-	// SIDE IS A REFUSAL BY NAME ... The reader sets the returned count to the
-	// wire's `M`", "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY
+	// SIDE IS A REFUSAL BY NAME ... A refused batch returns a count of `0`",
+	// "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY
 	// NAME", the form byte read FIRST and refused as `newer_form`, "DAMAGE
 	// INSIDE BODY `k` DELIVERS BODIES `1` TO `k - 1`", and "BYTES AFTER THE PAD
 	// ARE MALFORMED".
@@ -417,12 +424,12 @@ fn main() {
 	}
 	bin := filepath.Join(dir, "batchprobe")
 	args := append(rustcHostLinker(), "--edition", "2024", "-o", bin, "main.rs")
-	cmd := exec.Command("rustc", args...)
+	cmd := testproc.Command(t, "rustc", args...)
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("the probe did not build: %v\n%s", err, out)
 	}
-	run := exec.Command(bin)
+	run := testproc.Command(t, bin)
 	run.Dir = dir
 	out, err := run.CombinedOutput()
 	if err != nil {
@@ -685,15 +692,18 @@ const messageBatchRefusalsMain = `
     }
     {
         // "M ABOVE THE CALLER'S CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME
-        // ... The reader sets the returned count to the wire's M."
+        // ... A refused batch returns a count of 0" (docs/SPEC-TABLES.md
+        // §3.3), and nothing is decoded: the storage is as it was.
         let three = [one, one, one];
         let m = root_measure_messages(&three, &mut TableReport::default());
         let mut buf = vec![0u8; m as usize];
         assert!(root_save_messages(&three, &mut buf, &mut TableReport::default()) == m);
         let mut values = vec![RootRow::default(); 2];
+        values[0].c = 17;
+        values[1].c = 17;
         let mut rep = TableReport::default();
         let (count, ok) = root_load_messages(&mut values, &vocab, &buf, &mut rep);
-        say("batch_too_large_read", !ok && count == 3 && rep.refused && rep.reason == TableReason::BatchTooLarge && !rep.damaged,
+        say("batch_too_large_read", !ok && count == 0 && rep.refused && rep.reason == TableReason::BatchTooLarge && !rep.damaged && values[0].c == 17 && values[1].c == 17,
             format!("count={count} report={rep:?}"));
     }
     {

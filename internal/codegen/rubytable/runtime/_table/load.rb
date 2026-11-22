@@ -199,7 +199,7 @@ module SchemaRuntimeUnit
 
     def self.read_widened_scalar(reader, kind, field)
       val = read_widened_elements(reader, kind, field, 1)[0]
-      raise Refused.new('out_of_range', field.name) if field.float_range && (val < field.fmin || val > field.fmax)
+      raise Refused.new('out_of_range', field.name) if field.float_range && !float_in_range?(field, val)
 
       val
     end
@@ -865,7 +865,7 @@ module SchemaRuntimeUnit
       raise Refused.new('wire_damaged', 'bytes left inside an array body') if sub.pos != sub.end_pos
 
       if fd.array_kind == 1
-        values << (elem.codec == 'table' ? new_by_name(elem.target) : elem.default_value) while values.length < fd.bound
+        values << born_element(fd, elem) while values.length < fd.bound
       end
       values
     end
@@ -953,9 +953,7 @@ module SchemaRuntimeUnit
         raise Refused.new('length_over_bound', "#{fd.name} exceeds its text total") if total > fd.text_total
       end
       if fd.array_kind == 1 && count < fd.bound
-        (fd.bound - count).times do
-          items << (element.codec == 'table' ? new_by_name(element.target) : element.default_value)
-        end
+        (fd.bound - count).times { items << born_element(fd, element) }
       end
       items
     end

@@ -33,6 +33,9 @@ defmodule Bench.BenchFixed do
   @r_bench_mixed_nonce {0, 18_446_744_073_709_551_615}
   @r_bench_mixed_world_time {-1_000_000_000_000, 1_000_000_000_000}
   @r_bench_mixed_server_time {0, 16_776_960}
+  @r_bench_mixed_aim_x {-1.0, 1.0}
+  @r_bench_mixed_aim_y {-1.0, 1.0}
+  @r_bench_mixed_aim_z {-1.0, 1.0}
   @r_bench_mixed_flux {-1_267_650_600_228_229_401_496_703_205_376,
                        1_267_650_600_228_229_401_496_703_205_376}
   @r_bench_mixed_ping {0, 64_000}
@@ -897,8 +900,10 @@ defmodule Bench.BenchFixed do
         byte_size(v_player_name)::little-signed-32, v_player_name::binary,
         0::size(R.string_slack(v_player_name, 15))-unit(8),
         byte_size(v_payload)::little-signed-32, v_payload::binary,
-        0::size(R.text_slack(v_payload, 16))-unit(8), R.f32_bits(v_aim_x)::little-unsigned-32,
-        R.f32_bits(v_aim_y)::little-unsigned-32, R.f32_bits(v_aim_z)::little-unsigned-32,
+        0::size(R.text_slack(v_payload, 16))-unit(8),
+        R.cf32_bits(v_aim_x, @r_bench_mixed_aim_x)::little-unsigned-32,
+        R.cf32_bits(v_aim_y, @r_bench_mixed_aim_y)::little-unsigned-32,
+        R.cf32_bits(v_aim_z, @r_bench_mixed_aim_z)::little-unsigned-32,
         R.f32_bits(v_recoil)::little-unsigned-32, R.f64_bits(v_drift)::little-unsigned-64,
         R.fits(v_wide_key, 128, false)::little-unsigned-128,
         R.ranged(v_flux, @r_bench_mixed_flux)::little-signed-128,

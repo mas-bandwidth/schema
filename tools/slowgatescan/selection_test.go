@@ -56,3 +56,45 @@ func TestCIExplicitCommandsSelectOnlyTheirPackagesAndTests(t *testing.T) {
 		}
 	}
 }
+
+// The complement may take a -skip: the tests it matches earn no credit there
+// (a step of their own runs them), and every other test of a kept package
+// still does. Without the -skip the same test is credited.
+func TestCIComplementSkipTakesItsTestsOutOfTheCredit(t *testing.T) {
+	const tail = `$(go list ./internal/codegen/... | grep -v '/elixirtable$')`
+	selector, slow, ok := parseSupportedCommandLine("go test -timeout 0 -skip '^TestNameCorpusBuilds' "+tail, true)
+	if !ok || !slow {
+		t.Fatal("the complement with a -skip is refused")
+	}
+	if selector("./internal/codegen/c", "TestNameCorpusBuildsC") {
+		t.Fatal("the -skip test is credited to the complement")
+	}
+	if !selector("./internal/codegen/c", "TestOther") || selector("./internal/codegen/elixirtable", "TestOther") {
+		t.Fatal("the -skip changed which packages the complement selects")
+	}
+	plain, _, ok := parseSupportedCommandLine("go test -timeout 0 "+tail, true)
+	if !ok || !plain("./internal/codegen/c", "TestNameCorpusBuildsC") {
+		t.Fatal("the complement without a -skip does not credit the test")
+	}
+}
+
+// A step of its own may lift the test timeout (a nightly has no time limit):
+// -timeout 0 selects nothing away, so the step's tests are still credited.
+// A bounded timeout is not part of the grammar.
+func TestCIExplicitCommandMayLiftTheTimeout(t *testing.T) {
+	for _, command := range []string{
+		"go test -timeout 0 -v ./internal/codegen/c ./internal/codegen/cpp -run '^TestNameCorpusBuilds'",
+		"go test -timeout=0 -v ./internal/codegen/c ./internal/codegen/cpp -run '^TestNameCorpusBuilds'",
+	} {
+		selector, _, ok := parseSupportedCommandLine(command, true)
+		if !ok || !selector("./internal/codegen/cpp", "TestNameCorpusBuildsCpp") {
+			t.Fatalf("supported command refused: %s", command)
+		}
+		if selector("./internal/codegen/csharp", "TestNameCorpusBuildsCs") || selector("./internal/codegen/c", "TestOther") {
+			t.Fatalf("selected outside command scope: %s", command)
+		}
+	}
+	if _, _, ok := parseSupportedCommandLine("go test -timeout 10m ./internal/codegen/c -run '^TestNameCorpusBuilds'", true); ok {
+		t.Fatal("a bounded -timeout was accepted")
+	}
+}

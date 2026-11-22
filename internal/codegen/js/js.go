@@ -77,6 +77,12 @@ func MemberName(name string) string {
 // top-level const initializers evaluate top to bottom, so declarations emit
 // in ir.EmissionOrder per file (the C/C++ discipline — a symbolic const
 // initializer referencing a later const would hit the temporal dead zone).
+//
+// Every builtin the generator itself calls (Number, Math, Map, ...) is
+// written `globalThis.X`: a schema type may take a builtin's name and become
+// a class in the module's scope, and the qualified spelling reaches the
+// builtin whatever that scope binds. The checker claims globalThis in every
+// unit (internal/check), so nothing shadows the qualifier.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
 	out := map[string][]byte{}
 	home := ir.ProtocolIdHome(u)
@@ -343,7 +349,7 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 // the one place the arm is a declaration of its own.
 func (g *gen) emitTagEnum(name string, members []string, docs []string, comment string) {
 	g.pf("// %s: %s\n", name, comment)
-	g.pf("export const %s = Object.freeze({\n", name)
+	g.pf("export const %s = globalThis.Object.freeze({\n", name)
 	g.pf("  None: 0,\n")
 	for i, m := range members {
 		g.pf("%s", ir.DocComment(docs[i], "  ", "//"))
@@ -417,7 +423,7 @@ func (g *gen) emitEnum(d *ir.Enum) {
 	g.pf("// %s — None = 0 implicit, variants dense from 1, wire range [0, %d] (SPEC §4.2);\n", d.Name, d.Max)
 	g.pf("// a frozen object of Number values — the JS translation of the family's\n")
 	g.pf("// integer-backed enums; | max = ... headroom values are plain Numbers\n")
-	g.pf("export const %s = Object.freeze({\n", d.Name)
+	g.pf("export const %s = globalThis.Object.freeze({\n", d.Name)
 	g.pf("  None: 0,\n")
 	for i, v := range d.Variants {
 		g.pf("%s", ir.DocComment(d.VariantDocs[i], "  ", "//"))
@@ -514,12 +520,12 @@ func (g *gen) emitStorageField(f *ir.Field) {
 	name := MemberName(f.Name)
 	switch {
 	case f.Type.Kind == ir.TString:
-		g.pf("    this.%s = new Uint8Array(%s); // string(%s): max length, used length beside it (SPEC §4.7)\n",
+		g.pf("    this.%s = new globalThis.Uint8Array(%s); // string(%s): max length, used length beside it (SPEC §4.7)\n",
 			name, g.renderNum(f.Type.SizeExpr, big.NewInt(f.Type.Size)), ir.RenderExpr(f.Type.SizeExpr))
 		g.pf("    this.%sLength = 0;\n", name)
 		g.emitByteDefault(f, "this."+name, "    ")
 	case f.Type.Kind == ir.TBytes:
-		g.pf("    this.%s = new Uint8Array(%s); // bytes(%s): fixed buffer, used length beside it (SPEC §4.7)\n",
+		g.pf("    this.%s = new globalThis.Uint8Array(%s); // bytes(%s): fixed buffer, used length beside it (SPEC §4.7)\n",
 			name, g.renderNum(f.Type.SizeExpr, big.NewInt(f.Type.Size)), ir.RenderExpr(f.Type.SizeExpr))
 		g.pf("    this.%sLength = 0;\n", name)
 		g.emitByteDefault(f, "this."+name, "    ")
@@ -531,15 +537,15 @@ func (g *gen) emitStorageField(f *ir.Field) {
 			// (SPEC §6.1): every buffer exists at construction; unions are
 			// classes here exactly like structs
 			ctor := g.classRef(f.Type.Name)
-			g.pf("    this.%s = Array.from({ length: %s }, () => new %s());%s\n", name, bound, ctor, g.fieldComment(f))
+			g.pf("    this.%s = globalThis.Array.from({ length: %s }, () => new %s());%s\n", name, bound, ctor, g.fieldComment(f))
 		case isByteElem(f.Type):
 			// uint8 arrays store as Uint8Array — the runtime's own byte-buffer
 			// type (serializeBytes' contract), so the aligned bulk path can
 			// hand the buffer over whole; element access is Number as in any
 			// array, and the wire is identical either way
-			g.pf("    this.%s = new Uint8Array(%s);%s\n", name, bound, g.fieldComment(f))
+			g.pf("    this.%s = new globalThis.Uint8Array(%s);%s\n", name, bound, g.fieldComment(f))
 		default:
-			g.pf("    this.%s = new Array(%s).fill(%s);%s\n", name, bound, g.zeroValue(f.Type), g.fieldComment(f))
+			g.pf("    this.%s = new globalThis.Array(%s).fill(%s);%s\n", name, bound, g.zeroValue(f.Type), g.fieldComment(f))
 		}
 		if f.Array == ir.ArrayCounted {
 			// a [A..B] count is born at A, the one wire-legal count a fresh

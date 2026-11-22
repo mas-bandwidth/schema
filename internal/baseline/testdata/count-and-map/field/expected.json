@@ -1,0 +1,54 @@
+{
+  "verdict": "refuse",
+  "contains": "count_over_bound",
+  "saves": [
+    {
+      "name": "single",
+      "input": {
+        "items": [
+          7
+        ]
+      },
+      "old": {
+        "items": [
+          7
+        ]
+      },
+      "refusal": "count_over_bound"
+    },
+    {
+      "name": "double",
+      "input": {
+        "items": [
+          7,
+          8
+        ]
+      },
+      "old": {
+        "items": [
+          7,
+          8
+        ]
+      },
+      "new": {
+        "items": [
+          7,
+          8
+        ]
+      }
+    },
+    {
+      "name": "absent",
+      "input": {},
+      "old": {
+        "items": []
+      },
+      "new": {
+        "items": [
+          0,
+          0
+        ]
+      }
+    }
+  ]
+}

@@ -490,7 +490,11 @@ func TestDartVerbClaimNeedsATable(t *testing.T) {
 func TestTableRuntimeClaimSplitsOnTheViewFile(t *testing.T) {
 	// (1) the view file's own names, refused with no table in sight, and the
 	// diagnostic says WHY a table-free unit is refused
-	for _, name := range tablenames.ClaimedInEveryUnit() {
+	allClaimedInEveryUnit := tablenames.ClaimedInEveryUnit()
+	if len(allClaimedInEveryUnit) == 0 {
+		t.Fatal("tablenames.ClaimedInEveryUnit() is empty: the loop below would check nothing")
+	}
+	for _, name := range allClaimedInEveryUnit {
 		src := "package t\ntype " + name + " { y int32 }\n"
 		errs := runUnit(t, map[string]string{"T.schema": src})
 		if len(errs) == 0 {
@@ -506,7 +510,11 @@ func TestTableRuntimeClaimSplitsOnTheViewFile(t *testing.T) {
 	// trip an unrelated refusal on their spelling alone (the C macro space,
 	// Go's export casing), so what is asserted is the CLAIM's absence rather
 	// than a clean unit.
-	for _, name := range tablenames.ClaimedWithATable() {
+	allClaimedWithATable := tablenames.ClaimedWithATable()
+	if len(allClaimedWithATable) == 0 {
+		t.Fatal("tablenames.ClaimedWithATable() is empty: the loop below would check nothing")
+	}
+	for _, name := range allClaimedWithATable {
 		src := "package t\ntype Holder { y int32 }\nenum " + name + " { A, B }\n"
 		for _, e := range runUnit(t, map[string]string{"T.schema": src}) {
 			if strings.Contains(e.Error(), "TABLE-wire runtime") || strings.Contains(e.Error(), "view file") {
@@ -515,7 +523,11 @@ func TestTableRuntimeClaimSplitsOnTheViewFile(t *testing.T) {
 		}
 	}
 	// (3) and every one of them is refused the moment a table rides
-	for _, name := range tablenames.ClaimedWithATable() {
+	allClaimedWithATables := tablenames.ClaimedWithATable()
+	if len(allClaimedWithATables) == 0 {
+		t.Fatal("tablenames.ClaimedWithATable() is empty: the loop below would check nothing")
+	}
+	for _, name := range allClaimedWithATables {
 		src := "package t\ntable Tab { x int32 }\nenum " + name + " { A, B }\n"
 		errs := runUnit(t, map[string]string{"T.schema": src})
 		if len(errs) == 0 {

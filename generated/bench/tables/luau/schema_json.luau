@@ -309,7 +309,9 @@ local function scan_number(inp: Input): string?
   return inp.t:sub(start, inp.p - 1)
 end
 
-local function scan_label(inp: Input): number?
+-- a label is its DIGITS, kept as the string they are: a double sums digits
+-- inexactly past 2^53, where two labels would collide, and Go reads a uint64
+local function scan_label(inp: Input): string?
   space(inp)
   local c = inp.t:byte(inp.p)
   if c == nil or c < 49 or c > 57 then inp.bad = true; return nil end
@@ -324,9 +326,7 @@ local function scan_label(inp: Input): number?
     inp.bad = true
     return nil
   end
-  local v = 0
-  for i = 1, #digits do v = v * 10 + (digits:byte(i) - 48) end
-  return v
+  return digits
 end
 
 local skip_value: (Input, number, any, boolean?) -> boolean
@@ -344,9 +344,14 @@ local function skip_container(inp: Input, close: string, depth: number, graph: a
   -- object (docs/SPEC-TABLES.md §16.2): the strict read refuses the whole
   -- value rather than guessing which occurrence wins.
   local keys: { [string]: boolean } = {}
+  local definition: any = nil -- the label entry this object defines, open until it closes
   while true do
     local c = peek(inp)
-    if c == close then inp.p = inp.p + 1; return true end
+    if c == close then
+      inp.p = inp.p + 1
+      if definition ~= nil then definition.open = false end
+      return true
+    end
     if c == nil then inp.bad = true; return false end
     local labelled = false
     if close == '}' then
@@ -357,17 +362,36 @@ local function skip_container(inp: Input, close: string, depth: number, graph: a
       keys[key] = true
       if peek(inp) ~= ':' then inp.bad = true; return false end
       inp.p = inp.p + 1
-      if key ~= "" and key:sub(1, 1) == "&" and graph ~= nil then
+      if key ~= "" and key:sub(1, 1) == "&" then
         if not first or key ~= "&node" then inp.bad = true; return false end
         local label = scan_label(inp)
         if label == nil then return false end
-        if graph[label] == nil then graph[label] = { node = nil, st = nil, open = false } end
+        -- THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): a label alone
+        -- must name a definition already closed; fields after one must follow a
+        -- label not yet defined, and the definition is open until this object
+        -- closes. What the reader does not place is the value.
         first = false
         labelled = true
         c = peek(inp)
-        if c == close then inp.p = inp.p + 1; return true end
-        if c ~= ',' then inp.bad = true; return false end
-        inp.p = inp.p + 1
+        if c ~= close and c ~= ',' then inp.bad = true; return false end
+        if graph == nil then
+          -- a unit with no pointer has no label table: the prefix is still held
+          -- to its grammar, and the value is skipped whole
+          inp.p = inp.p + 1
+          if c == close then return true end
+        else
+          if c == ',' then inp.p = inp.p + 1; c = peek(inp) end
+          local entry = graph[label]
+          local bare = c == close
+          if bare ~= (entry ~= nil) then inp.bad = true; return false end
+          if bare then
+            if entry.open then inp.bad = true; return false end
+            inp.p = inp.p + 1
+            return true
+          end
+          definition = { node = nil, st = nil, open = true }
+          graph[label] = definition
+        end
       end
     end
     if not labelled then
@@ -378,6 +402,7 @@ local function skip_container(inp: Input, close: string, depth: number, graph: a
         inp.p = inp.p + 1
       elseif c == close then
         inp.p = inp.p + 1
+        if definition ~= nil then definition.open = false end
         return true
       else
         inp.bad = true
@@ -1304,6 +1329,9 @@ read_array = function(T: any, fd: any, inp: Input, holder: any, key: any, depth:
       return false
     end
   end
+  -- A COUNTED ARRAY BELOW ITS MIN (docs/SPEC.md §5.1 row 3): off the
+  -- reader's declaration, as an element past its bound is
+  if not fd.fixed and not fd.list and fd.keyed == nil and placed < (fd.min or 0) then report.clamped = report.clamped + 1 end
   holder[key] = out
   return true
 end
@@ -1676,7 +1704,23 @@ read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: 
       return true
     end
     for _, v in ipairs(d.variants) do
-      if v[1] == name then holder[key] = name; return true end
+      if v[1] == name then
+        if v[3] == true then
+          -- A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT, an
+          -- element as the element's (None), and is never counted unknown
+          -- (§2.15, §16.2 enum row)
+          if elem then
+            holder[key] = false
+          else
+            local def = d.raw ~= nil and d.raw.def or 0
+            local dn = walk_enum_name(d, def)
+            holder[key] = if dn == "None" then nil else dn
+          end
+        else
+          holder[key] = name
+        end
+        return true
+      end
     end
     if elem then holder[key] = false else holder[key] = nil end
     report.unknown = report.unknown + 1
@@ -2068,7 +2112,7 @@ local function float_ok(fd: any, v: number): boolean
   local x = v
   if fd.f32 and x == x then buffer.writef32(narrowScratch, 0, x); x = buffer.readf32(narrowScratch, 0) end
   if x ~= x or x == math.huge or x == -math.huge then refuse_reason = "non_finite_float"; return false end
-  if fd.lo ~= nil and (v < fd.lo or v > fd.hi) then refuse_reason = "out_of_range"; return false end
+  if fd.lo ~= nil and (x < fd.lo or x > fd.hi) then refuse_reason = "out_of_range"; return false end
   return true
 end
 
@@ -2638,7 +2682,12 @@ write_value = function(T: any, d: any, val: any, depth: number, g: any, w: any, 
   elseif s == "enum" then
     if val == nil or val == false then write_string(w, "None"); return true end
     for _, v in ipairs(d.variants) do
-      if v[1] == val then write_string(w, val); return true end
+      if v[1] == val then
+        -- a writer refuses a value that holds a deprecated variant (§2.15)
+        if v[3] == true then refuse_reason = "invalid_value"; return false end
+        write_string(w, val)
+        return true
+      end
     end
     return false
   elseif s == "flags" then
@@ -2667,6 +2716,8 @@ write_value = function(T: any, d: any, val: any, depth: number, g: any, w: any, 
     return true
   elseif s == "float" then
     if not float_ok(d, val) then return false end
+    -- a ranged float's -0 is written as +0 (docs/SPEC-TABLES.md §3.3)
+    if d.lo ~= nil and val == 0 then val = 0 end
     local text = float_text(val, d.f32)
     if text == nil then return false end
     raw(w, text)
@@ -2824,6 +2875,7 @@ adapt_field = function(fd: any, owner: any): any
     o.bound = fd.bound or 0
     o.fixed = fd.array == "fixed"
     o.list = fd.array == "list"
+    o.min = fd.min or 0
     o.keyed = fd.array == "keyed" and fd.keyvs or nil
     o.elem_kind = fd.ek
     o.str_elem = fd.e ~= nil and (fd.e.s == "str")

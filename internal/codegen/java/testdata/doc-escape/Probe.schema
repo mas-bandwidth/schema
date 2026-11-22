@@ -1,0 +1,22 @@
+package docescape
+
+/// a type doc \u000a and \\u0041 and \\B and \uuuu0043 and \u
+type T
+{
+    /// a field doc \u000a with */ inside
+    x uint8
+}
+
+/// a const doc \u000A
+const K = 3
+
+/// an enum doc \u
+enum E
+{
+    /// a variant doc "
+    A
+    B
+}
+
+/// a plain doc with no escape in it
+const P = 4

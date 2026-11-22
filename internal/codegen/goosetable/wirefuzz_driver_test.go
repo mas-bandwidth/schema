@@ -165,7 +165,11 @@ func gooseRetainingDriverFrames(t *testing.T, key, rootName string, frames [][]b
 // of the map field; "damage only" cuts the second occurrence out.
 func TestGooseRetainingMapReplacement(t *testing.T) {
 	slowtest.Gate(t, "the Goose toolchain (it builds and runs the retaining fuzz driver)")
-	for name, loaded := range gooseRetainingMapReplay(t, nil) {
+	allGooseRetainingMapReplay := gooseRetainingMapReplay(t, nil)
+	if len(allGooseRetainingMapReplay) == 0 {
+		t.Fatal("gooseRetainingMapReplay(t, nil) is empty: the loop below would check nothing")
+	}
+	for name, loaded := range allGooseRetainingMapReplay {
 		if loaded {
 			t.Errorf("%s: the retaining read kept a value", name)
 		}
@@ -179,7 +183,11 @@ func TestGooseRetainingMapReplacementNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "the Goose toolchain (it builds and runs the retaining fuzz driver)")
 	override := sabotageAll(t, "wire_load.goose", ctlWireWalk, ctlNoWalk, ctlBodyDmg, "",
 		"    if report.repeated > 0 {", "    if false {", ctlEndRefuse, ctlEndOk)
-	for name, loaded := range gooseRetainingMapReplay(t, override) {
+	allGooseRetainingMapReplay := gooseRetainingMapReplay(t, override)
+	if len(allGooseRetainingMapReplay) == 0 {
+		t.Fatal("gooseRetainingMapReplay(t, override) is empty: the loop below would check nothing")
+	}
+	for name, loaded := range allGooseRetainingMapReplay {
 		if !loaded {
 			t.Errorf("%s: still refused with the end-of-load refusal removed", name)
 		}

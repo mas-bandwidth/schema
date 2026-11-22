@@ -80,6 +80,13 @@ func encodeWith(m *tabletext.Model, inst *tabletext.Instance, rt *retainState) (
 			return nil, e.retainLost, err
 		}
 	}
+	// THE WRITER REFUSES WHAT ITS READERS REFUSE (docs/SPEC-TABLES.md §3,
+	// THE DISTINCTNESS CHECK): a value that needs more than the id table's
+	// maximum has no file, because every reader answers such a table
+	// wire_damaged. The retained ids are in e.ids already.
+	if len(e.ids.ids) > ir.TableWireIdTableBound {
+		return nil, e.retainLost, fmt.Errorf("id table needs %d entries, past the maximum of %d (docs/SPEC-TABLES.md §3)", len(e.ids.ids), ir.TableWireIdTableBound)
+	}
 	out := make([]byte, 0, 1+len(fields)+1+8*len(e.ids.ids)+8)
 	out = append(out, ir.TableWireForm)
 	out = append(out, fields...)
@@ -548,12 +555,12 @@ func encodeElement(e *encoder, w *buf, f *ir.Field, kind int, cell *tabletext.Ce
 		if err := RefuseNonFinite(e.m, f, cell.F); err != nil {
 			return err
 		}
-		w.u32(math.Float32bits(float32(cell.F)))
+		w.u32(math.Float32bits(float32(tabletext.StoredFloat(f, cell.F))))
 	case ir.TableKindF64:
 		if err := RefuseNonFinite(e.m, f, cell.F); err != nil {
 			return err
 		}
-		w.u64(math.Float64bits(cell.F))
+		w.u64(math.Float64bits(tabletext.StoredFloat(f, cell.F)))
 	case ir.TableKindTable:
 		body, err := encodeBody(e, subInstance(e, f, cell))
 		if err != nil {
@@ -809,6 +816,9 @@ func cellIsDefault(e *encoder, f *ir.Field, cell *tabletext.Cell) bool {
 	}
 	def := e.m.FieldDefaultCell(f)
 	switch {
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+		// a text or byte cell holds its value in Str, never in U (§3)
+		return bytes.Equal(cell.Str, def.Str)
 	case f.Type.Kind == ir.TBool:
 		return cell.B == def.B
 	case f.Type.Kind == ir.TFloat32 && f.HasFloatRange:

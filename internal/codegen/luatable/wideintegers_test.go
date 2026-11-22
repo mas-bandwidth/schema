@@ -167,6 +167,9 @@ func TestLuaJsonWideIntegersAreStrings(t *testing.T) {
 		}
 		byRow[key] = rest
 	}
+	if len(rows) == 0 {
+		t.Fatal("rows is empty: the loop below would check nothing")
+	}
 	for i, row := range rows {
 		key := fmt.Sprintf("row%d", i)
 		line, ok := byRow[key]

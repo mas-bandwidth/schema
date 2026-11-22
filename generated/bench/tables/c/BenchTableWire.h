@@ -5,8 +5,8 @@
    AGPL-3.0, its output is not.
    package benchtable — protocol id 0x4c9383ebe3cde248 */
 
-#ifndef SCHEMA_BENCHTABLE_BENCH_TABLEWIRE_H
-#define SCHEMA_BENCHTABLE_BENCH_TABLEWIRE_H
+#ifndef SCHEMA_BENCHTABLE_BenchTable_wire_h
+#define SCHEMA_BENCHTABLE_BenchTable_wire_h
 
 #include "BenchTable.h"
 #include <string.h>   /* memset, strlen */
@@ -282,4 +282,4 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int benchtable_read_table_event( seria
 }
 #endif
 
-#endif /* SCHEMA_BENCHTABLE_BENCH_TABLEWIRE_H */
+#endif /* SCHEMA_BENCHTABLE_BenchTable_wire_h */

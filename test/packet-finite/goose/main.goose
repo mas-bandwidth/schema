@@ -12,11 +12,13 @@ import .Finite;
 import .serialize;
 
 var failed = false;
+var failures = 0;
 var vectors = 0;
 
 fn fail(name: const u8[:], detail: const u8[:]) {
     write_stderr(str("FAILED: ", name, ": ", detail, "\n"));
     failed = true;
+    failures += 1;
 }
 
 fn wr(w: WriteStream&, v: finite::Flat&) -> i32 { return finite::WriteFlat(w, v); }
@@ -171,6 +173,7 @@ fn main() {
         }
         vectors += 2;
     }
-    if failed { exit(1); }
-    print("packet finite floats Goose: ", vectors, " vectors OK");
+    // The last stdout line is the count tools/mustrun reads.
+    print("packet finite floats Goose: ran ", vectors, ", failed ", failures);
+    if failed || vectors == 0 { exit(1); }
 }

@@ -1,0 +1,30 @@
+# CI FAST VERDICT CORPUS CASE (red): no verdict job: every gate's red reads only on its own row, and main requires none (the shape of ci-fast.yml at v3.0.5). internal/ci
+# TestCIFastVerdictNeedsEveryJob must refuse this file.
+name: CI fast
+
+on:
+  pull_request:
+
+jobs:
+  plan:
+    if: startsWith(github.head_ref, 'sprint/') == false
+    runs-on: ubuntu-latest
+    outputs:
+      lints: ${{ steps.pick.outputs.lints }}
+    steps:
+      - id: pick
+        run: echo 'lints=[]' >> "$GITHUB_OUTPUT"
+
+  ci-policy:
+    if: startsWith(github.head_ref, 'sprint/') == false
+    runs-on: ubuntu-latest
+    steps:
+      - run: go test ./internal/ci
+
+  lang-lint:
+    needs: plan
+    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.lints != '[]')
+    runs-on: ubuntu-latest
+    steps:
+      - run: make lint
+

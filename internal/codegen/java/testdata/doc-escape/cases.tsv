@@ -1,0 +1,14 @@
+# JAVA-1 (F-203): no doc comment text can break or change the generated Java.
+# Each row is one doc line of Probe.schema beside it, as written. The line must
+# reach Probe.java as its own text (each \ read as the backslash it
+# stands for gives the line back) and with no Unicode escape javac would
+# translate (JLS 3.3). plain-doc is the control: a doc with no backslash,
+# which every compiler keeps as it is.
+#
+# id	doc as written
+type-doc	a type doc \u000a and \\u0041 and \\B and \uuuu0043 and \u
+field-doc	a field doc \u000a with */ inside
+const-doc	a const doc \u000A
+enum-doc	an enum doc \u
+variant-doc	a variant doc "
+plain-doc	a plain doc with no escape in it

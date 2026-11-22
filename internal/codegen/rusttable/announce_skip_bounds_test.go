@@ -31,6 +31,8 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const announceSkipBoundsSchema = `package probe
@@ -166,6 +168,9 @@ func TestRustAnnouncementSkipFieldIsBounded(t *testing.T) {
 				t.Errorf("profile %s: a hostile announcement was not refused: %s", profile.name, line)
 			}
 		}
+		if len(wellformedIDs) == 0 {
+			t.Fatal("wellformedIDs is empty: the loop below would check nothing")
+		}
 		for _, id := range wellformedIDs {
 			if line := skipBoundsLine(out, id); line != "SKIP "+id+" ok" {
 				t.Errorf("profile %s: a well-formed announcement carrying an unknown field was not read: %s", profile.name, line)
@@ -289,14 +294,14 @@ func runAnnounceSkipBoundsProbe(t *testing.T, files map[string][]byte, body stri
 	if linker, err := exec.LookPath("cc"); err == nil {
 		linkFlags = append(linkFlags, "-C", "linker="+linker)
 	}
-	build := exec.Command("rustc", append(linkFlags, "-o", bin, "main.rs")...)
+	build := testproc.Command(t, "rustc", append(linkFlags, "-o", bin, "main.rs")...)
 	build.Dir = dir
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("the probe did not build: %v\n%s", err, out)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), limit)
 	defer cancel()
-	run := exec.CommandContext(ctx, bin)
+	run := testproc.CommandContext(t, ctx, bin)
 	run.Dir = dir
 	out, err := run.CombinedOutput()
 	if ctx.Err() != nil {

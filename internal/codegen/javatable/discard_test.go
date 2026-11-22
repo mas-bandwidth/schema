@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -17,6 +16,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // discardUnitJava has a fixed root and a variable root, each carrying a
@@ -295,14 +296,14 @@ func runDiscardJava(t *testing.T, edit func(map[string][]byte) int) (string, err
 		}
 		sources = append(sources, driver)
 		args := append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)
-		if b, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+		if b, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 			t.Fatalf("javac %s: %v\n%s", run.u.Package, err, b)
 		}
 		jargs := []string{"-ea", "-cp", classes, "DiscardDriver", javaPackageOf(run.u)}
 		for _, c := range run.cases {
 			jargs = append(jargs, c.what, c.root, c.arg)
 		}
-		b, err := exec.Command(java, jargs...).CombinedOutput()
+		b, err := testproc.Command(t, java, jargs...).CombinedOutput()
 		fmt.Fprintf(&out, "== %s\n%s", run.u.Package, b)
 		if err != nil && failed == nil {
 			failed = fmt.Errorf("%s: %w", run.u.Package, err)

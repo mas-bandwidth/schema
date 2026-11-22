@@ -71,7 +71,11 @@ func TestPythonCookSharedBlobSurface(t *testing.T) {
 		script := fmt.Sprintf("import os, runpy, sys\nos.environ['PYTHON_CONFORMANCE_GENERATED'] = %s\nsys.argv = [%s, %s, 'cook-write', %s]\nrunpy.run_path(%s, run_name='__main__')\n", strconv.Quote(generated), strconv.Quote(path), strconv.Quote(manifest), strconv.Quote(out), strconv.Quote(path))
 		runner(t, dir, "driver_probe.py", map[string][]byte{"driver_probe.py": []byte(script)})
 	}
-	for pin, runner := range cookPins() {
+	allCookPins := cookPins()
+	if len(allCookPins) == 0 {
+		t.Fatal("cookPins() is empty: the loop below would check nothing")
+	}
+	for pin, runner := range allCookPins {
 		out := filepath.Join(dir, pin)
 		runDriver(t, runner, driver, out)
 		for i, suffix := range []string{"", "-be"} {
@@ -112,7 +116,11 @@ func TestPythonCookSharedBlobSurface(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		for pin, runner := range cookPins() {
+		allCookPinss := cookPins()
+		if len(allCookPinss) == 0 {
+			t.Fatal("cookPins() is empty: the loop below would check nothing")
+		}
+		for pin, runner := range allCookPinss {
 			out := filepath.Join(copyDir, pin)
 			runDriver(t, runner, copyDriver, out)
 			got, err := os.ReadFile(filepath.Join(out, "value"))

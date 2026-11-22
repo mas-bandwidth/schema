@@ -4,8 +4,94 @@
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
 // package bench — fixed records and text/cook values
-use super::bench_table::{MixedChatEvent, MixedEntity, MixedHitEvent, MixedPickupEvent, MixedStat};
+use super::bench_table::{BenchMixed, MixedChatEvent, MixedEntity, MixedEvent, MixedHitEvent, MixedPickupEvent, MixedStat};
 use super::table_enums::{MixedWeapon};
+
+impl TryFrom<&super::BenchMixedRow> for BenchMixed {
+    type Error = ();
+    fn try_from(row: &super::BenchMixedRow) -> Result<Self, ()> {
+        Ok(Self {
+            sequence: u16::try_from(row.sequence).map_err(|_| ())?,
+            ack_sequence: row.ack_sequence,
+            ack_bits: row.ack_bits,
+            session_id: row.session_id,
+            client_id: row.client_id,
+            nonce: row.nonce,
+            world_time: row.world_time,
+            frame_tick: row.frame_tick,
+            server_time: row.server_time,
+            entities: row.entities.get(..row.entities_count as usize).ok_or(())?.iter().map(MixedEntity::try_from).collect::<Result<Vec<_>, ()>>()?,
+            stats: row.stats.get(..row.stats_count as usize).ok_or(())?.iter().map(MixedStat::try_from).collect::<Result<Vec<_>, ()>>()?,
+            game_event: MixedEvent::try_from(&row.game_event)?,
+            loadout: row.loadout.get(..4).ok_or(())?.iter().map(|element| Ok(*element)).collect::<Result<Vec<_>, ()>>()?,
+            player_name: String::from_utf8(row.player_name.get(..row.player_name_length as usize).ok_or(())?.to_vec()).map_err(|_| ())?,
+            payload: row.payload.get(..row.payload_length as usize).ok_or(())?.to_vec(),
+            aim_x: row.aim_x,
+            aim_y: row.aim_y,
+            aim_z: row.aim_z,
+            recoil: row.recoil,
+            drift: row.drift,
+            wide_key: row.wide_key.0,
+            flux: row.flux.0,
+            ping: row.ping,
+            crc_hint: row.crc_hint,
+            has_extra: row.has_extra,
+            extra: row.extra,
+            idle_ticks: row.idle_ticks,
+        })
+    }
+}
+
+impl From<&BenchMixed> for super::BenchMixedRow {
+    fn from(value: &BenchMixed) -> Self {
+        let mut row = Self {
+            sequence: value.sequence as u32,
+            ack_sequence: value.ack_sequence,
+            ack_bits: value.ack_bits,
+            session_id: value.session_id,
+            client_id: value.client_id,
+            nonce: value.nonce,
+            world_time: value.world_time,
+            frame_tick: value.frame_tick,
+            server_time: value.server_time,
+            game_event: super::MixedEventRow::from(&value.game_event),
+            aim_x: value.aim_x,
+            aim_y: value.aim_y,
+            aim_z: value.aim_z,
+            recoil: value.recoil,
+            drift: value.drift,
+            wide_key: super::TableU128(value.wide_key),
+            flux: super::TableI128(value.flux),
+            ping: value.ping,
+            crc_hint: value.crc_hint,
+            has_extra: value.has_extra,
+            extra: value.extra,
+            idle_ticks: value.idle_ticks,
+            ..Self::default()
+        };
+        debug_assert!(value.entities.len() <= 8);
+        row.entities_count = value.entities.len() as i32;
+        for (slot, element) in row.entities.iter_mut().zip(value.entities.iter()) {
+            *slot = super::MixedEntityRow::from(element);
+        }
+        debug_assert!(value.stats.len() <= 80);
+        row.stats_count = value.stats.len() as i32;
+        for (slot, element) in row.stats.iter_mut().zip(value.stats.iter()) {
+            *slot = super::MixedStatRow::from(element);
+        }
+        debug_assert!(value.loadout.len() <= 4);
+        for (slot, element) in row.loadout.iter_mut().zip(value.loadout.iter()) {
+            *slot = *element;
+        }
+        debug_assert!(value.player_name.len() <= 15);
+        row.player_name_length = value.player_name.len() as i32;
+        row.player_name[..value.player_name.len()].copy_from_slice(value.player_name.as_bytes());
+        debug_assert!(value.payload.len() <= 16);
+        row.payload_length = value.payload.len() as i32;
+        row.payload[..value.payload.len()].copy_from_slice(&value.payload);
+        row
+    }
+}
 
 impl TryFrom<&super::MixedChatEventRow> for MixedChatEvent {
     type Error = ();
@@ -127,5 +213,46 @@ impl From<&MixedStat> for super::MixedStatRow {
             stat_id: value.stat_id as u32,
             delta: value.delta,
         }
+    }
+}
+
+impl TryFrom<&super::MixedEventRow> for MixedEvent {
+    type Error = ();
+    fn try_from(row: &super::MixedEventRow) -> Result<Self, ()> {
+        Ok(match row.tag() {
+            0 => Self::None,
+            1 => {
+                let arm = row.hit().ok_or(())?;
+                Self::Hit(MixedHitEvent::try_from(&arm)?)
+            }
+            2 => {
+                let arm = row.chat().ok_or(())?;
+                Self::Chat(MixedChatEvent::try_from(&arm)?)
+            }
+            3 => {
+                let arm = row.pickup().ok_or(())?;
+                Self::Pickup(MixedPickupEvent::try_from(&arm)?)
+            }
+            _ => return Err(()),
+        })
+    }
+}
+
+impl From<&MixedEvent> for super::MixedEventRow {
+    fn from(value: &MixedEvent) -> Self {
+        let mut row = Self::default();
+        match value {
+            MixedEvent::None => {}
+            MixedEvent::Hit(value) => {
+                row.set_hit(super::MixedHitEventRow::from(value));
+            }
+            MixedEvent::Chat(value) => {
+                row.set_chat(super::MixedChatEventRow::from(value));
+            }
+            MixedEvent::Pickup(value) => {
+                row.set_pickup(super::MixedPickupEventRow::from(value));
+            }
+        }
+        row
     }
 }

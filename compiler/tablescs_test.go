@@ -5,7 +5,6 @@ package compiler
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -13,6 +12,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestCsEmitsTableSources: the cs target adds <Base>Table.cs beside the packet
@@ -31,6 +32,9 @@ func TestCsEmitsTableSources(t *testing.T) {
 		without, err := c.Generate(unitFromSource(t, packetSrc), target, Options{})
 		if err != nil {
 			t.Fatalf("--lang %s: %v", target, err)
+		}
+		if len(without) == 0 {
+			t.Fatal("without is empty: the loop below would check nothing")
 		}
 		for name := range without {
 			if strings.HasSuffix(name, "Table.cs") {
@@ -332,16 +336,26 @@ func TestCsDescriptorsAreSafelyPublished(t *testing.T) {
 		if holders == 0 {
 			t.Fatal("the scan found no descriptor accessor at all — the scan, not the emitter, is what broke")
 		}
+		if len(files) == 0 {
+			t.Fatal("files is empty: the loop below would check nothing")
+		}
+		instances := 0
 		for name, data := range files {
 			text := string(data)
 			for line := range strings.SplitSeq(text, "\n") {
 				if strings.Contains(line, "TableInfo") && strings.Contains(line, "class") && !strings.Contains(line, "private static class") {
 					t.Errorf("%s: a descriptor holder is not a private static class: %q", name, strings.TrimSpace(line))
 				}
-				if strings.Contains(line, "Instance =") && !strings.Contains(line, "internal static readonly TableTypeInfo Instance = Build();") {
-					t.Errorf("%s: a holder's Instance is not internal static readonly: %q", name, strings.TrimSpace(line))
+				if strings.Contains(line, "Instance =") {
+					instances++
+					if !strings.Contains(line, "internal static readonly TableTypeInfo Instance = Build();") {
+						t.Errorf("%s: a holder's Instance is not internal static readonly: %q", name, strings.TrimSpace(line))
+					}
 				}
 			}
+		}
+		if instances != holders {
+			t.Errorf("found %d holder Instance fields for %d descriptor accessors; each accessor owns exactly one holder", instances, holders)
 		}
 	}
 }
@@ -630,7 +644,7 @@ static class Program
 		t.Fatal(err)
 	}
 
-	cmd := exec.Command(dotnet, "run", "--configuration", "Release", "-property:UseSharedCompilation=false")
+	cmd := testproc.Command(t, dotnet, "run", "--configuration", "Release", "-property:UseSharedCompilation=false")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("dotnet run failed: %v\n%s", err, out)
@@ -820,7 +834,7 @@ static class Program
 		t.Fatal(err)
 	}
 
-	cmd := exec.Command(dotnet, "run", "--configuration", "Release", "-property:UseSharedCompilation=false")
+	cmd := testproc.Command(t, dotnet, "run", "--configuration", "Release", "-property:UseSharedCompilation=false")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("dotnet run failed: %v\n%s", err, out)

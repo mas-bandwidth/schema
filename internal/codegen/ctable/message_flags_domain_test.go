@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -15,6 +14,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func cMessageFlagsDomainRun(t *testing.T, plant bool) (string, error) {
@@ -75,6 +76,9 @@ func cMessageFlagsDomainRun(t *testing.T, plant bool) (string, error) {
 		if hits == 0 {
 			t.Fatal("flags assertion omission matched nothing")
 		}
+		if len(files) == 0 {
+			t.Fatal("files is empty: the loop below would check nothing")
+		}
 		for name, data := range files {
 			if gate.Match(data) {
 				t.Fatalf("flags assertion survived in %s", name)
@@ -123,10 +127,10 @@ func cMessageFlagsDomainRun(t *testing.T, plant bool) (string, error) {
 		args = append(args, filepath.Join(dir, "probe.c"))
 		args = append(args, sources...)
 		args = append(args, "-o", bin)
-		if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+		if out, err := testproc.Command(t, cxx, args...).CombinedOutput(); err != nil {
 			return string(out), err
 		}
-		out, err := exec.Command(bin).CombinedOutput()
+		out, err := testproc.Command(t, bin).CombinedOutput()
 		fmt.Fprintf(&output, "%s: %s", profile.name, out)
 		if err != nil {
 			return output.String(), err

@@ -35,6 +35,8 @@
 // command runs with a `go` shim first on its PATH that gives every `go test`
 // that -timeout instead of the one it named, and with PGROUP_GO_TEST_JSON
 // set the outermost `go test` also records its event stream (goshim.go).
+// PGROUP_GO_TEST_JSON alone records and lifts nothing: the fast lane's skip
+// ledger reads that record (tools/gotestreport -skips).
 //
 // A process that leaves the group on purpose (setsid, Setpgid) is outside
 // this; nothing the repository runs under CI does.

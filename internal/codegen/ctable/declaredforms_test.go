@@ -3,7 +3,6 @@ package ctable
 import (
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -11,6 +10,8 @@ import (
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func cKeysOf(files map[string][]byte) []string {
@@ -64,6 +65,9 @@ fixed table Fox { x int32 }
 	}
 	if cHasFormFile(decl, "Block.h") || cHasFormFile(decl, "Block.c") {
 		t.Fatalf("a wire-only table emitted a block form file: %v", cKeysOf(decl))
+	}
+	if len(decl) == 0 {
+		t.Fatal("decl is empty: the loop below would check nothing")
 	}
 	for name, data := range decl {
 		src := string(data)
@@ -119,10 +123,7 @@ fixed table FoxAll
 		}
 	}
 
-	cc, err := exec.LookPath("cc")
-	if err != nil {
-		return
-	}
+	cc := slowtest.Tool(t, "cc")
 	dir := t.TempDir()
 	var sources []string
 	var header string
@@ -146,7 +147,7 @@ fixed table FoxAll
 	args := []string{"-std=c99", "-O2", "-DNDEBUG", "-Wall", "-Wextra", "-Werror", "-I", dir, mainPath}
 	args = append(args, sources...)
 	args = append(args, "-lm", "-o", filepath.Join(dir, "probe"))
-	if out, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile mixed unit: %v\n%s", err, out)
 	}
 }

@@ -9,13 +9,13 @@
 package bench;
 
 public final class TableFieldInfo {
-    public String name;
+    public java.lang.String name;
 
     /** the field's wire kind (docs/SPEC-TABLES.md §3); an arm's, the kind its payload rides. */
     public int kind;
 
     /** value, blob or list (§8.1). */
-    public String shape;
+    public java.lang.String shape;
 
     /**
      * the declared bound: an array's capacity (fixed, bounded or enum-keyed), a string's or byte
@@ -24,10 +24,10 @@ public final class TableFieldInfo {
     public long bound;
 
     /** the text form's key (§16.3); null on a type no table closure reaches. */
-    public String json;
+    public java.lang.String json;
 
     /** the declared type, spelled as the schema spells it. */
-    public String typeName;
+    public java.lang.String typeName;
 
     /** the table-wire id (§5); 0 on a type no table closure reaches. */
     public long id;
@@ -35,7 +35,7 @@ public final class TableFieldInfo {
     public boolean optional;
 
     /** the declaration a named field refers to, "" for none. */
-    public String named;
+    public java.lang.String named;
 
     /** an array, a byte buffer, a list or a map: the accessors take an element index. */
     public boolean isArray;
@@ -58,8 +58,8 @@ public final class TableFieldInfo {
     /** the presence companion's cooked offset (an optional field), or -1. */
     public int presentOffset;
 
-    public String doc;
-    public String[] tags;
+    public java.lang.String doc;
+    public java.lang.String[] tags;
 
     // THE ACCESSORS (§8.1): a Java field has no address, so a descriptor carries
     // the pair that reads and writes it on <Name>Variable.Value, built once with
@@ -68,43 +68,43 @@ public final class TableFieldInfo {
     // index is the element for an array and ignored otherwise. Every accessor is
     // null on a declaration with no Value class (a type no table reaches, §8.2).
     public interface Count {
-        int count(Object holder);
+        int count(java.lang.Object holder);
     }
 
     public interface Resize {
-        void resize(Object holder, int count);
+        void resize(java.lang.Object holder, int count);
     }
 
     public interface LongGet {
-        long get(Object holder, int index);
+        long get(java.lang.Object holder, int index);
     }
 
     public interface LongSet {
-        void set(Object holder, int index, long value);
+        void set(java.lang.Object holder, int index, long value);
     }
 
     public interface DoubleGet {
-        double get(Object holder, int index);
+        double get(java.lang.Object holder, int index);
     }
 
     public interface DoubleSet {
-        void set(Object holder, int index, double value);
+        void set(java.lang.Object holder, int index, double value);
     }
 
     public interface ObjectGet {
-        Object get(Object holder, int index);
+        java.lang.Object get(java.lang.Object holder, int index);
     }
 
     public interface ObjectSet {
-        void set(Object holder, int index, Object value);
+        void set(java.lang.Object holder, int index, java.lang.Object value);
     }
 
     public interface PresentGet {
-        boolean get(Object holder);
+        boolean get(java.lang.Object holder);
     }
 
     public interface PresentSet {
-        void set(Object holder, boolean present);
+        void set(java.lang.Object holder, boolean present);
     }
 
     /** an array's element count: a list's size, an enum-keyed array's extent. */
@@ -150,7 +150,8 @@ public final class TableFieldInfo {
         return nested == null ? null : nested.get();
     }
 
-    public static TableFieldInfo of(String name, int kind, String shape, long bound) {
+    public static TableFieldInfo of(
+            java.lang.String name, int kind, java.lang.String shape, long bound) {
         TableFieldInfo f = new TableFieldInfo();
         f.name = name;
         f.kind = kind;
@@ -211,13 +212,13 @@ public final class TableFieldInfo {
     }
 
     TableFieldInfo view(
-            String json,
-            String typeName,
+            java.lang.String json,
+            java.lang.String typeName,
             long id,
             boolean optional,
-            String named,
-            String doc,
-            String[] tags) {
+            java.lang.String named,
+            java.lang.String doc,
+            java.lang.String[] tags) {
         this.json = json;
         this.typeName = typeName;
         this.id = id;

@@ -1,0 +1,5 @@
+[
+  {"name": "publish prior pair", "source": "old", "blocked": false, "exit": 0, "expected": "initial"},
+  {"name": "second output obstructed", "source": "new", "blocked": true, "exit": 1, "expected": "initial"},
+  {"name": "retry with both destinations writable", "source": "new", "blocked": false, "exit": 0, "expected": "expected"}
+]

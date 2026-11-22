@@ -9,12 +9,13 @@ package cpptable
 import (
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const cppCookZeroProbeMain = `#include <cstdio>
@@ -155,13 +156,13 @@ func TestCppCookWriteZeroesDeadSlots(t *testing.T) {
 		filepath.Join(dir, "NestedTable.cpp"),
 		"-o", probe,
 	}
-	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, args...).CombinedOutput(); err != nil {
 		t.Fatalf("the cook probe did not compile: %v\n%s", err, out)
 	}
 
 	fixtureDir := filepath.Join(root, "testdata", "conformance", "tables", "cook-write")
 	jsonDir := filepath.Join(root, "testdata", "conformance", "tables", "json")
-	if out, err := exec.Command(probe, fixtureDir, jsonDir).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, probe, fixtureDir, jsonDir).CombinedOutput(); err != nil {
 		t.Fatalf("the dead counted slots are not zero: %v\n%s", err, out)
 	}
 }

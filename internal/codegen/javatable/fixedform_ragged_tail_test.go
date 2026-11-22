@@ -21,11 +21,12 @@ import (
 	"fmt"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // fixedRecordBytes reads the OLD lineage entry's record size out of the emitted
@@ -43,11 +44,11 @@ func fixedRecordBytes(t *testing.T, dir, classes, pkg, root string) int {
 	if err := os.WriteFile(filepath.Join(src, "Probe_size.java"), []byte(probe), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(javac, "--release", "17", "-nowarn", "-cp", classes, "-d", classes, filepath.Join(src, "Probe_size.java"))
+	cmd := testproc.Command(t, javac, "--release", "17", "-nowarn", "-cp", classes, "-d", classes, filepath.Join(src, "Probe_size.java"))
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("javac Probe_size: %v\n%s", err, out)
 	}
-	cmd = exec.Command(javaBin, "-ea", "-cp", classes, "Probe_size")
+	cmd = testproc.Command(t, javaBin, "-ea", "-cp", classes, "Probe_size")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("java Probe_size: %v\n%s", err, out)

@@ -2,7 +2,6 @@ package javatable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -10,6 +9,8 @@ import (
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJavaAbsentSpillEveryMarkerGoesThroughTheAbsenceWriters holds the
@@ -117,7 +118,7 @@ func TestJavaBlobSharedConformanceDriverAnswersTheWireRefusal(t *testing.T) {
 	driverPath := filepath.Join(repo, "test", "conformance", "java", "src", "Driver.java")
 	sources = append(sources, driverPath)
 	javac, javaBin := javaTools(t)
-	if out, err := exec.Command(javac, append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 
@@ -135,7 +136,7 @@ func TestJavaBlobSharedConformanceDriverAnswersTheWireRefusal(t *testing.T) {
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	run, err := exec.Command(javaBin, "-ea", "-cp", classes, "Driver", manifest, "wire", out).CombinedOutput()
+	run, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, "Driver", manifest, "wire", out).CombinedOutput()
 	if err != nil {
 		t.Fatalf("the wire surface failed: %v\n%s", err, run)
 	}

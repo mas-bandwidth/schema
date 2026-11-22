@@ -118,7 +118,7 @@ public final class FixedTableCook {
         long magic = TableBytes.i64(data, offset);
         if (magic != TableCookInfo.magic) {
             // foreign_order : not_a_cook
-            return magic == Long.reverseBytes(TableCookInfo.magic) ? -2 : -1;
+            return magic == java.lang.Long.reverseBytes(TableCookInfo.magic) ? -2 : -1;
         }
         // and the ORDER WORD does the other job: it RECORDS which order wrote the
         // file, so a refusal names the order rather than inferring it.
@@ -145,7 +145,8 @@ public final class FixedTableCook {
         // and the base is measured against it — so a word that is not an
         // alignment rounds nothing and aligns nothing.
         long alignment = TableBytes.i64(data, offset + 40);
-        if (Long.compareUnsigned(alignment, 8) < 0 || Long.compareUnsigned(alignment, 64) > 0) {
+        if (java.lang.Long.compareUnsigned(alignment, 8) < 0
+                || java.lang.Long.compareUnsigned(alignment, 64) > 0) {
             return -5;
         } // bad_alignment
         if ((alignment & (alignment - 1)) != 0) {
@@ -166,13 +167,13 @@ public final class FixedTableCook {
         // same refusal.
         long dataLength = TableBytes.i64(data, offset + 24);
         long attribution = TableBytes.i64(data, offset + 32);
-        if (Long.compareUnsigned(dataLength, bytes) > 0) {
+        if (java.lang.Long.compareUnsigned(dataLength, bytes) > 0) {
             return -6;
         }
-        if (Long.compareUnsigned(attribution, bytes - dataLength) > 0) {
+        if (java.lang.Long.compareUnsigned(attribution, bytes - dataLength) > 0) {
             return -6;
         }
-        if (Long.compareUnsigned(dataOffset, bytes - dataLength - attribution) > 0) {
+        if (java.lang.Long.compareUnsigned(dataOffset, bytes - dataLength - attribution) > 0) {
             return -6;
         }
         if (dataOffset + dataLength + attribution != bytes) {
@@ -183,7 +184,7 @@ public final class FixedTableCook {
         // do not say the region is at least sizeof(root). Without this a forged
         // short data part describes a root partly outside the file, and a
         // match-and-point reader would hand back storage the caller never gave it.
-        if (Long.compareUnsigned(dataLength, rootSize) < 0) {
+        if (java.lang.Long.compareUnsigned(dataLength, rootSize) < 0) {
             return -6;
         }
 
@@ -210,7 +211,7 @@ public final class FixedTableCook {
      * (internal/codegen/gotable/refusal.go), "ok" for a cook that opens: the cook-reason surface
      * (test/conformance/README.md).
      */
-    public static String openReason(byte[] data, int offset, long length) {
+    public static java.lang.String openReason(byte[] data, int offset, long length) {
         TableCookLayout.verify();
         long check = openCheck(data, offset, length);
         if (check >= 0) {
@@ -239,22 +240,28 @@ public final class FixedTableCook {
         return open(data, 0, data == null ? 0 : data.length);
     }
 
-    public static long cookMeasure(Object value) {
+    public static long cookMeasure(java.lang.Object value) {
         TableCookWrite.Plan p = TableCookWrite.plan(value, type());
         return p == null ? -1 : p.total;
     }
 
-    public record MeasureReason(long bytes, String reason) {}
+    public record MeasureReason(long bytes, java.lang.String reason) {}
 
-    public static MeasureReason cookMeasureReason(Object value) {
+    public static MeasureReason cookMeasureReason(java.lang.Object value) {
         boolean[] nonFinite = new boolean[1];
-        TableCookWrite.Plan p = TableCookWrite.plan(value, type(), nonFinite);
+        boolean[] cycle = new boolean[1];
+        TableCookWrite.Plan p = TableCookWrite.plan(value, type(), nonFinite, cycle);
         long bytes = p == null ? -1 : p.total;
         return new MeasureReason(
-                bytes, bytes >= 0 ? "ok" : nonFinite[0] ? "non_finite_float" : "invalid_value");
+                bytes,
+                bytes >= 0
+                        ? "ok"
+                        : nonFinite[0]
+                                ? "non_finite_float"
+                                : cycle[0] ? "data_cycle" : "invalid_value");
     }
 
-    public static boolean cookFrom(Object value, byte[] buffer, int order) {
+    public static boolean cookFrom(java.lang.Object value, byte[] buffer, int order) {
         if (order != TableCookWrite.LITTLE && order != TableCookWrite.BIG) {
             return false;
         }

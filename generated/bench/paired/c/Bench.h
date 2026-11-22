@@ -5,8 +5,8 @@
    AGPL-3.0, its output is not.
    package bench — protocol id 0xc52a41defad6ebb0 */
 
-#ifndef SCHEMA_BENCH_BENCH_H
-#define SCHEMA_BENCH_BENCH_H
+#ifndef SCHEMA_BENCH_Bench_h
+#define SCHEMA_BENCH_Bench_h
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -406,4 +406,4 @@ static SCHEMA_UNUSED bench_bench_mixed_t bench_new_bench_mixed( void )
 }
 #endif
 
-#endif /* SCHEMA_BENCH_BENCH_H */
+#endif /* SCHEMA_BENCH_Bench_h */
