@@ -1566,10 +1566,20 @@ public final class PlanCapProbe {
         if (r.damaged || r.unknown != 0 || r.widened != 0 || r.layoutHash != 0) {
             fail("planTooLarge moved a counter or set malformed/layoutHash");
         }
-        // RULING R4: every row handed in is back at its declared default.
+        // RULING R4: every row handed in is back at its declared default. The
+        // comparison is the VALUE's, through save, which writes an unselected
+        // arm (pick.labelled under the default tag) as the template's zeros.
+        final byte[] want = new byte[tblfu2.FuRootFixed.measure(1)];
+        if (tblfu2.FuRootFixed.save(new tblfu2.FuRootFixed.Value[] { fresh }, 1, want) <= 0) { fail("save a fresh value"); }
         for (int k = 0; k < vals.length; k++) {
-            if (vals[k].tail != fresh.tail || vals[k].extra != fresh.extra
-                    || vals[k].pick.labelled.lead != fresh.pick.labelled.lead) {
+            final byte[] got = new byte[want.length];
+            int w;
+            try {
+                w = tblfu2.FuRootFixed.save(new tblfu2.FuRootFixed.Value[] { vals[k] }, 1, got);
+            } catch (Throwable e) {
+                w = -1;
+            }
+            if (w != want.length || !java.util.Arrays.equals(got, want)) {
                 fail("planTooLarge left row " + k + " off its declared default");
             }
         }

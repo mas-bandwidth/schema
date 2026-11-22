@@ -85,7 +85,7 @@ func TestFixedDeadBytesAreZero(t *testing.T) {
 			if r.n == 1 && !r.refused && !r.damaged {
 				t.Fatal("nested lineage reader accepted non-zero union dead bytes")
 			}
-			if !mapsEqual(r.fresh, r.value) {
+			if !r.reset {
 				t.Fatalf("nested lineage refusal left the row off its declared default (R4): %s", deadDiff(r.fresh, r.value))
 			}
 		})
@@ -138,7 +138,7 @@ func checkDeadBytesResult(t *testing.T, vec fixedvector.DeadVector, r deadProbeR
 		}
 		// RULING R4: the refusal leaves the row handed in at its declared
 		// default, every field equal to a fresh value's.
-		if !mapsEqual(r.fresh, r.value) {
+		if !r.reset {
 			t.Fatalf("%s reader: %s refusal left the row off its declared default: %s", reader, vec.File, deadDiff(r.fresh, r.value))
 		}
 		return
@@ -336,6 +336,7 @@ type deadProbeRun struct {
 	saved            bool
 	before, value    map[string]string
 	fresh            map[string]string
+	reset            bool // RESET match=true: the refused row saves as a fresh one
 }
 
 func runDeadBytesProbe(t *testing.T, javaBin, classes, pkg, root, file string) deadProbeRun {
@@ -359,6 +360,8 @@ func runDeadBytesProbe(t *testing.T, javaBin, classes, pkg, root, file string) d
 		case strings.HasPrefix(line, "FRESH "):
 			k, v, _ := strings.Cut(strings.TrimPrefix(line, "FRESH "), "=")
 			r.fresh[k] = v
+		case strings.HasPrefix(line, "RESET "):
+			r.reset = strings.TrimSpace(line) == "RESET match=true"
 		case strings.HasPrefix(line, "SAVE "):
 			r.saved, r.written, r.file = parseDeadSave(line)
 		}
@@ -452,6 +455,25 @@ public final class DeadProbe {
                .append(" written=").append(w)
                .append(" file=").append(data.length)
                .append('\n');
+        }
+        // RULING R4: a refused row holds its declared default. The comparison is
+        // the VALUE's, through save: dead storage (slots past a count, an
+        // unselected arm, a dead optional payload) is not part of the value and
+        // save writes it as the template's zeros, so a row equals a fresh one
+        // exactly when every live field does.
+        if (n < 0) {
+            boolean match;
+            try {
+                %s.%sFixed.Value[] fresh = { new %s.%sFixed.Value() };
+                byte[] a = new byte[%s.%sFixed.measure(1)];
+                byte[] b = new byte[a.length];
+                int wa = %s.%sFixed.save(vals, 1, a);
+                int wb = %s.%sFixed.save(fresh, 1, b);
+                match = wa > 0 && wa == wb && java.util.Arrays.equals(a, b);
+            } catch (Throwable e) {
+                match = false;
+            }
+            out.append("RESET match=").append(match).append('\n');
         }
         System.out.print(out);
     }
@@ -559,11 +581,12 @@ public final class DeadProbe {
         }
     }
 }
-`, pkg, root, pkg, root, pkg, root, pkg, root, pkg, pkg, pkg, root, pkg, pkg, root, pkg, root, pkg, root)
+`, pkg, root, pkg, root, pkg, root, pkg, root, pkg, pkg, pkg, root, pkg, pkg, root, pkg, root, pkg, root, pkg, root, pkg, root, pkg, root, pkg, root, pkg, root)
 	return b.String()
 }
 
-// deadDiff names the fields where a refused row differs from a fresh value.
+// deadDiff names the fields where a refused row differs from a fresh value,
+// dead storage included (a diagnostic; the verdict is the RESET save compare).
 func deadDiff(fresh, value map[string]string) string {
 	var out []string
 	for k, want := range fresh {

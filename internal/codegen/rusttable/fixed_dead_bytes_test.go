@@ -224,14 +224,17 @@ fn old_optional_dead_payload() {
         let mut data = clean.clone();
         if bad { data[body + 2] = 1; }
         let mut values = vec![ROWTYPE::default(); 1];
-        let before = as_bytes(&values[0]).to_vec();
+        // RULING R4: a refusal leaves the row at its declared default — the row
+        // as handed in (so its padding matches) with the defaults image scattered in.
+        let mut reset = values[0];
+        SCATTERFN(&DEFAULTSCONST, &mut reset, &mut TableFixedReport::default());
         let mut plan = vec![TableFixedEntry::default(); 4096];
         let mut remap = vec![0u16; 4096];
         let mut report = TableFixedReport::default();
         let n = LOADFN(&mut values, &data, &mut plan, &mut remap, &mut report);
         if bad {
             assert!(n.is_none(), "nonzero absent payload loaded {n:?}");
-            assert_eq!(as_bytes(&values[0]), before);
+            assert_eq!(as_bytes(&values[0]), as_bytes(&reset), "the refused row is not its declared default");
         } else {
             assert_eq!(n, Some(1), "clean absent optional reads");
             assert_eq!((values[0].lead, values[0].trail), (17, 23));
