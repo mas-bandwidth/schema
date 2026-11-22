@@ -23,7 +23,7 @@ import (
 const refusedStoresSchema = `package probe
 table Root { entries map[int32]int32
  past int32
- name string }
+ name string(16) }
 `
 
 const refusedStoresMain = `import os;
