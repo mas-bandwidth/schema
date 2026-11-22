@@ -854,7 +854,7 @@ func (g *fixedGen) readPayload(out *rseg, f *ir.Field, v string, present node) {
 		// `out_of_range` if it moved (§4), and ONLY THE LIVE ELEMENTS ARE WALKED.
 		seg := "n_" + v + "::little-signed-32"
 		out.match = append(out.match, seg)
-		out.stmt("c", rawf("R.clamps(c, n_%s, 0, %d)", v, f.ArrayBound))
+		out.stmt("c", rawf("R.clamps(c, n_%s, %d, %d)", v, f.ArrayMin, f.ArrayBound))
 		g.readElements(out, f, v, rawf("min(max(n_%s, 0), %d)", v, f.ArrayBound))
 	case f.Type.Kind == ir.TString:
 		g.readText(out, f, v, present)

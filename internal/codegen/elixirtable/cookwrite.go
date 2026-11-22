@@ -143,6 +143,11 @@ func writeCookLayout(b *strings.Builder, u *ir.Unit, f *ir.Field, fl *ir.FieldLa
 	if f.Array == ir.ArrayCounted || f.Array == ir.ArrayFixed {
 		fmt.Fprintf(b, ", max_count: %d", f.ArrayBound)
 	}
+	if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+		// a counted array below its minimum A refuses on read, in every form
+		// (docs/SPEC.md section 4.6)
+		fmt.Fprintf(b, ", min_count: %d", f.ArrayMin)
+	}
 	if f.Array == ir.ArrayNone && enumRef(f) == nil && (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits ||
 		f.Type.Kind == ir.TFixed || flagsRef(f) != nil) {
 		// an integer's storage width (§7.2): a bits(N) is four or eight

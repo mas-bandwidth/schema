@@ -2217,7 +2217,9 @@ function TableVariableEnumRead(e, r, table, report, retain, st) {
   if (ref > table.length) { report.damaged = true; return undefined; }
   TableVariableIntroduce(st, ref);
   const id = table[ref - 1];
-  for (const [name, vid] of e.vs) { if (vid === id) { return name; } }
+  for (const [name, vid] of e.vs) {
+    if (vid === id) { return e.dp.includes(name) ? (e.el ? null : e.def) : name; }
+  }
   report.unknown++;
   if (retain !== null) { report.retainLost++; }
   return null;
@@ -4339,9 +4341,19 @@ function TableVariableTextArray(fd, inp, v, depth, graph, report) {
   v[fd.n] = out;
   const bound = fd.list ? 0x7fffffff : fd.bound;
   let placed = 0;
+  // a counted array below its minimum A refuses on read, in the text form as in
+  // the wire (docs/SPEC.md section 4.6): a refusal is an answer, never a throw
+  const below = () => {
+    if (fd.min > 0 && placed < fd.min) {
+      report.refused = 1;
+      if (!report.reason) { report.reason = "count_over_bound: " + fd.n; }
+      return true;
+    }
+    return false;
+  };
   for (;;) {
     let ch = inp.peek();
-    if (ch === "]") { inp.p++; return true; }
+    if (ch === "]") { inp.p++; return !below(); }
     if (ch === "") { inp.bad = true; return false; }
     const shape = inp.shape();
     if (placed >= bound) {
@@ -4361,7 +4373,7 @@ function TableVariableTextArray(fd, inp, v, depth, graph, report) {
     }
     ch = inp.peek();
     if (ch === ",") { inp.p++; continue; }
-    if (ch === "]") { inp.p++; return true; }
+    if (ch === "]") { inp.p++; return !below(); }
     inp.bad = true;
     return false;
   }
@@ -4427,7 +4439,12 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
       const s = inp.name();
       if (s === null) { return false; }
       if (s === "None") { holder[key] = null; return true; }
-      for (const [name] of d.vs) { if (name === s) { holder[key] = name; return true; } }
+      for (const [name] of d.vs) {
+        if (name !== s) { continue; }
+        // A DEPRECATED VARIANT READS AS THE FIELD'S DEFAULT, an element as None (§2.15)
+        holder[key] = d.dp.includes(name) ? (d.el ? null : d.def) : name;
+        return true;
+      }
       // a name this build cannot name reads None and counts unknown (§4)
       holder[key] = null;
       report.unknown++;
@@ -5079,7 +5096,7 @@ const TableVariableCodecs = {
       { n: "vel_y", key: "vel_y", id: 0x6cede5b6eb60ecb4n, o: 7, s: "int", js: "n", k: 4, big: false, kw: 4, lo: -2048, hi: 2047, bits: 0, bmax: 0, frac: 0, tlo: -2048n, thi: 2047n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
       { n: "vel_z", key: "vel_z", id: 0x6cede8b6eb60f1cdn, o: 8, s: "int", js: "n", k: 4, big: false, kw: 4, lo: -2048, hi: 2047, bits: 0, bmax: 0, frac: 0, tlo: -2048n, thi: 2047n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
       { n: "health", key: "health", id: 0x7f69d4b5288ba9cfn, o: 9, s: "int", js: "n", k: 4, big: false, kw: 4, lo: 0, hi: 1000, bits: 0, bmax: 0, frac: 0, tlo: 0n, thi: 1000n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
-      { n: "weapon", key: "weapon", id: 0xa0b610205f2c6e01n, o: 10, k: 30, s: "enum", js: "s", vs: [["Fists", 0xa790eee12766cf0cn], ["Pistol", 0x9fbfefa835da8476n], ["Shotgun", 0x188bbb1783928a95n], ["Rifle", 0x2c3667b9c2f272f1n], ["Sniper", 0x0ca8b41b00d755f6n], ["Smg", 0x985fc819fab21a4en], ["Rocket", 0x229d0447c3086a55n], ["Grenade", 0x011c7b49a7228f9dn], ["Plasma", 0x89f7566e1123e15fn], ["Railgun", 0x8d7f25318b3b4469n], ["Flamer", 0xd9cd0dcc285b7816n], ["Mine", 0x04dc16aea8ff5276n], ["Turret", 0x35e53bc341129217n], ["Drone", 0x2cc8282fb0de8831n], ["Repair", 0x20bada21bc8cb334n]], def: null },
+      { n: "weapon", key: "weapon", id: 0xa0b610205f2c6e01n, o: 10, k: 30, s: "enum", js: "s", vs: [["Fists", 0xa790eee12766cf0cn], ["Pistol", 0x9fbfefa835da8476n], ["Shotgun", 0x188bbb1783928a95n], ["Rifle", 0x2c3667b9c2f272f1n], ["Sniper", 0x0ca8b41b00d755f6n], ["Smg", 0x985fc819fab21a4en], ["Rocket", 0x229d0447c3086a55n], ["Grenade", 0x011c7b49a7228f9dn], ["Plasma", 0x89f7566e1123e15fn], ["Railgun", 0x8d7f25318b3b4469n], ["Flamer", 0xd9cd0dcc285b7816n], ["Mine", 0x04dc16aea8ff5276n], ["Turret", 0x35e53bc341129217n], ["Drone", 0x2cc8282fb0de8831n], ["Repair", 0x20bada21bc8cb334n]], dp: [], def: null },
       { n: "damage", key: "damage", id: 0x7f6308be8ab37fc0n, o: 11, k: 9, s: "flags", js: "a", big: true, kw: 8, lo: null, hi: null, bits: 0, vs: ["Bleeding", "Burning", "Stunned", "Slowed", "Poisoned", "Shielded", "Airborne", "Downed"], def: 0n },
       { n: "moving", key: "moving", id: 0x11a44fc1d1243da7n, o: 12, k: 1, s: "bool", js: "b", def: false },
       { n: "firing", key: "firing", id: 0x7674cfd19b9031can, o: 13, k: 1, s: "bool", js: "b", def: false },
