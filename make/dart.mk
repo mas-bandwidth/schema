@@ -192,13 +192,15 @@ tables-dart-clean: build/tables-generated-dart/.stamp
 	@rm -rf build/tables-dart-fmt && cp -r build/tables-generated-dart build/tables-dart-fmt
 	@rm -f build/tables-dart-fmt/.stamp
 	@$(DART) format build/tables-dart-fmt >/dev/null
-	@for f in build/tables-generated-dart/*/*Block.dart \
+	@n=0; for f in build/tables-generated-dart/*/*Block.dart \
 		  build/tables-generated-dart/*/*Cook.dart; do \
 		test -e $$f || continue; \
 		cmp -s $$f build/tables-dart-fmt/$${f#build/tables-generated-dart/} || \
 			{ echo "dart format drift in $$f"; exit 1; }; \
-	done
-	@echo "tables Dart: analyzer clean and format-canonical"
+		n=$$((n + 1)); \
+	done; \
+	[ $$n -gt 0 ] || { echo "tables-dart-clean: no *Block.dart or *Cook.dart under build/tables-generated-dart; no file was held to the formatter"; exit 1; }; \
+	echo "tables Dart: analyzer clean and $$n block and cook libraries format-canonical"
 
 # ITS CONTROL: a copy of one generated block library carries a planted unused
 # private declaration spelled off-format. The analyzer must reject the copy on
