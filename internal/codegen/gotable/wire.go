@@ -52,10 +52,7 @@ func (ids *TableIds) Ref(id uint64) uint64 {
 	for i := ids.head[b]; i != 0; i = ids.chain[i-1] {
 		if ids.Values[i-1] == id { return uint64(i) }
 	}
-	// THE ID TABLE'S MAXIMUM (docs/SPEC-TABLES.md §3): every reader refuses a
-	// table of more than 4096 entries, so the writer refuses to intern the
-	// 4097th and never writes a file its readers refuse.
-	if ids.Count == len(ids.Values) || ids.Count >= 4096 { ids.Overflow = true; return 0 }
+	if ids.Count == len(ids.Values) || ids.Count >= 4096 { ids.Overflow = true; return 0 } // 4096: SPEC-TABLES.md §3
 	i := ids.Count
 	ids.Values[i], ids.chain[i] = id, ids.head[b]
 	ids.ordinalOf[i] = -1
