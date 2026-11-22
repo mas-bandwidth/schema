@@ -38,7 +38,7 @@ def go(name:string, x:float):
     schema_rt.slot_named(rec, "value").cell.f = x
     let text, why = schema_rt.json_write(rec)
     print(name + " " + text + "|" + why)
-go("one_e300", 1e300)
+go("one_e300", 1.0e300)
 go("tenth", 0.1)
 go("past_max_rounds_down", 3.40282357e38)
 go("past_max_rounds_up", 3.5e38)
