@@ -7,10 +7,16 @@
 // refusal is the same answer it gives the LAWFUL value, so it proves nothing.
 //
 // The proof is the lawful twin. Every must-refuse row belongs to a GROUP (the
-// same surface, unit and root; for the write contract also the same field
-// path; for the foreign and forgery surfaces the image the forgery is made
-// from), and the group holds the rows that must be ACCEPTED: read, wrote,
-// open. Two rules follow:
+// same surface, unit and root; for the foreign and forgery surfaces the image
+// the forgery is made from), and the group holds the rows that must be
+// ACCEPTED: read, wrote, open. A group with no lawful row of its own falls
+// back to the surface that drives the SAME ENTRY POINT at the same root, per
+// the driver contract: `report` to `wire` (Load), `json-hostile` to
+// `json-read` (the text read), `write-refusal-json` to `json-write` (the text
+// writer), and a message-form refusal of a variable root to any lawful
+// message. `framing` has no fallback: at a fixed root it reads through the
+// VARIABLE entry point, which no other surface drives, and that is exactly
+// where the wrong-reader footgun lived. Two rules follow:
 //
 //  1. THE CORPUS (static): every must-refuse row has at least one lawful twin
 //     in the corpus. A group of refusals alone is a set of rows a leg passes
@@ -40,6 +46,20 @@ type caseRef struct{ surface, name string }
 type discrimination struct {
 	refusal map[caseRef]string
 	lawful  map[string][]caseRef
+	// fallback is the group whose lawful rows stand in when a group has
+	// none of its own (the same entry point on another surface)
+	fallback map[string]string
+}
+
+// twins is the lawful rows that prove a group: its own, else its fallback's.
+func (d *discrimination) twins(key string) []caseRef {
+	if own := d.lawful[key]; len(own) > 0 {
+		return own
+	}
+	if fb, ok := d.fallback[key]; ok {
+		return d.lawful[fb]
+	}
+	return nil
 }
 
 func (d *discrimination) refuse(surface, name, key string) {
@@ -53,7 +73,7 @@ func (d *discrimination) accept(surface, name, key string) {
 // buildDiscrimination reads the manifest (and the generated report verdicts)
 // into refusal rows and their lawful twins.
 func buildDiscrimination(m *Manifest, reports map[string]string) (*discrimination, error) {
-	d := &discrimination{refusal: map[caseRef]string{}, lawful: map[string][]caseRef{}}
+	d := &discrimination{refusal: map[caseRef]string{}, lawful: map[string][]caseRef{}, fallback: map[string]string{}}
 	at := func(parts ...string) string { return strings.Join(parts, "|") }
 
 	for _, i := range m.Instances {
@@ -65,6 +85,9 @@ func buildDiscrimination(m *Manifest, reports map[string]string) (*discriminatio
 		}
 		if !i.NoText {
 			d.accept("json-write", i.Name+".json", at("json-write", i.Unit, i.Root))
+			if !i.WireRefused {
+				d.accept("json-read", i.Name, at("json-read", i.Unit, i.Root))
+			}
 		}
 	}
 	for _, wr := range m.JSONWriteRefusals {
@@ -73,15 +96,19 @@ func buildDiscrimination(m *Manifest, reports map[string]string) (*discriminatio
 
 	// THE MESSAGE FORM: a connection's lawful batch is the twin of every
 	// refusal against that connection (a variable root's named refusal, a
-	// malformed grown announcement, a damaged batch).
+	// malformed grown announcement, a damaged batch). A connection that
+	// carries no fixed root at all falls back to any lawful message: the
+	// leg's message reader runs.
 	messageConn := map[string]string{}
 	for _, msg := range m.Messages {
 		messageConn[msg.Name] = msg.Connection
 		key := at("message", msg.Connection)
+		d.fallback[key] = "message"
 		if msg.Refused() {
 			d.refuse("message", msg.Name, key)
 		} else {
 			d.accept("message", msg.Name, key)
+			d.accept("message", msg.Name, "message")
 		}
 	}
 	for _, g := range m.Grown {
@@ -107,6 +134,7 @@ func buildDiscrimination(m *Manifest, reports map[string]string) (*discriminatio
 			return nil, fmt.Errorf("reports.txt names no case %q — run: make conformance-generate", r.Name)
 		}
 		key := at("report", r.Unit, r.Root)
+		d.fallback[key] = at("wire", r.Unit, r.Root)
 		if verdict == "refused" {
 			d.refuse("report", r.Name, key)
 		} else {
@@ -131,6 +159,7 @@ func buildDiscrimination(m *Manifest, reports map[string]string) (*discriminatio
 	}
 	for _, h := range m.Hostiles {
 		key := at("json-hostile", h.Unit, h.Root)
+		d.fallback[key] = at("json-read", h.Unit, h.Root)
 		if h.Refused {
 			d.refuse("json-hostile", h.Name, key)
 		} else {
@@ -174,6 +203,9 @@ func buildDiscrimination(m *Manifest, reports map[string]string) (*discriminatio
 	// own business (most rows carry one beside them).
 	for _, wr := range m.WriteRefusals {
 		key := at(wr.Surface(), wr.Unit, wr.Root)
+		if wr.Form == "json" {
+			d.fallback[key] = at("json-write", wr.Unit, wr.Root)
+		}
 		if wr.Verdict == "refused" {
 			d.refuse(wr.Surface(), wr.Name, key)
 		} else {
@@ -188,7 +220,7 @@ func buildDiscrimination(m *Manifest, reports map[string]string) (*discriminatio
 func (d *discrimination) problems() []string {
 	var out []string
 	for ref, key := range d.refusal {
-		if len(d.lawful[key]) == 0 {
+		if len(d.twins(key)) == 0 {
 			out = append(out, fmt.Sprintf("%s / %s: a must-refuse row with no lawful twin (group %s) — a leg that refuses the whole form passes it; add a row in the same group that must be accepted", ref.surface, ref.name, key))
 		}
 	}
@@ -210,7 +242,7 @@ func (d *discrimination) credit(lang string, results map[string]*result, referen
 			continue
 		}
 		credited := false
-		for _, twin := range d.lawful[key] {
+		for _, twin := range d.twins(key) {
 			if t := results[twin.surface]; t != nil && t.cases[twin.name] == "pass" {
 				credited = true
 				break
