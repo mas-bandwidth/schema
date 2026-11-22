@@ -14,14 +14,18 @@
 \*   the decode    record k decodes into scratch[k]; a bad record refuses
 \*   the commit    only after the last record decoded: out[k] := scratch[k]
 \*                 for k in 0..count-1
+\*   the refusal   EVERY row the caller handed in is reset to its declared
+\*                 default, whatever refused: the frame, the batch's size or
+\*                 a record (R4, docs/SPEC-TABLES.md §6.5)
 \*
 \* The caller hands M = N + 1 rows, each POISONED, so a write past count is
-\* seen. A record's value is 1 or 2 (it decodes) or 0 (one of the body
-\* conditions: a count, length, text, bool or present byte, float or range;
-\* which one does not matter to the batch). The ORACLE is written from the
-\* file's MEANING: refused when the tail is ragged or any record is bad, and
-\* otherwise rows 0..n-1 hold the records' values and every other row its
-\* poison. It is a model, not a codec.
+\* seen, and a refusal that leaves a row off its default is seen. A record's
+\* value is 1 or 2 (it decodes) or 0 (one of the body conditions: a count,
+\* length, text, bool or present byte, float or range; which one does not
+\* matter to the batch). The ORACLE is written from the file's MEANING:
+\* refused when the tail is ragged or any record is bad, with every row at its
+\* default, and otherwise rows 0..n-1 hold the records' values and every other
+\* row its poison. It is a model, not a codec.
 
 EXTENDS Naturals, Sequences, FiniteSets, TLC
 
@@ -32,21 +36,23 @@ ASSUME N \in 1..4 /\ R \in 2..3 /\ H \in 1..2
 
 \* The fault switches. The positive cfg holds all FALSE; each reversed cfg
 \* turns exactly one TRUE.
-CONSTANTS LandDuringDecode, \* the interleaved loop: record k decodes straight
-                            \* into out[k], so a refusal at k leaves 0..k-1
-                            \* landed
+CONSTANTS NoReset,          \* the retired rule: a refusal leaves every row as
+                            \* the caller handed it in
+          ResetThroughK,    \* a refusal resets only the rows the decode had
+                            \* reached, 0..k, and none on a frame refusal
           CommitShort,      \* the commit loop stops at count - 1: the last
                             \* record is decoded and never lands
           StrideOff,        \* record k addressed at H + k*(R-1): the stride
                             \* drops a byte and reads filler as a value
           NoTailCheck       \* count = rest \div R with no rest % R check: a
                             \* ragged tail is read as though it were whole
-ASSUME \A s \in {LandDuringDecode, CommitShort, StrideOff, NoTailCheck} : s \in BOOLEAN
+ASSUME \A s \in {NoReset, ResetThroughK, CommitShort, StrideOff, NoTailCheck} : s \in BOOLEAN
 
 M      == N + 1             \* the caller's rows
-Poison == 7
-Filler == 9
-Values == 0..2              \* 0 is a bad record
+Poison  == 7
+Default == 5
+Filler  == 9
+Values  == 0..2             \* 0 is a bad record
 
 \* The file's bytes, 1-based as TLA sequences are.
 Img(vals, tail) ==
@@ -66,6 +72,7 @@ At(img, o) == IF o \in 1..Len(img) THEN img[o] ELSE Filler
 
 OracleRefuses(vals, tail) == tail # 0 \/ \E i \in 1..Len(vals) : vals[i] = 0
 Untouched == [i \in 1..M |-> Poison]
+Defaults  == [i \in 1..M |-> Default]
 OracleRows(vals) == [i \in 1..M |-> IF i <= Len(vals) THEN vals[i] ELSE Poison]
 
 \* ------------------------------------------------------------- the reader
@@ -84,15 +91,25 @@ Init ==
     /\ out = Untouched
     /\ readOff = {}
 
+\* THE REFUSAL EXIT: the rows it leaves (R4). The decode never lands into out,
+\* so the faults are only in which rows the exit resets.
+Refused(rows, upto) ==
+    IF NoReset THEN rows
+    ELSE IF ResetThroughK
+         THEN [i \in 1..M |-> IF i <= upto THEN Default ELSE rows[i]]
+         ELSE Defaults
+
 Frame ==
     /\ phase = "frame"
     /\ LET rest == Len(img) - H IN
-       IF ~NoTailCheck /\ rest % R # 0
-       THEN phase' = "refused" /\ UNCHANGED count
-       ELSE IF rest \div R > M
-            THEN phase' = "refused" /\ UNCHANGED count
-            ELSE phase' = "decode" /\ count' = rest \div R
-    /\ UNCHANGED <<vals, tail, img, k, scratch, out, readOff>>
+       IF (~NoTailCheck /\ rest % R # 0) \/ rest \div R > M
+       THEN /\ phase' = "refused"
+            /\ out' = Refused(out, 0)
+            /\ UNCHANGED count
+       ELSE /\ phase' = "decode"
+            /\ count' = rest \div R
+            /\ UNCHANGED out
+    /\ UNCHANGED <<vals, tail, img, k, scratch, readOff>>
 
 Decode ==
     /\ phase = "decode"
@@ -101,12 +118,11 @@ Decode ==
        /\ readOff' = readOff \cup {Off(k)}
        /\ IF x \notin 1..2
           THEN /\ phase' = "refused"
-               /\ UNCHANGED <<k, scratch, out>>
+               /\ out' = Refused(out, k + 1)
+               /\ UNCHANGED <<k, scratch>>
           ELSE /\ k' = k + 1
-               /\ IF LandDuringDecode
-                  THEN out' = [out EXCEPT ![k + 1] = x] /\ UNCHANGED scratch
-                  ELSE scratch' = [scratch EXCEPT ![k + 1] = x] /\ UNCHANGED out
-               /\ UNCHANGED phase
+               /\ scratch' = [scratch EXCEPT ![k + 1] = x]
+               /\ UNCHANGED <<phase, out>>
     /\ UNCHANGED <<vals, tail, img, count>>
 
 Decoded ==
@@ -121,7 +137,7 @@ CommitTo == IF CommitShort /\ count > 0 THEN count - 1 ELSE count
 Commit ==
     /\ phase = "commit"
     /\ IF k < CommitTo
-       THEN /\ out' = IF LandDuringDecode THEN out ELSE [out EXCEPT ![k + 1] = scratch[k + 1]]
+       THEN /\ out' = [out EXCEPT ![k + 1] = scratch[k + 1]]
             /\ k' = k + 1
             /\ UNCHANGED phase
        ELSE /\ phase' = "accepted"
@@ -141,16 +157,17 @@ TypeOK ==
     /\ count \in 0..M
     /\ k \in 0..M
     /\ scratch \in [1..M -> Values \cup {Poison}]
-    /\ out \in [1..M -> Values \cup {Poison}]
+    /\ out \in [1..M -> Values \cup {Poison, Default}]
 
 \* THE CONTRACT: the read refuses exactly the files the meaning refuses, with
-\* every one of the caller's rows untouched, the rows before the bad record as
-\* much as the bad record's own; and otherwise lands exactly the meaning, with
-\* every row past the batch untouched.
+\* EVERY one of the caller's rows at its declared default — the rows before the
+\* bad record, the bad record's own and the rows past the batch alike (R4); and
+\* otherwise lands exactly the meaning, with every row past the batch
+\* untouched.
 OneVerdict ==
     phase \in {"accepted", "refused"} =>
         /\ (phase = "refused") = OracleRefuses(vals, tail)
-        /\ phase = "refused" => out = Untouched
+        /\ phase = "refused" => out = Defaults
         /\ phase = "accepted" => out = OracleRows(vals)
 
 \* Every byte the decode reads is a record's value byte, inside the records.
