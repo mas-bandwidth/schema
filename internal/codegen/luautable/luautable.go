@@ -1010,7 +1010,9 @@ func valueDesc(g *luau.Gen, f *ir.Field, def bool, wire bool) string {
 			// the variant names in bit order ride beside the integer shape:
 			// the text form spells a mask as their array (docs/SPEC-TABLES.md
 			// §16.2, the flags row), and the descriptor is its only source
-			return intDesc(g, f, def) + ", flags = " + flagNames(r)
+			// fw is W, the mask width every table read and write holds the value
+			// to (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH)
+			return intDesc(g, f, def) + ", flags = " + flagNames(r) + fmt.Sprintf(", fw = %d", r.WireBits)
 		case *ir.Union:
 			requireHome(g, r.Name)
 			return luau.Sprintf("s = \"union\", t = %q", r.Name)

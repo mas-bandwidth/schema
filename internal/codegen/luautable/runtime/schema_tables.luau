@@ -54,6 +54,9 @@ export type FieldDescriptor = {
 	-- flags is a flags set's variant names in bit order (docs/SPEC-TABLES.md
 	-- §16.2): the value is the integer mask, the text form its names
 	flags: { string }?,
+	-- fw is a flags mask width W (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A
+	-- MASK TO ITS WIDTH): a bit at or above it refuses every table read and write
+	fw: number?,
 	lo: any,
 	hi: any,
 	def: any,
