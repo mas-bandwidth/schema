@@ -99,6 +99,7 @@ var catalog = []Entry{
 	e("internal/mapwalk", "map walk", "go test ./internal/mapwalk", "go test ./internal/mapwalk"),
 	e("internal/lockfile", "schema.lock lineage", "go test ./internal/lockfile", "go test ./internal/lockfile"),
 	e("internal/memceiling", "memory ceiling for allocating tests", "go test ./internal/memceiling", "go test ./internal/memceiling"),
+	e("internal/modulemove", "pin and release boundary of the /v3 module move", "go test ./internal/modulemove", "go test ./internal/modulemove"),
 	e("internal/parser", "recursive-descent parser", "go test ./internal/parser", "go test ./internal/parser"),
 	e("internal/publicapi", "external-module API gate", "go test ./internal/publicapi", "go test ./internal/publicapi"),
 	e("internal/rfc3339", "strict RFC 3339 timestamp parser", "go test ./internal/rfc3339", "go test ./internal/rfc3339"),
@@ -177,6 +178,7 @@ var catalog = []Entry{
 	// testdata/
 	e("testdata/conformance", "table conformance dumps", "make conformance", "make conformance"),
 	e("testdata/golden", "generated-source goldens", "go test ./internal/goldens", "make update-goldens"),
+	e("testdata/golangci-lint-classes", "generated Go lint regression fixtures", "go test ./internal/goldens -run TestGolangciLintClassesShapes", "make schema-go-generated-golangci-lint-gate-classes-negative-control"),
 	e("testdata/jsontestsuite", "vendored JSONTestSuite (MIT)", "go test ./internal/tabletext", "go test ./internal/tabletext -run JSONTestSuite"),
 	e("testdata/luau-nightly-fuzz", "Luau nightly fuzz repros", "make luau-nightly-fuzz-replay", "make luau-nightly-fuzz"),
 	e("testdata/wire", "pinned wire bytes", "go test ./internal/goldens", "make update-goldens"),

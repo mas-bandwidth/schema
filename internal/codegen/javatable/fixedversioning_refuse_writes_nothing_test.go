@@ -17,9 +17,10 @@ import (
 	"encoding/binary"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // the 0x5A poison as a java int32 reads back as this one number.
@@ -72,7 +73,7 @@ func TestFixedVersioningRefuseWritesNothing(t *testing.T) {
 	// back exactly like a prefill that ran, and are precisely what this row has to
 	// tell apart.
 	_, javaBin := javaTools(t)
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "Probe_reads", nolayout, "deep").CombinedOutput()
+	out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, "Probe_reads", nolayout, "deep").CombinedOutput()
 	if err != nil {
 		t.Fatalf("java Probe_reads %s deep: %v\n%s", filepath.Base(nolayout), err, out)
 	}

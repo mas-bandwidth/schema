@@ -2,12 +2,13 @@ package javatable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJavaFixedRootTextForm gives the Java leg a text form for a FIXED ROOT
@@ -54,7 +55,7 @@ func TestJavaFixedRootTextForm(t *testing.T) {
 				} else if len(b) == 0 || b[0] != 3 {
 					t.Fatalf("%s: the instance is no form 3 file, so it is no fixed root's", row)
 				}
-				cmd := exec.Command(javaBin, "-ea", "-cp", dir, class,
+				cmd := testproc.Command(t, javaBin, "-ea", "-cp", dir, class,
 					wire, filepath.Join(repo, "testdata", "conformance", "tables", "json", row+".json"))
 				out, err := cmd.CombinedOutput()
 				if err != nil {

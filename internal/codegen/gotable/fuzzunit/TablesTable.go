@@ -186,10 +186,10 @@ func RootConfigSaveBodyFields(w *TableWriter, value *RootConfig) bool {
 					}
 					pairs++
 				}
-				if payload1.Overflow {
+				n := int64(1) + tableLebBytes(pairs) + payload1.Offset
+				if payload1.Overflow || n < 0 {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload1.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -261,10 +261,10 @@ func RootConfigSaveBodyFields(w *TableWriter, value *RootConfig) bool {
 					}
 					pairs++
 				}
-				if payload4.Overflow {
+				n := int64(1) + tableLebBytes(pairs) + payload4.Offset
+				if payload4.Overflow || n < 0 {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload4.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -657,10 +657,10 @@ func RootConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *RootConfig) boo
 					}
 					pairs++
 				}
-				if payload1.Overflow {
+				n := int64(1) + tableLebBytes(pairs) + payload1.Offset
+				if payload1.Overflow || n < 0 {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload1.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -742,10 +742,10 @@ func RootConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *RootConfig) boo
 					}
 					pairs++
 				}
-				if payload6.Overflow {
+				n := int64(1) + tableLebBytes(pairs) + payload6.Offset
+				if payload6.Overflow || n < 0 {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload6.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -1060,7 +1060,7 @@ func WeaponConfigSaveBodyFields(w *TableWriter, value *WeaponConfig) bool {
 			if value.Penetration < 0 || value.Penetration > 10 {
 				return false
 			}
-			w.Put32(uint32(value.Penetration))
+			w.Put32(uint32(int64(value.Penetration) & 0xffffffff))
 		}
 	}
 	{
@@ -1258,7 +1258,7 @@ func WeaponConfigLoadBody(r *TableReader, value *WeaponConfig) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Penetration = int32(v)
+						value.Penetration = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 					r.Report.Widened++
 					break
@@ -1271,7 +1271,7 @@ func WeaponConfigLoadBody(r *TableReader, value *WeaponConfig) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := r.getI32()
 				if v < 0 || v > 10 {
 					r.Report.Refuse(TableRefuseOutOfRange, "WeaponConfig.penetration")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1498,7 +1498,7 @@ func WeaponConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *WeaponConfig)
 			if value.Penetration < 0 || value.Penetration > 10 {
 				return false
 			}
-			w.Put32(uint32(value.Penetration))
+			w.Put32(uint32(int64(value.Penetration) & 0xffffffff))
 		}
 	}
 	{
@@ -1546,7 +1546,7 @@ func WeaponConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *WeaponConfig)
 						if !BuffSaveBodyRetain(&payload3, &payload1.Buff().Value) {
 							return false
 						}
-						if payload3.Overflow {
+						if payload3.Overflow || payload3.Offset < 0 {
 							return false
 						}
 						if !w.headerPair(ref, 13) {
@@ -1575,7 +1575,7 @@ func WeaponConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *WeaponConfig)
 						if !DebuffSaveBodyRetain(&payload5, &payload1.Debuff().Value) {
 							return false
 						}
-						if payload5.Overflow {
+						if payload5.Overflow || payload5.Offset < 0 {
 							return false
 						}
 						if !w.headerPair(ref, 13) {
@@ -1708,7 +1708,7 @@ func WeaponConfigLoadBodyRetain(r *TableRetainReader, value *WeaponConfig) bool 
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Penetration = int32(v)
+						value.Penetration = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 					r.Report.Widened++
 					break
@@ -1721,7 +1721,7 @@ func WeaponConfigLoadBodyRetain(r *TableRetainReader, value *WeaponConfig) bool 
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := r.getI32()
 				if v < 0 || v > 10 {
 					r.Report.Refuse(TableRefuseOutOfRange, "WeaponConfig.penetration")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1949,10 +1949,10 @@ func LoadoutConfigSaveBodyFields(w *TableWriter, value *LoadoutConfig) bool {
 					}
 					pairs++
 				}
-				if payload17.Overflow {
+				n := int64(1) + tableLebBytes(pairs) + payload17.Offset
+				if payload17.Overflow || n < 0 {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload17.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -2017,10 +2017,10 @@ func LoadoutConfigSaveBodyFields(w *TableWriter, value *LoadoutConfig) bool {
 					}
 					pairs++
 				}
-				if payload20.Overflow {
+				n := int64(1) + tableLebBytes(pairs) + payload20.Offset
+				if payload20.Overflow || n < 0 {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload20.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -2117,10 +2117,10 @@ func LoadoutConfigSaveBodyFields(w *TableWriter, value *LoadoutConfig) bool {
 					}
 					pairs++
 				}
-				if payload23.Overflow {
+				n := int64(1) + tableLebBytes(pairs) + payload23.Offset
+				if payload23.Overflow || n < 0 {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload23.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -2192,10 +2192,10 @@ func LoadoutConfigSaveBodyFields(w *TableWriter, value *LoadoutConfig) bool {
 					}
 					pairs++
 				}
-				if payload26.Overflow {
+				n := int64(1) + tableLebBytes(pairs) + payload26.Offset
+				if payload26.Overflow || n < 0 {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload26.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -2716,10 +2716,10 @@ func LoadoutConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *LoadoutConfi
 					}
 					pairs++
 				}
-				if payload1.Overflow {
+				n := int64(1) + tableLebBytes(pairs) + payload1.Offset
+				if payload1.Overflow || n < 0 {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload1.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -2784,10 +2784,10 @@ func LoadoutConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *LoadoutConfi
 					}
 					pairs++
 				}
-				if payload4.Overflow {
+				n := int64(1) + tableLebBytes(pairs) + payload4.Offset
+				if payload4.Overflow || n < 0 {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload4.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -2929,10 +2929,10 @@ func LoadoutConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *LoadoutConfi
 					}
 					pairs++
 				}
-				if payload9.Overflow {
+				n := int64(1) + tableLebBytes(pairs) + payload9.Offset
+				if payload9.Overflow || n < 0 {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload9.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -3014,10 +3014,10 @@ func LoadoutConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *LoadoutConfi
 					}
 					pairs++
 				}
-				if payload14.Overflow {
+				n := int64(1) + tableLebBytes(pairs) + payload14.Offset
+				if payload14.Overflow || n < 0 {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload14.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -3549,10 +3549,10 @@ func ProfileConfigSaveBodyFields(w *TableWriter, value *ProfileConfig) bool {
 					payload30.Put8(uint8(value.Icon[i]))
 					pairs++
 				}
-				if payload30.Overflow {
+				n := int64(1) + tableLebBytes(pairs) + payload30.Offset
+				if payload30.Overflow || n < 0 {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload30.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -3584,7 +3584,7 @@ func ProfileConfigSaveBodyFields(w *TableWriter, value *ProfileConfig) bool {
 			if ref := w.Ids.refAtHit(19, 0x1e5088ef2e9bafc6); !w.headerPair(ref, 2) {
 				w.headerRest(ref, 2)
 			}
-			w.Put8(uint8(value.Tilt))
+			w.Put8(uint8(int64(value.Tilt) & 0xff))
 		}
 	}
 	{
@@ -3592,7 +3592,7 @@ func ProfileConfigSaveBodyFields(w *TableWriter, value *ProfileConfig) bool {
 			if ref := w.Ids.refAtHit(96, 0xb128829190ca0f75); !w.headerPair(ref, 3) {
 				w.headerRest(ref, 3)
 			}
-			w.Put16(uint16(value.Heading))
+			w.Put16(uint16(int64(value.Heading) & 0xffff))
 		}
 	}
 	{
@@ -3600,7 +3600,7 @@ func ProfileConfigSaveBodyFields(w *TableWriter, value *ProfileConfig) bool {
 			if ref := w.Ids.refAtHit(54, 0x5ddc92338ef53403); !w.headerPair(ref, 5) {
 				w.headerRest(ref, 5)
 			}
-			w.Put64(uint64(value.Timestamp))
+			w.putI64(value.Timestamp)
 		}
 	}
 	{
@@ -3661,10 +3661,10 @@ func ProfileConfigSaveBodyFields(w *TableWriter, value *ProfileConfig) bool {
 					payload33.Put32(math.Float32bits(value.Ratings[i]))
 					pairs++
 				}
-				if payload33.Overflow {
+				n := int64(1) + tableLebBytes(pairs) + payload33.Offset
+				if payload33.Overflow || n < 0 {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload33.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -3833,7 +3833,7 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 					}
 					{
 						v := sub.Unsigned(elemKind)
-						value.Icon[i] = byte(v)
+						value.Icon[i] = byte(v & 0xff)
 					}
 				}
 				value.IconLength = int32(count)
@@ -3851,7 +3851,7 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 					}
 					{
 						v := r.Unsigned(kind)
-						value.Experience = uint32(v)
+						value.Experience = uint32(v & 0xffffffff)
 					}
 					r.Report.Widened++
 					break
@@ -3877,7 +3877,7 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 				return false
 			}
 			{
-				v := int8(r.Get8())
+				v := r.getI8()
 				value.Tilt = int8(v)
 			}
 		case 0xb128829190ca0f75: // heading
@@ -3889,7 +3889,7 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 					}
 					{
 						v := r.Signed(kind)
-						value.Heading = int16(v)
+						value.Heading = int16(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int16
 					}
 					r.Report.Widened++
 					break
@@ -3902,7 +3902,7 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 				return false
 			}
 			{
-				v := int16(r.Get16())
+				v := r.getI16()
 				value.Heading = int16(v)
 			}
 		case 0x5ddc92338ef53403: // timestamp
@@ -3927,7 +3927,7 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 				return false
 			}
 			{
-				v := int64(r.Get64())
+				v := r.getI64()
 				value.Timestamp = int64(v)
 			}
 		case 0x10bda981fe095518: // badge
@@ -3952,7 +3952,7 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 					}
 					{
 						v := r.Unsigned(kind)
-						value.Port = uint16(v)
+						value.Port = uint16(v & 0xffff)
 					}
 					r.Report.Widened++
 					break
@@ -4283,10 +4283,10 @@ func ProfileConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ProfileConfi
 					payload1.Put8(uint8(value.Icon[i]))
 					pairs++
 				}
-				if payload1.Overflow {
+				n := int64(1) + tableLebBytes(pairs) + payload1.Offset
+				if payload1.Overflow || n < 0 {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload1.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -4318,7 +4318,7 @@ func ProfileConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ProfileConfi
 			if ref := w.Ids.refAtHit(19, 0x1e5088ef2e9bafc6); !w.headerPair(ref, 2) {
 				w.headerRest(ref, 2)
 			}
-			w.Put8(uint8(value.Tilt))
+			w.Put8(uint8(int64(value.Tilt) & 0xff))
 		}
 	}
 	{
@@ -4326,7 +4326,7 @@ func ProfileConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ProfileConfi
 			if ref := w.Ids.refAtHit(96, 0xb128829190ca0f75); !w.headerPair(ref, 3) {
 				w.headerRest(ref, 3)
 			}
-			w.Put16(uint16(value.Heading))
+			w.Put16(uint16(int64(value.Heading) & 0xffff))
 		}
 	}
 	{
@@ -4334,7 +4334,7 @@ func ProfileConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ProfileConfi
 			if ref := w.Ids.refAtHit(54, 0x5ddc92338ef53403); !w.headerPair(ref, 5) {
 				w.headerRest(ref, 5)
 			}
-			w.Put64(uint64(value.Timestamp))
+			w.putI64(value.Timestamp)
 		}
 	}
 	{
@@ -4395,10 +4395,10 @@ func ProfileConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ProfileConfi
 					payload4.Put32(math.Float32bits(value.Ratings[i]))
 					pairs++
 				}
-				if payload4.Overflow {
+				n := int64(1) + tableLebBytes(pairs) + payload4.Offset
+				if payload4.Overflow || n < 0 {
 					return false
 				}
-				n := int64(1) + tableLebBytes(pairs) + payload4.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -4608,7 +4608,7 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 					}
 					{
 						v := sub.Unsigned(elemKind)
-						value.Icon[i] = byte(v)
+						value.Icon[i] = byte(v & 0xff)
 					}
 				}
 				value.IconLength = int32(count)
@@ -4626,7 +4626,7 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 					}
 					{
 						v := r.Unsigned(kind)
-						value.Experience = uint32(v)
+						value.Experience = uint32(v & 0xffffffff)
 					}
 					r.Report.Widened++
 					break
@@ -4652,7 +4652,7 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 				return false
 			}
 			{
-				v := int8(r.Get8())
+				v := r.getI8()
 				value.Tilt = int8(v)
 			}
 		case 0xb128829190ca0f75: // heading
@@ -4664,7 +4664,7 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 					}
 					{
 						v := r.Signed(kind)
-						value.Heading = int16(v)
+						value.Heading = int16(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int16
 					}
 					r.Report.Widened++
 					break
@@ -4677,7 +4677,7 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 				return false
 			}
 			{
-				v := int16(r.Get16())
+				v := r.getI16()
 				value.Heading = int16(v)
 			}
 		case 0x5ddc92338ef53403: // timestamp
@@ -4702,7 +4702,7 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 				return false
 			}
 			{
-				v := int64(r.Get64())
+				v := r.getI64()
 				value.Timestamp = int64(v)
 			}
 		case 0x10bda981fe095518: // badge
@@ -4727,7 +4727,7 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 					}
 					{
 						v := r.Unsigned(kind)
-						value.Port = uint16(v)
+						value.Port = uint16(v & 0xffff)
 					}
 					r.Report.Widened++
 					break
@@ -4975,7 +4975,7 @@ func AttachmentSaveBodyFields(w *TableWriter, value *AttachmentRow) bool {
 			if value.Slot < 0 || value.Slot > 7 {
 				return false
 			}
-			w.Put32(uint32(value.Slot))
+			w.Put32(uint32(int64(value.Slot) & 0xffffffff))
 		}
 	}
 	{
@@ -5067,7 +5067,7 @@ func AttachmentLoadBody(r *TableReader, value *AttachmentRow) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Slot = int32(v)
+						value.Slot = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 					r.Report.Widened++
 					break
@@ -5080,7 +5080,7 @@ func AttachmentLoadBody(r *TableReader, value *AttachmentRow) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := r.getI32()
 				if v < 0 || v > 7 {
 					r.Report.Refuse(TableRefuseOutOfRange, "Attachment.slot")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -5177,7 +5177,7 @@ func AttachmentSaveBodyFieldsRetain(w *TableRetainWriter, value *AttachmentRow) 
 			if value.Slot < 0 || value.Slot > 7 {
 				return false
 			}
-			w.Put32(uint32(value.Slot))
+			w.Put32(uint32(int64(value.Slot) & 0xffffffff))
 		}
 	}
 	{
@@ -5259,7 +5259,7 @@ func AttachmentLoadBodyRetain(r *TableRetainReader, value *AttachmentRow) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Slot = int32(v)
+						value.Slot = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 					r.Report.Widened++
 					break
@@ -5272,7 +5272,7 @@ func AttachmentLoadBodyRetain(r *TableRetainReader, value *AttachmentRow) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := r.getI32()
 				if v < 0 || v > 7 {
 					r.Report.Refuse(TableRefuseOutOfRange, "Attachment.slot")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -5657,7 +5657,7 @@ func DebuffSaveBodyFields(w *TableWriter, value *DebuffRow) bool {
 			if value.Amount < 0 || value.Amount > 100 {
 				return false
 			}
-			w.Put32(uint32(value.Amount))
+			w.Put32(uint32(int64(value.Amount) & 0xffffffff))
 		}
 	}
 	return !w.Overflow && !w.Ids.Overflow
@@ -5738,7 +5738,7 @@ func DebuffLoadBody(r *TableReader, value *DebuffRow) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Amount = int32(v)
+						value.Amount = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 					r.Report.Widened++
 					break
@@ -5751,7 +5751,7 @@ func DebuffLoadBody(r *TableReader, value *DebuffRow) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := r.getI32()
 				if v < 0 || v > 100 {
 					r.Report.Refuse(TableRefuseOutOfRange, "Debuff.amount")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -5828,7 +5828,7 @@ func DebuffSaveBodyFieldsRetain(w *TableRetainWriter, value *DebuffRow) bool {
 			if value.Amount < 0 || value.Amount > 100 {
 				return false
 			}
-			w.Put32(uint32(value.Amount))
+			w.Put32(uint32(int64(value.Amount) & 0xffffffff))
 		}
 	}
 	if !tableRetainTail(w) {
@@ -5899,7 +5899,7 @@ func DebuffLoadBodyRetain(r *TableRetainReader, value *DebuffRow) bool {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Amount = int32(v)
+						value.Amount = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 					r.Report.Widened++
 					break
@@ -5912,7 +5912,7 @@ func DebuffLoadBodyRetain(r *TableRetainReader, value *DebuffRow) bool {
 				return false
 			}
 			{
-				v := int32(r.Get32())
+				v := r.getI32()
 				if v < 0 || v > 100 {
 					r.Report.Refuse(TableRefuseOutOfRange, "Debuff.amount")
 					r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -7083,7 +7083,7 @@ var RootConfigFixedLineagePlans = tableFixedLineagePlans(RootConfigFixedKnown, R
 var RootConfigFixedResetImage = func() []byte {
 	var def RootConfig
 	RootConfigReset(&def)
-	return tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
+	return tableFixedOverlayOf(&def)
 }()
 
 var RootConfigFixedHoles = tableFixedHoles(RootConfigFixedPlan.Entries, RootConfigFixedPlan.Count, uint32(len(RootConfigFixedResetImage)))
@@ -7262,7 +7262,7 @@ func RootConfigFixedLoad(values []RootConfig, data []byte, plan []TableFixedEntr
 		}
 	}
 	for k := range values[:n] {
-		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
+		dst := tableFixedOverlayOf(&values[k])
 		for i := range holes {
 			h := holes[i]
 			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
@@ -7412,7 +7412,7 @@ func WeaponConfigFixedBoundsKnown0(value *WeaponConfig) bool {
 var WeaponConfigFixedResetImage = func() []byte {
 	var def WeaponConfig
 	WeaponConfigReset(&def)
-	return tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
+	return tableFixedOverlayOf(&def)
 }()
 
 var WeaponConfigFixedHoles = tableFixedHoles(WeaponConfigFixedPlan.Entries, WeaponConfigFixedPlan.Count, uint32(len(WeaponConfigFixedResetImage)))
@@ -7591,7 +7591,7 @@ func WeaponConfigFixedLoad(values []WeaponConfig, data []byte, plan []TableFixed
 		}
 	}
 	for k := range values[:n] {
-		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
+		dst := tableFixedOverlayOf(&values[k])
 		for i := range holes {
 			h := holes[i]
 			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
@@ -7875,7 +7875,7 @@ var LoadoutConfigFixedLineagePlans = tableFixedLineagePlans(LoadoutConfigFixedKn
 var LoadoutConfigFixedResetImage = func() []byte {
 	var def LoadoutConfig
 	LoadoutConfigReset(&def)
-	return tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
+	return tableFixedOverlayOf(&def)
 }()
 
 var LoadoutConfigFixedHoles = tableFixedHoles(LoadoutConfigFixedPlan.Entries, LoadoutConfigFixedPlan.Count, uint32(len(LoadoutConfigFixedResetImage)))
@@ -8054,7 +8054,7 @@ func LoadoutConfigFixedLoad(values []LoadoutConfig, data []byte, plan []TableFix
 		}
 	}
 	for k := range values[:n] {
-		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
+		dst := tableFixedOverlayOf(&values[k])
 		for i := range holes {
 			h := holes[i]
 			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
@@ -8392,7 +8392,7 @@ var ProfileConfigFixedLineagePlans = tableFixedLineagePlans(ProfileConfigFixedKn
 var ProfileConfigFixedResetImage = func() []byte {
 	var def ProfileConfig
 	ProfileConfigReset(&def)
-	return tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
+	return tableFixedOverlayOf(&def)
 }()
 
 var ProfileConfigFixedHoles = tableFixedHoles(ProfileConfigFixedPlan.Entries, ProfileConfigFixedPlan.Count, uint32(len(ProfileConfigFixedResetImage)))
@@ -8571,7 +8571,7 @@ func ProfileConfigFixedLoad(values []ProfileConfig, data []byte, plan []TableFix
 		}
 	}
 	for k := range values[:n] {
-		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
+		dst := tableFixedOverlayOf(&values[k])
 		for i := range holes {
 			h := holes[i]
 			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])

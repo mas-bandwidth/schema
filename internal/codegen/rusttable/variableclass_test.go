@@ -17,6 +17,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestVariableClassBeyondCardConstructsRust pins the Rust leg's carry of the
@@ -305,13 +307,13 @@ func TestVariableClassBeyondCardConstructsRust(t *testing.T) {
 	}
 
 	bin := filepath.Join(work, "probe")
-	cmd := exec.Command("rustc", "--edition", "2024", "-O", "-o", bin, "main.rs")
+	cmd := testproc.Command(t, "rustc", "--edition", "2024", "-O", "-o", bin, "main.rs")
 	cmd.Dir = work
 	cmd.Env = os.Environ()
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("the variable class codec did not build: %v\n%s", err, out)
 	}
-	run := exec.Command(bin)
+	run := testproc.Command(t, bin)
 	run.Dir = work
 	out, err := run.CombinedOutput()
 	if err != nil {

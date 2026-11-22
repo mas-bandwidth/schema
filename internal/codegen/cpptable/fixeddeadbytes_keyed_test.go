@@ -13,13 +13,14 @@ package cpptable
 import (
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const cppFixedDeadKeyedSchema = `package tbldeadkeyed
@@ -164,7 +165,7 @@ func cppFixedDeadKeyedProbeBinary(t *testing.T) string {
 	}
 	serialize, _ := filepath.Abs("../../../../serialize")
 	args := []string{"-std=c++17", "-O1", "-I" + dir, "-I" + serialize, filepath.Join(dir, "probe.cpp"), "-o", filepath.Join(dir, "probe")}
-	build := exec.Command(cxx, args...)
+	build := testproc.Command(t, cxx, args...)
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("the probe did not compile: %v\n%s", err, out)
 	}
@@ -185,7 +186,7 @@ func TestFixedDeadBytesKeyedSlots(t *testing.T) {
 	} {
 		t.Run(vec.name, func(t *testing.T) {
 			t.Parallel()
-			out, err := exec.Command(probe, vec.want).CombinedOutput()
+			out, err := testproc.Command(t, probe, vec.want).CombinedOutput()
 			if err != nil {
 				t.Fatalf("%s: %v\n%s", vec.name, err, out)
 			}

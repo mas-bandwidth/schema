@@ -15,6 +15,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // The sixteen rows. The method is the named check FixedFormChecks.cs runs
@@ -208,7 +210,7 @@ func runCSharpValidData(t *testing.T, checks string) (string, int) {
 	}
 	compileCtx, compileCancel := context.WithTimeout(context.Background(), 6*time.Minute)
 	defer compileCancel()
-	cmd := exec.CommandContext(compileCtx, dotnet, args...)
+	cmd := testproc.CommandContext(t, compileCtx, dotnet, args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("csc failed: %v\n%s", err, out)
 	}
@@ -218,7 +220,7 @@ func runCSharpValidData(t *testing.T, checks string) (string, int) {
 	}
 	runCtx, runCancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer runCancel()
-	run := exec.CommandContext(runCtx, dotnet, "exec", dll)
+	run := testproc.CommandContext(t, runCtx, dotnet, "exec", dll)
 	out, err := run.CombinedOutput()
 	code := 0
 	if err != nil {
@@ -390,7 +392,7 @@ func validDataDotnet(t *testing.T) (dotnet, csc, refs, version string) {
 		}
 		dotnet = found
 	}
-	verOut, err := exec.Command(dotnet, "--version").Output()
+	verOut, err := testproc.Command(t, dotnet, "--version").Output()
 	if err != nil {
 		t.Fatalf("dotnet --version: %v", err)
 	}
