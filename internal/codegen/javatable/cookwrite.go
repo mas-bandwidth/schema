@@ -36,18 +36,18 @@ public final class TableCookWrite {
     private static final long BYTES_ID = 0x2f2ec0474f1c4fe4L;
 
     private static final class Node {
-        final Object value;
+        final java.lang.Object value;
         final TableCookInfo info;
         final byte[] blob;
         final boolean text;
         final long id;
         long offset;
         long extent; // a record's node extent: its lists' and maps' arrays (§7.6)
-        Node(Object value, TableCookInfo info) {
+        Node(java.lang.Object value, TableCookInfo info) {
             this.value = value; this.info = info; this.blob = null;
             this.text = false; this.id = info.typeId;
         }
-        Node(Object value, byte[] blob, boolean text) {
+        Node(java.lang.Object value, byte[] blob, boolean text) {
             this.value = value; this.info = null; this.blob = blob;
             this.text = text; this.id = text ? STRING_ID : BYTES_ID;
         }
@@ -59,13 +59,13 @@ public final class TableCookWrite {
         }
         // a record node starts at the greater of its record's alignment and every
         // element's its extent can hold, a blob at eight, its header's
-        long align() { return info != null ? Math.max(info.align, info.extentAlign) : 8; }
+        long align() { return info != null ? java.lang.Math.max(info.align, info.extentAlign) : 8; }
     }
 
     public static final class Plan {
         private final java.util.ArrayList<Node> nodes = new java.util.ArrayList<>();
-        private final java.util.IdentityHashMap<Object, Node> index = new java.util.IdentityHashMap<>();
-        private Object[] slotHolders = new Object[16];
+        private final java.util.IdentityHashMap<java.lang.Object, Node> index = new java.util.IdentityHashMap<>();
+        private java.lang.Object[] slotHolders = new java.lang.Object[16];
         private TableCookFieldInfo[] slotFields = new TableCookFieldInfo[16];
         private Node[] slotNodes = new Node[16];
         private int slotCount;
@@ -73,12 +73,12 @@ public final class TableCookWrite {
         private long dataLength;
         private long alignment;
 
-        static int slotHash(Object holder, TableCookFieldInfo f) {
-            int h = System.identityHashCode(holder) * 31 + System.identityHashCode(f);
+        static int slotHash(java.lang.Object holder, TableCookFieldInfo f) {
+            int h = java.lang.System.identityHashCode(holder) * 31 + java.lang.System.identityHashCode(f);
             return h ^ (h >>> 16);
         }
 
-        Node slotNode(Object holder, TableCookFieldInfo f) {
+        Node slotNode(java.lang.Object holder, TableCookFieldInfo f) {
             int mask = slotHolders.length - 1;
             int idx = slotHash(holder, f) & mask;
             while (slotHolders[idx] != null) {
@@ -90,7 +90,7 @@ public final class TableCookWrite {
             return null;
         }
 
-        void putSlotNode(Object holder, TableCookFieldInfo f, Node n) {
+        void putSlotNode(java.lang.Object holder, TableCookFieldInfo f, Node n) {
             if (slotCount * 2 >= slotHolders.length) {
                 rehashSlots(slotHolders.length * 2);
             }
@@ -110,10 +110,10 @@ public final class TableCookWrite {
         }
 
         void rehashSlots(int cap) {
-            Object[] oldH = slotHolders;
+            java.lang.Object[] oldH = slotHolders;
             TableCookFieldInfo[] oldF = slotFields;
             Node[] oldN = slotNodes;
-            slotHolders = new Object[cap];
+            slotHolders = new java.lang.Object[cap];
             slotFields = new TableCookFieldInfo[cap];
             slotNodes = new Node[cap];
             int mask = cap - 1;
@@ -138,63 +138,63 @@ public final class TableCookWrite {
     // where a node's extent begins: its record's size rounded to the greater of
     // the floor and every element alignment its types can hold (§7.6)
     private static long extentStart(TableCookInfo info) {
-        return aligned(info.size, Math.max(FLOOR, info.extentAlign));
+        return aligned(info.size, java.lang.Math.max(FLOOR, info.extentAlign));
     }
 
     private static long aligned(long n, long a) {
-        if (n < 0 || a <= 0 || (a & (a - 1)) != 0 || n > Long.MAX_VALUE - (a - 1)) {
-            throw new IllegalArgumentException("invalid cook extent");
+        if (n < 0 || a <= 0 || (a & (a - 1)) != 0 || n > java.lang.Long.MAX_VALUE - (a - 1)) {
+            throw new java.lang.IllegalArgumentException("invalid cook extent");
         }
         return (n + a - 1) & -a;
     }
 
-    private static Object field(Object value, String name) throws ReflectiveOperationException {
-        if (value == null) { throw new IllegalArgumentException("null record"); }
+    private static java.lang.Object field(java.lang.Object value, java.lang.String name) throws java.lang.ReflectiveOperationException {
+        if (value == null) { throw new java.lang.IllegalArgumentException("null record"); }
         return value.getClass().getField(name).get(value);
     }
 
-    private static int count(Object value, TableCookFieldInfo f, Object source)
-            throws ReflectiveOperationException {
-        if (source == null) { throw new IllegalArgumentException("null array"); }
+    private static int count(java.lang.Object value, TableCookFieldInfo f, java.lang.Object source)
+            throws java.lang.ReflectiveOperationException {
+        if (source == null) { throw new java.lang.IllegalArgumentException("null array"); }
         if (f.countOffset < 0) { return f.arrayBound; }
         try {
-            return ((Number) field(value, f.sourceName + "Count")).intValue();
-        } catch (NoSuchFieldException ignored) {
+            return ((java.lang.Number) field(value, f.sourceName + "Count")).intValue();
+        } catch (java.lang.NoSuchFieldException ignored) {
             if (source instanceof java.util.List<?>) { return ((java.util.List<?>) source).size(); }
             throw ignored;
         }
     }
 
-    private static Object element(Object source, int i) {
+    private static java.lang.Object element(java.lang.Object source, int i) {
         if (source instanceof java.util.List<?>) { return ((java.util.List<?>) source).get(i); }
         return java.lang.reflect.Array.get(source, i);
     }
 
-    private static int length(Object source) {
+    private static int length(java.lang.Object source) {
         if (source instanceof java.util.List<?>) { return ((java.util.List<?>) source).size(); }
         return java.lang.reflect.Array.getLength(source);
     }
 
     // §7.6 numbering: first visit owns the node; a repeated edge reuses it.
-    private static void add(Plan p, Object value, TableCookInfo info) throws ReflectiveOperationException {
+    private static void add(Plan p, java.lang.Object value, TableCookInfo info) throws java.lang.ReflectiveOperationException {
         if (value == null || p.index.containsKey(value)) { return; }
         Node n;
         if (info != null) {
             n = new Node(value, info);
-        } else if (value instanceof String) {
-            n = new Node(value, ((String) value).getBytes(java.nio.charset.StandardCharsets.UTF_8), true);
+        } else if (value instanceof java.lang.String) {
+            n = new Node(value, ((java.lang.String) value).getBytes(java.nio.charset.StandardCharsets.UTF_8), true);
         } else if (value instanceof byte[]) {
             n = new Node(value, (byte[]) value, false);
         } else {
-            throw new IllegalArgumentException("unknown pointer target");
+            throw new java.lang.IllegalArgumentException("unknown pointer target");
         }
         p.index.put(value, n);
         p.nodes.add(n);
         if (info != null) { discover(p, value, info); }
     }
 
-    private static void discover(Plan p, Object value, TableCookInfo info)
-            throws ReflectiveOperationException {
+    private static void discover(Plan p, java.lang.Object value, TableCookInfo info)
+            throws java.lang.ReflectiveOperationException {
         for (TableCookFieldInfo f : info.fields) { discoverField(p, value, f); }
     }
 
@@ -202,18 +202,18 @@ public final class TableCookWrite {
     // stale value (a cleared ?T keeps what it held), so the numbering never
     // descends it, and the store writes it as a load leaves it: the
     // value-initialized record, every reference null.
-    private static boolean absentRecord(Object value, TableCookFieldInfo f)
-            throws ReflectiveOperationException {
+    private static boolean absentRecord(java.lang.Object value, TableCookFieldInfo f)
+            throws java.lang.ReflectiveOperationException {
         return f.presentOffset >= 0
                 && f.storage == TableCookStorage.RECORD
-                && !Boolean.TRUE.equals(field(value, f.sourceName + "Present"));
+                && !java.lang.Boolean.TRUE.equals(field(value, f.sourceName + "Present"));
     }
 
-    private static void addString(Plan p, Object holder, String value, TableCookFieldInfo f)
-            throws ReflectiveOperationException {
+    private static void addString(Plan p, java.lang.Object holder, java.lang.String value, TableCookFieldInfo f)
+            throws java.lang.ReflectiveOperationException {
         if (value == null) { return; }
         if (holder != null) {
-            long idx = ((Number) field(holder, f.sourceName + "Idx")).longValue();
+            long idx = ((java.lang.Number) field(holder, f.sourceName + "Idx")).longValue();
             if (idx < 0) {
                 Node shared = p.index.get(value);
                 if (shared != null) {
@@ -228,15 +228,15 @@ public final class TableCookWrite {
         if (holder != null) { p.putSlotNode(holder, f, n); }
     }
 
-    private static void discoverField(Plan p, Object value, TableCookFieldInfo f)
-            throws ReflectiveOperationException {
+    private static void discoverField(Plan p, java.lang.Object value, TableCookFieldInfo f)
+            throws java.lang.ReflectiveOperationException {
         if (absentRecord(value, f)) { return; }
-        Object source = field(value, f.sourceName);
+        java.lang.Object source = field(value, f.sourceName);
         if (f.storage == TableCookStorage.LIST || f.storage == TableCookStorage.MAP) {
-            if (f.presentOffset >= 0 && !Boolean.TRUE.equals(field(value, f.sourceName + "Present"))) { return; }
+            if (f.presentOffset >= 0 && !java.lang.Boolean.TRUE.equals(field(value, f.sourceName + "Present"))) { return; }
             // a holder's elements are walked in the order the array lays them:
             // a list's in index order, a map's entries ascending by key (§2.8)
-            for (Object e : elements(source, f)) { discoverValue(p, null, e, f.element); }
+            for (java.lang.Object e : elements(source, f)) { discoverValue(p, null, e, f.element); }
             return;
         }
         if (f.isArray) {
@@ -244,17 +244,17 @@ public final class TableCookWrite {
             assert used >= 0 && used <= f.arrayBound && (f.countOffset < 0 || length(source) >= used);
             // a FIXED array's value may hold fewer than N elements: the slots
             // past it are value-initialized (§7.2) and reach no node
-            used = Math.min(used, length(source));
+            used = java.lang.Math.min(used, length(source));
             for (int i = 0; i < used; i++) { discoverValue(p, value, element(source, i), f); }
         } else {
             discoverValue(p, value, source, f);
         }
     }
 
-    private static void discoverValue(Plan p, Object holder, Object source, TableCookFieldInfo f)
-            throws ReflectiveOperationException {
+    private static void discoverValue(Plan p, java.lang.Object holder, java.lang.Object source, TableCookFieldInfo f)
+            throws java.lang.ReflectiveOperationException {
         if (f.isPointer) {
-            if (source instanceof String) { addString(p, holder, (String) source, f); }
+            if (source instanceof java.lang.String) { addString(p, holder, (java.lang.String) source, f); }
             else { add(p, source, f.record()); }
         } else if (f.storage == TableCookStorage.RECORD && source != null) {
             discover(p, source, f.record());
@@ -268,16 +268,16 @@ public final class TableCookWrite {
 
     // The arm a union value's tag selects, or null for None. A tag no arm
     // carries is not a value this build can hold, and the plan refuses it.
-    private static TableCookFieldInfo arm(Object union, TableCookInfo info)
-            throws ReflectiveOperationException {
-        long tag = ((Number) field(union, "tag")).longValue();
+    private static TableCookFieldInfo arm(java.lang.Object union, TableCookInfo info)
+            throws java.lang.ReflectiveOperationException {
+        long tag = ((java.lang.Number) field(union, "tag")).longValue();
         if (tag == 0) { return null; }
         for (TableCookFieldInfo a : info.fields) {
             if (a.tag == tag) { return a; }
         }
         // a declared arm with no payload rides its tag alone
         if (tag > 0 && tag <= info.armCount) { return null; }
-        throw new IllegalArgumentException("union tag");
+        throw new java.lang.IllegalArgumentException("union tag");
     }
 
     // ---- THE NODE EXTENT (docs/SPEC-TABLES.md §2.8, §2.9, §7.2, §7.6; the
@@ -290,25 +290,25 @@ public final class TableCookWrite {
     // out null the same walk measures. at is the record's absolute offset, base
     // the extent's, and cursor[0] the running offset inside the extent.
     private static void carveRecord(Plan p, byte[] out, int order, long at, long base, long[] cursor,
-            Object value, TableCookInfo info) throws ReflectiveOperationException {
+            java.lang.Object value, TableCookInfo info) throws java.lang.ReflectiveOperationException {
         if (value == null || info == null || !info.hasExtent) { return; }
         for (TableCookFieldInfo f : info.fields) { carveField(p, out, order, at, base, cursor, value, f); }
     }
 
     private static void carveField(Plan p, byte[] out, int order, long at, long base, long[] cursor,
-            Object value, TableCookFieldInfo f) throws ReflectiveOperationException {
+            java.lang.Object value, TableCookFieldInfo f) throws java.lang.ReflectiveOperationException {
         if (f.isPointer || absentRecord(value, f)) { return; }
         if (f.storage == TableCookStorage.STRING && f.countOffset < 0) {
             long slot = at + f.offset;
-            if (f.presentOffset >= 0 && !Boolean.TRUE.equals(field(value, f.sourceName + "Present"))) {
-                Object raw = field(value, f.sourceName);
-                if (raw instanceof String && !((String) raw).isEmpty()) {
-                    throw new IllegalArgumentException("absent optional text holds extent");
+            if (f.presentOffset >= 0 && !java.lang.Boolean.TRUE.equals(field(value, f.sourceName + "Present"))) {
+                java.lang.Object raw = field(value, f.sourceName);
+                if (raw instanceof java.lang.String && !((java.lang.String) raw).isEmpty()) {
+                    throw new java.lang.IllegalArgumentException("absent optional text holds extent");
                 }
                 put(out, order, slot, 0, 8);
                 return;
             }
-            String s = (String) field(value, f.sourceName);
+            java.lang.String s = (java.lang.String) field(value, f.sourceName);
             if (s == null || s.isEmpty()) {
                 put(out, order, slot, 0, 8);
                 return;
@@ -320,12 +320,12 @@ public final class TableCookWrite {
             cursor[0] += aligned(8L + n + 1L, REGION_ALIGN);
             put(out, order, slot, blob - slot, 8);
             put(out, order, blob, n, 4);
-            if (out != null) { System.arraycopy(bytes, 0, out, (int) (blob + 8L), n); }
+            if (out != null) { java.lang.System.arraycopy(bytes, 0, out, (int) (blob + 8L), n); }
             return;
         }
         if (f.storage == TableCookStorage.LIST || f.storage == TableCookStorage.MAP) {
-            if (f.presentOffset >= 0 && !Boolean.TRUE.equals(field(value, f.sourceName + "Present"))) { return; }
-            java.util.List<Object> elems = elements(field(value, f.sourceName), f);
+            if (f.presentOffset >= 0 && !java.lang.Boolean.TRUE.equals(field(value, f.sourceName + "Present"))) { return; }
+            java.util.List<java.lang.Object> elems = elements(field(value, f.sourceName), f);
             int n = elems.size();
             cursor[0] = aligned(cursor[0], f.extentAlign);
             long array = base + cursor[0];
@@ -344,12 +344,12 @@ public final class TableCookWrite {
         if (f.storage != TableCookStorage.RECORD && f.storage != TableCookStorage.UNION) { return; }
         TableCookInfo r = f.record();
         if (r == null || !r.hasExtent) { return; }
-        Object v = field(value, f.sourceName);
+        java.lang.Object v = field(value, f.sourceName);
         long dest = at + f.offset;
         if (f.isArray) {
             // a slot past the live elements holds the value-initialized element,
             // which holds no list and no map, so it carves nothing
-            int live = Math.min(count(value, f, v), length(v));
+            int live = java.lang.Math.min(count(value, f, v), length(v));
             for (int i = 0; i < live; i++) {
                 carveValue(p, out, order, dest + (long) i * f.elemSize, base, cursor, element(v, i), f);
             }
@@ -359,7 +359,7 @@ public final class TableCookWrite {
     }
 
     private static void carveValue(Plan p, byte[] out, int order, long at, long base, long[] cursor,
-            Object source, TableCookFieldInfo f) throws ReflectiveOperationException {
+            java.lang.Object source, TableCookFieldInfo f) throws java.lang.ReflectiveOperationException {
         if (source == null || f.isPointer) { return; }
         if (f.storage == TableCookStorage.RECORD) {
             carveRecord(p, out, order, at, base, cursor, source, f.record());
@@ -376,40 +376,40 @@ public final class TableCookWrite {
     // so a map built out of key order cooks the same bytes. Integers order by
     // VALUE, signed for the signed kinds and unsigned for the unsigned; strings
     // by their UTF-8 BYTES, unsigned, a prefix first.
-    private static java.util.List<Object> elements(Object source, TableCookFieldInfo f)
-            throws ReflectiveOperationException {
-        java.util.ArrayList<Object> out = new java.util.ArrayList<>();
+    private static java.util.List<java.lang.Object> elements(java.lang.Object source, TableCookFieldInfo f)
+            throws java.lang.ReflectiveOperationException {
+        java.util.ArrayList<java.lang.Object> out = new java.util.ArrayList<>();
         if (source == null) { return out; }
         for (int i = 0, n = length(source); i < n; i++) { out.add(element(source, i)); }
         if (f.storage != TableCookStorage.MAP || out.size() < 2) { return out; }
         TableCookFieldInfo key = f.element.record().fields[0];
-        Object[] keys = new Object[out.size()];
-        Integer[] order = new Integer[out.size()];
+        java.lang.Object[] keys = new java.lang.Object[out.size()];
+        java.lang.Integer[] order = new java.lang.Integer[out.size()];
         for (int i = 0; i < keys.length; i++) { keys[i] = field(out.get(i), key.sourceName); order[i] = i; }
         java.util.Arrays.sort(order, (a, b) -> compareKeys(keys[a], keys[b], key));
-        java.util.ArrayList<Object> sorted = new java.util.ArrayList<>(out.size());
-        for (Integer i : order) { sorted.add(out.get(i)); }
+        java.util.ArrayList<java.lang.Object> sorted = new java.util.ArrayList<>(out.size());
+        for (java.lang.Integer i : order) { sorted.add(out.get(i)); }
         return sorted;
     }
 
-    private static int compareKeys(Object a, Object b, TableCookFieldInfo key) {
+    private static int compareKeys(java.lang.Object a, java.lang.Object b, TableCookFieldInfo key) {
         if (key.storage == TableCookStorage.STRING) {
-            byte[] x = ((String) a).getBytes(java.nio.charset.StandardCharsets.UTF_8);
-            byte[] y = ((String) b).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            byte[] x = ((java.lang.String) a).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            byte[] y = ((java.lang.String) b).getBytes(java.nio.charset.StandardCharsets.UTF_8);
             return java.util.Arrays.compareUnsigned(x, y);
         }
-        long x = ((Number) a).longValue(), y = ((Number) b).longValue();
-        if (key.storage == TableCookStorage.SIGNED) { return Long.compare(x, y); }
+        long x = ((java.lang.Number) a).longValue(), y = ((java.lang.Number) b).longValue();
+        if (key.storage == TableCookStorage.SIGNED) { return java.lang.Long.compare(x, y); }
         if (key.elemSize < 8) {
             long mask = (1L << (8 * key.elemSize)) - 1;
             x &= mask;
             y &= mask;
         }
-        return Long.compareUnsigned(x, y);
+        return java.lang.Long.compareUnsigned(x, y);
     }
 
     /** Measure and validate before writing; invalid values answer null (§7.6). */
-    public static Plan plan(Object root, TableCookInfo info) {
+    public static Plan plan(java.lang.Object root, TableCookInfo info) {
         return plan(root, info, null);
     }
 
@@ -417,7 +417,7 @@ public final class TableCookWrite {
      * plan, saying why it refused: nonFinite[0] turns true when the value held a NaN or an
      * infinity (docs/SPEC-TABLES.md §3.3), which no cook carries.
      */
-    public static Plan plan(Object root, TableCookInfo info, boolean[] nonFinite) {
+    public static Plan plan(java.lang.Object root, TableCookInfo info, boolean[] nonFinite) {
         if (root == null || info == null) { return null; }
         try {
             Plan p = new Plan();
@@ -432,17 +432,17 @@ public final class TableCookWrite {
             long cursor = 0;
             long align = 8;
             for (Node n : p.nodes) {
-                align = Math.max(align, n.align());
+                align = java.lang.Math.max(align, n.align());
                 cursor = aligned(cursor, n.align());
                 n.offset = cursor;
-                if (n.size() < 0 || cursor > Integer.MAX_VALUE - n.size()) { return null; }
+                if (n.size() < 0 || cursor > java.lang.Integer.MAX_VALUE - n.size()) { return null; }
                 cursor += n.size();
             }
             p.alignment = align;
             p.dataLength = aligned(cursor, align);
-            if (p.nodes.size() > (Integer.MAX_VALUE - 64L - p.dataLength) / 16L) { return null; }
+            if (p.nodes.size() > (java.lang.Integer.MAX_VALUE - 64L - p.dataLength) / 16L) { return null; }
             p.total = 64L + p.dataLength + 16L * p.nodes.size();
-            if (p.total > Integer.MAX_VALUE) { return null; }
+            if (p.total > java.lang.Integer.MAX_VALUE) { return null; }
             for (Node n : p.nodes) {
                 if (n.info != null) { record(p, null, 0, 64L + n.offset, n.value, n.info); }
             }
@@ -450,13 +450,13 @@ public final class TableCookWrite {
         } catch (NonFiniteFloat ex) {
             if (nonFinite != null) { nonFinite[0] = true; }
             return null;
-        } catch (ReflectiveOperationException | RuntimeException ex) {
+        } catch (java.lang.ReflectiveOperationException | java.lang.RuntimeException ex) {
             return null;
         }
     }
 
     /** a cooked float's NaN or infinity: the plan's own refusal (docs/SPEC-TABLES.md §3.3). */
-    static final class NonFiniteFloat extends IllegalArgumentException {
+    static final class NonFiniteFloat extends java.lang.IllegalArgumentException {
         private static final long serialVersionUID = 1L;
 
         NonFiniteFloat() {
@@ -468,47 +468,47 @@ public final class TableCookWrite {
         if (out != null) { TableBytes.put(out, (int) at, value, width, order == BIG); }
     }
 
-    private static long bits(Object source, TableCookStorage storage, int width) {
+    private static long bits(java.lang.Object source, TableCookStorage storage, int width) {
         if (source == null) { return 0; }
-        if (storage == TableCookStorage.BOOL) { return Boolean.TRUE.equals(source) ? 1 : 0; }
+        if (storage == TableCookStorage.BOOL) { return java.lang.Boolean.TRUE.equals(source) ? 1 : 0; }
         if (storage == TableCookStorage.FLOAT) {
             // A COOKED FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): its raw bits
             // ride, -0 and the subnormals exact, and a NaN or an infinity
             // refuses the plan, so the cook is never written.
-            long raw = width == 4 ? Float.floatToRawIntBits(((Number) source).floatValue()) & 0xffffffffL
-                    : Double.doubleToRawLongBits(((Number) source).doubleValue());
+            long raw = width == 4 ? java.lang.Float.floatToRawIntBits(((java.lang.Number) source).floatValue()) & 0xffffffffL
+                    : java.lang.Double.doubleToRawLongBits(((java.lang.Number) source).doubleValue());
             long exponent = width == 4 ? 0x7f800000L : 0x7ff0000000000000L;
             if ((raw & exponent) == exponent) { throw new NonFiniteFloat(); }
             return raw;
         }
-        if (source instanceof Character) { return ((Character) source).charValue(); }
-        return ((Number) source).longValue();
+        if (source instanceof java.lang.Character) { return ((java.lang.Character) source).charValue(); }
+        return ((java.lang.Number) source).longValue();
     }
 
-    private static void value(Plan p, byte[] out, int order, long at, Object holder, Object source, TableCookFieldInfo f)
-            throws ReflectiveOperationException {
+    private static void value(Plan p, byte[] out, int order, long at, java.lang.Object holder, java.lang.Object source, TableCookFieldInfo f)
+            throws java.lang.ReflectiveOperationException {
         if (f.isPointer) {
-            Node target = (source instanceof String && holder != null) ? p.slotNode(holder, f) : p.index.get(source);
-            if (source != null && target == null) { throw new IllegalArgumentException("unnumbered pointer"); }
+            Node target = (source instanceof java.lang.String && holder != null) ? p.slotNode(holder, f) : p.index.get(source);
+            if (source != null && target == null) { throw new java.lang.IllegalArgumentException("unnumbered pointer"); }
             put(out, order, at, target == null ? 0 : (64L + target.offset - at), 8);
         } else if (f.storage == TableCookStorage.RECORD) {
             TableCookInfo r = f.record();
-            Object held = source != null ? source : (r.defaults != null ? r.defaults.get() : null);
+            java.lang.Object held = source != null ? source : (r.defaults != null ? r.defaults.get() : null);
             if (held != null) { record(p, out, order, at, held, r); }
         } else if (f.storage == TableCookStorage.UNION) {
             // §7.2: the TAG at the union's base, then ONLY the set arm's bytes;
             // every other byte of the extent stays the zero write() laid down
             if (source != null) {
                 TableCookInfo u = f.record();
-                put(out, order, at, ((Number) field(source, "tag")).longValue(), u.tagWidth);
+                put(out, order, at, ((java.lang.Number) field(source, "tag")).longValue(), u.tagWidth);
                 TableCookFieldInfo a = arm(source, u);
                 if (a != null) { store(p, out, order, at, source, a); }
             }
         } else if (f.storage == TableCookStorage.WIDE) {
             // §7.2: the low half first in a little-endian cook, the high half
             // first in a big-endian one, each half one eight-byte lane
-            long hi = source == null ? 0 : ((Number) field(source, "hi")).longValue();
-            long lo = source == null ? 0 : ((Number) field(source, "lo")).longValue();
+            long hi = source == null ? 0 : ((java.lang.Number) field(source, "hi")).longValue();
+            long lo = source == null ? 0 : ((java.lang.Number) field(source, "lo")).longValue();
             put(out, order, at, order == BIG ? hi : lo, 8);
             put(out, order, at + 8, order == BIG ? lo : hi, 8);
         } else {
@@ -516,18 +516,18 @@ public final class TableCookWrite {
         }
     }
 
-    private static void record(Plan p, byte[] out, int order, long at, Object source, TableCookInfo info)
-            throws ReflectiveOperationException {
+    private static void record(Plan p, byte[] out, int order, long at, java.lang.Object source, TableCookInfo info)
+            throws java.lang.ReflectiveOperationException {
         for (TableCookFieldInfo f : info.fields) { store(p, out, order, at, source, f); }
     }
 
     // One field line's pieces, read off the source value and stored at the
     // given offset plus the
     // descriptor's offsets: a record's field, or a union's set arm.
-    private static void store(Plan p, byte[] out, int order, long at, Object source, TableCookFieldInfo f)
-            throws ReflectiveOperationException {
+    private static void store(Plan p, byte[] out, int order, long at, java.lang.Object source, TableCookFieldInfo f)
+            throws java.lang.ReflectiveOperationException {
         if (f.presentOffset >= 0) {
-            boolean present = Boolean.TRUE.equals(field(source, f.sourceName + "Present"));
+            boolean present = java.lang.Boolean.TRUE.equals(field(source, f.sourceName + "Present"));
             put(out, order, at + f.presentOffset, present ? 1 : 0, 1);
             // AN ABSENT OPTIONAL'S PAYLOAD IS DEAD BYTES (§7.2;
             // docs/rulings.json fixed-dead-bytes-are-zero): it stays the zero
@@ -538,19 +538,19 @@ public final class TableCookWrite {
         // a LIST's or a MAP's holder is written by the extent's carve, which
         // places the array it points at (§7.6)
         if (f.storage == TableCookStorage.LIST || f.storage == TableCookStorage.MAP || (f.storage == TableCookStorage.STRING && !f.isPointer && f.countOffset < 0)) { return; }
-        Object v = field(source, f.sourceName);
+        java.lang.Object v = field(source, f.sourceName);
         long dest = at + f.offset;
         if (f.storage == TableCookStorage.STRING || f.storage == TableCookStorage.BYTES) {
-            byte[] bytes = v instanceof String ? ((String) v).getBytes(java.nio.charset.StandardCharsets.UTF_8)
+            byte[] bytes = v instanceof java.lang.String ? ((java.lang.String) v).getBytes(java.nio.charset.StandardCharsets.UTF_8)
                     : (byte[]) v;
             if (bytes == null) { bytes = new byte[0]; }
             int used = bytes.length;
-            if (!(v instanceof String)) {
-                try { used = ((Number) field(source, f.sourceName + "Length")).intValue(); }
-                catch (NoSuchFieldException ignored) { /* variable bytes use their full length */ }
+            if (!(v instanceof java.lang.String)) {
+                try { used = ((java.lang.Number) field(source, f.sourceName + "Length")).intValue(); }
+                catch (java.lang.NoSuchFieldException ignored) { /* variable bytes use their full length */ }
             }
             assert used >= 0 && used <= f.arrayBound && used <= bytes.length;
-            if (out != null) { System.arraycopy(bytes, 0, out, (int) dest, used); }
+            if (out != null) { java.lang.System.arraycopy(bytes, 0, out, (int) dest, used); }
             put(out, order, at + f.countOffset, used, 4);
         } else if (f.isArray) {
             int used = count(source, f, v);
@@ -562,7 +562,7 @@ public final class TableCookWrite {
             // writes all N slots, and a slot past the value's elements holds
             // the VALUE-INITIALIZED element: zero for a scalar, the element
             // record's declared defaults for a record
-            int live = f.countOffset >= 0 ? used : Math.min(used, length(v));
+            int live = f.countOffset >= 0 ? used : java.lang.Math.min(used, length(v));
             int slots = f.countOffset >= 0 ? used : f.arrayBound;
             for (int i = 0; i < slots; i++) {
                 value(p, out, order, dest + (long) i * f.elemSize, source, i < live ? element(v, i) : null, f);
@@ -595,14 +595,14 @@ public final class TableCookWrite {
                     }
                 } else {
                     put(out, order, at, n.blob.length, 4);
-                    System.arraycopy(n.blob, 0, out, (int) at + 8, n.blob.length);
+                    java.lang.System.arraycopy(n.blob, 0, out, (int) at + 8, n.blob.length);
                 }
                 long entry = 64L + p.dataLength + i * 16L;
                 put(out, order, entry, n.offset, 8);
                 put(out, order, entry + 8, n.id, 8);
             }
             return true;
-        } catch (ReflectiveOperationException | RuntimeException ex) {
+        } catch (java.lang.ReflectiveOperationException | java.lang.RuntimeException ex) {
             return false;
         }
     }

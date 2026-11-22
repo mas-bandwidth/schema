@@ -90,7 +90,7 @@ public final class MixedChatEventFixed {
             v.channel = (int) (q);
         }
         v.speaker = TableFixed.get32(b, at + 4);
-        if (Integer.compareUnsigned(v.speaker, 4095) > 0) {
+        if (java.lang.Integer.compareUnsigned(v.speaker, 4095) > 0) {
             v.speaker = (int) (4095L);
             if (live) {
                 r.refuse(TableFixed.Reason.outOfRange);

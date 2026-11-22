@@ -224,7 +224,7 @@ func TestJavaCompressedFloatVariableAndJson(t *testing.T) {
 	src := squeeze(all.String())
 	lo, hi := fixedFloatLit(0), fixedFloatLit(0.1)
 	for _, want := range []string{
-		`TableVariable.compressedF32(Float.intBitsToFloat(fbits), ` + lo + `, ` + hi + `, report, "Probe.tenth")`,
+		`TableVariable.compressedF32(java.lang.Float.intBitsToFloat(fbits), ` + lo + `, ` + hi + `, report, "Probe.tenth")`,
 		`TableVariable.compressedF32(placed, ` + lo + `, ` + hi + `, in.rep, "tenth")`,
 		`putF32In(v.tenth, ` + lo + `, ` + hi + `)`,
 		`public void putF32In(float v, float lo, float hi)`,

@@ -8,10 +8,6 @@
 
 package example;
 
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.VarHandle;
-import java.nio.ByteOrder;
-
 // Render carries every generated declaration of Render.schema — Java has no
 // top-level functions or constants, so the file's one public class is their
 // home; types nest inside it (SPEC §6.1 naming).
@@ -20,8 +16,9 @@ public final class Render {
 
     // 64-bit little-endian word access into byte[] — the proven-fast JVM
     // form (VarHandle byteArrayViewVarHandle, serialize.java's own).
-    private static final VarHandle LONG_LE =
-            MethodHandles.byteArrayViewVarHandle(long[].class, ByteOrder.LITTLE_ENDIAN);
+    private static final java.lang.invoke.VarHandle LONG_LE =
+            java.lang.invoke.MethodHandles.byteArrayViewVarHandle(
+                    long[].class, java.nio.ByteOrder.LITTLE_ENDIAN);
 
     // putBits merges v (already masked to bits, at most 32) into the scratch word at bit
     // pos, storing the word to data once it fills, and returns the new scratch word. The
@@ -176,7 +173,7 @@ public final class Render {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -328,7 +325,7 @@ public final class Render {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
