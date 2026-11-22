@@ -113,10 +113,10 @@ local vocab = M.NewVocabulary()
 assert(M.AnnounceRead(vocab, T.TableMessageAnnouncement, {}), "announce")
 local function run(key, fixRoot, varRoot, text)
 	local rep = {}
-	local f = J.FromJson(fixRoot, text, rep)
+	local f = J.FromJson(fixRoot, buffer.fromstring(text), rep)
 	local msg = f and M.SaveMessages(vocab, fixRoot, { f }, {})
 	print(key .. " msg " .. hex(msg))
-	local v = J.FromJson(varRoot, text, {})
+	local v = J.FromJson(varRoot, buffer.fromstring(text), {})
 	local out = v and S.save(T[varRoot .. "Descriptor"], v)
 	print(key .. " var " .. hex(out))
 end
