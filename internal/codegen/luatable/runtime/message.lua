@@ -1118,6 +1118,13 @@ read_value = function(R, T, f, holder, key, ctx, e)
       ctx.reason = "out_of_range"
       return false
     end
+    -- A MASK BIT AT OR ABOVE THE READER'S W REFUSES (docs/SPEC-TABLES.md §4,
+    -- A TABLE LOAD HOLDS A MASK TO ITS WIDTH): a newer writer announces a wider
+    -- mask, and each value is held to this reader's W.
+    if f.shape == "flags" and f.bits ~= nil and f.bits < 64 and v >> f.bits ~= 0 then
+      ctx.reason = "out_of_range"
+      return false
+    end
     if f.shape == "int" or f.shape == "wide" then
       if f.lo ~= nil and f.hi ~= nil then
         if less_than(f, v, f.lo) or less_than(f, f.hi, v) then

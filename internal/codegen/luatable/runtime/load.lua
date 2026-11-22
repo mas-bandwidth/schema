@@ -695,10 +695,15 @@ local function scalar_at(r, d, kind, report, ctx)
   -- fixed-compressed-negzero).
   if d.fmin ~= nil and D.float_off_range(d, x) then report.outOfRange = report.outOfRange + 1 end
   if d.fmin ~= nil and x == 0 then x = 0.0 end
+  -- A MASK BIT AT OR ABOVE THE READER'S W REFUSES THE LOAD out_of_range
+  -- (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH; decode.go
+  -- scalarAt): d.bits is W, and a mask widened from a narrower unsigned kind is
+  -- held the same way. An old reader does not read new data.
+  if d.shape == "flags" and d.bits ~= nil and d.bits < 64 and x >> d.bits ~= 0 then
+    report.outOfRange = report.outOfRange + 1
+  end
   -- THE bits(N) CLAMP is a bits(N) field's alone (decode.go scalarAt: the
-  -- declared kind is TBits): a flags field's descriptor carries its wire bits
-  -- for the JSON writer, and an undeclared flag bit on the wire lands as it
-  -- rode, uncounted (§4).
+  -- declared kind is TBits).
   if d.shape == "int" and d.bits ~= nil and d.bits > 0 and d.bits < w * 8 then
     local bmax = (1 << d.bits) - 1
     if kind ~= 1 and less_than({ signed = false }, bmax, x) then
