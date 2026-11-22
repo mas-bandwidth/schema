@@ -6,10 +6,11 @@ package pythontable
 // field, an array element in an unknown field, a nested table and a pointer
 // closure), held to the one read on read-then-write. A construct's canonical
 // wire is read and written back byte for byte, or the read refuses and nothing
-// is returned. An unknown field riding under the ESCAPE (31) or PAYLOAD-FREE
-// (32) kind is skipped and counted unknown, and the save writes the value's
-// canonical wire; a kind 32 with a nonzero L, a known field riding under the
-// escape, and an enum reference past the id table (on a known field, on an
+// is returned. An unknown field riding under the PAYLOAD-FREE (32) kind is
+// skipped and counted unknown, and the save writes the value's canonical wire;
+// kind 31 is held by name and never written (R17: the newer reader reads old
+// data, never the other way), so a field riding under it, named or not, is
+// damage; a kind 32 with a nonzero L and an enum reference past the id table (on a known field, on an
 // unknown field, and as an element of an unknown enum array) are damage or a
 // kind mismatch and refuse the whole load with the Go engine's own reason,
 // which the test reads from tablewire.Decode first.
@@ -168,7 +169,7 @@ func idtableInputs(t *testing.T, u *ir.Unit) map[string][]byte {
 	unknownArrayID := ir.TableWireId("anonymous_enum_array")
 	hueID := ir.TableWireId("hue")
 	greenID := ir.TableWireId("Green")
-	inputs["unknown_escape.wire"] = idtableWire(
+	inputs["unnamed_held_escape.wire"] = idtableWire(
 		append(idtableHeader(1, ir.TableKindHeldEscape, idtableL([]byte{1, 2, 3})), 0), unknownID)
 	inputs["unknown_nopayload.wire"] = idtableWire(
 		append(idtableHeader(1, ir.TableKindNoPayload, idtableL(nil)), 0), unknownID)
@@ -196,7 +197,7 @@ func idtableInputs(t *testing.T, u *ir.Unit) map[string][]byte {
 	// codec's check).
 	inputs["nopayload_nonzero.wire"] = idtableWire(
 		append(idtableHeader(1, ir.TableKindNoPayload, idtableL([]byte{0xaa})), 0), unknownID)
-	inputs["known_escape.wire"] = idtableWire(
+	inputs["named_held_escape.wire"] = idtableWire(
 		append(idtableHeader(1, ir.TableKindHeldEscape, idtableL(nil)), 0), hueID)
 	inputs["enum_ref_past.wire"] = idtableWire(
 		append(idtableHeader(1, ir.TableKindEnum, idtableVarint(2)), 0), unknownID)
@@ -207,14 +208,15 @@ func idtableInputs(t *testing.T, u *ir.Unit) map[string][]byte {
 
 // idtableAccepted are the hand-built wires the read accepts, each with one
 // field skipped and counted unknown, read at Alone.
-var idtableAccepted = []string{"unknown_escape", "unknown_nopayload", "unknown_enum_array", "unknown_variant"}
+var idtableAccepted = []string{"unknown_nopayload", "unknown_enum_array", "unknown_variant"}
 
 // idtableRefusals are the hand-built wires the read refuses at Alone, with the
 // reason the Go engine gives: TestPythonVtIdtable holds the engine to each
 // reason before the probe holds Python to it.
 var idtableRefusals = []struct{ name, reason string }{
 	{"nopayload_nonzero", tablewire.ReasonWireDamaged},
-	{"known_escape", tablewire.ReasonKindMismatch},
+	{"unnamed_held_escape", tablewire.ReasonWireDamaged},
+	{"named_held_escape", tablewire.ReasonWireDamaged},
 	{"enum_ref_past", tablewire.ReasonWireDamaged},
 	{"known_enum_ref_past", tablewire.ReasonWireDamaged},
 	{"unknown_enum_array_past", tablewire.ReasonWireDamaged},
@@ -290,7 +292,6 @@ def unknown(name, cls):
         raise SystemExit("idtable_" + name + ": save is not the default wire")
     print(name, report.unknown, True)
 
-unknown("unknown_escape", Alone)
 unknown("unknown_nopayload", Alone)
 unknown("unknown_enum_array", Alone)
 unknown("unknown_variant", Alone)
@@ -394,7 +395,6 @@ func TestPythonVtIdtable(t *testing.T) {
 		"chain same hue=3 score=9 next_hue=1 next_score=0 next_next=None",
 		"wide same hue=2 mask=21",
 		"pair same first=1 second=1",
-		"unknown_escape 1 True",
 		"unknown_nopayload 1 True",
 		"unknown_enum_array 1 True",
 		"unknown_variant 1 True",
