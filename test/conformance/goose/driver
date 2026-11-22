@@ -299,6 +299,18 @@ for my $st (sort keys %structs) {
 					print "        if rest.len == 0 && idx >= 0 && idx < $cap && kind == \"float\" { v.$f\[idx] = wref_f32(text); return 1; }\n";
 				} elsif ($et eq "f64") {
 					print "        if rest.len == 0 && idx >= 0 && idx < $cap && kind == \"float\" { v.$f\[idx] = wref_f64(text); return 1; }\n";
+				} elsif (exists $enums{$et}) {
+					# an enum element: the ordinal is the raw value, set in place (the same
+					# range rule as a scalar enum field below), so a deprecated variant
+					# reaches the real writer.
+					my $raw_t = $enums{$et};
+					print "        if rest.len == 0 && idx >= 0 && idx < $cap && kind == \"ordinal\" {\n";
+					print "            let n = wref_parse_i64(text);\n";
+					if (my $b = $int_bounds{$raw_t}) {
+						print "            if n < $b->[0] || n > $b->[1] { return 2; }\n";
+					}
+					print "            v.$f\[idx] = n as! ${ns}::$et; return 1;\n";
+					print "        }\n";
 				}
 			}
 		} elsif (exists $structs{$ft} && !$unions{$ft}) {
