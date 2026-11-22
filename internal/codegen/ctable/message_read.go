@@ -425,6 +425,11 @@ func (g *tableGen) emitMessageUnionRead(un *ir.Union) {
 			}
 			g.pf(" memset(&%s,0,sizeof(%s));\n", dst, dst)
 			g.messageReadValue(v.F, dst, count, "entry", " ")
+			if v.F.Array == ir.ArrayCounted && v.F.ArrayMin > 0 {
+				// a count below A refuses in an arm (ruling R10): the announced
+				// shape is the WRITER's, and its minimum need not be ours
+				g.pf(" if(%s<%d)r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE;\n", count, v.F.ArrayMin)
+			}
 		}
 		g.pf(" value->type=%s;break;}\n", enumConst(un.Name+"Type", v.Name))
 	}

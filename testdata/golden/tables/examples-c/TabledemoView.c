@@ -3,10 +3,10 @@
    SPDX-License-Identifier: NONE — this generated output is yours. */
 #include "TabledemoView.h"
 static const tabledemo_table_field_info_t schema_tabledemo_min_pick_arm_field_few_[] = {
-    { "few", "few", "uint32", 0xdcc67d18feea8c19ull, 8, 1, 0, 1, 0, 0, 4, (uint32_t) offsetof( tabledemo_min_pick_t, as.few.value ), (uint32_t) sizeof( ( (tabledemo_min_pick_t *) 0 )->as.few.value[0] ), (uint32_t) offsetof( tabledemo_min_pick_t, as.few.value_count ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "few", "few", "uint32", 0xdcc67d18feea8c19ull, 8, 1, 0, 1, 0, 0, 4, 2, (uint32_t) offsetof( tabledemo_min_pick_t, as.few.value ), (uint32_t) sizeof( ( (tabledemo_min_pick_t *) 0 )->as.few.value[0] ), (uint32_t) offsetof( tabledemo_min_pick_t, as.few.value_count ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 static const tabledemo_table_field_info_t schema_tabledemo_min_pick_arm_field_other_[] = {
-    { "other", "other", "int32", 0x0a24ad61c2562a55ull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_min_pick_t, as.other ), (uint32_t) sizeof( ( (tabledemo_min_pick_t *) 0 )->as.other ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "other", "other", "int32", 0x0a24ad61c2562a55ull, 4, 0, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_min_pick_t, as.other ), (uint32_t) sizeof( ( (tabledemo_min_pick_t *) 0 )->as.other ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 const tabledemo_unit_view_info_t * schema_tabledemo_unit_view_(void)
 {

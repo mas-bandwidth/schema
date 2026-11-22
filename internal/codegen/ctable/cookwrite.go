@@ -289,6 +289,11 @@ func (g *tableGen) cookFieldPayload(f *ir.Field, src, at string, offset int64, i
 			for _, v := range ref.Variants {
 				if !v.Void() {
 					g.pf("%scase %s: {\n", ind, enumConst(ref.Name+"Type", v.Name))
+					if cArmMin(v.F) {
+						// the cook is a writer too: an arm's count below A is
+						// never produced, a debug assert in this leg (ruling R10)
+						g.writeCountBound(armValue(src, v)+"_count", v.F, ind+"    ")
+					}
 					g.cookField(v.F, armValue(src, v), fmt.Sprintf("%s+%d", at, offset), offset, ind+"    ", step)
 					g.pf("%s    break; }\n", ind)
 				}

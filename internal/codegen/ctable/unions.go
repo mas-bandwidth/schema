@@ -218,7 +218,7 @@ func (g *tableGen) wireBarePayload(f *ir.Field, expr, ind string) {
 		n := fmt.Sprint(f.ArrayBound)
 		if f.Array == ir.ArrayCounted {
 			n = expr + "_count"
-			g.writeStorageBound(n, f.ArrayBound, ind)
+			g.writeCountBound(n, f, ind)
 		}
 		g.pf("%s{ int32_t i; table_writer_put8( w, %d ); table_writer_leb( w, (uint64_t)(%s) );\n", ind, ir.TableWireScalarKind(f), n)
 		g.pf("%s  for ( i=0; i<%s; i++ ) {\n", ind, n)
@@ -267,6 +267,11 @@ func (g *tableGen) wireReadArm(v ir.UnionVariant, dst, ind string) {
 			kind = tkU8
 		}
 		g.wireReadFieldPayload(f, kind, dst, "arm")
+		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+			// A COUNTED [A..B] HOLDS A IN AN ARM (docs/SPEC-TABLES.md §3.4,
+			// ruling R10): a count below A refuses the read as one past B does.
+			g.pf("%sif ( %s_count < %d ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }\n", ind, dst, f.ArrayMin)
+		}
 	case k == tkUnion:
 		g.pf("%sif ( !%s( &arm, &%s, 0 ) ) {\n", ind, g.unionWireName(f.Type.Ref.(*ir.Union), "load"), dst)
 		g.wireRefusalCheck(ind + "    ")
@@ -301,7 +306,9 @@ func (g *tableGen) emitUnionArmDescriptors(un *ir.Union) {
 		if armCompanioned(v) {
 			member += ".value"
 		}
+		g.armDescriptor = true
 		g.emitFieldDescriptorAt(st, &f, "", member)
+		g.armDescriptor = false
 		g.pf("};\n")
 	}
 }

@@ -934,7 +934,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    for ( k = 0; k < count; ++k )\n    {\n")
 	g.pf("        if ( table_fixed_get64( at + k * record_bytes ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }\n    }\n")
 	g.pf("    for ( k = 0; k < count; ++k )\n    {\n")
-	if ir.TableFixedClampNeeded(st) {
+	if cFixedClampNeeded(st) {
 		g.pf("        int32_t rec_widened = report->widened;\n")
 	}
 	g.pf("        /* EVERY DEAD BYTE IS ZERO (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,\n")
@@ -946,7 +946,14 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("            return -1;\n        }\n")
 	g.fixedBoolDamagePass(st)
 	g.pf("        /* The immutable spans passed the whole-load preflight above. */\n")
-	g.pf("        if ( !table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )\n        {\n")
+	if presentDefaults {
+		g.pf("        if ( !table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )\n        {\n")
+	} else {
+		// THE SAME GUARD AS THE IMAGE'S RESET ABOVE: the image exists only
+		// where there is a fill to run, so the fill runs only there too (and
+		// -Wmaybe-uninitialized can see it on a root with no lineage).
+		g.pf("        if ( fill_count > 0 && !table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )\n        {\n")
+	}
 	g.pf("            memset( report, 0, sizeof( *report ) ); report->refused = 1; report->reason = SCHEMA_TABLE_LAYOUT_MALFORMED;\n")
 	g.pf("            return -1;\n        }\n")
 	runDefaults := "NULL"
@@ -983,7 +990,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("            default: break;\n            }\n")
 		g.pf("            if ( known_out_of_range != 0 ) { int64_t j; for ( j = 0; j <= k; ++j ) { %s( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; return -1; }\n        }\n", g.api(st.Name, "reset"))
 	}
-	if ir.TableFixedClampNeeded(st) {
+	if cFixedClampNeeded(st) {
 		g.pf("        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the\n")
 		g.pf("           storage it just wrote: the same pass for either plan (§3.4). A\n")
 		g.pf("           content rule that refuses ends the read here, nothing decoded,\n")
@@ -1149,7 +1156,7 @@ optional's payload only when the present byte says so. */
 
 // emitFixedClampBodyFn is ONE type's bounds, the twin of its write body.
 func (g *tableGen) emitFixedClampBodyFn(st *ir.Struct) {
-	if !ir.TableFixedClampNeeded(st) {
+	if !cFixedClampNeeded(st) {
 		return
 	}
 	g.pf("/* %s's read-side bounds. */\n", st.Name)
@@ -1192,7 +1199,7 @@ the array first. */
 // emitFixedWriteCheckBodyFn is ONE type's write check, the const twin of its
 // read-side bounds.
 func (g *tableGen) emitFixedWriteCheckBodyFn(st *ir.Struct) {
-	if !ir.TableFixedClampNeeded(st) {
+	if !cFixedClampNeeded(st) {
 		return
 	}
 	g.fixedWriteCheck = true
@@ -1210,7 +1217,7 @@ func (g *tableGen) emitFixedWriteCheckBodyFn(st *ir.Struct) {
 // writeAdmits is the one call a writer's schema_assert makes for a value of
 // table st, or "" when the fixed form bounds nothing in st's closure.
 func (g *tableGen) writeAdmits(st *ir.Struct) string {
-	if !ir.TableFixedEmitted(g.unit, st) || !ir.TableFixedClampNeeded(st) {
+	if !ir.TableFixedEmitted(g.unit, st) || !cFixedClampNeeded(st) {
 		return ""
 	}
 	return g.sym(st.Name, "write_admits")
@@ -1245,7 +1252,7 @@ func (g *tableGen) emitWriteAdmits(st *ir.Struct) {
 // one place the count reaches the report. It returns -1 on a refusal so the
 // load can turn the refusal into "nothing decoded" without moving a counter.
 func (g *tableGen) emitFixedClamp(st *ir.Struct) {
-	if !ir.TableFixedClampNeeded(st) {
+	if !cFixedClampNeeded(st) {
 		return
 	}
 	g.pf("/* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's\n")
@@ -1269,8 +1276,80 @@ func (g *tableGen) emitFixedClamp(st *ir.Struct) {
 	g.pf("    return 0;\n}\n\n")
 }
 
+// cArmMin is whether a union arm's payload is a counted [A..B] with A above
+// zero, which the bounds pass holds to A (ruling R10).
+func cArmMin(f *ir.Field) bool {
+	return f.Array == ir.ArrayCounted && f.ArrayMin > 0
+}
+
+// cFixedClampNeeded is ir.TableFixedClampNeeded and one bound more: a union
+// arm's counted [A..B] with A above zero, at any depth, is held to A by the
+// bounds pass (ruling R10), because the runtime's count op clamps only to
+// [0, B]. It is C's own predicate so the other ports' emitted text is not
+// moved.
+func cFixedClampNeeded(st *ir.Struct) bool {
+	return cFixedClampNeededSeen(st, map[string]bool{})
+}
+
+func cFixedClampNeededSeen(st *ir.Struct, seen map[string]bool) bool {
+	if ir.TableFixedClampNeeded(st) {
+		return true
+	}
+	if seen[st.Name] {
+		return false
+	}
+	seen[st.Name] = true
+	for _, f := range st.Fields {
+		if cFixedClampNeededFieldSeen(f, seen) {
+			return true
+		}
+	}
+	return false
+}
+
+// cFixedClampNeededField is the same question about one field.
+func cFixedClampNeededField(f *ir.Field) bool {
+	return cFixedClampNeededFieldSeen(f, map[string]bool{})
+}
+
+func cFixedClampNeededFieldSeen(f *ir.Field, seen map[string]bool) bool {
+	if ir.TableFixedClampNeededField(f) {
+		return true
+	}
+	if f.Type.Kind != ir.TNamed {
+		return false
+	}
+	switch r := f.Type.Ref.(type) {
+	case *ir.Struct:
+		return cFixedClampNeededSeen(r, seen)
+	case *ir.Union:
+		for _, v := range r.Variants {
+			if v.F != nil && (cArmMin(v.F) || cFixedClampNeededFieldSeen(v.F, seen)) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// cFixedClampNeededArm is whether one arm's payload is bounded: its own
+// counted minimum, or anything its payload holds.
+func cFixedClampNeededArm(f *ir.Field) bool {
+	return cArmMin(f) || cFixedClampNeededField(f)
+}
+
+// cFixedClampNeededUnionArm is whether any arm's payload is bounded.
+func cFixedClampNeededUnionArm(r *ir.Union) bool {
+	for _, v := range r.Variants {
+		if v.F != nil && cFixedClampNeededArm(v.F) {
+			return true
+		}
+	}
+	return false
+}
+
 func (g *tableGen) emitFixedClampField(f *ir.Field, val string, indent int) {
-	if !ir.TableFixedClampNeededField(f) {
+	if !cFixedClampNeededField(f) {
 		return
 	}
 	ind := strings.Repeat(" ", indent)
@@ -1337,7 +1416,16 @@ func (g *tableGen) emitFixedClampArm(v ir.UnionVariant, expr string, indent int)
 	} else {
 		arm.Name = v.Name
 	}
-	g.emitFixedClampPayload(&arm, val, indent)
+	if cArmMin(&arm) {
+		// A COUNTED [A..B] HOLDS A IN AN ARM (docs/SPEC-TABLES.md §3.4,
+		// ruling R10): the runtime's count op holds [0, B], so a count below
+		// A is out of range here, over the storage the copy landed, for
+		// either plan. In the write check it is the same rule, asserted.
+		g.pf("%sif ( %s%s_count < %d ) { (*out_of_range)++; }\n", strings.Repeat(" ", indent), val, arm.Name, arm.ArrayMin)
+	}
+	if cFixedClampNeededField(&arm) {
+		g.emitFixedClampPayload(&arm, val, indent)
+	}
 }
 
 /*
@@ -1370,19 +1458,19 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
-			if ir.TableFixedClampNeeded(r) {
+			if cFixedClampNeeded(r) {
 				g.pf("%s%s( &%s, out_of_range, damaged );\n", ind, g.fixedBoundsSym(r.Name), expr)
 			}
 			return
 		case *ir.Union:
 			g.pf("%sif ( (uint32_t) %s.type > %du ) { (*out_of_range)++; }\n",
 				ind, expr, r.Max)
-			if !ir.TableFixedClampNeededUnionArm(r) {
+			if !cFixedClampNeededUnionArm(r) {
 				return
 			}
 			g.pf("%sswitch ( %s.type )\n%s{\n", ind, expr, ind)
 			for _, v := range r.Variants {
-				if v.F == nil || !ir.TableFixedClampNeededField(v.F) {
+				if v.F == nil || !cFixedClampNeededArm(v.F) {
 					continue
 				}
 				g.pf("%s    case %s:\n%s    {\n", ind, enumConst(f.Type.Name+"Type", v.Name), ind)

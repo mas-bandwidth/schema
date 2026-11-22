@@ -390,7 +390,7 @@ static SCHEMA_UNUSED int table_json_count_in_contract( const void * base, const 
         return 1;
     }
     memcpy( &count, (const uint8_t *) base + f->count_offset, sizeof( count ) );
-    return count >= 0 && count <= f->array_bound;
+    return count >= 0 && count >= f->array_min && count <= f->array_bound;
 }
 
 static SCHEMA_UNUSED int table_json_wide_in_contract( const void * storage, const TableFieldInfo * f )
@@ -2982,6 +2982,10 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
         /* a fixed array's tail keeps the defaults the prefill left there,
            exactly as a short wire count does */
         table_json_set_count( base, f, placed );
+        /* A UNION ARM'S COUNTED [A..B] HOLDS A (ruling R10): fewer elements
+           than A refuse the read as more than B do. array_min is the arm's
+           A, and 0 on every other field. */
+        if ( f->counted && placed < f->array_min ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }
         return 1;
     }
     return table_json_read_scalar( in, storage, f, depth );

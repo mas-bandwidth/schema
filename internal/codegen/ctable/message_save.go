@@ -195,6 +195,9 @@ func (g *tableGen) emitMessageUnionSave(un *ir.Union) {
 					count = armValue("(*value)", v) + "_length"
 				}
 			}
+			if v.F.Array == ir.ArrayCounted && v.F.ArrayMin > 0 {
+				g.writeCountBound(count, v.F, "  ")
+			}
 			g.messageValue(v.F, e, armValue("(*value)", v), count, "  ")
 		}
 		g.pf("  break; }\n")
