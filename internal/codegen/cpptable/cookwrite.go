@@ -288,12 +288,13 @@ func (g *tableGen) emitCookWriteField(st *ir.Struct, f *ir.Field, offset int64) 
 }
 
 // cookCountAssert is a counted array's write-side storage check, debug only
-// (docs/SPEC.md §5.1). An ARM (st == nil, emitCookWriteUnion's call) holds its
-// declared [A..B] minimum too (R10), the bound the Go oracle's cook writer
-// refuses below (internal/codegen/gotable/cookwrite.go).
-func (g *tableGen) cookCountAssert(st *ir.Struct, f *ir.Field, name string) {
-	if st == nil && f.ArrayMin > 0 {
-		g.pf("    schema_assert( %s_count >= %d && %s_count <= %d ); // the declared [%d..%d] holds in an arm, debug only (§5.1)\n", name, f.ArrayMin, name, f.ArrayBound, f.ArrayMin, f.ArrayBound)
+// (docs/SPEC.md §5.1). A [A..B] array holds its declared minimum wherever it
+// sits, a plain field and an arm (st == nil, emitCookWriteUnion's call) alike
+// (R10): the bound the Go oracle's cook writer refuses below
+// (internal/codegen/gotable/cookwrite.go).
+func (g *tableGen) cookCountAssert(_ *ir.Struct, f *ir.Field, name string) {
+	if f.ArrayMin > 0 {
+		g.pf("    schema_assert( %s_count >= %d && %s_count <= %d ); // the declared [%d..%d] holds, debug only (§5.1)\n", name, f.ArrayMin, name, f.ArrayBound, f.ArrayMin, f.ArrayBound)
 		return
 	}
 	g.pf("    schema_assert( %s_count >= 0 && %s_count <= %d ); // storage invariant, debug only (§5.1)\n", name, name, f.ArrayBound)

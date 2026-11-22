@@ -7191,7 +7191,7 @@ inline void BenchMixedReset( BenchMixed & value )
     {
         MixedEntityReset( value.entities[i] );
     }
-    value.entities_count = 0;
+    value.entities_count = 1;
     for ( int32_t i = 0; i < 80; i++ )
     {
         MixedStatReset( value.stats[i] );
@@ -12647,7 +12647,7 @@ inline int64_t BenchMixedMeasureBody( TableIds & ids, const BenchMixed & value )
     if ( value.world_time != 0 ) { bytes += TableLebBytes( ids.ref_at( 20, 0x3eee6b51be54fc85ull ) ) + 1 + 8; } // world_time
     if ( value.frame_tick != 0 ) { bytes += TableLebBytes( ids.ref_at( 34, 0x7bbc035f7b6d0112ull ) ) + 1 + 8; } // frame_tick
     if ( value.server_time != 0 ) { bytes += TableLebBytes( ids.ref_at( 18, 0x3c460475f9be69c6ull ) ) + 1 + 4; } // server_time
-    schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // storage invariant, debug only (§5.1)
+    schema_assert( value.entities_count >= 1 && value.entities_count <= 8 ); // the declared [1..8] holds, debug only (§5.1)
     if ( value.entities_count > 0 )
     {
         const uint64_t ref_entities = ids.ref_at( 43, 0x935d0fb07bb3822aull );
@@ -12819,7 +12819,7 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
         w.header( ids.ref_at( 18, 0x3c460475f9be69c6ull ), 22 ); // server_time
         w.put32( uint32_t( value.server_time ) );
     }
-    schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // storage invariant, debug only (§5.1)
+    schema_assert( value.entities_count >= 1 && value.entities_count <= 8 ); // the declared [1..8] holds, debug only (§5.1)
     if ( value.entities_count > 0 )
     {
         const uint64_t ref_entities = ids.ref_at( 43, 0x935d0fb07bb3822aull );
@@ -13557,6 +13557,13 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                     }
                     else
                     {
+                        if ( count < 1 )
+                        {
+                            r.report->refused = true;
+                            r.report->refuse_reason = count_over_bound;
+                            r.offset = body_end;
+                            break;
+                        } // below the declared [1..8] (R10)
                         uint64_t keep = count;
                         if ( keep > 8 )
                         {
@@ -14724,10 +14731,11 @@ inline int64_t BenchMixedMeasureMessageBody( int64_t at, const BenchMixed & valu
         bits += kTableMessageRefBitsHere;
         bits += 24;
     }
-    schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // storage invariant, debug only (§5.1)
+    schema_assert( value.entities_count >= 1 && value.entities_count <= 8 ); // the declared [1..8] holds, debug only (§5.1)
     if ( value.entities_count > 0 )
     {
         bits += kTableMessageRefBitsHere;
+        if ( ( value.entities_count ) < 1 ) { return -1; } // below the declared [1..8] (R10)
         bits += 3;
         for ( int32_t i = 0; i < value.entities_count; i++ )
         {
@@ -14932,10 +14940,11 @@ inline bool BenchMixedSaveMessageBody( TableBitWriter & w, const BenchMixed & va
         w.put( 9, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.server_time ), 24 );
     }
-    schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // storage invariant, debug only (§5.1)
+    schema_assert( value.entities_count >= 1 && value.entities_count <= 8 ); // the declared [1..8] holds, debug only (§5.1)
     if ( value.entities_count > 0 )
     {
         w.put( 10, kTableMessageRefBitsHere );
+        if ( ( value.entities_count ) < 1 ) { return false; } // below the declared [1..8] (R10)
         w.put( (uint64_t) ( value.entities_count ) - 1, 3 );
         for ( int32_t i = 0; i < value.entities_count; i++ )
         {
@@ -17356,7 +17365,7 @@ inline void BenchMixedFixedWriteBody( uint8_t * b, const BenchMixed & value )
     TableFixedPut64( b + 32, (uint64_t) value.world_time );
     TableFixedPut64( b + 40, (uint64_t) value.frame_tick );
     TableFixedPut32( b + 48, (uint32_t) value.server_time );
-    schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // the declared count is the bound (§3.4)
+    schema_assert( value.entities_count >= 1 && value.entities_count <= 8 ); // the declared [1..8] is the bound (§3.4)
     TableFixedPut32( b + 52, (uint32_t) value.entities_count );
     for ( int64_t i = 0; i < (int64_t) value.entities_count; ++i )
     {
@@ -18140,7 +18149,7 @@ inline bool BenchMixedCookBody( uint8_t * at, const BenchMixed & value, TableByt
     table_cook_put( at + 48, (uint64_t) value.frame_tick, 8, order );
     table_cook_put( at + 56, (uint64_t) value.server_time, 4, order );
     // 8 slots of storage, value.entities_count live: a slot past the count keeps the extent's zero (§7.2)
-    schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // storage invariant, debug only (§5.1)
+    schema_assert( value.entities_count >= 1 && value.entities_count <= 8 ); // the declared [1..8] holds, debug only (§5.1)
     for ( int32_t i = 0; i < value.entities_count; i++ )
     {
         if ( !MixedEntityCookBody( at + 64 + i * 64, value.entities[i], order ) ) { return false; }

@@ -169,6 +169,48 @@ func storedFloatBits(f *ir.Field, plain string) string {
 	return plain
 }
 
+// emitCountMinRefusal is the plain field's R10 read check: a counted [A..B]
+// whose wire count is below A is refused, count_over_bound, exactly as the Go
+// oracle's read refuses it (internal/codegen/gotable/read.go, `count <
+// ArrayMin`). The refusal is the read's; the walk continues past the field's
+// L. A = 0 emits nothing.
+func (g *tableGen) emitCountMinRefusal(f *ir.Field, count, ind string) {
+	if f.Array != ir.ArrayCounted || f.ArrayMin <= 0 {
+		return
+	}
+	g.pf("%[1]sif ( %[2]s < %[3]d )\n%[1]s{\n%[1]s    r.report->refused = true;\n%[1]s    r.report->refuse_reason = count_over_bound;\n%[1]s    r.offset = body_end;\n%[1]s    break;\n%[1]s} // below the declared [%[3]d..%[4]d] (R10)\n",
+		ind, count, f.ArrayMin, f.ArrayBound)
+}
+
+// countedRides is the condition under which a counted array RIDES, after any
+// lines it needs are emitted at ind. A [..B] array elides at count zero; a
+// [A..B] array is born at A (SPEC §4.6) and elides at its BIRTH — count A with
+// every one of those A slots at the element's default — exactly as the Go
+// oracle elides it (internal/codegen/gotable/write.go, emitCountedBirthRides),
+// so a fresh value writes nothing and reads back as itself. An element whose
+// default this compare cannot spell (a table, a union, a text element) rides
+// at any count above zero.
+func (g *tableGen) countedRides(f *ir.Field, expr, ind string) string {
+	if f.BornCount() <= 0 {
+		return expr + "_count > 0"
+	}
+	kind := tableScalarKind(f)
+	born := "born_" + strings.NewReplacer(".", "_", "[", "_", "]", "_", " ", "").Replace(expr)
+	var differs string
+	slot := "slot_" + born
+	switch {
+	case f.Type.Pointer:
+		differs = expr + "[" + slot + "].value != 0"
+	case kind == tkTable || kind == tkUnion || f.IsTextList() || f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+		return expr + "_count > 0"
+	default:
+		differs = g.fieldDiffers(f, expr+"["+slot+"]")
+	}
+	g.pf("%sbool %s = %s_count == %d; // the array at its birth elides (SPEC §4.6)\n", ind, born, expr, f.BornCount())
+	g.pf("%sfor ( int32_t %s = 0; %s && %s < %d; %s++ ) { if ( %s ) { %s = false; } }\n", ind, slot, born, slot, f.BornCount(), slot, differs, born)
+	return "!" + born
+}
+
 // fieldIsDefault is fieldDiffers' complement, spelled as an equality: the
 // condition under which a slot elides.
 func (g *tableGen) fieldIsDefault(f *ir.Field, expr string) string {
@@ -303,7 +345,7 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 			g.pf("    TableRef %s[%d]; // [%d]*%s — every slot null until assigned\n", f.Name, f.ArrayBound, f.ArrayBound, f.Type.Name)
 		case ir.ArrayCounted:
 			g.pf("    TableRef %s[%d]; // [..%d]*%s — used count beside it; every slot null until assigned\n", f.Name, f.ArrayBound, f.ArrayBound, f.Type.Name)
-			g.pf("    int32_t %s_count = 0;\n", f.Name)
+			g.pf("    int32_t %s_count = %d;\n", f.Name, f.BornCount())
 		default:
 			g.pf("    TableRef %s; // *%s — null until assigned\n", f.Name, f.Type.Name)
 		}
@@ -355,8 +397,8 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 	case f.Array == ir.ArrayFixed:
 		g.pf("    %s%s %s[%d]%s;\n", align16, typ, f.Name, f.ArrayBound, tableArrayInit(selfInit))
 	case f.Array == ir.ArrayCounted:
-		g.pf("    %s%s %s[%d]%s; // used count beside it; count in [0, %d]\n", align16, typ, f.Name, f.ArrayBound, tableArrayInit(selfInit), f.ArrayBound)
-		g.pf("    int32_t %s_count = 0;\n", f.Name)
+		g.pf("    %s%s %s[%d]%s; // used count beside it; count in [%d, %d]\n", align16, typ, f.Name, f.ArrayBound, tableArrayInit(selfInit), f.BornCount(), f.ArrayBound)
+		g.pf("    int32_t %s_count = %d;\n", f.Name, f.BornCount())
 	default:
 		init := ""
 		if !selfInit {
@@ -463,7 +505,7 @@ func (g *tableGen) emitTableResetAt(expr string, f *ir.Field) {
 			index := resetIndex(expr)
 			g.pf("    for ( int32_t %s = 0; %s < %d; %s++ ) { %s[%s].value = 0; } // [%d]*%s — every slot null\n", index, index, f.ArrayBound, index, expr, index, f.ArrayBound, f.Type.Name)
 			if f.Array == ir.ArrayCounted {
-				g.pf("    %s_count = 0;\n", expr)
+				g.pf("    %s_count = %d;\n", expr, f.BornCount())
 			}
 		}
 		return
@@ -494,7 +536,7 @@ func (g *tableGen) emitTableResetAt(expr string, f *ir.Field) {
 		g.emitTableResetArray(expr, f.ArrayBound, typ, selfInit, f)
 	case f.Array == ir.ArrayCounted:
 		g.emitTableResetArray(expr, f.ArrayBound, typ, selfInit, f)
-		g.pf("    %s_count = 0;\n", expr)
+		g.pf("    %s_count = %d;\n", expr, f.BornCount())
 	case selfInit:
 		g.emitTableResetOne(expr, typ, f)
 	default:
@@ -879,17 +921,18 @@ func (g *tableGen) storageAssert(ind, expr string, bound int64) {
 	g.pf("%sschema_assert( %s >= 0 && %s <= %d ); // storage invariant, debug only (§5.1)\n", ind, expr, expr, bound)
 }
 
-// storageAssertMin is storageAssert for a counted [A..B] ARM (R10: the minimum
-// holds wherever the field sits): the writer never produces a count below A,
-// and on this assert leg that is a debug check too (docs/SPEC.md §5.1). An arm
-// with A = 0 keeps storageAssert's exact line.
+// storageAssertMin is storageAssert for a counted [A..B] array: the minimum
+// holds wherever the field sits (R10), a plain field born at A (SPEC §4.6)
+// and an arm alike, and the writer never produces a count below it; on this
+// assert leg that is a debug check too (docs/SPEC.md §5.1). A = 0 keeps
+// storageAssert's exact line.
 func (g *tableGen) storageAssertMin(ind, expr string, min, bound int64) {
 	if min <= 0 {
 		g.storageAssert(ind, expr, bound)
 		return
 	}
 	g.storageAsserts = true
-	g.pf("%sschema_assert( %s >= %d && %s <= %d ); // the declared [%d..%d] holds in an arm, debug only (§5.1)\n", ind, expr, min, expr, bound, min, bound)
+	g.pf("%sschema_assert( %s >= %d && %s <= %d ); // the declared [%d..%d] holds, debug only (§5.1)\n", ind, expr, min, expr, bound, min, bound)
 }
 
 func (g *tableGen) emitTableMeasure(st *ir.Struct) {
@@ -1152,7 +1195,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 			// the plain counted array elides at zero
 			count := strconv.FormatInt(f.ArrayBound, 10)
 			if f.Array == ir.ArrayCounted {
-				g.storageAssert("        ", "value."+f.Name+"_count", f.ArrayBound)
+				g.storageAssertMin("        ", "value."+f.Name+"_count", f.ArrayMin, f.ArrayBound)
 				count = fmt.Sprintf("value.%s_count", f.Name)
 			}
 			g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
@@ -1218,11 +1261,11 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		// an ARRAY OF POINTERS (docs/SPEC-TABLES.md §2.1, §3.1): kind 14 with element
 		// kind 17, N, then N node indices. CONTENT decides, as for any by-value
 		// array: an empty one elides, and a live slot rides as its index, null as 0.
-		g.storageAssert("    ", "value."+f.Name+"_count", f.ArrayBound)
+		g.storageAssertMin("    ", "value."+f.Name+"_count", f.ArrayMin, f.ArrayBound)
 		if f.Required {
 			g.pf("    if ( true ) // | required: the field always rides (§2.3)\n    {\n")
 		} else {
-			g.pf("    if ( value.%s_count > 0 )\n    {\n", f.Name)
+			g.pf("    if ( %s )\n    {\n", g.countedRides(f, "value."+f.Name, "    "))
 		}
 		g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 		g.pf("        int64_t body_%s = 0;\n", f.Name)
@@ -1310,11 +1353,11 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("        bytes += %s + %s; // %s\n", g.hdrBytes(id), framed("body_"+f.Name), f.Name)
 		g.pf("    }\n")
 	case f.Array == ir.ArrayCounted:
-		g.storageAssert("    ", "value."+f.Name+"_count", f.ArrayBound)
+		g.storageAssertMin("    ", "value."+f.Name+"_count", f.ArrayMin, f.ArrayBound)
 		if f.Required {
 			g.pf("    if ( true ) // | required: the field always rides (§2.3)\n    {\n")
 		} else {
-			g.pf("    if ( value.%s_count > 0 )\n    {\n", f.Name)
+			g.pf("    if ( %s )\n    {\n", g.countedRides(f, "value."+f.Name, "    "))
 		}
 		g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 		g.pf("        int64_t body_%s = 0;\n", f.Name)
@@ -1715,7 +1758,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		case f.Array != ir.ArrayNone:
 			count := strconv.FormatInt(f.ArrayBound, 10)
 			if f.Array == ir.ArrayCounted {
-				g.storageAssert("        ", "value."+f.Name+"_count", f.ArrayBound)
+				g.storageAssertMin("        ", "value."+f.Name+"_count", f.ArrayMin, f.ArrayBound)
 				count = fmt.Sprintf("value.%s_count", f.Name)
 			}
 			g.emitArrayField(f, id, elemKind, count, "value."+f.Name+"[%s]", "        ")
@@ -1812,11 +1855,11 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		ind := "        "
 		if f.Array == ir.ArrayCounted {
 			count = fmt.Sprintf("value.%s_count", f.Name)
-			g.storageAssert("    ", "value."+f.Name+"_count", f.ArrayBound)
+			g.storageAssertMin("    ", "value."+f.Name+"_count", f.ArrayMin, f.ArrayBound)
 			if f.Required {
 				g.pf("    if ( true ) // | required: the field always rides (§2.3)\n    {\n")
 			} else {
-				g.pf("    if ( value.%s_count > 0 )\n    {\n", f.Name)
+				g.pf("    if ( %s )\n    {\n", g.countedRides(f, "value."+f.Name, "    "))
 			}
 		} else {
 			g.pf("    {\n")
@@ -1898,11 +1941,11 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("        w.put8( %[1]d );\n        w.putleb( (uint64_t) value.%[2]s_length );\n", tkU8, f.Name)
 		g.pf("        w.raw( value.%s, value.%s_length );\n    }\n", f.Name, f.Name)
 	case f.Array == ir.ArrayCounted:
-		g.storageAssert("    ", "value."+f.Name+"_count", f.ArrayBound)
+		g.storageAssertMin("    ", "value."+f.Name+"_count", f.ArrayMin, f.ArrayBound)
 		if f.Required {
 			g.pf("    if ( true ) // | required: the field always rides (§2.3)\n    {\n")
 		} else {
-			g.pf("    if ( value.%s_count > 0 )\n    {\n", f.Name)
+			g.pf("    if ( %s )\n    {\n", g.countedRides(f, "value."+f.Name, "    "))
 		}
 		g.emitArrayField(f, id, elemKind, fmt.Sprintf("value.%s_count", f.Name), "value."+f.Name+"[%s]", "        ")
 		g.pf("    }\n")
@@ -2618,6 +2661,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 			g.pf("%s    else if ( elem_kind != %d )\n%s    {\n", ind, ir.TableWireElemKind(f), ind)
 			g.pf("%[1]s        if ( !TableKindWidens( elem_kind, %[2]d ) )\n%[1]s        {\n%[1]s            r.report->refused = true;\n%[1]s            r.report->refuse_reason = kind_mismatch;\n%[1]s            r.offset = body_end;\n%[1]s            break;\n%[1]s        }\n", ind, ir.TableWireElemKind(f))
 			g.emitRetainReplaced(f, ind+"        ")
+			g.emitCountMinRefusal(f, "count", ind+"        ")
 			g.pf("%s        uint64_t widened_keep = count;\n", ind)
 			g.pf("%[1]s        if ( widened_keep > %[2]d )\n%[1]s        {\n%[1]s            widened_keep = %[3]d;\n%[1]s            r.report->refused = true;\n%[1]s            r.report->refuse_reason = out_of_range;\n%[1]s        }\n", ind, bound, bound)
 			g.pf("%s        TableReader widened_sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );\n", ind)
@@ -2637,6 +2681,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		savedArrayElse := g.indent
 		g.indent = savedArrayElse + "    "
 		g.emitRetainReplaced(f, ind+"    ")
+		g.emitCountMinRefusal(f, "count", ind+"    ")
 		g.pf("%s    uint64_t keep = count;\n", ind)
 		g.pf("%[1]s    if ( keep > %[2]d )\n%[1]s    {\n%[1]s        keep = %[3]d;\n%[1]s        r.report->refused = true;\n%[1]s        r.report->refuse_reason = out_of_range;\n%[1]s    }\n", ind, bound, bound)
 		g.pf("%s    // elements are BOUNDED by the field body: a count the length\n", ind)
