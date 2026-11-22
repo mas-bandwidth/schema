@@ -355,10 +355,13 @@ int main(int argc, const char **argv) {
             for (NSString *s in kSurfaces) printf("%s\n", s.UTF8String);
             return 0;
         }
-        if (![kSurfaces containsObject:verb]) return 2;
-        if (argc < 4) return 64;
-        gOut = @(argv[3]);
-        [[NSFileManager defaultManager] createDirectoryAtPath:gOut withIntermediateDirectories:YES attributes:nil error:nil];
+        if (![kSurfaces containsObject:verb] && ![verb isEqualToString:@"units"]) return 2;
+        BOOL diag = [verb isEqualToString:@"units"];
+        if (!diag && argc < 4) return 64;
+        if (!diag) {
+            gOut = @(argv[3]);
+            [[NSFileManager defaultManager] createDirectoryAtPath:gOut withIntermediateDirectories:YES attributes:nil error:nil];
+        }
         NSString *text = [NSString stringWithContentsOfFile:@(argv[1]) encoding:NSUTF8StringEncoding error:nil];
         if (!text) { fprintf(stderr, "cannot read manifest\n"); return 1; }
         NSMutableArray *lines = [NSMutableArray array];
@@ -374,6 +377,19 @@ int main(int argc, const char **argv) {
             if ([f[0] isEqualToString:@"unit"]) gUnitPaths[f[1]] = [f subarrayWithRange:NSMakeRange(2, f.count - 2)];
         }
         gLines = lines;
+        if ([verb isEqualToString:@"units"]) {
+            // a diagnostic, outside the contract: load every unit, say how it went
+            for (NSString *k in [gUnitPaths.allKeys sortedArrayUsingSelector:@selector(compare:)]) {
+                @try {
+                    [SPUnit loadPaths:gUnitPaths[k]];
+                    printf("ok   %s\n", k.UTF8String);
+                } @catch (NSException *e) {
+                    printf("FAIL %s: %s: %s\n", k.UTF8String, e.name.UTF8String, e.reason.UTF8String);
+                    if (argc > 3) for (NSString *s in e.callStackSymbols) printf("    %s\n", s.UTF8String);
+                }
+            }
+            return 0;
+        }
         @try {
             return runSurface(verb);
         } @catch (NSException *e) {
