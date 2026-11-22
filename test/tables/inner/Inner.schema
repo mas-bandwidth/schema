@@ -1,0 +1,47 @@
+package inner
+
+// A BOUND HELD ONE LEVEL DOWN. Each child declares exactly one thing a reader
+// holds: a counted array's minimum, an integer range, a string capacity, a
+// bytes capacity. Each parent is an array of one child kind and declares
+// nothing else, once with no minimum of its own (Loose) and once with a
+// minimum of one (Tight), on a fixed root and on a variable root. A reader
+// that walks a parent must reach the child's bound whatever the parent
+// itself declares (internal/ci/hostilecorpus/inner_inputs_test.go).
+
+fixed table CountChild
+{
+    vals [2..4]uint8
+}
+
+fixed table RangeChild
+{
+    level int32 = 1 | min = 1, max = 9
+}
+
+fixed table TextChild
+{
+    word string(4)
+}
+
+fixed table BytesChild
+{
+    blob bytes(4)
+}
+
+fixed table FixedLooseCount { nest [..4]CountChild }
+fixed table FixedTightCount { nest [1..4]CountChild }
+fixed table FixedLooseRange { nest [..4]RangeChild }
+fixed table FixedTightRange { nest [1..4]RangeChild }
+fixed table FixedLooseText  { nest [..4]TextChild }
+fixed table FixedTightText  { nest [1..4]TextChild }
+fixed table FixedLooseBytes { nest [..4]BytesChild }
+fixed table FixedTightBytes { nest [1..4]BytesChild }
+
+table VarLooseCount { nest [..4]CountChild }
+table VarTightCount { nest [1..4]CountChild }
+table VarLooseRange { nest [..4]RangeChild }
+table VarTightRange { nest [1..4]RangeChild }
+table VarLooseText  { nest [..4]TextChild }
+table VarTightText  { nest [1..4]TextChild }
+table VarLooseBytes { nest [..4]BytesChild }
+table VarTightBytes { nest [1..4]BytesChild }

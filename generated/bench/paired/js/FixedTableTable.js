@@ -602,6 +602,15 @@ export function FixedTableLoadMessages(values, vocabulary, data, report) {
       for (let j = 0; j <= i; j++) { InitFixedTable(values[j]); }
       return 0;
     }
+    // A VALUE, A COUNT OR A LENGTH PAST ITS BOUND, OR A KIND MISMATCH, IN
+    // ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md §4, the strict read):
+    // the body walk counts it, at any depth, and a body handed back cut to
+    // its bound would be a value the Go engine refuses (messagedecode.go).
+    if (report.Oor > 0 || report.Mismatch > 0) {
+      for (let j = 0; j <= i; j++) { InitFixedTable(values[j]); }
+      TableMessageRefuse(report, report.Oor > 0 ? "out_of_range" : "kind_mismatch");
+      return -1;
+    }
   }
   // damage after the last body discards the batch too (§4)
   if (!tableMessageBatchClose(r)) { for (let j = 0; j < count; j++) { InitFixedTable(values[j]); } return 0; }

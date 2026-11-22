@@ -15,7 +15,9 @@
 # engine's own encode of the value whose digest the manifest pins, and where it
 # is not (a wire the engine reads into another value, a text list past its
 # total), the port's canonical text must carry the manifest's digest and its
-# re-saved wire must be the engine's own encode of that text.
+# re-saved wire must be the engine's own encode of that text. A message
+# batch's re-save is held the same way, by the input byte for byte or else by
+# the record's canonical text and the manifest's digest.
 # A case the port cannot read yet (a carrier, or a schema the target refuses)
 # is a named absence, counted. A disagreement the known-findings file names is
 # carried by name; one it does not name is red, and a named one gone green is
@@ -36,6 +38,12 @@ grade() {
 		# a packet accept is held by the sha256 of the bytes the port writes back
 		[ "$(printf %s "$got" | perl -ne 'print pack("H*", $_)' | sha256sum | cut -d' ' -f1)" = "$digest" ] ||
 			{ ok=0 why="the port writes back a different packet than the engine"; }
+	elif [ "$verdict" = accept ] && [ "$carrier" = message ] && [ "$got" != "$(od -An -v -tx1 "$corpus/$input" | tr -d ' \n')" ]; then
+		# a batch the port re-saves other than byte for byte is held by its
+		# value: the record's canonical text must carry the manifest's digest
+		if [ "$text" = - ] || [ "$(printf %s "$text" | perl -ne 'print pack("H*", $_)' | sha256sum | cut -d' ' -f1)" != "$digest" ]; then
+			ok=0 why="the port reads a different value from the batch than the engine"
+		fi
 	elif [ "$verdict" = accept ] && [ "$got" != "$(od -An -v -tx1 "$corpus/$input" | tr -d ' \n')" ]; then
 		if [ "$text" = - ] || [ "$(printf %s "$text" | perl -ne 'print pack("H*", $_)' | sha256sum | cut -d' ' -f1)" != "$digest" ]; then
 			ok=0 why="the port re-saves a different value than the engine's own encode"
@@ -91,6 +99,11 @@ known=${5:-test/goose-hostile/known-findings.tsv}
 manifest=$corpus/manifest.tsv
 rm -rf "$work" && mkdir -p "$work" || exit 2
 abs_corpus=$(cd "$corpus" && pwd)
+# THE MESSAGE CARRIER's announcement (docs/HOSTILE-CORPUS.md, "Carriers": the
+# unit's own vocabulary announced, then the batch read against it): the
+# engine's announcement of each unit, as every other runner hands its reader
+# (tablewire.Announce), written beside the generated unit
+go build -o "$work/announce" ./test/goose-hostile/announce || exit 2
 : >"$work/lines"
 for s in $(awk -F'\t' '!/^#/ && NF >= 9 { print $3 }' "$manifest" | LC_ALL=C sort -u); do
 	slug=$(echo "$s" | tr '/.' '__')
@@ -182,9 +195,41 @@ for s in $(awk -F'\t' '!/^#/ && NF >= 9 { print $3 }' "$manifest" | LC_ALL=C sor
 		done
 		echo "    return -1;"
 		echo "}"
+		# THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): one arm per root the
+		# unit emits a <Root>LoadMessages for (a fixed root), as the
+		# conformance driver glues it (test/conformance/goose/driver). The
+		# unit's announcement is read into a fresh vocabulary, then the batch
+		# at capacity 1, as the C, Squirrel and Lobster runners read it. It
+		# answers -1 for a root with no message form, -2 for an announcement
+		# the reader refused, 0 for a read (the re-saved batch and the
+		# record's canonical text appended), and otherwise the read's refusal
+		# code (schema_rt::MsgRefuse*), 100 for damage that names none.
+		echo "fn conformance_message(root: const u8[:], announce: const u8[:], data: const u8[:], saved: u8[>..]&, text: u8[>..]&) -> i64 {"
+		for r in $(sed -n 's/^fn \([A-Za-z0-9_]*\)LoadMessages(.*/\1/p' "$u"/*Table.goose); do
+			echo "    if root == \"$r\" {"
+			echo "        var voc = schema_rt::MsgVocabulary { .. };"
+			echo "        var rep = schema_rt::MsgReport { .. };"
+			echo "        if !schema_rt::announce_read(voc, announce, rep) { return -2; }"
+			echo "        var values: $ns::$r[1] = [$ns::$r { .. }; 1];"
+			echo "        let n = $ns::${r}LoadMessages(values[0..1], voc, data, rep);"
+			echo "        if rep.reason != 0 { return rep.reason; }"
+			echo "        if n != 1 || rep.damaged { return 100; }"
+			echo "        if $ns::${r}SaveMessages(values[0..1], saved, rep) < 0 { return schema_rt::MsgRefuseInvalidValue; }"
+			if grep -q "^fn ${r}ToJson(" "$u"/*.goose; then
+				echo "        if $ns::${r}ToJson(values[0], text) < 0 { text.resize(0); }"
+			fi
+			echo "        return 0;"
+			echo "    }"
+		done
+		echo "    return -1;"
+		echo "}"
 	} >"$u/conformance_unit.goose"
+	"$work/announce" "$src" >"$u/announce.bin" || {
+		echo "goose hostile corpus: the engine could not announce $s"
+		exit 1
+	}
 	cp test/goose-hostile/runner.goose "$u/runner.goose"
-	"$goose" run "$u/runner.goose" -- "$abs_corpus" "$s" >>"$work/lines" 2>"$work/$slug.err" || {
+	"$goose" run "$u/runner.goose" -- "$abs_corpus" "$s" "$(cd "$u" && pwd)/announce.bin" >>"$work/lines" 2>"$work/$slug.err" || {
 		cat "$work/$slug.err"
 		echo "goose hostile corpus: the runner failed on $s"
 		exit 1
