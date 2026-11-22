@@ -583,6 +583,19 @@ func (g *gen) fixedScalarWriteCheck(f *ir.Field, expr string, width int64, ind s
 		if extent, ranged := fixedEnumExtent(f, width); ranged {
 			g.pf("%sdebug_assert!(%s <= %d, \"%s ordinal exceeds the enum's extent\");\n", ind, expr, extent, f.Name)
 		}
+		// A DEPRECATED VARIANT IS THE WRITE RULE REFUSAL (SPEC-TABLES §2.15, SPEC §5.1):
+		// the Row holds the ordinal (variants are dense from 1), so the assert names it.
+		if en, ok := f.Type.Ref.(*ir.Enum); ok {
+			var ords []string
+			for i := range en.Variants {
+				if variantDeprecated(en, i) {
+					ords = append(ords, strconv.Itoa(i+1))
+				}
+			}
+			if len(ords) > 0 {
+				g.pf("%sdebug_assert!(!matches!(%s, %s), \"invalid_value: %s holds a deprecated variant\");\n", ind, expr, strings.Join(ords, " | "), f.Name)
+			}
+		}
 		return
 	}
 	at := expr

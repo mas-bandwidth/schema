@@ -102,3 +102,30 @@ fixed table Config
 		}
 	}
 }
+
+// TestRustFixedDeprecatedEnumWriteRefused pins SF-26 on the fixed form: a Row
+// slot holding a deprecated variant ordinal is refused by the fixed-form
+// write (debug assert, this leg write check), by the variant ordinal.
+func TestRustFixedDeprecatedEnumWriteRefused(t *testing.T) {
+	t.Parallel()
+	out := generate(t, `package probe
+
+enum Phase
+{
+    Live
+    Old | deprecated
+    Next
+}
+
+fixed table Config
+{
+    few   [2..4]int32
+    phase Phase
+}
+`)
+	fixed := string(out["probe_fixed.rs"])
+	want := `debug_assert!(!matches!(value.phase, 2), "invalid_value: phase holds a deprecated variant");`
+	if !strings.Contains(fixed, want) {
+		t.Errorf("the fixed-form save does not emit %q", want)
+	}
+}
