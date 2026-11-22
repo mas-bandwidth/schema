@@ -1082,6 +1082,37 @@ func writeBoundViolation(f *ir.Field, expr string) string {
 	return strings.Join(parts, " || ")
 }
 
+// fileWriteBoundViolation is writeBoundViolation for a FILE writer, which also
+// holds a flags mask to W (flagsWidthBound). The message writer holds a mask
+// to W on its own: the mask rides at W bits there, and a wider one runs over.
+func fileWriteBoundViolation(f *ir.Field, expr string) string {
+	viol := writeBoundViolation(f, expr)
+	if b, ok := flagsWidthBound(f, expr); ok {
+		if viol != "" {
+			return viol + " || " + b
+		}
+		return b
+	}
+	return viol
+}
+
+// flagsWidthBound is a flags mask's width rule (docs/SPEC-TABLES.md §4, A TABLE
+// LOAD HOLDS A MASK TO ITS WIDTH): the condition true for a mask with a bit at
+// or above W, the declaration's wire width (the variant count, or K under
+// `| max = K`). A read refuses such a mask out_of_range and a file writer
+// refuses it, so a writer never writes a mask its own reader refuses. W of 64
+// holds every mask, and nothing is emitted.
+func flagsWidthBound(f *ir.Field, expr string) (string, bool) {
+	if f.Type.Kind != ir.TNamed || f.Type.Pointer {
+		return "", false
+	}
+	fl, ok := f.Type.Ref.(*ir.Flags)
+	if !ok || fl.WireBits >= 64 {
+		return "", false
+	}
+	return fmt.Sprintf("%s>>%d != 0", expr, fl.WireBits), true
+}
+
 // plainFloatFinite is the WRITE-SIDE finite rule for a float with no declared
 // range (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "same rule as packets"):
 // the condition that is true for a NaN or an infinity, which no form carries.
