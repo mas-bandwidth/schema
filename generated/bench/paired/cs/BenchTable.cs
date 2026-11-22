@@ -50,6 +50,10 @@ namespace Bench
         internal int KindChanged;  // the fixed form's compile census only: a writer
         // field whose kind changed, counted once per endpoint while a lineage
         // plan is compiled — never a read counter on a returned load
+        // THE STRICT ANNOUNCEMENT'S TWO BUILD VERSIONS (docs/SPEC-TABLES.md
+        // §3.3): on Reason "build_version_mismatch", the peer's announced build
+        // version and this unit's own. Zero on every other path.
+        public ulong BuildVersionRemote, BuildVersionOwn;
         // LayoutHash is THE FILE'S hash, and it is LAST on the report (§5.9 #15) —
         // a member at the end rather than a field inserted among the counters,
         // because the report is a type callers already hold. layout_newer reports
@@ -302,6 +306,11 @@ namespace Bench
     public sealed class TableVocabulary
     {
         public int MaxEntries = 4096, MaxBytes = 65536;
+        // STRICT MODE IS OPT-IN (docs/SPEC-TABLES.md §3.3): false when the
+        // vocabulary is made, read once by the FIRST AnnounceRead and never after.
+        // Set, an announcement whose build version is not this unit's own is
+        // refused as build_version_mismatch and sets no vocabulary.
+        public bool Strict;
         public bool Announced { get; internal set; }
         public ulong BuildVersion { get; internal set; }
         internal bool Attempted;
@@ -4622,6 +4631,13 @@ namespace Bench
                     else { report.Unknown++; if (!r.Skip(kind)) { break; } }
                 }
                 if (!terminated || versions != 1 || vocabularies != 1) { Damage(report); return Finish(report, Verdict.Damaged); }
+                // "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3): refused
+                // by name, the peer's build version kept, no vocabulary set, never damage.
+                if (v.Strict && v.BuildVersion != tableOwnVocabulary.BuildVersion)
+                {
+                    report.BuildVersionRemote = v.BuildVersion; report.BuildVersionOwn = tableOwnVocabulary.BuildVersion;
+                    return Refuse(report, "build_version_mismatch");
+                }
                 var entries = new System.Collections.Generic.List<TableMessageEntry>();
                 var keys = new System.Collections.Generic.HashSet<string>(); bool node = false;
                 while (payload.Has(1))
