@@ -4442,6 +4442,11 @@ String? jsonHostileReport(String unit, String root, String text) {
         final v = mapdemo.textFromJson(text, r);
         encode = () => mapdemo.textToJson(v);
         break;
+      case 'mapdemo Depth':
+        r = mapdemo.TableTextReport();
+        final v = mapdemo.depthFromJson(text, r);
+        encode = () => mapdemo.depthToJson(v);
+        break;
       case 'listdemo Army':
         r = listdemo.TableTextReport();
         final v = listdemo.armyFromJson(text, r);
