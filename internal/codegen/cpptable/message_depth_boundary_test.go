@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,6 +15,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const depthBoundarySchema = `package depthprobe
@@ -307,10 +308,10 @@ int main(void)
 	args := []string{"-std=c++17", "-O2", "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-I", dir, mainPath}
 	args = append(args, sources...)
 	args = append(args, "-o", bin)
-	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile failed: %v\n%s", err, out)
 	}
-	cmd := exec.Command(bin)
+	cmd := testproc.Command(t, bin)
 	cmd.Env = append(os.Environ(), "ASAN_OPTIONS=detect_leaks=0")
 	out, err := cmd.CombinedOutput()
 	return string(out), err

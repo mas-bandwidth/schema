@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestCTableRetainFile(t *testing.T) {
@@ -139,7 +141,7 @@ func TestCTableRetainRefusedByName(t *testing.T) {
 			if err := os.WriteFile(path, []byte("#include \"ProbeTable.h\"\nint main(void){"+call+";return 0;}\n"), 0600); err != nil {
 				t.Fatal(err)
 			}
-			out, err := exec.Command(cc, "-std=c99", "-fsyntax-only", "-I", dir, path).CombinedOutput()
+			out, err := testproc.Command(t, cc, "-std=c99", "-fsyntax-only", "-I", dir, path).CombinedOutput()
 			if err == nil || !strings.Contains(string(out), "retention_") {
 				t.Fatalf("expected named refusal: %v\n%s", err, out)
 			}

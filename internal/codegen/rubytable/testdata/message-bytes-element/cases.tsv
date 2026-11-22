@@ -1,0 +1,16 @@
+# The message form's bytes(N) element-kind corpus (docs/SPEC-TABLES.md 3.3,
+# "bytes(N) and [..N]uint8 are the same kind"): a writer built from the named
+# schema beside this file saves one M whose b holds the elements, and the
+# reader (reader.schema, b bytes(8)) loads the batch after that writer's
+# announcement. TestRubyMessageBytesElementKind reads every row.
+# case	writer	elements	expect	reason
+#
+# writer: uint8.schema ([..8]uint8) or int8.schema ([..8]int8).
+# elements: the Ruby array b holds on the writer.
+# expect: loaded <b as hex> or refused.
+# reason: the Ruby leg's refusal reason (per-language diagnostic detail, "-"
+#   for a load); conformance compares only the verdict.
+uint8_high_bit	uint8.schema	[255, 2]	loaded ff02	-
+uint8_small	uint8.schema	[1, 2]	loaded 0102	-
+int8_negative	int8.schema	[-1, 2]	refused	kind_mismatch
+int8_same_bits_as_uint8_small	int8.schema	[1, 2]	refused	kind_mismatch

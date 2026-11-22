@@ -4,7 +4,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,6 +12,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // A bytes(N) array body whose L is one byte short of its declared count is
@@ -78,7 +79,7 @@ func TestJavaFixShortArrayDamageRefused(t *testing.T) {
 	}
 	sources = append(sources, driver)
 	javac, javaBin := javaTools(t)
-	if out, err := exec.Command(javac, append([]string{"--release", "17", "-d", classes}, sources...)...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, append([]string{"--release", "17", "-d", classes}, sources...)...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 
@@ -86,7 +87,7 @@ func TestJavaFixShortArrayDamageRefused(t *testing.T) {
 	if err := os.WriteFile(wirePath, mutant, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "ShortArrayDriver", wirePath).CombinedOutput()
+	out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, "ShortArrayDriver", wirePath).CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
 	}

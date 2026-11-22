@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -13,6 +12,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/viewlisting"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func testDeclWhat(st *ir.Struct) string {
@@ -246,10 +247,10 @@ func TestUnitViewDescriptorsJava(t *testing.T) {
 				t.Fatal(err)
 			}
 			args = append(args, view)
-			if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+			if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 				t.Fatalf("%s: javac: %v\n%s", dir, err, out)
 			}
-			printed, err := exec.Command(java, "-cp", classes, "View").Output()
+			printed, err := testproc.Command(t, java, "-cp", classes, "View").Output()
 			if err != nil {
 				t.Fatalf("%s: the listing program failed: %v", dir, err)
 			}
