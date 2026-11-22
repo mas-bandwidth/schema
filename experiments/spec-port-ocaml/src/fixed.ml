@@ -43,7 +43,7 @@ let layout_kind (t : ty) =
   | Bits n -> bits_kind n
   | Opt _ -> 35
   | Bytes _ -> 14
-  | Timestamp -> 5   (* SPEC-GAP: no layout kind for timestamp; gated, never reached *)
+  | Timestamp -> 5   (* SPEC-GAP 3: no layout kind for timestamp; gated, never reached *)
   | _ -> kind_of t
 
 let layout (root : struct_d) : string =
@@ -74,12 +74,13 @@ let layout (root : struct_d) : string =
           | Some at -> walk arm.a_id at) un.u_arms
     | Keyed (en, et) ->
       entry id 16 (csize t) 2;
-      walk 0L (Enum en);
+      (* SPEC-GAP 5: the key enum entry carries fnv1a64(enum type name) *)
+      walk (fnv1a64 en.e_name) (Enum en);
       walk 0L et
     | Enum e ->
       entry id 30 (csize t) (Array.length e.e_vars);
       Array.iter (fun v -> entry v.v_id 32 0 0) e.e_vars
-    | Opt p -> entry id 35 (csize t) 1; walk 0L p
+    | Opt p -> entry id 35 (csize t) 1; walk id p   (* SPEC-GAP 5: the payload carries the wrapper's id *)
     | _ -> entry id (layout_kind t) (csize t) 0 in
   walk root.s_id (Struct root);
   let b = Bytes.create 4 in
@@ -116,7 +117,7 @@ let digest (root : struct_d) : string =
     | Keyed _ -> 16
     | Arr _ | Bytes _ -> 14
     | Struct _ -> 13 | Union _ -> 15 | Str _ -> 12
-    | Enum _ -> 7       (* SPEC-GAP: §3.4 says 7 for an enum here; the layout says 30 *)
+    | Enum _ -> 7       (* SPEC-GAP 4: §3.4 says 7 for an enum here; the layout says 30 *)
     | Flags _ -> 9 | Timestamp -> 5
     | Opt t -> leaf t
     | Bits n -> bits_kind n
