@@ -215,6 +215,15 @@ namespace SchemaUnityConformance
                     f.SetValue(holder, arr);
                     return true;
                 }
+                if (kind == "int")
+                {
+                    // a keyed or fixed array slot keeps its own storage type
+                    object arr = f.GetValue(holder);
+                    object existing = BufferGet(arr, elemIdx.Value);
+                    BufferSet(arr, elemIdx.Value, Convert.ChangeType(long.Parse(text, CultureInfo.InvariantCulture), existing.GetType(), CultureInfo.InvariantCulture));
+                    f.SetValue(holder, arr);
+                    return true;
+                }
                 throw new InvalidOperationException("write-refusal: unexpected indexed leaf " + seg);
             }
 
