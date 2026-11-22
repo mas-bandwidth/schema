@@ -1,6 +1,8 @@
 package goosetable
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -22,7 +24,14 @@ func TestGooseAnnouncementRefusesMoreThan4096Entries(t *testing.T) {
 		entries int
 		refused bool
 	}{{4096, false}, {4097, true}} {
-		u := unitFromSchema(t, "Probe", announcefit.Schema(t, row.entries))
+		src := filepath.Join(t.TempDir(), "Probe.schema")
+		if err := os.WriteFile(src, []byte(announcefit.Schema(t, row.entries)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		u, err := loadSchemaPaths([]string{src})
+		if err != nil {
+			t.Fatal(err)
+		}
 		if got := len(tablewire.MessageVocabulary(u)); got != row.entries {
 			t.Fatalf("the unit announces %d entries, want %d", got, row.entries)
 		}
