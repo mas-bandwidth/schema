@@ -277,6 +277,28 @@ The per-leg make gates, measured on an M-series Studio:
 Any leg gate that grows past 60 s gets split the same way: two names for the
 loop, one combined name for CI.
 
+## Running one Go test: `make test-run`, never a bare `go test -run`
+
+`go test -run Typo ./pkg` matches no test, prints `ok ... [no tests to run]` and
+exits 0: a mistyped pattern (`-run Idcap` for `TestIDCap`) looks exactly like a
+pass. So does a run in which every test skipped itself (`SCHEMA_SLOW` unset).
+Run a selection through the wrapper, which refuses both:
+
+```
+make test-run PKG=./internal/foo RUN='^TestBar$'
+make test-run PKG=./internal/foo RUN='^TestBar$' EXTRA='-count=1 -race'
+go run ./tools/gotestrun [-each] -run '^TestBar$' ./internal/foo   # the same, by hand
+```
+
+`tools/gotestrun` runs `go test -json`, passes go test's text through, and exits
+non-zero (naming the reason) when go test failed, when no test ran, or when no
+test passed. `-each` additionally requires every named package to pass a test
+(for `./...` runs). It prints `gotestrun: ran N, passed P, skipped S, failed F`.
+Every brief, recipe and hand run that selects tests with `-run` uses it. The
+conformance harness has the same refusal for its own filters: see
+[test/conformance/README.md](../test/conformance/README.md), "A filter that
+selects nothing is red".
+
 ## The gates a change has to pass
 
 Per-push evidence is Linux. A green pull request is not a macOS certificate.
