@@ -55,8 +55,8 @@ OWES) and is repeated here as the rule for the suite:
 - A surface a port declares absent must be one the specification lets it
   refuse. An absence on a required surface is a failure, not a gap.
 - **Strict-compile row (C).** Generated C table output compiles under
-   alone and when included by a unit that
-  sets  first; included late without it, it refuses
+  `-std=c11 -Wall -Wextra -Werror` alone and when included by a unit that
+  sets `_POSIX_C_SOURCE 200809L` first; included late without it, it refuses
   by name (SPEC-TABLES.md §16.5, A STRICT C COMPILE).
 
 ## 3. The driver protocol

@@ -16959,11 +16959,11 @@ without touching a stored file.
   missing feature and a failing test apart.
 
 - **A STRICT C COMPILE.** The C unit converts numbers in the "C" locale
-  (newlocale and uselocale, POSIX.1-2008). Generated  sets
-   itself before its first include, and compiles
-  under . A unit that includes the file after
+  (newlocale and uselocale, POSIX.1-2008). Generated `<Name>Table.c` sets
+  `_POSIX_C_SOURCE 200809L` itself before its first include, and compiles
+  under `-std=c11 -Wall -Wextra -Werror`. A unit that includes the file after
   its own system headers sets the macro first, or the file refuses with a
-  named  on glibc: never an unknown type name.
+  named `#error` on glibc: never an unknown type name.
 
 ### 16.6 What this is not
 
