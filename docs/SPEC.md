@@ -2429,25 +2429,25 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
 - **C++**
 
-  - `FixedSave`: 1–6 and 8 debug; 7 every build
+  - `FixedSave`: 1–6, 8 and 10 debug; 7 every build
 
-  - `SaveMessages`: 1–2 and 8 debug; 3–7 every build
+  - `SaveMessages`: 1–2, 8 and 10 debug; 3–7 every build
 
   - packet `Write`: 1–8 and 10 debug; 11 not yet held
 
 - **C**
 
-  - `FixedSave`: 1–6 and 8 debug; 7 every build
+  - `FixedSave`: 1–6, 8 and 10 debug; 7 every build
 
-  - `SaveMessages`: 1–4 and 8 debug; 5–7 every build
+  - `SaveMessages`: 1–4, 8 and 10 debug; 5–7 every build
 
   - packet `Write`: 1–8 and 10 debug; 11 not yet held
 
 - **C#**
 
-  - `FixedSave`: 1–8 debug
+  - `FixedSave`: 1–8 and 10 debug
 
-  - `SaveMessages`: 1–8 debug
+  - `SaveMessages`: 1–8 and 10 debug
 
   - packet `Write`: 1, 3–8 and 10 debug; 2 unchecked; 11 not yet held
 
@@ -2461,7 +2461,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
 - **Java**
 
-  - `FixedSave`: 1–6 and 8 debug; 7 every build
+  - `FixedSave`: 1–6, 8 and 10 debug; 7 every build
 
   - `SaveMessages`: 1–2 and 8 debug; 3–7 every build
 
@@ -2493,7 +2493,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
 - **Elixir**
 
-  - `FixedSave`: 1–6 and 8 every build (`ArgumentError`); 7 unrepresentable
+  - `FixedSave`: 1–6, 8 and 10 every build (`ArgumentError`); 7 unrepresentable
 
   - `SaveMessages`: 1–6 and 8 every build; 7 unrepresentable
 
