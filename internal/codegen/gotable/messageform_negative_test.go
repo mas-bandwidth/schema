@@ -60,6 +60,9 @@ func messageGoldenRow(t *testing.T, name string) (string, func(func(map[string][
 		t.Fatal(err)
 	}
 	units, connections, rows := parseManifest(t, filepath.Join(root, "testdata", "conformance", "tables", "MANIFEST.txt"))
+	if len(rows) == 0 {
+		t.Fatal("rows is empty: the loop below would check nothing")
+	}
 	for _, row := range rows {
 		if row.name != name {
 			continue

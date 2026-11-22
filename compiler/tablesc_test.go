@@ -69,6 +69,9 @@ func TestCTableRuntimeNamesAreClaimed(t *testing.T) {
 	}
 	sort.Strings(emittedNames)
 
+	if len(emittedNames) == 0 {
+		t.Fatal("emittedNames is empty: the loop below would check nothing")
+	}
 	for _, name := range emittedNames {
 		if !tablenames.Registered(name) {
 			t.Errorf("the C table emitter emits %s and internal/tablenames does not register it — "+
@@ -77,7 +80,11 @@ func TestCTableRuntimeNamesAreClaimed(t *testing.T) {
 				"so it claims nothing", name)
 		}
 	}
-	for _, name := range tablenames.DefinedBy(tablenames.C) {
+	allDefinedBy := tablenames.DefinedBy(tablenames.C)
+	if len(allDefinedBy) == 0 {
+		t.Fatal("tablenames.DefinedBy(tablenames.C) is empty: the loop below would check nothing")
+	}
+	for _, name := range allDefinedBy {
 		if !emitted[name] {
 			t.Errorf("internal/tablenames says the C backend defines %s, but nothing in the emitted "+
 				"C names it — drop the registration or fix the backend; a claim nothing needs takes "+
@@ -160,6 +167,9 @@ func TestCEmitsTableSources(t *testing.T) {
 	if err != nil {
 		t.Fatalf("--lang c: %v", err)
 	}
+	if len(without) == 0 {
+		t.Fatal("without is empty: the loop below would check nothing")
+	}
 	for name := range without {
 		if strings.HasSuffix(name, "Table.h") || strings.HasSuffix(name, "Table.c") ||
 			strings.HasSuffix(name, "Block.h") || strings.HasSuffix(name, "Block.c") {
@@ -171,6 +181,9 @@ func TestCEmitsTableSources(t *testing.T) {
 	packetOnly, err := generateCUnqualified(unitFromSource(t, packetSrc))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(packetOnly) == 0 {
+		t.Fatal("packetOnly is empty: the loop below would check nothing")
 	}
 	for name, body := range packetOnly {
 		if !strings.HasSuffix(name, ".h") {
@@ -198,15 +211,20 @@ func TestCExternalsCarryThePackage(t *testing.T) {
 	// every definition at file scope in the .c is either static or carries the
 	// package prefix; a bare `const TableTypeInfo ConfigTableInfo` would be the
 	// defect this test names
+	externals := 0
 	for line := range strings.SplitSeq(stripCComments(string(source)), "\n") {
 		if !strings.HasPrefix(line, "const ") && !strings.HasPrefix(line, "int ") &&
 			!strings.HasPrefix(line, "int64_t ") {
 			continue
 		}
+		externals++
 		if !strings.Contains(line, "schema_probe_") {
 			t.Errorf("a definition with external linkage does not carry the package, so two units "+
 				"could not link together: %s", strings.TrimSpace(line))
 		}
+	}
+	if externals == 0 {
+		t.Fatal("ProbeTable.c holds no file-scope `const`/`int`/`int64_t` definition: the package-prefix scan checked nothing")
 	}
 }
 
@@ -417,6 +435,10 @@ func TestCGeneratorMacrosAreOwned(t *testing.T) {
 			// reserved, and internal/check refuses a declaration spelling it
 		case tablenames.Registered(name):
 			// a registered runtime name, refused by the §11 claim
+		case name == "_POSIX_C_SOURCE" || name == "_DARWIN_C_SOURCE":
+			// the feature-test macros the table .c sets before its first
+			// include (uselocale); the qualifier leaves them alone unless a
+			// header declares the name, and then it qualifies that one
 		case name == "PROTOCOL_ID":
 			// the packet emitter's per-unit id, ZQQPKG_PROTOCOL_ID once the
 			// package qualifies it; internal/check claims the spelling for

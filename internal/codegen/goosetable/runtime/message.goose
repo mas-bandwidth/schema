@@ -41,6 +41,7 @@ let MsgRefuseKindMismatch: i64 = 10;
 let MsgRefuseLengthOverBound: i64 = 11;
 let MsgRefuseCountOverBound: i64 = 12;
 let MsgRefuseOutOfRange: i64 = 13;
+let MsgRefuseBuildVersionMismatch: i64 = 14;
 
 fn msg_reason_name(code: i64) -> const u8[:] {
     match code {
@@ -58,6 +59,7 @@ fn msg_reason_name(code: i64) -> const u8[:] {
         11 => "length_over_bound",
         12 => "count_over_bound",
         13 => "out_of_range",
+        14 => "build_version_mismatch",
         _ => "???",
     }
 }
@@ -77,6 +79,10 @@ struct MsgReport {
     oor: i64,
     repeated: i64,
     count: i64,
+    // a strict announcement refusal's two build versions, the peer's and the
+    // reader's own (build_version_mismatch, §3.3); zero otherwise
+    remote: u64,
+    own: u64,
 }
 
 // ---- the writer -------------------------------------------------------------
@@ -187,6 +193,13 @@ struct MsgVocabulary {
     build_version: u64 = 0,
     announced: bool = false,
     refused: bool = false,
+    // STRICT MODE IS OPT-IN (docs/SPEC-TABLES.md §3.3): set before the first
+    // announcement, one whose build version is not own_build_version (the
+    // unit's MessageBuildVersion) is refused build_version_mismatch, sets no
+    // vocabulary, keeps the peer's build version and names both versions in
+    // the report's remote and own.
+    strict: bool = false,
+    own_build_version: u64 = 0,
     entries: MsgEntry[>..<],
 }
 
@@ -535,6 +548,12 @@ fn announce_once(v: MsgVocabulary&, data: const u8[:], report: MsgReport&) -> bo
     v.build_version = version;
     if !good || seen_version != 1 || seen_words != 1 {
         report.damaged = true;
+        return false;
+    }
+    if v.strict && version != v.own_build_version {
+        report.reason = MsgRefuseBuildVersionMismatch;
+        report.remote = version;
+        report.own = v.own_build_version;
         return false;
     }
     // the entries, checked whole before one is kept

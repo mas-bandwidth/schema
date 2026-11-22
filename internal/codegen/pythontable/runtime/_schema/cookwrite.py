@@ -439,9 +439,14 @@ def _layout(value: Any) -> tuple[list[_Entry], dict[int, _Entry], int, int]:
     return entries, index, _align_up(offset, align), align
 
 
-def _write_scalar(buf: bytearray, at: int, width: int, codec: str, value: Any, signed: bool, order: Literal["little", "big"]) -> None:
+def _write_scalar(buf: bytearray, at: int, width: int, codec: str, value: Any, signed: bool, order: Literal["little", "big"], ranged: bool = False) -> None:
     if codec in ("float32", "float64"):
         code = "f" if codec == "float32" else "d"
+        # A COMPRESSED FLOAT'S -0 IS +0 (docs/SPEC-TABLES.md §3.3, ruling
+        # fixed-compressed-negzero): the cook stores the bits +0 stores. A
+        # plain float's -0 is a value and rides bit-exact.
+        if ranged and value == 0.0:
+            value = 0.0
         raw = struct.pack(("<" if order == "little" else ">") + code, value)
         buf[at : at + width] = raw
     else:
@@ -474,7 +479,7 @@ def _write_record(
             if width == 16:
                 _put_wide(buf, at, int(current), order, fd.lo < 0)
             else:
-                _write_scalar(buf, at, width, fd.codec, current, fd.lo < 0, order)
+                _write_scalar(buf, at, width, fd.codec, current, fd.lo < 0, order, fd.float_range)
         elif fd.codec in ("string", "bytes"):
             raw = current.encode("utf-8") if fd.codec == "string" else bytes(current)
             if fd.codec == "string" and len(fd.pieces) == 1:
@@ -494,14 +499,14 @@ def _write_record(
         elif fd.codec == "array" and fd.array_kind in (1, 2) and fd.elem_codec in ("bool", "int", "enum", "float32", "float64"):
             stride = fd.pieces[0][1] // fd.bound
             for position, item in enumerate(current):
-                _write_scalar(buf, at + position * stride, stride, fd.elem_codec, item, fd.lo < 0, order)
+                _write_scalar(buf, at + position * stride, stride, fd.elem_codec, item, fd.lo < 0, order, fd.float_range)
             if fd.array_kind == 2:
                 _put_int(buf, base + fd.pieces[1][0], len(current), 4, order, True)
         elif fd.codec == "keyed" and fd.elem is not None and fd.elem.codec in ("bool", "int", "enum", "float32", "float64"):
             values = current if isinstance(current, list) else current._values
             stride = fd.pieces[0][1] // fd.bound
             for position, item in enumerate(values):
-                _write_scalar(buf, at + position * stride, stride, fd.elem.codec, item, fd.elem.lo < 0, order)
+                _write_scalar(buf, at + position * stride, stride, fd.elem.codec, item, fd.elem.lo < 0, order, fd.elem.float_range)
         elif fd.codec == "array" and fd.array_kind in (1, 2) and fd.elem_codec in ("table", "string", "text_optional"):
             target = descriptor.by_name(fd.target)
             if target is None:
@@ -547,7 +552,7 @@ def _write_record(
                         element = _text_entry(fd, item) if fd.elem_codec != "table" else item
                         _write_record(buf, target.descriptor, element, element_at, index, order, blobs, placements, inactive)
                     else:
-                        _write_scalar(buf, element_at, fd.elem_size, fd.elem_codec, item, fd.elem.lo < 0 if fd.elem is not None else fd.lo < 0, order)
+                        _write_scalar(buf, element_at, fd.elem_size, fd.elem_codec, item, fd.elem.lo < 0 if fd.elem is not None else fd.lo < 0, order, fd.float_range)
         elif fd.codec == "union_array":
             field = _union_field(fd)
             if fd.array_kind == 3:

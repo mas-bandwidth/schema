@@ -60,9 +60,9 @@ table Root {
 	// refuses the whole load; no entry lands.
 	var ref tabletext.Report
 	got := m.New(m.Lookup("Root"))
-	_, _ = tablewire.Decode(m, got, wire, &ref)
-	if !ref.Refused {
-		t.Fatalf("Go reference must refuse the duplicate-key wire: %+v", ref)
+	accepted, derr := tablewire.Decode(m, got, wire, &ref)
+	if derr == nil || accepted || !ref.Refused {
+		t.Fatalf("Go reference must refuse the duplicate-key wire: ok=%v err=%v report=%+v", accepted, derr, ref)
 	}
 
 	// Generate the Dart wire codec for the same unit and load the same wire.

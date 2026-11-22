@@ -15,9 +15,11 @@ local B = require("./BareInt")
 local cases: { { name: string, type: string, value: string, verdict: string } } = require("./cases") :: any
 
 local failed = false
+local failures = 0
 local function check(ok: boolean, what: string)
 	if not ok then
 		failed = true
+		failures += 1
 		print("FAILED: " .. what)
 	end
 end
@@ -116,12 +118,15 @@ local kinds = { "I8", "I16", "I32", "I64", "U8", "U16", "U32", "U64" }
 local notIntegers: { [string]: any } = { fraction = 1.5, nan = 0 / 0, infinity = math.huge, text = "1" }
 for _, t in kinds do
 	for what, value in notIntegers do
+		n += 1
 		local ok = write(t, value, t .. " " .. what)
 		check(not ok, "packet-write-bareint " .. t .. " " .. what .. " refused")
 	end
 end
 
-if failed then
+-- The last stdout line is the count tools/mustrun reads: the cases of
+-- cases.txt plus the not-an-integer cases, and the failed checks among them.
+print(string.format("packet-write-bareint Luau: ran %d, failed %d", n, failures))
+if failed or n == 0 then
 	error("packet-write-bareint Luau: FAILED")
 end
-print("packet-write-bareint Luau: " .. n .. " cases, each out-of-width and non-integer value refused, each boundary written and read back")

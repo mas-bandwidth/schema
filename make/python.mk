@@ -91,8 +91,8 @@ build/conformance-python: build/schema-python testdata/conformance/tables/MANIFE
 	@rm -rf $@ && mkdir -p $@
 	@awk '$$1 == "unit" { key = $$2; $$1 = ""; $$2 = ""; print key $$0 }' testdata/conformance/tables/MANIFEST.txt | \
 	while read -r key paths; do \
-		first=""; for p in $$paths; do if [ -d "$$p" ]; then f=$$(ls "$$p"/*.schema 2>/dev/null | head -1); else f=$$p; fi; first=$$f; break; done; \
-		pkg=$$(sed -n 's/^[[:space:]]*package[[:space:]]\+\([A-Za-z_][A-Za-z0-9_]*\).*/\1/p' "$$first" | head -1); \
+		first=""; for p in $$paths; do if [ -d "$$p" ]; then f=$$(ls "$$p"/*.schema 2>/dev/null | sed -n 1p); else f=$$p; fi; first=$$f; break; done; \
+		pkg=$$(sed -n 's/^[[:space:]]*package[[:space:]]\+\([A-Za-z_][A-Za-z0-9_]*\).*/\1/p' "$$first" | sed -n 1p); \
 		if [ -n "$$pkg" ]; then mkdir -p $@/$$key/$$pkg/_schema; fi; \
 		if ./build/schema-python generate --lang python --out $@/$$key $$paths > $@/$$key.log 2>&1; then \
 			rm -f $@/$$key.log; \

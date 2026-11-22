@@ -70,7 +70,11 @@ func countCapInputs(t *testing.T) (map[string][]byte, []string) {
 		in[name] = b
 		names = append(names, name)
 	}
-	for _, r := range reasonRows(t) {
+	allReasonRows := reasonRows(t)
+	if len(allReasonRows) == 0 {
+		t.Fatal("reasonRows(t) is empty: the loop below would check nothing")
+	}
+	for _, r := range allReasonRows {
 		if r.schema != "measure" || (!strings.Contains(r.name, "_cap3") && r.name != "good" && r.name != "values_widened_over_cap") {
 			continue
 		}

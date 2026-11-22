@@ -819,6 +819,7 @@ generated/cpp/ArmDefaults.h covered-switch-default,padded
 generated/cpp/ArmDefaultsWire.h covered-switch-default,switch-default
 generated/cpp/Clauses.h covered-switch-default,padded
 generated/cpp/ClausesWire.h covered-switch-default,switch-default
+generated/cpp/Degenerate.h padded
 generated/cpp/Enums.h covered-switch-default
 generated/cpp/Joins.h covered-switch-default,padded
 generated/cpp/JoinsWire.h covered-switch-default,switch-default

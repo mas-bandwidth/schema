@@ -47,15 +47,15 @@ func TestLuaWritersRefuseOffContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := string(luarun.Run(t, dir, "main.lua", nil))
+	if !strings.Contains(out, "write-contract rows complete") {
+		t.Errorf("the writer matrix did not complete:\n%s", out)
+	}
 	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
 		if strings.HasPrefix(line, "FAIL ") {
 			t.Error(line)
 		} else {
 			t.Log(line)
 		}
-	}
-	if !strings.Contains(out, "write-contract rows complete") {
-		t.Fatal("the writer matrix did not complete")
 	}
 }
 

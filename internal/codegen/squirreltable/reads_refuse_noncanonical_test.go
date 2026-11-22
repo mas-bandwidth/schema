@@ -224,6 +224,9 @@ func TestSquirrelReadsRefuseNonCanonical(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(entries) == 0 {
+		t.Fatal("entries is empty: the loop below would check nothing")
+	}
 	for _, e := range entries {
 		if !e.IsDir() && strings.HasSuffix(e.Name(), ".bin") && !seenLocal[e.Name()] {
 			t.Fatalf("vector %s on disk is not reached by MANIFEST.tsv", e.Name())

@@ -32,7 +32,11 @@ func TestTargetLuaCarriesArrayRoot(t *testing.T) {
 	if err != nil || len(files) == 0 {
 		t.Fatalf("lua must generate the array-root unit: files=%d err=%v", len(files), err)
 	}
-	for _, lang := range c.Targets() {
+	allTargets := c.Targets()
+	if len(allTargets) == 0 {
+		t.Fatal("c.Targets() is empty: the loop below would check nothing")
+	}
+	for _, lang := range allTargets {
 		if lang == "lua" || carries(lang, carryArrayRoot) {
 			continue
 		}

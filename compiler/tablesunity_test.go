@@ -198,7 +198,11 @@ func TestUnityTableSurfaceAndBoolIntFrame(t *testing.T) {
 			t.Errorf("Probe.Tables.cs has no descriptor row %q", row)
 		}
 	}
-	for name := range unityGenerate(t, packetSrc) {
+	allUnityGenerate := unityGenerate(t, packetSrc)
+	if len(allUnityGenerate) == 0 {
+		t.Fatal("unityGenerate(t, packetSrc) is empty: the loop below would check nothing")
+	}
+	for name := range allUnityGenerate {
 		if strings.HasSuffix(name, ".Tables.cs") || name == unitytable.RuntimeFile {
 			t.Errorf("a unit with no table emitted the table file %s", name)
 		}
@@ -700,6 +704,15 @@ func (h *unityTableHarness) wireSurface(cases []unityTableCase) {
 			rows = append(rows, c)
 		}
 	}
+	undeclared := 0
+	for _, c := range rows {
+		if c.root == "UndeclaredRoot" {
+			undeclared++
+		}
+	}
+	if undeclared != 1 || len(rows) < 2 {
+		h.t.Fatalf("wire surface: %d rows with %d undeclared; want the undeclared root once and at least one reader row", len(rows), undeclared)
+	}
 	for i, c := range rows {
 		path := filepath.Join(h.tmp, "surface", fmt.Sprintf("%s.bin", c.name))
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -792,7 +805,11 @@ table NativeRoot
 			t.Errorf("the Unity table emitter spells %s and internal/tablenames does not register it", name)
 		}
 	}
-	for _, name := range tablenames.DefinedBy(tablenames.Unity) {
+	allDefinedBy := tablenames.DefinedBy(tablenames.Unity)
+	if len(allDefinedBy) == 0 {
+		t.Fatal("tablenames.DefinedBy(tablenames.Unity) is empty: the loop below would check nothing")
+	}
+	for _, name := range allDefinedBy {
 		if !emitted[name] {
 			t.Errorf("internal/tablenames says Unity defines %s, and nothing emitted spells it", name)
 		}

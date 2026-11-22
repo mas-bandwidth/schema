@@ -108,7 +108,11 @@ if D.fingerprint(T) ~= before then print("changed") else print("constant") end
 
 func TestLuaDescriptorsAreConstants(t *testing.T) {
 	t.Parallel()
-	for _, key := range instanceUnits(t) {
+	allInstanceUnits := instanceUnits(t)
+	if len(allInstanceUnits) == 0 {
+		t.Fatal("instanceUnits(t) is empty: the loop below would check nothing")
+	}
+	for _, key := range allInstanceUnits {
 		t.Run(key, func(t *testing.T) {
 			t.Parallel()
 			b := buildManifestUnit(t, key)
@@ -147,10 +151,15 @@ print("the type-id index is built", T.TypeIds[desc.type_id] == desc)
 	if err != nil {
 		t.Fatalf("probe: %v\n%s", err, stderr)
 	}
+	lines := 0
 	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
+		lines++
 		if !strings.HasSuffix(line, "\ttrue") {
 			t.Errorf("sealed gate: %s", line)
 		}
+	}
+	if lines != 8 {
+		t.Errorf("sealed gate: the probe printed %d lines, want 8:\n%s", lines, out)
 	}
 }
 

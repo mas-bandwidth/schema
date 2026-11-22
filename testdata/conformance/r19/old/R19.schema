@@ -1,0 +1,19 @@
+// R19.schema, the OLD side of the Go conformance row R19's committed pair
+// (test/conformance/go/rows/R19_test.go). R19's law: "a clean NEW-READS-OLD
+// of an appended field, variant, arm, flag or keyed slot moves no counter at
+// all" (docs/roadmap.sexp, go/R19).
+//
+// The pair differs by EXACTLY ONE definition change: ../new/R19.schema appends
+// one field, w, at the end of the table. Both sides keep the package tblr19
+// because the two layouts are ONE LINEAGE (../new/schema.lock carries this
+// side's layout as its lineage entry); the build generates each side into its
+// own module, tblr19old and tblr19new (make/go.mk), and the row imports them
+// under aliases. ../old.bin is this side's writer's file.
+package tblr19
+
+fixed table Reading
+{
+    x int32 = 0
+    y int32 = 0
+    z int32 = 0
+}

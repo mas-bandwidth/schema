@@ -197,7 +197,11 @@ func armVerdicts(t *testing.T, b builtUnit, u *ir.Unit, files map[string][]byte)
 func TestLuaArmFramingAgreesWithTheEngine(t *testing.T) {
 	t.Parallel()
 	b, u := armUnit(t)
-	for name, v := range armVerdicts(t, b, u, b.files) {
+	allArmVerdicts := armVerdicts(t, b, u, b.files)
+	if len(allArmVerdicts) == 0 {
+		t.Fatal("armVerdicts(t, b, u, b.files) is empty: the loop below would check nothing")
+	}
+	for name, v := range allArmVerdicts {
 		if v != "" {
 			t.Errorf("%s: %s", name, v)
 		}
@@ -229,6 +233,9 @@ func TestLuaArmFramingNegativeControl(t *testing.T) {
 		want := map[string]bool{}
 		for _, r := range c.red {
 			want[r] = true
+		}
+		if len(got) == 0 {
+			t.Fatal("got is empty: the loop below would check nothing")
 		}
 		for name, v := range got {
 			if want[name] && v == "" {

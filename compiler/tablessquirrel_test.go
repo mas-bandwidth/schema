@@ -141,11 +141,17 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 			t.Errorf("%s: refusal does not name the construct %s and the target squirrel: %s", tc, field, msg)
 		}
 	}
+	// squirrel is a builtin target (compiler/target_squirrel.go): its Generate
+	// is the half of every claim below that a user meets, so an unregistered
+	// squirrel is a red here, never a silent skip of that half
 	var c *Compiler
 	for _, g := range builtins() {
 		if slices.Contains(g.Names(), "squirrel") {
-			c = New() // the tagged build: the target is registered
+			c = New()
 		}
+	}
+	if c == nil {
+		t.Fatal("squirrel is not a registered builtin target: the Generate half of every claim would go unchecked")
 	}
 	for _, tc := range refusalTable(cases) {
 		u := unitFromSource(t, tc.src)
@@ -181,10 +187,8 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 				if err := chain(u); err != nil {
 					t.Errorf("%s (the squirrel chain): squirrel refused a construct it now carries: %v", tc.name, err)
 				}
-				if c != nil {
-					if _, err := c.Generate(u, "squirrel", nil); err != nil {
-						t.Errorf("%s (Generate squirrel): squirrel refused a construct it now carries: %v", tc.name, err)
-					}
+				if _, err := c.Generate(u, "squirrel", nil); err != nil {
+					t.Errorf("%s (Generate squirrel): squirrel refused a construct it now carries: %v", tc.name, err)
 				}
 				if err := refusers[tc.refuser](u, "nonesuch"); err == nil || !strings.Contains(err.Error(), "nonesuch") {
 					t.Errorf("%s: an unregistered target was not refused by name: %v", tc.name, err)
@@ -192,10 +196,8 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 			} else {
 				named(tc.name+" ("+tc.refuser+")", refusers[tc.refuser](u, "squirrel"), tc.field)
 				named(tc.name+" (the squirrel chain)", chain(u), tc.field)
-				if c != nil {
-					_, err := c.Generate(u, "squirrel", nil)
-					named(tc.name+" (Generate squirrel)", err, tc.field)
-				}
+				_, err := c.Generate(u, "squirrel", nil)
+				named(tc.name+" (Generate squirrel)", err, tc.field)
 			}
 			// the refuser still refuses an unregistered target, by name
 			if slices.Contains([]string{"refuseTableArms", "refuseVoidArms", "refuseUnionArrays"}, tc.refuser) {
@@ -210,18 +212,23 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 		named(tc.name+" ("+tc.refuser+")", refusers[tc.refuser](u, "squirrel"), tc.field)
 		// the target's whole chain, in its order
 		named(tc.name+" (the squirrel chain)", chain(u), tc.field)
-		if c != nil {
-			_, err := c.Generate(u, "squirrel", nil)
-			named(tc.name+" (Generate squirrel)", err, tc.field)
-		}
+		_, err := c.Generate(u, "squirrel", nil)
+		named(tc.name+" (Generate squirrel)", err, tc.field)
 		covered[tc.refuser] = true
 	}
 	rseen := map[string]bool{}
-	for _, tc := range refusalTable(cases) {
+	allRefusalTable := refusalTable(cases)
+	if len(allRefusalTable) == 0 {
+		t.Fatal("refusalTable(cases) is empty: the loop below would check nothing")
+	}
+	for _, tc := range allRefusalTable {
 		if rseen[tc.refuser] {
 			t.Errorf("refusal row for refuser %q is registered twice", tc.refuser)
 		}
 		rseen[tc.refuser] = true
+	}
+	if len(leaves) == 0 {
+		t.Fatal("leaves is empty: the loop below would check nothing")
 	}
 	for _, name := range leaves {
 		if !covered[name] {
@@ -237,10 +244,8 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 	if err := chain(wideUnit); err != nil {
 		t.Errorf("wide kind (the squirrel chain): squirrel refused a construct it now carries: %v", err)
 	}
-	if c != nil {
-		if _, err := c.Generate(wideUnit, "squirrel", nil); err != nil {
-			t.Errorf("wide kind (Generate squirrel): squirrel refused a construct it now carries: %v", err)
-		}
+	if _, err := c.Generate(wideUnit, "squirrel", nil); err != nil {
+		t.Errorf("wide kind (Generate squirrel): squirrel refused a construct it now carries: %v", err)
 	}
 	if err := ir.RefuseWideTableKinds(wideUnit, "unregistered"); err == nil || !strings.Contains(err.Error(), "L.big") || !strings.Contains(err.Error(), "unregistered") {
 		t.Errorf("wide kind: ir.RefuseWideTableKinds did not refuse an unregistered backend by name: %v", err)
@@ -266,37 +271,37 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 	// The one-sided integer range is no longer one of the target's refusals
 	// (docs/SPEC-TABLES.md §4.3): the tagged target carries it, while the
 	// central refuser still refuses every target that is not registered for it.
-	if c != nil {
-		if !carries("squirrel", carryOneSidedRange) {
-			t.Error("the tagged squirrel target does not register the one-sided integer range it carries")
+	if !carries("squirrel", carryOneSidedRange) {
+		t.Error("the squirrel target does not register the one-sided integer range it carries")
+	}
+	oneSided := unitFromSource(t, "package probe\n\ntable OneSided\n{\n    a int64 | min = 0\n}\n")
+	if _, err := c.Generate(oneSided, "squirrel", nil); err != nil {
+		t.Errorf("squirrel refused the one-sided integer range it carries: %v", err)
+	}
+	allTargets := c.Targets()
+	if len(allTargets) == 0 {
+		t.Fatal("c.Targets() is empty: the loop below would check nothing")
+	}
+	for _, target := range allTargets {
+		if carries(target, carryOneSidedRange) {
+			continue
 		}
-		oneSided := unitFromSource(t, "package probe\n\ntable OneSided\n{\n    a int64 | min = 0\n}\n")
-		if _, err := c.Generate(oneSided, "squirrel", nil); err != nil {
-			t.Errorf("squirrel refused the one-sided integer range it carries: %v", err)
-		}
-		for _, target := range c.Targets() {
-			if carries(target, carryOneSidedRange) {
-				continue
-			}
-			_, err := c.Generate(oneSided, target, nil)
-			if err == nil {
-				t.Errorf("%s accepted a one-sided integer range", target)
-			} else if msg := err.Error(); !strings.Contains(msg, target) || !strings.Contains(msg, "one-sided") {
-				t.Errorf("%s refusal does not name the target and the construct: %s", target, msg)
-			}
+		_, err := c.Generate(oneSided, target, nil)
+		if err == nil {
+			t.Errorf("%s accepted a one-sided integer range", target)
+		} else if msg := err.Error(); !strings.Contains(msg, target) || !strings.Contains(msg, "one-sided") {
+			t.Errorf("%s refusal does not name the target and the construct: %s", target, msg)
 		}
 	}
-	t.Logf("%d constructs over %d refusers %v; the tagged target %v", len(cases), len(leaves), leaves, c != nil)
+	t.Logf("%d constructs over %d refusers %v", len(cases), len(leaves), leaves)
 
 	// The central optional-variable-closure gate (compiler/generate.go) is not
 	// in the chain above: Squirrel carries `?T` over a variable closure now
 	// (docs/SPEC-TABLES.md §2.3), and a target that does not register it still
 	// refuses the construct by name.
 	closure := unitFromSource(t, "package probe\ntable Leaf\n{\n    n int32\n}\ntable Inner\n{\n    child *Leaf\n}\ntable Outer\n{\n    inner ?Inner\n}\n")
-	if c != nil {
-		if _, err := c.Generate(closure, "squirrel", nil); err != nil {
-			t.Errorf("squirrel still refuses a construct it carries: %v", err)
-		}
+	if _, err := c.Generate(closure, "squirrel", nil); err != nil {
+		t.Errorf("squirrel still refuses a construct it carries: %v", err)
 	}
 	refused := 0
 	for _, target := range New().Targets() {

@@ -158,7 +158,11 @@ func TestDartJsonLongNumberTokenReadsWithoutError(t *testing.T) {
 	t.Parallel()
 
 	got, want := dartJsonLongNumberRun(t), dartJsonLongNumberOracle(t)
-	for i, tc := range dartJsonLongNumberCases() {
+	allDartJsonLongNumberCases := dartJsonLongNumberCases()
+	if len(allDartJsonLongNumberCases) == 0 {
+		t.Fatal("dartJsonLongNumberCases() is empty: the loop below would check nothing")
+	}
+	for i, tc := range allDartJsonLongNumberCases {
 		if got[i] != want[i] {
 			t.Errorf("%s: Dart answered %q, the Go engine %q", tc.name, got[i], want[i])
 		}

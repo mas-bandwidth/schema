@@ -168,6 +168,9 @@ func TestRustAnnouncementSkipFieldIsBounded(t *testing.T) {
 				t.Errorf("profile %s: a hostile announcement was not refused: %s", profile.name, line)
 			}
 		}
+		if len(wellformedIDs) == 0 {
+			t.Fatal("wellformedIDs is empty: the loop below would check nothing")
+		}
 		for _, id := range wellformedIDs {
 			if line := skipBoundsLine(out, id); line != "SKIP "+id+" ok" {
 				t.Errorf("profile %s: a well-formed announcement carrying an unknown field was not read: %s", profile.name, line)
