@@ -686,7 +686,9 @@ async function surfaceMessage(lines, outDir, prior) {
   // message-batch <case> <connection> <root> <wire>: load with room for every
   // body and answer the count LoadMessages returned (docs/SPEC-TABLES.md §3.3;
   // FORMAT.md, `message-batch`).
-  for (const f of kind(lines, "message-batch")) {
+  // A batch row names a `connection`, so it rides the `message` surface
+  // only, never `message-prior` (the Go driver's messages.go does the same).
+  for (const f of prior ? [] : kind(lines, "message-batch")) {
     const conn = connections.find((c) => c[1] === f[2]);
     if (conn === undefined) { fail("message-batch " + f[1] + " names no connection " + f[2]); }
     const row = messageRow(conn[2], f[3]);
