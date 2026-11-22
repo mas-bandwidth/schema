@@ -1248,7 +1248,7 @@ func (g *gen) emitTextWriteValue(b *strings.Builder, f *ir.Field, x, d, ind stri
 	if f.Array != ir.ArrayNone {
 		if f.Array == ir.ArrayCounted {
 			if f.ArrayMin > 0 {
-				fmt.Fprintf(b, "%sif %s.len() < %d || %s.len() > %d { w.refused = true; }\n", ind, x, f.ArrayMin, x, f.ArrayBound)
+				fmt.Fprintf(b, "%sif %s || %s.len() > %d { w.refused = true; }\n", ind, rustLenUnder(x, f.ArrayMin), x, f.ArrayBound)
 			} else if f.ArrayBound > 0 {
 				fmt.Fprintf(b, "%sif %s.len() > %d { w.refused = true; }\n", ind, x, f.ArrayBound)
 			}
@@ -1726,7 +1726,7 @@ func (g *gen) emitTextReadValue(b *strings.Builder, f *ir.Field, field, in strin
 		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
 			// fewer elements than the declared minimum refuse count_over_bound
 			// (§16.2; internal/tabletext readArray)
-			fmt.Fprintf(b, "%s    if %s.len() < %d { jr.damaged = true; }\n", in, field, f.ArrayMin)
+			fmt.Fprintf(b, "%s    if %s { jr.damaged = true; }\n", in, rustLenUnder(field, f.ArrayMin))
 		}
 		fmt.Fprintf(b, "%s} else { jr.damaged = true; jr.skip_value(); }\n", in)
 		return
@@ -2040,4 +2040,22 @@ func tableTextOpening(f *ir.Field) byte {
 		return '['
 	}
 	return '{'
+}
+
+// rustLenUnder and rustLenAtLeast compare a Vec's length with a declared
+// minimum (§3) in the form clippy's len_zero accepts: a minimum of 1 is the
+// emptiness test, written with is_empty, never as len() < 1 or len() >= 1
+// (tables-rust-clippy denies both).
+func rustLenUnder(x string, min int64) string {
+	if min == 1 {
+		return x + ".is_empty()"
+	}
+	return fmt.Sprintf("%s.len() < %d", x, min)
+}
+
+func rustLenAtLeast(x string, min int64) string {
+	if min == 1 {
+		return "!" + x + ".is_empty()"
+	}
+	return fmt.Sprintf("%s.len() >= %d", x, min)
 }

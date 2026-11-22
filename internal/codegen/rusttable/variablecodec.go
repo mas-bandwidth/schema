@@ -832,7 +832,7 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 			if f.ArrayMin > 0 {
 				// and a count under the declared minimum is one too (§3; the
 				// reader refuses it as damaged)
-				fmt.Fprintf(b, "%sdebug_assert!(%s.len() >= %d, \"%s count under %d\");\n", inner, x, f.ArrayMin, f.Name, f.ArrayMin)
+				fmt.Fprintf(b, "%sdebug_assert!(%s, \"%s count under %d\");\n", inner, rustLenAtLeast(x, f.ArrayMin), f.Name, f.ArrayMin)
 			}
 		}
 		if born {

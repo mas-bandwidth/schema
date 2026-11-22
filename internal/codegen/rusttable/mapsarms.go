@@ -537,7 +537,7 @@ func (g *gen) emitArrayBodyWrite(b *strings.Builder, f *ir.Field, x, dst string,
 		if f.ArrayMin > 0 {
 			// under the declared minimum is a debug assert (§3; Rust write
 			// checks are debug asserts only)
-			fmt.Fprintf(b, "%sdebug_assert!(%s.len() >= %d, \"%s count under %d\");\n", ind, x, f.ArrayMin, f.Name, f.ArrayMin)
+			fmt.Fprintf(b, "%sdebug_assert!(%s, \"%s count under %d\");\n", ind, rustLenAtLeast(x, f.ArrayMin), f.Name, f.ArrayMin)
 		}
 	case f.Type.Kind == ir.TBytes && !f.Type.Pointer:
 		count = fmt.Sprintf("%s.len().min(%d)", x, f.Type.Size)
