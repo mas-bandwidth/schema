@@ -6746,10 +6746,17 @@ int tableEntityFixedLoad(
   TableFixedPlan plan,
   TableFixedReport report,
 ) {
+  int refuse() {
+    for (var j = 0; j < values.length; j++) {
+      initTableEntity(values[j]);
+    }
+    return -1;
+  }
+
   report.reset();
   if (byteLength < 1 || byteLength > bytes.length) {
     report.refused = TableFixedRefusal.damaged;
-    return -1;
+    return refuse();
   }
   final view = tableEntityFixedLoadView.of(bytes);
   // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
@@ -6764,17 +6771,17 @@ int tableEntityFixedLoad(
       TableFixedLimits.messageForm => TableFixedRefusal.messageFormAsFile,
       _ => TableFixedRefusal.newerForm,
     };
-    return -1;
+    return refuse();
   }
   if (byteLength < TableFixedLimits.layoutAt) {
     report.refused = TableFixedRefusal.damaged;
-    return -1;
+    return refuse();
   }
   // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3).
   for (var i = 1; i < TableFixedLimits.hashAt; i++) {
     if (bytes[i] != 0) {
       report.refused = TableFixedRefusal.damaged;
-      return -1;
+      return refuse();
     }
   }
   final layoutBytes = view.getUint32(
@@ -6783,7 +6790,7 @@ int tableEntityFixedLoad(
   );
   if (layoutBytes + TableFixedLimits.layoutAt > byteLength) {
     report.refused = TableFixedRefusal.layoutDamaged;
-    return -1;
+    return refuse();
   }
   final hash = view.getUint64(TableFixedLimits.hashAt, Endian.little);
   // THE LINEAGE SELECT (§5.3 steps 5 and 6): the header's hash is taken as
@@ -6794,24 +6801,24 @@ int tableEntityFixedLoad(
   if (pick < 0) {
     report.layoutHash = hash;
     report.refused = TableFixedRefusal.layoutNewer;
-    return -1;
+    return refuse();
   }
   if (pick < tableEntityFixedFloor) {
     report.layoutHash = hash;
     report.refused = TableFixedRefusal.layoutUnsupported;
-    return -1;
+    return refuse();
   }
   // THE BYTES THE LOCK RECORDED, compared and never walked: every §1.1
   // malformation under a KNOWN hash is one name, layout_malformed.
   final known = tableEntityFixedKnown[pick];
   if (layoutBytes != known.layoutBytes) {
     report.refused = TableFixedRefusal.layoutDamaged;
-    return -1;
+    return refuse();
   }
   for (var i = 0; i < layoutBytes; i++) {
     if (bytes[TableFixedLimits.layoutAt + i] != known.layout[i]) {
       report.refused = TableFixedRefusal.layoutDamaged;
-      return -1;
+      return refuse();
     }
   }
   report.hash = hash; // the header's hash; digest is not on the wire
@@ -6834,14 +6841,14 @@ int tableEntityFixedLoad(
     final lane = tableEntityFixedLineagePlans[pick];
     if (lane.why != TableFixedRefusal.none) {
       report.refused = lane.why;
-      return -1;
+      return refuse();
     }
     // THE CALLER'S PLAN STAYS A CAPACITY DECLARATION and is no longer
     // written through (§5.9 #5): the entry count is checked against it and
     // a plan past it refuses by name.
     if (lane.count > plan.capacity) {
       report.refused = TableFixedRefusal.planTooLarge;
-      return -1;
+      return refuse();
     }
     entries = lane.entries;
     entryCount = lane.count;
@@ -6860,12 +6867,12 @@ int tableEntityFixedLoad(
   // records, and a batch of none holds no value to read.
   if (rest == 0 || recordBytes <= 8 || rest % recordBytes != 0) {
     report.refused = TableFixedRefusal.damaged;
-    return -1;
+    return refuse();
   }
   final n = rest ~/ recordBytes;
   if (n > capacity) {
     report.refused = TableFixedRefusal.batchTooLarge;
-    return -1;
+    return refuse();
   }
   var at = TableFixedLimits.layoutAt + layoutBytes;
   // A RECORD WHOSE HASH NAMES NO LAYOUT THIS READER HOLDS IS A REFUSAL BY
@@ -6876,7 +6883,7 @@ int tableEntityFixedLoad(
   for (var k = 0, probe = at; k < n; k++, probe += recordBytes) {
     if (view.getUint64(probe, Endian.little) != hash) {
       report.refused = TableFixedRefusal.noLayout;
-      return -1;
+      return refuse();
     }
   }
   for (var k = 0; k < n; k++) {
@@ -6898,18 +6905,12 @@ int tableEntityFixedLoad(
       report,
     );
     if (runWhy != TableFixedRefusal.none) {
-      for (var j = 0; j < k; j++) {
-        initTableEntity(values[j]);
-      }
       report.refused = runWhy;
-      return -1;
+      return refuse();
     }
     tableEntityFixedDecode(values[k], plan.image, plan.imageView, 0, report);
     if (report.refused != TableFixedRefusal.none) {
-      for (var j = 0; j <= k; j++) {
-        initTableEntity(values[j]);
-      }
-      return -1;
+      return refuse();
     }
     at += recordBytes;
   }
@@ -6969,26 +6970,27 @@ int tableEntityLoadMessages(
   TableVocabulary vocabulary,
   TableReport report,
 ) {
-  final r = TableMessageReader();
-  final count = tableMessageBatchOpen(vocabulary, bytes, report, r);
-  if (count < 0) return 0;
-  if (count > values.length) {
-    report.Refuse('batch_too_large');
-    return 0;
-  }
-  for (var i = 0; i < count; i++) {
-    if (!tableEntityLoadMessageBody(r, values[i])) {
-      for (var j = 0; j <= i; j++) {
-        initTableEntity(values[j]);
-      }
-      return 0;
-    }
-  }
-  if (!tableMessageBatchClose(r)) {
-    for (var j = 0; j < count; j++) {
+  int refuse() {
+    for (var j = 0; j < values.length; j++) {
       initTableEntity(values[j]);
     }
     return 0;
+  }
+
+  final r = TableMessageReader();
+  final count = tableMessageBatchOpen(vocabulary, bytes, report, r);
+  if (count < 0) return refuse();
+  if (count > values.length) {
+    report.Refuse('batch_too_large');
+    return refuse();
+  }
+  for (var i = 0; i < count; i++) {
+    if (!tableEntityLoadMessageBody(r, values[i])) {
+      return refuse();
+    }
+  }
+  if (!tableMessageBatchClose(r)) {
+    return refuse();
   }
   return count;
 }
@@ -7208,10 +7210,17 @@ int tableStatFixedLoad(
   TableFixedPlan plan,
   TableFixedReport report,
 ) {
+  int refuse() {
+    for (var j = 0; j < values.length; j++) {
+      initTableStat(values[j]);
+    }
+    return -1;
+  }
+
   report.reset();
   if (byteLength < 1 || byteLength > bytes.length) {
     report.refused = TableFixedRefusal.damaged;
-    return -1;
+    return refuse();
   }
   final view = tableStatFixedLoadView.of(bytes);
   // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
@@ -7226,17 +7235,17 @@ int tableStatFixedLoad(
       TableFixedLimits.messageForm => TableFixedRefusal.messageFormAsFile,
       _ => TableFixedRefusal.newerForm,
     };
-    return -1;
+    return refuse();
   }
   if (byteLength < TableFixedLimits.layoutAt) {
     report.refused = TableFixedRefusal.damaged;
-    return -1;
+    return refuse();
   }
   // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3).
   for (var i = 1; i < TableFixedLimits.hashAt; i++) {
     if (bytes[i] != 0) {
       report.refused = TableFixedRefusal.damaged;
-      return -1;
+      return refuse();
     }
   }
   final layoutBytes = view.getUint32(
@@ -7245,7 +7254,7 @@ int tableStatFixedLoad(
   );
   if (layoutBytes + TableFixedLimits.layoutAt > byteLength) {
     report.refused = TableFixedRefusal.layoutDamaged;
-    return -1;
+    return refuse();
   }
   final hash = view.getUint64(TableFixedLimits.hashAt, Endian.little);
   // THE LINEAGE SELECT (§5.3 steps 5 and 6): the header's hash is taken as
@@ -7256,24 +7265,24 @@ int tableStatFixedLoad(
   if (pick < 0) {
     report.layoutHash = hash;
     report.refused = TableFixedRefusal.layoutNewer;
-    return -1;
+    return refuse();
   }
   if (pick < tableStatFixedFloor) {
     report.layoutHash = hash;
     report.refused = TableFixedRefusal.layoutUnsupported;
-    return -1;
+    return refuse();
   }
   // THE BYTES THE LOCK RECORDED, compared and never walked: every §1.1
   // malformation under a KNOWN hash is one name, layout_malformed.
   final known = tableStatFixedKnown[pick];
   if (layoutBytes != known.layoutBytes) {
     report.refused = TableFixedRefusal.layoutDamaged;
-    return -1;
+    return refuse();
   }
   for (var i = 0; i < layoutBytes; i++) {
     if (bytes[TableFixedLimits.layoutAt + i] != known.layout[i]) {
       report.refused = TableFixedRefusal.layoutDamaged;
-      return -1;
+      return refuse();
     }
   }
   report.hash = hash; // the header's hash; digest is not on the wire
@@ -7296,14 +7305,14 @@ int tableStatFixedLoad(
     final lane = tableStatFixedLineagePlans[pick];
     if (lane.why != TableFixedRefusal.none) {
       report.refused = lane.why;
-      return -1;
+      return refuse();
     }
     // THE CALLER'S PLAN STAYS A CAPACITY DECLARATION and is no longer
     // written through (§5.9 #5): the entry count is checked against it and
     // a plan past it refuses by name.
     if (lane.count > plan.capacity) {
       report.refused = TableFixedRefusal.planTooLarge;
-      return -1;
+      return refuse();
     }
     entries = lane.entries;
     entryCount = lane.count;
@@ -7322,12 +7331,12 @@ int tableStatFixedLoad(
   // records, and a batch of none holds no value to read.
   if (rest == 0 || recordBytes <= 8 || rest % recordBytes != 0) {
     report.refused = TableFixedRefusal.damaged;
-    return -1;
+    return refuse();
   }
   final n = rest ~/ recordBytes;
   if (n > capacity) {
     report.refused = TableFixedRefusal.batchTooLarge;
-    return -1;
+    return refuse();
   }
   var at = TableFixedLimits.layoutAt + layoutBytes;
   // A RECORD WHOSE HASH NAMES NO LAYOUT THIS READER HOLDS IS A REFUSAL BY
@@ -7338,7 +7347,7 @@ int tableStatFixedLoad(
   for (var k = 0, probe = at; k < n; k++, probe += recordBytes) {
     if (view.getUint64(probe, Endian.little) != hash) {
       report.refused = TableFixedRefusal.noLayout;
-      return -1;
+      return refuse();
     }
   }
   for (var k = 0; k < n; k++) {
@@ -7360,18 +7369,12 @@ int tableStatFixedLoad(
       report,
     );
     if (runWhy != TableFixedRefusal.none) {
-      for (var j = 0; j < k; j++) {
-        initTableStat(values[j]);
-      }
       report.refused = runWhy;
-      return -1;
+      return refuse();
     }
     tableStatFixedDecode(values[k], plan.image, plan.imageView, 0, report);
     if (report.refused != TableFixedRefusal.none) {
-      for (var j = 0; j <= k; j++) {
-        initTableStat(values[j]);
-      }
-      return -1;
+      return refuse();
     }
     at += recordBytes;
   }
@@ -7431,26 +7434,27 @@ int tableStatLoadMessages(
   TableVocabulary vocabulary,
   TableReport report,
 ) {
-  final r = TableMessageReader();
-  final count = tableMessageBatchOpen(vocabulary, bytes, report, r);
-  if (count < 0) return 0;
-  if (count > values.length) {
-    report.Refuse('batch_too_large');
-    return 0;
-  }
-  for (var i = 0; i < count; i++) {
-    if (!tableStatLoadMessageBody(r, values[i])) {
-      for (var j = 0; j <= i; j++) {
-        initTableStat(values[j]);
-      }
-      return 0;
-    }
-  }
-  if (!tableMessageBatchClose(r)) {
-    for (var j = 0; j < count; j++) {
+  int refuse() {
+    for (var j = 0; j < values.length; j++) {
       initTableStat(values[j]);
     }
     return 0;
+  }
+
+  final r = TableMessageReader();
+  final count = tableMessageBatchOpen(vocabulary, bytes, report, r);
+  if (count < 0) return refuse();
+  if (count > values.length) {
+    report.Refuse('batch_too_large');
+    return refuse();
+  }
+  for (var i = 0; i < count; i++) {
+    if (!tableStatLoadMessageBody(r, values[i])) {
+      return refuse();
+    }
+  }
+  if (!tableMessageBatchClose(r)) {
+    return refuse();
   }
   return count;
 }
@@ -8068,10 +8072,17 @@ int tableMixedFixedLoad(
   TableFixedPlan plan,
   TableFixedReport report,
 ) {
+  int refuse() {
+    for (var j = 0; j < values.length; j++) {
+      initTableMixed(values[j]);
+    }
+    return -1;
+  }
+
   report.reset();
   if (byteLength < 1 || byteLength > bytes.length) {
     report.refused = TableFixedRefusal.damaged;
-    return -1;
+    return refuse();
   }
   final view = tableMixedFixedLoadView.of(bytes);
   // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
@@ -8086,17 +8097,17 @@ int tableMixedFixedLoad(
       TableFixedLimits.messageForm => TableFixedRefusal.messageFormAsFile,
       _ => TableFixedRefusal.newerForm,
     };
-    return -1;
+    return refuse();
   }
   if (byteLength < TableFixedLimits.layoutAt) {
     report.refused = TableFixedRefusal.damaged;
-    return -1;
+    return refuse();
   }
   // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3).
   for (var i = 1; i < TableFixedLimits.hashAt; i++) {
     if (bytes[i] != 0) {
       report.refused = TableFixedRefusal.damaged;
-      return -1;
+      return refuse();
     }
   }
   final layoutBytes = view.getUint32(
@@ -8105,7 +8116,7 @@ int tableMixedFixedLoad(
   );
   if (layoutBytes + TableFixedLimits.layoutAt > byteLength) {
     report.refused = TableFixedRefusal.layoutDamaged;
-    return -1;
+    return refuse();
   }
   final hash = view.getUint64(TableFixedLimits.hashAt, Endian.little);
   // THE LINEAGE SELECT (§5.3 steps 5 and 6): the header's hash is taken as
@@ -8116,24 +8127,24 @@ int tableMixedFixedLoad(
   if (pick < 0) {
     report.layoutHash = hash;
     report.refused = TableFixedRefusal.layoutNewer;
-    return -1;
+    return refuse();
   }
   if (pick < tableMixedFixedFloor) {
     report.layoutHash = hash;
     report.refused = TableFixedRefusal.layoutUnsupported;
-    return -1;
+    return refuse();
   }
   // THE BYTES THE LOCK RECORDED, compared and never walked: every §1.1
   // malformation under a KNOWN hash is one name, layout_malformed.
   final known = tableMixedFixedKnown[pick];
   if (layoutBytes != known.layoutBytes) {
     report.refused = TableFixedRefusal.layoutDamaged;
-    return -1;
+    return refuse();
   }
   for (var i = 0; i < layoutBytes; i++) {
     if (bytes[TableFixedLimits.layoutAt + i] != known.layout[i]) {
       report.refused = TableFixedRefusal.layoutDamaged;
-      return -1;
+      return refuse();
     }
   }
   report.hash = hash; // the header's hash; digest is not on the wire
@@ -8156,14 +8167,14 @@ int tableMixedFixedLoad(
     final lane = tableMixedFixedLineagePlans[pick];
     if (lane.why != TableFixedRefusal.none) {
       report.refused = lane.why;
-      return -1;
+      return refuse();
     }
     // THE CALLER'S PLAN STAYS A CAPACITY DECLARATION and is no longer
     // written through (§5.9 #5): the entry count is checked against it and
     // a plan past it refuses by name.
     if (lane.count > plan.capacity) {
       report.refused = TableFixedRefusal.planTooLarge;
-      return -1;
+      return refuse();
     }
     entries = lane.entries;
     entryCount = lane.count;
@@ -8182,12 +8193,12 @@ int tableMixedFixedLoad(
   // records, and a batch of none holds no value to read.
   if (rest == 0 || recordBytes <= 8 || rest % recordBytes != 0) {
     report.refused = TableFixedRefusal.damaged;
-    return -1;
+    return refuse();
   }
   final n = rest ~/ recordBytes;
   if (n > capacity) {
     report.refused = TableFixedRefusal.batchTooLarge;
-    return -1;
+    return refuse();
   }
   var at = TableFixedLimits.layoutAt + layoutBytes;
   // A RECORD WHOSE HASH NAMES NO LAYOUT THIS READER HOLDS IS A REFUSAL BY
@@ -8198,7 +8209,7 @@ int tableMixedFixedLoad(
   for (var k = 0, probe = at; k < n; k++, probe += recordBytes) {
     if (view.getUint64(probe, Endian.little) != hash) {
       report.refused = TableFixedRefusal.noLayout;
-      return -1;
+      return refuse();
     }
   }
   for (var k = 0; k < n; k++) {
@@ -8220,18 +8231,12 @@ int tableMixedFixedLoad(
       report,
     );
     if (runWhy != TableFixedRefusal.none) {
-      for (var j = 0; j < k; j++) {
-        initTableMixed(values[j]);
-      }
       report.refused = runWhy;
-      return -1;
+      return refuse();
     }
     tableMixedFixedDecode(values[k], plan.image, plan.imageView, 0, report);
     if (report.refused != TableFixedRefusal.none) {
-      for (var j = 0; j <= k; j++) {
-        initTableMixed(values[j]);
-      }
-      return -1;
+      return refuse();
     }
     // A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the decode tested each
     // float's raw bits before it landed, and a NaN or an infinity refuses
@@ -8239,13 +8244,10 @@ int tableMixedFixedLoad(
     // kept: every record this call wrote goes back to its defaults.
     if (report.nonFiniteFloat.isNotEmpty) {
       final field = report.nonFiniteFloat;
-      for (var j = 0; j <= k; j++) {
-        initTableMixed(values[j]);
-      }
       report.reset();
       report.nonFiniteFloat = field;
       report.refused = TableFixedRefusal.nonFiniteFloat;
-      return -1;
+      return refuse();
     }
     at += recordBytes;
   }
@@ -8305,26 +8307,27 @@ int tableMixedLoadMessages(
   TableVocabulary vocabulary,
   TableReport report,
 ) {
-  final r = TableMessageReader();
-  final count = tableMessageBatchOpen(vocabulary, bytes, report, r);
-  if (count < 0) return 0;
-  if (count > values.length) {
-    report.Refuse('batch_too_large');
-    return 0;
-  }
-  for (var i = 0; i < count; i++) {
-    if (!tableMixedLoadMessageBody(r, values[i])) {
-      for (var j = 0; j <= i; j++) {
-        initTableMixed(values[j]);
-      }
-      return 0;
-    }
-  }
-  if (!tableMessageBatchClose(r)) {
-    for (var j = 0; j < count; j++) {
+  int refuse() {
+    for (var j = 0; j < values.length; j++) {
       initTableMixed(values[j]);
     }
     return 0;
+  }
+
+  final r = TableMessageReader();
+  final count = tableMessageBatchOpen(vocabulary, bytes, report, r);
+  if (count < 0) return refuse();
+  if (count > values.length) {
+    report.Refuse('batch_too_large');
+    return refuse();
+  }
+  for (var i = 0; i < count; i++) {
+    if (!tableMixedLoadMessageBody(r, values[i])) {
+      return refuse();
+    }
+  }
+  if (!tableMessageBatchClose(r)) {
+    return refuse();
   }
   return count;
 }

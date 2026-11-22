@@ -1374,7 +1374,7 @@ func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 	// is left as it is.
 	g.pf("  const refuse = () => {\n")
 	g.pf("    for (let j = 0; j < values.length; j++) { if (values[j] !== null && values[j] !== undefined) { Init%s(values[j]); } }\n", n)
-	g.pf("    return 0;\n  }\n")
+	g.pf("    return 0;\n  };\n")
 	if st.Integrity != "" {
 		g.pf("  if (data.length > 0 && data[0] === 2) {\n")
 		g.pf("    if (!TableIntegrityHolds(data, 2)) { report.Damaged = true; report.Verdict = TableMessageOpenDamaged; report.Reason = \"integrity_mismatch\"; return refuse(); }\n")

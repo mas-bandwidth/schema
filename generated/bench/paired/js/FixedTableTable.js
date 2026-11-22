@@ -404,7 +404,7 @@ function FixedTableFixedRefuseBatch(stage, report) {
 // the whole body, so it projects straight from the file's view with no
 // intermediate copy, and its results are held equal to the shared path's by
 // test. Answers the records read, or -1 with the reason named in the report.
-export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, report) {
+function FixedTableFixedLoadWalk(values, capacity, bytes, byteLength, plan, report) {
   TableFixedResetReport(report);
   if (bytes === null || byteLength < 1) { report.damaged = true; return -1; }
   // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
@@ -537,6 +537,14 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
   return n;
 }
 
+export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, report) {
+  const n = FixedTableFixedLoadWalk(values, capacity, bytes, byteLength, plan, report);
+  if (n < 0) {
+    for (let j = 0; j < values.length; j++) { if (values[j] !== null && values[j] !== undefined) { InitFixedTable(values[j]); } }
+  }
+  return n;
+}
+
 // THE THREE BATCH VERBS (§3.3): the primitive is a batch and a single
 // message is the batch of one. Measure sizes the buffer, Save writes one
 // buffer, Load fills the caller's storage and reports how many it read.
@@ -578,36 +586,37 @@ export function FixedTableSaveMessages(values, buffer, report) {
 export function FixedTableLoadMessages(values, vocabulary, data, report) {
   if (report === undefined || report === null) { report = {}; }
   TableMessageResetReport(report);
+  const refuse = () => {
+    for (let j = 0; j < values.length; j++) { if (values[j] !== null && values[j] !== undefined) { InitFixedTable(values[j]); } }
+    return 0;
+  };
   const [r, count] = tableMessageBatchOpen(vocabulary, data, report);
-  if (count < 0) { return 0; }
-  if (count > values.length) { TableMessageRefuse(report, "batch_too_large"); return 0; }
+  if (count < 0) { return refuse(); }
+  if (count > values.length) { TableMessageRefuse(report, "batch_too_large"); return refuse(); }
   for (let i = 0; i < count; i++) {
     if (!FixedTableLoadMessageBody(r, values[i])) {
       // A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md
       // §3.3), the strict read included: no body of it is delivered.
       if (report.NonFiniteFloat) {
-        for (let j = 0; j <= i; j++) { InitFixedTable(values[j]); }
         TableMessageRefuse(report, "non_finite_float: " + report.NonFiniteFloat);
-        return 0;
+        return refuse();
       }
       // DAMAGE ANYWHERE IN THE BATCH DELIVERS NO BODY (docs/SPEC-TABLES.md §4):
       // the count says 0 and every body the walk touched goes back to its
       // declared defaults.
-      for (let j = 0; j <= i; j++) { InitFixedTable(values[j]); }
-      return 0;
+      return refuse();
     }
     // A VALUE OUTSIDE ITS DECLARED RANGE (or a length past its bound) REFUSES THE
     // BATCH BY NAME as out_of_range (docs/SPEC-TABLES.md §3.3), as the Go
     // reference and the Rust port do: the count is 0 and
     // every body of the batch goes back to its declared defaults.
     if (report.Oor > 0) {
-      for (let j = 0; j < count; j++) { InitFixedTable(values[j]); }
       TableMessageRefuse(report, "out_of_range");
-      return 0;
+      return refuse();
     }
   }
   // damage after the last body discards the batch too (§4)
-  if (!tableMessageBatchClose(r)) { for (let j = 0; j < count; j++) { InitFixedTable(values[j]); } return 0; }
+  if (!tableMessageBatchClose(r)) { return refuse(); }
   return count;
 }
 
