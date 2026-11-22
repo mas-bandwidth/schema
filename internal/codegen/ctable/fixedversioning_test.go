@@ -41,7 +41,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -52,6 +51,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // ---- the rows ---------------------------------------------------------------
@@ -100,6 +101,14 @@ var cVersionRows = []cVersionRow{
         {
             if ( back[0].vals[k].x == 0x5A5A5A5A || back[0].vals[k].y == 0x5A5A5A5A )
                 { printf( "the old writer's slot %d kept the poison: the plan landed nothing there\n", k ); return 1; }
+        }
+        /* F-092: the SCALAR arrays beside it, 4 exact and 4 born zero */
+        for ( k = 0; k < 8; ++k )
+        {
+            int wi = k < 4 ? -800 - k : 0;
+            unsigned wo = k < 4 ? 200u + (unsigned) k : 0u;
+            if ( back[0].ints[k] != wi || back[0].octet[k] != wo )
+                { printf( "scalar slot %d: ints=%d octet=%u, want %d %u\n", k, back[0].ints[k], (unsigned) back[0].octet[k], wi, wo ); return 1; }
         }
     }
     if ( back[0].lead == 0x5A5A5A5Au || back[0].trail == 0x5A5A5A5Au )
@@ -517,8 +526,8 @@ func cFixedCorpus(t *testing.T) string {
 		// and sets SCHEMA_REQUIRE_CORPUS=1, so under that target a missing file
 		// means the build did not do what the target says it did — and a suite
 		// that skips itself there would report green over §5 having never run.
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the reference's byte oracle is not in %s: %v", dir, err)
+		if slowtest.CorpusRequired() {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the reference's byte oracle is not in %s: %v", dir, err)
 		}
 		t.Skip("the reference's byte oracle is not built: make tables-fixedform-corpus")
 	}
@@ -881,13 +890,13 @@ int main( void )
 	if err != nil {
 		t.Fatal(err)
 	}
-	args := append([]string{"-std=c99", "-O1", "-I" + dir, "-I" + serialize}, gccFortifySilence(cc)...)
+	args := append([]string{"-std=c99", "-O1", "-I" + dir, "-I" + serialize}, gccFortifySilence(t, cc)...)
 	args = append(args, filepath.Join(dir, "probe.c"), "-o", filepath.Join(dir, "probe"), "-lm")
-	build := exec.Command(cc, args...)
+	build := testproc.Command(t, cc, args...)
 	if out, err := build.CombinedOutput(); err != nil {
 		return out, fmt.Errorf("the probe did not compile: %w", err)
 	}
-	return exec.Command(filepath.Join(dir, "probe")).CombinedOutput()
+	return testproc.Command(t, filepath.Join(dir, "probe")).CombinedOutput()
 }
 
 var _ = binary.LittleEndian

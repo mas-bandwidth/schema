@@ -114,10 +114,13 @@ $(LUA_LUACHECK_CORPUS)/.stamp: bin/schema make/schema-lua-generated-luacheck-gat
 			echo "luacheck-lua: $$u refused: $$(head -1 $(LUA_LUACHECK_CORPUS)/$$key.refused)"; \
 		fi; \
 	done; \
-	echo "luacheck-lua corpus: $$ok units generated, $$refused refused by name"
+	echo "luacheck-lua corpus: $$ok units generated, $$refused refused by name"; \
+	[ $$ok -gt 0 ] || { echo "luacheck-lua corpus: no unit generated, so the gate would lint nothing"; exit 1; }
 	@mkdir -p $(LUA_LUACHECK_CORPUS)/unique
 	@find $(LUA_LUACHECK_CORPUS) -name '*.lua' -print0 | sort -z | \
 		python3 tools/lua-luacheck-dedupe.py $(LUA_LUACHECK_CORPUS)/unique
+	@[ -n "$$(find $(LUA_LUACHECK_CORPUS)/unique -name '*.lua' | head -1)" ] || \
+		{ echo "luacheck-lua corpus: $(LUA_LUACHECK_CORPUS)/unique holds no .lua file, so the gate would lint nothing"; exit 1; }
 	@touch $@
 
 # THE GATE. One run over the whole generated corpus and the runtime emitted
@@ -135,7 +138,7 @@ tables-lua-luacheck: toolchain-luacheck $(LUA_LUACHECK_CORPUS)/.stamp $(LUA_LUAC
 .PHONY: tables-lua-luacheck-negative-control
 tables-lua-luacheck-negative-control: toolchain-luacheck $(LUA_LUACHECK_CORPUS)/.stamp $(LUA_LUACHECK_CONFIG)
 	@rm -rf build/lua-luacheck-control && mkdir -p build/lua-luacheck-control
-	@set -e; clean=$$(find $(LUA_LUACHECK_CORPUS) -name serialize_int.lua | head -1); \
+	@set -e; clean=$$(find $(LUA_LUACHECK_CORPUS) -name serialize_int.lua | sed -n 1p); \
 	if [ -z "$$clean" ]; then echo "NEGATIVE CONTROL: the corpus has no serialize_int.lua"; exit 1; fi; \
 	cp "$$clean" build/lua-luacheck-control/clean.lua; \
 	if ! $(LUACHECK) --config $(LUA_LUACHECK_CONFIG) --no-color build/lua-luacheck-control/clean.lua > build/lua-luacheck-control/clean.log 2>&1; then \
@@ -195,6 +198,7 @@ dist-stylua:
 .PHONY: tables-lua-format
 tables-lua-format: dist-stylua $(LUA_LUACHECK_CORPUS)/.stamp
 	@files="$$(find $(LUA_LUACHECK_CORPUS)/unique -name '*.lua' ! -name '*-serialize*.lua' | sort)"; \
+	[ -n "$$files" ] || { echo "tables-lua-format: no generated .lua file under $(LUA_LUACHECK_CORPUS)/unique; nothing was checked"; exit 1; }; \
 	n=$$(printf '%s\n' "$$files" | wc -l | tr -d ' '); \
 	if ! $(STYLUA) --config-path $(STYLUA_CONFIG) --check $$files; then \
 		echo "tables-lua-format: the generated Lua above is not what StyLua $(STYLUA_VERSION) writes ($(STYLUA_CONFIG)); fix the generator"; \
@@ -208,7 +212,7 @@ tables-lua-format: dist-stylua $(LUA_LUACHECK_CORPUS)/.stamp
 .PHONY: tables-lua-format-negative-control
 tables-lua-format-negative-control: dist-stylua $(LUA_LUACHECK_CORPUS)/.stamp
 	@rm -rf build/lua-format-control && mkdir -p build/lua-format-control
-	@set -e; clean=$$(grep -l '^  if not stream:serialize[A-Za-z0-9]*(BITS, [0-9]*) then return false end$$' $(LUA_LUACHECK_CORPUS)/unique/*.lua | head -1); \
+	@set -e; clean=$$(grep -l '^  if not stream:serialize[A-Za-z0-9]*(BITS, [0-9]*) then return false end$$' $(LUA_LUACHECK_CORPUS)/unique/*.lua | sed -n 1p); \
 	if [ -z "$$clean" ]; then echo "NEGATIVE CONTROL: the corpus has no one-line early-out to plant"; exit 1; fi; \
 	cp "$$clean" build/lua-format-control/clean.lua; \
 	if ! $(STYLUA) --config-path $(STYLUA_CONFIG) --check build/lua-format-control/clean.lua > build/lua-format-control/clean.log 2>&1; then \

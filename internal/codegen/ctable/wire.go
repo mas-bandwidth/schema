@@ -61,6 +61,8 @@ func (g *tableGen) wirePrimitives() string {
 			slots *= 2
 		}
 		runtime = strings.ReplaceAll(runtime, "@ID_SLOTS@", strconv.Itoa(slots))
+		// THE WRITER'S MAXIMUM (docs/SPEC-TABLES.md §3): the 4097th id overflows.
+		runtime = strings.ReplaceAll(runtime, "@ID_LIMIT@", strconv.Itoa(min(len(ir.TableWireIds(g.unit))+1, ir.TableWireIdTableBound)))
 		// THE ORDINAL SLOT CACHE's inverse column is as narrow as the
 		// vocabulary allows: an ordinal indexes a set of len(TableWireIds)
 		// ids, and -1 is the entry a RUNTIME id took. Sixteen bits carry
@@ -175,7 +177,7 @@ static SCHEMA_UNUSED uint64_t table_writer_id( TableWriter * w, uint64_t id )
     /* AN OVERFLOWED TABLE APPENDS NOTHING and spells no reference: 0 names no
        id, so a caller can tell the miss that took an entry from the one that
        did not. */
-    if(v->count==@CAPACITY@) { w->overflow=1; return 0; }
+    if(v->count>=@ID_LIMIT@) { w->overflow=1; return 0; }
     v->ids[v->count]=id; v->positions[v->count]=slot; v->ordinal_of[v->count]=-1; v->count++;
     v->slots[slot]=(uint32_t)v->count; table_writer_leb(w,(uint64_t)v->count);
     return (uint64_t)v->count;
@@ -774,6 +776,43 @@ func (g *tableGen) writeStorageBound(expr string, bound int64, ind string) {
 	g.pf("%sschema_assert( 0 <= %s && %s <= %d );\n", ind, expr, expr, bound)
 }
 
+// writeCountBound is writeStorageBound for a counted array's count, held to
+// the declared [Min, N] (docs/SPEC.md §4.2): a [Min..N]T holds at least Min
+// elements, so a count below Min is the programmer's error exactly as a count
+// past N is. Debug-only by the same rule.
+func (g *tableGen) writeCountBound(f *ir.Field, expr, ind string) {
+	if f.ArrayMin <= 0 {
+		g.writeStorageBound(expr, f.ArrayBound, ind)
+		return
+	}
+	g.pf("%sschema_assert( %d <= %s && %s <= %d );\n", ind, f.ArrayMin, expr, expr, f.ArrayBound)
+}
+
+// countedBirth reports whether a counted array elides at its birth value: a
+// [Min..N]T that is neither required nor optional is born holding Min default
+// elements (docs/SPEC.md §4.2, ir.Field.BornCount), and the writers elide it
+// exactly there, as internal/tablewire's encodeArray and messageElides do.
+func countedBirth(f *ir.Field) bool {
+	return f.ElidesAtBirth()
+}
+
+// countedRides emits the riding test of a counted array and returns its
+// condition: a count of zero elides, and so does a count of Min whose every
+// element sits at its default (a float by bit pattern, a table whose body is
+// its terminator alone, a union at None). The element probe is the one the
+// keyed form uses, so a default element interns no id.
+func (g *tableGen) countedRides(f *ir.Field, expr, ind string, keyed func(f *ir.Field, expr, ind string)) string {
+	if !countedBirth(f) {
+		return expr + "_count > 0"
+	}
+	g.pf("%sint rides = %s_count > 0;\n", ind, expr)
+	g.pf("%sif ( %s_count == %d ) /* the birth value of [%d..%d] elides (§4.2) */\n%s{\n", ind, expr, f.BornCount(), f.ArrayMin, f.ArrayBound, ind)
+	g.pf("%s    int32_t i; rides = 0;\n%s    for ( i = 0; i < %d; i++ )\n%s    {\n", ind, ind, f.BornCount(), ind)
+	keyed(f, expr+"[i]", ind+"        ")
+	g.pf("%s        rides = 1; break;\n%s    }\n%s}\n", ind, ind, ind)
+	return "rides"
+}
+
 // unitHasWriteBound reports a unit whose writers carry a debug-only write
 // check — the fixed form's bounds and value checks, or a storage bound
 // of the variable or message form — so its header takes <assert.h> and
@@ -857,7 +896,7 @@ func (g *tableGen) emitWireFieldHelper(st *ir.Struct, f *ir.Field) {
 	if !f.Type.TextUnbounded() && ((f.Type.Kind == ir.TString && !f.Type.Blob()) || (f.Type.Kind == ir.TBytes && !f.Type.Blob())) {
 		g.writeStorageBound(expr+"_length", f.Type.Size, "    ")
 	} else if f.Array == ir.ArrayCounted {
-		g.writeStorageBound(expr+"_count", f.ArrayBound, "    ")
+		g.writeCountBound(f, expr+"_count", "    ")
 	}
 	switch {
 	case f.IsList() || f.IsMap():
@@ -1031,8 +1070,8 @@ func (g *tableGen) emitWireWrite(st *ir.Struct) {
 			g.writeStorageBound(expr+"_length", f.Type.Size, "        ")
 			condition = g.wireBytesDiffer(f, expr)
 		case f.Array == ir.ArrayCounted:
-			g.writeStorageBound(expr+"_count", f.ArrayBound, "        ")
-			condition = expr + "_count > 0"
+			g.writeCountBound(f, expr+"_count", "        ")
+			condition = g.countedRides(f, expr, "        ", func(f *ir.Field, _, ind string) { g.wireKeyedRides(f, ind) })
 		case f.KeyEnum != "":
 			if f.Required {
 				condition = "1"

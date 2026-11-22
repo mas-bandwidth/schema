@@ -1,0 +1,6 @@
+package game
+
+table Fleet
+{
+    measure_retain uint32
+}

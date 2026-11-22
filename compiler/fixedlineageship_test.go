@@ -89,11 +89,11 @@ func fixedLineageHashSpelling(target string, hash uint64) string {
 func TestFixedLineageEntryPointIsReachedFromTheDriver(t *testing.T) {
 	c := New()
 	for _, target := range fixedLineageShipTargets {
-		g, ok := c.gens[target]
+		reg, ok := c.gens[target]
 		if !ok {
 			t.Fatalf("%s is a built-in target", target)
 		}
-		if _, takes := g.(lineageGenerator); !takes {
+		if _, takes := reg.gen.(lineageGenerator); !takes {
 			t.Errorf("%s does not take the lineage from the driver (§5.9 #1: the caller makes lockfile.Open/Lineage/Floor and hands the backend the entries)", target)
 		}
 	}

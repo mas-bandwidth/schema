@@ -8,7 +8,7 @@
 // The 8-byte conversion scratch — serialize.js's FLOAT_SCRATCH twin. Module
 // scope is safe: single threaded per realm, consumed in the same op that
 // fills it.
-const SC = new DataView(new ArrayBuffer(8));
+const SC = new globalThis.DataView(new globalThis.ArrayBuffer(8));
 
 // Read buffers must extend at least this many bytes past the payload.
 export const FlatReadSlack = 8;
@@ -69,7 +69,7 @@ function validText(bytes, length) {
 // must hold ProbeHeaderMaxBytes.
 export function WriteProbeHeaderFlat(view, value) {
   let v = 0, lo = 0;
-  if (!Number.isInteger(value.version) || value.version < 0 || value.version > 7) {
+  if (!globalThis.Number.isInteger(value.version) || value.version < 0 || value.version > 7) {
     return -1;
   }
   lo = (171 | ((value.version & 0x7) << 8) | (0 << 11));
@@ -165,7 +165,7 @@ export function ReadProbeHeaderFlatBits(view, numBits, value) {
 // must hold ProbeBitsMaxBytes.
 export function WriteProbeBitsFlat(view, value) {
   let v = 0, lo = 0;
-  if (!Number.isInteger(value.small) || value.small < 0 || value.small > 511) {
+  if (!globalThis.Number.isInteger(value.small) || value.small < 0 || value.small > 511) {
     return -1;
   }
   if (value.boundary < 0n || value.boundary > 8589934591n) {
@@ -188,7 +188,7 @@ export function WriteProbeBitsFlat(view, value) {
   v = SC.getUint32(4, true);
   view.setUint32(8, (lo | (v << 10)) >>> 0, true);
   lo = v >>> 22;
-  if (!Number.isInteger(value.sensor) || value.sensor < 0 || value.sensor > 4294967295) {
+  if (!globalThis.Number.isInteger(value.sensor) || value.sensor < 0 || value.sensor > 4294967295) {
     return -1;
   }
   if (value.nonce < 0n || value.nonce > 18446744073709551615n) {
@@ -306,19 +306,19 @@ export function ReadProbeBitsFlatBits(view, numBits, value) {
 export function WriteProbeSampleFlat(view, value) {
   let v = 0, x = 0, n = 0, lo = 0, sb = 0, wi = 0;
   lo = ((value.active ? 1 : 0));
-  x = Math.fround(value.orientation);
-  if (!Number.isFinite(x)) {
+  x = globalThis.Math.fround(value.orientation);
+  if (!globalThis.Number.isFinite(x)) {
     return -1;
   }
   if (x < -180.0 || x > 180.0) {
     return -1;
   }
-  n = Math.fround(Math.fround(x - -180.0) / 360.0);
+  n = globalThis.Math.fround(globalThis.Math.fround(x - -180.0) / 360.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
-  v = Math.floor(Math.fround(Math.fround(n * 36000.0) + 0.5));
+  v = globalThis.Math.floor(globalThis.Math.fround(globalThis.Math.fround(n * 36000.0) + 0.5));
   if (v > 36000) { v = 36000; }
   lo = (lo | (v << 1)) >>> 0;
-  if (!Number.isInteger(value.rawDelta) || value.rawDelta < -2147483648 || value.rawDelta > 2147483647) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.rawDelta) || value.rawDelta < -2147483648 || value.rawDelta > 2147483647) { // a bare integer must fit its width
     return -1;
   }
   if (typeof value.bigDelta !== "bigint" || value.bigDelta < -9223372036854775808n || value.bigDelta > 9223372036854775807n) { // a bare integer must fit its width
@@ -337,7 +337,7 @@ export function WriteProbeSampleFlat(view, value) {
   wi = 12;
   sb = 17;
   if (value.active) {
-    if (!Number.isInteger(value.weapon) || value.weapon < 0 || value.weapon > 15) { // headroom above the wire range cannot ride
+    if (!globalThis.Number.isInteger(value.weapon) || value.weapon < 0 || value.weapon > 15) { // headroom above the wire range cannot ride
       return -1;
     }
     v = ((value.weapon & 0xf) | ((value.hasTarget ? 1 : 0) << 4)) >>> 0;
@@ -350,7 +350,7 @@ export function WriteProbeSampleFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (5 - sb);
     }
     if (value.hasTarget) {
-      if (!Number.isInteger(value.targetId) || value.targetId < 0 || value.targetId > 65535) { // a bare integer must fit its width
+      if (!globalThis.Number.isInteger(value.targetId) || value.targetId < 0 || value.targetId > 65535) { // a bare integer must fit its width
         return -1;
       }
       v = (((value.targetId) & 0xffff)) >>> 0;
@@ -364,7 +364,7 @@ export function WriteProbeSampleFlat(view, value) {
       }
     }
   } else {
-    if (!Number.isInteger(value.idleTicks) || value.idleTicks < 0 || value.idleTicks > 4294967295) { // a bare integer must fit its width
+    if (!globalThis.Number.isInteger(value.idleTicks) || value.idleTicks < 0 || value.idleTicks > 4294967295) { // a bare integer must fit its width
       return -1;
     }
     v = (((value.idleTicks) >>> 0)) >>> 0;
@@ -377,7 +377,7 @@ export function WriteProbeSampleFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
   }
-  if (!Number.isInteger(value.samplesCount) || value.samplesCount < 1 || value.samplesCount > 8) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+  if (!globalThis.Number.isInteger(value.samplesCount) || value.samplesCount < 1 || value.samplesCount > 8) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
   v = (((((value.samplesCount >>> 0) - 1) >>> 0) & 0x7)) >>> 0;
@@ -390,7 +390,7 @@ export function WriteProbeSampleFlat(view, value) {
     lo = sb === 0 ? 0 : v >>> (3 - sb);
   }
   for (let i0 = 0; i0 < value.samplesCount; i0++) {
-    if (!Number.isInteger(value.samples[i0]) || value.samples[i0] < 0 || value.samples[i0] > 65535) { // a bare integer must fit its width
+    if (!globalThis.Number.isInteger(value.samples[i0]) || value.samples[i0] < 0 || value.samples[i0] > 65535) { // a bare integer must fit its width
       return -1;
     }
     v = (((value.samples[i0]) & 0xffff)) >>> 0;
@@ -424,7 +424,7 @@ export function ReadProbeSampleFlat(view, numBits, value) {
   if (v > 36000) { // headroom above the quantum count is refused
     return false;
   }
-  value.orientation = Math.fround(Math.fround(Math.fround(Math.fround(v) / 36000.0) * 360.0) + -180.0);
+  value.orientation = globalThis.Math.fround(globalThis.Math.fround(globalThis.Math.fround(globalThis.Math.fround(v) / 36000.0) * 360.0) + -180.0);
   out = (view.getUint32(2, true) >>> 1) | (view.getUint32(6, true) << 31);
   v = out >>> 0;
   value.rawDelta = v | 0;
@@ -435,7 +435,7 @@ export function ReadProbeSampleFlat(view, numBits, value) {
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
-  value.bigDelta = BigInt.asIntN(64, bg);
+  value.bigDelta = globalThis.BigInt.asIntN(64, bg);
   br = 113;
   if (value.active) {
     if (br + 5 > numBits) {
@@ -534,7 +534,7 @@ export function ReadProbeSampleFlatBits(view, numBits, value) {
   if (v > 36000) { // headroom above the quantum count is refused
     return false;
   }
-  value.orientation = Math.fround(Math.fround(Math.fround(Math.fround(v) / 36000.0) * 360.0) + -180.0);
+  value.orientation = globalThis.Math.fround(globalThis.Math.fround(globalThis.Math.fround(globalThis.Math.fround(v) / 36000.0) * 360.0) + -180.0);
   out = (view.getUint32(2, true) >>> 1) | (view.getUint32(6, true) << 31);
   v = out >>> 0;
   value.rawDelta = v | 0;
@@ -545,7 +545,7 @@ export function ReadProbeSampleFlatBits(view, numBits, value) {
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
-  value.bigDelta = BigInt.asIntN(64, bg);
+  value.bigDelta = globalThis.BigInt.asIntN(64, bg);
   br = 113;
   if (value.active) {
     if (br + 5 > numBits) {
@@ -627,7 +627,7 @@ export function ReadProbeSampleFlatBits(view, numBits, value) {
 // must hold ProbeRingMaxBytes.
 export function WriteProbeRingFlat(view, value) {
   let lo = 0;
-  if (!Number.isInteger(value.radius) || value.radius < 0 || value.radius > 65535) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.radius) || value.radius < 0 || value.radius > 65535) { // a bare integer must fit its width
     return -1;
   }
   lo = (((value.radius) & 0xffff));
@@ -673,10 +673,10 @@ export function ReadProbeRingFlatBits(view, numBits, value) {
 // must hold ProbeSlabMaxBytes.
 export function WriteProbeSlabFlat(view, value) {
   let lo = 0;
-  if (!Number.isInteger(value.width) || value.width < 0 || value.width > 100) {
+  if (!globalThis.Number.isInteger(value.width) || value.width < 0 || value.width > 100) {
     return -1;
   }
-  if (!Number.isInteger(value.height) || value.height < 0 || value.height > 255) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.height) || value.height < 0 || value.height > 255) { // a bare integer must fit its width
     return -1;
   }
   lo = (((value.width) & 0x7f) | (((value.height) & 0xff) << 7));
@@ -735,14 +735,14 @@ export function ReadProbeSlabFlatBits(view, numBits, value) {
 // must hold ProbeShapeMaxBytes.
 export function WriteProbeShapeFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.type) || value.type < 0 || value.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
+  if (!globalThis.Number.isInteger(value.type) || value.type < 0 || value.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
     return -1;
   }
   lo = ((value.type & 0x3));
   sb = 2;
   switch (value.type) {
     case 1: {
-      if (!Number.isInteger(value.ring.radius) || value.ring.radius < 0 || value.ring.radius > 65535) { // a bare integer must fit its width
+      if (!globalThis.Number.isInteger(value.ring.radius) || value.ring.radius < 0 || value.ring.radius > 65535) { // a bare integer must fit its width
         return -1;
       }
       v = (((value.ring.radius) & 0xffff)) >>> 0;
@@ -757,10 +757,10 @@ export function WriteProbeShapeFlat(view, value) {
       break;
     }
     case 2: {
-      if (!Number.isInteger(value.slab.width) || value.slab.width < 0 || value.slab.width > 100) {
+      if (!globalThis.Number.isInteger(value.slab.width) || value.slab.width < 0 || value.slab.width > 100) {
         return -1;
       }
-      if (!Number.isInteger(value.slab.height) || value.slab.height < 0 || value.slab.height > 255) { // a bare integer must fit its width
+      if (!globalThis.Number.isInteger(value.slab.height) || value.slab.height < 0 || value.slab.height > 255) { // a bare integer must fit its width
         return -1;
       }
       v = (((value.slab.width) & 0x7f) | (((value.slab.height) & 0xff) << 7)) >>> 0;
@@ -907,17 +907,17 @@ export function ReadProbeShapeFlatBits(view, numBits, value) {
 // must hold ProbeColliderMaxBytes.
 export function WriteProbeColliderFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.armor) || value.armor < 0 || value.armor > 255) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.armor) || value.armor < 0 || value.armor > 255) { // a bare integer must fit its width
     return -1;
   }
-  if (!Number.isInteger(value.shape.type) || value.shape.type < 0 || value.shape.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
+  if (!globalThis.Number.isInteger(value.shape.type) || value.shape.type < 0 || value.shape.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
     return -1;
   }
   lo = (((value.armor) & 0xff) | ((value.shape.type & 0x3) << 8));
   sb = 10;
   switch (value.shape.type) {
     case 1: {
-      if (!Number.isInteger(value.shape.ring.radius) || value.shape.ring.radius < 0 || value.shape.ring.radius > 65535) { // a bare integer must fit its width
+      if (!globalThis.Number.isInteger(value.shape.ring.radius) || value.shape.ring.radius < 0 || value.shape.ring.radius > 65535) { // a bare integer must fit its width
         return -1;
       }
       v = (((value.shape.ring.radius) & 0xffff)) >>> 0;
@@ -932,10 +932,10 @@ export function WriteProbeColliderFlat(view, value) {
       break;
     }
     case 2: {
-      if (!Number.isInteger(value.shape.slab.width) || value.shape.slab.width < 0 || value.shape.slab.width > 100) {
+      if (!globalThis.Number.isInteger(value.shape.slab.width) || value.shape.slab.width < 0 || value.shape.slab.width > 100) {
         return -1;
       }
-      if (!Number.isInteger(value.shape.slab.height) || value.shape.slab.height < 0 || value.shape.slab.height > 255) { // a bare integer must fit its width
+      if (!globalThis.Number.isInteger(value.shape.slab.height) || value.shape.slab.height < 0 || value.shape.slab.height > 255) { // a bare integer must fit its width
         return -1;
       }
       v = (((value.shape.slab.width) & 0x7f) | (((value.shape.slab.height) & 0xff) << 7)) >>> 0;
@@ -950,7 +950,7 @@ export function WriteProbeColliderFlat(view, value) {
       break;
     }
   }
-  if (!Number.isInteger(value.backup.type) || value.backup.type < 0 || value.backup.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
+  if (!globalThis.Number.isInteger(value.backup.type) || value.backup.type < 0 || value.backup.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
     return -1;
   }
   v = ((value.backup.type & 0x3)) >>> 0;
@@ -964,7 +964,7 @@ export function WriteProbeColliderFlat(view, value) {
   }
   switch (value.backup.type) {
     case 1: {
-      if (!Number.isInteger(value.backup.ring.radius) || value.backup.ring.radius < 0 || value.backup.ring.radius > 65535) { // a bare integer must fit its width
+      if (!globalThis.Number.isInteger(value.backup.ring.radius) || value.backup.ring.radius < 0 || value.backup.ring.radius > 65535) { // a bare integer must fit its width
         return -1;
       }
       v = (((value.backup.ring.radius) & 0xffff)) >>> 0;
@@ -979,10 +979,10 @@ export function WriteProbeColliderFlat(view, value) {
       break;
     }
     case 2: {
-      if (!Number.isInteger(value.backup.slab.width) || value.backup.slab.width < 0 || value.backup.slab.width > 100) {
+      if (!globalThis.Number.isInteger(value.backup.slab.width) || value.backup.slab.width < 0 || value.backup.slab.width > 100) {
         return -1;
       }
-      if (!Number.isInteger(value.backup.slab.height) || value.backup.slab.height < 0 || value.backup.slab.height > 255) { // a bare integer must fit its width
+      if (!globalThis.Number.isInteger(value.backup.slab.height) || value.backup.slab.height < 0 || value.backup.slab.height > 255) { // a bare integer must fit its width
         return -1;
       }
       v = (((value.backup.slab.width) & 0x7f) | (((value.backup.slab.height) & 0xff) << 7)) >>> 0;
@@ -997,7 +997,7 @@ export function WriteProbeColliderFlat(view, value) {
       break;
     }
   }
-  if (!Number.isInteger(value.extrasCount) || value.extrasCount < 0 || value.extrasCount > 2) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+  if (!globalThis.Number.isInteger(value.extrasCount) || value.extrasCount < 0 || value.extrasCount > 2) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
   v = (((value.extrasCount) & 0x3)) >>> 0;
@@ -1011,7 +1011,7 @@ export function WriteProbeColliderFlat(view, value) {
   }
   for (let i0 = 0; i0 < value.extrasCount; i0++) {
     const e0 = value.extras[i0];
-    if (!Number.isInteger(e0.type) || e0.type < 0 || e0.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
+    if (!globalThis.Number.isInteger(e0.type) || e0.type < 0 || e0.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
       return -1;
     }
     v = ((e0.type & 0x3)) >>> 0;
@@ -1025,7 +1025,7 @@ export function WriteProbeColliderFlat(view, value) {
     }
     switch (e0.type) {
       case 1: {
-        if (!Number.isInteger(e0.ring.radius) || e0.ring.radius < 0 || e0.ring.radius > 65535) { // a bare integer must fit its width
+        if (!globalThis.Number.isInteger(e0.ring.radius) || e0.ring.radius < 0 || e0.ring.radius > 65535) { // a bare integer must fit its width
           return -1;
         }
         v = (((e0.ring.radius) & 0xffff)) >>> 0;
@@ -1040,10 +1040,10 @@ export function WriteProbeColliderFlat(view, value) {
         break;
       }
       case 2: {
-        if (!Number.isInteger(e0.slab.width) || e0.slab.width < 0 || e0.slab.width > 100) {
+        if (!globalThis.Number.isInteger(e0.slab.width) || e0.slab.width < 0 || e0.slab.width > 100) {
           return -1;
         }
-        if (!Number.isInteger(e0.slab.height) || e0.slab.height < 0 || e0.slab.height > 255) { // a bare integer must fit its width
+        if (!globalThis.Number.isInteger(e0.slab.height) || e0.slab.height < 0 || e0.slab.height > 255) { // a bare integer must fit its width
           return -1;
         }
         v = (((e0.slab.width) & 0x7f) | (((e0.slab.height) & 0xff) << 7)) >>> 0;
@@ -1445,10 +1445,10 @@ export function ReadProbeColliderFlatBits(view, numBits, value) {
 // must hold ProbeConfigMaxBytes.
 export function WriteProbeConfigFlat(view, value) {
   let lo = 0;
-  if (!Number.isInteger(value.retries) || value.retries < -2147483648 || value.retries > 2147483647) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.retries) || value.retries < -2147483648 || value.retries > 2147483647) { // a bare integer must fit its width
     return -1;
   }
-  if (!Number.isInteger(value.preferred) || value.preferred < 0 || value.preferred > 15) { // headroom above the wire range cannot ride
+  if (!globalThis.Number.isInteger(value.preferred) || value.preferred < 0 || value.preferred > 15) { // headroom above the wire range cannot ride
     return -1;
   }
   view.setUint32(0, (((value.retries >>> 0) >>> 0)), true);
@@ -1515,16 +1515,16 @@ export function WriteProbeArrayFlat(view, value) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (1 - sb);
     }
-    x = Math.fround(e0.orientation);
-    if (!Number.isFinite(x)) {
+    x = globalThis.Math.fround(e0.orientation);
+    if (!globalThis.Number.isFinite(x)) {
       return -1;
     }
     if (x < -180.0 || x > 180.0) {
       return -1;
     }
-    n = Math.fround(Math.fround(x - -180.0) / 360.0);
+    n = globalThis.Math.fround(globalThis.Math.fround(x - -180.0) / 360.0);
     if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
-    v = Math.floor(Math.fround(Math.fround(n * 36000.0) + 0.5));
+    v = globalThis.Math.floor(globalThis.Math.fround(globalThis.Math.fround(n * 36000.0) + 0.5));
     if (v > 36000) { v = 36000; }
     lo = (lo | (v << sb)) >>> 0;
     sb += 16;
@@ -1534,7 +1534,7 @@ export function WriteProbeArrayFlat(view, value) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (16 - sb);
     }
-    if (!Number.isInteger(e0.rawDelta) || e0.rawDelta < -2147483648 || e0.rawDelta > 2147483647) { // a bare integer must fit its width
+    if (!globalThis.Number.isInteger(e0.rawDelta) || e0.rawDelta < -2147483648 || e0.rawDelta > 2147483647) { // a bare integer must fit its width
       return -1;
     }
     if (typeof e0.bigDelta !== "bigint" || e0.bigDelta < -9223372036854775808n || e0.bigDelta > 9223372036854775807n) { // a bare integer must fit its width
@@ -1569,7 +1569,7 @@ export function WriteProbeArrayFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
     if (e0.active) {
-      if (!Number.isInteger(e0.weapon) || e0.weapon < 0 || e0.weapon > 15) { // headroom above the wire range cannot ride
+      if (!globalThis.Number.isInteger(e0.weapon) || e0.weapon < 0 || e0.weapon > 15) { // headroom above the wire range cannot ride
         return -1;
       }
       v = ((e0.weapon & 0xf) | ((e0.hasTarget ? 1 : 0) << 4)) >>> 0;
@@ -1582,7 +1582,7 @@ export function WriteProbeArrayFlat(view, value) {
         lo = sb === 0 ? 0 : v >>> (5 - sb);
       }
       if (e0.hasTarget) {
-        if (!Number.isInteger(e0.targetId) || e0.targetId < 0 || e0.targetId > 65535) { // a bare integer must fit its width
+        if (!globalThis.Number.isInteger(e0.targetId) || e0.targetId < 0 || e0.targetId > 65535) { // a bare integer must fit its width
           return -1;
         }
         v = (((e0.targetId) & 0xffff)) >>> 0;
@@ -1596,7 +1596,7 @@ export function WriteProbeArrayFlat(view, value) {
         }
       }
     } else {
-      if (!Number.isInteger(e0.idleTicks) || e0.idleTicks < 0 || e0.idleTicks > 4294967295) { // a bare integer must fit its width
+      if (!globalThis.Number.isInteger(e0.idleTicks) || e0.idleTicks < 0 || e0.idleTicks > 4294967295) { // a bare integer must fit its width
         return -1;
       }
       v = (((e0.idleTicks) >>> 0)) >>> 0;
@@ -1609,7 +1609,7 @@ export function WriteProbeArrayFlat(view, value) {
         lo = sb === 0 ? 0 : v >>> (32 - sb);
       }
     }
-    if (!Number.isInteger(e0.samplesCount) || e0.samplesCount < 1 || e0.samplesCount > 8) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+    if (!globalThis.Number.isInteger(e0.samplesCount) || e0.samplesCount < 1 || e0.samplesCount > 8) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
       return -1;
     }
     v = (((((e0.samplesCount >>> 0) - 1) >>> 0) & 0x7)) >>> 0;
@@ -1622,7 +1622,7 @@ export function WriteProbeArrayFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (3 - sb);
     }
     for (let i1 = 0; i1 < e0.samplesCount; i1++) {
-      if (!Number.isInteger(e0.samples[i1]) || e0.samples[i1] < 0 || e0.samples[i1] > 65535) { // a bare integer must fit its width
+      if (!globalThis.Number.isInteger(e0.samples[i1]) || e0.samples[i1] < 0 || e0.samples[i1] > 65535) { // a bare integer must fit its width
         return -1;
       }
       v = (((e0.samples[i1]) & 0xffff)) >>> 0;
@@ -1636,10 +1636,10 @@ export function WriteProbeArrayFlat(view, value) {
       }
     }
   }
-  if (!Number.isInteger(value.config.retries) || value.config.retries < -2147483648 || value.config.retries > 2147483647) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.config.retries) || value.config.retries < -2147483648 || value.config.retries > 2147483647) { // a bare integer must fit its width
     return -1;
   }
-  if (!Number.isInteger(value.config.preferred) || value.config.preferred < 0 || value.config.preferred > 15) { // headroom above the wire range cannot ride
+  if (!globalThis.Number.isInteger(value.config.preferred) || value.config.preferred < 0 || value.config.preferred > 15) { // headroom above the wire range cannot ride
     return -1;
   }
   v = (((value.config.retries >>> 0) >>> 0)) >>> 0;
@@ -1687,7 +1687,7 @@ export function ReadProbeArrayFlat(view, numBits, value) {
     if (v > 36000) { // headroom above the quantum count is refused
       return false;
     }
-    e0.orientation = Math.fround(Math.fround(Math.fround(Math.fround(v) / 36000.0) * 360.0) + -180.0);
+    e0.orientation = globalThis.Math.fround(globalThis.Math.fround(globalThis.Math.fround(globalThis.Math.fround(v) / 36000.0) * 360.0) + -180.0);
     br += 17;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
@@ -1713,7 +1713,7 @@ export function ReadProbeArrayFlat(view, numBits, value) {
     v = out >>> 0;
     SC.setUint32(4, v, true);
     bg = SC.getBigUint64(0, true);
-    e0.bigDelta = BigInt.asIntN(64, bg);
+    e0.bigDelta = globalThis.BigInt.asIntN(64, bg);
     br += 32;
     if (e0.active) {
       if (br + 5 > numBits) {
@@ -1838,7 +1838,7 @@ export function ReadProbeArrayFlatBits(view, numBits, value) {
     if (v > 36000) { // headroom above the quantum count is refused
       return false;
     }
-    e0.orientation = Math.fround(Math.fround(Math.fround(Math.fround(v) / 36000.0) * 360.0) + -180.0);
+    e0.orientation = globalThis.Math.fround(globalThis.Math.fround(globalThis.Math.fround(globalThis.Math.fround(v) / 36000.0) * 360.0) + -180.0);
     br += 17;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
@@ -1864,7 +1864,7 @@ export function ReadProbeArrayFlatBits(view, numBits, value) {
     v = out >>> 0;
     SC.setUint32(4, v, true);
     bg = SC.getBigUint64(0, true);
-    e0.bigDelta = BigInt.asIntN(64, bg);
+    e0.bigDelta = globalThis.BigInt.asIntN(64, bg);
     br += 32;
     if (e0.active) {
       if (br + 5 > numBits) {
@@ -1991,17 +1991,17 @@ export function ReadHeartbeatFlatBits() {
 // must hold TestMaxBytes.
 export function WriteTestFlat(view, value) {
   let v = 0, lo = 0;
-  if (!Number.isInteger(value.testA) || value.testA < 0 || value.testA > 65535) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.testA) || value.testA < 0 || value.testA > 65535) { // a bare integer must fit its width
     return -1;
   }
-  if (!Number.isInteger(value.testB) || value.testB < 0 || value.testB > 1000) {
+  if (!globalThis.Number.isInteger(value.testB) || value.testB < 0 || value.testB > 1000) {
     return -1;
   }
-  if (!Number.isInteger(value.testC) || value.testC < 0 || value.testC > 1000) {
+  if (!globalThis.Number.isInteger(value.testC) || value.testC < 0 || value.testC > 1000) {
     return -1;
   }
   lo = (((value.testA) & 0xffff) | (((value.testB) & 0x3ff) << 16));
-  if (!Number.isInteger(value.testD) || value.testD < 0 || value.testD > 1000) {
+  if (!globalThis.Number.isInteger(value.testD) || value.testD < 0 || value.testD > 1000) {
     return -1;
   }
   v = (((value.testC) & 0x3ff) | (((value.testD) & 0x3ff) << 10)) >>> 0;
@@ -2084,7 +2084,7 @@ export function ReadTestFlatBits(view, numBits, value) {
 // must hold BlockMaxBytes.
 export function WriteBlockFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.dataLength) || value.dataLength < 0 || value.dataLength > 2000) { // the length guards the slice; out-of-contract writes are refused
+  if (!globalThis.Number.isInteger(value.dataLength) || value.dataLength < 0 || value.dataLength > 2000) { // the length guards the slice; out-of-contract writes are refused
     return -1;
   }
   lo = (((value.dataLength) & 0x7ff));
@@ -2214,7 +2214,7 @@ export function ReadBlockFlatBits(view, numBits, value) {
 // must hold ChatMaxBytes.
 export function WriteChatFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.textLength) || value.textLength < 0 || value.textLength > 256) { // the length guards the slice; out-of-contract writes are refused
+  if (!globalThis.Number.isInteger(value.textLength) || value.textLength < 0 || value.textLength > 256) { // the length guards the slice; out-of-contract writes are refused
     return -1;
   }
   if (!validText(value.text, value.textLength)) {
@@ -2353,7 +2353,7 @@ export function ReadChatFlatBits(view, numBits, value) {
 // must hold ProbeReportMaxBytes.
 export function WriteProbeReportFlat(view, value) {
   let v = 0, lo = 0;
-  if (!Number.isInteger(value.header.version) || value.header.version < 0 || value.header.version > 7) {
+  if (!globalThis.Number.isInteger(value.header.version) || value.header.version < 0 || value.header.version > 7) {
     return -1;
   }
   lo = (171 | ((value.header.version & 0x7) << 8) | (0 << 11));
@@ -2367,25 +2367,25 @@ export function WriteProbeReportFlat(view, value) {
   v = SC.getUint32(4, true);
   view.setUint32(4, (lo | (v << 16)) >>> 0, true);
   lo = v >>> 16;
-  if (BigInt.asUintN(64, value.flags) >= 256n) { // a mask bit above the wire width cannot ride
+  if (globalThis.BigInt.asUintN(64, value.flags) >= 256n) { // a mask bit above the wire width cannot ride
     return -1;
   }
   SC.setBigUint64(0, value.flags, true);
   v = SC.getUint32(0, true) & 0xff;
   lo = (lo | (v << 16)) >>> 0;
-  if (!Number.isInteger(value.echo.testA) || value.echo.testA < 0 || value.echo.testA > 65535) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.echo.testA) || value.echo.testA < 0 || value.echo.testA > 65535) { // a bare integer must fit its width
     return -1;
   }
-  if (!Number.isInteger(value.echo.testB) || value.echo.testB < 0 || value.echo.testB > 1000) {
+  if (!globalThis.Number.isInteger(value.echo.testB) || value.echo.testB < 0 || value.echo.testB > 1000) {
     return -1;
   }
-  if (!Number.isInteger(value.echo.testC) || value.echo.testC < 0 || value.echo.testC > 1000) {
+  if (!globalThis.Number.isInteger(value.echo.testC) || value.echo.testC < 0 || value.echo.testC > 1000) {
     return -1;
   }
   v = (((value.echo.testA) & 0xffff) | (((value.echo.testB) & 0x3ff) << 16)) >>> 0;
   view.setUint32(8, (lo | (v << 24)) >>> 0, true);
   lo = v >>> 8;
-  if (!Number.isInteger(value.echo.testD) || value.echo.testD < 0 || value.echo.testD > 1000) {
+  if (!globalThis.Number.isInteger(value.echo.testD) || value.echo.testD < 0 || value.echo.testD > 1000) {
     return -1;
   }
   v = (((value.echo.testC) & 0x3ff) | (((value.echo.testD) & 0x3ff) << 10)) >>> 0;
@@ -2430,7 +2430,7 @@ export function ReadProbeReportFlat(view, numBits, value) {
   }
   out = view.getUint32(10, true);
   v = (out & 0xff) >>> 0;
-  value.flags = BigInt(v);
+  value.flags = globalThis.BigInt(v);
   v = (out >>> 8) & 0xffff;
   value.echo.testA = v;
   out = view.getUint32(13, true);
@@ -2495,7 +2495,7 @@ export function ReadProbeReportFlatBits(view, numBits, value) {
   }
   out = view.getUint32(10, true);
   v = (out & 0xff) >>> 0;
-  value.flags = BigInt(v);
+  value.flags = globalThis.BigInt(v);
   v = (out >>> 8) & 0xffff;
   value.echo.testA = v;
   out = view.getUint32(13, true);
@@ -2524,33 +2524,33 @@ export function ReadProbeReportFlatBits(view, numBits, value) {
 // must hold TestDataMaxBytes.
 export function WriteTestDataFlat(view, value) {
   let v = 0, x = 0, n = 0, lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.a) || value.a < -100 || value.a > 100) {
+  if (!globalThis.Number.isInteger(value.a) || value.a < -100 || value.a > 100) {
     return -1;
   }
-  if (!Number.isInteger(value.b) || value.b < -100 || value.b > 100) {
+  if (!globalThis.Number.isInteger(value.b) || value.b < -100 || value.b > 100) {
     return -1;
   }
-  if (!Number.isInteger(value.c) || value.c < -100 || value.c > 150) {
+  if (!globalThis.Number.isInteger(value.c) || value.c < -100 || value.c > 150) {
     return -1;
   }
-  if (!Number.isInteger(value.d) || value.d < 0 || value.d > 255) {
+  if (!globalThis.Number.isInteger(value.d) || value.d < 0 || value.d > 255) {
     return -1;
   }
-  if (!Number.isInteger(value.e) || value.e < 0 || value.e > 255) {
+  if (!globalThis.Number.isInteger(value.e) || value.e < 0 || value.e > 255) {
     return -1;
   }
   view.setUint32(0, (((((value.a >>> 0) - 4294967196) >>> 0) & 0xff) | (((((value.b >>> 0) - 4294967196) >>> 0) & 0xff) << 8) | (((((value.c >>> 0) - 4294967196) >>> 0) & 0xff) << 16) | ((value.d & 0xff) << 24)), true);
-  if (!Number.isInteger(value.f) || value.f < 0 || value.f > 255) {
+  if (!globalThis.Number.isInteger(value.f) || value.f < 0 || value.f > 255) {
     return -1;
   }
-  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 16) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+  if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 16) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
   lo = ((value.e & 0xff) | ((value.f & 0xff) << 8) | ((value.g ? 1 : 0) << 16) | (((value.itemsCount) & 0x1f) << 17));
   wi = 4;
   sb = 22;
   for (let i0 = 0; i0 < value.itemsCount; i0++) {
-    if (!Number.isInteger(value.items[i0]) || value.items[i0] < 0 || value.items[i0] > 255) {
+    if (!globalThis.Number.isInteger(value.items[i0]) || value.items[i0] < 0 || value.items[i0] > 255) {
       return -1;
     }
     v = (((value.items[i0]) & 0xff)) >>> 0;
@@ -2564,7 +2564,7 @@ export function WriteTestDataFlat(view, value) {
     }
   }
   x = value.floatValue;
-  if (!Number.isFinite(Math.fround(x))) { // a bare float must be finite
+  if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
     return -1;
   }
   SC.setFloat32(0, x, true);
@@ -2577,16 +2577,16 @@ export function WriteTestDataFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  x = Math.fround(value.compressedFloatValue);
-  if (!Number.isFinite(x)) {
+  x = globalThis.Math.fround(value.compressedFloatValue);
+  if (!globalThis.Number.isFinite(x)) {
     return -1;
   }
   if (x < 0.0 || x > 10.0) {
     return -1;
   }
-  n = Math.fround(Math.fround(x - 0.0) / 10.0);
+  n = globalThis.Math.fround(globalThis.Math.fround(x - 0.0) / 10.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
-  v = Math.floor(Math.fround(Math.fround(n * 1000.0) + 0.5));
+  v = globalThis.Math.floor(globalThis.Math.fround(globalThis.Math.fround(n * 1000.0) + 0.5));
   if (v > 1000) { v = 1000; }
   lo = (lo | (v << sb)) >>> 0;
   sb += 10;
@@ -2596,7 +2596,7 @@ export function WriteTestDataFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (10 - sb);
   }
-  if (!Number.isFinite(value.doubleValue)) { // a bare float must be finite
+  if (!globalThis.Number.isFinite(value.doubleValue)) { // a bare float must be finite
     return -1;
   }
   SC.setFloat64(0, value.doubleValue, true);
@@ -2618,16 +2618,16 @@ export function WriteTestDataFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  if (!Number.isInteger(value.int8Value) || value.int8Value < -128 || value.int8Value > 127) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.int8Value) || value.int8Value < -128 || value.int8Value > 127) { // a bare integer must fit its width
     return -1;
   }
-  if (!Number.isInteger(value.int16Value) || value.int16Value < -32768 || value.int16Value > 32767) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.int16Value) || value.int16Value < -32768 || value.int16Value > 32767) { // a bare integer must fit its width
     return -1;
   }
-  if (!Number.isInteger(value.uint8Value) || value.uint8Value < 0 || value.uint8Value > 255) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.uint8Value) || value.uint8Value < 0 || value.uint8Value > 255) { // a bare integer must fit its width
     return -1;
   }
-  if (!Number.isInteger(value.uint16Value) || value.uint16Value < 0 || value.uint16Value > 65535) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.uint16Value) || value.uint16Value < 0 || value.uint16Value > 65535) { // a bare integer must fit its width
     return -1;
   }
   v = (((value.int8Value & 0xff) & 0xff) | (((value.int16Value & 0xffff) & 0xffff) << 8) | (((value.uint8Value) & 0xff) << 24)) >>> 0;
@@ -2639,7 +2639,7 @@ export function WriteTestDataFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  if (!Number.isInteger(value.uint32Value) || value.uint32Value < 0 || value.uint32Value > 4294967295) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.uint32Value) || value.uint32Value < 0 || value.uint32Value > 4294967295) { // a bare integer must fit its width
     return -1;
   }
   v = (((value.uint16Value) & 0xffff)) >>> 0;
@@ -2734,7 +2734,7 @@ export function WriteTestDataFlat(view, value) {
     sb = 0;
   }
   for (let i0 = 0; i0 < 17; i0++) {
-    if (!Number.isInteger(value.fixedBytes[i0]) || value.fixedBytes[i0] < 0 || value.fixedBytes[i0] > 255) { // a bare integer must fit its width
+    if (!globalThis.Number.isInteger(value.fixedBytes[i0]) || value.fixedBytes[i0] < 0 || value.fixedBytes[i0] > 255) { // a bare integer must fit its width
       return -1;
     }
     v = (((value.fixedBytes[i0]) & 0xff)) >>> 0;
@@ -2747,7 +2747,7 @@ export function WriteTestDataFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (8 - sb);
     }
   }
-  if (!Number.isInteger(value.textLength) || value.textLength < 0 || value.textLength > 255) { // the length guards the slice; out-of-contract writes are refused
+  if (!globalThis.Number.isInteger(value.textLength) || value.textLength < 0 || value.textLength > 255) { // the length guards the slice; out-of-contract writes are refused
     return -1;
   }
   if (!validText(value.text, value.textLength)) {
@@ -2870,7 +2870,7 @@ export function ReadTestDataFlat(view, numBits, value) {
   }
   br += 32;
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
-    SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
+    SC.setBigUint64(0, (globalThis.BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (globalThis.BigInt(v & 0x7fffff) << 29n), true);
     value.floatValue = SC.getFloat64(0, true);
   } else {
     SC.setUint32(0, v, true);
@@ -2885,7 +2885,7 @@ export function ReadTestDataFlat(view, numBits, value) {
   if (v > 1000) { // headroom above the quantum count is refused
     return false;
   }
-  value.compressedFloatValue = Math.fround(Math.fround(Math.fround(Math.fround(v) / 1000.0) * 10.0) + 0.0);
+  value.compressedFloatValue = globalThis.Math.fround(globalThis.Math.fround(globalThis.Math.fround(globalThis.Math.fround(v) / 1000.0) * 10.0) + 0.0);
   br += 10;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -2969,7 +2969,7 @@ export function ReadTestDataFlat(view, numBits, value) {
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
-  value.int64Full = BigInt.asIntN(64, bg);
+  value.int64Full = globalThis.BigInt.asIntN(64, bg);
   br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -3129,7 +3129,7 @@ export function ReadTestDataFlatBits(view, numBits, value) {
   }
   br += 32;
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
-    SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
+    SC.setBigUint64(0, (globalThis.BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (globalThis.BigInt(v & 0x7fffff) << 29n), true);
     value.floatValue = SC.getFloat64(0, true);
   } else {
     SC.setUint32(0, v, true);
@@ -3144,7 +3144,7 @@ export function ReadTestDataFlatBits(view, numBits, value) {
   if (v > 1000) { // headroom above the quantum count is refused
     return false;
   }
-  value.compressedFloatValue = Math.fround(Math.fround(Math.fround(Math.fround(v) / 1000.0) * 10.0) + 0.0);
+  value.compressedFloatValue = globalThis.Math.fround(globalThis.Math.fround(globalThis.Math.fround(globalThis.Math.fround(v) / 1000.0) * 10.0) + 0.0);
   br += 10;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -3228,7 +3228,7 @@ export function ReadTestDataFlatBits(view, numBits, value) {
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
-  value.int64Full = BigInt.asIntN(64, bg);
+  value.int64Full = globalThis.BigInt.asIntN(64, bg);
   br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -3316,28 +3316,28 @@ export function ReadTestDataFlatBits(view, numBits, value) {
 // must hold CompressedProbeMaxBytes.
 export function WriteCompressedProbeFlat(view, value) {
   let v = 0, x = 0, n = 0, lo = 0;
-  x = Math.fround(value.boundary);
-  if (!Number.isFinite(x)) {
+  x = globalThis.Math.fround(value.boundary);
+  if (!globalThis.Number.isFinite(x)) {
     return -1;
   }
   if (x < 0.0 || x > 10.0) {
     return -1;
   }
-  n = Math.fround(Math.fround(x - 0.0) / 10.0);
+  n = globalThis.Math.fround(globalThis.Math.fround(x - 0.0) / 10.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
-  v = Math.floor(Math.fround(Math.fround(n * 1000.0) + 0.5));
+  v = globalThis.Math.floor(globalThis.Math.fround(globalThis.Math.fround(n * 1000.0) + 0.5));
   if (v > 1000) { v = 1000; }
   lo = v;
-  x = Math.fround(value.offset);
-  if (!Number.isFinite(x)) {
+  x = globalThis.Math.fround(value.offset);
+  if (!globalThis.Number.isFinite(x)) {
     return -1;
   }
   if (x < -5.0 || x > 5.0) {
     return -1;
   }
-  n = Math.fround(Math.fround(x - -5.0) / 10.0);
+  n = globalThis.Math.fround(globalThis.Math.fround(x - -5.0) / 10.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
-  v = Math.floor(Math.fround(Math.fround(n * 10000.0) + 0.5));
+  v = globalThis.Math.floor(globalThis.Math.fround(globalThis.Math.fround(n * 10000.0) + 0.5));
   if (v > 10000) { v = 10000; }
   lo = (lo | (v << 10)) >>> 0;
   view.setUint32(0, lo, true);
@@ -3356,12 +3356,12 @@ export function ReadCompressedProbeFlat(view, numBits, value) {
   if (v > 1000) { // headroom above the quantum count is refused
     return false;
   }
-  value.boundary = Math.fround(Math.fround(Math.fround(Math.fround(v) / 1000.0) * 10.0) + 0.0);
+  value.boundary = globalThis.Math.fround(globalThis.Math.fround(globalThis.Math.fround(globalThis.Math.fround(v) / 1000.0) * 10.0) + 0.0);
   v = (out >>> 10) & 0x3fff;
   if (v > 10000) { // headroom above the quantum count is refused
     return false;
   }
-  value.offset = Math.fround(Math.fround(Math.fround(Math.fround(v) / 10000.0) * 10.0) + -5.0);
+  value.offset = globalThis.Math.fround(globalThis.Math.fround(globalThis.Math.fround(globalThis.Math.fround(v) / 10000.0) * 10.0) + -5.0);
   if (((24 + 7) >> 3) !== ((numBits + 7) >> 3)) { // trailing bytes
     return false;
   }
@@ -3382,12 +3382,12 @@ export function ReadCompressedProbeFlatBits(view, numBits, value) {
   if (v > 1000) { // headroom above the quantum count is refused
     return false;
   }
-  value.boundary = Math.fround(Math.fround(Math.fround(Math.fround(v) / 1000.0) * 10.0) + 0.0);
+  value.boundary = globalThis.Math.fround(globalThis.Math.fround(globalThis.Math.fround(globalThis.Math.fround(v) / 1000.0) * 10.0) + 0.0);
   v = (out >>> 10) & 0x3fff;
   if (v > 10000) { // headroom above the quantum count is refused
     return false;
   }
-  value.offset = Math.fround(Math.fround(Math.fround(Math.fround(v) / 10000.0) * 10.0) + -5.0);
+  value.offset = globalThis.Math.fround(globalThis.Math.fround(globalThis.Math.fround(globalThis.Math.fround(v) / 10000.0) * 10.0) + -5.0);
   return 24;
 }
 

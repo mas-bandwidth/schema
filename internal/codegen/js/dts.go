@@ -99,7 +99,7 @@ func (g *dgen) header(h *strings.Builder, base string) {
 			"serializeFloat(ref: { value: number }): boolean;",
 			"serializeDouble(ref: { value: number }): boolean;",
 			"serializeCompressedFloat(ref: { value: number }, min: number, max: number, resolution: number): boolean;",
-			"serializeBytes(data: Uint8Array): boolean;",
+			"serializeBytes(data: globalThis.Uint8Array): boolean;",
 			"serializeAlign(): boolean;",
 		} {
 			fmt.Fprintf(h, "  %s\n", m)
@@ -176,7 +176,7 @@ func (g *dgen) emitConst(d *ir.Const) {
 // emitEnumObject declares a frozen variant object and, under the same name,
 // the type of its values: `Team` is both the object and the union 0 | 1 | 2.
 func (g *dgen) emitEnumObject(name string, variants []string) {
-	g.pf("export declare const %s: Readonly<{\n  None: 0;\n", name)
+	g.pf("export declare const %s: globalThis.Readonly<{\n  None: 0;\n", name)
 	for i, v := range variants {
 		g.pf("  %s: %d;\n", v, i+1)
 	}
@@ -212,13 +212,13 @@ func (g *dgen) emitMembers(f *ir.Field, ind string) {
 	name := MemberName(f.Name)
 	switch {
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
-		g.pf("%s%s: Uint8Array;\n%s%sLength: number;\n", ind, name, ind, name)
+		g.pf("%s%s: globalThis.Uint8Array;\n%s%sLength: number;\n", ind, name, ind, name)
 	case f.Array != ir.ArrayNone:
 		switch {
 		case f.Type.Kind == ir.TNamed && isClassRef(f.Type.Ref):
 			g.pf("%s%s: %s[];\n", ind, name, g.typeRef(f.Type.Name))
 		case isByteElem(f.Type):
-			g.pf("%s%s: Uint8Array;\n", ind, name)
+			g.pf("%s%s: globalThis.Uint8Array;\n", ind, name)
 		default:
 			g.pf("%s%s: %s[];\n", ind, name, g.scalarType(f.Type))
 		}
@@ -307,8 +307,8 @@ func (g *dgen) emitFlat() {
 			continue
 		}
 		g.need(g.file.Base, name)
-		g.pf("export declare function Write%sFlat(view: DataView, value: %s): number;\n", name, name)
-		g.pf("export declare function Read%sFlat(view: DataView, numBits: number, value: %s): boolean;\n", name, name)
-		g.pf("export declare function Read%sFlatBits(view: DataView, numBits: number, value: %s): number | false;\n\n", name, name)
+		g.pf("export declare function Write%sFlat(view: globalThis.DataView, value: %s): number;\n", name, name)
+		g.pf("export declare function Read%sFlat(view: globalThis.DataView, numBits: number, value: %s): boolean;\n", name, name)
+		g.pf("export declare function Read%sFlatBits(view: globalThis.DataView, numBits: number, value: %s): number | false;\n\n", name, name)
 	}
 }

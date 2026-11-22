@@ -52,7 +52,7 @@ func (ids *TableIds) Ref(id uint64) uint64 {
 	for i := ids.head[b]; i != 0; i = ids.chain[i-1] {
 		if ids.Values[i-1] == id { return uint64(i) }
 	}
-	if ids.Count == len(ids.Values) { ids.Overflow = true; return 0 }
+	if ids.Count == len(ids.Values) || ids.Count >= 4096 { ids.Overflow = true; return 0 } // 4096: SPEC-TABLES.md §3
 	i := ids.Count
 	ids.Values[i], ids.chain[i] = id, ids.head[b]
 	ids.ordinalOf[i] = -1
@@ -160,6 +160,8 @@ func (w *TableWriter) Put64(v uint64) {
 	if w.Advance(8) && !w.Measuring { binary.LittleEndian.PutUint64(w.Buffer[at:], v) }
 }
 
+// putI64 and getI8..getI64: same-width two's-complement lanes, lossless both ways.
+func (w *TableWriter) putI64(v int64) { w.Put64(uint64(v)) /* #nosec G115 -- same-width two's-complement */ }
 // Put128 writes two little-endian lanes, low first, under one Advance.
 func (w *TableWriter) Put128(lo, hi uint64) {
 	at := w.Offset
@@ -294,6 +296,10 @@ func (r *TableReader) Get8() uint8 { v := r.Buffer[r.Offset]; r.Offset++; return
 func (r *TableReader) Get16() uint16 { v := binary.LittleEndian.Uint16(r.Buffer[r.Offset:]); r.Offset += 2; return v }
 func (r *TableReader) Get32() uint32 { v := binary.LittleEndian.Uint32(r.Buffer[r.Offset:]); r.Offset += 4; return v }
 func (r *TableReader) Get64() uint64 { v := binary.LittleEndian.Uint64(r.Buffer[r.Offset:]); r.Offset += 8; return v }
+func (r *TableReader) getI8() int8 { return int8(r.Get8()) /* #nosec G115 -- same-width two's-complement */ }
+func (r *TableReader) getI16() int16 { return int16(r.Get16()) /* #nosec G115 -- same-width two's-complement */ }
+func (r *TableReader) getI32() int32 { return int32(r.Get32()) /* #nosec G115 -- same-width two's-complement */ }
+func (r *TableReader) getI64() int64 { return int64(r.Get64()) /* #nosec G115 -- same-width two's-complement */ }
 
 // lebPair reads a one-byte canonical LEB. False means EOF or a multi-byte
 // value; lebWide holds every remaining check. No rule is relaxed.

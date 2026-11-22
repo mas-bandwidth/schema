@@ -516,6 +516,10 @@ func emitTable(b *strings.Builder, u *ir.Unit, mod string, st *ir.Struct, blocks
 	if surfaces.Retain {
 		if ir.VariableTables(u)[name] {
 			b.WriteString("    def self.load_retain(data, retain, report = nil)\n")
+			// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the
+			// store is emptied before the integrity check and the file read,
+			// so a file refused at its frame hands back no earlier capture.
+			b.WriteString("      retain.reset if retain.is_a?(TableRetain)\n")
 			if st.Integrity == "crc32c" {
 				b.WriteString("      data = SchemaTable.open_crc(data)\n")
 			}
@@ -1316,7 +1320,10 @@ func floatBound(f *ir.Field, v float64) string {
 	if !compressedFloat(f) {
 		return "0.0"
 	}
-	return rbFloatLiteral(v)
+	// SPEC.md 4.6: a float32 field's range is compared at float32, so the
+	// descriptor carries the float32 ends and the runtime rounds the value to
+	// float32 before it compares (a declared 0.1 is 0.10000000149011612).
+	return rbFloatLiteral(float64(float32(v)))
 }
 
 func rbFloatLiteral(v float64) string {

@@ -4,7 +4,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -14,6 +13,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // A map count that runs past its body (wire fuzzer cause C3, the count pass)
@@ -117,10 +118,10 @@ public final class Driver {
 	sort.Strings(sources)
 	javac, java := javaTools(t)
 	args := append([]string{"--release", "17", "-d", classes}, sources...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	out, err := exec.Command(java, "-ea", "-cp", classes, "Driver", wp).CombinedOutput()
+	out, err := testproc.Command(t, java, "-ea", "-cp", classes, "Driver", wp).CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
 	}
@@ -233,10 +234,10 @@ public final class Driver {
 	sources = append(sources, dpath)
 	sort.Strings(sources)
 	javac, java := javaTools(t)
-	if out, err := exec.Command(javac, append([]string{"--release", "17", "-d", classes}, sources...)...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, append([]string{"--release", "17", "-d", classes}, sources...)...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	out, err := exec.Command(java, append([]string{"-ea", "-cp", classes, "Driver"}, args...)...).CombinedOutput()
+	out, err := testproc.Command(t, java, append([]string{"-ea", "-cp", classes, "Driver"}, args...)...).CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
 	}

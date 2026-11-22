@@ -210,22 +210,25 @@ pub fn fixed_table_save_messages(values: &[FixedTableRow], buffer: &mut [u8], re
 /// read whole. DAMAGE ANYWHERE IN THE BATCH DISCARDS THE WHOLE BATCH (§3.3, §4):
 /// the count is zero, malformed is set, and every body of the batch goes back
 /// to its declared defaults, bytes after the pad included; "M ABOVE THE
-/// CALLER'S CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME", with the count set
-/// to the wire's M; "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY
+/// CALLER'S CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME", nothing decoded and
+/// a count of 0, as every refused batch returns; "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY
 /// NAME"; and "BYTES AFTER THE PAD ARE MALFORMED".
 ///
 /// A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md §3.3):
 /// no body of it is delivered, so the count is zero, every body read so far
 /// goes back to its declared defaults, and the reason is non_finite_float.
+/// A VALUE OUTSIDE ITS DECLARED RANGE, met before any damage, refuses the
+/// batch the same way BY NAME as out_of_range (§3.3), the field in oor_field.
 pub fn fixed_table_load_messages(values: &mut [FixedTableRow], vocabulary: &TableVocabulary, data: &[u8], report: &mut TableReport) -> (usize, bool) {
     report.non_finite_float = "";
     report.non_finite_float_id = None;
+    report.oor_field = "";
     report.damaged = false;
     let Some(count) = table_message_batch_open(vocabulary, data, report) else {
         return (0, false);
     };
     if count > values.len() {
-        return (count, report.refuse(TableReason::BatchTooLarge));
+        return (0, report.refuse(TableReason::BatchTooLarge)); // a refused batch returns a count of 0 (§3.3)
     }
     let mut r = TableBitReader::new(&data[2..]);
     for i in 0..count {
@@ -238,6 +241,9 @@ pub fn fixed_table_load_messages(values: &mut [FixedTableRow], vocabulary: &Tabl
             }
             for value in values.iter_mut().take(count) {
                 *value = fixed_table_message_default();
+            }
+            if !report.oor_field.is_empty() {
+                return (0, report.refuse(TableReason::OutOfRange));
             }
             return (0, false);
         }

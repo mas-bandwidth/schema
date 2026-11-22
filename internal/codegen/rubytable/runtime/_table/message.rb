@@ -621,7 +621,7 @@ module SchemaRuntimeUnit
         val = msg_read_value(reader, field, entry.shape, vocab, own_version, keys, stats, depth,
                              in_field: true, existing: field.get(obj), same_shape: same_shape)
         raise Refused.new('out_of_range', field.name) if val.instance_of?(Integer) && !val.between?(field.lo, field.hi)
-        if val.instance_of?(Float) && field.float_range && !val.between?(field.fmin, field.fmax)
+        if val.instance_of?(Float) && field.float_range && !float_in_range?(field, val)
           raise Refused.new('out_of_range', field.name)
         end
         if same_shape && stats[2] == substituted && field.default?(val) && !field.required
@@ -657,6 +657,12 @@ module SchemaRuntimeUnit
           raise Refused.new(fd.codec == 'bytes' ? 'length_over_bound' : 'count_over_bound', fd.name)
         end
 
+        # bytes(N) and [..N]uint8 are the same kind (SPEC-TABLES 3.3): any
+        # other announced element kind is not a bytes field's
+        if fd.codec == 'bytes' && shape.element != 6
+          raise Refused.new('kind_mismatch', 'message bytes element kind is not uint8')
+        end
+
         reader.align if shape.element == 6
         raise Refused.new('wire_damaged', 'message element shape is absent') if shape.inner.nil?
         return reader.raw(count) if fd.codec == 'bytes' && shape.element == 6 && shape.inner.packing.zero?
@@ -674,9 +680,7 @@ module SchemaRuntimeUnit
           msg_read_value(reader, elem, shape.inner, vocab, own_version, keys, stats, depth + 1)
         end
         if fd.array_kind == 1 && count < fd.bound
-          (fd.bound - count).times do
-            values << (elem.codec == 'table' ? new_by_name(elem.target) : elem.default_value)
-          end
+          (fd.bound - count).times { values << born_element(fd, elem) }
         end
         return fd.codec == 'bytes' ? values.pack('C*') : values
       when 30
@@ -772,7 +776,7 @@ module SchemaRuntimeUnit
       if val.instance_of?(Integer) && fd.codec != 'bytes' && !val.between?(fd.lo, fd.hi)
         raise Refused.new('out_of_range', fd.name)
       end
-      if val.instance_of?(Float) && fd.float_range && !val.between?(fd.fmin, fd.fmax)
+      if val.instance_of?(Float) && fd.float_range && !float_in_range?(fd, val)
         raise Refused.new('out_of_range', fd.name)
       end
 

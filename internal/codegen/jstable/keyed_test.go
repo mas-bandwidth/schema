@@ -74,7 +74,12 @@ func TestKeyedArrayAccessorsJavaScript(t *testing.T) {
 		}
 		cmd := testproc.Command(t, node, script)
 		cmd.Dir = dir
-		out, _ := cmd.CombinedOutput()
+		// The driver prints KEYED OK or KEYED FAIL and exits 0 either way; a
+		// non-zero exit is a driver that never reached its verdict.
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("%s: the probe exited %v:\n%s", name, err, out)
+		}
 		return string(out)
 	}
 

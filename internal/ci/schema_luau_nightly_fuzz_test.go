@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 // TestLuauNightlyFuzzContract pins the shape of the Luau port's nightly fuzz
@@ -79,11 +81,14 @@ func TestLuauNightlyFuzzContract(t *testing.T) {
 func TestLuauNightlyFuzzSavedInputs(t *testing.T) {
 	t.Parallel()
 	dir := filepath.Join(repoRoot(t), "testdata", "luau-nightly-fuzz")
-	bins, err := filepath.Glob(filepath.Join(dir, "*.bin"))
+	bins, err := provesran.Glob(filepath.Join(dir, "*.bin"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	slug := regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)+$`)
+	if len(bins) == 0 {
+		t.Fatal("bins is empty: the loop below would check nothing")
+	}
 	for _, b := range bins {
 		meta, err := os.ReadFile(b + ".meta")
 		if err != nil {

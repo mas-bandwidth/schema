@@ -24,7 +24,11 @@ table GoalList | json = "array"
     goals []Goal
 }
 `)
-	for _, target := range c.Targets() {
+	allTargets := c.Targets()
+	if len(allTargets) == 0 {
+		t.Fatal("c.Targets() is empty: the loop below would check nothing")
+	}
+	for _, target := range allTargets {
 		_, err := c.Generate(u, target, Options{"runtime": "standalone"})
 		if target == "luau" {
 			if err != nil {

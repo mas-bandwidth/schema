@@ -89,3 +89,72 @@ func TestJavaScriptObjectModelNamesRefused(t *testing.T) {
 		t.Errorf("ordinary names were refused: %v", errs)
 	}
 }
+
+// THE BINDING SITE (SPEC §4.6, §6.1). A declaration becomes a module-scope
+// binding of its own name in the generated JavaScript and a declaration of it
+// in the .d.ts. Eight names cannot be one: an ES module refuses eval and
+// arguments as a binding, a binding named undefined takes the value the
+// generated modules compare against, and TypeScript refuses a class or type
+// named after a predefined type (unknown, never, symbol, number, bigint,
+// undefined). TypeScript predefined type names may still name a const (a
+// value only) or a flags declaration (which binds only its masks, count and
+// name functions, never its own name). A field name is a property, so every
+// spelling is kept there.
+func TestJavaScriptUnbindableNamesRefusedAsDeclarations(t *testing.T) {
+	t.Parallel()
+	compile := func(source string) []error {
+		t.Helper()
+		f, perrs := parser.Parse("Probe.schema", []byte(source))
+		if len(perrs) > 0 {
+			t.Fatalf("parse %q: %v", source, perrs[0])
+		}
+		_, cerrs := check.Unit([]check.SourceFile{{
+			Path: "Probe.schema", Name: "Probe.schema", Base: "Probe", Bytes: []byte(source), AST: f,
+		}})
+		return cerrs
+	}
+	forms := func(name string) map[string]string {
+		return map[string]string{
+			"type":  "package probe\n\ntype " + name + "\n{\n    value uint32\n}\n\ntable Entry\n{\n    part " + name + "\n}\n",
+			"table": "package probe\n\ntable " + name + "\n{\n    value uint32\n}\n",
+			"enum":  "package probe\n\nenum " + name + "\n{\n    a\n    b\n}\n",
+			"flags": "package probe\n\nflags " + name + "\n{\n    a\n    b\n}\n",
+			"union": "package probe\n\ntype P\n{\n    a int32\n}\n\nunion " + name + "\n{\n    p P\n}\n",
+			"const": "package probe\n\nconst " + name + " = 1\n",
+		}
+	}
+	// the controls: every form compiles under an ordinary name, and under
+	// two words TypeScript reads as keywords only where it expects one
+	for _, name := range []string{"Clean", "intrinsic", "declare"} {
+		for kind, source := range forms(name) {
+			if errs := compile(source); len(errs) > 0 {
+				t.Fatalf("the control %s named %s was refused: %v", kind, name, errs)
+			}
+		}
+	}
+	for _, name := range []string{"eval", "arguments", "undefined", "unknown", "never", "symbol", "number", "bigint"} {
+		for kind, source := range forms(name) {
+			errs := compile(source)
+			if (kind == "const" || kind == "flags") && name != "eval" && name != "arguments" && name != "undefined" {
+				if len(errs) != 0 {
+					t.Errorf("TypeScript permits %s %s, which binds no type of that name: %v", kind, name, errs)
+				}
+				continue
+			}
+			named := false
+			for _, err := range errs {
+				if strings.Contains(err.Error(), name) && strings.Contains(err.Error(), "JavaScript") {
+					named = true
+				}
+			}
+			if !named {
+				t.Errorf("%s %s was not refused naming the JavaScript binding; got %v", kind, name, errs)
+			}
+		}
+		// the same word as a field is a property, never a binding
+		field := "package probe\n\ntype Clean\n{\n    value uint32\n}\n\ntable Entry\n{\n    part Clean\n    " + name + " uint32\n}\n"
+		if errs := compile(field); len(errs) > 0 {
+			t.Errorf("a field named %s was refused: %v", name, errs)
+		}
+	}
+}

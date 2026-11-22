@@ -128,7 +128,11 @@ var versionRows = []versionRow{
   for i <- 4..7 do
     e = Enum.at(v.vals, i)
     check(e.x == 7 and e.y == 9, "slot #{i} past the old bound is not the ELEMENT default: #{inspect(e)}")
-  end`},
+  end
+  # F-092: the SCALAR arrays beside it, 4 exact and 4 born zero
+  check(v.ints == [-800, -801, -802, -803, 0, 0, 0, 0], "the scalar ints did not land or grow: #{inspect(v.ints)}")
+  check(Enum.to_list(v.octet) == [200, 201, 202, 203, 0, 0, 0, 0] or v.octet == <<200, 201, 202, 203, 0, 0, 0, 0>>,
+    "the scalar octets did not land or grow: #{inspect(v.octet)}")`},
 	{row: "bits_grow", widens: true},
 	{row: "bytes_grow"},
 	{row: "constant_grow"},
@@ -615,8 +619,8 @@ func fixedCorpus(t *testing.T) string {
 		// read and says so; but `make tables-elixir-versioning` builds the
 		// corpus first and sets SCHEMA_REQUIRE_CORPUS=1, so under that target a
 		// missing file means the build did not do what the target says it did.
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the reference's byte oracle is not in %s: %v", dir, err)
+		if slowtest.CorpusRequired() {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the reference's byte oracle is not in %s: %v", dir, err)
 		}
 		t.Skip("the reference's byte oracle is not built: make tables-fixedform-corpus")
 	}
@@ -655,8 +659,8 @@ func elixirBinary(t *testing.T) string {
 	if found, err := exec.LookPath("elixir"); err == nil {
 		return found
 	}
-	if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-		t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and no Elixir is on this bench: not at %s and not on PATH", bin)
+	if slowtest.CorpusRequired() {
+		t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and no Elixir is on this bench: not at %s and not on PATH", bin)
 	}
 	t.Skip("no Elixir: unpack it in dist/ or put it on PATH — see make/elixir.mk")
 	return ""
@@ -1137,8 +1141,8 @@ func TestFixedVersioningReadsTheManifest(t *testing.T) {
 	t.Parallel()
 	corpus := fixedCorpus(t)
 	if _, err := os.Stat(filepath.Join(corpus, "manifest.txt")); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and %s/manifest.txt is missing: %v", corpus, err)
+		if slowtest.CorpusRequired() {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and %s/manifest.txt is missing: %v", corpus, err)
 		}
 		t.Skip("the tree carries no corpus manifest")
 	}

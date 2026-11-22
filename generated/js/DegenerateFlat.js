@@ -8,7 +8,7 @@
 // The 8-byte conversion scratch — serialize.js's FLOAT_SCRATCH twin. Module
 // scope is safe: single threaded per realm, consumed in the same op that
 // fills it.
-const SC = new DataView(new ArrayBuffer(8));
+const SC = new globalThis.DataView(new globalThis.ArrayBuffer(8));
 
 // Read buffers must extend at least this many bytes past the payload.
 export const FlatReadSlack = 8;
@@ -19,11 +19,11 @@ export const FlatReadSlack = 8;
 // writer contract, in every build (SPEC §5.1). The buffer behind view
 // must hold Vec2MaxBytes.
 export function WriteVec2Flat(view, value) {
-  if (!Number.isFinite(value.x)) { // a bare float must be finite
+  if (!globalThis.Number.isFinite(value.x)) { // a bare float must be finite
     return -1;
   }
   view.setFloat64(0, value.x, true);
-  if (!Number.isFinite(value.y)) { // a bare float must be finite
+  if (!globalThis.Number.isFinite(value.y)) { // a bare float must be finite
     return -1;
   }
   view.setFloat64(8, value.y, true);
@@ -77,7 +77,7 @@ export function ReadVec2FlatBits(view, numBits, value) {
 export function WriteSpanF64Flat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 2; i0++) {
-    if (!Number.isFinite(value.values[i0])) { // a bare float must be finite
+    if (!globalThis.Number.isFinite(value.values[i0])) { // a bare float must be finite
       return -1;
     }
     SC.setFloat64(0, value.values[i0], true);
@@ -349,7 +349,7 @@ export function ReadSpanI64Flat(view, numBits, value) {
     v = out >>> 0;
     SC.setUint32(4, v, true);
     bg = SC.getBigUint64(0, true);
-    value.values[i0] = BigInt.asIntN(64, bg);
+    value.values[i0] = globalThis.BigInt.asIntN(64, bg);
     br += 32;
   }
   s2 = (br + 7) >> 3;
@@ -389,7 +389,7 @@ export function ReadSpanI64FlatBits(view, numBits, value) {
     v = out >>> 0;
     SC.setUint32(4, v, true);
     bg = SC.getBigUint64(0, true);
-    value.values[i0] = BigInt.asIntN(64, bg);
+    value.values[i0] = globalThis.BigInt.asIntN(64, bg);
     br += 32;
   }
   return br;
@@ -511,7 +511,7 @@ export function ReadSpanOneFlatBits(view, numBits, value) {
 export function WriteSpanChunkFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 4; i0++) {
-    if (!Number.isInteger(value.values[i0]) || value.values[i0] < 0 || value.values[i0] > 65535) { // a bare integer must fit its width
+    if (!globalThis.Number.isInteger(value.values[i0]) || value.values[i0] < 0 || value.values[i0] > 65535) { // a bare integer must fit its width
       return -1;
     }
     v = (((value.values[i0]) & 0xffff)) >>> 0;
@@ -587,7 +587,7 @@ export function ReadSpanChunkFlatBits(view, numBits, value) {
 export function WriteSpanTailFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 2; i0++) {
-    if (!Number.isFinite(value.values[i0])) { // a bare float must be finite
+    if (!globalThis.Number.isFinite(value.values[i0])) { // a bare float must be finite
       return -1;
     }
     SC.setFloat64(0, value.values[i0], true);
@@ -610,7 +610,7 @@ export function WriteSpanTailFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
   }
-  if (!Number.isInteger(value.tail) || value.tail < 0 || value.tail > 4294967295) { // a bare integer must fit its width
+  if (!globalThis.Number.isInteger(value.tail) || value.tail < 0 || value.tail > 4294967295) { // a bare integer must fit its width
     return -1;
   }
   v = (((value.tail) >>> 0)) >>> 0;
@@ -725,7 +725,7 @@ export function ReadSpanTailFlatBits(view, numBits, value) {
 export function WriteSpanTwiceFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 2; i0++) {
-    if (!Number.isFinite(value.a[i0])) { // a bare float must be finite
+    if (!globalThis.Number.isFinite(value.a[i0])) { // a bare float must be finite
       return -1;
     }
     SC.setFloat64(0, value.a[i0], true);
@@ -749,7 +749,7 @@ export function WriteSpanTwiceFlat(view, value) {
     }
   }
   for (let i0 = 0; i0 < 2; i0++) {
-    if (!Number.isFinite(value.b[i0])) { // a bare float must be finite
+    if (!globalThis.Number.isFinite(value.b[i0])) { // a bare float must be finite
       return -1;
     }
     SC.setFloat64(0, value.b[i0], true);
@@ -902,14 +902,14 @@ export function ReadSpanTwiceFlatBits(view, numBits, value) {
 // must hold TrioMaxBytes.
 export function WriteTrioFlat(view, value) {
   let v = 0, lo = 0;
-  if (!Number.isInteger(value.a) || value.a < 0 || value.a > 1048575) {
+  if (!globalThis.Number.isInteger(value.a) || value.a < 0 || value.a > 1048575) {
     return -1;
   }
-  if (!Number.isInteger(value.b) || value.b < 0 || value.b > 1048575) {
+  if (!globalThis.Number.isInteger(value.b) || value.b < 0 || value.b > 1048575) {
     return -1;
   }
   lo = ((value.a & 0xfffff));
-  if (!Number.isInteger(value.c) || value.c < 0 || value.c > 16777215) {
+  if (!globalThis.Number.isInteger(value.c) || value.c < 0 || value.c > 16777215) {
     return -1;
   }
   v = ((value.b & 0xfffff)) >>> 0;
@@ -970,14 +970,14 @@ export function ReadTrioFlatBits(view, numBits, value) {
 // must hold TrioSoleMaxBytes.
 export function WriteTrioSoleFlat(view, value) {
   let v = 0, lo = 0;
-  if (!Number.isInteger(value.inner.a) || value.inner.a < 0 || value.inner.a > 1048575) {
+  if (!globalThis.Number.isInteger(value.inner.a) || value.inner.a < 0 || value.inner.a > 1048575) {
     return -1;
   }
-  if (!Number.isInteger(value.inner.b) || value.inner.b < 0 || value.inner.b > 1048575) {
+  if (!globalThis.Number.isInteger(value.inner.b) || value.inner.b < 0 || value.inner.b > 1048575) {
     return -1;
   }
   lo = ((value.inner.a & 0xfffff));
-  if (!Number.isInteger(value.inner.c) || value.inner.c < 0 || value.inner.c > 16777215) {
+  if (!globalThis.Number.isInteger(value.inner.c) || value.inner.c < 0 || value.inner.c > 16777215) {
     return -1;
   }
   v = ((value.inner.b & 0xfffff)) >>> 0;
@@ -1037,15 +1037,15 @@ export function ReadTrioSoleFlatBits(view, numBits, value) {
 // writer contract, in every build (SPEC §5.1). The buffer behind view
 // must hold Vec3SoleMaxBytes.
 export function WriteVec3SoleFlat(view, value) {
-  if (!Number.isFinite(value.v.x)) { // a bare float must be finite
+  if (!globalThis.Number.isFinite(value.v.x)) { // a bare float must be finite
     return -1;
   }
   view.setFloat64(0, value.v.x, true);
-  if (!Number.isFinite(value.v.y)) { // a bare float must be finite
+  if (!globalThis.Number.isFinite(value.v.y)) { // a bare float must be finite
     return -1;
   }
   view.setFloat64(8, value.v.y, true);
-  if (!Number.isFinite(value.v.z)) { // a bare float must be finite
+  if (!globalThis.Number.isFinite(value.v.z)) { // a bare float must be finite
     return -1;
   }
   view.setFloat64(16, value.v.z, true);
@@ -1106,20 +1106,20 @@ export function ReadVec3SoleFlatBits(view, numBits, value) {
 // must hold TrioFirstMaxBytes.
 export function WriteTrioFirstFlat(view, value) {
   let v = 0, lo = 0;
-  if (!Number.isInteger(value.inner.a) || value.inner.a < 0 || value.inner.a > 1048575) {
+  if (!globalThis.Number.isInteger(value.inner.a) || value.inner.a < 0 || value.inner.a > 1048575) {
     return -1;
   }
-  if (!Number.isInteger(value.inner.b) || value.inner.b < 0 || value.inner.b > 1048575) {
+  if (!globalThis.Number.isInteger(value.inner.b) || value.inner.b < 0 || value.inner.b > 1048575) {
     return -1;
   }
   lo = ((value.inner.a & 0xfffff));
-  if (!Number.isInteger(value.inner.c) || value.inner.c < 0 || value.inner.c > 16777215) {
+  if (!globalThis.Number.isInteger(value.inner.c) || value.inner.c < 0 || value.inner.c > 16777215) {
     return -1;
   }
   v = ((value.inner.b & 0xfffff)) >>> 0;
   view.setUint32(0, (lo | (v << 20)) >>> 0, true);
   lo = v >>> 12;
-  if (!Number.isInteger(value.trailer) || value.trailer < 0 || value.trailer > 65535) {
+  if (!globalThis.Number.isInteger(value.trailer) || value.trailer < 0 || value.trailer > 65535) {
     return -1;
   }
   view.setUint32(4, (lo | (((value.inner.c & 0xffffff)) << 8)) >>> 0, true);
@@ -1225,20 +1225,20 @@ export function WriteTrioStraddleFlat(view, value) {
   view.setUint32(32, v, true);
   v = SC.getUint32(4, true);
   view.setUint32(36, v, true);
-  if (!Number.isInteger(value.pad5) || value.pad5 < 0 || value.pad5 > 16777215) {
+  if (!globalThis.Number.isInteger(value.pad5) || value.pad5 < 0 || value.pad5 > 16777215) {
     return -1;
   }
-  if (!Number.isInteger(value.inner.a) || value.inner.a < 0 || value.inner.a > 1048575) {
+  if (!globalThis.Number.isInteger(value.inner.a) || value.inner.a < 0 || value.inner.a > 1048575) {
     return -1;
   }
   lo = ((value.pad5 & 0xffffff));
-  if (!Number.isInteger(value.inner.b) || value.inner.b < 0 || value.inner.b > 1048575) {
+  if (!globalThis.Number.isInteger(value.inner.b) || value.inner.b < 0 || value.inner.b > 1048575) {
     return -1;
   }
   v = ((value.inner.a & 0xfffff)) >>> 0;
   view.setUint32(40, (lo | (v << 24)) >>> 0, true);
   lo = v >>> 8;
-  if (!Number.isInteger(value.inner.c) || value.inner.c < 0 || value.inner.c > 16777215) {
+  if (!globalThis.Number.isInteger(value.inner.c) || value.inner.c < 0 || value.inner.c > 16777215) {
     return -1;
   }
   view.setUint32(44, (lo | (((value.inner.b & 0xfffff)) << 12)) >>> 0, true);

@@ -1,0 +1,12 @@
+package fixture
+
+import (
+	osexec "os/exec"
+	"testing"
+)
+
+func TestRunsTheInterpreterUnderAnotherImportName(t *testing.T) {
+	if err := osexec.Command("luau", "probe.luau").Run(); err != nil {
+		t.Fatal(err)
+	}
+}

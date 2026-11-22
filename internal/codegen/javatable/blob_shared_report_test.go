@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,6 +13,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 type blobSharedReportCase struct {
@@ -162,8 +163,12 @@ public final class BlobSharedReportDriver {
                         checks++;
                         continue;
                     }
-                    if (report.unknown != 11 + history || report.widened != 13) {
-                        fail("history preserved " + why);
+                    // a plain load zeroes the report at its start (as Go's does); the retain
+                    // read keeps the caller's history
+                    int wantUnknown = retaining ? 11 + history : 0;
+                    int wantWidened = retaining ? 13 : 0;
+                    if (report.unknown != wantUnknown || report.widened != wantWidened) {
+                        fail("history " + (retaining ? "preserved " : "reset ") + why);
                     }
                     if (name.startsWith("distinct_")) {
                         if (v.a == null || v.b == null || v.c == null || v.d == null || v.c == v.d) {
@@ -222,10 +227,10 @@ public final class BlobSharedReportDriver {
 		t.Fatal(err)
 	}
 	javac, javaBin := javaTools(t)
-	if out, err := exec.Command(javac, append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
-	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "BlobSharedReportDriver").CombinedOutput()
+	out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes, "BlobSharedReportDriver").CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
 	}

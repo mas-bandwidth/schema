@@ -24,7 +24,6 @@ local HASH_AT = 8
 local ENTRY = 17
 local LAYOUT_HEADER = 4
 local RECORD_MAX = 65536
-local MAX_RECORDS = 4096
 local PLAN_MAX = 4096
 local COUNT = 4
 local PRESENT = 1
@@ -715,6 +714,9 @@ local function readArray(f: any, w: Node, r: Node, buf: buffer, at: number, cx: 
 		local count = buffer.readu32(buf, w.off + at)
 		-- the bound THE PLAN CARRIES is the WRITER's own (bill §12.5)
 		if count > theirs then error(refuse("count_over_bound"), 0) end
+		-- a count below the reader's Min is off its declaration (docs/SPEC.md
+		-- §5.1 row 3), refused as the Go engine refuses it
+		if count < (f.min or 0) then error(refuse("count_over_bound"), 0) end
 		-- slots past the live count are dead, up to the writer's bound; the
 		-- remainder past floor(capacity) is not part of that span
 		if we.size > 0 then
@@ -853,11 +855,15 @@ local function writeLeaf(f: any, n: Node, v: any, buf: buffer, off: number)
 		if n.kind == 10 then
 			local bits = doubleToF32(v)
 			if bit32.band(bits, 0x7F800000) == 0x7F800000 then error(nonFinite(f), 0) end
-			bounds(f, v, { widened = 0 }, nil)
+			-- the declared range is compared at float32 (docs/SPEC.md §4.6),
+			-- and a ranged float's -0 rides as +0 (docs/SPEC-TABLES.md §3.3)
+			bounds(f, f32ToDouble(bits), { widened = 0 }, nil)
+			if f.lo ~= nil and v == 0 then bits = 0 end
 			buffer.writeu32(buf, off, bits)
 		else
 			if v ~= v or v == math.huge or v == -math.huge then error(nonFinite(f), 0) end
 			bounds(f, v, { widened = 0 }, nil)
+			if f.lo ~= nil and v == 0 then v = 0 end
 			buffer.writef64(buf, off, v)
 		end
 	elseif f.s == "enum" then
@@ -1164,7 +1170,7 @@ end
 -- only on a read that returns — the compile census once, after the loop
 -- (§5.3, §5.9 #6). `batch_too_large` is the caller's capacity: a file holding
 -- more records than it refuses before any record is checked or lands, and an
--- omitted capacity is MAX_RECORDS; `plan_too_large` is the lineage entry's own
+-- omitted capacity is the file's own count; `plan_too_large` is the lineage entry's own
 -- lane (a layout past PLAN_MAX entries).
 function F.loadWalk(d: any, fixed: Fixed, file: buffer, report: any?, capacity: number?): { any }?
 	local rep: any = report or {}
@@ -1228,8 +1234,9 @@ function F.loadWalk(d: any, fixed: Fixed, file: buffer, report: any?, capacity: 
 	local stride = k.recordBytes
 	if rest == 0 or stride <= 8 or rest % stride ~= 0 then return no("truncated") end
 	local count = rest // stride
-	-- 10: the caller's capacity, the default when none was given
-	local cap = capacity or MAX_RECORDS
+	-- 10: the caller's capacity; none given reads the file's own count, as a
+	-- Go destination slice is the only bound there is
+	local cap = capacity or count
 	if count > cap then return no("batch_too_large") end
 	-- 11: EVERY record's hash before the first one lands (§5.3, TOTAL OVER
 	-- THE BATCH)

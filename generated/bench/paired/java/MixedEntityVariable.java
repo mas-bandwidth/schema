@@ -9,8 +9,6 @@
 
 package bench;
 
-import java.nio.charset.StandardCharsets;
-
 public final class MixedEntityVariable {
     private MixedEntityVariable() {}
 
@@ -50,7 +48,7 @@ public final class MixedEntityVariable {
     public static final long F_moving = 0x11a44fc1d1243da7L;
     public static final long F_firing = 0x7674cfd19b9031caL;
 
-    static Object createNode(long typeId) {
+    static java.lang.Object createNode(long typeId) {
         if (typeId == BenchBitsVariable.TYPE_ID) {
             return new BenchBitsVariable.Value();
         }
@@ -85,7 +83,10 @@ public final class MixedEntityVariable {
     }
 
     static void decodeNodeBody(
-            TableVariable.Reader r, Object val, long typeId, TableVariable.Report report) {
+            TableVariable.Reader r,
+            java.lang.Object val,
+            long typeId,
+            TableVariable.Report report) {
         if (typeId == BenchBitsVariable.TYPE_ID) {
             BenchBitsVariable.readFields(r, (BenchBitsVariable.Value) val, null, report);
             return;
@@ -130,7 +131,10 @@ public final class MixedEntityVariable {
     }
 
     static void writeNodeBody(
-            TableVariable.Writer w, TableVariable.NodeGraph graph, Object val, long typeId) {
+            TableVariable.Writer w,
+            TableVariable.NodeGraph graph,
+            java.lang.Object val,
+            long typeId) {
         if (typeId == BenchBitsVariable.TYPE_ID) {
             BenchBitsVariable.writeFields(w, graph, (BenchBitsVariable.Value) val);
             return;
@@ -174,10 +178,10 @@ public final class MixedEntityVariable {
     }
 
     static void resolveNodePointers(
-            Object val,
+            java.lang.Object val,
             long typeId,
             TableVariable.NodeTable nt,
-            Object root,
+            java.lang.Object root,
             long rootTypeId,
             TableVariable.Report report) {
         if (typeId == BenchBitsVariable.TYPE_ID) {
@@ -236,11 +240,11 @@ public final class MixedEntityVariable {
         g.push(v, GRAPH_KIND, -2, 0, null);
         while (g.workCount() > 0) {
             int at = g.workCount() - 1;
-            Object value = g.workValue(at);
+            java.lang.Object value = g.workValue(at);
             int kind = g.workKind(at);
             int field = g.workField(at);
             int index = g.workIndex(at);
-            Object close = g.workClose(at);
+            java.lang.Object close = g.workClose(at);
             g.pop();
             if (field == -1) {
                 g.setOpen(value, false);
@@ -346,7 +350,7 @@ public final class MixedEntityVariable {
         }
     }
 
-    static boolean graphEnter(TableVariable.NodeGraph g, Object v, int kind) {
+    static boolean graphEnter(TableVariable.NodeGraph g, java.lang.Object v, int kind) {
         switch (kind) {
             case 0:
                 return BenchBitsVariable.graphEnter(g, (BenchBitsVariable.Value) v);
@@ -375,7 +379,8 @@ public final class MixedEntityVariable {
         }
     }
 
-    static boolean graphStep(TableVariable.NodeGraph g, Object v, int kind, int field, int index) {
+    static boolean graphStep(
+            TableVariable.NodeGraph g, java.lang.Object v, int kind, int field, int index) {
         switch (kind) {
             case 0:
                 return BenchBitsVariable.graphField(g, (BenchBitsVariable.Value) v, field, index);
@@ -890,7 +895,7 @@ public final class MixedEntityVariable {
     public static void resolveNodes(
             Value v,
             TableVariable.NodeTable nt,
-            Object root,
+            java.lang.Object root,
             long rootTypeId,
             TableVariable.Report report) {
         if (nt.bad) {
@@ -1040,7 +1045,7 @@ public final class MixedEntityVariable {
     static boolean checkWrite(Value v) {
         TableVariable.WriteCheck walk = new TableVariable.WriteCheck();
         walk.point(v);
-        for (Object o = walk.next(); o != null; o = walk.next()) {
+        for (java.lang.Object o = walk.next(); o != null; o = walk.next()) {
             if (o instanceof BenchBitsVariable.Value) {
                 assert BenchBitsVariable.checkWrite((BenchBitsVariable.Value) o, walk);
             }
@@ -1167,12 +1172,12 @@ public final class MixedEntityVariable {
             int table = w.off;
             w.putLeb(nodes);
             for (int i = 0; i < nodes; i++) {
-                Object value = graph.nodeValue(i);
+                java.lang.Object value = graph.nodeValue(i);
                 long typeId = graph.nodeType(i);
                 w.putLeb(w.ref(typeId));
                 if (graph.nodeBlob(i)) {
-                    if (value instanceof String) {
-                        w.putUtf8((String) value);
+                    if (value instanceof java.lang.String) {
+                        w.putUtf8((java.lang.String) value);
                     } else {
                         byte[] bytes = (byte[]) value;
                         w.putLeb(bytes.length);
@@ -1199,8 +1204,10 @@ public final class MixedEntityVariable {
         if (report == null) {
             report = new TableVariable.Report();
         }
+        report.reset();
         TableVariable.Reader r = TableVariable.open(data, report);
         if (r == null) {
+            report.settleDamage();
             return null;
         }
         Value v = new Value();
@@ -1213,7 +1220,9 @@ public final class MixedEntityVariable {
                         report.damaged = true;
                         rec.typeId = 0;
                     } else {
-                        rec.value = new String(rec.body, StandardCharsets.UTF_8);
+                        rec.value =
+                                new java.lang.String(
+                                        rec.body, java.nio.charset.StandardCharsets.UTF_8);
                         // A BLOB KIND THIS ROOT'S CLOSURE LACKS is counted unknown, never placed.
                         report.unknown++;
                     }
@@ -1261,6 +1270,7 @@ public final class MixedEntityVariable {
         }
         // DAMAGE DISCARDS THE WHOLE LOAD (§4)
         if (report.damaged) {
+            report.settleDamage();
             return null;
         }
         return v;
@@ -1387,14 +1397,14 @@ public final class MixedEntityVariable {
             return null;
         }
         graph.setOpen(v, false);
-        StringBuilder b = new StringBuilder();
+        java.lang.StringBuilder b = new java.lang.StringBuilder();
         try {
             jsonFields(b, graph, v, 0);
         } catch (TableJson.Refused e) {
             return null;
         }
         b.append('\n');
-        return b.toString().getBytes(StandardCharsets.UTF_8);
+        return b.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
     }
 
     public static Value fromJson(byte[] text, TableVariable.Report report) {
@@ -1413,12 +1423,14 @@ public final class MixedEntityVariable {
         }
         // DAMAGE DISCARDS THE WHOLE TEXT READ (§4, §16.2)
         if (report.damaged) {
+            report.settleDamage();
             return null;
         }
         return v;
     }
 
-    static void jsonFields(StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth) {
+    static void jsonFields(
+            java.lang.StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth) {
         b.append('{');
         boolean empty = jsonFieldsBody(b, graph, v, depth + 1, true);
         if (!empty) TableJson.indent(b, depth);
@@ -1426,7 +1438,11 @@ public final class MixedEntityVariable {
     }
 
     static boolean jsonFieldsBody(
-            StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth, boolean first) {
+            java.lang.StringBuilder b,
+            TableVariable.NodeGraph graph,
+            Value v,
+            int depth,
+            boolean first) {
         if (!first) {
             b.append(',');
         }
@@ -1434,10 +1450,10 @@ public final class MixedEntityVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "entity_id");
         b.append(": ");
-        if (Long.compareUnsigned((long) v.entityId, 1L << 12) >= 0) {
+        if (java.lang.Long.compareUnsigned((long) v.entityId, 1L << 12) >= 0) {
             throw new TableJson.Refused("out_of_range");
         }
-        b.append(Integer.toUnsignedString(v.entityId));
+        b.append(java.lang.Integer.toUnsignedString(v.entityId));
         if (!first) {
             b.append(',');
         }
@@ -1448,7 +1464,7 @@ public final class MixedEntityVariable {
         if ((long) v.posX < -16383 || (long) v.posX > 16383) {
             throw new TableJson.Refused("out_of_range");
         }
-        b.append(Integer.toString(v.posX));
+        b.append(java.lang.Integer.toString(v.posX));
         if (!first) {
             b.append(',');
         }
@@ -1459,7 +1475,7 @@ public final class MixedEntityVariable {
         if ((long) v.posY < -16383 || (long) v.posY > 16383) {
             throw new TableJson.Refused("out_of_range");
         }
-        b.append(Integer.toString(v.posY));
+        b.append(java.lang.Integer.toString(v.posY));
         if (!first) {
             b.append(',');
         }
@@ -1470,7 +1486,7 @@ public final class MixedEntityVariable {
         if ((long) v.posZ < -16383 || (long) v.posZ > 16383) {
             throw new TableJson.Refused("out_of_range");
         }
-        b.append(Integer.toString(v.posZ));
+        b.append(java.lang.Integer.toString(v.posZ));
         if (!first) {
             b.append(',');
         }
@@ -1478,10 +1494,10 @@ public final class MixedEntityVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "yaw");
         b.append(": ");
-        if (Long.compareUnsigned((long) v.yaw, 1L << 9) >= 0) {
+        if (java.lang.Long.compareUnsigned((long) v.yaw, 1L << 9) >= 0) {
             throw new TableJson.Refused("out_of_range");
         }
-        b.append(Integer.toUnsignedString(v.yaw));
+        b.append(java.lang.Integer.toUnsignedString(v.yaw));
         if (!first) {
             b.append(',');
         }
@@ -1489,10 +1505,10 @@ public final class MixedEntityVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "pitch");
         b.append(": ");
-        if (Long.compareUnsigned((long) v.pitch, 1L << 9) >= 0) {
+        if (java.lang.Long.compareUnsigned((long) v.pitch, 1L << 9) >= 0) {
             throw new TableJson.Refused("out_of_range");
         }
-        b.append(Integer.toUnsignedString(v.pitch));
+        b.append(java.lang.Integer.toUnsignedString(v.pitch));
         if (!first) {
             b.append(',');
         }
@@ -1503,7 +1519,7 @@ public final class MixedEntityVariable {
         if ((long) v.velX < -2048 || (long) v.velX > 2047) {
             throw new TableJson.Refused("out_of_range");
         }
-        b.append(Integer.toString(v.velX));
+        b.append(java.lang.Integer.toString(v.velX));
         if (!first) {
             b.append(',');
         }
@@ -1514,7 +1530,7 @@ public final class MixedEntityVariable {
         if ((long) v.velY < -2048 || (long) v.velY > 2047) {
             throw new TableJson.Refused("out_of_range");
         }
-        b.append(Integer.toString(v.velY));
+        b.append(java.lang.Integer.toString(v.velY));
         if (!first) {
             b.append(',');
         }
@@ -1525,7 +1541,7 @@ public final class MixedEntityVariable {
         if ((long) v.velZ < -2048 || (long) v.velZ > 2047) {
             throw new TableJson.Refused("out_of_range");
         }
-        b.append(Integer.toString(v.velZ));
+        b.append(java.lang.Integer.toString(v.velZ));
         if (!first) {
             b.append(',');
         }
@@ -1536,7 +1552,7 @@ public final class MixedEntityVariable {
         if ((long) v.health < 0 || (long) v.health > 1000) {
             throw new TableJson.Refused("out_of_range");
         }
-        b.append(Integer.toString(v.health));
+        b.append(java.lang.Integer.toString(v.health));
         if (!first) {
             b.append(',');
         }
@@ -1605,7 +1621,7 @@ public final class MixedEntityVariable {
         TableJson.writeFlags(
                 b,
                 v.damage,
-                new String[] {
+                new java.lang.String[] {
                     "Bleeding",
                     "Burning",
                     "Stunned",
@@ -1636,7 +1652,7 @@ public final class MixedEntityVariable {
     }
 
     public static void writeJsonPointer(
-            StringBuilder b, TableVariable.NodeGraph graph, Value child, int depth) {
+            java.lang.StringBuilder b, TableVariable.NodeGraph graph, Value child, int depth) {
         if (child == null) {
             b.append("null");
             return;
@@ -1649,7 +1665,7 @@ public final class MixedEntityVariable {
             jsonFields(b, graph, child, depth);
             return;
         }
-        Long label = graph.labels.get(child);
+        java.lang.Long label = graph.labels.get(child);
         if (label == null) {
             label = (long) (graph.labels.size() + 1);
             graph.labels.put(child, label);
@@ -1691,7 +1707,7 @@ public final class MixedEntityVariable {
             jsonReadFields(in, v, depth + 1);
             return v;
         }
-        String key = in.scanName();
+        java.lang.String key = in.scanName();
         if (in.bad || key == null) return null;
         if (!"&node".equals(key)) {
             in.p = start;
@@ -1760,7 +1776,7 @@ public final class MixedEntityVariable {
 
     static void jsonReadFieldsBody(TableJson.In in, Value v, int depth) {
         boolean[] seenField = new boolean[14];
-        java.util.Set<String> seenKey = new java.util.HashSet<>();
+        java.util.Set<java.lang.String> seenKey = new java.util.HashSet<>();
         while (true) {
             int c = in.peek();
             if (c == 0) {
@@ -1771,7 +1787,7 @@ public final class MixedEntityVariable {
                 in.p++;
                 break;
             }
-            String key = in.scanName();
+            java.lang.String key = in.scanName();
             if (in.bad) {
                 return;
             }
@@ -2010,7 +2026,7 @@ public final class MixedEntityVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     if (in.peek() == '"') {
-                        String s = in.scanVariantName();
+                        java.lang.String s = in.scanVariantName();
                         if ("None".equals(s)) {
                             v.weapon = 0;
                         } else if ("Fists".equals(s)) {
@@ -2063,10 +2079,10 @@ public final class MixedEntityVariable {
                     in.rep.refuse("kind_mismatch");
                 } else {
                     {
-                        Long bits =
+                        java.lang.Long bits =
                                 TableJson.readFlags(
                                         in,
-                                        new String[] {
+                                        new java.lang.String[] {
                                             "Bleeding",
                                             "Burning",
                                             "Stunned",

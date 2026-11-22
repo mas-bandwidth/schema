@@ -1,0 +1,40 @@
+// Lanes.schema — the tables half of the golangci-lint classes corpus
+// (testdata/golangci-lint-classes/README.md, PR #4515, finding F-210).
+//
+//   - G115, same-width signed lanes: every signed width at 8, 16, 32 and 64
+//     bits, read and written through the generated same-width two's-complement
+//     lanes (getI8..getI64, putI64, and the masked same-width store).
+//   - G115, narrowing: a ranged field whose declared kind is narrower than the
+//     64-bit value a runtime wire kind delivers.
+//   - G103, region and overlay access: a fixed root (the fixed form's reset
+//     image and default-hole overlay), a fixed table holding an out-of-line
+//     array (the block form's Open prologue) and a pointer graph (the cook
+//     form's Open header match), each through the one shared helper.
+
+package lintlanes
+
+const MaxRows = 8
+
+fixed table Row
+{
+    i8  int8
+    i16 int16
+    i32 int32
+    i64 int64
+    u16 uint16
+}
+
+fixed table Frame
+{
+    stamp uint64
+    rows  [..MaxRows]Row
+}
+
+table Node
+{
+    level int16 = 0 | min = -100, max = 100
+    small uint8
+    lane  int32
+    wide  int64
+    next  *Node
+}

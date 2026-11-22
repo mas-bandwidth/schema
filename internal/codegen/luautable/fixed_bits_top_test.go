@@ -221,6 +221,9 @@ func TestLuauFixedBitsTopEveryWidth(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the pinned Luau interpreter and the schema-go oracle")
 	valid, wantValues, forged, want := fixedBitsTopOracle(t)
+	if len(want) == 0 {
+		t.Fatal("want is empty: the loop below would check nothing")
+	}
 	for name, verdict := range want {
 		if verdict != "refused" {
 			t.Fatalf("%s: the Go fixed reader answered %s; the oracle must refuse every forged top", name, verdict)
@@ -297,6 +300,9 @@ end
 	}
 	if gotValues != wantValues {
 		t.Errorf("2^N - 1 in every field: schema_fixed.luau landed %q, Go landed %q", gotValues, wantValues)
+	}
+	if len(names) == 0 {
+		t.Fatal("names is empty: the loop below would check nothing")
 	}
 	for _, name := range names {
 		g, ok := got[name]

@@ -769,7 +769,7 @@ local function sequence(r: ResolverT, v: Node, f: any, path: string, owner: any)
 	if v.kind ~= "(" then return r:fail(KIND_MISMATCH, v, v.start) end
 	local count = #v.items
 	if f.array == "counted" then
-		if count > f.bound then return r:fail(BOUND, v, v.start) end
+		if count > f.bound or count < (f.min or 0) then return r:fail(BOUND, v, v.start) end
 	elseif f.array == "fixed" then
 		if count ~= f.bound then return r:fail(BOUND, v, v.start) end
 	end

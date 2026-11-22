@@ -1,0 +1,10 @@
+schema-tables-baseline 10
+package demo
+
+table Player
+    field grade id=0x32a89b2977c48ad4 kind=7 enum=Grade default=Argent
+
+enum Grade
+    variant Bronze id=0xc4927739aac4c591
+    variant Argent id=0xc3e51adeeaf12580 was=Silver
+    variant Gold id=0xc416c97e0d3218b3

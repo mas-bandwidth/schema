@@ -185,7 +185,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 4095 { x = 4095; report.damaged = true; }
+                        if x > 4095 { x = 4095; report.out_of_range("MixedEntity.entity_id"); }
                         value.entity_id = x as u32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -213,7 +213,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < -16383i128 { x = -16383i128; report.damaged = true; } else if x > 16383i128 { x = 16383i128; report.damaged = true; }
+                        if x < -16383i128 { x = -16383i128; report.out_of_range("MixedEntity.pos_x"); } else if x > 16383i128 { x = 16383i128; report.out_of_range("MixedEntity.pos_x"); }
                         value.pos_x = x as i32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -241,7 +241,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < -16383i128 { x = -16383i128; report.damaged = true; } else if x > 16383i128 { x = 16383i128; report.damaged = true; }
+                        if x < -16383i128 { x = -16383i128; report.out_of_range("MixedEntity.pos_y"); } else if x > 16383i128 { x = 16383i128; report.out_of_range("MixedEntity.pos_y"); }
                         value.pos_y = x as i32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -269,7 +269,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < -16383i128 { x = -16383i128; report.damaged = true; } else if x > 16383i128 { x = 16383i128; report.damaged = true; }
+                        if x < -16383i128 { x = -16383i128; report.out_of_range("MixedEntity.pos_z"); } else if x > 16383i128 { x = 16383i128; report.out_of_range("MixedEntity.pos_z"); }
                         value.pos_z = x as i32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -297,7 +297,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 511 { x = 511; report.damaged = true; }
+                        if x > 511 { x = 511; report.out_of_range("MixedEntity.yaw"); }
                         value.yaw = x as u32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -325,7 +325,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 511 { x = 511; report.damaged = true; }
+                        if x > 511 { x = 511; report.out_of_range("MixedEntity.pitch"); }
                         value.pitch = x as u32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -353,7 +353,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < -2048i128 { x = -2048i128; report.damaged = true; } else if x > 2047i128 { x = 2047i128; report.damaged = true; }
+                        if x < -2048i128 { x = -2048i128; report.out_of_range("MixedEntity.vel_x"); } else if x > 2047i128 { x = 2047i128; report.out_of_range("MixedEntity.vel_x"); }
                         value.vel_x = x as i32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -381,7 +381,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < -2048i128 { x = -2048i128; report.damaged = true; } else if x > 2047i128 { x = 2047i128; report.damaged = true; }
+                        if x < -2048i128 { x = -2048i128; report.out_of_range("MixedEntity.vel_y"); } else if x > 2047i128 { x = 2047i128; report.out_of_range("MixedEntity.vel_y"); }
                         value.vel_y = x as i32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -409,7 +409,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < -2048i128 { x = -2048i128; report.damaged = true; } else if x > 2047i128 { x = 2047i128; report.damaged = true; }
+                        if x < -2048i128 { x = -2048i128; report.out_of_range("MixedEntity.vel_z"); } else if x > 2047i128 { x = 2047i128; report.out_of_range("MixedEntity.vel_z"); }
                         value.vel_z = x as i32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -437,7 +437,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < 0i128 { x = 0i128; report.damaged = true; } else if x > 1000i128 { x = 1000i128; report.damaged = true; }
+                        if x < 0i128 { x = 0i128; report.out_of_range("MixedEntity.health"); } else if x > 1000i128 { x = 1000i128; report.out_of_range("MixedEntity.health"); }
                         value.health = x as i32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -628,7 +628,7 @@ pub fn mixed_stat_load_message_body(r: &mut TableBitReader, v: &TableVocabulary,
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 255 { x = 255; report.damaged = true; }
+                        if x > 255 { x = 255; report.out_of_range("MixedStat.stat_id"); }
                         value.stat_id = x as u32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -655,7 +655,7 @@ pub fn mixed_stat_load_message_body(r: &mut TableBitReader, v: &TableVocabulary,
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < -512i128 { x = -512i128; report.damaged = true; } else if x > 511i128 { x = 511i128; report.damaged = true; }
+                        if x < -512i128 { x = -512i128; report.out_of_range("MixedStat.delta"); } else if x > 511i128 { x = 511i128; report.out_of_range("MixedStat.delta"); }
                         value.delta = x as i32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -756,7 +756,7 @@ pub fn mixed_hit_event_load_message_body(r: &mut TableBitReader, v: &TableVocabu
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 4095 { x = 4095; report.damaged = true; }
+                        if x > 4095 { x = 4095; report.out_of_range("MixedHitEvent.target_id"); }
                         value.target_id = x as u32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -784,7 +784,7 @@ pub fn mixed_hit_event_load_message_body(r: &mut TableBitReader, v: &TableVocabu
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < 0i128 { x = 0i128; report.damaged = true; } else if x > 4095i128 { x = 4095i128; report.damaged = true; }
+                        if x < 0i128 { x = 0i128; report.out_of_range("MixedHitEvent.damage"); } else if x > 4095i128 { x = 4095i128; report.out_of_range("MixedHitEvent.damage"); }
                         value.damage = x as i32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -812,7 +812,7 @@ pub fn mixed_hit_event_load_message_body(r: &mut TableBitReader, v: &TableVocabu
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < 0i128 { x = 0i128; report.damaged = true; } else if x > 7i128 { x = 7i128; report.damaged = true; }
+                        if x < 0i128 { x = 0i128; report.out_of_range("MixedHitEvent.hit_kind"); } else if x > 7i128 { x = 7i128; report.out_of_range("MixedHitEvent.hit_kind"); }
                         value.hit_kind = x as i32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -920,7 +920,7 @@ pub fn mixed_chat_event_load_message_body(r: &mut TableBitReader, v: &TableVocab
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < 0i128 { x = 0i128; report.damaged = true; } else if x > 3i128 { x = 3i128; report.damaged = true; }
+                        if x < 0i128 { x = 0i128; report.out_of_range("MixedChatEvent.channel"); } else if x > 3i128 { x = 3i128; report.out_of_range("MixedChatEvent.channel"); }
                         value.channel = x as i32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -948,7 +948,7 @@ pub fn mixed_chat_event_load_message_body(r: &mut TableBitReader, v: &TableVocab
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 4095 { x = 4095; report.damaged = true; }
+                        if x > 4095 { x = 4095; report.out_of_range("MixedChatEvent.speaker"); }
                         value.speaker = x as u32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -1036,7 +1036,7 @@ pub fn mixed_pickup_event_load_message_body(r: &mut TableBitReader, v: &TableVoc
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 1023 { x = 1023; report.damaged = true; }
+                        if x > 1023 { x = 1023; report.out_of_range("MixedPickupEvent.item_id"); }
                         value.item_id = x as u32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -1064,7 +1064,7 @@ pub fn mixed_pickup_event_load_message_body(r: &mut TableBitReader, v: &TableVoc
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < 0i128 { x = 0i128; report.damaged = true; } else if x > 255i128 { x = 255i128; report.damaged = true; }
+                        if x < 0i128 { x = 0i128; report.out_of_range("MixedPickupEvent.amount"); } else if x > 255i128 { x = 255i128; report.out_of_range("MixedPickupEvent.amount"); }
                         value.amount = x as i32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -1239,7 +1239,7 @@ pub fn bench_mixed_save_message_body(w: &mut TableBitWriter, value: &BenchMixedR
     }
     {
         debug_assert!(value.entities_count >= 1 && value.entities_count <= 8, "the declared count is the bound (docs/SPEC-TABLES.md §3.4)");
-        if value.entities_count > 0 {
+        if value.entities_count > 0 && (value.entities_count != 1 || (0..1).any(|i| { let mut probe = TableBitWriter::measure(); !mixed_entity_save_message_body(&mut probe, &value.entities[i]) || probe.bits > TABLE_MESSAGE_REF_BITS as u64 })) {
             w.put(10, TABLE_MESSAGE_REF_BITS);
             w.put((value.entities_count as u64).wrapping_sub(1), 3);
             for i in 0..(value.entities_count as usize) {
@@ -1436,7 +1436,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 65535 { x = 65535; report.damaged = true; }
+                        if x > 65535 { x = 65535; report.out_of_range("BenchMixed.sequence"); }
                         value.sequence = x as u32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -1464,7 +1464,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < 0i128 { x = 0i128; report.damaged = true; } else if x > 65535i128 { x = 65535i128; report.damaged = true; }
+                        if x < 0i128 { x = 0i128; report.out_of_range("BenchMixed.ack_sequence"); } else if x > 65535i128 { x = 65535i128; report.out_of_range("BenchMixed.ack_sequence"); }
                         value.ack_sequence = x as i32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -1492,7 +1492,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 4294967295 { x = 4294967295; report.damaged = true; }
+                        if x > 4294967295 { x = 4294967295; report.out_of_range("BenchMixed.ack_bits"); }
                         value.ack_bits = x as u32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -1574,7 +1574,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 18446744073709551615u128 { x = 18446744073709551615u128; report.damaged = true; }
+                        if x > 18446744073709551615u128 { x = 18446744073709551615u128; report.out_of_range("BenchMixed.nonce"); }
                         value.nonce = x as u64;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -1602,7 +1602,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < -1000000000000i128 { x = -1000000000000i128; report.damaged = true; } else if x > 1000000000000i128 { x = 1000000000000i128; report.damaged = true; }
+                        if x < -1000000000000i128 { x = -1000000000000i128; report.out_of_range("BenchMixed.world_time"); } else if x > 1000000000000i128 { x = 1000000000000i128; report.out_of_range("BenchMixed.world_time"); }
                         value.world_time = x as i64;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -1630,7 +1630,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 281474976710655 { x = 281474976710655; report.damaged = true; }
+                        if x > 281474976710655 { x = 281474976710655; report.out_of_range("BenchMixed.frame_tick"); }
                         value.frame_tick = x as u64;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -1653,7 +1653,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < 0i128 { x = 0i128; report.damaged = true; } else if x > 16776960i128 { x = 16776960i128; report.damaged = true; }
+                        if x < 0i128 { x = 0i128; report.out_of_range("BenchMixed.server_time"); } else if x > 16776960i128 { x = 16776960i128; report.out_of_range("BenchMixed.server_time"); }
                         value.server_time = x as i32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -1690,7 +1690,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                         value.entities_count = keep as i32;
                     }
                     if same_build && report.unknown == unknown_before {
-                        let rides = value.entities_count > 0;
+                        let rides = value.entities_count > 0 && (value.entities_count != 1 || (0..1).any(|i| { let mut probe = TableBitWriter::measure(); !mixed_entity_save_message_body(&mut probe, &value.entities[i]) || probe.bits > TABLE_MESSAGE_REF_BITS as u64 }));
                         if !rides { report.damaged = true; return false; } // a field stored at its default (§3.3 (a))
                     }
                 }
@@ -1904,7 +1904,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                     {
                         let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = if table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.aim_x"); 0.0 };
-                        if x < f32::from_bits(0xbf800000) { x = f32::from_bits(0xbf800000); report.damaged = true; } else if x > f32::from_bits(0x3f800000) { x = f32::from_bits(0x3f800000); report.damaged = true; }
+                        if x < f32::from_bits(0xbf800000) { x = f32::from_bits(0xbf800000); report.out_of_range("BenchMixed.aim_x"); } else if x > f32::from_bits(0x3f800000) { x = f32::from_bits(0x3f800000); report.out_of_range("BenchMixed.aim_x"); }
                         if x == 0.0 { x = 0.0; }
                         value.aim_x = x;
                     }
@@ -1922,7 +1922,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                     {
                         let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = if table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.aim_y"); 0.0 };
-                        if x < f32::from_bits(0xbf800000) { x = f32::from_bits(0xbf800000); report.damaged = true; } else if x > f32::from_bits(0x3f800000) { x = f32::from_bits(0x3f800000); report.damaged = true; }
+                        if x < f32::from_bits(0xbf800000) { x = f32::from_bits(0xbf800000); report.out_of_range("BenchMixed.aim_y"); } else if x > f32::from_bits(0x3f800000) { x = f32::from_bits(0x3f800000); report.out_of_range("BenchMixed.aim_y"); }
                         if x == 0.0 { x = 0.0; }
                         value.aim_y = x;
                     }
@@ -1940,7 +1940,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                     {
                         let Some((lo, _hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = if table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite("BenchMixed.aim_z"); 0.0 };
-                        if x < f32::from_bits(0xbf800000) { x = f32::from_bits(0xbf800000); report.damaged = true; } else if x > f32::from_bits(0x3f800000) { x = f32::from_bits(0x3f800000); report.damaged = true; }
+                        if x < f32::from_bits(0xbf800000) { x = f32::from_bits(0xbf800000); report.out_of_range("BenchMixed.aim_z"); } else if x > f32::from_bits(0x3f800000) { x = f32::from_bits(0x3f800000); report.out_of_range("BenchMixed.aim_z"); }
                         if x == 0.0 { x = 0.0; }
                         value.aim_z = x;
                     }
@@ -2039,7 +2039,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < -1267650600228229401496703205376i128 { x = -1267650600228229401496703205376i128; report.damaged = true; } else if x > 1267650600228229401496703205376i128 { x = 1267650600228229401496703205376i128; report.damaged = true; }
+                        if x < -1267650600228229401496703205376i128 { x = -1267650600228229401496703205376i128; report.out_of_range("BenchMixed.flux"); } else if x > 1267650600228229401496703205376i128 { x = 1267650600228229401496703205376i128; report.out_of_range("BenchMixed.flux"); }
                         value.flux = TableI128(x);
                     }
                     if same_build && report.unknown == unknown_before {
@@ -2062,7 +2062,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 64000u128 { x = 64000u128; report.damaged = true; }
+                        if x > 64000u128 { x = 64000u128; report.out_of_range("BenchMixed.ping"); }
                         value.ping = x as u16;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -2089,7 +2089,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_unsigned(entry.kind, lo, hi);
-                        if x > 16777215 { x = 16777215; report.damaged = true; }
+                        if x > 16777215 { x = 16777215; report.out_of_range("BenchMixed.crc_hint"); }
                         value.crc_hint = x as u32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -2137,7 +2137,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < 0i128 { x = 0i128; report.damaged = true; } else if x > 255i128 { x = 255i128; report.damaged = true; }
+                        if x < 0i128 { x = 0i128; report.out_of_range("BenchMixed.extra"); } else if x > 255i128 { x = 255i128; report.out_of_range("BenchMixed.extra"); }
                         value.extra = x as i32;
                     }
                     if same_build && report.unknown == unknown_before {
@@ -2165,7 +2165,7 @@ pub fn bench_mixed_load_message_body(r: &mut TableBitReader, v: &TableVocabulary
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let mut x = table_message_signed(entry.kind, lo, hi);
-                        if x < 0i128 { x = 0i128; report.damaged = true; } else if x > 15i128 { x = 15i128; report.damaged = true; }
+                        if x < 0i128 { x = 0i128; report.out_of_range("BenchMixed.idle_ticks"); } else if x > 15i128 { x = 15i128; report.out_of_range("BenchMixed.idle_ticks"); }
                         value.idle_ticks = x as i32;
                     }
                     if same_build && report.unknown == unknown_before {

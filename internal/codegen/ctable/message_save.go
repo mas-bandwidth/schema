@@ -59,7 +59,10 @@ func (g *tableGen) messageScalar(f *ir.Field, kind uint8, shape ir.TableMessageS
 		}
 	case tkF64:
 		g.pf("%sif(!table_double_finite(%s)) return 0; /* a NaN or an infinity is refused (§3.3) */\n", ind, expr)
-		g.pf("%stable_bit_put(w,table_double_to_bits(%s),64);\n", ind, expr)
+		// a ranged float64 rides whole, and its -0 as +0 (§3.3,
+		// fixed-compressed-negzero); a compressed float32 is quantized above,
+		// where -0 is the index of 0
+		g.pf("%stable_bit_put(w,%s(%s),64);\n", ind, storedFloatBits(f, true), expr)
 	default:
 		var lo, hi uint64
 		if shape.Base != nil {
@@ -105,6 +108,8 @@ func (g *tableGen) messageValue(f *ir.Field, e ir.TableVocabularyEntry, expr, co
 		g.pf("%s } }\n", ind)
 	case f.Array != ir.ArrayNone:
 		if f.Array == ir.ArrayCounted {
+			// a field's count was already held to [Min, N] by its presence
+			// test (messageFieldPresence); this bound also serves union arms
 			g.writeStorageBound(count, f.ArrayBound, ind)
 		}
 		g.pf("%stable_bit_put(w,(uint64_t)%s-%d,%d);\n", ind, count, e.Shape.Min, ir.TableMessageCountBits(e.Shape))
@@ -213,8 +218,8 @@ func (g *tableGen) messageFieldPresence(f *ir.Field, expr string) (string, strin
 		condition = g.wireBytesDiffer(f, expr)
 	case f.Array == ir.ArrayCounted:
 		count = expr + "_count"
-		g.writeStorageBound(count, f.ArrayBound, " ")
-		condition = count + ">0"
+		g.writeCountBound(f, count, " ")
+		condition = g.countedRides(f, expr, " ", g.messageKeyedRides)
 	case f.Type.Optional:
 		condition = expr + "_present"
 	case f.KeyEnum != "":

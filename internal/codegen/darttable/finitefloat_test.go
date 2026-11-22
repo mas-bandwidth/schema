@@ -347,7 +347,13 @@ func runFiniteFloatProbe(t *testing.T, files map[string][]byte) (map[string]bool
 	}
 	cmd := testproc.Command(t, dartBinary(t), "--enable-asserts", "finite_probe.dart")
 	cmd.Dir = dir
-	out, _ := cmd.CombinedOutput()
+	out, err := cmd.CombinedOutput()
+	// The probe prints each vector's verdict and exits 0; a red vector is a
+	// VEC line, never an exit status, so any non-zero exit is a probe that
+	// did not run to its verdict.
+	if err != nil {
+		t.Fatalf("the finite probe exited %v:\n%s", err, out)
+	}
 	verdicts := map[string]bool{}
 	for line := range strings.SplitSeq(string(out), "\n") {
 		fields := strings.Fields(line)

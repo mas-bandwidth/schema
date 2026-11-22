@@ -1,0 +1,28 @@
+# The counted-array message elision corpus over Root.schema beside this file
+# ([2..3]Inner and [2..3]U). A counted array [Min..N]T elides exactly when the
+# oracle's messageElides does: count 0, or count Min with every element at
+# its default (a struct whose body is its terminator alone, a union at None);
+# the message read refuses that same spelling stored (docs/SPEC-TABLES.md §3).
+# TestRustMessageCountedBornElidesByElementDefault reads every row.
+# case	kind	source	rust	verdict	ticks
+#
+# kind save: source is the value as JSON; the generated Rust writer, given the
+#   rust statements on a default row v with ticks 5, writes exactly the bytes
+#   the Go oracle encodes for that JSON (verdict bytes).
+# kind read: source names a save row; both readers read its bytes (verdict
+#   read, ticks the first field read).
+# kind birth-drop-field: source names a save row whose element 0 carries one
+#   struct field; that field (reference and value) is cut, so every element is
+#   a body that is its terminator alone: the array is stored at its birth.
+# kind birth-zero-arm: source names a save row whose element 0 is a union at
+#   an arm; its arm reference is set to 0 (None) and its payload cut, so every
+#   element is None: the array is stored at its birth.
+# A birth row is refused as wire damage by both readers (verdict wire_damaged).
+ps_born	save	{"ticks":5,"ps":[{},{}]}	v.ps_count = 2; v.ps[0] = inner_message_default(); v.ps[1] = inner_message_default();	bytes	-
+ps_live	save	{"ticks":5,"ps":[{"a":4},{}]}	v.ps_count = 2; v.ps[0] = inner_message_default(); v.ps[1] = inner_message_default(); v.ps[0].a = 4;	bytes	-
+us_born	save	{"ticks":5,"us":[{},{}]}	v.us_count = 2;	bytes	-
+us_arm_zero	save	{"ticks":5,"us":[{"x":0},{}]}	v.us_count = 2; v.us[0].set_x(0);	bytes	-
+read_ps_live	read	ps_live	-	read	5
+read_us_arm_zero	read	us_arm_zero	-	read	5
+ps_stored_at_birth	birth-drop-field	ps_live	-	wire_damaged	-
+us_stored_at_birth	birth-zero-arm	us_arm_zero	-	wire_damaged	-

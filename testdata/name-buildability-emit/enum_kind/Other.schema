@@ -1,0 +1,8 @@
+package probe
+
+type Holder
+{
+    slots Slots
+    mode  kind
+    x     float32
+}

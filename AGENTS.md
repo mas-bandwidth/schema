@@ -12,6 +12,7 @@ bin/schema check <dir>
 
 | dir | purpose | guard | command |
 | --- | --- | --- | --- |
+| `.claude-plugin/` | plugin marketplace entry for skills/ | `none` | `none` |
 | `.github/` | CI workflows | `go test ./internal/ci` | `make test` |
 | [bench/](bench/AGENTS.md) | cross-language serialize bench | `go test ./bench/corpus` | `bench/run.sh` |
 | `cmd/` | schema CLI | `go test ./cmd/schema` | `go test ./cmd/schema` |
@@ -32,6 +33,6 @@ bin/schema check <dir>
 | [test/](test/AGENTS.md) | language test harnesses | `make test` | `make test` |
 | [testdata/](testdata/AGENTS.md) | goldens, wire pins, conformance | `go test ./internal/goldens` | `make update-goldens` |
 | `third_party/` | staged sibling libraries: serialize.py (docs/PORT-PYTHON.md) | `make python-serialize-test` | `make python-serialize-test` |
-| `tla/` | bounded TLA models | `Step 4 TLC via tla/README.md` | `Step 4 TLC via tla/README.md` |
+| `tla/` | bounded TLA models | `go test ./tools/tlcrun` | `bash tla/run-tlc.sh` |
 | [tools/](tools/AGENTS.md) | maintainer tools | `go test ./tools/...` | `go test ./tools/...` |
 | `working/` | scratch; not normative | `none` | `none` |

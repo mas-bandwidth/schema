@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,6 +13,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestCSharpSkippedValueIsValidated holds the shared skipped-value vectors
@@ -227,7 +228,7 @@ func csSkippedValueRun(t *testing.T, rows []csSkippedValueRow) (string, int) {
 		args = append(args, "-r:"+ref)
 	}
 	args = append(args, sources...)
-	compile := exec.Command(dotnet, args...)
+	compile := testproc.Command(t, dotnet, args...)
 	compile.Env, compile.Dir = csDotnetEnv(dir, dir), dir
 	compileOut, compileErr := compile.CombinedOutput()
 	if compileErr != nil {
@@ -241,7 +242,7 @@ func csSkippedValueRun(t *testing.T, rows []csSkippedValueRow) (string, int) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	run := exec.Command(dotnet, "exec", app, vectors)
+	run := testproc.Command(t, dotnet, "exec", app, vectors)
 	run.Env, run.Dir = csDotnetEnv(dir, dir), dir
 	var buf bytes.Buffer
 	buf.Write(compileOut)

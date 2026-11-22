@@ -16,11 +16,10 @@ func TestPythonPacketClose(t *testing.T) {
 	root := repoRoot(t)
 	known := map[string]bool{"bench_table.bin": true}
 	for _, pin := range packetPins() {
-		dir := ""
-		if strings.Contains(strings.Join(pin.paths, "|"), "packet-defaults") {
-			dir = "packet-defaults/"
+		key := pin.name + ".bin"
+		if dir := pin.wireDir(); dir != "" {
+			key = dir + "/" + key
 		}
-		key := dir + pin.name + ".bin"
 		if known[key] && pin.name != "bench_table" {
 			t.Errorf("duplicate packet pin %s", key)
 		}
@@ -31,6 +30,9 @@ func TestPythonPacketClose(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if len(matches) == 0 {
+			t.Fatal("matches is empty: the loop below would check nothing")
+		}
 		for _, path := range matches {
 			key := filepath.ToSlash(filepath.Join(dir, filepath.Base(path)))
 			if !known[key] {
@@ -38,7 +40,11 @@ func TestPythonPacketClose(t *testing.T) {
 			}
 		}
 	}
-	for _, pin := range packetPins() {
+	allPacketPins := packetPins()
+	if len(allPacketPins) == 0 {
+		t.Fatal("packetPins() is empty: the loop below would check nothing")
+	}
+	for _, pin := range allPacketPins {
 		if pin.name == "bench_table" {
 			continue
 		}
@@ -64,9 +70,7 @@ func TestPythonPacketClose(t *testing.T) {
 			intField, boolField, intMin, intMax := topLevelFields(pruned, pin.root)
 			probe := packetProbe(pruned, pin.root, pruned.DeclFile[pin.root], intField, boolField, intMin, intMax)
 			pinDir := filepath.Join(root, "testdata", "wire")
-			if strings.Contains(strings.Join(pin.paths, "|"), "packet-defaults") {
-				pinDir = filepath.Join(pinDir, "packet-defaults")
-			}
+			pinDir = filepath.Join(pinDir, pin.wireDir())
 			data, err := os.ReadFile(filepath.Join(pinDir, pin.name+".bin"))
 			if err != nil {
 				t.Fatal(err)

@@ -2,7 +2,8 @@
 
 The hostile-input corpus (schema-shared-hostile-corpus) is one committed set of
 adversarial inputs for schema, shared by every port. Each input's expected
-verdict — accept with a decoded value digest, or refuse with the named reason —
+verdict — accept with a decoded value digest, or refuse (the engine's reason
+is recorded beside it as a diagnostic) —
 is taken from the **Go engine** (`internal/tablewire`, `internal/tabletext`),
 never from a generated reader.
 
@@ -52,13 +53,31 @@ lines ignored.
 | `input` | the payload's path, `inputs/<file>` |
 | `provenance` | where the input was gathered from |
 | `verdict` | `accept` or `refuse` |
-| `reason` | `-` for an accept, else the named refusal reason |
+| `reason` | `-` for an accept, else the engine's refusal reason (diagnostic only) |
 | `digest` | SHA-256 of the engine's canonical text for an accept, else `-` |
 
 A port runs a case by decoding the payload as `carrier` describes and comparing
-its verdict, reason and (for an accept) decoded value with the manifest. The
+its verdict and (for an accept) decoded value with the manifest. A refusal
+conforms on its verdict alone: the `reason` column is the Go engine's
+diagnostic, kept for debugging, and the reason a port names is its own detail,
+printed but never compared (`docs/rulings.json` `refusal-verdict-only`,
+SPEC-TABLES §6.5 and §13.10). A runner still fails a case its port does not
+answer: a crash, a hang, an error or a missing answer is never a refusal. The
 canonical decoded value is the engine's text form (`tabletext.Model.Write`),
 which is the same JSON shape every generated backend writes.
+`tools/hostilecorpusexec/testdata/scorer-outcomes.tsv` holds the scorer's own
+outcome cases (an equal and an alternate refusal pass, a changed verdict either
+way, a different accepted value or a worker exit fails), run by
+`TestScorerReadsVerdictsAndAcceptedValues` for the C and C++ scorer and graded
+by every other port's runner through the comparison its corpus run uses: the
+runner's `scorer` mode (Dart, Elixir, generated Go, Goose, Java, JavaScript,
+Rust, C# and C# (unity)), run by its hostile target before the corpus, or a Go
+test beside the runner (`TestSchemaLuaHostileScorerOutcomes`,
+`TestLuauHostileScorerOutcomes`, `TestSchemaRubyHostileScorerOutcomes`,
+`TestSquirrelHostileScorerOutcomes`, `TestPythonHostileScorerOutcomes`, and
+Lobster's `TestScorerOutcomes`), which needs no toolchain and runs in the fast
+lane. A runner's own failure label (a writer that refuses the value the read
+accepted, a raise, a carrier it cannot bind) is an error, never a refusal.
 
 ### Carriers
 
@@ -103,11 +122,12 @@ port's decoder and the same manifest.
 
 The generated Go gate is `make schema-go-runs-hostile-corpus`, included in
 `test-go` and therefore in the full nightly build. It generates each distinct
-unit once and reads each manifest row once through generated tolerant text,
+unit once and reads each manifest row once through generated strict text,
 file, message and announcement APIs. Variable wire reads use the generated
 region measure and load pair; text reads use generated builders. It compares
-named refusals and canonical JSON digests without calling the reference
-engine, and its negative control changes only a scratch manifest verdict.
+verdicts (a refusal on its verdict alone) and canonical JSON digests without
+calling the reference engine, and its negative control changes only a scratch
+manifest verdict.
 
 The ports with runners include Java: `make schema-java-runs-hostile-corpus`
 (`test/java-hostile/Runner.java`, the units the manifest names compiled with

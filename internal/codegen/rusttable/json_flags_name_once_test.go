@@ -24,6 +24,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const rustJsonFlagsNameOnceDir = "../../../testdata/wire/json-flags-name-once"
@@ -161,22 +163,22 @@ fn main() {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(root, "probe")
-	build := exec.Command("rustc", "--edition", "2024", "-o", bin, "main.rs")
+	build := testproc.Command(t, "rustc", "--edition", "2024", "-o", bin, "main.rs")
 	build.Dir = root
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("the probe did not build (modules %v): %v\n%s", mods, err, out)
 	}
-	out, err := exec.Command(bin).CombinedOutput()
+	out, err := testproc.Command(t, bin).CombinedOutput()
 	if err != nil {
 		t.Fatalf("the probe did not run: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "FLAGS PROBE DONE") {
+		t.Fatalf("the probe did not finish:\n%s", out)
 	}
 	for line := range strings.SplitSeq(string(out), "\n") {
 		if strings.HasPrefix(line, "MISMATCH ") {
 			t.Errorf("%s", line)
 		}
-	}
-	if !strings.Contains(string(out), "FLAGS PROBE DONE") {
-		t.Fatalf("the probe did not finish:\n%s", out)
 	}
 }
 

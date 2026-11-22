@@ -825,7 +825,7 @@ const keyedFormMarker = "BY KEY (docs/SPEC-TABLES.md §2.4)"
 // is the accessor's own check rather than the JVM's ArrayIndexOutOfBounds, which
 // names an index and, over a row's wider byte[], does not fire at all.
 func javaKeyRefused(key string, max int64) string {
-	return fmt.Sprintf("Integer.compareUnsigned(%s - 1, %d) >= 0", key, max)
+	return fmt.Sprintf("java.lang.Integer.compareUnsigned(%s - 1, %d) >= 0", key, max)
 }
 
 // javaKeyRefusal is the whole refusal statement (docs/SPEC-TABLES.md §2.4): it
@@ -843,7 +843,7 @@ func javaKeyRefusal(indent, key string, f *ir.Field) string {
 	arg, op, arm := t+"        ", t+"                ", t+"                        "
 	var b strings.Builder
 	fmt.Fprintf(&b, "%sif (%s) {\n", indent, javaKeyRefused(key, max))
-	fmt.Fprintf(&b, "%sthrow new IllegalArgumentException(\n", t)
+	fmt.Fprintf(&b, "%sthrow new java.lang.IllegalArgumentException(\n", t)
 	fmt.Fprintf(&b, "%s\"%s [%s]: key \"\n", arg, f.Name, e)
 	fmt.Fprintf(&b, "%s+ %s\n", op, key)
 	choice := fmt.Sprintf("+ (%s == 0 ? \" is None, which keys no slot\" : \" names no variant of %s\")", key, e)
@@ -970,25 +970,25 @@ func fixedHexLong(v uint64) string {
 func fixedFloatLit(v float32) string {
 	switch {
 	case math.IsNaN(float64(v)):
-		return "Float.NaN"
+		return "java.lang.Float.NaN"
 	case math.IsInf(float64(v), 1):
-		return "Float.POSITIVE_INFINITY"
+		return "java.lang.Float.POSITIVE_INFINITY"
 	case math.IsInf(float64(v), -1):
-		return "Float.NEGATIVE_INFINITY"
+		return "java.lang.Float.NEGATIVE_INFINITY"
 	}
-	return fmt.Sprintf("Float.intBitsToFloat(%s)", fixedHexInt(math.Float32bits(v)))
+	return fmt.Sprintf("java.lang.Float.intBitsToFloat(%s)", fixedHexInt(math.Float32bits(v)))
 }
 
 func fixedDoubleLit(v float64) string {
 	switch {
 	case math.IsNaN(v):
-		return "Double.NaN"
+		return "java.lang.Double.NaN"
 	case math.IsInf(v, 1):
-		return "Double.POSITIVE_INFINITY"
+		return "java.lang.Double.POSITIVE_INFINITY"
 	case math.IsInf(v, -1):
-		return "Double.NEGATIVE_INFINITY"
+		return "java.lang.Double.NEGATIVE_INFINITY"
 	}
-	return fmt.Sprintf("Double.longBitsToDouble(%sL)", fixedHexLong(math.Float64bits(v)))
+	return fmt.Sprintf("java.lang.Double.longBitsToDouble(%sL)", fixedHexLong(math.Float64bits(v)))
 }
 
 func fixedHexInt(v uint32) string {
@@ -1128,7 +1128,7 @@ func fixedCheckField(f *ir.Field, val, ind string) []string {
 // slot is a block — Int128.compareTo or UInt128.compareUnsigned, as the
 // packet emitter's emitCheck128Ranged — and every other slot is one assert
 // of fixedCheckElement, or no lines when the slot admits every value its
-// storage holds (a bool, a float — row 7 is the save's finite pass — a bare
+// storage holds (a bool, an unranged float — row 7 is the save's finite pass — a bare
 // uint128, a flags mask, a nested table or union, which assert their own).
 func fixedCheckSlot(f *ir.Field, e, ind string) []string {
 	typ := fixedScalarType(f.Type)
@@ -1194,6 +1194,17 @@ func fixedCheckElement(f *ir.Field, e string) string {
 		}
 		return ""
 	}
+	// A COMPRESSED FLOAT'S RANGE IS HELD AT FLOAT32 (docs/SPEC-TABLES.md
+	// §3.3): the slot is inside the float32 nearest each declared end, the
+	// test the reader's scatter holds, so a save never stores what its own
+	// load refuses. A NaN or an infinity is the finite pass's, not this one's.
+	if lo, hi, ok := fixedFloatRange(f); ok {
+		finite := "java.lang.Float.isFinite"
+		if f.Type.Kind == ir.TFloat64 {
+			finite = "java.lang.Double.isFinite"
+		}
+		return fmt.Sprintf("!%s(%s) || (%s >= %s && %s <= %s)", finite, e, e, lo, e, hi)
+	}
 	switch f.Type.Kind {
 	case ir.TInt, ir.TBits, ir.TFixed:
 	default:
@@ -1218,7 +1229,7 @@ func fixedCheckElement(f *ir.Field, e string) string {
 	if lo, hi, ok := fixedRawRange(f); ok {
 		conds = append(conds, fmt.Sprintf("%s >= %dL && %s <= %dL", loaded, lo, loaded, hi))
 	} else if ulo, uhi, ok := fixedRawUnsigned64Range(f); ok {
-		conds = append(conds, fmt.Sprintf("Long.compareUnsigned(%s, 0x%xL) >= 0 && Long.compareUnsigned(%s, 0x%xL) <= 0", e, ulo, e, uhi))
+		conds = append(conds, fmt.Sprintf("java.lang.Long.compareUnsigned(%s, 0x%xL) >= 0 && java.lang.Long.compareUnsigned(%s, 0x%xL) <= 0", e, ulo, e, uhi))
 	}
 	if f.Type.Kind == ir.TBits {
 		// an int meets the long mask widened by sign extension, so a negative
@@ -1281,7 +1292,7 @@ func (g *fixedGen) emitWritePayload(f *ir.Field, base int64, buf, at, val string
 		// used length are the reference's zeros, and this is the one store
 		// that puts them there — the writer lays no whole-record template down.
 		g.pf("%sTableFixed.put32(%s, %s + %d, %s.%sLength);\n", ind, buf, at, base, val, name)
-		g.pf("%sSystem.arraycopy(%s.%s, 0, %s, %s + %d, %s.%sLength);\n", ind, val, name, buf, at, base+4, val, name)
+		g.pf("%sjava.lang.System.arraycopy(%s.%s, 0, %s, %s + %d, %s.%sLength);\n", ind, val, name, buf, at, base+4, val, name)
 		g.pf("%sjava.util.Arrays.fill(%s, %s + %d + %s.%sLength, %s + %d, (byte) 0);\n",
 			ind, buf, at, base+4, val, name, at, base+4+f.Type.Size)
 	default:
@@ -1320,9 +1331,10 @@ func (g *fixedGen) emitWriteElement(f *ir.Field, off int64, buf, at, expr string
 	case ir.TBool:
 		g.pf("%sTableFixed.put8(%s, %s + %d, %s ? 1 : 0);\n", ind, buf, at, off, expr)
 	case ir.TFloat32:
-		g.pf("%sTableFixed.put32(%s, %s + %d, Float.floatToRawIntBits(%s));\n", ind, buf, at, off, expr)
+		// a compressed float's -0 is written as +0 (§3.3, fixed-compressed-negzero)
+		g.pf("%sTableFixed.put32(%s, %s + %d, java.lang.Float.floatToRawIntBits(%s));\n", ind, buf, at, off, javaStoredFloat(f, expr))
 	case ir.TFloat64:
-		g.pf("%sTableFixed.put64(%s, %s + %d, Double.doubleToRawLongBits(%s));\n", ind, buf, at, off, expr)
+		g.pf("%sTableFixed.put64(%s, %s + %d, java.lang.Double.doubleToRawLongBits(%s));\n", ind, buf, at, off, javaStoredFloat(f, expr))
 	default:
 		if w == 16 {
 			// the LOW 64-bit half then the HIGH, the type wire's own order (§3)
@@ -1597,7 +1609,7 @@ func (g *fixedGen) emitScatterPayload(f *ir.Field, base int64, buf, at, val, rep
 	case f.Array == ir.ArrayFixed:
 		g.emitScatterLoop(f, base, fmt.Sprintf("%d", f.ArrayBound), buf, at, val+"."+name, rep, walked, indent)
 	case f.Array == ir.ArrayCounted:
-		g.emitScatterCount(fmt.Sprintf("%s.%sCount", val, name), buf, at, base, f.ArrayBound, rep, walked, "countOverBound", indent)
+		g.emitScatterCount(fmt.Sprintf("%s.%sCount", val, name), buf, at, base, f.ArrayMin, f.ArrayBound, rep, walked, "countOverBound", indent)
 		// LIVE ELEMENTS ONLY: clamp and ordinal counters count the writer's
 		// live count, never the slack behind it. Identity and compiled share
 		// this scatter; write still stores MAX (Dart #834). The slots past
@@ -1614,7 +1626,7 @@ func (g *fixedGen) emitScatterPayload(f *ir.Field, base int64, buf, at, val, rep
 		g.emitScatterLoop(f, base+fixedCountBytes, fmt.Sprintf("%s.%sCount", val, name), buf, at, val+"."+name, rep, walked, indent)
 		g.emitScatterSlack(f, val+"."+name, val+"."+name+"Count", indent)
 	case f.Type.Kind == ir.TString:
-		g.emitScatterCount(fmt.Sprintf("%s.%sLength", val, name), buf, at, base, f.Type.Size, rep, walked, "lengthOverBound", indent)
+		g.emitScatterCount(fmt.Sprintf("%s.%sLength", val, name), buf, at, base, 0, f.Type.Size, rep, walked, "lengthOverBound", indent)
 		// Bytes past the used length are dead. THE CONTENT RULES APPLY TO THE
 		// USED UNITS (§4.5 fix 11): UTF-8 validity over the stated length,
 		// never over N, and a violation refuses by name with nothing decoded
@@ -1629,11 +1641,11 @@ func (g *fixedGen) emitScatterPayload(f *ir.Field, base int64, buf, at, val, rep
 		}
 		g.pf("%sif (%s && !TableFixed.textOk(TableFixed.textUtf8, %s, %s + %d, %s.%sLength)) { %s.refuse(TableFixed.Reason.textIllFormed); return; }\n",
 			ind, walked, buf, at, base+4, val, name, rep)
-		g.pf("%sSystem.arraycopy(%s, %s + %d, %s.%s, 0, %s.%sLength);\n", ind, buf, at, base+4, val, name, val, name)
+		g.pf("%sjava.lang.System.arraycopy(%s, %s + %d, %s.%s, 0, %s.%sLength);\n", ind, buf, at, base+4, val, name, val, name)
 		g.pf("%sif (%s.%sLength < %s.%s.length) { java.util.Arrays.fill(%s.%s, %s.%sLength, %s.%s.length, (byte) 0); }\n",
 			ind, val, name, val, name, val, name, val, name, val, name)
 	case f.Type.Kind == ir.TBytes:
-		g.emitScatterCount(fmt.Sprintf("%s.%sLength", val, name), buf, at, base, f.Type.Size, rep, walked, "countOverBound", indent)
+		g.emitScatterCount(fmt.Sprintf("%s.%sLength", val, name), buf, at, base, 0, f.Type.Size, rep, walked, "countOverBound", indent)
 		if !f.Deprecated {
 			g.pf("%sif (%s && checkDead) {\n", ind, walked)
 			g.emitDeadSpan(buf, at,
@@ -1642,7 +1654,7 @@ func (g *fixedGen) emitScatterPayload(f *ir.Field, base int64, buf, at, val, rep
 				rep, indent+4)
 			g.pf("%s}\n", ind)
 		}
-		g.pf("%sSystem.arraycopy(%s, %s + %d, %s.%s, 0, %s.%sLength);\n", ind, buf, at, base+4, val, name, val, name)
+		g.pf("%sjava.lang.System.arraycopy(%s, %s + %d, %s.%s, 0, %s.%sLength);\n", ind, buf, at, base+4, val, name, val, name)
 		g.pf("%sif (%s.%sLength < %s.%s.length) { java.util.Arrays.fill(%s.%s, %s.%sLength, %s.%s.length, (byte) 0); }\n",
 			ind, val, name, val, name, val, name, val, name, val, name)
 	default:
@@ -1655,12 +1667,15 @@ func (g *fixedGen) emitScatterPayload(f *ir.Field, base int64, buf, at, val, rep
 // The plan's own count op has already done it for a compiled plan; this is
 // what holds the IDENTITY path to the same rule, because a record under this
 // reader's own hash can still carry a count this build does not admit.
-func (g *fixedGen) emitScatterCount(dst, buf, at string, off, bound int64, rep, walked, why string, indent int) {
+func (g *fixedGen) emitScatterCount(dst, buf, at string, off, min, bound int64, rep, walked, why string, indent int) {
 	ind := strings.Repeat(" ", indent)
 	g.pf("%s{\n", ind)
 	g.pf("%s    int n = TableFixed.get32(%s, %s + %d);\n", ind, buf, at, off)
-	g.pf("%s    if (n < 0) { n = 0; %s } else if (n > %d) { n = %d; %s }\n",
-		ind, scatterRefuse(rep, walked, why), bound, bound, scatterRefuse(rep, walked, why))
+	// A COUNT BELOW A COUNTED ARRAY'S MINIMUM IS REFUSED as one past its
+	// bound is (docs/SPEC.md §5.1 row 3, docs/SPEC-TABLES.md §3.4), landing
+	// the minimum; a minimum of 0 is the sign test alone.
+	g.pf("%s    if (n < %d) { n = %d; %s } else if (n > %d) { n = %d; %s }\n",
+		ind, min, min, scatterRefuse(rep, walked, why), bound, bound, scatterRefuse(rep, walked, why))
 	g.pf("%s    %s = n;\n", ind, dst)
 	g.pf("%s}\n", ind)
 }
@@ -1759,9 +1774,9 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 		// every case. A COMPRESSED FLOAT'S `-0` IS `+0` (SPEC §3.3, §3.4;
 		// ALGORITHM §4.6): inside the range only its sign differs, so it lands
 		// as the value zero, refuses nothing and counts nothing.
-		typ, bits, get, mask, conv := "float", "int", "get32", "0x7f800000", "Float.intBitsToFloat"
+		typ, bits, get, mask, conv := "float", "int", "get32", "0x7f800000", "java.lang.Float.intBitsToFloat"
 		if f.Type.Kind == ir.TFloat64 {
-			typ, bits, get, mask, conv = "double", "long", "get64", "0x7ff0000000000000L", "Double.longBitsToDouble"
+			typ, bits, get, mask, conv = "double", "long", "get64", "0x7ff0000000000000L", "java.lang.Double.longBitsToDouble"
 		}
 		g.pf("%s{\n", ind)
 		g.pf("%s    final %s fbits = TableFixed.%s(%s, %s + %d);\n", ind, bits, get, buf, at, off)
@@ -1828,7 +1843,7 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 	} else if ulo, uhi, ok := fixedRawUnsigned64Range(owner); ok {
 		g.pf("%s{\n", ind)
 		g.pf("%s    long q = %s;\n", ind, fixedLoad(buf, at, off, w, f.Type.Signed))
-		g.pf("%s    if (Long.compareUnsigned(q, 0x%xL) < 0) { q = 0x%xL; %s } else if (Long.compareUnsigned(q, 0x%xL) > 0) { q = 0x%xL; %s }\n",
+		g.pf("%s    if (java.lang.Long.compareUnsigned(q, 0x%xL) < 0) { q = 0x%xL; %s } else if (java.lang.Long.compareUnsigned(q, 0x%xL) > 0) { q = 0x%xL; %s }\n",
 			ind, ulo, ulo, scatterRefuse(rep, walked, "outOfRange"), uhi, uhi, scatterRefuse(rep, walked, "outOfRange"))
 		g.pf("%s    %s = %s;\n", ind, expr, fixedNarrow(typ, "q"))
 		g.pf("%s}\n", ind)
@@ -1842,9 +1857,9 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 	// is past the bound too.
 	if f.Type.Kind == ir.TBits && int64(f.Type.Width) < 8*w {
 		maxv := int64(uint64(1)<<uint(f.Type.Width) - 1)
-		cmp, lit := "Long.compareUnsigned", fmt.Sprintf("%dL", maxv)
+		cmp, lit := "java.lang.Long.compareUnsigned", fmt.Sprintf("%dL", maxv)
 		if typ == "int" {
-			cmp, lit = "Integer.compareUnsigned", fmt.Sprintf("%d", maxv)
+			cmp, lit = "java.lang.Integer.compareUnsigned", fmt.Sprintf("%d", maxv)
 		}
 		g.pf("%sif (%s(%s, %s) > 0) { %s = %s; %s } // bits(%d) clamps to 2^N - 1\n",
 			ind, cmp, expr, lit, expr, fixedNarrow(typ, fmt.Sprintf("%dL", maxv)), scatterRefuse(rep, walked, "outOfRange"), f.Type.Width)
@@ -2186,9 +2201,9 @@ func (g *fixedGen) emitFiniteField(f *ir.Field, val string, indent int) {
 	test := ""
 	switch f.Type.Kind {
 	case ir.TFloat32:
-		test = "!Float.isFinite(" + element + ")"
+		test = "!java.lang.Float.isFinite(" + element + ")"
 	case ir.TFloat64:
-		test = "!Double.isFinite(" + element + ")"
+		test = "!java.lang.Double.isFinite(" + element + ")"
 	case ir.TNamed:
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
@@ -2267,7 +2282,7 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("        buffer[0] = TableFixed.form;\n")
 	g.pf("        TableFixed.put64(buffer, TableFixed.hashAt, hash);\n")
 	g.pf("        TableFixed.put32(buffer, TableFixed.fileHeaderBytes, layout.length);\n")
-	g.pf("        System.arraycopy(layout, 0, buffer, TableFixed.fileHeaderBytes + 4, layout.length);\n")
+	g.pf("        java.lang.System.arraycopy(layout, 0, buffer, TableFixed.fileHeaderBytes + 4, layout.length);\n")
 	g.pf("        return headerBytes;\n")
 	g.pf("    }\n\n")
 
@@ -2337,7 +2352,7 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("    /** THE LOAD PATH'S SCRATCH VALUE, reused per thread: pass 0 lands each\n")
 	g.pf("     *  record here so a refusal never touches the caller's values, and a read\n")
 	g.pf("     *  allocates nothing on its success path (§4.2). */\n")
-	g.pf("    private static final ThreadLocal<Value> loadScratch = ThreadLocal.withInitial(Value::new);\n")
+	g.pf("    private static final java.lang.ThreadLocal<Value> loadScratch = java.lang.ThreadLocal.withInitial(Value::new);\n")
 	g.pf("\n")
 	g.pf("    /** the plan a record under THIS build's own hash is read through. */\n")
 	g.pf("    public static TableFixed.Entry[] identityPlan() { return Identity.plan; }\n")
@@ -2368,6 +2383,7 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("    public static int load(Value[] values, int count, byte[] data,\n")
 	g.pf("                           TableFixed.Entry[] plan, short[] remap, byte[] image,\n")
 	g.pf("                           TableFixed.Report report) {\n")
+	g.pf("        report.reset();\n")
 	if st.Integrity != "" {
 		g.pf("        if (data != null && data.length >= 1 && data[0] == TableFixed.form) {\n")
 		g.pf("            if (!TableFixed.integrityHolds(data)) {\n")
@@ -2474,7 +2490,7 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("                for (int h = 0; h < holeN; h++) {\n")
 	g.pf("                    final int off = pre.holes[h * 2];\n")
 	g.pf("                    final int hn = pre.holes[h * 2 + 1];\n")
-	g.pf("                    System.arraycopy(defaults, off, image, off, hn);\n")
+	g.pf("                    java.lang.System.arraycopy(defaults, off, image, off, hn);\n")
 	g.pf("                }\n")
 	g.pf("                TableFixed.run(entries, made, table, data, at + 8, bodySize, image, report);\n")
 	if entryBounds != nil {

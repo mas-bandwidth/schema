@@ -106,8 +106,8 @@ var refusesEveryBuild = map[string][]string{
 	// one flat writer both refuse in every build (SPEC §5.1); there is no
 	// production fork and no build switch.
 	"js": {
-		"if (!Number.isInteger(value.windowCount) || value.windowCount < 2 || value.windowCount > 8) { // the count guards the loop (§6.3)",
-		"if (!Number.isInteger(value.windowCount) || value.windowCount < 2 || value.windowCount > 8) { // the count guards the loop; its range is a writer contract (SPEC §4.6)",
+		"if (!globalThis.Number.isInteger(value.windowCount) || value.windowCount < 2 || value.windowCount > 8) { // the count guards the loop (§6.3)",
+		"if (!globalThis.Number.isInteger(value.windowCount) || value.windowCount < 2 || value.windowCount > 8) { // the count guards the loop; its range is a writer contract (SPEC §4.6)",
 	},
 	// Lua's assert is a function call that no build removes, so the writer
 	// refuses (returns false) in every build, as Go's does.
@@ -203,7 +203,11 @@ func generatedText(t *testing.T, src, target string) string {
 // count a fresh value can carry, since an array takes no specified default to
 // name another one.
 func TestCountedArrayIsBornAtItsDeclaredMinimum(t *testing.T) {
-	for _, target := range New().Targets() {
+	allTargets := New().Targets()
+	if len(allTargets) == 0 {
+		t.Fatal("New().Targets() is empty: the loop below would check nothing")
+	}
+	for _, target := range allTargets {
 		want, known := bornAtMinimum[target]
 		if !known {
 			t.Errorf("target %q has no birth claim here. A new backend landed and this gate was not told", target)
@@ -220,7 +224,11 @@ func TestCountedArrayIsBornAtItsDeclaredMinimum(t *testing.T) {
 // carries nothing; where the language has none the writer refuses in every
 // build, because forcing an idiom the language lacks would not be native.
 func TestCountOnWriteIsDebugOnlyWhereTheLanguageHasThatIdiom(t *testing.T) {
-	for _, target := range New().Targets() {
+	allTargets := New().Targets()
+	if len(allTargets) == 0 {
+		t.Fatal("New().Targets() is empty: the loop below would check nothing")
+	}
+	for _, target := range allTargets {
 		text := generatedText(t, countedAboveZero, target)
 
 		if writerStillOwed(t, target, text) {

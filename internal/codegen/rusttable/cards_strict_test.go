@@ -14,6 +14,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestRustCardsStrictNames pins the Rust cards facade, driver, and tests
@@ -196,26 +198,26 @@ func rustCardsBuildAndRun(t *testing.T, rustc, repo string, generated map[string
 	}
 
 	testBin := filepath.Join(stage, "cards-tests")
-	buildTests := exec.Command(rustc, "--edition", "2024", "--test", "--crate-name", "cards", "-o", testBin, filepath.Join(stage, "lib.rs"))
+	buildTests := testproc.Command(t, rustc, "--edition", "2024", "--test", "--crate-name", "cards", "-o", testBin, filepath.Join(stage, "lib.rs"))
 	buildTests.Dir = stage
 	if out, err := buildTests.CombinedOutput(); err != nil {
 		return fmt.Errorf("rustc --test lib.rs: %w\n%s", err, out)
 	}
-	runTests := exec.Command(testBin)
+	runTests := testproc.Command(t, testBin)
 	runTests.Dir = repo
 	if out, err := runTests.CombinedOutput(); err != nil {
 		return fmt.Errorf("cards unit tests failed: %w\n%s", err, out)
 	}
 
 	rlib := filepath.Join(stage, "libcards.rlib")
-	buildLib := exec.Command(rustc, "--edition", "2024", "--crate-type", "rlib", "--crate-name", "cards", "-o", rlib, filepath.Join(stage, "lib.rs"))
+	buildLib := testproc.Command(t, rustc, "--edition", "2024", "--crate-type", "rlib", "--crate-name", "cards", "-o", rlib, filepath.Join(stage, "lib.rs"))
 	buildLib.Dir = stage
 	if out, err := buildLib.CombinedOutput(); err != nil {
 		return fmt.Errorf("rustc rlib lib.rs: %w\n%s", err, out)
 	}
 
 	driverBin := filepath.Join(stage, "cards-driver")
-	buildDriver := exec.Command(rustc, "--edition", "2024", "--extern", "cards="+rlib, "-o", driverBin, filepath.Join(binDir, "cards-driver.rs"))
+	buildDriver := testproc.Command(t, rustc, "--edition", "2024", "--extern", "cards="+rlib, "-o", driverBin, filepath.Join(binDir, "cards-driver.rs"))
 	buildDriver.Dir = stage
 	if out, err := buildDriver.CombinedOutput(); err != nil {
 		return fmt.Errorf("rustc cards-driver.rs: %w\n%s", err, out)
@@ -230,7 +232,7 @@ func rustCardsBuildAndRun(t *testing.T, rustc, repo string, generated map[string
 
 	for _, surface := range rustCardsSurfaces {
 		outDir := t.TempDir()
-		cmd := exec.Command(driverBin, manifestPath, surface, outDir)
+		cmd := testproc.Command(t, driverBin, manifestPath, surface, outDir)
 		cmd.Dir = repo
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("driver surface %s failed: %w\n%s", surface, err, out)

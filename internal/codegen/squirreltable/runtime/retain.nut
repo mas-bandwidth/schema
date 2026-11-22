@@ -296,7 +296,8 @@ local intern = function(store, id) {
 };
 
 local emitRef = function(w, ids, id) {
-  if (EMIT != null && !(id in EMIT.known) && !intern(EMIT.store, id)) {
+  // a retained id that would be the 4097th entry is lost (retain_lost), never written: no file past the reader's bound (§3)
+  if (EMIT != null && !(id in EMIT.known) && ((!(id in ids.index) && ids.list.len() >= 4096) || !intern(EMIT.store, id))) {
     EMIT.bad = true;
     emitLeb(w, 0);
     return;

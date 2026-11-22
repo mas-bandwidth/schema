@@ -50,6 +50,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // t18Rows is the six VOLD_/VNEW_ pairs this card covers: the deprecate pair
@@ -91,8 +93,8 @@ func t18RequireCompiler(t *testing.T) {
 		cxx = "c++"
 	}
 	if _, err := exec.LookPath(cxx); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and no C++ compiler (%s) is on PATH: %v", cxx, err)
+		if slowtest.CorpusRequired() {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and no C++ compiler (%s) is on PATH: %v", cxx, err)
 		}
 		t.Skipf("no C++ compiler (%s) is on PATH: %v", cxx, err)
 	}
@@ -575,11 +577,11 @@ int main( void )
 		t.Fatal(err)
 	}
 	args := []string{"-std=c++17", "-O1", "-I" + outDir, "-I" + serialize, filepath.Join(outDir, "probe.cpp"), "-o", filepath.Join(outDir, "probe")}
-	build := exec.Command(cxx, args...)
+	build := testproc.Command(t, cxx, args...)
 	if out, err := build.CombinedOutput(); err != nil {
 		return out, fmt.Errorf("the probe did not compile: %w", err)
 	}
-	return exec.Command(filepath.Join(outDir, "probe")).CombinedOutput()
+	return testproc.Command(t, filepath.Join(outDir, "probe")).CombinedOutput()
 }
 
 // ---- cpp/R16, the exact counters (main's 9d2cb5bc6; the t18 number was taken on both sides) ----
@@ -714,10 +716,10 @@ int main( void )
 		t.Fatal(err)
 	}
 	args := []string{"-std=c++17", "-O1", "-I" + dir, "-I" + pair.outDir, "-I" + serialize, filepath.Join(dir, "probe.cpp"), "-o", filepath.Join(dir, "probe")}
-	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, args...).CombinedOutput(); err != nil {
 		t.Fatalf("t18: the probe did not compile: %v\n%s", err, out)
 	}
-	out, err := exec.Command(filepath.Join(dir, "probe")).CombinedOutput()
+	out, err := testproc.Command(t, filepath.Join(dir, "probe")).CombinedOutput()
 	if err != nil {
 		t.Fatalf("t18: the probe failed: %v\n%s", err, out)
 	}

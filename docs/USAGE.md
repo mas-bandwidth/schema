@@ -136,7 +136,10 @@ A default `generate --lang go` (no `--surface`) also removes stale surface
 files: any `.go` file in the output directory whose first line is the compiler's
 own header naming this unit's `.schema` file or package (SPEC-TABLES.md §8.8)
 and that this run did not write. With `--surface` nothing is removed; only
-`.go` files the compiler itself generated are ever touched.
+`.go` files the compiler itself generated are ever touched. A file this run
+wrote is never removed, and every output lands under this run's spelling, on a
+case-insensitive volume too: renaming `Player.schema` to `player.schema` and
+regenerating leaves `player.go` and no `Player.go`, for every target's files.
 
 ---
 
@@ -1626,7 +1629,9 @@ element column, so one walk reaches the whole graph from either root. The wire's
 STORAGE a codec fills, and the accelerators describe bytes another build wrote.
 
 **Java carries the two table accelerators** (docs/SPEC-TABLES.md §19 and §7)
-and not the table wire: a unit that declares tables grows `<Table>Block.java`
+and both table wires — the fixed form through `<Name>Fixed.java` and the
+variable form through `<Name>Variable.java`, with the message form in
+`<Name>Message.java` (SPEC-TABLES.md, ENTRY POINTS, PER LANGUAGE): a unit that declares tables grows `<Table>Block.java`
 and `<Table>Cook.java` per table beside its packet classes, `<Name>Row.java`
 for every blittable record in the closure, and the runtime types those need —
 one file per type (`TableBytes.java`, `TableBlockInfo.java`,
@@ -1636,11 +1641,9 @@ with which schema file sorts first, and a unit that declares no table emits not
 one of them. A block is pointed at and a cook is opened; neither parses a wire,
 both are read-only, and both refuse a forged image rather than throwing on it
 (`make tables-java-fuzz` is that oracle over mutated corpus images, with its
-planted control). There is no `<Base>Table.java`: the Java port of the table
-wire wrote the form that preceded the id-table wire, which the current
-specification does not describe, and it was removed rather than carried;
-schema#517 is the row that brings the id-table wire to Java, and ROADMAP.md
-marks the cells.
+planted control). There is no `<Base>Table.java`: the table wire is spelled per
+table, in the three classes above, and the runtime they share is
+`TableFixed.java`, `TableVariable.java` and `TableMessage.java`.
 
 **A block row and a cooked record have no Java type at all.** There is no struct
 to lay out, so `<Name>Row`'s generated accessors read each field at its offset
@@ -1898,6 +1901,14 @@ $ schema pack   --root LoginRequest --message --announce backend_conn.bin \
 $ schema unpack --root LoginRequest --announce backend_conn.bin \
                 --in login.bin login/ tables/backend
 ```
+
+The message and its announcement are one artifact in two files, so `pack`
+publishes both or neither: a run that fails leaves the earlier pair as it was.
+That holds when one run writes to an output at a time. One publisher per
+destination is the contract, as with any compiler: `schema` takes no lock, and
+two runs writing the same `--out` and `--announce` at once can leave one run's
+message beside the other's announcement. Give concurrent runs their own
+outputs, or run them one after the other.
 
 **And `schema unpack` handed the announcement ITSELF prints the vocabulary
 decoded**, one line an entry with its slot, its id, the name your closure gives
@@ -3179,7 +3190,11 @@ version, the byte order, the root, the node count and the two part sizes. And
 because the attribution is SEPARABLE, `--attribution <file>` writes the
 directory beside the cook instead of inside it: the cook then carries data
 alone for a build that ships no tooling, and `cook-check --attribution <file>`
-puts the two back together when you want to check one.
+puts the two back together when you want to check one. The cook and its
+attribution file publish together or not at all, under the same contract as
+`pack --announce`: it holds when one run writes to an output at a time, and
+two runs cooking to the same `--out` and `--attribution` at once can leave a
+mismatched pair.
 
 ### The build version: what a cooked asset is stored under
 
@@ -3375,7 +3390,7 @@ check`, and so `schema generate`, diffs against it:
 ```
 $ schema check configs/
 configs/tables.baseline: ShipConfig.damage: specified default 21.0 -> 25.0 — this
-edit changes what data already written MEANS, and no reader can report it; if you
+edit changes what data already written MEANS, or stops it reading; if you
 mean it, record it: schema tables-baseline --update --reason "..." (SPEC-TABLES.md §18)
 schema: 1 error(s)
 schema <version>
@@ -3930,15 +3945,22 @@ schema pin v2.6.0 .
 
 The module path in the line moves with the version's major, as Go requires
 (`schema` for v0 and v1, `schema/vN` from v2 on), so one command moves a tree
-across a major. It refuses, by name, a version that is not a Go
-pseudo-version or semver tag, the tags v3.0.0, v3.0.1 and v3.0.2 (their `go.mod`
-names the `/v2` path, so Go resolves them under neither, `+incompatible` included), any
+across a major. It refuses, by name, a version that is not
+a Go pseudo-version or a semver tag; every v3 tag cut before the module
+path moved to `/v3` (today that is every v3 tag, v3.0.0 on: their `go.mod`
+names the `/v2` path, so Go resolves them under neither, `+incompatible`
+included; use a prebuilt binary from the releases page, or `go install` main, instead); any
 version with build metadata (Go takes none but `+incompatible`, and schema has
 a `go.mod` at every major), a directory that does not exist or holds no pin line (an empty directory is
 the same refusal, never a silent success), and a tree whose pins already
 differ from each other (`--mixed-ok` accepts the tree and moves them
 together; the flag may sit before or after the directories). Nothing else in
-the files moves, and no other file is touched.
+the files moves, and no other file is touched. The move is all or nothing:
+every file's new content is staged before any file is replaced, and a write
+that fails (a read-only directory, say) exits 1 with every file as it was:
+the original directory entry is put back, not a copy of its bytes. A
+`generate.go` that is a symbolic link is followed: the file it names is
+rewritten and the link is left as it is.
 
 **A unit that declares only tables needs no dependency.** The generated Go
 imports the standard library alone, so the files drop into any Go module
@@ -4383,6 +4405,26 @@ backends disagree with each other here), and `ir.ExprHasEnumMax` reports an
 `E.Max` reference, which has no twin in any generated target — fold those to
 the resolved value and keep the schema form in a comment, as the built-in
 backends do.
+
+Some constructs are gated centrally: `Generate` refuses a unit that uses
+`timestamp`, `| required`, `forms` or another key `compiler.CarryConstructs()`
+lists, before your generator runs, unless the target carries it. A generator
+that does (or only reads the construct's metadata) says so by implementing
+`compiler.ConstructCarrier`; `compiler.UnitConstructs(unit)` names what a unit
+uses:
+
+```go
+func (docs) Carries() []string { return []string{"timestamp"} } // read once, at Register
+```
+
+The declaration is the generator's whole answer: a construct it does not name
+is still refused, and a key that is not one of `CarryConstructs()` fails
+`Register`.
+
+`Register` calls `Names()` and `Carries()` once each and keeps its own copy of
+what they returned. Editing those slices afterwards, or answering differently
+on a later call, changes neither the names that select your generator nor the
+constructs it is handed: to change either, register on a new `Compiler`.
 
 `compiler.UserAgent()` reports which build of the compiler is running, for a
 tool that stamps its own output.

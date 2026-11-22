@@ -382,22 +382,40 @@ module SchemaRuntimeUnit
       elsif val.instance_of?(Array)
         val.each { |item| skip_json_unknown(item, graph) }
       elsif val.instance_of?(Hash)
+        defined_label = nil
         val.each_with_index do |(key, item), idx|
           raise Refused, 'malformed' if key.include?("\x00") || key.bytesize > 255
 
-          if !graph.nil? && key.start_with?('&')
+          if key.start_with?('&')
             tok = u(item.is_a?(JsonNumber) ? item.token : nil)
             if idx != 0 || key != '&node' || tok.nil? || !/\A[1-9][0-9]*\z/.match?(tok) ||
                tok.length > 20 || tok.to_i > 0xFFFFFFFFFFFFFFFF
               raise Refused, 'malformed'
             end
 
+            # a unit with no pointer has no label table: the prefix is still held
+            # to its grammar, and the value is skipped whole
+            next if graph.nil?
+
+            # THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): a label alone
+            # must name a definition already closed; fields after one must follow
+            # a label not yet defined, and the definition is open until this
+            # object closes. What the reader does not place is the value.
             num = tok.to_i
-            graph[num] ||= [nil, false]
+            entry = graph[num]
+            if val.length == 1
+              raise Refused, 'malformed' if entry.nil? || entry[1]
+            else
+              raise Refused, 'malformed' unless entry.nil?
+
+              graph[num] = [nil, true]
+              defined_label = num
+            end
           else
             skip_json_unknown(item, graph)
           end
         end
+        graph[defined_label] = [nil, false] unless defined_label.nil?
       end
     end
 
@@ -499,7 +517,7 @@ module SchemaRuntimeUnit
           raise Refused.new('text_holds_zero', field.name) if k.include?("\x00")
 
           parsed_key = if key_field.codec == 'string'
-                         if !key_field.unbounded && k.bytesize > [255, key_field.size].min
+                         if !key_field.unbounded && k.bytesize > key_field.size
                            raise Refused.new('length_over_bound', field.name)
                          end
 
@@ -765,9 +783,9 @@ module SchemaRuntimeUnit
     end
 
     def self.render_json_value(field, item, depth, counts, labels)
-      structural = %w[pointer table array pointer_array union_array map keyed
-                      union].include?(field.codec) || field.json_flags
-      if depth > MAX_DEPTH && !(field.codec == 'pointer' && item.nil?) && structural
+      # the write cap counts table values only (SPEC-TABLES W2): an empty array,
+      # map, union or flags value nests nothing and is written at any depth
+      if depth > MAX_DEPTH && %w[pointer table].include?(field.codec) && !(field.codec == 'pointer' && item.nil?)
         raise InvalidValue.new(field.name, 'nested past the depth cap')
       end
       if field.codec == 'optional'

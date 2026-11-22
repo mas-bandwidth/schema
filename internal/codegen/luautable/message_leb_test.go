@@ -159,10 +159,16 @@ func respell(t *testing.T, ann []byte, off int, spelled []byte) []byte {
 
 // goAnnounce is the oracle: schema-go's own announcement read on the same
 // bytes, answering the two facts this test compares.
-func goAnnounce(data []byte) (announced, malformed bool) {
+func goAnnounce(t *testing.T, data []byte) (announced, malformed bool) {
+	t.Helper()
 	var v tablewire.Vocabulary
 	var report tabletext.Report
-	_ = v.AnnounceRead(data, &report)
+	err := v.AnnounceRead(data, &report)
+	// the error and the vocabulary are one verdict: a connection's first
+	// announcement sets the vocabulary exactly when the read returns no error
+	if (err == nil) != v.Announced() {
+		t.Fatalf("the oracle's AnnounceRead returned %v and announced %t: the two say different things", err, v.Announced())
+	}
 	return v.Announced(), report.Refused
 }
 
@@ -219,7 +225,7 @@ require("./inputs")
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			wantAnnounced, wantMalformed := goAnnounce(c.data)
+			wantAnnounced, wantMalformed := goAnnounce(t, c.data)
 			gotAnnounced, gotMalformed := luauAnnounce(t, dir, c.data)
 			if gotAnnounced != wantAnnounced || gotMalformed != wantMalformed {
 				t.Fatalf("Luau AnnounceRead = announced %t malformed %t, tablewire = announced %t malformed %t",
@@ -227,11 +233,11 @@ require("./inputs")
 			}
 		})
 	}
-	if _, bad := goAnnounce(ann); bad {
+	if _, bad := goAnnounce(t, ann); bad {
 		t.Fatal("the golden announcement is malformed to the oracle")
 	}
 	for _, c := range cases[1:] {
-		if announced, bad := goAnnounce(c.data); announced || !bad {
+		if announced, bad := goAnnounce(t, c.data); announced || !bad {
 			t.Fatalf("%s is not malformed to the oracle: announced %t malformed %t", c.name, announced, bad)
 		}
 	}

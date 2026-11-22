@@ -1,0 +1,6 @@
+package p
+
+type Ship
+{
+    hp int32
+}

@@ -43,6 +43,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/atomicfile"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -812,7 +813,7 @@ func Retire(u *ir.Unit, paths []string, target, reason string) (path string, rew
 	if text == before {
 		return path, false, nil
 	}
-	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+	if err := atomicfile.WriteFile(path, []byte(text), 0o644); err != nil {
 		return "", false, err
 	}
 	return path, true, nil

@@ -171,10 +171,16 @@ func TestElixirLoadMessagesRefusesTextOffShape(t *testing.T) {
 		lawful = append(lawful, textCase{name: c.name, batch: batch})
 	}
 
+	if len(invalid) == 0 {
+		t.Fatal("invalid is empty: the loop below would check nothing")
+	}
 	for _, c := range invalid {
 		if engineMessageAccepts(t, u, m, c.batch) {
 			t.Fatalf("%s: the engine accepted a batch whose text is off shape", c.name)
 		}
+	}
+	if len(lawful) == 0 {
+		t.Fatal("lawful is empty: the loop below would check nothing")
 	}
 	for _, c := range lawful {
 		if !engineMessageAccepts(t, u, m, c.batch) {

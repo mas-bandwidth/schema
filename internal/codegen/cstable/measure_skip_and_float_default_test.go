@@ -24,15 +24,21 @@ func TestLoadMeasureEndsTheRecordWhenASkipFails(t *testing.T) {
 // plain float's default elision compares bits, so -0 under a +0 default rides.
 // The C# writer compared the float as a value (-0 == +0) and dropped the field
 // (pinned vector list_float_minus_zero_default, listdemo.Save, seed
-// 24845619678: the leg saved 57 bytes, the oracle 71).
+// 24845619678: the leg saved 57 bytes, the oracle 71). A COMPRESSED float's
+// -0 is +0, so only a compressed float (HasRange) compares by value, as the
+// reference does.
 func TestPlainFloatElisionComparesBitPatterns(t *testing.T) {
 	t.Parallel()
 	src := tableWireSource
-	if strings.Contains(src, "TableBitsToFloat((uint)raw) == TableBitsToFloat((uint)f.DefaultRaw)") ||
-		strings.Contains(src, "TableBitsToDouble(raw) == TableBitsToDouble(f.DefaultRaw)") {
-		t.Error("the C# default elision compares a float as a value, so -0 equals +0")
+	plain := strings.Index(src, "return (uint)raw == (uint)f.DefaultRaw;")
+	compressed := strings.Index(src, "if (f.HasRange) { return BitConverter.Int32BitsToSingle(")
+	if plain < 0 {
+		t.Error("the C# default elision does not compare a plain float32's bit pattern")
 	}
-	if !strings.Contains(src, "if (f.Kind == 10) { return (uint)raw == (uint)f.DefaultRaw; }") {
-		t.Error("the C# default elision does not compare a float32's bit pattern")
+	if compressed < 0 || compressed > plain {
+		t.Error("the C# default elision compares a float as a value outside a compressed float, so a plain -0 equals +0")
+	}
+	if strings.Contains(src, "TableBitsToDouble(raw) == TableBitsToDouble(f.DefaultRaw)") {
+		t.Error("the C# default elision compares a float64 as a value, so a plain -0 equals +0")
 	}
 }

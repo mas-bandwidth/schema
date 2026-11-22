@@ -178,6 +178,8 @@ func emitCookHome(g *goose.Gen, u *ir.Unit, records []*ir.Struct, recordIndex fu
 	g.Pf("// <Row>Row<Field>(b, at) reads one field of the record at `at` in a view —\n")
 	g.Pf("// a cook's region, or a block — and <Row>RowSet<Field> writes it. A cooked\n")
 	g.Pf("// record IS the blittable row, so one set serves both accelerators.\n")
+	g.Pf("// A compressed float's setter answers false, writing nothing, for a value\n")
+	g.Pf("// off its declared range, and stores its -0 as +0 (§3.3).\n")
 	for _, st := range records {
 		ml := ir.RecordLayout(u, st)
 		hasSizeField := false

@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 // A leg whose generator and conformance driver are both on main must not
@@ -78,7 +80,7 @@ func loadRoadmapNotes(t *testing.T, repoRoot string) (base, merged map[string]st
 	}
 	base = parseSexpNotes(string(raw))
 	merged = maps.Clone(base)
-	evFiles, err := filepath.Glob(filepath.Join(repoRoot, "docs", "roadmap-evidence", "*.sexp"))
+	evFiles, err := provesran.Glob(filepath.Join(repoRoot, "docs", "roadmap-evidence", "*.sexp"))
 	if err != nil {
 		t.Fatal(err)
 	}

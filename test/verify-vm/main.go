@@ -423,6 +423,12 @@ func main() {
 		fmt.Fprintln(os.Stderr, "vmverify: --lang is required")
 		os.Exit(2)
 	}
+	// An unknown mode would generate no unit and run no probe, and still end
+	// "ok": refuse it by name.
+	if *mode != "all" && *mode != "packet" && *mode != "surfaces" {
+		fmt.Fprintf(os.Stderr, "vmverify: --mode %q is not all, packet or surfaces\n", *mode)
+		os.Exit(2)
+	}
 	absRoot, err := filepath.Abs(*repoRoot)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

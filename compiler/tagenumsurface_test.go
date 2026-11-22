@@ -103,7 +103,7 @@ var tagEnumSurface = map[string]tagEnumClaim{
 	"java": {
 		noCount:  " COUNT = ",
 		max:      "        public static final byte MAX = 2;",
-		nameFunc: "    public static String enumNameWeaponFireType(long value) {",
+		nameFunc: "    public static java.lang.String enumNameWeaponFireType(long value) {",
 	},
 	"js": {
 		// the extent is a module constant beside the frozen tag object, and
@@ -154,7 +154,11 @@ var tagEnumSurface = map[string]tagEnumClaim{
 }
 
 func TestUnionTagEnumExportsMaxNoCountAndItsDebugName(t *testing.T) {
-	for _, target := range New().Targets() {
+	allTargets := New().Targets()
+	if len(allTargets) == 0 {
+		t.Fatal("New().Targets() is empty: the loop below would check nothing")
+	}
+	for _, target := range allTargets {
 		claim, known := tagEnumSurface[target]
 		if !known {
 			t.Errorf("target %q has no tag-enum claim here. A new backend landed and this gate was not told", target)
@@ -318,7 +322,11 @@ func TestTableClosureTagEnumDebugNameCoversNoneVariantsAndOutOfSet(t *testing.T)
 // out-of-set arm, "???" being the last name every target returns, and the
 // opening line's absence is itself the refusal.
 func TestTagEnumDebugNameCoversNoneVariantsAndOutOfSet(t *testing.T) {
-	for _, target := range New().Targets() {
+	allTargets := New().Targets()
+	if len(allTargets) == 0 {
+		t.Fatal("New().Targets() is empty: the loop below would check nothing")
+	}
+	for _, target := range allTargets {
 		claim, known := tagEnumSurface[target]
 		if !known {
 			t.Errorf("target %q has no tag-enum claim here. A new backend landed and this gate was not told", target)

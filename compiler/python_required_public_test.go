@@ -3,7 +3,6 @@ package compiler
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -16,6 +15,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func init() { nonGoCarriers["python"] = append(nonGoCarriers["python"], carryRequired) }
@@ -155,7 +156,7 @@ func TestPythonRequiredPublicShapes(t *testing.T) {
 				}
 				if len(pkgs) > 0 {
 					args := append([]string{"--strict", "--python-version", "3.11", "--no-color-output", "--cache-dir", filepath.Join(cdir, ".mypy_cache")}, pkgs...)
-					cmd := exec.Command(mypyBin, args...)
+					cmd := testproc.Command(t, mypyBin, args...)
 					cmd.Dir = cdir
 					if _, err := cmd.CombinedOutput(); err != nil {
 						for _, idx := range idxs {
@@ -166,6 +167,8 @@ func TestPythonRequiredPublicShapes(t *testing.T) {
 			}(w)
 		}
 		wg.Wait()
+	} else {
+		t.Fatalf("shard %d selected none of the %d required shapes: the test would check nothing", shard, len(cases))
 	}
 	for idx, p := range prepared {
 		needMypy := mypyFailed[idx]

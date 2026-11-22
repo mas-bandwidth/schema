@@ -327,7 +327,10 @@ const tableMessageReadSource = `
             if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry entry) || reference != 0 && (entry.Kind != 0 || Reserved(entry.Id))) { return false; }
             int variant = reference == 0 ? 0 : FindVariant(f, entry.Id, false);
             if (reference != 0 && variant == 0) { d.Report.Unknown++; }
-            if (keep) { f.SetRaw(value, index, (ulong)variant); }
+            ulong raw = (ulong)variant;
+            // A DEPRECATED VARIANT READS AS THE FIELD'S DEFAULT (the ELEMENT default inside an array), never unknown (docs/SPEC-TABLES.md §2.15)
+            if (variant != 0 && f.EnumDeprecated != null && f.EnumDeprecated((ulong)variant)) { raw = f.IsArray ? 0ul : f.DefaultRaw; }
+            if (keep) { f.SetRaw(value, index, raw); }
             return true;
         }
         if (kind == 15)
@@ -428,7 +431,9 @@ const tableMessageReadSource = `
         int total = MessageCount(bytes, vocabulary, report);
         if (report.Refused) { return Finish(report, Verdict.Refused); }
         if (total == 0) { return Finish(report, Verdict.Damaged); }
-        if (total > values.Length) { count = total; return Refuse(report, "batch_too_large"); }
+        // A REFUSED BATCH RETURNS A COUNT OF 0 (docs/SPEC-TABLES.md §3.3),
+        // the capacity refusal included, and nothing is decoded.
+        if (total > values.Length) { return Refuse(report, "batch_too_large"); }
         bool damagedBefore = report.Damaged;
         report.Damaged = false;
         BitReader r = new BitReader(bytes); r.At = 16;

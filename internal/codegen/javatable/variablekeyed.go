@@ -19,6 +19,23 @@ func variableElement(f *ir.Field) *ir.Field {
 	return &one
 }
 
+// javaStoredFloat is the value every writer stores for a float: the value
+// itself, except that a COMPRESSED float's -0 is stored as +0, the bits +0
+// stores (docs/SPEC-TABLES.md §3.3; docs/rulings.json fixed-compressed-negzero).
+// -0.0f == 0.0f in Java, so the test stores +0 for both zeros. A plain float's
+// -0 is a value and rides bit-exact. Elision and every store take it.
+func javaStoredFloat(f *ir.Field, expr string) string {
+	switch {
+	case !f.HasFloatRange:
+		return expr
+	case f.Type.Kind == ir.TFloat32:
+		return "(" + expr + " == 0.0f ? 0.0f : " + expr + ")"
+	case f.Type.Kind == ir.TFloat64:
+		return "(" + expr + " == 0.0 ? 0.0 : " + expr + ")"
+	}
+	return expr
+}
+
 func variableDefaultTest(f *ir.Field, expr string) string {
 	if variableWide(f) && f.Type.Width > 64 {
 		return expr + ".equals(" + variableWideDefault(f) + ")"
@@ -38,17 +55,20 @@ func variableDefaultTest(f *ir.Field, expr string) string {
 		// A FLOAT IS ITS DEFAULT BY ITS BITS (docs/SPEC-TABLES.md §3.3): a -0
 		// under a +0 default rides. The default's bits are a constant, parsed
 		// from the same literal javac reads, so the test stays one short line.
+		// A COMPRESSED float's -0 is +0 (javaStoredFloat).
+		expr = javaStoredFloat(f, expr)
 		def := variableDefault(f)
 		if v, err := strconv.ParseFloat(strings.TrimSuffix(def, "f"), 32); err == nil {
-			return fmt.Sprintf("Float.floatToRawIntBits(%s)==0x%08x", expr, math.Float32bits(float32(v)))
+			return fmt.Sprintf("java.lang.Float.floatToRawIntBits(%s)==0x%08x", expr, math.Float32bits(float32(v)))
 		}
-		return "Float.floatToRawIntBits(" + expr + ")==Float.floatToRawIntBits(" + def + ")"
+		return "java.lang.Float.floatToRawIntBits(" + expr + ")==java.lang.Float.floatToRawIntBits(" + def + ")"
 	case ir.TFloat64:
+		expr = javaStoredFloat(f, expr)
 		def := variableDefault(f)
 		if v, err := strconv.ParseFloat(strings.TrimSuffix(def, "d"), 64); err == nil {
-			return fmt.Sprintf("Double.doubleToRawLongBits(%s)==0x%016xL", expr, math.Float64bits(v))
+			return fmt.Sprintf("java.lang.Double.doubleToRawLongBits(%s)==0x%016xL", expr, math.Float64bits(v))
 		}
-		return "Double.doubleToRawLongBits(" + expr + ")==Double.doubleToRawLongBits(" + def + ")"
+		return "java.lang.Double.doubleToRawLongBits(" + expr + ")==java.lang.Double.doubleToRawLongBits(" + def + ")"
 	case ir.TNamed:
 		switch f.Type.Ref.(type) {
 		case *ir.Struct:
@@ -83,21 +103,21 @@ func writeVariableKeyedHelpers(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		writeFieldRead(b, u, st, one, true, 0, false)
 		b.WriteString("    }\n")
 		if unitCarriesForm(u, "json") {
-			fmt.Fprintf(b, "    static void jsonSlot_%s(StringBuilder b,TableVariable.NodeGraph graph,Slot_%s v,int depth){\n", m, m)
+			fmt.Fprintf(b, "    static void jsonSlot_%s(java.lang.StringBuilder b,TableVariable.NodeGraph graph,Slot_%s v,int depth){\n", m, m)
 			writeJsonFieldValue(b, u, st, one)
 			b.WriteString("    }\n")
 			fmt.Fprintf(b, "    static void readJsonSlot_%s(TableJson.In in,Slot_%s v,int depth){\n", m, m)
 			readJsonFieldValue(b, u, st, one, "depth")
 			b.WriteString("    }\n")
 		}
-		fmt.Fprintf(b, "    static void writeKeyedField_%s(TableVariable.Writer w,TableVariable.NodeGraph graph,List<%s> slots){int at=w.off;int mark=w.ids.count;long ref=w.ref(F_%s);w.putLeb(ref);w.put8(16);int count=writeKeyedPayload_%s(w,graph,slots);if(count==0){w.off=at;w.ids.count=mark;}}\n", m, boxed, m, m)
+		fmt.Fprintf(b, "    static void writeKeyedField_%s(TableVariable.Writer w,TableVariable.NodeGraph graph,java.util.List<%s> slots){int at=w.off;int mark=w.ids.count;long ref=w.ref(F_%s);w.putLeb(ref);w.put8(16);int count=writeKeyedPayload_%s(w,graph,slots);if(count==0){w.off=at;w.ids.count=mark;}}\n", m, boxed, m, m)
 		for _, retaining := range []bool{false, true} {
 			suffix, args := "", ""
 			if retaining {
 				suffix = "Retain"
 				args = ",TableRetain retain,TableVariable.Report report,int[] path,int depth"
 			}
-			fmt.Fprintf(b, "    static int writeKeyedPayload%s_%s(TableVariable.Writer w,TableVariable.NodeGraph graph,List<%s> slots%s){int entries=w.off;int count=0;\n", suffix, m, boxed, args)
+			fmt.Fprintf(b, "    static int writeKeyedPayload%s_%s(TableVariable.Writer w,TableVariable.NodeGraph graph,java.util.List<%s> slots%s){int entries=w.off;int count=0;\n", suffix, m, boxed, args)
 			for i := range f.KeyEnumRef.Variants {
 				expr := fmt.Sprintf("slots.get(%d)", i)
 				defaultTest := variableDefaultTest(one, expr)
@@ -148,7 +168,7 @@ func writeKeyedFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	m := varMember(f)
 	one := variableElement(f)
 	kind := ir.TableWireElemKind(f)
-	fmt.Fprintf(b, "                if(kind==16){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=ar.count(r.limit);if(!ar.fail){if(!TableVariable.keyedElemKindClosed(ek)){report.damaged=true;}else if(!(%s)){report.refuse(\"kind_mismatch\");}else{if(ek!=%d)report.widened++;for(long i=0;Long.compareUnsigned(i,count)<0;i++){long keyRef=ar.leb();if(ar.fail||keyRef==0){report.damaged=true;break;}long key=ar.resolve(keyRef);TableVariable.Reader body=ar.body();if(body==null)break;int slot=-1;\n", variableCompatibleKinds(kind, "ek"), kind)
+	fmt.Fprintf(b, "                if(kind==16){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=ar.count(r.limit);if(!ar.fail){if(!TableVariable.keyedElemKindClosed(ek)){report.damaged=true;}else if(!(%s)){report.refuse(\"kind_mismatch\");}else{if(ek!=%d)report.widened++;for(long i=0;java.lang.Long.compareUnsigned(i,count)<0;i++){long keyRef=ar.leb();if(ar.fail||keyRef==0){report.damaged=true;break;}long key=ar.resolve(keyRef);TableVariable.Reader body=ar.body();if(body==null)break;int slot=-1;\n", variableCompatibleKinds(kind, "ek"), kind)
 	for i := range f.KeyEnumRef.Variants {
 		fmt.Fprintf(b, "                    if(key==0x%016xL)slot=%d;\n", ir.TableWireId(f.KeyEnumRef.VariantWireName(i)), i)
 	}
@@ -202,7 +222,7 @@ func writeJsonKeyedValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 func readJsonKeyedValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, depth string) {
 	m := varMember(f)
 	one := variableElement(f)
-	fmt.Fprintf(b, "                if(in.peek()!='{'){in.bad=true;return;}in.p++;for(int i=0;i<%d;i++)v.%s.set(i,%s);boolean[] seen=new boolean[%d];java.util.Set<String> skipped=null;while(in.peek()!='}'){String slotName=in.scanName();if(in.bad)return;if(in.peek()!=':'){in.bad=true;return;}in.p++;int slot=-1;\n", f.ArrayBound, m, variableDefault(one), f.ArrayBound)
+	fmt.Fprintf(b, "                if(in.peek()!='{'){in.bad=true;return;}in.p++;for(int i=0;i<%d;i++)v.%s.set(i,%s);boolean[] seen=new boolean[%d];java.util.Set<java.lang.String> skipped=null;while(in.peek()!='}'){java.lang.String slotName=in.scanName();if(in.bad)return;if(in.peek()!=':'){in.bad=true;return;}in.p++;int slot=-1;\n", f.ArrayBound, m, variableDefault(one), f.ArrayBound)
 	for i, name := range f.KeyEnumRef.Variants {
 		fmt.Fprintf(b, "                if(%q.equals(slotName))slot=%d;\n", name, i)
 	}
