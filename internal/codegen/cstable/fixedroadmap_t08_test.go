@@ -306,7 +306,7 @@ else
 // only under `hash != own`; the record loop's single Run call runs both, so a
 // record this build wrote and a record an endpoint wrote are read by one path.
 func t08P1(t *testing.T) {
-	_, _, src := t08Emit(t, t08Flat)
+	_, st, src := t08Emit(t, t08Flat)
 	n := t02Norm(src)
 
 	t02Has(t, src, "ReadOnlySpan<TableFixedEntry> entries = TFixedPlan;",
@@ -321,10 +321,18 @@ func t08P1(t *testing.T) {
 	if got := strings.Count(src, "TableFixedWire.Run(entries, "); got != 1 {
 		t.Errorf("P1: TableFixedWire.Run(entries, occurs %d times in the load, want its one record loop", got)
 	}
-	for _, forbidden := range []string{"strict", "identity_plan", "compiled_plan"} {
+	for _, forbidden := range []string{"identity_plan", "compiled_plan"} {
 		if strings.Contains(strings.ToLower(n), forbidden) {
 			t.Errorf("P1: the emitted load carries a %q, which is a second reader", forbidden)
 		}
+	}
+	// "strict" is judged on the fixed load itself, its body from the signature
+	// to the array overload: the message form's announcement carries a Strict
+	// flag by name (SPEC-TABLES §3.3, the language-neutral shape), and that
+	// flag is not a second fixed reader.
+	load := t02Block(t, src, "public static long "+st.Name+"FixedLoad(", "public static long "+st.Name+"FixedLoad("+st.Name+"[] values")
+	if strings.Contains(strings.ToLower(load), "strict") {
+		t.Errorf("P1: the emitted load carries a %q, which is a second reader", "strict")
 	}
 }
 
