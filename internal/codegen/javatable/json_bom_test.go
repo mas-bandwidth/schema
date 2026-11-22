@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,6 +12,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJsonLeadingBOMBoundaryJava verifies that the Java JSON reader accepts
@@ -183,11 +184,11 @@ public final class BomProbe {
 	sources = append(sources, p)
 	javac, javaBin := javaTools(t)
 	args := append([]string{"--release", "17", "-d", dir}, sources...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	runArgs := append([]string{"-ea", "-cp", dir, "probe.BomProbe"}, caseFiles...)
-	out, err := exec.Command(javaBin, runArgs...).CombinedOutput()
+	out, err := testproc.Command(t, javaBin, runArgs...).CombinedOutput()
 	if err != nil {
 		t.Fatalf("java: %v\n%s", err, out)
 	}

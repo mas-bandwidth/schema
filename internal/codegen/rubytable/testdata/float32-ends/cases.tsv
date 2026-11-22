@@ -1,0 +1,39 @@
+# The compressed float32 range corpus over Fends.schema beside this file
+# (SPEC.md 4.6: a float32 field's declared range is compared at float32; a
+# compressed -0 lands as +0). TestRubyCompressedFloatFloat32Ends reads every
+# row, runs each on both pinned Ruby interpreters, and holds the answer to the
+# verdict.
+# case	form	field	value	expect
+#
+# form: variable (Probe#save then Probe.load), json (Probe#to_json then
+#   Probe.from_json), json-text (Probe.from_json of {"field": value}) or
+#   message (save_messages of one Msg then load_messages after the
+#   announcement).
+# value: the value set (a Ruby float), or for json-text the JSON number.
+# expect: held <the value read back, as Ruby's Float#inspect spells it, so
+#   0.0 is +0 and -0.0 is -0> or refused (the write or the read refuses;
+#   which one, and the reason, are diagnostic detail).
+tenth_top_variable	variable	tenth	0.1	held 0.10000000149011612
+tenth_rounds_into_range_variable	variable	tenth	0.1000000015	held 0.10000000149011612
+tenth_past_top_variable	variable	tenth	0.1000001	refused
+tenth_bottom_variable	variable	tenth	0.0	held 0.0
+z_negative_zero_variable	variable	z	-0.0	held 0.0
+z_bottom_variable	variable	z	-1.0	held -1.0
+tenth_top_json	json	tenth	0.1	held 0.10000000149011612
+tenth_rounds_into_range_json	json	tenth	0.1000000015	held 0.10000000149011612
+tenth_past_top_json	json	tenth	0.1000001	refused
+tenth_bottom_json	json	tenth	0.0	held 0.0
+z_negative_zero_json	json	z	-0.0	held 0.0
+z_bottom_json	json	z	-1.0	held -1.0
+tenth_top_json_text	json-text	tenth	0.1	held 0.10000000149011612
+tenth_rounds_into_range_json_text	json-text	tenth	0.1000000015	held 0.10000000149011612
+tenth_past_top_json_text	json-text	tenth	0.1000001	refused
+tenth_bottom_json_text	json-text	tenth	0.0	held 0.0
+z_negative_zero_json_text	json-text	z	-0.0	held 0.0
+z_bottom_json_text	json-text	z	-1.0	held -1.0
+tenth_top_message	message	tenth	0.1	held 0.10000000149011612
+tenth_rounds_into_range_message	message	tenth	0.1000000015	held 0.10000000149011612
+tenth_past_top_message	message	tenth	0.1000001	refused
+tenth_bottom_message	message	tenth	0.0	held 0.0
+z_negative_zero_message	message	z	-0.0	held 0.0
+z_bottom_message	message	z	-1.0	held -1.0

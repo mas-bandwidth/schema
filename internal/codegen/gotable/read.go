@@ -616,7 +616,7 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 		if f.Type.Kind == ir.TBytes && !f.Type.Pointer {
 			typ = "byte"
 		}
-		g.pf("%s\t%s = %s(v)\n%s}\n", ind, expr, typ, ind)
+		g.pf("%s\t%s = %s\n%s}\n", ind, expr, narrowReadValue(typ, wireKind, signed), ind)
 	}
 }
 
@@ -642,6 +642,19 @@ func knownKindWidth(wireKind string) int {
 	return ir.TableKindWidth(n)
 }
 
+// narrowReadValue converts v to the field's type. Behind a runtime wire kind v is 64
+// bits, held inside the field's width by the kind check (declared kind or
+// tableKindWidens): unsigned says so with a folded mask, signed with a #nosec.
+func narrowReadValue(typ, wireKind string, signed bool) string {
+	to := map[string]int{"uint8": 8, "byte": 8, "int8": 8, "uint16": 16, "int16": 16, "uint32": 32, "int32": 32}[typ]
+	if to == 0 || knownKindWidth(wireKind) != 0 {
+		return typ + "(v)"
+	} else if !signed {
+		return fmt.Sprintf("%s(v & 0x%x)", typ, uint64(1)<<to-1)
+	}
+	return typ + "(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to " + typ
+}
+
 func scalarGetExpr(rdr, wireKind string, signed bool) string {
 	n := knownKindWidth(wireKind)
 	if n != 1 && n != 2 && n != 4 && n != 8 {
@@ -651,20 +664,10 @@ func scalarGetExpr(rdr, wireKind string, signed bool) string {
 		}
 		return fmt.Sprintf("%s.%s(%s)", rdr, method, wireKind)
 	}
-	get := fmt.Sprintf("%s.Get%d()", rdr, n*8)
 	if !signed {
-		return get
+		return fmt.Sprintf("%s.Get%d()", rdr, n*8)
 	}
-	switch n {
-	case 1:
-		return "int8(" + get + ")"
-	case 2:
-		return "int16(" + get + ")"
-	case 4:
-		return "int32(" + get + ")"
-	default:
-		return "int64(" + get + ")"
-	}
+	return fmt.Sprintf("%s.getI%d()", rdr, n*8)
 }
 
 func (g *tableGen) emitCarveReturn(parent, child, ind string) {

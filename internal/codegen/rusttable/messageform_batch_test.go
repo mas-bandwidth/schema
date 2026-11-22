@@ -45,6 +45,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestMessageFormBatchRust(t *testing.T) {
@@ -422,12 +424,12 @@ fn main() {
 	}
 	bin := filepath.Join(dir, "batchprobe")
 	args := append(rustcHostLinker(), "--edition", "2024", "-o", bin, "main.rs")
-	cmd := exec.Command("rustc", args...)
+	cmd := testproc.Command(t, "rustc", args...)
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("the probe did not build: %v\n%s", err, out)
 	}
-	run := exec.Command(bin)
+	run := testproc.Command(t, bin)
 	run.Dir = dir
 	out, err := run.CombinedOutput()
 	if err != nil {

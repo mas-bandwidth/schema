@@ -1,0 +1,16 @@
+package alias
+
+type D
+{
+    a A
+    b B
+    c C
+}
+
+table U
+{
+    d  D
+    ta TA
+    tb TB
+    tc TC
+}
