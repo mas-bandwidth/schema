@@ -18,11 +18,32 @@ import (
 // output for it, captured on a bench; the test reads files and runs no Java.
 func TestCanonicalLaysOutTheTemplatesShapes(t *testing.T) {
 	t.Parallel()
-	in, err := os.ReadFile(filepath.Join("testdata", "canonical_shapes.in"))
+	canonicalMatchesFormatter(t, "canonical_shapes")
+}
+
+// THE SHAPES QUALIFIED NAMES WIDEN: every platform type is spelled from the
+// package root, so lines the templates wrote run past 100 columns where the
+// simple names fit. testdata/canonical_qualified.in holds each such shape the
+// format gate found (a `throw new` call, a for header with an empty body and
+// a condition too wide for its own line, a parenthesized receiver with one
+// call, a conditional arm behind `? `, a call leading a broken comparison, an
+// assert whose receiver fits behind `assert `), and .want is google-java-format
+// 1.37.0 --aosp's output for it.
+func TestCanonicalLaysOutTheQualifiedShapes(t *testing.T) {
+	t.Parallel()
+	canonicalMatchesFormatter(t, "canonical_qualified")
+}
+
+// canonicalMatchesFormatter checks Canonical over testdata/<name>.in against
+// the formatter's own output in testdata/<name>.want, then that the pass is
+// idempotent and moved no token.
+func canonicalMatchesFormatter(t *testing.T, name string) {
+	t.Helper()
+	in, err := os.ReadFile(filepath.Join("testdata", name+".in"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	want, err := os.ReadFile(filepath.Join("testdata", "canonical_shapes.want"))
+	want, err := os.ReadFile(filepath.Join("testdata", name+".want"))
 	if err != nil {
 		t.Fatal(err)
 	}

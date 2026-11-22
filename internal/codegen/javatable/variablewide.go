@@ -46,9 +46,9 @@ func variableRawExpr(f *ir.Field, expr string) string {
 		return "java.math.BigInteger.valueOf(" + expr + ")"
 	}
 	if f.Type.Width <= 32 {
-		return "java.math.BigInteger.valueOf(Integer.toUnsignedLong(" + expr + "))"
+		return "java.math.BigInteger.valueOf(java.lang.Integer.toUnsignedLong(" + expr + "))"
 	}
-	return "new java.math.BigInteger(Long.toUnsignedString(" + expr + "))"
+	return "new java.math.BigInteger(java.lang.Long.toUnsignedString(" + expr + "))"
 }
 func variableRawStorage(f *ir.Field, raw string) string {
 	if f.Type.Width <= 32 {
@@ -136,8 +136,8 @@ func variableWideJson(f *ir.Field, expr string) string {
 
 const variableWideRuntime = `
     static java.math.BigInteger wide(long hi,long lo,boolean signed) {
-        java.math.BigInteger upper=signed?java.math.BigInteger.valueOf(hi):new java.math.BigInteger(Long.toUnsignedString(hi));
-        return upper.shiftLeft(64).add(new java.math.BigInteger(Long.toUnsignedString(lo)));
+        java.math.BigInteger upper=signed?java.math.BigInteger.valueOf(hi):new java.math.BigInteger(java.lang.Long.toUnsignedString(hi));
+        return upper.shiftLeft(64).add(new java.math.BigInteger(java.lang.Long.toUnsignedString(lo)));
     }
     static int integerWidth(int kind){switch(kind){case 2:case 6:case 20:case 25:return 1;case 3:case 7:case 21:case 26:return 2;case 4:case 8:case 22:case 27:return 4;case 5:case 9:case 23:case 28:case 36:return 8;case 18:case 19:case 24:case 29:return 16;default:return 0;}}
     static boolean signedKind(int kind){return kind>=2&&kind<=5||kind==18||kind>=20&&kind<=24||kind==36;}
@@ -154,7 +154,7 @@ const variableWideRuntime = `
 const variableWideJsonRuntime = `
     // integerToken is the digits-and-optional-minus spelling an integer takes:
     // no fraction, no exponent, no plus, no leading zero, and not -0 (§16.2).
-    static boolean integerToken(String token){
+    static boolean integerToken(java.lang.String token){
         if(token==null||token.isEmpty())return false;
         int i=0;boolean negative=false;
         if(token.charAt(0)=='-'){negative=true;i++;}
@@ -164,12 +164,12 @@ const variableWideJsonRuntime = `
         for(;i<token.length();i++){char d=token.charAt(i);if(d<'0'||d>'9')return false;}
         return true;
     }
-    static String wideText(java.math.BigInteger raw,java.math.BigInteger lo,java.math.BigInteger hi,int fraction,boolean fixed){
+    static java.lang.String wideText(java.math.BigInteger raw,java.math.BigInteger lo,java.math.BigInteger hi,int fraction,boolean fixed){
         if(raw.compareTo(lo)<0||raw.compareTo(hi)>0)throw new Refused("out_of_range");
         return wideText(raw,fraction,fixed);
     }
-    static String wideText(java.math.BigInteger raw,int fraction,boolean fixed){
-        if(!fixed)return raw.toString();String text=new java.math.BigDecimal(raw).divide(new java.math.BigDecimal(java.math.BigInteger.ONE.shiftLeft(fraction))).stripTrailingZeros().toPlainString();
+    static java.lang.String wideText(java.math.BigInteger raw,int fraction,boolean fixed){
+        if(!fixed)return raw.toString();java.lang.String text=new java.math.BigDecimal(raw).divide(new java.math.BigDecimal(java.math.BigInteger.ONE.shiftLeft(fraction))).stripTrailingZeros().toPlainString();
         return text.indexOf('.')<0?text+".0":text;
     }
     // Exact raw-scale conversion, with the oracle's bounded decimal band.
@@ -177,7 +177,7 @@ const variableWideJsonRuntime = `
     // run of significant digits reaches a big-number conversion (§15, §16.2).
     static java.math.BigInteger readWide(In in,boolean signed,int fraction,boolean integerOnly,boolean stringOk,java.math.BigInteger lo,java.math.BigInteger hi){
         int c=in.peek();
-        String token;
+        java.lang.String token;
         if(stringOk&&c=='"'){
             token=in.scanString();if(in.bad||token==null)return null;
             if(integerOnly){
@@ -188,7 +188,7 @@ const variableWideJsonRuntime = `
                 // already be the token's own (§16.2).
                 if(token.isEmpty()||(token.charAt(0)!='-'&&(token.charAt(0)<'0'||token.charAt(0)>'9'))){in.rep.refuse("kind_mismatch");return null;}
                 In probe=new In(token.getBytes(java.nio.charset.StandardCharsets.UTF_8),new TableVariable.Report());
-                String scanned=probe.scanNumber(new boolean[1]);
+                java.lang.String scanned=probe.scanNumber(new boolean[1]);
                 if(probe.bad||scanned==null||probe.p!=probe.t.length){in.rep.refuse("kind_mismatch");return null;}
                 token=scanned;
             }
@@ -224,7 +224,7 @@ const variableWideJsonRuntime = `
             else{
                 long scale=point-(long)sig;
                 if(scale< -(long)fraction){in.rep.refuse("kind_mismatch");return null;}
-                StringBuilder digits=new StringBuilder(sig);
+                java.lang.StringBuilder digits=new java.lang.StringBuilder(sig);
                 for(int q=first;q<=last;q++)digits.append(q<intLen?token.charAt(intStart+q):token.charAt(fracStart+q-intLen));
                 raw=new java.math.BigInteger(digits.toString()).shiftLeft(fraction);
                 if(scale>=0){raw=raw.multiply(java.math.BigInteger.TEN.pow((int)scale));}
@@ -241,7 +241,7 @@ const variableWideJsonRuntime = `
     }
     // A map key is an exact integer token, answered from its significant
     // digits: a token past the band is refused before any big-number work.
-    static java.math.BigInteger exactIntegerToken(String token){
+    static java.math.BigInteger exactIntegerToken(java.lang.String token){
         int n=token.length(),at=0;boolean negative=false;
         if(at<n&&(token.charAt(at)=='-'||token.charAt(at)=='+')){negative=token.charAt(at)=='-';at++;}
         int intStart=at;while(at<n&&token.charAt(at)>='0'&&token.charAt(at)<='9')at++;
@@ -265,7 +265,7 @@ const variableWideJsonRuntime = `
         }
         long point=(long)intLen+exp-(long)first;int sig=last-first+1;long scale=point-(long)sig;
         if(point>40||scale<0)return null;
-        StringBuilder digits=new StringBuilder(sig);
+        java.lang.StringBuilder digits=new java.lang.StringBuilder(sig);
         for(int q=first;q<=last;q++)digits.append(q<intLen?token.charAt(intStart+q):token.charAt(fracStart+q-intLen));
         java.math.BigInteger value=new java.math.BigInteger(digits.toString());
         if(scale>0)value=value.multiply(java.math.BigInteger.TEN.pow((int)scale));

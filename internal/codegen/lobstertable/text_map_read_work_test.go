@@ -69,9 +69,8 @@ func TestLobsterTextMapReadWorkIsBounded(t *testing.T) {
 
 // instrumentMapReadWork plants one counter increment at the entry of every
 // key comparison the readers use. map_key_order is the ordering comparison in
-// both forms; JsonReader.key_order is the string ordering the object-key check
-// uses. An object-key check that compares strings directly is counted there
-// instead.
+// both forms; j_key_new is the object-key check, one set probe a key, and it
+// counts once a key.
 func instrumentMapReadWork(t *testing.T, g *loadUnit) {
 	t.Helper()
 	loadPath := filepath.Join(g.dir, "load.lobster")
@@ -104,12 +103,12 @@ func instrumentMapReadWork(t *testing.T, g *loadUnit) {
 	jsonText := string(jsonSrc)
 	equality := false
 	const (
-		keyAnchor = "    def key_order(a:string, b:string) -> int:\n"
+		keyAnchor = "def j_key_new(r:JsonReader, set:JsonKeys, key:string) -> bool:\n"
 	)
 	if n := strings.Count(jsonText, keyAnchor); n > 1 {
-		t.Fatalf("JsonReader.key_order is in json.lobster %d times, want at most 1", n)
+		t.Fatalf("j_key_new is in json.lobster %d times, want at most 1", n)
 	} else if n == 1 {
-		jsonText = strings.Replace(jsonText, keyAnchor, keyAnchor+"        j_work[0]++\n", 1)
+		jsonText = strings.Replace(jsonText, keyAnchor, keyAnchor+"    j_work[0]++\n", 1)
 		equality = true
 	}
 	if !equality {

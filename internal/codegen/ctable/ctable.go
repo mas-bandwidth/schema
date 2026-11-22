@@ -183,7 +183,8 @@ func (g *tableGen) canProbe(st *ir.Struct) bool {
 
 // tableDefaultProbedStructs returns the set of struct names that can be reached
 // by a default or slot probe (check_default = 1). A struct can only be probed if
-// it is the target of a scalar table write or an enum-keyed table slot write.
+// it is the target of a scalar table write, an enum-keyed table slot write, or
+// the element of a counted array whose birth value elides (countedBirth).
 func tableDefaultProbedStructs(u *ir.Unit) map[string]bool {
 	closure := ir.TableClosure(u)
 	probed := map[string]bool{}
@@ -199,7 +200,7 @@ func tableDefaultProbedStructs(u *ir.Unit) map[string]bool {
 			if ir.TableWireScalarKind(f) != tkTable {
 				continue
 			}
-			if f.KeyEnum != "" || (f.Array == ir.ArrayNone && !f.IsList() && !f.IsMap() && !f.Type.Optional) {
+			if f.KeyEnum != "" || countedBirth(f) || (f.Array == ir.ArrayNone && !f.IsList() && !f.IsMap() && !f.Type.Optional) {
 				probed[f.Type.Name] = true
 			}
 		}

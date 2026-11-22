@@ -74,7 +74,7 @@ func TestJavaMapWriterHoldsTheSort(t *testing.T) {
 	})
 	t.Run("witness_unsorted", func(t *testing.T) {
 		t.Parallel()
-		const from = "return new ArrayList<>(ordered.values());"
+		const from = "return new java.util.ArrayList<>(ordered.values());"
 		planted := map[string][]byte{}
 		hits := 0
 		for name, data := range files {

@@ -52,7 +52,6 @@ func generateRetainFiles(u *ir.Unit) (map[string][]byte, error) {
 func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	st = variableStruct(st)
 	var b strings.Builder
-	b.WriteString("import java.nio.charset.StandardCharsets;\n\n")
 	fmt.Fprintf(&b, "public final class %sRetain {\n", st.Name)
 	fmt.Fprintf(&b, "    private %sRetain() {}\n\n", st.Name)
 
@@ -159,12 +158,12 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	// THE NODE BODY DISPATCH of the retaining pair: a node record's body read
 	// and written through its own type's retaining walk at depth 1, under the
 	// node's path (§6.6).
-	b.WriteString("    static void decodeNodeBodyRetain(TableVariable.Reader r, Object val, long typeId, TableRetain retain, TableVariable.Report report, int[] path) {\n")
+	b.WriteString("    static void decodeNodeBodyRetain(TableVariable.Reader r, java.lang.Object val, long typeId, TableRetain retain, TableVariable.Report report, int[] path) {\n")
 	for _, t := range cardVariableTables(u) {
 		fmt.Fprintf(&b, "        if (typeId == %sVariable.TYPE_ID) { %sRetain.readFieldsRetain(r, (%sVariable.Value) val, null, retain, report, path, 1); return; }\n", t.Name, t.Name, t.Name)
 	}
 	b.WriteString("    }\n\n")
-	b.WriteString("    static void writeNodeBodyRetain(TableVariable.Writer w, TableVariable.NodeGraph nodes, Object val, long typeId, TableRetain retain, TableVariable.Report report, int[] path) {\n")
+	b.WriteString("    static void writeNodeBodyRetain(TableVariable.Writer w, TableVariable.NodeGraph nodes, java.lang.Object val, long typeId, TableRetain retain, TableVariable.Report report, int[] path) {\n")
 	for _, t := range cardVariableTables(u) {
 		fmt.Fprintf(&b, "        if (typeId == %sVariable.TYPE_ID) { %sRetain.writeFieldsRetain(w, nodes, (%sVariable.Value) val, retain, report, path, 1); emitTail(w, retain, report, path, 1); return; }\n", t.Name, t.Name, t.Name)
 	}
@@ -185,7 +184,7 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("            if (r.fail) { return; }\n")
 	if hasReq {
 		b.WriteString("            if (ref == 0) {\n")
-		b.WriteString("                StringBuilder missing = new StringBuilder();\n")
+		b.WriteString("                java.lang.StringBuilder missing = new java.lang.StringBuilder();\n")
 		for i, f := range st.Fields {
 			if !f.Required {
 				continue
@@ -272,7 +271,7 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("        for (int k = 0; k < depth; k++) { put32(b, at, path[2 * k]); at += 4; put32(b, at, path[2 * k + 1]); at += 4; }\n")
 	b.WriteString("        put64(b, at, id); at += 8;\n")
 	b.WriteString("        b[at++] = (byte) kind;\n")
-	b.WriteString("        System.arraycopy(resolved, 0, b, at, resolved.length);\n")
+	b.WriteString("        java.lang.System.arraycopy(resolved, 0, b, at, resolved.length);\n")
 	b.WriteString("        retain.used += total;\n")
 	b.WriteString("        report.retained++;\n")
 	b.WriteString("    }\n\n")
@@ -314,12 +313,12 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("            int table = w.off;\n")
 	b.WriteString("            w.putLeb(nodeCount);\n")
 	b.WriteString("            for (int i = 0; i < nodeCount; i++) {\n")
-	b.WriteString("                Object value = nodes.nodeValue(i);\n")
+	b.WriteString("                java.lang.Object value = nodes.nodeValue(i);\n")
 	b.WriteString("                long typeId = nodes.nodeType(i);\n")
 	b.WriteString("                w.putLeb(w.ref(typeId));\n")
 	b.WriteString("                if (nodes.nodeBlob(i)) {\n")
-	b.WriteString("                    if (value instanceof String) {\n")
-	b.WriteString("                        w.putUtf8((String) value);\n")
+	b.WriteString("                    if (value instanceof java.lang.String) {\n")
+	b.WriteString("                        w.putUtf8((java.lang.String) value);\n")
 	b.WriteString("                    } else {\n")
 	b.WriteString("                        byte[] bytes = (byte[]) value;\n")
 	b.WriteString("                        w.putLeb(bytes.length);\n")
@@ -327,7 +326,7 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("                    }\n")
 	b.WriteString("                } else {\n")
 	b.WriteString("                    int body = w.off;\n")
-	b.WriteString("                    Integer key = retain == null ? null : retain.nodeKeys.get(value);\n")
+	b.WriteString("                    java.lang.Integer key = retain == null ? null : retain.nodeKeys.get(value);\n")
 	b.WriteString("                    if (key != null) { path[0] = -(key + 1); path[1] = 0; writeNodeBodyRetain(w, nodes, value, typeId, retain, report, path); }\n")
 	fmt.Fprintf(&b, "                    else { %sVariable.writeNodeBody(w, nodes, value, typeId); }\n", st.Name)
 	b.WriteString("                    w.put8(0);\n")
@@ -591,7 +590,7 @@ public final class TableRetain {
     // (-(index + 1), 0), and the save finds a node's index by its object, since
     // the save renumbers the graph from its own edges (§3.1, §6.6). Reset by
     // every retaining load.
-    final java.util.IdentityHashMap<Object, Integer> nodeKeys = new java.util.IdentityHashMap<>();
+    final java.util.IdentityHashMap<java.lang.Object, java.lang.Integer> nodeKeys = new java.util.IdentityHashMap<>();
 
     // §4's ONE NESTING BOUND, which the resolving walk shares (§6.6): the root
     // body is depth 0, a framed table, array or keyed body is one level deeper,
@@ -639,7 +638,7 @@ public final class TableRetain {
                 match = f == field;
             }
             if (!match) {
-                System.arraycopy(bytes, at, bytes, write, len);
+                java.lang.System.arraycopy(bytes, at, bytes, write, len);
                 write += len;
             }
             at += len;
@@ -673,7 +672,7 @@ public final class TableRetain {
                 match = f == path[2 * k] && i == path[2 * k + 1];
             }
             if (!match) {
-                System.arraycopy(bytes, at, bytes, write, len);
+                java.lang.System.arraycopy(bytes, at, bytes, write, len);
                 write += len;
             }
             at += len;
@@ -705,7 +704,7 @@ public final class TableRetain {
             if (k == id) {
                 return true;
             }
-            if (Long.compareUnsigned(k, id) < 0) {
+            if (java.lang.Long.compareUnsigned(k, id) < 0) {
                 lo = m + 1;
             } else {
                 hi = m - 1;
@@ -900,7 +899,7 @@ public final class TableRetain {
                         r.bad = true;
                         return false;
                     }
-                    System.arraycopy(r.buf, from, out, o[0], n);
+                    java.lang.System.arraycopy(r.buf, from, out, o[0], n);
                     o[0] += n;
                     return true;
                 }
@@ -994,7 +993,7 @@ public final class TableRetain {
                         c.bad = true;
                         return false;
                     }
-                    System.arraycopy(c.buf, c.off, out, o[0], n);
+                    java.lang.System.arraycopy(c.buf, c.off, out, o[0], n);
                     o[0] += n;
                     c.off = c.limit;
                     return true;

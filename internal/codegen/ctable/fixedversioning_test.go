@@ -102,6 +102,14 @@ var cVersionRows = []cVersionRow{
             if ( back[0].vals[k].x == 0x5A5A5A5A || back[0].vals[k].y == 0x5A5A5A5A )
                 { printf( "the old writer's slot %d kept the poison: the plan landed nothing there\n", k ); return 1; }
         }
+        /* F-092: the SCALAR arrays beside it, 4 exact and 4 born zero */
+        for ( k = 0; k < 8; ++k )
+        {
+            int wi = k < 4 ? -800 - k : 0;
+            unsigned wo = k < 4 ? 200u + (unsigned) k : 0u;
+            if ( back[0].ints[k] != wi || back[0].octet[k] != wo )
+                { printf( "scalar slot %d: ints=%d octet=%u, want %d %u\n", k, back[0].ints[k], (unsigned) back[0].octet[k], wi, wo ); return 1; }
+        }
     }
     if ( back[0].lead == 0x5A5A5A5Au || back[0].trail == 0x5A5A5A5Au )
         { printf( "a bracketing field kept the poison: lead=%u trail=%u\n", back[0].lead, back[0].trail ); return 1; }`},

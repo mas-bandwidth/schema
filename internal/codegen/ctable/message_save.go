@@ -105,6 +105,8 @@ func (g *tableGen) messageValue(f *ir.Field, e ir.TableVocabularyEntry, expr, co
 		g.pf("%s } }\n", ind)
 	case f.Array != ir.ArrayNone:
 		if f.Array == ir.ArrayCounted {
+			// a field's count was already held to [Min, N] by its presence
+			// test (messageFieldPresence); this bound also serves union arms
 			g.writeStorageBound(count, f.ArrayBound, ind)
 		}
 		g.pf("%stable_bit_put(w,(uint64_t)%s-%d,%d);\n", ind, count, e.Shape.Min, ir.TableMessageCountBits(e.Shape))
@@ -213,8 +215,8 @@ func (g *tableGen) messageFieldPresence(f *ir.Field, expr string) (string, strin
 		condition = g.wireBytesDiffer(f, expr)
 	case f.Array == ir.ArrayCounted:
 		count = expr + "_count"
-		g.writeStorageBound(count, f.ArrayBound, " ")
-		condition = count + ">0"
+		g.writeCountBound(f, count, " ")
+		condition = g.countedRides(f, expr, " ", g.messageKeyedRides)
 	case f.Type.Optional:
 		condition = expr + "_present"
 	case f.KeyEnum != "":
