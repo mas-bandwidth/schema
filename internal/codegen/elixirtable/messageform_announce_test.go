@@ -164,7 +164,11 @@ func TestMessageFormAnnounceElixir(t *testing.T) {
 		}
 		var probe strings.Builder
 		probe.WriteString("  {:ok, _} = M.announce_read(File.read!(file()))\n")
-		for _, c := range announcementFirstUseBreaks(t, lawful) {
+		allAnnouncementFirstUseBreaks := announcementFirstUseBreaks(t, lawful)
+		if len(allAnnouncementFirstUseBreaks) == 0 {
+			t.Fatal("announcementFirstUseBreaks(t, lawful) is empty: the loop below would check nothing")
+		}
+		for _, c := range allAnnouncementFirstUseBreaks {
 			var vocab tablewire.Vocabulary
 			err := vocab.AnnounceRead(c.wire, &tabletext.Report{})
 			if tablewire.RefusalReason(err) != "wire_damaged" || !strings.Contains(err.Error(), "first-use order") || vocab.Announced() {

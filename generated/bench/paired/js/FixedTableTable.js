@@ -25,7 +25,7 @@
 // Nothing throws: a write answers its byte count or -1, a read answers its
 // record count or -1 with the reason named in the report.
 
-import { FixedTableFixedCheckBody, FixedTableFixedCheckDead, FixedTableFixedCheckRead, FixedTableFixedDecode, FixedTableFixedWriteBody, FixedTableLoadMessageBody, FixedTableSaveMessageBody, InitFixedTable, TableBitWriter, TableFixedForm, TableFixedHashAt, TableFixedHeaderBytes, TableFixedHoles, TableFixedKnownLayout, TableFixedLayoutHeaderBytes, TableFixedLineagePlans, TableFixedMessageForm, TableFixedPlan, TableFixedRefusal, TableFixedRefuseHash, TableFixedResetReport, TableFixedRun, TableFixedSelect, TableFixedVariableForm, TableMessageBatchMax, TableMessageRefuse, TableMessageResetReport, tableMessageBatchClose, tableMessageBatchOpen } from "./BenchTable.js";
+import { FixedTable, FixedTableFixedCheckBody, FixedTableFixedCheckDead, FixedTableFixedCheckRead, FixedTableFixedDecode, FixedTableFixedFromText, FixedTableFixedWriteBody, FixedTableLoadMessageBody, FixedTableSaveMessageBody, InitFixedTable, TableBitWriter, TableFixedForm, TableFixedHashAt, TableFixedHeaderBytes, TableFixedHoles, TableFixedKnownLayout, TableFixedLayoutHeaderBytes, TableFixedLineagePlans, TableFixedMessageForm, TableFixedPlan, TableFixedRefusal, TableFixedRefuseHash, TableFixedResetReport, TableFixedRun, TableFixedSelect, TableFixedVariableForm, TableMessageBatchMax, TableMessageRefuse, TableMessageResetReport, tableMessageBatchClose, tableMessageBatchOpen } from "./BenchTable.js";
 
 // ---- FixedTable, THE FIXED FORM (docs/SPEC-TABLES.md §3.4) ----
 //
@@ -49,7 +49,7 @@ export const FixedTableFixedHashHi = 0xcde672e9;
 //
 // THE TABLE IS MODULE-PRIVATE: an importer reads a COPY through the
 // accessor below, so a write to it cannot move this realm's decode.
-const FixedTableFixedLayout = new Uint8Array([
+const FixedTableFixedLayout = new globalThis.Uint8Array([
   0x4b, 0x00, 0x00, 0x00, 0xb3, 0x46, 0xa7, 0xdc, 0x9c, 0x36, 0xdf, 0x85, 0x0d, 0xd4, 0x04, 0x00,
   0x00, 0x01, 0x00, 0x00, 0x00, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0d, 0xd4, 0x04,
   0x00, 0x00, 0x1b, 0x00, 0x00, 0x00, 0xa8, 0x28, 0xf5, 0x81, 0xa4, 0xac, 0x38, 0xaa, 0x07, 0x04,
@@ -137,7 +137,7 @@ export const FixedTableFixedLayoutBytes = 1279;
 // THE PREFILL: the declared defaults as a constant run of bytes. Load copies
 // them into exactly the dest ranges the plan does not write. Identity's hole
 // list is empty — one COPY of the whole body — so that copy is a no-op.
-const FixedTableFixedPrefill = new Uint8Array([
+const FixedTableFixedPrefill = new globalThis.Uint8Array([
   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -222,7 +222,7 @@ export function FixedTableFixedPrefillCopy() { return FixedTableFixedPrefill.sli
 // MY SIDE of the layout, five lanes per entry: the storage facts a layout
 // entry cannot carry. In C++ these are offsetof rows; the reader's own
 // storage in JavaScript is the canonical image, so they are its offsets.
-const FixedTableFixedDst = new Int32Array([
+const FixedTableFixedDst = new globalThis.Int32Array([
   0, 0, 0, 0, 0, // 0 FixedTable
   0, 0, 0, 0, 0, // 1 value
   0, 0, 0, 0, 0, // 2 sequence
@@ -306,7 +306,7 @@ export function FixedTableFixedDstCopy() { return FixedTableFixedDst.slice(); }
 // source and destination advance together over the whole body and the walk
 // coalesces to exactly ONE run. That is the same coalescer the plan compiler
 // runs, reaching its best case rather than skipping a step.
-const FixedTableFixedIdentity = new Int32Array([0, 0, 0, 1236, 0, -1, 0, 0, 1, 0, 0]);
+const FixedTableFixedIdentity = new globalThis.Int32Array([0, 0, 0, 1236, 0, -1, 0, 0, 1, 0, 0]);
 export function FixedTableFixedIdentityCopy() { return FixedTableFixedIdentity.slice(); }
 
 // THE KNOWN LAYOUTS (docs/FIXED-FORM-ALGORITHM.md §5.2): one entry per
@@ -323,8 +323,8 @@ const FixedTableFixedKnown = [
 ];
 // THE OBJECT TABLE IS FROZEN, descriptors included: an importer can hold
 // the module's own entries to their values but cannot replace one.
-for (const entry of FixedTableFixedKnown) { Object.freeze(entry); }
-Object.freeze(FixedTableFixedKnown);
+for (const entry of FixedTableFixedKnown) { globalThis.Object.freeze(entry); }
+globalThis.Object.freeze(FixedTableFixedKnown);
 
 // THE FLOOR is one number and the lineage is one array, so "retired" is an
 // index cut and the operator's two answers stay distinct: below it a layout
@@ -339,8 +339,8 @@ const FixedTableFixedLineagePlans = TableFixedLineagePlans(FixedTableFixedKnown,
   FixedTableFixedHashLo, FixedTableFixedHashHi, FixedTableFixedLayout, FixedTableFixedDst, FixedTableFixedBodyBytes);
 // THE PLAN TABLE IS FROZEN, its descriptors included, so an importer that
 // reaches it cannot replace a lane with one of its own.
-for (const lane of FixedTableFixedLineagePlans) { if (lane !== null) { Object.freeze(lane); } }
-Object.freeze(FixedTableFixedLineagePlans);
+for (const lane of FixedTableFixedLineagePlans) { if (lane !== null) { globalThis.Object.freeze(lane); } }
+globalThis.Object.freeze(FixedTableFixedLineagePlans);
 
 // THE PLAN'S STORAGE IS THE CALLER'S, DECLARED BY CAPACITY, AND THE CODEC
 // NEVER ALLOCATES. One of these per endpoint; a layout whose plan does not fit is
@@ -371,7 +371,7 @@ export function FixedTableFixedSave(values, count, bytes) {
   // A NaN OR AN INFINITY IS REFUSED BEFORE A BYTE IS WRITTEN (docs/SPEC-TABLES.md
   // §3.3): no form carries one, so the save answers -1 and the buffer is untouched.
   for (let k = 0; k < count; k++) { if (!FixedTableFixedCheckBody(values[k])) { return -1; } }
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);
+  const view = new globalThis.DataView(bytes.buffer, bytes.byteOffset, bytes.length);
   bytes.fill(0, 0, TableFixedHeaderBytes); // the seven reserved bytes, and the rest of the header
   bytes[0] = TableFixedForm;
   view.setUint32(TableFixedHashAt, FixedTableFixedHashLo, true);
@@ -435,7 +435,7 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
   if (pick < FixedTableFixedFloor) { return TableFixedRefuseHash(report, TableFixedRefusal.LayoutUnsupported, hashLo, hashHi); }
   const known = FixedTableFixedKnown[pick];
   if (layoutBytes !== known.layoutBytes) { report.refused = TableFixedRefusal.LayoutMalformed; return -1; }
-  const srcView = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);
+  const srcView = new globalThis.DataView(bytes.buffer, bytes.byteOffset, bytes.length);
   {
     // THE LAYOUT COMPARE MOVES IN 32-BIT LANES, then a tail of at most three bytes.
     const lv = known.layoutView;
@@ -544,12 +544,19 @@ export function FixedTableMeasureMessages(values, report) {
   if (report === undefined || report === null) { report = {}; }
   TableMessageResetReport(report);
   if (values.length < 1 || values.length > TableMessageBatchMax) { TableMessageRefuse(report, "batch_too_large"); return -1; }
+  let vals = values;
   for (let i = 0; i < values.length; i++) {
-    if (values[i] !== null && values[i] !== undefined && !FixedTableFixedCheckBody(values[i])) { TableMessageRefuse(report, "invalid_value"); return -1; }
+    let value = values[i];
+    if (value !== null && value !== undefined && !FixedTableFixedCheckBody(value)) {
+      value = FixedTableFixedFromText(value, new FixedTable());
+      if (!FixedTableFixedCheckBody(value)) { TableMessageRefuse(report, "invalid_value"); return -1; }
+      if (vals === values) { vals = values.slice(); }
+      vals[i] = value;
+    }
   }
   const w = new TableBitWriter(null, true);
   for (let i = 0; i < values.length; i++) {
-    if (values[i] === null || values[i] === undefined || !FixedTableSaveMessageBody(w, values[i])) { TableMessageRefuse(report, "invalid_value"); return -1; }
+    if (vals[i] === null || vals[i] === undefined || !FixedTableSaveMessageBody(w, vals[i])) { TableMessageRefuse(report, "invalid_value"); return -1; }
   }
   w.Align();
   if (w.Overflow) { return -1; }
@@ -561,14 +568,21 @@ export function FixedTableSaveMessages(values, buffer, report) {
   TableMessageResetReport(report);
   if (values.length < 1 || values.length > TableMessageBatchMax) { TableMessageRefuse(report, "batch_too_large"); return -1; }
   if (buffer.length < 2) { return -1; }
+  let vals = values;
   for (let i = 0; i < values.length; i++) {
-    if (values[i] !== null && values[i] !== undefined && !FixedTableFixedCheckBody(values[i])) { TableMessageRefuse(report, "invalid_value"); return -1; }
+    let value = values[i];
+    if (value !== null && value !== undefined && !FixedTableFixedCheckBody(value)) {
+      value = FixedTableFixedFromText(value, new FixedTable());
+      if (!FixedTableFixedCheckBody(value)) { TableMessageRefuse(report, "invalid_value"); return -1; }
+      if (vals === values) { vals = values.slice(); }
+      vals[i] = value;
+    }
   }
   buffer[0] = 2;
   buffer[1] = values.length - 1;
   const w = new TableBitWriter(buffer.subarray(2), false);
   for (let i = 0; i < values.length; i++) {
-    if (values[i] === null || values[i] === undefined || !FixedTableSaveMessageBody(w, values[i])) { TableMessageRefuse(report, "invalid_value"); return -1; }
+    if (vals[i] === null || vals[i] === undefined || !FixedTableSaveMessageBody(w, vals[i])) { TableMessageRefuse(report, "invalid_value"); return -1; }
   }
   w.Align();
   if (w.Overflow) { return -1; }
@@ -579,7 +593,7 @@ export function FixedTableLoadMessages(values, vocabulary, data, report) {
   if (report === undefined || report === null) { report = {}; }
   TableMessageResetReport(report);
   const [r, count] = tableMessageBatchOpen(vocabulary, data, report);
-  if (count < 0) { return -1; }
+  if (count < 0) { return 0; }
   if (count > values.length) { TableMessageRefuse(report, "batch_too_large"); return 0; }
   for (let i = 0; i < count; i++) {
     if (!FixedTableLoadMessageBody(r, values[i])) {
@@ -588,12 +602,21 @@ export function FixedTableLoadMessages(values, vocabulary, data, report) {
       if (report.NonFiniteFloat) {
         for (let j = 0; j <= i; j++) { InitFixedTable(values[j]); }
         TableMessageRefuse(report, "non_finite_float: " + report.NonFiniteFloat);
-        return -1;
+        return 0;
       }
       // DAMAGE ANYWHERE IN THE BATCH DELIVERS NO BODY (docs/SPEC-TABLES.md §4):
       // the count says 0 and every body the walk touched goes back to its
       // declared defaults.
       for (let j = 0; j <= i; j++) { InitFixedTable(values[j]); }
+      return 0;
+    }
+    // A VALUE OUTSIDE ITS DECLARED RANGE (or a length past its bound) REFUSES THE
+    // BATCH BY NAME as out_of_range (docs/SPEC-TABLES.md §3.3), as the Go
+    // reference and the Rust port do: the count is 0 and
+    // every body of the batch goes back to its declared defaults.
+    if (report.Oor > 0) {
+      for (let j = 0; j < count; j++) { InitFixedTable(values[j]); }
+      TableMessageRefuse(report, "out_of_range");
       return 0;
     }
   }

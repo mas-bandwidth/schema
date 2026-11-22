@@ -2,9 +2,9 @@ package ctable
 
 import (
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -359,13 +359,16 @@ int main(void)
 	args := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-O1", "-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-omit-frame-pointer", "-I", dir, mainPath}
 	args = append(args, cfiles...)
 	args = append(args, "-lm", "-o", bin)
-	if out, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile C failed: %v\n%s", err, out)
 	}
-	out, err := exec.Command(bin).CombinedOutput()
+	out, err := testproc.Command(t, bin).CombinedOutput()
 	names := []string{"announce_above_capacity_refused", "announce_at_capacity"}
 	for _, tc := range cases {
 		names = append(names, tc.name)
+	}
+	if len(names) == 0 {
+		t.Fatal("names is empty: the loop below would check nothing")
 	}
 	for _, name := range names {
 		if !strings.Contains(string(out), "PASS "+name+"\n") {

@@ -102,6 +102,9 @@ export function ZeroArmsAgree(value) {
 }
 
 export function WriteArmsAgree(stream, value) {
+  if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) { // a bits(N) value must fit its width
+    return false;
+  }
   NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
@@ -111,15 +114,24 @@ export function WriteArmsAgree(stream, value) {
     return false;
   }
   if (value.flag) {
+    if (!globalThis.Number.isInteger(value.a) || value.a < 0 || value.a > 2047) { // a bits(N) value must fit its width
+      return false;
+    }
     NUMBER_SCRATCH.value = value.a;
     if (!stream.serializeBits(NUMBER_SCRATCH, 11)) {
       return false;
     }
   } else {
+    if (!globalThis.Number.isInteger(value.b) || value.b < 0 || value.b > 2047) { // a bits(N) value must fit its width
+      return false;
+    }
     NUMBER_SCRATCH.value = value.b;
     if (!stream.serializeBits(NUMBER_SCRATCH, 11)) {
       return false;
     }
+  }
+  if (!globalThis.Number.isInteger(value.tail) || value.tail < 0 || value.tail > 127) { // a bits(N) value must fit its width
+    return false;
   }
   NUMBER_SCRATCH.value = value.tail;
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
@@ -199,6 +211,9 @@ export function ZeroArmsDisagree(value) {
 }
 
 export function WriteArmsDisagree(stream, value) {
+  if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) { // a bits(N) value must fit its width
+    return false;
+  }
   NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
@@ -208,15 +223,24 @@ export function WriteArmsDisagree(stream, value) {
     return false;
   }
   if (value.flag) {
+    if (!globalThis.Number.isInteger(value.a) || value.a < 0 || value.a > 2047) { // a bits(N) value must fit its width
+      return false;
+    }
     NUMBER_SCRATCH.value = value.a;
     if (!stream.serializeBits(NUMBER_SCRATCH, 11)) {
       return false;
     }
   } else {
+    if (!globalThis.Number.isInteger(value.b) || value.b < 0 || value.b > 7) { // a bits(N) value must fit its width
+      return false;
+    }
     NUMBER_SCRATCH.value = value.b;
     if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
       return false;
     }
+  }
+  if (!globalThis.Number.isInteger(value.tail) || value.tail < 0 || value.tail > 127) { // a bits(N) value must fit its width
+    return false;
   }
   NUMBER_SCRATCH.value = value.tail;
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
@@ -290,6 +314,9 @@ export function ZeroArmEmpty(value) {
 }
 
 export function WriteArmEmpty(stream, value) {
+  if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) { // a bits(N) value must fit its width
+    return false;
+  }
   NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
@@ -299,10 +326,16 @@ export function WriteArmEmpty(stream, value) {
     return false;
   }
   if (value.flag) {
+    if (!globalThis.Number.isInteger(value.a) || value.a < 0 || value.a > 524287) { // a bits(N) value must fit its width
+      return false;
+    }
     NUMBER_SCRATCH.value = value.a;
     if (!stream.serializeBits(NUMBER_SCRATCH, 19)) {
       return false;
     }
+  }
+  if (!globalThis.Number.isInteger(value.tail) || value.tail < 0 || value.tail > 127) { // a bits(N) value must fit its width
+    return false;
   }
   NUMBER_SCRATCH.value = value.tail;
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
@@ -389,6 +422,9 @@ export function ZeroArmsNested(value) {
 }
 
 export function WriteArmsNested(stream, value) {
+  if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 7) { // a bits(N) value must fit its width
+    return false;
+  }
   NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
@@ -403,21 +439,33 @@ export function WriteArmsNested(stream, value) {
       return false;
     }
     if (value.inner) {
+      if (!globalThis.Number.isInteger(value.x) || value.x < 0 || value.x > 536870911) { // a bits(N) value must fit its width
+        return false;
+      }
       NUMBER_SCRATCH.value = value.x;
       if (!stream.serializeBits(NUMBER_SCRATCH, 29)) {
         return false;
       }
     } else {
+      if (!globalThis.Number.isInteger(value.y) || value.y < 0 || value.y > 31) { // a bits(N) value must fit its width
+        return false;
+      }
       NUMBER_SCRATCH.value = value.y;
       if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
         return false;
       }
     }
   } else {
+    if (!globalThis.Number.isInteger(value.z) || value.z < 0 || value.z > 8191) { // a bits(N) value must fit its width
+      return false;
+    }
     NUMBER_SCRATCH.value = value.z;
     if (!stream.serializeBits(NUMBER_SCRATCH, 13)) {
       return false;
     }
+  }
+  if (!globalThis.Number.isInteger(value.tail) || value.tail < 0 || value.tail > 63) { // a bits(N) value must fit its width
+    return false;
   }
   NUMBER_SCRATCH.value = value.tail;
   if (!stream.serializeBits(NUMBER_SCRATCH, 6)) {
@@ -478,7 +526,7 @@ export class ArmAlign {
 
     // flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
-    this.s = new Uint8Array(4); // string(4): max length, used length beside it (SPEC §4.7)
+    this.s = new globalThis.Uint8Array(4); // string(4): max length, used length beside it (SPEC §4.7)
     this.sLength = 0;
 
     // !flag — wire branch; storage holds both sides, a read zeroes the
@@ -515,6 +563,9 @@ export function ZeroArmAlign(value) {
 }
 
 export function WriteArmAlign(stream, value) {
+  if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) { // a bits(N) value must fit its width
+    return false;
+  }
   NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
@@ -524,7 +575,7 @@ export function WriteArmAlign(stream, value) {
     return false;
   }
   if (value.flag) {
-    if (!Number.isInteger(value.sLength) || value.sLength < 0 || value.sLength > 4) { // the length guards the slice (§6.3); out-of-contract writes are refused
+    if (!globalThis.Number.isInteger(value.sLength) || value.sLength < 0 || value.sLength > 4) { // the length guards the slice (§6.3); out-of-contract writes are refused
       return false;
     }
     NUMBER_SCRATCH.value = value.sLength;
@@ -538,10 +589,16 @@ export function WriteArmAlign(stream, value) {
       return false;
     }
   } else {
+    if (!globalThis.Number.isInteger(value.b) || value.b < 0 || value.b > 1023) { // a bits(N) value must fit its width
+      return false;
+    }
     NUMBER_SCRATCH.value = value.b;
     if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
       return false;
     }
+  }
+  if (!globalThis.Number.isInteger(value.tail) || value.tail < 0 || value.tail > 127) { // a bits(N) value must fit its width
+    return false;
   }
   NUMBER_SCRATCH.value = value.tail;
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
@@ -594,7 +651,7 @@ export class ArmArray {
 
     // flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
-    this.items = new Array(3).fill(0); // wire [0, 8191]
+    this.items = new globalThis.Array(3).fill(0); // wire [0, 8191]
     this.itemsCount = 0;
 
     // !flag — wire branch; storage holds both sides, a read zeroes the
@@ -631,6 +688,9 @@ export function ZeroArmArray(value) {
 }
 
 export function WriteArmArray(stream, value) {
+  if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) { // a bits(N) value must fit its width
+    return false;
+  }
   NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
@@ -640,7 +700,7 @@ export function WriteArmArray(stream, value) {
     return false;
   }
   if (value.flag) {
-    if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop (§6.3)
+    if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop (§6.3)
       return false;
     }
     NUMBER_SCRATCH.value = value.itemsCount;
@@ -648,7 +708,7 @@ export function WriteArmArray(stream, value) {
       return false;
     }
     for (let i = 0; i < value.itemsCount; i++) {
-      if (!Number.isInteger(value.items[i]) || value.items[i] < 0 || value.items[i] > 8191) {
+      if (!globalThis.Number.isInteger(value.items[i]) || value.items[i] < 0 || value.items[i] > 8191) {
         return false;
       }
       NUMBER_SCRATCH.value = value.items[i];
@@ -657,10 +717,16 @@ export function WriteArmArray(stream, value) {
       }
     }
   } else {
+    if (!globalThis.Number.isInteger(value.b) || value.b < 0 || value.b > 511) { // a bits(N) value must fit its width
+      return false;
+    }
     NUMBER_SCRATCH.value = value.b;
     if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
       return false;
     }
+  }
+  if (!globalThis.Number.isInteger(value.tail) || value.tail < 0 || value.tail > 127) { // a bits(N) value must fit its width
+    return false;
   }
   NUMBER_SCRATCH.value = value.tail;
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
@@ -728,6 +794,9 @@ export function ZeroNarrow(value) {
 }
 
 export function WriteNarrow(stream, value) {
+  if (!globalThis.Number.isInteger(value.n) || value.n < 0 || value.n > 7) { // a bits(N) value must fit its width
+    return false;
+  }
   NUMBER_SCRATCH.value = value.n;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
@@ -766,6 +835,9 @@ export function ZeroWide(value) {
 }
 
 export function WriteWide(stream, value) {
+  if (typeof value.w !== "bigint" || value.w < 0n || value.w > 137438953471n) { // a bits(N) value must fit its width
+    return false;
+  }
   BIGINT_SCRATCH.value = value.w;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 37)) {
     return false;
@@ -782,7 +854,7 @@ export function ReadWide(stream, value, nested) {
 }
 
 // UnevenType: union Uneven's tag — None = 0, then each variant in declared order (SPEC §4.8)
-export const UnevenType = Object.freeze({
+export const UnevenType = globalThis.Object.freeze({
   None: 0,
   Narrow: 1,
   Wide: 2,
@@ -829,7 +901,7 @@ export function ZeroUneven(value) {
 }
 
 export function WriteUneven(stream, value) {
-  if (!Number.isInteger(value.type) || value.type < 0 || value.type > 2) {
+  if (!globalThis.Number.isInteger(value.type) || value.type < 0 || value.type > 2) {
     return false; // the tag validates BEFORE it rides (SPEC §4.8)
   }
   NUMBER_SCRATCH.value = value.type;
@@ -896,11 +968,17 @@ export function ZeroHoldsUneven(value) {
 }
 
 export function WriteHoldsUneven(stream, value) {
+  if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) { // a bits(N) value must fit its width
+    return false;
+  }
   NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
   if (!WriteUneven(stream, value.u)) {
+    return false;
+  }
+  if (!globalThis.Number.isInteger(value.tail) || value.tail < 0 || value.tail > 2047) { // a bits(N) value must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.tail;
@@ -929,7 +1007,7 @@ export function ReadHoldsUneven(stream, value, nested) {
 export class ArrUneven {
   constructor() {
     this.lead = 0;
-    this.items = Array.from({ length: 3 }, () => new Uneven());
+    this.items = globalThis.Array.from({ length: 3 }, () => new Uneven());
     this.itemsCount = 0;
     this.tail = 0;
   }
@@ -962,11 +1040,14 @@ export function ZeroArrUneven(value) {
 }
 
 export function WriteArrUneven(stream, value) {
+  if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) { // a bits(N) value must fit its width
+    return false;
+  }
   NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop (§6.3)
+  if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop (§6.3)
     return false;
   }
   NUMBER_SCRATCH.value = value.itemsCount;
@@ -977,6 +1058,9 @@ export function WriteArrUneven(stream, value) {
     if (!WriteUneven(stream, value.items[i])) {
       return false;
     }
+  }
+  if (!globalThis.Number.isInteger(value.tail) || value.tail < 0 || value.tail > 7) { // a bits(N) value must fit its width
+    return false;
   }
   NUMBER_SCRATCH.value = value.tail;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
@@ -1010,9 +1094,9 @@ export function ReadArrUneven(stream, value, nested) {
 export class RegainAfterAlign {
   constructor() {
     this.lead = 0;
-    this.items = new Array(3).fill(0); // wire [0, 8191]
+    this.items = new globalThis.Array(3).fill(0); // wire [0, 8191]
     this.itemsCount = 0;
-    this.s = new Uint8Array(4); // string(4): max length, used length beside it (SPEC §4.7)
+    this.s = new globalThis.Uint8Array(4); // string(4): max length, used length beside it (SPEC §4.7)
     this.sLength = 0;
     this.p = 0;
     this.q = 0;
@@ -1053,11 +1137,14 @@ export function ZeroRegainAfterAlign(value) {
 }
 
 export function WriteRegainAfterAlign(stream, value) {
+  if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) { // a bits(N) value must fit its width
+    return false;
+  }
   NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop (§6.3)
+  if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop (§6.3)
     return false;
   }
   NUMBER_SCRATCH.value = value.itemsCount;
@@ -1065,7 +1152,7 @@ export function WriteRegainAfterAlign(stream, value) {
     return false;
   }
   for (let i = 0; i < value.itemsCount; i++) {
-    if (!Number.isInteger(value.items[i]) || value.items[i] < 0 || value.items[i] > 8191) {
+    if (!globalThis.Number.isInteger(value.items[i]) || value.items[i] < 0 || value.items[i] > 8191) {
       return false;
     }
     NUMBER_SCRATCH.value = value.items[i];
@@ -1073,7 +1160,7 @@ export function WriteRegainAfterAlign(stream, value) {
       return false;
     }
   }
-  if (!Number.isInteger(value.sLength) || value.sLength < 0 || value.sLength > 4) { // the length guards the slice (§6.3); out-of-contract writes are refused
+  if (!globalThis.Number.isInteger(value.sLength) || value.sLength < 0 || value.sLength > 4) { // the length guards the slice (§6.3); out-of-contract writes are refused
     return false;
   }
   NUMBER_SCRATCH.value = value.sLength;
@@ -1086,16 +1173,28 @@ export function WriteRegainAfterAlign(stream, value) {
   if (!stream.serializeBytes(value.s.subarray(0, value.sLength))) {
     return false;
   }
+  if (!globalThis.Number.isInteger(value.p) || value.p < 0 || value.p > 4294967295) { // a bits(N) value must fit its width
+    return false;
+  }
   NUMBER_SCRATCH.value = value.p;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
+    return false;
+  }
+  if (!globalThis.Number.isInteger(value.q) || value.q < 0 || value.q > 536870911) { // a bits(N) value must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.q;
   if (!stream.serializeBits(NUMBER_SCRATCH, 29)) {
     return false;
   }
+  if (!globalThis.Number.isInteger(value.r) || value.r < 0 || value.r > 524287) { // a bits(N) value must fit its width
+    return false;
+  }
   NUMBER_SCRATCH.value = value.r;
   if (!stream.serializeBits(NUMBER_SCRATCH, 19)) {
+    return false;
+  }
+  if (!globalThis.Number.isInteger(value.tail) || value.tail < 0 || value.tail > 15) { // a bits(N) value must fit its width
     return false;
   }
   NUMBER_SCRATCH.value = value.tail;

@@ -62,7 +62,8 @@ var ptrRowsCells = []ptrRowsCell{
 		// completeness check below names them)
 		"stream_header", "stream_arm_first", "stream_arm_pointer", "stream_arm_tag",
 		"w1_fleet_default", "w1_fleet_as_w2", "w1_fleet_default_as_w2", "w2_fleet_as_w1",
-		"list_tables", "list_scalars", "list_empty", "list_erased", "list_scalar_widen", "list_shared", "list_before_pointer"},
+		"list_tables", "list_scalars", "list_empty", "list_erased", "list_scalar_widen", "list_shared", "list_before_pointer",
+		"widenbound_feed"},
 		[]string{"blobs_pointers"}},
 }
 

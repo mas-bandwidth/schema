@@ -1,0 +1,4 @@
+sh test/slowgate/proof schema-moo-runs-hostile-corpus \
+	'TestSchemaMooRunsHostileCorpus TestSchemaMooHostileScorerOutcomes' \
+	./internal/ci -run '^(TestSchemaMooRunsHostileCorpus|TestSchemaMooHostileScorerOutcomes)$' -count=1 -timeout 600s
+SLOW GATE schema-moo-runs-hostile-corpus: 2 named gate(s) ran and PASS under SCHEMA_SLOW=1 (build/slowgate/schema-moo-runs-hostile-corpus.log)

@@ -461,6 +461,21 @@ local function surfaceMessage(all, outdir)
       writeBytes(outdir .. "/" .. f[2], saved)
     end
   end
+  -- message-batch <case> <connection> <root> <wire>: the count of bodies
+  -- LoadMessages handed back (docs/SPEC-TABLES.md §3.3; FORMAT.md,
+  -- `message-batch`). The Lua read takes no capacity and answers a fresh
+  -- list, nil on a refusal, so a refused batch counts 0.
+  for _, f in ipairs(kind(all, "message-batch")) do
+    local conn = connectionNamed(all, f[3])
+    local u = unit(conn[3])
+    if not u then
+      absent(outdir, f[2], NOT_GENERATED)
+    else
+      local vocab = vocabulary(u, conn, f[2])
+      local values = u.T.LoadMessages(f[4], vocab, mustRead(f[5]), newReport())
+      writeBytes(outdir .. "/" .. f[2], "count " .. tostring(values and #values or 0) .. "\n")
+    end
+  end
 end
 
 ---------------------------------------------------------------------------

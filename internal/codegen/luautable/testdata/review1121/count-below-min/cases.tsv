@@ -1,0 +1,46 @@
+# SPEC §5.1 row 3 ("a counted array's count past its Max or below its Min")
+# and §4.2 (a fresh value is born at its Min) on the Luau table runtime
+# (review 2026-11-21, cross-leg counted-array-min), read by
+# TestLuauCountBelowMinRefused. The reader declares [2..4], the writer [..4].
+# Every read refuses a count below the reader's Min, as the Go engine refuses
+# count_over_bound; every write refuses one; a new value holds Min elements.
+# The lawful twin of every case reads or writes.
+# id	form	input	wire	want
+#
+# form, and what the probe does with input:
+#   born-var, born-fixed  the count of a new P (variable) or M (fixed) value
+#   var-read      read wire (hex) as a variable P; input is the writer's
+#                 value it encodes, JSON under writer/Probe.schema
+#   json-read     read the JSON text as P
+#   text-read     read the text form as P
+#   var-write     save a P holding the items (space separated)
+#   fixed-write   save an M row holding the items
+#   fixed-read    load the lawful M image of the items 7 8 with its count
+#                 word set to input
+#   message-read  read wire (hex) as a batch of one M message under the
+#                 writer's announcement; input is the writer's value
+# wire: the committed bytes the writer's Go engine encodes for input (the
+#       test re-encodes input and refuses a drifted fixture); - where unused.
+#
+# a new value
+born_var	born-var	-	-	2
+born_fixed	born-fixed	-	-	2
+# the variable read
+var_read_1	var-read	{"items":[7]}	01010e06040107000000006f2c414fbf84783e0100000000000000	refused
+var_read_2	var-read	{"items":[7,8]}	01010e0a04020700000008000000006f2c414fbf84783e0100000000000000	read:2
+# the JSON and text reads
+json_read_1	json-read	{"items":[7]}	-	refused
+json_read_2	json-read	{"items":[7,8]}	-	read:2
+text_read_1	text-read	(:items (7))	-	refused
+text_read_2	text-read	(:items (7 8))	-	read:2
+# the variable and fixed writes
+var_write_1	var-write	7	-	refused
+var_write_2	var-write	7 8	-	written
+fixed_write_1	fixed-write	7	-	refused
+fixed_write_2	fixed-write	7 8	-	written
+# the fixed read
+fixed_read_1	fixed-read	1	-	refused
+fixed_read_2	fixed-read	2	-	read:2
+# the message read
+msg_read_1	message-read	{"items":[7]}	02007300000000	refused
+msg_read_2	message-read	{"items":[7,8]}	0200750000008000000000	read

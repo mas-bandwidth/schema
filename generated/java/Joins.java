@@ -8,11 +8,6 @@
 
 package example;
 
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.VarHandle;
-import java.nio.ByteOrder;
-import java.util.Arrays;
-
 // Joins carries every generated declaration of Joins.schema — Java has no
 // top-level functions or constants, so the file's one public class is their
 // home; types nest inside it (SPEC §6.1 naming).
@@ -21,8 +16,9 @@ public final class Joins {
 
     // 64-bit little-endian word access into byte[] — the proven-fast JVM
     // form (VarHandle byteArrayViewVarHandle, serialize.java's own).
-    private static final VarHandle LONG_LE =
-            MethodHandles.byteArrayViewVarHandle(long[].class, ByteOrder.LITTLE_ENDIAN);
+    private static final java.lang.invoke.VarHandle LONG_LE =
+            java.lang.invoke.MethodHandles.byteArrayViewVarHandle(
+                    long[].class, java.nio.ByteOrder.LITTLE_ENDIAN);
 
     // putBits merges v (already masked to bits, at most 32) into the scratch word at bit
     // pos, storing the word to data once it fills, and returns the new scratch word. The
@@ -209,7 +205,7 @@ public final class Joins {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -365,7 +361,7 @@ public final class Joins {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -517,7 +513,7 @@ public final class Joins {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -699,7 +695,7 @@ public final class Joins {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -803,7 +799,7 @@ public final class Joins {
     public static void zeroArmAlign(ArmAlign value) {
         value.lead = 0;
         value.flag = false;
-        Arrays.fill(value.s, (byte) 0);
+        java.util.Arrays.fill(value.s, (byte) 0);
         value.sLength = 0;
         value.b = 0;
         value.tail = 0;
@@ -813,7 +809,7 @@ public final class Joins {
     public static void initArmAlign(ArmAlign value) {
         value.lead = 0;
         value.flag = false;
-        Arrays.fill(value.s, (byte) 0);
+        java.util.Arrays.fill(value.s, (byte) 0);
         value.sLength = 0;
         value.b = 0;
         value.tail = 0;
@@ -894,7 +890,7 @@ public final class Joins {
             // byte-aligned payload — the fused bulk copy (flush, copy, reload),
             // wire-identical to the per-byte merge
             flushBits(data, pos, scratch);
-            System.arraycopy(value.s, 0, data, pos >>> 3, value.sLength);
+            java.lang.System.arraycopy(value.s, 0, data, pos >>> 3, value.sLength);
             pos += value.sLength * 8;
             scratch = loadBits(data, pos);
         } else {
@@ -926,7 +922,7 @@ public final class Joins {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -956,7 +952,7 @@ public final class Joins {
             if ((long) bitsRead + value.sLength * 8L > numBits) {
                 return -1;
             }
-            System.arraycopy(data, bitsRead >>> 3, value.s, 0, value.sLength);
+            java.lang.System.arraycopy(data, bitsRead >>> 3, value.s, 0, value.sLength);
             bitsRead += value.sLength * 8;
             for (int utf8Index = 0; utf8Index < value.sLength; ) {
                 int utf8Lead = value.s[utf8Index++] & 0xFF;
@@ -997,7 +993,7 @@ public final class Joins {
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3ffL;
             bitsRead += 10;
             value.b = v;
-            Arrays.fill(value.s, (byte) 0);
+            java.util.Arrays.fill(value.s, (byte) 0);
             value.sLength = 0;
         }
         if ((long) bitsRead + 7 > numBits) {
@@ -1055,7 +1051,7 @@ public final class Joins {
     public static void zeroArmArray(ArmArray value) {
         value.lead = 0;
         value.flag = false;
-        Arrays.fill(value.items, 0);
+        java.util.Arrays.fill(value.items, 0);
         value.itemsCount = 0;
         value.b = 0;
         value.tail = 0;
@@ -1065,7 +1061,7 @@ public final class Joins {
     public static void initArmArray(ArmArray value) {
         value.lead = 0;
         value.flag = false;
-        Arrays.fill(value.items, 0);
+        java.util.Arrays.fill(value.items, 0);
         value.itemsCount = 0;
         value.b = 0;
         value.tail = 0;
@@ -1146,7 +1142,7 @@ public final class Joins {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -1182,7 +1178,7 @@ public final class Joins {
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1ffL;
             bitsRead += 9;
             value.b = v;
-            Arrays.fill(value.items, 0);
+            java.util.Arrays.fill(value.items, 0);
             value.itemsCount = 0;
         }
         if ((long) bitsRead + 7 > numBits) {
@@ -1280,7 +1276,7 @@ public final class Joins {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -1381,7 +1377,7 @@ public final class Joins {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -1430,7 +1426,7 @@ public final class Joins {
 
     // enumNameUnevenType: debug/log/tooling name for any UnevenType storage value —
     // out-of-set values (wire-legal up to the declared max) name as "???"
-    public static String enumNameUnevenType(long value) {
+    public static java.lang.String enumNameUnevenType(long value) {
         if (value == UnevenType.NONE) {
             return "None";
         }
@@ -1520,7 +1516,7 @@ public final class Joins {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -1646,7 +1642,7 @@ public final class Joins {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -1789,7 +1785,7 @@ public final class Joins {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -1862,9 +1858,9 @@ public final class Joins {
     // construction.
     public static void zeroRegainAfterAlign(RegainAfterAlign value) {
         value.lead = 0;
-        Arrays.fill(value.items, 0);
+        java.util.Arrays.fill(value.items, 0);
         value.itemsCount = 0;
-        Arrays.fill(value.s, (byte) 0);
+        java.util.Arrays.fill(value.s, (byte) 0);
         value.sLength = 0;
         value.p = 0;
         value.q = 0;
@@ -1875,9 +1871,9 @@ public final class Joins {
     // Restore construction defaults in place; buffers and objects are retained.
     public static void initRegainAfterAlign(RegainAfterAlign value) {
         value.lead = 0;
-        Arrays.fill(value.items, 0);
+        java.util.Arrays.fill(value.items, 0);
         value.itemsCount = 0;
-        Arrays.fill(value.s, (byte) 0);
+        java.util.Arrays.fill(value.s, (byte) 0);
         value.sLength = 0;
         value.p = 0;
         value.q = 0;
@@ -1971,7 +1967,7 @@ public final class Joins {
         // byte-aligned payload — the fused bulk copy (flush, copy, reload),
         // wire-identical to the per-byte merge
         flushBits(data, pos, scratch);
-        System.arraycopy(value.s, 0, data, pos >>> 3, value.sLength);
+        java.lang.System.arraycopy(value.s, 0, data, pos >>> 3, value.sLength);
         pos += value.sLength * 8;
         scratch = loadBits(data, pos);
         scratch = putBits(data, pos, scratch, value.p & 0xffffffffL, 32);
@@ -2006,7 +2002,7 @@ public final class Joins {
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        final int tailBase = Math.max(data.length - 8, 0);
+        final int tailBase = java.lang.Math.max(data.length - 8, 0);
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
@@ -2046,7 +2042,7 @@ public final class Joins {
         if ((long) bitsRead + value.sLength * 8L > numBits) {
             return -1;
         }
-        System.arraycopy(data, bitsRead >>> 3, value.s, 0, value.sLength);
+        java.lang.System.arraycopy(data, bitsRead >>> 3, value.s, 0, value.sLength);
         bitsRead += value.sLength * 8;
         for (int utf8Index = 0; utf8Index < value.sLength; ) {
             int utf8Lead = value.s[utf8Index++] & 0xFF;

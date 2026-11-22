@@ -51,11 +51,11 @@ export class TableBitWriter {
     this.Bits += n;
     if (this.Measuring) { return; }
     if (((this.Bits + 7) >> 3) > this.Buffer.length) { this.Overflow = true; return; }
-    const v = BigInt.asUintN(n, value);
+    const v = globalThis.BigInt.asUintN(n, value);
     let shift = at & 7;
     let byteIdx = at >> 3;
     for (let i = 0; i < n; i++) {
-      if ((v & (1n << BigInt(i))) !== 0n) { this.Buffer[byteIdx] |= (1 << shift); }
+      if ((v & (1n << globalThis.BigInt(i))) !== 0n) { this.Buffer[byteIdx] |= (1 << shift); }
       else { this.Buffer[byteIdx] &= ~(1 << shift); }
       shift++;
       if (shift === 8) { shift = 0; byteIdx++; }
@@ -81,7 +81,7 @@ export class TableBitReader {
     let shift = this.Offset & 7;
     for (let i = 0; i < n; i++) {
       const bit = (this.Buffer[at] >> shift) & 1;
-      if (bit !== 0) { v |= (1n << BigInt(i)); }
+      if (bit !== 0) { v |= (1n << globalThis.BigInt(i)); }
       shift++;
       if (shift === 8) { shift = 0; at++; }
     }
@@ -120,7 +120,7 @@ export function TableMessageResetReport(report) {
 function tableMessageCountBits(s) {
   let n = s.Max - s.Min;
   let bits = 0;
-  while (n !== 0) { bits++; n = Math.floor(n / 2); }
+  while (n !== 0) { bits++; n = globalThis.Math.floor(n / 2); }
   return bits;
 }
 export function tableMessageUtf8Valid(bytes, at, len) {
@@ -158,11 +158,11 @@ export function tableMessageUtf8Clamp(bytes, at, bound) {
 export function tableMessageCount(r, s) {
   const bits = tableMessageCountBits(s);
   const [raw, ok] = r.Get(bits);
-  return [raw + BigInt(s.Min), ok];
+  return [raw + globalThis.BigInt(s.Min), ok];
 }
 export function tableMessageEntry(v, ref) {
-  if (ref === 0n || ref > BigInt(v.Count)) { return null; }
-  return v.Entries[Number(ref) - 1];
+  if (ref === 0n || ref > globalThis.BigInt(v.Count)) { return null; }
+  return v.Entries[globalThis.Number(ref) - 1];
 }
 // ONE ARRAY ELEMENT'S FIXED WIDTH, or -1 where the element has to be walked
 // one at a time. A name, a payload-free arm and a ranged value whose min equals
@@ -206,10 +206,10 @@ function tableMessageKindHolds(kind, value) {
   const width = tableMessageKindWidth(kind);
   if (width === 0) { return true; }
   if (tableMessageKindSigned(kind)) {
-    const half = 1n << BigInt(width - 1);
+    const half = 1n << globalThis.BigInt(width - 1);
     return value >= -half && value <= half - 1n;
   }
-  return value >= 0n && value <= (1n << BigInt(width)) - 1n;
+  return value >= 0n && value <= (1n << globalThis.BigInt(width)) - 1n;
 }
 function tableMessageSkipRanged(r, kind, s, width) {
   let offset = 0n;
@@ -227,7 +227,7 @@ function tableMessageSkipRanged(r, kind, s, width) {
   const wide = kind >= 18 && kind <= 29;
   const rawBase = wide ? (s.Base[0] | (s.Base[1] << 64n)) : s.Base[0];
   const bits = wide ? 128 : 64;
-  const base = tableMessageKindSigned(kind) ? BigInt.asIntN(bits, rawBase) : BigInt.asUintN(bits, rawBase);
+  const base = tableMessageKindSigned(kind) ? globalThis.BigInt.asIntN(bits, rawBase) : globalThis.BigInt.asUintN(bits, rawBase);
   return tableMessageKindHolds(kind, offset + base);
 }
 // THE SKIP WALK: a reader that cannot name a field still steps over it exactly,
@@ -263,21 +263,21 @@ export function tableMessageSkip(r, v, indexBits, e, depth) {
       // A SKIPPED STRING IS HELD TO THE TEXT RULE (§3.3, §4): bytes this
       // reader does not keep are still damage when ill-formed.
       const at = r.Offset >> 3;
-      return r.Skip(Number(n) * 8) && tableMessageUtf8Valid(r.Buffer, at, Number(n));
+      return r.Skip(globalThis.Number(n) * 8) && tableMessageUtf8Valid(r.Buffer, at, globalThis.Number(n));
     }
     case 31: {
       if (!r.Align()) { return false; }
       const [n, ok] = r.Get(32);
-      return ok && r.Skip(Number(n) * 8);
+      return ok && r.Skip(globalThis.Number(n) * 8);
     }
     case 10: {
       if (s.Packing === 2) {
         const [v, ok] = tableMessageReadScalar(r, s);
         if (!ok) { return false; }
-        return (Number(v[0] & 0xffffffffn) & 0x7f800000) !== 0x7f800000;
+        return (globalThis.Number(v[0] & 0xffffffffn) & 0x7f800000) !== 0x7f800000;
       }
       const [bits, ok] = r.Get(32);
-      return ok && (Number(bits) & 0x7f800000) !== 0x7f800000;
+      return ok && (globalThis.Number(bits) & 0x7f800000) !== 0x7f800000;
     }
     case 11: {
       const [bits, ok] = r.Get(64);
@@ -285,17 +285,17 @@ export function tableMessageSkip(r, v, indexBits, e, depth) {
     }
     case 14: case 16: {
       const [n, ok] = tableMessageCount(r, s);
-      if (!ok || n > BigInt(s.Max)) { return false; }
+      if (!ok || n > globalThis.BigInt(s.Max)) { return false; }
       if (depth >= 128) { return false; }
       if (s.Kind === 14 && e.Element.Kind === 6 && !r.Align()) { return false; }
       if (s.Kind === 14 && (e.Element.Kind === 0 || e.Element.Kind === 32)) { return true; }
       const run = tableMessageElementRunBits(s.Kind, e.Element);
       if (run >= 0) {
         if (run === 0) { return true; }
-        const total = n * BigInt(run);
-        return total <= BigInt(Number.MAX_SAFE_INTEGER) && r.Skip(Number(total));
+        const total = n * globalThis.BigInt(run);
+        return total <= globalThis.BigInt(globalThis.Number.MAX_SAFE_INTEGER) && r.Skip(globalThis.Number(total));
       }
-      const seen = s.Kind === 16 ? new Set() : null;
+      const seen = s.Kind === 16 ? new globalThis.Set() : null;
       for (let i = 0n; i < n; i++) {
         const before = r.Offset;
         if (s.Kind === 16) {
@@ -310,12 +310,12 @@ export function tableMessageSkip(r, v, indexBits, e, depth) {
       return true;
     }
   }
-  if (s.Packing === 1) { return tableMessageSkipRanged(r, s.Kind, s, Number(s.Bits)); }
+  if (s.Packing === 1) { return tableMessageSkipRanged(r, s.Kind, s, globalThis.Number(s.Bits)); }
   return s.Bits >= 0 && r.Skip(s.Bits);
 }
 export function tableMessageSkipBody(r, v, indexBits, depth) {
   if (depth > 128) { return false; }
-  const seen = new Set();
+  const seen = new globalThis.Set();
   for (;;) {
     const [ref, ok] = r.Get(v.RefBits);
     if (!ok || ref === 0n) { return ok; }
@@ -337,7 +337,7 @@ export function tableMessageKindWidens(from, to) {
 export function tableMessageReadScalar(r, s) {
   const integer = (s.Kind >= 2 && s.Kind <= 9) || (s.Kind >= 18 && s.Kind <= 29) || s.Kind === 36;
   const signed = integer && (s.Kind <= 5 || s.Kind === 18 || (s.Kind >= 20 && s.Kind <= 24) || s.Kind === 36);
-  const bits = Math.min(s.Bits, 64);
+  const bits = globalThis.Math.min(s.Bits, 64);
   let [lo, ok] = r.Get(bits);
   if (!ok) { return [null, false]; }
   let hi = 0n;
@@ -350,19 +350,19 @@ export function tableMessageReadScalar(r, s) {
     lo = sum & 0xffffffffffffffffn;
     hi = (hi + baseHi + carry) & 0xffffffffffffffffn;
   } else if (s.Packing === 2) {
-    const index = Number(lo & 0xffffffffn);
+    const index = globalThis.Number(lo & 0xffffffffn);
     if (s.QCount <= 0 || index > s.QCount) { return [null, false]; }
-    const ratio = Math.fround(index / s.QCount);
-    const scaled = Math.fround(ratio * s.QDelta);
-    lo = BigInt(Math.fround(scaled + s.QMin) === 0 ? 0 : TableMessageFloat32Bits(Math.fround(scaled + s.QMin)));
+    const ratio = globalThis.Math.fround(index / s.QCount);
+    const scaled = globalThis.Math.fround(ratio * s.QDelta);
+    lo = globalThis.BigInt(globalThis.Math.fround(scaled + s.QMin) === 0 ? 0 : TableMessageFloat32Bits(globalThis.Math.fround(scaled + s.QMin)));
   } else if (signed) {
     if (s.Bits < 64) {
-      if (s.Bits > 0) { lo = BigInt.asUintN(64, BigInt.asIntN(s.Bits, lo)); }
+      if (s.Bits > 0) { lo = globalThis.BigInt.asUintN(64, globalThis.BigInt.asIntN(s.Bits, lo)); }
       hi = (lo >= 0x8000000000000000n) ? 0xffffffffffffffffn : 0n;
     } else if (s.Bits === 64) {
       hi = (lo >= 0x8000000000000000n) ? 0xffffffffffffffffn : 0n;
     } else if (s.Bits < 128) {
-      hi = BigInt.asUintN(64, BigInt.asIntN(s.Bits - 64, hi));
+      hi = globalThis.BigInt.asUintN(64, globalThis.BigInt.asIntN(s.Bits - 64, hi));
     }
   }
   return [[lo, hi], true];
@@ -373,15 +373,15 @@ export function tableMessageWriteScalar(w, s, lo, hi) {
     lo = (lo - s.Base[0]) & 0xffffffffffffffffn;
     hi = (hi - s.Base[1] - borrow) & 0xffffffffffffffffn;
   } else if (s.Packing === 2) {
-    const value = TableMessageFloat32FromBits(Number(lo & 0xffffffffn));
+    const value = TableMessageFloat32FromBits(globalThis.Number(lo & 0xffffffffn));
     let norm = (value - s.QMin) / s.QDelta;
     if (!(norm >= 0)) { norm = 0; } else if (!(norm <= 1)) { norm = 1; }
-    const scaled = Math.fround(norm * s.QCount);
-    let index = Math.floor(Math.fround(scaled + 0.5));
+    const scaled = globalThis.Math.fround(norm * s.QCount);
+    let index = globalThis.Math.floor(globalThis.Math.fround(scaled + 0.5));
     if (index > s.QCount) { index = s.QCount; }
-    lo = BigInt(index);
+    lo = globalThis.BigInt(index);
   }
-  w.Put(lo, Math.min(s.Bits, 64));
+  w.Put(lo, globalThis.Math.min(s.Bits, 64));
   if (s.Bits > 64) { w.Put(hi, s.Bits - 64); }
 }
 export function tableMessageBatchOpen(v, data, report) {
@@ -395,9 +395,9 @@ export function tableMessageBatchClose(r) {
   if (!r.Bits.Align() || r.Bits.Offset !== r.Bits.Buffer.length * 8) { r.Report.Damaged = true; return false; }
   return true;
 }
-export function TableMessageFloat32Bits(v) { TableMessageFloat[0] = v; return BigInt(TableMessageWords[0] >>> 0); }
-const TableMessageFloat64 = new Float64Array(1);
-const TableMessageDoubleWords = new BigUint64Array(TableMessageFloat64.buffer);
+export function TableMessageFloat32Bits(v) { TableMessageFloat[0] = v; return globalThis.BigInt(TableMessageWords[0] >>> 0); }
+const TableMessageFloat64 = new globalThis.Float64Array(1);
+const TableMessageDoubleWords = new globalThis.BigUint64Array(TableMessageFloat64.buffer);
 export function TableMessageFloat64Bits(v) { TableMessageFloat64[0] = v; return TableMessageDoubleWords[0]; }
 export function TableMessageFloat64FromBits(bits) { TableMessageDoubleWords[0] = bits; return TableMessageFloat64[0]; }
 `
@@ -466,7 +466,7 @@ func messageScalarBig(f *ir.Field, mem string) string {
 	if fixedIsBig(f.Type) {
 		return mem
 	}
-	return "BigInt(" + mem + ")"
+	return "globalThis.BigInt(" + mem + ")"
 }
 
 func baseBigLit(base *big.Int) string {
@@ -511,6 +511,7 @@ func (g *fixedModule) emitMessageBatch(st *ir.Struct) {
 		st.Name+"SaveMessageBody", st.Name+"LoadMessageBody")
 	if fixedStructNeedsValueCheck(st) {
 		g.needHome(st.Name + "FixedCheckBody")
+		g.needHome(st.Name + "FixedFromText")
 	}
 
 	g.emitMessageVerbs(st)
@@ -558,7 +559,7 @@ func (g *fixedModule) emitMessageCheckPayload(f *ir.Field, val, ind string) {
 func (g *fixedModule) emitMessageCheckText(mem, ind string, size int64, text bool) {
 	length := mem + "Length"
 	g.pf("%sif (%s === null || %s === undefined || typeof %s.length !== \"number\" ||\n", ind, mem, mem, mem)
-	g.pf("%s    typeof %s !== \"number\" || !Number.isInteger(%s) || %s < 0 || %s > %d || %s > %s.length) { return false; }\n",
+	g.pf("%s    typeof %s !== \"number\" || !globalThis.Number.isInteger(%s) || %s < 0 || %s > %d || %s > %s.length) { return false; }\n",
 		ind, length, length, length, length, size, length, mem)
 	if text {
 		g.pf("%sif (!tableMessageUtf8Valid(%s, 0, %s)) { return false; }\n", ind, mem, length)
@@ -584,7 +585,7 @@ func (g *fixedModule) emitMessageCheckCounted(f *ir.Field, mem, ind string) {
 	iv := g.nextIdxVar()
 	count := mem + "Count"
 	g.pf("%sif (%s === null || %s === undefined || typeof %s.length !== \"number\") { return false; }\n", ind, mem, mem, mem)
-	g.pf("%sif (typeof %s !== \"number\" || !Number.isInteger(%s) || %s < %d || %s > %d || %s > %s.length) { return false; }\n",
+	g.pf("%sif (typeof %s !== \"number\" || !globalThis.Number.isInteger(%s) || %s < %d || %s > %d || %s > %s.length) { return false; }\n",
 		ind, count, count, count, f.ArrayMin, count, f.ArrayBound, count, mem)
 	g.pf("%sfor (let %s = 0; %s < %s; %s++) {\n", ind, iv, iv, count, iv)
 	e := messageElementField(f)
@@ -597,7 +598,7 @@ func (g *fixedModule) emitMessageCheckInteger(expr, ind string, big bool) {
 		g.pf("%sif (typeof %s !== \"bigint\") { return false; }\n", ind, expr)
 		return
 	}
-	g.pf("%sif (typeof %s !== \"number\" || !Number.isInteger(%s)) { return false; }\n", ind, expr, expr)
+	g.pf("%sif (typeof %s !== \"number\" || !globalThis.Number.isInteger(%s)) { return false; }\n", ind, expr, expr)
 }
 
 func (g *fixedModule) emitMessageCheckRange(expr, ind string, lo, hi *big.Int, big bool) {
@@ -607,10 +608,10 @@ func (g *fixedModule) emitMessageCheckRange(expr, ind string, lo, hi *big.Int, b
 func (g *fixedModule) emitMessageCheckElement(f *ir.Field, expr, ind string) {
 	switch f.Type.Kind {
 	case ir.TFloat32:
-		g.pf("%sif (typeof %s !== \"number\" || !Number.isFinite(Math.fround(%s))) { return false; }\n", ind, expr, expr)
+		g.pf("%sif (typeof %s !== \"number\" || !globalThis.Number.isFinite(globalThis.Math.fround(%s))) { return false; }\n", ind, expr, expr)
 		return
 	case ir.TFloat64:
-		g.pf("%sif (typeof %s !== \"number\" || !Number.isFinite(%s)) { return false; }\n", ind, expr, expr)
+		g.pf("%sif (typeof %s !== \"number\" || !globalThis.Number.isFinite(%s)) { return false; }\n", ind, expr, expr)
 		return
 	case ir.TBits:
 		maxv := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
@@ -698,6 +699,34 @@ func (g *fixedModule) messageRides(f *ir.Field, mem, ind string) string {
 		return "(" + strings.Join(parts, " || ") + ")"
 	}
 	if f.Array == ir.ArrayCounted {
+		if f.ElidesAtBirth() {
+			// THE BIRTH VALUE ELIDES (docs/SPEC-TABLES.md §22.2, the message
+			// form's "Elision, defaults"; internal/tablewire messageElides): a
+			// `[M..N]T` is born holding M default elements, so exactly that
+			// value rides nothing. Each element is judged as a field of its
+			// own: a float by its bits, an enum or a union by the zero
+			// reference, a table by a body that is its terminator alone.
+			// the names come from the member's expression, never the shared
+			// counters, so the rest of the emitted function is unchanged
+			tag := strings.Map(func(r rune) rune {
+				if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' {
+					return r
+				}
+				return '_'
+			}, mem)
+			iv := "_bornAt_" + tag
+			v := "_born_" + tag
+			g.pf("%slet %s = %sCount === %d;\n", ind, v, mem, f.BornCount())
+			g.pf("%sfor (let %s = 0; %s && %s < %d; %s++) {\n", ind, iv, v, iv, f.BornCount(), iv)
+			// whatever the element's test declares lives inside this loop's
+			// block, so its counter is given back after
+			seq := g.probeSeq
+			cond := g.messageRides(messageElementField(f), mem+"["+iv+"]", ind+"  ")
+			g.probeSeq = seq
+			g.pf("%s  if (%s) { %s = false; }\n", ind, cond, v)
+			g.pf("%s}\n", ind)
+			return "(" + mem + "Count > 0 && !" + v + ")"
+		}
 		return mem + "Count > 0"
 	}
 	if f.Array == ir.ArrayFixed {
@@ -733,10 +762,16 @@ func (g *fixedModule) messageRides(f *ir.Field, mem, ind string) string {
 // messageDiffers is the elision compare of one value against its default. A
 // float compares its BIT PATTERN (docs/SPEC-TABLES.md §3.3, the 10-15 rule):
 // Object.is is the bit compare for two finite values, so a -0 under a +0
-// default rides, and a NaN never elides and reaches the writer's refusal.
+// default rides, and a NaN never elides and reaches the writer's refusal. A
+// COMPRESSED float's -0 is stored as +0 (§3.3, docs/rulings.json
+// fixed-compressed-negzero), so it compares by value: a -0 under a +0 default
+// elides exactly as +0 does.
 func messageDiffers(f *ir.Field, lhs, def string) string {
+	if fixedIsFloat(f.Type) && f.HasFloatRange {
+		return lhs + " !== " + def
+	}
 	if fixedIsFloat(f.Type) {
-		return "!Object.is(" + lhs + ", " + def + ")"
+		return "!globalThis.Object.is(" + lhs + ", " + def + ")"
 	}
 	return lhs + " !== " + def
 }
@@ -775,7 +810,7 @@ func (g *fixedModule) emitMessageWriteField(f *ir.Field, ind string) {
 func (g *fixedModule) emitMessageWriteValue(f *ir.Field, entry ir.TableVocabularyEntry, mem, ind string) {
 	switch {
 	case f.Type.Kind == ir.TString:
-		g.pf("%sw.Put(BigInt(%sLength), %d);\n", ind, mem, ir.TableMessageCountBits(entry.Shape))
+		g.pf("%sw.Put(globalThis.BigInt(%sLength), %d);\n", ind, mem, ir.TableMessageCountBits(entry.Shape))
 		g.pf("%sw.Raw(%s.subarray(0, %sLength));\n", ind, mem, mem)
 	case f.KeyEnum != "" || f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes:
 		g.emitMessageWriteArray(f, entry, mem, ind)
@@ -812,7 +847,7 @@ func (g *fixedModule) emitMessageWriteArray(f *ir.Field, entry ir.TableVocabular
 		countExpr = mem + "Count"
 		loopExpr = mem + "Count"
 	}
-	g.pf("%sw.Put(BigInt(%s) - %dn, %d);\n", ind, countExpr, entry.Shape.Min, countBits)
+	g.pf("%sw.Put(globalThis.BigInt(%s) - %dn, %d);\n", ind, countExpr, entry.Shape.Min, countBits)
 	if ir.TableMessageAligns(entry.Kind, entry.Shape) {
 		g.pf("%sw.Align();\n", ind)
 	}
@@ -822,7 +857,7 @@ func (g *fixedModule) emitMessageWriteArray(f *ir.Field, entry ir.TableVocabular
 	g.pf("%sfor (let %s = 0; %s < %s; %s++) {\n", ind, iv, iv, loopExpr, iv)
 	if keyed {
 		cond := g.messageRides(e, mem+"["+iv+"]", ind+"  ")
-		if strings.HasPrefix(cond, "!Object.is(") && strings.HasSuffix(cond, ")") {
+		if strings.HasPrefix(cond, "!globalThis.Object.is(") && strings.HasSuffix(cond, ")") {
 			g.pf("%s  if (%s) { continue; }\n", ind, cond[1:])
 		} else {
 			g.pf("%s  if (!(%s)) { continue; }\n", ind, cond)
@@ -857,7 +892,7 @@ func (g *fixedModule) emitMessageWriteScalar(f *ir.Field, entry ir.TableVocabula
 	case ir.TableKindF32:
 		// A NaN OR AN INFINITY IS REFUSED BEFORE IT IS WRITTEN OR QUANTIZED
 		// (docs/SPEC-TABLES.md §3.3): no form carries one, so the save refuses
-		g.pf("%sif (!Number.isFinite(Math.fround(%s))) { return false; }\n", ind, mem)
+		g.pf("%sif (!globalThis.Number.isFinite(globalThis.Math.fround(%s))) { return false; }\n", ind, mem)
 		if s.Packing == ir.TableMessageQuantized {
 			count, delta, _ := ir.TableMessageQuantization(s)
 			g.pf("%s{ const b = TableMessageFloat32Bits(%s); tableMessageWriteScalar(w, {Packing:2, Bits:%d, Base:[0n,0n], QMin:%s, QDelta:%s, QCount:%d}, b, 0n); }\n",
@@ -867,7 +902,7 @@ func (g *fixedModule) emitMessageWriteScalar(f *ir.Field, entry ir.TableVocabula
 		}
 		return
 	case ir.TableKindF64:
-		g.pf("%sif (!Number.isFinite(%s)) { return false; }\n", ind, mem)
+		g.pf("%sif (!globalThis.Number.isFinite(%s)) { return false; }\n", ind, mem)
 		g.pf("%sw.Put(TableMessageFloat64Bits(%s), 64);\n", ind, mem)
 		return
 	}
@@ -877,7 +912,7 @@ func (g *fixedModule) emitMessageWriteScalar(f *ir.Field, entry ir.TableVocabula
 	}
 	width := ir.TableMessageValueBits(uint8(kind), s)
 	if width > 64 {
-		g.pf("%s{ const v = %s; w.Put(BigInt.asUintN(64, v), 64); w.Put(BigInt.asUintN(64, v >> 64n), %d); }\n", ind, big, width-64)
+		g.pf("%s{ const v = %s; w.Put(globalThis.BigInt.asUintN(64, v), 64); w.Put(globalThis.BigInt.asUintN(64, v >> 64n), %d); }\n", ind, big, width-64)
 		return
 	}
 	g.pf("%sw.Put(%s, %d);\n", ind, big, width)
@@ -976,7 +1011,11 @@ func (g *fixedModule) emitMessageReadField(f *ir.Field, mine ir.TableVocabularyE
 		cond = messageStoredDefaultCond(f, mem)
 	}
 	checkFixedRides := cond == "" && atField && f.KeyEnum == "" && f.Array == ir.ArrayFixed && (!isStructRef(f.Type) || f.Type.Pointer)
-	if cond != "" || checkFixedRides {
+	// A STORED BIRTH VALUE IS DAMAGE at this build's own shape (docs/SPEC-TABLES.md
+	// §22.2, §3.3): a [Min..N]T holding Min default elements elides, so a
+	// writer of this build never spells it; messageRides is that elision
+	checkCountedRides := cond == "" && f.KeyEnum == "" && f.ElidesAtBirth()
+	if cond != "" || checkFixedRides || checkCountedRides {
 		g.pf("%sconst subBefore = r.Report.Unknown + (r.Substituted ?? 0);\n", ind)
 	}
 	g.emitMessageReadValue(f, mem, ind, "entry.Shape", !f.Type.Optional)
@@ -986,7 +1025,10 @@ func (g *fixedModule) emitMessageReadField(f *ir.Field, mine ir.TableVocabularyE
 		g.pf("%sif (!widened && r.Vocabulary.BuildVersion === %s && entry.Shape.Packing === %d && entry.Shape.Bits === %d && r.Report.Unknown + (r.Substituted ?? 0) === subBefore && (%s)) { r.Report.Damaged = true; return false; }\n", ind, jsId(ir.BuildVersion(g.unit)), mine.Shape.Packing, mineBits, cond)
 	case checkFixedRides:
 		rides := g.messageRides(f, mem, ind)
-		g.pf("%sif (!widened && r.Vocabulary.BuildVersion === %s && Number(entry.Shape.Min) === %d && Number(entry.Shape.Max) === %d && entry.Element.Packing !== 2 && r.Report.Unknown + (r.Substituted ?? 0) === subBefore && !(%s)) { r.Report.Damaged = true; return false; }\n", ind, jsId(ir.BuildVersion(g.unit)), mine.Shape.Min, mine.Shape.Max, rides)
+		g.pf("%sif (!widened && r.Vocabulary.BuildVersion === %s && globalThis.Number(entry.Shape.Min) === %d && globalThis.Number(entry.Shape.Max) === %d && entry.Element.Packing !== 2 && r.Report.Unknown + (r.Substituted ?? 0) === subBefore && !(%s)) { r.Report.Damaged = true; return false; }\n", ind, jsId(ir.BuildVersion(g.unit)), mine.Shape.Min, mine.Shape.Max, rides)
+	case checkCountedRides:
+		rides := g.messageRides(f, mem, ind)
+		g.pf("%sif (!widened && r.Vocabulary.BuildVersion === %s && globalThis.Number(entry.Shape.Min) === %d && globalThis.Number(entry.Shape.Max) === %d && r.Report.Unknown + (r.Substituted ?? 0) === subBefore && !(%s)) { r.Report.Damaged = true; return false; }\n", ind, jsId(ir.BuildVersion(g.unit)), mine.Shape.Min, mine.Shape.Max, rides)
 	}
 	if f.Type.Optional {
 		g.pf("%svalue.%sPresent = true;\n", ind, js.MemberName(f.Name))
@@ -1012,8 +1054,11 @@ func messageStoredDefaultCond(f *ir.Field, mem string) string {
 		return ""
 	}
 	def := fixedZeroFor(f)
+	if fixedIsFloat(f.Type) && f.HasFloatRange {
+		return mem + " === " + def // a compressed -0 is +0 (§3.3)
+	}
 	if fixedIsFloat(f.Type) {
-		return "Object.is(" + mem + ", " + def + ")"
+		return "globalThis.Object.is(" + mem + ", " + def + ")"
 	}
 	return mem + " === " + def
 }
@@ -1027,8 +1072,8 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, mem, ind, shape string, 
 	case f.Type.Kind == ir.TString:
 		g.pf("%s{ const [n, ok] = tableMessageCount(r.Bits, %s); if (!ok || !r.Bits.Align()) { r.Report.Damaged = true; return false; }\n", ind, shape)
 		g.pf("%s  const start = r.Bits.Offset >> 3;\n", ind)
-		g.pf("%s  if (!r.Bits.Skip(Number(n) * 8)) { r.Report.Damaged = true; return false; }\n", ind)
-		g.pf("%s  const rawLen = Number(n);\n", ind)
+		g.pf("%s  if (!r.Bits.Skip(globalThis.Number(n) * 8)) { r.Report.Damaged = true; return false; }\n", ind)
+		g.pf("%s  const rawLen = globalThis.Number(n);\n", ind)
 		g.pf("%s  if (!tableMessageUtf8Valid(r.Bits.Buffer, start, rawLen)) { r.Report.Damaged = true; return false; }\n", ind)
 		g.pf("%s  let kept = rawLen;\n", ind)
 		g.pf("%s  if (kept > %d) { kept = tableMessageUtf8Clamp(r.Bits.Buffer, start, %d); r.Report.Oor++; }\n", ind, f.Type.Size, f.Type.Size)
@@ -1040,8 +1085,8 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, mem, ind, shape string, 
 		iv := g.nextIdxVar()
 		g.pf("%s{ const [n, ok] = tableMessageCount(r.Bits, %s); if (!ok || !r.Bits.Align()) { r.Report.Damaged = true; return false; }\n", ind, shape)
 		g.pf("%s  const start = r.Bits.Offset >> 3;\n", ind)
-		g.pf("%s  if (!r.Bits.Skip(Number(n) * 8)) { r.Report.Damaged = true; return false; }\n", ind)
-		g.pf("%s  let kept = Number(n);\n", ind)
+		g.pf("%s  if (!r.Bits.Skip(globalThis.Number(n) * 8)) { r.Report.Damaged = true; return false; }\n", ind)
+		g.pf("%s  let kept = globalThis.Number(n);\n", ind)
 		g.pf("%s  if (kept > %d) { kept = %d; r.Report.Oor++; }\n", ind, f.Type.Size, f.Type.Size)
 		g.pf("%s  %s.fill(0);\n", ind, mem)
 		g.pf("%s  for (let %s = 0; %s < kept; %s++) { %s[%s] = r.Bits.Buffer[start + %s]; }\n", ind, iv, iv, iv, mem, iv, iv)
@@ -1079,7 +1124,7 @@ func (g *fixedModule) emitMessageReadArray(f *ir.Field, mem, ind, shape string, 
 	if f.KeyEnum == "" {
 		g.pf("%s  if (%s.Kind === 6 && !r.Bits.Align()) { %s; }\n", ind, elemExpr, bad)
 	}
-	g.pf("%s  let keep = Number(n);\n", ind)
+	g.pf("%s  let keep = globalThis.Number(n);\n", ind)
 	if elideEmpty {
 		g.pf("%s  if (n === 0n && r.Vocabulary.BuildVersion === %s) { r.Report.Damaged = true; return false; }\n", ind, jsId(ir.BuildVersion(g.unit)))
 	}
@@ -1100,7 +1145,7 @@ func (g *fixedModule) emitMessageReadArray(f *ir.Field, mem, ind, shape string, 
 			g.pf("%s      case 0x%016xn: key = %d; break;\n", ind, ir.TableWireId(ke.VariantWireName(i)), i+1)
 		}
 		g.pf("%s      default: r.Report.Unknown++;\n%s    }\n", ind, ind)
-		g.pf("%s    const _exactKeyed = r.Vocabulary.BuildVersion === %s && Number(%s.Max) === %d;\n", ind, jsId(ir.BuildVersion(g.unit)), shape, bound)
+		g.pf("%s    const _exactKeyed = r.Vocabulary.BuildVersion === %s && globalThis.Number(%s.Max) === %d;\n", ind, jsId(ir.BuildVersion(g.unit)), shape, bound)
 		g.pf("%s    if (key !== 0 && _exactKeyed && key <= lastKey) { %s; }\n", ind, bad)
 		g.pf("%s    if (key !== 0) { lastKey = key; }\n", ind)
 		g.pf("%s    if (key === 0) { if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, { Shape: %s }, 0)) { %s; } }\n", ind, elemExpr, bad)
@@ -1123,16 +1168,16 @@ func (g *fixedModule) emitMessageReadArray(f *ir.Field, mem, ind, shape string, 
 		}
 	} else {
 		g.pf("%s  for (let %s = 0n; %s < n; %s++) {\n", ind, iv, iv, iv)
-		g.pf("%s    const p = %s < BigInt(keep) ? %s[Number(%s)] : null;\n", ind, iv, mem, iv)
+		g.pf("%s    const p = %s < globalThis.BigInt(keep) ? %s[globalThis.Number(%s)] : null;\n", ind, iv, mem, iv)
 		g.pf("%s    if (p === null) {\n", ind)
 		g.pf("%s      if (%s.Bits >= 0 || %s.Kind === 0 || %s.Kind === 32) {\n", ind, elemExpr, elemExpr, elemExpr)
-		g.pf("%s        if (!r.Bits.Skip(Number(n - %s) * Math.max(0, %s.Bits))) { %s; }\n", ind, iv, elemExpr, bad)
+		g.pf("%s        if (!r.Bits.Skip(globalThis.Number(n - %s) * globalThis.Math.max(0, %s.Bits))) { %s; }\n", ind, iv, elemExpr, bad)
 		g.pf("%s        break;\n", ind)
 		g.pf("%s      }\n", ind)
 		g.pf("%s      const before = r.Bits.Offset;\n", ind)
 		g.pf("%s      if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, { Shape: %s }, 0) || r.Bits.Offset === before) { %s; }\n", ind, elemExpr, bad)
 		g.pf("%s    } else {\n", ind)
-		g.emitMessageReadElement(e, mem+"[Number("+iv+")]", ind+"      ", elemExpr)
+		g.emitMessageReadElement(e, mem+"[globalThis.Number("+iv+")]", ind+"      ", elemExpr)
 		g.pf("%s    }\n", ind)
 		g.pf("%s  }\n", ind)
 		if counted {
@@ -1172,14 +1217,14 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, mem, ind, shape string)
 		// is finite by construction, so only the raw shape is tested.
 		refuse := fmt.Sprintf("{ if (!r.Report.NonFiniteFloat) { r.Report.NonFiniteFloat = %s; } return false; }", jsStr(jsFloatOwner(g.unit, f)))
 		if f.Type.Kind == ir.TFloat32 {
-			g.pf("%s{ const [v, ok] = tableMessageReadScalar(r.Bits, %s); if (!ok) { r.Report.Damaged = true; return false; } const b = Number(v[0] & 0xffffffffn);\n", ind, shape)
+			g.pf("%s{ const [v, ok] = tableMessageReadScalar(r.Bits, %s); if (!ok) { r.Report.Damaged = true; return false; } const b = globalThis.Number(v[0] & 0xffffffffn);\n", ind, shape)
 			g.pf("%s  if (%s.Packing !== 2 && (b & 0x7f800000) === 0x7f800000) %s\n", ind, shape, refuse)
 			g.pf("%s  let x = TableMessageFloat32FromBits(b);\n", ind)
 		} else {
 			g.pf("%s{ const [v, ok] = tableMessageReadScalar(r.Bits, %s); if (!ok) { r.Report.Damaged = true; return false; }\n", ind, shape)
 			g.pf("%s  let x;\n", ind)
 			g.pf("%s  if (%s.Kind === 10) {\n", ind, shape)
-			g.pf("%s    const b = Number(v[0] & 0xffffffffn);\n", ind)
+			g.pf("%s    const b = globalThis.Number(v[0] & 0xffffffffn);\n", ind)
 			g.pf("%s    if (%s.Packing !== 2 && (b & 0x7f800000) === 0x7f800000) %s\n", ind, shape, refuse)
 			g.pf("%s    x = TableMessageFloat32FromBits(b);\n", ind)
 			g.pf("%s  } else {\n", ind)
@@ -1192,7 +1237,7 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, mem, ind, shape string)
 		return
 	case ir.TBits:
 		g.pf("%s{ const [v, ok] = tableMessageReadScalar(r.Bits, %s); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];\n", ind, shape)
-		g.pf("%s  x = BigInt.asUintN(%d, x);\n", ind, width)
+		g.pf("%s  x = globalThis.BigInt.asUintN(%d, x);\n", ind, width)
 		g.pf("%s  if (x > %dn) { x = %dn; r.Report.Oor++; }\n", ind, (uint64(1)<<uint(f.Type.Width))-1, (uint64(1)<<uint(f.Type.Width))-1)
 		g.pf("%s  %s = %s;\n%s}\n", ind, mem, numOrBig("x", big), ind)
 		return
@@ -1208,16 +1253,16 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, mem, ind, shape string)
 
 func narrowInt(x string, signed bool, width int64) string {
 	if signed {
-		return fmt.Sprintf("BigInt.asIntN(%d, %s)", width, x)
+		return fmt.Sprintf("globalThis.BigInt.asIntN(%d, %s)", width, x)
 	}
-	return fmt.Sprintf("BigInt.asUintN(%d, %s)", width, x)
+	return fmt.Sprintf("globalThis.BigInt.asUintN(%d, %s)", width, x)
 }
 
 func numOrBig(x string, big bool) string {
 	if big {
 		return x
 	}
-	return "Number(" + x + ")"
+	return "globalThis.Number(" + x + ")"
 }
 
 func (g *fixedModule) emitMessageIntClamp(f *ir.Field, x, ind string) {
@@ -1307,13 +1352,31 @@ func (g *fixedModule) emitMessageCheck(st *ir.Struct) {
 	if !fixedStructNeedsValueCheck(st) {
 		return
 	}
+	// A VALUE A TEXT READ PLACED is the variable class's (a live-length array
+	// for a counted one, an enum's name): the preflight refuses it as the fixed
+	// class's value, so it is read into the fixed storage once and held to the
+	// same preflight (docs/SPEC-TABLES.md §3.3, §16). The caller's own array is
+	// never written; a value already in the fixed form costs the one preflight.
+	g.pf("  let vals = values;\n")
 	g.pf("  for (let i = 0; i < values.length; i++) {\n")
-	g.pf("    if (values[i] !== null && values[i] !== undefined && !%sFixedCheckBody(values[i])) { TableMessageRefuse(report, \"invalid_value\"); return -1; }\n", st.Name)
+	g.pf("    let value = values[i];\n")
+	g.pf("    if (value !== null && value !== undefined && !%sFixedCheckBody(value)) {\n", st.Name)
+	g.pf("      value = %sFixedFromText(value, new %s());\n", st.Name, st.Name)
+	g.pf("      if (!%sFixedCheckBody(value)) { TableMessageRefuse(report, \"invalid_value\"); return -1; }\n", st.Name)
+	g.pf("      if (vals === values) { vals = values.slice(); }\n")
+	g.pf("      vals[i] = value;\n")
+	g.pf("    }\n")
 	g.pf("  }\n")
 }
 
 func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 	n := st.Name
+	// vn names the batch the bodies are written from: the converted copy when the
+	// preflight can convert a text-placed value, the caller's own otherwise.
+	vn := "values"
+	if fixedStructNeedsValueCheck(st) {
+		vn = "vals"
+	}
 	if st.Integrity != "" {
 		g.needHome("TableIntegrityHolds", "TableIntegritySeal", "TableMessageOpenDamaged")
 	}
@@ -1327,7 +1390,7 @@ func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 	g.emitMessageCheck(st)
 	g.pf("  const w = new TableBitWriter(null, true);\n")
 	g.pf("  for (let i = 0; i < values.length; i++) {\n")
-	g.pf("    if (values[i] === null || values[i] === undefined || !%sSaveMessageBody(w, values[i])) { TableMessageRefuse(report, \"invalid_value\"); return -1; }\n", n)
+	g.pf("    if (%[2]s[i] === null || %[2]s[i] === undefined || !%[1]sSaveMessageBody(w, %[2]s[i])) { TableMessageRefuse(report, \"invalid_value\"); return -1; }\n", n, vn)
 	g.pf("  }\n")
 	g.pf("  w.Align();\n")
 	g.pf("  if (w.Overflow) { return -1; }\n")
@@ -1355,7 +1418,7 @@ func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 		g.pf("  const w = new TableBitWriter(buffer.subarray(2), false);\n")
 	}
 	g.pf("  for (let i = 0; i < values.length; i++) {\n")
-	g.pf("    if (values[i] === null || values[i] === undefined || !%sSaveMessageBody(w, values[i])) { TableMessageRefuse(report, \"invalid_value\"); return -1; }\n", n)
+	g.pf("    if (%[2]s[i] === null || %[2]s[i] === undefined || !%[1]sSaveMessageBody(w, %[2]s[i])) { TableMessageRefuse(report, \"invalid_value\"); return -1; }\n", n, vn)
 	g.pf("  }\n")
 	g.pf("  w.Align();\n")
 	g.pf("  if (w.Overflow) { return -1; }\n")
@@ -1370,11 +1433,14 @@ func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 	g.pf("  TableMessageResetReport(report);\n")
 	if st.Integrity != "" {
 		g.pf("  if (data.length > 0 && data[0] === 2) {\n")
-		g.pf("    if (!TableIntegrityHolds(data, 2)) { report.Damaged = true; report.Verdict = TableMessageOpenDamaged; report.Reason = \"integrity_mismatch\"; return -1; }\n")
+		g.pf("    if (!TableIntegrityHolds(data, 2)) { report.Damaged = true; report.Verdict = TableMessageOpenDamaged; report.Reason = \"integrity_mismatch\"; return 0; }\n")
 		g.pf("    data = data.subarray(0, data.length - 4);\n  }\n")
 	}
 	g.pf("  const [r, count] = tableMessageBatchOpen(vocabulary, data, report);\n")
-	g.pf("  if (count < 0) { return -1; }\n")
+	// "A refused batch returns a count of `0`, as every refused batch does"
+	// (docs/SPEC-TABLES.md §3.3): the open's refusals answer 0, the report
+	// names the reason, and a delivered batch is never empty (M is at least 1).
+	g.pf("  if (count < 0) { return 0; }\n")
 	g.pf("  if (count > values.length) { TableMessageRefuse(report, \"batch_too_large\"); return 0; }\n")
 	g.pf("  for (let i = 0; i < count; i++) {\n")
 	g.pf("    if (!%sLoadMessageBody(r, values[i])) {\n", n)
@@ -1383,12 +1449,21 @@ func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 	g.pf("      if (report.NonFiniteFloat) {\n")
 	g.pf("        for (let j = 0; j <= i; j++) { Init%s(values[j]); }\n", n)
 	g.pf("        TableMessageRefuse(report, \"non_finite_float: \" + report.NonFiniteFloat);\n")
-	g.pf("        return -1;\n")
+	g.pf("        return 0;\n")
 	g.pf("      }\n")
 	g.pf("      // DAMAGE ANYWHERE IN THE BATCH DELIVERS NO BODY (docs/SPEC-TABLES.md §4):\n")
 	g.pf("      // the count says 0 and every body the walk touched goes back to its\n")
 	g.pf("      // declared defaults.\n")
 	g.pf("      for (let j = 0; j <= i; j++) { Init%s(values[j]); }\n", n)
+	g.pf("      return 0;\n")
+	g.pf("    }\n")
+	g.pf("    // A VALUE OUTSIDE ITS DECLARED RANGE (or a length past its bound) REFUSES THE\n")
+	g.pf("    // BATCH BY NAME as out_of_range (docs/SPEC-TABLES.md §3.3), as the Go\n")
+	g.pf("    // reference and the Rust port do: the count is 0 and\n")
+	g.pf("    // every body of the batch goes back to its declared defaults.\n")
+	g.pf("    if (report.Oor > 0) {\n")
+	g.pf("      for (let j = 0; j < count; j++) { Init%s(values[j]); }\n", n)
+	g.pf("      TableMessageRefuse(report, \"out_of_range\");\n")
 	g.pf("      return 0;\n")
 	g.pf("    }\n")
 	g.pf("  }\n")

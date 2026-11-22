@@ -110,9 +110,15 @@ fn main() {
             failed += 1;
         }
     }
+    // the count line build/mustrun holds to the registered count: a case file
+    // that lost its rows runs nothing and is red
+    if cases.is_empty() {
+        eprintln!("FAILED: packet-write-text Rust: no cases in {}", args[1]);
+        failed += 1;
+    }
+    println!("packet-write-text Rust: ran {}, failed {failed}", cases.len());
     if failed > 0 {
         eprintln!("FAILED: packet-write-text Rust: {failed} of {} shared cases", cases.len());
         std::process::exit(1);
     }
-    println!("packet-write-text Rust: all {} shared cases passed", cases.len());
 }

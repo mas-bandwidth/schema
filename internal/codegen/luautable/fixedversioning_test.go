@@ -85,6 +85,13 @@ for i = 5, 8 do check(v.Vals[i] == nil or num(v.Vals[i]) == 0, "slot " .. i .. "
 for i = 5, 8 do
 	check(num(v.Vals[i].X) == 7 and num(v.Vals[i].Y) == 9,
 		"slot " .. i .. " past the old bound is not the ELEMENT default: " .. tostring(v.Vals[i].X) .. " " .. tostring(v.Vals[i].Y))
+end
+-- F-092: the SCALAR arrays beside it, 4 exact and 4 born zero, never nil or short
+check(#v.Ints == 8 and buffer.len(v.Octet) == 8, "a grown scalar array is not its new bound")
+for i = 1, 8 do
+	local wi, wo = if i <= 4 then -800 - (i - 1) else 0, if i <= 4 then 200 + (i - 1) else 0
+	check(num(v.Ints[i]) == wi and buffer.readu8(v.Octet, i - 1) == wo,
+		"scalar slot " .. i .. ": " .. tostring(v.Ints[i]) .. " " .. tostring(buffer.readu8(v.Octet, i - 1)))
 end`},
 	{row: "bits_grow", widens: true},
 	{row: "bytes_grow"},
@@ -351,8 +358,8 @@ func luauFixedCorpus(t *testing.T) string {
 		// THE SKIP IS A FAILURE WHEN SOMETHING PROMISED THE CORPUS:
 		// `make tables-luau-versioning` builds it first and sets
 		// SCHEMA_REQUIRE_CORPUS=1
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the reference's byte oracle is not in %s: %v", dir, err)
+		if slowtest.CorpusRequired() {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the reference's byte oracle is not in %s: %v", dir, err)
 		}
 		t.Skip("the reference's byte oracle is not built: make tables-fixedform-corpus")
 	}
@@ -572,7 +579,11 @@ func luauSplitValues(s string) []string {
 func luauManifestChecks(t *testing.T, corpus, file string, root *ir.Struct) string {
 	t.Helper()
 	var b strings.Builder
-	for _, kv := range luauManifestValues(t, corpus, file) {
+	allLuauManifestValues := luauManifestValues(t, corpus, file)
+	if len(allLuauManifestValues) == 0 {
+		t.Fatal("luauManifestValues(t, corpus, file) is empty: the loop below would check nothing")
+	}
+	for _, kv := range allLuauManifestValues {
 		path, value := kv[0], kv[1]
 		rec, rest, ok := strings.Cut(path, ".")
 		if !ok || !strings.HasPrefix(rec, "r") {
@@ -646,7 +657,8 @@ func luauResolvePath(t *testing.T, root *ir.Struct, expr, path string) (string, 
 		}
 		expr += "." + ir.GoExportName(f.Name)
 		if idx >= 0 {
-			if f.Type.Kind == ir.TBytes {
+			// a bytes(N) and an array of uint8 are both a buffer in Luau
+			if f.Type.Kind == ir.TBytes || (f.Array != ir.ArrayNone && f.Type.Kind == ir.TInt && f.Type.Width == 8 && !f.Type.Signed) {
 				if !last {
 					t.Fatalf("the manifest path %q runs past a bytes(N) element", path)
 				}

@@ -138,18 +138,44 @@ int? _jsonSkippedLabel(dynamic raw) {
   return null;
 }
 
-void _jsonSkipEntry(int idx, String key, dynamic val, TableTextReport r) {
-  _jsonText(key);
-  _jsonName(key, r);
-  if (r.variableRoot && key.startsWith('&')) {
-    final label = idx == 0 && key == '&node' ? _jsonSkippedLabel(val) : null;
-    if (label == null) {
-      throw const FormatException('reserved ampersand prefix');
+// _jsonSkipObject holds one skipped object to the label rules a placed one is
+// (docs/SPEC-TABLES.md §16.7): a label alone must name a definition already
+// closed, fields after one must follow a label not yet defined, and the
+// definition is open until this object closes. A dropped definition keeps its
+// label with no node, so a reference to it reads null. What the reader does
+// not place is the value, never the label.
+void _jsonSkipObject(List<MapEntry<String, dynamic>> entries, TableTextReport r) {
+  int? definition;
+  for (var idx = 0; idx < entries.length; idx++) {
+    final key = entries[idx].key;
+    final val = entries[idx].value;
+    _jsonText(key);
+    _jsonName(key, r);
+    if (key.startsWith('&')) {
+      final label = idx == 0 && key == '&node' ? _jsonSkippedLabel(val) : null;
+      if (label == null) {
+        throw const FormatException('reserved ampersand prefix');
+      }
+      // a unit with no pointer has no label table: the prefix is still held to
+      // its grammar, and the value is skipped whole
+      if (!r.variableRoot) continue;
+      if (entries.length == 1) {
+        if (!r.labelsSeen.contains(label) || r.labelsOpen.contains(label)) {
+          throw const FormatException('undefined node label');
+        }
+      } else {
+        if (r.labelsSeen.contains(label)) {
+          throw const FormatException('node label defined twice');
+        }
+        r.labelsSeen.add(label);
+        r.labelsOpen.add(label);
+        definition = label;
+      }
+    } else {
+      _jsonSkipValue(val, r);
     }
-    r.textLabels.add(label);
-  } else {
-    _jsonSkipValue(val, r);
   }
+  if (definition != null) r.labelsOpen.remove(definition);
 }
 
 void _jsonSkipValue(dynamic val, TableTextReport r) {
@@ -158,10 +184,7 @@ void _jsonSkipValue(dynamic val, TableTextReport r) {
     return;
   }
   if (val is _JObj) {
-    for (var idx = 0; idx < val.entries.length; idx++) {
-      final entry = val.entries[idx];
-      _jsonSkipEntry(idx, entry.key, entry.value, r);
-    }
+    _jsonSkipObject(val.entries, r);
     return;
   }
   if (val is List) {
@@ -171,13 +194,13 @@ void _jsonSkipValue(dynamic val, TableTextReport r) {
     return;
   }
   if (val is Map) {
-    var idx = 0;
+    final entries = <MapEntry<String, dynamic>>[];
     for (final entry in val.entries) {
       final key = entry.key;
       if (key is! String) throw const FormatException('kind_mismatch');
-      _jsonSkipEntry(idx, key, entry.value, r);
-      idx++;
+      entries.add(MapEntry<String, dynamic>(key, entry.value));
     }
+    _jsonSkipObject(entries, r);
   }
 }
 
@@ -736,7 +759,7 @@ func (g *wireGen) emitTextMoreDecls() {
 			if arm.Void() {
 				g.pf("\t\t\tout.raw('null');\n")
 			} else {
-				g.pf("%s", jsonWriteCheck(arm.F, "v."+armMember(arm), "\t\t\t", "throw StateError('invalid_value: arm "+un.Name+"."+arm.Name+" out of range');"))
+				g.pf("%s", jsonWriteCheck(arm.F, "v."+armMember(arm), "\t\t\t", "_rangeF32", ""))
 				g.emitJsonValue(arm.F, "v."+armMember(arm), 1, "\t\t\t", un.Name+"."+arm.Name)
 			}
 			g.pf("\t\t\tout.line(depth);\n")
@@ -911,7 +934,7 @@ func (g *wireGen) emitJsonValue(f *ir.Field, expr string, d int, ind, where stri
 	case f.Type.Kind == ir.TBool:
 		g.pf("%sout.raw(%s ? 'true' : 'false');\n", ind, expr)
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
-		g.pf("%sout.raw(_jsonFloat(%s, %v));\n", ind, expr, f.Type.Kind == ir.TFloat32)
+		g.pf("%sout.raw(_jsonFloat(%s, %v));\n", ind, dartStoredFloat(f, expr), f.Type.Kind == ir.TFloat32)
 	case enumRef(f) != nil:
 		g.pf("%sout.raw(_jsonEnum(%s, %sName, '%s'));\n", ind, expr, dartName(enumRef(f).Name), where)
 	case jsonIntegerWide(f):
@@ -1056,7 +1079,7 @@ func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int, fallback ...strin
 	case f.Type.Kind == ir.TBool:
 		return fmt.Sprintf("_jsonBoolField(%s, r%s)", val, fbArg)
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
-		return fmt.Sprintf("_jsonFloatField(%s, r, %t%s)", val, f.Type.Kind == ir.TFloat32, fbArg)
+		return jsonRangedFloat(f, fmt.Sprintf("_jsonFloatField(%s, r, %t%s)", val, f.Type.Kind == ir.TFloat32, fbArg))
 	case enumRef(f) != nil:
 		return fmt.Sprintf("%sFromName(%s, r%s)", dartName(enumRef(f).Name), val, fbArg)
 	case f.Type.Kind == ir.TBits:

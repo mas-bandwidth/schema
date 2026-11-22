@@ -74,13 +74,14 @@ build/cards-driver-moo: tables/cards/moo/host/main.go
 	@mkdir -p build
 	go build -o $@ tables/cards/moo/host/main.go
 
-cards-moo-test: toolchain-moo cards-moo-generate build/cards-driver-moo cards-corpus-check
+cards-moo-test: toolchain-moo cards-moo-generate build/cards-driver-moo cards-corpus-check build/mustrun
 	@mkdir -p build/cards-moo-analyze
 	@cp $(CARDS_MOO_GENERATED)/*.moo tables/cards/moo/*.moo build/cards-moo-analyze/
 	@printf 'return {surface="unit",rows={},files={}}\n' > build/cards-moo-analyze/inputs.moo
 	$(MOO_ANALYZE) build/cards-moo-analyze/cards.moo build/cards-moo-analyze/cards_codec.moo build/cards-moo-analyze/cards_test.moo build/cards-moo-analyze/driver.moo
+	@rm -f build/cards-moo-unit/unit.txt
 	./build/cards-driver-moo tables/cards/moo/UNIT_INPUTS.txt unit build/cards-moo-unit
-	@cat build/cards-moo-unit/unit.txt
+	$(MUSTRUN) -name cards-moo-test -count 11 -- cat build/cards-moo-unit/unit.txt
 
 cards-moo-conformance: toolchain-moo cards-moo-generate build/cards-driver-moo build/conformance-harness cards-corpus-check
 	SCHEMA_REQUIRE_CARDS_CORPUS=1 SCHEMA_CARDS_SURFACES=$(CARDS_MOO_REQUIRE) ./build/conformance-harness cards --work build/cards-moo-conformance --corpus tables/cards/conformance --driver tables/cards/moo/driver --require $(CARDS_MOO_REQUIRE)

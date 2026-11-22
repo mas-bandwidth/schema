@@ -2,13 +2,14 @@ package javatable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	javapkt "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestBlockBuildAndCookWriteJava pins the producer entries of the two
@@ -50,7 +51,7 @@ func TestBlockBuildAndCookWriteJava(t *testing.T) {
 			sources = append(sources, path)
 		}
 		args := append([]string{"--release", "17", "-d", dir}, sources...)
-		if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+		if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 			t.Fatalf("javac: %v\n%s", err, out)
 		}
 	})
@@ -79,11 +80,11 @@ func TestBlockBuildAndCookWriteJava(t *testing.T) {
 		}
 		args := append([]string{"--release", "17", "-d", dir}, sources...)
 		args = append(args, driver)
-		if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+		if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 			t.Fatalf("javac: %v\n%s", err, out)
 		}
 		root := filepath.Join("..", "..", "..", "testdata", "wire", "tables")
-		cmd := exec.Command(javaBin, "-ea", "-cp", dir, "blockdemo.BlockGoldenDriver",
+		cmd := testproc.Command(t, javaBin, "-ea", "-cp", dir, "blockdemo.BlockGoldenDriver",
 			filepath.Join(root, "block_render.bin"), filepath.Join(root, "block_padded.bin"))
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("java block: %v\n%s", err, out)
@@ -399,7 +400,7 @@ func compileCookUnit(t *testing.T, javac string, files map[string][]byte, pkg st
 		sources = append(sources, path)
 	}
 	args := append([]string{"--release", "17", "-d", dir}, sources...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	return dir
@@ -427,7 +428,7 @@ func cookGoldenUnit(t *testing.T, m cookManifest, u cookWriteUnit) {
 		for _, row := range r.rows {
 			t.Run(row, func(t *testing.T) {
 				inst, cook := m.instance[row], m.cook[row]
-				cmd := exec.Command(javaBin, "-ea", "-cp", dir, "CookGolden"+r.root,
+				cmd := testproc.Command(t, javaBin, "-ea", "-cp", dir, "CookGolden"+r.root,
 					filepath.Join(repo, inst[2]), filepath.Join(repo, cook[0]), filepath.Join(repo, cook[1]),
 					filepath.Join(repo, "testdata", "conformance", "tables", "json", row+".json"))
 				if out, err := cmd.CombinedOutput(); err != nil {
@@ -466,7 +467,7 @@ func cookRefusal(t *testing.T, m cookManifest, planted bool) {
 	}
 	dir := compileCookUnit(t, javac, files, "graphdemo",
 		map[string]string{"CookRefusalDriver": cookRefusalDriver})
-	cmd := exec.Command(javaBin, "-ea", "-cp", dir, "CookRefusalDriver",
+	cmd := testproc.Command(t, javaBin, "-ea", "-cp", dir, "CookRefusalDriver",
 		filepath.Join("..", "..", "..", m.instance["graph_tree"][2]))
 	out, err := cmd.CombinedOutput()
 	if planted {

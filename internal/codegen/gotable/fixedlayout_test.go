@@ -2,11 +2,12 @@ package gotable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestFixedFormLayoutRules is the Go twin of the C++ reference's
@@ -276,7 +277,7 @@ func TestLayoutMalformedResidue(t *testing.T) {
 		t.Fatal(err)
 	}
 	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
-	cmd := exec.Command("go", "test", "-count=1", "-v", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", "-v", ".")
 	cmd.Dir = testDir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

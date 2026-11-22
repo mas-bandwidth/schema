@@ -1,0 +1,11 @@
+package fixture
+
+import (
+	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+)
+
+func TestBounded(t *testing.T) {
+	_ = testproc.Command(t, "luau", "-v").Run()
+}

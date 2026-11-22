@@ -178,13 +178,13 @@ func javaString(s string) string {
 // javaTags is a declaration's tags (SPEC §4.2) as a String[] in declared order.
 func javaTags(tags []string) string {
 	if len(tags) == 0 {
-		return "new String[0]"
+		return "new java.lang.String[0]"
 	}
 	parts := make([]string, len(tags))
 	for i, t := range tags {
 		parts[i] = javaString(t)
 	}
-	return "new String[] {" + strings.Join(parts, ", ") + "}"
+	return "new java.lang.String[] {" + strings.Join(parts, ", ") + "}"
 }
 
 func viewFile(u *ir.Unit, name string) string {
@@ -319,7 +319,7 @@ func unitViewFor(u *ir.Unit, types, tables []*ir.Struct) string {
 		e := u.Enums[n]
 		ev := fmt.Sprintf("ev%d", ei)
 		fmt.Fprintf(&b, "            TableVariantInfo[] %s = new TableVariantInfo[%d];\n", ev, len(e.Variants)+1)
-		fmt.Fprintf(&b, "            %s[0] = TableVariantInfo.of(0L, \"None\", 0x0000000000000000L, \"\", new String[0]);\n", ev)
+		fmt.Fprintf(&b, "            %s[0] = TableVariantInfo.of(0L, \"None\", 0x0000000000000000L, \"\", new java.lang.String[0]);\n", ev)
 		for i, variant := range e.Variants {
 			id := uint64(0)
 			if reached[n] {
@@ -367,7 +367,7 @@ func unitViewFor(u *ir.Unit, types, tables []*ir.Struct) string {
 		un := all[n]
 		uv := fmt.Sprintf("uv%d", ui)
 		fmt.Fprintf(&b, "            TableVariantInfo[] %s = new TableVariantInfo[%d];\n", uv, len(un.Variants)+1)
-		fmt.Fprintf(&b, "            %s[0] = TableVariantInfo.of(0L, \"None\", 0x0000000000000000L, \"\", new String[0]);\n", uv)
+		fmt.Fprintf(&b, "            %s[0] = TableVariantInfo.of(0L, \"None\", 0x0000000000000000L, \"\", new java.lang.String[0]);\n", uv)
 		for i, arm := range un.Variants {
 			id := uint64(0)
 			if reached[n] {
@@ -412,7 +412,7 @@ func unitViewFor(u *ir.Unit, types, tables []*ir.Struct) string {
 				integer = int64(c.Int.Uint64())
 			}
 		}
-		fmt.Fprintf(&b, "            constants[%d] = TableConstantInfo.of(%q, %s, %s, %v, %dL, Double.longBitsToDouble(0x%016xL), %s, %s);\n",
+		fmt.Fprintf(&b, "            constants[%d] = TableConstantInfo.of(%q, %s, %s, %v, %dL, java.lang.Double.longBitsToDouble(0x%016xL), %s, %s);\n",
 			ci, n, javaString(viewFile(u, n)), javaString(c.Storage), c.IsFloat, integer, real, javaString(c.Doc), javaTags(c.Tags))
 	}
 	b.WriteString("            v.constants = constants;\n")
@@ -425,23 +425,23 @@ func unitViewFor(u *ir.Unit, types, tables []*ir.Struct) string {
 }
 
 const tableFieldInfoRuntime = `public final class TableFieldInfo {
-    public String name;
+    public java.lang.String name;
     /** the field's wire kind (docs/SPEC-TABLES.md §3); an arm's, the kind its payload rides. */
     public int kind;
     /** value, blob or list (§8.1). */
-    public String shape;
+    public java.lang.String shape;
     /** the declared bound: an array's capacity (fixed, bounded or enum-keyed), a
      *  string's or byte buffer's length; 0 for a scalar, a blob, a list, a map. */
     public long bound;
     /** the text form's key (§16.3); null on a type no table closure reaches. */
-    public String json;
+    public java.lang.String json;
     /** the declared type, spelled as the schema spells it. */
-    public String typeName;
+    public java.lang.String typeName;
     /** the table-wire id (§5); 0 on a type no table closure reaches. */
     public long id;
     public boolean optional;
     /** the declaration a named field refers to, "" for none. */
-    public String named;
+    public java.lang.String named;
     /** an array, a byte buffer, a list or a map: the accessors take an element index. */
     public boolean isArray;
     /** a count or length companion exists (a bounded array, a string, a list, a map). */
@@ -457,8 +457,8 @@ const tableFieldInfoRuntime = `public final class TableFieldInfo {
     public int countOffset;
     /** the presence companion's cooked offset (an optional field), or -1. */
     public int presentOffset;
-    public String doc;
-    public String[] tags;
+    public java.lang.String doc;
+    public java.lang.String[] tags;
 
     // THE ACCESSORS (§8.1): a Java field has no address, so a descriptor carries
     // the pair that reads and writes it on <Name>Variable.Value, built once with
@@ -466,16 +466,16 @@ const tableFieldInfoRuntime = `public final class TableFieldInfo {
     // one lane its type takes (long, double or object); the others are null.
     // index is the element for an array and ignored otherwise. Every accessor is
     // null on a declaration with no Value class (a type no table reaches, §8.2).
-    public interface Count { int count(Object holder); }
-    public interface Resize { void resize(Object holder, int count); }
-    public interface LongGet { long get(Object holder, int index); }
-    public interface LongSet { void set(Object holder, int index, long value); }
-    public interface DoubleGet { double get(Object holder, int index); }
-    public interface DoubleSet { void set(Object holder, int index, double value); }
-    public interface ObjectGet { Object get(Object holder, int index); }
-    public interface ObjectSet { void set(Object holder, int index, Object value); }
-    public interface PresentGet { boolean get(Object holder); }
-    public interface PresentSet { void set(Object holder, boolean present); }
+    public interface Count { int count(java.lang.Object holder); }
+    public interface Resize { void resize(java.lang.Object holder, int count); }
+    public interface LongGet { long get(java.lang.Object holder, int index); }
+    public interface LongSet { void set(java.lang.Object holder, int index, long value); }
+    public interface DoubleGet { double get(java.lang.Object holder, int index); }
+    public interface DoubleSet { void set(java.lang.Object holder, int index, double value); }
+    public interface ObjectGet { java.lang.Object get(java.lang.Object holder, int index); }
+    public interface ObjectSet { void set(java.lang.Object holder, int index, java.lang.Object value); }
+    public interface PresentGet { boolean get(java.lang.Object holder); }
+    public interface PresentSet { void set(java.lang.Object holder, boolean present); }
 
     /** an array's element count: a list's size, an enum-keyed array's extent. */
     public Count count;
@@ -499,7 +499,7 @@ const tableFieldInfoRuntime = `public final class TableFieldInfo {
     /** the nested record's descriptor, or null (§8.1). */
     public TableTypeInfo table() { return nested == null ? null : nested.get(); }
 
-    public static TableFieldInfo of(String name, int kind, String shape, long bound) {
+    public static TableFieldInfo of(java.lang.String name, int kind, java.lang.String shape, long bound) {
         TableFieldInfo f = new TableFieldInfo();
         f.name = name;
         f.kind = kind;
@@ -525,7 +525,7 @@ const tableFieldInfoRuntime = `public final class TableFieldInfo {
     TableFieldInfo objects(ObjectGet get, ObjectSet set) { this.getObject = get; this.setObject = set; return this; }
     TableFieldInfo presence(PresentGet get, PresentSet set) { this.present = get; this.setPresent = set; return this; }
 
-    TableFieldInfo view(String json, String typeName, long id, boolean optional, String named, String doc, String[] tags) {
+    TableFieldInfo view(java.lang.String json, java.lang.String typeName, long id, boolean optional, java.lang.String named, java.lang.String doc, java.lang.String[] tags) {
         this.json = json;
         this.typeName = typeName;
         this.id = id;
@@ -539,39 +539,39 @@ const tableFieldInfoRuntime = `public final class TableFieldInfo {
 `
 
 const tableTypeInfoRuntime = `public final class TableTypeInfo {
-    public String name;
+    public java.lang.String name;
     /** true for a table, false for a type (docs/SPEC-TABLES.md §8.2). */
     public boolean table;
     public TableFieldInfo[] fields;
-    public String doc;
-    public String[] tags;
+    public java.lang.String doc;
+    public java.lang.String[] tags;
     /**
      * a fresh instance at its declared defaults (<Name>Variable.Value); null on a type no table
      * reaches.
      */
-    public java.util.function.Supplier<Object> create;
+    public java.util.function.Supplier<java.lang.Object> create;
     /** THE RESET HOOK (§8.1): puts one instance back at its declared defaults, in place,
      *  one member at a time; null on a type no table reaches. */
-    public java.util.function.Consumer<Object> reset;
+    public java.util.function.Consumer<java.lang.Object> reset;
 }
 `
 
 const tableVariantInfoRuntime = `public final class TableVariantInfo {
     /** the variant's value: an enum's or a union's tag, a flag's bit index. */
     public long value;
-    public String name;
+    public java.lang.String name;
     /** the table-wire id (§5); 0 for a flag and for a declaration no table closure reaches. */
     public long id;
     /** a union arm's payload type, spelled as the schema spells it; null for a void arm and every non-arm row. */
-    public String payloadName;
+    public java.lang.String payloadName;
     /** a BODY arm's record descriptor, else null. */
     public TableTypeInfo payload;
     /** a GENERAL arm's field descriptor, else null. */
     public TableFieldInfo field;
-    public String doc;
-    public String[] tags;
+    public java.lang.String doc;
+    public java.lang.String[] tags;
 
-    static TableVariantInfo of(long value, String name, long id, String doc, String[] tags) {
+    static TableVariantInfo of(long value, java.lang.String name, long id, java.lang.String doc, java.lang.String[] tags) {
         TableVariantInfo v = new TableVariantInfo();
         v.value = value;
         v.name = name;
@@ -581,13 +581,13 @@ const tableVariantInfoRuntime = `public final class TableVariantInfo {
         return v;
     }
 
-    TableVariantInfo body(String payloadName, TableTypeInfo payload) {
+    TableVariantInfo body(java.lang.String payloadName, TableTypeInfo payload) {
         this.payloadName = payloadName;
         this.payload = payload;
         return this;
     }
 
-    TableVariantInfo field(String payloadName, TableFieldInfo field) {
+    TableVariantInfo field(java.lang.String payloadName, TableFieldInfo field) {
         this.payloadName = payloadName;
         this.field = field;
         return this;
@@ -596,17 +596,17 @@ const tableVariantInfoRuntime = `public final class TableVariantInfo {
 `
 
 const tableVocabularyInfoRuntime = `public final class TableVocabularyInfo {
-    public String name;
+    public java.lang.String name;
     /** the schema file that declares it. */
-    public String file;
+    public java.lang.String file;
     public long max;
     public int storageBits;
     /** None first for an enum and a union, then the variants in declared order. */
     public TableVariantInfo[] variants;
-    public String doc;
-    public String[] tags;
+    public java.lang.String doc;
+    public java.lang.String[] tags;
 
-    static TableVocabularyInfo of(String name, String file, long max, int storageBits, String doc, String[] tags, TableVariantInfo[] variants) {
+    static TableVocabularyInfo of(java.lang.String name, java.lang.String file, long max, int storageBits, java.lang.String doc, java.lang.String[] tags, TableVariantInfo[] variants) {
         TableVocabularyInfo v = new TableVocabularyInfo();
         v.name = name;
         v.file = file;
@@ -621,16 +621,16 @@ const tableVocabularyInfoRuntime = `public final class TableVocabularyInfo {
 `
 
 const tableConstantInfoRuntime = `public final class TableConstantInfo {
-    public String name;
-    public String file;
-    public String typeName;
+    public java.lang.String name;
+    public java.lang.String file;
+    public java.lang.String typeName;
     public boolean isFloat;
     public long intValue;
     public double floatValue;
-    public String doc;
-    public String[] tags;
+    public java.lang.String doc;
+    public java.lang.String[] tags;
 
-    static TableConstantInfo of(String name, String file, String typeName, boolean isFloat, long intValue, double floatValue, String doc, String[] tags) {
+    static TableConstantInfo of(java.lang.String name, java.lang.String file, java.lang.String typeName, boolean isFloat, long intValue, double floatValue, java.lang.String doc, java.lang.String[] tags) {
         TableConstantInfo c = new TableConstantInfo();
         c.name = name;
         c.file = file;
@@ -646,14 +646,14 @@ const tableConstantInfoRuntime = `public final class TableConstantInfo {
 `
 
 const tableViewEntryRuntime = `public final class TableViewEntry {
-    public String name;
-    public String file;
+    public java.lang.String name;
+    public java.lang.String file;
     public boolean table;
     public TableTypeInfo type;
-    public String doc;
-    public String[] tags;
+    public java.lang.String doc;
+    public java.lang.String[] tags;
 
-    static TableViewEntry of(String name, String file, boolean table, TableTypeInfo type, String doc, String[] tags) {
+    static TableViewEntry of(java.lang.String name, java.lang.String file, boolean table, TableTypeInfo type, java.lang.String doc, java.lang.String[] tags) {
         TableViewEntry e = new TableViewEntry();
         e.name = name;
         e.file = file;
@@ -669,7 +669,7 @@ const tableViewEntryRuntime = `public final class TableViewEntry {
 const tableUnitViewRuntime = `public final class TableUnitView {
     private TableUnitView() {}
 
-    public String packageName;
+    public java.lang.String packageName;
     public long protocolId;
     /** every type and every table, each in declaration-name order. */
     public TableViewEntry[] types;
@@ -811,13 +811,13 @@ func emitAccessorColumns(b, helpers *strings.Builder, descClass, holder, fv stri
 		} else {
 			elemType = variableListElemType(vf)
 		}
-		fmt.Fprintf(helpers, "    private static int count_%d(Object h) {\n", idx)
+		fmt.Fprintf(helpers, "    private static int count_%d(java.lang.Object h) {\n", idx)
 		fmt.Fprintf(helpers, "        return ((%s) h).%s.size();\n", holder, m)
 		fmt.Fprintf(helpers, "    }\n\n")
 		if vf.KeyEnum != "" {
 			fmt.Fprintf(b, "            %s.items(%s::count_%d, null);\n", fv, descClass, idx)
 		} else {
-			fmt.Fprintf(helpers, "    private static void resize_%d(Object h, int n) {\n", idx)
+			fmt.Fprintf(helpers, "    private static void resize_%d(java.lang.Object h, int n) {\n", idx)
 			fmt.Fprintf(helpers, "        %s v = (%s) h;\n", holder, holder)
 			fmt.Fprintf(helpers, "        while (v.%s.size() > n) {\n", m)
 			fmt.Fprintf(helpers, "            v.%s.remove(v.%s.size() - 1);\n", m, m)
@@ -858,13 +858,13 @@ func emitAccessorColumns(b, helpers *strings.Builder, descClass, holder, fv stri
 			set = write("x")
 		case "int":
 			if unsigned {
-				get = "Integer.toUnsignedLong(" + read + ")"
+				get = "java.lang.Integer.toUnsignedLong(" + read + ")"
 			}
 		}
-		fmt.Fprintf(helpers, "    private static long get_%d(Object h, int i) {\n", idx)
+		fmt.Fprintf(helpers, "    private static long get_%d(java.lang.Object h, int i) {\n", idx)
 		fmt.Fprintf(helpers, "        return %s;\n", get)
 		fmt.Fprintf(helpers, "    }\n\n")
-		fmt.Fprintf(helpers, "    private static void set_%d(Object h, int i, long x) {\n", idx)
+		fmt.Fprintf(helpers, "    private static void set_%d(java.lang.Object h, int i, long x) {\n", idx)
 		fmt.Fprintf(helpers, "        %s;\n", set)
 		fmt.Fprintf(helpers, "    }\n\n")
 		fmt.Fprintf(b, "            %s.longs(%s::get_%d, %s::set_%d);\n", fv, descClass, idx, descClass, idx)
@@ -873,10 +873,10 @@ func emitAccessorColumns(b, helpers *strings.Builder, descClass, holder, fv stri
 		if storage == "double" {
 			set = write("x")
 		}
-		fmt.Fprintf(helpers, "    private static double get_%d(Object h, int i) {\n", idx)
+		fmt.Fprintf(helpers, "    private static double get_%d(java.lang.Object h, int i) {\n", idx)
 		fmt.Fprintf(helpers, "        return %s;\n", read)
 		fmt.Fprintf(helpers, "    }\n\n")
-		fmt.Fprintf(helpers, "    private static void set_%d(Object h, int i, double x) {\n", idx)
+		fmt.Fprintf(helpers, "    private static void set_%d(java.lang.Object h, int i, double x) {\n", idx)
 		fmt.Fprintf(helpers, "        %s;\n", set)
 		fmt.Fprintf(helpers, "    }\n\n")
 		fmt.Fprintf(b, "            %s.doubles(%s::get_%d, %s::set_%d);\n", fv, descClass, idx, descClass, idx)
@@ -889,21 +889,21 @@ func emitAccessorColumns(b, helpers *strings.Builder, descClass, holder, fv stri
 		if array {
 			vw = fmt.Sprintf("v.%s.set(i, (%s) x)", m, elemType)
 		}
-		fmt.Fprintf(helpers, "    private static Object get_%d(Object h, int i) {\n", idx)
+		fmt.Fprintf(helpers, "    private static java.lang.Object get_%d(java.lang.Object h, int i) {\n", idx)
 		fmt.Fprintf(helpers, "        %s v = (%s) h;\n", holder, holder)
 		fmt.Fprintf(helpers, "        return %s;\n", vr)
 		fmt.Fprintf(helpers, "    }\n\n")
-		fmt.Fprintf(helpers, "    private static void set_%d(Object h, int i, Object x) {\n", idx)
+		fmt.Fprintf(helpers, "    private static void set_%d(java.lang.Object h, int i, java.lang.Object x) {\n", idx)
 		fmt.Fprintf(helpers, "        %s v = (%s) h;\n", holder, holder)
 		fmt.Fprintf(helpers, "        %s;\n", vw)
 		fmt.Fprintf(helpers, "    }\n\n")
 		fmt.Fprintf(b, "            %s.objects(%s::get_%d, %s::set_%d);\n", fv, descClass, idx, descClass, idx)
 	}
 	if vf.Type.Optional {
-		fmt.Fprintf(helpers, "    private static boolean present_%d(Object h) {\n", idx)
+		fmt.Fprintf(helpers, "    private static boolean present_%d(java.lang.Object h) {\n", idx)
 		fmt.Fprintf(helpers, "        return %sPresent;\n", h)
 		fmt.Fprintf(helpers, "    }\n\n")
-		fmt.Fprintf(helpers, "    private static void setPresent_%d(Object h, boolean p) {\n", idx)
+		fmt.Fprintf(helpers, "    private static void setPresent_%d(java.lang.Object h, boolean p) {\n", idx)
 		fmt.Fprintf(helpers, "        %sPresent = p;\n", h)
 		fmt.Fprintf(helpers, "    }\n\n")
 		fmt.Fprintf(b, "            %s.presence(%s::present_%d, %s::setPresent_%d);\n", fv, descClass, idx, descClass, idx)
@@ -913,7 +913,7 @@ func emitAccessorColumns(b, helpers *strings.Builder, descClass, holder, fv stri
 // emitResetMethod emits a Value-backed declaration's static reset method
 // (docs/SPEC-TABLES.md §8.1).
 func emitResetMethod(helpers *strings.Builder, holder string, st *ir.Struct) {
-	fmt.Fprintf(helpers, "    private static void reset(Object h) {\n")
+	fmt.Fprintf(helpers, "    private static void reset(java.lang.Object h) {\n")
 	fmt.Fprintf(helpers, "        %s v = (%s) h;\n", holder, holder)
 	for _, f := range variableStruct(st).Fields {
 		m := varMember(f)
@@ -933,6 +933,15 @@ func emitResetMethod(helpers *strings.Builder, holder string, st *ir.Struct) {
 			fmt.Fprintf(helpers, "        v.%s.clear();\n", m)
 			if isPointerArray(f) {
 				fmt.Fprintf(helpers, "        v.%sIdx.clear();\n", m)
+			}
+			if n := variableBornCount(f); n > 0 {
+				// a reset value is born again: M default elements (§22.2)
+				fmt.Fprintf(helpers, "        for (int i = 0; i < %d; i++) {\n", n)
+				fmt.Fprintf(helpers, "            v.%s.add(%s);\n", m, variableDefault(variableElement(f)))
+				if isPointerArray(f) {
+					fmt.Fprintf(helpers, "            v.%sIdx.add(0L);\n", m)
+				}
+				fmt.Fprintf(helpers, "        }\n")
 			}
 		case isStruct(f) && !f.Type.Pointer:
 			fmt.Fprintf(helpers, "        %sDescriptor.tableType().reset.accept(v.%s);\n", f.Type.Name, m)

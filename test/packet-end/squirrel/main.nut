@@ -5,9 +5,21 @@
 // The shared exact packet reads as 3. One whole byte left after the object is
 // refused, and so are non-zero unused bits in the final byte.
 //
-// usage: sq main.nut [golden-dir] [generated-dir]
-
-local argv = vargv;
+// usage: sq main.nut [golden-dir] [generated-dir] --vectors <vector .bin file>...
+//
+// The arguments after "--vectors" are the vector directory's own listing of
+// *.bin (the make recipe passes it): a vector on disk this driver does not
+// read, a vector it reads that is not listed, and an empty listing each fail
+// the run. The last stdout line is "<name>: ran N, failed M", N the checks
+// that ran (tools/mustrun reads it; sq exits 0 on a runtime error, so a run
+// that dies prints no count line and is red for that).
+local argv = [];
+local listed = null;
+foreach (a in vargv) {
+  if (listed != null) { listed[a] <- false; }
+  else if (a == "--vectors") { listed = {}; }
+  else { argv.append(a); }
+}
 local goldenDir = argv.len() >= 1 ? argv[0] : "testdata/wire/packet-end";
 local generatedDir = argv.len() >= 2 ? argv[1] : "build/packet-end/squirrel";
 
@@ -15,7 +27,9 @@ local serialize = dofile("internal/codegen/squirrel/serialize/serialize.nut", tr
 local End = dofile(generatedDir + "/schema_module.nut", true).require("End");
 
 local failed = 0;
+local ran = 0;
 local check = function(ok, what) {
+  ran++;
   if (!ok) {
     print("FAILED: " + what + "\n");
     failed++;
@@ -30,6 +44,10 @@ local readBytes = function(path) {
 };
 
 local readPacket = function(name) {
+  if (listed != null) {
+    check(name in listed, "vector " + name + " is not in the directory listing");
+    listed[name] <- true;
+  }
   local data = readBytes(goldenDir + "/" + name);
   local rs = serialize.ReadStream(data);
   local value = End.End();
@@ -48,5 +66,13 @@ check(!trailing.ok, "trailing packet accepted with a whole byte left after the o
 local padding = readPacket("padding.bin");
 check(!padding.ok, "padding packet accepted with non-zero unused bits in the final byte");
 
-if (failed > 0) throw "packet end squirrel: " + failed + " check(s) failed";
+if (listed == null || listed.len() == 0) {
+  check(false, "the vector directory listing is empty");
+} else {
+  foreach (name, wasRead in listed) check(wasRead, "vector " + name + " is in the directory and this driver does not read it");
+}
+print("packet end Squirrel: ran " + ran + ", failed " + failed + "\n");
+// sq exits 0 after a throw, so a failed or empty run returns 1: the status.
+if (failed > 0 || ran == 0) return 1;
 print("packet end Squirrel: exact packet reads 3; trailing byte and padding refused\n");
+return 0;

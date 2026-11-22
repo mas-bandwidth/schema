@@ -13,11 +13,17 @@
 #include "AlphaWire.h" // first unit: defines namespace alpha's helpers
 #include "BetaWire.h"  // second unit: must define namespace beta's helpers too
 
+// every check is one counted unit: main prints "ran N, failed M" and
+// build/mustrun holds N to the count the recipe registers
+static int g_ran = 0;
+
 static void check_line( bool ok, int line )
 {
+    g_ran++;
     if ( !ok )
     {
         fprintf( stderr, "guard test FAILED at line %d\n", line );
+        printf( "schema_test_guard: ran %d, failed 1\n", g_ran );
         exit( 1 );
     }
 }
@@ -65,5 +71,6 @@ int main()
     }
 
     printf( "OK\n" );
-    return 0;
+    printf( "schema_test_guard: ran %d, failed 0\n", g_ran );
+    return g_ran == 0 ? 1 : 0;
 }

@@ -19,7 +19,6 @@ package cpptable
 import (
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -30,6 +29,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // t03Unit parses and checks one schema source, so a probe can name it without
@@ -112,11 +113,11 @@ func t03RunCapability(t *testing.T, u *ir.Unit, probe string) string {
 	if cxx == "" {
 		cxx = "c++"
 	}
-	build := exec.Command(cxx, "-std=c++17", "-O0", "-I"+dir, filepath.Join(dir, "probe.cpp"), "-o", filepath.Join(dir, "probe"))
+	build := testproc.Command(t, cxx, "-std=c++17", "-O0", "-I"+dir, filepath.Join(dir, "probe.cpp"), "-o", filepath.Join(dir, "probe"))
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("the capability probe did not compile: %v\n%s", err, out)
 	}
-	out, err := exec.Command(filepath.Join(dir, "probe")).CombinedOutput()
+	out, err := testproc.Command(t, filepath.Join(dir, "probe")).CombinedOutput()
 	if err != nil {
 		t.Fatalf("the capability probe failed: %v\n%s", err, out)
 	}
@@ -160,7 +161,8 @@ fixed table Big
 	if ir.TableFixedTypeBytes(st) <= ir.TableFixedRecordMaxBytes {
 		t.Fatalf("R6: the fixture body = %d, not past %d", ir.TableFixedTypeBytes(st), ir.TableFixedRecordMaxBytes)
 	}
-	for _, r := range ir.TableFixedFormRoots(u) {
+	allTableFixedFormRoots := ir.TableFixedFormRoots(u)
+	for _, r := range allTableFixedFormRoots {
 		if r.Name == "Big" {
 			t.Error("R6: a table past the ceiling is a fixed-form root")
 		}

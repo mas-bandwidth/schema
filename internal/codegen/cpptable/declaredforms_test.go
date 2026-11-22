@@ -11,7 +11,6 @@ package cpptable
 import (
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -19,6 +18,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func cppKeysOf(files map[string][]byte) []string {
@@ -72,6 +73,9 @@ fixed table Fox { x int32 }
 	}
 	if cppHasFormFile(decl, "Table.cpp") {
 		t.Fatalf("a wire-only table emitted a JSON/text-form translation unit: %v", cppKeysOf(decl))
+	}
+	if len(decl) == 0 {
+		t.Fatal("decl is empty: the loop below would check nothing")
 	}
 	for name, data := range decl {
 		src := string(data)
@@ -128,10 +132,7 @@ fixed table FoxAll
 	}
 
 	slowtest.Gate(t, "c++")
-	cxx, err := exec.LookPath("c++")
-	if err != nil {
-		return
-	}
+	cxx := slowtest.Tool(t, "c++")
 	dir := t.TempDir()
 	var sources []string
 	var header string
@@ -155,7 +156,7 @@ fixed table FoxAll
 	args := []string{"-std=c++17", "-O2", "-DNDEBUG", "-Wall", "-Wextra", "-Werror", "-Wshadow", "-I", dir, mainPath}
 	args = append(args, sources...)
 	args = append(args, "-o", filepath.Join(dir, "probe"))
-	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile mixed unit: %v\n%s", err, out)
 	}
 }

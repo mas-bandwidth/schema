@@ -91,7 +91,11 @@ func TestLuauRetainAgreesWithTheCorpus(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, row := range retainRows(t) {
+	allRetainRows := retainRows(t)
+	if len(allRetainRows) == 0 {
+		t.Fatal("retainRows(t) is empty: the loop below would check nothing")
+	}
+	for _, row := range allRetainRows {
 		wire, err := os.ReadFile(filepath.Join(root, row.wire))
 		if err != nil {
 			t.Fatal(err)

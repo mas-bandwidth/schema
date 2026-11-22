@@ -4,13 +4,14 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 var goFuzzUnitDir = filepath.Join("internal", "codegen", "gotable", "fuzzunit")
@@ -31,12 +32,12 @@ func TestGoFuzzUnitIsCurrent(t *testing.T) {
 		t.Fatalf("find repo root: %v", err)
 	}
 	out := t.TempDir()
-	cmd := exec.Command("go", "run", "./cmd/schema", "generate", "--lang", "go", "--out", out, "tables/examples")
+	cmd := testproc.Command(t, "go", "run", "./cmd/schema", "generate", "--lang", "go", "--out", out, "tables/examples")
 	cmd.Dir = root
 	if data, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("go run ./cmd/schema generate: %v\n%s", err, data)
 	}
-	filter := exec.Command("go", "run", "./"+filepath.ToSlash(filepath.Join(goFuzzUnitDir, "filter_generate.go")), out)
+	filter := testproc.Command(t, "go", "run", "./"+filepath.ToSlash(filepath.Join(goFuzzUnitDir, "filter_generate.go")), out)
 	filter.Dir = root
 	if data, err := filter.CombinedOutput(); err != nil {
 		t.Fatalf("filter generated output: %v\n%s", err, data)
@@ -70,6 +71,9 @@ func TestGoFuzzUnitIsCurrent(t *testing.T) {
 	}
 	sort.Strings(names)
 	dir := filepath.Join(root, goFuzzUnitDir)
+	if len(names) == 0 {
+		t.Fatal("names is empty: the loop below would check nothing")
+	}
 	for _, name := range names {
 		committed, err := os.ReadFile(filepath.Join(dir, name))
 		if err != nil {
@@ -80,6 +84,7 @@ func TestGoFuzzUnitIsCurrent(t *testing.T) {
 			t.Errorf("%s: %s", filepath.Join(goFuzzUnitDir, name), goFuzzFirstDiff(committed, emitted[name]))
 		}
 	}
+	walked := 0
 	err = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -91,6 +96,7 @@ func TestGoFuzzUnitIsCurrent(t *testing.T) {
 		if err != nil {
 			return err
 		}
+		walked++
 		if _, ok := emitted[rel]; !ok {
 			t.Errorf("%s: committed .go file the compiler does not emit", filepath.Join(goFuzzUnitDir, rel))
 		}
@@ -98,6 +104,9 @@ func TestGoFuzzUnitIsCurrent(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("walk %s: %v", goFuzzUnitDir, err)
+	}
+	if walked == 0 {
+		t.Fatalf("walked %s and checked no committed .go file", goFuzzUnitDir)
 	}
 	t.Logf("fuzz unit compared with the in-process compiler: %d files", len(emitted))
 }

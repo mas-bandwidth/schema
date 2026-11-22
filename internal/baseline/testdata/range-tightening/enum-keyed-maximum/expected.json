@@ -1,0 +1,8 @@
+{
+  "field": "Save.points",
+  "warning": ["maximum 100 -> 50", "the load refuses"],
+  "saves": [
+    {"file": "above-new-maximum.bin", "value": {"points": {"Red": 75, "Blue": 9}}, "newReads": false},
+    {"file": "at-new-maximum.bin", "value": {"points": {"Red": 50, "Blue": 9}}, "newReads": true}
+  ]
+}

@@ -19,7 +19,10 @@ import (
 // form gate itself is held).
 func TestGeneratedFixedLoadRefusesForm1(t *testing.T) {
 	t.Parallel()
-	paths, _ := compiler.GatherPaths([]string{"../../../../tables/examples"})
+	paths, err := compiler.GatherPaths([]string{"../../../../tables/examples"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	u, err := compiler.New().Load(paths)
 	if err != nil {
 		t.Fatal(err)

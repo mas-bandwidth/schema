@@ -370,7 +370,11 @@ func mustUpgrade(t *testing.T, wire []byte) []byte {
 // values and exact body with the authored expected values (docs/SPEC-TABLES.md §4, §5, §6.6).
 func TestEveryCorpusRecordReadsWithTheCurrentModel(t *testing.T) {
 	t.Parallel()
-	for _, caseName := range shippedCases(t) {
+	allShippedCases := shippedCases(t)
+	if len(allShippedCases) == 0 {
+		t.Fatal("shippedCases(t) is empty: the loop below would check nothing")
+	}
+	for _, caseName := range allShippedCases {
 		caseName := caseName
 		dir := filepath.Join("corpus", caseName)
 		wires, err := filepath.Glob(filepath.Join(dir, "*.wire"))

@@ -134,6 +134,9 @@ enum TableRefuseReason : int32_t
 constexpr TableRefuseReason no_vocabulary = (TableRefuseReason) 0x20000000; // no table for this connection: the message arrived before the announcement, or after a refused one
 constexpr TableRefuseReason second_announcement = (TableRefuseReason) 0x20000001; // a second announcement on a connection: it sets nothing, amends nothing, and the connection closes
 constexpr TableRefuseReason vocabulary_too_large = (TableRefuseReason) 0x20000002; // an announcement above the receiver's declared bound, refused before an entry is touched
+// STRICT MODE's one refusal (§3.3): a strict vocabulary's announcement whose
+// build version is not this unit's own. The report carries both versions.
+constexpr TableRefuseReason build_version_mismatch = (TableRefuseReason) 0x20000003; // a strict announcement whose build version is not this unit's own
 
 // THE MESSAGE PATH SPEAKS THE ONE VOCABULARY (§6.5): TableMessageReason is a
 // TableRefuseReason, converting both ways, and not a second enum. It is a
@@ -194,6 +197,7 @@ struct TableMessageReason
     static constexpr TableRefuseReason no_vocabulary = ::benchtable::no_vocabulary;
     static constexpr TableRefuseReason second_announcement = ::benchtable::second_announcement;
     static constexpr TableRefuseReason vocabulary_too_large = ::benchtable::vocabulary_too_large;
+    static constexpr TableRefuseReason build_version_mismatch = ::benchtable::build_version_mismatch;
 };
 
 #ifndef SCHEMA_HAS_LAYOUT_NEWER
@@ -256,6 +260,11 @@ struct TableReport
     // lands nothing. It is a count only so a read can tell its own refusal
     // from a caller's report that already held one.
     int32_t non_finite_floats = 0;
+    // THE STRICT ANNOUNCEMENT'S TWO BUILD VERSIONS (docs/SPEC-TABLES.md §3.3):
+    // on reason build_version_mismatch, the peer's announced build version
+    // (remote) and this unit's own (own). Zero on every other path.
+    uint64_t build_version_remote = 0;
+    uint64_t build_version_own = 0;
     // THE FILE'S LAYOUT HASH, on layout_newer (bill §12.4): the refusal carries
     // the hash and nothing else. Zero on every other path, and it stays LAST on
     // the report (§5.2, §5.9 #15).
@@ -606,6 +615,9 @@ struct TableIds
 {
     static const int32_t kCapacity = 78;
     static const int32_t kBuckets = 256;
+    // THE WRITER'S MAXIMUM (docs/SPEC-TABLES.md §3): no reader accepts an id
+    // table past kTableProbeBound entries, so the 4097th id overflows.
+    static const int32_t kLimit = kCapacity < 4096 ? kCapacity : 4096;
 
     uint64_t ids[kCapacity];
     int32_t chain[kCapacity];
@@ -649,7 +661,7 @@ struct TableIds
         {
             if ( ids[i] == id ) { return uint64_t( i ) + 1; }
         }
-        if ( count >= kCapacity )
+        if ( count >= kLimit )
         {
             overflow = true;
             return 1;
@@ -3371,6 +3383,11 @@ struct TableVocabulary
     // announcement after it is refused as second_announcement
     bool refused = false;
     int64_t max_bytes = kDefaultMaxBytes;
+    // STRICT MODE IS OPT-IN (§3.3): false when the vocabulary is made, read
+    // once by the FIRST AnnounceRead and never after. Set, an announcement
+    // whose build version is not this unit's own is refused as
+    // build_version_mismatch and sets no vocabulary.
+    bool strict = false;
 };
 
 // TableVocabularyEntryAt is the entry a reference names, counted from 1: ONE
@@ -3565,6 +3582,18 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
     if ( seen_version != 1 || seen_vocabulary != 1 )
     {
         to->damaged = true;
+        return false;
+    }
+    // "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3): refused
+    // by name, the peer's build version kept, no vocabulary set, never damage.
+    // The unit's own build version is spelled here as the literal BuildVersion
+    // holds, because the cook runtime that declares BuildVersion follows this one.
+    if ( vocabulary.strict && version != 0x3e3d2b65756719d6ull )
+    {
+        to->refused = true;
+        to->reason = build_version_mismatch;
+        to->build_version_remote = version;
+        to->build_version_own = 0x3e3d2b65756719d6ull;
         return false;
     }
 
@@ -4149,6 +4178,13 @@ inline uint64_t table_double_to_bits( double d )
 // never written, and measure answers -1 for it as save answers false
 inline bool TableFloatFinite( float f ) { return TableBitsFinite32( table_float_to_bits( f ) ); }
 inline bool TableFloatFinite( double d ) { return TableBitsFinite64( table_double_to_bits( d ) ); }
+// A COMPRESSED FLOAT'S -0 IS WRITTEN AS +0 (§3.3; docs/rulings.json
+// fixed-compressed-negzero): the bits every writer stores for a compressed
+// float, the +0 bits for its -0 and the bits as held for any other value. A
+// plain float never comes here: its -0 is a value and rides bit-exact. The Go
+// oracle is internal/tabletext's StoredFloat.
+inline uint32_t TableStoredFloatBits( float f ) { const uint32_t b = table_float_to_bits( f ); return b == 0x80000000u ? 0u : b; }
+inline uint64_t TableStoredFloatBits( double d ) { const uint64_t b = table_double_to_bits( d ); return b == 0x8000000000000000ull ? 0u : b; }
 
 // THE FIXED FORM'S THREE REASON NAMES THE COOKED FORM ALSO SPELLS
 // (docs/FIXED-FORM-ALGORITHM.md §5.3, docs/SPEC-TABLES.md §3.4, §11): every
@@ -6847,8 +6883,8 @@ struct TableMixed
     int64_t world_time = 0;
     uint64_t frame_tick = 0;
     float server_time = 0.0f;
-    TableEntity entities[8]; // used count beside it; count in [0, 8]
-    int32_t entities_count = 0;
+    TableEntity entities[8]; // used count beside it; count in [1, 8]
+    int32_t entities_count = 1;
     TableStat stats[80]; // used count beside it; count in [0, 80]
     int32_t stats_count = 0;
     TableEvent game_event;
@@ -7169,12 +7205,12 @@ inline void TableMixedReset( TableMixed & value )
     {
         TableEntityReset( value.entities[i] );
     }
-    value.entities_count = 0;
+    value.entities_count = 1; // born at Min (docs/SPEC.md §4.2)
     for ( int32_t i = 0; i < 80; i++ )
     {
         TableStatReset( value.stats[i] );
     }
-    value.stats_count = 0;
+    value.stats_count = 0; // born at Min (docs/SPEC.md §4.2)
     TableHitEventReset( value.game_event.hit );
     TableChatEventReset( value.game_event.chat );
     TablePickupEventReset( value.game_event.pickup );
@@ -9657,9 +9693,9 @@ inline int64_t TableEntitySaveMessages( const TableEntity * values, int64_t coun
 //
 // `count` is IN and OUT: in, the storage the caller has room for, and out,
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
-// batch_too_large, found from the count before a body is decoded, and count
-// comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// batch_too_large, found from the count before a body is decoded: count
+// comes back 0, as for every refused batch, and the storage is untouched; a
+// caller that needs room reads the wire's M itself. DAMAGE ANYWHERE IN THE BATCH
 // DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
 // and every body the walk touched is reset to its declared defaults.
 inline bool TableEntityLoadMessages( TableEntity * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
@@ -9678,8 +9714,7 @@ inline bool TableEntityLoadMessages( TableEntity * values, int64_t * count, cons
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity )
     {
-        *count = bodies;
-        TableMessageRefuseBatch( to );
+        TableMessageRefuseBatch( to ); // a refused batch returns a count of 0 (§3.3)
         return false;
     }
     for ( int64_t i = 0; i < bodies; i++ )
@@ -10289,9 +10324,9 @@ inline int64_t TableStatSaveMessages( const TableStat * values, int64_t count, u
 //
 // `count` is IN and OUT: in, the storage the caller has room for, and out,
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
-// batch_too_large, found from the count before a body is decoded, and count
-// comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// batch_too_large, found from the count before a body is decoded: count
+// comes back 0, as for every refused batch, and the storage is untouched; a
+// caller that needs room reads the wire's M itself. DAMAGE ANYWHERE IN THE BATCH
 // DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
 // and every body the walk touched is reset to its declared defaults.
 inline bool TableStatLoadMessages( TableStat * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
@@ -10310,8 +10345,7 @@ inline bool TableStatLoadMessages( TableStat * values, int64_t * count, const Ta
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity )
     {
-        *count = bodies;
-        TableMessageRefuseBatch( to );
+        TableMessageRefuseBatch( to ); // a refused batch returns a count of 0 (§3.3)
         return false;
     }
     for ( int64_t i = 0; i < bodies; i++ )
@@ -10337,9 +10371,23 @@ inline int64_t TableMixedMeasureBody( TableIds & ids, const TableMixed & value )
     if ( value.world_time != 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3eee6b51be54fc85ull ) ) + 1 + 8; } // world_time
     if ( value.frame_tick != 0 ) { bytes += TableLebBytes( ids.ref_at( 39, 0x7bbc035f7b6d0112ull ) ) + 1 + 8; } // frame_tick
     if ( !TableFloatFinite( value.server_time ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
+    schema_assert( !( value.server_time < 0.0f ) && !( value.server_time > 65535.0f ) ); // a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10)
     if ( value.server_time != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 20, 0x3c460475f9be69c6ull ) ) + 1 + 4; } // server_time
-    schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.entities_count > 0 )
+    schema_assert( value.entities_count >= 1 && value.entities_count <= 8 ); // the declared count, debug only (§5.1)
+    bool rides_entities = value.entities_count > 0;
+    if ( value.entities_count == 1 ) // the birth value elides (§22.2)
+    {
+        rides_entities = false;
+        for ( int32_t birth_i = 0; birth_i < 1 && !rides_entities; birth_i++ )
+        {
+            const int32_t birth_mark = ids.count;
+            const int64_t birth_bytes = TableEntityMeasureBody( ids, value.entities[birth_i] );
+            ids.truncate( birth_mark );
+            const bool birth_default = birth_bytes == 1; // a refused body rides, and the write refuses it
+            if ( !birth_default ) { rides_entities = true; }
+        }
+    }
+    if ( rides_entities )
     {
         const uint64_t ref_entities = ids.ref_at( 46, 0x935d0fb07bb3822aull );
         int64_t body_entities = 0;
@@ -10353,7 +10401,8 @@ inline int64_t TableMixedMeasureBody( TableIds & ids, const TableMixed & value )
         bytes += TableLebBytes( ref_entities ) + 1 + TableLebBytes( (uint64_t) ( body_entities ) ) + ( body_entities ); // entities
     }
     schema_assert( value.stats_count >= 0 && value.stats_count <= 80 ); // storage invariant, debug only (§5.1)
-    if ( value.stats_count > 0 )
+    bool rides_stats = value.stats_count > 0;
+    if ( rides_stats )
     {
         const uint64_t ref_stats = ids.ref_at( 73, 0xee639cad45b1994cull );
         int64_t body_stats = 0;
@@ -10433,10 +10482,13 @@ inline int64_t TableMixedMeasureBody( TableIds & ids, const TableMixed & value )
         bytes += TableLebBytes( ids.ref_at( 67, 0xcfb8a9d063b5e9e5ull ) ) + 1 + TableLebBytes( (uint64_t) ( body_payload ) ) + ( body_payload ); // payload
     }
     if ( !TableFloatFinite( value.aim_x ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
+    schema_assert( !( value.aim_x < -1.0f ) && !( value.aim_x > 1.0f ) ); // a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10)
     if ( value.aim_x != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 72, 0xdbaf7be5e24296c9ull ) ) + 1 + 4; } // aim_x
     if ( !TableFloatFinite( value.aim_y ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
+    schema_assert( !( value.aim_y < -1.0f ) && !( value.aim_y > 1.0f ) ); // a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10)
     if ( value.aim_y != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 71, 0xdbaf7ae5e2429516ull ) ) + 1 + 4; } // aim_y
     if ( !TableFloatFinite( value.aim_z ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
+    schema_assert( !( value.aim_z < -1.0f ) && !( value.aim_z > 1.0f ) ); // a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10)
     if ( value.aim_z != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 70, 0xdbaf79e5e2429363ull ) ) + 1 + 4; } // aim_z
     if ( !TableFloatFinite( value.recoil ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
     if ( table_float_to_bits( value.recoil ) != table_float_to_bits( 0.0f ) ) { bytes += TableLebBytes( ids.ref_at( 50, 0x9cef31fff7e2e457ull ) ) + 1 + 4; } // recoil
@@ -10445,6 +10497,7 @@ inline int64_t TableMixedMeasureBody( TableIds & ids, const TableMixed & value )
     if ( value.wide_key != 0 ) { bytes += TableLebBytes( ids.ref_at( 55, 0xa3348580461faf16ull ) ) + 1 + 8; } // wide_key
     if ( value.flux != 0 ) { bytes += TableLebBytes( ids.ref_at( 68, 0xd61bdd7908af2642ull ) ) + 1 + 8; } // flux
     if ( !TableFloatFinite( value.ping ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
+    schema_assert( !( value.ping < 0.0f ) && !( value.ping > 250.0f ) ); // a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10)
     if ( value.ping != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 62, 0xbf30e00dc53307a9ull ) ) + 1 + 4; } // ping
     if ( value.crc_hint != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0x560d6527ccd8515full ) ) + 1 + 4; } // crc_hint
     if ( value.has_extra != false ) { bytes += TableLebBytes( ids.ref_at( 63, 0xc08292176cfd8672ull ) ) + 1 + 1; } // has_extra
@@ -10514,10 +10567,24 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
     {
         w.header( ids.ref_at( 20, 0x3c460475f9be69c6ull ), 10 ); // server_time
         if ( !TableFloatFinite( value.server_time ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-        w.put32( table_float_to_bits( value.server_time ) );
+        schema_assert( !( value.server_time < 0.0f ) && !( value.server_time > 65535.0f ) ); // a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10)
+        w.put32( TableStoredFloatBits( value.server_time ) );
     }
-    schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.entities_count > 0 )
+    schema_assert( value.entities_count >= 1 && value.entities_count <= 8 ); // the declared count, debug only (§5.1)
+    bool rides_entities = value.entities_count > 0;
+    if ( value.entities_count == 1 ) // the birth value elides (§22.2)
+    {
+        rides_entities = false;
+        for ( int32_t birth_i = 0; birth_i < 1 && !rides_entities; birth_i++ )
+        {
+            const int32_t birth_mark = ids.count;
+            const int64_t birth_bytes = TableEntityMeasureBody( ids, value.entities[birth_i] );
+            ids.truncate( birth_mark );
+            const bool birth_default = birth_bytes == 1; // a refused body rides, and the write refuses it
+            if ( !birth_default ) { rides_entities = true; }
+        }
+    }
+    if ( rides_entities )
     {
         const uint64_t ref_entities = ids.ref_at( 46, 0x935d0fb07bb3822aull );
         int64_t body_entities = 0;
@@ -10548,7 +10615,8 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
         }
     }
     schema_assert( value.stats_count >= 0 && value.stats_count <= 80 ); // storage invariant, debug only (§5.1)
-    if ( value.stats_count > 0 )
+    bool rides_stats = value.stats_count > 0;
+    if ( rides_stats )
     {
         const uint64_t ref_stats = ids.ref_at( 73, 0xee639cad45b1994cull );
         int64_t body_stats = 0;
@@ -10669,19 +10737,22 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
     {
         w.header( ids.ref_at( 72, 0xdbaf7be5e24296c9ull ), 10 ); // aim_x
         if ( !TableFloatFinite( value.aim_x ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-        w.put32( table_float_to_bits( value.aim_x ) );
+        schema_assert( !( value.aim_x < -1.0f ) && !( value.aim_x > 1.0f ) ); // a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10)
+        w.put32( TableStoredFloatBits( value.aim_x ) );
     }
     if ( value.aim_y != 0.0f )
     {
         w.header( ids.ref_at( 71, 0xdbaf7ae5e2429516ull ), 10 ); // aim_y
         if ( !TableFloatFinite( value.aim_y ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-        w.put32( table_float_to_bits( value.aim_y ) );
+        schema_assert( !( value.aim_y < -1.0f ) && !( value.aim_y > 1.0f ) ); // a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10)
+        w.put32( TableStoredFloatBits( value.aim_y ) );
     }
     if ( value.aim_z != 0.0f )
     {
         w.header( ids.ref_at( 70, 0xdbaf79e5e2429363ull ), 10 ); // aim_z
         if ( !TableFloatFinite( value.aim_z ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-        w.put32( table_float_to_bits( value.aim_z ) );
+        schema_assert( !( value.aim_z < -1.0f ) && !( value.aim_z > 1.0f ) ); // a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10)
+        w.put32( TableStoredFloatBits( value.aim_z ) );
     }
     if ( table_float_to_bits( value.recoil ) != table_float_to_bits( 0.0f ) )
     {
@@ -10709,7 +10780,8 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
     {
         w.header( ids.ref_at( 62, 0xbf30e00dc53307a9ull ), 10 ); // ping
         if ( !TableFloatFinite( value.ping ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-        w.put32( table_float_to_bits( value.ping ) );
+        schema_assert( !( value.ping < 0.0f ) && !( value.ping > 250.0f ) ); // a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10)
+        w.put32( TableStoredFloatBits( value.ping ) );
     }
     if ( value.crc_hint != 0 )
     {
@@ -12498,8 +12570,19 @@ inline int64_t TableMixedMeasureMessageBody( int64_t at, const TableMixed & valu
         if ( !TableFloatFinite( value.server_time ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
         bits += 23;
     }
-    schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.entities_count > 0 )
+    schema_assert( value.entities_count >= 1 && value.entities_count <= 8 ); // the declared count, debug only (§5.1)
+    bool rides_entities = value.entities_count > 0;
+    if ( value.entities_count == 1 ) // the birth value elides (§22.2)
+    {
+        rides_entities = false;
+        for ( int32_t birth_i = 0; birth_i < 1 && !rides_entities; birth_i++ )
+        {
+            const int64_t birth_bits = TableEntityMeasureMessageBody( 0, value.entities[birth_i] );
+            const bool birth_default = birth_bits >= 0 && birth_bits <= kTableMessageRefBitsHere; // a refused body rides, and the write refuses it
+            if ( !birth_default ) { rides_entities = true; }
+        }
+    }
+    if ( rides_entities )
     {
         bits += kTableMessageRefBitsHere;
         bits += 3;
@@ -12511,7 +12594,8 @@ inline int64_t TableMixedMeasureMessageBody( int64_t at, const TableMixed & valu
         }
     }
     schema_assert( value.stats_count >= 0 && value.stats_count <= 80 ); // storage invariant, debug only (§5.1)
-    if ( value.stats_count > 0 )
+    bool rides_stats = value.stats_count > 0;
+    if ( rides_stats )
     {
         bits += kTableMessageRefBitsHere;
         bits += 7;
@@ -12713,8 +12797,19 @@ inline bool TableMixedSaveMessageBody( TableBitWriter & w, const TableMixed & va
         if ( !TableFloatFinite( value.server_time ) ) { return false; } // a NaN or an infinity is refused (§3.3)
         w.put( (uint64_t) TableMessageQuantize( float( value.server_time ), 0.0f, 65535.0f, 6553500u ), 23 );
     }
-    schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.entities_count > 0 )
+    schema_assert( value.entities_count >= 1 && value.entities_count <= 8 ); // the declared count, debug only (§5.1)
+    bool rides_entities = value.entities_count > 0;
+    if ( value.entities_count == 1 ) // the birth value elides (§22.2)
+    {
+        rides_entities = false;
+        for ( int32_t birth_i = 0; birth_i < 1 && !rides_entities; birth_i++ )
+        {
+            const int64_t birth_bits = TableEntityMeasureMessageBody( 0, value.entities[birth_i] );
+            const bool birth_default = birth_bits >= 0 && birth_bits <= kTableMessageRefBitsHere; // a refused body rides, and the write refuses it
+            if ( !birth_default ) { rides_entities = true; }
+        }
+    }
+    if ( rides_entities )
     {
         w.put( 31, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.entities_count ) - 1, 3 );
@@ -12724,7 +12819,8 @@ inline bool TableMixedSaveMessageBody( TableBitWriter & w, const TableMixed & va
         }
     }
     schema_assert( value.stats_count >= 0 && value.stats_count <= 80 ); // storage invariant, debug only (§5.1)
-    if ( value.stats_count > 0 )
+    bool rides_stats = value.stats_count > 0;
+    if ( rides_stats )
     {
         w.put( 32, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.stats_count ) - 0, 7 );
@@ -13748,6 +13844,25 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         if ( !TableEntityLoadMessageBody( r, vocabulary, report, index_bits, ( in_bounds ? value.entities[i] : scratch ) ) ) { return false; }
                     }
                     value.entities_count = kept;
+                }
+                if ( same_shape )
+                {
+                    bool rides_entities = value.entities_count > 0;
+                    if ( value.entities_count == 1 ) // the birth value elides (§22.2)
+                    {
+                        rides_entities = false;
+                        for ( int32_t birth_i = 0; birth_i < 1 && !rides_entities; birth_i++ )
+                        {
+                            const int64_t birth_bits = TableEntityMeasureMessageBody( 0, value.entities[birth_i] );
+                            const bool birth_default = birth_bits >= 0 && birth_bits <= kTableMessageRefBitsHere;
+                            if ( !birth_default ) { rides_entities = true; }
+                        }
+                    }
+                    if ( !rides_entities )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                 }
                 break;
             }
@@ -15094,9 +15209,9 @@ inline int64_t TableMixedSaveMessages( const TableMixed * values, int64_t count,
 //
 // `count` is IN and OUT: in, the storage the caller has room for, and out,
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
-// batch_too_large, found from the count before a body is decoded, and count
-// comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// batch_too_large, found from the count before a body is decoded: count
+// comes back 0, as for every refused batch, and the storage is untouched; a
+// caller that needs room reads the wire's M itself. DAMAGE ANYWHERE IN THE BATCH
 // DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
 // and every body the walk touched is reset to its declared defaults.
 inline bool TableMixedLoadMessages( TableMixed * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
@@ -15115,8 +15230,7 @@ inline bool TableMixedLoadMessages( TableMixed * values, int64_t * count, const 
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity )
     {
-        *count = bodies;
-        TableMessageRefuseBatch( to );
+        TableMessageRefuseBatch( to ); // a refused batch returns a count of 0 (§3.3)
         return false;
     }
     for ( int64_t i = 0; i < bodies; i++ )
@@ -16034,9 +16148,9 @@ inline int64_t TableHitEventSaveMessages( const TableHitEvent * values, int64_t 
 //
 // `count` is IN and OUT: in, the storage the caller has room for, and out,
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
-// batch_too_large, found from the count before a body is decoded, and count
-// comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// batch_too_large, found from the count before a body is decoded: count
+// comes back 0, as for every refused batch, and the storage is untouched; a
+// caller that needs room reads the wire's M itself. DAMAGE ANYWHERE IN THE BATCH
 // DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
 // and every body the walk touched is reset to its declared defaults.
 inline bool TableHitEventLoadMessages( TableHitEvent * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
@@ -16055,8 +16169,7 @@ inline bool TableHitEventLoadMessages( TableHitEvent * values, int64_t * count, 
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity )
     {
-        *count = bodies;
-        TableMessageRefuseBatch( to );
+        TableMessageRefuseBatch( to ); // a refused batch returns a count of 0 (§3.3)
         return false;
     }
     for ( int64_t i = 0; i < bodies; i++ )
@@ -16725,9 +16838,9 @@ inline int64_t TableChatEventSaveMessages( const TableChatEvent * values, int64_
 //
 // `count` is IN and OUT: in, the storage the caller has room for, and out,
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
-// batch_too_large, found from the count before a body is decoded, and count
-// comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// batch_too_large, found from the count before a body is decoded: count
+// comes back 0, as for every refused batch, and the storage is untouched; a
+// caller that needs room reads the wire's M itself. DAMAGE ANYWHERE IN THE BATCH
 // DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
 // and every body the walk touched is reset to its declared defaults.
 inline bool TableChatEventLoadMessages( TableChatEvent * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
@@ -16746,8 +16859,7 @@ inline bool TableChatEventLoadMessages( TableChatEvent * values, int64_t * count
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity )
     {
-        *count = bodies;
-        TableMessageRefuseBatch( to );
+        TableMessageRefuseBatch( to ); // a refused batch returns a count of 0 (§3.3)
         return false;
     }
     for ( int64_t i = 0; i < bodies; i++ )
@@ -17416,9 +17528,9 @@ inline int64_t TablePickupEventSaveMessages( const TablePickupEvent * values, in
 //
 // `count` is IN and OUT: in, the storage the caller has room for, and out,
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
-// batch_too_large, found from the count before a body is decoded, and count
-// comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// batch_too_large, found from the count before a body is decoded: count
+// comes back 0, as for every refused batch, and the storage is untouched; a
+// caller that needs room reads the wire's M itself. DAMAGE ANYWHERE IN THE BATCH
 // DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
 // and every body the walk touched is reset to its declared defaults.
 inline bool TablePickupEventLoadMessages( TablePickupEvent * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
@@ -17437,8 +17549,7 @@ inline bool TablePickupEventLoadMessages( TablePickupEvent * values, int64_t * c
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity )
     {
-        *count = bodies;
-        TableMessageRefuseBatch( to );
+        TableMessageRefuseBatch( to ); // a refused batch returns a count of 0 (§3.3)
         return false;
     }
     for ( int64_t i = 0; i < bodies; i++ )
@@ -17610,7 +17721,7 @@ inline void TableMixedFixedWriteBody( uint8_t * b, const TableMixed & value )
     TableFixedPut64( b + 26, (uint64_t) value.nonce );
     TableFixedPut64( b + 34, (uint64_t) value.world_time );
     TableFixedPut64( b + 42, (uint64_t) value.frame_tick );
-    TableFixedPutF32( b + 50, value.server_time );
+    TableFixedPut32( b + 50, TableStoredFloatBits( value.server_time ) );
     schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // the declared count is the bound (§3.4)
     TableFixedPut32( b + 54, (uint32_t) value.entities_count );
     for ( int64_t i = 0; i < (int64_t) value.entities_count; ++i )
@@ -17653,14 +17764,14 @@ inline void TableMixedFixedWriteBody( uint8_t * b, const TableMixed & value )
     schema_assert( value.payload_length >= 0 && value.payload_length <= 16 ); // the declared length is the bound (§3.4)
     TableFixedPut32( b + 1147, (uint32_t) value.payload_length );
     memcpy( b + 1151, value.payload, (size_t) ( value.payload_length ) );
-    TableFixedPutF32( b + 1167, value.aim_x );
-    TableFixedPutF32( b + 1171, value.aim_y );
-    TableFixedPutF32( b + 1175, value.aim_z );
+    TableFixedPut32( b + 1167, TableStoredFloatBits( value.aim_x ) );
+    TableFixedPut32( b + 1171, TableStoredFloatBits( value.aim_y ) );
+    TableFixedPut32( b + 1175, TableStoredFloatBits( value.aim_z ) );
     TableFixedPutF32( b + 1179, value.recoil );
     TableFixedPutF64( b + 1183, value.drift );
     TableFixedPut64( b + 1191, (uint64_t) value.wide_key );
     TableFixedPut64( b + 1199, (uint64_t) value.flux );
-    TableFixedPutF32( b + 1207, value.ping );
+    TableFixedPut32( b + 1207, TableStoredFloatBits( value.ping ) );
     TableFixedPut32( b + 1211, (uint32_t) value.crc_hint );
     TableFixedPut8( b + 1215, value.has_extra ? 1 : 0 );
     TableFixedPut32( b + 1216, (uint32_t) value.extra );
@@ -17970,6 +18081,7 @@ inline bool TableMixedFixedWriteAdmits( const TableMixed & value )
     bad |= (int) ( value.world_time < -1000000000000ll ) | (int) ( value.world_time > 1000000000000ll );
     // bits(48) width clamp
     bad |= (int) ( value.frame_tick > 281474976710655ull );
+    bad |= (int) ( TableFloatFinite( value.server_time ) && ( value.server_time < 0.0f || value.server_time > 65535.0f ) );
     for ( int64_t i = 0; i < ( value.entities_count >= 0 && value.entities_count <= 8 ? (int64_t) value.entities_count : 0 ); ++i )
     {
         bad |= (int) !TableEntityFixedWriteAdmits( value.entities[i] );
@@ -17999,7 +18111,11 @@ inline bool TableMixedFixedWriteAdmits( const TableMixed & value )
         default: break;
     }
     bad |= (int) ( value.player_name_length >= 0 && value.player_name_length <= 15 && !TableUtf8Valid( (const uint8_t *) value.player_name, (uint64_t) value.player_name_length ) );
+    bad |= (int) ( TableFloatFinite( value.aim_x ) && ( value.aim_x < -1.0f || value.aim_x > 1.0f ) );
+    bad |= (int) ( TableFloatFinite( value.aim_y ) && ( value.aim_y < -1.0f || value.aim_y > 1.0f ) );
+    bad |= (int) ( TableFloatFinite( value.aim_z ) && ( value.aim_z < -1.0f || value.aim_z > 1.0f ) );
     bad |= (int) ( value.flux < -1000000000000000000ll ) | (int) ( value.flux > 1000000000000000000ll );
+    bad |= (int) ( TableFloatFinite( value.ping ) && ( value.ping < 0.0f || value.ping > 250.0f ) );
     // bits(24) width clamp
     bad |= (int) ( value.crc_hint > 16777215ull );
     bad |= (int) ( value.extra < 0 ) | (int) ( value.extra > 255 );
@@ -20718,7 +20834,7 @@ inline bool TableMixedCookBody( uint8_t * at, const TableMixed & value, TableByt
     table_cook_put( at + 40, (uint64_t) value.world_time, 8, order );
     table_cook_put( at + 48, (uint64_t) value.frame_tick, 8, order );
     if ( !TableFloatFinite( value.server_time ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint32_t bits = 0; memcpy( &bits, &value.server_time, 4 ); table_cook_put( at + 56, (uint64_t) bits, 4, order ); }
+    table_cook_put( at + 56, (uint64_t) TableStoredFloatBits( value.server_time ), 4, order );
     // 8 slots of storage, value.entities_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // storage invariant, debug only (§5.1)
     for ( int32_t i = 0; i < value.entities_count; i++ )
@@ -20752,11 +20868,11 @@ inline bool TableMixedCookBody( uint8_t * at, const TableMixed & value, TableByt
     table_cook_bytes( at + 1268, value.payload, value.payload_length, 16 );
     table_cook_put( at + 1284, (uint64_t) (uint32_t) value.payload_length, 4, order );
     if ( !TableFloatFinite( value.aim_x ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint32_t bits = 0; memcpy( &bits, &value.aim_x, 4 ); table_cook_put( at + 1288, (uint64_t) bits, 4, order ); }
+    table_cook_put( at + 1288, (uint64_t) TableStoredFloatBits( value.aim_x ), 4, order );
     if ( !TableFloatFinite( value.aim_y ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint32_t bits = 0; memcpy( &bits, &value.aim_y, 4 ); table_cook_put( at + 1292, (uint64_t) bits, 4, order ); }
+    table_cook_put( at + 1292, (uint64_t) TableStoredFloatBits( value.aim_y ), 4, order );
     if ( !TableFloatFinite( value.aim_z ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint32_t bits = 0; memcpy( &bits, &value.aim_z, 4 ); table_cook_put( at + 1296, (uint64_t) bits, 4, order ); }
+    table_cook_put( at + 1296, (uint64_t) TableStoredFloatBits( value.aim_z ), 4, order );
     if ( !TableFloatFinite( value.recoil ) ) { return false; } // a NaN or an infinity is refused (§3.3)
     { uint32_t bits = 0; memcpy( &bits, &value.recoil, 4 ); table_cook_put( at + 1300, (uint64_t) bits, 4, order ); }
     if ( !TableFloatFinite( value.drift ) ) { return false; } // a NaN or an infinity is refused (§3.3)
@@ -20764,7 +20880,7 @@ inline bool TableMixedCookBody( uint8_t * at, const TableMixed & value, TableByt
     table_cook_put( at + 1312, (uint64_t) value.wide_key, 8, order );
     table_cook_put( at + 1320, (uint64_t) value.flux, 8, order );
     if ( !TableFloatFinite( value.ping ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint32_t bits = 0; memcpy( &bits, &value.ping, 4 ); table_cook_put( at + 1328, (uint64_t) bits, 4, order ); }
+    table_cook_put( at + 1328, (uint64_t) TableStoredFloatBits( value.ping ), 4, order );
     table_cook_put( at + 1332, (uint64_t) value.crc_hint, 4, order );
     table_cook_put( at + 1336, (uint64_t) ( value.has_extra ? 1 : 0 ), 1, order );
     table_cook_put( at + 1340, (uint64_t) value.extra, 4, order );

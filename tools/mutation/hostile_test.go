@@ -54,6 +54,9 @@ func TestEveryHostileProofMeetsItsRunnersOutput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(files) == 0 {
+		t.Fatal("testdata/hostile holds no recording: this check read nothing")
+	}
 	for _, f := range files {
 		if lang, ok := strings.CutSuffix(f.Name(), ".txt"); !ok || !seen[lang] {
 			t.Errorf("testdata/hostile/%s records a runner no hostile stage runs", f.Name())

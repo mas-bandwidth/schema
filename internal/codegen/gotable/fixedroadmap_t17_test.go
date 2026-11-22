@@ -2,11 +2,12 @@ package gotable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // THE PLAN IS PARTITIONED UNGUARDED-FIRST, AND THE IDENTITY PATH EQUALS THE
@@ -227,7 +228,7 @@ func runT17TableOnly(t *testing.T, schema, testSource string) {
 		}
 	}
 	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
-	cmd := exec.Command("go", "test", "-count=1", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", ".")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("generated runtime: %v\n%s", err, out)

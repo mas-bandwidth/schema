@@ -2,7 +2,6 @@ package javatable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -10,6 +9,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/viewlisting"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestUnitViewRegistryJava holds the §8.3 name set for three corpus units that
@@ -100,10 +101,10 @@ func TestUnitViewRegistryJava(t *testing.T) {
 				t.Fatal(err)
 			}
 			args = append(args, main)
-			if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+			if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 				t.Fatalf("%s: javac: %v\n%s", dir, err, out)
 			}
-			printed, err := exec.Command(javaBin, "-cp", classes, "View").Output()
+			printed, err := testproc.Command(t, javaBin, "-cp", classes, "View").Output()
 			if err != nil {
 				t.Fatalf("%s: the listing program failed: %v", dir, err)
 			}

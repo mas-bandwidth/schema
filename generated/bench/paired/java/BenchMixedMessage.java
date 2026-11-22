@@ -114,7 +114,20 @@ public final class BenchMixedMessage {
         }
         {
             assert v.entitiesCount >= 1 && v.entitiesCount <= 8;
-            if (v.entitiesCount > 0) {
+            boolean born_v_entities = v.entitiesCount == 1;
+            for (int bornAt_v_entities = 0;
+                    born_v_entities && bornAt_v_entities < 1;
+                    bornAt_v_entities++) {
+                TableMessage.Writer bornProbe_v_entities = new TableMessage.Writer(null, 0, true);
+                if (!MixedEntityMessage.saveMessageBody(
+                        bornProbe_v_entities, v.entities[bornAt_v_entities])) {
+                    return false;
+                }
+                if (bornProbe_v_entities.bits != 7L) {
+                    born_v_entities = false;
+                }
+            }
+            if (v.entitiesCount > 0 && !born_v_entities) {
                 w.put(10L, 7);
                 assert v.entitiesCount >= 1 && v.entitiesCount <= 8;
                 w.put((long) (v.entitiesCount) - 1L, 3);
@@ -209,66 +222,71 @@ public final class BenchMixedMessage {
             }
         }
         {
-            if (Float.floatToRawIntBits(v.aimX) != Float.floatToRawIntBits(0.0f)) {
+            if (java.lang.Float.floatToRawIntBits((v.aimX == 0.0f ? 0.0f : v.aimX))
+                    != java.lang.Float.floatToRawIntBits(0.0f)) {
                 w.put(16L, 7);
-                if (!Float.isFinite(v.aimX)) {
+                if (!java.lang.Float.isFinite(v.aimX)) {
                     return false;
                 }
                 TableMessage.writeFloat32Quantized(
                         w,
                         v.aimX,
-                        Float.intBitsToFloat(0xbf800000),
-                        Float.intBitsToFloat(0x40000000),
+                        java.lang.Float.intBitsToFloat(0xbf800000),
+                        java.lang.Float.intBitsToFloat(0x40000000),
                         200L,
                         8);
             }
         }
         {
-            if (Float.floatToRawIntBits(v.aimY) != Float.floatToRawIntBits(0.0f)) {
+            if (java.lang.Float.floatToRawIntBits((v.aimY == 0.0f ? 0.0f : v.aimY))
+                    != java.lang.Float.floatToRawIntBits(0.0f)) {
                 w.put(17L, 7);
-                if (!Float.isFinite(v.aimY)) {
+                if (!java.lang.Float.isFinite(v.aimY)) {
                     return false;
                 }
                 TableMessage.writeFloat32Quantized(
                         w,
                         v.aimY,
-                        Float.intBitsToFloat(0xbf800000),
-                        Float.intBitsToFloat(0x40000000),
+                        java.lang.Float.intBitsToFloat(0xbf800000),
+                        java.lang.Float.intBitsToFloat(0x40000000),
                         200L,
                         8);
             }
         }
         {
-            if (Float.floatToRawIntBits(v.aimZ) != Float.floatToRawIntBits(0.0f)) {
+            if (java.lang.Float.floatToRawIntBits((v.aimZ == 0.0f ? 0.0f : v.aimZ))
+                    != java.lang.Float.floatToRawIntBits(0.0f)) {
                 w.put(18L, 7);
-                if (!Float.isFinite(v.aimZ)) {
+                if (!java.lang.Float.isFinite(v.aimZ)) {
                     return false;
                 }
                 TableMessage.writeFloat32Quantized(
                         w,
                         v.aimZ,
-                        Float.intBitsToFloat(0xbf800000),
-                        Float.intBitsToFloat(0x40000000),
+                        java.lang.Float.intBitsToFloat(0xbf800000),
+                        java.lang.Float.intBitsToFloat(0x40000000),
                         200L,
                         8);
             }
         }
         {
-            if (Float.floatToRawIntBits(v.recoil) != Float.floatToRawIntBits(0.0f)) {
+            if (java.lang.Float.floatToRawIntBits(v.recoil)
+                    != java.lang.Float.floatToRawIntBits(0.0f)) {
                 w.put(19L, 7);
-                if (!Float.isFinite(v.recoil)) {
+                if (!java.lang.Float.isFinite(v.recoil)) {
                     return false;
                 }
-                w.put((long) Float.floatToRawIntBits(v.recoil) & 0xffffffffL, 32);
+                w.put((long) java.lang.Float.floatToRawIntBits(v.recoil) & 0xffffffffL, 32);
             }
         }
         {
-            if (Double.doubleToRawLongBits(v.drift) != Double.doubleToRawLongBits(0.0)) {
+            if (java.lang.Double.doubleToRawLongBits(v.drift)
+                    != java.lang.Double.doubleToRawLongBits(0.0)) {
                 w.put(20L, 7);
-                if (!Double.isFinite(v.drift)) {
+                if (!java.lang.Double.isFinite(v.drift)) {
                     return false;
                 }
-                w.put(Double.doubleToRawLongBits(v.drift), 64);
+                w.put(java.lang.Double.doubleToRawLongBits(v.drift), 64);
             }
         }
         {
@@ -325,15 +343,16 @@ public final class BenchMixedMessage {
         assert v.ackSequence >= 0L;
         assert v.ackSequence <= 0xffffL;
         assert v.ackBits >= 0 && v.ackBits <= 4294967295L;
-        assert Long.compareUnsigned((v.nonce) & 0xffffffffffffffffL, 0L) >= 0;
-        assert Long.compareUnsigned((v.nonce) & 0xffffffffffffffffL, 0xffffffffffffffffL) <= 0;
+        assert java.lang.Long.compareUnsigned((v.nonce) & 0xffffffffffffffffL, 0L) >= 0;
+        assert java.lang.Long.compareUnsigned((v.nonce) & 0xffffffffffffffffL, 0xffffffffffffffffL)
+                <= 0;
         assert v.worldTime >= 0xffffff172b5af000L;
         assert v.worldTime <= 0xe8d4a51000L;
         assert v.frameTick >= 0 && v.frameTick <= 281474976710655L;
         assert v.serverTime >= 0L;
         assert v.serverTime <= 0xffff00L;
-        for (int i6 = 0; i6 < Math.min(v.entitiesCount, v.entities.length); i6++) {}
-        for (int i7 = 0; i7 < Math.min(v.statsCount, v.stats.length); i7++) {}
+        for (int i6 = 0; i6 < java.lang.Math.min(v.entitiesCount, v.entities.length); i6++) {}
+        for (int i7 = 0; i7 < java.lang.Math.min(v.statsCount, v.stats.length); i7++) {}
         switch (v.gameEvent.type) {
             case 1:
                 break;
@@ -348,8 +367,8 @@ public final class BenchMixedMessage {
                 || TableMessage.utf8Valid(v.playerName, 0, v.playerNameLength);
         assert TableMessage.compareSigned128(v.flux.lo, v.flux.hi, 0L, 0xfffffff000000000L) >= 0;
         assert TableMessage.compareSigned128(v.flux.lo, v.flux.hi, 0L, 0x1000000000L) <= 0;
-        assert Long.compareUnsigned((v.ping) & 0xffffL, 0L) >= 0;
-        assert Long.compareUnsigned((v.ping) & 0xffffL, 0xfa00L) <= 0;
+        assert java.lang.Long.compareUnsigned((v.ping) & 0xffffL, 0L) >= 0;
+        assert java.lang.Long.compareUnsigned((v.ping) & 0xffffL, 0xfa00L) <= 0;
         assert v.crcHint >= 0 && v.crcHint <= 16777215L;
         assert v.extra >= 0L;
         assert v.extra <= 0xffL;
@@ -399,7 +418,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -439,7 +458,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -479,7 +498,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -519,7 +538,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -559,7 +578,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -599,7 +618,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -641,7 +660,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -683,7 +702,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -723,7 +742,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -763,7 +782,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -780,8 +799,11 @@ public final class BenchMixedMessage {
                     r.report.damaged = true;
                     return false;
                 }
-                long keep19 = Math.min(n18, 8L);
+                long keep19 = java.lang.Math.min(n18, 8L);
                 if (keep19 < n18) {
+                    r.report.refuse("count_over_bound");
+                }
+                if (n18 < 1L) {
                     r.report.refuse("count_over_bound");
                 }
                 long run20 = TableMessage.elementRunBits(14, entry.element);
@@ -806,11 +828,25 @@ public final class BenchMixedMessage {
                     }
                 }
                 v.entitiesCount = (int) keep19;
+                boolean born_v_entities = v.entitiesCount == 1;
+                for (int bornAt_v_entities = 0;
+                        born_v_entities && bornAt_v_entities < 1;
+                        bornAt_v_entities++) {
+                    TableMessage.Writer bornProbe_v_entities =
+                            new TableMessage.Writer(null, 0, true);
+                    if (!MixedEntityMessage.saveMessageBody(
+                            bornProbe_v_entities, v.entities[bornAt_v_entities])) {
+                        return false;
+                    }
+                    if (bornProbe_v_entities.bits != 7L) {
+                        born_v_entities = false;
+                    }
+                }
                 if (!r.report.refused
                         && !r.report.damaged
                         && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
-                        && !(v.entitiesCount > 0)) {
+                        && !(v.entitiesCount > 0 && !born_v_entities)) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -830,7 +866,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -847,7 +883,7 @@ public final class BenchMixedMessage {
                     r.report.damaged = true;
                     return false;
                 }
-                long keep26 = Math.min(n25, 80L);
+                long keep26 = java.lang.Math.min(n25, 80L);
                 if (keep26 < n25) {
                     r.report.refuse("count_over_bound");
                 }
@@ -897,7 +933,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -1038,7 +1074,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -1055,7 +1091,7 @@ public final class BenchMixedMessage {
                     r.report.damaged = true;
                     return false;
                 }
-                long keep43 = Math.min(n42, 4L);
+                long keep43 = java.lang.Math.min(n42, 4L);
                 if (keep43 < n42) {
                     r.report.refuse("count_over_bound");
                 }
@@ -1122,7 +1158,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -1144,13 +1180,13 @@ public final class BenchMixedMessage {
                     r.report.damaged = true;
                     return false;
                 }
-                int kept54 = (int) Math.min(n52, 15L);
+                int kept54 = (int) java.lang.Math.min(n52, 15L);
                 if ((long) kept54 < n52) {
                     kept54 = TableMessage.utf8Clamp(r.buf, start53, kept54);
                     r.report.refuse("length_over_bound");
                 }
                 java.util.Arrays.fill(v.playerName, (byte) 0);
-                System.arraycopy(r.buf, start53, v.playerName, 0, kept54);
+                java.lang.System.arraycopy(r.buf, start53, v.playerName, 0, kept54);
                 v.playerNameLength = kept54;
                 if (!r.report.refused
                         && !r.report.damaged
@@ -1176,7 +1212,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -1194,12 +1230,12 @@ public final class BenchMixedMessage {
                     r.report.damaged = true;
                     return false;
                 }
-                int kept57 = (int) Math.min(n55, 16L);
+                int kept57 = (int) java.lang.Math.min(n55, 16L);
                 if ((long) kept57 < n55) {
                     r.report.refuse("length_over_bound");
                 }
                 java.util.Arrays.fill(v.payload, (byte) 0);
-                System.arraycopy(r.buf, start56, v.payload, 0, kept57);
+                java.lang.System.arraycopy(r.buf, start56, v.payload, 0, kept57);
                 v.payloadLength = kept57;
                 if (!r.report.refused
                         && !r.report.damaged
@@ -1225,7 +1261,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -1238,8 +1274,8 @@ public final class BenchMixedMessage {
                             TableMessage.readFloat32(
                                     r,
                                     entry.shape,
-                                    Float.intBitsToFloat(0xbf800000),
-                                    Float.intBitsToFloat(0x3f800000),
+                                    java.lang.Float.intBitsToFloat(0xbf800000),
+                                    java.lang.Float.intBitsToFloat(0x3f800000),
                                     true,
                                     "BenchMixed.aim_x");
                     if (r.err) {
@@ -1252,7 +1288,8 @@ public final class BenchMixedMessage {
                         && !r.report.damaged
                         && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
-                        && !(Float.floatToRawIntBits(v.aimX) != Float.floatToRawIntBits(0.0f))) {
+                        && !(java.lang.Float.floatToRawIntBits((v.aimX == 0.0f ? 0.0f : v.aimX))
+                                != java.lang.Float.floatToRawIntBits(0.0f))) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1272,7 +1309,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -1285,8 +1322,8 @@ public final class BenchMixedMessage {
                             TableMessage.readFloat32(
                                     r,
                                     entry.shape,
-                                    Float.intBitsToFloat(0xbf800000),
-                                    Float.intBitsToFloat(0x3f800000),
+                                    java.lang.Float.intBitsToFloat(0xbf800000),
+                                    java.lang.Float.intBitsToFloat(0x3f800000),
                                     true,
                                     "BenchMixed.aim_y");
                     if (r.err) {
@@ -1299,7 +1336,8 @@ public final class BenchMixedMessage {
                         && !r.report.damaged
                         && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
-                        && !(Float.floatToRawIntBits(v.aimY) != Float.floatToRawIntBits(0.0f))) {
+                        && !(java.lang.Float.floatToRawIntBits((v.aimY == 0.0f ? 0.0f : v.aimY))
+                                != java.lang.Float.floatToRawIntBits(0.0f))) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1319,7 +1357,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -1332,8 +1370,8 @@ public final class BenchMixedMessage {
                             TableMessage.readFloat32(
                                     r,
                                     entry.shape,
-                                    Float.intBitsToFloat(0xbf800000),
-                                    Float.intBitsToFloat(0x3f800000),
+                                    java.lang.Float.intBitsToFloat(0xbf800000),
+                                    java.lang.Float.intBitsToFloat(0x3f800000),
                                     true,
                                     "BenchMixed.aim_z");
                     if (r.err) {
@@ -1346,7 +1384,8 @@ public final class BenchMixedMessage {
                         && !r.report.damaged
                         && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
-                        && !(Float.floatToRawIntBits(v.aimZ) != Float.floatToRawIntBits(0.0f))) {
+                        && !(java.lang.Float.floatToRawIntBits((v.aimZ == 0.0f ? 0.0f : v.aimZ))
+                                != java.lang.Float.floatToRawIntBits(0.0f))) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1366,7 +1405,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -1388,7 +1427,8 @@ public final class BenchMixedMessage {
                         && !r.report.damaged
                         && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
-                        && !(Float.floatToRawIntBits(v.recoil) != Float.floatToRawIntBits(0.0f))) {
+                        && !(java.lang.Float.floatToRawIntBits(v.recoil)
+                                != java.lang.Float.floatToRawIntBits(0.0f))) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1408,7 +1448,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -1430,8 +1470,8 @@ public final class BenchMixedMessage {
                         && !r.report.damaged
                         && r.vocab.ownBuild()
                         && r.report.unknown == canonUnk
-                        && !(Double.doubleToRawLongBits(v.drift)
-                                != Double.doubleToRawLongBits(0.0))) {
+                        && !(java.lang.Double.doubleToRawLongBits(v.drift)
+                                != java.lang.Double.doubleToRawLongBits(0.0))) {
                     r.report.refuse("non_canonical");
                     return false;
                 }
@@ -1451,7 +1491,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -1492,7 +1532,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -1545,7 +1585,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -1585,7 +1625,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -1625,7 +1665,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -1665,7 +1705,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -1705,7 +1745,7 @@ public final class BenchMixedMessage {
                         widened = true;
                     } else {
                         r.report.refuse("kind_mismatch");
-                        if (!TableMessage.skip(r, entry)) {
+                        if (!TableMessage.skipField(r, entry)) {
                             r.report.damaged = true;
                             return false;
                         }
@@ -1738,7 +1778,7 @@ public final class BenchMixedMessage {
                     return false;
                 }
                 r.report.unknown++;
-                if (!TableMessage.skip(r, entry)) {
+                if (!TableMessage.skipField(r, entry)) {
                     r.report.damaged = true;
                     return false;
                 }

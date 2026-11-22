@@ -30,13 +30,14 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // t18DirectArms is the FIXTURE used as written: four direct arms — a string, a
@@ -317,10 +318,13 @@ func TestFixedRoadmapCT18DirectArms(t *testing.T) {
 		if cc == "" {
 			cc = "cc"
 		}
-		out, err := exec.Command(cc, "-std=c99", "-Wall", "-Wextra", "-Werror", "-I"+dir,
+		out, err := testproc.Command(t, cc, "-std=c99", "-Wall", "-Wextra", "-Werror", "-I"+dir,
 			"-c", filepath.Join(dir, "probe.c"), "-o", filepath.Join(dir, "probe.o")).CombinedOutput()
 		if err != nil {
 			t.Fatalf("the generated A2 header did not compile: %v\n%s", err, out)
+		}
+		if len(files) == 0 {
+			t.Fatal("files is empty: the loop below would check nothing")
 		}
 		for _, f := range files {
 			if strings.Contains(string(f), "table_fixed_put0") {

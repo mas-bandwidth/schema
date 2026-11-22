@@ -81,7 +81,11 @@ func TestRubyFixedProofValuesNegativeControl(t *testing.T) {
 func TestRubyFixedProofValuesTypes(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "pinned RuboCop and Steep")
-	for _, tc := range fixedproof.Cases() {
+	allCases := fixedproof.Cases()
+	if len(allCases) == 0 {
+		t.Fatal("fixedproof.Cases() is empty: the loop below would check nothing")
+	}
+	for _, tc := range allCases {
 		if _, ok := rubyFixedValueSetups[tc.ID]; !ok {
 			continue
 		}

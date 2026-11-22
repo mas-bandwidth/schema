@@ -12,6 +12,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestCSharpPointerTargetBlobKindRefused holds every C# read of the variable
@@ -387,13 +389,19 @@ func csBlobCompile(t *testing.T, dir string) string {
 			args = append(args, "-r:"+dll)
 		}
 	}
-	if out, err := exec.Command(dotnet, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, dotnet, args...).CombinedOutput(); err != nil {
 		t.Fatalf("csc failed:\n%s", out)
 	}
 	rc := fmt.Sprintf(`{ "runtimeOptions": { "tfm": "net10.0", "framework": { "name": "Microsoft.NETCore.App", "version": %q } } }`, version)
 	if err := os.WriteFile(filepath.Join(dir, "probe.runtimeconfig.json"), []byte(rc), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	out, _ := exec.Command(dotnet, "exec", filepath.Join(dir, "probe.dll")).CombinedOutput()
+	// The driver exits 1 when a check failed and the caller reads the verdict
+	// from the output, so a non-zero exit is not fatal here; its status rides
+	// back with the output so a crash or a refused start says why.
+	out, err := testproc.Command(t, dotnet, "exec", filepath.Join(dir, "probe.dll")).CombinedOutput()
+	if err != nil {
+		return string(out) + "\nprobe exit: " + err.Error() + "\n"
+	}
 	return string(out)
 }

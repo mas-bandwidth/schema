@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -23,6 +22,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestSpecPointerTargetTypeChecked(t *testing.T) {
@@ -109,6 +110,9 @@ func TestSpecPointerTargetTypeChecked(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if len(vectors) == 0 {
+			t.Fatal("vectors is empty: the loop below would check nothing")
+		}
 		for _, v := range vectors {
 			if !named[filepath.Base(v)] {
 				t.Errorf("%s is not named by MANIFEST.tsv", v)
@@ -126,12 +130,12 @@ func TestSpecPointerTargetTypeChecked(t *testing.T) {
 		}
 		work := t.TempDir()
 		bin := filepath.Join(work, "pointertargetgen")
-		build := exec.Command("go", "build", "-o", bin, "./test/pointer-target-type/gen")
+		build := testproc.Command(t, "go", "build", "-o", bin, "./test/pointer-target-type/gen")
 		build.Dir = root
 		if out, err := build.CombinedOutput(); err != nil {
 			t.Fatalf("building the generator: %v\n%s", err, out)
 		}
-		run := exec.Command(bin, "--out", work)
+		run := testproc.Command(t, bin, "--out", work)
 		run.Dir = root
 		if out, err := run.CombinedOutput(); err != nil {
 			t.Fatalf("running the generator: %v\n%s", err, out)
@@ -299,7 +303,7 @@ func TestSpecBlobTargetOutsideClosureRefused(t *testing.T) {
 		}
 		work := t.TempDir()
 		bin := filepath.Join(work, "blobkindgen")
-		build := exec.Command("go", "build", "-o", bin, "./test/pointer-target-type/blobkind/gen")
+		build := testproc.Command(t, "go", "build", "-o", bin, "./test/pointer-target-type/blobkind/gen")
 		build.Dir = root
 		if out, err := build.CombinedOutput(); err != nil {
 			t.Fatalf("building the generator: %v\n%s", err, out)
@@ -308,7 +312,7 @@ func TestSpecBlobTargetOutsideClosureRefused(t *testing.T) {
 		if err := os.Mkdir(out, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		run := exec.Command(bin, "--out", out)
+		run := testproc.Command(t, bin, "--out", out)
 		run.Dir = root
 		if msg, err := run.CombinedOutput(); err != nil {
 			t.Fatalf("running the generator: %v\n%s", err, msg)

@@ -29,9 +29,14 @@
 #include "BenchWire.h"
 #include "RealWorldWire.h"
 
+// every check is one counted unit: main prints "ran N, failed M" and
+// build/mustrun holds N to the count the recipe registers
+static int g_ran = 0;
+
 #define check( condition )                                                    \
     do                                                                        \
     {                                                                         \
+        g_ran++;                                                              \
         if ( !( condition ) )                                                 \
         {                                                                     \
             printf( "FAILED: %s (%s:%d)\n", #condition, __FILE__, __LINE__ ); \
@@ -381,7 +386,7 @@ static int refusal_vectors()
     return 0;
 }
 
-int main()
+static int run_all()
 {
     static_assert( BenchPacketMaxBits == 392, "§1.3: BenchPacket is 392 bits" );
     static_assert( BenchIntsMaxBits == 110, "§1.3: BenchInts is 110 bits" );
@@ -403,4 +408,12 @@ int main()
 
     printf( "OK\n" );
     return 0;
+}
+
+int main()
+{
+    int status = run_all();
+    int failed = status != 0 ? 1 : 0;
+    printf( "schema_test_bench: ran %d, failed %d\n", g_ran, failed );
+    return ( failed != 0 || g_ran == 0 ) ? 1 : 0;
 }

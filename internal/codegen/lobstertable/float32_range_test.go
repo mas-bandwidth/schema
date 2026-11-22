@@ -69,7 +69,11 @@ func TestLobsterFloat32RangeHeldAtFloat32(t *testing.T) {
 	}
 	// the same bytes with each end's value one float32 step outside: the
 	// variable read refuses them
-	if wire, err := hex.DecodeString(save); err == nil && ok {
+	wire, err := hex.DecodeString(save)
+	if err != nil || !ok || len(wire) == 0 {
+		t.Fatalf("the float32 at each end: the save printed %q (%v), not the wire to step past each end of", out[0], err)
+	}
+	{
 		past := map[string][]byte{
 			"hi": patch32(t, wire, 0x3DCCCCCD, 0x3DCCCCCE),
 			"lo": patch32(t, wire, 0x3F333333, 0x3F333332),

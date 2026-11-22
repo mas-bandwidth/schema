@@ -92,7 +92,11 @@ for shared in (False, True):
 		planted[path] = []byte(strings.Replace(body, anchor, "identity = None", 1))
 		dir := t.TempDir()
 		writeTree(t, dir, planted)
-		for name, runner := range cookPins() {
+		allCookPins := cookPins()
+		if len(allCookPins) == 0 {
+			t.Fatal("cookPins() is empty: the loop below would check nothing")
+		}
+		for name, runner := range allCookPins {
 			got := strings.TrimSpace(string(runner(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})))
 			if got == baseline[name] {
 				t.Errorf("%s: lost map blob identity was not detected", name)

@@ -113,8 +113,8 @@ const TableWireForm = 1
 // F6): a reader refuses as malformed, on the whole-wire rule, any table whose
 // count exceeds it, whatever the buffer would hold, so that proving the
 // entries distinct is bounded work. The generated C++ names it
-// kTableProbeBound. Every table this schema's own writer emits is far under
-// it.
+// kTableProbeBound. A writer that would need one more refuses the save, so no
+// writer produces a file its readers refuse (docs/SPEC-TABLES.md §3, R8).
 const TableWireIdTableBound = 4096
 
 // The kinds this form adds to §3's closed set. An ENUM rides under its own

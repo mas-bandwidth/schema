@@ -1,5 +1,15 @@
 // Golden-gated Squirrel packet bench over the committed 64-record corpus.
 // Shape-blind: names the generated root once (`rootName`) and nothing else.
+local writeErr = function(s) {
+  foreach (c in s) ::stderr.writen(c & 0xff, 'b');
+  ::stderr.flush();
+};
+
+// sq exits 0 after an uncaught throw, so a failed gate ("bench failed") used
+// to end the process with status 0 and the gate recipe stayed green. The
+// program is one function; its throw is caught at the bottom and the script
+// returns 1, which is sq's exit status.
+local main = function(argv) {
 if (_floatsize_ != 8) {
   throw "bench-squirrel requires 8-byte floats (-DSQUSEDOUBLE)";
 }
@@ -9,12 +19,6 @@ local MAX_RUNS = 7;
 local DEFAULT_ITERS = 3200;
 local rootName = "BenchMixed";
 
-local writeErr = function(s) {
-  foreach (c in s) ::stderr.writen(c & 0xff, 'b');
-  ::stderr.flush();
-};
-
-local argv = vargv;
 if (argv.len() < 1 || argv[0].len() >= 2 && argv[0].slice(0, 2) == "--") {
   writeErr("usage: sq main.nut <gen-dir> [--csv] [--gate] [--quick] [--round K] [--iterations N] [--wire-dir D] [--variant-dir D]\n");
   throw "bench failed";
@@ -183,3 +187,13 @@ foreach (pathName in ["write", "round_trip"]) {
   }
 }
 writeErr("OK (sink " + sink + ")\n");
+};
+
+local status = 0;
+try {
+  main(vargv);
+} catch (e) {
+  writeErr("FAILED: " + e + "\n");
+  status = 1;
+}
+return status;

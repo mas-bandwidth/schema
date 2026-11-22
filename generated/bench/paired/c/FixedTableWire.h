@@ -5,8 +5,8 @@
    AGPL-3.0, its output is not.
    package bench — protocol id 0xc52a41defad6ebb0 */
 
-#ifndef SCHEMA_BENCH_FIXED_TABLEWIRE_H
-#define SCHEMA_BENCH_FIXED_TABLEWIRE_H
+#ifndef SCHEMA_BENCH_FixedTable_wire_h
+#define SCHEMA_BENCH_FixedTable_wire_h
 
 #include "FixedTable.h"
 #include "serialize.h"
@@ -19,4 +19,4 @@ extern "C" {
 }
 #endif
 
-#endif /* SCHEMA_BENCH_FIXED_TABLEWIRE_H */
+#endif /* SCHEMA_BENCH_FixedTable_wire_h */

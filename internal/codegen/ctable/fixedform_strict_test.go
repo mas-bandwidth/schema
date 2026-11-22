@@ -18,6 +18,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 var cFixedFormSourceFiles = []string{
@@ -117,7 +119,7 @@ func cStrictCorpus(t *testing.T) string {
 		return cached
 	}
 	cStrictCorpusOnce.Do(func() {
-		cmd := exec.Command("make", "-C", "../../..", "tables-fixedform-corpus")
+		cmd := testproc.Command(t, "make", "-C", "../../..", "tables-fixedform-corpus")
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			cStrictCorpusErr = fmt.Errorf("make tables-fixedform-corpus: %w\n%s", err, out)
@@ -131,8 +133,8 @@ func cStrictCorpus(t *testing.T) string {
 		cStrictCorpusDir = cached
 	})
 	if cStrictCorpusErr != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and corpus build failed: %v", cStrictCorpusErr)
+		if slowtest.CorpusRequired() {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and corpus build failed: %v", cStrictCorpusErr)
 		}
 		t.Skipf("fixedform corpus unavailable: %v", cStrictCorpusErr)
 	}
@@ -255,7 +257,7 @@ func buildAndRunCFixedFormHarness(t *testing.T, mut *cHarnessMutation) ([]byte, 
 	}
 	bin := filepath.Join(dir, "schema_test_c_fixedform")
 	baseFlags := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-O1", "-ffp-contract=off"}
-	baseFlags = append(baseFlags, gccFortifySilence(cc)...)
+	baseFlags = append(baseFlags, gccFortifySilence(t, cc)...)
 	baseFlags = append(baseFlags, "-I"+srcDir, "-I"+serialize)
 	baseFlags = append(baseFlags, incFlags...)
 	allSrcs := append(append([]string{}, cSources...), genSources...)
@@ -271,7 +273,7 @@ func buildAndRunCFixedFormHarness(t *testing.T, mut *cHarnessMutation) ([]byte, 
 		go func(src, obj string) {
 			defer wg.Done()
 			args := append(append([]string{}, baseFlags...), "-c", src, "-o", obj)
-			if out, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+			if out, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 				mu.Lock()
 				if firstErr == nil {
 					firstErr = fmt.Errorf("compile %s: %w", filepath.Base(src), err)
@@ -286,10 +288,10 @@ func buildAndRunCFixedFormHarness(t *testing.T, mut *cHarnessMutation) ([]byte, 
 		return firstOut, firstErr
 	}
 	linkArgs := append(append([]string{}, objs...), "-o", bin, "-lm")
-	if out, err := exec.Command(cc, linkArgs...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cc, linkArgs...).CombinedOutput(); err != nil {
 		return out, fmt.Errorf("link harness: %w", err)
 	}
-	return exec.Command(bin).CombinedOutput()
+	return testproc.Command(t, bin).CombinedOutput()
 }
 
 const cStrictT01Macros = `

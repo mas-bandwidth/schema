@@ -25,6 +25,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestFixedJavaT18ManifestAndHeader is the unit tier, pure Go: no javac, no
@@ -609,7 +611,7 @@ func t18BuildTree(t *testing.T, dir string, gens []*t18Gen) string {
 	probes, _ := filepath.Glob(filepath.Join(src, "*.java"))
 	args := append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)
 	args = append(args, probes...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("R27: javac: %v\n%s", err, out)
 	}
 	return classes
@@ -877,7 +879,7 @@ func t18R27(t *testing.T) {
 	values := 0
 	for _, tk := range tasks {
 		m := tk.r.m
-		out, err := exec.Command(javaBin, "-ea", "-cp", classes[tk.tree], tk.g.class, filepath.Join(corpus, m.File)).CombinedOutput()
+		out, err := testproc.Command(t, javaBin, "-ea", "-cp", classes[tk.tree], tk.g.class, filepath.Join(corpus, m.File)).CombinedOutput()
 		if err != nil {
 			t.Errorf("R27: %s: the Java load failed: %v\n%s", m.File, err, out)
 			continue
@@ -967,7 +969,7 @@ func t18RequireJava(t *testing.T) {
 	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
-	if os.Getenv("SCHEMA_REQUIRE_CORPUS") == "" {
+	if !slowtest.CorpusRequired() {
 		javaTools(t) // skips, naming the missing JDK, when there is none
 		return
 	}
@@ -975,7 +977,7 @@ func t18RequireJava(t *testing.T) {
 		if jc == "" || j == "" {
 			return false
 		}
-		return exec.Command(jc, "-version").Run() == nil && exec.Command(j, "-version").Run() == nil
+		return testproc.Command(t, jc, "-version").Run() == nil && testproc.Command(t, j, "-version").Run() == nil
 	}
 	if ok(os.Getenv("JAVAC"), os.Getenv("JAVA")) {
 		return
@@ -988,7 +990,7 @@ func t18RequireJava(t *testing.T) {
 	if home := "/Users/glenn/toolchains/schema-dist/jdk-21.0.12.1/Contents/Home"; ok(home+"/bin/javac", home+"/bin/java") {
 		return
 	}
-	t.Fatal("SCHEMA_REQUIRE_CORPUS is set and no working javac and java are on PATH or named by JAVAC and JAVA")
+	t.Fatal("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and no working javac and java are on PATH or named by JAVAC and JAVA")
 }
 
 // t18Compile generates an inline unit's fixed form and compiles it with the
@@ -1017,7 +1019,7 @@ func t18Compile(t *testing.T, schema string, probes map[string]string) string {
 	}
 	all, _ := filepath.Glob(filepath.Join(src, u.Package, "*.java"))
 	args := append([]string{"--release", "17", "-nowarn", "-d", classes}, all...)
-	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, javac, args...).CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
 	return classes

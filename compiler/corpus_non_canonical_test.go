@@ -10,7 +10,6 @@ package compiler
 import (
 	"bytes"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -18,6 +17,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 type nonCanonicalRow struct {
@@ -77,6 +78,9 @@ func TestCorpusNonCanonicalSpellings(t *testing.T) {
 	entries, err := os.ReadDir(vector)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(entries) == 0 {
+		t.Fatal("entries is empty: the loop below would check nothing")
 	}
 	for _, e := range entries {
 		if e.IsDir() || e.Name() == "MANIFEST.tsv" {
@@ -197,13 +201,14 @@ func TestCorpusNonCanonicalSpellings(t *testing.T) {
 			t.Fatal(err)
 		}
 		out := t.TempDir()
-		cmd := exec.Command("go", "run", "./test/non-canonical/gen",
+		cmd := testproc.Command(t, "go", "run", "./test/non-canonical/gen",
 			"-schema", filepath.Join(root, "test", "non-canonical", "NonCanonical.schema"),
 			"-out", out)
 		cmd.Dir = root
 		if b, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("generator: %v\n%s", err, b)
 		}
+		checked := 0
 		if err := filepath.WalkDir(vector, func(path string, e os.DirEntry, walkErr error) error {
 			if walkErr != nil {
 				return walkErr
@@ -211,6 +216,7 @@ func TestCorpusNonCanonicalSpellings(t *testing.T) {
 			if e.IsDir() {
 				return nil
 			}
+			checked++
 			name, err := filepath.Rel(vector, path)
 			if err != nil {
 				return err
@@ -230,6 +236,9 @@ func TestCorpusNonCanonicalSpellings(t *testing.T) {
 			return nil
 		}); err != nil {
 			t.Fatal(err)
+		}
+		if checked == 0 {
+			t.Fatalf("walked %s and checked nothing", vector)
 		}
 	})
 }

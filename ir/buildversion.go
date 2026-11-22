@@ -239,13 +239,13 @@ func collectArmRefs(enums map[string]*Enum, flags map[string]*Flags, unions map[
 				}
 				switch ref := v.F.Type.Ref.(type) {
 				case *Enum:
-					if _, seen := enums[ref.Name]; !seen {
-						enums[ref.Name] = ref
+					if _, seen := enums[ref.DeclaredName()]; !seen {
+						enums[ref.DeclaredName()] = ref
 						grew = true
 					}
 				case *Union:
-					if _, seen := unions[ref.Name]; !seen {
-						unions[ref.Name] = ref
+					if _, seen := unions[ref.DeclaredName()]; !seen {
+						unions[ref.DeclaredName()] = ref
 						grew = true
 					}
 				}
@@ -311,21 +311,23 @@ func cookFacts(u *Unit, fl FieldLayout, enums map[string]*Enum, flags map[string
 		switch ref := f.Type.Ref.(type) {
 		case *Struct:
 			// the WIRE name (§5): a table renamed under `was` keeps the name
-			// every cooked node directory carries, so the rename moves nothing
-			fmt.Fprintf(&b, " type=%s", ref.WireName())
+			// every cooked node directory carries, so the rename moves nothing;
+			// a generated record is spelled from its holder's and its field's
+			// wire names (GeneratedWireName), for the same reason
+			fmt.Fprintf(&b, " type=%s", ProjectionReferentName(u, ref))
 		case *Enum:
-			fmt.Fprintf(&b, " enum=%s", ref.Name)
-			enums[ref.Name] = ref
+			fmt.Fprintf(&b, " enum=%s", ref.DeclaredName())
+			enums[ref.DeclaredName()] = ref
 		case *Union:
-			fmt.Fprintf(&b, " union=%s", ref.Name)
-			unions[ref.Name] = ref
+			fmt.Fprintf(&b, " union=%s", ref.DeclaredName())
+			unions[ref.DeclaredName()] = ref
 		case *Flags:
 			// there is deliberately NO flags= token (§20.1): a mask rides raw
 			// and a load copies it verbatim, so swapping one flags declaration
 			// for a same-width other changes no cook byte. Its WIDTH is in
 			// size=. The DECLARATION still projects, because a variant's BIT
 			// POSITION is what a stored mask means.
-			flags[ref.Name] = ref
+			flags[ref.DeclaredName()] = ref
 		}
 	}
 
@@ -339,9 +341,9 @@ func cookFacts(u *Unit, fl FieldLayout, enums map[string]*Enum, flags map[string
 		// record line carries everything else, keyed by this field's id.
 		fmt.Fprintf(&b, " elem=%d array=map", layoutRecord(u, f.MapEntry).Size)
 	case f.KeyEnum != "":
-		fmt.Fprintf(&b, " elem=%d array=keyed bound=%d key=%s", cookElemSize(fl), f.ArrayBound, f.KeyEnum)
+		fmt.Fprintf(&b, " elem=%d array=keyed bound=%d key=%s", cookElemSize(fl), f.ArrayBound, keyEnumDeclared(f))
 		if f.KeyEnumRef != nil {
-			enums[f.KeyEnum] = f.KeyEnumRef
+			enums[keyEnumDeclared(f)] = f.KeyEnumRef
 		}
 	case f.Array == ArrayFixed:
 		fmt.Fprintf(&b, " elem=%d array=fixed bound=%d", elementPiece(u, f).size, f.ArrayBound)

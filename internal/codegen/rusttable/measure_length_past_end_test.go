@@ -26,6 +26,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // lengthPastBodyEnd builds a form-1 file whose root body holds one field of
@@ -130,12 +132,12 @@ func runMeasurePastEndProbe(t *testing.T, u *ir.Unit, prefix string, cases map[s
 		bin := filepath.Join(dir, "run-"+profile.name)
 		args := append([]string{"--edition", "2024"}, profile.args...)
 		args = append(args, "-A", "warnings", "-o", bin, "main.rs")
-		build := exec.Command("rustc", args...)
+		build := testproc.Command(t, "rustc", args...)
 		build.Dir = dir
 		if out, err := build.CombinedOutput(); err != nil {
 			t.Fatalf("%s: the generated readers did not build: %v\n%s", profile.name, err, out)
 		}
-		run := exec.Command(bin)
+		run := testproc.Command(t, bin)
 		run.Dir = dir
 		out, err := run.CombinedOutput()
 		if err != nil {
@@ -161,6 +163,9 @@ func runMeasurePastEndProbe(t *testing.T, u *ir.Unit, prefix string, cases map[s
 		}
 		if !seenControl {
 			t.Errorf("%s: the well-formed control did not load and measure", profile.name)
+		}
+		if len(names) == 0 {
+			t.Fatal("names is empty: the loop below would check nothing")
 		}
 		for _, name := range names {
 			if !seen[name] {

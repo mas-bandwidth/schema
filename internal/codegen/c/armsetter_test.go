@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cqualify"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -15,6 +14,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // The C half of #449: selecting a union arm by assigning the tag and the arm
@@ -85,6 +86,9 @@ func TestUnionArmSetterSetsTagAndArmC(t *testing.T) {
 
 	// The wire must not move: every example's write/read pair is the
 	// committed golden, byte for byte, and no selector rides in a wire header.
+	if len(qualified) == 0 {
+		t.Fatal("qualified is empty: the loop below would check nothing")
+	}
 	for name, data := range qualified {
 		if !isWireHeader(examples, name) {
 			continue
@@ -321,10 +325,10 @@ func runSetterProbe(t *testing.T, u *ir.Unit, files map[string][]byte, edit func
 	args := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-Wtype-limits", "-O2", "-ffp-contract=off",
 		"-I" + dir, "-I" + serialize, filepath.Join(dir, "probe.c"), filepath.Join(serialize, "serialize.c"),
 		"-o", filepath.Join(dir, "probe"), "-lm"}
-	if out, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 		return out, fmt.Errorf("the selector probe did not compile: %w", err)
 	}
-	return exec.Command(filepath.Join(dir, "probe")).CombinedOutput()
+	return testproc.Command(t, filepath.Join(dir, "probe")).CombinedOutput()
 }
 
 // setterSerializeDir is the serialize.c checkout the probe compiles against:

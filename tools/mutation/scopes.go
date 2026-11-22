@@ -219,6 +219,7 @@ var hostileProofs = map[string]string{
 	"goose":    `(?m)^goose hostile corpus: [1-9]\d* agree with the engine,`,
 	"lua":      `(?m)^SLOW GATE schema-lua-runs-hostile-corpus: [1-9]\d* named gate\(s\) ran and PASS`,
 	"luau":     `(?m)^SLOW GATE schema-luau-runs-hostile-corpus: [1-9]\d* named gate\(s\) ran and PASS`,
+	"moo":      `(?m)^SLOW GATE schema-moo-runs-hostile-corpus: [1-9]\d* named gate\(s\) ran and PASS`,
 	"squirrel": `(?m)^SLOW GATE schema-squirrel-runs-hostile-corpus: [1-9]\d* named gate\(s\) ran and PASS`,
 }
 

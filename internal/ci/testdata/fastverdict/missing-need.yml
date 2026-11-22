@@ -1,0 +1,53 @@
+# CI FAST VERDICT CORPUS CASE (red): the verdict does not need ci-policy, so ci-policy red or cancelled leaves the verdict green. internal/ci
+# TestCIFastVerdictNeedsEveryJob must refuse this file.
+name: CI fast
+
+on:
+  pull_request:
+
+jobs:
+  plan:
+    if: startsWith(github.head_ref, 'sprint/') == false
+    runs-on: ubuntu-latest
+    outputs:
+      lints: ${{ steps.pick.outputs.lints }}
+    steps:
+      - id: pick
+        run: echo 'lints=[]' >> "$GITHUB_OUTPUT"
+
+  ci-policy:
+    if: startsWith(github.head_ref, 'sprint/') == false
+    runs-on: ubuntu-latest
+    steps:
+      - run: go test ./internal/ci
+
+  lang-lint:
+    needs: plan
+    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.lints != '[]')
+    runs-on: ubuntu-latest
+    steps:
+      - run: make lint
+
+  verdict:
+    needs: [plan, lang-lint]
+    if: startsWith(github.head_ref, 'sprint/') == false && (always() && !cancelled())
+    runs-on: ubuntu-latest
+    steps:
+      - shell: bash
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          out() { jq -r --arg k "$1" '.plan.outputs[$k] // ""' <<<"$NEEDS"; }
+          may_skip() {
+            case "$1" in
+              lang-lint) [ "$(out lints)" = '[]' ] ;;
+              *) return 1 ;;
+            esac
+          }
+          bad=""
+          while IFS=$'\t' read -r job result; do
+            if [ "$result" = skipped ] && may_skip "$job"; then continue; fi
+            bad="$bad$job: $result"$'\n'
+          done < <(jq -r 'to_entries[] | select(.value.result != "success") | "\(.key)\t\(.value.result)"' <<<"$NEEDS")
+          [ -z "$bad" ] || { printf '%s' "$bad"; exit 1; }

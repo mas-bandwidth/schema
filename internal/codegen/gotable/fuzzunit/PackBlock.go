@@ -151,25 +151,8 @@ func GunnerSettingsBlockOpen(block *GunnerSettingsBlock, base unsafe.Pointer, by
 // alignment check. Every refusal names the first failed clause in SPEC §19.2.
 func (block *GunnerSettingsBlock) Open(base unsafe.Pointer, bytes int64) error {
 	*block = GunnerSettingsBlock{}
-	if base == nil {
-		return TableRefuseUnalignedBase
-	}
-	if bytes < 64 {
-		return TableRefuseTruncated
-	}
-	header := unsafe.Slice((*byte)(base), 64)
-	magic := binary.NativeEndian.Uint64(header)
-	if magic != TableBlockMagic {
-		if magic == 0x5343484d41424c4b {
-			return TableRefuseForeignOrder
-		}
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[16:]) != TableBlockByteOrder {
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
-		return TableRefuseWrongBuildVersion
+	if _, err := tableBlockOpenHeader(base, bytes, 64); err != nil {
+		return err
 	}
 	used := int64(64)
 	padding := (64 - (used % 64)) % 64
@@ -210,8 +193,7 @@ func (s *GunnerSettingsBlockStorage) Create(a TableBlockAllocator) bool {
 	}
 	s.allocation = raw
 	s.allocator = a
-	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-	s.base = unsafe.Pointer(&raw[offset])
+	s.base = tableBlockAlign64(raw)
 	return true
 }
 func (s *GunnerSettingsBlockStorage) Destroy() {
@@ -291,25 +273,8 @@ func ShipEntryBlockOpen(block *ShipEntryBlock, base unsafe.Pointer, bytes int64)
 // alignment check. Every refusal names the first failed clause in SPEC §19.2.
 func (block *ShipEntryBlock) Open(base unsafe.Pointer, bytes int64) error {
 	*block = ShipEntryBlock{}
-	if base == nil {
-		return TableRefuseUnalignedBase
-	}
-	if bytes < 136 {
-		return TableRefuseTruncated
-	}
-	header := unsafe.Slice((*byte)(base), 136)
-	magic := binary.NativeEndian.Uint64(header)
-	if magic != TableBlockMagic {
-		if magic == 0x5343484d41424c4b {
-			return TableRefuseForeignOrder
-		}
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[16:]) != TableBlockByteOrder {
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
-		return TableRefuseWrongBuildVersion
+	if _, err := tableBlockOpenHeader(base, bytes, 136); err != nil {
+		return err
 	}
 	used := int64(136)
 	padding := (64 - (used % 64)) % 64
@@ -350,8 +315,7 @@ func (s *ShipEntryBlockStorage) Create(a TableBlockAllocator) bool {
 	}
 	s.allocation = raw
 	s.allocator = a
-	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-	s.base = unsafe.Pointer(&raw[offset])
+	s.base = tableBlockAlign64(raw)
 	return true
 }
 func (s *ShipEntryBlockStorage) Destroy() {
@@ -431,25 +395,8 @@ func GlobalSettingsBlockOpen(block *GlobalSettingsBlock, base unsafe.Pointer, by
 // alignment check. Every refusal names the first failed clause in SPEC §19.2.
 func (block *GlobalSettingsBlock) Open(base unsafe.Pointer, bytes int64) error {
 	*block = GlobalSettingsBlock{}
-	if base == nil {
-		return TableRefuseUnalignedBase
-	}
-	if bytes < 96 {
-		return TableRefuseTruncated
-	}
-	header := unsafe.Slice((*byte)(base), 96)
-	magic := binary.NativeEndian.Uint64(header)
-	if magic != TableBlockMagic {
-		if magic == 0x5343484d41424c4b {
-			return TableRefuseForeignOrder
-		}
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[16:]) != TableBlockByteOrder {
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
-		return TableRefuseWrongBuildVersion
+	if _, err := tableBlockOpenHeader(base, bytes, 96); err != nil {
+		return err
 	}
 	used := int64(96)
 	padding := (64 - (used % 64)) % 64
@@ -490,8 +437,7 @@ func (s *GlobalSettingsBlockStorage) Create(a TableBlockAllocator) bool {
 	}
 	s.allocation = raw
 	s.allocator = a
-	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-	s.base = unsafe.Pointer(&raw[offset])
+	s.base = tableBlockAlign64(raw)
 	return true
 }
 func (s *GlobalSettingsBlockStorage) Destroy() {
@@ -596,25 +542,9 @@ func PackConfigBlockOpen(block *PackConfigBlock, base unsafe.Pointer, bytes int6
 // alignment check. Every refusal names the first failed clause in SPEC §19.2.
 func (block *PackConfigBlock) Open(base unsafe.Pointer, bytes int64) error {
 	*block = PackConfigBlock{}
-	if base == nil {
-		return TableRefuseUnalignedBase
-	}
-	if bytes < 456 {
-		return TableRefuseTruncated
-	}
-	header := unsafe.Slice((*byte)(base), 456)
-	magic := binary.NativeEndian.Uint64(header)
-	if magic != TableBlockMagic {
-		if magic == 0x5343484d41424c4b {
-			return TableRefuseForeignOrder
-		}
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[16:]) != TableBlockByteOrder {
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
-		return TableRefuseWrongBuildVersion
+	header, err := tableBlockOpenHeader(base, bytes, 456)
+	if err != nil {
+		return err
 	}
 	used := int64(456)
 	{
@@ -689,8 +619,7 @@ func (s *PackConfigBlockStorage) Create(a TableBlockAllocator) bool {
 	}
 	s.allocation = raw
 	s.allocator = a
-	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-	s.base = unsafe.Pointer(&raw[offset])
+	s.base = tableBlockAlign64(raw)
 	return true
 }
 func (s *PackConfigBlockStorage) Destroy() {

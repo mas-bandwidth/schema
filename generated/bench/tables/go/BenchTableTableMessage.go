@@ -1244,7 +1244,7 @@ func tableMessageBodyTableEntity(r *TableMessageReader, value *TableEntity, star
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.EntityID = uint32(v)
+						value.EntityID = uint32(v & 0xffffffff)
 					}
 				}
 				if exact && !(value.EntityID != 0) {
@@ -1303,7 +1303,7 @@ func tableMessageBodyTableEntity(r *TableMessageReader, value *TableEntity, star
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.PosX = int32(v)
+						value.PosX = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.PosX != 0) {
@@ -1362,7 +1362,7 @@ func tableMessageBodyTableEntity(r *TableMessageReader, value *TableEntity, star
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.PosY = int32(v)
+						value.PosY = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.PosY != 0) {
@@ -1421,7 +1421,7 @@ func tableMessageBodyTableEntity(r *TableMessageReader, value *TableEntity, star
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.PosZ = int32(v)
+						value.PosZ = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.PosZ != 0) {
@@ -1480,7 +1480,7 @@ func tableMessageBodyTableEntity(r *TableMessageReader, value *TableEntity, star
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Yaw = uint32(v)
+						value.Yaw = uint32(v & 0xffffffff)
 					}
 				}
 				if exact && !(value.Yaw != 0) {
@@ -1539,7 +1539,7 @@ func tableMessageBodyTableEntity(r *TableMessageReader, value *TableEntity, star
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Pitch = uint32(v)
+						value.Pitch = uint32(v & 0xffffffff)
 					}
 				}
 				if exact && !(value.Pitch != 0) {
@@ -1598,7 +1598,7 @@ func tableMessageBodyTableEntity(r *TableMessageReader, value *TableEntity, star
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.VelX = int32(v)
+						value.VelX = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.VelX != 0) {
@@ -1657,7 +1657,7 @@ func tableMessageBodyTableEntity(r *TableMessageReader, value *TableEntity, star
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.VelY = int32(v)
+						value.VelY = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.VelY != 0) {
@@ -1716,7 +1716,7 @@ func tableMessageBodyTableEntity(r *TableMessageReader, value *TableEntity, star
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.VelZ = int32(v)
+						value.VelZ = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.VelZ != 0) {
@@ -1775,7 +1775,7 @@ func tableMessageBodyTableEntity(r *TableMessageReader, value *TableEntity, star
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Health = int32(v)
+						value.Health = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.Health != 0) {
@@ -2186,7 +2186,7 @@ func tableMessageBodyTableStat(r *TableMessageReader, value *TableStat, starts [
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.StatID = uint32(v)
+						value.StatID = uint32(v & 0xffffffff)
 					}
 				}
 				if exact && !(value.StatID != 0) {
@@ -2245,7 +2245,7 @@ func tableMessageBodyTableStat(r *TableMessageReader, value *TableStat, starts [
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Delta = int32(v)
+						value.Delta = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.Delta != 0) {
@@ -2792,7 +2792,7 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 					}
 					{
 						v := payload31.Unsigned(entry.Shape.Kind)
-						value.ProtocolMagic = uint16(v)
+						value.ProtocolMagic = uint16(v & 0xffff)
 					}
 				}
 				if exact && !(value.ProtocolMagic != 0) {
@@ -2851,7 +2851,7 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Sequence = uint32(v)
+						value.Sequence = uint32(v & 0xffffffff)
 					}
 				}
 				if exact && !(value.Sequence != 0) {
@@ -2910,7 +2910,7 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.AckSequence = int32(v)
+						value.AckSequence = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.AckSequence != 0) {
@@ -2969,7 +2969,7 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.AckBits = uint32(v)
+						value.AckBits = uint32(v & 0xffffffff)
 					}
 				}
 				if exact && !(value.AckBits != 0) {
@@ -3077,7 +3077,7 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 					}
 					{
 						v := payload36.Unsigned(entry.Shape.Kind)
-						value.ClientID = uint32(v)
+						value.ClientID = uint32(v & 0xffffffff)
 					}
 				}
 				if exact && !(value.ClientID != 0) {
@@ -3624,7 +3624,7 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 							}
 							{
 								v := payload43.Unsigned(element.Shape.Kind)
-								(*p) = uint8(v)
+								(*p) = uint8(v & 0xff)
 							}
 						}
 					}
@@ -4250,7 +4250,7 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.CrcHint = uint32(v)
+						value.CrcHint = uint32(v & 0xffffffff)
 					}
 				}
 				if exact && !(value.CrcHint != 0) {
@@ -4361,7 +4361,7 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Extra = int32(v)
+						value.Extra = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.Extra != 0) {
@@ -4420,7 +4420,7 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.IdleTicks = int32(v)
+						value.IdleTicks = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.IdleTicks != 0) {
@@ -4602,7 +4602,7 @@ func tableMessageBodyTableHitEvent(r *TableMessageReader, value *TableHitEvent, 
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.TargetID = uint32(v)
+						value.TargetID = uint32(v & 0xffffffff)
 					}
 				}
 				if exact && !(value.TargetID != 0) {
@@ -4661,7 +4661,7 @@ func tableMessageBodyTableHitEvent(r *TableMessageReader, value *TableHitEvent, 
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Damage = int32(v)
+						value.Damage = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.Damage != 0) {
@@ -4720,7 +4720,7 @@ func tableMessageBodyTableHitEvent(r *TableMessageReader, value *TableHitEvent, 
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.HitKind = int32(v)
+						value.HitKind = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.HitKind != 0) {
@@ -4894,7 +4894,7 @@ func tableMessageBodyTableChatEvent(r *TableMessageReader, value *TableChatEvent
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Channel = int32(v)
+						value.Channel = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.Channel != 0) {
@@ -4953,7 +4953,7 @@ func tableMessageBodyTableChatEvent(r *TableMessageReader, value *TableChatEvent
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Speaker = uint32(v)
+						value.Speaker = uint32(v & 0xffffffff)
 					}
 				}
 				if exact && !(value.Speaker != 0) {
@@ -5075,7 +5075,7 @@ func tableMessageBodyTablePickupEvent(r *TableMessageReader, value *TablePickupE
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.ItemID = uint32(v)
+						value.ItemID = uint32(v & 0xffffffff)
 					}
 				}
 				if exact && !(value.ItemID != 0) {
@@ -5134,7 +5134,7 @@ func tableMessageBodyTablePickupEvent(r *TableMessageReader, value *TablePickupE
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						value.Amount = int32(v)
+						value.Amount = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 					}
 				}
 				if exact && !(value.Amount != 0) {

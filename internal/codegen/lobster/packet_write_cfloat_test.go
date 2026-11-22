@@ -121,7 +121,11 @@ func TestLobsterPacketWriteCFloatRange(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeFile(t, dir, "main.lobster", string(driver))
-	for _, c := range readPacketWriteCFloatCases(t) {
+	allReadPacketWriteCFloatCases := readPacketWriteCFloatCases(t)
+	if len(allReadPacketWriteCFloatCases) == 0 {
+		t.Fatal("readPacketWriteCFloatCases(t) is empty: the loop below would check nothing")
+	}
+	for _, c := range allReadPacketWriteCFloatCases {
 		out, code := lobsterrun.RunExit(t, dir, "main.lobster", nil, fmt.Sprintf("%08x", c.value))
 		text := strings.TrimSpace(string(out))
 		if c.refused {

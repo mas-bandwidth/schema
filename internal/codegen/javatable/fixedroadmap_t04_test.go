@@ -214,6 +214,9 @@ fixed table T
 	if err != nil {
 		t.Fatalf("E9: Generate: %v", err)
 	}
+	if len(out) == 0 {
+		t.Fatal("out is empty: the loop below would check nothing")
+	}
 	for name, data := range out {
 		// A fixed unit also emits secondary variable codecs. Duplicate belongs
 		// to their map/text reports; E9 constrains the fixed surface alone.
@@ -285,7 +288,7 @@ fixed table T
 		}
 	}
 	for _, want := range []string{
-		"final int n = Math.min(theirN, myN);",
+		"final int n = java.lang.Math.min(theirN, myN);",
 		"compileEntry(c, theirs, ti + 1, theirAt + head + i * theirElem,",
 	} {
 		t04Has(t, runtime, want, "R16 the array case emits element by element, never a folded run (§5.9 #33)")

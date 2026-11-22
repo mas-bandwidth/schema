@@ -1,0 +1,8 @@
+package declsnext
+
+// the package rename and the removal land in ONE update, where the baseline
+// is regenerated over a foreign package's
+table Holder
+{
+    c int32
+}

@@ -1,0 +1,6 @@
+package game
+
+fixed table Fleet
+{
+    cook_measure uint32
+}

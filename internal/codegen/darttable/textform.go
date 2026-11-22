@@ -154,7 +154,10 @@ final class TableTextReport {
   String refusal = '';
   String missingFields = '';
   bool variableRoot = false;
-  final Set<int> textLabels = <int>{};
+  // Every label the text has defined so far, in document order, placed or
+  // skipped, and those whose definition has not closed (§16.7).
+  final Set<int> labelsSeen = <int>{};
+  final Set<int> labelsOpen = <int>{};
 
   // refuse records the read's whole-load refusal by name (a per-language
   // diagnostic, never compared across legs): the first refusal stands.
@@ -168,6 +171,26 @@ final class TableTextReport {
     if (refusal.isNotEmpty) return refusal;
     return 'ok';
   }
+}
+
+// _jsonFormatReason names a text refusal the reader's helpers raise as a
+// FormatException: the text rules keep their own names (docs/SPEC-TABLES.md
+// §16.3), a wrong root shape is kind_mismatch, and everything else — bad
+// grammar, a repeated key, nesting past the depth cap, a reserved '&' key, a
+// zero in a comment — is text_damaged, this leg's name for it, as a repeated
+// unknown key already is (§16.2, the report paragraph).
+String _jsonFormatReason(String m) {
+  for (final name in const [
+    'string_lone_surrogate',
+    'text_holds_zero',
+    'kind_mismatch',
+    'base64_not_canonical',
+    'timestamp_not_rfc3339',
+  ]) {
+    if (m.startsWith(name)) return name;
+  }
+  if (m.startsWith('json_root_not_')) return 'kind_mismatch';
+  return 'text_damaged';
 }
 
 // _JOut is the writer's sink (§16.1): raw text and the two-space indent.
@@ -219,7 +242,7 @@ String _jsonString(String s) {
       b.write(_jsonHex[rune & 0xF]);
     } else {
       if (rune >= 0xD800 && rune <= 0xDFFF) {
-        throw StateError('invalid_value: an unpaired surrogate is not text (docs/SPEC-TABLES.md §16.14 W0)');
+        assert(false, 'invalid_value: an unpaired surrogate is not text (docs/SPEC-TABLES.md §16.14 W0)');
       }
       b.write(String.fromCharCode(rune));
     }
@@ -248,8 +271,8 @@ String _jsonText(String s) {
   // a lone or inverted surrogate is not text (string_lone_surrogate, SPEC
   // §16.3): the parser refuses one spelled as an escape, and this refuses one
   // a caller's String carries raw
-  if (!_wideValid(s.codeUnits)) throw const FormatException('string_lone_surrogate (docs/SPEC-TABLES.md §16.3)');
   if (s.contains('\u0000')) throw const FormatException('text_holds_zero (docs/SPEC-TABLES.md §16.3)');
+  if (!_wideValid(s.codeUnits)) throw const FormatException('string_lone_surrogate (docs/SPEC-TABLES.md §16.3)');
   return s;
 }
 
@@ -627,17 +650,21 @@ Object? _readPtr(dynamic val, _Share sh, TableTextReport r, Object Function() ma
     if (entries.length == 1) {
       final have = sh.defined[raw];
       if (have == null) {
-        if (!sh.pending.contains(raw) && r.textLabels.contains(raw)) return null;
+        // a definition the walk dropped reads null; one still open is a cycle
+        if (r.labelsSeen.contains(raw) && !r.labelsOpen.contains(raw)) return null;
         throw const FormatException('undefined node label');
       }
       if (have.runtimeType != make().runtimeType) { r.refuse('kind_mismatch'); return null; }
       return have;
     }
     final have = sh.defined[raw];
-    if (have != null) throw const FormatException('node label defined twice');
+    if (have != null || r.labelsSeen.contains(raw)) throw const FormatException('node label defined twice');
     final made = make();
     sh.pending.add(raw);
+    r.labelsSeen.add(raw);
+    r.labelsOpen.add(raw);
     fill(made, entries);
+    r.labelsOpen.remove(raw);
     sh.pending.remove(raw);
     sh.defined[raw] = made;
     return made;
@@ -749,6 +776,15 @@ double _jsonFloatField(dynamic val, TableTextReport r, [bool single = false, dou
   r.refuse('kind_mismatch');
   return def;
 }
+
+// _jsonRangedFloat holds a compressed float's read to its range (§3.3): the
+// value as placed (a float32 already narrowed), inside the ends given, which
+// for a float32 are the float32 nearest each declared end (THE RANGE IS HELD
+// AT FLOAT32); one past an end refuses out_of_range, and a -0 lands as +0.
+double _jsonRangedFloat(double x, double lo, double hi, TableTextReport r) {
+  if (x < lo || x > hi) r.refuse('out_of_range');
+  return x == 0 ? 0.0 : x;
+}
 `)
 	g.pf(`// §16.2: comments and trailing commas are layout, not values. The
 // a repeated key is judged before jsonDecode folds an object's repeated key.
@@ -832,37 +868,6 @@ String _jsonPrepare(String text, TableTextReport r) {
     clean.add(c);
   }
   final result = String.fromCharCodes(clean);
-  final stack = <Set<String>?>[];
-  final firstLabels = <int>{};
-  for (var i = 0; i < clean.length; i++) {
-    final c = clean[i];
-    if (c == 0x7b) { stack.add(<String>{}); continue; }
-    if (c == 0x5b) { stack.add(null); continue; }
-    if (c == 0x7d || c == 0x5d) { if (stack.isNotEmpty) stack.removeLast(); continue; }
-    if (c != 0x22) continue;
-    final begin = i;
-    i++;
-    for (; i < clean.length; i++) {
-      if (clean[i] == 0x5c) { i++; continue; }
-      if (clean[i] == 0x22) break;
-    }
-    if (i >= clean.length) throw const FormatException('unclosed JSON string');
-    var j = i + 1;
-    while (j < clean.length && clean[j] <= 0x20) j++;
-    if (j >= clean.length || clean[j] != 0x3a || stack.isEmpty || stack.last == null) continue;
-    final key = jsonDecode(result.substring(begin, i + 1)) as String;
-    if (key == '&node') {
-      var at = j + 1;
-      while (at < clean.length && clean[at] <= 0x20) at++;
-      final start = at;
-      while (at < clean.length && clean[at] >= 0x30 && clean[at] <= 0x39) at++;
-      final label = int.tryParse(result.substring(start, at));
-      while (at < clean.length && clean[at] <= 0x20) at++;
-      if (label != null && label > 0 && firstLabels.add(label) && at < clean.length && clean[at] == 0x2c) {
-        r.textLabels.add(label);
-      }
-    }
-  }
   return result;
 }
 
@@ -944,7 +949,7 @@ func (g *wireGen) emitTextToJsonBody(st *ir.Struct) {
 }
 
 func (g *wireGen) emitTextToJsonField(st *ir.Struct, f *ir.Field) {
-	g.pf("%s", jsonWriteCheck(f, "v."+fieldMember(f), "\t", "throw StateError('invalid_value: field "+f.Name+" out of range');"))
+	g.pf("%s", jsonWriteCheck(f, "v."+fieldMember(f), "\t", "_rangeF32", ""))
 	key := ir.TableFieldJsonKey(f)
 	name := fieldMember(f)
 	g.pf("\tout.line(depth + 1);\n")
@@ -1018,9 +1023,9 @@ func (g *wireGen) emitTextToJsonField(st *ir.Struct, f *ir.Field) {
 			case wireKindBool:
 				g.pf("\t\t\tout.raw(e ? 'true' : 'false');\n")
 			case wireKindF32:
-				g.pf("\t\t\tout.raw(_jsonFloat(e, true));\n")
+				g.pf("\t\t\tout.raw(_jsonFloat(%s, true));\n", dartStoredFloat(f, "e"))
 			case wireKindF64:
-				g.pf("\t\t\tout.raw(_jsonFloat(e, false));\n")
+				g.pf("\t\t\tout.raw(_jsonFloat(%s, false));\n", dartStoredFloat(f, "e"))
 			case wireKindString:
 				g.pf("\t\t\tout.raw(_jsonString(e));\n")
 			case wireKindEnum:
@@ -1062,7 +1067,7 @@ func (g *wireGen) emitTextToJsonField(st *ir.Struct, f *ir.Field) {
 		if f.Type.Kind == ir.TFloat32 {
 			single = "true"
 		}
-		g.pf("\tout.raw(_jsonFloat(v.%s, %s));\n", name, single)
+		g.pf("\tout.raw(_jsonFloat(%s, %s));\n", dartStoredFloat(f, "v."+name), single)
 	case enumRef(f) != nil:
 		g.pf("\tout.raw(_jsonEnum(v.%s, %sName, '%s.%s'));\n", name, dartName(enumRef(f).Name), st.Name, f.Name)
 	default:
@@ -1171,7 +1176,7 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 			case wireKindBool:
 				g.pf("\t\t\t\t\tv.%s.add(_jsonBoolField(item, r));\n", name)
 			case wireKindF32, wireKindF64:
-				g.pf("\t\t\t\t\tv.%s.add(_jsonFloatField(item, r, %t));\n", name, listElementKind(f) == wireKindF32)
+				g.pf("\t\t\t\t\tv.%s.add(%s);\n", name, jsonRangedFloat(f, fmt.Sprintf("_jsonFloatField(item, r, %t)", listElementKind(f) == wireKindF32)))
 			case wireKindEnum:
 				g.pf("\t\t\t\t\tv.%s.add(%sFromName(item, r));\n", name, dartName(enumRef(f).Name))
 			case wireKindString:
@@ -1219,7 +1224,7 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 		g.pf("\t\t\t\tv.%s = _jsonBytesField(val, r, %d, v.%s);\n", name, f.Type.Size, name)
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
-		g.pf("\t\t\t\tv.%s = _jsonFloatField(val, r, %t, v.%s);\n", name, f.Type.Kind == ir.TFloat32, name)
+		g.pf("\t\t\t\tv.%s = %s;\n", name, jsonRangedFloat(f, fmt.Sprintf("_jsonFloatField(val, r, %t, v.%s)", f.Type.Kind == ir.TFloat32, name)))
 		g.pf("\t\t\t\tbreak;\n")
 	case enumRef(f) != nil:
 		g.pf("\t\t\t\tv.%s = %sFromName(val, r, v.%s);\n", name, dartName(enumRef(f).Name), name)
@@ -1301,8 +1306,13 @@ func (g *wireGen) emitTextToJson(st *ir.Struct) {
 func (g *wireGen) emitTextFromJson(st *ir.Struct) {
 	fn := dartName(st.Name) + "FromJson"
 	g.pf("%s %s(String text, [TableTextReport? report]) {\n", st.Name, fn)
-	g.pf("\tfinal r = report ?? TableTextReport();\n\tr.missingFields = '';\n\tr.variableRoot = %t;\n", ir.VariableTables(g.unit)[st.Name])
+	// THE REPORT IS RESET IN FULL at the start of every read, as Go's FromJSON zeroes
+	// its report (docs/SPEC-TABLES.md §4): no count carries over from an earlier call.
+	g.pf("\tfinal r = report ?? TableTextReport();\n\tr.unknown = 0;\n\tr.refused = false;\n\tr.refusal = '';\n\tr.missingFields = '';\n\tr.textLabels.clear();\n\tr.variableRoot = %t;\n", ir.VariableTables(g.unit)[st.Name])
 	g.pf("\tfinal v = %s();\n", st.Name)
+	// A text the grammar, the text rules or the reserved prefix refuse is a refusal
+	// with a reason on the report, never an exception (docs/SPEC-TABLES.md §16.2, §16.3).
+	g.pf("\ttry {\n")
 	// Keep source numeric tokens so float32's exact overflow boundary and
 	// wide integer values are decided before dart:convert rounds them.
 	g.pf("\tfinal root = _jsonDecodeExact(_jsonPrepare(text, r));\n")
@@ -1317,6 +1327,7 @@ func (g *wireGen) emitTextFromJson(st *ir.Struct) {
 		g.pf("\t\t%sFromJsonFields(v, root, r, _Share());\n", dartName(st.Name))
 		g.pf("\t}\n")
 	}
+	g.pf("\t} on FormatException catch (e) {\n\t\tr.refuse(_jsonFormatReason(e.message));\n\t}\n")
 	// A caller who supplied a report reads the verdict from it and lands the
 	// type's defaults; a caller who did not gets the refusal as a throw.
 	g.pf("\tif (r.refused) {\n")
@@ -1333,4 +1344,15 @@ func jsonTableShape(st *ir.Struct, expr string) string {
 		return expr + " is List"
 	}
 	return "_jsonEntries(" + expr + ") != null"
+}
+
+// jsonRangedFloat wraps one float read of the text form in its range test
+// when the field is compressed (_jsonRangedFloat, docs/SPEC-TABLES.md §3.3):
+// a float32's ends are the float32 nearest each declared end.
+func jsonRangedFloat(f *ir.Field, call string) string {
+	lo, hi, ok := fixedFloatClampEnds(f)
+	if !ok {
+		return call
+	}
+	return fmt.Sprintf("_jsonRangedFloat(%s, %s, %s, r)", call, lo, hi)
 }

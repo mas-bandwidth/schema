@@ -214,7 +214,19 @@ func emitAccessors(g *goose.Gen, u *ir.Unit, prefix string, fields []ir.FieldLay
 				break
 			}
 			g.Pf("fn %s(b: const u8[:]%s%s) -> %s { return %s; }\n", decl(member), atParam, idxParam, slot.typ, fmt.Sprintf(slot.get, "b", at))
-			g.Pf("fn %s(b: u8[:]%s%s, v: %s) { %s; }\n", decl(prefix+"Set"+ir.GoExportName(f.Name)), atParam, idxParam, slot.typ, fmt.Sprintf(slot.put, "b", at, "v"))
+			setter := decl(prefix + "Set" + ir.GoExportName(f.Name))
+			if lo, hi, ok := floatBounds(f); ok {
+				// A COMPRESSED FLOAT is held here as in every other Goose
+				// writer: a value outside its declared range (NaN and the
+				// infinities with it) is refused in every build, nothing
+				// written, and its -0 is stored as +0 (docs/SPEC-TABLES.md
+				// §3.3, docs/rulings.json fixed-compressed-negzero). A
+				// compressed float is float32 (SPEC §4.3).
+				g.Pf("fn %s(b: u8[:]%s%s, v: %s) -> bool { if !(v >= %s && v <= %s) { return false; } %s::accel_put(b, %s, %s::accel_cf32_bits(v), 4); return true; }\n",
+					setter, atParam, idxParam, slot.typ, lo, hi, rt, at, rt)
+				break
+			}
+			g.Pf("fn %s(b: u8[:]%s%s, v: %s) { %s; }\n", setter, atParam, idxParam, slot.typ, fmt.Sprintf(slot.put, "b", at, "v"))
 		}
 		if facts.Counted && f.Type.Kind != ir.TString && f.Type.Kind != ir.TBytes {
 			g.Pf("fn %s(b: const u8[:]%s) -> i32 { return %s::accel_get_signed(b, %s%d, 4) as! i32; }\n", decl(member+"Count"), atParam, rt, atArg, facts.CountOffset)
