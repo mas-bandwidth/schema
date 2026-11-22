@@ -314,7 +314,7 @@ tables-c-json-walk: build/tables-generated-c/.stamp
 	@rm -rf build/json-walk-c && mkdir -p build/json-walk-c
 	@for f in build/tables-generated-c/*/*Table.c; do \
 		out=build/json-walk-c/$$(echo $$f | tr / _); \
-		pkg=$$(grep -o 'package [a-z0-9_]*' $$f | head -1 | cut -d' ' -f2); \
+		pkg=$$(grep -o 'package [a-z0-9_]*' $$f | sed -n 1p | cut -d' ' -f2); \
 		PKG=$$(printf '%s' "$$pkg" | tr 'a-z' 'A-Z'); \
 		awk '/---- json walk: begin ----/,/---- json walk: end ----/' $$f \
 			| perl -pe "s/\bSCHEMA_$${PKG}_/SCHEMA_\@P\@_/g; s/\bschema_$${pkg}_/schema_\@p\@_/g; s/\b$${PKG}_/\@P\@_/g; s/\b$${pkg}_/\@p\@_/g" > $$out; \

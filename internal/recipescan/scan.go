@@ -672,7 +672,7 @@ func ScanScript(file, src string, st *Stats) []Finding {
 		}
 	}
 	for _, m := range setLine.FindAllStringSubmatch(src, -1) {
-		for _, f := range strings.Fields(m[1]) {
+		for f := range strings.FieldsSeq(m[1]) {
 			if strings.ContainsRune(f, 'e') {
 				hasE = true
 			}

@@ -85,7 +85,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	name := fs.String("name", "", "what this run is called in messages (required)")
 	count := fs.Int("count", 0, "the registered number of checks the harness runs (required, at least 1)")
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: mustrun -name NAME -count N -- command [args...]")
+		_, _ = fmt.Fprintln(stderr, "usage: mustrun -name NAME -count N -- command [args...]")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -104,7 +104,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if err := cmd.Run(); err != nil {
 		var ee *exec.ExitError
 		if !errors.As(err, &ee) {
-			fmt.Fprintf(stderr, "mustrun: %s: %v\n", *name, err)
+			_, _ = fmt.Fprintf(stderr, "mustrun: %s: %v\n", *name, err)
 			return 127
 		}
 		exit = ee.ExitCode()
@@ -117,7 +117,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	code, msg := verdict(*name, exit, seen.Bytes(), *count)
 	if code != 0 {
-		fmt.Fprintf(stderr, "mustrun: RED: %s\n", msg)
+		_, _ = fmt.Fprintf(stderr, "mustrun: RED: %s\n", msg)
 	}
 	return code
 }

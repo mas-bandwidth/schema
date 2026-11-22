@@ -112,7 +112,7 @@ conformance-squirrel-wire-pin: build/conformance-harness toolchain-squirrel
 		echo "SQUIRREL WIRE PIN FAILED: the wire surface has a failure above" >&2; \
 		exit 1; \
 	fi; \
-	cell=$$(grep '^wire ' build/squirrel-wire-pin.log | head -1); \
+	cell=$$(grep '^wire ' build/squirrel-wire-pin.log | sed -n 1p); \
 	if ! printf '%s\n' "$$cell" | grep -q 'pass '; then \
 		echo "SQUIRREL WIRE PIN FAILED: the wire cell does not read a pass ($$cell)" >&2; \
 		exit 1; \

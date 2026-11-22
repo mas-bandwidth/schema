@@ -62,8 +62,7 @@ func lex(src string, makefile bool) (toks []token, subs []sub) {
 	}
 	// balanced returns the index just past the bracket that closes the one
 	// opened before position i. Quotes inside are honoured.
-	var balanced func(i int, open, shut byte) int
-	balanced = func(i int, open, shut byte) int {
+	balanced := func(i int, open, shut byte) int {
 		depth := 1
 		for i < n {
 			c := src[i]
@@ -205,7 +204,7 @@ func lex(src string, makefile bool) (toks []token, subs []sub) {
 		case c == '$':
 			start()
 			i = substitution(i)
-		case c == '<' && i+1 < n && src[i+1] == '<' && !(i+2 < n && src[i+2] == '<'):
+		case c == '<' && i+1 < n && src[i+1] == '<' && (i+2 >= n || src[i+2] != '<'):
 			// a here-document: its body is data, not shell text
 			j := i + 2
 			if j < n && src[j] == '-' {
@@ -324,7 +323,7 @@ func isAssign(w string) bool {
 	if eq <= 0 {
 		return false
 	}
-	for i := 0; i < eq; i++ {
+	for i := range eq {
 		c := w[i]
 		if c != '_' && (c < 'A' || c > 'Z') && (c < 'a' || c > 'z') && (i == 0 || c < '0' || c > '9') {
 			return false

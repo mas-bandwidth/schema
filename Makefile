@@ -2140,7 +2140,7 @@ tables-cpp-runtime-home-negative-control: bin/schema tables-cpp-runtime-home
 .PHONY: tables-cpp-runtime-home-bytes-negative-control
 tables-cpp-runtime-home-bytes-negative-control: bin/schema tables-cpp-runtime-home
 	@rm -rf build/runtime-home-cpp/bytes-sabotage && cp -R build/runtime-home-cpp/added build/runtime-home-cpp/bytes-sabotage
-	@f=$$(ls build/runtime-home-cpp/bytes-sabotage/*Table.h | head -1); \
+	@f=$$(ls build/runtime-home-cpp/bytes-sabotage/*Table.h | sed -n 1p); \
 	 sed 's|^#define \([A-Z0-9_]*_SCHEMA_TABLE_PRIMITIVES\)$$|#define \1 // SABOTAGED: follows the file|' $$f > $$f.sabotaged && mv $$f.sabotaged $$f; \
 	 grep -q SABOTAGED $$f || { echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
 	@distinct=$$(test/cpp-tables/runtime_home_digest.sh build/runtime-home-cpp/bytes-sabotage | awk '{print $$1, $$2}' | sort -u | wc -l | tr -d ' '); \
@@ -7443,7 +7443,7 @@ MATRIX_GOFLAGS ?=
 RELEASE_LANE ?= full
 release:
 ifeq ($(RELEASE_LANE),fast)
-	@newest=$$(git tag -l 'v*.*.*' --sort=-v:refname | head -n 1); \
+	@newest=$$(git tag -l 'v*.*.*' --sort=-v:refname | sed -n 1p); \
 	case '$(RELEASE_VERSION)' in "$${newest%.*}".*) ;; *) echo "release REFUSES: the fast lane makes patch releases only; $(RELEASE_VERSION) is not a patch of $$newest: use the full lane"; exit 1;; esac
 	@sha=$$(git rev-parse '$(RELEASE_COMMIT)^{commit}'); \
 	run=$$(gh run list --workflow ci-fast.yml --commit "$$sha" --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty'); \

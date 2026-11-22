@@ -116,9 +116,7 @@ func uncheckedStatements(toks []token, makefile bool) []token {
 			}
 		case "then", "do":
 			if commandStart(toks, k) {
-				if cond > 0 && (t.text == "then" || toks[max(0, k-1)].op) {
-					// "do" closes a while condition; a for loop has none
-				}
+				// "do" closes a while condition; a for loop has none
 				if t.text == "then" && cond > 0 {
 					cond--
 				}
