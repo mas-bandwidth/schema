@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -110,7 +111,41 @@ func TestCIFastLangCleanElixirRunsOffsetsGate(t *testing.T) {
 		t.Fatal(err)
 	}
 	wf := string(raw)
-	if !strings.Contains(wf, "tables-elixir-accessor-descriptor-agreement tables-elixir-offsets") {
-		t.Fatal("ci-fast.yml lang-clean (elixir) must run tables-elixir-offsets alongside tables-elixir-accessor-descriptor-agreement")
+	if !strings.Contains(wf, "elixir-offsets) target=tables-elixir-offsets ;;") {
+		t.Fatal("ci-fast.yml lang-clean must run tables-elixir-offsets on its elixir-offsets row")
+	}
+	if !strings.Contains(wf, `target="tables-elixir-accessor-descriptor-agreement-shard-${LANG_ROW#elixir-agreement-}"`) {
+		t.Fatal("ci-fast.yml lang-clean must run tables-elixir-accessor-descriptor-agreement-shard-K on its elixir-agreement-K rows")
+	}
+}
+
+// The agreement gate's per-commit rows must be exactly shards 1..N of
+// make/elixir.mk's ELIXIR_AGREEMENT_SHARDS: a row short and some units are
+// never walked per commit; a row over and its make target refuses.
+func TestCIFastLangCleanElixirAgreementRowsMatchShards(t *testing.T) {
+	root := repoRoot(t)
+	mk, err := os.ReadFile(filepath.Join(root, "make", "elixir.mk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := regexp.MustCompile(`(?m)^ELIXIR_AGREEMENT_SHARDS := ([0-9]+)$`).FindSubmatch(mk)
+	if m == nil {
+		t.Fatal("make/elixir.mk sets no ELIXIR_AGREEMENT_SHARDS")
+	}
+	n, err := strconv.Atoi(string(m[1]))
+	if err != nil || n < 1 {
+		t.Fatalf("ELIXIR_AGREEMENT_SHARDS %q is not a positive count", m[1])
+	}
+	raw, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci-fast.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "elixir-offsets"
+	for k := 1; k <= n; k++ {
+		want += fmt.Sprintf(" elixir-agreement-%d", k)
+	}
+	line := `clean_legs="$clean_legs ` + want + `"`
+	if !strings.Contains(string(raw), line) {
+		t.Fatalf("ci-fast.yml plan must add the elixir rows as %s (ELIXIR_AGREEMENT_SHARDS=%d)", line, n)
 	}
 }

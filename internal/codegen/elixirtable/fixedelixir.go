@@ -496,14 +496,17 @@ func (g *fixedGen) leafSegment(f *ir.Field, name string) string {
 		// A COMPRESSED FLOAT RIDES AS THE FLOAT and not as a quantized index:
 		// this form is not optimized for bandwidth (§3.4). Its -0 is stored as
 		// +0 (§3.3, fixed-compressed-negzero), so it rides through cf32_bits; a
-		// plain float's -0 is carried bit-exact.
+		// plain float's -0 is carried bit-exact. ITS DECLARED RANGE IS THE
+		// WRITER'S CONTRACT, held on the way out like a ranged integer's: the
+		// reference refuses a value outside [min, max] (invalid_value), and this
+		// port's write-side checks refuse in every build, so cf32_bits raises.
 		if f.HasFloatRange {
-			return fmt.Sprintf("R.cf32_bits(%s)::little-unsigned-32", name)
+			return fmt.Sprintf("R.cf32_bits(%s, %s)::little-unsigned-32", name, g.rangeAttr(f))
 		}
 		return fmt.Sprintf("R.f32_bits(%s)::little-unsigned-32", name)
 	case ir.TFloat64:
 		if f.HasFloatRange {
-			return fmt.Sprintf("R.cf64_bits(%s)::little-unsigned-64", name)
+			return fmt.Sprintf("R.cf64_bits(%s, %s)::little-unsigned-64", name, g.rangeAttr(f))
 		}
 		return fmt.Sprintf("R.f64_bits(%s)::little-unsigned-64", name)
 	}
@@ -554,7 +557,8 @@ func (g *fixedGen) rangeAttr(f *ir.Field) string {
 	return fmt.Sprintf("@r_%s_%s", g.owner, ir.RustSnake(f.Name))
 }
 
-// emitRangeAttrs defines every ranged leaf's bounds for the declarations this
+// emitRangeAttrs defines every ranged leaf's bounds (a ranged integer's or a
+// compressed float's) for the declarations this
 // module carries, and for every declaration a nested INLINED type brings with
 // it, under the OWNER whose body spells the segment.
 func (g *fixedGen) emitRangeAttrs(here []*ir.Struct, unions []*ir.Union) {
@@ -569,7 +573,7 @@ func (g *fixedGen) emitRangeAttrs(here []*ir.Struct, unions []*ir.Union) {
 				return
 			}
 		}
-		if !f.HasIntRange {
+		if !f.HasIntRange && !f.HasFloatRange {
 			return
 		}
 		g.owner = owner
@@ -579,6 +583,10 @@ func (g *fixedGen) emitRangeAttrs(here []*ir.Struct, unions []*ir.Union) {
 		}
 		seen[name] = true
 		lo, hi := fixedRangeOf(f)
+		if f.HasFloatRange {
+			// A COMPRESSED FLOAT'S BOUNDS are the declared floats themselves.
+			lo, hi = fixedFloatLiteral(f.FMin), fixedFloatLiteral(f.FMax)
+		}
 		// A 128-BIT BOUND IS THIRTY-NINE DIGITS AND TWO OF THEM DO NOT FIT, so
 		// the pair breaks where the formatter breaks it: the second bound
 		// aligned under the first, inside the brace that opened the tuple.
@@ -592,7 +600,7 @@ func (g *fixedGen) emitRangeAttrs(here []*ir.Struct, unions []*ir.Union) {
 	// spells a bound under the union's own name.
 	for _, u := range unions {
 		for _, v := range u.Variants {
-			if v.F != nil && v.F.HasIntRange {
+			if v.F != nil && (v.F.HasIntRange || v.F.HasFloatRange) {
 				one(ir.RustSnake(u.Name), v.F)
 			}
 		}

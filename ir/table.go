@@ -4,6 +4,7 @@
 package ir
 
 import (
+	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -30,22 +31,43 @@ func FieldId(name string) uint16 {
 // rebound keeps free of every declared name.
 func VariantId(name string) uint16 { return FieldId(name) }
 
-// TableForms is the closed vocabulary of a table's `forms` declaration
+// tableForms is the closed vocabulary of a table's `forms` declaration
 // (docs/SPEC-TABLES.md §2.12). Each is the name of a form a table can carry:
 // `wire` (the id-table wire and its storage/codecs), `json` (the text form),
 // `block` (the block accelerator) and `cook` (the cooked-form accelerator).
-// The checker validates a declaration against this set.
-var TableForms = map[string]bool{
+// The checker validates a declaration against this set, through [IsTableForm].
+// It is unexported so that no importer can change what another compiler in the
+// same process accepts; [TableForms] is the copy a client enumerates.
+var tableForms = map[string]bool{
 	"wire":  true,
 	"json":  true,
 	"block": true,
 	"cook":  true,
 }
 
-// TableIntegrityChecks is the closed vocabulary of a table's `integrity`
+// TableForms enumerates the table forms (docs/SPEC-TABLES.md §2.12). It is a
+// COPY of the vocabulary the checker reads: editing it changes nothing any
+// compiler accepts or emits. [IsTableForm] answers from the vocabulary itself.
+var TableForms = maps.Clone(tableForms)
+
+// IsTableForm reports whether name is one of the table forms a `forms`
+// declaration may name (docs/SPEC-TABLES.md §2.12).
+func IsTableForm(name string) bool { return tableForms[name] }
+
+// tableIntegrityChecks is the closed vocabulary of a table's `integrity`
 // declaration (docs/SPEC-TABLES.md §2.14): `crc32c`, CRC-32C over the
 // Castagnoli polynomial, four bytes little-endian at the end of the file.
-var TableIntegrityChecks = map[string]bool{"crc32c": true}
+// Unexported for the reason [tableForms] is; [TableIntegrityChecks] is the copy.
+var tableIntegrityChecks = map[string]bool{"crc32c": true}
+
+// TableIntegrityChecks enumerates the integrity checks (docs/SPEC-TABLES.md
+// §2.14). It is a COPY: editing it changes nothing any compiler accepts.
+// [IsTableIntegrityCheck] answers from the vocabulary itself.
+var TableIntegrityChecks = maps.Clone(tableIntegrityChecks)
+
+// IsTableIntegrityCheck reports whether name is a check an `integrity`
+// declaration may name (docs/SPEC-TABLES.md §2.14).
+func IsTableIntegrityCheck(name string) bool { return tableIntegrityChecks[name] }
 
 // TableIntegrityTables returns, sorted, every table of the unit that declares
 // `integrity` (docs/SPEC-TABLES.md §2.14).
@@ -70,7 +92,7 @@ func (s *Struct) CarriesForm(form string) bool {
 	if !s.DeclaredForms() {
 		return true
 	}
-	return TableForms[form] && slices.Contains(s.Forms, form)
+	return tableForms[form] && slices.Contains(s.Forms, form)
 }
 
 // TableTypeId is a node record's TYPE ID (docs/SPEC-TABLES.md §3.1): the target
