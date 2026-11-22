@@ -1389,7 +1389,7 @@ def j_skip_container(r:JsonReader, close:int, depth:int) -> bool:
             r.pos++
             if not j_key_new(r, keys, key):
                 return false
-            if length(key) > 0 and key[0] == '&' and r.graph:
+            if length(key) > 0 and key[0] == '&':
                 if not first or not j_skipped_ampersand(r, key):
                     r.bad = true
                     return false
@@ -1397,7 +1397,8 @@ def j_skip_container(r:JsonReader, close:int, depth:int) -> bool:
                 keyed = true
                 c = j_peek(r)
                 if c == ',':
-                    definition = r.labels[length(r.labels) - 1]
+                    if r.graph:
+                        definition = r.labels[length(r.labels) - 1]
                     r.pos++
                     continue
                 if c == close:
@@ -1432,11 +1433,15 @@ def j_find_label(r:JsonReader, label:int) -> JsonLabel?:
 // j_skipped_ampersand takes the label of a definition inside a value the walk
 // is skipping, so the numbering survives the drop (§16.7).
 def j_skipped_ampersand(r:JsonReader, key:string) -> bool:
-    if not r.graph or key != "&node":
+    if key != "&node":
         return false
     let label, ok = j_scan_label(r)
     if not ok:
         return false
+    if not r.graph:
+        // a unit with no pointer has no label table: the prefix is still held to
+        // its grammar, and the value is skipped whole
+        return true
     let prior = j_find_label(r, label)
     if j_peek(r) == '}':
         if prior and not prior.open:
@@ -2516,8 +2521,10 @@ def j_place_map_key(entry:Record, kf:FieldDescriptor, key:string) -> int:
     return 0
 
 // json_read_into fills rec from one JSON text (docs/SPEC-TABLES.md §16.1):
-// the whole value on success; a failed read releases its candidate and leaves
-// the caller's existing record untouched.
+// the whole value on success; a failed read releases its candidate and RESETS
+// the caller's record to its declared defaults (§6.5: on a refusal nothing the
+// read produced is defined, and FromJson resets the value), as the reference
+// does.
 def json_read_into(rec:Record, text:string, report:LoadReport) -> bool:
     read_reset(report)
     if not rec.d.json_form:
@@ -2535,6 +2542,10 @@ def json_read_into(rec:Record, text:string, report:LoadReport) -> bool:
         j_refuse(r, "malformed")
         report.malformed = true
         release(candidate)
+        let defaults = new_record(rec.d)
+        release(rec)
+        rec.fields = defaults.fields
+        defaults.fields = []
         return false
     release(rec)
     rec.fields = candidate.fields
@@ -3009,9 +3020,18 @@ def j_write_scalar(w:JsonWriter, cell:Value, f:FieldDescriptor, depth:int) -> bo
         j_raw(w, if cell.b: "true" else: "false")
         return true
     if kind == 10 or kind == 11:
-        let v = cell.f
+        var v = cell.f
         if v != v or j_is_inf(v):
             return j_fail(w, "a non-finite float has no JSON spelling (docs/SPEC-TABLES.md §16.2)")
+        if kind == 10:
+            // A FLOAT32 IS SPELLED FROM ITS FLOAT32 VALUE (Go's writeFloat):
+            // round the stored double to float32 first. One that rounds past
+            // float32's range has no spelling its own reader takes, and is
+            // refused as the save refuses it, non_finite_float.
+            let b = f32bits(v)
+            if not finite_f32_bits(b):
+                return j_fail(w, "non_finite_float")
+            v = j_f32frombits(b)
         if not scalar_admitted(f, kind, cell):
             return j_fail(w, "invalid_value")
         j_raw(w, j_float_text(v, kind == 10))

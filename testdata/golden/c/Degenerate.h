@@ -5,8 +5,8 @@
    AGPL-3.0, its output is not.
    package example — protocol id 0x2bf51af687ac0abd */
 
-#ifndef SCHEMA_EXAMPLE_DEGENERATE_H
-#define SCHEMA_EXAMPLE_DEGENERATE_H
+#ifndef SCHEMA_EXAMPLE_Degenerate_h
+#define SCHEMA_EXAMPLE_Degenerate_h
 
 #include <stdint.h>
 #include "SchemaRuntime.h"
@@ -165,4 +165,4 @@ typedef struct example_trio_straddle_t
 }
 #endif
 
-#endif /* SCHEMA_EXAMPLE_DEGENERATE_H */
+#endif /* SCHEMA_EXAMPLE_Degenerate_h */

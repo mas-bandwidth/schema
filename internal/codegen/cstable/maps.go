@@ -65,14 +65,14 @@ const tableMapWireSource = `
             if (!keyOk) { Damage(report); break; }
             if (keyField.Kind == 12 && key.Text.Length > keyField.ArrayBound) { return Fail(report, "length_over_bound: " + keyField.Name); }
             int order = landed == 0 ? -1 : KeyOrder(last, key, keyField);
-            if (order > 0) { Damage(report); break; }
-            int slot = order == 0 ? landed - 1 : landed;
+            // A REPEATED OR DESCENDING KEY is wire damage, not a named refusal (docs/SPEC-TABLES.md §2.8, §4)
+            if (order >= 0) { Damage(report); break; }
+            int slot = landed;
             f.EnsureCount(value, slot + 1);
             object entry = f.Table.Create(); f.SetChild(value, slot, entry);
             ReadBody(ref body, entry, f.Table, report, true);
             if (CountRefused(report)) { return false; }
-            if (order == 0) { return Fail(report, "duplicate"); }
-            else { last = KeyOf(entry, keyField); landed++; }
+            last = KeyOf(entry, keyField); landed++;
         }
         f.SetCount(value, landed);
         // bytes left inside the map's L after its entries are damage
@@ -110,7 +110,8 @@ const tableMapJsonSource = `
         TableFieldInfo key = f.Table.Fields[0], field = f.Table.Fields[1];
         int count = 0;
         string mapField = input.TextField;
-        Span<byte> spelling = stackalloc byte[MaxKey];
+        // A map key is data, bounded only by its own string(N), never by the 255-byte cap on schema names (docs/SPEC-TABLES.md §16.2)
+        Span<byte> spelling = key.Kind == 12 && !key.Unbounded && key.ArrayBound > MaxKey ? new byte[key.ArrayBound] : stackalloc byte[MaxKey];
         for (; ; )
         {
             byte c = Peek(text, ref input);
