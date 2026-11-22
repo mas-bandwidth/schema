@@ -167,6 +167,9 @@ table T
 			names = append(names, c.name)
 		}
 		sort.Strings(names)
+		if len(names) == 0 {
+			t.Fatal("names is empty: the loop below would check nothing")
+		}
 		for _, name := range names {
 			g, ok := got[name]
 			if !ok {

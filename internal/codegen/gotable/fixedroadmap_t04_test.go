@@ -30,7 +30,6 @@ package gotable
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -38,29 +37,22 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestFixedRoadmapGoT04VersionsEvolution(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
-		id  string
-		run func(t *testing.T)
-	}{
-		{"go/E5", t04GoE5},
-		{"go/W2", t04GoW2},
-		{"go/E6", t04GoE6},
-		{"go/E8", t04GoE8},
-		{"go/E9", t04GoE9},
-		{"go/R19", t04GoR19},
-		{"go/R16", t04GoR16},
-		{"go/R18", t04GoR18},
-	}
-	for _, tc := range tests {
-		t.Run(tc.id, func(t *testing.T) {
-			t.Parallel()
-			tc.run(t)
-		})
-	}
+	// each row is called by name, so a reader (and the vacuous-test gate) can
+	// follow every subtest to the assertions it makes
+	t.Run("go/E5", func(t *testing.T) { t.Parallel(); t04GoE5(t) })
+	t.Run("go/W2", func(t *testing.T) { t.Parallel(); t04GoW2(t) })
+	t.Run("go/E6", func(t *testing.T) { t.Parallel(); t04GoE6(t) })
+	t.Run("go/E8", func(t *testing.T) { t.Parallel(); t04GoE8(t) })
+	t.Run("go/E9", func(t *testing.T) { t.Parallel(); t04GoE9(t) })
+	t.Run("go/R19", func(t *testing.T) { t.Parallel(); t04GoR19(t) })
+	t.Run("go/R16", func(t *testing.T) { t.Parallel(); t04GoR16(t) })
+	t.Run("go/R18", func(t *testing.T) { t.Parallel(); t04GoR18(t) })
 }
 
 const t04Flat = `package probe
@@ -357,7 +349,7 @@ func t04GoR19(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(testDir, "clean_test.go"), []byte(src), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("go", "test", "-count=1", "-run", "TestClean", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", "-run", "TestClean", ".")
 	cmd.Dir = testDir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

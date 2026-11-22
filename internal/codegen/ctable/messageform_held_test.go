@@ -15,6 +15,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestMessageFormHeldC asserts, one subtest per clause, the refusals and
@@ -39,6 +41,7 @@ fixed table Root {
 	}{
 		{"no_vocabulary", cMsgNoVocabularyProbe},
 		{"second_announcement", cMsgSecondAnnouncementProbe},
+		{"strict_mode", cMsgStrictProbe},
 		{"vocabulary_too_large", cMsgVocabularyTooLargeProbe},
 		{"announcement_strict_checks", cMsgAnnouncementStrictProbe},
 		{"batch_too_large", cMsgBatchTooLargeProbe},
@@ -123,6 +126,65 @@ int main(void)
     int64_t count = 1;
     TableReport body; memset(&body, 0, sizeof(body));
     CHECK(!root_load_messages(storage, &count, &w, wire, (int64_t)sizeof(wire), &body));
+    CHECK(count == 0 && body.reason == SCHEMA_TABLE_NO_VOCABULARY);
+    return 0;
+}
+`
+
+// "STRICT MODE IS OPT-IN, and the default is unchanged ... an announcement
+// whose build version is not the unit's own is refused by the name
+// `build_version_mismatch`, sets no vocabulary, keeps the peer's build version,
+// moves no counter and is never `wire_damaged`, and is terminal like every
+// refused first announcement" and THE LANGUAGE-NEUTRAL SHAPE: one boolean on
+// the vocabulary, false when it is made, and a refusal carrying the peer's
+// build version (remote) and the reader's own (own) (docs/SPEC-TABLES.md §3.3).
+const cMsgStrictProbe = cMsgShared + `
+static void endpoint(uint8_t * ann, uint64_t version)
+{
+    int i;
+    announce(ann, kTableAnnounceBytes);
+    for (i = 0; i < 8; i++) ann[3 + i] = (uint8_t)(version >> (8 * i));
+}
+int main(void)
+{
+    const uint64_t own = SCHEMA_PROBE_BUILD_VERSION_VALUE, remote = own ^ UINT64_MAX;
+    uint8_t ann[kTableAnnounceBytes];
+    TableMessageEntry entries[kTableMessageEntriesHere];
+    /* the default: false when made, and another build version reads clean */
+    TableVocabulary tolerant = table_vocabulary(entries, kTableMessageEntriesHere);
+    CHECK(tolerant.strict == 0);
+    endpoint(ann, remote);
+    TableReport report; memset(&report, 0, sizeof(report));
+    CHECK(announce_read(&tolerant, ann, (int64_t)sizeof(ann), &report));
+    CHECK(tolerant.announced && tolerant.build_version == remote && !report.refused);
+    /* strict, the unit's own build version: clean */
+    TableVocabulary same = table_vocabulary(entries, kTableMessageEntriesHere);
+    same.strict = 1;
+    endpoint(ann, own);
+    memset(&report, 0, sizeof(report));
+    CHECK(announce_read(&same, ann, (int64_t)sizeof(ann), &report));
+    CHECK(same.announced && !report.refused && report.build_version_remote == 0 && report.build_version_own == 0);
+    /* strict, another build version: refused by name, both versions carried */
+    TableVocabulary strict = table_vocabulary(entries, kTableMessageEntriesHere);
+    strict.strict = 1;
+    endpoint(ann, remote);
+    memset(&report, 0, sizeof(report));
+    CHECK(!announce_read(&strict, ann, (int64_t)sizeof(ann), &report));
+    CHECK(report.refused && report.reason == SCHEMA_TABLE_BUILD_VERSION_MISMATCH);
+    CHECK(report.refuse_reason != SCHEMA_TABLE_REFUSE_WIRE_DAMAGED);
+    CHECK(report.build_version_remote == remote && report.build_version_own == own);
+    CHECK(!strict.announced && strict.count == 0 && strict.ref_bits == 0 && strict.build_version == remote);
+    CHECK(report.unknown == 0 && report.widened == 0 && report.retained == 0 && report.retain_lost == 0);
+    /* terminal: the next announcement is second_announcement, a body no_vocabulary */
+    endpoint(ann, own);
+    TableReport second; memset(&second, 0, sizeof(second));
+    CHECK(!announce_read(&strict, ann, (int64_t)sizeof(ann), &second));
+    CHECK(second.refused && second.reason == SCHEMA_TABLE_SECOND_ANNOUNCEMENT && !strict.announced);
+    uint8_t wire[] = { 2, 0, 0 };
+    Root storage[1]; root_reset(storage);
+    int64_t count = 1;
+    TableReport body; memset(&body, 0, sizeof(body));
+    CHECK(!root_load_messages(storage, &count, &strict, wire, (int64_t)sizeof(wire), &body));
     CHECK(count == 0 && body.reason == SCHEMA_TABLE_NO_VOCABULARY);
     return 0;
 }
@@ -234,9 +296,9 @@ int main(void)
 
 // "`M` ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME ... `MeasureMessages`
 // and `SaveMessages` both refuse and return `-1`" and "`M` ABOVE THE CALLER'S
-// CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME ... The reader sets the
-// returned count to the wire's `M` before it returns the refusal."
-// (docs/SPEC-TABLES.md §3.3).
+// CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME ... A refused batch returns a
+// count of `0`" (docs/SPEC-TABLES.md §3.3). The Go-written fixture is
+// TestCMessageLoadCapacityFixture's.
 const cMsgBatchTooLargeProbe = cMsgShared + `
 int main(void)
 {
@@ -257,12 +319,12 @@ int main(void)
     TableReport ar; memset(&ar, 0, sizeof(ar));
     CHECK(announce_read(&v, ann, (int64_t)sizeof(ann), &ar));
     uint8_t wire[] = { 2, 1, 0 }; /* count minus one is 1: M is two */
-    Root storage[1]; root_reset(storage);
+    Root storage[1]; root_reset(storage); storage[0].c = 17;
     int64_t count = 1;
     TableReport report; memset(&report, 0, sizeof(report));
     CHECK(!root_load_messages(storage, &count, &v, wire, (int64_t)sizeof(wire), &report));
-    CHECK(count == 2 && report.refused && report.reason == SCHEMA_TABLE_BATCH_TOO_LARGE);
-    CHECK(storage[0].a == 0 && storage[0].b == 0 && storage[0].c == 0);
+    CHECK(count == 0 && report.refused && report.reason == SCHEMA_TABLE_BATCH_TOO_LARGE);
+    CHECK(storage[0].a == 0 && storage[0].b == 0 && storage[0].c == 17);
     return 0;
 }
 `
@@ -550,6 +612,9 @@ func cMessageManifestRows(t *testing.T) {
 			rows = append(rows, f)
 		}
 	}
+	if len(rows) == 0 {
+		t.Fatal("rows is empty: the loop below would check nothing")
+	}
 	for _, row := range rows {
 		t.Run(row[0]+"/"+row[1], func(t *testing.T) {
 			t.Parallel()
@@ -687,14 +752,14 @@ func (b *cMessageUnitBuilds) of(t *testing.T, name string, u *ir.Unit) *cMessage
 		b.by[name] = build
 	}
 	b.mu.Unlock()
-	build.once.Do(func() { build.err = build.compile(u) })
+	build.once.Do(func() { build.err = build.compile(t, u) })
 	if build.err != nil {
 		t.Fatal(build.err)
 	}
 	return build
 }
 
-func (b *cMessageUnitBuild) compile(u *ir.Unit) error {
+func (b *cMessageUnitBuild) compile(t testing.TB, u *ir.Unit) error {
 	cc, err := exec.LookPath("cc")
 	if err != nil {
 		return fmt.Errorf("C message conformance requires cc")
@@ -738,7 +803,7 @@ func (b *cMessageUnitBuild) compile(u *ir.Unit) error {
 			args = append(args, "-I", serDir)
 		}
 		args = append(args, "-c", filepath.Join(b.dir, name), "-o", obj)
-		if out, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+		if out, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 			return fmt.Errorf("compile %s: %w\n%s", name, err, out)
 		}
 		b.objs = append(b.objs, obj)
@@ -773,10 +838,10 @@ func runCMessageUnit(t *testing.T, build *cMessageUnitBuild, source string) {
 	args = append(args, main)
 	args = append(args, build.objs...)
 	args = append(args, "-lm", "-o", binary)
-	if out, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, out)
 	}
-	if out, err := exec.Command(binary).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, binary).CombinedOutput(); err != nil {
 		t.Fatalf("§3.3 reference bytes differ: %v\n%s", err, out)
 	}
 }

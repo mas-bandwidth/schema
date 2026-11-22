@@ -2,12 +2,13 @@ package darttable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestMapWriterSortDart holds docs/PORTING.md M19's writer half on the Dart
@@ -88,7 +89,7 @@ func runMapSortProbe(t *testing.T, dart string, files, packet map[string][]byte,
 	if err := os.WriteFile(filepath.Join(dir, "map_sort_probe.dart"), []byte(mapSortProbe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dart, "--enable-asserts", "map_sort_probe.dart")
+	cmd := testproc.Command(t, dart, "--enable-asserts", "map_sort_probe.dart")
 	cmd.Dir = dir
 	return cmd.CombinedOutput()
 }

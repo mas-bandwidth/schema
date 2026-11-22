@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // The hand-text adapter must land the JSON graph walk's node identities,
@@ -96,7 +98,7 @@ func TestCPPTextFormSharing(t *testing.T) {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(cppdir, "probe")
-	if out, err := exec.Command(cxx, "-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror", "-I", cppdir, filepath.Join(cppdir, "main.cpp"), filepath.Join(cppdir, "ProbeTable.cpp"), "-o", bin).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, "-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror", "-I", cppdir, filepath.Join(cppdir, "main.cpp"), filepath.Join(cppdir, "ProbeTable.cpp"), "-o", bin).CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, out)
 	}
 	var vectors strings.Builder
@@ -112,7 +114,7 @@ func TestCPPTextFormSharing(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("go", "test", "-count=1", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", ".")
 	cmd.Dir = godir
 	cmd.Env = append(os.Environ(), "SHARING_RESULTS="+godir)
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -120,7 +122,7 @@ func TestCPPTextFormSharing(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			out, err := exec.Command(bin, tc.text).CombinedOutput()
+			out, err := testproc.Command(t, bin, tc.text).CombinedOutput()
 			if err != nil {
 				t.Fatalf("probe: %v\n%s", err, out)
 			}
@@ -149,24 +151,24 @@ func TestCPPTextFormSharing(t *testing.T) {
 	// Source labels are identities, not storage indices: a positive spelling
 	// beyond uint64 still maps to the same internal node.
 	large := `(:items (("&node" 184467440737095516160000000 :id 6) ("&node" 184467440737095516160000000)))`
-	out, err := exec.Command(bin, large).CombinedOutput()
+	out, err := testproc.Command(t, bin, large).CombinedOutput()
 	if err != nil || !strings.Contains(string(out), `"&node"`) {
 		t.Fatalf("large source label: %v\n%s", err, out)
 	}
 	// Editing the defining node must update both slots, retaining every other byte.
 	input := "; shared node\n(:items ((\"&node\" 7 :id 6) ; reference\n (\"&node\" 7) null))\n"
-	out, err = exec.Command(bin, input, "items[0].id", "8").CombinedOutput()
+	out, err = testproc.Command(t, bin, input, "items[0].id", "8").CombinedOutput()
 	if err != nil {
 		t.Fatalf("edit: %v\n%s", err, out)
 	}
 	if string(out) != strings.Replace(input, ":id 6", ":id 8", 1) {
 		t.Fatalf("edit changed unrelated bytes: %q", out)
 	}
-	out, err = exec.Command(bin, input, "items[0].id", "6").CombinedOutput()
+	out, err = testproc.Command(t, bin, input, "items[0].id", "6").CombinedOutput()
 	if err != nil || string(out) != input {
 		t.Fatalf("no-op edit: %v\n%s", err, out)
 	}
-	out, err = exec.Command(bin, input, "items[1].id", "8").CombinedOutput()
+	out, err = testproc.Command(t, bin, input, "items[1].id", "8").CombinedOutput()
 	if err != nil || strings.TrimSpace(string(out)) != "text_edit_conflict" {
 		t.Fatalf("reference has no editable field token: %v\n%s", err, out)
 	}

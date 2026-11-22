@@ -71,8 +71,8 @@ func TestTimestampKindIsSkippedAtEightBytes(t *testing.T) {
 	damaged := withField(t, wire, 0xEEEEEEEEEEEEEEEE, 35, payload)
 	back = m.New(m.Lookup("GlobalSettings"))
 	r = tabletext.Report{}
-	_, _ = tablewire.Decode(m, back, damaged, &r)
-	if !r.Refused {
-		t.Fatalf("kind 35 should be framing damage, got %+v", r)
+	ok, derr := tablewire.Decode(m, back, damaged, &r)
+	if ok || derr == nil || !r.Refused {
+		t.Fatalf("kind 35 should be framing damage, got ok=%v err=%v %+v", ok, derr, r)
 	}
 }

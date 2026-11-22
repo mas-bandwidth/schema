@@ -17,7 +17,6 @@ import (
 	"maps"
 	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -26,6 +25,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // mooFixedValueCase is one value row: the schema, the root and its body size,
@@ -1231,11 +1232,11 @@ int main( int argc, char ** argv )
 	if cxx == "" {
 		cxx = "c++"
 	}
-	if out, err := exec.Command(cxx, "-std=c++17", "-O1", "-I"+dir, "-I"+serDir, probeCpp, "-o", probeBin).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, "-std=c++17", "-O1", "-I"+dir, "-I"+serDir, probeCpp, "-o", probeBin).CombinedOutput(); err != nil {
 		t.Fatalf("%s: the C++ reference does not compile: %v\n%s", id, err, out)
 	}
 	cppBin := filepath.Join(dir, "cpp.bin")
-	if out, err := exec.Command(probeBin, "save", cppBin).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, probeBin, "save", cppBin).CombinedOutput(); err != nil {
 		t.Fatalf("%s: the C++ reference's save failed: %v\n%s", id, err, out)
 	}
 	cppBytes, err := os.ReadFile(cppBin)
@@ -1247,7 +1248,7 @@ int main( int argc, char ** argv )
 		if err := os.WriteFile(candPath, cand, 0o600); err != nil {
 			return err
 		}
-		out, err := exec.Command(probeBin, "verify", candPath).CombinedOutput()
+		out, err := testproc.Command(t, probeBin, "verify", candPath).CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
 		}
@@ -1353,7 +1354,11 @@ func wantMismatch(want []string, dump map[string]string) string {
 func mooFixedProofUnit(t *testing.T, c mooFixedValueCase) (*ir.Unit, *generatedUnit) {
 	t.Helper()
 	u := unitFromSource(t, c.schema)
-	for _, st := range ir.TableFixedFormRoots(u) {
+	allTableFixedFormRoots := ir.TableFixedFormRoots(u)
+	if len(allTableFixedFormRoots) == 0 {
+		t.Fatal("ir.TableFixedFormRoots(u) is empty: the loop below would check nothing")
+	}
+	for _, st := range allTableFixedFormRoots {
 		if st.Name == c.root {
 			if got := ir.TableFixedTypeBytes(st); got != c.body {
 				t.Fatalf("%s: the record body is %d bytes, the row says %d", c.id, got, c.body)
@@ -1377,7 +1382,11 @@ func mooFixedProofUnit(t *testing.T, c mooFixedValueCase) (*ir.Unit, *generatedU
 func TestMooFixedProofSuiteValues(t *testing.T) {
 	slowtest.Gate(t, "moo and c++ (it runs the emitted fixed-form runtime against a compiled C++ reference)")
 	t.Parallel()
-	for _, c := range mooFixedValueCases() {
+	allMooFixedValueCases := mooFixedValueCases()
+	if len(allMooFixedValueCases) == 0 {
+		t.Fatal("mooFixedValueCases() is empty: the loop below would check nothing")
+	}
+	for _, c := range allMooFixedValueCases {
 		t.Run(c.id, func(t *testing.T) {
 			t.Parallel()
 			u, g := mooFixedProofUnit(t, c)
@@ -1422,7 +1431,11 @@ func TestMooFixedProofSuiteNegativeControl(t *testing.T) {
 	t.Parallel()
 	const anchor = "\t\t\twriteStruct(d, plan.root, 0, v, rec)\n"
 	const planted = anchor + "\t\t\tbuffer.writeu8(rec, fixed.recordBytes - 1, bit32.bxor(buffer.readu8(rec, fixed.recordBytes - 1), 1))\n"
-	for _, c := range mooFixedValueCases() {
+	allMooFixedValueCases := mooFixedValueCases()
+	if len(allMooFixedValueCases) == 0 {
+		t.Fatal("mooFixedValueCases() is empty: the loop below would check nothing")
+	}
+	for _, c := range allMooFixedValueCases {
 		t.Run(c.id, func(t *testing.T) {
 			t.Parallel()
 			u, g := mooFixedProofUnit(t, c)

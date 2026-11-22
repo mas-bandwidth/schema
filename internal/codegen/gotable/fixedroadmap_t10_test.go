@@ -3,12 +3,13 @@ package gotable
 import (
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // THE ROADMAP'S COMPOSITE-VALUE ROWS ON THE GO LEG (docs/roadmap.sexp node
@@ -101,7 +102,7 @@ func t10Run(t *testing.T, schema, probe string, tableOnly bool) {
 		}
 	}
 	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
-	cmd := exec.Command("go", "test", "-count=1", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", ".")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("generated fixed-table runtime: %v\n%s", err, out)

@@ -30,7 +30,11 @@ func TestLuaUnopenedDamageDiscardsTheRoot(t *testing.T) {
 func TestLuaDamageDiscardNegativeControl(t *testing.T) {
 	t.Parallel()
 	b, u := armUnit(t)
-	for name, why := range armVerdicts(t, b, u, b.files) {
+	allArmVerdicts := armVerdicts(t, b, u, b.files)
+	if len(allArmVerdicts) == 0 {
+		t.Fatal("armVerdicts(t, b, u, b.files) is empty: the loop below would check nothing")
+	}
+	for name, why := range allArmVerdicts {
 		if why != "" {
 			t.Fatalf("control baseline %s: %s", name, why)
 		}

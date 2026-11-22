@@ -60,7 +60,6 @@ func TestHostileRefusalReasonFailsClosed(t *testing.T) {
 // TestSchemaSharedHostileCorpus is the drift gate.
 func TestSchemaSharedHostileCorpus(t *testing.T) {
 	t.Parallel()
-	t.Skip("layer 3 re-pins the shared hostile corpus manifest's verdicts and digests under the one read: docs/plans/strict-only.md")
 	manifest, _, err := hostilecorpus.LoadManifest(hostileCorpusDir(t))
 	if err != nil {
 		t.Fatal(err)
@@ -81,8 +80,8 @@ func TestSchemaSharedHostileCorpusReasons(t *testing.T) {
 	}
 	have := map[string]bool{}
 	for _, c := range cases {
-		if c.Carrier == "packet" {
-			if c.Verdict != hostilecorpus.Refuse || c.Reason != "packet_refused" || c.Digest != hostilecorpus.NoReason {
+		if c.Carrier == hostilecorpus.CarrierPacket {
+			if c.Verdict != hostilecorpus.Refuse || c.Reason != hostilecorpus.ReasonPacketRefused || c.Digest != hostilecorpus.NoReason {
 				t.Errorf("%s: packet row is %s %s %s, want refuse packet_refused -", c.Name, c.Verdict, c.Reason, c.Digest)
 			}
 			continue
@@ -127,7 +126,6 @@ func TestSchemaSharedHostileCorpusReasons(t *testing.T) {
 // is the gate going blind.
 func TestSchemaSharedHostileCorpusNegativeControl(t *testing.T) {
 	t.Parallel()
-	t.Skip("layer 3 re-pins the shared hostile corpus manifest's verdicts and digests under the one read: docs/plans/strict-only.md")
 	root, tmp := repoRoot(t), t.TempDir()
 	dir := hostileCorpusDir(t)
 	manifest, _, err := hostilecorpus.LoadManifest(dir)
@@ -159,6 +157,26 @@ func TestSchemaSharedHostileCorpusNegativeControl(t *testing.T) {
 	if err := hostilecorpus.Verify(root, tmp, dir, strings.Join(lines, "\n")); err == nil {
 		t.Fatal("planted bad verdict was NOT caught: the drift gate has no blade")
 	}
+
+	// A packet row has no engine verdict to drift from: it is pinned by hand
+	// as a named refusal, so an accept planted on one must refuse too.
+	lines = strings.Split(manifest, "\n")
+	planted = false
+	for i, line := range lines {
+		f := strings.Split(line, "\t")
+		if len(f) == 9 && f[1] == hostilecorpus.CarrierPacket {
+			f[6], f[7], f[8] = hostilecorpus.Accept, hostilecorpus.NoReason, strings.Repeat("0", 64)
+			lines[i] = strings.Join(f, "\t")
+			planted = true
+			break
+		}
+	}
+	if !planted {
+		t.Fatal("no packet row to plant")
+	}
+	if err := hostilecorpus.Verify(root, tmp, dir, strings.Join(lines, "\n")); err == nil || !strings.Contains(err.Error(), "pinned by hand") {
+		t.Fatalf("an accept planted on a packet row was not refused by name: %v", err)
+	}
 }
 
 // TestSchemaSharedHostileCorpusSources holds the source claim two ways. Each
@@ -175,8 +193,11 @@ func TestSchemaSharedHostileCorpusSources(t *testing.T) {
 		t.Fatal(err)
 	}
 	root := repoRoot(t)
+	cited := 0
 	for _, c := range cases {
-		for _, src := range hostilecorpus.CitedSources(c, hostilecorpus.SourceDirs) {
+		allCitedSources := hostilecorpus.CitedSources(c, hostilecorpus.SourceDirs)
+		for _, src := range allCitedSources {
+			cited++
 			p := filepath.Join(root, filepath.FromSlash(src))
 			fi, err := os.Stat(p)
 			if err != nil {
@@ -185,6 +206,9 @@ func TestSchemaSharedHostileCorpusSources(t *testing.T) {
 				t.Errorf("%s: source %s is not a regular file", c.Name, p)
 			}
 		}
+	}
+	if cited == 0 {
+		t.Fatal("no corpus case cites a source file: the existence check above checked nothing")
 	}
 	for _, u := range hostilecorpus.Uncovered(root, hostilecorpus.SourceDirs, cases) {
 		t.Errorf("source %s is cited by no corpus case: the all-seed/vector claim is not protected", u)
@@ -251,7 +275,6 @@ func TestSchemaSharedHostileCorpusSourcesNegativeControl(t *testing.T) {
 // check; with it, it rewrites the committed manifest.
 func TestSchemaSharedHostileCorpusGenerate(t *testing.T) {
 	t.Parallel()
-	t.Skip("layer 3 re-pins the shared hostile corpus manifest's verdicts and digests under the one read: docs/plans/strict-only.md")
 	root, tmp, dir := repoRoot(t), t.TempDir(), hostileCorpusDir(t)
 	manifest, meta, err := hostilecorpus.LoadManifest(dir)
 	if err != nil {

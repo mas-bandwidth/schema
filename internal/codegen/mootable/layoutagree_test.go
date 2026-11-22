@@ -169,7 +169,11 @@ var treeNodeRecord = regexp.MustCompile(`(\.record\("TreeNode", \{[^{]*fields = 
 func TestMooLayoutAgreementNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "moo (it loads the emitted cook layouts)")
 	t.Parallel()
-	for _, lu := range mooLayoutUnits(t) {
+	allMooLayoutUnits := mooLayoutUnits(t)
+	if len(allMooLayoutUnits) == 0 {
+		t.Fatal("mooLayoutUnits(t) is empty: the loop below would check nothing")
+	}
+	for _, lu := range allMooLayoutUnits {
 		if lu.key != "graphdemo" {
 			continue
 		}

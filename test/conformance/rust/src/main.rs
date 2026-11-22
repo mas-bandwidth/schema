@@ -2185,11 +2185,51 @@ fn message_codec(unit: &str, root: &str, ann: &[u8], wire: &[u8]) -> Option<Opti
         ("vocab9demo", "Wide19") => message_round_trip!(vocab9demo, Wide19Row, wide19_load_messages, wide19_measure_messages, wide19_save_messages, ann, wire),
         ("tblvarevo1", "EvoMsg") => message_round_trip!(tblvarevo1, EvoMsgRow, evo_msg_load_messages, evo_msg_measure_messages, evo_msg_save_messages, ann, wire),
         ("tblvarevo3", "EvoMsg") => message_round_trip!(tblvarevo3, EvoMsgRow, evo_msg_load_messages, evo_msg_measure_messages, evo_msg_save_messages, ann, wire),
+        ("messagedemo", "ToolMessage") => message_round_trip!(messagedemo, ToolMessageRow, tool_message_load_messages, tool_message_measure_messages, tool_message_save_messages, ann, wire),
+        _ => return None,
+    })
+}
+
+// One `message-batch` row (docs/SPEC-TABLES.md §3.3; FORMAT.md): the count
+// load_messages returned with room for every body.
+macro_rules! message_batch_count {
+    ($krate:ident, $row:ident, $load:ident, $ann:expr, $wire:expr) => {{
+        use $krate as k;
+        let mut storage = vec![k::TableMessageEntry::default(); 4096];
+        let mut vocabulary = k::TableVocabulary::new(&mut storage);
+        let mut report = k::TableReport::default();
+        if !k::announce_read(&mut vocabulary, $ann, &mut report) {
+            None
+        } else {
+            let mut values = vec![k::$row::default(); k::TABLE_MESSAGE_BATCH_MAX];
+            let mut loaded = k::TableReport::default();
+            let (count, _) = k::$load(&mut values, &vocabulary, $wire, &mut loaded);
+            Some(count)
+        }
+    }};
+}
+
+fn message_batch_codec(unit: &str, root: &str, ann: &[u8], wire: &[u8]) -> Option<Option<usize>> {
+    Some(match (unit, root) {
+        ("backenddemo", "StorePurchase") => message_batch_count!(backenddemo, StorePurchaseRow, store_purchase_load_messages, ann, wire),
         _ => return None,
     })
 }
 
 fn surface_message(manifest: &Manifest, out: &str) {
+    for f in manifest.of_kind("message-batch") {
+        // message-batch <case> <connection> <root> <wire>
+        let Some(c) = manifest.of_kind("connection").find(|c| c[1] == f[2]) else {
+            fail(&format!("message-batch {} names no connection {}", f[1], f[2]));
+        };
+        let ann = slurp(&c[4]);
+        let wire = slurp(&f[4]);
+        match message_batch_codec(c[2].as_str(), f[3].as_str(), &ann, &wire) {
+            Some(Some(count)) => spill(out, &f[1], format!("count {count}\n").as_bytes()),
+            Some(None) => fail(&format!("{}: the announcement did not read", f[1])),
+            None => fail(&format!("{}: no message-batch codec for {}.{}", f[1], c[2], f[3])),
+        }
+    }
     for f in manifest.of_kind("message") {
         let Some(c) = manifest.of_kind("connection").find(|c| c[1] == f[2]) else {
             fail(&format!("message {} names no connection {}", f[1], f[2]));

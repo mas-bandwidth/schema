@@ -375,12 +375,38 @@ local function f32_step(f, away)
   return string.unpack("<f", string.pack("<I4", sign | mag))
 end
 
--- compare the magnitude of the token's decimal value with |x|: -1, 0 or 1
+-- THE TOKEN'S DIGITS THE COMPARE NEEDS: a float32 midpoint m * 2^e (an odd
+-- 25-bit m, e >= -150) has at most 113 significant decimal digits, so a token
+-- within a double's rounding of one is decided by its first TOKEN_DIGITS
+-- significant digits and whether any nonzero digit follows them. The compare
+-- is then work bounded by the token's length, however many digits it carries.
+local TOKEN_DIGITS = 120
+
+-- compare the magnitude of the token's decimal value with |x|: -1, 0 or 1. x
+-- is the token's own double, a finite nonzero float32 midpoint.
 local function token_cmp(token, x)
   local int, frac, exp = token:match("^%-?(%d+)%.?(%d*)[eE]?([+-]?%d*)$")
+  local digits = int .. frac
   local k = (exp ~= "" and tonumber(exp) or 0) - #frac
-  local digits = (int .. frac):gsub("^0+", "")
-  if digits == "" then digits = "0" end
+  local first = digits:find("[1-9]")
+  if first == nil then return -1 end
+  local last = #digits
+  while digits:byte(last) == 48 do
+    last = last - 1
+  end
+  k = k + (#digits - last)
+  local sticky = false
+  if last - first + 1 > TOKEN_DIGITS then
+    -- the digits dropped hold a nonzero one, since the trailing zeros went first
+    k = k + (last - first + 1 - TOKEN_DIGITS)
+    last = first + TOKEN_DIGITS - 1
+    sticky = true
+  end
+  digits = digits:sub(first, last)
+  -- a magnitude far from every float32 is decided by its exponent alone
+  local magnitude = #digits + k
+  if magnitude > 60 then return 1 end
+  if magnitude < -120 then return -1 end
   -- |x| = m * 2^e exactly, from the double's own bits
   local bits = string.unpack("<I8", string.pack("<d", math.abs(x)))
   local be = (bits >> 52) & 0x7ff
@@ -404,7 +430,9 @@ local function token_cmp(token, x)
   else
     big_pow(left, 2, -e)
   end
-  return big_cmp(left, right)
+  local c = big_cmp(left, right)
+  if c == 0 and sticky then return 1 end
+  return c
 end
 
 local function nearest_f32(token, x, narrow)
@@ -496,10 +524,12 @@ local function skip_container(inp, close, depth, graph)
   inp.p = inp.p + 1
   local first = true
   local seen = close == "}" and {} or nil
+  local definition = nil -- the label entry this object defines, open until it closes
   while true do
     local c = peek(inp)
     if c == close then
       inp.p = inp.p + 1
+      if definition ~= nil then definition.open = false end
       return true
     end
     if c == nil then
@@ -526,25 +556,51 @@ local function skip_container(inp, close, depth, graph)
         return false
       end
       inp.p = inp.p + 1
-      if key ~= "" and key:sub(1, 1) == "&" and graph ~= nil then
+      if key ~= "" and key:sub(1, 1) == "&" then
         if not first or key ~= "&node" then
           inp.bad = true
           return false
         end
+        -- THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): a label alone
+        -- must name a definition already closed; fields after one must follow
+        -- a label not yet defined, and the definition is open until this
+        -- object closes. What the reader does not place is the value.
         local label = scan_label(inp)
         if label == nil then return false end
-        if graph[label] == nil then graph[label] = { node = nil, st = nil, open = false } end
         first = false
         c = peek(inp)
+        if c ~= close and c ~= "," then
+          inp.bad = true
+          return false
+        end
+        if graph == nil then
+          -- a unit with no pointer has no label table: the prefix is still held
+          -- to its grammar, and the value is skipped whole
+          inp.p = inp.p + 1
+          if c == close then return true end
+          goto continue
+        end
         if c == "," then
           inp.p = inp.p + 1
-          goto continue
-        elseif c == close then
+          c = peek(inp)
+        end
+        local entry = graph[label]
+        local bare = c == close
+        if bare ~= (entry ~= nil) then
+          inp.bad = true
+          return false
+        end
+        if bare then
+          if entry.open then
+            inp.bad = true
+            return false
+          end
           inp.p = inp.p + 1
           return true
         end
-        inp.bad = true
-        return false
+        definition = { node = nil, st = nil, open = true }
+        graph[label] = definition
+        goto continue
       end
     end
     first = false
@@ -554,6 +610,7 @@ local function skip_container(inp, close, depth, graph)
       inp.p = inp.p + 1
     elseif c == close then
       inp.p = inp.p + 1
+      if definition ~= nil then definition.open = false end
       return true
     else
       inp.bad = true
@@ -999,9 +1056,14 @@ local function wide_token_parts(token)
   while lead < #digits and digits:byte(lead + 1) == 48 do
     lead = lead + 1
   end
-  digits = digits:sub(lead + 1)
+  -- the trailing zeros by one backward scan: a pattern anchored at the end
+  -- retries from every zero of an inner run
+  local last = #digits
+  while last > lead and digits:byte(last) == 48 do
+    last = last - 1
+  end
+  digits = digits:sub(lead + 1, last)
   point = point - lead
-  digits = digits:gsub("0+$", "")
   return neg, digits, point
 end
 
@@ -1123,6 +1185,11 @@ local function wide_parse(token, kind, frac)
     return nil, false, false
   else
     local scale = point - #digits
+    -- A FRACTION FINER THAN F IS NEVER EXACT: the digits end in a nonzero
+    -- digit, so their value over 10^k needs k binary places, and k past F
+    -- is the wrong kind, refused before any decimal work (§16.2). What is
+    -- left is at most WIDE_BAND + F digits.
+    if scale < 0 and -scale > frac then return nil, false, false end
     mag = digits
     if scale >= 0 then
       if scale > 0 then mag = mag .. string.rep("0", scale) end
@@ -1680,6 +1747,9 @@ local function read_text_list(T, fd, _d, vf, inp, holder, key, depth, graph, rep
       return false
     end
   end
+  -- A COUNTED ARRAY SHORTER THAN ITS MIN (SPEC.md §5.1 row 3; tabletext
+  -- read.go refuses count_over_bound) is out of range.
+  if not fd.fixed and not fd.list and placed < (fd.min or 0) then report.outOfRange = report.outOfRange + 1 end
   holder[key] = out
   return true
 end
@@ -1755,6 +1825,9 @@ local function read_array(T, fd, inp, holder, key, depth, graph, report, table_n
       return false
     end
   end
+  -- A COUNTED ARRAY SHORTER THAN ITS MIN (SPEC.md §5.1 row 3; tabletext
+  -- read.go refuses count_over_bound) is out of range.
+  if not fd.fixed and not fd.list and placed < (fd.min or 0) then report.outOfRange = report.outOfRange + 1 end
   holder[key] = out
   return true
 end
@@ -2065,7 +2138,13 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
     local out = read_base64(inp, -1, report)
     if out == nil then return false end
     if report.kindChanged ~= before then
-      holder[key] = elem and false or nil
+      -- an element stores false (a sequence cannot hold nil), a field nil:
+      -- an explicit branch, since `elem and false or nil` is always nil
+      if elem then
+        holder[key] = false
+      else
+        holder[key] = nil
+      end
     else
       holder[key] = { value = out == false and "" or out }
     end
@@ -2121,7 +2200,13 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
       return false
     end
     if name == "None" then
-      holder[key] = elem and false or nil
+      -- an element stores false (a sequence cannot hold nil), a field nil:
+      -- an explicit branch, since `elem and false or nil` is always nil
+      if elem then
+        holder[key] = false
+      else
+        holder[key] = nil
+      end
       return true
     end
     for _, v in ipairs(d.variants) do
@@ -2140,7 +2225,13 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
         return true
       end
     end
-    holder[key] = elem and false or nil
+    -- an element stores false (a sequence cannot hold nil), a field nil:
+    -- an explicit branch, since `elem and false or nil` is always nil
+    if elem then
+      holder[key] = false
+    else
+      holder[key] = nil
+    end
     report.unknown = report.unknown + 1
     return true
   elseif s == "flags" then
@@ -2245,7 +2336,10 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
     end
     -- a compressed float is held to its declared [min, max] as the wire read
     -- holds it (docs/SPEC-TABLES.md §17.3, §16.2): a number past either end
-    -- counts outOfRange, which the strict read refuses, as place_integer does
+    -- counts outOfRange, which the strict read refuses, as place_integer does.
+    -- x is the float32 the token names and the ends are the declared
+    -- float32s, so the compare is at float32 (docs/SPEC.md §4.6); a -0 lands
+    -- as +0, uncounted (§3.3, ruling fixed-compressed-negzero)
     if d.fmin ~= nil and d.fmax ~= nil then
       if x < d.fmin then
         x = d.fmin
@@ -2253,6 +2347,8 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
       elseif x > d.fmax then
         x = d.fmax
         report.outOfRange = report.outOfRange + 1
+      elseif x == 0 then
+        x = 0.0
       end
     end
     holder[key] = x
@@ -3062,7 +3158,9 @@ write_value = function(T, d, val, depth, g, w, _elem)
     raw(w, val and "true" or "false")
     return true
   elseif s == "float" then
-    local text = float_text(val, d.f32)
+    -- a compressed float's -0 is written as +0 (§3.3, ruling
+    -- fixed-compressed-negzero)
+    local text = float_text(D.cf(d, val), d.f32)
     if text == nil then return false end
     raw(w, text)
     return true

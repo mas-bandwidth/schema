@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"hash/fnv"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	goruntime "runtime"
@@ -21,6 +20,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // THE LUA WIRE-FUZZ DIFFERENTIAL (docs/PORT-LUA.md, THE CARD MAP:
@@ -548,7 +549,7 @@ func runLuaFuzzDifferential(t *testing.T, edit func([]byte) []byte) luaFuzzResul
 			wg.Go(func() {
 				slots <- struct{}{}
 				defer func() { <-slots }()
-				c.out, c.err = luaFuzzRun(lua, g.dir, c.file)
+				c.out, c.err = luaFuzzRun(t, lua, g.dir, c.file)
 			})
 		}
 	}
@@ -592,8 +593,8 @@ func runLuaFuzzDifferential(t *testing.T, edit func([]byte) []byte) luaFuzzResul
 // luaFuzzRun runs one chunk's probe under the pinned interpreter with its
 // directory as the working directory and the whole of package.path, the
 // environment luarun.Run gives a probe, and returns stdout.
-func luaFuzzRun(lua, dir, wires string) ([]byte, error) {
-	cmd := exec.Command(lua, "main.lua", wires)
+func luaFuzzRun(t testing.TB, lua, dir, wires string) ([]byte, error) {
+	cmd := testproc.Command(t, lua, "main.lua", wires)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "LUA_PATH="+filepath.Join(dir, "?.lua")+";;", "LUA_INIT=")
 	var stdout, stderr bytes.Buffer
@@ -637,6 +638,9 @@ func TestLuaWireFuzzAgreesWithTheGoEngine(t *testing.T) {
 	slowtest.Gate(t, luaFuzzCost)
 	res := runLuaFuzzDifferential(t, nil)
 	t.Log(luaFuzzSummary(res))
+	if res.roots == 0 || res.mutants == 0 {
+		t.Fatalf("%s: the differential compared nothing", luaFuzzSummary(res))
+	}
 	if path := os.Getenv("SCHEMA_LUA_FUZZ_DIVERGENCES"); path != "" {
 		// every divergence, one per paragraph, for a reader classifying a red
 		if err := os.WriteFile(path, []byte(strings.Join(res.divergences, "\n")+"\n"), 0o644); err != nil {

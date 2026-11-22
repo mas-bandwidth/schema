@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 var allOptVerifyLangs = []string{
@@ -36,7 +38,7 @@ func TestOptVerifyCoversEveryPort(t *testing.T) {
 	root := repoRoot(t)
 
 	// 1. Discover SCHEMA_PORTS from non-dashed make/<lang>.mk files.
-	matches, err := filepath.Glob(filepath.Join(root, "make", "*.mk"))
+	matches, err := provesran.Glob(filepath.Join(root, "make", "*.mk"))
 	if err != nil {
 		t.Fatalf("glob make/*.mk: %v", err)
 	}
@@ -237,6 +239,7 @@ func TestOptVerifyFastWorkflowSelector(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel() // each case is its own bash over a read-only script
 			cmd := exec.Command("bash", "-euo", "pipefail", "-c", script.String())
 			cmd.Env = append(scriptEnv(os.Environ()), "files="+tc.files)
 			cmd.Dir = root

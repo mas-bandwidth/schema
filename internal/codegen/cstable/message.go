@@ -118,12 +118,17 @@ const tableMessageTypes = `
 public sealed class TableVocabulary
 {
     public int MaxEntries = 4096, MaxBytes = 65536;
+    // STRICT MODE IS OPT-IN (docs/SPEC-TABLES.md §3.3): false when the
+    // vocabulary is made, read once by the FIRST AnnounceRead and never after.
+    // Set, an announcement whose build version is not this unit's own is
+    // refused as build_version_mismatch and sets no vocabulary.
+    public bool Strict;
     public bool Announced { get; internal set; }
     public ulong BuildVersion { get; internal set; }
     internal bool Attempted;
     internal TableMessageEntry[] Entries = Array.Empty<TableMessageEntry>();
     public int Count { get { return Entries.Length; } }
-    public int RefBits { get { return Math.Max(1, System.Numerics.BitOperations.Log2((uint)Math.Max(1, Count)) + 1); } }
+    public int RefBits { get { return global::System.Math.Max(1, System.Numerics.BitOperations.Log2((uint)global::System.Math.Max(1, Count)) + 1); } }
 }
 internal sealed class TableMessageShape
 {
@@ -191,8 +196,8 @@ const tableMessageSource = `
                 shape.Delta = shape.QMax - shape.QMin;
                 float steps = shape.Delta / shape.QRes;
                 if (!float.IsFinite(shape.Delta) || !float.IsFinite(steps)) { return false; }
-                steps = Math.Clamp(steps, 1f, 4294967040f);
-                shape.Steps = (uint)Math.Ceiling(steps); shape.Bits = BitCount(shape.Steps);
+                steps = global::System.Math.Clamp(steps, 1f, 4294967040f);
+                shape.Steps = (uint)global::System.Math.Ceiling(steps); shape.Bits = BitCount(shape.Steps);
             }
             else if (shape.Packing != 0) { return false; }
         }
@@ -261,6 +266,13 @@ const tableMessageSource = `
             else { report.Unknown++; if (!r.Skip(kind)) { break; } }
         }
         if (!terminated || versions != 1 || vocabularies != 1) { Damage(report); return Finish(report, Verdict.Damaged); }
+        // "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3): refused
+        // by name, the peer's build version kept, no vocabulary set, never damage.
+        if (v.Strict && v.BuildVersion != tableOwnVocabulary.BuildVersion)
+        {
+            report.BuildVersionRemote = v.BuildVersion; report.BuildVersionOwn = tableOwnVocabulary.BuildVersion;
+            return Refuse(report, "build_version_mismatch");
+        }
         var entries = new System.Collections.Generic.List<TableMessageEntry>();
         var keys = new System.Collections.Generic.HashSet<string>(); bool node = false;
         while (payload.Has(1))
@@ -315,7 +327,8 @@ const tableMessageSource = `
     {
         if (f.WireGuard != null && !f.WireGuard(value)) { return false; }
         // text or bytes with a declared default elide at it, as Rides says
-        if (!f.Optional && f.Counted && f.DefaultBytes == null) { return f.GetCount(value) != 0; }
+        // and a [A..B] array born at A elides at its birth value, as Rides says
+        if (!f.Optional && f.Counted && f.DefaultBytes == null && f.ArrayMin == 0) { return f.GetCount(value) != 0; }
         return Rides(value, f);
     }
     static void MessageBody(ref BitWriter w, object value, TableTypeInfo type)
@@ -367,7 +380,7 @@ const tableMessageSource = `
             float normalized = (TableBitsToFloat((uint)bits) - shape.QMin) / shape.Delta;
             if (!(normalized >= 0)) { normalized = 0; } else if (!(normalized <= 1)) { normalized = 1; }
             float scaled = normalized * shape.Steps;
-            bits = Math.Min((uint)Math.Floor((double)(scaled + 0.5f)), shape.Steps);
+            bits = global::System.Math.Min((uint)global::System.Math.Floor((double)(scaled + 0.5f)), shape.Steps);
         }
         else if (shape.Packing == 1) { bits = unchecked(bits - shape.Base); }
         w.Put(bits, ValueBits(f.Kind, shape));

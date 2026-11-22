@@ -609,9 +609,12 @@ fn scalar_at(c: LoadCtx&, rep: LoadReport&, r: Rd&, out: LoadVal&, d: FieldDesc,
         }
         var keep: u32 = bits;
         if d.frange {
+            // the range is held AT FLOAT32 (SPEC.md §4.6, frange_holds)
             let v = f32_value(bits);
-            if v < d.flo { keep = f32_bits(d.flo as f32); rep.oor += 1; }
-            else if v > d.fhi { keep = f32_bits(d.fhi as f32); rep.oor += 1; }
+            if !frange_holds(v, d) {
+                keep = if v < d.flo { f32_bits(d.flo as f32) } else { f32_bits(d.fhi as f32) };
+                rep.oor += 1;
+            }
             else if v == 0.0 { keep = 0; } // a -0 lands as +0, uncounted (§3.3)
         }
         out.bits = Int128 { lo: keep, hi: 0 };
@@ -995,6 +998,11 @@ recursive fn load_array(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, framed: i6
             }
         } else if count > d.bound as! u64 {
             keep = d.bound as! u64;
+            c.report.oor += 1;
+        } else if !bytes && d.array == ArrayCounted && count < d.min as! u64 {
+            // a count below the declared Min is off the count's own range and
+            // refuses the read as the count past Max does (SPEC.md §5.1 row
+            // 3; tablewire decode.go refuses count_over_bound)
             c.report.oor += 1;
         }
         if widened { c.report.widened += 1; }
@@ -2239,7 +2247,18 @@ fn wire_check(data: const u8[:], at: i64, end: i64, ids_at: i64, ids_n: i64, ann
 
 // load_with is the one load both entry points share: load_table, and
 // load_table_retain (wire_retain.goose) with retention on.
+// load_with is load_run under the caller's stores' promise: a refused load
+// (-1) leaves the value and node tables the length they had, as <T>ToLoaded
+// restores them (value_bridge.go), never holding its partial entries.
 fn load_with(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal[>..]&, nodes: LoadNode[>..]&, report: LoadReport&, store: RetainStore&, retaining: bool) -> i64 {
+    let slots = vals.len;
+    let held = nodes.len;
+    let rec = load_run(unit, root, data, vals, nodes, report, store, retaining);
+    if rec < 0 { vals.resize(slots); nodes.resize(held); }
+    return rec;
+}
+
+fn load_run(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal[>..]&, nodes: LoadNode[>..]&, report: LoadReport&, store: RetainStore&, retaining: bool) -> i64 {
     for k in nodes.len { nodes[k] = LoadNode { tab: -1, blob: 0, off: 0, len: 0, val: -1, named: false }; }
     var c = LoadCtx { data: data, unit: unit, vals: vals, nodes: nodes, report: report, ids_at: 0, ids_n: 0, numbered: false, good: false, root_tab: -1, root_val: -1, cap: false, node_n: 0, retain: store, retaining: retaining };
     // THE FORM BYTE IS READ FIRST (§3): form 2 is a stream form and never a

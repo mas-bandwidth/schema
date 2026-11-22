@@ -1,0 +1,8 @@
+package mbytes
+
+// The reader: a bytes(8) field (SPEC-TABLES 3.3: bytes(N) and [..N]uint8 are
+// the same kind).
+fixed table M
+{
+    b bytes(8)
+}

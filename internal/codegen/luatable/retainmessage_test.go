@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,6 +13,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 type retainMessageCase struct {
@@ -183,7 +184,11 @@ func TestLuaRetainMessage(t *testing.T) {
 	slowtest.Gate(t, "go and the pinned lua")
 	newerFiles, olderFiles, probe, inputs := retainMessageSetup(t)
 	normal := runRetainProbe(t, newerFiles, olderFiles, probe, inputs)
-	for _, c := range retainMessageCases() {
+	allRetainMessageCases := retainMessageCases()
+	if len(allRetainMessageCases) == 0 {
+		t.Fatal("retainMessageCases() is empty: the loop below would check nothing")
+	}
+	for _, c := range allRetainMessageCases {
 		line := normal[c.name]
 		if !strings.HasPrefix(line, c.name+":true:") {
 			t.Errorf("%s: retain round trip %q, want %s:true", c.name, line, c.name)
@@ -348,7 +353,7 @@ func TestGoRetainMessageOracle(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("go", "test", "-count=1", "-run", "^TestGoRetainMessageOracle$", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", "-run", "^TestGoRetainMessageOracle$", ".")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("generated Go retain message oracle: %v\n%s", err, out)

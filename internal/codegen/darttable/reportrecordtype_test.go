@@ -19,7 +19,6 @@ package darttable
 import (
 	"encoding/hex"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -28,6 +27,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // sceneRecordTypeMutant is the fuzzer's record-type pass #1 mutant (seed
@@ -136,7 +137,7 @@ void main(List<String> args) {
 		t.Fatal(err)
 	}
 	output := filepath.Join(dir, "dart.wire")
-	cmd := exec.Command(dartBinary(t), "probe.dart", input, output)
+	cmd := testproc.Command(t, dartBinary(t), "probe.dart", input, output)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

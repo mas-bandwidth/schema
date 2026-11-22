@@ -20,12 +20,13 @@ package jstable
 import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestMessageFormConformanceJavaScript holds the JavaScript conformance
@@ -179,7 +180,11 @@ func stampRecipe(t *testing.T, target string) string {
 }
 
 // manifestMessageRoots is the manifest's distinct (unit, root) pairs, its unit
-// taken from the `connection` line each `message` row names, sorted.
+// taken from the `connection` line each `message` row names, sorted. A
+// `message-drift` row is a message row too: the harness hands the driver its
+// own connection on the READER's unit and a message on it (harness run.go), so
+// its (unit, root) is one the driver's row list must carry or the row reads
+// ABSENT.
 func manifestMessageRoots(t *testing.T) []string {
 	t.Helper()
 	_, connections, rows := parseMessageManifest(t)
@@ -191,6 +196,22 @@ func manifestMessageRoots(t *testing.T) []string {
 			t.Fatalf("message %s names connection %s, which no connection row declares", row.name, row.connection)
 		}
 		key := conn.unit + "/" + row.root
+		if !seen[key] {
+			seen[key] = true
+			roots = append(roots, key)
+		}
+	}
+	data, err := os.ReadFile("../../../testdata/conformance/tables/MANIFEST.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		// message-drift <name> <unit> <peer-conn> <root> <file> <peer wire> <resaved wire>
+		f := strings.Fields(line)
+		if len(f) != 8 || f[0] != "message-drift" {
+			continue
+		}
+		key := f[2] + "/" + f[4]
 		if !seen[key] {
 			seen[key] = true
 			roots = append(roots, key)
@@ -283,7 +304,7 @@ func assertDriverAnswersMessages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, filepath.Join(absRepo, "test", "conformance", "js", "main.mjs"), manifest, "message", out)
+	cmd := testproc.Command(t, node, filepath.Join(absRepo, "test", "conformance", "js", "main.mjs"), manifest, "message", out)
 	cmd.Dir = absRepo
 	cmd.Env = append(os.Environ(), "SCHEMA_JS_GENERATED="+tree)
 	if data, err := cmd.CombinedOutput(); err != nil {
@@ -387,7 +408,7 @@ func writeConformanceTree(t *testing.T, root string, units [][2]string) {
 		if err := os.MkdirAll(out, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		cmd := exec.Command("go", "run", "./cmd/schema", "generate", "--lang", "js", "--out", out, u[1])
+		cmd := testproc.Command(t, "go", "run", "./cmd/schema", "generate", "--lang", "js", "--out", out, u[1])
 		cmd.Dir = repo
 		if data, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("the shipped target refused the `%s` unit its message driver reads: %v\n%s", u[1], err, data)

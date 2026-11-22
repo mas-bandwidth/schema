@@ -31,7 +31,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -42,6 +41,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestMessageFormAnnounceElixir(t *testing.T) {
@@ -163,7 +164,11 @@ func TestMessageFormAnnounceElixir(t *testing.T) {
 		}
 		var probe strings.Builder
 		probe.WriteString("  {:ok, _} = M.announce_read(File.read!(file()))\n")
-		for _, c := range announcementFirstUseBreaks(t, lawful) {
+		allAnnouncementFirstUseBreaks := announcementFirstUseBreaks(t, lawful)
+		if len(allAnnouncementFirstUseBreaks) == 0 {
+			t.Fatal("announcementFirstUseBreaks(t, lawful) is empty: the loop below would check nothing")
+		}
+		for _, c := range allAnnouncementFirstUseBreaks {
 			var vocab tablewire.Vocabulary
 			err := vocab.AnnounceRead(c.wire, &tabletext.Report{})
 			if tablewire.RefusalReason(err) != "wire_damaged" || !strings.Contains(err.Error(), "first-use order") || vocab.Announced() {
@@ -390,7 +395,7 @@ Probe.run()
 	if err := os.WriteFile(filepath.Join(dir, "probe.exs"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(elixirBin, "-r", TableMessageModule+".ex", "probe.exs")
+	cmd := testproc.Command(t, elixirBin, "-r", TableMessageModule+".ex", "probe.exs")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	out, err := cmd.CombinedOutput()

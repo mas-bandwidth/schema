@@ -1281,6 +1281,10 @@ writeScalar = function(T, d, val, depth, g, out) {
     case "float": {
       // only a number is a float's value, refused before it is converted
       if (typeof val != "float" && typeof val != "integer") return false;
+      // a compressed float's -0 is written as +0 (docs/SPEC-TABLES.md §3.3)
+      // judged at the field's width, so a tiny negative that narrows to a
+      // float32 -0 is written as +0 too
+      if (has(d, "fmin") && (d.f32 ? widenF32(narrowF32(val.tofloat(), 0)[0]) : val) == 0) val = 0.0;
       local t = floatText(val, d.f32);
       if (t == null) return false; // a non-finite float (§16.3)
       if (!floatAdmitted(d, val)) return false;
@@ -1649,17 +1653,6 @@ local scanLabel = function(r) {
 
 local skipValue, skipContainer;
 
-// a skipped OBJECT may still be a pointer's: an "&node" opening it names a
-// node the storage could not hold, and the label still exists (§16.7). A
-// FIXED root skips the value whole: what it does not place it does not police.
-local skippedAmpersand = function(r, key) {
-  if (r.graph == null || key != "&node") return false;
-  local label = scanLabel(r);
-  if (label == null) return false;
-  if (!(label in r.graph)) r.graph[label] <- { node = null, c = null, open = false };
-  return true;
-};
-
 skipValue = function(r, depth) {
   local c = peek(r);
   if (c == '{') return skipContainer(r, '}', depth);
@@ -1689,9 +1682,10 @@ skipContainer = function(r, close, depth) {
   r.p++;
   local first = true;
   local keys = null;
+  local definition = null; // the label entry this object defines, open until it closes
   for (;;) {
     local c = peek(r);
-    if (c == close) { r.p++; return true; }
+    if (c == close) { r.p++; if (definition != null) definition.open = false; return true; }
     if (c == 0) { r.bad = true; return false; }
     if (close == '}') {
       local key = scanHeldKey(r);
@@ -1703,21 +1697,44 @@ skipContainer = function(r, close, depth) {
       if (keys == null) keys = {};
       if (key in keys) { r.bad = true; return false; }
       keys[key] <- true;
-      if (key.len() > 0 && key[0] == '&' && r.graph != null) {
-        if (!first || !skippedAmpersand(r, key)) { r.bad = true; return false; }
+      if (key.len() > 0 && key[0] == '&') {
+        // THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): a label alone
+        // must name a definition already closed; fields after one must follow
+        // a label not yet defined, and the definition is open until this
+        // object closes. A FIXED root skips the value whole: what it does not
+        // place it does not police.
+        if (!first || key != "&node") { r.bad = true; return false; }
         first = false;
+        local label = scanLabel(r);
+        if (label == null) return false;
         c = peek(r);
-        if (c == ',') { r.p++; continue; }
-        if (c == close) { r.p++; return true; }
-        r.bad = true;
-        return false;
+        if (c != close && c != ',') { r.bad = true; return false; }
+        if (r.graph == null) {
+          // a unit with no pointer has no label table: the prefix is still held
+          // to its grammar, and the value is skipped whole
+          r.p++;
+          if (c == close) return true;
+          continue;
+        }
+        if (c == ',') { r.p++; c = peek(r); }
+        local bare = c == close;
+        local entry = (label in r.graph) ? r.graph[label] : null;
+        if (bare != (entry != null)) { r.bad = true; return false; }
+        if (bare) {
+          if (entry.open) { r.bad = true; return false; }
+          r.p++;
+          return true;
+        }
+        definition = { node = null, c = null, open = true };
+        r.graph[label] <- definition;
+        continue;
       }
     }
     first = false;
     if (!skipValue(r, depth + 1)) return false;
     c = peek(r);
     if (c == ',') { r.p++; continue; }
-    if (c == close) { r.p++; return true; }
+    if (c == close) { r.p++; if (definition != null) definition.open = false; return true; }
     r.bad = true;
     return false;
   }
@@ -1979,6 +1996,10 @@ readArray = function(T, c, fd, r, v, depth) {
     return false;
   }
   if (!fixed && out.len() > placed) out.resize(placed);
+  // a counted array closed below its declared Min is off the count's own
+  // range, refused as the count past Max is (docs/SPEC.md §5.1 row 3;
+  // tabletext read.go readArray)
+  if (fd.counted && placed < fd.min) r.report.oor++;
   return true;
 };
 

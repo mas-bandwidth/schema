@@ -19,15 +19,23 @@ package pythontable
 // of the emitted runtime and requires every construct to go red.
 
 import (
+	"bytes"
 	"fmt"
 	"math/big"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 type wideVTConstruct struct{ name, schema, root, json string }
@@ -257,12 +265,27 @@ func wideNarrowWire(t *testing.T, u *ir.Unit, root, field string) []byte {
 // returns the findings and the number of probe runs that held.
 func wideCellFailures(t *testing.T, mutate func(map[string][]byte)) (fails []string, held int) {
 	t.Helper()
-	for _, c := range wideVTConstructs {
+	slowtest.Gate(t, "both pinned Python interpreters and strict mypy")
+	currentPy := pyrun.Interpreter(t)
+	floorPy := pyrun.Floor(t)
+	var mypyBin string
+	if mutate == nil {
+		mypyBin = pyrun.Mypy(t)
+	}
+	type preparedCell struct {
+		name     string
+		pkg      string
+		dir      string
+		want     string
+		buildErr string
+	}
+	cells := make([]preparedCell, len(wideVTConstructs))
+	for i, c := range wideVTConstructs {
 		u := loadUnit(t, c.schema)
 		wire := wideEngineWire(t, u, c.root, c.json)
 		files, err := Generate(u)
 		if err != nil {
-			fails = append(fails, fmt.Sprintf("%s: the backend refuses it: %v", c.name, err))
+			cells[i] = preparedCell{name: c.name, buildErr: fmt.Sprintf("%s: the backend refuses it: %v", c.name, err)}
 			continue
 		}
 		if mutate != nil {
@@ -271,35 +294,73 @@ func wideCellFailures(t *testing.T, mutate func(map[string][]byte)) (fails []str
 		dir := t.TempDir()
 		writeTree(t, dir, files)
 		main := wideProbeSource(u.Package, c.root)
-		want := fmt.Sprintf("same %d", len(wire))
-		for _, pin := range []struct {
-			name string
-			path func(testing.TB) string
-		}{
-			{"current", pyrun.Interpreter},
-			{"floor", pyrun.Floor},
-		} {
-			stdout, stderr, err := pyrun.Try(t, pin.path(t), dir, "main.py", map[string][]byte{
-				"main.py": []byte(main),
-				"wire":    wire,
-			})
-			if err != nil {
-				fails = append(fails, fmt.Sprintf("%s (%s): the probe went red: %v\n%s", c.name, pin.name, err, strings.TrimSpace(stderr)))
-				continue
-			}
-			held++
-			if got := strings.TrimSpace(stdout); got != want {
-				fails = append(fails, fmt.Sprintf("%s (%s): %q, want %q", c.name, pin.name, got, want))
-			}
+		if err := os.WriteFile(filepath.Join(dir, "main.py"), []byte(main), 0o644); err != nil {
+			t.Fatal(err)
 		}
-		if mutate == nil {
-			if out, err := pyrun.Analyze(t, dir, u.Package); err != nil {
-				fails = append(fails, fmt.Sprintf("%s: mypy --strict over the generated package:\n%s", c.name, out))
-			}
-			if out, err := pyrun.Analyze(t, dir, u.Package+"/_schema"); err != nil {
-				fails = append(fails, fmt.Sprintf("%s: mypy --strict over the runtime:\n%s", c.name, out))
-			}
+		if err := os.WriteFile(filepath.Join(dir, "wire"), wire, 0o644); err != nil {
+			t.Fatal(err)
 		}
+		cells[i] = preparedCell{
+			name: c.name,
+			pkg:  u.Package,
+			dir:  dir,
+			want: fmt.Sprintf("same %d", len(wire)),
+		}
+	}
+
+	type cellResult struct {
+		fails []string
+		held  int
+	}
+	results := make([]cellResult, len(cells))
+	sem := make(chan struct{}, max(1, runtime.GOMAXPROCS(0)))
+	var wg sync.WaitGroup
+	for i, cell := range cells {
+		if cell.buildErr != "" {
+			results[i].fails = []string{cell.buildErr}
+			continue
+		}
+		wg.Go(func() {
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			var res cellResult
+			for _, pin := range []struct {
+				name string
+				bin  string
+			}{
+				{"current", currentPy},
+				{"floor", floorPy},
+			} {
+				cmd := testproc.Command(t, pin.bin, "-W", "error", "-I", "-B", "main.py")
+				cmd.Dir = cell.dir
+				var out, errb bytes.Buffer
+				cmd.Stdout = &out
+				cmd.Stderr = &errb
+				if err := cmd.Run(); err != nil {
+					res.fails = append(res.fails, fmt.Sprintf("%s (%s): the probe went red: %v\n%s", cell.name, pin.name, err, strings.TrimSpace(errb.String())))
+					continue
+				}
+				res.held++
+				if got := strings.TrimSpace(out.String()); got != cell.want {
+					res.fails = append(res.fails, fmt.Sprintf("%s (%s): %q, want %q", cell.name, pin.name, got, cell.want))
+				}
+			}
+			if mutate == nil {
+				for _, target := range []string{cell.pkg, cell.pkg + "/_schema"} {
+					cmd := testproc.Command(t, mypyBin, "--strict", "--python-version", "3.11", "--no-color-output", "--cache-dir", filepath.Join(cell.dir, ".mypy_cache"), target)
+					cmd.Dir = cell.dir
+					if out, err := cmd.CombinedOutput(); err != nil {
+						res.fails = append(res.fails, fmt.Sprintf("%s: mypy --strict over %s:\n%s", cell.name, target, out))
+					}
+				}
+			}
+			results[i] = res
+		})
+	}
+	wg.Wait()
+	for _, r := range results {
+		fails = append(fails, r.fails...)
+		held += r.held
 	}
 	return fails, held
 }
@@ -326,6 +387,7 @@ func TestPythonVtWide(t *testing.T) {
 // Functional (pyrun): run with SCHEMA_SLOW=1.
 func TestPythonVtWideRefused(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "both pinned Python interpreters")
 	const schema = `package wide
 
 table Narrow

@@ -60,6 +60,8 @@ let report = schema_rt.LoadReport {}
 let rec = schema_rt.json_read("Root", seed, report)
 assert rec
 let before = schema_rt.save(rec)
+// a refused read leaves the record at its declared defaults (§6.5)
+let fresh = schema_rt.save(schema_rt.new_record(schema_rt.table_of("Root")))
 def probe(i:int, accept:bool):
     let input = read_file("input{i}")
     assert input
@@ -74,7 +76,7 @@ def probe(i:int, accept:bool):
         assert schema_rt.json_read_into(rec, seed, schema_rt.LoadReport {})
     else:
         assert report.refused
-        assert schema_rt.save(rec) == before
+        assert schema_rt.save(rec) == fresh
         assert schema_rt.json_read_into(rec, seed, report)
         assert not report.refused and report.reason == "" and report.unknown == 0
     assert schema_rt.save(rec) == before
@@ -243,7 +245,7 @@ print(if value: "read" else: "refused")
 	if out := string(lobsterrun.Run(t, g.dir, "main.lobster", inputs)); out != "refused\n" {
 		t.Fatalf("duplicate read: %q", out)
 	}
-	patchJson(t, g, "        if r.key_order(sorted[i - 1], sorted[i]) == 0:\n            return j_refuse(r, \"duplicate_key\")", "        if r.key_order(sorted[i - 1], sorted[i]) == 0 and length(sorted) < 0:\n            return j_refuse(r, \"duplicate_key\")")
+	patchJson(t, g, "        if set.slots[at] == key:\n            return j_refuse(r, \"duplicate_key\")", "        if set.slots[at] == key and length(key) < 0:\n            return j_refuse(r, \"duplicate_key\")")
 	if out := string(lobsterrun.Run(t, g.dir, "main.lobster", inputs)); out != "read\n" {
 		t.Fatalf("negative control did not expose dropped duplicate detection: %q", out)
 	}

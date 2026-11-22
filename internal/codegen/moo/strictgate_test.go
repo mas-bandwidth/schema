@@ -10,7 +10,6 @@ import (
 	"io/fs"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -19,6 +18,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // THE MOO STRICT ANALYZER GATE (make/schema-moo-generated-analyze-strict-gate.mk,
@@ -188,7 +189,7 @@ func strictGateAnalyzer(t *testing.T) string {
 	if analyze == "" {
 		t.Fatalf("tool missing: moo-analyze: %s", why)
 	}
-	if err := strictGatePinned(analyze); err != nil {
+	if err := strictGatePinned(t, analyze); err != nil {
 		t.Fatalf("schema-moo-generated-analyze-strict-gate: REFUSED: %v", err)
 	}
 	return analyze
@@ -197,7 +198,7 @@ func strictGateAnalyzer(t *testing.T) string {
 // strictGateRelease is what the pinned moo prints for --version.
 const strictGateRelease = "moo 1.3.0 (Luau 0.741)"
 
-func strictGatePinned(analyze string) error {
+func strictGatePinned(t testing.TB, analyze string) error {
 	dir := filepath.Dir(analyze)
 	pin, err := os.ReadFile(filepath.Join(dir, "PIN"))
 	if errors.Is(err, fs.ErrNotExist) && filepath.Base(dir) == "bin" {
@@ -212,7 +213,7 @@ func strictGatePinned(analyze string) error {
 	if got := strings.TrimSpace(string(pin)); got != moorun.Pin {
 		return fmt.Errorf("the analyzer %s is moo %s, not the pin %s (MOO_PIN in make/moo.mk)", analyze, got, moorun.Pin)
 	}
-	out, err := exec.Command(filepath.Join(dir, "moo"), "--version").CombinedOutput()
+	out, err := testproc.Command(t, filepath.Join(dir, "moo"), "--version").CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("the moo beside the analyzer %s does not run: %w", analyze, err)
 	}
@@ -287,11 +288,11 @@ func TestMooStrictGateResolvesThePinnedAnalyzer(t *testing.T) {
 
 // strictGateAnalyze runs ONE analyzer process over files (paths relative to
 // dir) in strict mode with GNU-format diagnostics, and returns its output.
-func strictGateAnalyze(analyze, dir string, files []string) ([]byte, error) {
+func strictGateAnalyze(t testing.TB, analyze, dir string, files []string) ([]byte, error) {
 	if len(files) == 0 {
 		return nil, fmt.Errorf("no files to analyze")
 	}
-	cmd := exec.Command(analyze, append([]string{"--mode=strict", "--formatter=gnu"}, files...)...)
+	cmd := testproc.Command(t, analyze, append([]string{"--mode=strict", "--formatter=gnu"}, files...)...)
 	cmd.Dir = dir
 	return cmd.CombinedOutput()
 }
@@ -368,7 +369,11 @@ func TestMooGeneratedAnalyzeStrictGate(t *testing.T) {
 	root, files, written := strictGateWrite(t, generated)
 	// The runtime is in the analyzed set by name, every module of both
 	// surfaces' runtimes.
-	for name := range strictGateRuntime() {
+	allStrictGateRuntime := strictGateRuntime()
+	if len(allStrictGateRuntime) == 0 {
+		t.Fatal("strictGateRuntime() is empty: the loop below would check nothing")
+	}
+	for name := range allStrictGateRuntime {
 		found := false
 		for _, f := range files {
 			if filepath.Base(f) == name {
@@ -380,7 +385,7 @@ func TestMooGeneratedAnalyzeStrictGate(t *testing.T) {
 			t.Errorf("the runtime module %s is not in the analyzed set", name)
 		}
 	}
-	out, err := strictGateAnalyze(analyze, root, files)
+	out, err := strictGateAnalyze(t, analyze, root, files)
 	if len(bytes.TrimSpace(out)) != 0 {
 		t.Fatalf("moo-analyze --mode=strict is not silent over the generated corpus (%d files):\n%s", len(files), out)
 	}
@@ -430,7 +435,7 @@ func TestMooGeneratedAnalyzeStrictGatePlantedPattern(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			root, files, _ := strictGateWrite(t, []map[string][]byte{out})
-			if got, err := strictGateAnalyze(analyze, root, files); err != nil || len(bytes.TrimSpace(got)) != 0 {
+			if got, err := strictGateAnalyze(t, analyze, root, files); err != nil || len(bytes.TrimSpace(got)) != 0 {
 				t.Fatalf("the clean generated unit is not silent (err %v):\n%s", err, got)
 			}
 			target := filepath.Join(root, "u000", "Wire.moo")
@@ -447,7 +452,7 @@ func TestMooGeneratedAnalyzeStrictGatePlantedPattern(t *testing.T) {
 			if err := os.WriteFile(target, data, 0o644); err != nil {
 				t.Fatal(err)
 			}
-			got, err := strictGateAnalyze(analyze, root, files)
+			got, err := strictGateAnalyze(t, analyze, root, files)
 			if len(bytes.TrimSpace(got)) == 0 {
 				t.Fatalf("moo-analyze --mode=strict stayed silent over the planted %s: the gate has no blade", c.kind)
 			}
@@ -528,10 +533,10 @@ func TestMooGeneratedAnalyzeStrictGatePinNegativeControl(t *testing.T) {
 		{"beside", beside},
 		{"prefix", prefix},
 	} {
-		if err := strictGatePinned(layout.place(moorun.Pin)); err != nil {
+		if err := strictGatePinned(t, layout.place(moorun.Pin)); err != nil {
 			t.Fatalf("%s: the true pin was refused, so a refusal below would prove nothing: %v", layout.name, err)
 		}
-		err := strictGatePinned(layout.place(other))
+		err := strictGatePinned(t, layout.place(other))
 		if err == nil {
 			t.Fatalf("%s: an analyzer whose PIN names %s was accepted as the pin %s: the version check has no blade", layout.name, other, moorun.Pin)
 		}
@@ -542,10 +547,10 @@ func TestMooGeneratedAnalyzeStrictGatePinNegativeControl(t *testing.T) {
 	}
 	shadowed := prefix(moorun.Pin)
 	writePin(filepath.Dir(shadowed), other)
-	if err := strictGatePinned(shadowed); err == nil || !strings.Contains(err.Error(), other) {
+	if err := strictGatePinned(t, shadowed); err == nil || !strings.Contains(err.Error(), other) {
 		t.Fatalf("a PIN beside the analyzer naming %s was overridden by the true PIN in its prefix: %v", other, err)
 	}
-	if err := strictGatePinned(tools(filepath.Join(t.TempDir(), "bin"))); err == nil || !strings.Contains(err.Error(), "no PIN file") {
+	if err := strictGatePinned(t, tools(filepath.Join(t.TempDir(), "bin"))); err == nil || !strings.Contains(err.Error(), "no PIN file") {
 		t.Fatalf("an analyzer with no PIN beside it or in its prefix was not refused as unpinned: %v", err)
 	}
 }

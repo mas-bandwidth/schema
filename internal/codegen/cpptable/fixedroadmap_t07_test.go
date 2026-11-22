@@ -26,13 +26,14 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // cppT07Run generates `src` under base, compiles a C++ probe whose main() is
@@ -97,10 +98,10 @@ int main( void )
 	}
 	args := append([]string{"-std=c++17", "-O1", "-I" + outDir,
 		filepath.Join(outDir, "probe.cpp"), "-o", filepath.Join(outDir, "probe")}, extra...)
-	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, cxx, args...).CombinedOutput(); err != nil {
 		return out, fmt.Errorf("the probe did not compile: %w", err)
 	}
-	return exec.Command(filepath.Join(outDir, "probe")).CombinedOutput()
+	return testproc.Command(t, filepath.Join(outDir, "probe")).CombinedOutput()
 }
 
 // cppT07Header is the printed C++ for `src` under base, which is what the

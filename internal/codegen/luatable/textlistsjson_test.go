@@ -12,7 +12,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -21,6 +20,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // jsonTextListsSchema is the bounded text-list binary card's unit: the four
@@ -267,7 +268,7 @@ func TestOracleTotal(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "oracle_total_test.go"), []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("go", "test", "-count=1", "-timeout", "600s", "-run", "^TestOracleTotal$", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", "-timeout", "600s", "-run", "^TestOracleTotal$", ".")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GOFLAGS=-mod=readonly", "NOVA_TEST_NO_HOST=1")
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -377,7 +378,7 @@ func TestOracle(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "oracle_test.go"), []byte(src.String()), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("go", "test", "-count=1", "-timeout", "600s", "-run", "^TestOracle$", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", "-timeout", "600s", "-run", "^TestOracle$", ".")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GOFLAGS=-mod=readonly", "NOVA_TEST_NO_HOST=1")
 	if out, err := cmd.CombinedOutput(); err != nil {

@@ -30,7 +30,7 @@ env:
   PGROUP_GO_TEST_TIMEOUT: '0'
   GOFLAGS: -mod=readonly
   NOVA_TEST_NO_HOST: '1'
-  SERIALIZE_CS_TAG: v2.0.1
+  SERIALIZE_CS_TAG: v2.2.1
 
 jobs:
   corpus:
@@ -47,7 +47,7 @@ jobs:
         run: |
           rm -rf "$RUNNER_TEMP/serialize.cs"
           git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git "$RUNNER_TEMP/serialize.cs"
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
           # no Actions cache: the fleet runner keeps its own warm Go cache
@@ -80,7 +80,7 @@ jobs:
         run: |
           rm -rf "$RUNNER_TEMP/serialize.cs"
           git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git "$RUNNER_TEMP/serialize.cs"
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
           # no Actions cache: the fleet runner keeps its own warm Go cache

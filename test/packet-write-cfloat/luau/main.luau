@@ -2,7 +2,9 @@
 local serialize = require("./serialize")
 local c = require("./CFloat")
 local cases: { { name: string, value: number, written: boolean, expected: number } } = require("./cases") :: any
+local ran = 0
 for _, case in cases do
+    ran += 1
     local value = c.NewCFloat()
     value.X = case.value
     local stream = serialize.WriteStream.new(buffer.create(8))
@@ -18,4 +20,8 @@ for _, case in cases do
         end
     end
 end
-print("packet-write-cfloat Luau: all cases passed")
+-- The last stdout line is the count tools/mustrun reads. The first failed case
+-- raises above; an empty case list is a failure (it used to print "all cases
+-- passed" and exit 0).
+if ran == 0 then error("FAILED: packet-write-cfloat ran no case") end
+print(string.format("packet-write-cfloat Luau: ran %d, failed 0", ran))

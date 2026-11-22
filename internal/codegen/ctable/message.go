@@ -58,7 +58,7 @@ func tableMessageForm(u *ir.Unit, hasProbes bool) string {
 	var b strings.Builder
 	b.WriteString("#ifndef SCHEMA_" + strings.ToUpper(u.Package) + "_TABLE_MESSAGE\n#define SCHEMA_" + strings.ToUpper(u.Package) + "_TABLE_MESSAGE\n")
 	entries, announcement := tablewire.MessageVocabulary(u), tablewire.Announce(u)
-	fmt.Fprintf(&b, "enum { kTableMessageRefBitsHere=%d, kTableMessageEntriesHere=%d, kTableAnnounceBytes=%d, kTableMessageBatchMax=256 };\n", ir.TableMessageRefBits(len(entries)), len(entries), len(announcement))
+	fmt.Fprintf(&b, "enum { kTableMessageRefBitsHere=%d, kTableMessageEntriesHere=%d, kTableAnnounceBytes=%d, kTableMessageBatchMax=256, kTableMessageSeenRefs=8192 };\n", ir.TableMessageRefBits(len(entries)), len(entries), len(announcement))
 	b.WriteString("static const uint8_t kTableAnnounce[kTableAnnounceBytes]={")
 	for _, v := range announcement {
 		fmt.Fprintf(&b, "0x%02x,", v)
@@ -100,7 +100,7 @@ func tableMessageForm(u *ir.Unit, hasProbes bool) string {
 	b.WriteString(bits)
 	b.WriteString(cMessageNumbers)
 	b.WriteString(cMessageShape)
-	b.WriteString(cMessageAnnounce)
+	b.WriteString(strings.ReplaceAll(cMessageAnnounce, "@BUILD_VERSION@", buildVersionName(u.Package)))
 	b.WriteString(cMessageRead)
 	b.WriteString("\n#endif\n")
 	return b.String()
@@ -182,6 +182,7 @@ typedef struct TableMessageEntry {
  int16_t value_bits,elem_value_bits;
  uint8_t kind,packing,elem_kind,elem_packing;
  uint16_t own_slot; /* exact compiled encoded-entry identity, zero for another shape */
+ uint16_t id_slot; /* the first slot announcing this entry's id: a body's repeat check keys on it */
 } TableMessageEntry;
 typedef struct TableMessageShapeFacts {
  uint8_t packing,elem_kind; int64_t value_bits,base_lo,base_hi,min,max;
@@ -190,13 +191,23 @@ typedef struct TableMessageShapeFacts {
 typedef struct TableVocabulary {
  TableMessageEntry * entries;int64_t max_entries,count,ref_bits;
  uint64_t build_version;int announced,refused;int64_t max_bytes;
+ /* STRICT MODE IS OPT-IN (docs/SPEC-TABLES.md §3.3): zero when the vocabulary
+    is made, read once by the FIRST announce_read and never after. Set, an
+    announcement whose build version is not this unit's own is refused as
+    SCHEMA_TABLE_BUILD_VERSION_MISMATCH and sets no vocabulary. */
+ int strict;
 } TableVocabulary;
 #ifndef SCHEMA_TABLE_MESSAGE_REASONS
 #define SCHEMA_TABLE_MESSAGE_REASONS
-enum { SCHEMA_TABLE_NO_VOCABULARY=3,SCHEMA_TABLE_SECOND_ANNOUNCEMENT=4,SCHEMA_TABLE_VOCABULARY_TOO_LARGE=5,SCHEMA_TABLE_BATCH_TOO_LARGE=6 };
+enum { SCHEMA_TABLE_NO_VOCABULARY=3,SCHEMA_TABLE_SECOND_ANNOUNCEMENT=4,SCHEMA_TABLE_VOCABULARY_TOO_LARGE=5,SCHEMA_TABLE_BATCH_TOO_LARGE=6,SCHEMA_TABLE_BUILD_VERSION_MISMATCH=22 };
 #endif
 static SCHEMA_UNUSED TableVocabulary table_vocabulary(TableMessageEntry * storage,int64_t capacity)
 {TableVocabulary v;memset(&v,0,sizeof(v));v.entries=storage;v.max_entries=capacity;v.max_bytes=65536;return v;}
+/* max_bytes is the announcement's byte bound, 64 KiB by the protocol (§3.3).
+   A caller may raise it, but the entry count stays held below
+   kTableMessageSeenRefs (8192): announce_read refuses a larger vocabulary as
+   vocabulary_too_large, whatever max_bytes and the capacity allow, so every
+   resolved reference stays inside a body's seen set. */
 static SCHEMA_UNUSED int table_message_leb(const uint8_t * in,int64_t size,int64_t * at,uint64_t * value)
 {
  TableReader r=table_reader_make(in,size,NULL);r.offset=*at;
@@ -293,10 +304,22 @@ static SCHEMA_UNUSED int table_announce_once(TableVocabulary * v,const uint8_t *
   report->unknown++;if(!table_reader_skip_checked(&r,kind,0))goto damaged;
  }
  if(seen_version!=1||seen_words!=1||r.offset!=r.size||next_ref-1!=r.id_count)goto damaged;
+ /* "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3): refused by
+    name, the peer's build version kept, no vocabulary set, never damage. The
+    report carries both versions, the peer's (remote) and this unit's (own). */
+ if(v->strict && v->build_version!=@BUILD_VERSION@){
+  report->refused=1;report->reason=SCHEMA_TABLE_BUILD_VERSION_MISMATCH;
+  report->build_version_remote=v->build_version;report->build_version_own=@BUILD_VERSION@;return 0;
+ }
  while(at<words_bytes){
   TableMessageEntry * entry;int64_t i,began=at;
   if(v->entries==NULL){report->refused=1;report->reason=SCHEMA_TABLE_NO_VOCABULARY;goto refused;}
-  if(count>=v->max_entries){report->refused=1;report->reason=SCHEMA_TABLE_VOCABULARY_TOO_LARGE;goto refused;}
+  /* THE ENTRY BOUND IS THE CALLER'S CAPACITY (§3.3), and a body's seen set
+     covers every reference up to kTableMessageSeenRefs. An entry is at least
+     nine bytes, so the 64 KiB byte bound holds at most 7281 and the second
+     test never binds a conforming announcement; it keeps every resolved
+     reference tracked even where a caller raised max_bytes. */
+  if(count>=v->max_entries||count>=kTableMessageSeenRefs){report->refused=1;report->reason=SCHEMA_TABLE_VOCABULARY_TOO_LARGE;goto refused;}
   entry=&v->entries[count];touched=count+1;
   if(!table_message_entry_read(words,words_bytes,&at,entry))goto damaged;
   if(entry->id==UINT64_C(0xfffffffffffffffe)||entry->id==UINT64_C(0xfffffffffffffffd))goto damaged;
@@ -313,6 +336,11 @@ static SCHEMA_UNUSED int table_announce_once(TableVocabulary * v,const uint8_t *
  at=0;{int64_t i;for(i=0;i<count;i++){int64_t began=at;
   if(!table_message_entry_read(words,words_bytes,&at,v->entries+i))goto damaged;
   v->entries[i].own_slot=table_message_own_slot(words+began,at-began);
+  /* ONE ID, ONE NAME (§3.2, §3.3): an id announced at two shapes is one
+     field, so every slot carrying it shares the first slot's ordinal and a
+     body naming it through both repeats it. */
+  {int64_t j;v->entries[i].id_slot=(uint16_t)(i+1);
+   for(j=0;j<i;j++)if(v->entries[j].id==v->entries[i].id){v->entries[i].id_slot=v->entries[j].id_slot;break;}}
  }}
  v->count=count;v->ref_bits=table_bits_required(0,count);if(v->ref_bits==0)v->ref_bits=1;v->announced=1;return 1;
 damaged:

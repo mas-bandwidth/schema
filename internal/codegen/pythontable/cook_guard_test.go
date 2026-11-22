@@ -41,7 +41,11 @@ try: cook.cook(r)
 except InvalidValue: print("OK")
 else: raise AssertionError("inactive-guard")
 `
-	for name, runner := range cookPins() {
+	allCookPins := cookPins()
+	if len(allCookPins) == 0 {
+		t.Fatal("cookPins() is empty: the loop below would check nothing")
+	}
+	for name, runner := range allCookPins {
 		dir := t.TempDir()
 		writeTree(t, dir, files)
 		out := string(runner(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe)}))
@@ -97,7 +101,11 @@ for field, value in (("data", b"x"), ("items", [3])):
     else: raise AssertionError("inactive " + field + " was accepted")
 print("ok")
 `
-	for name, runner := range cookPins() {
+	allCookPins := cookPins()
+	if len(allCookPins) == 0 {
+		t.Fatal("cookPins() is empty: the loop below would check nothing")
+	}
+	for name, runner := range allCookPins {
 		got := string(runner(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe)}))
 		if strings.TrimSpace(got) != "ok" {
 			t.Errorf("%s: %s", name, got)
@@ -160,7 +168,11 @@ from guardshared._schema import cook
 r = Root(); blob = BlobRef(b"x"); r.hidden = blob; r.live = blob
 print(cook.cook(r).hex())
 `
-	for name, runner := range cookPins() {
+	allCookPins := cookPins()
+	if len(allCookPins) == 0 {
+		t.Fatal("cookPins() is empty: the loop below would check nothing")
+	}
+	for name, runner := range allCookPins {
 		got := strings.TrimSpace(string(runner(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe)})))
 		if got != hex.EncodeToString(want) {
 			t.Errorf("%s: inactive shared blob differs from engine", name)

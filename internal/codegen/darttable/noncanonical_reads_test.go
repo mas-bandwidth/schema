@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -27,6 +26,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 type nonCanonicalVector struct {
@@ -245,7 +246,7 @@ func TestDartReadsRefuseNonCanonical(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(nonCanonicalProbe(t, u, row, data, ann)), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		cmd := exec.Command(dartBin, "--enable-asserts", "probe.dart")
+		cmd := testproc.Command(t, dartBin, "--enable-asserts", "probe.dart")
 		cmd.Dir = dir
 		out, err := cmd.CombinedOutput()
 		if err != nil {
@@ -397,7 +398,7 @@ fixed table Root
 	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dartBin, "--enable-asserts", "probe.dart")
+	cmd := testproc.Command(t, dartBin, "--enable-asserts", "probe.dart")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -474,7 +475,7 @@ void main() {
 	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dartBin, "--enable-asserts", "probe.dart")
+	cmd := testproc.Command(t, dartBin, "--enable-asserts", "probe.dart")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -624,7 +625,7 @@ void main() {
 	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dartBin, "--enable-asserts", "probe.dart")
+	cmd := testproc.Command(t, dartBin, "--enable-asserts", "probe.dart")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

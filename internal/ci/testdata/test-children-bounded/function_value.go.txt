@@ -1,0 +1,15 @@
+package fixture
+
+import (
+	"os/exec"
+	"testing"
+)
+
+// the launcher is taken as a value and called under another name
+var start = exec.Command
+
+func TestRunsTheInterpreterThroughAValue(t *testing.T) {
+	if err := start("luau", "probe.luau").Run(); err != nil {
+		t.Fatal(err)
+	}
+}

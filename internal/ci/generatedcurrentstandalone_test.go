@@ -79,7 +79,11 @@ func TestGeneratedCurrentEmitsStandaloneBenchTrees(t *testing.T) {
 	}
 	variable := "$(GO_BENCH_RUNTIME)"
 	for _, rule := range goBenchRules {
-		for _, cmd := range goBenchGoCommands(t, root, rule) {
+		allGoBenchGoCommands := goBenchGoCommands(t, root, rule)
+		if len(allGoBenchGoCommands) == 0 {
+			t.Fatal("goBenchGoCommands(t, root, rule) is empty: the loop below would check nothing")
+		}
+		for _, cmd := range allGoBenchGoCommands {
 			fields := strings.Fields(cmd)
 			runtime := ""
 			for i := 4; i < len(fields); i++ {

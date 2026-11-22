@@ -182,6 +182,9 @@ func TestSquirrelMessage128BitRoundTrip(t *testing.T) {
 	}
 
 	t.Run("engine", func(t *testing.T) {
+		if len(cases) == 0 {
+			t.Fatal("cases is empty: the loop below would check nothing")
+		}
 		for _, c := range cases {
 			back := model.New(st)
 			var rep tabletext.Report
@@ -261,6 +264,9 @@ if (!T.AnnounceRead(voc, T.TableMessageAnnouncement, ar)) throw "announce: " + a
 		got[key] = rest
 	}
 
+	if len(cases) == 0 {
+		t.Fatal("cases is empty: the loop below would check nothing")
+	}
 	for _, c := range cases {
 		save, ok := got["save:"+c.name]
 		if !ok {

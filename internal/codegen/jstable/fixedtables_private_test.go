@@ -13,11 +13,12 @@ import (
 	"fmt"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestJsFixedTablesPrivate(t *testing.T) {
@@ -121,7 +122,7 @@ console.log("ok");
 	if err != nil {
 		t.Fatalf("read the committed generated table: %v", err)
 	}
-	bareExport := regexp.MustCompile(`export\s+const\s+\w+Fixed(Layout|Dst|Prefill|Identity|Known|Cover|Guard|LineagePlans)\s*=\s*new\s+(Uint|Int|Float)(8|16|32|64)?Array\s*\(`)
+	bareExport := regexp.MustCompile(`export\s+const\s+\w+Fixed(Layout|Dst|Prefill|Identity|Known|Cover|Guard|LineagePlans)\s*=\s*new\s+(globalThis\.)?(Uint|Int|Float)(8|16|32|64)?Array\s*\(`)
 	if m := bareExport.FindString(string(shipped)); m != "" {
 		t.Errorf("the committed generated table still exports a bare mutable typed array: %s", m)
 	}
@@ -130,7 +131,7 @@ console.log("ok");
 	}
 
 	node := jsNode(t)
-	cmd := exec.Command(node, filepath.Join(dir, "probe.mjs"))
+	cmd := testproc.Command(t, node, filepath.Join(dir, "probe.mjs"))
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

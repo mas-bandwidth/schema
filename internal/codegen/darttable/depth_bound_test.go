@@ -2,12 +2,13 @@ package darttable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestDartWireDepthBound128 holds docs/SPEC-TABLES.md §4, ONE NESTING BOUND,
@@ -52,7 +53,7 @@ func TestDartWireDepthBound128(t *testing.T) {
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, dartBinary(t), "--enable-asserts", "depth_probe.dart", filepath.Join(root, "testdata", "wire", "tables", "framing"))
+	cmd := testproc.CommandContext(t, ctx, dartBinary(t), "--enable-asserts", "depth_probe.dart", filepath.Join(root, "testdata", "wire", "tables", "framing"))
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("the depth probe failed: %v\n%s", err, out)

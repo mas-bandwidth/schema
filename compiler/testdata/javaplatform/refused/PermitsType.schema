@@ -1,0 +1,6 @@
+// PermitsType.schema: a declaration whose Java class or member name javac refuses
+// or which obscures the java package (compiler/javaplatform_test.go).
+package demo
+
+type permits { v uint8 }
+type Packet { value permits }

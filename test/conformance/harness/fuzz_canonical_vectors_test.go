@@ -904,11 +904,19 @@ func TestVariableArmKindBoundary(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		sh, _ := damageAwareFileSpellings(u, st, wire)
+		// the independent walk either frames the file or reports framing
+		// damage; any other error (an unsupported form) means it judged nothing
+		sh, err := damageAwareFileSpellings(u, st, wire)
+		if _, damaged := errors.AsType[*fixtureDamage](err); err != nil && !damaged {
+			t.Errorf("%s: spellings walk: %v", tc.name, err)
+		}
 		if len(sh) > 0 {
 			t.Errorf("%s: %v", tc.name, sh)
 		}
-		fault, _ := damageAwareIDTableFault(wire)
+		fault, err := damageAwareIDTableFault(wire)
+		if _, damaged := errors.AsType[*fixtureDamage](err); err != nil && !damaged {
+			t.Errorf("%s: id-table walk: %v", tc.name, err)
+		}
 		if fault != "" {
 			t.Errorf("%s: %s", tc.name, fault)
 		}
@@ -1009,9 +1017,16 @@ func TestMessageTruncatedBytesPin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	shapes, _ := messageStructuralSpellings(u, wr.def, announce, wire)
-	if len(shapes) > 0 {
-		t.Errorf("truncated message has preceding spelling: %v", shapes)
+	// the independent walk must see the truncation as damage (never as an
+	// unsupported layout, which would judge nothing), and the truncated
+	// bytes field is the first, so no completed field lends a prefix fact
+	shapes, err := messageStructuralSpellings(u, wr.def, announce, wire)
+	damage, damaged := errors.AsType[*sharedMessageDamage](err)
+	if _, unsupported := errors.AsType[*sharedMessageUnsupported](err); !damaged || unsupported {
+		t.Fatalf("truncated message walk: want damage, got %T %v", err, err)
+	}
+	if len(shapes) > 0 || len(damage.PrefixShapes) > 0 {
+		t.Errorf("truncated message has preceding spelling: %v prefix %v", shapes, damage.PrefixShapes)
 	}
 	for _, tc := range []struct {
 		name   string
@@ -1236,7 +1251,12 @@ func TestNodeFieldWrongKindPin(t *testing.T) {
 	if len(shapes) > 0 || !errors.As(e, &damage) || len(damage.Issues) == 0 || !strings.Contains(damage.Issues[0], "node-table ID under a foreign kind") {
 		t.Errorf("shapes=%v err=%v", shapes, e)
 	}
-	fault, _ := damageAwareIDTableFault(wire)
+	// the id-table judge frames the same damaged bytes, so it reports the
+	// same framing damage alongside its (empty) verdict
+	fault, idErr := damageAwareIDTableFault(wire)
+	if _, damaged := errors.AsType[*fixtureDamage](idErr); !damaged {
+		t.Errorf("id-table walk did not report the framing damage: %v", idErr)
+	}
 	if fault != "" {
 		t.Errorf("id fault=%s", fault)
 	}

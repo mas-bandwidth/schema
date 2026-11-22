@@ -75,8 +75,13 @@ packet-finite-python-negative-control: python-toolchain-check
 
 # build/schema-python is the compiler the conformance tree is generated with.
 # The tag remains accepted by existing leg gates; the target is built in.
-build/schema-python: $(shell find compiler internal cmd ir -name '*.go' 2>/dev/null)
+build/schema-python: $(shell find compiler internal cmd ir -name '*.go' 2>/dev/null) $(EMBED_SOURCES)
 	go build -tags schema_leg_python -o $@ ./cmd/schema
+# The runtime the compiler embeds and emits verbatim, and SERIALIZE_PIN beside
+# it: a vendored serialize.py bump changes both, and either must rebuild the
+# compiler and so build/conformance-python, or a stale runtime can pass.
+# TestConformanceCompilersRebuildOnTheirRuntime holds it.
+build/schema-python: $(shell find internal/codegen/python/runtime -type f 2>/dev/null)
 
 # build/conformance-python is the tables manifest's units generated for
 # python, one directory per unit key. A unit the target refuses leaves its
@@ -86,8 +91,8 @@ build/conformance-python: build/schema-python testdata/conformance/tables/MANIFE
 	@rm -rf $@ && mkdir -p $@
 	@awk '$$1 == "unit" { key = $$2; $$1 = ""; $$2 = ""; print key $$0 }' testdata/conformance/tables/MANIFEST.txt | \
 	while read -r key paths; do \
-		first=""; for p in $$paths; do if [ -d "$$p" ]; then f=$$(ls "$$p"/*.schema 2>/dev/null | head -1); else f=$$p; fi; first=$$f; break; done; \
-		pkg=$$(sed -n 's/^[[:space:]]*package[[:space:]]\+\([A-Za-z_][A-Za-z0-9_]*\).*/\1/p' "$$first" | head -1); \
+		first=""; for p in $$paths; do if [ -d "$$p" ]; then f=$$(ls "$$p"/*.schema 2>/dev/null | sed -n 1p); else f=$$p; fi; first=$$f; break; done; \
+		pkg=$$(sed -n 's/^[[:space:]]*package[[:space:]]\+\([A-Za-z_][A-Za-z0-9_]*\).*/\1/p' "$$first" | sed -n 1p); \
 		if [ -n "$$pkg" ]; then mkdir -p $@/$$key/$$pkg/_schema; fi; \
 		if ./build/schema-python generate --lang python --out $@/$$key $$paths > $@/$$key.log 2>&1; then \
 			rm -f $@/$$key.log; \

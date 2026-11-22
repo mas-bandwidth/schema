@@ -2,7 +2,6 @@ package js
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -10,6 +9,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJsFlatWriteRefusesNonFiniteFloats pins SPEC §5.1 row 7 on the JavaScript
@@ -26,8 +27,8 @@ func TestJsFlatWriteRefusesNonFiniteFloats(t *testing.T) {
 	for _, name := range []string{"WriteProbeFlat", "WritePackedFlat"} {
 		write := emittedFunction(t, flat, name)
 		for _, want := range []string{
-			"if (!Number.isFinite(Math.fround(x))) {",
-			"if (!Number.isFinite(value.f64)) {",
+			"if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) {",
+			"if (!globalThis.Number.isFinite(value.f64)) {",
 			"return -1;",
 		} {
 			if !strings.Contains(write, want) {
@@ -161,7 +162,7 @@ console.log('OK');
 	if err := os.WriteFile(filepath.Join(dir, "harness.mjs"), []byte(harness), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, "harness.mjs")
+	cmd := testproc.Command(t, node, "harness.mjs")
 	cmd.Dir = dir
 	env := os.Environ()
 	if production {

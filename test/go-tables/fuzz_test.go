@@ -33,6 +33,8 @@ import (
 	"encoding/binary"
 	"math/rand/v2"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"testing"
 	"unsafe"
 
@@ -188,7 +190,11 @@ func TestBlockForgeryFuzz(t *testing.T) {
 	if s := os.Getenv("N"); s != "" {
 		n = int(parseUint(t, s))
 	}
-	for _, unit := range blocksUnderTest() {
+	allBlocksUnderTest := blocksUnderTest()
+	if len(allBlocksUnderTest) == 0 {
+		t.Fatal("blocksUnderTest() is empty: the loop below would check nothing")
+	}
+	for _, unit := range allBlocksUnderTest {
 		image := wire(t, unit.path)
 		// the unmutated image must open, or the fuzzer is mutating nothing
 		base, extent, intact := place(image, int64(len(image)), 0)
@@ -321,6 +327,22 @@ func checkWhole(t *testing.T, unit, describe string, index int, base unsafe.Poin
 	_ = sink
 }
 
+// sceneCook writes the Scene cook the conformance harness materialises as
+// fixtures/Scene.cook (test/conformance/harness/run.go: test/cookgen,
+// --bytes 4096, and the Scene row of cookShape), into the test's own temporary
+// directory, and returns its bytes.
+func sceneCook(t *testing.T) []byte {
+	t.Helper()
+	out := filepath.Join(t.TempDir(), "Scene.cook")
+	cmd := exec.Command("go", "run", "./test/cookgen", "--bytes", "4096", "--root", "Scene", "--out", out,
+		"--ref", "head", "--chain", "ListNode", "--next", "next")
+	cmd.Dir = filepath.Join("..", "..")
+	if msg, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("cooking the Scene image with test/cookgen: %v\n%s", err, msg)
+	}
+	return wire(t, out)
+}
+
 // TestCookForgeryFuzz is the same gate over the COOKED form (§7.4): a mutant
 // either makes Open refuse, or it opens and the ROOT's own storage is inside
 // the region the header framed — which is the one way a match-and-point reader
@@ -334,11 +356,16 @@ func TestCookForgeryFuzz(t *testing.T) {
 	if s := os.Getenv("N"); s != "" {
 		n = int(parseUint(t, s))
 	}
-	fixturesDir := os.Getenv("GO_TABLES_FIXTURES")
-	if fixturesDir == "" {
-		fixturesDir = "../../build/conformance/fixtures"
+	// GO_TABLES_FIXTURES names a conformance harness work directory's
+	// fixtures (make tables-go-fuzz runs the harness and sets it). Without
+	// it the test cooks the image itself, so it runs from a plain clone and
+	// from any lane that has not run `make conformance`.
+	var image []byte
+	if fixturesDir := os.Getenv("GO_TABLES_FIXTURES"); fixturesDir != "" {
+		image = wire(t, filepath.Join(fixturesDir, "Scene.cook"))
+	} else {
+		image = sceneCook(t)
 	}
-	image := wire(t, fixturesDir+"/Scene.cook")
 	rootSize := func() int64 {
 		var c graphdemo.SceneCook
 		return c.RootSize()

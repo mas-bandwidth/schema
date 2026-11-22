@@ -35,8 +35,13 @@ of 2026-09-18 is AGENTS.md alone. The maintainer context behind these rules is
 
 **Who this repo is for.** Schema is the data language for games: you declare
 constants, enums, flags, types and tables once, and the compiler generates
-bit-packed serialization code in **ten languages** — C, C++, C#, Dart, Elixir,
-Go, Java, JavaScript, Lua and Rust. The compiler is Go (`cmd/` + `internal/`, public
+bit-packed serialization code in C, C++, C# (modern), C# (unity), Dart,
+Elixir, Go, Goose, Java, JavaScript, Lobster, Lua, Luau, Moo, Python, Ruby,
+Rust and Squirrel: eighteen targets, seventeen languages, since the two C#
+generators are one language (internal/languages derives that list; its test
+holds this page to it). The default build leaves Moo out: `--lang moo` needs
+a compiler built with `-tags schema_leg_moo`. The
+compiler is Go (`cmd/` + `internal/`, public
 API `compiler/` and `ir/`). The compiler is AGPL-3.0; **the code it generates is
 yours**, by an explicit permanent grant in [LICENSE](../LICENSE).
 
@@ -45,7 +50,7 @@ yours**, by an explicit permanent grant in [LICENSE](../LICENSE).
    the table wire. Where the code and a spec disagree, one of them has a bug and
    the tests decide which. **Read the spec before the code.**
 2. **C++ is the reference.** C++ writes the pins in `testdata/wire/` and
-   `testdata/golden/`; every one of the other eight legs byte-compares against
+   `testdata/golden/`; every other leg byte-compares against
    them. Cross-language wire identity is a standing gate, and so is
    fixed(I, F)/int128/uint128 identity in the ludicrous legs.
 3. **The wire is law.** A change that moves shipped bytes is a deliberate,
@@ -234,7 +239,7 @@ Nothing was dropped. `internal/slowtest` gates the toolchain half:
 - **the full set, for the check** — `SCHEMA_SLOW=1 go test ./compiler/
   ./internal/codegen/...`: the same plus every toolchain test. Minutes. Run it
   once before you open a pull request, not between edits.
-- **the nine leg gates** are unchanged, because each already exports
+- **the leg gates** are unchanged, because each already exports
   `SCHEMA_REQUIRE_CORPUS=1` and `slowtest.Enabled` counts that as the slow half
   being on. `make tables-<leg>-fixedform`, `make tables-<leg>-versioning` and
   `make tables-cs-leg` prove exactly what they proved before.
@@ -247,6 +252,19 @@ Nothing was dropped. `internal/slowtest` gates the toolchain half:
 A gate that quietly stops running is worse than a slow one. `slowtest.Gate`
 therefore never reads whether a toolchain is present; absence still fails
 wherever `SCHEMA_REQUIRE_CORPUS` says it must.
+
+A skip names a reason, and CI counts skips. Every reason a test may skip for
+is a line of [`.github/skip-ledger.txt`](../.github/skip-ledger.txt), with the
+class of lane that is meant to satisfy it. `go test ./internal/ci` reads every
+`t.Skip` in the tree against that file: a skip with no reason, or a reason no
+line names, fails at the pull request that writes it. The same test refuses a
+`TestMain` that leaves before `m.Run`, and a `_test.go` file whose build
+constraint no lane compiles under. In `ci-fast.yml`, the `ci-policy`,
+`go-test-touched` and `verify-leg` jobs record their `go test -json` events
+and end with `tools/gotestreport -skips`, which lists the job's skips by
+reason and fails on a skip the job provides for: a missing toolchain in the
+lane that installs it, a `SCHEMA_SLOW` skip under a make target that sets
+`SCHEMA_SLOW=1`.
 
 The per-leg make gates, measured on an M-series Studio:
 
@@ -331,16 +349,29 @@ many there are, which is the only count that cannot go stale. Every one refuses
 when its sabotage patches nothing, so a control whose `sed` pattern has drifted
 off the line it aims at says so instead of reading as a pass.
 
-**Every negative control runs on every pull request**, in the `negative
-controls (<group>)` jobs, with the exceptions named below. A group is a set
+**Every negative control runs every night**, in ci-full.yml's `negative
+controls (<group>)` jobs, with the exceptions named below; a dispatch
+(`gh workflow run ci-full.yml --ref <branch>`) runs them on a branch. They do
+not run on a pull request: on 2026-11-15 the owner moved everything that is
+not light to the nightly ("I want everything that is not light moved to
+nightly test now." "no exceptions."), and the 229 control groups of the
+`pull-request` tier, each sized to the two-minute cap, would be 229 jobs per
+push, the queue the fast lane exists to avoid. What a pull request does run is the
+controls written as Go tests: ci-fast.yml's `go test` jobs run every test of
+a touched package, and `go test ./internal/ci/` on every pull request. A group
+is a set
 of controls that share a toolchain and a compile and run in one `make -k`
 invocation, so one refusal does not hide the ones behind it, and the jobs run
 in parallel. The `base` groups need Go, a host C and C++ compiler and the
 C/C++ serialize siblings; the `cs`, `js`, `dart`, `java`, `elixir` and `rust`
 groups each add the one SDK their controls need, and `block-fuzz` needs two.
 
-**The rule that decides where a control runs is the owner's rule for CI that
-runs per commit: one minute, two at the most.** It is a rule about a job, and
+**The rule that decides how a group is cut is the owner's rule for CI that
+runs per commit: one minute, two at the most**, kept for the nightly too, so a
+group could move back to the pull request without being re-cut. The tier names
+in `make/negative-controls.json` keep that history: `pull-request` is the tier
+ci-full.yml's nightly matrix runs, and `nightly` the one `certify.yml` runs. It
+is a rule about a job, and
 a matrix row is a job, so each group is cut to fit two minutes on the runner
 rather than the leg as a whole being cut to fit. That is why the map gate runs
 as four groups, why the tolerant-wire family runs one control per job (each of
@@ -355,11 +386,11 @@ runs on the schedule it already carries. Today that is one control:
 submake each and four at a time. Run one after another the rows took 124
 seconds on the runner; four at a time they take 108 seconds on a loaded
 bench, and no runner measurement has placed them under the rule yet. The
-message form's other blades stay on the pull request. Each group in
+message form's other blades stay in the `pull-request` tier. Each group in
 `make/negative-controls.json` names its tier in a
 `when` field and says why in a `why` field, and `tools/negativecontrols`
 refuses a group that names neither tier, so a control cannot leave the pull
-request without landing on the nightly.
+request tier without landing on the nightly one.
 
 The other exceptions are the `excluded` list, and each carries a reason the
 test requires to be non-empty. Four of them are umbrella targets with no recipe
@@ -368,8 +399,8 @@ of their own, whose leaves already run in groups:
 `tables-wire-fuzz-negative-control` and `tables-wire-fuzz-retain-negative-control`.
 One is a parameterized worker with no sabotage of its own,
 `tables-message-form-one-negative-control`. The last is
-`tables-big-endian-negative-control`, which the `big-endian` job already runs
-on every pull request: it cross-compiles the tables battery for s390x, and a
+`tables-big-endian-negative-control`, which ci-full.yml's `big-endian` job
+already runs: it cross-compiles the tables battery for s390x, and a
 second cross-compile on this leg proves nothing the first does not.
 
 **The target list is enumerated, not typed.** `tools/negativecontrols` reads
@@ -440,7 +471,7 @@ the packet surface has claims and the port joins the builtins (Lua was
 scaffolded this way and joined them).
 
 A backend is a Go package under `internal/codegen/` that walks the same IR the
-existing ten consume, plus one file in `compiler/` — `target_<lang>.go` —
+existing generators consume, plus one file in `compiler/` — `target_<lang>.go` —
 that registers it as a `compiler.Generator`, the public registration interface
 and the only way any target reaches the driver. The cross-language harness is
 what makes this tractable: generate the corpus in your language, encode the
@@ -557,6 +588,23 @@ posted on an issue rather than on a pull request, is still a valid signature,
 but a maintainer has to enter it in the ledger by hand. Comment `recheck` on a
 pull request to re-run the check once that is done. Any other open pull request
 of yours stays red until it is rechecked too.
+
+### Commit identity in agent clones
+
+An agent clone sets its identity once, right after cloning, and runs `make setup`
+(`make deps` runs it too):
+
+```bash
+git config user.name "Rowan Claude"
+git config user.email 305107455+rowan-claude@users.noreply.github.com
+make setup
+```
+
+`make setup` points `core.hooksPath` at the tracked `.githooks/`. Its `pre-push`
+hook acts only in a clone whose `user.email` is that rowan-claude address: there it
+refuses a push when any pushed commit has an author or committer other than
+rowan-claude, and prints the offending commits and the one-line fix. In every
+other clone the hook does nothing; the CAA check on GitHub covers those.
 
 ## License
 

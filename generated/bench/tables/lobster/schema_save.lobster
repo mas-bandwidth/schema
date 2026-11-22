@@ -80,6 +80,16 @@ def sid_ref(t:SaveIds, id:int) -> int:
     push(t.ids, id)
     return length(t.ids)
 
+// sid_full is true when the id table already holds its maximum (docs/SPEC-TABLES.md
+// §3: every reader refuses more than 4096 entries) and id is not one of them.
+def sid_full(t:SaveIds, id:int) -> bool:
+    if length(t.ids) < 4096:
+        return false
+    for(t.ids) x:
+        if x == id:
+            return false
+    return true
+
 def sid_mark(t:SaveIds) -> int:
     return length(t.ids)
 
@@ -406,6 +416,26 @@ def save_is_default(d:FieldDescriptor, v:Value) -> bool:
         return v.s == d.def_str
     return false
 
+// save_at_birth is whether a counted array's live elements are each the
+// element's zero: a scalar at its zero, a table element whose body writes no
+// field (Go's encodeArray reads its encoded body as empty)
+def save_at_birth(ed:FieldDescriptor, kind:int, sl:Slot) -> bool:
+    var i = 0
+    while i < sl.count:
+        if i >= length(sl.elems):
+            return false
+        let v = sl.elems[i]
+        if kind == 13:
+            let t = v.tab
+            if t:
+                for(t.fields) fs:
+                    if not load_field_elides(fs.fd, fs):
+                        return false
+        elif not save_elem_is_default(ed, kind, v):
+            return false
+        i++
+    return true
+
 // save_elem_is_default is the element's own zero, which is what an array
 // slot is born at: an element descriptor carries no specified default
 // (docs/SPEC-TABLES.md §2.9), and the wire kind says which lane holds it.
@@ -472,8 +502,11 @@ def save_element(e:SaveEncoder, w:SaveOut, d:FieldDescriptor, kind:int, v:Value)
         // A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): a NaN or an infinity
         // (a double past float32's range included, once narrowed) is refused
         // by the writer, never written; the ordinary conversion carries
-        // every finite value, -0 and the subnormals bit for bit.
-        let b = f32bits(v.f)
+        // every finite value, -0 and the subnormals bit for bit. A
+        // COMPRESSED FLOAT'S -0 IS +0 (§3.3): it stores the +0 bits, so a -0
+        // that rides (under a non-zero default, as an array element) is
+        // never 0x80000000 (Go's tablewire float32Stored).
+        let b = if d.franged and v.f == 0.0: 0 else: f32bits(v.f)
         if not finite_f32_bits(b) and e.non_finite == "":
             e.non_finite = float_owner(d)
         so_u32(w, b)
@@ -708,6 +741,11 @@ def encode_field(e:SaveEncoder, w:SaveOut, sl:Slot) -> void:
         let ed = elem_of(f)
         if f.array == "counted" or f.array == "list":
             if sl.count == 0 and not f.required:
+                return
+            if f.array == "counted" and f.min > 0 and sl.count == f.min and not f.required and save_at_birth(ed, f.ek, sl):
+                // a counted array still at its BIRTH, its minimum count of
+                // element zeros, is what a fresh value holds and elides like
+                // any default (Go's tablewire encodeArray, allBirth)
                 return
             save_array(e, w, sl, f.ek, sl.count)
             return
@@ -953,6 +991,10 @@ def save_walked(g:SaveGraph, rec:Record) -> string, string:
         encode_node_table(e, fields, g)
     if e.non_finite != "":
         return "", "non_finite_float"
+    // THE ID TABLE'S MAXIMUM (docs/SPEC-TABLES.md §3): a value that needs more
+    // than 4096 ids has no file its readers accept
+    if length(e.ids.ids) > 4096:
+        return "", "id_table_over_bound"
     let out = SaveOut {}
     so_u8(out, 1) // THE FORM BYTE
     so_bytes(out, so_take(fields))

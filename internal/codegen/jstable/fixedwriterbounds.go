@@ -151,6 +151,6 @@ func (g *fixedModule) emitWriterBounds(st *ir.Struct, entries []FixedLineageEntr
 		}
 		g.pf("}\n")
 	}
-	g.pf("const %sFixedWriterBounds = Object.freeze([%s]);\n\n", st.Name, strings.Join(names, ", "))
+	g.pf("const %sFixedWriterBounds = globalThis.Object.freeze([%s]);\n\n", st.Name, strings.Join(names, ", "))
 	return true
 }

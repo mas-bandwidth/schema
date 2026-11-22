@@ -1,0 +1,21 @@
+package fixture
+
+import (
+	"os/exec"
+	"testing"
+)
+
+type recorder struct{ calls []string }
+
+func (r *recorder) Command(name string) { r.calls = append(r.calls, name) }
+
+// exec here is a local value: exec.Command is recorder's method, and no child
+// is started. os/exec is imported for its types.
+func TestLocalShadow(t *testing.T) {
+	var _ *exec.Cmd
+	exec := &recorder{}
+	exec.Command("luau")
+	if len(exec.calls) != 1 {
+		t.Fatal(exec.calls)
+	}
+}

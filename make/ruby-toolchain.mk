@@ -104,14 +104,17 @@ endif
 # against the lock; a tarball build installs the lock's gems offline, each
 # .gem file held to its sha256 before gem install sees it. No index is
 # consulted and nothing is resolved: the lock names every gem.
-dist/ruby-%/GEMS: dist/ruby-%/PIN $(RUBY_GEMS_LOCK)
-	@if echo " $(RUBY_SDK_STAGED) " | grep -q " $* "; then \
+dist/ruby-%/GEMS: dist/ruby-%/PIN $(RUBY_GEMS_LOCK) | ruby-gems-lock-controls
+	@if echo " $(RUBY_SDK_STAGED) " | grep " $* " >/dev/null; then \
 		for a in rubocop steep rbs; do \
 			dist/ruby-$*/bin/$$a --version >/dev/null 2>&1 || { \
 				echo "dist-ruby REFUSES: the fleet SDK's $(NOVA_SDK)/ruby-$*/bin/$$a does not answer --version"; exit 1; }; \
 		done; \
 	else \
 		mkdir -p dist/ruby-gems; \
+		out=$$(sh make/checks/ruby-gems-lock.sh $(RUBY_GEMS_LOCK)) || exit 1; \
+		echo "$$out"; listed=$${out##*: }; listed=$${listed%% *}; \
+		verified=0; \
 		while IFS= read -r line; do \
 			case "$$line" in ''|'#'*) continue;; esac; \
 			spec=$${line%% *}; hash=$${line#* }; \
@@ -121,10 +124,38 @@ dist/ruby-%/GEMS: dist/ruby-%/PIN $(RUBY_GEMS_LOCK)
 			got=$$($(call ruby_sha256,$$f)); \
 			if [ "$$got" != "$${hash#sha256:}" ]; then \
 				echo "dist-ruby REFUSES: $$f has sha256 $$got, the lock is $$hash"; exit 1; fi; \
+			verified=$$((verified + 1)); \
 		done < $(RUBY_GEMS_LOCK); \
+		[ $$verified -eq "$$listed" ] || { echo "dist-ruby REFUSES: $$verified gem(s) held to their sha256, the lock names $$listed"; exit 1; }; \
 		dist/ruby-$*/bin/gem install --local --no-document --ignore-dependencies dist/ruby-gems/*.gem; \
 	fi
 	@cp $(RUBY_GEMS_LOCK) $@
+
+# THE LOCK READER'S CONTROLS (toolchain-free, no network, milliseconds), run
+# before every gem install as an order-only prerequisite: make/checks/
+# ruby-gems-lock.sh over the committed fixtures in testdata/ruby-gems-lock-controls.
+# good.lock must be accepted with 2 gems; each other fixture must be refused.
+# no-final-newline.lock is the lock whose last gem the install's `read` loop
+# dropped, unfetched and unchecked, while the install went on.
+RUBY_GEMS_LOCK_CONTROLS := testdata/ruby-gems-lock-controls
+RUBY_GEMS_LOCK_REFUSED  := no-final-newline malformed-line names-nothing
+.PHONY: ruby-gems-lock-controls
+ruby-gems-lock-controls:
+	@c=$(RUBY_GEMS_LOCK_CONTROLS); \
+	out=$$(sh make/checks/ruby-gems-lock.sh $$c/good.lock 2>&1) || \
+		{ echo "ruby gems lock control failed: good.lock was refused: $$out"; exit 1; }; \
+	case "$$out" in *": 2 gem(s)") ;; *) echo "ruby gems lock control failed: good.lock reads as: $$out"; exit 1 ;; esac; \
+	files=0; for f in $$c/*.lock; do files=$$((files + 1)); done; \
+	[ $$files -eq 4 ] || { echo "ruby gems lock controls: $$c holds $$files locks, the recipe runs good and 3 refused"; exit 1; }; \
+	refused=0; \
+	for case in $(RUBY_GEMS_LOCK_REFUSED); do \
+		if out=$$(sh make/checks/ruby-gems-lock.sh $$c/$$case.lock 2>&1); then \
+			echo "ruby gems lock control failed: $$case.lock was accepted ($$out)"; exit 1; fi; \
+		[ -n "$$out" ] || { echo "ruby gems lock control failed: $$case.lock was refused without a reason"; exit 1; }; \
+		refused=$$((refused + 1)); \
+	done; \
+	[ $$refused -eq 3 ] || { echo "ruby gems lock controls: $$refused of 3 ran"; exit 1; }; \
+	echo "ruby gems lock controls: good.lock read whole, 3 of 3 broken locks refused"
 
 # THE TOOLCHAIN GATE, this leg's half (issue #599): one probe per pin.
 .PHONY: toolchain-ruby

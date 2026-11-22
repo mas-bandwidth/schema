@@ -2,7 +2,6 @@ package js
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -10,6 +9,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJsFlatReadReportsBitsConsumed pins SPEC §5 and §6.3 on the JavaScript
@@ -44,10 +45,10 @@ func TestJsFlatReadReportsBitsConsumed(t *testing.T) {
 		t.Errorf("ReadPingFlat must keep returning a boolean:\n%s", ping)
 	}
 	for _, want := range []string{
-		"export declare function ReadPingFlat(view: DataView, numBits: number, value: Ping): boolean;",
-		"export declare function ReadPingFlatBits(view: DataView, numBits: number, value: Ping): number | false;",
-		"export declare function ReadPongFlatBits(view: DataView, numBits: number, value: Pong): number | false;",
-		"export declare function ReadChoiceFlatBits(view: DataView, numBits: number, value: Choice): number | false;",
+		"export declare function ReadPingFlat(view: globalThis.DataView, numBits: number, value: Ping): boolean;",
+		"export declare function ReadPingFlatBits(view: globalThis.DataView, numBits: number, value: Ping): number | false;",
+		"export declare function ReadPongFlatBits(view: globalThis.DataView, numBits: number, value: Pong): number | false;",
+		"export declare function ReadChoiceFlatBits(view: globalThis.DataView, numBits: number, value: Choice): number | false;",
 	} {
 		if !strings.Contains(decl, want) {
 			t.Errorf("PktFlat.d.ts lacks %q", want)
@@ -207,7 +208,7 @@ console.log('OK');
 	if err := os.WriteFile(filepath.Join(dir, "harness.mjs"), []byte(harness), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, "harness.mjs")
+	cmd := testproc.Command(t, node, "harness.mjs")
 	cmd.Dir = dir
 	got, err := cmd.CombinedOutput()
 	if err != nil {

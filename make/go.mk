@@ -143,7 +143,7 @@ tables-go-json-walk: build/tables-generated-go/.stamp
 # a generated package names its schema's `package` and Go resolves an import by
 # module path — so the conformance leg's go.mod replaces one path per unit,
 # exactly as test/go/go.mod already does for the packet corpus.
-build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema $(wildcard test/tables/[MAKR][12].schema) tables/scalars/Scalars.schema test/tables/Scalars2.schema tables/messages/Messages.schema tables/backend/Backend.schema tables/vocab/Vocab.schema tables/vocab9/Vocab9.schema $(wildcard tables/stream/*.schema tables/blobs/*.schema tables/lists/*.schema tables/maps/*.schema tables/widelist/*.schema) test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema testdata/conformance/feature-witnesses/full/Features.schema
+build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema $(wildcard test/tables/[MAKR][12].schema) tables/scalars/Scalars.schema test/tables/Scalars2.schema tables/messages/Messages.schema tables/backend/Backend.schema tables/vocab/Vocab.schema tables/vocab9/Vocab9.schema $(wildcard tables/stream/*.schema tables/blobs/*.schema tables/lists/*.schema tables/maps/*.schema tables/widelist/*.schema) test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema testdata/conformance/feature-witnesses/full/Features.schema testdata/conformance/r19/old/R19.schema testdata/conformance/r19/new/R19.schema testdata/conformance/r19/new/schema.lock
 	@mkdir -p build/tables-generated-go
 	# EVERY UNIT GENERATES AT ONCE (one xargs, 8 wide): the generations are
 	# independent, and run one after another they alone passed the 110 s
@@ -245,6 +245,17 @@ build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema t
 	@grep -q '^table Cfg$$' build/tables-r1-variable/R1.schema || { echo "R1 variable twin: the sed did not turn Cfg variable"; exit 1; }
 	./bin/schema generate --lang go --out build/tables-generated-go-framing/r1variable build/tables-r1-variable/R1.schema
 	$(call go_table_module_in,build/tables-generated-go-framing/r1variable,tblr1variable)
+	# THE R19 ROW'S COMMITTED PAIR (test/conformance/go/rows/R19_test.go): one
+	# lineage, two generations. The old side is generated from its schema alone
+	# (it wrote testdata/conformance/r19/old.bin); the new side from its unit
+	# directory, whose schema.lock carries the old layout, so it reads that file.
+	# Both declare package tblr19, so each is its own module, imported under an
+	# alias; like r1variable they sit beside build/tables-generated-go, not in
+	# it, so the per-unit gates over that tree do not count one unit twice.
+	./bin/schema generate --lang go --out build/tables-generated-go-r19/old testdata/conformance/r19/old/R19.schema
+	./bin/schema generate --lang go --out build/tables-generated-go-r19/new testdata/conformance/r19/new
+	$(call go_table_module_in,build/tables-generated-go-r19/old,tblr19old)
+	$(call go_table_module_in,build/tables-generated-go-r19/new,tblr19new)
 	@touch $@
 
 # THE CARDS UNIT (schema-cards-c01): its own generated Go module plus the two
@@ -453,7 +464,7 @@ cards-conformance-all:
 		fi; \
 		printf '%s\n' "$$lines"; \
 		for s in load save render parse bounds upgrade edit taskhash view; do \
-			printf '%s\n' "$$lines" | grep -qE "^$$leg $$s pass [1-9][0-9]*/[1-9][0-9]*$$" || fail=1; \
+			printf '%s\n' "$$lines" | grep -E "^$$leg $$s pass [1-9][0-9]*/[1-9][0-9]*$$" >/dev/null || fail=1; \
 		done; \
 	done; \
 	exit $$fail
@@ -802,8 +813,14 @@ conformance-negative-control-go-write-refusal-message: build/conformance-harness
 # negative control, the forgery fuzzer plain and under -race, and the soak's
 # short default count; the hour is `make tables-go-soak` — the standalone gate, the
 # bench units' compile gates, and the packet tests.
+# The registered counts of the primary packet harnesses (test/go, test/go-ludicrous):
+# each prints "ran N, failed M" as its last line and tools/mustrun holds N
+# to the number here, so a check that stops running, or a run that checks
+# nothing, is red. A commit that adds or removes a check changes the number.
+GO_MAIN_CHECKS := 525
+GO_LUDICROUS_CHECKS := 53
 .PHONY: test-go
-test-go: generated/bench/tables/go/.stamp generated/bench/paired/go/.stamp generated/go/.stamp generated/go-ludicrous/.stamp generated/bench/go/.stamp
+test-go: build/mustrun generated/bench/tables/go/.stamp generated/bench/paired/go/.stamp generated/go/.stamp generated/go-ludicrous/.stamp generated/bench/go/.stamp
 	$(MAKE) conformance-negative-control-go
 	$(MAKE) conformance-negative-control-go-walk
 	$(MAKE) conformance-negative-control-go-key-order
@@ -819,12 +836,21 @@ test-go: generated/bench/tables/go/.stamp generated/bench/paired/go/.stamp gener
 	bench/tables/go/leg build
 	cd generated/bench/go && go build ./...
 	cd generated/bench/paired/go && go build ./...
-	cd test/go && go run .
-	cd test/go-ludicrous && go run .
+	$(MAKE) test-go-packet
+
+# The primary packet harnesses on their own, so they can be run (and broken on
+# purpose) without the rest of the leg; test-go and _verify-go-conformance run it.
+.PHONY: test-go-packet
+test-go-packet: build/mustrun generated/go/.stamp generated/go-ludicrous/.stamp generated/bench/go/.stamp
+	cd test/go && "$(CURDIR)/$(MUSTRUN)" -name test-go-main -count $(GO_MAIN_CHECKS) -- go run .
+	cd test/go-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name test-go-ludicrous -count $(GO_LUDICROUS_CHECKS) -- go run .
 
 TEST_LEGS         += test-go
 CONFORMANCE_LEGS  += $(call unless_skipped,go,build/conformance-go)
 BENCH_TABLES_LEGS += generated/bench/tables/go/.stamp
+REGISTRY_NA       += goldens:go toolchain:go
+REGISTRY_NA_WHY.goldens.go   := no committed table goldens; its packet goldens (testdata/golden/go) are rewritten by internal/goldens at the top of update-goldens
+REGISTRY_NA_WHY.toolchain.go := go.mod's go line sets the floor and the go command refuses an older one; bin/schema needs Go before any probe could run
 
 .PHONY: tables-go-wire-fuzz tables-go-wire-fuzz-negative-control
 tables-go-wire-fuzz: build/conformance-harness build/conformance-go
@@ -1024,11 +1050,14 @@ tables-go-clean: build/tables-generated-go/.stamp
 GO_CLEAN_UNITS ?= build/tables-generated-go/*
 .PHONY: tables-go-clean-units
 tables-go-clean-units:
-	@set -e; for d in $(GO_CLEAN_UNITS); do \
+	@set -e; n=0; for d in $(GO_CLEAN_UNITS); do \
 		[ -f "$$d/go.mod" ] || continue; \
 		bad=$$(gofmt -l "$$d"/*.go); [ -z "$$bad" ] || { echo "noncanonical generated Go: $$bad"; exit 1; }; \
 		(cd "$$d" && go vet ./...); \
-	done
+		n=$$((n + 1)); \
+	done; \
+	[ $$n -gt 0 ] || { echo "tables-go-clean: no generated Go unit under $(GO_CLEAN_UNITS); nothing was formatted or vetted"; exit 1; }; \
+	echo "tables-go-clean: $$n generated Go units gofmt-canonical and vet-clean"
 tables-go-bench-gate: generated/bench/tables/go/.stamp
 	bench/tables/go/leg build
 	bench/tables/go/leg run --gate

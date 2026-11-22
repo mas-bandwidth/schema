@@ -412,6 +412,9 @@ func TestLuauPointerTargetBlobKindRefused(t *testing.T) {
 		t.Run("the writer emits no unreachable blob record", func(t *testing.T) {
 			m := blobKindModel(t, unit)
 			saves := blobKindSaves(t, g)
+			if len(saves) == 0 {
+				t.Fatal("saves is empty: the loop below would check nothing")
+			}
 			for name, wire := range saves {
 				rootName, rest, _ := strings.Cut(name, ".")
 				dest := m.New(m.Lookup(rootName))

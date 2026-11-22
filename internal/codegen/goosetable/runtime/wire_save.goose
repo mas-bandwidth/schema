@@ -27,6 +27,7 @@ import .schema_rt;
 import .schema_tables;
 import .wire_load;
 import .wire_retain;
+import .fixed;
 
 let KindUnion: u8 = 15;
 let KindKeyed: u8 = 16;
@@ -131,6 +132,9 @@ let SaveRefuseUnknownRoot: i64 = 6;
 let SaveRefuseNonFiniteFloat: i64 = 7;
 let SaveRefuseInvalidValue: i64 = 8;
 let SaveRefuseLayoutUnsupported: i64 = 9;
+// the id table would hold more than 4096 entries (docs/SPEC-TABLES.md §3), which
+// every reader refuses, so the writer refuses first
+let SaveRefuseIdTableOverBound: i64 = 10;
 
 // save_refusal_name is a refusal's name, "" for none.
 fn save_refusal_name(code: i64) -> const u8[:] {
@@ -144,6 +148,7 @@ fn save_refusal_name(code: i64) -> const u8[:] {
         SaveRefuseNonFiniteFloat => "non_finite_float",
         SaveRefuseInvalidValue => "invalid_value",
         SaveRefuseLayoutUnsupported => "layout_unsupported",
+        SaveRefuseIdTableOverBound => "id_table_over_bound",
         _ => "",
     };
 }
@@ -502,7 +507,14 @@ fn field(c: SaveCtx&, s: i64, d: FieldDesc, owner: i64, ordinal: i64) {
             // an unbounded array is the counted array's own bytes (§2.9); an
             // empty one elides
             let n = if s < 0 || !c.vals[s].made { 0 } else { c.vals[s].len };
+            if d.array == ArrayCounted && s >= 0 && c.vals[s].made && n < d.min {
+                // an array a caller holds below its Min is refused, never
+                // elided as absent (docs/SPEC.md §5.1 row 3)
+                refuse(c, SaveRefuseInvalidValue);
+                return;
+            }
             if n == 0 { return; }
+            if born_elides(c, s, d, n) { return; }
             field_array(c, s, d, n);
             return;
         }
@@ -547,6 +559,42 @@ fn field(c: SaveCtx&, s: i64, d: FieldDesc, owner: i64, ordinal: i64) {
     }
     if is_default(c, s, d) { return; }
     field_simple(c, s, d);
+}
+
+// born_elides: A COUNTED ARRAY IS BORN AT ITS MINIMUM (docs/SPEC-TABLES.md
+// §3.3, the §22.2 [M..N]T row; tablewire encodeArray, allBirth;
+// ir.Field.ElidesAtBirth). A plain counted field (not optional, not required)
+// holding exactly Min elements, each at its default (a float by its bits; a
+// table by a body that is its terminator alone), stays off the wire. A table
+// element is probed by writing its body and cutting it back off.
+recursive fn born_elides(c: SaveCtx&, s: i64, d: FieldDesc, n: i64) -> bool {
+    if d.array != ArrayCounted || d.min <= 0 || n != d.min || d.required || d.optional { return false; }
+    if s < 0 || !c.vals[s].made { return false; }
+    let e = d.elem;
+    guard e else { return false; }
+    let ek = if e.shape == ShapePtr { KindPointer } else { d.ek };
+    for k in n {
+        let es = if k < c.vals[s].count { c.vals[s].first + k } else { -1 };
+        if ek == KindString && e.shape == ShapeTab {
+            // a plain text list's element is its record's one value
+            let t = save_table_index(c, e.ref);
+            if !elem_default(c, slot_of(c, es, 0), c.unit.tables[t].fields[0]) { return false; }
+            continue;
+        }
+        if e.shape == ShapeTab {
+            let at = c.out.len;
+            let mark = c.ids.len;
+            let t = save_table_index(c, e.ref);
+            let start = c.out.len;
+            body(c, t, if es >= 0 && c.vals[es].made { es } else { -1 }, false);
+            let bare = c.out.len - start <= 1;
+            cut(c, at, mark);
+            if !bare { return false; }
+            continue;
+        }
+        if !elem_default(c, es, e) { return false; }
+    }
+    return true;
 }
 
 // elem_default: an element slot at its default (an element declares none).
@@ -656,11 +704,44 @@ recursive fn put_value(c: SaveCtx&, s: i64, d: const FieldDesc&, kind: u8) {
         arm_header(c, s, d.ref);
         return;
     }
-    let v = scalar_bits(c, s, d);
+    var v = scalar_bits(c, s, d);
     if d.shape == ShapeFloat && float_special(v.lo, kind == KindF32) {
         // every writer refuses a NaN or an infinity (§3, §3.3)
         refuse(c, SaveRefuseNonFiniteFloat);
         return;
+    }
+    // THE WRITE HOLDS EVERY VALUE TO ITS DECLARATION (docs/SPEC.md §5.1;
+    // Goose refuses in every build): a ranged integer or fixed-point value
+    // off its range (on the raw scale), a bits(N) value past its width, and a
+    // compressed float off its range (held at float32, frange_holds) are
+    // refused invalid_value, never written.
+    if d.shape == ShapeFloat && d.frange {
+        let x = if kind == KindF32 { f32_value(v.lo as! u32) } else { fixed_bits_f64(v.lo) };
+        if !frange_holds(x, d) {
+            refuse(c, SaveRefuseInvalidValue);
+            return;
+        }
+        // A COMPRESSED FLOAT'S -0 IS STORED AS +0 (SPEC-TABLES §3.3, ruling
+        // fixed-compressed-negzero)
+        if x == 0.0 { v = Int128 { lo: 0, hi: 0 }; }
+    }
+    if d.shape == ShapeInt {
+        if d.ranged {
+            var lo = d.lo;
+            var hi = d.hi;
+            if d.ibits != 0 || d.fbits != 0 {
+                lo = shl128(lo, d.fbits);
+                hi = shl128(hi, d.fbits);
+            }
+            if cmp128(v, d.signed, lo, d.signed) < 0 || cmp128(v, d.signed, hi, d.signed) > 0 {
+                refuse(c, SaveRefuseInvalidValue);
+                return;
+            }
+        }
+        if d.bits > 0 && (v.hi != 0 || (d.bits < 64 && v.lo >= ((1 as u64) << (d.bits as! u64)))) {
+            refuse(c, SaveRefuseInvalidValue);
+            return;
+        }
     }
     let w = kind_width(kind);
     if w == 16 {
@@ -701,6 +782,11 @@ fn text_sum(c: SaveCtx&, s: i64, count: i64) -> i64 {
 recursive fn array_body(c: SaveCtx&, s: i64, d: const FieldDesc&, count: i64) {
     let e = d.elem;
     guard e else { return; }
+    if d.array == ArrayCounted && (count < d.min || count > d.bound) {
+        // a count below Min or past Max is refused (docs/SPEC.md §5.1 row 3)
+        refuse(c, SaveRefuseInvalidValue);
+        return;
+    }
     let ek = if e.shape == ShapePtr { KindPointer } else { d.ek };
     put(c, ek);
     put_leb(c, count as! u64);
@@ -773,6 +859,15 @@ fn field_map(c: SaveCtx&, s: i64, d: FieldDesc, owner: i64) {
     // entries in any order, the wire never does
     let mark = c.sorted.len;
     map_entry_order(c.data, c.vals, c.unit.tables[t].fields[0], c.vals[s].first, c.vals[s].len, c.sorted);
+    // a key twice is a file every reader refuses as damage (§2.8): the save
+    // refuses it as invalid_value, as the reference does (tableMapCursor)
+    for k in c.vals[s].len - 1 {
+        if map_key_cmp(c.data, c.unit.tables[t].fields[0], c.vals[c.vals[c.sorted[mark + k]].first], c.vals[c.vals[c.sorted[mark + k + 1]].first]) >= 0 {
+            refuse(c, SaveRefuseInvalidValue);
+            c.sorted.resize(mark);
+            return;
+        }
+    }
     for k in c.vals[s].len {
         let el = c.out.len;
         body(c, t, c.sorted[mark + k], false);
@@ -886,6 +981,7 @@ fn save_into(c: SaveCtx&, root_val: i64) -> i64 {
     put(c, 1); // THE FORM BYTE (§3)
     body(c, t, root_val, true);
     if c.refusal != 0 { return c.refusal; }
+    if c.ids.len > 4096 { c.out.resize(start); return SaveRefuseIdTableOverBound; }
     // THE ID TABLE IS THE LAST THING IN THE FILE: the entries, then the count
     for id in c.ids { put_le(c, id, 8); }
     put_le(c, c.ids.len as! u64, 8);

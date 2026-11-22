@@ -51,6 +51,11 @@ func TestDiagnostics(t *testing.T) {
 		srcs map[string]string
 		want string // required substring of some diagnostic
 	}{
+		// ---- literals every leg reads alike (SPEC §4.1) ----
+		{name: "decimal size with a leading zero", want: "leading zero",
+			src: "package t\ntype P { name string(010) }\n"},
+		{name: "decimal default with a leading zero", want: "leading zero",
+			src: "package t\ntable T { v int32 = 07 }\n"},
 		// ---- cycles: infinite size, infinite folding ----
 		{name: "type cycle, mutual", want: "type composition cycle",
 			src: "package t\ntype A { b B }\ntype B { a A }\n"},
@@ -640,7 +645,7 @@ func TestDiagnostics(t *testing.T) {
 		{name: "a constant folding to the table backend's force-inline macro", want: "SILENT REWRITE",
 			src: "package t\nconst SchemaTTableInline = 1\ntype H { x uint8 }\n"},
 		{name: "a declaration spelling a generated include guard", want: "SILENT REWRITE",
-			srcs: map[string]string{"T.schema": "package t\ntype SCHEMA_T_T_H { x uint8 }\n"}},
+			srcs: map[string]string{"T.schema": "package t\ntype SCHEMA_T_T_h { x uint8 }\n"}},
 		{name: "a declaration carrying the reserved lowercase prefix", want: "reserves for the names the",
 			src: "package t\ntype schema_thing { x uint8 }\n"},
 

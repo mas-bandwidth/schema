@@ -1,0 +1,13 @@
+# The baseline's half of the `was` rename corpus:
+# internal/baseline/wasrename_corpus_test.go reads every row.
+# baseline_file	rendered_from	live_schema	verdict	finding
+#
+# baseline_file is a committed tables baseline, held to what rendered_from
+# renders; live_schema is the edit judged against it.
+variant/before.baseline	variant/before.schema	variant/before.schema	pass	-
+variant/before.baseline	variant/before.schema	variant/after.schema	pass	-
+variant/before.baseline	variant/before.schema	variant/again.schema	pass	-
+variant/after.baseline	variant/after.schema	variant/again.schema	pass	-
+variant/before.baseline	variant/before.schema	variant/moved.schema	refuse	specified default Silver -> Gold
+variant/before.baseline	variant/before.schema	variant/bare.schema	refuse	specified default Silver -> Argent
+variant/after.baseline	variant/after.schema	variant/moved.schema	refuse	specified default Argent -> Gold

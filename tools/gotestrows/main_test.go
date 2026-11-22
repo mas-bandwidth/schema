@@ -140,12 +140,47 @@ func TestPlanRunsEveryTestExactlyOnce(t *testing.T) {
 	}
 }
 
+// TestPlanOverlappingSplitsRunEachTestOnce: a broad split line after a narrow
+// one it overlaps (a name range after a single heavy test) takes only what the
+// narrow line left, so the heavy test runs in its own row and nowhere else.
+func TestPlanOverlappingSplitsRunEachTestOnce(t *testing.T) {
+	t.Parallel()
+	tb := table{short: map[string]float64{}, plain: map[string]float64{}, splits: map[string][]string{"./s": {"^TestHeavy$", "^TestFixed(Depth|Record)", "^Test[A-M]"}}}
+	rows := plan(tb, []string{"./s"}, true, 60)
+	if len(rows) != 4 {
+		t.Fatalf("./s has %d rows, want its 3 patterns and the complement: %+v", len(rows), rows)
+	}
+	for _, name := range []string{"TestHeavy", "TestFixedDepthBound", "TestFixedOther", "TestAlpha", "TestMango", "TestZed", "TestHeavyish"} {
+		n := 0
+		for _, r := range rows {
+			if selects(t, r, name) {
+				n++
+			}
+		}
+		if n != 1 {
+			t.Errorf("%s is selected by %d of ./s's rows, want 1: %+v", name, n, rows)
+		}
+	}
+}
+
 // TestPlanControlDroppedComplementLosesATest is the reversed witness: a split
 // package without its complement row leaves an unnamed test in no row, and
 // the exactly-once check above catches it.
 func TestPlanControlDroppedComplementLosesATest(t *testing.T) {
 	tb := table{short: map[string]float64{}, plain: map[string]float64{}, splits: map[string][]string{"./s": {"^TestHeavy$"}}}
 	rows := plan(tb, []string{"./s"}, true, 60)
+	if len(rows) != 2 {
+		t.Fatalf("./s has %d rows, want its 1 pattern and the complement: %+v", len(rows), rows)
+	}
+	whole := 0
+	for _, r := range rows {
+		if selects(t, r, "TestNew") {
+			whole++
+		}
+	}
+	if whole != 1 {
+		t.Fatalf("with the complement TestNew is selected %d times, want 1: the control has nothing to lose", whole)
+	}
 	broken := rows[:len(rows)-1] // the complement is the last split row
 	n := 0
 	for _, r := range broken {
@@ -153,7 +188,7 @@ func TestPlanControlDroppedComplementLosesATest(t *testing.T) {
 			n++
 		}
 	}
-	if n != 0 {
+	if n > 0 {
 		t.Fatalf("without the complement TestNew is still selected %d times; the control proves nothing", n)
 	}
 }

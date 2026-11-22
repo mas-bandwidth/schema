@@ -25,6 +25,7 @@ func init() {
 		{Name: "no_vocabulary", What: "no table for this connection"},
 		{Name: "second_announcement", What: "a second announcement on a connection: it sets nothing and the connection closes"},
 		{Name: "vocabulary_too_large", What: "an announcement above the receiver's declared bound"},
+		{Name: "build_version_mismatch", What: "a strict announcement whose build version is not this unit's own (§3.3)"},
 		{Name: "message_form_as_file", What: "a form 2 wire where a FILE was expected"},
 		// THE FILE REFUSALS (docs/SPEC-TABLES.md §6.5, §7, §11, §19.2): the one
 		// vocabulary a cook's Open, a block's BlockOpen and LoadMeasure's -1
@@ -146,6 +147,7 @@ func init() {
 		{Name: "table_float_to_bits", What: "float -> u32 bits"},
 		{Name: "table_bits_to_double", What: "u64 bits -> double"},
 		{Name: "table_double_to_bits", What: "double -> u64 bits"},
+		{Name: "TableStoredFloatBits", What: "a compressed float's stored bits, float and double overloads: -0 as +0 (§3.3, fixed-compressed-negzero)"},
 		// THE FINITE RULE (docs/SPEC-TABLES.md §3.3): the read's test on the raw
 		// bits, the writer's on a value, and the report's refusal
 		{Name: "TableBitsFinite32", What: "true when a float32's raw bits are finite: the read's non_finite_float test (§3.3)"},

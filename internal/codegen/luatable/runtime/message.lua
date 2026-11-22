@@ -119,6 +119,53 @@ local function wide_bits(lo, hi)
   return u_bits(d.lo)
 end
 
+-- A RANGED VALUE IS HELD TO THE ANNOUNCED KIND, NEVER WRAPPED
+-- (docs/SPEC-TABLES.md §3.3): the wire carries value - base, and base plus
+-- that offset is the value only where the announced kind can hold the sum.
+-- ranged_holds answers for a kind up to 64 bits wide: base is the announced
+-- min (two's complement for a signed kind) and off the unsigned offset the
+-- wire carried. A sum the kind cannot hold is out_of_range on the named read
+-- and damage on the skip path, one verdict either way.
+local function ranged_holds(kind, base, off)
+  local w
+  if kind == 2 or kind == 6 or kind == 20 or kind == 25 then
+    w = 8
+  elseif kind == 3 or kind == 7 or kind == 21 or kind == 26 then
+    w = 16
+  elseif kind == 4 or kind == 8 or kind == 22 or kind == 27 then
+    w = 32
+  else
+    w = 64
+  end
+  local sum = base + off
+  if (kind >= 2 and kind <= 5) or (kind >= 20 and kind <= 23) or kind == 36 then
+    -- The true sum is past the signed 64-bit top when off exceeds
+    -- maxinteger - base, which is exact read unsigned for every base.
+    if math.ult(math.maxinteger - base, off) then return false end
+    if w == 64 then return true end
+    local half = 1 << (w - 1)
+    return sum >= -half and sum <= half - 1
+  end
+  -- An unsigned sum that wraps past 2^64 lands below its base.
+  if math.ult(sum, base) then return false end
+  if w == 64 then return true end
+  return not math.ult((1 << w) - 1, sum)
+end
+
+local function u128_ult(a, b)
+  if a.hi ~= b.hi then return math.ult(a.hi, b.hi) end
+  return math.ult(a.lo, b.lo)
+end
+
+-- wide_ranged_holds is ranged_holds for the 128-bit kinds (18, 19, 24, 29).
+local function wide_ranged_holds(kind, base, off)
+  if kind == 18 or kind == 24 then
+    local top = u128_sub({ lo = -1, hi = math.maxinteger }, base)
+    return not u128_ult(top, off)
+  end
+  return not u128_ult(u128_add(off, base), base)
+end
+
 -- THE BIT READER: a Lua string of bytes and a 0-based bit cursor, low bit
 -- first (docs/PORT-LUA.md, BYTE BUFFERS; SPEC.md §4.3).
 local Reader = {}
@@ -370,7 +417,9 @@ local function same_scalar(d, v)
   local def = d.default
   if def == nil then def = elem_zero(d) end
   if d.shape == "wide" then return v.lo == def.lo and v.hi == def.hi end
-  if d.shape == "float" then return same_float(d.f32, v, def) end
+  -- a compressed float's -0 IS +0 (§3.3, ruling fixed-compressed-negzero):
+  -- it compares by value, so a -0 under a +0 default elides
+  if d.shape == "float" then return same_float(d.f32, D.cf(d, v), D.cf(d, def)) end
   return v == def
 end
 
@@ -395,7 +444,23 @@ local function elem_rides(T, d, v)
       end
       return false
     end
+    -- A COUNTED ARRAY IS BORN AT ITS MINIMUM (docs/SPEC-TABLES.md §22.2,
+    -- internal/tablewire messageElides): `[2..4]T` stays off the wire at
+    -- exactly two elements that each stay off it (a table by its body), and
+    -- rides at any other count; zero is refused by the write contract first.
+    if not d.list and (d.min or 0) > 0 then
+      if #v ~= d.min then return true end
+      for i = 1, d.min do
+        if elem_rides(T, d.elem, v[i]) then return true end
+      end
+      return false
+    end
     return #v > 0
+  elseif s == "wide" then
+    -- an int128/uint128 element (or a fixed-point one past 64 bits) is at its
+    -- zero when both halves are (docs/PORT-LUA.md, 64-BIT AND 128-BIT
+    -- INTEGERS); without this it fell through to "rides" (F-167)
+    return type(v) ~= "table" or v.lo ~= 0 or v.hi ~= 0
   elseif s == "union" then
     return v.tag ~= nil and v.tag ~= 0
   elseif s == "enum" then
@@ -405,7 +470,8 @@ local function elem_rides(T, d, v)
   elseif s == "float" then
     -- AN ELEMENT'S ZERO IS +0, AND THE COMPARE IS BY BITS (§3.3): a -0 element
     -- rides (and a NaN or an infinity reaches the writer, which refuses it).
-    return not same_float(d.f32, v, 0.0)
+    -- A compressed float's -0 is +0 and does not ride.
+    return not same_float(d.f32, D.cf(d, v), 0.0)
   elseif s == "string" or s == "bytes" then
     return #v > 0
   end
@@ -502,17 +568,22 @@ local function read_scalar(R, d, e)
     end
     local v, ok = R:get(width)
     if not ok then return 0, false end
+    -- The fourth answer is false where an announced ranged value's sum lands
+    -- outside the announced kind (ranged_holds); the read refuses it as
+    -- out_of_range rather than keep a wrapped value.
+    local holds = true
+    if e ~= nil and e.packing == 1 then holds = ranged_holds(e.kind, base, v) end
     if base ~= 0 then v = v + base end
     if not ranged and signed and width < 64 and width > 0 then
       local sign = 1 << (width - 1)
       if v & sign ~= 0 then v = v - (1 << width) end
     end
-    return v, true
+    return v, true, nil, holds
   elseif s == "wide" then
     if e ~= nil and e.kind >= 2 and e.kind <= 9 then
-      local v, ok = read_scalar(R, { shape = "int", signed = d.signed, width = 8 }, e)
+      local v, ok, _, holds = read_scalar(R, { shape = "int", signed = d.signed, width = 8 }, e)
       if not ok then return 0, false end
-      return { lo = v, hi = (d.signed and v < 0) and -1 or 0 }, true
+      return { lo = v, hi = (d.signed and v < 0) and -1 or 0 }, true, nil, holds
     end
     local bits, base = 128, nil
     if e ~= nil then
@@ -529,11 +600,14 @@ local function read_scalar(R, d, e)
       hi, ok = R:get(bits - 64)
       if not ok then return 0, false end
     end
+    local holds = true
     if base ~= nil then
-      local sum = u128_add({ lo = lo, hi = hi }, base)
+      local off = { lo = lo, hi = hi }
+      if e ~= nil then holds = wide_ranged_holds(e.kind, base, off) end
+      local sum = u128_add(off, base)
       lo, hi = sum.lo, sum.hi
     end
-    return { lo = lo, hi = hi }, true
+    return { lo = lo, hi = hi }, true, nil, holds
   elseif s == "float" then
     if e ~= nil and e.packing == 2 then
       local index, ok = R:get(e.bits or 0)
@@ -657,16 +731,24 @@ skip_entry = function(R, e, ctx, depth, field)
     else
       w = 64
     end
-    local _, ok = R:get(w)
-    return ok
+    local off, ok = R:get(w)
+    if not ok then return false end
+    -- A SKIPPED RANGED VALUE IS HELD TO THE ANNOUNCED KIND as the named read
+    -- holds it (§3.3, SKIPPED IS NOT UNREAD): a sum the kind cannot hold is
+    -- damage here.
+    if e.packing == 1 then return ranged_holds(k, e.min or 0, off) end
+    return true
   elseif k == 18 or k == 19 or k == 24 or k == 29 then
     local w = (e.packing == 1 and e.bits) or 128
-    local _, ok = R:get(w < 64 and w or 64)
+    local lo, ok = R:get(w < 64 and w or 64)
     if not ok then return false end
+    local hi = 0
     if w > 64 then
-      local _, ok2 = R:get(w - 64)
+      local ok2
+      hi, ok2 = R:get(w - 64)
       if not ok2 then return false end
     end
+    if e.packing == 1 and type(e.min) == "table" then return wide_ranged_holds(k, e.min, { lo = lo, hi = hi }) end
     return true
   elseif k == 10 then
     if e.packing == 2 then
@@ -807,9 +889,20 @@ read_value = function(R, T, f, holder, key, ctx, e)
   end
   local s = f.shape
   if s == "string" or s == "bytes" then
-    local w = bits_range(0, (e and e.max) or f.bound)
-    local n, ok = R:get(w)
+    -- A bytes(N) IS AN ARRAY OF ELEMENT KIND 6 (§3.3, "bytes(N) AND [..N]uint8
+    -- ARE THE SAME KIND"): its count rides as count - min at
+    -- bits_required(min, max), so the announced min is added back, and a count
+    -- above the announced max refuses as an array's does. A string's length
+    -- rides from 0.
+    local lo = (s == "bytes" and e ~= nil and e.min) or 0
+    local hi = (e and e.max) or f.bound
+    local n, ok = R:get(bits_range(lo, hi))
     if not ok or not R:align() then return false end
+    n = n + lo
+    if s == "bytes" and e ~= nil and n > hi then
+      ctx.reason = "count_over_bound"
+      return false
+    end
     local raw = R:raw(n)
     if raw == nil then return false end
     if f.bound ~= nil and n > f.bound then
@@ -971,6 +1064,12 @@ read_value = function(R, T, f, holder, key, ctx, e)
       if ok then n = n + amin end
     end
     if not ok then return false end
+    -- A COUNTED ARRAY BELOW ITS MIN (SPEC.md §5.1 row 3; messagedecode.go
+    -- refuses count_over_bound), as a count past its max is.
+    if not d.fixed and not d.list and n < (d.min or 0) then
+      ctx.reason = "count_over_bound"
+      return false
+    end
     local elem_u8 = (e ~= nil and e.elem == 6) or (e == nil and d.elem_kind == 6)
     if
       elem_u8
@@ -990,6 +1089,13 @@ read_value = function(R, T, f, holder, key, ctx, e)
       for i = 1, #raw do
         out[i] = string.byte(raw, i)
       end
+      -- A GROWN FIXED BOUND (docs/SPEC-TABLES.md §21.1): a sender that
+      -- announced a smaller bound wrote fewer slots; each new slot is born 0.
+      if d.fixed then
+        for i = #raw + 1, d.bound do
+          out[i] = 0
+        end
+      end
       holder[key] = out
       return true
     end
@@ -1008,14 +1114,26 @@ read_value = function(R, T, f, holder, key, ctx, e)
         out[i] = ev.v
       end
     end
+    -- A GROWN FIXED BOUND (docs/SPEC-TABLES.md §21.1): a sender that announced
+    -- a smaller bound wrote fewer elements; each new slot holds one fresh
+    -- default element, never nil and never the field's whole default.
+    if d.fixed then
+      for i = n + 1, d.bound do
+        out[i] = L.zero_elem(T, d.elem)
+      end
+    end
     holder[key] = out
     return true
   else
-    local v, ok, nonfinite = read_scalar(R, f, e)
+    local v, ok, nonfinite, holds = read_scalar(R, f, e)
     if nonfinite and ctx.nonFinite == nil then
       ctx.nonFinite = (ctx.owner or "?") .. "." .. tostring(ctx.field or f.name)
     end
     if not ok then return false end
+    if holds == false then
+      ctx.reason = "out_of_range"
+      return false
+    end
     if f.shape == "int" or f.shape == "wide" then
       if f.lo ~= nil and f.hi ~= nil then
         if less_than(f, v, f.lo) or less_than(f, f.hi, v) then
@@ -1489,7 +1607,12 @@ end
 -- (docs/SPEC-TABLES.md §3.3). maxBytes is the vocabulary field's byte bound,
 -- checked from its own length before an entry is touched; maxEntries is the
 -- receiver's entry capacity. Zero or nil takes the conforming defaults.
-function M.announceRead(_, vocab, data, report, maxBytes, maxEntries)
+-- STRICT MODE IS OPT-IN (docs/SPEC-TABLES.md §3.3): with vocab.strict set
+-- before the first announcement, one whose build version is not the unit's
+-- own is refused `build_version_mismatch`, sets no vocabulary, keeps the
+-- peer's build version and names both versions in report.remote and
+-- report.own; unset, the read tolerates the difference as the wire does.
+function M.announceRead(T, vocab, data, report, maxBytes, maxEntries)
   report = report or {}
   if vocab.announced or vocab.refused then
     report.refused = 1
@@ -1577,7 +1700,7 @@ function M.announceRead(_, vocab, data, report, maxBytes, maxEntries)
       local n, np = read_leb(buf, pos)
       if n == nil or math.ult(lim - np + 1, n) then return nil end
       local s = buf:sub(np, np + n - 1)
-      if s:find("\0", 1, true) ~= nil or utf8.len(s) == nil then return nil end
+      if s:find("\0", 1, true) ~= nil or not D.utf8_ok(s) then return nil end
       return np + n
     elseif k == 31 then
       local n, np = read_leb(buf, pos)
@@ -1650,7 +1773,7 @@ function M.announceRead(_, vocab, data, report, maxBytes, maxEntries)
       local aEnd = anp + n - 1
       if ak == 12 then
         local s = buf:sub(anp, aEnd)
-        if s:find("\0", 1, true) ~= nil or utf8.len(s) == nil then return nil end
+        if s:find("\0", 1, true) ~= nil or not D.utf8_ok(s) then return nil end
         return aEnd + 1
       elseif ak == 31 then
         return aEnd + 1
@@ -1714,6 +1837,15 @@ function M.announceRead(_, vocab, data, report, maxBytes, maxEntries)
     return false
   end
   if seenVersion ~= 1 or seenVocabulary ~= 1 then return damage() end
+  if vocab.strict and version ~= T.BuildVersion then
+    vocab.buildVersion = version
+    report.refused = 1
+    report.reason = "build_version_mismatch"
+    report.remote = version
+    report.own = T.BuildVersion
+    vocab.refused = true
+    return false
+  end
   local entries, tooLarge = vocabulary_entries(vocabulary, maxEntries)
   if entries == nil then
     if tooLarge then return too_large(version) end
@@ -1858,7 +1990,9 @@ end
 function M.saveMessages(T, root, vocab, values)
   message_root(T, root)
   if values == nil or #values < 1 or #values > T.MessageBatchMax then return nil end
-  if not vocab.announced then return nil end
+  -- a send uses the unit's own vocabulary (T.MessageVocabulary), as Go's
+  -- EncodeMessages does, so an unannounced receiver vocabulary is no reason to
+  -- refuse: measureMessages never asked for it either
   local refused = refuse_batch(T, root, values)
   if refused ~= nil then return nil, refused end
   local W = new_writer(false)

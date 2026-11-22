@@ -6,7 +6,6 @@ import (
 	"math"
 	"math/big"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -18,6 +17,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // A number token has no length limit in the verdict (docs/SPEC-TABLES.md
@@ -90,7 +91,7 @@ func runLongNumberProbe(t *testing.T, dir, main string, inputs map[string][]byte
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), longNumberDeadline)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, moo, main)
+	cmd := testproc.CommandContext(t, ctx, moo, main)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if ctx.Err() == context.DeadlineExceeded {

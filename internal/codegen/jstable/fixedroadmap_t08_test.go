@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -29,6 +28,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestFixedRoadmapJsT08ConformanceComposites(t *testing.T) {
@@ -175,7 +176,7 @@ func t08P1(t *testing.T) {
 	_, src := t08Emit(t, t02Flat)
 	// The emitted plan IS the compiled one: eleven int32 lanes (TableFixedLanes),
 	// and the lanes carry the same op, src, dst, size and guard the IR states.
-	lanes := strings.Split(t02Block(t, src, "const TFixedIdentity = new Int32Array([", "]);"), ",")
+	lanes := strings.Split(t02Block(t, src, "const TFixedIdentity = new globalThis.Int32Array([", "]);"), ",")
 	if len(lanes) != 11 {
 		t.Fatalf("P1: the identity plan has %d lanes, want 11: %q", len(lanes), lanes)
 	}
@@ -311,7 +312,7 @@ console.log("ok");
 		t.Fatal(err)
 	}
 	node := jsNode(t)
-	cmd := exec.Command(node, filepath.Join(dir, "probe.mjs"))
+	cmd := testproc.Command(t, node, filepath.Join(dir, "probe.mjs"))
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

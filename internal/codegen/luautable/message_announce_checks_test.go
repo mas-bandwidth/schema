@@ -17,7 +17,6 @@ import (
 	"maps"
 	"math/big"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -30,6 +29,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const announceChecksSchema = `package probe
@@ -242,7 +243,7 @@ func TestLuauMessageAnnounceMalformedShapes(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("nice", "-n", "19", "go", "test", "-count=1", "-timeout", "600s", "-run", "^TestAnnounceChecksOracle$", "-v", ".")
+	cmd := testproc.Command(t, "nice", "-n", "19", "go", "test", "-count=1", "-timeout", "600s", "-run", "^TestAnnounceChecksOracle$", "-v", ".")
 	cmd.Dir = goDir
 	cmd.Env = append(os.Environ(), "GOFLAGS=-mod=readonly")
 	out, err := cmd.CombinedOutput()
@@ -257,6 +258,9 @@ func TestLuauMessageAnnounceMalformedShapes(t *testing.T) {
 	}
 	if len(want) != len(inputs) {
 		t.Fatalf("the oracle printed %d verdicts, want %d:\n%s", len(want), len(inputs), out)
+	}
+	if len(cases) == 0 {
+		t.Fatal("cases is empty: the loop below would check nothing")
 	}
 	for _, c := range cases {
 		if want[c.name+"_malformed"] != "false" {
@@ -297,6 +301,9 @@ end
 			t.Fatalf("unexpected Luau line %q", line)
 		}
 		got[name] = rest
+	}
+	if len(names) == 0 {
+		t.Fatal("names is empty: the loop below would check nothing")
 	}
 	for _, name := range names {
 		if got[name] != want[name] {

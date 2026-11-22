@@ -1,0 +1,6 @@
+# The (schema, table, carrier) rows of the hostile corpus the Unity C# port is
+# allowed to skip, one "<schema>\t<table>\t<carrier>" per line.
+# test/unity-hostile/gen fails when the dispatch skips a row this file does not
+# name, or a row it names no longer skips: a skip is no verdict, so a surface
+# detection that stops matching must not turn cases into silent passes.
+# Today the port reads every row, so the list is empty.

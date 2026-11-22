@@ -74,6 +74,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/ast"
 	schemacheck "github.com/mas-bandwidth/schema/v2/internal/check"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/genheader"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -175,15 +176,30 @@ func is128(t ir.FieldType) bool {
 // SPEC §4.6) and never copied here.
 var javaReserved = schemacheck.ReservedIn("Java")
 
-// javaTypeHazards is every PascalCase spelling a generated nested class must
-// not take: the java.lang / core names generated bodies use unqualified —
-// a nested class named Long would shadow java.lang.Long inside its file —
-// plus the emitted 128-bit support pair.
+// javaTypeHazards is every spelling a generated nested class must not take:
+// the emitted 128-bit support pair, which generated bodies name by its simple
+// name. No platform name is here: generated Java spells every platform type
+// from the package root (java.lang.Long, java.util.Arrays, never a bare Long
+// or an import), so a class of the unit named Long, Object or Arrays — nested,
+// or the outer class of a sibling Long.schema — shadows nothing the generated
+// code uses (JLS §6.4.1). compiler's TestJavaNamesNoPlatformTypeUnqualified
+// holds it.
 var javaTypeHazards = map[string]bool{
-	"String": true, "StringBuilder": true, "Long": true, "Float": true,
-	"Double": true, "Math": true, "System": true,
 	"Int128": true, "UInt128": true,
 }
+
+// PackageRoot is the one simple name a declaration cannot take in generated
+// Java: every platform type is spelled in full from the package `java`, and a
+// class, field or variable named `java` in scope obscures that package for
+// every qualified name in its scope (JLS §6.4.2, §6.5.2) — no spelling then
+// reaches java.lang. The table emitter refuses it for its own members.
+const PackageRoot = "java"
+
+// RestrictedTypeNames are the contextual words javac refuses as a class name
+// (JLS §3.9, TypeIdentifier) that the reserved-word row (check.ReservedIn,
+// which carries var, yield and record) leaves out, because they are legal as
+// a field or a variable.
+var RestrictedTypeNames = map[string]bool{"sealed": true, "permits": true}
 
 // javaName maps an exported member/constant/variant name into Java's
 // lowerCamelCase: the first-letter-lowered form of ir.GoExportName. The two
@@ -208,18 +224,36 @@ func checkNames(u *ir.Unit) error {
 			}
 			return fmt.Errorf("%s %s maps to the reserved Java identifier %q; rename it", kind, name, mapped)
 		}
+		if mapped == PackageRoot {
+			return fmt.Errorf("%s %s of %s maps to the Java identifier %q, which obscures the java package every platform type in generated Java is named from (JLS §6.4.2); rename it", kind, name, owner, mapped)
+		}
 		return nil
 	}
 	fileBases := map[string]bool{}
 	for _, f := range u.Files {
 		fileBases[f.Base] = true
+		// the basename is the outer class's name (SPEC §6.1): javac refuses
+		// a reserved or restricted word there, and a class named java in the
+		// package obscures the java package in every file of it
+		switch {
+		case javaReserved[f.Base] || RestrictedTypeNames[f.Base]:
+			return fmt.Errorf("schema file %s.schema names the outer class the Java emitter writes for it, and %q is reserved as a Java class name; rename the file", f.Base, f.Base)
+		case f.Base == PackageRoot:
+			return fmt.Errorf("schema file %s.schema names the outer class the Java emitter writes for it, and a class named %q obscures the java package every platform type in generated Java is named from (JLS §6.4.2); rename the file", f.Base, f.Base)
+		}
 	}
 	checkType := func(kind, name string) error {
 		if fileBases[name] {
 			return fmt.Errorf("%s %s collides with the outer class the Java emitter writes for %s.schema (one public class per file); rename one of them", kind, name, name)
 		}
 		if javaTypeHazards[name] {
-			return fmt.Errorf("%s %s would shadow the core Java name %q inside generated files; rename it", kind, name, name)
+			return fmt.Errorf("%s %s would shadow the generated support class %q inside generated files; rename it", kind, name, name)
+		}
+		if RestrictedTypeNames[name] {
+			return fmt.Errorf("%s %s is reserved as a Java class name; rename it", kind, name)
+		}
+		if name == PackageRoot {
+			return fmt.Errorf("%s %s becomes a class named %q, which obscures the java package every platform type in generated Java is named from (JLS §6.4.2); rename it", kind, name, name)
 		}
 		return nil
 	}
@@ -227,6 +261,11 @@ func checkNames(u *ir.Unit) error {
 	// and no Java reserved word is upper case: only types and members check
 	for _, e := range u.Enums {
 		if err := checkType("enum", e.Name); err != nil {
+			return err
+		}
+	}
+	for _, fl := range u.Flags {
+		if err := checkType("flags", fl.Name); err != nil {
 			return err
 		}
 	}
@@ -280,9 +319,8 @@ type gen struct {
 	stored      bool // write side: data holds the partial word, scratch is stale
 	usesScratch bool // write side: the body loads the scratch word
 
-	usesWire   bool            // the file emitted wire functions: the VarHandle rides
-	usesArrays bool            // the file calls Arrays.fill
-	helpers    map[string]bool // the bitpacker helpers the file's bodies call
+	usesWire bool            // the file emitted wire functions: the VarHandle rides
+	helpers  map[string]bool // the bitpacker helpers the file's bodies call
 }
 
 // use records that a body calls the named bitpacker helper, so the file
@@ -403,6 +441,7 @@ func (g *gen) assemble() []byte {
 	// the basename, not the invocation-relative path: output is deterministic
 	// to the byte wherever the compiler runs (SPEC §6.1)
 	fmt.Fprintf(&h, "// Code generated by the schema compiler from %s.schema. DO NOT EDIT.\n", g.file.Base)
+	h.WriteString(genheader.Wrapped("//"))
 	h.WriteString("// SPDX-License-Identifier: NONE — this generated output is yours, under terms of\n")
 	h.WriteString("// your choice. See the LICENSE exception in the schema compiler; the compiler is\n")
 	h.WriteString("// AGPL-3.0, its output is not.\n")
@@ -434,19 +473,9 @@ func (g *gen) assemble() []byte {
 	}
 	h.WriteString("\n")
 	fmt.Fprintf(&h, "package %s;\n\n", g.unit.Package)
-	var imports []string
-	if g.usesWire {
-		imports = append(imports, "java.lang.invoke.MethodHandles", "java.lang.invoke.VarHandle", "java.nio.ByteOrder")
-	}
-	if g.usesArrays {
-		imports = append(imports, "java.util.Arrays")
-	}
-	for _, imp := range imports {
-		fmt.Fprintf(&h, "import %s;\n", imp)
-	}
-	if len(imports) > 0 {
-		h.WriteString("\n")
-	}
+	// no imports: every platform type is spelled from the package root
+	// (java.util.Arrays, java.lang.invoke.VarHandle), which no class of the
+	// unit can shadow (javaTypeHazards, PackageRoot)
 	fmt.Fprintf(&h, "// %s carries every generated declaration of %s.schema — Java has no\n", g.file.Base, g.file.Base)
 	h.WriteString("// top-level functions or constants, so the file's one public class is their\n")
 	h.WriteString("// home; types nest inside it (SPEC §6.1 naming).\n")
@@ -455,8 +484,8 @@ func (g *gen) assemble() []byte {
 	if g.usesWire {
 		h.WriteString("    // 64-bit little-endian word access into byte[] — the proven-fast JVM\n")
 		h.WriteString("    // form (VarHandle byteArrayViewVarHandle, serialize.java's own).\n")
-		h.WriteString("    private static final VarHandle LONG_LE =\n")
-		h.WriteString("            MethodHandles.byteArrayViewVarHandle(long[].class, ByteOrder.LITTLE_ENDIAN);\n\n")
+		h.WriteString("    private static final java.lang.invoke.VarHandle LONG_LE =\n")
+		h.WriteString("            java.lang.invoke.MethodHandles.byteArrayViewVarHandle(long[].class, java.nio.ByteOrder.LITTLE_ENDIAN);\n\n")
 		for _, helper := range javaHelpers {
 			if g.helpers[helper.name] {
 				h.WriteString(helper.src)
@@ -502,7 +531,7 @@ func (g *gen) emitFile() {
 // constants as float/double per storage.
 func (g *gen) emitConst(d *ir.Const) {
 	name := constName(d.Name)
-	g.bpf("%s", ir.DocComment(d.Doc, "    ", "//"))
+	g.bpf("%s", javaDocComment(d.Doc, "    "))
 	if d.IsFloat {
 		if d.Storage == "float32" {
 			g.bpf("    public static final float %s = %sf;%s\n\n", name, formatFloat32(d.Float), g.foldComment(d.Expr))
@@ -555,7 +584,7 @@ func (g *gen) emitTagEnum(name, typ string, members, docs []string, max int64, c
 	g.bpf("        private %s() {}\n\n", name)
 	g.bpf("        public static final %s NONE = 0;\n", typ)
 	for i, m := range members {
-		g.bpf("%s", ir.DocComment(docs[i], "        ", "//"))
+		g.bpf("%s", javaDocComment(docs[i], "        "))
 		g.bpf("        public static final %s %s = %s;\n", typ, constName(m), narrowLit(typ, big.NewInt(int64(i+1))))
 	}
 	g.bpf("        // the exported extent (SPEC §4.2)\n")
@@ -567,7 +596,7 @@ func (g *gen) emitTagEnum(name, typ string, members, docs []string, max int64, c
 	// whichever enum it is. Nothing on the read or write path calls it.
 	g.bpf("    // enumName%s: debug/log/tooling name for any %s storage value —\n", name, name)
 	g.bpf("    // out-of-set values (wire-legal up to the declared max) name as \"???\"\n")
-	g.bpf("    public static String enumName%s(long value) {\n", name)
+	g.bpf("    public static java.lang.String enumName%s(long value) {\n", name)
 	g.bpf("        if (value == %s.NONE) {\n            return \"None\";\n        }\n", name)
 	for _, m := range members {
 		g.bpf("        if (value == %s.%s) {\n            return \"%s\";\n        }\n", name, constName(m), m)
@@ -577,7 +606,7 @@ func (g *gen) emitTagEnum(name, typ string, members, docs []string, max int64, c
 
 func (g *gen) emitEnum(d *ir.Enum) {
 	typ := enumJavaType(d.StorageBits)
-	g.bpf("%s", ir.DocComment(d.Doc, "    ", "//"))
+	g.bpf("%s", javaDocComment(d.Doc, "    "))
 	g.bpf("    // %s — None = 0 implicit, variants dense from 1, wire range [0, %d] (SPEC §4.2);\n", d.Name, d.Max)
 	g.bpf("    // an int-constant namespace — the Java translation of the family's integer-\n")
 	g.bpf("    // backed enums: storage must hold every wire-legal value, and | max = ...\n")
@@ -586,7 +615,7 @@ func (g *gen) emitEnum(d *ir.Enum) {
 	g.bpf("        private %s() {}\n\n", d.Name)
 	g.bpf("        public static final %s NONE = 0;\n", typ)
 	for i, v := range d.Variants {
-		g.bpf("%s", ir.DocComment(d.VariantDocs[i], "        ", "//"))
+		g.bpf("%s", javaDocComment(d.VariantDocs[i], "        "))
 		g.bpf("        public static final %s %s = %s;\n", typ, constName(v), narrowLit(typ, big.NewInt(int64(i+1))))
 	}
 	g.bpf("        // the exported extent (SPEC §4.2)\n")
@@ -595,7 +624,7 @@ func (g *gen) emitEnum(d *ir.Enum) {
 
 	g.bpf("    // enumName%s: debug/log/tooling name for any %s storage value —\n", d.Name, d.Name)
 	g.bpf("    // out-of-set values (wire-legal up to the declared max) name as \"???\"\n")
-	g.bpf("    public static String enumName%s(long value) {\n", d.Name)
+	g.bpf("    public static java.lang.String enumName%s(long value) {\n", d.Name)
 	g.bpf("        if (value == %s.NONE) {\n            return \"None\";\n        }\n", d.Name)
 	for _, v := range d.Variants {
 		g.bpf("        if (value == %s.%s) {\n            return \"%s\";\n        }\n", d.Name, constName(v), v)
@@ -604,12 +633,12 @@ func (g *gen) emitEnum(d *ir.Enum) {
 }
 
 func (g *gen) emitFlags(d *ir.Flags) {
-	g.bpf("%s", ir.DocComment(d.Doc, "    ", "//"))
+	g.bpf("%s", javaDocComment(d.Doc, "    "))
 	g.bpf("    // %s — one bit per variant, consumed as masks; flags-typed fields store\n", d.Name)
 	g.bpf("    // uint64 in every target — a bit-transparent long here — wire %d bits\n", d.WireBits)
 	g.bpf("    // (SPEC §4.2). Mask names are the family's flat spelling, UPPER_SNAKE.\n")
 	for i, v := range d.Variants {
-		g.bpf("%s", ir.DocComment(d.VariantDocs[i], "    ", "//"))
+		g.bpf("%s", javaDocComment(d.VariantDocs[i], "    "))
 		g.bpf("    public static final long %s = 1L << %d;\n", constName(d.Name+v), i)
 	}
 	g.bpf("    // the declared variant count (SPEC §4.2)\n")
@@ -618,7 +647,7 @@ func (g *gen) emitFlags(d *ir.Flags) {
 
 	g.bpf("    // flagName%s: debug/log/tooling name for bit i of %s —\n", d.Name, d.Name)
 	g.bpf("    // out-of-range bits name as \"???\"\n")
-	g.bpf("    public static String flagName%s(int bit) {\n", d.Name)
+	g.bpf("    public static java.lang.String flagName%s(int bit) {\n", d.Name)
 	g.bpf("        switch (bit) {\n")
 	for i, v := range d.Variants {
 		g.bpf("            case %d:\n                return \"%s\";\n", i, v)
@@ -627,8 +656,8 @@ func (g *gen) emitFlags(d *ir.Flags) {
 
 	g.bpf("    // flagNames%s renders the set bits of value as \"A|B\" — \"0\" for the\n", d.Name)
 	g.bpf("    // empty set, bits past the declared variants as hex\n")
-	g.bpf("    public static String flagNames%s(long value) {\n", d.Name)
-	g.bpf("        StringBuilder names = new StringBuilder();\n")
+	g.bpf("    public static java.lang.String flagNames%s(long value) {\n", d.Name)
+	g.bpf("        java.lang.StringBuilder names = new java.lang.StringBuilder();\n")
 	for i, v := range d.Variants {
 		g.bpf("        if ((value & (1L << %d)) != 0) {\n", i)
 		g.bpf("            if (names.length() > 0) {\n                names.append('|');\n            }\n")
@@ -638,14 +667,14 @@ func (g *gen) emitFlags(d *ir.Flags) {
 		g.bpf("        if (value >>> %d != 0) {\n", len(d.Variants))
 		g.bpf("            if (names.length() > 0) {\n                names.append('|');\n            }\n")
 		g.bpf("            // Long.toHexString renders the bit pattern, not a sign\n")
-		g.bpf("            names.append(\"0x\").append(Long.toHexString((value >>> %d) << %d));\n", len(d.Variants), len(d.Variants))
+		g.bpf("            names.append(\"0x\").append(java.lang.Long.toHexString((value >>> %d) << %d));\n", len(d.Variants), len(d.Variants))
 		g.bpf("        }\n")
 	}
 	g.bpf("        return names.length() == 0 ? \"0\" : names.toString();\n    }\n\n")
 }
 
 func (g *gen) emitClass(d *ir.Struct) {
-	g.bpf("%s", ir.DocComment(d.Doc, "    ", "//"))
+	g.bpf("%s", javaDocComment(d.Doc, "    "))
 	g.bpf("    // type %s\n", d.Name)
 	g.bpf("    public static final class %s {\n", d.Name)
 	if len(d.Fields) == 0 {
@@ -663,7 +692,7 @@ func (g *gen) emitClass(d *ir.Struct) {
 			}
 			prevGuard = f.Guard
 		}
-		g.bpf("%s", ir.DocComment(f.Doc, "        ", "//"))
+		g.bpf("%s", javaDocComment(f.Doc, "        "))
 		ctor = append(ctor, g.emitStorageField(f)...)
 	}
 	if len(ctor) > 0 {
@@ -713,8 +742,7 @@ func (g *gen) emitStorageField(f *ir.Field) []string {
 			}
 			g.bpf("        public final %s[] %s = new %s[%s];\n", typ, name, typ, bound)
 			ctor = append(ctor,
-				fmt.Sprintf("            Arrays.fill(%s, %s.zero);\n", name, typ))
-			g.usesArrays = true
+				fmt.Sprintf("            java.util.Arrays.fill(%s, %s.zero);\n", name, typ))
 		default:
 			g.bpf("        public final %s[] %s = new %s[%s];\n", scalarJavaType(f.Type), name, scalarJavaType(f.Type), bound)
 		}
@@ -953,7 +981,7 @@ func (g *gen) emitUnion(d *ir.Union) {
 	g.emitTagEnum(d.Name+"Type", typ, variantNames(d), variantDocs(d), d.Max,
 		fmt.Sprintf("union %s's tag — None = 0, then each variant in declared order (SPEC §4.8)", d.Name))
 
-	g.bpf("%s", ir.DocComment(d.Doc, "    ", "//"))
+	g.bpf("%s", javaDocComment(d.Doc, "    "))
 	g.bpf("    // %s — at most one of the arms; type says which. Construction is the empty\n", d.Name)
 	g.bpf("    // union (None). Every read selection initializes the chosen payload from\n")
 	g.bpf("    // construction defaults; unselected arms keep what they last held — the\n")
@@ -1157,6 +1185,9 @@ func (g *gen) intEval(e ast.Expr) (*big.Int, bool) {
 				return nil, false
 			}
 			v.Rem(x, y) // Java % is the truncated remainder, schema's own
+			if !fitsInt32(new(big.Int).Quo(x, y)) {
+				return nil, false // MIN % -1: keep the int domain exact, as / does
+			}
 		default:
 			return nil, false
 		}
@@ -1612,6 +1643,8 @@ func wrapCall(l string) []string {
 		lhs, callee = "return ", strings.TrimPrefix(head, "return ")
 	case strings.HasPrefix(head, "assert "):
 		lhs, callee = "assert ", strings.TrimPrefix(head, "assert ")
+	case strings.HasPrefix(head, "throw "):
+		lhs, callee = "throw ", strings.TrimPrefix(head, "throw ")
 	case strings.Contains(head, " = "):
 		k := strings.LastIndex(head, " = ")
 		lhs, callee = head[:k+3], head[k+3:]
@@ -1671,7 +1704,7 @@ func wrapCall(l string) []string {
 // breakPrefixed is breakArg for an operand behind a prefix (`? `, `: `, an
 // operator): the prefix leads its first line.
 func breakPrefixed(ind, prefix, e, tail string) []string {
-	w := breakArg(ind, e, tail)
+	w := breakArgLed(ind, javaWidth(prefix), e, tail)
 	if w == nil {
 		return nil
 	}
@@ -1683,8 +1716,13 @@ func breakPrefixed(ind, prefix, e, tail string) []string {
 // `new`) opens its own argument list eight columns deeper, all on one line
 // when they fit and one a line otherwise, recursively; a string literal is
 // left whole. nil when the argument is neither.
-func breakArg(ind, a, end string) []string {
-	if javaWidth(ind+a+end) <= javaColumnLimit || isSingleStringLit(a) {
+func breakArg(ind, a, end string) []string { return breakArgLed(ind, 0, a, end) }
+
+// breakArgLed is breakArg for an argument whose first line carries lead more
+// columns ahead of it (a prefix the caller lays down, `? ` or an operator):
+// they count when the argument is measured whole and on a chain's receiver.
+func breakArgLed(ind string, lead int, a, end string) []string {
+	if javaWidth(ind+a+end)+lead <= javaColumnLimit || isSingleStringLit(a) {
 		return []string{ind + a + end}
 	}
 	if c, x, y, ok := splitTernary(a); ok {
@@ -1703,7 +1741,16 @@ func breakArg(ind, a, end string) []string {
 		if len(parts) == 1 {
 			tail = end
 		}
-		out := breakArg(ind, parts[0], tail)
+		// a call leading the chain and too wide for its line: its arguments
+		// sixteen columns in, past the chain's own continuation
+		var out []string
+		if open := strings.IndexByte(parts[0], '('); open > 0 && javaWidth(ind+parts[0]+tail) > javaColumnLimit &&
+			javaCallee.MatchString(strings.TrimPrefix(parts[0][:open], "new ")) {
+			out = breakCallAt(ind, parts[0], ind+"                ", tail)
+		}
+		if out == nil {
+			out = breakArg(ind, parts[0], tail)
+		}
 		if out == nil {
 			return nil
 		}
@@ -1753,7 +1800,7 @@ func breakArg(ind, a, end string) []string {
 	open := strings.IndexByte(a, '(')
 	if open < 0 || !strings.HasSuffix(a, ")") || matchParen(a, open) != len(a)-1 {
 		// a chain of calls: broken before each, eight columns in
-		return layoutChain(ind, a, end)
+		return layoutChainLed(ind+strings.Repeat(" ", lead), ind, a, end)
 	}
 	if !javaCallee.MatchString(strings.TrimPrefix(a[:open], "new ")) {
 		return nil
@@ -2554,7 +2601,13 @@ func emptyBlocks(lines []string) []string {
 	for i := 0; i < len(lines); i++ {
 		l := lines[i]
 		if i+1 < len(lines) && strings.HasSuffix(l, "{") && strings.TrimSpace(lines[i+1]) == "}" && len(indentOf(lines[i+1])) <= len(indentOf(l)) && !strings.HasSuffix(strings.TrimSpace(l), "= {") && !strings.HasSuffix(l, "[] {") {
-			out = append(out, l+"}")
+			// the closing brace counts against the limit: a for header it
+			// pushes past breaks at its semicolons
+			if w := wrapFor(l + "}"); w != nil {
+				out = append(out, w...)
+			} else {
+				out = append(out, l+"}")
+			}
 			i++
 			continue
 		}
@@ -3029,23 +3082,36 @@ func breakCond(ind, head, expr, tail string) []string {
 	return out
 }
 
-// wrapFor breaks a for header wider than the limit at its semicolons.
+// wrapFor breaks a for header wider than the limit at its semicolons; an
+// empty body (`) {}`) rides the last line. A condition still too wide for its
+// line breaks at its operators, eight columns under it.
 func wrapFor(l string) []string {
 	if javaWidth(l) <= javaColumnLimit || strings.Contains(l, "//") {
 		return nil
 	}
 	ind := indentOf(l)
 	t := strings.TrimSpace(l)
-	if !strings.HasPrefix(t, "for (") || !strings.HasSuffix(t, ") {") {
+	open := ") {"
+	if strings.HasSuffix(t, ") {}") {
+		open = ") {}"
+	}
+	if !strings.HasPrefix(t, "for (") || !strings.HasSuffix(t, open) {
 		return nil
 	}
-	parts := strings.Split(t[5:len(t)-3], "; ")
+	parts := strings.Split(t[5:len(t)-len(open)], "; ")
 	if len(parts) != 3 {
 		return nil
 	}
-	out := []string{ind + "for (" + parts[0] + ";", ind + "        " + parts[1] + ";", ind + "        " + parts[2] + ") {"}
+	cond := []string{ind + "        " + parts[1] + ";"}
+	if javaWidth(cond[0]) > javaColumnLimit {
+		cond = breakCond(ind+"        ", "", parts[1], ";")
+		if cond == nil {
+			return nil
+		}
+	}
+	out := append(append([]string{ind + "for (" + parts[0] + ";"}, cond...), ind+"        "+parts[2]+open)
 	if parts[2] == "" || parts[2] == " " {
-		out = []string{ind + "for (" + parts[0] + ";", ind + "        " + parts[1] + "; ) {"}
+		out = []string{ind + "for (" + parts[0] + ";", ind + "        " + parts[1] + "; " + open}
 	}
 	for _, o := range out {
 		if javaWidth(o) > javaColumnLimit {
@@ -3075,8 +3141,14 @@ func wrapChain(ind, lhs, rhs string) []string {
 
 // layoutChain lays a chain of two or more calls out from inner: the receiver
 // on the first line, every later dereference eight columns in; end closes the
-// last line. nil when e is not such a chain or a line will not fit.
-func layoutChain(inner, e, end string) []string {
+// last line. A parenthesized receiver (`((T) v).m(x)`) breaks before its one
+// call too. nil when e is not such a chain or a line will not fit.
+func layoutChain(inner, e, end string) []string { return layoutChainLed(inner, inner, e, end) }
+
+// layoutChainLed is layoutChain with the receiver's line opened by lead (its
+// indent and whatever prefix the line carries, `assert ` or `&& `) and the
+// later lines at inner.
+func layoutChainLed(lead, inner, e, end string) []string {
 	segs := chainSegments(e)
 	if len(segs) < 2 || segs[0] == "" || (segs[0][0] >= '0' && segs[0][0] <= '9') {
 		return nil // a number's point is not a dereference
@@ -3091,18 +3163,23 @@ func layoutChain(inner, e, end string) []string {
 			calls++
 		}
 	}
-	if calls < 2 || k >= len(segs) {
+	need := 2
+	if strings.HasPrefix(segs[0], "(") && matchParen(segs[0], 0) == len(segs[0])-1 {
+		need = 1 // the receiver is one parenthesized expression, not a cast's type
+	}
+	if calls < need || k >= len(segs) {
 		return nil
 	}
 	var out []string
 	last := len(segs) - 1
-	if one := inner + recv; javaWidth(one) <= javaColumnLimit {
+	if one := lead + recv; javaWidth(one) <= javaColumnLimit {
 		out = append(out, one)
 	} else if prefixCall {
 		w := breakCallAt(inner, recv, inner+"                ", "")
 		if w == nil {
 			return nil
 		}
+		w[0] = lead + strings.TrimLeft(w[0], " ")
 		out = append(out, w...)
 	} else {
 		return nil
@@ -3994,8 +4071,7 @@ func wrapAssertOperand(prefixLine, contInd, expr string) []string {
 		var out []string
 		if javaWidth(prefixLine+sub[0]) <= javaColumnLimit {
 			out = append(out, prefixLine+sub[0])
-		} else if w := layoutChain(contInd+"        ", sub[0], ""); w != nil {
-			w[0] = prefixLine + strings.TrimLeft(w[0], " ")
+		} else if w := layoutChainLed(prefixLine, contInd+"        ", sub[0], ""); w != nil {
 			out = append(out, w...)
 		} else if w := breakArg(contInd, sub[0], ""); w != nil {
 			w[0] = prefixLine + strings.TrimLeft(w[0], " ")

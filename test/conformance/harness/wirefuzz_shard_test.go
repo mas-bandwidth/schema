@@ -61,7 +61,7 @@ func TestWireFuzzShardExactUnion(t *testing.T) {
 }
 
 func TestWireFuzzShardRejectsInvalidCombinations(t *testing.T) {
-	for _, opts := range []wireFuzzOptions{{shard: -1, shards: 2}, {shard: 2, shards: 2}, {shards: -1}, {shards: 2, replay: "wire"}, {shards: 2, relaxVectors: "vector"}} {
+	for _, opts := range []wireFuzzOptions{{shard: -1, shards: 2}, {shard: 2, shards: 2}, {shards: -1}, {shards: 2, replay: "wire"}} {
 		if err := wireFuzz(nil, opts); err == nil {
 			t.Fatalf("accepted invalid shard options: %+v", opts)
 		}

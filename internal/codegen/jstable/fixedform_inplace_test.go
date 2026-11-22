@@ -17,13 +17,14 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // specInPlaceMarker is the one line of docs/SPEC-TABLES.md §3.4 that lists the
@@ -132,7 +133,8 @@ func jsCode(src string) string {
 func TestSpecInPlaceListHasAGuard(t *testing.T) {
 	t.Parallel()
 	guarded := map[string]bool{"javascript": true}
-	for lang := range specInPlaceLanguages(t) {
+	allSpecInPlaceLanguages := specInPlaceLanguages(t)
+	for lang := range allSpecInPlaceLanguages {
 		if !guarded[lang] {
 			t.Errorf("docs/SPEC-TABLES.md §3.4 lists %q with an in-place identity read, and no guard here allows it: "+
 				"narrow that language's own no-second-reader guard to the list and add it to this set", lang)
@@ -324,7 +326,7 @@ console.log("ok " + JSON.stringify(outcomes));
 	if err := os.WriteFile(filepath.Join(dir, "probe.mjs"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, filepath.Join(dir, "probe.mjs"))
+	cmd := testproc.Command(t, node, filepath.Join(dir, "probe.mjs"))
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

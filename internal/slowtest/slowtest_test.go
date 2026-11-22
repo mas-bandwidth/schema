@@ -51,6 +51,9 @@ func TestEveryToolchainTestIsBehindTheGate(t *testing.T) {
 	if scan.scanned == 0 {
 		t.Fatal("no toolchain test sources found — this gate is looking at the wrong text")
 	}
+	for _, u := range scan.unknown {
+		t.Errorf("%s: it can start a program, and this scan cannot say whether it is gated — name the call it spawns through in toolchainMarkers (issue #1025)", u)
+	}
 	fresh, stale := ratchetUngated(scan, baseline)
 	for _, rel := range fresh {
 		t.Errorf("%s reaches a foreign toolchain but never calls slowtest.Gate: a default `go test` pays for that compiler on every run (issue #1025)", rel)
@@ -70,15 +73,19 @@ func TestToolchainScanNegativeControl(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	files := map[string]string{
-		"internal/codegen/xtable/gated_test.go":      "package xtable\nfunc TestA(t *testing.T) {\n\tslowtest.Gate(t, \"cc\")\n\texec.Command(\"cc\")\n}\n",
-		"internal/codegen/xtable/ungated_test.go":    "package xtable\nfunc TestB(t *testing.T) {\n\texec.Command(\"rustc\")\n}\n",
-		"internal/codegen/xtable/listed_test.go":     "package xtable\nfunc TestC(t *testing.T) {\n\texec.LookPath(\"node\")\n}\n",
-		"internal/codegen/xtable/nowgated_test.go":   "package xtable\nfunc TestD(t *testing.T) {\n\tslowtest.Gate(t, \"dart\")\n\texec.CommandContext(ctx, \"dart\")\n}\n",
-		"internal/codegen/xtable/plain_test.go":      "package xtable\nfunc TestE(t *testing.T) {}\n",
-		"internal/codegen/xtable/helpers_test.go":    "package xtable\nfunc toolchain(t *testing.T) {\n\tslowtest.Gate(t, \"cc\")\n}\n",
-		"internal/codegen/xtable/indirect_test.go":   "package xtable\nfunc TestH(t *testing.T) {\n\ttoolchain(t)\n\texec.Command(\"cc\")\n}\n",
-		"internal/codegen/xtable/testdata/x_test.go": "package x\nfunc TestF(t *testing.T) {\n\texec.Command(\"cc\")\n}\n",
-		"compiler/deep/sub/ungated_nested_test.go":   "package sub\nfunc TestG(t *testing.T) {\n\tfindDotnet(t)\n}\n",
+		"internal/codegen/xtable/gated_test.go":            "package xtable\nfunc TestA(t *testing.T) {\n\tslowtest.Gate(t, \"cc\")\n\texec.Command(\"cc\")\n}\n",
+		"internal/codegen/xtable/ungated_test.go":          "package xtable\nfunc TestB(t *testing.T) {\n\texec.Command(\"rustc\")\n}\n",
+		"internal/codegen/xtable/listed_test.go":           "package xtable\nfunc TestC(t *testing.T) {\n\texec.LookPath(\"node\")\n}\n",
+		"internal/codegen/xtable/nowgated_test.go":         "package xtable\nfunc TestD(t *testing.T) {\n\tslowtest.Gate(t, \"dart\")\n\texec.CommandContext(ctx, \"dart\")\n}\n",
+		"internal/codegen/xtable/plain_test.go":            "package xtable\nfunc TestE(t *testing.T) {}\n",
+		"internal/codegen/xtable/helpers_test.go":          "package xtable\nfunc toolchain(t *testing.T) {\n\tslowtest.Gate(t, \"cc\")\n}\n",
+		"internal/codegen/xtable/indirect_test.go":         "package xtable\nfunc TestH(t *testing.T) {\n\ttoolchain(t)\n\texec.Command(\"cc\")\n}\n",
+		"internal/codegen/xtable/testdata/x_test.go":       "package x\nfunc TestF(t *testing.T) {\n\texec.Command(\"cc\")\n}\n",
+		"compiler/deep/sub/ungated_nested_test.go":         "package sub\nfunc TestG(t *testing.T) {\n\tfindDotnet(t)\n}\n",
+		"internal/codegen/xtable/testproc_gated_test.go":   "package xtable\nfunc TestI(t *testing.T) {\n\tslowtest.Gate(t, \"lua\")\n\ttestproc.Command(t, \"lua\")\n}\n",
+		"internal/codegen/xtable/testproc_ungated_test.go": "package xtable\nfunc TestJ(t *testing.T) {\n\ttestproc.CommandContext(t, ctx, \"lua\")\n}\n",
+		"internal/codegen/xtable/renamed_import_test.go":   "package xtable\n\nimport x \"os/exec\"\n\nfunc TestK(t *testing.T) {\n\tx.Command(\"cc\")\n}\n",
+		"internal/codegen/xtable/types_only_test.go":       "package xtable\n\nimport \"example.com/m/internal/testproc\"\n\nfunc TestL(t *testing.T) {\n\tvar _ testproc.Options\n}\n",
 	}
 	for rel, text := range files {
 		path := filepath.Join(root, filepath.FromSlash(rel))
@@ -93,8 +100,8 @@ func TestToolchainScanNegativeControl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if scan.scanned != 6 {
-		t.Errorf("scanned %d toolchain sources, want 6 (plain, the gating helper and testdata/ excluded)", scan.scanned)
+	if scan.scanned != 8 {
+		t.Errorf("scanned %d toolchain sources, want 8 (plain, the gating helper and testdata/ excluded)", scan.scanned)
 	}
 	baseline := map[string]bool{
 		"internal/codegen/xtable/listed_test.go":   true,
@@ -102,29 +109,46 @@ func TestToolchainScanNegativeControl(t *testing.T) {
 		"internal/codegen/xtable/deleted_test.go":  true,
 	}
 	fresh, stale := ratchetUngated(scan, baseline)
-	if want := []string{"compiler/deep/sub/ungated_nested_test.go", "internal/codegen/xtable/ungated_test.go"}; !slices.Equal(fresh, want) {
+	if want := []string{"compiler/deep/sub/ungated_nested_test.go", "internal/codegen/xtable/testproc_ungated_test.go", "internal/codegen/xtable/ungated_test.go"}; !slices.Equal(fresh, want) {
 		t.Errorf("ungated off the list = %v, want %v", fresh, want)
 	}
 	if want := []string{"internal/codegen/xtable/deleted_test.go", "internal/codegen/xtable/nowgated_test.go"}; !slices.Equal(stale, want) {
 		t.Errorf("stale list entries = %v, want %v", stale, want)
+	}
+	// a source that can spawn and matches no marker is neither gated nor
+	// ungated: it is unknown, by name
+	if want := []string{
+		"internal/codegen/xtable/renamed_import_test.go imports os/exec and matches no toolchain marker",
+		"internal/codegen/xtable/types_only_test.go imports example.com/m/internal/testproc and matches no toolchain marker",
+	}; !slices.Equal(scan.unknown, want) {
+		t.Errorf("unknown = %q, want %q", scan.unknown, want)
 	}
 }
 
 var toolchainScopes = []string{"compiler", filepath.Join("internal", "codegen")}
 
 // toolchainMarkers is any text by which a test source reaches a program
-// outside the Go process: every exec entry point, and the dotnet finder that
-// wraps one.
+// outside the Go process: every exec entry point, the bounded test-child
+// helper (internal/testproc) that wraps exec for tests, and the dotnet finder
+// that wraps one.
 var toolchainMarkers = []string{
 	"exec.Command(",
 	"exec.CommandContext(",
 	"exec.LookPath(",
+	"slowtest.Tool(",
+	"testproc.Command(",
+	"testproc.CommandContext(",
 	"findDotnet",
 }
 
 type toolchainScan struct {
 	scanned int
 	ungated []string // slash-separated, relative to the repository root, sorted
+	// unknown is every test source that CAN start a program (it imports os/exec
+	// or internal/testproc) and matches no marker: a spelling of the spawn this
+	// scan does not know, which is how 279 sources that call testproc.Command
+	// went unjudged. Unknown is red, not ignored.
+	unknown []string
 }
 
 func scanToolchainTests(root string, scopes []string) (toolchainScan, error) {
@@ -150,6 +174,17 @@ func scanToolchainTests(root string, scopes []string) (toolchainScan, error) {
 			}
 			text := string(data)
 			if !slices.ContainsFunc(toolchainMarkers, func(m string) bool { return strings.Contains(text, m) }) {
+				spawner, err := importsASpawner(path, data)
+				if err != nil {
+					return err
+				}
+				if spawner != "" {
+					rel, err := filepath.Rel(root, path)
+					if err != nil {
+						return err
+					}
+					scan.unknown = append(scan.unknown, filepath.ToSlash(rel)+" imports "+spawner+" and matches no toolchain marker")
+				}
 				return nil
 			}
 			scan.scanned++
@@ -179,7 +214,24 @@ func scanToolchainTests(root string, scopes []string) (toolchainScan, error) {
 		}
 	}
 	slices.Sort(scan.ungated)
+	slices.Sort(scan.unknown)
 	return scan, nil
+}
+
+// importsASpawner names the package a source imports that can start a program
+// outside the Go process, or "".
+func importsASpawner(path string, data []byte) (string, error) {
+	file, err := parser.ParseFile(token.NewFileSet(), path, data, parser.ImportsOnly)
+	if err != nil {
+		return "", err
+	}
+	for _, imp := range file.Imports {
+		p := strings.Trim(imp.Path.Value, "`\"")
+		if p == "os/exec" || strings.HasSuffix(p, "/internal/testproc") {
+			return p, nil
+		}
+	}
+	return "", nil
 }
 
 // gatedToolchainHelpers is the set of functions in one package whose body
@@ -203,7 +255,8 @@ func gatedToolchainHelpers(dir string) (map[string]bool, error) {
 		}
 		file, err := parser.ParseFile(fset, path, data, 0)
 		if err != nil {
-			continue // a source the parser refuses cannot carry a call this scan trusts
+			// a source the parser refuses is a source this scan has not read
+			return nil, err
 		}
 		for _, decl := range file.Decls {
 			fn, ok := decl.(*ast.FuncDecl)
@@ -344,6 +397,7 @@ func TestToolchainHelpersGateBeforeTheySpawn(t *testing.T) {
 			}
 		}
 		if spawn < 0 {
+			t.Errorf("%s: %s no longer reaches a toolchain by any marker this scan knows, so its place on this list checks nothing: remove it, or name the call it spawns through", h.file, h.fn)
 			continue
 		}
 		gate := strings.Index(text, "slowtest.Gate(")

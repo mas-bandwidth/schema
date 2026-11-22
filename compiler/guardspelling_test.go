@@ -76,7 +76,11 @@ func TestGuardCommentsSpellTheConditionTheWayDescriptorsDo(t *testing.T) {
 		"!at_rest && active && !has_target",
 		"at_rest",
 	}
-	for _, target := range New().Targets() {
+	allTargets := New().Targets()
+	if len(allTargets) == 0 {
+		t.Fatal("New().Targets() is empty: the loop below would check nothing")
+	}
+	for _, target := range allTargets {
 		lead, known := guardComment[target]
 		if !known {
 			t.Errorf("target %q has no guard-comment claim here. A new backend landed and this gate was not told", target)

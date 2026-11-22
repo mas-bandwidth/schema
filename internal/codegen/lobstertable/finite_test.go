@@ -352,8 +352,10 @@ func TestLobsterTablesAreFiniteOnlyNegativeControl(t *testing.T) {
 		red[strings.SplitN(b, ":", 2)[0]] = true
 	}
 	for _, r := range rows {
-		// Bounds independently reject infinity in a compressed field.
-		wantRed := r.field != "" && r.name != "compressed_inf_before_bounds"
+		// Bounds independently reject infinity and NaN in a compressed
+		// field: the range is held as Go's tabletext.FloatInRange holds it,
+		// and a NaN is inside no range.
+		wantRed := r.field != "" && r.name != "compressed_inf_before_bounds" && r.name != "compressed_nan_before_bounds"
 		if wantRed != red[r.name] {
 			t.Errorf("the read control: row %s red=%v, want red where raw-bit validation is the only refusal", r.name, red[r.name])
 		}

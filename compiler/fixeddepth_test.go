@@ -292,6 +292,7 @@ func TestFixedDepthPastTheBoundEmitsNoFormOnAnyLeg(t *testing.T) {
 // nowhere else under internal/codegen.
 func TestFixedDepthNoBackendSpellsTheBound(t *testing.T) {
 	bad := regexp.MustCompile(`\bdepth\s*[<>]=?\s*16\b`)
+	scanned := 0
 	err := filepath.Walk("../internal/codegen", func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
 			return err
@@ -300,6 +301,7 @@ func TestFixedDepthNoBackendSpellsTheBound(t *testing.T) {
 		if err != nil {
 			return err
 		}
+		scanned++
 		for i, ln := range strings.Split(string(b), "\n") {
 			if strings.Contains(ln, "//") {
 				continue
@@ -312,5 +314,8 @@ func TestFixedDepthNoBackendSpellsTheBound(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if scanned == 0 {
+		t.Fatal("walked ../internal/codegen and checked nothing")
 	}
 }

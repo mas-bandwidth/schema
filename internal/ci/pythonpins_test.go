@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 func TestPythonPinsAreRegisteredAndNeverFromPath(t *testing.T) {
@@ -102,7 +104,7 @@ func TestPythonPinsAreRegisteredAndNeverFromPath(t *testing.T) {
 		"test/conformance/python/surfaces/*",
 		"compiler/*python*.go",
 	} {
-		matches, err := filepath.Glob(filepath.Join(root, pattern))
+		matches, err := provesran.Glob(filepath.Join(root, pattern))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -116,6 +118,7 @@ func TestPythonPinsAreRegisteredAndNeverFromPath(t *testing.T) {
 	envPythonRE := regexp.MustCompile(`/usr/bin/env\s+python`)
 	execPythonRE := regexp.MustCompile(`(Command|LookPath)\("python`)
 
+	codeLines := 0
 	for _, f := range legFiles {
 		rel, err := filepath.Rel(root, f)
 		if err != nil {
@@ -138,9 +141,13 @@ func TestPythonPinsAreRegisteredAndNeverFromPath(t *testing.T) {
 			if strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "//") {
 				continue
 			}
+			codeLines++
 			if barePython3RE.MatchString(line) || envPythonRE.MatchString(line) || execPythonRE.MatchString(line) {
 				t.Errorf("%s:%d runs an interpreter from PATH: %s", rel, i+1, trimmed)
 			}
 		}
+	}
+	if codeLines == 0 {
+		t.Fatal("no non-comment line was read from the Python leg files: the PATH-interpreter check checked nothing")
 	}
 }

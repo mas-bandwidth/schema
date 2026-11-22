@@ -173,8 +173,17 @@ local function at_default(fd, v)
   if s == "pointer" or s == "string_blob" or s == "bytes_blob" then return x == nil end
   if s == "array" then
     local n = count_of(fd, x)
-    if n == 0 then return true end
-    if fd.list or not fd.fixed then return false end
+    -- A COUNTED ARRAY IS BORN AT ITS MINIMUM (docs/SPEC-TABLES.md §22.2,
+    -- ir.Field.BornCount): `[2..4]T` elides at exactly two default elements,
+    -- never at zero, which the write contract has refused before this. A
+    -- table element's birth is its body alone (write_field judges it).
+    local born = not fd.list and not fd.fixed and (fd.min or 0) > 0
+    if born then
+      if n ~= fd.min or #x ~= fd.min then return false end
+    else
+      if n == 0 then return true end
+      if fd.list or not fd.fixed then return false end
+    end
     local e = fd.elem
     local es = e.shape
     if es == "table" then return false end
@@ -193,7 +202,7 @@ local function at_default(fd, v)
       else
         if e1 == nil then e1 = def end
         if es == "float" then
-          if not same_float(e.f32, e1, def) then return false end
+          if not same_float(e.f32, D.cf(e, e1), def) then return false end
         elseif es == "wide" then
           if type(e1) == "table" and (e1.lo ~= 0 or e1.hi ~= 0) then return false end
         elseif e1 ~= def then
@@ -218,8 +227,21 @@ local function at_default(fd, v)
   end
   -- A PLAIN FLOAT COMPARES BY ITS BIT PATTERN (§3.3, "-0 IS A VALUE, AND IT
   -- RIDES"), at its own width: -0 under a +0 default rides.
-  if s == "float" then return same_float(fd.f32, x, fd.default) end
+  if s == "float" then return same_float(fd.f32, D.cf(fd, x), D.cf(fd, fd.default)) end
   return x == fd.default
+end
+
+-- born_tables: a counted array of tables holding its birth count, which
+-- elides when every element's body is its terminator alone (§22.2)
+local function born_tables(fd, n, textvf)
+  return not fd.required
+    and not fd.optional
+    and not fd.list
+    and not fd.fixed
+    and (fd.min or 0) > 0
+    and n == fd.min
+    and fd.elem.shape == "table"
+    and textvf == nil
 end
 
 -- THE ID TABLE (§3): ids.list is the wire's table in first-use order and
@@ -260,6 +282,7 @@ local function write_keyed_one(T, ids, nodes, e, val, w)
   elseif s == "float" then
     if val == nil then val = 0.0 end
     -- A KEYED SLOT ELIDES BY THE SAME BIT COMPARE (§3.3): a -0 slot rides.
+    val = D.cf(e, val)
     if same_float(e.f32, val, 0.0) then return true, false end
     if not w_float(w, e.f32, val) then return false end
   elseif s == "string" then
@@ -334,7 +357,7 @@ write_field = function(T, ids, nodes, fd, v, w)
     if (fd.optional or fd.required) or not at_default(fd, v) then
       w_leb(w, id_ref(ids, fd.id))
       w_u8(w, fd.kind)
-      if not w_float(w, fd.f32, x) then return false end
+      if not w_float(w, fd.f32, D.cf(fd, x)) then return false end
     end
   elseif s == "string" then
     if (fd.optional or fd.required) or not at_default(fd, v) then
@@ -374,10 +397,12 @@ write_field = function(T, ids, nodes, fd, v, w)
   elseif s == "pointer" then
     -- null is elided (§3.1); false is null where nil cannot be held (a map
     -- entry's value, as a sequence's element)
-    if x ~= nil and x ~= false then
+    -- a REQUIRED pointer rides even at null, as index 0 (§3.1; gotable's
+    -- encodeField writes it), or the read refuses missing_required
+    if (x ~= nil and x ~= false) or fd.required then
       w_leb(w, id_ref(ids, fd.id))
       w_u8(w, 17)
-      w_leb(w, nodes.index[x])
+      w_leb(w, nodes.index[x] or 0)
     end
   elseif s == "string_blob" or s == "bytes_blob" then
     -- A BLOB SLOT NAMES ITS NODE (§3.1, §6.3): the index the numbering gave the
@@ -475,11 +500,12 @@ write_field = function(T, ids, nodes, fd, v, w)
         end
         if fd.total ~= nil and fd.total > 0 and spent > fd.total then return false end
       end
-      w_leb(w, id_ref(ids, fd.id))
-      w_u8(w, 14)
+      local mark = #ids.list
+      local ref = id_ref(ids, fd.id)
       local body = W()
       w_u8(body, fd.elem_kind)
       w_leb(body, n)
+      local at = body.n
       if fd.elem_kind == 12 and textvf ~= nil then
         for i = 1, n do
           local text = (x[i] ~= nil and x[i][textvf.name]) or ""
@@ -491,6 +517,18 @@ write_field = function(T, ids, nodes, fd, v, w)
           if not write_element(T, ids, nodes, fd.elem, x[i], body) then return false end
         end
       end
+      -- A COUNTED ARRAY OF TABLES AT ITS BIRTH (§22.2): its minimum count of
+      -- elements whose bodies are each the terminator alone elides, as the
+      -- engine's encodeArray does (L = 1, then the 0 terminator).
+      if born_tables(fd, n, textvf) then
+        local all = table.concat(body.parts)
+        if string.sub(all, at + 1) == string.rep("\1\0", n) then
+          id_rollback(ids, mark)
+          return true
+        end
+      end
+      w_leb(w, ref)
+      w_u8(w, 14)
       w_leb(w, body.n)
       w_raw(w, table.concat(body.parts))
     end
@@ -534,7 +572,7 @@ write_element = function(T, ids, nodes, e, val, body)
     w_raw(body, string.pack("<i8", q.lo))
     w_raw(body, string.pack("<i8", q.hi))
   elseif s == "float" then
-    if not w_float(body, e.f32, val or 0.0) then return false end
+    if not w_float(body, e.f32, D.cf(e, val or 0.0)) then return false end
   elseif s == "enum" then
     local vref = 0
     if val ~= nil and val ~= false then
@@ -632,7 +670,7 @@ write_union_at = function(T, ids, nodes, f, val, body)
     w_raw(body, string.pack("<i8", q.lo))
     w_raw(body, string.pack("<i8", q.hi))
   elseif s == "float" then
-    if not w_float(body, f.f32, val) then return false end
+    if not w_float(body, f.f32, D.cf(f, val)) then return false end
   elseif s == "string" then
     w_raw(body, val)
   elseif s == "bytes" then
@@ -729,6 +767,9 @@ local function save_with(T, name, v, typed)
     w_leb(idx, sub.n)
     w_raw(idx, table.concat(sub.parts))
   end
+  -- THE ID TABLE'S MAXIMUM (docs/SPEC-TABLES.md §3): every reader refuses more
+  -- than 4096 entries, so the writer refuses a value that needs more.
+  if #ids.list > 4096 then return nil, "id_table_over_bound" end
   w_u8(idx, 0)
   for _, id in ipairs(ids.list) do
     w_u64(idx, id)

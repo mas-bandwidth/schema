@@ -2,7 +2,6 @@ package js
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -10,6 +9,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 const unionThenBytesSchema = `package unionalign
@@ -112,7 +113,7 @@ console.log('OK');
 			t.Fatal(err)
 		}
 		for _, production := range []bool{false, true} {
-			cmd := exec.Command(node, "harness.mjs")
+			cmd := testproc.Command(t, node, "harness.mjs")
 			cmd.Dir = dir
 			env := append(os.Environ(), "SERIALIZE_JS_INDEX="+index)
 			if production {
@@ -128,26 +129,4 @@ console.log('OK');
 			}
 		}
 	})
-}
-
-// serializeJSIndex finds the sibling serialize.js runtime's entry module:
-// $SERIALIZE_JS first, then the sibling checkout beside the repository.
-func serializeJSIndex(t *testing.T) string {
-	t.Helper()
-	candidates := []string{}
-	if p := os.Getenv("SERIALIZE_JS"); p != "" {
-		candidates = append(candidates, p)
-	}
-	candidates = append(candidates, "../../../../serialize.js", "../../../serialize.js")
-	for _, c := range candidates {
-		p, err := filepath.Abs(filepath.Join(c, "src", "index.js"))
-		if err != nil {
-			continue
-		}
-		if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
-			return p
-		}
-	}
-	t.Skip("no serialize.js runtime: set SERIALIZE_JS or stage the sibling checkout")
-	return ""
 }

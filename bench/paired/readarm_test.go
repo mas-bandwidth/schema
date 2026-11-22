@@ -216,6 +216,9 @@ func TestTheReadArmBoardHasTheStandardsShape(t *testing.T) {
 			t.Errorf("board lacks %q:\n%s", want, text)
 		}
 	}
+	if len(nineLanguages) == 0 {
+		t.Fatal("nineLanguages is empty: the loop below would check nothing")
+	}
 	for _, lang := range nineLanguages {
 		if lang == "cpp" {
 			continue

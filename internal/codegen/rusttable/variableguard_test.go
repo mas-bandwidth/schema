@@ -12,6 +12,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestGuardCondsComposeTheBranchTreeRust pins how a guarded field's Rust
@@ -34,7 +36,11 @@ func TestGuardCondsComposeTheBranchTreeRust(t *testing.T) {
 		}
 	}
 	// and the oracle reads the same tree the same way
-	for name, terms := range tabletext.Guards(u.Tables["T"]) {
+	oracleGuards := tabletext.Guards(u.Tables["T"])
+	if len(oracleGuards) != len(want) {
+		t.Errorf("tabletext.Guards = %v, want %d guarded fields", oracleGuards, len(want))
+	}
+	for name, terms := range oracleGuards {
 		parts := make([]string, len(terms))
 		for i, term := range terms {
 			parts[i] = "v." + term.Field
@@ -132,6 +138,9 @@ fn main() {
 	}
 	bin := rustcBuild(t, dir)
 
+	if len(cases) == 0 {
+		t.Fatal("cases is empty: the loop below would check nothing")
+	}
 	for _, c := range cases {
 		inst := m.New(m.Lookup("Guarded"))
 		var rep tabletext.Report
@@ -149,7 +158,7 @@ fn main() {
 		if c.name == "guard_false_resting_set" && bytes.Contains(wantText, []byte(`"resting"`)) {
 			t.Fatalf("the oracle writes a false-guarded key, so the witness proves nothing: %s", wantText)
 		}
-		cmd := exec.Command(bin)
+		cmd := testproc.Command(t, bin)
 		cmd.Stdin = strings.NewReader(c.text)
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr

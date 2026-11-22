@@ -39,6 +39,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // t08Flat is the smallest declared fixed table: two adjacent int32 scalars.
@@ -304,7 +306,7 @@ else
 // only under `hash != own`; the record loop's single Run call runs both, so a
 // record this build wrote and a record an endpoint wrote are read by one path.
 func t08P1(t *testing.T) {
-	_, _, src := t08Emit(t, t08Flat)
+	_, st, src := t08Emit(t, t08Flat)
 	n := t02Norm(src)
 
 	t02Has(t, src, "ReadOnlySpan<TableFixedEntry> entries = TFixedPlan;",
@@ -319,10 +321,18 @@ func t08P1(t *testing.T) {
 	if got := strings.Count(src, "TableFixedWire.Run(entries, "); got != 1 {
 		t.Errorf("P1: TableFixedWire.Run(entries, occurs %d times in the load, want its one record loop", got)
 	}
-	for _, forbidden := range []string{"strict", "identity_plan", "compiled_plan"} {
+	for _, forbidden := range []string{"identity_plan", "compiled_plan"} {
 		if strings.Contains(strings.ToLower(n), forbidden) {
 			t.Errorf("P1: the emitted load carries a %q, which is a second reader", forbidden)
 		}
+	}
+	// "strict" is judged on the fixed load itself, its body from the signature
+	// to the array overload: the message form's announcement carries a Strict
+	// flag by name (SPEC-TABLES §3.3, the language-neutral shape), and that
+	// flag is not a second fixed reader.
+	load := t02Block(t, src, "public static long "+st.Name+"FixedLoad(", "public static long "+st.Name+"FixedLoad("+st.Name+"[] values")
+	if strings.Contains(strings.ToLower(load), "strict") {
+		t.Errorf("P1: the emitted load carries a %q, which is a second reader", "strict")
 	}
 }
 
@@ -492,14 +502,20 @@ func t08RunCS(t *testing.T, schemaSrc, body string, extra ...string) string {
 			args = append(args, "-r:"+dll)
 		}
 	}
-	if out, err := exec.Command(dotnet, args...).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, dotnet, args...).CombinedOutput(); err != nil {
 		t.Fatalf("csc failed:\n%s", out)
 	}
 	rc := fmt.Sprintf(`{ "runtimeOptions": { "tfm": "net10.0", "framework": { "name": "Microsoft.NETCore.App", "version": %q } } }`, version)
 	if err := os.WriteFile(filepath.Join(dir, "probe.runtimeconfig.json"), []byte(rc), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	out, _ := exec.Command(dotnet, "exec", filepath.Join(dir, "probe.dll")).CombinedOutput()
+	// The driver exits 1 when a check failed and the caller reads the verdict
+	// from the output, so a non-zero exit is not fatal here; its status rides
+	// back with the output so a crash or a refused start says why.
+	out, err := testproc.Command(t, dotnet, "exec", filepath.Join(dir, "probe.dll")).CombinedOutput()
+	if err != nil {
+		return string(out) + "\nprobe exit: " + err.Error() + "\n"
+	}
 	return string(out)
 }
 

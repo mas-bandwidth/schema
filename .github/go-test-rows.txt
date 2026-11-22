@@ -169,16 +169,25 @@ split ./internal/codegen/goosetable ^TestGooseTableDescriptorsLoad$
 split ./internal/codegen/luautable ^TestLuauTableDescriptorsLoad$
 split ./internal/codegen/luautable ^TestLuauJsonAgreesWithTheCorpus$
 split ./internal/codegen/luautable ^(TestLuauTableLoadRoundTripsEveryCleanInstance|TestLuauTableLoadMatchesTheReports)$
-split ./compiler ^TestRefusalUnchangedCatchesConstructKeyedLeak$
+# 2026-11-21: the leak row and the complement were cancelled at the cap on
+# loaded vision runners (run 44921428989, load1 45; the step is the test
+# binary's build and the tests, after ~22 s of setup). The two refusal meta
+# tests now memoize and run their probes in parallel (25.8 s -> 5.5 s for the
+# leak test on a 4-cpu amd-3 slot) and share a row; the header gate runs its
+# corpora in parallel and rides with the two text refusals; the complement is
+# cut at a name range. Eight rows, as before.
+split ./compiler ^(TestRefusalUnchangedCatchesConstructKeyedLeak|TestRefusalUnchangedIgnoresTrivialEmitterChange)$
 split ./compiler ^TestJavaGeneratesEveryManifestUnit$
-split ./compiler ^TestRefusalUnchangedIgnoresTrivialEmitterChange$
-split ./compiler ^(TestUnboundedTextRefusedOffGo|TestStringArraysRefusedOffGo)$
+split ./compiler ^(TestGeneratedHeaderNamesTheToolInEveryTarget|TestUnboundedTextRefusedOffGo|TestStringArraysRefusedOffGo)$
 # The compiler complement measured 89 s with -short (2026-11-15), above
 # the 60 s test budget before job setup. Keep the name-registry sweeps,
 # fixed depth/record bounds and capability matrix in separate rows.
 split ./compiler ^Test.*(RuntimeName|ModuleScopeName|ModuleKeys)
 split ./compiler ^TestFixed(Depth|Record)
 split ./compiler ^Test.*(Carries|Carriers|IsShipped)
+# a name range after the lines above takes only what they left (gotestrows:
+# a split line skips every earlier one); the complement keeps the rest
+split ./compiler ^Test[A-L]
 # The Rust refusal probe builds a native driver; keep its cold build out of
 # the otherwise small harness row.
 split ./test/conformance/harness ^TestRustDriverAnswersWriteRefusal$

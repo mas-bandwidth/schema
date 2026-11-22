@@ -395,6 +395,9 @@ func TestGooseFixedFormRoundTripsEveryFixedRoot(t *testing.T) {
 		paths = append(paths, hits...)
 	}
 	var roots atomic.Int64
+	if len(paths) == 0 {
+		t.Fatal("paths is empty: the loop below would check nothing")
+	}
 	for _, path := range paths {
 		u, err := loadSchemaPaths([]string{path})
 		if err != nil {
@@ -496,7 +499,7 @@ func (m *fixedImage) field(f *ir.Field) {
 			m.elem(el)
 		}
 	case f.Array == ir.ArrayCounted:
-		c := int64(m.next() % uint64(f.ArrayBound+1))
+		c := f.ArrayMin + int64(m.next()%uint64(f.ArrayBound-f.ArrayMin+1)) // lawful: Min..Bound
 		m.put(uint64(c), 4)
 		for range c {
 			m.elem(el)
@@ -868,8 +871,9 @@ fixed table Reading
 			t.Fatalf("R30: missing _ReadingFixedWrite in CfoldTable.goose")
 		}
 		wfn, _, _ := strings.Cut(after, "\n}\n")
-		if !strings.Contains(wfn, "schema_rt::fixed_put(out, schema_rt::fixed_f32_bits(v.Aim), 4);") {
-			t.Fatalf("R30: fixed write does not store raw float32 bits:\n%s", wfn)
+		// the float32 bits as held, but a -0 as +0 (fixed-compressed-negzero)
+		if !strings.Contains(wfn, "schema_rt::fixed_put(out, schema_rt::fixed_cf32_bits(v.Aim), 4);") {
+			t.Fatalf("R30: fixed write does not store the float32 bits, a -0 as +0:\n%s", wfn)
 		}
 		if strings.Contains(wfn, "msg_quantize") || strings.Contains(wfn, "fres") {
 			t.Fatalf("R30: fixed write quantizes compressed float:\n%s", wfn)

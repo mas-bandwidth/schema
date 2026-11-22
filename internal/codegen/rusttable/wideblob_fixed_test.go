@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestRustWideBlobFixedLoader pins the Rust leg's fixed loader for a declared
@@ -114,6 +116,9 @@ func TestRustWideBlobFixedLoaderNegativeControl(t *testing.T) {
 			if !bad[c.red] {
 				t.Fatalf("NEGATIVE CONTROL FAILED: taking out the %s half left WIDEBLOB %s green\n%s", c.name, c.red, out)
 			}
+			if len(bad) == 0 {
+				t.Fatal("bad is empty: the loop below would check nothing")
+			}
 			for clause := range bad {
 				if clause != c.red {
 					t.Errorf("NEGATIVE CONTROL: taking out the %s half reddened %s outside it", c.name, clause)
@@ -210,12 +215,12 @@ func runWideBlobFixedProbe(t *testing.T, edit func(map[string][]byte)) (string, 
 		t.Fatal(err)
 	}
 	bin := filepath.Join(dir, "wideblob")
-	build := exec.Command("rustc", "--edition", "2024", "-o", bin, "main.rs")
+	build := testproc.Command(t, "rustc", "--edition", "2024", "-o", bin, "main.rs")
 	build.Dir = dir
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("the probe did not build: %v\n%s", err, out)
 	}
-	run := exec.Command(bin)
+	run := testproc.Command(t, bin)
 	run.Dir = dir
 	out, err := run.CombinedOutput()
 	return string(out), err

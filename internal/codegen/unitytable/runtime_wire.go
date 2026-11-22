@@ -7,6 +7,11 @@ const unityMessageTypesSource = `
 public sealed class TableVocabulary
 {
     public int MaxEntries = 4096, MaxBytes = 65536;
+    // STRICT MODE IS OPT-IN (docs/SPEC-TABLES.md §3.3): false when the
+    // vocabulary is made, read once by the FIRST AnnounceRead and never after.
+    // Set, an announcement whose build version is not this unit's own is
+    // refused as build_version_mismatch and sets no vocabulary.
+    public bool Strict;
     public bool Announced { get; internal set; }
     public ulong BuildVersion { get; internal set; }
     internal bool Attempted;
@@ -1278,15 +1283,15 @@ internal static partial class TableWire
             if (!keyOk) { Damage(report); break; }
             if (keyField.Kind == 12 && key.Text.Length > keyField.ArrayBound) { return Fail(report, "length_over_bound: " + keyField.Name); }
             int order = landed == 0 ? -1 : KeyOrder(last, key, keyField);
-            if (order > 0) { Damage(report); break; }
-            int slot = order == 0 ? landed - 1 : landed;
+            // A REPEATED OR DESCENDING KEY is wire damage, not a named refusal (docs/SPEC-TABLES.md §2.8, §4)
+            if (order >= 0) { Damage(report); break; }
+            int slot = landed;
             f.EnsureCount(value, slot + 1);
             object entry = f.Table.Create(); f.SetChild(value, slot, entry);
             if (body.Retain != null) { body.Path = a.Path.Step(f.Ordinal, slot); }
             ReadBody(ref body, entry, f.Table, report, true);
             if (CountRefused(report)) { return false; }
-            if (order == 0) { return Fail(report, "duplicate"); }
-            else { last = KeyOf(entry, keyField); landed++; }
+            last = KeyOf(entry, keyField); landed++;
         }
         f.SetCount(value, landed);
         // bytes left inside the map's L after its entries are damage
@@ -1410,6 +1415,13 @@ internal static partial class TableWire
             else { report.Unknown++; if (!r.Skip(kind)) { break; } }
         }
         if (!terminated || versions != 1 || vocabularies != 1) { Damage(report); return Finish(report, Verdict.Damaged); }
+        // "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3): refused
+        // by name, the peer's build version kept, no vocabulary set, never damage.
+        if (v.Strict && v.BuildVersion != tableOwnVocabulary.BuildVersion)
+        {
+            report.BuildVersionRemote = v.BuildVersion; report.BuildVersionOwn = tableOwnVocabulary.BuildVersion;
+            return Refuse(report, "build_version_mismatch");
+        }
         var entries = new System.Collections.Generic.List<TableMessageEntry>();
         var keys = new System.Collections.Generic.HashSet<string>(); bool node = false;
         while (payload.Has(1))
@@ -1582,8 +1594,17 @@ internal static partial class TableWire
             if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry e)) { return false; }
             if (reference == 0) { return true; }
             if (Reserved(e.Id) || !SeenOnce(few, ref count, ref more, e.Id)) { return false; }
-            if (!MessageSkip(ref r, d, e.Kind, e.Shape, depth)) { return false; }
+            if (!MessageSkipField(ref r, d, e, depth)) { return false; }
         }
+    }
+    // A message field cannot be required, so a writer elides a union FIELD at
+    // None at every build (§3.3 (c)): arm reference 0 stored for one is refused
+    // on the skip path as on a named read. An array element and an arm's own
+    // value keep their positional None and skip through MessageSkip.
+    static bool MessageSkipField(ref BitReader r, MessageRead d, TableMessageEntry e, int depth)
+    {
+        if (e.Kind == 15) { BitReader arm = r; if (!MessageReference(ref arm, d, out ulong armRef, out _) || armRef == 0) { return false; } }
+        return MessageSkip(ref r, d, e.Kind, e.Shape, depth);
     }
     // SeenOnce records one id of a body or one key of a keyed array and
     // answers false on a repeat: an id twice in one body, or a key twice in
@@ -1748,7 +1769,7 @@ internal static partial class TableWire
             if (field == null)
             {
                 if (same) { return false; }
-                d.Report.Unknown++; if (!MessageSkip(ref r, d, entry.Kind, entry.Shape, depth)) { return false; } continue;
+                d.Report.Unknown++; if (!MessageSkipField(ref r, d, entry, depth)) { return false; } continue;
             }
             bool exact = same && MessageEntryMatchesOwn(entry, field.MessageSlot);
             if (exact)
@@ -1956,6 +1977,9 @@ internal static partial class TableWire
         UInt128Value stored = bits; bool negative = false, above = false;
         if (shape.Packing == 1)
         {
+            // A RANGED VALUE IS HELD TO ITS ANNOUNCED KIND (§3.3): base plus
+            // offset is never wrapped, named or skipped
+            if (MessageNumber(kind) && !RangedHolds(kind, shape.Base, bits)) { return Fail(d.Report, "out_of_range: " + f.Name); }
             stored = unchecked(bits + shape.Base);
             bool baseNegative = (kind >= 18 || Signed(kind)) && unchecked((Int128Value)shape.Base) < 0;
             negative = baseNegative && bits < unchecked(0 - shape.Base);
@@ -2007,7 +2031,9 @@ internal static partial class TableWire
         int total = MessageCount(bytes, vocabulary, report);
         if (report.Refused) { return Finish(report, Verdict.Refused); }
         if (total == 0) { return Finish(report, Verdict.Damaged); }
-        if (total > values.Length) { count = total; return Refuse(report, "batch_too_large"); }
+        // A REFUSED BATCH RETURNS A COUNT OF 0 (docs/SPEC-TABLES.md §3.3),
+        // the capacity refusal included, and nothing is decoded.
+        if (total > values.Length) { return Refuse(report, "batch_too_large"); }
         bool damagedBefore = report.Damaged;
         report.Damaged = false;
         BitReader r = new BitReader(bytes); r.At = 16;
@@ -2019,8 +2045,8 @@ internal static partial class TableWire
             // A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md
             // §3.3), outranking damage met after it: no body is delivered.
             if (NonFiniteRefused(report))
-            { report.Damaged |= damagedBefore; for (int j = 0; j <= count; j++) { type.Reset(values[j]); } count = 0; return Finish(report, Verdict.Refused); }
-            if (report.Refused) { for (int j = 0; j <= count; j++) { type.Reset(values[j]); } count = 0; return Finish(report, Verdict.Refused); }
+            { report.Damaged |= damagedBefore; for (int j = 0; j <= count; j++) { type.Reset(values[j]); } report.Touched = count + 1; count = 0; return Finish(report, Verdict.Refused); }
+            if (report.Refused) { for (int j = 0; j <= count; j++) { type.Reset(values[j]); } report.Touched = count + 1; count = 0; return Finish(report, Verdict.Refused); }
             if (!good || report.Damaged) { Damage(report); return DiscardBatch(values, type, report, ref count, count); }
         }
         if (!r.Align() || r.At != r.End) { Damage(report); return DiscardBatch(values, type, report, ref count, count - 1); }
@@ -2033,6 +2059,7 @@ internal static partial class TableWire
     static Verdict DiscardBatch(object[] values, TableTypeInfo type, _R report, ref int count, int last)
     {
         for (int j = 0; j <= last && j < values.Length; j++) { type.Reset(values[j]); }
+        report.Touched = Math.Min(last + 1, values.Length);
         count = 0;
         return Finish(report, Verdict.Damaged);
     }
@@ -2127,7 +2154,8 @@ internal static partial class TableWire
             TableFieldInfo arm = f.Arms.Arms[(int)tag].Field;
             return arm == null || NativeField(ref w, at + f.Arms.NativeArmOffset, union, arm, extentAt, ref extent);
         }
-        UInt128Value raw = f.GetWide != null ? f.GetWide(value, index) : f.GetRaw(value, index);
+        // a compressed float's -0 is cooked as +0 (docs/SPEC-TABLES.md §3.3, fixed-compressed-negzero)
+        UInt128Value raw = f.GetWide != null ? f.GetWide(value, index) : StoredRaw(f.GetRaw(value, index), f);
         w.Put(at, raw, f.NativeElementSize); return true;
     }
     static long NativeRecordBytes(TableTypeInfo type)
@@ -2249,8 +2277,9 @@ internal static partial class TableWire
     public static int VarSize(ulong v) { int n = 1; while (v >= 128) { n++; v >>= 7; } return n; }
     static byte Kind(TableFieldInfo f) { return f.KeyId != null ? (byte)16 : f.IsArray ? (byte)14 : f.Kind; }
     static bool Named(string name) { return name != null && name != "???"; }
-    // Elision compares BITS, floats included (docs/SPEC-TABLES.md §3.3): a -0
-    // under a +0 default rides and reads back as -0.
+    // Elision compares BITS for a plain float (docs/SPEC-TABLES.md §3.3): a -0
+    // under a +0 default rides and reads back as -0. A COMPRESSED float's -0
+    // IS +0, so it compares by value, and under a +0 default it is elided.
     static bool DefaultRaw(ulong raw, TableFieldInfo f)
     {
         if (f.Kind == 10)
@@ -2263,6 +2292,15 @@ internal static partial class TableWire
             return TableBitsToDouble(raw) == TableBitsToDouble(f.DefaultRaw);
         }
         return raw == f.DefaultRaw;
+    }
+    // THE WRITER STORES +0 FOR A COMPRESSED FLOAT'S -0 (docs/SPEC-TABLES.md
+    // §3.3, ruled 2026-11-10 fixed-compressed-negzero): the same bits as +0.
+    internal static ulong StoredRaw(ulong raw, TableFieldInfo f)
+    {
+        if (!f.HasFloatRange) { return raw; }
+        if (f.Kind == 10 && (uint)raw == 0x80000000u) { return 0; }
+        if (f.Kind == 11 && raw == 0x8000000000000000ul) { return 0; }
+        return raw;
     }
     static bool DefaultElement(object value, TableFieldInfo f, int i)
     {
@@ -2287,10 +2325,12 @@ internal static partial class TableWire
         {
             int n = f.GetCount(value);
             if (f.DefaultBytes != null) { return n != f.DefaultBytes.Length || !f.GetBuffer(value).AsSpan(0, n).SequenceEqual(f.DefaultBytes); }
+            // BORN AT ITS MIN: Min default elements elide, a table element at its
+            // default when its body is its terminator alone (Empty), as the
+            // reference judges it (internal/tablewire encodeArray)
             if (f.ArrayMin > 0)
             {
                 if (n != f.ArrayMin) { return true; }
-                if (f.Kind == 13 && f.KeyId == null) { return true; }
                 for (int i = 0; i < n; i++) { if (!DefaultElement(value, f, i)) { return true; } }
                 return false;
             }
@@ -2493,7 +2533,7 @@ internal static partial class TableWire
             UInt128Value raw = f.GetWide(value, i); int width = Width(f.Kind);
             w.Fixed(unchecked((ulong)raw), Math.Min(width, 8)); if (width == 16) { w.Fixed(unchecked((ulong)(raw >> 64)), 8); }
         }
-        else { w.Fixed(f.GetBuffer != null ? f.GetBuffer(value)[i] : f.GetRaw(value, i), Width(f.Kind)); }
+        else { w.Fixed(f.GetBuffer != null ? f.GetBuffer(value)[i] : StoredRaw(f.GetRaw(value, i), f), Width(f.Kind)); }
     }
     static void WritePayload(ref Writer w, object value, TableFieldInfo f, ref Ids ids, ReadOnlySpan<long> elemCache = default)
     {

@@ -30,7 +30,6 @@ package elixirtable
 import (
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -38,6 +37,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // t09Run writes every generated module of `u` beside one generated probe and
@@ -91,7 +92,7 @@ func t09Run(t *testing.T, u *ir.Unit, root, body string) (string, error) {
 		args = append(args, "-r", n)
 	}
 	args = append(args, "probe.exs")
-	cmd := exec.Command(elixirBinary(t), args...)
+	cmd := testproc.Command(t, elixirBinary(t), args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	out, err := cmd.CombinedOutput()
@@ -218,7 +219,9 @@ fixed table T
 // t09Compressed holds compressed-floats to §3.4: a `float32` with
 // min/max/resolution is stored as its float32 and the read clamps a value
 // outside the declared range and counts one `clamped`; a value inside the
-// range round-trips and a write at either bound is exact.
+// range round-trips and a write at either bound is exact. The SAVE refuses a
+// value outside the range (Elixir refuses in every build), so the read's
+// out-of-range bytes are forged over a saved bound.
 func t09Compressed(t *testing.T) {
 	u := unitFrom(t, `package probe
 
@@ -233,7 +236,16 @@ fixed table T
   check(r0.q == 0.0, "the lower bound does not round-trip: #{inspect(r0.q)}")
   {:ok, [r1], _} = @@LOAD@@(@@SAVE@@([%Probe.T{q: 1.0}]))
   check(r1.q == 1.0, "the upper bound does not round-trip: #{inspect(r1.q)}")
-  {:error, why2, _rep2} = @@LOAD@@(@@SAVE@@([%Probe.T{q: 2.0}]))
+  refused = try do
+    @@SAVE@@([%Probe.T{q: 2.0}])
+    false
+  rescue
+    e in ArgumentError -> String.contains?(Exception.message(e), "outside the declared range")
+  end
+  check(refused, "a write above max is not refused")
+  at_max = IO.iodata_to_binary(@@SAVE@@([%Probe.T{q: 1.0}]))
+  forged = binary_part(at_max, 0, byte_size(at_max) - 4) <> <<2.0::float-32-little>>
+  {:error, why2, _rep2} = @@LOAD@@(forged)
   check(why2 in [:out_of_range, :invalid_value], "a value above max refuses the whole read: #{inspect(why2)}")`)
 }
 

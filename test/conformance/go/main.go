@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime/debug"
 	"strconv"
 	"strings"
 
@@ -665,6 +666,16 @@ func surfaceJsonHostile(lines []line, out string) error {
 }
 
 func main() {
+	// A panic in a surface must be a FAILURE. Go exits 2 on an unrecovered
+	// panic, and 2 is the code the harness reads as "this backend does not
+	// implement the surface": without this, a nil dereference turns a whole
+	// surface into an absent cell and the run stays green.
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(os.Stderr, "driver: panic: %v\n%s", r, debug.Stack())
+			os.Exit(1)
+		}
+	}()
 	if len(os.Args) == 2 && (os.Args[1] == "wire-fuzz" || os.Args[1] == "wire-fuzz-builder") {
 		if err := wireFuzz(os.Args[1] == "wire-fuzz-builder"); err != nil {
 			fmt.Fprintln(os.Stderr, err)

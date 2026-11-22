@@ -140,6 +140,8 @@ varevo_v3_rollback 89139 272 50150
 varevo_2hop_v3_origin 102308 299 55916
 varevo_v3_default_containers 66530 231 42593
 varevo1_msg 3209 15 2211
+fixed_array_rides_default 17469 36 13127
+fixed_array_rides_live 17904 36 13216
 varevo3_msg 4588 23 3118
 varevo3_msg_notice 3316 19 2240
 torture_cook_full 136571 313 81124

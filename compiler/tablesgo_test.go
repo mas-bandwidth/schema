@@ -44,6 +44,9 @@ func TestGoEmitsTableSources(t *testing.T) {
 	if err != nil {
 		t.Fatalf("--lang go: %v", err)
 	}
+	if len(without) == 0 {
+		t.Fatal("without is empty: the loop below would check nothing")
+	}
 	for name := range without {
 		if strings.HasSuffix(name, "Table.go") || strings.HasSuffix(name, "TableMessage.go") ||
 			strings.HasSuffix(name, "Block.go") || strings.HasSuffix(name, "Cook.go") ||
@@ -87,6 +90,9 @@ func TestTablesMoveNoGeneratedGoByte(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(without) == 0 {
+		t.Fatal("without is empty: the loop below would check nothing")
+	}
 	for name, data := range without {
 		got, ok := with[name]
 		if !ok {
@@ -96,6 +102,9 @@ func TestTablesMoveNoGeneratedGoByte(t *testing.T) {
 		if string(got) != string(data) {
 			t.Errorf("file %s changed when a table was added — tables must move no packet byte", name)
 		}
+	}
+	if len(with) == 0 {
+		t.Fatal("with is empty: the loop below would check nothing")
 	}
 	for name := range with {
 		if _, ok := without[name]; ok {
@@ -265,6 +274,9 @@ func TestTableRuntimeNamesAreClaimedGo(t *testing.T) {
 		names = append(names, name)
 	}
 	sort.Strings(names)
+	if len(names) == 0 {
+		t.Fatal("names is empty: the loop below would check nothing")
+	}
 	for _, name := range names {
 		if goPerTypeName(name) {
 			continue
@@ -275,7 +287,11 @@ func TestTableRuntimeNamesAreClaimedGo(t *testing.T) {
 				"(with the backends that define it) in internal/tablenames", name)
 		}
 	}
-	for _, name := range tablenames.DefinedBy(tablenames.Go) {
+	allDefinedBy := tablenames.DefinedBy(tablenames.Go)
+	if len(allDefinedBy) == 0 {
+		t.Fatal("tablenames.DefinedBy(tablenames.Go) is empty: the loop below would check nothing")
+	}
+	for _, name := range allDefinedBy {
 		if !declared[name] {
 			t.Errorf("internal/tablenames says the Go backend defines %s, but nothing in the emitted "+
 				"Go declares it — drop the registration or fix the backend; a claim nothing needs takes "+

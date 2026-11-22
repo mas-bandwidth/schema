@@ -54,6 +54,9 @@ func TestLuauUndeclaredUnitKeepsTableAndRuntime(t *testing.T) {
 	// digest above, not by byte-equality.
 	tableRuntime := luautable.Runtime()
 	luauRuntime := luau.Runtime()
+	if len(tableRuntime) == 0 {
+		t.Fatal("tableRuntime is empty: the loop below would check nothing")
+	}
 	for name, src := range tableRuntime {
 		if containsName(undeclaredSchemaModules, name) {
 			continue
@@ -66,6 +69,9 @@ func TestLuauUndeclaredUnitKeepsTableAndRuntime(t *testing.T) {
 		if !bytes.Equal(got, src) {
 			t.Errorf("emitted %s differs from its source in luautable/runtime/", name)
 		}
+	}
+	if len(luauRuntime) == 0 {
+		t.Fatal("luauRuntime is empty: the loop below would check nothing")
 	}
 	for name, src := range luauRuntime {
 		got, ok := defaultUnit.files[name]
@@ -109,8 +115,13 @@ func TestLuauUndeclaredUnitKeepsTableAndRuntime(t *testing.T) {
 // with no fixed table registers no build version (§3.3), so that registration
 // leaves this digest where it was. Refreshed for WireLaw 3 / BuildVersionForm
 // 6: the only emission changes are the protocol identity and announcement
-// build words, not the declarations.
-const wantUndeclaredSchemaDigest = "f3f17d1ea9d78bab5e51fd68e8d4b6cf655b9e1e482962587e878351d67f5e22"
+// build words, not the declarations. Moved again when every generated header
+// gained the genheader comment line (the compiler's URL and how to
+// regenerate); with that line removed the bytes hash to the previous digest,
+// f3f17d1ea9d78bab. Moved again when the locals a module binds its requires to
+// became _F_<base> (LUAU-2, review 2026-11-21), so a file named M or Rt
+// never collides with the generator's own locals.
+const wantUndeclaredSchemaDigest = "f4627518f8bec3a3a3811474b549533358bd5cf5fea5fe0ef0bd730465bc1d47"
 
 // schemaModuleDigest hashes the named schema-dependent modules of a unit —
 // name then bytes, in sorted name order — so an edit to either is pinned

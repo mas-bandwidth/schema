@@ -370,7 +370,8 @@ func (e *msgEmit) putValue(ind int, f *ir.Field, entry ir.TableVocabularyEntry, 
 		count := fmt.Sprint(f.ArrayBound)
 		if f.Array == ir.ArrayCounted {
 			count = pl.val + "Count"
-			e.p(ind, "if %s < 0 || %s > %d { return schema_rt::msg_refuse(w, schema_rt::MsgRefuseInvalidValue); }", count, count, f.ArrayBound)
+			// a count below Min or past Max is refused (SPEC.md §5.1 row 3)
+			e.p(ind, "if %s < %d || %s > %d { return schema_rt::msg_refuse(w, schema_rt::MsgRefuseInvalidValue); }", count, f.ArrayMin, count, f.ArrayBound)
 		}
 		if bits := ir.TableMessageCountBits(entry.Shape); bits > 0 {
 			e.put(ind, fmt.Sprintf("(%s as! u64) - %d", count, entry.Shape.Min), int64(bits))
@@ -404,7 +405,19 @@ func (e *msgEmit) slotRides(ind int, el *ir.Field, expr, def string) string {
 	case e.isUnion(el):
 		return expr + ".Type != 0"
 	}
-	return e.differs(el, expr, def)
+	return e.writeDiffers(el, expr, def)
+}
+
+// writeDiffers is the WRITER's "not the declared default": differs, except
+// that a compressed float compares by value, because a writer stores a
+// compressed float's -0 as +0 (docs/SPEC-TABLES.md §3.3, docs/rulings.json
+// fixed-compressed-negzero), so its -0 against a +0 default does not ride,
+// as its +0 twin does not. A plain float's -0 still rides.
+func (e *msgEmit) writeDiffers(f *ir.Field, expr, def string) string {
+	if f.Type.Kind == ir.TFloat32 && f.HasFloatRange {
+		return fmt.Sprintf("%s != %s", expr, def)
+	}
+	return e.differs(f, expr, def)
 }
 
 // differs is "not the declared default", value against value: a float by its
@@ -514,6 +527,32 @@ func (e *msgEmit) putField(ind int, f *ir.Field) {
 		header(ind + 1)
 		e.p(ind, "}")
 	case f.Array == ir.ArrayCounted:
+		if f.ArrayMin > 0 {
+			// an empty array below Min is refused, never elided as absent
+			// (SPEC.md §5.1 row 3)
+			e.p(ind, "if %sCount < %d { return schema_rt::msg_refuse(w, schema_rt::MsgRefuseInvalidValue); }", pl.val, f.ArrayMin)
+		}
+		if f.ElidesAtBirth() {
+			// A COUNTED ARRAY IS BORN AT ITS MINIMUM (docs/SPEC-TABLES.md §3.3,
+			// the §22.2 [M..N]T row; tablewire messageElides): exactly Min
+			// elements, each off the wire (a table by a body that is its
+			// terminator alone, a float by its bits), is not written.
+			e.p(ind, "{")
+			el := elemOf(f)
+			i := e.loopVar()
+			e.p(ind+1, "var born%s = %sCount == %d;", i, pl.val, f.ArrayMin)
+			e.p(ind+1, "var %s: i64 = 0;", i)
+			e.p(ind+1, "while born%s && %s < %d {", i, i, f.ArrayMin)
+			r := e.slotRides(ind+2, el, pl.at(i).val, def.at(i).val)
+			e.p(ind+2, "if %s { born%s = false; }", r, i)
+			e.p(ind+2, "%s += 1;", i)
+			e.p(ind+1, "}")
+			e.p(ind+1, "if %sCount != 0 && !born%s {", pl.val, i)
+			header(ind + 2)
+			e.p(ind+1, "}")
+			e.p(ind, "}")
+			break
+		}
 		e.p(ind, "if %sCount != 0 {", pl.val)
 		header(ind + 1)
 		e.p(ind, "}")
@@ -545,7 +584,7 @@ func (e *msgEmit) putField(ind int, f *ir.Field) {
 		header(ind + 1)
 		e.p(ind, "}")
 	default:
-		e.p(ind, "if %s {", e.differs(f, pl.val, def.val))
+		e.p(ind, "if %s {", e.writeDiffers(f, pl.val, def.val))
 		header(ind + 1)
 		e.p(ind, "}")
 	}
@@ -557,6 +596,9 @@ func (e *msgEmit) usesDefaults(st *ir.Struct) bool {
 		switch {
 		case f.Type.Optional, e.isUnion(f) && f.Array == ir.ArrayNone, e.isStruct(f):
 		case f.Array == ir.ArrayCounted:
+			if el := elemOf(f); f.ElidesAtBirth() && !e.isStruct(el) && !e.isUnion(el) {
+				return true
+			}
 		case f.Array == ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes):
 		case (f.Array == ir.ArrayFixed || f.KeyEnum != "") && e.isUnion(f):
 		default:
@@ -717,16 +759,18 @@ func (e *msgEmit) getScalar(ind int, f *ir.Field, en, dst string, element bool) 
 			e.p(ind, "%s = schema_rt::msg_f32(r, %s);", dst, en)
 			return
 		}
-		// THE ONE RULE (§3.3): compared as float64, one past an end refuses
-		// out_of_range, and a -0 lands as +0, uncounted
+		// THE ONE RULE (§3.3): one past an end refuses out_of_range, and a
+		// -0 lands as +0, uncounted. THE RANGE IS HELD AT FLOAT32 (SPEC.md
+		// §4.6, tabletext.FloatInRange): a bound float32 cannot spell
+		// exactly (max = 0.1) is the float32 nearest it, so the top grid
+		// step is lawful.
 		e.p(ind, "var q%s = schema_rt::msg_f32(r, %s);", v, en)
 		e.p(ind, "if !r.ok { return false; }")
-		e.p(ind, "let wide%s: f64 = q%s;", v, v)
-		e.p(ind, "if wide%s < schema_rt::fixed_bits_f64(0x%016x) {", v, math.Float64bits(f.FMin))
+		e.p(ind, "if q%s < %s {", v, f32Lit(float32(f.FMin)))
 		e.p(ind+1, "return schema_rt::msg_refuse_read(r, schema_rt::MsgRefuseOutOfRange);")
-		e.p(ind, "} else if wide%s > schema_rt::fixed_bits_f64(0x%016x) {", v, math.Float64bits(f.FMax))
+		e.p(ind, "} else if q%s > %s {", v, f32Lit(float32(f.FMax)))
 		e.p(ind+1, "return schema_rt::msg_refuse_read(r, schema_rt::MsgRefuseOutOfRange);")
-		e.p(ind, "} else if wide%s == 0.0 {", v)
+		e.p(ind, "} else if q%s == 0.0 {", v)
 		e.p(ind+1, "q%s = 0.0;", v)
 		e.p(ind, "}")
 		e.p(ind, "%s = q%s;", dst, v)
@@ -982,6 +1026,12 @@ func (e *msgEmit) getFieldValue(ind int, f *ir.Field, en string, pl, def place, 
 			e.p(ind, "if %s && n%s == 0 { return schema_rt::msg_damage(r); }", fieldGate, v)
 		}
 		e.p(ind, "if n%s > %d { return schema_rt::msg_refuse_read(r, schema_rt::MsgRefuseCountOverBound); }", v, f.ArrayBound)
+		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+			// a count below THIS reader's Min is off the count's own range,
+			// refused as the count past Max is (SPEC.md §5.1 row 3;
+			// tablewire messagedecode refuses count_over_bound)
+			e.p(ind, "if n%s < %d { return schema_rt::msg_refuse_read(r, schema_rt::MsgRefuseCountOverBound); }", v, f.ArrayMin)
+		}
 		e.p(ind, "let el%s = schema_rt::msg_inner(r, %s);", v, en)
 		e.p(ind, "let k%s = n%s;", v, v)
 		// THE SURPLUS OF A FIXED-WIDTH ELEMENT IS ARITHMETIC (§3.3); an
@@ -1312,25 +1362,26 @@ func (e *msgEmit) emitRoot(st *ir.Struct) {
 
 	e.loop = 0
 	e.p(0, "// %sLoadMessages reads ONE batch into values against the sender's vocabulary (AnnounceRead) and", n)
-	e.p(0, "// returns the bodies delivered: a capacity short of the wire's count is batch_too_large")
-	e.p(0, "// with report.count set and nothing decoded; damage anywhere in the batch discards the")
-	e.p(0, "// whole batch, returning 0 with every body at its declared defaults and malformed set;")
-	e.p(0, "// a non-finite float refuses the batch (§3.3, §4).")
+	e.p(0, "// returns the bodies delivered. \"A refused batch returns a count of `0`, as every refused")
+	e.p(0, "// batch does\" (§3.3): a capacity short of the wire's count is batch_too_large with nothing")
+	e.p(0, "// decoded; damage anywhere in the batch discards the whole batch with every body at its")
+	e.p(0, "// declared defaults and malformed set; a non-finite float refuses the batch (§3.3, §4).")
+	e.p(0, "// A delivered batch is never empty (M is at least 1), so 0 says refused; the report names why.")
 	e.p(0, "fn %sLoadMessages(values: %s[:], voc: const schema_rt::MsgVocabulary&, data: const u8[:], report: schema_rt::MsgReport&) -> i64 {", n, typ)
 	e.p(1, "report = schema_rt::MsgReport { .. };")
 	e.p(1, "if data.len < 1 {")
 	e.p(2, "report.damaged = true;")
-	e.p(2, "return -1;")
+	e.p(2, "return 0;")
 	e.p(1, "}")
 	e.p(1, "if data[0] != schema_rt::MsgForm {")
 	e.p(2, "report.reason = schema_rt::MsgRefuseNewerForm;")
-	e.p(2, "return -1;")
+	e.p(2, "return 0;")
 	e.p(1, "}")
 	if st.Integrity == "crc32c" {
 		e.p(1, "if !schema_rt::integrity_holds(data, 2) {")
 		e.p(2, "report.damaged = true;")
 		e.p(2, "report.reason = schema_rt::MsgRefuseIntegrityMismatch;")
-		e.p(2, "return -1;")
+		e.p(2, "return 0;")
 		e.p(1, "}")
 		e.p(1, "let batch = data[0..data.len - 4];")
 	} else {
@@ -1338,19 +1389,18 @@ func (e *msgEmit) emitRoot(st *ir.Struct) {
 	}
 	e.p(1, "if !voc.announced {")
 	e.p(2, "report.reason = schema_rt::MsgRefuseNoVocabulary;")
-	e.p(2, "return -1;")
+	e.p(2, "return 0;")
 	e.p(1, "}")
 	// §3.3(a)(b): canon holds when the sender announced this reader's build version
 	e.p(1, "var r = schema_rt::MsgReader { b: batch, pos: 8, end: batch.len * 8, voc: voc, canon: voc.build_version == MessageBuildVersion, .. };")
 	e.p(1, "let count = (schema_rt::msg_get(r, 8) as! i64) + 1;")
 	e.p(1, "if !r.ok {")
 	e.p(2, "report.damaged = true;")
-	e.p(2, "return -1;")
+	e.p(2, "return 0;")
 	e.p(1, "}")
 	e.p(1, "if count > values.len {")
-	e.p(2, "report.count = count;")
 	e.p(2, "report.reason = schema_rt::MsgRefuseBatchTooLarge;")
-	e.p(2, "return -1;")
+	e.p(2, "return 0;")
 	e.p(1, "}")
 	e.p(1, "var reasoned: bool = false;")
 	e.p(1, "var i: i64 = 0;")
@@ -1373,7 +1423,6 @@ func (e *msgEmit) emitRoot(st *ir.Struct) {
 	e.p(3, "values[j] = %s { .. };", typ)
 	e.p(3, "j += 1;")
 	e.p(2, "}")
-	e.p(2, "if reasoned { return -1; }")
 	e.p(2, "return 0;")
 	e.p(1, "}")
 	e.p(1, "report.unknown = r.unknown;")

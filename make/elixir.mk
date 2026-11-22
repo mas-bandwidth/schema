@@ -117,7 +117,7 @@ ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	tblw1:test/tables/W1.schema tblw2:test/tables/W2.schema \
 	tblr1:test/tables/R1.schema tblr2:test/tables/R2.schema \
 	tblp1:test/tables/P1.schema \
-	tblp3:test/tables/P3.schema tblrt1:test/tables/RT1.schema jsonkeys:test/tables/JsonKeys.schema \
+	tblp3:test/tables/P3.schema jsonkeys:test/tables/JsonKeys.schema \
 	blobdemo:tables/blobs listdemo:tables/lists tblp2:test/tables/P2.schema \
 	mapdemo:tables/maps messagedemo:tables/messages scalars:tables/scalars \
 	vocabdemo:tables/vocab vocab9demo:tables/vocab9 backenddemo:tables/backend \
@@ -132,7 +132,7 @@ ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	tblg1:test/tables/G1.schema widelist:tables/widelist \
 	featurewitnesses:testdata/conformance/feature-witnesses/full/Features.schema
 
-build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk testdata/conformance/feature-witnesses/full/Features.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema $(wildcard tables/stream/*.schema) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/G1.schema $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_BACKEND) $(wildcard tables/widelist/*.schema)
+build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk testdata/conformance/feature-witnesses/full/Features.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema $(wildcard tables/stream/*.schema) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/widenbound/WidenBoundPeer.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/G1.schema $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_BACKEND) $(wildcard tables/widelist/*.schema)
 	@mkdir -p build/tables-generated-elixir
 	@jobs=$$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4); \
 	printf '%s\n' $(ELIXIR_TABLE_UNITS) | xargs -P "$$jobs" -n 4 sh -c 'for unit in "$$@"; do name=$${unit%%:*}; path=$${unit#*:}; rm -rf "build/tables-generated-elixir/$$name"; ./bin/schema generate --lang elixir --out "build/tables-generated-elixir/$$name" $$path || exit 255; done' _
@@ -493,12 +493,14 @@ tables-elixir-fuzz-negative-control: build/conformance-elixir-manifest/manifest.
 	$(call ELIXIR_SABOTAGED_BUILD,$(CONFORMANCE_NEGATIVE_ELIXIR_FUZZ),internal/codegen/elixirtable/block.go,ELIXIR_FUZZ_SED)
 	@if SEED=$(SEED) ELIXIR_TABLES_EBIN=$(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_FUZZ)/ebin \
 			BEAM_PATH="$(BEAM_PATH)" ./test/conformance/elixir/driver \
-			build/conformance-elixir-manifest/manifest.txt fuzz $(ELIXIR_FUZZ_N) > /dev/null 2>&1; then \
+			build/conformance-elixir-manifest/manifest.txt fuzz $(ELIXIR_FUZZ_N) > $(CONFORMANCE_NEGATIVE_ELIXIR_FUZZ)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a reader with no extent bound left the fuzz oracle green"; \
 		exit 1; \
-	else \
-		echo "elixir fuzz negative control: a block reader with both extent bounds removed reds the oracle"; \
 	fi
+	@grep -q "reader left the buffer on mutant" $(CONFORMANCE_NEGATIVE_ELIXIR_FUZZ)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the fuzz oracle went red for another reason"; \
+		  tail -20 $(CONFORMANCE_NEGATIVE_ELIXIR_FUZZ)/log; exit 1; }
+	@echo "elixir fuzz negative control: a block reader with both extent bounds removed reds the oracle"
 
 # THE RETAIN SURFACES' NEGATIVE CONTROL (docs/SPEC-TABLES.md §6.6): a copy of
 # the emitter whose retaining save finds the retained records of the ROOT body
@@ -532,7 +534,7 @@ tables-elixir-retain-negative-control: build/conformance-harness
 	# retain checks decoded JSON of known fields; retain-save checks re-emitted unknown bytes
 	@grep -qE '^retain-save +FAIL' $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/log || \
 		{ cat $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/log; echo "NEGATIVE CONTROL FAILED: retain-save did not go red"; exit 1; }
-	@if grep -E '^[a-z-]+ +FAIL' $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/log | grep -vqE '^retain(-save)? '; then \
+	@if grep -E '^[a-z-]+ +FAIL' $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/log | grep -vE '^retain(-save)? ' >/dev/null; then \
 		cat $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/log; echo "NEGATIVE CONTROL FAILED: a surface other than the two retain surfaces went red"; exit 1; \
 	fi
 	@grep -E '^retain(-save)? ' $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/log
@@ -557,12 +559,14 @@ tables-elixir-block-lead-negative-control: build/conformance-elixir-manifest/man
 	$(call ELIXIR_SABOTAGED_BUILD,$(CONFORMANCE_NEGATIVE_ELIXIR_LEAD),internal/codegen/elixirtable/block.go,ELIXIR_LEAD_SED)
 	@if ELIXIR_TABLES_EBIN=$(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_LEAD)/ebin \
 			BEAM_PATH="$(BEAM_PATH)" ./test/conformance/elixir/driver \
-			build/conformance-elixir-manifest/manifest.txt block-lead > /dev/null 2>&1; then \
+			build/conformance-elixir-manifest/manifest.txt block-lead > $(CONFORMANCE_NEGATIVE_ELIXIR_LEAD)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a reader that does not check the base left the gate green"; \
 		exit 1; \
-	else \
-		echo "elixir base-alignment negative control: dropping the check reds the gate"; \
 	fi
+	@grep -q "BASE ALIGNMENT GATE FAILED: .* answered open, wanted refuse" $(CONFORMANCE_NEGATIVE_ELIXIR_LEAD)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the base-alignment gate went red for another reason"; \
+		  tail -20 $(CONFORMANCE_NEGATIVE_ELIXIR_LEAD)/log; exit 1; }
+	@echo "elixir base-alignment negative control: dropping the check reds the gate"
 
 # THE OFFSETS/COOK-DELTA COMPOSITION GATE (docs/PORTING.md M2): the block's
 # offset_of and the cook's self-relative delta are composed from two 32-bit
@@ -657,6 +661,37 @@ test-elixir: tables-elixir-offsets tables-elixir-offsets-negative-control tables
 tables-elixir-accessor-descriptor-agreement: build/elixir-tables-ebin/.stamp
 	$(MIX) format --check-formatted test/elixir-tables/*.exs
 	ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-tables-ebin $(ELIXIR) test/elixir-tables/accessor_descriptor.exs
+
+# THE SAME GATE IN SHARDS, for the per-commit lane (ci-fast.yml lang-clean,
+# rows elixir-agreement-1 .. -N). The strict elixirc of the whole corpus is
+# what the gate's time is, and on a loaded runner it alone passes the
+# two-minute cap. Shard K of ELIXIR_AGREEMENT_SHARDS strictly compiles every
+# Nth table unit (sorted by name, starting at the Kth) into its own ebin and
+# walks those modules; the shards together compile and walk every unit the
+# whole-corpus target does. WHAT THE SHARDS DROP from the per-commit lane is
+# the one strict compile of the whole corpus with the conformance driver
+# (build/elixir-tables-ebin/.stamp: test/conformance/elixir/driver_impl.ex,
+# which needs every unit, and the check that no module is defined in two
+# units, which only a compile of every unit together sees). A pull request
+# whose Elixir verify-leg rows run still compiles it there; one that touches
+# shared files (ci-fast.yml's shared_broad: ir/, compiler/, tables/, the
+# Makefile, test/tables schemas) or more than four legs runs no verify-leg
+# rows, so for it that compile runs only in Certify's nightly test-elixir.
+ELIXIR_AGREEMENT_SHARDS := 4
+
+.PHONY: tables-elixir-accessor-descriptor-agreement-shard-%
+tables-elixir-accessor-descriptor-agreement-shard-%: build/tables-generated-elixir/.stamp
+	@case "$*" in ''|*[!0-9]*) echo "agreement shard '$*' is not a number"; exit 1 ;; esac; \
+		if [ "$*" -lt 1 ] || [ "$*" -gt $(ELIXIR_AGREEMENT_SHARDS) ]; then \
+			echo "agreement shard $* is outside 1..$(ELIXIR_AGREEMENT_SHARDS)"; exit 1; \
+		fi
+	$(MIX) format --check-formatted test/elixir-tables/*.exs
+	@rm -rf build/elixir-agreement-ebin-$* && mkdir -p build/elixir-agreement-ebin-$*
+	@units=$$(printf '%s\n' $(sort $(ELIXIR_TABLE_UNITS)) | awk -F: -v k=$* -v n=$(ELIXIR_AGREEMENT_SHARDS) '(NR - 1) % n == k - 1 { print $$1 }'); \
+		srcs=""; for u in $$units; do srcs="$$srcs build/tables-generated-elixir/$$u/*.ex"; done; \
+		echo "agreement shard $*/$(ELIXIR_AGREEMENT_SHARDS): $$(echo $$units | wc -w | tr -d ' ') units:" $$units; \
+		$(ELIXIRC_STRICT) -o build/elixir-agreement-ebin-$* $$srcs
+	ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-agreement-ebin-$* $(ELIXIR) test/elixir-tables/accessor_descriptor.exs
 
 # The two controls for that gate, on the EMITTER for the fuzz control's reason:
 # each moves ONE derivation — a generated block scalar accessor four bytes, a
@@ -999,21 +1034,35 @@ tables-elixir-release:
 # both and the block lead gate — then the format check and the packet tests.
 # The port emits the whole variable class (docs/SPEC-TABLES.md §2, §3, §16),
 # whose own gate is tables-elixir-variable-class above.
+# The registered counts of the primary packet harnesses (test/elixir, test/elixir-ludicrous):
+# each prints "ran N, failed M" as its last line and tools/mustrun holds N
+# to the number here, so a check that stops running, or a run that checks
+# nothing, is red. A commit that adds or removes a check changes the number.
+ELIXIR_MAIN_CHECKS := 454
+ELIXIR_LUDICROUS_CHECKS := 43
 .PHONY: test-elixir test-elixir-recipe
 test-elixir: toolchain-elixir generated/elixir/.stamp generated/elixir-ludicrous/.stamp generated/bench/elixir/.stamp
 	$(MAKE) test-elixir-recipe
 
-test-elixir-recipe: toolchain-elixir generated/elixir/.stamp generated/elixir-ludicrous/.stamp generated/bench/elixir/.stamp
+test-elixir-recipe: build/mustrun toolchain-elixir generated/elixir/.stamp generated/elixir-ludicrous/.stamp generated/bench/elixir/.stamp
 	$(MAKE) tables-elixir-fuzz
 	$(MAKE) tables-elixir-block-lead
 	$(MIX) format --check-formatted generated/elixir/*.ex generated/elixir-ludicrous/*.ex generated/bench/elixir/*.ex generated/bench/elixir/realworld/*.ex
-	cd test/elixir && $(ELIXIR) main.exs
-	cd test/elixir-ludicrous && $(ELIXIR) main.exs
+	$(MAKE) test-elixir-packet
+
+# The primary packet harnesses on their own, so they can be run (and broken on
+# purpose) without the rest of the leg.
+.PHONY: test-elixir-packet
+test-elixir-packet: build/mustrun toolchain-elixir generated/elixir/.stamp generated/elixir-ludicrous/.stamp generated/bench/elixir/.stamp
+	cd test/elixir && "$(CURDIR)/$(MUSTRUN)" -name test-elixir-main -count $(ELIXIR_MAIN_CHECKS) -- $(ELIXIR) main.exs
+	cd test/elixir-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name test-elixir-ludicrous -count $(ELIXIR_LUDICROUS_CHECKS) -- $(ELIXIR) main.exs
 
 TEST_LEGS            += test-elixir
 TOOLCHAIN_LEGS       += elixir
 TOOLCHAIN_PINS_elixir := ELIXIR ELIXIRC MIX
 CONFORMANCE_LEGS     += $(call unless_skipped,elixir,build-conformance-elixir)
+REGISTRY_NA          += goldens:elixir
+REGISTRY_NA_WHY.goldens.elixir := no committed table goldens; its packet goldens (testdata/golden/elixir) are rewritten by internal/goldens at the top of update-goldens
 # Packet UTF-8 content validation, including a compiled mutation control.
 build/packet-text/elixir/.stamp: bin/schema test/packet-text/Narrow.schema
 	@mkdir -p build/packet-text/elixir/source
@@ -1061,7 +1110,7 @@ packet-finite-elixir-negative-control: packet-finite-elixir
 	$(ELIXIRC_STRICT) -o build/packet-finite/elixir-negative/beam build/packet-finite/elixir-negative/generated/*.ex
 	@if $(ELIXIR) test/packet-finite/elixir/main.exs "$(CURDIR)/build/packet-finite/elixir-negative/generated" > build/packet-finite/elixir-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: Elixir non_finite_float read check removal passed'; exit 1; fi
 	@grep -Fq 'FAILED: non_finite_float read ' build/packet-finite/elixir-negative/log || { cat build/packet-finite/elixir-negative/log; exit 1; }
-	@if grep -F 'FAILED: ' build/packet-finite/elixir-negative/log | grep -Fvq 'FAILED: non_finite_float read '; then cat build/packet-finite/elixir-negative/log; echo 'NEGATIVE CONTROL FAILED: a check other than the read refusal went red'; exit 1; fi
+	@if grep -F 'FAILED: ' build/packet-finite/elixir-negative/log | grep -Fv 'FAILED: non_finite_float read ' >/dev/null; then cat build/packet-finite/elixir-negative/log; echo 'NEGATIVE CONTROL FAILED: a check other than the read refusal went red'; exit 1; fi
 	@echo 'packet finite Elixir negative control: removed raw-bit read checks red the non_finite_float read vectors'
 
 test-elixir: packet-finite-elixir packet-finite-elixir-negative-control
@@ -1164,8 +1213,8 @@ tables-elixir-json-differential:
 		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestTextDifferentialElixir$$' 2>&1); status=$$?; \
 	printf '%s\n' "$$out"; \
 	if [ $$status -ne 0 ]; then exit $$status; fi; \
-	if printf '%s\n' "$$out" | grep -q -- '--- SKIP'; then echo 'tables-elixir-json-differential: a SKIP is a failure here'; exit 1; fi; \
-	printf '%s\n' "$$out" | grep -q -- '--- PASS: TestTextDifferentialElixir' || { echo 'tables-elixir-json-differential: TestTextDifferentialElixir did not run'; exit 1; }
+	if printf '%s\n' "$$out" | grep -- '--- SKIP' >/dev/null; then echo 'tables-elixir-json-differential: a SKIP is a failure here'; exit 1; fi; \
+	printf '%s\n' "$$out" | grep -- '--- PASS: TestTextDifferentialElixir' >/dev/null || { echo 'tables-elixir-json-differential: TestTextDifferentialElixir did not run'; exit 1; }
 	@echo 'tables Elixir json differential: 200 of 200 instances agree with the engine in both directions'
 
 tables-elixir-json-differential-negative-control:
@@ -1173,8 +1222,8 @@ tables-elixir-json-differential-negative-control:
 		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestTextDifferentialNegativeControlElixir$$' 2>&1); status=$$?; \
 	printf '%s\n' "$$out"; \
 	if [ $$status -ne 0 ]; then exit $$status; fi; \
-	if printf '%s\n' "$$out" | grep -q -- '--- SKIP'; then echo 'tables-elixir-json-differential-negative-control: a SKIP is a failure here'; exit 1; fi; \
-	printf '%s\n' "$$out" | grep -q -- '--- PASS: TestTextDifferentialNegativeControlElixir' || { echo 'tables-elixir-json-differential-negative-control: the control did not run'; exit 1; }
+	if printf '%s\n' "$$out" | grep -- '--- SKIP' >/dev/null; then echo 'tables-elixir-json-differential-negative-control: a SKIP is a failure here'; exit 1; fi; \
+	printf '%s\n' "$$out" | grep -- '--- PASS: TestTextDifferentialNegativeControlElixir' >/dev/null || { echo 'tables-elixir-json-differential-negative-control: the control did not run'; exit 1; }
 	@echo 'tables Elixir json differential negative control: a float32 capped at six digits went red on the text comparison'
 
 test-elixir: tables-elixir-json-differential tables-elixir-json-differential-negative-control
@@ -1195,8 +1244,8 @@ tables-elixir-finite-float:
 		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestElixirFiniteFloat$$' 2>&1); status=$$?; \
 	printf '%s\n' "$$out"; \
 	if [ $$status -ne 0 ]; then exit $$status; fi; \
-	if printf '%s\n' "$$out" | grep -q -- '--- SKIP'; then echo 'tables-elixir-finite-float: a SKIP is a failure here'; exit 1; fi; \
-	printf '%s\n' "$$out" | grep -q -- '--- PASS: TestElixirFiniteFloat' || { echo 'tables-elixir-finite-float: TestElixirFiniteFloat did not run'; exit 1; }
+	if printf '%s\n' "$$out" | grep -- '--- SKIP' >/dev/null; then echo 'tables-elixir-finite-float: a SKIP is a failure here'; exit 1; fi; \
+	printf '%s\n' "$$out" | grep -- '--- PASS: TestElixirFiniteFloat' >/dev/null || { echo 'tables-elixir-finite-float: TestElixirFiniteFloat did not run'; exit 1; }
 	@echo 'tables Elixir finite floats: every read refuses a NaN or an infinity, every writer refuses one, -0 rides'
 
 tables-elixir-finite-float-negative-control:
@@ -1204,8 +1253,8 @@ tables-elixir-finite-float-negative-control:
 		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestElixirFiniteFloatNegativeControl$$' 2>&1); status=$$?; \
 	printf '%s\n' "$$out"; \
 	if [ $$status -ne 0 ]; then exit $$status; fi; \
-	if printf '%s\n' "$$out" | grep -q -- '--- SKIP'; then echo 'tables-elixir-finite-float-negative-control: a SKIP is a failure here'; exit 1; fi; \
-	printf '%s\n' "$$out" | grep -q -- '--- PASS: TestElixirFiniteFloatNegativeControl' || { echo 'tables-elixir-finite-float-negative-control: the control did not run'; exit 1; }
+	if printf '%s\n' "$$out" | grep -- '--- SKIP' >/dev/null; then echo 'tables-elixir-finite-float-negative-control: a SKIP is a failure here'; exit 1; fi; \
+	printf '%s\n' "$$out" | grep -- '--- PASS: TestElixirFiniteFloatNegativeControl' >/dev/null || { echo 'tables-elixir-finite-float-negative-control: the control did not run'; exit 1; }
 	@echo 'tables Elixir finite floats negative control: each sabotaged refusal reds exactly its own rows'
 
 test-elixir: tables-elixir-finite-float tables-elixir-finite-float-negative-control
@@ -1650,7 +1699,7 @@ tables-elixir-cook-blob-negative-control:
 	@grep -q 'FAIL blob_equal_bytes: ' build/elixir-cook-blob-nc/log || \
 		{ echo "NEGATIVE CONTROL FAILED: TestCookNumbersABlobByItsSlotElixir went red for another reason"; \
 		  cat build/elixir-cook-blob-nc/log; exit 1; }
-	@if grep 'FAIL ' build/elixir-cook-blob-nc/log | grep -v -q 'FAIL blob_equal_bytes'; then \
+	@if grep 'FAIL ' build/elixir-cook-blob-nc/log | grep -v 'FAIL blob_equal_bytes' >/dev/null; then \
 		echo "NEGATIVE CONTROL FAILED: keying the blob by its bytes red more than blob_equal_bytes"; \
 		cat build/elixir-cook-blob-nc/log; exit 1; \
 	fi
@@ -2181,7 +2230,7 @@ define ELIXIR_COOK_MAP_CONTROL
 		grep -q "FAIL $$p" build/elixir-cook-map-nc-$(1)/log || \
 			{ cat build/elixir-cook-map-nc-$(1)/log; echo "NEGATIVE CONTROL FAILED: $(4) did not red $$p"; exit 1; }; \
 	done
-	@if [ -n "$(5)" ] && grep -E '^ *FAIL [a-z_ -]+:' build/elixir-cook-map-nc-$(1)/log | grep -v -q -E 'FAIL $(5)(-be)?:'; then \
+	@if [ -n "$(5)" ] && grep -E '^ *FAIL [a-z_ -]+:' build/elixir-cook-map-nc-$(1)/log | grep -v -E 'FAIL $(5)(-be)?:' >/dev/null; then \
 		cat build/elixir-cook-map-nc-$(1)/log; echo "NEGATIVE CONTROL FAILED: $(4) red more than $(5)"; exit 1; \
 	fi
 	@echo "elixir cook map negative control: $(4) reds [$(3)]"
@@ -2240,7 +2289,7 @@ packet-end-elixir-negative-control: packet-end-elixir
 		grep -Fq 'FAILED: packet-end verdict padding.bin' build/packet-end/elixir-negative/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: the packet-end gate went red, but not on the trailing and padding vectors'; cat build/packet-end/elixir-negative/log; exit 1; }
 	@if grep -Fq 'FAILED: packet-end verdict exact.bin' build/packet-end/elixir-negative/log; then cat build/packet-end/elixir-negative/log; echo 'NEGATIVE CONTROL FAILED: the exact packet went red with the end check removed'; exit 1; fi
-	@if grep -F 'FAILED: ' build/packet-end/elixir-negative/log | grep -Fvq 'FAILED: packet-end verdict '; then cat build/packet-end/elixir-negative/log; echo 'NEGATIVE CONTROL FAILED: a check other than the packet-end verdict went red'; exit 1; fi
+	@if grep -F 'FAILED: ' build/packet-end/elixir-negative/log | grep -Fv 'FAILED: packet-end verdict ' >/dev/null; then cat build/packet-end/elixir-negative/log; echo 'NEGATIVE CONTROL FAILED: a check other than the packet-end verdict went red'; exit 1; fi
 	@echo 'packet end Elixir negative control: removing the end check accepts the trailing and padding vectors'
 
 test-elixir: packet-end-elixir packet-end-elixir-negative-control

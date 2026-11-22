@@ -35,6 +35,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // t10Schema is one fixed table that declares every construct this card proves.
@@ -274,13 +276,13 @@ func t10Run(t *testing.T) string {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(root, "t10probe")
-	cmd := exec.Command("rustc", "--edition", "2024", "-O", "-o", bin, "main.rs")
+	cmd := testproc.Command(t, "rustc", "--edition", "2024", "-O", "-o", bin, "main.rs")
 	cmd.Dir = root
 	cmd.Env = os.Environ()
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("the probe did not build: %v\n%s", err, out)
 	}
-	run := exec.Command(bin)
+	run := testproc.Command(t, bin)
 	run.Dir = root
 	out, err := run.CombinedOutput()
 	if err != nil {

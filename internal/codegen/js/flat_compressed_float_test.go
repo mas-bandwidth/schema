@@ -11,6 +11,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJsFlatCompressedFloatClampsTheTopOfRange pins the SPEC's normative
@@ -114,7 +116,7 @@ func jsFlatNode(t *testing.T) string {
 	if n, err := exec.LookPath("node"); err == nil {
 		return n
 	}
-	t.Skip("no node toolchain: see make/js.mk's NODE")
+	slowtest.Require(t, "SCHEMA_REQUIRE_NODE", "no node toolchain: see make/js.mk's NODE")
 	return ""
 }
 
@@ -158,7 +160,7 @@ console.log('OK ' + n);
 	if err := os.WriteFile(filepath.Join(dir, "harness.mjs"), []byte(harness), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, "harness.mjs")
+	cmd := testproc.Command(t, node, "harness.mjs")
 	cmd.Dir = dir
 	env := os.Environ()
 	if production {

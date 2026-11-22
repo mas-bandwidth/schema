@@ -12,6 +12,8 @@ import (
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // THE C LEG'S FINITE RULE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27,
@@ -369,7 +371,7 @@ func finiteProbeRun(t *testing.T, sabotage *finiteSabotage) ([]string, string) {
 		opt = "-O0" // a control is run once and thrown away (make/c.mk TABLES_CFLAGS_CONTROL)
 	}
 	args := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-Wshadow", opt, "-fsanitize=address,undefined", "-fno-sanitize-recover=all"}
-	args = append(args, gccFortifySilence(cc)...)
+	args = append(args, gccFortifySilence(t, cc)...)
 	args = append(args, "-I", dir, filepath.Join(dir, "main.c"))
 	for name := range files {
 		if strings.HasSuffix(name, ".c") {
@@ -377,12 +379,12 @@ func finiteProbeRun(t *testing.T, sabotage *finiteSabotage) ([]string, string) {
 		}
 	}
 	args = append(args, "-lm", "-o", filepath.Join(dir, "probe"))
-	if output, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+	if output, err := testproc.Command(t, cc, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, output)
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
-	output, _ := exec.CommandContext(ctx, filepath.Join(dir, "probe")).CombinedOutput()
+	output, runErr := testproc.CommandContext(t, ctx, filepath.Join(dir, "probe")).CombinedOutput()
 	var fails []string
 	for line := range strings.SplitSeq(string(output), "\n") {
 		if rest, ok := strings.CutPrefix(line, "FAIL: "); ok {
@@ -391,6 +393,12 @@ func finiteProbeRun(t *testing.T, sabotage *finiteSabotage) ([]string, string) {
 	}
 	if strings.Contains(string(output), "ERROR: AddressSanitizer") || strings.Contains(string(output), "runtime error:") {
 		t.Fatalf("the probe tripped a sanitizer:\n%s", output)
+	}
+	// The probe exits failures != 0, so a non-zero exit with no FAIL line (a
+	// crash, a kill at the deadline) or a FAIL line with a clean exit is a
+	// probe that did not run to its verdict.
+	if (runErr != nil) != (len(fails) != 0) {
+		t.Fatalf("the probe's exit (%v) disagrees with its %d FAIL lines:\n%s", runErr, len(fails), output)
 	}
 	return fails, string(output)
 }

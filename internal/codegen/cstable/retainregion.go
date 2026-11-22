@@ -58,7 +58,7 @@ func tableRetainRegionSource() string {
         RetainPut(directory, 0, 8);`)
 	s = tableReplace(s, "new RetainValue(data, offset)", "new RetainValue(data, offset, retain, (uint)i + 2)")
 	s = tableReplace(s, "new RetainValue(data, 0)", "new RetainValue(data, 0, retain, 1)")
-	s = tableReplace(s, "                int keep = (int)Math.Min(count, (ulong)f.ArrayBound);", "                RetainDiscard(value.Store, value.Path, f.Ordinal);\n                int keep = (int)Math.Min(count, (ulong)f.ArrayBound);")
+	s = tableReplace(s, "                int keep = (int)global::System.Math.Min(count, (ulong)f.ArrayBound);", "                RetainDiscard(value.Store, value.Path, f.Ordinal);\n                int keep = (int)global::System.Math.Min(count, (ulong)f.ArrayBound);")
 	s = tableReplace(s, "if (f.IsArray) { union.SetTag(f, 0); }", "if (f.IsArray) { union.DiscardUnion(); union.SetTag(f, 0); }")
 	s = tableReplace(s, "if (reference == 0) { union.SetTag(f, 0); return true; }", "if (reference == 0) { union.DiscardUnion(); union.SetTag(f, 0); return true; }")
 	s = tableReplace(s, "            union.SetTag(f, 0);\n            int tag", "            union.DiscardUnion(); union.SetTag(f, 0);\n            int tag")
@@ -66,6 +66,13 @@ func tableRetainRegionSource() string {
 	// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the retention
 	// store keeps nothing a damaged load captured, nor anything an earlier load
 	// left in it.
+	// A file refused or damaged at its frame, before any body is walked (a form
+	// byte this reader does not take, a failed integrity check), is such a
+	// load too.
+	s = tableReplace(s, "if (reason == \"integrity_mismatch\") { IntegrityDamage(report); return IntPtr.Zero; }",
+		"if (reason == \"integrity_mismatch\") { IntegrityDamage(report); retain->Used = 0; retain->IdUsed = 0; retain->Count = 0; return IntPtr.Zero; }")
+	s = tableReplace(s, "Finish(report, Verdict.Refused); }\n            else { Damage(report);",
+		"Finish(report, Verdict.Refused); retain->Used = 0; retain->IdUsed = 0; retain->Count = 0; }\n            else { Damage(report);")
 	s = tableReplace(s, "            else { Damage(report); Finish(report, Verdict.Damaged); }\n            return IntPtr.Zero;",
 		"            else { Damage(report); Finish(report, Verdict.Damaged); retain->Used = 0; retain->IdUsed = 0; retain->Count = 0; }\n            return IntPtr.Zero;")
 	s = tableReplace(s, "Finish(report, Verdict.Refused); return IntPtr.Zero; }",

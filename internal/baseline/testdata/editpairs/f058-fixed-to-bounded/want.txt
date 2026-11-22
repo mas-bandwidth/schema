@@ -1,0 +1,3 @@
+# F-058: bounded [..4]Pair to fixed [4]Pair is the shape move the wire
+# absorbs; the shipping policy reports nothing for it. No line below this
+# comment means no finding is the pass.

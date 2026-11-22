@@ -20,7 +20,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"slices"
-	"sync"
 
 	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
@@ -34,14 +33,11 @@ const (
 	FixedReasonOutOfRange        = "out_of_range"
 )
 
-// unitLocks caches each unit's parsed lock: one Open per unit, and a nil entry
-// for a unit with no lock, which promises nothing (§5.9 #2).
-var unitLocks sync.Map // *ir.Unit -> *lockfile.Unit
-
+// unitLock reads the unit's lock as it stands on disk NOW, or nil for a unit
+// with no lock, which promises nothing (§5.9 #2). It is read on every older
+// writer's record and never cached: a retirement (§11.4) takes effect for a
+// unit already loaded, and no process-global table keeps a unit alive.
 func unitLock(u *ir.Unit) (*lockfile.Unit, error) {
-	if v, ok := unitLocks.Load(u); ok {
-		return v.(*lockfile.Unit), nil
-	}
 	var paths []string
 	for _, f := range u.Files {
 		if f != nil && f.Path != "" {
@@ -58,7 +54,6 @@ func unitLock(u *ir.Unit) (*lockfile.Unit, error) {
 			lock = l
 		}
 	}
-	unitLocks.Store(u, lock)
 	return lock, nil
 }
 

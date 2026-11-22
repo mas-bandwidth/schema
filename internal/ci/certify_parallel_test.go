@@ -1,6 +1,7 @@
 package ci
 
 import (
+	"errors"
 	"fmt"
 	"os/exec"
 	"regexp"
@@ -30,7 +31,9 @@ var certifyCoreShards = []string{
 var certifyShardedLegs = map[string][]string{
 	"c":      {"c-1", "c-2", "c-3"},
 	"elixir": {"elixir-1", "elixir-2", "elixir-3", "elixir-4"},
+	"goose":  {"goose-1", "goose-2", "goose-3"},
 	"python": {"python-1", "python-2", "python-3", "python-4", "python-5"},
+	"ruby":   {"ruby-1", "ruby-2", "ruby-3", "ruby-4"},
 }
 
 var certifyLinuxOnlyLegs = []string{"goose", "luau"}
@@ -59,6 +62,9 @@ func registeredTestLegs(t *testing.T, root string) []string {
 			}
 			legs = append(legs, leg)
 		}
+		if len(legs) == 0 {
+			t.Fatalf("make -s registry's test: line names no leg: %q", line)
+		}
 		slices.Sort(legs)
 		return legs
 	}
@@ -66,11 +72,25 @@ func registeredTestLegs(t *testing.T, root string) []string {
 	return nil
 }
 
+// makeQueryOutput runs a `make -q` query and answers what it printed. -q exits
+// non-zero when a target is out of date (or names nothing), and the database
+// is printed either way, so an exit status passes; a make that did not run at
+// all (not found, not startable) fails the test by name.
+func makeQueryOutput(t *testing.T, cmd *exec.Cmd) []byte {
+	t.Helper()
+	out, err := cmd.Output()
+	var exit *exec.ExitError
+	if err != nil && !errors.As(err, &exit) {
+		t.Fatalf("%s did not run: %v", strings.Join(cmd.Args, " "), err)
+	}
+	return out
+}
+
 func makeTestDatabasePrereqs(t *testing.T, root string) []string {
 	t.Helper()
 	cmd := exec.Command("make", "-qp")
 	cmd.Dir = root
-	out, _ := cmd.Output()
+	out := makeQueryOutput(t, cmd)
 	for line := range strings.SplitSeq(string(out), "\n") {
 		rest, ok := strings.CutPrefix(line, "test:")
 		if !ok {
@@ -241,6 +261,8 @@ func checkCertifyParallelPolicy(certifyYAML, makefile string, registeredLegs []s
 		`make conformance SCHEMA_SKIP_LEGS="$OTHER_LEGS"`,
 		"make test-c-recipe",
 		"make test-elixir-recipe",
+		"make test-goose-recipe",
+		"make test-ruby-recipe",
 		"make python-ci-packages",
 		"make python-ci-compiler",
 		`make "test-${SHARD}"`,
