@@ -185,6 +185,31 @@ text and its wire: (values :read (text . wire))."
           ((string= surface "json-write") (read-file-octets (json-golden-path name)))
           (t (read-file-octets (fifth inst))))))
 
+(defun check-hostile-text-only ()
+  "Diagnostic, not a surface: the hostile rows whose root is a FIXED table,
+held to the verdict and the value's text only (no form-3 wire in scope)."
+  (let ((pass 0) (fail 0) (failed '()))
+    (dolist (row *json-hostiles*)
+      (destructuring-bind (kw name ukey root tree verdict &rest more) row
+        (declare (ignore kw more))
+        (with-unit (u ukey)
+          (let ((decl (root-decl u root)))
+            (unless (variable-root-p decl)
+              (multiple-value-bind (kind text)
+                  (handler-case
+                      (values :read (json-write-value (json-read-value decl (read-file-octets (format nil "~a/~a.json" tree root)))))
+                    (refusal (c) (values :refused (refusal-reason c)))
+                    (error (e) (values :error (format nil "~a" e))))
+                (if (if (string= verdict "refused")
+                        (eq kind :refused)
+                        (and (eq kind :read) (equalp text (read-file-octets (format nil "~a.value.json" tree)))))
+                    (incf pass)
+                    (progn (incf fail)
+                           (push (format nil "~a: want ~a got ~a~@[ ~a~]" name verdict kind (unless (eq kind :read) text)) failed)))))))))
+    (format t "json-hostile fixed roots, text only: pass ~a fail ~a~%" pass fail)
+    (dolist (f (reverse failed)) (format t "  FAIL ~a~%" f))
+    (zerop fail)))
+
 (defun check-surface (surface &key verbose)
   (let ((pass 0) (fail 0) (absent 0) (failed '()))
     (dolist (inst (surface-cases surface))
@@ -214,7 +239,9 @@ text and its wire: (values :read (text . wire))."
           ((string= cmd "list") (dolist (s +surfaces+) (format t "~a~%" s)) 0)
           ((string= cmd "check")
            (let ((ok t))
-             (dolist (s (or rest +surfaces+)) (unless (check-surface s :verbose t) (setf ok nil)))
+             (dolist (s (or rest +surfaces+))
+               (unless (if (string= s "hostile-text") (check-hostile-text-only) (check-surface s :verbose t))
+                 (setf ok nil)))
              (if ok 0 1)))
           ((member cmd +surfaces+ :test #'string=) (run-surface cmd (first rest)) 0)
           (t 2)))
