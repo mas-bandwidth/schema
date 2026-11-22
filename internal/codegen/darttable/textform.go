@@ -887,6 +887,14 @@ func (g *wireGen) emitTextEnum(e *ir.Enum) {
 	g.pf("\tswitch (v) {\n")
 	g.pf("\t\tcase 0: return \"None\";\n")
 	for i, name := range e.Variants {
+		if i < len(e.VariantDeprecated) && e.VariantDeprecated[i] {
+			// A DEPRECATED VARIANT IS NEVER WRITTEN (docs/SPEC-TABLES.md
+			// section 2.15): a write-side check, so a debug assert in this
+			// language (SPEC.md section 5.1). This helper is the JSON
+			// writer's only spelling of an enum.
+			g.pf("\t\tcase %d: assert(false, 'deprecated variant is never written (SPEC-TABLES 2.15)'); return %s;\n", i+1, viewDartString(name))
+			continue
+		}
 		g.pf("\t\tcase %d: return %s;\n", i+1, viewDartString(name))
 	}
 	g.pf("\t}\n\treturn '';\n}\n\n")
