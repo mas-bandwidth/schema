@@ -1,0 +1,28 @@
+# The runner scenario corpus: TestKnownFindingCannotHideExecutionFailure runs
+# every row against the one-case manifest.tsv beside this file (the case
+# expects `refuse damaged`).
+# scenario	child_answer	budget	findings	success
+#
+# child_answer: what the case binary does (the modes of TestMain).
+# budget: spent  the case's budget has already run out when it starts
+#         never  the case's budget never runs out
+#         No row reads a clock.
+# findings: known  findings.tsv beside this file carries the case
+#           none   no finding is carried
+# success: whether the whole run must report success.
+#
+# with the finding carried: only the mismatch it names is success
+carried-finding-mismatch	mismatch	never	known	true
+carried-finding-case-went-green	match	never	known	false
+carried-finding-exit-status	exit	never	known	false
+carried-finding-sanitizer-report	sanitizer	never	known	false
+carried-finding-over-budget	hang	spent	known	false
+carried-finding-error-answer	error	never	known	false
+carried-finding-unbound-answer	unbound	never	known	false
+carried-finding-unreadable-answer	unreadable	never	known	false
+carried-finding-skip	skip	never	known	false
+# with no finding carried: the completed matching answer is success, and a
+# case over its budget is a hang whatever else is true
+completed-matching-answer	match	never	none	true
+completed-mismatch	mismatch	never	none	false
+over-budget	hang	spent	none	false

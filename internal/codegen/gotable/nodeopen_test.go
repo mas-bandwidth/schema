@@ -2,12 +2,13 @@ package gotable
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestTableOpenHasNoWirePrepass is the red the card names: the open must not
@@ -169,7 +170,7 @@ func runGeneratedTables(t *testing.T, schema, testSource string, edits ...func(m
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("go", "test", "-count=1", "-timeout=600s", ".")
+	cmd := testproc.Command(t, "go", "test", "-count=1", "-timeout=600s", ".")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("generated table unit: %v\n%s", err, out)

@@ -13,6 +13,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestCyclicWireIsDamageRust holds docs/SPEC-TABLES.md §3.1's ruling on the
@@ -243,10 +245,10 @@ func runRustGeneratedFilesProbe(t *testing.T, files map[string][]byte, body stri
 		t.Fatal(err)
 	}
 	bin := filepath.Join(dir, "probe")
-	if out, err := exec.Command("rustc", "--edition=2024", "-O", filepath.Join(dir, "main.rs"), "-o", bin).CombinedOutput(); err != nil {
+	if out, err := testproc.Command(t, "rustc", "--edition=2024", "-O", filepath.Join(dir, "main.rs"), "-o", bin).CombinedOutput(); err != nil {
 		return string(out), err
 	}
-	out, err := exec.Command(bin).CombinedOutput()
+	out, err := testproc.Command(t, bin).CombinedOutput()
 	return string(out), err
 }
 

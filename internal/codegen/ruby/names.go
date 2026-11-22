@@ -2,6 +2,7 @@ package ruby
 
 import (
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 
@@ -15,16 +16,32 @@ const HelperPrefix = "_s_"
 
 // generatedMembers are the names the generated classes define or rely on
 // beside their fields (docs/PORT-RUBY.md, IDENTIFIERS): the codec's entry
-// points, the constructor, and the Object methods the generated code and its
-// callers call on a value. A field spelled like one would replace it.
+// points, the constructor, to_h, and the Object methods the generated code,
+// its runtimes and its callers call on a value (public_send is how the
+// descriptor codec and the table runtime reach a field by name). A field
+// spelled like one would replace it, and the attr_accessor or the def that
+// comes second wins, so the field or the member would lose its meaning.
 var generatedMembers = wordSet(`read read_bits write load save descriptor initialize inspect hash
-	class freeze dup clone send method`)
+	class freeze dup clone send public_send method to_h`)
+
+// tableMembers are the instance methods a generated table class defines beside
+// generatedMembers (internal/codegen/rubytable, emitTable): its measures, its
+// retaining save, its JSON and text writers, and its cook. A table field
+// spelled like one would replace it.
+var tableMembers = wordSet(`measure measure_retain save_retain save_text to_json cook cook_measure`)
 
 // unionMembers are the names a generated union class defines beside its arms:
 // type, the arm number, the packet union codec entry points, and the Object
-// methods generated code relies on (docs/PORT-RUBY.md, IDENTIFIERS).
+// methods generated code and its runtimes rely on (docs/PORT-RUBY.md,
+// IDENTIFIERS).
 var unionMembers = wordSet(`type read read_bits write initialize inspect hash
-	class freeze dup clone send method`)
+	class freeze dup clone send public_send method`)
+
+// unionTagConstants are the constants a union's tag module (<Union>Type)
+// defines beside its arms' constants. None and Max are refused by the checker
+// for every target; NAMES is the Ruby tag module's own, so an arm whose
+// constant spells it would redefine the name table.
+var unionTagConstants = map[string]string{"None": "built-in", "Max": "built-in", "NAMES": "built-in"}
 
 // VariantConstant returns the Ruby constant name for an enum or flags variant:
 // verbatim when it already starts with an uppercase ASCII letter, otherwise
@@ -111,6 +128,9 @@ func checkNames(u *ir.Unit, off string) error {
 				return err
 			}
 			if err := c.checkFields(f.Base, t.Name, t.Fields); err != nil {
+				return err
+			}
+			if err := c.checkTableFields(f.Base, t.Name, t.Fields); err != nil {
 				return err
 			}
 		}
@@ -202,8 +222,14 @@ func (c checker) checkUnion(file string, un *ir.Union) error {
 	if err := c.checkConstant(file, "union "+un.Name, un.Name); err != nil {
 		return err
 	}
+	seen := maps.Clone(unionTagConstants)
 	for _, a := range un.Variants {
 		what := "union " + un.Name + "'s arm " + a.Name
+		ac := ir.GoExportName(a.Name)
+		if prev, dup := seen[ac]; dup && c.on(ruleConstantSpelling) {
+			return fmt.Errorf("ruby: %s.schema: %s spells the constant %sType::%s, colliding with %s; rename the arm", file, what, un.Name, ac, prev)
+		}
+		seen[ac] = a.Name
 		if err := c.checkMethod(file, what, a.Name); err != nil {
 			return err
 		}
@@ -243,6 +269,17 @@ func (c checker) checkFields(file, owner string, fields []*ir.Field) error {
 		}
 		if generatedMembers[fd.Name] && c.on(ruleGeneratedMember) {
 			return fmt.Errorf("ruby: %s.schema: %s is the name of a member the generated class defines (%s); rename the field", file, what, memberList(nil))
+		}
+	}
+	return nil
+}
+
+// checkTableFields holds a table's fields to the members only a table class
+// defines.
+func (c checker) checkTableFields(file, owner string, fields []*ir.Field) error {
+	for _, fd := range fields {
+		if tableMembers[fd.Name] && c.on(ruleGeneratedMember) {
+			return fmt.Errorf("ruby: %s.schema: %s's field %s is the name of a member the generated table class defines (%s); rename the field", file, owner, fd.Name, memberList(tableMembers))
 		}
 	}
 	return nil
