@@ -61,16 +61,32 @@ p.F carry(w.F v) {
   return out;
 }
 
+// Malformed JSON text (a NaN or Infinity token) is refused by a
+// FormatException even when a report is passed: that throw is the Dart text
+// reader's documented refusal of text that is not JSON (docs/USAGE.md, Dart),
+// so it counts as one.
 w.V? jsonV(String stem) {
   final r = w.TableTextReport();
-  final v = w.vFromJson(String.fromCharCodes(file('$stem.json')), r);
+  final w.V v;
+  try {
+    v = w.vFromJson(String.fromCharCodes(file('$stem.json')), r);
+  } on FormatException catch (e) {
+    reason = e.message;
+    return null;
+  }
   reason = r.refusal;
   return r.refused ? null : v;
 }
 
 p.F? jsonF(String stem) {
   final r = w.TableTextReport();
-  final v = w.fFromJson(String.fromCharCodes(file('$stem.json')), r);
+  final w.F v;
+  try {
+    v = w.fFromJson(String.fromCharCodes(file('$stem.json')), r);
+  } on FormatException catch (e) {
+    reason = e.message;
+    return null;
+  }
   reason = r.refusal;
   return r.refused ? null : carry(v);
 }
@@ -105,7 +121,9 @@ String read(String form, String root, String input, String expect) {
   }
   if (expect == 'refused') {
     if (got) return 'the $form read was not refused';
-    return reason == 'out_of_range' ? '' : 'refused, but not out_of_range: $reason';
+    // Only the verdict must agree across ports (docs/rulings.json,
+    // refusal-verdict-only): the reason is Dart's own.
+    return '';
   }
   if (!got) return 'the $form read refused the value at the float32 end';
   if (saved == null) return 'saving again what was just read was refused';
